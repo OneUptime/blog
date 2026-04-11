@@ -4,38 +4,40 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, HSETEX, Hash, Expiration, TTL, Field, Command
 
-Description: Learn how to use the Redis HSETEX command (Redis 7.4+) to set hash field values with per-field TTLs in a single atomic operation, combining HSET and HEXPIRE.
+Description: Learn how to use the Redis HSETEX command (Redis 8.0+) to set hash field values with per-field TTLs in a single atomic operation, combining HSET and HEXPIRE.
 
 ---
 
 ## How HSETEX Works
 
-`HSETEX` sets one or more hash fields and applies an expiration to all of them in a single atomic operation. It is essentially the combination of `HSET` + `HEXPIRE` in one command. Before Redis 7.4, you needed two separate commands (and potentially a Lua script for atomicity) to set a field with a TTL. `HSETEX` makes this a first-class atomic operation.
+`HSETEX` sets one or more hash fields and applies an expiration to all of them in a single atomic operation. It is essentially the combination of `HSET` + `HEXPIRE` in one command. Before Redis 8.0, you needed two separate commands (and potentially a Lua script for atomicity) to set a field with a TTL. `HSETEX` makes this a first-class atomic operation.
 
-`HSETEX` was introduced in Redis 7.4.
+`HSETEX` was introduced in Redis 8.0.
 
 ```mermaid
 flowchart TD
-    A["HSETEX user:1 3600 FIELDS 1 token abc123"] --> B[Set field token = abc123]
+    A["HSETEX user:1 EX 3600 FIELDS 1 token abc123"] --> B[Set field token = abc123]
     B --> C[Apply TTL of 3600s to token field]
-    C --> D[Return OK or field count]
+    C --> D[Return 1 if all fields were set]
 ```
 
 ## Syntax
 
 ```redis
-HSETEX key seconds FIELDS numfields field value [field value ...]
+HSETEX key [FNX | FXX] [EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL] FIELDS numfields field value [field value ...]
 ```
 
-- `seconds` - TTL in seconds for all specified fields
+- `FNX` - only set the fields if none of them already exist
+- `FXX` - only set the fields if all of them already exist
+- `EX seconds` - TTL in seconds for all specified fields
+- `PX milliseconds` - TTL in milliseconds for all specified fields
+- `EXAT unix-time-seconds` - absolute Unix timestamp in seconds at which the fields expire
+- `PXAT unix-time-milliseconds` - absolute Unix timestamp in milliseconds at which the fields expire
+- `KEEPTTL` - retain the existing TTL associated with the fields
 - `FIELDS numfields` - number of field-value pairs to follow
-- Returns the number of new fields created (same as HSET)
+- Returns `1` if all fields were set, or `0` if no fields were set (e.g., when using `FNX` and fields already exist)
 
-Note: As of Redis 7.4, `HSETEX` uses seconds for expiration. For millisecond precision, use `HPSETEX` (also introduced in 7.4).
-
-```redis
-HPSETEX key milliseconds FIELDS numfields field value [field value ...]
-```
+The `EX`, `PX`, `EXAT`, `PXAT`, and `KEEPTTL` options are mutually exclusive. For millisecond precision, use `PX` instead of `EX`.
 
 ## Examples
 
@@ -45,7 +47,7 @@ Set a token field with a 1-hour TTL.
 
 ```redis
 HSET user:1 name "Alice" email "alice@example.com"
-HSETEX user:1 3600 FIELDS 1 token "abc123"
+HSETEX user:1 EX 3600 FIELDS 1 token "abc123"
 HGET user:1 token
 HTTL user:1 FIELDS 1 token
 ```
@@ -65,13 +67,13 @@ Set two temporary fields at once.
 
 ```redis
 HSET session:xyz user_id "42" role "admin"
-HSETEX session:xyz 1800 FIELDS 2 temp_data "payload" cache_fragment "<html>"
+HSETEX session:xyz EX 1800 FIELDS 2 temp_data "payload" cache_fragment "<html>"
 HTTL session:xyz FIELDS 4 user_id role temp_data cache_fragment
 ```
 
 ```text
 (integer) 2
-(integer) 2
+(integer) 1
 1) (integer) -1
 2) (integer) -1
 3) (integer) 1800
@@ -80,13 +82,13 @@ HTTL session:xyz FIELDS 4 user_id role temp_data cache_fragment
 
 `user_id` and `role` are permanent; `temp_data` and `cache_fragment` expire in 1800s.
 
-### HPSETEX for millisecond precision
+### Millisecond precision with PX
 
-Set a field with a 500 ms TTL.
+Set a field with a 500 ms TTL using the `PX` option.
 
 ```redis
 HSET rate:user:42 name "Bob"
-HPSETEX rate:user:42 500 FIELDS 1 window_slot "1"
+HSETEX rate:user:42 PX 500 FIELDS 1 window_slot "1"
 HPTTL rate:user:42 FIELDS 1 window_slot
 ```
 
@@ -98,17 +100,17 @@ HPTTL rate:user:42 FIELDS 1 window_slot
 
 ### Replacing HSET + HEXPIRE with HSETEX
 
-Before Redis 7.4 (two commands, not atomic):
+Before Redis 8.0 (two commands, not atomic):
 
 ```redis
 HSET user:1 token "xyz"
 HEXPIRE user:1 3600 FIELDS 1 token
 ```
 
-With Redis 7.4+ (atomic):
+With Redis 8.0+ (atomic):
 
 ```redis
-HSETEX user:1 3600 FIELDS 1 token "xyz"
+HSETEX user:1 EX 3600 FIELDS 1 token "xyz"
 ```
 
 ### OTP field initialization
@@ -117,7 +119,7 @@ Create a one-time password field that auto-expires in 5 minutes.
 
 ```redis
 HSET user:99 name "Carol" email "carol@example.com"
-HSETEX user:99 300 FIELDS 1 otp "726419"
+HSETEX user:99 EX 300 FIELDS 1 otp "726419"
 HTTL user:99 FIELDS 1 otp
 ```
 
@@ -135,7 +137,7 @@ Enable a feature for a user for 24 hours.
 
 ```redis
 HSET user:5 name "Dave" plan "pro"
-HSETEX user:5 86400 FIELDS 1 beta_feature_enabled "true"
+HSETEX user:5 EX 86400 FIELDS 1 beta_feature_enabled "true"
 HTTL user:5 FIELDS 1 beta_feature_enabled
 ```
 
@@ -164,4 +166,4 @@ HTTL user:5 FIELDS 1 beta_feature_enabled
 
 ## Summary
 
-`HSETEX` (Redis 7.4+) atomically sets hash fields and assigns them a TTL in a single command, replacing the non-atomic pattern of `HSET` + `HEXPIRE`. Use it whenever you need to add expiring fields to a hash - OTPs, session tokens, feature flags, and cache fragments. For millisecond-precision TTLs, use `HPSETEX`. Pair with `HGETDEL` and `HTTL` for complete per-field lifecycle management.
+`HSETEX` (Redis 8.0+) atomically sets hash fields and assigns them a TTL in a single command, replacing the non-atomic pattern of `HSET` + `HEXPIRE`. Use it whenever you need to add expiring fields to a hash - OTPs, session tokens, feature flags, and cache fragments. For millisecond-precision TTLs, use the `PX` option instead of `EX`. Pair with `HGETDEL` and `HTTL` for complete per-field lifecycle management.
