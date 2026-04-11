@@ -55,11 +55,11 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 
 class ProductController
 {
-    public function __construct(private CacheInterface $productsCache) {}
+    public function __construct(private CacheInterface $appCacheProducts) {}
 
     public function list(): JsonResponse
     {
-        $products = $this->productsCache->get('all_products', function (ItemInterface $item) {
+        $products = $this->appCacheProducts->get('all_products', function (ItemInterface $item) {
             $item->expiresAfter(120);
             // Simulate DB fetch
             return [['id' => 1, 'name' => 'Widget']];
@@ -104,6 +104,7 @@ Dispatch a message:
 ```php
 <?php
 use App\Message\SendEmail;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 class EmailController
@@ -131,6 +132,7 @@ For direct Redis access, inject the configured Redis service.
 ```php
 <?php
 use Predis\Client;
+use Symfony\Component\HttpFoundation\JsonResponse;
 
 class StatsController
 {
