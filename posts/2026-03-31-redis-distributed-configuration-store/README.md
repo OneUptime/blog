@@ -92,7 +92,7 @@ def watch_config_changes(service_name: str, config_obj):
     sub.subscribe("conf:changes")
     for msg in sub.listen():
         if msg["type"] == "message":
-            namespace = msg["data"].split(":")[0]
+            namespace = msg["data"].rsplit(":", 1)[0]
             if namespace in ("global", f"service:{service_name}", "features"):
                 config_obj.reload()
 ```
