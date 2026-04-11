@@ -128,7 +128,7 @@ try {
 redis-cli -p 6379 DEBUG SLEEP 30 &
 
 # Monitor Sentinel for failover detection
-redis-cli -p 26379 SUBSCRIBE +sdown +odown +failover-triggered
+redis-cli -p 26379 SUBSCRIBE +sdown +odown +try-failover
 ```
 
 ```text
