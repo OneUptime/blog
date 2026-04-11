@@ -59,7 +59,6 @@ EXPIRE cart:session:abc123 604800
 
 ```python
 import redis
-import json
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
