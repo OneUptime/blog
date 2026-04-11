@@ -10,13 +10,13 @@ Description: Set up Nagios to monitor MySQL availability, connections, replicati
 
 ## Prerequisites
 
-This guide assumes Nagios Core or Nagios XI is installed. The `check_mysql` plugin is included in the `nagios-plugins-mysql` package. For deeper metrics, we also use `check_mysql_health` by Gerhard Lausser.
+This guide assumes Nagios Core or Nagios XI is installed. The `check_mysql` plugin is included in the `monitoring-plugins-standard` package. For deeper metrics, we also use `check_mysql_health` by Gerhard Lausser.
 
 ## Installing MySQL Plugins
 
 ```bash
 # Nagios built-in MySQL check
-sudo apt-get install -y nagios-plugins-mysql
+sudo apt-get install -y monitoring-plugins-standard
 
 # check_mysql_health for extended checks
 wget https://labs.consol.de/assets/downloads/nagios/check_mysql_health-2.3.2.tar.gz
@@ -71,7 +71,7 @@ define command {
 # Connection usage
 /usr/local/nagios/libexec/check_mysql_health \
   --hostname 192.168.1.10 --username nagios --password nagios_secret \
-  --mode connection-usage --warning 70 --critical 90
+  --mode threads-connected --warning 70 --critical 90
 
 # Replication lag
 /usr/local/nagios/libexec/check_mysql_health \
@@ -97,7 +97,7 @@ define command {
 define service {
   host_name            mysql-primary
   service_description  MySQL Connections
-  check_command        check_mysql_health!nagios!nagios_secret!connection-usage!70!90
+  check_command        check_mysql_health!nagios!nagios_secret!threads-connected!70!90
 }
 
 define service {
