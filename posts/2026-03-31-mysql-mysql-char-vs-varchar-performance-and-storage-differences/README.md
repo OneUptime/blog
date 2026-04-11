@@ -42,7 +42,7 @@ The trailing spaces are stripped on retrieval, so `LENGTH('AB   ')` returns 2 af
 
 ## How VARCHAR Works
 
-`VARCHAR(n)` stores only the actual characters plus 1 or 2 bytes of length prefix (1 byte if the column max is 255 characters, 2 bytes otherwise).
+`VARCHAR(n)` stores only the actual characters plus 1 or 2 bytes of length prefix (1 byte if values require no more than 255 bytes, 2 bytes if values may require more than 255 bytes).
 
 ```sql
 CREATE TABLE test_varchar (
@@ -130,11 +130,15 @@ This also affects index key length limits, since InnoDB has a 3072-byte key limi
 
 ## Trailing Space Behavior
 
-CHAR strips trailing spaces on retrieval, which can cause surprising comparison behavior:
+CHAR strips trailing spaces on retrieval:
 
 ```sql
-SELECT 'AB   ' = 'AB';  -- Returns 1 (true) for CHAR padding behavior
+CREATE TABLE c (code CHAR(5));
+INSERT INTO c VALUES ('AB   ');
+SELECT code, LENGTH(code) FROM c;  -- Returns 'AB', 2 — trailing spaces stripped
 ```
+
+For string comparisons, whether trailing spaces are ignored depends on the collation, not the data type. PAD SPACE collations (like `utf8mb4_general_ci`) ignore trailing spaces, while NO PAD collations (like `utf8mb4_0900_ai_ci`, the default in MySQL 8.0) treat them as significant.
 
 VARCHAR preserves trailing spaces:
 
