@@ -20,7 +20,7 @@ This is a metadata-only operation - no rows are moved. The rename is atomic, mea
 
 ## Renaming With Indexes and Foreign Keys
 
-Indexes are renamed automatically. Foreign keys on other tables referencing the old name need manual updates:
+Indexes keep their original names but continue to function on the renamed table. In MySQL 8.0+, foreign key constraints that reference the renamed table are automatically updated. You can verify this with:
 
 ```sql
 -- Check for foreign keys referencing the table
@@ -31,7 +31,7 @@ WHERE  REFERENCED_TABLE_NAME = 'old_name'
 ```
 
 ```sql
--- Drop and re-add foreign keys after rename if needed
+-- If a conflict occurs (e.g., renamed constraint name already exists), manually update:
 ALTER TABLE child_table
     DROP FOREIGN KEY fk_old,
     ADD CONSTRAINT fk_new FOREIGN KEY (col) REFERENCES new_name (id);
@@ -49,7 +49,7 @@ RENAME TABLE orders TO purchase_orders;
 CREATE VIEW orders AS SELECT * FROM purchase_orders;
 ```
 
-Views support SELECT but not INSERT/UPDATE/DELETE unless they are updatable simple views.
+Since this view is a simple `SELECT *` from a single table, it is an updatable view and supports INSERT, UPDATE, and DELETE in addition to SELECT.
 
 ## Zero-Downtime Strategy With Dual-Write
 
