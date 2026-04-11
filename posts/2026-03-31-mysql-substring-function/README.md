@@ -43,7 +43,7 @@ A common use case is extracting a structured code segment from a column:
 SELECT
   order_code,
   SUBSTRING(order_code, 1, 3) AS region_prefix,
-  SUBSTRING(order_code, 5) AS order_number
+  SUBSTRING(order_code, 4) AS order_number
 FROM orders;
 ```
 
@@ -68,7 +68,7 @@ A negative position counts characters from the end of the string:
 SELECT SUBSTRING('report_2024_q4.csv', -3);
 -- Result: csv
 
-SELECT SUBSTRING('user_profile_image.png', -7, 3);
+SELECT SUBSTRING('user_profile_image.png', -9, 3);
 -- Result: ima
 ```
 
