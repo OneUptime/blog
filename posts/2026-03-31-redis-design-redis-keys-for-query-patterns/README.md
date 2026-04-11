@@ -78,10 +78,10 @@ ZADD user:101:orders:recent 1712010000 5002
 ZADD user:101:orders:recent 1712020000 5003
 
 # Last 10 orders (newest first)
-ZREVRANGE user:101:orders:recent 0 9
+ZRANGE user:101:orders:recent 0 9 REV
 
 # Page 2 of orders
-ZREVRANGE user:101:orders:recent 10 19
+ZRANGE user:101:orders:recent 10 19 REV
 ```
 
 ## Query Pattern 5 - Range Queries
@@ -95,7 +95,7 @@ ZADD products:by_price 49.99 1002
 ZADD products:by_price 89.99 1003
 
 # Products between $30 and $60
-ZRANGEBYSCORE products:by_price 30 60
+ZRANGE products:by_price 30 60 BYSCORE
 ```
 
 ## Query Pattern 6 - Tag/Category Indexes
@@ -179,7 +179,7 @@ When multiple keys must be updated atomically in Redis Cluster, use hash tags to
 SET {user:101}:profile "..."
 SET {user:101}:session:tok123 "..."
 
-# Now MGET works across slots
+# MGET works because both keys hash to the same slot
 MGET {user:101}:profile {user:101}:session:tok123
 ```
 
