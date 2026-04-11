@@ -97,7 +97,7 @@ ORDER BY trigger_count DESC;
 
 ## Privileges Required
 
-To see trigger definitions in `information_schema.TRIGGERS`, the user needs the `TRIGGER` privilege on the relevant table, or the `SHOW DATABASES` privilege for broader visibility. Without the privilege, the row is hidden from the result set.
+To see trigger definitions in `information_schema.TRIGGERS`, the user needs the `TRIGGER` privilege on the relevant table. Without the privilege, the row is hidden from the result set.
 
 ```sql
 GRANT TRIGGER ON mydb.* TO 'developer'@'localhost';
@@ -105,13 +105,13 @@ GRANT TRIGGER ON mydb.* TO 'developer'@'localhost';
 
 ## Exporting Trigger Definitions
 
-Use `mysqldump` to export triggers along with the table:
+Use `mysqldump` to export triggers along with the table. Triggers are included by default, so `--triggers` is optional:
 
 ```bash
-mysqldump --triggers --no-data mydb orders > orders_with_triggers.sql
+mysqldump --no-data mydb orders > orders_with_triggers.sql
 ```
 
-Use `--no-data` if you only want the schema and triggers, not the row data.
+Use `--no-data` if you only want the schema and triggers, not the row data. Use `--skip-triggers` to explicitly exclude triggers from the dump.
 
 ## Summary
 
