@@ -17,7 +17,7 @@ This makes LREM ideal for deduplication, cleaning up stale entries, or removing 
 ```mermaid
 graph LR
     A["List: [a, b, a, c, a]"] --> B["LREM key 2 a"]
-    B --> C["List: [c, a]"]
+    B --> C["List: [b, c, a]"]
 ```
 
 ## Syntax
