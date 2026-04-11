@@ -127,10 +127,10 @@ replica = redis.Redis(host='192.168.1.13', port=6379, decode_responses=True)
 
 # Get the master node ID from any cluster node
 master_conn = redis.Redis(host='192.168.1.10', port=6379, decode_responses=True)
-master_id = master_conn.cluster('myid')
+master_id = master_conn.cluster_myid()
 
 # Set up replication
-result = replica.cluster('replicate', master_id)
+result = replica.cluster_replicate(master_id)
 print(result)  # True (OK)
 
 # Verify
