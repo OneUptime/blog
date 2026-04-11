@@ -113,7 +113,7 @@ Aggregation queries are expensive but their results change less frequently:
 ```python
 def cached_aggregation(index: str, agg_query: dict, ttl: int = 600) -> dict:
     """Cache aggregations longer than search results."""
-    key = f"es:agg:{index}:{hashlib.sha256(str(agg_query).encode()).hexdigest()[:12]}"
+    key = f"es:agg:{index}:{hashlib.sha256(json.dumps(agg_query, sort_keys=True).encode()).hexdigest()[:12]}"
     cached = cache.get(key)
     if cached:
         return json.loads(cached)
