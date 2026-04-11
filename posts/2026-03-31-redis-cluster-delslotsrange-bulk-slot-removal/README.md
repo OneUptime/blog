@@ -44,9 +44,14 @@ done
 
 # Step 2 - Migrate all keys from each slot
 for slot in $(seq 5000 5460); do
-  keys=$(redis-cli -p 7001 CLUSTER GETKEYSINSLOT $slot 100)
-  for key in $keys; do
-    redis-cli -p 7001 MIGRATE <target-host> <target-port> $key 0 5000
+  while true; do
+    keys=$(redis-cli -p 7001 CLUSTER GETKEYSINSLOT $slot 100)
+    if [ -z "$keys" ]; then
+      break
+    fi
+    for key in $keys; do
+      redis-cli -p 7001 MIGRATE <target-host> <target-port> $key 0 5000
+    done
   done
 done
 
@@ -67,17 +72,17 @@ redis-cli -p 7001 CLUSTER DELSLOTSRANGE 0 1000 8000 9000
 redis-cli -p 7001 CLUSTER INFO
 # cluster_slots_assigned should decrease by the number of removed slots
 
-redis-cli -p 7001 CLUSTER SLOTS
+redis-cli -p 7001 CLUSTER SHARDS
 # The removed range should no longer appear under this node
 ```
 
 ## Error Cases
 
-If you attempt to remove slots not owned by the current node, Redis returns an error:
+If you attempt to remove slots that are not assigned to any node, Redis returns an error:
 
 ```bash
 redis-cli -p 7001 CLUSTER DELSLOTSRANGE 10000 10100
-# (error) ERR Slot 10000 is not assigned to me
+# (error) ERR Slot 10000 is already unassigned
 ```
 
 ## Availability Requirement
