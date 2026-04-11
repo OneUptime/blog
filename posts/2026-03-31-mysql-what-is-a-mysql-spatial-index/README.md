@@ -74,13 +74,13 @@ For better performance, first filter with a bounding box (which uses the spatial
 
 ```sql
 SET @center = ST_PointFromText('POINT(37.7749 -122.4194)', 4326);
-SET @radius_deg = 0.05;  -- Approximate degrees for 5km
+SET @radius_m = 5000;  -- 5 km in meters (requires MySQL 8.0.26+)
 
 SELECT id, name,
   ST_Distance_Sphere(location, @center) AS distance_m
 FROM stores
 WHERE MBRContains(
-  ST_Buffer(@center, @radius_deg),
+  ST_Buffer(@center, @radius_m),
   location
 )
 AND ST_Distance_Sphere(location, @center) < 5000
