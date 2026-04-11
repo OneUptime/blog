@@ -27,15 +27,16 @@ Enable TCP keepalives so the OS detects broken connections proactively:
 
 ```python
 import redis
+import socket
 
 client = redis.Redis(
     host="localhost",
     port=6379,
     socket_keepalive=True,
     socket_keepalive_options={
-        "TCP_KEEPIDLE": 60,    # Start probes after 60s idle
-        "TCP_KEEPINTVL": 10,   # Probe interval: 10s
-        "TCP_KEEPCNT": 5,      # Drop after 5 failed probes
+        socket.TCP_KEEPIDLE: 60,    # Start probes after 60s idle
+        socket.TCP_KEEPINTVL: 10,   # Probe interval: 10s
+        socket.TCP_KEEPCNT: 5,      # Drop after 5 failed probes
     },
     health_check_interval=30,  # redis-py built-in health check
 )
@@ -90,7 +91,7 @@ def ensure_connected(client: redis.Redis) -> redis.Redis:
     try:
         client.ping()
         return client
-    except (redis.ConnectionError, redis.BrokenPipeError):
+    except redis.ConnectionError:
         logger.warning("Redis connection stale, reconnecting...")
         return create_client()
 ```
