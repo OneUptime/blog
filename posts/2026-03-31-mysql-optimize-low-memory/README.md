@@ -24,7 +24,7 @@ Use a single instance when the buffer pool is small - multiple instances add ove
 
 ## Reduce the InnoDB Log Buffer
 
-The log buffer holds redo log data before flushing to disk. On a low-traffic server, the default is fine:
+The log buffer holds redo log data before flushing to disk. The default is 16M, which can be halved on a low-traffic server:
 
 ```ini
 [mysqld]
@@ -75,9 +75,9 @@ performance_schema = OFF
 Check the current memory impact:
 
 ```sql
-SELECT SUM(current_alloc) / 1024 / 1024 AS mb
+SELECT SUM(CURRENT_NUMBER_OF_BYTES_USED) / 1024 / 1024 AS mb
 FROM performance_schema.memory_summary_global_by_event_name
-WHERE event_name LIKE 'memory/performance_schema/%';
+WHERE EVENT_NAME LIKE 'memory/performance_schema/%';
 ```
 
 ## Complete Low-Memory my.cnf Example
@@ -89,6 +89,7 @@ innodb_buffer_pool_instances = 1
 innodb_log_buffer_size = 8M
 sort_buffer_size = 512K
 join_buffer_size = 512K
+read_buffer_size = 512K
 read_rnd_buffer_size = 512K
 max_connections = 50
 thread_stack = 192K
