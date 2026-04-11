@@ -16,7 +16,7 @@ Apache Airflow supports MySQL in two ways: as the metadata database that stores 
 pip install apache-airflow-providers-mysql
 ```
 
-This installs the `MySqlOperator`, `MySqlHook`, and `MySqlToS3Operator` among others.
+This installs the `MySqlOperator`, `MySqlHook`, and related transfer operators. For S3 integration, you also need `apache-airflow-providers-amazon`.
 
 ## Using MySQL as the Airflow Metadata Database
 
@@ -38,8 +38,7 @@ AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://airflow:airflowpasswo
 Then initialize the database:
 
 ```bash
-airflow db init
-airflow db upgrade
+airflow db migrate
 ```
 
 ## Configuring a MySQL Data Source Connection
@@ -94,16 +93,21 @@ def process_recent_orders(**context):
 ## Transferring Data Between MySQL Connections
 
 ```python
-from airflow.providers.mysql.transfers.mysql_to_mysql import MySQLToMySQLOperator
+from airflow.decorators import task
+from airflow.providers.mysql.hooks.mysql import MySqlHook
 
-transfer = MySQLToMySQLOperator(
-    task_id='replicate_products',
-    source_mysql_conn_id='mysql_source',
-    destination_mysql_conn_id='mysql_dest',
-    source_sql='SELECT * FROM products WHERE updated_at > %s',
-    destination_table='products_copy',
-    source_sql_params=(context['ds'],),
-)
+@task
+def replicate_products(**context):
+    source_hook = MySqlHook(mysql_conn_id='mysql_source')
+    dest_hook = MySqlHook(mysql_conn_id='mysql_dest')
+    records = source_hook.get_records(
+        "SELECT * FROM products WHERE updated_at > %s",
+        parameters=(context['ds'],),
+    )
+    dest_hook.insert_rows(
+        table='products_copy',
+        rows=records,
+    )
 ```
 
 ## Summary
