@@ -40,7 +40,7 @@ SADD tenant:tenant-99:devices d-001 d-002 d-003
 SADD group:hvac:devices d-001 d-004
 ```
 
-List all HVAC devices in constant time:
+List all HVAC devices:
 
 ```bash
 SMEMBERS group:hvac:devices
