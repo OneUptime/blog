@@ -42,8 +42,18 @@ class BcastCacheClient:
         self._setup_invalidation()
 
     def _setup_invalidation(self):
-        # Subscribe to invalidation channel
         pubsub = self.inv_conn.pubsub()
+
+        # Establish the pubsub connection and get its client ID
+        # before subscribing (subscriber mode restricts allowed commands)
+        pubsub.connection = pubsub.connection_pool.get_connection(
+            'pubsub', pubsub.shard_hint
+        )
+        pubsub.connection.connect()
+        pubsub.connection.send_command('CLIENT', 'ID')
+        inv_client_id = pubsub.connection.read_response()
+
+        # Subscribe to invalidation channel
         pubsub.subscribe('__redis__:invalidate')
 
         # Enable BCAST tracking with prefix filter
@@ -52,7 +62,7 @@ class BcastCacheClient:
             'BCAST',
             'PREFIX', 'user:',
             'PREFIX', 'product:',
-            'REDIRECT', self.inv_conn.client_id()
+            'REDIRECT', inv_client_id
         )
 
         # Listen for invalidations in a background thread
@@ -103,7 +113,8 @@ client = BcastCacheClient()
 # Read user:42 - cached locally
 client.get('user:42')
 
-# Another client updates user:42
+# Simulate another client updating user:42
+# (any write to a tracked prefix triggers BCAST invalidation)
 client.r.set('user:42', 'new value')
 
 # Redis broadcasts invalidation for "user:42" to ALL BCAST clients
