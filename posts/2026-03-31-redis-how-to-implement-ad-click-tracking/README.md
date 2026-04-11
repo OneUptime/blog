@@ -67,10 +67,7 @@ def record_click_with_leaderboard(ad_id: str, user_id: str, campaign_id: str):
     pipe.incr(f"ad:clicks:{ad_id}")
     pipe.pfadd(f"ad:unique:{ad_id}", user_id)
 
-    # Add to sorted set for leaderboard (score = click count)
-    pipe.zincrby("ad:leaderboard:today", 1, ad_id)
-
-    # Daily key with expiration
+    # Add to daily sorted set for leaderboard (score = click count)
     today_key = f"ad:leaderboard:{time.strftime('%Y-%m-%d')}"
     pipe.zincrby(today_key, 1, ad_id)
     pipe.expire(today_key, 30 * 24 * 3600)  # 30 days
@@ -79,7 +76,8 @@ def record_click_with_leaderboard(ad_id: str, user_id: str, campaign_id: str):
 
 def get_top_ads(n: int = 10) -> list:
     # Highest scores first
-    return r.zrevrange("ad:leaderboard:today", 0, n - 1, withscores=True)
+    today_key = f"ad:leaderboard:{time.strftime('%Y-%m-%d')}"
+    return r.zrevrange(today_key, 0, n - 1, withscores=True)
 ```
 
 ## Retrieving Click Stats
