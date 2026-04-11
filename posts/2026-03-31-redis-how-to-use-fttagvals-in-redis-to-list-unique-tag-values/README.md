@@ -157,6 +157,7 @@ for status, count in sorted(dist.items()):
 
 ## Limitations
 
+- `FT.TAGVALS` is **deprecated** in recent versions of Redis Stack. Consider using `FT.AGGREGATE` with `GROUPBY` and `REDUCE COUNT` as a more flexible alternative
 - `FT.TAGVALS` only works on fields indexed as `TAG`, not `TEXT`, `NUMERIC`, or `GEO`
 - For very large indices with thousands of unique tag values, the response can be large
 - There is no filtering or pagination - all values are returned at once
