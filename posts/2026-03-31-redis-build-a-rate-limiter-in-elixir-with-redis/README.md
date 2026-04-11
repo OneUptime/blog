@@ -193,7 +193,9 @@ For authenticated endpoints, key on user ID:
 ```elixir
 defp rate_key(conn) do
   case conn.assigns[:current_user] do
-    nil  -> "ip:#{format_ip(conn.remote_ip)}"
+    nil  ->
+      ip = conn.remote_ip |> Tuple.to_list() |> Enum.join(".")
+      "ip:#{ip}"
     user -> "user:#{user.id}"
   end
 end
