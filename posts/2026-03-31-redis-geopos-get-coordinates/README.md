@@ -12,7 +12,7 @@ After storing locations with `GEOADD`, you can retrieve their coordinates with `
 
 ## How GEOPOS Works
 
-`GEOPOS` decodes the Geohash stored in the sorted set back into longitude/latitude pairs. Due to Geohash's fixed precision, the returned values may differ slightly from what was stored (by up to approximately 0.6mm), but this is negligible for practical use.
+`GEOPOS` decodes the Geohash stored in the sorted set back into longitude/latitude pairs. Due to Geohash's fixed precision, the returned values may differ slightly from what was stored (by up to approximately 0.6 meters), but this is negligible for most practical use.
 
 ## Syntax
 
@@ -92,7 +92,7 @@ Geohash encoding introduces minor floating-point imprecision:
 # Retrieved: -73.98570060729980469, 40.74840144948154994
 ```
 
-The difference is less than 0.6 millimeters - safe for all real-world use cases.
+The difference is less than 0.6 meters - safe for most real-world use cases.
 
 ## Use Cases
 
