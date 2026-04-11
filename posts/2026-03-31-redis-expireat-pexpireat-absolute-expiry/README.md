@@ -44,14 +44,14 @@ PEXPIREAT key unix-time-milliseconds [NX | XX | GT | LT]
 
 ```redis
 SET promo:summer2026 "SUMMER20"
-EXPIREAT promo:summer2026 1751328000
+EXPIREAT promo:summer2026 1782864000
 ```
 
 ```text
 (integer) 1
 ```
 
-The key `promo:summer2026` will expire at Unix timestamp 1751328000 (2025-07-01 00:00:00 UTC).
+The key `promo:summer2026` will expire at Unix timestamp 1782864000 (2026-07-01 00:00:00 UTC).
 
 ### Verify the expiry was set
 
@@ -72,7 +72,7 @@ EXPIRETIME promo:summer2026
 ```
 
 ```text
-(integer) 1751328000
+(integer) 1782864000
 ```
 
 ### PEXPIREAT with millisecond timestamp
