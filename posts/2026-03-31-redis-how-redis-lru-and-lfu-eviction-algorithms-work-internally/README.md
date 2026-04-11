@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, LRU, LFU, Eviction, Memory Management, Internal
 
-Description: Understand how Redis implements approximate LRU and exact LFU eviction algorithms using clock bits and frequency counters to free memory when maxmemory is reached.
+Description: Understand how Redis implements approximate LRU and approximate LFU eviction algorithms using clock bits and frequency counters to free memory when maxmemory is reached.
 
 ---
 
@@ -97,7 +97,7 @@ uint8_t LFULogIncr(uint8_t counter) {
     double r = (double)rand()/RAND_MAX;
     double baseval = counter - LFU_INIT_VAL;
     if (baseval < 0) baseval = 0;
-    double p = 1.0/(baseval*lfu_log_factor+1);
+    double p = 1.0/(baseval*server.lfu_log_factor+1);
     if (r < p) counter++;
     return counter;
 }
@@ -123,11 +123,14 @@ redis-cli CONFIG GET lfu-log-factor
 ```
 
 ```text
-LFU counter decay example:
-Time 0: access key 1000 times -> counter ~25 (log scale)
-Time 5 minutes: no access -> counter = 25 - 5 = 20
-Time 10 minutes: no access -> counter = 20 - 10 = 10
+LFU counter decay example (lfu-decay-time=1):
+Time 0: access key 1000 times -> counter ~25 (log scale), ldt=0
+Time 5 minutes: no access -> elapsed=5, counter = 25 - 5 = 20
+Time 10 minutes: no access -> elapsed=10, counter = 25 - 10 = 15
 ...eventually evictable
+
+Note: Redis always computes decay from the stored last-decrement-time (ldt),
+not incrementally from the last evaluated value.
 ```
 
 ## Enabling LFU Eviction
