@@ -90,7 +90,7 @@ class RedisIntegrationTest {
         commands.del("counter");
         commands.incr("counter");
         commands.incr("counter");
-        assertEquals(2L, commands.get("counter").chars().count());
+        assertEquals(2L, Long.parseLong(commands.get("counter")));
     }
 }
 ```
@@ -105,6 +105,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
 class RedisContainerTest {
@@ -177,7 +179,7 @@ def test_sorted_set(redis_client):
 ## Node.js Setup
 
 ```bash
-npm install --save-dev testcontainers @testcontainers/redis ioredis vitest
+npm install --save-dev testcontainers @testcontainers/redis ioredis
 ```
 
 ```javascript
