@@ -35,7 +35,7 @@ LIMIT 10;
 ## Currently Running Queries
 
 ```sql
-SELECT thread_id, sql_text, timer_wait / 1e9 AS elapsed_sec
+SELECT thread_id, sql_text, timer_wait / 1e12 AS elapsed_sec
 FROM performance_schema.events_statements_current
 WHERE sql_text IS NOT NULL
 ORDER BY timer_wait DESC;
@@ -45,13 +45,14 @@ ORDER BY timer_wait DESC;
 
 ```sql
 -- Current lock waits
-SELECT requesting_thread_id,
-       blocking_thread_id,
-       object_name,
-       lock_type,
-       lock_status
-FROM performance_schema.data_lock_waits
-JOIN performance_schema.data_locks USING (engine_lock_id);
+SELECT w.requesting_thread_id,
+       w.blocking_thread_id,
+       l.object_name,
+       l.lock_type,
+       l.lock_status
+FROM performance_schema.data_lock_waits w
+JOIN performance_schema.data_locks l
+  ON w.blocking_engine_lock_id = l.engine_lock_id;
 
 -- Metadata lock waits
 SELECT * FROM performance_schema.metadata_locks
@@ -87,11 +88,11 @@ LIMIT 10;
 
 ```sql
 SELECT event_name,
-       current_alloc,
-       high_alloc
+       CURRENT_NUMBER_OF_BYTES_USED AS current_bytes,
+       HIGH_NUMBER_OF_BYTES_USED AS high_bytes
 FROM performance_schema.memory_summary_global_by_event_name
-WHERE current_alloc > 0
-ORDER BY current_alloc DESC
+WHERE CURRENT_NUMBER_OF_BYTES_USED > 0
+ORDER BY CURRENT_NUMBER_OF_BYTES_USED DESC
 LIMIT 20;
 ```
 
@@ -106,8 +107,9 @@ WHERE event_name = 'statement/sql/select'
 ORDER BY sum_timer_wait DESC;
 
 -- Per host
-SELECT host, sum_connections, sum_errors
-FROM performance_schema.status_by_host;
+SELECT host, current_connections, total_connections
+FROM performance_schema.hosts
+WHERE host IS NOT NULL;
 ```
 
 ## Thread Monitoring
