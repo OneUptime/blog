@@ -20,11 +20,7 @@ Connect to a MySQL server in Workbench, then navigate to:
 Navigator > Performance > Performance Reports
 ```
 
-Or through the menu:
-
-```text
-Server > Performance Reports
-```
+The Performance Reports panel is listed under the **Performance** heading in the Navigator sidebar when connected to a server.
 
 ## Report Categories
 
@@ -108,17 +104,16 @@ TRUNCATE TABLE performance_schema.events_statements_summary_by_digest;
 
 ## Combining with Visual EXPLAIN
 
-From a statement analysis report, copy a slow query digest, then use the SQL editor to run Visual EXPLAIN:
+From a statement analysis report, copy a slow query digest, then paste it into the SQL editor. Click the **Execute (Explain)** button (lightning bolt with magnifying glass icon) in the toolbar, or run the query and switch to the **Execution Plan** tab in the results panel. For example, with a query like:
 
 ```sql
-EXPLAIN FORMAT=TREE
 SELECT o.*, c.email
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
 WHERE o.status = 'pending';
 ```
 
-This shows the full execution plan graphically, making bottlenecks easy to spot.
+Workbench renders a graphical execution plan diagram with colored boxes indicating operation costs, making bottlenecks easy to spot.
 
 ## Summary
 
