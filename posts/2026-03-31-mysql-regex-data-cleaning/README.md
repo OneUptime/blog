@@ -79,7 +79,7 @@ Extract domain from email:
 SELECT
   id,
   email,
-  REGEXP_SUBSTR(email, '@(.+)$', 1, 1, NULL, 1) AS domain
+  REGEXP_SUBSTR(email, '[^@]+$') AS domain
 FROM customers;
 ```
 
@@ -90,9 +90,12 @@ Standardize phone numbers to `(XXX) XXX-XXXX` format after stripping:
 ```sql
 UPDATE customers
 SET phone = CONCAT(
-  '(', SUBSTRING(phone, 1, 3), ') ',
-  SUBSTRING(phone, 4, 3), '-',
-  SUBSTRING(phone, 7, 4)
+  '(',
+  SUBSTRING(REGEXP_REPLACE(phone, '[^0-9]', ''), 1, 3),
+  ') ',
+  SUBSTRING(REGEXP_REPLACE(phone, '[^0-9]', ''), 4, 3),
+  '-',
+  SUBSTRING(REGEXP_REPLACE(phone, '[^0-9]', ''), 7, 4)
 )
 WHERE LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '')) = 10;
 ```
