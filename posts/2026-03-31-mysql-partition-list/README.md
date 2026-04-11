@@ -172,7 +172,7 @@ ALTER TABLE sales TRUNCATE PARTITION p_south;
 - Use LIST COLUMNS for string-type partition keys (country codes, status strings).
 - Always include all possible values in your partition lists - missing values cause INSERT errors.
 - Use LIST partitioning for low-cardinality categorical columns with stable value sets.
-- Combine with RANGE sub-partitioning if you need both category and date filtering.
+- Combine with HASH or KEY sub-partitioning for further data distribution within each list partition.
 - Plan for value additions - reorganize partitions as new categories are introduced.
 - Add all values your application might produce before deploying to production.
 
