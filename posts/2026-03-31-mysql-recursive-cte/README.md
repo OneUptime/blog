@@ -97,12 +97,12 @@ ORDER BY path;
 +-------+--------------------+-------------------+---------------------------------------------+
 | 0     | Sarah              | CEO               | Sarah                                       |
 | 1     |   Alice            | VP Engineering    | Sarah -> Alice                              |
-| 1     |   Bob              | VP Marketing      | Sarah -> Bob                                |
 | 2     |     Carol          | Senior Engineer   | Sarah -> Alice -> Carol                     |
-| 2     |     Dave           | Senior Engineer   | Sarah -> Alice -> Dave                      |
-| 2     |     Eve            | Marketing Manager | Sarah -> Bob -> Eve                         |
 | 3     |       Frank        | Junior Engineer   | Sarah -> Alice -> Carol -> Frank            |
 | 3     |       Grace        | Junior Engineer   | Sarah -> Alice -> Carol -> Grace            |
+| 2     |     Dave           | Senior Engineer   | Sarah -> Alice -> Dave                      |
+| 1     |   Bob              | VP Marketing      | Sarah -> Bob                                |
+| 2     |     Eve            | Marketing Manager | Sarah -> Bob -> Eve                         |
 +-------+--------------------+-------------------+---------------------------------------------+
 ```
 
