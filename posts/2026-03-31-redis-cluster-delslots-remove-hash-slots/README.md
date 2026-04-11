@@ -73,19 +73,21 @@ redis-cli -p 7001 CLUSTER DELSLOTSRANGE 5000 5100
 After running `CLUSTER DELSLOTS`, confirm the slots are no longer assigned to the node:
 
 ```bash
-redis-cli -p 7001 CLUSTER SLOTS
+redis-cli -p 7001 CLUSTER SHARDS
 redis-cli -p 7001 CLUSTER INFO
 # cluster_slots_assigned should decrease
 ```
 
+Note: `CLUSTER SLOTS` was deprecated in Redis 7.0.0. Use `CLUSTER SHARDS` instead for checking slot assignments.
+
 ## Error Cases
 
-- Running `CLUSTER DELSLOTS` on a slot that is not assigned to the node returns an error
-- Running it on a slot in MIGRATING state also returns an error
+- Running `CLUSTER DELSLOTS` on a slot that is already unbound (not assigned to any node) returns an error
+- Specifying the same slot more than once in a single command also returns an error
 
 ```bash
 redis-cli -p 7001 CLUSTER DELSLOTS 9999
-# (error) ERR Slot 9999 is not assigned to me
+# (error) ERR Slot 9999 is already unbound
 ```
 
 ## Summary
