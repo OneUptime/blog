@@ -20,8 +20,7 @@ TS.RANGE key fromTimestamp toTimestamp
   [FILTER_BY_TS ts...]
   [FILTER_BY_VALUE min max]
   [COUNT count]
-  [ALIGN align]
-  [AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
+  [[ALIGN align] AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
 ```
 
 Key parameters:
@@ -103,11 +102,12 @@ Available aggregation functions:
 | STD.S | Sample standard deviation |
 | VAR.P | Population variance |
 | VAR.S | Sample variance |
+| TWA | Time-weighted average |
 
 ## Limiting Results
 
 ```bash
-# Get the last 10 samples
+# Get the first 10 samples (TS.RANGE returns in ascending order)
 TS.RANGE cpu:host1 - + COUNT 10
 
 # Get first 100 samples
