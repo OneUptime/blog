@@ -228,12 +228,11 @@ npm install @socket.io/redis-adapter
 
 ```javascript
 const { createAdapter } = require('@socket.io/redis-adapter');
-const { createClient } = require('redis');
+const Redis = require('ioredis');
 
-const pubClient = createClient({ url: 'redis://localhost:6379' });
+const pubClient = new Redis({ host: 'localhost', port: 6379 });
 const subClient = pubClient.duplicate();
 
-await Promise.all([pubClient.connect(), subClient.connect()]);
 io.adapter(createAdapter(pubClient, subClient));
 ```
 
