@@ -41,7 +41,7 @@ CREATE TABLE customers (
 );
 
 -- Only consider shipped orders, then join to get customer names
-SELECT c.name, o.order_id, o.total
+SELECT c.name, shipped_orders.order_id, shipped_orders.total
 FROM (
     SELECT order_id, customer_id, total
     FROM orders
@@ -151,7 +151,7 @@ INNER JOIN employees e
 
 ## Materialization in MySQL 8
 
-By default, MySQL 8 materializes derived tables: it executes the subquery once and stores the result in a temporary table. The optimizer may also merge a simple derived table directly into the outer query (merge optimization). You can check which strategy was used:
+MySQL 8 can handle derived tables in two ways. The optimizer first tries to merge a simple derived table directly into the outer query (`derived_merge` optimization, enabled by default). When merging is not possible — for example, when the derived table uses aggregation, `DISTINCT`, `LIMIT`, or a `UNION` — MySQL materializes it: executes the subquery once and stores the result in an internal temporary table. You can check which strategy was used:
 
 ```sql
 EXPLAIN FORMAT=JSON
@@ -168,4 +168,4 @@ Look for `"materialized_from_subquery"` or `"merged"` in the JSON output.
 
 ## Summary
 
-Derived tables (subqueries in `FROM`) let you pre-filter, pre-aggregate, or transform data before it is joined or selected. Always provide an alias. For complex multi-step logic, consider CTEs (`WITH`) for better readability. Use `EXPLAIN` to see whether MySQL materializes or merges the derived table, and index intermediate result columns when the derived table is large.
+Derived tables (subqueries in `FROM`) let you pre-filter, pre-aggregate, or transform data before it is joined or selected. Always provide an alias. For complex multi-step logic, consider CTEs (`WITH`) for better readability. Use `EXPLAIN` to see whether MySQL materializes or merges the derived table, and ensure the underlying base tables are properly indexed so the derived table subquery runs efficiently.
