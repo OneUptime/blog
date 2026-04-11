@@ -16,8 +16,8 @@ Each MySQL instance needs its own data directory, configuration file, port, Unix
 flowchart LR
     A[Base mysqld binary] --> B[Instance 1: port 3306, /data/mysql1]
     A --> C[Instance 2: port 3307, /data/mysql2]
-    B --> D[mysqld@instance1.service]
-    C --> E[mysqld@instance2.service]
+    B --> D[mysqld1.service]
+    C --> E[mysqld2.service]
 ```
 
 ## Prerequisites
@@ -110,6 +110,7 @@ Restart=on-failure
 RestartPreventExitStatus=1
 RuntimeDirectory=mysql
 RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -132,6 +133,7 @@ Restart=on-failure
 RestartPreventExitStatus=1
 RuntimeDirectory=mysql
 RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 
 [Install]
 WantedBy=multi-user.target
