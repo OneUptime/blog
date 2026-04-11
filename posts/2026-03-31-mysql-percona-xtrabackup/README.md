@@ -228,6 +228,10 @@ xtrabackup \
     --target-dir="$TARGET" 2>>"$LOG"
 
 xtrabackup \
+    --decompress \
+    --target-dir="$TARGET" 2>>"$LOG"
+
+xtrabackup \
     --prepare \
     --target-dir="$TARGET" 2>>"$LOG"
 
