@@ -72,13 +72,13 @@ echo -n "mypassword" | sha256sum
 ```
 
 ```text
-89e01536ac207279409d4de1e5253e01ea85473516c7ddca3abe4b2b5f39a9b5  -
+89e01536ac207279409d4de1e5253e01f4a1769e696db0d6062ca9b8f56767c8  -
 ```
 
 Use the hash in the ACL file with the `#` prefix:
 
 ```text
-user alice on #89e01536ac207279409d4de1e5253e01ea85473516c7ddca3abe4b2b5f39a9b5 ~* +@read
+user alice on #89e01536ac207279409d4de1e5253e01f4a1769e696db0d6062ca9b8f56767c8 ~* +@read
 ```
 
 ### No password required
