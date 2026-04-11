@@ -67,7 +67,7 @@ Store the auth token in AWS Secrets Manager and inject it as an environment vari
 
 ## EKS - Kubernetes Secret
 
-Create a Kubernetes secret from AWS Secrets Manager using the AWS Secrets and Config Provider:
+Create a Kubernetes secret with the Redis connection details:
 
 ```bash
 kubectl create secret generic redis-credentials \
@@ -134,6 +134,8 @@ spec:
   podSelector:
     matchLabels:
       app: my-app
+  policyTypes:
+  - Egress
   egress:
   - ports:
     - port: 6379
