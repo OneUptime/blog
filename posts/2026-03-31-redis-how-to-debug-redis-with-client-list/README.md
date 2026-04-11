@@ -25,17 +25,17 @@ It is invaluable for diagnosing:
 # List all connected clients
 redis-cli CLIENT LIST
 
-# Filter by type (normal, pubsub, slave, master, replica, multi)
+# Filter by type (normal, master, replica, pubsub)
 redis-cli CLIENT LIST TYPE normal
 
-# Get specific client by ID
+# Get info about the current client connection
 redis-cli CLIENT INFO
 ```
 
 Sample output:
 
 ```text
-id=5 addr=127.0.0.1:54321 laddr=127.0.0.1:6379 fd=12 name=worker-1 age=120 idle=0 flags=N db=0 sub=0 psub=0 multi=-1 watch=0 qbuf=0 qbuf-free=40954 argv-mem=10 multi-mem=0 tot-mem=61466 rbs=16384 rbp=0 obl=0 oll=0 omem=0 events=r cmd=get|ex user=appuser library-name= library-ver= resp=2
+id=5 addr=127.0.0.1:54321 laddr=127.0.0.1:6379 fd=12 name=worker-1 age=120 idle=0 flags=N db=0 sub=0 psub=0 multi=-1 watch=0 qbuf=0 qbuf-free=40954 argv-mem=10 multi-mem=0 tot-mem=61466 rbs=16384 rbp=0 obl=0 oll=0 omem=0 events=r cmd=get user=appuser library-name= library-ver= resp=2
 ```
 
 ## Key Fields Explained
@@ -155,8 +155,7 @@ redis-cli CLIENT KILL ID 42
 # Kill all clients from a specific address
 redis-cli CLIENT KILL ADDR 10.0.0.5:54321
 
-# Kill all idle clients (idle > 300 seconds)
-redis-cli CLIENT NO-EVICT OFF   # allow eviction first
+# Kill all clients connected for more than 300 seconds
 redis-cli CLIENT KILL MAXAGE 300
 ```
 
@@ -168,7 +167,7 @@ def kill_idle_clients(idle_threshold_seconds=600):
     for c in clients:
         if int(c.get('idle', 0)) > idle_threshold_seconds:
             try:
-                r.client_kill_filter(client_id=int(c['id']))
+                r.client_kill_filter(_id=int(c['id']))
                 print(f"Killed idle client {c['id']} (idle {c['idle']}s from {c['addr']})")
                 killed += 1
             except Exception as e:
