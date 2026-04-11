@@ -10,7 +10,7 @@ Description: Learn how to use the MEDIUMINT data type in MySQL, covering its 3-b
 
 ## What Is MEDIUMINT
 
-`MEDIUMINT` is a 3-byte integer type unique to MySQL (it is not part of the SQL standard). It sits between `SMALLINT` (2 bytes) and `INT` (4 bytes), making it useful for columns like page view counters, ZIP codes, and population figures that exceed the `SMALLINT` ceiling but rarely reach billions.
+`MEDIUMINT` is a 3-byte integer type that is not part of the SQL standard. It sits between `SMALLINT` (2 bytes) and `INT` (4 bytes), making it useful for columns like page view counters, inventory quantities, and population figures that exceed the `SMALLINT` ceiling but rarely reach billions.
 
 ```mermaid
 flowchart LR
@@ -18,7 +18,7 @@ flowchart LR
     B --> C[Signed: -8388608 to 8388607]
     B --> D[Unsigned: 0 to 16777215]
     C --> E[Population data\nSales counters]
-    D --> F[ZIP/postal codes\nPage view counters]
+    D --> F[Inventory quantities\nPage view counters]
 ```
 
 ## Storage and Value Range
@@ -42,13 +42,13 @@ CREATE TABLE cities (
     name       VARCHAR(100) NOT NULL,
     country    CHAR(2) NOT NULL,
     population MEDIUMINT UNSIGNED NOT NULL,
-    zip_code   MEDIUMINT UNSIGNED
+    area_sq_km MEDIUMINT UNSIGNED
 );
 
-INSERT INTO cities (name, country, population, zip_code) VALUES
-('Austin',   'US', 961855, 78701),
-('Portland', 'US', 641162, 97201),
-('Boulder',  'US', 105112, 80301);
+INSERT INTO cities (name, country, population, area_sq_km) VALUES
+('Austin',   'US', 961855, 828),
+('Portland', 'US', 641162, 376),
+('Boulder',  'US', 105112, 66);
 ```
 
 ## Page View Counter
@@ -157,4 +157,4 @@ WHERE table_schema = DATABASE()
 
 ## Summary
 
-`MEDIUMINT` is a 3-byte MySQL-specific integer type with a range of -8,388,608 to 8,388,607 (signed) or 0 to 16,777,215 (unsigned). It is the right choice for population counts, page view counters, ZIP codes, and lookup table primary keys where the value is guaranteed to stay below ~16 million. When in doubt, use `INT` for safety.
+`MEDIUMINT` is a 3-byte MySQL-specific integer type with a range of -8,388,608 to 8,388,607 (signed) or 0 to 16,777,215 (unsigned). It is the right choice for population counts, page view counters, inventory quantities, and lookup table primary keys where the value is guaranteed to stay below ~16 million. When in doubt, use `INT` for safety.
