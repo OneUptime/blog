@@ -16,12 +16,13 @@ Description: Learn how to use CLUSTER RESET in Redis to clear a node's cluster s
 flowchart TD
     A[CLUSTER RESET SOFT] --> B[Clear slot assignments]
     B --> C[Forget all other nodes]
-    C --> D[New node ID generated only for HARD]
+    C --> D[If replica: flush data and convert to master]
 
     E[CLUSTER RESET HARD] --> F[Clear slot assignments]
     F --> G[Forget all other nodes]
-    G --> H[Generate new node ID]
-    H --> I[Flush all data]
+    G --> H[If replica: flush data and convert to master]
+    H --> I[Generate new node ID]
+    I --> J[Reset epochs to 0]
 ```
 
 ## Syntax
@@ -30,8 +31,8 @@ flowchart TD
 CLUSTER RESET [HARD | SOFT]
 ```
 
-- `SOFT` (default): Clears cluster state but retains the node ID and does not flush data
-- `HARD`: Clears cluster state, generates a new node ID, and flushes all data
+- `SOFT` (default): Clears cluster state but retains the node ID and epoch values
+- `HARD`: Clears cluster state, generates a new node ID, and resets epoch values to 0
 
 Returns `OK`.
 
@@ -48,9 +49,11 @@ OK
 ### Effect of SOFT reset:
 - All slot assignments are cleared
 - All known nodes are removed from the node table
+- If the node is a replica, it is converted to an empty master (data is flushed)
+- If the node is a master, existing data is retained (the command requires the master database to be empty)
 - The node ID remains unchanged
-- Existing data keys are retained
-- The cluster configuration file (`nodes-XXXX.conf`) is cleared
+- The currentEpoch and configEpoch are preserved
+- The cluster configuration file (`nodes-XXXX.conf`) is updated
 
 ## HARD Reset
 
@@ -65,23 +68,25 @@ OK
 ### Effect of HARD reset:
 - All slot assignments are cleared
 - All known nodes are removed from the node table
+- If the node is a replica, it is converted to an empty master (data is flushed)
+- If the node is a master, existing data is retained (the command requires the master database to be empty)
 - A new node ID is generated
-- All data is deleted (equivalent to `FLUSHALL`)
-- The cluster configuration file is cleared
+- The currentEpoch and configEpoch are reset to 0
+- The cluster configuration file is updated
 
 ## Restrictions
 
-`CLUSTER RESET` cannot be issued on a primary node that has assigned slots and has replicas:
+`CLUSTER RESET` cannot be issued on a master node that contains keys:
 
 ```redis
 CLUSTER RESET HARD
 ```
 
 ```text
-(error) ERR master still has attached slaves
+(error) ERR CLUSTER RESET can't be called with master nodes containing keys
 ```
 
-Disconnect replicas first, then reset.
+Run `FLUSHALL` first to empty the database, then reset. Replica nodes can be reset regardless of whether they contain data, since their dataset is flushed automatically during the reset.
 
 ## Use Cases
 
@@ -136,9 +141,9 @@ redis-cli -h 192.168.1.13 -p 7007 CLUSTER RESET HARD
 # 2. Re-introduce to cluster
 redis-cli -h 192.168.1.10 -p 7001 CLUSTER MEET 192.168.1.13 7007
 
-# 3. Set as replica
-NEW_NODE_ID=$(redis-cli -p 7001 CLUSTER NODES | grep "7007" | awk '{print $1}')
-redis-cli -h 192.168.1.13 -p 7007 CLUSTER REPLICATE <primary-id>
+# 3. Set as replica of a specific primary
+PRIMARY_ID=$(redis-cli -h 192.168.1.10 -p 7001 CLUSTER MYID)
+redis-cli -h 192.168.1.13 -p 7007 CLUSTER REPLICATE $PRIMARY_ID
 ```
 
 ## Checking State After Reset
@@ -159,4 +164,4 @@ Only the node itself is known; it has no slots and no peers yet.
 
 ## Summary
 
-`CLUSTER RESET` clears a Redis node's cluster membership, slot assignments, and known nodes. `SOFT` mode retains the node ID and data. `HARD` mode generates a new node ID and flushes all data. Use it to repurpose nodes for different clusters, recover from misconfiguration, or prepare a node for clean re-admission to a cluster. After resetting, use `CLUSTER MEET` to re-introduce the node and `CLUSTER REPLICATE` to assign it a role.
+`CLUSTER RESET` clears a Redis node's cluster membership, slot assignments, and known nodes. Both `SOFT` and `HARD` modes flush data for replica nodes (converting them to empty masters). `SOFT` mode retains the node ID and epoch values. `HARD` mode generates a new node ID and resets epoch values to 0. Master nodes must be empty before the command will succeed. Use it to repurpose nodes for different clusters, recover from misconfiguration, or prepare a node for clean re-admission to a cluster. After resetting, use `CLUSTER MEET` to re-introduce the node and `CLUSTER REPLICATE` to assign it a role.
