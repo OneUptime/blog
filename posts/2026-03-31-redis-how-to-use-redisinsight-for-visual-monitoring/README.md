@@ -30,9 +30,9 @@ brew install --cask redisinsight
 ### On Ubuntu/Debian
 
 ```bash
-# Download the latest .deb package
-wget https://downloads.redis.io/redis-desktop/redis-insight-linux64.deb
-sudo apt install ./redis-insight-linux64.deb
+# Download the latest .deb package from https://redis.io/insight/
+wget https://download.redisinsight.redis.com/latest/RedisInsight-linux-amd64.deb
+sudo apt install ./RedisInsight-linux-amd64.deb
 ```
 
 ### Using Docker
