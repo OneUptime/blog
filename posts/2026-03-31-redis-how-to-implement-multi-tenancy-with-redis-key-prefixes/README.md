@@ -213,6 +213,7 @@ Key prefixes work well for per-tenant rate limiting:
 
 ```python
 import time
+import os
 import redis
 
 r = redis.Redis()
@@ -222,18 +223,20 @@ def check_rate_limit(tenant_id: str, action: str, limit: int, window_seconds: in
     Returns True if within rate limit, False if exceeded.
     """
     key = f"tenant:{tenant_id}:ratelimit:{action}"
-    current_time = int(time.time())
-    window_start = current_time - window_seconds
+    now = time.time()
+    window_start = now - window_seconds
+    # Use timestamp + random bytes as the member to ensure uniqueness
+    member = f"{now}:{os.urandom(8).hex()}"
 
     pipe = r.pipeline()
-    # Add current request timestamp
-    pipe.zadd(key, {str(current_time): current_time})
+    # Add current request with a unique member
+    pipe.zadd(key, {member: now})
     # Remove old entries outside the window
     pipe.zremrangebyscore(key, 0, window_start)
     # Count requests in window
     pipe.zcard(key)
     # Set TTL
-    pipe.expire(key, window_seconds)
+    pipe.expire(key, window_seconds + 1)
     results = pipe.execute()
 
     request_count = results[2]
