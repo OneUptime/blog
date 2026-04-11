@@ -34,10 +34,10 @@ keyspace_hits:1000000
 keyspace_misses:50000     # High misses may indicate evictions of needed data
 ```
 
-Monitor the eviction rate over time:
+Monitor the eviction rate over time by polling the `evicted_keys` metric:
 
 ```bash
-redis-cli --stat -i 1 | grep evict
+redis-cli INFO stats | grep evicted_keys
 ```
 
 ## Step 2 - Check Current Eviction Policy
@@ -77,7 +77,7 @@ SET config:app:settings "{...}"
 Redis does not natively log which specific keys were evicted. Use keyspace notifications to track evictions:
 
 ```bash
-redis-cli CONFIG SET notify-keyspace-events "Eg"
+redis-cli CONFIG SET notify-keyspace-events "Ee"
 ```
 
 In a subscriber:
