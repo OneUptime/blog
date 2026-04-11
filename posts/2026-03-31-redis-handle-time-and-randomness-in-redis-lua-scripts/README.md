@@ -12,14 +12,16 @@ Redis requires Lua scripts to be deterministic - the same script with the same i
 
 ## Why Random and Time Are Restricted
 
-By default, calling `math.random()` inside a Lua script raises an error:
+In Redis versions before 7.0, `math.random()` inside a Lua script is seeded with a fixed value before each execution, so it always returns the same sequence of numbers:
 
 ```bash
 redis-cli EVAL "return math.random()" 0
-# ERR This Redis command is not allowed from scripts
+# Always returns the same value (e.g., 0.17082803611217)
 ```
 
-Similarly, `os.time()` is not available in the Redis Lua sandbox. This is intentional to ensure replicas execute the same script and produce the same result.
+Starting with Redis 7.0, `math.random()` is seeded with random data per invocation, so it produces different results each time. However, passing randomness as script arguments remains a best practice for explicit control and testability.
+
+`os.time()` is not available in the Redis Lua sandbox — the `os` library is removed entirely to maintain the sandboxed environment.
 
 ## Getting Time with redis.call('TIME')
 
@@ -135,4 +137,4 @@ return 1
 
 ## Summary
 
-Redis Lua scripts must be deterministic, so `math.random()` and `os.time()` are blocked. Use `redis.call('TIME')` to get the current Unix timestamp as `[seconds, microseconds]` for time-based operations. For randomness, generate values in your application and pass them as ARGV arguments. This keeps scripts deterministic while supporting dynamic behavior.
+Redis Lua scripts historically required determinism for replication safety. In Redis versions before 7.0, `math.random()` is seeded with a fixed value making it predictable, while `os.time()` is unavailable in the sandbox. Use `redis.call('TIME')` to get the current Unix timestamp as `[seconds, microseconds]` for time-based operations. For randomness, generate values in your application and pass them as ARGV arguments. This keeps scripts explicit and testable while supporting dynamic behavior.
