@@ -22,11 +22,11 @@ Returns an integer Unix timestamp.
 
 ```bash
 LASTSAVE
-# (integer) 1711900800
+# (integer) 1774958400
 
-# Convert to human-readable
-date -d @1711900800
-# Fri Mar 31 2026 12:00:00 UTC
+# Convert to human-readable (GNU date)
+date -d @1774958400
+# Tue Mar 31 12:00:00 UTC 2026
 ```
 
 ## Checking Save Freshness
@@ -34,14 +34,14 @@ date -d @1711900800
 ```bash
 # Check last save time
 LASTSAVE
-# (integer) 1711897200
+# (integer) 1774944000
 
 # Trigger a new save
 BGSAVE
 
 # Wait and check again
 LASTSAVE
-# (integer) 1711900800  <- updated timestamp
+# (integer) 1774958400  <- updated timestamp
 ```
 
 ## Practical Example in Python
@@ -55,14 +55,15 @@ client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def check_last_save():
     """Check when data was last saved and how long ago."""
-    timestamp = client.lastsave()
+    last_save_dt = client.lastsave()  # returns a datetime object
+    timestamp = last_save_dt.timestamp()
     save_time = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
     age_seconds = time.time() - timestamp
     age_minutes = age_seconds / 60
 
     print(f"Last save time: {save_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"Age: {age_minutes:.1f} minutes ago ({int(age_seconds)} seconds)")
-    return timestamp
+    return last_save_dt
 
 check_last_save()
 ```
@@ -76,15 +77,14 @@ const client = createClient();
 await client.connect();
 
 async function checkLastSave() {
-  const timestamp = await client.lastSave();
-  const saveDate = new Date(timestamp * 1000);
-  const ageSeconds = (Date.now() / 1000) - timestamp;
-  const ageMinutes = ageSeconds / 60;
+  const saveDate = await client.lastSave(); // returns a Date object
+  const ageMs = Date.now() - saveDate.getTime();
+  const ageMinutes = ageMs / 1000 / 60;
 
   console.log(`Last save: ${saveDate.toISOString()}`);
   console.log(`Age: ${ageMinutes.toFixed(1)} minutes`);
 
-  return timestamp;
+  return saveDate;
 }
 
 await checkLastSave();
@@ -129,7 +129,8 @@ client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def check_save_freshness(max_age_minutes=30):
     """Alert if last save is older than the threshold."""
-    timestamp = client.lastsave()
+    last_save_dt = client.lastsave()  # returns a datetime object
+    timestamp = last_save_dt.timestamp()
     age_seconds = time.time() - timestamp
     age_minutes = age_seconds / 60
 
@@ -160,15 +161,16 @@ import time
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def get_save_status():
-    last_save = client.lastsave()
+    last_save_dt = client.lastsave()  # returns a datetime object
+    timestamp = last_save_dt.timestamp()
     info = client.info('persistence')
 
     return {
-        'last_save_timestamp': last_save,
+        'last_save_timestamp': timestamp,
         'last_save_datetime': datetime.datetime.fromtimestamp(
-            last_save, tz=datetime.timezone.utc
+            timestamp, tz=datetime.timezone.utc
         ).isoformat(),
-        'age_seconds': int(time.time() - last_save),
+        'age_seconds': int(time.time() - timestamp),
         'rdb_bgsave_in_progress': bool(info.get('rdb_bgsave_in_progress', 0)),
         'rdb_last_bgsave_status': info.get('rdb_last_bgsave_status', 'unknown'),
         'rdb_last_bgsave_time_sec': info.get('rdb_last_bgsave_time_sec', -1),
@@ -191,8 +193,9 @@ client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 def redis_persistence_health(max_save_age_minutes=60):
     """Health check that includes persistence freshness."""
     try:
-        last_save = client.lastsave()
-        age_minutes = (time.time() - last_save) / 60
+        last_save_dt = client.lastsave()  # returns a datetime object
+        timestamp = last_save_dt.timestamp()
+        age_minutes = (time.time() - timestamp) / 60
 
         return {
             'status': 'healthy' if age_minutes <= max_save_age_minutes else 'degraded',
@@ -237,7 +240,7 @@ fi
 
 ```bash
 # Check AOF status separately
-INFO persistence | grep aof_last
+redis-cli INFO persistence | grep aof_last
 ```
 
 For AOF-only setups, `LASTSAVE` still reflects the last time data was written to an RDB file (which may be from server startup if no `BGSAVE` was triggered).
