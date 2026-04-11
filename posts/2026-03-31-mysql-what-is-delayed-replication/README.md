@@ -46,7 +46,7 @@ SHOW REPLICA STATUS\G
 Look for these fields:
 - `SQL_Delay`: configured delay in seconds
 - `SQL_Remaining_Delay`: seconds until the next queued transaction will be applied
-- `Replica_SQL_Running_State`: shows `Waiting until SOURCE_DELAY seconds after source executed event` when delay is active
+- `Replica_SQL_Running_State`: shows `Waiting until SOURCE_DELAY seconds after master executed event` when delay is active
 
 ## Using a Delayed Replica for Recovery
 
