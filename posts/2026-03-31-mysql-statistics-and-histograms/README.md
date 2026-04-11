@@ -101,7 +101,8 @@ If rows change significantly after a bulk load or delete, trigger a refresh:
 
 ```sql
 ANALYZE TABLE orders;
--- Or via innodb_stats_on_metadata for older behavior
+-- If using non-persistent statistics (innodb_stats_persistent = OFF),
+-- you can also enable automatic refresh on metadata queries:
 SET GLOBAL innodb_stats_on_metadata = ON;
 ```
 
