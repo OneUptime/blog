@@ -50,7 +50,7 @@ If you have a recent RDB file, check its actual size:
 
 ```bash
 ls -lh /var/lib/redis/dump.rdb
-redis-cli INFO memory | grep used_memory_dataset
+redis-cli INFO memory | grep used_memory_dataset:
 ```
 
 Calculate the actual ratio:
@@ -79,7 +79,7 @@ General compression expectations:
 
 | Data Type | Compression Factor |
 | --- | --- |
-| Small strings (< 44 chars) | 0.8-1.0 (embstr, minimal savings) |
+| Small strings (< 44 bytes) | 0.8-1.0 (embstr, minimal savings) |
 | Large strings | 0.3-0.7 (LZF compression) |
 | Hashes (small, ziplist encoded) | 0.4-0.6 |
 | Lists (ziplist/listpack encoded) | 0.4-0.6 |
@@ -104,7 +104,7 @@ During BGSAVE, Redis writes a temporary file alongside the existing RDB. You nee
 Required free space = (estimated RDB size) * 2 + 10% buffer
 ```
 
-## Using DEBUG RELOAD for Exact Measurement
+## Triggering BGSAVE for Exact Measurement
 
 On a test or staging instance, force a save and measure the result:
 
