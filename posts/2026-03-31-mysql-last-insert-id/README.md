@@ -33,8 +33,8 @@ SELECT LAST_INSERT_ID();
 |---|---|
 | Single-row INSERT | The new AUTO_INCREMENT value |
 | Multi-row INSERT | The AUTO_INCREMENT of the **first** inserted row |
-| INSERT that fails | 0 (unchanged from the previous successful insert) |
-| No AUTO_INCREMENT column | 0 |
+| INSERT that fails | Unchanged from the previous value |
+| No AUTO_INCREMENT column | Unchanged from the previous value |
 | Different session | Each session sees its own `LAST_INSERT_ID()` |
 
 ## Multi-row INSERT
@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## Common pitfalls
 
-### The function is reset by a failed INSERT
+### The function is NOT reset by a failed INSERT
 
 ```sql
 -- Successful insert
