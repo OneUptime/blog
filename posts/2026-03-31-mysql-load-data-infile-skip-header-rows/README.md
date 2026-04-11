@@ -57,7 +57,7 @@ IGNORE 3 ROWS;
 
 ## Using LINES STARTING BY to Filter Lines
 
-`LINES STARTING BY` causes MySQL to skip any line that does not begin with the specified prefix. This is useful when data lines have a consistent prefix:
+`LINES STARTING BY` causes MySQL to skip any line that does not contain the specified prefix. When a line does contain the prefix, everything before and including the prefix is stripped. This is useful when data lines have a consistent prefix:
 
 ```text
 # comment line
@@ -117,8 +117,8 @@ LINES TERMINATED BY '\n';
 Alternatively, pre-process the file to remove headers before passing to MySQL:
 
 ```bash
-# Remove first line and pipe into mysql
-tail -n +2 users_with_header.csv > users_no_header.csv
+# Remove first line
+tail -n +2 users_with_header.csv > /tmp/users_no_header.csv
 
 mysql -u root -p mydb -e "
 LOAD DATA INFILE '/tmp/users_no_header.csv'
