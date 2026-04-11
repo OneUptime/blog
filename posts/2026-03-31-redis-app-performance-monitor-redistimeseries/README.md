@@ -154,11 +154,11 @@ def get_error_rate(service: str, endpoint: str,
 ```python
 def get_service_overview(service: str) -> list:
     result = r.execute_command(
-        'TS.MGET', 'FILTER', f'service={service}', 'metric=latency_ms'
+        'TS.MGET', 'WITHLABELS', 'FILTER', f'service={service}', 'metric=latency_ms'
     )
     endpoints = []
     for item in result:
-        labels = dict(zip(item[1][0::2], item[1][1::2]))
+        labels = dict(item[1])
         if item[2]:
             ts, val = item[2]
             endpoints.append({
