@@ -99,7 +99,7 @@ mem_allocator:libc
 
 Key metrics:
 - `used_memory_rss` / `used_memory` = fragmentation ratio (cross-check `mem_fragmentation_ratio`)
-- `used_memory_peak_perc` - how close to historic peak (if near 100%, you almost hit maxmemory)
+- `used_memory_peak_perc` - current usage as a percentage of historic peak (if near 100%, you are at your highest recorded usage)
 - `maxmemory_policy` - what happens when memory fills up
 
 ## Section: stats
@@ -123,7 +123,6 @@ sync_partial_ok:8
 sync_partial_err:0
 expired_keys:182943
 evicted_keys:0
-total_keys_processed_by_maxmemory:0
 keyspace_hits:38291847
 keyspace_misses:4982731
 pubsub_channels:4
@@ -203,14 +202,14 @@ Key metrics:
 ```python
 import redis
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-r = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def collect_metrics():
     info = r.info('all')
     metrics = {
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'uptime_days': info['uptime_in_days'],
         'connected_clients': info['connected_clients'],
         'used_memory_mb': info['used_memory'] / 1024 / 1024,
@@ -243,4 +242,4 @@ print(json.dumps(metrics, indent=2))
 
 ## Summary
 
-The Redis INFO command provides a complete view of server health across eight sections. Focus on memory fragmentation ratio, cache hit rate, eviction rate, and replica lag as your primary health indicators. Script periodic INFO collection to build a metrics history and set up alerts when key thresholds are crossed.
+The Redis INFO command provides a complete view of server health across seven key sections. Focus on memory fragmentation ratio, cache hit rate, eviction rate, and replica lag as your primary health indicators. Script periodic INFO collection to build a metrics history and set up alerts when key thresholds are crossed.
