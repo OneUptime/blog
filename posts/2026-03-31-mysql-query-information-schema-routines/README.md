@@ -44,7 +44,7 @@ ORDER BY ROUTINE_TYPE, ROUTINE_NAME;
 | `SQL_MODE` | SQL mode at creation time |
 | `CREATED` | Creation timestamp |
 | `LAST_ALTERED` | Last modification timestamp |
-| `DETERMINISTIC` | YES or NO |
+| `IS_DETERMINISTIC` | YES or NO |
 
 ## Listing All Stored Procedures
 
@@ -59,7 +59,7 @@ ORDER BY ROUTINE_NAME;
 ## Listing All Stored Functions
 
 ```sql
-SELECT ROUTINE_NAME, DATA_TYPE, DETERMINISTIC, CREATED
+SELECT ROUTINE_NAME, DATA_TYPE, IS_DETERMINISTIC, CREATED
 FROM information_schema.ROUTINES
 WHERE ROUTINE_SCHEMA = 'myapp'
   AND ROUTINE_TYPE = 'FUNCTION'
@@ -81,11 +81,11 @@ WHERE ROUTINE_SCHEMA = 'myapp'
 Non-deterministic functions cannot be used in some replication configurations or with generated columns:
 
 ```sql
-SELECT ROUTINE_NAME, DETERMINISTIC, SECURITY_TYPE
+SELECT ROUTINE_NAME, IS_DETERMINISTIC, SECURITY_TYPE
 FROM information_schema.ROUTINES
 WHERE ROUTINE_SCHEMA = 'myapp'
   AND ROUTINE_TYPE = 'FUNCTION'
-  AND DETERMINISTIC = 'NO';
+  AND IS_DETERMINISTIC = 'NO';
 ```
 
 ## Finding Routines with DEFINER Security Type
