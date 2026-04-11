@@ -74,7 +74,7 @@ The output shows actual vs. estimated rows and loop time, helping you pinpoint w
 ## Step 5: Check for Missing Indexes
 
 ```sql
--- Find tables with the most full scans in the current session
+-- Find tables with the most read I/O since last reset
 SELECT object_schema, object_name, count_read
 FROM performance_schema.table_io_waits_summary_by_table
 WHERE count_read > 0
@@ -102,9 +102,9 @@ SELECT r.trx_id AS waiting_trx,
        b.trx_id AS blocking_trx,
        b.trx_mysql_thread_id AS blocking_thread,
        b.trx_query AS blocking_query
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID;
 ```
 
 ## Step 7: Check the Process List
