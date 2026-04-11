@@ -27,7 +27,7 @@ import redis
 CAS_SCRIPT = """
 local current = redis.call('HGET', KEYS[1], 'version')
 if current == ARGV[1] then
-    redis.call('HSET', KEYS[1], 'data', ARGV[2])
+    redis.call('HSET', KEYS[1], 'balance', ARGV[2])
     redis.call('HINCRBY', KEYS[1], 'version', 1)
     return 1
 else
