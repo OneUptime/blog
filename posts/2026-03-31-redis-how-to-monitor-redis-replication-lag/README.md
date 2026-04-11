@@ -104,15 +104,15 @@ redis_exporter --redis.addr redis://primary:6379 --redis.password yourpass
 Key metrics:
 
 ```text
-redis_connected_slaves                 # Number of connected replicas
-redis_replication_offset               # Primary's replication offset
-redis_slave_info{slave_ip,slave_port}  # Per-slave info including offset
+redis_connected_slaves                                          # Number of connected replicas
+redis_master_repl_offset                                        # Primary's replication offset
+redis_connected_slave_offset_bytes{slave_ip,slave_port}         # Per-slave replication offset
 ```
 
 Calculate lag in PromQL:
 
 ```text
-redis_replication_offset - on() group_left() redis_slave_info{slave_ip="192.168.1.11"}
+redis_master_repl_offset - redis_connected_slave_offset_bytes{slave_ip="192.168.1.11",slave_port="6380"}
 ```
 
 ## Grafana Dashboard for Replication Lag
@@ -120,14 +120,14 @@ redis_replication_offset - on() group_left() redis_slave_info{slave_ip="192.168.
 In Grafana, create a panel with this PromQL:
 
 ```text
-redis_replication_offset - redis_slave_repl_offset{addr="192.168.1.11:6380"}
+redis_master_repl_offset - redis_connected_slave_offset_bytes{slave_ip="192.168.1.11",slave_port="6380"}
 ```
 
 Add an alert if lag exceeds a threshold:
 
 ```yaml
 alert: RedisReplicationLagHigh
-expr: redis_replication_offset - redis_slave_repl_offset > 1000000
+expr: redis_master_repl_offset - redis_connected_slave_offset_bytes > 1000000
 for: 1m
 labels:
   severity: warning
@@ -164,7 +164,7 @@ fi
 - High write throughput on the primary outpacing the replica
 - Slow disk I/O on the replica (especially with AOF enabled)
 - Network bandwidth saturation between primary and replica
-- Replica CPU saturation from heavy workloads or SLOWLOG commands
+- Replica CPU saturation from heavy read workloads or slow commands
 - Large key operations (KEYS, large SORT) blocking the replica
 
 ## Reducing Replication Lag
