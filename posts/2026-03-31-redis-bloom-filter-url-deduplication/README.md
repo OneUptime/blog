@@ -52,7 +52,7 @@ import hashlib
 def normalize_url(url: str) -> str:
     parsed = urlparse(url.strip().lower())
     # Remove fragment and sort query params
-    query = urlencode(sorted(parse_qs(parsed.query).items()))
+    query = urlencode(sorted(parse_qs(parsed.query).items()), doseq=True)
     normalized = urlunparse((
         parsed.scheme, parsed.netloc,
         parsed.path.rstrip('/') or '/',
