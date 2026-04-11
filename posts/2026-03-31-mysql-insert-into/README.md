@@ -143,7 +143,7 @@ SELECT LAST_INSERT_ID() AS new_id;
 +--------+
 | new_id |
 +--------+
-|      6 |
+|      7 |
 +--------+
 ```
 
@@ -161,7 +161,7 @@ SELECT LAST_INSERT_ID() AS first_id_of_batch;
 +-------------------+
 | first_id_of_batch |
 +-------------------+
-|                 7 |
+|                 8 |
 +-------------------+
 ```
 
@@ -202,7 +202,7 @@ INSERT INTO users (username, email) VALUES ('alice', 'different@example.com');
 ```
 
 ```text
-ERROR 1062 (23000): Duplicate entry 'alice' for key 'users.uq_username'
+ERROR 1062 (23000): Duplicate entry 'alice' for key 'users.username'
 ```
 
 ### NOT NULL Violation
