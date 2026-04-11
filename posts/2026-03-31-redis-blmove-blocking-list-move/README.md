@@ -35,7 +35,7 @@ BLMOVE source destination LEFT|RIGHT LEFT|RIGHT timeout
 - `destination` - key of the destination list
 - First `LEFT|RIGHT` - direction to pop from source
 - Second `LEFT|RIGHT` - direction to push onto destination
-- `timeout` - seconds to block; `0` blocks indefinitely; decimals supported since Redis 6.0
+- `timeout` - seconds to block; `0` blocks indefinitely; supports decimal values
 
 Returns the value of the moved element, or nil on timeout.
 
