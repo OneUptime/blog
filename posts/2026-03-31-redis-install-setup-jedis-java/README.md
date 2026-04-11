@@ -62,6 +62,8 @@ The `try-with-resources` block ensures the connection is closed automatically.
 ## Connecting with Authentication
 
 ```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.JedisClientConfig;
 import redis.clients.jedis.DefaultJedisClientConfig;
 
@@ -81,9 +83,9 @@ Using a single `Jedis` instance is not thread-safe. Use `JedisPool` for multi-th
 
 ```java
 import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.ConnectionPoolConfig;
 
-JedisPoolConfig poolConfig = new JedisPoolConfig();
+ConnectionPoolConfig poolConfig = new ConnectionPoolConfig();
 poolConfig.setMaxTotal(10);
 poolConfig.setMaxIdle(5);
 poolConfig.setMinIdle(1);
