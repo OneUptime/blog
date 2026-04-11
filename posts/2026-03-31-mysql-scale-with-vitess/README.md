@@ -107,10 +107,8 @@ With this VSchema, Vitess automatically routes any query containing `WHERE user_
 Adding shards without downtime is one of Vitess's key features. Use vtctldclient to initiate a reshard:
 
 ```bash
-vtctldclient Reshard --workflow=expand_shards \
-  --target-shards=-80,80- \
-  --source-shards=0 \
-  commerce.orders
+vtctldclient Reshard --target-keyspace commerce --workflow expand_shards \
+  create --source-shards '0' --target-shards '-80,80-'
 ```
 
 Vitess copies data, keeps both shard sets in sync, then switches traffic with a single atomic cutover.
