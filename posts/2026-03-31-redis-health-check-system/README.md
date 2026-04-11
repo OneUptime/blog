@@ -12,11 +12,12 @@ Knowing which services are healthy in real time requires a lightweight heartbeat
 
 ## Heartbeat Registration
 
-Each service publishes a heartbeat every N seconds. The key expires after 2x the interval, so a single missed heartbeat doesn't immediately flag the service as down:
+Each service publishes a heartbeat every N seconds. The key expires after 3x the interval, so a missed heartbeat or two doesn't immediately flag the service as down:
 
 ```python
 import redis
 import time
+import json
 import threading
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -50,8 +51,6 @@ def start_heartbeat_loop(service_name: str):
 ## Checking Service Health
 
 ```python
-import json
-
 def is_healthy(service_name: str) -> bool:
     return r.exists(f"health:{service_name}") == 1
 
