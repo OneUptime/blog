@@ -50,7 +50,7 @@ redis-cli -h "$REDIS_PRIMARY" PING 2>&1 || echo "Confirmed: Primary not respondi
 # Step 2: Check Sentinel status
 echo "2. Checking Sentinel status..."
 redis-cli -h sentinel-1 -p 26379 SENTINEL masters
-redis-cli -h sentinel-1 -p 26379 SENTINEL master mymaster | grep -E "ip:|flags:|num-slaves:"
+redis-cli -h sentinel-1 -p 26379 SENTINEL master mymaster | grep -A 1 -E "ip|flags|num-slaves"
 
 # Step 3: Check if Sentinel already failed over
 echo "3. Checking for auto-failover..."
