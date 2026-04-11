@@ -130,11 +130,11 @@ WHERE EVENT_SCHEMA = 'mydb';
 -- Active InnoDB transactions
 SELECT * FROM information_schema.INNODB_TRX;
 
--- Current row-level locks
-SELECT * FROM information_schema.INNODB_LOCKS;
+-- Current row-level locks (MySQL 8.0+)
+SELECT * FROM performance_schema.data_locks;
 
--- Lock wait relationships
-SELECT * FROM information_schema.INNODB_LOCK_WAITS;
+-- Lock wait relationships (MySQL 8.0+)
+SELECT * FROM performance_schema.data_lock_waits;
 ```
 
 ## INFORMATION_SCHEMA vs SHOW Statements
