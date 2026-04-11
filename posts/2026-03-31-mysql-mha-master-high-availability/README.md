@@ -131,13 +131,24 @@ MHA supports custom scripts for managing a virtual IP (VIP) during failover. The
 VIP="192.168.1.100/24"
 INTERFACE="eth0"
 
-case "$1" in
-  stopslave)
+# Parse --command argument from MHA
+COMMAND=""
+for arg in "$@"; do
+  case "$arg" in
+    --command=*) COMMAND="${arg#--command=}" ;;
+  esac
+done
+
+case "$COMMAND" in
+  stop|stopssh)
     ip addr del $VIP dev $INTERFACE 2>/dev/null
     ;;
-  startmaster)
+  start)
     ip addr add $VIP dev $INTERFACE
     arping -c 3 -A -I $INTERFACE ${VIP%/*}
+    ;;
+  status)
+    ip addr show dev $INTERFACE | grep -q "${VIP%/*}" && exit 0 || exit 1
     ;;
 esac
 ```
