@@ -19,7 +19,7 @@ INSERT(str, pos, len, newstr)
 ```
 
 - `str` - the original string.
-- `pos` - the character position to start the replacement (1-indexed). If `pos` is beyond the string length, the result is `str` unchanged. If `pos <= 0`, the result is `newstr`.
+- `pos` - the character position to start the replacement (1-indexed). If `pos` is not within the length of the string (`pos < 1` or `pos > CHAR_LENGTH(str)`), the result is `str` unchanged.
 - `len` - number of characters to remove from `str` starting at `pos`.
 - `newstr` - the string to insert in place of the removed characters.
 - Returns `NULL` if any argument is `NULL`.
@@ -33,20 +33,11 @@ SELECT INSERT('Hello World', 7, 5, 'MySQL');
 SELECT INSERT('ABCDEFGH', 3, 2, 'XY');
 -- 'ABXYEFGH'  (positions 3-4 'CD' replaced by 'XY')
 
-SELECT INSERT('ABCDEFGH', 3, 0, 'XY');
--- 'ABXYCCDEFGH'  -- wait, len=0 inserts without removing
-SELECT INSERT('ABCDEFGH', 3, 0, 'XY');
--- 'ABXYCDECDEFGH' -- let's be precise:
-```
-
-Let me clarify:
-
-```sql
 -- len=0: insert without removing (pure insertion)
-SELECT INSERT('ABCDE', 3, 0, 'XY');
--- 'ABXYC DE' -> 'ABXYCDE'
+SELECT INSERT('ABCDEFGH', 3, 0, 'XY');
+-- 'ABXYCDEFGH'
 
--- len > remaining: replaces from pos to end, appends newstr
+-- len > remaining chars: replaces from pos to end
 SELECT INSERT('ABCDE', 3, 100, 'XY');
 -- 'ABXY'
 ```
@@ -132,12 +123,12 @@ Use `INSERT()` when you know the exact position. Use `REPLACE()` when searching 
 ## Edge cases
 
 ```sql
--- pos beyond end: str unchanged, newstr appended at end
+-- pos beyond end: str unchanged
 SELECT INSERT('Hello', 100, 1, '!');  -- 'Hello'
 
--- pos = 0 or negative: newstr only
-SELECT INSERT('Hello', 0, 3, 'Hi');   -- 'Hi'
-SELECT INSERT('Hello', -1, 3, 'Hi');  -- 'Hi'
+-- pos = 0 or negative: str unchanged
+SELECT INSERT('Hello', 0, 3, 'Hi');   -- 'Hello'
+SELECT INSERT('Hello', -1, 3, 'Hi');  -- 'Hello'
 
 -- len = 0: pure insertion at pos
 SELECT INSERT('Hello', 3, 0, 'XY');   -- 'HeXYllo'
@@ -148,4 +139,4 @@ SELECT INSERT('Hello', 3, 100, 'XY'); -- 'HeXY'
 
 ## Summary
 
-`INSERT(str, pos, len, newstr)` is a positional string replacement function. It removes `len` characters starting at `pos` and inserts `newstr` in their place. It is the right choice when you know the exact byte position of the text to replace, such as masking credit cards, updating fixed-width log fields, and injecting delimiters into formatted strings. Use `REPLACE()` when you want to match a literal value regardless of position.
+`INSERT(str, pos, len, newstr)` is a positional string replacement function. It removes `len` characters starting at `pos` and inserts `newstr` in their place. It is the right choice when you know the exact character position of the text to replace, such as masking credit cards, updating fixed-width log fields, and injecting delimiters into formatted strings. Use `REPLACE()` when you want to match a literal value regardless of position.
