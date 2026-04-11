@@ -19,7 +19,7 @@ Operations: AND, OR, XOR, NOT
 
 - `AND`: bits are 1 only where ALL keys have 1
 - `OR`: bits are 1 where ANY key has 1
-- `XOR`: bits are 1 where exactly ONE key has 1 (exclusive OR)
+- `XOR`: bits are 1 where an odd number of keys have 1 (for two keys, where exactly one has 1)
 - `NOT`: inverts all bits in a single key
 
 ## Basic Examples
