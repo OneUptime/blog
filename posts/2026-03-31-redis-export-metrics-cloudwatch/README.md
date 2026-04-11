@@ -22,8 +22,8 @@ CacheHits              - Successful key lookups
 CacheMisses            - Failed key lookups
 Evictions              - Keys evicted due to maxmemory
 CurrItems              - Total keys across all databases
-NetworkBytesIn         - Bytes received per second
-NetworkBytesOut        - Bytes sent per second
+NetworkBytesIn         - Bytes read from the network
+NetworkBytesOut        - Bytes sent to the network
 EngineCPUUtilization   - CPU used by Redis process
 DatabaseMemoryUsagePercentage - Memory as % of available
 ReplicationLag         - Replica lag in seconds
@@ -57,23 +57,23 @@ def push_redis_metrics(host: str, port: int, namespace: str = "Custom/Redis"):
     cw = boto3.client("cloudwatch", region_name="us-east-1")
 
     metrics = [
-        ("OpsPerSecond", info["instantaneous_ops_per_sec"]),
-        ("UsedMemoryMB", info["used_memory"] / 1024 / 1024),
-        ("ConnectedClients", info["connected_clients"]),
-        ("KeyspaceHits", info["keyspace_hits"]),
-        ("KeyspaceMisses", info["keyspace_misses"]),
-        ("EvictedKeys", info["evicted_keys"]),
+        ("OpsPerSecond", info["instantaneous_ops_per_sec"], "Count/Second"),
+        ("UsedMemoryMB", info["used_memory"] / 1024 / 1024, "Megabytes"),
+        ("ConnectedClients", info["connected_clients"], "Count"),
+        ("KeyspaceHits", info["keyspace_hits"], "Count"),
+        ("KeyspaceMisses", info["keyspace_misses"], "Count"),
+        ("EvictedKeys", info["evicted_keys"], "Count"),
     ]
 
     metric_data = [
         {
             "MetricName": name,
             "Value": value,
-            "Unit": "Count",
+            "Unit": unit,
             "Timestamp": datetime.datetime.utcnow(),
             "Dimensions": [{"Name": "Host", "Value": host}],
         }
-        for name, value in metrics
+        for name, value, unit in metrics
     ]
 
     cw.put_metric_data(Namespace=namespace, MetricData=metric_data)
