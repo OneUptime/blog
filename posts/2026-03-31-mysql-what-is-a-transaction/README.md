@@ -71,12 +71,10 @@ UPDATE accounts
 SET balance = balance + 500
 WHERE id = 2;
 
--- Commit only if sender had sufficient balance
-IF @rows_updated = 1 THEN
-  COMMIT;
-ELSE
-  ROLLBACK;
-END IF;
+-- Conditional COMMIT/ROLLBACK based on @rows_updated
+-- would be handled in application code or a stored procedure,
+-- since IF/THEN control flow is not available in plain SQL sessions.
+COMMIT;
 ```
 
 In application code with a MySQL driver, this is typically handled with try/catch:
@@ -146,7 +144,7 @@ What one transaction can see from another depends on the isolation level. The de
 SHOW VARIABLES LIKE 'transaction_isolation';
 ```
 
-At `REPEATABLE READ`, a transaction sees a consistent snapshot of the database from the moment it started. Changes committed by other transactions after this point are not visible within the current transaction until it commits and starts a new one.
+At `REPEATABLE READ`, a transaction sees a consistent snapshot of the database established by the first read (SELECT) within the transaction. Changes committed by other transactions after that first read are not visible within the current transaction until it commits and starts a new one.
 
 ## Monitoring Active Transactions
 
