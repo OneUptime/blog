@@ -26,7 +26,7 @@ flowchart TB
     T --> P4
 ```
 
-MySQL can skip irrelevant partitions entirely during query execution - a process called partition pruning. A query filtered by `WHERE order_date >= '2026-01-01'` only scans the 2026 partition.
+MySQL can skip irrelevant partitions entirely during query execution - a process called partition pruning. A query filtered by `WHERE order_date BETWEEN '2026-01-01' AND '2026-12-31'` only scans the 2026 partition.
 
 ## Creating a RANGE Partitioned Table
 
@@ -56,7 +56,7 @@ The `MAXVALUE` partition acts as a catch-all for future data.
 ```sql
 CREATE TABLE events (
     event_id   BIGINT   NOT NULL,
-    event_time DATETIME NOT NULL,
+    event_time TIMESTAMP NOT NULL,
     event_type VARCHAR(50),
     payload    JSON,
     PRIMARY KEY (event_id, event_time)
@@ -107,7 +107,7 @@ Drop an old partition to remove historical data instantly (much faster than DELE
 ALTER TABLE orders DROP PARTITION p_2023;
 ```
 
-This is a metadata-only operation - no row-by-row deletion.
+This is a DDL operation that removes the partition's data file directly - no row-by-row deletion occurs.
 
 ## Verifying Partition Pruning
 
