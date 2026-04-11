@@ -134,9 +134,9 @@ Always include a loop limit to avoid exceeding the Lua time limit:
 local MAX_ITERATIONS = 10000
 local count = 0
 
-while true do
+while count < MAX_ITERATIONS do
     local item = redis.call('LPOP', KEYS[1])
-    if not item or count >= MAX_ITERATIONS then break end
+    if not item then break end
     -- process item
     count = count + 1
 end
@@ -144,7 +144,7 @@ end
 return count
 ```
 
-If a script runs longer than `lua-time-limit` (default 5 seconds), Redis kills it.
+If a script runs longer than `lua-time-limit` (default 5 seconds), Redis starts rejecting other client commands with a BUSY error. An administrator must then run `SCRIPT KILL` (if no writes were performed) or `SHUTDOWN NOSAVE` to stop the script.
 
 ## Summary
 
