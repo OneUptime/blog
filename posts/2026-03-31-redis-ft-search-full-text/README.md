@@ -179,16 +179,12 @@ flowchart TD
 
 ```python
 import redis
+from redis.commands.search.query import Query
 
 r = redis.Redis()
 
-results = r.ft("idx:users").search(
-    "redis",
-    sort_by="age",
-    ascending=True,
-    offset=0,
-    num=10
-)
+q = Query("redis").sort_by("age", asc=True).paging(0, 10)
+results = r.ft("idx:users").search(q)
 
 print(f"Total: {results.total}")
 for doc in results.docs:
