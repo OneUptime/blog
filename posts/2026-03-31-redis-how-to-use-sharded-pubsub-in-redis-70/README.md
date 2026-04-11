@@ -78,7 +78,7 @@ def publish_order(order_id, status):
 
 # Subscriber (uses shard-aware pubsub)
 pubsub = rc.pubsub()
-pubsub.ssubscribe('orders:*')  # Note: no pattern matching in sharded pubsub
+pubsub.ssubscribe('orders:42')  # Must use exact channel names, no pattern matching
 
 for message in pubsub.listen():
     if message['type'] == 'smessage':
