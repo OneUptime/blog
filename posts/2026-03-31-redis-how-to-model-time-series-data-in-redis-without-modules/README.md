@@ -117,15 +117,15 @@ For pre-computed aggregations (hourly averages, daily totals), store them in has
 ```python
 import redis
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 r = redis.Redis(host='localhost', port=6379)
 
 def record_with_aggregation(metric: str, value: float):
     now = time.time()
     ts = int(now)
-    hour_bucket = datetime.utcfromtimestamp(now).strftime("%Y%m%d%H")
-    day_bucket = datetime.utcfromtimestamp(now).strftime("%Y%m%d")
+    hour_bucket = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d%H")
+    day_bucket = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d")
 
     pipe = r.pipeline()
     # Raw time series
