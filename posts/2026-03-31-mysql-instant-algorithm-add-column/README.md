@@ -48,17 +48,13 @@ ALTER TABLE products ALTER COLUMN is_active SET DEFAULT 0, ALGORITHM=INSTANT;
 
 -- Drop a column default
 ALTER TABLE products ALTER COLUMN is_active DROP DEFAULT, ALGORITHM=INSTANT;
-
--- Extend VARCHAR length (when no index change needed)
--- Note: may require INPLACE in some configurations
-ALTER TABLE products MODIFY COLUMN sku VARCHAR(100), ALGORITHM=INSTANT;
 ```
 
 ## Operations NOT Supported by INSTANT
 
 ```sql
--- Changing data type - requires INPLACE or COPY
-ALTER TABLE orders MODIFY COLUMN total BIGINT, ALGORITHM=INPLACE;
+-- Changing data type - requires COPY
+ALTER TABLE orders MODIFY COLUMN total BIGINT, ALGORITHM=COPY;
 
 -- Adding an index - use INPLACE
 ALTER TABLE orders ADD INDEX idx_priority (priority), ALGORITHM=INPLACE, LOCK=NONE;
