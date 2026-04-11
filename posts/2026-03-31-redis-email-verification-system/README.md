@@ -14,6 +14,7 @@ Email verification confirms that a user owns the address they registered with. R
 
 ```text
 verify:email:{token}         -> Hash: user_id, email, created_at
+verify:user_token:{userId}   -> String: token (current token for user)
 verify:status:{userId}       -> String: verified/pending
 verify:pending:{email}       -> String: user_id (prevent duplicate registrations)
 verify:resend:{userId}       -> String: cooldown key
