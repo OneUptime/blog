@@ -47,7 +47,7 @@ sudo make install
 
 ```bash
 redis-server --version
-# Redis server v=7.2.4 sha=00000000:0 malloc=libc bits=64 build=...
+# Redis server v=7.2.4 sha=00000000:0 malloc=jemalloc bits=64 build=...
 
 redis-cli --version
 # redis-cli 7.2.4
@@ -68,7 +68,7 @@ sudo chmod 750 /var/lib/redis
 Copy the sample config included in the source:
 
 ```bash
-sudo cp /home/user/redis-7.2.4/redis.conf /etc/redis/redis.conf
+sudo cp ~/redis-7.2.4/redis.conf /etc/redis/redis.conf
 ```
 
 Then edit key settings:
