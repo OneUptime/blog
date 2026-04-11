@@ -54,7 +54,7 @@ END$$
 DELIMITER ;
 ```
 
-When the balance is insufficient, MySQL raises error 1644 with the custom message and rolls back any implicit transaction context.
+When the balance is insufficient, MySQL raises error 1644 with the custom message and the procedure terminates immediately. Note that `SIGNAL` does not automatically roll back the current transaction — the caller is responsible for issuing a `ROLLBACK` if needed.
 
 ## Raising a Warning Instead of an Error
 
