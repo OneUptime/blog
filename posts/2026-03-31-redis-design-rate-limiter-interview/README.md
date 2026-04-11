@@ -75,7 +75,7 @@ return 1  -- allowed
 
 ## Distributed Rate Limiting
 
-For multiple API servers to share the same rate limit, all servers must talk to the same Redis instance or cluster. A single Redis node can handle millions of operations per second, which is sufficient for most use cases.
+For multiple API servers to share the same rate limit, all servers must talk to the same Redis instance or cluster. A single Redis node can handle hundreds of thousands of operations per second, which is sufficient for most use cases.
 
 For global rate limiting across regions, use Redis Cluster or a central Redis with geographic routing.
 
