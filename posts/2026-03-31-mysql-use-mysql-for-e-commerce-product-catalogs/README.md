@@ -77,7 +77,7 @@ Add generated columns and indexes for frequently filtered attributes:
 ```sql
 ALTER TABLE products
   ADD COLUMN brand VARCHAR(100)
-  GENERATED ALWAYS AS (JSON_UNQUOTE(attributes->>'$.brand')) STORED,
+  GENERATED ALWAYS AS (attributes->>'$.brand') STORED,
   ADD INDEX idx_brand (brand);
 ```
 
