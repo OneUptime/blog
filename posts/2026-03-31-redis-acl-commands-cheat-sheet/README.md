@@ -21,7 +21,7 @@ ACL LIST
 # List all usernames
 ACL USERS
 
-# Get rules for current user
+# Get current authenticated username
 ACL WHOAMI
 
 # Get rules for a specific user
@@ -74,7 +74,7 @@ resetpass   # remove all passwords
 ~session:???     # access keys matching session:???
 %R~*             # read-only access to all keys (Redis 7.0+)
 %W~cache:*       # write-only access to cache:* keys (Redis 7.0+)
-%RW~logs:*       # read-write access to logs:* keys
+%RW~logs:*       # read-write access to logs:* keys (Redis 7.0+)
 resetkeys        # remove all key permissions
 ```
 
@@ -111,7 +111,7 @@ ACL SETUSER readonly on >readpass ~* +@read
 # App user with limited key access
 ACL SETUSER myapp on >apppassword \
   ~session:* ~cache:* \
-  +GET +SET +DEL +EXPIRE +TTL +HSET +HGET +HGETALL +HEXPIRE
+  +GET +SET +DEL +EXPIRE +TTL +HSET +HGET +HGETALL +HDEL
 
 # Worker with queue access only
 ACL SETUSER worker on >workerpass \
