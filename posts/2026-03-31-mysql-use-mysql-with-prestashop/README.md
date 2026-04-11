@@ -29,17 +29,21 @@ FLUSH PRIVILEGES;
 
 ## Parameters.php Configuration
 
-PrestaShop stores database settings in `app/config/parameters.php` (PS8) or `config/settings.inc.php` (PS1.7):
+PrestaShop stores database settings in `app/config/parameters.php` (PS 1.7+) or `config/settings.inc.php` (PS 1.6 and earlier):
 
 ```php
 // PrestaShop 8 - app/config/parameters.php
-parameters:
-    database_host: '127.0.0.1'
-    database_port: '3306'
-    database_name: 'prestashop_db'
-    database_user: 'ps_user'
-    database_password: 'securepassword'
-    database_prefix: 'ps_'
+<?php return array (
+  'parameters' => array (
+    'database_host' => '127.0.0.1',
+    'database_port' => '3306',
+    'database_name' => 'prestashop_db',
+    'database_user' => 'ps_user',
+    'database_password' => 'securepassword',
+    'database_prefix' => 'ps_',
+    'database_engine' => 'InnoDB',
+  ),
+);
 ```
 
 The `database_prefix` allows multiple PrestaShop installations in one database schema.
