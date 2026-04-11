@@ -37,7 +37,7 @@ flowchart LR
 sudo apt update
 sudo apt install -y \
   build-essential cmake bison libncurses-dev \
-  libssl-dev libboost-dev pkg-config \
+  libssl-dev pkg-config \
   libtirpc-dev libudev-dev \
   libldap2-dev libsasl2-dev \
   libnuma-dev libzstd-dev liblz4-dev libicu-dev \
@@ -50,8 +50,8 @@ sudo apt install -y \
 sudo dnf groupinstall -y "Development Tools"
 sudo dnf install -y \
   cmake bison ncurses-devel openssl-devel \
-  boost-devel pkgconfig libtirpc-devel \
-  libudev-devel openldap-devel cyrus-sasl-devel \
+  pkgconfig libtirpc-devel \
+  systemd-devel openldap-devel cyrus-sasl-devel \
   numactl-devel libzstd-devel lz4-devel libicu-devel \
   wget
 ```
@@ -83,7 +83,8 @@ cmake .. \
   -DCMAKE_INSTALL_PREFIX=/opt/mysql \
   -DMYSQL_DATADIR=/opt/mysql/data \
   -DSYSCONFDIR=/etc \
-  -DWITH_BOOST=/usr/include/boost \
+  -DDOWNLOAD_BOOST=1 \
+  -DWITH_BOOST=/tmp/boost \
   -DWITH_SSL=system \
   -DWITH_ZLIB=system \
   -DWITH_ZSTD=system \
