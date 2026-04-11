@@ -19,7 +19,7 @@ This enables powerful event-driven patterns without polling.
 By default, keyspace notifications are disabled because they consume CPU. Enable them with the `notify-keyspace-events` configuration:
 
 ```bash
-# Enable all events (K = keyspace, E = keyevent, A = all commands, x = expired, g = generic)
+# Enable all events (K = keyspace, E = keyevent, A = all event types, x = expired, g = generic)
 redis-cli CONFIG SET notify-keyspace-events KEA
 
 # Or set specific event types
@@ -43,10 +43,11 @@ notify-keyspace-events "KEA"
 | `s` | Set commands (SADD, SREM...) |
 | `h` | Hash commands (HSET, HDEL...) |
 | `z` | Sorted set commands |
+| `t` | Stream commands (XADD, XDEL...) |
 | `x` | Expired events (when a key's TTL reaches zero) |
 | `e` | Evicted events (removed due to maxmemory) |
 | `d` | Module key type events |
-| `A` | Alias for `g$lshzxe` (all events) |
+| `A` | Alias for `g$lshztdxe` (all event types) |
 
 ## Two Channel Types
 
