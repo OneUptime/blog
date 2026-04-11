@@ -71,6 +71,7 @@ ACL SETUSER admin on >adminpass ~* &* +@all
 For stronger isolation, use separate Redis databases:
 
 ```python
+import json
 import redis
 
 # db=0: Public and internal data
