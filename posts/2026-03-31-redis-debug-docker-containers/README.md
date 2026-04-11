@@ -90,14 +90,14 @@ docker exec redis timeout 5 redis-cli MONITOR | head -100
 # Check slowlog
 docker exec redis redis-cli SLOWLOG GET 20
 
-# Latency stats
-docker exec redis redis-cli --latency -c 100
+# Latency stats (runs for 5 seconds)
+docker exec redis timeout 5 redis-cli --latency
 
 # Memory doctor
 docker exec redis redis-cli MEMORY DOCTOR
 
 # Big key scan
-docker exec redis redis-cli --bigkeys --i 0.1
+docker exec redis redis-cli --bigkeys -i 0.1
 ```
 
 ## Debugging Persistence Issues
