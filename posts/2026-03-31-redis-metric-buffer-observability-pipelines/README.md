@@ -16,7 +16,7 @@ Writing metrics directly to time-series storage under high load causes back-pres
 
 ## Using Redis Lists as a Queue
 
-The simplest buffer uses `LPUSH` to enqueue and `BRPOP` to dequeue in FIFO order:
+The simplest buffer uses `LPUSH` to enqueue and `RPOP` to dequeue in FIFO order:
 
 ```python
 import redis
