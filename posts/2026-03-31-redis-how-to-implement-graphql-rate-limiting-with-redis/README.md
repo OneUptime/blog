@@ -54,16 +54,16 @@ const rateLimitPlugin = {
         // Store remaining in context for use in response headers
         contextValue.rateLimitRemaining = remaining;
       },
-    };
-  },
 
-  async willSendResponse({ contextValue, response }) {
-    if (contextValue.rateLimitRemaining !== undefined) {
-      response.http.headers.set(
-        'X-RateLimit-Remaining',
-        contextValue.rateLimitRemaining.toString()
-      );
-    }
+      async willSendResponse({ contextValue, response }) {
+        if (contextValue.rateLimitRemaining !== undefined) {
+          response.http.headers.set(
+            'X-RateLimit-Remaining',
+            contextValue.rateLimitRemaining.toString()
+          );
+        }
+      },
+    };
   },
 };
 
