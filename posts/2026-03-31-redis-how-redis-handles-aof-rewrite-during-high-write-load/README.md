@@ -19,13 +19,15 @@ redis-cli BGREWRITEAOF
 redis-cli INFO persistence | grep aof
 ```
 
-## The Dual-Buffer Mechanism
+## The Dual-Buffer Mechanism (Redis < 7.0)
 
-New writes that arrive during the rewrite are written to two places:
+In Redis versions before 7.0, new writes that arrive during the rewrite are written to two places:
 1. The existing AOF file (to stay durable while the rewrite is in progress)
 2. An in-memory rewrite buffer (to be appended to the new AOF when the rewrite completes)
 
 This ensures no writes are lost even if the rewrite takes a long time.
+
+In Redis 7.0+, Multi-Part AOF replaced the in-memory rewrite buffer. Writes during a rewrite go to a separate incremental AOF file on disk, eliminating the memory overhead of the rewrite buffer and the blocking flush at completion.
 
 ## Monitoring Rewrite Progress
 
@@ -35,7 +37,7 @@ Check if a rewrite is in progress:
 redis-cli INFO persistence | grep -E "aof_rewrite_in_progress|aof_current_size|aof_base_size"
 ```
 
-Watch the rewrite buffer size, which grows during high write load:
+Watch the rewrite buffer size, which grows during high write load (Redis < 7.0 only; this field was removed in 7.0 with Multi-Part AOF):
 
 ```bash
 redis-cli INFO persistence | grep "aof_rewrite_buffer_length"
@@ -43,7 +45,7 @@ redis-cli INFO persistence | grep "aof_rewrite_buffer_length"
 
 ## Latency During Rewrite
 
-The main latency source is the `fsync` call at rewrite completion when the rewrite buffer is appended to the new AOF. Under high write load, this buffer can be large, causing a brief blocking write.
+In Redis < 7.0, the main latency source is the `fsync` call at rewrite completion when the rewrite buffer is appended to the new AOF. Under high write load, this buffer can be large, causing a brief blocking write. In Redis 7.0+, this blocking flush is eliminated since writes go to an incremental AOF file on disk, but `fsync` policies still affect overall write latency.
 
 Check your fsync policy:
 
@@ -91,4 +93,4 @@ This trades some durability for reduced latency spikes during rewrite.
 
 ## Summary
 
-Redis AOF rewrite uses a fork and dual-buffer mechanism to remain durable during high write loads. New writes go to both the current AOF and an in-memory buffer during the rewrite. The main latency risk is fsync at rewrite completion. Tuning the `auto-aof-rewrite-min-size`, `appendfsync` policy, and enabling `no-appendfsync-on-rewrite` helps balance durability and performance.
+Redis AOF rewrite uses a fork-based mechanism to remain durable during high write loads. In Redis < 7.0, new writes go to both the current AOF and an in-memory rewrite buffer; in Redis 7.0+, writes go to an incremental AOF file on disk (Multi-Part AOF). Tuning the `auto-aof-rewrite-min-size`, `appendfsync` policy, and enabling `no-appendfsync-on-rewrite` helps balance durability and performance.
