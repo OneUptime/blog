@@ -74,7 +74,7 @@ HostName = sql1
 ndb_mgmd -f /etc/mysql-cluster/config.ini
 
 # Start data nodes
-ndbd --connect-string=mgmt1
+ndbd --ndb-connectstring=mgmt1
 
 # Start SQL nodes (standard mysqld with NDB plugin enabled)
 mysqld --ndbcluster --ndb-connectstring=mgmt1
