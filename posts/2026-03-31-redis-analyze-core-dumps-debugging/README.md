@@ -34,9 +34,9 @@ echo '/tmp/core-%e-%p-%t' | sudo tee /proc/sys/kernel/core_pattern
 ```text
 # redis.conf
 crash-log-enabled yes
-crash-memlog-enabled yes
+crash-memcheck-enabled yes
 use-exit-on-panic no
-disable-thp-warning no
+disable-thp yes
 ```
 
 ## Simulate a Crash (Test Environment Only)
