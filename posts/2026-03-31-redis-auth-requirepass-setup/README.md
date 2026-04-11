@@ -141,7 +141,7 @@ bind 127.0.0.1
 requirepass yourStrongPasswordHere
 ```
 
-Or use `protected-mode yes` (the default) which requires a password if Redis is bound to non-loopback interfaces.
+Or rely on `protected-mode yes` (the default), which rejects connections from non-loopback interfaces when no password is set and no explicit `bind` directive is configured.
 
 ## Verifying Authentication Works
 
