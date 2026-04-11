@@ -147,8 +147,9 @@ int ThresholdIncrCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     long long current = 0;
     if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_STRING) {
-        RedisModuleString *val;
-        RedisModule_StringGet(key, &val);
+        size_t len;
+        char *str = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
+        RedisModuleString *val = RedisModule_CreateString(ctx, str, len);
         RedisModule_StringToLongLong(val, &current);
         RedisModule_FreeString(ctx, val);
     }
