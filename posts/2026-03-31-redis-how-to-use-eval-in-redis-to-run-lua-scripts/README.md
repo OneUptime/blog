@@ -43,11 +43,11 @@ return redis.call('GET', KEYS[1])
 Use `redis.pcall()` for error-safe calls that return error objects instead of raising:
 
 ```lua
-local ok, err = redis.pcall('GET', KEYS[1])
-if err then
-  return redis.error_reply("Error: " .. err)
+local reply = redis.pcall('GET', KEYS[1])
+if reply['err'] ~= nil then
+  return redis.error_reply("Error: " .. reply['err'])
 end
-return ok
+return reply
 ```
 
 ## Compare-and-Swap Pattern
