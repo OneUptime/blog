@@ -10,7 +10,7 @@ Description: Learn how to use GEOPOS to retrieve the stored longitude and latitu
 
 ## What Is GEOPOS?
 
-After storing geospatial members with `GEOADD`, `GEOPOS` lets you retrieve their stored longitude and latitude. Because Redis encodes coordinates as a Geohash, the returned values may differ very slightly from what was originally stored - but the precision is typically within 0.6mm, which is negligible for almost all applications.
+After storing geospatial members with `GEOADD`, `GEOPOS` lets you retrieve their stored longitude and latitude. Because Redis encodes coordinates as a Geohash, the returned values may differ very slightly from what was originally stored - but the precision is typically within 0.6 meters, which is negligible for almost all applications.
 
 ## Syntax
 
@@ -108,7 +108,7 @@ for name, coords in locations.items():
 ```bash
 # Get distance between two members
 GEODIST stations "London Waterloo" "London Bridge" km
-# "9.1234"
+# "3.6414"
 
 # Get coordinates of a member before computing a custom bounding box
 GEOPOS stations "London Waterloo"
@@ -164,8 +164,8 @@ Redis stores coordinates internally as a 52-bit Geohash integer. When you retrie
 - Input: `-0.1276, 51.5074`
 - Stored: `-0.12760013341903687, 51.50739830401801`
 
-This error is at most about 0.6mm and is acceptable for all practical geospatial use cases.
+This error is at most about 0.6 meters and is acceptable for all practical geospatial use cases.
 
 ## Summary
 
-`GEOPOS` retrieves the stored longitude and latitude of one or more members from a Redis geospatial index. It handles missing members gracefully by returning `nil` for those entries, making it safe for batch lookups. The returned coordinates may differ very slightly from the input due to Geohash encoding, but the precision (within 0.6mm) is sufficient for real-world applications including navigation, store finders, and location tracking.
+`GEOPOS` retrieves the stored longitude and latitude of one or more members from a Redis geospatial index. It handles missing members gracefully by returning `nil` for those entries, making it safe for batch lookups. The returned coordinates may differ very slightly from the input due to Geohash encoding, but the precision (within 0.6 meters) is sufficient for real-world applications including navigation, store finders, and location tracking.
