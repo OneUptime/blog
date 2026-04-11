@@ -72,10 +72,10 @@ This shows which functions are consuming the most CPU cycles in real time. Commo
 Use `strace` only in non-production or during a brief sampling window because it adds significant overhead:
 
 ```bash
-sudo strace -p $(pgrep -x redis-server) -c -T -- sleep 10
+sudo timeout 10 strace -p $(pgrep -x redis-server) -c
 ```
 
-The `-c` flag summarizes syscall counts and time. The `-T` flag shows time spent in each call. Expected output:
+The `-c` flag summarizes syscall counts and time. The `timeout` command limits tracing to 10 seconds, after which strace detaches and prints the summary. Expected output:
 
 ```text
 % time     seconds  usecs/call     calls    errors syscall
