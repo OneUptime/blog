@@ -10,13 +10,13 @@ Description: Understand Redis listpack compact sequential encoding, how it store
 
 ## What Is Listpack
 
-Listpack is a compact sequential data structure introduced in Redis 5.0 to replace the older ziplist encoding. It stores a sequence of string or integer entries in a contiguous memory block with no per-element pointers.
+Listpack is a compact sequential data structure first introduced in Redis 5.0 for Streams. In Redis 7.0 it replaced the older ziplist encoding for Hashes, Sorted Sets, and Lists. It stores a sequence of string or integer entries in a contiguous memory block with no per-element pointers.
 
 Redis uses listpack as the compact encoding for:
 - Small Hashes (below `hash-max-listpack-entries` and `hash-max-listpack-value`)
 - Small Sorted Sets (below `zset-max-listpack-entries` and `zset-max-listpack-value`)
 - Small Sets (Redis 7.2+, below `set-max-listpack-entries`)
-- Small Lists (Redis 7.2+, per quicklist node)
+- Small Lists (Redis 7.0+, per quicklist node)
 
 ## Memory Layout
 
@@ -32,15 +32,14 @@ A listpack is a contiguous byte array with this structure:
 
 Each entry (element) has:
 ```text
-+--------+----------+--------+
-| prevlen| encoding +| element|
-|        | data     | value  |
-+--------+----------+--------+
++----------+---------+
+| encoding | backlen |
+| + data   |         |
++----------+---------+
 ```
 
-- `prevlen` - length of the previous entry (enables backward traversal)
-- `encoding` - indicates the type (small int, medium int, large int, or string)
-- `data` - the actual value bytes
+- `encoding + data` - type encoding followed by the actual value bytes
+- `backlen` - total length of this entry's encoding+data, stored at the end of the entry (enables backward traversal)
 
 ## Advantages Over Ziplist
 
@@ -53,7 +52,7 @@ Ziplist problem:
 
 Listpack fix:
 - Each entry stores only its own size, not previous entry size
-- Backward traversal uses a different mechanism (entry-encoding prefix)
+- Backward traversal uses a different mechanism (backlen suffix at the end of each entry)
 - No cascading updates - O(1) insertion at known position
 ```
 
@@ -66,8 +65,8 @@ Listpack uses compact integer encodings to save space:
 13-bit int  (±4095):    2 bytes total
 16-bit int  (±32767):   3 bytes total
 24-bit int  (±8388607): 4 bytes total
-32-bit int:             6 bytes total
-64-bit int:             10 bytes total
+32-bit int:             5 bytes total
+64-bit int:             9 bytes total
 ```
 
 For comparison, storing "12345" as a string takes 6+ bytes (1 header + 5 digits). As a 16-bit integer it takes 3 bytes.
@@ -99,7 +98,7 @@ done
 redis-cli OBJECT ENCODING product:1
 # Output: hashtable
 redis-cli MEMORY USAGE product:1
-# Now 400-800 bytes
+# Now significantly larger (typically 8-15 KB)
 ```
 
 ## Time Complexity
