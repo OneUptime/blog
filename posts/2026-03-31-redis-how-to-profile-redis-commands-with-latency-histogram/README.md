@@ -16,12 +16,15 @@ This is especially useful for identifying commands with high tail latency even w
 
 ## Enabling Latency Tracking
 
-Latency tracking must be enabled in `redis.conf` or at runtime:
+Latency tracking is enabled by default in Redis 7.0+. You can verify or change the setting at runtime:
 ```bash
-# Enable latency tracking
+# Verify latency tracking is enabled (it is by default)
+redis-cli CONFIG GET latency-tracking
+
+# Enable it if it was previously disabled
 redis-cli CONFIG SET latency-tracking yes
 
-# Set the percentiles to track
+# Set the percentiles reported in INFO commandstats
 redis-cli CONFIG SET latency-tracking-info-percentiles "50 99 99.9"
 ```
 
@@ -137,14 +140,13 @@ This helps you choose the right data structure by comparing their actual latency
 
 ## Resetting Histogram Data
 
-Reset histograms for a fresh measurement window:
+Reset histograms for a fresh measurement window using `CONFIG RESETSTAT`:
 ```bash
-# Reset all histograms
-redis-cli LATENCY RESET
-
-# Histograms are also included in LATENCY RESET
-redis-cli LATENCY RESET GET SET HSET
+# Reset all statistics including latency histograms
+redis-cli CONFIG RESETSTAT
 ```
+
+Note: `LATENCY RESET` only resets latency spike events (used by `LATENCY LATEST` and `LATENCY HISTORY`), not histogram data. To clear `LATENCY HISTOGRAM` data, use `CONFIG RESETSTAT`.
 
 ## Continuous Profiling Script
 
