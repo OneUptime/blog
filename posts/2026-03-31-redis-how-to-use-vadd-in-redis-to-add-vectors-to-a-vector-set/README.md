@@ -22,26 +22,27 @@ Each vector is associated with an element name (like a key), and you can later u
 ## Syntax
 
 ```text
-VADD key [REDUCE dim] [FP32 | BFLOAT16] [NOQUANT] element vector [element vector ...]
-  [EF ef] [SETATTR attr]
+VADD key [REDUCE dim] (FP32 | VALUES num) vector element [CAS] [NOQUANT | Q8 | BIN]
+  [EF build-exploration-factor] [SETATTR attributes] [M numlinks]
 ```
 
 Key parameters:
 - `key` - the Vector Set name
-- `element` - a unique label for the vector
-- `vector` - the embedding as a list of floats
+- `FP32 vector` - the embedding as a binary blob of 32-bit floats
+- `VALUES num vector` - the embedding as `num` floating point numbers
+- `element` - a unique label for the vector (specified after the vector data)
 
 ## Basic Usage
 
 ```bash
 # Add a 4-dimensional vector for element "doc1"
-VADD my_vectors doc1 VALUES 4 0.1 0.2 0.3 0.4
+VADD my_vectors VALUES 4 0.1 0.2 0.3 0.4 doc1
 
 # Add another vector
-VADD my_vectors doc2 VALUES 4 0.5 0.6 0.7 0.8
+VADD my_vectors VALUES 4 0.5 0.6 0.7 0.8 doc2
 
 # Add a third
-VADD my_vectors doc3 VALUES 4 0.15 0.25 0.35 0.45
+VADD my_vectors VALUES 4 0.15 0.25 0.35 0.45 doc3
 ```
 
 ## Adding Real Embeddings
@@ -75,26 +76,26 @@ dim = 8
 for doc_id, text in documents.items():
     embedding = mock_embed(text, dim)
     # Build the VADD command
-    cmd = ["VADD", "docs:vectors", doc_id, "VALUES", str(dim)] + [str(v) for v in embedding]
+    cmd = ["VADD", "docs:vectors", "VALUES", str(dim)] + [str(v) for v in embedding] + [doc_id]
     r.execute_command(*cmd)
     print(f"Added vector for: {doc_id}")
 
 print(f"Total vectors: {r.execute_command('VCARD', 'docs:vectors')}")
 ```
 
-## Using FP32 and BFLOAT16 Precision
+## Using Quantization Options
 
-Control the storage precision to trade accuracy for memory:
+Control the storage quantization to trade accuracy for memory:
 
 ```bash
-# Full float32 precision (default)
-VADD vectors:fp32 FP32 element1 VALUES 4 0.1 0.2 0.3 0.4
-
-# BFloat16 (half the memory, slight accuracy loss)
-VADD vectors:bf16 BFLOAT16 element1 VALUES 4 0.1 0.2 0.3 0.4
+# Default quantization (Q8 - signed 8-bit, good balance)
+VADD vectors:q8 VALUES 4 0.1 0.2 0.3 0.4 element1
 
 # No quantization (highest accuracy, most memory)
-VADD vectors:exact NOQUANT element1 VALUES 4 0.1 0.2 0.3 0.4
+VADD vectors:exact VALUES 4 0.1 0.2 0.3 0.4 element1 NOQUANT
+
+# Binary quantization (fastest, least memory, lower recall)
+VADD vectors:bin VALUES 4 0.1 0.2 0.3 0.4 element1 BIN
 ```
 
 ## Checking If a Vector Already Exists
@@ -103,11 +104,11 @@ VADD replaces the existing vector if the element name already exists:
 
 ```bash
 # First add
-VADD my_vectors user:1 VALUES 4 0.1 0.2 0.3 0.4
+VADD my_vectors VALUES 4 0.1 0.2 0.3 0.4 user:1
 # Returns: (integer) 1 - new element added
 
 # Update (same element, new vector)
-VADD my_vectors user:1 VALUES 4 0.9 0.8 0.7 0.6
+VADD my_vectors VALUES 4 0.9 0.8 0.7 0.6 user:1
 # Returns: (integer) 0 - element updated, not new
 ```
 
@@ -119,8 +120,9 @@ def build_product_vector_store(products: list, r, key: str, dim: int):
     for product in products:
         embedding = mock_embed(product["description"], dim)
         cmd = (
-            ["VADD", key, product["id"], "VALUES", str(dim)]
+            ["VADD", key, "VALUES", str(dim)]
             + [str(v) for v in embedding]
+            + [product["id"]]
         )
         r.execute_command(*cmd)
 
@@ -143,9 +145,9 @@ You can attach metadata to a vector at insert time:
 
 ```bash
 # Add vector with JSON attribute
-VADD items user:1001 VALUES 4 0.1 0.2 0.3 0.4 SETATTR '{"name":"Alice","age":30}'
+VADD items VALUES 4 0.1 0.2 0.3 0.4 user:1001 SETATTR '{"name":"Alice","age":30}'
 ```
 
 ## Summary
 
-`VADD` stores vector embeddings in a Redis Vector Set, enabling fast approximate nearest-neighbor search with `VSIM`. Each vector is identified by an element name and can be updated by re-adding with the same name. Choose between FP32, BFLOAT16, or NOQUANT precision to balance memory and accuracy. Vector Sets are natively supported in Redis 8.0 and are designed for real-time semantic search and recommendation pipelines.
+`VADD` stores vector embeddings in a Redis Vector Set, enabling fast approximate nearest-neighbor search with `VSIM`. Each vector is identified by an element name and can be updated by re-adding with the same name. Choose between Q8 (default), NOQUANT, or BIN quantization to balance memory and accuracy. Vector Sets are natively supported in Redis 8.0 and are designed for real-time semantic search and recommendation pipelines.
