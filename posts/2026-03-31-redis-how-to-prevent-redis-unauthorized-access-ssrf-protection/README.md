@@ -189,10 +189,11 @@ redis-cli -h redis-host -p 6379 PING
 Expected with proper configuration:
 
 ```text
-PONG # (requires auth) or
-(error) NOAUTH Authentication required. # (if using password) or
+(error) NOAUTH Authentication required. # (if auth is configured)
 Could not connect to Redis at redis-host:6379: Connection refused # (if firewall blocks)
 ```
+
+If you see `PONG` without providing credentials, your Redis server is not properly secured.
 
 ## Summary
 
