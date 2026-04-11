@@ -160,7 +160,7 @@ BLMPOP 5 1 workqueue LEFT COUNT 10
 | Multiple keys | Yes | Yes |
 | Batch pop (COUNT) | No (pops 1) | Yes |
 | Direction control | Fixed (LEFT for BLPOP, RIGHT for BRPOP) | Configurable |
-| Introduced | Redis 1.0 | Redis 7.0 |
+| Introduced | Redis 2.0 | Redis 7.0 |
 
 ## Performance Considerations
 
