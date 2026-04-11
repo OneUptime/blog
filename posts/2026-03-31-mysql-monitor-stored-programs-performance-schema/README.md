@@ -91,7 +91,7 @@ ORDER BY AVG_TIMER_WAIT DESC;
 
 ## Drilling Into Stored Procedure Internals
 
-To see which statements inside a stored procedure are slow, query the statement history filtered by the procedure's thread:
+To see which statements inside a stored procedure are slow, query the statement history for events nested within another statement (such as a CALL):
 
 ```sql
 SELECT
@@ -100,7 +100,7 @@ SELECT
   ROWS_EXAMINED,
   NESTING_EVENT_TYPE
 FROM performance_schema.events_statements_history_long
-WHERE NESTING_EVENT_TYPE = 'PROCEDURE'
+WHERE NESTING_EVENT_TYPE = 'STATEMENT'
 ORDER BY TIMER_WAIT DESC
 LIMIT 20;
 ```
