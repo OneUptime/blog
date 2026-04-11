@@ -128,7 +128,7 @@ def extend_lock_periodically(lock, interval=10):
     thread.start()
     return stop_event
 
-lock = r.lock('long-job', timeout=30)
+lock = r.lock('long-job', timeout=30, thread_local=False)
 
 with lock:
     stop = extend_lock_periodically(lock, interval=10)
