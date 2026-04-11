@@ -91,7 +91,7 @@ redis-cli INFO replication
 ```
 
 Key metrics:
-- `keyspace_hit_rate` should be above 95%
+- Hit rate (`keyspace_hits / (keyspace_hits + keyspace_misses)`) should be above 95%
 - `mem_fragmentation_ratio` should be 1.0 to 1.5
 - `connected_clients` vs `maxclients`
 - Replication lag on replicas
