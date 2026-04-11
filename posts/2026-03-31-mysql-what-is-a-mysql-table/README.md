@@ -27,7 +27,7 @@ CREATE TABLE users (
 Key elements:
 - `AUTO_INCREMENT` generates a unique integer for each new row
 - `PRIMARY KEY` uniquely identifies each row
-- `NOT NULL` prevents empty values
+- `NOT NULL` prevents NULL values
 - `UNIQUE` enforces uniqueness for a column
 - `DEFAULT` provides a value when none is supplied
 
@@ -111,7 +111,7 @@ ORDER BY DATA_LENGTH DESC;
 -- Copy table structure only (no data)
 CREATE TABLE users_backup LIKE users;
 
--- Copy structure and data
+-- Copy column definitions and data (indexes and constraints are not copied)
 CREATE TABLE users_backup AS SELECT * FROM users;
 
 -- Remove all rows (fast, resets AUTO_INCREMENT)
