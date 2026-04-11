@@ -72,7 +72,6 @@ redis-cli -p 7000 CLUSTER INFO
 ```
 
 ```text
-cluster_enabled:1
 cluster_state:ok
 cluster_slots_assigned:16384
 cluster_slots_ok:16384
