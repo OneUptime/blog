@@ -157,7 +157,7 @@ HSET user:1 name Alice age 30 email alice@example.com
 CONFIG SET hash-max-listpack-entries 128
 CONFIG SET hash-max-listpack-value 64
 
-# Lists use listpack below these thresholds
+# Lists use quicklist with internal listpack nodes; this sets max entries per node
 CONFIG SET list-max-listpack-size 128
 ```
 
