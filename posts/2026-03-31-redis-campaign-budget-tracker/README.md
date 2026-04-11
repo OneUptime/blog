@@ -29,7 +29,7 @@ def create_campaign(campaign_id: str, daily_budget_cents: int):
     r.set(f"campaign:{campaign_id}:reset", 1, ex=seconds_until_midnight())
 
 def seconds_until_midnight() -> int:
-    import time, datetime
+    import datetime
     now = datetime.datetime.now()
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
     return int((midnight - now).total_seconds())
@@ -106,7 +106,7 @@ def within_hourly_pace(campaign_id: str, cost_cents: int) -> bool:
     cap = get_hourly_cap(campaign_id)
     if spent_this_hour + cost_cents > cap:
         return False
-    r.incr(hour_key)
+    r.incrby(hour_key, cost_cents)
     r.expire(hour_key, 7200)
     return True
 ```
