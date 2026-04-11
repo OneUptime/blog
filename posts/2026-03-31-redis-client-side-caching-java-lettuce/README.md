@@ -33,21 +33,21 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LettuceClientSideCache {
 
     private final RedisClient client;
+    private final StatefulRedisConnection<String, String> connection;
     private final CacheFrontend<String, String> cacheFrontend;
     private final ConcurrentHashMap<String, String> localCache;
 
     public LettuceClientSideCache(String redisUri) {
         this.client = RedisClient.create(RedisURI.create(redisUri));
         this.localCache = new ConcurrentHashMap<>();
+        this.connection = client.connect();
 
-        // Create a client-side caching topology
-        ClientSideCaching<String, String> caching = ClientSideCaching.enable(
+        // Create a client-side caching frontend
+        this.cacheFrontend = ClientSideCaching.enable(
             CacheAccessor.forMap(localCache),
-            StatefulRedisConnection<String, String> dataConnection = client.connect(),
+            connection,
             TrackingArgs.Builder.enabled()
         );
-
-        this.cacheFrontend = caching;
     }
 
     public String get(String key) {
@@ -55,14 +55,12 @@ public class LettuceClientSideCache {
         // and register key for tracking
         return cacheFrontend.get(key, () -> {
             // This supplier is called only on cache miss
-            StatefulRedisConnection<String, String> conn = client.connect();
-            return conn.sync().get(key);
+            return connection.sync().get(key);
         });
     }
 
     public void set(String key, String value) {
-        StatefulRedisConnection<String, String> conn = client.connect();
-        conn.sync().set(key, value);
+        connection.sync().set(key, value);
         // Lettuce's tracking will automatically invalidate the local cache
     }
 
@@ -71,6 +69,8 @@ public class LettuceClientSideCache {
     }
 
     public void close() {
+        cacheFrontend.close();
+        connection.close();
         client.shutdown();
     }
 }
@@ -82,8 +82,13 @@ For more control, manage the two connections manually:
 
 ```java
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
+import io.lettuce.core.codec.StringCodec;
+import io.lettuce.core.output.StatusOutput;
+import io.lettuce.core.protocol.CommandArgs;
+import io.lettuce.core.protocol.CommandType;
 import io.lettuce.core.pubsub.*;
 import io.lettuce.core.pubsub.api.sync.RedisPubSubCommands;
 import java.util.*;
@@ -147,6 +152,10 @@ public class ManualTrackingCache {
 
     public void set(String key, String value) {
         dataConn.sync().set(key, value);
+    }
+
+    public int cacheSize() {
+        return cache.size();
     }
 
     public void close() {
