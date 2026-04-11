@@ -18,13 +18,13 @@ Description: Learn how to use VEMB in Redis to retrieve the stored vector embedd
 VEMB key element
 ```
 
-Returns the vector as an array of floating-point values, or an error if the element does not exist.
+Returns the vector as an array of floating-point values, or an empty array/nil if the element does not exist.
 
 ## Basic Usage
 
 ```bash
 # Add a vector
-VADD my_vectors user:1001 VALUES 4 0.1 0.2 0.3 0.4
+VADD my_vectors VALUES 4 0.1 0.2 0.3 0.4 user:1001
 
 # Retrieve the stored embedding
 VEMB my_vectors user:1001
@@ -38,17 +38,17 @@ Note that returned values may differ slightly from the inserted values due to fl
 
 ## Quantization Effects
 
-The precision of returned values depends on the storage format used when adding:
+The precision of returned values depends on the quantization format used when adding:
 
 ```bash
-# FP32 (default) - minimal precision loss
-VADD vectors:fp32 FP32 item1 VALUES 4 0.123456789 0.234567890 0.345678901 0.456789012
-VEMB vectors:fp32 item1
+# NOQUANT - full precision, no quantization
+VADD vectors:noquant VALUES 4 0.123456789 0.234567890 0.345678901 0.456789012 item1 NOQUANT
+VEMB vectors:noquant item1
 # Close to original: ~0.1234..., ~0.2345..., etc.
 
-# BFLOAT16 - lower precision (fewer significant digits)
-VADD vectors:bf16 BFLOAT16 item1 VALUES 4 0.123456789 0.234567890 0.345678901 0.456789012
-VEMB vectors:bf16 item1
+# Q8 - signed 8-bit quantization (lower precision)
+VADD vectors:q8 VALUES 4 0.123456789 0.234567890 0.345678901 0.456789012 item1 Q8
+VEMB vectors:q8 item1
 # Less precise: values rounded to fewer significant digits
 ```
 
@@ -63,7 +63,7 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 def store_embedding(key: str, element_id: str, embedding: list):
     """Store a vector embedding in Redis."""
     dim = len(embedding)
-    cmd = ["VADD", key, element_id, "VALUES", str(dim)] + [str(v) for v in embedding]
+    cmd = ["VADD", key, "VALUES", str(dim)] + [str(v) for v in embedding] + [element_id]
     r.execute_command(*cmd)
 
 def retrieve_embedding(key: str, element_id: str) -> list:
@@ -106,7 +106,7 @@ print(f"Cosine similarity: {sim:.4f}")
 When migrating to a different index or different quantization:
 
 ```python
-def migrate_vectors(source_key: str, dest_key: str, quantization: str = "FP32"):
+def migrate_vectors(source_key: str, dest_key: str, quantization: str = "NOQUANT"):
     """Copy all vectors from one index to another with different settings."""
     # Get all element IDs via VSIM trick or store them separately
     # For this example, assume element IDs are tracked externally
@@ -118,8 +118,9 @@ def migrate_vectors(source_key: str, dest_key: str, quantization: str = "FP32"):
         if embedding:
             dim = len(embedding)
             cmd = (
-                ["VADD", dest_key, quantization, element_id, "VALUES", str(dim)]
+                ["VADD", dest_key, "VALUES", str(dim)]
                 + [str(v) for v in embedding]
+                + [element_id, quantization]
             )
             r.execute_command(*cmd)
             migrated += 1
@@ -162,4 +163,4 @@ def safe_retrieve_embedding(key: str, element_id: str) -> list | None:
 
 ## Summary
 
-`VEMB` retrieves the stored vector embedding for a named element in a Redis Vector Set. Returned values may differ slightly from the inserted values due to floating-point representation and quantization (especially with BFLOAT16). Use VEMB for debugging vector contents, migrating indexes, computing custom similarity metrics outside Redis, and validating embedding roundtrips. For bulk retrieval of all elements, consider tracking element IDs in a separate Redis set alongside the vector index.
+`VEMB` retrieves the stored vector embedding for a named element in a Redis Vector Set. Returned values may differ slightly from the inserted values due to floating-point representation and quantization (especially with Q8 or BIN). Use VEMB for debugging vector contents, migrating indexes, computing custom similarity metrics outside Redis, and validating embedding roundtrips. For bulk retrieval of all elements, consider tracking element IDs in a separate Redis set alongside the vector index.
