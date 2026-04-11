@@ -39,14 +39,14 @@ redis-cli SLOWLOG LEN
 For zero-downtime maintenance, pause new writes before starting:
 
 ```bash
-# Pause client writes for 30 seconds (Redis 7+)
+# Pause client writes for 30 seconds (Redis 6.2+)
 redis-cli CLIENT PAUSE 30000 WRITE
 
 # Verify connections are paused
 redis-cli CLIENT INFO | grep flags
 
-# For older Redis versions, use application-level circuit breakers
-redis-cli CONFIG SET maxclients 0  # reject new connections
+# For older Redis versions, pause all clients (available since Redis 3.0)
+redis-cli CLIENT PAUSE 30000
 ```
 
 ## Configuration Change Maintenance
