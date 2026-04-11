@@ -107,7 +107,7 @@ SELECT NOW(6), SYSDATE(6);
 
 ## Stored Procedures and Triggers
 
-In stored procedures, `NOW()` returns the timestamp when the statement began, while `SYSDATE()` captures the real current time inside loops or multi-step operations:
+In stored procedures, each statement gets its own `NOW()` value (the time that particular statement began executing). In stored **functions** and **triggers**, however, `NOW()` is frozen for the entire call. `SYSDATE()` always captures the real wall-clock time regardless of context:
 
 ```sql
 DELIMITER //
@@ -128,7 +128,7 @@ CALL timing_demo();
 SELECT id, ts_now, ts_sysdate FROM timing_test ORDER BY id;
 ```
 
-After this call, `ts_now` will be the same for all three rows (the procedure's start time), while `ts_sysdate` will differ by approximately 1 second per row.
+After this call, both `ts_now` and `ts_sysdate` will differ by approximately 1 second per row, since each INSERT is a separate statement in the stored procedure and each gets its own `NOW()` value. Note: in a stored **function** or **trigger**, `NOW()` would be frozen for the entire call, making all `ts_now` values identical.
 
 ---
 
