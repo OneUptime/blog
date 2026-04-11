@@ -24,7 +24,7 @@ Open your `Cargo.toml` and add the `redis` crate as a dependency. For async supp
 
 ```toml
 [dependencies]
-redis = { version = "0.25", features = ["tokio-comp"] }
+redis = { version = "1", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -32,7 +32,7 @@ For synchronous usage only, you can omit the `tokio-comp` feature:
 
 ```toml
 [dependencies]
-redis = "0.25"
+redis = "1"
 ```
 
 ## Connecting to Redis Synchronously
@@ -92,8 +92,8 @@ fn main() -> redis::RedisResult<()> {
     let client = redis::Client::open("redis://:mypassword@127.0.0.1:6379/")?;
     let mut con = client.get_connection()?;
 
-    // With TLS (requires tls feature in Cargo.toml)
-    // redis = { version = "0.25", features = ["tls"] }
+    // With TLS (requires tls-native-tls feature in Cargo.toml)
+    // redis = { version = "1", features = ["tls-native-tls"] }
     let tls_client = redis::Client::open("rediss://:mypassword@myhost.example.com:6380/")?;
     let mut tls_con = tls_client.get_connection()?;
 
@@ -104,10 +104,10 @@ fn main() -> redis::RedisResult<()> {
 
 ## Setting Connection Timeouts
 
-You can customize connection parameters using `ConnectionInfo`:
+You can set a connection timeout to avoid hanging indefinitely:
 
 ```rust
-use redis::{Client, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
+use redis::Client;
 use std::time::Duration;
 
 fn main() -> redis::RedisResult<()> {
