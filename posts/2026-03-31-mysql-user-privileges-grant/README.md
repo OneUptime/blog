@@ -22,8 +22,8 @@ flowchart TB
 
     G --> D
     D --> T
+    D --> R
     T --> C
-    T --> R
 ```
 
 A user's effective privilege for any operation is the union of privileges from all levels. Global privileges apply to all databases; database-level privileges apply to all tables in that database.
@@ -78,7 +78,7 @@ GRANT SELECT ON myapp_db.* TO 'reporting_user'@'%';
 -- Read and write, no DDL
 GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_db.* TO 'appuser'@'%';
 
--- Allow user to create stored procedures and views in the database
+-- Allow user to create stored procedures and functions in the database
 GRANT CREATE ROUTINE, ALTER ROUTINE, EXECUTE ON myapp_db.* TO 'dev_user'@'localhost';
 ```
 
@@ -208,4 +208,4 @@ In MySQL 8.0+, `FLUSH PRIVILEGES` is only required if you manually edited the `m
 
 ## Summary
 
-MySQL's `GRANT` statement assigns specific privileges to users at global, database, table, or column level. Following the least-privilege principle, application users should receive only the operations they need (SELECT, INSERT, UPDATE, DELETE) on the specific databases they access. Administrative functions like RELOAD, REPLICATION CLIENT, and SUPER should be reserved for dedicated administrative accounts.
+MySQL's `GRANT` statement assigns specific privileges to users at global, database, table, or column level. Following the least-privilege principle, application users should receive only the operations they need (SELECT, INSERT, UPDATE, DELETE) on the specific databases they access. Administrative privileges like RELOAD and REPLICATION CLIENT should be reserved for dedicated administrative accounts.
