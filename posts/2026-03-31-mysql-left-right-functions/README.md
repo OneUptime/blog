@@ -89,11 +89,11 @@ SELECT filename
 FROM documents
 WHERE RIGHT(filename, 4) = '.pdf';
 
--- Better alternative using LIKE (can use index on the left side)
+-- Alternative using LIKE (note: leading wildcard still prevents index use)
 SELECT filename FROM documents WHERE filename LIKE '%.pdf';
 ```
 
-Note: `RIGHT()` on a column in a `WHERE` clause prevents index use. Use `LIKE` for suffix/prefix searches where performance matters.
+Note: Using `LEFT()` or `RIGHT()` on a column in a `WHERE` clause prevents index use. `LIKE` with a trailing wildcard (e.g. `LIKE 'SKU-%'`) can use an index, but `LIKE` with a leading wildcard (e.g. `LIKE '%.pdf'`) cannot.
 
 ## Extracting parts of a fixed-format code
 
@@ -101,7 +101,7 @@ Note: `RIGHT()` on a column in a `WHERE` clause prevents index use. Use `LIKE` f
 -- Format: 'REG-DEPT-SEQ' e.g. 'US-SALES-0042'
 CREATE TABLE records (
     record_id INT PRIMARY KEY,
-    code      CHAR(12)
+    code      CHAR(13)
 );
 
 INSERT INTO records VALUES (1, 'US-SALES-0042'), (2, 'UK-MKTG-0017');
@@ -119,7 +119,7 @@ FROM records;
 -- Extract the middle part from 'US-SALES-0042': 'SALES'
 SELECT
     code,
-    SUBSTRING(code, 4, 4) AS department  -- better for mid-string extracts
+    SUBSTRING(code, 4, 5) AS department  -- better for mid-string extracts
 FROM records;
 ```
 
