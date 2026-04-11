@@ -178,11 +178,7 @@ setInterval(simulateGPS, 2000);
 async function recordRouteHistory(vehicleId, latitude, longitude, timestamp) {
   const streamKey = `vehicle:${vehicleId}:route`;
 
-  await redis.xadd(streamKey, '*', {
-    lat: latitude,
-    lon: longitude,
-    ts: timestamp
-  });
+  await redis.xadd(streamKey, '*', 'lat', latitude, 'lon', longitude, 'ts', timestamp);
 
   // Trim to last 1000 points per vehicle
   await redis.xtrim(streamKey, 'MAXLEN', '~', 1000);
@@ -192,11 +188,15 @@ async function getRouteHistory(vehicleId, count = 100) {
   const streamKey = `vehicle:${vehicleId}:route`;
   const entries = await redis.xrevrange(streamKey, '+', '-', 'COUNT', count);
 
-  return entries.map(([id, fields]) => ({
-    timestamp: parseInt(fields.ts),
-    latitude: parseFloat(fields.lat),
-    longitude: parseFloat(fields.lon)
-  })).reverse();
+  return entries.map(([id, fields]) => {
+    const data = {};
+    for (let i = 0; i < fields.length; i += 2) data[fields[i]] = fields[i + 1];
+    return {
+      timestamp: parseInt(data.ts),
+      latitude: parseFloat(data.lat),
+      longitude: parseFloat(data.lon)
+    };
+  }).reverse();
 }
 ```
 
@@ -204,7 +204,6 @@ async function getRouteHistory(vehicleId, count = 100) {
 
 ```python
 import redis
-import json
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
