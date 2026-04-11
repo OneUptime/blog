@@ -134,7 +134,7 @@ redis-cli OBJECT ENCODING strset
 # Adding a non-integer to an intset converts it
 redis-cli SADD intset "string"
 redis-cli OBJECT ENCODING intset
-# hashtable
+# listpack (count is still below set-max-listpack-entries)
 ```
 
 ## Sorted Set Encodings
