@@ -48,6 +48,7 @@ CREATE TABLE mysql_monitoring.performance_baseline (
 
 MYSQL="mysql -u monitor_user -p${MYSQL_MONITOR_PASSWORD} -se"
 DB="mysql_monitoring"
+PREV_FILE="/tmp/mysql_baseline_prev_questions"
 
 # Capture current values
 QUESTIONS=$(  $MYSQL "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Questions'")
@@ -57,13 +58,26 @@ BP_READS=$(     $MYSQL "SELECT VARIABLE_VALUE FROM performance_schema.global_sta
 BP_REQUESTS=$(  $MYSQL "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Innodb_buffer_pool_read_requests'")
 SLOW=$(         $MYSQL "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Slow_queries'")
 
+# Calculate QPS from delta (Questions is a cumulative counter)
+PREV_QUESTIONS=0
+if [ -f "$PREV_FILE" ]; then
+    PREV_QUESTIONS=$(cat "$PREV_FILE")
+fi
+echo "$QUESTIONS" > "$PREV_FILE"
+
+if [ "$PREV_QUESTIONS" -gt 0 ]; then
+    QPS=$(echo "scale=2; ($QUESTIONS - $PREV_QUESTIONS) / 300" | bc)
+else
+    QPS=0
+fi
+
 # Calculate hit rate
 HIT_RATE=$(echo "scale=2; (1 - $BP_READS / $BP_REQUESTS) * 100" | bc)
 
 # Insert into baseline table
 $MYSQL "INSERT INTO ${DB}.performance_baseline
   (day_of_week, hour_of_day, qps, connections, buffer_hit_rate, threads_running, slow_queries)
-  VALUES (DAYOFWEEK(NOW()), HOUR(NOW()), $QUESTIONS/300, $CONNECTIONS, $HIT_RATE, $THREADS_RUN, $SLOW)"
+  VALUES (DAYOFWEEK(NOW()), HOUR(NOW()), $QPS, $CONNECTIONS, $HIT_RATE, $THREADS_RUN, $SLOW)"
 
 echo "Baseline captured at $(date)"
 ```
