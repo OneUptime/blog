@@ -200,15 +200,15 @@ for enc, count in sorted(encoding_counts.items(), key=lambda x: -x[1]):
 
 ## Forcing Compact Encodings
 
-If your application stores integers but as strings, convert them:
+If your application stores numeric values as formatted strings, store plain integers instead:
 
 ```bash
-# Before: stored as raw string
-SET user:1:age "25"
+# Before: stored as a formatted string (not parseable as an integer)
+SET user:1:age "25 years"
 OBJECT ENCODING user:1:age
 # embstr
 
-# After: store as integer
+# After: store as plain integer
 SET user:1:age 25
 OBJECT ENCODING user:1:age
 # int
