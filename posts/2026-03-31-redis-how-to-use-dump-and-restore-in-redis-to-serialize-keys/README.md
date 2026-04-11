@@ -73,7 +73,7 @@ def migrate_key(key, source_client, dest_client, replace=False):
 
     # Get the remaining TTL in milliseconds
     pttl = source_client.pttl(key)
-    if pttl == -1:
+    if pttl < 0:
         pttl = 0  # No expiry
 
     # Restore in destination
@@ -157,35 +157,37 @@ batch_migrate(pattern='user:*')
 ```javascript
 const { createClient } = require('redis');
 
-const source = createClient({ socket: { host: 'localhost', port: 6379 } });
-const dest = createClient({ socket: { host: 'localhost', port: 6380 } });
+(async () => {
+  const source = createClient({ socket: { host: 'localhost', port: 6379 } });
+  const dest = createClient({ socket: { host: 'localhost', port: 6380 } });
 
-await source.connect();
-await dest.connect();
+  await source.connect();
+  await dest.connect();
 
-async function migrateKey(key) {
-  // Serialize from source
-  const serialized = await source.dump(key);
-  if (!serialized) {
-    console.log(`Key '${key}' not found`);
-    return false;
+  async function migrateKey(key) {
+    // Serialize from source
+    const serialized = await source.dump(key);
+    if (!serialized) {
+      console.log(`Key '${key}' not found`);
+      return false;
+    }
+
+    // Get TTL
+    const pttl = await source.pTTL(key);
+    const ttl = pttl < 0 ? 0 : pttl;
+
+    // Restore to destination
+    await dest.restore(key, ttl, serialized, { REPLACE: true });
+    console.log(`Migrated '${key}' with TTL ${ttl}ms`);
+    return true;
   }
 
-  // Get TTL
-  const pttl = await source.pTTL(key);
-  const ttl = pttl < 0 ? 0 : pttl;
+  await source.set('config', 'value1');
+  await source.lPush('queue', ['task1', 'task2']);
 
-  // Restore to destination
-  await dest.restore(key, ttl, serialized, { REPLACE: true });
-  console.log(`Migrated '${key}' with TTL ${ttl}ms`);
-  return true;
-}
-
-await source.set('config', 'value1');
-await source.lPush('queue', ['task1', 'task2']);
-
-await migrateKey('config');
-await migrateKey('queue');
+  await migrateKey('config');
+  await migrateKey('queue');
+})();
 ```
 
 ## Key-Level Backup
