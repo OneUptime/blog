@@ -21,7 +21,6 @@ CACHES = {
         "LOCATION": "redis://127.0.0.1:6379/0",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "MAX_ENTRIES": 10000,
         },
         "KEY_PREFIX": "default",
         "TIMEOUT": 300,
@@ -32,7 +31,6 @@ CACHES = {
         "LOCATION": "redis://127.0.0.1:6379/1",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "MAX_ENTRIES": 50000,
         },
         "KEY_PREFIX": "sess",
         "TIMEOUT": 86400,  # 24 hours
@@ -43,10 +41,9 @@ CACHES = {
         "LOCATION": "redis://127.0.0.1:6379/2",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "MAX_ENTRIES": 5000,
-            "DEFAULT_TIMEOUT": 60,
         },
         "KEY_PREFIX": "api",
+        "TIMEOUT": 60,
     },
     # Rate limiting counters
     "rate_limit": {
@@ -85,10 +82,8 @@ rl_cache.incr("hits:user:42")
 ## Applying Specific Cache to a View
 
 ```python
-from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 
-# This respects CACHE_MIDDLEWARE_ALIAS, not per-cache
 @cache_page(300, cache="api")
 def product_list(request):
     ...
