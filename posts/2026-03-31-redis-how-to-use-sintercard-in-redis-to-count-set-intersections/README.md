@@ -113,11 +113,11 @@ r.sadd('friends:alice', 'bob', 'charlie', 'dave', 'eve')
 r.sadd('friends:bob', 'alice', 'charlie', 'frank', 'grace')
 
 # Count mutual friends
-mutual_count = r.sintercard(2, 'friends:alice', 'friends:bob')
+mutual_count = r.sintercard(2, ['friends:alice', 'friends:bob'])
 print(f"Alice and Bob have {mutual_count} mutual friend(s)")  # 1 (charlie)
 
 # Check if they share at least 2 mutual friends
-has_enough = r.sintercard(2, 'friends:alice', 'friends:bob', limit=2)
+has_enough = r.sintercard(2, ['friends:alice', 'friends:bob'], limit=2)
 print(f"Share at least 2 friends: {has_enough >= 2}")  # False
 ```
 
@@ -134,11 +134,11 @@ r.sadd('segment:tech', 'u2', 'u3', 'u6', 'u7', 'u8')
 r.sadd('segment:premium', 'u3', 'u4', 'u6', 'u9', 'u10')
 
 # Overlap between sports and tech fans
-sports_tech = r.sintercard(2, 'segment:sports', 'segment:tech')
+sports_tech = r.sintercard(2, ['segment:sports', 'segment:tech'])
 print(f"Sports+Tech overlap: {sports_tech}")  # 2
 
 # All three segments
-all_three = r.sintercard(3, 'segment:sports', 'segment:tech', 'segment:premium')
+all_three = r.sintercard(3, ['segment:sports', 'segment:tech', 'segment:premium'])
 print(f"All three segments: {all_three}")  # 1 (u3 only)
 
 # Total users
@@ -156,7 +156,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def similarity_score(item1_key, item2_key):
     """Jaccard similarity based on tag intersection."""
-    intersection = r.sintercard(2, item1_key, item2_key)
+    intersection = r.sintercard(2, [item1_key, item2_key])
     union_size = r.sunionstore('__tmp__', item1_key, item2_key)
     r.delete('__tmp__')
     if union_size == 0:
