@@ -46,13 +46,13 @@ SCRIPT LOAD "return redis.call('SET', KEYS[1], ARGV[1])"
 ```
 
 ```text
-"2fa2b029f72572e803ff55a6a2a3f4a5b44060d6"
+"d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37"
 ```
 
 ### Step 2 - call the script using EVALSHA
 
 ```redis
-EVALSHA 2fa2b029f72572e803ff55a6a2a3f4a5b44060d6 1 mykey "hello"
+EVALSHA d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37 1 mykey "hello"
 ```
 
 ```text
@@ -106,7 +106,7 @@ EVALSHA abc123def456abc123def456abc123def456abc1 1 rate:user:42 10 60
 If the server was restarted or SCRIPT FLUSH was called:
 
 ```redis
-EVALSHA 2fa2b029f72572e803ff55a6a2a3f4a5b44060d6 1 mykey "value"
+EVALSHA d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37 1 mykey "value"
 ```
 
 ```text
@@ -132,7 +132,7 @@ echo "$result"
 ### Verify a script is loaded with SCRIPT EXISTS
 
 ```redis
-SCRIPT EXISTS 2fa2b029f72572e803ff55a6a2a3f4a5b44060d6
+SCRIPT EXISTS d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37
 ```
 
 ```text
