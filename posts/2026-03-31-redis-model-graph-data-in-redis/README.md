@@ -10,7 +10,7 @@ Description: Learn how to model graph data structures in Redis using hashes, set
 
 ## Why Model Graphs in Redis
 
-Graph data models are useful for social networks, recommendation engines, dependency tracking, and access control trees. Redis does not have a native graph type (unless you use RedisGraph), but you can effectively model graphs using its core data structures - hashes for node properties, sets for adjacency lists, and sorted sets for weighted edges.
+Graph data models are useful for social networks, recommendation engines, dependency tracking, and access control trees. Redis does not have a native graph type, but you can effectively model graphs using its core data structures - hashes for node properties, sets for adjacency lists, and sorted sets for weighted edges.
 
 ## Core Data Structures for Graphs
 
@@ -184,15 +184,15 @@ def get_suggestions(user_id):
     return suggestions
 
 follow(1, 2)
-follow(1, 3)
 follow(2, 3)
+follow(3, 4)
 print("Suggestions for user 1:", get_suggestions("1"))
 ```
 
 ## Memory Considerations
 
 - Each set entry costs approximately 50-100 bytes overhead
-- For dense graphs (millions of edges), consider using RedisGraph or a dedicated graph database
+- For dense graphs (millions of edges), consider using a dedicated graph database like FalkorDB or Neo4j
 - Use EXPIRE on temporary subgraph results computed by your application
 
 ## Summary
