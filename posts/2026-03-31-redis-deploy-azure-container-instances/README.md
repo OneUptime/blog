@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Azure, Container, Deployment, Cloud
 
-Description: Deploy Redis on Azure Container Instances with persistent Azure Files storage, Key Vault secrets, and virtual network integration.
+Description: Deploy Redis on Azure Container Instances with persistent Azure Files storage, secure parameters, and virtual network integration.
 
 ---
 
-Azure Container Instances (ACI) lets you run containers without managing VMs or Kubernetes clusters. For lightweight Redis deployments on Azure, ACI provides a fast path to a running instance with persistent storage through Azure Files and secrets management through Key Vault.
+Azure Container Instances (ACI) lets you run containers without managing VMs or Kubernetes clusters. For lightweight Redis deployments on Azure, ACI provides a fast path to a running instance with persistent storage through Azure Files and virtual network isolation.
 
 ## Create the Azure Files Share
 
@@ -78,8 +78,14 @@ For repeatable deployments, use an ARM template:
     "redisPassword": {
       "type": "securestring"
     },
+    "storageAccountName": {
+      "type": "string"
+    },
     "storageAccountKey": {
       "type": "securestring"
+    },
+    "fileShareName": {
+      "type": "string"
     }
   },
   "resources": [
@@ -104,7 +110,13 @@ For repeatable deployments, use an ARM template:
               "ports": [{"port": 6379, "protocol": "TCP"}],
               "resources": {
                 "requests": {"cpu": 0.5, "memoryInGB": 1.0}
-              }
+              },
+              "volumeMounts": [
+                {
+                  "name": "redis-data",
+                  "mountPath": "/data"
+                }
+              ]
             }
           }
         ],
@@ -113,7 +125,17 @@ For repeatable deployments, use an ARM template:
         "ipAddress": {
           "type": "Private",
           "ports": [{"port": 6379, "protocol": "TCP"}]
-        }
+        },
+        "volumes": [
+          {
+            "name": "redis-data",
+            "azureFile": {
+              "shareName": "[parameters('fileShareName')]",
+              "storageAccountName": "[parameters('storageAccountName')]",
+              "storageAccountKey": "[parameters('storageAccountKey')]"
+            }
+          }
+        ]
       }
     }
   ]
