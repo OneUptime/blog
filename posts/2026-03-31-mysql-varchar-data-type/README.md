@@ -65,8 +65,8 @@ SELECT v, LENGTH(v) FROM sp_test;
 ```sql
 -- Check the maximum row size for your character set
 CREATE TABLE wide_row (
-    col1 VARCHAR(16383) CHARACTER SET utf8mb4,
-    -- Remaining row bytes may be very small after this
+    col1 VARCHAR(16382) CHARACTER SET utf8mb4,
+    -- Remaining row bytes are very small after this
     col2 TINYINT
 );
 ```
