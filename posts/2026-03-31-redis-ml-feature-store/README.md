@@ -54,7 +54,7 @@ def write_user_features(df: pd.DataFrame):
 import numpy as np
 
 FEATURE_ORDER = [
-    "age_bucket", "account_age_days", "total_orders",
+    "account_age_days", "total_orders",
     "avg_order_value", "days_since_last_order"
 ]
 
@@ -97,6 +97,8 @@ def get_features_batch(user_ids: list) -> dict:
 For features that change frequently (last click, cart value), update them inline:
 
 ```python
+import time
+
 def update_cart_value(user_id: int, cart_value: float):
     r.hset(f"features:user:{user_id}", "cart_value", str(cart_value))
     r.hset(f"features:user:{user_id}", "last_activity_ts",
