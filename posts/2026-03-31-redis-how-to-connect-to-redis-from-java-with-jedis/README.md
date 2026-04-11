@@ -63,6 +63,7 @@ public class RedisBasicExample {
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisClientConfig;
 import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.HostAndPort;
 
 public class SecureRedisExample {
     public static void main(String[] args) {
@@ -94,6 +95,7 @@ Creating a new Jedis connection for each request is expensive. Use `JedisPool` f
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 import redis.clients.jedis.Jedis;
+import java.time.Duration;
 
 public class JedisPoolExample {
     private static JedisPool pool;
