@@ -79,7 +79,7 @@ CREATE USER 'replica'@'192.168.1.%' IDENTIFIED BY 'ReplicaPass123!';
 -- Assign roles to users
 GRANT 'app_readwrite' TO 'alice'@'%';
 GRANT 'app_readonly' TO 'bob'@'%';
-GRANT 'app_admin' TO 'charlie'@'%';
+GRANT 'app_admin', 'db_backup' TO 'charlie'@'%';
 GRANT 'db_backup' TO 'backup_agent'@'localhost';
 GRANT 'db_replication' TO 'replica'@'192.168.1.%';
 
