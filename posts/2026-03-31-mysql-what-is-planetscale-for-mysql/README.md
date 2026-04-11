@@ -54,7 +54,7 @@ pscale connect myapp main --port 3309
 mysql -h 127.0.0.1 -P 3309 -u root
 ```
 
-For production, use a service token:
+For production, create a database password:
 
 ```python
 import mysql.connector
@@ -126,10 +126,10 @@ datasource db {
 PlanetScale provides built-in query analytics:
 
 ```bash
-# View top queries via CLI
-pscale query myapp main
+# Open an interactive MySQL shell via CLI
+pscale shell myapp main
 
-# Or use the web dashboard at app.planetscale.com
+# Or use the web dashboard at app.planetscale.com for query insights
 ```
 
 The insights dashboard shows:
@@ -142,15 +142,9 @@ The insights dashboard shows:
 
 PlanetScale uses Vitess which has some MySQL compatibility constraints:
 
-- Foreign keys are not supported (use application-level referential integrity)
+- Foreign key constraints are supported but must be enabled in database settings (GA since February 2024); cross-shard foreign keys are not yet supported
 - Some MySQL-specific features behave differently
 - Connection pooling is built-in but connection limits vary by plan
-
-```sql
--- Foreign keys are not enforced
--- Use this instead in your application code
--- Or use Vitess foreign key support (added in newer versions)
-```
 
 ## Summary
 
