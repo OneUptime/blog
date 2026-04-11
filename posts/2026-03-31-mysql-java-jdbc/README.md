@@ -57,9 +57,9 @@ public class DatabaseConfig {
     static {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl("jdbc:mysql://localhost:3306/myapp"
-                        + "?serverTimezone=UTC"
-                        + "&characterEncoding=utf8mb4"
-                        + "&useSSL=false");
+                        + "?connectionTimeZone=UTC"
+                        + "&characterEncoding=UTF-8"
+                        + "&sslMode=DISABLED");
         config.setUsername("appuser");
         config.setPassword("secret");
         config.setMaximumPoolSize(10);
@@ -247,7 +247,7 @@ public List<Map<String, Object>> listProducts() throws SQLException {
 - Always use `PreparedStatement` with `?` placeholders - never concatenate user input into SQL strings.
 - Use try-with-resources (`try (Connection ...)`) to guarantee that connections, statements, and result sets are closed.
 - Use HikariCP in production; avoid `DriverManager.getConnection()` per request - it has no pooling.
-- Set `serverTimezone=UTC` in the JDBC URL to prevent timezone mismatches.
+- Set `connectionTimeZone=UTC` in the JDBC URL to prevent timezone mismatches.
 - Set `autoCommit = false` for multi-statement transactions; remember to restore it in a `finally` block.
 - Use `executeBatch()` for bulk inserts - it is dramatically faster than individual `executeUpdate()` calls.
 
