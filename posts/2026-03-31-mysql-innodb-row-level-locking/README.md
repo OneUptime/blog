@@ -68,16 +68,17 @@ Always ensure columns used in WHERE clauses of DML statements have indexes to av
 Use the performance_schema to inspect current locks:
 
 ```sql
--- View current lock waits
+-- View current lock waits with actual blocking relationships
 SELECT
     r.trx_id AS waiting_trx_id,
     r.trx_mysql_thread_id AS waiting_thread,
     b.trx_id AS blocking_trx_id,
     b.trx_mysql_thread_id AS blocking_thread
-FROM information_schema.INNODB_TRX AS r
-JOIN information_schema.INNODB_TRX AS b
-    ON r.trx_id != b.trx_id
-WHERE r.trx_state = 'LOCK WAIT';
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.INNODB_TRX r
+    ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+JOIN information_schema.INNODB_TRX b
+    ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID;
 ```
 
 ```sql
