@@ -118,8 +118,8 @@ LINES TERMINATED BY '\n';
 
 ```text
 "id","name","category","price","stock"
-1,"Laptop Pro","Electronics",1299.99,45
-2,"Wireless Mouse","Electronics",29.99,200
+"1","Laptop Pro","Electronics","1299.99","45"
+"2","Wireless Mouse","Electronics","29.99","200"
 ...
 ```
 
