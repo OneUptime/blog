@@ -56,7 +56,7 @@ batched_key_access      - BKA join algorithm (usually off by default)
 materialization         - Materialize subquery results as temporary tables
 semijoin                - Optimize IN/EXISTS subqueries as semijoins
 derived_merge           - Merge derived tables into outer query
-hash_join               - Use hash join for non-indexed joins (MySQL 8.0+)
+hash_join               - Use hash join for non-indexed joins (MySQL 8.0.18–8.0.19 only; removed in 8.0.20)
 ```
 
 ## Enabling or Disabling Specific Flags
@@ -65,11 +65,11 @@ hash_join               - Use hash join for non-indexed joins (MySQL 8.0+)
 -- Enable batched key access (often improves range scans with joins)
 SET GLOBAL optimizer_switch = 'batched_key_access=on';
 
--- Disable block nested loop (forces hash join or index use)
+-- Disable block nested loop (in MySQL 8.0.20+, this also disables hash join)
 SET GLOBAL optimizer_switch = 'block_nested_loop=off';
 
--- Multiple changes at once
-SET SESSION optimizer_switch = 'mrr=on,mrr_cost_based=on,batched_key_access=on';
+-- Multiple changes at once (mrr_cost_based=off is required for BKA to work)
+SET SESSION optimizer_switch = 'mrr=on,mrr_cost_based=off,batched_key_access=on';
 ```
 
 Changes can be made at the session level (affects only current connection) or globally (affects new connections):
@@ -95,7 +95,7 @@ WHERE o.status = 'pending'
   AND c.region = 'US';
 
 -- If the optimizer chooses a bad plan, try enabling BKA
-SET SESSION optimizer_switch = 'batched_key_access=on,mrr=on';
+SET SESSION optimizer_switch = 'batched_key_access=on,mrr=on,mrr_cost_based=off';
 
 -- Re-check the plan
 EXPLAIN SELECT o.id, c.name
@@ -115,8 +115,8 @@ SELECT /*+ INDEX(orders idx_status) */ id, customer_id
 FROM orders
 WHERE status = 'pending';
 
--- Disable hash join for a specific query
-SELECT /*+ NO_HASH_JOIN(o, c) */ o.id, c.name
+-- Disable hash join for a specific query (MySQL 8.0.18–8.0.19 only; use NO_BNL in 8.0.20+)
+SELECT /*+ NO_BNL(o, c) */ o.id, c.name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id;
 
@@ -134,9 +134,9 @@ FROM (
 
 ```text
 [mysqld]
-optimizer_switch = "index_merge=on,batched_key_access=on,mrr=on,mrr_cost_based=on"
+optimizer_switch = "index_merge=on,batched_key_access=on,mrr=on,mrr_cost_based=off"
 ```
 
 ## Summary
 
-MySQL `optimizer_switch` provides fine-grained control over query optimization strategies. Use session-level changes to test optimizer flag impacts before applying globally. For production, prefer optimizer hints over global changes when only specific queries need different behavior. Key flags to consider enabling are `batched_key_access` with `mrr=on` for join-heavy workloads, and `hash_join=on` (MySQL 8.0) for large non-indexed joins. Always validate execution plan changes with EXPLAIN before deploying to production.
+MySQL `optimizer_switch` provides fine-grained control over query optimization strategies. Use session-level changes to test optimizer flag impacts before applying globally. For production, prefer optimizer hints over global changes when only specific queries need different behavior. Key flags to consider enabling are `batched_key_access` with `mrr=on` and `mrr_cost_based=off` for join-heavy workloads. Hash joins are available by default in MySQL 8.0.18+ for large non-indexed joins (no optimizer_switch flag needed in 8.0.20+). Always validate execution plan changes with EXPLAIN before deploying to production.
