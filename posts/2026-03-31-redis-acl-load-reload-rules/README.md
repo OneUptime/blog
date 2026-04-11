@@ -151,14 +151,16 @@ Using `ACL LOAD` in a deployment pipeline:
 ACL_FILE=/etc/redis/users.acl
 REDIS_CLI="redis-cli -a adminpassword"
 
-# Validate ACL file syntax before deploying
-$REDIS_CLI --pipe-mode < /dev/null
-
 # Copy the new ACL file
 cp /deploy/users.acl $ACL_FILE
 
-# Reload into Redis
-$REDIS_CLI ACL LOAD
+# Reload into Redis (atomic: if the file has errors, in-memory ACL is unchanged)
+if $REDIS_CLI ACL LOAD; then
+    echo "ACL reloaded successfully"
+else
+    echo "ACL LOAD failed — check file syntax" >&2
+    exit 1
+fi
 
 # Verify
 $REDIS_CLI ACL LIST
