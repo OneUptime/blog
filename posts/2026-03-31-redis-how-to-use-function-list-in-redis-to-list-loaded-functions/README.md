@@ -106,24 +106,24 @@ await client.functionLoad(`#!lua name=helpers
 local function double(keys, args)
   return tonumber(args[1]) * 2
 end
-redis.register_function('double', helpers)
+redis.register_function('double', double)
 `, { REPLACE: true });
 
 // List all functions
 const libraries = await client.functionList();
 console.log('Libraries:');
 for (const lib of libraries) {
-  console.log(`  ${lib.libraryName} (${lib.engine})`);
+  console.log(`  ${lib.library_name} (${lib.engine})`);
   for (const fn of lib.functions) {
     console.log(`    - ${fn.name}`);
   }
 }
 
 // List with source code
-const withCode = await client.functionList({ WITHCODE: true });
+const withCode = await client.functionListWithCode();
 for (const lib of withCode) {
-  console.log(`\nLibrary: ${lib.libraryName}`);
-  console.log(`Code:\n${lib.libraryCode}`);
+  console.log(`\nLibrary: ${lib.library_name}`);
+  console.log(`Code:\n${lib.library_code}`);
 }
 ```
 
