@@ -131,7 +131,7 @@ import redis
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Get malloc stats
-stats = r.memory('malloc-stats')
+stats = r.memory_malloc_stats()
 print(stats)
 
 # Parse key metrics from the output
