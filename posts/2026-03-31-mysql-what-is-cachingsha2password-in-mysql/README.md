@@ -23,18 +23,19 @@ The "caching" part refers to an in-memory cache that stores successful authentic
 ### First Connection (No Cache Entry)
 
 1. Client connects and requests authentication
-2. Server sends a challenge
-3. Client hashes password with SHA-256 and sends it
-4. If no TLS/SSL, client must provide the RSA public key
-5. Password is transmitted RSA-encrypted over the network
-6. Successful auth is cached server-side
+2. Server sends a nonce
+3. Client sends a SHA-256-based scramble of the password
+4. Server has no cache entry, so it requests full authentication
+5. If TLS/SSL is active, client sends the password in cleartext over the encrypted channel
+6. If no TLS/SSL, client obtains the server RSA public key and sends the RSA-encrypted password
+7. Server verifies the password and caches the hash for future fast authentication
 
 ### Subsequent Connections (Cached)
 
 1. Client connects
 2. Server challenges with a nonce
-3. Client responds with SHA-256(nonce + cached_hash)
-4. No RSA exchange needed - fast path
+3. Client sends the same SHA-256-based scramble of the password
+4. Server verifies against its cached hash - no full authentication needed
 
 ## Creating a User with caching_sha2_password
 
