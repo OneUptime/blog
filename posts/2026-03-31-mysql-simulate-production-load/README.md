@@ -12,9 +12,9 @@ Description: Learn how to simulate realistic production-like load on MySQL using
 
 Benchmarks like sysbench and HammerDB use synthetic workloads that may not match your application's actual query mix. Simulating production load means capturing real queries and replaying them at scale, which reveals how your specific schema and access patterns behave under stress.
 
-## Approach 1 - Replay with pt-query-digest and mk-query-digest
+## Approach 1 - Capture and Analyze with pt-query-digest
 
-Capture slow and general queries from the production server, then replay them on the target:
+Capture general queries from the production server, then analyze them to understand the workload:
 
 ```bash
 # Step 1: Enable general query log on production (briefly)
@@ -29,7 +29,7 @@ mysql -u root -p -e "
 mysql -u root -p -e "SET GLOBAL general_log = OFF;"
 
 # Step 3: Analyze the captured workload
-pt-query-digest /tmp/mysql_general.log > query_report.txt
+pt-query-digest --type=genlog /tmp/mysql_general.log > query_report.txt
 ```
 
 ## Approach 2 - Custom Load Script with Python
@@ -135,11 +135,11 @@ SELECT
 ```bash
 # Snapshot key metrics every 5 seconds during the test
 while true; do
-  mysql -u root -p"rootpass" -e "
+  mysql -u root -p"rootpass" -N -e "
     SHOW GLOBAL STATUS LIKE 'Queries';
     SHOW GLOBAL STATUS LIKE 'Threads_running';
     SHOW GLOBAL STATUS LIKE 'Innodb_row_lock_waits';
-  " 2>/dev/null | grep -E "Value"
+  " 2>/dev/null
   sleep 5
 done
 ```
