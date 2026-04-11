@@ -61,12 +61,6 @@ Save this as `mylib.lua`.
 ## Step 2 - Load the Library into Redis
 
 ```bash
-redis-cli FUNCTION LOAD "#!lua name=mylib\n$(cat mylib.lua | tail -n +2)"
-```
-
-Or use redis-cli with a heredoc:
-
-```bash
 cat mylib.lua | redis-cli -x FUNCTION LOAD
 ```
 
@@ -177,12 +171,11 @@ redis.register_function{
     callback = function(keys, args)
         -- implementation
     end,
-    description = 'SET a key with TTL only if it does not exist',
-    flags = { 'no-writes' }  -- Mark as read-only if applicable
+    description = 'SET a key with TTL only if it does not exist'
 }
 ```
 
-Available flags: `no-writes`, `allow-oom`, `allow-stale`, `no-cluster`.
+Available flags: `no-writes`, `allow-oom`, `allow-stale`, `no-cluster`, `allow-cross-slot-keys`.
 
 ## Step 7 - Delete and Dump Libraries
 
