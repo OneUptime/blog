@@ -29,7 +29,7 @@ Before using TOPK.ADD, initialize the structure:
 TOPK.RESERVE trending:products 10
 
 # With custom accuracy parameters
-# width=50 (counter width), depth=5 (number of counters), decay=0.9
+# width=50 (counters per array), depth=5 (number of arrays), decay=0.9
 TOPK.RESERVE accurate:trending 10 50 5 0.9
 ```
 
