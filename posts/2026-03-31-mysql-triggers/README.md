@@ -14,12 +14,14 @@ A trigger is a stored program that MySQL automatically executes when a specified
 
 ```mermaid
 graph TD
-    A[Application: INSERT / UPDATE / DELETE] --> B[MySQL executes the DML]
-    B --> C{Trigger defined?}
-    C -->|BEFORE trigger| D[Run trigger logic BEFORE applying change]
-    C -->|AFTER trigger| E[Apply change, then run trigger logic]
-    D --> B
-    E --> F[Continue]
+    A[Application: INSERT / UPDATE / DELETE] --> B{BEFORE trigger defined?}
+    B -->|Yes| C[Run BEFORE trigger logic]
+    B -->|No| D[Apply the DML change]
+    C --> D
+    D --> E{AFTER trigger defined?}
+    E -->|Yes| F[Run AFTER trigger logic]
+    E -->|No| G[Continue]
+    F --> G
 ```
 
 ## Syntax
@@ -220,7 +222,7 @@ DROP TRIGGER IF EXISTS trg_salary_after_update;
 ## Best Practices
 
 - Keep trigger logic simple and fast - triggers execute synchronously within the originating transaction.
-- Avoid recursive triggers (a trigger firing another trigger on the same table) unless `innodb_autoinc_lock_mode` and `trigger_recursion_depth` are explicitly managed.
+- Be cautious with cascading triggers (a trigger on one table modifying another table that also has triggers), as they can be hard to debug. MySQL prevents a trigger from activating itself recursively, but chains of triggers across different tables can still cause unexpected behavior.
 - Use `IF OLD.column <> NEW.column THEN` guards in UPDATE triggers to avoid unnecessary operations when the value didn't actually change.
 - Use `SIGNAL SQLSTATE '45000'` for custom validation errors that abort the operation.
 - Log trigger errors to an error table rather than failing silently - wrap the body in a `DECLARE CONTINUE HANDLER` if you want non-fatal error handling.
