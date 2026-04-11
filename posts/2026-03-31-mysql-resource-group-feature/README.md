@@ -46,13 +46,13 @@ CREATE RESOURCE GROUP batch_work
 
 ```sql
 CREATE RESOURCE GROUP oltp_high
-  TYPE = USER
+  TYPE = SYSTEM
   VCPU = 2-7
   THREAD_PRIORITY = -10
   ENABLE;
 ```
 
-Thread priority ranges from -20 (highest) to 19 (lowest). Negative values require the `CAP_SYS_NICE` capability on Linux.
+Thread priority ranges from -20 (highest) to 19 (lowest). USER groups accept values 0 to 19, and SYSTEM groups accept -20 to 0. Negative values require the `CAP_SYS_NICE` capability on Linux.
 
 ## Assigning a Resource Group to the Current Session
 
@@ -67,7 +67,7 @@ All queries in this session now run with the CPU affinity and priority defined b
 Look up a thread ID in the processlist:
 
 ```sql
-SELECT PROCESSLIST_ID FROM performance_schema.threads WHERE PROCESSLIST_USER = 'batch_user' LIMIT 1;
+SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_USER = 'batch_user' LIMIT 1;
 ```
 
 Assign the resource group to that thread:
@@ -120,4 +120,4 @@ GRANT RESOURCE_GROUP_USER ON *.* TO 'app_user'@'%';
 
 ## Summary
 
-MySQL resource groups provide CPU-level workload isolation by binding threads to specific cores and adjusting OS scheduling priority. Use them to prevent batch jobs from consuming CPU capacity needed by interactive queries: create a low-priority group for batch work, a high-priority group for OLTP, and assign sessions at connection time or per-query using optimizer hints. The feature requires MySQL 8.0 on Linux with CAP_SYS_NICE for non-zero priorities.
+MySQL resource groups provide CPU-level workload isolation by binding threads to specific cores and adjusting OS scheduling priority. Use them to prevent batch jobs from consuming CPU capacity needed by interactive queries: create a low-priority group for batch work, a high-priority group for OLTP, and assign sessions at connection time or per-query using optimizer hints. The feature requires MySQL 8.0 on Linux with CAP_SYS_NICE for negative priorities.
