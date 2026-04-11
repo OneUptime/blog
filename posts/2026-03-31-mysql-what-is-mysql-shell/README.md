@@ -52,7 +52,7 @@ MySQL Py> session.run_sql('SHOW TABLES')
 In SQL mode, MySQL Shell behaves like the classic mysql client with some enhancements: syntax highlighting, multi-line editing, and query profiling:
 
 ```sql
--- Enable query profiling
+-- Set vertical output format for easier reading
 \option resultFormat=vertical
 SELECT * FROM performance_schema.events_statements_summary_by_digest
 ORDER BY sum_timer_wait DESC LIMIT 5;
