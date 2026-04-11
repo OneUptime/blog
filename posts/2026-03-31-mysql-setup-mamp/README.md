@@ -10,7 +10,7 @@ Description: Install MAMP on macOS, start the bundled MySQL server, configure th
 
 ## How It Works
 
-MAMP (macOS, Apache, MySQL, PHP) is a local development environment for macOS and Windows. The free version bundles Apache or Nginx, MySQL, and PHP. MAMP PRO adds virtual hosts and per-site configuration. This guide covers MAMP free on macOS.
+MAMP (macOS, Apache, MySQL, PHP) is a local development environment for macOS and Windows. The free version bundles Apache, MySQL, and PHP. MAMP PRO adds Nginx as an alternative to Apache, virtual hosts, and per-site configuration. This guide covers MAMP free on macOS.
 
 ```mermaid
 flowchart LR
