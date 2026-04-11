@@ -70,7 +70,7 @@ FT.SPELLCHECK tech_docs "resdis nosql"
 # May suggest corrections for "resdis" but also flag "nosql"
 
 # Include custom dictionary in spell check
-FT.SPELLCHECK tech_docs "resdis nosql" INCLUDE products_dict
+FT.SPELLCHECK tech_docs "resdis nosql" TERMS INCLUDE products_dict
 # "nosql" is now recognized from our dictionary
 # Only "resdis" gets correction suggestions
 ```
@@ -108,11 +108,11 @@ domain_terms = [
 ]
 
 # Add all terms at once
-added = r.ft().dictadd('redis_dict', *domain_terms)
+added = r.ft().dict_add('redis_dict', *domain_terms)
 print(f"Added {added} new terms to redis_dict")
 
 # Verify
-all_terms = r.ft().dictdump('redis_dict')
+all_terms = r.ft().dict_dump('redis_dict')
 print(f"Dictionary now has {len(all_terms)} terms")
 ```
 
@@ -127,8 +127,8 @@ FT.DICTADD product_dict "oneuptime" "uptime" "monitoring" "alerting"
 
 # Use both in spell check
 FT.SPELLCHECK my_index "kubernetez monitoring" \
-  INCLUDE tech_dict \
-  INCLUDE product_dict
+  TERMS INCLUDE tech_dict \
+  TERMS INCLUDE product_dict
 ```
 
 ## Excluding Terms from Spell Check
@@ -139,7 +139,7 @@ You can also use dictionaries to exclude terms from being flagged as misspelled:
 # Add internal jargon that should be excluded
 FT.DICTADD internal_codes "SKU123" "PROD-X9" "CUST-456"
 
-FT.SPELLCHECK product_index "SKU123 chekout" EXCLUDE internal_codes INCLUDE corrections_dict
+FT.SPELLCHECK product_index "SKU123 chekout" TERMS EXCLUDE internal_codes TERMS INCLUDE corrections_dict
 ```
 
 ## Python Dictionary Management Class
