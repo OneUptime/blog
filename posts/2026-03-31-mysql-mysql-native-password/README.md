@@ -52,7 +52,6 @@ If you have a user currently using `caching_sha2_password` and a client that doe
 ALTER USER 'appuser'@'%'
   IDENTIFIED WITH mysql_native_password
   BY 'NewStrongPassword1!';
-FLUSH PRIVILEGES;
 ```
 
 ## Setting the Global Default
@@ -64,11 +63,7 @@ In MySQL 8.0, the default changed to `caching_sha2_password`. To revert to `mysq
 default_authentication_plugin=mysql_native_password
 ```
 
-Or at runtime:
-
-```sql
-SET GLOBAL default_authentication_plugin = 'mysql_native_password';
-```
+Note that `default_authentication_plugin` is a static variable and cannot be changed at runtime with `SET GLOBAL`. A server restart is required after modifying the configuration file.
 
 ## Deprecation and Removal Timeline
 
@@ -82,7 +77,7 @@ If you are running MySQL 9.0 or later, you must migrate all users to `caching_sh
 
 ## Why It Was Deprecated
 
-The SHA-1 algorithm underlying `mysql_native_password` is considered cryptographically weak. The newer `caching_sha2_password` plugin uses SHA-256, provides a secure handshake that prevents offline dictionary attacks, and includes a client-side cache that avoids repeated round trips for subsequent connections from the same user. The older plugin also does not support multi-factor authentication features added in MySQL 8.0.
+The SHA-1 algorithm underlying `mysql_native_password` is considered cryptographically weak. The newer `caching_sha2_password` plugin uses SHA-256, provides a secure handshake that prevents offline dictionary attacks, and includes a server-side in-memory cache that speeds up subsequent connections from the same user. The older plugin also does not support multi-factor authentication features added in MySQL 8.0.
 
 ## Client Library Compatibility
 
