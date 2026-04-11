@@ -64,8 +64,13 @@ services:
 Use `envsubst` in an entrypoint script for dynamic configuration:
 
 ```bash
-# redis-entrypoint.sh
 #!/bin/sh
+# redis-entrypoint.sh
+export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
+export REDIS_MAXMEMORY="${REDIS_MAXMEMORY:-2gb}"
+export REDIS_MAXMEMORY_POLICY="${REDIS_MAXMEMORY_POLICY:-volatile-lru}"
+export REDIS_APPENDONLY="${REDIS_APPENDONLY:-yes}"
+export REDIS_LOGLEVEL="${REDIS_LOGLEVEL:-notice}"
 envsubst < /etc/redis/redis.conf.template > /etc/redis/redis.conf
 exec redis-server /etc/redis/redis.conf "$@"
 ```
@@ -77,10 +82,10 @@ Template file:
 bind 0.0.0.0
 port 6379
 requirepass ${REDIS_PASSWORD}
-maxmemory ${REDIS_MAXMEMORY:-2gb}
-maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-volatile-lru}
-appendonly ${REDIS_APPENDONLY:-yes}
-loglevel ${REDIS_LOGLEVEL:-notice}
+maxmemory ${REDIS_MAXMEMORY}
+maxmemory-policy ${REDIS_MAXMEMORY_POLICY}
+appendonly ${REDIS_APPENDONLY}
+loglevel ${REDIS_LOGLEVEL}
 ```
 
 Docker setup:
