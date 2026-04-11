@@ -34,6 +34,7 @@ When an operator updates a config, write the new values and mark the update as p
 
 ```python
 import redis
+import json
 import time
 r = redis.Redis()
 
@@ -47,7 +48,7 @@ def push_config(device_id, updates: dict):
     pipe.set(pending_key, 1, ex=86400)
     pipe.execute()
     # Broadcast to online devices immediately
-    r.publish(f"config:{device_id}", str(updates))
+    r.publish(f"config:{device_id}", json.dumps(updates))
 ```
 
 ## Device Subscribing to Config Channel
@@ -60,7 +61,7 @@ def device_config_listener(device_id):
     pubsub.subscribe(f"config:{device_id}")
     for message in pubsub.listen():
         if message["type"] == "message":
-            new_config = eval(message["data"].decode())
+            new_config = json.loads(message["data"].decode())
             apply_config(new_config)
             acknowledge_config(device_id, new_config["version"])
 ```
