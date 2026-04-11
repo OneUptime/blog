@@ -157,7 +157,6 @@ ORDER BY salary DESC;
 +-------+-------------+-----------+
 | Alice | Engineering | 105000.00 |
 | Alice | Engineering |  95000.00 |
-| Carol | Engineering |  88000.00 |
 +-------+-------------+-----------+
 ```
 
@@ -206,15 +205,15 @@ ORDER BY type, person;
 ```
 
 ```text
-+-------+-------------+------------+
-| person | team       | type       |
-+-------+-------------+------------+
-| Zach  | Engineering | Contractor |
-| Yara  | Design      | Contractor |
-| Alice | Engineering | Employee   |
-| Dave  | Finance     | Employee   |
-| Eve   | Marketing   | Employee   |
-+-------+-------------+------------+
++--------+-------------+------------+
+| person | team        | type       |
++--------+-------------+------------+
+| Yara   | Design      | Contractor |
+| Zach   | Engineering | Contractor |
+| Alice  | Engineering | Employee   |
+| Dave   | Finance     | Employee   |
+| Eve    | Marketing   | Employee   |
++--------+-------------+------------+
 ```
 
 ## Best Practices
