@@ -46,7 +46,7 @@ CREATE TABLE events (
   name       VARCHAR(200) NOT NULL,
   created_at DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
   updated_at DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP())
-                      ON UPDATE UTC_TIMESTAMP()
+                      ON UPDATE CURRENT_TIMESTAMP
 );
 ```
 
@@ -71,7 +71,7 @@ From application code, convert to UTC before executing the query. For example in
 ```python
 import datetime
 
-utc_now = datetime.datetime.utcnow()
+utc_now = datetime.datetime.now(datetime.timezone.utc)
 cursor.execute(
     "INSERT INTO events (name, created_at, updated_at) VALUES (%s, %s, %s)",
     ("Signup", utc_now, utc_now)
