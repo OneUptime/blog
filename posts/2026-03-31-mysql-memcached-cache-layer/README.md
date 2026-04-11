@@ -127,7 +127,7 @@ def get_product_safe(product_id):
         return json.loads(cached)
 
     # Try to acquire lock
-    if mc.add(lock_key, '1', expire=5):
+    if mc.add(lock_key, '1', expire=5, noreply=False):
         product = fetch_from_mysql(product_id)
         mc.set(cache_key, json.dumps(product, default=str), expire=300)
         mc.delete(lock_key)
