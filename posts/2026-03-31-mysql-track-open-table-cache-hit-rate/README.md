@@ -8,7 +8,7 @@ Description: Monitor the MySQL open table cache hit rate using global status var
 
 ---
 
-Every table MySQL accesses requires opening the associated `.ibd` (InnoDB) or `.frm` file descriptor. The open table cache stores these open file handles so MySQL does not need to reopen them on every query. A low hit rate means constant file descriptor operations, which adds latency and OS overhead.
+Every table MySQL accesses requires opening the associated `.ibd` (InnoDB) file descriptor. The open table cache stores these open file handles and parsed table definitions so MySQL does not need to reopen them on every query. A low hit rate means constant file descriptor operations, which adds latency and OS overhead.
 
 ## Understanding the Table Cache
 
@@ -57,7 +57,7 @@ If this number is consistently above 0, the cache is evicting entries before the
 -- If Open_tables equals table_open_cache, the cache is saturated
 SELECT
   (SELECT VARIABLE_VALUE FROM performance_schema.global_status  WHERE VARIABLE_NAME = 'Open_tables')  AS open_now,
-  (SELECT VARIABLE_VALUE FROM performance_schema.session_variables WHERE VARIABLE_NAME = 'table_open_cache') AS cache_size;
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_variables WHERE VARIABLE_NAME = 'table_open_cache') AS cache_size;
 ```
 
 When `open_now` approaches `cache_size`, MySQL starts evicting entries.
