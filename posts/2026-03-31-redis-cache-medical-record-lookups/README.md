@@ -15,7 +15,7 @@ Electronic Health Record (EHR) systems face heavy read loads during clinical hou
 - **Short TTLs**: Medical records can change (new labs, updated medications). Use TTLs of 5-15 minutes.
 - **Audit logging**: Every cache read must be logged to satisfy HIPAA access requirements.
 - **Immediate invalidation**: When a record is updated, the cache must be purged instantly.
-- **Encryption at rest**: Enable Redis TLS and consider field-level encryption for sensitive data.
+- **Encryption**: Enable Redis TLS for encryption in transit and consider field-level encryption for sensitive data at rest.
 
 ## Setup
 
@@ -23,11 +23,8 @@ Electronic Health Record (EHR) systems face heavy read loads during clinical hou
 import redis
 import json
 import time
-import hashlib
-import logging
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True, ssl=True)
-audit_log = logging.getLogger("audit")
 
 RECORD_PREFIX = "emr:patient"
 CACHE_TTL = 600          # 10 minutes
