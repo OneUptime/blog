@@ -69,11 +69,11 @@ The response is an array where each element represents one shard. Each shard con
 ## Parsing CLUSTER SHARDS with Python
 
 ```python
-import redis
+from redis.cluster import RedisCluster
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = RedisCluster(host='localhost', port=6379, decode_responses=True)
 
-shards = r.cluster('shards')
+shards = r.cluster_shards()
 
 for i, shard in enumerate(shards):
     print(f"Shard {i + 1}:")
@@ -95,11 +95,11 @@ for i, shard in enumerate(shards):
 ## Checking Node Health Across All Shards
 
 ```python
-import redis
+from redis.cluster import RedisCluster
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = RedisCluster(host='localhost', port=6379, decode_responses=True)
 
-shards = r.cluster('shards')
+shards = r.cluster_shards()
 unhealthy = []
 
 for shard in shards:
@@ -122,7 +122,7 @@ else:
 | Format | Structured array | Flat text |
 | Organized by | Shard (primary + replicas) | Individual node |
 | Health field | Yes | Via flags |
-| Available since | 7.0 | 1.0 |
+| Available since | 7.0 | 3.0 |
 | Parsing | Easy | Manual parsing |
 
 Prefer `CLUSTER SHARDS` for programmatic cluster topology discovery in Redis 7.0+.
@@ -130,11 +130,11 @@ Prefer `CLUSTER SHARDS` for programmatic cluster topology discovery in Redis 7.0
 ## Use Case: Building a Cluster Connection Map
 
 ```python
-import redis
+from redis.cluster import RedisCluster
 
 def get_cluster_map(host, port):
-    r = redis.Redis(host=host, port=port, decode_responses=True)
-    shards = r.cluster('shards')
+    r = RedisCluster(host=host, port=port, decode_responses=True)
+    shards = r.cluster_shards()
     cluster_map = {}
 
     for shard in shards:
