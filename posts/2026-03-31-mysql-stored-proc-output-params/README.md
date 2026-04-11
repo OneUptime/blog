@@ -123,7 +123,7 @@ SELECT
 +---------------+---------------+-----------------+-------------+
 | account_count | total_balance | average_balance | max_balance |
 +---------------+---------------+-----------------+-------------+
-|             3 |      15500.00 |      5166.666667|     8500.00 |
+|             3 |      15500.00 |         5166.67 |     8500.00 |
 +---------------+---------------+-----------------+-------------+
 ```
 
@@ -143,6 +143,8 @@ CREATE PROCEDURE TransferFunds (
 BEGIN
     DECLARE v_balance DECIMAL(12,2);
 
+    START TRANSACTION;
+
     -- Check source balance
     SELECT balance INTO v_balance
     FROM accounts
@@ -151,11 +153,11 @@ BEGIN
 
     IF v_balance IS NULL THEN
         SET p_status = 'ERROR: Source account not found';
+        ROLLBACK;
     ELSEIF v_balance < p_amount THEN
         SET p_status = 'ERROR: Insufficient funds';
+        ROLLBACK;
     ELSE
-        START TRANSACTION;
-
         UPDATE accounts SET balance = balance - p_amount WHERE id = p_from_id;
         UPDATE accounts SET balance = balance + p_amount WHERE id = p_to_id;
 
@@ -274,7 +276,7 @@ When calling MySQL from application code, output parameters are retrieved via se
 - Use a `p_` prefix for parameters and `v_` prefix for local variables to prevent naming conflicts with column names.
 - Always initialize OUT parameters at the start of the procedure body when there are early-return paths, to avoid returning stale NULL values.
 - Use status code OUT parameters instead of relying only on exceptions for expected business logic failures (insufficient funds, not found, etc.).
-- For complex error handling, combine OUT status parameters with `DECLARE HANDLER` to catch SQL exceptions.
+- For complex error handling, combine OUT status parameters with `DECLARE ... HANDLER` to catch SQL exceptions.
 
 ## Summary
 
