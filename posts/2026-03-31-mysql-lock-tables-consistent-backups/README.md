@@ -33,7 +33,7 @@ Without locking:
 FLUSH TABLES WITH READ LOCK;
 
 -- Record the binary log position for replication
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 
 -- (Take your backup here - typically with mysqldump or filesystem snapshot)
 
