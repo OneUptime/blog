@@ -61,14 +61,14 @@ WHERE product_code REGEXP '^[A-Z]{2}[0-9]{4}$';
 
 ## Case Sensitivity
 
-By default, `REGEXP` in MySQL is case-insensitive for non-binary string columns. To force case-sensitive matching, cast to `BINARY`:
+By default, `REGEXP` in MySQL is case-insensitive for non-binary string columns. To force case-sensitive matching, use `REGEXP_LIKE` with the `'c'` match type:
 
 ```sql
 -- Case-insensitive (default)
 SELECT * FROM users WHERE username REGEXP '^admin';
 
 -- Case-sensitive
-SELECT * FROM users WHERE BINARY username REGEXP '^Admin';
+SELECT * FROM users WHERE REGEXP_LIKE(username, '^Admin', 'c');
 ```
 
 ## Using NOT REGEXP
@@ -91,7 +91,7 @@ WHERE name NOT REGEXP '[0-9]';
 | Alternation      | No     | Yes         |
 | Performance      | Faster | Slightly slower |
 
-For simple prefix or suffix matches, `LIKE` is faster because it can use indexes. `REGEXP` always performs a full scan.
+For simple prefix matches, `LIKE 'prefix%'` is faster because it can use indexes. `REGEXP` always performs a full scan, as does `LIKE '%suffix'` for suffix matches.
 
 ## Checking Multiple Patterns with Alternation
 
