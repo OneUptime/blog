@@ -59,6 +59,8 @@ This means the instance can serve approximately 487,000 GET operations per secon
 ## Step 3 - Calculate Required Replica Count
 
 ```python
+import math
+
 def calculate_replicas_needed(
     target_reads_per_second: int,
     single_instance_capacity: int,
@@ -67,15 +69,15 @@ def calculate_replicas_needed(
 ) -> dict:
     effective_capacity = single_instance_capacity * safety_factor
     replicas_for_throughput = target_reads_per_second / effective_capacity
-    replicas_needed = max(int(replicas_for_throughput) + 1, min_replicas_for_ha + 1)
+    recommended_replicas = max(math.ceil(replicas_for_throughput), min_replicas_for_ha)
 
     return {
         'target_reads_per_second': target_reads_per_second,
         'single_instance_effective_capacity': int(effective_capacity),
         'replicas_for_throughput': round(replicas_for_throughput, 2),
-        'recommended_replicas': replicas_needed - 1,  # Exclude primary
-        'total_nodes': replicas_needed,
-        'total_capacity': int(effective_capacity * replicas_needed)
+        'recommended_replicas': recommended_replicas,
+        'total_nodes': recommended_replicas + 1,  # Include primary
+        'total_capacity': int(effective_capacity * recommended_replicas)
     }
 
 # Example: Need 800,000 reads/sec, single instance handles ~340,000
