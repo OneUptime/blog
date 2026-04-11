@@ -38,16 +38,23 @@ const { createHash } = require('crypto');
 
 const redis = new Redis({ host: process.env.REDIS_HOST });
 
-// Redis-backed query store
+// Redis-backed query store implementing KeyValueCache interface
 const redisQueryStore = {
   async get(key) {
     const query = await redis.get(`pq:${key}`);
     return query ?? undefined;
   },
 
-  async set(key, value) {
-    // Persist query indefinitely (or set a long TTL)
-    await redis.set(`pq:${key}`, value);
+  async set(key, value, options) {
+    if (options?.ttl) {
+      await redis.set(`pq:${key}`, value, 'EX', options.ttl);
+    } else {
+      await redis.set(`pq:${key}`, value);
+    }
+  },
+
+  async delete(key) {
+    await redis.del(`pq:${key}`);
   },
 };
 
