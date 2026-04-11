@@ -51,11 +51,11 @@ Redis uses compact encodings for small data structures. Keeping collections belo
 
 ```text
 # redis.conf - keep small hashes as ziplist/listpack
-hash-max-listpack-entries 128  # Default: 128
+hash-max-listpack-entries 128  # Default: 128 (Redis 6.x), 512 (Redis 7.x)
 hash-max-listpack-value 64     # Default: 64 bytes
 ```
 
-When a hash has fewer than 128 fields and each field value is under 64 bytes, Redis uses a compact listpack encoding that uses ~10x less memory than a hash table.
+When a hash has fewer entries than the configured threshold (128 in Redis 6.x, 512 in Redis 7.x by default) and each field value is under 64 bytes, Redis uses a compact listpack encoding that uses ~10x less memory than a hash table.
 
 ```bash
 # Check encoding
@@ -67,8 +67,7 @@ redis-cli OBJECT ENCODING myhash
 
 ```text
 # redis.conf
-list-max-listpack-size -2       # Max 8KB per node
-list-max-ziplist-size -2
+list-max-listpack-size -2       # Max 8KB per node (list-max-ziplist-size in Redis < 7.0)
 ```
 
 ### Sorted Set Encoding
@@ -160,7 +159,10 @@ def audit_missing_ttls(pattern='*', sample_size=10000):
                     print(f"No TTL: {key.decode()}")
         if cursor == 0 or total >= sample_size:
             break
-    print(f"Keys without TTL: {no_ttl}/{total} ({100*no_ttl/total:.1f}%)")
+    if total > 0:
+        print(f"Keys without TTL: {no_ttl}/{total} ({100*no_ttl/total:.1f}%)")
+    else:
+        print("No keys found matching the pattern.")
 
 audit_missing_ttls('cache:*')
 ```
@@ -204,7 +206,6 @@ If fragmentation ratio > 1.5, defrag can reclaim significant memory.
 
 ```python
 import redis
-import time
 
 r = redis.Redis()
 
@@ -215,7 +216,7 @@ def remove_idle_keys(pattern, max_idle_seconds=86400):
     while True:
         cursor, keys = r.scan(cursor, match=pattern, count=1000)
         for key in keys:
-            idle = r.object_idletime(key)
+            idle = r.object("idletime", key)
             if idle and idle > max_idle_seconds:
                 r.delete(key)
                 removed += 1
