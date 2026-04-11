@@ -84,19 +84,17 @@ The single query approach often performs better because MySQL can use a single i
 
 ## UNION with Sorting and LIMIT
 
-When you need sorted results from a UNION, wrap it in a derived table:
+To sort or limit the entire UNION result, place `ORDER BY` and `LIMIT` after the last SELECT:
 
 ```sql
-SELECT * FROM (
-  SELECT id, name, created_at FROM active_users
-  UNION ALL
-  SELECT id, name, created_at FROM guest_users
-) combined
+SELECT id, name, created_at FROM active_users
+UNION ALL
+SELECT id, name, created_at FROM guest_users
 ORDER BY created_at DESC
 LIMIT 20;
 ```
 
-Without the wrapper, `ORDER BY` and `LIMIT` in each branch apply to that branch only, not the combined result.
+`ORDER BY` and `LIMIT` after the final branch apply to the entire combined result. If placed inside parenthesized individual SELECT statements, they apply only to that branch and `ORDER BY` without `LIMIT` may be optimized away since it has no effect on the final result.
 
 ## Push Down WHERE Conditions Into Each Branch
 
