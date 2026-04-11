@@ -87,9 +87,9 @@ If you need to skip a specific event due to an error:
 
 ```sql
 -- Skip one transaction (GTID mode)
-SET GLOBAL gtid_next = 'source_uuid:transaction_id';
+SET GTID_NEXT = 'source_uuid:transaction_id';
 BEGIN; COMMIT;
-SET GLOBAL gtid_next = 'AUTOMATIC';
+SET GTID_NEXT = 'AUTOMATIC';
 START REPLICA;
 ```
 
