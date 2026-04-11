@@ -119,7 +119,7 @@ These settings prevent unnecessary rewrites on small instances while ensuring la
 
 ## RDB Preamble for Faster Rewrite
 
-When `aof-use-rdb-preamble yes` is set (default in Redis 4.0+), the rewrite embeds an RDB snapshot at the top of the new AOF. This makes the rewrite faster and the resulting file more compact:
+When `aof-use-rdb-preamble yes` is set (default since Redis 5.0), the rewrite embeds an RDB snapshot at the top of the new AOF. This makes the rewrite faster and the resulting file more compact:
 
 ```redis
 CONFIG GET aof-use-rdb-preamble
@@ -135,7 +135,7 @@ Heavy disk I/O during a rewrite can cause latency. This setting prevents extra f
 no-appendfsync-on-rewrite yes
 ```
 
-With `appendfsync everysec`, this means up to 1 additional second of data loss risk during the rewrite window.
+With `appendfsync everysec`, this means up to 30 seconds of data loss risk during the rewrite window (with default Linux settings), since fsync is deferred entirely to the OS.
 
 ## Monitoring
 
