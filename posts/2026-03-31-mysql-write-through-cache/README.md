@@ -13,8 +13,8 @@ The write-through cache pattern writes data to both the cache and the database s
 ## How Write-Through Works
 
 1. Application receives a write request.
-2. Application writes to the cache.
-3. Application writes to MySQL.
+2. Application writes to MySQL.
+3. Application writes to the cache.
 4. Both writes succeed before the operation is acknowledged.
 5. Subsequent reads are served from cache.
 
