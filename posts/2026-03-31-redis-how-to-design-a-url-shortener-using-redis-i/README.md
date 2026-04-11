@@ -53,7 +53,7 @@ Key Pattern                     Value           TTL
 -----------                     -----           ---
 url:short:{code}                long URL        24 hours (hot cache)
 url:counter                     integer         None (global counter)
-url:user:{userId}:count         integer         None (per-user limit)
+url:user:{userId}:count         integer         1 hour (per-user limit)
 url:click:{code}                integer         1 hour (click buffer)
 ```
 
@@ -103,7 +103,7 @@ def hash_url(long_url: str, attempt: int = 0) -> str:
 ## Redis Caching Layer
 
 ```python
-import json
+import hashlib
 
 CACHE_TTL = 86400  # 24 hours
 
@@ -124,7 +124,7 @@ def get_long_url(short_code: str) -> str | None:
 
 def shorten_url(long_url: str, user_id: int | None = None) -> str:
     # Check if URL already shortened (deduplication)
-    existing = r.get(f"url:long:{hash(long_url)}")
+    existing = r.get(f"url:long:{hashlib.md5(long_url.encode()).hexdigest()}")
     if existing:
         return existing
 
