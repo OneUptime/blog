@@ -10,7 +10,7 @@ Description: Learn how to test Redis cluster resharding operations to verify dat
 
 ## What Is Redis Cluster Resharding
 
-Redis Cluster distributes keys across 16384 hash slots, with each slot assigned to a primary node. Resharding moves hash slots from one node to another - adding capacity or rebalancing the cluster. During resharding, keys in migrating slots are temporarily unavailable, returning MOVED or ASK redirects.
+Redis Cluster distributes keys across 16384 hash slots, with each slot assigned to a primary node. Resharding moves hash slots from one node to another - adding capacity or rebalancing the cluster. During resharding, clients accessing keys in migrating slots receive MOVED or ASK redirects, which cluster-aware clients handle automatically.
 
 Testing resharding verifies that:
 - Data is not lost during migration
@@ -19,7 +19,7 @@ Testing resharding verifies that:
 
 ## Setting Up a Test Cluster
 
-Use Docker Compose to create a 6-node cluster (3 primaries, 3 replicas):
+Use Docker to create a 6-node cluster (3 primaries, 3 replicas):
 
 ```bash
 # Create a Redis Cluster with Docker
@@ -168,9 +168,7 @@ from redis.exceptions import MovedError, AskError
 cluster = redis.cluster.RedisCluster(
     host='127.0.0.1',
     port=7001,
-    decode_responses=True,
-    retry_on_error=[MovedError, AskError],
-    max_connections_per_node=10
+    decode_responses=True
 )
 
 # This should work transparently even during slot migration
