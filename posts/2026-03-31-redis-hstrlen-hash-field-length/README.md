@@ -94,7 +94,7 @@ HSTRLEN user:1 bio
 
 ```text
 (integer) 1
-(integer) 18
+(integer) 17
 ```
 
 If the length is already near the maximum, prompt the user instead of silently truncating.
