@@ -45,24 +45,22 @@ A ratio above 1% indicates noticeable contention. Above 5% is a problem.
 ```sql
 -- Current threads waiting for table locks
 SELECT
-  r.processlist_id AS waiting_thread,
-  r.processlist_info AS waiting_query,
-  b.processlist_id AS blocking_thread,
-  b.processlist_info AS blocking_query
-FROM performance_schema.data_lock_waits w
-JOIN performance_schema.threads r ON r.thread_id = w.requesting_thread_id
-JOIN performance_schema.threads b ON b.thread_id = w.blocking_thread_id;
+  waiting_pid AS waiting_thread,
+  waiting_query,
+  blocking_pid AS blocking_thread,
+  blocking_query
+FROM sys.schema_table_lock_waits;
 ```
 
 ## Historical Lock Wait Events
 
 ```sql
--- Top tables by total lock wait time (nanoseconds)
+-- Top tables by total lock wait time (picoseconds)
 SELECT
   object_schema,
   object_name,
   COUNT_READ + COUNT_WRITE            AS total_accesses,
-  SUM_TIMER_WAIT / 1e9               AS total_wait_sec
+  SUM_TIMER_WAIT / 1e12              AS total_wait_sec
 FROM performance_schema.table_lock_waits_summary_by_table
 WHERE SUM_TIMER_WAIT > 0
 ORDER BY total_wait_sec DESC
