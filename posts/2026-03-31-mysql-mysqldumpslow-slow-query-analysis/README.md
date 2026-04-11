@@ -42,20 +42,20 @@ mysqldumpslow /var/log/mysql/slow.log
 Output groups similar queries (with literal values abstracted to `N` and `S`) and shows:
 - Count of times the query ran
 - Average and total execution time
-- Average and total rows examined
+- Average and total rows sent
 
 ## Sorting Options
 
 Sort by different metrics to prioritize what to optimize:
 
 ```bash
-# Sort by total query time (default)
+# Sort by total query time
 mysqldumpslow -s t /var/log/mysql/slow.log
 
-# Sort by average query time
+# Sort by average query time (default)
 mysqldumpslow -s at /var/log/mysql/slow.log
 
-# Sort by total rows examined (high rows examined often means missing index)
+# Sort by total rows sent (high rows sent often means missing index)
 mysqldumpslow -s r /var/log/mysql/slow.log
 
 # Sort by call count (high count = good optimization target)
@@ -99,7 +99,7 @@ The first query ran 142 times with a total execution time of 456 seconds. `N` an
 
 ## Interpreting Results
 
-High `Rows` with low `Count` suggests full table scans on infrequently run queries. High `Count` with moderate `Time` suggests frequently run queries that add up to significant load. Queries with high `Rows` examined relative to rows returned are strong candidates for index optimization.
+High `Rows` with low `Count` suggests queries returning large result sets that may benefit from adding `LIMIT` clauses or narrower filters. High `Count` with moderate `Time` suggests frequently run queries that add up to significant load. Queries with high `Rows` sent are strong candidates for index optimization.
 
 Check the query plan with `EXPLAIN`:
 
@@ -115,11 +115,11 @@ LIMIT 10;
 Flush the slow query log after analysis to start fresh:
 
 ```bash
-# Flush and rotate log
-mysqladmin -u root -p flush-logs
+# Rename current log, then flush so MySQL reopens a new file
 mv /var/log/mysql/slow.log /var/log/mysql/slow.log.$(date +%F)
+mysqladmin -u root -p flush-logs
 ```
 
 ## Summary
 
-`mysqldumpslow` parses MySQL slow query logs and groups similar queries to surface the worst performers. Sort by total time to find the biggest bottlenecks, sort by rows examined to find full table scans, and use the output to prioritize index creation and query rewrites.
+`mysqldumpslow` parses MySQL slow query logs and groups similar queries to surface the worst performers. Sort by total time to find the biggest bottlenecks, sort by rows sent to find queries returning excessive data, and use the output to prioritize index creation and query rewrites.
