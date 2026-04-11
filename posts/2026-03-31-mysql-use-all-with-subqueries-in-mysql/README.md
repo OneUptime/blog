@@ -77,7 +77,7 @@ WHERE version = ALL (SELECT required_version FROM requirements);
 ## ALL with != (Not Equal to All - Equivalent to NOT IN)
 
 ```sql
--- = NOT IN for non-NULL cases
+-- Equivalent to NOT IN
 SELECT id, name FROM employees
 WHERE department != ALL (SELECT department FROM excluded_departments);
 
@@ -86,7 +86,7 @@ SELECT id, name FROM employees
 WHERE department NOT IN (SELECT department FROM excluded_departments);
 ```
 
-Note: Unlike `NOT IN`, `!= ALL` with NULLs in the subquery returns no rows - same NULL trap as `NOT IN`.
+Note: `!= ALL` has the same NULL trap as `NOT IN` — if the subquery contains any NULL values, no rows are returned.
 
 ## Edge Cases
 
