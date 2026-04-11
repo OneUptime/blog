@@ -88,8 +88,8 @@ mysqlshow -u root -p mydb orders status
 # Show row counts for each table
 mysqlshow -u root -p --count mydb
 
-# Include statistics (index information)
-mysqlshow -u root -p --status mydb orders
+# Display extra table status information (engine, rows, data length, etc.)
+mysqlshow -u root -p --status mydb
 
 # Use a wildcard to filter tables (% matches any string)
 mysqlshow -u root -p mydb 'order%'
