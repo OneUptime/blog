@@ -78,19 +78,11 @@ Use `logrotate` to prevent the log file from growing unbounded:
     delaycompress
     missingok
     notifempty
-    postrotate
-        redis-cli BGREWRITEAOF > /dev/null 2>&1 || true
-        kill -USR1 $(cat /var/run/redis/redis-server.pid) 2>/dev/null || true
-    endscript
+    copytruncate
 }
 ```
 
-Alternatively, signal Redis to reopen its log file:
-
-```bash
-redis-cli DEBUG SLEEP 0
-kill -USR1 $(pidof redis-server)
-```
+The `copytruncate` directive copies the log file and then truncates the original in place. This is the recommended approach because Redis does not support signal-based log file reopening, so it must continue writing to the same file descriptor.
 
 ## Enabling Syslog Integration
 
