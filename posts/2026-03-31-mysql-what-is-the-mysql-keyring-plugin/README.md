@@ -49,15 +49,17 @@ keyring_encrypted_file_password = your_secure_password
 
 ## Using the Component Keyring (MySQL 8.0.24+)
 
-```sql
--- Install the component
-INSTALL COMPONENT 'file://component_keyring_file';
+Keyring components must be loaded via a manifest file, not `INSTALL COMPONENT`, because the keyring must be available before InnoDB initializes.
 
--- Create configuration file
--- /var/lib/mysql-keyring/component_keyring_file.cnf
+Create a manifest file (`mysqld.my`) in the MySQL installation directory:
+
+```json
+{
+  "components": "file://component_keyring_file"
+}
 ```
 
-Configuration file (`component_keyring_file.cnf`):
+Then create the component configuration file (`component_keyring_file.cnf`) in the MySQL data directory:
 
 ```json
 {
@@ -75,10 +77,10 @@ keyring_aws_cmk_id = arn:aws:kms:us-east-1:123456789:key/abc-def
 keyring_aws_region = us-east-1
 ```
 
-```bash
-# AWS credentials must be accessible
-export AWS_ACCESS_KEY_ID=your_key
-export AWS_SECRET_ACCESS_KEY=your_secret
+The plugin reads AWS credentials from a configuration file (default: `keyring_aws_conf` in the data directory, controlled by `keyring_aws_conf_file`):
+
+```text
+keyring_aws_conf_file = /var/lib/mysql-keyring/keyring_aws_conf
 ```
 
 ## HashiCorp Vault Keyring Setup
@@ -87,9 +89,10 @@ export AWS_SECRET_ACCESS_KEY=your_secret
 [mysqld]
 early-plugin-load = keyring_hashicorp.so
 keyring_hashicorp_server_url = https://vault.example.com:8200
-keyring_hashicorp_auth_path = /v1/auth/cert/login
-keyring_hashicorp_store_path = /v1/secret/mysql
-keyring_hashicorp_ca_path = /etc/ssl/certs/vault-ca.pem
+keyring_hashicorp_role_id = your_role_id
+keyring_hashicorp_secret_id = your_secret_id
+keyring_hashicorp_store_path = /v1/kv/mysql
+keyring_hashicorp_auth_path = /v1/auth/approle/login
 ```
 
 ## Verifying the Keyring Is Active
