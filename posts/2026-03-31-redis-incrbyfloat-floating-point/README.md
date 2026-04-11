@@ -131,7 +131,9 @@ Accumulate average temperature data from IoT sensors.
 
 ```redis
 INCRBYFLOAT sensor:room1:temp_sum 22.3
+INCR sensor:room1:readings
 INCRBYFLOAT sensor:room1:temp_sum 22.7
+INCR sensor:room1:readings
 INCRBYFLOAT sensor:room1:temp_sum 23.1
 INCR sensor:room1:readings
 GET sensor:room1:temp_sum
@@ -140,7 +142,9 @@ GET sensor:room1:readings
 
 ```text
 "22.3"
+(integer) 1
 "45"
+(integer) 2
 "68.1"
 (integer) 3
 "68.1"
