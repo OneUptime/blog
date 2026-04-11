@@ -38,7 +38,7 @@ Now test a command that should be denied:
 
 ```bash
 127.0.0.1:6379> ACL DRYRUN reader SET data:user:42 "hello"
-(error) ERR This user has no permissions to run the 'set' command
+"User reader has no permissions to run the 'set' command"
 ```
 
 ## Testing Key Pattern Restrictions
@@ -55,12 +55,12 @@ OK
 
 # Key outside the allowed pattern
 127.0.0.1:6379> ACL DRYRUN appuser GET system:config
-(error) ERR No permissions to access a key
+"User appuser has no permissions to access the 'system:config' key"
 ```
 
 ## Testing Pub/Sub Channel Permissions
 
-Redis 7.0 added channel-level ACL controls. Use `ACL DRYRUN` to test them:
+Redis 6.2 added channel-level ACL controls. Use `ACL DRYRUN` to test them:
 
 ```bash
 127.0.0.1:6379> ACL SETUSER pubuser on >pass &notifications:* +SUBSCRIBE
@@ -70,7 +70,7 @@ OK
 OK
 
 127.0.0.1:6379> ACL DRYRUN pubuser SUBSCRIBE admin:commands
-(error) ERR No permissions to access a channel
+"User pubuser has no permissions to access the 'admin:commands' channel"
 ```
 
 ## Using ACL DRYRUN in Deployment Scripts
@@ -129,7 +129,7 @@ For commands with subcommands like `CLIENT` or `XGROUP`, pass the subcommand as 
 
 ```bash
 127.0.0.1:6379> ACL DRYRUN reader CLIENT LIST
-(error) ERR This user has no permissions to run the 'client|list' command
+"User reader has no permissions to run the 'client|list' command"
 ```
 
 ## Summary
