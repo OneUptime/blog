@@ -62,7 +62,7 @@ async def get_product(request, product_id):
 
 ## Rate Limiting with Redis
 
-A sliding window rate limiter using Redis `INCR` and `EXPIRE`.
+A fixed window rate limiter using Redis `INCR` and `EXPIRE`.
 
 ```python
 from sanic.response import text
@@ -92,8 +92,7 @@ async def login(request):
     session_data = json.dumps({"user": body.get("username")})
     await redis.setex(f"session:{session_id}", 86400, session_data)
     response = sanic_json({"message": "Logged in"})
-    response.cookies["session_id"] = session_id
-    response.cookies["session_id"]["httponly"] = True
+    response.add_cookie("session_id", session_id, httponly=True)
     return response
 
 @app.get("/profile")
