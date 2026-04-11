@@ -111,10 +111,11 @@ SET GLOBAL general_log = 'OFF';
 ## Rotating the Log File
 
 ```bash
-# Send SIGHUP to flush and rotate the log
+# Rename the current log file, then flush to create a new one
+mv /var/log/mysql/general.log /var/log/mysql/general.log.old
 mysqladmin -u root -p flush-logs
 
-# Or execute within MySQL
+# Or execute the flush within MySQL after renaming the file
 FLUSH LOGS;
 ```
 
