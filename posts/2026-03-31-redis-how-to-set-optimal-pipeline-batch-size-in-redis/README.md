@@ -24,7 +24,6 @@ The optimal size is the point where throughput gains plateau and latency is stil
 ```python
 import redis
 import time
-import statistics
 
 r = redis.Redis(host='localhost', port=6379)
 
