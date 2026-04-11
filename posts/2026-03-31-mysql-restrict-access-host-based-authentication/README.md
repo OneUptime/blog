@@ -16,7 +16,7 @@ Host values can be:
 - A specific IP address: `192.168.1.10`
 - A hostname: `app-server.example.com`
 - A wildcard: `%` (any host) or `192.168.1.%` (subnet)
-- `localhost` (Unix socket connections only)
+- `localhost` (local connections via Unix socket or TCP loopback)
 
 ## Creating Host-Restricted User Accounts
 
