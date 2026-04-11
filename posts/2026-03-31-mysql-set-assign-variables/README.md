@@ -34,7 +34,7 @@ SET @cache = NULL;
 
 ## Assigning System Variables
 
-System variables require the `GLOBAL` or `SESSION` qualifier:
+System variables use the `GLOBAL` or `SESSION` qualifier. Without a qualifier, `SESSION` is assumed by default:
 
 ```sql
 -- Session-level: affects only this connection
@@ -69,7 +69,7 @@ DELIMITER ;
 
 ## SET vs SELECT := for User Variables
 
-Both `SET` and `SELECT := ` can assign user variables. They have slightly different behaviors:
+Both `SET` and `SELECT :=` can assign user variables, but `SELECT :=` is deprecated as of MySQL 8.0.13 and will be removed in a future release. They have slightly different behaviors:
 
 ```sql
 -- SET: straightforward assignment
