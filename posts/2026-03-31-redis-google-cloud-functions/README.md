@@ -82,7 +82,7 @@ gcloud functions deploy handleRequest \
   --trigger-http \
   --allow-unauthenticated \
   --vpc-connector=redis-connector \
-  --vpc-egress=all-traffic \
+  --egress-settings=all-traffic \
   --set-env-vars REDIS_HOST=10.0.0.3 \
   --region=us-central1
 ```
@@ -109,7 +109,7 @@ exports.processEvent = async (req, res) => {
 
 ## Verify Connectivity
 
-Test from Cloud Shell that the function can reach Redis:
+Test from a Compute Engine VM in the same VPC network that Redis is reachable:
 
 ```bash
 redis-cli -h 10.0.0.3 -p 6379 ping
