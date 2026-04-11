@@ -128,4 +128,4 @@ Storing 1 million user counters (8-bit each) in BITFIELD:
 
 ## Summary
 
-`BITFIELD` is Redis's most flexible bit-manipulation command, letting you define and operate on arbitrary-width integer fields within a single string. Its atomic multi-sub-command execution, configurable overflow behavior, and support for both signed and unsigned integers make it ideal for compact, high-performance state storage. Use `BITFIELD_RO` for read-only access in replicated or multi-thread scenarios.
+`BITFIELD` is Redis's most flexible bit-manipulation command, letting you define and operate on arbitrary-width integer fields within a single string. Its atomic multi-sub-command execution, configurable overflow behavior, and support for both signed and unsigned integers make it ideal for compact, high-performance state storage. Use `BITFIELD_RO` for read-only access on read-only replicas in Redis Cluster, since `BITFIELD` is flagged as a write command and would be redirected to the master even for GET-only operations.
