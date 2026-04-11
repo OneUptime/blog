@@ -25,7 +25,6 @@ TTL:  Should cover your message redelivery window (e.g., 24 hours)
 ```python
 import redis
 import json
-import uuid
 import hashlib
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
