@@ -43,7 +43,7 @@ innodb_flush_log_at_trx_commit = 2
 # Value 0: No sync - fastest, risk of losing last few seconds on crash
 innodb_flush_log_at_trx_commit = 0
 
-# sync_binlog = 0 reduces binary log sync overhead
+# sync_binlog = 100: sync binary log every 100 commits (balances safety and performance)
 sync_binlog = 100
 ```
 
