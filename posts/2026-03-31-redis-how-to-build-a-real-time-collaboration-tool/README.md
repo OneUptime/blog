@@ -151,7 +151,7 @@ async function getDocumentState(roomId) {
 }
 ```
 
-## Tracking Active Users with Redis Sets
+## Tracking Active Users with Redis Hashes
 
 ```javascript
 async function trackUser(roomId, userId, username) {
