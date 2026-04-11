@@ -108,13 +108,13 @@ brew services restart mysql
 If you only want MySQL running for the current session (no autostart):
 
 ```bash
-/opt/homebrew/opt/mysql/bin/mysqld_safe --datadir=/opt/homebrew/var/mysql &
+brew services run mysql
 ```
 
 Stop with:
 
 ```bash
-mysqladmin -u root shutdown
+brew services stop mysql
 ```
 
 ## Checking MySQL Status
