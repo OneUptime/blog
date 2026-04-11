@@ -76,13 +76,16 @@ ALTER TABLE large_table ALTER INDEX idx_new_col VISIBLE;
 
 ## Force Using an Invisible Index
 
-The optimizer ignores invisible indexes by default, but you can override this for testing with an index hint.
+The optimizer ignores invisible indexes by default, but you can override this for testing with the `use_invisible_indexes` optimizer switch.
 
 ```sql
--- Force optimizer to use the invisible index (testing purposes only)
-SELECT /*+ INDEX(orders idx_customer) */ *
-FROM orders
-WHERE customer_id = 42;
+-- Allow the optimizer to use invisible indexes (testing purposes only)
+SET SESSION optimizer_switch = 'use_invisible_indexes=on';
+
+SELECT * FROM orders WHERE customer_id = 42;
+
+-- Disable again after testing
+SET SESSION optimizer_switch = 'use_invisible_indexes=off';
 ```
 
 ## Viewing All Indexes and Visibility
