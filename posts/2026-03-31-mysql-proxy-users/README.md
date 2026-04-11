@@ -28,6 +28,9 @@ MySQL proxy users allow one account (the "proxy" account) to authenticate and th
 The proxied account holds the actual privileges but typically cannot connect directly:
 
 ```sql
+-- Install the mysql_no_login plugin (if not already installed)
+INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';
+
 -- Create the proxied account (holds privileges)
 CREATE USER 'developer_template'@'%'
   IDENTIFIED WITH mysql_no_login;
@@ -48,6 +51,10 @@ CREATE USER 'alice'@'%'
 
 -- Grant proxy permission: alice -> developer_template
 GRANT PROXY ON 'developer_template'@'%' TO 'alice'@'%';
+
+-- Enable server-side proxy user mapping (required for mysql_native_password)
+SET GLOBAL check_proxy_users = ON;
+SET GLOBAL mysql_native_password_proxy_users = ON;
 ```
 
 ## Verifying Proxy Setup
@@ -85,7 +92,7 @@ Output:
 +------------------+---------------------------+
 | USER()           | CURRENT_USER()            |
 +------------------+---------------------------+
-| alice@%          | developer_template@%      |
+| alice@localhost   | developer_template@%      |
 +------------------+---------------------------+
 ```
 
@@ -110,7 +117,7 @@ REVOKE PROXY ON 'developer_template'@'%' FROM 'alice'@'%';
 
 ## Proxy Users with PAM or LDAP (Enterprise)
 
-Enterprise proxy authentication via PAM:
+Enterprise proxy authentication via LDAP:
 
 ```sql
 CREATE USER 'ldap_user'@'%'
