@@ -85,7 +85,7 @@ HAVING max_price > 500
 ORDER BY max_price DESC;
 ```
 
-## MAX vs LAST_VALUE Window Function
+## MAX as a Window Function
 
 ```sql
 -- Show the highest salary in the department alongside each employee row
