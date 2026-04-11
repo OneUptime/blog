@@ -82,8 +82,8 @@ TS.QUERYINDEX host=host1 metric=memory
 |---|---|
 | `label=value` | Label equals value |
 | `label!=value` | Label does not equal value |
-| `label=` | Label has no value (label exists but empty) |
-| `label!=` | Label does not exist |
+| `label=` | Label does not exist |
+| `label!=` | Label exists (any value) |
 | `label=(v1,v2)` | Label is v1 or v2 |
 | `label!=(v1,v2)` | Label is neither v1 nor v2 |
 
@@ -97,7 +97,7 @@ TS.QUERYINDEX env=production metric!=disk
 # Returns: cpu:host1, cpu:host2, memory:host1, memory:host2
 
 # Find series where region label exists (any value)
-TS.QUERYINDEX metric=cpu region!=""
+TS.QUERYINDEX metric=cpu region!=
 ```
 
 ## Python Example - Dynamic Monitoring
