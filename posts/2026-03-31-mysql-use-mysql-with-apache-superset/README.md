@@ -35,7 +35,7 @@ In Superset: Settings > Database Connections > + Database > MySQL.
 SQLAlchemy URI:
 
 ```text
-mysql+mysqlconnector://superset_ro:readonlypassword@127.0.0.1:3306/analytics_db
+mysql+mysqldb://superset_ro:readonlypassword@127.0.0.1:3306/analytics_db
 ```
 
 Or with pymysql:
