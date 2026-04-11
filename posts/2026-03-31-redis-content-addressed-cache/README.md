@@ -14,8 +14,8 @@ A content-addressed cache uses the hash of the data itself as the cache key. Two
 
 ```text
 content -> SHA256(content) -> cache key
-"hello"  -> a665a459...    -> "cache:a665a459..."
-"hello"  -> a665a459...    -> same key, same cached entry
+"hello"  -> 2cf24dba...    -> "cache:2cf24dba..."
+"hello"  -> 2cf24dba...    -> same key, same cached entry
 ```
 
 Because the key is derived from the content, the cached value can never be "stale" - if the content changes, the hash changes and a new key is used.
@@ -27,7 +27,7 @@ import redis
 import hashlib
 import json
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = redis.Redis(host='localhost', port=6379)
 
 def content_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -70,8 +70,6 @@ def get_cached_response(url: str) -> dict | None:
 ## Deduplication for File Assets
 
 ```python
-import os
-
 def cache_file(filepath: str) -> str:
     with open(filepath, 'rb') as f:
         data = f.read()
@@ -94,10 +92,10 @@ Since content-addressed keys are immutable, you can use a very long TTL:
 
 ```bash
 # Set a 7-day TTL for immutable content entries
-SET "cas:a665a459..." "..." EX 604800
+SET "cas:2cf24dba..." "..." EX 604800
 
 # Or use no TTL for permanent storage (be mindful of memory)
-SET "cas:a665a459..." "..."
+SET "cas:2cf24dba..." "..."
 ```
 
 ## Garbage Collection for Unreferenced Keys
