@@ -47,47 +47,51 @@ const CHANNEL = (room) => `chat:room:${room}`;
 const PRESENCE_KEY = (room) => `chat:presence:${room}`;
 const MAX_HISTORY = 100;
 
-// Subscribe to all chat channels
-await subscriber.psubscribe('chat:room:*');
+async function main() {
+  // Subscribe to all chat channels
+  await subscriber.psubscribe('chat:room:*');
 
-subscriber.on('pmessage', (pattern, channel, rawMessage) => {
-  const room = channel.replace('chat:room:', '');
-  const message = JSON.parse(rawMessage);
+  subscriber.on('pmessage', (pattern, channel, rawMessage) => {
+    const room = channel.replace('chat:room:', '');
+    const message = JSON.parse(rawMessage);
 
-  // Broadcast to locally connected clients in this room
-  for (const [socketId, client] of clients) {
-    if (client.room === room && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(JSON.stringify(message));
+    // Broadcast to locally connected clients in this room
+    for (const [socketId, client] of clients) {
+      if (client.room === room && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify(message));
+      }
     }
-  }
-});
-
-const wss = new WebSocket.Server({ port: 8080 });
-
-wss.on('connection', (ws) => {
-  const socketId = uuidv4();
-  clients.set(socketId, { ws, userId: null, username: null, room: null });
-
-  ws.on('message', async (data) => {
-    let event;
-    try {
-      event = JSON.parse(data.toString());
-    } catch {
-      ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
-      return;
-    }
-
-    await handleEvent(socketId, ws, event);
   });
 
-  ws.on('close', async () => {
-    const client = clients.get(socketId);
-    if (client?.room) {
-      await handleLeave(socketId, client);
-    }
-    clients.delete(socketId);
+  const wss = new WebSocket.Server({ port: 8080 });
+
+  wss.on('connection', (ws) => {
+    const socketId = uuidv4();
+    clients.set(socketId, { ws, userId: null, username: null, room: null });
+
+    ws.on('message', async (data) => {
+      let event;
+      try {
+        event = JSON.parse(data.toString());
+      } catch {
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
+        return;
+      }
+
+      await handleEvent(socketId, ws, event);
+    });
+
+    ws.on('close', async () => {
+      const client = clients.get(socketId);
+      if (client?.room) {
+        await handleLeave(socketId, client);
+      }
+      clients.delete(socketId);
+    });
   });
-});
+}
+
+main();
 ```
 
 ## Event Handlers
