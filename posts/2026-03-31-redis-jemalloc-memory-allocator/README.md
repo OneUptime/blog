@@ -16,12 +16,11 @@ The system `glibc` malloc is a general-purpose allocator tuned for many workload
 
 ## How jemalloc Organizes Memory
 
-jemalloc divides memory into three allocation size classes:
+jemalloc 5.x divides memory into two allocation size classes:
 
 ```text
-Small  (<= 8 bytes up to ~14KB)  - thread-local caches (tcache)
-Large  (14KB to 4MB)             - directly from arena
-Huge   (> 4MB)                   - mmap'd directly
+Small  (8 bytes up to ~14KB)   - slab-allocated from arena bins, cached in thread-local caches (tcache)
+Large  (16KB and above)        - individually allocated as arena extents
 ```
 
 Each arena has its own set of size-class bins with free lists. Redis uses multiple arenas to reduce contention when IO threads are enabled.
@@ -66,7 +65,7 @@ active-defrag-threshold-lower 10
 active-defrag-threshold-upper 100
 ```
 
-jemalloc exposes `JEMALLOC_PURGE` to return free pages to the OS. Redis calls this during `serverCron`.
+jemalloc exposes a `je_mallctl("arena.<N>.purge", ...)` interface to return free pages to the OS. Redis calls this periodically during `serverCron`.
 
 ## Manually Purging Memory
 
@@ -76,11 +75,11 @@ Force Redis to return free jemalloc memory to the OS immediately:
 redis-cli MEMORY PURGE
 ```
 
-This calls `je_mallopt(M_PURGE, 0)` internally, which tells jemalloc to release all cached free pages.
+This calls `je_mallctl("arena.<N>.purge", ...)` internally through Redis's `jemalloc_purge()` wrapper, which tells jemalloc to release all cached free pages.
 
 ## Profiling Allocations
 
-Enable jemalloc heap profiling (requires a debug build):
+Enable jemalloc heap profiling (requires jemalloc compiled with `--enable-prof`):
 
 ```bash
 MALLOC_CONF=prof:true,prof_prefix:/tmp/redis.heap redis-server
