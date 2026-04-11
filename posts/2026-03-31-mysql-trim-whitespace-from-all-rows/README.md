@@ -82,7 +82,7 @@ Non-breaking spaces (Unicode 0xA0) are not removed by `TRIM`. Use `REPLACE` comb
 
 ```sql
 UPDATE customers
-SET name = TRIM(REPLACE(name, '\u00a0', ' '))
+SET name = TRIM(REPLACE(name, CHAR(160), ' '))
 WHERE name LIKE CONCAT('%', CHAR(160), '%');
 ```
 
