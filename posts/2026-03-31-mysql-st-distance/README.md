@@ -56,12 +56,12 @@ CREATE TABLE cities (
 );
 
 INSERT INTO cities (name, location) VALUES
-    ('New York',     ST_GeomFromText('POINT(-74.0060 40.7128)', 4326)),
-    ('Los Angeles',  ST_GeomFromText('POINT(-118.2437 34.0522)', 4326)),
-    ('Chicago',      ST_GeomFromText('POINT(-87.6298 41.8781)', 4326)),
-    ('Houston',      ST_GeomFromText('POINT(-95.3698 29.7604)', 4326)),
-    ('London',       ST_GeomFromText('POINT(-0.1276 51.5074)', 4326)),
-    ('Paris',        ST_GeomFromText('POINT(2.3522 48.8566)', 4326));
+    ('New York',     ST_GeomFromText('POINT(40.7128 -74.0060)', 4326)),
+    ('Los Angeles',  ST_GeomFromText('POINT(34.0522 -118.2437)', 4326)),
+    ('Chicago',      ST_GeomFromText('POINT(41.8781 -87.6298)', 4326)),
+    ('Houston',      ST_GeomFromText('POINT(29.7604 -95.3698)', 4326)),
+    ('London',       ST_GeomFromText('POINT(51.5074 -0.1276)', 4326)),
+    ('Paris',        ST_GeomFromText('POINT(48.8566 2.3522)', 4326));
 ```
 
 ### Calculate Distance Between All City Pairs
@@ -83,13 +83,13 @@ ORDER BY distance_km;
 | London      | Paris       |       341.5 |
 | New York    | Chicago     |      1148.5 |
 | Chicago     | Houston     |      1515.2 |
+| Los Angeles | Houston     |      2206.5 |
 | New York    | Houston     |      2273.5 |
 | New York    | Los Angeles |      3935.7 |
-| Houston     | Los Angeles |      2206.5 |
 | New York    | London      |      5570.2 |
 | New York    | Paris       |      5836.3 |
-| London      | Los Angeles |      8749.3 |
-| Paris       | Los Angeles |      9082.6 |
+| Los Angeles | London      |      8749.3 |
+| Los Angeles | Paris       |      9082.6 |
 +-------------+-------------+-------------+
 ```
 
@@ -97,7 +97,7 @@ ORDER BY distance_km;
 
 ```sql
 -- Find all cities within 2000 km of New York
-SET @new_york = ST_GeomFromText('POINT(-74.0060 40.7128)', 4326);
+SET @new_york = ST_GeomFromText('POINT(40.7128 -74.0060)', 4326);
 
 SELECT
     name,
@@ -144,8 +144,8 @@ JOIN cities c2 ON c1.name = 'London' AND c2.name = 'Paris';
 -- Distance between New York and London in miles
 SELECT
     ROUND(ST_Distance(
-        ST_GeomFromText('POINT(-74.006 40.7128)', 4326),
-        ST_GeomFromText('POINT(-0.1276 51.5074)', 4326),
+        ST_GeomFromText('POINT(40.7128 -74.006)', 4326),
+        ST_GeomFromText('POINT(51.5074 -0.1276)', 4326),
         'mile'
     ), 1) AS distance_miles;
 ```
@@ -163,7 +163,7 @@ SELECT
 `ST_Distance_Sphere` does not use a spatial index. For efficient radius queries, first narrow results with a spatial-indexed bounding box, then filter by exact distance:
 
 ```sql
-SET @center = ST_GeomFromText('POINT(-74.006 40.7128)', 4326);
+SET @center = ST_GeomFromText('POINT(40.7128 -74.006)', 4326);
 SET @radius_m = 1500000;  -- 1500 km
 
 -- Rough bounding box: 1 degree latitude ~ 111 km
@@ -172,11 +172,11 @@ SET @lon_deg  = @radius_m / (111000 * COS(RADIANS(40.7128)));
 
 SET @bbox = ST_GeomFromText(CONCAT(
     'POLYGON((',
-        -74.006 - @lon_deg, ' ', 40.7128 - @lat_deg, ',',
-        -74.006 + @lon_deg, ' ', 40.7128 - @lat_deg, ',',
-        -74.006 + @lon_deg, ' ', 40.7128 + @lat_deg, ',',
-        -74.006 - @lon_deg, ' ', 40.7128 + @lat_deg, ',',
-        -74.006 - @lon_deg, ' ', 40.7128 - @lat_deg,
+        40.7128 - @lat_deg, ' ', -74.006 - @lon_deg, ',',
+        40.7128 - @lat_deg, ' ', -74.006 + @lon_deg, ',',
+        40.7128 + @lat_deg, ' ', -74.006 + @lon_deg, ',',
+        40.7128 + @lat_deg, ' ', -74.006 - @lon_deg, ',',
+        40.7128 - @lat_deg, ' ', -74.006 - @lon_deg,
     '))'
 ), 4326);
 
@@ -212,7 +212,7 @@ SELECT ROUND(ST_Distance(
 | Function              | Model         | Input       | Output Units          | Notes                    |
 |-----------------------|---------------|-------------|----------------------|--------------------------|
 | ST_Distance           | Geodetic (8.0)| Any geometry| Meters (SRID 4326)   | Most accurate for earth  |
-| ST_Distance_Sphere    | Spherical     | POINT only  | Meters               | Faster, ~0.3% less accurate |
+| ST_Distance_Sphere    | Spherical     | POINT, MULTIPOINT | Meters         | Faster, ~0.3% less accurate |
 | ST_Distance (SRID 0)  | Cartesian     | Any geometry| Coordinate units     | For flat/planar data     |
 
 ## Best Practices
