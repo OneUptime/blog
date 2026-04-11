@@ -72,7 +72,7 @@ Iterate over a large hash page by page.
 ```bash
 cursor=0
 while true; do
-  result=$(redis-cli HSCAN bighash "$cursor" COUNT 100)
+  result=$(redis-cli --raw HSCAN bighash "$cursor" COUNT 100)
   cursor=$(echo "$result" | head -1)
   echo "$result" | tail -n +2
   [ "$cursor" = "0" ] && break
