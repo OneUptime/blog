@@ -148,7 +148,7 @@ WITH RECURSIVE safe_tree AS (
 SELECT * FROM safe_tree;
 ```
 
-You can also set `max_sp_recursion_depth` or rely on `cte_max_recursion_depth` (default 1000) to cap depth.
+You can also set `cte_max_recursion_depth` (default 1000) to cap the maximum recursion depth for CTEs.
 
 ## Summary
 
