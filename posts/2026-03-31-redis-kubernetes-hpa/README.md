@@ -51,7 +51,7 @@ rules:
         as: "redis_connected_clients"
       metricsQuery: 'avg(redis_connected_clients{<<.LabelMatchers>>})'
 
-    - seriesQuery: 'rate(redis_commands_processed_total{kubernetes_namespace!=""}[2m])'
+    - seriesQuery: 'redis_commands_processed_total{kubernetes_namespace!=""}'
       resources:
         overrides:
           kubernetes_namespace:
