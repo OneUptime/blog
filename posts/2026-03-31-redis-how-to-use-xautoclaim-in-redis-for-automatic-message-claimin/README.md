@@ -113,8 +113,6 @@ if deleted:
 
 ```python
 import redis
-import time
-import threading
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
