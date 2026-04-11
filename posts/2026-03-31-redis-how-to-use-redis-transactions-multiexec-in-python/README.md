@@ -13,8 +13,8 @@ Description: Learn how to use Redis MULTI/EXEC transactions in Python with redis
 Redis transactions use `MULTI` and `EXEC` to batch commands atomically. All queued commands execute sequentially without interruption from other clients. Key characteristics:
 
 - Commands queued after `MULTI` are executed atomically on `EXEC`
-- No partial execution - all or nothing
-- Unlike relational databases, Redis cannot roll back individual commands on runtime errors
+- Syntax errors during queuing cause the entire transaction to be discarded on `EXEC`
+- Runtime errors in individual commands do **not** roll back other commands — unlike relational databases, there is no rollback
 - `DISCARD` cancels the queued transaction
 
 ## Basic MULTI/EXEC Transaction
@@ -61,6 +61,8 @@ def transfer_funds(from_account, to_account, amount):
 
 transfer_funds('account:alice:balance', 'account:bob:balance', 100)
 ```
+
+> **Note:** This example has a race condition. The balances are read outside the transaction via `r.get()`, so another client could modify them before `execute()` runs. Use `WATCH` (shown below) for safe read-then-write operations.
 
 ## Using WATCH for Optimistic Locking
 
@@ -150,7 +152,7 @@ try:
 
     # Simulate an error condition
     if some_error_condition:
-        pipe.reset()  # Sends DISCARD
+        pipe.reset()  # Clears the queued commands
         print("Transaction cancelled")
     else:
         pipe.execute()
@@ -176,12 +178,13 @@ with r.pipeline(transaction=True) as pipe:
     pipe.lpush('string_key', 'item')
     pipe.incr('counter')
 
-    try:
-        results = pipe.execute()
-    except ResponseError as e:
-        print(f"One command failed: {e}")
-        # Redis continues executing remaining commands
-        # results may be partial
+    # Use raise_on_error=False to get all results including errors
+    results = pipe.execute(raise_on_error=False)
+    for i, result in enumerate(results):
+        if isinstance(result, ResponseError):
+            print(f"Command {i} failed: {result}")
+        else:
+            print(f"Command {i} succeeded: {result}")
 ```
 
 ## Atomic Inventory Management
