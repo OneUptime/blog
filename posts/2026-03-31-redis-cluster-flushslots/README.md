@@ -14,11 +14,12 @@ Description: Learn how to use CLUSTER FLUSHSLOTS in Redis to remove all slot ass
 
 ```mermaid
 flowchart TD
-    A[Node owns slots 0-5460] --> B[CLUSTER FLUSHSLOTS]
-    B --> C[Node owns no slots]
-    C --> D{Node has keys in flushed slots?}
-    D -- Yes --> E[Keys still exist but node reports no slot ownership]
-    D -- No --> F[Clean state, ready for reassignment]
+    A[Node owns slots 0-5460] --> B{Node has keys?}
+    B -- Yes --> C[CLUSTER FLUSHSLOTS fails with error]
+    C --> D[Run FLUSHALL first to clear keys]
+    D --> B
+    B -- No --> E[CLUSTER FLUSHSLOTS]
+    E --> F[Node owns no slots, ready for reassignment]
 ```
 
 ## Syntax
@@ -129,9 +130,9 @@ CLUSTER ADDSLOTS 0 1 2 3 ...
 
 | Command | Effect on slots | Effect on data | Effect on known nodes |
 |---------|----------------|----------------|----------------------|
-| `CLUSTER FLUSHSLOTS` | Clears slot assignments | No effect | No effect |
-| `CLUSTER RESET SOFT` | Clears slot assignments | No effect | Forgets all nodes |
-| `CLUSTER RESET HARD` | Clears slot assignments | Flushes data | Forgets all nodes, new ID |
+| `CLUSTER FLUSHSLOTS` | Clears slot assignments | No effect (DB must be empty) | No effect |
+| `CLUSTER RESET SOFT` | Clears slot assignments | Flushes data on replicas; masters must be empty | Forgets all nodes |
+| `CLUSTER RESET HARD` | Clears slot assignments | Flushes data on replicas; masters must be empty | Forgets all nodes, new ID |
 
 Use `CLUSTER FLUSHSLOTS` when you only need to clear slot ownership without affecting the node's knowledge of other cluster members.
 
