@@ -99,9 +99,9 @@ SCENARIO: Primary node failure
 
 SCENARIO: Total data loss
   1. Identify latest backup: aws s3 ls s3://my-redis-backups/daily/ | sort | tail -1
-  2. Download: aws s3 cp s3://my-redis-backups/daily/<file> /var/lib/redis/dump.rdb
-  3. Stop Redis: systemctl stop redis
-  4. Copy RDB: cp /var/lib/redis/dump.rdb /var/lib/redis/dump.rdb.bak
+  2. Stop Redis: systemctl stop redis
+  3. Back up existing RDB: cp /var/lib/redis/dump.rdb /var/lib/redis/dump.rdb.bak
+  4. Download backup: aws s3 cp s3://my-redis-backups/daily/<file> /var/lib/redis/dump.rdb
   5. Start Redis: systemctl start redis
   6. Verify: redis-cli DBSIZE
 ```
