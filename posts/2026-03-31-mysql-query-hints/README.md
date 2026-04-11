@@ -17,7 +17,7 @@ MySQL query hints are directives embedded in SQL statements that influence how t
 MySQL supports several categories of hints:
 
 1. Index hints: USE INDEX, FORCE INDEX, IGNORE INDEX
-2. Optimizer hints (MySQL 5.7+): `/*+ hint */` syntax
+2. Optimizer hints: `/*+ hint */` syntax (introduced in MySQL 5.7, expanded in 8.0+)
 3. Join order hints: STRAIGHT_JOIN
 4. Table-level hints: BKA, NO_BKA, BNL, NO_BNL
 
@@ -29,14 +29,14 @@ Index hints control which indexes the optimizer uses:
 -- Use only this index
 SELECT * FROM orders USE INDEX (idx_customer_id) WHERE customer_id = 42;
 
--- Force this index, disable full table scan fallback
+-- Force this index, make full table scan a last resort
 SELECT * FROM orders FORCE INDEX (idx_status) WHERE status = 'pending';
 
 -- Exclude this index from consideration
 SELECT * FROM orders IGNORE INDEX (idx_old_unused) WHERE customer_id = 42;
 ```
 
-## Optimizer Hints (MySQL 5.7+)
+## Optimizer Hints (MySQL 8.0+)
 
 The `/*+ */` optimizer hint syntax provides fine-grained control:
 
