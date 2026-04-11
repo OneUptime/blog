@@ -62,7 +62,7 @@ CREATE INDEX idx_events_data ON events USING GIN (data);
 SELECT * FROM events WHERE data @> '{"type": "click"}';
 ```
 
-PostgreSQL's JSONB is stored in a binary format that enables fast key lookup and GIN index support. MySQL's JSON type stores data as text and cannot be indexed at the column level.
+PostgreSQL's JSONB is stored in a binary format that enables fast key lookup and GIN index support. MySQL's JSON type also stores data in an optimized binary format, but it cannot be indexed directly at the column level (specific JSON paths can be indexed using generated columns or functional indexes in MySQL 8.0.13+).
 
 ## Indexing
 
@@ -97,8 +97,8 @@ COMMIT;
 ```text
 Feature              MySQL              PostgreSQL
 -----------          -------            ----------
-Physical replication Statement, row     WAL streaming
-Logical replication  Binary log         Logical decoding
+Replication method   Binary log (statement/row)  WAL streaming
+Logical replication  Row-based binary log        Logical decoding (pub/sub)
 Synchronous replicas Optional           Optional (synchronous_commit)
 Replication slots    No                 Yes
 ```
@@ -121,7 +121,7 @@ MySQL tends to outperform PostgreSQL on simple read-heavy workloads, especially 
 - You need advanced data types (arrays, ranges, JSONB, custom types)
 - You require complex queries with CTEs, window functions, or lateral joins
 - You need geospatial capabilities with PostGIS
-- You value standards compliance and want full SQL:2016 support
+- You value standards compliance and want extensive SQL standard support
 
 ## Summary
 
