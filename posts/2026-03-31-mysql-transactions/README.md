@@ -133,34 +133,44 @@ SELECT id, holder_name, balance FROM accounts WHERE id = 1;
 
 ### Transaction in Application Code Pattern
 
-In real applications, ROLLBACK typically happens inside error handling:
+In real applications, ROLLBACK typically happens inside error handling. The IF/THEN/ELSE syntax requires a stored procedure in MySQL:
 
 ```sql
--- Simulate application-level transaction logic
-START TRANSACTION;
+-- Simulate application-level transaction logic using a stored procedure
+DELIMITER //
+CREATE PROCEDURE transfer_funds()
+BEGIN
+    DECLARE rows_updated INT;
 
-UPDATE accounts SET balance = balance - 200.00 WHERE id = 3 AND balance >= 200.00;
+    START TRANSACTION;
 
--- Check if the UPDATE affected any rows (0 rows = insufficient funds)
--- ROW_COUNT() returns number of rows affected by the last DML
-SET @rows_updated = ROW_COUNT();
+    UPDATE accounts SET balance = balance - 200.00 WHERE id = 3 AND balance >= 200.00;
 
-IF @rows_updated = 0 THEN
-    ROLLBACK;
-    SELECT 'Transfer failed: insufficient funds' AS result;
-ELSE
-    UPDATE accounts SET balance = balance + 200.00 WHERE id = 2;
-    INSERT INTO transfer_log (from_account, to_account, amount, status)
-    VALUES (3, 2, 200.00, 'completed');
-    COMMIT;
-    SELECT 'Transfer successful' AS result;
-END IF;
+    -- Check if the UPDATE affected any rows (0 rows = insufficient funds)
+    -- ROW_COUNT() returns number of rows affected by the last DML
+    SET rows_updated = ROW_COUNT();
+
+    IF rows_updated = 0 THEN
+        ROLLBACK;
+        SELECT 'Transfer failed: insufficient funds' AS result;
+    ELSE
+        UPDATE accounts SET balance = balance + 200.00 WHERE id = 2;
+        INSERT INTO transfer_log (from_account, to_account, amount, status)
+        VALUES (3, 2, 200.00, 'completed');
+        COMMIT;
+        SELECT 'Transfer successful' AS result;
+    END IF;
+END //
+DELIMITER ;
+
+-- Execute the procedure
+CALL transfer_funds();
 ```
 
 ### Checking Transaction Status
 
 ```sql
--- See if you're in a transaction
+-- Check if autocommit is enabled (does not indicate whether you are inside a transaction)
 SELECT @@autocommit;
 
 -- Using INFORMATION_SCHEMA to view running transactions (MySQL 8.0+)
