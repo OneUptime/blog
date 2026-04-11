@@ -28,8 +28,8 @@ Redis Cluster nodes communicate using a gossip protocol over the cluster bus (de
 3. Marks nodes as `PFAIL` (probable failure) after missing heartbeats
 
 ```bash
-# View cluster bus port in node config
-redis-cli CLUSTER INFO | grep cluster_port
+# View cluster bus port (shown after @ in node addresses)
+redis-cli CLUSTER NODES | head -1
 
 # View gossip messages sent/received
 redis-cli CLUSTER INFO | grep cluster_stats_messages
@@ -106,19 +106,18 @@ redis-cli --cluster reshard <any-node>:6379 \
   --cluster-slots 1000 \
   --cluster-yes
 
-# Monitor migration progress
-redis-cli CLUSTER INFO | grep cluster_slots_migrating
+# Monitor migration progress (look for importing/migrating flags)
+redis-cli CLUSTER NODES | grep -E "migrating|importing"
 ```
 
 ```python
 # Client-side: handle MOVED and ASK automatically
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 rc = RedisCluster(
-    startup_nodes=[{"host": "redis-1", "port": 6379}],
+    startup_nodes=[ClusterNode("redis-1", 6379)],
     decode_responses=True,
-    skip_full_coverage_check=False,  # Verify all slots covered
-    retry_on_error=[Exception],
+    require_full_coverage=True,  # Verify all slots covered
 )
 
 # RedisCluster handles MOVED and ASK transparently
@@ -159,7 +158,7 @@ redis-cli --cluster del-node existing-node:6379 <node-to-remove-id>
 # How long before a node is considered failed
 redis-cli CONFIG SET cluster-node-timeout 15000
 
-# Minimum replicas needed to maintain writes for a primary
+# Require all 16384 hash slots to be covered for the cluster to accept writes
 redis-cli CONFIG SET cluster-require-full-coverage yes
 
 # Allow writes even when some slots are uncovered
