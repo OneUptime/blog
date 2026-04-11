@@ -73,15 +73,15 @@ LIMIT 5;
 ```
 
 ```text
-+----+-------------+-------+
-| id | name        | price |
-+----+-------------+-------+
-|  1 | Widget A    |  9.99 |
-|  2 | Gadget B    | 29.99 |
-|  3 | Doohickey C |  4.99 |
-|  4 | SQL Handbook| 39.99 |
-|  5 | MySQL Cookbook| 49.99|
-+----+-------------+-------+
++----+---------------+-------+
+| id | name          | price |
++----+---------------+-------+
+|  1 | Widget A      |  9.99 |
+|  2 | Gadget B      | 29.99 |
+|  3 | Doohickey C   |  4.99 |
+|  4 | SQL Handbook  | 39.99 |
+|  5 | MySQL Cookbook | 49.99 |
++----+---------------+-------+
 ```
 
 ## Offset Pagination
@@ -181,13 +181,13 @@ SELECT id, name, price
 FROM products
 ORDER BY price DESC, id ASC
 LIMIT 3;
--- Last row: price = 299.99, id = 10
+-- Last row: price = 49.99, id = 5
 
--- Page 2: cursor is (price = 299.99, id = 10)
+-- Page 2: cursor is (price = 49.99, id = 5)
 SELECT id, name, price
 FROM products
-WHERE (price < 299.99)
-   OR (price = 299.99 AND id > 10)
+WHERE (price < 49.99)
+   OR (price = 49.99 AND id > 5)
 ORDER BY price DESC, id ASC
 LIMIT 3;
 ```
