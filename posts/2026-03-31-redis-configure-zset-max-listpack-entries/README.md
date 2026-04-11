@@ -46,14 +46,14 @@ Encoding switches to skiplist when:
 ```python
 import redis
 
-r = redis.Redis()
+r = redis.Redis(decode_responses=True)
 
 def test_zset_memory(n, member_template="user:{i}"):
     r.delete("test_zset")
     members = {member_template.format(i=i): float(i) for i in range(n)}
     r.zadd("test_zset", members)
     mem = r.memory_usage("test_zset")
-    enc = r.object_encoding("test_zset")
+    enc = r.object("encoding", "test_zset")
     per_member = mem / n
     print(f"Members: {n:5d}  Encoding: {enc:12s}  "
           f"Total: {mem:8d} bytes  Per member: {per_member:.0f}")
@@ -116,7 +116,7 @@ def add_to_leaderboard(r, key, user_id, score, max_size=500):
 r.config_set("zset-max-listpack-entries", 512)
 
 add_to_leaderboard(r, "top500", "user:42", 9850)
-print(r.object_encoding("top500"))  # listpack until 513 members
+print(r.object("encoding", "top500"))  # listpack until 513 members
 ```
 
 ## Checking Which ZSETs Have Converted to Skiplist
