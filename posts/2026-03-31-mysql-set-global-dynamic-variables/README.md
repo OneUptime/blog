@@ -19,10 +19,9 @@ Description: Use MySQL SET GLOBAL to change server variables at runtime without 
 SET GLOBAL max_connections = 300;
 
 -- Set multiple variables at once
-SET GLOBAL
-  max_connections = 300,
-  wait_timeout = 3600,
-  sort_buffer_size = 2097152;
+SET GLOBAL max_connections = 300,
+    GLOBAL wait_timeout = 3600,
+    GLOBAL sort_buffer_size = 2097152;
 ```
 
 ## Required Privileges
@@ -40,9 +39,9 @@ GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO 'dba'@'%';
 -- Check the new global value
 SHOW GLOBAL VARIABLES LIKE 'max_connections';
 
--- Or use information_schema
+-- Or use performance_schema (MySQL 8.0+)
 SELECT VARIABLE_VALUE
-FROM information_schema.GLOBAL_VARIABLES
+FROM performance_schema.global_variables
 WHERE VARIABLE_NAME = 'max_connections';
 ```
 
@@ -64,22 +63,21 @@ In MySQL 8.0, use `SET PERSIST` instead to automatically update the configuratio
 
 ## Which Variables Are Dynamic
 
-Not all system variables can be changed at runtime. Check with:
+Not all system variables can be changed at runtime. Check which variables were changed dynamically with:
 
 ```sql
-SELECT VARIABLE_NAME, VARIABLE_SCOPE, VARIABLE_TYPE
+SELECT VARIABLE_NAME, VARIABLE_SOURCE, SET_TIME, SET_USER
 FROM performance_schema.variables_info
-WHERE VARIABLE_SOURCE != 'NONE'
-  AND VARIABLE_NAME LIKE 'innodb%buffer%'
+WHERE VARIABLE_NAME LIKE 'innodb%buffer%'
 ORDER BY VARIABLE_NAME;
 ```
 
 Try to set a non-dynamic variable:
 
 ```sql
--- This will fail - innodb_buffer_pool_size requires special handling
-SET GLOBAL innodb_buffer_pool_size = 2147483648;
--- In MySQL 8.0, this is actually allowed online
+-- This will fail - innodb_data_home_dir is not a dynamic variable
+SET GLOBAL innodb_data_home_dir = '/var/lib/mysql/data';
+-- ERROR 1238 (HY000): Variable 'innodb_data_home_dir' is a read only variable
 ```
 
 ## Common Dynamic Variables
@@ -133,7 +131,7 @@ SELECT
   SET_HOST,
   SET_TIME
 FROM performance_schema.variables_info
-WHERE VARIABLE_SOURCE = 'GLOBAL'
+WHERE VARIABLE_SOURCE = 'DYNAMIC'
 ORDER BY SET_TIME DESC
 LIMIT 20;
 ```
