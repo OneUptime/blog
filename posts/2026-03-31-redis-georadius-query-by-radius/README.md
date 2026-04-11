@@ -29,7 +29,7 @@ flowchart TD
 ## Syntax
 
 ```redis
-GEORADIUS key longitude latitude radius m|km|ft|mi [WITHCOORD] [WITHDIST] [COUNT count [ANY]] [ASC|DESC] [STORE key] [STOREDIST key]
+GEORADIUS key longitude latitude radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count [ANY]] [ASC|DESC] [STORE key | STOREDIST key]
 ```
 
 - `key` - sorted set with geo data
@@ -38,10 +38,11 @@ GEORADIUS key longitude latitude radius m|km|ft|mi [WITHCOORD] [WITHDIST] [COUNT
 - `m|km|ft|mi` - distance unit
 - `WITHCOORD` - include member coordinates in results
 - `WITHDIST` - include distance from center in results
+- `WITHHASH` - include the raw 52-bit geohash integer of the member
 - `COUNT count` - limit result count; `ANY` returns first N matches found without full scan
 - `ASC|DESC` - sort results by distance
-- `STORE key` - store result member names in another sorted set
-- `STOREDIST key` - store result with distance as score
+- `STORE key` - store result member names in another sorted set (mutually exclusive with `STOREDIST`)
+- `STOREDIST key` - store result with distance as score (mutually exclusive with `STORE`)
 
 ## Setup
 
@@ -80,9 +81,9 @@ Output:
 
 ```text
 1) 1) "uptown-diner"
-   2) "0.3124"
+   2) "0.7950"
 2) 1) "joes-pizza"
-   2) "1.0874"
+   2) "1.0679"
 ```
 
 ### With Coordinates and Distance
