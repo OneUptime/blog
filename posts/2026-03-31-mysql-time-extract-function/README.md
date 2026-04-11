@@ -81,7 +81,7 @@ Find records where the stored time matches the current time within a window:
 ```sql
 SELECT *
 FROM scheduled_jobs
-WHERE ABS(TIMESTAMPDIFF(SECOND, TIME(scheduled_at), CURTIME())) < 300;
+WHERE ABS(TIME_TO_SEC(TIME(scheduled_at)) - TIME_TO_SEC(CURTIME())) < 300;
 ```
 
 ## Extracting Time for Joins
@@ -128,7 +128,7 @@ If your column stores fractional seconds, `TIME()` preserves them:
 
 ```sql
 SELECT TIME('2026-03-31 14:22:07.413');
--- Result: 14:22:07.413000
+-- Result: 14:22:07.413
 ```
 
 ## TIME() vs EXTRACT() vs HOUR()/MINUTE()/SECOND()
@@ -151,14 +151,22 @@ Use `TIME()` when you need the full time value for comparison or storage. Use `H
 
 ## Performance Note
 
-Like `DATE()`, using `TIME()` on an indexed column in a `WHERE` clause prevents index usage:
+Like `DATE()`, using `TIME()` on an indexed column in a `WHERE` clause prevents index usage. Note that `HOUR()` has the same limitation — any function wrapping a column prevents index seeks:
 
 ```sql
--- Not index-friendly
+-- Not index-friendly (function wraps the column)
 WHERE TIME(created_at) < '12:00:00'
 
--- Index-friendly alternative for repeating daily windows
+-- Also not index-friendly (HOUR() still wraps the column)
 WHERE HOUR(created_at) < 12
+
+-- Index-friendly alternatives:
+-- 1. Functional index (MySQL 8.0.13+)
+CREATE INDEX idx_hour ON orders ((HOUR(created_at)));
+
+-- 2. Generated column with a regular index
+ALTER TABLE orders ADD hour_created TINYINT GENERATED ALWAYS AS (HOUR(created_at)) STORED;
+CREATE INDEX idx_hour_created ON orders (hour_created);
 ```
 
 ## Summary
