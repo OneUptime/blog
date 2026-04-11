@@ -49,7 +49,7 @@ fi
 BP_READS=$(    $MYSQL_CMD "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Innodb_buffer_pool_reads'")
 BP_REQUESTS=$( $MYSQL_CMD "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Innodb_buffer_pool_read_requests'")
 if [ "$BP_REQUESTS" -gt 0 ]; then
-  HIT_RATE=$(echo "scale=0; (1 - $BP_READS / $BP_REQUESTS) * 100" | bc)
+  HIT_RATE=$(echo "scale=0; ($BP_REQUESTS - $BP_READS) * 100 / $BP_REQUESTS" | bc)
   if [ "$HIT_RATE" -lt 95 ]; then
     ISSUES+=("WARNING: Buffer pool hit rate is ${HIT_RATE}% (below 95%)")
     EXIT_CODE=1
