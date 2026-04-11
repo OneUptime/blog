@@ -105,7 +105,7 @@ done
 
 ```mermaid
 flowchart TD
-    A["LATENCY RESET"] --> B["Clears circular buffer\nfor each event (up to 180 samples)"]
+    A["LATENCY RESET"] --> B["Clears circular buffer\nfor each event (up to 160 samples)"]
     B --> C["Resets all-time maximum\nfor each event"]
     B --> D["LATENCY LATEST returns empty\nuntil new spikes occur"]
     B --> E["LATENCY HISTORY returns empty\nfor reset events"]
