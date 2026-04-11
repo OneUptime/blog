@@ -21,7 +21,7 @@ fn categorize_error(e: &RedisError) {
         ErrorKind::AuthenticationFailed => println!("Bad credentials"),
         ErrorKind::ResponseError => println!("Unexpected server response"),
         ErrorKind::TypeError => println!("Type mismatch"),
-        ErrorKind::TxAbortedError => println!("Transaction aborted (WATCH)"),
+        ErrorKind::ExecAbortError => println!("Transaction aborted (WATCH)"),
         ErrorKind::BusyLoadingError => println!("Redis loading dataset"),
         _ => println!("Other error: {e}"),
     }
