@@ -38,8 +38,8 @@ BEGIN
 
     INSERT INTO tmp_daily_sales (sale_date, product_id, units_sold, revenue)
     SELECT
-        DATE(created_at),
-        product_id,
+        DATE(o.created_at),
+        oi.product_id,
         SUM(quantity),
         SUM(quantity * unit_price)
     FROM order_items oi
