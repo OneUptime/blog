@@ -17,7 +17,6 @@ Use a sorted set with Unix timestamp scores so you can query by date range:
 ```python
 import redis
 import time
-import datetime
 import json
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -47,10 +46,10 @@ def get_events_in_range(calendar_id: str, start_ts: float, end_ts: float) -> lis
     return [
         {
             "id": eid,
-            "ts": float(r.get("ts", 0)),
-            "data": json.loads(r.get("data", "{}")),
+            "ts": float(result.get("ts", 0)),
+            "data": json.loads(result.get("data", "{}")),
         }
-        for eid, r in zip(event_ids, results)
+        for eid, result in zip(event_ids, results)
     ]
 ```
 
@@ -92,7 +91,7 @@ def get_day_summary(date_str: str) -> dict:
     return r.hgetall(f"day:{date_str}")
 
 # Example usage
-def record_booking(date_str: str, resource_id: str):
+def record_booking(date_str: str):
     pipe = r.pipeline()
     pipe.hincrby(f"day:{date_str}", "bookings", 1)
     pipe.hincrby(f"day:{date_str}", "revenue", 100)
