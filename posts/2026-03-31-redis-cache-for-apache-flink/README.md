@@ -93,7 +93,7 @@ public class UserEnrichmentFunction extends RichMapFunction<String, String> {
 }
 ```
 
-## PySpark-Style Python Flink with Redis
+## PyFlink with Redis
 
 Using PyFlink:
 
@@ -136,7 +136,6 @@ class RedisEnrichmentFunction(MapFunction):
 To avoid one Redis call per event, add a local in-process cache:
 
 ```python
-from functools import lru_cache
 import time
 
 class CachedRedisEnrichmentFunction(MapFunction):
@@ -146,6 +145,16 @@ class CachedRedisEnrichmentFunction(MapFunction):
         self.local_ttl = local_ttl
         self._cache = {}
         self._client = None
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = redis.Redis(
+                host=self.redis_host,
+                port=self.redis_port,
+                decode_responses=True
+            )
+        return self._client
 
     def get_user(self, user_id: str) -> dict:
         cache_entry = self._cache.get(user_id)
