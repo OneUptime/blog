@@ -42,7 +42,7 @@ MySQL requires Vitess or manual sharding for horizontal write scaling. TiDB scal
 
 ```sql
 -- TiDB: check region distribution for a table
-SHOW TABLE REGIONS LIKE 'orders';
+SHOW TABLE orders REGIONS;
 -- Shows how data is split across TiKV nodes
 ```
 
