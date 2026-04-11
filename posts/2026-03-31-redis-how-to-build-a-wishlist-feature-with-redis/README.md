@@ -38,7 +38,6 @@ Using a Sorted Set allows ordering by date added and easy pagination:
 ```python
 from redis import Redis
 import time
-import json
 
 r = Redis(decode_responses=True)
 WISHLIST_TTL = 365 * 86400  # 1 year
@@ -63,7 +62,7 @@ def get_wishlist(user_id: int, page: int = 0, page_size: int = 20) -> list:
     key = f"wishlist:{user_id}"
     start = page * page_size
     # Newest first
-    items = r.zrevrange(key, start, start + page_size - 1, withscores=True)
+    items = r.zrange(key, start, start + page_size - 1, desc=True, withscores=True)
     return [
         {"product_id": pid, "added_at": int(score)}
         for pid, score in items
@@ -77,7 +76,7 @@ def get_wishlist_count(user_id: int) -> int:
 
 ```python
 def get_most_wished(limit: int = 20) -> list:
-    items = r.zrevrange("wishlist:popular", 0, limit - 1, withscores=True)
+    items = r.zrange("wishlist:popular", 0, limit - 1, desc=True, withscores=True)
     return [
         {"product_id": pid, "wishlist_count": int(count)}
         for pid, count in items
@@ -106,7 +105,7 @@ def add_to_named_wishlist(wishlist_id: str, product_id: str):
 
 def get_named_wishlist(wishlist_id: str) -> dict:
     meta = r.hgetall(f"wishlist:meta:{wishlist_id}")
-    items = r.zrevrange(f"wishlist:named:{wishlist_id}", 0, -1, withscores=True)
+    items = r.zrange(f"wishlist:named:{wishlist_id}", 0, -1, desc=True, withscores=True)
     return {
         "meta": meta,
         "items": [{"product_id": pid, "added_at": int(score)} for pid, score in items]
