@@ -66,7 +66,7 @@ const client = createClient({
         console.error('Too many retries, giving up');
         return new Error('Too many retries');
       }
-      // Exponential backoff capped at 3 seconds
+      // Linear backoff capped at 3 seconds
       return Math.min(retries * 100, 3000);
     },
   },
@@ -127,10 +127,10 @@ export async function getClient() {
 
 ```javascript
 // Graceful shutdown - waits for pending commands
-await client.quit();
+await client.close();
 
 // Immediate close
-await client.disconnect();
+await client.destroy();
 ```
 
 ## Summary
