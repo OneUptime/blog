@@ -84,8 +84,9 @@ DELIMITER ;
 To archive data, first copy the partition to an archive table, then drop it:
 
 ```sql
--- Step 1: Create the archive table with the same structure
+-- Step 1: Create the archive table with the same structure (without partitioning)
 CREATE TABLE events_archive LIKE events;
+ALTER TABLE events_archive REMOVE PARTITIONING;
 
 -- Step 2: Exchange the old partition with the archive table
 --         (instantly moves all rows from the partition to events_archive)
@@ -111,7 +112,7 @@ FROM information_schema.PARTITIONS
 WHERE table_schema = 'myapp' AND table_name = 'events'
 ORDER BY partition_name;
 
--- Count rows in a specific partition (requires partition pruning)
+-- Count rows in a specific partition (explicit partition selection)
 SELECT COUNT(*) FROM events PARTITION (p_2026_01);
 ```
 
@@ -125,6 +126,7 @@ ARCHIVE_TABLE="events_2026_01"
 
 mysql -u archive_admin -p"$DB_PASS" myapp -e "
   CREATE TABLE IF NOT EXISTS ${ARCHIVE_TABLE} LIKE events;
+  ALTER TABLE ${ARCHIVE_TABLE} REMOVE PARTITIONING;
   ALTER TABLE events EXCHANGE PARTITION ${PARTITION_TO_ARCHIVE} WITH TABLE ${ARCHIVE_TABLE};
   ALTER TABLE events DROP PARTITION ${PARTITION_TO_ARCHIVE};
 "
