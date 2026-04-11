@@ -72,17 +72,17 @@ Default options are read from the following files in the given order:
 If `mysqld` refuses to start, check exactly what options it sees:
 
 ```bash
-my_print_defaults --verbose mysqld
+my_print_defaults mysqld
 ```
 
-The `--verbose` flag shows which file each option came from:
+To isolate which file a specific option comes from, use `--defaults-file` to read one file at a time:
 
-```text
-# from /etc/mysql/my.cnf
---innodb_buffer_pool_size=4G
-# from /etc/mysql/conf.d/custom.cnf
---max_connections=200
+```bash
+my_print_defaults --defaults-file=/etc/mysql/my.cnf mysqld
+my_print_defaults --defaults-file=/etc/mysql/conf.d/custom.cnf mysqld
 ```
+
+By comparing the output from each file, you can determine where a conflicting or unexpected option is set.
 
 ## Checking mysqldump Options
 
