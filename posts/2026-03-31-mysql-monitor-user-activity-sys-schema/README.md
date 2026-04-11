@@ -111,10 +111,9 @@ SELECT
   u.user,
   u.statements,
   u.statement_latency,
-  (SELECT SUM_ERRORS
+  (SELECT SUM(SUM_ERRORS)
    FROM performance_schema.events_statements_summary_by_user_by_event_name
-   WHERE USER = u.user
-   LIMIT 1) AS total_errors
+   WHERE USER = u.user) AS total_errors
 FROM sys.user_summary u
 ORDER BY total_errors DESC;
 ```
