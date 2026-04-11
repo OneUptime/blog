@@ -108,7 +108,7 @@ async function trackEvents() {
   const client = createClient();
   await client.connect();
 
-  await client.sendCommand(['CMS.INITBYDIM', 'api_calls', 3000, 7]);
+  await client.sendCommand(['CMS.INITBYDIM', 'api_calls', '3000', '7']);
 
   // Single increment
   const count = await client.sendCommand(['CMS.INCRBY', 'api_calls', '/api/users', '1']);
