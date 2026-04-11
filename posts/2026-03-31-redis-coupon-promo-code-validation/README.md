@@ -65,7 +65,7 @@ end
 
 redis.call('HINCRBY', KEYS[1], 'used_count', 1)
 redis.call('SADD', KEYS[2], ARGV[2])
-redis.call('SADD', KEYS[3], KEYS[1])
+redis.call('SADD', KEYS[3], data['code'])
 return {data['discount'], data['type']}
 """
 
@@ -73,13 +73,14 @@ redeem_fn = r.register_script(REDEEM_SCRIPT)
 
 def redeem_coupon(code, user_id):
     now = str(int(time.time()))
-    result = redeem_fn(
-        keys=[f"coupon:{code}", f"coupon:used:{code}", f"coupon:user:{user_id}"],
-        args=[now, user_id]
-    )
-    if isinstance(result, list) and len(result) == 2:
-        return {"discount": float(result[0]), "type": result[1].decode() if isinstance(result[1], bytes) else result[1]}
-    return {"error": result}
+    try:
+        result = redeem_fn(
+            keys=[f"coupon:{code}", f"coupon:used:{code}", f"coupon:user:{user_id}"],
+            args=[now, user_id]
+        )
+        return {"discount": float(result[0]), "type": result[1]}
+    except redis.exceptions.ResponseError as e:
+        return {"error": str(e)}
 ```
 
 ## Checking Without Redeeming
