@@ -53,7 +53,7 @@ GROUP BY c.customer_id, c.name;
 
 ## Using CTEs to Reference a Table Once
 
-Common Table Expressions (MySQL 8.0+) materialize a query result once and allow multiple references to it in the main query:
+Common Table Expressions (MySQL 8.0+) let you define a named result set once and reference it multiple times in the main query:
 
 ```sql
 WITH order_stats AS (
@@ -75,7 +75,7 @@ FROM customers c
 JOIN order_stats s ON c.customer_id = s.customer_id;
 ```
 
-The CTE scans the `orders` table once, and the result is used multiple times in the outer query.
+The CTE defines the aggregation once, keeping the outer query clean and readable.
 
 ## Multiple CTEs for Complex Comparisons
 
@@ -91,7 +91,7 @@ WITH current_month AS (
 previous_month AS (
   SELECT customer_id, SUM(amount) AS revenue
   FROM orders
-  WHERE MONTH(order_date) = MONTH(CURDATE()) - 1
+  WHERE MONTH(order_date) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
   GROUP BY customer_id
 )
 SELECT
