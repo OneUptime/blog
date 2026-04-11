@@ -20,14 +20,14 @@ MEMORY tables are ideal for temporary working data, session-scoped caches, and s
 CREATE TABLE session_cache (
   session_id VARCHAR(64) NOT NULL,
   user_id INT UNSIGNED NOT NULL,
-  data TEXT,
+  data VARCHAR(255),
   expires_at DATETIME NOT NULL,
   PRIMARY KEY (session_id),
   INDEX idx_expires (expires_at)
 ) ENGINE=MEMORY;
 ```
 
-Data written to this table lives only in RAM. On server restart, the table structure (defined in the `.frm` file) persists, but all rows are gone.
+Data written to this table lives only in RAM. On server restart, the table definition persists, but all rows are gone.
 
 ## Key Characteristics
 
