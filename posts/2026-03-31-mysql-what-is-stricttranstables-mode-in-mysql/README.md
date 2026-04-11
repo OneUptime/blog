@@ -85,7 +85,7 @@ INSERT INTO events VALUES ('not-a-date');
 
 | Mode | Transactional Tables | Non-Transactional Tables |
 |------|---------------------|--------------------------|
-| `STRICT_TRANS_TABLES` | Rejects invalid rows | Warns on first bad row, accepts rest |
+| `STRICT_TRANS_TABLES` | Rejects invalid rows | Errors on first bad row; adjusts and warns for subsequent rows |
 | `STRICT_ALL_TABLES` | Rejects invalid rows | Rejects all invalid rows |
 
 For most modern setups using InnoDB (transactional), `STRICT_TRANS_TABLES` provides full protection.
