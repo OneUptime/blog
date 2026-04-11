@@ -39,9 +39,10 @@ Infrastructure costs:
 Engineering costs:
   Initial configuration: 1 hr * $100/hr = $100 (amortized = $8/mo)
   Ongoing maintenance: 0.5 hrs/mo * $100/hr = $50/mo
+  Incident response (SLA-backed, avg 0.5 hrs/mo): $50/mo
   Patching: handled by AWS
 
-Total estimated managed cost: ~$382/mo
+Total estimated managed cost: ~$432/mo
 ```
 
 ## Side-by-Side Comparison
@@ -50,11 +51,11 @@ Total estimated managed cost: ~$382/mo
 |---------------|--------------|----------------------|
 | Compute/instance | $87 | $314 |
 | Storage | $8 | $10 |
-| Engineering (ops) | $425 | $58 |
+| Engineering (ops) | $258 | $58 |
 | Incident response | $200 | $50 (SLA-backed) |
-| **Total/month** | **$720** | **$432** |
+| **Total/month** | **$553** | **$432** |
 
-The managed service is 40% cheaper when engineering time is factored in.
+The managed service is ~22% cheaper when engineering time is factored in.
 
 ## When Self-Managed Wins
 
@@ -77,15 +78,17 @@ EBS_COST=8
 ENG_HOURLY=100
 
 SETUP_HRS=4
+MONITOR_HRS=3
 MONTHLY_OPS_HRS=2
 INCIDENT_HRS=2
 INCIDENT_FREQ=1  # per month
 
 AMORTIZED_SETUP=$(echo "$SETUP_HRS * $ENG_HOURLY / 12" | bc)
+AMORTIZED_MONITOR=$(echo "$MONITOR_HRS * $ENG_HOURLY / 12" | bc)
 OPS_COST=$(echo "$MONTHLY_OPS_HRS * $ENG_HOURLY" | bc)
 INCIDENT_COST=$(echo "$INCIDENT_HRS * $ENG_HOURLY * $INCIDENT_FREQ" | bc)
 
-TOTAL=$(echo "$EC2_COST + $EBS_COST + $AMORTIZED_SETUP + $OPS_COST + $INCIDENT_COST" | bc)
+TOTAL=$(echo "$EC2_COST + $EBS_COST + $AMORTIZED_SETUP + $AMORTIZED_MONITOR + $OPS_COST + $INCIDENT_COST" | bc)
 echo "Self-managed Redis TCO: \$$TOTAL/month"
 ```
 
