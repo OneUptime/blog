@@ -41,7 +41,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: redis-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"
@@ -81,7 +81,7 @@ spec:
   containers:
     - name: redis
       image: redis:7-alpine
-      command: ["redis-server", "--appendonly", "yes", "--save", "900 1"]
+      command: ["redis-server", "--appendonly", "yes", "--save", "900", "1"]
       volumeMounts:
         - name: redis-data
           mountPath: /data
