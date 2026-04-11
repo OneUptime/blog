@@ -115,7 +115,7 @@ JSON.GET user:1 $.nonexistent_field
 ## Using JSON.GET in Application Code
 
 ```python
-import redis, json
+import redis
 
 r = redis.Redis()
 r.json().set("user:1", "$", {"name": "Alice", "age": 30, "city": "London"})
