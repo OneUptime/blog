@@ -65,7 +65,7 @@ def init_topk(key: str, k: int = 10):
     try:
         r.topk().info(key)
     except Exception:
-        r.topk().reserve(key, k)
+        r.topk().reserve(key, k, 8, 7, 0.9)
 
 def add_events(key: str, *items: str) -> list:
     """Add items to the Top-K structure. Returns dropped items."""
@@ -77,8 +77,8 @@ def get_top_items(key: str) -> list:
 
 def get_top_items_with_counts(key: str) -> dict:
     """Get top-K items with their approximate counts."""
-    result = r.topk().listWithScores(key)
-    return result
+    result = r.topk().list(key, withcount=True)
+    return dict(zip(result[::2], result[1::2]))
 
 def is_top_item(key: str, *items: str) -> dict:
     """Check if items are in the current top-K list."""
@@ -151,7 +151,7 @@ def time_windowed_topk(item: str, window_minutes: int = 60):
     try:
         r.topk().info(window_key)
     except Exception:
-        r.topk().reserve(window_key, 20)
+        r.topk().reserve(window_key, 20, 8, 7, 0.9)
         r.expire(window_key, window_minutes * 60 * 2)
     r.topk().add(window_key, item)
 
