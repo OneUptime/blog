@@ -108,7 +108,7 @@ CLUSTER MYID
 ```
 
 ```text
-"z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2h1"
+"b2c3d4e5f6a789012345678901234567890abcde"
 ```
 
 ## Finding a Node's ID Without Connecting to It
@@ -120,7 +120,7 @@ CLUSTER NODES
 ```
 
 ```text
-a1b2c3d4e5f6 192.168.1.10:7001@17001 master - 0 1711900000000 1 connected 0-5460
+a1b2c3d4e5f6789012345678901234567890abcd 192.168.1.10:7001@17001 master - 0 1711900000000 1 connected 0-5460
 ...
 ```
 
