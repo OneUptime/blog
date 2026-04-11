@@ -94,12 +94,16 @@ mysql -u root -p -se "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user NO
 
 ## Checking for Overly Broad Grants
 
-Identify any user with global ALL PRIVILEGES (potential security risk):
+Identify any user with global ALL PRIVILEGES (potential security risk). MySQL stores each privilege as a separate row in `information_schema`, so match users whose privilege count equals the total number of distinct global privilege types:
 
 ```sql
-SELECT GRANTEE, PRIVILEGE_TYPE
+SELECT GRANTEE, COUNT(*) AS privilege_count
 FROM information_schema.USER_PRIVILEGES
-WHERE PRIVILEGE_TYPE = 'ALL PRIVILEGES';
+GROUP BY GRANTEE
+HAVING privilege_count = (
+    SELECT COUNT(DISTINCT PRIVILEGE_TYPE)
+    FROM information_schema.USER_PRIVILEGES
+);
 ```
 
 ## Comparing Grants Before and After Changes
