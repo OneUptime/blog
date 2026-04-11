@@ -118,7 +118,7 @@ resource "google_redis_instance" "cloudrun_cache" {
 # Store auth string in Secret Manager
 resource "google_secret_manager_secret" "redis_auth" {
   secret_id = "redis-auth"
-  replication { automatic = true }
+  replication { auto {} }
 }
 
 resource "google_secret_manager_secret_version" "redis_auth" {
