@@ -47,13 +47,13 @@ CREATE VIEW v_dept AS
 SELECT * FROM active_employees WHERE department = 'Engineering'
 WITH CASCADED CHECK OPTION;
 
--- LOCAL - checks only THIS view's WHERE clause
+-- LOCAL - checks this view's WHERE clause and recurses into underlying views that have their own CHECK OPTION
 CREATE VIEW v_dept_local AS
 SELECT * FROM active_employees WHERE department = 'Engineering'
 WITH LOCAL CHECK OPTION;
 ```
 
-`CASCADED` propagates the check down the full chain of view dependencies; `LOCAL` only enforces the current view's predicate.
+`CASCADED` propagates the check down the full chain of view dependencies, enforcing all underlying views' WHERE clauses even if they lack their own CHECK OPTION. `LOCAL` enforces the current view's predicate and recurses into underlying views, but only enforces checks on those that were themselves defined with a CHECK OPTION.
 
 ## Verifying CHECK OPTION on Existing Views
 
@@ -64,7 +64,7 @@ WHERE TABLE_SCHEMA = 'mydb'
   AND TABLE_NAME = 'active_employees';
 ```
 
-The `CHECK_OPTION` column returns `NONE`, `LOCAL`, or `CASCADED`.
+The `CHECK_OPTION` column returns `NONE`, `LOCAL`, or `CASCADE`.
 
 ## Practical Use Case - Partitioned Data Access
 
