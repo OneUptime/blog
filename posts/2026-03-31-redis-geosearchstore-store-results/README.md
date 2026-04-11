@@ -28,7 +28,7 @@ flowchart LR
 ## Syntax
 
 ```redis
-GEOSEARCHSTORE destination source FROMMEMBER member | FROMLONLAT longitude latitude BYRADIUS radius m|km|ft|mi | BYBOX width height m|km|ft|mi ASC|DESC [COUNT count [ANY]] [STOREDIST]
+GEOSEARCHSTORE destination source FROMMEMBER member | FROMLONLAT longitude latitude BYRADIUS radius m|km|ft|mi | BYBOX width height m|km|ft|mi [ASC|DESC] [COUNT count [ANY]] [STOREDIST]
 ```
 
 - `destination` - key to write results into
