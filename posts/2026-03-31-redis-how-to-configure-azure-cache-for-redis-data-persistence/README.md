@@ -19,11 +19,11 @@ By default, Azure Cache for Redis stores all data in memory. When a node restart
 
 Data persistence lets the cache reload data from disk after restart, reducing cold-start impact.
 
-**Note**: Persistence is only available on the Premium tier.
+**Note**: Persistence is available on the Premium tier (covered in this guide) and on Enterprise/Enterprise Flash tiers.
 
 ## Persistence Options
 
-### RDB (Redis Database Backup)
+### RDB (Redis Database)
 
 Point-in-time snapshots saved to Azure Blob Storage at configurable intervals. The cache can restart and reload from the most recent snapshot.
 
