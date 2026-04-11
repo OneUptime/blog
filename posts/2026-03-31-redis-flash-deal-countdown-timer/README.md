@@ -42,7 +42,6 @@ def create_flash_deal(deal_id, product_id, deal_price, original_price,
         "expiry": str(expiry),
         "active": "1",
     })
-    pipe.expire(f"deal:{deal_id}", duration_seconds)
     # Index in active deals sorted by expiry
     pipe.zadd("deal:active", {deal_id: expiry})
     # Marker key for keyspace notification on expiry
@@ -54,7 +53,7 @@ def create_flash_deal(deal_id, product_id, deal_price, original_price,
 
 ```python
 def get_time_remaining(deal_id):
-    ttl = r.ttl(f"deal:{deal_id}")
+    ttl = r.ttl(f"deal:ended:{deal_id}")
     return max(ttl, 0)
 
 def get_deal_info(deal_id):
@@ -89,19 +88,19 @@ def get_active_deals():
 
 ```python
 def purchase_deal(deal_id, quantity=1):
-    stock_field = "stock"
     key = f"deal:{deal_id}"
+    marker_key = f"deal:ended:{deal_id}"
 
     # Atomic check-and-decrement via Lua
     script = """
-    local ttl = redis.call('TTL', KEYS[1])
+    local ttl = redis.call('TTL', KEYS[2])
     if ttl <= 0 then return -1 end
     local stock = tonumber(redis.call('HGET', KEYS[1], 'stock'))
     if stock == nil or stock < tonumber(ARGV[1]) then return 0 end
     redis.call('HINCRBY', KEYS[1], 'stock', -tonumber(ARGV[1]))
     return 1
     """
-    result = r.eval(script, 1, key, quantity)
+    result = r.eval(script, 2, key, marker_key, quantity)
     if result == 1:
         return {"success": True}
     elif result == 0:
