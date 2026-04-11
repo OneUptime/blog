@@ -42,7 +42,7 @@ Inside gdb, run the backtrace command to see the call stack at crash time:
 ```text
 (gdb) bt
 #0  0x00007f3a2b1c4e10 in __memcpy_avx_unaligned ()
-#1  0x000000000043f2a0 in rdbSaveObjectLen (rdb=0x7f3a20015b20, o=0x7f3a20003210)
+#1  0x000000000043f2a0 in rdbSaveLen (rdb=0x7f3a20015b20, len=128)
 #2  0x000000000043f5c0 in rdbSaveObject (rdb=0x7f3a20015b20, o=0x7f3a20003210, key=0x7f3a200044f0)
 #3  0x0000000000441220 in rdbSaveRio (rdb=0x7f3a20015b20, error=0x7ffe234a4504, flags=0)
 ```
