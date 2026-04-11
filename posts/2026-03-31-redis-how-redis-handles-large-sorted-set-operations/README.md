@@ -16,7 +16,7 @@ Small sorted sets (up to 128 members by default) use a listpack encoding, which 
 
 ```bash
 redis-cli DEBUG OBJECT myzset
-# encoding:ziplist vs encoding:skiplist
+# encoding:listpack vs encoding:skiplist
 ```
 
 Check encoding thresholds:
@@ -33,8 +33,9 @@ Once using skiplist encoding:
 - ZRANGE: O(log N + M) where M is the number of returned elements
 - ZRANGEBYSCORE: O(log N + M)
 - ZRANK: O(log N)
-- ZREM: O(log N * M) where M is elements removed
-- ZUNIONSTORE, ZINTERSTORE: O(N * K + M * log M) - expensive for large sets
+- ZREM: O(M * log N) where M is elements removed
+- ZUNIONSTORE: O(N + M * log M) where N is the sum of input set sizes, M is the result size
+- ZINTERSTORE: O(N * K + M * log M) where N is the smallest input set, K is the number of input sets - expensive for large sets
 
 ## Avoiding O(N) Commands on Large Sorted Sets
 
@@ -61,10 +62,10 @@ Use score-based ranges to avoid scanning the entire set:
 
 ```bash
 # Get top 100 scores
-redis-cli ZREVRANGE myleaderboard 0 99 WITHSCORES
+redis-cli ZRANGE myleaderboard 0 99 REV WITHSCORES
 
 # Get scores in a range
-redis-cli ZRANGEBYSCORE myleaderboard 1000 2000 LIMIT 0 100
+redis-cli ZRANGE myleaderboard 1000 2000 BYSCORE LIMIT 0 100
 ```
 
 ## Removing Large Sorted Sets
