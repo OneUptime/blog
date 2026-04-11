@@ -10,6 +10,8 @@ Description: Use Redis Cluster Proxy to expose a Redis Cluster as a single endpo
 
 Redis Cluster Proxy (`redis-cluster-proxy`) bridges the gap between non-cluster-aware Redis clients and a Redis Cluster. Instead of requiring your application to handle MOVED/ASK redirects or use cluster-aware client libraries, the proxy presents a single Redis endpoint that internally routes commands to the correct cluster node.
 
+> **Note:** The redis-cluster-proxy project is not actively maintained and is considered alpha software. The authors discourage its usage in production environments. Evaluate carefully before adopting.
+
 ## Why Use Redis Cluster Proxy
 
 Many legacy applications use basic Redis clients that do not understand the Redis Cluster protocol. Redis Cluster Proxy lets you migrate these applications to a clustered setup without rewriting your client code.
@@ -30,16 +32,16 @@ Point the proxy at any node in your cluster:
 ```bash
 redis-cluster-proxy \
   --port 7777 \
-  --cluster 127.0.0.1:7001 \
   --threads 8 \
-  --max-clients 10000 \
-  --log-level verbose
+  --maxclients 10000 \
+  --log-level debug \
+  127.0.0.1:7001
 ```
 
 Key flags:
-- `--cluster` - entry point to the Redis Cluster
+- The cluster entry point address is passed as a positional argument at the end
 - `--threads` - number of IO threads (set to CPU count for best performance)
-- `--max-clients` - maximum simultaneous client connections
+- `--maxclients` - maximum simultaneous client connections
 
 ## Connecting a Non-Cluster-Aware Client
 
@@ -70,7 +72,7 @@ Redis Cluster Proxy handles cross-slot multi-key commands by splitting them inte
 redis-cli -p 7777 MGET user:1:name user:2:name user:3:name
 ```
 
-Note: some cross-slot commands like MSET and transactions (MULTI/EXEC) require all keys to map to the same slot for atomic execution. Use hash tags to enforce colocation.
+Note: cross-slot support for multi-key commands must be explicitly enabled with the `--enable-cross-slot` flag. Transactions (MULTI/EXEC) require all keys to map to the same slot for atomic execution. Use hash tags to enforce colocation when needed.
 
 ## Monitoring the Proxy
 
@@ -78,8 +80,8 @@ Redis Cluster Proxy exposes proxy-specific info:
 
 ```bash
 redis-cli -p 7777 PROXY INFO
-redis-cli -p 7777 PROXY CLUSTERS
-redis-cli -p 7777 PROXY STATS
+redis-cli -p 7777 PROXY CLUSTER INFO
+redis-cli -p 7777 PROXY CONFIG GET maxclients
 ```
 
 Sample output:
@@ -99,7 +101,7 @@ Description=Redis Cluster Proxy
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/redis-cluster-proxy --port 7777 --cluster 127.0.0.1:7001 --threads 8
+ExecStart=/usr/local/bin/redis-cluster-proxy --port 7777 --threads 8 127.0.0.1:7001
 Restart=always
 User=redis
 
