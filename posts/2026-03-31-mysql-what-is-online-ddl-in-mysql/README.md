@@ -72,9 +72,10 @@ ADD COLUMN last_login DATETIME NULL,
 ALGORITHM = INSTANT;
 ```
 
-### Renaming a Column (INSTANT)
+### Renaming a Column (INSTANT in MySQL 8.0.28+)
 
 ```sql
+-- Available with INSTANT since MySQL 8.0.28
 ALTER TABLE products
 RENAME COLUMN product_name TO name,
 ALGORITHM = INSTANT;
@@ -95,11 +96,11 @@ ALGORITHM = COPY;  -- Will lock the table
 |-----------|-----------|------|
 | Add/drop secondary index | INPLACE | NONE |
 | Add column | INSTANT (8.0.29+) | NONE |
-| Drop column | INPLACE | NONE |
-| Rename column | INSTANT | NONE |
-| Change column type | COPY | EXCLUSIVE |
+| Drop column | INSTANT (8.0.29+) | NONE |
+| Rename column | INSTANT (8.0.28+) | NONE |
+| Change column type | COPY | SHARED |
 | Add FULLTEXT index | INPLACE | SHARED |
-| Add FOREIGN KEY | INPLACE | NONE |
+| Add FOREIGN KEY | INPLACE (if foreign_key_checks=0) | NONE |
 
 ## Monitoring Online DDL Progress
 
