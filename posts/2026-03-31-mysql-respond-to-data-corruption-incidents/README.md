@@ -72,14 +72,8 @@ InnoDB tables do not support `REPAIR TABLE`. For InnoDB, recovery requires diffe
 The safest recovery for InnoDB corruption is restoring from the most recent clean backup:
 
 ```bash
-# Stop MySQL
-sudo systemctl stop mysql
-
-# Restore the backup
+# Restore the backup (MySQL must be running)
 mysql -u root -p myapp < /backup/orders_2026_03_30.sql
-
-# Start MySQL
-sudo systemctl start mysql
 ```
 
 ### Option 3 - InnoDB Force Recovery
@@ -92,7 +86,7 @@ If you cannot restore from backup and need to extract data from a corrupted Inno
 innodb_force_recovery = 1
 ```
 
-Start with level 1 and increase incrementally (up to 6) until MySQL starts. At recovery level 3 or above, do NOT write to the database - only dump and restore:
+Start with level 1 and increase incrementally (up to 6) until MySQL starts. In MySQL 8.0, InnoDB prevents INSERT, UPDATE, and DELETE operations at any non-zero recovery level, so you should only dump and restore:
 
 ```bash
 # Dump all data at the force recovery level
