@@ -189,14 +189,20 @@ results = r.ts().mget(
     with_labels=True
 )
 
-for series_key, labels, data_point in results:
-    print(f"Key: {series_key}")
-    print(f"Labels: {labels}")
-    if data_point:
-        print(f"Latest: {data_point}")
+for item in results:
+    for series_key, values in item.items():
+        labels, timestamp, value = values[0], values[1], values[2]
+        print(f"Key: {series_key}")
+        print(f"Labels: {labels}")
+        if timestamp is not None:
+            print(f"Latest: timestamp={timestamp}, value={value}")
 ```
 
 ## Practical Metrics Collection Example
+
+```bash
+pip install psutil
+```
 
 ```python
 from redis import Redis
