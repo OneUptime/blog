@@ -124,7 +124,7 @@ await events.createIndex('idx_type', {
 });
 
 await events.createIndex('idx_user', {
-  fields: [{ field: '$.userId', type: 'UNSIGNED INTEGER', required: true }]
+  fields: [{ field: '$.userId', type: 'INT UNSIGNED', required: true }]
 });
 ```
 
