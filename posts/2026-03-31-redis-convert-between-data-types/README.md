@@ -25,7 +25,7 @@ r = redis.Redis()
 # SET user:1:city "NYC"
 
 def strings_to_hash(user_id, fields):
-    """Atomic migration: read strings, write hash, delete originals."""
+    """Migrate strings to hash: read strings, write hash, delete originals."""
     pipe = r.pipeline()
     for field in fields:
         pipe.get(f"user:{user_id}:{field}")
