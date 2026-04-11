@@ -96,8 +96,6 @@ local     mysql-data
 For most projects, a `docker-compose.yml` file is easier to manage than a long `docker run` command.
 
 ```yaml
-version: "3.9"
-
 services:
   db:
     image: mysql:8.0
@@ -113,7 +111,6 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./init:/docker-entrypoint-initdb.d
-    command: --default-authentication-plugin=mysql_native_password
 
 volumes:
   mysql-data:
