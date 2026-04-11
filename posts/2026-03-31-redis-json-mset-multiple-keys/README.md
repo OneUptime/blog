@@ -12,7 +12,7 @@ Description: Learn how to use JSON.MSET in Redis to atomically write JSON values
 
 `JSON.MSET` sets JSON values on multiple keys and paths in a single atomic call. It is the JSON equivalent of the `MSET` string command. Use it to initialize many documents at once or to apply the same structural update across a batch of keys.
 
-`JSON.MSET` was added in Redis Stack 2.6 / RedisJSON 2.6.
+`JSON.MSET` was added in Redis Stack 7.2 / RedisJSON 2.6.
 
 ## Basic Syntax
 
