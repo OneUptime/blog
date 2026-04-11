@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Akka, Scala
 
-Description: Learn how to integrate Redis with Akka actors in Scala using the Rediscala or Lettuce client for async caching, distributed state, and pub/sub messaging.
+Description: Learn how to integrate Redis with Akka actors in Scala using the Lettuce client for async caching, distributed state, and pub/sub messaging.
 
 ---
 
@@ -33,7 +33,8 @@ package redis
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.async.RedisAsyncCommands
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.jdk.FutureConverters._
 
 class RedisClientWrapper(uri: String = "redis://localhost:6379") {
@@ -43,16 +44,16 @@ class RedisClientWrapper(uri: String = "redis://localhost:6379") {
   private val async: RedisAsyncCommands[String, String] = connection.async()
 
   def set(key: String, value: String, ttl: Long = 60): Future[String] =
-    async.setex(key, ttl, value).toScala
+    async.setex(key, ttl, value).asScala
 
   def get(key: String): Future[Option[String]] =
-    async.get(key).toScala.map(Option(_))
+    async.get(key).asScala.map(Option(_))
 
   def incr(key: String): Future[Long] =
-    async.incr(key).toScala.map(Long2long)
+    async.incr(key).asScala.map(Long2long)
 
   def del(key: String): Future[Long] =
-    async.del(key).toScala.map(Long2long)
+    async.del(key).asScala.map(Long2long)
 
   def close(): Unit = {
     connection.close()
