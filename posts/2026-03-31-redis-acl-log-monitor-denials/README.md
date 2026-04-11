@@ -25,11 +25,11 @@ flowchart TD
 ## Syntax
 
 ```redis
-ACL LOG [COUNT count | RESET]
+ACL LOG [count | RESET]
 ```
 
-- No arguments: returns all recent log entries (up to `acllog-max-len`)
-- `COUNT count`: returns the most recent `count` entries
+- No arguments: returns the most recent log entries (up to 10 by default)
+- `count`: returns the most recent `count` entries
 - `RESET`: clears the log
 
 ## Reading the Log
@@ -74,11 +74,14 @@ Each entry contains:
 | `username` | The user who attempted the command |
 | `age-seconds` | Seconds since the denial occurred |
 | `client-info` | Connection details of the offending client |
+| `entry-id` | Unique ID for the log entry (Redis 7.2+) |
+| `timestamp-created` | Unix timestamp when the entry was first created (Redis 7.2+) |
+| `timestamp-last-updated` | Unix timestamp when the entry was last updated (Redis 7.2+) |
 
 ### View only the most recent 5 entries
 
 ```redis
-ACL LOG COUNT 5
+ACL LOG 5
 ```
 
 ### Clear the log
@@ -105,7 +108,7 @@ SET blocked:key value
 ```
 
 ```text
-(error) NOPERM this user has no permissions to run the 'set' command
+(error) NOPERM User readonly_user has no permissions to run the 'set' command
 ```
 
 ### `key` - the command is allowed but the key is not
@@ -152,7 +155,7 @@ The maximum number of log entries is controlled by `acllog-max-len` in `redis.co
 acllog-max-len 128
 ```
 
-The default is 128. Entries are deduplicated by username, command, and key -- so repeated identical violations increment the `count` field rather than adding new entries.
+The default is 128. Entries are deduplicated by reason, context, object, and username within a 60-second window -- so repeated identical violations increment the `count` field rather than adding new entries.
 
 ## Monitoring Workflow
 
@@ -164,7 +167,7 @@ sequenceDiagram
     App->>Redis: SET forbidden:key value (as readonly_user)
     Redis-->>App: (error) NOPERM
     Note over Redis: ACL LOG entry created
-    Admin->>Redis: ACL LOG COUNT 10
+    Admin->>Redis: ACL LOG 10
     Redis-->>Admin: (log entries with details)
     Admin->>Redis: ACL SETUSER readonly_user ~forbidden:* +set
     Redis-->>Admin: OK
@@ -174,4 +177,4 @@ sequenceDiagram
 
 ## Summary
 
-`ACL LOG` provides an in-memory record of recently denied commands with details on the username, command, key, denial reason, and client address. Use `ACL LOG` to audit access violations, debug over-restrictive ACL rules, and investigate suspicious activity. Use `ACL LOG COUNT n` to limit results and `ACL LOG RESET` to clear the log after resolving issues. Configure `acllog-max-len` in `redis.conf` to control how many entries are retained.
+`ACL LOG` provides an in-memory record of recently denied commands with details on the username, command, key, denial reason, and client address. Use `ACL LOG` to audit access violations, debug over-restrictive ACL rules, and investigate suspicious activity. Use `ACL LOG n` to limit results and `ACL LOG RESET` to clear the log after resolving issues. Configure `acllog-max-len` in `redis.conf` to control how many entries are retained.
