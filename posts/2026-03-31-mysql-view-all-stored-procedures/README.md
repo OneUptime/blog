@@ -64,7 +64,7 @@ WHERE ROUTINE_SCHEMA = 'mydb'
   AND ROUTINE_TYPE = 'PROCEDURE';
 ```
 
-Note: The `ROUTINE_DEFINITION` column may be `NULL` if the user lacks the `SELECT` privilege on `mysql.proc` or insufficient grants.
+Note: The `ROUTINE_DEFINITION` column may be `NULL` if the user lacks sufficient privileges. In MySQL 8.0+, the user needs the `SHOW_ROUTINE` global privilege, the `CREATE ROUTINE`, `ALTER ROUTINE`, or `EXECUTE` privilege for the routine, or must be the routine `DEFINER`. In MySQL 5.7 and earlier, the `SELECT` privilege on `mysql.proc` is required.
 
 ## Finding Procedures by Content
 
@@ -124,11 +124,11 @@ ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME;
 ## Checking Procedure Privileges
 
 ```sql
--- Check who has EXECUTE privilege on a procedure
-SELECT GRANTEE, PRIVILEGE_TYPE, IS_GRANTABLE
-FROM information_schema.ROUTINE_PRIVILEGES
-WHERE ROUTINE_SCHEMA = 'mydb'
-  AND ROUTINE_NAME = 'calculate_order_stats';
+-- Check who has privileges on a procedure
+SELECT User, Host, Routine_name, Proc_priv
+FROM mysql.procs_priv
+WHERE Db = 'mydb'
+  AND Routine_name = 'calculate_order_stats';
 ```
 
 ## Exporting Procedure Definitions
