@@ -22,7 +22,6 @@ CREATE TABLE file_chunks (
     filename VARCHAR(255) NOT NULL,
     chunk_no INT NOT NULL,
     data     VARBINARY(65535),
-    PRIMARY KEY (id),
     KEY idx_file (filename, chunk_no)
 );
 ```
@@ -62,7 +61,7 @@ WHERE filename = 'secret.bin';
 | Comparison | Byte-by-byte | Collation-aware |
 | Charset | None (binary) | Table/column charset |
 | Case-sensitive | Always | Depends on collation |
-| Trailing bytes | Preserved | Trailing spaces stripped |
+| Trailing bytes | Preserved | Preserved; ignored in PAD SPACE comparisons |
 
 ## Comparing VARBINARY Values
 
