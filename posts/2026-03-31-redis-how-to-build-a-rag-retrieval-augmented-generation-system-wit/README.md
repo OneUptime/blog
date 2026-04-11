@@ -29,7 +29,7 @@ User query
 
 ```bash
 docker run -d --name redis-stack -p 6379:6379 redis/redis-stack-server:latest
-pip install redis sentence-transformers openai langchain
+pip install redis sentence-transformers openai
 ```
 
 ## Indexing Documents
@@ -119,7 +119,9 @@ def retrieve_context(query: str, top_k: int = 5) -> list[dict]:
 ## RAG Pipeline with OpenAI
 
 ```python
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 
 def rag_query(user_question: str) -> dict:
     # Step 1: Retrieve relevant chunks
@@ -139,7 +141,7 @@ def rag_query(user_question: str) -> dict:
     prompt = f"Context:\n{context}\n\nQuestion: {user_question}"
 
     # Step 4: Generate answer
-    response = openai.chat.completions.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system_prompt},
