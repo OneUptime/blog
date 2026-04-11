@@ -10,7 +10,7 @@ Description: Learn how to use MySQL 8.0 optimizer hints to override query planne
 
 ## What Are Optimizer Hints
 
-MySQL 8.0 introduced optimizer hints as a standardized way to influence query execution plans. Unlike the older index hints (`USE INDEX`, `FORCE INDEX`) which only control index selection, optimizer hints use a `/*+ ... */` comment syntax and control a much wider range of planner behaviors including join order, semijoin strategies, subquery materialization, and derived table merging.
+MySQL 5.7 introduced optimizer hints as a standardized way to influence query execution plans, and MySQL 8.0 greatly expanded the set of available hints. Unlike the older index hints (`USE INDEX`, `FORCE INDEX`) which only control index selection, optimizer hints use a `/*+ ... */` comment syntax and control a much wider range of planner behaviors including join order, semijoin strategies, subquery materialization, and derived table merging.
 
 ## Syntax
 
@@ -95,18 +95,18 @@ GROUP BY region;
 
 ## Hash Join Hints
 
-MySQL 8.0.18+ supports hash joins. You can force or disable hash join for specific tables:
+MySQL 8.0.18 introduced hash joins along with `HASH_JOIN` and `NO_HASH_JOIN` hints. However, these hints were deprecated in MySQL 8.0.19 and have no effect in 8.0.19+. In modern MySQL versions, the optimizer automatically uses hash joins for equi-join conditions where appropriate, and the `BNL`/`NO_BNL` hints can be used to influence this behavior:
 
 ```sql
--- Force hash join between orders and customers
+-- In MySQL 8.0.18 only: force hash join between orders and customers
 SELECT /*+ HASH_JOIN(o, c) */
   o.id, c.email
 FROM orders    o
 JOIN customers c ON c.id = o.customer_id
 WHERE o.total > 100;
 
--- Disable hash join
-SELECT /*+ NO_HASH_JOIN(o, c) */
+-- In MySQL 8.0.19+: use NO_BNL to disable hash join
+SELECT /*+ NO_BNL(o) */
   o.id, c.email
 FROM orders    o
 JOIN customers c ON c.id = o.customer_id;
@@ -125,7 +125,7 @@ JOIN customers c ON c.id = o.customer_id
 WHERE o.status = 'PENDING'\G
 ```
 
-Look for `"hint"` in the EXPLAIN output to confirm the hint was accepted. A hint that is malformed or inapplicable is silently ignored.
+After running EXPLAIN, use `SHOW WARNINGS` to check for hint-related warnings. Malformed or conflicting hints generate warnings, while valid hints that cannot be applied are silently ignored.
 
 ## When to Use Optimizer Hints
 
@@ -140,4 +140,4 @@ Optimizer hints should be a last resort after verifying that statistics are up t
 
 ## Summary
 
-MySQL 8.0 optimizer hints provide fine-grained control over query execution plans using `/*+ */` syntax. Use `JOIN_ORDER` to fix bad join sequences, `INDEX` and `NO_INDEX` to override index selection, and materialization hints to control subquery behavior. Always verify with EXPLAIN and treat hints as a targeted fix rather than a substitute for proper schema and index design.
+MySQL optimizer hints provide fine-grained control over query execution plans using `/*+ */` syntax. Use `JOIN_ORDER` to fix bad join sequences, `INDEX` and `NO_INDEX` to override index selection, and materialization hints to control subquery behavior. Always verify with EXPLAIN and treat hints as a targeted fix rather than a substitute for proper schema and index design.
