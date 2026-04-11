@@ -33,8 +33,8 @@ INSERT INTO sensor_readings VALUES
 (2, '2026-03-30 09:00:00', 18.9),
 (2, '2026-03-31 09:00:00', 19.3);
 
--- Find the reading for each sensor's most recent timestamp
--- Row subquery: returns (sensor_id, max recorded_at) as one row per sensor
+-- Find the reading matching sensor 1's most recent timestamp
+-- Row subquery: returns one row with (sensor_id, max recorded_at)
 SELECT *
 FROM sensor_readings sr
 WHERE (sr.sensor_id, sr.recorded_at) = (
@@ -67,7 +67,7 @@ WHERE (order_id, product_id) = (SELECT 1001, 42);
 
 Although this example is trivial (you could use `WHERE order_id = 1001 AND product_id = 42`), the pattern is powerful when the values come from a subquery.
 
-## Row subquery with a correlated outer query
+## Row subquery with ORDER BY and LIMIT
 
 ```sql
 CREATE TABLE employees (
@@ -141,13 +141,13 @@ Use the row form when the values come from a single subquery that naturally retu
 If the subquery can return multiple rows, MySQL raises an error:
 
 ```sql
--- Error if multiple sensors have the same max timestamp
+-- Error: subquery returns two rows (one per sensor_id)
 SELECT *
 FROM sensor_readings sr
 WHERE (sr.sensor_id, sr.recorded_at) = (
     SELECT sensor_id, MAX(recorded_at)
     FROM sensor_readings
-    -- Missing WHERE sensor_id = X limits to one row
+    GROUP BY sensor_id
 );
 ```
 
