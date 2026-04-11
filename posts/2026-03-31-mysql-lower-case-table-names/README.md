@@ -38,9 +38,10 @@ CREATE TABLE Orders (id INT);
 CREATE TABLE orders (id INT);
 CREATE TABLE ORDERS (id INT);
 
--- This fails - case mismatch
-SELECT * FROM Orders;  -- Found
-SELECT * FROM orders;  -- Found (different table)
+-- Case must match exactly
+SELECT * FROM Orders;  -- Finds the 'Orders' table
+SELECT * FROM orders;  -- Finds the 'orders' table (different table)
+SELECT * FROM ORDERS;  -- Finds the 'ORDERS' table (different table)
 ```
 
 With `lower_case_table_names=1`:
@@ -80,9 +81,8 @@ MySQL 8.0 added a restriction: `lower_case_table_names` cannot be changed after 
 # Check if the setting was applied at initialization
 mysql -e "SHOW VARIABLES LIKE 'lower_case_table_names';"
 
-# Docker: set during container creation
+# Docker: set during container creation via server argument
 docker run -e MYSQL_ROOT_PASSWORD=secret \
-  -e MYSQL_LOWER_CASE_TABLE_NAMES=1 \
   mysql:8.0 --lower-case-table-names=1
 ```
 
