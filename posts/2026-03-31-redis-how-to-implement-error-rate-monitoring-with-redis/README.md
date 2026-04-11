@@ -185,7 +185,7 @@ def check_and_alert(service: str) -> dict | None:
 ## Error Breakdown by Type
 
 ```python
-def record_error_with_type(service: str, error_type: str, endpoint: str = None):
+def record_error_with_type(service: str, error_type: str):
     """Track error counts by type for root cause analysis."""
     pipe = r.pipeline()
 
