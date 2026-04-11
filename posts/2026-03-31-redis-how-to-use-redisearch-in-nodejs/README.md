@@ -121,9 +121,13 @@ async function searchProducts(query) {
   return parseSearchResults(raw);
 }
 
-const results = await searchProducts('bluetooth');
-console.log(`Found ${results.total} products`);
-results.docs.forEach(doc => console.log(`  ${doc.id}: ${doc.title}`));
+async function main() {
+  const results = await searchProducts('bluetooth');
+  console.log(`Found ${results.total} products`);
+  results.docs.forEach(doc => console.log(`  ${doc.id}: ${doc.title}`));
+}
+
+main();
 ```
 
 ## Filtered Searches
@@ -225,11 +229,15 @@ aggregate();
 const Redis = require('ioredis');
 const redis = new Redis();
 
-// Drop index but keep documents
-await redis.call('FT.DROPINDEX', 'idx:products');
+async function dropIndex() {
+  // Drop index but keep documents
+  await redis.call('FT.DROPINDEX', 'idx:products');
 
-// Drop index and delete indexed documents (documents with matching prefixes)
-await redis.call('FT.DROPINDEX', 'idx:products', 'DD');
+  // Drop index and delete indexed documents (documents with matching prefixes)
+  await redis.call('FT.DROPINDEX', 'idx:products', 'DD');
+}
+
+dropIndex();
 ```
 
 ## Summary
