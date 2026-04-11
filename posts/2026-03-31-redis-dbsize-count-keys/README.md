@@ -90,7 +90,7 @@ flowchart TD
 
 ## Using DBSIZE in Shell Scripts
 
-```redis
+```bash
 # Check if database is empty before proceeding
 redis-cli DBSIZE
 ```
@@ -111,8 +111,8 @@ fi
 
 ```redis
 INFO keyspace
-# db0:keys=5000,expires=200,avg_ttl=86400
-# db1:keys=1200,expires=50,avg_ttl=3600
+# db0:keys=5000,expires=200,avg_ttl=86400000
+# db1:keys=1200,expires=50,avg_ttl=3600000
 ```
 
 Use `DBSIZE` for a quick count in the current database, or `INFO keyspace` for a full overview across all databases.
