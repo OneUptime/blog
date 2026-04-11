@@ -41,7 +41,7 @@ gsutil lifecycle set /tmp/lifecycle.json gs://my-redis-backups
 
 ## Step 2: Grant the VM a Service Account with Storage Access
 
-If running on a GCE instance, assign the Storage Object Creator role to the VM's service account:
+If running on a GCE instance, assign the Storage Object Admin role to the VM's service account:
 
 ```bash
 PROJECT_ID=$(gcloud config get-value project)
