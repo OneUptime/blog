@@ -88,7 +88,7 @@ LIMIT 10;
 Check if Performance Schema is enabled for a given account:
 
 ```sql
-SELECT sys.ps_is_account_enabled('app_user', '%') AS is_enabled;
+SELECT sys.ps_is_account_enabled('%', 'app_user') AS is_enabled;
 ```
 
 ## Configuring sys Schema Options
