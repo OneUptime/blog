@@ -74,7 +74,7 @@ def record_activity_stream(user_id: int, activity_type: str, metadata: dict):
 def read_activity_stream(user_id: int, count: int = 20,
                          since_id: str = "0") -> list:
     stream_key = f"stream:activity:{user_id}"
-    messages = r.xrevrange(stream_key, count=count)
+    messages = r.xrevrange(stream_key, min=since_id, count=count)
     return [
         {"id": msg_id, **fields}
         for msg_id, fields in messages
