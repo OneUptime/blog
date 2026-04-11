@@ -55,7 +55,6 @@ SHOW GLOBAL VARIABLES
 SHOW SLAVE STATUS (or SHOW REPLICA STATUS in MySQL 8.0)
 OS metrics (vmstat, iostat, netstat, ps, df, top)
 Error log snapshot
-Binary log information
 ```
 
 All data is saved to timestamped files in the destination directory.
@@ -67,18 +66,18 @@ ls /var/lib/pt-stalk/
 ```
 
 ```text
-2026-03-31T10:45:01-processlist
-2026-03-31T10:45:01-innodb-status
-2026-03-31T10:45:01-variables
-2026-03-31T10:45:01-status
-2026-03-31T10:45:01-vmstat
-2026-03-31T10:45:01-iostat
+2026_03_31_10_45_01-processlist
+2026_03_31_10_45_01-innodb-status
+2026_03_31_10_45_01-variables
+2026_03_31_10_45_01-status
+2026_03_31_10_45_01-vmstat
+2026_03_31_10_45_01-iostat
 ```
 
 Review the InnoDB status for lock waits:
 
 ```bash
-cat /var/lib/pt-stalk/2026-03-31T10:45:01-innodb-status | grep -A20 "LATEST DETECTED DEADLOCK"
+cat /var/lib/pt-stalk/2026_03_31_10_45_01-innodb-status | grep -A20 "LATEST DETECTED DEADLOCK"
 ```
 
 ## Watching a Custom Metric
@@ -115,7 +114,7 @@ nohup pt-stalk \
 Percona Toolkit includes `pt-sift` to summarize pt-stalk output:
 
 ```bash
-pt-sift /var/lib/pt-stalk/2026-03-31T10:45:01
+pt-sift /var/lib/pt-stalk/2026_03_31_10_45_01
 ```
 
 This displays a condensed view of all collected metrics for that incident window.
