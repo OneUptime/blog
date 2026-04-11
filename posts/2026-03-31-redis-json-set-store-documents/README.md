@@ -23,8 +23,8 @@ JSON.SET key path value [NX | XX]
 - `key` - the Redis key
 - `path` - JSONPath expression (use `$` for the root)
 - `value` - valid JSON string
-- `NX` - set only if the key does not exist
-- `XX` - set only if the key already exists
+- `NX` - set only if the key (at root path `$`) or path (at a sub-path) does not already exist
+- `XX` - set only if the key (at root path `$`) or path (at a sub-path) already exists
 
 ## Store a Full Document
 
@@ -36,7 +36,7 @@ JSON.SET user:1 $ '{"name":"Alice","age":30,"email":"alice@example.com","active"
 
 ```redis
 JSON.GET user:1
-# "[{\"name\":\"Alice\",\"age\":30,\"email\":\"alice@example.com\",\"active\":true}]"
+# "{\"name\":\"Alice\",\"age\":30,\"email\":\"alice@example.com\",\"active\":true}"
 ```
 
 ## Update a Nested Field
