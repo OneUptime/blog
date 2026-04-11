@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Memory, Eviction, Monitoring, Operation
 
-Description: Learn how to monitor Redis key eviction rates, understand the eight eviction policies, and configure the right policy for your cache workload.
+Description: Learn how to monitor Redis key eviction rates, understand the ten eviction policies, and configure the right policy for your cache workload.
 
 ---
 
@@ -28,7 +28,7 @@ maxmemory 4gb
 maxmemory-policy allkeys-lru
 ```
 
-## The Eight Eviction Policies
+## The Ten Eviction Policies
 
 | Policy | Description | Use Case |
 |--------|-------------|----------|
@@ -37,6 +37,8 @@ maxmemory-policy allkeys-lru
 | `volatile-lru` | Evict LRU key with TTL set | Mixed cache+persistent data |
 | `allkeys-lfu` | Evict least frequently used | Skewed access patterns |
 | `volatile-lfu` | Evict LFU key with TTL set | Mixed with frequency bias |
+| `allkeys-lrm` | Evict least recently modified key | Write-heavy caches |
+| `volatile-lrm` | Evict LRM key with TTL set | Mixed with modification bias |
 | `allkeys-random` | Evict random key | Uniform access patterns |
 | `volatile-random` | Evict random key with TTL | Random cache invalidation |
 | `volatile-ttl` | Evict key with shortest TTL | Shortest-lived keys first |
@@ -65,9 +67,9 @@ evicted_keys:4823
 This is cumulative since startup. To get the rate:
 ```bash
 # Sample twice with a 1-second gap
-a=$(redis-cli INFO stats | grep evicted_keys | cut -d: -f2)
+a=$(redis-cli INFO stats | grep evicted_keys | cut -d: -f2 | tr -d '\r')
 sleep 1
-b=$(redis-cli INFO stats | grep evicted_keys | cut -d: -f2)
+b=$(redis-cli INFO stats | grep evicted_keys | cut -d: -f2 | tr -d '\r')
 echo "Eviction rate: $((b - a)) keys/sec"
 ```
 
@@ -145,7 +147,7 @@ For LFU policies, configure the decay rate (how fast frequency counts decrease):
 # Higher value = slower decay (longer memory)
 lfu-decay-time 1
 
-# Initial frequency for new keys (higher = less likely to be evicted immediately)
+# Counter growth rate (higher = more accesses needed to reach max frequency)
 lfu-log-factor 10
 ```
 
