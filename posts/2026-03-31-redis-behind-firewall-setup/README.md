@@ -18,7 +18,7 @@ First, restrict which network interface Redis listens on. Edit `/etc/redis/redis
 # Only listen on localhost and a specific private IP
 bind 127.0.0.1 10.0.1.5
 
-# Disable protected mode (it is only a safeguard when bind is not set)
+# Keep protected mode enabled for an extra safeguard
 protected-mode yes
 ```
 
@@ -33,13 +33,13 @@ sudo systemctl restart redis
 Allow Redis port only from specific application servers:
 
 ```bash
-# Deny Redis port by default
-sudo ufw deny 6379
-
 # Allow only specific application server IPs
 sudo ufw allow from 10.0.1.10 to any port 6379
 sudo ufw allow from 10.0.1.11 to any port 6379
 sudo ufw allow from 10.0.1.12 to any port 6379
+
+# Deny Redis port from all other sources
+sudo ufw deny 6379
 
 sudo ufw reload
 ```
@@ -56,16 +56,16 @@ For systems using iptables directly:
 
 ```bash
 # Drop all connections to Redis port by default
-iptables -A INPUT -p tcp --dport 6379 -j DROP
+sudo iptables -A INPUT -p tcp --dport 6379 -j DROP
 
 # Allow connections from app server subnet
-iptables -I INPUT -p tcp -s 10.0.1.0/24 --dport 6379 -j ACCEPT
+sudo iptables -I INPUT -p tcp -s 10.0.1.0/24 --dport 6379 -j ACCEPT
 
 # Allow localhost
-iptables -I INPUT -p tcp -s 127.0.0.1 --dport 6379 -j ACCEPT
+sudo iptables -I INPUT -p tcp -s 127.0.0.1 --dport 6379 -j ACCEPT
 
 # Save rules
-sudo iptables-save > /etc/iptables/rules.v4
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 ```
 
 ## Block Redis from the Public Interface
@@ -73,7 +73,7 @@ sudo iptables-save > /etc/iptables/rules.v4
 If your server has a public IP (e.g., `203.0.113.5`), explicitly block Redis on that interface:
 
 ```bash
-iptables -A INPUT -i eth0 -p tcp --dport 6379 -j DROP
+sudo iptables -A INPUT -i eth0 -p tcp --dport 6379 -j DROP
 ```
 
 ## Verify the Firewall Rules
