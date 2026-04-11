@@ -31,7 +31,7 @@ Issued on the node that should become a replica. `node-id` is the 40-character I
 
 ## Prerequisites
 
-- The node issuing the command must be a primary with no slots assigned (or already a replica)
+- The node issuing the command must be a primary with no slots assigned and no keys stored (or already a replica)
 - The target `node-id` must be a primary node in the cluster
 - Both nodes must already know each other (connected via `CLUSTER MEET` or `redis-cli --cluster add-node`)
 
@@ -158,4 +158,4 @@ If `INFO replication` shows `master_link_status:down`, check:
 
 ## Summary
 
-`CLUSTER REPLICATE node-id` is issued on a node to make it a replica of the specified primary within a Redis Cluster. The node must have no slots assigned. After the command, the node synchronizes data from the primary and participates in automatic failover. Use it when adding new replicas to increase fault tolerance, or to reassign a replica to a different primary. In practice, `redis-cli --cluster add-node --cluster-slave` is the preferred high-level approach that wraps `CLUSTER MEET` and `CLUSTER REPLICATE`.
+`CLUSTER REPLICATE node-id` is issued on a node to make it a replica of the specified primary within a Redis Cluster. The node must have no slots assigned and no keys stored. After the command, the node synchronizes data from the primary and participates in automatic failover. Use it when adding new replicas to increase fault tolerance, or to reassign a replica to a different primary. In practice, `redis-cli --cluster add-node --cluster-slave` is the preferred high-level approach that wraps `CLUSTER MEET` and `CLUSTER REPLICATE`.
