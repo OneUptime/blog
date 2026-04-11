@@ -81,7 +81,7 @@ Look for lines like:
 [System] [MY-013381] [Server] Server upgrade from '50700' to '80036' completed.
 ```
 
-## Running mysql_upgrade (Pre-8.0 Only)
+## Running mysql_upgrade (Pre-8.0.16 Only)
 
 For upgrades to versions before 8.0.16, run `mysql_upgrade` manually:
 
@@ -119,11 +119,17 @@ If the upgrade fails, restore from backup:
 # Reinstall old version
 sudo apt-get install mysql-server-5.7
 
+# Remove the data directory modified by the newer version
+sudo systemctl stop mysql
+sudo rm -rf /var/lib/mysql
+sudo mysqld --initialize-insecure --user=mysql
+sudo systemctl start mysql
+
 # Restore from backup
 mysql -u root -p < /backup/pre-upgrade-$(date +%F).sql
 ```
 
-Note: You cannot downgrade a MySQL data directory that has been opened by a newer version. The backup-and-restore path is the only reliable rollback.
+Note: You cannot downgrade a MySQL data directory that has been opened by a newer version. You must remove the modified data directory, reinitialize it, and then restore from your backup.
 
 ## Summary
 
