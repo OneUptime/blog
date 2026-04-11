@@ -96,10 +96,11 @@ Use `redis.call` for commands that should abort the script on error, and `redis.
 -- redis.call raises an error and stops the script
 local val = redis.call('GET', KEYS[1])
 
--- redis.pcall returns the error as a table
-local ok, err = pcall(function()
-  return redis.call('GET', KEYS[1])
-end)
+-- redis.pcall returns the error as a table instead of raising
+local result = redis.pcall('GET', KEYS[1])
+if type(result) == 'table' and result.err then
+  -- handle error
+end
 ```
 
 ## Testing Script Execution Time
