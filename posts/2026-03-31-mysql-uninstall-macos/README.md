@@ -153,9 +153,18 @@ rm -rf /usr/local/var/mysql
 
 ### Step 5 - Remove Remaining Configuration Files
 
+For Apple Silicon (M1/M2/M3/M4):
+
 ```bash
 rm -rf /opt/homebrew/etc/my.cnf
 rm -rf /opt/homebrew/etc/my.cnf.d
+```
+
+For Intel Macs:
+
+```bash
+rm -rf /usr/local/etc/my.cnf
+rm -rf /usr/local/etc/my.cnf.d
 ```
 
 ### Step 6 - Remove LaunchAgents
