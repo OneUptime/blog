@@ -45,7 +45,7 @@ echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 sudo apt update && sudo apt install -y dpdk dpdk-dev libdpdk-dev
 
 # Check DPDK version
-dpdk-testpmd --version
+pkg-config --modversion libdpdk
 ```
 
 ## Bind NIC to DPDK Driver (vfio-pci)
@@ -96,7 +96,7 @@ sudo vppctl
 > set int state GigabitEthernetb/0/0 up
 > set int ip address GigabitEthernetb/0/0 10.0.0.1/24
 > session enable
-> app ns add id redis netns redis
+> app ns add id redis secret 1234 sw_if_index 1
 ```
 
 ## Benchmark Without DPDK
@@ -116,15 +116,11 @@ cat /proc/interrupts | grep eth0
 dpdk-testpmd> show port stats all
 ```
 
-## Alternative: io_uring for Lower-Overhead Kernel IO
+## Alternative: Redis Multi-threaded I/O
 
-If DPDK is too complex, io_uring in Linux 5.1+ provides a middle ground:
+If DPDK is too complex, Redis's built-in multi-threaded I/O (available since Redis 6.0) provides a middle ground by offloading network read/write operations to dedicated threads:
 
 ```bash
-# Check kernel version
-uname -r  # should be 5.1+
-
-# Redis 7.4+ has experimental io_uring support
 # redis.conf
 io-threads 4
 io-threads-do-reads yes
