@@ -16,9 +16,9 @@ For an unweighted undirected graph, store each node's neighbors in a set:
 
 ```bash
 # Social network: user follows
-SADD graph:node:alice friends bob charlie dave
-SADD graph:node:bob friends alice eve
-SADD graph:node:charlie friends alice frank
+SADD graph:node:alice bob charlie dave
+SADD graph:node:bob alice eve
+SADD graph:node:charlie alice frank
 
 # Get Alice's neighbors
 SMEMBERS graph:node:alice
@@ -33,7 +33,6 @@ For weighted graphs (e.g., road networks), store neighbors in a sorted set with 
 
 ```bash
 # City connections with distances (km)
-ZADD road:paris 0 paris
 ZADD road:paris 341 lyon 450 brussels 340 london
 
 ZADD road:lyon 341 paris 160 geneva 410 marseille
