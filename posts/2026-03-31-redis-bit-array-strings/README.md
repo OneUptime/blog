@@ -8,7 +8,7 @@ Description: Use Redis SETBIT, GETBIT, and BITCOUNT to implement memory-efficien
 
 ---
 
-A bit array stores one boolean value per bit. In Redis, a single string can hold 2^32 bits (512 MB), making it possible to track billions of boolean states - "has user X visited today?" - with just a few bytes per million users.
+A bit array stores one boolean value per bit. In Redis, a single string can hold 2^32 bits (512 MB), making it possible to track billions of boolean states - "has user X visited today?" - at roughly 125 KB per million users.
 
 ## Basic Bit Operations
 
@@ -39,8 +39,6 @@ def count_bits_range(key: str, start_byte: int, end_byte: int) -> int:
 Track which users were active today using their user ID as the bit offset:
 
 ```python
-import time
-
 def record_user_activity(user_id: int):
     import datetime
     today = datetime.date.today().isoformat()
@@ -114,7 +112,9 @@ def count_users_with_feature(feature: str) -> int:
 def first_active_day_offset(user_id: int) -> int | None:
     """Find the first key bit index where user was active."""
     # BITPOS returns position of first set (1) or clear (0) bit
-    return r.bitpos(f"user:active:{user_id}", 1)
+    # Returns -1 when no set bit is found
+    pos = r.bitpos(f"user:active:{user_id}", 1)
+    return pos if pos >= 0 else None
 ```
 
 ## Memory Efficiency
