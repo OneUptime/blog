@@ -66,14 +66,13 @@ ALTER TABLE orders
 
 ## Checking Which Algorithm Will Be Used
 
-Append `ALGORITHM=INSTANT` to your statement. If MySQL raises an error, the operation does not support that algorithm - fall back to `INPLACE` or `COPY`.
+Specify `ALGORITHM=INSTANT` in your statement. If the operation does not support that algorithm, MySQL raises an error immediately without making any changes. If it does support INSTANT, the statement executes and the change is applied. There is no dry-run mode - test on a non-production table first if you are unsure.
 
 ```sql
--- Test without executing
+-- This will execute if INSTANT is supported, or fail with an error if not
 ALTER TABLE orders
     ADD COLUMN tracking_number VARCHAR(100) NULL,
     ALGORITHM = INSTANT;
--- If no error, INSTANT is supported
 ```
 
 ## Monitoring an In-Progress Online DDL
