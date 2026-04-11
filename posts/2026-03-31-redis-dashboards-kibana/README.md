@@ -16,8 +16,9 @@ Install Metricbeat on the Redis server:
 
 ```bash
 # Ubuntu/Debian
-wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
-echo "deb https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+sudo apt-get install apt-transport-https
+echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
 sudo apt-get update && sudo apt-get install metricbeat
 ```
 
@@ -72,9 +73,9 @@ redis.info.memory.used.value          - Memory in bytes
 redis.info.clients.connected          - Connected clients
 redis.info.stats.keyspace.hits        - Cache hits
 redis.info.stats.keyspace.misses      - Cache misses
-redis.info.stats.instantaneous_ops_per_sec - Commands/sec
-redis.info.persistence.rdb.last_bgsave.status - RDB status
-redis.info.replication.master_offset  - Replication offset
+redis.info.stats.instantaneous.ops_per_sec - Commands/sec
+redis.info.persistence.rdb.bgsave.last_status - RDB status
+redis.info.replication.master.offset  - Replication offset
 ```
 
 ## Create a Cache Hit Rate Visualization
@@ -87,8 +88,8 @@ In Kibana Lens:
 3. X-axis: @timestamp (Date histogram, 1 minute interval)
 4. Y-axis: Formula
    Formula:
-   count(redis.info.stats.keyspace.hits) /
-   (count(redis.info.stats.keyspace.hits) + count(redis.info.stats.keyspace.misses)) * 100
+   counter_rate(max(redis.info.stats.keyspace.hits)) /
+   (counter_rate(max(redis.info.stats.keyspace.hits)) + counter_rate(max(redis.info.stats.keyspace.misses))) * 100
 5. Label: "Cache Hit Rate %"
 ```
 
