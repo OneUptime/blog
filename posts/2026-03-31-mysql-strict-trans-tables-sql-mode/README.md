@@ -20,7 +20,7 @@ When `STRICT_TRANS_TABLES` is active, MySQL returns an error rather than a warni
 - Invalid date values like `2024-02-30`
 - Empty strings inserted into numeric columns
 
-For non-transactional tables (like MyISAM), the mode falls back to inserting an adjusted value for the first bad row in a multi-row insert. For transactional tables (InnoDB), the entire statement is rolled back.
+For transactional tables (InnoDB), the entire statement is rolled back. For non-transactional tables (like MyISAM), the statement aborts if the bad value is in the first row. If a bad value occurs in a subsequent row, MySQL adjusts it to the closest valid value and issues a warning instead of an error.
 
 ## Checking Whether the Mode Is Active
 
@@ -91,7 +91,7 @@ Common patterns to fix:
 
 ## STRICT_ALL_TABLES vs STRICT_TRANS_TABLES
 
-`STRICT_ALL_TABLES` extends strict enforcement to non-transactional tables as well. With `STRICT_ALL_TABLES`, multi-row inserts into MyISAM tables abort at the first error and do not roll back rows already inserted. With `STRICT_TRANS_TABLES`, the first bad row causes an error but previously inserted rows in the statement may remain.
+`STRICT_ALL_TABLES` extends strict enforcement to non-transactional tables as well. With `STRICT_ALL_TABLES`, multi-row inserts into MyISAM tables abort at the first error and do not roll back rows already inserted, resulting in a partial update. With `STRICT_TRANS_TABLES`, the statement aborts if the bad value is in the first row, but if a bad value occurs in a later row, MySQL adjusts it to the closest valid value and issues a warning rather than an error.
 
 For production systems using InnoDB exclusively, `STRICT_TRANS_TABLES` provides the same protection with slightly different behavior for edge cases involving mixed-engine queries.
 
