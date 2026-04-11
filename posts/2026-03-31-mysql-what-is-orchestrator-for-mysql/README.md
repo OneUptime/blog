@@ -29,7 +29,8 @@ Orchestrator is a MySQL replication topology manager and high-availability tool 
               |                     |
         MySQL Primary         MySQL Replicas
         (monitors via          (tracks topology
-         INFO_SCHEMA)           and health)
+       replication status       and health)
+         commands)
 ```
 
 Orchestrator connects directly to all MySQL instances it manages and builds a live topology map.
