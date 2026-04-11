@@ -25,7 +25,7 @@ The debugger runs in a forked child process so it does not block the production 
 redis-cli --ldb --eval /path/to/script.lua key1 key2 , arg1 arg2
 ```
 
-The `,` separates keys from arguments (same as `EVAL` numkeys convention). Example:
+The `,` separates keys from arguments (similar to how `EVAL` separates keys and args, but using a comma instead of a numkeys count). Example:
 
 ```bash
 redis-cli --ldb --eval ratelimit.lua user:123 , 100 60
@@ -40,7 +40,7 @@ restart -- Restart the script in debug mode again.
 help    -- Show Lua script debugger's help.
 
 * Stopped at 1, stop reason = step over
--> 1   local limit = tonumber(ARGV[1])
+-> 1   local key = KEYS[1]
 lua debugger>
 ```
 
@@ -54,7 +54,7 @@ break (b) N  - Set breakpoint at line N
 print (p) [var] - Print variable or all locals
 redis <cmd> - Execute a Redis command
 list (l)   - Show current script with line numbers
-reload     - Reload the script from disk
+restart    - Restart the script in debug mode
 quit       - Exit debugger
 ```
 
