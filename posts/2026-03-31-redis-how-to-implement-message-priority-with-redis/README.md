@@ -21,7 +21,7 @@ ZADD queue:priority 5 '{"id":"msg4","type":"analytics","urgent":false}'
 
 # Get the highest priority message (lowest score first)
 ZRANGE queue:priority 0 0 WITHSCORES
-# Returns msg1 or msg3 (score=1, whichever was inserted first)
+# Returns msg1 (score=1, ties are broken lexicographically)
 
 # Atomic pop: get and remove the highest priority message
 ZPOPMIN queue:priority
@@ -63,8 +63,9 @@ class Message:
 QUEUE_KEY = "priority:queue"
 
 def enqueue(message: Message):
-    # Use priority as score, with timestamp as tiebreaker (fractional part)
-    score = message.priority + (message.created_at % 1)
+    # Use priority as score, with timestamp as tiebreaker
+    # Dividing by 1e11 keeps the fractional part small enough to stay within the priority band
+    score = message.priority + (message.created_at / 1e11)
     payload = json.dumps({
         'id': message.id,
         'payload': message.payload,
@@ -109,7 +110,7 @@ print(f"Processing: {msg}")
 
 ## Multi-Priority Queue with Separate Lists
 
-An alternative approach uses separate sorted sets per priority level:
+An alternative approach uses separate Redis lists per priority level:
 
 ```python
 import redis
@@ -138,25 +139,27 @@ def dequeue_multi() -> dict | None:
             return json.loads(item)
     return None
 
-# Non-blocking consumer with fairness
-def dequeue_with_fairness(ratios: dict = None) -> dict | None:
+# Batch consumer with fairness
+def dequeue_with_fairness(ratios: dict = None) -> list[dict]:
     """
     ratios: {1: 10, 2: 5, 3: 2, 4: 1}
-    Process 10 critical for every 1 bulk
+    Process up to 10 critical, 5 high, 2 normal, 1 low per batch
     """
     if ratios is None:
         ratios = {1: 10, 2: 5, 3: 2, 4: 1, 5: 1}
 
+    batch = []
     for priority, count in sorted(ratios.items()):
         queue_key = PRIORITY_QUEUES.get(priority)
         if not queue_key:
             continue
-        # Check if there are items in this priority queue
-        if r.llen(queue_key) > 0:
+        for _ in range(count):
             item = r.lpop(queue_key)
             if item:
-                return json.loads(item)
-    return None
+                batch.append(json.loads(item))
+            else:
+                break
+    return batch
 ```
 
 ## Delayed Priority Queue
@@ -181,7 +184,8 @@ def enqueue_delayed(message: dict, priority: int, delay_seconds: float = 0):
     ready_at = time.time() + delay_seconds
     # Combine timestamp and priority: ready_at as major, priority as minor
     score = ready_at * 10 + priority
-    r.zadd(DELAYED_QUEUE, {json.dumps(message): score})
+    payload = {**message, 'priority': priority}
+    r.zadd(DELAYED_QUEUE, {json.dumps(payload): score})
 
 def move_ready_messages():
     """Move messages whose time has come to the ready queue."""
@@ -193,7 +197,6 @@ def move_ready_messages():
         for item in ready:
             pipe.zrem(DELAYED_QUEUE, item)
             msg = json.loads(item)
-            priority = r.zscore(DELAYED_QUEUE, item)
             pipe.zadd(READY_QUEUE, {item: msg.get('priority', 3)})
         pipe.execute()
 
