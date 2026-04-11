@@ -147,7 +147,7 @@ def confirm_booking(room_id: str, dates: list, hold_id: str, user_id: str) -> st
 
 ## Multi-Day Booking Availability Check
 
-Check if all dates in a range are available atomically:
+Check if all dates in a range are available efficiently using a pipeline:
 
 ```python
 def check_availability(room_id: str, dates: list) -> bool:
@@ -229,4 +229,4 @@ def book_with_lock(room_id: str, dates: list, user_id: str):
 
 ## Summary
 
-Modeling a booking system in Redis combines sorted sets or sets for availability tracking, hashes for reservation metadata, TTL-based keys for temporary holds, and Lua scripts for atomic operations. The key is ensuring that availability checks and slot reservations are atomic to prevent double-booking. Use temporary hold keys with TTLs to support multi-step booking flows where users may abandon checkout, and use distributed locks when contention is very high for a single resource.
+Modeling a booking system in Redis combines sets for availability tracking, hashes for reservation metadata, TTL-based keys for temporary holds, and Lua scripts for atomic operations. The key is ensuring that availability checks and slot reservations are atomic to prevent double-booking. Use temporary hold keys with TTLs to support multi-step booking flows where users may abandon checkout, and use distributed locks when contention is very high for a single resource.
