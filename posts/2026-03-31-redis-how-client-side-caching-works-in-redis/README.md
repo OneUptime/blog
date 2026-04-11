@@ -57,7 +57,7 @@ In default mode, invalidation messages arrive on the special `__redis__:invalida
 
 ## Redirect Mode
 
-Instead of using a second connection, use `REDIRECT` to have invalidations delivered to another client by ID:
+Use `REDIRECT` to route invalidation messages to a dedicated subscribing connection by its client ID:
 
 ```bash
 # Get the ID of the subscribing connection
@@ -83,7 +83,7 @@ In default mode, Redis maintains an in-memory table per client recording which k
 redis-cli CLIENT TRACKINGINFO
 ```
 
-The reply includes the active flags, redirect client ID, and prefixes. In Redis Open Source, there is no `CONFIG SET tracking-table-max-keys` knob for client tracking, so cache sizing is an application-side concern.
+The reply includes the active flags, redirect client ID, and prefixes. Redis provides the `tracking-table-max-keys` configuration option to limit the size of the tracking table. When the limit is reached, Redis evicts entries by sending invalidation messages for tracked keys, even if they were not modified.
 
 ## Optin Mode
 
@@ -96,8 +96,7 @@ CLIENT TRACKING ON OPTIN
 CLIENT CACHING YES
 GET user:123   # This access will be tracked
 
-# Do not track this key
-CLIENT CACHING NO
+# Without CLIENT CACHING YES, keys are not tracked by default
 GET session:abc  # This access is NOT tracked
 ```
 
