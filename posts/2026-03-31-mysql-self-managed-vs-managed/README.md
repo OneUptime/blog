@@ -79,7 +79,7 @@ At scale with hundreds of instances, self-managed can save significantly. For sm
 Choose self-managed when:
 - You have a dedicated DBA or experienced SRE team
 - Compliance requires air-gapped or on-premises MySQL
-- You need parameters not available in managed services (e.g., `innodb_io_capacity_max`)
+- You need custom MySQL plugins or OS-level tuning (e.g., I/O scheduler, kernel parameters) not possible in managed services
 - Running MySQL at very large scale where cost difference is significant
 
 Choose managed when:
