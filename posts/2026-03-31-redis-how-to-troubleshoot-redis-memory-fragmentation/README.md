@@ -48,7 +48,7 @@ High fragmentation is commonly caused by:
 1. Many keys with varying value sizes (allocator holds size-class buckets)
 2. Frequent key deletions or expirations creating holes
 3. Large keys that were reduced in size (SETRANGE, LPOP operations)
-4. Redis restart after heavy churn
+4. Sustained key churn over a long-running instance without restart
 
 ```bash
 # Check key churn
@@ -73,7 +73,7 @@ Tune the defragmentation aggressiveness:
 redis-cli CONFIG SET active-defrag-ignore-bytes 100mb
 redis-cli CONFIG SET active-defrag-threshold-lower 10
 
-# Stop defrag when fragmentation drops below 5%
+# Use maximum defrag effort when fragmentation reaches 100%
 redis-cli CONFIG SET active-defrag-threshold-upper 100
 
 # CPU usage limits for defrag
