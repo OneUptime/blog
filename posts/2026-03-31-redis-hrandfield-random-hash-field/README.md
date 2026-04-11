@@ -157,7 +157,7 @@ HRANDFIELD nonexistent_key 3
 |----------------|------------|-------------|
 | (none) | N/A | 1 field |
 | Positive N | Unique fields only | min(N, hash size) |
-| Negative N | Repeats allowed | exactly N |
+| Negative N | Repeats allowed | exactly |N| |
 
 ## Use Cases
 
