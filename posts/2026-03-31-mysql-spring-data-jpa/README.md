@@ -44,7 +44,7 @@ flowchart TD
 ## application.properties
 
 ```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/myapp?serverTimezone=UTC&characterEncoding=utf8mb4
+spring.datasource.url=jdbc:mysql://localhost:3306/myapp?serverTimezone=UTC&characterEncoding=UTF-8
 spring.datasource.username=appuser
 spring.datasource.password=secret
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
