@@ -50,10 +50,10 @@ kubectl -n redis-operator get crd | grep redis
 Expected CRDs after installation:
 
 ```text
-redis.redis.redis.opstreelabs.in
-rediscluster.redis.redis.opstreelabs.in
-redisreplication.redis.redis.opstreelabs.in
-redissentinel.redis.redis.opstreelabs.in
+redis.redis.opstreelabs.in
+rediscluster.redis.opstreelabs.in
+redisreplication.redis.opstreelabs.in
+redissentinel.redis.opstreelabs.in
 ```
 
 ## Creating a Standalone Redis Instance
@@ -71,7 +71,7 @@ spec:
     imagePullPolicy: IfNotPresent
     resources:
       requests:
-        cpu: 101m
+        cpu: 100m
         memory: 128Mi
       limits:
         cpu: 500m
@@ -122,7 +122,7 @@ spec:
     imagePullPolicy: IfNotPresent
     resources:
       requests:
-        cpu: 101m
+        cpu: 100m
         memory: 128Mi
       limits:
         cpu: 500m
@@ -157,18 +157,18 @@ metadata:
   namespace: default
 spec:
   clusterSize: 3
-  redisReplicationName: redis-replication
   kubernetesConfig:
     image: quay.io/opstree/redis-sentinel:v7.0.12
     imagePullPolicy: IfNotPresent
     resources:
       requests:
-        cpu: 101m
+        cpu: 100m
         memory: 128Mi
       limits:
         cpu: 500m
         memory: 256Mi
   redisSentinelConfig:
+    redisReplicationName: "redis-replication"
     masterGroupName: "mymaster"
     redisPort: "6379"
     quorum: "2"
@@ -200,7 +200,7 @@ spec:
     imagePullPolicy: IfNotPresent
     resources:
       requests:
-        cpu: 101m
+        cpu: 100m
         memory: 128Mi
       limits:
         cpu: 1000m
@@ -245,7 +245,7 @@ kubectl exec -it redis-standalone-0 -- redis-cli
 
 # Connect to replication primary
 kubectl exec -it redis-replication-0 -- redis-cli
-redis-cli -h redis-replication.default.svc.cluster.local INFO replication
+kubectl exec -it redis-replication-0 -- redis-cli INFO replication
 
 # Connect to cluster
 kubectl exec -it redis-cluster-leader-0 -- redis-cli -c
