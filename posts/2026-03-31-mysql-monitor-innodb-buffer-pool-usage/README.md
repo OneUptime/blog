@@ -27,7 +27,6 @@ SELECT
     VARIABLE_VALUE
 FROM performance_schema.global_status
 WHERE VARIABLE_NAME IN (
-    'Innodb_buffer_pool_size',
     'Innodb_buffer_pool_pages_total',
     'Innodb_buffer_pool_pages_free',
     'Innodb_buffer_pool_pages_data',
@@ -105,7 +104,7 @@ ORDER BY POOL_ID;
 -- Which tables consume the most buffer pool pages?
 SELECT
     TABLE_NAME,
-    SUM(DATA_SIZE) AS pages_in_pool
+    COUNT(*) AS pages_in_pool
 FROM information_schema.INNODB_BUFFER_PAGE
 WHERE TABLE_NAME IS NOT NULL
 GROUP BY TABLE_NAME
