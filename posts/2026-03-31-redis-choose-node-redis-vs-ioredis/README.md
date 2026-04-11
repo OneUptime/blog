@@ -91,7 +91,7 @@ const cluster = new Redis.Cluster([
 ]);
 ```
 
-ioredis cluster handles `MOVED` and `ASK` redirects automatically and has more tuning options out of the box.
+Both clients handle `MOVED` and `ASK` redirects automatically. ioredis exposes more cluster tuning options out of the box.
 
 ## Custom Commands
 
@@ -111,7 +111,7 @@ redis.defineCommand('setIfGreater', {
 await redis.setIfGreater('score', 100);
 ```
 
-node-redis uses `client.sendCommand()` or the `redis.defineCommand` equivalent for custom scripts.
+node-redis supports custom Lua scripts via `defineScript`, which is passed through the `scripts` option in `createClient`. For ad-hoc commands, use `client.sendCommand()`.
 
 ## Decision Guide
 
