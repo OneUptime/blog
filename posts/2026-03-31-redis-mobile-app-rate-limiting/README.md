@@ -114,14 +114,14 @@ def consume_token(device_id: str, capacity: int = 20, refill_rate: float = 0.5) 
 Always communicate quota status to clients so they can back off gracefully:
 
 ```python
-def get_rate_limit_headers(device_id: str, limit: int, window: int) -> dict:
-    key = f"rate:device:{device_id}"
+def get_rate_limit_headers(device_id: str, endpoint: str, limit: int, window: int) -> dict:
+    key = f"rate:device:{device_id}:{endpoint}"
     current = int(r.get(key) or 0)
     ttl = r.ttl(key)
     return {
         "X-RateLimit-Limit": str(limit),
         "X-RateLimit-Remaining": str(max(0, limit - current)),
-        "X-RateLimit-Reset": str(int(time.time()) + ttl),
+        "X-RateLimit-Reset": str(int(time.time()) + max(ttl, 0)),
     }
 ```
 
