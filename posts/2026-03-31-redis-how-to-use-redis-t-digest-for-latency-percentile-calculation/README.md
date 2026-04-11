@@ -16,7 +16,7 @@ T-Digest is a probabilistic data structure for computing approximate quantiles (
 
 ```bash
 # Create a T-Digest with compression factor 100 (higher = more accurate, more memory)
-TDIGEST.CREATE latency:api:get_user 100
+TDIGEST.CREATE latency:api:get_user COMPRESSION 100
 
 # Or with default compression
 TDIGEST.CREATE latency:checkout
@@ -71,20 +71,21 @@ def record_latencies(key: str, latencies: list[float]):
 
 def get_percentiles(key: str) -> dict:
     """Get standard SLO percentiles."""
+    labels = ["p50", "p75", "p90", "p95", "p99", "p99.9"]
     percentiles = [0.5, 0.75, 0.90, 0.95, 0.99, 0.999]
     values = r.tdigest().quantile(key, *percentiles)
     return {
-        f"p{int(p * 1000) // 10}": round(v, 2)
-        for p, v in zip(percentiles, values)
+        label: round(v, 2)
+        for label, v in zip(labels, values)
     }
 
 def get_digest_summary(key: str) -> dict:
     info = r.tdigest().info(key)
     return {
-        "min": info.min,
-        "max": info.max,
-        "count": info.merged_nodes + info.unmerged_nodes,
-        "mean": info.mean if hasattr(info, "mean") else None
+        "min": r.tdigest().min(key),
+        "max": r.tdigest().max(key),
+        "count": info.merged_weight + info.unmerged_weight,
+        "compression": info.compression
     }
 ```
 
@@ -138,7 +139,7 @@ async def latency_middleware(request: Request, call_next):
 
 @app.get("/metrics/latency/{endpoint}")
 def latency_metrics(endpoint: str):
-    key = f"latency::{endpoint}"
+    key = f"latency:{endpoint}"
     init_digest(key)
     return get_percentiles(key)
 ```
