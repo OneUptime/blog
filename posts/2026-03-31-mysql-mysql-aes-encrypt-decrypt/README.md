@@ -35,9 +35,9 @@ SET block_encryption_mode = 'aes-256-cbc';
 ```
 
 Common modes:
-- `aes-128-ecb` - AES-128 in ECB mode (no IV, less secure)
+- `aes-128-ecb` - AES-128 in ECB mode (no IV, less secure, default)
 - `aes-256-cbc` - AES-256 in CBC mode (requires IV, more secure)
-- `aes-256-gcm` - AES-256 in GCM mode (authenticated encryption, MySQL 8.0.30+)
+- `aes-256-ofb` - AES-256 in OFB mode (requires IV, stream cipher mode)
 
 ## Basic Encryption and Decryption
 
@@ -124,7 +124,7 @@ Note: ECB mode is less secure. Consider application-level search over encrypted 
 ## Important Security Considerations
 
 - Never hardcode encryption keys in SQL queries - pass keys from application configuration
-- Use AES-256-CBC or AES-256-GCM rather than ECB mode
+- Use AES-256-CBC rather than ECB mode
 - Always use a fresh random IV per encryption operation in CBC mode
 - Consider column-level encryption at the application layer (using libraries like SQLAlchemy, Hibernate) for more control
 
