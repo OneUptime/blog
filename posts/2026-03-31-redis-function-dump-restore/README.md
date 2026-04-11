@@ -39,10 +39,10 @@ FUNCTION DUMP
 ### Capturing the dump in redis-cli
 
 ```bash
-redis-cli --no-auth-warning FUNCTION DUMP > functions.rdb
+redis-cli --raw --no-auth-warning FUNCTION DUMP > functions.bin
 ```
 
-This saves the binary payload to a file.
+The `--raw` flag ensures the binary payload is written without redis-cli formatting. This saves the binary payload to a file.
 
 ## FUNCTION RESTORE
 
@@ -78,22 +78,27 @@ FUNCTION RESTORE <payload> REPLACE
 ### Step 1: Dump from source
 
 ```bash
-redis-cli -h source-host -p 6379 FUNCTION DUMP > functions_backup.rdb
+redis-cli --raw -h source-host -p 6379 FUNCTION DUMP > functions_backup.bin
 ```
+
+The `--raw` flag ensures the binary payload is output without formatting.
 
 ### Step 2: Restore on target
 
-```bash
-redis-cli -h target-host -p 6379 FUNCTION RESTORE "$(cat functions_backup.rdb)"
-```
-
-For binary-safe transfer, use the raw mode:
+Use the `-x` flag to read the binary payload from stdin as the last argument:
 
 ```bash
-redis-cli -h target-host --pipe-mode < functions_backup.rdb
+redis-cli -x -h target-host -p 6379 FUNCTION RESTORE < functions_backup.bin
 ```
 
-Or use a Redis client that handles binary data natively.
+This uses the default APPEND policy. To achieve a full replacement, flush existing functions first:
+
+```bash
+redis-cli -h target-host -p 6379 FUNCTION FLUSH
+redis-cli -x -h target-host -p 6379 FUNCTION RESTORE < functions_backup.bin
+```
+
+For restore with REPLACE or FLUSH policy in a single command, use a Redis client library (Python, Node.js, etc.) that handles binary data natively, since redis-cli's `-x` flag always places stdin as the last argument.
 
 ### Step 3: Verify
 
@@ -118,10 +123,16 @@ sequenceDiagram
 
 ```bash
 # Backup all functions from production
-redis-cli -h prod-redis FUNCTION DUMP | base64 > functions_b64.txt
+redis-cli --raw -h prod-redis FUNCTION DUMP > functions_backup.bin
 
-# Restore to staging
-cat functions_b64.txt | base64 -d | redis-cli -h staging-redis --pipe FUNCTION RESTORE - REPLACE
+# Restore to staging (default APPEND policy)
+redis-cli -x -h staging-redis FUNCTION RESTORE < functions_backup.bin
+```
+
+Or pipe directly between instances without an intermediate file:
+
+```bash
+redis-cli --raw -h prod-redis FUNCTION DUMP | redis-cli -x -h staging-redis FUNCTION RESTORE
 ```
 
 ## Difference from RDB Persistence
@@ -133,7 +144,7 @@ Function libraries are included in the regular RDB snapshot automatically. FUNCT
 
 | Method | Includes | Portable | On-demand |
 |---|---|---|---|
-| RDB snapshot | All data + functions | Yes | No (scheduled) |
+| RDB snapshot | All data + functions | Yes | Yes (BGSAVE) |
 | FUNCTION DUMP | Functions only | Yes | Yes |
 
 ## Error Cases
