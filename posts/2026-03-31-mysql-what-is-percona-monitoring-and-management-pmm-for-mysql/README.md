@@ -13,7 +13,7 @@ Description: Percona Monitoring and Management (PMM) is an open-source platform 
 Percona Monitoring and Management (PMM) is a free, open-source observability platform purpose-built for MySQL, MongoDB, and PostgreSQL. It provides detailed dashboards for server performance, query-level analytics, alerting, and advisors that surface configuration issues.
 
 PMM consists of two components:
-- **PMM Server** - the monitoring backend with Grafana dashboards, Prometheus metrics storage, and Query Analytics (QAN)
+- **PMM Server** - the monitoring backend with Grafana dashboards, VictoriaMetrics metrics storage, and Query Analytics (QAN)
 - **PMM Client** - a lightweight agent installed on each database host that collects and sends metrics
 
 ## Architecture
@@ -21,8 +21,8 @@ PMM consists of two components:
 ```text
 [MySQL Host]                    [PMM Server]
   pmm-client                      Grafana Dashboards
-  mysqld_exporter  ---metrics--->  Prometheus
-  pt-mongodb-summary               Query Analytics (QAN)
+  mysqld_exporter  ---metrics--->  VictoriaMetrics
+  node_exporter                    Query Analytics (QAN)
                                    Alertmanager
 ```
 
@@ -118,4 +118,4 @@ sudo pmm-admin add mysql --query-source=slowlog
 
 ## Summary
 
-Percona PMM is a comprehensive MySQL monitoring platform that combines Prometheus-based metrics collection with deep query analytics. Its Query Analytics feature makes it straightforward to identify the top queries consuming database resources, while its pre-built dashboards and alerting rules provide immediate visibility into MySQL health. PMM is the recommended monitoring solution for production MySQL deployments.
+Percona PMM is a comprehensive MySQL monitoring platform that combines VictoriaMetrics-based metrics storage with deep query analytics. Its Query Analytics feature makes it straightforward to identify the top queries consuming database resources, while its pre-built dashboards and alerting rules provide immediate visibility into MySQL health. PMM is the recommended monitoring solution for production MySQL deployments.
