@@ -51,7 +51,7 @@ WHERE customer_id = 1099;
 Combine values from the duplicate into the canonical record before deleting it:
 
 ```sql
--- Keep the earliest created_at and most recent updated_at
+-- Keep the earliest created_at and fill in missing phone/address
 UPDATE customers c1
 JOIN customers c2 ON c2.email = c1.email AND c2.id != c1.id
 SET
@@ -73,23 +73,27 @@ DELIMITER $$
 CREATE PROCEDURE merge_duplicate_customers()
 BEGIN
   DECLARE done INT DEFAULT 0;
-  DECLARE keep_id, dup_id BIGINT;
+  DECLARE v_keep_id, v_dup_id BIGINT;
 
   DECLARE cur CURSOR FOR
-    SELECT MIN(id), MAX(id)
-    FROM customers
-    GROUP BY email
-    HAVING COUNT(*) = 2;
+    SELECT k.keep_id, c.id AS dup_id
+    FROM (
+      SELECT MIN(id) AS keep_id, email
+      FROM customers
+      GROUP BY email
+      HAVING COUNT(*) > 1
+    ) k
+    JOIN customers c ON c.email = k.email AND c.id != k.keep_id;
 
   DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
 
   OPEN cur;
   read_loop: LOOP
-    FETCH cur INTO keep_id, dup_id;
+    FETCH cur INTO v_keep_id, v_dup_id;
     IF done THEN LEAVE read_loop; END IF;
 
-    UPDATE orders SET customer_id = keep_id WHERE customer_id = dup_id;
-    DELETE FROM customers WHERE id = dup_id;
+    UPDATE orders SET customer_id = v_keep_id WHERE customer_id = v_dup_id;
+    DELETE FROM customers WHERE id = v_dup_id;
   END LOOP;
   CLOSE cur;
 END$$
