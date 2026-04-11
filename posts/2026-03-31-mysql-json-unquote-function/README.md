@@ -39,10 +39,12 @@ JSON_UNQUOTE(JSON_EXTRACT(column, '$.path'))
 
 ## The Difference Between `->` and `->>`
 
+The `->` and `->>` operators require a column reference on the left side. To illustrate the difference with a literal JSON document, use the equivalent function forms:
+
 ```sql
 SELECT
-    '{"city": "New York"}' -> '$.city'  AS with_quotes,
-    '{"city": "New York"}' ->> '$.city' AS without_quotes;
+    JSON_EXTRACT('{"city": "New York"}', '$.city')                      AS with_quotes,
+    JSON_UNQUOTE(JSON_EXTRACT('{"city": "New York"}', '$.city'))        AS without_quotes;
 ```
 
 ```text
@@ -53,7 +55,7 @@ SELECT
 +-------------+----------------+
 ```
 
-The `->` operator returns `"New York"` (with embedded quotes, as a JSON string). The `->>` operator returns `New York` (a plain SQL string, ready for comparisons and string functions).
+`JSON_EXTRACT()` (or equivalently, `->` on a column) returns `"New York"` (with embedded quotes, as a JSON string). `JSON_UNQUOTE(JSON_EXTRACT(...))` (or equivalently, `->>` on a column) returns `New York` (a plain SQL string, ready for comparisons and string functions).
 
 ## Setup: Sample Table
 
