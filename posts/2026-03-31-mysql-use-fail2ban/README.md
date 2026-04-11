@@ -44,7 +44,7 @@ sudo nano /etc/fail2ban/filter.d/mysql-auth.conf
 
 ```ini
 [Definition]
-failregex = ^%(__prefix_line)s\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z \d+ \[Warning\] \[MY-\d+\] \[Server\] Access denied for user .+ \(using password: YES\)$
+failregex = ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+\S* \d+ \[Warning\] \[MY-\d+\] \[Server\] Access denied for user '.+'@'<HOST>' \(using password: \S+\)$
             ^.*Access denied for user .*@'<HOST>'.*$
 ignoreregex =
 ```
@@ -129,7 +129,7 @@ In `/etc/fail2ban/jail.local`, configure email alerting:
 ```ini
 [DEFAULT]
 destemail = ops@example.com
-sendername = fail2ban
+sender = fail2ban
 mta = sendmail
 action = %(action_mwl)s
 ```
