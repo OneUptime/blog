@@ -18,7 +18,7 @@ GraphQL APIs often run multiple resolvers per query, each potentially hitting a 
 
 ## Response-Level Caching with Apollo Server
 
-The simplest approach is caching the full GraphQL response for a given query and variables hash.
+The simplest approach is caching the full GraphQL response for a given query and variables hash. Use Express middleware before Apollo Server to intercept requests and return cached responses without running any resolvers.
 
 ```javascript
 const { ApolloServer } = require('@apollo/server');
@@ -37,21 +37,29 @@ function hashQuery(query, variables) {
 const server = new ApolloServer({ typeDefs, resolvers });
 await server.start();
 
-app.use('/graphql', expressMiddleware(server, {
-  context: async ({ req }) => {
-    // Check cache before GraphQL execution
-    const { query, variables } = req.body;
-    const cacheKey = `gql:${hashQuery(query, variables)}`;
+// Cache middleware - checks Redis before GraphQL execution
+async function graphqlCacheMiddleware(req, res, next) {
+  const { query, variables } = req.body;
+  const cacheKey = `gql:${hashQuery(query, variables)}`;
 
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      // Return cached response directly
-      return { cachedResponse: JSON.parse(cached), redis };
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return res.json(JSON.parse(cached));
+  }
+
+  // Intercept the response to cache it
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (!body.errors) {
+      redis.setex(cacheKey, 300, JSON.stringify(body));
     }
+    return originalJson(body);
+  };
 
-    return { redis, cacheKey };
-  },
-}));
+  next();
+}
+
+app.use('/graphql', graphqlCacheMiddleware, expressMiddleware(server));
 ```
 
 ## Apollo Server Plugin for Automatic Caching
