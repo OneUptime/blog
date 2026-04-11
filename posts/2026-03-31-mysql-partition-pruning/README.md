@@ -108,7 +108,7 @@ SELECT * FROM orders WHERE YEAR(order_date) = 2026;
 
 ### LIST Partitioning
 
-Pruning works with `=`, `IN`, and `<>` on the partition column:
+Pruning works with `=` and `IN` on the partition column:
 
 ```sql
 CREATE TABLE sales (
@@ -131,7 +131,7 @@ EXPLAIN SELECT * FROM sales WHERE region_id IN (1, 4)\G
 
 ### HASH and KEY Partitioning
 
-Pruning only works for exact equality:
+Pruning only works for equality comparisons (`=` and `IN`):
 
 ```sql
 CREATE TABLE user_activity (
@@ -144,6 +144,9 @@ PARTITIONS 8;
 
 -- Pruning WORKS - exact value
 EXPLAIN SELECT * FROM user_activity WHERE user_id = 42\G
+
+-- Pruning WORKS - IN list
+EXPLAIN SELECT * FROM user_activity WHERE user_id IN (42, 99)\G
 
 -- Pruning does NOT work - range
 EXPLAIN SELECT * FROM user_activity WHERE user_id > 100\G
@@ -176,25 +179,27 @@ Only the 2026 partition of `orders` is scanned.
 
 ## Monitoring Partitions Accessed
 
-Use `EXPLAIN PARTITIONS` or check the optimizer trace to see which partitions are accessed:
+In MySQL 5.7+, plain `EXPLAIN` shows a `partitions` column by default. You can also inspect the optimizer trace for more detail:
 
 ```sql
 SET optimizer_trace = 'enabled=on';
 
 SELECT * FROM orders WHERE YEAR(order_date) = 2026;
 
-SELECT JSON_EXTRACT(trace, '$.steps[*].join_optimization.partitions_usable')
-FROM   information_schema.OPTIMIZER_TRACE;
+SELECT trace
+FROM   information_schema.OPTIMIZER_TRACE\G
 
 SET optimizer_trace = 'enabled=off';
 ```
+
+Look for the partition-related entries in the trace output to see how the optimizer decided which partitions to scan.
 
 ## Common Pruning Pitfalls
 
 Pruning fails when:
 - The partition key is wrapped in a function not used in the partition expression definition
 - Using `OR` with conditions spanning multiple columns
-- Using `!=` or `NOT IN` on LIST partitions (MySQL cannot determine which partitions to skip)
+- Using `!=` or `NOT IN` on LIST partitions (negation cannot narrow the scan to a small set of partitions)
 
 ```sql
 -- These do NOT prune efficiently
