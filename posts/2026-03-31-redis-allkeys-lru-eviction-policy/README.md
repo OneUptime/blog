@@ -56,7 +56,7 @@ SET product:2 "..."
 ## Comparing LRU Sample Sizes
 
 ```python
-import redis, random, time
+import redis, random
 
 r = redis.Redis()
 
@@ -82,14 +82,14 @@ print(f"Hot keys retained: {hits}/100")
 
 ```bash
 # Total evictions since startup
-INFO stats | grep evicted_keys
+redis-cli INFO stats | grep evicted_keys
 
 # Keys evicted per second (real-time)
 redis-cli --stat
 
 # Keyspace hit/miss ratio
-INFO stats | grep keyspace_hits
-INFO stats | grep keyspace_misses
+redis-cli INFO stats | grep keyspace_hits
+redis-cli INFO stats | grep keyspace_misses
 ```
 
 ```python
@@ -110,7 +110,7 @@ print(f"Cache hit rate: {cache_hit_rate():.2%}")
 | Recent access predicts future access | Yes | No |
 | Viral spikes (new data suddenly hot) | Better | Worse |
 | Long-term popularity matters | No | Yes |
-| Flash sales, trending content | No | Yes |
+| Flash sales, trending content | Better | Worse |
 
 For most general-purpose caches, `allkeys-lru` is the right default.
 
