@@ -66,6 +66,7 @@ def discover_instances(service_name):
 ```python
 import grpc
 import random
+import product_pb2
 import product_pb2_grpc
 
 def get_stub(service_name):
@@ -82,7 +83,7 @@ stub = get_stub('product-service')
 response = stub.GetProduct(product_pb2.GetProductRequest(id='123'))
 ```
 
-## Registration on Deregistration at Shutdown
+## Deregistration at Shutdown
 
 ```python
 import signal
