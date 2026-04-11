@@ -112,11 +112,12 @@ products = Product.includes(:category)
                   .order(:price)
 
 # Aggregations
+electronics = Category.find_by(name: 'Electronics')
 avg_price = Product.where(category: electronics).average(:price)
 out_of_stock = Product.where(stock: 0).count
 
 # Update and delete
-Product.where('price > ?', 10_000).update_all(featured: false)
+Product.where('price > ?', 10_000).update_all(stock: 0)
 Product.where(stock: 0).destroy_all
 ```
 
