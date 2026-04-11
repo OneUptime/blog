@@ -102,7 +102,7 @@ await table.delete()
 ## Working with Document Collections
 
 ```javascript
-const collection = await schema.createCollection('products', { reuseExistingObject: true });
+const collection = await schema.createCollection('products', { reuseExisting: true });
 
 // Add a document
 await collection.add({ sku: 'ABC-001', name: 'Widget', price: 19.99, tags: ['sale'] }).execute();
