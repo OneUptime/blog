@@ -10,7 +10,7 @@ Description: Use SCRIPT LOAD and EVALSHA to cache Lua scripts server-side in Red
 
 ## Why Use EVALSHA Instead of EVAL
 
-`EVAL` sends the full Lua script text with every call. For scripts that are called thousands of times per second, this wastes network bandwidth and requires Redis to compile the script on every call. `EVALSHA` sends only the 40-character SHA1 hash of the script, which Redis maps to the already-compiled script in its cache.
+`EVAL` sends the full Lua script text with every call. For scripts that are called thousands of times per second, this wastes network bandwidth. `EVALSHA` sends only the 40-character SHA1 hash of the script, which Redis maps to the already-cached script. While Redis does cache compiled scripts after the first `EVAL` call, `EVALSHA` avoids retransmitting the script body on every request.
 
 Benefits of EVALSHA:
 
@@ -30,7 +30,7 @@ redis-cli SCRIPT LOAD "return redis.call('SET', KEYS[1], ARGV[1])"
 Output:
 
 ```text
-"2067d915024a3e1657c4169c84f809f8ec75b9a7"
+"d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37"
 ```
 
 Store this hash in your application's configuration or compute it at startup.
@@ -39,7 +39,7 @@ Store this hash in your application's configuration or compute it at startup.
 
 ```bash
 # EVALSHA sha1 numkeys [key ...] [arg ...]
-redis-cli EVALSHA 2067d915024a3e1657c4169c84f809f8ec75b9a7 1 mykey myvalue
+redis-cli EVALSHA d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37 1 mykey myvalue
 ```
 
 ## Step 3 - Compute SHA1 at Application Startup
@@ -83,7 +83,7 @@ If Redis restarts or flushes its script cache (`SCRIPT FLUSH`), calling EVALSHA 
 NOSCRIPT No matching script. Please use EVAL.
 ```
 
-Handle this gracefully by falling back to EVAL and re-loading the script:
+Handle this gracefully by re-loading the script and retrying with EVALSHA:
 
 ```python
 from redis.exceptions import ResponseError
@@ -105,7 +105,7 @@ result = call_script(r, SCRIPT_SHA, SCRIPT, 1, 'mykey', 'myvalue', '3600')
 
 ```bash
 # Returns 1 if cached, 0 if not
-redis-cli SCRIPT EXISTS 2067d915024a3e1657c4169c84f809f8ec75b9a7
+redis-cli SCRIPT EXISTS d8f2fad9f8e86a53d2a6ebd960b33c4972cacc37
 ```
 
 In Python:
