@@ -16,7 +16,8 @@ Different data types have separate flags:
 
 ```bash
 # Enable key update events for strings ($), hashes (h), lists (l),
-# sets (s), sorted sets (z), and generic commands (g) with keyevent channel (E)
+# sets (s), sorted sets (z), streams (t), and generic commands (g)
+# with keyspace (K) and keyevent (E) channels
 redis-cli CONFIG SET notify-keyspace-events "EKgslhz$t"
 ```
 
