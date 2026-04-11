@@ -130,8 +130,10 @@ print(session.runSql("SELECT VERSION()").fetchOne()[0]);
 // Switch to a different schema
 session.setCurrentSchema('mydb');
 
-// List all schemas
+// List stored credentials
 shell.listCredentials();
+
+// List all schemas
 session.getSchemas().forEach(s => print(s.getName()));
 ```
 
