@@ -13,7 +13,7 @@ Koa.js is a lightweight Node.js web framework built by the Express team. Pairing
 ## Installing Dependencies
 
 ```bash
-npm install koa koa-router ioredis
+npm install koa @koa/router ioredis
 ```
 
 ## Connecting to Redis
@@ -38,7 +38,7 @@ A common pattern is to cache expensive database queries or external API response
 
 ```javascript
 const Koa = require('koa');
-const Router = require('koa-router');
+const Router = require('@koa/router');
 
 const app = new Koa();
 const router = new Router();
@@ -70,6 +70,10 @@ app.listen(3000);
 ## Session Storage with Redis
 
 Use Redis to store session data so it persists across server restarts and scales across multiple instances.
+
+```bash
+npm install koa-session koa-redis
+```
 
 ```javascript
 const session = require('koa-session');
