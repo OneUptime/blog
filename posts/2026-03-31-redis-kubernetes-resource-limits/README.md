@@ -17,9 +17,10 @@ requests: Minimum resources guaranteed; used for scheduling decisions.
 limits:   Maximum resources allowed; enforced by the kubelet.
 
 Redis best practice:
-  CPU limits:    Set loosely or omit (Redis is bursty; hard CPU limits cause throttling)
+  CPU limits:    Set request = limit for Guaranteed QoS class
+                 (may cause throttling during bursts; trade-off for OOM protection)
   Memory limits: Set firmly (Redis must not be OOM killed unexpectedly)
-  Memory request = Memory limit (Guaranteed QoS class)
+  Memory request = Memory limit, CPU request = CPU limit (Guaranteed QoS class)
 ```
 
 ## Basic Resource Configuration
@@ -39,10 +40,10 @@ spec:
           resources:
             requests:
               memory: "2Gi"
-              cpu: "250m"
+              cpu: "1000m"
             limits:
-              memory: "2Gi"   # same as request = Guaranteed QoS
-              cpu: "1000m"    # loose CPU limit
+              memory: "2Gi"   # request = limit for both resources = Guaranteed QoS
+              cpu: "1000m"
           command:
             - redis-server
             - --maxmemory
@@ -62,16 +63,9 @@ Redis maxmemory:        1500 MB  (leave 548 MB for OS, buffers, fork overhead)
 Rule of thumb: maxmemory = container_limit * 0.75
 ```
 
-If Redis maxmemory equals the container limit, fork() for RDB saves may cause OOM kills:
+If Redis maxmemory equals the container limit, fork() for RDB saves may cause OOM kills.
 
-```yaml
-command:
-  - redis-server
-  - --maxmemory
-  - $(echo "$(MEMORY_LIMIT_BYTES) * 75 / 100" | bc)mb
-```
-
-Better: use a ConfigMap:
+Use a ConfigMap to set maxmemory explicitly:
 
 ```yaml
 # redis-configmap.yaml
@@ -151,7 +145,7 @@ kubectl get events -n redis --field-selector reason=OOMKilling
 
 # Check QoS class
 kubectl get pod redis-0 -n redis -o jsonpath='{.status.qosClass}'
-# Should be: Guaranteed (if requests == limits for memory)
+# Should be: Guaranteed (if requests == limits for all resources)
 ```
 
 ## Summary
