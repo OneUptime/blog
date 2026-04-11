@@ -137,8 +137,7 @@ oc apply -f redis-service.yaml
 The Bitnami Redis Helm chart has OpenShift-specific settings:
 
 ```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm install redis bitnami/redis \
+helm install redis oci://registry-1.docker.io/bitnamicharts/redis \
   --set global.storageClass=gp2 \
   --set auth.password=your-strong-password \
   --set master.podSecurityContext.enabled=true \
