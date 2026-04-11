@@ -59,7 +59,7 @@ redis-cli CLIENT LIST
 
 ## Time Events
 
-Time events are stored in a linked list, sorted by next fire time. Each iteration, the loop checks the list head:
+Time events are stored in an unsorted linked list. Each iteration, the loop scans the entire list to find and run overdue timers. This is O(N) but acceptable because there are typically very few time events (often just `serverCron`):
 
 ```text
 Timer: serverCron (every 100ms by default)
@@ -80,7 +80,7 @@ dynamic-hz yes  # auto-increase under load
 
 ## Why Blocking Commands Freeze Redis
 
-Because the event loop is single-threaded, any command that blocks (like `BLPOP` with a timeout, `OBJECT ENCODING` on a huge object, or a slow Lua script) prevents the loop from processing other clients.
+Because the event loop is single-threaded, any command that runs for a long time (like `KEYS *` on a large database, `SORT` on a huge list, or a slow Lua script) prevents the loop from processing other clients. Note that blocking commands like `BLPOP` do not actually freeze the event loop - they only suspend the individual client connection while Redis continues serving others.
 
 ```bash
 # Find slow commands in the slow log
@@ -112,8 +112,8 @@ redis-cli INFO stats | grep -E "eventloop|cycle"
 
 Before calling `epoll_wait`, Redis runs `beforeSleep`, which:
 - Flushes pending write replies to clients
-- Performs active key expiry sampling
-- Syncs AOF if configured for `everysec`
+- Runs a fast active key expiry sampling cycle
+- Writes the AOF buffer and schedules a background fsync if configured for `everysec`
 
 This hook is critical for latency - expensive work here adds to every client's perceived response time.
 
