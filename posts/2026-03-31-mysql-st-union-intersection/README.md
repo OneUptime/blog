@@ -152,7 +152,7 @@ WHERE a.company = 'Courier Alpha'
 +--------------------+--------------+
 | combined_coverage  | overlap_area |
 +--------------------+--------------+
-|            2900.00 |       250.00 |
+|            2100.00 |       300.00 |
 +--------------------+--------------+
 ```
 
@@ -174,7 +174,7 @@ WHERE a.company = 'Courier Alpha'
 +-------------+
 | overlap_pct |
 +-------------+
-|        8.62 |
+|       14.29 |
 +-------------+
 ```
 
@@ -232,7 +232,7 @@ SELECT
 
 - Always check `ST_Intersects(g1, g2)` before calling `ST_Intersection` to avoid operating on disjoint geometries.
 - Use `ST_Area(ST_Intersection(a, b))` to compute the overlap area between two polygons.
-- Combine `ST_Union` with aggregation using `ST_Collect` to merge many geometries.
+- To merge many geometries, apply `ST_Union` iteratively or use a recursive CTE, since MySQL does not have a built-in spatial aggregate function.
 - For SRID 4326, ensure both geometries use the same SRID before calling set operations.
 
 ## Summary
