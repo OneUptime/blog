@@ -50,20 +50,7 @@ server_id = 1
 
 ## Checking Total Binary Log Size
 
-Use the output to calculate total disk usage:
-
-```sql
-SELECT SUM(file_size) AS total_bytes,
-       ROUND(SUM(file_size) / 1024 / 1024, 2) AS total_mb,
-       COUNT(*) AS total_files
-FROM (
-  SELECT File_size
-  FROM (SELECT 1) AS dummy
-  -- Direct query isn't possible; use shell instead
-) sub;
-```
-
-From the shell, query and sum directly:
+`SHOW BINARY LOGS` output cannot be queried directly with SQL. Use a shell command to calculate total disk usage:
 
 ```bash
 mysql -u root -p -e "SHOW BINARY LOGS;" | awk 'NR>1 {sum += $2} END {print "Total:", sum/1024/1024, "MB"}'
@@ -74,16 +61,18 @@ mysql -u root -p -e "SHOW BINARY LOGS;" | awk 'NR>1 {sum += $2} END {print "Tota
 The current binary log is always the last entry:
 
 ```sql
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 ```text
-+------------------+----------+--------------+------------------+
-| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
-+------------------+----------+--------------+------------------+
-| mysql-bin.000004 |     1234 |              |                  |
-+------------------+----------+--------------+------------------+
++------------------+----------+--------------+------------------+-------------------+
+| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++------------------+----------+--------------+------------------+-------------------+
+| mysql-bin.000004 |     1234 |              |                  |                   |
++------------------+----------+--------------+------------------+-------------------+
 ```
+
+In MySQL versions before 8.2, use `SHOW MASTER STATUS` instead. That command was deprecated in MySQL 8.2 and removed in MySQL 8.4.
 
 ## Checking Binary Log Location on Disk
 
@@ -115,18 +104,7 @@ mysqlbinlog --start-datetime="2024-03-15 00:00:00" \
 
 ## Monitoring Binary Log Growth
 
-Create a monitoring query to alert when binary logs grow too large:
-
-```sql
-SELECT Log_name, File_size,
-       ROUND(File_size / 1024 / 1024, 2) AS size_mb
-FROM (
-  SELECT 'mysql-bin.000004' AS Log_name, 10485760 AS File_size
-) logs
-WHERE File_size > 500 * 1024 * 1024; -- Alert if > 500 MB
-```
-
-From a shell monitoring script:
+Create a shell script to alert when binary logs grow too large:
 
 ```bash
 #!/bin/bash
@@ -149,4 +127,4 @@ After flushing, `SHOW BINARY LOGS` will show a new file with an incremented sequ
 
 ## Summary
 
-`SHOW BINARY LOGS` provides a quick inventory of all binary log files and their sizes. Pair it with `SHOW MASTER STATUS` to identify the active log file and current write position. Monitor total binary log disk usage with shell scripts to prevent disk exhaustion. Use `FLUSH BINARY LOGS` to force rotation when needed, and cross-reference binary log files with timestamps using `mysqlbinlog` for recovery operations.
+`SHOW BINARY LOGS` provides a quick inventory of all binary log files and their sizes. Pair it with `SHOW BINARY LOG STATUS` (or `SHOW MASTER STATUS` on MySQL before 8.2) to identify the active log file and current write position. Monitor total binary log disk usage with shell scripts to prevent disk exhaustion. Use `FLUSH BINARY LOGS` to force rotation when needed, and cross-reference binary log files with timestamps using `mysqlbinlog` for recovery operations.
