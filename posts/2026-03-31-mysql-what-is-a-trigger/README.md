@@ -109,9 +109,9 @@ DROP TRIGGER IF EXISTS after_order_insert;
 
 ## Limitations
 
-- Triggers cannot call stored procedures with `OUT` parameters or that use transactions (`COMMIT`/`ROLLBACK`).
+- Triggers cannot call stored procedures that return data to the client or that use transactions (`COMMIT`/`ROLLBACK`).
 - Triggers do not fire for operations performed by replication SQL thread by default.
-- Recursive triggers (a trigger that fires the same trigger) are prevented by `@@trigger_recursion_depth` (default 0).
+- MySQL prevents recursive trigger execution by design -- a trigger cannot activate itself.
 - Triggers add overhead to DML operations; complex trigger logic on high-throughput tables can impact performance.
 
 ## Summary
