@@ -10,7 +10,7 @@ Description: Learn how to use MySQL's ST_Envelope() function to compute the mini
 
 ## What is ST_Envelope()?
 
-`ST_Envelope()` returns the minimum bounding rectangle (MBR) of a geometry - the smallest axis-aligned rectangle that completely contains the geometry. The result is always a `POLYGON` with five points (four corners plus the closing point).
+`ST_Envelope()` returns the minimum bounding rectangle (MBR) of a geometry - the smallest axis-aligned rectangle that completely contains the geometry. For non-degenerate geometries, the result is a `POLYGON` with five points (four corners plus the closing point). For degenerate cases such as a single point or a horizontal/vertical line segment, the function returns the point or line segment itself.
 
 The MBR is the foundation of MySQL's spatial index (R-tree). Understanding `ST_Envelope()` helps you write more efficient spatial queries.
 
@@ -109,7 +109,7 @@ FROM regions;
 
 ## Envelope of a Point
 
-For a single `POINT`, the envelope is degenerate (a zero-area polygon):
+For a single `POINT`, the envelope is degenerate — MySQL returns the point itself rather than a polygon:
 
 ```sql
 SELECT ST_AsText(
