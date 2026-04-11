@@ -177,8 +177,9 @@ Primary (slot 1234):
   - Sends DEL command to replicas as replication command
 
 Replica (slot 1234):
-  - Also expires on access (lazy) independently
-  - Receives DEL from primary for consistency
+  - Returns nil for logically expired keys on read (since Redis 3.2)
+  - Does NOT delete expired keys independently
+  - Receives DEL from primary to actually remove the key
 ```
 
 ## Behavior with maxmemory Policies
