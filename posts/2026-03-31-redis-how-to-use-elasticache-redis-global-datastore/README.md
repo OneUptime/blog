@@ -14,24 +14,23 @@ ElastiCache Global Datastore is an AWS feature that enables cross-region replica
 
 - Active-passive replication across up to 3 AWS regions
 - Sub-second replication lag for reads from secondary regions
-- Automatic failover to promote a secondary cluster to primary
-- Unified endpoint management across regions
+- Manual failover to promote a secondary cluster to primary via CLI, API, or console
+- Centralized management of clusters across regions
 
 This is useful for globally distributed applications that need low-latency reads in multiple regions or require cross-region disaster recovery.
 
 ## Architecture Overview
 
 ```text
-Primary Region (us-east-1)
-  Primary Cluster (read/write)
-         |
-         | async replication (~100ms lag)
-         |
-Secondary Region 1 (eu-west-1)
-  Secondary Cluster (read-only)
-         |
-Secondary Region 2 (ap-southeast-1)
-  Secondary Cluster (read-only)
+                Primary Region (us-east-1)
+                  Primary Cluster (read/write)
+                     /              \
+                    /                \
+   async replication            async replication
+                  /                    \
+                 /                      \
+Secondary Region 1 (eu-west-1)    Secondary Region 2 (ap-southeast-1)
+  Secondary Cluster (read-only)     Secondary Cluster (read-only)
 ```
 
 Only the primary cluster accepts writes. Secondary clusters are read-only and receive replicated data automatically.
@@ -39,7 +38,7 @@ Only the primary cluster accepts writes. Secondary clusters are read-only and re
 ## Creating a Global Datastore via AWS Console
 
 1. Navigate to ElastiCache in the AWS Console
-2. Select an existing Redis replication group (cluster mode disabled, Redis 5.0.6+)
+2. Select an existing Redis replication group (cluster mode enabled or disabled, Redis 5.0.6+)
 3. Click "Add Global Datastore"
 4. Give the global datastore a name
 5. Add secondary regions by clicking "Add region"
@@ -116,7 +115,6 @@ Each region has its own endpoint. Applications should connect to the local regio
 
 ```python
 import redis
-import boto3
 
 def get_regional_redis_client(region):
     """Get Redis client for the local region"""
@@ -209,7 +207,7 @@ aws cloudwatch get-metric-statistics \
 
 Key CloudWatch metrics for Global Datastore:
 
-- `GlobalDatastoreReplicationLag` - replication lag in milliseconds (target: under 500ms)
+- `GlobalDatastoreReplicationLag` - replication lag in seconds (target: under 1 second)
 - `CurrConnections` - active connections per region
 - `CacheHits` / `CacheMisses` - effectiveness per region
 
@@ -233,4 +231,4 @@ Example (cache.r7g.large, 2 nodes, 3 regions):
 
 ## Summary
 
-ElastiCache Global Datastore enables cross-region Redis replication for globally distributed applications, providing low-latency local reads and cross-region disaster recovery. Set up involves creating a primary cluster, wrapping it in a Global Datastore, and adding secondary clusters in additional regions. Applications should route reads to the local regional endpoint and writes to the primary, with automated failover available when the primary region fails.
+ElastiCache Global Datastore enables cross-region Redis replication for globally distributed applications, providing low-latency local reads and cross-region disaster recovery. Set up involves creating a primary cluster, wrapping it in a Global Datastore, and adding secondary clusters in additional regions. Applications should route reads to the local regional endpoint and writes to the primary, with manual failover available via CLI, API, or console when the primary region fails.
