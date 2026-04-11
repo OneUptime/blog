@@ -31,8 +31,8 @@ keys       mem      clients blocked requests            connections
 
 | Column | Meaning |
 |--------|---------|
-| keys | Total number of keys in the database |
-| mem | Memory used by Redis (RSS) |
+| keys | Total number of keys across all databases |
+| mem | Memory allocated by Redis (used_memory) |
 | clients | Current connected clients |
 | blocked | Clients blocked on BLPOP, BRPOP, etc. |
 | requests | Cumulative commands processed (delta in parentheses) |
@@ -68,7 +68,7 @@ keys   mem     clients requests
 100000 24.15M  50      16000 (+7500)  <- sustained
 ```
 
-Investigate with `MONITOR` or the Profiler to see what commands are running.
+Investigate with `MONITOR` or `SLOWLOG` to see what commands are running.
 
 ## Watching Memory Growth
 
