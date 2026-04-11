@@ -28,7 +28,7 @@ SELECT MD5('hello');
 -- Returns: 5d41402abc4b2a76b9719d911017c592
 
 SELECT MD5('MySQL');
--- Returns: 22cde252a3a2e5bd2fc1742f2f548fc3
+-- Returns: 62a004b95946bb97541afa471dcca73a
 
 SELECT MD5('');
 -- Returns: d41d8cd98f00b204e9800998ecf8427e
