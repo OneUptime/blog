@@ -105,7 +105,9 @@ Check for active alerts per device to show warning icons:
 
 ```python
 def has_active_alert(device_id):
-    return r.exists(f"alert:active:{device_id}:*") > 0
+    for _ in r.scan_iter(match=f"alert:active:{device_id}:*", count=100):
+        return True
+    return False
 ```
 
 ## Aggregated Metrics for Summary Cards
