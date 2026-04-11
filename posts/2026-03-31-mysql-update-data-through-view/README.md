@@ -24,7 +24,7 @@ A simple projection or filtered view is typically updatable:
 
 ```sql
 CREATE VIEW active_products AS
-SELECT product_id, name, price, stock
+SELECT product_id, name, price, stock, status
 FROM products
 WHERE status = 'active';
 ```
@@ -52,7 +52,7 @@ INSERT INTO active_products (name, price, stock)
 VALUES ('New Widget', 29.99, 100);
 ```
 
-MySQL inserts the row into `products`. Columns not in the view (like `status`) receive their default values - if `status` has no default, the insert fails. Design views for inserts carefully and ensure all required columns have defaults.
+MySQL inserts the row into `products`. Base-table columns not listed in the INSERT (like `product_id` and `status`) receive their default values - if a required column has no default, the insert fails. Design views for inserts carefully and ensure all required columns either appear in the INSERT or have defaults.
 
 ## DELETE Through a View
 
