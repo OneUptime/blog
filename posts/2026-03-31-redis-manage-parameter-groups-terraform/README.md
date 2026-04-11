@@ -59,7 +59,7 @@ Common parameters and their recommended values:
 
 | Parameter | Default | Recommended | Purpose |
 |-----------|---------|-------------|---------|
-| `maxmemory-policy` | `noeviction` | `allkeys-lru` | Evict least recently used keys |
+| `maxmemory-policy` | `volatile-lru` | `allkeys-lru` | Evict least recently used keys |
 | `timeout` | `0` | `300` | Close idle connections after 5 minutes |
 | `tcp-keepalive` | `300` | `60` | Detect dead connections faster |
 | `notify-keyspace-events` | `""` | `"Ex"` | Enable expired key notifications |
