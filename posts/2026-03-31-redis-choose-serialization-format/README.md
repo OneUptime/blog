@@ -44,7 +44,6 @@ Always benchmark with your actual data shapes before committing:
 ```python
 import json, pickle, time
 import msgpack
-from google.protobuf import json_format
 
 sample = {
     "user_id": 42,
