@@ -12,20 +12,20 @@ The default `redis-benchmark` tests simple GET/SET, but your application likely 
 
 ## Custom Command Benchmarks with redis-benchmark
 
-Use `--cmd` to test any command:
+Pass the command and its arguments directly after the options:
 
 ```bash
 # Benchmark HSET with specific field count
-redis-benchmark -n 100000 -c 50 \
-  --cmd "HSET user:__rand_int__ name Alice age 30 score 95.5"
+redis-benchmark -n 100000 -c 50 -r 100000 \
+  HSET user:__rand_int__ name Alice age 30 score 95.5
 
 # Benchmark ZADD (sorted set)
-redis-benchmark -n 100000 -c 50 \
-  --cmd "ZADD leaderboard __rand_int__ player:__rand_int__"
+redis-benchmark -n 100000 -c 50 -r 100000 \
+  ZADD leaderboard __rand_int__ player:__rand_int__
 
 # Benchmark LPUSH (list)
-redis-benchmark -n 100000 -c 50 \
-  --cmd "LPUSH queue:events __rand_int__"
+redis-benchmark -n 100000 -c 50 -r 100000 \
+  LPUSH queue:events __rand_int__
 ```
 
 `__rand_int__` is replaced with a random integer, distributing load across many keys.
@@ -102,4 +102,4 @@ redis-benchmark -h cluster-node1 -p 6379 -c 50 -n 100000 \
 
 ## Summary
 
-Custom Redis benchmarks require using `--cmd` for non-standard commands, specifying key ranges with `-r`, and writing client-side scripts that replicate your actual command mix and data access patterns. Always test with realistic read/write ratios and key space sizes, and run benchmarks from the same network as production application servers.
+Custom Redis benchmarks require passing commands as trailing arguments for non-standard commands, specifying key ranges with `-r`, and writing client-side scripts that replicate your actual command mix and data access patterns. Always test with realistic read/write ratios and key space sizes, and run benchmarks from the same network as production application servers.
