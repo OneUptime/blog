@@ -91,7 +91,7 @@ WHERE name != LTRIM(RTRIM(name))
 
 ## Using RTRIM with CHAR columns
 
-`CHAR` columns in MySQL are stored with trailing spaces to pad to the declared length. `RTRIM` strips those pads for comparison or display:
+`CHAR` columns in MySQL are stored with trailing spaces to pad to the declared length. By default MySQL strips those trailing spaces on retrieval, so `LENGTH` already returns the unpadded length and `RTRIM` has no additional effect. If `PAD_CHAR_TO_FULL_LENGTH` is enabled, MySQL preserves the padding and `RTRIM` becomes useful:
 
 ```sql
 CREATE TABLE codes (
@@ -100,13 +100,18 @@ CREATE TABLE codes (
 
 INSERT INTO codes VALUES ('ABC');
 
+-- Default behavior (trailing spaces stripped on retrieval):
+SELECT code, LENGTH(code) FROM codes;
+-- code: 'ABC', length: 3
+
+-- With PAD_CHAR_TO_FULL_LENGTH enabled, padding is preserved:
 SELECT code, LENGTH(code), RTRIM(code), LENGTH(RTRIM(code))
 FROM codes;
 -- code: 'ABC       ' (10 chars), length: 10
 -- RTRIM(code): 'ABC', length: 3
 ```
 
-Note: MySQL automatically strips trailing spaces when comparing `CHAR` values with `=`, but not when displaying them.
+Note: `PAD_CHAR_TO_FULL_LENGTH` was deprecated in MySQL 8.0.13 and removed in MySQL 8.4. MySQL also ignores trailing spaces when comparing `CHAR` values with `=` regardless of this setting.
 
 ## Finding rows with leading or trailing spaces
 
