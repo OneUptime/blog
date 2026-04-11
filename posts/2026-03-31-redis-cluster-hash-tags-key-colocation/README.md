@@ -91,11 +91,16 @@ redis-cli -c MSET "{user:1001}:profile" "Alice" "{user:1001}:sessions" 3
 ## Transactions with Hash Tags
 
 ```bash
-redis-cli -c MULTI
-redis-cli -c SET "{user:1001}:balance" 100
-redis-cli -c INCRBY "{user:1001}:balance" 50
-redis-cli -c EXEC
-# Works - both keys on same slot
+redis-cli -c
+127.0.0.1:6379> MULTI
+OK
+127.0.0.1:6379(TX)> SET "{user:1001}:balance" 100
+QUEUED
+127.0.0.1:6379(TX)> INCRBY "{user:1001}:balance" 50
+QUEUED
+127.0.0.1:6379(TX)> EXEC
+1) OK
+2) (integer) 150
 ```
 
 ## Hash Tag Caveats
