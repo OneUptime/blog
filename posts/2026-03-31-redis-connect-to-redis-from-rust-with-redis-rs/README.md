@@ -18,7 +18,7 @@ Add `redis-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-redis = { version = "0.25", features = ["tokio-comp"] }
+redis = { version = "1", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -145,7 +145,7 @@ use redis::{Commands, RedisError, ErrorKind};
 fn safe_get(con: &mut redis::Connection, key: &str) -> Option<String> {
     match con.get::<_, Option<String>>(key) {
         Ok(val) => val,
-        Err(e) if e.kind() == ErrorKind::TypeError => {
+        Err(e) if e.kind() == ErrorKind::UnexpectedReturnType => {
             eprintln!("Type mismatch for key {}: {}", key, e);
             None
         }
@@ -159,4 +159,4 @@ fn safe_get(con: &mut redis::Connection, key: &str) -> Option<String> {
 
 ## Summary
 
-The `redis-rs` crate offers flexible connection options for Rust applications, from simple synchronous TCP connections to async multiplexed connections suitable for high-throughput Tokio services. Choose `get_connection()` for blocking contexts, `get_multiplexed_async_connection()` for async code, and consider connection pooling with `r2d2-redis` or `deadpool-redis` when managing connections across many concurrent threads or tasks.
+The `redis-rs` crate offers flexible connection options for Rust applications, from simple synchronous TCP connections to async multiplexed connections suitable for high-throughput Tokio services. Choose `get_connection()` for blocking contexts, `get_multiplexed_async_connection()` for async code, and consider connection pooling with the built-in `r2d2` feature or `deadpool-redis` when managing connections across many concurrent threads or tasks.
