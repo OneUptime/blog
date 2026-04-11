@@ -87,14 +87,14 @@ SHOW VARIABLES LIKE 'validate_password%';
 
 -- Configure plugin settings
 SET GLOBAL connection_control_failed_connections_threshold = 5;
-SET GLOBAL validate_password.policy = 'MEDIUM';
+SET GLOBAL validate_password_policy = 'MEDIUM';
 ```
 
 Persist settings across restarts:
 
 ```sql
 SET PERSIST connection_control_failed_connections_threshold = 5;
-SET PERSIST validate_password.policy = 'MEDIUM';
+SET PERSIST validate_password_policy = 'MEDIUM';
 ```
 
 ## Uninstalling a Plugin
