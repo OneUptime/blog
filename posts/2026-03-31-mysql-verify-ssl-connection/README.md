@@ -101,15 +101,17 @@ To audit which currently connected clients are using SSL:
 
 ```sql
 SELECT
-  id,
-  user,
-  host,
-  command,
-  (SELECT variable_value
-   FROM performance_schema.session_status
-   WHERE variable_name = 'Ssl_cipher'
-     AND processlist_id = id) AS ssl_cipher
-FROM information_schema.processlist;
+  p.id,
+  p.user,
+  p.host,
+  p.command,
+  s.variable_value AS ssl_cipher
+FROM information_schema.processlist p
+LEFT JOIN performance_schema.threads t
+  ON t.processlist_id = p.id
+LEFT JOIN performance_schema.status_by_thread s
+  ON s.thread_id = t.thread_id
+  AND s.variable_name = 'Ssl_cipher';
 ```
 
 ## Verifying TLS Version
