@@ -40,7 +40,7 @@ redis-benchmark -t set,get,incr,lpush,rpush,sadd,zadd,hset,mset -n 100000
 redis-benchmark -t lpush,lrange -n 100000 -c 100
 ```
 
-Available command types: set, get, incr, lpush, rpush, lpop, rpop, sadd, hset, mset, mget, spop, zadd, zpopmin, ping, lrange, lrange_100, lrange_300, lrange_500, lrange_600, mset
+Available command types: set, get, incr, lpush, rpush, lpop, rpop, sadd, hset, mset, spop, zadd, zpopmin, ping, lrange, lrange_100, lrange_300, lrange_500, lrange_600
 
 ## Setting Payload Size
 
@@ -136,17 +136,13 @@ redis-benchmark -t get -n 500000 -r 1000000 -q
 Test custom commands beyond the built-in set:
 
 ```bash
-# Test ZADD with custom data
-redis-benchmark -n 100000 -c 50 --cluster \
-  -e "ZADD leaderboard:test $((RANDOM % 10000)) player$((RANDOM % 1000))"
+# Test ZADD with random scores and members
+redis-benchmark -n 100000 -c 50 -r 10000 \
+  ZADD leaderboard:test __rand_int__ member:__rand_int__
 
-# Test HSET with realistic data
-redis-cli -p 6379 eval "
-for i=1,1000 do
-  redis.call('HSET', 'user:'..i, 'name', 'user'..i, 'score', math.random(10000))
-end
-return 'OK'
-" 0
+# Test HSET with random keys and fields
+redis-benchmark -n 100000 -c 50 -r 10000 \
+  HSET user:__rand_int__ name user:__rand_int__ score __rand_int__
 ```
 
 ## Running a Comprehensive Load Test Script
