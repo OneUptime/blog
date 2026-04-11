@@ -28,7 +28,7 @@ Key differences:
 
 ```text
 MEMORY engine:
-  - Fixed size rows (wastes space for VARCHAR, BLOB)
+  - Fixed size rows (wastes space for VARCHAR)
   - Does NOT support BLOB/TEXT columns (forces disk)
   - Per-table size limit: min(tmp_table_size, max_heap_table_size)
 
@@ -63,6 +63,8 @@ SHOW VARIABLES LIKE 'temptable_max_ram';
 SET GLOBAL temptable_max_ram = 2147483648; -- 2GB
 
 -- Enable memory-mapped file overflow before disk spill
+-- Note: temptable_use_mmap was deprecated in MySQL 8.0.26.
+-- Use temptable_max_mmap = 0 to disable mmap instead.
 SHOW VARIABLES LIKE 'temptable_use_mmap';
 SET GLOBAL temptable_use_mmap = ON;
 
@@ -77,14 +79,15 @@ When temporary tables spill to disk, MySQL uses a separate engine:
 
 ```sql
 -- Engine for disk-based internal temporary tables
+-- Note: This variable was removed in MySQL 8.0.16.
+-- From 8.0.16 onward, InnoDB is always used for on-disk internal temp tables.
 SHOW VARIABLES LIKE 'internal_tmp_disk_storage_engine';
 
--- Options: 'InnoDB' (MySQL 8.0+) or 'MyISAM'
--- InnoDB is the default and recommended
+-- Options (MySQL 8.0.0–8.0.15 only): 'InnoDB' or 'MyISAM'
 SET GLOBAL internal_tmp_disk_storage_engine = 'InnoDB';
 ```
 
-InnoDB disk temporary tables support transactions and foreign keys, unlike MyISAM.
+InnoDB disk temporary tables offer better performance characteristics than MyISAM, including row-level locking and crash recovery support. Note that foreign keys are not supported on any temporary tables in MySQL.
 
 ## Monitoring Temporary Table Usage
 
@@ -132,9 +135,9 @@ CREATE TEMPORARY TABLE tmp_data (
 # TempTable engine (recommended for MySQL 8.0)
 internal_tmp_mem_storage_engine    = TempTable
 temptable_max_ram                  = 2147483648
-temptable_use_mmap                 = ON
+temptable_use_mmap                 = ON       # Deprecated in 8.0.26
 temptable_max_mmap                 = 4294967296
-internal_tmp_disk_storage_engine   = InnoDB
+# internal_tmp_disk_storage_engine is removed in 8.0.16 (InnoDB always used)
 
 # Legacy MEMORY engine limits (used when engine=MEMORY)
 tmp_table_size                     = 134217728
