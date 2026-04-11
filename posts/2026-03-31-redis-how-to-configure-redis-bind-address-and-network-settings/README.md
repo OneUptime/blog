@@ -10,7 +10,7 @@ Description: Learn how to configure Redis bind address, port, and network settin
 
 ## What Is the bind Directive in Redis?
 
-The `bind` directive in redis.conf specifies which network interfaces Redis listens on for incoming connections. By default, Redis binds to all interfaces (`0.0.0.0`), which can expose it to unintended networks. Restricting the bind address is a fundamental security measure.
+The `bind` directive in redis.conf specifies which network interfaces Redis listens on for incoming connections. In older Redis versions (before 3.2), the default was to bind to all interfaces (`0.0.0.0`), which exposed it to unintended networks. Since Redis 3.2, the default binds to loopback only (`127.0.0.1 -::1`). Restricting the bind address is a fundamental security measure.
 
 ## Default Behavior
 
