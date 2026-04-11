@@ -136,7 +136,7 @@ SELECT
     lock_mode,
     lock_status
 FROM performance_schema.data_locks
-WHERE lock_mode IN ('S', 'X', 'S,GAP', 'X,GAP');
+WHERE lock_mode IN ('S', 'X', 'S,GAP', 'X,GAP', 'S,REC_NOT_GAP', 'X,REC_NOT_GAP');
 ```
 
 ## Summary
