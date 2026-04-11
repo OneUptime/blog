@@ -96,7 +96,7 @@ HEXISTS user:42 reset_token
 ```
 
 ```text
-(integer) 1
+(integer) 2
 (integer) 1
 (integer) 1
 ```
