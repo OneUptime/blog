@@ -98,7 +98,7 @@ save 900 1
 ## System-Level Settings
 
 ```bash
-# Ensure the OS flushes write buffers reliably
+# Allow memory overcommit to prevent fork failures during background saves
 sudo sysctl -w vm.overcommit_memory=1
 
 # Disable swap to prevent latency spikes
