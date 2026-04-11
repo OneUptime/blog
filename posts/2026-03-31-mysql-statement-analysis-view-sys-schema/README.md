@@ -50,10 +50,9 @@ Key columns include:
 - `rows_examined_avg` - average rows scanned
 - `tmp_tables` - temporary tables created in memory
 - `tmp_disk_tables` - temporary tables created on disk
-- `rows_sorted_avg` - average rows sorted
-- `sort_merge_passes_avg` - sort merge pass count
-- `full_scans` - count of full table scan executions
-- `no_index_used_count` - executions without index use
+- `rows_sorted` - total rows sorted
+- `sort_merge_passes` - total sort merge passes
+- `full_scan` - flag (`*` if full table scan was used, empty otherwise)
 
 ## Finding Lock-Heavy Queries
 
@@ -64,7 +63,7 @@ SELECT
   total_latency,
   lock_latency,
   ROUND(lock_latency / total_latency * 100, 1) AS lock_pct
-FROM sys.statement_analysis
+FROM sys.x$statement_analysis
 WHERE exec_count > 10
 ORDER BY lock_latency DESC
 LIMIT 10;
@@ -76,12 +75,12 @@ LIMIT 10;
 SELECT
   query,
   exec_count,
-  rows_sorted_avg,
-  sort_merge_passes_avg,
+  rows_sorted,
+  sort_merge_passes,
   total_latency
 FROM sys.statement_analysis
-WHERE rows_sorted_avg > 1000
-ORDER BY rows_sorted_avg DESC
+WHERE rows_sorted > 1000
+ORDER BY rows_sorted DESC
 LIMIT 10;
 ```
 
@@ -104,7 +103,7 @@ LIMIT 10;
 ## Filtering by Database
 
 ```sql
-SELECT query, exec_count, avg_latency, full_scans
+SELECT query, exec_count, avg_latency, full_scan
 FROM sys.statement_analysis
 WHERE db = 'ecommerce'
 ORDER BY avg_latency DESC
