@@ -143,9 +143,10 @@ public class UserScoreService
         var key = $"session:{sessionId}";
 
         var batch = _db.CreateBatch();
-        batch.HashSetAsync(key, hashEntries);
-        batch.KeyExpireAsync(key, TimeSpan.FromHours(24));
+        var hashSetTask = batch.HashSetAsync(key, hashEntries);
+        var expireTask = batch.KeyExpireAsync(key, TimeSpan.FromHours(24));
         batch.Execute();
+        await Task.WhenAll(hashSetTask, expireTask);
     }
 
     public async Task<Dictionary<string, string>> GetUserSessionAsync(string sessionId)
@@ -199,9 +200,9 @@ app.MapPost("/login", async (LoginRequest req, HttpContext context) =>
 });
 ```
 
-## Output Caching with Redis (.NET 7+)
+## Output Caching with Redis (.NET 8+)
 
-ASP.NET Core 7+ has a built-in output cache middleware that can use Redis.
+ASP.NET Core 8+ has a built-in output cache middleware that can use Redis as a backing store.
 
 ```bash
 dotnet add package Microsoft.AspNetCore.OutputCaching.StackExchangeRedis
@@ -226,7 +227,7 @@ app.UseOutputCache();
 
 ```csharp
 // Cache a controller action
-[OutputCache(Duration = 600, PolicyName = "LongCache")]
+[OutputCache(PolicyName = "LongCache")]
 [HttpGet("/api/products")]
 public async Task<IActionResult> GetProducts()
 {
