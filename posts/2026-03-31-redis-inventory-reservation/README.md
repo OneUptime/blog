@@ -58,7 +58,6 @@ def reserve_inventory(sku_id, quantity, user_id):
                     "expiry": str(expiry),
                     "status": "reserved",
                 })
-                pipe.expire(f"reservation:{reservation_id}", RESERVATION_TTL)
                 pipe.sadd(f"reservations:{user_id}", reservation_id)
                 pipe.execute()
                 return reservation_id
@@ -80,7 +79,6 @@ def confirm_reservation(reservation_id):
     pipe = r.pipeline()
     pipe.decrby(f"inventory:{sku_id}:reserved", quantity)
     pipe.hset(f"reservation:{reservation_id}", "status", "confirmed")
-    pipe.persist(f"reservation:{reservation_id}")  # Remove TTL after confirmation
     pipe.execute()
     return True
 ```
@@ -137,4 +135,4 @@ GET inventory:sku:ABC:reserved    # 5
 
 ## Summary
 
-Redis WATCH/MULTI/EXEC provides optimistic locking for safe inventory reservation without distributed locks. TTL-based expiry automatically releases uncompleted reservations, preventing stock from being held indefinitely. This pattern is suitable for checkout flows where users have a time window to complete payment.
+Redis WATCH/MULTI/EXEC provides optimistic locking for safe inventory reservation without distributed locks. Each reservation stores an expiry timestamp that a periodic cleanup process can check to identify and release uncompleted reservations, preventing stock from being held indefinitely. This pattern is suitable for checkout flows where users have a time window to complete payment.
