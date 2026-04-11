@@ -86,8 +86,8 @@ def release_lock(resource, lock_id):
 Register service instances and their addresses:
 
 ```bash
-HSET services:order-service instance-1 "10.0.0.1:8080"
-HSET services:order-service instance-2 "10.0.0.2:8080"
+SET services:order-service:instance-1 "10.0.0.1:8080" EX 30
+SET services:order-service:instance-2 "10.0.0.2:8080" EX 30
 ```
 
 Set a TTL on each instance registration and renew it on heartbeat:
