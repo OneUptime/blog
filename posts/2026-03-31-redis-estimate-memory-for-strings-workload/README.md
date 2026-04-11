@@ -42,11 +42,11 @@ memory_per_key = 64 (dictEntry)
 ### Session Tokens
 
 ```text
-Key:   "session:a9f3bc7e-1234-5678-abcd-ef0123456789" (43 bytes)
+Key:   "session:a9f3bc7e-1234-5678-abcd-ef0123456789" (44 bytes)
 Value: JSON session data, ~200 bytes
 
-Estimated per key: 134 + 43 + 200 = 377 bytes
-1 million sessions: 377 MB
+Estimated per key: 134 + 44 + 200 = 378 bytes
+1 million sessions: 378 MB
 ```
 
 ### Short String Cache
@@ -83,7 +83,7 @@ redis-cli OBJECT ENCODING counter
 # int
 ```
 
-Values over 44 bytes use embstr encoding (inline, slightly more efficient):
+Strings up to 44 bytes use the more compact embstr encoding (single allocation). Strings over 44 bytes use raw encoding (separate allocation):
 
 ```bash
 redis-cli SET short_str "hello"
@@ -126,7 +126,7 @@ result = estimate_string_workload(
     avg_value_size_bytes=250
 )
 print(json.dumps(result, indent=2))
-# {"num_keys": 5000000, "bytes_per_key": 424, "total_mb": 2203.0, "total_gb": 2.152}
+# {"num_keys": 5000000, "bytes_per_key": 424, "total_mb": 2224.0, "total_gb": 2.172}
 ```
 
 ## Summary
