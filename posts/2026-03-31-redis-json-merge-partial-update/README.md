@@ -12,7 +12,7 @@ Description: Learn how to use JSON.MERGE in Redis to apply a partial JSON patch 
 
 `JSON.MERGE` applies RFC 7396 JSON Merge Patch semantics to update a stored JSON document. You provide a partial document, and Redis merges it into the existing one: new keys are added, existing keys are updated, and keys set to `null` in the patch are deleted. Keys not mentioned are left unchanged.
 
-`JSON.MERGE` was introduced in Redis Stack 6.2 / RedisJSON 2.6.
+`JSON.MERGE` was introduced in RedisJSON 2.6 (included in Redis Stack 7.2).
 
 ## Basic Syntax
 
@@ -39,7 +39,7 @@ JSON.MERGE user:1 $ '{"age":31,"country":"UK"}'
 # OK
 
 JSON.GET user:1
-# [{"name":"Alice","age":31,"email":"alice@example.com","city":"London","active":true,"country":"UK"}]
+# {"name":"Alice","age":31,"email":"alice@example.com","city":"London","active":true,"country":"UK"}
 ```
 
 - `age` was updated from 30 to 31
@@ -53,7 +53,7 @@ JSON.MERGE user:1 $ '{"city":null}'
 # OK
 
 JSON.GET user:1
-# [{"name":"Alice","age":31,"email":"alice@example.com","active":true,"country":"UK"}]
+# {"name":"Alice","age":31,"email":"alice@example.com","active":true,"country":"UK"}
 ```
 
 Setting a key to `null` in the patch removes it from the stored document.
