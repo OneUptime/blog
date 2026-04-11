@@ -89,8 +89,10 @@ To change the characteristic on an existing function, use `ALTER FUNCTION`:
 
 ```sql
 ALTER FUNCTION get_user_role
-    NOT DETERMINISTIC READS SQL DATA;
+    READS SQL DATA;
 ```
+
+Note that `ALTER FUNCTION` cannot change the `DETERMINISTIC` or `NOT DETERMINISTIC` property. To change determinism, drop and recreate the function.
 
 Or drop and recreate it:
 
@@ -119,14 +121,20 @@ You combine the data-access characteristic with the determinism declaration:
 ```sql
 -- Pure math - no SQL, always deterministic
 CREATE FUNCTION square(n DOUBLE) RETURNS DOUBLE DETERMINISTIC NO SQL
-BEGIN RETURN n * n; END;
+RETURN n * n;
 
 -- Table lookup - reads data, result varies
+DELIMITER //
+
 CREATE FUNCTION item_price(p_id INT) RETURNS DECIMAL(10,2)
 NOT DETERMINISTIC READS SQL DATA
 BEGIN
-    DECLARE v INT; SELECT price INTO v FROM items WHERE id = p_id; RETURN v;
-END;
+    DECLARE v DECIMAL(10,2);
+    SELECT price INTO v FROM items WHERE id = p_id;
+    RETURN v;
+END //
+
+DELIMITER ;
 ```
 
 ## Summary
