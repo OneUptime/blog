@@ -66,7 +66,7 @@ Redis is not entirely single-threaded. Background threads handle:
 
 ```text
 Main thread:         Command execution
-BIO thread 1:        Closing file descriptors (large key deletion)
+BIO thread 1:        Closing file descriptors (e.g., after AOF rewrite)
 BIO thread 2:        AOF file sync (fsync calls)
 BIO thread 3:        Lazyfree operations (async DEL)
 I/O threads:         Network I/O reading/writing (Redis 6.0+, configurable)
@@ -75,8 +75,8 @@ I/O threads:         Network I/O reading/writing (Redis 6.0+, configurable)
 ### Background I/O (BIO) Threads
 
 ```bash
-# These background threads always run (since Redis 2.6)
-# Thread 1: close() calls for large value cleanup
+# BIO threads for close and fsync exist since Redis 2.4; lazyfree since Redis 4.0
+# Thread 1: close() calls for file descriptor cleanup (e.g., after AOF rewrite)
 # Thread 2: fsync() for AOF persistence
 # Thread 3: Async deletion of large objects (UNLINK)
 
@@ -158,7 +158,7 @@ ps aux | grep redis-server
 cat /proc/$(pgrep redis-server)/status | grep Threads
 
 # Typical output for Redis 6+ with io-threads 4:
-# Threads: 8 (main + 3 BIO + 4 I/O threads)
+# Threads: 7 (main + 3 BIO + 3 additional I/O threads)
 ```
 
 ## Summary
