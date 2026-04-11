@@ -8,7 +8,7 @@ Description: Learn how to configure binary log expiration in MySQL using binlog_
 
 ---
 
-Binary logs accumulate indefinitely unless you configure automatic expiration. On busy systems, binary logs can consume gigabytes of disk space within days. Configuring proper expiration ensures old binary logs are cleaned up automatically while retaining enough history for replication and point-in-time recovery.
+Binary logs can consume gigabytes of disk space on busy systems within days. Starting with MySQL 8.0.11, the default expiration is 30 days (2592000 seconds), but on high-traffic servers this may not be aggressive enough to prevent disk pressure. On MySQL 5.7 and earlier 8.0 releases (before 8.0.11), binary logs accumulate indefinitely unless you configure expiration explicitly. Configuring proper expiration ensures old binary logs are cleaned up automatically while retaining enough history for replication and point-in-time recovery.
 
 ## The Two Expiration Variables
 
@@ -105,7 +105,7 @@ binlog_expire_logs_seconds = 1209600
 sync_binlog = 1
 ```
 
-On group replication or InnoDB Cluster setups, MySQL automatically prevents purging of binary logs still needed by group members.
+On Group Replication or InnoDB Cluster setups, if binary logs needed for incremental recovery have already been purged, MySQL 8.0.17+ uses the Clone plugin to automatically provision rejoining members with a full copy of the data instead.
 
 ## Manual Purge
 
