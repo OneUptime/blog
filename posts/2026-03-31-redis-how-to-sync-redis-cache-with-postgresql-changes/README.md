@@ -198,7 +198,7 @@ Configure Debezium PostgreSQL connector:
     "database.user": "replication_user",
     "database.password": "password",
     "database.dbname": "myapp",
-    "database.server.name": "myapp",
+    "topic.prefix": "myapp",
     "table.include.list": "public.users,public.products",
     "plugin.name": "pgoutput",
     "slot.name": "debezium",
