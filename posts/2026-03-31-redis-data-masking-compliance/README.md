@@ -68,11 +68,10 @@ def store_user_session(session_id: str, user: dict) -> None:
 
 ## Strategy 2: Application-Level Encryption
 
-For fields that need to be retrieved in full by authorized services, use envelope encryption:
+For fields that need to be retrieved in full by authorized services, use field-level encryption:
 
 ```python
 from cryptography.fernet import Fernet
-import base64
 import os
 
 class RedisEncryption:
