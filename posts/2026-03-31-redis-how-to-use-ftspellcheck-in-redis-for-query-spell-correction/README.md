@@ -17,8 +17,8 @@ Description: Learn how to use FT.SPELLCHECK in Redis to detect misspelled query 
 ```text
 FT.SPELLCHECK index query
   [DISTANCE distance]
-  [TERMS INCLUDE dict [INCLUDE dict ...]]
-  [TERMS EXCLUDE dict [EXCLUDE dict ...]]
+  [TERMS INCLUDE dict [TERMS INCLUDE dict ...]]
+  [TERMS EXCLUDE dict [TERMS EXCLUDE dict ...]]
   [DIALECT dialect]
 ```
 
@@ -81,7 +81,7 @@ By default, `DISTANCE 1` means suggestions must differ by at most 1 character ed
 
 ```bash
 # More aggressive correction (catches worse misspellings)
-FT.SPELLCHECK articles "performnce" DISTANCE 2
+FT.SPELLCHECK articles "perfomace" DISTANCE 2
 # Suggests "performance" (2 edits away)
 
 # Most aggressive (may produce irrelevant suggestions)
