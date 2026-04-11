@@ -40,16 +40,17 @@ ALTER TABLE users
 ALTER TABLE users
     MODIFY COLUMN bio MEDIUMTEXT NOT NULL;
 
--- OFFLINE - adding a NOT NULL column without default
+-- ONLINE (inplace) - adding a NOT NULL column without default uses implicit type default
 ALTER TABLE users
-    ADD COLUMN score INT NOT NULL;
+    ADD COLUMN score INT NOT NULL,
+    ALGORITHM=INPLACE, LOCK=NONE;
 ```
 
 ## Safe Patterns for Common Changes
 
 ### Adding a NOT NULL Column Safely
 
-Add with a default first, then optionally remove the default later:
+Adding a NOT NULL column is online even without a default (MySQL uses the implicit type default), but specifying one explicitly is recommended for clarity and application compatibility:
 
 ```sql
 -- Step 1: add with default (online)
@@ -77,7 +78,7 @@ ALTER TABLE config
 ```sql
 ALTER TABLE users
     ADD UNIQUE KEY uq_phone (phone),
-    ALGORITHM=INPLACE, LOCK=SHARED;
+    ALGORITHM=INPLACE, LOCK=NONE;
 ```
 
 ## Batching Multiple Changes
@@ -110,10 +111,10 @@ Prevent the ALTER from waiting indefinitely on a metadata lock:
 
 ```sql
 -- Wait at most 5 seconds for a metadata lock, then fail
+SET SESSION lock_wait_timeout = 5;
 ALTER TABLE orders
     ADD COLUMN priority TINYINT NOT NULL DEFAULT 0,
-    LOCK=NONE,
-    WAIT 5;
+    ALGORITHM=INPLACE, LOCK=NONE;
 ```
 
 ## Summary
