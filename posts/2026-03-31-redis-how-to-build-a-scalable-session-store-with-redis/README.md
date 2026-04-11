@@ -29,7 +29,6 @@ EXPIRE session:abc123 86400
 ```python
 import redis
 import uuid
-import json
 import time
 
 r = redis.Redis(decode_responses=True)
