@@ -20,7 +20,7 @@ ElastiCache supports TLS 1.2 and 1.3 with certificates managed by AWS.
 
 ## Enabling Encryption in Transit
 
-Encryption in transit must be enabled when creating a cluster - it cannot be toggled on an existing cluster without migration.
+Encryption in transit is typically enabled when creating a cluster. For Redis 7.0 and later, you can also enable it on an existing cluster using the `--transit-encryption-mode` parameter (see the migration section below).
 
 ### Via AWS CLI
 
@@ -144,8 +144,6 @@ async function createRedisClient() {
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.SslOptions;
-
 public class ElastiCacheTLSExample {
     public static StatefulRedisConnection<String, String> connect(
             String host, String password) {
@@ -175,9 +173,9 @@ redis-cli -h my-secure-cluster.abc123.0001.use1.cache.amazonaws.com \
   -a "YourStrongAuthToken123!" \
   ping
 
-# Verify TLS version and cipher in use
+# Verify TLS version and cipher in use (ElastiCache uses direct TLS, not STARTTLS)
 openssl s_client -connect my-secure-cluster.abc123.0001.use1.cache.amazonaws.com:6379 \
-  -starttls redis 2>/dev/null | grep "Protocol\|Cipher"
+  2>/dev/null | grep "Protocol\|Cipher"
 ```
 
 Expected output:
@@ -212,7 +210,30 @@ aws elasticache modify-replication-group \
 
 ## Migrating an Existing Cluster to TLS
 
-Since you cannot enable TLS on an existing cluster in place, use this migration approach:
+### In-Place Migration (Redis 7.0+)
+
+For clusters running Redis 7.0 or later, you can enable TLS on an existing replication group without creating a new cluster:
+
+```bash
+# Step 1: Enable TLS in "preferred" mode (accepts both TLS and non-TLS connections)
+aws elasticache modify-replication-group \
+  --replication-group-id my-secure-cluster \
+  --transit-encryption-enabled \
+  --transit-encryption-mode preferred \
+  --apply-immediately
+
+# Step 2: Update all application clients to connect using TLS
+
+# Step 3: Once all clients use TLS, enforce TLS-only connections
+aws elasticache modify-replication-group \
+  --replication-group-id my-secure-cluster \
+  --transit-encryption-mode required \
+  --apply-immediately
+```
+
+### Create-and-Migrate (Redis 6.x and Earlier)
+
+For clusters running Redis versions before 7.0, you must create a new TLS-enabled cluster and migrate:
 
 ```bash
 # Step 1: Create a new TLS-enabled cluster
@@ -246,4 +267,4 @@ Fix: Verify security group allows port 6379 from your application.
 
 ## Summary
 
-ElastiCache Redis encryption in transit is enabled at cluster creation time using the `transit_encryption_enabled` flag and should always be paired with an auth token for authentication. Connect using standard Redis clients with TLS enabled and server certificate verification. For auth token rotation, use the two-phase ROTATE then SET strategy to achieve zero-downtime credential updates. Migrating existing non-TLS clusters requires creating a new cluster and migrating data.
+ElastiCache Redis encryption in transit is enabled using the `transit_encryption_enabled` flag and should always be paired with an auth token for authentication. Connect using standard Redis clients with TLS enabled and server certificate verification. For auth token rotation, use the two-phase ROTATE then SET strategy to achieve zero-downtime credential updates. For Redis 7.0+, you can enable TLS on existing clusters in place using the preferred-then-required migration mode. For older versions, migrating requires creating a new cluster.
