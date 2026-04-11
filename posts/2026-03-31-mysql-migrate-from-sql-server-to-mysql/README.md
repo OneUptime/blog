@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, SQL Server, Migration, SSMA, Database
+Tags: MySQL, SQL Server, Migration, MySQL Workbench, Database
 
-Description: Migrate a Microsoft SQL Server database to MySQL by converting schema with SSMA, handling T-SQL differences, and transferring data reliably.
+Description: Migrate a Microsoft SQL Server database to MySQL by converting schema with MySQL Workbench Migration Wizard, handling T-SQL differences, and transferring data reliably.
 
 ---
 
@@ -22,20 +22,21 @@ Description: Migrate a Microsoft SQL Server database to MySQL by converting sche
 | T-SQL stored procedures | MySQL stored procedures |
 | `GO` batch separator | Not needed in MySQL |
 
-## Step 1 - Schema Conversion with SSMA
+## Step 1 - Schema Conversion with MySQL Workbench
 
-Microsoft's SQL Server Migration Assistant (SSMA) for MySQL is a free tool that automates schema conversion:
+MySQL Workbench Migration Wizard is a free tool that automates schema conversion from SQL Server to MySQL:
 
 ```text
-1. Download SSMA for MySQL from Microsoft
-2. Connect to SQL Server as source
-3. Connect to MySQL as target
-4. Run Assessment Report
-5. Convert Schema
-6. Migrate Data
+1. Download MySQL Workbench from dev.mysql.com
+2. Open Database > Migration Wizard
+3. Connect to SQL Server as source (via ODBC)
+4. Connect to MySQL as target
+5. Select schemas and objects to migrate
+6. Review the generated MySQL schema
+7. Run the migration
 ```
 
-SSMA generates a migration report highlighting objects that need manual intervention.
+MySQL Workbench generates a migration report highlighting objects that need manual intervention.
 
 ## Step 2 - Manual Schema Fixes
 
@@ -79,8 +80,10 @@ SUBSTRING(s, 1, 5) -> SUBSTRING(s, 1, 5)  -- same
 CONVERT(VARCHAR, d, 120) -> DATE_FORMAT(d, '%Y-%m-%d %H:%i:%s')
 
 -- SQL Server: date functions
-DATEADD(day, 7, NOW())  -> DATE_ADD(NOW(), INTERVAL 7 DAY)
-DATEDIFF(day, d1, d2)   -> DATEDIFF(d2, d1)  -- note reversed order
+DATEADD(day, 7, GETDATE())  -> DATE_ADD(NOW(), INTERVAL 7 DAY)
+DATEDIFF(day, d1, d2)       -> DATEDIFF(d2, d1)  -- days only, reversed arg order
+-- For non-day units use TIMESTAMPDIFF:
+-- DATEDIFF(month, d1, d2)  -> TIMESTAMPDIFF(MONTH, d1, d2)
 YEAR(d), MONTH(d), DAY(d) -> YEAR(d), MONTH(d), DAY(d)  -- same
 ```
 
@@ -150,4 +153,4 @@ ORDER BY t.name;
 
 ## Summary
 
-Migrating from SQL Server to MySQL requires converting IDENTITY columns to AUTO_INCREMENT, replacing T-SQL functions with MySQL equivalents, rewriting stored procedures without T-SQL syntax, and handling NVARCHAR/unicode with utf8mb4. SSMA automates most schema conversion, but stored procedures and complex T-SQL logic require manual review and rewriting.
+Migrating from SQL Server to MySQL requires converting IDENTITY columns to AUTO_INCREMENT, replacing T-SQL functions with MySQL equivalents, rewriting stored procedures without T-SQL syntax, and handling NVARCHAR/unicode with utf8mb4. MySQL Workbench Migration Wizard automates most schema conversion, but stored procedures and complex T-SQL logic require manual review and rewriting.
