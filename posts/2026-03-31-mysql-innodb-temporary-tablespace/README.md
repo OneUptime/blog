@@ -8,7 +8,7 @@ Description: Learn how MySQL's InnoDB temporary tablespace works, how to configu
 
 ---
 
-MySQL uses a dedicated temporary tablespace for on-disk temporary tables created by InnoDB. Since MySQL 5.7, InnoDB uses a separate `ibtmp1` file for temporary tables, which is created fresh each time MySQL starts and never grows between restarts.
+MySQL uses a dedicated temporary tablespace for on-disk temporary tables created by InnoDB. Since MySQL 5.7, InnoDB uses a separate `ibtmp1` file for temporary tables. This file can grow during server operation as queries create on-disk temporary tables, but it is removed and recreated at its initial size each time MySQL restarts.
 
 ## Understanding the Temporary Tablespace
 
@@ -89,7 +89,7 @@ tmp_table_size=128M
 max_heap_table_size=128M
 ```
 
-Note that a single temporary table can use at most `MIN(tmp_table_size, max_heap_table_size)` before spilling to disk. BLOB and TEXT columns always use on-disk temporary tables.
+Note that these settings apply when the internal temporary table storage engine is MEMORY. In MySQL 8.0+, the default engine for internal temporary tables is TempTable, which is controlled by `temptable_max_ram` (default 1GB) instead. A MEMORY temporary table can use at most `MIN(tmp_table_size, max_heap_table_size)` before spilling to disk. With the MEMORY engine, BLOB and TEXT columns always force on-disk temporary tables. However, the TempTable engine (default in MySQL 8.0+) can store BLOB and TEXT columns in memory.
 
 ## Checking Current Temporary Tablespace Size
 
@@ -99,12 +99,12 @@ ls -lh /var/lib/mysql/ibtmp1
 ```
 
 ```sql
--- Via information_schema
-SELECT FILE_NAME, ROUND(FILE_SIZE / 1024 / 1024, 2) AS size_mb
-FROM information_schema.FILES
-WHERE FILE_NAME LIKE '%ibtmp%';
+-- Via information_schema (MySQL 8.0+)
+SELECT NAME, ROUND(FILE_SIZE / 1024 / 1024, 2) AS size_mb
+FROM information_schema.INNODB_TABLESPACES
+WHERE NAME = 'innodb_temporary';
 ```
 
 ## Summary
 
-MySQL's InnoDB temporary tablespace (`ibtmp1`) handles disk overflow for temporary tables and is recreated fresh on each restart. Always set an `innodb_temp_data_file_path` max size to prevent disk exhaustion. Tune `tmp_table_size` and `max_heap_table_size` to keep temporary tables in memory and monitor `Created_tmp_disk_tables` to identify queries that need optimization.
+MySQL's InnoDB temporary tablespace (`ibtmp1`) handles disk overflow for temporary tables and is recreated at its initial size on each restart. Always set an `innodb_temp_data_file_path` max size to prevent disk exhaustion. For MySQL 8.0+ with the default TempTable engine, tune `temptable_max_ram` to control in-memory limits. For the MEMORY engine, tune `tmp_table_size` and `max_heap_table_size`. Monitor `Created_tmp_disk_tables` to identify queries that need optimization.
