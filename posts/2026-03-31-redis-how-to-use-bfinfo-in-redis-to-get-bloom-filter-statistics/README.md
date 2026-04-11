@@ -10,7 +10,7 @@ Description: Learn how to use BF.INFO in Redis to retrieve metadata and statisti
 
 ## Overview
 
-`BF.INFO` returns detailed statistics about a Bloom filter stored in Redis. This command is invaluable for monitoring filter health - you can check how full the filter is, what false positive rate it was configured with, the number of hash functions in use, and the total memory allocated. Understanding these metrics helps you decide when to resize or recreate a filter.
+`BF.INFO` returns detailed statistics about a Bloom filter stored in Redis. This command is invaluable for monitoring filter health - you can check how full the filter is, how many sub-filters exist, the expansion rate, and the total memory allocated. Understanding these metrics helps you decide when to resize or recreate a filter.
 
 ## Prerequisites
 
@@ -141,7 +141,7 @@ BF.INFO expandable
 # Number of filters will be > 1
 ```
 
-Expansion is convenient but each sub-filter has a higher false positive rate. For predictable behavior, pre-size your filter appropriately.
+Expansion is convenient but the overall false positive rate increases as more sub-filters are added. For predictable behavior, pre-size your filter appropriately.
 
 ## Alerting on High Saturation
 
