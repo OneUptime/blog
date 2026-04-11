@@ -114,6 +114,7 @@ def semantic_cached_call(prompt: str, ttl: int = 86400) -> str:
         "response": answer.encode(),
         "embedding": query_vec
     })
+    r_bin.expire(f"llm:sem:{cache_id}", ttl)
 
     return answer
 ```
@@ -133,7 +134,7 @@ def tracked_call(prompt: str) -> dict:
         'RETURN', 1, 'score', 'SORTBY', 'score', 'DIALECT', 2
     )
     if result[0] > 0:
-        score = float(result[2][1])
+        score = float(result[2][1].decode())
         if score < SIMILARITY_THRESHOLD:
             r.incr("llm:stats:hits")
             return {"source": "cache"}
