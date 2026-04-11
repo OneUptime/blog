@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Stream, Audit Log, Compliance, Event Store
 
-Description: Learn how to build a tamper-evident audit log using Redis Streams, with structured event schema, retention policies, and efficient querying by entity or time range.
+Description: Learn how to build an append-only audit log using Redis Streams, with structured event schema, retention policies, and efficient querying by entity or time range.
 
 ---
 
@@ -149,8 +149,8 @@ schedule.every().day.at('02:00').do(apply_audit_retention)
 Before trimming, archive old entries to object storage:
 
 ```bash
-# Export entries older than 90 days to JSONL
-redis-cli XRANGE audit:events - 1680000000000-0 > audit_archive_2024_q1.jsonl
+# Export entries older than 90 days to a text file
+redis-cli XRANGE audit:events - 1680000000000-0 > audit_archive_2024_q1.txt
 ```
 
 ## Summary
