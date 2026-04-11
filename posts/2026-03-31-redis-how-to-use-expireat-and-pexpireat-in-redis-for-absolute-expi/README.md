@@ -175,7 +175,6 @@ EXPIREAT mykey 1777593600 LT
 
 ```python
 import redis
-import time
 from datetime import datetime, timezone, timedelta
 
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
