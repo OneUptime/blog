@@ -10,7 +10,7 @@ Description: The MySQL X Protocol is a modern binary protocol for MySQL that ena
 
 ## Overview
 
-The MySQL X Protocol (also called MySQL Protocol X) is a next-generation communication protocol for MySQL introduced in MySQL 5.7.12. It was designed to overcome the limitations of the classic MySQL protocol, offering better support for modern application patterns including asynchronous query execution, pipelining, and document-based access.
+The MySQL X Protocol is a next-generation communication protocol for MySQL introduced in MySQL 5.7.12. It was designed to overcome the limitations of the classic MySQL protocol, offering better support for modern application patterns including asynchronous query execution, pipelining, and document-based access.
 
 The X Protocol listens on port 33060 by default, separate from the classic MySQL protocol on port 3306. It is the transport layer that powers the MySQL X DevAPI and MySQL Document Store.
 
@@ -31,7 +31,7 @@ The X Protocol was built to address all of these limitations.
 
 **Request pipelining** - Multiple requests can be sent to the server before the first response arrives, reducing round-trip latency in high-throughput scenarios.
 
-**Multiplexing** - Multiple logical sessions can be multiplexed over a single connection, enabling connection pooling at the protocol level.
+**Session reuse** - The protocol supports resetting and reusing sessions on a single connection without reconnecting, reducing connection setup overhead.
 
 **Extensibility** - Adding new message types to the protocol does not break older clients, allowing forward compatibility.
 
@@ -47,7 +47,7 @@ SHOW PLUGINS WHERE Name = 'mysqlx';
 +--------+----------+----------------+-------------+---------+
 | Name   | Status   | Type           | Library     | License |
 +--------+----------+----------------+-------------+---------+
-| mysqlx | ACTIVE   | DAEMON         | mysqlx.so   | GPL     |
+| mysqlx | ACTIVE   | DAEMON         | NULL        | GPL     |
 +--------+----------+----------------+-------------+---------+
 ```
 
@@ -98,21 +98,15 @@ session.close()
 | Async support | No | Yes |
 | Request pipelining | No | Yes |
 | NoSQL/Document access | No | Yes |
-| Multiplexing | No | Yes |
+| Session reuse | No | Yes |
 
 ## Disabling the X Plugin
 
-If you do not need the X Protocol, you can disable it to reduce attack surface:
-
-```sql
-UNINSTALL PLUGIN mysqlx;
-```
-
-Or prevent it from loading at startup in `my.cnf`:
+If you do not need the X Protocol, you can disable it to reduce attack surface. In MySQL 8.0+, the X Plugin is built into the server and cannot be uninstalled at runtime. Prevent it from loading at startup in `my.cnf`:
 
 ```text
 [mysqld]
-mysqlx=OFF
+mysqlx=0
 ```
 
 ## Summary
