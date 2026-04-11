@@ -117,14 +117,14 @@ Very Large | 256 GB| 16   | 1 TB   | 10 Gbps
 
 ```text
 AWS:
-  Small:  cache.t3.medium  (3.22 GB RAM)
+  Small:  cache.t3.medium  (3.09 GB RAM)
   Medium: cache.r6g.large  (13.07 GB RAM)
   Large:  cache.r6g.2xlarge (52.82 GB RAM)
 
-GCP:
-  Small:  BASIC 4 GB
-  Medium: STANDARD M2 13 GB
-  Large:  STANDARD M4 26 GB
+GCP (Memorystore for Redis):
+  Small:  Basic tier, 4 GB
+  Medium: Standard tier, 13 GB
+  Large:  Standard tier, 26 GB
 ```
 
 ## Benchmarking Your Workload
@@ -136,7 +136,7 @@ redis-benchmark -h 127.0.0.1 -p 6379 \
   -c 100 \
   -d 512 \
   --csv \
-  -t set,get,hset,hget
+  -t set,get,hset,lpush
 ```
 
 ## Summary
