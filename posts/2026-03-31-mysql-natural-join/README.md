@@ -10,7 +10,7 @@ Description: Learn how NATURAL JOIN works in MySQL, how it automatically matches
 
 ## What is NATURAL JOIN?
 
-A NATURAL JOIN automatically joins two tables on all columns that share the same name and a compatible data type. You do not write an ON clause - MySQL discovers the matching column names at runtime. If no columns share a name, the result is a cross join (all rows combined).
+A NATURAL JOIN automatically joins two tables on all columns that share the same name. You do not write an ON clause - MySQL discovers the matching column names at runtime. If no columns share a name, the result is a cross join (all rows combined).
 
 ```mermaid
 graph LR
