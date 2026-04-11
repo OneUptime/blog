@@ -95,9 +95,10 @@ CREATE TABLE salary_bands (
 );
 
 CREATE TABLE employees_pay (
-    employee_id INT PRIMARY KEY,
-    name        VARCHAR(100),
-    salary      DECIMAL(10,2)
+    employee_id   INT PRIMARY KEY,
+    name          VARCHAR(100),
+    department_id INT,
+    salary        DECIMAL(10,2)
 );
 
 SELECT ep.name, ep.salary, sb.band_name
