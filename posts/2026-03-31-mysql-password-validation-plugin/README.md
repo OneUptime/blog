@@ -48,7 +48,7 @@ SET GLOBAL validate_password.policy = 'MEDIUM';
 -- Minimum password length
 SET GLOBAL validate_password.length = 12;
 
--- Minimum number of uppercase letters
+-- Minimum number of uppercase and lowercase letters (each)
 SET GLOBAL validate_password.mixed_case_count = 1;
 
 -- Minimum number of digits
@@ -127,7 +127,6 @@ ERROR 1819 (HY000): Your password does not satisfy the current policy requiremen
 
 ```ini
 [mysqld]
-validate_password.component_urn=file://component_validate_password
 validate_password.policy=MEDIUM
 validate_password.length=12
 validate_password.mixed_case_count=1
