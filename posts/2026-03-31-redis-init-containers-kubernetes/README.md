@@ -21,6 +21,7 @@ metadata:
   name: redis
   namespace: redis
 spec:
+  serviceName: redis
   selector:
     matchLabels:
       app: redis
@@ -55,7 +56,7 @@ If Redis depends on a Kubernetes Secret or ConfigMap being available, or another
 ```yaml
 initContainers:
 - name: wait-for-config
-  image: busybox:1.36
+  image: redis:7.2-alpine
   command:
   - sh
   - -c
