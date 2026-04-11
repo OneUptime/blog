@@ -81,11 +81,19 @@ CPU percentage bounds for defrag cycles. Defrag scales between 1% and 25% CPU us
 ```text
 active-defrag-max-scan-fields 1000
 ```
-Maximum number of fields to scan per defrag cycle within a single hash, set, or sorted set.
+Maximum number of set, hash, zset, or list fields that will be processed from the main dictionary scan.
 
 ## Monitoring Defragmentation Progress
 
-Check defrag statistics through the INFO stats output:
+Check whether defrag is active through INFO memory:
+
+```bash
+redis-cli INFO memory | grep active_defrag_running
+```
+
+- `active_defrag_running`: 0 if idle, or the CPU percentage defrag intends to utilize
+
+Check defrag statistics through INFO stats:
 
 ```bash
 redis-cli INFO stats | grep defrag
@@ -94,18 +102,16 @@ redis-cli INFO stats | grep defrag
 Key fields:
 
 ```text
-active_defrag_running:1
 active_defrag_hits:1234
 active_defrag_misses:56
 active_defrag_key_hits:890
 active_defrag_key_misses:12
-active_defrag_compactions:34
 ```
 
-- `active_defrag_running`: 1 if defrag is currently active
 - `active_defrag_hits`: Allocations successfully moved to less fragmented pages
-- `active_defrag_misses`: Allocations that could not be moved
-- `active_defrag_compactions`: Number of listpack/intset compaction operations
+- `active_defrag_misses`: Number of aborted value reallocations started by the active defragmentation process
+- `active_defrag_key_hits`: Number of keys that were actively defragmented
+- `active_defrag_key_misses`: Number of keys that were skipped by the active defragmentation process
 
 Monitor fragmentation ratio over time:
 
@@ -173,7 +179,7 @@ redis-cli DEBUG RELOAD
 systemctl restart redis
 ```
 
-2. CONFIG RESETSTAT to reset fragmentation counters for a fresh baseline:
+2. CONFIG RESETSTAT to reset defrag statistics (hits, misses, key_hits, key_misses) for a fresh baseline:
 
 ```bash
 redis-cli CONFIG RESETSTAT
