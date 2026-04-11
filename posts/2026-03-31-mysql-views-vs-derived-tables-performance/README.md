@@ -25,7 +25,7 @@ FROM (
 WHERE d.avg_salary > 60000;
 ```
 
-The optimizer can often "merge" the derived table into the outer query, applying filters before the aggregation.
+Because this derived table contains `GROUP BY` and an aggregate function, the optimizer must materialize it into a temporary table. For simpler derived tables without these constructs, the optimizer can merge them into the outer query, allowing direct index access on base tables.
 
 ## What is a View
 
@@ -50,7 +50,7 @@ MySQL's optimizer can handle derived tables and views in two ways:
 - **Merge**: fold the subquery into the outer query, allowing index usage on base tables
 - **Materialize**: execute the subquery into a temporary table first, then query the temporary table
 
-Merging is generally faster because the optimizer can push conditions down to base tables. Materialization creates a temporary table without indexes, which can be slower.
+Merging is generally faster because the optimizer can push conditions down to base tables. Materialization creates a temporary table that lacks the base table indexes, which can be slower. However, MySQL may add an auto-generated index to a materialized derived table to speed up subsequent joins.
 
 ```sql
 EXPLAIN SELECT d.department, d.avg_salary
