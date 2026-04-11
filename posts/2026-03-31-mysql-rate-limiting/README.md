@@ -124,18 +124,12 @@ import mysql.connector
 
 def is_allowed(conn, identifier, limit=100, window_seconds=60):
     cursor = conn.cursor()
-    cursor.callproc('check_rate_limit',
-                    [identifier, limit, window_seconds, 0, 0])
+    result_args = cursor.callproc('check_rate_limit',
+                                  [identifier, limit, window_seconds, 0, 0])
 
-    results = list(cursor.stored_results())
-    if results:
-        row = results[0].fetchone()
-        return row
-
-    # Read OUT parameters
-    cursor.execute("SELECT @_check_rate_limit_3, @_check_rate_limit_4")
-    allowed, remaining = cursor.fetchone()
-    return bool(allowed), remaining
+    allowed = bool(result_args[3])
+    remaining = result_args[4]
+    return allowed, remaining
 
 # In your API handler
 allowed, remaining = is_allowed(conn, request.remote_addr)
@@ -155,12 +149,16 @@ DELETE FROM request_log
 WHERE requested_at < NOW() - INTERVAL 1 HOUR;
 
 -- Schedule automatic cleanup
+DELIMITER $$
+
 CREATE EVENT cleanup_rate_limits
 ON SCHEDULE EVERY 5 MINUTE
 DO BEGIN
     DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL 1 HOUR;
     DELETE FROM request_log WHERE requested_at < NOW() - INTERVAL 1 HOUR;
-END;
+END$$
+
+DELIMITER ;
 ```
 
 ## Choosing Between Fixed and Sliding Windows
