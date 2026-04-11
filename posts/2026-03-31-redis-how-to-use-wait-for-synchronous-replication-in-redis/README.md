@@ -79,12 +79,16 @@ except Exception as e:
 `WAIT` can be used after a transaction to confirm all transaction writes were replicated:
 
 ```bash
-redis-cli MULTI
-redis-cli SET balance:user1 500
-redis-cli SET balance:user2 300
-redis-cli EXEC
-redis-cli WAIT 1 1000
+redis-cli << 'EOF'
+MULTI
+SET balance:user1 500
+SET balance:user2 300
+EXEC
+WAIT 1 1000
+EOF
 ```
+
+Note: All commands must run on the same connection. Each separate `redis-cli` invocation opens a new connection, so piping commands via stdin or using interactive mode ensures MULTI/EXEC and WAIT share one session.
 
 ## How WAIT Works Internally
 
@@ -113,8 +117,8 @@ Typical overhead with 1 replica and good network: 1-5ms per call.
 Mechanism          | Protects Against
 -------------------|-------------------------------------------------
 WAIT numreplicas=1 | Primary crash (data survives on replica)
-appendfsync always | Primary crash + disk failure (data on primary's disk)
-Both combined      | Primary crash + disk failure + replica needed
+appendfsync always | Primary process crash (data fsynced to disk)
+Both combined      | Primary crash and disk failure (redundant copies)
 ```
 
 For the highest durability, combine AOF on replicas with WAIT in your application.
