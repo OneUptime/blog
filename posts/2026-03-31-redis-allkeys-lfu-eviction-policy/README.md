@@ -43,10 +43,10 @@ Redis uses a probabilistic 8-bit counter per key (values 0-255). The counter doe
 
 ```text
 lfu-log-factor=10 (default):
-  1 access      -> counter ~ 10
-  100 accesses  -> counter ~ 18
-  1000 accesses -> counter ~ 25
-  1M accesses   -> counter ~ 40
+  100 accesses   -> counter ~ 10
+  1000 accesses  -> counter ~ 18
+  100K accesses  -> counter ~ 142
+  1M accesses    -> counter ~ 255
 ```
 
 This logarithmic scaling allows the 8-bit counter to represent a very wide range of access frequencies without overflow.
@@ -80,6 +80,10 @@ import redis
 r = redis.Redis()
 r.config_set("maxmemory-policy", "allkeys-lfu")
 
+# Create keys first
+r.set("hot_key", "value")
+r.set("cold_key", "value")
+
 # Simulate different access frequencies
 for _ in range(1000):
     r.get("hot_key")
@@ -87,8 +91,8 @@ for _ in range(1000):
 for _ in range(5):
     r.get("cold_key")
 
-print("Hot key freq:", r.object_freq("hot_key"))
-print("Cold key freq:", r.object_freq("cold_key"))
+print("Hot key freq:", r.object("freq", "hot_key"))
+print("Cold key freq:", r.object("freq", "cold_key"))
 ```
 
 ## When allkeys-lfu Outperforms allkeys-lru
