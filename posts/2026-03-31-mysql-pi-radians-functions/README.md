@@ -134,19 +134,19 @@ SELECT RADIANS(DEGREES(PI() / 2));
 ```sql
 -- Sine of 30 degrees
 SELECT SIN(RADIANS(30));
--- Returns: 0.5
+-- Returns: 0.49999999999999994  (~0.5)
 
 -- Cosine of 60 degrees
 SELECT COS(RADIANS(60));
--- Returns: 0.5
+-- Returns: 0.5000000000000001   (~0.5)
 
 -- Tangent of 45 degrees
 SELECT TAN(RADIANS(45));
--- Returns: ~1.0
+-- Returns: 0.9999999999999999   (~1.0)
 
 -- Angle in terms of PI
-SELECT SIN(PI() / 6);    -- sin(30°) = 0.5
-SELECT COS(PI() / 3);    -- cos(60°) = 0.5
+SELECT SIN(PI() / 6);    -- sin(30°) ≈ 0.5
+SELECT COS(PI() / 3);    -- cos(60°) ≈ 0.5
 ```
 
 ---
@@ -213,7 +213,7 @@ SELECT ROUND(
         POWER(SIN(RADIANS(@lon2 - @lon1) / 2), 2)
     )), 1
 ) AS distance_km;
--- Returns: ~341.8 km (London to Paris)
+-- Returns: ~343.5 km (London to Paris)
 ```
 
 ---
