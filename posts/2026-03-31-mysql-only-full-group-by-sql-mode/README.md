@@ -84,7 +84,7 @@ GROUP BY region;
 
 ## Fix 4: Functional Dependency Detection
 
-MySQL 8.0 detects functional dependencies via primary keys. If you group by a primary key, non-key columns of the same table are implicitly allowed:
+MySQL 5.7.5 and later detects functional dependencies via primary keys. If you group by a primary key, non-key columns of the same table are implicitly allowed:
 
 ```sql
 SELECT id, region, salesperson, amount
@@ -119,7 +119,7 @@ Never disable it in production - it masks bugs and produces unpredictable result
 
 ## Checking Functional Dependencies
 
-MySQL 8.0 can detect certain functional dependencies automatically:
+MySQL 5.7.5 and later can detect certain functional dependencies automatically:
 
 ```sql
 -- This works because order_id is a PK
