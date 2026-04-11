@@ -40,8 +40,8 @@ Connection names must follow these constraints:
 
 ```text
 - No spaces allowed
-- No special characters: use hyphens or underscores
-- Maximum 255 characters
+- No newlines or non-printable characters allowed
+- Hyphens, underscores, and printable ASCII characters are valid
 - Valid: "api-server-1", "worker_pool_job_queue"
 - Invalid: "my server" (contains space)
 ```
