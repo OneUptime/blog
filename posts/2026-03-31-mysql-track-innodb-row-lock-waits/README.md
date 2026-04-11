@@ -50,7 +50,7 @@ echo "Row lock waits per second: $RATE"
 
 ## Identifying Blocked Transactions
 
-When lock waits are elevated, use the `data_locks` and `data_lock_waits` tables in Performance Schema to see exactly what is blocked:
+When lock waits are elevated, use the `data_lock_waits` table in Performance Schema along with `information_schema.innodb_trx` to see exactly what is blocked:
 
 ```sql
 SELECT
@@ -61,9 +61,9 @@ SELECT
   b.trx_mysql_thread_id AS blocking_thread,
   b.trx_query AS blocking_query
 FROM
-  information_schema.innodb_lock_waits w
-  JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-  JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+  performance_schema.data_lock_waits w
+  JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+  JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 This query shows you which transaction is blocked and which transaction is holding the lock, along with the SQL text of both.
