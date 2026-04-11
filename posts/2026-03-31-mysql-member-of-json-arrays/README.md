@@ -45,7 +45,7 @@ SELECT '3' MEMBER OF('[1, 2, 3]');
 -- Result: 0  (string vs integer mismatch)
 
 SELECT CAST('3' AS JSON) MEMBER OF('[1, 2, 3]');
--- Result: 0  (JSON string "3" vs JSON integer 3)
+-- Result: 1  (CAST parses '3' as JSON integer 3, which matches)
 
 SELECT 3 MEMBER OF('[1, 2, 3]');
 -- Result: 1  (correct integer match)
