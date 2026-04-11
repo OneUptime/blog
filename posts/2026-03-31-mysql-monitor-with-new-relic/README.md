@@ -48,8 +48,6 @@ integrations:
       PASSWORD: newrelic_secret
       DATABASE: ""
       REMOTE_MONITORING: true
-      METRICS: true
-      INVENTORY: true
       EXTENDED_METRICS: true
       EXTENDED_INNODB_METRICS: true
       EXTENDED_MY_ISAM_METRICS: false
@@ -73,7 +71,7 @@ Navigate to New Relic One > Infrastructure > Third-party services > MySQL. You s
 Run a NRQL query to confirm metrics are flowing:
 
 ```sql
-SELECT average(mysql.node.query.perSecond)
+SELECT average(query.queriesPerSecond)
 FROM MysqlSample
 FACET hostname
 SINCE 30 MINUTES AGO
@@ -86,7 +84,7 @@ Use NRQL alert conditions to page your team when critical thresholds are crossed
 
 ```sql
 -- Alert when replication lag exceeds 30 seconds
-SELECT latest(mysql.node.replication.secondsBehindMaster)
+SELECT latest(cluster.secondsBehindMaster)
 FROM MysqlSample
 WHERE hostname = 'replica1.db.local'
 ```
@@ -96,11 +94,11 @@ Set a threshold of `> 30` with a 2-minute evaluation window and attach it to a n
 ## Key Metrics Available
 
 ```text
-mysql.node.query.perSecond         - queries per second
-mysql.node.net.connections         - active connections
-mysql.node.innodb.bufferPoolPages  - buffer pool utilization
-mysql.node.replication.secondsBehindMaster - replication lag
-mysql.node.query.slowQueriesPerSecond - slow query rate
+query.queriesPerSecond             - queries per second
+net.threadsConnected               - active connections
+db.innodb.bufferPoolPagesTotal     - buffer pool utilization
+cluster.secondsBehindMaster        - replication lag
+query.slowQueriesPerSecond         - slow query rate
 ```
 
 ## Using the MySQL Quickstart Dashboard
