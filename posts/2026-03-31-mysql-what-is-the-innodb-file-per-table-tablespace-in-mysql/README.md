@@ -64,12 +64,14 @@ CREATE TABLE products (
 );
 ```
 
-MySQL creates two files in the `myapp/` directory under the MySQL data directory:
+MySQL creates the following files in the `myapp/` directory under the MySQL data directory:
 
 ```text
 /var/lib/mysql/myapp/products.frm   -- Table structure (MySQL 5.x only; removed in 8.0)
 /var/lib/mysql/myapp/products.ibd   -- Table data and indexes
 ```
+
+In MySQL 8.0 and later, only the `.ibd` file is created because the data dictionary replaces `.frm` files.
 
 The `.ibd` file contains the table's B-tree pages for the clustered primary key index and all secondary indexes.
 
@@ -116,17 +118,18 @@ du -sh /var/lib/mysql/myapp/*.ibd | sort -rh | head -20
 
 ## Checking Which Tablespace a Table Uses
 
+In MySQL 8.0 and later, query the `INNODB_TABLESPACES` table:
+
 ```sql
 SELECT
-  TABLE_SCHEMA,
-  TABLE_NAME,
-  CREATE_OPTIONS
-FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'myapp'
-  AND ENGINE = 'InnoDB';
+  NAME,
+  SPACE_TYPE,
+  ROW_FORMAT
+FROM information_schema.INNODB_TABLESPACES
+WHERE NAME LIKE 'myapp/%';
 ```
 
-Tables in file-per-table have an empty `CREATE_OPTIONS` field. Tables in the system tablespace show nothing (they were created before file-per-table was enabled).
+The `SPACE_TYPE` column shows `Single` for file-per-table tablespaces and `General` for general tablespaces. Tables stored in the system tablespace do not appear in this view.
 
 ## Moving a Table Back to the System Tablespace
 
