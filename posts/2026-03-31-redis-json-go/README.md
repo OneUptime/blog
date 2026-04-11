@@ -8,7 +8,7 @@ Description: Learn how to store, retrieve, and update JSON documents in Redis fr
 
 ---
 
-RedisJSON adds native JSON storage and manipulation to Redis. From Go, you can use go-redis with the `JSONSet` and `JSONGet` commands to store complex objects without serializing them manually to a string.
+RedisJSON adds native JSON storage and manipulation to Redis. From Go, you can use go-redis with the `JSON.SET` and `JSON.GET` commands to store complex objects without serializing them manually to a string.
 
 ## Setup
 
@@ -143,8 +143,8 @@ rdb.Do(ctx, "JSON.DEL", "user:1", "$.address")
 exists, _ := rdb.Exists(ctx, "user:1").Result()
 fmt.Println(exists) // 1
 
-typeResult, _ := rdb.Do(ctx, "JSON.TYPE", "user:1", "$.roles").Text()
-fmt.Println(typeResult) // ["array"]
+typeResult, _ := rdb.Do(ctx, "JSON.TYPE", "user:1", "$.roles").StringSlice()
+fmt.Println(typeResult) // [array]
 ```
 
 ## Summary
