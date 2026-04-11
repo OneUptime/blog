@@ -136,7 +136,7 @@ def protected_endpoint(current_user: dict = Depends(get_current_user)):
 
 ## Using Bloom Filters for Large-Scale Blacklists
 
-For very high token volumes, a Bloom filter reduces memory at the cost of false positives (valid tokens occasionally rejected):
+For very high token volumes, a Bloom filter can serve as a fast negative check to reduce key lookups. Since Bloom filters have no false negatives, a "not found" result is definitive. On a Bloom positive, confirm against an exact key to eliminate false positives:
 
 ```python
 def revoke_token_bloom(jti: str, ttl: int):
