@@ -41,7 +41,7 @@ util.exportTable("mydb.customers", "/data/exports/customers.csv", {
 })
 ```
 
-Built-in dialects: `default` (TSV), `csv`, `csv-unix`, `tsv`.
+Built-in dialects: `default` (matches `SELECT...INTO OUTFILE` defaults), `csv`, `csv-unix`, `tsv`.
 
 ## Importing Data with util.importTable()
 
@@ -64,13 +64,13 @@ util.importTable("/data/imports/orders.csv", {
   threads: 8,
   skipRows: 1,
   replaceDuplicates: true,
-  maxBytesPerTransaction: "134217728"
+  bytesPerChunk: "134217728"
 })
 ```
 
 - `skipRows` - number of header rows to skip
 - `replaceDuplicates` - use `REPLACE INTO` instead of `INSERT INTO`
-- `maxBytesPerTransaction` - controls transaction chunk size
+- `bytesPerChunk` - controls the chunk size for parallel processing of a single file
 - `threads` - parallel import threads
 
 ## Importing from a URL
@@ -89,7 +89,7 @@ util.importTable("https://example.com/data/products.tsv", {
 Use glob patterns to import multiple files at once:
 
 ```javascript
-util.importTable("/data/exports/orders_*.tsv", {
+util.importTable(["/data/exports/orders_*.tsv"], {
   schema: "mydb",
   table: "orders",
   threads: 4
@@ -111,7 +111,7 @@ util.loadDump("/backups/mydb_export", {threads: 8})
 ## Importing from Amazon S3
 
 ```javascript
-util.importTable("s3://my-bucket/data/orders.csv", {
+util.importTable("data/orders.csv", {
   schema: "mydb",
   table: "orders",
   dialect: "csv",
