@@ -40,8 +40,10 @@ FLUSH PRIVILEGES;
 ```bash
 vault write database/config/myapp-mysql \
   plugin_name=mysql-database-plugin \
-  connection_url="vault_admin:VaultAdminPass!@tcp(mysql.example.com:3306)/" \
+  connection_url="{{username}}:{{password}}@tcp(mysql.example.com:3306)/" \
   allowed_roles="app-role,readonly-role" \
+  username="vault_admin" \
+  password="VaultAdminPass!" \
   max_open_connections=5
 ```
 
