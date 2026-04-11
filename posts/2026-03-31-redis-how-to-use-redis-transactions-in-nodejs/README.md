@@ -167,7 +167,7 @@ const result = await purchaseItem('product:42', 'user:1001');
 console.log(result);
 ```
 
-## Using DISCARD
+## Discarding a Transaction
 
 ```javascript
 const Redis = require('ioredis');
@@ -179,7 +179,7 @@ async function transactionWithCancel(shouldProceed) {
   multi.set('key2', 'value2');
 
   if (!shouldProceed) {
-    await multi.discard();
+    // In pipeline mode (default), not calling exec() discards the queued commands
     console.log('Transaction cancelled');
     return null;
   }
@@ -187,7 +187,7 @@ async function transactionWithCancel(shouldProceed) {
   return multi.exec();
 }
 
-await transactionWithCancel(false); // Cancelled
+await transactionWithCancel(false); // Cancelled - commands never sent
 await transactionWithCancel(true);  // Executed
 ```
 
