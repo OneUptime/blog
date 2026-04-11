@@ -43,7 +43,6 @@ return 1
 import redis
 import contextlib
 import uuid
-import time
 
 ACQUIRE_SCRIPT = """
 local current = tonumber(redis.call('GET', KEYS[1])) or 0
