@@ -99,7 +99,7 @@ CONFIG SET maxmemory-policy noeviction
 ## Monitoring Evictions
 
 ```bash
-INFO stats | grep evicted_keys
+redis-cli INFO stats | grep evicted_keys
 # evicted_keys:12453
 
 # Monitor evictions in real time
