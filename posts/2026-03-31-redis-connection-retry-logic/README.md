@@ -53,6 +53,7 @@ def get_redis_client_with_retry(
 The redis-py library ships with a `Retry` class that handles retries on individual commands:
 
 ```python
+import redis
 from redis.retry import Retry
 from redis.backoff import ExponentialBackoff
 from redis.exceptions import BusyLoadingError, ConnectionError, TimeoutError
