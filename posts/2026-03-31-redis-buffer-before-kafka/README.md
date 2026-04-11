@@ -118,7 +118,7 @@ def safe_flush():
     # Move batch to a "processing" key before sending
     pipeline = r.pipeline()
     for _ in range(BATCH_SIZE):
-        pipeline.rpoplpush(BUFFER_KEY, PROCESSING_KEY)
+        pipeline.lmove(BUFFER_KEY, PROCESSING_KEY, src="RIGHT", dest="LEFT")
     pipeline.execute()
 
     items = r.lrange(PROCESSING_KEY, 0, -1)
