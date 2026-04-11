@@ -58,8 +58,8 @@ Once a hash exceeds the listpack thresholds, Redis converts it to a full hashtab
 
 ```text
 Base hash object overhead: ~120 bytes
-Per field cost:            ~64 bytes (dictEntry) + 16 (key robj) + 16 (val robj)
-                           + field_name_size + field_value_size + overhead
+Per field cost:            ~64 bytes (dictEntry + allocator) + ~20 (key SDS) + ~20 (val SDS)
+                           + field_name_size + field_value_size
                            = ~104 bytes + field data
 ```
 
@@ -108,7 +108,7 @@ def estimate_hash_memory(
 
 # 1M user hashes, 10 fields each
 print(estimate_hash_memory(1_000_000, 10, 8, 20))
-# {'encoding': 'listpack', 'bytes_per_hash': 450, 'total_mb': 429.2, 'num_hashes': 1000000}
+# {'encoding': 'listpack', 'bytes_per_hash': 460, 'total_mb': 438.7, 'num_hashes': 1000000}
 ```
 
 ## Tips for Keeping Hashes in Listpack
