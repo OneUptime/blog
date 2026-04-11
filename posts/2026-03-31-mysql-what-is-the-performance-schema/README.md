@@ -83,7 +83,7 @@ LIMIT 10;
 -- Memory consumption by event type
 SELECT
   EVENT_NAME,
-  CURRENT_NUMBER_OF_ALLOCS,
+  CURRENT_COUNT_USED,
   ROUND(CURRENT_NUMBER_OF_BYTES_USED / 1048576, 2) AS current_mb
 FROM performance_schema.memory_summary_global_by_event_name
 WHERE CURRENT_NUMBER_OF_BYTES_USED > 0
