@@ -105,9 +105,15 @@ while true; do
 done
 
 # Get the RDB file path
-RDB_FILE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" CONFIG GET dir | tail -1)/$(
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" CONFIG GET dbfilename | tail -1
-)
+if [ -n "$REDIS_PASSWORD" ]; then
+  RDB_FILE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" CONFIG GET dir | tail -1)/$(
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" CONFIG GET dbfilename | tail -1
+  )
+else
+  RDB_FILE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" CONFIG GET dir | tail -1)/$(
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" CONFIG GET dbfilename | tail -1
+  )
+fi
 
 echo "[$(date)] Compressing $RDB_FILE..."
 gzip -c "$RDB_FILE" > "$BACKUP_DIR/$BACKUP_FILE"
