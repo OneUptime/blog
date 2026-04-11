@@ -17,6 +17,12 @@ Redis allows many configuration parameters to be read and modified at runtime wi
 ### Syntax
 
 ```redis
+CONFIG GET parameter
+```
+
+Since Redis 7.0, multiple parameters can be specified:
+
+```redis
 CONFIG GET parameter [parameter ...]
 ```
 
@@ -35,7 +41,7 @@ Output:
 2) "536870912"
 ```
 
-#### Read Multiple Parameters
+#### Read Multiple Parameters (Redis 7.0+)
 
 ```redis
 CONFIG GET maxmemory maxmemory-policy
@@ -58,7 +64,7 @@ Read all `save` parameters:
 CONFIG GET save
 ```
 
-Read all `bind` and timeout parameters:
+Read all `bind` and timeout parameters (Redis 7.0+):
 
 ```redis
 CONFIG GET bind* timeout*
@@ -79,6 +85,12 @@ Returns all current configuration key/value pairs.
 `CONFIG SET` modifies one or more configuration parameters at runtime. Changes take effect immediately without a server restart.
 
 ### Syntax
+
+```redis
+CONFIG SET parameter value
+```
+
+Since Redis 7.0, multiple parameter/value pairs can be specified:
 
 ```redis
 CONFIG SET parameter value [parameter value ...]
