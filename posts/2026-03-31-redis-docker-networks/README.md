@@ -60,7 +60,7 @@ services:
     image: redis:7-alpine
     networks:
       - backend  # NOT on frontend network
-    command: redis-server --protected-mode yes
+    command: redis-server --protected-mode no  # safe because backend network is internal
 
   postgres:
     image: postgres:15-alpine
@@ -156,7 +156,7 @@ docker network inspect myapp_app-network
 docker network inspect myapp_backend | python3 -c "import sys,json; [print(v['Name']) for v in json.load(sys.stdin)[0]['Containers'].values()]"
 
 # Test that Redis is NOT accessible outside the network
-docker run --rm alpine redis-cli -h 172.20.0.10 PING  # should fail
+docker run --rm redis:7-alpine redis-cli -h 172.20.0.10 PING  # should fail
 ```
 
 ## Summary
