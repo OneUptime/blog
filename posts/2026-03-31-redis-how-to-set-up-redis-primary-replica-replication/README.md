@@ -33,7 +33,7 @@ Clients send write commands to the primary. Replicas receive a stream of write c
 
 - Two or more Redis instances running (or servers)
 - Network connectivity between primary and replica
-- Redis 4.0+ (recommended: Redis 7.0+)
+- Redis 5.0+ (recommended: Redis 7.0+)
 
 ## Step 1 - Configure the Primary
 
@@ -151,13 +151,13 @@ Expected: `"hello"`
 You can also configure a running Redis instance as a replica without editing the config file:
 
 ```bash
-redis-cli -p 6380 REPLICAOF 192.168.1.10 6379
+redis-cli -p 6380 -a yourStrongPassword REPLICAOF 192.168.1.10 6379
 ```
 
 To stop replication and make a replica independent:
 
 ```bash
-redis-cli -p 6380 REPLICAOF NO ONE
+redis-cli -p 6380 -a yourStrongPassword REPLICAOF NO ONE
 ```
 
 ## Configuring the Replication Backlog
