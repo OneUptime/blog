@@ -20,7 +20,7 @@ To load a dump from a local directory:
 util.loadDump("/backups/mydb_dump")
 ```
 
-This restores all schemas and data found in the dump directory. The utility automatically detects the number of available CPU cores and sets an appropriate thread count.
+This restores all schemas and data found in the dump directory using the default of 4 parallel threads.
 
 ## Common Load Options
 
@@ -83,7 +83,7 @@ The utility reads the progress file, skips already-loaded chunks, and continues 
 ## Loading from Amazon S3
 
 ```javascript
-util.loadDump("s3://my-bucket/backups/mydb_dump", {
+util.loadDump("backups/mydb_dump", {
   s3BucketName: "my-bucket",
   s3Region: "us-east-1",
   threads: 16
@@ -109,7 +109,7 @@ When loading from an instance dump that includes users:
 ```javascript
 util.loadDump("/backups/full_instance_dump", {
   loadUsers: true,
-  excludeUsers: ["root@localhost"]
+  excludeUsers: ["'root'@'localhost'"]
 })
 ```
 
