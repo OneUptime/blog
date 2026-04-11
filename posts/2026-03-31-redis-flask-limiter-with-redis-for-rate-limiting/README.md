@@ -97,7 +97,6 @@ def handle_rate_limit(e):
     return jsonify({
         "error": "Rate limit exceeded",
         "message": str(e.description),
-        "retry_after": e.retry_after
     }), 429
 ```
 
