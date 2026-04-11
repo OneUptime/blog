@@ -10,7 +10,7 @@ Description: Learn how to restore MySQL NDB Cluster data from a native backup us
 
 ## Overview
 
-Restoring an NDB Cluster backup uses the `ndb_restore` utility, which is run on each data node separately. The restore process involves two phases: first restoring the metadata (schema), then restoring the data. The cluster must be running during a restore, and the target tables must exist (or be recreated from the backup metadata).
+Restoring an NDB Cluster backup uses the `ndb_restore` utility, which is run on each data node separately. The restore process involves three phases: first restoring the metadata (schema), then restoring the data, and finally rebuilding indexes. The cluster must be running during a restore, and the target tables must exist (or be recreated from the backup metadata).
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ Restoring an NDB Cluster backup uses the `ndb_restore` utility, which is run on 
 
 Backup files are in the format:
 ```text
-/backup/mysql-cluster/BACKUP-<id>.<nodeid>.ctl
-/backup/mysql-cluster/BACKUP-<id>.<nodeid>.Data
-/backup/mysql-cluster/BACKUP-<id>.<nodeid>.log
+/backup/mysql-cluster/BACKUP-<id>/BACKUP-<id>-0.<nodeid>.ctl
+/backup/mysql-cluster/BACKUP-<id>/BACKUP-<id>-0.<nodeid>.Data
+/backup/mysql-cluster/BACKUP-<id>/BACKUP-<id>-0.<nodeid>.log
 ```
 
 ## Phase 1: Restore Metadata (Schema)
@@ -88,7 +88,7 @@ ndb_restore \
 
 ## Restoring to a Different Cluster
 
-To restore to a different cluster or database, use `--remap-column` and `--include-databases`:
+To restore to a different cluster or database, use `--rewrite-database` and `--include-databases`:
 
 ```bash
 ndb_restore \
@@ -114,4 +114,4 @@ Cross-reference with counts from before the backup if available.
 
 ## Summary
 
-Restoring NDB Cluster follows a three-phase process: restore metadata on one node, restore data on all nodes in parallel, then rebuild indexes. Always use `--disable-indexes` during the data phase and rebuild afterward for significantly faster restore times on large datasets. Verify row counts from a SQL node after the restore to confirm data integrity.
+Restoring NDB Cluster follows a three-phase process: restore metadata on one node, restore data on all nodes in parallel, then rebuild indexes. Always use `--disable-indexes` during the metadata phase and rebuild indexes afterward for significantly faster restore times on large datasets. Verify row counts from a SQL node after the restore to confirm data integrity.
