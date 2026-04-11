@@ -107,8 +107,8 @@ Not all operations support INSTANT. These require INPLACE or COPY:
 ## Checking Table Instant Row Version
 
 ```sql
--- Check if table has pending instant columns (row versions)
-SELECT t.name, t.instant_cols, t.n_cols
+-- Check if table has pending row versions from instant DDL changes
+SELECT t.name, t.total_row_versions, t.n_cols
 FROM information_schema.innodb_tables t
 WHERE t.name LIKE 'mydb/%';
 ```
