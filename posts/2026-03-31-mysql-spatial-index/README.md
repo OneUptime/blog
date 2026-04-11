@@ -52,14 +52,14 @@ CREATE TABLE stores (
     SPATIAL INDEX idx_location (location)
 );
 
--- Insert store locations as (longitude, latitude) POINT values
+-- Insert store locations as (latitude, longitude) POINT values per SRID 4326 axis order
 INSERT INTO stores (name, city, location) VALUES
-    ('Downtown Store',    'New York',    ST_GeomFromText('POINT(-74.006 40.7128)',  4326)),
-    ('Midtown Store',     'New York',    ST_GeomFromText('POINT(-73.985 40.7580)',  4326)),
-    ('Hollywood Store',   'Los Angeles', ST_GeomFromText('POINT(-118.3435 34.0928)', 4326)),
-    ('Santa Monica Store','Los Angeles', ST_GeomFromText('POINT(-118.4912 34.0195)', 4326)),
-    ('Loop Store',        'Chicago',     ST_GeomFromText('POINT(-87.6298 41.8781)',  4326)),
-    ('Lincoln Park Store','Chicago',     ST_GeomFromText('POINT(-87.6443 41.9214)',  4326));
+    ('Downtown Store',    'New York',    ST_GeomFromText('POINT(40.7128 -74.006)',  4326)),
+    ('Midtown Store',     'New York',    ST_GeomFromText('POINT(40.7580 -73.985)',  4326)),
+    ('Hollywood Store',   'Los Angeles', ST_GeomFromText('POINT(34.0928 -118.3435)', 4326)),
+    ('Santa Monica Store','Los Angeles', ST_GeomFromText('POINT(34.0195 -118.4912)', 4326)),
+    ('Loop Store',        'Chicago',     ST_GeomFromText('POINT(41.8781 -87.6298)',  4326)),
+    ('Lincoln Park Store','Chicago',     ST_GeomFromText('POINT(41.9214 -87.6443)',  4326));
 ```
 
 ### Retrieve Coordinates from a POINT Column
@@ -68,23 +68,23 @@ INSERT INTO stores (name, city, location) VALUES
 SELECT
     name,
     city,
-    ST_X(location) AS longitude,
-    ST_Y(location) AS latitude
+    ST_Latitude(location) AS latitude,
+    ST_Longitude(location) AS longitude
 FROM stores
 ORDER BY city, name;
 ```
 
 ```text
-+---------------------+-------------+------------+----------+
-| name                | city        | longitude  | latitude |
-+---------------------+-------------+------------+----------+
-| Loop Store          | Chicago     | -87.629800 | 41.87810 |
-| Lincoln Park Store  | Chicago     | -87.644300 | 41.92140 |
-| Hollywood Store     | Los Angeles | -118.343500| 34.09280 |
-| Santa Monica Store  | Los Angeles | -118.491200| 34.01950 |
-| Downtown Store      | New York    | -74.006000 | 40.71280 |
-| Midtown Store       | New York    | -73.985000 | 40.75800 |
-+---------------------+-------------+------------+----------+
++---------------------+-------------+----------+-------------+
+| name                | city        | latitude | longitude   |
++---------------------+-------------+----------+-------------+
+| Loop Store          | Chicago     | 41.87810 |  -87.629800 |
+| Lincoln Park Store  | Chicago     | 41.92140 |  -87.644300 |
+| Hollywood Store     | Los Angeles | 34.09280 | -118.343500 |
+| Santa Monica Store  | Los Angeles | 34.01950 | -118.491200 |
+| Downtown Store      | New York    | 40.71280 |  -74.006000 |
+| Midtown Store       | New York    | 40.75800 |  -73.985000 |
++---------------------+-------------+----------+-------------+
 ```
 
 ### Find Stores Within a Bounding Box
@@ -94,24 +94,24 @@ Use `MBRContains` to find stores within a rectangular bounding box. MBRContains 
 ```sql
 -- Bounding box: New York area (approximate)
 SET @bbox = ST_GeomFromText(
-    'POLYGON((-74.1 40.6, -73.9 40.6, -73.9 40.8, -74.1 40.8, -74.1 40.6))',
+    'POLYGON((40.6 -74.1, 40.6 -73.9, 40.8 -73.9, 40.8 -74.1, 40.6 -74.1))',
     4326
 );
 
 SELECT name, city,
-       ST_X(location) AS longitude,
-       ST_Y(location) AS latitude
+       ST_Latitude(location) AS latitude,
+       ST_Longitude(location) AS longitude
 FROM stores
 WHERE MBRContains(@bbox, location);
 ```
 
 ```text
-+----------------+----------+------------+----------+
-| name           | city     | longitude  | latitude |
-+----------------+----------+------------+----------+
-| Downtown Store | New York | -74.006000 | 40.71280 |
-| Midtown Store  | New York | -73.985000 | 40.75800 |
-+----------------+----------+------------+----------+
++----------------+----------+----------+------------+
+| name           | city     | latitude | longitude  |
++----------------+----------+----------+------------+
+| Downtown Store | New York | 40.71280 | -74.006000 |
+| Midtown Store  | New York | 40.75800 | -73.985000 |
++----------------+----------+----------+------------+
 ```
 
 ### Find Stores Within a Radius
@@ -120,7 +120,7 @@ Use `ST_Distance_Sphere` to filter by distance from a reference point. Note: dis
 
 ```sql
 -- Reference point: Times Square, New York
-SET @ref_point = ST_GeomFromText('POINT(-73.9855 40.7580)', 4326);
+SET @ref_point = ST_GeomFromText('POINT(40.7580 -73.9855)', 4326);
 
 SELECT
     name,
@@ -135,7 +135,7 @@ LIMIT 3;
 +----------------+----------+-----------------+
 | name           | city     | distance_meters |
 +----------------+----------+-----------------+
-| Midtown Store  | New York | 0               |
+| Midtown Store  | New York | 42              |
 | Downtown Store | New York | 5267            |
 | Loop Store     | Chicago  | 1197792         |
 +----------------+----------+-----------------+
@@ -146,7 +146,7 @@ LIMIT 3;
 For optimal performance: first narrow results with a spatial-indexed bounding box, then apply exact distance filtering.
 
 ```sql
-SET @ref_point = ST_GeomFromText('POINT(-74.006 40.7128)', 4326);
+SET @ref_point = ST_GeomFromText('POINT(40.7128 -74.006)', 4326);
 SET @radius_degrees = 0.5;  -- approx 55km
 
 -- Create a bounding box around the reference point
@@ -166,7 +166,7 @@ ORDER BY distance_meters;
 
 ```sql
 EXPLAIN SELECT name FROM stores WHERE MBRContains(
-    ST_GeomFromText('POLYGON((-74.1 40.6, -73.9 40.6, -73.9 40.8, -74.1 40.8, -74.1 40.6))', 4326),
+    ST_GeomFromText('POLYGON((40.6 -74.1, 40.6 -73.9, 40.8 -73.9, 40.8 -74.1, 40.6 -74.1))', 4326),
     location
 );
 ```
@@ -179,8 +179,8 @@ Look for `key: idx_location` and `type: range` to confirm the spatial index is u
 - Specify an SRID (Spatial Reference ID) on the column definition (e.g., SRID 4326 for WGS84 lat/lon) to enable SRID-aware spatial functions.
 - Use `MBRContains` or `ST_Within` for bounding box queries - these use the spatial index. `ST_Distance_Sphere` alone does not.
 - Combine a bounding-box filter (index-supported) with an exact distance filter for radius searches.
-- Use `ST_GeomFromText('POINT(lon lat)', 4326)` - note longitude first, latitude second in WKT format.
-- Use `ST_X()` to get longitude and `ST_Y()` to get latitude from a stored POINT.
+- In MySQL 8.0 with SRID 4326, WKT coordinate order follows the SRS axis order: latitude first, longitude second. Use `ST_GeomFromText('POINT(lat lon)', 4326)`.
+- Use `ST_Latitude()` and `ST_Longitude()` (MySQL 8.0.12+) to extract coordinates from a POINT. Note that `ST_X()` returns the first SRS axis (latitude for SRID 4326) and `ST_Y()` returns the second (longitude).
 
 ## Summary
 
