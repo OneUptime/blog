@@ -111,6 +111,7 @@ XACK events workers 1711880000000-0
 ## Making the Choice in Code
 
 ```python
+import json
 import redis
 
 r = redis.Redis()
