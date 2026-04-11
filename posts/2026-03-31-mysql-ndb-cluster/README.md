@@ -78,7 +78,6 @@ DataDir    = /var/lib/mysql-cluster
 [ndbd default]
 NoOfReplicas  = 2
 DataMemory    = 512M
-IndexMemory   = 128M
 
 [ndbd]
 NodeId   = 2
@@ -207,7 +206,8 @@ Verify data is distributed across nodes:
 
 ```sql
 SELECT node_id, fragment_num, fixed_elem_count
-FROM   information_schema.ndb_transid_mysql_connection_map
+FROM   ndbinfo.memory_per_fragment
+WHERE  fq_name LIKE '%orders%'
 LIMIT  10;
 ```
 
