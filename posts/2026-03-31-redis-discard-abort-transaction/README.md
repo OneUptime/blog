@@ -114,21 +114,21 @@ After DISCARD, the WATCH on `account:balance` is cleared. The key can be watched
 
 A typical pattern in application code when using Redis transactions:
 
-```bash
-redis-cli MULTI
+```
+MULTI
 
 # Build the transaction
-redis-cli SET order:123:status "processing"
-redis-cli INCRBY inventory:product:456 -1
+SET order:123:status "processing"
+INCRBY inventory:product:456 -1
 
 # If a validation check fails before EXEC
-if [ "$validation_failed" = "true" ]; then
-  redis-cli DISCARD
-  echo "Transaction aborted"
-else
-  redis-cli EXEC
-fi
+if validation_failed:
+    DISCARD    # Abort - all queued commands are flushed
+else:
+    EXEC       # Run all queued commands
 ```
+
+Note: This is pseudocode showing the logical flow. In a real application, all commands must be sent over the same Redis connection. Most Redis client libraries (e.g., redis-py, ioredis, Jedis) provide a pipeline or transaction API that manages MULTI/EXEC/DISCARD on a single connection automatically.
 
 ## Difference Between DISCARD and Failed EXEC
 
