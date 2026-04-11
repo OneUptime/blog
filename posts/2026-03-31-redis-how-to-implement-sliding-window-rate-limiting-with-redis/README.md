@@ -121,17 +121,20 @@ def get_rate_limit_info(identifier: str, limit: int = 100, window: int = 60) -> 
     pipe = r.pipeline()
     pipe.zremrangebyscore(key, "-inf", window_start)
     pipe.zcard(key)
+    pipe.zadd(key, {str(now): now})
+    pipe.expire(key, window + 1)
     results = pipe.execute()
 
     count = results[1]
-    remaining = max(0, limit - count)
+    allowed = count < limit
+    remaining = max(0, limit - count - 1) if allowed else 0
     reset_at = int(now) + window
 
     return {
         "limit": limit,
         "remaining": remaining,
         "reset": reset_at,
-        "allowed": count < limit
+        "allowed": allowed
     }
 ```
 
