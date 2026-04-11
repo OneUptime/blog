@@ -108,7 +108,7 @@ FROM customers c;
 
 ## Generating JSON Arrays
 
-In MySQL 8.0, prefer `JSON_ARRAYAGG` for structured output:
+In MySQL 5.7.22+, prefer `JSON_ARRAYAGG` for structured output:
 
 ```sql
 SELECT
@@ -120,4 +120,4 @@ GROUP BY customer_id;
 
 ## Summary
 
-Use `GROUP_CONCAT` to aggregate multiple rows into comma-separated strings in MySQL. Control ordering with `ORDER BY`, eliminate duplicates with `DISTINCT`, and adjust the maximum length via `group_concat_max_len`. For structured data, use `JSON_ARRAYAGG` in MySQL 8.0+ to produce proper JSON arrays.
+Use `GROUP_CONCAT` to aggregate multiple rows into comma-separated strings in MySQL. Control ordering with `ORDER BY`, eliminate duplicates with `DISTINCT`, and adjust the maximum length via `group_concat_max_len`. For structured data, use `JSON_ARRAYAGG` in MySQL 5.7.22+ to produce proper JSON arrays.
