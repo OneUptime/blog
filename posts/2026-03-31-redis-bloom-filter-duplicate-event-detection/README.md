@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Bloom Filter, Event, Deduplication
 
-Description: Detect and discard duplicate events in real-time event streams using Redis Bloom Filters for memory-efficient exactly-once processing guarantees.
+Description: Detect and discard duplicate events in real-time event streams using Redis Bloom Filters for memory-efficient deduplication.
 
 ---
 
@@ -31,14 +31,13 @@ Size the filter based on expected event volume within the dedup window:
 ```python
 import redis
 import time
-import uuid
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def create_event_dedup_filter(stream_name: str,
                                capacity: int = 10_000_000,
                                error_rate: float = 0.0001):
-    # 0.01% false positive rate - 1 in 10,000 duplicate events slips through
+    # 0.01% false positive rate - approximately 1 in 10,000 new events may be wrongly flagged as a duplicate
     filter_key = f"dedup:{stream_name}"
     try:
         r.execute_command('BF.RESERVE', filter_key, error_rate, capacity)
