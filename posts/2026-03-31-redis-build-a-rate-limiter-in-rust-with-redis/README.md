@@ -41,7 +41,7 @@ impl RateLimiter {
 
         if count == 1 {
             // Set expiry only on first increment
-            self.pool.expire(&redis_key, self.window_secs as i64).await?;
+            let _: () = self.pool.expire(&redis_key, self.window_secs as i64).await?;
         }
 
         Ok(count <= self.limit)
