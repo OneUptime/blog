@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Eviction, Memory
 
-Description: Learn how to implement custom eviction logic in Redis using keyspace notifications and Lua scripts, and choose the right built-in policy for your workload.
+Description: Learn how to implement custom eviction logic in Redis using keyspace notifications and sorted sets, and choose the right built-in policy for your workload.
 
 ---
 
@@ -34,7 +34,6 @@ Track key priority in a sorted set and evict low-priority keys first when memory
 
 ```python
 import redis
-import psutil
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -76,8 +75,6 @@ redis-cli CONFIG SET notify-keyspace-events "ExKg"
 ```
 
 ```python
-import threading
-
 def track_access(r, key: str):
     r.zincrby("access:frequency", 1, key)
 
