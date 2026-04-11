@@ -22,7 +22,7 @@ RESET REPLICA ALL;    -- completely remove all replication configuration
 
 ## RESET MASTER
 
-`RESET MASTER` deletes all binary log files listed in the binary log index and resets the binary log index to be empty. It also resets the binary log position to 1:
+`RESET MASTER` deletes all binary log files listed in the binary log index and resets the binary log index to be empty. It creates a new binary log file starting from sequence number 1:
 
 ```sql
 RESET MASTER;
@@ -109,7 +109,7 @@ When setting up replication on a new replica from a fresh dump:
 
 ```bash
 # On the primary - get a consistent dump with binary log position
-mysqldump --single-transaction --master-data=2 -u root -p all_databases > dump.sql
+mysqldump --single-transaction --master-data=2 -u root -p --all-databases > dump.sql
 ```
 
 ```sql
