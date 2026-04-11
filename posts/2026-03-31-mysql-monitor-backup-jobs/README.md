@@ -34,6 +34,7 @@ Update the log table at the start and end of each backup:
 
 ```bash
 #!/bin/bash
+set -o pipefail
 DB="myapp_db"
 DATE=$(date +%F)
 OUTPUT_FILE="/backups/mysql/$DB-$DATE.sql.gz"
