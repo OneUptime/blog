@@ -64,7 +64,7 @@ XCLAIM jobs workers worker-2 30000 1700000001000-0
 
 ## The JUSTID Option
 
-Use `JUSTID` to return only IDs without full message data - useful when you just want to verify which messages were claimed:
+Use `JUSTID` to return only IDs without full message data - useful when you just want to verify which messages were claimed. Note that using `JUSTID` also prevents the delivery counter from being incremented:
 
 ```bash
 XCLAIM jobs workers worker-2 30000 1700000001000-0 JUSTID
@@ -73,7 +73,7 @@ XCLAIM jobs workers worker-2 30000 1700000001000-0 JUSTID
 
 ## The RETRYCOUNT Option
 
-Every time a message is delivered or claimed, its delivery count increases. Use `RETRYCOUNT` to override this counter - useful when implementing dead-letter logic:
+Every time a message is delivered or claimed, its delivery count increases (unless `JUSTID` is used). Use `RETRYCOUNT` to override this counter - useful when implementing dead-letter logic:
 
 ```bash
 # Reset retry count to 0 after manual intervention
@@ -86,7 +86,6 @@ If a message has been delivered many times without success, it may indicate a po
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
