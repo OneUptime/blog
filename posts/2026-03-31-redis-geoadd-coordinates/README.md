@@ -34,7 +34,7 @@ GEOADD key [NX | XX] [CH] longitude latitude member [longitude latitude member .
 - `CH` - return count of changed members (added + updated) instead of just added
 - `longitude latitude member` - coordinate pair and member name (can repeat)
 
-**Coordinate bounds:** longitude -180 to 180, latitude -85.05 to 85.05
+**Coordinate bounds:** longitude -180 to 180, latitude -85.05112878 to 85.05112878
 
 ## Examples
 
@@ -97,7 +97,7 @@ Output:
    2) "40.74840144948154994"
 ```
 
-Note: There is a small rounding error from Geohash encoding (approximately 0.6mm precision).
+Note: There is a small rounding error from Geohash encoding (approximately 0.6 meters precision).
 
 ## Use Cases
 
@@ -108,4 +108,4 @@ Note: There is a small rounding error from Geohash encoding (approximately 0.6mm
 
 ## Summary
 
-`GEOADD` is the foundation of Redis geospatial functionality. It stores coordinates efficiently using Geohash encoding in a standard sorted set, making all subsequent `GEODIST`, `GEOPOS`, `GEOSEARCH`, and `GEORADIUS` commands possible. Use `NX`/`XX` flags to safely handle upsert scenarios, and batch multiple coordinates in a single call for efficient bulk loading.
+`GEOADD` is the foundation of Redis geospatial functionality. It stores coordinates efficiently using Geohash encoding in a standard sorted set, making all subsequent `GEODIST`, `GEOPOS`, and `GEOSEARCH` commands possible. Use `NX`/`XX` flags to safely handle upsert scenarios, and batch multiple coordinates in a single call for efficient bulk loading.
