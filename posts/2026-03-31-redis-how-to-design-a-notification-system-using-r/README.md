@@ -177,6 +177,7 @@ def get_unread_count(user_id: int) -> int:
 
 ```javascript
 const Redis = require('ioredis');
+const redis = new Redis({ host: 'localhost', port: 6379 });
 const subscriber = new Redis({ host: 'localhost', port: 6379 });
 
 // When user connects via WebSocket
