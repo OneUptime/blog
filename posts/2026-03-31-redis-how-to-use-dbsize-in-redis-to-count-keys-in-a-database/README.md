@@ -150,7 +150,6 @@ monitor_key_count(interval=5, samples=3)
 
 ```python
 import redis
-import time
 
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
