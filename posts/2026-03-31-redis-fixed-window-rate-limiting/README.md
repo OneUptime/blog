@@ -50,13 +50,11 @@ def check_rate_limit(identifier: str, limit: int = 100, window_seconds: int = 60
     pipe = r.pipeline()
     pipe.incr(key)
     pipe.expire(key, window_seconds)
-    pipe.ttl(key)
     results = pipe.execute()
 
     count = results[0]
-    ttl = results[2]
     remaining = max(0, limit - count)
-    reset_at = int(time.time()) + ttl
+    reset_at = (window + 1) * window_seconds
 
     return {
         "allowed": count <= limit,
