@@ -94,17 +94,17 @@ WHERE ROUTINE_TYPE = 'FUNCTION'
   AND ROUTINE_DEFINITION LIKE '%orders%';
 ```
 
-Note that `ROUTINE_DEFINITION` may be `NULL` if the current user lacks the `SHOW ROUTINE` or `SELECT` privilege on the function.
+Note that `ROUTINE_DEFINITION` may be `NULL` if the current user lacks the `SHOW_ROUTINE` or `SELECT` privilege on the function.
 
 ## Check Privileges Required
 
 To see function definitions in `information_schema.ROUTINES`, the querying user needs either:
-- The `SHOW ROUTINE` privilege (MySQL 8.0.22+)
+- The `SHOW_ROUTINE` privilege (MySQL 8.0.20+)
 - The same definer account, or
 - The `SELECT` privilege on `mysql.proc` (older MySQL 5.x)
 
 ```sql
-GRANT SHOW ROUTINE ON *.* TO 'analyst'@'localhost';
+GRANT SHOW_ROUTINE ON *.* TO 'analyst'@'localhost';
 ```
 
 ## Summary
