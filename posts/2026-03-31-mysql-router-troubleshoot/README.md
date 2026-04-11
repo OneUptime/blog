@@ -108,15 +108,16 @@ The default TTL is 0.5 seconds. If you increased it for performance reasons, a f
 CREATE USER 'admin'@'%' IDENTIFIED BY 'password';
 GRANT ALL PRIVILEGES ON mysql_innodb_cluster_metadata.* TO 'admin'@'%';
 GRANT SELECT ON mysql.* TO 'admin'@'%';
-GRANT SELECT, INSERT, UPDATE, DELETE ON performance_schema.replication_group_members TO 'admin'@'%';
-GRANT SELECT, INSERT, UPDATE, DELETE ON performance_schema.replication_group_member_stats TO 'admin'@'%';
+GRANT SELECT ON performance_schema.replication_group_members TO 'admin'@'%';
+GRANT SELECT ON performance_schema.replication_group_member_stats TO 'admin'@'%';
 FLUSH PRIVILEGES;
 ```
 
-Or use the minimal privilege set from MySQL Shell:
+Or use MySQL Shell to create a router account with the correct minimal privileges:
 
 ```javascript
-dba.configureInstance('admin@node1:3306')
+var cluster = dba.getCluster();
+cluster.setupRouterAccount('admin@%');
 ```
 
 ## Issue: Router Port Already in Use
@@ -156,6 +157,7 @@ for attempt in range(3):
     except mysql.connector.Error as e:
         if e.errno in (errorcode.CR_SERVER_LOST, errorcode.CR_SERVER_GONE_ERROR):
             conn.reconnect()
+            cursor = conn.cursor()
         else:
             raise
 ```
