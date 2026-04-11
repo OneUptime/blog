@@ -106,7 +106,7 @@ WHERE LOCK_MODE LIKE 'S%';
 
 ## Converting to Exclusive Lock
 
-If you need to modify a row you have locked with LOCK IN SHARE MODE, you must release the lock and re-acquire it as an exclusive lock:
+If you later need to modify a row you initially locked with LOCK IN SHARE MODE, the UPDATE will attempt to upgrade the shared lock to an exclusive lock. This succeeds only when no other session holds a shared lock on the same row:
 
 ```sql
 -- Anti-pattern: trying to upgrade in the same session
