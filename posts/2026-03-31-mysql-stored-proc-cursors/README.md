@@ -156,7 +156,7 @@ The `CONTINUE HANDLER` is essential - use `CONTINUE`, not `EXIT`, so control ret
 
 ## Multiple Cursors in One Procedure
 
-MySQL allows multiple cursors, but only one can be open at a time per nesting level.
+MySQL allows multiple cursors in a single procedure, and they can be open simultaneously. When using multiple cursors that share a NOT FOUND handler, reset the done flag before opening each subsequent cursor.
 
 ```sql
 DELIMITER $$
