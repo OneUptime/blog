@@ -40,7 +40,7 @@ ORDER BY current_tx_age_sec DESC;
 
 ## Cause 1 - Single-threaded applier
 
-By default the replica applies events with a single SQL thread. High-write sources quickly overwhelm a single-threaded applier.
+Before MySQL 8.0.27, the replica applies events with a single SQL thread by default (`replica_parallel_workers = 0`). Starting with MySQL 8.0.27, the default is 4 parallel workers with `LOGICAL_CLOCK` scheduling. Either way, high-write sources can overwhelm the applier if the worker count is too low.
 
 ### Fix: enable parallel replication
 
@@ -119,15 +119,15 @@ SHOW CREATE TABLE orders\G          -- run on source
 SHOW CREATE TABLE orders\G          -- run on replica
 -- They should be identical
 
--- Check slave_rows_search_algorithms setting
-SHOW VARIABLES LIKE 'replica_rows_search_algorithms';
--- Recommended: INDEX_SCAN,HASH_SCAN
+-- Check row search algorithm (MySQL < 8.0.18 only; deprecated in 8.0.18, removed in 8.4)
+SHOW VARIABLES LIKE 'slave_rows_search_algorithms';
+-- Recommended: INDEX_SCAN,HASH_SCAN (default on MySQL 8.0.18+)
 ```
 
 ```ini
-# /etc/mysql/mysql.conf.d/mysqld.cnf (replica)
+# /etc/mysql/mysql.conf.d/mysqld.cnf (replica, MySQL < 8.0.18 only)
 [mysqld]
-replica_rows_search_algorithms = INDEX_SCAN,HASH_SCAN
+slave_rows_search_algorithms = INDEX_SCAN,HASH_SCAN
 ```
 
 ## Cause 4 - Network bandwidth saturation
@@ -138,8 +138,8 @@ sar -n DEV 1 5
 # or
 nload eth0
 
-# Check binlog bytes being sent from the source
-mysql -u root -p -e "SHOW STATUS LIKE 'Binlog_bytes_written';"
+# Check binary log volume on the source
+mysql -u root -p -e "SHOW BINARY LOGS;"
 
 # Enable binlog compression (MySQL 8.0.20+)
 ```
