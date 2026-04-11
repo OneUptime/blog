@@ -43,28 +43,9 @@ SHOW REPLICA STATUS\G
 | `Last_IO_Errno` | 0 | Non-zero = error code |
 | `Last_SQL_Errno` | 0 | Non-zero = error code |
 
-## Quick health check query
+## Quick health check
 
-```sql
-SELECT
-  Replica_IO_Running,
-  Replica_SQL_Running,
-  Seconds_Behind_Source,
-  Last_IO_Errno,
-  Last_IO_Error,
-  Last_SQL_Errno,
-  Last_SQL_Error
-FROM (
-  SELECT * FROM performance_schema.replication_connection_status
-  UNION ALL
-  SELECT * FROM performance_schema.replication_applier_status_by_worker
-  LIMIT 0
-) dummy -- use SHOW REPLICA STATUS for actual data
-;
--- Practical: just run SHOW REPLICA STATUS\G and grep key fields
-```
-
-A simpler scripted check:
+`SHOW REPLICA STATUS` is a standalone command that cannot be used inside a subquery or `SELECT`. The simplest way to extract key fields in a script:
 
 ```bash
 mysql -u monitor -p -e "SHOW REPLICA STATUS\G" 2>/dev/null | grep -E \
@@ -85,7 +66,8 @@ When GTID replication is enabled, these fields are essential:
 ```sql
 -- Compare replica's GTID set against the source
 -- Run on the source:
-SHOW BINARY LOG STATUS\G
+SHOW MASTER STATUS\G          -- MySQL 8.0.x
+-- SHOW BINARY LOG STATUS\G   -- MySQL 8.2.0+ (replaces SHOW MASTER STATUS)
 -- Look at: Executed_Gtid_Set
 
 -- Run on the replica:
@@ -120,7 +102,7 @@ For position-based replication:
 -- Performance Schema: lag in seconds and nanoseconds
 SELECT
   CHANNEL_NAME,
-  LAST_QUEUED_TRANSACTION_START_QUEUE_TIMESTAMP,
+  LAST_APPLIED_TRANSACTION_START_APPLY_TIMESTAMP,
   LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP,
   TIMESTAMPDIFF(SECOND,
     LAST_APPLIED_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP,
