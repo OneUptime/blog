@@ -102,8 +102,8 @@ mysql -u monitor_user -p -e "
   SELECT
     (Threads_connected / max_connections) * 100 AS connection_pct
   FROM
-    (SELECT VARIABLE_VALUE AS Threads_connected FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Threads_connected') t1,
-    (SELECT VARIABLE_VALUE AS max_connections FROM information_schema.GLOBAL_VARIABLES WHERE VARIABLE_NAME = 'max_connections') t2;
+    (SELECT VARIABLE_VALUE AS Threads_connected FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Threads_connected') t1,
+    (SELECT VARIABLE_VALUE AS max_connections FROM performance_schema.global_variables WHERE VARIABLE_NAME = 'max_connections') t2;
 "
 ```
 
