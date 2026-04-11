@@ -152,6 +152,7 @@ END;
 ```sql
 -- List triggers
 SHOW TRIGGERS FROM mydb;
+-- LIKE filters by table name, not trigger name
 SHOW TRIGGERS LIKE 'orders%';
 
 -- Inspect definition
@@ -164,15 +165,16 @@ DROP TRIGGER IF EXISTS trg_after_insert_orders;
 ## Preventing Recursive Triggers
 
 ```sql
--- Check @@trigger_depth to avoid recursive firing
+-- Use a session variable to guard against recursive/cascading trigger calls
 DELIMITER $$
 CREATE TRIGGER trg_after_update_inventory
 AFTER UPDATE ON inventory
 FOR EACH ROW
 BEGIN
-  IF @@trigger_depth = 1 THEN
-    -- safe to act, not a recursive call
+  IF @trigger_running IS NULL THEN
+    SET @trigger_running = TRUE;
     INSERT INTO inventory_log VALUES (NEW.id, NOW());
+    SET @trigger_running = NULL;
   END IF;
 END $$
 DELIMITER ;
