@@ -230,7 +230,7 @@ sudo systemctl stop redis
 sudo cp "$REDIS_DATA_DIR/dump.rdb" "$REDIS_DATA_DIR/dump.rdb.old" 2>/dev/null || true
 
 # Decompress and restore
-sudo gunzip -c "/tmp/$BACKUP_FILE" > "$REDIS_DATA_DIR/dump.rdb"
+gunzip -c "/tmp/$BACKUP_FILE" | sudo tee "$REDIS_DATA_DIR/dump.rdb" > /dev/null
 sudo chown redis:redis "$REDIS_DATA_DIR/dump.rdb"
 
 # Start Redis
