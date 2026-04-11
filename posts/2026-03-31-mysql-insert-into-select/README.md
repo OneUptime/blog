@@ -157,10 +157,10 @@ INSERT IGNORE INTO products_backup
 
 -- Or update on conflict
 INSERT INTO products_backup (id, name, price)
-    SELECT id, name, price FROM products
+    SELECT * FROM (SELECT id, name, price FROM products) AS src
     ON DUPLICATE KEY UPDATE
-        name  = VALUES(name),
-        price = VALUES(price);
+        name  = src.name,
+        price = src.price;
 ```
 
 ## Batching Large Copies
