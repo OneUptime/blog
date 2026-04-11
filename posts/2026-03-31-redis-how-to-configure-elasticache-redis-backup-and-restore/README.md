@@ -12,7 +12,7 @@ Description: Learn how to configure automatic and manual backups for Amazon Elas
 
 ElastiCache Redis offers two snapshot mechanisms:
 
-- **Automatic snapshots**: Daily backups retained for 1-35 days, triggered during a configured maintenance window
+- **Automatic snapshots**: Daily backups retained for 1-35 days, triggered during a configured backup window
 - **Manual snapshots**: On-demand snapshots that persist until you delete them
 
 Both create RDB (Redis Database) files stored in S3. Snapshots capture the data at a point in time for the primary node.
@@ -75,7 +75,7 @@ aws elasticache describe-snapshots \
   --query 'Snapshots[0].SnapshotStatus'
 ```
 
-Snapshot status values: `creating` -> `available` -> (if deleted) `deleted`
+Snapshot status values: `creating` -> `available` -> (if deleted) `deleting`
 
 ## Restoring from a Snapshot
 
@@ -123,20 +123,17 @@ resource "aws_elasticache_replication_group" "restored" {
 For cross-region disaster recovery, copy snapshots to another region.
 
 ```bash
-# Copy snapshot to eu-west-1
+# Copy snapshot to eu-west-1 (use source snapshot ARN for cross-region)
 aws elasticache copy-snapshot \
-  --source-snapshot-name my-snapshot \
+  --source-snapshot-name arn:aws:elasticache:us-east-1:123456789012:snapshot:my-snapshot \
   --target-snapshot-name my-snapshot-eu-copy \
-  --target-bucket "" \
-  --source-region us-east-1 \
   --region eu-west-1
 
 # Or use the cross-region copy with KMS re-encryption
 aws elasticache copy-snapshot \
-  --source-snapshot-name my-snapshot \
+  --source-snapshot-name arn:aws:elasticache:us-east-1:123456789012:snapshot:my-snapshot \
   --target-snapshot-name my-snapshot-eu-copy-encrypted \
   --kms-key-id arn:aws:kms:eu-west-1:123456789012:key/eu-kms-key \
-  --source-region us-east-1 \
   --region eu-west-1
 ```
 
@@ -176,7 +173,7 @@ aws elasticache create-replication-group \
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def verify_recent_backup(replication_group_id, max_age_hours=26):
     """Verify that a recent automatic backup exists"""
