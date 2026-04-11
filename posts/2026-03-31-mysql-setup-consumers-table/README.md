@@ -23,18 +23,21 @@ ORDER BY NAME;
 A typical output shows consumers like:
 
 ```text
-events_stages_current          | YES
-events_stages_history          | NO
-events_stages_history_long     | NO
-events_statements_current      | YES
-events_statements_history      | YES
-events_statements_history_long | NO
-events_waits_current           | YES
-events_waits_history           | NO
-events_waits_history_long      | NO
-global_instrumentation         | YES
-thread_instrumentation         | YES
-statements_digest              | YES
+events_stages_current             | YES
+events_stages_history             | NO
+events_stages_history_long        | NO
+events_statements_current         | YES
+events_statements_history         | YES
+events_statements_history_long    | NO
+events_transactions_current       | YES
+events_transactions_history       | NO
+events_transactions_history_long  | NO
+events_waits_current              | YES
+events_waits_history              | NO
+events_waits_history_long         | NO
+global_instrumentation            | YES
+thread_instrumentation            | YES
+statements_digest                 | YES
 ```
 
 ## Consumer Hierarchy
@@ -46,13 +49,16 @@ global_instrumentation
   |-- thread_instrumentation
   |     |-- events_waits_current
   |     |     |-- events_waits_history
-  |     |           |-- events_waits_history_long
+  |     |     |-- events_waits_history_long
   |     |-- events_stages_current
   |     |     |-- events_stages_history
-  |     |           |-- events_stages_history_long
+  |     |     |-- events_stages_history_long
   |     |-- events_statements_current
-  |           |-- events_statements_history
-  |                 |-- events_statements_history_long
+  |     |     |-- events_statements_history
+  |     |     |-- events_statements_history_long
+  |     |-- events_transactions_current
+  |           |-- events_transactions_history
+  |           |-- events_transactions_history_long
   |-- statements_digest
 ```
 
