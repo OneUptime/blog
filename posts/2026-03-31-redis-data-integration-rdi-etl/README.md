@@ -16,21 +16,20 @@ RDI sits between your source database (PostgreSQL, MySQL, Oracle, SQL Server) an
 
 1. Uses Debezium under the hood to capture row-level changes
 2. Transforms records using a YAML-based config
-3. Writes data into Redis as hashes, JSON, streams, or sets
+3. Writes data into Redis as hashes, JSON, streams, sets, sorted sets, or strings
 
 ## Installing RDI
 
-RDI runs as a set of Docker containers (or on Kubernetes). Install with:
+RDI runs on VMs using an embedded K3s (Kubernetes) cluster, or on an existing Kubernetes deployment. Install on a VM with:
 
 ```bash
 # Download the RDI installer
-wget https://github.com/RedisLabs/redis-di/releases/latest/download/redis-di-linux.tar.gz
-tar xf redis-di-linux.tar.gz
+export RDI_VERSION=1.16.2
+wget https://redis-enterprise-software-downloads.s3.amazonaws.com/redis-di/rdi-installation-$RDI_VERSION.tar.gz
+tar xf rdi-installation-$RDI_VERSION.tar.gz
 
-# Install RDI on a Redis Enterprise target
-redis-di create --cluster-host <CLUSTER_HOST> --cluster-port 9443 \
-  --cluster-user <USER> --cluster-password <PASS> \
-  --rdi-port 13000
+# Run the installer
+sudo ./install.sh
 ```
 
 ## Configuring a Source Database
@@ -65,7 +64,7 @@ Each pipeline job maps a database table to a Redis data structure. Create `jobs/
 
 ```yaml
 source:
-  server-name: mysql-host
+  server_name: mysql-host
   db: orders_db
   table: orders
 
@@ -88,14 +87,14 @@ output:
 ## Deploying the Pipeline
 
 ```bash
-# Validate config
-redis-di scaffold --db-type mysql
+# Generate scaffold configuration files
+redis-di scaffold --db-type mysql --dir ./
 
 # Deploy jobs
-redis-di deploy --dir ./jobs/
+redis-di deploy --rdi-host <RDI_HOST> --rdi-port <RDI_PORT>
 
 # Check status
-redis-di status
+redis-di status --rdi-host <RDI_HOST> --rdi-port <RDI_PORT>
 ```
 
 ## Verifying Data in Redis
@@ -133,10 +132,10 @@ transform:
 
 ```bash
 # Check pipeline metrics
-redis-di status
+redis-di status --rdi-host <RDI_HOST> --rdi-port <RDI_PORT>
 
-# View ingestion lag
-redis-di get-rejected --shard 1
+# View rejected records
+redis-di get-rejected --rdi-host <RDI_HOST> --rdi-port <RDI_PORT>
 ```
 
 ## Summary
