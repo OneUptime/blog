@@ -37,10 +37,10 @@ redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER NODES
 Sample output:
 
 ```text
-abc123 192.168.1.11:7001@17001 master - 0 ... 0-5460
-def456 192.168.1.12:7002@17002 master - 0 ... 5461-10922
-ghi789 192.168.1.13:7003@17003 master - 0 ... 10923-16383
-jkl012 192.168.1.17:7006@17006 master - 0 ... [no slots]
+abc123 192.168.1.11:7001@17001 master - 0 ... 0-4095
+def456 192.168.1.12:7002@17002 master - 0 ... 4096-8191
+ghi789 192.168.1.13:7003@17003 master - 0 ... 8192-12287
+jkl012 192.168.1.17:7006@17006 master - 0 ... 12288-16383
 ```
 
 Note the node ID you want to remove.
@@ -109,16 +109,16 @@ After migration, confirm the node has no assigned slots:
 redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER NODES | grep <node-id>
 ```
 
-The slot range column should be empty or show only migrating states. Check the node itself:
+The slot range column should be empty or show only migrating states. You can also check the node itself by looking at its own entry in `CLUSTER NODES`:
 
 ```bash
-redis-cli -h 192.168.1.17 -p 7006 -a clusterPassword CLUSTER INFO | grep cluster_slots_assigned
+redis-cli -h 192.168.1.17 -p 7006 -a clusterPassword CLUSTER NODES | grep myself
 ```
 
-Expected:
+The output should show the node's own entry with no slot ranges at the end:
 
 ```text
-cluster_slots_assigned:0
+jkl012 192.168.1.17:7006@17006 myself,master - 0 0 0 connected
 ```
 
 ## Step 5 - Remove the Empty Primary Node
