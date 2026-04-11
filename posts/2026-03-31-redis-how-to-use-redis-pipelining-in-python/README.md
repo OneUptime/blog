@@ -118,7 +118,7 @@ with r.pipeline() as pipe:
     results = pipe.execute()
 
 print(results)
-# [True, True, 1, 3, 1, True]
+# [True, True, 2, 3, 1, True]
 ```
 
 ## Chunking Large Pipelines
@@ -169,11 +169,17 @@ print(result)
 
 ## Important Notes
 
-Pipelines in redis-py do NOT provide atomicity by default. If you need atomicity, use `MULTI/EXEC` transactions. The `pipeline(transaction=True)` parameter wraps the pipeline in a `MULTI/EXEC` block:
+Pipelines in redis-py default to `transaction=True`, which wraps commands in a `MULTI/EXEC` block for atomicity. If you only need pipelining without atomicity, use `pipeline(transaction=False)`:
 
 ```python
-# Transactional pipeline (MULTI/EXEC)
-with r.pipeline(transaction=True) as pipe:
+# Non-transactional pipeline (pure pipelining, no MULTI/EXEC)
+with r.pipeline(transaction=False) as pipe:
+    pipe.set('key1', 'value1')
+    pipe.set('key2', 'value2')
+    results = pipe.execute()
+
+# Transactional pipeline (default behavior)
+with r.pipeline() as pipe:
     pipe.incr('counter')
     pipe.incr('counter')
     results = pipe.execute()
@@ -181,4 +187,4 @@ with r.pipeline(transaction=True) as pipe:
 
 ## Summary
 
-Redis pipelining in Python with redis-py batches multiple commands into a single network request, dramatically reducing latency for bulk operations. Use the context manager pattern with `r.pipeline()`, process large datasets in chunks to manage memory, and remember that standard pipelines are not atomic - use `pipeline(transaction=True)` when you need MULTI/EXEC semantics. Pipelining is one of the simplest and most impactful performance optimizations for Redis-heavy applications.
+Redis pipelining in Python with redis-py batches multiple commands into a single network request, dramatically reducing latency for bulk operations. Use the context manager pattern with `r.pipeline()`, process large datasets in chunks to manage memory, and note that redis-py pipelines default to `transaction=True` with MULTI/EXEC semantics - use `pipeline(transaction=False)` when you only need pipelining without atomicity. Pipelining is one of the simplest and most impactful performance optimizations for Redis-heavy applications.
