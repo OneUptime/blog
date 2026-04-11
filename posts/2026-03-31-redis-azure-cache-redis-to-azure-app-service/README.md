@@ -58,6 +58,8 @@ resource "azurerm_linux_web_app" "main" {
   location            = azurerm_resource_group.main.location
   service_plan_id     = azurerm_service_plan.main.id
 
+  site_config {}
+
   app_settings = {
     REDIS_HOST       = azurerm_redis_cache.main.hostname
     REDIS_PORT       = "6380"
@@ -77,7 +79,7 @@ resource "azurerm_linux_web_app" "main" {
 ```python
 import redis
 import os
-from flask import Flask, session
+from flask import Flask
 
 app = Flask(__name__)
 
