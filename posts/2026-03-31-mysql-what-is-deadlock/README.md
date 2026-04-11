@@ -60,15 +60,14 @@ SET GLOBAL innodb_print_all_deadlocks = ON;
 
 ```sql
 -- Check total deadlock count since server start
-SHOW STATUS LIKE 'Innodb_deadlocks';
+SELECT NAME, COUNT
+FROM information_schema.INNODB_METRICS
+WHERE NAME = 'lock_deadlocks';
 
--- Track deadlock rate with performance_schema
-SELECT
-  event_name,
-  count_star,
-  sum_timer_wait / 1000000000000 AS total_wait_seconds
-FROM performance_schema.events_waits_summary_global_by_event_name
-WHERE event_name LIKE '%deadlock%';
+-- Track deadlock errors via performance_schema (MySQL 8.0.11+)
+SELECT SUM_ERROR_RAISED AS deadlock_count
+FROM performance_schema.events_errors_summary_global_by_error
+WHERE ERROR_NUMBER = 1213;
 ```
 
 ## Preventing Deadlocks
