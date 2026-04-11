@@ -84,7 +84,7 @@ def get_zone_snapshot(zone_id):
     snapshot = {}
     pipe = r.pipeline()
     for pid in player_ids:
-        pipe.hgetall(f"entity:player:{pid}")
+        pipe.hgetall(f"entity:player:{pid.decode()}")
     results = pipe.execute()
     for pid, state in zip(player_ids, results):
         snapshot[pid.decode()] = state
@@ -102,7 +102,7 @@ local current_version = tonumber(redis.call("HGET", key, "version") or "0")
 if new_version <= current_version then
   return redis.error_reply("STALE_UPDATE")
 end
-redis.call("HMSET", key, "version", new_version, "x", ARGV[2], "y", ARGV[3])
+redis.call("HSET", key, "version", new_version, "x", ARGV[2], "y", ARGV[3])
 return 1
 ```
 
