@@ -41,13 +41,11 @@ r.memory_usage("user:1", samples=0)  # samples=0 = exact
 ```text
 Encoding         Threshold           Bytes overhead
 int              value fits int64    ~40 bytes
-embstr           <= 44 bytes         ~56 bytes (key + value in one alloc)
+embstr           <= 44 bytes         ~56 bytes (object + value in one alloc)
 raw              > 44 bytes          ~72 bytes + string length
 ```
 
 ```python
-import sys
-
 # Approximate string memory
 def estimate_string_memory(key, value):
     key_bytes = len(key.encode())
@@ -84,7 +82,7 @@ OBJECT ENCODING mylist
 ```text
 Encoding    Memory per element
 listpack    ~16 bytes + element size
-quicklist   ~36 bytes + element size (nodes of 128 entries by default)
+quicklist   ~36 bytes + element size (nodes limited to 8 KB by default)
 ```
 
 ### Sets
@@ -114,9 +112,12 @@ r = redis.Redis(decode_responses=True)
 def estimate_total_memory(r, pattern="*", sample_size=100):
     cursor = 0
     sampled_keys = []
-    while len(sampled_keys) < sample_size:
+    total_matching = 0
+    while True:
         cursor, keys = r.scan(cursor, match=pattern, count=50)
-        sampled_keys.extend(keys)
+        total_matching += len(keys)
+        if len(sampled_keys) < sample_size:
+            sampled_keys.extend(keys[:sample_size - len(sampled_keys)])
         if cursor == 0:
             break
 
@@ -125,12 +126,10 @@ def estimate_total_memory(r, pattern="*", sample_size=100):
 
     total_sample_bytes = sum(
         r.memory_usage(k, samples=1) or 0
-        for k in sampled_keys[:sample_size]
+        for k in sampled_keys
     )
-    avg_bytes = total_sample_bytes / len(sampled_keys[:sample_size])
-
-    total_keys = r.dbsize()
-    return int(avg_bytes * total_keys)
+    avg_bytes = total_sample_bytes / len(sampled_keys)
+    return int(avg_bytes * total_matching)
 
 estimated = estimate_total_memory(r, "user:*")
 print(f"Estimated memory for user:* keys: {estimated / 1024 / 1024:.1f} MB")
