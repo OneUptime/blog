@@ -31,7 +31,7 @@ await redisClient.connect();
 const limiter = rateLimit({
   windowMs: 60 * 1000,  // 1 minute
   max: 60,               // 60 requests per window
-  standardHeaders: true, // Return X-RateLimit-* headers
+  standardHeaders: true, // Return RateLimit-* headers
   legacyHeaders: false,
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
