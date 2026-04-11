@@ -126,7 +126,7 @@ redis-cli --scan --pattern "blocked:*" | wc -l
 
 # Top offending IPs by violation count
 redis-cli --scan --pattern "violations:*" | \
-  xargs -I{} sh -c 'echo "{}: $(redis-cli GET {})"' | sort -t: -k2 -rn | head -10
+  xargs -I{} sh -c 'echo "$(redis-cli GET {}) {}"' | sort -rn | head -10
 
 # Global request rate right now
 redis-cli GET "ddos:global:$(date +%s)"
