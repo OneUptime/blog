@@ -19,7 +19,7 @@ Typical use cases include finding routes that cross a city boundary, detecting o
 ```mermaid
 flowchart LR
     A["ST_Intersects(g1, g2)"] --> B{Do g1 and g2\nshare any point?}
-    B -- Yes --> C["Returns 1 (true)\noverlag, touch, or containment"]
+    B -- Yes --> C["Returns 1 (true)\noverlap, touch, or containment"]
     B -- No --> D["Returns 0 (false)\ncompletely disjoint"]
     E["Includes: interior overlap,\nboundary touch, containment"] --> B
 ```
