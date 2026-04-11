@@ -104,17 +104,26 @@ SHOW REPLICA STATUS\G
 
 ## Step 6: Repair Corrupted Tables
 
-If InnoDB tables are corrupted:
+For MyISAM tables, use `mysqlcheck` to auto-repair:
 
 ```bash
 mysqlcheck --all-databases --auto-repair -u root -p
 ```
 
-For specific tables:
+For specific MyISAM tables:
 
 ```sql
-REPAIR TABLE orders;
 CHECK TABLE orders;
+REPAIR TABLE orders;
+```
+
+Note: `REPAIR TABLE` only works for MyISAM, ARCHIVE, and CSV tables. If InnoDB tables are corrupted, you need to start the server with `innodb_force_recovery` and then dump and restore the data:
+
+```bash
+# In /etc/mysql/mysql.conf.d/mysqld.cnf, temporarily add:
+# innodb_force_recovery = 1
+# Then restart MySQL, dump data, and restore into a clean instance.
+mysqldump --all-databases > backup.sql
 ```
 
 ## Post-Incident Actions
@@ -126,8 +135,13 @@ After recovery, prevent recurrence:
 # In /etc/mysql/mysql.conf.d/mysqld.cnf:
 # innodb_buffer_pool_size = 4G
 
-# Enable automatic restart on failure
+# Enable MySQL to start at boot
 systemctl enable mysql
+
+# To enable automatic restart on failure, ensure the systemd unit has:
+# [Service]
+# Restart=on-failure
+# You can check with: systemctl cat mysql
 ```
 
 Set up monitoring to alert before the next incident:
