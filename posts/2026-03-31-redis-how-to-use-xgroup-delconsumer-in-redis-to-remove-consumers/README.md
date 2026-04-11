@@ -15,14 +15,14 @@ When a consumer in a Redis Stream consumer group is no longer active - due to a 
 ## Syntax
 
 ```text
-XGROUP DELCONSUMER key groupname consumername
+XGROUP DELCONSUMER key group consumer
 ```
 
 - `key` - the stream name
-- `groupname` - the name of the consumer group
-- `consumername` - the consumer to remove
+- `group` - the name of the consumer group
+- `consumer` - the consumer to remove
 
-The return value is the number of pending messages that were owned by the removed consumer. These messages remain in the stream and its PEL but are no longer assigned to any consumer.
+The return value is the number of pending messages that were owned by the removed consumer. These messages remain in the stream but their PEL entries are removed along with the consumer, making them unclaimable after deletion.
 
 ## Basic Usage
 
@@ -42,11 +42,10 @@ XGROUP DELCONSUMER tasks workers consumer-1
 
 ## What Happens to Pending Messages?
 
-Deleting a consumer does not delete its pending messages from the stream or the PEL. Those messages still exist and must be handled explicitly:
+Deleting a consumer removes its PEL entries, making those pending messages unclaimable. The messages still exist in the stream but can no longer be claimed or acknowledged through the consumer group. You must handle pending messages **before** deleting the consumer:
 
-1. **Claim them with XCLAIM or XAUTOCLAIM** - Another consumer can take ownership.
-2. **Acknowledge them with XACK** - If you know they were processed and just not acknowledged.
-3. **Leave them** - They remain orphaned in the PEL until another consumer claims them.
+1. **Claim them with XCLAIM or XAUTOCLAIM** - Transfer ownership to another consumer before deletion.
+2. **Acknowledge them with XACK** - If you know they were processed and just not acknowledged, ACK them before deletion.
 
 ```bash
 # Before deleting, check pending messages for consumer-1
@@ -112,4 +111,4 @@ Use `DELCONSUMER` for removing individual consumers during scaling or maintenanc
 
 ## Summary
 
-`XGROUP DELCONSUMER` removes a specific consumer from a Redis Stream consumer group and returns the count of its pending messages. Those pending messages are not deleted but become orphaned in the PEL. Best practice is to transfer pending messages to another consumer using `XCLAIM` or `XAUTOCLAIM` before calling `XGROUP DELCONSUMER` to avoid message loss or stale PEL entries.
+`XGROUP DELCONSUMER` removes a specific consumer from a Redis Stream consumer group and returns the count of its pending messages. Those pending messages' PEL entries are removed along with the consumer, making them unclaimable after deletion. Best practice is to transfer pending messages to another consumer using `XCLAIM` or `XAUTOCLAIM` before calling `XGROUP DELCONSUMER` to avoid losing track of unprocessed messages.
