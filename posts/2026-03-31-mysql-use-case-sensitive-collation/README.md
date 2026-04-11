@@ -16,9 +16,8 @@ By default, MySQL uses case-insensitive collations (`_ci` suffix) for most chara
 
 For `utf8mb4`, the primary options are:
 
-- **`utf8mb4_bin`** - Binary comparison, fully case- and accent-sensitive.
+- **`utf8mb4_bin`** - Binary comparison, fully case- and accent-sensitive. Available in all MySQL versions.
 - **`utf8mb4_0900_as_cs`** - Unicode 9.0, accent-sensitive and case-sensitive (MySQL 8.0+).
-- **`utf8mb4_unicode_cs`** - Unicode Collation Algorithm, case-sensitive.
 
 For `latin1`, `latin1_bin` and `latin1_general_cs` are the typical choices.
 
