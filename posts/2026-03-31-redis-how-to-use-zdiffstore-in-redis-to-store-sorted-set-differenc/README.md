@@ -92,7 +92,7 @@ r.zadd('signup:started', {'user:1': 1000, 'user:2': 1001, 'user:3': 1002,
 r.zadd('signup:completed', {'user:1': 1010, 'user:3': 1015, 'user:5': 1020})
 
 # Find users who started but did not complete
-count = r.zdiffstore('signup:incomplete', 2, 'signup:started', 'signup:completed')
+count = r.zdiffstore('signup:incomplete', ['signup:started', 'signup:completed'])
 print(f"Incomplete signups: {count}")
 
 incomplete = r.zrange('signup:incomplete', 0, -1, withscores=True)
@@ -115,7 +115,7 @@ r.zadd('articles:all', {'art:1': 95, 'art:2': 88, 'art:3': 76,
 r.zadd('user:42:seen', {'art:1': 1, 'art:3': 1})
 
 # Unseen recommendations
-count = r.zdiffstore('user:42:recommendations', 2, 'articles:all', 'user:42:seen')
+count = r.zdiffstore('user:42:recommendations', ['articles:all', 'user:42:seen'])
 recs = r.zrange('user:42:recommendations', 0, -1, withscores=True, desc=True)
 print(f"Top recommendations: {recs}")
 # [('art:4', 92.0), ('art:2', 88.0), ('art:5', 70.0)]
@@ -136,7 +136,7 @@ r.zadd('users:all', {'user:a': 20240101, 'user:b': 20240102,
 r.zadd('newsletter:subscribed', {'user:a': 1, 'user:c': 1})
 
 # Find users not subscribed
-r.zdiffstore('newsletter:unsubscribed', 2, 'users:all', 'newsletter:subscribed')
+r.zdiffstore('newsletter:unsubscribed', ['users:all', 'newsletter:subscribed'])
 
 unsubscribed = r.zrange('newsletter:unsubscribed', 0, -1)
 print(f"Unsubscribed users: {unsubscribed}")  # ['user:b', 'user:d']
@@ -157,7 +157,7 @@ r.zadd('products:all', {'prod:1': 29.99, 'prod:2': 49.99,
 r.zadd('products:out_of_stock', {'prod:2': 1, 'prod:4': 1})
 
 # Available products
-count = r.zdiffstore('products:available', 2, 'products:all', 'products:out_of_stock')
+count = r.zdiffstore('products:available', ['products:all', 'products:out_of_stock'])
 available = r.zrange('products:available', 0, -1, withscores=True)
 print(f"Available ({count}): {available}")
 # [('prod:3', 19.99), ('prod:1', 29.99)]
