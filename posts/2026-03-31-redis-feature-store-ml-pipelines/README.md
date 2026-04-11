@@ -46,8 +46,7 @@ From an offline Spark job (via Python):
 
 ```python
 import redis
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 client = redis.Redis(host="redis.internal", port=6379, decode_responses=True)
 
@@ -65,7 +64,7 @@ write_user_features("42", {
     "days_since_last_order": 3,
     "preferred_category": "electronics",
     "churn_risk_score": 0.12,
-    "feature_timestamp": datetime.utcnow().isoformat()
+    "feature_timestamp": datetime.now(timezone.utc).isoformat()
 })
 ```
 
@@ -121,10 +120,19 @@ def get_features_batch(user_ids: list) -> list:
     return [
         {
             "user_id": uid,
-            "features": raw if raw else get_default_features()
+            "features": parse_user_features(raw) if raw else get_default_features()
         }
         for uid, raw in zip(user_ids, results)
     ]
+
+def parse_user_features(raw: dict) -> dict:
+    return {
+        "avg_order_value_30d": float(raw.get("avg_order_value_30d", 0)),
+        "order_count_30d": int(raw.get("order_count_30d", 0)),
+        "days_since_last_order": int(raw.get("days_since_last_order", 999)),
+        "preferred_category": raw.get("preferred_category", "unknown"),
+        "churn_risk_score": float(raw.get("churn_risk_score", 0.5)),
+    }
 ```
 
 ## Integration with scikit-learn Inference
