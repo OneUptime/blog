@@ -46,11 +46,13 @@ In `my.cnf`:
 default_authentication_plugin = mysql_native_password
 ```
 
-Or dynamically (MySQL 8.0, deprecated in 8.0.27):
+Or at server startup via command line:
 
-```sql
-SET GLOBAL default_authentication_plugin = 'mysql_native_password';
+```bash
+mysqld --default-authentication-plugin=mysql_native_password
 ```
+
+Note: `default_authentication_plugin` is not a dynamic variable and cannot be changed at runtime with `SET GLOBAL`. It can only be set in the configuration file or on the command line at startup. This variable is deprecated as of MySQL 8.0.27 and removed in MySQL 8.4 (replaced by `authentication_policy`).
 
 ## Checking Which Plugin a User Uses
 
@@ -79,7 +81,7 @@ Output:
 | Hash algorithm | SHA1 | SHA256 |
 | Brute-force resistance | Lower | Higher |
 | Requires SSL for first auth | No | Yes (or RSA key) |
-| Supported MySQL versions | 5.0+ | 8.0+ |
+| Supported MySQL versions | 4.1+ | 8.0+ |
 
 ## Migrating from mysql_native_password to caching_sha2_password
 
@@ -91,9 +93,9 @@ ALTER USER 'legacy_app'@'%'
 
 Update the client or connector to a version that supports `caching_sha2_password` before making this change. Most modern connectors (MySQL Connector/J 8.0+, mysql2 for Node.js, PyMySQL, etc.) support it.
 
-## Deprecation in MySQL 8.4
+## Deprecation and Removal
 
-MySQL 8.4 removed `mysql_native_password` as an option. Plan migrations to `caching_sha2_password` before upgrading to MySQL 8.4 or later.
+MySQL 8.4 disables `mysql_native_password` by default (the server starts with `--mysql-native-password=OFF`), but it can still be re-enabled with `--mysql-native-password=ON`. MySQL 9.0 fully removed the plugin. Plan migrations to `caching_sha2_password` before upgrading to MySQL 9.0 or later.
 
 ```bash
 # Check which users still use the legacy plugin before upgrading
@@ -103,4 +105,4 @@ mysql -u root -p -e \
 
 ## Summary
 
-`mysql_native_password` provides backward compatibility with older MySQL clients but uses a weaker SHA1-based hash compared to `caching_sha2_password`. Use it only when required by legacy tools, specify it explicitly with `IDENTIFIED WITH mysql_native_password`, and plan a migration to `caching_sha2_password` before upgrading to MySQL 8.4 or later.
+`mysql_native_password` provides backward compatibility with older MySQL clients but uses a weaker SHA1-based hash compared to `caching_sha2_password`. Use it only when required by legacy tools, specify it explicitly with `IDENTIFIED WITH mysql_native_password`, and plan a migration to `caching_sha2_password` before upgrading to MySQL 9.0 or later.
