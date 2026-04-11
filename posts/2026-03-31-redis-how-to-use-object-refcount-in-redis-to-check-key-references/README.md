@@ -36,7 +36,7 @@ OBJECT REFCOUNT other_counter
 
 ## Integer Sharing in Redis
 
-Redis pre-creates and shares integer objects for values in the range 0 to 9999 (the `REDIS_SHARED_INTEGERS` range). When you store any of these values, multiple keys share the same internal object - so the refcount appears as a very large number (INT_MAX = 2147483647).
+Redis pre-creates and shares integer objects for values in the range 0 to 9999 (the `OBJ_SHARED_INTEGERS` range). When you store any of these values, multiple keys share the same internal object - so the refcount appears as a very large number (INT_MAX = 2147483647).
 
 ```bash
 # Shared integers (0-9999)
@@ -143,7 +143,7 @@ def analyze_integer_sharing():
     # All share the same object!
     sample_refcount = client.object_refcount('key:0')
     print(f"All 1000 keys pointing to '100' share refcount: {sample_refcount}")
-    print("Memory for 1000 keys storing '100' is same as 1 key")
+    print("All 1000 keys share the same value object, saving memory on the value side")
 
 analyze_integer_sharing()
 ```
@@ -233,16 +233,16 @@ import redis
 
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-# Memory efficient: store as integer (shared)
+# Memory efficient: store as integer in top-level keys
 for user_id in range(10000):
-    # Status values 0-9999 will use shared integers
-    client.hset(f'user:{user_id}', 'status', '1')  # Shared!
+    # Top-level string keys with values 0-9999 use shared integer objects
+    client.set(f'user:{user_id}:status', '1')  # Shared value object!
 
 # Less efficient: store as non-shared string
-# client.hset(f'user:{user_id}', 'status', 'active')  # Not shared
+# client.set(f'user:{user_id}:status', 'active')  # Not shared
 
 print("Storing status as shared integer '1' vs string 'active'")
-print("With 10,000 users, integer approach saves significant memory")
+print("With 10,000 keys, the integer approach reuses one value object for all keys")
 ```
 
 ## Summary
