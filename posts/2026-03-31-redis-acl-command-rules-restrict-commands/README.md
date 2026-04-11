@@ -76,14 +76,18 @@ ACL GETUSER cacheapp
 ```
 
 ```text
-1) "flags"
-2) 1) "on"
-3) "passwords"
-4) 1) "hashed password..."
-5) "commands"
-6) "-@all +get +set +del +expire +ttl +exists"
-7) "keys"
-8) "cache:*"
+ 1) "flags"
+ 2) 1) "on"
+ 3) "passwords"
+ 4) 1) "hashed password..."
+ 5) "commands"
+ 6) "-@all +get +set +del +expire +ttl +exists"
+ 7) "keys"
+ 8) "~cache:*"
+ 9) "channels"
+10) "&*"
+11) "selectors"
+12) (empty array)
 ```
 
 ## Save ACL Rules to File
