@@ -38,7 +38,7 @@ pt-online-schema-change \
   --execute
 ```
 
-The `D=mydb,t=orders` specifies the database and table. Without `--execute`, pt-osc runs in dry-run mode and only prints what it would do.
+The `D=mydb,t=orders` specifies the database and table. Without `--execute`, pt-osc performs some safety checks and exits without making changes. Use `--dry-run` to test the full operation before executing.
 
 ## Adding an Index Online
 
