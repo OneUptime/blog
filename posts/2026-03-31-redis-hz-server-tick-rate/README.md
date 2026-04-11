@@ -17,7 +17,6 @@ Every `1/hz` seconds, Redis runs a set of background tasks:
 - Close idle connections that exceed `timeout`
 - Update replication and cluster state
 - Handle client output buffer management
-- Run scheduled Lua scripts (if any)
 
 ```bash
 # Check current hz
@@ -43,10 +42,10 @@ At `hz=10`, Redis runs active expiry 10 times per second. Each cycle processes a
 
 ```bash
 # Observe expiry behavior
-INFO stats | grep expired_keys    # Total keys expired since start
+redis-cli INFO stats | grep expired_keys    # Total keys expired since start
 
-# Monitor expiry rate in real time
-redis-cli --stat | grep expired
+# Monitor expiry rate over time (run twice and compare)
+redis-cli INFO stats | grep expired_keys
 ```
 
 ## When to Increase hz
@@ -77,13 +76,13 @@ CONFIG GET dynamic-hz
 # - More clients = higher effective hz (more responsive)
 ```
 
-When `dynamic-hz yes` is set, Redis multiplies the base `hz` by a factor proportional to client count, up to 10x the configured value.
+When `dynamic-hz yes` is set, Redis increases the effective `hz` based on the number of connected clients, up to the hard cap of 500 (`CONFIG_MAX_HZ`).
 
 ```bash
 # redis.conf
 hz 10
 dynamic-hz yes
-# Effective hz can scale up to 100 for high client counts
+# Effective hz scales up with client count, capped at 500
 ```
 
 ## CPU Cost of Higher hz
@@ -103,21 +102,25 @@ import redis, time
 r = redis.Redis()
 
 # Benchmark: measure how quickly expired keys are cleaned
+# Use DBSIZE instead of EXISTS because EXISTS triggers lazy expiry,
+# which would delete expired keys on access and skew the results.
+r.flushdb()
 r.config_set("hz", "10")
 for i in range(1000):
     r.set(f"test:{i}", "x", ex=1)  # 1 second TTL
 
 time.sleep(2)
-remaining_hz10 = sum(1 for i in range(1000) if r.exists(f"test:{i}"))
+remaining_hz10 = r.dbsize()
 print(f"hz=10: {remaining_hz10} keys still in memory after 2s")
 
 # Repeat with hz=100
+r.flushdb()
 r.config_set("hz", "100")
 for i in range(1000):
-    r.set(f"test2:{i}", "x", ex=1)
+    r.set(f"test:{i}", "x", ex=1)
 
 time.sleep(2)
-remaining_hz100 = sum(1 for i in range(1000) if r.exists(f"test2:{i}"))
+remaining_hz100 = r.dbsize()
 print(f"hz=100: {remaining_hz100} keys still in memory after 2s")
 ```
 
