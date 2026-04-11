@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Licensing, SSPL, Open Source, Legal
 
-Description: Understand the Redis licensing changes from BSD to SSPL and AGPLv3 - what changed in 2024, what it means for your deployment, and how to evaluate your compliance obligations.
+Description: Understand the Redis licensing changes from BSD to SSPL and RSALv2 - what changed in 2024, what it means for your deployment, and how to evaluate your compliance obligations.
 
 ---
 
@@ -59,7 +59,7 @@ Prohibited:
 Deployment Type                          | Compliant?
 -----------------------------------------|------------------
 Self-hosting for your own app            | Yes (both licenses)
-Using managed AWS ElastiCache (Redis)    | AWS has a commercial license
+Using managed AWS ElastiCache (Redis)    | AWS migrated to Valkey
 Using Redis Enterprise                   | Commercially licensed by Redis Ltd.
 Building a SaaS with Redis as backend    | Yes, for internal Redis use
 Offering managed Redis hosting to others | Requires commercial license
