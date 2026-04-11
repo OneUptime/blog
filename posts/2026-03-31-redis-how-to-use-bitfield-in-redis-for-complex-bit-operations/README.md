@@ -10,7 +10,7 @@ Description: Learn how to use BITFIELD in Redis to store and manipulate multiple
 
 ## What Is BITFIELD
 
-`BITFIELD` treats a Redis string as an array of arbitrary-width integer fields and allows you to get, set, and increment them atomically. Unlike individual bit commands, `BITFIELD` works with multi-bit integers (8-bit, 16-bit, 32-bit, 64-bit, or arbitrary widths) at any byte offset.
+`BITFIELD` treats a Redis string as an array of arbitrary-width integer fields and allows you to get, set, and increment them atomically. Unlike individual bit commands, `BITFIELD` works with multi-bit integers (8-bit, 16-bit, 32-bit, 64-bit, or arbitrary widths) at any bit offset.
 
 This makes it ideal for storing arrays of small integers compactly without using a hash or list.
 
@@ -21,7 +21,7 @@ BITFIELD key [GET type offset] [SET type offset value] [INCRBY type offset incre
 ```
 
 Integer types:
-- `u8`, `u16`, `u32`, `u64` - unsigned integers
+- `u8`, `u16`, `u32` - unsigned integers (max `u63`)
 - `i8`, `i16`, `i32`, `i64` - signed integers
 - `u<n>` or `i<n>` - arbitrary widths (e.g., `u3`, `i12`)
 
@@ -157,13 +157,13 @@ ACHIEVEMENTS = {
 def grant_achievement(user_id, achievement):
     bit_offset = ACHIEVEMENTS[achievement]
     key = f'achievements:{user_id}'
-    r.bitfield(key, 'SET', 'u1', bit_offset, 1)
+    r.bitfield(key).set('u1', bit_offset, 1).execute()
     print(f"Granted '{achievement}' to {user_id}")
 
 def has_achievement(user_id, achievement):
     bit_offset = ACHIEVEMENTS[achievement]
     key = f'achievements:{user_id}'
-    result = r.bitfield(key, 'GET', 'u1', bit_offset)
+    result = r.bitfield(key).get('u1', bit_offset).execute()
     return bool(result[0])
 
 grant_achievement('user:42', 'first_login')
@@ -181,27 +181,19 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def set_player_stats(player_id, level, xp, health):
     key = f'player:{player_id}:stats'
-    pipe = r.pipeline()
-    # u8 at #0 = level (0-255)
-    # u16 at #1 = XP (0-65535), starts at bit 8
-    # u8 at #2 = health (0-255)
-    pipe.bitfield(key, 'SET', 'u8', '#0', level)
-    pipe.bitfield(key, 'SET', 'u16', 8, xp)
-    pipe.bitfield(key, 'SET', 'u8', 24, health)
-    pipe.execute()
+    # u8 at bit 0 = level (0-255)
+    # u16 at bit 8 = XP (0-65535)
+    # u8 at bit 24 = health (0-255)
+    r.bitfield(key).set('u8', 0, level).set('u16', 8, xp).set('u8', 24, health).execute()
 
 def get_player_stats(player_id):
     key = f'player:{player_id}:stats'
-    results = r.bitfield(key,
-        'GET', 'u8', '#0',
-        'GET', 'u16', 8,
-        'GET', 'u8', 24
-    )
+    results = r.bitfield(key).get('u8', 0).get('u16', 8).get('u8', 24).execute()
     return {'level': results[0], 'xp': results[1], 'health': results[2]}
 
 def gain_xp(player_id, amount):
     key = f'player:{player_id}:stats'
-    result = r.bitfield(key, 'OVERFLOW', 'SAT', 'INCRBY', 'u16', 8, amount)
+    result = r.bitfield(key).overflow('SAT').incrby('u16', 8, amount).execute()
     return result[0]
 
 set_player_stats('player:1', level=5, xp=1200, health=100)
@@ -224,11 +216,11 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def set_rating(item_id, user_index, rating):
     key = f'ratings:{item_id}'
-    r.bitfield(key, 'SET', 'u3', user_index * 3, rating)
+    r.bitfield(key).set('u3', user_index * 3, rating).execute()
 
 def get_rating(item_id, user_index):
     key = f'ratings:{item_id}'
-    result = r.bitfield(key, 'GET', 'u3', user_index * 3)
+    result = r.bitfield(key).get('u3', user_index * 3).execute()
     return result[0]
 
 set_rating('product:1', 0, 5)
