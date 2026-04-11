@@ -10,9 +10,9 @@ Description: Learn how to use TDIGEST.RANK in Redis to estimate the rank (positi
 
 ## What Is TDIGEST.RANK?
 
-`TDIGEST.RANK` returns the estimated rank of one or more values within a T-Digest. The rank is the number of elements in the sketch that are less than or equal to the queried value. This is similar to `TDIGEST.CDF` but returns an absolute count instead of a fraction.
+`TDIGEST.RANK` returns the estimated rank of one or more values within a T-Digest. The rank is the number of elements in the sketch that are smaller than the queried value. This is similar to `TDIGEST.CDF` but returns an absolute count instead of a fraction.
 
-If your T-Digest contains 1,000 samples and a value has rank 950, it means approximately 950 of those samples are at or below that value.
+If your T-Digest contains 1,000 samples and a value has rank 950, it means approximately 950 of those samples are below that value.
 
 ## Syntax
 
@@ -30,13 +30,13 @@ TDIGEST.ADD scores 10 20 30 40 50 60 70 80 90 100
 
 # What is the rank of 50?
 TDIGEST.RANK scores 50
-# Returns: (integer) 5 - approximately 5 values are <= 50
+# Returns: (integer) 4 - approximately 4 values are < 50
 
 # Query multiple values
 TDIGEST.RANK scores 25 50 75
-# 1) (integer) 2   - ~2 values <= 25
-# 2) (integer) 5   - ~5 values <= 50
-# 3) (integer) 7   - ~7 values <= 75
+# 1) (integer) 2   - ~2 values < 25
+# 2) (integer) 4   - ~4 values < 50
+# 3) (integer) 7   - ~7 values < 75
 ```
 
 ## CDF vs RANK
@@ -47,7 +47,7 @@ TDIGEST.RANK scores 25 50 75
 | TDIGEST.RANK | Absolute count | 950 |
 
 ```bash
-# These are equivalent for a 1000-sample digest:
+# These are approximately equivalent for a 1000-sample digest:
 TDIGEST.CDF latency 200    # -> 0.95 (95%)
 TDIGEST.RANK latency 200   # -> 950  (950 out of 1000)
 ```
@@ -65,7 +65,7 @@ TDIGEST.ADD game:scores 1500 2100 3400 5000 7200 4500 2800 6100 3900 1800
 # Where does a score of 5500 rank?
 TDIGEST.RANK game:scores 5500
 # Returns: (integer) 8200
-# About 8,200 players scored <= 5500 out of all players
+# About 8,200 players scored < 5500 out of all players
 ```
 
 ## Python Example: User Score Ranking
@@ -101,20 +101,20 @@ print(get_player_rank(7000))
 # {'score': 7000, 'rank': 920, 'total': 1000, 'percentile': 'top 8.0%'}
 ```
 
-## Negative Rank Handling
+## Rank for Out-of-Range Values
 
-If the queried value is below all elements in the digest, TDIGEST.RANK returns -1 (or 0 depending on version):
+If the queried value is below all elements in the digest, TDIGEST.RANK returns 0:
 
 ```bash
 TDIGEST.ADD scores 50 60 70 80 90
 
 # Value below all samples
 TDIGEST.RANK scores 10
-# Returns: (integer) -1 or 0
+# Returns: (integer) 0
 
 # Value above all samples
 TDIGEST.RANK scores 100
-# Returns: (integer) 5 (all elements are <= 100)
+# Returns: (integer) 5 (all elements are < 100)
 ```
 
 ## Comparing Multiple Values for Relative Ordering
@@ -125,9 +125,9 @@ TDIGEST.ADD api:latency 12 18 23 45 67 88 110 250 340 490 1200 980
 
 # Compare two latency values to see which is more common
 TDIGEST.RANK api:latency 100 200
-# 1) (integer) 7   - 7 samples <= 100ms
-# 2) (integer) 10  - 10 samples <= 200ms
-# So 3 samples are between 100ms and 200ms
+# 1) (integer) 6   - 6 samples < 100ms
+# 2) (integer) 7   - 7 samples < 200ms
+# So 1 sample is between 100ms and 200ms
 ```
 
 ## Combining RANK with TDIGEST.INFO
@@ -136,7 +136,7 @@ Get total count from INFO and combine with RANK to compute percentile:
 
 ```bash
 TDIGEST.INFO api:latency
-# Look for "Merged weight" value (total samples)
+# Use "Merged weight" + "Unmerged weight" for total samples
 
 TDIGEST.RANK api:latency 200
 # rank / merged_weight = CDF value
@@ -146,7 +146,7 @@ TDIGEST.RANK api:latency 200
 def get_percentile_for_value(key: str, value: float) -> float:
     info = r.execute_command("TDIGEST.INFO", key)
     info_dict = dict(zip(info[::2], info[1::2]))
-    total = float(info_dict.get("Merged weight", 0))
+    total = float(info_dict.get("Merged weight", 0)) + float(info_dict.get("Unmerged weight", 0))
     if total == 0:
         return 0.0
     rank = r.execute_command("TDIGEST.RANK", key, str(value))
@@ -158,4 +158,4 @@ print(f"200ms is at the {pct:.1f}th percentile")
 
 ## Summary
 
-`TDIGEST.RANK` returns the estimated count of values at or below a queried value in a Redis T-Digest, providing an absolute rank rather than a fraction. It is useful for leaderboard position estimation, comparing relative positions of multiple values, and computing custom percentile metrics. For fractional percentile queries, use `TDIGEST.CDF` instead.
+`TDIGEST.RANK` returns the estimated count of values below a queried value in a Redis T-Digest, providing an absolute rank rather than a fraction. It is useful for leaderboard position estimation, comparing relative positions of multiple values, and computing custom percentile metrics. For fractional percentile queries, use `TDIGEST.CDF` instead.
