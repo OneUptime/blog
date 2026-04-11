@@ -84,6 +84,7 @@ def get_progress(upload_id: str) -> dict:
 ## Streaming Progress via Server-Sent Events
 
 ```python
+import json
 from flask import Flask, Response, stream_with_context
 import time
 
