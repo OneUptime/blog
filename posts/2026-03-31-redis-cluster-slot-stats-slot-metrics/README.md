@@ -8,12 +8,12 @@ Description: Learn how to use CLUSTER SLOT-STATS in Redis to retrieve per-slot m
 
 ---
 
-`CLUSTER SLOT-STATS`, available in Redis 7.4+, provides per-slot statistics including key counts and CPU usage for slots owned by the current node. This enables fine-grained monitoring of slot utilization, helping you identify hot slots and uneven data distribution.
+`CLUSTER SLOT-STATS`, available in Redis 8.2+, provides per-slot statistics including key counts, CPU usage, memory usage, and network bytes for slots owned by the current node. This enables fine-grained monitoring of slot utilization, helping you identify hot slots and uneven data distribution.
 
 ## Syntax
 
 ```text
-CLUSTER SLOT-STATS ORDERBY { keycount | cpuseconds } [LIMIT count] [ASC | DESC]
+CLUSTER SLOT-STATS ORDERBY { KEY-COUNT | CPU-USEC | MEMORY-BYTES | NETWORK-BYTES-IN | NETWORK-BYTES-OUT } [LIMIT count] [ASC | DESC]
 CLUSTER SLOT-STATS SLOTSRANGE start-slot end-slot
 ```
 
@@ -21,7 +21,7 @@ CLUSTER SLOT-STATS SLOTSRANGE start-slot end-slot
 
 ```bash
 # Get the 10 slots with the most keys, descending
-redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY keycount LIMIT 10 DESC
+redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY KEY-COUNT LIMIT 10 DESC
 ```
 
 Example output:
@@ -32,6 +32,12 @@ Example output:
       2) (integer) 8432
       3) "cpu-usec"
       4) (integer) 124500
+      5) "memory-bytes"
+      6) (integer) 204800
+      7) "network-bytes-in"
+      8) (integer) 51200
+      9) "network-bytes-out"
+      10) (integer) 102400
 ```
 
 ## Getting Stats for a Slot Range
@@ -43,10 +49,10 @@ redis-cli -p 7001 CLUSTER SLOT-STATS SLOTSRANGE 0 1000
 
 ## Identifying Hot Slots
 
-Use `ORDERBY cpuseconds` to find the most CPU-intensive slots:
+Use `ORDERBY CPU-USEC` to find the most CPU-intensive slots:
 
 ```bash
-redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY cpuseconds LIMIT 5 DESC
+redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY CPU-USEC LIMIT 5 DESC
 ```
 
 Slots with disproportionately high CPU usage may indicate key patterns that generate excessive operations - for example, very large sets or sorted sets being iterated frequently.
@@ -57,10 +63,10 @@ Compare key counts across slots to spot imbalances:
 
 ```bash
 # Top 20 most populated slots
-redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY keycount LIMIT 20 DESC
+redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY KEY-COUNT LIMIT 20 DESC
 
 # Bottom 20 (least populated)
-redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY keycount LIMIT 20 ASC
+redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY KEY-COUNT LIMIT 20 ASC
 ```
 
 A healthy cluster has relatively uniform key counts across slots, assuming a good key naming strategy.
@@ -71,7 +77,7 @@ A healthy cluster has relatively uniform key counts across slots, assuming a goo
 #!/bin/bash
 # Alert if any single slot exceeds 10,000 keys
 threshold=10000
-result=$(redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY keycount LIMIT 1 DESC)
+result=$(redis-cli -p 7001 CLUSTER SLOT-STATS ORDERBY KEY-COUNT LIMIT 1 DESC)
 top_slot=$(echo "$result" | grep "key-count" -A1 | tail -1 | tr -d ' ')
 
 if [ "$top_slot" -gt "$threshold" ]; then
@@ -81,7 +87,7 @@ fi
 
 ## Availability
 
-`CLUSTER SLOT-STATS` requires Redis 7.4 or later. Check your version:
+`CLUSTER SLOT-STATS` requires Redis 8.2 or later. Check your version:
 
 ```bash
 redis-cli INFO server | grep redis_version
@@ -94,9 +100,9 @@ For older versions, use `CLUSTER COUNTKEYSINSLOT` to check individual slots manu
 | Feature | CLUSTER SLOT-STATS | CLUSTER COUNTKEYSINSLOT |
 |---------|-------------------|------------------------|
 | Multiple slots at once | Yes | No (one at a time) |
-| CPU metrics | Yes | No |
+| CPU, memory, network metrics | Yes | No |
 | Sorting and limiting | Yes | No |
-| Redis version required | 7.4+ | All versions |
+| Redis version required | 8.2+ | 3.0+ |
 
 ## Summary
 
