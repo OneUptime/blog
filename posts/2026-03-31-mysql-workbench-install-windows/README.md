@@ -25,7 +25,7 @@ flowchart LR
 
 - Windows 10 or Windows 11 (64-bit)
 - Microsoft Visual C++ Redistributable 2019 or later
-- .NET Framework 4.5 or later
+- .NET Framework 4.5.2 or later
 - ~500 MB free disk space
 
 ## Method 1 - Install via MySQL Installer (Recommended)
