@@ -14,7 +14,7 @@ Even after enabling SSL on a MySQL server, clients can still connect without enc
 
 MySQL offers several levels of SSL enforcement:
 
-- `REQUIRE SSL` - Connection must use SSL (any valid certificate)
+- `REQUIRE SSL` - Connection must use SSL/TLS encryption
 - `REQUIRE X509` - Connection must present a valid client certificate
 - `REQUIRE ISSUER` - Certificate must be issued by a specific CA
 - `REQUIRE SUBJECT` - Certificate must have a specific subject
@@ -104,6 +104,7 @@ FLUSH PRIVILEGES;
 For a Node.js application using `mysql2`:
 
 ```javascript
+const fs = require('fs');
 const mysql = require('mysql2');
 
 const connection = mysql.createConnection({
