@@ -43,13 +43,13 @@ available = math.min(capacity, available + refilled)
 
 if available >= consume_bytes then
     available = available - consume_bytes
-    redis.call('HMSET', key, 'bytes', available, 'last_refill', now_ms)
+    redis.call('HSET', key, 'bytes', available, 'last_refill', now_ms)
     redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 60)
     return {1, math.floor(available)}
 else
     local needed = consume_bytes - available
     local retry_after_ms = math.ceil(needed / refill_rate * 1000)
-    redis.call('HMSET', key, 'bytes', available, 'last_refill', now_ms)
+    redis.call('HSET', key, 'bytes', available, 'last_refill', now_ms)
     redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 60)
     return {0, retry_after_ms}
 end
