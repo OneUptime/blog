@@ -10,7 +10,7 @@ Description: Configure ProxySQL automatic failover for MySQL so that write traff
 
 ## How ProxySQL Handles Failover
 
-ProxySQL does not perform primary promotion itself - that is left to an external tool such as Orchestrator or MHA. ProxySQL's role is to detect that a backend is unhealthy, shun it, and route new connections to a healthy server in the same hostgroup. Automatic failover therefore requires two things: ProxySQL health checks and an external tool to update `mysql_servers` with the new primary after promotion.
+ProxySQL does not perform primary promotion itself - that is left to an external tool such as Orchestrator or MHA. ProxySQL's role is to detect that a backend is unhealthy, shun it, and route new connections to a healthy server in the same hostgroup. Automatic failover therefore requires two things: ProxySQL health checks and an external tool to promote a replica to primary. When `mysql_replication_hostgroups` is configured, ProxySQL automatically reassigns servers between hostgroups based on the `read_only` variable, so the external tool does not need to update `mysql_servers` directly.
 
 ## Configuring Health Checks
 
@@ -48,14 +48,14 @@ With this in place, ProxySQL monitors `@@read_only` on every server. Servers wit
 
 ## Handling the Failed Primary
 
-When the old primary fails, ProxySQL shunns it. After your external failover tool promotes a replica, the old primary may be reconfigured as a new replica with `read_only=ON`. ProxySQL will then move it back to the read hostgroup automatically once it comes online.
+When the old primary fails, ProxySQL shuns it. After your external failover tool promotes a replica, the old primary may be reconfigured as a new replica with `read_only=ON`. ProxySQL will then move it back to the read hostgroup automatically once it comes online.
 
 ## Testing Failover
 
 Use the monitor logs to confirm ProxySQL detected the failure:
 
 ```sql
-SELECT hostname, port, time_start_us, connect_success, error
+SELECT hostname, port, time_start_us, connect_success_time_us, connect_error
 FROM mysql_server_connect_log
 ORDER BY time_start_us DESC
 LIMIT 20;
