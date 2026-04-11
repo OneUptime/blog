@@ -8,7 +8,7 @@ Description: Learn how to use the connection_pool gem with redis-rb to safely sh
 
 ---
 
-The redis-rb client creates one connection per object. In a multi-threaded application (Puma, Sidekiq, concurrent workers), sharing a single Redis instance is unsafe because TCP connections are not thread-safe. The `connection_pool` gem solves this by maintaining a pool of connections.
+The redis-rb client creates one connection per object. In redis-rb 5.x, each `Redis` instance is thread-safe — access to the underlying TCP connection is protected by a mutex. However, this means only one thread can execute a command at a time, making a single shared instance a performance bottleneck in multi-threaded applications (Puma, Sidekiq, concurrent workers). The `connection_pool` gem solves this by maintaining a pool of connections, allowing threads to execute Redis commands concurrently.
 
 ## Installation
 
@@ -94,12 +94,12 @@ end
 
 A good starting point for pool size:
 
-- **Puma**: set pool size to match Puma threads per worker. If Puma runs 5 threads per worker and you have 3 workers, use `size: 15`.
+- **Puma**: set pool size to match Puma threads per worker. Each forked worker process gets its own independent pool, so if Puma runs 5 threads per worker, use `size: 5`. With 3 workers, this results in up to 15 total connections to Redis (5 per worker).
 - **Sidekiq**: `size` should be slightly larger than Sidekiq concurrency.
 
 ```ruby
 # For Sidekiq
-sidekiq_concurrency = Sidekiq.default_configuration[:concurrency] rescue 10
+sidekiq_concurrency = Sidekiq.default_configuration.concurrency
 REDIS_POOL = ConnectionPool.new(size: sidekiq_concurrency + 2, timeout: 5) do
   Redis.new(url: ENV['REDIS_URL'])
 end
