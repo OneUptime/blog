@@ -66,7 +66,7 @@ def remove_member(filter_name: str, item: str) -> bool:
 def add_batch(filter_name: str, items: list) -> list:
     if not items:
         return []
-    return r.execute_command('CF.MADD', filter_name, *items)
+    return r.execute_command('CF.INSERT', filter_name, 'ITEMS', *items)
 
 def check_batch(filter_name: str, items: list) -> list:
     if not items:
@@ -136,11 +136,13 @@ def get_filter_stats(filter_name: str) -> dict:
     info = dict(zip(result[0::2], result[1::2]))
     return {
         "size_bytes": info.get('Size'),
-        "capacity": info.get('Capacity'),
         "num_buckets": info.get('Number of buckets'),
         "items_inserted": info.get('Number of items inserted'),
         "items_deleted": info.get('Number of items deleted'),
-        "filter_fills": info.get('Number of filters')
+        "num_filters": info.get('Number of filter'),
+        "bucket_size": info.get('Bucket size'),
+        "expansion_rate": info.get('Expansion rate'),
+        "max_iterations": info.get('Max iteration')
     }
 
 print(get_filter_stats('revoked_tokens'))
@@ -148,4 +150,4 @@ print(get_filter_stats('revoked_tokens'))
 
 ## Summary
 
-Redis Cuckoo Filters extend the Bloom Filter pattern with item deletion support, making them suitable for dynamic membership sets like token revocation lists and session trackers. Use CF.DEL to remove expired items and free up capacity without rebuilding the filter. Batch operations with CF.MADD and CF.MEXISTS keep your membership checks efficient even at high volumes.
+Redis Cuckoo Filters extend the Bloom Filter pattern with item deletion support, making them suitable for dynamic membership sets like token revocation lists and session trackers. Use CF.DEL to remove expired items and free up capacity without rebuilding the filter. Batch operations with CF.INSERT and CF.MEXISTS keep your membership checks efficient even at high volumes.
