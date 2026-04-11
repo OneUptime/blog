@@ -60,7 +60,7 @@ JOIN JSON_TABLE(
 ) j;
 ```
 
-The trick converts the CSV string into a JSON array by replacing commas with `","` and wrapping it in `["...""]`, then uses `JSON_TABLE` to expand it.
+The trick converts the CSV string into a JSON array by replacing commas with `","` and wrapping it in `["..."]`, then uses `JSON_TABLE` to expand it.
 
 ## Using a Numbers Table
 
