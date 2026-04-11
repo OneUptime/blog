@@ -51,7 +51,7 @@ All queries must filter by `tenant_id`. Use a view or stored procedure layer to 
 ```sql
 -- Stored procedure that always scopes queries to a tenant
 DELIMITER $$
-CREATE PROCEDURE get_orders(IN p_tenant_id INT)
+CREATE PROCEDURE get_orders(IN p_tenant_id INT UNSIGNED)
 BEGIN
   SELECT id, customer_id, total, created_at
   FROM orders
