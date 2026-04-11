@@ -113,20 +113,24 @@ safe_flushdb(15)
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient({ database: 3 });
-await client.connect();
+(async () => {
+    const client = createClient({ database: 3 });
+    await client.connect();
 
-// Count keys before flushing
-const keyCount = await client.dbSize();
-console.log(`About to delete ${keyCount} key(s) from DB 3`);
+    // Count keys before flushing
+    const keyCount = await client.dbSize();
+    console.log(`About to delete ${keyCount} key(s) from DB 3`);
 
-// Async flush
-await client.flushDb('ASYNC');
-console.log('Database 3 cleared (async)');
+    // Async flush
+    await client.flushDb('ASYNC');
+    console.log('Database 3 cleared (async)');
 
-// Verify
-const afterCount = await client.dbSize();
-console.log(`Keys remaining: ${afterCount}`); // 0
+    // Verify
+    const afterCount = await client.dbSize();
+    console.log(`Keys remaining: ${afterCount}`); // 0
+
+    await client.disconnect();
+})();
 ```
 
 ## FLUSHALL with Precautions
