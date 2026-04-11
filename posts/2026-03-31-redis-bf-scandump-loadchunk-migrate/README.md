@@ -115,7 +115,7 @@ restore_from_file("email:seen_restored", "email_seen_bloom.pkl")
 ## Important Notes
 
 - `BF.SCANDUMP` and `BF.LOADCHUNK` work with the raw internal representation, so the restored filter behaves exactly like the original.
-- The destination key must not exist before `BF.LOADCHUNK` begins, or the behavior is undefined.
+- If the destination key already exists, `BF.LOADCHUNK` will overwrite the existing Bloom filter stored under that key.
 - This approach is best for periodic snapshots, not real-time replication. For live sync, use Redis replication instead.
 - Large filters may produce many chunks; handle this with pagination logic as shown above.
 
