@@ -20,11 +20,11 @@ GitHub: https://github.com/oliver006/redis_exporter
 
 ```bash
 # Download the latest release
-wget https://github.com/oliver006/redis_exporter/releases/download/v1.59.0/redis_exporter-v1.59.0.linux-amd64.tar.gz
+wget https://github.com/oliver006/redis_exporter/releases/download/v1.82.0/redis_exporter-v1.82.0.linux-amd64.tar.gz
 
 # Extract
-tar xzf redis_exporter-v1.59.0.linux-amd64.tar.gz
-cd redis_exporter-v1.59.0.linux-amd64
+tar xzf redis_exporter-v1.82.0.linux-amd64.tar.gz
+cd redis_exporter-v1.82.0.linux-amd64
 
 # Run with defaults (connects to redis://localhost:6379)
 ./redis_exporter
@@ -120,21 +120,21 @@ Add to `prometheus.yml`:
 ```yaml
 scrape_configs:
   - job_name: 'redis'
+    scrape_interval: 15s
+    scrape_timeout: 10s
     static_configs:
       - targets:
           - localhost:9121
-    scrape_interval: 15s
-    scrape_timeout: 10s
 ```
 
-Reload Prometheus:
+Reload Prometheus (requires Prometheus to be started with `--web.enable-lifecycle`):
 ```bash
 curl -X POST http://localhost:9090/-/reload
 ```
 
 ## Monitoring Multiple Redis Instances
 
-Use the `check_keys` and `redis.addr` parameters with Prometheus relabeling:
+Use Prometheus relabeling to route scrape requests through a single exporter:
 ```yaml
 scrape_configs:
   - job_name: 'redis_exporter'
@@ -166,9 +166,8 @@ scrape_configs:
 | `redis_evicted_keys_total` | Keys evicted due to maxmemory |
 | `redis_expired_keys_total` | Keys expired by TTL |
 | `redis_commands_processed_total` | Total commands executed |
-| `redis_instantaneous_ops_per_sec` | Current operations/sec |
 | `redis_mem_fragmentation_ratio` | Memory fragmentation |
-| `redis_replication_lag_seconds` | Replica lag (on replicas) |
+| `redis_connected_slave_lag_seconds` | Replica lag (on replicas) |
 
 ## Useful PromQL Queries
 
@@ -195,17 +194,15 @@ rate(redis_commands_processed_total[1m])
 
 ## Enabling Per-Command Metrics
 
-redis_exporter can expose per-command statistics via the `INFO commandstats` section:
+redis_exporter automatically exposes per-command statistics from the `INFO commandstats` section. No additional flags are needed:
 ```bash
 redis_exporter \
-  --redis.addr=redis://localhost:6379 \
-  --include-system-metrics \
-  --redis-only-metrics
+  --redis.addr=redis://localhost:6379
 ```
 
-Per-command calls and microseconds:
+Per-command calls and duration:
 ```text
-redis_commands_calls_total{cmd="get"} 3.8291847e+07
+redis_commands_total{cmd="get"} 3.8291847e+07
 redis_commands_duration_seconds_total{cmd="get"} 7.28e+00
 ```
 
