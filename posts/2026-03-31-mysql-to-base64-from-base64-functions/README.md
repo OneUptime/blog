@@ -112,7 +112,7 @@ WHERE FROM_BASE64(token) IS NOT NULL;
 
 ## Use in URL Token Generation
 
-For short-lived tokens stored in the database, Base64 encoding provides URL-safe transport:
+For short-lived tokens stored in the database, Base64 encoding provides a compact text representation suitable for transport:
 
 ```sql
 SELECT
@@ -130,12 +130,12 @@ SELECT FROM_BASE64('dXNlcjoxNzAwMDAwMDAwOnJlc2V0') AS decoded_token;
 
 ## MySQL vs Standard Base64
 
-MySQL's `TO_BASE64()` follows RFC 1421 encoding, inserting a newline (`\n`) every 76 characters. This differs from URL-safe Base64 encoders. If you need URL-safe Base64 without newlines, post-process with `REPLACE()`:
+MySQL's `TO_BASE64()` follows RFC 2045 (MIME) encoding, inserting a newline (`\n`) every 76 characters. This differs from URL-safe Base64 encoders. If you need URL-safe Base64 without newlines, post-process with `REPLACE()`:
 
 ```sql
-SELECT REPLACE(REPLACE(TO_BASE64('test string'), '\n', ''), '+', '-') AS url_safe;
+SELECT REPLACE(REPLACE(REPLACE(TO_BASE64('test string'), '\n', ''), '+', '-'), '/', '_') AS url_safe;
 ```
 
 ## Summary
 
-`TO_BASE64()` and `FROM_BASE64()` provide a simple way to Base64-encode and decode strings and binary data in MySQL. They are useful for serializing BLOB columns, generating compact tokens, and preparing binary content for text transport. Remember that Base64 is encoding only - not encryption - and that MySQL's implementation inserts newlines every 76 characters per RFC 1421.
+`TO_BASE64()` and `FROM_BASE64()` provide a simple way to Base64-encode and decode strings and binary data in MySQL. They are useful for serializing BLOB columns, generating compact tokens, and preparing binary content for text transport. Remember that Base64 is encoding only - not encryption - and that MySQL's implementation inserts newlines every 76 characters per RFC 2045.
