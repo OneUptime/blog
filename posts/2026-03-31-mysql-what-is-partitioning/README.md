@@ -84,9 +84,10 @@ WHERE YEAR(created_at) = 2024;
 ## Managing Partitions
 
 ```sql
--- Add a new partition
-ALTER TABLE orders ADD PARTITION (
-  PARTITION p2026 VALUES LESS THAN (2027)
+-- Add a new partition (must reorganize because p_future uses MAXVALUE)
+ALTER TABLE orders REORGANIZE PARTITION p_future INTO (
+  PARTITION p2026 VALUES LESS THAN (2027),
+  PARTITION p_future VALUES LESS THAN MAXVALUE
 );
 
 -- Drop an old partition (fast, no row-by-row DELETE)
@@ -103,7 +104,7 @@ WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'orders';
 
 ## Partitioning Limitations
 
-- All columns in a `PRIMARY KEY` or `UNIQUE` index must be part of the partitioning expression.
+- Every `PRIMARY KEY` or `UNIQUE` index must include all columns used in the partitioning expression.
 - Foreign keys are not supported on partitioned tables.
 - Full-text indexes are not supported on partitioned tables.
 - Partitioning is supported on InnoDB and MyISAM; not all storage engines support it.
