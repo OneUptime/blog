@@ -23,27 +23,28 @@ By tiering data, you can run a smaller (cheaper) Redis instance for your true ho
 AWS ElastiCache for Redis offers data tiering on `r6gd` instance types that include NVMe SSD. Data tiering in ElastiCache automatically moves less-accessed data from RAM to the local SSD:
 
 ```bash
-# Create a data-tiering enabled cluster
-aws elasticache create-cache-cluster \
-  --cache-cluster-id my-tiered-cluster \
+# Create a data-tiering enabled replication group
+aws elasticache create-replication-group \
+  --replication-group-id my-tiered-cluster \
+  --replication-group-description "Data tiering enabled cluster" \
   --cache-node-type cache.r6gd.xlarge \
   --engine redis \
   --engine-version 6.2 \
-  --num-cache-nodes 1 \
+  --num-cache-clusters 1 \
   --data-tiering-enabled
 
 # Verify data tiering is enabled
-aws elasticache describe-cache-clusters \
-  --cache-cluster-id my-tiered-cluster \
-  --query 'CacheClusters[0].DataTiering'
+aws elasticache describe-replication-groups \
+  --replication-group-id my-tiered-cluster \
+  --query 'ReplicationGroups[0].DataTiering'
 ```
 
 ### Supported Instance Types
 
 Data tiering requires `r6gd` instance family:
-- `cache.r6gd.xlarge` - 32 GB RAM + 100 GB NVMe
-- `cache.r6gd.2xlarge` - 64 GB RAM + 200 GB NVMe
-- `cache.r6gd.4xlarge` - 128 GB RAM + 400 GB NVMe
+- `cache.r6gd.xlarge` - ~26 GiB memory + ~237 GiB NVMe SSD
+- `cache.r6gd.2xlarge` - ~53 GiB memory + ~474 GiB NVMe SSD
+- `cache.r6gd.4xlarge` - ~106 GiB memory + ~950 GiB NVMe SSD
 
 The effective capacity is RAM + NVMe SSD. You can store more data than RAM alone for a fraction of the cost of adding more RAM-only instances.
 
@@ -130,7 +131,6 @@ Before implementing tiering, analyze which keys are hot vs cold:
 
 ```python
 import redis
-from collections import Counter
 
 r = redis.Redis()
 
@@ -147,7 +147,7 @@ def analyze_key_access_patterns(sample_size=10000):
     while count < sample_size:
         cursor, keys = r.scan(cursor, count=100)
         for key in keys:
-            idle = r.object_idletime(key)
+            idle = r.object("idletime", key)
             if idle is None:
                 continue
             size = r.memory_usage(key) or 0
