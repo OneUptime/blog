@@ -58,10 +58,10 @@ redis-cli CONFIG SET tcp-keepalive 60
 Retransmissions indicate packet loss or network congestion:
 
 ```bash
-sudo tcpdump -i eth0 "port 6379" -r /tmp/redis-capture.pcap | grep -i "retransmit"
+tshark -r /tmp/redis-capture.pcap -Y "tcp.analysis.retransmission"
 ```
 
-For deeper analysis, open the pcap in Wireshark and use the filter:
+Note: `tcpdump` itself does not perform TCP stream analysis or label retransmissions. Use `tshark` (Wireshark's CLI companion) or open the pcap in Wireshark with the filter:
 
 ```text
 tcp.analysis.retransmission
@@ -100,8 +100,8 @@ For TLS-enabled Redis, capture and check for handshake alerts:
 ```bash
 sudo tcpdump -i eth0 port 6380 -w /tmp/redis-tls.pcap
 
-# Check for TLS alert records (byte 15 = alert)
-sudo tcpdump -r /tmp/redis-tls.pcap -X | grep -A2 "Alert"
+# Check for TLS alert records (content type 0x15 = alert)
+tshark -r /tmp/redis-tls.pcap -Y "tls.alert_message"
 ```
 
 Or use Wireshark with the Redis TLS certificate to decrypt and inspect.
