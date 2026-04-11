@@ -85,15 +85,15 @@ CLUSTER KEYSLOT {order:1001}:status
 ```
 
 ```text
-(integer) 7593
-(integer) 7593
-(integer) 7593
+(integer) 241
+(integer) 241
+(integer) 241
 ```
 
 Then list all keys in that slot:
 
 ```redis
-CLUSTER GETKEYSINSLOT 7593 100
+CLUSTER GETKEYSINSLOT 241 100
 ```
 
 ```text
@@ -168,7 +168,7 @@ for slot in $(seq 0 16383); do
   if [ $count -gt 0 ]; then
     echo "$count $slot"
   fi
-done | sort -rn | head 10
+done | sort -rn | head -n 10
 ```
 
 ## Summary
