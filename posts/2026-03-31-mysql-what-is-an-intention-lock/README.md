@@ -46,9 +46,9 @@ SELECT
   r.trx_mysql_thread_id AS waiting_thread,
   b.trx_id AS blocking_trx,
   b.trx_mysql_thread_id AS blocking_thread
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 To see active locks including intention locks:
