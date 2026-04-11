@@ -98,7 +98,7 @@ WHERE account_locked = 'Y'
 
 ## Automatic Locking After Failed Login Attempts
 
-MySQL 8.0 introduced failed-login tracking. Lock an account after a number of consecutive failures:
+MySQL 8.0.19 introduced failed-login tracking. Lock an account after a number of consecutive failures:
 
 ```sql
 ALTER USER 'alice'@'localhost'
@@ -112,16 +112,18 @@ The account automatically unlocks after the specified time. To unlock immediatel
 ALTER USER 'alice'@'localhost' ACCOUNT UNLOCK;
 ```
 
-## Locking Service Accounts Used Only for SSL/Socket Auth
+## Pre-Provisioning Service Accounts with Socket Auth
 
-For accounts that authenticate via a socket or certificate and should never accept password-based logins, locking acts as an extra guard:
+For service accounts that should authenticate via a socket and remain disabled until needed, combine socket auth with account locking:
 
 ```sql
 CREATE USER 'monitoring'@'localhost'
   IDENTIFIED WITH auth_socket
-  ACCOUNT LOCK;  -- only allows socket auth, no password login
+  ACCOUNT LOCK;  -- locked until explicitly unlocked
 ```
+
+While locked, the account cannot connect using any authentication method, including socket auth. Once unlocked, it will only accept socket-based authentication — no password login is possible.
 
 ## Summary
 
-`ALTER USER 'user'@'host' ACCOUNT LOCK` and `ACCOUNT UNLOCK` provide a lightweight mechanism to disable and re-enable MySQL accounts without removing them. Check lock status via `mysql.user.account_locked`, list all locked accounts with a simple query, and combine with `FAILED_LOGIN_ATTEMPTS` in MySQL 8.0 for automated account protection.
+`ALTER USER 'user'@'host' ACCOUNT LOCK` and `ACCOUNT UNLOCK` provide a lightweight mechanism to disable and re-enable MySQL accounts without removing them. Check lock status via `mysql.user.account_locked`, list all locked accounts with a simple query, and combine with `FAILED_LOGIN_ATTEMPTS` in MySQL 8.0.19+ for automated account protection.
