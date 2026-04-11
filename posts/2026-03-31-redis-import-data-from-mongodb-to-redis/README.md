@@ -97,6 +97,8 @@ def import_collection_as_json(collection_name, key_prefix, id_field="_id", ttl_s
 ## Import a Subset with Query Filter
 
 ```python
+from datetime import datetime
+
 def import_active_users(ttl_seconds=3600):
     collection = db["users"]
     query = {"status": "active", "last_login": {"$gte": datetime(2025, 1, 1)}}
