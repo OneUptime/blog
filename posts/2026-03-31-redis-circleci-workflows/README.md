@@ -29,6 +29,9 @@ jobs:
         name: Install dependencies
         command: npm ci
     - run:
+        name: Install Redis CLI
+        command: sudo apt-get update && sudo apt-get install -y redis-tools
+    - run:
         name: Wait for Redis
         command: |
           for i in $(seq 1 20); do
@@ -52,7 +55,7 @@ workflows:
     - test
 ```
 
-The secondary image hostname is `redis` (matches the `name` field or defaults to the image name).
+The secondary image hostname is `redis` (matches the `name` field). Without a `name` field, secondary containers default to `localhost`.
 
 ## Redis with Password
 
@@ -131,6 +134,9 @@ commands:
         type: string
         default: "localhost"
     steps:
+    - run:
+        name: Install Redis CLI
+        command: sudo apt-get update && sudo apt-get install -y redis-tools
     - run:
         name: Wait for Redis to be ready
         command: |
