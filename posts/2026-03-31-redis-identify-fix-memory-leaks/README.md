@@ -83,7 +83,7 @@ r.hset("session:abc123", mapping={"user_id": "42", "created": "2026-01-01"})
 
 # Fix: always set TTL
 r.hset("session:abc123", mapping={"user_id": "42", "created": "2026-01-01"})
-r.expire("session:abc123", 3600)  # or use SETEX / pipeline
+r.expire("session:abc123", 3600)  # or use a pipeline for atomicity
 ```
 
 ### Pattern 2 - Unbounded Lists/Sets Used as Queues
@@ -107,7 +107,7 @@ Loaded scripts are cached in Redis memory:
 # Check script cache size
 redis-cli INFO memory | grep used_memory_scripts
 
-# Flush script cache (safe to do - scripts reload on next call)
+# Flush script cache (clients using EVALSHA will need to resend scripts via EVAL)
 redis-cli SCRIPT FLUSH
 ```
 
@@ -127,8 +127,7 @@ pipe.execute()
 ## Finding Keys Without TTL
 
 ```bash
-# redis-cli 7.4+ has OBJECT FREQ and TTL scanning
-# For older versions, use SCAN + TTL
+# Use SCAN + TTL to find keys missing expiry
 
 redis-cli --scan --pattern "temp:*" | while read key; do
   ttl=$(redis-cli TTL "$key")
@@ -152,8 +151,7 @@ redis-cli INFO clients
 If client count is very high and growing:
 
 ```bash
-# Kill idle clients (idle > 10 minutes)
-redis-cli CLIENT NO-EVICT OFF
+# Limit connections and disconnect idle clients (idle > 10 minutes)
 redis-cli CONFIG SET maxclients 1000
 redis-cli CONFIG SET timeout 600
 ```
