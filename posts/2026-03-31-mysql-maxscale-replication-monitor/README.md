@@ -10,7 +10,7 @@ Description: Use MaxScale's built-in MariaDB Monitor and CLI to track MySQL repl
 
 ## MaxScale Monitor Overview
 
-MaxScale includes a monitor module that continuously polls MySQL servers to track their role (primary or replica), replication lag, and overall health. The monitor updates server state in real time so the router can route queries to the correct backend. The two most common monitor modules for MySQL are `mariadbmon` (which also works with MySQL) and `mysqlmon`.
+MaxScale includes a monitor module that continuously polls MySQL servers to track their role (primary or replica), replication lag, and overall health. The monitor updates server state in real time so the router can route queries to the correct backend. The standard monitor module for replication is `mariadbmon` (formerly known as `mysqlmon` before it was renamed in MaxScale 2.2).
 
 ## Configuring the Monitor
 
@@ -66,7 +66,7 @@ Get detailed replication information for each server:
 maxctrl show server replica1
 ```
 
-Look for the `Slave_SQL_Running_State`, `Seconds_Behind_Master`, and `GTID_IO_Pos` fields in the output. Lag values above your SLA threshold indicate a replica falling behind.
+Look for the `Replication Lag`, `Slave SQL Running`, and `Gtid IO Position` fields in the output. Lag values above your SLA threshold indicate a replica falling behind.
 
 ## Monitoring via MaxScale REST API
 
@@ -89,7 +89,7 @@ Integrate MaxScale server status into a monitoring script that pages your team w
 
 ```bash
 #!/bin/bash
-LAG=$(maxctrl show server replica1 | grep 'Seconds_Behind_Master' | awk '{print $2}')
+LAG=$(maxctrl show server replica1 --tsv | grep 'Replication Lag' | awk -F'\t' '{print $2}')
 if [ "$LAG" -gt 30 ]; then
   echo "ALERT: replica1 replication lag is ${LAG}s" | \
     mail -s "MySQL Replication Lag Alert" ops@example.com
