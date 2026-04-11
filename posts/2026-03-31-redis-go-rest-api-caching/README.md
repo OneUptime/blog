@@ -78,8 +78,8 @@ type User struct {
 }
 
 type UserHandler struct {
-    cache *cache.RedisCache
-    db    UserRepository
+    Cache *cache.RedisCache
+    DB    UserRepository
 }
 
 func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +88,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
     ctx := context.Background()
 
     // Check cache first
-    cached, err := h.cache.Get(ctx, cacheKey)
+    cached, err := h.Cache.Get(ctx, cacheKey)
     if err == nil {
         w.Header().Set("Content-Type", "application/json")
         w.Header().Set("X-Cache", "HIT")
@@ -97,14 +97,14 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
     }
 
     // Cache miss - fetch from DB
-    user, err := h.db.FindByID(ctx, id)
+    user, err := h.DB.FindByID(ctx, id)
     if err != nil {
         http.Error(w, "User not found", http.StatusNotFound)
         return
     }
 
     data, _ := json.Marshal(user)
-    h.cache.Set(ctx, cacheKey, string(data))
+    h.Cache.Set(ctx, cacheKey, string(data))
 
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("X-Cache", "MISS")
@@ -114,7 +114,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
     id := r.PathValue("id")
     // ... update DB ...
-    h.cache.Delete(context.Background(), fmt.Sprintf("user:%s", id))
+    h.Cache.Delete(context.Background(), fmt.Sprintf("user:%s", id))
     w.WriteHeader(http.StatusNoContent)
 }
 ```
@@ -134,7 +134,7 @@ import (
 
 func main() {
     redisCache := cache.NewRedisCache("localhost:6379", 5*time.Minute)
-    userHandler := &handler.UserHandler{cache: redisCache}
+    userHandler := &handler.UserHandler{Cache: redisCache}
 
     mux := http.NewServeMux()
     mux.HandleFunc("GET /users/{id}", userHandler.GetUser)
