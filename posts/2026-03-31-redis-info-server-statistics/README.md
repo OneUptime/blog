@@ -29,7 +29,8 @@ Available sections:
 - `latencystats` - per-command latency percentiles
 - `cluster` - cluster enabled flag, cluster state
 - `modules` - loaded module information
-- `everything` / `all` - all sections except `modules` and `commandstats`
+- `all` - all standard sections (excludes module-generated sections)
+- `everything` - all sections including module-generated ones
 - `default` (no argument) - the most commonly used sections
 
 ## Examples
