@@ -14,7 +14,7 @@ SQL Mode is a server-level (or session-level) setting that controls how MySQL pa
 
 SQL Mode affects:
 - Data validation strictness (e.g., truncating vs. rejecting bad data)
-- Compatibility with other databases (ANSI, DB2, PostgreSQL modes)
+- Compatibility with SQL standards (ANSI mode)
 - GROUP BY behavior
 - Zero-date handling
 
