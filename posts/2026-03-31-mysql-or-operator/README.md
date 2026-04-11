@@ -110,7 +110,7 @@ SELECT * FROM orders WHERE customer_id IN (42, 99);
 SELECT * FROM orders WHERE customer_id = 42 OR status = 'pending';
 ```
 
-For OR across different columns, consider adding a composite index or rewriting as a `UNION`:
+For OR across different columns, consider adding separate indexes on each column (to enable index merge) or rewriting as a `UNION`:
 
 ```sql
 SELECT * FROM orders WHERE customer_id = 42
