@@ -195,7 +195,7 @@ ORDER BY order_date;
 ## Best Practices
 
 - Choose the window size based on the data frequency: daily data often uses 7-day or 30-day windows; hourly data might use a 6-hour window.
-- Be aware that early rows in the partition use fewer observations than the full window size; use `MIN_COUNT` or handle NULLs if you need full-window-only averages.
+- Be aware that early rows in the partition use fewer observations than the full window size; use a `CASE` expression with `COUNT(*) OVER (...)` to return NULL when fewer than N rows are available if you need full-window-only averages.
 - Use PARTITION BY when tracking multiple entities (stocks, products, regions) so windows do not bleed across groups.
 - Add a `ROWS BETWEEN` clause explicitly rather than relying on the default `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` - the default RANGE mode can produce unexpected results when multiple rows share the same ORDER BY value.
 - Combine moving average with the original value in the same query to overlay the trend on raw data.
