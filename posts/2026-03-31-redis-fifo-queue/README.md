@@ -8,7 +8,7 @@ Description: Build a simple FIFO (first-in, first-out) queue with Redis Lists us
 
 ---
 
-A FIFO queue processes items in the order they were added - first in, first out. Redis Lists provide the ideal data structure: `LPUSH` adds to the left (tail insert), and `BRPOP` removes and returns from the right (head removal). The result is a clean, ordered queue with blocking pop support so workers sleep efficiently rather than busy-polling.
+A FIFO queue processes items in the order they were added - first in, first out. Redis Lists provide the ideal data structure: `LPUSH` adds to the head (left), and `BRPOP` removes and returns from the tail (right). The result is a clean, ordered queue with blocking pop support so workers sleep efficiently rather than busy-polling.
 
 ## Basic FIFO Operations
 
