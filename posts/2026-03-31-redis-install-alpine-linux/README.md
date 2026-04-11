@@ -85,7 +85,7 @@ rc-service redis restart
 When building a custom Redis image from Alpine:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.21
 
 RUN apk add --no-cache redis
 
@@ -111,7 +111,7 @@ docker run -d -p 6379:6379 --name redis my-redis
 
 ## Using the Official Redis Docker Image (Recommended)
 
-For containers, the official Redis image already uses a minimal Alpine-like base. Use it directly rather than building your own:
+For containers, the official Redis image provides an Alpine-based variant. Use it directly rather than building your own:
 
 ```bash
 docker run -d \
