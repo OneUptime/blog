@@ -80,8 +80,6 @@ Application connections should also specify `utf8mb4` to avoid encoding mismatch
 
 ```sql
 SET NAMES utf8mb4;
--- or equivalently:
-SET CHARACTER SET utf8mb4;
 ```
 
 In most client libraries, you configure this in the connection string or DSN:
@@ -125,7 +123,7 @@ Note that converting large tables requires an `ALGORITHM=COPY` rebuild, which ca
 
 ## Index Size Considerations
 
-When migrating, be aware that `utf8mb4` uses up to 4 bytes per character instead of 3. This can cause `VARCHAR` columns used as indexes to exceed the InnoDB index key limit (3072 bytes with `innodb_large_prefix` enabled, which is the default in MySQL 8.0):
+When migrating, be aware that `utf8mb4` uses up to 4 bytes per character instead of 3. This can cause `VARCHAR` columns used as indexes to exceed the InnoDB index key limit (3072 bytes in MySQL 8.0, where the `innodb_large_prefix` variable was removed and the larger limit is always in effect):
 
 ```sql
 -- This may fail if the key length exceeds the limit
