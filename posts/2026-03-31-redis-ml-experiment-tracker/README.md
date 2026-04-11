@@ -79,10 +79,10 @@ def log_metric(run_id: str, metric_name: str, value: float, step: int):
     # Update leaderboard (for loss: lower is better)
     exp_id = r.hget(f"run:{run_id}", "experiment_id")
     if metric_name in ("val_loss", "loss"):
-        r.zadd(f"leaderboard:{exp_id}:{metric_name}", {run_id: value})
+        r.zadd(f"leaderboard:{exp_id}:{metric_name}", {run_id: value}, lt=True)
     else:
         # For accuracy: higher is better, store negative to use ZRANGE
-        r.zadd(f"leaderboard:{exp_id}:{metric_name}", {run_id: -value})
+        r.zadd(f"leaderboard:{exp_id}:{metric_name}", {run_id: -value}, lt=True)
 
 # During training loop
 for epoch in range(50):
