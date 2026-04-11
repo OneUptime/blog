@@ -30,7 +30,7 @@ redis-cli -h redis-host -p 6380 --tls ping
 redis-cli INFO clients
 
 # Check if server is loading (startup)
-redis-cli INFO server | grep loading
+redis-cli INFO persistence | grep loading
 
 # Check slow commands
 redis-cli SLOWLOG GET 25
