@@ -8,7 +8,7 @@ Description: Learn how Redis geospatial commands use a sorted set with geohash s
 
 ---
 
-Redis does not have a separate geospatial data type. `GEOADD`, `GEODIST`, `GEORADIUS`, and `GEOSEARCH` all operate on a regular sorted set under the hood, using 52-bit geohash integers as scores. Understanding this lets you use sorted set commands directly on geo keys.
+Redis does not have a separate geospatial data type. `GEOADD`, `GEODIST`, `GEORADIUS` (deprecated since 6.2 in favor of `GEOSEARCH`), and `GEOSEARCH` all operate on a regular sorted set under the hood, using 52-bit geohash integers as scores. Understanding this lets you use sorted set commands directly on geo keys.
 
 ## Geohash as a Score
 
@@ -29,8 +29,8 @@ ZRANGE locations 0 -1 WITHSCORES
 Geohash divides the world into a hierarchical grid by interleaving bits of the latitude and longitude:
 
 ```text
-Longitude -180..+180 -> 26 bits
-Latitude  -90..+90   -> 26 bits
+Longitude -180..+180            -> 26 bits
+Latitude  -85.05112878..+85.05112878 -> 26 bits
 Interleaved -> 52-bit integer (score in sorted set)
 ```
 
@@ -127,4 +127,4 @@ GEOSEARCH locations FROMLONLAT 14.0 38.0 BYBOX 400 300 km ASC
 
 ## Summary
 
-Redis geospatial commands are built on top of sorted sets, encoding latitude/longitude pairs as 52-bit geohash integers used as scores. This gives spatial queries the same O(log n) performance as sorted set range operations. Because geo keys are sorted sets, you can freely mix `GEO*` and `Z*` commands on the same key to combine proximity queries with custom scoring or member filtering.
+Redis geospatial commands are built on top of sorted sets, encoding latitude/longitude pairs as 52-bit geohash integers used as scores. Point operations like `GEOADD` run in O(log N), while search commands like `GEOSEARCH` run in O(N+log M) where N is the number of elements scanned in the bounding box and M is the number of items in the set. Because geo keys are sorted sets, you can freely mix `GEO*` and `Z*` commands on the same key to combine proximity queries with custom scoring or member filtering.
