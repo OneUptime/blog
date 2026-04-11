@@ -24,8 +24,9 @@ flowchart TD
 ## Prerequisites
 
 Client-side caching requires:
-1. `CLIENT TRACKING` to be enabled
-2. `CLIENT CACHING` to be used in `OPTIN` or `OPTOUT` mode
+1. RESP3 protocol on the connection, or `REDIRECT` to send invalidation messages to a separate RESP2 connection subscribed to the `__redis__:invalidate` channel
+2. `CLIENT TRACKING` to be enabled
+3. `CLIENT CACHING` to be used in `OPTIN` or `OPTOUT` mode
 
 ## Enabling Tracking
 
@@ -100,8 +101,10 @@ sequenceDiagram
     App->>LocalCache: Evict user:profile:123
     App->>LocalCache: Check user:profile:123
     LocalCache-->>App: Miss
+    App->>Redis: CLIENT CACHING yes
     App->>Redis: GET user:profile:123
     Redis-->>App: "Jane Doe"
+    App->>LocalCache: Store user:profile:123 = "Jane Doe"
 ```
 
 ## OPTIN vs OPTOUT
