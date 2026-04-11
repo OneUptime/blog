@@ -141,7 +141,6 @@ print(f"Removed {removed} outlier samples")
 
 ```python
 import redis
-import time
 from datetime import datetime, timedelta
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
