@@ -151,7 +151,7 @@ GET log:entry
 
 ```text
 "ERROR"
-(integer) 26
+(integer) 27
 "2026-03-31 WARN : disk full"
 ```
 
