@@ -20,7 +20,7 @@ Every JSON function that extracts or modifies values - `JSON_EXTRACT()`, `JSON_S
 $               - root of the document
 $.key           - object member access
 $[n]            - array element at index n (zero-based)
-$[last]         - last element of an array (MySQL 8.0.4+)
+$[last]         - last element of an array (MySQL 8.0.2+)
 $[m to n]       - array slice from index m to n
 $.key1.key2     - nested member access
 ```
@@ -49,17 +49,22 @@ SELECT JSON_EXTRACT(@doc, '$.user.address.city');   -- "New York"
 
 ## Arrow Operator Shorthand
 
-The `->` and `->>` operators are shorthand for `JSON_EXTRACT()`:
+The `->` and `->>` operators are shorthand for `JSON_EXTRACT()` and `JSON_UNQUOTE(JSON_EXTRACT())` respectively. They only work on table column references, not on variables or expressions:
 
 ```sql
-SELECT @doc->'$.user.name';    -- returns "Alice" (JSON string with quotes)
-SELECT @doc->>'$.user.name';   -- returns Alice (unquoted SQL string)
-```
+-- These operators require a column on the left side
+SELECT profile->'$.user.name' FROM users WHERE id = 1;
+-- returns "Alice" (JSON string with quotes)
 
-In column context:
+SELECT profile->>'$.user.name' FROM users WHERE id = 1;
+-- returns Alice (unquoted SQL string)
 
-```sql
-SELECT profile->>'$.user.address.city' FROM users WHERE id = 1;
+-- For variables, use the function form instead
+SELECT JSON_EXTRACT(@doc, '$.user.name');
+-- returns "Alice"
+
+SELECT JSON_UNQUOTE(JSON_EXTRACT(@doc, '$.user.name'));
+-- returns Alice
 ```
 
 ## Wildcard Paths
@@ -67,7 +72,7 @@ SELECT profile->>'$.user.address.city' FROM users WHERE id = 1;
 Use `*` to match all members of an object or elements of an array:
 
 ```sql
--- All values in the address object
+-- All values in the address object (key order is not guaranteed across releases)
 SELECT JSON_EXTRACT(@doc, '$.user.address.*');
 -- Result: ["New York", "10001"]
 
