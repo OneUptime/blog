@@ -94,8 +94,9 @@ REMOVE_ID=$(redis-cli -p 7001 CLUSTER NODES | grep 7003 | awk '{print $1}')
 redis-cli --cluster reshard existing-host:7001 \
   --cluster-from $REMOVE_ID \
   --cluster-to other-node-id \
-  --cluster-slots 5461 \  # however many slots it owns
+  --cluster-slots 5461 \
   --cluster-yes
+# Adjust --cluster-slots to match however many slots the node owns
 ```
 
 After resharding, verify the node has no slots:
