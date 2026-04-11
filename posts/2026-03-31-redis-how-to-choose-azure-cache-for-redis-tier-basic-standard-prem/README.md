@@ -23,13 +23,13 @@ Azure Cache for Redis offers four tiers, each targeting different use cases:
 | Feature | Basic | Standard | Premium | Enterprise |
 |---|---|---|---|---|
 | Replication | No | Yes (2 nodes) | Yes | Yes |
-| SLA | None | 99.9% | 99.9% | 99.9% |
+| SLA | None | 99.9% | 99.9% | 99.99% |
 | Clustering | No | No | Yes (up to 10 shards) | Yes |
 | Geo-replication | No | No | Passive | Active |
-| VNet injection | No | No | Yes | Yes |
+| VNet injection | No | No | Yes | No (Private Link) |
 | Redis modules | No | No | No | Yes (full stack) |
 | Persistence (RDB/AOF) | No | No | Yes | Yes |
-| Max memory | 53 GB | 53 GB | 1.2 TB (cluster) | 14 TB (cluster) |
+| Max memory | 120 GB | 120 GB | 1.2 TB (cluster) | 14 TB (cluster) |
 | Cost (1 GB) | ~$17/mo | ~$52/mo | ~$140/mo | Higher |
 
 ## When to Use Each Tier
@@ -98,14 +98,18 @@ az redis update \
 For applications needing Redis modules like RediSearch or RedisJSON:
 
 ```bash
-# Create Enterprise tier
-az redis create \
+# Create Enterprise tier cluster
+az redisenterprise create \
   --name my-enterprise-cache \
   --resource-group myRG \
   --location eastus \
-  --sku Enterprise \
-  --vm-size E10 \
-  --redis-version "7"
+  --sku Enterprise_E10
+
+# Create a database within the Enterprise cluster
+az redisenterprise database create \
+  --cluster-name my-enterprise-cache \
+  --resource-group myRG \
+  --modules name=RediSearch name=RedisJSON
 ```
 
 ## Terraform Configuration by Tier
@@ -158,7 +162,7 @@ C2  - 6 GB cache
 C3  - 13 GB cache
 C4  - 26 GB cache
 C5  - 53 GB cache
-C6  - 53 GB cache (higher bandwidth)
+C6  - 120 GB cache
 ```
 
 ### P-series (Premium)
@@ -171,12 +175,12 @@ P4  - 53 GB per shard
 P5  - 120 GB per shard
 ```
 
-## Geo-Replication: Standard vs Premium
+## Geo-Replication: Premium vs Enterprise
 
-Standard supports passive geo-replication (read-only secondary in another region). Premium supports active geo-replication (write to either region).
+Premium supports passive geo-replication (data flows one direction, manual failover). Enterprise supports active geo-replication (write to either region, automatic conflict resolution).
 
 ```bash
-# Premium: Create active geo-replication group
+# Premium: Create passive geo-replication link
 az redis create \
   --name primary-cache \
   --resource-group myRG-East \
@@ -191,11 +195,12 @@ az redis create \
   --sku Premium \
   --vm-size P3
 
-# Link them for geo-replication
-az redis geo-replication link \
+# Link them for passive geo-replication
+az redis server-link create \
   --name primary-cache \
   --resource-group myRG-East \
-  --secondary-cache-id /subscriptions/.../resourceGroups/myRG-West/providers/Microsoft.Cache/Redis/secondary-cache
+  --replication-role Secondary \
+  --server-to-link /subscriptions/.../resourceGroups/myRG-West/providers/Microsoft.Cache/Redis/secondary-cache
 ```
 
 ## Cost Optimization Tips
@@ -212,7 +217,7 @@ Cost example (East US, 2024):
 - C2 Standard: ~$114/month (6 GB, 2 nodes)
 - P1 Premium: ~$141/month (6 GB, 2 nodes, all Premium features)
 
-If you need > 53 GB of cache, Premium with clustering is the only option below Enterprise tier.
+If you need > 120 GB of cache, Premium with clustering is the only option below Enterprise tier.
 ```
 
 ## Selecting the Right Tier: Decision Guide
@@ -221,7 +226,7 @@ If you need > 53 GB of cache, Premium with clustering is the only option below E
 Need Redis modules (RediSearch, RedisJSON)?
   YES -> Enterprise
 
-Need > 53 GB cache or horizontal write scaling?
+Need > 120 GB cache or horizontal write scaling?
   YES -> Premium with clustering
 
 Need VNet injection for compliance/security?
@@ -239,4 +244,4 @@ Development/testing only?
 
 ## Summary
 
-Azure Cache for Redis tiers range from Basic (development only, no SLA) through Standard (production caching with 99.9% SLA) to Premium (clustering, persistence, VNet) and Enterprise (full Redis Stack modules). For most production applications, Standard is the starting point, with Premium required when you need clustering beyond 53 GB, data persistence, or private network injection. Enterprise is only needed for Redis module support like RediSearch or RedisJSON.
+Azure Cache for Redis tiers range from Basic (development only, no SLA) through Standard (production caching with 99.9% SLA) to Premium (clustering, persistence, VNet) and Enterprise (full Redis Stack modules). For most production applications, Standard is the starting point, with Premium required when you need clustering beyond 120 GB, data persistence, or private network injection. Enterprise is only needed for Redis module support like RediSearch or RedisJSON.
