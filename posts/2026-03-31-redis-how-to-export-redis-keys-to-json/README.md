@@ -138,7 +138,7 @@ async function exportBatchToJSON(pattern, outputFile) {
         case 'hash': valuePipeline.hgetall(keys[i]); break;
         case 'list': valuePipeline.lrange(keys[i], 0, -1); break;
         case 'set': valuePipeline.smembers(keys[i]); break;
-        case 'zset': valuePipeline.zrangeWithScores(keys[i], 0, -1); break;
+        case 'zset': valuePipeline.zrange(keys[i], 0, -1, 'WITHSCORES'); break;
         default: valuePipeline.get(keys[i]);
       }
     }
@@ -149,11 +149,22 @@ async function exportBatchToJSON(pattern, outputFile) {
       if (!firstRecord) writeStream.write(',');
       writeStream.write('\n');
 
+      let val = valueResults[i][1];
+
+      // Convert flat zset array to [{member, score}] format
+      if (typeResults[i][1] === 'zset' && Array.isArray(val)) {
+        const structured = [];
+        for (let j = 0; j < val.length; j += 2) {
+          structured.push({ member: val[j], score: parseFloat(val[j + 1]) });
+        }
+        val = structured;
+      }
+
       const record = {
         key: keys[i],
         type: typeResults[i][1],
         ttl: ttlResults[i][1] > 0 ? ttlResults[i][1] : null,
-        value: valueResults[i][1],
+        value: val,
       };
 
       writeStream.write(JSON.stringify(record, null, 2));
@@ -175,7 +186,7 @@ async function exportBatchToJSON(pattern, outputFile) {
 ```javascript
 async function importFromJSON(jsonFile) {
   const data = JSON.parse(fs.readFileSync(jsonFile, 'utf-8'));
-  const pipeline = redis.pipeline();
+  let pipeline = redis.pipeline();
   let count = 0;
 
   for (const record of data) {
@@ -212,6 +223,7 @@ async function importFromJSON(jsonFile) {
 
     if (count % 500 === 0) {
       await pipeline.exec();
+      pipeline = redis.pipeline();
       console.log(`Imported ${count} records...`);
     }
   }
