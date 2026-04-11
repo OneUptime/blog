@@ -22,7 +22,7 @@ CLUSTER MEET ip port
 
 Parameters:
 - `ip` - IP address or hostname of the node to introduce
-- `port` - Port number of the node to meet (Redis 7.0+ also accepts an optional `cluster-bus-port`)
+- `port` - Port number of the node to meet (Redis 4.0+ also accepts an optional `cluster-bus-port`)
 
 ## Adding a New Node to the Cluster
 
@@ -58,7 +58,7 @@ redis-cli -h 192.168.1.10 -p 6379 CLUSTER INFO | grep cluster_known_nodes
 
 ## New Node State Before Slot Assignment
 
-A newly added node via `CLUSTER MEET` starts with no slot assignments and no role (it is neither master nor replica). You must subsequently either:
+A newly added node via `CLUSTER MEET` starts as a master with no slot assignments. You must subsequently either:
 
 1. Run `redis-cli --cluster reshard` to move slots to it (making it a master)
 2. Run `CLUSTER REPLICATE` to make it a replica of an existing master
