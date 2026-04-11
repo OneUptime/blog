@@ -17,7 +17,6 @@ Store each session as a Redis Hash with device metadata:
 ```python
 import redis
 import secrets
-import json
 import time
 
 client = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -54,6 +53,9 @@ def create_mobile_session(
 
     # Access token lookup: token -> session_id
     client.set(f"token:{access_token}", session_id, ex=REFRESH_TTL)
+
+    # Refresh token lookup: refresh_token -> session_id
+    client.set(f"refresh:{refresh_token}", session_id, ex=SESSION_TTL)
 
     return {
         "access_token": access_token,
