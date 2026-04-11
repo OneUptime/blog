@@ -169,7 +169,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 r.zadd('prices', {'item:a': 9.99, 'item:b': 24.99, 'item:c': 4.99})
 
 def get_cart_total(item_ids):
-    scores = r.zmscore('prices', *item_ids)
+    scores = r.zmscore('prices', item_ids)
     total = sum(s for s in scores if s is not None)
     return round(total, 2)
 
