@@ -92,9 +92,9 @@ Geohash strings of different lengths represent areas of different sizes:
 | 4 | ~40 km x 20 km |
 | 6 | ~1.2 km x 0.6 km |
 | 8 | ~38 m x 19 m |
-| 11 | ~3 m x 1.5 m (Redis uses this) |
+| 11 | ~15 cm x 15 cm (Redis returns this length) |
 
-Nearby locations share a common prefix. The first 6 characters of `dr5regw3pp0` and `dr5rx5t5p10` are different, indicating the locations are more than a few km apart.
+Nearby locations share a common prefix. For example, `dr5regw3pp0` and `dr5rx5t5p10` share the first 4 characters (`dr5r`), placing them in the same ~40 km region, but they diverge at character 5, indicating the locations are a few km apart.
 
 ## Practical Uses of Geohash Strings
 
