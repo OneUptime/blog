@@ -47,9 +47,9 @@ When a new CVE is published, evaluate:
 Example evaluation for CVE-2023-25155:
 
 ```text
-CVE-2023-25155: Integer overflow in SINTERCARD command
+CVE-2023-25155: Integer overflow in SRANDMEMBER, ZRANDMEMBER, and HRANDFIELD commands
 CVSS: 6.5 (Medium)
-Affected: Redis < 7.0.9, < 6.2.10, < 6.0.20
+Affected: Redis < 7.0.9, < 6.2.11, < 6.0.18
 Attack: Authenticated user required
 Fix: Upgrade to 7.0.9+
 ```
@@ -70,7 +70,7 @@ redis-cli INFO replication | grep master_link_status
 # master_link_status:up
 
 # Step 2: Promote a replica to primary
-redis-cli -h primary REPLICAOF NO ONE
+redis-cli -h replica REPLICAOF NO ONE
 
 # Step 3: Upgrade old primary
 sudo apt-get install -y redis-server=7.0.9-1
