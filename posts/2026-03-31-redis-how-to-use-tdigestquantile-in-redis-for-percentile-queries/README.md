@@ -159,19 +159,19 @@ TDIGEST.QUANTILE latency 1.0
 # Query empty T-Digest
 TDIGEST.CREATE empty_digest COMPRESSION 100
 TDIGEST.QUANTILE empty_digest 0.5
-# Returns: (nil) - no data yet
+# Returns: (nan) - no data yet
 ```
 
 ## Accuracy Notes
 
-T-Digest is most accurate at extreme percentiles (p99, p99.9) compared to p50 when using higher compression values. With `COMPRESSION 200`:
+T-Digest is designed to be most accurate at extreme percentiles (near 0 and 1), so p99 and p99.9 estimates have lower error than p50. With `COMPRESSION 200`:
 
-- p50 error: typically less than 1%
-- p99 error: typically less than 1%
-- p99.9 error: typically less than 2%
+- p99 error: typically well under 1%
+- p99.9 error: typically under 1%
+- p50 error: typically under 1-2%
 
-For p50 tracking alone, lower compression is sufficient and more memory-efficient.
+For extreme percentile tracking (p99, p99.9), T-Digest provides excellent accuracy. Higher compression values improve accuracy across all percentiles at the cost of more memory.
 
 ## Summary
 
-`TDIGEST.QUANTILE` is the core query command for Redis T-Digest percentile analysis. You can query multiple percentiles in a single command, making it efficient for dashboards and SLA monitoring. The command supports quantiles from 0.0 to 1.0, returns nil for empty structures, and provides accurate estimates especially for tail percentiles like p99 and p99.9.
+`TDIGEST.QUANTILE` is the core query command for Redis T-Digest percentile analysis. You can query multiple percentiles in a single command, making it efficient for dashboards and SLA monitoring. The command supports quantiles from 0.0 to 1.0, returns nan for empty structures, and provides accurate estimates especially for tail percentiles like p99 and p99.9.
