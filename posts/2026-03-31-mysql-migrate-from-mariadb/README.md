@@ -21,8 +21,8 @@ MariaDB-specific features that may not work in MySQL include:
 
 Run a schema compatibility check by reviewing your DDL:
 
-```sql
--- In MariaDB: export all CREATE TABLE statements
+```bash
+# In MariaDB: export all CREATE TABLE statements
 mysqldump --no-data --databases mydb -u root -p > schema_only.sql
 ```
 
@@ -69,7 +69,7 @@ grep -n 'SEQUENCE\|NEXTVAL\|SETVAL' mariadb_dump.sql
 
 ### Handling Character Set Differences
 
-MariaDB uses `utf8mb3` internally for `utf8`. MySQL 8.0 aliases `utf8` to `utf8mb4`. Normalize the dump:
+MariaDB uses `utf8mb3` internally for `utf8`. MySQL 8.0 still aliases `utf8` to `utf8mb3` but has deprecated this alias in favor of `utf8mb4`. Normalize the dump to `utf8mb4` for full Unicode support:
 
 ```bash
 sed -i 's/utf8mb3/utf8mb4/g; s/ CHARSET=utf8 / CHARSET=utf8mb4 /g' mariadb_dump.sql
