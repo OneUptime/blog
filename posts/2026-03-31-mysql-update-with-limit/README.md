@@ -30,14 +30,14 @@ Loop the statement in a script until all matching rows are processed:
 
 ```bash
 while true; do
-  mysql -u root -p mydb -e "
+  AFFECTED=$(mysql -u root -p mydb -sN -e "
     UPDATE orders
     SET status = 'archived'
     WHERE status = 'completed'
       AND created_at < '2024-01-01'
     LIMIT 5000;
-  "
-  AFFECTED=$(mysql -u root -p mydb -sN -e "SELECT ROW_COUNT();")
+    SELECT ROW_COUNT();
+  ")
   echo "Rows updated: $AFFECTED"
   if [ "$AFFECTED" -eq 0 ]; then
     break
@@ -87,7 +87,7 @@ ORDER BY created_at ASC
 LIMIT 100;
 ```
 
-Without `ORDER BY`, MySQL can pick any 1,000 rows - the order is undefined. Adding `ORDER BY created_at ASC` ensures the oldest unassigned tasks are promoted first.
+Without `ORDER BY`, MySQL can pick any 100 rows - the order is undefined. Adding `ORDER BY created_at ASC` ensures the oldest unassigned tasks are promoted first.
 
 ## Restriction: No LIMIT with Multi-Table UPDATE
 
