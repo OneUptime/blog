@@ -93,11 +93,11 @@ def db_get_user(user_id: int) -> Optional[dict]:
     pass
 
 def db_update_user(user_id: int, data: dict) -> dict:
-    # UPDATE users SET ... WHERE id = user_id RETURN *
+    # UPDATE users SET ... WHERE id = user_id RETURNING *
     pass
 
 def db_create_user(data: dict) -> dict:
-    # INSERT INTO users ... RETURN *
+    # INSERT INTO users ... RETURNING *
     pass
 
 def db_delete_user(user_id: int) -> None:
@@ -110,6 +110,7 @@ def db_delete_user(user_id: int) -> None:
 ```javascript
 const redis = require('redis');
 const client = redis.createClient({ url: process.env.REDIS_URL });
+await client.connect();
 
 async function getProduct(productId) {
   const key = `product:${productId}`;
@@ -174,7 +175,7 @@ def update_user_atomic(user_id: int, data: dict) -> dict:
         return updated
 
     except Exception as e:
-        # DB write failed - ensure cache is invalidated (not stale)
+        # On failure - ensure cache is invalidated (not stale)
         r.delete(key)
         raise e
 ```
