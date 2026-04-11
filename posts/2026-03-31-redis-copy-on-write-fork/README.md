@@ -38,7 +38,7 @@ During fork while parent is busy:
 - Parent writes a key: the page containing that key gets copied
 
 ```bash
-redis-cli INFO memory | grep -E "used_memory_rss|rdb_changes"
+redis-cli INFO | grep -E "used_memory_rss|rdb_changes_since_last_save"
 ```
 
 In the worst case (parent modifies every page during save), memory can temporarily double.
@@ -55,16 +55,18 @@ High `rdb_last_cow_size` means your parent was very write-active during the snap
 
 ## Reducing COW Overhead
 
-**Schedule saves during low-write windows:**
+**Disable automatic saves and trigger them manually during low-write windows:**
 
 ```text
-# redis.conf - save at 2am daily with fewer active writes
+# redis.conf - disable automatic RDB snapshots
 save ""
+# Then use a cron job to run BGSAVE during quiet periods (e.g., 2am)
 ```
 
-**Use WAIT to quiesce replicas before a manual save:**
+**Pause clients briefly before a manual save to reduce writes during the snapshot:**
 
 ```bash
+CLIENT PAUSE 5000
 BGSAVE
 ```
 
@@ -78,7 +80,7 @@ This is the single most impactful tuning for COW memory spikes.
 
 ## Why Fork Can Be Slow
 
-On large datasets, `fork()` itself copies the page table, not the data. For a Redis instance using 50GB of RAM, the page table can be gigabytes in size:
+On large datasets, `fork()` itself copies the page table, not the data. For a Redis instance using 50GB of RAM, the page table can be hundreds of megabytes:
 
 ```text
 50GB dataset / 4KB page size = ~12.5 million pages
