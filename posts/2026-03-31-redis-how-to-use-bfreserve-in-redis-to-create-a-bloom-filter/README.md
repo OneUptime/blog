@@ -77,7 +77,7 @@ BF.EXISTS myfilter "user@example.com"
 # Returns: 1 (exists)
 
 BF.EXISTS myfilter "unknown@example.com"
-# Returns: 0 (does not exist, or false positive)
+# Returns: 0 (definitely does not exist)
 ```
 
 ## Non-Scaling Filters
