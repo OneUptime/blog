@@ -156,7 +156,7 @@ FCALL nonexistent_function 0
 | Replication | Not replicated to replicas | Replicated to replicas |
 | Organization | Flat scripts | Named libraries with functions |
 | Arguments | KEYS[N] and ARGV[N] | keys[N] and args[N] |
-| Read-only variant | No | FCALL_RO |
+| Read-only variant | EVAL_RO (7.0+) | FCALL_RO |
 | Redis version | 2.6+ | 7.0+ |
 
 ## Use Cases
