@@ -21,7 +21,7 @@ graph TD
     B --> E["TIMEOUT"]
     B --> F["MINPREFIX"]
     B --> G["MAXEXPANSIONS"]
-    B --> H["LANGUAGE"]
+    B --> H["DEFAULT_DIALECT"]
 ```
 
 ## Syntax
@@ -46,9 +46,9 @@ FT.CONFIG GET *
 
 ```text
  1) 1) "MAXSEARCHRESULTS"
-    2) "10000"
+    2) "1000000"
  2) 1) "MAXAGGREGATERESULTS"
-    2) "10000"
+    2) "-1"
  3) 1) "TIMEOUT"
     2) "500"
  4) 1) "MINPREFIX"
@@ -57,15 +57,9 @@ FT.CONFIG GET *
     2) "200"
  6) 1) "MAXDOCTABLESIZE"
     2) "1000000"
- 7) 1) "LANGUAGE"
-    2) "english"
- 8) 1) "LANGUAGEFIELD"
-    2) "__language"
- 9) 1) "SCORE"
-    2) "1"
-10) 1) "SCOREFIELD"
-    2) "__score"
-11) 1) "WORKERS"
+ 7) 1) "MIN_PHONETIC_TERM_LEN"
+    2) "3"
+ 8) 1) "WORKERS"
     2) "0"
 ```
 
@@ -84,7 +78,7 @@ FT.CONFIG GET TIMEOUT
 
 ### MAXSEARCHRESULTS
 
-The maximum number of results `FT.SEARCH` will return in total across all pages:
+The maximum number of results `FT.SEARCH` will return in total across all pages. Default is `1000000`:
 
 ```redis
 FT.CONFIG GET MAXSEARCHRESULTS
@@ -95,7 +89,7 @@ Set to `-1` to remove the limit (use with caution on large indexes).
 
 ### MAXAGGREGATERESULTS
 
-The maximum number of rows `FT.AGGREGATE` returns:
+The maximum number of rows `FT.AGGREGATE` returns. Default is `-1` (unlimited):
 
 ```redis
 FT.CONFIG SET MAXAGGREGATERESULTS 100000
@@ -142,37 +136,37 @@ FT.CONFIG SET MAXEXPANSIONS 500
 
 Increasing this allows fuzzier matching at the cost of query performance.
 
-### LANGUAGE
+### DEFAULT_DIALECT
 
-The default language for text analysis (stemming):
+The default query dialect version used by `FT.SEARCH` and `FT.AGGREGATE`:
 
 ```redis
-FT.CONFIG GET LANGUAGE
--- Default: english
+FT.CONFIG GET DEFAULT_DIALECT
+-- Default: 1
 
-FT.CONFIG SET LANGUAGE spanish
+FT.CONFIG SET DEFAULT_DIALECT 2
 ```
 
-This sets the global default; individual indexes can override it with `LANGUAGE` in `FT.CREATE`.
+Note that the language for text analysis (stemming) is set per-index using the `LANGUAGE` option in `FT.CREATE`, not via `FT.CONFIG`.
 
 ### WORKERS
 
-The number of background threads used for indexing (0 means single-threaded):
+The number of worker threads for query processing and background tasks (0 means single-threaded):
 
 ```redis
 FT.CONFIG GET WORKERS
 FT.CONFIG SET WORKERS 4
 ```
 
-Increasing workers speeds up indexing of large document sets at the cost of more CPU.
+Increasing workers improves query throughput and background task performance at the cost of more CPU.
 
-### MINPHONETIC
+### MIN_PHONETIC_TERM_LEN
 
-The minimum edit distance for phonetic matching:
+The minimum term length (in characters) required for phonetic matching to be applied:
 
 ```redis
-FT.CONFIG GET MINPHONETIC
--- Default: 5
+FT.CONFIG GET MIN_PHONETIC_TERM_LEN
+-- Default: 3
 ```
 
 ## Practical Configuration Scenarios
@@ -190,7 +184,7 @@ FT.CONFIG SET MAXSEARCHRESULTS 10000
 
 ### Background Data Ingestion
 
-Optimize for fast indexing when loading bulk data:
+Optimize for throughput when loading bulk data:
 
 ```redis
 FT.CONFIG SET WORKERS 8
@@ -198,13 +192,6 @@ FT.CONFIG SET TIMEOUT 0
 ```
 
 Restore to normal after ingestion completes.
-
-### Multilingual Application
-
-```redis
-FT.CONFIG SET LANGUAGE english
--- Or set per-index at FT.CREATE time using the LANGUAGE option
-```
 
 ## Configuration Persistence
 
@@ -217,4 +204,4 @@ loadmodule /path/to/redisearch.so MAXSEARCHRESULTS 50000 TIMEOUT 2000 WORKERS 4
 
 ## Summary
 
-`FT.CONFIG SET` and `FT.CONFIG GET` let you read and modify RediSearch module-level configuration at runtime. Use them to tune query timeouts, result limits, prefix query thresholds, fuzzy expansion limits, indexing thread counts, and default language. Changes take effect immediately but are not persisted across restarts unless specified in the Redis configuration file.
+`FT.CONFIG SET` and `FT.CONFIG GET` let you read and modify RediSearch module-level configuration at runtime. Use them to tune query timeouts, result limits, prefix query thresholds, fuzzy expansion limits, worker thread counts, and query dialect. Changes take effect immediately but are not persisted across restarts unless specified in the Redis configuration file.
