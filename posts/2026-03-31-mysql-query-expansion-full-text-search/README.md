@@ -28,7 +28,7 @@ FROM articles
 WHERE MATCH(title, body) AGAINST ('database' WITH QUERY EXPANSION);
 ```
 
-The shortened form also works:
+The full form also works:
 
 ```sql
 SELECT id, title
