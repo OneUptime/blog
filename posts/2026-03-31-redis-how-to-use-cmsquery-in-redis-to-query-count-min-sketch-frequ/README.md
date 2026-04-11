@@ -18,8 +18,7 @@ Unlike exact frequency counters, a CMS trades precision for memory efficiency. `
 
 Before using `CMS.QUERY`, you need:
 
-- Redis 6.0 or later
-- RedisBloom module loaded (comes bundled with Redis Stack)
+- Redis with the RedisBloom module (version 2.0.0 or later) loaded (comes bundled with Redis Stack)
 - A Count-Min Sketch already created with `CMS.INITBYDIM` or `CMS.INITBYPROB`
 
 ## Creating a Count-Min Sketch
@@ -35,24 +34,24 @@ CMS.INITBYDIM my_sketch 2000 5
 CMS.INITBYPROB my_sketch 0.001 0.999
 ```
 
-## Adding Items with CMS.ADD
+## Adding Items with CMS.INCRBY
 
 Populate the sketch before querying:
 
 ```bash
 # Add single items
-CMS.ADD my_sketch "item_a" 1
-CMS.ADD my_sketch "item_b" 1
+CMS.INCRBY my_sketch "item_a" 1
+CMS.INCRBY my_sketch "item_b" 1
 
 # Add multiple items at once
-CMS.ADD my_sketch "apple" 5 "banana" 3 "cherry" 10
+CMS.INCRBY my_sketch "apple" 5 "banana" 3 "cherry" 10
 ```
 
 You can also add items with custom increment values:
 
 ```bash
 # Simulate purchase counts
-CMS.ADD purchases "product:1001" 15 "product:1002" 7 "product:1003" 42
+CMS.INCRBY purchases "product:1001" 15 "product:1002" 7 "product:1003" 42
 ```
 
 ## Querying Frequencies with CMS.QUERY
@@ -97,7 +96,7 @@ Here is a real-world example tracking page views on a website:
 CMS.INITBYPROB pageviews 0.01 0.999
 
 # Record page views (batch increments)
-CMS.ADD pageviews "/home" 1420 "/products" 863 "/about" 201 "/contact" 98
+CMS.INCRBY pageviews "/home" 1420 "/products" 863 "/about" 201 "/contact" 98
 
 # Query specific pages
 CMS.QUERY pageviews "/home" "/products"
@@ -120,7 +119,7 @@ r.execute_command("CMS.INITBYPROB", "event_counts", 0.01, 0.999)
 # Simulate recording events
 events = ["click", "view", "click", "purchase", "click", "view"]
 for event in events:
-    r.execute_command("CMS.ADD", "event_counts", event, 1)
+    r.execute_command("CMS.INCRBY", "event_counts", event, 1)
 
 # Query frequencies
 items_to_check = ["click", "view", "purchase", "refund"]
@@ -163,4 +162,4 @@ It is not suitable when exact counts are required, such as billing or transactio
 
 ## Summary
 
-`CMS.QUERY` lets you retrieve frequency estimates from a Count-Min Sketch in Redis with O(1) time complexity per item. It is a powerful tool for high-throughput frequency tracking where approximate answers are acceptable. Combine it with `CMS.ADD` for recording events and `CMS.INFO` for inspecting sketch metadata to build efficient probabilistic counting pipelines.
+`CMS.QUERY` lets you retrieve frequency estimates from a Count-Min Sketch in Redis with O(1) time complexity per item. It is a powerful tool for high-throughput frequency tracking where approximate answers are acceptable. Combine it with `CMS.INCRBY` for recording events and `CMS.INFO` for inspecting sketch metadata to build efficient probabilistic counting pipelines.
