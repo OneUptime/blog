@@ -85,7 +85,9 @@ services:
   mysql-acme:
     image: mysql:8.0
     environment:
+      MYSQL_ROOT_PASSWORD: acme_root_pass
       MYSQL_DATABASE: acme
+      MYSQL_USER: acme_user
       MYSQL_PASSWORD: acme_pass
     volumes:
       - acme-data:/var/lib/mysql
