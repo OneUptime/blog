@@ -86,7 +86,7 @@ SELECT
   VARIABLE_NAME,
   VARIABLE_VALUE
 FROM performance_schema.global_status
-WHERE VARIABLE_NAME LIKE 'Gr_%';
+WHERE VARIABLE_NAME LIKE 'group_replication_%';
 ```
 
 For workloads tolerant of eventual consistency and needing maximum write throughput, classic replication wins. For workloads that require zero data loss and automatic failover, Group Replication is better suited.
