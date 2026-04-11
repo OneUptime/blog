@@ -38,7 +38,7 @@ ST_GeomFromText('POLYGON((outer ring), (inner ring hole))', srid)
 
 -- Useful functions
 ST_Area(polygon)             -- area in CRS square units
-ST_Perimeter(polygon)        -- perimeter length
+ST_Length(ST_ExteriorRing(polygon))  -- perimeter length
 ST_Centroid(polygon)         -- center point
 ST_ExteriorRing(polygon)     -- outer ring as LINESTRING
 ST_NumInteriorRings(polygon) -- number of holes
@@ -63,14 +63,14 @@ CREATE TABLE delivery_zones (
 ### Insert POLYGON Values
 
 ```sql
--- Simple triangular delivery zones (longitude latitude pairs)
+-- Simple rectangular delivery zones (latitude longitude pairs for SRID 4326)
 INSERT INTO delivery_zones (name, city, fee_tier, boundary) VALUES
 (
     'Downtown Zone',
     'New York',
     1,
     ST_GeomFromText(
-        'POLYGON((-74.020 40.700, -73.970 40.700, -73.970 40.730, -74.020 40.730, -74.020 40.700))',
+        'POLYGON((40.700 -74.020, 40.700 -73.970, 40.730 -73.970, 40.730 -74.020, 40.700 -74.020))',
         4326
     )
 ),
@@ -79,7 +79,7 @@ INSERT INTO delivery_zones (name, city, fee_tier, boundary) VALUES
     'New York',
     2,
     ST_GeomFromText(
-        'POLYGON((-74.010 40.740, -73.960 40.740, -73.960 40.770, -74.010 40.770, -74.010 40.740))',
+        'POLYGON((40.740 -74.010, 40.740 -73.960, 40.770 -73.960, 40.770 -74.010, 40.740 -74.010))',
         4326
     )
 ),
@@ -88,7 +88,7 @@ INSERT INTO delivery_zones (name, city, fee_tier, boundary) VALUES
     'Chicago',
     1,
     ST_GeomFromText(
-        'POLYGON((-87.640 41.870, -87.620 41.870, -87.620 41.890, -87.640 41.890, -87.640 41.870))',
+        'POLYGON((41.870 -87.640, 41.870 -87.620, 41.890 -87.620, 41.890 -87.640, 41.870 -87.640))',
         4326
     )
 );
@@ -100,27 +100,27 @@ INSERT INTO delivery_zones (name, city, fee_tier, boundary) VALUES
 SELECT
     name,
     city,
-    ROUND(ST_Area(boundary), 8)         AS area_sq_degrees,
+    ROUND(ST_Area(boundary), 2)          AS area_sq_meters,
     ST_AsText(ST_Centroid(boundary))    AS centroid_wkt,
     ST_NumInteriorRings(boundary)       AS holes
 FROM delivery_zones;
 ```
 
 ```text
-+----------------+----------+-----------------+------------------------------+-------+
-| name           | city     | area_sq_degrees | centroid_wkt                 | holes |
-+----------------+----------+-----------------+------------------------------+-------+
-| Downtown Zone  | New York |      0.00150000 | POINT(-73.995 40.715)        |     0 |
-| Midtown Zone   | New York |      0.00150000 | POINT(-73.985 40.755)        |     0 |
-| Loop Zone      | Chicago  |      0.00040000 | POINT(-87.63 41.88)          |     0 |
-+----------------+----------+-----------------+------------------------------+-------+
++----------------+----------+----------------+----------------------------+-------+
+| name           | city     | area_sq_meters | centroid_wkt               | holes |
++----------------+----------+----------------+----------------------------+-------+
+| Downtown Zone  | New York |   14076948.35  | POINT(40.715 -73.995)      |     0 |
+| Midtown Zone   | New York |   14069231.78  | POINT(40.755 -73.985)      |     0 |
+| Loop Zone      | Chicago  |    3661407.12  | POINT(41.88 -87.63)        |     0 |
++----------------+----------+----------------+----------------------------+-------+
 ```
 
 ### Check If a Point Falls Inside a Polygon
 
 ```sql
 -- Is Times Square inside any delivery zone?
-SET @times_square = ST_GeomFromText('POINT(-73.9855 40.7580)', 4326);
+SET @times_square = ST_GeomFromText('POINT(40.7580 -73.9855)', 4326);
 
 SELECT name, city
 FROM delivery_zones
@@ -139,7 +139,7 @@ WHERE ST_Within(@times_square, boundary);
 
 ```sql
 SET @search_area = ST_GeomFromText(
-    'POLYGON((-74.030 40.690, -73.950 40.690, -73.950 40.740, -74.030 40.740, -74.030 40.690))',
+    'POLYGON((40.690 -74.030, 40.690 -73.950, 40.735 -73.950, 40.735 -74.030, 40.690 -74.030))',
     4326
 );
 
@@ -168,8 +168,8 @@ INSERT INTO delivery_zones (name, city, fee_tier, boundary) VALUES
     3,
     ST_GeomFromText(
         'POLYGON(
-            (-87.660 41.860, -87.600 41.860, -87.600 41.900, -87.660 41.900, -87.660 41.860),
-            (-87.650 41.870, -87.620 41.870, -87.620 41.890, -87.650 41.890, -87.650 41.870)
+            (41.860 -87.660, 41.860 -87.600, 41.900 -87.600, 41.900 -87.660, 41.860 -87.660),
+            (41.870 -87.650, 41.890 -87.650, 41.890 -87.620, 41.870 -87.620, 41.870 -87.650)
         )',
         4326
     )
@@ -178,7 +178,7 @@ INSERT INTO delivery_zones (name, city, fee_tier, boundary) VALUES
 SELECT
     name,
     ST_NumInteriorRings(boundary) AS holes,
-    ROUND(ST_Area(boundary), 8)   AS net_area_sq_degrees
+    ROUND(ST_Area(boundary), 2)   AS net_area_sq_meters
 FROM delivery_zones
 WHERE name = 'Outer Zone with Park Exclusion';
 ```
@@ -215,8 +215,8 @@ WHERE ST_IsValid(boundary) = 0;
 - Use SRID 4326 for real-world geographic polygons so spatial functions calculate correct distances and areas.
 - Add a `SPATIAL INDEX` to polygon columns for fast `ST_Within`, `ST_Intersects`, and `MBRContains` queries.
 - Use `ST_IsValid` to validate polygon geometry before relying on spatial query results.
-- For area in square meters, use `ST_Area(ST_Transform(boundary, 3857))` or rely on MySQL 8.0+ geodetic area when SRID 4326 is set.
+- With SRID 4326 in MySQL 8.0+, `ST_Area()` returns geodesic area in square meters automatically. Do not transform to SRID 3857 (Web Mercator) for area calculation as it severely distorts areas away from the equator.
 
 ## Summary
 
-`POLYGON` stores a closed two-dimensional area defined by an exterior ring and optional interior holes. Insert values with `ST_GeomFromText('POLYGON((lon lat, ...))', 4326)`, ensuring the first and last coordinate pairs match. Use `ST_Area` to calculate the area, `ST_Centroid` to get the center point, `ST_Within` to test point containment, and `ST_Intersects` to find overlapping polygons. Spatial indexes accelerate containment and intersection queries on polygon columns.
+`POLYGON` stores a closed two-dimensional area defined by an exterior ring and optional interior holes. Insert values with `ST_GeomFromText('POLYGON((lat lon, ...))', 4326)`, ensuring the first and last coordinate pairs match. Note that SRID 4326 in MySQL 8.0 uses latitude-longitude axis order. Use `ST_Area` to calculate the area in square meters, `ST_Centroid` to get the center point, `ST_Within` to test point containment, and `ST_Intersects` to find overlapping polygons. Spatial indexes accelerate containment and intersection queries on polygon columns.
