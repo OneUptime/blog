@@ -15,8 +15,8 @@ Matchmaking queues pair players of similar skill levels for fair game sessions. 
 ## Player Queue Design
 
 ```text
-matchmaking:{game_mode}    -> Sorted Set: player_id scored by skill rating
-player:{player_id}:queue   -> Hash: {skill, queued_at, game_mode, region}
+matchmaking:{game_mode}:{region}  -> Sorted Set: player_id scored by skill rating
+player:{player_id}:queue          -> Hash: {skill_rating, queued_at, game_mode, region, status}
 ```
 
 ## Joining the Queue
