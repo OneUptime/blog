@@ -80,16 +80,18 @@ FROM locations
 WHERE MBRContains(
   ST_GeomFromText(CONCAT(
     'POLYGON((',
-    @min_lng, ' ', @min_lat, ',',
-    @max_lng, ' ', @min_lat, ',',
-    @max_lng, ' ', @max_lat, ',',
-    @min_lng, ' ', @max_lat, ',',
-    @min_lng, ' ', @min_lat,
+    @min_lat, ' ', @min_lng, ',',
+    @min_lat, ' ', @max_lng, ',',
+    @max_lat, ' ', @max_lng, ',',
+    @max_lat, ' ', @min_lng, ',',
+    @min_lat, ' ', @min_lng,
     '))'
   ), 4326),
   coordinates
 );
 ```
+
+Note: `ST_GeomFromText` with SRID 4326 uses `(latitude longitude)` axis order per the EPSG standard, unlike the `POINT()` constructor which uses `(longitude, latitude)`.
 
 `MBRContains` uses the spatial index and is more efficient than `ST_Contains` for rough viewport filtering.
 
