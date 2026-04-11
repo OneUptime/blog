@@ -17,12 +17,12 @@ For example, a trimmed mean at (0.05, 0.95) computes the average of the middle 9
 ## Syntax
 
 ```text
-TDIGEST.TRIMMED_MEAN key low_cut_fraction high_cut_fraction
+TDIGEST.TRIMMED_MEAN key low_cut_quantile high_cut_quantile
 ```
 
-- `low_cut_fraction` - fraction to trim from the low end (0.0 to 1.0)
-- `high_cut_fraction` - fraction to trim from the high end (0.0 to 1.0)
-- The sum of fractions must be less than 1.0
+- `low_cut_quantile` - quantile below which values are excluded (0.0 to 1.0). Use 0.0 for no low cut.
+- `high_cut_quantile` - quantile at or above which values are excluded (0.0 to 1.0). Use 1.0 for no high cut.
+- `low_cut_quantile` must be less than `high_cut_quantile`
 
 ## Basic Usage
 
@@ -146,14 +146,18 @@ TDIGEST.TRIMMED_MEAN version_b 0.05 0.95
 ## Error Cases
 
 ```bash
-# Fractions that sum to >= 1.0
-TDIGEST.TRIMMED_MEAN latency 0.5 0.6
+# low_cut_quantile greater than high_cut_quantile
+TDIGEST.TRIMMED_MEAN latency 0.9 0.1
+# (error) ERR invalid parameters
+
+# Quantile out of range [0..1]
+TDIGEST.TRIMMED_MEAN latency -0.1 0.9
 # (error) ERR invalid parameters
 
 # Empty T-Digest
 TDIGEST.CREATE empty COMPRESSION 100
 TDIGEST.TRIMMED_MEAN empty 0.1 0.9
-# Returns: (nil)
+# Returns: nan
 ```
 
 ## Summary
