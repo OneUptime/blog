@@ -23,16 +23,20 @@ Startup probe:    Has the container started successfully? Disables
 ## Basic Probes
 
 ```yaml
-# redis-deployment.yaml
+# redis-statefulset.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
 spec:
+  serviceName: redis
   selector:
     matchLabels:
       app: redis
   template:
+    metadata:
+      labels:
+        app: redis
     spec:
       containers:
         - name: redis
