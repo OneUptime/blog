@@ -95,7 +95,7 @@ const client = createClient();
 await client.connect();
 
 async function monitorChannels(channels) {
-  const result = await client.pubSubNumSub(...channels);
+  const result = await client.pubSubNumSub(channels);
   // result is an object: { channelName: count, ... }
   for (const [channel, count] of Object.entries(result)) {
     console.log(`${channel}: ${count} subscriber(s)`);
