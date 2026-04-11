@@ -101,7 +101,7 @@ INFO keyspace
 
 ## Interaction with Persistence
 
-- **RDB**: The next `BGSAVE` will write an empty or near-empty RDB file. Previous snapshots on disk are not deleted.
+- **RDB**: `FLUSHALL` clears the current RDB file and, if the `save` configuration is enabled, immediately writes an empty RDB file. Any in-progress snapshot is aborted. Previous backup copies stored elsewhere are not affected.
 - **AOF**: A `FLUSHALL` is appended to the AOF log. On restart, Redis replays it, resulting in an empty instance.
 
 ## Access Control
@@ -112,7 +112,7 @@ Restrict `FLUSHALL` in production using ACLs:
 ACL SETUSER app_user ~* +@all -FLUSHALL -FLUSHDB -CONFIG
 ```
 
-You can also disable the command entirely in `redis.conf`:
+You can also disable the command entirely in `redis.conf`, though `rename-command` is deprecated and may be removed in a future Redis version — ACLs are the preferred approach:
 
 ```redis
 rename-command FLUSHALL ""
