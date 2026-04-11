@@ -65,13 +65,13 @@ Analyze the capture:
 
 ```bash
 # Top 10 most frequent commands
-awk '{print $3}' /tmp/redis-monitor-*.log | sort | uniq -c | sort -rn | head -10
+awk '{print $4}' /tmp/redis-monitor-*.log | sort | uniq -c | sort -rn | head -10
 
 # Top 10 most accessed keys
-awk '{print $4}' /tmp/redis-monitor-*.log | tr -d '"' | sort | uniq -c | sort -rn | head -10
+awk '{print $5}' /tmp/redis-monitor-*.log | tr -d '"' | sort | uniq -c | sort -rn | head -10
 
 # Commands by client IP
-awk '{print $2}' /tmp/redis-monitor-*.log | tr -d '[]' | cut -d: -f1 | sort | uniq -c | sort -rn
+awk '{print $3}' /tmp/redis-monitor-*.log | tr -d '[]' | cut -d: -f1 | sort | uniq -c | sort -rn
 ```
 
 ## Using MONITOR in Python
