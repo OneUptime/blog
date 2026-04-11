@@ -174,11 +174,11 @@ def last_active_day(user_id):
             return base_date + datetime.timedelta(days=pos)
     return None
 
-mark_active('user:42', datetime.date(2026, 2, 15))
-mark_active('user:42', datetime.date(2026, 3, 1))
-mark_active('user:42', datetime.date(2026, 3, 20))
+mark_active(42, datetime.date(2026, 2, 15))
+mark_active(42, datetime.date(2026, 3, 1))
+mark_active(42, datetime.date(2026, 3, 20))
 
-print(f"First active: {first_active_day('user:42')}")  # 2026-02-15
+print(f"First active: {first_active_day(42)}")  # 2026-02-15
 ```
 
 ### Check If Any User in a Range Is Active
