@@ -11,7 +11,7 @@ Description: Fix MySQL character encoding problems including Incorrect string va
 ## Common Encoding Symptoms
 
 - `Incorrect string value: '\xF0\x9F\x98...' for column 'name'` - emoji blocked by `utf8` instead of `utf8mb4`
-- Garbled text like `Ã©` instead of `e` - double UTF-8 encoding (mojibake)
+- Garbled text like `Ã©` instead of `é` - double UTF-8 encoding (mojibake)
 - `Illegal mix of collations` error when comparing or joining columns
 
 ## Step 1: Check Current Character Set Settings
@@ -68,7 +68,7 @@ If data was inserted with the wrong connection charset, stored bytes may be doub
 SELECT HEX(name) FROM users WHERE id = 1;
 ```
 
-If you see `C3A9` where `C3A9` is the UTF-8 encoding of `e` but the column is also UTF-8, the data was inserted as Latin-1 and stored as UTF-8 bytes interpreted as Latin-1.
+If you see `C3A9` where `C3A9` is the UTF-8 encoding of `é` but the column is also UTF-8, the data was inserted as Latin-1 and stored as UTF-8 bytes interpreted as Latin-1.
 
 To fix, re-encode without changing the byte values:
 
