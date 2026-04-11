@@ -10,7 +10,7 @@ Description: Understand Redis 7.0 listpack encoding, how it replaces ziplist for
 
 ## What Is Listpack
 
-Listpack is a compact sequential data structure introduced in Redis 5.0 as a successor to the ziplist encoding. Starting in Redis 7.0, listpack fully replaces ziplist as the compact encoding for small collections.
+Listpack is a compact sequential data structure first introduced in Redis 5.0 for use with Streams. Starting in Redis 7.0, listpack replaces ziplist as the compact encoding for Hashes, Lists, and Sorted Sets. In Redis 7.2, listpack support was extended to Sets as well.
 
 Listpack uses less memory than ziplist due to a simpler internal structure:
 - No cascading update problem that affected ziplist
@@ -22,14 +22,14 @@ Listpack uses less memory than ziplist due to a simpler internal structure:
 Redis automatically uses listpack encoding when a collection is below the configured thresholds:
 
 ```bash
-# Hashes: listpack used when entries <= 128 AND values <= 64 bytes
+# Hashes: listpack used when entries <= 512 AND values <= 64 bytes
 redis-cli CONFIG GET hash-max-listpack-entries
 redis-cli CONFIG GET hash-max-listpack-value
 
 # Lists: listpack used for small lists (per node)
 redis-cli CONFIG GET list-max-listpack-size
 
-# Sets: listpack used when entries <= 128 AND values <= 64 bytes
+# Sets (Redis 7.2+): listpack used when entries <= 128 AND values <= 64 bytes
 redis-cli CONFIG GET set-max-listpack-entries
 redis-cli CONFIG GET set-max-listpack-value
 
@@ -55,7 +55,7 @@ redis-cli OBJECT ENCODING mykey
 
 ```bash
 # Default thresholds (Redis 7.0+)
-CONFIG SET hash-max-listpack-entries 128
+CONFIG SET hash-max-listpack-entries 512
 CONFIG SET hash-max-listpack-value 64
 
 # Verify encoding
@@ -63,10 +63,10 @@ CONFIG SET hash-max-listpack-value 64
 127.0.0.1:6379> OBJECT ENCODING smallhash
 "listpack"
 
-# Add many fields to trigger conversion
-127.0.0.1:6379> HSET bighash $(seq 1 150 | awk '{printf "field%d val%d ", $1, $1}')
-127.0.0.1:6379> OBJECT ENCODING bighash
-"hashtable"
+# Add many fields from the shell to trigger conversion
+redis-cli HSET bighash $(seq 1 600 | awk '{printf "field%d val%d ", $1, $1}')
+redis-cli OBJECT ENCODING bighash
+# "hashtable"
 ```
 
 ## Sorted Set Listpack Configuration
@@ -148,7 +148,7 @@ redis-cli MEMORY USAGE big-hash
 ```bash
 # Maximize listpack usage for small objects
 # (adjust based on your actual data sizes)
-CONFIG SET hash-max-listpack-entries 256
+CONFIG SET hash-max-listpack-entries 512
 CONFIG SET hash-max-listpack-value 128
 CONFIG SET zset-max-listpack-entries 256
 CONFIG SET zset-max-listpack-value 128
@@ -170,8 +170,8 @@ redis-cli INFO server | grep redis_version
 # After upgrade to 7.0+, existing ziplist-encoded keys
 # will continue to work but new small collections use listpack
 
-# Force re-encoding by reading and rewriting the data
-redis-cli DUMP mykey | redis-cli RESTORE mykey 0 -
+# Redis automatically converts ziplist to listpack when loading the RDB file
+# No manual re-encoding is needed after upgrading
 ```
 
 ## Summary
