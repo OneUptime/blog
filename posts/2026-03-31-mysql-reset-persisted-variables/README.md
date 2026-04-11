@@ -42,19 +42,29 @@ This empties `mysqld-auto.cnf` completely. After the next restart, all values co
 Check which variables are currently persisted:
 
 ```sql
-SELECT VARIABLE_NAME, SET_VALUE, SET_USER, SET_TIME
+SELECT VARIABLE_NAME, VARIABLE_VALUE
 FROM performance_schema.persisted_variables
 ORDER BY VARIABLE_NAME;
 ```
 
 ```text
-+---------------------------+-----------+------+---------------------+
-| VARIABLE_NAME             | SET_VALUE | USER | SET_TIME            |
-+---------------------------+-----------+------+---------------------+
-| innodb_buffer_pool_size   | 2147483648| root | 2026-03-15 10:00:00 |
-| max_connections           | 500       | root | 2026-03-20 14:30:00 |
-| wait_timeout              | 1800      | dba  | 2026-03-28 09:00:00 |
-+---------------------------+-----------+------+---------------------+
++---------------------------+----------------+
+| VARIABLE_NAME             | VARIABLE_VALUE |
++---------------------------+----------------+
+| innodb_buffer_pool_size   | 2147483648     |
+| max_connections           | 500            |
+| wait_timeout              | 1800           |
++---------------------------+----------------+
+```
+
+To see who set each variable and when, join with `performance_schema.variables_info`:
+
+```sql
+SELECT p.VARIABLE_NAME, p.VARIABLE_VALUE, v.SET_USER, v.SET_TIME
+FROM performance_schema.persisted_variables p
+JOIN performance_schema.variables_info v
+  ON p.VARIABLE_NAME = v.VARIABLE_NAME
+ORDER BY p.VARIABLE_NAME;
 ```
 
 ## Reset Multiple Specific Variables
@@ -85,18 +95,17 @@ SHOW GLOBAL VARIABLES LIKE 'max_connections';
 
 ## Handle "Variable Does Not Exist in Persisted Configuration"
 
-If you try to reset a variable that is not persisted, MySQL returns a warning:
+If you try to reset a variable that is not persisted, MySQL returns an error:
 
 ```sql
 RESET PERSIST sort_buffer_size;
 ```
 
 ```text
-Query OK, 0 rows affected, 1 warning (0.00 sec)
-Warning (Code 3616): Variable 'sort_buffer_size' was not found in persisted configuration
+ERROR 3615 (HY000): Variable sort_buffer_size does not exist in persisted config file
 ```
 
-Use `IF EXISTS` to suppress the warning:
+Use `IF EXISTS` to suppress the error and produce a warning instead:
 
 ```sql
 RESET PERSIST IF EXISTS sort_buffer_size;
@@ -122,10 +131,13 @@ After `RESET PERSIST`, the file will be empty or contain only remaining persiste
 ## Required Privileges
 
 ```sql
--- SYSTEM_VARIABLES_ADMIN is required
+-- SYSTEM_VARIABLES_ADMIN is required for dynamic variables
 GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO 'dba'@'%';
+
+-- PERSIST_RO_VARIABLES_ADMIN is also required for read-only variables
+GRANT PERSIST_RO_VARIABLES_ADMIN ON *.* TO 'dba'@'%';
 ```
 
 ## Summary
 
-Use `RESET PERSIST variable_name` to remove a single persisted variable from `mysqld-auto.cnf`, or `RESET PERSIST` (no arguments) to clear all persisted values. The running server is unaffected - changes take effect on the next restart. Use `RESET PERSIST IF EXISTS` to avoid warnings for variables that were not persisted. Always verify what is persisted with `SELECT * FROM performance_schema.persisted_variables` before performing a bulk reset.
+Use `RESET PERSIST variable_name` to remove a single persisted variable from `mysqld-auto.cnf`, or `RESET PERSIST` (no arguments) to clear all persisted values. The running server is unaffected - changes take effect on the next restart. Use `RESET PERSIST IF EXISTS` to avoid errors for variables that were not persisted. Always verify what is persisted with `SELECT * FROM performance_schema.persisted_variables` before performing a bulk reset.
