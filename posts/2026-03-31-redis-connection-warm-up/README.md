@@ -30,7 +30,6 @@ With warm-up:
 
 ```python
 import redis
-import threading
 import logging
 
 logger = logging.getLogger(__name__)
@@ -109,25 +108,29 @@ async def startup_event():
 
 ## Node.js Warm-Up with ioredis
 
+A single ioredis client uses one TCP connection (not a pool), so warm-up ensures that connection is established before traffic arrives:
+
 ```javascript
 const Redis = require("ioredis");
 
-async function warmUpPool(client, count = 10) {
-  const pings = Array.from({ length: count }, () => client.ping());
-  const results = await Promise.allSettled(pings);
-  const success = results.filter((r) => r.status === "fulfilled").length;
-  console.log(`Warmed up ${success}/${count} Redis connections`);
+async function warmUp(client) {
+  try {
+    await client.ping();
+    console.log("Redis connection warmed up and ready");
+  } catch (err) {
+    console.error("Redis warm-up failed:", err.message);
+  }
 }
 
 async function main() {
   const client = new Redis({ host: "localhost", port: 6379 });
-  await warmUpPool(client, 20);
+  await warmUp(client);
   // Now start accepting HTTP traffic
   startServer();
 }
 ```
 
-## Kubernetes Readiness Gate
+## Kubernetes Readiness Probe
 
 Combine warm-up with a readiness probe so Kubernetes only sends traffic after connections are ready:
 
