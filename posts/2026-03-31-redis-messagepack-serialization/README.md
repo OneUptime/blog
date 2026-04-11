@@ -17,6 +17,7 @@ pip install msgpack
 ```
 
 ```python
+import json
 import msgpack
 import redis
 
@@ -32,8 +33,8 @@ data = {
 
 # Pack to bytes
 packed = msgpack.packb(data, use_bin_type=True)
-print(f"JSON size: {len(str(data).encode())}, MsgPack size: {len(packed)}")
-# JSON size: 101, MsgPack size: 72
+print(f"JSON size: {len(json.dumps(data).encode())}, MsgPack size: {len(packed)}")
+# JSON size: 124, MsgPack size: 88
 
 # Store
 client.set("user:42", packed, ex=3600)
@@ -48,12 +49,12 @@ restored = msgpack.unpackb(raw, raw=False)  # raw=False returns str, not bytes
 MessagePack has a native timestamp extension type (ext type -1):
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 
 data = {
     "event": "login",
     "user_id": 42,
-    "timestamp": datetime.utcnow(),
+    "timestamp": datetime.now(timezone.utc),
 }
 
 # Use default=str to convert unsupported types
@@ -69,8 +70,8 @@ npm install @msgpack/msgpack
 ```
 
 ```javascript
-const { encode, decode } = require("@msgpack/msgpack");
-const Redis = require("ioredis");
+import { encode, decode } from "@msgpack/msgpack";
+import Redis from "ioredis";
 
 const client = new Redis();
 
@@ -123,7 +124,7 @@ for (int i = 0; i < size; i++) {
 ## Compare Sizes
 
 ```python
-import json, msgpack, sys
+import json, msgpack
 
 sample = {"users": [{"id": i, "name": f"User{i}", "score": i * 1.1} for i in range(100)]}
 
@@ -133,9 +134,9 @@ msgpack_bytes = msgpack.packb(sample, use_bin_type=True)
 print(f"JSON: {len(json_bytes)} bytes")
 print(f"MessagePack: {len(msgpack_bytes)} bytes")
 print(f"Reduction: {(1 - len(msgpack_bytes)/len(json_bytes))*100:.1f}%")
-# JSON: 3847 bytes
-# MessagePack: 2301 bytes
-# Reduction: 40.2%
+# JSON: 5141 bytes
+# MessagePack: 3200 bytes
+# Reduction: 37.8%
 ```
 
 ## Summary
