@@ -20,7 +20,7 @@ mysql -h localhost -u user -p mydb
 mariadb -h localhost -u user -p mydb
 ```
 
-However, they are no longer fully compatible. Applications using MySQL 8.0-specific features such as window functions with full syntax, CTEs, or the new authentication plugin (`caching_sha2_password`) may require changes when switching to MariaDB.
+However, they are no longer fully compatible. Applications using MySQL 8.0-specific features such as the default authentication plugin (`caching_sha2_password`), the transactional data dictionary, or invisible indexes may require changes when switching to MariaDB.
 
 ## Storage Engines
 
@@ -63,10 +63,10 @@ If your application relies heavily on JSON querying, MySQL 8.0 offers better per
 MySQL uses binary log-based replication with GTID support:
 
 ```sql
--- MySQL GTID-based replication
-CHANGE MASTER TO
-  MASTER_HOST = 'primary',
-  MASTER_AUTO_POSITION = 1;
+-- MySQL GTID-based replication (MySQL 8.0.23+ syntax)
+CHANGE REPLICATION SOURCE TO
+  SOURCE_HOST = 'primary',
+  SOURCE_AUTO_POSITION = 1;
 ```
 
 MariaDB uses its own GTID format incompatible with MySQL GTIDs:
@@ -88,7 +88,7 @@ MariaDB often benchmarks faster for read-heavy workloads due to the Aria engine 
 -- MySQL 8.0: hash join is used automatically for equi-joins without indexes
 SELECT * FROM large_table a JOIN another_table b ON a.id = b.ref_id;
 
--- MariaDB 10.7+: hash join support added but not as mature
+-- MariaDB: Block Nested Loop Hash join available since 5.3; different implementation
 ```
 
 ## Licensing
