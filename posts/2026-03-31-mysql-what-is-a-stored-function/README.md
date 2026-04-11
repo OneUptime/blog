@@ -10,7 +10,7 @@ Description: A stored function in MySQL is a named database routine that accepts
 
 ## Overview
 
-A stored function (also called a user-defined function or UDF in the stored routine sense) is a named database object in MySQL that encapsulates SQL logic and returns a single value. Unlike stored procedures, functions can be used directly inside SQL expressions -- in `SELECT` columns, `WHERE` clauses, and `ORDER BY` -- making them more composable. Functions must return a value and cannot use `OUT` parameters or return result sets.
+A stored function is a named database object in MySQL that encapsulates SQL logic and returns a single value. (Note: stored functions are distinct from loadable functions, sometimes called UDFs, which are compiled from external code like C/C++.) Unlike stored procedures, functions can be used directly inside SQL expressions -- in `SELECT` columns, `WHERE` clauses, and `ORDER BY` -- making them more composable. Functions must return a value and cannot use `OUT` parameters or return result sets.
 
 ## Creating a Stored Function
 
@@ -46,10 +46,12 @@ FROM products;
 
 MySQL requires you to declare whether a function always returns the same result for the same inputs:
 
-- `DETERMINISTIC`: Same inputs always produce the same output (e.g., mathematical calculations). Required for binary log replication of functions.
+- `DETERMINISTIC`: Same inputs always produce the same output (e.g., mathematical calculations). When binary logging is enabled with statement-based format, functions must be declared `DETERMINISTIC` (or `NO SQL`/`READS SQL DATA`) to be created and executed, unless `log_bin_trust_function_creators` is enabled.
 - `NOT DETERMINISTIC`: Output may vary (e.g., functions that call `NOW()` or read from tables).
 
 ```sql
+DELIMITER $$
+
 CREATE FUNCTION get_customer_tier(p_customer_id INT)
 RETURNS VARCHAR(20)
 READS SQL DATA
@@ -65,14 +67,16 @@ BEGIN
     WHEN v_total >= 1000 THEN 'gold'
     ELSE 'standard'
   END;
-END;
+END$$
+
+DELIMITER ;
 ```
 
 ## Data Access Characteristics
 
 Declare what data the function accesses:
 
-- `NO SQL`: Does not read or write tables.
+- `NO SQL`: Contains no SQL statements.
 - `READS SQL DATA`: Reads tables but does not modify them.
 - `MODIFIES SQL DATA`: Modifies tables (unusual for functions).
 - `CONTAINS SQL`: Contains SQL but neither reads nor writes (default).
