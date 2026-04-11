@@ -55,7 +55,7 @@ SELECT POWER(4, 0.5);
 -- Returns: 2.0  (square root via power)
 
 SELECT POWER(8, 1/3);
--- Returns: ~2.0  (cube root)
+-- Returns: ~1.9999  (cube root; 1/3 yields 0.3333 in MySQL due to decimal division precision)
 
 SELECT POW(10, 6);
 -- Returns: 1000000.0
@@ -188,7 +188,7 @@ FROM (
 
 ---
 
-## Scaling Values Logarithmically
+## Scaling Values with Square Root Normalization
 
 ```sql
 -- Normalize values to 0-1 scale using square root compression
