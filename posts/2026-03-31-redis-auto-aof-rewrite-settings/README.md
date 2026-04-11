@@ -80,7 +80,7 @@ redis-cli INFO persistence
 aof_enabled:1
 aof_current_size:134217728
 aof_base_size:67108864
-aof_pending_rewrite:0
+aof_rewrite_scheduled:0
 aof_rewrite_buffer_length:0
 ```
 
