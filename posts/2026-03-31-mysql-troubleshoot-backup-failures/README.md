@@ -98,11 +98,12 @@ xtrabackup --backup --innodb-log-file-size=256M \
 Always verify backups after creation:
 
 ```bash
-# Test restore to a separate MySQL instance
-mysqlcheck --check --all-databases -u root -p
+# Verify the dump file completed successfully (not truncated)
+tail -1 /backups/full.sql | grep -q "Dump completed" \
+  && echo "Backup complete" || echo "Backup may be truncated"
 
-# For mysqldump, verify the SQL is parseable
-mysql -u root -p --silent --execute "SET foreign_key_checks=0;" < /backups/full.sql
+# Test restore to a separate MySQL instance
+mysql -u root -p test_restore_db < /backups/full.sql
 ```
 
 Or use Xtrabackup's prepare step:
@@ -118,6 +119,7 @@ Wrap backup scripts to capture failures and alert:
 
 ```bash
 #!/bin/bash
+set -o pipefail
 BACKUP_FILE="/backups/mysql_$(date +%Y%m%d_%H%M%S).sql.gz"
 mysqldump -u backup_user -p"${MYSQL_BACKUP_PASS}" \
   --single-transaction --all-databases \
