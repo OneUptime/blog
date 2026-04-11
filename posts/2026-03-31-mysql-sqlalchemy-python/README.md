@@ -157,7 +157,7 @@ def delete_user(user_id: int) -> bool:
 ## Querying with Filters
 
 ```python
-from sqlalchemy import or_, and_, like
+from sqlalchemy import or_, and_
 
 def search_users(keyword: str, role: str | None = None) -> list[User]:
     with get_session() as session:
