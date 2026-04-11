@@ -142,11 +142,25 @@ def store_document_local(doc_id: int, title: str, content: str):
 
 ## Filtered Vector Search
 
-Combine vector similarity with metadata filters:
+Combine vector similarity with metadata filters. The index must include the filter field, so add a TAG field for category:
+
+```bash
+FT.CREATE idx:docs_filtered
+  ON HASH
+  PREFIX 1 doc:
+  SCHEMA
+    title TEXT
+    content TEXT
+    category TAG
+    embedding VECTOR HNSW 6
+      TYPE FLOAT32
+      DIM 1536
+      DISTANCE_METRIC COSINE
+```
 
 ```bash
 # Only search within a specific category
-FT.SEARCH idx:docs
+FT.SEARCH idx:docs_filtered
   "(@category:{technology})=>[KNN 5 @embedding $vec AS score]"
   PARAMS 2 vec <binary_vector>
   SORTBY score
@@ -161,7 +175,7 @@ def semantic_search_filtered(query_text: str, category: str, top_k: int = 5) -> 
         .return_fields("title", "score") \
         .paging(0, top_k) \
         .dialect(2)
-    results = r.ft("idx:docs").search(q, query_params={"vec": query_bytes})
+    results = r.ft("idx:docs_filtered").search(q, query_params={"vec": query_bytes})
     return [{"title": doc.title, "score": float(doc.score)} for doc in results.docs]
 ```
 
