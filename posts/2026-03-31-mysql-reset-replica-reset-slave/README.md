@@ -127,8 +127,8 @@ Key fields to verify after reset and restart:
 ## Required Privileges
 
 ```sql
--- The user running RESET REPLICA needs REPLICATION SLAVE privilege
-GRANT REPLICATION SLAVE ON *.* TO 'dba_user'@'localhost';
+-- The user running RESET REPLICA needs RELOAD privilege
+GRANT RELOAD ON *.* TO 'dba_user'@'localhost';
 ```
 
 ## Summary
