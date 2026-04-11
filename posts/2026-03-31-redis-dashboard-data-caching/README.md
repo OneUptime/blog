@@ -45,8 +45,6 @@ def get_error_rates() -> dict:
 When many users hit an expired cache key simultaneously, they all query the database at once - a cache stampede. Use background refresh with a lock:
 
 ```python
-import threading
-
 def get_with_background_refresh(key: str, stale_ttl: int, refresh_fn: Callable) -> Optional[dict]:
     raw = r.get(key)
     if raw:
