@@ -12,10 +12,10 @@ Drupal is one of the most widely deployed open-source CMS platforms, and MySQL i
 
 ## Prerequisites
 
-You need a running MySQL 8.0+ server and Drupal 10 or 11. Ensure the `mysqli` and `pdo_mysql` PHP extensions are active.
+You need a running MySQL 8.0+ server and Drupal 10 or 11. Ensure the `pdo_mysql` PHP extension is active (Drupal uses PDO exclusively for database access).
 
 ```bash
-php -m | grep -E "mysqli|pdo_mysql"
+php -m | grep pdo_mysql
 ```
 
 ## Creating the Drupal Database and User
@@ -23,7 +23,7 @@ php -m | grep -E "mysqli|pdo_mysql"
 ```sql
 CREATE DATABASE drupal_db CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER 'drupal_user'@'localhost' IDENTIFIED BY 'strongpassword';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, CREATE TEMPORARY TABLES
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, CREATE TEMPORARY TABLES, LOCK TABLES
   ON drupal_db.* TO 'drupal_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
@@ -58,10 +58,9 @@ Drupal is write-heavy during caching and session management. Tune `my.cnf` accor
 innodb_buffer_pool_size = 1G
 innodb_log_file_size    = 256M
 max_connections         = 150
-query_cache_type        = 0
 ```
 
-Disable the query cache (`query_cache_type = 0`) - it is removed in MySQL 8 and caused more contention than benefit in earlier versions.
+Do not include `query_cache_type` or other query cache settings - the query cache was completely removed in MySQL 8.0 and these variables are unrecognized, which can prevent the server from starting.
 
 ## Running Drupal CLI (Drush) Database Commands
 
