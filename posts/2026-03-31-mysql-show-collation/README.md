@@ -75,7 +75,7 @@ Collation names follow this pattern: `{charset}_{language}_{sensitivity}`
 
 ```text
 utf8mb4_unicode_ci   - Unicode rules, case-insensitive, accent-insensitive
-utf8mb4_unicode_cs   - Unicode rules, case-sensitive
+utf8mb4_0900_as_cs   - Unicode 9.0 rules, accent-sensitive, case-sensitive
 utf8mb4_bin          - Binary comparison (byte-by-byte)
 utf8mb4_0900_ai_ci   - Unicode 9.0 rules, accent-insensitive, case-insensitive
 ```
