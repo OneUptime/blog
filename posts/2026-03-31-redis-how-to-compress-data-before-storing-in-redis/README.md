@@ -133,7 +133,6 @@ def get_lz4(key: str):
 ## Measuring Compression Savings
 
 ```python
-import sys
 import gzip
 import json
 
@@ -149,9 +148,9 @@ print(f"Ratio:      {len(raw) / len(compressed):.1f}x reduction")
 Sample output:
 
 ```text
-Original:   5,847 bytes
-Compressed:   412 bytes
-Ratio:      14.2x reduction
+Original:   3,726 bytes
+Compressed:   312 bytes
+Ratio:      11.9x reduction
 ```
 
 ## Best Practices
