@@ -18,7 +18,7 @@ The pipeline consists of three stages:
 MySQL binlog --> Debezium MySQL Source --> Kafka topic --> Elasticsearch Sink --> Elasticsearch index
 ```
 
-All three components run inside Kafka Connect, which handles fault tolerance and offset management.
+The source and sink connectors both run inside Kafka Connect, which handles fault tolerance and offset management.
 
 ## Setting Up the Stack
 
@@ -34,8 +34,14 @@ services:
       MYSQL_DATABASE: myapp
     command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
     environment:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
@@ -49,6 +55,7 @@ services:
       GROUP_ID: 1
       CONFIG_STORAGE_TOPIC: connect_configs
       OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
@@ -102,7 +109,6 @@ curl -X POST http://localhost:8083/connectors \
       "tasks.max": "1",
       "topics": "myapp.myapp.products",
       "connection.url": "http://elasticsearch:9200",
-      "type.name": "_doc",
       "key.ignore": "false",
       "schema.ignore": "true",
       "transforms": "unwrap",
