@@ -71,8 +71,7 @@ Sample response:
 ```json
 {
     "activeConnections": 12,
-    "totalConnectionsUp": 847,
-    "totalConnectionsDown": 835,
+    "totalConnections": 847,
     "blockedHosts": 0
 }
 ```
@@ -104,7 +103,7 @@ Increase log level for debugging:
 level = DEBUG
 ```
 
-## Check Port Usage with netstat
+## Check Port Usage with ss
 
 ```bash
 # Show connections to all router ports
