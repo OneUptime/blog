@@ -15,17 +15,19 @@ A URL shortener maps short codes to long URLs. Redis is a natural fit: Hash stor
 ## URL Storage Design
 
 ```text
-url:{short_code}          -> Hash: {original_url, created_at, expires_at, clicks, user_id}
-url:shortcode_counter     -> String: auto-incrementing ID for base62 encoding
-url:custom:{alias}        -> String: points to short_code for custom aliases
-url:clicks:{short_code}   -> Sorted Set: hourly click counts
+url:{short_code}                -> Hash: {original_url, created_at, expires_at, clicks, user_id}
+url:shortcode_counter           -> String: auto-incrementing ID for base62 encoding
+url:custom:{alias}              -> String: points to short_code for custom aliases
+url:clicks:hourly:{short_code}  -> Sorted Set: hourly click counts
+url:clicks:daily:{short_code}   -> Sorted Set: daily click counts
+url:referrers:{short_code}      -> Sorted Set: referrer click counts
+url:global:clicks               -> Sorted Set: global click counts for top-N queries
 ```
 
 ## Generating Short Codes
 
 ```python
 import time
-import hashlib
 import string
 from redis import Redis
 
@@ -140,6 +142,9 @@ def track_click(
         pipe.zincrby(f"url:referrers:{short_code}", 1, referrer)
         pipe.expire(f"url:referrers:{short_code}", 30 * 86400)
 
+    # Global click leaderboard for top-N queries
+    pipe.zincrby("url:global:clicks", 1, short_code)
+
     pipe.execute()
 ```
 
@@ -209,19 +214,19 @@ def shorten_url(original_url: str, alias: str = None, ttl_days: int = None):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
-@app.get("/{short_code}")
-def redirect(short_code: str):
-    url = resolve_url(short_code)
-    if not url:
-        raise HTTPException(status_code=404, detail="Short URL not found or expired")
-    return RedirectResponse(url=url, status_code=302)
-
 @app.get("/analytics/{short_code}")
 def analytics(short_code: str):
     data = get_url_analytics(short_code)
     if not data:
         raise HTTPException(status_code=404)
     return data
+
+@app.get("/{short_code}")
+def redirect(short_code: str):
+    url = resolve_url(short_code)
+    if not url:
+        raise HTTPException(status_code=404, detail="Short URL not found or expired")
+    return RedirectResponse(url=url, status_code=302)
 ```
 
 ## Summary
