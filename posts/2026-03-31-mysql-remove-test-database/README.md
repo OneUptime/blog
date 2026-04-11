@@ -42,7 +42,14 @@ DROP DATABASE IF EXISTS test;
 
 ## Removing Test Database Access
 
-Use `DROP DATABASE` to remove the database itself. If you have custom `test.*` grants on named accounts, revoke them explicitly with `REVOKE` rather than editing `mysql.db` by hand.
+After dropping the database, remove the default grant entries that allow any user to access databases named `test` or starting with `test_`:
+
+```sql
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';
+FLUSH PRIVILEGES;
+```
+
+If you also have custom `test.*` grants on named accounts, revoke them with `REVOKE`.
 
 ## Using mysql_secure_installation
 
@@ -70,6 +77,9 @@ MYSQL_ROOT_PASS="${1}"
 
 mysql -u root -p"${MYSQL_ROOT_PASS}" <<'EOF'
 DROP DATABASE IF EXISTS test;
+
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';
+FLUSH PRIVILEGES;
 
 DROP USER IF EXISTS ''@'localhost';
 DROP USER IF EXISTS ''@'::1';
