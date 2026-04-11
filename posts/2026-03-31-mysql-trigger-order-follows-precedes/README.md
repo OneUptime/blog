@@ -58,12 +58,12 @@ DELIMITER //
 
 -- Audit trigger already exists; add a pre-processing trigger before it
 CREATE TRIGGER trg_orders_enrich
-AFTER INSERT ON orders
+BEFORE INSERT ON orders
 FOR EACH ROW
 PRECEDES trg_orders_audit
 BEGIN
     -- Enrich data before audit logging
-    UPDATE orders SET region = get_region(user_id) WHERE order_id = NEW.order_id;
+    SET NEW.region = get_region(NEW.user_id);
 END //
 
 DELIMITER ;
