@@ -18,7 +18,7 @@ CREATE DATABASE myapp
   COLLATE utf8mb4_unicode_ci;
 ```
 
-`utf8mb4_unicode_ci` provides case-insensitive, accent-aware comparison that works across Latin, Cyrillic, Arabic, and many other scripts. For language-specific sorting rules (e.g., Swedish `ä` sorts after `z`), use locale-specific collations like `utf8mb4_sv_0900_ai_ci`.
+`utf8mb4_unicode_ci` provides case-insensitive, accent-insensitive comparison that works across Latin, Cyrillic, Arabic, and many other scripts. For language-specific sorting rules (e.g., Swedish `ä` sorts after `z`), use locale-specific collations like `utf8mb4_sv_0900_ai_ci`.
 
 ## Translation Table Pattern
 
