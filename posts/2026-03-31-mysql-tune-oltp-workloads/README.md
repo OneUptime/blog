@@ -98,9 +98,9 @@ SELECT
   r.trx_query waiting_query,
   b.trx_id blocking_trx,
   b.trx_mysql_thread_id blocking_thread
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 For hot rows receiving many concurrent updates, consider:
@@ -129,7 +129,7 @@ Ensure primary keys are clustered and queries use them:
 
 ```sql
 EXPLAIN SELECT * FROM orders WHERE id = 98765;
--- Should show "ref_type: const" and no filesort
+-- Should show "type: const" and no filesort
 ```
 
 ## Transaction Size and Commit Frequency
@@ -149,4 +149,4 @@ for i in range(0, len(records), batch_size):
 
 ## Summary
 
-MySQL OLTP tuning focuses on full ACID compliance settings, keeping `innodb_flush_log_at_trx_commit = 1` and `sync_binlog = 1` for transaction safety, and reducing lock contention with `innodb_autoinc_lock_mode = 2`. Generous buffer pool sizing keeps hot data in memory, while proper primary key usage ensures transactions execute index lookups rather than full scans. Monitor active lock waits with the `innodb_lock_waits` view and use connection pooling with `wait_timeout` to release idle connections promptly.
+MySQL OLTP tuning focuses on full ACID compliance settings, keeping `innodb_flush_log_at_trx_commit = 1` and `sync_binlog = 1` for transaction safety, and reducing lock contention with `innodb_autoinc_lock_mode = 2`. Generous buffer pool sizing keeps hot data in memory, while proper primary key usage ensures transactions execute index lookups rather than full scans. Monitor active lock waits with the `data_lock_waits` view and use connection pooling with `wait_timeout` to release idle connections promptly.
