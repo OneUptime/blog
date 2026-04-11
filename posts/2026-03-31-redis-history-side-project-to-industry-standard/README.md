@@ -40,20 +40,19 @@ GitHub adopted Redis early for features like their activity feed. Twitter used R
 In 2010, VMware hired Sanfilippo to work full-time on Redis. Later Pivotal (a VMware spinoff) continued this sponsorship. This period saw major features:
 
 ```text
-2010 - Redis Sentinel (high availability)
-2012 - Redis Cluster (horizontal scaling)
-2013 - Redis 2.8 with improved replication
-2015 - Redis 3.0 with Cluster GA release
+2012 - Redis 2.6 with Lua scripting and Sentinel v1 (high availability)
+2013 - Redis 2.8 with stable Sentinel and improved replication
+2015 - Redis 3.0 with Cluster GA release (horizontal scaling)
 ```
 
 The community flourished. Client libraries appeared for every major programming language.
 
 ## Redis Labs and Commercial Expansion (2011-2020)
 
-Redis Labs was founded in 2011 (later renamed Redis Inc., then Redis Ltd.) to build commercial products on top of Redis. They funded Salvatore's continued work on the open-source project and built Redis Enterprise for enterprise deployments.
+Garantia Data was founded in 2011, later renamed Redis Labs in 2014 (and eventually Redis Ltd.) to build commercial products on top of Redis. They funded Salvatore's continued work on the open-source project and built Redis Enterprise for enterprise deployments.
 
 ```text
-2015 - Redis modules system introduced
+2017 - Redis modules system introduced (Redis 4.0)
 2018 - RediSearch, RedisJSON, RedisTimeSeries modules released
 2020 - Redis 6.0 with SSL/TLS, ACLs, and client-side caching
 ```
@@ -62,19 +61,20 @@ Redis became one of the most popular databases in the world according to Stack O
 
 ## Antirez Steps Back (2020)
 
-In 2020, Salvatore Sanfilippo announced he was stepping back from active Redis development, citing the exhaustion of maintaining a global project as a single lead maintainer. He wrote:
+In June 2020, Salvatore Sanfilippo announced he was stepping back from active Redis development. In his blog post "The end of the Redis adventure," he explained that he wanted to return to being a creative coder rather than a software maintainer:
 
-> "I'm 40 years old, I have different interests now, and Redis is in good hands."
+> "I write code in order to express myself... I'm asked more and more... to express myself less and to maintain the project more."
 
 The Redis Labs engineering team took over stewardship of the project.
 
 ## The License Change and Fork (2024)
 
-In March 2024, Redis Ltd. changed Redis's license from BSD-3-Clause to SSPL/RSALv2 starting with version 7.4. This was a significant moment that divided the community.
+In March 2024, Redis Ltd. changed Redis's license from BSD-3-Clause to a dual SSPL/RSALv2 license for all future versions. This was a significant moment that divided the community.
 
 ```text
-March 2024 - Redis 7.4 released under SSPL/RSALv2
+March 2024 - Redis license changed from BSD-3-Clause to SSPL/RSALv2
 March 2024 - Valkey forked from Redis 7.2.4 under Linux Foundation
+July 2024 - Redis 7.4 released (first version under new license)
 April 2024 - Valkey 7.2.5 released
 September 2024 - Valkey 8.0 released with enhanced multi-threading
 ```
