@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Installation, Window, Database, Configuration
+Tags: MySQL, Installation, Windows, Database, Configuration
 
 Description: Install MySQL 8.0 on Windows 11 using the MySQL Installer, configure the server type, set the root password, and start the Windows service.
 
@@ -119,7 +119,7 @@ SELECT VERSION();
 
 Open PowerShell as Administrator.
 
-```bash
+```powershell
 # Check service status
 Get-Service -Name MySQL80
 
@@ -145,7 +145,7 @@ C:\Program Files\MySQL\MySQL Server 8.0\bin
 
 In PowerShell:
 
-```bash
+```powershell
 [System.Environment]::SetEnvironmentVariable(
   "Path",
   $env:Path + ";C:\Program Files\MySQL\MySQL Server 8.0\bin",
