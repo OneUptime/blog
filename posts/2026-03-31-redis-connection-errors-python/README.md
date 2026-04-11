@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Python, Error Handling, Resilience, redis-py
 
-Description: Handle Redis connection errors in Python with redis-py using exception handling, retry logic, circuit breakers, and health checks for production resilience.
+Description: Handle Redis connection errors in Python with redis-py using exception handling, retry logic, graceful degradation, and health checks for production resilience.
 
 ---
 
-Redis is often a critical dependency. Handling connection failures gracefully - with retries, fallbacks, and circuit breakers - prevents cascading failures and improves application resilience.
+Redis is often a critical dependency. Handling connection failures gracefully - with retries, fallbacks, and graceful degradation - prevents cascading failures and improves application resilience.
 
 ## Common Exception Types
 
@@ -127,8 +127,6 @@ r = redis.Redis(
 ## Graceful Degradation Pattern
 
 ```python
-import functools
-
 _local_cache: dict = {}
 
 def cached(key: str, fetch_fn, ttl: int = 60):
