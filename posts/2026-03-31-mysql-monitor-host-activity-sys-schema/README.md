@@ -21,7 +21,7 @@ SELECT
   host,
   statements,
   statement_latency,
-  connections,
+  total_connections,
   unique_users,
   current_memory,
   total_memory_allocated
@@ -38,8 +38,8 @@ SELECT
   host,
   total,
   total_latency,
-  avg_latency,
-  max_latency
+  max_latency,
+  lock_latency
 FROM sys.host_summary_by_statement_latency
 ORDER BY total_latency DESC;
 ```
@@ -95,15 +95,16 @@ ORDER BY total_latency DESC;
 ```sql
 -- Per-host connection and statement counts
 SELECT
-  HOST,
-  CURRENT_CONNECTIONS,
-  TOTAL_CONNECTIONS,
-  STATEMENTS_DIGEST
+  h.HOST,
+  h.CURRENT_CONNECTIONS,
+  h.TOTAL_CONNECTIONS,
+  SUM(s.COUNT_STAR) AS total_statements
 FROM performance_schema.hosts h
 LEFT JOIN performance_schema.events_statements_summary_by_host_by_event_name s
   ON h.HOST = s.HOST
 WHERE h.HOST IS NOT NULL
-ORDER BY CURRENT_CONNECTIONS DESC;
+GROUP BY h.HOST, h.CURRENT_CONNECTIONS, h.TOTAL_CONNECTIONS
+ORDER BY h.CURRENT_CONNECTIONS DESC;
 ```
 
 ## Identifying Problematic Hosts
@@ -113,10 +114,10 @@ Hosts with high latency but low connection counts may indicate slow queries. Hos
 ```sql
 SELECT
   host,
-  connections,
+  total_connections,
   statements,
-  ROUND(statement_latency / statements, 0) AS avg_stmt_latency_ms
-FROM sys.host_summary
+  ROUND(statement_latency / statements / 1000000000, 2) AS avg_stmt_latency_ms
+FROM sys.x$host_summary
 WHERE statements > 0
 ORDER BY avg_stmt_latency_ms DESC;
 ```
