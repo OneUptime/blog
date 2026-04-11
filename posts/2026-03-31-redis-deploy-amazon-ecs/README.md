@@ -50,7 +50,7 @@ Define the Redis task with resource limits and health checks using the AWS CLI o
         }
       ],
       "healthCheck": {
-        "command": ["CMD-SHELL", "redis-cli ping || exit 1"],
+        "command": ["CMD-SHELL", "redis-cli -a REDIS_PASSWORD_FROM_SECRET --no-auth-warning ping || exit 1"],
         "interval": 10,
         "timeout": 5,
         "retries": 3,
