@@ -21,7 +21,7 @@ RAND(seed)
 
 - Called with no arguments: returns a non-deterministic random value that changes on every call.
 - Called with a `seed` integer: returns a deterministic sequence. The same seed always produces the same sequence within a query.
-- Returns `NULL` if `seed` is `NULL`.
+- If `seed` is `NULL`, it is treated as `0` (equivalent to `RAND(0)`), returning a deterministic value.
 
 ---
 
