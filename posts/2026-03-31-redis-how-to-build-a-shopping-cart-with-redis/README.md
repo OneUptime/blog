@@ -38,7 +38,6 @@ EXPIRE cart:user:42 604800
 
 ```python
 from redis import Redis
-import json
 import time
 
 r = Redis(decode_responses=True)
