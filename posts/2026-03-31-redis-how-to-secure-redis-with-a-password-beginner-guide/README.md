@@ -10,7 +10,7 @@ Description: Learn how to secure your Redis instance with a password using requi
 
 ## Why Redis Needs a Password
 
-By default, Redis has no authentication and listens on all network interfaces. Anyone who can reach your Redis port can read, modify, or delete all your data. Setting a password is the first and most important security step.
+By default, Redis has no authentication. While Redis 7.0+ binds to localhost by default and protected mode (since Redis 3.2) limits unauthenticated remote access, anyone who can reach your Redis port can still read, modify, or delete all your data without a password. Setting a password is the first and most important security step.
 
 ## Setting a Password in redis.conf
 
