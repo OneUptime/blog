@@ -10,7 +10,7 @@ Description: Learn how to use CF.ADD in Redis to add elements to a Cuckoo filter
 
 ## How CF.ADD Works
 
-`CF.ADD` adds an element to a Cuckoo filter in Redis. A Cuckoo filter is a probabilistic data structure similar to a Bloom filter but with two key differences: it supports deletion of individual elements, and it reports whether an element was already present at insert time. Like a Bloom filter it can produce false positives but not false negatives.
+`CF.ADD` adds an element to a Cuckoo filter in Redis. A Cuckoo filter is a probabilistic data structure similar to a Bloom filter but with one key difference: it supports deletion of individual elements. Unlike Bloom filters, Cuckoo filters allow the same item to be added multiple times, with each addition treated as separate. Like a Bloom filter it can produce false positives but not false negatives.
 
 ```mermaid
 graph TD
@@ -20,7 +20,7 @@ graph TD
     C -->|Yes| D["Insert fingerprint into bucket"]
     C -->|No| E["Kick out existing item, try its alternate bucket"]
     E --> F["Continue cuckoo displacement"]
-    D --> G["Return 1 if new, 0 if already present"]
+    D --> G["Return 1 on success"]
     F --> G
 ```
 
@@ -31,7 +31,7 @@ graph TD
 | Deletion | Not supported | Supported (CF.DEL) |
 | Duplicate handling | Silently ignores | Tracks count (up to limit) |
 | Space efficiency | Slightly better | Slightly worse |
-| Lookup speed | O(k) hash functions | O(1) with 2 buckets |
+| Lookup speed | O(k) hash functions | O(k) sub-filters, 2 buckets each |
 | False positives | Yes | Yes |
 | False negatives | No | No |
 
@@ -45,17 +45,18 @@ CF.ADD key item
 - `item` - the element to add
 
 Returns:
-- `1` - element was successfully added (new)
-- `0` - element was already in the filter
+- `1` (or `true` in RESP3) - element was successfully added
 
 Returns an error if the filter is full and cannot expand.
+
+Note: `CF.ADD` allows duplicate items and always returns `1` on success. Use `CF.ADDNX` if you want to add only if the item does not already exist (returns `1` if added, `0` if already present).
 
 ## Default Filter Settings
 
 Auto-created Cuckoo filters use:
 - Initial capacity: 1024 buckets
 - Bucket size: 2 fingerprints per bucket
-- Maximum iterations: 500 (cuckoo displacement limit)
+- Maximum iterations: 20 (cuckoo displacement limit)
 - Expansion: 1 (each expansion doubles size)
 
 Use `CF.RESERVE` before `CF.ADD` for custom settings.
@@ -79,10 +80,10 @@ CF.ADD visited "https://example.com/page1"
 ```
 
 ```text
-(integer) 0
+(integer) 1
 ```
 
-The element was already in the filter.
+The element is added again. Cuckoo filters allow duplicate items, and each `CF.ADD` is treated as a separate insertion. Use `CF.ADDNX` instead if you want to prevent duplicates.
 
 ### Add Multiple Elements Sequentially
 
@@ -186,4 +187,4 @@ BF.ADD immutable_set "element"
 
 ## Summary
 
-`CF.ADD` inserts an element into a Redis Cuckoo filter and returns `1` if the element was new or `0` if it was already present. The key advantage of Cuckoo filters over Bloom filters is support for deletion via `CF.DEL`. Use `CF.ADD` when your use case requires both adding and removing individual elements from a probabilistic membership set.
+`CF.ADD` inserts an element into a Redis Cuckoo filter and returns `1` on success. Cuckoo filters allow duplicate insertions; use `CF.ADDNX` if you need to prevent duplicates. The key advantage of Cuckoo filters over Bloom filters is support for deletion via `CF.DEL`. Use `CF.ADD` when your use case requires both adding and removing individual elements from a probabilistic membership set.
