@@ -111,13 +111,13 @@ redis_mem_fragmentation_ratio
 
 Add reference lines at 1.5 (warning) and 2.0 (critical).
 
-### Panel 9: Slow Log Rate
+### Panel 9: Slow Log Length
 
 ```text
-rate(redis_slowlog_length[5m])
+redis_slowlog_length
 ```
 
-Spikes indicate slow commands are being executed.
+A rising value indicates slow commands are accumulating in the slow log buffer.
 
 ## Grafana Dashboard JSON Structure
 
@@ -141,12 +141,14 @@ dashboard = {
                 "type": "stat",
                 "targets": [{"expr": "redis_up", "legendFormat": "Status"}],
                 "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
-                "options": {
-                    "thresholds": {
-                        "steps": [
-                            {"color": "red", "value": 0},
-                            {"color": "green", "value": 1}
-                        ]
+                "fieldConfig": {
+                    "defaults": {
+                        "thresholds": {
+                            "steps": [
+                                {"color": "red", "value": 0},
+                                {"color": "green", "value": 1}
+                            ]
+                        }
                     }
                 }
             },
@@ -195,7 +197,7 @@ Create alert rules directly from dashboard panels:
 
 In the panel editor for cache hit rate:
 1. Go to the **Alert** tab
-2. Set condition: `WHEN avg() OF query(A, 5m, now) IS BELOW 0.85`
+2. Set condition: `WHEN avg() OF query(A, 5m, now) IS BELOW 85`
 3. Set notification channel (Slack, PagerDuty, etc.)
 
 For memory alerts using Grafana 9+ unified alerting:
