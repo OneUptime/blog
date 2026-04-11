@@ -68,7 +68,6 @@ Simulate a concurrent counter increment from two regions:
 
 ```python
 import redis
-import ssl
 
 def make_client(host, port, password):
     return redis.Redis(
