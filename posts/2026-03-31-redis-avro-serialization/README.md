@@ -113,6 +113,8 @@ GenericRecord record = new GenericData.Record(schema);
 record.put("user_id", 42L);
 record.put("name", "Alice");
 record.put("score", 98.5);
+record.put("email", null);
+record.put("tags", List.of());
 
 ByteArrayOutputStream bos = new ByteArrayOutputStream();
 DatumWriter<GenericRecord> writer = new GenericDatumWriter<>(schema);
