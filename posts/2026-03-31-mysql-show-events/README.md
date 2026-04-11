@@ -27,7 +27,7 @@ Before events can run, the Event Scheduler must be enabled:
 -- Check if the scheduler is running
 SHOW VARIABLES LIKE 'event_scheduler';
 
--- Enable it for the current session
+-- Enable it globally
 SET GLOBAL event_scheduler = ON;
 ```
 
