@@ -187,18 +187,22 @@ class Leaderboard {
 
 const lb = new Leaderboard('weekly');
 
-await lb.addScore('alice', 1500);
-await lb.addScore('bob', 2300);
-await lb.addScore('carol', 1800);
-await lb.incrementScore('alice', 500);
+async function main() {
+  await lb.addScore('alice', 1500);
+  await lb.addScore('bob', 2300);
+  await lb.addScore('carol', 1800);
+  await lb.incrementScore('alice', 500);
 
-const top10 = await lb.getTopN(10);
-console.log('Top 10:');
-top10.forEach(p => console.log(`  #${p.rank} ${p.player}: ${p.score}`));
+  const top10 = await lb.getTopN(10);
+  console.log('Top 10:');
+  top10.forEach(p => console.log(`  #${p.rank} ${p.player}: ${p.score}`));
 
-const aliceContext = await lb.getAroundPlayer('alice', 1);
-console.log('\nAround Alice:');
-aliceContext.forEach(p => console.log(`  #${p.rank} ${p.player}: ${p.score}`));
+  const aliceContext = await lb.getAroundPlayer('alice', 1);
+  console.log('\nAround Alice:');
+  aliceContext.forEach(p => console.log(`  #${p.rank} ${p.player}: ${p.score}`));
+}
+
+main();
 ```
 
 ## Sorted Set Range Queries
