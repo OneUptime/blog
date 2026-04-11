@@ -71,7 +71,6 @@ A Python-based parser to extract audit events from `mysqlbinlog` output:
 ```python
 import subprocess
 import re
-from datetime import datetime
 
 def extract_audit_events(binlog_file, table_name):
     result = subprocess.run([
@@ -79,7 +78,6 @@ def extract_audit_events(binlog_file, table_name):
     ], capture_output=True, text=True)
 
     events = []
-    current_event = {}
     current_time = None
 
     for line in result.stdout.splitlines():
@@ -113,12 +111,11 @@ Binary logs have important limitations for auditing:
 For comprehensive SELECT auditing and user tracking, use MySQL's dedicated audit plugins:
 
 ```sql
--- Install the audit log plugin (MySQL Enterprise)
+-- Install the audit log plugin (MySQL Enterprise Edition only)
 INSTALL PLUGIN audit_log SONAME 'audit_log.so';
-
--- Or use MariaDB Audit Plugin (community alternative)
-INSTALL PLUGIN server_audit SONAME 'server_audit.so';
 ```
+
+> For MySQL Community Edition, consider Percona Server for MySQL, which includes an open-source audit log plugin. The MariaDB `server_audit` plugin is not compatible with MySQL 8.0+.
 
 ## Setting Up Binlog-Based Change Tracking
 
@@ -145,4 +142,4 @@ mysqlbinlog \
 
 ## Summary
 
-MySQL binary logs provide a record of all data modification events and can serve as a lightweight audit trail for INSERT, UPDATE, and DELETE operations. Configure `binlog_format = ROW`, `binlog_row_image = FULL`, and `binlog_row_metadata = FULL` for maximum audit detail. Use `mysqlbinlog` with datetime filters to extract events for specific periods. For full compliance auditing including SELECT statements and user tracking, supplement binary logs with a dedicated audit plugin like MySQL Enterprise Audit or MariaDB Audit Plugin.
+MySQL binary logs provide a record of all data modification events and can serve as a lightweight audit trail for INSERT, UPDATE, and DELETE operations. Configure `binlog_format = ROW`, `binlog_row_image = FULL`, and `binlog_row_metadata = FULL` for maximum audit detail. Use `mysqlbinlog` with datetime filters to extract events for specific periods. For full compliance auditing including SELECT statements and user tracking, supplement binary logs with a dedicated audit plugin such as MySQL Enterprise Audit or the Percona audit log plugin.
