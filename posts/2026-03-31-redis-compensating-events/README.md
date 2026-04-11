@@ -20,7 +20,7 @@ Use a consistent structure for both forward and compensating events:
 
 ```bash
 # Forward event
-XADD saga:order:1001 * \
+XADD saga:order-1001:events * \
   type InventoryReserved \
   saga_id order-1001 \
   step 1 \
@@ -29,7 +29,7 @@ XADD saga:order:1001 * \
   quantity 2
 
 # Compensating event
-XADD saga:order:1001 * \
+XADD saga:order-1001:events * \
   type InventoryReservationCancelled \
   saga_id order-1001 \
   step 1 \
@@ -83,7 +83,7 @@ def compensate_saga(saga_id: str):
     for step in reversed(completed):
         comp_type = COMPENSATIONS.get(step)
         if comp_type:
-            client.xadd(f"saga:{saga_id}", {
+            client.xadd(f"saga:{saga_id}:events", {
                 "type": comp_type,
                 "saga_id": saga_id,
                 "compensated": "true",
@@ -100,7 +100,7 @@ A compensation consumer reads the saga stream and handles each compensating even
 
 ```python
 def run_compensation_consumer(saga_id: str):
-    stream = f"saga:{saga_id}"
+    stream = f"saga:{saga_id}:events"
     last_id = "0"
 
     while True:
