@@ -37,8 +37,7 @@ Running `CONFIG RESETSTAT` resets the following fields visible in `INFO stats` a
 - `evicted_keys`
 - `rejected_connections`
 - `latest_fork_usec`
-- `migrate_cached_sockets`
-- `slave_expires_tracked_keys`
+- `aof_delayed_fsync`
 - `active_defrag_hits`, `active_defrag_misses`, etc.
 
 ## Checking Statistics Before and After
