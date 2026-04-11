@@ -145,6 +145,8 @@ print(f"Connection ID: {conn_id}")
 ### Node.js (ioredis)
 
 ```javascript
+const Redis = require('ioredis');
+
 const redis = new Redis();
 const id = await redis.client('ID');
 console.log(`Connection ID: ${id}`);
