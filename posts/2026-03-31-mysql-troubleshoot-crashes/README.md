@@ -125,4 +125,4 @@ innodb_flush_log_at_trx_commit = 1
 
 ## Summary
 
-MySQL crash diagnosis starts with the error log and `dmesg` for OOM kills. OOM kills require memory reduction or hardware upgrade. SIGSEGV and SIGABRT crashes often indicate a MySQL bug - enabling core dumps and upgrading to the latest patch version is the first response. Check for table corruption after any crash. Use `relay_log_recovery = ON` to prevent replication issues after primary crashes.
+MySQL crash diagnosis starts with the error log and `dmesg` for OOM kills. OOM kills require memory reduction or hardware upgrade. SIGSEGV and SIGABRT crashes often indicate a MySQL bug - enabling core dumps and upgrading to the latest patch version is the first response. Check for table corruption after any crash. Use `relay_log_recovery = ON` to prevent replication issues after replica crashes.
