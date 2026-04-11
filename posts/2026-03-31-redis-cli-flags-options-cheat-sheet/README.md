@@ -44,10 +44,10 @@ redis-cli --tls \
 redis-cli --no-auth-warning    # suppress auth warning in scripts
 redis-cli --raw                # raw output (no formatting)
 redis-cli --no-raw             # formatted output with type info
-redis-cli --resp3              # use RESP3 protocol
+redis-cli -3                   # use RESP3 protocol
 redis-cli --csv                # CSV output for multi-bulk replies
-redis-cli --quoted-output      # quote strings in output
-redis-cli --show-warnings      # show server warnings
+redis-cli --quoted-input       # parse quoted strings in input
+redis-cli --show-pushes <yn>   # show RESP3 PUSH messages
 redis-cli -v                   # print version
 ```
 
@@ -66,7 +66,7 @@ echo "SET foo bar" | redis-cli
 # Pipe mode (bulk import, bypasses protocol overhead)
 redis-cli --pipe < bulk_commands.txt
 
-# Pipe mode with stats output
+# Pipe mode with custom timeout (seconds)
 redis-cli --pipe --pipe-timeout 30 < bulk_commands.txt
 ```
 
@@ -156,7 +156,7 @@ redis-cli -p 26379
 
 # Common Sentinel commands
 redis-cli -p 26379 SENTINEL masters
-redis-cli -p 26379 SENTINEL slaves mymaster
+redis-cli -p 26379 SENTINEL replicas mymaster
 redis-cli -p 26379 SENTINEL failover mymaster
 ```
 
