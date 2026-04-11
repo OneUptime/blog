@@ -91,7 +91,7 @@ CREATE TEMPORARY TABLE IF NOT EXISTS temp_report_data (
 
 ## Storage Engine
 
-By default, temporary tables use the `TempTable` storage engine in MySQL 8.0 (or `MEMORY` engine in older versions). For large datasets, specify `InnoDB`:
+By default, user-created temporary tables use the `InnoDB` storage engine in MySQL 8.0 (controlled by the `default_tmp_storage_engine` system variable). For large datasets this is already the default, but you can specify it explicitly:
 
 ```sql
 CREATE TEMPORARY TABLE temp_large_dataset (
@@ -171,7 +171,7 @@ SELECT * FROM users;  -- now reads the permanent table again
 
 - Cannot be referenced more than once in the same query (no self-join of a temp table).
 - Temporary tables are not visible in `SHOW TABLES` output.
-- `MEMORY` engine temp tables are limited by `max_heap_table_size` and `tmp_table_size`.
+- `MEMORY` engine temp tables are limited by `max_heap_table_size`.
 - Temporary tables cannot have `FOREIGN KEY` constraints.
 - Binary logging of temp table statements depends on the `binlog_format` setting.
 
