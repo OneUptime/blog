@@ -49,7 +49,7 @@ GRANT SELECT, INSERT, UPDATE ON mydb.orders TO 'appuser'@'%';
 -- Grant with option to pass privileges to others
 GRANT SELECT ON mydb.* TO 'alice'@'%' WITH GRANT OPTION;
 
--- Apply changes immediately (required in older MySQL)
+-- Only needed if you modified grant tables directly (INSERT/UPDATE on mysql.user)
 FLUSH PRIVILEGES;
 ```
 
