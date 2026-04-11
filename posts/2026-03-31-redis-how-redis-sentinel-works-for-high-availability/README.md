@@ -34,7 +34,7 @@ Sentinels communicate with each other and with Redis instances. Clients connect 
 
 ## Step 1 - How Sentinels Monitor Redis
 
-Each Sentinel sends `PING` commands to monitored Redis instances every second (configurable with `sentinel down-after-milliseconds`). If an instance does not respond within the configured timeout, the Sentinel marks it as **subjectively down (SDOWN)**.
+Each Sentinel sends `PING` commands to monitored Redis instances every second. If an instance does not respond within the configured `sentinel down-after-milliseconds` timeout, the Sentinel marks it as **subjectively down (SDOWN)**.
 
 Sentinel configuration:
 
