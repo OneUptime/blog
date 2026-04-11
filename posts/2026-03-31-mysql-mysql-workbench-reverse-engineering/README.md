@@ -37,7 +37,7 @@ Available Schemas:
 [ ] information_schema
 ```
 
-Select one or more schemas and click **Execute**.
+Select one or more schemas and click **Next**.
 
 ## Step 3 - Object Selection
 
