@@ -106,9 +106,13 @@ IDatabase db2 = redis.GetDatabase(2); // database 2
 ```csharp
 IServer server = redis.GetServer(redis.GetEndPoints().First());
 
-Console.WriteLine($"Redis version: {server.Info("server")[0]["redis_version"]}");
-Console.WriteLine($"Connected clients: {server.Info("clients")[0]["connected_clients"]}");
-Console.WriteLine($"Used memory: {server.Info("memory")[0]["used_memory_human"]}");
+var serverInfo = server.Info("server")[0].ToDictionary(x => x.Key, x => x.Value);
+var clientsInfo = server.Info("clients")[0].ToDictionary(x => x.Key, x => x.Value);
+var memoryInfo = server.Info("memory")[0].ToDictionary(x => x.Key, x => x.Value);
+
+Console.WriteLine($"Redis version: {serverInfo["redis_version"]}");
+Console.WriteLine($"Connected clients: {clientsInfo["connected_clients"]}");
+Console.WriteLine($"Used memory: {memoryInfo["used_memory_human"]}");
 ```
 
 ## Lazy Initialization
