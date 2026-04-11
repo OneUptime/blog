@@ -29,7 +29,7 @@ SELECT JSON_QUOTE('He said "hello"');
 -- Result: "He said \"hello\""
 
 SELECT JSON_QUOTE('line1\nline2');
--- Result: "line1\\nline2"
+-- Result: "line1\nline2"
 
 SELECT JSON_QUOTE(NULL);
 -- Result: NULL
@@ -48,7 +48,7 @@ SET @user_input = 'O\'Reilly & "Associates"';
 SELECT CONCAT('{"name": "', @user_input, '"}');
 -- Produces malformed JSON
 
--- Safe with JSON_QUOTE()
+-- Safe with JSON_OBJECT()
 SELECT JSON_OBJECT('name', @user_input);
 -- Produces: {"name": "O'Reilly & \"Associates\""}
 ```
@@ -95,7 +95,7 @@ The `->>` operator is the most common way to extract unquoted string values.
 
 ## Comparing Extracted Values
 
-When comparing JSON-extracted strings, `JSON_UNQUOTE()` (or `->>`)) is necessary:
+When comparing JSON-extracted strings, `JSON_UNQUOTE()` (or `->>`) is necessary:
 
 ```sql
 -- This fails to match because profile->'$.city' returns "\"New York\""
@@ -111,7 +111,7 @@ SELECT * FROM users WHERE profile->>'$.city' = 'New York';
 SET @original = 'tab	and newline\n';
 SET @quoted = JSON_QUOTE(@original);
 SELECT @quoted;
--- "tab\tand newline\\n"
+-- "tab\tand newline\n"
 
 SELECT JSON_UNQUOTE(@quoted);
 -- tab	and newline\n  (original string restored)
