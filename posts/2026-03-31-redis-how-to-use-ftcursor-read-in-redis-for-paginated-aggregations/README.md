@@ -101,14 +101,14 @@ def aggregate_with_cursor(r, index, query, groupby_field, reduce_field):
         'WITHCURSOR', 'COUNT', '10'
     )
 
-    results_batch = response[0]
+    results_batch = response[0][1:]  # Skip the count (first element)
     cursor_id = response[1]
     all_results.extend(results_batch)
 
     # Iterate until cursor exhausted
     while cursor_id != 0:
-        response = r.execute_command('FT.CURSOR READ', index, cursor_id, 'COUNT', '10')
-        results_batch = response[0]
+        response = r.execute_command('FT.CURSOR', 'READ', index, cursor_id, 'COUNT', '10')
+        results_batch = response[0][1:]  # Skip the count
         cursor_id = response[1]
         all_results.extend(results_batch)
 
@@ -154,13 +154,13 @@ def safe_cursor_iteration(r, index, initial_response):
     """Safely iterate a cursor with error handling."""
     all_results = []
 
-    results, cursor_id = initial_response[0], initial_response[1]
+    results, cursor_id = initial_response[0][1:], initial_response[1]
     all_results.extend(results)
 
     while cursor_id != 0:
         try:
-            response = r.execute_command('FT.CURSOR READ', index, cursor_id, 'COUNT', '50')
-            results = response[0]
+            response = r.execute_command('FT.CURSOR', 'READ', index, cursor_id, 'COUNT', '50')
+            results = response[0][1:]
             cursor_id = response[1]
             all_results.extend(results)
         except redis.ResponseError as e:
