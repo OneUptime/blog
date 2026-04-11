@@ -95,11 +95,11 @@ import redis
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Async flush - non-blocking
-client.script_flush(asynchronous=True)
+client.script_flush(sync_type="ASYNC")
 print("Async flush initiated")
 
 # Sync flush - blocking
-client.script_flush(asynchronous=False)
+client.script_flush(sync_type="SYNC")
 print("Sync flush complete")
 ```
 
@@ -117,7 +117,7 @@ console.log(`Loaded: ${sha}`);
 
 // Check exists
 const exists = await client.scriptExists([sha]);
-console.log(`Exists: ${exists}`); // [1]
+console.log(`Exists: ${exists}`); // [true]
 
 // Flush the cache
 await client.scriptFlush();
@@ -125,7 +125,7 @@ console.log('Cache flushed');
 
 // Verify gone
 const afterFlush = await client.scriptExists([sha]);
-console.log(`After flush: ${afterFlush}`); // [0]
+console.log(`After flush: ${afterFlush}`); // [false]
 ```
 
 ## Deployment Pattern - Safe Script Rotation
