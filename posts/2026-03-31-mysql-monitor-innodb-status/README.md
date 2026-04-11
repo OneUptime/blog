@@ -33,7 +33,7 @@ Important metrics to watch:
 | `Innodb_buffer_pool_read_requests` | Total logical reads |
 | `Innodb_buffer_pool_reads` | Physical reads (cache misses) |
 | `Innodb_row_lock_waits` | Lock contention events |
-| `Innodb_deadlocks` | Deadlock count |
+| `Innodb_row_lock_time` | Total row lock wait time (ms) |
 | `Innodb_data_read` | Bytes read from disk |
 
 ## Calculating Buffer Pool Hit Rate
@@ -71,14 +71,14 @@ SELECT trx_id, trx_state, trx_started,
 FROM information_schema.INNODB_TRX
 ORDER BY trx_started;
 
--- Current lock waits
+-- Current lock waits (MySQL 8.0+)
 SELECT r.trx_id AS waiting_id,
        b.trx_id AS blocking_id,
        r.trx_mysql_thread_id AS waiting_thread,
        b.trx_mysql_thread_id AS blocking_thread
-FROM information_schema.INNODB_LOCK_WAITS w
-JOIN information_schema.INNODB_TRX b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.INNODB_TRX r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.INNODB_TRX b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+JOIN information_schema.INNODB_TRX r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 ## Using performance_schema for InnoDB
@@ -90,10 +90,10 @@ SET ENABLED = 'YES', TIMED = 'YES'
 WHERE NAME LIKE 'wait/io/file/innodb%';
 
 -- Top InnoDB wait events
-SELECT EVENT_NAME, COUNT_STAR, SUM_WAIT_TIME / 1e9 AS total_wait_sec
+SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e12 AS total_wait_sec
 FROM performance_schema.events_waits_summary_global_by_event_name
 WHERE EVENT_NAME LIKE '%innodb%'
-ORDER BY SUM_WAIT_TIME DESC
+ORDER BY SUM_TIMER_WAIT DESC
 LIMIT 10;
 ```
 
@@ -123,4 +123,4 @@ Then build Grafana dashboards around `mysql_global_status_innodb_buffer_pool_rea
 
 ## Summary
 
-Monitor InnoDB status using `SHOW GLOBAL STATUS LIKE 'Innodb_%'` for quick health checks, `information_schema.INNODB_TRX` and `INNODB_LOCK_WAITS` for transaction and lock analysis, and `performance_schema` for granular wait analysis. Track buffer pool hit rate, row lock waits, and redo log activity as core InnoDB health indicators.
+Monitor InnoDB status using `SHOW GLOBAL STATUS LIKE 'Innodb_%'` for quick health checks, `information_schema.INNODB_TRX` and `performance_schema.data_lock_waits` for transaction and lock analysis, and `performance_schema` for granular wait analysis. Track buffer pool hit rate, row lock waits, and redo log activity as core InnoDB health indicators.
