@@ -15,7 +15,7 @@ Celery is a distributed task queue that lets Django offload time-consuming work 
 ## Installation
 
 ```bash
-pip install celery redis django-celery-results
+pip install celery redis
 ```
 
 ## Project Structure
