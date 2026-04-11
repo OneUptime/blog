@@ -24,7 +24,6 @@ A barrier is the opposite of a countdown latch: instead of a coordinator waiting
 ```python
 import redis
 import time
-import uuid
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -67,10 +66,12 @@ def _wait_for_barrier(barrier_id: str, timeout: float) -> bool:
     deadline = time.time() + timeout
 
     try:
-        for message in pubsub.listen():
-            if time.time() > deadline:
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
                 return False
-            if message["type"] == "message" and message["data"] == "open":
+            message = pubsub.get_message(timeout=min(remaining, 1.0))
+            if message and message["type"] == "message" and message["data"] == "open":
                 return True
             # Re-check in case we missed the signal
             if r.exists(f"barrier:{barrier_id}:open"):
@@ -78,7 +79,6 @@ def _wait_for_barrier(barrier_id: str, timeout: float) -> bool:
     finally:
         pubsub.unsubscribe()
         pubsub.close()
-    return False
 ```
 
 ## Usage: Phased Map-Reduce
