@@ -109,6 +109,7 @@ rules:
       - tlsoptions
       - tlsstores
       - serverstransports
+      - serverstransporttcps
     verbs:
       - get
       - list
@@ -184,6 +185,7 @@ spec:
             - --api.insecure=true
             # Log level for debugging
             - --log.level=INFO
+            - --ping=true
           ports:
             - name: web
               containerPort: 80
