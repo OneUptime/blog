@@ -47,23 +47,24 @@ The tool auto-creates the `percona.deadlocks` table with this structure:
 
 ```sql
 CREATE TABLE percona.deadlocks (
-  server        CHAR(20)  NOT NULL,
-  ts            DATETIME  NOT NULL,
-  thread        INT UNSIGNED NOT NULL,
-  txn_id        BIGINT UNSIGNED NOT NULL,
-  txn_time      SMALLINT UNSIGNED NOT NULL,
-  user          VARCHAR(16) NOT NULL,
-  hostname      VARCHAR(20) NOT NULL,
-  ip            VARCHAR(15) NOT NULL,
-  db            VARCHAR(64) NOT NULL,
-  tbl           VARCHAR(64) NOT NULL,
-  idx           VARCHAR(64) NOT NULL,
-  lock_type     VARCHAR(16) NOT NULL,
-  lock_mode     VARCHAR(1)  NOT NULL,
-  wait_hold     VARCHAR(1)  NOT NULL,
-  victim        TINYINT UNSIGNED NOT NULL,
-  query         TEXT        NOT NULL
-);
+  server        CHAR(20)           NOT NULL,
+  ts            TIMESTAMP          NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  thread        INT UNSIGNED       NOT NULL,
+  txn_id        BIGINT UNSIGNED    NOT NULL,
+  txn_time      SMALLINT UNSIGNED  NOT NULL,
+  user          CHAR(16)           NOT NULL,
+  hostname      CHAR(20)           NOT NULL,
+  ip            CHAR(15)           NOT NULL,
+  db            CHAR(64)           NOT NULL,
+  tbl           CHAR(64)           NOT NULL,
+  idx           CHAR(64)           NOT NULL,
+  lock_type     CHAR(16)           NOT NULL,
+  lock_mode     CHAR(1)            NOT NULL,
+  wait_hold     CHAR(1)            NOT NULL,
+  victim        TINYINT UNSIGNED   NOT NULL,
+  query         TEXT               NOT NULL,
+  PRIMARY KEY (server, ts, thread)
+) ENGINE=InnoDB;
 ```
 
 ## Querying Deadlock History
