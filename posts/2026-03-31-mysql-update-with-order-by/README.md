@@ -22,7 +22,7 @@ ORDER BY sort_column [ASC|DESC]
 LIMIT n;
 ```
 
-`ORDER BY` in `UPDATE` is only meaningful when paired with `LIMIT`. Without `LIMIT`, all matching rows are updated regardless of order.
+`ORDER BY` in `UPDATE` primarily matters when paired with `LIMIT`. Without `LIMIT`, all matching rows are updated regardless of order, but `ORDER BY` still controls the processing sequence, which can affect user variable expressions and trigger execution order.
 
 ## Priority-Based Updates
 
