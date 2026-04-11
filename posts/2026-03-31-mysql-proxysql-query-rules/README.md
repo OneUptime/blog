@@ -103,9 +103,10 @@ SAVE MYSQL QUERY RULES TO DISK;
 Check how many times each rule has matched since the last reset:
 
 ```sql
-SELECT rule_id, hits, match_pattern, destination_hostgroup
-FROM stats_mysql_query_rules
-ORDER BY rule_id;
+SELECT s.rule_id, s.hits, r.match_pattern, r.destination_hostgroup
+FROM stats_mysql_query_rules s
+JOIN mysql_query_rules r ON s.rule_id = r.rule_id
+ORDER BY s.rule_id;
 ```
 
 A `hits` value of 0 for an active rule usually means the pattern never matched, which is a good way to catch misconfigured regex.
