@@ -65,13 +65,7 @@ SELECT @total AS total_active_users;
 - The extra work is roughly equivalent to running the query without `LIMIT`
 - This makes it no faster than running two separate queries
 
-You can verify this with EXPLAIN:
-
-```sql
-EXPLAIN SELECT SQL_CALC_FOUND_ROWS id FROM users WHERE status = 'ACTIVE' LIMIT 10;
-```
-
-The `Extra` column will show `Using where` for all matched rows, not just 10.
+In practice, a query with `SQL_CALC_FOUND_ROWS` takes roughly as long as the same query without `LIMIT`, because MySQL must examine all matching rows to produce the count — not just the rows returned by `LIMIT`.
 
 ## Deprecated in MySQL 8.0
 
@@ -95,7 +89,7 @@ WHERE status = 'ACTIVE';
 This is often faster in practice because:
 - The `COUNT(*)` query can use an index-only scan
 - MySQL's optimizer can choose a better plan for each query independently
-- Query caching (where available) works independently for each query
+- Result caching at the application level works independently for each query
 
 ## Optimizing the COUNT Query
 
