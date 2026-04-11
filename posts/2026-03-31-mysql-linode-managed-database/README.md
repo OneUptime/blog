@@ -75,7 +75,7 @@ The API response includes:
 Linode Managed MySQL requires SSL. Download the CA certificate:
 
 ```bash
-linode-cli databases mysql-ssl 12345 --text --no-headers > ca-cert.pem
+linode-cli databases mysql-ssl-cert 12345 --text --no-headers > ca-cert.pem
 ```
 
 Connect using the certificate:
