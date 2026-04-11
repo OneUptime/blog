@@ -51,6 +51,7 @@ Echo middleware functions receive the next handler and return a new handler:
 package middleware
 
 import (
+    "bytes"
     "context"
     "net/http"
     "time"
@@ -58,6 +59,23 @@ import (
     "github.com/labstack/echo/v4"
     "github.com/redis/go-redis/v9"
 )
+
+type ResponseRecorder struct {
+    http.ResponseWriter
+    Body *bytes.Buffer
+}
+
+func NewResponseRecorder(w http.ResponseWriter) *ResponseRecorder {
+    return &ResponseRecorder{
+        ResponseWriter: w,
+        Body:           new(bytes.Buffer),
+    }
+}
+
+func (r *ResponseRecorder) Write(b []byte) (int, error) {
+    r.Body.Write(b)
+    return r.ResponseWriter.Write(b)
+}
 
 func RedisCacheMiddleware(rdb *redis.Client, ttl time.Duration) echo.MiddlewareFunc {
     return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -74,7 +92,7 @@ func RedisCacheMiddleware(rdb *redis.Client, ttl time.Duration) echo.MiddlewareF
                 return c.JSONBlob(http.StatusOK, []byte(cached))
             }
 
-            rec := NewResponseRecorder(c.Response())
+            rec := NewResponseRecorder(c.Response().Writer)
             c.Response().Writer = rec
 
             if err := next(c); err != nil {
