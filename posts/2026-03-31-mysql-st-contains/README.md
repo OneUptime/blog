@@ -108,7 +108,7 @@ The difference is which geometry is the "container." Use `ST_Contains` when you 
 
 ## Edge Cases and Boundary Behavior
 
-`ST_Contains()` returns 0 if a point lies exactly on the boundary of the polygon. For boundary-inclusive checks, use `ST_Covers()`:
+`ST_Contains()` returns 0 if a point lies exactly on the boundary of the polygon. For boundary-inclusive checks, use `ST_Intersects()`, which returns 1 for points both inside and on the boundary:
 
 ```sql
 SET @polygon = ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))');
@@ -118,12 +118,12 @@ SET @boundary_point = ST_GeomFromText('POINT(0 5)');
 SELECT ST_Contains(@polygon, @boundary_point);
 
 -- Returns 1 (boundary point included)
-SELECT ST_Covers(@polygon, @boundary_point);
+SELECT ST_Intersects(@polygon, @boundary_point);
 ```
 
 ## Performance Tips
 
-- Add a `SPATIAL INDEX` on the geometry column used as `g2` for faster lookups.
+- Add a `SPATIAL INDEX` on whichever geometry column is stored in your table for faster lookups.
 - Ensure geometries use the same SRID to avoid unexpected results.
 - Use `ST_SRID()` to check and `ST_Transform()` (if available) to align SRIDs.
 
@@ -134,4 +134,4 @@ SELECT ST_SRID(boundary) FROM zones LIMIT 1;
 
 ## Summary
 
-`ST_Contains(g1, g2)` is a core MySQL spatial function for testing whether one geometry fully encloses another. It is widely used in geo-fencing, delivery zone checks, and territory assignment. Pair it with spatial indexes for efficient queries and use `ST_Covers()` when you need boundary-inclusive containment tests.
+`ST_Contains(g1, g2)` is a core MySQL spatial function for testing whether one geometry fully encloses another. It is widely used in geo-fencing, delivery zone checks, and territory assignment. Pair it with spatial indexes for efficient queries and use `ST_Intersects()` when you need boundary-inclusive containment tests.
