@@ -81,10 +81,10 @@ binlog_expire_logs_seconds = 259200  # 3 days
 The undo tablespace can grow large during long-running transactions:
 
 ```sql
-SELECT NAME, STATE,
-       ROUND(SIZE_IN_PAGES * 16384 / 1024 / 1024, 2) AS size_mb
+SELECT NAME,
+       ROUND(FILE_SIZE / 1024 / 1024, 2) AS size_mb
 FROM information_schema.INNODB_TABLESPACES
-WHERE NAME LIKE 'undo%';
+WHERE SPACE_TYPE = 'Undo';
 ```
 
 Identify and terminate long transactions that are holding undo log space:
