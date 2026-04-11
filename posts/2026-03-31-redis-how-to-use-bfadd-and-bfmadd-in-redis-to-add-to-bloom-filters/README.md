@@ -10,7 +10,7 @@ Description: Learn how to use BF.ADD and BF.MADD in Redis to insert one or multi
 
 ## Overview
 
-Bloom filters in Redis are provided by the RedisBloom module. `BF.ADD` inserts a single item into a Bloom filter, while `BF.MADD` inserts multiple items at once. Both commands are O(k) where k is the number of hash functions. If the filter does not exist, it is created automatically with default settings.
+Bloom filters in Redis are provided by the RedisBloom module. `BF.ADD` inserts a single item into a Bloom filter, while `BF.MADD` inserts multiple items at once. `BF.ADD` is O(k) where k is the number of hash functions, and `BF.MADD` is O(k * n) where n is the number of items. If the filter does not exist, it is created automatically with default settings.
 
 ## Prerequisites
 
