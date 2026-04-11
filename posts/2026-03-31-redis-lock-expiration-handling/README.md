@@ -44,6 +44,10 @@ class DistributedLock:
     def is_still_valid(self) -> bool:
         """Check if the lock is still held by us."""
         current_token = self.r.get(self.resource)
+        if current_token is None:
+            return False
+        if isinstance(current_token, bytes):
+            current_token = current_token.decode()
         return current_token == self.token
 
     def remaining_validity_ms(self) -> int:
