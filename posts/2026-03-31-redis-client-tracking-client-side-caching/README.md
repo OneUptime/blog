@@ -15,8 +15,8 @@ Description: Learn how to use Redis CLIENT TRACKING to enable server-assisted cl
 The flow is straightforward:
 
 ```text
-1. Client reads key "user:42" from Redis - value is cached locally
-2. Client enables tracking for "user:42"
+1. Client enables tracking (CLIENT TRACKING ON)
+2. Client reads key "user:42" from Redis - value is cached locally
 3. Another client modifies "user:42"
 4. Redis sends an invalidation message to the first client
 5. Client evicts "user:42" from its local cache
@@ -42,20 +42,24 @@ Now Redis automatically tracks every key you read and notifies you when they cha
 
 ## Enabling Tracking with RESP2 (Redirect Mode)
 
-With RESP2, invalidation messages must be sent to a separate connection:
+With RESP2, invalidation messages must be sent to a separate connection via Pub/Sub:
 
 ```bash
-# On connection A (the cache connection), get its ID
+# On connection A (the notification connection), get its ID
 127.0.0.1:6379> CLIENT ID
 (integer) 5
 
-# On connection B (the tracking connection), enable tracking
+# On connection A, subscribe to the invalidation channel
+127.0.0.1:6379> SUBSCRIBE __redis__:invalidate
+Reading messages... (subscribed to 1 channel)
+
+# On connection B (the data connection), enable tracking
 # and redirect invalidations to connection A
 127.0.0.1:6379> CLIENT TRACKING ON REDIRECT 5
 OK
 ```
 
-Connection A will receive push messages whenever tracked keys are invalidated.
+Connection B is used for reads with tracking enabled. When tracked keys are modified, Redis publishes invalidation messages to connection A via the `__redis__:invalidate` Pub/Sub channel.
 
 ## Tracking with BCAST Mode
 
@@ -116,22 +120,27 @@ OK
 
 ```python
 import redis
-import threading
 
 local_cache = {}
-invalidations = []
 
 def handle_invalidation(message):
-    if message and message[0] == 'invalidate':
-        for key in message[1]:
-            key_str = key.decode()
-            if key_str in local_cache:
-                del local_cache[key_str]
-                print(f"Evicted: {key_str}")
+    """Process RESP3 push invalidation messages from Redis."""
+    if message and message[0] == b'invalidate':
+        keys = message[1]
+        if keys is not None:
+            for key in keys:
+                key_str = key.decode() if isinstance(key, bytes) else key
+                if key_str in local_cache:
+                    del local_cache[key_str]
+                    print(f"Evicted: {key_str}")
 
 # Use RESP3 with tracking
 client = redis.Redis(host='localhost', port=6379, protocol=3)
 client.execute_command('CLIENT', 'TRACKING', 'ON')
+
+# Note: To receive invalidation notifications, you must process
+# RESP3 push messages from the connection. The exact mechanism
+# depends on your redis-py version and event loop setup.
 
 def get_cached(key):
     if key in local_cache:
