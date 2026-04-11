@@ -150,8 +150,8 @@ Prevent users from reusing recent passwords:
 
 ```ini
 [mysqld]
-password_history = 5          -- Cannot reuse last 5 passwords
-password_reuse_interval = 180 -- Cannot reuse passwords used in last 180 days
+password_history = 5          # Cannot reuse last 5 passwords
+password_reuse_interval = 180 # Cannot reuse passwords used in last 180 days
 ```
 
 Per-user:
