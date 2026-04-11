@@ -48,6 +48,8 @@ def evaluate_reading(device_id, metric, value):
 Prevent alert storms by enforcing a cooldown period per device-rule pair:
 
 ```python
+import json
+
 def fire_alert(device_id, rule_id, rule, value):
     dedup_key = f"alert:active:{device_id}:{rule_id}"
     cooldown = int(rule[b"cooldown"])
@@ -59,7 +61,7 @@ def fire_alert(device_id, rule_id, rule, value):
             "value": value,
             "severity": rule[b"severity"].decode()
         }
-        r.publish("alerts:new", str(alert_event))
+        r.publish("alerts:new", json.dumps(alert_event))
         log_alert(device_id, rule_id, value)
 ```
 
@@ -90,7 +92,7 @@ def alert_router():
     for message in pubsub.listen():
         if message["type"] != "message":
             continue
-        event = eval(message["data"].decode())
+        event = json.loads(message["data"].decode())
         severity = event["severity"]
         if severity == "critical":
             send_pagerduty(event)
