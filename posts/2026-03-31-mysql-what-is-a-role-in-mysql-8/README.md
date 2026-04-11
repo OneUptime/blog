@@ -95,8 +95,8 @@ SHOW GRANTS FOR 'alice'@'%' USING 'app_reader';
 SELECT FROM_USER AS role_name, TO_USER AS user_name, TO_HOST AS host
 FROM mysql.role_edges;
 
--- See roles applicable to the current session
-SELECT * FROM information_schema.applicable_roles;
+-- View default role assignments
+SELECT * FROM mysql.default_roles;
 ```
 
 ## Role Inheritance (Role to Role)
@@ -107,7 +107,7 @@ Roles can be granted to other roles, creating a hierarchy:
 -- Create a hierarchy
 CREATE ROLE 'senior_writer';
 GRANT 'app_writer' TO 'senior_writer';      -- inherits writer
-GRANT TRUNCATE ON myapp.* TO 'senior_writer'; -- plus extra
+GRANT DROP ON myapp.* TO 'senior_writer';     -- plus extra (TRUNCATE requires DROP)
 
 -- Grant the composite role to a user
 GRANT 'senior_writer' TO 'dave'@'%';
