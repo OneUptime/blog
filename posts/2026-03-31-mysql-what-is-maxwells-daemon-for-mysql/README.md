@@ -25,7 +25,7 @@ Maxwell is well-suited for smaller deployments or cases where you need CDC witho
 
 ## Prerequisites
 
-- MySQL 5.5+ with binary logging enabled in ROW format
+- MySQL 5.1+ with binary logging enabled in ROW format
 - Java 11+
 - An output target (Kafka, etc.)
 
@@ -54,9 +54,9 @@ Maxwell uses a `maxwell` database to store its position and schema state.
 
 ```bash
 # Download the latest release
-wget https://github.com/zendesk/maxwell/releases/download/v1.40.0/maxwell-1.40.0.tar.gz
-tar -xzf maxwell-1.40.0.tar.gz
-cd maxwell-1.40.0
+wget https://github.com/zendesk/maxwell/releases/download/v1.44.0/maxwell-1.44.0.tar.gz
+tar -xzf maxwell-1.44.0.tar.gz
+cd maxwell-1.44.0
 ```
 
 ## Running Maxwell with stdout (Quick Test)
@@ -69,7 +69,7 @@ Output:
 
 ```json
 {"database":"myapp","table":"orders","type":"insert","ts":1743430800,"data":{"id":42,"customer_id":7,"amount":99.99,"status":"pending"}}
-{"database":"myapp","table":"orders","type":"update","ts":1743430801,"data":{"id":42,"status":"shipped"},"old":{"status":"pending"}}
+{"database":"myapp","table":"orders","type":"update","ts":1743430801,"data":{"id":42,"customer_id":7,"amount":99.99,"status":"shipped"},"old":{"status":"pending"}}
 ```
 
 ## Running Maxwell with Kafka
