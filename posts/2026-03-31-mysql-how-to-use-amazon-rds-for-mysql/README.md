@@ -10,7 +10,7 @@ Description: Learn how to create, configure, and connect to an Amazon RDS MySQL 
 
 ## What Is Amazon RDS for MySQL
 
-Amazon RDS for MySQL is a managed relational database service that automates provisioning, patching, backups, and failover for MySQL. It supports MySQL versions 5.7 and 8.0, with options for single-AZ and Multi-AZ deployments.
+Amazon RDS for MySQL is a managed relational database service that automates provisioning, patching, backups, and failover for MySQL. It supports MySQL versions 5.7 (extended support), 8.0, and 8.4 LTS, with options for single-AZ and Multi-AZ deployments.
 
 ## Create an RDS MySQL Instance via AWS CLI
 
@@ -91,7 +91,7 @@ aws rds create-db-instance-read-replica \
 aws rds modify-db-instance \
   --db-instance-identifier my-mysql-db \
   --monitoring-interval 60 \
-  --monitoring-role-arn arn:aws:iam::123456789:role/rds-monitoring-role \
+  --monitoring-role-arn arn:aws:iam::123456789012:role/rds-monitoring-role \
   --apply-immediately
 ```
 
@@ -117,7 +117,7 @@ aws rds create-db-snapshot \
 
 ## Using Terraform to Provision RDS
 
-```text
+```hcl
 resource "aws_db_instance" "mysql" {
   identifier           = "my-mysql-db"
   engine               = "mysql"
