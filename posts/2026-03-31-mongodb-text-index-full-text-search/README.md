@@ -144,7 +144,7 @@ async function main() {
   // Full-text search with relevance scoring
   const results = await articles.find(
     { $text: { $search: "mongodb index" } },
-    { score: { $meta: "textScore" } }
+    { projection: { score: { $meta: "textScore" } } }
   ).sort({ score: { $meta: "textScore" } }).toArray();
 
   results.forEach(doc => {
