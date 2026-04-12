@@ -36,7 +36,7 @@ db.active_users.find()
 db.active_users.countDocuments({ plan: "enterprise" })
 ```
 
-Note: `estimatedDocumentCount()` is not available on views because views have no stored document count metadata.
+Note: `estimatedDocumentCount()` does not work on views in MongoDB 5.0 and later. The method relies on collection metadata that views do not have, and the driver throws a `CommandNotSupportedOnView` error.
 
 ## Running aggregate on a View
 
@@ -82,7 +82,7 @@ db.active_users.distinct("country")
 
 ## Performance Considerations
 
-Views do not store data and have no indexes of their own. Query predicates added on top of a view are evaluated after the view's pipeline, which may result in collection scans unless the source collection has appropriate indexes.
+Views do not store data and have no indexes of their own. Logically, query predicates added on top of a view apply after the view's pipeline. However, MongoDB's aggregation pipeline optimizer may reorder stages in the combined pipeline, pushing `$match` stages earlier to enable index usage on the source collection. Despite this optimization, collection scans can still occur if the source collection lacks appropriate indexes.
 
 Use `explain` to inspect the execution plan:
 
