@@ -63,7 +63,7 @@ Where `reference_option` is one of:
 RESTRICT   - Reject the operation if a matching child row exists (default)
 CASCADE    - Propagate the operation to child rows
 SET NULL   - Set the child column to NULL (column must be NULLable)
-NO ACTION  - Same as RESTRICT in MySQL (checked at statement end)
+NO ACTION  - Same as RESTRICT in MySQL (checked immediately, not deferred)
 SET DEFAULT- Not supported by InnoDB; included in standard SQL only
 ```
 
