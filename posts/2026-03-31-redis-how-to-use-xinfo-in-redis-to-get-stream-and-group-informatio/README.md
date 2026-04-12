@@ -90,7 +90,7 @@ redis-cli XINFO GROUPS orders
    7) "last-delivered-id"
    8) "1743400002000-0"
    9) "entries-read"
-  10) (integer) 0
+  10) (integer) 2
   11) "lag"
   12) (integer) 0
 2) 1) "name"
@@ -126,8 +126,8 @@ redis-cli XINFO CONSUMERS orders processors
 
 Key fields:
 - `pending` - messages currently in this consumer's PEL
-- `idle` - milliseconds since last interaction
-- `inactive` - milliseconds since last acknowledged message
+- `idle` - milliseconds since last attempted interaction
+- `inactive` - milliseconds since last successful interaction
 
 ## Practical Examples
 
