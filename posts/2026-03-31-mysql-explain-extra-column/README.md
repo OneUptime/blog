@@ -74,7 +74,7 @@ An empty `Extra` column is generally fine. It means MySQL used a standard index 
 
 ## Reading Multiple Values
 
-The `Extra` column can contain multiple comma-separated values:
+The `Extra` column can contain multiple semicolon-separated values:
 
 ```sql
 EXPLAIN SELECT customer_id, SUM(amount) FROM orders
