@@ -21,10 +21,10 @@ Memorystore for Redis Standard tier supports up to 5 read replicas. Read replica
 gcloud redis instances create prod-cache \
   --region=us-central1 \
   --size=10 \
-  --tier=STANDARD_HA \
+  --tier=standard \
   --redis-version=redis_7_0 \
   --replica-count=3 \
-  --read-replicas-mode=READ_REPLICAS_ENABLED
+  --read-replicas-mode=read-replicas-enabled
 ```
 
 ## Adding Replicas to an Existing Instance
@@ -33,7 +33,7 @@ gcloud redis instances create prod-cache \
 gcloud redis instances update prod-cache \
   --region=us-central1 \
   --replica-count=2 \
-  --read-replicas-mode=READ_REPLICAS_ENABLED
+  --read-replicas-mode=read-replicas-enabled
 ```
 
 ## Getting Endpoint Information
@@ -111,12 +111,12 @@ def get_value(key: str) -> str | None:
 ## Monitoring Replication Lag
 
 ```bash
-gcloud monitoring metrics list \
-  --filter="metric.type:redis.googleapis.com" \
-  | grep replication
+gcloud redis instances describe prod-cache \
+  --region=us-central1 \
+  --format="json(replicationInfo)"
 ```
 
-Key metric: `redis.googleapis.com/replication/offset` - monitor the gap between primary and replica offsets. Large gaps indicate replication lag.
+You can also monitor replication metrics in the Cloud Console via Metrics Explorer. Key metric: `redis.googleapis.com/replication/offset_diff` - the number of bytes the replica is behind the primary. Large values indicate replication lag.
 
 ## When to Use Read Replicas
 
