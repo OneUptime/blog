@@ -16,7 +16,7 @@ Typegoose is a library that lets you write Mongoose models as TypeScript classes
 
 ```bash
 npm install @typegoose/typegoose mongoose
-npm install --save-dev typescript reflect-metadata
+npm install --save-dev typescript
 ```
 
 Enable decorators in `tsconfig.json`:
@@ -34,7 +34,6 @@ Enable decorators in `tsconfig.json`:
 
 ```typescript
 import { prop, getModelForClass, modelOptions, Severity } from '@typegoose/typegoose';
-import { Types } from 'mongoose';
 
 @modelOptions({ options: { allowMixed: Severity.ALLOW } })
 class Product {
