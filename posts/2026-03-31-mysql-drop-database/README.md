@@ -94,7 +94,7 @@ ORDER BY table_name;
 Always take a backup before dropping a database.
 
 ```bash
-mysqldump -u root -p --single-transaction --routines --triggers \
+mysqldump -u root -p --single-transaction --routines --triggers --events \
   myapp > myapp_backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
