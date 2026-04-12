@@ -95,7 +95,7 @@ mysql --local-infile=1 -u root -p mydb
 ```
 
 ```sql
--- Enable local infile in session
+-- Enable local infile on the server (requires SYSTEM_VARIABLES_ADMIN or SUPER privilege)
 SET GLOBAL local_infile = 1;
 
 -- Load from client machine
@@ -137,9 +137,9 @@ SET col1 = SUBSTR(@line, 1, 10),
 ## Error Handling Options
 
 ```sql
--- Ignore errors for specific rows
+-- Use IGNORE to skip rows that cause duplicate key or constraint errors
 LOAD DATA INFILE '/var/lib/mysql-files/data.csv'
-INTO TABLE products
+IGNORE INTO TABLE products
 FIELDS TERMINATED BY ','
 LINES TERMINATED BY '\n'
 IGNORE 1 ROWS;
@@ -161,7 +161,7 @@ sort -t, -k1 /data/large_file.csv > /var/lib/mysql-files/sorted_data.csv
 ```
 
 ```sql
--- Disable indexes during bulk load for large imports
+-- Disable indexes during bulk load for large imports (MyISAM only; no effect on InnoDB)
 ALTER TABLE large_table DISABLE KEYS;
 
 LOAD DATA INFILE '/var/lib/mysql-files/large_data.csv'
