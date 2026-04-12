@@ -10,7 +10,7 @@ Description: Learn how InnoDB organizes pages into extents and segments, how the
 
 ## Storage Hierarchy
 
-InnoDB organizes storage in a three-level hierarchy:
+InnoDB organizes storage in a four-level hierarchy:
 
 ```text
 Tablespace (*.ibd file)
@@ -23,7 +23,7 @@ This structure maps logical SQL objects (tables, indexes) to physical disk layou
 
 ## Extents
 
-An extent is 64 contiguous pages (1 MB at default 16 KB page size). InnoDB always allocates extents to reduce fragmentation and improve sequential I/O performance.
+An extent is 64 contiguous pages (1 MB at default 16 KB page size). InnoDB allocates extents to reduce fragmentation and improve sequential I/O performance.
 
 ```text
 Page size | Pages per extent | Extent size
@@ -71,15 +71,15 @@ Inode pages are a special page type that tracks which extents belong to which se
 
 ## Free Page Management
 
-InnoDB tracks three lists per extent:
+InnoDB tracks three extent lists at the tablespace level:
 
 ```text
-FREE          - all 64 pages are free
-FREE_FRAG     - some pages free, some used (partly consumed extent)
-FULL_FRAG     - all 64 pages are in use
+FREE          - extents where all 64 pages are free
+FREE_FRAG     - extents where some pages are free, some used (fragment extents shared across segments)
+FULL_FRAG     - extents where all 64 pages are in use (full fragment extents)
 ```
 
-When an extent transitions from FREE_FRAG to FULL_FRAG, it moves to the segment's list of full extents. When all pages in a FULL_FRAG extent are deleted, it moves back to FREE.
+When all pages in a FREE_FRAG extent are consumed, it moves to FULL_FRAG. When all pages in a FULL_FRAG extent are freed, it moves back to FREE. Separately, each segment maintains its own lists (FREE, NOT_FULL, FULL) for the extents it exclusively owns.
 
 ## Observing Extent Usage
 
