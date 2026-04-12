@@ -108,7 +108,7 @@ db.zones.insertOne({
         [-74.01, 40.70],
         [-74.01, 40.74]
       ],
-      // Inner ring (hole) - counterclockwise
+      // Inner ring (hole) - clockwise
       [
         [-73.99, 40.73],
         [-73.99, 40.71],
