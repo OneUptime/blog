@@ -37,9 +37,10 @@ db.getCollectionNames().forEach(name => {
 WiredTiger does not immediately return freed space to the OS after deletes. Check for reusable space:
 
 ```javascript
-const stats = db.orders.stats();
-const bloatRatio = 1 - (stats.size / stats.storageSize);
-print("Bloat ratio:", (bloatRatio * 100).toFixed(1) + "%");
+const stats = db.orders.stats({ wiredTiger: true });
+const reusable = stats.wiredTiger["block-manager"]["file bytes available for reuse"];
+const bloatRatio = reusable / stats.storageSize;
+print("Reusable space ratio:", (bloatRatio * 100).toFixed(1) + "%");
 ```
 
 If bloat exceeds 30-40%, compaction or collection drop-and-rebuild is worth considering.
@@ -52,7 +53,7 @@ If bloat exceeds 30-40%, compaction or collection drop-and-rebuild is worth cons
 db.runCommand({ compact: "orders" });
 ```
 
-`compact` is a blocking operation. Run it on a secondary replica while it is out of the replica set rotation, then roll it through the set to avoid downtime.
+Starting with MongoDB 4.4, `compact` does not block read or write operations. On MongoDB 6.1+, secondaries can continue replicating during compaction. For older versions, run it on a secondary while it is out of rotation and roll through the set to avoid downtime.
 
 ### Drop unused collections and indexes
 
@@ -68,15 +69,20 @@ Identify documents older than a retention period and remove them in batches to a
 
 ```javascript
 const cutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000); // 1 year ago
-let deleted = 0;
-do {
-  const result = await db.events.deleteMany(
+const batchSize = 10000;
+let totalDeleted = 0;
+while (true) {
+  const batch = db.events.find(
     { createdAt: { $lt: cutoff } },
-    { limit: 10000 }
-  );
-  deleted += result.deletedCount;
-} while (deleted % 10000 === 0 && deleted > 0);
-print("Deleted:", deleted, "documents");
+    { projection: { _id: 1 } }
+  ).limit(batchSize).toArray();
+  if (batch.length === 0) break;
+  const result = db.events.deleteMany({
+    _id: { $in: batch.map(doc => doc._id) }
+  });
+  totalDeleted += result.deletedCount;
+}
+print("Deleted:", totalDeleted, "documents");
 ```
 
 ## Step 5: Scale Disk Capacity
@@ -97,8 +103,11 @@ In Atlas, set disk alerts well below 100% to give yourself time to react:
 ```bash
 atlas alerts settings create \
   --projectId <projectId> \
-  --event DISK_AUTO_SCALE_MAX_DISK_SIZE_FAIL \
-  --threshold 80 \
+  --event OUTSIDE_METRIC_THRESHOLD \
+  --metricName DISK_PARTITION_SPACE_USED_DATA \
+  --metricOperator GREATER_THAN \
+  --metricThreshold 80 \
+  --metricUnits RAW \
   --notificationType EMAIL \
   --notificationEmailAddress ops@example.com
 ```
