@@ -66,7 +66,7 @@ WHERE starts_at >= '2025-06-01 00:00:00'
 `AND` has higher precedence than `OR`. This means MySQL evaluates `AND` conditions before `OR` conditions:
 
 ```sql
--- This filters: (status = 'active' AND dept = 'Engineering') OR dept = 'Management'
+-- This filters: (status = 'active' AND department = 'Engineering') OR department = 'Management'
 SELECT * FROM employees
 WHERE status = 'active'
   AND department = 'Engineering'
@@ -107,10 +107,10 @@ HAVING headcount > 5
 
 ## Short-Circuit Evaluation
 
-MySQL evaluates AND conditions left to right and stops as soon as it finds a FALSE condition. Place the most selective (and cheapest) condition first:
+MySQL's `AND` operator supports short-circuit evaluation, meaning it can stop as soon as one operand is FALSE. However, the query optimizer may reorder `WHERE` conditions regardless of their textual order in the query, so the evaluation order is not guaranteed to match what you write. To help the optimizer, ensure selective columns are indexed rather than relying on condition order:
 
 ```sql
--- status check is fast and selective, put it first
+-- The optimizer may evaluate these conditions in any order
 SELECT * FROM orders
 WHERE status = 'pending'
   AND YEAR(order_date) = 2025
@@ -119,4 +119,4 @@ WHERE status = 'pending'
 
 ## Summary
 
-The `AND` operator requires all combined conditions to be TRUE for a row to pass the filter. It is used in `WHERE`, `HAVING`, and `JOIN ON` clauses. Remember that `AND` has higher precedence than `OR`, so use parentheses when mixing them. NULL propagation means conditions involving NULL values evaluate to NULL (not TRUE), effectively excluding those rows. Place cheap, selective conditions first for best performance.
+The `AND` operator requires all combined conditions to be TRUE for a row to pass the filter. It is used in `WHERE`, `HAVING`, and `JOIN ON` clauses. Remember that `AND` has higher precedence than `OR`, so use parentheses when mixing them. NULL propagation means conditions involving NULL values evaluate to NULL (not TRUE), effectively excluding those rows. Index selective columns for best performance, as the optimizer controls condition evaluation order.
