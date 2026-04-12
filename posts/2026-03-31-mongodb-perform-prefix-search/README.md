@@ -46,7 +46,7 @@ Important: unanchored patterns like `/pro/` (no `^`) and case-insensitive patter
 
 ## Case-Insensitive Prefix Search with Collation Index
 
-To efficiently run case-insensitive prefix searches, create a collation index:
+To efficiently run case-insensitive prefix searches, create a collation index. Since `$regex` does not support collation, use a range query instead:
 
 ```javascript
 db.products.createIndex(
@@ -54,9 +54,9 @@ db.products.createIndex(
   { collation: { locale: "en", strength: 2 } }
 )
 
-// Query must specify the same collation
+// $regex does not support collation, so use a range query with the same collation
 db.products.find(
-  { name: /^pro/ }
+  { name: { $gte: "pro", $lt: "prp" } }
 ).collation({ locale: "en", strength: 2 })
 ```
 
@@ -115,7 +115,7 @@ function prefixRange(prefix) {
 db.products.find({
   name: prefixRange("Pro")
 })
-// Equivalent to name >= "Pro" AND name < "Pros" effectively
+// Equivalent to name >= "Pro" AND name < "Prp"
 ```
 
 This approach is case-sensitive but maximally index-efficient.
