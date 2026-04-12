@@ -27,7 +27,6 @@ SHOW VARIABLES LIKE 'query_cache%';
 | query_cache_limit            | 1048576 |
 | query_cache_min_res_unit     | 4096    |
 | query_cache_size             | 0       |
-| query_cache_strip_comments   | OFF     |
 | query_cache_type             | OFF     |
 | query_cache_wlock_invalidate | OFF     |
 +------------------------------+---------+
@@ -102,13 +101,13 @@ SELECT
 FROM (
   SELECT
     VARIABLE_VALUE AS Qcache_hits
-  FROM information_schema.GLOBAL_STATUS
+  FROM performance_schema.global_status
   WHERE VARIABLE_NAME = 'Qcache_hits'
 ) h,
 (
   SELECT
     VARIABLE_VALUE AS Qcache_inserts
-  FROM information_schema.GLOBAL_STATUS
+  FROM performance_schema.global_status
   WHERE VARIABLE_NAME = 'Qcache_inserts'
 ) i;
 ```
