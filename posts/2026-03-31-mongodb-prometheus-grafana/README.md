@@ -37,7 +37,8 @@ Run the exporter pointing to your MongoDB instance:
 mongodb_exporter \
   --mongodb.uri="mongodb://exporterUser:password@127.0.0.1:27017/?authSource=admin" \
   --web.listen-address=":9216" \
-  --collect-all
+  --collect-all \
+  --compatible-mode
 ```
 
 ## Creating a MongoDB Exporter User
@@ -72,7 +73,8 @@ EnvironmentFile=/etc/default/mongodb_exporter
 ExecStart=/usr/local/bin/mongodb_exporter \
     --mongodb.uri=${MONGODB_URI} \
     --web.listen-address=:9216 \
-    --collect-all
+    --collect-all \
+    --compatible-mode
 Restart=always
 
 [Install]
@@ -140,7 +142,7 @@ mongodb_wiredtiger_cache_bytes{type="currently in cache"} / mongodb_wiredtiger_c
 Replication lag in seconds:
 
 ```text
-mongodb_replset_member_replication_lag
+mongodb_mongod_replset_member_replication_lag
 ```
 
 Page faults per second:
@@ -178,7 +180,7 @@ groups:
           description: "{{ $labels.instance }} connection usage is {{ $value | humanizePercentage }}."
 
       - alert: MongoDBHighReplicationLag
-        expr: mongodb_replset_member_replication_lag > 60
+        expr: mongodb_mongod_replset_member_replication_lag > 60
         for: 5m
         labels:
           severity: warning
@@ -251,6 +253,7 @@ services:
     command:
       - "--mongodb.uri=mongodb://admin:secretpassword@mongodb:27017/?authSource=admin"
       - "--collect-all"
+      - "--compatible-mode"
     ports:
       - "9216:9216"
     depends_on:
