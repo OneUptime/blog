@@ -121,13 +121,13 @@ ORDER BY avg_salary DESC;
 ```
 
 ```text
-+-------------+-----------+------------+
-| department  | headcount | avg_salary |
-+-------------+-----------+------------+
-| Engineering | 2         | 100000.000 |
-| Finance     | 1         | 88000.000  |
-| Marketing   | 1         | 72000.000  |
-+-------------+-----------+------------+
++-------------+-----------+-------------+
+| department  | headcount | avg_salary  |
++-------------+-----------+-------------+
+| Engineering | 2         | 100000.0000 |
+| Finance     | 1         | 88000.0000  |
+| Marketing   | 1         | 72000.0000  |
++-------------+-----------+-------------+
 ```
 
 ### Joining Three Tables
@@ -154,14 +154,14 @@ ORDER BY d.name, e.name;
 ```
 
 ```text
-+----------+-------------+-----------------+
-| employee | department  | project         |
-+----------+-------------+-----------------+
-| Alice    | Engineering | Platform Rewrite|
-| Carol    | Engineering | Platform Rewrite|
-| Bob      | Marketing   | Brand Campaign  |
-| Dave     | Finance     | Budget Forecast |
-+----------+-------------+-----------------+
++----------+-------------+------------------+
+| employee | department  | project          |
++----------+-------------+------------------+
+| Alice    | Engineering | Platform Rewrite |
+| Carol    | Engineering | Platform Rewrite |
+| Bob      | Marketing   | Brand Campaign   |
+| Dave     | Finance     | Budget Forecast  |
++----------+-------------+------------------+
 ```
 
 ## Best Practices
