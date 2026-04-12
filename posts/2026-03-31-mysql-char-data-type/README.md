@@ -12,7 +12,7 @@ Description: Learn how the CHAR fixed-length data type works in MySQL, when to u
 
 The `CHAR` data type in MySQL stores fixed-length character strings. When you define a column as `CHAR(n)`, MySQL always allocates exactly `n` characters of storage, padding shorter values with trailing spaces.
 
-The maximum length for `CHAR` is 255 characters. Values longer than the defined length are truncated (with a warning in strict mode).
+The maximum length for `CHAR` is 255 characters. In strict SQL mode, values longer than the defined length produce an error and the statement is rejected. In non-strict mode, MySQL truncates the value and issues a warning.
 
 ## Declaring a CHAR Column
 
