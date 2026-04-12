@@ -24,7 +24,6 @@ Mongoose wraps the native MongoDB driver. You need to pass `autoEncryption` opti
 
 ```javascript
 const mongoose = require("mongoose");
-const { Binary } = require("mongodb");
 const fs = require("fs");
 
 // Load or generate a 96-byte local master key
@@ -115,7 +114,7 @@ console.log(doc.ssn); // "123-45-6789"
 
 ## Limitations with Mongoose
 
-- **Mongoose validators** run after the driver decrypts, so they work normally on read
+- **Mongoose validators** run on writes before the driver encrypts, so they see plaintext values and work normally
 - **Mongoose middleware** (pre/post hooks) see plaintext values
 - **Aggregations** on encrypted fields are limited to the supported query types
 - Schema versioning or migration tools that bypass the driver will not encrypt/decrypt correctly
