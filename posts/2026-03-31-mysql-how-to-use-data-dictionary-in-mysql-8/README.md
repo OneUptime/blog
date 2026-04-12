@@ -100,17 +100,7 @@ SHOW CREATE TABLE myapp.orders;
 
 In MySQL 8, many `INFORMATION_SCHEMA` queries are faster because the data dictionary is stored in InnoDB with proper indexes rather than being reconstructed from `.frm` files on every query.
 
-You can verify the underlying system tables exist in the `mysql` schema:
-
-```sql
-SELECT TABLE_NAME
-FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_SCHEMA = 'mysql'
-  AND TABLE_NAME IN ('tables', 'columns', 'indexes', 'routines')
-ORDER BY TABLE_NAME;
-```
-
-Note: These underlying tables are not directly accessible for DML - use `INFORMATION_SCHEMA` views instead.
+The underlying data dictionary tables (such as `tables`, `columns`, `indexes`, and `routines`) exist in the `mysql` schema but are hidden - they are not visible through `INFORMATION_SCHEMA` queries or `SHOW TABLES`, and cannot be queried directly with `SELECT`. The `INFORMATION_SCHEMA` views are the only supported interface for accessing data dictionary metadata.
 
 ## Practical Example - Auditing Schema Changes
 
