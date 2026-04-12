@@ -93,7 +93,7 @@ const item = await db.queues.findOneAndUpdate(
   { $pop: { jobs: -1 } },
   { returnDocument: "before" }
 )
-// item.value.jobs[0] is the dequeued job
+// item.jobs[0] is the dequeued job
 ```
 
 ## $pop vs $pull
