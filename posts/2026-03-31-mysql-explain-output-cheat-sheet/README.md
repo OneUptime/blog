@@ -44,7 +44,7 @@ fulltext    - FULLTEXT index used
 ref_or_null - like ref but also NULL check
 index_merge - multiple indexes combined
 range       - index range scan
-index       - full index scan (no table lookup)
+index       - full index scan (all rows in index order)
 ALL         - full table scan (worst)
 ```
 
@@ -55,7 +55,7 @@ Using index          - covering index, no table lookup (good)
 Using where          - WHERE filter applied after index fetch
 Using filesort       - sort cannot use index (may be slow)
 Using temporary      - temp table used (e.g., for GROUP BY/DISTINCT)
-Using index condition- Index Condition Pushdown (ICP) active (good)
+Using index condition - Index Condition Pushdown (ICP) active (good)
 Using join buffer    - join uses a block-nested-loop buffer (no index)
 Impossible WHERE     - condition is always false, returns 0 rows
 No tables used       - no FROM clause
