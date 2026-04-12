@@ -146,7 +146,7 @@ Apply `DATE_FORMAT()` in the `SELECT` list for display, and use range conditions
 ```sql
 SET lc_time_names = 'es_ES';
 SELECT DATE_FORMAT('2024-06-15', '%W, %d de %M de %Y');
--- Returns: sabado, 15 de junio de 2024
+-- Returns: sábado, 15 de junio de 2024
 ```
 
 ## Summary
