@@ -81,7 +81,7 @@ A history list length above 10,000 indicates uncontrolled undo log growth.
 Regular long-running SELECTs (without FOR UPDATE) also hold MVCC snapshots:
 
 ```sql
--- Include transactions in any state
+-- Find transactions currently running for over 60 seconds
 SELECT
     trx_id,
     trx_state,
@@ -111,7 +111,9 @@ SELECT
     EVENT_NAME,
     STATE,
     TIMER_WAIT / 1e12 AS duration_sec,
-    SQL_TEXT
+    ACCESS_MODE,
+    ISOLATION_LEVEL,
+    AUTOCOMMIT
 FROM performance_schema.events_transactions_current
 WHERE TIMER_WAIT / 1e12 > 30
 ORDER BY TIMER_WAIT DESC;
@@ -128,7 +130,7 @@ KILL CONNECTION <thread_id>;
 ## Preventing Long-Running Transactions
 
 ```sql
--- Set a maximum execution time for individual statements (MySQL 8.0)
+-- Set a maximum execution time for read-only SELECT statements (MySQL 8.0)
 SET SESSION MAX_EXECUTION_TIME = 30000;  -- 30 seconds in milliseconds
 
 -- Use wait_timeout to disconnect idle connections
