@@ -31,7 +31,7 @@ SHOW VARIABLES LIKE 'group_replication_transaction_size_limit';
 +------------------------------------------+-----------+
 ```
 
-The default is 150 MB. Transactions exceeding this size are rolled back with an error.
+The default is approximately 143 MB (150,000,000 bytes). Transactions exceeding this size are rolled back with an error.
 
 ## Change the Transaction Size Limit
 
@@ -51,7 +51,7 @@ Setting to `0` disables the limit entirely, which is not recommended.
 
 ## What Happens When the Limit Is Exceeded
 
-If a transaction exceeds the limit, it is rejected during the broadcast phase and rolled back:
+If a transaction exceeds the limit, it is rejected before being broadcast to the group and rolled back:
 
 ```text
 ERROR 3100 (HY000): Error on observer while running replication hook 'before_commit'.
@@ -73,7 +73,7 @@ Before setting a limit, identify existing large transactions:
 -- mysqlbinlog --verbose mysql-bin.000001 | grep "# at" | awk '{print $3}' | sort -n | tail -20
 ```
 
-Or use the Performance Schema:
+Or query active transactions in the Information Schema:
 
 ```sql
 SELECT
@@ -94,15 +94,24 @@ Instead of one large `UPDATE`, use batched updates:
 -- Instead of this:
 UPDATE orders SET status = 'archived' WHERE created_at < '2023-01-01';
 
--- Do this in a loop:
-REPEAT
-  UPDATE orders SET status = 'archived'
-  WHERE created_at < '2023-01-01'
-    AND status != 'archived'
-  LIMIT 1000;
-  SELECT SLEEP(0.01);
-UNTIL ROW_COUNT() = 0
-END REPEAT;
+-- Do this in a stored procedure:
+DELIMITER //
+CREATE PROCEDURE batch_archive()
+BEGIN
+  DECLARE affected INT DEFAULT 1;
+  REPEAT
+    UPDATE orders SET status = 'archived'
+    WHERE created_at < '2023-01-01'
+      AND status != 'archived'
+    LIMIT 1000;
+    SET affected = ROW_COUNT();
+    DO SLEEP(0.01);
+  UNTIL affected = 0
+  END REPEAT;
+END //
+DELIMITER ;
+
+CALL batch_archive();
 ```
 
 In application code (Python example):
@@ -139,4 +148,4 @@ SET GLOBAL group_replication_transaction_size_limit = 150000000;
 
 ## Summary
 
-Configure `group_replication_transaction_size_limit` to prevent large transactions from saturating the group replication network and causing certification failures. The default is 150 MB. Break large batch operations into smaller chunks of 1000-10000 rows each, with a small sleep between batches to avoid triggering flow control. Monitor transaction sizes using `information_schema.innodb_trx` before setting the limit.
+Configure `group_replication_transaction_size_limit` to prevent large transactions from saturating the group replication network and causing certification failures. The default is approximately 143 MB (150,000,000 bytes). Break large batch operations into smaller chunks of 1000-10000 rows each, with a small sleep between batches to avoid triggering flow control. Monitor transaction sizes using `information_schema.innodb_trx` before setting the limit.
