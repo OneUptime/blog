@@ -59,7 +59,7 @@ CREATE TABLE compressed_table (
 ) ENGINE=InnoDB ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
 ```
 
-`KEY_BLOCK_SIZE` sets the compressed page size in kilobytes (2, 4, 8, or 16).
+`KEY_BLOCK_SIZE` sets the compressed page size in kilobytes (1, 2, 4, 8, or 16).
 
 ## Checking the Row Format of Existing Tables
 
@@ -89,11 +89,11 @@ This rebuilds the table, so run it during a maintenance window or use `pt-online
 
 ## Row Format and Barracuda File Format
 
-DYNAMIC and COMPRESSED require the Barracuda InnoDB file format and `innodb_file_per_table=ON`. In MySQL 8.0 both are the default, so no additional configuration is needed.
+In MySQL 5.6 and 5.7, DYNAMIC and COMPRESSED required the Barracuda file format (`innodb_file_format=Barracuda`) and `innodb_file_per_table=ON`. In MySQL 8.0 the file format concept was removed and `innodb_file_per_table` defaults to ON, so no additional configuration is needed.
 
 ## Impact on Index Limitations
 
-The InnoDB index key prefix limit is 767 bytes with COMPACT/REDUNDANT and 3072 bytes with DYNAMIC/COMPRESSED (when `innodb_large_prefix` is enabled, which it is by default in MySQL 8.0). This is why switching to DYNAMIC resolves errors like:
+The InnoDB index key prefix limit is 767 bytes with COMPACT/REDUNDANT and 3072 bytes with DYNAMIC/COMPRESSED. In MySQL 5.7 this required `innodb_large_prefix=ON`; in MySQL 8.0 the variable was removed and 3072 bytes is always the limit for DYNAMIC/COMPRESSED. This is why switching to DYNAMIC resolves errors like:
 
 ```text
 ERROR 1071 (42000): Specified key was too long; max key length is 767 bytes
