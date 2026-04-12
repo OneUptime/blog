@@ -53,6 +53,7 @@ A history list length above 1000 to 5000 suggests purge cannot keep up with the 
 ```sql
 -- Number of purge threads (default: 4 in MySQL 8)
 -- Increase for high-write workloads
+-- Note: dynamic since MySQL 8.0.26; requires restart on earlier 8.0.x versions
 SHOW VARIABLES LIKE 'innodb_purge_threads';
 SET GLOBAL innodb_purge_threads = 8;
 
@@ -77,7 +78,7 @@ innodb_purge_threads         = 8
 innodb_purge_batch_size      = 300
 innodb_max_undo_log_size     = 1G
 innodb_undo_log_truncate     = ON
-innodb_undo_tablespaces      = 2
+innodb_undo_tablespaces      = 2   # deprecated since 8.0.14; minimum is 2 by default
 ```
 
 ## Long-Running Transactions Block Purge
