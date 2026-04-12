@@ -10,7 +10,7 @@ Description: Learn which aggregation pipeline stages benefit from indexes, how t
 
 ## How Indexes Apply to Aggregation
 
-In MongoDB aggregation pipelines, only the first pipeline stage can use an index efficiently. Once data enters the pipeline, subsequent stages operate on the in-memory result set. The two stages that can use indexes at the start of a pipeline are `$match` and `$sort`.
+In MongoDB aggregation pipelines, only the initial stages can use indexes efficiently. Once data passes through a stage that transforms or reshapes documents, subsequent stages operate on the in-memory result set. The two stages that can use indexes at the beginning of a pipeline are `$match` and `$sort`, and a compound index can cover both when they appear as the first stages.
 
 ## Place $match First
 
@@ -106,7 +106,7 @@ db.orders.aggregate(
 
 ## $lookup and Indexes on the Foreign Collection
 
-`$lookup` performs a join. The index must exist on the `from` collection's `localField`:
+`$lookup` performs a join. The index must exist on the `from` collection's `foreignField`:
 
 ```javascript
 db.orders.aggregate([
