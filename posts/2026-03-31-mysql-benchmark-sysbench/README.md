@@ -101,6 +101,8 @@ sysbench oltp_read_only \
   --mysql-db=sbtest \
   --mysql-user=sbtest \
   --mysql-password=password \
+  --tables=10 \
+  --table-size=100000 \
   --threads=8 \
   --time=60 \
   run
@@ -111,6 +113,8 @@ sysbench oltp_write_only \
   --mysql-db=sbtest \
   --mysql-user=sbtest \
   --mysql-password=password \
+  --tables=10 \
+  --table-size=100000 \
   --threads=8 \
   --time=60 \
   run
