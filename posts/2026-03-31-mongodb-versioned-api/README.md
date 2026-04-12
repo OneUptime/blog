@@ -96,14 +96,14 @@ async function getProduct(id) {
 
 ## Bulk Migration for Production
 
-When you are ready to fully migrate, use `updateMany` with a filter on `schemaVersion` to batch-update old documents.
+When you are ready to fully migrate, use an aggregation pipeline with `$merge` to batch-update old documents.
 
 ```javascript
 db.products.aggregate([
   { $match: { schemaVersion: { $lt: 2 } } },
   {
     $set: {
-      priceCents: { $multiply: ["$price", 100] },
+      priceCents: { $round: [{ $multiply: ["$price", 100] }, 0] },
       schemaVersion: 2
     }
   },
