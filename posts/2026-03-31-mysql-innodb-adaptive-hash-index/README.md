@@ -42,28 +42,28 @@ SHOW ENGINE INNODB STATUS\G
 ```
 
 ```sql
--- More detailed AHI metrics
+-- More detailed AHI metrics from INFORMATION_SCHEMA
 SELECT
-  variable_name,
-  variable_value
-FROM performance_schema.global_status
-WHERE variable_name IN (
-  'Innodb_adaptive_hash_hash_searches',
-  'Innodb_adaptive_hash_non_hash_searches'
+  NAME,
+  COUNT
+FROM INFORMATION_SCHEMA.INNODB_METRICS
+WHERE NAME IN (
+  'adaptive_hash_searches',
+  'adaptive_hash_searches_btree'
 );
 
 -- Calculate AHI hit rate
 SELECT
-  (SELECT CAST(variable_value AS UNSIGNED)
-   FROM performance_schema.global_status
-   WHERE variable_name = 'Innodb_adaptive_hash_hash_searches') /
+  (SELECT COUNT
+   FROM INFORMATION_SCHEMA.INNODB_METRICS
+   WHERE NAME = 'adaptive_hash_searches') /
   (
-    (SELECT CAST(variable_value AS UNSIGNED)
-     FROM performance_schema.global_status
-     WHERE variable_name = 'Innodb_adaptive_hash_hash_searches') +
-    (SELECT CAST(variable_value AS UNSIGNED)
-     FROM performance_schema.global_status
-     WHERE variable_name = 'Innodb_adaptive_hash_non_hash_searches')
+    (SELECT COUNT
+     FROM INFORMATION_SCHEMA.INNODB_METRICS
+     WHERE NAME = 'adaptive_hash_searches') +
+    (SELECT COUNT
+     FROM INFORMATION_SCHEMA.INNODB_METRICS
+     WHERE NAME = 'adaptive_hash_searches_btree')
   ) AS ahi_hit_rate;
 ```
 
@@ -80,7 +80,8 @@ SET GLOBAL innodb_adaptive_hash_index = ON;
 -- More partitions reduce mutex contention on high-concurrency workloads
 SHOW VARIABLES LIKE 'innodb_adaptive_hash_index_parts';
 -- Default is 8; range is 1-512
-SET GLOBAL innodb_adaptive_hash_index_parts = 16;
+-- This variable is NOT dynamic - it requires a server restart to change
+-- Set it in my.cnf: innodb_adaptive_hash_index_parts = 16
 ```
 
 ## When the AHI Helps and When It Hurts
