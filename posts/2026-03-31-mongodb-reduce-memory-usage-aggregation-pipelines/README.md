@@ -21,7 +21,7 @@ The single most impactful optimization is placing `$match` stages as early as po
 ```javascript
 // Bad: $match comes after $project, forcing all documents through projection
 db.orders.aggregate([
-  { $project: { customer: 1, total: 1, items: 1 } },
+  { $project: { customer: 1, total: 1, items: 1, status: 1 } },
   { $match: { status: "completed", total: { $gt: 100 } } }
 ]);
 
