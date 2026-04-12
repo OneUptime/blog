@@ -13,7 +13,7 @@ Change Data Capture (CDC) allows downstream systems to react to database changes
 ## Why Tail the Oplog Directly?
 
 - Access to raw oplog operation types (`i`, `u`, `d`, `c`)
-- See pre-image and full replacement details not exposed by Change Streams
+- See raw update diffs and full replacement documents in the oplog entry
 - Lower overhead for simple event streaming use cases
 - Compatibility with older MongoDB deployments
 
@@ -40,7 +40,6 @@ async function tailOplog() {
     {
       tailable: true,
       awaitData: true,
-      oplogReplay: true,
       noCursorTimeout: true
     }
   );
@@ -104,7 +103,7 @@ const cursor = oplog.find({
 |-----------------------|-----------------------|--------------------------|
 | API complexity        | Higher                | Lower                    |
 | Resume token          | Manual (timestamp)    | Automatic (resume token) |
-| Pre-image support     | Limited               | Yes (with config)        |
+| Pre-image support     | No                    | Yes (with config)        |
 | Sharded cluster       | Per-shard             | Unified                  |
 | Atlas support         | No (local db blocked) | Yes                      |
 
