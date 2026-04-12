@@ -57,14 +57,13 @@ module.exports.clearDatabase = async () => {
 ```javascript
 // tests/product.test.js
 const { connect, disconnect, clearDatabase } = require('./mongoSetup');
-const { MongoClient } = require('mongodb');
 
 let client;
 let db;
 
 beforeAll(async () => {
   client = await connect();
-  db = client.db('testdb');
+  db = client.db();
   // Create indexes like production
   await db.collection('products').createIndex({ sku: 1 }, { unique: true });
 });
