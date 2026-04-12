@@ -28,7 +28,7 @@ In Grafana, navigate to Alerting - Contact Points and create a Slack webhook:
   "type": "slack",
   "settings": {
     "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
-    "channel": "#mongodb-alerts",
+    "recipient": "#mongodb-alerts",
     "title": "MongoDB Alert: {{ .GroupLabels.alertname }}",
     "text": "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
   }
@@ -77,11 +77,8 @@ groups:
 ## Alert Rule: Replication Lag
 
 ```promql
-# Prometheus PromQL for replication lag
-(
-  max(mongodb_replset_oplog_tail_timestamp) by (set)
-  - min(mongodb_replset_oplog_head_timestamp) by (set)
-) > 30
+# Replication lag in seconds per secondary member (percona/mongodb_exporter compatible mode)
+mongodb_mongod_replset_member_replication_lag > 30
 ```
 
 Configure this as a Grafana alert with a 5-minute evaluation window and a critical severity label.
@@ -90,8 +87,8 @@ Configure this as a Grafana alert with a 5-minute evaluation window and a critic
 
 ```promql
 (
-  mongodb_wiredtiger_cache_bytes_currently_in_cache
-  / mongodb_wiredtiger_cache_maximum_bytes_configured
+  mongodb_mongod_wiredtiger_cache_bytes{type="total"}
+  / mongodb_mongod_wiredtiger_cache_max_bytes
 ) * 100 > 90
 ```
 
