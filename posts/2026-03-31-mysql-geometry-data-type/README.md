@@ -33,17 +33,17 @@ The `SRID 4326` specifies the WGS 84 geographic coordinate system (latitude/long
 ```sql
 -- Insert a POINT using WKT (Well-Known Text)
 INSERT INTO locations (name, category, geom)
-VALUES ('Eiffel Tower', 'landmark', ST_GeomFromText('POINT(2.2945 48.8584)', 4326));
+VALUES ('Eiffel Tower', 'landmark', ST_GeomFromText('POINT(48.8584 2.2945)', 4326));
 
 -- Insert a LINESTRING (e.g., a road)
 INSERT INTO locations (name, category, geom)
 VALUES ('Main Street', 'road',
-    ST_GeomFromText('LINESTRING(2.29 48.85, 2.30 48.86, 2.31 48.87)', 4326));
+    ST_GeomFromText('LINESTRING(48.85 2.29, 48.86 2.30, 48.87 2.31)', 4326));
 
 -- Insert a POLYGON (e.g., a park boundary)
 INSERT INTO locations (name, category, geom)
 VALUES ('City Park', 'park',
-    ST_GeomFromText('POLYGON((2.28 48.84, 2.30 48.84, 2.30 48.86, 2.28 48.86, 2.28 48.84))', 4326));
+    ST_GeomFromText('POLYGON((48.84 2.28, 48.84 2.30, 48.86 2.30, 48.86 2.28, 48.84 2.28))', 4326));
 ```
 
 ## Querying Spatial Data
@@ -56,7 +56,7 @@ SELECT name, ST_AsText(geom) AS wkt FROM locations;
 SELECT name, ST_GeometryType(geom) AS type FROM locations;
 
 -- Get coordinates of a POINT
-SELECT name, ST_X(geom) AS longitude, ST_Y(geom) AS latitude
+SELECT name, ST_X(geom) AS latitude, ST_Y(geom) AS longitude
 FROM locations
 WHERE ST_GeometryType(geom) = 'POINT';
 ```
@@ -66,7 +66,7 @@ WHERE ST_GeometryType(geom) = 'POINT';
 Find all locations within 1 km of the Eiffel Tower:
 
 ```sql
-SET @tower = ST_GeomFromText('POINT(2.2945 48.8584)', 4326);
+SET @tower = ST_GeomFromText('POINT(48.8584 2.2945)', 4326);
 
 SELECT
     name,
@@ -82,7 +82,7 @@ ORDER BY distance_meters;
 
 ```sql
 SET @search_area = ST_GeomFromText(
-    'POLYGON((2.28 48.84, 2.32 48.84, 2.32 48.87, 2.28 48.87, 2.28 48.84))', 4326);
+    'POLYGON((48.84 2.28, 48.84 2.32, 48.87 2.32, 48.87 2.28, 48.84 2.28))', 4326);
 
 SELECT name, ST_AsText(geom)
 FROM locations
@@ -101,7 +101,7 @@ WHERE l2.name = 'City Park'
   AND ST_GeometryType(l1.geom) = 'POINT'
   AND ST_Within(l1.geom, l2.geom);
 
--- Calculate area of polygons (returns value in coordinate units)
+-- Calculate area of polygons (returns area in square meters for geographic SRS)
 SELECT name, ST_Area(geom) AS area_approx
 FROM locations
 WHERE ST_GeometryType(geom) = 'POLYGON';
