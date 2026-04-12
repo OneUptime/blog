@@ -20,7 +20,7 @@ You have two primary choices: embed reviews inside the product document, or stor
   name: "Wireless Headphones Pro",
   category: "electronics",
   price: 149.99,
-  avgRating: 4.2,
+  avgRating: 4.5,
   reviewCount: 847,
   ratingDistribution: {
     "1": 12, "2": 18, "3": 65, "4": 210, "5": 542
@@ -54,23 +54,27 @@ When a user submits a review, insert the review document and update the product'
 
 ```javascript
 const session = client.startSession();
-await session.withTransaction(async () => {
-  await db.reviews.insertOne(review, { session });
+try {
+  await session.withTransaction(async () => {
+    await db.reviews.insertOne(review, { session });
 
-  const oldProduct = await db.products.findOne({ _id: productId }, { session });
-  const newCount = oldProduct.reviewCount + 1;
-  const newAvg = ((oldProduct.avgRating * oldProduct.reviewCount) + review.rating) / newCount;
-  const ratingKey = String(review.rating);
+    const oldProduct = await db.products.findOne({ _id: productId }, { session });
+    const newCount = oldProduct.reviewCount + 1;
+    const newAvg = ((oldProduct.avgRating * oldProduct.reviewCount) + review.rating) / newCount;
+    const ratingKey = String(review.rating);
 
-  await db.products.updateOne(
-    { _id: productId },
-    {
-      $set: { avgRating: Math.round(newAvg * 10) / 10, reviewCount: newCount },
-      $inc: { [`ratingDistribution.${ratingKey}`]: 1 }
-    },
-    { session }
-  );
-});
+    await db.products.updateOne(
+      { _id: productId },
+      {
+        $set: { avgRating: Math.round(newAvg * 10) / 10, reviewCount: newCount },
+        $inc: { [`ratingDistribution.${ratingKey}`]: 1 }
+      },
+      { session }
+    );
+  });
+} finally {
+  await session.endSession();
+}
 ```
 
 ## Querying Reviews with Pagination
