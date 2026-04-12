@@ -157,16 +157,16 @@ Store procedure files in Git alongside application code so changes are tracked a
 
 ## Granting Execute Permissions After Recreate
 
-When you drop and recreate a procedure, grants on the procedure survive (in MySQL 8.0+). In older versions, verify grants after recreation:
+When you drop a procedure, MySQL revokes the associated `EXECUTE` and `ALTER ROUTINE` privileges. After recreating the procedure, you must re-grant permissions to any users that need access:
 
 ```sql
 -- Verify grants after recreation
 SHOW GRANTS FOR 'app_user'@'%';
 
--- Re-grant if needed
+-- Re-grant execute permission
 GRANT EXECUTE ON PROCEDURE mydb.calculate_order_stats TO 'app_user'@'%';
 ```
 
 ## Summary
 
-`ALTER PROCEDURE` only modifies metadata like `SQL SECURITY` and `COMMENT`, not the procedure body. To change logic, use `DROP PROCEDURE IF EXISTS` followed by `CREATE PROCEDURE`, since MySQL does not support `CREATE OR REPLACE PROCEDURE` (that syntax is available in MariaDB and Oracle, not MySQL). Store procedure definitions in version control and export them with `mysqldump --routines`. Always verify grants after recreating procedures in older MySQL versions.
+`ALTER PROCEDURE` only modifies metadata like `SQL SECURITY` and `COMMENT`, not the procedure body. To change logic, use `DROP PROCEDURE IF EXISTS` followed by `CREATE PROCEDURE`, since MySQL does not support `CREATE OR REPLACE PROCEDURE` (that syntax is available in MariaDB and Oracle, not MySQL). Store procedure definitions in version control and export them with `mysqldump --routines`. Always re-grant permissions after recreating procedures, as MySQL revokes routine-level privileges when a procedure is dropped.
