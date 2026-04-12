@@ -18,10 +18,10 @@ MySQL maintains an internal host cache. For each host, it counts consecutive fai
 
 ```sql
 -- Check the performance_schema host cache for blocked entries
-SELECT IP, HOST, COUNT_CONNECT_ERRORS, COUNT_HANDSHAKE_ERRORS,
-       BLOCKED
+SELECT IP, HOST, SUM_CONNECT_ERRORS, COUNT_HANDSHAKE_ERRORS,
+       COUNT_HOST_BLOCKED_ERRORS
 FROM performance_schema.host_cache
-WHERE BLOCKED = 'YES';
+WHERE SUM_CONNECT_ERRORS >= @@GLOBAL.max_connect_errors;
 ```
 
 ## Fix: Flush Host Cache Immediately
@@ -35,8 +35,10 @@ mysqladmin -u root -p flush-hosts
 Or from within MySQL:
 
 ```sql
-FLUSH HOSTS;
+TRUNCATE TABLE performance_schema.host_cache;
 ```
+
+Note: The older `FLUSH HOSTS` statement achieves the same result but was deprecated in MySQL 8.0.23 and removed in MySQL 8.4.
 
 This unblocks all hosts immediately but does not fix the underlying cause.
 
@@ -47,7 +49,7 @@ If legitimate connections are failing due to transient network issues:
 ```sql
 SHOW VARIABLES LIKE 'max_connect_errors';
 
--- Increase the limit (session or global)
+-- Increase the limit (global variable)
 SET GLOBAL max_connect_errors = 1000000;
 ```
 
@@ -73,16 +75,16 @@ Or at runtime:
 SET GLOBAL host_cache_size = 0;
 ```
 
-Flushing the host cache has the same effect as resizing it to 0 and back.
+This disables the host cache entirely, so MySQL cannot track or block hosts. Note that flushing the host cache (`TRUNCATE TABLE performance_schema.host_cache`) only clears the cache entries while keeping the cache enabled.
 
 ## Diagnose the Root Cause
 
 Repeated connection errors indicate an underlying problem. Common causes:
 
-- Application connecting with wrong credentials
 - Connection pool not handling broken connections properly
 - Network drops causing TCP handshakes to fail mid-way
-- DNS resolution failures
+- Clients disconnecting during the protocol handshake phase
+- Port scanners or monitoring tools making incomplete connections
 
 ```sql
 -- Check recent error log
@@ -95,9 +97,9 @@ sudo grep "Connection refused\|Host.*blocked\|Access denied" /var/log/mysql/erro
 
 ```sql
 -- Check which hosts have errors
-SELECT IP, HOST, COUNT_CONNECT_ERRORS, COUNT_AUTH_PLUGIN_ERRORS
+SELECT IP, HOST, SUM_CONNECT_ERRORS, COUNT_AUTH_PLUGIN_ERRORS
 FROM performance_schema.host_cache
-ORDER BY COUNT_CONNECT_ERRORS DESC;
+ORDER BY SUM_CONNECT_ERRORS DESC;
 ```
 
 ## Fix the Underlying Application Issue
@@ -123,4 +125,4 @@ except Error as e:
 
 ## Summary
 
-Host blocking from `max_connect_errors` is a security mechanism. The immediate fix is `FLUSH HOSTS` or `mysqladmin flush-hosts`. The real fix is diagnosing why connections are failing - wrong credentials, network instability, or application misconfiguration. Increase `max_connect_errors` only after addressing the root cause to prevent legitimate application hosts from being blocked during transient failures.
+Host blocking from `max_connect_errors` is a security mechanism. The immediate fix is `TRUNCATE TABLE performance_schema.host_cache` or `mysqladmin flush-hosts`. The real fix is diagnosing why connections are failing - protocol handshake failures, network instability, or application misconfiguration. Increase `max_connect_errors` only after addressing the root cause to prevent legitimate application hosts from being blocked during transient failures.
