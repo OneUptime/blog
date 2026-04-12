@@ -35,13 +35,13 @@ var result = db.orders.find({
 
 print('Stage:', result.executionStats.executionStages.stage)
 print('Docs examined:', result.executionStats.totalDocsExamined)
-print('Docs returned:', result.executionStats.totalDocsReturned)
+print('Docs returned:', result.executionStats.nReturned)
 print('Time (ms):', result.executionStats.executionTimeMillis)
 ```
 
 **Red flags:**
 - `COLLSCAN` stage - no index used
-- `totalDocsExamined` much higher than `totalDocsReturned` - low selectivity
+- `totalDocsExamined` much higher than `nReturned` - low selectivity
 - High `executionTimeMillis` with low document count - sort or lookup overhead
 
 ## Step 3: Fix Missing or Wrong Indexes
