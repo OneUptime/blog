@@ -95,8 +95,8 @@ FROM (
 ) category_avgs
 CROSS JOIN (
   SELECT
-    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY price) AS high_threshold,
-    PERCENTILE_CONT(0.33) WITHIN GROUP (ORDER BY price) AS mid_threshold
+    AVG(price) + STDDEV(price) AS high_threshold,
+    AVG(price)                 AS mid_threshold
   FROM products
 ) thresholds;
 ```
