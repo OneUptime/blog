@@ -8,7 +8,7 @@ Description: Learn how to use $searchMeta in MongoDB Atlas Search to retrieve on
 
 ---
 
-`$searchMeta` is an Atlas Search aggregation stage that returns only the metadata about a search query -- facet buckets, result counts, and scoring information -- without returning the matching documents. It is the companion to `$search` and is commonly used to build faceted navigation and result count indicators.
+`$searchMeta` is an Atlas Search aggregation stage that returns only the metadata about a search query -- facet buckets and result counts -- without returning the matching documents. It is the companion to `$search` and is commonly used to build faceted navigation and result count indicators.
 
 ## $search vs. $searchMeta
 
@@ -40,8 +40,9 @@ You need an Atlas cluster with Atlas Search enabled and an index on the collecti
   "mappings": {
     "dynamic": false,
     "fields": {
-      "name":     { "type": "string" },
-      "brand":    { "type": "stringFacet" },
+      "name":        { "type": "string" },
+      "description": { "type": "string" },
+      "brand":       { "type": "stringFacet" },
       "category": { "type": "stringFacet" },
       "price":    { "type": "numberFacet" },
       "rating":   { "type": "number" },
@@ -332,4 +333,4 @@ db.articles.aggregate([
 
 ## Summary
 
-`$searchMeta` is the dedicated Atlas Search stage for retrieving facet counts and result totals without fetching document content. Use it with the `facet` collector to build filter sidebars showing how many results exist per category, brand, price range, or date bucket. Use the `count` collector to display a fast result count. For combined document + facet responses, use `$search` with `$$SEARCH_META` inside a `$facet` stage. All `$searchMeta` queries require an Atlas Search index with `stringFacet` or `numberFacet` field mappings for the faceted fields.
+`$searchMeta` is the dedicated Atlas Search stage for retrieving facet counts and result totals without fetching document content. Use it with the `facet` collector to build filter sidebars showing how many results exist per category, brand, price range, or date bucket. Use the `count` collector to display a fast result count. For combined document + facet responses, use `$search` with `$$SEARCH_META` inside a `$facet` stage. All `$searchMeta` facet queries require an Atlas Search index with `stringFacet`, `numberFacet`, or `dateFacet` field mappings for the faceted fields.
