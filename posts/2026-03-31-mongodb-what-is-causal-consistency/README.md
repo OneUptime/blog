@@ -25,7 +25,7 @@ A causally consistent session in MongoDB provides:
 
 ## Enabling Causal Consistency
 
-Causal consistency is scoped to a session and must be explicitly enabled:
+Causal consistency is scoped to a session. It is enabled by default when you start a session, but you can pass the option explicitly for clarity:
 
 ```javascript
 // Node.js - start a causally consistent session
@@ -72,7 +72,7 @@ Under the hood, MongoDB uses two logical clocks:
 - **Cluster time** - A logical timestamp representing the state of the cluster
 - **Operation time** - The timestamp of the last operation completed in the session
 
-The driver piggybacks these values on every operation. When issuing a read after a write, the driver tells the server "don't return results until you have applied operations up to at least this operation time." If a secondary hasn't caught up yet, the read waits or is routed to the primary.
+The driver piggybacks these values on every operation. When issuing a read after a write, the driver tells the server "don't return results until you have applied operations up to at least this operation time." If a secondary hasn't caught up yet, the read waits until replication catches up or until `maxTimeMS` is exceeded.
 
 ## Causal Consistency vs. Transactions
 
