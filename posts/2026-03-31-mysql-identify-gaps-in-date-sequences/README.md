@@ -67,9 +67,10 @@ A pre-built calendar table is the most flexible approach for gap detection:
 ```sql
 -- Create a calendar table
 CREATE TABLE calendar (dt DATE PRIMARY KEY);
+SET SESSION cte_max_recursion_depth = 5000;
 INSERT INTO calendar (dt)
 WITH RECURSIVE dates AS (
-  SELECT '2020-01-01' AS dt
+  SELECT CAST('2020-01-01' AS DATE) AS dt
   UNION ALL
   SELECT dt + INTERVAL 1 DAY FROM dates WHERE dt < '2030-12-31'
 )
