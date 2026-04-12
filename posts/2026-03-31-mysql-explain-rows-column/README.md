@@ -12,7 +12,7 @@ Description: Learn what the rows and filtered columns in MySQL EXPLAIN output re
 
 The `rows` column in `EXPLAIN` output is MySQL's estimate of how many rows it expects to examine at each step of the query plan. It is not the number of rows returned - it is the number of rows MySQL must read to find the ones that satisfy the query conditions.
 
-A large `rows` value does not always mean a slow query - it depends on what fraction of rows are actually returned. But a large `rows` with a high `filtered` value often indicates a missing or ineffective index.
+A large `rows` value does not always mean a slow query - it depends on what fraction of rows are actually returned. But a large `rows` with a low `filtered` value often indicates a missing or ineffective index.
 
 ## Reading a Simple Query
 
