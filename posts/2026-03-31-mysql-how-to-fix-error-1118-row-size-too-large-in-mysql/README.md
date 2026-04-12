@@ -70,7 +70,7 @@ SET innodb_strict_mode = ON;
 Converting large `VARCHAR` columns to `TEXT` reduces inline storage since `TEXT`/`BLOB` data is stored off-page in `DYNAMIC` format:
 
 ```sql
--- Before: multiple large VARCHAR columns
+-- This fails with ERROR 1118 due to large VARCHAR columns
 CREATE TABLE documents (
   id INT PRIMARY KEY,
   content1 VARCHAR(10000),
@@ -79,7 +79,18 @@ CREATE TABLE documents (
 );
 -- ERROR 1118
 
--- After: use TEXT type
+-- Fix: use TEXT type instead
+CREATE TABLE documents (
+  id INT PRIMARY KEY,
+  content1 TEXT,
+  content2 TEXT,
+  content3 TEXT
+);
+```
+
+If the table already exists with large `VARCHAR` columns, alter it in place:
+
+```sql
 ALTER TABLE documents
   MODIFY content1 TEXT,
   MODIFY content2 TEXT,
