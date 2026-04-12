@@ -17,7 +17,7 @@ Managing MongoDB across many servers manually leads to configuration drift, miss
 Install the community MongoDB cookbook as a starting point:
 
 ```bash
-knife cookbook site install mongodb
+knife supermarket install mongodb
 ```
 
 Add it to your `Berksfile`:
@@ -123,7 +123,6 @@ Add a custom resource to initialize the replica set on the primary:
 ```ruby
 ruby_block 'initialize_replica_set' do
   block do
-    require 'json'
     cmd = Mixlib::ShellOut.new('mongosh --quiet --eval "rs.status().ok"')
     cmd.run_command
     unless cmd.stdout.strip == '1'
@@ -146,7 +145,7 @@ Upload and apply the cookbook with:
 ```bash
 knife cookbook upload my_mongodb
 knife node run_list add web-db-01 'recipe[my_mongodb]'
-chef-client --local-mode --runlist 'recipe[my_mongodb]'
+chef-client --local-mode --run-list 'recipe[my_mongodb]'
 ```
 
 ## Summary
