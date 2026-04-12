@@ -107,7 +107,7 @@ ORDER BY TABLE_NAME;
 
 ## Generate DROP FOREIGN KEY Statements
 
-To temporarily disable foreign keys for bulk operations:
+To remove foreign key constraints before bulk operations or schema changes:
 
 ```sql
 SELECT
