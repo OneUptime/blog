@@ -24,18 +24,18 @@ These are visible for the past hour, day, or week.
 
 ## Setting Up Alerts in Redis Cloud Console
 
-Under **Database Settings - Alerts**:
+Under the **Configuration** tab, locate the **Alerts** section:
 
 ```text
 Alert type: Memory usage
 Threshold: 80%
 Action: Email notification
 
-Alert type: Connections
-Threshold: 500
+Alert type: Number of connections
+Threshold: 80% of plan limit
 Action: Email notification
 
-Alert type: Replication lag
+Alert type: Replica Of - sync lag is higher than
 Threshold: 5 seconds
 Action: Email notification
 ```
@@ -50,18 +50,23 @@ curl -s -X GET \
   "https://api.redislabs.com/v1/subscriptions/<sub-id>/databases/<db-id>/stats" \
   -H "accept: application/json" \
   -H "x-api-key: <api-key>" \
-  -H "x-secret-key: <secret-key>" | jq .
+  -H "x-api-secret-key: <secret-key>" | jq .
 ```
 
 Key fields in the response:
 
 ```json
 {
-  "instantaneousOpsPerSec": 1250,
-  "usedMemory": 524288000,
-  "memoryUsagePercent": 51.2,
-  "connectedClients": 42,
-  "keyCount": 150000
+  "uid": "1",
+  "intervals": [
+    {
+      "interval": "1hour",
+      "instantaneous_ops_per_sec": 1250.0,
+      "used_memory": 524288000.0,
+      "conns": 42.0,
+      "no_of_keys": 150000.0
+    }
+  ]
 }
 ```
 
@@ -78,24 +83,25 @@ DB_ID = "67890"
 
 headers = {
     "x-api-key": API_KEY,
-    "x-secret-key": SECRET_KEY,
+    "x-api-secret-key": SECRET_KEY,
 }
 
 def get_metrics():
     url = f"https://api.redislabs.com/v1/subscriptions/{SUB_ID}/databases/{DB_ID}/stats"
     response = requests.get(url, headers=headers)
     data = response.json()
+    latest = data["intervals"][0]
     return {
-        "ops_per_sec": data.get("instantaneousOpsPerSec", 0),
-        "memory_percent": data.get("memoryUsagePercent", 0),
-        "connections": data.get("connectedClients", 0),
+        "ops_per_sec": latest.get("instantaneous_ops_per_sec", 0),
+        "used_memory": latest.get("used_memory", 0),
+        "connections": latest.get("conns", 0),
     }
 
 while True:
     metrics = get_metrics()
     print(metrics)
-    if metrics["memory_percent"] > 85:
-        print("WARNING: Memory above 85%")
+    if metrics["used_memory"] > 450_000_000:
+        print("WARNING: Memory usage above 450MB")
     time.sleep(60)
 ```
 
@@ -108,7 +114,7 @@ scrape_configs:
   - job_name: redis_cloud
     static_configs:
       - targets: ["metrics.redis-cloud.example.com:8070"]
-    metrics_path: /metrics
+    metrics_path: /
     scheme: https
     tls_config:
       insecure_skip_verify: false
@@ -117,11 +123,11 @@ scrape_configs:
 Key Prometheus metrics:
 
 ```text
-redis_cloud_db_memory_used_bytes
-redis_cloud_db_instantaneous_ops_per_sec
-redis_cloud_db_connected_clients
-redis_cloud_db_keyspace_hits_total
-redis_cloud_db_keyspace_misses_total
+bdb_used_memory
+bdb_instantaneous_ops_per_sec
+bdb_conns
+bdb_read_hits
+bdb_read_misses
 ```
 
 ## Grafana Dashboard
@@ -130,9 +136,9 @@ After configuring Prometheus, import a Grafana dashboard. A sample panel for cac
 
 ```text
 Panel: Cache Hit Rate
-Query: rate(redis_cloud_db_keyspace_hits_total[5m]) /
-       (rate(redis_cloud_db_keyspace_hits_total[5m]) +
-        rate(redis_cloud_db_keyspace_misses_total[5m]))
+Query: rate(bdb_read_hits[5m]) /
+       (rate(bdb_read_hits[5m]) +
+        rate(bdb_read_misses[5m]))
 Unit: Percent (0-100)
 Alert: < 90% for 5 minutes
 ```
