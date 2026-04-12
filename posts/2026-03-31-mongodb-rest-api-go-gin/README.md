@@ -211,4 +211,4 @@ Always use context timeouts with MongoDB operations to prevent hanging requests.
 
 ## Summary
 
-Building a REST API with Go, Gin, and MongoDB is straightforward with the official Go driver. This setup supports full CRUD operations with proper context management and clean route organization. Adding authentication middleware, input sanitization, and index creation on frequently queried fields will make the API production-ready.
+Building a REST API with Go, Gin, and MongoDB is straightforward with the official Go driver. This setup covers Create and Read operations with proper context management and clean route organization. You can extend it with Update and Delete handlers following the same patterns. Adding authentication middleware, input sanitization, and index creation on frequently queried fields will make the API production-ready.
