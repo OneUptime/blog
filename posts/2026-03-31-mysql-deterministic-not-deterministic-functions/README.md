@@ -56,22 +56,22 @@ The price for product 42 could change between calls, so this function is `NOT DE
 
 ### Binary Logging and Replication
 
-MySQL binary logging in `STATEMENT` format requires that stored functions are either `DETERMINISTIC` or declared with `NO SQL` or `READS SQL DATA`. If your binary log format is `STATEMENT` and you omit the keyword or use `NOT DETERMINISTIC` with data-modifying SQL, MySQL raises an error:
+When binary logging is enabled (the default in MySQL 8.0+), MySQL requires that stored functions are declared as `DETERMINISTIC`, `NO SQL`, or `READS SQL DATA`. If you omit these keywords, MySQL raises an error:
 
 ```text
 ERROR 1418: This function has none of DETERMINISTIC, NO SQL, or READS SQL DATA in its declaration
 ```
 
-Check your binary log format:
+Check whether binary logging is enabled:
 
 ```sql
-SHOW VARIABLES LIKE 'binlog_format';
+SHOW VARIABLES LIKE 'log_bin';
 ```
 
-If you cannot change the format, add the appropriate characteristic to the function:
+Add the appropriate data-access characteristic to the function to resolve the error. Note that `DETERMINISTIC` or `NOT DETERMINISTIC` can only be set when creating the function, not with `ALTER FUNCTION`:
 
 ```sql
-ALTER FUNCTION get_product_price NOT DETERMINISTIC READS SQL DATA;
+ALTER FUNCTION get_product_price READS SQL DATA;
 ```
 
 ### Query Optimization
