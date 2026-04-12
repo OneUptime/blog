@@ -105,24 +105,27 @@ discarded operations:
  insert 0, delete mark 0, delete 0
 ```
 
-Also from the status variables:
+Also from the `INFORMATION_SCHEMA.INNODB_METRICS` table:
 
 ```sql
-SHOW GLOBAL STATUS LIKE 'Innodb_ibuf%';
+SELECT NAME, COUNT, STATUS
+FROM INFORMATION_SCHEMA.INNODB_METRICS
+WHERE SUBSYSTEM = 'change_buffer';
 ```
 
 ```text
-+----------------------------------+--------+
-| Variable_name                    | Value  |
-+----------------------------------+--------+
-| Innodb_ibuf_free_list            | 0      |
-| Innodb_ibuf_merged_delete_marks  | 12300  |
-| Innodb_ibuf_merged_deletes       | 4500   |
-| Innodb_ibuf_merged_inserts       | 87600  |
-| Innodb_ibuf_merges               | 45000  |
-| Innodb_ibuf_segment_size         | 2      |
-| Innodb_ibuf_size                 | 1      |
-+----------------------------------+--------+
++--------------------------------------+-------+---------+
+| NAME                                 | COUNT | STATUS  |
++--------------------------------------+-------+---------+
+| ibuf_merges_insert                   | 87600 | enabled |
+| ibuf_merges_delete_mark              | 12300 | enabled |
+| ibuf_merges_delete                   |  4500 | enabled |
+| ibuf_merges                          | 45000 | enabled |
+| ibuf_merges_discard_insert           |     0 | enabled |
+| ibuf_merges_discard_delete_mark      |     0 | enabled |
+| ibuf_merges_discard_delete           |     0 | enabled |
+| ibuf_size                            |     1 | enabled |
++--------------------------------------+-------+---------+
 ```
 
 ## When to Disable the Change Buffer
