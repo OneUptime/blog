@@ -23,7 +23,7 @@ Before restoring, check that the archive file is not corrupt:
 gzip -t /backups/mongodb-20240115.archive.gz
 echo "Exit code: $?"  # 0 = valid, non-zero = corrupt
 
-# For uncompressed archives, check with mongodump's built-in verification
+# Verify the archive with mongorestore's dry run mode
 mongorestore \
   --uri "mongodb://user:pass@localhost:27018" \
   --gzip \
@@ -78,7 +78,7 @@ dbs.forEach(database => {
       print(JSON.stringify(result.errors));
       errors++;
     } else {
-      print(`OK: ${database.name}.${collName} (${result.nrecords} docs)`);
+      print(`OK: ${database.name}.${collName} (${testDb.getCollection(collName).estimatedDocumentCount()} docs)`);
     }
   });
 });
