@@ -8,7 +8,7 @@ Description: Learn how to connect MongoDB from Vercel Serverless Functions and N
 
 ---
 
-Vercel Serverless Functions run in isolated V8 contexts that are reused between requests but not shared across instances. Caching the MongoDB connection in the Node.js global object prevents reconnecting on every warm invocation and avoids hitting Atlas connection limits.
+Vercel Serverless Functions run in Node.js containers that may be reused between requests (warm starts) but are not shared across concurrent instances. Caching the MongoDB connection in the Node.js global object prevents reconnecting on every warm invocation and avoids hitting Atlas connection limits.
 
 ## Installing Dependencies
 
@@ -146,7 +146,7 @@ Or set them in the Vercel dashboard under Project Settings > Environment Variabl
 
 ## Configuring MongoDB Atlas for Vercel
 
-Vercel functions run from dynamic IP addresses, so allowlist `0.0.0.0/0` in Atlas Network Access for serverless deployments. For production, use MongoDB Atlas Data API or deploy to a fixed IP with Vercel Pro.
+Vercel functions run from dynamic IP addresses, so allowlist `0.0.0.0/0` in Atlas Network Access for serverless deployments. For production, use Vercel Secure Compute for static egress IPs or configure MongoDB Atlas with VPC peering or AWS PrivateLink.
 
 ```text
 Atlas Network Access > Add IP Access List Entry > Allow Access from Anywhere (0.0.0.0/0)
