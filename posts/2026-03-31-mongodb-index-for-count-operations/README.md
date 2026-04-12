@@ -58,7 +58,7 @@ A count query can be "covered" if all filter fields are in the index and MongoDB
 // This count is covered by the compound index
 db.orders.createIndex({ status: 1, createdAt: 1 });
 
-db.orders.countDocuments({ status: "pending" }).explain("executionStats");
+db.orders.explain("executionStats").countDocuments({ status: "pending" });
 ```
 
 Look for `totalDocsExamined: 0` in the explain output - this confirms a covered count that reads only index entries.
@@ -80,12 +80,12 @@ Key fields:
     "executionTimeMillis": 1
   },
   "winningPlan": {
-    "stage": "RECORD_STORE_FAST_COUNT"
+    "stage": "COUNT_SCAN"
   }
 }
 ```
 
-`RECORD_STORE_FAST_COUNT` with `totalDocsExamined: 0` is the ideal outcome.
+`COUNT_SCAN` with `totalDocsExamined: 0` is the ideal outcome for a filtered count.
 
 ## Counter Pattern for High-Frequency Counts
 
