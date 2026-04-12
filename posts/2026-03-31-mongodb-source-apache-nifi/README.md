@@ -35,22 +35,22 @@ Enable the service after saving.
 
 ## GetMongo Processor - Querying Documents
 
-The `GetMongo` processor executes a query and emits each matching document as a FlowFile:
+The `GetMongo` processor executes a query and returns matching documents as FlowFiles:
 
 1. Add a GetMongo processor to the canvas
 2. Set the properties:
 
 ```text
-MongoDB Service: (select your controller service)
-Database Name:   myDatabase
-Collection Name: orders
-Query:           { "status": "pending" }
-Projection:      { "_id": 1, "orderId": 1, "amount": 1 }
-Sort:            { "createdAt": 1 }
-Limit:           1000
+Client Service:       (select your controller service)
+Mongo Database Name:  myDatabase
+Mongo Collection Name: orders
+Query:                { "status": "pending" }
+Projection:           { "_id": 1, "orderId": 1, "amount": 1 }
+Sort:                 { "createdAt": 1 }
+Limit:                1000
 ```
 
-The processor emits one FlowFile per matching document containing the document as JSON.
+By default, the processor emits one FlowFile per matching document containing the document as JSON. To group multiple documents into a single FlowFile as a JSON array, set the Results Per FlowFile property.
 
 ## Batch Mode
 
@@ -75,12 +75,11 @@ Use the `UpdateAttribute` processor to track the latest timestamp after each suc
 For structured processing with NiFi's Record API (which enables schema-aware transformations), use `GetMongoRecord` instead of `GetMongo`:
 
 ```text
-MongoDB Service:   (controller service)
-Database Name:     myDatabase
-Collection Name:   products
-Record Reader:     JsonTreeReader
-Record Writer:     AvroRecordSetWriter
-Schema Name:       product_schema
+Client Service:        (controller service)
+Mongo Database Name:   myDatabase
+Mongo Collection Name: products
+Record Writer:         AvroRecordSetWriter
+Schema Name:           product_schema
 ```
 
 This outputs records in Avro or Parquet format, suitable for writing directly to HDFS or S3.
@@ -91,11 +90,9 @@ This outputs records in Avro or Parquet format, suitable for writing directly to
 [GetMongo] --> [SplitJson] --> [PublishKafka]
 ```
 
-- GetMongo reads orders from MongoDB
-- SplitJson splits a batch FlowFile into individual documents
+- GetMongo reads orders from MongoDB with Results Per FlowFile set to group documents into a JSON array
+- SplitJson splits the array FlowFile into individual documents
 - PublishKafka sends each order to a Kafka topic
-
-For GetMongo, set the output to return an array by toggling the JSON Type property.
 
 ## Handling Errors
 
