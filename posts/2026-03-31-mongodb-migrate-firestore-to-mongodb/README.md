@@ -76,7 +76,7 @@ export_users_with_orders(fs, db)
 Firestore uses `Timestamp` objects that need conversion to Python `datetime` or MongoDB `Date`:
 
 ```python
-from google.cloud.firestore_v1 import DatetimeWithNanoseconds
+from google.api_core.datetime_helpers import DatetimeWithNanoseconds
 import datetime
 
 def convert_timestamps(obj):
@@ -131,7 +131,10 @@ For real-time listeners, replace Firestore's `onSnapshot` with MongoDB change st
 
 ```javascript
 // MongoDB change stream equivalent
-const changeStream = db.collection("users").watch([{ $match: { "documentKey._id": userId } }]);
+const changeStream = db.collection("users").watch(
+  [{ $match: { "documentKey._id": userId } }],
+  { fullDocument: "updateLookup" }
+);
 changeStream.on("change", (change) => {
   console.log("Updated:", change.fullDocument);
 });
