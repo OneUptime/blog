@@ -81,7 +81,7 @@ SELECT
   id,
   'Math',
   FLOOR(RAND() * 41) + 60,  -- Score between 60 and 100
-  DATE_ADD('2024-01-01', INTERVAL FLOOR(RAND() * 365) DAY)
+  DATE_ADD('2024-01-01', INTERVAL FLOOR(RAND() * 366) DAY)
 FROM students;
 ```
 
@@ -92,10 +92,12 @@ FROM students;
 SELECT FLOOR(RAND() * 6) + 1 AS d6;
 
 -- Two dice
-SELECT
-  FLOOR(RAND() * 6) + 1 AS die1,
-  FLOOR(RAND() * 6) + 1 AS die2,
-  (FLOOR(RAND() * 6) + 1) + (FLOOR(RAND() * 6) + 1) AS total;
+SELECT die1, die2, die1 + die2 AS total
+FROM (
+  SELECT
+    FLOOR(RAND() * 6) + 1 AS die1,
+    FLOOR(RAND() * 6) + 1 AS die2
+) AS rolls;
 ```
 
 ## Random Boolean (True/False)
@@ -133,7 +135,7 @@ FROM products;
 
 ```sql
 -- Random date between 2024-01-01 and 2024-12-31
-SELECT DATE_ADD('2024-01-01', INTERVAL FLOOR(RAND() * 365) DAY) AS random_date;
+SELECT DATE_ADD('2024-01-01', INTERVAL FLOOR(RAND() * 366) DAY) AS random_date;
 ```
 
 ## Reproducible Random Numbers with Seed
