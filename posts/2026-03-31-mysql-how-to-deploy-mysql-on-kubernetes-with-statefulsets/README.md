@@ -146,12 +146,9 @@ spec:
           readinessProbe:
             exec:
               command:
-                - mysql
-                - -u
-                - root
-                - -p$(MYSQL_ROOT_PASSWORD)
-                - -e
-                - "SELECT 1"
+                - /bin/sh
+                - -c
+                - mysql -u root -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"
             initialDelaySeconds: 30
             periodSeconds: 5
       volumes:
