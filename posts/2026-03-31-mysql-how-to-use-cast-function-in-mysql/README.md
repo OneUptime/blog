@@ -23,7 +23,7 @@ Supported target types:
 - `SIGNED` (integer)
 - `UNSIGNED`
 - `DECIMAL(m, d)`
-- `FLOAT` / `DOUBLE`
+- `FLOAT` / `DOUBLE` (MySQL 8.0.17+)
 - `DATE`
 - `DATETIME`
 - `TIME`
@@ -34,7 +34,7 @@ Supported target types:
 
 ```sql
 SELECT CAST('42' AS SIGNED);         -- Output: 42
-SELECT CAST('42.99' AS SIGNED);      -- Output: 42 (truncated)
+SELECT CAST('42.99' AS SIGNED);      -- Output: 43 (rounded)
 SELECT CAST('-15' AS SIGNED);        -- Output: -15
 SELECT CAST('abc' AS SIGNED);        -- Output: 0  (non-numeric string)
 SELECT CAST('99' AS UNSIGNED);       -- Output: 99
