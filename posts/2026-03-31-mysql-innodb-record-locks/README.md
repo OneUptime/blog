@@ -71,8 +71,8 @@ WHERE LOCK_TYPE = 'RECORD';
 ```
 
 The LOCK_MODE column shows:
-- `X` - exclusive record lock
-- `S` - shared record lock
+- `X` - exclusive next-key lock (record + gap)
+- `S` - shared next-key lock (record + gap)
 - `X,REC_NOT_GAP` - exclusive record lock without gap component
 - `S,REC_NOT_GAP` - shared record lock without gap component
 
