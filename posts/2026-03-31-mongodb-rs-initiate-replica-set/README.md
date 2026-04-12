@@ -115,12 +115,12 @@ rs.initiate({
       arbiterOnly: false,          // true = arbiter (no data, just votes)
       hidden: false,               // true = hidden from clients, priority must be 0
       secondaryDelaySecs: 0,       // delayed secondary (seconds behind primary)
-      buildIndexes: true           // false = skip index builds (only valid if hidden)
+      buildIndexes: true           // false = skip index builds (requires priority 0)
     }
   ],
   settings: {
     electionTimeoutMillis: 10000,  // ms before election starts after primary loss
-    heartbeatTimeoutSecs: 10,      // seconds between heartbeats
+    heartbeatTimeoutSecs: 10,      // seconds to wait for a heartbeat response
     chainingAllowed: true          // allow secondaries to sync from other secondaries
   }
 });
@@ -170,8 +170,11 @@ When authentication is required, start each `mongod` with a shared keyfile befor
 openssl rand -base64 756 > /etc/mongodb/keyfile
 chmod 400 /etc/mongodb/keyfile
 chown mongodb:mongodb /etc/mongodb/keyfile
+```
 
-# Reference in mongod.conf
+Reference in `mongod.conf`:
+
+```yaml
 security:
   keyFile: /etc/mongodb/keyfile
   authorization: enabled
