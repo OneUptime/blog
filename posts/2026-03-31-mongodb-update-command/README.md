@@ -93,7 +93,7 @@ db.carts.updateOne(
   { $set: { "items.$.qty": 3 } }
 );
 
-// Update all matching array elements with $[]
+// Update all array elements with $[]
 db.orders.updateMany(
   { status: "pending" },
   { $set: { "items.$[].shipped": false } }
@@ -119,7 +119,7 @@ Returns the document before or after the update:
 const updated = db.orders.findOneAndUpdate(
   { orderId: "ORD-001" },
   { $set: { status: "shipped" } },
-  { returnDocument: "after" }
+  { returnNewDocument: true }
 );
 printjson(updated);
 ```
