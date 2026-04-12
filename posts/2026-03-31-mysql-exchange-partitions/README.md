@@ -18,7 +18,7 @@ This is an instantaneous metadata operation - no data is physically copied. It i
 
 - The non-partitioned table must have exactly the same schema (columns, data types, indexes) as the partitioned table
 - The non-partitioned table must use the same storage engine as the partitioned table
-- The non-partitioned table must not have foreign key constraints (unless using `WITHOUT VALIDATION`)
+- Neither table can have foreign key references defined on it, and no other table can have foreign keys that reference the non-partitioned table
 - The rows in the non-partitioned table must fit within the partition's definition (e.g., date range)
 
 ## Basic Syntax
@@ -44,7 +44,8 @@ PARTITION BY RANGE (YEAR(sale_date))
 (
     PARTITION p2022 VALUES LESS THAN (2023),
     PARTITION p2023 VALUES LESS THAN (2024),
-    PARTITION p2024 VALUES LESS THAN (2025)
+    PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p2025 VALUES LESS THAN (2026)
 );
 ```
 
@@ -82,7 +83,7 @@ FIELDS TERMINATED BY ','
 
 -- Exchange staging table with the target partition
 ALTER TABLE sales
-EXCHANGE PARTITION p2025_q1
+EXCHANGE PARTITION p2025
 WITH TABLE sales_staging;
 ```
 
