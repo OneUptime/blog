@@ -25,8 +25,10 @@ Working directly with `Document` objects means accessing fields by string keys, 
 ## Defining a POJO
 
 ```java
+import org.bson.types.ObjectId;
+
 public class Product {
-    private String id;
+    private ObjectId id;
     private String name;
     private double price;
     private int stock;
@@ -41,8 +43,8 @@ public class Product {
     }
 
     // Getters and setters (required for codec)
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    public ObjectId getId() { return id; }
+    public void setId(ObjectId id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public double getPrice() { return price; }
@@ -52,11 +54,12 @@ public class Product {
 }
 ```
 
-Key requirements: a public no-arg constructor and public getters/setters for all fields you want mapped.
+Key requirements: a public no-arg constructor and public getters/setters for all fields you want mapped. Using `ObjectId` for the `id` field enables the driver to auto-generate the `_id` on insert.
 
 ## Configuring the POJO Codec
 
 ```java
+import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -93,7 +96,7 @@ MongoCollection<Product> products = client
 Product p = new Product("Wireless Keyboard", 49.99, 100);
 products.insertOne(p);
 
-// After insert, MongoDB populates the _id field
+// The driver generates and sets the _id before sending to MongoDB
 System.out.println("Inserted with id: " + p.getId());
 ```
 
