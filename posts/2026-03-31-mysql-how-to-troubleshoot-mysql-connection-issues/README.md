@@ -138,7 +138,7 @@ ALTER USER 'root'@'localhost' IDENTIFIED BY 'NewStrongPass!1';
 
 This error occurs when the connection is dropped mid-query, usually due to:
 - `max_allowed_packet` being too small for a large query or blob.
-- `wait_timeout` expiring during a long query.
+- `wait_timeout` expiring during idle periods between queries.
 - Network instability.
 
 ### Check and Increase max_allowed_packet
