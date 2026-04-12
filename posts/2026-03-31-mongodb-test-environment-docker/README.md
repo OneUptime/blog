@@ -76,7 +76,7 @@ db.products.createIndex({ sku: 1 }, { unique: true });
 ```json
 {
   "scripts": {
-    "test:start-db": "docker compose -f docker-compose.test.yml up -d mongo && docker compose -f docker-compose.test.yml wait mongo",
+    "test:start-db": "docker compose -f docker-compose.test.yml up -d --wait mongo",
     "test:stop-db": "docker compose -f docker-compose.test.yml down -v",
     "test:integration": "npm run test:start-db && MONGODB_URI=mongodb://appuser:apppass@localhost:27018/testdb npm test; npm run test:stop-db"
   }
