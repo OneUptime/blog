@@ -102,12 +102,12 @@ UPDATE orders SET status = 'processing' WHERE id = 202;
 ```sql
 -- Check if a table lock is waiting due to intention locks
 SELECT
-    r.trx_id AS waiting_trx,
-    b.trx_id AS blocking_trx,
-    r.trx_query AS waiting_query
-FROM information_schema.INNODB_TRX r
-JOIN information_schema.INNODB_TRX b ON r.trx_id != b.trx_id
-WHERE r.trx_state = 'LOCK WAIT';
+    w.REQUESTING_ENGINE_TRANSACTION_ID AS waiting_trx,
+    w.BLOCKING_ENGINE_TRANSACTION_ID AS blocking_trx,
+    t.trx_query AS waiting_query
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.INNODB_TRX t
+    ON t.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 ## Summary
