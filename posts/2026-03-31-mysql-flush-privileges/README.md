@@ -56,16 +56,14 @@ WHERE User = 'analyst';
 
 ## FLUSH PRIVILEGES on a Replica
 
-If you are running replication and you repair a legacy grant-table state on the primary, the flush will also be replicated (unless you use `FLUSH LOCAL PRIVILEGES`):
+`FLUSH PRIVILEGES` is not written to the binary log, so it does not replicate to replicas. If you repair a legacy grant-table state on the primary, you must run `FLUSH PRIVILEGES` separately on each replica that needs the same refresh:
 
 ```sql
--- Replicate the flush to all replicas
+-- Run on the primary
 FLUSH PRIVILEGES;
 
--- Run flush only locally, do not replicate
-FLUSH LOCAL PRIVILEGES;
--- or equivalently
-FLUSH NO_WRITE_TO_BINLOG PRIVILEGES;
+-- Then connect to each replica and run it there as well
+FLUSH PRIVILEGES;
 ```
 
 ## Common Mistake: Unnecessary FLUSH PRIVILEGES
