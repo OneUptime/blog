@@ -122,8 +122,8 @@ pip install pymongoarrow
 from pymongoarrow.monkey import patch_all
 patch_all()
 
-# After patching, find() and aggregate() gain .to_pandas() method
-df = col.find({"status": "completed"}).to_pandas()
+# After patching, Collection gains find_pandas_all() and aggregate_pandas_all()
+df = col.find_pandas_all({"status": "completed"})
 ```
 
 ## Summary
