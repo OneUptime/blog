@@ -75,7 +75,7 @@ use local
 const first = db.oplog.rs.find().sort({ $natural: 1 }).limit(1).next();
 const last  = db.oplog.rs.find().sort({ $natural: -1 }).limit(1).next();
 
-const windowHours = ((last.ts.getTime() - first.ts.getTime()) / (1000 * 3600)).toFixed(1);
+const windowHours = ((last.ts.t - first.ts.t) / 3600).toFixed(1);
 print(`Oplog window: ${windowHours} hours`);
 
 if (windowHours < 24) {
