@@ -123,7 +123,7 @@ Application code targets `users_v2` during the migration window.
 - Views are read-only. All write operations must go to the source collection.
 - Views do not store data - every query re-runs the pipeline.
 - You cannot create indexes directly on a view.
-- Views cannot reference other views in some MongoDB versions - check your version.
+- A view can reference another view, but both must share the same collation.
 
 ## Summary
 
