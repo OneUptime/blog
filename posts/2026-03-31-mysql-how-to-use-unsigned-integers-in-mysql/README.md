@@ -103,15 +103,7 @@ Be careful with arithmetic that could result in a value below zero:
 UPDATE products SET stock = stock - 10 WHERE id = 1;
 ```
 
-If `stock` is less than 10, the result would be negative. In strict mode this raises an error. Protect against underflow:
-
-```sql
-UPDATE products
-SET stock = GREATEST(0, stock - 10)
-WHERE id = 1;
-```
-
-Or check before updating:
+If `stock` is less than 10, the unsigned subtraction wraps or raises an error (`ERROR 1690: BIGINT UNSIGNED value is out of range`) because unsigned arithmetic cannot produce a negative result. Protect against underflow by checking the value first:
 
 ```sql
 UPDATE products
