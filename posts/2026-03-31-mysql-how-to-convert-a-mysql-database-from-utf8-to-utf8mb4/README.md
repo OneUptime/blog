@@ -137,19 +137,21 @@ ALTER TABLE users
   ADD UNIQUE INDEX (email);
 ```
 
-Or enable `innodb_large_prefix`:
+On MySQL 5.6 or 5.7, you can enable `innodb_large_prefix` to raise the index key limit to 3072 bytes instead:
 
 ```sql
 SET GLOBAL innodb_large_prefix = ON;
 SET GLOBAL innodb_file_format = Barracuda;
 ```
 
+Note: `innodb_large_prefix` and `innodb_file_format` were removed in MySQL 8.0, where the 3072-byte index prefix limit is always enabled. On MySQL 8.0+, VARCHAR(255) with `utf8mb4` (1020 bytes) fits within the limit without any changes.
+
 ### Application Connection Strings
 
 Update application connection strings to use `utf8mb4`:
 
 ```text
-jdbc:mysql://host/db?useUnicode=true&characterEncoding=utf8mb4
+jdbc:mysql://host/db?useUnicode=true&characterEncoding=UTF-8
 ```
 
 ## Summary
