@@ -67,7 +67,7 @@ Find the exact binary log position just before the data loss occurred:
 
 ```bash
 # List available binary log files
-mysqlbinlog --no-defaults /var/lib/mysql/mysql-bin.000042 \
+mysqlbinlog --no-defaults --verbose /var/lib/mysql/mysql-bin.000042 \
   | grep -i "drop table\|delete from\|truncate"
 ```
 
