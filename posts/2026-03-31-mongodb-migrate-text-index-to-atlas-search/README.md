@@ -82,7 +82,7 @@ db.articles.aggregate([
 |---|---|
 | `$language` | `analyzer` field in index definition |
 | `$caseSensitive: false` | Default (case insensitive) |
-| `$diacriticSensitive: false` | `diacriticFold` token filter in custom analyzer |
+| `$diacriticSensitive: false` | `icuFolding` token filter in custom analyzer |
 | Phrase with quotes | `phrase` operator |
 
 Phrase search example:
