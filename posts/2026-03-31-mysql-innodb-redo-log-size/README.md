@@ -135,7 +135,7 @@ If `Log sequence number` - `Last checkpoint at` is close to the total redo log s
 ```sql
 -- Percentage of redo log used
 SELECT
-  (1 - (variable_value / @@innodb_redo_log_capacity)) * 100
+  (variable_value / @@innodb_redo_log_capacity) * 100
     AS pct_redo_used
 FROM performance_schema.global_status
 WHERE variable_name = 'Innodb_redo_log_logical_size';
