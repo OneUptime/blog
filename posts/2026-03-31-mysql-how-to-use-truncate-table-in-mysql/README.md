@@ -89,9 +89,9 @@ SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE categories;
 SET FOREIGN_KEY_CHECKS = 1;
 
--- Or truncate in the correct order (child before parent)
-TRUNCATE TABLE products;  -- Child table
-TRUNCATE TABLE categories;  -- Parent table
+-- Note: truncating child tables first does NOT help.
+-- MySQL blocks TRUNCATE if a FK constraint exists, even if no rows reference the table.
+-- You must disable FK checks or drop the constraint to truncate the parent table.
 ```
 
 ## TRUNCATE and Transactions
