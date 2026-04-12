@@ -105,8 +105,8 @@ async function migrateCollectionLive(collectionName) {
   // Step 1: record the current resume token before copying existing data
   const changeStream = sourceCol.watch([], { fullDocument: "updateLookup" });
 
-  // Wait for the first event to establish a resume token
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Initialize the cursor to obtain the initial resume token
+  await changeStream.tryNext();
   const resumeToken = changeStream.resumeToken;
   await changeStream.close();
 
