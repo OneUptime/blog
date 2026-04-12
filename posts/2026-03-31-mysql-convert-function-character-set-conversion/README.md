@@ -26,7 +26,7 @@ This returns the `string_value` re-encoded in `charset_name`. The result's colla
 -- Convert a latin1 string to utf8mb4
 SELECT CONVERT('Straße' USING utf8mb4);
 
--- Convert a utf8mb4 string to ascii (drops non-ASCII characters)
+-- Convert a utf8mb4 string to ascii (replaces non-ASCII characters with ?)
 SELECT CONVERT('hello world' USING ascii);
 
 -- Convert a column value in a query
@@ -77,11 +77,11 @@ This form does not use the `USING` keyword.
 SELECT CAST('2025-01-01' AS DATE);       -- Equivalent to CONVERT('2025-01-01', DATE)
 ```
 
-For character set conversion, only `CONVERT(... USING ...)` is available; `CAST()` does not support charset conversion.
+For character set conversion, `CONVERT(... USING ...)` is the traditional syntax. In MySQL 8.0 and later, `CAST()` also supports charset conversion via `CAST(expr AS CHAR CHARACTER SET charset_name)`.
 
 ## Limitations
 
-- `CONVERT(expr USING ascii)` silently drops characters outside the ASCII range. Use with caution on data that may contain multibyte characters.
+- `CONVERT(expr USING ascii)` replaces characters outside the ASCII range with `?`. Use with caution on data that may contain multibyte characters.
 - Inline `CONVERT()` calls on indexed columns prevent the optimizer from using the index. For performance-critical queries, alter the column to the target character set instead.
 
 ## Summary
