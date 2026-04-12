@@ -44,7 +44,7 @@ Sample output:
 | id          | int          | NO   | PRI | NULL    | auto_increment |
 | customer_id | int          | NO   | MUL | NULL    |                |
 | status      | varchar(20)  | YES  |     | active  |                |
-| total       | decimal(10,2)| NO   |     | 0.00    |                |
+| total       | decimal(10,2) | NO   |     | 0.00    |                |
 | created_at  | datetime     | NO   |     | NULL    |                |
 +-------------+--------------+------+-----+---------+----------------+
 ```
