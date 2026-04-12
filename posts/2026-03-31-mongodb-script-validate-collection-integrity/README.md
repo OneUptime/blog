@@ -70,13 +70,14 @@ def check_no_nulls(collection_name, fields):
 # 3. Check field value ranges
 def check_value_range(collection_name, field, min_val=None, max_val=None):
     collection = db[collection_name]
-    query = {}
+    conditions = []
     if min_val is not None:
-        query[field] = {**query.get(field, {}), "$lt": min_val}
+        conditions.append({field: {"$lt": min_val}})
     if max_val is not None:
-        query[field] = {**query.get(field, {}), "$gt": max_val}
+        conditions.append({field: {"$gt": max_val}})
 
-    if query:
+    if conditions:
+        query = {"$or": conditions} if len(conditions) > 1 else conditions[0]
         out_of_range = collection.count_documents(query)
         if out_of_range > 0:
             report_issue(collection_name, f"range_check:{field}",
@@ -116,7 +117,7 @@ def check_no_duplicates(collection_name, field):
         report_ok(collection_name, f"duplicate_check:{field}")
 
 # Run all checks
-print(f"=== Collection Integrity Validation: {datetime.utcnow().isoformat()} ===\n")
+print(f"=== Collection Integrity Validation: {datetime.now(datetime.UTC).isoformat()} ===\n")
 
 check_required_fields("users", ["email", "createdAt", "status"])
 check_no_nulls("users", ["email", "status"])
