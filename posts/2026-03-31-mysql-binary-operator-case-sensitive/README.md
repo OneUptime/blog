@@ -14,6 +14,8 @@ MySQL string comparisons are case-insensitive by default when using common colla
 
 `BINARY` is not a data type here -- it is a unary operator that applies to the expression that follows it.
 
+> **Deprecation notice:** The `BINARY` operator was deprecated in MySQL 8.0.28 and removed in MySQL 8.4. Use `CAST(expression AS BINARY)` instead. The examples in this post use both forms; prefer the `CAST` syntax for MySQL 8.0.28 and later.
+
 ## Basic syntax
 
 ```sql
@@ -82,7 +84,7 @@ WHERE BINARY password_hash = SHA2(CONCAT('secret', salt), 256)
   AND id = 42;
 ```
 
-## Case-sensitive FIND_IN_SET and IN
+## Case-sensitive IN
 
 ```sql
 -- Default IN: case-insensitive
