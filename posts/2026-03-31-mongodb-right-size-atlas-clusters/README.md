@@ -70,7 +70,7 @@ A cache hit rate below 90% indicates the working set does not fit in RAM.
 
 ## Step 4: Review Atlas Metrics Dashboard
 
-Key charts to review in the Atlas Performance Advisor:
+Key charts to review in the Atlas Metrics dashboard:
 
 ```text
 1. Opcounters - operations per second (helps size for throughput)
@@ -120,12 +120,9 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}" \
   -H "Content-Type: application/json" \
   -d '{
-    "replicationSpecs": [{
-      "regionConfigs": [{
-        "electableSpecs": { "instanceSize": "M40" },
-        "readOnlySpecs":  { "instanceSize": "M40" }
-      }]
-    }]
+    "providerSettings": {
+      "instanceSizeName": "M40"
+    }
   }'
 ```
 
