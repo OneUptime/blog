@@ -24,14 +24,17 @@ Never construct a config from scratch - you might accidentally omit existing mem
 
 ## Changes That Do NOT Cause an Election
 
-- Updating `priority` of a non-primary member
-- Changing `hidden`, `votes`, `tags`, or `secondaryDelaySecs`
+- Updating `priority` of a non-primary member (if the new value does not exceed the current primary's priority)
+- Changing `hidden`, `tags`, or `secondaryDelaySecs`
 - Modifying `settings` values like `heartbeatIntervalMillis` or `chainingAllowed`
 
 ## Changes That May Cause an Election
 
 - Changing the priority of the current primary to a lower value than another member
+- Changing a secondary member's priority to a value higher than the current primary's
 - Adding a member with higher priority than the current primary
+- Adding or removing voting members (alters the quorum calculation)
+- Changing `votes` on a member (alters the voting topology)
 
 ## Adding a New Member
 
@@ -98,7 +101,7 @@ Update global settings in the same pattern:
 ```javascript
 var cfg = rs.conf();
 cfg.settings.electionTimeoutMillis = 5000;  // faster elections
-cfg.settings.heartbeatIntervalMillis = 2000;
+cfg.settings.heartbeatIntervalMillis = 1000;
 rs.reconfig(cfg);
 ```
 
