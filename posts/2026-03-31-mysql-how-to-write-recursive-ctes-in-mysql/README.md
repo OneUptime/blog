@@ -116,12 +116,12 @@ Output:
 id | name      | depth | path
 ---+-----------+-------+-----------------------------------
  1 | CEO       |     0 | CEO
- 2 | CTO       |     1 | CEO > CTO
  3 | CFO       |     1 | CEO > CFO
+ 7 | Analyst   |     2 | CEO > CFO > Analyst
+ 2 | CTO       |     1 | CEO > CTO
  4 | Eng Lead  |     2 | CEO > CTO > Eng Lead
  5 | Engineer  |     3 | CEO > CTO > Eng Lead > Engineer
  6 | Engineer  |     3 | CEO > CTO > Eng Lead > Engineer
- 7 | Analyst   |     2 | CEO > CFO > Analyst
 ```
 
 ## Finding All Subordinates of a Specific Manager
