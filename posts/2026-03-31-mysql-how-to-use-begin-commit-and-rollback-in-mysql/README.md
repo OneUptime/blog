@@ -122,7 +122,10 @@ finally:
 ## Verifying Transaction State
 
 ```sql
-SELECT @@in_transaction;  -- 1 if inside a transaction
+-- Check if the current connection has an active transaction
+SELECT COUNT(*) AS in_transaction
+FROM information_schema.innodb_trx
+WHERE trx_mysql_thread_id = CONNECTION_ID();
 
 -- Check uncommitted changes within the transaction
 SELECT * FROM accounts;   -- shows current session's view
