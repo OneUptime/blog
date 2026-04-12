@@ -27,7 +27,7 @@ Every message in the wire protocol consists of:
 +------------------+
 ```
 
-The `opCode` field determines the message type. Modern MongoDB uses exclusively `OP_MSG` (opCode `2013`) for all operations since MongoDB 3.6.
+The `opCode` field determines the message type. `OP_MSG` (opCode `2013`) was introduced in MongoDB 3.6 and became the exclusive wire protocol message format in MongoDB 5.1+, after all legacy opcodes were removed.
 
 ## OP_MSG Structure
 
@@ -53,7 +53,7 @@ import struct
 import bson
 
 def read_message(sock):
-    # Read 4-byte length prefix first
+    # Read the 16-byte header
     header_data = sock.recv(16)
     if len(header_data) < 16:
         raise ConnectionError("Incomplete header")
@@ -108,11 +108,7 @@ ping_msg = build_op_msg(1, {"ping": 1, "$db": "admin"})
 sudo tcpdump -i eth0 -w mongo.pcap tcp port 27017
 ```
 
-Decode with Wireshark, which has a built-in MongoDB dissector, or use `mongosniff`:
-
-```bash
-mongosniff --source NET eth0
-```
+Decode with Wireshark, which has a built-in MongoDB dissector that can parse OP_MSG frames and display BSON payloads.
 
 ## Summary
 
