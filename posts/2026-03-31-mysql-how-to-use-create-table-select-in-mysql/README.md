@@ -10,7 +10,7 @@ Description: Learn how to use CREATE TABLE ... SELECT in MySQL to create a new t
 
 ## What Is CREATE TABLE ... SELECT?
 
-`CREATE TABLE ... SELECT` creates a new table and populates it with the results of a SELECT query in one statement. The new table's structure is inferred from the SELECT result - column names, types, and widths are derived automatically. However, constraints like PRIMARY KEY, UNIQUE, and NOT NULL are NOT copied.
+`CREATE TABLE ... SELECT` creates a new table and populates it with the results of a SELECT query in one statement. The new table's structure is inferred from the SELECT result - column names, types, and widths are derived automatically. The NOT NULL attribute is preserved for directly-selected columns, but constraints like PRIMARY KEY, UNIQUE, indexes, AUTO_INCREMENT, and DEFAULT values are NOT copied.
 
 ```sql
 -- Create a new table with data from an existing table
@@ -140,11 +140,11 @@ SELECT * FROM session_cart WHERE price > 50;
 
 ```sql
 -- Limitations of CREATE TABLE ... SELECT:
--- 1. No PRIMARY KEY or UNIQUE constraints are copied from SELECT result
+-- 1. No PRIMARY KEY or UNIQUE constraints are copied (NOT NULL is preserved)
 -- 2. No AUTO_INCREMENT attribute on inferred columns
 -- 3. No indexes from the source table
 -- 4. Column types may differ from original (e.g., computed columns get VARCHAR)
--- 5. Cannot create a table in a different database in some configurations
+-- 5. DEFAULT values and column comments are not preserved
 
 -- Always verify the created structure:
 DESCRIBE products_backup;
@@ -153,4 +153,4 @@ SHOW CREATE TABLE products_backup;
 
 ## Summary
 
-`CREATE TABLE ... SELECT` is a convenient shortcut for quickly building new tables from query results - ideal for analytics tables, backups, staging areas, and derived datasets. Remember that it does not copy constraints, indexes, or AUTO_INCREMENT settings from the source. For production tables that need proper structure, define the columns explicitly and use the SELECT clause only for the data population portion.
+`CREATE TABLE ... SELECT` is a convenient shortcut for quickly building new tables from query results - ideal for analytics tables, backups, staging areas, and derived datasets. Remember that it does not copy PRIMARY KEY, UNIQUE constraints, indexes, or AUTO_INCREMENT settings from the source (though NOT NULL is preserved for directly-selected columns). For production tables that need proper structure, define the columns explicitly and use the SELECT clause only for the data population portion.
