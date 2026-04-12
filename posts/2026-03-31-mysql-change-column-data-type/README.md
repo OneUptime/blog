@@ -158,14 +158,17 @@ INSERT INTO products (name, price, in_stock, description) VALUES
 -- First, sanitise price column (remove any non-numeric values)
 SELECT name, price FROM products WHERE price NOT REGEXP '^[0-9]+\\.?[0-9]*$';
 
+-- Convert 'true'/'false' strings to 1/0 before changing the column type.
+-- MySQL does NOT recognise the strings 'true' and 'false' as boolean values
+-- during type conversion. Both would become 0 because they have no leading digits.
+UPDATE products SET in_stock = CASE WHEN LOWER(in_stock) = 'true' THEN '1' ELSE '0' END;
+
 -- Then change the types
 ALTER TABLE products
     MODIFY COLUMN name        VARCHAR(255) NOT NULL,
     MODIFY COLUMN price       DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     MODIFY COLUMN description TEXT,
     MODIFY COLUMN in_stock    BOOLEAN NOT NULL DEFAULT TRUE;
-
--- Note: 'true'/'false' strings will be converted to 1/0 by MySQL
 -- Verify
 SELECT id, name, price, in_stock FROM products;
 ```
@@ -182,21 +185,25 @@ SELECT id, name, price, in_stock FROM products;
 
 ## Algorithm Considerations for Large Tables
 
-For tables with millions of rows, type changes that require a full row rebuild can lock the table for minutes. Use `ALGORITHM=INPLACE` or `ALGORITHM=INSTANT` where supported.
+For tables with millions of rows, type changes that require a full row rebuild can lock the table for minutes.
+
+Most data type changes require `ALGORITHM=COPY`, which rebuilds the entire table. The one exception is extending a `VARCHAR` column within the same length-prefix group (e.g., `VARCHAR(50)` to `VARCHAR(100)`, both ≤ 255 bytes), which can use `ALGORITHM=INPLACE, LOCK=NONE` because only metadata changes.
 
 ```sql
--- Check if instant algorithm is available
+-- Extending VARCHAR within the same length-prefix group (both <= 255 or both > 255)
+-- can be done in-place without a table rebuild
 ALTER TABLE large_table
-    MODIFY COLUMN status VARCHAR(50) NOT NULL,
-    ALGORITHM=INSTANT;
-
--- If INSTANT is not supported, use INPLACE (no table copy, some locking)
-ALTER TABLE large_table
-    MODIFY COLUMN status VARCHAR(50) NOT NULL,
+    MODIFY COLUMN status VARCHAR(100) NOT NULL,
     ALGORITHM=INPLACE, LOCK=NONE;
+
+-- Actual data type changes (e.g., INT to BIGINT, VARCHAR to TEXT)
+-- require ALGORITHM=COPY, which rebuilds the table
+ALTER TABLE large_table
+    MODIFY COLUMN counter BIGINT NOT NULL,
+    ALGORITHM=COPY;
 ```
 
-For very large tables where even INPLACE is too slow, consider pt-online-schema-change or gh-ost.
+For very large tables where a full table copy is too slow, consider pt-online-schema-change or gh-ost.
 
 ## Best Practices
 
