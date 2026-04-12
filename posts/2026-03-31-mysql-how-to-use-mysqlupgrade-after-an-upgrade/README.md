@@ -61,13 +61,7 @@ Checking if update is needed.
 
 ## Check If Upgrade Is Needed
 
-To verify whether the upgrade step is required without making changes:
-
-```bash
-mysql_upgrade -u root -p --check-only
-```
-
-If the data directory matches the server version, it outputs:
+Simply run `mysql_upgrade` normally. If the data directory already matches the server version, it exits without making changes and outputs:
 
 ```text
 This installation of MySQL is already upgraded to 5.7.XX, use --force if you still need to run mysql_upgrade
@@ -124,10 +118,10 @@ If running MySQL in Docker after an upgrade:
 docker exec -it mysql_container mysql_upgrade -u root -p
 ```
 
-Or pass it as an environment variable when starting a new container version:
+For MySQL 8.0.16 and later, the server handles upgrades automatically. You can force a re-upgrade using the `--upgrade` server option:
 
 ```bash
-docker run -e MYSQL_ROOT_PASSWORD=secret mysql:5.7 mysqld --upgrade=FORCE
+docker run -e MYSQL_ROOT_PASSWORD=secret mysql:8.0 mysqld --upgrade=FORCE
 ```
 
 ## Post-Upgrade Verification
