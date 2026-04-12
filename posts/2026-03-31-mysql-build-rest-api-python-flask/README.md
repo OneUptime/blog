@@ -37,7 +37,6 @@ flask-mysql-api/
 ```python
 # app/database.py
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.pool import QueuePool
 
 db = SQLAlchemy()
 
@@ -62,7 +61,7 @@ def init_db(app):
 ```python
 # app/models.py
 from .database import db
-from datetime import datetime
+from datetime import datetime, timezone
 
 class Order(db.Model):
     __tablename__ = 'orders'
@@ -71,7 +70,7 @@ class Order(db.Model):
     user_id    = db.Column(db.Integer, nullable=False)
     total      = db.Column(db.Numeric(10, 2), nullable=False)
     status     = db.Column(db.String(20), nullable=False, default='pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         return {
@@ -95,12 +94,14 @@ orders_bp = Blueprint('orders', __name__, url_prefix='/api/orders')
 
 @orders_bp.get('/')
 def list_orders():
-    orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
+    orders = db.session.execute(
+        db.select(Order).order_by(Order.created_at.desc()).limit(50)
+    ).scalars().all()
     return jsonify({'data': [o.to_dict() for o in orders], 'count': len(orders)})
 
 @orders_bp.get('/<int:order_id>')
 def get_order(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
     return jsonify(order.to_dict())
 
 @orders_bp.post('/')
@@ -121,7 +122,7 @@ def update_status(order_id):
     if not data or data.get('status') not in valid_statuses:
         return jsonify({'error': 'Invalid status'}), 400
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
     order.status = data['status']
     db.session.commit()
     return jsonify(order.to_dict())
@@ -161,7 +162,7 @@ def create_app():
 
 ## Running the Application
 
-```bash
+```python
 # run.py
 from app import create_app
 app = create_app()
