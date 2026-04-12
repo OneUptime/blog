@@ -10,7 +10,7 @@ Description: Learn how to use DROP ROLE in MySQL to remove role definitions, rev
 
 ## What Is DROP ROLE
 
-`DROP ROLE` removes one or more role definitions from MySQL. Dropping a role does not automatically revoke it from users who currently hold it - you must revoke it first or the users simply lose the privileges the role provided. This command requires the `DROP ROLE` or `CREATE USER` privilege.
+`DROP ROLE` removes one or more role definitions from MySQL. A dropped role is automatically revoked from any user account or role to which it was granted. This command requires the `DROP ROLE` or `CREATE USER` privilege.
 
 ```sql
 DROP ROLE 'role_name';
@@ -47,7 +47,7 @@ WHERE FROM_USER = 'app_reader';
 
 ## Revoking a Role Before Dropping
 
-While dropping a role that is still assigned to users is allowed, best practice is to revoke it first:
+Although dropping a role automatically revokes it from all assigned users, best practice is to audit and revoke explicitly first so you know exactly who is affected:
 
 ```sql
 -- Revoke the role from all users who have it
@@ -58,7 +58,7 @@ REVOKE 'app_reader' FROM 'bob'@'%';
 DROP ROLE 'app_reader';
 ```
 
-If you drop a role without revoking it, users who had that role lose its privileges immediately on their next privilege check or session reconnect.
+When a role is dropped, MySQL automatically revokes it from all granted accounts. Within any active session, the adjusted privileges take effect beginning with the next statement executed.
 
 ## DROP ROLE IF EXISTS
 
@@ -97,7 +97,7 @@ DROP ROLE 'reporting_reader';
 
 ## Effect on Active Sessions
 
-If a user has an active session with the dropped role activated, they immediately lose the privileges from that role. Their session continues but any subsequent queries requiring those privileges will fail.
+If a user has an active session with the dropped role activated, the adjusted privileges apply beginning with the next statement executed. Their session continues but any subsequent queries requiring those privileges will fail.
 
 ```sql
 -- After dropping 'app_reader', users with active sessions see:
@@ -124,4 +124,4 @@ GRANT CREATE USER ON *.* TO 'security_admin'@'localhost';
 
 ## Summary
 
-`DROP ROLE` removes role definitions from MySQL. Always check which users hold the role and revoke it before dropping to avoid unexpected privilege loss. Use `DROP ROLE IF EXISTS` in scripts to prevent errors. After dropping, verify removal by querying `mysql.user` and ensure users have appropriate direct or alternative role-based privileges.
+`DROP ROLE` removes role definitions from MySQL and automatically revokes the role from all granted accounts. Always audit which users hold the role before dropping to avoid unexpected privilege loss. Use `DROP ROLE IF EXISTS` in scripts to prevent errors. After dropping, verify removal by querying `mysql.user` and ensure users have appropriate direct or alternative role-based privileges.
