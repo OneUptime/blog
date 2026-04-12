@@ -56,8 +56,8 @@ SHOW VARIABLES LIKE 'innodb_undo_log_encrypt';
 ## Checking Undo Tablespace Status
 
 ```sql
--- List all undo tablespaces and their encryption state
-SELECT TABLESPACE_NAME, FILE_NAME, ENCRYPTION
+-- List all undo tablespace files
+SELECT TABLESPACE_NAME, FILE_NAME, FILE_TYPE
 FROM information_schema.FILES
 WHERE FILE_TYPE = 'UNDO LOG';
 ```
