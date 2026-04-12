@@ -52,14 +52,12 @@ net:
 Install the service from an Administrator command prompt:
 
 ```bash
-"C:\Program Files\MongoDB\Server\7.0\bin\mongod.exe" `
-  --config "C:\Program Files\MongoDB\Server\7.0\bin\mongod.cfg" `
-  --install
+"C:\Program Files\MongoDB\Server\7.0\bin\mongod.exe" --config "C:\Program Files\MongoDB\Server\7.0\bin\mongod.cfg" --install
 ```
 
 ## Starting and Stopping the Service
 
-Using the Windows Service Control Manager (`sc`):
+Using `net` commands:
 
 ```bash
 # Start the service
@@ -87,7 +85,7 @@ Get-Service -Name MongoDB
 Set the service to restart automatically on failure using PowerShell:
 
 ```powershell
-sc.exe failure MongoDB reset=86400 actions=restart/5000/restart/10000/restart/30000
+sc.exe failure MongoDB reset= 86400 actions= restart/5000/restart/10000/restart/30000
 ```
 
 This restarts the service after 5, 10, and 30 seconds on successive failures, resetting the failure count every 24 hours.
