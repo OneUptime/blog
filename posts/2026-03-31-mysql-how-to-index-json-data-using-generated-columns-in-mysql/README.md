@@ -55,7 +55,7 @@ ADD COLUMN col_name TYPE AS (expression) VIRTUAL
 ADD COLUMN col_name TYPE AS (expression) STORED
 ```
 
-For indexes, both `VIRTUAL` and `STORED` can be indexed in MySQL 8.0+. In MySQL 5.7, only `STORED` columns can be indexed.
+For indexes, both `VIRTUAL` and `STORED` can be indexed in InnoDB. InnoDB has supported secondary indexes on virtual generated columns since MySQL 5.7.8. Other storage engines require `STORED` columns for indexing.
 
 ## Full Example: Indexing Multiple JSON Fields
 
@@ -134,4 +134,4 @@ SHOW COLUMNS FROM products;
 
 ## Summary
 
-To index JSON data in MySQL, add a generated column that extracts the JSON value using `JSON_EXTRACT()` or the `->>` operator, then create a standard index on that column. Use `STORED` columns for MySQL 5.7 compatibility; `VIRTUAL` is fine in MySQL 8.0+. For indexing JSON arrays, use multi-valued indexes introduced in MySQL 8.0.17 instead of generated columns.
+To index JSON data in MySQL, add a generated column that extracts the JSON value using `JSON_EXTRACT()` or the `->>` operator, then create a standard index on that column. Use `STORED` columns if you need compatibility with non-InnoDB storage engines; `VIRTUAL` works for InnoDB secondary indexes since MySQL 5.7.8. For indexing JSON arrays, use multi-valued indexes introduced in MySQL 8.0.17 instead of generated columns.
