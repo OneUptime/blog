@@ -115,14 +115,13 @@ db.priceTimeSeries.insertOne({
 Get the price as of a specific date:
 
 ```javascript
-db.priceHistory.findOne(
+db.priceHistory.find(
   {
     productId: ObjectId("prod_001"),
     effectiveFrom: { $lte: targetDate },
     $or: [{ effectiveTo: null }, { effectiveTo: { $gt: targetDate } }]
-  },
-  { sort: { effectiveFrom: -1 } }
-);
+  }
+).sort({ effectiveFrom: -1 }).limit(1);
 ```
 
 Get the minimum price over the last 30 days:
