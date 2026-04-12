@@ -32,7 +32,7 @@ SHOW VARIABLES LIKE 'innodb_buffer_pool_size';
 -- Total allocated memory (approximate)
 SELECT
   ROUND(SUM(current_alloc) / 1024 / 1024, 2) AS total_alloc_mb
-FROM sys.memory_global_by_current_bytes;
+FROM sys.x$memory_global_by_current_bytes;
 ```
 
 ```bash
@@ -115,8 +115,8 @@ SET enabled = 'NO'
 WHERE name LIKE '%statements%history_long%';
 
 -- Check current memory usage
-SELECT * FROM performance_schema.memory_summary_global_by_event_name
-ORDER BY current_alloc DESC LIMIT 10;
+SELECT * FROM sys.memory_global_by_current_bytes
+LIMIT 10;
 ```
 
 ## Reduce InnoDB Redo Log Buffer
@@ -145,7 +145,7 @@ SELECT
   event_name,
   current_alloc,
   high_alloc
-FROM performance_schema.memory_summary_global_by_event_name
+FROM sys.x$memory_global_by_current_bytes
 ORDER BY current_alloc DESC
 LIMIT 20;
 ```
