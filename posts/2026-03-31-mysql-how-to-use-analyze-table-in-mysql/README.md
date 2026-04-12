@@ -89,8 +89,8 @@ ORDER BY INDEX_NAME, SEQ_IN_INDEX;
 ## InnoDB and Automatic Statistics
 
 InnoDB automatically updates statistics when:
-- More than 10% of table rows change
-- The table is first opened after a restart
+- More than 10% of table rows change (with `innodb_stats_auto_recalc = ON`)
+- The table is first opened after a restart (transient statistics only; persistent statistics are loaded from disk)
 
 Configure automatic statistics updates:
 
@@ -98,13 +98,13 @@ Configure automatic statistics updates:
 [mysqld]
 innodb_stats_auto_recalc = ON      # Default: ON
 innodb_stats_persistent  = ON      # Persist stats across restarts
-innodb_stats_sample_pages = 20     # Pages sampled for estimation
+innodb_stats_persistent_sample_pages = 20  # Pages sampled for estimation (persistent stats)
 ```
 
-Increase `innodb_stats_sample_pages` for more accurate (but slower) statistics:
+Increase `innodb_stats_persistent_sample_pages` for more accurate (but slower) statistics:
 
 ```sql
-SET GLOBAL innodb_stats_sample_pages = 50;
+SET GLOBAL innodb_stats_persistent_sample_pages = 50;
 ```
 
 ## Persistent vs Transient Statistics
