@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Health Check, Monitoring
 
-Description: Learn how to run comprehensive MongoDB health checks covering connectivity, replication status, index health, and storage engine metrics.
+Description: Learn how to run comprehensive MongoDB health checks covering connectivity, replication status, connection pool health, and storage engine metrics.
 
 ---
 
@@ -51,8 +51,9 @@ rs.status().members.forEach(m => {
 Check replication lag:
 
 ```javascript
-var primary = rs.status().members.find(m => m.stateStr === 'PRIMARY')
-rs.status().members.forEach(m => {
+var status = rs.status()
+var primary = status.members.find(m => m.stateStr === 'PRIMARY')
+status.members.forEach(m => {
   if (m.stateStr === 'SECONDARY') {
     var lag = primary.optimeDate - m.optimeDate
     print(`${m.name} lag: ${lag / 1000}s`)

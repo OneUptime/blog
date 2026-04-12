@@ -83,16 +83,18 @@ db.files.find({ extension: "pdf" })
 
 This is the most practical approach when the suffix is a known, bounded set of values.
 
-## Strategy 3: Wildcard Text Index
+## Strategy 3: Text Index (Limited Use)
 
-For general substring or suffix search on text content, a text index can help:
+A text index supports full-text search on string content, but it performs whole-word tokenized matching, not substring or suffix matching. It will not help with true suffix searches:
 
 ```javascript
 db.documents.createIndex({ content: "text" })
 
-// Searches for words containing the pattern (not a pure suffix, but close)
+// Matches documents containing the word "report" as a whole token, not a suffix
 db.documents.find({ $text: { $search: "report" } })
 ```
+
+This approach is only useful if your suffix happens to be a complete word. For true suffix matching, use Strategy 1 or Strategy 2 instead.
 
 ## Suffix Search with Atlas Search (Regex Operator)
 
