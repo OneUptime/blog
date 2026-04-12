@@ -12,13 +12,13 @@ MongoDB's logging system provides detailed visibility into server operations. Tw
 
 ## Understanding logLevel
 
-MongoDB supports log levels from 0 (default, warnings and errors only) to 5 (maximum verbosity). You can set a global level or per-component levels.
+MongoDB supports log levels from 0 (default, informational and above) to 5 (maximum verbosity). You can set a global level or per-component levels.
 
 **Log levels:**
 
 ```text
-0 - Default (warnings and errors)
-1 - Informational
+0 - Default (informational, warning, error, and fatal messages)
+1 - Debug level 1
 2-5 - Debug levels (increasing detail)
 ```
 
@@ -50,7 +50,7 @@ systemLog:
 
 ## Understanding slowOpThresholdMs
 
-`slowOpThresholdMs` defines the threshold (in milliseconds) above which an operation is logged as "slow." The default is **100ms**. Operations exceeding this threshold appear in the MongoDB log with a `SLOW_OP` label.
+`slowOpThresholdMs` defines the threshold (in milliseconds) above which an operation is logged as "slow." The default is **100ms**. Operations exceeding this threshold appear in the MongoDB log with a `"Slow query"` message.
 
 **Set at runtime:**
 
