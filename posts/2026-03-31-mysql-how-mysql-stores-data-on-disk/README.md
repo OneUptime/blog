@@ -16,16 +16,16 @@ InnoDB is the default MySQL storage engine. It stores all data in tablespace fil
 
 InnoDB uses several types of tablespace files:
 
-- **System tablespace** (`ibdata1`): contains the data dictionary, doublewrite buffer, and (historically) undo logs.
+- **System tablespace** (`ibdata1`): contains the change buffer and (in versions before MySQL 8.0) the data dictionary and doublewrite buffer.
 - **File-per-table tablespaces** (`.ibd` files): one `.ibd` file per table when `innodb_file_per_table = ON` (the default since MySQL 5.6).
 - **Undo tablespaces** (`undo_001`, `undo_002`): store undo log segments for MVCC.
-- **Temporary tablespace** (`ibtmp1`): temporary tables and sort buffers.
+- **Temporary tablespace** (`ibtmp1`): rollback segments for user-created temporary tables.
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_file_per_table';
 -- ON means each table gets its own .ibd file under the data directory
 
-SELECT SPACE, NAME, FILE_SIZE, TOTAL_EXTENTS
+SELECT SPACE, NAME, FILE_SIZE, ALLOCATED_SIZE
 FROM information_schema.INNODB_TABLESPACES
 LIMIT 20;
 ```
@@ -65,7 +65,7 @@ Secondary indexes store the primary key value in their leaf nodes and do a secon
 
 ## Doublewrite Buffer
 
-Before writing a page to its real location on disk, InnoDB first writes it sequentially to the doublewrite buffer area (a reserved section of the tablespace). This prevents partial page writes (torn pages) on crash:
+Before writing a page to its real location on disk, InnoDB first writes it sequentially to the doublewrite buffer. In MySQL 8.0.20 and later, the doublewrite buffer is stored in separate `.dblwr` files; in earlier versions it was part of the system tablespace. This prevents partial page writes (torn pages) on crash:
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_doublewrite';
