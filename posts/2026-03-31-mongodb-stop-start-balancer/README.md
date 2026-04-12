@@ -30,10 +30,10 @@ sh.stopBalancer()
 
 This sets a flag to stop new migrations. Any migration currently in progress will complete before the balancer fully stops.
 
-To wait up to 30 seconds for in-progress migrations to finish:
+To wait up to 30 seconds for in-progress migrations to finish, use the admin command with `maxTimeMS`:
 
 ```javascript
-sh.stopBalancer(30000)
+db.adminCommand({ balancerStop: 1, maxTimeMS: 30000 })
 ```
 
 Verify the balancer has stopped:
@@ -127,12 +127,11 @@ This is useful during large imports into one collection while allowing other col
 After restarting the balancer, confirm migrations are starting if the cluster was imbalanced:
 
 ```javascript
+// Check if the balancer is actively migrating
+db.adminCommand({ balancerStatus: 1 })
+
+// Watch recent migration events
 use config
-
-// Check for active migrations
-db.locks.findOne({ _id: "balancer" })
-
-// Watch migration events
 db.changelog.find({ what: "moveChunk.from" }).sort({ time: -1 }).limit(5)
 ```
 
