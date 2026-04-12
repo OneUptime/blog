@@ -12,7 +12,7 @@ InnoDB is designed to recover automatically from crashes using its redo log. Whe
 
 ## How InnoDB Crash Recovery Works
 
-InnoDB uses a write-ahead logging (WAL) approach. Before writing data pages to disk, it records changes in the redo log files (`ib_logfile0`, `ib_logfile1`). On restart after a crash:
+InnoDB uses a write-ahead logging (WAL) approach. Before writing data pages to disk, it records changes in the redo log files (`ib_logfile0`, `ib_logfile1` in MySQL before 8.0.30, or files in the `#innodb_redo/` directory in MySQL 8.0.30+). On restart after a crash:
 
 1. InnoDB reads the redo log from the last checkpoint
 2. It replays committed transactions (roll forward)
@@ -64,14 +64,17 @@ Common error messages indicate the appropriate next step:
 For severe corruption, the safest recovery path is restoring from backup:
 
 ```bash
-# Stop MySQL
-sudo systemctl stop mysql
-
-# Restore from mysqldump backup
+# Restore from mysqldump backup (MySQL must be running)
 mysql -u root -p < /backup/full_backup_2026-03-31.sql
+```
 
-# Or restore from Xtrabackup
+For physical backups with Xtrabackup, MySQL must be stopped and the data directory emptied first:
+
+```bash
+# Restore from Xtrabackup
+sudo systemctl stop mysql
 xtrabackup --prepare --target-dir=/backup/xtrabackup_2026-03-31/
+sudo rm -rf /var/lib/mysql/*
 xtrabackup --copy-back --target-dir=/backup/xtrabackup_2026-03-31/
 sudo chown -R mysql:mysql /var/lib/mysql/
 sudo systemctl start mysql
