@@ -138,6 +138,10 @@ app.get('/auth/google/callback',
 
 ## Adding Multiple OAuth Providers
 
+```bash
+npm install passport-github2
+```
+
 ```javascript
 // Add GitHub strategy
 const { Strategy: GitHubStrategy } = require('passport-github2');
