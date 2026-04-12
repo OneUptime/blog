@@ -95,7 +95,7 @@ Place the file in the directory returned by `SHOW VARIABLES LIKE 'secure_file_pr
 
 ## Measuring Throughput
 
-Use the `BENCHMARK` function or a simple timer in your application to compare approaches:
+Use session status counters or a simple timer in your application to compare approaches:
 
 ```sql
 SHOW STATUS LIKE 'Handler_write';
