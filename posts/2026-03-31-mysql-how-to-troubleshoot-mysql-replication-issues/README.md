@@ -70,7 +70,7 @@ If `Replica_SQL_Running = No`, there is an error applying events.
 
 ```sql
 SHOW REPLICA STATUS\G
--- Check Last_SQL_Error and Last_SQL_Error_Number
+-- Check Last_SQL_Error and Last_SQL_Errno
 ```
 
 ### Common Error: Duplicate Key (Error 1062)
@@ -160,11 +160,11 @@ replica_parallel_type = LOGICAL_CLOCK
 
 ```sql
 -- On source
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 
 -- On replica
 SHOW REPLICA STATUS\G
--- Compare Relay_Master_Log_File and Exec_Master_Log_Pos
+-- Compare Relay_Source_Log_File and Exec_Source_Log_Pos
 -- with the source's File and Position
 ```
 
