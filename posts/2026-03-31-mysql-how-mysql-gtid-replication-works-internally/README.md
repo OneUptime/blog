@@ -56,7 +56,7 @@ When the replica receives and applies the transaction:
 -- All GTIDs executed on this server
 SELECT @@GLOBAL.gtid_executed;
 
--- GTIDs received but not yet executed (relay log)
+-- GTIDs executed but whose binary log entries have been purged
 SELECT @@GLOBAL.gtid_purged;
 
 -- On replica: GTIDs received from the source
@@ -149,11 +149,12 @@ With `enforce_gtid_consistency = ON`, these are forbidden:
 ## Monitoring GTID Lag
 
 ```sql
--- Compare source and replica GTID sets to find lag
+-- On the replica: compare received GTIDs with executed GTIDs to find lag
 SELECT GTID_SUBTRACT(
-  (SELECT @@GLOBAL.gtid_executed FROM source_server),
+  received_transaction_set,
   @@GLOBAL.gtid_executed
-) AS missing_transactions;
+) AS missing_transactions
+FROM performance_schema.replication_connection_status;
 ```
 
 ## Summary
