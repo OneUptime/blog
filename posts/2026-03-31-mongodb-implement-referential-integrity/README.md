@@ -91,12 +91,12 @@ Then filter deleted products out of queries:
 db.products.find({ deleted: { $ne: true } });
 ```
 
-Create a partial index that excludes deleted documents for performance:
+Ensure new documents include `deleted: false` on creation, then create a partial index that covers only active documents:
 
 ```javascript
 db.products.createIndex(
   { category: 1 },
-  { partialFilterExpression: { deleted: { $ne: true } } }
+  { partialFilterExpression: { deleted: false } }
 );
 ```
 
