@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, DigitalOcean, Managed, Database, Cloud
 
-Description: Create and configure a DigitalOcean Managed MySQL database with connection pooling, trusted sources, and read replicas using the DigitalOcean control panel or API.
+Description: Create and configure a DigitalOcean Managed MySQL database with trusted sources and read replicas using the DigitalOcean control panel or API.
 
 ---
 
@@ -65,7 +65,7 @@ mysql://doadmin:password@my-mysql-cluster.db.ondigitalocean.com:25060/defaultdb?
 DigitalOcean requires SSL for managed MySQL connections. Download the CA certificate:
 
 ```bash
-doctl databases ca my-mysql-cluster --format CAcert --no-header | base64 -d > ca-certificate.crt
+doctl databases get-ca my-mysql-cluster --format Certificate --no-header > ca-certificate.crt
 
 mysql --host=my-mysql-cluster.db.ondigitalocean.com \
   --port=25060 \
@@ -84,7 +84,7 @@ Restrict database access to specific Droplets or VPCs:
 doctl databases firewalls append my-mysql-cluster \
   --rule droplet:12345678
 
-# Allow an entire VPC
+# Allow a specific IP range
 doctl databases firewalls append my-mysql-cluster \
   --rule ip_addr:10.0.0.0/8
 ```
@@ -94,7 +94,7 @@ doctl databases firewalls append my-mysql-cluster \
 Scale read capacity by adding a read-only replica:
 
 ```bash
-doctl databases replicas create my-mysql-cluster read-replica-1 \
+doctl databases replica create my-mysql-cluster read-replica-1 \
   --region nyc3 \
   --size db-s-2vcpu-4gb
 ```
@@ -102,7 +102,7 @@ doctl databases replicas create my-mysql-cluster read-replica-1 \
 Get the replica connection details separately:
 
 ```bash
-doctl databases replicas connection my-mysql-cluster read-replica-1
+doctl databases replica connection my-mysql-cluster read-replica-1
 ```
 
 ## Creating Additional Users and Databases
@@ -122,7 +122,6 @@ In MySQL, grant the user appropriate privileges:
 
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_production.* TO 'appuser'@'%';
-FLUSH PRIVILEGES;
 ```
 
 ## Summary
