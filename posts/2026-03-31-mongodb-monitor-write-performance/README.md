@@ -74,8 +74,13 @@ For replica sets, replication lag directly affects `w: "majority"` write latency
 rs.printSecondaryReplicationInfo();
 
 // Detailed replica set status
-rs.status().members.forEach(m => {
-  print(`${m.name}: state=${m.stateStr}, lag=${m.optimeDate}`);
+const status = rs.status();
+const primary = status.members.find(m => m.stateStr === "PRIMARY");
+status.members.forEach(m => {
+  const lag = m.stateStr !== "PRIMARY"
+    ? Math.round((primary.optimeDate - m.optimeDate) / 1000) + "s"
+    : "N/A (primary)";
+  print(`${m.name}: state=${m.stateStr}, lag=${lag}`);
 });
 ```
 
