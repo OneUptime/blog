@@ -61,7 +61,6 @@ NDB Cluster automatically partitions tables across data nodes. The number of par
 [ndbd default]
 NoOfReplicas=2
 DataMemory=512M
-IndexMemory=128M
 ```
 
 With `NoOfReplicas=2`, each partition is stored on two nodes. If one node fails, the cluster continues serving data from the replica.
@@ -155,7 +154,7 @@ FROM ndbinfo.memoryusage;
 
 ## Limitations to Know
 
-- No foreign key enforcement across nodes (limited support in MySQL 7.3+)
+- Foreign keys supported since NDB Cluster 7.3, but with some restrictions (e.g., SET DEFAULT not supported)
 - JOINs involving non-partitioning keys require full table scans across nodes
 - Large transactions can be slow due to synchronous replication overhead
 - Tables must fit in data node memory (DataMemory setting)
