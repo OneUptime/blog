@@ -74,12 +74,12 @@ Each thread uses roughly 1-2 MB. A common formula: `max_connections = RAM_MB / 2
 
 Most connection-pool exhaustion comes from applications opening too many long-lived connections. Use ProxySQL or application-level pooling:
 
-```ini
-# ProxySQL admin - add a connection pool for a hostgroup
-INSERT INTO mysql_connection_pool (hostgroup_id, max_connections, max_replication_lag)
-VALUES (0, 100, 10);
-LOAD MYSQL VARIABLES TO RUNTIME;
-SAVE MYSQL VARIABLES TO DISK;
+```sql
+# ProxySQL admin - add a backend server with connection limits
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, max_connections)
+VALUES (0, '127.0.0.1', 3306, 100);
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
 ```
 
 Or configure HikariCP in a Java application:
