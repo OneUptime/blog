@@ -84,7 +84,7 @@ Documents containing any stem variant score higher with each additional match.
 
 | Behavior     | Effect on Search                                    |
 |--------------|-----------------------------------------------------|
-| Stop words   | Common words are ignored - no false negatives       |
+| Stop words   | Common words are ignored - stop-word-only queries return nothing |
 | Stemming     | Plurals and tenses match - broader recall           |
 | `"none"` lang | Exact token matching - good for IDs, log patterns  |
 
