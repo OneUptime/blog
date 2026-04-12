@@ -15,7 +15,7 @@ In a MongoDB replica set, each member has two key properties that govern electio
 - Priority range: `0` to `1000` (default `1`)
 - The member with the highest priority becomes primary when an election occurs
 - Priority `0` means the member can never become primary (useful for dedicated secondaries)
-- Two members can have the same priority; MongoDB picks based on replication lag in that case
+- Two members can have the same priority; the first eligible member to secure a majority vote wins the election (a member must be sufficiently caught up with the primary's oplog to be eligible)
 
 ## Understanding Votes
 
@@ -105,7 +105,7 @@ rs.stepDown();
 Wait a few seconds, then check which member became primary:
 
 ```javascript
-rs.isMaster().primary
+db.hello().primary
 ```
 
 ## Caution with Single-Vote Sets
