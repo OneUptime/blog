@@ -99,7 +99,7 @@ The most efficient plan has IXSCAN with no FETCH stage. This happens when the pr
 ```javascript
 db.orders.find(
   { status: "pending" },
-  { projection: { status: 1, userId: 1, _id: 0 } }
+  { status: 1, userId: 1, _id: 0 }
 ).explain("executionStats");
 
 // Plan shows:
@@ -130,7 +130,7 @@ db.setProfilingLevel(1, { slowms: 100 });
 // Find queries that used COLLSCAN
 db.system.profile.find(
   { planSummary: /COLLSCAN/ },
-  { ns: 1, query: 1, millis: 1, planSummary: 1 }
+  { ns: 1, command: 1, millis: 1, planSummary: 1 }
 ).sort({ millis: -1 }).limit(10);
 ```
 
