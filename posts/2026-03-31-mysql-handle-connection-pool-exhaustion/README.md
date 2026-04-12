@@ -130,6 +130,7 @@ For resilient applications, implement retry logic:
 
 ```python
 import time
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 def execute_with_retry(engine, query, retries=3, delay=1.0):
