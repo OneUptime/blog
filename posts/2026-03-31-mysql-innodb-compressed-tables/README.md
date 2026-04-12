@@ -12,7 +12,7 @@ Description: Learn how to enable and configure InnoDB compressed tables in MySQL
 
 InnoDB compressed tables store data in a compressed format on disk, reducing the physical storage footprint and improving I/O throughput. Compression is especially effective for text-heavy or JSON-heavy tables where data has high redundancy. MySQL uses the zlib algorithm to compress table data and index pages.
 
-Compressed tables are only available with the `InnoDB` storage engine when using the `Barracuda` file format (the default in MySQL 5.7+ and 8.0).
+Compressed tables are only available with the `InnoDB` storage engine. In MySQL 5.6 and earlier, you must set the `innodb_file_format` to `Barracuda` to use compression. In MySQL 5.7, Barracuda is the default file format. In MySQL 8.0, the file format concept was removed entirely and compression is always supported.
 
 ## Prerequisites
 
@@ -20,10 +20,9 @@ Before enabling compression, verify your InnoDB settings:
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_file_per_table';
-SHOW VARIABLES LIKE 'innodb_file_format';
 ```
 
-In MySQL 8.0, `innodb_file_per_table` is enabled by default. This is required because compressed tables must be stored in per-table `.ibd` files.
+In MySQL 8.0, `innodb_file_per_table` is enabled by default. This is required because compressed tables must be stored in per-table `.ibd` files. Note that the `innodb_file_format` variable was removed in MySQL 8.0, so you do not need to check it. If you are on MySQL 5.6 or earlier, also verify that `innodb_file_format` is set to `Barracuda`.
 
 ## Creating a Compressed Table
 
@@ -61,7 +60,7 @@ Query the `INFORMATION_SCHEMA` to compare compressed versus uncompressed sizes:
 ```sql
 SELECT
     table_name,
-    data_length            AS uncompressed_bytes,
+    data_length            AS data_bytes,
     data_free,
     (data_length / 1024 / 1024) AS data_mb
 FROM information_schema.tables
