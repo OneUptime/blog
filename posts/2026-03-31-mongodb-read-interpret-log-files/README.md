@@ -25,7 +25,7 @@ Every MongoDB 4.4+ log line contains these top-level fields:
 ```json
 {
   "t": { "$date": "2026-03-31T08:15:30.412+00:00" },
-  "s": "W",
+  "s": "I",
   "c": "COMMAND",
   "id": 51803,
   "ctx": "conn987",
@@ -35,7 +35,7 @@ Every MongoDB 4.4+ log line contains these top-level fields:
 ```
 
 - `t` - ISO timestamp with millisecond precision
-- `s` - severity: D (debug), I (info), W (warning), E (error), F (fatal)
+- `s` - severity: F (fatal), E (error), W (warning), I (informational), D1–D5 (debug verbosity levels)
 - `c` - component: COMMAND, QUERY, REPL, NETWORK, STORAGE, INDEX, etc.
 - `id` - stable numeric message ID, useful for searching documentation
 - `ctx` - thread/connection context
