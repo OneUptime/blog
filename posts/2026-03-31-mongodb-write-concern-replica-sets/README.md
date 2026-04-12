@@ -13,7 +13,7 @@ Write concern controls how many replica set members must acknowledge a write bef
 ## Write Concern Components
 
 - `w` - number of members (or `majority`) that must acknowledge the write
-- `j` - whether the primary must write to the journal before acknowledging
+- `j` - whether the acknowledging members must write to the on-disk journal before acknowledging
 - `wtimeout` - milliseconds to wait before returning an error if acknowledgment is not received
 
 ## Write Concern Levels
@@ -22,10 +22,10 @@ Write concern controls how many replica set members must acknowledge a write bef
 // Unacknowledged - fire and forget
 { w: 0 }
 
-// Acknowledged by primary only (default)
+// Acknowledged by primary only (default before MongoDB 5.0)
 { w: 1 }
 
-// Acknowledged by a majority of voting members
+// Acknowledged by a majority of voting members (default for replica sets since MongoDB 5.0)
 { w: "majority" }
 
 // Acknowledged by exactly N members
@@ -58,7 +58,7 @@ await db.collection('inventory').updateOne(
 ## Setting Default Write Concern on a Collection
 
 ```javascript
-const orders = db.getCollection('orders').withWriteConcern({ w: "majority" });
+const orders = db.collection('orders', { writeConcern: { w: "majority" } });
 await orders.insertOne({ ... });
 ```
 
