@@ -97,7 +97,7 @@ last_lsn = 2345678901
 
 Restoration requires preparing each backup in sequence before applying the next.
 
-### Step 1 - Prepare the Full Backup (Do Not Roll Forward Yet)
+### Step 1 - Prepare the Full Backup (Do Not Roll Back Yet)
 
 ```bash
 xtrabackup \
@@ -106,7 +106,7 @@ xtrabackup \
   --target-dir=/backups/base
 ```
 
-`--apply-log-only` prevents XtraBackup from rolling forward uncommitted transactions, which is needed to apply subsequent incrementals.
+`--apply-log-only` prevents XtraBackup from rolling back uncommitted transactions, which is needed to apply subsequent incrementals.
 
 ### Step 2 - Apply the First Incremental
 
