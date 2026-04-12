@@ -112,7 +112,7 @@ export default defineEventHandler(async (event) => {
 });
 ```
 
-## Using $fetch in Pages
+## Using useFetch in Pages
 
 ```vue
 <!-- pages/products.vue -->
