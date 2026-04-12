@@ -60,8 +60,8 @@ The `--stop-never` flag keeps the process running indefinitely, streaming each n
 ## Creating a Dedicated Backup User
 
 ```sql
-CREATE USER 'binlog_backup'@'%' IDENTIFIED BY 'strong_password';
-GRANT REPLICATION SLAVE ON *.* TO 'binlog_backup'@'%';
+CREATE USER 'backup_user'@'%' IDENTIFIED BY 'strong_password';
+GRANT REPLICATION SLAVE ON *.* TO 'backup_user'@'%';
 FLUSH PRIVILEGES;
 ```
 
