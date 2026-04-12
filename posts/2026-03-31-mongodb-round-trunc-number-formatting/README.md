@@ -96,8 +96,10 @@ db.transactions.aggregate([
 |----------|-------|-------|--------|
 | $round   | 4.567 | 2     | 4.57   |
 | $trunc   | 4.567 | 2     | 4.56   |
-| $round   | 4.5   | 0     | 5      |
+| $round   | 4.5   | 0     | 4      |
 | $trunc   | 4.9   | 0     | 4      |
+
+Note that `$round` uses banker's rounding (round half to even), so 4.5 rounds to 4 (nearest even) rather than 5.
 
 Use `$round` when you need mathematically correct rounding and `$trunc` when you need to strip decimal places without any rounding behavior, such as computing floor values or ensuring numbers never exceed a threshold.
 
@@ -120,4 +122,4 @@ Using `$ifNull` ensures you get `0.00` instead of `null` in the output.
 
 ## Summary
 
-`$round` and `$trunc` are essential aggregation operators for controlling numeric precision in MongoDB query results. `$round` applies standard mathematical rounding, while `$trunc` drops digits beyond the specified place without rounding. Both support negative place values to round at the tens or hundreds level, and both return `null` for missing or null input values.
+`$round` and `$trunc` are essential aggregation operators for controlling numeric precision in MongoDB query results. `$round` applies banker's rounding (round half to even), while `$trunc` drops digits beyond the specified place without rounding. Both support negative place values to round at the tens or hundreds level, and both return `null` for missing or null input values.
