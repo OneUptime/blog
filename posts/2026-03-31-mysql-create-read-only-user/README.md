@@ -39,11 +39,13 @@ This covers all existing and future tables in `mydb`. The user cannot INSERT, UP
 
 ## Step 3 - Grant SHOW VIEW (Optional)
 
-If the read-only user needs to query views, also grant `SHOW VIEW`:
+If the read-only user needs to see view definitions (via `SHOW CREATE VIEW`), also grant `SHOW VIEW`:
 
 ```sql
 GRANT SELECT, SHOW VIEW ON mydb.* TO 'readonly_user'@'%';
 ```
+
+Note: `SELECT` alone is sufficient to query views. `SHOW VIEW` is only needed to inspect view definitions.
 
 ## Step 4 - Verify the Grants
 
