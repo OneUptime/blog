@@ -10,7 +10,7 @@ Description: Learn how to use TablePlus to connect to MongoDB, browse and edit d
 
 ## What Is TablePlus?
 
-TablePlus is a native macOS, Windows, and Linux database GUI that supports over 20 database systems including MongoDB, PostgreSQL, MySQL, Redis, and SQLite. Its clean, tab-based interface and native performance make it popular with developers who work across multiple database types and want a single tool for all of them.
+TablePlus is a native macOS, Windows, and Linux database GUI that supports multiple database systems including MongoDB, PostgreSQL, MySQL, Redis, SQLite, MariaDB, and Microsoft SQL Server. Its clean, tab-based interface and native performance make it popular with developers who work across multiple database types and want a single tool for all of them.
 
 ## Connecting to MongoDB
 
@@ -53,7 +53,7 @@ Or use TablePlus's filter UI which lets you add conditions without writing JSON.
 
 ## Running Queries
 
-Open a query tab (Cmd+K or from the menu):
+Open the query editor (Cmd+E or from the menu):
 
 ```javascript
 db.orders.find(
@@ -109,7 +109,7 @@ Scope:     All documents or current filter result
 
 ```text
 Cmd+N         - New connection
-Cmd+K         - New query tab
+Cmd+E         - Open query editor
 Cmd+Enter     - Run query
 Cmd+S         - Commit pending changes
 Cmd+Z         - Undo pending changes
