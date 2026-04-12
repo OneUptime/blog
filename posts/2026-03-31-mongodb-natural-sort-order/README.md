@@ -75,7 +75,7 @@ db.createCollection("eventLog", {
 db.eventLog.find({}).sort({ $natural: -1 }).limit(20)
 ```
 
-For regular (non-capped) collections, storage order can shift after document updates that increase document size (pre-4.0 behavior with MMAPv1). With WiredTiger (the default storage engine), documents are stored with padding and `$natural` order is generally stable but not guaranteed.
+For regular (non-capped) collections, storage order can shift after document updates that increase document size (pre-4.0 behavior with MMAPv1). With WiredTiger (the default storage engine since MongoDB 3.2), `$natural` order generally corresponds to insertion order but is not guaranteed to be stable, as updates may cause documents to be stored at different internal locations.
 
 ## $natural as a Hint (Bypassing Indexes)
 
@@ -88,7 +88,7 @@ db.orders.find({ status: "pending" }).hint({ $natural: 1 })
 This tells MongoDB to scan the collection sequentially rather than using an index. This is useful for:
 
 - Debugging index behavior by comparing index vs collection scan
-- Situations where a full scan is faster than an index scan (very high selectivity, small collections)
+- Situations where a full scan is faster than an index scan (when the query matches most documents, or on small collections)
 
 ## Comparison: $natural vs Index Sort
 
@@ -113,12 +113,10 @@ flowchart TD
 Tailable cursors on capped collections use `$natural` order implicitly. A tailable cursor waits for new documents after reaching the end, making it suitable for log streaming:
 
 ```javascript
-const cursor = db.eventLog.find({}).addOption(DBQuery.Option.tailable)
+const cursor = db.eventLog.find().tailable()
 
-while (true) {
-  if (cursor.hasNext()) {
-    printjson(cursor.next())
-  }
+while (cursor.hasNext()) {
+  printjson(cursor.next())
 }
 ```
 
