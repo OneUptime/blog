@@ -32,9 +32,10 @@ The `t` component is seconds since epoch, and `i` is the ordinal within that sec
 ## Creating Timestamps in mongosh
 
 ```javascript
-// Current timestamp
+// Zero timestamp — when inserted as a top-level field, the server
+// replaces it with the current timestamp automatically
 const ts = new Timestamp();
-print(ts); // Timestamp({ t: 1718444400, i: 1 })
+print(ts); // Timestamp({ t: 0, i: 0 })
 
 // Specific timestamp with time and ordinal
 const ts2 = new Timestamp({ t: 1718444400, i: 5 });
