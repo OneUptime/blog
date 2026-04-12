@@ -77,7 +77,7 @@ SELECT
 DELIMITER //
 CREATE PROCEDURE check_version()
 BEGIN
-  DECLARE v_version VARCHAR(20);
+  DECLARE v_version VARCHAR(100);
   SET v_version = VERSION();
 
   IF CAST(SUBSTRING_INDEX(v_version, '.', 1) AS UNSIGNED) < 8 THEN
@@ -125,9 +125,6 @@ if (major < 8) {
 -- View full server info
 SHOW VARIABLES LIKE 'version%';
 -- Shows: version, version_comment, version_compile_machine, version_compile_os
-
--- Status info including version
-SHOW STATUS LIKE 'version%';
 
 -- System variables
 SELECT @@version_comment;   -- e.g.: MySQL Community Server - GPL
