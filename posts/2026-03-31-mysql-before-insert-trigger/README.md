@@ -241,7 +241,7 @@ DELIMITER ;
 | Feature | BEFORE INSERT | AFTER INSERT |
 |---|---|---|
 | Can modify NEW values | YES | NO |
-| Can reject the insert with SIGNAL | YES | YES (but row already written) |
+| Can reject the insert with SIGNAL | YES | YES (statement rolls back) |
 | AUTO_INCREMENT ID available | NO (0 for uninserted row) | YES |
 | Write to audit with final values | NO (use AFTER) | YES |
 
