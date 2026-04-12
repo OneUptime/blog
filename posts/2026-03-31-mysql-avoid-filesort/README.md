@@ -33,7 +33,7 @@ EXPLAIN SELECT title FROM articles ORDER BY published_at DESC;
 CREATE INDEX idx_published ON articles(published_at DESC);
 
 EXPLAIN SELECT title FROM articles ORDER BY published_at DESC;
--- Extra: Using index (filesort eliminated)
+-- Extra: no "Using filesort" (filesort eliminated)
 ```
 
 ## Pattern 2: Filter Then Sort (Most Common)
@@ -85,7 +85,7 @@ EXPLAIN SELECT * FROM orders ORDER BY customer_id ASC, created_at DESC;
 CREATE INDEX idx_cust_date ON orders(customer_id ASC, created_at DESC);
 
 EXPLAIN SELECT * FROM orders ORDER BY customer_id ASC, created_at DESC;
--- Extra: Using index (filesort eliminated in MySQL 8.0+)
+-- Extra: no "Using filesort" (filesort eliminated in MySQL 8.0+)
 ```
 
 ## Pattern 5: Covering Index Eliminates Both Scan and Filesort
