@@ -81,7 +81,7 @@ properties: {
 
 ## Allowing null in Enum
 
-Include `null` in the enum list to allow the field to be absent or null while still constraining non-null values:
+Include `null` in the enum list to allow the field to have a null value while still constraining non-null values. Note that field absence is controlled by the `required` array, not by `null` in the enum:
 
 ```javascript
 properties: {
