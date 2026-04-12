@@ -23,7 +23,7 @@ local        - Returns the most recent data on the primary (default)
 available    - Returns data regardless of replication state (fastest, lowest guarantee)
 majority     - Returns only data acknowledged by a majority of the replica set
 linearizable - Returns data that reflects all prior acknowledged writes
-snapshot     - Returns data consistent to a specific point in time (transactions only)
+snapshot     - Returns data consistent to a specific point in time (primarily used in transactions)
 ```
 
 ## local Read Concern (Default)
@@ -66,7 +66,7 @@ This is the most expensive option due to additional server coordination. Always 
 
 ## snapshot Read Concern in Transactions
 
-The `snapshot` level is used within multi-document transactions to provide a consistent view of the database at the transaction start time.
+The `snapshot` level is primarily used within multi-document transactions to provide a consistent view of the database at the transaction start time. Starting in MongoDB 5.0, `snapshot` read concern is also available outside of transactions for `find`, `aggregate`, and `distinct` operations.
 
 ```javascript
 const session = client.startSession();
@@ -93,7 +93,7 @@ try {
 Analytics / reporting     -> local (freshest data, rollback risk acceptable)
 Financial balances        -> majority (data will not be rolled back)
 Coordination / locks      -> linearizable (most up-to-date, highest cost)
-Multi-document operations -> snapshot (within transactions only)
+Multi-document operations -> snapshot (primarily within transactions)
 ```
 
 ## Summary
