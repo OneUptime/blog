@@ -171,7 +171,7 @@ public class OrderController {
             @PathVariable Long id,
             @RequestBody java.util.Map<String, String> body) {
         String newStatus = body.get("status");
-        if (!VALID_STATUSES.contains(newStatus)) {
+        if (newStatus == null || !VALID_STATUSES.contains(newStatus)) {
             return ResponseEntity.badRequest().build();
         }
         return orderRepo.findById(id).map(order -> {
