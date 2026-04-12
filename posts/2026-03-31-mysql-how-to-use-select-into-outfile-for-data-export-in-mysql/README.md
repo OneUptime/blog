@@ -131,7 +131,7 @@ FILE_NUM=1
 
 while true; do
   COUNT=$(mysql -u root -pPass shop -se \
-    "SELECT COUNT(*) FROM big_table LIMIT $BATCH OFFSET $OFFSET")
+    "SELECT COUNT(*) FROM (SELECT 1 FROM big_table LIMIT $BATCH OFFSET $OFFSET) AS t")
 
   if [ "$COUNT" -eq "0" ]; then break; fi
 
