@@ -20,7 +20,7 @@ redis-cli INFO memory
 
 Key fields to examine:
 - `used_memory`: Memory allocated for data
-- `used_memory_rss`: Memory the OS reports Redis is using (always higher)
+- `used_memory_rss`: Memory the OS reports Redis is using (typically higher due to fragmentation)
 - `mem_fragmentation_ratio`: Ratio of RSS to used_memory; above 1.5 indicates fragmentation
 
 A typical key has 60-90 bytes of overhead before any value is stored.
@@ -35,7 +35,7 @@ MEMORY USAGE user:12345
 # Returns bytes used by this key and its value
 
 OBJECT ENCODING user:12345
-# Returns encoding (ziplist, hashtable, etc.)
+# Returns encoding (listpack, hashtable, etc.)
 ```
 
 For a fleet of 1 million user objects averaging 200 bytes each plus 80 bytes overhead, budget: `1,000,000 * 280 = 280MB`.
@@ -64,7 +64,7 @@ Each replica connection uses a replication buffer. With large datasets or slow r
 
 ```text
 # redis.conf
-replica-output-buffer-size 256mb 64mb 60
+client-output-buffer-limit replica 256mb 64mb 60
 ```
 
 This limits the output buffer to 256MB hard limit and 64MB soft limit (enforced after 60 seconds).
@@ -88,10 +88,10 @@ If usage grows by 10MB per day, you have roughly 30 days before a 300MB buffer i
 Redis uses memory-efficient encodings for small collections. Know the thresholds:
 
 ```text
-Hash: ziplist (up to 128 fields, each up to 64 bytes) vs hashtable
-List: listpack (up to 128 elements, each up to 64 bytes) vs quicklist
+Hash: listpack (up to 128 fields, each up to 64 bytes) vs hashtable
+List: listpack (small lists) vs quicklist with listpack nodes (default max 8kb per node)
 Set: intset (up to 512 integers) or listpack vs hashtable
-Sorted Set: listpack (up to 128 members) vs skiplist
+Sorted Set: listpack (up to 128 members, each up to 64 bytes) vs skiplist
 ```
 
 ```bash
@@ -111,6 +111,7 @@ Average dataset: 1GB
 Peak multiplier: 3x
 Required maxmemory: 3GB
 Safety buffer (25%): +750MB
+System and Redis overhead: ~1GB
 Total server RAM needed: ~5GB
 ```
 
