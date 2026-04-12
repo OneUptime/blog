@@ -16,7 +16,6 @@ A typical InnoDB Cluster on Kubernetes consists of:
 - A StatefulSet with three MySQL pods (one primary, two secondaries)
 - A headless Service for stable pod DNS names
 - A ClusterIP Service for write traffic routed through MySQL Router
-- A ConfigMap for initialization scripts
 - A Secret for credentials
 
 ## Setting Up the Namespace and Secret
@@ -115,7 +114,13 @@ spec:
 
 ## Bootstrapping the InnoDB Cluster
 
-After pods are running, use MySQL Shell to create the cluster from the primary pod:
+After pods are running, install MySQL Shell and use it to create the cluster from the primary pod. The `mysql:8.0` image does not include MySQL Shell by default, so install it first:
+
+```bash
+kubectl exec -it mysql-0 -n mysql-cluster -- bash -c "microdnf install -y mysql-shell"
+```
+
+Then connect with MySQL Shell:
 
 ```bash
 kubectl exec -it mysql-0 -n mysql-cluster -- mysqlsh --uri root@localhost --password=RootPass123!
