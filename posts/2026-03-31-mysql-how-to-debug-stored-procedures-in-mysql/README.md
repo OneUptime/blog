@@ -155,14 +155,14 @@ CALL ValidateAndProcess(-5.00);
 
 ## Technique 5 - MySQL Workbench Debugger
 
-MySQL Workbench 6.0+ includes a stored procedure debugger with breakpoints and step-through execution:
+MySQL Workbench 6.x (Commercial Edition) included a stored procedure debugger with breakpoints and step-through execution:
 
 1. Open MySQL Workbench and connect to your server.
 2. Open the stored procedure in the SQL editor.
 3. Right-click and select "Debug Stored Procedure".
 4. Use the toolbar to set breakpoints, step over/into, and inspect variables.
 
-This is only available in the Community and Commercial editions of MySQL Workbench.
+Note: The stored procedure debugger was removed in MySQL Workbench 8.0 and is no longer available in current versions.
 
 ## Technique 6 - dbForge Studio Debugger
 
@@ -172,7 +172,7 @@ dbForge Studio for MySQL provides a full-featured debugger with:
 - Call stack inspection
 - Step-in and step-out support
 
-## Inspecting Procedure Errors via Error Log
+## Inspecting Procedure Errors via General Query Log
 
 Enable general query logging to see all queries executed inside procedures:
 
