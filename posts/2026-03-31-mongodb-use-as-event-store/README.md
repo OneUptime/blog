@@ -14,7 +14,7 @@ An event store records all state changes as a sequence of immutable events rathe
 - Documents map naturally to events (schema-flexible)
 - Atomic appends with optimistic concurrency control
 - Change streams enable reactive projections
-- TTL indexes can archive old events automatically
+- TTL indexes can automatically expire old events
 
 ## Event Document Schema
 
