@@ -38,7 +38,7 @@ Expected output includes `MYSQL_FIREWALL` and `MYSQL_FIREWALL_USERS` plugins wit
 
 ## Operating Modes
 
-The firewall supports three modes per user:
+The firewall supports four modes per user:
 
 | Mode | Behavior |
 |------|----------|
