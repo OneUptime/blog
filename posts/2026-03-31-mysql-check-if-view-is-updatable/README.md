@@ -36,7 +36,7 @@ Sample output:
 +------------------+--------------+--------------+
 | TABLE_NAME       | IS_UPDATABLE | CHECK_OPTION |
 +------------------+--------------+--------------+
-| active_employees | YES          | CASCADED     |
+| active_employees | YES          | NONE         |
 | dept_summary     | NO           | NONE         |
 | order_counts     | NO           | NONE         |
 +------------------+--------------+--------------+
@@ -108,7 +108,7 @@ WHERE TABLE_NAME = 'employee_dept'
   AND TABLE_SCHEMA = 'mydb';
 ```
 
-MySQL marks join views as `YES` only when one side is key-preserved. Always verify before relying on join view updates.
+MySQL marks join views as `YES` when at least one component of the join is updatable (that is, it uses the MERGE algorithm rather than a temporary table). Always verify before relying on join view updates.
 
 ## Summary
 
