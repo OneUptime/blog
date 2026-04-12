@@ -60,7 +60,7 @@ class TrackedCollection {
     const stamped = {
       ...update,
       $set: { ...update.$set, updatedAt: now, updatedBy: userId },
-      $inc: { __v: 1 },
+      $inc: { ...update.$inc, __v: 1 },
     };
     return this.col.findOneAndUpdate(filter, stamped, {
       returnDocument: "before",
@@ -72,6 +72,17 @@ class TrackedCollection {
 ## Storing Full Modification History with Change Streams
 
 Capture every update event and write a snapshot of the previous document to a history collection.
+
+First, enable pre- and post-images on the collection so change streams can access the document state before each change. This requires MongoDB 6.0 or later.
+
+```javascript
+await db.command({
+  collMod: "articles",
+  changeStreamPreAndPostImages: { enabled: true },
+});
+```
+
+Then open a change stream that records every write to a history collection.
 
 ```javascript
 const { MongoClient } = require("mongodb");
