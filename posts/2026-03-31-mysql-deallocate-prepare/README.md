@@ -74,7 +74,7 @@ Monitor active prepared statements per session with the Performance Schema:
 
 ```sql
 SELECT
-  THREAD_ID,
+  OWNER_THREAD_ID,
   SQL_TEXT,
   COUNT_EXECUTE
 FROM performance_schema.prepared_statements_instances;
