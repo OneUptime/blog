@@ -20,6 +20,7 @@ actix-web = "4"
 mongodb   = "3"
 tokio     = { version = "1", features = ["full"] }
 serde     = { version = "1", features = ["derive"] }
+futures   = "0.3"
 ```
 
 ## Shared Application State
