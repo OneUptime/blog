@@ -67,13 +67,21 @@ This minimum exists because MongoDB's heartbeat interval is 10 seconds and the d
 
 ## How Staleness Is Estimated
 
-MongoDB drivers estimate secondary staleness using the following formula:
+MongoDB drivers estimate secondary staleness using the following formula when a primary is known:
 
 ```text
-estimatedStaleness = (now - secondary.lastWriteDate) - (primary.lastWriteDate - primary.optime)
+estimatedStaleness = (S.lastUpdateTime - S.lastWriteDate) - (P.lastUpdateTime - P.lastWriteDate) + heartbeatFrequencyMS
 ```
 
-This accounts for the fact that a secondary may be writing at a different rate than the primary. The driver uses heartbeat timestamps from `hello` responses to calculate this estimate.
+Where `S` is the secondary, `P` is the primary, `lastUpdateTime` is when the driver last received a `hello` response from that server, and `lastWriteDate` is from that response. The `heartbeatFrequencyMS` (default 10 seconds) is added as a tolerance buffer.
+
+When no primary is known, the driver uses:
+
+```text
+estimatedStaleness = SMax.lastWriteDate - S.lastWriteDate + heartbeatFrequencyMS
+```
+
+Where `SMax` is the secondary with the most recent `lastWriteDate`.
 
 ## Behavior When All Secondaries Exceed the Threshold
 
