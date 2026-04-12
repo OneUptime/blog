@@ -10,7 +10,7 @@ Description: Create a new MySQL table and populate it with data in one statement
 
 ## How It Works
 
-`CREATE TABLE ... AS SELECT` (sometimes called CTAS) creates a new table and inserts the rows returned by the SELECT query in a single atomic operation. MySQL infers column data types from the SELECT expression types. The resulting table has no indexes, constraints, or AUTO_INCREMENT - only the data.
+`CREATE TABLE ... AS SELECT` (sometimes called CTAS) creates a new table and inserts the rows returned by the SELECT query in a single atomic operation. MySQL infers column data types from the SELECT expression types. The resulting table has no indexes, no primary key, and no AUTO_INCREMENT. NOT NULL and character set attributes are preserved, but constraints such as UNIQUE and FOREIGN KEY are not.
 
 ```mermaid
 flowchart LR
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS us_users AS
 |---|---|---|
 | Copies data | Yes | No |
 | Copies indexes | No | Yes |
-| Copies constraints | No | Yes (except FKs) |
+| Copies constraints | No (preserves NOT NULL) | Yes (except FKs) |
 | Column types | Inferred | Exact copy |
 | Idiomatic for | Materialised views, summaries | Structural copies, staging tables |
 
@@ -205,4 +205,4 @@ CREATE TABLE IF NOT EXISTS us_users AS
 
 ## Summary
 
-`CREATE TABLE AS SELECT` creates a new table and populates it from a SELECT query in one step. MySQL infers column types from the SELECT expressions. The resulting table has no indexes, primary keys, or constraints - add them immediately with `ALTER TABLE`. CTAS is ideal for summary tables, ETL staging, and analysis snapshots. For exact structural copies with indexes, use `CREATE TABLE ... LIKE` instead.
+`CREATE TABLE AS SELECT` creates a new table and populates it from a SELECT query in one step. MySQL infers column types from the SELECT expressions. The resulting table has no indexes, primary keys, or AUTO_INCREMENT - add them immediately with `ALTER TABLE`. NOT NULL attributes are preserved from the source columns. CTAS is ideal for summary tables, ETL staging, and analysis snapshots. For exact structural copies with indexes, use `CREATE TABLE ... LIKE` instead.
