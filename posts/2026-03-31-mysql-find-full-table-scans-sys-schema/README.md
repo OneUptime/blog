@@ -32,10 +32,10 @@ SELECT
   query,
   exec_count,
   total_latency,
-  full_scans,
-  no_index_used_count
+  no_index_used_count,
+  no_good_index_used_count
 FROM sys.statements_with_full_table_scans
-ORDER BY full_scans DESC
+ORDER BY no_index_used_count DESC
 LIMIT 10;
 ```
 
