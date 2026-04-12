@@ -35,19 +35,19 @@ enforce_gtid_consistency = ON
 
 ## Taking a mysqldump from a Replica
 
-Use `--single-transaction` and `--master-data` to get a consistent backup with the source position:
+Use `--single-transaction` and `--source-data` to get a consistent backup with position metadata:
 
 ```bash
 mysqldump -u root -p \
   --all-databases \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --set-gtid-purged=ON \
   --flush-logs \
   | gzip > /var/backups/mysql/replica_backup_$(date +%Y%m%d_%H%M%S).sql.gz
 ```
 
-`--master-data=2` records the source binary log position (not the replica's position), which is needed to rebuild other replicas from this backup.
+`--source-data=2` records the replica's own binary log position as a SQL comment. With GTID mode enabled, `--set-gtid-purged=ON` includes the GTID set in the dump, which is what matters for seeding new replicas. If you need the source's binary log position instead, use `--dump-replica=2`.
 
 ## Pausing Replication During Backup
 
@@ -75,22 +75,23 @@ xtrabackup --backup \
   --user=root \
   --password=RootPass \
   --target-dir=/var/backup/mysql/$(date +%Y%m%d) \
+  --slave-info \
   --compress
 
 # Verify backup completed successfully
 ls /var/backup/mysql/$(date +%Y%m%d)/
 ```
 
-XtraBackup records the replica's binary log position and the source's position in `xtrabackup_binlog_info`, making the backup usable for seeding new replicas.
+The `--slave-info` flag tells XtraBackup to record the source's binary log position in `xtrabackup_slave_info`, making the backup usable for seeding new replicas. The replica's own binary log position is always recorded in `xtrabackup_binlog_info`.
 
 ## Verifying Backup Contains Source Position
 
 ```bash
-# For mysqldump
-zcat /var/backups/mysql/latest.sql.gz | grep "CHANGE MASTER"
+# For mysqldump (--source-data includes CHANGE REPLICATION SOURCE TO as a comment)
+zcat /var/backups/mysql/latest.sql.gz | grep "CHANGE REPLICATION SOURCE"
 
-# For XtraBackup
-cat /var/backup/mysql/latest/xtrabackup_binlog_info
+# For XtraBackup (source position recorded by --slave-info)
+cat /var/backup/mysql/latest/xtrabackup_slave_info
 ```
 
 Example XtraBackup output:
@@ -118,8 +119,9 @@ If lag becomes too large, the backup is consuming too many resources. Consider:
 - Running mysqldump during off-peak hours
 
 ```bash
+# --throttle limits chunks copied per second (each chunk is 10 MB)
 xtrabackup --backup \
-  --throttle=100 \  # Limit to 100 IO operations per second
+  --throttle=10 \
   --target-dir=/var/backup/mysql/
 ```
 
@@ -127,6 +129,8 @@ xtrabackup --backup \
 
 ```bash
 #!/bin/bash
+set -o pipefail
+
 BACKUP_DIR=/var/backups/mysql
 DATE=$(date +%Y%m%d_%H%M%S)
 LOG=/var/log/mysql-backup.log
@@ -136,7 +140,7 @@ echo "$(date): Starting replica backup" >> $LOG
 mysqldump -u root -p"$(cat /etc/mysql/mysql.pass)" \
   --all-databases \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --set-gtid-purged=ON \
   --flush-logs \
   | gzip > "$BACKUP_DIR/backup_$DATE.sql.gz"
@@ -152,4 +156,4 @@ fi
 
 ## Summary
 
-Backing up from a replica is a best practice for production MySQL environments. It offloads the backup I/O and CPU overhead from the source, keeping production performance unaffected. Use `mysqldump --single-transaction --master-data=2 --set-gtid-purged=ON` for logical backups, or XtraBackup for large databases. Always verify the backup contains the source binary log position so it can be used to seed new replicas. Monitor replica lag during backups to ensure the backup process does not cause the replica to fall behind.
+Backing up from a replica is a best practice for production MySQL environments. It offloads the backup I/O and CPU overhead from the source, keeping production performance unaffected. Use `mysqldump --single-transaction --source-data=2 --set-gtid-purged=ON` for logical backups, or XtraBackup for large databases. Always verify the backup contains the source binary log position so it can be used to seed new replicas. Monitor replica lag during backups to ensure the backup process does not cause the replica to fall behind.
