@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Metabase, Business Intelligence, Dashboard, Analytics
 
-Description: Learn how to connect MongoDB to Metabase to build interactive dashboards and self-service analytics using the MongoDB native driver or a SQL interface.
+Description: Learn how to connect MongoDB to Metabase to build interactive dashboards and self-service analytics using the visual query builder or native aggregation queries.
 
 ---
 
@@ -26,7 +26,7 @@ docker run -d -p 3000:3000 \
 ```
 
 2. Navigate to `http://localhost:3000` and complete setup.
-3. Go to **Settings > Admin > Databases > Add database**.
+3. Go to **Admin > Databases > Add a database**.
 4. Select **MongoDB** and enter your connection details:
 
 ```text
@@ -102,7 +102,7 @@ Schedule email reports directly from Metabase:
 ```text
 Schedule: Every day at 8:00 AM
 Recipients: team@company.com
-Format: PDF or inline image
+Format: Inline charts with optional CSV/XLSX attachments
 ```
 
 ## Control Access with Permissions
