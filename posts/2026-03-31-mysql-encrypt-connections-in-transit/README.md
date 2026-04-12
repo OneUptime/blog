@@ -149,14 +149,13 @@ conn = mysql.connector.connect(
 ## Verifying TLS is Active for All Connections
 
 ```sql
--- Check current connections using TLS
+-- Check which users require TLS
 SELECT user, host, ssl_type, ssl_cipher
 FROM mysql.user
 WHERE ssl_type != '';
 
--- Check live connections
-SELECT * FROM performance_schema.session_status
-WHERE VARIABLE_NAME = 'Ssl_cipher';
+-- Check TLS status for all live connections
+SELECT * FROM sys.session_ssl_status;
 ```
 
 ## Summary
