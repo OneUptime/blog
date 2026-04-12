@@ -24,7 +24,7 @@ flowchart LR
 db.collection.find(filter).limit(n)
 ```
 
-- `n` must be a positive integer
+- `n` is an integer (positive, zero, or negative)
 - If `n` is 0, `limit(0)` is treated as no limit (all documents are returned)
 - Passing a negative value is equivalent to the absolute value and closes the cursor after one batch
 
