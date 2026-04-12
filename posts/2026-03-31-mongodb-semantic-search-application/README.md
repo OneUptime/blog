@@ -144,10 +144,10 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 ## Combining Semantic and Keyword Search
 
-Use `$search` with Atlas Search for hybrid retrieval:
+You can filter vector search results by keyword using a `$match` stage with a regular expression:
 
 ```python
-hybrid_pipeline = [
+filtered_pipeline = [
     {
         "$vectorSearch": {
             "index": "semantic_index",
@@ -159,7 +159,45 @@ hybrid_pipeline = [
     },
     {
         "$match": {
-            "$text": {"$search": query}  # Re-rank by keyword match
+            "content": {"$regex": keyword, "$options": "i"}
+        }
+    }
+]
+```
+
+For true hybrid search that scores and merges results from both vector and full-text search, use `$rankFusion` (MongoDB 8.0+):
+
+```python
+hybrid_pipeline = [
+    {
+        "$rankFusion": {
+            "input": {
+                "pipelines": {
+                    "vector": [
+                        {
+                            "$vectorSearch": {
+                                "index": "semantic_index",
+                                "path": "embedding",
+                                "queryVector": model.encode(query).tolist(),
+                                "numCandidates": 50,
+                                "limit": 10
+                            }
+                        }
+                    ],
+                    "fulltext": [
+                        {
+                            "$search": {
+                                "index": "text_index",
+                                "text": {
+                                    "query": query,
+                                    "path": "content"
+                                }
+                            }
+                        },
+                        {"$limit": 10}
+                    ]
+                }
+            }
         }
     }
 ]
