@@ -226,14 +226,13 @@ mongoimport \
   --db myapp \
   --collection orders \
   --file /tmp/orders.json \
-  --numInsertionWorkers 4 \
-  --batchSize 1000
+  --numInsertionWorkers 4
 ```
 
 ## Step 6: Create Indexes
 
 ```javascript
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 // Replace PostgreSQL B-tree indexes with MongoDB indexes
 db.users.createIndex({ email: 1 }, { unique: true });
