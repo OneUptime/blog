@@ -43,10 +43,10 @@ JSON.SET post:1 $ '{"title":"Redis Tips","tags":["redis","performance","caching"
 
 ```redis
 127.0.0.1:6379> JSON.ARRLEN post:1 $.nonexistent
-1) (nil)
+(empty array)
 ```
 
-Returns nil for each path that does not match an array.
+Returns an empty array when the JSONPath matches no nodes in the document. If a path matches a node that is not an array, that entry returns nil instead.
 
 ## Root is an Array
 
