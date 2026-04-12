@@ -30,7 +30,7 @@ SHOW VARIABLES LIKE 'innodb_autoinc_lock_mode';
 
 ### Mode 1 - Consecutive (Default Before MySQL 8.0)
 
-Consecutive mode is a compromise. Simple inserts (single-row) use a lightweight mutex to get the next ID without a table lock. Bulk inserts (INSERT ... SELECT, LOAD DATA) still use the table-level AUTO-INC lock to guarantee consecutive IDs for the entire batch.
+Consecutive mode is a compromise. Simple inserts (where the number of rows to insert is known in advance, including single-row and multi-row INSERT VALUES) use a lightweight mutex to get the next ID without a table lock. Bulk inserts (INSERT ... SELECT, LOAD DATA) still use the table-level AUTO-INC lock to guarantee consecutive IDs for the entire batch.
 
 ```sql
 -- Mode 1 is suitable for most single-row insert workloads
