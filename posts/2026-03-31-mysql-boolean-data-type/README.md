@@ -100,7 +100,7 @@ CREATE INDEX idx_is_enabled ON feature_flags (is_enabled);
 -- Composite index - more useful for selective filtering
 CREATE INDEX idx_public_enabled ON feature_flags (is_public, is_enabled);
 
--- Partial-table scan with covering index
+-- Use the composite index to filter efficiently
 SELECT flag_name FROM feature_flags
 USE INDEX (idx_public_enabled)
 WHERE is_public = 1 AND is_enabled = 1;
