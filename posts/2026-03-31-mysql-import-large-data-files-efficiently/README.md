@@ -27,19 +27,18 @@ IGNORE 1 ROWS;
 
 ## Disable Indexes During Import
 
-For InnoDB tables, dropping indexes before bulk load and recreating them after is much faster than maintaining them incrementally:
+Dropping secondary indexes before bulk load and recreating them after is much faster than maintaining them incrementally.
+
+Note: `ALTER TABLE ... DISABLE KEYS` / `ENABLE KEYS` only affects MyISAM tables and has no effect on InnoDB. For InnoDB tables, explicitly drop and recreate secondary indexes:
 
 ```sql
--- Before import
-ALTER TABLE transactions DISABLE KEYS;
--- or for InnoDB, drop the indexes:
+-- Before import: drop secondary indexes
 ALTER TABLE transactions DROP INDEX idx_customer_id;
 
 -- Run LOAD DATA INFILE here
 
--- After import
+-- After import: recreate indexes
 ALTER TABLE transactions ADD INDEX idx_customer_id (customer_id);
-ALTER TABLE transactions ENABLE KEYS;
 ```
 
 ## Tune InnoDB Settings for Bulk Import
@@ -93,8 +92,8 @@ Then import each chunk:
 
 ```bash
 for f in chunk_*_with_header.csv; do
-  mysql -u root -p mydb -e "
-    LOAD DATA INFILE '/tmp/$f'
+  mysql -u root -p mydb --local-infile=1 -e "
+    LOAD DATA LOCAL INFILE '$f'
     INTO TABLE transactions
     FIELDS TERMINATED BY ','
     OPTIONALLY ENCLOSED BY '\"'
@@ -128,13 +127,17 @@ myloader \
 Track progress for long-running imports:
 
 ```sql
+-- Enable stage event instruments (run once per session)
+UPDATE performance_schema.setup_instruments SET ENABLED = 'YES' WHERE NAME LIKE 'stage/%';
+UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME LIKE 'events_stages_%';
+
+-- Check progress of running stages
 SELECT
-  stage,
-  STATE,
-  progress,
-  time
-FROM information_schema.processlist
-WHERE command != 'Sleep';
+  EVENT_NAME AS stage,
+  WORK_COMPLETED AS completed,
+  WORK_ESTIMATED AS estimated
+FROM performance_schema.events_stages_current
+WHERE WORK_ESTIMATED > 0;
 ```
 
 For InnoDB import progress:
