@@ -49,6 +49,7 @@ Configure retention in `mongod.conf`:
 replication:
   replSetName: "rs0"
   oplogSizeMB: 10240
+storage:
   oplogMinRetentionHours: 48
 ```
 
@@ -61,9 +62,6 @@ mongod --oplogMinRetentionHours 48 --oplogSize 10240
 ## Verifying the Configuration
 
 ```javascript
-db.adminCommand({ replSetGetConfig: 1 }).config
-// Look for: settings.replicaSetId and check oplog size with:
-
 use local
 db.oplog.rs.stats().maxSize / 1048576  // in MB
 ```
@@ -83,10 +81,11 @@ Configured oplog size:     10 GB
 Actual disk usage (burst): up to 25 GB during heavy write periods
 ```
 
-Monitor oplog disk usage:
+Monitor oplog disk usage from the mongo shell:
 
-```bash
-du -sh /var/lib/mongodb/local.oplog.rs.*
+```javascript
+use local
+db.oplog.rs.stats().storageSize / (1024 * 1024 * 1024)  // in GB
 ```
 
 ## Recommended Retention Values
