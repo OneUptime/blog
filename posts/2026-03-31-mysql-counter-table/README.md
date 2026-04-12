@@ -49,10 +49,11 @@ Each write picks a random slot, distributing contention across 10 rows:
 
 ```sql
 -- Increment counter for entity 42 (random slot 0-9)
+SET @slot = FLOOR(RAND() * 10);
 UPDATE counters
 SET count = count + 1
 WHERE entity_id = 42
-  AND slot = FLOOR(RAND() * 10);
+  AND slot = @slot;
 ```
 
 From application code:
@@ -108,12 +109,13 @@ CREATE TABLE entity_counters (
 );
 
 -- Track page views and downloads separately
+SET @slot = FLOOR(RAND() * 10);
 UPDATE entity_counters
 SET count = count + 1
 WHERE entity_type = 'article'
   AND entity_id = 101
   AND metric = 'page_views'
-  AND slot = FLOOR(RAND() * 10);
+  AND slot = @slot;
 
 -- Read article view count
 SELECT SUM(count) AS total_views
