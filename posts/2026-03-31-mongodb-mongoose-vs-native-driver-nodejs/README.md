@@ -36,6 +36,7 @@ const mongoose = require("mongoose");
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   price: { type: Number, required: true, min: 0 },
+  slug: { type: String },
   tags: [{ type: String }],
   createdAt: { type: Date, default: Date.now }
 });
@@ -89,7 +90,7 @@ const products = await Product.find({ status: "active" }).lean();
 // Returns plain objects, ~30-50% faster than hydrated Mongoose documents
 
 // Native driver equivalent (always returns plain objects)
-const products = await db.collection("products")
+const results = await db.collection("products")
   .find({ status: "active" })
   .toArray();
 ```
