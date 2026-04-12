@@ -15,10 +15,9 @@ MongoDB and Cassandra take fundamentally different approaches to scalability:
 ```mermaid
 flowchart LR
     subgraph MongoDB
-        Primary[Primary node] --> Shard1[Shard 1 replica set]
-        Primary --> Shard2[Shard 2 replica set]
-        Primary --> Shard3[Shard 3 replica set]
-        MongoS[mongos router] --> Primary
+        MongoS[mongos router] --> Shard1[Shard 1 replica set]
+        MongoS --> Shard2[Shard 2 replica set]
+        MongoS --> Shard3[Shard 3 replica set]
     end
 
     subgraph Cassandra
@@ -30,28 +29,25 @@ flowchart LR
     end
 ```
 
-MongoDB uses a master-replica sharding architecture where a primary shard handles writes and secondaries provide read scaling and failover. Cassandra uses a leaderless peer-to-peer ring where any node can accept writes, providing higher write availability.
+MongoDB uses a sharded cluster architecture where a `mongos` router directs queries to the appropriate shard. Each shard is a replica set with its own primary that handles writes and secondaries that provide read scaling and failover. Cassandra uses a leaderless peer-to-peer ring where any node can accept writes, providing higher write availability.
 
 ## Write Throughput
 
 | Scenario | MongoDB | Cassandra |
 |---|---|---|
-| Single node writes | High (limited by WiredTiger lock) | High (append-only memtables) |
+| Single node writes | High (document-level concurrency) | High (append-only memtables) |
 | Multi-shard writes | Scales linearly with shards | Scales linearly with nodes |
 | Write availability | Primary must be available | Any node can accept writes |
-| Write conflict resolution | Last write wins on primary | Tunable consistency |
+| Write conflict resolution | Last write wins on primary | Last write wins (timestamp-based) |
 | Write amplification | Oplog replication overhead | Gossip + compaction overhead |
 
-Cassandra is designed for write-heavy workloads. Its log-structured storage engine (memtable + SSTable) accepts writes at memory speed before flushing to disk. MongoDB's WiredTiger engine uses B-tree storage with journaling, which is efficient but involves more locking for write-heavy workloads on a single shard.
+Cassandra is designed for write-heavy workloads. Its log-structured storage engine (memtable + SSTable) accepts writes at memory speed before flushing to disk. MongoDB's WiredTiger engine uses B-tree storage with journaling, which is efficient but involves more overhead than append-only writes for write-heavy workloads on a single shard.
 
 ## Horizontal Scaling Comparison
 
 **MongoDB scaling** adds shards (each shard is a replica set):
 
 ```javascript
-// Enable sharding on a database
-sh.enableSharding("myapp")
-
 // Shard a collection by hashed customerId
 sh.shardCollection("myapp.orders", { customerId: "hashed" })
 
@@ -80,7 +76,7 @@ Cassandra's elastic scaling is generally simpler: add a node and it automaticall
 | Tunable reads | Yes (read preferences) | Yes (ONE, QUORUM, ALL) |
 | Tunable writes | Yes (write concern) | Yes (ONE, QUORUM, ALL) |
 | ACID transactions | Multi-document, multi-collection | Lightweight transactions (LWT, limited) |
-| Linearizable reads | Yes (linearizable read concern) | Not natively supported |
+| Linearizable reads | Yes (linearizable read concern) | Yes (SERIAL consistency with LWT) |
 
 MongoDB provides multi-document ACID transactions, which Cassandra does not support across partitions. If your workload requires complex transactions, MongoDB is the better choice.
 
