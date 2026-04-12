@@ -23,7 +23,7 @@ TypeScript types are included in Mongoose since v6, no separate `@types` package
 ## Defining a Typed Schema
 
 ```typescript
-import mongoose, { Schema, model, Document, Types } from 'mongoose';
+import mongoose, { Schema, model, Document } from 'mongoose';
 
 // 1. Document interface
 interface IProduct {
