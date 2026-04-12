@@ -28,7 +28,7 @@ GROUP BY department_id;
 
 ## What Is ANY_VALUE()?
 
-`ANY_VALUE()` is a special aggregate function introduced in MySQL 5.7.5. It returns an arbitrary value from the group for the given expression and suppresses the `ONLY_FULL_GROUP_BY` error. It is an explicit signal to MySQL: "I know this is non-deterministic and I accept that."
+`ANY_VALUE()` is a miscellaneous function (not an aggregate function) introduced in MySQL 5.7.5. It returns an arbitrary value from the group for the given expression and suppresses the `ONLY_FULL_GROUP_BY` error. It is an explicit signal to MySQL: "I know this is non-deterministic and I accept that."
 
 ```sql
 SELECT
@@ -48,24 +48,29 @@ Use `ANY_VALUE()` when:
 
 ## Functional Dependency Example
 
-If `employee_id` is the primary key and you group by it, other columns are functionally dependent:
+If `employee_id` is the primary key and you group by it, MySQL 5.7.5+ recognizes this functional dependency and allows other columns directly without `ANY_VALUE()`:
 
 ```sql
--- MySQL may not detect this functional dependency
+-- MySQL detects PK functional dependency, so this works without ANY_VALUE()
 SELECT
   employee_id,
-  ANY_VALUE(name) AS name,  -- safe: employee_id is PK, name is unique per group
-  ANY_VALUE(email) AS email
+  name,
+  email
 FROM employees
 GROUP BY employee_id;
 ```
 
-A more correct alternative is to simply add `name` and `email` to the `GROUP BY`:
+However, MySQL cannot detect functional dependencies based on application logic rather than key constraints. Use `ANY_VALUE()` in those cases:
 
 ```sql
-SELECT employee_id, name, email
+-- department_name is always the same per department_id by application logic,
+-- but there is no unique constraint, so MySQL cannot detect the dependency
+SELECT
+  department_id,
+  ANY_VALUE(department_name) AS department_name,
+  COUNT(*) AS emp_count
 FROM employees
-GROUP BY employee_id, name, email;
+GROUP BY department_id;
 ```
 
 ## Practical Example: Latest Entry per Group
