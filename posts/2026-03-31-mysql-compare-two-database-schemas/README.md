@@ -16,8 +16,8 @@ The simplest approach: dump the schema from both databases and compare with diff
 
 ```bash
 # Dump schema only (no data)
-mysqldump --no-data -u root -p production myapp > prod_schema.sql
-mysqldump --no-data -u root -p staging    myapp > stg_schema.sql
+mysqldump --no-data -u root -p -h production myapp > prod_schema.sql
+mysqldump --no-data -u root -p -h staging    myapp > stg_schema.sql
 
 # Compare line by line
 diff prod_schema.sql stg_schema.sql
@@ -31,12 +31,12 @@ grep -v "AUTO_INCREMENT" stg_schema.sql  | grep -v "^--" | sort > stg_clean.sql
 diff prod_clean.sql stg_clean.sql
 ```
 
-## Method 2 - Percona pt-table-checksum / mysqldiff
+## Method 2 - MySQL Utilities mysqldiff
 
 ```bash
-# Percona Toolkit's mysqldiff (deprecated but still useful)
+# MySQL Utilities mysqldiff (deprecated but still useful)
 mysqldiff --server1=user:pass@host1 --server2=user:pass@host2 \
-          --difftype=sql host1:myapp:host2:myapp
+          --difftype=sql myapp:myapp
 ```
 
 ## Method 3 - MySQL Workbench Schema Diff
@@ -93,6 +93,8 @@ skeema diff --host=staging-host
 
 ## Finding Index Differences
 
+Note: The `EXCEPT` clause requires MySQL 8.0.31 or later.
+
 ```sql
 SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
 FROM   information_schema.STATISTICS
@@ -105,4 +107,4 @@ WHERE  TABLE_SCHEMA = 'db2';
 
 ## Summary
 
-For quick comparisons, dump both schemas and use `diff`. For a GUI approach, MySQL Workbench's Schema Diff Tool generates actionable ALTER scripts. For programmatic or CI/CD workflows, use skeema or pt-table-checksum. Query `information_schema.COLUMNS` and `information_schema.STATISTICS` directly when you need specific column or index comparisons.
+For quick comparisons, dump both schemas and use `diff`. For a GUI approach, MySQL Workbench's Schema Diff Tool generates actionable ALTER scripts. For programmatic or CI/CD workflows, use skeema or mysqldiff. Query `information_schema.COLUMNS` and `information_schema.STATISTICS` directly when you need specific column or index comparisons.
