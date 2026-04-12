@@ -41,10 +41,10 @@ SELECT NULLIF(NULL, 10);  -- Output: NULL (first arg is already NULL)
 The most common use case is safely dividing by a column that may contain zero:
 
 ```sql
--- Without NULLIF: division by zero causes ERROR 1365
+-- Without NULLIF: division by zero produces a warning and returns NULL
 SELECT total_sales / total_orders AS avg_order_value FROM store_stats;
 
--- With NULLIF: division by zero returns NULL instead of an error
+-- With NULLIF: cleanly returns NULL without a division-by-zero warning
 SELECT total_sales / NULLIF(total_orders, 0) AS avg_order_value
 FROM store_stats;
 ```
