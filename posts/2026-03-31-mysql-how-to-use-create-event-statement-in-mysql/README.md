@@ -20,7 +20,7 @@ Before creating events, ensure the scheduler is running:
 -- Check scheduler status
 SHOW VARIABLES LIKE 'event_scheduler';
 
--- Enable it for the current session
+-- Enable it at runtime
 SET GLOBAL event_scheduler = ON;
 ```
 
