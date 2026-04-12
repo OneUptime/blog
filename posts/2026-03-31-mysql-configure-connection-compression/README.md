@@ -34,7 +34,7 @@ Output:
 mysql -u root -p --compress mydb
 ```
 
-Or using the long form:
+> **Note:** The `--compress` option is deprecated as of MySQL 8.0.18. Use `--compression-algorithms` instead:
 
 ```bash
 mysql -u root -p --compression-algorithms=zlib mydb
@@ -51,7 +51,7 @@ mysql -u root -p --compression-algorithms=zstd --zstd-compression-level=3 mydb
 Compressing exports over the network:
 
 ```bash
-mysqldump -u root -p --compress mydb > mydb_backup.sql
+mysqldump -u root -p --compression-algorithms=zlib mydb > mydb_backup.sql
 ```
 
 ## Server-Side Compression Configuration
@@ -65,24 +65,18 @@ protocol_compression_algorithms = zstd,zlib,uncompressed
 
 The server lists algorithms in order of preference. Clients negotiate with the server to select a mutually supported algorithm.
 
-Set the default zstd level on the server:
+The zstd compression level is configured on the client side, not the server. Clients set it using the `--zstd-compression-level` option (values 1–22, default 3). Higher levels yield better compression at the cost of more CPU.
+
+## Requiring Compression for All Connections
+
+MySQL does not support requiring compression on a per-user basis. To require compression for all connections, remove `uncompressed` from the server's permitted algorithms:
 
 ```ini
 [mysqld]
-zstd_compression_level = 6
+protocol_compression_algorithms = zstd,zlib
 ```
 
-## Requiring Compression for Specific Users
-
-Force compression for a user account:
-
-```sql
-ALTER USER 'remote_app'@'%'
-  REQUIRE SUBJECT ''
-  WITH MAX_CONNECTIONS_PER_HOUR 0;
-```
-
-To require compression specifically, use `REQUIRE CIPHER` in combination with SSL configuration, or enforce it at the connection string level in your application.
+With this configuration, clients that do not request compression will be unable to connect.
 
 ## Application Driver Configuration
 
