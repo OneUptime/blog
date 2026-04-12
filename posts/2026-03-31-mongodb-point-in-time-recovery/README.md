@@ -60,12 +60,12 @@ use local
 
 // First oplog entry timestamp
 db.oplog.rs.find().sort({ $natural: 1 }).limit(1).forEach(d => {
-  print("Earliest oplog entry:", new Date(d.ts.getHighBits() * 1000))
+  print("Earliest oplog entry:", new Date(d.ts.t * 1000))
 })
 
 // Last oplog entry
 db.oplog.rs.find().sort({ $natural: -1 }).limit(1).forEach(d => {
-  print("Latest oplog entry:", new Date(d.ts.getHighBits() * 1000))
+  print("Latest oplog entry:", new Date(d.ts.t * 1000))
 })
 ```
 
@@ -97,7 +97,7 @@ db.oplog.rs.find({
   op: { $in: ["i", "u"] }
 }).sort({ $natural: -1 }).limit(20).forEach(entry => {
   print(
-    "ts:", new Date(entry.ts.getHighBits() * 1000),
+    "ts:", new Date(entry.ts.t * 1000),
     "op:", entry.op,
     "o:", JSON.stringify(entry.o).substring(0, 80)
   )
@@ -131,6 +131,7 @@ Move the oplog dump file to the right location for replay:
 
 ```bash
 # mongorestore expects the oplog file at the root of the dump directory
+mkdir -p /backup/oplog-for-replay
 cp /backup/oplog-dump/local/oplog.rs.bson /backup/oplog-for-replay/oplog.bson
 ```
 
@@ -188,7 +189,7 @@ find /backup/mongodb -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
 // How many hours of oplog history is retained
 var first = db.oplog.rs.find().sort({ $natural: 1 }).limit(1).next()
 var last = db.oplog.rs.find().sort({ $natural: -1 }).limit(1).next()
-var windowHours = (last.ts.getHighBits() - first.ts.getHighBits()) / 3600
+var windowHours = (last.ts.t - first.ts.t) / 3600
 print("Oplog window: ~" + windowHours.toFixed(1) + " hours")
 ```
 
