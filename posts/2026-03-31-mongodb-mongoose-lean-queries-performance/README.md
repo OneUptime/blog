@@ -104,4 +104,4 @@ res.json(user); // serializes directly, no .toObject() needed
 
 ## Summary
 
-Mongoose lean queries return plain JavaScript objects instead of Mongoose document instances, skipping hydration, change tracking, and getter computation. This makes them 2-5x faster for read-only operations. Use `.lean()` for API responses and data processing, and use `mongoose-lean-virtuals` if you need virtual fields in lean results. Avoid lean when you need to save, use document methods, or rely on Mongoose's full ORM functionality.
+Mongoose lean queries return plain JavaScript objects instead of Mongoose document instances, skipping hydration, change tracking, and getter computation. This makes them 2-5x faster for read-only operations. Use `.lean()` for API responses and data processing, and use `mongoose-lean-virtuals` if you need virtual fields in lean results. Avoid lean when you need to save, use document methods, or rely on Mongoose's full ODM functionality.
