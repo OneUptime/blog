@@ -43,12 +43,12 @@ const client = new MongoClient("mongodb://mongo1:27017", {
 
 ## What w:0 Returns
 
-With `w:0`, the driver returns immediately with a minimal result object. The result does not contain `insertedId`, `matchedCount`, or other operation-specific fields because the server has not had time to respond:
+With `w:0`, the driver returns immediately with a minimal result object. The `acknowledged` field is `false`, and server-computed fields like `matchedCount` or `modifiedCount` are not available. However, `insertedId` is still returned because `ObjectId` values are generated client-side before the write is sent:
 
 ```javascript
 const result = await collection.insertOne(doc, { writeConcern: { w: 0 } });
 // result.acknowledged === false
-// result.insertedId may be a client-generated ObjectId
+// result.insertedId is a client-generated ObjectId
 ```
 
 ## What You Lose With w:0
@@ -96,11 +96,12 @@ async function ingestMetrics(metricsBatch) {
   const collection = client.db("telemetry").collection("metrics");
 
   // Fire-and-forget bulk insert
-  collection.insertMany(
+  await collection.insertMany(
     metricsBatch,
     { writeConcern: { w: 0 }, ordered: false }
   );
-  // Note: we don't await - this truly fires and forgets
+  // With w:0, await returns as soon as the data is sent to the socket
+  // without waiting for server acknowledgment
 
   await client.close();
 }
