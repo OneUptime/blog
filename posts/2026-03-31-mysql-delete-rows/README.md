@@ -64,7 +64,7 @@ WHERE created_at < '2020-01-01' AND last_login IS NULL;
 
 ## Safe Update Mode
 
-If `sql_safe_updates` is enabled (common in MySQL Workbench), a `DELETE` without a primary key condition in the `WHERE` clause raises an error:
+If `sql_safe_updates` is enabled (common in MySQL Workbench), a `DELETE` without a key condition in the `WHERE` clause or a `LIMIT` clause raises an error:
 
 ```sql
 -- Will fail with safe updates enabled:
