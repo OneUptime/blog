@@ -15,14 +15,14 @@ Description: Learn how to use MySQL's JSON_SEARCH() function to find the path of
 ## Basic Syntax
 
 ```sql
-JSON_SEARCH(json_doc, one_or_all, search_str[, escape_char[, path]])
+JSON_SEARCH(json_doc, one_or_all, search_str[, escape_char[, path] ...])
 ```
 
 - `json_doc` - the JSON document to search
 - `one_or_all` - `'one'` returns the first match; `'all'` returns all matches as a JSON array
 - `search_str` - the string value to find (supports `%` and `_` wildcards like `LIKE`)
 - `escape_char` - optional escape character for wildcards (default `\`)
-- `path` - optional path to restrict the search scope
+- `path` - optional path(s) to restrict the search scope (multiple paths can be specified)
 
 Returns `NULL` if the value is not found or if any argument is `NULL`.
 
@@ -100,7 +100,7 @@ SET @doc = '{"roles":["user","admin","moderator"]}';
 SET @path = JSON_SEARCH(@doc, 'one', 'admin', NULL, '$.roles');
 
 SELECT @path;                                        -- "$.roles[1]"
-SELECT JSON_EXTRACT(@doc, @path);                    -- "admin"
+SELECT JSON_EXTRACT(@doc, JSON_UNQUOTE(@path));      -- "admin"
 ```
 
 ## JSON_SEARCH() vs JSON_CONTAINS()
