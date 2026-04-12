@@ -49,7 +49,7 @@ db.powerReadings.aggregate([
 ])
 ```
 
-The unit `"hour"` means the integral is expressed in kW-hours. Without `unit`, the result is in milliseconds.
+The unit `"hour"` means the integral is expressed in kW-hours. Without `unit`, the sort field must be numeric (not a Date), and the result is the raw numeric integral with no time-unit conversion.
 
 ### Computing Distance from Speed
 
@@ -175,8 +175,7 @@ db.sensorData.aggregate([
 ## Supported Time Units
 
 ```text
-"millisecond", "second", "minute", "hour",
-"day", "week", "month", "quarter", "year"
+"millisecond", "second", "minute", "hour", "day", "week"
 ```
 
 ## Summary
