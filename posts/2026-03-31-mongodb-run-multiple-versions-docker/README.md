@@ -12,7 +12,7 @@ Description: Run multiple MongoDB versions side by side using Docker to test com
 
 Testing against multiple MongoDB versions is useful when validating upgrade compatibility, running CI checks across supported versions, or maintaining applications that serve different customer environments. Docker makes it trivial to run MongoDB 5.0, 6.0, and 7.0 simultaneously on different ports without any version management tools.
 
-## Running Two Versions Side by Side
+## Running Multiple Versions Side by Side
 
 Each MongoDB version gets its own named volume and a unique host port to avoid conflicts.
 
