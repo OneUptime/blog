@@ -140,7 +140,7 @@ The default is 1. Setting to 2 requires at least 2 replicas to acknowledge each 
 
 | Mode | When Replica Acknowledged | Durability |
 |---|---|---|
-| `AFTER_COMMIT` (old default) | After source commits but before returning to client | Possible phantom reads on replica |
+| `AFTER_COMMIT` (old default) | After source commits but before returning to client | Phantom reads possible on source; data loss risk on failover |
 | `AFTER_SYNC` (recommended) | After writing to relay log, before source commits | No phantom reads; true loss-less replication |
 
 ```sql
