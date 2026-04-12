@@ -74,7 +74,7 @@ DROP TABLE your_table_name;
 
 ## Cause 3: MyISAM Table Size Limit
 
-MyISAM tables have a default maximum size of 4 GB. Increase the limit:
+MyISAM tables have a default maximum size of 256 TB (based on the default 6-byte pointer size), but the practical limit depends on the operating system file size limit. If your table hits this limit, increase it:
 
 ```sql
 ALTER TABLE your_table_name
