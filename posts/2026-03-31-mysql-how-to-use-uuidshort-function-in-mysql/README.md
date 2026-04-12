@@ -10,7 +10,7 @@ Description: Learn how to use the UUID_SHORT() function in MySQL to generate uni
 
 ## What is UUID_SHORT()
 
-MySQL's `UUID_SHORT()` function generates a 64-bit unsigned integer that is unique within a single MySQL server and guaranteed to be monotonically increasing within a session. It is more compact and indexable than `UUID()` while still being unique.
+MySQL's `UUID_SHORT()` function generates a 64-bit unsigned integer that is unique within a single MySQL server instance and guaranteed to be monotonically increasing. It is more compact and indexable than `UUID()` while still being unique.
 
 Syntax:
 
@@ -22,12 +22,14 @@ Return type: `BIGINT UNSIGNED`
 
 ## How UUID_SHORT() Works
 
-The value is composed of:
-- `server_id` (bits 56-63): 8 bits from the server's `server_id` variable
-- `seconds` since epoch (bits 24-55): 32 bits
-- incrementing counter (bits 0-23): 24 bits
+The value is calculated as: `(server_id & 255) << 56 + (server_startup_time_in_seconds << 24) + incremented_variable++`
 
-This means `UUID_SHORT()` generates values that are roughly time-ordered and server-specific.
+The components are:
+- `server_id & 255` (bits 56-63): 8 bits from the server's `server_id` variable
+- `server_startup_time_in_seconds` (bits 24-55): 32 bits representing when the server started
+- incrementing counter (bits 0-23): 24 bits that increment with each call
+
+This means `UUID_SHORT()` generates values that are monotonically increasing and server-specific. The time component is the server startup time, not the current time, so values are sequentially ordered by the counter within a server instance.
 
 ## Basic Usage
 
@@ -50,7 +52,9 @@ CREATE TABLE sessions (
 );
 
 INSERT INTO sessions (user_id) VALUES (42);
-SELECT LAST_INSERT_ID();  -- Works normally with integer PKs
+-- Note: LAST_INSERT_ID() does NOT return UUID_SHORT() values;
+-- it only works with AUTO_INCREMENT columns.
+-- To retrieve the generated ID, use a SELECT query after inserting.
 ```
 
 ## UUID_SHORT() vs UUID() vs AUTO_INCREMENT
@@ -68,7 +72,7 @@ SELECT 1 AS auto_increment_example;  -- Integer, sequential per table
 |---|---|---|---|
 | Type | BIGINT (8 bytes) | CHAR(36) / BINARY(16) | INT/BIGINT |
 | Globally unique | Per-server | Globally | Per-table |
-| Sequential | Roughly | No | Yes |
+| Sequential | Monotonically increasing | No | Yes |
 | Index performance | Good | Poor (string) / OK (binary) | Best |
 
 ## Verifying UUID_SHORT() Uniqueness
@@ -84,16 +88,16 @@ On different servers, set unique server IDs:
 
 ```text
 [mysqld]
-server_id = 1   -- Server 1
-server_id = 2   -- Server 2
+server_id = 1   # Server 1
+server_id = 2   # Server 2
 ```
 
-Note: If two servers share the same `server_id` and generate IDs in the same second, collisions are possible.
+Note: If two servers share the same `server_id` and were started within the same second, collisions are possible when their counters overlap.
 
 ## Limitations
 
 - Not globally unique across servers with the same `server_id`
-- `UUID_SHORT()` generates approximately 16 million unique values per second per server (24-bit counter)
+- The 24-bit counter allows approximately 16 million unique values per server instance between restarts
 - Not suitable for distributed systems without ensuring unique `server_id` values
 
 ## Comparing UUID_SHORT() to BIGINT AUTO_INCREMENT
@@ -104,7 +108,7 @@ Both produce integer primary keys. The difference:
 -- AUTO_INCREMENT: sequential per table, simple
 CREATE TABLE t1 (id BIGINT AUTO_INCREMENT PRIMARY KEY, ...);
 
--- UUID_SHORT: time-based, server-aware
+-- UUID_SHORT: startup-time-based, server-aware
 CREATE TABLE t2 (id BIGINT UNSIGNED DEFAULT (UUID_SHORT()), ...);
 ```
 
@@ -128,4 +132,4 @@ VALUES (UUID_SHORT(), 101, '192.168.1.10');
 
 ## Summary
 
-`UUID_SHORT()` generates a compact 64-bit integer that is unique within a MySQL server instance, making it a good middle ground between `AUTO_INCREMENT` and full `UUID()`. It produces time-ordered values that are index-friendly, avoiding the B-tree fragmentation caused by random UUID strings. Use it for applications that need compact, unique IDs across multiple tables or when merging data from multiple servers with distinct `server_id` values.
+`UUID_SHORT()` generates a compact 64-bit integer that is unique within a MySQL server instance, making it a good middle ground between `AUTO_INCREMENT` and full `UUID()`. It produces monotonically increasing values that are index-friendly, avoiding the B-tree fragmentation caused by random UUID strings. Use it for applications that need compact, unique IDs across multiple tables or when merging data from multiple servers with distinct `server_id` values.
