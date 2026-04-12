@@ -23,7 +23,7 @@ MySQL's optimizer chooses hash joins when:
 - The estimated cost of a hash join is lower than a nested loop join.
 - The join is an equi-join (`=`), since hash joins only work on equality conditions.
 
-MySQL 8.0.20 extended hash joins to work in more scenarios, including multiple join conditions and `CROSS JOIN`.
+MySQL 8.0.20 extended hash joins to work in more scenarios, including non-equi-join conditions, outer joins, semi-joins, and anti-joins.
 
 ## Verifying Hash Join Usage with EXPLAIN
 
@@ -80,7 +80,7 @@ If the build table exceeds available memory, MySQL splits it into chunks and per
 ## Hash Join vs Nested Loop Join
 
 ```sql
--- Force a nested loop join with STRAIGHT_JOIN
+-- STRAIGHT_JOIN forces table join order, not the join algorithm
 EXPLAIN SELECT STRAIGHT_JOIN o.id, c.name
 FROM customers c
 JOIN orders o ON o.customer_id = c.id;
@@ -98,17 +98,19 @@ For large tables without indexes on join columns, hash join can be 10-100x faste
 To compare performance with and without hash joins:
 
 ```sql
--- Disable hash join for this session
+-- MySQL 8.0.18 only: disable hash join using the hash_join flag
 SET SESSION optimizer_switch = 'hash_join=off';
 
+-- MySQL 8.0.19+: the hash_join flag has no effect; use block_nested_loop instead
+SET SESSION optimizer_switch = 'block_nested_loop=off';
+
 -- Re-enable
-SET SESSION optimizer_switch = 'hash_join=on';
+SET SESSION optimizer_switch = 'block_nested_loop=on';
 ```
 
 ## Hash Join Limitations
 
-- Only equi-joins (`=`) can use hash joins.
-- `ON` conditions with inequality operators (`>`, `<`, `LIKE`) cannot use hash joins.
+- In MySQL 8.0.18, only equi-joins (`=`) can use hash joins. From MySQL 8.0.20 onward, hash joins also support non-equi-join conditions (`>`, `<`, `<>`, etc.), though these are applied as a filter after the join.
 - Hash joins do not use indexes, so adding an appropriate index will often make an index-based nested loop faster for selective queries.
 
 ## Practical Example - Joining Without an Index
