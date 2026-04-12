@@ -58,10 +58,14 @@ ALTER TABLE orders
   ALGORITHM = INSTANT;
 ```
 
-Verify INSTANT is supported:
+Verify INSTANT is supported by attempting the operation with `ALGORITHM = INSTANT`. MySQL raises an error if INSTANT is not available:
 
 ```sql
-EXPLAIN ALTER TABLE products ADD COLUMN new_col INT, ALGORITHM = INSTANT;
+ALTER TABLE products
+  ADD COLUMN new_col INT,
+  ALGORITHM = INSTANT;
+-- If INSTANT is not supported for this operation, MySQL returns:
+-- ERROR 0A000: ALGORITHM=INSTANT is not supported for this operation.
 ```
 
 ## INPLACE Algorithm - How It Works
@@ -69,8 +73,8 @@ EXPLAIN ALTER TABLE products ADD COLUMN new_col INT, ALGORITHM = INSTANT;
 For an INPLACE rebuild:
 
 1. **Prepare phase** - MySQL acquires a brief metadata lock, captures the current state.
-2. **Execute phase** - the index is built or the operation is applied in the background. DML is allowed and tracked in a change buffer.
-3. **Commit phase** - MySQL replays the buffered DML changes and acquires a brief exclusive lock to swap in the new structure.
+2. **Execute phase** - the index is built or the operation is applied in the background. DML is allowed and concurrent changes are recorded in a temporary online log.
+3. **Commit phase** - MySQL replays the logged DML changes and acquires a brief exclusive lock to swap in the new structure.
 
 The exclusive lock at the commit phase is very short (milliseconds for most operations).
 
@@ -83,7 +87,7 @@ For COPY:
 3. Acquires an exclusive lock and renames the tables.
 4. Drops the old table.
 
-During the copy, DML is blocked (with `LOCK = EXCLUSIVE`).
+During the copy, DML writes are always blocked. With `LOCK = SHARED` (the default for COPY), concurrent reads are permitted. With `LOCK = EXCLUSIVE`, even reads are blocked.
 
 ## Checking What Algorithm a DDL Will Use
 
@@ -94,8 +98,10 @@ ALTER TABLE large_table
   ALGORITHM = INSTANT;
 -- If INSTANT is not available for this operation, MySQL raises an error
 
--- Let MySQL choose and report via EXPLAIN (MySQL 8.0.27+)
-EXPLAIN ALTER TABLE large_table MODIFY COLUMN amount DECIMAL(14,2);
+-- To check what algorithm MySQL will use, specify ALGORITHM explicitly.
+-- MySQL raises an error if the requested algorithm is not supported:
+ALTER TABLE large_table MODIFY COLUMN amount DECIMAL(14,2), ALGORITHM = INPLACE;
+-- If INPLACE is not available, MySQL returns an error and you must use COPY.
 ```
 
 ## Common Operations and Their Algorithms
@@ -103,8 +109,8 @@ EXPLAIN ALTER TABLE large_table MODIFY COLUMN amount DECIMAL(14,2);
 | Operation | INSTANT | INPLACE | Rebuild Required |
 |-----------|---------|---------|-----------------|
 | Add column at end | Yes (8.0.12+) | Yes | No |
-| Add column in middle | No | Yes | Yes |
-| Drop column | No | Yes | Yes |
+| Add column in middle | Yes (8.0.29+) | Yes | Yes |
+| Drop column | Yes (8.0.29+) | Yes | Yes |
 | Add index (non-primary) | No | Yes | No |
 | Modify column definition | No | Sometimes | Sometimes |
 | Change column type | No | No | Yes (COPY only) |
@@ -116,9 +122,7 @@ For large table rebuilds, monitor progress:
 
 ```sql
 SELECT
-  SCHEMA_NAME,
-  OBJECT_NAME,
-  STAGE,
+  EVENT_NAME,
   WORK_COMPLETED,
   WORK_ESTIMATED,
   ROUND(WORK_COMPLETED/WORK_ESTIMATED * 100, 1) AS pct_done
