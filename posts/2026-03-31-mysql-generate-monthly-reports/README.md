@@ -100,11 +100,11 @@ CREATE TABLE monthly_order_report (
   report_month    CHAR(7)       NOT NULL COMMENT 'YYYY-MM',
   order_count     INT UNSIGNED  NOT NULL DEFAULT 0,
   total_revenue   DECIMAL(14,2) NOT NULL DEFAULT 0.00,
-  new_customers   INT UNSIGNED  NOT NULL DEFAULT 0,
+  unique_customers INT UNSIGNED  NOT NULL DEFAULT 0,
   PRIMARY KEY (report_month)
 ) ENGINE=InnoDB;
 
-INSERT INTO monthly_order_report (report_month, order_count, total_revenue, new_customers)
+INSERT INTO monthly_order_report (report_month, order_count, total_revenue, unique_customers)
 SELECT
   DATE_FORMAT(order_date, '%Y-%m'),
   COUNT(*),
@@ -113,8 +113,9 @@ SELECT
 FROM orders
 WHERE DATE_FORMAT(order_date, '%Y-%m') = DATE_FORMAT(CURDATE() - INTERVAL 1 MONTH, '%Y-%m')
 ON DUPLICATE KEY UPDATE
-  order_count   = VALUES(order_count),
-  total_revenue = VALUES(total_revenue);
+  order_count      = VALUES(order_count),
+  total_revenue    = VALUES(total_revenue),
+  unique_customers = VALUES(unique_customers);
 ```
 
 ## Automated Monthly Population with Events
