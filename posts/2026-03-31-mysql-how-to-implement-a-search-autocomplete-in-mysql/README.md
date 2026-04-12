@@ -10,10 +10,11 @@ Description: Learn how to implement a search autocomplete feature in MySQL using
 
 ## Approaches to Autocomplete in MySQL
 
-There are three main approaches for implementing autocomplete in MySQL:
+There are four main approaches for implementing autocomplete in MySQL:
 1. Prefix LIKE with a B-tree index - fast for simple prefix matching.
-2. Full-Text Search with `MATCH ... AGAINST` - better for multi-word and natural language suggestions.
-3. Soundex or N-gram index - for fuzzy and phonetic matching.
+2. Case-insensitive prefix search - using appropriate collations with LIKE.
+3. Full-Text Search with `MATCH ... AGAINST` - better for multi-word and natural language suggestions.
+4. N-gram full-text parser - for mid-word and substring matching.
 
 ## Approach 1 - Prefix LIKE with Index
 
