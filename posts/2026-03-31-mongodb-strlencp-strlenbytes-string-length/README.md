@@ -14,7 +14,7 @@ MongoDB provides two operators for measuring string length in aggregation pipeli
 
 ## $strLenCP - Code Point Length
 
-`$strLenCP` returns the number of Unicode code points in a string. For ASCII text, this equals the number of characters. For multibyte characters (like accented letters, CJK characters, or emoji), this counts each character as one code point regardless of byte size.
+`$strLenCP` returns the number of Unicode code points in a string. For ASCII text, this equals the number of characters. For most multibyte characters (like accented letters, CJK characters, or simple emoji), this counts each as one code point regardless of byte size. However, composite emoji sequences (such as flag emoji, skin-tone modified emoji, or family emoji joined with ZWJ) consist of multiple code points and will return counts greater than one.
 
 ```javascript
 db.products.aggregate([
@@ -112,4 +112,4 @@ db.messages.aggregate([
 
 ## Summary
 
-`$strLenCP` and `$strLenBytes` serve different purposes in MongoDB aggregation. Use `$strLenCP` to count characters as users perceive them, especially when working with international text. Use `$strLenBytes` when measuring actual memory or storage consumption. For purely ASCII content, both return the same value, but for text containing multibyte UTF-8 characters, the results will differ.
+`$strLenCP` and `$strLenBytes` serve different purposes in MongoDB aggregation. Use `$strLenCP` to count Unicode code points, which aligns with user-perceived character count for most international text. Use `$strLenBytes` when measuring actual memory or storage consumption. For purely ASCII content, both return the same value, but for text containing multibyte UTF-8 characters, the results will differ.
