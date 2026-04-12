@@ -68,6 +68,8 @@ db.createUser({
 ## Step 3: Create Users with Specific Mechanisms
 
 ```javascript
+use ecommerce
+
 // SCRAM-SHA-256 only (recommended for new users)
 db.createUser({
   user: "appUser",
@@ -88,11 +90,12 @@ db.createUser({
 ## Step 4: Verify User Mechanisms
 
 ```javascript
-use admin
+use ecommerce
 db.getUser("appUser", { showCredentials: false })
 // Returns user info including: "mechanisms": ["SCRAM-SHA-256"]
 
-// Show all users and their mechanisms
+// Show all users and their mechanisms (from admin)
+use admin
 db.system.users.find(
   {},
   { user: 1, db: 1, mechanisms: 1 }
@@ -124,13 +127,13 @@ db.updateUser("existingUser", {
 
 // Bulk update: add SCRAM-SHA-256 to all users in a database
 use myDatabase
-db.getUsers().users.forEach(u => {
+db.getUsers().forEach(u => {
   if (!u.mechanisms.includes("SCRAM-SHA-256")) {
     print("Upgrading user:", u.user)
     db.updateUser(u.user, {
+      pwd: passwordPrompt(),   // Password required when adding a new mechanism
       mechanisms: ["SCRAM-SHA-256"]
     })
-    // Note: this requires knowing the current password or resetting it
   }
 })
 ```
@@ -161,7 +164,7 @@ const client = new MongoClient(
 )
 ```
 
-```yaml
+```properties
 # Spring Boot application.properties
 spring.data.mongodb.uri=mongodb://appUser:appPassword123!@localhost:27017/ecommerce?authMechanism=SCRAM-SHA-256
 ```
@@ -170,7 +173,7 @@ spring.data.mongodb.uri=mongodb://appUser:appPassword123!@localhost:27017/ecomme
 
 | Feature | SCRAM-SHA-1 | SCRAM-SHA-256 |
 |---|---|---|
-| Hash algorithm | SHA-1 (deprecated) | SHA-256 |
+| Hash algorithm | SHA-1 (legacy) | SHA-256 |
 | PBKDF2 iterations | 10,000 | 15,000 |
 | Compatibility | MongoDB 3.0+ | MongoDB 4.0+ |
 | Recommended | No (legacy only) | Yes |
@@ -191,7 +194,7 @@ db.system.profile.find({
 ## Changing a User Password
 
 ```javascript
-use admin
+use ecommerce
 db.changeUserPassword("appUser", "newSecurePassword456!")
 
 // Or via updateUser
