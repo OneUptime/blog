@@ -66,9 +66,9 @@ INSERT INTO map_layers (layer_name, features) VALUES
     'City Features',
     ST_GeomCollFromText(
         'GEOMETRYCOLLECTION(
-            POINT(2.3522 48.8566),
-            LINESTRING(2.3522 48.8566, 2.3600 48.8600),
-            POLYGON((2.34 48.85, 2.36 48.85, 2.36 48.87, 2.34 48.87, 2.34 48.85))
+            POINT(48.8566 2.3522),
+            LINESTRING(48.8566 2.3522, 48.8600 2.3600),
+            POLYGON((48.85 2.34, 48.85 2.36, 48.87 2.36, 48.87 2.34, 48.85 2.34))
         )',
         4326
     )
@@ -77,7 +77,7 @@ INSERT INTO map_layers (layer_name, features) VALUES
 
 ## Building GEOMETRYCOLLECTION with ST_Collect
 
-In MySQL 8.0+, `ST_Collect()` aggregates multiple geometries into a collection:
+In MySQL 8.0.24+, `ST_Collect()` aggregates multiple geometries into a collection. It returns the narrowest possible type -- `MULTIPOINT` for all points, `MULTILINESTRING` for all linestrings, `MULTIPOLYGON` for all polygons, or `GEOMETRYCOLLECTION` for mixed types:
 
 ```sql
 CREATE TABLE pois (
@@ -88,9 +88,9 @@ CREATE TABLE pois (
 );
 
 INSERT INTO pois (name, category, location) VALUES
-('Eiffel Tower',   'landmark', ST_GeomFromText('POINT(2.2945 48.8584)', 4326)),
-('Louvre Museum',  'museum',   ST_GeomFromText('POINT(2.3376 48.8606)', 4326)),
-('Notre Dame',     'church',   ST_GeomFromText('POINT(2.3500 48.8530)', 4326));
+('Eiffel Tower',   'landmark', ST_GeomFromText('POINT(48.8584 2.2945)', 4326)),
+('Louvre Museum',  'museum',   ST_GeomFromText('POINT(48.8606 2.3376)', 4326)),
+('Notre Dame',     'church',   ST_GeomFromText('POINT(48.8530 2.3500)', 4326));
 
 -- Aggregate all points into a GEOMETRYCOLLECTION
 SELECT ST_AsText(ST_Collect(location)) AS all_locations
@@ -116,7 +116,7 @@ FROM map_layers;
 +---------------+------------------+------------+
 | layer_name    | first_geometry   | first_type |
 +---------------+------------------+------------+
-| City Features | POINT(2.3522 48.8566) | Point |
+| City Features | POINT(48.8566 2.3522) | Point |
 +---------------+------------------+------------+
 ```
 
@@ -138,7 +138,7 @@ SELECT layer_name
 FROM map_layers
 WHERE ST_Contains(
     features,
-    ST_GeomFromText('POINT(2.3522 48.8566)', 4326)
+    ST_GeomFromText('POINT(48.8566 2.3522)', 4326)
 );
 ```
 
@@ -168,7 +168,7 @@ ALTER TABLE map_layers ADD SPATIAL INDEX sidx_features (features);
 SELECT layer_name
 FROM map_layers
 WHERE MBRContains(
-    ST_GeomFromText('POLYGON((2.30 48.84, 2.40 48.84, 2.40 48.88, 2.30 48.88, 2.30 48.84))', 4326),
+    ST_GeomFromText('POLYGON((48.84 2.30, 48.84 2.40, 48.88 2.40, 48.88 2.30, 48.84 2.30))', 4326),
     features
 );
 ```
@@ -192,9 +192,9 @@ INSERT INTO infrastructure_layers (city, layer_type, geometry) VALUES
     'mixed',
     ST_GeomCollFromText(
         'GEOMETRYCOLLECTION(
-            POINT(2.2945 48.8584),
-            LINESTRING(2.3000 48.8600, 2.3100 48.8620, 2.3200 48.8640),
-            POLYGON((2.34 48.86, 2.35 48.86, 2.35 48.87, 2.34 48.87, 2.34 48.86))
+            POINT(48.8584 2.2945),
+            LINESTRING(48.8600 2.3000, 48.8620 2.3100, 48.8640 2.3200),
+            POLYGON((48.86 2.34, 48.86 2.35, 48.87 2.35, 48.87 2.34, 48.86 2.34))
         )',
         4326
     )
