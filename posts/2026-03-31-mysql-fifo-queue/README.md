@@ -81,8 +81,6 @@ COMMIT;
 
 ```python
 import mysql.connector
-import json
-import time
 
 def dequeue_job(conn, queue_name='default'):
     cursor = conn.cursor(dictionary=True)
@@ -185,4 +183,4 @@ GROUP BY queue_name, status;
 
 ## Summary
 
-A MySQL FIFO queue uses `SELECT ... FOR UPDATE SKIP LOCKED` to allow concurrent workers to claim jobs without blocking each other. Priority ordering and delayed availability (`available_at`) support advanced scheduling patterns. Stalled job recovery and retry logic with exponential backoff make the queue resilient to worker failures. For most applications, this pattern handles queue workloads efficiently without additional infrastructure.
+A MySQL FIFO queue uses `SELECT ... FOR UPDATE SKIP LOCKED` to allow concurrent workers to claim jobs without blocking each other. Priority ordering and delayed availability (`available_at`) support advanced scheduling patterns. Stalled job recovery and retry logic with configurable delay make the queue resilient to worker failures. For most applications, this pattern handles queue workloads efficiently without additional infrastructure.
