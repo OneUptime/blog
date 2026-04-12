@@ -84,10 +84,11 @@ Use `INSERT ... ON DUPLICATE KEY UPDATE` to upsert dimension rows during ETL:
 ```sql
 INSERT INTO dim_customer (customer_id, full_name, email, city, country, segment)
 VALUES ('C-1001', 'Alice Brown', 'alice@example.com', 'Austin', 'US', 'Enterprise')
+AS new_vals
 ON DUPLICATE KEY UPDATE
-  full_name = VALUES(full_name),
-  email     = VALUES(email),
-  segment   = VALUES(segment);
+  full_name = new_vals.full_name,
+  email     = new_vals.email,
+  segment   = new_vals.segment;
 ```
 
 ## Querying the Star Schema
