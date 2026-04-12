@@ -55,11 +55,11 @@ Choose a processing path based on the field type:
 db.events.aggregate([
   {
     $project: {
-      normalizedPayload: {
+      normalizedTimestamp: {
         $cond: {
-          if:   { $eq: [{ $type: "$payload" }, "string"] },
-          then: { $toObject: "$payload" },
-          else: "$payload"
+          if:   { $eq: [{ $type: "$timestamp" }, "string"] },
+          then: { $toDate: "$timestamp" },
+          else: "$timestamp"
         }
       }
     }
