@@ -54,7 +54,7 @@ A common mistake is declaring the parent column as `INT UNSIGNED` but the child 
 
 ## Fix: Add Index on Parent Column
 
-The referenced column must be a primary key or have a unique index:
+The referenced column must have an index where it appears as the first column. A primary key, unique index, or regular index all satisfy this requirement:
 
 ```sql
 -- Ensure the parent column is indexed
@@ -62,6 +62,9 @@ ALTER TABLE departments ADD PRIMARY KEY (id);
 
 -- Or add a unique index
 ALTER TABLE categories ADD UNIQUE INDEX (code);
+
+-- A regular index also works
+ALTER TABLE categories ADD INDEX (code);
 ```
 
 ## Fix: Ensure Matching Storage Engines
@@ -111,4 +114,4 @@ WHERE TABLE_SCHEMA = DATABASE()
 
 ## Summary
 
-ERROR 1215 is always caused by a mismatch between the child and parent columns. Use `SHOW ENGINE INNODB STATUS` to get the exact reason, then verify data types match (including UNSIGNED), the parent column has a primary key or unique index, both tables use InnoDB, and the character sets and collations are identical.
+ERROR 1215 is always caused by a mismatch between the child and parent columns. Use `SHOW ENGINE INNODB STATUS` to get the exact reason, then verify data types match (including UNSIGNED), the parent column has an index, both tables use InnoDB, and the character sets and collations are identical.
