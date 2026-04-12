@@ -30,7 +30,7 @@ The SELECT identifier. Queries with subqueries show multiple IDs. Higher ID valu
 ### select_type
 Describes the type of SELECT:
 - `SIMPLE` - no subqueries or unions
-- `PRIMARY` - outermost SELECT in a subquery
+- `PRIMARY` - outermost SELECT when subqueries or unions are present
 - `SUBQUERY` - inner SELECT in a subquery
 - `DERIVED` - subquery in a FROM clause
 
