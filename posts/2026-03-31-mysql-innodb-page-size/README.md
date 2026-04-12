@@ -109,7 +109,7 @@ ORDER BY page_count DESC;
 
 ## Compressed Tables and Page Size
 
-When using ROW_FORMAT=COMPRESSED, the compressed page size must be smaller than or equal to the InnoDB page size:
+When using ROW_FORMAT=COMPRESSED, the compressed page size must be smaller than or equal to the InnoDB page size. Note that compression is not supported with 32KB or 64KB page sizes:
 
 ```sql
 -- Create a compressed table with 8KB compressed pages (on 16KB page size system)
