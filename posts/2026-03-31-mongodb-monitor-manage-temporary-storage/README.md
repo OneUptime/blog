@@ -15,7 +15,7 @@ MongoDB writes temporary data to disk in two main situations:
 1. **Sort operations** that exceed the 100 MB in-memory sort limit
 2. **Aggregation pipeline stages** that process more than 100 MB of data and have `allowDiskUse: true` enabled
 
-Without `allowDiskUse: true`, large sorts and aggregations fail with a `QueryExceededMemoryLimitNoPersistenceAllowed` error. With it enabled, MongoDB spills to a temp directory under `dbPath/_tmp`.
+Without `allowDiskUse: true`, large sorts and aggregations fail with a `QueryExceededMemoryLimitNoDiskUseAllowed` error. With it enabled, MongoDB spills to a temp directory under `dbPath/_tmp`.
 
 ## Locating the Temporary File Directory
 
@@ -31,7 +31,7 @@ ls -lh /var/lib/mongodb/_tmp/
 
 Monitor the size of this directory to detect runaway aggregations or sorts holding large amounts of temp data.
 
-## Monitoring Temp Space with serverStatus
+## Monitoring Temp Space with currentOp
 
 Check active operations using disk:
 
