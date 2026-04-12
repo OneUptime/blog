@@ -10,22 +10,29 @@ Description: Learn how to use MySQL Enterprise Encryption functions to perform R
 
 ## What Is MySQL Enterprise Encryption?
 
-MySQL Enterprise Encryption is a set of SQL functions available in MySQL Enterprise Edition that expose cryptographic operations - asymmetric key generation, encryption/decryption, digital signatures, and key derivation - directly within MySQL queries. In MySQL 8.0.28+, these functions are provided by the `component_enterprise_encryption` component.
+MySQL Enterprise Encryption is a set of SQL functions available in MySQL Enterprise Edition that expose cryptographic operations - asymmetric key generation, encryption/decryption, digital signatures, and key derivation - directly within MySQL queries. In MySQL 8.0.30+, these functions are provided by the `component_enterprise_encryption` component.
 
 ## Installing the Component
 
 ```sql
--- MySQL 8.0.28+: install the component
+-- MySQL 8.0.30+: install the component
 INSTALL COMPONENT 'file://component_enterprise_encryption';
 
 -- Verify
 SELECT * FROM mysql.component WHERE component_urn LIKE '%enterprise_encryption%';
 ```
 
-On older 8.0 versions, install the `openssl_udf` plugin:
+On older 8.0 versions (before 8.0.30), install the legacy UDF-based functions:
 
 ```sql
-INSTALL PLUGIN openssl_udf SONAME 'openssl_udf.so';
+CREATE FUNCTION asymmetric_decrypt RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION asymmetric_encrypt RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION asymmetric_sign RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION asymmetric_verify RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION create_asymmetric_priv_key RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION create_asymmetric_pub_key RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION create_dh_parameters RETURNS STRING SONAME 'openssl_udf.so';
+CREATE FUNCTION create_digest RETURNS STRING SONAME 'openssl_udf.so';
 ```
 
 ## Generating Asymmetric Keys
@@ -42,13 +49,13 @@ SELECT LENGTH(@private_key) AS priv_key_length,
        LENGTH(@public_key)  AS pub_key_length;
 ```
 
-Supported algorithms:
+Supported algorithms (component, MySQL 8.0.30+):
 
 ```text
 RSA  - for encryption and signing
-DSA  - for signing only (not encryption)
-DH   - for key exchange (Diffie-Hellman)
 ```
+
+The legacy UDF-based functions (before 8.0.30) also supported DSA (signing only) and DH (Diffie-Hellman key exchange), but these are not available in the component.
 
 ## Encrypting and Decrypting Data
 
@@ -78,16 +85,11 @@ SELECT asymmetric_verify('RSA', @digest, @signature, @public_key, 'SHA256') AS v
 -- Result: 1 (valid) or 0 (invalid)
 ```
 
-## Generating Symmetric Keys for AES
+## Using AES for Bulk Data Encryption
 
-For bulk data encryption, use AES with a derived key:
+For bulk data encryption, use MySQL's built-in AES functions with a strong key:
 
 ```sql
--- Derive a symmetric key using DH key exchange
-SET @dh_params = create_dh_parameters(2048);
-SET @dh_priv   = create_asymmetric_priv_key('DH', @dh_params);
-SET @dh_pub    = create_asymmetric_pub_key('DH', @dh_priv);
-
 -- Use AES_ENCRYPT with a strong key for column-level encryption
 SET @aes_key = UNHEX(SHA2('my-secret-passphrase', 256));
 
@@ -119,4 +121,4 @@ WHERE user_id = 1;
 
 ## Summary
 
-MySQL Enterprise Encryption exposes RSA, DSA, and DH cryptographic operations through SQL functions, letting you perform key generation, asymmetric encryption, and digital signing without leaving the database layer. For high-volume data encryption, combine it with AES functions using properly derived keys. Always store private keys and passphrases outside the database, in a secrets manager or HSM.
+MySQL Enterprise Encryption exposes RSA cryptographic operations through SQL functions (with the component in MySQL 8.0.30+), letting you perform key generation, asymmetric encryption, and digital signing without leaving the database layer. For high-volume data encryption, combine it with AES functions using properly derived keys. Always store private keys and passphrases outside the database, in a secrets manager or HSM.
