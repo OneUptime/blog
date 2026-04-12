@@ -89,19 +89,22 @@ SELECT customer_id FROM orders WHERE status = 'new';
 ## ORDER BY Different From GROUP BY
 
 ```sql
--- GROUP BY category, ORDER BY count - requires temp table for sort
+-- GROUP BY category, ORDER BY count - without index, needs temp table
 EXPLAIN SELECT category, COUNT(*) AS cnt FROM products
 GROUP BY category
 ORDER BY cnt DESC;
 -- Extra: Using temporary; Using filesort
--- (Cannot avoid temp table here - ordering by aggregate, not group column)
 ```
 
-For this pattern, the temporary table is unavoidable. Mitigate by ensuring the GROUP BY uses an index to reduce the temp table size:
+Adding an index on the GROUP BY column enables streaming aggregation, eliminating the temporary table. A filesort remains for sorting by the aggregate:
 
 ```sql
 CREATE INDEX idx_category ON products(category);
--- Now Using temporary only (filesort for aggregate-based sort is separate)
+
+EXPLAIN SELECT category, COUNT(*) AS cnt FROM products
+GROUP BY category
+ORDER BY cnt DESC;
+-- Extra: Using index; Using filesort (temporary table eliminated)
 ```
 
 ## Increase Temporary Table Size in Memory
@@ -113,7 +116,7 @@ When temporary tables cannot be avoided, keep them in memory:
 SHOW VARIABLES LIKE 'tmp_table_size';
 SHOW VARIABLES LIKE 'max_heap_table_size';
 
--- Increase for write-heavy analytical queries
+-- Increase for analytical queries
 SET SESSION tmp_table_size = 134217728;       -- 128MB
 SET SESSION max_heap_table_size = 134217728;  -- 128MB
 ```
