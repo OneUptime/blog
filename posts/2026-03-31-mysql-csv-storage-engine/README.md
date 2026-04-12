@@ -16,11 +16,12 @@ The CSV engine is always compiled into MySQL and cannot be disabled - it is one 
 
 ## How CSV Tables Work
 
-When you create a table with `ENGINE=CSV`, MySQL creates three files in the database directory:
+When you create a table with `ENGINE=CSV`, MySQL creates files in the database directory:
 
-- `tablename.frm` - table structure definition
 - `tablename.CSV` - actual data in comma-separated format
 - `tablename.CSM` - metadata including row count and state
+
+In MySQL 5.7 and earlier, a `tablename.frm` file also stores the table structure definition. In MySQL 8.0+, table definitions are stored in the transactional data dictionary and an `.sdi` (Serialized Dictionary Information) file is created instead.
 
 ```sql
 CREATE TABLE data_export (
@@ -47,11 +48,11 @@ SELECT * FROM data_export WHERE signup_date >= '2026-01-01';
 The underlying `.CSV` file is immediately updated after each insert and is human-readable:
 
 ```text
-1,"Alice Smith","alice@example.com","2026-01-15"
-2,"Bob Jones","bob@example.com","2026-02-20"
+"1","Alice Smith","alice@example.com","2026-01-15"
+"2","Bob Jones","bob@example.com","2026-02-20"
 ```
 
-You can also place a correctly formatted CSV file directly in the database directory and MySQL will serve it as a table automatically.
+If a CSV table already exists, you can replace its `.CSV` file with an externally generated one. After replacing the file, use `REPAIR TABLE` to update the metadata so MySQL recognizes the new contents.
 
 ## Limitations
 
