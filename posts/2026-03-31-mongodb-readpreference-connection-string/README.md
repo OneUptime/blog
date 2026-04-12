@@ -39,12 +39,11 @@ const client = new MongoClient('mongodb://localhost:27017', {
   readPreference: 'secondaryPreferred',
 });
 
-// Per-operation override
+// Per-collection override
 const db = client.db('analytics');
 const results = await db
-  .collection('events')
+  .collection('events', { readPreference: 'secondary' })
   .find({ type: 'pageview' })
-  .readPreference('secondary')
   .toArray();
 ```
 
