@@ -34,7 +34,7 @@ Frequent waits in `buf0buf.cc` indicate buffer pool mutex contention. Waits in `
 Performance Schema provides detailed mutex and latch statistics:
 
 ```sql
-SELECT OBJECT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e12 AS wait_sec
+SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e12 AS wait_sec
 FROM performance_schema.events_waits_summary_global_by_event_name
 WHERE EVENT_NAME LIKE 'wait/synch/mutex/innodb/%'
 ORDER BY SUM_TIMER_WAIT DESC
@@ -45,7 +45,7 @@ The top entries reveal which internal locks are most contested.
 
 ## Identifying Row-Level Lock Contention
 
-For row lock waits, query the data lock waits table:
+For row lock waits in MySQL 5.6/5.7, use the `INNODB_LOCK_WAITS` table to identify blocking relationships:
 
 ```sql
 SELECT
@@ -54,10 +54,11 @@ SELECT
   b.trx_id AS blocking_trx,
   b.trx_query AS blocking_query,
   b.trx_mysql_thread_id AS blocking_thread
-FROM information_schema.INNODB_TRX r
+FROM information_schema.INNODB_LOCK_WAITS w
+JOIN information_schema.INNODB_TRX r
+  ON r.trx_id = w.requesting_trx_id
 JOIN information_schema.INNODB_TRX b
-  ON r.trx_wait_started IS NOT NULL
-  AND b.trx_id != r.trx_id
+  ON b.trx_id = w.blocking_trx_id
 LIMIT 10;
 ```
 
@@ -67,8 +68,8 @@ In MySQL 8.0+, use the Performance Schema data lock tables:
 SELECT
   REQUESTING_ENGINE_TRANSACTION_ID,
   BLOCKING_ENGINE_TRANSACTION_ID,
-  REQUESTING_QUERY,
-  BLOCKING_QUERY
+  req.trx_query AS waiting_query,
+  blk.trx_query AS blocking_query
 FROM performance_schema.data_lock_waits
 JOIN information_schema.INNODB_TRX req
   ON req.trx_id = REQUESTING_ENGINE_TRANSACTION_ID
@@ -98,9 +99,9 @@ Check buffer pool efficiency to detect contention-induced read overhead:
 SELECT
   POOL_ID,
   HIT_RATE,
-  READ_REQUESTS,
-  READS,
-  (READ_REQUESTS - READS) / READ_REQUESTS * 100 AS hit_pct
+  NUMBER_PAGES_GET AS read_requests,
+  NUMBER_PAGES_READ AS disk_reads,
+  (NUMBER_PAGES_GET - NUMBER_PAGES_READ) / NUMBER_PAGES_GET * 100 AS hit_pct
 FROM information_schema.INNODB_BUFFER_POOL_STATS;
 ```
 
@@ -123,9 +124,9 @@ Each instance manages a separate region of the buffer pool, reducing lock conten
 High write throughput can cause threads to wait for redo log space. Monitor redo log waits:
 
 ```sql
-SELECT NAME, COUNT, SUM_TIMER_WAIT / 1e12 AS wait_sec
+SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e12 AS wait_sec
 FROM performance_schema.events_waits_summary_global_by_event_name
-WHERE NAME LIKE '%log%buffer%'
+WHERE EVENT_NAME LIKE '%log%buffer%'
 ORDER BY SUM_TIMER_WAIT DESC;
 ```
 
