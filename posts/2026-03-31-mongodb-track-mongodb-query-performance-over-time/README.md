@@ -33,7 +33,7 @@ db.system.profile.find({
 })
 .sort({ millis: -1 })
 .limit(10)
-.projection({
+.project({
   op: 1,
   ns: 1,
   millis: 1,
