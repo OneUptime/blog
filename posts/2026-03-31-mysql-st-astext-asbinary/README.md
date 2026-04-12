@@ -21,7 +21,7 @@ Both functions are inverses of their counterparts: `ST_GeomFromText()` and `ST_G
 flowchart LR
     A["Internal MySQL\nbinary geometry"] --> B["ST_AsText()"]
     A --> C["ST_AsBinary()"]
-    B --> D["WKT string\n'POINT(lon lat)'"]
+    B --> D["WKT string\n'POINT(lat lon)'"]
     C --> E["WKB bytes\n0x0101000000..."]
     D --> F["ST_GeomFromText() - round trip"]
     E --> G["ST_GeomFromWKB() - round trip"]
@@ -53,9 +53,9 @@ CREATE TABLE poi (
 );
 
 INSERT INTO poi (name, location) VALUES
-    ('Eiffel Tower',    ST_GeomFromText('POINT(2.2945 48.8584)',   4326)),
-    ('Big Ben',         ST_GeomFromText('POINT(-0.1246 51.5007)', 4326)),
-    ('Colosseum',       ST_GeomFromText('POINT(12.4922 41.8902)', 4326));
+    ('Eiffel Tower',    ST_GeomFromText('POINT(48.8584 2.2945)',   4326)),
+    ('Big Ben',         ST_GeomFromText('POINT(51.5007 -0.1246)', 4326)),
+    ('Colosseum',       ST_GeomFromText('POINT(41.8902 12.4922)', 4326));
 
 -- Convert geometry to WKT for display
 SELECT name, ST_AsText(location) AS wkt
@@ -66,9 +66,9 @@ FROM poi;
 +---------------+-----------------------------+
 | name          | wkt                         |
 +---------------+-----------------------------+
-| Eiffel Tower  | POINT(2.2945 48.8584)       |
-| Big Ben       | POINT(-0.1246 51.5007)      |
-| Colosseum     | POINT(12.4922 41.8902)      |
+| Eiffel Tower  | POINT(48.8584 2.2945)       |
+| Big Ben       | POINT(51.5007 -0.1246)      |
+| Colosseum     | POINT(41.8902 12.4922)      |
 +---------------+-----------------------------+
 ```
 
@@ -85,8 +85,8 @@ LIMIT 2;
 +---------------+------------------------------------------+
 | name          | wkb_hex                                  |
 +---------------+------------------------------------------+
-| Eiffel Tower  | 010100000070CE88D2DE0B024023DBDE02098448 |
-| Big Ben       | 0101000000D7A3703D0ACF3FBF000000A05D4940 |
+| Eiffel Tower  | 010100000076711B0DE06D48404260E5D0225B0240 |
+| Big Ben       | 0101000000B98D06F016C04940BDE3141DC9E5BFBF |
 +---------------+------------------------------------------+
 ```
 
@@ -108,9 +108,9 @@ FROM poi;
 +---------------+-----------------------------+
 | name          | round_trip_wkt              |
 +---------------+-----------------------------+
-| Eiffel Tower  | POINT(2.2945 48.8584)       |
-| Big Ben       | POINT(-0.1246 51.5007)      |
-| Colosseum     | POINT(12.4922 41.8902)      |
+| Eiffel Tower  | POINT(48.8584 2.2945)       |
+| Big Ben       | POINT(51.5007 -0.1246)      |
+| Colosseum     | POINT(41.8902 12.4922)      |
 +---------------+-----------------------------+
 ```
 
@@ -127,7 +127,7 @@ INSERT INTO zones (name, boundary) VALUES
 (
     'NYC Zone',
     ST_GeomFromText(
-        'POLYGON((-74.02 40.70, -73.97 40.70, -73.97 40.73, -74.02 40.73, -74.02 40.70))',
+        'POLYGON((40.70 -74.02, 40.70 -73.97, 40.73 -73.97, 40.73 -74.02, 40.70 -74.02))',
         4326
     )
 );
@@ -140,7 +140,7 @@ FROM zones;
 +----------+--------------------------------------------------------------+
 | name     | boundary_wkt                                                 |
 +----------+--------------------------------------------------------------+
-| NYC Zone | POLYGON((-74.02 40.7,-73.97 40.7,-73.97 40.73,-74.02 40.73,-74.02 40.7)) |
+| NYC Zone | POLYGON((40.7 -74.02,40.7 -73.97,40.73 -73.97,40.73 -74.02,40.7 -74.02)) |
 +----------+--------------------------------------------------------------+
 ```
 
@@ -164,14 +164,14 @@ FROM poi;
 -- Check what is stored in a row by converting to text
 SELECT id, name, ST_AsText(location) AS coords
 FROM poi
-WHERE ST_AsText(location) LIKE 'POINT(2%';
+WHERE ST_AsText(location) LIKE 'POINT(48%';
 ```
 
 ```text
 +----+---------------+----------------------------+
 | id | name          | coords                     |
 +----+---------------+----------------------------+
-|  1 | Eiffel Tower  | POINT(2.2945 48.8584)      |
+|  1 | Eiffel Tower  | POINT(48.8584 2.2945)      |
 +----+---------------+----------------------------+
 ```
 
@@ -211,4 +211,4 @@ FROM poi;
 
 ## Summary
 
-`ST_AsText(geom)` converts a geometry to a WKT string such as `POINT(2.29 48.86)`, making it readable and interoperable with any OGC-compatible tool. `ST_AsBinary(geom)` converts to compact WKB bytes suitable for binary exchange and export. Both can be reversed with `ST_GeomFromText` and `ST_GeomFromWKB`. Use `ST_AsGeoJSON` for web API output in GeoJSON format.
+`ST_AsText(geom)` converts a geometry to a WKT string such as `POINT(48.86 2.29)`, making it readable and interoperable with any OGC-compatible tool. `ST_AsBinary(geom)` converts to compact WKB bytes suitable for binary exchange and export. Both can be reversed with `ST_GeomFromText` and `ST_GeomFromWKB`. Use `ST_AsGeoJSON` for web API output in GeoJSON format.
