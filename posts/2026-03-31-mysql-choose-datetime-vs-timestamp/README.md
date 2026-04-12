@@ -14,7 +14,7 @@ MySQL provides two types for storing date-and-time values: `DATETIME` and `TIMES
 
 ```text
 Feature          DATETIME                    TIMESTAMP
-Storage          8 bytes                     4 bytes
+Storage          5 bytes (8 before 5.6.4)    4 bytes
 Range            1000-01-01 to 9999-12-31    1970-01-01 to 2038-01-19
 Timezone         No conversion               Stored as UTC, displayed in session tz
 NULL default     NULL (no auto-update)       Can auto-update on INSERT/UPDATE
@@ -33,7 +33,7 @@ CREATE TABLE user_sessions (
     updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- The stored value shifts when the session timezone changes
+-- The displayed value shifts when the session timezone changes
 SET time_zone = 'America/New_York';
 INSERT INTO user_sessions (user_id) VALUES (1);
 
@@ -95,7 +95,7 @@ CREATE TABLE audit_log (
 Use TIMESTAMP when:
 - You need automatic UTC storage and timezone-aware retrieval
 - The date range is within 1970-2038
-- You want smaller storage (4 bytes vs 8 bytes)
+- You want smaller storage (4 bytes vs 5 bytes)
 - You are recording when something happened (audit, logging)
 
 Use DATETIME when:
@@ -108,7 +108,7 @@ Use DATETIME when:
 ## Common Pitfalls
 
 ```sql
--- Pitfall 1: TIMESTAMP silently stores NULL if value is out of range
+-- Pitfall 1: Out-of-range TIMESTAMP values cause an error in strict mode (default in MySQL 5.7+)
 -- Pitfall 2: Changing server timezone changes all TIMESTAMP display values
 -- Pitfall 3: Comparing TIMESTAMP across timezone changes can cause off-by-hour bugs
 
