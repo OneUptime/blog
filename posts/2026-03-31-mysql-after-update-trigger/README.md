@@ -287,7 +287,7 @@ DROP TRIGGER IF EXISTS after_salary_update;
 | Can reject update with SIGNAL | YES | YES (row already written) |
 | Access OLD values | YES | YES |
 | Audit with guaranteed final values | NO | YES |
-| Sync other tables | YES (but row not committed yet) | YES (row is committed) |
+| Sync other tables | YES (but row not yet written) | YES (row is written but not committed) |
 
 ## Best Practices
 
@@ -299,4 +299,4 @@ DROP TRIGGER IF EXISTS after_salary_update;
 
 ## Summary
 
-AFTER UPDATE triggers fire after MySQL commits a row change, giving access to both `OLD` and `NEW` column values. Use them for audit trails, syncing summary tables, and maintaining derived data. Unlike BEFORE UPDATE triggers, AFTER UPDATE cannot modify the saved values but provides reliable access to the final committed state. Always check whether columns actually changed to avoid unnecessary audit records.
+AFTER UPDATE triggers fire after MySQL applies a row change, giving access to both `OLD` and `NEW` column values. Use them for audit trails, syncing summary tables, and maintaining derived data. Unlike BEFORE UPDATE triggers, AFTER UPDATE cannot modify the saved values but provides reliable access to the final committed state. Always check whether columns actually changed to avoid unnecessary audit records.
