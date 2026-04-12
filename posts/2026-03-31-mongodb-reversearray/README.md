@@ -101,7 +101,7 @@ db.orders.aggregate([
 db.demo.aggregate([
   {
     $project: {
-      reversed: { $reverseArray: [1, 2, 3, 4, 5] }
+      reversed: { $reverseArray: { $literal: [1, 2, 3, 4, 5] } }
     }
   }
 ])
