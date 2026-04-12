@@ -23,7 +23,7 @@ print(`Count:           ${stats.count}`);
 print(`Avg doc size:    ${(stats.avgObjSize / 1024).toFixed(1)} KB`);
 print(`Total data size: ${(stats.size / 1024 / 1024).toFixed(1)} MB`);
 print(`Storage size:    ${(stats.storageSize / 1024 / 1024).toFixed(1)} MB`);
-print(`Compression:     ${(1 - stats.storageSize / stats.size).toFixed(2) * 100}%`);
+print(`Compression:     ${((1 - stats.storageSize / stats.size) * 100).toFixed(1)}%`);
 ```
 
 The `avgObjSize` field gives you the uncompressed average size in bytes.
