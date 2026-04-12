@@ -19,7 +19,7 @@ ALTER SERVER server_name
   OPTIONS (option_changes);
 ```
 
-Each option change is expressed as `SET option_name 'new_value'` or `ADD option_name 'value'` or `DROP option_name`.
+Each option is expressed as `option_name 'value'` (or `option_name numeric_value` for PORT).
 
 ## Changing a Password
 
@@ -27,7 +27,7 @@ The most common use case is rotating credentials:
 
 ```sql
 ALTER SERVER remote_analytics
-  OPTIONS (SET PASSWORD 'new_secure_password');
+  OPTIONS (PASSWORD 'new_secure_password');
 ```
 
 After changing the password, existing FEDERATED connections that are currently open may need to reconnect.
@@ -38,7 +38,7 @@ If the remote server is migrated to a new IP or hostname:
 
 ```sql
 ALTER SERVER remote_analytics
-  OPTIONS (SET HOST '10.0.2.100');
+  OPTIONS (HOST '10.0.2.100');
 ```
 
 ## Changing Multiple Options at Once
@@ -48,20 +48,20 @@ You can modify several options in a single statement by separating them with com
 ```sql
 ALTER SERVER remote_analytics
   OPTIONS (
-    SET HOST '10.0.2.100',
-    SET PORT 3307,
-    SET USER 'new_federated_user',
-    SET PASSWORD 'new_password'
+    HOST '10.0.2.100',
+    PORT 3307,
+    USER 'new_federated_user',
+    PASSWORD 'new_password'
   );
 ```
 
-## Adding a Socket Option
+## Setting a Socket Option
 
 If the remote connection should use a Unix socket instead of TCP:
 
 ```sql
 ALTER SERVER local_secondary
-  OPTIONS (ADD SOCKET '/var/run/mysqld/mysqld.sock');
+  OPTIONS (SOCKET '/var/run/mysqld/mysqld.sock');
 ```
 
 ## Verifying the Change
@@ -81,7 +81,7 @@ WHERE Server_name = 'remote_analytics';
 
 ## Required Privileges
 
-`ALTER SERVER` requires the `SUPER` privilege (or `SYSTEM_VARIABLES_ADMIN` in MySQL 8.0+):
+`ALTER SERVER` requires the `SUPER` privilege:
 
 ```sql
 GRANT SUPER ON *.* TO 'dba_user'@'localhost';
@@ -103,11 +103,11 @@ CREATE SERVER warehouse_db
 
 -- Rotate credentials
 ALTER SERVER warehouse_db
-  OPTIONS (SET PASSWORD 'rotated_pass');
+  OPTIONS (PASSWORD 'rotated_pass');
 
 -- Move to a new host after migration
 ALTER SERVER warehouse_db
-  OPTIONS (SET HOST 'warehouse-new.internal');
+  OPTIONS (HOST 'warehouse-new.internal');
 
 -- Verify
 SELECT Host, Username FROM mysql.servers
