@@ -85,10 +85,10 @@ Broadcast updates can be expensive. Add `customerId` to the filter where possibl
 Monitor how many queries are targeted vs broadcast using `mongos` server status:
 
 ```javascript
-db.serverStatus().shardingStatistics
+db.serverStatus().shardingStatistics.numHostsTargeted
 ```
 
-Look for `totalRequestsWithTargetedShards` versus `totalBroadcastRequests` to measure the ratio over time.
+The `numHostsTargeted` field breaks down operations by type (`find`, `insert`, `update`, `delete`, `aggregate`). Each type reports `oneShard` (targeted), `manyShards` (partially targeted), `allShards` (broadcast), and `unsharded` counters. Compare `allShards` versus `oneShard` for your `find` and `aggregate` operations to measure the ratio over time.
 
 ## Design Your Schema for Targeting
 
