@@ -62,15 +62,15 @@ This uses an `IXSCAN` instead of a `COLLSCAN`, making it orders of magnitude fas
 
 ## Case-Insensitive Starts-With with Collation
 
-For anchored prefix matching that ignores case, combine a collation index with a range-style query:
+The `$regex` operator does not support collation and cannot use a collation index. For case-insensitive prefix matching backed by a collation index, use a range query instead of regex:
 
 ```javascript
 db.products.find(
-  { name: /^lap/ }
+  { name: { $gte: "lap", $lt: "laq" } }
 ).collation({ locale: "en", strength: 2 })
 ```
 
-The collation index lets MongoDB perform a case-insensitive prefix index scan.
+This range query uses the collation index to perform a case-insensitive prefix scan, matching "Laptop", "LAPTOP", "laptop", and so on.
 
 ## Supported $options Flags
 
@@ -113,4 +113,4 @@ db.products.aggregate([
 
 ## Summary
 
-The `i` flag in MongoDB regex enables case-insensitive matching but always triggers a collection scan. For large collections, use a collation index with `strength: 2` and query using `.collation()` to get index-backed case-insensitive queries. The collation approach supports both equality and prefix (starts-with) patterns. Use the `i` flag in regex only for small collections or when filtering a pre-narrowed result set via an indexed pre-filter.
+The `i` flag in MongoDB regex enables case-insensitive matching but always triggers a collection scan. For large collections, use a collation index with `strength: 2` and query using `.collation()` to get index-backed case-insensitive queries. The collation approach supports both equality and prefix (starts-with) patterns using range queries (not regex). Use the `i` flag in regex only for small collections or when filtering a pre-narrowed result set via an indexed pre-filter.
