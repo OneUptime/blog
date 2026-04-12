@@ -41,14 +41,14 @@ CREATE TABLE orders (
 Check whether a word is reserved:
 
 ```sql
--- List MySQL reserved words
+-- List MySQL reserved words (MySQL 8.0+)
 SELECT WORD FROM information_schema.KEYWORDS WHERE RESERVED = 1 ORDER BY WORD;
 ```
 
 ## Common Cause 2 - Missing Comma or Parenthesis
 
 ```sql
--- ERROR: missing comma after email column
+-- ERROR: missing comma after id column
 CREATE TABLE users (
     id    INT UNSIGNED NOT NULL AUTO_INCREMENT
     email VARCHAR(255) NOT NULL,
@@ -66,18 +66,15 @@ CREATE TABLE users (
 ## Common Cause 3 - Wrong Quote Type
 
 ```sql
--- ERROR: double quotes are not standard string delimiters by default
-SELECT * FROM users WHERE email = "alice@example.com";
+-- ERROR: with ANSI_QUOTES enabled, double quotes are identifier quotes, not string delimiters
+SET sql_mode = 'ANSI_QUOTES';
+SELECT * FROM users WHERE email = "alice@example.com";  -- treated as a column name, not a string
 
--- FIX: use single quotes for strings
+-- FIX: use single quotes for strings (works in all sql_mode settings)
 SELECT * FROM users WHERE email = 'alice@example.com';
 ```
 
-Enable ANSI_QUOTES mode if you need double quotes:
-
-```sql
-SET sql_mode = 'ANSI_QUOTES';
-```
+Note: In MySQL's default `sql_mode`, double quotes do work as string delimiters. However, if `ANSI_QUOTES` is enabled (common in environments that follow the SQL standard), double quotes become identifier quotes and will cause ERROR 1064 when used around string values.
 
 ## Common Cause 4 - MySQL Version Feature Not Supported
 
