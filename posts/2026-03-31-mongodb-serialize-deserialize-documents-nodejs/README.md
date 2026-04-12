@@ -49,10 +49,10 @@ const doc = {
   active: true
 };
 
-await db.products.insertOne(doc);
+await db.collection("products").insertOne(doc);
 
 // Read - BSON -> JavaScript
-const retrieved = await db.products.findOne({ _id: doc._id });
+const retrieved = await db.collection("products").findOne({ _id: doc._id });
 console.log(retrieved._id instanceof ObjectId); // true
 console.log(retrieved.createdAt instanceof Date); // true
 console.log(retrieved.price.toString()); // "149.99"
@@ -86,7 +86,9 @@ const doc = { _id: new ObjectId(), createdAt: new Date(), price: Decimal128.from
 
 // Standard JSON - loses type info
 console.log(JSON.stringify(doc));
-// {"_id":{},"createdAt":"2026-03-31T...","price":{}}  - ObjectId and Decimal128 serialize as {}
+// {"_id":"507f1f77bcf86cd799439011","createdAt":"2026-03-31T...","price":{"$numberDecimal":"99.99"}}
+// ObjectId becomes a plain string (no way to distinguish from any other string)
+// Decimal128 becomes a non-standard nested object
 
 // EJSON - preserves BSON types as Extended JSON
 console.log(EJSON.stringify(doc, null, 2));
@@ -111,7 +113,7 @@ function documentToResponse(doc) {
 }
 
 app.get("/products/:id", async (req, res) => {
-  const product = await db.products.findOne({ _id: new ObjectId(req.params.id) });
+  const product = await db.collection("products").findOne({ _id: new ObjectId(req.params.id) });
   if (!product) return res.status(404).json({ error: "Not found" });
   res.json(documentToResponse(product));
 });
@@ -124,7 +126,7 @@ const { Binary } = require("bson");
 
 // Store a file as Binary
 const fileBuffer = await fs.promises.readFile("./image.png");
-await db.files.insertOne({
+await db.collection("files").insertOne({
   name: "image.png",
   data: new Binary(fileBuffer),
   contentType: "image/png",
@@ -132,7 +134,7 @@ await db.files.insertOne({
 });
 
 // Retrieve and use the binary data
-const file = await db.files.findOne({ name: "image.png" });
+const file = await db.collection("files").findOne({ name: "image.png" });
 const buffer = Buffer.from(file.data.buffer);
 res.setHeader("Content-Type", file.contentType);
 res.send(buffer);
