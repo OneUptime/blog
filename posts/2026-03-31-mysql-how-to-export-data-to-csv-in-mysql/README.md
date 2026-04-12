@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, CSV, Data Export, SQL, Administration
 
-Description: Learn multiple ways to export MySQL data to CSV format including SELECT INTO OUTFILE, mysqldump, and MySQL Workbench for different use cases.
+Description: Learn multiple ways to export MySQL data to CSV format including SELECT INTO OUTFILE, the mysql client, and MySQL Workbench for different use cases.
 
 ---
 
@@ -14,7 +14,7 @@ MySQL provides several ways to export data to CSV:
 
 1. `SELECT INTO OUTFILE` - direct server-side export (fastest)
 2. `mysql` client with field separator options
-3. `mysqldump` with CSV-like output
+3. Python with the `mysql-connector` library
 4. MySQL Workbench GUI export
 
 ## Method 1 - SELECT INTO OUTFILE
@@ -84,7 +84,7 @@ When data contains commas or quotes, use proper quoting:
 ```sql
 SELECT
   id,
-  REPLACE(REPLACE(description, '"', '""'), '\n', ' ') AS description,
+  REPLACE(description, '\n', ' ') AS description,
   price
 FROM products
 INTO OUTFILE '/tmp/products.csv'
@@ -113,7 +113,7 @@ Or use `mysql` with the `--batch` and `--raw` flags:
 ```bash
 mysql -u root -p --batch --raw \
   -e "SELECT id, name, email FROM customers" \
-  your_database > output.csv
+  your_database | tr '\t' ',' > output.csv
 ```
 
 ## Method 5 - Exporting with Python
