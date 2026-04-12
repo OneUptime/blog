@@ -28,7 +28,7 @@ DECLARE handler_action HANDLER
 
 | Condition | Meaning |
 |---|---|
-| `SQLEXCEPTION` | Any SQL error (SQLSTATE class '02' excluded) |
+| `SQLEXCEPTION` | Any SQL error (SQLSTATE values not beginning with '00', '01', or '02') |
 | `SQLWARNING` | Any warning (SQLSTATE class '01') |
 | `NOT FOUND` | Cursor exhausted or no rows matched |
 | `SQLSTATE 'XXXXX'` | Specific SQLSTATE value |
