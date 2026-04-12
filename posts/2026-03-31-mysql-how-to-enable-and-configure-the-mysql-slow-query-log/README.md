@@ -82,10 +82,10 @@ Key fields:
 MySQL includes `mysqldumpslow` for summarizing the log:
 
 ```bash
-# Top 10 slowest queries
+# Top 10 by total time
 mysqldumpslow -s t -t 10 /var/log/mysql/slow.log
 
-# Top 10 by total time
+# Top 10 by average time
 mysqldumpslow -s at -t 10 /var/log/mysql/slow.log
 
 # Queries with full details
