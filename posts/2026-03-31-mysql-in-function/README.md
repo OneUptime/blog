@@ -31,9 +31,6 @@ expression NOT IN (value1, value2, value3, ...)
 
 -- Subquery form
 expression IN (SELECT column FROM table WHERE ...)
-
--- Function form
-IN(value1, value2, ...)  -- less common, rarely used outside expressions
 ```
 
 ## Setup: Sample Tables
