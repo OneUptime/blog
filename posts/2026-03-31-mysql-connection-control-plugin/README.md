@@ -109,14 +109,14 @@ Example output:
 
 ## Resetting the Delay Counter
 
-The failed attempt counter resets when a user successfully authenticates. You can also reset it manually:
+The failed attempt counter resets when a user successfully authenticates. You can also reset all counters manually by reassigning the threshold variable (even to the same value):
 
 ```sql
--- Reset counter for a specific account by flushing privileges
-FLUSH PRIVILEGES;
+-- Reset all connection control counters by reassigning the threshold
+SET GLOBAL connection_control_failed_connections_threshold = 5;
 
--- Or reset the entire tracking table
--- (This happens automatically when the plugin reloads)
+-- This clears the CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS table
+-- and resets tracking for all accounts
 ```
 
 ## Combining with Other Security Measures
