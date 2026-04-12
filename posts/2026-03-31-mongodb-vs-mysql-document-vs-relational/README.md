@@ -40,15 +40,16 @@ CREATE TABLE users (
 -- Addresses table (separate for normalization)
 CREATE TABLE addresses (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  user_id INT REFERENCES users(id),
+  user_id INT,
   type ENUM('home', 'work'),
-  city VARCHAR(100)
+  city VARCHAR(100),
+  FOREIGN KEY (user_id) REFERENCES users(id)
 );
 ```
 
 ## Query Language
 
-MongoDB uses BSON query syntax:
+MongoDB uses its own query language (MQL):
 
 ```javascript
 // Find active users in New York
