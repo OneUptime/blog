@@ -77,11 +77,11 @@ ORDER BY created_at DESC;
 Create a covering index that includes all referenced columns:
 
 ```sql
-CREATE INDEX idx_cov_status_date_id_total
-  ON orders (status, created_at, order_id, total);
+CREATE INDEX idx_cov_status_date_id_cust_total
+  ON orders (status, created_at, order_id, customer_id, total);
 ```
 
-Column order: filter columns first (`status`, `created_at`), then selected-only columns (`order_id`, `total`).
+Column order: filter columns first (`status`, `created_at`), then selected-only columns (`order_id`, `customer_id`, `total`).
 
 ## Rules for Designing Covering Indexes
 
