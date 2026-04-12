@@ -26,7 +26,7 @@ flowchart LR
     <array expression>,
     <search expression>,
     <start index>,    // optional, default 0
-    <end index>       // optional, default array length - 1
+    <end index>       // optional, default array length
   ]
 }
 ```
@@ -86,7 +86,7 @@ Output:
 
 ### Example 3 - Search with a Start Bound
 
-Start searching from index 2, skipping earlier elements:
+Start searching from index 1, skipping the first element:
 
 ```javascript
 // Input: { _id: 1, vals: [10, 20, 10, 30, 10] }
@@ -161,6 +161,7 @@ Find the position of the first failed step in a workflow and then extract it:
 db.workflows.aggregate([
   {
     $project: {
+      steps: 1,
       failPos: {
         $indexOfArray: ["$steps", "FAILED"]
       }
