@@ -83,7 +83,7 @@ Encrypted tablespaces are dropped the same way:
 DROP TABLESPACE ts_secure;
 ```
 
-The keyring plugin key associated with the tablespace is also removed.
+The encryption key remains in the keyring after the tablespace is dropped. Refer to the MySQL keyring documentation for key management best practices.
 
 ## Error: Tablespace Not Empty
 
