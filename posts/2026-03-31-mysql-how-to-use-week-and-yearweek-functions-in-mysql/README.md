@@ -33,7 +33,7 @@ The `mode` parameter controls the start day of the week and whether week 1 is th
 |------|-------------------|--------------------|
 | 0    | Sunday            | First Sunday in the year |
 | 1    | Monday            | Week with more than 3 days in the new year |
-| 2    | Sunday            | First Sunday (week 1 = week containing Jan 1) |
+| 2    | Sunday            | First Sunday in the year (range 1-53) |
 | 3    | Monday            | ISO 8601 standard |
 | 4    | Sunday            | First week with more than 3 days |
 | 7    | Monday            | First Monday in the year |
@@ -120,25 +120,20 @@ Use `YEARWEEK()` to compare metrics from the current week versus the previous we
 ```sql
 -- Week-over-week revenue comparison
 SELECT
-  current_week.year_week,
-  current_week.revenue          AS this_week_revenue,
-  prev_week.revenue             AS last_week_revenue,
+  year_week,
+  revenue                                          AS this_week_revenue,
+  LAG(revenue) OVER (ORDER BY year_week)           AS last_week_revenue,
   ROUND(
-    (current_week.revenue - prev_week.revenue) / prev_week.revenue * 100,
+    (revenue - LAG(revenue) OVER (ORDER BY year_week))
+    / LAG(revenue) OVER (ORDER BY year_week) * 100,
     2
-  )                             AS pct_change
+  )                                                AS pct_change
 FROM (
   SELECT YEARWEEK(order_date, 1) AS year_week, SUM(total_amount) AS revenue
   FROM orders
   GROUP BY YEARWEEK(order_date, 1)
-) AS current_week
-LEFT JOIN (
-  SELECT YEARWEEK(order_date, 1) AS year_week, SUM(total_amount) AS revenue
-  FROM orders
-  GROUP BY YEARWEEK(order_date, 1)
-) AS prev_week
-  ON current_week.year_week = prev_week.year_week + 1
-ORDER BY current_week.year_week;
+) AS weekly_revenue
+ORDER BY year_week;
 ```
 
 ## Getting the Start Date of a Week
