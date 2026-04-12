@@ -103,7 +103,7 @@ Disable with `\w`.
 
 ## Warnings from ALTER TABLE
 
-Schema changes often produce notes about implicit behavior:
+Schema changes often produce warnings about implicit behavior:
 
 ```sql
 ALTER TABLE users MODIFY COLUMN age TINYINT UNSIGNED;
@@ -114,7 +114,7 @@ SHOW WARNINGS;
 +-------+------+----------------------------------------------------------+
 | Level | Code | Message                                                  |
 +-------+------+----------------------------------------------------------+
-| Note  | 1265 | Data truncated for column 'age' at row 5                 |
+| Warning | 1265 | Data truncated for column 'age' at row 5               |
 +-------+------+----------------------------------------------------------+
 ```
 
@@ -147,7 +147,6 @@ In Python, check for warnings programmatically:
 
 ```python
 import mysql.connector
-import warnings
 
 conn = mysql.connector.connect(host='localhost', database='mydb',
                                user='root', password='secret')
