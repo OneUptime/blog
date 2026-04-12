@@ -35,14 +35,18 @@ This produces integers 1 through 10.
 
 ## Parameterized Sequence
 
-Wrap the start and end values in a CTE for clarity:
+Wrap the start and end values in a separate CTE so they are defined once:
 
 ```sql
-WITH RECURSIVE seq AS (
-  SELECT 1 AS n
-  UNION ALL
-  SELECT n + 1 FROM seq WHERE n < 100
-)
+WITH RECURSIVE
+  params AS (
+    SELECT 1 AS start_val, 100 AS end_val
+  ),
+  seq AS (
+    SELECT start_val AS n FROM params
+    UNION ALL
+    SELECT n + 1 FROM seq, params WHERE n < end_val
+  )
 SELECT n FROM seq;
 ```
 
@@ -72,7 +76,7 @@ SELECT n FROM multiples;
 
 ## Generating Rows for Test Data
 
-Cross-join a sequence with a values list to quickly generate large datasets:
+Use a sequence as a row generator to quickly populate tables with test data:
 
 ```sql
 WITH RECURSIVE n AS (
