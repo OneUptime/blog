@@ -16,6 +16,7 @@ In MySQL 8.0.33+, data masking is available as a component:
 
 ```sql
 INSTALL COMPONENT 'file://component_masking';
+INSTALL COMPONENT 'file://component_masking_functions';
 ```
 
 For older versions using the plugin:
@@ -48,8 +49,8 @@ WHERE COMPONENT_URN LIKE '%masking%';
 
 ```sql
 -- Full PAN masking
-SELECT mask_pan('4111-1111-1111-1111') AS masked_pan;
--- Result: XXXX-XXXX-XXXX-1111
+SELECT mask_pan('4111111111111111') AS masked_pan;
+-- Result: XXXXXXXXXXXX1111
 
 -- Relaxed PAN masking (keeps first 6 and last 4)
 SELECT mask_pan_relaxed('4111111111111111') AS masked_pan_relaxed;
@@ -60,15 +61,15 @@ SELECT mask_pan_relaxed('4111111111111111') AS masked_pan_relaxed;
 
 ```sql
 SELECT mask_ssn('123-45-6789') AS masked_ssn;
--- Result: XXX-XX-6789
+-- Result: ***-**-6789
 ```
 
 ## Masking Inner and Outer Characters
 
 ```sql
--- Mask inner characters (keep first and last 2)
+-- Mask inner characters (keep first 2 and last 4)
 SELECT mask_inner('user@example.com', 2, 4) AS masked_email;
--- Result: us*************com
+-- Result: usXXXXXXXXXX.com
 
 -- Mask outer characters
 SELECT mask_outer('sensitive data here', 3, 3) AS masked;
