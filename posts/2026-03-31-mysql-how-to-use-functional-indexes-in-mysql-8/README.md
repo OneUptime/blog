@@ -121,10 +121,10 @@ CREATE TABLE orders (
 ```sql
 -- Combine regular column and expression in one index
 ALTER TABLE events
-ADD INDEX idx_year_type ((YEAR(created_at)), event_type);
+ADD INDEX idx_year_name ((YEAR(created_at)), event_name);
 
 SELECT * FROM events
-WHERE YEAR(created_at) = 2026 AND event_type = 'click';
+WHERE YEAR(created_at) = 2026 AND event_name = 'click';
 ```
 
 ## Limitations
