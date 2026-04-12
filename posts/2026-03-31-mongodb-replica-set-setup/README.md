@@ -180,7 +180,7 @@ mongosh --port 27018
 ```
 
 ```javascript
-rs.secondaryOk()  // allow reads from secondary
+db.getMongo().setReadPref("secondaryPreferred")  // allow reads from secondary
 use testdb
 db.items.findOne()
 // Should return the document inserted on the primary
@@ -227,7 +227,7 @@ members[].priority  Election priority (higher = more likely to become primary)
 members[].votes     1 (default) or 0 (no vote in elections)
 members[].arbiterOnly  true for arbiter members (vote but no data)
 members[].hidden    true for hidden members (not visible to clients)
-members[].slaveDelay  seconds of replication delay (for delayed members)
+members[].secondaryDelaySecs  seconds of replication delay (for delayed members)
 ```
 
 ## Arbiter-Based Configuration (2 Data + 1 Arbiter)
