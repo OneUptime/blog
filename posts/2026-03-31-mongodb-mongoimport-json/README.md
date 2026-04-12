@@ -65,12 +65,12 @@ mongoimport \
 ## Import with Authentication and TLS (Atlas)
 
 ```bash
+# mongodb+srv:// enables TLS by default, so no --tls flag is needed
 mongoimport \
   --uri "mongodb+srv://user:pass@cluster0.atlas.mongodb.net/mydb" \
   --collection orders \
   --jsonArray \
-  --file orders.json \
-  --ssl
+  --file orders.json
 ```
 
 ## Drop Collection Before Import
@@ -151,8 +151,7 @@ mongoimport \
   --uri "mongodb://localhost:27017/mydb" \
   --collection events \
   --file large_events.json \
-  --numInsertionWorkers 8 \
-  --batchSize 1000
+  --numInsertionWorkers 8
 ```
 
 ## Handling Import Errors
