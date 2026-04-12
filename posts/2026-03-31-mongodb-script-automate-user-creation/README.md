@@ -46,12 +46,12 @@ for entry in "${USERS[@]}"; do
     -u "$ADMIN_USER" -p "$ADMIN_PASS" \
     --authenticationDatabase admin \
     --quiet --eval "
-      const db = db.getSiblingDB('$DB');
-      const existing = db.getUser('$USERNAME');
+      const targetDb = db.getSiblingDB('$DB');
+      const existing = targetDb.getUser('$USERNAME');
       if (existing) {
         print('User $USERNAME already exists - skipping');
       } else {
-        db.createUser({
+        targetDb.createUser({
           user: '$USERNAME',
           pwd: '$PASSWORD',
           roles: [{ role: '$ROLE', db: '$DB' }]
