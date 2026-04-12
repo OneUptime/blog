@@ -31,11 +31,11 @@ Async Replication     High     Minutes   Low         No
 Semi-sync + MHA       Low      30s       Medium      No
 Group Replication     Near-0   Seconds   Medium      Yes (limited)
 Galera Cluster        Near-0   Seconds   High        Yes
-InnoDB Cluster        Near-0   Seconds   Medium      No
+InnoDB Cluster        Near-0   Seconds   Medium      Yes (limited)
 Orchestrator          Low      30s       Medium      No
 ProxySQL + Replication Low     30s       Medium      No
 AWS RDS Multi-AZ      Near-0   60s       Low (managed) No
-PlanetScale           Near-0   Seconds   Low (managed) Yes
+PlanetScale           Near-0   Seconds   Low (managed) No
 ```
 
 ## When to Use Each Solution
@@ -46,7 +46,7 @@ PlanetScale           Near-0   Seconds   Low (managed) Yes
 
 **MySQL Group Replication or InnoDB Cluster** provides automatic failover built into MySQL itself and supports multi-primary mode for distributed writes. The trade-off is higher write latency due to certification-based conflict detection.
 
-**Galera Cluster** (via Percona XtraDB Cluster or MariaDB) provides synchronous multi-primary replication. Writes must be certified across all nodes, so it adds latency proportional to cluster size and network round-trip time.
+**Galera Cluster** (via Percona XtraDB Cluster or MariaDB) provides virtually synchronous multi-primary replication. Writes must be certified across all nodes, so it adds latency proportional to cluster size and network round-trip time.
 
 **Managed services (AWS RDS, Google Cloud SQL, PlanetScale)** are the lowest-complexity option. Failover is automatic and the provider manages replication, backups, and patching. The cost is higher and customization is limited.
 
