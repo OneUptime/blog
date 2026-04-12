@@ -85,18 +85,21 @@ ORDER BY year, revenue DESC;
 Identify the best-performing products by annual revenue:
 
 ```sql
-SELECT
-  YEAR(o.order_date) AS year,
-  p.id AS product_id,
-  p.name AS product_name,
-  SUM(oi.quantity) AS units_sold,
-  SUM(oi.quantity * oi.unit_price) AS revenue,
-  RANK() OVER (PARTITION BY YEAR(o.order_date) ORDER BY SUM(oi.quantity * oi.unit_price) DESC) AS revenue_rank
-FROM orders o
-JOIN order_items oi ON o.id = oi.order_id
-JOIN products p ON oi.product_id = p.id
-GROUP BY year, p.id, p.name
-HAVING revenue_rank <= 10
+WITH ranked AS (
+  SELECT
+    YEAR(o.order_date) AS year,
+    p.id AS product_id,
+    p.name AS product_name,
+    SUM(oi.quantity) AS units_sold,
+    SUM(oi.quantity * oi.unit_price) AS revenue,
+    RANK() OVER (PARTITION BY YEAR(o.order_date) ORDER BY SUM(oi.quantity * oi.unit_price) DESC) AS revenue_rank
+  FROM orders o
+  JOIN order_items oi ON o.id = oi.order_id
+  JOIN products p ON oi.product_id = p.id
+  GROUP BY year, p.id, p.name
+)
+SELECT * FROM ranked
+WHERE revenue_rank <= 10
 ORDER BY year, revenue_rank;
 ```
 
