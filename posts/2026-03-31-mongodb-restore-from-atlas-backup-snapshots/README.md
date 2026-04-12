@@ -50,11 +50,9 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/backup/restoreJobs" \
   -H "Content-Type: application/json" \
   -d '{
-    "delivery": {
-      "methodName": "AUTOMATED_RESTORE",
-      "targetClusterName": "myCluster",
-      "targetGroupId": "{groupId}"
-    },
+    "deliveryType": "automated",
+    "targetClusterName": "myCluster",
+    "targetGroupId": "{groupId}",
     "snapshotId": "{snapshotId}"
   }'
 ```
@@ -72,11 +70,9 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/backup/restoreJobs" \
   -H "Content-Type: application/json" \
   -d '{
-    "delivery": {
-      "methodName": "AUTOMATED_RESTORE",
-      "targetClusterName": "myCluster-restore-test",
-      "targetGroupId": "{groupId}"
-    },
+    "deliveryType": "automated",
+    "targetClusterName": "myCluster-restore-test",
+    "targetGroupId": "{groupId}",
     "snapshotId": "{snapshotId}"
   }'
 ```
@@ -97,13 +93,22 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-print(f'Status: {data.get(\"status\")}')
+finished = data.get('finishedAt')
+failed = data.get('failed', False)
+cancelled = data.get('cancelled', False)
+if failed:
+    print('Status: FAILED')
+elif cancelled:
+    print('Status: CANCELLED')
+elif finished:
+    print(f'Status: COMPLETED at {finished}')
+else:
+    print('Status: IN_PROGRESS')
 print(f'Timestamp: {data.get(\"timestamp\")}')
-print(f'Finished: {data.get(\"finishedAt\", \"in progress\")}')
 "
 ```
 
-Poll until status shows `COMPLETED`.
+Poll until the status shows `COMPLETED`.
 
 ## Step 5: Verify the Restored Data
 
@@ -118,7 +123,7 @@ collections.forEach(coll => {
 });
 
 // Spot-check recent data
-db.orders.findOne({}, { sort: { createdAt: -1 } });
+db.orders.find({}).sort({ createdAt: -1 }).limit(1);
 
 // Verify indexes
 db.getCollectionNames().forEach(coll => {
