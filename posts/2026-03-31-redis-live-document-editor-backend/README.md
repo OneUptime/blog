@@ -29,7 +29,6 @@ SADD doc:abc123:editors user-42 user-99
 import redis
 import json
 import time
-import hashlib
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -122,8 +121,6 @@ def insert_text(doc_id: str, author: str, pos: int, text: str, expected_version:
 ## Watching for Changes
 
 ```python
-import threading
-
 def watch_document(doc_id: str, editor_id: str):
     doc_key = f"{DOC_PREFIX}:{doc_id}"
     # Register as active editor
