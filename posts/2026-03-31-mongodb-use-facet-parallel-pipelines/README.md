@@ -157,8 +157,7 @@ db.products.aggregate([
 
 ## Limitations
 
-- `$facet` must be the last stage if its sub-pipelines use `$out` or `$merge`
-- Sub-pipelines within `$facet` cannot include `$facet`, `$out`, `$geoNear`, or `$indexStats`
+- Sub-pipelines within `$facet` cannot include `$collStats`, `$facet`, `$geoNear`, `$indexStats`, `$out`, `$merge`, or `$planCacheStats`
 - Memory limit per facet pipeline is 100 MB (use `allowDiskUse` for larger datasets)
 
 ## Summary
