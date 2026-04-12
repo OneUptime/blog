@@ -165,7 +165,7 @@ cfg.members = cfg.members.filter(m => m.host !== "deadserver.example.com:27019")
 rs.reconfig(cfg, { force: true });
 ```
 
-**Warning:** A forced reconfig can cause rollback of writes that were not yet replicated to the surviving members. Use only as a last resort during an outage.
+**Warning:** A forced reconfig can cause rollback of even majority-committed writes. Use only as a last resort during an outage.
 
 ```mermaid
 flowchart TD
@@ -196,7 +196,7 @@ rs.status();
 |---|---|---|
 | `version` mismatch | Config fetched before a concurrent reconfig | Fetch a fresh `rs.conf()` and retry |
 | `priority must be 0 when hidden` | Hidden member has priority > 0 | Set `priority: 0` alongside `hidden: true` |
-| `votes must be 0 when priority is 0` | Non-voting member rule not followed | Set `votes: 0` when `priority: 0` or adjust priority |
+| `priority must be 0 when votes is 0` | Non-voting member has priority > 0 | Set `priority: 0` for any member with `votes: 0` |
 | `No primary found` | Not connected to the primary | Connect to primary before calling `rs.reconfig()` |
 
 ## Summary
