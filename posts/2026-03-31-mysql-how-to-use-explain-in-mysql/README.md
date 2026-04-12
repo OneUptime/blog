@@ -68,7 +68,7 @@ The SELECT identifier. Rows with the same `id` are executed at the same level. H
 ### select_type
 How MySQL classifies the query:
 - `SIMPLE` - no subqueries or unions
-- `PRIMARY` - outermost SELECT in a union
+- `PRIMARY` - outermost SELECT when subqueries or unions are present
 - `SUBQUERY` - first SELECT in a subquery
 - `DERIVED` - subquery in FROM clause
 - `UNION` - second or later SELECT in a union
@@ -155,9 +155,9 @@ WHERE id IN (
 
 This shows multiple rows - one per query component - which helps identify if subqueries are being materialized or run as loops.
 
-## Forcing an Index
+## Using Index Hints
 
-If EXPLAIN shows MySQL choosing the wrong index, you can force one:
+If EXPLAIN shows MySQL choosing the wrong index, you can hint which one to use:
 
 ```sql
 EXPLAIN SELECT * FROM orders USE INDEX (idx_user_status)
