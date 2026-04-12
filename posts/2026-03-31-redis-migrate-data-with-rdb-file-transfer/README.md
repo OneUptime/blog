@@ -63,7 +63,7 @@ RDB_PATH="$DIR/$DBFILE"
 ls -lh "$RDB_PATH"
 # Example: -rw-rw-r-- 1 redis redis 245M Mar 31 10:15 /var/lib/redis/dump.rdb
 
-# Validate the file is not corrupted (Redis 7+)
+# Validate the file is not corrupted (Redis 3.2+)
 redis-check-rdb "$RDB_PATH"
 # Expected: [offset 0] Checking RDB file dump.rdb
 # [offset ...] CRC64 checksum is valid
@@ -151,9 +151,9 @@ RDB format versions must be compatible between source and target:
 
 ```text
 Redis 2.6  - RDB version 6
-Redis 2.8  - RDB version 7
-Redis 3.2  - RDB version 8
-Redis 4.0  - RDB version 9
+Redis 2.8  - RDB version 6
+Redis 3.2  - RDB version 7
+Redis 4.0  - RDB version 8
 Redis 5.0  - RDB version 9
 Redis 6.0  - RDB version 9
 Redis 7.0  - RDB version 10
