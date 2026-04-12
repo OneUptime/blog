@@ -45,7 +45,7 @@ FROM employees;
 ## Understanding Bucket Distribution
 
 ```sql
--- 7 rows into 3 buckets: buckets 1 and 2 get 3 rows, bucket 3 gets 1
+-- 7 rows into 3 buckets: bucket 1 gets 3 rows, buckets 2 and 3 get 2 rows
 SELECT val,
   NTILE(3) OVER (ORDER BY val) AS bucket
 FROM (
@@ -53,8 +53,8 @@ FROM (
   UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
 ) t;
 -- Bucket 1: 1, 2, 3
--- Bucket 2: 4, 5, 6
--- Bucket 3: 7
+-- Bucket 2: 4, 5
+-- Bucket 3: 6, 7
 ```
 
 ## Quartile Analysis
