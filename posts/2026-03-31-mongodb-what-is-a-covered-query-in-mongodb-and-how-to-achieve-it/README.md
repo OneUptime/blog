@@ -24,7 +24,7 @@ Eliminating document fetches reduces disk I/O and significantly improves through
 1. All fields in the query filter must be in the index
 2. All fields in the projection must be in the index
 3. The projection must exclude `_id` (unless `_id` is in the index)
-4. No array or embedded document fields in the query
+4. The index must not be a multikey index (no indexed field contains an array)
 
 ## Simple Covered Query Example
 
@@ -53,7 +53,6 @@ db.users.find(
 In the output, look for:
 
 ```json
-"indexOnly": true,
 "totalDocsExamined": 0,
 "stage": "PROJECTION_COVERED"
 ```
@@ -99,7 +98,7 @@ db.orders.find(
 // API endpoint returning paginated order summaries
 const orders = await db.collection("orders").find(
   { customerId: req.params.customerId, status: "completed" },
-  { orderId: 1, total: 1, completedAt: 1, _id: 0 }
+  { projection: { orderId: 1, total: 1, completedAt: 1, _id: 0 } }
 ).sort({ completedAt: -1 }).limit(20).toArray()
 
 // Index to cover this:
