@@ -32,6 +32,8 @@ Move a row to an archive table before it is removed:
 
 ```sql
 CREATE TABLE orders_archive LIKE orders;
+ALTER TABLE orders_archive ADD COLUMN deleted_by VARCHAR(100);
+ALTER TABLE orders_archive ADD COLUMN deleted_at DATETIME;
 
 DELIMITER //
 
