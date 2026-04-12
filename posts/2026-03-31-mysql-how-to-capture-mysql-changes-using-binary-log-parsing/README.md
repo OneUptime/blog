@@ -150,8 +150,8 @@ stream.close()
 For reliable CDC, track the binary log position after each processed event:
 
 ```python
-log_file = binlogevent.packet.log_pos
-log_pos = binlogevent.packet.log_pos
+log_file = stream.log_file
+log_pos = stream.log_pos
 print(f"Processed up to {log_file}:{log_pos}")
 ```
 
