@@ -105,7 +105,7 @@ WITH RECURSIVE management_chain AS (
 )
 SELECT name, title
 FROM management_chain
-ORDER BY id DESC;  -- CEO first
+ORDER BY id ASC;  -- CEO first
 ```
 
 ## Counting Subordinates per Manager
