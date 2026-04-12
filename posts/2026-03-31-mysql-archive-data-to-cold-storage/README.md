@@ -54,7 +54,7 @@ Then compress and upload:
 gzip /var/lib/mysql-files/orders_2024_01.csv
 aws s3 cp /var/lib/mysql-files/orders_2024_01.csv.gz \
   s3://archive-bucket/mysql/orders/year=2024/month=01/orders.csv.gz \
-  --storage-class GLACIER_INSTANT_RETRIEVAL
+  --storage-class GLACIER_IR
 ```
 
 ## Python Export Script with Parquet
@@ -68,7 +68,7 @@ import mysql.connector
 import pandas as pd
 import boto3
 import os
-from datetime import date, timedelta
+from datetime import date
 
 def archive_month(year: int, month: int):
     conn = mysql.connector.connect(
