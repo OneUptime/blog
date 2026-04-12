@@ -41,6 +41,7 @@ public class Application {
 Use Spring Data's auditing annotations on your document fields:
 
 ```java
+import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.annotation.CreatedBy;
@@ -110,6 +111,7 @@ To populate `@CreatedBy` and `@LastModifiedBy`, provide an `AuditorAware` bean t
 ```java
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 @Component
