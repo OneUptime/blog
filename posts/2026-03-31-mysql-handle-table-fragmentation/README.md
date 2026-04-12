@@ -55,13 +55,12 @@ Higher `rows` estimates indicate more pages to scan.
 
 ## Measuring Fragmentation with InnoDB Metrics
 
-Use Performance Schema to check page-level statistics:
+Use `information_schema.INNODB_METRICS` to check page-level statistics:
 
 ```sql
 SELECT NAME, COUNT
 FROM information_schema.INNODB_METRICS
 WHERE NAME IN (
-  'buffer_page_read_total',
   'index_page_splits',
   'index_page_merge_attempts',
   'index_page_merge_successful'
