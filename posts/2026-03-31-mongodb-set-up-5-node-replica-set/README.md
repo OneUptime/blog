@@ -14,7 +14,7 @@ A 5-node replica set provides:
 - Fault tolerance for up to 2 simultaneous node failures (majority = 3 out of 5)
 - More read replicas for distributing query load
 - Flexibility to designate nodes as hidden or delayed for analytics workloads
-- No additional cost in terms of write acknowledgment latency with `w: majority`
+- With `w: majority`, only 3 of 5 nodes need to acknowledge writes, so the two extra nodes add read capacity without increasing the majority threshold proportionally
 
 ## Node Configuration
 
