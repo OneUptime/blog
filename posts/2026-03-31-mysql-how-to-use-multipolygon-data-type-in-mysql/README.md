@@ -51,8 +51,8 @@ INSERT INTO service_zones (zone_name, coverage)
 VALUES (
     'Downtown Delivery Zone',
     ST_GeomFromText('MULTIPOLYGON(
-        ((-74.010 40.705, -74.010 40.720, -73.990 40.720, -73.990 40.705, -74.010 40.705)),
-        ((-73.975 40.730, -73.975 40.745, -73.955 40.745, -73.955 40.730, -73.975 40.730))
+        ((40.705 -74.010, 40.720 -74.010, 40.720 -73.990, 40.705 -73.990, 40.705 -74.010)),
+        ((40.730 -73.975, 40.745 -73.975, 40.745 -73.955, 40.730 -73.955, 40.730 -73.975))
     )', 4326)
 );
 ```
@@ -123,7 +123,7 @@ SELECT carrier, region_name
 FROM delivery_regions
 WHERE ST_Contains(
     area,
-    ST_PointFromText('POINT(-73.985 40.748)', 4326)
+    ST_PointFromText('POINT(40.748 -73.985)', 4326)
 );
 
 -- Find the union of two carrier zones
@@ -139,12 +139,12 @@ SELECT
 ## Calculating Distances and Relationships
 
 ```sql
--- Calculate distance between a point and nearest zone boundary
+-- Calculate distance between zone centroid and a point
 SELECT
     zone_name,
     ST_Distance_Sphere(
         ST_Centroid(coverage),
-        ST_PointFromText('POINT(-74.006 40.712)', 4326)
+        ST_PointFromText('POINT(40.712 -74.006)', 4326)
     ) AS distance_meters
 FROM service_zones
 ORDER BY distance_meters
