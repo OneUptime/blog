@@ -119,13 +119,13 @@ BEGIN
     SET divisor = 2;
     SET is_prime = 1;
 
-    WHILE divisor <= FLOOR(SQRT(n)) DO
+    divisor_check: WHILE divisor <= FLOOR(SQRT(n)) DO
       IF n MOD divisor = 0 THEN
         SET is_prime = 0;
-        LEAVE prime_search;
+        LEAVE divisor_check;
       END IF;
       SET divisor = divisor + 1;
-    END WHILE;
+    END WHILE divisor_check;
 
     IF is_prime = 1 THEN
       SET first_prime = n;
