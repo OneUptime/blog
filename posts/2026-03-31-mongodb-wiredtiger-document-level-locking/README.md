@@ -20,7 +20,7 @@ The lock hierarchy is:
 1. Global (read/write intent)
 2. Database (read/write intent)
 3. Collection (read/write intent)
-4. Document (exclusive for writes, shared for reads)
+4. Document (optimistic concurrency control for writes; reads use snapshots and do not acquire document-level locks)
 
 ## Checking Current Lock Status
 
@@ -42,14 +42,13 @@ db.currentOp({ waitingForLock: true });
 
 This shows operations blocked waiting to acquire a lock, their namespace, and how long they have been waiting.
 
-## Global Write Lock Operations
+## Operations That Acquire Exclusive Locks
 
-Some operations still require a global write lock and will block all other writes:
+Some operations still acquire exclusive locks at the database or collection level and will block other operations:
 
-- `db.repairDatabase()`
-- `db.createCollection()` on some versions
-- `collMod` (collection modification)
-- Index builds before MongoDB 4.2
+- `db.createCollection()` acquires a database-level exclusive lock
+- `collMod` (collection modification) acquires a database-level exclusive lock
+- Foreground index builds before MongoDB 4.2 acquired a collection-level exclusive lock
 
 Check for these in `currentOp` output.
 
