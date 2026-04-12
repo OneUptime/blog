@@ -126,8 +126,8 @@ ORDER BY ts DESC;
 ## UNIX_TIMESTAMP() Range
 
 ```sql
--- UNIX_TIMESTAMP() supports dates from 1970-01-01 to 2038-01-19 for 32-bit
--- MySQL 8.0+ on 64-bit systems supports dates beyond 2038
+-- UNIX_TIMESTAMP() supports dates from 1970-01-01 to 2038-01-19 03:14:07 UTC
+-- This limit applies to all current MySQL versions (including 8.0+ on 64-bit systems)
 SELECT UNIX_TIMESTAMP('2038-01-19 03:14:07');  -- 2147483647 (max 32-bit)
 SELECT FROM_UNIXTIME(2147483647);              -- 2038-01-19 03:14:07
 ```
