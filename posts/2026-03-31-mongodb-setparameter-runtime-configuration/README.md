@@ -42,9 +42,14 @@ db.adminCommand({ getParameter: 1, slowOpThresholdMs: 1 });
 
 ### Profiling Mode
 
+Profiling is not controlled via `setParameter`. Use the `profile` command or the shell helper instead:
+
 ```javascript
 // 0=off, 1=slow ops, 2=all
-db.adminCommand({ setParameter: 1, profile: 1 });
+db.setProfilingLevel(1);
+
+// Or equivalently:
+db.runCommand({ profile: 1 });
 ```
 
 ### WiredTiger Engine Settings
@@ -79,8 +84,9 @@ db.adminCommand({ setParameter: 1, ttlMonitorSleepSecs: 30 });
 ### Concurrent Transactions (Tickets)
 
 ```javascript
-db.adminCommand({ setParameter: 1, wiredTigerConcurrentReadTransactions: 256 });
-db.adminCommand({ setParameter: 1, wiredTigerConcurrentWriteTransactions: 128 });
+// MongoDB 6.0+ (renamed from wiredTigerConcurrent*Transactions)
+db.adminCommand({ setParameter: 1, storageEngineConcurrentReadTransactions: 256 });
+db.adminCommand({ setParameter: 1, storageEngineConcurrentWriteTransactions: 128 });
 ```
 
 ## Diagnostic Parameters
@@ -95,8 +101,8 @@ db.adminCommand({ setParameter: 1, enableFlowControl: true });
 ### Chunk Migration Concurrency
 
 ```javascript
-// For sharded clusters
-db.adminCommand({ setParameter: 1, maxConcurrentMovePrimaryChunkMigrations: 1 });
+// For sharded clusters (MongoDB 6.0+)
+db.adminCommand({ setParameter: 1, chunkMigrationConcurrency: 1 });
 ```
 
 ### Log Verbosity
