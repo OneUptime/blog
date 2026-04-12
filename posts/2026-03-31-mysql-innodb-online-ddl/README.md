@@ -84,9 +84,13 @@ For very large tables, online DDL still requires extra disk space for the sort b
 ```sql
 -- Check available space in the tmpdir
 SHOW VARIABLES LIKE 'tmpdir';
+```
 
--- Set a custom temp directory for DDL if needed
-SET GLOBAL tmpdir = '/mnt/large-disk/tmp';
+To use a different temp directory, set `tmpdir` in the MySQL configuration file and restart the server, as `tmpdir` is a read-only variable:
+
+```text
+[mysqld]
+tmpdir=/mnt/large-disk/tmp
 ```
 
 The online DDL sort buffer is controlled by `innodb_sort_buffer_size` (default 1MB). Increasing it can speed up index builds:
@@ -115,7 +119,7 @@ For MySQL versions before 8.0 where INSTANT is unavailable, or for very large ta
 
 ```bash
 pt-online-schema-change \
-    --alter "ADD COLUMN created_at DATETIME DEFAULT NOW()" \
+    --alter "ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP" \
     --execute \
     D=mydb,t=orders
 ```
