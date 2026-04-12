@@ -93,7 +93,7 @@ await collection.bulkWrite(
 
 ## Step 5: Fix Unbounded Array Growth
 
-Appending to arrays indefinitely causes documents to grow, requiring MongoDB to move them on disk and update array indexes:
+Appending to arrays indefinitely causes documents to grow, increasing memory and cache pressure, adding network overhead, and risking the 16MB BSON document size limit:
 
 ```javascript
 // Bad: unbounded array on a document
