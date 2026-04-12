@@ -49,7 +49,7 @@ storage:
 
   wiredTiger:
     engineConfig:
-      journalCompressor: snappy   # Options: none, snappy, zlib (default: snappy)
+      journalCompressor: snappy   # Options: none, snappy, zlib, zstd (default: snappy)
       cacheSizeGB: 4
 
     collectionConfig:
@@ -77,7 +77,7 @@ storage:
     # commitIntervalMs: 500 # Maximum value (0.5 seconds)
 ```
 
-For a replica set, the minimum data loss is bounded by the replication lag rather than the journal interval, since the primary waits for secondaries to acknowledge.
+For a replica set using `w: "majority"` write concern, potential data loss on primary failure is bounded by replication lag rather than the journal interval, since the primary waits for a majority of secondaries to acknowledge. With `w: 1`, the data loss window on the primary is still bounded by `commitIntervalMs`, same as a standalone instance.
 
 ## Journal Compression
 
@@ -105,8 +105,8 @@ printjson({
   checkpointTime: wt.transaction["transaction checkpoint most recent time (msecs)"]
 })
 
-// Check durability
-db.adminCommand({ serverStatus: 1 }).dur
+// Check journal compressor in use
+db.adminCommand({ serverStatus: 1 }).wiredTiger.log["log compress small"]
 ```
 
 ## Write Concern and Journaling
@@ -120,7 +120,7 @@ db.orders.insertOne(
   { writeConcern: { w: 1, j: true } }
 )
 
-// For replica sets, w:majority implies j:true in MongoDB 5.0+
+// For replica sets, w:majority implies j:true (via writeConcernMajorityJournalDefault since MongoDB 3.6+)
 db.orders.insertOne(
   { orderId: "ORD-5002", amount: 250 },
   { writeConcern: { w: "majority", j: true, wtimeout: 5000 } }
@@ -129,10 +129,10 @@ db.orders.insertOne(
 
 ## Disabling Journaling (Development Only)
 
-Journaling can be disabled on standalone development instances to improve write speed. Never do this in production.
+Journaling can be disabled on standalone development instances to improve write speed. Never do this in production. Note that `storage.journal.enabled` was removed in MongoDB 6.1 — journaling is always enabled in MongoDB 6.1+.
 
 ```yaml
-# FOR DEVELOPMENT ONLY
+# FOR DEVELOPMENT ONLY (MongoDB < 6.1)
 storage:
   journal:
     enabled: false
