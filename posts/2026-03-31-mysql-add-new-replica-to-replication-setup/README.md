@@ -26,7 +26,7 @@ On the source server, create a backup with GTID or position information:
 mysqldump -u root -p \
   --all-databases \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --flush-logs \
   --set-gtid-purged=ON \
   | gzip > /tmp/source_snapshot.sql.gz
@@ -158,9 +158,12 @@ FLUSH PRIVILEGES;
 ```sql
 -- Check replication is running
 SHOW REPLICA STATUS\G
+```
 
--- Monitor catch-up progress
-WATCH -n 5 "mysql -u root -p -e \"SHOW REPLICA STATUS\G\" | grep Seconds_Behind"
+Monitor catch-up progress from the shell:
+
+```bash
+watch -n 5 "mysql -u root -p -e 'SHOW REPLICA STATUS\G' | grep Seconds_Behind"
 ```
 
 ## Summary
