@@ -74,7 +74,7 @@ console.log(`Inserted: ${result.insertedCount}`);
 ## Inserting from Python with pymongo
 
 ```python
-from pymongo import MongoClient, InsertOne
+from pymongo import MongoClient
 from datetime import datetime, timezone
 import os
 
@@ -117,19 +117,20 @@ await tsCollection.insertMany(sorted, { ordered: false });
 | 1,000-10,000/s | 500-1,000 |
 | > 10,000/s | 1,000-5,000 + sharding |
 
-Batch sizes above 100,000 documents per call are not recommended as they can exceed the 16 MB BSON document limit and increase memory pressure.
+Batch sizes above 100,000 documents per call are not recommended as they increase client and server memory pressure. While the MongoDB driver automatically splits large batches into multiple wire protocol messages, very large batches still consume significant memory during serialization.
 
 ## Avoiding Backfill Performance Issues
 
 Inserting historical (out-of-order) data can cause MongoDB to create many small buckets instead of filling existing ones. For large backfill jobs:
 
-```bash
-# Disable the bucket rounding optimization temporarily
-# (only for the duration of the backfill)
-db.adminCommand({
-  setParameter: 1,
-  timeseriesBucketMaxCount: 1000,
-  timeseriesBucketMaxSpanSeconds: 3600
+```javascript
+// Increase the bucket time span for the duration of the backfill
+// to allow more out-of-order measurements into each bucket
+db.runCommand({
+  collMod: "sensorReadings",
+  timeseries: {
+    bucketMaxSpanSeconds: 3600
+  }
 });
 ```
 
