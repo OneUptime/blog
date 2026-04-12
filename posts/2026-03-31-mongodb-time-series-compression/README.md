@@ -12,7 +12,7 @@ MongoDB time series collections use a column-oriented bucket format internally. 
 
 ## How MongoDB Compresses Time Series Data
 
-MongoDB groups measurements into "bucket" documents. Each bucket holds up to 1,000 measurements (MongoDB 6.3+) for the same metaField value within a time window. Inside the bucket, values for each field are stored column-wise - all `temperature` values together, all `humidity` values together - which makes delta encoding and Zstd compression extremely effective for numeric sequences.
+MongoDB groups measurements into "bucket" documents. Each bucket holds up to 1,000 measurements for the same metaField value within a time window. Inside the bucket, values for each field are stored column-wise - all `temperature` values together, all `humidity` values together - which makes delta encoding and Zstd compression extremely effective for numeric sequences.
 
 ## Checking Current Compression
 
@@ -22,8 +22,8 @@ console.log("Storage size (MB):", stats.storageSize);
 console.log("Total index size (MB):", stats.totalIndexSize);
 console.log("Average object size (B):", stats.avgObjSize);
 
-// Check bucket compression ratio
-db.getSiblingDB("local").system.buckets.sensorReadings.stats().compression;
+// Check bucket-level stats
+db.system.buckets.sensorReadings.stats();
 ```
 
 You can also compare the logical data size against physical storage:
@@ -63,8 +63,8 @@ High metaField cardinality means more buckets with fewer documents each, which r
 
 ```text
 1,000 sensors writing 1 reading/second:
-  - With granularity "seconds": 1 bucket per sensor per hour = 3,600 docs/bucket (full - good compression)
-  - With granularity "hours":   1 bucket per sensor per 30 days = 2,592,000 docs/bucket (exceeds cap, splits frequently)
+  - With granularity "seconds": ~4 buckets per sensor per hour, ~900 docs/bucket (near the 1,000 cap - good compression)
+  - With granularity "hours":   1 bucket per sensor per 30 days = 2,592,000 docs/bucket (far exceeds cap, splits frequently)
 ```
 
 Target bucket fill rate of 80-100%. Monitor with:
@@ -77,7 +77,7 @@ db.system.buckets.sensorReadings.aggregate([
 
 ## WiredTiger Block Compressor
 
-Time series collections default to Zstd compression in MongoDB 6.0+. Verify and configure in `mongod.conf`:
+Time series collections default to Zstd compression since MongoDB 5.0. Verify and configure in `mongod.conf`:
 
 ```yaml
 storage:
@@ -111,7 +111,7 @@ After large backfills or collection migrations, run `compact` to rewrite fragmen
 db.runCommand({ compact: "sensorReadings" });
 ```
 
-This is an offline operation - the collection is locked during compaction on standalone instances. On replica sets, use rolling compaction.
+On standalone instances, `compact` blocks writes on the target collection. On replica sets, use rolling compaction (compact each member in turn).
 
 ## Storage Size Benchmarks
 
