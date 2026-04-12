@@ -93,8 +93,8 @@ Named time zones handle DST automatically; offsets do not:
 ```sql
 -- New York is UTC-5 in winter and UTC-4 in summer
 -- Using named zone handles the transition automatically
-SELECT CONVERT_TZ('2024-03-10 07:00:00', 'UTC', 'America/New_York'); -- 2024-03-10 02:00:00 (EST, UTC-5)
-SELECT CONVERT_TZ('2024-03-11 07:00:00', 'UTC', 'America/New_York'); -- 2024-03-11 03:00:00 (EDT, UTC-4)
+SELECT CONVERT_TZ('2024-03-09 07:00:00', 'UTC', 'America/New_York'); -- 2024-03-09 02:00:00 (EST, UTC-5)
+SELECT CONVERT_TZ('2024-03-10 07:00:00', 'UTC', 'America/New_York'); -- 2024-03-10 03:00:00 (EDT, UTC-4)
 
 -- Using a fixed offset would be wrong for summer dates
 SELECT CONVERT_TZ('2024-07-15 12:00:00', '+00:00', '-05:00');  -- incorrect for EDT
