@@ -12,7 +12,7 @@ Description: Learn how to set up and manage MySQL InnoDB Cluster using MySQL She
 
 MySQL InnoDB Cluster is a complete high-availability solution built on three components:
 
-- **MySQL Group Replication** - synchronous replication with automatic membership management
+- **MySQL Group Replication** - virtually synchronous replication with automatic membership management
 - **MySQL Shell** - administrative interface for cluster management
 - **MySQL Router** - transparent client routing between cluster members
 
