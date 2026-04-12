@@ -201,26 +201,18 @@ db.stockPrices.aggregate([
 Use a range-based window instead of a row-based window to look back a fixed time interval:
 
 ```javascript
-// 7-day rolling average of sales amount, sorted by date as milliseconds
+// 7-day rolling average of sales amount
 db.sales.aggregate([
-  {
-    $addFields: {
-      saleDateMs: { $toLong: "$saleDate" }
-    }
-  },
   {
     $setWindowFields: {
       partitionBy: "$region",
-      sortBy: { saleDateMs: 1 },
+      sortBy: { saleDate: 1 },
       output: {
         rollingAvg7d: {
           $avg: "$amount",
           window: {
-            range: [
-              -604800000,   // 7 days in ms
-              0
-            ],
-            unit: "millisecond"
+            range: [-7, 0],
+            unit: "day"
           }
         }
       }
