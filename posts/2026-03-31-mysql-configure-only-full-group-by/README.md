@@ -72,7 +72,7 @@ sql_mode = ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
 
 ## Functional Dependency Exception
 
-MySQL 8.0 supports functional dependency detection. If a column is functionally dependent on the GROUP BY columns - for example if you group by a primary key - MySQL allows selecting other columns from the same table without including them in GROUP BY:
+MySQL 5.7.6 and later supports functional dependency detection. If a column is functionally dependent on the GROUP BY columns - for example if you group by a primary key - MySQL allows selecting other columns from the same table without including them in GROUP BY:
 
 ```sql
 SELECT id, name, department, COUNT(*) AS cnt
