@@ -74,7 +74,13 @@ SET GLOBAL innodb_buffer_pool_size = 8 * 1024 * 1024 * 1024;
 Verify the change was applied:
 
 ```sql
-SHOW STATUS LIKE 'Innodb_buffer_pool_bytes_data';
+SHOW VARIABLES LIKE 'innodb_buffer_pool_size';
+```
+
+You can also check the resize progress (resizing happens asynchronously):
+
+```sql
+SHOW STATUS LIKE 'Innodb_buffer_pool_resize_status';
 ```
 
 ## Use Multiple Buffer Pool Instances
