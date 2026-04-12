@@ -143,7 +143,7 @@ Note: `db.adminCommand({ killOp: 1, op: opid })` is the underlying command that 
 
 ## Killing Operations on a Sharded Cluster
 
-On a `mongos`, operations run on individual shards. To kill a shard-level operation, connect directly to the shard's `mongod` and run `db.killOp()` there.
+On a `mongos`, read operations that span multiple shards can be killed directly from the `mongos`. For write operations within a session, use `killSessions` on the `mongos`. For write operations without a session, you must identify the per-shard operation IDs (which appear as strings like `"shardName:opid"`) and kill them individually. You can also connect directly to the shard's `mongod` and run `db.killOp()` there.
 
 ```javascript
 // Connect to the shard primary directly
@@ -162,19 +162,19 @@ ops.inprog.forEach(function(op) {
 ## What Happens When You Kill an Operation
 
 - The operation receives an interrupt signal
-- The operation rolls back any partial writes (for write operations)
+- For non-transactional multi-document writes (`updateMany`, `deleteMany`, `insertMany`), documents already modified before the kill are **not** rolled back — only the remaining work is stopped
 - The client receives an error: `"operation was interrupted"`
 - The connection is preserved; the client can issue new operations
 
-Killing a write operation that is part of a multi-document transaction causes the entire transaction to be aborted.
+Killing a write operation that is part of a multi-document transaction causes the entire transaction to be aborted and all its changes rolled back.
 
 ## Required Permissions
 
 | Scenario | Required Privilege |
 |---|---|
 | Kill your own operations | Any authenticated user |
-| Kill other users' operations | `killop` privilege or `clusterMonitor` role |
-| Kill all operations | `clusterAdmin` or `clusterManager` role |
+| Kill other users' operations | `killop` privilege or `hostManager` role |
+| Kill all operations | `clusterAdmin` role |
 
 ## Safety Checklist Before Killing Operations
 
@@ -186,4 +186,4 @@ Killing a write operation that is part of a multi-document transaction causes th
 
 ## Summary
 
-`db.killOp(opid)` terminates a specific running operation on MongoDB by sending an interrupt signal. Always identify the target operation using `db.currentOp()` first, filtering by `secs_running`, `planSummary`, `ns`, or `client` to isolate the correct operation. Write operations are safely rolled back. For cluster-wide cleanup on sharded deployments, connect directly to each affected shard primary. Combine regular `db.currentOp()` monitoring with automated `db.killOp()` scripts to enforce query time budgets in production.
+`db.killOp(opid)` terminates a specific running operation on MongoDB by sending an interrupt signal. Always identify the target operation using `db.currentOp()` first, filtering by `secs_running`, `planSummary`, `ns`, or `client` to isolate the correct operation. Transactional writes are fully rolled back, but non-transactional multi-document writes will retain changes already committed before the kill. For cluster-wide cleanup on sharded deployments, kill read operations from `mongos` or connect directly to each affected shard primary for write operations. Combine regular `db.currentOp()` monitoring with automated `db.killOp()` scripts to enforce query time budgets in production.
