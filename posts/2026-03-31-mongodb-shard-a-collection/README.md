@@ -18,6 +18,8 @@ Sharding a collection distributes its data across multiple shards for horizontal
 
 ## Step 1 - Enable Sharding on the Database
 
+> **Note:** Starting in MongoDB 6.0, `sh.enableSharding()` is no longer required. The database is automatically enabled for sharding when you shard its first collection. The command still works but is a no-op.
+
 ```javascript
 sh.enableSharding("myapp")
 ```
@@ -26,13 +28,15 @@ This does not move any data; it just marks the database as shardable.
 
 ## Step 2 - Create an Index on the Shard Key (if it does not exist)
 
-MongoDB requires an index on the shard key field(s) before sharding. For a ranged shard key:
+MongoDB requires an index that starts with the shard key field(s) before sharding a non-empty collection. For an empty collection, `sh.shardCollection()` creates the supporting index automatically for both ranged and hashed keys. For a non-empty collection, create the index first:
 
 ```javascript
+// Ranged shard key index
 db.orders.createIndex({ customerId: 1 })
-```
 
-For a hashed shard key, MongoDB creates the index automatically during `shardCollection`.
+// Hashed shard key index
+db.events.createIndex({ _id: "hashed" })
+```
 
 ## Step 3 - Shard the Collection
 
