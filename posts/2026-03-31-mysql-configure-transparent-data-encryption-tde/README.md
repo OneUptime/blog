@@ -43,7 +43,6 @@ To automatically encrypt all new InnoDB tables, add to `my.cnf`:
 
 ```text
 [mysqld]
-innodb_encrypt_tables=ON
 default_table_encryption=ON
 ```
 
