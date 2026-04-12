@@ -211,7 +211,7 @@ Result:
 ## Validating Input Characters
 
 ```sql
--- Check if a column contains only printable ASCII characters (32-126)
+-- Check if the first character of a column value is a printable ASCII character (32-126)
 SELECT
     id,
     value,
@@ -226,18 +226,18 @@ FROM data_table;
 
 ## ASCII() vs ORD()
 
-`ORD()` is similar to `ASCII()` but returns the Unicode code point for multi-byte characters (useful for UTF-8 strings):
+`ORD()` is similar to `ASCII()` but handles multi-byte characters differently. For single-byte characters, both return the same value. For multi-byte characters, `ORD()` returns a numeric value computed from the constituent bytes using the formula: `(1st byte) + (2nd byte × 256) + (3rd byte × 256²) + ...`
 
 ```sql
 SELECT ASCII('A');    -- 65
 SELECT ORD('A');      -- 65
 
--- For multi-byte characters, ORD returns the full Unicode code point
-SELECT ORD('e');      -- 233 (for e-acute in utf8)
-SELECT ASCII('e');    -- 195 (only first byte of the multi-byte sequence)
+-- For multi-byte characters (e.g., 'é' encoded as 0xC3 0xA9 in UTF-8):
+SELECT ASCII('é');    -- 195 (first byte only, 0xC3)
+SELECT ORD('é');      -- 43459 (195 + 169 * 256)
 ```
 
-Use `ORD()` when working with multi-byte character sets and `ASCII()` when working strictly with single-byte ASCII.
+Use `ORD()` when you need a unique numeric identifier for multi-byte characters and `ASCII()` when working strictly with single-byte ASCII.
 
 ---
 
