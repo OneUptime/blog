@@ -14,11 +14,11 @@ A healthy MongoDB replica set should rarely hold elections - ideally only during
 
 ## Using serverStatus Election Metrics
 
-MongoDB exposes election counters through `db.adminCommand({ serverStatus: 1 })` under the `repl.replicationElection` field:
+MongoDB exposes election counters through `db.adminCommand({ serverStatus: 1 })` under the `electionMetrics` field:
 
 ```javascript
 const status = db.adminCommand({ serverStatus: 1 });
-printjson(status.repl.replicationElection);
+printjson(status.electionMetrics);
 ```
 
 Sample output:
@@ -33,7 +33,7 @@ Sample output:
   "numCatchUpsTimedOut": 0,
   "numCatchUpsFailedWithError": 0,
   "numCatchUpsFailedWithNewTerm": 0,
-  "numCatchUpsFailedToHeartbeat": 0
+  "numCatchUpsFailedWithReplSetAbortPrimaryCatchUpCmd": 0
 }
 ```
 
@@ -96,9 +96,9 @@ groups:
           summary: "MongoDB replica set member changed state more than twice in 10 minutes"
 ```
 
-## Tracking Elections with Change Streams
+## Tracking Elections with SDAM Events
 
-For application-level election detection, subscribe to the `admindb` change stream and watch for `invalidate` events, or listen to driver SDAM events as shown below:
+For application-level election detection, listen to driver SDAM (Server Discovery and Monitoring) events:
 
 ```javascript
 const client = new MongoClient(uri);
@@ -116,6 +116,8 @@ client.on("serverDescriptionChanged", (event) => {
     // Send to your metrics system (StatsD, Prometheus pushgateway, etc.)
   }
 });
+
+await client.connect();
 ```
 
 ## Setting Baseline and Alert Thresholds
