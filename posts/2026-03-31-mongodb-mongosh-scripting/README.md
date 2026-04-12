@@ -10,7 +10,7 @@ Description: Learn how to write reusable mongosh JavaScript scripts for automati
 
 ## Why Use mongosh Scripts
 
-Interactive mongosh sessions are useful for one-off queries, but production automation requires repeatable scripts that can be version-controlled, reviewed, and scheduled. mongosh supports full JavaScript including ES6+ syntax, `async/await`, and Node.js globals like `print()` and `quit()`, making it a capable scripting environment for MongoDB administration.
+Interactive mongosh sessions are useful for one-off queries, but production automation requires repeatable scripts that can be version-controlled, reviewed, and scheduled. mongosh supports full JavaScript including ES6+ syntax, `async/await`, and shell helpers like `print()` and `quit()`, making it a capable scripting environment for MongoDB administration.
 
 ```mermaid
 flowchart LR
@@ -29,16 +29,11 @@ mongosh "mongodb://admin:password@localhost:27017/?authSource=admin" \
   --file /path/to/script.js
 ```
 
-With a config file to avoid putting credentials on the command line:
+To avoid putting credentials on the command line, use an environment variable:
 
 ```bash
-mongosh --config /etc/mongosh/config.yml --file /path/to/script.js
-```
-
-The config file (`~/.mongodb/mongosh/config.yml`):
-
-```yaml
-connectionString: mongodb://admin:password@localhost:27017/?authSource=admin
+export MONGODB_URI="mongodb://admin:password@localhost:27017/?authSource=admin"
+mongosh "$MONGODB_URI" --file /path/to/script.js
 ```
 
 ## Script Structure and Database Context
@@ -47,7 +42,7 @@ Use `db.getSiblingDB()` inside scripts to switch databases without relying on `u
 
 ```javascript
 // migration.js
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 const result = db.orders.updateMany(
   { status: "in_progress" },
@@ -63,7 +58,7 @@ Use try/catch to handle errors and exit with a non-zero code for CI pipelines:
 
 ```javascript
 // safe-migration.js
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 try {
   const session = db.getMongo().startSession();
@@ -90,7 +85,7 @@ A script to rename a field across all documents:
 
 ```javascript
 // rename-field-migration.js
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 const collection = "users";
 const oldField = "fullname";
@@ -130,7 +125,7 @@ Generate a daily report from aggregation:
 
 ```javascript
 // daily-report.js
-const db = db.getSiblingDB("ecommerce");
+db = db.getSiblingDB("ecommerce");
 
 const today = new Date();
 today.setHours(0, 0, 0, 0);
@@ -203,7 +198,7 @@ Create indexes as part of a deployment:
 
 ```javascript
 // create-indexes.js
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 const indexes = [
   {
@@ -259,19 +254,18 @@ Read environment variables inside scripts using the global `process.env`:
 
 ```javascript
 // env-aware-script.js
-const uri = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const dbName = process.env.DB_NAME || "myapp";
 
-const db = db.getSiblingDB(dbName);
+db = db.getSiblingDB(dbName);
 print(`Connected to database: ${dbName}`);
 ```
 
 Run with:
 
 ```bash
-MONGODB_URI="mongodb://admin:pass@prod.example.com:27017/?authSource=admin" \
 DB_NAME="production" \
-mongosh --file /opt/scripts/env-aware-script.js
+mongosh "mongodb://admin:pass@prod.example.com:27017/?authSource=admin" \
+  --file /opt/scripts/env-aware-script.js
 ```
 
 ## Summary
