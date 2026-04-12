@@ -78,7 +78,7 @@ ORDER BY department, salary DESC;
 
 This resets the row number counter when the department changes.
 
-## Method 3 - Using a Subquery Join
+## Method 3 - Using a Correlated Subquery
 
 Without variables, use a correlated subquery that counts rows ranked before the current one:
 
