@@ -228,7 +228,7 @@ WHERE event_schema = DATABASE();
 - Use `BEGIN/END` blocks with event logging so you can audit when events ran and how many rows were affected.
 - Design idempotent event bodies - if an event runs twice (e.g., after a failover), it should not double-process data. Use `ON DUPLICATE KEY UPDATE` or timestamp-based guards.
 - Avoid long-running events that hold locks. Break large batch operations into smaller chunks.
-- On replicated setups, events fire on each server independently. Use `log_slave_updates` or restrict events to the primary node to avoid duplication.
+- On replicated setups, event DDL (CREATE/ALTER/DROP) is replicated, but replicated events are automatically set to `SLAVESIDE_DISABLED` on replicas and do not fire. If running a multi-primary setup, enable the event scheduler on only one node to avoid duplicate execution.
 - Monitor `information_schema.EVENTS.LAST_EXECUTED` to confirm events are running as expected.
 
 ## Summary
