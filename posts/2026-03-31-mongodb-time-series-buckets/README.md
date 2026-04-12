@@ -36,8 +36,8 @@ db.getCollection("system.buckets.sensor_readings").findOne();
 //   _id: ObjectId("..."),
 //   control: {
 //     version: 1,
-//     min: { ts: ISODate("2026-03-31T10:00:00Z"), temperature: 21.1 },
-//     max: { ts: ISODate("2026-03-31T10:59:59Z"), temperature: 24.7 }
+//     min: { timestamp: ISODate("2026-03-31T10:00:00Z"), temperature: 21.1 },
+//     max: { timestamp: ISODate("2026-03-31T10:59:59Z"), temperature: 24.7 }
 //   },
 //   meta: { sensorId: "s-1", location: "room-A" },
 //   data: { /* compressed columnar data */ }
@@ -56,11 +56,11 @@ db.getCollection("system.buckets.sensor_readings").aggregate([
 
 ## Querying Efficiently Across Bucket Boundaries
 
-MongoDB uses `control.min.ts` and `control.max.ts` on each bucket to skip buckets that fall entirely outside the query range. This means range queries on the `timeField` are very fast even over large datasets.
+MongoDB uses `control.min.timestamp` and `control.max.timestamp` on each bucket to skip buckets that fall entirely outside the query range. This means range queries on the `timeField` are very fast even over large datasets.
 
 ```javascript
 // This query leverages bucket-level pruning
-// MongoDB skips all buckets where control.max.ts < start or control.min.ts > end
+// MongoDB skips all buckets where control.max.timestamp < start or control.min.timestamp > end
 db.sensor_readings.find({
   "sensorInfo.sensorId": "s-1",
   timestamp: {
@@ -167,8 +167,8 @@ const userCount = await db.collection("sensor_readings").estimatedDocumentCount(
 const bucketCount = await db.getCollection("system.buckets.sensor_readings").estimatedDocumentCount();
 console.log(`Measurements per bucket: ~${Math.round(userCount / bucketCount)}`);
 
-// Storage size
-const stats = await db.command({ dbStats: 1 });
+// Collection storage size
+const stats = await db.runCommand({ collStats: "sensor_readings" });
 console.log(`Storage size: ${stats.storageSize} bytes`);
 ```
 
