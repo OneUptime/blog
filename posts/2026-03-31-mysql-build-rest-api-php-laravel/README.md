@@ -160,7 +160,7 @@ class OrderController extends Controller
         return new OrderResource($order);
     }
 
-    public function store(CreateOrderRequest $request): OrderResource
+    public function store(CreateOrderRequest $request): \Illuminate\Http\JsonResponse
     {
         $order = Order::create($request->validated() + ['status' => 'pending']);
         return (new OrderResource($order))->response()->setStatusCode(201);
