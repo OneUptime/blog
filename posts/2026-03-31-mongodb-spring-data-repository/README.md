@@ -81,7 +81,6 @@ public interface ProductRepository extends MongoRepository<Product, String> {
 
 ```java
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
