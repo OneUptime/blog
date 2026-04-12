@@ -62,7 +62,7 @@ function softDeletePlugin(schema) {
   };
 
   schema.pre(/^find/, function(next) {
-    if (!this.getFilter().includDeleted) {
+    if (!this.getFilter().includeDeleted) {
       this.where({ deletedAt: null });
     }
     next();
