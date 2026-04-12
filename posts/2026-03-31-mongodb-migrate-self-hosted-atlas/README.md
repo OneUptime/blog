@@ -94,9 +94,10 @@ db.getCollectionNames().forEach(c => {
 
 ### Install mongomirror
 
+Download `mongomirror` from the [MongoDB Download Center](https://www.mongodb.com/try/download/mongomirror) for your platform, then install it:
+
 ```bash
-wget https://translators.mongodb.com/mongomirror/builds/mongomirror-linux-x86_64-enterprise-1.0.0.tgz
-tar -xzf mongomirror-linux-x86_64-enterprise-1.0.0.tgz
+tar -xzf mongomirror-linux-x86_64-enterprise-*.tgz
 sudo mv mongomirror /usr/local/bin/
 ```
 
@@ -114,7 +115,7 @@ mongomirror \
   --username admin \
   --password "source-password" \
   --authenticationDatabase admin \
-  --destination "mongodb+srv://atlasadmin:atlaspassword@mycluster.abcde.mongodb.net" \
+  --destination "mycluster.abcde.mongodb.net" \
   --destinationUsername atlasadmin \
   --destinationPassword "atlaspassword" \
   --ssl \
@@ -127,7 +128,7 @@ mongomirror performs an initial sync (copying all data), then enters continuous 
 
 mongomirror logs progress to stdout. Look for:
 
-```json
+```text
 [2026-03-31T10:00:00] Initial sync progress: 85% (850000/1000000 docs)
 [2026-03-31T10:05:00] Initial sync complete. Entering continuous replication mode.
 [2026-03-31T10:05:01] Oplog lag: 2s
