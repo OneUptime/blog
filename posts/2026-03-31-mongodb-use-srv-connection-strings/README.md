@@ -84,10 +84,10 @@ client.admin.command("ping")
 print("Connected via SRV")
 ```
 
-Note: PyMongo requires the `dnspython` package for SRV resolution:
+Note: PyMongo requires the `dnspython` package for SRV resolution. Since PyMongo 4.3, `dnspython` is installed automatically as a required dependency:
 
 ```bash
-pip install "pymongo[srv]"
+pip install pymongo
 ```
 
 ## Setting Up SRV Records for Self-Managed Deployments
@@ -113,18 +113,19 @@ mongodb+srv://user:pass@mongo.example.com/myDB
 ## SRV Limitations
 
 - Only one hostname is allowed (no comma-separated list)
-- The default port for SRV is 27017 and cannot be changed via the URI
+- You cannot specify a port in a `mongodb+srv://` URI - ports are determined by the SRV records
 - DNS TTL affects failover speed - lower TTL means faster host list refresh but more DNS queries
 - Requires a DNS server accessible from the application host
 
 ## Verifying SRV Resolution
 
 ```javascript
-// After connecting, check which hosts were discovered
+// After connecting, check which hosts were discovered via SDAM events
 const client = new MongoClient("mongodb+srv://...");
+client.on("topologyDescriptionChanged", (event) => {
+  console.log(event.newDescription.servers);
+});
 await client.connect();
-const topology = client.topology;
-console.log(topology.description.servers);
 ```
 
 ## Summary
