@@ -84,7 +84,7 @@ async function runWorker(col, workerId) {
         ? { $set: { status: 'failed', failedAt: new Date(), error: err.message } }
         : { $set: { status: 'pending', lockedAt: null, lockedBy: null } };
 
-      await col.updateOne({ _id: job._id }, update);
+      await col.updateOne({ _id: job._id, lockedBy: WORKER_ID }, update);
     }
   }
 }
