@@ -10,7 +10,7 @@ Description: Use MongoDB aggregation to calculate period-over-period percentage 
 
 ## Overview
 
-Period-over-period analysis - comparing this week to last week, or this month to last month - is a common analytics requirement. MongoDB's aggregation pipeline can compute these comparisons directly in the database using `$group`, `$cond`, and `$divide` stages, avoiding multiple round trips or post-processing in application code.
+Period-over-period analysis - comparing this week to last week, or this month to last month - is a common analytics requirement. MongoDB's aggregation pipeline can compute these comparisons directly in the database using stages like `$group` and `$project` along with expressions like `$cond` and `$divide`, avoiding multiple round trips or post-processing in application code.
 
 ## Sample Data Structure
 
