@@ -41,7 +41,7 @@ CREATE VIEW orders_view AS
 SELECT o.*
 FROM orders o
 JOIN user_tenant_map m ON o.tenant_id = m.tenant_id
-WHERE m.db_user = CURRENT_USER();
+WHERE m.db_user = SUBSTRING_INDEX(USER(), '@', 1);
 ```
 
 Grant access to the view, not the base table:
@@ -60,7 +60,7 @@ Set a session variable on login via an init command, then reference it in views:
 ```sql
 -- In a stored procedure called at connection start
 SET @app_tenant_id = (
-  SELECT tenant_id FROM user_tenant_map WHERE db_user = CURRENT_USER()
+  SELECT tenant_id FROM user_tenant_map WHERE db_user = SUBSTRING_INDEX(USER(), '@', 1)
 );
 ```
 
@@ -86,7 +86,7 @@ BEGIN
 
   SELECT tenant_id INTO v_tenant
   FROM user_tenant_map
-  WHERE db_user = CURRENT_USER();
+  WHERE db_user = SUBSTRING_INDEX(USER(), '@', 1);
 
   SELECT * FROM orders WHERE tenant_id = v_tenant;
 END$$
@@ -108,7 +108,7 @@ For write access, create an updatable view with `WITH CHECK OPTION` to prevent t
 CREATE VIEW my_orders AS
 SELECT * FROM orders
 WHERE tenant_id = (
-  SELECT tenant_id FROM user_tenant_map WHERE db_user = CURRENT_USER()
+  SELECT tenant_id FROM user_tenant_map WHERE db_user = SUBSTRING_INDEX(USER(), '@', 1)
 )
 WITH CHECK OPTION;
 ```
@@ -129,4 +129,4 @@ SELECT * FROM orders WHERE tenant_id = 2;
 
 ## Summary
 
-MySQL row-level security is achieved through a combination of views that filter on `CURRENT_USER()`, session variables for application context, and stored procedures that encapsulate access logic. The key principle is granting application users access only to views or procedures, never to base tables directly. This enforces data isolation without requiring separate databases per tenant.
+MySQL row-level security is achieved through a combination of views that filter on `USER()`, session variables for application context, and stored procedures that encapsulate access logic. The key principle is granting application users access only to views or procedures, never to base tables directly. This enforces data isolation without requiring separate databases per tenant.
