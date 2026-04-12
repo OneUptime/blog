@@ -18,11 +18,11 @@ The `CONV()` function in MySQL converts a number from one numeric base to anothe
 CONV(N, from_base, to_base)
 ```
 
-- `N` - the number to convert, provided as a string
+- `N` - the number to convert, specified as an integer or a string
 - `from_base` - the base of the input number (2 to 36)
 - `to_base` - the base to convert to (2 to 36)
 
-Returns `NULL` if any argument is `NULL`. If the result is out of range, MySQL returns the maximum unsigned 64-bit value.
+Returns `NULL` if any argument is `NULL`. `CONV()` works with 64-bit precision.
 
 ## Common Base Conversions
 
@@ -119,4 +119,4 @@ FROM bytes;
 
 ## Summary
 
-`CONV()` is a versatile MySQL function for converting numbers between any base from 2 to 36. It is useful for generating compact short codes, working with binary or hexadecimal data, and debugging IP address representations. Remember to provide the input number as a string and specify both the source and target bases.
+`CONV()` is a versatile MySQL function for converting numbers between any base from 2 to 36. It is useful for generating compact short codes, working with binary or hexadecimal data, and debugging IP address representations. The input number can be specified as an integer or a string, and you must specify both the source and target bases.
