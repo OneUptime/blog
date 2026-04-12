@@ -47,14 +47,17 @@ OPTIMIZE TABLE orders;
 MySQL outputs a result like:
 
 ```text
-+----------+-----------+----------+---------------------------------------------------------+
-| Table    | Op        | Msg_type | Msg_text                                                |
-+----------+-----------+----------+---------------------------------------------------------+
-| mydb.orders | optimize | status | OK                                                   |
-+----------+-----------+----------+---------------------------------------------------------+
++-------------+----------+----------+--------------------------------------------------------------------+
+| Table       | Op       | Msg_type | Msg_text                                                           |
++-------------+----------+----------+--------------------------------------------------------------------+
+| mydb.orders | optimize | note     | Table does not support optimize, doing recreate + analyze instead   |
+| mydb.orders | optimize | status   | OK                                                                 |
++-------------+----------+----------+--------------------------------------------------------------------+
 ```
 
-Under the hood, InnoDB performs `ALTER TABLE ... ENGINE=InnoDB`, which rebuilds the table. In MySQL 8.0, this uses online DDL so it does not block reads or writes for most operations.
+The "note" row is expected for InnoDB tables and does not indicate a problem.
+
+Under the hood, InnoDB maps this to `ALTER TABLE ... FORCE`, which rebuilds the table. In MySQL 8.0, this uses online DDL so it does not block reads or writes for most operations.
 
 ## Method 2 - ALTER TABLE ENGINE
 
