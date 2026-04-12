@@ -87,13 +87,22 @@ The JSON structure shows a nested `nested_loop` object:
 ```json
 {
   "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "320.75"
+    },
     "nested_loop": [
       {
         "table": {
           "table_name": "o",
           "access_type": "ref",
           "key": "idx_status",
-          "cost_info": { "query_cost": "320.50" }
+          "cost_info": {
+            "read_cost": "300.00",
+            "eval_cost": "20.00",
+            "prefix_cost": "320.50",
+            "data_read_per_join": "4K"
+          }
         }
       },
       {
@@ -101,7 +110,12 @@ The JSON structure shows a nested `nested_loop` object:
           "table_name": "u",
           "access_type": "eq_ref",
           "key": "PRIMARY",
-          "cost_info": { "query_cost": "0.25" }
+          "cost_info": {
+            "read_cost": "0.00",
+            "eval_cost": "0.25",
+            "prefix_cost": "320.75",
+            "data_read_per_join": "168"
+          }
         }
       }
     ]
@@ -116,9 +130,9 @@ import subprocess
 import json
 
 def explain_query(query, db, user, password):
-    explain_query = f"EXPLAIN FORMAT=JSON {query}"
+    explain_sql = f"EXPLAIN FORMAT=JSON {query}"
     result = subprocess.run(
-        ['mysql', '-u', user, f'-p{password}', db, '-e', explain_query, '--batch', '--skip-column-names'],
+        ['mysql', '-u', user, f'-p{password}', db, '-e', explain_sql, '--batch', '--skip-column-names'],
         capture_output=True, text=True
     )
     return json.loads(result.stdout.strip())
@@ -151,7 +165,7 @@ JSON output includes the exact predicate used at each node:
 "attached_condition": "(`myapp`.`orders`.`status` = 'shipped') and (`myapp`.`orders`.`created_at` > '2024-01-01')"
 ```
 
-This shows exactly which conditions are pushed down to each table access, helping verify Index Condition Pushdown (ICP).
+This shows exactly which conditions are applied at each table access step. To verify Index Condition Pushdown (ICP), look for `"message": "Using index condition"` in the table's JSON output.
 
 ## Subqueries in JSON Format
 
@@ -167,4 +181,4 @@ The JSON output shows a separate `query_block` for the subquery with its own `co
 
 ## Summary
 
-`EXPLAIN FORMAT=JSON` in MySQL provides a richly structured execution plan with cost breakdowns, access predicates, and nested query details not available in the standard tabular format. Use it for programmatic analysis of execution plans, detailed cost inspection, and understanding complex queries with subqueries or multiple joins. For real execution metrics, combine with `EXPLAIN ANALYZE FORMAT=JSON` in MySQL 8.0.18+.
+`EXPLAIN FORMAT=JSON` in MySQL provides a richly structured execution plan with cost breakdowns, access predicates, and nested query details not available in the standard tabular format. Use it for programmatic analysis of execution plans, detailed cost inspection, and understanding complex queries with subqueries or multiple joins. For real execution metrics, use `EXPLAIN ANALYZE` in MySQL 8.0.18+ (which outputs in TREE format).
