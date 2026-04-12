@@ -37,7 +37,7 @@ MySQL searches for option files in the following order on Linux.
 To see exactly which files MySQL reads and what values are in effect, run:
 
 ```bash
-mysqld --verbose --help 2>/dev/null | grep "Default options"
+mysqld --verbose --help 2>/dev/null | grep -A1 "Default options"
 ```
 
 ```text
@@ -89,7 +89,7 @@ slow_query_log          = 1
 slow_query_log_file     = /var/log/mysql/slow.log
 long_query_time         = 1        # Log queries taking longer than 1 second
 log_queries_not_using_indexes = 1
-error_log               = /var/log/mysql/error.log
+log_error               = /var/log/mysql/error.log
 
 # --- Binary Logging (required for replication) ---
 log_bin                 = /var/log/mysql/mysql-bin
