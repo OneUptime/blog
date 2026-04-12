@@ -40,7 +40,7 @@ FLUSH QUERY CACHE;
 -- Clear the host cache (for failed connection tracking)
 FLUSH HOSTS;
 
--- Flush status variables to zero
+-- Reset session status variables and fold them into global values
 FLUSH STATUS;
 
 -- Flush replication relay logs
@@ -59,7 +59,7 @@ This is more efficient than issuing separate `FLUSH` commands.
 
 ## FLUSH TABLES
 
-`FLUSH TABLES` closes all open tables, flushes the table cache, and waits for all currently running queries to complete. It is often used before making a backup:
+`FLUSH TABLES` closes all open tables, forces all tables in use to be closed, and flushes the prepared statement cache. It is often used before making a backup:
 
 ```sql
 -- Close all open tables
@@ -103,7 +103,7 @@ MySQL maintains a host cache to avoid repeated DNS lookups. If a host has too ma
 FLUSH HOSTS;
 ```
 
-Alternatively you can reset it via the performance schema:
+Note that `FLUSH HOSTS` is deprecated as of MySQL 8.0.23 and removed in MySQL 8.4. Use the performance schema instead:
 
 ```sql
 TRUNCATE TABLE performance_schema.host_cache;
