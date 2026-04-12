@@ -76,7 +76,7 @@ while True:
 
 ```text
 High bytes_out, low bytes_in:
-  - Large result sets being returned (missing projections or LIMIT)
+  - Large result sets being returned (missing projections or .limit())
   - Full collection scans returning many documents
 
 High bytes_in, low bytes_out:
