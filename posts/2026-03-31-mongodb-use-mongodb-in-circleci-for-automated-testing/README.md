@@ -10,7 +10,7 @@ Description: Configure CircleCI pipelines with MongoDB service containers and or
 
 ## Introduction
 
-CircleCI supports Docker-based service containers and official orbs that make integrating MongoDB into your test pipeline simple. This guide covers using the CircleCI MongoDB orb, manual Docker service configuration, and best practices for test isolation.
+CircleCI supports Docker-based service containers that make integrating MongoDB into your test pipeline simple. This guide covers Docker service configuration, authenticated setups, and best practices for test isolation.
 
 ## Using Docker Executor with MongoDB Service
 
@@ -95,6 +95,15 @@ pytest-integration:
 
   steps:
     - checkout
+    - run:
+        name: Wait for MongoDB
+        command: |
+          for i in $(seq 1 30); do
+            nc -z localhost 27017 && echo "MongoDB ready" && break
+            echo "Waiting..."
+            sleep 2
+          done
+
     - run:
         name: Install dependencies
         command: pip install -r requirements.txt
