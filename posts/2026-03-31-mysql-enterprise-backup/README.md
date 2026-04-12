@@ -49,7 +49,7 @@ Create a backup user in MySQL with the required privileges:
 
 ```sql
 CREATE USER 'meb_user'@'localhost' IDENTIFIED BY 'MebPass123!';
-GRANT SELECT, RELOAD, REPLICATION CLIENT, SUPER,
+GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT, SUPER,
       BACKUP_ADMIN, INNODB_REDO_LOG_ARCHIVE
       ON *.* TO 'meb_user'@'localhost';
 FLUSH PRIVILEGES;
@@ -127,7 +127,7 @@ mysqlbackup \
 
 ## Encrypted Backup
 
-Encrypt the backup with AES:
+Encrypt the backup with AES. Encryption requires creating a single-file (image) backup using `backup-to-image`:
 
 ```bash
 mysqlbackup \
@@ -135,9 +135,17 @@ mysqlbackup \
     --user=meb_user \
     --password=MebPass123! \
     --encrypt \
-    --key=0123456789ABCDEF0123456789ABCDEF \
-    --backup-dir=/backups/mysql/encrypted_$(date +%Y%m%d) \
-    backup-and-apply-log
+    --key-file=/etc/mysql/meb_encryption.key \
+    --backup-image=/backups/mysql/encrypted_$(date +%Y%m%d).mbi \
+    --backup-dir=/tmp/meb_temp \
+    backup-to-image
+```
+
+The key file must contain a 64-character hexadecimal string (256-bit AES key). Generate one with:
+
+```bash
+openssl rand -hex 32 > /etc/mysql/meb_encryption.key
+chmod 600 /etc/mysql/meb_encryption.key
 ```
 
 ## Restoring a Backup
@@ -215,7 +223,7 @@ ls -dt "$BACKUP_BASE"/full_* | tail -n +8 | xargs rm -rf
 - Use `--compress` to reduce backup size by 60-80% for typical datasets.
 - Test restores quarterly - validate the entire restore process, not just the backup tool output.
 - Store backups on remote storage; replicate to at least one offsite location.
-- Encrypt backups containing sensitive data using `--encrypt`.
+- Encrypt backups containing sensitive data using `--encrypt` with `backup-to-image`.
 
 ## Summary
 
