@@ -130,7 +130,7 @@ CALL fetch_orders_by_status('pending');
 ## Checking Prepared Statement Limitations
 
 - Prepared statements are session-scoped and not visible to other connections.
-- Maximum of 16,382 prepared statements per session (controlled by `max_prepared_stmt_count`).
+- Maximum of 16,382 prepared statements across all sessions on the server (controlled by the global `max_prepared_stmt_count` variable).
 - `?` placeholders can only replace data values, not identifiers (table/column names).
 
 ```sql
