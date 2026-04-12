@@ -46,9 +46,9 @@ FROM (
   SELECT 11 UNION ALL
   SELECT 14
 ) t;
--- BIT_AND: 1001 = 9  (only bit 0 and 3 set in ALL rows)
+-- BIT_AND: 1000 = 8  (only bit 3 set in ALL rows)
 -- BIT_OR:  1111 = 15 (every bit set in at least one row)
--- BIT_XOR: 0000 = 0  (varies by row count)
+-- BIT_XOR: 1000 = 8  (bit 3 set an odd number of times)
 ```
 
 ## Permission Flags with BIT_OR()
@@ -103,7 +103,7 @@ SELECT batch_id,
 FROM task_status
 GROUP BY batch_id;
 -- Batch 1: all_completed=1, all_verified=0 (task 3 not verified)
--- Batch 2: all_completed=1, all_verified=1
+-- Batch 2: all_completed=1, all_verified=2
 ```
 
 ## Detecting Changes with BIT_XOR()
