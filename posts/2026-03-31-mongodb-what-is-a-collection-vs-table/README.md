@@ -91,7 +91,7 @@ CREATE TABLE sessions (
 db.old_orders.drop();
 
 // Rename a collection
-db.old_orders.renameCollection("orders_archive");
+db.recent_orders.renameCollection("orders_archive");
 
 // List all collections
 db.getCollectionNames();
@@ -102,11 +102,16 @@ db.getCollectionNames();
 Collections support WiredTiger storage options at creation:
 
 ```javascript
+// Custom WiredTiger compression
 db.createCollection("events", {
   storageEngine: {
     wiredTiger: { configString: "block_compressor=zstd" }
-  },
-  timeseries: {  // Native time-series collection
+  }
+});
+
+// Native time-series collection
+db.createCollection("sensor_readings", {
+  timeseries: {
     timeField: "timestamp",
     metaField: "deviceId",
     granularity: "seconds"
