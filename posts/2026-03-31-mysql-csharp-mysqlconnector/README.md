@@ -16,6 +16,7 @@ MySqlConnector is a fully async, truly cancellable ADO.NET MySQL driver. Unlike 
 
 ```bash
 dotnet add package MySqlConnector
+dotnet add package MySqlConnector.DependencyInjection
 ```
 
 ## Connection String Format
