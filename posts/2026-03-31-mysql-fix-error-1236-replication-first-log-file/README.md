@@ -103,8 +103,7 @@ Increase binary log retention on the source to give replicas time to catch up:
 
 ```text
 [mysqld]
-expire_logs_days = 14
-# MySQL 8.0+
+# expire_logs_days is deprecated in MySQL 8.0; use binlog_expire_logs_seconds instead
 binlog_expire_logs_seconds = 1209600
 ```
 
