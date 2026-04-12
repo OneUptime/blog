@@ -87,7 +87,7 @@ def check_oplog_window():
         first = oplog.find_one(sort=[("$natural", 1)])
         last = oplog.find_one(sort=[("$natural", -1)])
         if first and last:
-            window_hours = (last["ts"].as_datetime() - first["ts"].as_datetime()).total_seconds() / 3600
+            window_hours = (last["ts"].time - first["ts"].time) / 3600
             if window_hours < OPLOG_WINDOW_THRESHOLD_HOURS:
                 return f"WARNING: Oplog window is {window_hours:.1f}h (threshold: {OPLOG_WINDOW_THRESHOLD_HOURS}h)"
             return None
@@ -136,7 +136,7 @@ status.members.forEach(m => {
 use local
 const first = db["oplog.rs"].find().sort({ $natural: 1 }).limit(1).next();
 const last = db["oplog.rs"].find().sort({ $natural: -1 }).limit(1).next();
-const windowHours = (last.ts.getHighBits() - first.ts.getHighBits()) / 3600;
+const windowHours = (last.ts.t - first.ts.t) / 3600;
 print("Oplog window: " + windowHours.toFixed(1) + " hours");
 print("Oplog size: " + db["oplog.rs"].stats().maxSize / 1024 / 1024 / 1024 + " GB");
 ```
