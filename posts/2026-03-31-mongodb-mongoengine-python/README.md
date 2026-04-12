@@ -119,7 +119,7 @@ User.objects(age__lt=18).delete()
 MongoEngine provides rich field types with built-in validation:
 
 ```python
-from mongoengine import Document, StringField, FloatField, BooleanField, ReferenceField
+from mongoengine import Document, StringField, FloatField, BooleanField, ValidationError
 
 class Product(Document):
     name = StringField(required=True)
