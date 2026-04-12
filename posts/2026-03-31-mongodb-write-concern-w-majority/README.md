@@ -85,7 +85,7 @@ This is the key advantage over `w:1`.
 
 ## Combining With j:true
 
-Add `j: true` to also require that the write is in the on-disk journal before counting an acknowledgment from each node:
+Add `j: true` to explicitly require that the write is in the on-disk journal before counting an acknowledgment from each node:
 
 ```javascript
 db.payments.insertOne(
@@ -94,7 +94,7 @@ db.payments.insertOne(
 )
 ```
 
-Without `j: true`, a majority of nodes have the write in memory. With `j: true`, a majority have it safely in their on-disk journals.
+Since MongoDB 3.6, with the default `writeConcernMajorityJournalDefault` replica set setting (`true`), `w: "majority"` already requires journaling from a majority of nodes. Adding explicit `j: true` ensures journal durability even if `writeConcernMajorityJournalDefault` has been set to `false`.
 
 ## Node.js Driver Example
 
