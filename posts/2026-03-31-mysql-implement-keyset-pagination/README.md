@@ -111,7 +111,7 @@ SELECT * FROM orders WHERE id > 20 ORDER BY id ASC LIMIT 20;
 
 - You cannot jump to an arbitrary page number - only next/previous
 - The sort column must be indexed and ideally unique (or combined with a unique column)
-- Rows inserted between fetches may be missed or duplicated depending on cursor position
+- Rows inserted before the current cursor position between fetches will be missed; updates to sort columns can cause rows to appear twice or be skipped
 
 ## Summary
 
