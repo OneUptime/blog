@@ -92,14 +92,14 @@ Right-click any document in the tree view to:
 Right-click a collection and select "Open Index Manager" to view, create, and drop indexes:
 
 ```javascript
-// Equivalent shell command DataGrip runs
+// Equivalent shell command Studio 3T runs
 db.orders.createIndex({ status: 1, createdAt: -1 });
 ```
 
 ## Keyboard Shortcuts
 
 ```text
-Ctrl+R           - Run query
+Ctrl+Enter       - Run query
 Ctrl+T           - New shell tab
 Ctrl+Shift+F     - Format JSON in editor
 F5               - Refresh collection view
