@@ -133,7 +133,7 @@ FROM daily_sales;
 -- same result, but more explicit
 ```
 
-## FIRST_VALUE() vs MIN()
+## FIRST_VALUE() vs MIN()/MAX()
 
 ```sql
 -- FIRST_VALUE: returns the value from the first row in ORDER BY sequence
