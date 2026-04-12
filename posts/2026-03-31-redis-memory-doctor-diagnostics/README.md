@@ -26,25 +26,25 @@ Returns a plain-text string describing detected memory issues or confirming that
 
 ```redis
 MEMORY DOCTOR
-# "Sam, I detected no issues with your memory configuration. But remember: every 42nd time you run this command, Redis will try to steal your soul. Be careful."
+# "Hi Sam, I can't find any memory issue in your instance. I can only account for what occurs on this base."
 ```
 
-(The joke message is actual Redis behavior -- it's a random Easter egg in the response.)
+(The "Sam" greeting and HAL 9000-style phrasing are actual Redis behavior -- the command uses sci-fi humor throughout its output.)
 
 ### High fragmentation
 
 ```redis
 MEMORY DOCTOR
-# "Sam, I detected a few issues with your memory configuration:
-# * High RSS memory overhead (rss/used: 1.8) means that Redis uses memory much more than needed. Possible causes: active memory defragmentation is disabled, data was stored and deleted many times, or memory was freed by the OS."
+# "Sam, I detected a few issues in this Redis instance memory implants:
+# * High total RSS overhead: This instance has a memory fragmentation and RSS overhead greater than 1.4 (this means that the Resident Set Size of the process is much larger than the sum of the logical allocations Redis performed)."
 ```
 
 ### Peak memory is much higher than current usage
 
 ```redis
 MEMORY DOCTOR
-# "Sam, I detected a few issues with your memory configuration:
-# * Peak memory: 512MB, currently using only 100MB. Consider clearing the peak with MEMORY RESET-STAT to get a more accurate reading."
+# "Sam, I detected a few issues in this Redis instance memory implants:
+# * Peak memory: In the past this instance used more than 150% the memory that is currently using. The allocator is normally not able to release memory after a peak, so you can expect to see a big fragmentation ratio, however this is actually harmless and is due to the memory allocator not returning useless memory to the OS."
 ```
 
 ## What MEMORY DOCTOR Checks
@@ -55,7 +55,7 @@ flowchart TD
     A --> C[Check used_memory vs used_memory_rss]
     A --> D[Check used_memory vs mem_allocator_frag_ratio]
     A --> E[Check peak memory vs current]
-    B --> F{> 1.5?}
+    B --> F{> 1.4?}
     C --> G{RSS much > used?}
     D --> H{allocator frag high?}
     E --> I{Peak >> current?}
@@ -110,13 +110,13 @@ INFO memory
 
 ### Peak memory concerns
 
-Reset peak tracking after a bulk import or spike:
+The peak memory warning from `MEMORY DOCTOR` is informational -- it indicates the allocator is holding onto memory from a past spike. Try returning cached memory to the OS:
 
 ```redis
-MEMORY RESET-STAT
+MEMORY PURGE
 ```
 
-This resets `used_memory_peak` to the current `used_memory`.
+This asks the allocator (jemalloc) to release unused dirty pages. If fragmentation remains high after a large peak, a server restart is the most reliable way to reclaim that memory.
 
 ## MEMORY DOCTOR in a Health Check Script
 
@@ -141,7 +141,7 @@ fi
 | `MEMORY STATS` | Detailed memory statistics |
 | `MEMORY MALLOC-STATS` | Raw jemalloc allocator statistics |
 | `MEMORY PURGE` | Return cached memory to OS |
-| `MEMORY RESET-STAT` | Reset peak memory and other stats |
+| `MEMORY HELP` | List available MEMORY subcommands |
 | `MEMORY DOCTOR` | Plain-English diagnostic summary |
 
 ## Summary
