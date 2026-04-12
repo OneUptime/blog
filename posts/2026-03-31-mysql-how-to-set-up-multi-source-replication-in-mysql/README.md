@@ -16,21 +16,20 @@ Each replication source is tracked using a named channel, so events from differe
 
 ## Prerequisites
 
-- MySQL 5.7 or later on all servers
+- MySQL 8.0.23 or later on all servers (the `CHANGE REPLICATION SOURCE TO` syntax requires 8.0.23+)
 - Unique `server_id` values on every server
-- The replica must use a repository type that supports multiple channels: `TABLE` (not `FILE`)
 
 ## Step 1 - Configure the Replica for Multi-Source Mode
 
-On the replica, set the master info and relay log repositories to TABLE:
+On the replica, ensure a unique `server_id` is set:
 
 ```ini
 # /etc/mysql/mysql.conf.d/mysqld.cnf
 [mysqld]
-master_info_repository   = TABLE
-relay_log_info_repository = TABLE
 server_id = 100
 ```
+
+In MySQL 8.0+, the master info and relay log repositories already default to `TABLE`, which is required for multi-source replication. No additional repository configuration is needed.
 
 Restart MySQL after editing:
 
