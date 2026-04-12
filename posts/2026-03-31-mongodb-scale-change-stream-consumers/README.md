@@ -80,7 +80,7 @@ watchShard(process.env.SHARD1_URI, "shard1");
 watchShard(process.env.SHARD2_URI, "shard2");
 ```
 
-**Note:** Each shard watcher emits events independently. Events from different shards for the same aggregate may arrive out of order.
+**Note:** Each shard watcher emits events independently. Events from different shards for the same aggregate may arrive out of order. MongoDB recommends opening Change Streams through `mongos` rather than connecting directly to shard primaries. Direct shard connections may miss events during chunk migrations between shards.
 
 ## Strategy 3: Parallel Processing with Worker Threads
 
@@ -98,12 +98,14 @@ if (isMainThread) {
   let idx = 0;
 
   for await (const event of stream) {
-    workers[idx % workers.length].postMessage(event);
+    // Serialize to avoid BSON types being corrupted by the structured clone algorithm
+    workers[idx % workers.length].postMessage(JSON.stringify(event));
     idx++;
     await saveToken(event._id);
   }
 } else {
-  parentPort.on("message", async (event) => {
+  parentPort.on("message", async (serialized) => {
+    const event = JSON.parse(serialized);
     await processEvent(event);
   });
 }
