@@ -161,7 +161,7 @@ Wildcard indexes have several important limitations to be aware of:
 
 - They cannot be used as shard keys.
 - They do not support covered queries (they always require a document fetch).
-- They cannot index arrays that contain sub-documents (only scalar values and arrays of scalars are indexed).
+- They do not support queries that test exact array equality or use explicit array indices in the field path.
 - They do not support `$expr` queries.
 - They are not a replacement for compound indexes on frequently queried, known field patterns.
 
