@@ -50,7 +50,7 @@ The gap between 20 and 26 is divided evenly: positions 1 and 2 get 22 and 24.
 
 ## Using $linearFill with Actual Timestamps
 
-When sort values are actual timestamps or numeric positions, interpolation is proportional to those values:
+Even when sorting by timestamps or numeric values, `$linearFill` distributes values evenly based on document position, not the actual sort field values. Using a meaningful sort field like a timestamp ensures correct document ordering for interpolation:
 
 ```javascript
 db.price_history.aggregate([
