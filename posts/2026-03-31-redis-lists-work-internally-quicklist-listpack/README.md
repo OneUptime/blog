@@ -47,9 +47,11 @@ CONFIG GET list-max-listpack-size
 CONFIG GET list-max-ziplist-size   # legacy alias
 ```
 
-The default listpack threshold switches to quicklist when:
-- More than 128 elements (`list-max-listpack-size` count), or
-- Any element exceeds 64 bytes (`list-max-listpack-size` byte limit)
+With the default value of `-2`, a list uses listpack encoding until the data exceeds 8KB, then converts to quicklist. Negative values set size-based limits:
+
+- `-1` = 4KB, `-2` = 8KB, `-3` = 16KB, `-4` = 32KB, `-5` = 64KB
+
+A positive value (e.g., `128`) sets the maximum number of entries per node instead.
 
 ## Quicklist Encoding
 
