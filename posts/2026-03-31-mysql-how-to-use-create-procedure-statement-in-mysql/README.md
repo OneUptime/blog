@@ -187,10 +187,8 @@ conn = mysql.connector.connect(host='localhost', database='mydb',
                                user='root', password='secret')
 cursor = conn.cursor()
 
-cursor.callproc('get_order_total', [42, 0])
-
-for result in cursor.stored_results():
-    print(result.fetchall())
+result_args = cursor.callproc('get_order_total', [42, 0])
+print(result_args[1])  # prints the value of the OUT parameter p_total
 
 conn.close()
 ```
