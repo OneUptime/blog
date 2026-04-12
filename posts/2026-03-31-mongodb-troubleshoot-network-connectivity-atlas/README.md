@@ -26,7 +26,7 @@ Understanding which layer is failing guides your troubleshooting approach.
 First confirm that the Atlas hostname resolves to an IP address:
 
 ```bash
-dig cluster0.abcde.mongodb.net +short
+dig _mongodb._tcp.cluster0.abcde.mongodb.net SRV +short
 nslookup cluster0-shard-00-00.abcde.mongodb.net
 ```
 
@@ -61,7 +61,8 @@ Then check the Atlas access list via API:
 
 ```bash
 curl --user "PUBLIC_KEY:PRIVATE_KEY" --digest \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/accessList"
+  --header "Accept: application/vnd.atlas.2023-02-01+json" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/accessList"
 ```
 
 Add your IP if missing:
@@ -69,8 +70,9 @@ Add your IP if missing:
 ```bash
 curl --user "PUBLIC_KEY:PRIVATE_KEY" --digest \
   --header "Content-Type: application/json" \
+  --header "Accept: application/vnd.atlas.2023-02-01+json" \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/accessList" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/accessList" \
   --data '[{"ipAddress": "YOUR_IP", "comment": "debug"}]'
 ```
 
