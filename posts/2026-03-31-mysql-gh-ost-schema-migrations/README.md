@@ -14,7 +14,7 @@ Description: gh-ost is GitHub's triggerless online schema migration tool for MyS
 
 ## How It Works
 
-1. Creates a ghost table `_tablename_ghc` with the new schema.
+1. Creates a ghost table `_tablename_gho` with the new schema.
 2. Connects to the MySQL binary log as a replica.
 3. Begins copying rows from the original table in small, throttled chunks.
 4. Simultaneously reads binlog events for the original table and replays them on the ghost table.
@@ -23,9 +23,9 @@ Description: gh-ost is GitHub's triggerless online schema migration tool for MyS
 ## Installation
 
 ```bash
-# Download the latest release
-curl -LO https://github.com/github/gh-ost/releases/latest/download/gh-ost-binary-linux-amd64.tar.gz
-tar -xzf gh-ost-binary-linux-amd64.tar.gz
+# Download a specific release (check https://github.com/github/gh-ost/releases for the latest)
+wget https://github.com/github/gh-ost/releases/download/v1.1.6/gh-ost-binary-linux-amd64-20231207144803.tar.gz
+tar -xzf gh-ost-binary-linux-amd64-20231207144803.tar.gz
 sudo mv gh-ost /usr/local/bin/
 ```
 
@@ -86,7 +86,7 @@ gh-ost \
   --assume-master-host="primary.example.com" \
   --database="myapp" \
   --table="users" \
-  --alter="MODIFY COLUMN bio TEXT NOT NULL DEFAULT ''" \
+  --alter="ADD COLUMN last_login DATETIME NULL" \
   --execute
 ```
 
@@ -122,8 +122,8 @@ rm /tmp/gh-ost.postpone
 
 ## Advantages Over pt-osc
 
-- No triggers, so no write amplification or trigger lock issues.
-- Binlog-based approach works well on tables that already have triggers.
+- No triggers, so no trigger-based write amplification or trigger lock contention.
+- Tables with existing triggers are not supported by pt-osc either; gh-ost avoids triggers entirely.
 - Interactive control socket allows runtime adjustments.
 - Safer on very high write rate tables.
 
