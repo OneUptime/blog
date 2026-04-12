@@ -62,13 +62,13 @@ Repeat for all secondaries.
 Connect to the current primary and initiate a stepdown:
 
 ```javascript
-rs.stepDown(60)  // hold primary role for max 60 more seconds during election
+rs.stepDown(60)  // step down and remain ineligible for re-election for 60 seconds
 ```
 
 MongoDB will elect a new primary. Confirm the new primary:
 
 ```javascript
-rs.isMaster().primary
+db.hello().primary
 ```
 
 ## Step 4 - Restart the Former Primary
@@ -97,7 +97,7 @@ MEMBERS=("mongo2:27017" "mongo3:27017")
 
 for host in "${MEMBERS[@]}"; do
   echo "Restarting secondary $host..."
-  ssh "$host" "sudo systemctl restart mongod"
+  ssh "${host%%:*}" "sudo systemctl restart mongod"
 
   echo "Waiting for $host to become SECONDARY..."
   until mongosh --host "$host" --quiet --eval \
