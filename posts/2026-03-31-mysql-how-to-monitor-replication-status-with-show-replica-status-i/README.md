@@ -55,13 +55,13 @@ Non-zero error numbers indicate a replication problem. The error string explains
 ### Log Positions
 
 ```text
-Master_Log_File: mysql-bin.000042
-Read_Master_Log_Pos: 154892
-Relay_Master_Log_File: mysql-bin.000042
-Exec_Master_Log_Pos: 154892
+Source_Log_File: mysql-bin.000042
+Read_Source_Log_Pos: 154892
+Relay_Source_Log_File: mysql-bin.000042
+Exec_Source_Log_Pos: 154892
 ```
 
-`Read_Master_Log_Pos` is what the IO thread has received; `Exec_Master_Log_Pos` is what the SQL thread has applied. A growing gap between these indicates the SQL thread is falling behind.
+`Read_Source_Log_Pos` is what the IO thread has received; `Exec_Source_Log_Pos` is what the SQL thread has applied. A growing gap between these indicates the SQL thread is falling behind.
 
 ### GTID Information
 
