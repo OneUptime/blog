@@ -97,7 +97,7 @@ mongodump \
 
 ```bash
 mongodump \
-  --uri="mongodb://mongodb://user:pass@host:27017" \
+  --uri="mongodb://user:pass@host:27017" \
   --db=myapp \
   --gzip \
   --archive=/backup/myapp-$(date +%Y%m%d).gz
@@ -162,7 +162,7 @@ mongorestore \
 mongorestore \
   --uri="mongodb://localhost:27017" \
   --db=myapp \
-  --drop \                   # drop existing collection before restoring
+  --drop \
   /backup/myapp-20260331/myapp/
 ```
 
