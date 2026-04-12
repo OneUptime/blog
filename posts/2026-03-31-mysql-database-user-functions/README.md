@@ -44,7 +44,7 @@ DELIMITER ;
 CALL log_current_schema();
 ```
 
-### Portable DDL that avoids hardcoded schema names
+### Portable query that avoids hardcoded schema names
 
 ```sql
 -- Dynamically reference the current database in queries
