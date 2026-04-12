@@ -35,7 +35,7 @@ mysqldump -u root -p \
 
 ## Including Stored Procedures and Events
 
-By default, `mysqldump --all-databases` includes routines but not events. Add these flags:
+By default, `mysqldump` does not include routines or events (only triggers are included by default). Add these flags to get a complete backup:
 
 ```bash
 mysqldump -u root -p \
