@@ -21,6 +21,7 @@ mongodb  = "3"
 tokio    = { version = "1", features = ["full"] }
 serde    = { version = "1", features = ["derive"] }
 serde_json = "1"
+futures  = "0.3"
 ```
 
 ## Application State
