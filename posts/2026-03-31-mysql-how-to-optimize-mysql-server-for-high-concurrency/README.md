@@ -27,7 +27,7 @@ The buffer pool caches data pages and indexes. It should use 60-80% of available
 ```ini
 [mysqld]
 innodb_buffer_pool_size = 12G          # For a 16GB RAM server
-innodb_buffer_pool_instances = 8       # One instance per GB (max 64)
+innodb_buffer_pool_instances = 8       # Each instance should be at least 1GB (max 64)
 innodb_buffer_pool_chunk_size = 128M
 ```
 
@@ -97,7 +97,7 @@ SELECT * FROM performance_schema.data_locks\G
 ```ini
 [mysqld]
 max_connections          = 500
-back_log                 = 150    # Connection queue when max_connections is reached
+back_log                 = 150    # TCP listen queue for pending connection requests
 max_connect_errors       = 1000000
 wait_timeout             = 300    # Close idle connections after 5 minutes
 interactive_timeout      = 300
