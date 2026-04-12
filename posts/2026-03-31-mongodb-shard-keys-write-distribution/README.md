@@ -58,7 +58,7 @@ If your natural key is monotonically increasing, add a computed "bucket" field t
 const bucketCount = 10;
 const bucket = Math.floor(Math.random() * bucketCount);
 
-await db.collection('events').insertOne({
+await db.collection('raw').insertOne({
   _id: new ObjectId(),
   userId,
   event: 'page_view',
@@ -80,7 +80,7 @@ After sharding, check how data is distributed across chunks:
 db.adminCommand({ listShards: 1 })
 
 // Check per-shard document counts
-db.orders.getShardDistribution()
+db.raw.getShardDistribution()
 ```
 
 Look at the `data` and `docs` values per shard. A healthy cluster shows roughly equal values. A hotspot shows one shard with significantly more data.
