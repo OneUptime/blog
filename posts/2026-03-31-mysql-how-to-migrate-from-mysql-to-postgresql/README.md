@@ -74,7 +74,7 @@ CAST
   type tinyint with extra auto_increment to serial,
   column users.active to boolean using tinyint-to-boolean;
 
-EXCLUDING TABLE NAMES MATCHING 'tmp_', 'temp_'
+EXCLUDING TABLE NAMES MATCHING ~/tmp_/, ~/temp_/
 EOF
 
 # Run the migration
@@ -138,7 +138,7 @@ SELECT * FROM orders LIMIT 10 OFFSET 20;
 SELECT NOW(), DATE_FORMAT(created_at, '%Y-%m-%d'), DATEDIFF(end_date, start_date);
 
 -- PostgreSQL
-SELECT NOW(), TO_CHAR(created_at, 'YYYY-MM-DD'), (end_date - start_date);
+SELECT NOW(), TO_CHAR(created_at, 'YYYY-MM-DD'), (end_date::date - start_date::date);
 ```
 
 ## Step 4: Handle ENUM Types
