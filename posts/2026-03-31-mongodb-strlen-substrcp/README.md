@@ -211,8 +211,8 @@ Output:
 
 ```javascript
 [
-  { _id: 1, initials: "SefNY" },
-  { _id: 2, initials: "MR"    },
+  { _id: 1, initials: "SefN" },
+  { _id: 2, initials: "Mr"   },
   { _id: 3, initials: ""      }
 ]
 ```
