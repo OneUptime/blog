@@ -13,9 +13,9 @@ The InnoDB system tablespace is the central storage area used by InnoDB before `
 ## What the System Tablespace Contains
 
 The system tablespace (`ibdata1` by default) stores:
-- The InnoDB data dictionary (table metadata)
-- The undo log tablespace (in older configurations)
-- The doublewrite buffer
+- The InnoDB data dictionary (in MySQL 5.7 and earlier; moved to the `mysql.ibd` data dictionary tablespace in MySQL 8.0)
+- The undo log tablespace (in older configurations; separate undo tablespaces are required in MySQL 8.0)
+- The doublewrite buffer (in MySQL versions before 8.0.20; moved to separate `.dblwr` files in 8.0.20+)
 - The change buffer
 - Tables created with `TABLESPACE innodb_system`
 
@@ -76,12 +76,13 @@ The system tablespace cannot be shrunk in place. To reduce its size, you must pe
 # 1. Dump all databases
 mysqldump --all-databases > full_backup.sql
 
-# 2. Stop MySQL and remove ibdata files
+# 2. Stop MySQL and remove ibdata and redo log files
 sudo systemctl stop mysql
 sudo rm /var/lib/mysql/ibdata1
-sudo rm /var/lib/mysql/ib_logfile*
+sudo rm -f /var/lib/mysql/ib_logfile*          # MySQL before 8.0.30
+sudo rm -rf /var/lib/mysql/'#innodb_redo'      # MySQL 8.0.30+
 
-# 3. Restart MySQL (creates fresh system tablespace)
+# 3. Restart MySQL (creates fresh system tablespace and redo logs)
 sudo systemctl start mysql
 
 # 4. Restore data
