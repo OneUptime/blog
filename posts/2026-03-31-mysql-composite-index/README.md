@@ -162,7 +162,8 @@ Look for `Using index` or absence of `Using filesort` in the Extra column.
 When the SELECT columns are all covered by the index, MySQL reads the index only without touching the table rows.
 
 ```sql
--- All columns (id, amount) are not in the index - table access needed
+-- The amount column is not in the index, so a table lookup is needed
+-- (InnoDB secondary indexes implicitly include the primary key, so id is covered)
 SELECT id, amount FROM orders WHERE country = 'US' AND status = 'completed';
 
 -- Create a covering index including amount
