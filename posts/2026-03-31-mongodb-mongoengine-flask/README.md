@@ -8,7 +8,7 @@ Description: Learn how to integrate MongoEngine with Flask using Flask-MongoEngi
 
 ---
 
-Flask-MongoEngine is the official integration library that connects MongoEngine with Flask's application context. It handles connection lifecycle, integrates with Flask's configuration system, and provides pagination utilities out of the box.
+Flask-MongoEngine is the most widely used integration library that connects MongoEngine with Flask's application context. It handles connection lifecycle, integrates with Flask's configuration system, and provides pagination utilities out of the box.
 
 ## Installation
 
@@ -74,7 +74,6 @@ Use Flask routes with MongoEngine queries:
 
 ```python
 from flask import Flask, jsonify, request, abort
-from bson import ObjectId
 
 app = create_app()
 
