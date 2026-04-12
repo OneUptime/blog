@@ -25,11 +25,11 @@ The process for each transaction:
 
 ```text
 1. Transaction executes on a member (writes happen locally)
-2. At COMMIT time, the member broadcasts the write set to all group members
-3. Members vote on whether the transaction conflicts with any concurrent transaction
-4. If a quorum agrees (majority), the transaction is certified and ordered
-5. All members apply the transaction in the agreed global order
-6. The COMMIT returns success to the client
+2. At COMMIT time, the member broadcasts the write set to all group members via XCom
+3. XCom uses Paxos to agree on a total order and delivers the write set to all members
+4. Each member independently certifies the transaction against concurrent transactions
+5. If no conflict is found, all members apply the transaction in the agreed global order
+6. The COMMIT returns success to the client on the originating member
 ```
 
 ## Quorum Requirement
@@ -122,16 +122,18 @@ SELECT group_replication_switch_to_multi_primary_mode();
 
 ## Network Partitions and Fencing
 
-If a network partition splits the group, only the side with a quorum continues to accept writes. The minority side becomes read-only and reports:
+If a network partition splits the group, only the side with a quorum continues to accept writes. The minority side cannot process transactions because it lacks a quorum. If `group_replication_unreachable_majority_timeout` is set to a positive value, the minority members will exit the group and report:
 
 ```text
 MEMBER_STATE = ERROR
 ```
 
+By default this timeout is 0, meaning the minority side blocks indefinitely waiting for the majority to become reachable again.
+
 ```sql
 -- On the isolated minority partition
 SHOW VARIABLES LIKE 'group_replication_unreachable_majority_timeout';
--- After this timeout, the minority will exit the group
+-- If set to a positive value, the minority exits the group after this timeout
 ```
 
 ## Summary
