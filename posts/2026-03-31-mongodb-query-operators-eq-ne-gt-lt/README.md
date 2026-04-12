@@ -146,7 +146,7 @@ db.users.find({
 String comparisons follow lexicographic (alphabetical) order:
 
 ```javascript
-// Names starting with letters after "M"
+// Names that sort after "M" (includes "Ma", "Martin", "N", "Newman", etc.)
 db.contacts.find({ lastName: { $gt: "M" } })
 ```
 
