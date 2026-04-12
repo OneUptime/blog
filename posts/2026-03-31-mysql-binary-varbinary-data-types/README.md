@@ -25,7 +25,7 @@ flowchart LR
 | Type | Storage | Max Length |
 |---|---|---|
 | `BINARY(M)` | M bytes (always) | 255 bytes |
-| `VARBINARY(M)` | actual length + 1 byte | 65,535 bytes |
+| `VARBINARY(M)` | actual length + 1 or 2 bytes | 65,535 bytes |
 
 `BINARY(M)` pads shorter values with `0x00` (zero bytes) to fill M bytes. `VARBINARY(M)` stores only the bytes provided.
 
