@@ -102,7 +102,7 @@ router.get('/products', async (req, res) => {
      FROM products ${where}
      ORDER BY relevance_score DESC, created_at DESC
      LIMIT 20`,
-    q ? [...params, q + '*'] : params
+    q ? [q + '*', ...params] : params
   );
 
   res.json({ data: rows });
