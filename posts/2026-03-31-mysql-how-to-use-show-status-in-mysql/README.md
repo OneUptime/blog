@@ -94,9 +94,9 @@ Calculate the buffer pool hit rate:
 ```sql
 SELECT
     (1 - (
-        (SELECT Variable_value FROM information_schema.global_status
+        (SELECT Variable_value FROM performance_schema.global_status
          WHERE Variable_name = 'Innodb_buffer_pool_reads') /
-        (SELECT Variable_value FROM information_schema.global_status
+        (SELECT Variable_value FROM performance_schema.global_status
          WHERE Variable_name = 'Innodb_buffer_pool_read_requests')
     )) * 100 AS buffer_pool_hit_rate_pct;
 ```
@@ -131,11 +131,11 @@ If `Opened_tables` grows rapidly compared to `Open_tables`, increase `table_open
 SELECT
     Variable_value / Uptime AS qps
 FROM (
-    SELECT Variable_value FROM information_schema.global_status
+    SELECT Variable_value FROM performance_schema.global_status
     WHERE Variable_name = 'Questions'
 ) q,
 (
-    SELECT Variable_value AS Uptime FROM information_schema.global_status
+    SELECT Variable_value AS Uptime FROM performance_schema.global_status
     WHERE Variable_name = 'Uptime'
 ) u;
 ```
