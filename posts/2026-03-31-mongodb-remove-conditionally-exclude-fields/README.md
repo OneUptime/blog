@@ -12,21 +12,20 @@ In MongoDB aggregation, setting a field to `null` and omitting a field are diffe
 
 ## The Problem $$REMOVE Solves
 
-Without `$$REMOVE`, conditional field inclusion requires two separate pipeline stages:
+Without `$$REMOVE`, you would have to set the field to a sentinel value such as `null`:
 
 ```javascript
-// Verbose: add field then conditionally unset
+// Without $$REMOVE: ssn is set to null for non-admins, not omitted
 db.users.aggregate([
-  { $addFields: { ssn: "$ssn" } },
   {
-    $project: {
-      ssn: { $cond: [{ $eq: ["$role", "admin"] }, "$ssn", 0] }
+    $addFields: {
+      ssn: { $cond: [{ $eq: ["$role", "admin"] }, "$ssn", null] }
     }
   }
 ]);
 ```
 
-With `$$REMOVE`, this collapses to one stage and correctly omits the field rather than setting it to `0` or `null`.
+With `$$REMOVE`, you can correctly omit the field entirely rather than setting it to `null` or a placeholder value.
 
 ## Basic $$REMOVE Usage
 
