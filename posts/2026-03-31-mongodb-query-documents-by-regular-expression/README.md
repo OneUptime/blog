@@ -96,7 +96,7 @@ Case-insensitive regex (`/pattern/i`) does not use standard indexes. For case-in
 
 ## Case-Insensitive Queries with Collation Index
 
-For efficient case-insensitive prefix searches:
+The `$regex` operator is not collation-aware, so collation indexes do not improve regex query performance. However, for case-insensitive equality or range matching, a collation index is very efficient:
 
 ```javascript
 db.users.createIndex(
@@ -104,12 +104,13 @@ db.users.createIndex(
   { collation: { locale: "en", strength: 2 } }
 )
 
+// Case-insensitive equality match (uses the collation index)
 db.users.find(
-  { username: /^john/ },
-  {},
-  { collation: { locale: "en", strength: 2 } }
-)
+  { username: "john" }
+).collation({ locale: "en", strength: 2 })
 ```
+
+For case-insensitive regex, you must use the `i` flag (`/^john/i`), but note that this will not use a standard index efficiently.
 
 ## Using $text Instead of Regex for Full-Text Search
 
