@@ -189,6 +189,7 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.mongodb.core.aggregation.*;
+import org.springframework.data.domain.Sort;
 
 @Service
 public class AdvancedOrderService {
@@ -290,7 +291,7 @@ public class TransferService {
 }
 ```
 
-## Validation with JSR-303 (Bean Validation)
+## Validation with Jakarta Bean Validation
 
 ```java
 import jakarta.validation.constraints.NotNull;
