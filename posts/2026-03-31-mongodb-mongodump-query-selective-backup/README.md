@@ -43,7 +43,7 @@ mongodump \
   --uri="mongodb://localhost:27017" \
   --db=myapp \
   --collection=events \
-  --query='{"createdAt": {"$gte": {"$date": {"$numberLong": "1740787200000"}}}}' \
+  --query='{"createdAt": {"$gte": {"$date": {"$numberLong": "1772323200000"}}}}' \
   --out=/tmp/events-backup
 ```
 
