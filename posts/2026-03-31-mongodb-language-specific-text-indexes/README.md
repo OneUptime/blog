@@ -12,7 +12,7 @@ MongoDB text indexes use language-specific stemming and stop-word lists when ana
 
 ## Supported Languages
 
-MongoDB ships with built-in support for over 15 languages including `french`, `german`, `spanish`, `portuguese`, `italian`, `dutch`, `russian`, `arabic`, `danish`, `finnish`, `hungarian`, `norwegian`, `romanian`, `swedish`, and `turkish`. Use `"none"` to disable language processing entirely.
+MongoDB ships with built-in support for 15 languages including `french`, `german`, `spanish`, `portuguese`, `italian`, `dutch`, `russian`, `danish`, `finnish`, `hungarian`, `norwegian`, `romanian`, `swedish`, and `turkish`. Use `"none"` to disable language processing entirely.
 
 ## Setting a Default Language at Index Creation
 
@@ -53,13 +53,13 @@ Each document is stemmed with its own language's rules.
 
 ## Querying Across Languages
 
-`$text` queries work the same regardless of language setting - the query string is stemmed using the same language as the document:
+`$text` queries stem the search string using the index's default language. Documents indexed via `language_override` are each stemmed at index time with their own language, but the query itself is stemmed with a single language:
 
 ```javascript
 db.articles.find({ $text: { $search: "running" } })
 ```
 
-An English document with "runs" will match because both reduce to the same stem. A French document with "courent" will only match French query terms.
+If the index default is `english`, the query term "running" is stemmed to "run" and matches an English document containing "runs" (also stemmed to "run"). A French document with "courent" (stemmed to its French root at index time) will not match because the stems differ.
 
 ## Specifying Query Language
 
