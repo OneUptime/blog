@@ -135,24 +135,24 @@ it('calls notificationService with order_shipped when status updated', async () 
 ```javascript
 it('resumes a change stream from a stored token', async () => {
   const orders = db.collection('orders');
-  let resumeToken;
 
   // Capture a resume token from the first event
   const stream1 = orders.watch();
-  const token = await new Promise((resolve) => {
+  const tokenPromise = new Promise((resolve) => {
     stream1.once('change', (event) => resolve(event._id));
   });
   await orders.insertOne({ test: 1 });
-  resumeToken = token;
+  const resumeToken = await tokenPromise;
   await stream1.close();
 
   // Resume from that token - should see only subsequent events
   const stream2 = orders.watch([], { resumeAfter: resumeToken });
-  await orders.insertOne({ test: 2 });
-
-  const event = await new Promise((resolve) => {
+  const eventPromise = new Promise((resolve) => {
     stream2.once('change', resolve);
   });
+  await orders.insertOne({ test: 2 });
+
+  const event = await eventPromise;
   await stream2.close();
 
   expect(event.fullDocument.test).toBe(2);
