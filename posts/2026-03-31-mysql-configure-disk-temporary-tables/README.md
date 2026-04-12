@@ -36,7 +36,7 @@ SHOW STATUS LIKE 'Created_tmp%';
 ```text
 Created_tmp_tables      - Total internal temporary tables (in memory + on disk)
 Created_tmp_disk_tables - Tables that had to be created on disk
-Created_tmp_files       - Temporary files created by sort operations
+Created_tmp_files       - Temporary files created by mysqld
 ```
 
 Calculate the disk temp table ratio:
@@ -59,8 +59,8 @@ A value above 10-20% indicates a need for tuning.
 SHOW VARIABLES LIKE 'tmp_table_size';
 SHOW VARIABLES LIKE 'max_heap_table_size';
 
--- The effective limit is the LOWER of these two values
--- Increase both to allow larger in-memory temp tables
+-- With the MEMORY engine, the effective limit is the LOWER of these two values
+-- Increase both to allow larger in-memory temp tables (for TempTable engine, see below)
 SET GLOBAL tmp_table_size = 64 * 1024 * 1024;       -- 64MB
 SET GLOBAL max_heap_table_size = 64 * 1024 * 1024;  -- 64MB
 ```
@@ -122,6 +122,7 @@ max_heap_table_size     = 67108864
 internal_tmp_mem_storage_engine = TempTable
 temptable_max_ram       = 2147483648
 temptable_use_mmap      = ON
+temptable_max_mmap      = 4294967296
 tmpdir                  = /var/lib/mysql/tmp
 ```
 
