@@ -46,14 +46,14 @@ CREATE TABLE locations (
 Use Well-Known Text (WKT) format with `ST_GeomFromText()`:
 
 ```sql
--- Insert a point (longitude, latitude order for SRID 4326)
+-- Insert a point (latitude, longitude order for SRID 4326)
 INSERT INTO locations (name, coordinates) VALUES
   ('Eiffel Tower',
-   ST_GeomFromText('POINT(2.2945 48.8584)', 4326)),
+   ST_GeomFromText('POINT(48.8584 2.2945)', 4326)),
   ('Big Ben',
-   ST_GeomFromText('POINT(-0.1246 51.5007)', 4326)),
+   ST_GeomFromText('POINT(51.5007 -0.1246)', 4326)),
   ('Tokyo Tower',
-   ST_GeomFromText('POINT(139.7454 35.6586)', 4326));
+   ST_GeomFromText('POINT(35.6586 139.7454)', 4326));
 ```
 
 Insert a polygon (district boundary):
@@ -62,11 +62,11 @@ Insert a polygon (district boundary):
 INSERT INTO locations (name, boundary) VALUES
   ('Central Park',
    ST_GeomFromText('POLYGON((
-     -73.9812 40.7680,
-     -73.9583 40.7680,
-     -73.9583 40.7640,
-     -73.9812 40.7640,
-     -73.9812 40.7680
+     40.7680 -73.9812,
+     40.7680 -73.9583,
+     40.7640 -73.9583,
+     40.7640 -73.9812,
+     40.7680 -73.9812
    ))', 4326));
 ```
 
@@ -83,8 +83,8 @@ FROM locations;
 +--------------+-----------------------------+
 | name         | wkt                         |
 +--------------+-----------------------------+
-| Eiffel Tower | POINT(2.2945 48.8584)        |
-| Big Ben      | POINT(-0.1246 51.5007)       |
+| Eiffel Tower | POINT(48.8584 2.2945)        |
+| Big Ben      | POINT(51.5007 -0.1246)       |
 +--------------+-----------------------------+
 ```
 
@@ -123,7 +123,7 @@ lat, lng = 48.8584, 2.2945
 cursor.execute("""
     INSERT INTO locations (name, coordinates)
     VALUES (%s, ST_GeomFromText(%s, 4326))
-""", ('My Location', f'POINT({lng} {lat})'))
+""", ('My Location', f'POINT({lat} {lng})'))
 
 conn.commit()
 ```
@@ -133,8 +133,8 @@ conn.commit()
 ```sql
 SELECT
   name,
-  ST_X(coordinates) AS longitude,
-  ST_Y(coordinates) AS latitude
+  ST_X(coordinates) AS latitude,
+  ST_Y(coordinates) AS longitude
 FROM locations;
 ```
 
@@ -147,4 +147,4 @@ FROM locations;
 
 ## Summary
 
-MySQL stores spatial data using geometry types like `POINT`, `LINESTRING`, and `POLYGON`. Use `ST_GeomFromText('POINT(lng lat)', 4326)` to insert WGS84 coordinates, and add a `SPATIAL INDEX` for efficient geographic queries. Retrieve data with `ST_AsText()` for WKT or `ST_AsGeoJSON()` for GeoJSON format.
+MySQL stores spatial data using geometry types like `POINT`, `LINESTRING`, and `POLYGON`. Use `ST_GeomFromText('POINT(lat lng)', 4326)` to insert WGS84 coordinates (latitude first for SRID 4326), and add a `SPATIAL INDEX` for efficient geographic queries. Retrieve data with `ST_AsText()` for WKT or `ST_AsGeoJSON()` for GeoJSON format.
