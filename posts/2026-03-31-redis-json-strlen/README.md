@@ -19,7 +19,7 @@ JSON.STRLEN key [path]
 ```
 
 - `key` - the Redis key
-- `path` - JSONPath pointing to a string value (defaults to `$`)
+- `path` - JSONPath pointing to a string value (defaults to the root path)
 
 Returns an integer length, or nil if the path does not point to a string.
 
@@ -33,10 +33,10 @@ JSON.SET post:1 $ '{"title":"Redis Performance Guide","body":"Redis is a fast in
 
 ```redis
 127.0.0.1:6379> JSON.STRLEN post:1 $.title
-1) (integer) 24
+1) (integer) 23
 
 127.0.0.1:6379> JSON.STRLEN post:1 $.body
-1) (integer) 87
+1) (integer) 93
 ```
 
 ## Non-String Path Returns Nil
