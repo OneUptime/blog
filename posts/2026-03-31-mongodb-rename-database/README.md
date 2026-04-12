@@ -41,7 +41,7 @@ use olddbname
 db.dropDatabase()
 ```
 
-## Method 2: Using copyTo in mongosh (Small Databases)
+## Method 2: Using $out Aggregation in mongosh (Small Databases)
 
 For small databases you can use mongosh scripting to copy each collection:
 
@@ -72,21 +72,6 @@ Then drop the original:
 use olddbname
 db.dropDatabase()
 ```
-
-## Method 3: Using adminCommand cloneCollection
-
-For copying individual collections across databases on the same server:
-
-```javascript
-use newdbname
-db.adminCommand({
-  cloneCollectionAsCapped: "olddbname.users",
-  toCollection: "users",
-  size: 0
-})
-```
-
-Note: `cloneCollectionAsCapped` is limited. Prefer `$out` aggregation for general use.
 
 ## Handling Indexes
 
