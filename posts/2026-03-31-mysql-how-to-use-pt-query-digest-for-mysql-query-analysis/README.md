@@ -120,22 +120,22 @@ Limit the report to the top 10 queries:
 pt-query-digest --limit=10 /var/log/mysql/slow.log
 ```
 
-## Report on Queries Without an Index
+## Report on Queries That Caused a Full Table Scan
 
-Focus only on queries that did not use indexes:
+Focus only on queries that triggered a full table scan (requires Percona Server's extended slow log):
 
 ```bash
 pt-query-digest \
-  --filter '($event->{No_index_used} eq "Yes")' \
+  --filter '($event->{Full_scan} eq "Yes")' \
   /var/log/mysql/slow.log
 ```
 
-## Filter by Minimum Execution Count
+## Filter by Minimum Execution Time
 
-Only report queries that ran at least 100 times:
+Only report queries that took longer than 2 seconds:
 
 ```bash
-pt-query-digest --limit=20 --filter='$event->{count} > 100' /var/log/mysql/slow.log
+pt-query-digest --filter='$event->{Query_time} > 2' /var/log/mysql/slow.log
 ```
 
 ## Analyze the General Query Log
