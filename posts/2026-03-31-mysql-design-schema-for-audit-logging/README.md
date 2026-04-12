@@ -22,7 +22,7 @@ CREATE TABLE audit_log (
     changed_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     old_data     JSON            NULL,
     new_data     JSON            NULL,
-    PRIMARY KEY (id),
+    PRIMARY KEY (id, changed_at),
     KEY idx_table_record (table_name, record_id),
     KEY idx_changed_at   (changed_at)
 ) ENGINE=InnoDB ROW_FORMAT=COMPRESSED;
