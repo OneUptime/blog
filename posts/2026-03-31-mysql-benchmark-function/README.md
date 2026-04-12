@@ -18,7 +18,7 @@ Description: Learn how to use MySQL BENCHMARK() to measure expression execution 
 SELECT BENCHMARK(count, expression);
 ```
 
-- `count` must be a positive integer literal or variable.
+- `count` must be a non-negative integer literal or variable (negative values and NULL cause BENCHMARK to return NULL).
 - `expression` can be any scalar expression, function call, or arithmetic operation.
 - Always returns `0`; the value is meaningless -- look at the query execution time instead.
 
@@ -101,7 +101,7 @@ SELECT BENCHMARK(10000,
 ```bash
 #!/bin/bash
 
-MYSQL="mysql -u root -p'secret' -e"
+MYSQL="mysql -u root -psecret -e"
 ITERS=500000
 
 echo "=== MD5 ==="
