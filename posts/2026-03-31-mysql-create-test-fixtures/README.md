@@ -136,9 +136,13 @@ def create_test_user(cursor, email=None, role="USER"):
 
 ## Resetting Auto-Increment
 
-After truncating tables, reset the auto-increment counter to keep fixture IDs predictable:
+`TRUNCATE TABLE` automatically resets the auto-increment counter in MySQL. If you use `DELETE` instead of `TRUNCATE` (for example, to avoid implicit commits inside a transaction), reset the counter manually to keep fixture IDs predictable:
 
 ```sql
+DELETE FROM orders;
+DELETE FROM products;
+DELETE FROM users;
+
 ALTER TABLE orders   AUTO_INCREMENT = 1;
 ALTER TABLE products AUTO_INCREMENT = 1;
 ALTER TABLE users    AUTO_INCREMENT = 1;
