@@ -30,7 +30,7 @@ The suffix indicates the comparison behavior:
 | `_as`  | Accent-sensitive |
 | `_bin` | Binary (byte-by-byte) |
 
-For example, `utf8mb4_unicode_ci` is case-insensitive and accent-sensitive using the Unicode Collation Algorithm.
+For example, `utf8mb4_unicode_ci` is case-insensitive and accent-insensitive using the Unicode Collation Algorithm.
 
 ## Common utf8mb4 Collations Compared
 
@@ -39,7 +39,7 @@ For example, `utf8mb4_unicode_ci` is case-insensitive and accent-sensitive using
 SHOW COLLATION WHERE Charset = 'utf8mb4';
 ```
 
-The three most common choices:
+The four most common choices:
 
 - **`utf8mb4_general_ci`** - Fast, case-insensitive, slightly less accurate for multilingual sorting.
 - **`utf8mb4_unicode_ci`** - Follows the Unicode Collation Algorithm, better for internationalized applications.
