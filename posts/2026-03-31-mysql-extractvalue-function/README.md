@@ -82,7 +82,8 @@ SET @xml = '<root><a><b>value1</b></a><a><b>value2</b></a></root>';
 SELECT ExtractValue(@xml, '/root/a/b');  -- Result: value1 value2
 
 -- Wildcard: select any direct child of root
-SELECT ExtractValue(@xml, '/root/*');    -- Result: (returns text of all children)
+SET @xml2 = '<root><x>hello</x><y>world</y></root>';
+SELECT ExtractValue(@xml2, '/root/*');   -- Result: hello world
 ```
 
 ## Handling Missing Nodes
@@ -109,7 +110,7 @@ ORDER BY ExtractValue(order_xml, '/order/total') + 0 DESC;
 
 - `ExtractValue()` returns text content only, not XML nodes or sub-trees.
 - For full XML manipulation, use `UpdateXML()` to modify XML strings.
-- XPath support is limited to XPath 1.0 subset; functions like `contains()` may not work.
+- XPath support is limited to XPath 1.0 subset; functions like `starts-with()` and `normalize-space()` are not supported.
 
 ## Summary
 
