@@ -21,7 +21,7 @@ db.serverStatus().wiredTiger.cache["maximum bytes configured"]
 
 ## The Eviction Process
 
-WiredTiger uses background eviction threads that continuously scan pages and evict those that are clean (already flushed to disk) or dirty (modified but not yet written). There are three thresholds:
+WiredTiger uses background eviction threads that continuously scan pages and evict those that are clean (already flushed to disk) or dirty (modified but not yet written). There are four thresholds:
 
 | Threshold               | Default | Behavior                                  |
 |-------------------------|---------|-------------------------------------------|
@@ -41,7 +41,7 @@ console.log({
   cacheDirtyBytes:    stats["tracked dirty bytes in the cache"],
   cacheMaxBytes:      stats["maximum bytes configured"],
   pagesEvictedApp:    stats["pages evicted by application threads"],
-  pagesEvictedBg:     stats["pages evicted by background eviction"]
+  pagesEvictedBg:     stats["eviction worker thread evicting pages"]
 });
 ```
 
