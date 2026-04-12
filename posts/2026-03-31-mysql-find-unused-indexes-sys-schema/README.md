@@ -23,7 +23,7 @@ FROM sys.schema_unused_indexes
 ORDER BY object_schema, object_name;
 ```
 
-This view queries `performance_schema.table_io_waits_summary_by_index_usage` to identify indexes with zero reads since the last server restart.
+This view queries `performance_schema.table_io_waits_summary_by_index_usage` to identify indexes with zero usage (no read or write events) since the last server restart.
 
 ## Filtering to a Specific Schema
 
@@ -45,12 +45,12 @@ SELECT
   OBJECT_SCHEMA,
   OBJECT_NAME,
   INDEX_NAME,
-  COUNT_READ,
-  COUNT_WRITE
+  COUNT_STAR
 FROM performance_schema.table_io_waits_summary_by_index_usage
 WHERE INDEX_NAME IS NOT NULL
   AND INDEX_NAME != 'PRIMARY'
-  AND COUNT_READ = 0
+  AND COUNT_STAR = 0
+  AND OBJECT_SCHEMA != 'mysql'
 ORDER BY OBJECT_SCHEMA, OBJECT_NAME;
 ```
 
