@@ -109,18 +109,18 @@ FROM monthly_revenue;
 
 `NULLIF` prevents division by zero when the previous month had zero revenue.
 
-## Avoiding Integer Division
+## Scaling the Result to a Percentage
 
-MySQL performs integer division when both operands are integers. Always multiply by `100.0` (not `100`) or cast one operand to `DECIMAL` to ensure fractional results:
+Dividing a partial count by a total with `/` returns a decimal fraction between 0 and 1 in MySQL, not a percentage. Multiply by `100` to convert the ratio to a percentage:
 
 ```sql
--- Wrong: returns 0 or 1
+-- Returns a fraction like 0.3000, not a percentage
 SELECT COUNT(*) / (SELECT COUNT(*) FROM products) FROM products WHERE category = 'A';
 
--- Correct: returns decimal
+-- Returns a percentage like 30.00
 SELECT 100.0 * COUNT(*) / (SELECT COUNT(*) FROM products) FROM products WHERE category = 'A';
 ```
 
 ## Summary
 
-Calculating percentages in MySQL relies on combining group aggregates with a grand total, either via subqueries, cross joins, or window functions. Window functions (MySQL 8.0+) are the cleanest approach because they compute partitioned totals without collapsing the result set. Always use floating-point arithmetic to avoid integer division truncation.
+Calculating percentages in MySQL relies on combining group aggregates with a grand total, either via subqueries, cross joins, or window functions. Window functions (MySQL 8.0+) are the cleanest approach because they compute partitioned totals without collapsing the result set. Always multiply by 100 to convert the ratio to a percentage.
