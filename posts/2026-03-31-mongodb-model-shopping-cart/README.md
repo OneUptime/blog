@@ -68,8 +68,8 @@ stateDiagram-v2
     subtotal: 300.00,
     discount: 28.50,
     shipping: 0.00,
-    tax: 24.68,
-    total: 296.18
+    tax: 21.72,
+    total: 293.22
   },
 
   shippingAddressId: ObjectId("6601fff000000000000000a1"),
@@ -324,7 +324,7 @@ async function checkoutCart(cartId, session) {
 ## Cart Abandonment Tracking
 
 ```javascript
-// Find carts active for more than 1 hour but not updated in 24 hours
+// Find carts with items not updated in the last 24 hours but active within the last 7 days
 db.carts.aggregate([
   {
     $match: {
