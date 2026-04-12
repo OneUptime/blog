@@ -40,19 +40,19 @@ Key CouchDB concepts:
 
 MongoDB uses a single-primary replica set. The primary receives all writes and replicates them to secondaries via the oplog. Secondaries can serve reads but cannot accept writes independently.
 
-For mobile/offline sync, MongoDB Atlas Device Sync uses the Realm SDK, which handles conflict resolution through operational transforms rather than revision trees.
+For mobile/offline sync, MongoDB previously offered Atlas Device Sync with the Realm SDK, which handled conflict resolution through operational transforms rather than revision trees. However, MongoDB deprecated Atlas Device Sync in September 2024 and shut it down on September 30, 2025. There is currently no direct MongoDB-maintained replacement for offline-first mobile sync.
 
 ## Sync Architecture Comparison
 
-| Feature | CouchDB + PouchDB | MongoDB Atlas Device Sync |
+| Feature | CouchDB + PouchDB | MongoDB Atlas Device Sync (deprecated) |
 |---|---|---|
-| Offline-first mobile | Yes (PouchDB native) | Yes (Realm SDK) |
+| Offline-first mobile | Yes (PouchDB native) | Was available via Realm SDK (sunset Sept 2025) |
 | Conflict resolution | Revision tree, app resolves | Last-write-wins or custom |
-| Bi-directional sync | Yes, native | Yes, via Realm SDK |
-| Self-hosted | CouchDB is open source | Requires Atlas (managed) |
+| Bi-directional sync | Yes, native | Was available via Realm SDK |
+| Self-hosted | CouchDB is open source | Required Atlas (managed) |
 | Browser sync | PouchDB in browser | Not natively |
 | Protocol | HTTP/HTTPS REST | Realm sync protocol |
-| Latency | HTTP polling or long-poll | WebSocket-based real-time |
+| Latency | HTTP polling, long-poll, or continuous streaming | WebSocket-based real-time |
 
 ## CouchDB Sync Example
 
@@ -128,12 +128,13 @@ if (doc._conflicts && doc._conflicts.length > 0) {
 
 ## MongoDB Change Streams for Reactive Sync
 
-MongoDB Change Streams provide a real-time stream of changes that can be used to sync data to clients:
+MongoDB Change Streams provide a real-time stream of changes that can be used to sync data to clients. Note that Change Streams require a replica set or sharded cluster and will not work on a standalone MongoDB instance:
 
 ```javascript
 const { MongoClient } = require("mongodb");
 
-const client = new MongoClient("mongodb://localhost:27017");
+// Change Streams require a replica set (even a single-node replica set)
+const client = new MongoClient("mongodb://localhost:27017/?replicaSet=rs0");
 await client.connect();
 
 const db = client.db("myapp");
@@ -160,9 +161,11 @@ changeStream.on("change", change => {
 });
 ```
 
-## MongoDB Atlas Device Sync
+## MongoDB Atlas Device Sync (Deprecated)
 
-Atlas Device Sync provides offline-first capabilities for mobile apps using the Realm SDK:
+> **Note:** Atlas Device Sync and the Realm SDK were deprecated by MongoDB in September 2024 and the service was shut down on September 30, 2025. The code below is preserved for historical reference. MongoDB now recommends using standard MongoDB drivers with Atlas for cloud-connected use cases.
+
+Atlas Device Sync previously provided offline-first capabilities for mobile apps using the Realm SDK:
 
 ```javascript
 const Realm = require("realm");
@@ -235,10 +238,10 @@ CouchDB's query model (MapReduce views + Mango queries) is less expressive than 
 ## When to Choose MongoDB
 
 - Applications requiring rich aggregation and complex queries
-- Mobile apps that can use Atlas Device Sync with Realm SDK
+- Mobile apps that previously used Atlas Device Sync (now deprecated; consider third-party alternatives like WatermelonDB or custom sync solutions with Change Streams)
 - Teams needing a managed cloud service with monitoring and scaling
 - Applications where offline sync is a feature but not the core architectural requirement
 
 ## Summary
 
-CouchDB with PouchDB is the best choice for offline-first applications where any client can write locally and sync to any server node, with conflict resolution built into the protocol. MongoDB offers superior query power, aggregation capabilities, and a managed cloud service (Atlas). For mobile sync specifically, Atlas Device Sync with the Realm SDK is a viable alternative that brings MongoDB's query power to offline-capable mobile apps while avoiding CouchDB's operational complexity at scale.
+CouchDB with PouchDB is the best choice for offline-first applications where any client can write locally and sync to any server node, with conflict resolution built into the protocol. MongoDB offers superior query power, aggregation capabilities, and a managed cloud service (Atlas). For mobile sync specifically, MongoDB's Atlas Device Sync with the Realm SDK was previously a viable alternative, but it was deprecated in 2024 and shut down in September 2025. This makes CouchDB with PouchDB the stronger option for offline-first sync use cases, while MongoDB remains the better choice when rich querying and aggregation are the primary requirements.
