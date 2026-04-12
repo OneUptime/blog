@@ -188,14 +188,14 @@ MongoDB (roles array in user document):
 {
   _id: ObjectId("..."),
   email: "admin@example.com",
-  roleIds: [ObjectId("role-admin"), ObjectId("role-reporting")]
+  roleIds: [ObjectId("64a1b2c3d4e5f6a7b8c90001"), ObjectId("64a1b2c3d4e5f6a7b8c90002")]
 }
 ```
 
 Query users with a specific role:
 
 ```javascript
-db.users.find({ roleIds: ObjectId("role-admin") })
+db.users.find({ roleIds: ObjectId("64a1b2c3d4e5f6a7b8c90001") })
 ```
 
 ## Using $lookup for SQL-style Joins

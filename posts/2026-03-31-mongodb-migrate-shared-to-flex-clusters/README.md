@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Atlas, Migration, Flex Cluster, Upgrade
 
-Description: Migrate a MongoDB Atlas shared M2 or M5 cluster to a Flex cluster with live data migration and minimal downtime using Atlas Live Migrate or mongodump.
+Description: Migrate a MongoDB Atlas shared M2 or M5 cluster to a Flex cluster with minimal downtime using the Atlas in-place upgrade or mongodump/mongorestore.
 
 ---
 
 ## Overview
 
-MongoDB Atlas deprecated the legacy M2 and M5 shared-tier clusters in favor of Flex clusters. Migrating from a shared cluster to Flex retains the consumption-based billing model while adding replica set support, higher storage limits, and better compatibility with production-grade Atlas features. This guide covers two migration approaches: Atlas's built-in upgrade path and a manual `mongodump`/`mongorestore` approach.
+MongoDB Atlas deprecated the legacy M2 and M5 shared-tier clusters in favor of Flex clusters. Migrating from a shared cluster to Flex retains the consumption-based billing model while adding higher storage limits, improved Atlas API coverage, and better compatibility with production-grade Atlas features. This guide covers two migration approaches: Atlas's built-in upgrade path and a manual `mongodump`/`mongorestore` approach.
 
 ## Option 1: Atlas In-Place Upgrade
 
@@ -22,7 +22,7 @@ Atlas provides a direct upgrade path from M2/M5 to Flex in the UI. The process m
 4. Choose "Flex" from the tier options.
 5. Review the pricing change and click "Upgrade".
 
-Atlas copies data in the background, switches the connection string to the new cluster, and terminates the old cluster automatically.
+Atlas migrates data in the background and converts the cluster in place. Your existing connection string is preserved, so no application changes are needed.
 
 ## Option 2: Manual Migration with mongodump
 
@@ -112,7 +112,7 @@ For zero-downtime cutover, use a rolling deployment:
 - Verify document counts match across all collections
 - Check that all indexes were migrated correctly
 - Confirm application connection string is updated
-- Test that transactions and change streams work if used
+- Test that change streams work if used (note: Flex clusters do not support multi-document transactions)
 - Monitor error rates and query latency for 24 hours
 - Decommission the old shared cluster
 ```
