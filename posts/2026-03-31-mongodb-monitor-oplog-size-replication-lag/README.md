@@ -54,7 +54,7 @@ const primary = status.members.find(m => m.stateStr === "PRIMARY");
 status.members
   .filter(m => m.stateStr === "SECONDARY")
   .forEach(m => {
-    const lagSecs = (primary.optime.ts.getTime() - m.optime.ts.getTime()) / 1000;
+    const lagSecs = (primary.optimeDate.getTime() - m.optimeDate.getTime()) / 1000;
     print(`${m.name}: lag = ${lagSecs.toFixed(1)}s`);
   });
 ```
