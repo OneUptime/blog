@@ -135,16 +135,24 @@ conn.close()
 
 ## Fixing Existing Garbled Data
 
-If data was already imported with wrong encoding:
+If data was already imported with wrong encoding, first inspect the stored bytes:
 
 ```sql
 -- Check the corrupted value
 SELECT HEX(name) FROM contacts WHERE id = 1;
-
--- Fix by converting the column
-ALTER TABLE contacts
-  CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
+
+The most common case is UTF-8 data stored in a `latin1` column where the raw bytes are correct but the character set label is wrong. Fix this by converting through `BINARY` to strip the incorrect character set metadata and reinterpret the bytes as `utf8mb4`:
+
+```sql
+ALTER TABLE contacts MODIFY name VARCHAR(200) CHARACTER SET binary;
+ALTER TABLE contacts MODIFY name VARCHAR(200) CHARACTER SET utf8mb4;
+
+ALTER TABLE contacts MODIFY bio TEXT CHARACTER SET binary;
+ALTER TABLE contacts MODIFY bio TEXT CHARACTER SET utf8mb4;
+```
+
+Note: `ALTER TABLE ... CONVERT TO CHARACTER SET utf8mb4` re-encodes data from the current character set, which will not fix garbled data — it only helps when the data is correctly stored in a different character set and you want to change it.
 
 ## Summary
 
