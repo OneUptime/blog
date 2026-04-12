@@ -10,7 +10,7 @@ Description: Learn how to use the SOUNDEX() function in MySQL to perform phoneti
 
 ## What Is SOUNDEX?
 
-`SOUNDEX()` is a string function that converts a word to its Soundex code - a phonetic representation based on how the word sounds in English. Two words that sound similar will produce the same or similar Soundex codes, enabling "sounds like" searches. The result is a 4-character code: one letter followed by three digits.
+`SOUNDEX()` is a string function that converts a word to its Soundex code - a phonetic representation based on how the word sounds in English. Two words that sound similar will produce the same or similar Soundex codes, enabling "sounds like" searches. The standard Soundex algorithm produces a 4-character code (one letter followed by three digits), but MySQL's `SOUNDEX()` returns an arbitrarily long string without truncating.
 
 ```sql
 SELECT SOUNDEX('Smith');   -- Returns 'S530'
@@ -58,7 +58,7 @@ WHERE SOUNDEX(name) = SOUNDEX('Smith');
 -- Find names that sound like 'Johnson'
 SELECT name FROM customers
 WHERE SOUNDEX(name) = SOUNDEX('Johnson');
--- Returns: Jones (J520 close but not equal), Johnson (J525), Jonson (J525)
+-- Returns: Johnson (J525), Jonson (J525)
 ```
 
 ## Using SOUNDS LIKE Operator
@@ -88,25 +88,25 @@ CREATE TABLE patients (
 );
 
 INSERT INTO patients (first_name, last_name, dob) VALUES
-('Katherine', 'Thompson', '1985-03-22'),
 ('Catherine', 'Thomson', '1990-07-11'),
 ('Kathrine', 'Tomson', '1978-12-01'),
+('Katherine', 'Thomsen', '1985-03-22'),
 ('Jennifer', 'Adams', '1995-05-15');
 
 -- Search with phonetic matching on last name
 SELECT first_name, last_name, dob
 FROM patients
 WHERE last_name SOUNDS LIKE 'Thomson';
--- Returns all Thompson/Thomson/Tomson variants
+-- Returns: Thomson, Tomson, Thomsen (all share SOUNDEX code T525)
 ```
 
 ## Combining SOUNDEX with Other Searches
 
 ```sql
--- Phonetic search combined with first name initial
-SELECT * FROM customers
-WHERE SOUNDEX(last_name) = SOUNDEX('Jackson')
-  AND first_name LIKE 'M%';
+-- Phonetic search combined with first name initial (using patients table)
+SELECT * FROM patients
+WHERE SOUNDEX(last_name) = SOUNDEX('Tomson')
+  AND first_name LIKE 'C%';
 
 -- Rank results by exact match vs phonetic match
 SELECT
@@ -127,14 +127,18 @@ ORDER BY match_quality;
 -- SOUNDEX is designed for English only
 -- Non-ASCII characters and non-English names work poorly
 
--- All return the same code - limited precision for long names
-SELECT SOUNDEX('Washington');  -- W252
-SELECT SOUNDEX('Weston');      -- W235 (different)
+-- MySQL returns longer codes than the standard 4-character Soundex
+SELECT SOUNDEX('Washington');  -- Returns 'W25235' (6 characters)
+SELECT SOUNDEX('Weston');      -- Returns 'W235' (4 characters)
 
--- DIFFERENCE() function compares two SOUNDEX codes (0-4 scale)
-SELECT DIFFERENCE('Smith', 'Smyth');   -- Returns 4 (very similar)
-SELECT DIFFERENCE('Smith', 'Jones');   -- Returns 0 (very different)
-SELECT DIFFERENCE('Johnson', 'Jonson'); -- Returns 4 (very similar)
+-- Different-sounding names can share a code when few consonants are present
+SELECT SOUNDEX('Lee');   -- Returns 'L000'
+SELECT SOUNDEX('Law');   -- Returns 'L000'
+
+-- MySQL does not have a DIFFERENCE() function (that is SQL Server)
+-- To compare SOUNDEX codes in MySQL, use direct equality or SOUNDS LIKE
+SELECT SOUNDEX('Smith') = SOUNDEX('Smyth');     -- Returns 1 (match)
+SELECT SOUNDEX('Smith') = SOUNDEX('Jones');     -- Returns 0 (no match)
 ```
 
 ## Summary
