@@ -111,8 +111,8 @@ You can control how many pages InnoDB samples to compute statistics:
 -- Per-table sampling size (MySQL 5.6+)
 ALTER TABLE orders STATS_SAMPLE_PAGES = 50;
 
--- Global default
-SET GLOBAL innodb_stats_sample_pages = 20;
+-- Global default (for persistent statistics, which is the default mode)
+SET GLOBAL innodb_stats_persistent_sample_pages = 20;
 ```
 
 Higher sampling values give more accurate statistics but take longer to compute.
@@ -127,11 +127,11 @@ WHERE table_name = 'orders' AND stat_name = 'n_diff_pfx01';
 ```
 
 ```text
-+----------+------------+-----------+--------------+------------+
-| database | table_name | index_name| stat_name    | stat_value |
-+----------+------------+-----------+--------------+------------+
-| myapp    | orders     | idx_user  | n_diff_pfx01 | 8421       |
-+----------+------------+-----------+--------------+------------+
++---------------+------------+-----------+--------------+------------+
+| database_name | table_name | index_name| stat_name    | stat_value |
++---------------+------------+-----------+--------------+------------+
+| myapp         | orders     | idx_user  | n_diff_pfx01 | 8421       |
++---------------+------------+-----------+--------------+------------+
 ```
 
 After running `ANALYZE TABLE`, these values are updated.
