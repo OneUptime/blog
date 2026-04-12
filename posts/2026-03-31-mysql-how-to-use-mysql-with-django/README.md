@@ -124,7 +124,7 @@ DATABASES = {
 }
 ```
 
-For high-traffic applications, consider using PgBouncer (for connection pooling) or ProxySQL.
+For high-traffic applications, consider using ProxySQL for connection pooling.
 
 ## Defining Models with MySQL-Specific Features
 
