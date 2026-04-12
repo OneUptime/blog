@@ -57,7 +57,7 @@ Result:
 +------------+--------+---------------+
 ```
 
-This is readable but slow for large tables because it executes a subquery per row. Add an index on `sale_date` for better performance:
+This is readable but slow for large tables because it executes a subquery per row. In this example `sale_date` is already the primary key and therefore indexed, but in tables where the running-total column is not the primary key, add an index on it for better performance:
 
 ```sql
 ALTER TABLE daily_sales ADD INDEX idx_sale_date (sale_date);
