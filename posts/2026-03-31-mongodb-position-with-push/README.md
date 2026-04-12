@@ -128,7 +128,7 @@ Insert at a specific position and then trim the array:
 ```javascript
 // Before: { _id: 5, recentSearches: ["python", "mongodb", "redis"] }
 
-// Prepend newest search and keep only last 5
+// Prepend newest search and keep only the first 5
 db.users.updateOne(
   { _id: 5 },
   {
