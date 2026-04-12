@@ -10,7 +10,7 @@ Description: Learn how to create and configure an Azure Database for MySQL Flexi
 
 ## What Is Azure Database for MySQL
 
-Azure Database for MySQL is a fully managed MySQL service on Microsoft Azure. The Flexible Server deployment option offers zone-redundant high availability, start/stop capability, and granular control over maintenance windows. It supports MySQL 5.7 and 8.0.
+Azure Database for MySQL is a fully managed MySQL service on Microsoft Azure. The Flexible Server deployment option offers zone-redundant high availability, start/stop capability, and granular control over maintenance windows. It supports MySQL 8.0.
 
 ## Create a Flexible Server
 
@@ -29,7 +29,7 @@ az mysql flexible-server create \
   --admin-password "S3cur3P@ssw0rd!" \
   --sku-name Standard_D2ds_v4 \
   --tier GeneralPurpose \
-  --version 8.0.21 \
+  --version 8.0 \
   --storage-size 128 \
   --storage-auto-grow Enabled \
   --backup-retention 14 \
@@ -113,7 +113,7 @@ az mysql flexible-server replica create \
   --location westus
 ```
 
-## Use Private Endpoint for Secure Access
+## Use VNet Integration for Secure Access
 
 ```bash
 # Create a virtual network and subnet
@@ -141,9 +141,10 @@ az mysql flexible-server create \
 ## Enable Microsoft Defender for MySQL
 
 ```bash
-az mysql flexible-server microsoft-defender enable \
+az mysql flexible-server advanced-threat-protection-setting update \
   --resource-group my-mysql-rg \
-  --server-name my-mysql-flex
+  --server-name my-mysql-flex \
+  --state Enabled
 ```
 
 ## Scale Up or Down
