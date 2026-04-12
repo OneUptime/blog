@@ -68,8 +68,10 @@ db.items.updateOne(
   { _id: 1 },
   { $rename: { "meta.createdAt": "createdAt" } }
 )
-// Result: { _id: 1, createdAt: ISODate(...) }
+// Result: { _id: 1, meta: {}, createdAt: ISODate(...) }
 ```
+
+Note that the `meta` embedded document remains as an empty object. If you want to remove it, run a separate `$unset` operation.
 
 ## Behavior When the Field Does Not Exist
 
