@@ -161,7 +161,7 @@ main().catch(console.error);
 
 In modern MongoDB (3.2+), partial indexes are more flexible than sparse indexes:
 
-- A sparse index is equivalent to a partial index with `{ filterExpression: { field: { $exists: true } } }`.
+- A sparse index is equivalent to a partial index with `{ partialFilterExpression: { field: { $exists: true } } }`.
 - Partial indexes let you filter on any condition, not just field existence.
 - Prefer partial indexes for new work; sparse indexes are maintained for backward compatibility.
 
