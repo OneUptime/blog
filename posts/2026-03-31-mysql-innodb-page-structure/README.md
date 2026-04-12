@@ -46,7 +46,7 @@ Offset  Size  Description
 94      13    Infimum Record (virtual minimum record)
 107     13    Supremum Record (virtual maximum record)
 120     var   User Records (variable-length rows stored here)
-...     var   Free Space (grows down as records are inserted)
+...     var   Free Space (shrinks as records and directory slots are added)
 ...     var   Page Directory (array of slot offsets, grows up from bottom)
 16376   8     File Trailer (checksum + LSN for corruption detection)
 ```
@@ -65,9 +65,10 @@ Records inside the page are linked in a singly-linked list from infimum through 
 Each user record stores:
 
 ```text
-- Record header (5 bytes): delete flag, heap number, ownership count, next record pointer
+- Variable-length column lengths (1-2 bytes each, stored in reverse column order)
 - Null bitmap (variable): one bit per nullable column
-- Variable-length column lengths (1-2 bytes each)
+- Record header (5 bytes): delete flag, heap number, ownership count, next record pointer
+  (the record origin pointer points just after the header)
 - Column data (actual row values)
 ```
 
