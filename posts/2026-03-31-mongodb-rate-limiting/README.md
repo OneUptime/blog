@@ -102,10 +102,8 @@ const RequestLog = mongoose.model('RequestLog', requestLogSchema);
 async function slidingWindowRateLimit(userId, windowMs = 60000, maxRequests = 100) {
   const windowStart = new Date(Date.now() - windowMs);
 
-  const [insertResult, count] = await Promise.all([
-    RequestLog.create({ userId }),
-    RequestLog.countDocuments({ userId, timestamp: { $gte: windowStart } }),
-  ]);
+  await RequestLog.create({ userId });
+  const count = await RequestLog.countDocuments({ userId, timestamp: { $gte: windowStart } });
 
   return {
     allowed: count <= maxRequests,
