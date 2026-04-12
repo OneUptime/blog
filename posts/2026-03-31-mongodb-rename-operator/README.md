@@ -110,8 +110,8 @@ db.posts.updateOne(
   { $rename: { "meta.views": "viewCount" } }
 )
 
-// After: { _id: 5, title: "Post A", viewCount: 42 }
-// Note: if meta becomes empty, it remains as {}
+// After: { _id: 5, meta: {}, title: "Post A", viewCount: 42 }
+// Note: meta becomes empty but remains as {}
 ```
 
 ## $rename on Non-Existent Fields
