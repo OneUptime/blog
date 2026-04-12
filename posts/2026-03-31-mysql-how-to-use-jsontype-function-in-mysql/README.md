@@ -28,10 +28,16 @@ ARRAY     - JSON array []
 STRING    - JSON string "..."
 INTEGER   - JSON integer (no decimal point)
 DOUBLE    - JSON floating-point number
+DECIMAL   - JSON decimal number
 BOOLEAN   - true or false
 NULL      - JSON null keyword
+DATE      - date values
+TIME      - time values
+DATETIME  - datetime values
+TIMESTAMP - timestamp values
 BIT       - bit values
-BLOB, OPAQUE - binary types
+BLOB      - binary string values
+OPAQUE    - all other binary types
 ```
 
 ## Basic Examples
@@ -53,7 +59,7 @@ SELECT JSON_TYPE('42');                  -- INTEGER
 SELECT JSON_TYPE('3.14');               -- DOUBLE
 
 -- Boolean
-SELECT JSON_TYPE('true');               -- BOOLEAN (returned as INTEGER in some versions)
+SELECT JSON_TYPE('true');               -- BOOLEAN
 SELECT JSON_TYPE('false');              -- BOOLEAN
 
 -- JSON null
@@ -143,16 +149,14 @@ DELIMITER ;
 
 ```sql
 -- Extract types of all values in an object
-SELECT jt.key_name, jt.val, JSON_TYPE(jt.val) AS value_type
-FROM (SELECT '{"name":"Alice","age":30,"active":true}' AS doc) d,
+SELECT jt.key_name,
+  JSON_EXTRACT(d.doc, CONCAT('$.', jt.key_name)) AS val,
+  JSON_TYPE(JSON_EXTRACT(d.doc, CONCAT('$.', jt.key_name))) AS value_type
+FROM (SELECT CAST('{"name":"Alice","age":30,"active":true}' AS JSON) AS doc) d,
 JSON_TABLE(
   JSON_KEYS(d.doc),
   '$[*]' COLUMNS (key_name VARCHAR(50) PATH '$')
-) jt
-CROSS JOIN (SELECT JSON_EXTRACT(
-  '{"name":"Alice","age":30,"active":true}',
-  CONCAT('$.', jt.key_name)
-) AS val) vals;
+) jt;
 ```
 
 ## Summary
