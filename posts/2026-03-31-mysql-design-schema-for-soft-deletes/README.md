@@ -24,7 +24,7 @@ CREATE TABLE users (
 );
 ```
 
-Note the compound unique key on `(email, deleted_at)`: this allows the same email to be used again after soft deletion while still enforcing uniqueness for active users (though MySQL treats multiple NULLs as distinct in a unique index, so two active rows with the same email would violate the constraint).
+Note the compound unique key on `(email, deleted_at)`: this allows the same email to be reused after soft deletion because each deleted row has a unique timestamp. However, MySQL treats multiple NULLs as distinct in a unique index, so this constraint does **not** prevent two active rows (both with `deleted_at = NULL`) from having the same email. To enforce email uniqueness among active rows, use application-level checks or a generated column approach.
 
 ## Performing a Soft Delete
 
