@@ -72,7 +72,7 @@ mongorestore \
   /backup/myapp-dump/
 ```
 
-Without `--drop`, `mongorestore` merges documents - existing documents with the same `_id` are not overwritten by default.
+Without `--drop`, `mongorestore` inserts documents from the backup and skips any document whose `_id` already exists in the target collection.
 
 ## Restoring Specific Collections from an Archive
 
@@ -92,6 +92,7 @@ Use `--nsFrom` and `--nsTo` to restore a collection under a new name:
 
 ```bash
 mongorestore \
+  --nsInclude 'myapp.orders' \
   --nsFrom 'myapp.orders' \
   --nsTo 'myapp.orders_restored' \
   /backup/myapp-dump/
@@ -136,6 +137,7 @@ mongorestore \
 ```bash
 # Restore production orders to staging
 mongorestore \
+  --nsInclude 'production.orders' \
   --nsFrom 'production.orders' \
   --nsTo 'staging.orders' \
   --drop \
