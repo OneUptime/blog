@@ -39,14 +39,7 @@ CREATE TABLE products (
   tags JSON
 );
 
--- Create a multi-valued index on the tags array
-ALTER TABLE products
-ADD INDEX idx_tags ((CAST(tags -> '$' AS UNSIGNED ARRAY)));
-```
-
-For string arrays:
-
-```sql
+-- Create a multi-valued index on the tags array (string values)
 ALTER TABLE products
 ADD INDEX idx_tags ((CAST(tags -> '$' AS CHAR(50) ARRAY)));
 ```
@@ -144,7 +137,7 @@ AND name LIKE 'Wireless%';
 
 ## Limitations
 
-- Only one multi-valued index per JSON expression (though you can have multiple on different paths)
+- A composite index can include at most one multi-valued key part (though you can create multiple separate multi-valued indexes on the same table)
 - The JSON array elements must be scalar values (not nested objects)
 - Supported types: SIGNED, UNSIGNED, CHAR(n), DATE, TIME, DATETIME, DECIMAL
 
