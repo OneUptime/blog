@@ -120,7 +120,7 @@ For SSD-based storage, enable:
 innodb_flush_neighbors = 0  -- Disable neighbor flushing (unnecessary on SSD)
 ```
 
-`innodb_flush_neighbors = 1` (default for HDD) flushes adjacent dirty pages together to reduce head seeks. On SSDs, this adds unnecessary work.
+`innodb_flush_neighbors = 1` flushes adjacent dirty pages together to reduce head seeks. In MySQL 5.7 this was the default, but in MySQL 8.0 the default was changed to 0 since SSD storage is now common. On HDDs, setting it to 1 can still improve throughput.
 
 ## Redo Log and Flushing Relationship
 
