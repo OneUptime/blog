@@ -68,7 +68,7 @@ The Node.js application connects to MongoDB and exposes endpoints that Traefik r
 
 ```javascript
 const express = require("express");
-const { MongoClient, ObjectId } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 const app = express();
 app.use(express.json());
