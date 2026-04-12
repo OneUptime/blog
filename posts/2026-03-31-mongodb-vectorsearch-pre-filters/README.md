@@ -98,7 +98,7 @@ db.products.aggregate([
 ])
 ```
 
-## Range Filter on a Numeric Field
+## Range Filter on a Date Field
 
 ```javascript
 db.articles.aggregate([
@@ -158,7 +158,7 @@ When you pre-filter aggressively, increase `numCandidates` to ensure enough resu
 
 ## Supported Filter Operators
 
-Atlas pre-filter supports: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$and`, `$or`. The `$exists` and array operators are not supported for pre-filtering.
+Atlas pre-filter supports: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$and`, `$or`, and `$not`. Array fields can also be filtered using these operators.
 
 ## Summary
 
