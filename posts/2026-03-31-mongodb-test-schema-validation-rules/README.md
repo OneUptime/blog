@@ -134,7 +134,7 @@ describe('Invalid orders', () => {
       orders.insertOne({
         customerId: 'C001',
         items: [{ sku: 'W001', qty: 1 }],
-        total: -5,
+        total: -5.50,
       })
     ).rejects.toMatchObject({ code: 121 });
   });
