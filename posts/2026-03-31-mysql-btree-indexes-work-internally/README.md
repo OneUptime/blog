@@ -86,16 +86,13 @@ Index data is stored in 16 KB pages (same as data pages). Each page holds as man
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_fill_factor';
--- Default: not set, uses ~93% fill
+-- Default: 100 (leaves 1/16 free in clustered index pages, ~93% fill)
 ```
 
-For append-only tables (monotonically increasing primary keys), a 100% fill factor is optimal:
+For append-only tables (monotonically increasing primary keys), page splits are rare because new entries always go to the rightmost page. The default `innodb_fill_factor` of 100 is already optimal. For random-insert workloads, a lower fill factor can reduce page splits:
 
 ```sql
-CREATE TABLE events (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  ...
-) KEY_BLOCK_SIZE=0;  -- Let InnoDB choose optimal page fill
+SET GLOBAL innodb_fill_factor = 80;  -- Reserve 20% of B-tree page space for future inserts
 ```
 
 ## Checking Index Usage
