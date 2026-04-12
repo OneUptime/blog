@@ -14,7 +14,7 @@ MongoDB 8.0 builds on 7.0 with significant performance improvements, expanded Qu
 
 ## Improved Queryable Encryption with Range Queries
 
-In MongoDB 6.0, Queryable Encryption range queries were in preview with limitations. MongoDB 8.0 makes encrypted range queries generally available with improved performance and reduced ciphertext expansion.
+In MongoDB 7.0, Queryable Encryption range queries were available as a preview feature. MongoDB 8.0 makes encrypted range queries generally available with improved performance and reduced ciphertext expansion.
 
 ### Configuring Range Encryption with Tighter Bounds
 
@@ -83,32 +83,40 @@ If a cached plan becomes suboptimal after data distribution changes, clear it:
 db.orders.getPlanCache().clear()
 ```
 
-To clear plans selectively by shape hash (visible in `explain` output):
+To clear plans selectively by query shape (visible in `explain` output):
 
 ```javascript
-db.orders.getPlanCache().clearPlansByQuery({
-  filter: { status: 1, createdAt: 1 },
-  sort: {},
-  projection: {}
-})
+db.orders.getPlanCache().clearPlansByQuery(
+  { status: "pending", createdAt: { $gte: ISODate() } },
+  { createdAt: -1 },
+  {}
+)
 ```
 
-### Pinning a Plan for a Query Shape
+### Setting Query Settings for a Query Shape
 
-MongoDB 8.0 allows pinning a specific plan to a query shape to prevent re-planning:
+MongoDB 8.0 introduces `setQuerySettings` as the recommended way to control index usage for a query shape, replacing the deprecated `planCacheSetFilter` index filters:
 
 ```javascript
-db.runCommand({
-  planCacheSetFilter: "orders",
-  query: { status: "pending" },
-  sort: { createdAt: -1 },
-  indexes: [{ status: 1, createdAt: -1 }]
+db.adminCommand({
+  setQuerySettings: {
+    find: "orders",
+    filter: { status: { $eq: "pending" } },
+    sort: { createdAt: -1 },
+    $db: "mydb"
+  },
+  settings: {
+    indexHints: {
+      ns: { db: "mydb", coll: "orders" },
+      allowedIndexes: [{ status: 1, createdAt: -1 }]
+    }
+  }
 })
 ```
 
 ## Bulk Write Performance Improvements
 
-MongoDB 8.0 significantly improves `bulkWrite` throughput by reducing lock contention and improving write batching:
+MongoDB 8.0 introduces a new server-level `bulkWrite` command that can perform insert, update, and delete operations across multiple collections in a single request, reducing round trips and improving throughput:
 
 ```javascript
 const result = await db.collection("events").bulkWrite([
@@ -118,8 +126,8 @@ const result = await db.collection("events").bulkWrite([
 ], { ordered: false });
 ```
 
-Using `{ ordered: false }` allows MongoDB to parallelize operations for higher throughput in 8.0.
+Using `{ ordered: false }` allows MongoDB to execute operations in any order, enabling parallelization on sharded clusters for higher throughput.
 
 ## Summary
 
-MongoDB 8.0 makes encrypted range queries on sensitive fields generally available with improved performance via the `trimFactor` parameter. Plan cache improvements give developers better visibility into query shapes and the ability to pin plans to prevent regressions. Enhanced bulk write performance benefits high-throughput workloads. Upgrading to MongoDB 8.0 is recommended for applications that rely on Queryable Encryption or require precise plan cache control.
+MongoDB 8.0 makes encrypted range queries on sensitive fields generally available with improved performance via the `trimFactor` parameter. Plan cache improvements give developers better visibility into query shapes and the new `setQuerySettings` command provides a persistent way to control index usage for specific query shapes. Enhanced bulk write performance benefits high-throughput workloads. Upgrading to MongoDB 8.0 is recommended for applications that rely on Queryable Encryption or require precise plan cache control.
