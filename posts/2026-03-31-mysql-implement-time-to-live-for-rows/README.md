@@ -80,11 +80,9 @@ SET GLOBAL event_scheduler = ON;
 CREATE EVENT expire_user_sessions
 ON SCHEDULE EVERY 5 MINUTE
 DO
-BEGIN
   DELETE FROM user_sessions
   WHERE expires_at < NOW()
   LIMIT 5000;
-END;
 
 -- Delete expired password reset tokens hourly
 CREATE EVENT expire_password_reset_tokens
