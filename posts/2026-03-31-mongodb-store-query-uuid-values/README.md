@@ -20,7 +20,7 @@ BinData subtype 4 is the recommended approach for new applications.
 ## Storing UUIDs as BinData in mongosh
 
 ```javascript
-// MongoDB 5.0+ UUID() helper
+// mongosh UUID() helper
 const id = UUID("550e8400-e29b-41d4-a716-446655440000");
 db.users.insertOne({ _id: id, name: "Alice" });
 
