@@ -58,7 +58,7 @@ mongorestore \
   /backup/prod-backup/production/
 ```
 
-Note: `--db` overrides the source database name but only works when restoring from a single-database backup directory.
+Note: `--db` is deprecated as of MongoDB Database Tools 4.2 when restoring from a directory. For newer versions, prefer `--nsFrom` and `--nsTo` for namespace remapping. The `--db` flag still works but only applies when restoring from a single-database backup directory.
 
 ## Dropping the Target Database First
 
