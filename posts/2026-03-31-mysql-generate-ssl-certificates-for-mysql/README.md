@@ -76,8 +76,8 @@ MySQL is strict about key file permissions. The server key must be readable only
 
 ```bash
 chown mysql:mysql /var/lib/mysql/*.pem
-chmod 600 /var/lib/mysql/*-key.pem
 chmod 644 /var/lib/mysql/*.pem
+chmod 600 /var/lib/mysql/*-key.pem
 ```
 
 ## Configuring MySQL to Use the Certificates
