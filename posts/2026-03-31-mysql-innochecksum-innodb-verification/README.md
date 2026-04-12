@@ -38,18 +38,26 @@ page 1234 invalid (fails log sequence number check)
 
 ## Verbose Output
 
+The `--verbose` flag prints a progress indicator every five seconds but requires `--log` to specify a log file:
+
 ```bash
-# Print a summary of pages processed
-innochecksum --verbose /var/lib/mysql/mydb/orders.ibd
+# Print page details to a log file
+innochecksum --verbose --log=/tmp/innochecksum.log /var/lib/mysql/mydb/orders.ibd
+cat /tmp/innochecksum.log
 ```
 
 ```text
 Filename = /var/lib/mysql/mydb/orders.ibd
-Verified: page 0 (FIL_PAGE_TYPE_FSP_HDR), checksum: crc32
-Verified: page 1 (FIL_PAGE_IBUF_BITMAP), checksum: crc32
-Verified: page 2 (FIL_PAGE_INODE), checksum: crc32
+page 0 okay: 0.260% done
+page 19 okay: 5.208% done
+page 38 okay: 10.156% done
 ...
-Total number of pages: 384
+```
+
+To print only the total page count, use `--count`:
+
+```bash
+innochecksum --count /var/lib/mysql/mydb/orders.ibd
 ```
 
 ## Checking a Specific Page Range
@@ -94,9 +102,8 @@ DB_DIR="/var/lib/mysql/mydb"
 ERRORS=0
 
 for ibd in "$DB_DIR"/*.ibd; do
-  result=$(innochecksum "$ibd" 2>&1)
-  if [ -n "$result" ]; then
-    echo "CORRUPTION in $ibd: $result"
+  if ! innochecksum "$ibd" 2>&1; then
+    echo "CORRUPTION in $ibd"
     ERRORS=$((ERRORS + 1))
   fi
 done
