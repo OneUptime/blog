@@ -74,7 +74,7 @@ ENV MYSQL_DATABASE=myapp_test
 
 COPY tests/snapshots/baseline.sql /docker-entrypoint-initdb.d/01-baseline.sql
 
-RUN ["/entrypoint.sh", "mysqld", "--initialize-insecure"]
+RUN ["docker-entrypoint.sh", "mysqld"]
 ```
 
 Then in CI, start the pre-built image to skip migration and seeding time:
@@ -110,7 +110,7 @@ Store snapshot files in version control or a dedicated artifact store, versioned
 ```bash
 # Name snapshot by migration version
 MIGRATION_VERSION=$(flyway info -outputType=json | jq -r '.schemaVersion')
-mysqldump ... myapp_test > "tests/snapshots/v${MIGRATION_VERSION}-baseline.sql.gz"
+mysqldump ... myapp_test | gzip > "tests/snapshots/v${MIGRATION_VERSION}-baseline.sql.gz"
 ```
 
 When new migrations are applied, regenerate the snapshot:
@@ -126,10 +126,13 @@ Add a CI job that regenerates snapshots when migrations change:
 ```yaml
 - name: Check if migrations changed
   id: migrations
-  run: git diff --name-only HEAD~1 | grep -q 'migrations/'
+  run: |
+    if git diff --name-only HEAD~1 | grep -q 'migrations/'; then
+      echo "changes=true" >> "$GITHUB_OUTPUT"
+    fi
 
 - name: Regenerate test snapshot
-  if: steps.migrations.outputs.changes
+  if: steps.migrations.outputs.changes == 'true'
   run: make db:snapshot
 ```
 
