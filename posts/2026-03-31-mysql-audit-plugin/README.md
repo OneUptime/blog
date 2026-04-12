@@ -61,28 +61,33 @@ audit_log_policy = ALL
 
 ### Audit Log Format
 
-```sql
--- JSON format (default, recommended for log parsing)
-SET GLOBAL audit_log_format = 'JSON';
+`audit_log_format` is a read-only variable — it can only be set at server startup in the configuration file, not at runtime.
 
--- XML format (legacy, compatible with older tooling)
-SET GLOBAL audit_log_format = 'XML';
+```ini
+# /etc/mysql/mysql.conf.d/mysqld.cnf
+[mysqld]
+# JSON format (recommended for log parsing)
+audit_log_format = JSON
+
+# Other valid values:
+# NEW  — new-style XML (default)
+# OLD  — old-style XML
 ```
 
 ### Audit Log Policy (What to Log)
 
-```sql
--- Log everything (logins + queries)
-SET GLOBAL audit_log_policy = 'ALL';
+`audit_log_policy` is a read-only variable — it can only be set at server startup in the configuration file, not at runtime. It is also deprecated as of MySQL 8.0.34; prefer rule-based filtering with `audit_log_filter_set_filter()` instead.
 
--- Log only logins and logouts
-SET GLOBAL audit_log_policy = 'LOGINS';
+```ini
+# /etc/mysql/mysql.conf.d/mysqld.cnf
+[mysqld]
+# Log everything (logins + queries) — this is the default
+audit_log_policy = ALL
 
--- Log only queries
-SET GLOBAL audit_log_policy = 'QUERIES';
-
--- Log nothing
-SET GLOBAL audit_log_policy = 'NONE';
+# Other valid values:
+# LOGINS  — log only logins and logouts
+# QUERIES — log only queries
+# NONE    — log nothing
 ```
 
 ### Audit Log Rotation
@@ -130,10 +135,10 @@ SELECT audit_log_filter_set_filter('log_all', '{ "filter": { "log": true } }');
 -- Assign filter to all users
 SELECT audit_log_filter_set_user('%', 'log_all');
 
--- Create a filter for specific user
+-- Create a filter for specific user (connection and table_access events only)
 SELECT audit_log_filter_set_filter(
     'log_admin',
-    '{ "filter": { "log": true, "class": { "name": [ "connection", "table_access" ] } } }'
+    '{ "filter": { "class": [ { "name": "connection" }, { "name": "table_access" } ] } }'
 );
 SELECT audit_log_filter_set_user('admin@localhost', 'log_admin');
 ```
