@@ -58,7 +58,7 @@ If dirty bytes consistently exceed 5-10% of cache size, or if evictions are high
 `mongostat` provides a real-time stream of key metrics including memory:
 
 ```bash
-mongostat --uri "mongodb://localhost:27017" -n 30 --rowcount 10
+mongostat --uri "mongodb://localhost:27017" --rowcount 10
 ```
 
 The `vsize` and `res` columns show virtual and resident memory in megabytes. Watch for steady growth in `res` that does not stabilize - this indicates a leak or unbounded cache growth.
