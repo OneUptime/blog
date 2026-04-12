@@ -34,7 +34,7 @@ JSON.SET post:1 $ '{"title":"Redis","content":"Redis is a fast in-memory store."
 
 ```redis
 127.0.0.1:6379> JSON.STRAPPEND post:1 $.content '" It supports many data structures."'
-1) (integer) 67
+1) (integer) 66
 
 JSON.GET post:1 $.content
 # ["Redis is a fast in-memory store. It supports many data structures."]
@@ -44,7 +44,7 @@ JSON.GET post:1 $.content
 
 ```redis
 127.0.0.1:6379> JSON.STRAPPEND post:1 $.title '" 7.0 Features"'
-1) (integer) 15
+1) (integer) 18
 
 JSON.GET post:1 $.title
 # ["Redis 7.0 Features"]
@@ -83,7 +83,7 @@ r = redis.Redis()
 r.json().set("log:entry:1", "$", {"message": "Request received"})
 
 def append_log(key, text):
-    new_len = r.json().strappend(key, "$.message", f" | {text}")
+    new_len = r.json().strappend(key, f" | {text}", "$.message")
     return new_len[0]
 
 append_log("log:entry:1", "Authenticated")
