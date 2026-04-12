@@ -24,7 +24,7 @@ UUID()
 
 ```sql
 SELECT UUID();
--- Output: '110e8400-e29b-41d4-a716-446655440000' (example)
+-- Output: '6ccd780c-baba-1026-9564-5b8c656024db' (example)
 
 -- Each call generates a different UUID
 SELECT UUID(), UUID(), UUID();
