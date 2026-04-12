@@ -13,29 +13,37 @@ Description: Implement payment state machine transitions in MongoDB with atomic 
 A payment flows through a defined set of states. Each transition must be valid - for example, a `refunded` payment cannot be `voided`. Enforcing this at the database level prevents bugs from corrupting financial data.
 
 ```text
-                      +----------+
-                      |  pending  |
-                      +----------+
-                           |
-              +------------+------------+
-              |                         |
-         (authorize)               (decline)
-              |                         |
-        +---------+               +---------+
-        |authorized|               | failed  |
-        +---------+               +---------+
-              |
-         (capture)
-              |
-        +-----------+
-        | succeeded  |
-        +-----------+
-              |
-        (refund)
-              |
-        +-----------+
-        | refunded   |
-        +-----------+
+                        +---------+
+                        | pending |
+                        +---------+
+                             |
+                +------------+------------+
+                |                         |
+           (authorize)               (decline)
+                |                         |
+         +------------+             +--------+
+         | authorized |             | failed |
+         +------------+             +--------+
+           /    |    \
+     (capture)(void)(fail)
+         /      |      \
+  +-----------+  +--------+  +--------+
+  | succeeded |  | voided |  | failed |
+  +-----------+  +--------+  +--------+
+        |
+        +--------------------+
+        |                    |
+    (refund)       (partial refund)
+        |                    |
+  +-----------+  +---------------------+
+  | refunded  |  | partially_refunded  |
+  +-----------+  +---------------------+
+                         |
+                     (refund)
+                         |
+                   +-----------+
+                   | refunded  |
+                   +-----------+
 ```
 
 ## Define Valid Transitions
