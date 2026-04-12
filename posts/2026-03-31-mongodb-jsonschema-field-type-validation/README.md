@@ -72,7 +72,7 @@ db.createCollection("products", {
 db.products.insertOne({
   name: "Widget Pro",
   price: 29.99,
-  quantity: 100,
+  quantity: NumberInt(100),
   inStock: true,
   createdAt: new Date()
 });
