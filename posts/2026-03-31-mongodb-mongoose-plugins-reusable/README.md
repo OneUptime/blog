@@ -60,7 +60,7 @@ function softDeletePlugin(schema) {
 
   // Automatically exclude soft-deleted documents
   schema.pre(/^find/, function (next) {
-    if (!this.getQuery()._includeDeleted) {
+    if (this.getQuery().isDeleted == null) {
       this.where({ isDeleted: false });
     }
     next();
@@ -75,8 +75,8 @@ function softDeletePlugin(schema) {
 
   // Static: restore a soft-deleted document
   schema.statics.restore = function (id) {
-    return this.findByIdAndUpdate(
-      id,
+    return this.findOneAndUpdate(
+      { _id: id, isDeleted: true },
       { isDeleted: false, deletedAt: null },
       { new: true }
     );
