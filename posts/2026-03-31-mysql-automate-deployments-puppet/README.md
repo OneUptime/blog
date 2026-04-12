@@ -79,12 +79,11 @@ class profile::mysql::app_database (
   # Create a read-only user for reporting
   mysql_user { "${app_user}_ro@${allowed_host}":
     ensure        => present,
-    password_hash => mysql_password($app_password),
+    password_hash => mysql::password($app_password),
   }
 
   mysql_grant { "${app_user}_ro@${allowed_host}/${db_name}.*":
     ensure     => present,
-    options    => ['GRANT'],
     privileges => ['SELECT'],
     table      => "${db_name}.*",
     user       => "${app_user}_ro@${allowed_host}",
