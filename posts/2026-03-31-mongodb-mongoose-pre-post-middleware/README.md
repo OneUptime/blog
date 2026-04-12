@@ -77,11 +77,11 @@ postSchema.pre(/^find/, function (next) {
 });
 ```
 
-The regex `/^find/` matches `find`, `findOne`, `findById`, `findOneAndUpdate`, etc.
+The regex `/^find/` matches `find`, `findOne`, `findOneAndDelete`, `findOneAndUpdate`, etc. Since `findById` internally calls `findOne`, this middleware also applies to `findById` queries.
 
 ## Cascading Deletes
 
-Use a pre-remove hook to delete related documents:
+Use a pre-deleteOne hook to delete related documents:
 
 ```javascript
 const authorSchema = new mongoose.Schema({ name: String });
