@@ -32,7 +32,7 @@ const apiKeySchema = new mongoose.Schema({
   prefix:    { type: String, required: true, index: true }, // First 8 chars, plain text
   keyHash:   { type: String, required: true },      // bcrypt hash of full key
   lastUsed:  { type: Date },
-  expiresAt: { type: Date, index: true },           // Optional expiry
+  expiresAt: { type: Date },                         // Optional expiry
   createdAt: { type: Date, default: Date.now },
 });
 
