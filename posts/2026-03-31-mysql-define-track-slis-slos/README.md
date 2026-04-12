@@ -16,7 +16,7 @@ Service Level Indicators (SLIs) are the metrics you measure. Service Level Objec
 |---|---|---|
 | Availability | MySQL responds to connections | `mysql_up` from mysqld_exporter |
 | Query latency | P99 query execution time | Performance Schema digest stats |
-| Error rate | Percentage of queries returning errors | `Com_*` error counters |
+| Error rate | Percentage of failed connections | `Aborted_connects`, `Connection_errors_*` |
 | Replication lag | Seconds behind primary | `Seconds_Behind_Master` |
 
 ## Defining SLOs
@@ -64,7 +64,7 @@ ORDER BY p99_latency_ms DESC
 LIMIT 10;
 ```
 
-Note: `QUANTILE_99` requires MySQL 8.0.26+.
+Note: `QUANTILE_99` requires MySQL 8.0.25+.
 
 ## Tracking Error Rate
 
