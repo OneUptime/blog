@@ -101,12 +101,29 @@ db.getCollectionInfos({ name: "logs" })[0].options.storageEngine
 
 ## Re-Compressing Existing Collections
 
-To change compression on an existing collection, you must rebuild it. Use `compact` to rewrite it in-place (WARNING: this locks the collection):
+Changing the `blockCompressor` in `mongod.conf` only affects new collections. Existing collections keep the compressor they were created with. The `compact` command defragments and reclaims disk space but does not change the compressor:
 
 ```javascript
-// Compact rewrites the collection with the current blockCompressor setting
-// First update the default in mongod.conf to the desired compressor, then:
+// Compact defragments and reclaims space, but does NOT change the compressor
 db.runCommand({ compact: "orders" })
+```
+
+To actually change the compressor on an existing collection, you must recreate it. One approach is to create a new collection with the desired compressor, copy the data, and rename:
+
+```javascript
+// Create new collection with desired compressor
+db.createCollection("orders_new", {
+  storageEngine: { wiredTiger: { configString: "block_compressor=zstd" } }
+})
+
+// Copy all documents
+db.orders.find().forEach(function(doc) { db.orders_new.insert(doc) })
+
+// Swap collections
+db.orders.drop()
+db.orders_new.renameCollection("orders")
+
+// Recreate any indexes that were on the original collection
 ```
 
 For zero-downtime re-compression on a replica set, use a rolling process:
@@ -188,4 +205,4 @@ printjson(compressionStats("orders"))
 
 ## Summary
 
-WiredTiger compression in MongoDB reduces storage usage and often improves performance by reducing disk I/O. Configure the default compressor in `mongod.conf` under `storage.wiredTiger.collectionConfig.blockCompressor`. Use `zstd` for the best balance of speed and compression ratio on MongoDB 4.2+. Set compression per-collection at creation time using `configString`. Always enable index prefix compression with `prefixCompression: true`. To recompress existing collections, use `compact` or a rolling dump-and-reload procedure on replica set secondaries.
+WiredTiger compression in MongoDB reduces storage usage and often improves performance by reducing disk I/O. Configure the default compressor in `mongod.conf` under `storage.wiredTiger.collectionConfig.blockCompressor`. Use `zstd` for the best balance of speed and compression ratio on MongoDB 4.2+. Set compression per-collection at creation time using `configString`. Always enable index prefix compression with `prefixCompression: true`. To recompress existing collections, recreate them with the desired compressor or use a rolling initial sync procedure on replica set members.
