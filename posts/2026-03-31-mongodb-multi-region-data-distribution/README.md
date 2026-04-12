@@ -38,20 +38,20 @@ db.orders.find({ status: "active" }).readPref("nearest");
 Zone sharding pins specific data ranges to designated shards in particular regions. This ensures, for example, that European user data stays in EU shards.
 
 ```javascript
-// Add zone tags to shards
-sh.addShardTag("shard-us-east", "US");
-sh.addShardTag("shard-eu-west", "EU");
-sh.addShardTag("shard-ap", "APAC");
+// Associate shards with zones
+sh.addShardToZone("shard-us-east", "US");
+sh.addShardToZone("shard-eu-west", "EU");
+sh.addShardToZone("shard-ap", "APAC");
 
 // Define zone ranges based on a region field
-sh.addTagRange(
+sh.updateZoneKeyRange(
   "mydb.users",
   { region: "US", _id: MinKey },
   { region: "US", _id: MaxKey },
   "US"
 );
 
-sh.addTagRange(
+sh.updateZoneKeyRange(
   "mydb.users",
   { region: "EU", _id: MinKey },
   { region: "EU", _id: MaxKey },
