@@ -54,22 +54,22 @@ After restarting, all new collections use zstd automatically.
 Existing collections retain their original compression setting. To change it, rebuild the collection:
 
 ```javascript
-// Method 1: Rename and re-insert (for smaller collections)
+// Method 1: Re-insert via $out (for smaller collections)
 db.orders.aggregate([
   { $out: "orders_new" }
 ]);
 
 // Then drop old and rename new
-// Note: $out uses default compression - ensure mongod.conf is updated first
+// Note: $out creates the new collection using the server default compression
+// Ensure mongod.conf is updated to zstd before running
 
-// Method 2: Use compact command (in-place, no rename needed)
-db.runCommand({
-  compact: "orders",
-  comment: "Recompress with zstd"
-});
+// Method 2: Use mongodump and mongorestore (for larger collections)
+// mongodump --db=mydb --collection=orders --archive=orders.archive
+// mongorestore --db=mydb --collection=orders --archive=orders.archive --drop
+// The restored collection uses the current server default compression
 ```
 
-The `compact` command rewrites all data files using the current compression setting but requires exclusive access.
+Note: The `compact` command defragments and reclaims disk space but does **not** change the collection's block compressor. To actually change compression, you must recreate the collection using one of the methods above.
 
 ## Step 4: Measure Compression Improvement
 
@@ -129,8 +129,8 @@ Indexes are often 20-40% of total collection storage. Optimize them:
 // Find unused indexes consuming storage
 db.orders.aggregate([{ $indexStats: {} }])
   .forEach(idx => {
-    const opsPerDay = idx.accesses.ops;
-    if (opsPerDay === 0) {
+    const totalOps = idx.accesses.ops;
+    if (totalOps === 0) {
       print(`Unused index (${(idx.spec.key)}): consider dropping`);
     }
   });
@@ -163,4 +163,4 @@ print(f"Annual savings:  ${annual_savings:.2f}")
 
 ## Summary
 
-Reducing MongoDB storage costs with compression requires enabling zstd as the default block compressor in `mongod.conf`, migrating existing collections using `compact` or re-insertion via `$out`, measuring compression ratios across all collections, applying application-level compression for very large text fields, and eliminating unused indexes. Together these measures typically reduce on-disk storage by 40-70% for document-heavy workloads, directly reducing Atlas storage billing.
+Reducing MongoDB storage costs with compression requires enabling zstd as the default block compressor in `mongod.conf`, migrating existing collections by recreating them via `$out` or `mongodump`/`mongorestore`, measuring compression ratios across all collections, applying application-level compression for very large text fields, and eliminating unused indexes. Together these measures typically reduce on-disk storage by 40-70% for document-heavy workloads, directly reducing Atlas storage billing.
