@@ -109,7 +109,7 @@ db.users.find(
 
 ## Projecting Array Fields
 
-To return only the first element of an array, use the positional operator:
+To return only the first matching element of an array, use the `$` positional operator:
 
 ```javascript
 // Find students with a Math grade and return only that grade
