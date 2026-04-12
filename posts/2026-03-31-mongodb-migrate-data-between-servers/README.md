@@ -102,10 +102,11 @@ After restore, verify document counts match:
 
 ```javascript
 // Run on both source and destination
-db.adminCommand({ listDatabases: 1 }).databases.forEach(db => {
-  const count = db.getMongo().getDB(db.name).getCollectionNames()
-    .reduce((acc, col) => acc + db.getMongo().getDB(db.name)[col].countDocuments(), 0);
-  print(db.name, ":", count, "documents");
+db.adminCommand({ listDatabases: 1 }).databases.forEach(dbInfo => {
+  const database = db.getMongo().getDB(dbInfo.name);
+  const count = database.getCollectionNames()
+    .reduce((acc, col) => acc + database[col].countDocuments(), 0);
+  print(dbInfo.name, ":", count, "documents");
 });
 ```
 
