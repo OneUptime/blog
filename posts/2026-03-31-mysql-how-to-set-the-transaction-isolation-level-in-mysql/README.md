@@ -31,9 +31,6 @@ The default isolation level in MySQL (InnoDB) is `REPEATABLE READ`, which preven
 
 ```sql
 SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
-
--- Alternative syntax
-SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
 ### Global-Level
@@ -99,7 +96,7 @@ SELECT balance FROM accounts WHERE id = 1;  -- Returns 900 (non-repeatable read)
 
 ## REPEATABLE READ (MySQL Default)
 
-Guarantees that repeated reads within a transaction see the same data. Uses a consistent snapshot taken at the start of the transaction.
+Guarantees that repeated reads within a transaction see the same data. Uses a consistent snapshot established by the first read in the transaction.
 
 ```sql
 SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -120,7 +117,7 @@ COMMIT;
 
 ## SERIALIZABLE
 
-The strictest level. Transactions execute as if they run one at a time. MySQL converts all plain `SELECT` statements to `SELECT ... LOCK IN SHARE MODE`.
+The strictest level. Transactions execute as if they run one at a time. MySQL converts all plain `SELECT` statements to `SELECT ... FOR SHARE` if autocommit is disabled.
 
 ```sql
 SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE;
