@@ -15,7 +15,7 @@ Next.js API routes provide serverless function endpoints. Because serverless env
 ## Installation
 
 ```bash
-npm install mongodb mongoose
+npm install mongoose
 ```
 
 ## Cached Connection Helper
@@ -63,7 +63,7 @@ export async function dbConnect(): Promise<typeof mongoose> {
 
 ```typescript
 // models/Product.ts
-import mongoose, { Schema, model, models } from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
 interface IProduct {
   name:     string;
