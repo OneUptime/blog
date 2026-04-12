@@ -77,7 +77,7 @@ SELECT CAST(NOW() AS CHAR) AS datetime_string;
 SELECT STR_TO_DATE(CAST(20260331 AS CHAR), '%Y%m%d') AS date_val;
 
 -- Unix timestamp to datetime
-SELECT FROM_UNIXTIME(1743379200) AS datetime_val;
+SELECT FROM_UNIXTIME(1774915200) AS datetime_val;
 
 -- Datetime to Unix timestamp
 SELECT UNIX_TIMESTAMP('2026-03-31 00:00:00') AS unix_ts;
