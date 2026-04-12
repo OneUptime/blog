@@ -105,10 +105,10 @@ SELECT COUNT(*)           FROM orders;  -- 5
 SELECT COUNT(discount_code) FROM orders;  -- 2
 ```
 
-**Mistake 2: Using COUNT(column) in OUTER JOIN to check existence**
+**Mistake 2: Using COUNT(*) in OUTER JOIN to count matched rows**
 
 ```sql
--- Correct pattern: use COUNT(*) after LEFT JOIN
+-- Correct pattern: use COUNT(column) from the joined table
 SELECT
   c.id,
   c.name,
