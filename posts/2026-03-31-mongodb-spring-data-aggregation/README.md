@@ -70,7 +70,7 @@ Use `project` to reshape documents and add computed fields:
 Aggregation agg = Aggregation.newAggregation(
     Aggregation.project("name", "price", "category")
         .andExpression("price * 1.2").as("priceWithTax")
-        .andExpression("{ $toLower: '$name' }").as("nameLower"),
+        .andExpression("toLower(name)").as("nameLower"),
     Aggregation.match(Criteria.where("priceWithTax").lte(100))
 );
 ```
@@ -105,7 +105,7 @@ AggregationResults<OrderWithCustomer> result =
     mongoTemplate.aggregate(agg, "orders", OrderWithCustomer.class);
 ```
 
-## AddFields and ReplaceRoot
+## AddFields Stage
 
 ```java
 Aggregation agg = Aggregation.newAggregation(
