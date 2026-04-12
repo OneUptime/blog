@@ -107,7 +107,7 @@ SELECT
     pool_size AS total_pages,
     free_buffers AS free_pages,
     database_pages AS used_pages,
-    hit_rate / 1000.0 AS hit_rate_pct,
+    hit_rate / 10.0 AS hit_rate_pct,
     pages_made_young,
     pages_not_made_young
 FROM information_schema.INNODB_BUFFER_POOL_STATS;
@@ -147,9 +147,11 @@ WHERE EVENT_NAME LIKE '%buffer%';
 After a restart, the buffer pool starts empty (cold). MySQL can automatically save and restore the buffer pool state to warm it up faster.
 
 ```sql
--- Enable automatic save/restore (enabled by default in MySQL 8.0)
+-- Enable automatic dump at shutdown (enabled by default in MySQL 8.0)
 SET GLOBAL innodb_buffer_pool_dump_at_shutdown = ON;
-SET GLOBAL innodb_buffer_pool_load_at_startup = ON;
+
+-- innodb_buffer_pool_load_at_startup is not dynamic and must be set in my.cnf:
+-- innodb_buffer_pool_load_at_startup = ON
 
 -- Manually trigger a dump (save pool contents to disk)
 SET GLOBAL innodb_buffer_pool_dump_now = ON;
