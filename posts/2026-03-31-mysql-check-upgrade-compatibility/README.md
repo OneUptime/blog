@@ -55,7 +55,7 @@ The checker reports issues in three severity categories:
   Errors: 0
 ```
 
-Items marked as **Errors** will break the upgrade or cause failures. **Warnings** should be reviewed but will not block the upgrade.
+Items marked as **Errors** will break the upgrade or cause failures. **Warnings** should be reviewed but will not block the upgrade. **Notices** are informational items about manual checks that may be needed.
 
 ## Fixing Reserved Word Conflicts
 
@@ -86,7 +86,7 @@ Then check for actual zero values:
 SELECT COUNT(*) FROM myapp.orders WHERE created_at = '0000-00-00 00:00:00';
 ```
 
-Check for `mysql_native_password` users (removed by default in 8.4):
+Check for `mysql_native_password` users (disabled by default in 8.4):
 
 ```sql
 SELECT User, Host, plugin FROM mysql.user WHERE plugin = 'mysql_native_password';
@@ -106,7 +106,7 @@ WHERE TABLE_COLLATION LIKE 'latin1%'
 Some variables were removed or renamed between versions. Check your `mysqld.cnf`:
 
 ```bash
-# Variables removed in 8.0
+# Variables removed or deprecated in 8.0
 grep -E "query_cache|expire_logs_days|innodb_file_format|innodb_large_prefix" \
   /etc/mysql/mysql.conf.d/mysqld.cnf
 ```
