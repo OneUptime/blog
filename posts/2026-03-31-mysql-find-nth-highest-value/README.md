@@ -65,7 +65,7 @@ WHERE salary NOT IN (
 );
 ```
 
-Note: MySQL does not allow `LIMIT` in subqueries used with `IN`. Use a derived table instead:
+Note: MySQL versions before 8.0.19 do not allow `LIMIT` in subqueries used with `IN`. Use a derived table instead for broad compatibility:
 
 ```sql
 SELECT MAX(salary) AS third_highest
@@ -170,7 +170,7 @@ CREATE INDEX idx_employees_salary ON employees(salary);
 
 Check the query plan to confirm the index is used:
 
-```bash
+```sql
 EXPLAIN SELECT salary FROM (
   SELECT salary, DENSE_RANK() OVER (ORDER BY salary DESC) AS rnk
   FROM employees
