@@ -44,7 +44,7 @@ If a secondary's lag approaches the oplog window, it is at risk of needing a ful
 
 ## Step 3: Resize the Oplog
 
-On self-managed MongoDB 4.4+, resize the oplog dynamically without restarting:
+On self-managed MongoDB 3.6+, resize the oplog dynamically without restarting:
 
 ```javascript
 // Resize to 20 GB
@@ -54,11 +54,11 @@ db.adminCommand({ replSetResizeOplog: 1, size: 20480 });
 Check the current oplog size:
 
 ```javascript
-db.adminCommand({ replSetGetConfig: 1 }).config.members;
-// Use rs.conf() to see oplog size on self-managed
+db.getReplicationInfo();
+// Returns logSizeMB, usedMB, timeDiff, timeDiffHours, tFirst, tLast
 ```
 
-For older versions, resize by setting `storage.oplogSizeMB` in `mongod.conf` and restarting:
+For older versions, resize by setting `replication.oplogSizeMB` in `mongod.conf` and restarting:
 
 ```yaml
 replication:
@@ -92,12 +92,14 @@ Rate-limit bulk deletes:
 let totalDeleted = 0;
 const batchSize = 1000;
 while (true) {
-  const result = await db.events.deleteMany(
-    { expiresAt: { $lt: new Date() } },
-    { limit: batchSize }
-  );
+  const docs = await db.events.find(
+    { expiresAt: { $lt: new Date() } }
+  ).limit(batchSize).toArray();
+  if (docs.length === 0) break;
+  const ids = docs.map(d => d._id);
+  const result = await db.events.deleteMany({ _id: { $in: ids } });
   totalDeleted += result.deletedCount;
-  if (result.deletedCount < batchSize) break;
+  if (docs.length < batchSize) break;
   await new Promise(r => setTimeout(r, 200)); // pause between batches
 }
 ```
