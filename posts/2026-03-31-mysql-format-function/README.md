@@ -68,7 +68,7 @@ SELECT FORMAT(NULL, 2);
 -- Returns: NULL
 
 SELECT FORMAT(123.456, -1);
--- Returns: NULL  (negative decimal places returns NULL)
+-- Returns: '123'  (negative decimal places are treated as 0)
 
 SELECT FORMAT(-9876.54, 2);
 -- Returns: '-9,876.54'
