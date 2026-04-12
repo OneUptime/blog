@@ -16,7 +16,7 @@ MySQL provides `BIN()` and `HEX()` as convenient built-in functions for converti
 
 ## BIN() Function
 
-`BIN(N)` converts a non-negative integer `N` to its binary string representation.
+`BIN(N)` converts an integer `N` to its binary string representation. It is equivalent to `CONV(N, 10, 2)`.
 
 ```sql
 SELECT BIN(10);   -- Returns '1010'
