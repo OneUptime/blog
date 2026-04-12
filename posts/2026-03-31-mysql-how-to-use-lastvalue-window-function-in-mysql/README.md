@@ -128,12 +128,13 @@ ORDER BY ticket_id, updated_at;
 
 ```sql
 -- LAST_VALUE is equivalent to NTH_VALUE at the last position
+-- With 3 rows, NTH_VALUE(val, 3) returns the same as LAST_VALUE(val)
 SELECT val,
   LAST_VALUE(val) OVER (
     ORDER BY val
     ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
   ) AS last_val,
-  NTH_VALUE(val, COUNT(*) OVER ()) OVER (
+  NTH_VALUE(val, 3) OVER (
     ORDER BY val
     ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
   ) AS nth_val_last
