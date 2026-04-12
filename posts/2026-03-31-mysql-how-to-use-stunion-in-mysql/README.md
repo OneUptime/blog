@@ -88,9 +88,13 @@ WHERE a.name = 'Zone A'
 
 ## Aggregating Multiple Zones Into One
 
-MySQL does not have an aggregate `ST_Union()` function, but you can use a subquery pattern or a loop. For two zones at a time:
+MySQL does not have an aggregate `ST_Union()` function, but you can use nested calls or a subquery pattern. For three zones:
 
 ```sql
+-- Add a third zone
+INSERT INTO delivery_zones (name, area) VALUES
+('Zone C', ST_GeomFromText('POLYGON((6 0, 10 0, 10 4, 6 4, 6 0))'));
+
 -- Combine all zones using a self-join approach (works for small sets)
 SELECT ST_AsText(
   ST_Union(z1.area, ST_Union(z2.area, z3.area))
