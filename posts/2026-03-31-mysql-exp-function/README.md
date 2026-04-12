@@ -98,7 +98,7 @@ SELECT
 FROM model_predictions;
 ```
 
-## Using EXP() with LOG()
+## Using EXP() with LN()
 
 Compute power operations using logarithm identity: `a^b = EXP(b * LN(a))`
 
