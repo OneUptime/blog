@@ -91,7 +91,7 @@ db.orders.find({ status: "pending", region: "us-east" }).explain("executionStats
 
 - **IXSCAN**: An index scan. Efficient.
 - **COLLSCAN**: A collection scan. Usually means no index was used.
-- **FETCH**: Fetching documents by `_id` after an index scan. Normal and acceptable.
+- **FETCH**: Retrieving full documents from the collection after an index scan. Normal and acceptable.
 - **SORT**: An in-memory sort. Expensive if `usedDisk: true` appears.
 
 ## Spotting an In-Memory Sort
