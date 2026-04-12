@@ -21,7 +21,7 @@ job:{job_id}:state -> Hash {
     total:       total items to process
     processed:   items processed so far
     message:     current status message
-    started_at:  timestamp
+    created_at:  timestamp
     updated_at:  timestamp
     result:      (on completion) JSON-encoded result
     error:       (on failure) error message
