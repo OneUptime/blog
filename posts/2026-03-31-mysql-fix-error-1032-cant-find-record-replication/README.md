@@ -96,7 +96,7 @@ For many 1032 errors on the same table, resync the entire table:
 ```bash
 # On the source - dump the specific table
 mysqldump -u root -p --single-transaction \
-  --no-create-info mydb orders > orders_sync.sql
+  --no-create-info --replace mydb orders > orders_sync.sql
 ```
 
 ```sql
