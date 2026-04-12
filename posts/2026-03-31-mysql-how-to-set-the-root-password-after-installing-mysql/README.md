@@ -48,10 +48,9 @@ Then run:
 
 ```sql
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'YourNewPassword123!';
-FLUSH PRIVILEGES;
 ```
 
-The `FLUSH PRIVILEGES` command reloads the grant tables so the change takes effect immediately.
+Account management statements like `ALTER USER` automatically reload the grant tables, so a separate `FLUSH PRIVILEGES` is not needed.
 
 ## Finding a Temporary Root Password
 
@@ -98,7 +97,6 @@ Reset the password:
 ```sql
 FLUSH PRIVILEGES;
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'NewSecurePassword!';
-FLUSH PRIVILEGES;
 EXIT;
 ```
 
