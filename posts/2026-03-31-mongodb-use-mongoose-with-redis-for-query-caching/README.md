@@ -47,11 +47,15 @@ mongoose.Query.prototype.exec = async function () {
   const cached = await redis.get(cacheKey)
   if (cached) {
     const parsed = JSON.parse(cached)
-    // Convert plain objects back to Mongoose model instances
-    if (Array.isArray(parsed)) {
-      return parsed.map(doc => new this.model(doc))
+    // Return plain objects for lean queries
+    if (this.mongooseOptions().lean) {
+      return parsed
     }
-    return new this.model(parsed)
+    // Hydrate plain objects back to Mongoose model instances
+    if (Array.isArray(parsed)) {
+      return parsed.map(doc => this.model.hydrate(doc))
+    }
+    return this.model.hydrate(parsed)
   }
 
   const result = await exec.apply(this, arguments)
@@ -95,7 +99,7 @@ const { redis } = require("./services/cache")
 async function clearUserCache() {
   const keys = await redis.keys("*users*")
   if (keys.length) {
-    await redis.del(keys)
+    await redis.del(...keys)
   }
 }
 
