@@ -56,16 +56,23 @@ results.each do |row|
 end
 ```
 
-## Parameterized Queries (Escaping)
+## Parameterized Queries
 
-The `mysql2` gem does not have native prepared-statement binding in the same style as some other libraries. Escape values manually:
+The `mysql2` gem supports prepared statements, which safely bind parameters and prevent SQL injection:
+
+```ruby
+statement = client.prepare("SELECT id FROM users WHERE email = ?")
+row = statement.execute(params[:email]).first
+```
+
+Alternatively, you can escape values manually with `client.escape`:
 
 ```ruby
 email = client.escape(params[:email])
 row = client.query("SELECT id FROM users WHERE email = '#{email}'").first
 ```
 
-For a safer pattern, use a helper method or the `ActiveRecord` parameterized interface.
+For Rails applications, use ActiveRecord's parameterized query interface instead.
 
 ## Using with ActiveRecord (Rails)
 
