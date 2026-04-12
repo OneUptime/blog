@@ -70,7 +70,7 @@ WHERE p.price > ALL (
 
 ## Practical Examples
 
-### ANY for "Better Than Average in at Least One Group"
+### ANY for "Greater Than at Least One Value in Another Group"
 
 ```sql
 CREATE TABLE regional_sales (
