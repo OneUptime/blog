@@ -68,9 +68,10 @@ KILL CONNECTION 42;
 Or with a dynamic approach:
 
 ```sql
--- Kill your own current query (useful in error handlers)
-SET @conn = CONNECTION_ID();
--- In another session: KILL QUERY @conn;
+-- Store your connection ID for reference
+SELECT CONNECTION_ID();
+-- Note the returned value (e.g., 42), then in another session:
+-- KILL QUERY 42;
 ```
 
 ## Storing Connection ID in Audit Logs
