@@ -122,8 +122,7 @@ curl -X POST http://localhost:8083/connectors \
       "collection": "orders",
       "topics": "mongodb.myapp.orders",
       "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.ProvidedInKeyStrategy",
-      "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.ReplaceOneBusinessKeyStrategy",
-      "writemodel.strategy.replace.with.upsert": "true"
+      "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.ReplaceOneDefaultStrategy"
     }
   }'
 ```
