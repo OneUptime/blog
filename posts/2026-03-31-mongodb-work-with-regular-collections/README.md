@@ -60,7 +60,7 @@ db.createCollection("products", {
 
 ## Creating Indexes on Regular Collections
 
-Regular collections support the full range of MongoDB index types: single field, compound, multikey, text, geospatial, and sparse.
+Regular collections support the full range of MongoDB index types: single field, compound, multikey, text, geospatial, and hashed.
 
 ```javascript
 // Single field index
@@ -79,15 +79,15 @@ db.orders.createIndex(
 );
 ```
 
-## Setting Collection-Level Read/Write Concerns
+## Specifying Read/Write Concerns Per Operation
 
-You can specify default read and write concerns at the collection level:
+You can specify read and write concerns on individual operations:
 
 ```javascript
 const collection = db.getSiblingDB("myapp").getCollection("criticalData");
 
-// Use majority write concern for all writes to this collection
-await collection.insertOne(
+// Use majority write concern for this insert
+collection.insertOne(
   { type: "audit", action: "login", userId: "u123" },
   { writeConcern: { w: "majority", j: true } }
 );
