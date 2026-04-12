@@ -47,7 +47,7 @@ docker compose up -d
 
 ## Adding a Health Check
 
-Docker's health check restarts the container if MySQL fails to accept connections:
+Docker's health check marks the container as unhealthy if MySQL fails to accept connections:
 
 ```yaml
 services:
