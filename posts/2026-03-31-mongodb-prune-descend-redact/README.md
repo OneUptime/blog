@@ -111,7 +111,7 @@ Nodes with no `requiredGroups` are accessible to all. Nodes whose `requiredGroup
 
 ## How $redact Traverses the Document
 
-`$redact` starts at the root document (equivalent to `$$ROOT`) and applies the expression. If the result is `$$DESCEND`, it applies the same expression to each value in the current document. Arrays are not traversed element-by-element - `$redact` recurses into document-type values.
+`$redact` starts at the root document and applies the expression. If the result is `$$DESCEND`, it returns the fields at the current document level and applies the same expression to embedded documents. For array fields, `$redact` applies the expression to each document element in the array individually, pruning or keeping each element based on the result.
 
 ## $redact vs. $project for Field Filtering
 
