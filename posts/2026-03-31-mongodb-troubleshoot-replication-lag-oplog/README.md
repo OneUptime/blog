@@ -43,7 +43,6 @@ Key fields:
 
 ```javascript
 {
-  "batchSize": 128,          // entries applied per batch
   "ops": NumberLong(450000), // total operations applied
   "batches": {
     "num": NumberLong(3500),
@@ -88,13 +87,22 @@ Look for high `%util` on the MongoDB data disk. If it is consistently above 80%,
 
 ## Step 5 - Increase Apply Threads
 
-For write-heavy workloads, increase parallel apply threads on the secondary:
+For write-heavy workloads, increase parallel apply threads on the secondary. This parameter can only be set at startup, not at runtime.
 
-```javascript
-db.adminCommand({ setParameter: 1, replWriterThreadCount: 16 });
+In `mongod.conf`:
+
+```yaml
+setParameter:
+  replWriterThreadCount: 32
 ```
 
-The default is 4. Increasing to 8-16 helps when operations are on different documents/collections and can be parallelized.
+Or start `mongod` with:
+
+```bash
+mongod --setParameter replWriterThreadCount=32
+```
+
+The default is 16. Increasing beyond 16 helps when operations target different documents and collections that can be applied in parallel.
 
 ## Step 6 - Identify Hot Documents
 
