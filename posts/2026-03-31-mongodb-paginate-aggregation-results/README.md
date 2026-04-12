@@ -65,7 +65,7 @@ db.products.aggregate([
 ])
 
 // Subsequent pages - pass last _id as cursor
-const lastId = ObjectId("64a1b2c3d4e5f6g7h8i9j0k1");
+const lastId = ObjectId("64a1b2c3d4e5f60718293a4b");
 db.products.aggregate([
   { $match: {
       category: "electronics",
@@ -84,7 +84,7 @@ When sorting by a non-unique field like price, use a compound sort with `_id` to
 
 ```javascript
 const lastPrice = 299.99;
-const lastId = ObjectId("64a1b2c3d4e5f6g7h8i9j0k1");
+const lastId = ObjectId("64a1b2c3d4e5f60718293a4b");
 
 db.products.aggregate([
   { $match: {
@@ -101,7 +101,7 @@ db.products.aggregate([
 
 ## Performance Tips
 
-- Always sort on indexed fields. Without an index, `$sort` performs a full collection scan.
+- Always sort on indexed fields. Without an index, `$sort` performs an in-memory sort, which is limited to 100 MB of RAM unless `allowDiskUse` is enabled.
 - Prefer cursor-based pagination for datasets exceeding 10,000 documents.
 - Use `$match` as early in the pipeline as possible to reduce the number of documents processed by `$skip` and `$limit`.
 
