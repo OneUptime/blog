@@ -84,11 +84,10 @@ prompt = function() {
 ## Configuring the Prompt
 
 ```javascript
-// Static prompt
-config.set("prompt", "myapp> ")
+// Static prompt (set in .mongoshrc.js for persistence)
+prompt = "myapp> ";
 
-// Dynamic prompt via .mongoshrc.js
-// (must be set in the rc file for persistence)
+// Dynamic prompt (set in .mongoshrc.js for persistence)
 prompt = function() {
   const primary = rs.status().myState === 1 ? "PRIMARY" : "SECONDARY";
   return `[${primary}] ${db.getName()}> `;
