@@ -113,7 +113,7 @@ Use `load()` to build a composition of scripts where one script calls another:
 load("/opt/scripts/helpers.js");
 load("/opt/scripts/migration-utils.js");
 
-const db = db.getSiblingDB("myapp");
+const appDb = db.getSiblingDB("myapp");
 
 print("Starting migration v1.2.0");
 
@@ -126,7 +126,7 @@ if (pendingCount === 0) {
   quit(0);
 }
 
-migrateOrders(db); // function from migration-utils.js
+migrateOrders(appDb); // function from migration-utils.js
 print("Migration complete");
 ```
 
@@ -166,7 +166,7 @@ CONFIG.collections.forEach(collName => {
 | Feature | load() | --file |
 |---|---|---|
 | Where called | Inside interactive shell | Command-line flag at startup |
-| Context sharing | Shares current shell context | Runs in isolated context |
+| Context sharing | Shares current shell context | Runs non-interactively, shell exits after |
 | Auto-loading | Via .mongoshrc.js | Must specify on every launch |
 | Chaining scripts | Can call load() inside loaded file | Use multiple --file flags |
 | Interactivity | Can continue shell use after | Shell exits when file finishes |
@@ -202,16 +202,16 @@ In the shell:
 load("/opt/scripts/error-demo.js")
 // Output:
 // Starting
-// MongoshRuntimeError: Something went wrong
-// load() returns false if an error occurs
+// Uncaught Error: Something went wrong
 ```
 
-Check the return value:
+Since `load()` throws on error rather than returning a value, use try/catch for error handling:
 
 ```javascript
-const loaded = load("/opt/scripts/setup.js");
-if (!loaded) {
-  print("Setup script failed, aborting");
+try {
+  load("/opt/scripts/setup.js");
+} catch (e) {
+  print("Setup script failed: " + e.message);
   quit(1);
 }
 ```
