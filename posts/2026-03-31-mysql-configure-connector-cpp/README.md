@@ -112,7 +112,6 @@ Use the following compilation flags:
 
 ```bash
 g++ -o myapp main.cpp \
-    -I/usr/include/cppconn \
     -lmysqlcppconn \
     -std=c++17
 ```
@@ -123,10 +122,10 @@ Or with CMake:
 cmake_minimum_required(VERSION 3.10)
 project(MyApp)
 
-find_package(unofficial-mysql-connector-cpp CONFIG REQUIRED)
+set(CMAKE_CXX_STANDARD 17)
 
 add_executable(myapp main.cpp)
-target_link_libraries(myapp unofficial::mysql-connector-cpp::connector)
+target_link_libraries(myapp mysqlcppconn)
 ```
 
 ## Handling Exceptions and Reconnections
