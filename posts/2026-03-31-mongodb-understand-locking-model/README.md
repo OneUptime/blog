@@ -55,10 +55,10 @@ Some administrative operations take a global write lock (`W`), blocking all othe
 ```javascript
 // These operations take a global lock
 db.adminCommand({ fsync: 1, lock: true });
-db.copyDatabase("source", "target");  // (deprecated but illustrative)
+db.copyDatabase("source", "target");  // (removed in MongoDB 4.2, shown for illustration)
 ```
 
-Most routine CRUD operations and index builds on MongoDB 4.4+ do not take global locks.
+Most routine CRUD operations and index builds on MongoDB 4.2+ do not take global locks.
 
 ## Checking Lock Statistics
 
@@ -101,10 +101,10 @@ for (let i = 0; i < 1000; i++) {
 
 ## Index Builds and Locking
 
-Before MongoDB 4.4, index builds held a collection write lock for the entire duration. Since 4.4, index builds run in the background using a hybrid approach - they only hold a brief exclusive lock at the start and end:
+Before MongoDB 4.2, foreground index builds held a collection write lock for the entire duration (background builds were less restrictive but slower). Since 4.2, index builds use a hybrid approach - they only hold a brief exclusive lock at the start and end:
 
 ```javascript
-// Safe to run on production with MongoDB 4.4+
+// Safe to run on production with MongoDB 4.2+
 db.orders.createIndex({ customerId: 1, placedAt: -1 });
 ```
 
