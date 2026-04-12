@@ -52,25 +52,26 @@ Wait for the process to complete - it may take several minutes for large databas
 [main] repair complete
 ```
 
-## Repair with a Different Repair Path
+## Repair When Disk Space Is Limited
 
-If disk space is limited on the data volume, specify a separate repair path:
+The repair process requires free disk space on the same volume as the data files. If disk space is limited, copy the data directory to a volume with sufficient space and repair there:
 
 ```bash
-sudo -u mongodb mongod --repair --dbpath /var/lib/mongodb --repairpath /tmp/mongodb-repair
+sudo cp -r /var/lib/mongodb /mnt/larger-volume/mongodb
+sudo -u mongodb mongod --repair --dbpath /mnt/larger-volume/mongodb
 ```
 
-The repair path must be on the same filesystem or have enough space to hold the rebuilt files.
+After the repair completes, copy the repaired files back to the original location.
 
 ## WiredTiger Recovery Options
 
-For WiredTiger corruption, you can try the `salvage` option first, which is less destructive:
+MongoDB's `--repair` flag internally uses WiredTiger's salvage functionality to recover corrupt data files. For advanced recovery scenarios where `--repair` alone does not resolve the issue, you can pass the `salvage=true` option directly to the WiredTiger engine:
 
 ```bash
 sudo -u mongodb mongod --dbpath /var/lib/mongodb --wiredTigerEngineConfigString "salvage=true"
 ```
 
-If `salvage` does not help, run a full repair as described above.
+Note that this is an advanced, undocumented technique that bypasses MongoDB's controlled repair workflow. In most cases, `mongod --repair` is the recommended approach.
 
 ## After Repair: Validate Collections
 
@@ -83,13 +84,16 @@ db.runCommand({ validate: "orders", full: true })
 
 Look for `valid: true` in the output. If validation fails, restore from your backup instead.
 
-## Rebuild Indexes After Repair
+## Indexes After Repair
 
-Repair may not rebuild all indexes. Force a rebuild:
+The `mongod --repair` command automatically rebuilds all indexes as part of the repair process (since MongoDB 4.0.3). In most cases, no separate index rebuild is needed.
+
+If you suspect an index is still corrupt after repair, drop and recreate it:
 
 ```javascript
 use mydb
-db.orders.reIndex()
+db.orders.dropIndex("index_name")
+db.orders.createIndex({ fieldName: 1 })
 ```
 
 ## Replica Set Considerations
@@ -112,4 +116,4 @@ rs.add("repaired-host:27017")
 
 ## Summary
 
-MongoDB repair (`mongod --repair`) reconstructs data files and indexes after corruption or an unclean shutdown. Always back up data before running repair, and use WiredTiger's `salvage` option for less severe corruption. On replica sets, prefer resyncing over repairing to minimize downtime.
+MongoDB repair (`mongod --repair`) reconstructs data files and rebuilds all indexes after corruption or an unclean shutdown. Always back up data before running repair. On replica sets, prefer resyncing over repairing to minimize downtime.
