@@ -35,7 +35,7 @@ This section is the most critical. Look for:
 - **Changed default behaviors** - e.g., read concern defaults, index behavior
 - **Driver version requirements** - some MongoDB server features require newer driver versions
 
-Example from MongoDB 6.0 compatibility changes - `$lookup` on sharded collections now requires the `localField` to match the shard key. If your application runs `$lookup` without this, queries may fail or produce different results.
+Example from MongoDB 6.0 compatibility changes - legacy wire protocol opcodes (`OP_INSERT`, `OP_DELETE`, `OP_UPDATE`, `OP_QUERY`) were removed. Applications using older drivers that rely on these opcodes must upgrade their drivers before upgrading the server.
 
 ### Deprecated Features
 
@@ -44,8 +44,8 @@ Track deprecated features to avoid building new code on them:
 ```text
 MongoDB 5.0 deprecated:
 - mongo shell (replaced by mongosh)
-- db.collection.save() method
-- db.collection.ensureIndex() (use createIndex instead)
+- db.collection.save() method (deprecated since 4.2)
+- db.collection.ensureIndex() (deprecated since 3.0, use createIndex instead)
 ```
 
 Replace deprecated APIs before upgrading to the version that removes them.
@@ -119,7 +119,7 @@ sudo apt-get install mongodb-org=7.0.x
 sudo systemctl start mongod
 
 # 3. After all members upgraded, bump FCV
-mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '7.0' })"
+mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '7.0', confirm: true })"
 ```
 
 ## Summary
