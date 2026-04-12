@@ -27,7 +27,6 @@ By default, journal files are stored in the `journal/` subdirectory of the Mongo
 ls -lh /var/lib/mongodb/journal/
 # WiredTigerLog.0000000001
 # WiredTigerLog.0000000002
-# WiredTigerPreplog.0000000001
 ```
 
 Each file is up to 100 MB by default. Old files are removed after a checkpoint makes them unnecessary for recovery.
@@ -48,8 +47,6 @@ Lowering this value increases durability at the cost of more I/O. For maximum du
 ## Checking Journal Status
 
 ```javascript
-db.serverStatus().dur
-// or in newer versions
 db.serverStatus().wiredTiger.log
 ```
 
@@ -67,7 +64,7 @@ console.log({
 
 ## Disabling the Journal
 
-In development or on replica set secondaries where data can be rebuilt, you can disable journaling:
+In MongoDB versions prior to 6.1, you could disable journaling on standalone instances for development use:
 
 ```yaml
 storage:
@@ -75,7 +72,7 @@ storage:
     enabled: false
 ```
 
-Do not disable journaling on standalone instances used for production data. Without journaling, a crash between checkpoints can result in data loss or corruption requiring `--repair`.
+Starting with MongoDB 4.0, journaling cannot be disabled on replica set members. Starting with MongoDB 6.1, the `storage.journal.enabled` option was removed entirely and journaling is always enabled. Without journaling, a crash between checkpoints can result in data loss or corruption requiring `--repair`.
 
 ## Journal and Replica Sets
 
