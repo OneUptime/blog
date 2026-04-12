@@ -100,7 +100,7 @@ With `sync_binlog = 0`, the OS may buffer binary log writes for several seconds.
 
 - The InnoDB redo log may contain committed transactions
 - The binary log may be missing those same transactions
-- This creates a gap between InnoDB and the binary log, causing corruption
+- This creates a gap between InnoDB and the binary log, causing replication inconsistency
 
 The server detects and handles this on restart, but transactions in the gap are lost and never replicated.
 
