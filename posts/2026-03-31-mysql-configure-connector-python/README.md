@@ -89,19 +89,14 @@ def get_orders(user_id: int):
 ## SSL Configuration
 
 ```python
-ssl_config = {
-    'ca': '/etc/ssl/mysql/ca.pem',
-    'cert': '/etc/ssl/mysql/client-cert.pem',
-    'key': '/etc/ssl/mysql/client-key.pem',
-    'verify_cert': True,
-}
-
 conn = mysql.connector.connect(
     host='db.example.com',
     database='myapp',
     user='app_user',
     password='app_password',
     ssl_ca='/etc/ssl/mysql/ca.pem',
+    ssl_cert='/etc/ssl/mysql/client-cert.pem',
+    ssl_key='/etc/ssl/mysql/client-key.pem',
     ssl_verify_cert=True,
     ssl_verify_identity=True,
 )
@@ -136,7 +131,7 @@ engine = create_engine(
 def get_users():
     with engine.connect() as conn:
         result = conn.execute(text('SELECT id, email FROM users LIMIT 10'))
-        return [dict(row) for row in result]
+        return [row._asdict() for row in result]
 ```
 
 ## Error Handling
@@ -146,6 +141,8 @@ import mysql.connector
 from mysql.connector import errorcode
 
 def execute_query(pool, query, params):
+    conn = None
+    cursor = None
     try:
         conn = pool.get_connection()
         cursor = conn.cursor(dictionary=True)
@@ -159,14 +156,18 @@ def execute_query(pool, query, params):
         elif err.errno == errorcode.ER_BAD_DB_ERROR:
             raise ValueError("Database does not exist")
         elif err.errno == 1213:  # Deadlock
-            conn.rollback()
+            if conn:
+                conn.rollback()
             raise  # Let caller retry
         else:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             raise
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 ```
 
 ## Summary
