@@ -13,7 +13,7 @@ The MySQL Operator for Kubernetes is an official Oracle tool that automates the 
 ## Prerequisites
 
 Before installing the operator, ensure you have:
-- A running Kubernetes cluster (1.22 or later)
+- A running Kubernetes cluster (1.21 or later)
 - kubectl configured
 - Helm 3 installed
 - A StorageClass that supports ReadWriteOnce
@@ -74,7 +74,7 @@ spec:
     resources:
       requests:
         storage: 20Gi
-  version: "8.3.0"
+  version: "8.4.0"
 ```
 
 Apply the manifest:
@@ -118,24 +118,40 @@ The output shows each member's role (PRIMARY or SECONDARY), replication lag, and
 
 ## Scheduling Automated Backups
 
-The operator supports scheduled backups via `MySQLBackupSchedule`:
+The operator supports scheduled backups by adding `backupProfiles` and `backupSchedules` to the `InnoDBCluster` resource:
 
 ```yaml
 apiVersion: mysql.oracle.com/v2
-kind: MySQLBackupSchedule
+kind: InnoDBCluster
 metadata:
-  name: daily-backup
+  name: mycluster
 spec:
-  clusterName: mycluster
-  schedule: "0 2 * * *"
-  backupProfile:
-    name: default
-    dumpInstance:
-      storage:
-        s3:
-          bucketName: my-mysql-backups
-          config: s3-credentials
-          region: us-east-1
+  secretName: mysql-root-credentials
+  tlsUseSelfSigned: true
+  instances: 3
+  router:
+    instances: 2
+  datadirVolumeClaimTemplate:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 20Gi
+  version: "8.4.0"
+  backupProfiles:
+    - name: s3-backup
+      dumpInstance:
+        storage:
+          s3:
+            bucketName: my-mysql-backups
+            config: s3-credentials
+            endpoint: https://s3.amazonaws.com
+            prefix: /backups
+  backupSchedules:
+    - name: daily-backup
+      schedule: "0 2 * * *"
+      backupProfileName: s3-backup
+      enabled: true
 ```
 
 ## Summary
