@@ -45,8 +45,8 @@ collections.forEach(c => console.log(c.getName()));
 Or check for a specific collection:
 
 ```javascript
-const col = await schema.getCollection('users');
-if (col) {
+const col = schema.getCollection('users');
+if (await col.existsInDatabase()) {
   console.log('Collection exists');
 }
 ```
