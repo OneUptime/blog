@@ -40,15 +40,14 @@ VALUES (
     ST_MultiPointFromText('MULTIPOINT((40.7831 -73.9712),(40.8004 -73.9590))')
 );
 
--- Using ST_Collect to build from individual points
+-- Using ST_Collect aggregate function (MySQL 8.0.24+)
 INSERT INTO delivery_hubs (hub_name, drop_points)
-VALUES (
-    'East Side Hub',
-    ST_Collect(
-        ST_PointFromText('POINT(40.7282 -73.7949)'),
-        ST_PointFromText('POINT(40.6501 -73.9496)')
-    )
-);
+SELECT 'East Side Hub', ST_Collect(geom)
+FROM (
+    SELECT ST_PointFromText('POINT(40.7282 -73.7949)') AS geom
+    UNION ALL
+    SELECT ST_PointFromText('POINT(40.6501 -73.9496)')
+) AS points;
 ```
 
 ## Querying MULTIPOINT Data
