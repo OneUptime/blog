@@ -128,7 +128,7 @@ CouchDB's query capabilities are less flexible than MongoDB's; complex queries o
 | Metric | MongoDB | CouchDB |
 |---|---|---|
 | Write throughput | High (optimized for concurrent writes) | Moderate (MVCC overhead) |
-| Horizontal scaling | Sharding (built-in) | Federation + sharding (Couchbase) |
+| Horizontal scaling | Sharding (built-in) | Clustering with sharding (built-in since 2.0) |
 | Read performance | Excellent with indexes | Good with views, slower ad-hoc |
 | Suitable data size | Terabytes to petabytes | GBs to terabytes |
 
