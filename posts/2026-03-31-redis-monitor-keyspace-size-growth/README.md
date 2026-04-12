@@ -72,14 +72,14 @@ while True:
 `redis_exporter` exposes `redis_db_keys` per database and `redis_db_keys_expiring` for keys with TTLs. Track growth with PromQL:
 
 ```text
-rate(redis_db_keys[5m])
+deriv(redis_db_keys[5m])
 ```
 
 An alert for rapid keyspace growth:
 
 ```text
 alert: RedisKeyspaceGrowthHigh
-expr: rate(redis_db_keys[10m]) > 1000
+expr: deriv(redis_db_keys[10m]) * 60 > 1000
 for: 5m
 labels:
   severity: warning
@@ -92,10 +92,10 @@ annotations:
 Use `redis-cli --bigkeys` to find the largest keys by type:
 
 ```bash
-redis-cli --bigkeys --sleep 0.01
+redis-cli --bigkeys -i 0.01
 ```
 
-The `--sleep` flag adds a small delay between scans to avoid impacting production throughput.
+The `-i` flag adds a small delay between SCAN iterations to avoid impacting production throughput.
 
 For a sampled key size report use:
 
