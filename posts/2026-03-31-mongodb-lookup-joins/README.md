@@ -138,9 +138,9 @@ Output:
 
 ```javascript
 [
-  { _id: 1, product: "Laptop",  amount: 1200, customerInfo: { _id: "C1", name: "Alice", country: "US" } },
-  { _id: 2, product: "Phone",   amount: 800,  customerInfo: { _id: "C2", name: "Bob",   country: "EU" } },
-  { _id: 3, product: "Monitor", amount: 400,  customerInfo: { _id: "C1", name: "Alice", country: "US" } }
+  { _id: 1, customerId: "C1", product: "Laptop",  amount: 1200, customerInfo: { _id: "C1", name: "Alice", country: "US" } },
+  { _id: 2, customerId: "C2", product: "Phone",   amount: 800,  customerInfo: { _id: "C2", name: "Bob",   country: "EU" } },
+  { _id: 3, customerId: "C1", product: "Monitor", amount: 400,  customerInfo: { _id: "C1", name: "Alice", country: "US" } }
 ]
 ```
 
@@ -217,8 +217,9 @@ Output:
 - Avoid joining very large collections without filtering; consider denormalization if joins are frequent.
 
 ```javascript
-// Index on the foreignField
-db.customers.createIndex({ _id: 1 })
+// Index on the foreignField (not needed for _id which is indexed automatically)
+// Example: if your localField joined on a "sku" field in a products collection:
+db.products.createIndex({ sku: 1 })
 ```
 
 ## Use Cases
