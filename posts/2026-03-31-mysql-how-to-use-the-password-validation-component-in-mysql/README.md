@@ -23,8 +23,7 @@ INSTALL COMPONENT 'file://component_validate_password';
 Verify it is installed:
 
 ```sql
-SELECT COMPONENT_URN, COMPONENT_STATE
-FROM performance_schema.replication_group_members;
+SELECT * FROM mysql.component;
 
 -- Or check variables
 SHOW VARIABLES LIKE 'validate_password%';
@@ -83,7 +82,7 @@ SET GLOBAL validate_password.policy = 'STRONG';
 -- Minimum password length
 SET GLOBAL validate_password.length = 12;
 
--- Require at least 2 uppercase letters
+-- Require at least 2 uppercase AND 2 lowercase letters
 SET GLOBAL validate_password.mixed_case_count = 2;
 
 -- Require at least 2 digits
@@ -121,15 +120,15 @@ SET GLOBAL validate_password.dictionary_file = '/etc/mysql/bad_passwords.txt';
 SET GLOBAL validate_password.check_user_name = ON;
 ```
 
-With this on, a user named `alice` cannot set their password to `alice` or any variation.
+With this on, a user named `alice` cannot set their password to `alice` or its reverse (`ecila`). The comparison is case-insensitive.
 
 ## Testing Password Strength
 
 Use the `VALIDATE_PASSWORD_STRENGTH()` function to test a password without actually setting it:
 
 ```sql
-SELECT VALIDATE_PASSWORD_STRENGTH('test') AS strength;
-SELECT VALIDATE_PASSWORD_STRENGTH('MyP@ssw0rd!') AS strength;
+SELECT VALIDATE_PASSWORD_STRENGTH('ab') AS strength;
+SELECT VALIDATE_PASSWORD_STRENGTH('mypassword') AS strength;
 SELECT VALIDATE_PASSWORD_STRENGTH('V!3rX#9kLm2$') AS strength;
 ```
 
@@ -159,7 +158,6 @@ Scores range from 0 (weakest) to 100 (strongest).
 
 ```text
 [mysqld]
-component_scheduler.enabled = ON
 validate_password.policy = STRONG
 validate_password.length = 12
 validate_password.mixed_case_count = 1
