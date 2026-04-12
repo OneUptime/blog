@@ -78,7 +78,11 @@ default_storage_engine = InnoDB
 Restart MySQL.
 
 ```bash
+# Ubuntu / Debian
 sudo systemctl restart mysql
+
+# RHEL-based
+sudo systemctl restart mysqld
 ```
 
 Verify.
@@ -108,7 +112,7 @@ CREATE TABLE search_cache (
 
 CREATE TABLE session_data (
     session_id  VARCHAR(64) PRIMARY KEY,
-    data        BLOB,
+    data        VARBINARY(8000),
     expires_at  DATETIME
 ) ENGINE=MEMORY;
 ```
@@ -143,7 +147,7 @@ SHOW TABLE STATUS LIKE 'orders'\G
 ALTER TABLE mytable ENGINE=InnoDB;
 ```
 
-This rebuilds the table and can be slow on large tables. For tables in production, use `pt-online-schema-change` from Percona Toolkit or MySQL's built-in Online DDL.
+This rebuilds the table and can be slow on large tables. Engine changes always use the COPY algorithm, so the table is fully locked during the conversion. For large tables in production, use `pt-online-schema-change` from Percona Toolkit to minimize downtime.
 
 ## Converting All MyISAM Tables to InnoDB
 
