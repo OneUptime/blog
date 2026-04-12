@@ -60,14 +60,14 @@ mysql -u root -p -e "CREATE DATABASE mydb;"
 mysql -u root -p mydb < mydb_backup.sql
 ```
 
-## mysqlpump - Parallel Logical Backup (MySQL 5.7+)
+## mysqlpump - Parallel Logical Backup (MySQL 5.7 – 8.0)
 
 ```bash
 # Parallel backup across databases
 mysqlpump --default-parallelism=4 -u root -p --all-databases > dump.sql
 
 # Compress output
-mysqlpump --compress-output=ZLIB -u root -p mydb > mydb.zlib
+mysqlpump --compress-output=zlib -u root -p mydb > mydb.zlib
 ```
 
 ## MySQL Shell - Enterprise-Grade Dump (8.0+)
@@ -102,14 +102,15 @@ mysql -u root -p mydb < recovery.sql
 ## Backup Position for Replication
 
 ```bash
-mysqldump --single-transaction --master-data=2 -u root -p mydb > backup.sql
-# master-data=2 writes CHANGE MASTER TO as a comment at the top
+# MySQL 8.0.26+
+mysqldump --single-transaction --source-data=2 -u root -p mydb > backup.sql
+# source-data=2 writes CHANGE REPLICATION SOURCE TO as a comment at the top
 ```
 
 ## Verify Backup Integrity
 
 ```bash
-# Check dump file is parseable (dry run)
+# Restore with error tolerance (continues past errors, not a dry run)
 mysql -u root -p --force < backup.sql
 
 # Check table checksums
