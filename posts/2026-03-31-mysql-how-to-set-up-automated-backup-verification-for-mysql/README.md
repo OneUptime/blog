@@ -40,7 +40,7 @@ mysqldump \
   --all-databases \
   --single-transaction \
   --flush-logs \
-  --master-data=2 \
+  --source-data=2 \
   | gzip > ${BACKUP_FILE}
 
 aws s3 cp ${BACKUP_FILE} s3://my-mysql-backups/
@@ -147,7 +147,8 @@ handle_failure() {
   echo "ALERT: MySQL backup verification FAILED for ${LATEST_BACKUP}" | \
     mail -s "CRITICAL: MySQL Backup Verification FAILED" ops@example.com
   # Send to PagerDuty, Slack, etc.
-  curl -X POST https://hooks.slack.com/services/... \
+  curl -X POST -H 'Content-Type: application/json' \
+    https://hooks.slack.com/services/... \
     -d '{"text": "CRITICAL: MySQL backup verification failed!"}'
   exit 1
 }
@@ -160,7 +161,7 @@ trap cleanup EXIT
 
 ```bash
 # Run verification daily at 6 AM
-echo "0 6 * * * /opt/scripts/verify-mysql-backup.sh >> /var/log/backup-verify.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "0 6 * * * /opt/scripts/verify-mysql-backup.sh >> /var/log/backup-verify.log 2>&1") | crontab -
 ```
 
 ## Track Verification History
