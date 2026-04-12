@@ -37,6 +37,7 @@ Edit `/etc/mysql/mysql.conf.d/mysqld.cnf` to apply the following CIS-recommended
 ```ini
 [mysqld]
 # Disable symbolic links to prevent file-based attacks
+# (Deprecated in MySQL 8.0.2+; omit this line on MySQL 8.4 and later)
 symbolic-links = 0
 
 # Limit local file loading
