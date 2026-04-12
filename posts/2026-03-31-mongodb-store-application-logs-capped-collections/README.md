@@ -59,10 +59,10 @@ Capped collections support `$natural` sort order (insertion order) efficiently w
 Capped collections support **tailable cursors** - cursors that block and wait for new documents rather than closing when they reach the end. This is useful for building a live log tailer:
 
 ```javascript
-const cursor = db.app_logs.find({}, { tailable: true, awaitData: true });
+const cursor = db.app_logs.find().tailable({ awaitData: true });
 
-while (await cursor.hasNext()) {
-  const log = await cursor.next();
+while (cursor.hasNext()) {
+  const log = cursor.next();
   console.log(`[${log.level.toUpperCase()}] ${log.service}: ${log.message}`);
 }
 ```
@@ -97,15 +97,15 @@ db.runCommand({
 })
 ```
 
-Note: this command acquires a global write lock. Run it during maintenance windows on large collections.
+Note: this command acquires an exclusive lock on the parent database. Run it during maintenance windows on large collections.
 
 ## Limitations to Know
 
 ```text
-- No document deletion or update that increases size is allowed
+- Updates that increase document size are not allowed
+- Document deletion is not allowed before MongoDB 5.0 (permitted in 5.0+)
 - Capped collections cannot be sharded
 - No TTL indexes can be added to capped collections
-- Index creation is more restricted than regular collections
 ```
 
 ## Best Practices
