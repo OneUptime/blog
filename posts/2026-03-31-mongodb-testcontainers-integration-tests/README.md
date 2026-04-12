@@ -15,7 +15,7 @@ Testcontainers is a library that programmatically manages Docker containers duri
 ## Node.js Setup
 
 ```bash
-npm install --save-dev testcontainers mongodb jest
+npm install --save-dev @testcontainers/mongodb mongodb jest
 ```
 
 ```javascript
