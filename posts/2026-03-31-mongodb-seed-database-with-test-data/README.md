@@ -108,7 +108,6 @@ node seed.mjs
 from pymongo import MongoClient
 from faker import Faker
 import random
-from datetime import datetime, timedelta
 
 fake = Faker()
 client = MongoClient("mongodb://localhost:27017")
