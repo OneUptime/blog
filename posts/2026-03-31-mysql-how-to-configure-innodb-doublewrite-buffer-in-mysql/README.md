@@ -39,7 +39,6 @@ Starting in MySQL 8.0.20, the doublewrite buffer was moved from the system table
 innodb_doublewrite_dir = /var/lib/mysql-doublewrite
 innodb_doublewrite_files = 4
 innodb_doublewrite_pages = 64
-innodb_doublewrite_batch_size = 0
 ```
 
 - `innodb_doublewrite_dir` - directory for doublewrite files (defaults to data directory).
@@ -72,11 +71,7 @@ To disable:
 innodb_doublewrite = OFF
 ```
 
-Or dynamically in MySQL 8.0.30+:
-
-```sql
-SET GLOBAL innodb_doublewrite = OFF;
-```
+In MySQL 8.0.30+, `innodb_doublewrite` can be changed dynamically between enabled states (`ON`, `DETECT_AND_RECOVER`, `DETECT_ONLY`), but it cannot be dynamically changed to `OFF`. Disabling the doublewrite buffer requires a server restart.
 
 ## Performance Impact
 
