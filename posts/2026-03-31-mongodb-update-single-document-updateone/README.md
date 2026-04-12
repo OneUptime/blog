@@ -89,7 +89,7 @@ db.orders.updateOne(
 
 ## Common Mistakes
 
-- Using `$set` without the operator name: `{ field: value }` instead of `{ $set: { field: value } }` will replace the entire document.
+- Passing `{ field: value }` instead of `{ $set: { field: value } }` will throw an error because `updateOne()` requires update operators. Use `replaceOne()` if you intend to replace the entire document.
 - Not filtering by a unique field, causing a random document to be updated.
 - Forgetting that `updateOne()` stops after the first match.
 
