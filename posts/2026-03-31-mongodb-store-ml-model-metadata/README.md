@@ -55,20 +55,19 @@ ML teams need to track which models were trained with which hyperparameters, dat
 
 ```python
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timezone
 import sklearn
-import pickle
 
 client = MongoClient(MONGODB_URI)
 registry = client["mlops"]["models"]
 
-def register_model(name, version, model, hyperparams, metrics, dataset_info, s3_path):
+def register_model(name, version, hyperparams, metrics, dataset_info, s3_path):
     doc = {
         "name": name,
         "version": version,
         "framework": f"scikit-learn {sklearn.__version__}",
         "status": "staging",
-        "createdAt": datetime.utcnow(),
+        "createdAt": datetime.now(timezone.utc),
         "hyperparameters": hyperparams,
         "metrics": metrics,
         "dataset": dataset_info,
@@ -85,7 +84,6 @@ def register_model(name, version, model, hyperparams, metrics, dataset_info, s3_
 register_model(
     name="customer-churn-classifier",
     version="1.4.2",
-    model=clf,
     hyperparams={"n_estimators": 200, "max_depth": 5},
     metrics={"val_accuracy": 0.911, "f1_score": 0.897},
     dataset_info={"name": "customer-features-v3", "rows": 500000},
@@ -129,7 +127,7 @@ def promote_to_production(model_id):
     # Promote staging model
     registry.update_one(
         {"_id": ObjectId(model_id)},
-        {"$set": {"status": "production", "promotedAt": datetime.utcnow()}}
+        {"$set": {"status": "production", "promotedAt": datetime.now(timezone.utc)}}
     )
 
 promote_to_production("660a1234b5c6d7e8f9012345")
