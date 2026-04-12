@@ -33,7 +33,7 @@ db.users.createIndex({ email: 1 });
 db.users.createIndex({ createdAt: -1 });
 ```
 
-For single-field indexes, ascending and descending are equivalent for equality queries. The direction matters only when combining with other fields in a compound index or when sorting.
+For single-field indexes, ascending and descending are equivalent because MongoDB can traverse the index in either direction. The direction matters only when combining with other fields in a compound index.
 
 ## Naming the Index
 
