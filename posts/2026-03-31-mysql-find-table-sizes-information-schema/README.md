@@ -105,7 +105,7 @@ ORDER BY total_gb DESC;
 
 ## Note on Accuracy
 
-The `TABLE_ROWS` and size columns in `INFORMATION_SCHEMA.TABLES` are estimates for InnoDB tables. For exact counts, run `SELECT COUNT(*)` on the table. For exact sizes, use `SHOW TABLE STATUS` or check the file system. The estimates are close enough for capacity planning but may differ from actual file sizes.
+The `TABLE_ROWS` and size columns in `INFORMATION_SCHEMA.TABLES` are estimates for InnoDB tables. `SHOW TABLE STATUS` returns the same estimates from the same internal source. For exact row counts, run `SELECT COUNT(*)` on the table. For exact on-disk sizes, check the file system (e.g., the `.ibd` files when `innodb_file_per_table` is enabled). The estimates are close enough for capacity planning but may differ from actual file sizes.
 
 ## Summary
 
