@@ -95,7 +95,7 @@ Once replicated, TiDB automatically routes analytical queries to TiFlash:
 
 ```sql
 -- This query will use TiFlash (columnar scan)
-SELECT price, COUNT(*), AVG(price)
+SELECT FLOOR(price/10)*10 AS price_range, COUNT(*), AVG(price)
 FROM products
 GROUP BY FLOOR(price/10)*10;
 ```
