@@ -74,7 +74,7 @@ SELECT
   statement_avg_latency,
   file_io_latency
 FROM sys.host_summary
-WHERE host NOT IN ('background', NULL)
+WHERE host != 'background'
 ORDER BY statement_avg_latency DESC;
 ```
 
