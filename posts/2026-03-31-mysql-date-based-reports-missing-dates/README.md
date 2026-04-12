@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS calendar (
   is_weekend TINYINT(1) GENERATED ALWAYS AS (DAYOFWEEK(dt) IN (1, 7)) STORED
 ) ENGINE=InnoDB;
 
--- Populate once
+-- Populate once (raise recursion limit for the ~4 000 rows needed)
+SET SESSION cte_max_recursion_depth = 5000;
+
 INSERT INTO calendar (dt, day_of_week)
 WITH RECURSIVE dates AS (
   SELECT '2020-01-01' AS dt
