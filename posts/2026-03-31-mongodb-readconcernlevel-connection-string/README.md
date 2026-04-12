@@ -19,7 +19,7 @@ local      - returns data from the queried instance, may not be majority-committ
 available  - same as local for replica sets; on sharded clusters, may return orphaned docs
 majority   - returns data acknowledged by a majority of the replica set
 linearizable - returns data that reflects all majority-acknowledged writes before the read
-snapshot   - used in transactions; reads from a consistent snapshot at transaction start
+snapshot   - reads from a consistent snapshot; required in transactions, also available outside since MongoDB 5.0
 ```
 
 ## Connection String Format
@@ -85,7 +85,7 @@ await session.withTransaction(async () => {
   const db = client.db('shop');
   const order = await db.collection('orders').findOne(
     { _id: orderId },
-    { session, readConcern: { level: 'snapshot' } }
+    { session }
   );
   // ... other operations
 }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
