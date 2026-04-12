@@ -57,11 +57,13 @@ SELECT id, total FROM orders WHERE DATE(created_at) = '2025-12-01';
 
 ```sql
 ALTER TABLE products
-    ADD INDEX idx_color ((JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.color'))));
+    ADD INDEX idx_color ((CAST(JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.color')) AS CHAR(100))));
 
 SELECT id FROM products
-WHERE JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.color')) = 'red';
+WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.color')) AS CHAR(100)) = 'red';
 ```
+
+The `CAST` is required because `JSON_UNQUOTE` returns `LONGTEXT`, which cannot be indexed directly. Wrapping the expression in `CAST(... AS CHAR(N))` produces a fixed-length type that MySQL can index.
 
 ### Year extraction
 
@@ -85,13 +87,13 @@ Extra: Using index
 ...
 ```
 
-## Viewing the Hidden Generated Column
+## Viewing the Functional Index Definition
 
 ```sql
 SHOW CREATE TABLE users\G
 ```
 
-MySQL creates a hidden virtual column (prefixed with `!hidden!`) behind the scenes to store the expression result for indexing.
+The output shows the functional index with the expression in the `KEY` clause, for example `KEY idx_email_lower ((lower(email)))`. Internally, MySQL creates a hidden virtual generated column to store the expression result, but this column is not visible in DDL output. You can inspect it through `information_schema.columns` where the `GENERATION_EXPRESSION` is not empty.
 
 ## Limitations
 
