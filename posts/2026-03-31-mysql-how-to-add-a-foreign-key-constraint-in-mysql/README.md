@@ -39,12 +39,13 @@ REFERENCES users (id);
 Control what happens when a referenced row is deleted or updated:
 
 ```text
-RESTRICT   (default) - block the delete/update if child rows exist
-CASCADE    - delete/update child rows automatically
-SET NULL   - set the child column to NULL (column must allow NULL)
-SET DEFAULT - set the child column to its default value
-NO ACTION  - same as RESTRICT (checked at end of statement)
+RESTRICT    (default) - block the delete/update if child rows exist
+CASCADE     - delete/update child rows automatically
+SET NULL    - set the child column to NULL (column must allow NULL)
+NO ACTION   - same as RESTRICT in MySQL (both check immediately)
 ```
+
+Note: `SET DEFAULT` is recognized by the MySQL parser but is rejected by InnoDB. It is not usable with InnoDB tables.
 
 ```sql
 ALTER TABLE orders
