@@ -22,7 +22,7 @@ Start by collecting baseline metrics across all four dimensions.
 
 ```bash
 # Average CPU usage over the past hour from MySQL metrics
-mysqladmin -u root -p extended-status | grep -i "threads_running\|queries_per_sec"
+mysqladmin -u root -p extended-status | grep -i "threads_running\|Questions"
 ```
 
 ```sql
@@ -74,8 +74,6 @@ Look at `%util` for the MySQL data disk. Sustained utilization above 70% is a wa
 Use linear or exponential growth models based on business metrics:
 
 ```python
-from datetime import date, timedelta
-
 # Historical monthly data sizes in GB
 monthly_sizes = [120, 135, 152, 171, 193]
 
@@ -119,7 +117,7 @@ groups:
     rules:
       - alert: MySQLDiskUsageHigh
         expr: >
-          (mysql_global_variables_innodb_buffer_pool_size /
+          1 - (node_filesystem_avail_bytes{mountpoint="/var/lib/mysql"} /
            node_filesystem_size_bytes{mountpoint="/var/lib/mysql"}) > 0.7
         for: 10m
         labels:
