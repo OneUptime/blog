@@ -35,11 +35,7 @@ Inspect the collection options to confirm the retention window:
 db.getCollectionInfos({ name: "sensorReadings" })
 ```
 
-Look for `expireAfterSeconds` in the output. You can also check the underlying index:
-
-```javascript
-db.sensorReadings.getIndexes()
-```
+Look for `expireAfterSeconds` in the output under the collection options.
 
 ## Modifying TTL After Creation
 
@@ -52,9 +48,7 @@ db.runCommand({
 });
 ```
 
-Set `expireAfterSeconds` to `0` to disable automatic expiration without dropping the collection.
-
-## Disabling TTL Temporarily
+To disable automatic expiration without dropping the collection, set `expireAfterSeconds` to `"off"`:
 
 ```javascript
 db.runCommand({
@@ -63,7 +57,7 @@ db.runCommand({
 });
 ```
 
-This is useful when you need to pause expiration during a data migration or audit.
+This is useful when you need to pause expiration during a data migration or audit. Do not set `expireAfterSeconds` to `0`, as that causes documents to expire immediately rather than disabling TTL.
 
 ## TTL Frequency and Latency
 
