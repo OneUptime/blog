@@ -79,7 +79,7 @@ Consider using a dedicated low-privilege account for the FEDERATED connection th
 
 ## Required Privileges
 
-Creating a server requires the `SUPER` privilege (or `SYSTEM_VARIABLES_ADMIN` in MySQL 8.0):
+Creating a server requires the `SUPER` privilege:
 
 ```sql
 GRANT SUPER ON *.* TO 'admin_user'@'localhost';
@@ -91,7 +91,7 @@ Use `ALTER SERVER` to change any connection option without recreating the server
 
 ```sql
 ALTER SERVER remote_analytics
-  OPTIONS (SET PASSWORD 'new_password');
+  OPTIONS (PASSWORD 'new_password');
 ```
 
 ## Dropping a Server Definition
@@ -100,7 +100,7 @@ ALTER SERVER remote_analytics
 DROP SERVER IF EXISTS remote_analytics;
 ```
 
-Dropping a server does not drop the `FEDERATED` tables that use it - those tables will simply fail to connect until a new server definition is created.
+Dropping a server does not affect any `FEDERATED` tables that used this connection information when they were created. Existing `FEDERATED` tables retain their connection details and continue to function.
 
 ## Summary
 
