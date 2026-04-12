@@ -116,15 +116,16 @@ Visit `http://<prometheus>:9090/alerts` to see the rule states.
 In `alertmanager.yml`, route critical MySQL alerts to PagerDuty and warnings to Slack:
 
 ```yaml
-routes:
-  - match:
-      severity: critical
-      job: mysql
-    receiver: pagerduty
-  - match:
-      severity: warning
-      job: mysql
-    receiver: slack-mysql
+route:
+  routes:
+    - match:
+        severity: critical
+        job: mysql
+      receiver: pagerduty
+    - match:
+        severity: warning
+        job: mysql
+      receiver: slack-mysql
 ```
 
 ## Summary
