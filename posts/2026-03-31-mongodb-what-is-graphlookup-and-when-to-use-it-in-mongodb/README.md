@@ -174,7 +174,7 @@ db.categories.createIndex({ parent: 1 });
 ## When Not to Use $graphLookup
 
 - For very large graphs (millions of nodes), consider a dedicated graph database
-- For graphs with many cycles, performance degrades significantly - MongoDB detects simple cycles but complex cyclic graphs can still be slow
+- For densely connected or cyclic graphs, `$graphLookup` skips already-visited documents to avoid infinite loops, but the total number of matched documents can still be large, leading to high memory usage
 - For simple one-level joins, use regular `$lookup` instead
 
 ## Summary
