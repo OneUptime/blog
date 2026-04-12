@@ -41,7 +41,6 @@ INSERT INTO shard_map (shard_id, host) VALUES
 
 ```python
 import mysql.connector
-from functools import lru_cache
 
 SHARD_COUNT = 4
 
