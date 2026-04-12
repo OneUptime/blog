@@ -17,14 +17,14 @@ CREATE OR REPLACE VIEW view_name AS
 SELECT ...;
 ```
 
-This is equivalent to:
+This is similar in effect to:
 
 ```sql
 DROP VIEW IF EXISTS view_name;
 CREATE VIEW view_name AS SELECT ...;
 ```
 
-But `CREATE OR REPLACE VIEW` is atomic - there is no window where the view does not exist.
+But `CREATE OR REPLACE VIEW` is atomic - concurrent queries will block rather than encounter a "view does not exist" error. It also preserves any existing privileges granted on the view, which a drop-then-create sequence does not.
 
 ## Example 1 - Creating a New View
 
@@ -56,7 +56,7 @@ The replacement takes effect immediately for all subsequent queries.
 
 ## Limitations of CREATE OR REPLACE VIEW
 
-There is one important constraint: the new definition cannot change the column names or reduce the number of columns compared to the original if the view is referenced by other views or if applications depend on column positions. In practice you can add columns, but removing or renaming columns breaks dependent objects.
+There is one important consideration: MySQL does not prevent you from changing column names or reducing the number of columns. However, if other views or application queries depend on specific column names or positions, those dependent objects will fail at query time. In practice you can freely add columns, but removing or renaming columns risks breaking dependent objects.
 
 To check for dependent views:
 
@@ -100,4 +100,4 @@ SELECT * FROM product_summary LIMIT 5;
 
 ## Summary
 
-Use `CREATE OR REPLACE VIEW` to update a view definition in a single atomic operation. It is safer than a drop-then-create sequence because it preserves continuity for concurrent queries, and it lets you change the `ALGORITHM`, `DEFINER`, and `SQL SECURITY` options at the same time as the query definition.
+Use `CREATE OR REPLACE VIEW` to update a view definition in a single atomic operation. It is safer than a drop-then-create sequence because concurrent queries will block briefly rather than fail with a "view does not exist" error, and existing privileges on the view are preserved. It also lets you change the `ALGORITHM`, `DEFINER`, and `SQL SECURITY` options at the same time as the query definition.
