@@ -33,7 +33,8 @@ db.metrics.insertOne(
   { writeConcern: { w: 0 } }
 );
 
-// w:1 (default) - Primary acknowledges after writing to memory
+// w:1 - Primary acknowledges after writing to memory
+// Note: since MongoDB 5.0, the default write concern for replica sets is w:"majority"
 db.orders.insertOne(
   { customerId: "u123", total: 99.99 },
   { writeConcern: { w: 1 } }
@@ -99,7 +100,8 @@ const result = await collection.insertOne(
   { type: "audit" },
   { writeConcern: { w: "majority" } }
 );
-// result.acknowledged is true when writeConcern is met
+// result.acknowledged is true for w >= 1 or w:"majority"
+// For w:0 it is false. Write concern failures throw an exception.
 console.log(result.acknowledged);
 ```
 
