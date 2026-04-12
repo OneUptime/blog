@@ -45,7 +45,7 @@ FROM orders o
 JOIN customers c ON o.customer_id = c.id
 JOIN order_items oi ON oi.order_id = o.id
 GROUP BY o.id, c.name
-HAVING total > 100;
+HAVING SUM(oi.price) > 100;
 ```
 
 MongoDB handles nested document queries well but requires `$lookup` for joins:
