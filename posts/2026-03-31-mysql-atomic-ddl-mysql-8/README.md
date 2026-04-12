@@ -19,11 +19,15 @@ MySQL 8.0 introduced Atomic DDL, which binds DDL operations to the data dictiona
 MySQL 8.0 stores all metadata in a transactional InnoDB-based data dictionary instead of the old `.frm` file system. When you run a DDL statement, MySQL writes changes to the data dictionary inside a transaction. If something goes wrong, the entire change is rolled back automatically.
 
 ```sql
--- Without Atomic DDL (MySQL 5.7), this could leave partial state on crash
+-- In MySQL 5.7, this could leave partial state on crash
+-- e.g., t1 dropped but t2 and t3 remain if the server crashes mid-way
 DROP TABLE t1, t2, t3;
 
--- With Atomic DDL (MySQL 8.0), all three tables drop atomically
--- If t3 does not exist, nothing is dropped and an error is returned
+-- With Atomic DDL (MySQL 8.0), the same statement is all-or-nothing
+-- If t3 does not exist, no tables are dropped and an error is returned
+DROP TABLE t1, t2, t3;
+
+-- Use IF EXISTS to drop only the tables that exist without raising an error
 DROP TABLE IF EXISTS t1, t2, t3;
 ```
 
@@ -66,7 +70,7 @@ DROP TABLE IF EXISTS orders, order_items, nonexistent_table;
 
 ## CREATE OR REPLACE and Atomicity
 
-MySQL 8.0 also added `CREATE OR REPLACE` for views, which is atomic:
+The `CREATE OR REPLACE VIEW` syntax, available since earlier MySQL versions, is now atomic in MySQL 8.0:
 
 ```sql
 CREATE OR REPLACE VIEW active_orders AS
