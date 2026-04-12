@@ -30,7 +30,7 @@ A write concern document has three fields:
 
 **`w: 0` (fire and forget)** - The driver does not wait for any acknowledgment. Maximum throughput, zero durability guarantees. Suitable for high-volume logging where an occasional lost write is acceptable.
 
-**`w: 1` (default)** - The primary acknowledges the write. The write is in memory but may not have replicated. If the primary crashes immediately after, the write could be lost.
+**`w: 1`** - The primary acknowledges the write. The write is in memory but may not have replicated. If the primary crashes immediately after, the write could be lost. This was the default write concern before MongoDB 5.0. Starting with MongoDB 5.0, the default for replica sets and sharded clusters is `w: "majority"`.
 
 **`w: "majority"`** - A majority of voting replica set members must acknowledge the write. This ensures the write survives a primary election. Recommended for production workloads.
 
@@ -62,7 +62,7 @@ coll.insert_one({"amount": 150, "userId": "abc"})
 
 ## The Journal Flag
 
-Setting `j: true` means the primary must flush the write to the on-disk journal before acknowledging. This protects against data loss even if the mongod process crashes before writing to the data files. If `j` is false (the default), the write is acknowledged once it reaches memory.
+Setting `j: true` means the primary must flush the write to the on-disk journal before acknowledging. This protects against data loss even if the mongod process crashes before writing to the data files. When `j` is not explicitly set, the behavior depends on the write concern level. For `w: "majority"`, journal acknowledgment is implied by default (controlled by the `writeConcernMajorityJournalDefault` replica set setting). For other write concern levels like `w: 1`, an unset `j` means the write is acknowledged once it reaches memory.
 
 ## Write Concern and Transactions
 
