@@ -62,7 +62,7 @@ db.sessions.find({ createdAt: { $lt: new Date() } }).explain("executionStats")
 
 ## Modifying a TTL Index
 
-You cannot change `expireAfterSeconds` by dropping and recreating the index in place. Use the `collMod` command instead:
+Instead of dropping and recreating the index, you can modify `expireAfterSeconds` directly using the `collMod` command:
 
 ```javascript
 db.runCommand({
