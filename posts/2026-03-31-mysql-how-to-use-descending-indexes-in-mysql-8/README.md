@@ -75,7 +75,7 @@ LIMIT 10\G
 ## Practical Example: Latest Records Per Group
 
 ```sql
--- Get the 5 most recent orders per customer
+-- Get the latest order per customer, limited to 5 results
 CREATE INDEX idx_cust_created_desc ON orders (customer_id, created_at DESC);
 
 SELECT customer_id, id, total, created_at
