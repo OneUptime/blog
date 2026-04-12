@@ -24,14 +24,16 @@ const commentSchema = new mongoose.Schema({
   likes:     { type: Number, default: 0 }
 });
 
+const metadataSchema = new mongoose.Schema({
+  views:    { type: Number, default: 0 },
+  featured: { type: Boolean, default: false }
+});
+
 const postSchema = new mongoose.Schema({
   title:    { type: String, required: true },
   body:     String,
   comments: [commentSchema],       // array of subdocuments
-  metadata: {                      // single embedded subdocument (object literal)
-    views:    { type: Number, default: 0 },
-    featured: { type: Boolean, default: false }
-  }
+  metadata: metadataSchema          // single nested subdocument
 });
 
 const Post = mongoose.model('Post', postSchema);
@@ -124,4 +126,4 @@ This reduces document size and avoids generating unnecessary ObjectIds.
 
 ## Summary
 
-Mongoose subdocuments embed nested schemas with full validation inside parent documents. Use an array of a subdocument schema for one-to-many embedded data (like comments), and a single subdocument schema for nested objects (like address). Access subdocuments by `_id` using the `id()` method, update them in place and call `save()`, or use `$pull` for direct atomic removal. Disable `_id: false` for value objects that do not need an identifier.
+Mongoose subdocuments embed nested schemas with full validation inside parent documents. Use an array of a subdocument schema for one-to-many embedded data (like comments), and a single subdocument schema for nested objects (like address). Access subdocuments by `_id` using the `id()` method, update them in place and call `save()`, or use `$pull` for direct atomic removal. Set `{ _id: false }` on subdocument schemas for value objects that do not need an identifier.
