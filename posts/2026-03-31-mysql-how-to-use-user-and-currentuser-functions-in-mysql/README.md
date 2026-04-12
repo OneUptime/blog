@@ -105,7 +105,7 @@ WHERE created_by = CURRENT_USER();
 DELIMITER //
 CREATE PROCEDURE log_action(IN p_action VARCHAR(100))
 BEGIN
-  INSERT INTO activity_log (user, action, logged_at)
+  INSERT INTO activity_log (`user`, action, logged_at)
   VALUES (USER(), p_action, NOW());
 END //
 DELIMITER ;
