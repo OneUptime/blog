@@ -38,9 +38,9 @@ You can also use mysqladmin:
 mysqladmin -u root -p shutdown
 ```
 
-## Controlling Shutdown Timeout
+## Controlling Shutdown Behavior
 
-By default, MySQL waits for active transactions to complete. Configure how long to wait:
+By default, MySQL waits for active transactions to complete. Configure what cleanup operations InnoDB performs during shutdown:
 
 ```ini
 [mysqld]
@@ -48,8 +48,8 @@ innodb_fast_shutdown = 1
 ```
 
 `innodb_fast_shutdown` values:
-- **0** - Full purge and insert buffer merge before shutdown (slowest, cleanest)
-- **1** - Default: flush dirty pages, skip full purge (fast, safe)
+- **0** - Full purge and change buffer merge before shutdown (slowest, cleanest)
+- **1** - Default: skip full purge and change buffer merge (fast, safe)
 - **2** - Flush only redo log (fastest, requires crash recovery on next start)
 
 For normal shutdowns, use the default (1). Use 0 before major upgrades to ensure the tablespace is fully clean.
@@ -65,9 +65,9 @@ tail -f /var/log/mysql/error.log
 You will see messages like:
 
 ```text
-[System] [MY-010910] [Server] /usr/sbin/mysqld: Shutdown complete
 [System] [MY-011825] [InnoDB] Starting shutdown...
 [System] [MY-011826] [InnoDB] Shutdown of InnoDB complete
+[System] [MY-010910] [Server] /usr/sbin/mysqld: Shutdown complete
 ```
 
 For a large buffer pool, flushing dirty pages can take several minutes.
