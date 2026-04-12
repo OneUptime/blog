@@ -161,7 +161,7 @@ WHERE severity = 'ERROR'
 - Add a composite index on `(service_name, created_at)` for frequently filtered columns.
 
 ```sql
--- Add a covering index for Grafana queries
+-- Add a composite index for Grafana queries
 ALTER TABLE api_requests
   ADD INDEX idx_service_time (service_name, created_at);
 ```
