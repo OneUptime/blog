@@ -131,9 +131,9 @@ DESCRIBE articles;
 | title        | varchar(255) | NO   |     | NULL              |                   |
 | slug         | varchar(255) | YES  |     | NULL              |                   |
 | body         | text         | NO   |     | NULL              |                   |
+| created_at   | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
 | view_count   | int unsigned | NO   |     | 0                 |                   |
 | published_at | datetime     | YES  |     | NULL              |                   |
-| created_at   | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
 +--------------+--------------+------+-----+-------------------+-------------------+
 ```
 
