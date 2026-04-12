@@ -22,7 +22,7 @@ Use the built-in `snippet` command:
 // Install the analyze-schema snippet
 snippet install analyze-schema
 
-// Install the mongocompat snippet for compatibility checks
+// Install the mongocompat snippet for legacy mongo shell compatibility
 snippet install mongocompat
 
 // List installed snippets
@@ -37,8 +37,9 @@ After installing, call snippet functions directly in the shell:
 // Analyze schema of a collection (from analyze-schema snippet)
 schema(db.orders)
 
-// Check compatibility before upgrading (from mongocompat snippet)
-mongocompat.checkCompatibility()
+// Use legacy mongo shell functions (from mongocompat snippet)
+cat("/path/to/file.js")
+listFiles("/data/db")
 ```
 
 ## Creating a Custom Snippet
@@ -84,14 +85,12 @@ Add a `package.json` entry for snippet metadata:
 
 ```json
 {
-  "name": "my-mongo-snippets",
+  "name": "@mongosh/snippet-my-mongo-snippets",
+  "snippetName": "my-mongo-snippets",
   "version": "1.0.0",
   "description": "Reusable MongoDB operations for our team",
   "main": "index.js",
-  "mongodbShell": {
-    "versions": ">=1.0.0",
-    "license": "Apache-2.0"
-  }
+  "license": "Apache-2.0"
 }
 ```
 
@@ -121,8 +120,8 @@ print("Custom snippets loaded");
 ## Managing Snippets
 
 ```javascript
-// Show details about an installed snippet
-snippet info analyze-schema
+// Show help for an installed snippet
+snippet help analyze-schema
 
 // Update all snippets
 snippet update
