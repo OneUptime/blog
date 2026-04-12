@@ -77,7 +77,7 @@ with table.batch_writer() as batch:
 
 ## Handle DynamoDB Data Type Limitations
 
-DynamoDB does not support float natively - use `Decimal` for numbers:
+The boto3 SDK does not accept Python `float` values for DynamoDB number attributes - use `Decimal` to avoid floating-point precision issues:
 
 ```python
 from decimal import Decimal

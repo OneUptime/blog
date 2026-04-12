@@ -38,7 +38,7 @@ MongoDB schema (embedded):
 
 ## Export Data from Oracle
 
-Use Oracle's `expdp` (Data Pump) to export to CSV, or use SQL Developer or a JDBC-based ETL tool.
+Use Oracle SQL*Plus to export to CSV (as shown below), SQL Developer for visual exports, or a JDBC-based ETL tool.
 
 ```sql
 -- Oracle: export a table to CSV using SQL*Plus
@@ -49,18 +49,18 @@ SELECT id, name, email FROM customers;
 SPOOL OFF
 ```
 
-Alternatively, use `sqlldr` for bulk operations or an ETL tool like AWS Database Migration Service (DMS) with a MongoDB target.
+Alternatively, use an ETL tool like AWS Database Migration Service (DMS) with a MongoDB target.
 
 ## Transform and Load with Python
 
 Write a transformation script to reshape relational rows into MongoDB documents.
 
 ```python
-import cx_Oracle
+import oracledb
 from pymongo import MongoClient, InsertOne
 import json
 
-oracle_conn = cx_Oracle.connect("user/pass@oracle-host/ORCL")
+oracle_conn = oracledb.connect("user/pass@oracle-host/ORCL")
 mongo_client = MongoClient("mongodb://localhost:27017")
 db = mongo_client["mydb"]
 
@@ -97,7 +97,7 @@ Oracle has data types with no direct MongoDB equivalent. Handle conversions expl
 import datetime
 
 def convert_oracle_value(val):
-  if isinstance(val, cx_Oracle.LOB):
+  if isinstance(val, oracledb.LOB):
     return val.read()  # CLOB/BLOB to string/bytes
   if isinstance(val, datetime.datetime):
     return val  # MongoDB accepts Python datetime
