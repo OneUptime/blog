@@ -92,4 +92,4 @@ db.orders.aggregate([
 
 ## Summary
 
-MongoDB ObjectId encodes a timestamp, machine identifier, and counter into 12 bytes, making it globally unique and naturally time-ordered. Always use `ObjectId` instances when querying by `_id`, leverage `equals()` for comparisons, and exploit the timestamp prefix for efficient time-range queries without a separate date index.
+MongoDB ObjectId encodes a timestamp, random value, and counter into 12 bytes, making it globally unique and naturally time-ordered. Always use `ObjectId` instances when querying by `_id`, leverage `equals()` for comparisons, and exploit the timestamp prefix for efficient time-range queries without a separate date index.
