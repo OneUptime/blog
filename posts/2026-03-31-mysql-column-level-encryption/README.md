@@ -77,7 +77,13 @@ SELECT @@block_encryption_mode;
 SET GLOBAL block_encryption_mode = 'aes-256-cbc';
 ```
 
-With CBC mode, you must also pass an initialization vector:
+With CBC mode, you must also pass an initialization vector. First, add a column to store the IV:
+
+```sql
+ALTER TABLE customer_pii ADD COLUMN iv VARBINARY(16);
+```
+
+Then encrypt and decrypt with the IV:
 
 ```sql
 SET @iv = RANDOM_BYTES(16);
@@ -92,12 +98,6 @@ WHERE id = 1;
 SELECT CAST(AES_DECRYPT(ssn_encrypted, @encryption_key, iv) AS CHAR) AS ssn
 FROM customer_pii
 WHERE id = 1;
-```
-
-You need an extra column to store the IV:
-
-```sql
-ALTER TABLE customer_pii ADD COLUMN iv VARBINARY(16);
 ```
 
 ## Searching Encrypted Columns
