@@ -14,7 +14,7 @@ Client-Side Field Level Encryption (CSFLE) is a MongoDB feature that encrypts sp
 
 ## How CSFLE Works
 
-1. The application configures an "encrypted fields map" that specifies which fields to encrypt and which encryption algorithm to use.
+1. The application configures a "schema map" that specifies which fields to encrypt and which encryption algorithm to use.
 2. When a write occurs, the driver automatically encrypts the specified fields using a Data Encryption Key (DEK) before sending the document to MongoDB.
 3. The DEK is itself encrypted by a Customer Master Key (CMK) stored in a Key Management Service (KMS) like AWS KMS, Azure Key Vault, GCP KMS, or a local key provider.
 4. On reads, the driver automatically decrypts the fields using the DEK, returning plaintext to the application.
@@ -29,7 +29,7 @@ Client-Side Field Level Encryption (CSFLE) is a MongoDB feature that encrypts sp
 
 ```javascript
 const { MongoClient, ClientEncryption } = require("mongodb");
-const { MongoCryptKMSProviders } = require("mongodb-client-encryption");
+const crypto = require("crypto");
 
 // Configure local key provider (use AWS/Azure/GCP KMS in production)
 const localMasterKey = crypto.randomBytes(96); // 96-byte local master key
