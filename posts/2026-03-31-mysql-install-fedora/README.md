@@ -61,7 +61,7 @@ sudo dnf install -y mysql-community-server
 On Fedora 38+, a MySQL community build may be available directly.
 
 ```bash
-sudo dnf install -y mysql-server
+sudo dnf install -y community-mysql-server
 ```
 
 Note: The version in Fedora repos may lag behind the official MySQL releases.
@@ -134,7 +134,7 @@ mysql --version
 ```
 
 ```text
-mysql  Ver 8.0.x  Distrib 8.0.x, for Linux (x86_64)
+mysql  Ver 8.4.x Distrib 8.4.x, for Linux on x86_64
 ```
 
 Show active connections and uptime.
