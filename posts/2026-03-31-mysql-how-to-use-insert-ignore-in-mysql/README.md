@@ -109,12 +109,10 @@ SHOW WARNINGS;
 
 ```sql
 INSERT IGNORE INTO tags (name)
-VALUES ('python'), ('java'), ('mysql'), ('python'), ('rust');
+VALUES ('python'), ('java'), ('go'), ('python'), ('rust');
 
 SELECT ROW_COUNT() AS rows_affected;
 -- Returns 4 (python duplicate was skipped, 4 rows inserted)
-
-SELECT FOUND_ROWS();  -- Use after SELECT queries
 ```
 
 ## Practical Use Case - Idempotent Data Seeding
