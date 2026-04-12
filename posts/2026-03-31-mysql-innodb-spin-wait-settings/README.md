@@ -19,11 +19,11 @@ Thread wants lock
   |
   v
 Spin loop (busy-wait, max innodb_sync_spin_loops iterations)
+  Each iteration: random delay of 0..innodb_spin_wait_delay-1 * innodb_spin_wait_pause_multiplier PAUSE instructions
   |
   +-- Lock acquired --> continue
   |
-  +-- Loops exhausted --> sleep innodb_spin_wait_delay microseconds
-                          --> repeat or OS wait (suspend)
+  +-- Loops exhausted --> OS wait (suspend on semaphore)
 ```
 
 ## Key Configuration Variables
@@ -34,7 +34,7 @@ SHOW VARIABLES LIKE 'innodb_sync%';
 ```
 
 ```text
-innodb_spin_wait_delay         - base delay (microseconds) between spin rounds
+innodb_spin_wait_delay         - upper bound for random delay (in PAUSE instructions) per spin iteration
 innodb_spin_wait_pause_multiplier - multiplier for PAUSE instructions per round
 innodb_sync_spin_loops         - max spin rounds before OS sleep
 ```
@@ -70,14 +70,16 @@ innodb_spin_wait_delay = 10
 ```sql
 -- OS waits vs. spin rounds via SHOW ENGINE INNODB STATUS
 SHOW ENGINE INNODB STATUS\G
--- Look for the SEMAPHORES section:
--- Mutex spin waits 12345, rounds 67890, OS waits 234
--- Rw-locks: spin waits 4567, rounds 23456, OS waits 89
+-- Look for the SEMAPHORES section (MySQL 8.0):
+-- RW-shared spins 4, rounds 8, OS waits 4
+-- RW-excl spins 2, rounds 60, OS waits 2
+-- RW-sx spins 0, rounds 0, OS waits 0
+-- For mutex-specific stats, use:
+SHOW ENGINE INNODB MUTEX;
 
 -- Or via Performance Schema
 SELECT event_name,
-       spins,
-       wait_count,
+       count_star,
        sum_timer_wait / 1e9 AS total_wait_sec
 FROM performance_schema.events_waits_summary_global_by_event_name
 WHERE event_name LIKE 'wait/synch/mutex/innodb/%'
@@ -88,13 +90,20 @@ LIMIT 10;
 ## Interpreting the SEMAPHORES Section
 
 ```text
-Mutex spin waits X, rounds Y, OS waits Z
+In MySQL 8.0, the SEMAPHORES section shows RW-lock statistics:
 
-- X = total times a thread tried to acquire a held mutex
-- Y = total spin rounds (X * average rounds per wait)
-- Z = times the spin budget was exhausted and thread suspended
+RW-shared spins X, rounds Y, OS waits Z
+RW-excl spins X, rounds Y, OS waits Z
+RW-sx spins X, rounds Y, OS waits Z
+Spin rounds per wait: N.NN RW-shared, N.NN RW-excl, N.NN RW-sx
 
-If Z / X > 0.1 (more than 10% of waits go to OS):
+- X (spins) = total times a thread tried to acquire a held rw-lock
+- Y (rounds) = total spin rounds across all waits
+- Z (OS waits) = times the spin budget was exhausted and thread suspended
+
+For mutex statistics, use SHOW ENGINE INNODB MUTEX.
+
+If OS waits / spins > 0.1 (more than 10% of waits go to OS):
   -> Significant contention; review hot code paths or increase innodb_buffer_pool_instances
 ```
 
@@ -102,9 +111,9 @@ If Z / X > 0.1 (more than 10% of waits go to OS):
 
 ```sql
 -- Find hot mutexes
-SELECT object_name, count_star, sum_timer_wait / 1e9 AS wait_sec
+SELECT event_name, count_star, sum_timer_wait / 1e9 AS wait_sec
 FROM performance_schema.events_waits_summary_by_instance
-WHERE object_name LIKE '%buf_pool%'
+WHERE event_name LIKE '%buf_pool%'
 ORDER BY sum_timer_wait DESC;
 ```
 
