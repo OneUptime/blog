@@ -14,8 +14,8 @@ Testing MongoDB failover scenarios before they happen in production gives you co
 
 The simplest failover test is forcing the primary to step down and observing how quickly a new primary is elected.
 
-```javascript
-// Connect to the primary and step it down for 60 seconds
+```bash
+# Connect to the primary and step it down for 60 seconds
 mongosh --host mongo1:27017 --eval "rs.stepDown(60)"
 ```
 
@@ -106,8 +106,8 @@ With `retryWrites: true` enabled, you should see near-zero errors during a clean
 Use `mtools` to orchestrate complex failover scenarios against a local replica set.
 
 ```bash
-# Install mtools
-pip install mtools
+# Install mtools with mlaunch dependencies
+pip install mtools[mlaunch]
 
 # Start a 3-node replica set for testing
 mlaunch init --replicaset --nodes 3
