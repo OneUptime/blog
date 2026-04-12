@@ -33,11 +33,11 @@ db.products.createIndex({ tags: 1 })
 // Becomes a multikey index automatically when tags contains arrays
 ```
 
-You can verify an index is multikey by running:
+You can verify an index is multikey by running `explain()` on a query that uses it:
 
 ```javascript
-db.products.getIndexes()
-// The "multikey" property will be true
+db.products.find({ tags: "electronics" }).explain()
+// The "isMultiKey" field in the winning plan will be true
 ```
 
 ## Examples
@@ -166,10 +166,9 @@ async function main() {
   }).toArray();
   console.log("Gaming electronics:", gamingElectronics.map(p => p.name));
 
-  // Verify multikey index
-  const indexes = await products.indexes();
-  const tagIndex = indexes.find(i => i.name === "idx_tags_multikey");
-  console.log("Is multikey:", tagIndex.multiKey);
+  // Verify multikey index is used via explain()
+  const explanation = await products.find({ tags: "laptop" }).explain();
+  console.log("Is multikey:", explanation.queryPlanner.winningPlan.inputStage.isMultiKey);
 
   await client.close();
 }
