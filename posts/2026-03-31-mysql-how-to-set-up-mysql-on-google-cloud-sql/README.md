@@ -10,7 +10,7 @@ Description: Learn how to create and configure a MySQL instance on Google Cloud 
 
 ## What Is Google Cloud SQL for MySQL
 
-Google Cloud SQL is a fully managed relational database service on Google Cloud Platform that supports MySQL 5.7 and 8.0. It automates backups, replication, patches, and failover, letting you focus on application development rather than database operations.
+Google Cloud SQL is a fully managed relational database service on Google Cloud Platform that supports MySQL 8.0 and 8.4 (MySQL 5.7 is deprecated). It automates backups, replication, patches, and failover, letting you focus on application development rather than database operations.
 
 ## Prerequisites
 
@@ -84,11 +84,7 @@ Database flags are equivalent to `my.cnf` settings:
 
 ```bash
 gcloud sql instances patch my-mysql-instance \
-  --database-flags \
-    slow_query_log=on,\
-    long_query_time=2,\
-    innodb_buffer_pool_size=536870912,\
-    max_connections=200
+  --database-flags=slow_query_log=on,long_query_time=2,max_connections=200
 ```
 
 ## Create a Read Replica
