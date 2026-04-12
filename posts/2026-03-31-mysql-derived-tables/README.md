@@ -84,7 +84,7 @@ CTEs improve readability when subqueries are complex or reused multiple times. D
 Derived tables can be nested, though readability degrades quickly:
 
 ```sql
-SELECT final.dept, final.avg_salary
+SELECT final.dept_id, final.avg_salary
 FROM (
     SELECT dept_id, AVG(salary) AS avg_salary
     FROM (
@@ -100,7 +100,7 @@ ORDER BY final.avg_salary DESC;
 
 ## Performance Considerations
 
-In MySQL 5.7 and earlier, derived tables were always materialized into a temporary table, which had performance costs. In MySQL 8.0, the optimizer can merge simple derived tables directly into the outer query, eliminating the temporary table overhead. You can verify this with `EXPLAIN`:
+In MySQL 5.6 and earlier, derived tables were always materialized into a temporary table, which had performance costs. Starting in MySQL 5.7, the optimizer can merge simple derived tables directly into the outer query, eliminating the temporary table overhead. You can verify this with `EXPLAIN`:
 
 ```sql
 EXPLAIN SELECT * FROM (SELECT id, name FROM employees WHERE active = 1) AS t;
