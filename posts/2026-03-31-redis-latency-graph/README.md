@@ -33,27 +33,26 @@ LATENCY GRAPH event-name
 ```yaml
 127.0.0.1:6379> LATENCY GRAPH command
 
-max latency: 156 ms
-latest sample: 42 ms (1 seconds ago)
-
+command - high 156 ms, low 12 ms (all time high 156 ms)
+--------------------------------------------------------------------------------
 #
 # #
 # ##
-########
+####
 
-min: 12 ms  |  max: 156 ms  |  latest: 42 ms  |  avg: 58 ms
+15s 11s 8s 3s
 ```
 
-Each column represents one recorded latency spike. The height of the column is proportional to the latency value. The rightmost column is the most recent sample.
+Each column represents one recorded latency spike. The height of the column is proportional to the latency value. The rightmost column is the most recent sample. The time labels at the bottom show how long ago each sample was recorded.
 
 ## How the Chart Is Constructed
 
 ```mermaid
 flowchart TD
-    A["LATENCY HISTORY samples\n(up to 180 entries)"] --> B["Scale all values\nto chart height (8 rows)"]
+    A["LATENCY HISTORY samples\n(up to 160 entries)"] --> B["Scale all values\nto chart height (4 rows)"]
     B --> C["Render ASCII columns\nright = newest"]
-    C --> D["Print header:\nmax, latest, age"]
-    D --> E["Print footer:\nmin, max, latest, avg stats"]
+    C --> D["Print header:\nevent - high, low, all time high"]
+    D --> E["Print time labels\nbelow each column"]
 ```
 
 ## Reading the Chart
@@ -76,7 +75,7 @@ If you see columns growing taller over time, the disk is becoming saturated.
 ```bash
 #!/bin/bash
 # Print graph for each active event
-redis-cli LATENCY LATEST | awk 'NR%4==2 {gsub(/"/, "", $0); print $2}' | while read event; do
+redis-cli LATENCY LATEST | awk '{print $1}' | while read event; do
   echo "=== $event ==="
   redis-cli LATENCY GRAPH "$event"
   echo ""
