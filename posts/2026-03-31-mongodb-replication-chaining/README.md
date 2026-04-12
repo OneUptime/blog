@@ -39,6 +39,12 @@ cfg.settings.chainingAllowed = false;
 rs.reconfig(cfg);
 ```
 
+**Note:** Starting in MongoDB 5.0.2, setting `chainingAllowed` to `false` alone does not prevent chaining. You must also set the `enableOverrideClusterChainingSetting` server parameter to `true` for the setting to take effect:
+
+```javascript
+db.adminCommand({ setParameter: 1, enableOverrideClusterChainingSetting: true });
+```
+
 This is useful in latency-sensitive setups or when you want predictable replication topology.
 
 ## Re-enable Chaining
@@ -89,18 +95,19 @@ Example output:
 - Debugging replication issues and want a simple, predictable topology
 - Secondary S1 falls behind - chaining would cause S2 to lag even more
 
-## Heartbeat Interval and Timeout
+## Heartbeat Timeout
 
-Replication sync source selection is influenced by heartbeat timing. The default heartbeat is 2 seconds:
+Replication sync source selection is influenced by heartbeat timing. The default heartbeat interval is 2 seconds, and the default heartbeat timeout is 10 seconds. You can configure the timeout:
 
 ```javascript
 var cfg = rs.conf();
-cfg.settings.heartbeatIntervalMillis = 2000;
 cfg.settings.heartbeatTimeoutSecs = 10;
 rs.reconfig(cfg);
 ```
 
-Lowering the heartbeat interval detects primary failures faster but increases network traffic.
+Lowering the heartbeat timeout causes members to be marked as unreachable sooner, which can speed up failover but may cause false positives on slow networks.
+
+**Note:** The `heartbeatIntervalMillis` setting is marked as internal use only in the MongoDB documentation and should not be modified.
 
 ## Summary
 
