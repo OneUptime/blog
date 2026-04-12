@@ -73,7 +73,7 @@ Verify the new file was created:
 
 ```sql
 SHOW BINARY LOGS;
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 ## Calculating Expected Log Generation Rate
@@ -81,15 +81,14 @@ SHOW MASTER STATUS;
 Estimate how quickly binary logs fill up to choose appropriate settings:
 
 ```bash
-# Check binary log write rate over 1 minute
-mysql -u root -p -e "SHOW STATUS LIKE 'Binlog_cache_disk_use';"
-mysql -u root -p -e "SHOW STATUS LIKE 'Binlog_stmt_cache_disk_use';"
+# List binary logs and their sizes to estimate generation rate
+mysql -u root -p -e "SHOW BINARY LOGS;"
 ```
 
 ```sql
 -- Check current binary log position growth
 SELECT @@global.log_bin_basename;
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 -- Wait 1 minute, then check again to see position increment
 ```
 
