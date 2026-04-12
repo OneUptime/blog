@@ -145,8 +145,8 @@ Output:
 
 ```javascript
 [
-  { _id: 1, name: "Alice", log: "ERROR: timeout on port 8080"       },
-  { _id: 3, name: "Carol", log: "ERROR: null pointer at line 42" }
+  { _id: 1, name: "Alice", email: "alice@example.com", log: "ERROR: timeout on port 8080"    },
+  { _id: 3, name: "Carol", email: "carol@company.io",  log: "ERROR: null pointer at line 42" }
 ]
 ```
 
@@ -176,7 +176,7 @@ Output:
 [
   {
     _id: 1, name: "Alice",
-    portMatch: { match: "port 8080", idx: 19, captures: ["8080"] }
+    portMatch: { match: "port 8080", idx: 18, captures: ["8080"] }
   },
   { _id: 2, name: "Bob",   portMatch: null },
   { _id: 3, name: "Carol", portMatch: null },
@@ -250,7 +250,7 @@ Output:
 [
   { _id: 1, name: "Alice", numbersInLog: [{ match: "8080", idx: 23, captures: [] }] },
   { _id: 2, name: "Bob",   numbersInLog: [] },
-  { _id: 3, name: "Carol", numbersInLog: [{ match: "42", idx: 34, captures: [] }] },
+  { _id: 3, name: "Carol", numbersInLog: [{ match: "42", idx: 28, captures: [] }] },
   { _id: 4, name: "Dave",  numbersInLog: [] }
 ]
 ```
