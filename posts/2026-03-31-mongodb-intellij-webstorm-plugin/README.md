@@ -10,9 +10,9 @@ Description: Learn how to connect to MongoDB and query collections from IntelliJ
 
 ## MongoDB Support in IntelliJ IDEs
 
-IntelliJ IDEA Ultimate and WebStorm include the Database Tools and SQL plugin, which supports MongoDB connections. This allows you to browse collections, run queries, view documents, and inspect indexes without leaving your IDE.
+IntelliJ IDEA Ultimate includes the Database Tools and SQL plugin, which supports MongoDB connections. This allows you to browse collections, run queries, view documents, and inspect indexes without leaving your IDE.
 
-If you use IntelliJ Community Edition, install the MongoDB plugin from the JetBrains Plugin Marketplace.
+If you use WebStorm or IntelliJ Community Edition, install the Database Tools and SQL plugin from the JetBrains Plugin Marketplace.
 
 ## Connecting to MongoDB
 
@@ -32,7 +32,7 @@ For Atlas with an SRV connection string, paste it directly into the URL field:
 mongodb+srv://username:password@cluster.mongodb.net/shop
 ```
 
-4. Click "Test Connection" - IntelliJ may prompt you to download the MongoDB JDBC driver automatically
+4. Click "Test Connection" - IntelliJ may prompt you to download the MongoDB driver files automatically
 5. Click "OK" to save
 
 ## Browsing the Schema
@@ -87,7 +87,6 @@ Double-click a document in the table view to open it in the JSON editor. Make ch
 Expand the `indexes` node under a collection to see all indexes. Right-click to get options:
 - Drop index
 - View index definition
-- Explain (runs `explain` on queries using this index)
 
 ## Running Explain Plans
 
@@ -106,8 +105,8 @@ When editing MongoDB-related code in your Java or JavaScript project, IntelliJ d
 - Field names based on sampled schema
 - MongoDB operator names (`$match`, `$group`, etc.)
 
-Enable this in Settings > Languages & Frameworks > MongoDB.
+This works automatically when a MongoDB data source is configured in the Database Tools panel.
 
 ## Summary
 
-IntelliJ IDEA Ultimate and WebStorm provide first-class MongoDB support through the built-in Database Tools plugin. Connect via standard connection strings or Atlas SRV URLs, browse collection schemas sampled from live data, run aggregation pipelines in the query console, edit documents in-place with JSON tree view, and use explain plans without leaving your IDE. Enable code completion for MongoDB operators and collection field names in your project's source files.
+IntelliJ IDEA Ultimate provides first-class MongoDB support through the built-in Database Tools plugin, and WebStorm users can add the same support via the plugin marketplace. Connect via standard connection strings or Atlas SRV URLs, browse collection schemas sampled from live data, run aggregation pipelines in the query console, edit documents in-place with JSON tree view, and use explain plans without leaving your IDE. Enable code completion for MongoDB operators and collection field names in your project's source files.
