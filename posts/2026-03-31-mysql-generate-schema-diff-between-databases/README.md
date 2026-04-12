@@ -15,17 +15,15 @@ Generating a diff as an executable ALTER script - rather than just a comparison 
 `skeema` is the most reliable tool for generating safe ALTER scripts from schema diffs.
 
 ```bash
-# Initialize skeema from the source (production) schema
-skeema init --host=prod-host --user=root --password=secret --schema=myapp ~/schema
+# Initialize skeema from the development database (the desired state)
+skeema init --host=dev-host --user=root --password=secret --schema=myapp --dir=schema
 
-# Push the development schema to a file directory
-# Edit the .sql files to reflect desired changes
+# Preview the ALTER statements needed to update production
+cd schema
+skeema diff --host=prod-host --user=root --password=secret
 
-# Generate the diff (dry run, outputs the ALTER statements)
-skeema diff --host=dev-host --user=root --password=secret
-
-# Apply the diff
-skeema push --host=dev-host
+# Apply the changes to production
+skeema push --host=prod-host --user=root --password=secret
 ```
 
 ## Using mysqldump + applyschema Pattern
@@ -39,7 +37,7 @@ mysqldump --no-data --skip-comments -u root -p \
 mysqldump --no-data --skip-comments -u root -p \
           --databases myapp_dev > dev.sql
 
-# Use Python's sqldiff or similar to generate ALTER statements
+# Use mysql-diff to generate ALTER statements from the two dumps
 pip install mysql-diff
 mysql-diff prod.sql dev.sql
 ```
@@ -99,10 +97,10 @@ WHERE d.TABLE_SCHEMA = 'myapp_dev'
 GROUP BY d.TABLE_NAME, d.INDEX_NAME;
 ```
 
-## Using MySQL Workbench Scripted Diff
+## Using mysqldbcompare from MySQL Utilities
 
 ```bash
-# MySQL Workbench CLI can generate a migration script
+# mysqldbcompare from the mysql-utilities package can generate a migration script
 mysqldbcompare --server1=root@dev \
                --server2=root@prod \
                myapp:myapp \
@@ -117,8 +115,10 @@ mysqldbcompare --server1=root@dev \
 # Always test the generated script on a copy of production first
 mysql -u root -p myapp_copy < generated_diff.sql
 
-# Verify with explain / dry run
-echo "EXPLAIN FORMAT=TREE SELECT 1;" | mysql -u root myapp_copy
+# Verify the migrated copy matches the dev schema
+mysqldump --no-data --skip-comments -u root -p myapp_copy > migrated.sql
+mysqldump --no-data --skip-comments -u root -p myapp_dev > expected.sql
+diff migrated.sql expected.sql
 ```
 
 ## Summary
