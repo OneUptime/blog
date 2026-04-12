@@ -47,9 +47,9 @@ async fn transfer_funds(
 }
 ```
 
-## Using with_transaction for Automatic Retry
+## Using and_run for Automatic Retry
 
-The `with_transaction` helper automatically retries on transient transaction errors:
+The `and_run` helper on `start_transaction` automatically retries on transient transaction errors:
 
 ```rust
 use mongodb::ClientSession;
@@ -58,25 +58,25 @@ use std::sync::Arc;
 async fn place_order(client: Arc<Client>) -> Result<()> {
     let mut session = client.start_session().await?;
 
-    session.with_transaction(
-        client.clone(),
-        |session, client| async move {
-            let orders = client.database("shop").collection::<mongodb::bson::Document>("orders");
-            let inventory = client.database("shop").collection::<mongodb::bson::Document>("inventory");
+    session.start_transaction()
+        .and_run(client.clone(), |session, client| {
+            Box::pin(async move {
+                let orders = client.database("shop").collection::<mongodb::bson::Document>("orders");
+                let inventory = client.database("shop").collection::<mongodb::bson::Document>("inventory");
 
-            orders.insert_one(
-                doc! { "product": "Laptop", "qty": 1, "status": "pending" }
-            ).session(session).await?;
+                orders.insert_one(
+                    doc! { "product": "Laptop", "qty": 1, "status": "pending" }
+                ).session(session).await?;
 
-            inventory.update_one(
-                doc! { "product": "Laptop" },
-                doc! { "$inc": { "stock": -1 } },
-            ).session(session).await?;
+                inventory.update_one(
+                    doc! { "product": "Laptop" },
+                    doc! { "$inc": { "stock": -1 } },
+                ).session(session).await?;
 
-            Ok(())
-        },
-        None,
-    ).await?;
+                Ok(())
+            })
+        })
+        .await?;
 
     Ok(())
 }
@@ -115,9 +115,9 @@ let options = TransactionOptions::builder()
     .max_commit_time(Duration::from_secs(5))
     .build();
 
-session.start_transaction().options(options).await?;
+session.start_transaction().with_options(options).await?;
 ```
 
 ## Summary
 
-MongoDB transactions in Rust require a `ClientSession` obtained from `client.start_session()`. Pass the session to each operation using `.session(&mut session)`. Use `with_transaction` for production code as it handles transient error retries automatically. Always abort on error to release locks, and set appropriate write concern and timeout for your workload.
+MongoDB transactions in Rust require a `ClientSession` obtained from `client.start_session()`. Pass the session to each operation using `.session(&mut session)`. Use `start_transaction().and_run()` for production code as it handles transient error retries automatically. Always abort on error to release locks, and set appropriate write concern and timeout for your workload.
