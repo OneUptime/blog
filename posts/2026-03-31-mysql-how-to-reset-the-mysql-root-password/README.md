@@ -116,15 +116,17 @@ net stop mysql
 ### Step 2 - Start with Skip Grant Tables
 
 ```text
-"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --skip-grant-tables --shared-memory
+"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --skip-grant-tables --skip-networking --shared-memory
 ```
+
+The `--skip-networking` flag disables TCP connections, and `--shared-memory` allows local connections via shared memory.
 
 ### Step 3 - Connect and Reset
 
 Open a new command prompt:
 
 ```text
-"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root
+"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root --protocol=memory
 ```
 
 ```sql
