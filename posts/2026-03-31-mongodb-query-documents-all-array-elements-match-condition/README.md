@@ -59,10 +59,10 @@ db.shipments.find({
     }
   }
 })
-// Returns A001 only (A003 has empty array, also matches)
+// Returns A001 and A003 (A003 has empty array, which also matches)
 ```
 
-Note: documents with empty arrays also match because there are no elements that fail the condition.
+Note: documents with empty arrays also match because there are no elements that fail the condition. Documents where the `packages` field is missing entirely will also match, since `$not` returns true when the field does not exist. To exclude those, add `packages: { $exists: true }` to the query.
 
 ## Filtering Out Empty Arrays
 
@@ -132,7 +132,7 @@ Note: `$allElementsTrue` returns `true` for empty arrays, so add an array size c
 
 ## Performance Considerations
 
-The negation approach (`$not: { $elemMatch: ... }`) can use a multikey index to find candidates for exclusion. However, these queries often require scanning more documents than simple array membership queries. Run `explain()` to verify plan efficiency:
+Negation queries (`$not`, `$ne`) generally do not benefit significantly from indexes in MongoDB. The query planner may perform an index scan, but the scan bounds are typically very broad, often examining most index entries. For large collections, expect performance similar to a collection scan. Run `explain()` to verify the actual query plan:
 
 ```javascript
 db.shipments.find({
