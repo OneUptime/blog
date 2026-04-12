@@ -29,7 +29,7 @@ GridFS is less appropriate when:
 
 GridFS uses two collections under a configurable bucket name (default: `fs`):
 
-- `fs.files` - One document per file, containing metadata: filename, contentType, length, uploadDate, chunkSize, and any custom metadata you add
+- `fs.files` - One document per file, containing metadata: filename, length, uploadDate, chunkSize, and any custom metadata you add in the `metadata` field
 - `fs.chunks` - One document per chunk, containing the file's `_id`, the chunk sequence number (`n`), and the binary data (`data`)
 
 ## Uploading a File
@@ -62,7 +62,7 @@ from pymongo import MongoClient
 client = MongoClient("mongodb://localhost:27017")
 db = client["myapp"]
 fs_bucket = gridfs.GridIn(
-    db["fs.files"],
+    db["fs"],
     filename="photo.jpg",
     content_type="image/jpeg"
 )
