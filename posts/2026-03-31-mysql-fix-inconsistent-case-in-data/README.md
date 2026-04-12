@@ -14,23 +14,23 @@ Inconsistent case in string data - "alice", "ALICE", "Alice" - causes duplicate-
 
 ## Detecting Case Inconsistencies
 
-Find rows where the value is not in the expected case:
+Find rows where the value is not in the expected case. Use `BINARY` to force a case-sensitive comparison, since the default collation is case-insensitive and would treat `'Alice'` and `'alice'` as equal:
 
 ```sql
 -- Find names not in title case (starting uppercase, rest lower)
 SELECT id, name
 FROM customers
-WHERE name != CONCAT(UPPER(LEFT(name, 1)), LOWER(SUBSTRING(name, 2)));
+WHERE BINARY name != CONCAT(UPPER(LEFT(name, 1)), LOWER(SUBSTRING(name, 2)));
 
 -- Find emails not fully lowercase
 SELECT id, email
 FROM customers
-WHERE email != LOWER(email);
+WHERE BINARY email != LOWER(email);
 
 -- Find country codes not fully uppercase
 SELECT id, country_code
 FROM customers
-WHERE country_code != UPPER(country_code);
+WHERE BINARY country_code != UPPER(country_code);
 ```
 
 ## Converting to Lowercase
@@ -40,11 +40,11 @@ Convert email addresses and identifiers to lowercase:
 ```sql
 UPDATE customers
 SET email = LOWER(email)
-WHERE email != LOWER(email);
+WHERE BINARY email != LOWER(email);
 
 UPDATE users
 SET username = LOWER(username)
-WHERE username != LOWER(username);
+WHERE BINARY username != LOWER(username);
 ```
 
 ## Converting to Uppercase
@@ -54,11 +54,11 @@ Standardize country codes, currency codes, and other fixed identifiers:
 ```sql
 UPDATE orders
 SET currency_code = UPPER(currency_code)
-WHERE currency_code != UPPER(currency_code);
+WHERE BINARY currency_code != UPPER(currency_code);
 
 UPDATE addresses
 SET country_code = UPPER(country_code)
-WHERE country_code != UPPER(country_code);
+WHERE BINARY country_code != UPPER(country_code);
 ```
 
 ## Applying Title Case to Names
@@ -68,7 +68,7 @@ MySQL lacks a built-in title case function for multi-word strings. For single-wo
 ```sql
 UPDATE customers
 SET first_name = CONCAT(UPPER(LEFT(first_name, 1)), LOWER(SUBSTRING(first_name, 2)))
-WHERE first_name != CONCAT(UPPER(LEFT(first_name, 1)), LOWER(SUBSTRING(first_name, 2)));
+WHERE BINARY first_name != CONCAT(UPPER(LEFT(first_name, 1)), LOWER(SUBSTRING(first_name, 2)));
 ```
 
 For multi-word names, create a stored function:
