@@ -85,7 +85,7 @@ console.log(value); // Hello, Redis!
 await client.setEx('session:abc123', 3600, JSON.stringify({ userId: 42 }));
 
 // Increment
-await client.set('counter', 0);
+await client.set('counter', '0');
 await client.incr('counter');
 const count = await client.get('counter');
 console.log(count); // 1
