@@ -121,7 +121,7 @@ Then run the GROUP BY query. The index allows MySQL to group efficiently without
 
 Check the query execution plan first:
 
-```bash
+```sql
 EXPLAIN SELECT email, COUNT(*) FROM users GROUP BY email HAVING COUNT(*) > 1;
 ```
 
