@@ -184,7 +184,7 @@ if (unhealthy.length > 0) {
 }
 
 // Find members in unexpected states
-const badStates = [0, 3, 5, 8, 9, 10];  // STARTUP, RECOVERING, STARTUP2, DOWN, ROLLBACK, REMOVED
+const badStates = [0, 3, 5, 6, 8, 9, 10];  // STARTUP, RECOVERING, STARTUP2, UNKNOWN, DOWN, ROLLBACK, REMOVED
 const problematic = status.members.filter(m => badStates.includes(m.state));
 if (problematic.length > 0) {
   print("Members in problematic state:");
