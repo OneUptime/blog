@@ -58,7 +58,7 @@ mongoimport \
 
 ## Using --upsert to Avoid Duplicates
 
-To update existing documents instead of inserting duplicates, use `--upsert` with a match field:
+To update existing documents instead of inserting duplicates, use `--mode=upsert` with a match field:
 
 ```bash
 mongoimport \
@@ -66,7 +66,7 @@ mongoimport \
   --collection products \
   --file products.json \
   --jsonArray \
-  --upsert \
+  --mode=upsert \
   --upsertFields "sku"
 ```
 
