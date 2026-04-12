@@ -27,10 +27,12 @@ db.adminCommand({ currentOp: true, "command.createIndexes": { $exists: true } })
   });
 ```
 
-Check for incomplete indexes (state `building`):
+Check for in-progress index builds on the current node:
 
 ```javascript
-db.orders.getIndexes().filter(idx => idx.buildInProgress);
+db.currentOp({ "command.createIndexes": { $exists: true } })
+  .inprog
+  .forEach(op => print(op.ns, op.msg));
 ```
 
 ## Step 2: Common Causes of Index Build Failures
@@ -60,7 +62,7 @@ Index builds create temporary files. If disk runs out mid-build, the build fails
 
 ### Primary failover during build
 
-In MongoDB 4.4+, index builds survive replica set elections. If the primary steps down, the secondary that becomes primary continues the build. However, if the entire replica set restarts before the build completes, the build resumes from scratch.
+In MongoDB 4.4+, index builds survive replica set elections. If the primary steps down, the secondary that becomes primary continues the build. If a `mongod` instance restarts during an index build, the build automatically resumes on startup from where it left off.
 
 ## Step 3: Check if Index Was Created Successfully
 
@@ -70,7 +72,7 @@ After a reported failure, verify the index state:
 db.orders.getIndexes().forEach(idx => print(JSON.stringify(idx)));
 ```
 
-If the index is absent, the build failed. If it is present but `buildInProgress` is true, it is still building.
+If the index is absent, the build failed or is still in progress. Use `currentOp` (Step 1) to check for active builds.
 
 ## Step 4: Resume or Retry an Index Build
 
@@ -87,7 +89,7 @@ try {
 // Rebuild
 db.orders.createIndex(
   { status: 1, createdAt: -1 },
-  { background: true, comment: "retry-build-2026-03-31" }
+  { comment: "retry-build-2026-03-31" }
 );
 ```
 
@@ -107,7 +109,7 @@ watch -n 5 mongosh --eval "
 - Check for unique violations before creating unique indexes
 - Ensure at least 2x the index size is available in free disk space
 - Schedule large index builds during low-traffic periods
-- Use `writeConcern: { w: "majority" }` after the build to confirm replication
+- Specify `writeConcern: { w: "majority" }` on the `createIndex` command to confirm replication
 
 ## Summary
 
