@@ -112,7 +112,7 @@ SET GLOBAL max_allowed_packet = 134217728;  -- 128M
 
 ## Working with BLOB Data
 
-When inserting BLOB data, ensure your application or driver is also configured:
+When inserting BLOB data, ensure `max_allowed_packet` is set on the server. Since this is a server-side setting, you cannot pass it as a connection parameter. Instead, set it via SQL after connecting:
 
 ```python
 # Python mysql-connector example
@@ -122,9 +122,12 @@ conn = mysql.connector.connect(
     host='localhost',
     user='root',
     password='secret',
-    database='mydb',
-    max_allowed_packet=134217728  # 128 MB
+    database='mydb'
 )
+
+cursor = conn.cursor()
+cursor.execute("SET GLOBAL max_allowed_packet = 134217728")  # 128 MB
+cursor.close()
 ```
 
 ## Summary
