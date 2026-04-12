@@ -79,7 +79,7 @@ SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_pages_dirty';
 SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_pages_flushed';
 
 -- Detailed flush stats
-SELECT NAME, COUNT, SUM_TIMER_WAIT / 1e12 AS total_seconds
+SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e12 AS total_seconds
 FROM performance_schema.file_summary_by_event_name
 WHERE EVENT_NAME LIKE 'wait/io/file/innodb%'
 ORDER BY SUM_TIMER_WAIT DESC;
