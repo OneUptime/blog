@@ -40,7 +40,7 @@ Write precomputed features from your batch pipeline:
 
 ```python
 from pymongo import MongoClient, UpdateOne
-from datetime import datetime
+from datetime import datetime, timezone
 
 client = MongoClient(MONGODB_URI)
 feature_store = client["ml"]["feature_store"]
@@ -58,7 +58,7 @@ def upsert_features(entity_type, entity_features_list):
                 "entityType": entity_type,
                 "entityId": entity_id,
                 "featureVersion": "v3",
-                "computedAt": datetime.utcnow(),
+                "computedAt": datetime.now(timezone.utc),
                 "features": features
             }},
             upsert=True
@@ -132,7 +132,7 @@ from fastapi import FastAPI
 app = FastAPI()
 
 @app.get("/features/{entity_type}/{entity_id}")
-async def get_entity_features(entity_type: str, entity_id: str):
+def get_entity_features(entity_type: str, entity_id: str):
     doc = feature_store.find_one({"_id": f"{entity_type}:{entity_id}"})
     if not doc:
         return {"error": "Features not found"}
