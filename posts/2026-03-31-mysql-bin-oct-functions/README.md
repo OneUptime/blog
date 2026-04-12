@@ -220,7 +220,7 @@ SELECT CONV('11111111', 2, 16);
 SELECT
     BIN(12 & 10)   AS bin_and,    -- 12=1100, 10=1010 -> 1000
     BIN(12 | 10)   AS bin_or,     -- 1110
-    BIN(12 ^ 10)   AS bin_xor,    -- 0110
+    BIN(12 ^ 10)   AS bin_xor,    -- 110
     BIN(~12 & 0xFF) AS bin_not;   -- 11110011
 ```
 
