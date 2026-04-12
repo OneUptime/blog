@@ -87,7 +87,7 @@ pipeline = [
     {"$sort": {"total": -1}}
 ]
 
-results = list(client["orders"].aggregate("sales", pipeline))
+results = list(client["orders"]["sales"].aggregate(pipeline))
 ```
 
 ## Grant Analytics User Read-Only Access
