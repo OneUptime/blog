@@ -66,7 +66,7 @@ Unhide to restore:
 db.orders.unhideIndex("status_1")
 ```
 
-## Step 4 - Use Sparse Indexes for Low-Cardinality Fields
+## Step 4 - Use Sparse Indexes for Optional Fields
 
 If an optional field is only present in a small fraction of documents, a sparse index is smaller and faster to maintain:
 
@@ -98,14 +98,18 @@ db.orders.stats({ indexDetails: true }).indexSizes
 
 Large indexes that see few queries are good candidates for removal.
 
-## Step 7 - Build Indexes in the Background (Rolling)
+## Step 7 - Build Indexes Without Blocking (Rolling)
 
-When adding new indexes on large collections, use rolling builds on replica sets to avoid blocking:
+Since MongoDB 4.2, all index builds use an optimized process that only holds an exclusive lock at the start and end of the build. The `background` option is deprecated and ignored.
+
+For large collections on replica sets, use a rolling index build to limit impact to one member at a time:
 
 ```javascript
-// On each secondary, then on primary after stepdown
-db.orders.createIndex({ region: 1 }, { background: true })
+// Runs an optimized build automatically in MongoDB 4.2+
+db.orders.createIndex({ region: 1 })
 ```
+
+For a rolling build: remove one secondary from the replica set, build the index on it as a standalone instance, rejoin it, and repeat for each member. Step down the primary last.
 
 ## Summary
 
