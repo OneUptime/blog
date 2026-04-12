@@ -53,8 +53,11 @@ func main() {
     }
     defer session.EndSession(context.Background())
 
-    session.StartTransaction(options.Transaction().
+    err = session.StartTransaction(options.Transaction().
         SetWriteConcern(writeconcern.Majority()))
+    if err != nil {
+        log.Fatal(err)
+    }
 
     sessionCtx := mongo.NewSessionContext(context.Background(), session)
 
@@ -167,9 +170,12 @@ txOpts := options.Transaction().
     SetReadConcern(readconcern.Snapshot()).
     SetReadPreference(readpref.Primary())
 
-session.StartTransaction(txOpts)
+err := session.StartTransaction(txOpts)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## Summary
 
-MongoDB Go Driver transactions use a `mongo.Session` to group operations. Pass a `mongo.SessionContext` (obtained from `mongo.NewSessionContext`) to every operation inside the transaction. Use `session.WithTransaction()` for production code as it handles automatic retry of transient errors. Return a non-nil error from the `WithTransaction` callback to trigger an abort, and ensure every operation receives the same session context.
+MongoDB Go Driver transactions use a `mongo.Session` to group operations. Pass the session context (obtained from `mongo.NewSessionContext`) to every operation inside the transaction. Use `session.WithTransaction()` for production code as it handles automatic retry of transient errors. Return a non-nil error from the `WithTransaction` callback to trigger an abort, and ensure every operation receives the same session context.
