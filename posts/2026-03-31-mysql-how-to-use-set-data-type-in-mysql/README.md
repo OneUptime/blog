@@ -84,14 +84,14 @@ Because SET uses a bitmap, you can use bitwise operators to filter efficiently:
 SELECT username, notifications + 0 AS bitmask
 FROM user_preferences;
 
--- 'email' = bit 1 (value 1), 'sms' = bit 2 (value 2),
--- 'push' = bit 3 (value 4), 'in_app' = bit 4 (value 8)
+-- 'email' = bit 0 (value 1), 'sms' = bit 1 (value 2),
+-- 'push' = bit 2 (value 4), 'in_app' = bit 3 (value 8)
 
--- Find users with email (bit 1) using bitwise AND
+-- Find users with email (bit 0) using bitwise AND
 SELECT username FROM user_preferences
 WHERE (notifications + 0) & 1 = 1;
 
--- Find users with push (bit 3, value 4)
+-- Find users with push (bit 2, value 4)
 SELECT username FROM user_preferences
 WHERE (notifications + 0) & 4 = 4;
 ```
