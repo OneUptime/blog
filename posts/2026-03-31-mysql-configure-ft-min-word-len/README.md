@@ -12,7 +12,7 @@ Description: Learn how to configure ft_min_word_len and innodb_ft_min_token_size
 
 MySQL full-text search does not index every word - it ignores short words below a configurable minimum length. The system variable `ft_min_word_len` controls this threshold for MyISAM tables. For InnoDB tables, the equivalent variable is `innodb_ft_min_token_size`.
 
-The default value is `4` for both variables, meaning words with 3 or fewer characters (like "the", "is", "a", "ID") are not indexed and cannot be searched.
+The default value is `4` for `ft_min_word_len` (MyISAM) and `3` for `innodb_ft_min_token_size` (InnoDB), meaning very short words are not indexed and cannot be searched.
 
 ## Why This Matters
 
@@ -86,11 +86,13 @@ ALTER TABLE articles DROP INDEX idx_ft;
 ALTER TABLE articles ADD FULLTEXT INDEX idx_ft (title, body);
 ```
 
-Or for all tables:
+Or for all MyISAM tables at once:
 
 ```bash
 mysqlcheck -u root -p --repair --all-databases
 ```
+
+Note: `mysqlcheck --repair` only works for MyISAM tables. For InnoDB, you must drop and recreate each FULLTEXT index as shown above.
 
 ## Verify the Change Took Effect
 
