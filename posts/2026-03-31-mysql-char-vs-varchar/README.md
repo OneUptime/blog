@@ -33,7 +33,7 @@ flowchart LR
 `VARCHAR(M)` stores only the actual characters plus a 1-byte or 2-byte length prefix.
 
 - **Length:** 0 to 65,535 bytes (shared with the full row limit).
-- **Storage:** actual string length + 1 byte (if M <= 255) or + 2 bytes (if M > 255).
+- **Storage:** actual string length + 1 byte (if the column's maximum byte length <= 255) or + 2 bytes (if > 255). For single-byte charsets this means M <= 255; for utf8mb4, M <= 63.
 - **Retrieval:** trailing spaces preserved.
 
 ## Side-by-Side Syntax
