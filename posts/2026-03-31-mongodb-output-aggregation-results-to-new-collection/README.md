@@ -94,15 +94,15 @@ Use `$out` when you want a full replacement of the target collection on each run
 
 ## Index Considerations
 
-The `$out` stage drops and recreates the target collection, so any indexes on it are lost. Re-create them after the pipeline completes:
+When `$out` replaces an existing collection, it atomically copies the indexes from the previous collection to the new one, so existing indexes are preserved. However, if the target collection does not yet exist, you need to create indexes after the first pipeline run:
 
 ```javascript
 db.customer_summaries.createIndex({ totalSpent: -1 })
 db.customer_summaries.createIndex({ orderCount: -1 })
 ```
 
-With `$merge`, existing indexes on the target collection are preserved.
+With `$merge`, existing indexes on the target collection are also preserved.
 
 ## Summary
 
-The `$out` and `$merge` aggregation stages in MongoDB allow you to persist pipeline results directly into collections, enabling materialized views and ETL workflows. Use `$out` for full replacements and `$merge` for incremental upserts. Remember to recreate indexes after using `$out` since it drops and rebuilds the collection.
+The `$out` and `$merge` aggregation stages in MongoDB allow you to persist pipeline results directly into collections, enabling materialized views and ETL workflows. Use `$out` for full replacements and `$merge` for incremental upserts. Both stages preserve existing indexes on the target collection.
