@@ -102,9 +102,7 @@ print(cursor.fetchone())  # Verify SSL is active
 
 ```java
 String url = "jdbc:mysql://db.example.com:3306/myapp" +
-    "?useSSL=true" +
-    "&requireSSL=true" +
-    "&verifyServerCertificate=true" +
+    "?sslMode=VERIFY_IDENTITY" +
     "&trustCertificateKeyStoreUrl=file:/path/to/truststore.jks" +
     "&trustCertificateKeyStorePassword=trustpass" +
     "&clientCertificateKeyStoreUrl=file:/path/to/keystore.jks" +
