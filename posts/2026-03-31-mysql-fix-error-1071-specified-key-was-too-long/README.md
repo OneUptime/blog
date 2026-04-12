@@ -39,8 +39,8 @@ Index only a prefix of the column instead of the full value:
 -- Index only the first 191 characters (191 x 4 bytes = 764, under 767)
 ALTER TABLE users ADD INDEX idx_email (email(191));
 
--- For a unique index on a long column
-ALTER TABLE sessions ADD UNIQUE INDEX idx_token (token(255));
+-- For a unique index on a long column (191 x 4 = 764 bytes for utf8mb4)
+ALTER TABLE sessions ADD UNIQUE INDEX idx_token (token(191));
 ```
 
 Prefix indexes reduce selectivity but are often sufficient for search operations.
