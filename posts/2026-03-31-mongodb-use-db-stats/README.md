@@ -45,7 +45,7 @@ Sample output:
 |---|---|
 | `objects` | Total document count across all collections |
 | `dataSize` | Logical size of all documents in bytes |
-| `storageSize` | Allocated storage on disk (includes padding, not freed space) |
+| `storageSize` | Allocated storage on disk (compressed with WiredTiger; includes preallocated and freed but unreused space) |
 | `indexSize` | Total size of all indexes in bytes |
 | `totalSize` | `storageSize` + `indexSize` |
 | `avgObjSize` | Average document size in bytes |
@@ -63,7 +63,7 @@ Output will have `scaleFactor: 1048576` and sizes in MB.
 
 ## Compare Data Size vs Storage Size
 
-A large gap between `dataSize` and `storageSize` indicates fragmentation. Reclaim space by running `compact`:
+With WiredTiger compression, `dataSize` (uncompressed) is normally larger than `storageSize` (compressed on disk). When `storageSize` significantly exceeds `dataSize`, it indicates fragmentation or bloat from deleted documents. Reclaim space by running `compact`:
 
 ```javascript
 const stats = db.stats();
