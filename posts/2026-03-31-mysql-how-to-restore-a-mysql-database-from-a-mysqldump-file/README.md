@@ -107,7 +107,7 @@ SET UNIQUE_CHECKS = 0;
 SET AUTOCOMMIT = 0;
 ```
 
-These are often already included in mysqldump output when using `--single-transaction`. Check the top of the SQL file:
+The `FOREIGN_KEY_CHECKS` and `UNIQUE_CHECKS` variables are already included in the default mysqldump output preamble. Check the top of the SQL file:
 
 ```bash
 head -30 backup.sql
@@ -122,7 +122,7 @@ mysql -u root -p --init-command="SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;"
 
 Increase `innodb_buffer_pool_size` and `innodb_log_buffer_size` temporarily for faster bulk inserts.
 
-## Using --progress for Large Restores
+## Monitoring Progress for Large Restores
 
 `pv` shows progress when piping large files:
 
