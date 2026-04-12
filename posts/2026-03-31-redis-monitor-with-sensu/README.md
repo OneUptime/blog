@@ -17,7 +17,7 @@ Sensu Go is a cloud-native monitoring platform that uses agents, checks, and han
 curl -s https://packagecloud.io/install/repositories/sensu/stable/script.deb.sh | sudo bash
 
 # Install Sensu Go backend and agent
-sudo apt install sensu-go-backend sensu-go-agent sensuctl -y
+sudo apt install sensu-go-backend sensu-go-agent sensu-go-cli -y
 
 # Start backend
 sudo systemctl start sensu-backend
@@ -28,7 +28,7 @@ sudo systemctl enable sensu-backend
 
 ```bash
 # Install sensu-plugins-redis via sensuctl
-sensuctl asset add sensu/sensu-plugins-redis:3.1.0
+sensuctl asset add sensu/sensu-plugins-redis:5.0.0
 
 # Or use the bonsai asset
 cat <<EOF | sensuctl create
@@ -39,7 +39,7 @@ metadata:
   namespace: default
 spec:
   builds:
-    - url: https://assets.bonsai.sensu.io/sensu-plugins/sensu-plugins-redis/sensu-plugins-redis_3.1.0_debian_linux_amd64.tar.gz
+    - url: https://assets.bonsai.sensu.io/sensu-plugins/sensu-plugins-redis/sensu-plugins-redis_5.0.0_debian_linux_amd64.tar.gz
       sha512: <sha512-hash>
 EOF
 ```
@@ -54,7 +54,7 @@ metadata:
   name: redis-availability
   namespace: default
 spec:
-  command: check-redis.rb -h 127.0.0.1 -p 6379
+  command: check-redis-ping.rb -h 127.0.0.1 -p 6379
   interval: 30
   timeout: 10
   subscriptions:
@@ -81,8 +81,8 @@ metadata:
   namespace: default
 spec:
   command: >
-    check-redis-memory.rb -h 127.0.0.1 -p 6379
-    --maxmemory-warn 80 --maxmemory-crit 90
+    check-redis-memory-percentage.rb -h 127.0.0.1 -p 6379
+    -w 80 -c 90
   interval: 60
   timeout: 10
   subscriptions:
@@ -98,19 +98,17 @@ spec:
 sensuctl create -f redis-memory-check.yaml
 ```
 
-## Check Replication Lag
+## Check Replication Status
 
 ```yaml
 # redis-replication-check.yaml
 type: CheckConfig
 api_version: core/v2
 metadata:
-  name: redis-replication-lag
+  name: redis-replication-status
   namespace: default
 spec:
-  command: >
-    check-redis-slave-lag.rb -h 127.0.0.1 -p 6379
-    --warn 5 --crit 30
+  command: check-redis-slave-status.rb -h 127.0.0.1 -p 6379
   interval: 30
   subscriptions:
     - redis-servers
