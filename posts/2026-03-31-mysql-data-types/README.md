@@ -118,7 +118,7 @@ Use `VARCHAR` for short strings and `TEXT` for long prose content.
 |---|---|---|---|
 | `DATE` | YYYY-MM-DD | 3 bytes | 1000-01-01 to 9999-12-31 |
 | `TIME` | HH:MM:SS | 3 bytes | -838:59:59 to 838:59:59 |
-| `DATETIME` | YYYY-MM-DD HH:MM:SS | 8 bytes | 1000-01-01 to 9999-12-31 |
+| `DATETIME` | YYYY-MM-DD HH:MM:SS | 5 bytes | 1000-01-01 to 9999-12-31 |
 | `TIMESTAMP` | YYYY-MM-DD HH:MM:SS | 4 bytes | 1970-01-01 to 2038-01-19 |
 | `YEAR` | YYYY | 1 byte | 1901 to 2155 |
 
