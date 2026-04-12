@@ -45,8 +45,7 @@ await client.connect();
 // Reads can now be distributed based on readPreference
 const db = client.db('mydb');
 const products = await db.collection('products')
-  .find({})
-  .readPreference('secondaryPreferred')
+  .find({}, { readPreference: 'secondaryPreferred' })
   .toArray();
 ```
 
@@ -67,8 +66,9 @@ products = list(db.products.find({}))
 ## Java Driver
 
 ```java
-import com.mongodb.ConnectionString;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoDatabase;
 
 String uri = "mongodb://host1:27017,host2:27017,host3:27017/mydb?replicaSet=myReplicaSet";
 MongoClient client = MongoClients.create(uri);
