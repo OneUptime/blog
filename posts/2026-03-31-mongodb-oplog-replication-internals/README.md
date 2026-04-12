@@ -25,7 +25,6 @@ Sample oplog entry:
 {
   "ts": Timestamp(1711800000, 1),
   "t": NumberLong(5),
-  "h": NumberLong(0),
   "v": 2,
   "op": "i",                        // i=insert, u=update, d=delete, c=command
   "ns": "mydb.orders",
@@ -51,7 +50,7 @@ Secondary:  [op1] [op2] [op3]
                               ^-- lag = 2 operations
 ```
 
-The secondary applies operations sequentially within a namespace but can parallelize operations across different namespaces using the `replWriterThreadCount` setting.
+The secondary can parallelize operations across different documents using the `replWriterThreadCount` setting. Operations on the same document are always applied in order.
 
 ## Checking Replication Status
 
