@@ -28,7 +28,7 @@ const client = new MongoClient(uri, {
 await client.connect();
 ```
 
-Retryable writes are enabled by default in MongoDB drivers version 4.0 and above.
+Retryable writes are enabled by default in official MongoDB drivers compatible with MongoDB 4.2 and above.
 
 ## Understand What Operations Are Retryable
 
@@ -74,8 +74,10 @@ async function writeWithRetry(operation, maxAttempts = 3) {
       return await operation();
     } catch (err) {
       const isTransient =
-        err.code === 91 ||   // ShutdownInProgress
-        err.code === 189 ||  // PrimarySteppedDown
+        err.code === 91 ||      // ShutdownInProgress
+        err.code === 189 ||     // PrimarySteppedDown
+        err.code === 10107 ||   // NotWritablePrimary
+        err.message?.includes("not primary") ||
         err.message?.includes("not master");
 
       if (isTransient && attempt < maxAttempts - 1) {
