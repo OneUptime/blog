@@ -113,7 +113,7 @@ function checkDocumentSize(doc) {
 
 ## ObjectId Anatomy
 
-The 12-byte ObjectId encodes four pieces of information:
+The 12-byte ObjectId encodes three pieces of information:
 
 ```text
 Bytes 0-3:  Unix timestamp (seconds since epoch)
