@@ -83,14 +83,13 @@ pt-online-schema-change \
     --host=127.0.0.1 \
     --user=appuser \
     --password=secret \
-    --database=myapp \
-    --table=events \
     --alter="MODIFY COLUMN body LONGTEXT NOT NULL" \
     --chunk-size=500 \
     --sleep=0.1 \
     --max-load="Threads_running=25" \
     --critical-load="Threads_running=50" \
-    --execute
+    --execute \
+    D=myapp,t=events
 ```
 
 `--max-load` pauses the tool when server load is high. `--critical-load` aborts it.
@@ -100,8 +99,8 @@ pt-online-schema-change \
 For alters that cannot run online, schedule them during maintenance windows:
 
 ```bash
-# Run at 2 AM using cron
-0 2 * * 0 mysql -u root -p myapp -e "ALTER TABLE large_table MODIFY COLUMN col BIGINT NOT NULL;"
+# Run at 2 AM on Sunday using cron (uses ~/.my.cnf for credentials)
+0 2 * * 0 mysql --defaults-file=/root/.my.cnf myapp -e "ALTER TABLE large_table MODIFY COLUMN col BIGINT NOT NULL;"
 ```
 
 ## Summary
