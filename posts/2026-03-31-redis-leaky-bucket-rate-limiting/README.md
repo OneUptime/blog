@@ -39,9 +39,8 @@ def leaky_bucket_allow(identifier: str, rate: float = 10.0, capacity: int = 20) 
 
     pipe = r.pipeline()
 
-    # Remove expired entries (older than bucket capacity window)
-    min_score = now - (capacity * interval)
-    pipe.zremrangebyscore(key, '-inf', min_score)
+    # Remove processed entries (scheduled time has passed)
+    pipe.zremrangebyscore(key, '-inf', now)
     pipe.zcard(key)
 
     results = pipe.execute()
