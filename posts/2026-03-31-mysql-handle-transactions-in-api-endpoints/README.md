@@ -139,7 +139,8 @@ def create_order():
                 total += product.price * item['quantity']
 
             order.total = total
-        return jsonify(order.to_dict()), 201
+            order_data = order.to_dict()
+        return jsonify(order_data), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 422
 ```
