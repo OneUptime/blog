@@ -128,12 +128,16 @@ SELECT @session_id;
 
 ## Common Pitfalls
 
-- Do not rely on user-defined variables in `SELECT` to maintain order-dependent state without an explicit `ORDER BY` - the evaluation order is not guaranteed.
+- Do not rely on the evaluation order of user-defined variables in `SELECT` expressions — even with `ORDER BY`, the order in which row expressions are evaluated is not guaranteed by MySQL. For reliable row numbering and running totals, use window functions (`ROW_NUMBER()`, `SUM() OVER()`) available in MySQL 8.0+.
+- Starting with MySQL 8.0.13, assigning values to user variables in statements other than `SET` is deprecated and may be removed in a future release. Prefer `SET` or window functions instead.
 - Variables are not transaction-safe: they are not rolled back if a transaction is rolled back.
 
 ```sql
--- Potentially unreliable without ORDER BY
+-- Potentially unreliable - evaluation order is not guaranteed
 SELECT @n := @n + 1 AS n, name FROM employees; -- avoid this pattern
+
+-- Preferred approach in MySQL 8.0+
+SELECT ROW_NUMBER() OVER (ORDER BY name) AS n, name FROM employees;
 ```
 
 ## Summary
