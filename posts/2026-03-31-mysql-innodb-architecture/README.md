@@ -113,9 +113,9 @@ SHOW VARIABLES LIKE 'innodb_doublewrite';
 
 ```bash
 # View InnoDB data files
-ls -lh /var/lib/mysql/*.ibd     # Per-table files (innodb_file_per_table=ON)
-ls -lh /var/lib/mysql/ibdata1   # System tablespace
-ls -lh /var/lib/mysql/#ib_redo* # Redo log files (MySQL 8.0.30+)
+ls -lh /var/lib/mysql/<database>/*.ibd  # Per-table files (innodb_file_per_table=ON)
+ls -lh /var/lib/mysql/ibdata1           # System tablespace
+ls -lh /var/lib/mysql/#ib_redo*         # Redo log files (MySQL 8.0.30+)
 ```
 
 ```sql
