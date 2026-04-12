@@ -152,14 +152,17 @@ FROM monthly_revenue;
 Find rows where a value transitions from a previous state:
 
 ```sql
-SELECT
-  order_id,
-  status_time,
-  status,
-  LAG(status) OVER (PARTITION BY order_id ORDER BY status_time) AS prev_status
-FROM order_status_history
-HAVING prev_status IS NOT NULL
-   AND prev_status <> status;
+SELECT *
+FROM (
+  SELECT
+    order_id,
+    status_time,
+    status,
+    LAG(status) OVER (PARTITION BY order_id ORDER BY status_time) AS prev_status
+  FROM order_status_history
+) AS t
+WHERE prev_status IS NOT NULL
+  AND prev_status <> status;
 ```
 
 ## Calculating Time Since Last Event
