@@ -28,6 +28,7 @@ mongodb = { version = "2.8", features = ["tokio-runtime"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 bson = { version = "2.9" }
+futures = "0.3"
 ```
 
 ## Shared State
@@ -36,7 +37,6 @@ Warp passes state through filters using `warp::any().map(...)`:
 
 ```rust
 use mongodb::{Client, Database};
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
