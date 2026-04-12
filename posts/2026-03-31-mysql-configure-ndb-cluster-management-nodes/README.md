@@ -27,7 +27,6 @@ A 2-data-node, 2-SQL-node cluster configuration:
 [ndbd default]
 NoOfReplicas=2
 DataMemory=512M
-IndexMemory=128M
 
 [ndb_mgmd]
 NodeId=1
@@ -57,8 +56,7 @@ hostname=192.168.1.14
 
 ```text
 NoOfReplicas=2        # Number of copies of each data fragment (2 = 1 extra replica)
-DataMemory=512M       # Memory for storing table data
-IndexMemory=128M      # Memory for hash indexes
+DataMemory=512M       # Memory for storing table data and indexes
 MaxNoOfConcurrentOperations=100000
 MaxNoOfTables=1024
 ```
@@ -86,7 +84,7 @@ After=network.target
 [Service]
 Type=forking
 ExecStart=/usr/sbin/ndb_mgmd --config-file=/var/lib/mysql-cluster/config.ini
-ExecStop=/usr/bin/ndb_mgm -e shutdown
+ExecStop=/bin/kill -TERM $MAINPID
 User=mysql
 Restart=on-failure
 
@@ -128,4 +126,4 @@ id=5    @192.168.1.14  (not connected, accepting connect)
 
 ## Summary
 
-The management node's `config.ini` defines every aspect of the NDB Cluster topology. Set `NoOfReplicas=2` for production to ensure data survives a single node failure, allocate `DataMemory` and `IndexMemory` based on your dataset size, and assign unique `NodeId` values to each node. Start the management node first before bringing up data nodes or SQL nodes.
+The management node's `config.ini` defines every aspect of the NDB Cluster topology. Set `NoOfReplicas=2` for production to ensure data survives a single node failure, allocate `DataMemory` based on your dataset size, and assign unique `NodeId` values to each node. Start the management node first before bringing up data nodes or SQL nodes.
