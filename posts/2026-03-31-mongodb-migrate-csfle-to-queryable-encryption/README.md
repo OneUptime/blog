@@ -14,8 +14,8 @@ MongoDB's original Client-Side Field Level Encryption (CSFLE) uses deterministic
 
 | Feature          | CSFLE                           | Queryable Encryption             |
 |------------------|---------------------------------|----------------------------------|
-| Algorithm        | Deterministic / Randomized      | Structured (AEAD-based)          |
-| Query support    | Equality only (deterministic)   | Equality + Range                 |
+| Algorithm        | Deterministic / Randomized      | Structured Encryption            |
+| Query support    | Equality only (deterministic)   | Equality (7.0+) + Range (8.0+)  |
 | Metadata         | Schema map in driver config     | Encrypted field map + server collections |
 | Minimum MongoDB  | 4.2                             | 7.0+                             |
 
@@ -55,7 +55,7 @@ await db.createCollection("patients_v2", {
         path: "ssn",
         bsonType: "string",
         keyId: qeDataKeyId,
-        queries: [{ queryType: "equality" }]
+        queries: { queryType: "equality" }
       }
     ]
   }
@@ -103,7 +103,7 @@ For zero-downtime migration, use a feature flag to route writes to both collecti
 
 ```bash
 # Monitor progress with a simple count check
-mongo mydb --eval "print(db.patients_v2.countDocuments())"
+mongosh mydb --eval "print(db.patients_v2.countDocuments())"
 ```
 
 ## Summary
