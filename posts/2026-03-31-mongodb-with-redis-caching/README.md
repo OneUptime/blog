@@ -100,7 +100,7 @@ async function deleteProduct(productId) {
 }
 
 async function invalidateListCaches(prefix) {
-  // Use SCAN to find and delete all keys matching the prefix
+  // Use KEYS to find and delete all keys matching the prefix
   const keys = await redisClient.keys(`${prefix}:list:*`);
   if (keys.length > 0) {
     await redisClient.del(keys);
@@ -142,9 +142,10 @@ Use MongoDB Change Streams to automatically invalidate Redis cache when data cha
 ```javascript
 async function startCacheInvalidationService() {
   const db = mongoClient.db("myapp");
-  const changeStream = db.collection("products").watch([
-    { $match: { operationType: { $in: ["update", "replace", "delete"] } } }
-  ]);
+  const changeStream = db.collection("products").watch(
+    [{ $match: { operationType: { $in: ["update", "replace", "delete"] } } }],
+    { fullDocument: "updateLookup" }
+  );
 
   changeStream.on("change", async (change) => {
     const productId = change.documentKey._id.toString();
@@ -156,7 +157,6 @@ async function startCacheInvalidationService() {
     if (change.fullDocument) {
       const category = change.fullDocument.category?.slug;
       if (category) {
-        await redisClient.del(`top_products:${category}:*`);
         const keys = await redisClient.keys(`top_products:${category}:*`);
         if (keys.length > 0) await redisClient.del(keys);
       }
