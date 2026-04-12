@@ -14,7 +14,7 @@ Description: Learn how to safely disable ONLY_FULL_GROUP_BY in MySQL when workin
 
 Common situations include:
 
-- Migrating an application from MySQL 5.5 or 5.6 where this mode did not exist
+- Migrating an application from MySQL 5.5 or 5.6 where this mode was not enabled by default
 - Third-party software that generates non-standard GROUP BY queries
 - Reporting queries where `ANY_VALUE()` would require many individual changes
 
@@ -106,4 +106,4 @@ Capture the errors and fix them systematically before deploying to production.
 
 ## Summary
 
-Disabling `ONLY_FULL_GROUP_BY` is sometimes necessary for legacy application compatibility, but it should be a temporary measure. Use `SET PERSIST` in MySQL 8.0 for a clean runtime-only approach, and work toward fixing the underlying queries using `ANY_VALUE()` or proper GROUP BY columns. Keeping this mode enabled ensures your queries return deterministic, standards-compliant results.
+Disabling `ONLY_FULL_GROUP_BY` is sometimes necessary for legacy application compatibility, but it should be a temporary measure. Use `SET PERSIST` in MySQL 8.0 for a clean approach that survives restarts without manual config edits, and work toward fixing the underlying queries using `ANY_VALUE()` or proper GROUP BY columns. Keeping this mode enabled ensures your queries return deterministic, standards-compliant results.
