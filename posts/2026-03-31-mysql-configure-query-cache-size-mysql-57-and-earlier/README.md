@@ -8,7 +8,7 @@ Description: Learn how to configure query_cache_size and related settings in MyS
 
 ---
 
-The MySQL query cache stores the result sets of SELECT queries along with their text. When an identical query is received, MySQL returns the cached result without re-executing the query. This feature existed in MySQL 5.0 through 5.7 and was removed entirely in MySQL 8.0.
+The MySQL query cache stores the result sets of SELECT queries along with their text. When an identical query is received, MySQL returns the cached result without re-executing the query. This feature was available up through MySQL 5.7 and was removed entirely in MySQL 8.0.
 
 Note: The query cache is deprecated as of MySQL 5.7.20 and removed in MySQL 8.0. On high-concurrency workloads it can actually hurt performance due to cache invalidation contention. Use it only on read-heavy workloads with low write volume.
 
@@ -94,12 +94,14 @@ SELECT
   (Qcache_hits / (Qcache_hits + Qcache_inserts)) * 100 AS hit_rate_pct
 FROM (
   SELECT
-    (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS
+    (SELECT VARIABLE_VALUE FROM performance_schema.global_status
      WHERE VARIABLE_NAME = 'Qcache_hits') + 0 AS Qcache_hits,
-    (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS
+    (SELECT VARIABLE_VALUE FROM performance_schema.global_status
      WHERE VARIABLE_NAME = 'Qcache_inserts') + 0 AS Qcache_inserts
 ) t;
 ```
+
+Note: On MySQL versions before 5.7.6, use `information_schema.GLOBAL_STATUS` instead of `performance_schema.global_status`.
 
 A hit rate above 80% indicates the cache is providing value.
 
@@ -129,7 +131,7 @@ To prevent a specific query from being cached even when `query_cache_type = 1`:
 SELECT SQL_NO_CACHE id, name FROM users WHERE id = 1;
 ```
 
-Use this for queries that return different results over time (e.g., using `NOW()`, `RAND()`, or user-specific data).
+Note that queries using non-deterministic functions like `NOW()` and `RAND()` are automatically excluded from the cache by MySQL. Use `SQL_NO_CACHE` for deterministic queries that you still want to bypass the cache, such as frequently changing data or one-off reports.
 
 ## Disable the Query Cache
 
