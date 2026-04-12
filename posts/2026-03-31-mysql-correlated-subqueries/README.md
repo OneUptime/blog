@@ -90,8 +90,8 @@ ORDER BY d.name, e.salary DESC;
 +-------+-----------+-------------+
 | Alice | 105000.00 | Engineering |
 | Frank |  98000.00 | Engineering |
-| Eve   |  80000.00 | Marketing   |
 | Grace |  92000.00 | Finance     |
+| Eve   |  80000.00 | Marketing   |
 +-------+-----------+-------------+
 ```
 
@@ -116,8 +116,8 @@ ORDER BY d.name;
 | name  | hire_date  | department  |
 +-------+------------+-------------+
 | Frank | 2023-02-28 | Engineering |
-| Eve   | 2020-09-05 | Marketing   |
 | Dave  | 2022-01-10 | Finance     |
+| Bob   | 2021-06-01 | Marketing   |
 +-------+------------+-------------+
 ```
 
@@ -148,10 +148,10 @@ ORDER BY d.name, pct_of_dept_budget DESC;
 | Alice | 105000.00 | Engineering |               35.8 |
 | Frank |  98000.00 | Engineering |               33.4 |
 | Carol |  90000.00 | Engineering |               30.7 |
-| Eve   |  80000.00 | Marketing   |               52.6 |
-| Bob   |  72000.00 | Marketing   |               47.4 |
 | Grace |  92000.00 | Finance     |               51.1 |
 | Dave  |  88000.00 | Finance     |               48.9 |
+| Eve   |  80000.00 | Marketing   |               52.6 |
+| Bob   |  72000.00 | Marketing   |               47.4 |
 +-------+-----------+-------------+--------------------+
 ```
 
