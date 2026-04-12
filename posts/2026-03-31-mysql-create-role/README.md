@@ -92,7 +92,7 @@ SHOW GRANTS FOR 'read_only';
 To see which roles are granted to users, query the role edge table:
 
 ```sql
-SELECT FROM_USER AS role_name, TO_USER AS user_name, TO_HOST AS host
+SELECT TO_USER AS role_name, FROM_USER AS user_name, FROM_HOST AS host
 FROM mysql.role_edges
 ORDER BY role_name, user_name, host;
 ```
