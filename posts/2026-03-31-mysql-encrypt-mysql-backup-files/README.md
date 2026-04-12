@@ -45,7 +45,7 @@ You can generate a random key file for stronger encryption:
 openssl rand -base64 32 > /etc/mysql/backup-key.bin
 chmod 600 /etc/mysql/backup-key.bin
 
-mysqldump -u root -p mydb | openssl enc -aes-256-cbc -salt -pbkdf2 -kfile /etc/mysql/backup-key.bin > mydb_backup.sql.enc
+mysqldump -u root -p mydb | openssl enc -aes-256-cbc -salt -pbkdf2 -pass file:/etc/mysql/backup-key.bin > mydb_backup.sql.enc
 ```
 
 ## Encrypting with GPG
@@ -64,11 +64,11 @@ gpg --decrypt mydb_backup.sql.gz.gpg | gunzip | mysql -u root -p mydb
 
 ## MySQL Enterprise Backup with Encryption
 
-MySQL Enterprise Backup (MEB) supports native backup encryption using a keyring plugin:
+MySQL Enterprise Backup (MEB) supports native backup encryption using the `--encrypt-password` option:
 
 ```bash
 mysqlbackup --user=root --password --backup-dir=/var/backup/mysql \
-  --encrypt --key-file=/etc/mysql/enterprise-backup.key \
+  --encrypt-password="YourStrongPassphrase" \
   backup
 ```
 
