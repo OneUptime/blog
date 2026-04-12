@@ -149,9 +149,9 @@ let conn = try MySQLConnection.connect(
 
 let rows = try conn.query("SELECT id, name FROM products LIMIT 5").wait()
 for row in rows {
-    print(try row.column("name")?.string() ?? "nil")
+    print(row.column("name")?.string ?? "nil")
 }
-conn.close().wait()
+try conn.close().wait()
 ```
 
 ## Summary
