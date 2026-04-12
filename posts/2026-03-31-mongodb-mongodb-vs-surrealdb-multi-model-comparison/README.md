@@ -21,7 +21,7 @@ MongoDB stores BSON documents in collections. Relationships are either embedded 
 db.posts.insertOne({
   _id: ObjectId(),
   title: "Getting Started with MongoDB",
-  author: ObjectId("user-123"), // reference
+  author: ObjectId("507f1f77bcf86cd799439011"), // reference
   tags: ["mongodb", "nosql"],
   comments: [                    // embedded
     { user: "alice", text: "Great post!" }
@@ -73,7 +73,8 @@ SurrealDB has built-in live queries - a native pub/sub mechanism where clients r
 
 ```javascript
 // SurrealDB live query (JavaScript SDK)
-const queryUuid = await db.live("orders", (action, result) => {
+const stream = await db.live("orders");
+stream.subscribe((action, result) => {
   console.log(action, result); // CREATE, UPDATE, DELETE events
 });
 ```
