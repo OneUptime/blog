@@ -48,7 +48,7 @@ Include commands for common tasks with exact syntax:
 
 ```sql
 -- Check replication lag on all replicas
-SHOW SLAVE STATUS\G
+SHOW REPLICA STATUS\G
 
 -- View active connections
 SELECT user, host, db, command, time, state
