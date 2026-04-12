@@ -29,7 +29,7 @@ Unused indexes consume RAM in the WiredTiger cache and slow down write operation
 import os
 import sys
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timezone
 
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 TARGET_DB = os.environ.get("MONGO_DB", "myapp")
@@ -83,7 +83,7 @@ def drop_index(coll_name, index_name):
 if __name__ == "__main__":
     mode = "DRY RUN (use --execute to apply)" if DRY_RUN else "EXECUTE MODE"
     print(f"=== MongoDB Index Cleanup ({mode}) ===")
-    print(f"Database: {TARGET_DB} | {datetime.utcnow().isoformat()}\n")
+    print(f"Database: {TARGET_DB} | {datetime.now(timezone.utc).isoformat()}\n")
 
     unused = find_unused_indexes()
 
@@ -128,7 +128,7 @@ Sample output:
 === MongoDB Index Cleanup (DRY RUN) ===
 Database: myapp | 2026-03-31T10:00:00
 
-Found 3 unused index(es):
+Found 2 unused index(es):
 
   orders.status_1
     Key: {'status': 1}
