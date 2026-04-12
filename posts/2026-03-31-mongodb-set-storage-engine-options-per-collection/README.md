@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, WiredTiger, Storage Engine, Collection, Configuration
 
-Description: Learn how to set WiredTiger storage engine options per collection in MongoDB including block compression, prefix compression, and cache settings.
+Description: Learn how to set WiredTiger storage engine options per collection in MongoDB including block compression, prefix compression, and page sizing.
 
 ---
 
@@ -64,7 +64,7 @@ db.createCollection("large_documents", {
 
 ## Index Prefix Compression
 
-Prefix compression reduces index size by storing only the difference between adjacent index keys. It is enabled by default for most string indexes but can be configured explicitly:
+Prefix compression reduces index size by storing only the difference between adjacent index keys. It is enabled by default for all indexes but can be configured explicitly:
 
 ```javascript
 db.createCollection("user_profiles", {
