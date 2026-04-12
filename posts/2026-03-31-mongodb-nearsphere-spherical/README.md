@@ -177,10 +177,10 @@ Sample output:
 
 ```javascript
 [
-  { name: "Eiffel Tower", city: "Paris", distanceKm: 0 },
-  { name: "Big Ben", city: "London", distanceKm: 342 },
-  { name: "Sagrada Familia", city: "Barcelona", distanceKm: 1039 },
-  { name: "Colosseum", city: "Rome", distanceKm: 1105 }
+  { name: "Eiffel Tower", city: "Paris", distanceKm: 4 },
+  { name: "Big Ben", city: "London", distanceKm: 343 },
+  { name: "Sagrada Familia", city: "Barcelona", distanceKm: 829 },
+  { name: "Colosseum", city: "Rome", distanceKm: 1106 }
 ]
 ```
 
