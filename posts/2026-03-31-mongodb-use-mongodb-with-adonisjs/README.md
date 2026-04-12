@@ -4,30 +4,30 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, AdonisJS, Node.js
 
-Description: Integrate MongoDB with AdonisJS using the Lucid MongoDB provider or Mongoose, with models, migrations, and query examples for a REST API.
+Description: Integrate MongoDB with AdonisJS using Mongoose, with models and query examples for a REST API.
 
 ---
 
 ## Setting Up AdonisJS with MongoDB
 
-AdonisJS is a full-featured MVC framework for Node.js. While it uses Lucid ORM with SQL databases by default, you can integrate MongoDB using either the community Lucid MongoDB adapter or Mongoose directly.
+AdonisJS is a full-featured MVC framework for Node.js. While it uses Lucid ORM with SQL databases by default, you can integrate MongoDB using Mongoose directly.
 
-## Option 1: Using Mongoose with AdonisJS
+## Using Mongoose with AdonisJS
 
-Install dependencies:
+Install Mongoose in your AdonisJS project:
 
 ```bash
-npm install mongoose @adonisjs/core
+npm install mongoose
 ```
 
-Create a MongoDB service provider at `providers/MongoProvider.ts`:
+Create a MongoDB service provider at `providers/mongo_provider.ts`:
 
 ```typescript
-import type { ApplicationContract } from '@ioc:Adonis/Core/Application'
+import type { ApplicationService } from '@adonisjs/core/types'
 import mongoose from 'mongoose'
 
 export default class MongoProvider {
-  constructor(protected app: ApplicationContract) {}
+  constructor(protected app: ApplicationService) {}
 
   public async boot() {
     const uri = this.app.config.get('database.mongo.uri')
@@ -48,13 +48,13 @@ Register it in `adonisrc.ts`:
 
 ```typescript
 providers: [
-  './providers/MongoProvider',
+  () => import('./providers/mongo_provider.js'),
 ]
 ```
 
 ## Defining a Mongoose Model
 
-Create `app/Models/User.ts`:
+Create `app/models/user.ts`:
 
 ```typescript
 import mongoose, { Schema, Document } from 'mongoose'
@@ -76,19 +76,19 @@ export const User = mongoose.model<IUser>('User', UserSchema)
 
 ## Controller with MongoDB
 
-Create `app/Controllers/Http/UsersController.ts`:
+Create `app/controllers/users_controller.ts`:
 
 ```typescript
-import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
-import { User } from 'App/Models/User'
+import type { HttpContext } from '@adonisjs/core/http'
+import { User } from '#models/user'
 
 export default class UsersController {
-  public async index({ response }: HttpContextContract) {
+  public async index({ response }: HttpContext) {
     const users = await User.find({}).select('name email createdAt').lean()
     return response.ok(users)
   }
 
-  public async store({ request, response }: HttpContextContract) {
+  public async store({ request, response }: HttpContext) {
     const { name, email } = request.only(['name', 'email'])
 
     const existing = await User.findOne({ email })
@@ -100,13 +100,13 @@ export default class UsersController {
     return response.created(user)
   }
 
-  public async show({ params, response }: HttpContextContract) {
+  public async show({ params, response }: HttpContext) {
     const user = await User.findById(params.id).lean()
     if (!user) return response.notFound({ message: 'User not found' })
     return response.ok(user)
   }
 
-  public async destroy({ params, response }: HttpContextContract) {
+  public async destroy({ params, response }: HttpContext) {
     await User.findByIdAndDelete(params.id)
     return response.noContent()
   }
@@ -118,13 +118,15 @@ export default class UsersController {
 In `start/routes.ts`:
 
 ```typescript
-import Route from '@ioc:Adonis/Core/Route'
+import router from '@adonisjs/core/services/router'
 
-Route.group(() => {
-  Route.get('/', 'UsersController.index')
-  Route.post('/', 'UsersController.store')
-  Route.get('/:id', 'UsersController.show')
-  Route.delete('/:id', 'UsersController.destroy')
+const UsersController = () => import('#controllers/users_controller')
+
+router.group(() => {
+  router.get('/', [UsersController, 'index'])
+  router.post('/', [UsersController, 'store'])
+  router.get('/:id', [UsersController, 'show'])
+  router.delete('/:id', [UsersController, 'destroy'])
 }).prefix('/api/users')
 ```
 
@@ -133,13 +135,19 @@ Route.group(() => {
 Add MongoDB URI to `config/database.ts`:
 
 ```typescript
-import Env from '@ioc:Adonis/Core/Env'
+import env from '#start/env'
 
 export default {
   mongo: {
-    uri: Env.get('MONGO_URI', 'mongodb://localhost:27017/myapp'),
+    uri: env.get('MONGO_URI'),
   },
 }
+```
+
+Add `MONGO_URI` to the env validation in `start/env.ts`:
+
+```typescript
+MONGO_URI: Env.schema.string(),
 ```
 
 In `.env`:
