@@ -24,9 +24,14 @@ SELECT TABLE_NAME, CREATE_OPTIONS
 FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'orders';
 
--- Check tablespace for each partition
+-- Check tablespace for each partition (MySQL 5.7)
 SELECT NAME, SPACE, FILE_FORMAT
 FROM information_schema.INNODB_SYS_TABLESPACES
+WHERE NAME LIKE 'mydb/orders%';
+
+-- MySQL 8.0 equivalent (table renamed, FILE_FORMAT removed)
+SELECT NAME, SPACE
+FROM information_schema.INNODB_TABLESPACES
 WHERE NAME LIKE 'mydb/orders%';
 ```
 
@@ -50,7 +55,7 @@ Enabling this setting only affects new tables. Existing tables remain in the sha
 To move an existing partitioned table from shared to per-table tablespace:
 
 ```sql
--- Option 1: ALTER TABLE FORCE (rebuilds in-place)
+-- Option 1: ALTER TABLE with ALGORITHM=COPY (rebuilds table by copying)
 ALTER TABLE orders ENGINE = InnoDB, ALGORITHM = COPY;
 
 -- Option 2: OPTIMIZE TABLE (also rebuilds)
@@ -60,9 +65,15 @@ OPTIMIZE TABLE orders;
 Verify the table is now using per-table tablespace:
 
 ```sql
-SELECT TABLESPACE_NAME, TABLE_NAME
-FROM information_schema.FILES
-WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'orders';
+-- MySQL 5.7
+SELECT NAME, SPACE
+FROM information_schema.INNODB_SYS_TABLESPACES
+WHERE NAME LIKE 'mydb/orders%';
+
+-- MySQL 8.0
+SELECT NAME, SPACE
+FROM information_schema.INNODB_TABLESPACES
+WHERE NAME LIKE 'mydb/orders%';
 ```
 
 ## Fix Step 3: For Large Tables - Export and Reimport
