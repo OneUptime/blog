@@ -68,7 +68,7 @@ mongoexport \
 
 ```python
 import json, psycopg2, uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 pg_conn = psycopg2.connect("dbname=mydb user=postgres host=localhost")
 pg_cur = pg_conn.cursor()
@@ -81,7 +81,7 @@ for order in orders:
   pg_cur.execute(
     "INSERT INTO orders (id, customer_id, status, total, created_at) VALUES (%s, %s, %s, %s, %s)",
     (order_id, order.get("customerId"), order.get("status"),
-     order.get("total"), order.get("createdAt") or datetime.utcnow())
+     order.get("total"), order.get("createdAt") or datetime.now(timezone.utc))
   )
   for item in order.get("items", []):
     pg_cur.execute(
