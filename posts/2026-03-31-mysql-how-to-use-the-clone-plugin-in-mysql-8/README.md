@@ -80,13 +80,13 @@ SELECT
   ESTIMATE,
   DATA,
   NETWORK
-FROM performance_schema.clone_status;
+FROM performance_schema.clone_progress;
 ```
 
-For more detail:
+For overall clone status:
 
 ```sql
-SELECT * FROM performance_schema.clone_progress;
+SELECT * FROM performance_schema.clone_status;
 ```
 
 ## Cloning for Replica Provisioning
