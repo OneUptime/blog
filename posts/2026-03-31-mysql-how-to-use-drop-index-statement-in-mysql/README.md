@@ -10,7 +10,7 @@ Description: Learn how to use the DROP INDEX statement in MySQL to remove unused
 
 ## What Is DROP INDEX in MySQL
 
-The `DROP INDEX` statement removes an existing index from a MySQL table. You might drop an index to reduce write overhead on heavily updated tables, remove duplicate indexes, or clean up after schema changes. MySQL requires you to rebuild the table internally when dropping an index, so this operation can be slow on large tables.
+The `DROP INDEX` statement removes an existing index from a MySQL table. You might drop an index to reduce write overhead on heavily updated tables, remove duplicate indexes, or clean up after schema changes. With InnoDB, dropping a secondary index is an in-place operation that does not rebuild the table. However, dropping a primary key requires a full table rebuild and can be slow on large tables.
 
 ## Basic Syntax
 
@@ -112,7 +112,7 @@ If `count_star` is zero, the index has not been used since the last server resta
 In MySQL 8.0 with InnoDB, dropping an index is an online operation (using `ALGORITHM=INPLACE`), meaning it does not block reads or writes during execution. However, for large tables it still takes time:
 
 ```sql
-DROP INDEX idx_customer_id ON orders ALGORITHM=INPLACE, LOCK=NONE;
+DROP INDEX idx_customer_id ON orders ALGORITHM=INPLACE LOCK=NONE;
 ```
 
 If you need to avoid any locking:
