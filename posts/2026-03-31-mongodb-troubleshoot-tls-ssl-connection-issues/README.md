@@ -75,7 +75,7 @@ If your app connects via an IP address but the cert lists a hostname, use `tlsAl
 openssl x509 -in /path/to/server.pem -noout -dates
 ```
 
-Renew the certificate and reload MongoDB without downtime using `db.adminCommand({setParameter: 1, opensslCipherConfig: ""})` to force a re-read of the new cert.
+Renew the certificate and reload MongoDB without downtime using `db.rotateCertificates()` (available since MongoDB 4.4) to load the new certificate without restarting the server.
 
 ## Fix 4 - TLS Version Mismatch
 
@@ -97,7 +97,6 @@ When `requireTLS` is combined with `net.tls.CAFile`, the server may require clie
 
 ```javascript
 const { MongoClient } = require("mongodb");
-const fs = require("fs");
 
 const client = new MongoClient("mongodb://host:27017", {
   tls: true,
