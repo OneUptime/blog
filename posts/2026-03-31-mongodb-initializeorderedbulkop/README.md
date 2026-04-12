@@ -49,7 +49,7 @@ run().catch(console.error);
 
 ## Understanding the Execution Model
 
-Ordered bulk operations send batches to the server as groups of the same operation type. MongoDB processes inserts together, then updates, then deletes - but within each group, the declared order is preserved. If an insert fails (for example, on a duplicate key), the entire bulk operation halts at that point.
+Ordered bulk operations execute in the exact sequence they were declared. The driver batches consecutive operations of the same type into a single request for wire protocol efficiency, but these batches are sent to the server in the declared order. If any operation fails (for example, a duplicate key on insert), the entire bulk operation halts at that point and no subsequent operations are executed.
 
 ```javascript
 const bulk = col.initializeOrderedBulkOp();
@@ -96,7 +96,7 @@ console.log('Modified:', result.nModified);
 try {
   await bulk.execute();
 } catch (err) {
-  if (err.name === 'BulkWriteError') {
+  if (err.name === 'MongoBulkWriteError') {
     const errors = err.result.getWriteErrors();
     errors.forEach((e) => {
       console.error(`Error at index ${e.index}: ${e.errmsg}`);
