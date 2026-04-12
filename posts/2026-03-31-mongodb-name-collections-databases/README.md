@@ -18,7 +18,7 @@ MongoDB database names must follow these constraints:
 
 - Cannot contain `/\. "$*<>:|?` or null characters
 - Case-sensitive on Linux (but not Windows)
-- Maximum length: 38 bytes on some older systems; keep names short
+- Maximum length: 64 bytes
 - Avoid `admin`, `local`, and `config` - these are reserved system databases
 
 ```javascript
@@ -112,4 +112,4 @@ console.log("Collections:", names);
 
 ## Summary
 
-MongoDB collection and database names should use lowercase snake_case, avoid hyphens and reserved names starting with `system.`, and stay well under the 63-character limit. In multi-tenant applications, choose between prefixed collection names in a shared database or separate databases per tenant based on isolation requirements. Always validate dynamically generated names to prevent runtime errors.
+MongoDB collection and database names should use lowercase snake_case, avoid hyphens and reserved names starting with `system.`, and stay well under the 255-byte namespace limit. In multi-tenant applications, choose between prefixed collection names in a shared database or separate databases per tenant based on isolation requirements. Always validate dynamically generated names to prevent runtime errors.
