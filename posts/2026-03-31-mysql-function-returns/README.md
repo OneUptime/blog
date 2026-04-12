@@ -21,7 +21,7 @@ graph TD
     E --> F["Can be used in SELECT, WHERE, ORDER BY, etc."]
 ```
 
-Functions must return exactly one scalar value and can be used anywhere a value expression is valid in SQL. They cannot use `CALL`, return result sets, or contain non-deterministic DDL statements.
+Functions must return exactly one scalar value and can be used anywhere a value expression is valid in SQL. They cannot use `CALL`, return result sets, or execute DDL or other statements that cause implicit commits.
 
 ## Syntax
 
@@ -41,7 +41,7 @@ END;
 Key clauses:
 - `RETURNS` - declares the data type of the return value (required).
 - `RETURN` - statement inside the body that provides the actual return value.
-- `DETERMINISTIC` - required when binary logging is enabled and the function always returns the same output for the same inputs.
+- `DETERMINISTIC` - declares that the function always returns the same output for the same inputs. When binary logging is enabled and `log_bin_trust_function_creators` is OFF, at least one of `DETERMINISTIC`, `NO SQL`, or `READS SQL DATA` must be specified.
 
 ## Setup: Sample Table
 
@@ -110,7 +110,7 @@ CREATE FUNCTION GetEmployeeSalary (
 )
 RETURNS DECIMAL(10,2)
 READS SQL DATA
-DETERMINISTIC
+NOT DETERMINISTIC
 BEGIN
     DECLARE v_salary DECIMAL(10,2);
 
@@ -216,7 +216,7 @@ CREATE FUNCTION YearsEmployed (
     p_hire_date DATE
 )
 RETURNS INT
-DETERMINISTIC
+NOT DETERMINISTIC
 NO SQL
 BEGIN
     RETURN TIMESTAMPDIFF(YEAR, p_hire_date, CURDATE());
