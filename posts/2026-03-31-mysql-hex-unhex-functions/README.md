@@ -200,7 +200,7 @@ SELECT name, HEX(data) AS hex_data FROM attachments;
 -- Generate a hex fingerprint of a row
 SELECT
     id,
-    HEX(SHA2(CONCAT(first_name, last_name, email), 256)) AS row_fingerprint
+    SHA2(CONCAT(first_name, last_name, email), 256) AS row_fingerprint
 FROM customers
 LIMIT 5;
 ```
