@@ -30,7 +30,7 @@ SHOW VARIABLES LIKE 'log_bin_basename';
 
 ```sql
 SHOW BINARY LOGS;
--- Alias:
+-- Alias (deprecated in MySQL 8.2, removed in 8.4):
 SHOW MASTER LOGS;
 ```
 
@@ -55,6 +55,8 @@ SHOW MASTER LOGS;
 ```sql
 SHOW MASTER STATUS\G
 ```
+
+Note: `SHOW MASTER STATUS` is deprecated in MySQL 8.2 and removed in MySQL 8.4. Use `SHOW BINARY LOG STATUS\G` instead on newer versions.
 
 ```text
 *************************** 1. row ***************************
@@ -83,7 +85,7 @@ Never purge logs that a replica has not yet consumed. Check replica status first
 
 ```sql
 SHOW REPLICA STATUS\G
--- Look at: Relay_Master_Log_File and Read_Master_Log_Pos
+-- Look at: Master_Log_File and Read_Master_Log_Pos
 ```
 
 ## Automatic Log Expiration
@@ -116,11 +118,13 @@ SHOW VARIABLES LIKE 'binlog_format';
 - `ROW` - records the actual row changes (recommended for replication safety)
 - `MIXED` - MySQL chooses statement or row per query
 
-Switch format at runtime:
+Switch format at runtime (MySQL 8.0 only):
 
 ```sql
 SET GLOBAL binlog_format = 'ROW';
 ```
+
+Note: `binlog_format` is deprecated in MySQL 8.0.34 and removed in MySQL 8.4, where ROW format is the only supported format.
 
 ## Reading Binary Log Contents
 
@@ -142,16 +146,7 @@ mysqlbinlog --start-datetime="2026-03-31 00:00:00" \
 mysql -u root -p -e "SHOW BINARY LOGS;" | awk 'NR>1 {sum += $2} END {print "Total:", sum/1024/1024, "MB"}'
 ```
 
-Or from MySQL directly:
-
-```sql
-SELECT
-    COUNT(*) AS log_count,
-    ROUND(SUM(file_size) / 1024 / 1024, 2) AS total_mb
-FROM performance_schema.binary_log_status;
-```
-
-Note: `performance_schema.binary_log_status` is available in MySQL 8.4+. On earlier versions, parse the output of `SHOW BINARY LOGS` from your application code or use the shell command above.
+There is no Performance Schema table that lists all binary log files and their sizes. To aggregate sizes from within an application, parse the result set of `SHOW BINARY LOGS` programmatically, or use the shell command above.
 
 ## Summary
 
