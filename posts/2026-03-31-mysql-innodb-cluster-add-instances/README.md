@@ -75,12 +75,14 @@ cluster.status()
 ```text
 {
     "clusterName": "myCluster",
-    "status": "OK",
-    "topology": {
-        "node1:3306": {"status": "ONLINE", "role": "HA"},
-        "node2:3306": {"status": "ONLINE", "role": "HA"},
-        "node3:3306": {"status": "ONLINE", "role": "HA"},
-        "node4:3306": {"status": "RECOVERING", "role": "HA"}
+    "defaultReplicaSet": {
+        "status": "OK",
+        "topology": {
+            "node1:3306": {"status": "ONLINE", "memberRole": "PRIMARY", "mode": "R/W"},
+            "node2:3306": {"status": "ONLINE", "memberRole": "SECONDARY", "mode": "R/O"},
+            "node3:3306": {"status": "ONLINE", "memberRole": "SECONDARY", "mode": "R/O"},
+            "node4:3306": {"status": "RECOVERING", "memberRole": "SECONDARY", "mode": "R/O"}
+        }
     }
 }
 ```
@@ -93,7 +95,7 @@ Wait for node4 to show `"status": "ONLINE"` before directing traffic to it.
 cluster.status({extended: true})
 ```
 
-Check the `groupReplicationMembers` section to confirm all expected members are listed.
+Check the `defaultReplicaSet.topology` section to confirm all expected members are listed and ONLINE.
 
 ## Add Instance with Custom Options
 
@@ -107,15 +109,11 @@ cluster.addInstance('admin@node4:3306', {
 })
 ```
 
-## Update MySQL Router After Adding an Instance
+## MySQL Router and New Instances
 
-If MySQL Router was bootstrapped against the cluster, restart it to pick up the new member:
+MySQL Router automatically detects topology changes through its metadata cache, so adding a new instance does not require a Router restart or re-bootstrap. The Router will begin routing connections to the new member once it is ONLINE and the metadata cache refreshes (controlled by the `ttl` setting, which defaults to 0.5 seconds).
 
-```bash
-sudo systemctl restart mysqlrouter
-```
-
-Or re-bootstrap:
+If Router was bootstrapped with an older version or you need to reconfigure it, you can re-bootstrap:
 
 ```bash
 mysqlrouter --bootstrap admin@node1:3306 --user=mysqlrouter --force
@@ -123,4 +121,4 @@ mysqlrouter --bootstrap admin@node1:3306 --user=mysqlrouter --force
 
 ## Summary
 
-Add instances to a MySQL InnoDB Cluster using `cluster.addInstance()` in MySQL Shell. Run `dba.checkInstanceConfiguration()` and `dba.configureInstance()` first to ensure the new server meets requirements. Choose between Clone (for large datasets) or incremental recovery (for small catch-up). Monitor progress with `cluster.status()` and restart MySQL Router to include the new instance in routing.
+Add instances to a MySQL InnoDB Cluster using `cluster.addInstance()` in MySQL Shell. Run `dba.checkInstanceConfiguration()` and `dba.configureInstance()` first to ensure the new server meets requirements. Choose between Clone (for large datasets) or incremental recovery (for small catch-up). Monitor progress with `cluster.status()`. MySQL Router automatically detects the new member through its metadata cache.
