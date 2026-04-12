@@ -23,7 +23,7 @@ openssl req -x509 -newkey rsa:4096 -days 3650 -nodes \
 # Create a CSR for a cluster member
 openssl req -newkey rsa:2048 -nodes \
   -keyout node1.key -out node1.csr \
-  -subj "/CN=node1.example.com"
+  -subj "/O=MongoDB Cluster/OU=Internal/CN=node1.example.com"
 
 # Sign the certificate with the CA
 openssl x509 -req -in node1.csr -CA ca.crt -CAkey ca.key \
@@ -47,7 +47,6 @@ net:
     mode: requireTLS
     certificateKeyFile: /etc/ssl/mongodb/node1.pem
     CAFile: /etc/ssl/mongodb/ca.crt
-    clusterAuthMode: x509  # Use x.509 for member-to-member auth
 ```
 
 Set file permissions:
@@ -125,7 +124,7 @@ Check the current TLS mode:
 db.adminCommand({ getParameter: 1, tlsMode: 1 })
 ```
 
-Check connection security:
+Check authenticated user (confirms x.509 authentication is working):
 
 ```javascript
 db.runCommand({ connectionStatus: 1 })

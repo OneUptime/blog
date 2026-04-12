@@ -23,14 +23,14 @@ flowchart LR
     App[Application] -->|Compressed wire message| MongoDB
     MongoDB -->|Compressed wire message| App
     subgraph Negotiation
-        A[Client sends: snappy, zstd] --> B[Server responds with: zstd]
-        B --> C[Both sides use zstd for this connection]
+        A[Client sends: zstd, snappy] --> B[Server supports: zstd, zlib]
+        B --> C[Client picks zstd - first match from its list]
     end
 ```
 
 ## How Compression is Negotiated
 
-Compression is negotiated during the MongoDB handshake. The client sends a list of supported compressors ordered by preference. The server responds with the first compressor from the client's list that it also supports. If no common compressor is found, the connection proceeds without compression.
+Compression is negotiated during the MongoDB handshake. The client sends a list of supported compressors ordered by preference. The server responds with the list of mutually supported compressors. The client then uses the first compressor from its own preference list that appears in the server's supported list. If no common compressor is found, the connection proceeds without compression.
 
 ## Configuring Compression on the Server
 
@@ -63,7 +63,7 @@ mongosh "mongodb://127.0.0.1:27017/?compressors=zstd,snappy"
 Verify the negotiated compressor for the current connection:
 
 ```javascript
-db.adminCommand({ isMaster: 1 }).compression
+db.adminCommand({ hello: 1 }).compression
 ```
 
 ## Configuring Compression in the Node.js Driver
@@ -147,7 +147,7 @@ Check network bytes in/out using `serverStatus`:
 db.adminCommand({ serverStatus: 1 }).network
 ```
 
-The output includes:
+The output includes (MongoDB 5.0+):
 
 ```text
 {
