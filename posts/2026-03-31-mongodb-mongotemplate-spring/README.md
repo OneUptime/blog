@@ -124,8 +124,9 @@ Product updated = mongoTemplate.findAndModify(
 ## Aggregation Pipeline
 
 ```java
-import org.springframework.data.mongodb.core.aggregation.*;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 
 Aggregation agg = Aggregation.newAggregation(
     Aggregation.match(Criteria.where("status").is("SOLD")),
