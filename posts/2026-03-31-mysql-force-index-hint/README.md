@@ -23,7 +23,7 @@ The hint is placed after the table name. MySQL will use `idx_customer_id` even i
 
 ## FORCE INDEX vs USE INDEX
 
-`USE INDEX` is a weaker hint - it tells the optimizer to consider only the listed indexes but still allows a full table scan if the optimizer prefers it. `FORCE INDEX` is stronger - it disables the full table scan option:
+`USE INDEX` is a weaker hint - it tells the optimizer to consider only the listed indexes but still allows a full table scan if the optimizer prefers it. `FORCE INDEX` is stronger - it makes a full table scan very expensive in the optimizer's cost model, so a scan is used only if the named index cannot be used at all:
 
 ```sql
 -- Weaker: optimizer may still choose full scan
@@ -96,4 +96,4 @@ ANALYZE TABLE orders;
 
 ## Summary
 
-`FORCE INDEX` overrides MySQL's optimizer to use a specific index, preventing full table scans. It is stronger than `USE INDEX` and useful when the optimizer makes poor choices due to stale statistics. Always verify with EXPLAIN and treat it as a temporary measure while addressing the root cause.
+`FORCE INDEX` overrides MySQL's optimizer to use a specific index, making full table scans a last resort. It is stronger than `USE INDEX` and useful when the optimizer makes poor choices due to stale statistics. Always verify with EXPLAIN and treat it as a temporary measure while addressing the root cause.
