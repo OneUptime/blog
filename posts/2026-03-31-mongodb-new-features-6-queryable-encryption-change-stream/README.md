@@ -10,11 +10,11 @@ Description: Explore MongoDB 6.0's key new features including Queryable Encrypti
 
 ## Introduction
 
-MongoDB 6.0 introduced Queryable Encryption as a generally available feature, along with change stream pre-images, cluster-to-cluster sync, time series collection secondary indexes, and improvements to the aggregation pipeline. This post focuses on the two features most impactful for application security and data change processing.
+MongoDB 6.0 introduced Queryable Encryption as a preview feature (it became generally available in MongoDB 7.0), along with change stream pre-images, cluster-to-cluster sync, time series collection secondary indexes, and improvements to the aggregation pipeline. This post focuses on the two features most impactful for application security and data change processing.
 
 ## Queryable Encryption
 
-Queryable Encryption allows you to store sensitive fields encrypted at the driver level and still run equality and range queries against them - without the server ever seeing plaintext data.
+Queryable Encryption allows you to store sensitive fields encrypted at the driver level and still run equality queries against them - without the server ever seeing plaintext data. Range query support was added later, becoming generally available in MongoDB 8.0.
 
 ### Setting Up Queryable Encryption
 
@@ -58,8 +58,8 @@ const encryptedFieldsMap = {
       },
       {
         path: "salary",
-        bsonType: "double",
-        queries: [{ queryType: "range", min: 0, max: 1000000, sparsity: 1 }]
+        bsonType: "double"
+        // Range queries on encrypted fields became available in MongoDB 8.0
       }
     ]
   }
@@ -123,8 +123,8 @@ changeStream.on("change", event => {
 });
 ```
 
-Pre-images are stored in a system collection and automatically expired after 1 hour by default (configurable via `expireAfterSeconds` on the change stream pre-images config).
+Pre-images are stored in a system collection and by default are retained until the corresponding change stream events are removed from the oplog. You can optionally configure a fixed retention period via the `expireAfterSeconds` setting on the `changeStreamOptions` cluster parameter.
 
 ## Summary
 
-MongoDB 6.0's Queryable Encryption enables equality and range queries on fields that are encrypted client-side, keeping sensitive data protected from the database server and administrators. Change stream pre-images provide the document state before a modification, enabling audit logs, undo operations, and CDC pipelines that need before/after comparisons. Both features require MongoDB drivers version 6.0+ to use the new APIs.
+MongoDB 6.0's Queryable Encryption preview enables equality queries on fields that are encrypted client-side, keeping sensitive data protected from the database server and administrators (range query support became GA in MongoDB 8.0). Change stream pre-images provide the document state before a modification, enabling audit logs, undo operations, and CDC pipelines that need before/after comparisons. Both features require MongoDB drivers version 6.0+ to use the new APIs.
