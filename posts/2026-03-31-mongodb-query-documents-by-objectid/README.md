@@ -22,9 +22,7 @@ This structure means ObjectIds are sortable by creation time.
 ## Basic Query by _id
 
 ```javascript
-// In mongosh
-const { ObjectId } = require("mongodb");
-
+// In mongosh (ObjectId is a built-in global)
 db.users.findOne({ _id: ObjectId("64a1b2c3d4e5f6a7b8c9d0e1") })
 ```
 
