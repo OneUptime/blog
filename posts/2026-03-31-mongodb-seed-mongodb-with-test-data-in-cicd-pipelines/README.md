@@ -133,8 +133,8 @@ if __name__ == "__main__":
 
 For a self-contained test container, seed via `docker-entrypoint-initdb.d`:
 
-```bash
-# seeds/init-db.js (mounted into /docker-entrypoint-initdb.d/)
+```javascript
+// seeds/init-db.js (mounted into /docker-entrypoint-initdb.d/)
 db = db.getSiblingDB("testdb")
 db.users.drop()
 db.users.insertMany([
