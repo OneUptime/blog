@@ -92,8 +92,11 @@ Condition-level items (per index):
   CONSTRAINT_CATALOG  - catalog of the violated constraint
   CONSTRAINT_SCHEMA   - schema of the violated constraint
   CONSTRAINT_NAME     - name of the violated constraint
+  CATALOG_NAME        - catalog related to the condition
+  SCHEMA_NAME         - schema related to the condition
   TABLE_NAME          - table involved in the error
   COLUMN_NAME         - column involved in the error
+  CURSOR_NAME         - cursor name related to the condition
 ```
 
 ## Practical Error Logging Example
@@ -134,7 +137,7 @@ DELIMITER ;
 
 ## Stacking Diagnostics
 
-`GET DIAGNOSTICS` can be called multiple times within the same condition handler. Use `GET STACKED DIAGNOSTICS` inside a handler to read the original error after resetting the diagnostics area:
+`GET DIAGNOSTICS` can be called multiple times within the same condition handler. Use `GET STACKED DIAGNOSTICS` (available in MySQL 5.7+) inside a handler to read the original error after the diagnostics area has been modified by other statements:
 
 ```sql
 DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
