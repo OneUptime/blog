@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema({
   password:      { type: String, required: true, select: false },
   twoFactorEnabled: { type: Boolean, default: false },
   twoFactorSecret:  { type: String, select: false },
+  backupCodes:   { type: [String], select: false },
   createdAt:     { type: Date, default: Date.now },
 });
 
