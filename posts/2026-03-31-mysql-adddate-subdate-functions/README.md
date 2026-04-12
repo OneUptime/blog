@@ -110,7 +110,8 @@ flowchart LR
     C["ADDDATE(date, INTERVAL ...)"] -->|"INTERVAL syntax"| D["Add any time unit"]
     E["DATE_ADD(date, INTERVAL ...)"] -->|"INTERVAL syntax only"| D
     F["SUBDATE(date, N)"] -->|"N is integer"| G["Subtract N days"]
-    H["DATE_SUB(date, INTERVAL ...)"] -->|"INTERVAL syntax"| I["Subtract any time unit"]
+    H["SUBDATE(date, INTERVAL ...)"] -->|"INTERVAL syntax"| I["Subtract any time unit"]
+    J["DATE_SUB(date, INTERVAL ...)"] -->|"INTERVAL syntax only"| I
 ```
 
 ---
