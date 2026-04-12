@@ -135,8 +135,8 @@ USE mysql_innodb_cluster_metadata;
 SELECT cluster_name, description
 FROM clusters;
 
-SELECT address, member_role, member_state
-FROM v2_members;
+SELECT instance_id, address, mysql_server_uuid
+FROM instances;
 ```
 
 ## Summary
