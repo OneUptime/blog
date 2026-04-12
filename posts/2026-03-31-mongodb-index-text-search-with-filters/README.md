@@ -24,7 +24,7 @@ db.articles.find({ $text: { $search: "mongodb performance" } });
 
 ## Compound Text Index with Filter Fields
 
-To support text search with equality filters, create a compound index with the filter fields before or after the text component:
+To support text search with equality filters, create a compound index with the filter fields as a prefix before the text component:
 
 ```javascript
 // Compound index: filter fields + text fields
