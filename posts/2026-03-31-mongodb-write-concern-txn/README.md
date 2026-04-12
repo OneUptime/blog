@@ -153,7 +153,7 @@ async function timedTransaction(db, client) {
     session.startTransaction({
       writeConcern: {
         w: "majority",
-        wtimeout: 3000  // abort if not majority-acknowledged within 3 seconds
+        wtimeout: 3000  // return error if not majority-acknowledged within 3 seconds
       }
     });
 
