@@ -18,7 +18,7 @@ Atlas Search ships with several built-in Lucene analyzers that cover the most co
 
 ### lucene.standard
 
-The default analyzer. Tokenizes on whitespace and punctuation, lowercases tokens, and removes common stop words.
+The default analyzer. Tokenizes on word boundaries using Unicode text segmentation and lowercases tokens. It does not remove stop words.
 
 ```json
 {
@@ -26,14 +26,14 @@ The default analyzer. Tokenizes on whitespace and punctuation, lowercases tokens
     "fields": {
       "description": {
         "type": "string",
-        "analyzer": "lucene.english"
+        "analyzer": "lucene.standard"
       }
     }
   }
 }
 ```
 
-Best for general-purpose English text where stop words like "the" and "is" should be ignored.
+Best for general-purpose text search across multiple languages where no language-specific stemming or stop word removal is needed.
 
 ### lucene.english
 
