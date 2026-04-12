@@ -18,7 +18,8 @@ The MongoDB Rust driver uses BSON as its wire format and Serde for converting be
 [dependencies]
 mongodb = "3"
 serde   = { version = "1", features = ["derive"] }
-bson    = "2"
+bson    = { version = "2", features = ["chrono-0_4"] }
+chrono  = "0.4"
 ```
 
 ```rust
@@ -76,7 +77,7 @@ struct Order {
     id:          ObjectId,
 
     #[serde(with = "bson::serde_helpers::bson_datetime_as_rfc3339_string")]
-    placed_at:   String,
+    placed_at:   BsonDateTime,
 
     // Store large decimal without floating-point loss
     total:       Decimal128,
