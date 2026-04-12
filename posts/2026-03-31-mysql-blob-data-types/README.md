@@ -42,7 +42,7 @@ column_name MEDIUMBLOB [NOT NULL]
 column_name LONGBLOB   [NOT NULL]
 ```
 
-BLOB columns cannot have a `DEFAULT` value other than `NULL`.
+BLOB columns cannot have a literal `DEFAULT` value. Before MySQL 8.0.13 the only allowed default is `NULL`. Starting with MySQL 8.0.13, an expression default is permitted, e.g. `DEFAULT (X'')`.
 
 ## Basic Usage: Storing Images
 
@@ -104,18 +104,19 @@ CREATE TABLE secure_documents (
 );
 
 -- Insert with MySQL AES encryption (example only, manage keys externally in production)
+SET @iv = RANDOM_BYTES(16);
 INSERT INTO secure_documents (owner_id, document_name, encrypted_body, iv)
 VALUES (
     1001,
     'confidential_report.pdf',
-    AES_ENCRYPT('This is the document content...', 'encryption_key_here'),
-    RANDOM_BYTES(16)
+    AES_ENCRYPT('This is the document content...', 'encryption_key_here', @iv),
+    @iv
 );
 
 -- Decrypt
 SELECT owner_id,
        document_name,
-       CAST(AES_DECRYPT(encrypted_body, 'encryption_key_here') AS CHAR) AS decrypted_content
+       CAST(AES_DECRYPT(encrypted_body, 'encryption_key_here', iv) AS CHAR) AS decrypted_content
 FROM secure_documents
 WHERE id = 1;
 ```
@@ -159,7 +160,7 @@ WHERE user_id = 1001;
 | Feature | BLOB | TEXT |
 |---|---|---|
 | Content | Raw bytes | Characters |
-| Charset/Collation | None | Defined |
+| Charset/Collation | `binary` / `binary` | Character-set-aware |
 | Comparison | Byte-by-byte | Collation-aware |
 | Typical use | Images, files, binary data | Articles, comments, code |
 
@@ -178,7 +179,7 @@ flowchart TD
 
 ## Performance Considerations
 
-- BLOB data is stored off-page in InnoDB for values larger than approximately half the InnoDB page size (8KB by default).
+- In InnoDB with the default DYNAMIC row format, large BLOB values are stored entirely off-page with only a 20-byte pointer kept in the row. The default InnoDB page size is 16 KB.
 - Large BLOB columns slow down full table scans and backups; use `SELECT id, mime_type, file_size` instead of `SELECT *` when listing files.
 - Consider storing large files in object storage (S3, GCS, MinIO) and saving only the URL in a `VARCHAR` column.
 
