@@ -14,14 +14,14 @@ MongoDB historically supported a `Code` BSON type (type 13) that stores JavaScri
 
 ## Why Server-Side JavaScript Is Disabled
 
-MongoDB disabled server-side JavaScript execution by default starting in MongoDB 4.4 and deprecated it in 5.0. The reasons include:
+MongoDB deprecated `mapReduce` starting in MongoDB 5.0 and deprecated server-side JavaScript operators (`$where`, `$function`, `$accumulator`) in MongoDB 8.0. The reasons to avoid server-side JavaScript include:
 
 - Security risks from arbitrary code execution on the server
 - Poor performance compared to native aggregation operators
 - Non-deterministic behavior in sharded clusters
 - JavaScript runs in a single-threaded context, blocking other operations
 
-The `security.javascriptEnabled: false` setting in `mongod.conf` disables `$where`, `$accumulator`, and `$function` operators.
+The `security.javascriptEnabled` setting in `mongod.conf` defaults to `true`. Setting it to `false` disables `$where`, `$accumulator`, and `$function` operators.
 
 ## Storing Code BSON Type in mongosh
 
