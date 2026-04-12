@@ -155,9 +155,9 @@ db.dropUser("appUser")
 
 ## Creating Custom Roles
 
-When built-in roles are too broad or too narrow, create a custom role. Custom roles are stored in the `admin` database but can be granted on specific databases.
+When built-in roles are too broad or too narrow, create a custom role. Custom roles are stored in the database where you create them. Create roles in the `admin` database when they need privileges across multiple databases.
 
-Create a custom role that allows only inserting and finding documents in a specific collection:
+Create a custom role that allows finding, inserting, and updating documents in a specific collection:
 
 ```javascript
 use admin
