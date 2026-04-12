@@ -73,7 +73,7 @@ Wait a few seconds, then verify:
 
 ```javascript
 rs.status().myState  // 1 = PRIMARY
-rs.isMaster().ismaster  // true
+db.hello().isWritablePrimary  // true
 ```
 
 All existing data and indexes are preserved. The instance is now a one-member replica set acting as primary.
