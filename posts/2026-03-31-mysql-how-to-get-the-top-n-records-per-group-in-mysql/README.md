@@ -142,10 +142,10 @@ ORDER BY customer_id, order_date DESC;
 
 ## MySQL 5.7 Alternative (Without Window Functions)
 
-For MySQL 5.7, use a self-join or user variable:
+For MySQL 5.7, use a correlated subquery or user variable:
 
 ```sql
--- Self-join approach
+-- Correlated subquery approach
 SELECT p1.category, p1.name, p1.sales
 FROM products p1
 WHERE (
