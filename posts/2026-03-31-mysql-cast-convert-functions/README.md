@@ -50,8 +50,8 @@ BINARY(N)     - binary string
 DATE          - date only
 DATETIME      - date and time
 TIME          - time only
-YEAR          - four-digit year
-JSON          - JSON value (MySQL 8.0+)
+YEAR          - four-digit year (MySQL 8.0.22+)
+JSON          - JSON value (MySQL 5.7.8+)
 ```
 
 ## Setup: Sample Table
@@ -122,7 +122,7 @@ FROM raw_imports;
 | date_str            | as_date    | as_datetime         |
 +---------------------+------------+---------------------+
 | 2026-03-15          | 2026-03-15 | 2026-03-15 00:00:00 |
-| 2026/01/20          | NULL       | NULL                |
+| 2026/01/20          | 2026-01-20 | 2026-01-20 00:00:00 |
 | March 10, 2026      | NULL       | NULL                |
 | 2026-02-28 09:00    | 2026-02-28 | 2026-02-28 09:00:00 |
 | 20260101            | 2026-01-01 | 2026-01-01 00:00:00 |
