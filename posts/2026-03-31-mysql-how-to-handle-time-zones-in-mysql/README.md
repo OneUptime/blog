@@ -28,11 +28,11 @@ SELECT @@global.time_zone, @@session.time_zone, @@system_time_zone;
 ## Setting the Session Time Zone
 
 ```sql
--- Set time zone to UTC for the current session
+-- Set time zone to UTC using offset syntax (no time zone tables needed)
 SET time_zone = '+00:00';
-SET time_zone = 'UTC';
 
 -- Set to a named zone (requires populated time zone tables)
+SET time_zone = 'UTC';
 SET time_zone = 'America/New_York';
 SET time_zone = 'Europe/London';
 ```
@@ -92,7 +92,7 @@ SELECT ts_col, dt_col FROM tz_demo;
 -- Switch to UTC
 SET time_zone = 'UTC';
 SELECT ts_col, dt_col FROM tz_demo;
--- ts_col shifts by +5 hours (UTC), dt_col stays the same
+-- ts_col shifts by +4 or +5 hours (UTC, depending on DST), dt_col stays the same
 ```
 
 ## Using CONVERT_TZ()
@@ -169,15 +169,16 @@ WHERE user_id = 42;
 
 ## Checking for DST Issues
 
-Daylight Saving Time transitions create ambiguous times. CONVERT_TZ() handles these based on the loaded zone data:
+Daylight Saving Time transitions create ambiguous or non-existent local times. During a spring-forward gap, a local time like 2:30 AM simply does not exist. During a fall-back overlap, a local time like 1:30 AM occurs twice. CONVERT_TZ() handles these based on the loaded zone data:
 
 ```sql
--- During a spring-forward gap, CONVERT_TZ returns NULL
-SELECT CONVERT_TZ('2025-03-09 02:30:00', 'UTC', 'America/New_York');
--- Result may be NULL if the time falls in the DST gap
+-- 2:30 AM Eastern on March 9, 2025 falls in the spring-forward gap (2:00 AM jumps to 3:00 AM)
+-- MySQL resolves this using the pre-transition (standard time) offset rather than returning NULL
+SELECT CONVERT_TZ('2025-03-09 02:30:00', 'America/New_York', 'UTC');
+-- Returns a result (the gap time is interpreted as EST, i.e. UTC-5)
 ```
 
-Always test edge cases around DST transition dates (March and November in North America).
+CONVERT_TZ() returns NULL when arguments are NULL or when named time zones are not found in the time zone tables — not because of DST gaps. Always test edge cases around DST transition dates (March and November in North America).
 
 ## Summary
 
