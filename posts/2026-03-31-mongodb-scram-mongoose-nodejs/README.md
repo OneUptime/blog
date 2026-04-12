@@ -144,7 +144,7 @@ mongoose.connection.on("disconnected", () => {
 
 ## Verify Authentication Mechanism in Use
 
-After connecting, check the driver version and auth mechanism:
+After connecting, check which users are authenticated on the connection:
 
 ```javascript
 const client = mongoose.connection.getClient()
@@ -154,4 +154,4 @@ console.log("Authenticated users:", result.authInfo.authenticatedUsers)
 
 ## Summary
 
-Mongoose uses SCRAM authentication transparently when credentials are provided in the connection string or options. Set `authMechanism: "SCRAM-SHA-256"` explicitly for maximum security, store credentials in environment variables, and implement retry logic with exponential backoff for production connections. Handle `authentication failed` errors specifically to surface credential issues quickly.
+Mongoose uses SCRAM authentication transparently when credentials are provided in the connection string or options. Set `authMechanism: "SCRAM-SHA-256"` explicitly for maximum security, store credentials in environment variables, and implement retry logic with backoff for production connections. Handle `authentication failed` errors specifically to surface credential issues quickly.
