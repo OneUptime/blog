@@ -139,12 +139,11 @@ The new member will show `stateStr: "STARTUP2"` during initial sync:
   "_id": 3,
   "name": "new-server-hostname:27020",
   "health": 1,
+  "state": 5,
   "stateStr": "STARTUP2",
-  "infoMessage": "initial sync need to start",
-  "initialSyncStatus": {
-    "totalInitialSyncElapsedMillis": 45000,
-    "remainingInitialSyncEstimatedMillis": 120000
-  }
+  "uptime": 45,
+  "optime": { "ts": Timestamp(0, 0), "t": NumberLong(-1) },
+  "infoMessage": ""
 }
 ```
 
@@ -182,25 +181,24 @@ async function addSecondaryAndMonitor(newMemberHost) {
   const admin = client.db("admin");
 
   // Get current status
-  const statusBefore = await admin.command({ replSetGetStatus: 1 });
-  console.log("Members before:", statusBefore.members.map(m => m.name));
+  const status = await admin.command({ replSetGetStatus: 1 });
+  console.log("Members before:", status.members.map(m => m.name));
 
-  // Add new member
-  await admin.command({
-    replSetReconfig: {
-      ...statusBefore,
-      members: [
-        ...statusBefore.members,
-        {
-          _id: statusBefore.members.length,
-          host: newMemberHost,
-          priority: 1,
-          votes: 1
-        }
-      ],
-      version: statusBefore.version + 1
-    }
+  // Get current replica set configuration
+  const { config } = await admin.command({ replSetGetConfig: 1 });
+
+  // Add new member to the configuration
+  const maxId = Math.max(...config.members.map(m => m._id));
+  config.members.push({
+    _id: maxId + 1,
+    host: newMemberHost,
+    priority: 1,
+    votes: 1
   });
+  config.version++;
+
+  // Apply the new configuration
+  await admin.command({ replSetReconfig: config });
 
   console.log(`Added ${newMemberHost} to replica set`);
 
