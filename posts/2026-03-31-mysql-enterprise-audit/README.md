@@ -47,11 +47,7 @@ audit_log_format=NEW     - XML-based newer format
 audit_log_format=JSON    - JSON format (recommended for log aggregation)
 ```
 
-Set at startup in `my.cnf` or:
-
-```sql
-SET GLOBAL audit_log_format = 'JSON';
-```
+Set at startup in `my.cnf` (this variable is not dynamic and cannot be changed at runtime with `SET GLOBAL`).
 
 ## Setting the Audit Policy
 
@@ -79,7 +75,7 @@ MySQL 8.0 Enterprise Audit supports rule-based filtering to reduce log volume:
 -- Create a filter that logs all events for user 'app_user'
 SELECT audit_log_filter_set_filter(
   'log_app_user',
-  '{ "filter": { "class": { "name": "%" } } }'
+  '{ "filter": { "log": true } }'
 );
 
 -- Assign the filter to a user
