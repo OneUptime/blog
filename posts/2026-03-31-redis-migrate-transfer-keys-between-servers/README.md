@@ -20,7 +20,7 @@ MIGRATE host port key|"" destination-db timeout [COPY] [REPLACE] [AUTH password]
 - `port` - Target server port.
 - `key` - The key to migrate (use `""` when using the KEYS option).
 - `destination-db` - The database index on the target server.
-- `timeout` - Milliseconds to wait for the operation to complete.
+- `timeout` - Maximum idle time in milliseconds for any single I/O operation during the transfer. The total migration can take longer as long as progress continues.
 - `COPY` - Do not remove the key from the source after migration.
 - `REPLACE` - Overwrite the key on the destination if it already exists.
 - `KEYS` - Migrate multiple keys in a single call.
@@ -76,28 +76,30 @@ MIGRATE 192.168.1.20 6379 session:abc 0 5000 AUTH2 myuser mypassword
 
 ```bash
 #!/bin/bash
-SOURCE="127.0.0.1:6379"
+SOURCE_HOST="127.0.0.1"
+SOURCE_PORT="6379"
 DEST_HOST="192.168.1.20"
 DEST_PORT="6380"
 
 # Get all keys matching a pattern
-KEYS=$(redis-cli -h 127.0.0.1 -p 6379 KEYS "session:*")
+KEYS=$(redis-cli -h $SOURCE_HOST -p $SOURCE_PORT KEYS "session:*")
 
 for KEY in $KEYS; do
-  redis-cli -h 127.0.0.1 -p 6379 MIGRATE $DEST_HOST $DEST_PORT "$KEY" 0 5000 REPLACE
+  redis-cli -h $SOURCE_HOST -p $SOURCE_PORT MIGRATE $DEST_HOST $DEST_PORT "$KEY" 0 5000 REPLACE
   echo "Migrated: $KEY"
 done
 ```
 
 ## Error Handling
 
-MIGRATE can return several errors:
+MIGRATE can return several responses beyond `OK`:
 
 ```text
-IOERR      - Network error during transfer
-BUSYKEY    - Key exists on destination (use REPLACE to override)
-NOKEY      - Key does not exist on source
+IOERR      - Network or I/O error during transfer (key may exist on both instances or only on the source)
+NOKEY      - No keys were found on the source instance
 ```
+
+If the destination already has the key and `REPLACE` is not specified, the command fails with a `BUSYKEY` error (surfaced from the underlying `RESTORE` call).
 
 Always check the return value in scripts before assuming success.
 
