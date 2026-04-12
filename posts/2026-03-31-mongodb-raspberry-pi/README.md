@@ -124,12 +124,28 @@ for r in recent:
 
 ## Syncing Pi Data to MongoDB Atlas
 
-Use a change stream to forward new readings from the Pi to Atlas:
+Change streams require a replica set (they rely on the oplog, which only exists on replica sets). Convert your standalone instance to a single-node replica set first:
+
+1. Add the following to `/etc/mongod.conf`:
+
+```yaml
+replication:
+  replSetName: rs0
+```
+
+2. Restart MongoDB and initiate the replica set:
+
+```bash
+sudo systemctl restart mongod
+mongosh --eval "rs.initiate()"
+```
+
+Then use a change stream to forward new readings from the Pi to Atlas:
 
 ```python
 from pymongo import MongoClient
 
-local_client = MongoClient("mongodb://localhost:27017")
+local_client = MongoClient("mongodb://localhost:27017/?replicaSet=rs0")
 atlas_client = MongoClient(ATLAS_URI)
 
 local_col = local_client["iot"]["sensor_readings"]
