@@ -134,7 +134,7 @@ SELECT
   employee_id,
   salary,
   RANK() OVER dept_window AS dept_rank,
-  SUM(salary) OVER dept_window AS dept_total_salary
+  SUM(salary) OVER dept_window AS dept_running_salary
 FROM employees
 WINDOW dept_window AS (PARTITION BY department ORDER BY salary DESC);
 ```
