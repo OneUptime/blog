@@ -165,7 +165,7 @@ SELECT
 FROM employees;
 ```
 
-When `target_hours` is 0, `NULLIF` returns NULL so the division produces NULL instead of a fatal error.
+When `target_hours` is 0, `NULLIF` returns NULL so the division produces NULL cleanly instead of triggering a divide-by-zero warning.
 
 **Example - turn sentinel value into NULL:**
 
