@@ -27,9 +27,10 @@ Use `ORDER BY RAND()` only when:
 Calculate a random offset and fetch rows from that position:
 
 ```sql
-SELECT * FROM products
-LIMIT 10
-OFFSET FLOOR(RAND() * (SELECT COUNT(*) FROM products));
+SET @offset = FLOOR(RAND() * (SELECT COUNT(*) FROM products));
+PREPARE stmt FROM 'SELECT * FROM products LIMIT 10 OFFSET ?';
+EXECUTE stmt USING @offset;
+DEALLOCATE PREPARE stmt;
 ```
 
 This is faster but has a limitation: it returns consecutive rows starting from the random offset, not truly independent random rows.
@@ -49,14 +50,14 @@ LIMIT 10;
 If there are gaps in IDs, you may get fewer than 10 rows. Handle this by requesting more rows than needed:
 
 ```sql
-SELECT *
-FROM products
-WHERE id >= FLOOR(RAND() * (SELECT MAX(id) FROM products))
-ORDER BY id
-LIMIT 10
--- Fallback if near the end of the table:
+(SELECT *
+ FROM products
+ WHERE id >= FLOOR(RAND() * (SELECT MAX(id) FROM products))
+ ORDER BY id
+ LIMIT 10)
 UNION ALL
-SELECT * FROM products ORDER BY id LIMIT 10;
+(SELECT * FROM products ORDER BY id LIMIT 10)
+LIMIT 10;
 ```
 
 ## Efficient Method 3 - JOIN-Based Random Selection
@@ -75,7 +76,7 @@ JOIN (
 
 The inner subquery only pulls `id` values (small), then joins back for full rows. This is faster than `ORDER BY RAND()` on the full table but still requires sorting IDs.
 
-## Efficient Method 4 - Reservoir Sampling with User Variables
+## Efficient Method 4 - Single Random Row via ID Range
 
 For a single random row very efficiently:
 
@@ -90,7 +91,7 @@ ORDER BY id
 LIMIT 1;
 ```
 
-## Efficient Method 5 - UUID-Based Random Selection
+## Efficient Method 5 - Indexed Random Key Column
 
 If your table has a UUID column or you can add a `rand_key` column:
 
