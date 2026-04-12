@@ -34,7 +34,7 @@ print("Connected:", conn.is_connected())
 conn.close()
 ```
 
-## Using a Context Manager
+## Handling Connection Errors
 
 ```python
 import mysql.connector
