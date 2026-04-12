@@ -12,7 +12,7 @@ Description: Configure MySQL InnoDB ClusterSet to link multiple InnoDB Clusters 
 
 MySQL InnoDB ClusterSet links multiple InnoDB Clusters together in a primary-replica topology. One cluster is designated as the primary cluster, handling all writes. Replica clusters receive asynchronous replication from the primary and can be promoted during a disaster recovery scenario.
 
-This differs from InnoDB Cluster (which uses synchronous Group Replication within a single data center) - ClusterSet adds cross-datacenter replication with controlled failover.
+This differs from InnoDB Cluster (which uses virtually synchronous Group Replication within a single data center) - ClusterSet adds cross-datacenter replication with controlled failover.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ clusterSet.status()
 
 ```text
 {
-    "clusterSetName": "myClusterSet",
+    "domainName": "myClusterSet",
     "primaryCluster": "myCluster",
     "status": "HEALTHY",
     "clusters": {
@@ -110,7 +110,7 @@ If the primary cluster is lost and unrecoverable, force a failover:
 clusterSet.forcePrimaryCluster('drCluster')
 ```
 
-This immediately promotes the replica cluster. Some transactions that were not yet replicated may be lost. After the primary cluster recovers, you must invalidate it before rejoining:
+This immediately promotes the replica cluster. Some transactions that were not yet replicated may be lost. The old primary cluster is automatically marked as INVALIDATED. After it recovers, rejoin it as a replica:
 
 ```javascript
 clusterSet.rejoinCluster('myCluster')
