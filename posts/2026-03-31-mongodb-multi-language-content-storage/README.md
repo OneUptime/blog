@@ -47,6 +47,9 @@ const ArticleSchema = new mongoose.Schema({
     of: LocalizedContentSchema
   },
 
+  // Track which locales have been translated
+  availableLocales: [String],
+
   // Default locale
   defaultLocale: { type: String, default: 'en' }
 });
