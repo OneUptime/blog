@@ -62,17 +62,23 @@ DO RELEASE_LOCK('lock1'), RELEASE_LOCK('lock2'), RELEASE_LOCK('lock3');
 
 ## Practical Example: Advisory Locking Pattern
 
-A common pattern with `DO` is in lock acquisition workflows:
+A common pattern with `DO` is in lock acquisition workflows inside a stored procedure:
 
 ```sql
--- Attempt to acquire a lock
-SELECT GET_LOCK('batch_job', 10) INTO @lock_result;
+DELIMITER //
+CREATE PROCEDURE run_batch_job()
+BEGIN
+  SELECT GET_LOCK('batch_job', 10) INTO @lock_result;
 
-IF @lock_result = 1 THEN
-  -- Do work here ...
-  DO RELEASE_LOCK('batch_job');
-END IF;
+  IF @lock_result = 1 THEN
+    -- Do work here ...
+    DO RELEASE_LOCK('batch_job');
+  END IF;
+END //
+DELIMITER ;
 ```
+
+Note that `IF ... THEN ... END IF` is only valid inside stored programs (procedures, functions, triggers). In plain SQL, you would handle the conditional logic in your application code.
 
 ## DO Inside Stored Procedures
 
@@ -105,9 +111,9 @@ SELECT 1 + 1;  -- Returns: 2
 
 ## Limitations
 
-- `DO` cannot be used with expressions that return more than a scalar value
-- It is not available in all SQL modes
-- Subqueries that return multiple rows are not valid in `DO`
+- `DO` cannot reference table columns directly (for example, `DO id FROM t1` is invalid)
+- `DO` only evaluates expressions; it does not support full query syntax like `SELECT` does
+- Inside stored functions and triggers, `DO` is preferred over `SELECT` because these contexts do not allow statements that return result sets to the client
 
 ## Summary
 
