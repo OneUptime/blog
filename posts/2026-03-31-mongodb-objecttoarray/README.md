@@ -30,7 +30,7 @@ The expression must evaluate to a document. If the value is `null` or missing, t
 
 ### Example 1 - Convert Fields to an Array
 
-Convert the entire document (minus `_id`) to a key-value array:
+Convert the entire document to a key-value array:
 
 ```javascript
 // Input: { _id: 1, color: "red", size: "L", weight: 200 }
