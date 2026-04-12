@@ -78,7 +78,6 @@ def find_stores_with_service(lat: float, lon: float, service: str,
 ## Currently Open Stores
 
 ```python
-import time
 import datetime
 
 def is_store_open(store_id: str) -> bool:
