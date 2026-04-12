@@ -10,11 +10,11 @@ Description: Learn how to use multi-document ACID transactions in MongoDB with t
 
 ## Overview
 
-MongoDB supports multi-document ACID transactions on replica sets and sharded clusters (MongoDB 4.0+). The .NET Driver exposes transactions through `IClientSession`. All operations within the session participate in the same transaction.
+MongoDB supports multi-document ACID transactions on replica sets (MongoDB 4.0+) and sharded clusters (MongoDB 4.2+). The .NET Driver exposes transactions through `IClientSession`. All operations within the session participate in the same transaction.
 
 ## Prerequisites
 
-- MongoDB 4.0+ replica set or sharded cluster.
+- MongoDB 4.0+ replica set or 4.2+ sharded cluster.
 - MongoDB .NET Driver 2.7+.
 
 ```bash
