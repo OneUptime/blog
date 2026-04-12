@@ -10,7 +10,7 @@ Description: Learn how MySQL 8's default caching_sha2_password plugin works and 
 
 ## What Changed in MySQL 8 Authentication
 
-MySQL 8.0 changed the default authentication plugin from `mysql_native_password` to `caching_sha2_password`. This new plugin uses SHA-256 hashing with a server-side cache for performance, providing stronger security than the older MD5-based `mysql_native_password`.
+MySQL 8.0 changed the default authentication plugin from `mysql_native_password` to `caching_sha2_password`. This new plugin uses SHA-256 hashing with a server-side cache for performance, providing stronger security than the older SHA-1-based `mysql_native_password`.
 
 This change breaks older client libraries and tools that do not support the new plugin, which is a common source of connection errors when upgrading to MySQL 8.
 
@@ -18,8 +18,8 @@ This change breaks older client libraries and tools that do not support the new 
 
 The plugin operates in two modes:
 
-1. **Fast authentication path** - If the user's password hash is cached in server memory from a previous successful authentication, MySQL uses a fast RSA-encrypted challenge-response. This requires either TLS/SSL or RSA key exchange.
-2. **Full authentication path** - On first login or after a server restart, the full SHA-256 password hash verification occurs. This also requires a secure channel (TLS or RSA).
+1. **Fast authentication path** - If the user's password hash is cached in server memory from a previous successful authentication, MySQL uses a fast SHA-256 scramble-based challenge-response. This does not require a secure channel, similar to how `mysql_native_password` works.
+2. **Full authentication path** - On first login or after a server restart (when the cache is empty), the server needs the cleartext password to verify the SHA-256 hash. This requires a secure channel (TLS or RSA key exchange) to transmit the password safely.
 
 ```sql
 -- Check the default authentication plugin
