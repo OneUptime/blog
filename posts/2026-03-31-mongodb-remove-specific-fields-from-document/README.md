@@ -101,7 +101,7 @@ When `role` is not `"admin"`, `internalNotes` is omitted from the output documen
 
 ## Removing Fields Based on Value
 
-Remove fields that have a null or empty value using `$$REMOVE`:
+Remove fields that have a null value by converting the document to key-value pairs, filtering, and reconstructing:
 
 ```javascript
 db.products.aggregate([
