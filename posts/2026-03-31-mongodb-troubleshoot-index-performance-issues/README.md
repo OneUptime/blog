@@ -24,14 +24,16 @@ Key fields to examine in the output:
 
 ```json
 {
+  "queryPlanner": {
+    "winningPlan": {
+      "stage": "COLLSCAN"
+    }
+  },
   "executionStats": {
     "nReturned": 5,
     "totalDocsExamined": 50000,
-    "totalKeysExamined": 50000,
+    "totalKeysExamined": 0,
     "executionTimeMillis": 320
-  },
-  "winningPlan": {
-    "stage": "COLLSCAN"
   }
 }
 ```
