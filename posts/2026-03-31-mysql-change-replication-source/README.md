@@ -40,16 +40,16 @@ START REPLICA;
 
 ## Setting Up Replication from a Binary Log Position
 
-When you have a mysqldump with `--master-data`, the dump includes the binary log coordinates:
+When you have a mysqldump with `--source-data` (called `--master-data` before MySQL 8.0.26), the dump includes the binary log coordinates:
 
 ```bash
-mysqldump --single-transaction --master-data=2 -u root -p mydb > mydb_backup.sql
+mysqldump --single-transaction --source-data=2 -u root -p mydb > mydb_backup.sql
 ```
 
 The dump file contains a comment like:
 
 ```text
--- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000010', MASTER_LOG_POS=1234;
+-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='mysql-bin.000010', SOURCE_LOG_POS=1234;
 ```
 
 Use those coordinates on the replica:
