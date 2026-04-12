@@ -75,7 +75,6 @@ For more complex setups, use Docker Compose:
 
 ```yaml
 # docker-compose.test.yml
-version: "3.8"
 services:
   mongodb:
     image: mongo:7.0
