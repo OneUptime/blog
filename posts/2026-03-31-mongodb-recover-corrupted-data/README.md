@@ -45,11 +45,11 @@ db.getCollectionNames().forEach(name => {
 })
 ```
 
-Run mongod with validation at startup:
+Check the server status for storage engine errors:
 
 ```bash
-# Check data files before starting
-mongod --dbpath /var/lib/mongodb --validate
+# Connect and check server status for storage engine issues
+mongosh --eval "printjson(db.serverStatus().wiredTiger)"
 ```
 
 ## Step 2: Attempt WiredTiger Repair
@@ -83,13 +83,17 @@ ls *.wt | head -20
 
 # Run WiredTiger verify on a specific table (advanced)
 # This requires the wt command-line tool
-wt -h /var/lib/mongodb verify collection-0-12345678
+wt -h /var/lib/mongodb verify table:collection-0-12345678
 ```
 
-Check WiredTiger error log:
+List WiredTiger metadata and diagnostic files:
 
 ```bash
-cat /var/lib/mongodb/WiredTiger.wt 2>/dev/null
+# WiredTiger.wt is a binary metadata table, not a text file
+# Use the wt tool to read metadata:
+wt -h /var/lib/mongodb list -v
+
+# List all WiredTiger-related files
 ls /var/lib/mongodb/WiredTiger*
 ```
 
@@ -152,18 +156,19 @@ sudo systemctl stop mongod
 # 2. Remove all data files
 sudo rm -rf /var/lib/mongodb/*
 
-# 3. Restore from the most recent backup
+# 3. Restore from the most recent backup (created with mongodump --oplog)
 mongorestore \
   --uri "mongodb://admin:password@localhost:27017/?authSource=admin" \
   --oplogReplay \
   --drop \
   /backup/latest-backup
 
-# 4. Apply oplog entries from backup time to now (PITR)
+# 4. For point-in-time recovery, use --oplogLimit to stop replay at a timestamp
 mongorestore \
   --uri "mongodb://admin:password@localhost:27017/?authSource=admin" \
   --oplogReplay \
-  /backup/oplog-since-backup
+  --oplogLimit "1609459200:1" \
+  /backup/latest-backup
 ```
 
 ## Step 7: Verify Recovery
