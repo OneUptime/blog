@@ -61,13 +61,14 @@ The `--batch` flag suppresses the MySQL table borders and uses tab delimiters. T
 ```bash
 mysql -u root -p mydb \
   --batch \
+  --silent \
   -e "SELECT 'id','name','email','created_at' UNION ALL SELECT id,name,email,created_at FROM customers" \
   | sed 's/\t/,/g' > /tmp/customers_with_header.csv
 ```
 
 ## Exporting with mysqldump for Structured CSV
 
-For tab-separated values that work well with spreadsheets:
+For structured CSV exports that include the schema:
 
 ```bash
 mysqldump \
