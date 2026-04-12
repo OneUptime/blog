@@ -14,7 +14,7 @@ Queryable Encryption (QE) is a MongoDB feature that allows client applications t
 
 ```mermaid
 flowchart LR
-    App[Application] -->|Encrypted data| Driver[MongoDB Driver]
+    App[Application] -->|Plaintext data| Driver[MongoDB Driver]
     Driver -->|Ciphertext only| Server[MongoDB Server]
     Server -->|Encrypted results| Driver
     Driver -->|Decrypted results| App
@@ -23,8 +23,8 @@ flowchart LR
 
 ## Requirements
 
-- MongoDB 7.0+ (or 6.0 Enterprise / Atlas)
-- MongoDB Node.js driver 5.x or later
+- MongoDB 7.0+ for equality queries (or 6.0 Enterprise / Atlas); MongoDB 8.0+ for range queries
+- MongoDB Node.js driver 6.x or later
 - A Key Management Service (AWS KMS, Azure Key Vault, GCP KMS, or local master key for development)
 - `mongodb-client-encryption` library
 
@@ -51,7 +51,7 @@ fs.writeFileSync("local_master_key.bin", localMasterKey);
 
 ```javascript
 const { MongoClient, Binary } = require("mongodb");
-const { ClientEncryption } = require("mongodb-client-encryption");
+const { ClientEncryption } = require("mongodb");
 const fs = require("fs");
 
 const localMasterKey = fs.readFileSync("local_master_key.bin");
@@ -259,7 +259,7 @@ sequenceDiagram
 
 ## Limitations
 
-- Queryable Encryption requires MongoDB 7.0+ or Atlas (6.0 Enterprise).
+- Queryable Encryption requires MongoDB 7.0+ or Atlas (6.0 Enterprise). Range queries require MongoDB 8.0+.
 - Encrypted fields cannot use text indexes, geospatial indexes, or array operators.
 - Only equality and range query types are supported on encrypted fields.
 - Aggregation pipelines can match on encrypted fields using `$match` with supported operators.
