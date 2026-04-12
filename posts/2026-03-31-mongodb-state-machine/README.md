@@ -19,7 +19,7 @@ A state machine constrains what states an entity can be in and which transitions
   "_id": "order-123",
   "status": "pending",
   "statusHistory": [
-    { "from": null, "to": "pending", "at": ISODate("2026-03-31T09:00:00Z"), "by": "system" }
+    { "to": "pending", "at": ISODate("2026-03-31T09:00:00Z"), "by": "system" }
   ],
   "updatedAt": ISODate("2026-03-31T09:00:00Z")
 }
@@ -152,7 +152,7 @@ db.orders.createIndex({ "status": 1, "updatedAt": 1 })
 
 ## Handling Concurrent Transitions
 
-Because `find_one_and_update` filters on `status`, two processes attempting the same transition simultaneously will result in only one succeeding. The second sees no matching document (the status already changed) and returns `null`. This makes the transition naturally idempotent.
+Because `find_one_and_update` filters on `status`, two processes attempting the same transition simultaneously will result in only one succeeding. The second sees no matching document (the status already changed) and returns `null`. This provides atomic mutual exclusion without application-level locking.
 
 ## Summary
 
