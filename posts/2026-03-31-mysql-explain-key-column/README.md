@@ -10,7 +10,7 @@ Description: Learn what the key, possible_keys, and key_len columns in MySQL EXP
 
 ## The key Column
 
-The `key` column in `EXPLAIN` shows the index MySQL actually chose for the access step. A value of `NULL` means no index was used and a full or index scan was performed.
+The `key` column in `EXPLAIN` shows the index MySQL actually chose for the access step. A value of `NULL` means no index was used and a full table scan was performed.
 
 ```sql
 EXPLAIN SELECT * FROM orders WHERE customer_id = 42 AND status = 'pending'\G
