@@ -22,7 +22,7 @@ Payment transaction storage has stricter requirements than typical application d
 {
   _id: "txn_01HW5X2N3M4P5Q6R7S8T9U",   // Prefixed, human-readable ID
   type: "charge",                          // charge | refund | capture | void
-  status: "succeeded",                     // pending | processing | succeeded | failed | refunded
+  status: "succeeded",                     // pending | processing | succeeded | failed | refunded | void
 
   // Financial data - store in smallest currency unit (cents)
   amount: 9999,                            // $99.99 in cents
@@ -71,7 +71,7 @@ Payment transaction storage has stricter requirements than typical application d
 // Lookup by idempotency key (deduplication)
 db.transactions.createIndex(
   { idempotencyKey: 1, merchantId: 1 },
-  { unique: true, sparse: true }
+  { unique: true, partialFilterExpression: { idempotencyKey: { $exists: true } } }
 )
 
 // Customer transaction history
