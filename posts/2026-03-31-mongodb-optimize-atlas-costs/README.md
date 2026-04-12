@@ -86,37 +86,20 @@ Auto-scaling ensures you only pay for the capacity you actually use.
 
 ## Step 4: Enable Compression to Reduce Storage Costs
 
-Compression directly reduces storage costs (billed per GB):
-
-```bash
-# Change cluster storage compression
-curl -u "PUBLIC_KEY:PRIVATE_KEY" \
-  --digest \
-  -X PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mongoDBMajorVersion": "7.0",
-    "replicationSpecs": [{
-      "regionConfigs": [{
-        "electableSpecs": {
-          "instanceSize": "M30",
-          "diskIOPS": 3000
-        }
-      }]
-    }]
-  }'
-```
-
-Enable zstd compression on collections for maximum storage reduction:
+Compression directly reduces storage costs (billed per GB). Enable zstd compression when creating collections for maximum storage reduction:
 
 ```javascript
-// On each collection
-db.runCommand({
-  collMod: "events",
-  validator: {},
+// Set zstd compression on new collections
+db.createCollection("events", {
   storageEngine: { wiredTiger: { configString: "block_compressor=zstd" } }
 });
+```
+
+For existing collections, set zstd as the default compressor and run `compact` to rewrite data with the new compression:
+
+```javascript
+// Compact an existing collection to apply the server default compressor
+db.runCommand({ compact: "events" });
 ```
 
 ## Step 5: Use Online Archive for Cold Data
@@ -158,7 +141,7 @@ Reduce retention where compliance allows:
 ```text
 Original retention:
 - Hourly: 2 days (keep)
-- Daily:  7 days -> 30 days (reduce to 7 if RPO allows)
+- Daily:  30 days -> 7 days (reduce if RPO allows)
 - Weekly: 8 weeks -> 4 weeks (reduce)
 - Monthly: 12 months -> 3 months (reduce)
 
