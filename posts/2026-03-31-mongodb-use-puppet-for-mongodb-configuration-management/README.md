@@ -41,8 +41,8 @@ class profile::mongodb (
     bind_ip => [$bind_ip],
     port    => $port,
     replset => $replset_name,
-    auth    => true,
-    ensure  => running,
+    auth           => true,
+    service_ensure => 'running',
   }
 
   class { 'mongodb::client': }
