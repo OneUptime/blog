@@ -51,10 +51,21 @@ Replace `node1:33061` with the actual hostname or IP address. Each node must hav
 
 ## Bootstrap the First Node
 
-On node1 only, bootstrap the group:
+On node1, create the replication user and configure the recovery channel before bootstrapping:
 
 ```sql
 -- Run on node1 first
+SET SQL_LOG_BIN = 0;
+CREATE USER 'repl'@'%' IDENTIFIED BY 'replPassword1!' REQUIRE SSL;
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
+FLUSH PRIVILEGES;
+SET SQL_LOG_BIN = 1;
+
+CHANGE REPLICATION SOURCE TO
+  SOURCE_USER='repl',
+  SOURCE_PASSWORD='replPassword1!'
+  FOR CHANNEL 'group_replication_recovery';
+
 SET GLOBAL group_replication_bootstrap_group = ON;
 START GROUP_REPLICATION;
 SET GLOBAL group_replication_bootstrap_group = OFF;
