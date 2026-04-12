@@ -67,6 +67,7 @@ PARTITION BY RANGE (YEAR(order_date))
     PARTITION p2022 VALUES LESS THAN (2023),
     PARTITION p2023 VALUES LESS THAN (2024),
     PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p2025 VALUES LESS THAN (2026),
     PARTITION p_future VALUES LESS THAN MAXVALUE
 );
 ```
@@ -119,17 +120,29 @@ DROP TABLE orders_old;
 
 ## Using pt-online-schema-change
 
-For minimal-downtime conversion on large tables:
+> **Note:** `pt-online-schema-change` does not support adding or modifying partitioning via `--alter`. The tool's documentation explicitly lists this as an unsupported operation. For partitioning conversions on large tables, use the create-copy-rename strategy described above instead.
+
+You can still use `pt-online-schema-change` to modify the primary key as a separate preparatory step:
 
 ```bash
 pt-online-schema-change \
-  --alter "DROP PRIMARY KEY, ADD PRIMARY KEY (order_id, order_date), \
-  PARTITION BY RANGE (YEAR(order_date)) \
-  (PARTITION p2022 VALUES LESS THAN (2023), \
-   PARTITION p2023 VALUES LESS THAN (2024), \
-   PARTITION p_future VALUES LESS THAN MAXVALUE)" \
+  --alter "DROP PRIMARY KEY, ADD PRIMARY KEY (order_id, order_date)" \
   D=mydb,t=orders \
   --execute
+```
+
+Then apply the partitioning with a standard `ALTER TABLE`:
+
+```sql
+ALTER TABLE orders
+PARTITION BY RANGE (YEAR(order_date))
+(
+    PARTITION p2022 VALUES LESS THAN (2023),
+    PARTITION p2023 VALUES LESS THAN (2024),
+    PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p2025 VALUES LESS THAN (2026),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
+);
 ```
 
 ## Summary
