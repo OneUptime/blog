@@ -113,7 +113,7 @@ SELECT MONTHNAME('2026-03-31');
 -- Switch to German
 SET lc_time_names = 'de_DE';
 SELECT MONTHNAME('2026-03-31');
--- Returns: 'Maerz'
+-- Returns: 'März'
 
 -- Reset to English
 SET lc_time_names = 'en_US';
