@@ -26,7 +26,7 @@ CREATE TABLE categories (
 );
 ```
 
-Root nodes have `parent_id = NULL`. Leaf nodes have a `parent_id` pointing to their parent row.
+Root nodes have `parent_id = NULL`. Non-root nodes have a `parent_id` pointing to their parent row.
 
 ## Inserting a Tree
 
