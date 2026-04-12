@@ -14,7 +14,7 @@ MySQL's built-in stopword list covers common English words, but many application
 
 ## Creating a Custom Stopword Table
 
-InnoDB reads stopwords from a regular MySQL table. The table must have a single `VARCHAR(30)` column named `value` and use the InnoDB engine.
+InnoDB reads stopwords from a regular MySQL table. The table must have a single `VARCHAR` column named `value` and use the InnoDB engine.
 
 ```sql
 CREATE DATABASE IF NOT EXISTS search_config;
@@ -62,10 +62,12 @@ ALTER TABLE docs DROP INDEX ft_content;
 ALTER TABLE docs ADD FULLTEXT INDEX ft_content (title, content);
 ```
 
-For tables with large amounts of data, prefer `OPTIMIZE TABLE` to avoid locking:
+Alternatively, you can use `OPTIMIZE TABLE` to rebuild full-text indexes. Set `innodb_optimize_fulltext_only` first so the operation targets the full-text index:
 
 ```sql
+SET GLOBAL innodb_optimize_fulltext_only = ON;
 OPTIMIZE TABLE docs;
+SET GLOBAL innodb_optimize_fulltext_only = OFF;
 ```
 
 ## Testing the Custom Stopwords
@@ -111,4 +113,4 @@ This is useful for testing new stopword lists before deploying them globally.
 
 ## Summary
 
-Custom stopwords let you exclude domain-specific common words from InnoDB full-text indexes. Create a table with a single `value VARCHAR(30)` column, populate it with your terms, then activate it using `innodb_ft_server_stopword_table`. Rebuild your full-text indexes after any change to the stopword configuration for the changes to take effect.
+Custom stopwords let you exclude domain-specific common words from InnoDB full-text indexes. Create a table with a single `value VARCHAR` column, populate it with your terms, then activate it using `innodb_ft_server_stopword_table`. Rebuild your full-text indexes after any change to the stopword configuration for the changes to take effect.
