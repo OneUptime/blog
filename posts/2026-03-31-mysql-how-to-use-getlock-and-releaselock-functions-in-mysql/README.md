@@ -55,30 +55,35 @@ SELECT RELEASE_LOCK('my_process_lock');
 ## Checking Lock Ownership
 
 ```sql
--- Returns 1 if current session holds the named lock
-SELECT IS_USED_LOCK('my_process_lock');  -- Returns connection ID of owner, or NULL
+-- Check who holds the lock
+SELECT IS_USED_LOCK('my_process_lock');  -- Returns connection ID of owner, or NULL if free
 SELECT IS_FREE_LOCK('my_process_lock');  -- Returns 1 if free, 0 if held
 ```
 
 ## Advisory Lock Pattern for Cron Jobs
 
-Prevent multiple instances of a cron job from running simultaneously:
+Prevent multiple instances of a cron job from running simultaneously using a scheduled event:
 
 ```sql
--- At the start of the cron job
-SELECT GET_LOCK('cron_nightly_cleanup', 0) INTO @lock_acquired;
+DELIMITER //
+CREATE EVENT cron_nightly_cleanup
+ON SCHEDULE EVERY 1 DAY STARTS '2025-01-01 02:00:00'
+DO
+BEGIN
+  DECLARE lock_acquired INT;
 
--- If 0, another instance is running
-IF @lock_acquired = 0 THEN
-  SELECT 'Another instance is running, skipping' AS status;
-ELSE
-  -- Perform the cleanup
-  DELETE FROM temp_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY);
-  SELECT ROW_COUNT() AS deleted_rows;
+  SELECT GET_LOCK('cron_nightly_cleanup', 0) INTO lock_acquired;
 
-  -- Release the lock
-  SELECT RELEASE_LOCK('cron_nightly_cleanup');
-END IF;
+  -- If 0, another instance is running
+  IF lock_acquired = 1 THEN
+    -- Perform the cleanup
+    DELETE FROM temp_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY);
+
+    -- Release the lock
+    SELECT RELEASE_LOCK('cron_nightly_cleanup');
+  END IF;
+END //
+DELIMITER ;
 ```
 
 ## Using Advisory Locks in a Stored Procedure
