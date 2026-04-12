@@ -73,10 +73,10 @@ WHERE event_date IS NOT NULL AND event_date != '';
 -- Step 3: verify no NULLs from failed conversions
 SELECT COUNT(*) FROM events WHERE event_date IS NOT NULL AND event_date_new IS NULL;
 
--- Step 4: when satisfied, rename and drop old column
+-- Step 4: when satisfied, drop old column and rename new one
 ALTER TABLE events
-  CHANGE COLUMN event_date_new event_date DATE NOT NULL,
-  DROP COLUMN event_date_old;
+  DROP COLUMN event_date,
+  CHANGE COLUMN event_date_new event_date DATE NOT NULL;
 ```
 
 ## Storing Timezone-Aware Timestamps
