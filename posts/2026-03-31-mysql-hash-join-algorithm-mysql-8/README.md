@@ -70,22 +70,22 @@ JOIN regions r ON c.region_code = r.code;
 
 ## Controlling Hash Join Behavior
 
-You can control hash join via the optimizer switch:
+You can control hash join via the optimizer switch. Note that the `hash_join` flag only worked in MySQL 8.0.18. From MySQL 8.0.19 onward, use the `block_nested_loop` flag instead, which controls hash join behavior (block nested-loop join itself was removed in 8.0.20):
 
 ```sql
--- Check current hash join setting
-SELECT @@optimizer_switch LIKE '%hash_join=on%';
+-- Disable hash join globally (MySQL 8.0.19+)
+SET optimizer_switch = 'block_nested_loop=off';
 
--- Disable hash join globally (not recommended for production)
-SET optimizer_switch = 'hash_join=off';
+-- Re-enable hash join globally
+SET optimizer_switch = 'block_nested_loop=on';
 
--- Disable for a single query using optimizer hint
-SELECT /*+ NO_HASH_JOIN(c, r) */ c.name, r.name AS region
+-- Disable hash join for a single query using optimizer hint (MySQL 8.0.20+)
+SELECT /*+ NO_BNL(c, r) */ c.name, r.name AS region
 FROM customers c
 JOIN regions r ON c.region_code = r.code;
 
--- Force hash join for a single query
-SELECT /*+ HASH_JOIN(c, r) */ c.name, r.name AS region
+-- Encourage hash join for a single query
+SELECT /*+ BNL(c, r) */ c.name, r.name AS region
 FROM customers c
 JOIN regions r ON c.region_code = r.code;
 ```
@@ -100,9 +100,15 @@ SHOW VARIABLES LIKE 'join_buffer_size';
 
 -- Increase for the current session
 SET SESSION join_buffer_size = 64 * 1024 * 1024;  -- 64MB
+```
 
--- Check if hash join spilled to disk
-SHOW STATUS LIKE 'Created_tmp_disk_tables';
+To check if a hash join spilled to disk, use `EXPLAIN ANALYZE` which shows actual execution details including spill information in the output:
+
+```sql
+EXPLAIN ANALYZE
+SELECT c.name, r.name AS region
+FROM customers c
+JOIN regions r ON c.region_code = r.code;
 ```
 
 ## Multi-Table Hash Joins
