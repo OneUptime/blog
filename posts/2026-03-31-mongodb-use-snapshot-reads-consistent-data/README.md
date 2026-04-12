@@ -51,7 +51,7 @@ async function getConsistentBalances(clientId) {
       // Both reads see the same database snapshot
       const account = await accounts.findOne(
         { clientId },
-        { session, readConcern: { level: "snapshot" } }
+        { session }
       );
 
       const recentTx = await transactions.find(
@@ -75,17 +75,17 @@ async function getConsistentBalances(clientId) {
 
 ## Using Snapshot Reads Outside Transactions (MongoDB 5.0+)
 
-Starting in MongoDB 5.0, you can use `snapshot` read concern for certain read-only operations outside of transactions by using a causally consistent session.
+Starting in MongoDB 5.0, you can use `snapshot` read concern for certain read-only operations outside of transactions by using a session.
 
 ```javascript
-const session = client.startSession({ causalConsistency: true });
+const session = client.startSession();
 
 const orders = await collection.find(
   { status: "pending" },
   { session, readConcern: { level: "snapshot" } }
 ).toArray();
 
-session.endSession();
+await session.endSession();
 ```
 
 ## Python Example with Snapshot Read
