@@ -12,7 +12,7 @@ MySQL supports binary log encryption using the keyring infrastructure. When enab
 
 ## How Binary Log Encryption Works
 
-MySQL encrypts binary logs using AES-256-CBC. Each binary log file has its own file-level encryption key, which is itself encrypted by a master key stored in the keyring plugin. Only a MySQL server with access to the keyring can decrypt the binary logs.
+MySQL encrypts binary log data using AES-256-CTR, with file passwords encrypted using AES-256-CBC. Each binary log file has its own file password, which is itself encrypted by a master key stored in the keyring. Only a MySQL server with access to the keyring can decrypt the binary logs.
 
 ## Enabling Binary Log Encryption
 
@@ -103,7 +103,7 @@ Rotate the binary log master key periodically for security:
 ALTER INSTANCE ROTATE BINLOG MASTER KEY;
 ```
 
-After rotation, existing log files remain encrypted with the old key. New log files use the new key. MySQL retains old keys to decrypt older files.
+After rotation, the file passwords for all existing encrypted binary log files and relay log files are re-encrypted with the new master key. Old master keys that are no longer in use are removed from the keyring.
 
 ## Backing Up the Keyring
 
@@ -135,7 +135,7 @@ If `mysqlbinlog` returns an error when trying to read an encrypted log:
 ```bash
 # Error: "File is encrypted but keyring plugin is not loaded"
 # Solution: ensure keyring plugin is loaded
-mysql -u root -p -e "SELECT * FROM performance_schema.keyring_component_status;"
+mysql -u root -p -e "SELECT plugin_name, plugin_status FROM information_schema.plugins WHERE plugin_name LIKE 'keyring%';"
 
 # If using keyring_file, verify the keyring file exists
 ls -la /var/lib/mysql/keyring/
