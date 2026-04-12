@@ -47,8 +47,8 @@ On a table with 50 columns, fetching 5 columns of interest via `SELECT *` transf
 
 ```sql
 -- Measure the data volume difference
-SELECT SQL_NO_CACHE id, status, total FROM orders LIMIT 1000;
-SELECT SQL_NO_CACHE * FROM orders LIMIT 1000;
+SELECT id, status, total FROM orders LIMIT 1000;
+SELECT * FROM orders LIMIT 1000;
 ```
 
 The second query's result set is significantly larger, increasing the time spent in network transfer.
