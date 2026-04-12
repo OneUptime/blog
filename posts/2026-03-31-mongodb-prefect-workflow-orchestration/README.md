@@ -86,23 +86,18 @@ if __name__ == "__main__":
 
 ## Scheduling the Flow
 
-Deploy the flow with a schedule using Prefect's deployment system:
+Deploy the flow with a schedule using `flow.serve()`:
 
 ```python
-from prefect.deployments import Deployment
-from prefect.server.schemas.schedules import CronSchedule
-
-deployment = Deployment.build_from_flow(
-    flow=process_orders,
-    name="daily-order-run",
-    schedule=CronSchedule(cron="0 2 * * *", timezone="UTC"),
-    parameters={"db_name": "myDatabase"},
-)
-
-deployment.apply()
+if __name__ == "__main__":
+    process_orders.serve(
+        name="daily-order-run",
+        cron="0 2 * * *",
+        parameters={"db_name": "myDatabase"},
+    )
 ```
 
-This schedules the flow to run at 2 AM UTC every day.
+This creates a deployment scheduled to run at 2 AM UTC every day and starts a long-lived process that executes scheduled flow runs.
 
 ## Using Prefect Blocks for MongoDB Credentials
 
