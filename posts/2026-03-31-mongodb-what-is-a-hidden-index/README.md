@@ -71,16 +71,17 @@ db.orders.getIndexes()
 db.orders.find({ userId: "abc" }).explain("executionStats")
 ```
 
-## Using $hint to Force a Hidden Index
+## Hidden Indexes and $hint
 
-Even though the query planner ignores hidden indexes, you can force their use with `$hint` for testing:
+You cannot use `hint()` to force the query planner to use a hidden index. If you try, MongoDB returns an error, the same as if you hinted a nonexistent index:
 
 ```javascript
-// Test performance of the hidden index before unhiding
+// This will return an error - hint does not work on hidden indexes
 db.orders.find({ userId: "abc" }).hint({ userId: 1 }).explain("executionStats")
+// Error: hint provided does not correspond to an existing index
 ```
 
-This is useful for confirming the index would provide a benefit before unhiding it.
+To test whether the index would improve a query, temporarily unhide it, run your explain, and then hide it again.
 
 ## Hidden Indexes and Write Overhead
 
