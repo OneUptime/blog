@@ -110,10 +110,10 @@ SELECT CONVERT(binary_data USING utf8mb4) AS text_data
 FROM blob_storage;
 ```
 
-## CONVERT() for String Padding
+## CONVERT() for String Truncation
 
 ```sql
--- CONVERT with CHAR length truncates or pads
+-- CONVERT with CHAR length truncates to the specified length
 SELECT CONVERT('Hello World', CHAR(5));  -- Output: Hello
 ```
 
