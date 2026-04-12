@@ -25,7 +25,6 @@ from flask import Flask, request, jsonify
 from flask_pymongo import PyMongo
 from bson import ObjectId
 from bson.json_util import dumps
-import json
 import os
 
 app    = Flask(__name__)
@@ -41,7 +40,7 @@ mongo = PyMongo(app)
 def list_products():
     category = request.args.get('category')
     query    = {'category': category} if category else {}
-    products = list(mongo.db.products.find(query, {'__v': 0}))
+    products = list(mongo.db.products.find(query))
     return dumps(products), 200, {'Content-Type': 'application/json'}
 
 
