@@ -37,9 +37,6 @@ shards:
 active mongoses:
   "7.0.4" : 2
 
-autosplit:
-  Currently enabled: yes
-
 balancer:
   Currently enabled: yes
   Currently running: no
@@ -73,17 +70,21 @@ sh.status()
 ```javascript
 use config
 
-// Total chunk count per collection
+// Total chunk count per collection (MongoDB 5.0+ uses uuid instead of ns)
 db.chunks.aggregate([
-  { $group: { _id: "$ns", total: { $sum: 1 } } },
+  { $lookup: { from: "collections", localField: "uuid", foreignField: "uuid", as: "coll" } },
+  { $unwind: "$coll" },
+  { $group: { _id: "$coll._id", total: { $sum: 1 } } },
   { $sort: { total: -1 } }
 ])
 
 // Distribution per shard per collection
 db.chunks.aggregate([
+  { $lookup: { from: "collections", localField: "uuid", foreignField: "uuid", as: "coll" } },
+  { $unwind: "$coll" },
   {
     $group: {
-      _id: { ns: "$ns", shard: "$shard" },
+      _id: { ns: "$coll._id", shard: "$shard" },
       count: { $sum: 1 }
     }
   },
@@ -92,7 +93,9 @@ db.chunks.aggregate([
 
 // Find the collection with the most uneven distribution
 db.chunks.aggregate([
-  { $group: { _id: { ns: "$ns", shard: "$shard" }, count: { $sum: 1 } } },
+  { $lookup: { from: "collections", localField: "uuid", foreignField: "uuid", as: "coll" } },
+  { $unwind: "$coll" },
+  { $group: { _id: { ns: "$coll._id", shard: "$shard" }, count: { $sum: 1 } } },
   {
     $group: {
       _id: "$_id.ns",
@@ -138,7 +141,7 @@ use config
 
 // View shard key and balancing setting per collection
 db.collections.find(
-  { dropped: false },
+  {},
   { _id: 1, key: 1, noBalance: 1, unique: 1 }
 ).forEach(c => printjson(c))
 
@@ -180,14 +183,16 @@ function shardingHealthCheck() {
   }
 
   // Shard states
-  use config
-  db.shards.find().forEach(s => {
+  var configDb = db.getSiblingDB('config')
+  configDb.shards.find().forEach(s => {
     result.shards.push({ id: s._id, state: s.state, draining: s.draining || false })
   })
 
   // Collections with imbalance > 10 chunks
-  db.chunks.aggregate([
-    { $group: { _id: { ns: "$ns", shard: "$shard" }, count: { $sum: 1 } } },
+  configDb.chunks.aggregate([
+    { $lookup: { from: "collections", localField: "uuid", foreignField: "uuid", as: "coll" } },
+    { $unwind: "$coll" },
+    { $group: { _id: { ns: "$coll._id", shard: "$shard" }, count: { $sum: 1 } } },
     { $group: { _id: "$_id.ns", max: { $max: "$count" }, min: { $min: "$count" } } },
     { $project: { imbalance: { $subtract: ["$max", "$min"] } } },
     { $match: { imbalance: { $gt: 10 } } }
