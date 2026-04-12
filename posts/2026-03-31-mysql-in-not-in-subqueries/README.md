@@ -48,7 +48,7 @@ CREATE TABLE products (
 
 CREATE TABLE sale_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    product_id INT NOT NULL,
+    product_id INT,
     discount_pct INT
 );
 
