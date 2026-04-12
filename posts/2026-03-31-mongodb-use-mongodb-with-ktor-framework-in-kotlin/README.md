@@ -62,10 +62,11 @@ fun main() {
 ```kotlin
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import org.bson.codecs.pojo.annotations.BsonId
 
 @Serializable
 data class Product(
-    @SerialName("_id") val id:       String? = null,
+    @BsonId @SerialName("_id") val id: String? = null,
     val name:     String,
     val price:    Double,
     val category: String
