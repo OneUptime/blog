@@ -40,12 +40,12 @@ Create a CA, server cert, and client cert:
 # 1. Create CA
 openssl genrsa -out ca.key 4096
 openssl req -new -x509 -days 3650 -key ca.key -out ca.crt \
-  -subj "/CN=MongoDB-CA/O=MyOrg/C=US"
+  -subj "/C=US/O=MyOrg/CN=MongoDB-CA"
 
 # 2. Create server certificate
 openssl genrsa -out server.key 4096
 openssl req -new -key server.key -out server.csr \
-  -subj "/CN=mongodb.example.com/O=MyOrg/OU=Servers/C=US"
+  -subj "/C=US/O=MyOrg/OU=Servers/CN=mongodb.example.com"
 openssl x509 -req -days 365 -in server.csr \
   -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
 cat server.crt server.key > server.pem
@@ -53,7 +53,7 @@ cat server.crt server.key > server.pem
 # 3. Create client certificate for a user
 openssl genrsa -out client-alice.key 4096
 openssl req -new -key client-alice.key -out client-alice.csr \
-  -subj "/CN=alice/O=MyOrg/OU=Clients/C=US"
+  -subj "/C=US/O=MyOrg/OU=Clients/CN=alice"
 openssl x509 -req -days 365 -in client-alice.csr \
   -CA ca.crt -CAkey ca.key -CAcreateserial -out client-alice.crt
 cat client-alice.crt client-alice.key > client-alice.pem
@@ -128,8 +128,6 @@ db.auth({ mechanism: "MONGODB-X509" })
 
 ```javascript
 const { MongoClient } = require("mongodb")
-const fs = require("fs")
-
 const client = new MongoClient("mongodb://mongodb.example.com:27017/", {
   tls: true,
   tlsCAFile: "/etc/ssl/mongodb/ca.crt",
@@ -158,7 +156,7 @@ Each replica set member authenticates to other members using its certificate. Th
 ```bash
 # Member cert - note matching O and OU with the server cert
 openssl req -new -key member.key -out member.csr \
-  -subj "/CN=rs-member-2/O=MyOrg/OU=Servers/C=US"
+  -subj "/C=US/O=MyOrg/OU=Servers/CN=rs-member-2"
 ```
 
 ```yaml
