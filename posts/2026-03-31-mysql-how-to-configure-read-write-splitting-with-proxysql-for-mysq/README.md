@@ -40,7 +40,7 @@ SAVE MYSQL SERVERS TO DISK;
 
 ## Configuring the Application User
 
-Set the application user's default hostgroup to the write group. Add a separate read-only user pointing to the read group for explicit separation:
+Set the application user's default hostgroup to the write group. Query rules will handle routing reads to the replica hostgroup:
 
 ```sql
 INSERT INTO mysql_users (username, password, default_hostgroup) VALUES
@@ -121,7 +121,7 @@ For sessions that mix reads and writes (e.g., read after write), use transaction
 
 ```sql
 UPDATE global_variables
-SET variable_value=1
+SET variable_value='1'
 WHERE variable_name='mysql-autocommit_false_is_transaction';
 
 LOAD MYSQL VARIABLES TO RUNTIME;
@@ -133,9 +133,10 @@ This ensures queries inside a transaction all go to the primary.
 ## Monitoring Rule Hit Counts
 
 ```sql
-SELECT rule_id, hits, destination_hostgroup
-FROM mysql_query_rules
-ORDER BY rule_id;
+SELECT s.rule_id, s.hits, r.destination_hostgroup
+FROM stats_mysql_query_rules s
+JOIN runtime_mysql_query_rules r USING (rule_id)
+ORDER BY s.rule_id;
 ```
 
 ## Summary
