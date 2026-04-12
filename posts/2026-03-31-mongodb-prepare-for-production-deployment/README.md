@@ -56,8 +56,6 @@ security:
 
 storage:
   dbPath: /var/lib/mongodb
-  journal:
-    enabled: true
   wiredTiger:
     engineConfig:
       cacheSizeGB: 8  # Set to ~50% of available RAM
@@ -94,7 +92,8 @@ net.core.somaxconn=65535
 # Apply settings
 sudo sysctl -p
 
-# Disable transparent huge pages (THP)
+# Disable transparent huge pages (THP) — MongoDB 7.0 and earlier only.
+# MongoDB 8.0+ recommends keeping THP enabled (upgraded TCMalloc benefits from it).
 # Add to /etc/rc.local or systemd service
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
 echo never > /sys/kernel/mm/transparent_hugepage/defrag
