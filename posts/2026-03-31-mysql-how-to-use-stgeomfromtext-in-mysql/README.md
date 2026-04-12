@@ -32,10 +32,10 @@ Aliases: `ST_GeometryFromText()`, `GeomFromText()` (deprecated)
 
 ```sql
 SELECT ST_GeomFromText('POINT(10.5 20.3)') AS pt;
-SELECT ST_GeomFromText('POINT(-73.9857 40.7484)', 4326) AS nyc_point;
+SELECT ST_GeomFromText('POINT(40.7484 -73.9857)', 4326) AS nyc_point;
 ```
 
-The order is `POINT(x y)` where x=longitude and y=latitude for SRID 4326.
+For SRID 4326 in MySQL 8.0, the axis order follows the SRS definition: `POINT(latitude longitude)`.
 
 ### LINESTRING
 
@@ -77,9 +77,9 @@ CREATE TABLE stores (
 );
 
 INSERT INTO stores (name, location) VALUES
-  ('Downtown Store',    ST_GeomFromText('POINT(-73.9857 40.7484)', 4326)),
-  ('Uptown Branch',     ST_GeomFromText('POINT(-73.9654 40.7823)', 4326)),
-  ('Brooklyn Location', ST_GeomFromText('POINT(-73.9442 40.6501)', 4326));
+  ('Downtown Store',    ST_GeomFromText('POINT(40.7484 -73.9857)', 4326)),
+  ('Uptown Branch',     ST_GeomFromText('POINT(40.7823 -73.9654)', 4326)),
+  ('Brooklyn Location', ST_GeomFromText('POINT(40.6501 -73.9442)', 4326));
 ```
 
 ## Converting Back with ST_AsText()
@@ -93,9 +93,9 @@ FROM stores;
 +-------------------+----------------------------+
 | name              | wkt                        |
 +-------------------+----------------------------+
-| Downtown Store    | POINT(-73.9857 40.7484)    |
-| Uptown Branch     | POINT(-73.9654 40.7823)    |
-| Brooklyn Location | POINT(-73.9442 40.6501)    |
+| Downtown Store    | POINT(40.7484 -73.9857)    |
+| Uptown Branch     | POINT(40.7823 -73.9654)    |
+| Brooklyn Location | POINT(40.6501 -73.9442)    |
 +-------------------+----------------------------+
 ```
 
@@ -108,7 +108,7 @@ SELECT
   name,
   ST_Distance_Sphere(
     location,
-    ST_GeomFromText('POINT(-73.9857 40.7484)', 4326)
+    ST_GeomFromText('POINT(40.7484 -73.9857)', 4326)
   ) AS dist_meters
 FROM stores
 ORDER BY dist_meters;
@@ -121,7 +121,7 @@ SELECT name
 FROM stores
 WHERE ST_Within(
   location,
-  ST_GeomFromText('POLYGON((-74.02 40.70, -73.93 40.70, -73.93 40.78, -74.02 40.78, -74.02 40.70))', 4326)
+  ST_GeomFromText('POLYGON((40.70 -74.02, 40.70 -73.93, 40.78 -73.93, 40.78 -74.02, 40.70 -74.02))', 4326)
 );
 ```
 
@@ -143,7 +143,7 @@ If the WKT string is invalid:
 
 ```sql
 SELECT ST_GeomFromText('POINT(invalid)');
--- ERROR 3037: Invalid GIS data provided to function st_geometryfromtext.
+-- ERROR 3037 (22023): Invalid GIS data provided to function st_geomfromtext.
 ```
 
 Always validate WKT input before passing it to `ST_GeomFromText()`.
