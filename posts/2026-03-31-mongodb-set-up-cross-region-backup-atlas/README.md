@@ -109,8 +109,8 @@ import json, sys
 data = json.load(sys.stdin)
 for s in data['results']:
     print(f'Snapshot: {s[\"id\"]} | {s[\"createdAt\"]}')
-    for copy in s.get('copyRegion', []):
-        print(f'  Copy in: {copy.get(\"regionName\")} | {copy.get(\"status\")}')
+    for region in s.get('copyRegions', []):
+        print(f'  Copy in: {region}')
 "
 ```
 
