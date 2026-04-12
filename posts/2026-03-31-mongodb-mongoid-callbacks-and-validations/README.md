@@ -60,6 +60,7 @@ class Article
   include Mongoid::Timestamps
 
   field :title,      type: String
+  field :body,       type: String
   field :slug,       type: String
   field :word_count, type: Integer
   field :published_at, type: Time
@@ -92,10 +93,10 @@ end
 ## Skipping Callbacks
 
 ```ruby
-# Skip all callbacks
-article.timeless.save
+# Persist without running callbacks (atomic update)
+article.set(title: 'New Title')
 
-# Skip validations
+# Skip validations only (callbacks still run)
 article.save(validate: false)
 ```
 
@@ -108,7 +109,7 @@ after_save  :reindex_search,     unless: :draft?
 
 ## Callback Chains and Halt
 
-Returning `false` (or `throw :abort` in Rails 5+) from a `before_*` callback halts the chain and prevents saving:
+In Mongoid 7+ (Rails 5.1+), calling `throw :abort` from a `before_*` callback halts the chain and prevents saving:
 
 ```ruby
 before_destroy do
