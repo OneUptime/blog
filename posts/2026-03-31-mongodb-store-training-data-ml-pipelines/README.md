@@ -29,7 +29,7 @@ For a text classification dataset:
   "metadata": {
     "source": "product-reviews",
     "language": "en",
-    "wordCount": 11
+    "wordCount": 9
   }
 }
 ```
@@ -38,7 +38,7 @@ For a text classification dataset:
 
 ```python
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timezone
 
 client = MongoClient(MONGODB_URI)
 db = client["ml_data"]
@@ -52,7 +52,7 @@ samples = [
         "label": "positive",
         "labelConfidence": 0.99,
         "annotatedBy": "human",
-        "annotatedAt": datetime.utcnow(),
+        "annotatedAt": datetime.now(timezone.utc),
         "metadata": {"source": "product-reviews", "language": "en"}
     },
     # ... more samples
@@ -72,7 +72,7 @@ datasets = db["datasets"]
 datasets.insert_one({
     "name": "sentiment-classifier",
     "version": "v2.1",
-    "createdAt": datetime.utcnow(),
+    "createdAt": datetime.now(timezone.utc),
     "description": "Added 5000 neutral examples from Q1 reviews",
     "stats": {
         "train": 40000,
@@ -105,6 +105,7 @@ print(f"Loaded {len(texts)} training samples")
 ## Batch Loading for Training with PyTorch
 
 ```python
+from pymongo import MongoClient
 import torch
 from torch.utils.data import IterableDataset
 
