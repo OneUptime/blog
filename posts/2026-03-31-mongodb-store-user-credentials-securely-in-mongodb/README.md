@@ -51,7 +51,7 @@ async function verifyCredentials(email, password) {
 
   if (!user) {
     // Use constant-time comparison to prevent timing attacks
-    await bcrypt.compare(password, "$2b$12$invalidHashToPreventTimingAttack000000")
+    await bcrypt.compare(password, "$2b$12$invalidHashForTimingAttackProtection.0000000000000000")
     return null
   }
 
