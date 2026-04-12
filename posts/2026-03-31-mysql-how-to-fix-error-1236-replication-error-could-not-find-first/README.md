@@ -65,16 +65,21 @@ Output:
 -- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000042', MASTER_LOG_POS=154;
 ```
 
-On the replica, stop replication and restore:
+On the replica, stop replication first:
+
+```sql
+STOP SLAVE;
+```
+
+Then restore the dump:
 
 ```bash
 mysql -u root -p < full_backup.sql
 ```
 
-Then reset replication with the new position:
+Then reset replication and configure the new position:
 
 ```sql
-STOP SLAVE;
 RESET SLAVE;
 CHANGE MASTER TO
   MASTER_HOST='primary_host',
