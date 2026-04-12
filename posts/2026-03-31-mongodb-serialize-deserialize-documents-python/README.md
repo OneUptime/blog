@@ -108,7 +108,7 @@ class MongoJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 # In a Flask route
-from flask import Flask, jsonify
+from flask import Flask
 app = Flask(__name__)
 
 @app.route("/products/<product_id>")
@@ -125,31 +125,46 @@ def get_product(product_id):
 ## Using Pydantic for Document Validation and Serialization
 
 ```python
-from pydantic import BaseModel, Field
+from typing import Any
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
+from pydantic import GetCoreSchemaHandler
+from pydantic_core import core_schema
 from bson import ObjectId
 from datetime import datetime
 
 class PyObjectId(ObjectId):
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        return core_schema.no_info_plain_validator_function(
+            cls.validate,
+            serialization=core_schema.to_string_ser_schema(),
+        )
 
     @classmethod
-    def validate(cls, v):
+    def validate(cls, v: Any) -> ObjectId:
+        if isinstance(v, ObjectId):
+            return v
         if not ObjectId.is_valid(v):
             raise ValueError("Invalid ObjectId")
         return ObjectId(v)
 
 class ProductModel(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
+
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     name: str
     price: float
     qty: int
     created_at: datetime
 
-    class Config:
-        json_encoders = {ObjectId: str, datetime: lambda v: v.isoformat()}
-        populate_by_name = True
+    @field_serializer("created_at")
+    def serialize_datetime(self, v: datetime) -> str:
+        return v.isoformat()
 
 product = ProductModel(**db.products.find_one({"name": "Wireless Headphones"}))
 print(product.model_dump_json())
