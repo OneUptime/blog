@@ -79,14 +79,14 @@ db.users.find({ phone: { $exists: false } });
 
 ## Sparse Indexes for Null-Heavy Collections
 
-If most documents have `null` or a missing field, a standard index stores a key for every null/missing document, wasting space. Use a sparse index to only index documents where the field exists and is not null:
+If most documents have a missing field, a standard index stores a key for every missing document (treating it as null), wasting space. Use a sparse index to only index documents where the field exists, including those with an explicit null value:
 
 ```javascript
-// Sparse index - only indexes documents where deletedAt exists and is not null
+// Sparse index - only indexes documents where deletedAt exists (including null values), skips documents where the field is missing entirely
 db.users.createIndex({ deletedAt: 1 }, { sparse: true });
 ```
 
-Note: sparse indexes are not used for queries that explicitly check for null or missing values. They help for queries filtering on non-null values only.
+Note: sparse indexes may not be selected for queries that need to match missing fields (like `{ deletedAt: null }`) because the index does not contain entries for documents where the field is absent, which would produce incomplete results.
 
 ## Partial Index for Active Records
 
