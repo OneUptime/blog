@@ -111,8 +111,8 @@ public class ProductRepository implements PanacheMongoRepository<Product> {
     }
 
     public void restock(String category, int additionalStock) {
-        update("stock = stock + ?1 where category = ?2",
-            additionalStock, category);
+        update("{'$inc': {'stock': ?1}}", additionalStock)
+            .where("category", category);
     }
 }
 ```
