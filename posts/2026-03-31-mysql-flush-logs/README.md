@@ -124,7 +124,7 @@ A standard backup workflow uses `FLUSH LOGS` to mark a clean binary log boundary
 FLUSH BINARY LOGS;
 
 -- Record the current binary log position
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 
 -- ... run mysqldump or physical backup ...
 ```
