@@ -23,7 +23,7 @@ On the Kerberos KDC, create a service principal for each `mongod` host:
 
 ```bash
 # On an Active Directory domain controller (PowerShell)
-setspn -A mongodb/mongod1.example.com@EXAMPLE.COM mongod1$
+setspn -S mongodb/mongod1.example.com mongod1$
 
 # For MIT Kerberos
 kadmin.local
