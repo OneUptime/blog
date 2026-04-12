@@ -23,9 +23,9 @@ npm install mongoose
 ```typescript
 // src/lib/server/db.ts
 import mongoose from 'mongoose';
+import { MONGODB_URI } from '$env/static/private';
 
-const MONGODB_URI = process.env.MONGODB_URI!;
-let   connected   = false;
+let connected = false;
 
 export async function connectDB(): Promise<void> {
   if (connected || mongoose.connection.readyState === 1) return;
@@ -38,7 +38,7 @@ export async function connectDB(): Promise<void> {
 
 ```typescript
 // src/lib/server/models/product.ts
-import mongoose, { Schema, model, models } from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
 export interface IProduct {
   _id:      string;
@@ -76,7 +76,8 @@ export const load: PageServerLoad = async () => {
 ```svelte
 <!-- src/routes/products/+page.svelte -->
 <script lang="ts">
-  export let data: { products: { _id: string; name: string; price: number }[] };
+  import type { PageProps } from './$types';
+  let { data }: PageProps = $props();
 </script>
 
 <h1>Products</h1>
@@ -105,7 +106,7 @@ export const actions: Actions = {
       price:    Number(data.get('price')),
       category: data.get('category') as string,
     });
-    throw redirect(303, '/products');
+    redirect(303, '/products');
   },
 };
 ```
