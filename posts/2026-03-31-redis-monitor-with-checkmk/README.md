@@ -23,7 +23,7 @@ omd create mysite
 omd start mysite
 
 # Access UI at http://localhost/mysite
-# Default credentials: omdadmin / omd
+# Login as cmkadmin with the password shown during site creation
 ```
 
 ## Install Checkmk Agent on Redis Host
@@ -69,13 +69,13 @@ ls /usr/lib/check_mk_agent/plugins/ | grep redis
 chmod +x /usr/lib/check_mk_agent/plugins/mk_redis
 ```
 
-The `mk_redis` plugin collects data from `redis-cli INFO all` and passes it to the Checkmk agent.
+The `mk_redis` plugin collects data from `redis-cli info` and passes it to the Checkmk agent.
 
 ## Discover Services in Checkmk
 
 ```bash
 # In the Checkmk UI or via CLI
-cmk --discover redis-server-01
+cmk -vI redis-server-01
 
 # Or use the web UI:
 # Setup > Hosts > Service discovery > redis-server-01 > Run discovery
