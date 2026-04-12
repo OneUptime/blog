@@ -25,7 +25,7 @@ SELECT @@sql_mode;
 SHOW VARIABLES LIKE 'sql_mode';
 ```
 
-If `NO_ZERO_DATE` or `STRICT_TRANS_TABLES` is present, zero dates and out-of-range values will be rejected.
+If both `NO_ZERO_DATE` and `STRICT_TRANS_TABLES` are present, zero dates will be rejected with an error. With `NO_ZERO_DATE` alone, zero dates produce a warning but are still inserted. `STRICT_TRANS_TABLES` on its own rejects out-of-range values.
 
 ## Fix: Use the Correct Date Format
 
@@ -49,7 +49,7 @@ If your application sends zero dates from legacy code, either fix the data or al
 
 ```sql
 -- Remove NO_ZERO_DATE from sql_mode (session level)
-SET SESSION sql_mode = REPLACE(@@sql_mode, 'NO_ZERO_DATE,', '');
+SET SESSION sql_mode = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', @@sql_mode, ','), ',NO_ZERO_DATE,', ','));
 
 -- Or allow NULL instead of zero dates
 ALTER TABLE events MODIFY event_date DATETIME NULL;
@@ -78,7 +78,8 @@ In timezones with daylight saving transitions, certain timestamps literally do n
 SET time_zone = '+00:00';
 INSERT INTO logs (created_at) VALUES (UTC_TIMESTAMP());
 
--- Convert on retrieval
+-- Convert on retrieval (requires timezone tables to be loaded)
+-- Load them with: mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root mysql
 SELECT CONVERT_TZ(created_at, '+00:00', 'America/New_York') AS local_time
 FROM logs;
 ```
