@@ -36,7 +36,7 @@ Output:
 After upgrading the MongoDB binary to 7.0, bump the FCV:
 
 ```javascript
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 Expected output:
@@ -52,7 +52,7 @@ You must run this on the primary. The change replicates to all secondaries autom
 Before downgrading the binary from 7.0 to 6.0, lower the FCV first:
 
 ```javascript
-db.adminCommand({ setFeatureCompatibilityVersion: "6.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "6.0", confirm: true })
 ```
 
 This removes any 7.0-specific on-disk formats and ensures the 6.0 binary can read the data.
@@ -66,7 +66,7 @@ mongosh --host mongos-host:27017
 ```
 
 ```javascript
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 Verify on each component:
@@ -78,7 +78,7 @@ mongosh --host shard1-host:27017 --eval \
 
 ## FCV Constraints
 
-- You can only set FCV to the current binary version or one major version below.
+- You can only set FCV to the current binary version or the previous version.
 - FCV cannot be set higher than the binary version.
 - During an FCV change, the operation can be interrupted. If it is, re-run the command to complete it.
 
@@ -90,7 +90,7 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 // Output might show: { version: '6.0', targetVersion: '7.0' }
 
 // Re-run to complete
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 ## Required Privileges
@@ -111,7 +111,7 @@ For a replica set upgrade:
 
 ```javascript
 // Step 3 - after all binaries are upgraded
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 ## Summary
