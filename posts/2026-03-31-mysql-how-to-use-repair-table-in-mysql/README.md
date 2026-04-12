@@ -10,7 +10,7 @@ Description: Learn how to use REPAIR TABLE in MySQL to fix corrupted MyISAM and 
 
 ## What Is REPAIR TABLE?
 
-The `REPAIR TABLE` statement in MySQL repairs corrupted table files. It is primarily used with **MyISAM** and **ARCHIVE** storage engines. InnoDB tables do not support `REPAIR TABLE` directly - for InnoDB, you should use crash recovery or `ALTER TABLE ... ENGINE=InnoDB` instead.
+The `REPAIR TABLE` statement in MySQL repairs corrupted table files. It is primarily used with **MyISAM**, **ARCHIVE**, and **CSV** storage engines. InnoDB tables do not support `REPAIR TABLE` directly - for InnoDB, you should use crash recovery or `ALTER TABLE ... ENGINE=InnoDB` instead.
 
 A table may become corrupted due to:
 - Unexpected server shutdown
@@ -36,7 +36,7 @@ REPAIR TABLE table1, table2, table3;
 |--------|-------------|
 | `QUICK` | Only repairs the index file, not the data file. Faster but less thorough. |
 | `EXTENDED` | Creates the index row by row instead of with one sort pass. Slower but handles more cases. |
-| `USE_FRM` | Uses the `.frm` file to recreate the index file when the index is missing or corrupted. |
+| `USE_FRM` | Uses the table definition to recreate the index file when the index is missing or corrupted. In MySQL 5.7 and earlier, this reads the `.frm` file; in MySQL 8.0+, it uses the data dictionary. |
 
 ## Checking If a Table Needs Repair
 
@@ -94,7 +94,7 @@ If the index file is missing or severely corrupted, use `USE_FRM`:
 REPAIR TABLE orders USE_FRM;
 ```
 
-This reconstructs the index using the `.frm` file definition. Use this as a last resort.
+This reconstructs the index using the table definition (the `.frm` file in MySQL 5.7 and earlier, or the data dictionary in MySQL 8.0+). Use this as a last resort.
 
 ## Repairing Tables from the Command Line
 
@@ -125,13 +125,26 @@ mysqlcheck --repair --all-databases -u root -p
 
 ## Checking Repair Results Programmatically
 
-You can store the result of `REPAIR TABLE` in a temporary table to check it programmatically:
+`REPAIR TABLE` returns a result set with columns `Table`, `Op`, `Msg_type`, and `Msg_text`. You can check this result in your application code. For example, using `mysqlcheck` from the command line:
 
-```sql
-CREATE TEMPORARY TABLE repair_result
-SELECT * FROM (REPAIR TABLE orders) AS r;
+```bash
+mysqlcheck --repair --databases mydb 2>&1 | grep -i "error"
+```
 
-SELECT Msg_text FROM repair_result WHERE Msg_type = 'error';
+Or in a Python script:
+
+```python
+import mysql.connector
+
+conn = mysql.connector.connect(user='root', password='pass', database='mydb')
+cursor = conn.cursor()
+cursor.execute("REPAIR TABLE orders")
+for row in cursor.fetchall():
+    table, op, msg_type, msg_text = row
+    if msg_type == 'error':
+        print(f"Error repairing {table}: {msg_text}")
+cursor.close()
+conn.close()
 ```
 
 ## Handling InnoDB Tables
@@ -169,4 +182,4 @@ done
 
 ## Summary
 
-`REPAIR TABLE` is a built-in MySQL command for recovering corrupted MyISAM and ARCHIVE tables. It offers three modes - `QUICK` for fast index repair, `EXTENDED` for thorough row-by-row index rebuilding, and `USE_FRM` for reconstructing from the schema definition. For InnoDB tables, use crash recovery or `ALTER TABLE` to rebuild instead.
+`REPAIR TABLE` is a built-in MySQL command for recovering corrupted MyISAM, ARCHIVE, and CSV tables. It offers three modes - `QUICK` for fast index repair, `EXTENDED` for thorough row-by-row index rebuilding, and `USE_FRM` for reconstructing from the schema definition. For InnoDB tables, use crash recovery or `ALTER TABLE` to rebuild instead.
