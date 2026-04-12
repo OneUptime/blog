@@ -23,7 +23,7 @@ mysql -u username -p -h host -P port database_name
 Options:
 - `-u` - username
 - `-p` - prompt for password (do not include the password inline)
-- `-h` - hostname or IP address (default: `127.0.0.1` or socket)
+- `-h` - hostname or IP address (default: `localhost`, which uses a Unix socket on Linux/macOS)
 - `-P` - port (default: `3306`)
 - `database_name` - optional, selects a database on connect
 
@@ -82,7 +82,7 @@ Now connect without specifying credentials:
 mysql myapp_db
 ```
 
-Alternatively, use a login path (MySQL 8.0+):
+Alternatively, use a login path (MySQL 5.6.6+):
 
 ```bash
 mysql_config_editor set --login-path=local \
