@@ -14,13 +14,13 @@ MongoDB writes server logs to a log file that grows continuously. Log rotation p
 
 ## MongoDB Log Rotation Command
 
-MongoDB supports log rotation via the `logRotate` admin command, which closes the current log file and starts writing to a new one:
+MongoDB supports log rotation via the `logRotate` admin command. With the default `rename` mode, MongoDB renames the current log file by appending a UTC timestamp and opens a new log file at the original path:
 
 ```bash
 mongosh --quiet --eval "db.adminCommand({ logRotate: 1 })"
 ```
 
-After running this command, the old log remains in place with the same filename, and MongoDB starts writing new entries. You must rename the old file before or after rotation.
+After running this command with the default `rename` mode, the old log is automatically renamed (for example, `mongod.log.2026-04-12T00-00-00`) and MongoDB starts writing to a new file at the original path. If you use `reopen` mode instead, MongoDB closes and reopens the same file path, expecting an external tool to have already moved the old file.
 
 ## Full Log Rotation Shell Script
 
@@ -75,7 +75,6 @@ echo "[$(date -u)] Log rotation complete"
 import os
 import gzip
 import shutil
-import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from pymongo import MongoClient
@@ -127,9 +126,9 @@ if __name__ == "__main__":
 0 0 * * * /usr/local/bin/bash /opt/scripts/mongodb-log-rotate.sh >> /var/log/mongodb-rotation.log 2>&1
 ```
 
-## Configuring systemd logrotate Integration
+## Configuring logrotate Integration
 
-Alternatively, use the system `logrotate` with a MongoDB-specific config:
+Alternatively, use the system `logrotate` utility with a MongoDB-specific config. This approach requires setting `systemLog.logRotate: reopen` in your MongoDB configuration (`mongod.conf`) so that MongoDB reopens the log file after `logrotate` renames it:
 
 ```text
 /var/log/mongodb/mongod.log {
