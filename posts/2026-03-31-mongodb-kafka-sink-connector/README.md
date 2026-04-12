@@ -20,7 +20,7 @@ The MongoDB Kafka Sink Connector reads messages from Kafka topics and writes the
 
 ```bash
 # Install connector plugin
-confluent-hub install mongodb/kafka-connector:latest
+confluent-hub install mongodb/kafka-connect-mongodb:latest
 # Restart Kafka Connect after installation
 sudo systemctl restart kafka-connect
 ```
@@ -60,7 +60,7 @@ Control how the connector writes to MongoDB using `document.id.strategy` and `wr
 
 ```json
 {
-  "document.id.strategy": "com.mongodb.kafka.connect.sink.id.strategy.UuidStrategy",
+  "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.UuidStrategy",
   "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.ReplaceOneBusinessKeyStrategy",
   "document.id.strategy.overwrite.existing": "true"
 }
@@ -84,7 +84,7 @@ To upsert documents using a business key instead of Kafka message key:
 ```json
 {
   "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.ReplaceOneBusinessKeyStrategy",
-  "document.id.strategy": "com.mongodb.kafka.connect.sink.id.strategy.PartialValueStrategy",
+  "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.PartialValueStrategy",
   "document.id.strategy.partial.value.projection.list": "orderId",
   "document.id.strategy.partial.value.projection.type": "AllowList"
 }
@@ -97,7 +97,7 @@ This configuration upserts documents where `orderId` matches, preventing duplica
 ```python
 from kafka import KafkaProducer
 import json, uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 producer = KafkaProducer(
   bootstrap_servers=["localhost:9092"],
@@ -109,7 +109,7 @@ event = {
   "userId": "u-123",
   "amount": 99.99,
   "status": "completed",
-  "timestamp": datetime.utcnow().isoformat()
+  "timestamp": datetime.now(timezone.utc).isoformat()
 }
 
 producer.send("app.events", value=event)
