@@ -74,22 +74,18 @@ Hash table size 553193, node heap has 1 buffer(s)
 0.00 hash searches/s, 0.00 non-hash searches/s
 ```
 
-Also check status variables:
+Also check the AHI counters in the `INNODB_METRICS` table:
 
 ```sql
 SELECT
-  VARIABLE_NAME,
-  VARIABLE_VALUE
-FROM performance_schema.global_status
-WHERE VARIABLE_NAME IN (
-  'Innodb_adaptive_hash_searches',
-  'Innodb_adaptive_hash_searches_btree',
-  'Innodb_adaptive_hash_hash_searches',
-  'Innodb_adaptive_hash_non_hash_searches'
-);
+  NAME,
+  COUNT,
+  STATUS
+FROM INFORMATION_SCHEMA.INNODB_METRICS
+WHERE SUBSYSTEM = 'adaptive_hash_index';
 ```
 
-A high ratio of hash searches to total searches indicates the AHI is providing benefit.
+The two key counters are `adaptive_hash_searches` (lookups served by the AHI) and `adaptive_hash_searches_btree` (lookups that fell back to B-tree traversal). A high ratio of `adaptive_hash_searches` to the total indicates the AHI is providing benefit.
 
 ## Disabling the AHI
 
@@ -127,7 +123,7 @@ RW-sx spins 0, rounds 0, OS waits 0
 Spin rounds per wait: 0.00 RW-shared, 4.60 RW-excl, 0.00 RW-sx
 ```
 
-If you see frequent waits on `btr0sea.ic`, increasing `innodb_adaptive_hash_index_parts` or disabling AHI may help.
+If you see frequent waits on `btr0sea.c`, increasing `innodb_adaptive_hash_index_parts` or disabling AHI may help.
 
 ## Workloads That Benefit Most from AHI
 
