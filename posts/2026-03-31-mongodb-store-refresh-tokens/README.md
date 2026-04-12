@@ -14,7 +14,6 @@ Refresh tokens are long-lived credentials that let clients obtain new access tok
 
 ```javascript
 const mongoose = require('mongoose');
-const crypto = require('crypto');
 
 const refreshTokenSchema = new mongoose.Schema({
   token: {
