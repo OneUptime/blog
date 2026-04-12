@@ -32,11 +32,9 @@ print(f"Inserted {len(result.inserted_ids)} documents")
 
 ## Handling NaN Values
 
-MongoDB does not accept Python `NaN`. Replace NaN before importing:
+MongoDB accepts `NaN` as a valid BSON double, but NaN values cause unexpected behavior in queries and comparisons. Replace NaN with `None` before importing:
 
 ```python
-import numpy as np
-
 # Replace NaN with None (MongoDB null)
 df = df.where(pd.notnull(df), None)
 
