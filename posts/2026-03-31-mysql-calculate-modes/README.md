@@ -107,7 +107,7 @@ WHERE cnt = (SELECT MAX(cnt) FROM freq);
 
 ## Combining Mode and Other Statistics
 
-You can compute mode alongside average and median in a single report by using CTEs:
+You can compute mode alongside average in a single report by using CTEs:
 
 ```sql
 WITH stats AS (
