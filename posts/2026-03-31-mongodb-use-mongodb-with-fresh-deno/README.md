@@ -15,7 +15,7 @@ Fresh is a Deno web framework built on Preact with islands architecture. It runs
 ## Project Setup
 
 ```bash
-deno run -A -r https://fresh.deno.dev my-app
+deno run -A https://deno.land/x/fresh@1.6.0/init.ts my-app
 cd my-app
 ```
 
@@ -51,7 +51,7 @@ MONGO_URI=mongodb://localhost:27017
 MONGO_DB=freshapp
 ```
 
-Load in `deno.json`:
+Add to `deno.json`:
 
 ```json
 {
