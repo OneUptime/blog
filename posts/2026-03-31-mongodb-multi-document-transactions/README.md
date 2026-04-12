@@ -119,6 +119,7 @@ While `withTransaction()` handles retries automatically, sometimes you need manu
 async function runTransactionWithRetry(session, txnFunc) {
   while (true) {
     try {
+      session.startTransaction();
       await txnFunc(session);
       break;
     } catch (error) {
@@ -150,7 +151,6 @@ async function commitWithRetry(session) {
 
 async function executeTransaction() {
   const session = client.startSession();
-  session.startTransaction();
 
   try {
     await runTransactionWithRetry(session, async (session) => {
