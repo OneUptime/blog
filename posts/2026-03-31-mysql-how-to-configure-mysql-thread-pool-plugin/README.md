@@ -31,21 +31,27 @@ On MySQL Enterprise Edition, the plugin library is included. On Percona Server, 
 
 ## Installing the Plugin (MySQL Enterprise Edition)
 
-```sql
--- Load the plugin at runtime
-INSTALL PLUGIN thread_pool SONAME 'thread_pool.so';
+The thread pool plugin must be loaded at server startup via `my.cnf`. It cannot be installed at runtime with `INSTALL PLUGIN`.
 
--- Verify it is active
+```ini
+[mysqld]
+plugin-load-add=thread_pool.so
+```
+
+After restarting MySQL, verify it is active:
+
+```sql
 SELECT PLUGIN_NAME, PLUGIN_STATUS
 FROM information_schema.PLUGINS
 WHERE PLUGIN_NAME = 'thread_pool';
 ```
 
-To make it permanent, add to `my.cnf`:
+To also enable the thread pool information_schema monitoring tables, add them to `my.cnf` or install them at runtime:
 
-```ini
-[mysqld]
-plugin-load-add=thread_pool.so
+```sql
+INSTALL PLUGIN TP_THREAD_STATE SONAME 'thread_pool.so';
+INSTALL PLUGIN TP_THREAD_GROUP_STATE SONAME 'thread_pool.so';
+INSTALL PLUGIN TP_THREAD_GROUP_STATS SONAME 'thread_pool.so';
 ```
 
 ## Key Configuration Variables
@@ -58,10 +64,9 @@ SHOW VARIABLES LIKE 'thread_pool%';
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `thread_pool_size` | CPU count | Number of thread groups |
-| `thread_pool_max_active_query_threads` | 0 (unlimited) | Max active query threads per group |
-| `thread_pool_oversubscribe` | 3 | Extra stalled threads allowed per group |
-| `thread_pool_stall_limit` | 6 (x10ms = 60ms) | Time before a query is considered stalled |
-| `thread_pool_queue_timeout` | 0 | Timeout for queued statements (ms) |
+| `thread_pool_max_active_query_threads` | 0 (default algorithm) | Max active query threads per group; 0 lets the plugin manage automatically |
+| `thread_pool_stall_limit` | 60 (ms) | Time in milliseconds before a query is considered stalled |
+| `thread_pool_oversubscribe` (Percona only) | 3 | Extra threads allowed per group beyond the active limit |
 
 ## Recommended Configuration for OLTP Workloads
 
@@ -70,25 +75,39 @@ SHOW VARIABLES LIKE 'thread_pool%';
 # Set to match physical CPU count (not hyperthreaded)
 thread_pool_size = 8
 
-# Stall limit in 10ms units; 6 = 60ms
+# Stall limit in milliseconds (MySQL 8.0.14+)
 # Increase if queries legitimately take longer without being "stalled"
-thread_pool_stall_limit = 6
-
-# Allow a few extra threads per group for stalled long queries
-thread_pool_oversubscribe = 3
+thread_pool_stall_limit = 60
 
 # Optional: limit concurrent queries per group
 thread_pool_max_active_query_threads = 4
+
+# Percona Server only: allow extra threads per group for stalled long queries
+# thread_pool_oversubscribe = 3
 ```
 
 ## Monitoring Thread Pool Activity
 
+In MySQL Enterprise Edition, thread pool monitoring is done through information_schema tables (which must be installed separately, see above):
+
 ```sql
--- Thread pool status counters (available with the plugin)
+-- Thread group statistics
+SELECT * FROM information_schema.TP_THREAD_GROUP_STATS\G
+
+-- Current thread state per group
+SELECT * FROM information_schema.TP_THREAD_GROUP_STATE\G
+
+-- Individual thread states
+SELECT * FROM information_schema.TP_THREAD_STATE\G
+```
+
+On Percona Server, you can also use status variables:
+
+```sql
 SHOW STATUS LIKE 'Threadpool%';
 ```
 
-Example output:
+Example Percona output:
 
 ```text
 +------------------------------+-------+
@@ -96,16 +115,7 @@ Example output:
 +------------------------------+-------+
 | Threadpool_idle_threads      | 12    |
 | Threadpool_threads           | 16    |
-| Threadpool_stall_limit       | 6     |
-| Threadpool_queued_queries    | 0     |
 +------------------------------+-------+
-```
-
-Also check for stalled and waiting threads:
-
-```sql
-SELECT * FROM information_schema.TP_THREAD_GROUP_STATS\G
-SELECT * FROM information_schema.TP_THREAD_STATE\G
 ```
 
 ## Percona Server Thread Pool (Community Alternative)
@@ -135,4 +145,4 @@ For workloads with few connections and long-running analytical queries, the defa
 
 ## Summary
 
-The MySQL Thread Pool plugin improves concurrency handling by replacing the one-thread-per-connection model with a fixed pool of worker threads organized into groups. Configuring `thread_pool_size` to match your CPU count and tuning `thread_pool_stall_limit` for your query duration profile are the key steps. Monitor `Threadpool_*` status variables and `TP_THREAD_GROUP_STATS` to validate that the thread pool is working effectively for your workload.
+The MySQL Thread Pool plugin improves concurrency handling by replacing the one-thread-per-connection model with a fixed pool of worker threads organized into groups. Configuring `thread_pool_size` to match your CPU count and tuning `thread_pool_stall_limit` for your query duration profile are the key steps. Monitor `TP_THREAD_GROUP_STATS` and related information_schema tables to validate that the thread pool is working effectively for your workload.
