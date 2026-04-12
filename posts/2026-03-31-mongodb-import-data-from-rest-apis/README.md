@@ -21,7 +21,7 @@ pip install requests pymongo
 ```python
 import requests
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timezone
 
 client = MongoClient("mongodb://localhost:27017")
 collection = client["myapp"]["github_repos"]
@@ -36,7 +36,7 @@ repos = response.json()
 
 # Add ingestion metadata
 for repo in repos:
-    repo["_importedAt"] = datetime.utcnow()
+    repo["_importedAt"] = datetime.now(timezone.utc)
     repo["_source"] = "github_api"
 
 result = collection.insert_many(repos)
@@ -148,7 +148,7 @@ def upsert_api_data(collection, documents, id_field="id"):
     operations = [
         UpdateOne(
             {id_field: doc[id_field]},
-            {"$set": doc, "$setOnInsert": {"_firstImportedAt": datetime.utcnow()}},
+            {"$set": doc, "$setOnInsert": {"_firstImportedAt": datetime.now(timezone.utc)}},
             upsert=True
         )
         for doc in documents
@@ -171,7 +171,7 @@ def import_api_data():
     )
 
     for item in items:
-        item["_importedAt"] = datetime.utcnow()
+        item["_importedAt"] = datetime.now(timezone.utc)
 
     upsert_api_data(collection, items)
     client.close()
