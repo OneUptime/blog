@@ -129,17 +129,17 @@ Available condition items:
 ```sql
 DELIMITER $$
 
-CREATE PROCEDURE update_inventory(IN product_id INT, IN qty_change INT)
+CREATE PROCEDURE update_inventory(IN p_product_id INT, IN p_qty_change INT)
 BEGIN
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
     -- Re-raise the error with additional context
-    RESIGNAL SET MESSAGE_TEXT = CONCAT('update_inventory failed for product_id=', product_id);
+    RESIGNAL SET MESSAGE_TEXT = CONCAT('update_inventory failed for product_id=', p_product_id);
   END;
 
   UPDATE inventory
-  SET quantity = quantity + qty_change
-  WHERE product_id = product_id;
+  SET quantity = quantity + p_qty_change
+  WHERE product_id = p_product_id;
 
   IF ROW_COUNT() = 0 THEN
     SIGNAL SQLSTATE '45000'
