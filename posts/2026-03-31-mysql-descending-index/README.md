@@ -95,7 +95,7 @@ WHERE TABLE_SCHEMA = 'your_database'
 
 ## Limitations
 
-- Descending indexes are only supported for InnoDB and MyISAM in MySQL 8.0+.
+- Descending indexes are supported only for the InnoDB storage engine in MySQL 8.0+.
 - Spatial and full-text indexes do not support the `DESC` option.
 - HASH indexes (used by MEMORY tables) do not support direction.
 
