@@ -102,7 +102,7 @@ Multi-key indexes cannot support covered queries. Even if the projection only in
 ```javascript
 db.articles.find(
   { tags: "mongodb" },
-  { projection: { tags: 1, _id: 0 } }
+  { tags: 1, _id: 0 }
 ).explain("executionStats");
 
 // Despite projecting only the indexed field:
@@ -127,16 +127,14 @@ If arrays are very large and searches within them are infrequent, consider a tex
 ## Checking if Your Index Became Multi-Key
 
 ```javascript
-// List indexes with multikey status
-db.articles.aggregate([{ $indexStats: {} }]).forEach(idx => {
-  if (idx.spec) {
-    const isMultiKey = db.articles.find({}).explain().queryPlanner;
-    print(`${idx.name}: check isMultiKey in explain output`);
-  }
-});
+// Run explain on a query that uses the index in question
+var result = db.articles.find({ tags: "mongodb" }).explain();
+var ixscan = result.queryPlanner.winningPlan.inputStage;
+print(`${ixscan.indexName} isMultiKey: ${ixscan.isMultiKey}`);
+// Output: tags_1 isMultiKey: true
 
-// More directly, in explain output for any array-field query:
-// "isMultiKey": true confirms it
+// The "isMultiKey" field in the IXSCAN stage confirms whether
+// the index has been marked as multi-key
 ```
 
 ## Summary
