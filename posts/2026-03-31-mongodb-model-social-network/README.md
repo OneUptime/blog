@@ -145,17 +145,19 @@ db.likes.createIndex({ postId: 1 });
 ```javascript
 async function followUser(followerId, followeeId) {
   // Insert the follow relationship
-  await db.collection("follows").updateOne(
+  const result = await db.collection("follows").updateOne(
     { followerId, followeeId },
     { $setOnInsert: { followerId, followeeId, createdAt: new Date(), status: "active" } },
     { upsert: true }
   );
 
-  // Update stats
-  await db.collection("users").bulkWrite([
-    { updateOne: { filter: { _id: followerId }, update: { $inc: { "stats.following": 1 } } } },
-    { updateOne: { filter: { _id: followeeId }, update: { $inc: { "stats.followers": 1 } } } }
-  ]);
+  // Only update stats if a new follow was created
+  if (result.upsertedCount === 1) {
+    await db.collection("users").bulkWrite([
+      { updateOne: { filter: { _id: followerId }, update: { $inc: { "stats.following": 1 } } } },
+      { updateOne: { filter: { _id: followeeId }, update: { $inc: { "stats.followers": 1 } } } }
+    ]);
+  }
 }
 ```
 
@@ -326,8 +328,8 @@ async function getMutualFollowers(userA, userB) {
 
 | Account type | Strategy |
 |---|---|
-| Regular user (< 10K followers) | Fan-out on read (compute timeline at read time) |
-| Celebrity (> 10K followers) | Fan-out on write (pre-computed feed) or hybrid |
+| Regular user (< 10K followers) | Fan-out on write (pre-computed feed) |
+| Celebrity (> 10K followers) | Fan-out on read (compute at read time) or hybrid |
 | Hybrid | Fan-out on write for non-celebrities; inject celebrity posts at read time |
 
 ## Summary

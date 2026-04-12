@@ -10,7 +10,7 @@ Description: Learn how mongocryptd enables automatic client-side field level enc
 
 ## What Is mongocryptd
 
-`mongocryptd` is a helper process that powers automatic Client-Side Field Level Encryption (CSFLE) in MongoDB. When your application sends a query, the MongoDB driver spawns `mongocryptd` as a subprocess, which analyzes the query against your encrypted field map and determines which fields need to be encrypted before transmission and decrypted on receipt.
+`mongocryptd` is a helper process that powers automatic Client-Side Field Level Encryption (CSFLE) in MongoDB. When your application sends a query, the MongoDB driver spawns `mongocryptd` as a subprocess, which analyzes the query against your encrypted field map and determines which fields need to be encrypted before transmission. Decryption is handled automatically by the driver, which detects encrypted Binary subtype 6 fields in query results without involving `mongocryptd`.
 
 `mongocryptd` does not store or handle encryption keys directly - it only processes the schema logic. All key operations go through your configured Key Management Service (KMS).
 
@@ -57,7 +57,6 @@ Configure the client with an encrypted field map:
 
 ```javascript
 const { MongoClient, ClientEncryption } = require('mongodb');
-const { EJSON } = require('bson');
 
 const keyVaultNamespace = 'encryption.__keyVault';
 
