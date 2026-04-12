@@ -26,7 +26,7 @@ Store current prices in a separate hash, refreshed on every tick:
 
 ```python
 import redis
-r = redis.Redis()
+r = redis.Redis(decode_responses=True)
 
 def update_price(ticker, price):
     r.hset("prices:current", ticker, price)
@@ -98,7 +98,7 @@ def daily_gain(user_id):
     )
     if not history:
         return None
-    past_value = float(history[0].decode().split(":")[1])
+    past_value = float(history[0].split(":")[1])
     return current - past_value
 ```
 
