@@ -50,21 +50,19 @@ The agent automatically wraps Redis calls and creates spans in the current trans
 ## Capture Redis Spans in a Transaction
 
 ```python
-from elasticapm import capture_span
-
 def get_user_data(user_id: str):
-    with elasticapm.Client().begin_transaction("request"):
-        # Redis operations inside a transaction are captured as spans
-        cached = redis_client.get(f"user:{user_id}")
+    client_config.begin_transaction("request")
+    # Redis operations inside a transaction are captured as spans
+    cached = redis_client.get(f"user:{user_id}")
 
-        if cached:
-            elasticapm.Client().end_transaction("get_user_data", "success")
-            return json.loads(cached)
+    if cached:
+        client_config.end_transaction("get_user_data", "success")
+        return json.loads(cached)
 
-        user = fetch_from_database(user_id)
-        redis_client.setex(f"user:{user_id}", 3600, json.dumps(user))
-        elasticapm.Client().end_transaction("get_user_data", "success")
-        return user
+    user = fetch_from_database(user_id)
+    redis_client.setex(f"user:{user_id}", 3600, json.dumps(user))
+    client_config.end_transaction("get_user_data", "success")
+    return user
 ```
 
 For web frameworks like Flask or Django, transactions are automatically created per HTTP request.
