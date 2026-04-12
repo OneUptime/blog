@@ -115,7 +115,7 @@ For more complex calendar logic, build a richer temporary calendar:
 WITH RECURSIVE cal AS (
   SELECT
     DATE('2024-01-01') AS dt,
-    1 AS is_weekend
+    IF(DAYOFWEEK(DATE('2024-01-01')) IN (1, 7), 1, 0) AS is_weekend
   UNION ALL
   SELECT
     DATE_ADD(dt, INTERVAL 1 DAY),
