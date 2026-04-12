@@ -38,9 +38,9 @@ setParameter:
 
 For sharded clusters, set this parameter on every `mongod` shard member and `mongos` instance. The lowest value among all participants takes effect.
 
-## Setting maxTimeMS on Individual Transactions
+## Setting maxCommitTimeMS on Individual Transactions
 
-For finer control, set a per-transaction timeout using `maxTimeMS`. This overrides the global limit for a specific transaction and causes MongoDB to abort with a `MaxTimeMSExpired` error if the transaction is not committed within the limit:
+For finer control over the commit phase, set `maxCommitTimeMS` as a transaction option. This limits how long the commit operation itself can take and causes MongoDB to abort the commit with a `MaxTimeMSExpired` error if it does not complete within the limit:
 
 ```javascript
 const session = client.startSession()
