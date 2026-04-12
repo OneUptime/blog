@@ -31,10 +31,10 @@ SELECT
 FROM performance_schema.replication_group_member_stats;
 ```
 
-Check whether flow control is currently active:
+Check the current flow control configuration:
 
 ```sql
-SHOW STATUS LIKE 'group_replication_flow_control%';
+SHOW VARIABLES LIKE 'group_replication_flow_control%';
 ```
 
 ## Configure Flow Control Thresholds
@@ -42,10 +42,10 @@ SHOW STATUS LIKE 'group_replication_flow_control%';
 The key variables are:
 
 ```sql
--- Maximum certified transactions waiting before flow control triggers
+-- Maximum transactions in the certifier queue before flow control triggers
 SHOW VARIABLES LIKE 'group_replication_flow_control_certifier_threshold';
 
--- Maximum applied transactions waiting before flow control triggers
+-- Maximum transactions in the applier queue before flow control triggers
 SHOW VARIABLES LIKE 'group_replication_flow_control_applier_threshold';
 ```
 
