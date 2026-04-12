@@ -43,7 +43,7 @@ SHOW VARIABLES LIKE 'log_error';
 
 ## Controlling Log Verbosity
 
-MySQL 8.0 introduced a more granular verbosity system using `log_error_verbosity`:
+You can control the verbosity of the error log using `log_error_verbosity` (available since MySQL 5.7.2):
 
 ```ini
 [mysqld]
@@ -52,8 +52,8 @@ log_error_verbosity = 3
 
 The levels are:
 - `1` - Errors only
-- `2` - Errors and warnings
-- `3` - Errors, warnings, and informational notes (default)
+- `2` - Errors and warnings (default in MySQL 8.0)
+- `3` - Errors, warnings, and informational notes (default in MySQL 5.7)
 
 You can also change verbosity at runtime without a restart:
 
