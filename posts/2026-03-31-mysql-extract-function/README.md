@@ -34,18 +34,18 @@ EXTRACT(unit FROM date)
 | `MINUTE`            | 30                                       |
 | `HOUR`              | 14                                       |
 | `DAY`               | 15                                       |
-| `WEEK`              | 10                                       |
+| `WEEK`              | 11                                       |
 | `MONTH`             | 3                                        |
 | `QUARTER`           | 1                                        |
 | `YEAR`              | 2026                                     |
-| `SECOND_MICROSECOND`| 450000                                   |
+| `SECOND_MICROSECOND`| 45000000                                 |
 | `MINUTE_MICROSECOND`| 3045000000                               |
 | `MINUTE_SECOND`     | 3045                                     |
 | `HOUR_MICROSECOND`  | 143045000000                             |
 | `HOUR_SECOND`       | 143045                                   |
 | `HOUR_MINUTE`       | 1430                                     |
-| `DAY_MICROSECOND`   | 1514303045000000 (approx)               |
-| `DAY_SECOND`        | 15143045 (approx)                        |
+| `DAY_MICROSECOND`   | 15143045000000                           |
+| `DAY_SECOND`        | 15143045                                 |
 | `DAY_MINUTE`        | 151430                                   |
 | `DAY_HOUR`          | 1514                                     |
 | `YEAR_MONTH`        | 202603                                   |
@@ -77,7 +77,7 @@ SELECT EXTRACT(QUARTER FROM '2026-03-15');
 -- Returns: 1
 
 SELECT EXTRACT(WEEK FROM '2026-03-15');
--- Returns: 10 (ISO week may vary)
+-- Returns: 11 (depends on default_week_format)
 
 SELECT EXTRACT(YEAR_MONTH FROM '2026-03-15');
 -- Returns: 202603
