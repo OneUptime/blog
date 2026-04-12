@@ -30,7 +30,7 @@ With wtimeout: write returns error after the configured timeout
 
 ## Setting wtimeout
 
-Specify `wtimeoutMS` alongside the write concern:
+Specify `wtimeout` alongside the write concern:
 
 ```javascript
 db.orders.insertOne(
@@ -98,8 +98,8 @@ async function saveOrder(order) {
     console.log("Order saved:", result.insertedId);
   } catch (err) {
     if (err.code === 64) {
-      // Error code 64 is WriteConcernFailed (timeout)
-      console.error("Write concern timeout - check replica set health");
+      // Error code 64 is WriteConcernFailed
+      console.error("Write concern failed - check replica set health");
     } else {
       throw err;
     }
@@ -131,7 +131,8 @@ You can alert on these via `serverStatus`:
 
 ```javascript
 const status = db.adminCommand({ serverStatus: 1 });
-print("Write concern errors:", status.opcounters.getmore);
+print("Write concern timeouts:", status.metrics.getLastError.wtimeouts);
+print("Write concern wait time (ms):", status.metrics.getLastError.wtime.totalMillis);
 ```
 
 For detailed tracking, use `$currentOp` or your APM tool to monitor write latency percentiles.
