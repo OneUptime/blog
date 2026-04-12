@@ -12,7 +12,7 @@ Description: Learn how MySQL's full-text stopword list works, how to view the bu
 
 MySQL's full-text search engine skips common words called stopwords when building and querying full-text indexes. Words like "the", "a", "is", and "in" are excluded because they appear so frequently they add no meaningful signal to search results.
 
-InnoDB and MyISAM maintain separate stopword systems. InnoDB uses a built-in compiled list by default, while MyISAM reads from the `mysql.innodb_ft_default_stopword` table.
+InnoDB and MyISAM maintain separate stopword systems. InnoDB uses a built-in compiled list by default, while MyISAM reads stopwords from a file specified by the `ft_stopword_file` system variable.
 
 ## Viewing the Built-In Stopword List
 
