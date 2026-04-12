@@ -55,7 +55,6 @@ The shard key must include `region` as a prefix for zone routing to work.
 ## Step 3 - Shard the Collection with a Zone-Aligned Key
 
 ```javascript
-sh.enableSharding("myapp")
 db.users.createIndex({ region: 1, _id: 1 })
 sh.shardCollection("myapp.users", { region: 1, _id: 1 })
 ```
