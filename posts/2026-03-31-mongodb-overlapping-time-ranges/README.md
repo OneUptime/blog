@@ -134,7 +134,7 @@ Be consistent in your schema about whether `end` is exclusive (common for time s
 
 ## Aggregation for Busy Periods
 
-Find all time windows where more than N appointments overlap:
+Count how many appointments start in each hour to find busy time slots:
 
 ```javascript
 db.collection("appointments").aggregate([
@@ -150,4 +150,4 @@ db.collection("appointments").aggregate([
 
 ## Summary
 
-Handling overlapping time ranges in MongoDB requires using the correct interval intersection condition: `start < rangeEnd AND end > rangeStart`. A compound index on `(resourceId, start, end)` makes these queries efficient. For conflict-safe bookings, wrap the check and insert in a transaction. Be explicit about whether end times are inclusive or exclusive, and use `explain()` to confirm index usage on range queries.
+Handling overlapping time ranges in MongoDB requires using the correct interval intersection condition: `start < rangeEnd AND end > rangeStart`. A compound index on `(providerId, start, end)` makes these queries efficient. For conflict-safe bookings, wrap the check and insert in a transaction. Be explicit about whether end times are inclusive or exclusive, and use `explain()` to confirm index usage on range queries.
