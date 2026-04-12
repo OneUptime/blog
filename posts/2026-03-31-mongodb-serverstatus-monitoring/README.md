@@ -167,7 +167,7 @@ Key fields:
 ```text
 {
   setName: "rs0",
-  ismaster: true,
+  isWritablePrimary: true,
   secondary: false,
   hosts: ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
   primary: "mongo1:27017",
