@@ -115,7 +115,7 @@ db.runCommand({ collMod: "users", validationAction: "error" });
 
 **2. Parsing MongoDB log warnings**
 
-Use `mongostat` or parse the MongoDB log for validation warnings:
+Parse the MongoDB log for validation warnings:
 
 ```bash
 grep "Document would fail validation" /var/log/mongodb/mongod.log | \
