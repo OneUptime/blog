@@ -96,7 +96,7 @@ db.files.aggregate([
 ])
 ```
 
-Or use `$substr` and `$strLenCP` to check the suffix without regex:
+Or use `$substrCP` and `$strLenCP` to check the suffix without regex:
 
 ```javascript
 db.files.aggregate([
@@ -106,7 +106,7 @@ db.files.aggregate([
         $eq: [
           {
             $toLower: {
-              $substr: [
+              $substrCP: [
                 "$filename",
                 { $subtract: [{ $strLenCP: "$filename" }, 4] },
                 4
