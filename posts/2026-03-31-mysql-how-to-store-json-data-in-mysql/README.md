@@ -181,7 +181,7 @@ INSERT INTO user_preferences (user_id, prefs) VALUES
 -- Find users with email notifications enabled
 SELECT user_id
 FROM user_preferences
-WHERE prefs -> '$.notifications.email' = TRUE;
+WHERE prefs ->> '$.notifications.email' = 'true';
 
 -- Update language preference
 UPDATE user_preferences
