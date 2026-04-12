@@ -22,7 +22,7 @@ npm install --save-dev typescript @types/node
 ## Defining a Document Interface
 
 ```typescript
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Model, Document, Types } from 'mongoose';
 
 interface IUser {
   name:      string;
@@ -72,7 +72,7 @@ const admins: IUserDocument[] = await User.find({ role: 'admin' });
 ## Adding Statics with Interface
 
 ```typescript
-interface IUserModel extends mongoose.Model<IUserDocument> {
+interface IUserModel extends Model<IUserDocument> {
   findByEmail(email: string): Promise<IUserDocument | null>;
 }
 
