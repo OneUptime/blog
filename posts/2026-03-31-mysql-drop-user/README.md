@@ -16,7 +16,7 @@ Removing a MySQL user account is done with the `DROP USER` statement. This drops
 DROP USER 'username'@'host';
 ```
 
-The host portion is required because MySQL accounts are identified as username-host pairs. Omitting the host or using the wrong host will fail or target a different account.
+The host portion matters because MySQL accounts are identified as username-host pairs. If you omit the host part, it defaults to `'%'`. Using the wrong host will target a different account.
 
 ## Dropping a Local User
 
@@ -61,7 +61,7 @@ DROP USER
 `DROP USER` automatically:
 - Removes all global, database, table, column, and routine privileges for the account from the grant tables
 - Removes the account from `mysql.user`
-- Closes any existing connections for that user (in MySQL 8.0.17+, immediately; in earlier versions, existing sessions continue until they end)
+- Does NOT automatically close open sessions for that user. The drop takes full effect once the user's existing sessions are closed, and subsequent login attempts will fail
 
 You do NOT need to manually `REVOKE` privileges before running `DROP USER`.
 
@@ -109,4 +109,4 @@ SHOW GRANTS;
 
 ## Summary
 
-`DROP USER 'name'@'host'` removes a MySQL account and all associated privileges in a single operation. Use `IF EXISTS` for idempotent scripts, and identify all host variants before dropping to avoid leaving orphaned accounts. In MySQL 8.0.17 and later, active connections for the dropped user are terminated immediately.
+`DROP USER 'name'@'host'` removes a MySQL account and all associated privileges in a single operation. Use `IF EXISTS` for idempotent scripts, and identify all host variants before dropping to avoid leaving orphaned accounts. Note that `DROP USER` does not close existing sessions for the dropped user; the drop takes full effect once open sessions end.
