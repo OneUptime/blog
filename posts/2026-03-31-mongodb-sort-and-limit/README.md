@@ -132,7 +132,7 @@ Output:
 
 ```javascript
 [
-  { _id: "Engineering", avgScore: 91.67 }
+  { _id: "Engineering", avgScore: 91.66666666666667 }
 ]
 ```
 
