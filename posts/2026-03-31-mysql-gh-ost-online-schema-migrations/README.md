@@ -22,7 +22,7 @@ Description: Learn how to use GitHub's gh-ost to perform triggerless online sche
 
 ```bash
 # Download the binary
-curl -L https://github.com/github/gh-ost/releases/download/v1.1.6/gh-ost-binary-linux-amd64-20231207144803.tar.gz | tar xvz
+curl -L https://github.com/github/gh-ost/releases/download/v1.1.8/gh-ost-binary-linux-amd64-20260310200531.tar.gz | tar xvz
 mv gh-ost /usr/local/bin/
 ```
 
@@ -40,7 +40,7 @@ gh-ost \
   --execute
 ```
 
-`--allow-on-master` is needed when running against the primary directly. In production, point at a replica with `--replica-server-id`.
+`--allow-on-master` is needed when running against the primary directly. In production, gh-ost connects to a replica by default (specify the replica with `--host`). Use `--replica-server-id` to set a unique server ID for the gh-ost process when running multiple concurrent migrations.
 
 ## Throttle and Chunk Control
 
@@ -90,15 +90,19 @@ echo no-throttle | nc -U /tmp/gh-ost.myapp.events.sock
 echo status | nc -U /tmp/gh-ost.myapp.events.sock
 ```
 
-## Dry Run Mode
+## Noop Mode (Dry Run)
+
+gh-ost runs in noop mode by default when `--execute` is omitted. This validates connectivity, permissions, and the ALTER statement without making changes:
 
 ```bash
 gh-ost \
+  --host=127.0.0.1 \
+  --user=ghostuser \
+  --password=secret \
   --database=myapp \
   --table=users \
   --alter="ADD COLUMN score INT NOT NULL DEFAULT 0" \
-  --dry-run \
-  --print-master-log-coordinates
+  --allow-on-master
 ```
 
 ## Required MySQL Configuration
@@ -111,4 +115,4 @@ SET GLOBAL binlog_row_image = FULL;
 
 ## Summary
 
-gh-ost performs online schema migrations by reading the binary log rather than using triggers, reducing write overhead on busy tables. Use `--max-lag-millis` to throttle based on replication lag and `--postpone-cut-over-flag-file` to control when the final atomic swap happens. Run `--dry-run` before every production migration to validate connectivity and permissions.
+gh-ost performs online schema migrations by reading the binary log rather than using triggers, reducing write overhead on busy tables. Use `--max-lag-millis` to throttle based on replication lag and `--postpone-cut-over-flag-file` to control when the final atomic swap happens. Run gh-ost without `--execute` (noop mode) before every production migration to validate connectivity and permissions.
