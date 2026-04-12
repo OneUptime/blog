@@ -39,37 +39,41 @@ redis-cli LATENCY DOCTOR
 If no latency events have been recorded, the output is:
 
 ```text
-I have no memory of any event. Tom Hanks would be proud of me.
+Dave, no latency spike was observed during the lifetime of this Redis instance, not in the slightest bit. I honestly think you ought to sit down calmly, take a stress pill, and think things over.
 ```
 
 With recorded events, you get a detailed report like:
 
 ```text
-Dave, I have observed latency spikes in the event 'aof-stat'.
-Here is a suggestion:
-- Rewrite the AOF if it has grown much larger than the actual data set.
-I have observed latency spikes in the event 'fast-command'.
-Here is a suggestion:
-- Check for slow commands using SLOWLOG GET.
+Dave, I have observed latency spikes in this Redis instance.
+You don't mind talking about it, do you Dave?
+
+1. fast-command: 3 latency spikes (average 200ms, mean deviation 50ms,
+    period 120.00 sec). Worst all time event 300ms.
+
+I have a few advices for you:
+
+- Check your Slow Log to understand what are the commands you are
+    running which are too slow to execute.
 ```
 
 ## Common Latency Events and Their Causes
 
 | Event | Common Cause |
 |-------|-------------|
-| `aof-stat` | AOF fsync taking too long - often due to slow disk |
+| `aof-fstat` | AOF fstat call taking too long - often due to slow disk |
 | `fast-command` | Slow commands blocking the event loop |
-| `rdb-save-in-progress` | Background RDB save impacting performance |
+| `fork` | Forking for background RDB or AOF save impacting performance |
 | `expire-cycle` | Key expiration scan taking too long |
-| `loading-key-space` | Loading RDB from disk at startup |
+| `eviction-cycle` | Key eviction under memory pressure taking too long |
 
 ## Combining with LATENCY HISTORY
 
 Get more detail by checking history for a specific event:
 
 ```bash
-# See all recorded occurrences of aof-stat latency
-redis-cli LATENCY HISTORY aof-stat
+# See all recorded occurrences of aof-fstat latency
+redis-cli LATENCY HISTORY aof-fstat
 ```
 
 ## Combining with LATENCY LATEST
@@ -85,7 +89,7 @@ redis-cli LATENCY LATEST
 Example remediation for common recommendations:
 
 ```bash
-# High AOF latency - check and rewrite AOF
+# High AOF latency - rewrite AOF to reduce file size
 redis-cli BGREWRITEAOF
 
 # Slow commands detected - check slowlog
