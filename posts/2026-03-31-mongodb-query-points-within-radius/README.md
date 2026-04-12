@@ -120,9 +120,10 @@ Sample output:
 
 ```text
 [
-  { name: "Coffee Shop", distanceMeters: 340, distanceKm: 0.34 },
-  { name: "Bookstore", distanceMeters: 680, distanceKm: 0.68 },
-  { name: "Park", distanceMeters: 1120, distanceKm: 1.12 }
+  { name: "Park", distanceMeters: 686, distanceKm: 0.69 },
+  { name: "Bookstore", distanceMeters: 811, distanceKm: 0.81 },
+  { name: "Coffee Shop", distanceMeters: 1067, distanceKm: 1.07 },
+  { name: "Restaurant", distanceMeters: 1395, distanceKm: 1.40 }
 ]
 ```
 
