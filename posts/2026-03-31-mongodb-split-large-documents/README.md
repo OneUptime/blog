@@ -75,7 +75,8 @@ For documents that accumulate time-series events, use the bucket pattern to limi
 // Use one document per device per hour with up to N readings
 
 {
-  _id: { deviceId: "sensor_42", hour: ISODate("2024-01-15T14:00:00Z") },
+  deviceId: "sensor_42",
+  hour: ISODate("2024-01-15T14:00:00Z"),
   readings: [
     { ts: ISODate("2024-01-15T14:01:00Z"), temp: 22.1 },
     { ts: ISODate("2024-01-15T14:02:00Z"), temp: 22.3 }
