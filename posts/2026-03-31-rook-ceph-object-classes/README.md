@@ -20,17 +20,17 @@ Ceph ships with several built-in object classes used internally:
 
 - `lock`: Distributed locking for RBD images
 - `rbd`: RBD image header and metadata operations
-- `cls_rgw`: RGW bucket index operations
-- `cls_cephfs`: CephFS directory and inode operations
-- `cls_otp`: One-time password support
+- `rgw`: RGW bucket index operations
+- `cephfs`: CephFS directory and inode operations
+- `otp`: One-time password support
 
 List available classes:
 
 ```bash
 kubectl exec -it rook-ceph-tools -n rook-ceph -- bash
 
-# List loaded object classes on an OSD
-ceph daemon osd.0 list_obj_classes
+# Show information about a RADOS class shared object
+ceph-clsinfo /usr/lib/rados-classes/libcls_rbd.so
 ```
 
 ## How Object Class Methods Work
@@ -89,21 +89,20 @@ CLS_INIT(myclass) {
 }
 ```
 
-Build and install the `.so` file to `/usr/lib/rados-classes/` on each OSD node.
+Build and install the `.so` file to the `$libdir/rados-classes/` directory (typically `/usr/lib/rados-classes/` or `/usr/lib64/rados-classes/` depending on the platform) on each OSD node.
 
 ## Lua Object Classes
 
 Newer Ceph versions support Lua-based object classes for lighter-weight scripting:
 
 ```lua
--- myclass.lua
-function count_words(input)
+function count_words(input, output)
     local data = objclass.read(0, 0)
     local count = 0
     for _ in data:gmatch("%S+") do count = count + 1 end
-    objclass.reply(tostring(count))
+    output:append(tostring(count))
 end
-objclass.register("count_words", count_words)
+objclass.register(count_words)
 ```
 
 ## Use Cases
