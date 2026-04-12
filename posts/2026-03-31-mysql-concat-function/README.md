@@ -74,7 +74,7 @@ FROM users
 WHERE CONCAT(first_name, ' ', last_name) = 'Jane Doe';
 ```
 
-Note: using a function on a column in `WHERE` prevents index usage on that column. Consider storing the computed value or using full-text indexing for large tables.
+Note: using a function on a column in `WHERE` prevents index usage on that column. Consider using a generated (stored) column with a regular index, or restructuring the query to filter on individual columns, for better performance on large tables.
 
 ## Using CONCAT() with UPDATE
 
