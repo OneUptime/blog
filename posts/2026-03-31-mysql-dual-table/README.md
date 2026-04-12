@@ -121,15 +121,19 @@ CALL get_config_value(@ver);
 SELECT @ver;
 ```
 
-## DUAL in Oracle Compatibility Mode
+## DUAL in Oracle Compatibility
 
-If your MySQL server is configured with `sql_mode=ORACLE` (MySQL 8.0+ Enterprise), certain Oracle-compatible queries using DUAL will work transparently:
+In Oracle SQL, `FROM DUAL` is mandatory for `SELECT` statements that do not reference a table. MySQL's DUAL table exists specifically for compatibility with Oracle SQL, making it easier to port queries between the two databases:
 
 ```sql
--- Works in Oracle mode
-SELECT SYSDATE FROM DUAL;
+-- Works in both MySQL and Oracle
 SELECT 1 FROM DUAL WHERE 1 = 1;
+
+-- SYSDATE requires parentheses in MySQL, unlike Oracle
+SELECT SYSDATE() FROM DUAL;
 ```
+
+Note that MariaDB 10.3+ (not MySQL) offers a comprehensive `sql_mode=ORACLE` setting that provides broader Oracle SQL compatibility, including support for Oracle-style `SYSDATE` without parentheses.
 
 ## Summary
 
