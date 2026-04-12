@@ -10,7 +10,7 @@ Description: Learn how to integrate MongoDB into a Fastify application using the
 
 ## Introduction
 
-Fastify is a high-performance Node.js web framework with a rich plugin system. The recommended pattern for sharing MongoDB across routes is to wrap the connection in a Fastify plugin using `fastify-plugin`, which decorates the Fastify instance and makes the database available in all route handlers.
+Fastify is a high-performance Node.js web framework with a rich plugin system. The recommended pattern for sharing MongoDB across routes is to wrap the connection in a Fastify plugin using `fastify-plugin`. This ensures the connection is established during Fastify's boot sequence and the disconnect hook is registered at the application root level. Route handlers then access Mongoose models directly through the shared module scope.
 
 ## Installation
 
@@ -46,7 +46,7 @@ export default fp(mongoPlugin, { name: 'mongodb' });
 
 ```typescript
 // src/models/product.ts
-import mongoose, { Schema, model, models } from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
 export interface IProduct {
   name:     string;
