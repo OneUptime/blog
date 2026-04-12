@@ -49,11 +49,11 @@ db.adminCommand({
 })
 ```
 
-Note: Cross-database renames require the `renameCollection` privilege on both the source and target namespaces.
+Note: Cross-database renames require appropriate privileges on both the source and target namespaces, including `find` on the source collection and `insert` on the target collection.
 
 ## Scripting a Blue-Green Schema Swap
 
-A common pattern is to build a new version of a collection and then swap it atomically:
+A common pattern is to build a new version of a collection and then swap it with minimal downtime using two sequential renames:
 
 ```javascript
 // 1. Build the new collection
@@ -73,7 +73,7 @@ This gives you a fast rollback option if the new data has issues.
 
 ## Limitations and Considerations
 
-- **Sharded collections** - `renameCollection` is not supported for sharded collections. You must use a bulk copy and drop approach instead.
+- **Sharded collections** - Starting in MongoDB 5.0, you can rename a sharded collection, but only within the same database. Cross-database renames of sharded collections are not supported.
 - **Views** - Renaming a collection that has associated views does not update those views; they will break.
 - **Change streams** - Existing change stream cursors on the old collection will stop receiving events. Open new change streams after rename.
 - **Application downtime** - While the operation is fast, ensure your application handles the brief period where the old name is unavailable.
@@ -90,4 +90,4 @@ print(db.users.countDocuments({}));
 
 ## Summary
 
-`db.collection.renameCollection()` is the simplest way to rename a collection in MongoDB, preserving all data and indexes in a metadata-only operation. It supports atomic blue-green swaps when used with `dropTarget: true`. For cross-database moves, use `db.adminCommand` with the full namespace. Be aware of its limitations with sharded collections and always verify the outcome with a document count check.
+`db.collection.renameCollection()` is the simplest way to rename a collection in MongoDB, preserving all data and indexes in a metadata-only operation. It supports fast blue-green swaps when combined with `dropTarget: true`. For cross-database moves, use `db.adminCommand` with the full namespace. Be aware of its limitations with sharded collections and always verify the outcome with a document count check.
