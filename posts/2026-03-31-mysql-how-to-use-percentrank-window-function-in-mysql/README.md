@@ -51,10 +51,11 @@ FROM employees;
 ## Comparing PERCENT_RANK() and NTILE()
 
 ```sql
-SELECT name, score,
+SELECT student_id, score,
   PERCENT_RANK() OVER (ORDER BY score DESC) AS pct_rank,  -- continuous 0.0-1.0
   NTILE(4) OVER (ORDER BY score DESC)       AS quartile   -- discrete 1-4
 FROM test_scores
+WHERE subject = 'Math'
 ORDER BY score DESC;
 ```
 
@@ -117,7 +118,7 @@ ORDER BY department, salary;
 ## PERCENT_RANK() vs CUME_DIST()
 
 ```sql
-SELECT name, score,
+SELECT student_id, score,
   ROUND(PERCENT_RANK() OVER (ORDER BY score), 4) AS pct_rank,
   ROUND(CUME_DIST() OVER (ORDER BY score), 4)   AS cume_dist
 FROM test_scores
