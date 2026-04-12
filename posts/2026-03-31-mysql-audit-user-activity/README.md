@@ -69,19 +69,20 @@ audit_log_policy=ALL
 ## Method 3: Performance Schema for Login Monitoring
 
 ```sql
--- Enable failed login tracking
+-- Enable statement instrumentation
 UPDATE performance_schema.setup_instruments
 SET ENABLED = 'YES', TIMED = 'YES'
 WHERE NAME LIKE 'statement/sql/%';
 
--- View recent connections
-SELECT EVENT_NAME, SQL_TEXT, CURRENT_USER, EVENT_ID, THREAD_ID
-FROM performance_schema.events_statements_history_long
-ORDER BY EVENT_ID DESC
+-- View recent statements with user info
+SELECT esh.EVENT_NAME, esh.SQL_TEXT, t.PROCESSLIST_USER, esh.EVENT_ID, esh.THREAD_ID
+FROM performance_schema.events_statements_history_long esh
+JOIN performance_schema.threads t ON esh.THREAD_ID = t.THREAD_ID
+ORDER BY esh.EVENT_ID DESC
 LIMIT 20;
 ```
 
-## Method 4: Login History via Plugin (MySQL 8.0+)
+## Method 4: Failed-Login Tracking (MySQL 8.0.19+)
 
 ```sql
 -- Track failed login attempts
