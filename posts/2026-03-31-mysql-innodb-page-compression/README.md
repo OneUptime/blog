@@ -38,6 +38,7 @@ df -T /var/lib/mysql
 # ext4 and xfs both support hole punching
 
 # Test hole punching capability
+dd if=/dev/zero of=/var/lib/mysql/test_sparse_file bs=4096 count=10
 fallocate -d /var/lib/mysql/test_sparse_file
 ```
 
@@ -65,7 +66,7 @@ CREATE TABLE order_history (
 ## Enabling compression on an existing table
 
 ```sql
--- Add compression to an existing table (triggers a full rebuild)
+-- Add compression to an existing table (metadata change only, no rebuild)
 ALTER TABLE product_catalog COMPRESSION = 'zlib';
 
 -- The ALTER alone does not physically compress existing pages.
@@ -132,8 +133,8 @@ flowchart TD
     H[InnoDB reads page from disk] --> I[Read page from file]
     I --> J{Compressed?}
     J -->|Yes| K[Decompress to buffer pool page size]
-    J -->|No| K
-    K --> L[Page ready in buffer pool]
+    J -->|No| L[Page ready in buffer pool]
+    K --> L
 ```
 
 ## zlib vs LZ4 comparison
