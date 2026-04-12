@@ -12,17 +12,14 @@ Slow aggregation pipelines are one of the most common MongoDB performance issues
 
 ## Step 1 - Get the Execution Plan
 
-Add `{ explain: true }` to any `aggregate` call:
+Use `explain("executionStats")` on any `aggregate` call to get the full execution plan including memory and disk usage details:
 
 ```javascript
-db.orders.aggregate(
-  [
-    { $match: { status: "pending" } },
-    { $group: { _id: "$region", total: { $sum: "$amount" } } },
-    { $sort: { total: -1 } }
-  ],
-  { explain: true }
-)
+db.orders.explain("executionStats").aggregate([
+  { $match: { status: "pending" } },
+  { $group: { _id: "$region", total: { $sum: "$amount" } } },
+  { $sort: { total: -1 } }
+])
 ```
 
 Look for:
