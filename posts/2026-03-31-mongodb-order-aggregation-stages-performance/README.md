@@ -108,13 +108,13 @@ Add a filter after `$lookup` if you need to filter on the joined data:
 
 ```javascript
 { $unwind: "$tags" },
-{ $match: { "tags": "featured" } }
+{ $match: { status: "active" } }
 ```
 
 **Fast:**
 
 ```javascript
-{ $match: { "tags": "featured" } },   // array element match without $unwind
+{ $match: { status: "active" } },   // filter before expanding arrays
 { $unwind: "$tags" }
 ```
 
