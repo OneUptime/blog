@@ -113,9 +113,8 @@ If system tables are corrupted, use `--skip-grant-tables` to start:
 
 ```bash
 sudo mysqld_safe --skip-grant-tables &
-mysql -u root
 
-# Run mysql_upgrade
+# Run mysql_upgrade to repair system tables
 mysql_upgrade -u root
 ```
 
