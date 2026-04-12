@@ -44,7 +44,7 @@ var client = new MongoClient("mongodb://localhost:27017");
 var db = client.GetDatabase("shopdb");
 var orders = db.GetCollection<Order>("orders");
 
-IQueryable<Order> queryable = orders.AsQueryable();
+var queryable = orders.AsQueryable();
 ```
 
 ## Basic Filtering
@@ -148,7 +148,7 @@ var byStatus = queryable
 ## Array Queries
 
 ```csharp
-// Contains (maps to $in)
+// Contains (matches documents where array contains element)
 var tagged = queryable
     .Where(o => o.Tags.Contains("urgent"))
     .ToList();
