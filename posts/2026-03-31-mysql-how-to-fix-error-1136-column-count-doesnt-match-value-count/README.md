@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Error Handling, Troubleshooting, INSERT Errors
 
-Description: Learn how to diagnose and fix MySQL ERROR 1136 'Column count doesn't match value count' in INSERT and SELECT INTO statements.
+Description: Learn how to diagnose and fix MySQL ERROR 1136 'Column count doesn't match value count' in INSERT and INSERT ... SELECT statements.
 
 ---
 
@@ -76,20 +76,23 @@ INSERT INTO employees (name, department)
 SELECT name, department FROM employees_backup;
 ```
 
-## Cause 5 - CREATE TABLE ... SELECT Mismatch
+## Cause 5 - CREATE TABLE ... SELECT Pitfall
+
+In MySQL, `CREATE TABLE ... SELECT` merges defined columns with columns from the SELECT by name. Extra SELECT columns are appended to the table definition, so a column count mismatch does **not** produce ERROR 1136:
 
 ```sql
--- Wrong if SELECT returns different column count than the column list
+-- This does NOT produce ERROR 1136
+-- MySQL adds the unmatched 'salary' column to the table automatically
 CREATE TABLE archive (id INT, name VARCHAR(100))
 SELECT id, name, salary FROM employees;
--- ERROR 1136
+-- Result: table with 3 columns (id, name, salary)
 
--- Correct: column list in CREATE TABLE must match or be absent
-CREATE TABLE archive AS SELECT id, name, salary FROM employees;
--- Or be explicit:
+-- To control all column types explicitly, define them all:
 CREATE TABLE archive (id INT, name VARCHAR(100), salary DECIMAL(10,2))
 SELECT id, name, salary FROM employees;
 ```
+
+However, using `INSERT INTO ... SELECT` with a column mismatch **will** produce ERROR 1136 (see Cause 4).
 
 ## Checking Table Structure
 
