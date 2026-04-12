@@ -65,7 +65,7 @@ sudo systemctl restart mysql
 | `ONLY_FULL_GROUP_BY` | Disallow non-aggregated columns not in GROUP BY |
 | `NO_ZERO_IN_DATE` | Reject dates with zero month or day |
 | `NO_ZERO_DATE` | Reject the literal zero date `0000-00-00` |
-| `ERROR_FOR_DIVISION_BY_ZERO` | Return an error for division by zero |
+| `ERROR_FOR_DIVISION_BY_ZERO` | Produce a warning (or error with strict mode) for division by zero |
 | `NO_ENGINE_SUBSTITUTION` | Error if requested storage engine is unavailable |
 | `ANSI` | Combines settings for ANSI SQL compliance |
 | `TRADITIONAL` | Error on invalid data values, similar to traditional databases |
@@ -75,13 +75,13 @@ sudo systemctl restart mysql
 Instead of replacing the entire mode string, use `CONCAT` to add a mode:
 
 ```sql
-SET GLOBAL sql_mode = CONCAT(@@sql_mode, ',NO_ZERO_DATE');
+SET GLOBAL sql_mode = CONCAT(@@GLOBAL.sql_mode, ',NO_ZERO_DATE');
 ```
 
 To remove one mode while keeping the others, use `REPLACE`:
 
 ```sql
-SET GLOBAL sql_mode = REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY,', '');
+SET GLOBAL sql_mode = REPLACE(@@GLOBAL.sql_mode, 'ONLY_FULL_GROUP_BY,', '');
 ```
 
 ## Checking the Effect of a Mode Change
@@ -91,13 +91,13 @@ Test your application's queries in a session with the target SQL mode before app
 ```sql
 SET SESSION sql_mode = 'TRADITIONAL';
 
--- This will now error instead of inserting 0
-INSERT INTO orders (quantity) VALUES (-1);
+-- This will now error instead of silently inserting '0000-00-00'
+INSERT INTO events (event_date) VALUES ('2026-02-30');
 ```
 
 ## SQL Mode and Application Migrations
 
-When migrating from MySQL 5.7 to 8.0, the default SQL mode changed significantly. Applications that relied on lenient behavior in 5.7 may fail in 8.0. Check for:
+When migrating from MySQL 5.7 to 8.0, the default SQL mode changed with the removal of `NO_AUTO_CREATE_USER` (which was deprecated in 5.7). Applications that used custom lenient SQL modes in 5.7 may encounter stricter defaults in 8.0. Check for:
 
 - Queries that relied on implicit `GROUP BY` behavior
 - Inserts with zero dates
