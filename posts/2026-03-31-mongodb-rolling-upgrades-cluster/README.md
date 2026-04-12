@@ -76,7 +76,7 @@ rs.status()
 After all nodes are upgraded, update the feature compatibility version (FCV) to unlock new features:
 
 ```javascript
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 Verify the change took effect:
