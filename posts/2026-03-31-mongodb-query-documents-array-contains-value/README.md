@@ -83,7 +83,7 @@ db.products.find({
 });
 ```
 
-This is different from `$all` - see the related post on checking for all values.
+This is equivalent to using `$all`, which is the more idiomatic way to write the same query: `{ tags: { $all: ["sale", "electronics"] } }`.
 
 ## Indexing Array Fields
 
