@@ -124,9 +124,10 @@ SHOW CREATE TABLE orders_copy\G
 CREATE TABLE `orders_copy` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `user_id` int unsigned NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `fk_orders_user` (`user_id`)
 ) ENGINE=InnoDB ...
--- No CONSTRAINT fk_orders_user
+-- Index on user_id is copied, but CONSTRAINT fk_orders_user is NOT
 ```
 
 To add the FK to the copy:
