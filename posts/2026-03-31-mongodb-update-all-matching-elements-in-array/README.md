@@ -70,20 +70,10 @@ db.orders.updateOne(
 // Apply a 10% discount to all items priced over $50
 db.orders.updateMany(
   {},
-  [
-    {
-      $set: {
-        "items.$[item].discountedPrice": {
-          $multiply: ["$$item.price", 0.9]
-        }
-      }
-    }
-  ],
+  { $mul: { "items.$[item].price": 0.9 } },
   { arrayFilters: [{ "item.price": { $gt: 50 } }] }
 )
 ```
-
-Note: using `$$item` (double dollar) references the array element variable in an aggregation pipeline update.
 
 ## Multiple arrayFilters for Different Identifiers
 
