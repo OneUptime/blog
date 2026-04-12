@@ -10,7 +10,7 @@ Description: Invisible indexes in MySQL 8.0 allow you to hide an index from the 
 
 ## Overview
 
-Invisible indexes were introduced in MySQL 8.0.0. An invisible index is maintained by MySQL as data changes - it stays current - but is ignored by the query optimizer when selecting a query plan. This allows you to safely test what happens when an index is removed without actually deleting it.
+Invisible indexes were introduced in MySQL 8.0. An invisible index is maintained by MySQL as data changes - it stays current - but is ignored by the query optimizer when selecting a query plan. This allows you to safely test what happens when an index is removed without actually deleting it.
 
 This is particularly useful for validating that dropping an index will not degrade query performance before committing to the change.
 
