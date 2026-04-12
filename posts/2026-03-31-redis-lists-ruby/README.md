@@ -28,11 +28,11 @@ redis.rpush('history', 'event-2')
 
 # Pop from tail (FIFO queue)
 item = redis.rpop('queue')
-puts item  # job-1
+puts item  # job-3
 
 # Pop from head (LIFO stack)
 item = redis.lpop('queue')
-puts item  # job-2
+puts item  # job-1
 ```
 
 ## Viewing List Contents
@@ -40,7 +40,7 @@ puts item  # job-2
 ```ruby
 # Full range
 items = redis.lrange('queue', 0, -1)
-puts items.inspect  # ["job-3"]
+puts items.inspect  # ["job-2"]
 
 # First 5 elements
 redis.lrange('queue', 0, 4)
@@ -61,6 +61,11 @@ redis.lindex('queue', -1) # last element
 # worker.rb
 redis = Redis.new
 
+def process_job(job)
+  # do the actual work
+  puts "Done: #{job.inspect}"
+end
+
 loop do
   result = redis.brpop('jobs:email', 'jobs:sms', timeout: 30)
 
@@ -73,11 +78,6 @@ loop do
   job = JSON.parse(payload)
   puts "Processing #{job['type']} from #{queue}"
   process_job(job)
-end
-
-def process_job(job)
-  # do the actual work
-  puts "Done: #{job.inspect}"
 end
 ```
 
