@@ -92,7 +92,7 @@ FROM (
 WHERE total_revenue > 1000;
 ```
 
-After (three named CTEs):
+After (two named CTEs):
 
 ```sql
 WITH
