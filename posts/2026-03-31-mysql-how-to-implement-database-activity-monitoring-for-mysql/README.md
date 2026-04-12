@@ -109,26 +109,50 @@ Common patterns to alert on:
 
 For sensitive tables, add application-layer monitoring with audit triggers:
 
+> Note: MySQL triggers only support INSERT, UPDATE, and DELETE events. SELECT monitoring requires the audit plugin or a proxy-layer solution.
+
 ```sql
 CREATE TABLE security_audit_log (
   id           BIGINT AUTO_INCREMENT PRIMARY KEY,
   event_time   DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
   db_user      VARCHAR(100),
-  client_ip    VARCHAR(50),
+  client_host  VARCHAR(50),
   table_name   VARCHAR(100),
   action       VARCHAR(20),
   query_text   TEXT,
   rows_affected INT
 );
 
--- Log all access to the credit_cards table
+-- Log INSERT activity on the credit_cards table
 DELIMITER $$
-CREATE TRIGGER credit_cards_select_monitor
-BEFORE SELECT ON credit_cards
+CREATE TRIGGER credit_cards_insert_monitor
+AFTER INSERT ON credit_cards
 FOR EACH ROW
 BEGIN
-  INSERT INTO security_audit_log (db_user, client_ip, table_name, action)
-  VALUES (USER(), SUBSTRING_INDEX(USER(), '@', -1), 'credit_cards', 'SELECT');
+  INSERT INTO security_audit_log (db_user, client_host, table_name, action)
+  VALUES (USER(), SUBSTRING_INDEX(USER(), '@', -1), 'credit_cards', 'INSERT');
+END$$
+DELIMITER ;
+
+-- Log UPDATE activity on the credit_cards table
+DELIMITER $$
+CREATE TRIGGER credit_cards_update_monitor
+AFTER UPDATE ON credit_cards
+FOR EACH ROW
+BEGIN
+  INSERT INTO security_audit_log (db_user, client_host, table_name, action)
+  VALUES (USER(), SUBSTRING_INDEX(USER(), '@', -1), 'credit_cards', 'UPDATE');
+END$$
+DELIMITER ;
+
+-- Log DELETE activity on the credit_cards table
+DELIMITER $$
+CREATE TRIGGER credit_cards_delete_monitor
+AFTER DELETE ON credit_cards
+FOR EACH ROW
+BEGIN
+  INSERT INTO security_audit_log (db_user, client_host, table_name, action)
+  VALUES (USER(), SUBSTRING_INDEX(USER(), '@', -1), 'credit_cards', 'DELETE');
 END$$
 DELIMITER ;
 ```
@@ -183,16 +207,20 @@ monitor_activity()
 ## Step 6: Set Up Login Failure Alerts
 
 ```sql
--- Enable connection tracking in Performance Schema
-UPDATE performance_schema.setup_instruments
-SET enabled = 'YES', timed = 'YES'
-WHERE name LIKE 'statement/sql/error%';
-
--- Query failed logins
+-- Query failed logins from the host cache
 SELECT
-  user, host, total_connections, total_errors
-FROM performance_schema.accounts
-WHERE total_errors > 5;
+  ip,
+  host,
+  SUM_CONNECT_ERRORS,
+  COUNT_AUTH_ERRORS,
+  COUNT_HANDSHAKE_ERRORS,
+  FIRST_ERROR_SEEN,
+  LAST_ERROR_SEEN
+FROM performance_schema.host_cache
+WHERE COUNT_AUTH_ERRORS > 5;
+
+-- Check overall failed connection count
+SHOW GLOBAL STATUS LIKE 'Aborted_connects';
 ```
 
 ## Summary
