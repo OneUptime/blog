@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Ruby On Rail, ActiveRecord, Database Configuration, Web Development
+Tags: MySQL, Ruby on Rails, ActiveRecord, Database Configuration, Web Development
 
 Description: Learn how to set up MySQL with Ruby on Rails, configure database.yml, manage schema migrations, and use ActiveRecord with MySQL-specific features.
 
@@ -99,7 +99,7 @@ rails db:migrate
 rails db:migrate:status
 ```
 
-Generated migration file:
+Example customized migration file:
 
 ```ruby
 class CreateProducts < ActiveRecord::Migration[7.0]
@@ -164,7 +164,7 @@ Product.select("id, name, price * 1.1 AS price_with_tax").where("stock > 0")
 # Atomic block - rolls back if any exception is raised
 ActiveRecord::Base.transaction do
   product.update!(stock: product.stock - quantity)
-  Order.create!(customer: current_user, product: product, quantity: quantity)
+  order = Order.create!(customer: current_user, product: product, quantity: quantity)
   Payment.create!(order: order, amount: product.price * quantity)
 end
 ```
