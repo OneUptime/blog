@@ -104,7 +104,7 @@ ALTER TABLE employees
 
 ## Checking the Impact Before Running
 
-For large tables, use `EXPLAIN` and check the `ALTER TABLE` ALGORITHM before executing:
+For large tables, specify the `ALGORITHM` and `LOCK` clauses to control how the change is applied. MySQL will raise an error if the requested algorithm is not supported for the operation:
 
 ```sql
 ALTER TABLE large_table
