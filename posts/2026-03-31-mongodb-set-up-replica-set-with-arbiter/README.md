@@ -95,11 +95,13 @@ arbiter.example.com:27017 - ARBITER
 
 The arbiter introduces some trade-offs:
 
-```javascript
-// This will fail - arbiters cannot serve reads
+```bash
+# This will fail - arbiters cannot serve reads
 mongosh --host arbiter.example.com --eval "db.collection.find()"
-// Error: not allowed to read from arbiter
+# Error: not primary or secondary; cannot currently read from this replSet member
+```
 
+```javascript
 // Writes require majority - with 1 primary + 1 secondary, w:majority = 2
 db.collection.insertOne(
   { test: true },
