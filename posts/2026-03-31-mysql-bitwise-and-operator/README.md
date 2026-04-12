@@ -127,4 +127,4 @@ SELECT NULL & 7;   -- Result: NULL
 
 ## Summary
 
-The Bitwise AND (`&`) operator is a powerful tool in MySQL for compact flag storage and bitmask filtering. It shines in permission systems, feature flags, and any scenario where multiple boolean states need to be stored in a single column. Use `(column & bitmask) = bitmask` to check for the presence of specific bits, and combine with `UPDATE` to toggle flags efficiently.
+The Bitwise AND (`&`) operator is a powerful tool in MySQL for compact flag storage and bitmask filtering. It shines in permission systems, feature flags, and any scenario where multiple boolean states need to be stored in a single column. Use `(column & bitmask) = bitmask` to check for the presence of specific bits, and combine with `UPDATE` to clear flags efficiently.
