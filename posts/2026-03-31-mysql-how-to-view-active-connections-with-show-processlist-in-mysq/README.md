@@ -38,7 +38,7 @@ SHOW FULL PROCESSLIST;
 +-----+------+-----------+--------+---------+------+----------+-------------------+
 | 12  | app  | 10.0.0.5  | orders | Query   |  142 | executing| SELECT * FROM ... |
 | 13  | root | localhost | NULL   | Sleep   |  300 | NULL     | NULL              |
-| 14  | rep  | 10.0.0.10 | NULL   | Binlog  |    0 |          | NULL              |
+| 14  | rep  | 10.0.0.10 | NULL   | Binlog Dump |  0 |          | NULL              |
 +-----+------+-----------+--------+---------+------+----------+-------------------+
 ```
 
@@ -61,7 +61,6 @@ SHOW FULL PROCESSLIST;
 | `Waiting for lock` | Blocked waiting for a table/row lock |
 | `Sending data` | Reading data and sending results |
 | `Sorting result` | Performing a file sort |
-| `Sleep` | Idle connection, no query running |
 | `init` | Initializing a statement |
 
 ## Using information_schema.processlist
@@ -79,12 +78,10 @@ ORDER BY time DESC;
 ## Using performance_schema.processlist (MySQL 8.0.22+)
 
 ```sql
-SELECT processlist_id, processlist_user, processlist_host,
-       processlist_db, processlist_command,
-       processlist_time, processlist_state, processlist_info
+SELECT id, user, host, db, command, time, state, info
 FROM performance_schema.processlist
-WHERE processlist_command != 'Sleep'
-ORDER BY processlist_time DESC;
+WHERE command != 'Sleep'
+ORDER BY time DESC;
 ```
 
 ## Finding Long-Running Queries
@@ -111,7 +108,7 @@ KILL QUERY 12;    -- Kill only the current query, keep connection
 ```bash
 #!/bin/bash
 # Kill all queries running longer than 120 seconds
-mysql -u root -p"$MYSQL_PASS" -e "
+mysql -u root -p"$MYSQL_PASS" -N -e "
   SELECT CONCAT('KILL ', id, ';')
   FROM information_schema.processlist
   WHERE command = 'Query'
