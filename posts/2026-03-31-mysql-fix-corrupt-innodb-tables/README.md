@@ -8,7 +8,7 @@ Description: Recover from InnoDB table corruption using force recovery mode, CHE
 
 ---
 
-InnoDB table corruption can occur after a server crash, hardware failure, or filesystem error. Symptoms include errors like `Table 'mydb.orders' is marked as crashed`, `InnoDB: Database page corruption on disk`, or MySQL refusing to start entirely.
+InnoDB table corruption can occur after a server crash, hardware failure, or filesystem error. Symptoms include errors like `InnoDB: Database page corruption on disk or a failed file read`, `InnoDB: Unable to read tablespace`, or MySQL refusing to start entirely.
 
 ## Check for Corruption
 
@@ -16,7 +16,6 @@ Run a table check to identify corrupted tables:
 
 ```sql
 CHECK TABLE orders;
-CHECK TABLE orders EXTENDED;
 ```
 
 Review the MySQL error log for InnoDB corruption messages:
@@ -86,9 +85,11 @@ After extracting the data:
 sudo systemctl stop mysql
 
 # Remove innodb_force_recovery from my.cnf
-# Remove InnoDB files
+# Remove InnoDB files and old database directories
 sudo rm /var/lib/mysql/ib_logfile*
+sudo rm -rf '/var/lib/mysql/#innodb_redo/'
 sudo rm /var/lib/mysql/ibdata1
+sudo rm -rf /var/lib/mysql/mydb/
 
 # Start MySQL to let it initialize fresh InnoDB files
 sudo systemctl start mysql
