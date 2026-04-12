@@ -32,6 +32,7 @@ Each delivery attempt is a separate document with retry metadata.
 ```javascript
 db.webhook_deliveries.insertOne({
   subscriptionId: "sub-001",
+  targetUrl: "https://partner.example.com/hooks/events",
   event: "order.created",
   payload: { orderId: "ord-999", total: 5999 },
   status: "pending",
