@@ -39,8 +39,7 @@ db.stacks.updateOne(
   {
     $push: {
       items: {
-        $each: [{ "action": "delete", "data": { "id": "xyz" }, "timestamp": new Date() }],
-        $position: -1  // append to end (top of stack)
+        $each: [{ "action": "delete", "data": { "id": "xyz" }, "timestamp": new Date() }]
       }
     }
   },
@@ -117,11 +116,11 @@ def peek(stack_id: str) -> dict | None:
 
 ```python
 def size(stack_id: str) -> int:
-    result = db.stacks.aggregate([
+    results = list(db.stacks.aggregate([
         {"$match": {"_id": stack_id}},
         {"$project": {"count": {"$size": "$items"}}}
-    ]).next()
-    return result.get("count", 0) if result else 0
+    ]))
+    return results[0].get("count", 0) if results else 0
 ```
 
 ## Practical Example: Undo Stack
