@@ -93,7 +93,7 @@ FROM product_pricing;
 +-----------+-------+------------+------------+----------------+---------------+
 ```
 
-## Enforcing Business Rules with LEAST()
+## Enforcing Business Rules with GREATEST()
 
 A typical scenario: ensure the selling price never drops below the floor price.
 
@@ -111,10 +111,10 @@ FROM product_pricing;
 +-----------+------------+-------------+------------------+
 | product   | sale_price | floor_price | discounted_price |
 +-----------+------------+-------------+------------------+
-| Widget A  |      24.99 |       15.00 |            22.49 |
-| Widget B  |      89.99 |       50.00 |            80.99 |
-| Gadget X  |     119.99 |       90.00 |           107.99 |
-| Gadget Y  |      35.00 |       25.00 |            31.50 |
+| Widget A  |      24.99 |       15.00 |          22.4910 |
+| Widget B  |      89.99 |       50.00 |          80.9910 |
+| Gadget X  |     119.99 |       90.00 |         107.9910 |
+| Gadget Y  |      35.00 |       25.00 |          31.5000 |
 +-----------+------------+-------------+------------------+
 ```
 
@@ -173,8 +173,8 @@ When arguments have mixed types, MySQL coerces them:
 -- String '20' is coerced to numeric 20
 SELECT GREATEST(10, '20', 15) AS result;  -- 20 (numeric comparison)
 
--- When all look like numbers but are strings, numeric context applies
-SELECT LEAST('100', '99', '200') AS result;  -- 99 (numeric if numeric-looking)
+-- When all arguments are strings, comparison is lexicographic
+SELECT LEAST('100', '99', '200') AS result;  -- 100 (string comparison: '100' < '200' < '99')
 
 -- Purely non-numeric strings use lexicographic comparison
 SELECT LEAST('a100', 'a99', 'a200') AS result;  -- a100 (string comparison)
