@@ -39,7 +39,7 @@ SELECT
     HISTOGRAM->>'$."number-of-buckets-specified"' AS buckets,
     JSON_LENGTH(HISTOGRAM->>'$."buckets"') AS actual_buckets
 FROM information_schema.COLUMN_STATISTICS
-WHERE TABLE_SCHEMA = 'myapp'
+WHERE SCHEMA_NAME = 'myapp'
   AND TABLE_NAME = 'orders';
 
 -- View the full histogram JSON
@@ -47,7 +47,7 @@ SELECT
     COLUMN_NAME,
     HISTOGRAM
 FROM information_schema.COLUMN_STATISTICS
-WHERE TABLE_SCHEMA = 'myapp'
+WHERE SCHEMA_NAME = 'myapp'
   AND TABLE_NAME = 'orders'
   AND COLUMN_NAME = 'status'\G
 ```
@@ -65,7 +65,7 @@ SELECT
     COLUMN_NAME,
     HISTOGRAM->>'$."histogram-type"' AS histogram_type
 FROM information_schema.COLUMN_STATISTICS
-WHERE TABLE_SCHEMA = 'myapp'
+WHERE SCHEMA_NAME = 'myapp'
   AND TABLE_NAME = 'orders';
 ```
 
