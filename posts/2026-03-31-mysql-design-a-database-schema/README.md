@@ -81,7 +81,7 @@ CREATE TABLE order_items (
 ## Step 5 - Add Indexes for Common Queries
 
 ```sql
--- Index on foreign keys (MySQL does not add them automatically)
+-- InnoDB auto-creates indexes on foreign key columns, but explicit indexes let you control naming
 CREATE INDEX idx_orders_customer ON orders (customer_id);
 
 -- Composite index for common filters
