@@ -116,11 +116,14 @@ FROM leaderboard;
 ## Practical Example: Identifying Duplicate Rows
 
 ```sql
--- Find duplicate emails - keep id=1, flag others as duplicates
-SELECT id, email, created_at,
-  ROW_NUMBER() OVER (PARTITION BY email ORDER BY created_at) AS rn
-FROM users
-HAVING rn > 1;  -- these are duplicates
+-- Find duplicate emails - keep the earliest, flag others as duplicates
+SELECT id, email, created_at
+FROM (
+  SELECT id, email, created_at,
+    ROW_NUMBER() OVER (PARTITION BY email ORDER BY created_at) AS rn
+  FROM users
+) ranked
+WHERE rn > 1;  -- these are duplicates
 ```
 
 ## Summary
