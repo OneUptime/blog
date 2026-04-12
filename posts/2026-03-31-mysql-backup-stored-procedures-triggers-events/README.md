@@ -45,7 +45,7 @@ mysqldump -u root -p \
 
 ## Backing Up Only Routines
 
-To extract just stored procedures and functions without data:
+To extract just stored procedures, functions, and events without data:
 
 ```bash
 mysqldump -u root -p \
