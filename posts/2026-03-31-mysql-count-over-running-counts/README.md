@@ -38,7 +38,7 @@ FROM orders
 ORDER BY order_date;
 ```
 
-The result adds `running_order_count` to each row, incrementing by 1 for every new order in date order.
+The result adds `running_order_count` to each row. Note that the default frame is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, so rows sharing the same `order_date` are peers and receive the same count. If you need a strict row-by-row increment of 1, use `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` or `ROW_NUMBER()` instead.
 
 ## Partitioned Running Count
 
@@ -57,7 +57,7 @@ FROM orders
 ORDER BY customer_id, order_date;
 ```
 
-This tells you the sequential position of each order within a customer's history - useful for identifying first orders, second orders, and so on.
+Because the default frame is `RANGE`, orders sharing the same `order_date` within a customer receive the same count. This is useful for counting how many orders a customer has placed up to a given date, but if you need a unique sequential position (1, 2, 3, …) per order, use `ROW_NUMBER()` instead.
 
 ## Counting Non-NULL Values
 
