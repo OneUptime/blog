@@ -12,7 +12,7 @@ Description: Learn when and how to use MongoDB's reIndex() command to drop and r
 
 `reIndex()` drops all indexes on a collection and rebuilds them from scratch. It is a maintenance operation used to recover from index corruption, reclaim space after heavy deletes, or force a fresh build after bulk data imports.
 
-Starting with MongoDB 4.0, `reIndex()` on a replica set secondary is not allowed by default. The operation is typically performed on standalone instances or primaries during maintenance windows.
+Starting with MongoDB 5.0, `reIndex()` can only be run on standalone `mongod` instances. It cannot be run on any member of a replica set (neither primary nor secondary). The command was deprecated in MongoDB 6.0.
 
 ```mermaid
 flowchart TD
@@ -55,7 +55,7 @@ flowchart TD
     A --> C[Wasted space after mass deletes]
     A --> D[Post-upgrade format change]
     A --> E[Fragmented incremental builds]
-    B & C & D & E --> F[Run reIndex on standalone or primary]
+    B & C & D & E --> F[Run reIndex on standalone instance]
 ```
 
 ## Checking Index Health Before reIndex
@@ -119,19 +119,19 @@ Manual rebuilding gives you the chance to add or remove indexes you no longer ne
 
 ## reIndex() in a Replica Set
 
-On a replica set, running `reIndex()` on the primary rebuilds the indexes on the primary and the change is replicated to secondaries. However, running it on a secondary directly is restricted. The recommended approach for replica sets is:
+Starting with MongoDB 5.0, `reIndex()` cannot be run on any replica set member. Even in earlier versions, `reIndex()` does not propagate from the primary to secondaries. The recommended approach for replica sets is:
 
-1. Remove the secondary from the set.
-2. Restart it as a standalone.
+1. Remove the member from the replica set.
+2. Restart it as a standalone `mongod` instance.
 3. Run `reIndex()`.
 4. Restart as a replica set member and let it sync.
 
-```javascript
-// On the primary (rebuilds and replicates)
-db.orders.reIndex();
+Repeat this process for each member that needs its indexes rebuilt.
 
-// Check replication
-rs.printReplicationInfo();
+```javascript
+// After restarting a member as standalone
+use myDatabase
+db.orders.reIndex();
 ```
 
 ## Monitoring Progress
