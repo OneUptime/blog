@@ -46,10 +46,9 @@ Self-hosted is the right choice when:
 ## Atlas Tiers and Pricing
 
 ```text
-Shared tiers (dev/test):
+Free and Flex tiers (dev/test):
 - M0: Free (512MB storage)
-- M2: $9/month (2GB storage)
-- M5: $25/month (5GB storage)
+- Flex: Pay-as-you-go (up to 5GB storage, consumption-based billing)
 
 Dedicated tiers (production):
 - M10: ~$0.08/hour (2GB RAM)
@@ -75,16 +74,15 @@ Features available only in Atlas:
 - **Atlas Search** - full-text search powered by Lucene
 - **Atlas Vector Search** - vector similarity search for AI applications
 - **Online Archive** - automatic data tiering to object storage
-- **Data API** - HTTP-based access without a driver
-- **App Services** - serverless functions, sync, and triggers
+- **Atlas Triggers** - event-driven database and scheduled triggers
 - **Charts** - built-in data visualization
 
 ## Self-Hosted Setup Reference
 
 ```bash
-# Install MongoDB on Ubuntu
-wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+# Install MongoDB on Ubuntu 22.04
+wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 sudo apt-get update && sudo apt-get install -y mongodb-org
 sudo systemctl start mongod && sudo systemctl enable mongod
 ```
