@@ -58,16 +58,20 @@ SELECT * FROM order_counts WHERE customer_id = 42;
 
 ## When MySQL Forces TEMPTABLE
 
-Regardless of the specified algorithm, MySQL automatically uses TEMPTABLE (and ignores MERGE) when the view contains:
+Regardless of the specified algorithm, MySQL cannot use MERGE when the view contains:
 
-- `GROUP BY`
+- Aggregate functions or window functions (`SUM`, `COUNT`, `AVG`, etc.)
 - `DISTINCT`
-- Aggregate functions (`SUM`, `COUNT`, `AVG`, etc.)
+- `GROUP BY`
+- `HAVING`
+- `LIMIT`
 - `UNION` or `UNION ALL`
 - Subqueries in the SELECT list
 
+If MERGE is explicitly requested but cannot be used, MySQL issues a warning and sets the algorithm to UNDEFINED, which then falls back to TEMPTABLE:
+
 ```sql
--- MERGE is specified but MySQL silently uses TEMPTABLE
+-- MERGE is specified but MySQL warns and falls back to TEMPTABLE
 CREATE ALGORITHM = MERGE VIEW bad_merge AS
 SELECT department, COUNT(*) FROM employees GROUP BY department;
 ```
@@ -86,19 +90,19 @@ MySQL prefers MERGE when possible because it tends to produce better execution p
 
 ## Verifying the Algorithm in Use
 
+Use `SHOW CREATE VIEW` to see the full view definition including the `ALGORITHM` clause:
+
 ```sql
-SELECT TABLE_NAME, VIEW_DEFINITION
-FROM information_schema.VIEWS
-WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'active_customers';
+SHOW CREATE VIEW active_customers;
 ```
 
-The stored definition includes the `ALGORITHM` clause. Also run:
+Note that `information_schema.VIEWS.VIEW_DEFINITION` only contains the bare SELECT statement and does not include the ALGORITHM. You can also use EXPLAIN to confirm:
 
 ```sql
 EXPLAIN SELECT * FROM active_customers WHERE region = 'US';
 ```
 
-If `Extra` shows "Using temporary", TEMPTABLE is in use.
+If EXPLAIN shows the base table (`customers`) directly, MERGE is in effect. If it shows a derived table (`<derived2>` or similar), TEMPTABLE is being used.
 
 ## Changing the Algorithm on an Existing View
 
