@@ -78,7 +78,7 @@ module.exports = mongoose.model('Asset', AssetSchema);
 // routes/upload.js
 const multer = require('multer');
 const multerS3 = require('multer-s3');
-const { S3Client } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 const Asset = require('../models/Asset');
 const { v4: uuidv4 } = require('uuid');
