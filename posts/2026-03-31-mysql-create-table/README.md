@@ -178,7 +178,7 @@ DESCRIBE orders;
 ## Best Practices
 
 - Always specify `ENGINE=InnoDB` - it is the default and supports transactions and foreign keys.
-- Set `DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci` at the table level to match the server default.
+- Set `DEFAULT CHARSET=utf8mb4` and an appropriate collation (e.g. `utf8mb4_unicode_ci` or the MySQL 8.0 default `utf8mb4_0900_ai_ci`) at the table level for full Unicode support.
 - Every table should have a primary key, preferably an `INT UNSIGNED AUTO_INCREMENT` surrogate key.
 - Use `IF NOT EXISTS` in migration scripts.
 - Name constraints explicitly (`CONSTRAINT fk_orders_user`) so you can reference them in `ALTER TABLE` later.
