@@ -10,7 +10,7 @@ Description: Learn how to configure MikroORM with the MongoDB driver and define 
 
 ## Introduction
 
-MikroORM is a TypeScript ORM inspired by Doctrine that supports multiple databases including MongoDB. It uses an identity map and unit-of-work pattern to track changes, and exposes a repository API for querying. MongoDB entities use decorators from `@mikro-orm/mongodb`.
+MikroORM is a TypeScript ORM inspired by Doctrine that supports multiple databases including MongoDB. It uses an identity map and unit-of-work pattern to track changes, and exposes a repository API for querying. MongoDB entities use decorators from `@mikro-orm/core` with the `@mikro-orm/mongodb` driver.
 
 ## Installation
 
@@ -55,7 +55,7 @@ export class Product {
   @Property()
   category!: string;
 
-  @Property({ default: true })
+  @Property()
   inStock: boolean = true;
 
   @Property()
@@ -88,7 +88,7 @@ await em.persistAndFlush(product);
 
 // Read
 const found = await em.findOne(Product, { name: 'Laptop' });
-const list  = await em.find(Product, { category: 'electronics' }, { orderBy: { price: 1 } });
+const list  = await em.find(Product, { category: 'electronics' }, { orderBy: { price: 'asc' } });
 
 // Update - unit-of-work tracks changes automatically
 const p = await em.findOneOrFail(Product, { name: 'Laptop' });
