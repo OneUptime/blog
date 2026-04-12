@@ -49,7 +49,7 @@ CREATE TABLE sessions (
 
 InnoDB Cluster stores data on regular disk using InnoDB. Failover takes seconds.
 
-NDB Cluster stores all data in memory across NDB data nodes (with disk checkpointing). This enables microsecond latency but requires significant RAM. The architecture involves:
+NDB Cluster stores indexed data in memory across NDB data nodes (with disk checkpointing, and optional Disk Data tables for non-indexed columns). This enables microsecond latency but requires significant RAM. The architecture involves:
 - **SQL nodes** - standard MySQL servers (using NDB storage engine)
 - **Data nodes** - NDB data processes that hold partitioned, replicated data in memory
 - **Management nodes** - cluster configuration and monitoring
@@ -71,7 +71,7 @@ NDB Cluster:   SQL Node 1 - SQL Node 2
 Both provide synchronous replication. InnoDB Cluster uses Group Replication's consensus protocol (Paxos-based). NDB Cluster uses a two-phase commit protocol across data nodes.
 
 ```sql
--- Check InnoDB Cluster replication lag
+-- Check InnoDB Cluster group membership status
 SELECT * FROM performance_schema.replication_group_members;
 ```
 
@@ -81,7 +81,7 @@ NDB Cluster has significant restrictions compared to InnoDB:
 
 ```sql
 -- NDB limitations
--- No foreign key enforcement (defined but not enforced in older versions)
+-- Foreign keys supported since NDB 7.3 but with restrictions (e.g., no CASCADE across different data nodes)
 -- Text/BLOB columns cannot be primary key or indexed
 -- Transactions are limited in size and scope
 -- Complex joins across NDB tables are slow
