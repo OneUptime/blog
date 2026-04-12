@@ -63,7 +63,7 @@ The right value depends on your workload. Consider the following guidelines:
 
 - **OLTP workloads**: Keep the default (60s) or lower. Short transactions are safer.
 - **Bulk operations or migrations**: Increase to 300-600s, but monitor for lock contention.
-- **Never set to 0**: A value of 0 disables the limit entirely, which is dangerous in production.
+- **Minimum value is 1**: MongoDB requires this parameter to be at least 1 second. Setting it to 0 is not allowed and will be rejected with an error.
 
 **Example: Setting a conservative 90-second limit for a mixed workload:**
 
@@ -89,7 +89,7 @@ Look for the `timeOpenMicros` field - transactions close to `transactionLifetime
 
 ## What Happens When a Transaction is Aborted
 
-When MongoDB aborts a transaction due to this limit, the client receives a `TransactionExceededLifetimeLimitError`. Your application should catch this error and retry the transaction if appropriate:
+When MongoDB aborts a transaction due to this limit, the client receives an `ExceededTimeLimit` error (error code 50) with the `TransientTransactionError` label. Your application should catch this error and retry the transaction if appropriate:
 
 ```javascript
 async function runWithRetry(session, fn) {
