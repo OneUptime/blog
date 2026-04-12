@@ -156,8 +156,9 @@ public class ProductService {
 ```java
 import com.mongodb.client.model.changestream.FullDocument;
 import org.springframework.data.mongodb.core.ChangeStreamOptions;
+import reactor.core.Disposable;
 
-Flux<ChangeStreamEvent<Product>> changeStream = mongoTemplate
+Disposable subscription = mongoTemplate
     .changeStream(
         ChangeStreamOptions.builder()
             .fullDocumentLookup(FullDocument.UPDATE_LOOKUP)
