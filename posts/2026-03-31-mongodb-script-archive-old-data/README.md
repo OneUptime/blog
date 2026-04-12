@@ -19,7 +19,7 @@ Hot collection (app_events) - last 90 days
     |
     v
 [Archive script runs weekly]
-    |-> Copy documents older than 90 days to archive_events collection
+    |-> Copy documents older than 90 days to app_events_archive collection
     |-> Export to S3 as JSONL (optional)
     |-> Delete archived documents from app_events
 ```
