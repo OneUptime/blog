@@ -84,7 +84,7 @@ ORDER BY rank_pos;
 ## Top-N with RANK() Including Ties
 
 ```sql
--- Top 3 performers (all ties included)
+-- INCORRECT: window functions cannot be used in WHERE
 SELECT department, name, sales,
   RANK() OVER (PARTITION BY department ORDER BY sales DESC) AS rnk
 FROM sales_reps
