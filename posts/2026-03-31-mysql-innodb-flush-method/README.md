@@ -17,7 +17,7 @@ The `innodb_flush_method` variable controls how InnoDB flushes data to the opera
 - How crash safety is maintained
 - Effective memory usage (avoiding double buffering)
 
-On Linux the most important options are `fsync` (default), `O_DIRECT`, and `O_DIRECT_NO_FSYNC`. On Windows the relevant values differ.
+On Linux the most important options are `fsync` (default in MySQL 8.0), `O_DIRECT` (default in MySQL 8.4+), and `O_DIRECT_NO_FSYNC`. On Windows the relevant values differ.
 
 ## Available flush methods
 
@@ -26,8 +26,8 @@ On Linux the most important options are `fsync` (default), `O_DIRECT`, and `O_DI
 | `fsync` | `write()` + `fsync()` | `write()` + `fsync()` | Yes (double buffered) |
 | `O_DSYNC` | `write()` + `fsync()` | `O_SYNC flag` | Yes for data, No for log |
 | `O_DIRECT` | `O_DIRECT + fsync()` | `write()` + `fsync()` | No for data |
-| `O_DIRECT_NO_FSYNC` | `O_DIRECT` (no fsync) | `write()` + `fsync()` | No for data |
-| `littlesync` | `write()` | `write()` + `fsync()` | Yes (unsafe) |
+| `O_DIRECT_NO_FSYNC` | `O_DIRECT` (no fsync) | `write()` (no fsync) | No for data |
+| `littlesync` | `write()` | undocumented (internal) | Yes (unsafe) |
 | `nosync` | `write()` | `write()` | Yes (unsafe, dev only) |
 
 ## Recommended setting for production: O_DIRECT
@@ -47,7 +47,7 @@ innodb_flush_method = O_DIRECT
 
 ## O_DIRECT_NO_FSYNC for specific storage systems
 
-On some storage systems (hardware RAID with battery-backed write cache, cloud block storage with durable volumes) the `fsync()` call is unnecessary because the storage controller guarantees durability. In this case `O_DIRECT_NO_FSYNC` avoids the extra syscall:
+On some storage systems (hardware RAID with battery-backed write cache, cloud block storage with durable volumes) the `fsync()` call is unnecessary because the storage controller guarantees durability. In this case `O_DIRECT_NO_FSYNC` skips `fsync()` for data files, log files, and parallel doublewrite files:
 
 ```ini
 # Use only if storage controller / cloud volume provides durability guarantees
@@ -153,7 +153,7 @@ iostat -x 1 5
 # Watch %util, await, and w/s for the MySQL data disk
 
 # Check if O_DIRECT is active (Linux)
-strace -p $(pidof mysqld) -e trace=open,write 2>&1 | grep O_DIRECT
+strace -p $(pidof mysqld) -e trace=open,openat 2>&1 | grep O_DIRECT
 ```
 
 ## Flush method decision guide
