@@ -106,7 +106,7 @@ SELECT * FROM employees WHERE hire_date >= '2023-01-01';
 | Type | Stores | Bytes | Range |
 |---|---|---|---|
 | DATE | Date only | 3 | 1000-01-01 to 9999-12-31 |
-| DATETIME | Date + time | 8 | 1000-01-01 to 9999-12-31 |
+| DATETIME | Date + time | 5 | 1000-01-01 to 9999-12-31 |
 | TIMESTAMP | Date + time (UTC) | 4 | 1970-01-01 to 2038-01-19 |
 
 Use `DATE` when you only need the calendar date (birthdays, deadlines, event dates) and the time-of-day is irrelevant.
