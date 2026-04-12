@@ -10,7 +10,7 @@ Description: Learn how to use JSONPath expressions in Redis with the RedisJSON m
 
 ## Introduction
 
-RedisJSON supports JSONPath syntax (RFC 9535 / Goessner-style) for all `JSON.*` commands. JSONPath lets you target specific fields, traverse arrays, apply wildcards, use recursive descent, and filter nodes by value - all server-side without transferring the full document.
+RedisJSON supports JSONPath syntax (Goessner-style) for all `JSON.*` commands. JSONPath lets you target specific fields, traverse arrays, apply wildcards, use recursive descent, and filter nodes by value - all server-side without transferring the full document.
 
 ## JSONPath Basics
 
@@ -104,10 +104,10 @@ JSON.GET store:1 '$.inventory[?(@.price > 200)]'
 JSON.GET store:1 '$.inventory[?(@.in_stock == true)]'
 ```
 
-## Filter: Items with a Specific Tag
+## Filter: Items by Name
 
 ```redis
-JSON.GET store:1 '$.inventory[?("electronics" in @.tags)]'
+JSON.GET store:1 '$.inventory[?(@.name == "Laptop")]'
 ```
 
 ## Complex Filters
@@ -120,10 +120,11 @@ JSON.GET store:1 '$.inventory[?(@.in_stock == true && @.price < 200)]'
 ## JSONPath with Aggregate Operations
 
 ```redis
-# Count all in-stock items
-JSON.ARRLEN store:1 '$.inventory[?(@.in_stock == true)]'
+# Length of the inventory array
+JSON.ARRLEN store:1 $.inventory
+# [4]
 
-# Get all prices for filtering
+# Get all prices
 JSON.GET store:1 '$.inventory[*].price'
 ```
 
@@ -169,10 +170,7 @@ print("Version:", version)
 | `<` `>` `<=` `>=` | `@.price >= 100` |
 | `&&` | `@.active && @.verified` |
 | `\|\|` | `@.type == "a" \|\| @.type == "b"` |
-| `!` | `!@.deleted` |
-| `in` | `"tag" in @.tags` |
-| `nin` | `"banned" nin @.roles` |
-| `exists` | `@.email exists` |
+| `=~` | `@.name =~ "^Tech"` (regex match) |
 
 ## Summary
 
