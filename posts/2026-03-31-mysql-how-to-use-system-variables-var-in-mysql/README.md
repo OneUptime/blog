@@ -116,10 +116,12 @@ SHOW SESSION VARIABLES LIKE 'sql%';
 Or query the `performance_schema`:
 
 ```sql
-SELECT variable_name, variable_value, variable_source
-FROM performance_schema.variables_info
-WHERE variable_name LIKE 'max_%'
-ORDER BY variable_name;
+SELECT vi.variable_name, gv.variable_value, vi.variable_source
+FROM performance_schema.variables_info vi
+JOIN performance_schema.global_variables gv
+  ON vi.variable_name = gv.variable_name
+WHERE vi.variable_name LIKE 'max_%'
+ORDER BY vi.variable_name;
 ```
 
 ## Persisting Variable Changes Across Restarts
