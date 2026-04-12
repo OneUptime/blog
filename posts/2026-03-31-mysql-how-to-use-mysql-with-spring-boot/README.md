@@ -204,7 +204,8 @@ CREATE TABLE products (
     stock INT NOT NULL DEFAULT 0,
     created_at DATETIME,
     PRIMARY KEY (id),
-    INDEX idx_product_name (name)
+    INDEX idx_product_name (name),
+    FULLTEXT INDEX ft_name_description (name, description)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
