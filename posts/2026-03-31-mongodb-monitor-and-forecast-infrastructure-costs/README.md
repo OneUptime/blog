@@ -45,11 +45,11 @@ Pull the last 6 months of invoices:
 
 ```python
 import requests
-from datetime import datetime, timedelta
+from requests.auth import HTTPDigestAuth
 
 API_BASE = "https://cloud.mongodb.com/api/atlas/v1.0"
 ORG_ID = "your-org-id"
-AUTH = ("PUBLIC_KEY", "PRIVATE_KEY")
+AUTH = HTTPDigestAuth("PUBLIC_KEY", "PRIVATE_KEY")
 
 def get_invoices(org_id: str, limit: int = 6):
     resp = requests.get(
@@ -168,7 +168,7 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   "https://cloud.mongodb.com/api/atlas/v1.0/orgs/{orgId}/alertConfigs" \
   -H "Content-Type: application/json" \
   -d '{
-    "eventTypeName": "BILLING_ABOVE",
+    "eventTypeName": "PENDING_INVOICE_OVER_THRESHOLD",
     "enabled": true,
     "threshold": {
       "operator": "GREATER_THAN",
