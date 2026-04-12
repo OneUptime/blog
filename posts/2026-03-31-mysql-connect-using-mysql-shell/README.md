@@ -102,15 +102,15 @@ mysqlsh root@localhost --js
 Store connection details in a configuration file to avoid repeating them:
 
 ```bash
-# Create a stored connection profile
-mysqlsh --save-passwords
+# Always save passwords to the credential store (default is "prompt")
+mysqlsh --save-passwords=always root@localhost
 ```
 
-Or specify options in `.mysqlsh/options.yaml`:
+You can also set persistent options using the `\option` command inside MySQL Shell:
 
 ```text
-defaultMode: sql
-showWarnings: true
+\option --persist defaultMode sql
+\option --persist showWarnings true
 ```
 
 ## Non-Interactive / Scripted Connections
@@ -124,8 +124,8 @@ mysqlsh root@localhost --sql -e "SHOW DATABASES;"
 # Execute a SQL file
 mysqlsh root@localhost --sql < script.sql
 
-# Read password from environment variable
-MYSQLSH_PASSWORD=mypassword mysqlsh root@localhost --sql -e "SELECT 1;"
+# Read password from stdin
+echo "mypassword" | mysqlsh root@localhost --passwords-from-stdin --sql -e "SELECT 1;"
 ```
 
 ## Summary
