@@ -68,7 +68,7 @@ ndb_mgm -e "2 status"
 During synchronization:
 
 ```text
-Node 2: starting, StartPhase 4 of 6
+Node 2: starting (Last completed phase 4) (mysql-8.0.36 ndb-8.0.36)
 ```
 
 After full recovery:
@@ -99,7 +99,7 @@ If the management node fails, existing cluster operations continue uninterrupted
 Restart the management node after resolving the issue:
 
 ```bash
-ndb_mgmd --config-file=/var/lib/mysql-cluster/config.ini
+ndb_mgmd --config-file=/var/lib/mysql-cluster/config.ini --reload
 ```
 
 ## Preventing False Failovers
@@ -110,7 +110,6 @@ Tune heartbeat intervals to avoid triggering failover on transient network issue
 [ndbd default]
 HeartbeatIntervalDbDb=15000
 HeartbeatIntervalDbApi=15000
-TimeBetweenLocalCheckpoints=20
 ```
 
 ## Summary
