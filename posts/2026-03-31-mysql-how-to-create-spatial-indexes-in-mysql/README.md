@@ -12,7 +12,7 @@ Description: Learn how to create and use spatial indexes in MySQL to speed up ge
 
 Spatial indexes in MySQL are specialized indexes for geometry columns. They use an R-tree data structure (as opposed to B-tree used for regular indexes) to efficiently store and query spatial data such as points, lines, and polygons.
 
-Spatial indexes dramatically improve the performance of spatial queries involving functions like `ST_Contains()`, `ST_Intersects()`, and `ST_Distance()`.
+Spatial indexes dramatically improve the performance of spatial queries involving functions like `ST_Contains()`, `ST_Intersects()`, and `MBRContains()`.
 
 ## Requirements for Spatial Indexes
 
