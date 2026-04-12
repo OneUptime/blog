@@ -23,11 +23,10 @@ Memorystore for Redis offers two tiers - Basic and Standard. The right choice de
 
 ## Available Capacity Sizes
 
-Memorystore sizes range from 1 GB to 300 GB:
+Memorystore instances can be any integer size from 1 GB to 300 GB. Common sizes include:
 
 ```text
-1, 2, 4, 5, 6, 8, 10, 12, 16, 20, 25, 30, 35, 40, 45, 50,
-60, 70, 80, 90, 100, 150, 200, 250, 300 GB
+1, 2, 4, 5, 10, 16, 20, 25, 50, 100, 150, 200, 250, 300 GB
 ```
 
 ## Estimating Memory Requirements
@@ -48,7 +47,7 @@ def estimate_redis_memory(
 # Example: 10 million keys, 50-byte keys, 200-byte values
 needed_gb = estimate_redis_memory(10_000_000, 50, 200)
 print(f"Estimated memory needed: {needed_gb:.1f} GB")
-# Result: ~2.5 GB, choose 4 GB instance for headroom
+# Result: ~3.5 GB, choose 4 GB instance for headroom
 ```
 
 ## Creating a Basic Tier Instance
