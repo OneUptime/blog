@@ -22,7 +22,7 @@ SELECT
   cy.revenue       AS current_year_revenue,
   py.revenue       AS prior_year_revenue,
   cy.revenue - py.revenue AS yoy_change,
-  ROUND(100.0 * (cy.revenue - py.revenue) / py.revenue, 2) AS yoy_growth_pct
+  ROUND(100.0 * (cy.revenue - py.revenue) / NULLIF(py.revenue, 0), 2) AS yoy_growth_pct
 FROM (
   SELECT YEAR(order_date) AS year, SUM(total_amount) AS revenue
   FROM orders
