@@ -154,7 +154,7 @@ async function addUrgentTask(taskId, description) {
 ## Limitations
 
 - `$position` cannot be used without `$each`.
-- It cannot be combined with `$sort` in the same `$push` operation - if you need both, sort happens after position insertion.
+- When `$position` and `$sort` are both specified in the same `$push` operation, elements are inserted at the given position first, then the entire array is sorted.
 
 ## Summary
 
