@@ -25,8 +25,8 @@ graph TD
 
 Design the index to include all columns the query references. The column order follows the rule:
 1. Equality filter columns first (WHERE col = value)
-2. Range filter columns next (WHERE col BETWEEN)
-3. Columns in ORDER BY or GROUP BY
+2. Columns in ORDER BY or GROUP BY
+3. Range filter columns next (WHERE col BETWEEN)
 4. Remaining SELECT columns last
 
 ## Syntax
@@ -69,7 +69,7 @@ FROM (
                UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) b
     CROSS JOIN (SELECT 0 n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4
                UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) c
-    CROSS JOIN (SELECT 0 n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) d
+    CROSS JOIN (SELECT 0 n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4) d
 ) nums
 WHERE n <= 5000;
 ```
@@ -186,4 +186,4 @@ WHERE ue.event_type = 'purchase';
 
 ## Summary
 
-A covering index includes all columns a query needs, allowing MySQL to serve the entire query from the index without accessing table rows. This is indicated by `Using index` in the EXPLAIN Extra column. Covering indexes are most beneficial for high-frequency read queries on large tables. The index design follows the rule: equality columns first, range/ORDER BY columns next, and remaining SELECT columns last. The trade-off is increased index size and write overhead, so apply covering indexes selectively to performance-critical queries.
+A covering index includes all columns a query needs, allowing MySQL to serve the entire query from the index without accessing table rows. This is indicated by `Using index` in the EXPLAIN Extra column. Covering indexes are most beneficial for high-frequency read queries on large tables. The index design follows the rule: equality columns first, ORDER BY/GROUP BY columns next, range columns after, and remaining SELECT columns last. The trade-off is increased index size and write overhead, so apply covering indexes selectively to performance-critical queries.
