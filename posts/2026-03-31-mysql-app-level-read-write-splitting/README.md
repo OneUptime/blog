@@ -51,7 +51,7 @@ class MySQLConnectionManager:
         return self.write_pool.get_connection()
 
     def get_read_conn(self):
-        # Round-robin across replicas
+        # Random selection across replicas
         pool = random.choice(self.read_pools)
         return pool.get_connection()
 
@@ -157,7 +157,8 @@ def check_replica_lag(conn) -> int:
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SHOW REPLICA STATUS")
     status = cursor.fetchone()
-    return status.get("Seconds_Behind_Source", 0) if status else 999
+    lag = status.get("Seconds_Behind_Source") if status else None
+    return lag if lag is not None else 999
 ```
 
 Skip replicas with lag above your threshold when selecting a read connection.
