@@ -164,7 +164,7 @@ DROP FUNCTION IF EXISTS calc_tax;
 
 ## Binary Logging Requirement
 
-If `log_bin` is enabled and `binlog_format=STATEMENT`, MySQL requires functions to be marked as `DETERMINISTIC`, `NO SQL`, or `READS SQL DATA`. Otherwise the creation fails:
+If `log_bin` is enabled and `log_bin_trust_function_creators` is `0` (the default), MySQL requires functions to be marked as `DETERMINISTIC`, `NO SQL`, or `READS SQL DATA`. Otherwise the creation fails:
 
 ```text
 ERROR 1418: This function has none of DETERMINISTIC, NO SQL, or READS SQL DATA
