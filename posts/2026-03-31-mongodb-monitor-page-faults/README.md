@@ -25,7 +25,7 @@ Output:
 }
 ```
 
-On Linux, this includes:
+On Windows, this includes page file metrics:
 
 ```javascript
 db.adminCommand({ serverStatus: 1 }).extra_info
