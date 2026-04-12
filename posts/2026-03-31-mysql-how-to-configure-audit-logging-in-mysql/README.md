@@ -16,7 +16,7 @@ Audit logging records who connected to your MySQL server, which queries they ran
 
 ## MySQL Audit Plugin Options
 
-MySQL Enterprise Edition includes the MySQL Enterprise Audit plugin. For open-source deployments, Percona Server and MariaDB offer compatible audit plugins. The community can also use the `audit_log` plugin available in MySQL 8.0+.
+MySQL Enterprise Edition includes the MySQL Enterprise Audit plugin (`audit_log`). For open-source deployments, Percona Server offers the Percona Audit Log Plugin and MariaDB provides the MariaDB Audit Plugin. The `audit_log.so` plugin discussed below requires MySQL Enterprise Edition.
 
 Check if the audit plugin is available:
 
@@ -28,7 +28,7 @@ WHERE PLUGIN_NAME LIKE '%audit%';
 
 ## Installing the Audit Log Plugin
 
-For MySQL 8.0 Community Edition, install the audit log plugin:
+For MySQL 8.0 Enterprise Edition, install the audit log plugin:
 
 ```bash
 sudo mysql -u root -p -e "INSTALL PLUGIN audit_log SONAME 'audit_log.so';"
@@ -62,21 +62,24 @@ sudo systemctl restart mysql
 
 ## Audit Log Policies
 
-The `audit_log_policy` variable controls what gets logged:
+The `audit_log_policy` variable controls what gets logged. This variable is read-only at runtime and can only be set at server startup in `my.cnf`:
 
-```sql
--- Log all events
-SET GLOBAL audit_log_policy = 'ALL';
+```ini
+[mysqld]
+# Log all events
+audit_log_policy = ALL
 
--- Log only logins and logouts
-SET GLOBAL audit_log_policy = 'LOGINS';
+# Log only logins and logouts
+# audit_log_policy = LOGINS
 
--- Log only queries
-SET GLOBAL audit_log_policy = 'QUERIES';
+# Log only queries
+# audit_log_policy = QUERIES
 
--- Log neither (disable)
-SET GLOBAL audit_log_policy = 'NONE';
+# Log neither (disable)
+# audit_log_policy = NONE
 ```
+
+> Note: `audit_log_policy` is deprecated as of MySQL 8.0.34. Use audit log filtering rules (described below) for finer-grained control over which events are logged.
 
 ## Reading Audit Log Entries
 
@@ -84,15 +87,19 @@ With JSON format, each log entry looks like:
 
 ```text
 {
-  "timestamp": "2026-03-31T10:00:00Z",
+  "timestamp": "2026-03-31 10:00:00",
   "id": 1,
   "class": "general",
-  "event": "query",
+  "event": "status",
   "connection_id": 101,
   "account": {"user": "webapp", "host": "localhost"},
   "login": {"user": "webapp", "os": "", "ip": "127.0.0.1", "proxy": ""},
-  "db": "myapp",
-  "query": "SELECT * FROM users WHERE id = 42"
+  "general_data": {
+    "command": "Query",
+    "sql_command": "select",
+    "query": "SELECT * FROM users WHERE id = 42",
+    "status": 0
+  }
 }
 ```
 
@@ -106,7 +113,9 @@ for line in sys.stdin:
     if line.startswith('{'):
         entry = json.loads(line)
         if entry.get('class') == 'general':
-            print(entry.get('account', {}).get('user'), entry.get('query', ''))
+            user = entry.get('account', {}).get('user', '')
+            query = entry.get('general_data', {}).get('query', '')
+            print(user, query)
 "
 ```
 
@@ -137,7 +146,7 @@ SELECT audit_log_filter_set_user('sensitive_user@localhost', 'log_connections');
 
 ## Rotating the Audit Log
 
-Rotate the audit log to prevent it from growing too large:
+Rotate the audit log to prevent it from growing too large (MySQL 8.0.31+):
 
 ```sql
 SELECT audit_log_rotate();
