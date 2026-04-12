@@ -138,7 +138,7 @@ Too many small buckets suggest granularity is too fine for the actual write rate
 
 ```javascript
 async function diagnoseBuckets(collectionName) {
-  const totalMeasurements = await db.collection(collectionName)
+  const totalMeasurements = await db.getCollection(collectionName)
     .estimatedDocumentCount();
   const totalBuckets = await db.getCollection(`system.buckets.${collectionName}`)
     .estimatedDocumentCount();
