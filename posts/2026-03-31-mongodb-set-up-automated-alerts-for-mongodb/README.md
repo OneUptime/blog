@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Monitoring, Alert
 
-Description: Set up automated alerts for MongoDB using mongostat, Prometheus, and alerting rules to catch performance issues before they impact your users.
+Description: Set up automated alerts for MongoDB using mongodb_exporter, Prometheus, and alerting rules to catch performance issues before they impact your users.
 
 ---
 
@@ -59,7 +59,7 @@ groups:
       - alert: MongoDBConnectionsHigh
         expr: |
           mongodb_ss_connections{conn_type="current"} /
-          mongodb_ss_connections{conn_type="available"} > 0.8
+          (mongodb_ss_connections{conn_type="current"} + mongodb_ss_connections{conn_type="available"}) > 0.8
         for: 5m
         labels:
           severity: warning
@@ -96,20 +96,20 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
-    - match:
-        alertname: MongoDBNodeNotHealthy
+    - matchers:
+        - alertname="MongoDBNodeNotHealthy"
       receiver: pagerduty-critical
-    - match:
-        alertname: MongoDBReplicationLag
+    - matchers:
+        - alertname="MongoDBReplicationLag"
       receiver: pagerduty-critical
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack-warnings
 
 receivers:
   - name: pagerduty-critical
     pagerduty_configs:
-      - service_key: YOUR_PD_KEY
+      - routing_key: YOUR_PD_ROUTING_KEY
   - name: slack-warnings
     slack_configs:
       - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK'
@@ -121,7 +121,7 @@ receivers:
 Trigger a test alert manually to verify routing works:
 
 ```bash
-curl -X POST http://localhost:9093/api/v1/alerts \
+curl -X POST http://localhost:9093/api/v2/alerts \
   -H 'Content-Type: application/json' \
   -d '[{
     "labels": {"alertname": "MongoDBTestAlert", "severity": "warning"},
