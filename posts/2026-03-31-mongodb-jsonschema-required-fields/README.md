@@ -72,7 +72,7 @@ MongoServerError: Document failed validation
 
 ## Requiring Nested Fields
 
-Use dot notation within the `required` array to require fields in subdocuments, or define nested schema:
+Define nested `required` arrays inside subdocument schemas to require fields in subdocuments:
 
 ```javascript
 db.createCollection("orders", {
@@ -145,18 +145,20 @@ db.runCommand({ listCollections: 1, filter: { name: "users" } });
 
 ## Required Fields vs. Field Existence Check
 
-Note: `required` only checks that the field key exists in the document. It does not validate the field value unless you also define a `properties` schema with type or constraint rules. A field value of `null` satisfies `required`.
+Note: `required` only checks that the field key exists in the document. It does not validate the field value unless you also define a `properties` schema with type or constraint rules. A field value of `null` satisfies the `required` check on its own.
+
+However, with the `users` schema defined above, the following insert would fail because `bsonType: "string"` rejects `null`:
 
 ```javascript
-// This passes - 'email' key is present (even though null)
 db.users.insertOne({
   email: null,
   username: "test",
   createdAt: new Date()
 });
+// Fails: bsonType "string" does not allow null
 ```
 
-To prevent null values, combine `required` with a `bsonType` that excludes null.
+If the schema used only `required` without `bsonType` constraints on `email`, the null value would be accepted. To explicitly prevent null values, always pair `required` with a `bsonType` that excludes null.
 
 ## Summary
 
