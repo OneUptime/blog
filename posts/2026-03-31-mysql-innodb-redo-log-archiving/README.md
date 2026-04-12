@@ -47,10 +47,10 @@ To start archiving, call the built-in function using the label defined in `innod
 SELECT innodb_redo_log_archive_start('backup_dir', 'my-backup-session');
 ```
 
-The second argument is a unique session label used to name the archive file. MySQL creates a file like:
+The second argument is an optional subdirectory name appended to the archive directory path. MySQL creates a file within that subdirectory with a name like:
 
 ```text
-/var/mysql/redo-archive/my-backup-session.000001.archive.log
+/var/mysql/redo-archive/my-backup-session/archive.<server_uuid>.000001.log
 ```
 
 ## Stopping Redo Log Archiving
@@ -68,10 +68,9 @@ If the session that started archiving disconnects without calling stop, MySQL au
 Check whether archiving is active:
 
 ```sql
-SELECT STATUS_VAR, VARIABLE_VALUE
+SELECT VARIABLE_NAME, VARIABLE_VALUE
 FROM performance_schema.global_status
-WHERE STATUS_VAR LIKE 'innodb_redo_log_enabled%'
-   OR STATUS_VAR LIKE 'Innodb_redo_log_enabled%';
+WHERE VARIABLE_NAME LIKE 'Innodb_redo_log%';
 ```
 
 You can also monitor archive file growth:
@@ -87,7 +86,7 @@ Percona XtraBackup 8.0 supports redo log archiving natively. When you use `--bac
 ```bash
 xtrabackup --backup \
   --target-dir=/backup/full \
-  --innodb-redo-log-arch-dir=/var/mysql/redo-archive \
+  --redo-log-arch-dir=/var/mysql/redo-archive \
   --user=backup_user \
   --password=secret
 ```
@@ -104,7 +103,7 @@ Ensure you only delete archive files from completed backup sessions - never dele
 
 ## Key Limitations
 
-- Redo log archiving requires the `BACKUP_ADMIN` privilege to start and stop.
+- Redo log archiving requires the `INNODB_REDO_LOG_ARCHIVE` privilege to start and stop.
 - Only one archiving session can be active at a time.
 - The archive directory must be accessible and have sufficient space - a busy server can write several GB per hour to the archive.
 
