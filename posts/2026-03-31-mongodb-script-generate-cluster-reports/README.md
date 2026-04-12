@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Scripting, Reporting, Cluster, Operation
 
-Description: Learn how to write a Python script that generates a comprehensive MongoDB cluster report covering storage, replication, connections, index usage, and top collections.
+Description: Learn how to write a Python script that generates a comprehensive MongoDB cluster report covering storage, replication, connections, and operations counters.
 
 ---
 
@@ -17,11 +17,9 @@ A weekly cluster report gives engineering and operations teams a snapshot of Mon
 ```text
 1. Cluster overview (version, topology, uptime)
 2. Storage usage by database
-3. Top collections by size and document count
+3. Connection pool usage
 4. Replication status and lag
-5. Connection pool usage
-6. Index count and unused index summary
-7. Recent slow query count
+5. Operations counters
 ```
 
 ## Python Cluster Report Script
