@@ -64,7 +64,7 @@ Store `CI_MONGO_PASSWORD` as a masked CI/CD variable in GitLab Settings - CI/CD 
 ```yaml
 integration_test:
   stage: test
-  image: node:20-alpine
+  image: node:20
   services:
     - name: mongo:7.0
       alias: mongo
@@ -72,6 +72,14 @@ integration_test:
     MONGODB_URI: "mongodb://mongo:27017/testdb"
   before_script:
     - npm ci
+    - |
+      # Install mongosh (requires a glibc-based image, not Alpine)
+      apt-get update && apt-get install -y gnupg
+      curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+        gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+      echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" | \
+        tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+      apt-get update && apt-get install -y mongodb-mongosh
     - |
       # Wait for MongoDB to be ready
       until mongosh --host mongo --eval "print('MongoDB ready')"; do
@@ -97,7 +105,7 @@ pytest_integration:
   before_script:
     - pip install -r requirements.txt
   script:
-    - pytest tests/integration/ -v --tb=short
+    - pytest tests/integration/ -v --tb=short --junitxml=report.xml
   artifacts:
     reports:
       junit: report.xml
