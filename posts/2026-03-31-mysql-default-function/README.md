@@ -39,7 +39,7 @@ LIMIT 1;
 -- Returns: pending | 1
 ```
 
-Note that `DEFAULT()` requires at least one row to exist in the table, as it reads the column metadata from the table context.
+Note that `SELECT DEFAULT(col) FROM table` requires at least one row in the table to return a result, since SELECT over an empty table returns no rows regardless of the expression used.
 
 ## Using DEFAULT() in UPDATE Statements
 
@@ -100,7 +100,7 @@ SELECT DEFAULT(name) FROM test_table LIMIT 1;
 -- ERROR: Field 'name' doesn't have a default value
 ```
 
-Also, `DEFAULT()` cannot be used with `AUTO_INCREMENT` columns or computed/generated columns.
+Additionally, as of MySQL 8.0.13, `DEFAULT(col_name)` only works with columns that have a **literal** default value. It cannot be used with columns that have an expression default (e.g., `DEFAULT (RAND() * RAND())`). It also cannot be used with `AUTO_INCREMENT` columns or computed/generated columns, since those column types do not have literal defaults.
 
 ## Practical Pattern: Archiving with Reset
 
