@@ -91,12 +91,12 @@ db.products.updateMany(
         $mergeObjects: [
           "$$ROOT",
           {
-            $arrayToObject: [[
+            $arrayToObject: [
               {
                 k: { $concat: ["tag_", "$category"] },
                 v: true
               }
-            ]]
+            ]
           }
         ]
       }
