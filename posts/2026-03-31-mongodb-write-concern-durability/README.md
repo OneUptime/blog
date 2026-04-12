@@ -43,15 +43,15 @@ wtimeout    milliseconds           Max wait time for w acknowledgments
 
 ```text
 w: 0          Fire and forget - no acknowledgment (fastest, least safe)
-w: 1          Primary acknowledges (default)
+w: 1          Primary acknowledges (default before MongoDB 5.0)
 w: 2          Primary + 1 secondary acknowledge
 w: n          n members acknowledge
-w: majority   Majority of voting members acknowledge (most durable)
+w: majority   Majority of voting members acknowledge (default since MongoDB 5.0)
 ```
 
 ## Examples
 
-### Default Write Concern (w: 1)
+### Explicit w: 1 Write Concern
 
 ```javascript
 const { MongoClient } = require("mongodb");
@@ -60,7 +60,7 @@ await client.connect();
 
 const orders = client.db("shop").collection("orders");
 
-// Default write concern: primary acknowledges
+// w: 1 - primary acknowledges (default before MongoDB 5.0; since 5.0 default is w: "majority")
 const result = await orders.insertOne(
   { customerId: "cust_001", amount: 250, status: "pending" }
 );
@@ -227,8 +227,8 @@ try {
 - **Use `w: 1` with `j: false` for high-throughput non-critical writes** (analytics events, logs).
 - **Set `wtimeout`** to avoid writes hanging indefinitely when secondaries are unavailable.
 - **Do not use `w: 0`** in production for user-facing data.
-- **Match write concern to read concern** - using `w: majority` with `readConcern: majority` gives you linearizable read-after-write guarantees.
+- **Match write concern to read concern** - using `w: majority` with `readConcern: "majority"` ensures reads only return majority-committed data. For true linearizable reads, use `readConcern: "linearizable"`.
 
 ## Summary
 
-Write concern in MongoDB controls how many replica set members must acknowledge a write before it is considered successful. Use `w: 1` for default performance, `w: majority` for critical data durability, and add `j: true` to require journal writes before acknowledgment. Set `wtimeout` to bound wait time. Match write concern to the criticality of the data: majority + journal for financial data, w:1 for operational data, w:0 only for non-critical high-throughput writes.
+Write concern in MongoDB controls how many replica set members must acknowledge a write before it is considered successful. Use `w: 1` for faster performance, `w: "majority"` (the default since MongoDB 5.0) for critical data durability, and add `j: true` to require journal writes before acknowledgment. Set `wtimeout` to bound wait time. Match write concern to the criticality of the data: majority + journal for financial data, w:1 for operational data, w:0 only for non-critical high-throughput writes.
