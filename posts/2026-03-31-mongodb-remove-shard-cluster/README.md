@@ -127,12 +127,12 @@ sh.startBalancer()
 db.adminCommand({ removeShard: "shard2" }).remaining.jumboChunks
 ```
 
-Clear jumbo flags:
+Clear jumbo flags using the `clearJumboFlag` command:
 
 ```javascript
-use config
-db.chunks.find({ shard: "shard2", jumbo: true }).forEach(c => {
-  db.chunks.updateOne({ _id: c._id }, { $unset: { jumbo: "" } })
+db.adminCommand({
+  clearJumboFlag: "mydb.mycollection",
+  find: { <shardKeyField>: <value> }
 })
 ```
 
