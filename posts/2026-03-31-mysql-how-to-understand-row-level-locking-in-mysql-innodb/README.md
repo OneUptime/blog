@@ -65,10 +65,12 @@ The gap lock prevents Session 2 from inserting a row that would have appeared in
 
 ## Checking Lock Activity
 
-Use the `information_schema` or `performance_schema` to inspect current lock waits:
+Use the `information_schema` or `performance_schema` to inspect current lock waits.
+
+For MySQL 5.7 and earlier, use the `information_schema.innodb_lock_waits` table (removed in MySQL 8.0):
 
 ```sql
--- View current lock waits
+-- View current lock waits (MySQL 5.7 and earlier)
 SELECT
   r.trx_id AS waiting_trx_id,
   r.trx_mysql_thread_id AS waiting_thread,
@@ -81,7 +83,7 @@ JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
 JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id;
 ```
 
-For MySQL 8.0+, use the performance_schema:
+For MySQL 8.0+, use the `sys.innodb_lock_waits` view (which wraps `performance_schema` tables):
 
 ```sql
 SELECT
@@ -90,7 +92,7 @@ SELECT
   blocking_pid,
   blocking_query,
   wait_age,
-  locked_table_name,
+  locked_table,
   locked_index
 FROM sys.innodb_lock_waits;
 ```
