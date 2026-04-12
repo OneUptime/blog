@@ -10,7 +10,7 @@ Description: Learn how to use EXPLAIN FORMAT=TREE in MySQL 8.0 to read hierarchi
 
 ## What Is EXPLAIN FORMAT=TREE?
 
-MySQL 8.0.16 introduced `EXPLAIN FORMAT=TREE`, which displays the query execution plan as a hierarchical tree structure. Unlike the default tabular output, the tree format mirrors the actual execution order and shows iterator-level cost estimates using the new Hypergraph optimizer.
+MySQL 8.0.16 introduced `EXPLAIN FORMAT=TREE`, which displays the query execution plan as a hierarchical tree structure. Unlike the default tabular output, the tree format mirrors the actual execution order and shows iterator-level cost estimates from the iterator-based executor.
 
 The tree format is especially useful for understanding join ordering, subquery processing, and operation nesting.
 
