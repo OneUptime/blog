@@ -96,17 +96,17 @@ spec:
 
 ## Monitoring Failover Events
 
-Alert on failover events by monitoring the member role change:
+Alert on failover events by monitoring Group Replication member state:
 
 ```text
-# Prometheus alert for primary election
-- alert: MySQLPrimaryChanged
-  expr: changes(mysql_slave_status_master_server_id[5m]) > 0
+# Prometheus alert for Group Replication member not online
+- alert: MySQLGroupMemberNotOnline
+  expr: mysql_perf_schema_replication_group_members{member_state!="ONLINE"} > 0
   for: 1m
   labels:
     severity: warning
   annotations:
-    summary: "MySQL primary has changed"
+    summary: "MySQL Group Replication member {{ $labels.member_host }} is {{ $labels.member_state }}"
 ```
 
 ## Handling Application Reconnection
@@ -131,7 +131,7 @@ def get_connection(retries=5, delay=2):
             )
         except errors.DatabaseError as e:
             if attempt < retries - 1:
-                time.sleep(delay * (attempt + 1))
+                time.sleep(delay * (2 ** attempt))
             else:
                 raise
 ```
