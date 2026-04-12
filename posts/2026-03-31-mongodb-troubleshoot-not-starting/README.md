@@ -74,8 +74,8 @@ sudo rm -f /var/run/mongodb/mongod.pid
 ## Step 4: Validate the Configuration File
 
 ```bash
-# Check YAML syntax in mongod.conf
-mongod --config /etc/mongod.conf --configTest
+# Validate the configuration file without starting mongod (available since MongoDB 4.2)
+mongod --config /etc/mongod.conf --validate
 
 # Common configuration errors:
 # - Tab characters (YAML requires spaces)
@@ -145,4 +145,4 @@ sudo -u mongodb mongod \
 
 ## Summary
 
-MongoDB startup failures are almost always caused by port conflicts, permission issues, configuration syntax errors, or WiredTiger recovery needs. Start with the log file and `systemctl status mongod`, check for port conflicts with `ss -tlnp`, fix data directory ownership, validate the configuration file with `--configTest`, and start MongoDB manually in the foreground with `--verbose` for the most detailed startup error output.
+MongoDB startup failures are almost always caused by port conflicts, permission issues, configuration syntax errors, or WiredTiger recovery needs. Start with the log file and `systemctl status mongod`, check for port conflicts with `ss -tlnp`, fix data directory ownership, validate the configuration file with `--validate`, and start MongoDB manually in the foreground with `--verbose` for the most detailed startup error output.
