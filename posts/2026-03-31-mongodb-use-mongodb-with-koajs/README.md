@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Koa.js, Middleware, TypeScript, REST
 
-Description: Learn how to integrate MongoDB into a Koa.js application using middleware for connection management and koa-router for typed REST endpoints.
+Description: Learn how to integrate MongoDB into a Koa.js application using Mongoose for connection management and koa-router for typed REST endpoints.
 
 ---
 
 ## Introduction
 
-Koa.js is a lightweight Node.js web framework from the Express team, using async middleware for a cleaner control flow. MongoDB integrates through a connection middleware that attaches the database client to the Koa context, making it available in all route handlers without globals.
+Koa.js is a lightweight Node.js web framework from the Express team, using async middleware for a cleaner control flow. MongoDB integrates through Mongoose, connecting once at startup so all route handlers can use Mongoose models directly without managing connections manually.
 
 ## Installation
 
@@ -44,7 +44,7 @@ app.use(bodyParser());
 
 ```typescript
 // src/models/product.ts
-import mongoose, { Schema, model, models } from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
 export interface IProduct {
   name:     string;
@@ -59,6 +59,20 @@ const schema = new Schema<IProduct>(
 );
 
 export const Product = models.Product ?? model<IProduct>('Product', schema);
+```
+
+## Error Handling Middleware
+
+```typescript
+app.use(async (ctx, next) => {
+  try {
+    await next();
+  } catch (err: any) {
+    ctx.status = err.status ?? 500;
+    ctx.body   = { error: err.message };
+    ctx.app.emit('error', err, ctx);
+  }
+});
 ```
 
 ## Route Handlers
@@ -103,20 +117,6 @@ app.use(router.routes());
 app.use(router.allowedMethods());
 ```
 
-## Error Handling Middleware
-
-```typescript
-app.use(async (ctx, next) => {
-  try {
-    await next();
-  } catch (err: any) {
-    ctx.status = err.status ?? 500;
-    ctx.body   = { error: err.message };
-    ctx.app.emit('error', err, ctx);
-  }
-});
-```
-
 ## Starting the Server
 
 ```typescript
@@ -130,4 +130,4 @@ main().catch(console.error);
 
 ## Summary
 
-Koa.js integrates with MongoDB by calling `mongoose.connect` before starting the HTTP server. Routes use async middleware with `ctx.body` and `ctx.status` for responses. An upstream error middleware catches any thrown exceptions and returns structured error responses. Koa's promise-based middleware stack makes async MongoDB operations straightforward.
+Koa.js integrates with MongoDB by calling `mongoose.connect` before starting the HTTP server. Routes use async middleware with `ctx.body` and `ctx.status` for responses. An error-handling middleware registered before the routes catches any thrown exceptions and returns structured error responses. Koa's promise-based middleware stack makes async MongoDB operations straightforward.
