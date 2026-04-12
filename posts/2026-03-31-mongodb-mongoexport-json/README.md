@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Mongoexport, JSON, Export, Data Pipeline
 
-Description: Learn how to use mongoexport to export MongoDB collections to JSON files, including field selection, query filters, aggregation output, and Extended JSON types.
+Description: Learn how to use mongoexport to export MongoDB collections to JSON files, including field selection, query filters, and Extended JSON types.
 
 ---
 
@@ -50,13 +50,11 @@ mongoexport \
   --fields "_id,name,email,createdAt" \
   --out customers_export.json
 
-# Exclude a field (noObjectId removes the _id field)
+# Exclude _id by piping through jq (mongoexport always includes _id)
 mongoexport \
   --uri "mongodb://localhost:27017/mydb" \
   --collection customers \
-  --fields "name,email,createdAt" \
-  --noObjectId \
-  --out customers_no_id.json
+  --fields "name,email,createdAt" | jq 'del(._id)' > customers_no_id.json
 ```
 
 ## Export with a Query Filter
@@ -91,23 +89,23 @@ mongoexport \
 
 ## Extended JSON: Preserving BSON Types
 
-By default `mongoexport` outputs Extended JSON v2 format, which encodes BSON types as JSON objects.
+By default `mongoexport` outputs Extended JSON v2 (Relaxed) format, which uses human-readable representations for most BSON types while preserving type information for types without a JSON equivalent.
 
 ```bash
-# Extended JSON v2 (default) - preserves ObjectId, Date, NumberLong, etc.
+# Extended JSON v2 Relaxed (default) - human-readable numbers, typed ObjectId and Date
 mongoexport \
   --uri "mongodb://localhost:27017/mydb" \
   --collection orders \
-  --out orders_extended.json
-# {"_id":{"$oid":"64a1..."},"total":{"$numberDouble":"99.95"},"createdAt":{"$date":"2026-03-31T10:00:00Z"}}
-
-# Relaxed Extended JSON v2 - more human-readable, slightly less precise
-mongoexport \
-  --uri "mongodb://localhost:27017/mydb" \
-  --collection orders \
-  --forceTableScan \
   --out orders_relaxed.json
-# (combine with --pretty for indented output)
+# {"_id":{"$oid":"64a1..."},"total":99.95,"createdAt":{"$date":"2026-03-31T10:00:00Z"}}
+
+# Extended JSON v2 Canonical - preserves full BSON type wrappers
+mongoexport \
+  --uri "mongodb://localhost:27017/mydb" \
+  --collection orders \
+  --jsonFormat=canonical \
+  --out orders_canonical.json
+# {"_id":{"$oid":"64a1..."},"total":{"$numberDouble":"99.95"},"createdAt":{"$date":{"$numberLong":"1774965600000"}}}
 ```
 
 ## Pretty-Print Output
@@ -128,8 +126,7 @@ mongoexport \
 mongoexport \
   --uri "mongodb://localhost:27017/mydb" \
   --collection products \
-  --fields "sku,name,price" \
-  --noObjectId | jq '.price = (.price * 1.1 | round * 100 / 100)' > products_uplifted.json
+  --fields "sku,name,price" | jq '.price = (.price * 1.1 * 100 | round | . / 100)' > products_uplifted.json
 
 # Pipe to gzip for compressed export
 mongoexport \
@@ -152,7 +149,7 @@ for day in 01 02 03 04 05; do
   mongoexport \
     --uri "mongodb://localhost:27017/mydb" \
     --collection events \
-    --query "{\"ts\":{\"\$gte\":{\"\$date\":\"2026-03-${day}T00:00:00Z\"},\"\$lt\":{\"\$date\":\"2026-03-$((10#$day+1))T00:00:00Z\"}}}" \
+    --query "{\"ts\":{\"\$gte\":{\"\$date\":\"2026-03-${day}T00:00:00Z\"},\"\$lt\":{\"\$date\":\"2026-03-$(printf '%02d' $((10#$day+1)))T00:00:00Z\"}}}" \
     --out "events_2026-03-${day}.json"
 done
 ```
