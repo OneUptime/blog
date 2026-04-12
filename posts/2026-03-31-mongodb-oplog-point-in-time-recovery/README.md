@@ -17,7 +17,7 @@ MongoDB's oplog enables point-in-time recovery (PITR) - the ability to restore a
 3. If recovery is needed, restore the base backup
 4. Replay oplog entries from the backup timestamp up to the desired recovery point
 
-The oplog records every write operation since the primary started (within the oplog window), so you can stop replay at any precise timestamp.
+The oplog is a capped collection that keeps a rolling record of every write operation within the oplog window, so you can stop replay at any precise timestamp.
 
 ## Step 1 - Take a Base Backup with Oplog Timestamp
 
@@ -96,7 +96,7 @@ db.orders.countDocuments()
 db.users.countDocuments()
 
 // Verify the most recent document timestamps are within your target window
-db.orders.findOne({}, { sort: { createdAt: -1 } })
+db.orders.find().sort({ createdAt: -1 }).limit(1)
 ```
 
 ## Using MongoDB Ops Manager or Atlas for PITR
