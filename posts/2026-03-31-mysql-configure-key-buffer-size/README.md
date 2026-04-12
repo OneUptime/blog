@@ -55,8 +55,8 @@ Calculate the key cache hit rate:
 ```sql
 SELECT
   ROUND(
-    (1 - (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Key_reads') /
-         (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Key_read_requests')
+    (1 - (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Key_reads') /
+         (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Key_read_requests')
     ) * 100, 2
   ) AS key_cache_hit_pct;
 ```
@@ -67,10 +67,10 @@ A hit rate above 99% is the target. Below 95% indicates the key buffer is too sm
 
 ```sql
 SELECT
-  (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Key_blocks_used') /
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Key_blocks_used') /
   (
-    (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Key_blocks_used') +
-    (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Key_blocks_unused')
+    (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Key_blocks_used') +
+    (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Key_blocks_unused')
   ) * 100 AS buffer_usage_pct;
 ```
 
@@ -106,10 +106,9 @@ Set `key_buffer_size` to match this value (or as large as available RAM allows).
 
 ## If You Use Only InnoDB
 
-If you have migrated all tables to InnoDB, `key_buffer_size` only caches MySQL system table indexes (which are MyISAM):
+If you have migrated all tables to InnoDB, a small `key_buffer_size` is still recommended because MySQL may create temporary MyISAM tables during query processing:
 
 ```sql
--- MySQL system tables use MyISAM internally
 -- A small key_buffer_size of 32M is sufficient for InnoDB-only workloads
 ```
 
@@ -133,4 +132,4 @@ LOAD INDEX INTO CACHE orders;
 
 ## Summary
 
-`key_buffer_size` caches MyISAM index blocks. Monitor the cache hit rate (`Key_reads` / `Key_read_requests`) - target above 99%. Size the buffer to match total MyISAM index size when possible. For InnoDB-only servers, 32 MB is sufficient for system tables. Use `innodb_buffer_pool_size` for InnoDB performance tuning instead.
+`key_buffer_size` caches MyISAM index blocks. Monitor the cache hit rate (1 - `Key_reads` / `Key_read_requests`) - target above 99%. Size the buffer to match total MyISAM index size when possible. For InnoDB-only servers, 32 MB is sufficient for system tables. Use `innodb_buffer_pool_size` for InnoDB performance tuning instead.
