@@ -82,7 +82,6 @@ Use AWS S3 lifecycle rules to automate retention without running deletion script
       "ID": "weekly-rotation",
       "Filter": {"Prefix": "weekly/"},
       "Status": "Enabled",
-      "Transitions": [{"Days": 14, "StorageClass": "STANDARD_IA"}],
       "Expiration": {"Days": 28}
     },
     {
