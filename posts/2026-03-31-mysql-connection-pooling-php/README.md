@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Connection Pool, PHP, PDO, Performance
 
-Description: Learn how to implement MySQL connection pooling in PHP using PDO persistent connections, PgBouncer-style proxies, and framework-level pool management.
+Description: Learn how to implement MySQL connection pooling in PHP using PDO persistent connections, ProxySQL for connection multiplexing, and PHP-FPM pool management.
 
 ---
 
@@ -82,9 +82,9 @@ if ($mysqli->connect_error) {
     throw new RuntimeException('MySQL connection failed: ' . $mysqli->connect_error);
 }
 
+$maxPrice = 500.00;
 $stmt = $mysqli->prepare('SELECT id, name FROM products WHERE price <= ?');
 $stmt->bind_param('d', $maxPrice);
-$maxPrice = 500.00;
 $stmt->execute();
 $result = $stmt->get_result();
 
@@ -109,6 +109,7 @@ INSERT INTO mysql_users (username, password, default_hostgroup) VALUES ('root', 
 LOAD MYSQL SERVERS TO RUNTIME;
 LOAD MYSQL USERS TO RUNTIME;
 SAVE MYSQL SERVERS TO DISK;
+SAVE MYSQL USERS TO DISK;
 SQL
 ```
 
