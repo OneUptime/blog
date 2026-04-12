@@ -14,7 +14,7 @@ Copying a table structure in MySQL is a common task when you need to create a st
 
 ## Using CREATE TABLE LIKE
 
-The simplest method to copy a table structure is `CREATE TABLE ... LIKE`. This preserves all column definitions, indexes, constraints, and AUTO_INCREMENT settings.
+The simplest method to copy a table structure is `CREATE TABLE ... LIKE`. This preserves all column definitions, indexes, column constraints (such as NOT NULL), and AUTO_INCREMENT settings.
 
 ```sql
 CREATE TABLE employees_copy LIKE employees;
@@ -103,4 +103,4 @@ When you copy table structures as part of a deployment or migration, use OneUpti
 
 ## Summary
 
-`CREATE TABLE ... LIKE` is the recommended way to copy a table structure in MySQL, as it preserves indexes and constraints. Use `CREATE TABLE ... SELECT WHERE 1=0` when you only need column definitions. For foreign keys, extract the DDL from `SHOW CREATE TABLE` and modify it manually.
+`CREATE TABLE ... LIKE` is the recommended way to copy a table structure in MySQL, as it preserves indexes and column constraints (but not foreign keys). Use `CREATE TABLE ... SELECT WHERE 1=0` when you only need column definitions. For foreign keys, extract the DDL from `SHOW CREATE TABLE` and modify it manually.
