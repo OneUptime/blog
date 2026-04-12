@@ -30,17 +30,17 @@ ALTER TABLE orders
 -- ERROR 1846 means online DDL not supported for this change
 ```
 
-## Strategy 2 - Online DDL for NOT NULL With Default
+## Strategy 2 - Instant DDL for NOT NULL With Default
 
-Adding a NOT NULL column with a constant default is online in MySQL 8.0+:
+Adding a NOT NULL column with a constant default supports the INSTANT algorithm in MySQL 8.0.12+:
 
 ```sql
 ALTER TABLE orders
     ADD COLUMN priority TINYINT NOT NULL DEFAULT 0,
-    ALGORITHM=INPLACE, LOCK=NONE;
+    ALGORITHM=INSTANT;
 ```
 
-MySQL 8.0 stores the default in the data dictionary without rewriting rows, making this instant even for billion-row tables.
+MySQL 8.0.12+ stores the default in the data dictionary without rewriting rows, making this instant even for billion-row tables.
 
 ## Strategy 3 - pt-online-schema-change for Large Tables
 
@@ -51,13 +51,12 @@ pt-online-schema-change \
     --host=127.0.0.1 \
     --user=appuser \
     --password=secret \
-    --database=myapp \
-    --table=events \
     --alter="ADD COLUMN processed_at DATETIME NULL" \
     --chunk-size=2000 \
     --sleep=0.05 \
     --max-lag=2 \
-    --execute
+    --execute \
+    D=myapp,t=events
 ```
 
 ## Strategy 4 - gh-ost for Triggerless Migration
