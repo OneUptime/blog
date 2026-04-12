@@ -37,7 +37,7 @@ Place columns used in equality predicates (`=`, `IN`) before columns used in ran
 -- Good: equality (status, customer_id) before range (created_at)
 CREATE INDEX idx_good ON orders(status, customer_id, created_at);
 
--- Less optimal: range column in the middle stops index use for created_at
+-- Less optimal: range column in the middle stops index use for customer_id
 CREATE INDEX idx_less_optimal ON orders(status, created_at, customer_id);
 ```
 
@@ -63,7 +63,7 @@ CREATE INDEX idx_status_date ON orders(status, created_at);
 EXPLAIN SELECT id FROM orders
 WHERE status = 'pending'
 ORDER BY created_at\G
--- Extra: Using index condition  (no filesort)
+-- Extra: Using where; Using index  (no filesort)
 ```
 
 ## Rule 4 - Match the Most Frequent Queries
