@@ -12,12 +12,14 @@ Description: Learn how KMongo brings type-safe, idiomatic Kotlin syntax to Mongo
 
 KMongo is a community-developed Kotlin framework that wraps the official MongoDB Java driver to provide a more idiomatic Kotlin API. It offers type-safe query construction using Kotlin property references, eliminates stringly-typed field names, and integrates with coroutines for non-blocking operations.
 
+> **Note:** KMongo was deprecated in June 2023 in favor of the [official MongoDB Kotlin Driver](https://www.mongodb.com/docs/drivers/kotlin/coroutine/current/), which was developed in collaboration with KMongo's creator. KMongo continues to receive maintenance releases but no new features. For new projects, consider the official driver instead. MongoDB provides a [migration guide](https://www.mongodb.com/docs/drivers/kotlin/coroutine/current/migrate-kmongo/) for transitioning from KMongo.
+
 ## Installation
 
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("org.litote.kmongo:kmongo-coroutine:4.11.0")
+    implementation("org.litote.kmongo:kmongo-coroutine:5.6.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
 }
 ```
