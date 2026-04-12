@@ -111,7 +111,8 @@ analyze_slow_queries()
 
 ```python
 def find_currently_slow_ops(threshold_secs=5):
-    current_ops = client.admin.command("currentOp", {
+    current_ops = client.admin.command({
+        "currentOp": 1,
         "active": True,
         "secs_running": {"$gt": threshold_secs}
     })
