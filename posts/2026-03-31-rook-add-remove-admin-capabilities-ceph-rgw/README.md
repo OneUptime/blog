@@ -95,12 +95,12 @@ curl -s http://your-rgw-host:7480/admin/user?list \
   --aws-sigv4 "aws:amz:us-east-1:s3"
 ```
 
-Or with AWS CLI using the admin endpoint:
+Get bucket usage information (requires `buckets=read` or `buckets=*`):
 
 ```bash
-aws --endpoint-url http://your-rgw-host:7480 \
-    s3api list-buckets \
-    --query 'Buckets[].Name'
+curl -s http://your-rgw-host:7480/admin/bucket \
+  --user admin-access-key:admin-secret-key \
+  --aws-sigv4 "aws:amz:us-east-1:s3"
 ```
 
 ## Security Considerations
@@ -112,7 +112,8 @@ aws --endpoint-url http://your-rgw-host:7480 \
 
 ```bash
 # List all users with any capabilities
-radosgw-admin user list --uid "" 2>/dev/null | \
+radosgw-admin user list 2>/dev/null | \
+  jq -r '.[]' | \
   xargs -I{} radosgw-admin user info --uid {} | \
   jq -r 'select(.caps | length > 0) | "\(.user_id): \(.caps)"'
 ```

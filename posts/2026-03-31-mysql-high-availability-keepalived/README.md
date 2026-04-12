@@ -46,7 +46,7 @@ vrrp_instance VI_MYSQL {
   advert_int 1
   authentication {
     auth_type PASS
-    auth_pass mysqlha123
+    auth_pass mysqlHA1
   }
   virtual_ipaddress {
     192.168.1.100/24
@@ -59,9 +59,21 @@ vrrp_instance VI_MYSQL {
 
 ## Configuration on the Standby Node
 
-Use `state BACKUP` and a lower `priority` on the standby:
+Create `/etc/keepalived/keepalived.conf` on the standby. Use `state BACKUP` and a lower `priority`:
 
 ```text
+global_defs {
+  router_id MYSQL_STANDBY
+}
+
+vrrp_script check_mysql {
+  script "/usr/local/bin/check_mysql.sh"
+  interval 2
+  weight -30
+  fall 2
+  rise 2
+}
+
 vrrp_instance VI_MYSQL {
   state BACKUP
   interface eth0
@@ -70,7 +82,7 @@ vrrp_instance VI_MYSQL {
   advert_int 1
   authentication {
     auth_type PASS
-    auth_pass mysqlha123
+    auth_pass mysqlHA1
   }
   virtual_ipaddress {
     192.168.1.100/24
