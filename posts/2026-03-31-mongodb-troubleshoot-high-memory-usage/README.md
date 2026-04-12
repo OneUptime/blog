@@ -27,8 +27,7 @@ mongosh --eval 'db.runCommand({ serverStatus: 1 }).mem'
 const stats = db.runCommand({ serverStatus: 1 });
 printjson({
   resident: stats.mem.resident + ' MB',
-  virtual: stats.mem.virtual + ' MB',
-  mappedWithJournal: stats.mem.mappedWithJournal + ' MB'
+  virtual: stats.mem.virtual + ' MB'
 });
 ```
 
@@ -95,7 +94,7 @@ db.orders.dropIndex('old_compound_index_name');
 
 ## Step 5: Adjust WiredTiger Cache Size
 
-The default cache is 50% of RAM minus 1 GB. Lower it on memory-constrained systems.
+The default cache is 50% of (RAM - 1 GB), or 256 MB, whichever is larger. Lower it on memory-constrained systems.
 
 ```yaml
 # In /etc/mongod.conf
