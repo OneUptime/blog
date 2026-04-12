@@ -20,18 +20,21 @@ Despite being whimsical, `LOLWUT` is a fully supported, documented command with 
 redis-cli LOLWUT
 ```
 
-Example output (Redis 7.x):
+Example output (Redis 6.x):
 
 ```text
-^    ^    ^
-|    |    |
-|    |    |
-|    |    |
+  .
+ .|.      .
+ |||     .|.
+ |||     |||  .
+ |||     ||| .|.
+.|||.    ||| |||
+|||||    ||| |||
 
-Redis ver. 7.2.0
+Original 8 bit image from Plaguemon by hikikomori. Redis ver. 6.2.6
 ```
 
-The art varies by version and may include fractals, maze patterns, or geometric shapes.
+The art varies by version and may include generative art or 8-bit inspired graphics. Note that Redis 7.x does not include its own artwork and only prints the version string.
 
 ## Customizing the Output
 
@@ -47,14 +50,14 @@ This requests the artwork from a specific Redis version (useful when you want to
 redis-cli LOLWUT 10
 ```
 
-Some versions accept a numeric argument to change the complexity or scale of the artwork.
+Numeric arguments without the `VERSION` keyword are passed as parameters to the current version's artwork generator, controlling aspects like scale or complexity (not to be confused with selecting a version).
 
 ## Practical Use: Quick Version Check
 
 The most practical reason to use `LOLWUT` is the version line appended to the output:
 
 ```bash
-redis-cli LOLWUT | tail -1
+redis-cli LOLWUT | grep "Redis ver\."
 ```
 
 Output:
@@ -71,13 +74,13 @@ Compared to the standard version check:
 redis-cli INFO server | grep redis_version
 ```
 
-`LOLWUT | tail -1` is slightly more fun, though both work equally well.
+`LOLWUT | grep "Redis ver\."` is slightly more fun, though both work equally well.
 
 ## Using in Health Check Scripts
 
 ```bash
 #!/bin/bash
-VERSION=$(redis-cli LOLWUT | tail -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+VERSION=$(redis-cli LOLWUT | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 echo "Redis version: $VERSION"
 ```
 
@@ -85,17 +88,16 @@ echo "Redis version: $VERSION"
 
 | Redis Version | Artwork Description |
 |--------------|---------------------|
-| 5.0 | Dragon curve fractal |
-| 6.0 | Mandelbrot set |
-| 6.2 | 3D hilbert curve |
-| 7.0 | Spinning shapes |
-| 7.2 | Various geometric patterns |
+| 5.x | Schotter by Georg Nees (1968) - grid of squares with increasing randomness |
+| 6.x | City skyline inspired by 8-bit game backgrounds (Plaguemon by hikikomori) |
+| 7.x | No dedicated artwork (only prints the version string) |
+| 8.x | Computer-generated poetry based on Nanni Balestrini's TAPE MARK I algorithm |
 
 ## Why Redis Added LOLWUT
 
 The Redis creator antirez added `LOLWUT` as a nod to the open-source culture of creating fun things. It demonstrates that infrastructure software does not have to be purely utilitarian.
 
-The command also serves as a living artifact - each Redis release ships with new artwork created by contributors, making it part of the release history.
+The command also serves as a living artifact - major Redis releases may ship with new artwork, making it part of the release history.
 
 ## Summary
 
