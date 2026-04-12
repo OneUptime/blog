@@ -14,7 +14,7 @@ MongoDB has a configurable limit on the number of simultaneous incoming connecti
 
 ## Default Connection Limits
 
-The default `maxIncomingConnections` is 1,000,000 (effectively unlimited) in MongoDB 5.0+. In practice, the real limit is bounded by available file descriptors and system memory, not this setting.
+The default `maxIncomingConnections` is 65536. In practice, the real limit is bounded by the lower of this setting, available file descriptors, and system memory.
 
 Check the current limit:
 
@@ -27,7 +27,7 @@ Output:
 ```javascript
 {
   current: 45,
-  available: 838955,    // maxIncomingConnections - current
+  available: 65491,     // maxIncomingConnections - current
   totalCreated: 312,
   rejected: 0,
   active: 12,
@@ -158,12 +158,11 @@ Reducing unnecessary connections is more effective than increasing the limit. Co
 const client = new MongoClient("mongodb://localhost:27017/", {
   maxPoolSize: 10,      // Max connections per mongod (default: 100)
   minPoolSize: 2,       // Keep minimum connections open
-  maxIdleTimeMS: 60000, // Close idle connections after 60 seconds
-  waitQueueTimeoutMS: 5000  // Throw if no connection available in 5 seconds
+  maxIdleTimeMS: 60000  // Close idle connections after 60 seconds
 })
 ```
 
-```yaml
+```properties
 # Spring Boot application.properties
 spring.data.mongodb.uri=mongodb://localhost:27017/mydb?maxPoolSize=20&minPoolSize=5
 ```
