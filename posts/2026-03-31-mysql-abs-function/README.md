@@ -122,7 +122,7 @@ Ensure a positive modulo result (MySQL's `MOD()` can return negative values for 
 
 ```sql
 SELECT ABS(MOD(-17, 5));
--- Result: 3  (ensures positive remainder)
+-- Result: 2  (ensures positive remainder)
 ```
 
 ## Practical Example - Account Balance Reconciliation
