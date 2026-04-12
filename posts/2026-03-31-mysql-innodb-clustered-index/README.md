@@ -70,7 +70,7 @@ CREATE TABLE customers (
     name VARCHAR(100)
 );
 
--- Acceptable for distributed systems: UUID v7 (time-ordered)
+-- Acceptable for distributed systems: UUID v1 with time-field swap (time-ordered)
 CREATE TABLE events (
     id BINARY(16) DEFAULT (UUID_TO_BIN(UUID(), 1)) PRIMARY KEY,
     payload JSON
