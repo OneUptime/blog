@@ -20,7 +20,7 @@ After upgrading, monitor the MySQL error log for deprecation warnings:
 grep -i "deprecated\|warning" /var/log/mysql/error.log | head -50
 ```
 
-Enable deprecation warnings in the slow query log:
+Enable verbose logging in the error log to capture deprecation warnings:
 
 ```text
 [mysqld]
@@ -29,11 +29,14 @@ log_error_verbosity = 3   # Include notes and warnings
 
 ## Removed: Query Cache
 
-The query cache was removed in MySQL 8.0. Code using `SQL_CACHE` or `SQL_NO_CACHE` hints will generate errors:
+The query cache was removed in MySQL 8.0. Code using `SQL_CACHE` hints will generate syntax errors. `SQL_NO_CACHE` is deprecated and accepted as a no-op but should also be removed:
 
 ```sql
--- This fails in MySQL 8.0
+-- This fails in MySQL 8.0 (syntax error)
 SELECT SQL_CACHE * FROM products WHERE id = 1;
+
+-- This is accepted but deprecated and has no effect
+SELECT SQL_NO_CACHE * FROM products WHERE id = 1;
 
 -- Fix: remove the hint
 SELECT * FROM products WHERE id = 1;
@@ -74,7 +77,7 @@ SELECT user, host, plugin FROM mysql.user WHERE plugin = 'mysql_native_password'
 ALTER USER 'appuser'@'%' IDENTIFIED WITH caching_sha2_password BY 'newpassword';
 ```
 
-Update application connection strings to use SSL (required for `caching_sha2_password`):
+Update application connection strings to use an encrypted connection (SSL/TLS) or RSA key pair exchange, which `caching_sha2_password` requires for password exchange:
 
 ```python
 # Python example with ssl_ca
@@ -88,15 +91,15 @@ conn = mysql.connector.connect(
 )
 ```
 
-## Removed: utf8mb3 Synonym Deprecation
+## Deprecated: utf8 Alias for utf8mb3
 
-`utf8` is now deprecated in favor of `utf8mb4`. Convert:
+`utf8` (an alias for `utf8mb3`) is deprecated in MySQL 8.0 in favor of `utf8mb4`. Convert:
 
 ```sql
--- Find columns using utf8 (utf8mb3)
+-- Find columns using utf8mb3 (MySQL 8.0 reports the canonical name)
 SELECT table_schema, table_name, column_name, character_set_name
 FROM information_schema.columns
-WHERE character_set_name = 'utf8';
+WHERE character_set_name IN ('utf8', 'utf8mb3');
 
 -- Fix
 ALTER TABLE mytable
@@ -105,7 +108,7 @@ ALTER TABLE mytable
 
 ## Deprecated: ZEROFILL Attribute
 
-`ZEROFILL` and unsigned integers are deprecated in MySQL 8.0 and will be removed in a future version:
+`ZEROFILL` and the display width attribute for integer types are deprecated in MySQL 8.0 and will be removed in a future version. Note that `UNSIGNED` for integer types (INT, BIGINT, etc.) is still valid and not deprecated — only `UNSIGNED` for FLOAT, DOUBLE, and DECIMAL is deprecated:
 
 ```sql
 -- Old: not recommended
