@@ -94,14 +94,20 @@ SHOW GLOBAL STATUS LIKE 'Handler_read%';
 
 ## InnoDB Alternative: innodb_read_io_threads
 
-For InnoDB, configure I/O threads instead of `read_buffer_size`:
+For InnoDB, configure I/O threads instead of `read_buffer_size`. Note that `innodb_read_io_threads` is not a dynamic variable — it requires a server restart to take effect.
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_read_io_threads';
-SET GLOBAL innodb_read_io_threads = 8;  -- Default is 4
 ```
 
-More I/O threads improve InnoDB sequential read performance by prefetching pages.
+In `my.cnf`:
+
+```ini
+[mysqld]
+innodb_read_io_threads = 8  # Default is 4
+```
+
+After changing, restart MySQL for the setting to take effect. More I/O threads improve InnoDB read performance by allowing more concurrent read-ahead operations.
 
 ## Recommended Values
 
