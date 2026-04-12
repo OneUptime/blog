@@ -30,10 +30,10 @@ Index existing MongoDB documents into Meilisearch:
 
 ```javascript
 const { MongoClient } = require("mongodb")
-const { MeiliSearch } = require("meilisearch")
+const { Meilisearch } = require("meilisearch")
 
 const mongo = new MongoClient(process.env.MONGODB_URI)
-const meili = new MeiliSearch({
+const meili = new Meilisearch({
   host: "http://localhost:7700",
   apiKey: "masterKey"
 })
@@ -60,7 +60,7 @@ async function initialSync() {
   }))
 
   const task = await index.addDocuments(docs, { primaryKey: "id" })
-  await index.waitForTask(task.taskUid)
+  await meili.tasks.waitForTask(task.taskUid)
   console.log(`Indexed ${docs.length} products`)
 }
 ```
@@ -132,7 +132,7 @@ app.get("/search", async (req, res) => {
 
 ## Handling the _id Transformation
 
-MongoDB uses `ObjectId` for `_id`, but Meilisearch requires a numeric or string primary key named `id`:
+MongoDB uses `ObjectId` for `_id`, but Meilisearch requires a numeric or string primary key (defaulting to a field named `id` if not specified):
 
 ```javascript
 function toMeiliDoc(mongoDoc) {
