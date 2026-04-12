@@ -107,14 +107,16 @@ storage:
 
 ## 8. Pre-split Chunks on Sharded Clusters
 
-Avoid chunk split storms during initial bulk loads:
+Avoid chunk split storms during initial bulk loads. For hashed shard keys, specify `numInitialChunks` when sharding the collection:
 
 ```javascript
-// Before bulk insert, pre-split the collection into enough chunks
-for (let i = 0; i < 100; i++) {
-  sh.splitAt("mydb.readings", { sensorId: i })
-}
+// Pre-split into 100 chunks distributed evenly across shards
+sh.shardCollection("mydb.readings", { sensorId: "hashed" }, false, {
+  numInitialChunks: 100
+})
 ```
+
+This replaces a plain `sh.shardCollection` call (as in step 6) and distributes chunks evenly across the hash space from the start.
 
 ## Summary
 
