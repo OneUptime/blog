@@ -22,8 +22,9 @@ Dependency mgmt    | Manual         | Declared & managed
 Server coupling    | Tightly coupled| Loosely coupled
 Loading mechanism  | INSTALL PLUGIN | INSTALL COMPONENT
 Config persistence | Plugin table   | component table
-Examples           | InnoDB, MyISAM | validate_password,
-                   | audit_log      | keyring_file
+Examples           | validate_password| validate_password,
+                   | (plugin), clone  | keyring_file,
+                   | audit_log        | log_sink_json
 ```
 
 ## Listing Available and Installed Components
@@ -32,11 +33,7 @@ Examples           | InnoDB, MyISAM | validate_password,
 -- View all installed components
 SELECT * FROM mysql.component;
 
--- View component services provided
-SELECT * FROM performance_schema.host_cache LIMIT 0; -- just checking connectivity
-
--- Check available component URNs
--- Components are loaded from plugin directory
+-- Check the plugin directory where component libraries are stored
 SHOW VARIABLES LIKE 'plugin_dir';
 ```
 
@@ -46,8 +43,11 @@ SHOW VARIABLES LIKE 'plugin_dir';
 -- Install validate_password component
 INSTALL COMPONENT 'file://component_validate_password';
 
--- Install the keyring file component
-INSTALL COMPONENT 'file://component_keyring_file';
+-- Install the log filter dragnet component
+INSTALL COMPONENT 'file://component_log_filter_dragnet';
+
+-- Note: Keyring components (e.g., component_keyring_file) must be loaded
+-- via a server manifest file, not with INSTALL COMPONENT.
 
 -- Install multiple components
 INSTALL COMPONENT
