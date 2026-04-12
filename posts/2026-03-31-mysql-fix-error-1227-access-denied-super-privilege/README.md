@@ -56,7 +56,7 @@ perl -p -i -e 's/\sDEFINER=`[^`]+`@`[^`]+`//g' dump.sql
 
 ## Fix 3: Export Without DEFINER
 
-Use `mysqldump` flags to exclude DEFINER information:
+Pipe the `mysqldump` output through `sed` to strip DEFINER clauses during export:
 
 ```bash
 # Export routines without DEFINER
