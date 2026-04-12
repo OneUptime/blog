@@ -141,7 +141,7 @@ def export_tier3_orders():
         '/tmp/tier3_orders.parquet',
         os.environ['ARCHIVE_BUCKET'],
         s3_key,
-        ExtraArgs={'StorageClass': 'GLACIER_INSTANT_RETRIEVAL'},
+        ExtraArgs={'StorageClass': 'GLACIER_IR'},
     )
 
     cursor = conn.cursor()
