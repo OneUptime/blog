@@ -87,7 +87,7 @@ Output:
 [
   {
     _id: "Electronics",
-    totalRevenue: 10400,
+    totalRevenue: 10000,
     avgPrice: 866.67,
     minPrice: 600,
     maxPrice: 1200,
@@ -125,7 +125,7 @@ Output:
 
 ```javascript
 [
-  { totalRevenue: 13300, avgPrice: 660, minPrice: 250, maxPrice: 1200 }
+  { totalRevenue: 12900, avgPrice: 660, minPrice: 250, maxPrice: 1200 }
 ]
 ```
 
