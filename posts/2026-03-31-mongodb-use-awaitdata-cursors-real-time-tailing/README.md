@@ -12,7 +12,7 @@ Description: Learn how to use awaitData tailable cursors in MongoDB to efficient
 
 When a tailable cursor reaches the end of a capped collection, it returns an empty result. Without any wait mechanism, your application must immediately retry the cursor in a tight loop, burning CPU cycles checking for new data.
 
-The `awaitData` option solves this by telling MongoDB to block the cursor on the server side for up to one second when no new documents are available. The server returns to the client only when new documents arrive or the wait period expires. This eliminates busy-waiting and makes real-time tailing efficient.
+The `awaitData` option solves this by telling MongoDB to block the cursor on the server side when no new documents are available. The server returns to the client only when new documents arrive or a configurable timeout (set via `maxAwaitTimeMS`) expires. This eliminates busy-waiting and makes real-time tailing efficient.
 
 ## How awaitData Differs from a Plain Tailable Cursor
 
@@ -42,7 +42,7 @@ async function tailWithAwaitData() {
     {
       tailable: true,
       awaitData: true,
-      maxTimeMS: 2000   // Block up to 2 seconds per batch
+      maxAwaitTimeMS: 2000   // Block up to 2 seconds per batch
     }
   );
 
@@ -66,9 +66,8 @@ collection = client["metrics"]["sensorReadings"]
 
 cursor = collection.find(
     {},
-    cursor_type=pymongo.CursorType.TAILABLE_AWAIT,
-    max_await_time_ms=2000   # Wait up to 2 seconds for new data
-)
+    cursor_type=pymongo.CursorType.TAILABLE_AWAIT
+).max_await_time_ms(2000)   # Wait up to 2 seconds for new data
 
 for doc in cursor:
     print(f"Sensor {doc['sensorId']}: {doc['value']}")
@@ -132,4 +131,4 @@ async function tailReliably(collection) {
 
 ## Summary
 
-The `awaitData` option transforms a tailable cursor into an efficient real-time streaming mechanism by blocking on the server when no new documents are available. This eliminates the busy-waiting loops required by plain tailable cursors, reduces client-side CPU usage, and provides lower-latency notification when new data arrives. Use it with a `maxTimeMS` setting to prevent indefinite blocking and always implement reconnection logic for production tailing applications.
+The `awaitData` option transforms a tailable cursor into an efficient real-time streaming mechanism by blocking on the server when no new documents are available. This eliminates the busy-waiting loops required by plain tailable cursors, reduces client-side CPU usage, and provides lower-latency notification when new data arrives. Use it with a `maxAwaitTimeMS` setting (or the equivalent in your driver) to control how long the server blocks per batch and always implement reconnection logic for production tailing applications.
