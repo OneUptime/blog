@@ -14,11 +14,11 @@ Azure Cache for Redis integrates natively with Azure Monitor, exposing dozens of
 
 | Metric | Description | Alert Threshold |
 |---|---|---|
-| `usedmemory_percentage` | Percent of max memory used | > 80% |
-| `cache_hit_ratio` | Hit rate (0-1) | < 0.8 |
+| `usedmemorypercentage` | Percent of max memory used | > 80% |
+| `cachemisses` | Number of failed key lookups | increasing trend |
 | `evictedkeys` | Keys removed due to maxmemory | > 0 |
 | `connectedclients` | Active connections | > 80% of limit |
-| `server_load` | Redis CPU load (0-100) | > 80 |
+| `serverLoad` | Redis CPU load (0-100) | > 80 |
 | `errors` | Command errors | > 0 per minute |
 
 ## Viewing Metrics via CLI
@@ -27,7 +27,7 @@ Azure Cache for Redis integrates natively with Azure Monitor, exposing dozens of
 # Check memory usage over the last hour
 az monitor metrics list \
   --resource /subscriptions/<sub>/resourceGroups/rg-prod/providers/Microsoft.Cache/Redis/my-redis \
-  --metric "usedmemory_percentage" \
+  --metric "usedmemorypercentage" \
   --interval PT5M \
   --start-time 2026-03-31T08:00:00Z \
   --end-time 2026-03-31T09:00:00Z \
@@ -43,7 +43,7 @@ az monitor metrics alert create \
   --name "redis-high-memory" \
   --resource-group rg-prod \
   --scopes /subscriptions/<sub>/resourceGroups/rg-prod/providers/Microsoft.Cache/Redis/my-redis \
-  --condition "avg usedmemory_percentage > 85" \
+  --condition "avg usedmemorypercentage > 85" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 2 \
@@ -63,7 +63,7 @@ resource "azurerm_monitor_metric_alert" "redis_memory" {
 
   criteria {
     metric_namespace = "Microsoft.Cache/Redis"
-    metric_name      = "usedmemory_percentage"
+    metric_name      = "usedmemorypercentage"
     aggregation      = "Average"
     operator         = "GreaterThan"
     threshold        = 85
@@ -109,4 +109,4 @@ az monitor diagnostic-settings create \
 
 ## Summary
 
-Azure Monitor provides native Redis metrics without any agents. Set alerts on `usedmemory_percentage`, `evictedkeys`, and `server_load` at minimum. Enable diagnostic settings to send metrics and connection logs to a Log Analytics workspace for historical analysis. Complement Azure Monitor with [OneUptime](https://oneuptime.com) for end-to-end application health monitoring that correlates Redis performance with API latency.
+Azure Monitor provides native Redis metrics without any agents. Set alerts on `usedmemorypercentage`, `evictedkeys`, and `serverLoad` at minimum. Enable diagnostic settings to send metrics and connection logs to a Log Analytics workspace for historical analysis. Complement Azure Monitor with [OneUptime](https://oneuptime.com) for end-to-end application health monitoring that correlates Redis performance with API latency.
