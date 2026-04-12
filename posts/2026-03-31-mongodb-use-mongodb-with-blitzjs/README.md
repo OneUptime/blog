@@ -67,7 +67,7 @@ npx blitz prisma db push
 
 ## Creating Queries
 
-Blitz queries are server functions called from the client. Create `app/tasks/queries/getTasks.ts`:
+Blitz queries are server functions called from the client. Create `src/tasks/queries/getTasks.ts`:
 
 ```typescript
 import { resolver } from "@blitzjs/rpc"
@@ -101,7 +101,7 @@ export default resolver.pipe(
 
 ## Creating Mutations
 
-Create `app/tasks/mutations/createTask.ts`:
+Create `src/tasks/mutations/createTask.ts`:
 
 ```typescript
 import { resolver } from "@blitzjs/rpc"
@@ -132,8 +132,8 @@ export default resolver.pipe(
 
 ```typescript
 import { useQuery, useMutation } from "@blitzjs/rpc"
-import getTasks from "app/tasks/queries/getTasks"
-import createTask from "app/tasks/mutations/createTask"
+import getTasks from "src/tasks/queries/getTasks"
+import createTask from "src/tasks/mutations/createTask"
 
 export default function TaskList({ userId }: { userId: string }) {
   const [tasks] = useQuery(getTasks, { userId })
