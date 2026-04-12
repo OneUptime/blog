@@ -25,7 +25,7 @@ Indexes speed up SELECT, but add overhead to INSERT, UPDATE, and DELETE because 
 
 ## Syntax
 
-There are two ways to create an index:
+There are multiple ways to create an index:
 
 ```sql
 -- Using CREATE INDEX
