@@ -140,7 +140,7 @@ try {
 
 ## Performance Tip - Batching Large Inserts
 
-For very large datasets, break them into batches to avoid exceeding MongoDB's 16MB document size limit per batch or the 100,000 operations limit:
+For very large datasets, break them into batches to manage memory usage. Although the MongoDB driver automatically splits `insertMany()` into groups of up to 100,000 operations internally, loading millions of documents into memory at once can cause issues:
 
 ```javascript
 const allDocuments = [] // assume this has thousands of documents
