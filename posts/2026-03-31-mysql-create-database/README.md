@@ -15,7 +15,7 @@ In MySQL the term "database" and "schema" are interchangeable. A database is a n
 ```mermaid
 flowchart LR
     A[CREATE DATABASE myapp] --> B[myapp directory\ncreated in datadir]
-    B --> C[db.opt file\nstores charset/collation]
+    B --> C[Metadata stored\nin data dictionary]
     C --> D[Ready for\nCREATE TABLE]
 ```
 
