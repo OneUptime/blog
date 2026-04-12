@@ -13,7 +13,7 @@ OAuth2 is the industry standard protocol for delegated authorization. Building y
 ## Installing Dependencies
 
 ```bash
-npm install oauth2orize passport passport-http passport-http-bearer mongoose crypto
+npm install oauth2orize passport passport-http passport-http-bearer passport-oauth2-client-password mongoose
 ```
 
 ## Defining MongoDB Models
