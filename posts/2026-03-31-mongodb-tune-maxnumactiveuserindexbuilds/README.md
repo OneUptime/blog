@@ -21,7 +21,7 @@ db.adminCommand({ getParameter: 1, maxNumActiveUserIndexBuilds: 1 })
 // { maxNumActiveUserIndexBuilds: 3, ok: 1 }
 ```
 
-The default is 3 concurrent index builds in MongoDB 6.0+. In earlier versions it was 1.
+The default is 3 concurrent index builds. This parameter was introduced in MongoDB 4.4 alongside the simultaneous index build mechanism.
 
 ## Why Limit Index Build Concurrency?
 
@@ -72,7 +72,7 @@ db.currentOp().inprog
 
 ## Impact on Replica Sets
 
-In MongoDB 4.4+, index builds on the primary block voting on the secondary until complete. If a build takes hours on a large collection, secondaries may not be eligible to vote during that period. Limit concurrent builds to reduce this exposure:
+In MongoDB 4.4+, the primary waits for a commit quorum of data-bearing voting members to finish building the index before it can commit. If a build takes hours on a large collection, the index commit is delayed until enough members complete the build. Long-running builds can also increase replication lag on secondaries. Limit concurrent builds to reduce this exposure:
 
 ```javascript
 // Recommended for replica sets with large collections
