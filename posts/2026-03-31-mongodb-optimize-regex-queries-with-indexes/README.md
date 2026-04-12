@@ -59,19 +59,30 @@ For prefix regex queries, a simple ascending index works:
 db.users.createIndex({ username: 1 })
 ```
 
-For case-insensitive prefix queries, use a collation index:
+For case-insensitive prefix queries, store a lowercased copy of the field and query against it:
+
+```javascript
+// Store a lowercased copy on insert/update
+db.users.insertOne({
+  username: "JohnDoe",
+  usernameLower: "johndoe"
+})
+
+db.users.createIndex({ usernameLower: 1 })
+
+// Case-insensitive prefix search uses the index efficiently
+db.users.find({ usernameLower: /^john/ })
+```
+
+Note: `$regex` is not collation-aware, so collation indexes cannot be used for case-insensitive regex matching. For case-insensitive exact matches without regex, use a collation index with string comparison operators instead:
 
 ```javascript
 db.users.createIndex(
   { username: 1 },
   { collation: { locale: "en", strength: 2 } }
 )
-```
 
-Query with matching collation to use the index:
-
-```javascript
-db.users.find({ username: /^john/ })
+db.users.find({ username: "john" })
   .collation({ locale: "en", strength: 2 })
 ```
 
@@ -138,4 +149,4 @@ The compound index scan for `status = "active"` reduces the document set before 
 
 ## Summary
 
-Only left-anchored prefix regex patterns without special characters can use a MongoDB B-tree index. Verify index usage with `explain("executionStats")` and look for `IXSCAN`. For case-insensitive queries, use a collation index. For ends-with patterns, store reversed values. For contains matching, use text indexes. Always add an indexed equality pre-filter before any regex that cannot use an index to limit the scan scope.
+Only left-anchored prefix regex patterns without special characters can use a MongoDB B-tree index. Verify index usage with `explain("executionStats")` and look for `IXSCAN`. For case-insensitive regex queries, store a lowercased copy of the field since `$regex` is not collation-aware. For ends-with patterns, store reversed values. For contains matching, use text indexes. Always add an indexed equality pre-filter before any regex that cannot use an index to limit the scan scope.
