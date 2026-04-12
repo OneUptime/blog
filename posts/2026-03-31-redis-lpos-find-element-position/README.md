@@ -30,12 +30,11 @@ LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
 - `element` - the value to search for
 - `RANK rank` - which occurrence to start from; 1 is the first (head), 2 is the second, -1 is the last (tail scan)
 - `COUNT num-matches` - return up to this many matching indexes; 0 means return all matches
-- `MAXLEN len` - limit the scan to the first `len` elements; 0 means scan the whole list
+- `MAXLEN len` - limit the number of elements scanned; scans from the head with positive RANK and from the tail with negative RANK; 0 means scan the whole list
 
 Returns:
-- A single integer when `COUNT` is not specified
-- An array of integers when `COUNT` is specified
-- nil if the element is not found
+- A single integer when `COUNT` is not specified, or nil if the element is not found
+- An array of integers when `COUNT` is specified, or an empty array if no matches are found
 
 ## Examples
 
@@ -120,7 +119,7 @@ LPOS mylist "banana" RANK -2
 
 ### Limit the Search Scope with MAXLEN
 
-MAXLEN restricts how many elements are scanned from the head. Useful for large lists.
+MAXLEN restricts how many elements are scanned. With positive RANK it scans from the head; with negative RANK it scans from the tail. Useful for large lists.
 
 ```redis
 LPOS mylist "banana" COUNT 0 MAXLEN 3
@@ -161,9 +160,10 @@ LPOS playlist "song:2"
 ### Deduplication Check Before Insert
 
 ```redis
-SET result [LPOS mylist "newitem"]
--- If nil, it is safe to append without creating a duplicate
+LPOS mylist "newitem"
 ```
+
+If the result is nil, it is safe to append without creating a duplicate.
 
 ### Find the Most Recent Occurrence
 
