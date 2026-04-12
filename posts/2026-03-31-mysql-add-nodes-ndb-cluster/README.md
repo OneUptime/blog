@@ -10,7 +10,7 @@ Description: Learn how to add new data nodes and SQL nodes to a running MySQL ND
 
 ## Overview
 
-MySQL NDB Cluster supports adding new data nodes and SQL nodes to a running cluster. Adding data nodes requires a rolling restart of the cluster to redistribute data across the new nodes. Adding SQL nodes is simpler and requires only connecting the new node to the management node.
+MySQL NDB Cluster supports adding new data nodes and SQL nodes to a running cluster. Adding data nodes requires updating the cluster configuration, starting the new nodes, creating a new node group, and then redistributing data using `ALTER TABLE ... REORGANIZE PARTITION`. Adding SQL nodes is simpler and requires only connecting the new node to the management node.
 
 ## Adding a New SQL Node (API Node)
 
@@ -22,9 +22,10 @@ NodeId=6
 hostname=192.168.1.15
 ```
 
-Reload the management node configuration without a full restart:
+Stop and restart the management node to pick up the new configuration:
 
 ```bash
+ndb_mgm -e "1 stop"
 ndb_mgmd --reload --config-file=/var/lib/mysql-cluster/config.ini
 ```
 
@@ -71,9 +72,12 @@ hostname=192.168.1.16
 datadir=/usr/local/mysql/data
 ```
 
-### Step 2: Reload Management Node Configuration
+### Step 2: Stop and Restart Management Node
+
+Stop the running management node, then restart it with `--reload` to pick up the new configuration:
 
 ```bash
+ndb_mgm -e "1 stop"
 ndb_mgmd --reload --config-file=/var/lib/mysql-cluster/config.ini
 ```
 
@@ -102,7 +106,15 @@ ndb_mgm -e show
 
 New nodes appear in the output as a new node group.
 
-### Step 6: Redistribute Data (Online Rebalancing)
+### Step 6: Create the New Node Group
+
+Assign the new data nodes to a node group so they can begin storing data:
+
+```bash
+ndb_mgm -e "CREATE NODEGROUP 4,5"
+```
+
+### Step 7: Redistribute Data (Online Rebalancing)
 
 After adding data nodes, existing data is not automatically redistributed. Use `ALTER TABLE ... REORGANIZE PARTITION` on each NDB table:
 
@@ -137,4 +149,4 @@ id=5    @192.168.1.16  (Nodegroup: 1)
 
 ## Summary
 
-Adding SQL nodes to NDB Cluster is near-instant and non-disruptive. Adding data nodes requires updating `config.ini`, reloading the management node, starting new data nodes with `--initial`, and then running `ALTER TABLE ... REORGANIZE PARTITION` on all NDB tables to redistribute data across the expanded cluster. Plan node additions carefully to maintain the required node group pairing for redundancy.
+Adding SQL nodes to NDB Cluster is near-instant and non-disruptive. Adding data nodes requires updating `config.ini`, reloading the management node, starting new data nodes with `--initial`, creating the new node group with `CREATE NODEGROUP`, and then running `ALTER TABLE ... REORGANIZE PARTITION` on all NDB tables to redistribute data across the expanded cluster. Plan node additions carefully to maintain the required node group pairing for redundancy.
