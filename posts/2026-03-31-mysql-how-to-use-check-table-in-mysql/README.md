@@ -33,10 +33,10 @@ CHECK TABLE table_name FOR UPGRADE;
 | Option | Description |
 |---|---|
 | (default) | Performs the standard check |
-| `QUICK` | Checks only that index pages are correctly linked (fastest) |
+| `QUICK` | Does not scan the rows to check for incorrect links (fastest) |
 | `FAST` | Checks only tables not properly closed |
 | `CHANGED` | Checks tables changed since last check or not properly closed |
-| `MEDIUM` | Checks row-column links (slower) |
+| `MEDIUM` | Scans rows to verify that deleted links are valid and calculates key checksums |
 | `EXTENDED` | Full row and index check (slowest, most thorough) |
 
 ## Running a Basic Check
@@ -72,6 +72,7 @@ If corruption is found:
 `Msg_type` values:
 - `status` - informational, usually `OK`
 - `info` - general information
+- `note` - additional details about the check
 - `warning` - minor issues, table may still work
 - `error` - table is corrupted and needs repair
 
