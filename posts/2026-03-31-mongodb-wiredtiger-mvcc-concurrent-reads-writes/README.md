@@ -59,7 +59,7 @@ try {
 }
 ```
 
-Both reads in the transaction see the same snapshot, even if another transaction modified those documents between the two reads.
+All operations in the transaction read from the same consistent snapshot, even if another transaction modified those documents concurrently.
 
 ## Write Conflicts
 
