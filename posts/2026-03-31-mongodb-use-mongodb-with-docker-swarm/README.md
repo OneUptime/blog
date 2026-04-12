@@ -129,8 +129,6 @@ services:
       - mongo_net
     deploy:
       replicas: 3
-    depends_on:
-      - mongodb
 ```
 
 ## Scaling and Updates
