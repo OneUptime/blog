@@ -109,7 +109,7 @@ If all nodes lost connectivity simultaneously and none can form a majority, you 
 ```sql
 -- On the most current node (highest GTID set)
 -- DANGER: This resets the group view - only do this as last resort
-SET GLOBAL group_replication_force_members = 'uuid-of-this-node';
+SET GLOBAL group_replication_force_members = 'node1:33061';
 ```
 
 After the cluster is back online, other nodes can rejoin normally.
