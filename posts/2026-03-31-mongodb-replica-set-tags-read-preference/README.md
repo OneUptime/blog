@@ -38,17 +38,18 @@ A **tag set** is a document specifying required tag values. A member matches if 
 ### Node.js (Mongoose / MongoDB Driver)
 
 ```javascript
-const { MongoClient } = require('mongodb');
+const { MongoClient, ReadPreference } = require('mongodb');
 
 const client = new MongoClient("mongodb://mongo1,mongo2,mongo3/?replicaSet=rs0");
 const db = client.db("app");
 
 // Route reads to reporting secondary
-const reports = db.collection('reports').withReadPreference(
-  ReadPreference.secondary([{ purpose: "reporting" }])
-);
+const readPref = new ReadPreference('secondary', [{ purpose: "reporting" }]);
 
-const data = await reports.find({ year: 2025 }).toArray();
+const data = await db.collection('reports').find(
+  { year: 2025 },
+  { readPreference: readPref }
+).toArray();
 ```
 
 ### Python (PyMongo)
@@ -79,7 +80,7 @@ You can specify multiple tag sets as fallbacks - MongoDB tries each in order:
 
 ```javascript
 // Try reporting secondary first, then any secondary, then primary
-ReadPreference.secondaryPreferred([
+new ReadPreference('secondaryPreferred', [
   { purpose: "reporting" },
   {},              // empty tag set matches any member
 ])
@@ -114,7 +115,7 @@ await col.insertOne(doc, { writeConcern: { w: "crossDC" } });
 For latency-sensitive applications, combine `nearest` with tags:
 
 ```javascript
-ReadPreference.nearest([{ dc: "us-west" }])
+new ReadPreference('nearest', [{ dc: "us-west" }])
 ```
 
 This picks the lowest-latency member that has `dc: "us-west"`.
@@ -123,11 +124,11 @@ This picks the lowest-latency member that has `dc: "us-west"`.
 
 - Tags are case-sensitive: `{ DC: "east" }` and `{ dc: "east" }` are different
 - A member with no tags does not match any non-empty tag set
-- Removing a tag requires setting it to an empty string, not deleting the key
+- To remove a tag, omit it from the tags document entirely
 
 ```javascript
-// Remove a tag
-cfg.members[0].tags = { dc: "us-east", purpose: "" };
+// Remove the "purpose" tag by omitting it
+cfg.members[0].tags = { dc: "us-east" };
 rs.reconfig(cfg);
 ```
 
