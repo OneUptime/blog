@@ -95,7 +95,7 @@ ORDER BY SUM_TIMER_WAIT DESC;
 
 - Use **mode 2** for write-heavy OLTP workloads with row-based replication. It provides the best insert throughput.
 - Use **mode 1** if you need statement-based replication or require consecutive IDs for audit reasons.
-- Use **mode 0** only for legacy compatibility or specific gap-free ID requirements.
+- Use **mode 0** only for legacy compatibility or when you need consecutive (no interleaving) ID assignment across statements. Note that no lock mode prevents gaps caused by rollbacks or deletes.
 
 ## Summary
 
