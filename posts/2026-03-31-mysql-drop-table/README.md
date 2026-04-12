@@ -29,6 +29,8 @@ DROP TABLE [IF EXISTS] table_name [, table_name2, ...]
     [RESTRICT | CASCADE];
 ```
 
+`RESTRICT` and `CASCADE` are accepted by MySQL for SQL standard compatibility, but they have no effect. MySQL does not automatically drop dependent (child) tables when `CASCADE` is specified.
+
 ## Basic DROP TABLE
 
 ```sql
