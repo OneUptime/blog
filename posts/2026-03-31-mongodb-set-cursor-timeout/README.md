@@ -32,10 +32,7 @@ Use `maxTimeMS` to set a hard limit on the total time a cursor operation can run
 
 ```javascript
 // Cursor must complete within 30 seconds total
-const cursor = db.reports.find(
-  { year: 2025 },
-  { maxTimeMS: 30000 }
-);
+const cursor = db.reports.find({ year: 2025 }).maxTimeMS(30000);
 ```
 
 In Node.js with the official driver:
@@ -51,17 +48,19 @@ for await (const doc of cursor) {
 }
 ```
 
-## Using cursorTimeoutMS at the Connection Level
+## Using timeoutMS at the Connection Level
 
-You can configure cursor timeout at the connection level using the `cursorTimeoutMS` option when creating the MongoClient:
+You can configure a default operation timeout at the connection level using the `timeoutMS` option (Client Side Operation Timeout) when creating the MongoClient:
 
 ```javascript
 const { MongoClient } = require("mongodb");
 
 const client = new MongoClient("mongodb://localhost:27017", {
-  cursorTimeoutMS: 60000   // 60 seconds idle timeout for all cursors
+  timeoutMS: 60000   // 60 seconds timeout for all operations
 });
 ```
+
+This sets a client-side timeout that applies to all operations, including cursor iteration. It is available in MongoDB 7.1+ with Node.js driver 6.x+.
 
 ## Adjusting the Server-Side Default Timeout
 
