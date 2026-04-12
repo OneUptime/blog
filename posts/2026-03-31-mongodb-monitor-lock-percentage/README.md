@@ -44,10 +44,10 @@ Output includes lock metrics per resource:
 ```
 
 Lock mode abbreviations:
-- `r` - shared read intent lock
-- `w` - exclusive write intent lock
-- `R` - global shared lock
-- `W` - global exclusive lock (rare; DDL operations)
+- `r` - intent shared (IS) lock
+- `w` - intent exclusive (IX) lock
+- `R` - shared (S) lock
+- `W` - exclusive (X) lock (rare at global level; DDL operations)
 
 ## Calculating Lock Wait Percentage
 
