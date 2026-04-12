@@ -31,7 +31,7 @@ Common data type sizes:
 | TIMESTAMP | 4 bytes |
 | CHAR(N) | N bytes |
 | VARCHAR(N) | 1-2 bytes header + actual content |
-| TEXT | 0-12 bytes on-page, overflow stored separately |
+| TEXT | 20-byte pointer on-page if stored off-page (DYNAMIC format) |
 
 For a sample `events` table:
 
@@ -53,7 +53,7 @@ Estimated average row size: `8 + 8 + 21 + 200 + 5 = 242 bytes`
 InnoDB stores rows in B-tree pages with overhead per row and per page:
 - Row header: ~20 bytes per row
 - Page header/trailer: ~200 bytes per 16 KB page
-- Page fill factor: InnoDB leaves pages at ~69% full on initial load
+- Page fill factor: InnoDB pages settle at ~69% full with random inserts (sequential bulk loads fill to ~93%)
 
 Adjusted row cost: `242 + 20 = 262 bytes`
 Effective bytes per page (69% fill): `16384 * 0.69 = 11305 bytes`
@@ -72,7 +72,7 @@ total_pages = expected_rows / rows_per_page
 data_size_gb = (total_pages * page_size_bytes) / 1073741824
 
 print(f"Estimated data size: {data_size_gb:.1f} GB")
-# Output: Estimated data size: 37.3 GB
+# Output: Estimated data size: 35.4 GB
 ```
 
 ## Step 4 - Add Index Size
@@ -87,7 +87,7 @@ Each secondary index is a separate B-tree. Estimate index size per row based on 
 Index entry size with overhead: `21 + 20 = 41 bytes`
 Index size for 100M rows: `(100_000_000 * 41) / 1073741824 = ~3.8 GB`
 
-Total table size estimate: `37.3 + 3.8 = ~41 GB`
+Total table size estimate: `35.4 + 3.8 = ~39.2 GB`
 
 ## Step 5 - Validate Against a Sample Table
 
