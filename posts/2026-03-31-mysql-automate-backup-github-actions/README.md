@@ -57,7 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install MySQL client
-        run: sudo apt-get install -y mysql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
 
       - name: Create backup
         env:
