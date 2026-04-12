@@ -38,7 +38,7 @@ SELECT CURRENT_TIME;
 
 ## Fractional Seconds
 
-Both functions accept an optional precision argument:
+`CURTIME()` accepts an optional fractional seconds precision argument (0-6):
 
 ```sql
 SELECT CURTIME(3);
@@ -108,12 +108,12 @@ ORDER BY event_date;
 
 ## Using CURTIME() for Time-Based Filtering
 
-Filter records created during business hours:
+Filter records that were created during business hours:
 
 ```sql
 SELECT *
 FROM api_requests
-WHERE CURTIME() BETWEEN '09:00:00' AND '17:00:00';
+WHERE TIME(created_at) BETWEEN '09:00:00' AND '17:00:00';
 ```
 
 Or filter stored time values:
