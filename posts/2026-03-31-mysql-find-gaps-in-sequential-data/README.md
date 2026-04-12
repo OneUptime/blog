@@ -134,7 +134,7 @@ WHERE invoices.invoice_num IS NULL
 LIMIT 100;
 ```
 
-Set `max_recursive_cte` if needed for large ranges:
+Set `cte_max_recursion_depth` if needed for large ranges:
 
 ```sql
 SET SESSION cte_max_recursion_depth = 100000;
