@@ -145,7 +145,8 @@ db.articles.createIndex(
 
 // Or per-document language
 db.articles.createIndex(
-  { title: "text", body: "text", language_override: "lang" }
+  { title: "text", body: "text" },
+  { language_override: "lang" }
 );
 ```
 
@@ -153,7 +154,7 @@ db.articles.createIndex(
 
 ```text
 - One text index per collection
-- Text indexes do not support $sort by other fields alongside $meta: textScore sort
+- $text queries cannot use hint() to force a particular index
 - Text queries must match whole words (no partial-word matching)
 - Diacritics and case are ignored by default
 ```
