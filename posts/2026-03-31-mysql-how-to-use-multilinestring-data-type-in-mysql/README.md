@@ -40,13 +40,12 @@ VALUES (
     ST_MultiLineStringFromText('MULTILINESTRING((1 1, 2 3, 3 3),(5 5, 7 7, 9 6))')
 );
 
--- Insert with SRID for geographic coordinates (WGS84)
+-- Insert with coordinate values (no SRID, treated as Cartesian)
 INSERT INTO road_segments (road_name, route)
 VALUES (
     'City Loop',
     ST_GeomFromText(
-        'MULTILINESTRING((-74.006 40.712, -73.985 40.758),(-73.971 40.783, -73.959 40.800))',
-        4326
+        'MULTILINESTRING((-74.006 40.712, -73.985 40.758),(-73.971 40.783, -73.959 40.800))'
     )
 );
 ```
@@ -103,8 +102,8 @@ FROM road_segments;
 ## Combining MULTILINESTRING with Other Operations
 
 ```sql
--- Merge all segments into a single geometry
-SELECT road_name, ST_AsText(ST_LineMerge(route)) AS merged_line
+-- Get the convex hull enclosing all segments
+SELECT road_name, ST_AsText(ST_ConvexHull(route)) AS convex_hull
 FROM road_segments;
 
 -- Get the start and end points of the first segment
