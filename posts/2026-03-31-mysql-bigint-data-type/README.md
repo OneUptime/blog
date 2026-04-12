@@ -58,7 +58,7 @@ Applications that need sub-second precision often store timestamps as millisecon
 -- Convert BIGINT ms timestamp to a readable datetime
 SELECT id,
        event_type,
-       FROM_UNIXTIME(occurred_at / 1000) AS event_time
+       FROM_UNIXTIME(occurred_at DIV 1000) AS event_time
 FROM events
 ORDER BY occurred_at;
 ```
@@ -115,13 +115,13 @@ FROM transactions;
 ```
 
 ```text
-+------------+---------+----------+
-| account_id | amount  | currency |
-+------------+---------+----------+
-|       1001 | 1000.00 | USD      |
-|       1001 | -250.99 | USD      |
-|       1002 |  500.00 | EUR      |
-+------------+---------+----------+
++------------+-----------+----------+
+| account_id | amount    | currency |
++------------+-----------+----------+
+|       1001 | 1000.0000 | USD      |
+|       1001 | -250.9900 | USD      |
+|       1002 |  500.0000 | EUR      |
++------------+-----------+----------+
 ```
 
 ## Arithmetic with BIGINT
