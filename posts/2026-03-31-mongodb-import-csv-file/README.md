@@ -53,9 +53,9 @@ mongoimport \
   --uri "mongodb://localhost:27017/mydb" \
   --collection customers \
   --type csv \
-  --fields "id.int32(),name.string(),age.int32(),active.boolean()" \
+  --fields "id.int32(),name.string(),email.string(),age.int32(),active.boolean()" \
   --columnsHaveTypes \
-  --file customers.csv
+  --file customers_no_header.csv
 ```
 
 Supported types include `int32()`, `int64()`, `double()`, `boolean()`, `date()`, and `string()`.
