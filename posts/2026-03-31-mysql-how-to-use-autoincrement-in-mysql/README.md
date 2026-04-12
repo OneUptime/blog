@@ -110,6 +110,7 @@ FROM users a
 WHERE NOT EXISTS (
     SELECT 1 FROM users b WHERE b.id = a.id + 1
 )
+  AND a.id < (SELECT MAX(id) FROM users)
 ORDER BY a.id;
 ```
 
@@ -128,17 +129,25 @@ TRUNCATE TABLE users;
 
 ## AUTO_INCREMENT in Multi-Column Primary Keys
 
-AUTO_INCREMENT can be used in composite primary keys in MyISAM or with InnoDB if paired with a non-primary unique key:
+AUTO_INCREMENT can be used in composite primary keys. In MyISAM, it can be a secondary column in the key and auto-increments per group. In InnoDB, the AUTO_INCREMENT column must be the first or only column of some index:
 
 ```sql
--- InnoDB: AUTO_INCREMENT must be the primary key or part of an index
+-- MyISAM: AUTO_INCREMENT on secondary column, increments per group
+CREATE TABLE grp_items (
+    grp_id INT NOT NULL,
+    item_id INT AUTO_INCREMENT,
+    name VARCHAR(50),
+    PRIMARY KEY (grp_id, item_id)
+) ENGINE=MyISAM;
+
+-- InnoDB: AUTO_INCREMENT in composite key (needs its own index)
 CREATE TABLE log_entries (
+    server_id INT NOT NULL,
     log_id INT AUTO_INCREMENT,
-    server_id INT,
     message TEXT,
-    PRIMARY KEY (log_id),
-    INDEX idx_server (server_id)
-);
+    PRIMARY KEY (server_id, log_id),
+    INDEX (log_id)
+) ENGINE=InnoDB;
 ```
 
 ## Summary
