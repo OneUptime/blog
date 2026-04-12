@@ -95,18 +95,30 @@ WHERE CONSTRAINT_SCHEMA = 'myapp';
 
 ## Disabling a CHECK Constraint
 
-MySQL 8 does not support disabling individual constraints. You can drop and re-add them:
+You can disable a CHECK constraint without dropping it by setting it to NOT ENFORCED:
+
+```sql
+ALTER TABLE products ALTER CHECK chk_price_positive NOT ENFORCED;
+```
+
+To re-enable it:
+
+```sql
+ALTER TABLE products ALTER CHECK chk_price_positive ENFORCED;
+```
+
+You can also drop a constraint entirely:
 
 ```sql
 ALTER TABLE products DROP CONSTRAINT chk_price_positive;
 ```
 
-## Re-adding a Constraint After Bulk Load
+## Temporarily Disabling a Constraint for Bulk Load
 
-When loading historical data that might not satisfy current rules, drop the constraint, load data, then re-add:
+When loading historical data that might not satisfy current rules, disable the constraint, load data, then re-enable:
 
 ```sql
-ALTER TABLE products DROP CONSTRAINT chk_stock_non_negative;
+ALTER TABLE products ALTER CHECK chk_stock_non_negative NOT ENFORCED;
 
 -- Load historical data
 LOAD DATA INFILE '/data/legacy_products.csv'
@@ -115,12 +127,11 @@ FIELDS TERMINATED BY ','
 LINES TERMINATED BY '\n'
 (name, price, stock, status);
 
--- Re-add the constraint (this validates existing rows)
-ALTER TABLE products
-  ADD CONSTRAINT chk_stock_non_negative CHECK (stock >= 0);
+-- Re-enable the constraint
+ALTER TABLE products ALTER CHECK chk_stock_non_negative ENFORCED;
 ```
 
-If existing rows violate the constraint when re-adding, MySQL will raise an error.
+Note that re-enabling an existing constraint with ENFORCED does not validate rows that were inserted while the constraint was not enforced. If you need to ensure all existing rows satisfy the constraint, drop and re-add it instead — adding a new CHECK constraint validates all existing rows.
 
 ## NOT ENFORCED Option
 
