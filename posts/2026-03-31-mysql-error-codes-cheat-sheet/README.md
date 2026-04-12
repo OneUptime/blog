@@ -44,7 +44,7 @@ Message:            Access denied for user 'alice'@'localhost'
        Fix: ALTER USER ... IDENTIFIED WITH mysql_native_password BY '...'
 
 3889 - caching_sha2_password requires secure transport
-       Fix: Use SSL or set caching_sha2_password_auto_generate_rsa_keys
+       Fix: Use SSL, pass --get-server-public-key on the client, or switch to mysql_native_password
 ```
 
 ## Query and Syntax Errors
@@ -92,7 +92,7 @@ Message:            Access denied for user 'alice'@'localhost'
        Fix: Retry the transaction; review transaction order to prevent deadlocks
 
 3572 - Statement aborted because lock(s) could not be acquired immediately
-       Fix: Use SELECT ... FOR UPDATE SKIP LOCKED or NOWAIT
+       Fix: Retry the transaction, use SKIP LOCKED instead of NOWAIT, or remove NOWAIT to wait for the lock
 ```
 
 ## Table and Schema Errors
