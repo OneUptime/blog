@@ -126,4 +126,4 @@ SHOW GRANTS FOR CURRENT_USER();
 
 ## Summary
 
-ERROR 1142 is a privilege error. Resolve it by running `SHOW GRANTS FOR 'user'@'host'` to see what is missing, then use `GRANT` to add the required privilege on the specific table or database. Always follow the principle of least privilege and grant only what the user needs. Run `FLUSH PRIVILEGES` after any grant change to ensure it takes effect immediately.
+ERROR 1142 is a privilege error. Resolve it by running `SHOW GRANTS FOR 'user'@'host'` to see what is missing, then use `GRANT` to add the required privilege on the specific table or database. Always follow the principle of least privilege and grant only what the user needs. Note that `GRANT` statements reload the privilege tables automatically, so `FLUSH PRIVILEGES` is only strictly required after direct modifications to the grant tables (such as `INSERT` or `UPDATE` on `mysql.user`).
