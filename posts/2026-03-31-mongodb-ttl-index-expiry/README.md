@@ -130,7 +130,7 @@ async function main() {
   });
   console.log("Session created:", session.insertedId);
 
-  // Insert a session that expires at a specific time (10 seconds from now, for demo)
+  // Insert a session that is already expired (for demo)
   await sessions.insertOne({
     userId: "user_002",
     token: "token_def456",
