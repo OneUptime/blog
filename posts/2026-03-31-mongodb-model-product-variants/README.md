@@ -136,8 +136,12 @@ async function decrementInventory(productId, variantSku, quantity) {
   const result = await db.collection("products").updateOne(
     {
       _id: productId,
-      "variants.sku": variantSku,
-      "variants.inventory": { $gte: quantity }
+      variants: {
+        $elemMatch: {
+          sku: variantSku,
+          inventory: { $gte: quantity }
+        }
+      }
     },
     {
       $inc: { "variants.$.inventory": -quantity }
