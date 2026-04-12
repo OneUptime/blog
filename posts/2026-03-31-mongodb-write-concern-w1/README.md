@@ -10,13 +10,15 @@ Description: Learn how MongoDB's write concern w:1 works, when to use it for per
 
 ## What Is Write Concern w:1?
 
-Write concern `w:1` is MongoDB's default write concern. It means that a write operation returns success as soon as the **primary** has written the data to its in-memory journal and acknowledged the write. The operation does not wait for the write to be replicated to any secondary.
+Write concern `w:1` means that a write operation returns success as soon as the **primary** has applied the write to its in-memory data structures and acknowledged it. The operation does not wait for the write to be persisted to the on-disk journal or replicated to any secondary.
 
-`w:1` offers the best write throughput among all write concerns but provides the least durability guarantee.
+Before MongoDB 5.0, `w:1` was the implicit default write concern. Starting with MongoDB 5.0, the default write concern for replica sets and sharded clusters is `w: "majority"`. For standalone instances, `w:1` remains the effective default.
+
+`w:1` offers high write throughput but provides limited durability guarantees compared to `w: "majority"`.
 
 ## Default Behavior
 
-Because `w:1` is the default, these are equivalent:
+Before MongoDB 5.0, `w:1` was the default, so these were equivalent:
 
 ```javascript
 db.orders.insertOne({ item: "widget", qty: 10 })
@@ -26,6 +28,8 @@ db.orders.insertOne(
   { writeConcern: { w: 1 } }
 )
 ```
+
+On MongoDB 5.0+ replica sets, the first command uses `w: "majority"` by default. To use `w:1`, you must specify it explicitly.
 
 ## Setting Write Concern Explicitly
 
@@ -56,7 +60,7 @@ mongodb://mongo1:27017/myapp?w=1&replicaSet=rs0
 
 With `w:1`, the primary confirms:
 - The write has been received
-- It has been written to the primary's in-memory journal (or data files)
+- It has been applied to the primary's in-memory data structures
 - The client can read the data from the primary immediately
 
 What it does NOT guarantee:
@@ -136,4 +140,4 @@ logEvent({ type: "pageview", url: "/home", ts: new Date() });
 
 ## Summary
 
-Write concern `w:1` is MongoDB's default, offering the highest write throughput by returning success as soon as the primary acknowledges the operation. It carries a risk of data loss if the primary crashes before replication. Use it for high-volume, loss-tolerant workloads such as logging and analytics. For critical data, upgrade to `w:majority` or combine with `j: true` for on-disk journal durability on the primary.
+Write concern `w:1` offers high write throughput by returning success as soon as the primary acknowledges the operation in memory. It carries a risk of data loss if the primary crashes before replication. Use it for high-volume, loss-tolerant workloads such as logging and analytics. For critical data, upgrade to `w:majority` or combine with `j: true` for on-disk journal durability on the primary.
