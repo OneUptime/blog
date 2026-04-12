@@ -12,7 +12,7 @@ Description: Learn how to use SHOW PROFILE in MySQL to measure time spent in eac
 
 `SHOW PROFILE` is a MySQL diagnostic tool that shows the time spent in each phase of query execution. While `EXPLAIN` tells you the query plan, `SHOW PROFILE` tells you where the actual time goes: parsing, optimization, locking, sorting, sending data, etc.
 
-Note: `SHOW PROFILE` is deprecated as of MySQL 5.7.2 in favor of the Performance Schema, but it remains available in MySQL 8.x and is still widely used for quick profiling.
+Note: `SHOW PROFILE` is deprecated as of MySQL 5.6.7 in favor of the Performance Schema, but it remains available in MySQL 8.x and is still widely used for quick profiling.
 
 ## Enabling Profiling
 
@@ -117,8 +117,10 @@ SHOW PROFILE ALL FOR QUERY 1;           -- All available info
 SHOW PROFILE CPU FOR QUERY 1;           -- CPU usage
 SHOW PROFILE BLOCK IO FOR QUERY 1;      -- Block I/O
 SHOW PROFILE IPC FOR QUERY 1;           -- Interprocess communication
-SHOW PROFILE MEMORY FOR QUERY 1;        -- Memory (not implemented in InnoDB)
-SHOW PROFILE SWAPS FOR QUERY 1;         -- Context switches
+SHOW PROFILE MEMORY FOR QUERY 1;        -- Memory (not currently implemented)
+SHOW PROFILE PAGE FAULTS FOR QUERY 1;   -- Major and minor page faults
+SHOW PROFILE CONTEXT SWITCHES FOR QUERY 1; -- Voluntary and involuntary context switches
+SHOW PROFILE SWAPS FOR QUERY 1;         -- Swap counts
 SHOW PROFILE SOURCE FOR QUERY 1;        -- Source code location
 ```
 
