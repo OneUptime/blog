@@ -32,18 +32,18 @@ LATENCY HISTOGRAM [command [command ...]]
    4) 1) (integer) 1
       2) (integer) 95000
       3) (integer) 2
-      4) (integer) 42000
+      4) (integer) 137000
       5) (integer) 4
-      6) (integer) 8000
+      6) (integer) 145000
       7) (integer) 8
-      8) (integer) 3000
+      8) (integer) 148000
       9) (integer) 16
-      10) (integer) 1500
+      10) (integer) 149500
       11) (integer) 32
-      12) (integer) 500
+      12) (integer) 150000
 ```
 
-Each pair is `[upper-bound-microseconds, cumulative-count]`. This is a cumulative histogram.
+Each pair is `[upper-bound-microseconds, cumulative-count]`. This is a cumulative histogram — each count includes all calls at or below that latency bound, so values are non-decreasing.
 
 ## Understanding the Histogram Format
 
@@ -61,11 +61,20 @@ flowchart TD
 import redis
 
 r = redis.Redis()
-result = r.latency_histogram("GET")
 
-# result["GET"] contains {"calls": N, "histogram_usec": {bound: cumulative_count}}
-hist = result["GET"]["histogram_usec"]
-total = result["GET"]["calls"]
+# latency_histogram() is not implemented in redis-py; use execute_command()
+result = r.execute_command("LATENCY HISTOGRAM", "GET")
+
+# Parse the flat list response into a usable structure
+# result is: ["GET", ["calls", N, "histogram_usec", [bound1, count1, bound2, count2, ...]]]
+command_data = result[1]
+total = command_data[1]          # value after "calls"
+raw_hist = command_data[3]       # flat list after "histogram_usec"
+
+# Convert flat list to dict of {bound: cumulative_count}
+hist = {}
+for i in range(0, len(raw_hist), 2):
+    hist[raw_hist[i]] = raw_hist[i + 1]
 
 def percentile(hist, total, pct):
     target = total * pct / 100
@@ -87,7 +96,7 @@ print(f"GET P50={p50}us  P95={p95}us  P99={p99}us")
 | Threshold required | Yes (miss sub-threshold calls) | No (captures all calls) |
 | Data type | Time series of spikes | Bucketed distribution |
 | Percentile accuracy | Approximate | Statistically accurate |
-| Available since | Redis 2.8 | Redis 7.0 |
+| Available since | Redis 2.8.13 | Redis 7.0 |
 | Granularity | Milliseconds | Microseconds |
 
 ## Checking All Commands
@@ -101,10 +110,10 @@ Returns one histogram per command that has been called at least once since start
 ## Resetting Histogram Data
 
 ```redis
-127.0.0.1:6379> LATENCY RESET
+127.0.0.1:6379> CONFIG RESETSTAT
 ```
 
-This resets both the spike-based latency data AND the histogram counters.
+This resets the latency histogram counters (along with other statistics reported by `INFO`). Note that `LATENCY RESET` only resets the spike-based latency time series data, not the histogram counters.
 
 ## Visualizing Distribution
 
