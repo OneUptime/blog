@@ -75,15 +75,15 @@ In `/etc/mysql/mysql.conf.d/mysqld.cnf`:
 ```text
 [mysqld]
 # For SSD storage with ~20,000 IOPS
-innodb_io_capacity = 4000
 innodb_io_capacity_max = 8000
+innodb_io_capacity = 4000
 ```
 
-Or set dynamically:
+Or set dynamically (set the max first, since `innodb_io_capacity` cannot exceed `innodb_io_capacity_max`):
 
 ```sql
-SET GLOBAL innodb_io_capacity = 4000;
 SET GLOBAL innodb_io_capacity_max = 8000;
+SET GLOBAL innodb_io_capacity = 4000;
 ```
 
 The `innodb_io_capacity_max` value is used during aggressive flushing (when the buffer pool is very full). Set it to 2x `innodb_io_capacity`.
