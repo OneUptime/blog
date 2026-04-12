@@ -92,17 +92,22 @@ def get_ticket_metrics():
     status = client.admin.command("serverStatus")
     tickets = status["wiredTiger"]["concurrentTransactions"]
 
+    read_total = tickets["read"]["totalTickets"]
+    write_total = tickets["write"]["totalTickets"]
+
     return {
         "read_available": tickets["read"]["available"],
         "read_out": tickets["read"]["out"],
+        "read_total": read_total,
         "write_available": tickets["write"]["available"],
         "write_out": tickets["write"]["out"],
-        "write_utilization": tickets["write"]["out"] / 128 * 100,
+        "write_total": write_total,
+        "write_utilization": tickets["write"]["out"] / write_total * 100,
     }
 
 metrics = get_ticket_metrics()
-print(f"Write tickets: {metrics['write_out']}/128 in use ({metrics['write_utilization']:.1f}%)")
-print(f"Read tickets: {metrics['read_out']}/128 in use")
+print(f"Write tickets: {metrics['write_out']}/{metrics['write_total']} in use ({metrics['write_utilization']:.1f}%)")
+print(f"Read tickets: {metrics['read_out']}/{metrics['read_total']} in use")
 ```
 
 ## Diagnosing What Is in the Queue
