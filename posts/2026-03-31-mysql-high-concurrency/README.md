@@ -54,13 +54,22 @@ Add ProxySQL in front of MySQL to pool connections:
 
 ### Tune Thread Handling
 
-For Percona Server or MySQL Enterprise, enable the Thread Pool:
+For Percona Server, enable the built-in Thread Pool:
 
 ```ini
 [mysqld]
 thread_handling         = pool-of-threads
 thread_pool_size        = 16     -- equal to CPU cores
 thread_pool_stall_limit = 200    -- ms before a new thread is created
+```
+
+For MySQL Enterprise Edition, load the Thread Pool plugin instead:
+
+```ini
+[mysqld]
+plugin-load-add        = thread_pool.so
+thread_pool_size       = 16     -- equal to CPU cores
+thread_pool_stall_limit = 6     -- units of 10 ms (60 ms effective)
 ```
 
 For MySQL Community Edition, reduce per-thread memory to support more connections:
@@ -123,13 +132,13 @@ innodb_log_buffer_size   = 64M
 Durability vs. performance tradeoff:
 
 ```ini
-# Fastest - lose at most 1 second of transactions on crash
-innodb_flush_log_at_trx_commit = 2
-
-# Safest (default) - no data loss on crash, slower
+# Safest (default) - full ACID durability, no data loss on crash
 innodb_flush_log_at_trx_commit = 1
 
-# Fastest but risky - lose transactions on crash
+# Fast - survives MySQL crash, but OS/power crash loses up to 1s
+innodb_flush_log_at_trx_commit = 2
+
+# Fastest - any crash (MySQL or OS) can lose up to 1s of transactions
 innodb_flush_log_at_trx_commit = 0
 ```
 
@@ -220,7 +229,7 @@ For replication environments, binary logging adds overhead:
 
 ```ini
 [mysqld]
-sync_binlog          = 0    -- Async flush (fastest; lose < 1s on OS crash)
+sync_binlog          = 0    -- OS-managed flush (fastest; loss window depends on OS)
 binlog_cache_size    = 4M
 ```
 
