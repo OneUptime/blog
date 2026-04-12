@@ -143,23 +143,21 @@ LEFT JOIN users u ON o.customerId = u._id;
 
 ## Step 7: Querying Arrays
 
-Use `UNWIND` (or the `ANY` / `IN` SQL construct) to query array fields.
+Use dot notation to query inside array fields. MongoDB automatically matches against array elements.
 
 ```sql
 -- Find orders containing a specific SKU
 SELECT _id, total
 FROM orders
-WHERE 'WIDGET-1' IN items[*].sku;
+WHERE "items.sku" = 'WIDGET-1';
 
--- Count orders per tag (unwind the tags array)
-SELECT
-  tag,
-  COUNT(*) AS count
-FROM articles
-CROSS JOIN UNNEST(tags) AS t(tag)
-GROUP BY tag
-ORDER BY count DESC;
+-- Find orders where any item quantity exceeds 10
+SELECT _id, total
+FROM orders
+WHERE "items.quantity" > 10;
 ```
+
+> **Note:** Studio 3T SQL does not support array unwinding (equivalent to MongoDB's `$unwind`). To flatten arrays and aggregate over individual array elements, use the IntelliShell tab with MQL aggregation pipelines.
 
 ## Step 8: View the Generated MQL
 
@@ -172,9 +170,9 @@ After running a SQL query:
 
 [
   { "$match": { "status": "shipped", "total": { "$gt": 100 } } },
-  { "$project": { "_id": 1, "total": 1, "status": 1 } },
   { "$sort": { "createdAt": -1 } },
-  { "$limit": 20 }
+  { "$limit": 20 },
+  { "$project": { "_id": 1, "total": 1, "status": 1 } }
 ]
 ```
 
