@@ -19,7 +19,7 @@ Standard MySQL full-text search tokenizes text by whitespace and punctuation. Ch
 The ngram parser splits text into n-character sequences (n-grams) instead of whitespace-delimited tokens:
 
 - Input: `MySQL数据库性能`
-- ngram (n=2): `My`, `yS`, `SQ`, `QL`, `数据`, `据库`, `库性`, `性能`
+- ngram (n=2): `My`, `yS`, `SQ`, `QL`, `L数`, `数据`, `据库`, `库性`, `性能`
 
 This allows searching for any 2-character substring in the original text.
 
@@ -134,7 +134,7 @@ ngram indexes are significantly larger than standard full-text indexes because e
 
 - Increase `innodb_ft_cache_size`
 - Monitor tablespace growth
-- Consider `ngram_token_size = 3` for smaller indexes at the cost of shorter search minimums
+- Consider `ngram_token_size = 3` for smaller indexes at the cost of a longer minimum search term length
 
 ```ini
 [mysqld]
