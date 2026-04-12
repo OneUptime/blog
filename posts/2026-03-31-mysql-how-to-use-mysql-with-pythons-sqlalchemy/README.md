@@ -26,7 +26,7 @@ pip install sqlalchemy mysqlclient
 ## Connecting to MySQL
 
 ```python
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 # Using pymysql
 engine = create_engine(
@@ -41,7 +41,7 @@ engine = create_engine(
 
 # Test connection
 with engine.connect() as conn:
-    result = conn.execute("SELECT VERSION()")
+    result = conn.execute(text("SELECT VERSION()"))
     print(result.fetchone())
 ```
 
