@@ -60,10 +60,10 @@ mysqldump -u root -p --no-create-info myapp > data_only.sql
 
 ## Add DROP TABLE Statements
 
-Use `--add-drop-table` to include `DROP TABLE IF EXISTS` before each `CREATE TABLE`. This is useful when restoring to an existing database:
+By default, mysqldump includes `DROP TABLE IF EXISTS` before each `CREATE TABLE`. If this has been disabled, use `--add-drop-table` to re-enable it. Use `--skip-add-drop-table` to omit these statements:
 
 ```bash
-mysqldump -u root -p --add-drop-table myapp > myapp_backup.sql
+mysqldump -u root -p --skip-add-drop-table myapp > myapp_no_drop.sql
 ```
 
 ## Include Stored Procedures and Triggers
@@ -117,10 +117,10 @@ mysqldump -u root -p --lock-tables myapp > myapp_backup.sql
 For point-in-time recovery, flush binary logs and record the position:
 
 ```bash
-mysqldump -u root -p --single-transaction --flush-logs --master-data=2 myapp > myapp_backup.sql
+mysqldump -u root -p --single-transaction --flush-logs --source-data=2 myapp > myapp_backup.sql
 ```
 
-The `--master-data=2` option writes the binary log filename and position as a comment at the top of the dump file.
+The `--source-data=2` option writes the binary log filename and position as a comment at the top of the dump file. Note: in MySQL versions before 8.0.26, this option was called `--master-data`.
 
 ## Restoring a Dump
 
@@ -146,9 +146,9 @@ mysql -u root -p < all_databases.sql
 | `--events` | Include scheduled events |
 | `--no-data` | Schema only |
 | `--no-create-info` | Data only |
-| `--add-drop-table` | Drop tables before recreating |
+| `--add-drop-table` | Drop tables before recreating (on by default) |
 | `--flush-logs` | Flush binary logs before dump |
-| `--master-data=2` | Record binlog position as comment |
+| `--source-data=2` | Record binlog position as comment |
 | `--where` | Filter rows with a WHERE clause |
 
 ## Filter Rows During Export
@@ -180,4 +180,4 @@ echo "Backup completed: myapp_$DATE.sql.gz"
 
 ## Summary
 
-`mysqldump` is a reliable and flexible tool for creating logical MySQL backups. Using `--single-transaction` ensures consistency for InnoDB databases without downtime, while `--routines` and `--events` capture all database objects. For large databases, consider `mysqlpump` or MySQL Enterprise Backup for faster parallel exports.
+`mysqldump` is a reliable and flexible tool for creating logical MySQL backups. Using `--single-transaction` ensures consistency for InnoDB databases without downtime, while `--routines` and `--events` capture all database objects. For large databases, consider MySQL Shell's dump utilities (`util.dumpInstance`, `util.dumpSchemas`) or MySQL Enterprise Backup for faster parallel exports.
