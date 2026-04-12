@@ -33,7 +33,7 @@ On every commit: write log buffer to OS file AND fsync to disk. Slowest but safe
 innodb_flush_log_at_trx_commit = 2
 ```
 
-On every commit: write log buffer to OS file (but NOT fsync). OS flushes to disk once per second. Transactions committed within the last second may be lost on OS crash or power failure, but not on MySQL crash.
+On every commit: write log buffer to OS file (but NOT fsync). InnoDB flushes to disk approximately once per second. Transactions committed within the last second may be lost on OS crash or power failure, but not on MySQL crash.
 
 **Value 0 (highest performance, least durable):**
 
