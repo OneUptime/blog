@@ -32,7 +32,7 @@ CUME_DIST() OVER (
 
 ## Simple Example
 
-Given a `sales` table with employee scores:
+Given a `sales` table with employee sales data:
 
 ```sql
 CREATE TABLE sales (
@@ -70,8 +70,8 @@ Bob           |      3000.00 | 0.2857
 Dave          |      3000.00 | 0.2857
 Eve           |      4000.00 | 0.4286
 Alice         |      5000.00 | 0.5714
-Frank         |      6000.00 | 0.7143
-Grace         |      6000.00 | 0.7143  (wait - same as Frank)
+Frank         |      6000.00 | 0.8571
+Grace         |      6000.00 | 0.8571
 Carol         |      7000.00 | 1.0000
 ```
 
