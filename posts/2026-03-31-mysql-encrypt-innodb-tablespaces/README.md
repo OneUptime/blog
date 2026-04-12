@@ -100,10 +100,7 @@ An unencrypted tablespace would show readable SQL identifiers; an encrypted one 
 ## Rotating Tablespace Encryption Keys
 
 ```sql
--- Re-encrypt a specific table with a new key
-ALTER TABLE orders ENCRYPTION='Y';
-
--- Rotate the master key (re-encrypts all tablespace keys)
+-- Rotate the master key (re-encrypts all tablespace keys with the new master key)
 ALTER INSTANCE ROTATE INNODB MASTER KEY;
 ```
 
@@ -113,7 +110,7 @@ ALTER INSTANCE ROTATE INNODB MASTER KEY;
 -- Decrypt a single table
 ALTER TABLE orders ENCRYPTION='N';
 
--- Decrypt a general tablespace (all tables must be moved out first)
+-- Decrypt a general tablespace
 ALTER TABLESPACE secure_ts ENCRYPTION='N';
 ```
 
