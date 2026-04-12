@@ -10,7 +10,7 @@ Description: Configure MongoDB Enterprise's Transparent Data Encryption to encry
 
 ## What Is Transparent Data Encryption
 
-Transparent Data Encryption (TDE) encrypts MongoDB's data files, journal files, and log files on disk. It is called "transparent" because the encryption and decryption happen automatically at the storage layer - applications and most database operations are unaffected. TDE protects against physical media theft and unauthorized filesystem access.
+Transparent Data Encryption (TDE) encrypts MongoDB's data files and journal files on disk. It is called "transparent" because the encryption and decryption happen automatically at the storage layer - applications and most database operations are unaffected. TDE protects against physical media theft and unauthorized filesystem access.
 
 TDE requires MongoDB Enterprise and uses the WiredTiger encryption-at-rest feature.
 
@@ -19,8 +19,8 @@ TDE requires MongoDB Enterprise and uses the WiredTiger encryption-at-rest featu
 The simplest TDE setup uses a locally managed encryption key:
 
 ```bash
-# Generate a 96-byte master key
-openssl rand -base64 96 > /etc/mongodb/mongodb-keyfile
+# Generate a 32-byte master key (AES-256)
+openssl rand -base64 32 > /etc/mongodb/mongodb-keyfile
 chmod 400 /etc/mongodb/mongodb-keyfile
 chown mongodb:mongodb /etc/mongodb/mongodb-keyfile
 ```
@@ -94,17 +94,22 @@ mms-api PUT /api/public/v1.0/groups/{groupId}/backupConfigs/{clusterId} \
 
 ## Key Rotation
 
-MongoDB Enterprise supports rolling key rotation without downtime:
+MongoDB Enterprise supports master key rotation when using KMIP. Rotate the master key by running the following on each replica set member in a rolling fashion:
 
 ```bash
-# On each replica set member in turn:
+# Rotate the KMIP master key (run on each member in turn)
 mongod --enableEncryption \
-       --encryptionKeyFile /etc/mongodb/mongodb-keyfile-new \
-       --eseDatabaseKeyRollover
+       --kmipRotateMasterKey \
+       --kmipServerName kmip.example.com \
+       --kmipPort 5696 \
+       --kmipClientCertificateFile /etc/ssl/kmip-client.pem \
+       --kmipServerCAFile /etc/ssl/kmip-ca.pem
 
 # Verify key rotation completed
 mongosh --eval "db.adminCommand({ serverStatus: 1 }).encryptionAtRest"
 ```
+
+Note: Local keyfile-based encryption does not support in-place master key rotation. To change the local key, you must perform an initial sync of each member with the new key.
 
 ## Verifying Encryption at Rest
 
@@ -126,7 +131,7 @@ strings /var/lib/mongodb/collection-*.wt | grep -c "email@example.com"
 
 ## Replica Set Considerations
 
-All members of a replica set must use the same encryption key. When adding a new member:
+Encryption at rest is configured per node. Each replica set member encrypts its own local storage independently, and members can use different keys. When adding a new member:
 
 ```bash
 # New member: initialize with encryption before joining the replica set
