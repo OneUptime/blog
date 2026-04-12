@@ -38,8 +38,11 @@ Key fields to inspect:
     "totalKeysExamined": 5,
     "totalDocsExamined": 5,
     "executionTimeMillis": 2,
-    "inputStage": {
-      "stage": "IXSCAN"
+    "executionStages": {
+      "stage": "FETCH",
+      "inputStage": {
+        "stage": "IXSCAN"
+      }
     }
   }
 }
@@ -57,7 +60,7 @@ MongoDB's `serverStatus` exposes aggregate index scan metrics:
 const status = db.adminCommand({ serverStatus: 1 })
 
 // Total index key scans
-status.indexCounters          // legacy (deprecated in newer versions)
+status.indexCounters          // removed in MongoDB 3.0
 status.metrics.queryExecutor  // current approach
 ```
 
