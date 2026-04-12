@@ -221,7 +221,7 @@ WHERE TABLE_SCHEMA = 'catalog'
 - `TABLE_ROWS` in `INFORMATION_SCHEMA.TABLES` is an estimate for InnoDB; use `ANALYZE TABLE` to refresh it.
 - Use `INFORMATION_SCHEMA` to audit schemas during code review, migration validation, and documentation generation.
 - Grant read-only access to `INFORMATION_SCHEMA` for monitoring tools without exposing data tables.
-- For performance-sensitive metadata queries on MySQL 8.0+, use the `performance_schema` instead, which has lower query overhead.
+- On MySQL 8.0+, `INFORMATION_SCHEMA` reads from the InnoDB data dictionary, making metadata queries faster than in earlier versions. For process list queries specifically, `performance_schema.processlist` (MySQL 8.0.22+) is a faster alternative to `INFORMATION_SCHEMA.PROCESSLIST`.
 
 ## Summary
 
