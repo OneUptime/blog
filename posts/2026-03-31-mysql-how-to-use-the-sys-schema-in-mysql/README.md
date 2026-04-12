@@ -178,7 +178,7 @@ Raw views (prefixed with `x$`) return unformatted numeric values:
 SELECT
   query,
   exec_count,
-  total_latency,  -- nanoseconds as a number
+  total_latency,  -- picoseconds as a number
   avg_latency
 FROM sys.x$statement_analysis
 ORDER BY total_latency DESC
