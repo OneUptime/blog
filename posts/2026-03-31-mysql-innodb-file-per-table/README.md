@@ -62,10 +62,13 @@ OPTIMIZE TABLE orders;
 
 **3. Individual file-level operations:**
 
-```bash
-# Copy a single table file for transport
-innodb_transportable_tablespace_export
+```sql
+-- Export a single table for transport to another server
+FLUSH TABLES orders FOR EXPORT;
+-- Then copy orders.ibd and orders.cfg to the destination
+```
 
+```bash
 # Easier per-table backup with tools like Percona XtraBackup
 ```
 
@@ -110,7 +113,7 @@ SELECT
     FILE_SIZE / 1024 / 1024 AS size_mb,
     ALLOCATED_SIZE / 1024 / 1024 AS allocated_mb
 FROM information_schema.INNODB_TABLESPACES
-WHERE FILE_TYPE = 'SINGLE'
+WHERE SPACE_TYPE = 'Single'
 ORDER BY FILE_SIZE DESC
 LIMIT 20;
 ```
