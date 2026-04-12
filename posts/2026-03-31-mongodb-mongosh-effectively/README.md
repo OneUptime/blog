@@ -222,7 +222,7 @@ mongosh "mongodb://admin:password@127.0.0.1:27017/?authSource=admin" \
 Example script `migrate.js`:
 
 ```javascript
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 db.orders.find({ status: "old_pending" }).forEach(doc => {
   db.orders.updateOne(
@@ -270,7 +270,7 @@ results.forEach(r => print(r._id + ": " + r.count));
 Display current configuration:
 
 ```javascript
-config.get()
+config
 ```
 
 Disable telemetry:
@@ -285,10 +285,10 @@ Change the editor used for multi-line editing:
 config.set("editor", "vim")
 ```
 
-Enable verbose logging:
+Change the number of documents displayed per cursor iteration (default is 20):
 
 ```javascript
-config.set("enableTelemetry", false)
+config.set("displayBatchSize", 50)
 ```
 
 ## Useful Admin Commands
