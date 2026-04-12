@@ -22,7 +22,7 @@ The key components:
 - **Data Encryption Key (DEK)** - Encrypts the actual field values
 - **Query Type** - Determines what operations are supported (equality, range)
 - **Index Key** - A separate key used to build the encrypted index structure
-- The `mongocryptd` daemon (or the Crypt Shared Library) handles the cryptographic processing on the client side
+- The Crypt Shared Library (or the `mongocryptd` daemon) handles automatic encryption analysis on the client side, while `libmongocrypt` within the driver performs the actual cryptographic operations
 
 ## Setting Up Queryable Encryption
 
@@ -88,7 +88,6 @@ console.log(emp.name); // "Bob" - decrypted by the driver
 
 - **Equality** - Find documents where an encrypted field equals a specific value
 - **Range** - Find documents where an encrypted field falls within a numeric or date range (MongoDB 7.0+)
-- **Prefix** - Find documents by encrypted string prefix (in development)
 
 ## Key Vault and KMS
 
@@ -108,7 +107,7 @@ const kmsProviders = {
 - MongoDB 6.0+ (equality) or MongoDB 7.0+ (range)
 - MongoDB Enterprise or Atlas
 - A supported driver version
-- The Crypt Shared Library (replaces mongocryptd from MongoDB 6.0)
+- The Crypt Shared Library (recommended over mongocryptd starting with MongoDB 6.0)
 
 ## Summary
 
