@@ -179,7 +179,7 @@ FROM events;
 | `DATE_FORMAT(dt, '%Y-%m-%d')` | Date string (VARCHAR output)|
 
 ```sql
--- All return the same type of result for a DATETIME input
+-- All extract the date portion, but DATE_FORMAT returns a VARCHAR, not a DATE
 SELECT DATE('2026-03-31 14:30:00');
 SELECT CAST('2026-03-31 14:30:00' AS DATE);
 SELECT DATE_FORMAT('2026-03-31 14:30:00', '%Y-%m-%d');
