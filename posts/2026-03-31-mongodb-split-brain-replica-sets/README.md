@@ -76,7 +76,7 @@ sudo iptables -A OUTPUT -d mongo3 -j DROP
 Check that mongo1 steps down:
 
 ```javascript
-rs.status().myState  // should become 6 (UNKNOWN) or 2 (SECONDARY)
+rs.status().myState  // should become 2 (SECONDARY) after stepping down
 ```
 
 Restore connectivity:
