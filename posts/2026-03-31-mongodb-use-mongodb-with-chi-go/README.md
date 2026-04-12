@@ -24,7 +24,7 @@ go get go.mongodb.org/mongo-driver/bson
 
 ## Repository Pattern
 
-Define a repository interface for testability:
+Define a repository struct to encapsulate database operations:
 
 `repository/post_repo.go`:
 
