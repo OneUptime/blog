@@ -37,12 +37,12 @@ from requests.auth import HTTPDigestAuth
 PUBLIC_KEY = "your-public-key"
 PRIVATE_KEY = "your-private-key"
 PROJECT_ID = "your-project-id"
-CLUSTER_NAME = "production"
+PROCESS_ID = "your-hostname:27017"  # Atlas process host:port
 
 def get_metrics(metric_name, granularity="PT5M", period="PT1H"):
     url = (
         f"https://cloud.mongodb.com/api/atlas/v1.0/groups/{PROJECT_ID}"
-        f"/clusters/{CLUSTER_NAME}/metrics/measurements"
+        f"/processes/{PROCESS_ID}/measurements"
     )
     params = {
         "granularity": granularity,
@@ -130,4 +130,4 @@ atlas integrations create DATADOG \
 
 ## Summary
 
-Atlas monitoring provides immediate observability with no infrastructure overhead - the Real-Time Performance Panel, Performance Advisor, and built-in alerts are available on all cluster tiers. For production workloads, configure alerts on connection percentage, oplog window, and query targeting ratio. Use the Atlas Admin API to programmatically pull metrics into your existing observability platform or export to Datadog and other third-party tools via native integrations.
+Atlas monitoring provides immediate observability with no infrastructure overhead - built-in alerts are available on all cluster tiers, while the Real-Time Performance Panel and Performance Advisor require M10+ dedicated clusters. For production workloads, configure alerts on connection percentage, oplog window, and query targeting ratio. Use the Atlas Admin API to programmatically pull metrics into your existing observability platform or export to Datadog and other third-party tools via native integrations.
