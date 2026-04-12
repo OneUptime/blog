@@ -18,9 +18,10 @@ In `Cargo.toml`:
 
 ```toml
 [dependencies]
-diesel = { version = "2.1", features = ["mysql", "chrono"] }
+diesel = { version = "2.1", features = ["mysql", "chrono", "numeric"] }
 dotenvy = "0.15"
 chrono = "0.4"
+bigdecimal = "0.3"
 
 [dev-dependencies]
 diesel_migrations = "2.1"
@@ -32,9 +33,13 @@ diesel_migrations = "2.1"
 # Ubuntu/Debian
 sudo apt install libmysqlclient-dev
 
-# macOS
+# macOS (Intel)
 brew install mysql-client
 export PKG_CONFIG_PATH="/usr/local/opt/mysql-client/lib/pkgconfig"
+
+# macOS (Apple Silicon)
+brew install mysql-client
+export PKG_CONFIG_PATH="/opt/homebrew/opt/mysql-client/lib/pkgconfig"
 ```
 
 ## Installing the Diesel CLI
@@ -150,7 +155,8 @@ fn main() {
         .filter(stock.gt(0))
         .order(price.asc())
         .limit(20)
-        .load::<Product>(conn)
+        .select(Product::as_select())
+        .load(conn)
         .expect("Error loading products");
 
     for p in &results {
