@@ -8,7 +8,7 @@ Description: Learn how to create an AFTER INSERT trigger in MySQL to automatical
 
 ---
 
-An `AFTER INSERT` trigger fires automatically after MySQL successfully inserts a row into a table. Because it runs after the row is committed to the table, you can safely reference the `NEW` row in the trigger body without affecting the original insert.
+An `AFTER INSERT` trigger fires automatically after MySQL successfully inserts a row into a table. Because it runs after the row is written to the table (but still within the same transaction), you can safely reference the `NEW` row in the trigger body without affecting the original insert.
 
 ## Basic Syntax
 
