@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Index, Monitoring, Administration, currentOp
 
-Description: Learn how to track the progress of index builds in MongoDB using currentOp, $indexBuildStats, and server status commands to estimate completion time.
+Description: Learn how to track the progress of index builds in MongoDB using currentOp and server status commands to estimate completion time.
 
 ---
 
@@ -69,29 +69,26 @@ MongoDB reports different `msg` values as the build progresses:
 
 ```text
 "Index Build: scanning collection"   - reading and inserting documents into index
-"Index Build: draining writes"       - applying writes that occurred during the scan
-"Index Build: commit index build"    - finalizing the index
+"Index Build: draining writes received during build" - applying writes that occurred during the scan
 ```
 
 The "scanning collection" phase is the longest and the only one that reports document-level progress.
 
-## Using $indexBuildStats (MongoDB 7.0+)
+## Using serverStatus for Index Build Metrics
 
-MongoDB 7.0 adds `$indexBuildStats` as a diagnostic command:
+The `serverStatus` command includes an `indexBuilds` section with aggregate metrics on index build activity:
 
 ```javascript
-db.adminCommand({ serverStatus: 1 }).indexBuildStats
+db.adminCommand({ serverStatus: 1 }).indexBuilds
 ```
 
-Returns aggregate counts of active builds:
+Returns counters such as:
 
 ```text
 {
-  "total": 2,
-  "phases": {
-    "scanCollection": 1,
-    "drainWrites": 1
-  }
+  "total": 5,
+  "killedDueToInsufficientDiskSpace": 0,
+  "failedDueToDataCorruption": 0
 }
 ```
 
@@ -133,7 +130,7 @@ while (true) {
 
 ## Monitoring on Replica Sets
 
-Each replica set member builds indexes independently. Monitor progress on secondaries separately:
+Since MongoDB 4.4, index builds are coordinated across replica set members via a commit quorum — the primary issues a `startIndexBuild` oplog entry and all data-bearing members build simultaneously. However, each member constructs the index data locally and progress may differ. Monitor progress on each member separately:
 
 ```bash
 mongosh "mongodb://secondary1:27017" --eval \
@@ -142,4 +139,4 @@ mongosh "mongodb://secondary1:27017" --eval \
 
 ## Summary
 
-Use `db.currentOp()` with a `createIndexes` filter to monitor index build progress in MongoDB. The `progress.done` and `progress.total` fields let you calculate completion percentage and estimate remaining time. On replica sets, monitor each member independently. In MongoDB 7.0+, `serverStatus().indexBuildStats` provides an aggregate view of all active builds.
+Use `db.currentOp()` with a `createIndexes` filter to monitor index build progress in MongoDB. The `progress.done` and `progress.total` fields let you calculate completion percentage and estimate remaining time. On replica sets, monitor each member separately since progress varies. The `serverStatus` command's `indexBuilds` section provides aggregate counters for index build activity.
