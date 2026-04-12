@@ -10,7 +10,7 @@ Description: Compare MongoDB and DynamoDB across data modeling, querying, pricin
 
 ## Overview
 
-MongoDB and DynamoDB are both document-oriented NoSQL databases, but they have very different operational models. MongoDB can be self-hosted or managed via Atlas. DynamoDB is a fully managed AWS service with automatic scaling and a consumption-based pricing model.
+MongoDB is a document-oriented NoSQL database, while DynamoDB is a key-value and document NoSQL database. They have very different operational models. MongoDB can be self-hosted or managed via Atlas. DynamoDB is a fully managed AWS service with automatic scaling and a consumption-based pricing model.
 
 ## Data Model
 
