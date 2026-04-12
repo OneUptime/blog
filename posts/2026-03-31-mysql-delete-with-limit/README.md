@@ -27,13 +27,13 @@ This deletes at most 10,000 rows per execution. Run it repeatedly until no rows 
 
 ```bash
 while true; do
-  mysql -u root -pmypass mydb -e "
+  AFFECTED=$(mysql -u root -pmypass mydb -sN -e "
     DELETE FROM logs
     WHERE level = 'debug'
       AND created_at < '2025-01-01'
     LIMIT 10000;
-  "
-  AFFECTED=$(mysql -u root -pmypass mydb -sN -e "SELECT ROW_COUNT();")
+    SELECT ROW_COUNT();
+  ")
   echo "Deleted: $AFFECTED"
   [ "$AFFECTED" -eq 0 ] && break
   sleep 0.5
