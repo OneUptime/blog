@@ -62,7 +62,7 @@ db.articles.find(
 ).sort({ score: { $meta: "textScore" } })
 ```
 
-This ensures the most relevant documents appear first. Always include the `$meta` projection when sorting by `textScore`, as MongoDB requires the projected field name to match the sort field name.
+This ensures the most relevant documents appear first. Starting with MongoDB 4.4, you can sort by `{ $meta: "textScore" }` without including it in the projection. Including it in both projection and sort is still useful when you want to display the score alongside sorted results.
 
 ## Using $meta in the Aggregation Pipeline
 
