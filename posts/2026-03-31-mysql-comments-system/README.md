@@ -75,7 +75,7 @@ ORDER BY c.created_at DESC;
 
 ## Fetching Threaded Comments with CTE
 
-For two-level threading (comments + replies), use a CTE:
+For nested threading (comments and replies at any depth), use a recursive CTE:
 
 ```sql
 WITH RECURSIVE comment_tree AS (
@@ -87,7 +87,7 @@ WITH RECURSIVE comment_tree AS (
         content,
         created_at,
         0 AS depth,
-        CAST(id AS CHAR(200)) AS path
+        CAST(LPAD(id, 10, '0') AS CHAR(200)) AS path
     FROM comments
     WHERE article_id = 1
       AND parent_id IS NULL
@@ -103,7 +103,7 @@ WITH RECURSIVE comment_tree AS (
         c.content,
         c.created_at,
         ct.depth + 1,
-        CONCAT(ct.path, ',', c.id)
+        CONCAT(ct.path, ',', LPAD(c.id, 10, '0'))
     FROM comments c
     JOIN comment_tree ct ON c.parent_id = ct.id
     WHERE c.is_deleted = 0
