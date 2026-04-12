@@ -59,10 +59,10 @@ The output is a nested JSON document. Here is an annotated example:
         "table": {
           "table_name": "o",
           "access_type": "ref",   /* index lookup, not full scan */
-          "possible_keys": ["idx_status_created", "idx_customer_id"],
-          "key": "idx_status_created",
+          "possible_keys": ["idx_status", "idx_customer_id"],
+          "key": "idx_status",
           "key_length": "514",
-          "ref": ["const", "const"],
+          "ref": ["const"],
           "rows_examined_per_scan": 42,
           "rows_produced_per_join": 42,
           "filtered": "100.00",
@@ -133,7 +133,7 @@ How many rows MySQL estimates it needs to examine. Ideally close to `rows_produc
 
 ### filtered
 
-Percentage of rows remaining after applying the WHERE condition. `100.00` = no filtering needed (all examined rows match). Low values (e.g., `1.00`) indicate the index is doing most of the filtering work.
+Percentage of rows remaining after applying the table condition. `100.00` = all examined rows match (no extra filtering needed). Low values (e.g., `1.00`) mean only 1% of examined rows satisfy the condition — the index is returning many rows that are then discarded, which typically indicates you need a more selective index.
 
 ### attached_condition
 
@@ -143,7 +143,7 @@ Shows predicates applied after the index lookup. Conditions here are evaluated r
 "attached_condition": "(`o`.`created_at` > '2026-01-01')"
 ```
 
-This means `created_at` is filtered after `status` index lookup. A composite index `(status, created_at)` would eliminate this.
+This means `created_at` is filtered after the `status` index lookup. A composite index on `(status, created_at)` would eliminate this attached condition by handling the range predicate within the index scan.
 
 ## Practical Analysis Examples
 
@@ -274,9 +274,13 @@ CREATE TABLE explain_log (
     captured_at DATETIME DEFAULT NOW()
 );
 
+-- Run EXPLAIN and capture the output into a variable (MySQL 8.1+)
+EXPLAIN FORMAT=JSON INTO @explain_output
+SELECT * FROM orders WHERE status = 'pending';
+
+-- Store it in the log table
 INSERT INTO explain_log (label, query_hash, explain_json)
-SELECT 'before_index', MD5('SELECT ...'),
-       (SELECT JSON_OBJECT('plan', cast(explain_output as JSON)));
+VALUES ('before_index', MD5('SELECT * FROM orders WHERE status = ''pending'''), @explain_output);
 ```
 
 ## Best Practices
