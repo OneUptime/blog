@@ -16,7 +16,7 @@ MariaDB MaxScale is an advanced database proxy that provides connection routing,
 
 ```bash
 # Add MariaDB repository
-curl -LsS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash
+curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash
 
 apt-get update && apt-get install maxscale
 ```
@@ -24,7 +24,7 @@ apt-get update && apt-get install maxscale
 ## Installation on RHEL/CentOS
 
 ```bash
-curl -LsS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash
+curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash
 yum install maxscale
 ```
 
@@ -85,7 +85,7 @@ port=4006
 ```sql
 -- Monitoring user
 CREATE USER 'maxscale_monitor'@'%' IDENTIFIED BY 'MonitorPass123!';
-GRANT REPLICATION CLIENT, SUPER, RELOAD ON *.* TO 'maxscale_monitor'@'%';
+GRANT REPLICATION CLIENT, SUPER, RELOAD, PROCESS, SHOW DATABASES, EVENT ON *.* TO 'maxscale_monitor'@'%';
 GRANT SELECT ON mysql.* TO 'maxscale_monitor'@'%';
 GRANT SELECT ON performance_schema.* TO 'maxscale_monitor'@'%';
 
