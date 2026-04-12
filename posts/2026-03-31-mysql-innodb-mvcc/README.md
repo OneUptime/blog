@@ -45,9 +45,11 @@ When a transaction starts a consistent read (non-locking SELECT), InnoDB creates
 - The minimum and maximum active transaction IDs.
 
 A row version is visible to a transaction if:
-- Its `DB_TRX_ID` is less than the minimum active transaction (committed before this read view was created).
+- Its `DB_TRX_ID` is less than the minimum active transaction ID (committed before this read view was created).
 - Its `DB_TRX_ID` equals the transaction's own ID (own changes are visible).
-- It is not in the active transactions list.
+- Its `DB_TRX_ID` is less than the maximum transaction ID at read view creation and is not in the active transactions list.
+
+A row version is **not** visible if its `DB_TRX_ID` is greater than or equal to the maximum transaction ID at read view creation, meaning the modifying transaction started after the snapshot was taken.
 
 If a row version is not visible, InnoDB follows the `DB_ROLL_PTR` to the previous version and checks again.
 
