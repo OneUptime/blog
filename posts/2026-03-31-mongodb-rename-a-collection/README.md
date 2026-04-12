@@ -78,9 +78,18 @@ print(db.newName.countDocuments())
 
 In a replica set, `renameCollection` is replicated to all members automatically. The operation appears as a single oplog entry. Ensure you have enough oplog window for the rename to propagate before performing other operations that depend on the new name.
 
-## Sharded Collections - Not Supported
+## Sharded Collections
 
-`renameCollection` does NOT work on sharded collections. If you need to rename a sharded collection, you must:
+Starting in MongoDB 5.0, `renameCollection` supports sharded collections for same-database renames:
+
+```javascript
+db.adminCommand({
+  renameCollection: "myDatabase.shardedColl",
+  to: "myDatabase.newName"
+})
+```
+
+Cross-database renames of sharded collections are not supported. If you are on MongoDB 4.4 or earlier, `renameCollection` does not work on sharded collections at all, and you must use an export/import approach:
 
 ```bash
 # 1. Export
@@ -115,4 +124,4 @@ printjson(db.newName.getIndexes());
 
 ## Summary
 
-Use `db.collection.renameCollection("newName")` in mongosh for quick same-database renames. Same-database renames are fast metadata operations that preserve all indexes and documents. Cross-database renames copy data and are slower. Renaming sharded collections is unsupported and requires export/import. Always verify document counts after renaming in production.
+Use `db.collection.renameCollection("newName")` in mongosh for quick same-database renames. Same-database renames are fast metadata operations that preserve all indexes and documents. Cross-database renames copy data and are slower. Renaming sharded collections within the same database is supported starting in MongoDB 5.0. Always verify document counts after renaming in production.
