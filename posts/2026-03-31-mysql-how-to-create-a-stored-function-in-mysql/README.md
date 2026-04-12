@@ -17,7 +17,7 @@ Both stored functions and stored procedures encapsulate reusable SQL logic, but 
 | Called with | `SELECT`, expressions | `CALL` statement |
 | Returns | Single scalar value | 0 or more result sets, OUT params |
 | Use in SQL | Yes - inside queries | No |
-| DML allowed | Limited (cannot call CALL) | Yes |
+| DML allowed | Yes (cannot return result sets) | Yes |
 
 ## Basic Syntax
 
@@ -73,7 +73,7 @@ DELIMITER //
 CREATE FUNCTION GetCustomerTotalOrders(p_customer_id INT)
 RETURNS INT
 READS SQL DATA
-DETERMINISTIC
+NOT DETERMINISTIC
 BEGIN
   DECLARE total INT;
 
@@ -111,7 +111,7 @@ DELIMITER //
 CREATE FUNCTION DaysUntilExpiry(expiry_date DATE)
 RETURNS INT
 NOT DETERMINISTIC
-READS SQL DATA
+NO SQL
 BEGIN
   RETURN DATEDIFF(expiry_date, CURDATE());
 END //
@@ -129,7 +129,7 @@ DELIMITER //
 CREATE FUNCTION GetDiscountPct(p_customer_id INT)
 RETURNS DECIMAL(5, 2)
 READS SQL DATA
-DETERMINISTIC
+NOT DETERMINISTIC
 BEGIN
   DECLARE order_count INT;
 
