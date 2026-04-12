@@ -26,12 +26,12 @@ FROM performance_schema.replication_group_members;
 ```
 
 ```text
-+--------------------------------------+---------+------+--------+-----------+---------+
-| MEMBER_ID                            | HOST    | PORT | STATE  | ROLE      | VERSION |
-+--------------------------------------+---------+------+--------+-----------+---------+
-| aaaa-bbbb-cccc-dddd-eeee             | node1   | 3306 | ONLINE | PRIMARY   | 8.0.35  |
-| ffff-gggg-hhhh-iiii-jjjj             | node2   | 3306 | ONLINE | SECONDARY | 8.0.35  |
-+--------------------------------------+---------+------+--------+-----------+---------+
++--------------------------------------+-------------+-------------+--------------+-------------+----------------+
+| MEMBER_ID                            | MEMBER_HOST | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION |
++--------------------------------------+-------------+-------------+--------------+-------------+----------------+
+| aaaa-bbbb-cccc-dddd-eeee             | node1       | 3306        | ONLINE       | PRIMARY     | 8.0.35         |
+| ffff-gggg-hhhh-iiii-jjjj             | node2       | 3306        | ONLINE       | SECONDARY   | 8.0.35         |
++--------------------------------------+-------------+-------------+--------------+-------------+----------------+
 ```
 
 Member states to watch for:
@@ -87,7 +87,7 @@ FROM performance_schema.replication_applier_status_by_worker
 WHERE CHANNEL_NAME LIKE 'group_replication%';
 ```
 
-## Monitor Group Replication System Variables
+## Monitor Group Replication Status Variables
 
 ```sql
 SHOW STATUS LIKE 'group_replication%';
