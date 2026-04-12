@@ -87,6 +87,9 @@ ALTER USER 'root'@'localhost' IDENTIFIED BY 'newrootpassword';
 FLUSH PRIVILEGES;
 EXIT;
 
+# Stop the mysqld_safe instance
+sudo mysqladmin shutdown
+
 # Restart MySQL normally
 sudo systemctl start mysql
 ```
