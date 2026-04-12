@@ -104,7 +104,7 @@ SELECT DATE_ADD('2024-06-15', INTERVAL 3 MONTH);
 SELECT TIMESTAMPADD(MONTH, 3, '2024-06-15');
 ```
 
-Prefer `DATE_ADD()` with `INTERVAL` for ad-hoc queries (it's standard SQL). Prefer `TIMESTAMPADD()` in stored procedures when the unit and value are variables, as it accepts expressions more cleanly.
+Prefer `DATE_ADD()` with `INTERVAL` for ad-hoc queries (it is the idiomatic MySQL syntax). Prefer `TIMESTAMPADD()` in stored procedures when the unit and value are variables, as it accepts expressions more cleanly. Note that neither function is part of the SQL standard — standard SQL uses `datetime + INTERVAL` arithmetic — but both are well-supported in MySQL.
 
 ## Practical Example: Meeting Slot Generator
 
