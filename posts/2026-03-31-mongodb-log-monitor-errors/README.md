@@ -154,18 +154,17 @@ client.on('connectionCheckOutFailed', (e) => {
 });
 
 // Monitor slow commands
-client.on('succeeded', (e) => {
+client.on('commandSucceeded', (e) => {
   if (e.duration > 1000) {
     logger.warn({
       event: 'mongo.slow_command',
       commandName: e.commandName,
-      durationMs: e.duration,
-      collection: e.command[e.commandName]
+      durationMs: e.duration
     });
   }
 });
 
-client.on('failed', (e) => {
+client.on('commandFailed', (e) => {
   logger.error({
     event: 'mongo.command_failed',
     commandName: e.commandName,
