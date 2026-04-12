@@ -8,7 +8,7 @@ Description: Learn how to execute ACID-compliant multi-document transactions in 
 
 ---
 
-PyMongo supports multi-document ACID transactions through client sessions. Transactions require MongoDB 4.0+ running as a replica set or sharded cluster. This guide shows both the callback API and manual session management.
+PyMongo supports multi-document ACID transactions through client sessions. Transactions require MongoDB 4.0+ for replica sets or MongoDB 4.2+ for sharded clusters. This guide shows both the callback API and manual session management.
 
 ## Prerequisites
 
@@ -32,13 +32,15 @@ inventory = db["inventory"]
 The callback API automatically handles retries for transient errors and unknown transaction commit results:
 
 ```python
+from pymongo import ReturnDocument
+
 def place_order(session, user_id, cart_items):
     for item in cart_items:
         result = inventory.find_one_and_update(
             {"product_id": item["product_id"], "qty": {"$gte": item["qty"]}},
             {"$inc": {"qty": -item["qty"]}},
             session=session,
-            return_document=True
+            return_document=ReturnDocument.AFTER
         )
         if result is None:
             raise ValueError(f"Insufficient stock: {item['product_id']}")
@@ -84,7 +86,8 @@ The `with session.start_transaction()` context manager commits on exit and abort
 ## Configuring Read and Write Concern
 
 ```python
-from pymongo import ReadConcern, WriteConcern
+from pymongo import WriteConcern
+from pymongo.read_concern import ReadConcern
 from pymongo.read_preferences import ReadPreference
 
 with client.start_session() as session:
