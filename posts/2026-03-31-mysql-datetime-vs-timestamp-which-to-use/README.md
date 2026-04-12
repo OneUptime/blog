@@ -12,7 +12,7 @@ MySQL provides two similar date-time types: `DATETIME` and `TIMESTAMP`. They loo
 
 ## Storage Size
 
-Both `DATETIME` and `TIMESTAMP` use 4-8 bytes depending on fractional seconds precision, but their underlying storage differs.
+`DATETIME` and `TIMESTAMP` differ in base storage size, with additional bytes for fractional seconds precision.
 
 - `TIMESTAMP`: 4 bytes, stores UTC epoch seconds
 - `DATETIME`: 5-8 bytes, stores the literal date and time values
@@ -41,7 +41,7 @@ INSERT INTO events VALUES ('2026-03-31 10:00:00', '2026-03-31 10:00:00');
 
 SET time_zone = 'UTC';
 SELECT * FROM events;
--- ts_col: 2026-03-31 15:00:00  (converted from Eastern to UTC)
+-- ts_col: 2026-03-31 14:00:00  (converted from EDT to UTC)
 -- dt_col: 2026-03-31 10:00:00  (unchanged - literal value)
 ```
 
@@ -75,7 +75,7 @@ CREATE TABLE records (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   data TEXT
 );
--- MySQL 8.0 also supports DEFAULT CURRENT_TIMESTAMP for DATETIME
+-- MySQL 5.6.5+ also supports DEFAULT CURRENT_TIMESTAMP for DATETIME
 ```
 
 ## Fractional Seconds
