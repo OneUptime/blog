@@ -85,16 +85,15 @@ mongorestore \
 
 mLab database-level users must be recreated in Atlas. Atlas manages users at the organization or project level.
 
-```javascript
-// Create equivalent user in Atlas (via mongosh connected to Atlas)
-db.createUser({
-  user: "appuser",
-  pwd: "securepassword",
-  roles: [{ role: "readWrite", db: "mydb" }]
-});
+```bash
+# Create equivalent user via Atlas CLI
+atlas dbusers create \
+  --username appuser \
+  --password securepassword \
+  --role readWrite@mydb
 ```
 
-Or configure users via the Atlas UI: Organization - Access Manager - Database Users.
+Or configure users via the Atlas UI: Project > Security > Database Access.
 
 ## Update Application Connection Strings
 
