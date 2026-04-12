@@ -41,7 +41,7 @@ const { ObjectId } = require('mongodb');
 
 const buildProduct = (overrides = {}) => ({
   _id: new ObjectId(),
-  sku: `SKU-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+  sku: `SKU-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
   name: 'Test Product',
   price: 9.99,
   category: 'general',
