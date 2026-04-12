@@ -14,21 +14,13 @@ Horizontal scaling in MongoDB means distributing data across multiple shards - e
 
 Horizontal scaling requires a sharded cluster with at least one config server replica set and one or more `mongos` routers. If you are running a standalone or replica set, you need to convert it first.
 
-## Enable Sharding on a Database
+## Choose a Shard Key and Shard a Collection
 
-Connect to a `mongos` instance and enable sharding for your target database:
-
-```javascript
-use admin
-sh.enableSharding("myDatabase")
-```
-
-## Choose a Shard Key
-
-The shard key determines how MongoDB distributes data across shards. Choose a key with high cardinality and an even distribution pattern:
+Connect to a `mongos` instance. The shard key determines how MongoDB distributes data across shards. Choose a key with high cardinality and an even distribution pattern:
 
 ```javascript
-// Enable sharding on a collection with a hashed shard key
+// Shard a collection with a hashed shard key
+// In MongoDB 6.0+, this automatically enables sharding on the database
 sh.shardCollection("myDatabase.orders", { customerId: "hashed" })
 ```
 
