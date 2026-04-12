@@ -42,7 +42,7 @@ FROM sys.schema_unused_indexes
 WHERE object_schema = 'your_database';
 ```
 
-This view wraps the same `performance_schema` query in a convenient form.
+This view queries the same `performance_schema` table but filters on `COUNT_STAR = 0` (no I/O events at all), which is slightly more conservative than filtering on `COUNT_READ = 0` alone as in the manual query above.
 
 ## Ensuring Representative Coverage
 
