@@ -29,7 +29,7 @@ class BlogPost
 end
 
 class Comment
-  include Mongoid::EmbeddedDocument
+  include Mongoid::Document
 
   field :author, type: String
   field :body,   type: String
@@ -39,7 +39,7 @@ class Comment
 end
 
 class SeoMeta
-  include Mongoid::EmbeddedDocument
+  include Mongoid::Document
 
   field :meta_title,       type: String
   field :meta_description, type: String
