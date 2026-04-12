@@ -54,7 +54,9 @@ rs.status().members.forEach(m => {
 Pick a secondary that is not the hidden or delayed member (to preserve read capacity during maintenance):
 
 ```javascript
-var sec = rs.status().members.find(m => m.stateStr === "SECONDARY" && !m.hidden)
+var conf = rs.conf()
+var hiddenNames = conf.members.filter(m => m.hidden).map(m => m.host)
+var sec = rs.status().members.find(m => m.stateStr === "SECONDARY" && hiddenNames.indexOf(m.name) === -1)
 print("Working on:", sec.name)
 ```
 
@@ -150,7 +152,7 @@ rs.stepDown(120, 10)
 Verify a new primary has been elected:
 
 ```javascript
-rs.isMaster().primary
+db.hello().primary
 ```
 
 ## Step 9: Perform Maintenance on the Former Primary (Now Secondary)
@@ -193,7 +195,7 @@ print("All secondaries caught up. Safe to proceed.")
 // Before starting
 rs.status()               // All members healthy
 db.getReplicationInfo()   // Oplog window is adequate
-rs.printSlaveReplicationInfo() // No excessive lag
+rs.printSecondaryReplicationInfo() // No excessive lag
 
 // After each node
 rs.status()               // Member back in SECONDARY
