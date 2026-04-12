@@ -74,7 +74,7 @@ DELIMITER ;
 
 ## Wrapping Batches in Transactions
 
-Auto-commit writes a redo log entry for every row. Wrap a batch in a single transaction to amortize that cost:
+Auto-commit flushes the redo log to disk for every statement. Wrap a batch in a single transaction to amortize that cost:
 
 ```sql
 START TRANSACTION;
@@ -100,12 +100,23 @@ IGNORE 1 ROWS
 (user_id, event_type, created_at);
 ```
 
-Disable indexes and constraints before loading, then rebuild them afterward:
+For MyISAM tables, disable non-unique indexes before loading and rebuild them afterward. Note that `DISABLE KEYS` has no effect on InnoDB tables:
 
 ```sql
+-- MyISAM only
 ALTER TABLE events DISABLE KEYS;
 -- LOAD DATA ...
 ALTER TABLE events ENABLE KEYS;
+```
+
+For InnoDB tables, you can temporarily disable uniqueness and foreign key checks to speed up the load:
+
+```sql
+SET unique_checks = 0;
+SET foreign_key_checks = 0;
+-- LOAD DATA ...
+SET unique_checks = 1;
+SET foreign_key_checks = 1;
 ```
 
 ## Monitoring Batch Job Progress
