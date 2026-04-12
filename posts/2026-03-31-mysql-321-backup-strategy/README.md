@@ -42,7 +42,7 @@ DB="myapp_db"
 
 mysqldump \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --routines \
   --triggers \
   --events \
