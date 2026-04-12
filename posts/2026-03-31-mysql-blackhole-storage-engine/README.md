@@ -40,12 +40,14 @@ The key behavior that makes BLACKHOLE useful is that writes to BLACKHOLE tables 
 ```sql
 -- Enable binary logging on the server (in my.cnf)
 -- log_bin = /var/log/mysql/mysql-bin.log
--- binlog_format = ROW
+-- binlog_format = STATEMENT
 
 -- Verify binary logging is active
 SHOW VARIABLES LIKE 'log_bin';
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
+
+Note: Use `binlog_format = STATEMENT` or `MIXED` when working with BLACKHOLE tables. With `ROW` format, DML operations on BLACKHOLE tables are not logged to the binary log because no rows are actually changed.
 
 ## Replication Relay Topology
 
@@ -60,6 +62,10 @@ Primary --> Relay Server (BLACKHOLE tables) --> Replica A
 This pattern reduces load on the primary by limiting the number of direct replica connections. The relay server handles the fan-out.
 
 ```sql
+-- On the relay server, enable log_replica_updates in my.cnf so that
+-- events received from the primary are written to the relay's own binary log:
+-- log_replica_updates = ON
+
 -- On the relay server, replicate from primary
 CHANGE REPLICATION SOURCE TO
   SOURCE_HOST = 'primary-host',
