@@ -111,7 +111,8 @@ Enable the audit log plugin to track authentication events:
 
 ```sql
 INSTALL PLUGIN audit_log SONAME 'audit_log.so';
-SET GLOBAL audit_log_filter_id = 1;
+SELECT audit_log_filter_set_filter('log_all', '{ "filter": { "log": true } }');
+SELECT audit_log_filter_set_user('%', 'log_all');
 ```
 
 Review the audit log periodically for root login attempts from unexpected hosts.
