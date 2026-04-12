@@ -17,7 +17,7 @@ Component              Size       Notes
 -----------            -----      ------
 Redis object header    16 bytes   type, encoding, LRU, refcount
 SDS key string         ~40 bytes  + key length rounded up
-Dict entry             24 bytes   hash, next pointer, key/val pointers
+Dict entry             24 bytes   key, value, next pointers
 jemalloc padding       8-32 bytes alignment to bin size
 --------------------------------
 Total overhead:        ~88-112 bytes minimum per key
@@ -122,7 +122,7 @@ HINCRBY "counters:articles" "42:views" 1
 # Many counters share one hash overhead
 ```
 
-### Strategy 4: Use Integer Keys
+### Strategy 4: Use Integer Values
 
 Redis stores integers as int encoding (no SDS string for the value):
 
