@@ -48,13 +48,13 @@ If you need to query a specific attribute, use a generated column:
 ```sql
 ALTER TABLE products
   ADD COLUMN color VARCHAR(50)
-  GENERATED ALWAYS AS (JSON_UNQUOTE(attributes->>'$.color')) STORED,
+  GENERATED ALWAYS AS (attributes->>'$.color') STORED,
   ADD INDEX idx_color (color);
 ```
 
 ## Missing Indexes on Foreign Keys
 
-MySQL does not automatically index foreign key columns. Without an index, cascading deletes and joins scan the entire child table:
+InnoDB automatically creates an index on foreign key columns if one does not already exist. However, relying on this implicit behavior makes schema intent unclear and the auto-created index may not match the composite or covering index you actually need:
 
 ```sql
 -- Always add an index on the FK column
@@ -72,15 +72,15 @@ CREATE TABLE order_items (
 
 ## Implicit Type Conversions
 
-When a WHERE clause compares columns of different types, MySQL converts one side and cannot use the index:
+When a WHERE clause compares a string column to a numeric literal, MySQL casts every row's column value to a number, which prevents index use:
 
 ```sql
--- Anti-pattern: customer_id is INT, '42' is a string
-SELECT * FROM orders WHERE customer_id = '42';
+-- Anti-pattern: phone_number is VARCHAR, but the literal is numeric
+SELECT * FROM users WHERE phone_number = 5551234567;
 
--- The optimizer may silently cast the entire column, preventing index use
+-- MySQL casts every phone_number value to a number, preventing index use
 -- Better: match types exactly
-SELECT * FROM orders WHERE customer_id = 42;
+SELECT * FROM users WHERE phone_number = '5551234567';
 ```
 
 ## Using OFFSET for Deep Pagination
