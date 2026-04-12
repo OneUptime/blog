@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Replica Set, Monitoring, Custom Metric, Prometheus
 
-Description: Build custom metrics for MongoDB replica set health using rs.status(), a Prometheus push gateway, and Grafana dashboards for replication monitoring.
+Description: Build custom metrics for MongoDB replica set health using rs.status(), a Prometheus HTTP exporter, and Grafana dashboards for replication monitoring.
 
 ---
 
 ## Introduction
 
-The built-in MongoDB Exporter captures most replica set signals, but certain health indicators require custom collection - such as per-member sync progress, oplog window size, and election history. This guide shows how to build a custom metrics collector that queries `rs.status()` and pushes data to Prometheus.
+The built-in MongoDB Exporter captures most replica set signals, but certain health indicators require custom collection - such as per-member sync progress, oplog window size, and election history. This guide shows how to build a custom metrics collector that queries `rs.status()` and exposes data for Prometheus to scrape.
 
 ## Reading Replica Set Status
 
@@ -87,7 +87,7 @@ def collect_rs_metrics(client):
         first = local_db.oplog.rs.find_one(sort=[("$natural", 1)])
         last = local_db.oplog.rs.find_one(sort=[("$natural", -1)])
         if first and last:
-            window = (last["ts"].as_datetime() - first["ts"].as_datetime()).total_seconds()
+            window = last["ts"].time - first["ts"].time
             oplog_window.set(window)
 
     except Exception as e:
