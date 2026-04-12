@@ -12,7 +12,7 @@ Description: Learn how to use EXPLAIN ANALYZE in MySQL 8.0+ to measure actual qu
 
 `EXPLAIN ANALYZE` actually executes the query and measures real execution time and row counts at each step, then displays the results alongside the optimizer's estimates. This lets you see where the optimizer's estimates were wrong (misestimates can lead to bad query plans) and which steps are taking the most time.
 
-Unlike regular `EXPLAIN` (which shows estimates only), `EXPLAIN ANALYZE` runs the query - do not use it on INSERT, UPDATE, or DELETE in production without caution.
+Unlike regular `EXPLAIN` (which shows estimates only), `EXPLAIN ANALYZE` runs the query - do not use it on multi-table UPDATE or DELETE statements in production without caution, as the changes are actually applied.
 
 ```mermaid
 graph TD
@@ -28,7 +28,7 @@ graph TD
 EXPLAIN ANALYZE SELECT ...;
 
 -- Can also specify FORMAT=TREE (default for ANALYZE)
-EXPLAIN FORMAT=TREE ANALYZE SELECT ...;
+EXPLAIN ANALYZE FORMAT=TREE SELECT ...;
 ```
 
 `EXPLAIN ANALYZE` is available in MySQL 8.0.18+.
@@ -181,7 +181,7 @@ Total time is sub-millisecond on 300 rows. On millions of rows, `Table scan on p
 - Compare `rows=` (actual) vs the estimated rows from regular EXPLAIN - large differences indicate stale statistics or missing indexes. Run `ANALYZE TABLE table_name` to update statistics.
 - Read the output bottom-up: the innermost (deepest) step executes first.
 - `loops=N` multiplied by `actual time` gives the total time for that step - use this to find the most expensive operations.
-- Do not run EXPLAIN ANALYZE on mutating statements (INSERT/UPDATE/DELETE) in production - the changes are actually applied.
+- Do not run EXPLAIN ANALYZE on multi-table UPDATE or DELETE statements in production - the changes are actually applied. (INSERT is not supported by EXPLAIN ANALYZE.)
 
 ## Summary
 
