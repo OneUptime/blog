@@ -41,8 +41,8 @@ db.createCollection("contacts", {
 
 The pattern `^\+[1-9]\d{6,14}$` matches:
 - Leading `+`
-- Country code (no leading zero)
-- 6 to 14 digits total (E.164 max is 15 digits including country code)
+- Country code starting digit (no leading zero)
+- Followed by 6 to 14 more digits (7 to 15 digits total, matching the E.164 max of 15)
 
 ## Testing E.164 Validation
 
