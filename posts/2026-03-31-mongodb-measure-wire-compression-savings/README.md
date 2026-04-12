@@ -108,8 +108,8 @@ def measure_bytes(uri, query_filter, collection_name, runs=5):
     client.close()
     return total_bytes
 
-# Without compression
-uri_no_compress = "mongodb://user:pass@host:27017/mydb?compressors=disabled"
+# Without compression (omit compressors parameter to disable)
+uri_no_compress = "mongodb://user:pass@host:27017/mydb"
 bytes_plain = measure_bytes(uri_no_compress, {"status": "active"}, "orders")
 
 # With snappy compression
@@ -122,7 +122,7 @@ print(f"Compression savings: {savings_pct:.1f}%")
 
 ## Step 5: Measure CPU Overhead
 
-Compression consumes CPU. Check CPU usage change:
+Compression consumes CPU. Check CPU usage change (Linux only, as `extra_info.user_time_us` is not available on macOS or Windows):
 
 ```javascript
 const stats1 = db.adminCommand({ serverStatus: 1 });
