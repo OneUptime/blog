@@ -8,9 +8,9 @@ Description: Learn how to use Studio 3T's advanced features for MongoDB includin
 
 ---
 
-## Studio 3T vs. Studio 3T Free (Robo 3T)
+## Studio 3T vs. Studio 3T Free
 
-Studio 3T (the paid version) extends the free Robo 3T feature set with a visual Aggregation Editor, SQL query translation, MongoImport/Export wizards, data comparison tools, and scheduled task automation. It is designed for teams doing regular MongoDB operations and migrations.
+Studio 3T (the paid version) extends Studio 3T Free (the successor to the discontinued Robo 3T) with a visual Aggregation Editor, SQL query translation, MongoImport/Export wizards, data comparison tools, and scheduled task automation. It is designed for teams doing regular MongoDB operations and migrations.
 
 ## Visual Aggregation Editor
 
