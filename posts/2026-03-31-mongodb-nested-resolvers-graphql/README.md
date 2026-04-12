@@ -79,6 +79,12 @@ function createLoaders() {
       return ids.map((id) => map.get(id.toString()) || null);
     }),
 
+    post: new DataLoader(async (ids) => {
+      const posts = await Post.find({ _id: { $in: ids } }).lean();
+      const map = new Map(posts.map((p) => [p._id.toString(), p]));
+      return ids.map((id) => map.get(id.toString()) || null);
+    }),
+
     postsByAuthor: new DataLoader(async (authorIds) => {
       const posts = await Post.find({ authorId: { $in: authorIds } }).lean();
       const map = new Map();
@@ -138,7 +144,7 @@ const resolvers = {
     id: (c) => c._id.toString(),
     author: (comment, _, { loaders }) => loaders.user.load(comment.authorId.toString()),
     post: (comment, _, { loaders }) =>
-      Post.findById(comment.postId).lean(),
+      loaders.post.load(comment.postId.toString()),
   },
 };
 ```
