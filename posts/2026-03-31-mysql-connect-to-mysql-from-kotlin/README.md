@@ -87,7 +87,7 @@ object Products : Table("products") {
 Database.connect(dataSource)
 
 transaction {
-    val cheapProducts = Products.select { Products.price less 50.0 }
+    val cheapProducts = Products.selectAll().where { Products.price less 50.0 }
     cheapProducts.forEach {
         println("${it[Products.id]}  ${it[Products.name]}  ${it[Products.price]}")
     }
