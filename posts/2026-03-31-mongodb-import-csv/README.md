@@ -74,7 +74,7 @@ mongoimport \
 
 ## mongoimport Type Coercion
 
-By default `mongoimport` imports all CSV values as strings. Use `--columnsHaveTypes` or transform values with the `--fields` option to store numbers and dates correctly.
+Modern `mongoimport` (Database Tools 100.0+) automatically infers integers and doubles from CSV values, but dates and other complex types are still imported as strings. Use `--columnsHaveTypes` with the `--fields` option to specify exact types, especially for date fields.
 
 ```bash
 # Specify types with columnsHaveTypes flag
