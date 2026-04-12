@@ -24,7 +24,6 @@ flowchart TD
     F --> G{systemctl command}
     G -->|stop| H[SIGTERM sent]
     G -->|restart| I[Stop + Start]
-    G -->|reload| J[SIGHUP - reload config]
     H --> K[Clean Shutdown]
 ```
 
@@ -48,12 +47,6 @@ Restart the service (useful after configuration changes):
 
 ```bash
 sudo systemctl restart mongod
-```
-
-Reload configuration without a full restart (limited support in MongoDB):
-
-```bash
-sudo systemctl reload mongod
 ```
 
 Check the current status of the service:
@@ -225,11 +218,13 @@ sudo chown -R mongodb:mongodb /var/lib/mongodb
 sudo chown mongodb:mongodb /tmp/mongodb-27017.sock
 ```
 
-Validate the configuration file:
+Validate the configuration file syntax (requires Python 3 with PyYAML):
 
 ```bash
-mongod --config /etc/mongod.conf --configTest
+python3 -c "import yaml; yaml.safe_load(open('/etc/mongod.conf'))"
 ```
+
+If the file parses without error, the YAML syntax is valid. To check for MongoDB-specific option errors, start the service and inspect the journal output.
 
 ## Best Practices
 
