@@ -90,6 +90,9 @@ Add a seeding step before your tests run:
 
 ```yaml
 steps:
+  - name: Install mongosh
+    run: npm install -g mongosh
+
   - name: Seed test data
     run: |
       mongosh mongodb://localhost:27017/testdb --file ./test/fixtures/seed.js
