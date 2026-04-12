@@ -12,13 +12,15 @@ Description: Learn how to use mysqlpump, MySQL's parallel backup utility, to exp
 
 `mysqlpump` is a MySQL command-line tool introduced in MySQL 5.7.8 as a faster alternative to `mysqldump`. It supports parallel exports using multiple threads, which significantly reduces backup time for large databases. It also provides progress reporting and more flexible filtering options.
 
+**Note:** `mysqlpump` was deprecated in MySQL 8.0.34 and removed in MySQL 8.4.0. For MySQL 8.4 and later, use `mysqldump` or MySQL Shell's `util.dumpInstance()` instead.
+
 ## Basic Syntax
 
 ```bash
 mysqlpump [options] > output_file.sql
 ```
 
-Unlike `mysqldump`, `mysqlpump` writes output to stdout by default.
+`mysqlpump` writes output to stdout by default.
 
 ## Dump All Databases
 
@@ -83,8 +85,10 @@ Supported algorithms: `LZ4`, `ZLIB`.
 To decompress:
 
 ```bash
-mysqldecompress full_backup.lz4 > full_backup.sql
+lz4_decompress full_backup.lz4 full_backup.sql
 ```
+
+For ZLIB-compressed files, use `zlib_decompress` instead.
 
 ## Schema Only (No Data)
 
@@ -169,7 +173,8 @@ mysql -u root -p < myapp_backup.sql
 For compressed output, decompress first:
 
 ```bash
-mysqldecompress myapp_backup.lz4 | mysql -u root -p
+lz4_decompress myapp_backup.lz4 myapp_backup.sql
+mysql -u root -p < myapp_backup.sql
 ```
 
 ## Comparison with mysqldump
