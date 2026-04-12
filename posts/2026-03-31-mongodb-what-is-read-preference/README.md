@@ -31,8 +31,7 @@ In a MongoDB replica set, every write goes to the primary, but reads can be rout
 const { ReadPreference } = require("mongodb");
 
 const docs = await db.collection("products")
-  .find({ inStock: true })
-  .readPreference(ReadPreference.SECONDARY_PREFERRED)
+  .find({ inStock: true }, { readPreference: ReadPreference.SECONDARY_PREFERRED })
   .toArray();
 ```
 
@@ -65,9 +64,11 @@ rs.reconfig(cfg);
 Then use a tag set in your read preference:
 
 ```javascript
+const { ReadPreference } = require("mongodb");
+
+const readPref = new ReadPreference("secondary", [{ region: "us-east" }]);
 const docs = await db.collection("events")
-  .find({})
-  .readPreference("secondary", [{ region: "us-east" }])
+  .find({}, { readPreference: readPref })
   .toArray();
 ```
 
@@ -76,10 +77,12 @@ const docs = await db.collection("events")
 When reading from secondaries, you can limit how stale the data can be:
 
 ```javascript
+const { ReadPreference } = require("mongodb");
+
 // Reject any secondary lagging more than 90 seconds behind the primary
+const readPref = new ReadPreference("secondaryPreferred", [], { maxStalenessSeconds: 90 });
 const docs = await db.collection("orders")
-  .find({})
-  .readPreference("secondaryPreferred", [], { maxStalenessSeconds: 90 })
+  .find({}, { readPreference: readPref })
   .toArray();
 ```
 
