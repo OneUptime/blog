@@ -105,9 +105,16 @@ auditLog:
   format: JSON
   path: /var/log/mongodb/pci_audit.json
   filter: '{
+    "atype": "authCheck",
     "param.ns": { "$regex": "^payments\\." },
-    atype: { "$in": ["find", "insert", "update", "delete", "authenticate"] }
+    "param.command": { "$in": ["find", "insert", "update", "delete"] }
   }'
+```
+
+By default MongoDB only logs failed authorization checks. For PCI DSS you must also log successful access to cardholder data:
+
+```javascript
+db.adminCommand({ setParameter: 1, auditAuthorizationSuccess: true })
 ```
 
 Retain audit logs for 12 months (3 months immediately accessible):
@@ -124,7 +131,7 @@ find /var/log/mongodb/archive/ -name "*.json" -mtime +90 -exec gzip {} \;
 mongosh --eval "db.adminCommand({buildInfo:1}).version"
 
 # Update MongoDB regularly
-apt-get install -y mongodb-org=7.0.latest
+apt-get update && apt-get install -y mongodb-org
 ```
 
 ## Summary
