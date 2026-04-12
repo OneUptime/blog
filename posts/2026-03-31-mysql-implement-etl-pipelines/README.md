@@ -117,7 +117,7 @@ BEGIN
   END;
 
   START TRANSACTION;
-    TRUNCATE TABLE stg_orders;
+    DELETE FROM stg_orders;
     SET @sql = CONCAT("LOAD DATA INFILE '", p_file,
       "' INTO TABLE stg_orders FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n' IGNORE 1 ROWS");
     PREPARE stmt FROM @sql;
