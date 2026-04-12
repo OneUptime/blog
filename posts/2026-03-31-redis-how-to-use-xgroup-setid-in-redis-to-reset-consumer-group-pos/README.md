@@ -17,7 +17,7 @@ Every Redis Stream consumer group tracks its position in the stream using a `las
 ## Syntax
 
 ```text
-XGROUP SETID key groupname id [ENTRIESREAD count]
+XGROUP SETID key groupname id [ENTRIESREAD entries-read]
 ```
 
 - `key` - the stream name
