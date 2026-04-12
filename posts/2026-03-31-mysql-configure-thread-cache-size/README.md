@@ -55,11 +55,11 @@ Calculate the thread cache hit rate:
 
 ```sql
 SELECT
-  (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Connections') AS total_connections,
-  (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Threads_created') AS threads_created,
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Connections') AS total_connections,
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Threads_created') AS threads_created,
   ROUND(
-    (1 - (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Threads_created') /
-         (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Connections')
+    (1 - (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Threads_created') /
+         (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Connections')
     ) * 100, 2
   ) AS cache_hit_pct;
 ```
@@ -89,7 +89,7 @@ thread_cache_size = 50
 
 ## Thread Cache vs Connection Pool
 
-`thread_cache_size` is a server-side optimization. For applications that open and close connections frequently (PHP without persistent connections, serverless functions), the best solution is to add a connection pooler like ProxySQL or PgBouncer (for MySQL, ProxySQL):
+`thread_cache_size` is a server-side optimization. For applications that open and close connections frequently (PHP without persistent connections, serverless functions), the best solution is to add a connection pooler like ProxySQL:
 
 ```bash
 # ProxySQL is more effective than just increasing thread_cache_size
@@ -104,7 +104,7 @@ Watch `Threads_created` over time after increasing the cache:
 # Shell script to monitor thread cache
 while true; do
   mysql -u root -p"$MYSQL_ROOT_PASSWORD" -sN -e \
-    "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME='Threads_created';"
+    "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Threads_created';"
   sleep 5
 done
 ```
