@@ -91,9 +91,11 @@ db.adminCommand({ replSetResizeOplog: 1, size: 10240 })  // 10GB in MB
 If a secondary falls behind (replication lag), it will eventually go out of sync if the primary's oplog overwrites entries the secondary hasn't replayed yet. Monitor lag:
 
 ```javascript
-rs.status().members.forEach(m => {
+var status = rs.status()
+var primary = status.members.find(m => m.stateStr === "PRIMARY")
+status.members.forEach(m => {
   if (m.stateStr === "SECONDARY") {
-    print(`${m.name}: lag = ${m.optimeDate - rs.status().members[0].optimeDate}ms`)
+    print(`${m.name}: lag = ${primary.optimeDate - m.optimeDate}ms`)
   }
 })
 ```
