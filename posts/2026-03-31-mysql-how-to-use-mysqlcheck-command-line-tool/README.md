@@ -116,14 +116,15 @@ A table with `OK` status passed the check. Any rows with `error` or `warning` ne
 Use `-v` to see each operation as it runs:
 
 ```bash
-mysqlcheck -u root -p --analyze -v myapp
+mysqlcheck -u root -p --optimize -v myapp
 ```
 
 Output:
 
 ```text
-Checking tables
-myapp.customers                           OK
+myapp.customers
+note     : Table does not support optimize, doing recreate + analyze instead
+status   : OK
 myapp.orders
 note     : Table does not support optimize, doing recreate + analyze instead
 status   : OK
@@ -160,7 +161,7 @@ mysqlcheck \
   --analyze \
   --all-databases \
   --verbose \
-  2>&1 >> "$LOG"
+  >> "$LOG" 2>&1
 
 echo "mysqlcheck analyze completed. See $LOG"
 ```
