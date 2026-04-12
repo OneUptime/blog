@@ -34,7 +34,7 @@ SET PASSWORD = 'MyNewPass!99';
 
 ## Changing Another User's Password (Admin)
 
-Requires the `CREATE USER` privilege or `UPDATE` on `mysql.user`:
+Requires the `CREATE USER` privilege or `UPDATE` on the `mysql` system schema:
 
 ```sql
 ALTER USER 'bob'@'%' IDENTIFIED BY 'BobNewPass!2024';
@@ -60,7 +60,7 @@ ALTER USER 'alice'@'localhost'
 
 ## Using SET PASSWORD (Older Syntax)
 
-`SET PASSWORD` still works in MySQL 8.0 but is deprecated in some contexts:
+`SET PASSWORD` still works in MySQL 8.0, though `ALTER USER` is the preferred method:
 
 ```sql
 -- Change another user's password
@@ -78,7 +78,7 @@ From the operating system shell:
 mysqladmin -u alice -p password 'NewStr0ng!Pass#2024'
 ```
 
-You will be prompted for the current password. This is convenient for scripted password rotations.
+You will be prompted for the current password. Note that the new password may be visible in the process list, so this method should be considered insecure. Prefer `ALTER USER` for password changes.
 
 ## Forcing Password Change on Next Login
 
