@@ -13,7 +13,7 @@ Description: Learn how OP_MSG works as MongoDB's primary message format, includi
 `OP_MSG` (opCode `2013`) was introduced in MongoDB 3.6 and replaced all previous opcodes (`OP_QUERY`, `OP_INSERT`, `OP_UPDATE`, etc.) as the single unified message format. Every read, write, aggregation, and administrative command now uses `OP_MSG`.
 
 Key advantages over legacy opcodes:
-- Supports unlimited document sizes (not capped at 16MB for bulk ops)
+- Bulk payloads are not constrained to a single 16MB BSON document (total message limited by `maxMessageSizeBytes`, default 48MB)
 - Enables `moreToCome` pipelining for reduced round trips
 - Carries command and payload in separate sections for efficiency
 
@@ -23,7 +23,7 @@ The `flagBits` field is a 32-bit integer where each bit controls behavior:
 
 ```text
 Bit 0  - checksumPresent: message ends with CRC-32C checksum
-Bit 1  - moreToCome: server will send more OP_MSG responses before waiting for next request
+Bit 1  - moreToCome: sender will send additional messages without awaiting a response
 Bit 16 - exhaustAllowed: client requests exhaust cursor mode
 ```
 
@@ -110,9 +110,10 @@ def parse_op_msg_response(data):
         offset += 1
 
         if kind == 0:
-            doc, size = bson.decode_with_codec_options(data[offset:])
+            doc_size = struct.unpack("<i", data[offset:offset+4])[0]
+            doc = bson.decode(data[offset:offset+doc_size])
             sections.append({"kind": 0, "document": doc})
-            offset += size
+            offset += doc_size
         elif kind == 1:
             seq_size = struct.unpack("<i", data[offset:offset+4])[0]
             offset += seq_size  # Skip the sequence
