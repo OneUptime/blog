@@ -108,7 +108,7 @@ if __name__ == "__main__":
 db.getCollectionNames().forEach(coll => {
   db.getCollection(coll).aggregate([{ $indexStats: {} }]).forEach(stat => {
     if (stat.accesses.ops === 0 && stat.name !== "_id_") {
-      print(coll + "." + stat.name + " - UNUSED (" + stat.key + ")");
+      print(coll + "." + stat.name + " - UNUSED (" + tojson(stat.key) + ")");
     }
   });
 });
@@ -123,7 +123,10 @@ const plan = db.orders.find({
   status: "pending"
 }).explain("executionStats");
 
-if (plan.queryPlanner.winningPlan.stage === "COLLSCAN") {
+const stage = plan.queryPlanner.winningPlan.queryPlan?.stage
+           || plan.queryPlanner.winningPlan.stage;
+
+if (stage === "COLLSCAN") {
   print("WARNING: Query uses a collection scan - add an index on userId + status");
 }
 ```
