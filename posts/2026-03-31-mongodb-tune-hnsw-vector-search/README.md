@@ -63,11 +63,11 @@ Approximate memory = numVectors * m * 8 bytes * 1.2 (overhead factor)
 Example: 10M vectors, m=16
 = 10,000,000 * 16 * 8 * 1.2
 = ~1.5 GB for the graph structure
-+ vector storage (~15 GB for 1536-dim float32)
-= ~16.5 GB total
++ vector storage (~57 GB for 1536-dim float32)
+= ~59 GB total
 ```
 
-With scalar quantization and m=16, vector storage drops to ~3.75 GB, making total index ~5.3 GB.
+With scalar quantization and m=16, vector storage drops to ~14 GB (1 byte per dimension instead of 4), making total index ~16 GB.
 
 ## Query-Time Tuning with numCandidates
 
