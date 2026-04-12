@@ -10,7 +10,7 @@ Description: The InnoDB change buffer caches changes to non-unique secondary ind
 
 ## Overview
 
-The InnoDB change buffer is an optimization for secondary index updates. When an `INSERT`, `UPDATE`, or `DELETE` modifies a secondary index page that is not currently loaded in the buffer pool, InnoDB does not immediately read that page from disk to apply the change. Instead, it records the change in the change buffer and defers the actual merge to the index page until the page is naturally read into the buffer pool later.
+The InnoDB change buffer is an optimization for non-unique secondary index updates. When an `INSERT`, `UPDATE`, or `DELETE` modifies a non-unique secondary index page that is not currently loaded in the buffer pool, InnoDB does not immediately read that page from disk to apply the change. Instead, it records the change in the change buffer and defers the actual merge to the index page until the page is naturally read into the buffer pool later. The change buffer does not apply to unique secondary indexes because a uniqueness check requires reading the page from disk, which eliminates the benefit of deferral.
 
 This optimization reduces the I/O cost of maintaining secondary indexes during write-heavy workloads, because it avoids the random disk reads that would otherwise be needed to update each secondary index page immediately.
 
@@ -68,7 +68,7 @@ SHOW VARIABLES LIKE 'innodb_change_buffer_max_size';
 The `innodb_change_buffering` setting controls which operations are buffered:
 
 ```text
-all      - buffer inserts, delete marks, and deletes (default)
+all      - buffer inserts, delete marks, and purges (default)
 inserts  - buffer insert operations only
 deletes  - buffer delete-mark operations only
 changes  - buffer inserts and delete-mark operations
@@ -86,7 +86,7 @@ SET GLOBAL innodb_change_buffer_max_size = 10; -- 10% of buffer pool
 
 Changes stored in the change buffer are merged into the actual secondary index pages when:
 - A page is read into the buffer pool (triggering a merge of pending changes for that page)
-- The background purge thread periodically merges buffered changes
+- A background thread periodically merges buffered changes when the server is mostly idle
 - During a slow shutdown or before MySQL flushes dirty pages
 
 ```sql
