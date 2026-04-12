@@ -39,13 +39,15 @@ Collect all employees per department into a JSON array:
 ```sql
 SELECT
   d.name AS department,
-  JSON_ARRAYAGG(e.name ORDER BY e.name) AS employee_names
+  JSON_ARRAYAGG(e.name) AS employee_names
 FROM departments d
 JOIN employees e ON d.id = e.dept_id
 GROUP BY d.id, d.name;
 ```
 
-Result:
+Note: unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function call. The order of elements in the resulting array is undefined. To get a deterministic order, sort the rows in a subquery before aggregation.
+
+Result (element order may vary):
 
 ```text
 +-------------+-----------------------+
@@ -69,7 +71,6 @@ SELECT
       'name', e.name,
       'salary', e.salary
     )
-    ORDER BY e.name
   ) AS employees
 FROM departments d
 JOIN employees e ON d.id = e.dept_id
@@ -132,20 +133,21 @@ When a parent row has zero children, use a `LEFT JOIN` to preserve parent rows:
 ```sql
 SELECT
   d.name AS department,
-  COALESCE(
-    JSON_ARRAYAGG(e.name ORDER BY e.name),
-    JSON_ARRAY()
+  IF(
+    COUNT(e.id) = 0,
+    JSON_ARRAY(),
+    JSON_ARRAYAGG(e.name)
   ) AS employees
 FROM departments d
 LEFT JOIN employees e ON d.id = e.dept_id
 GROUP BY d.id, d.name;
 ```
 
-Without `COALESCE`, departments with no employees return `NULL` rather than an empty array.
+Without this check, departments with no employees return `[null]` (an array containing a JSON null element) rather than an empty array. This happens because the `LEFT JOIN` still produces a row with NULL column values, and `JSON_ARRAYAGG` aggregates that NULL into the array. Since `[null]` is a valid JSON value and not SQL `NULL`, `COALESCE` would not catch it — using `IF` with `COUNT` is the correct approach.
 
 ## Performance Considerations
 
-- Use `ORDER BY` inside `JSON_ARRAYAGG()` only when element order matters.
+- `JSON_ARRAYAGG()` does not guarantee element order. If deterministic ordering is required, sort rows in a subquery or CTE before aggregation.
 - For very large groups, consider limiting aggregation scope with `LIMIT` in subqueries.
 - Avoid aggregating millions of rows into a single JSON document - result size can exceed `max_allowed_packet`.
 
