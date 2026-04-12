@@ -108,7 +108,7 @@ db.serverStatus().connections
 
 ## waitQueueTimeoutMS
 
-When all connections are in use, new requests queue up. `waitQueueTimeoutMS` controls how long a request waits before throwing a `MongoTimeoutError`:
+When all connections are in use, new requests queue up. `waitQueueTimeoutMS` controls how long a request waits before throwing a timeout error:
 
 ```javascript
 const client = new MongoClient(uri, {
