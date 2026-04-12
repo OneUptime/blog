@@ -33,7 +33,7 @@ Group replication should NOT start automatically. Verify this:
 mysql -u root -p -e "SELECT MEMBER_STATE FROM performance_schema.replication_group_members;"
 ```
 
-If it returns an empty result, group replication has not started, which is correct.
+If it returns a single row with `MEMBER_STATE = 'OFFLINE'`, group replication has not started, which is correct.
 
 ## Step 2 - Identify the Most Up-to-Date Node
 
