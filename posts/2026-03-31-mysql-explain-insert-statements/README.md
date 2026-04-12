@@ -42,7 +42,7 @@ The output shows the access type, key used, rows estimated, and any extra detail
 +----+-------------+--------+------+---------------+------------+---------+------+-------+-------------+
 | id | select_type | table  | type | possible_keys | key        | key_len | ref  | rows  | Extra       |
 +----+-------------+--------+------+---------------+------------+---------+------+-------+-------------+
-|  1 | INSERT      | orders | ref  | idx_status    | idx_status | 1       | const| 12400 | Using where |
+|  1 | SIMPLE      | orders | ref  | idx_status    | idx_status | 1       | const| 12400 | Using where |
 +----+-------------+--------+------+---------------+------------+---------+------+-------+-------------+
 ```
 
@@ -55,27 +55,28 @@ The key columns to examine are:
 - `rows`: Estimated number of rows examined. Smaller is better.
 - `Extra`: Watch for `Using filesort` or `Using temporary` which signal expensive operations.
 
-## Using EXPLAIN ANALYZE with INSERT SELECT
+## Using EXPLAIN ANALYZE for the SELECT Portion
 
-MySQL 8.0.18+ supports `EXPLAIN ANALYZE`, which actually executes the query and provides real timing data. However, note that `EXPLAIN ANALYZE INSERT` will execute the insert for real:
+MySQL 8.0.18+ supports `EXPLAIN ANALYZE`, which actually executes the query and provides real timing data. However, `EXPLAIN ANALYZE` does not support `INSERT` statements - it only works with `SELECT`, `TABLE` (8.0.19+), and multi-table `UPDATE`/`DELETE` (8.0.19+).
+
+To get real execution metrics for the source query of an `INSERT ... SELECT`, extract the `SELECT` and run `EXPLAIN ANALYZE` on it directly:
 
 ```sql
 EXPLAIN ANALYZE
-INSERT INTO log_summary (user_id, event_count)
 SELECT user_id, COUNT(*) AS event_count
 FROM event_log
 WHERE event_date = CURDATE()
 GROUP BY user_id;
 ```
 
-Use this carefully in production - consider wrapping it in a transaction that you roll back:
+Once you are satisfied with the query plan and performance, use the same `SELECT` in your `INSERT` statement:
 
 ```sql
-START TRANSACTION;
-EXPLAIN ANALYZE
 INSERT INTO log_summary (user_id, event_count)
-SELECT user_id, COUNT(*) FROM event_log GROUP BY user_id;
-ROLLBACK;
+SELECT user_id, COUNT(*) AS event_count
+FROM event_log
+WHERE event_date = CURDATE()
+GROUP BY user_id;
 ```
 
 ## Optimizing INSERT SELECT Performance
