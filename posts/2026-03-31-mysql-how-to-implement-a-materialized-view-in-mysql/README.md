@@ -151,6 +151,8 @@ ORDER BY sale_date DESC, total_revenue DESC;
 For near-real-time updates on small data volumes, use triggers:
 
 ```sql
+DELIMITER $$
+
 CREATE TRIGGER orders_after_status_update
 AFTER UPDATE ON orders
 FOR EACH ROW
@@ -164,7 +166,9 @@ BEGIN
       total_orders = total_orders + 1,
       total_revenue = total_revenue + NEW.quantity * NEW.unit_price;
   END IF;
-END;
+END$$
+
+DELIMITER ;
 ```
 
 ## Summary
