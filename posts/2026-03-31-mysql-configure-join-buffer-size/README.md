@@ -92,7 +92,7 @@ FROM orders o
 JOIN customers c ON o.customer_id = c.id\G
 ```
 
-After adding the index, `Extra` should show `Using index` instead of `Using join buffer`.
+After adding the index, the join type should change from `ALL` to `ref` or `eq_ref`, and `Using join buffer` should disappear from `Extra`.
 
 ## Hash Join (MySQL 8.0.18+)
 
@@ -100,12 +100,12 @@ MySQL 8.0.18 introduced hash joins as a replacement for Block Nested Loop joins.
 
 ```sql
 -- Verify hash join is being used
-EXPLAIN FORMAT=JSON SELECT /*+ HASH_JOIN(o) */ o.*, c.name
+EXPLAIN FORMAT=JSON SELECT o.*, c.name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id;
 ```
 
-Look for `"join_algorithm": "hash join"` in the output.
+Look for `"using_join_buffer": "hash join"` in the output.
 
 ## Memory Considerations
 
