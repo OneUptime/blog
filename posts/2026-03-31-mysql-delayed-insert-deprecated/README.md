@@ -22,20 +22,19 @@ The server queued this row and inserted it when the table was not otherwise in u
 
 ## Why It Was Removed
 
-- **MyISAM-only** - `INSERT DELAYED` never worked with InnoDB, NDB, or other storage engines
+- **Limited storage engine support** - `INSERT DELAYED` only worked with MyISAM, MEMORY, ARCHIVE, and BLACKHOLE tables — not with InnoDB, NDB, or most other storage engines
 - **No guarantee of execution** - if the server crashed before flushing the queue, queued rows were lost
-- **No LAST_INSERT_ID** - the function returned 0 because the row was not yet inserted
-- **Deprecated in MySQL 5.6.6**, removed entirely in **MySQL 5.7**
+- **No reliable LAST_INSERT_ID** - the function could not return the AUTO_INCREMENT value because the row was not yet inserted
+- **Deprecated in MySQL 5.6.6**, and its functionality was removed in **MySQL 5.7** (the syntax is still accepted but ignored)
 
 In MySQL 5.7+, using `INSERT DELAYED` causes a warning that the modifier is ignored, and the insert is executed synchronously.
 
 ## Behavior in MySQL 5.7 and 8.0
 
 ```sql
--- MySQL 5.7/8.0: DELAYED is silently ignored, insert runs synchronously
+-- MySQL 5.7/8.0: DELAYED is ignored with a warning, insert runs synchronously
 INSERT DELAYED INTO log_table (message) VALUES ('test');
--- Warning: 1287 'INSERT DELAYED' is deprecated and will be removed in a future release.
--- Please use INSERT (without DELAYED).
+-- Warning: 3005 'INSERT DELAYED is no longer supported. The statement was converted to INSERT.'
 ```
 
 ## Modern Alternatives
@@ -105,4 +104,4 @@ write_queue.put(("PAGE_VIEW", "/home"))
 
 ## Summary
 
-`INSERT DELAYED` was a MyISAM-specific optimization for non-blocking background inserts, deprecated in MySQL 5.6 and removed in MySQL 5.7. Modern applications should use InnoDB with standard inserts, batch inserts for high-throughput logging, or application-side write queues backed by a message broker. These alternatives are more reliable, work with all storage engines, and provide proper durability guarantees.
+`INSERT DELAYED` was an optimization for non-blocking background inserts on MyISAM, MEMORY, ARCHIVE, and BLACKHOLE tables, deprecated in MySQL 5.6 and with its functionality removed in MySQL 5.7. Modern applications should use InnoDB with standard inserts, batch inserts for high-throughput logging, or application-side write queues backed by a message broker. These alternatives are more reliable, work with all storage engines, and provide proper durability guarantees.
