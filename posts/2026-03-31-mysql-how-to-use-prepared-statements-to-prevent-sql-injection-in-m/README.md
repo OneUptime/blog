@@ -143,7 +143,7 @@ cursor.execute(query)
 
 ```sql
 SELECT * FROM performance_schema.prepared_statements_instances
-ORDER BY EXECUTION_COUNT DESC
+ORDER BY COUNT_EXECUTE DESC
 LIMIT 10;
 ```
 
