@@ -74,10 +74,10 @@ db.sessions.find({
 MongoDB stores all dates in UTC. If your application uses a different timezone, convert before querying:
 
 ```javascript
-// User says "today in New York" (UTC-5)
-// New York midnight = 05:00 UTC
-const nyMidnight = new Date("2024-06-15T05:00:00Z");
-const nyEndOfDay = new Date("2024-06-16T04:59:59.999Z");
+// User says "today in New York" (UTC-4 in summer/EDT)
+// New York midnight = 04:00 UTC
+const nyMidnight = new Date("2024-06-15T04:00:00Z");
+const nyEndOfDay = new Date("2024-06-16T04:00:00Z");
 
 db.appointments.find({
   scheduledAt: {
