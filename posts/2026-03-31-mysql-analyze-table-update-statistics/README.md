@@ -99,9 +99,9 @@ ORDER BY INDEX_NAME, SEQ_IN_INDEX;
 ```
 
 ```text
-+--------+----------------+-------------+-------------+--------------+
-| TABLE  | INDEX_NAME     | COLUMN_NAME | CARDINALITY | SEQ_IN_INDEX |
-+--------+----------------+-------------+-------------+--------------+
++------------+----------------+-------------+-------------+--------------+
+| TABLE_NAME | INDEX_NAME     | COLUMN_NAME | CARDINALITY | SEQ_IN_INDEX |
++------------+----------------+-------------+-------------+--------------+
 | orders | PRIMARY        | id          | 100000      | 1            |
 | orders | idx_customer   | customer_id | 998         | 1            |
 | orders | idx_order_date | order_date  | 365         | 1            |
@@ -143,13 +143,13 @@ InnoDB updates statistics automatically when `innodb_stats_auto_recalc = ON` (de
 ```sql
 SHOW VARIABLES LIKE 'innodb_stats_auto_recalc';
 SHOW VARIABLES LIKE 'innodb_stats_persistent';
-SHOW VARIABLES LIKE 'innodb_stats_sample_pages';
+SHOW VARIABLES LIKE 'innodb_stats_persistent_sample_pages';
 ```
 
 **Increase sample pages for more accurate statistics on large tables:**
 
 ```sql
-SET GLOBAL innodb_stats_sample_pages = 20;   -- Default is 8
+SET GLOBAL innodb_stats_persistent_sample_pages = 40;   -- Default is 20
 ANALYZE TABLE orders;
 ```
 
@@ -184,7 +184,7 @@ DO
 
 - Run `ANALYZE TABLE` after any bulk data operation that changes more than 10% of rows in a table.
 - Use `ANALYZE LOCAL TABLE` on replicas to update statistics without generating binlog events.
-- Increase `innodb_stats_sample_pages` for very large tables where default sampling produces inconsistent cardinality estimates.
+- Increase `innodb_stats_persistent_sample_pages` for very large tables where default sampling produces inconsistent cardinality estimates.
 - Monitor execution plans with `EXPLAIN` on key queries after each major data load to verify the optimizer is using the expected index.
 - Do not over-run `ANALYZE TABLE` on small tables - InnoDB's auto-recalculation handles these well.
 - Schedule nightly analysis for tables with high churn as part of routine maintenance.
