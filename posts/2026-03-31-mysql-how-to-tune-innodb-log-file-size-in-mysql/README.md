@@ -30,7 +30,7 @@ SHOW VARIABLES LIKE 'innodb_log%';
 +-----------------------------+----------+
 ```
 
-The default total redo log size is 2 x 50 MB = 100 MB - too small for write-heavy workloads.
+The default total redo log size is 2 x 48 MB = 96 MB - too small for write-heavy workloads.
 
 ## Check How Often Checkpoints Are Triggered
 
@@ -56,16 +56,16 @@ If `Log sequence number` and `Last checkpoint at` are close together, checkpoint
 A common approach is to measure 1 hour of redo log writes under typical load:
 
 ```sql
-SELECT variable_value INTO @lsn1
+SELECT variable_value INTO @written1
 FROM performance_schema.global_status
-WHERE variable_name = 'Innodb_lsn_last_checkpoint';
+WHERE variable_name = 'Innodb_os_log_written';
 
 -- Wait 1 hour, then run:
-SELECT variable_value INTO @lsn2
+SELECT variable_value INTO @written2
 FROM performance_schema.global_status
-WHERE variable_name = 'Innodb_lsn_last_checkpoint';
+WHERE variable_name = 'Innodb_os_log_written';
 
-SELECT ROUND((@lsn2 - @lsn1) / 1024 / 1024, 0) AS redo_log_mb_per_hour;
+SELECT ROUND((@written2 - @written1) / 1024 / 1024, 0) AS redo_log_mb_per_hour;
 ```
 
 Set the total redo log size to 1-2x the hourly write volume. A 1-4 GB total log size is typical for write-heavy production servers.
@@ -105,11 +105,8 @@ Procedure for MySQL 5.7:
 # 1. Stop MySQL cleanly
 systemctl stop mysql
 
-# 2. Remove old log files
-rm /var/lib/mysql/ib_logfile0
-rm /var/lib/mysql/ib_logfile1
-
-# 3. Update my.cnf with new size, then start MySQL
+# 2. Update my.cnf with new innodb_log_file_size, then start MySQL
+# MySQL 5.7+ detects the size change and recreates log files automatically
 systemctl start mysql
 ```
 
