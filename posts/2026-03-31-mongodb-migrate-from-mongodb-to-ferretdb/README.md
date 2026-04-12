@@ -120,8 +120,6 @@ Run a document-level comparison to confirm data integrity:
 
 ```python
 import pymongo
-import hashlib
-import json
 
 source = pymongo.MongoClient("mongodb://mongo-host:27017")
 target = pymongo.MongoClient("mongodb://ferretdb-host:27017")
