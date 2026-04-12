@@ -43,7 +43,7 @@ public class DatabasePool {
 
     static {
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:mysql://localhost:3306/mydb?useSSL=false&serverTimezone=UTC");
+        config.setJdbcUrl("jdbc:mysql://localhost:3306/mydb?sslMode=DISABLED&serverTimezone=UTC");
         config.setUsername("root");
         config.setPassword("password");
         config.setMaximumPoolSize(20);
@@ -51,7 +51,6 @@ public class DatabasePool {
         config.setIdleTimeout(300_000);        // 5 minutes
         config.setConnectionTimeout(30_000);   // 30 seconds
         config.setMaxLifetime(1_800_000);      // 30 minutes
-        config.setConnectionTestQuery("SELECT 1");
         config.addDataSourceProperty("cachePrepStmts", "true");
         config.addDataSourceProperty("prepStmtCacheSize", "250");
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
@@ -101,20 +100,21 @@ public List<Product> findAffordableProducts(double maxPrice) throws SQLException
 
 ```java
 import org.apache.commons.dbcp2.BasicDataSource;
+import java.time.Duration;
 
 BasicDataSource ds = new BasicDataSource();
-ds.setUrl("jdbc:mysql://localhost:3306/mydb?useSSL=false&serverTimezone=UTC");
+ds.setUrl("jdbc:mysql://localhost:3306/mydb?sslMode=DISABLED&serverTimezone=UTC");
 ds.setUsername("root");
 ds.setPassword("password");
 ds.setInitialSize(5);
 ds.setMaxTotal(20);
 ds.setMaxIdle(10);
 ds.setMinIdle(5);
-ds.setMaxWaitMillis(30_000);
+ds.setMaxWait(Duration.ofSeconds(30));
 ds.setValidationQuery("SELECT 1");
 ds.setTestOnBorrow(true);
 ds.setTestWhileIdle(true);
-ds.setTimeBetweenEvictionRunsMillis(60_000);
+ds.setDurationBetweenEvictionRuns(Duration.ofSeconds(60));
 ```
 
 ## Spring Boot Integration
@@ -124,7 +124,7 @@ Spring Boot auto-configures HikariCP when it is on the classpath:
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/mydb?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/mydb?sslMode=DISABLED&serverTimezone=UTC
     username: root
     password: password
     hikari:
@@ -147,4 +147,4 @@ System.out.println("Waiting: " + poolMXBean.getThreadsAwaitingConnection());
 
 ## Summary
 
-HikariCP is the recommended connection pool for Java MySQL applications due to its low latency and minimal overhead. Configure `maximumPoolSize` based on your workload (typically 10-20 for OLTP), enable `connectionTestQuery` to detect stale connections, and monitor pool metrics in production. Spring Boot auto-configures HikariCP when the dependency is present.
+HikariCP is the recommended connection pool for Java MySQL applications due to its low latency and minimal overhead. Configure `maximumPoolSize` based on your workload (typically 10-20 for OLTP) and monitor pool metrics in production. With JDBC4 drivers like MySQL Connector/J 8.x, HikariCP automatically uses `Connection.isValid()` to detect stale connections, so you do not need to set `connectionTestQuery`. Spring Boot auto-configures HikariCP when the dependency is present.
