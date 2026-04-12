@@ -20,7 +20,7 @@ graph TD
         L1["local - Returns most recent data on the queried node\n(may be rolled back)"]
         L2["available - Like local but no causally consistent sessions\n(for sharded clusters, may return orphaned docs)"]
         L3["majority - Returns only data acknowledged by majority\n(crash-safe, cannot be rolled back)"]
-        L4["linearizable - Read your own writes guarantee\n(reads from primary only, slowest)"]
+        L4["linearizable - Strongest consistency, real-time ordering\n(reads from primary only, slowest)"]
         L5["snapshot - Point-in-time snapshot for multi-doc transactions"]
     end
     L1 --> L2 --> L3 --> L4
@@ -28,7 +28,7 @@ graph TD
 
 ## Default Behavior
 
-Without specifying `readConcern`, MongoDB uses `local` for standalone and replica set reads, and `available` for sharded cluster reads.
+Without specifying `readConcern`, MongoDB uses `local` as the default for all read operations, including standalone, replica set, and sharded cluster deployments.
 
 ## local readConcern
 
@@ -36,9 +36,8 @@ Returns the most recent data available on the queried node. Data may be rolled b
 
 ```javascript
 db.orders.find(
-  { status: "pending" },
-  { readConcern: { level: "local" } }
-).toArray()
+  { status: "pending" }
+).readConcern("local").toArray()
 
 // Same as the default
 db.orders.find({ status: "pending" }).toArray()
@@ -52,9 +51,8 @@ Returns only data that has been acknowledged by a majority of replica set member
 
 ```javascript
 db.orders.find(
-  { orderId: "ORD-1001" },
-  { readConcern: { level: "majority" } }
-).toArray()
+  { orderId: "ORD-1001" }
+).readConcern("majority").toArray()
 ```
 
 In Node.js driver:
@@ -70,13 +68,12 @@ Use `majority` for: financial records, inventory counts, or anything where readi
 
 ## linearizable readConcern
 
-Guarantees that the read reflects the latest write from the same client (read-your-own-writes). Always reads from the primary and waits for all in-progress majority writes to complete.
+Guarantees that the read reflects all successful majority-acknowledged writes that completed before the start of the read operation, from any client. Always reads from the primary and may wait for in-progress majority writes to propagate.
 
 ```javascript
-db.accounts.findOne(
-  { accountId: "ACC-7777" },
-  { readConcern: { level: "linearizable" }, maxTimeMS: 10000 }
-)
+db.accounts.find(
+  { accountId: "ACC-7777" }
+).readConcern("linearizable").maxTimeMS(10000).next()
 ```
 
 **Important**: Always set `maxTimeMS` with `linearizable` to prevent the operation from hanging if the primary is unavailable.
@@ -144,7 +141,7 @@ These two are complementary:
 Example combining both:
 
 ```javascript
-// Read majority-committed data from the nearest secondary
+// Read majority-committed data from the nearest member (primary or secondary)
 db.collection("events").find(
   { type: "purchase" },
   {
@@ -162,16 +159,15 @@ Use causal sessions to guarantee that reads always see your own writes, even whe
 
 ```javascript
 const session = db.getMongo().startSession({ causalConsistency: true })
-const col = session.getDatabase("ecommerce").collection("orders")
+const sessionDb = session.getDatabase("ecommerce")
 
 // Write
-await col.insertOne({ orderId: "ORD-9999", status: "created" })
+sessionDb.orders.insertOne({ orderId: "ORD-9999", status: "created" })
 
 // Read from secondary - guaranteed to see the above write
-const order = await col.findOne(
-  { orderId: "ORD-9999" },
-  { readConcern: { level: "majority" }, readPreference: "secondary" }
-)
+const order = sessionDb.orders.find(
+  { orderId: "ORD-9999" }
+).readConcern("majority").readPref("secondary").next()
 ```
 
 ## Performance Implications
@@ -186,4 +182,4 @@ const order = await col.findOne(
 
 ## Summary
 
-MongoDB's `readConcern` controls data consistency for read operations. Use `local` for high-throughput scenarios where slight staleness is acceptable, `majority` for financial or inventory data that must never reflect rolled-back writes, and `linearizable` for strict read-your-own-writes guarantees. Always pair `linearizable` with `maxTimeMS`. For multi-document atomic operations, use `snapshot` within a transaction. Set a cluster-wide default with `setDefaultRWConcern` to enforce consistency policies across your application.
+MongoDB's `readConcern` controls data consistency for read operations. Use `local` for high-throughput scenarios where slight staleness is acceptable, `majority` for financial or inventory data that must never reflect rolled-back writes, and `linearizable` for the strongest real-time consistency guarantees. Always pair `linearizable` with `maxTimeMS`. For multi-document atomic operations, use `snapshot` within a transaction. Set a cluster-wide default with `setDefaultRWConcern` to enforce consistency policies across your application.
