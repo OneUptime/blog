@@ -24,7 +24,8 @@ CREATE TABLE events (
   metadata      JSON,
   version       INT UNSIGNED  NOT NULL,
   occurred_at   DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  INDEX idx_aggregate (aggregate_type, aggregate_id, version)
+  INDEX idx_aggregate (aggregate_type, aggregate_id, version),
+  UNIQUE KEY uq_aggregate_version (aggregate_type, aggregate_id, version)
 ) ENGINE=InnoDB;
 ```
 
@@ -38,15 +39,14 @@ Before inserting a new event, verify the expected version to prevent lost update
 -- Wrap in a transaction
 START TRANSACTION;
 
-SELECT MAX(version) INTO @current_version
+SELECT COALESCE(MAX(version), 0) INTO @current_version
 FROM events
 WHERE aggregate_id = 'order-42' AND aggregate_type = 'Order'
 FOR UPDATE;
 
--- Fail if another writer already advanced the version
-IF @current_version IS NOT NULL AND @current_version != @expected_version THEN
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Concurrency conflict';
-END IF;
+-- Application code should check @current_version = @expected_version here.
+-- If they differ, roll back to signal a concurrency conflict.
+-- The UNIQUE constraint on (aggregate_type, aggregate_id, version) acts as a safety net.
 
 INSERT INTO events (aggregate_id, aggregate_type, event_type, payload, version)
 VALUES (
