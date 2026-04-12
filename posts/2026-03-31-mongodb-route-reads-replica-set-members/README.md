@@ -153,12 +153,12 @@ const explainResult = await db.collection("orders")
   .explain();
 
 // Check the serverInfo field to see which node was used
-print(explainResult.serverInfo.host);
+console.log(explainResult.serverInfo.host);
 ```
 
 ## Hidden Members and Tags
 
-Hidden secondary members (those with `hidden: true`) cannot be tagged for reads - they are excluded from all read preferences including `"secondary"`. Use hidden members exclusively for backup or delayed replication purposes.
+Hidden secondary members (those with `hidden: true`) can have tags, but they are excluded from all read preference routing because they do not appear in the client's server topology (they are omitted from `hello`/`isMaster` responses). Reads will never be routed to hidden members regardless of their tags. Tags on hidden members are still useful for custom write concern modes via `settings.getLastErrorModes`. Use hidden members primarily for backup or delayed replication purposes.
 
 ## Summary
 
