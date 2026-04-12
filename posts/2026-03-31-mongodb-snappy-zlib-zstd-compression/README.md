@@ -16,7 +16,7 @@ WiredTiger supports three compression algorithms for collection data: Snappy (de
 |-----------|---------|-------------------|----------|-----------------------------|
 | Snappy    | Yes     | Moderate (2-3x)   | Very Low | General purpose, low latency |
 | Zlib      | No      | High (3-5x)       | Medium   | Storage-constrained systems |
-| Zstd      | No      | Very High (4-8x)  | Low-Med  | Best ratio with low CPU cost |
+| Zstd      | No      | High (3-5x)       | Low-Med  | Best ratio with low CPU cost |
 
 ## Setting Compression in mongod.conf
 
@@ -54,11 +54,11 @@ db.getCollectionInfos({ name: "logs" })[0].options.storageEngine
 
 ## Recompressing an Existing Collection
 
-To change compression on an existing collection, you must compact or recreate it:
+To change compression on an existing collection, update the `blockCompressor` in `mongod.conf`, restart MongoDB, then compact the collection to rewrite its data with the new compressor:
 
 ```javascript
-// Compact triggers recompression with the new algorithm
-db.runCommand({ compact: "logs", comment: "recompress with zstd" });
+// After updating blockCompressor in mongod.conf and restarting mongod
+db.runCommand({ compact: "logs" });
 ```
 
 Or use `mongodump` / `mongorestore` to a new collection with the desired compressor.
