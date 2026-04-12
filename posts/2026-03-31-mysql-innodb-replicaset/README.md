@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, InnoDB ReplicaSet, Replication, MySQL Shell, High Availability
 
-Description: Learn how to create and manage a MySQL InnoDB ReplicaSet using MySQL Shell for simplified asynchronous replication with automated failover support.
+Description: Learn how to create and manage a MySQL InnoDB ReplicaSet using MySQL Shell for simplified asynchronous replication with manual failover support.
 
 ---
 
@@ -113,7 +113,7 @@ rs.forcePrimaryInstance('replica1:3306')
 After the original primary recovers, rejoin it:
 
 ```javascript
-rs.addInstance('admin@primary:3306', {recoveryMethod: 'incremental'})
+rs.rejoinInstance('admin@primary:3306')
 ```
 
 ## Integrate with MySQL Router
@@ -122,8 +122,7 @@ Bootstrap MySQL Router to route traffic using the ReplicaSet:
 
 ```bash
 mysqlrouter --bootstrap admin@primary:3306 \
-  --user=mysqlrouter \
-  --conf-target-cluster=myReplicaSet
+  --user=mysqlrouter
 sudo systemctl start mysqlrouter
 ```
 
@@ -135,7 +134,7 @@ Router creates ports:
 
 | Feature | ReplicaSet | InnoDB Cluster |
 |---------|-----------|----------------|
-| Replication | Asynchronous | Synchronous (Group Replication) |
+| Replication | Asynchronous | Virtually Synchronous (Group Replication) |
 | Auto-failover | No (manual) | Yes |
 | Write consistency | Eventual | Strong |
 | Setup complexity | Lower | Higher |
