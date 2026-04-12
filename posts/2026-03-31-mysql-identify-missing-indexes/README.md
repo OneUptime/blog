@@ -71,13 +71,13 @@ ORDER BY avg_rows_examined DESC
 LIMIT 10;
 ```
 
-High `avg_rows_examined` with low `COUNT_STAR` rows returned indicates the query is scanning far more rows than needed - a likely missing index.
+High `avg_rows_examined` relative to the rows actually needed indicates the query is scanning far more rows than necessary - a likely missing index.
 
 ## Using sys Schema
 
 ```sql
 -- Queries without index use
-SELECT query, exec_count, avg_latency, rows_examined_avg
+SELECT query, exec_count, total_latency, rows_examined_avg
 FROM sys.statements_with_full_table_scans
 WHERE db = 'your_database'
 ORDER BY rows_examined_avg DESC
