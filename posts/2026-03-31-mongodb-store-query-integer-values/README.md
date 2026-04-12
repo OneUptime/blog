@@ -84,7 +84,7 @@ db.articles.updateOne({ _id: articleId }, { $inc: { views: 1 } });
 
 ## Type Mismatch Bug
 
-Mixing integer and double types in a collection causes type-sensitive queries to miss documents:
+Mixing strings and numbers in a collection causes queries to miss documents because MongoDB does not coerce types during comparison:
 
 ```javascript
 // This document stores price as a string "29"
@@ -105,7 +105,7 @@ Fix them with an update:
 
 ```javascript
 db.products.find({ price: { $type: "string" } }).forEach((doc) => {
-  db.products.updateOne({ _id: doc._id }, { $set: { price: parseInt(doc.price) } });
+  db.products.updateOne({ _id: doc._id }, { $set: { price: NumberInt(doc.price) } });
 });
 ```
 
