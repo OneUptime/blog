@@ -115,7 +115,7 @@ from datetime import datetime, timedelta
 cutoff = (datetime.utcnow() - timedelta(days=30)).isoformat()
 for line in sys.stdin:
   doc = json.loads(line)
-  if doc.get('atype') == 'authenticate' and doc['ts']['date'] > cutoff:
+  if doc.get('atype') == 'authenticate' and doc['ts']['\$date'] > cutoff:
     print(json.dumps({'ts': doc['ts'], 'user': doc['users'], 'result': doc['result']}))
 "
 ```
@@ -132,7 +132,7 @@ db.adminCommand({
 })
 
 // Create a change log collection for application-level schema changes
-await db.collection('schema_changes').insertOne({
+db.schema_changes.insertOne({
   changedAt: new Date(),
   changedBy: 'eng-team',
   changeType: 'index_added',
