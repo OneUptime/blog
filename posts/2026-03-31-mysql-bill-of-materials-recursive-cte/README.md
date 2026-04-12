@@ -145,10 +145,17 @@ ORDER BY wu.level DESC;
 
 ## Cycle Detection
 
-In a well-formed BOM cycles should not exist, but data entry errors can create them. Add a cycle guard:
+In a well-formed BOM cycles should not exist, but data entry errors can create them. Add a comma-separated ID path column to your CTE and use it as a cycle guard:
 
 ```sql
-WHERE FIND_IN_SET(b.child_id, CAST(be.path AS CHAR(1000))) = 0
+CAST(b.child_id AS CHAR(1000)) AS id_path          -- in the anchor member
+CONCAT(be.id_path, ',', b.child_id) AS id_path     -- in the recursive member
+```
+
+Then add this filter to the recursive member:
+
+```sql
+WHERE FIND_IN_SET(b.child_id, be.id_path) = 0
 ```
 
 Or rely on `cte_max_recursion_depth` (default 1000) to stop infinite recursion.
