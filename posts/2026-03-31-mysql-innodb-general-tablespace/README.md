@@ -84,14 +84,25 @@ ALTER TABLE orders TABLESPACE innodb_file_per_table;
 
 ## Row Format Considerations
 
-General tablespaces support `REDUNDANT`, `COMPACT`, and `DYNAMIC` row formats. The `COMPRESSED` row format is not supported in general tablespaces:
+General tablespaces support all row formats: `REDUNDANT`, `COMPACT`, `DYNAMIC`, and `COMPRESSED`. However, compressed and uncompressed tables cannot coexist in the same general tablespace due to different physical page sizes. To store compressed tables, specify `FILE_BLOCK_SIZE` when creating the tablespace:
 
 ```sql
--- Dynamic row format works fine
+-- Dynamic row format works fine in a standard general tablespace
 CREATE TABLE large_blobs (
     id INT PRIMARY KEY,
     data LONGBLOB
 ) ROW_FORMAT=DYNAMIC TABLESPACE app_data;
+
+-- For compressed tables, create a separate tablespace with FILE_BLOCK_SIZE
+CREATE TABLESPACE compressed_ts
+    ADD DATAFILE 'compressed_ts.ibd'
+    FILE_BLOCK_SIZE = 8192
+    ENGINE=InnoDB;
+
+CREATE TABLE compressed_data (
+    id INT PRIMARY KEY,
+    payload TEXT
+) ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8 TABLESPACE compressed_ts;
 ```
 
 ## Dropping a General Tablespace
