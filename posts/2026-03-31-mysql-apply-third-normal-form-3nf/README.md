@@ -24,18 +24,18 @@ A **transitive dependency** exists when: column C depends on column B, and colum
 ## Example of a 3NF Violation
 
 ```sql
--- VIOLATES 3NF: zip_code -> city -> state creates transitive dependency
+-- VIOLATES 3NF: city and state depend on zip_code, not the primary key
 CREATE TABLE customers (
     id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name       VARCHAR(100) NOT NULL,
     email      VARCHAR(255) NOT NULL,
     zip_code   CHAR(5)      NOT NULL,
     city       VARCHAR(100) NOT NULL,   -- depends on zip_code, not id
-    state      CHAR(2)      NOT NULL    -- depends on zip_code (or city), not id
+    state      CHAR(2)      NOT NULL    -- depends on zip_code, not id
 );
 ```
 
-Here: `state` depends on `city`, and `city` depends on `zip_code`, and `zip_code` depends on `id`. If a city's state changes (rare but possible), you must update every customer row in that city.
+Here both `city` and `state` depend on `zip_code`, and `zip_code` depends on `id`. This makes `city` and `state` transitively dependent on the primary key through the non-key column `zip_code`. If a zip code is reassigned to a different city, you must update every customer row with that zip code.
 
 ## Applying 3NF: Extract the Transitive Dependency
 
