@@ -27,6 +27,7 @@ db.createUser({
   pwd: "DatadogPass123",
   roles: [
     { role: "read", db: "admin" },
+    { role: "readAnyDatabase", db: "admin" },
     { role: "clusterMonitor", db: "admin" },
     { role: "read", db: "local" }
   ]
@@ -81,7 +82,7 @@ annotations:
           {
             "hosts": ["%%host%%:27017"],
             "username": "datadog",
-            "password": "ENC[datadog_key:mongo_password]"
+            "password": "ENC[mongo_credentials;password]"
           }
         ]
       }
@@ -114,10 +115,10 @@ mongodb.connections.available        - Remaining connection slots
 mongodb.opcounters.query             - Queries per second
 mongodb.opcounters.insert            - Inserts per second
 mongodb.mem.resident                 - Resident memory (MB)
-mongodb.repl.lag                     - Replication lag (seconds)
-mongodb.wiredtiger.cache.bytes_inuse - Cache bytes in use
-mongodb.stats.dataSize               - Total data size
-mongodb.stats.indexSize              - Total index size
+mongodb.replset.replicationlag       - Replication lag (seconds)
+mongodb.wiredtiger.cache.bytes_currently_in_cache - Cache bytes in use
+mongodb.stats.data_size              - Total data size
+mongodb.stats.index_size             - Total index size
 ```
 
 ## Creating a Datadog Monitor
