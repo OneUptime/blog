@@ -22,12 +22,14 @@ Production MongoDB deployments need alerts in five categories:
 Set up alerts in MongoDB Atlas using the Admin API:
 
 ```bash
-BASE_URL="https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/alertConfigs"
+BASE_URL="https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/alertConfigs"
 AUTH="-u PUBLIC_KEY:PRIVATE_KEY --digest"
+ACCEPT="Accept: application/vnd.atlas.2025-01-01+json"
 
 # Alert: Primary election occurred
 curl $AUTH -X POST "$BASE_URL" \
   -H "Content-Type: application/json" \
+  -H "$ACCEPT" \
   -d '{
     "eventTypeName": "PRIMARY_ELECTED",
     "enabled": true,
@@ -49,13 +51,16 @@ Alert when disk approaches capacity:
 # Alert at 75% disk usage
 curl $AUTH -X POST "$BASE_URL" \
   -H "Content-Type: application/json" \
+  -H "$ACCEPT" \
   -d '{
-    "eventTypeName": "DISK_SPACE_USED_EXCEEDS",
+    "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
     "enabled": true,
-    "threshold": {
+    "metricThreshold": {
+      "metricName": "DISK_PARTITION_SPACE_USED_DATA",
       "operator": "GREATER_THAN",
       "threshold": 75,
-      "units": "RAW"
+      "units": "RAW",
+      "mode": "AVERAGE"
     },
     "notifications": [{
       "typeName": "EMAIL",
@@ -67,14 +72,15 @@ curl $AUTH -X POST "$BASE_URL" \
   }'
 ```
 
-## Step 3: Replication Lag Alert
+## Step 3: Oplog Window Alert
 
-Alert when secondaries fall behind the primary:
+Alert when the oplog window is running low:
 
 ```bash
-# Alert when replication lag exceeds 30 seconds
+# Alert when oplog window drops below 1 hour
 curl $AUTH -X POST "$BASE_URL" \
   -H "Content-Type: application/json" \
+  -H "$ACCEPT" \
   -d '{
     "eventTypeName": "REPLICATION_OPLOG_WINDOW_RUNNING_OUT",
     "enabled": true,
@@ -86,7 +92,7 @@ curl $AUTH -X POST "$BASE_URL" \
     "notifications": [{
       "typeName": "SLACK",
       "apiToken": "{slackApiToken}",
-      "channelName": "#mongodb-alerts",
+      "channelName": "mongodb-alerts",
       "intervalMin": 15,
       "delayMin": 5
     }]
@@ -100,12 +106,16 @@ Alert before connection pool is exhausted:
 ```bash
 curl $AUTH -X POST "$BASE_URL" \
   -H "Content-Type: application/json" \
+  -H "$ACCEPT" \
   -d '{
-    "eventTypeName": "CONNECTIONS_PERCENT_OVER_CONFIGURED_LIMIT",
+    "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
     "enabled": true,
-    "threshold": {
+    "metricThreshold": {
+      "metricName": "CONNECTIONS_PERCENT",
       "operator": "GREATER_THAN",
-      "threshold": 80
+      "threshold": 80,
+      "units": "RAW",
+      "mode": "AVERAGE"
     },
     "notifications": [{
       "typeName": "EMAIL",
@@ -213,4 +223,4 @@ if current / (current + available) > 0.8:
 
 ## Summary
 
-Production MongoDB alerting should cover primary elections, disk usage above 75%, replication lag above 30 seconds, connection pool usage above 80%, and authentication failures. Use MongoDB Atlas alert configurations for managed deployments, Prometheus alerting rules for self-hosted clusters, or custom scripts with webhook notifications for simpler environments. Configure alerts before go-live so the team is ready to respond from day one.
+Production MongoDB alerting should cover primary elections, disk usage above 75%, oplog window thresholds, replication lag, connection pool usage above 80%, and authentication failures. Use MongoDB Atlas alert configurations for managed deployments, Prometheus alerting rules for self-hosted clusters, or custom scripts with webhook notifications for simpler environments. Configure alerts before go-live so the team is ready to respond from day one.
