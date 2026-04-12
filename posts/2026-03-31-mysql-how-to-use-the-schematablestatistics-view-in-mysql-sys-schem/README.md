@@ -10,7 +10,7 @@ Description: Learn how to use the schema_table_statistics view in the MySQL sys 
 
 ## What Is schema_table_statistics?
 
-The `schema_table_statistics` view in the MySQL `sys` schema provides aggregated statistics for each table, including total I/O latency, rows fetched, inserted, updated, and deleted. It is built on top of the `performance_schema.table_io_waits_summary_by_table` table and formats values in a human-readable way.
+The `schema_table_statistics` view in the MySQL `sys` schema provides aggregated statistics for each table, including total I/O latency, rows fetched, inserted, updated, and deleted. It is built on top of the `performance_schema.table_io_waits_summary_by_table` and `performance_schema.file_summary_by_instance` tables and formats values in a human-readable way.
 
 This view is invaluable for identifying the most active or slowest tables in your database.
 
@@ -57,8 +57,12 @@ LIMIT 10;
 | `delete_latency` | Total latency for delete operations |
 | `io_read_requests` | Total read I/O requests |
 | `io_read` | Total bytes read |
+| `io_read_latency` | Total latency for read I/O |
 | `io_write_requests` | Total write I/O requests |
 | `io_write` | Total bytes written |
+| `io_write_latency` | Total latency for write I/O |
+| `io_misc_requests` | Total miscellaneous I/O requests |
+| `io_misc_latency` | Total latency for miscellaneous I/O |
 
 ## Finding the Most Active Tables
 
