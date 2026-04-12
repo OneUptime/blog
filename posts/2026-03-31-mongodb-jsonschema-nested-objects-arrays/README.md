@@ -119,8 +119,8 @@ db.createCollection("invoices", {
 db.invoices.insertOne({
   invoiceNumber: "INV-2026-001",
   lineItems: [
-    { sku: "WIDGET-A", quantity: 5, unitPrice: 9.99 },
-    { sku: "WIDGET-B", description: "Premium", quantity: 2, unitPrice: 24.99 }
+    { sku: "WIDGET-A", quantity: NumberInt(5), unitPrice: 9.99 },
+    { sku: "WIDGET-B", description: "Premium", quantity: NumberInt(2), unitPrice: 24.99 }
   ]
 });
 ```
