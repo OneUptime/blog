@@ -114,6 +114,7 @@ UPDATE products SET stock = 0 WHERE stock < 0;
 SELECT ROW_COUNT();  -- How many rows were updated
 
 -- FOUND_ROWS(): rows returned by last SELECT (with SQL_CALC_FOUND_ROWS)
+-- Note: SQL_CALC_FOUND_ROWS and FOUND_ROWS() are deprecated as of MySQL 8.0.17
 SELECT SQL_CALC_FOUND_ROWS * FROM products LIMIT 10;
 SELECT FOUND_ROWS();  -- Total matching rows (ignoring LIMIT)
 ```
