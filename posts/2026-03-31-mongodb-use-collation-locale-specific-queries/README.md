@@ -59,7 +59,7 @@ Important: the query must specify the same collation as the index for the index 
 ## Accent-Insensitive Search (Strength 1)
 
 ```javascript
-// Find "resume", "resume", "Resume" - ignoring both case and accents
+// Find "résumé", "resume", "Resume" - ignoring both case and accents
 db.documents.find(
   { title: "resume" }
 ).collation({ locale: "fr", strength: 1 })
