@@ -16,12 +16,12 @@ InnoDB is designed for ACID compliance. After a crash, it automatically recovers
 - **Undo log** - records the original values before a transaction modified them.
 
 On restart after a crash, InnoDB:
-1. Rolls forward committed transactions from the redo log.
+1. Rolls forward all transactions (committed and uncommitted) by replaying the redo log.
 2. Rolls back uncommitted transactions using the undo log.
 
 ## The Redo Log
 
-The redo log is a circular set of files (`ib_logfile0`, `ib_logfile1`) that records every physical change to data pages. These changes are written to the redo log synchronously before the data page is modified in the buffer pool (Write-Ahead Logging - WAL).
+The redo log is a circular set of files (`ib_logfile0`, `ib_logfile1`) that records every physical change to data pages. Under the Write-Ahead Logging (WAL) protocol, redo log records must be flushed to disk before the corresponding dirty data pages are flushed from the buffer pool to disk. This ensures that changes can always be recovered from the redo log even if a crash occurs before the data pages are written.
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_log_file_size';
@@ -29,7 +29,7 @@ SHOW VARIABLES LIKE 'innodb_log_files_in_group';
 -- e.g., 2 files of 512MB each = 1GB redo log
 ```
 
-In MySQL 8.0.30+, InnoDB uses a single `#ib_redo` log file and manages it automatically.
+In MySQL 8.0.30+, InnoDB manages redo log files dynamically in the `#innodb_redo` directory (with individual files named `#ib_redo<N>`). The `innodb_log_file_size` and `innodb_log_files_in_group` variables are deprecated in favor of `innodb_redo_log_capacity`.
 
 ## The Undo Log
 
@@ -99,10 +99,19 @@ tail -f /var/log/mysql/error.log
 
 ## Controlling Redo Log Size
 
+For MySQL versions before 8.0.30:
+
 ```text
 [mysqld]
 innodb_log_file_size = 1G       -- Larger = faster writes, slower recovery
 innodb_log_files_in_group = 2   -- Total redo log = 2GB
+```
+
+For MySQL 8.0.30+, use `innodb_redo_log_capacity` instead:
+
+```text
+[mysqld]
+innodb_redo_log_capacity = 2G   -- Total redo log capacity
 ```
 
 For high write workloads, a larger redo log reduces checkpoint pressure. A common recommendation is to size the redo log large enough for 1 hour of writes.
@@ -120,7 +129,7 @@ Before writing a dirty page to its actual location on disk, InnoDB writes it to 
 
 ## Forcing Recovery from a Catastrophic State
 
-If normal recovery fails, use `innodb_force_recovery` to bypass redo log and start the server in read-only mode for data extraction:
+If normal recovery fails, use `innodb_force_recovery` to start the server despite corruption. Higher levels progressively skip more recovery steps (level 6 skips redo log replay entirely). At any level above 0, InnoDB prevents DML operations, so you can only extract data:
 
 ```text
 [mysqld]
