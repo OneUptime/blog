@@ -24,14 +24,15 @@ sh.shardCollection("mydb.events", { userId: 1 })
 
 // After sharding, inspect the initial chunk distribution
 use config
-db.chunks.find({ ns: "mydb.events" }).pretty()
+const collUUID = db.collections.findOne({ _id: "mydb.events" }).uuid
+db.chunks.find({ uuid: collUUID }).pretty()
 ```
 
 Example output showing chunk ranges:
 
 ```json
 {
-  "ns": "mydb.events",
+  "uuid": UUID("ab12cd34-ef56-7890-ab12-cd34ef567890"),
   "shard": "shard01",
   "min": { "userId": { "$minKey": 1 } },
   "max": { "userId": 100000 }
@@ -79,7 +80,8 @@ A jumbo chunk is a chunk that has grown beyond the configured maximum size but c
 ```javascript
 // Identify jumbo chunks
 use config
-db.chunks.find({ ns: "mydb.events", jumbo: true })
+const collUUID = db.collections.findOne({ _id: "mydb.events" }).uuid
+db.chunks.find({ uuid: collUUID, jumbo: true })
 ```
 
 To resolve jumbo chunks, you need to either:
@@ -97,8 +99,9 @@ sh.status()
 
 // Count chunks per shard for a namespace
 use config
+const collUUID = db.collections.findOne({ _id: "mydb.events" }).uuid
 db.chunks.aggregate([
-  { $match: { ns: "mydb.events" } },
+  { $match: { uuid: collUUID } },
   { $group: { _id: "$shard", count: { $sum: 1 } } },
   { $sort: { count: -1 } }
 ])
