@@ -60,9 +60,12 @@ Ideally, each shard holds roughly equal percentages.
 ```javascript
 use config
 
+// Get the collection UUID first
+const collUUID = db.collections.findOne({ _id: "myapp.orders" }).uuid
+
 // Count chunks per shard for a specific collection
 db.chunks.aggregate([
-  { $match: { ns: "myapp.orders" } },
+  { $match: { uuid: collUUID } },
   { $group: { _id: "$shard", count: { $sum: 1 } } },
   { $sort: { count: -1 } }
 ])
@@ -72,7 +75,8 @@ db.chunks.aggregate([
 
 ```javascript
 use config
-db.chunks.find({ ns: "myapp.orders" }, { min: 1, max: 1, shard: 1 })
+const collUUID = db.collections.findOne({ _id: "myapp.orders" }).uuid
+db.chunks.find({ uuid: collUUID }, { min: 1, max: 1, shard: 1 })
   .sort({ min: 1 })
 ```
 
@@ -82,7 +86,8 @@ Jumbo chunks are too large to migrate and block balancing:
 
 ```javascript
 use config
-db.chunks.find({ ns: "myapp.orders", jumbo: true })
+const collUUID = db.collections.findOne({ _id: "myapp.orders" }).uuid
+db.chunks.find({ uuid: collUUID, jumbo: true })
 ```
 
 A jumbo chunk means either the chunk has too many documents to split or the shard key has low cardinality for that range.

@@ -35,8 +35,8 @@ Output:
 
 ```text
 open.total        - Total open cursors right now
-open.singleTarget - Cursors targeting a single collection/index
-open.pinned       - Pinned cursors (used by change streams, getMore chains)
+open.singleTarget - Cursors targeting a single shard (mongos only)
+open.pinned       - Cursors currently in active use by an operation (pinned to prevent deletion)
 open.noTimeout    - Cursors with noCursorTimeout=true set (never expire)
 timedOut          - Cumulative cursors that expired after timeout
 ```
@@ -94,10 +94,10 @@ db.adminCommand({
   if (op.type === "idleCursor") {
     print(JSON.stringify({
       cursorId: op.cursor.cursorId,
-      ns: op.cursor.ns,
+      ns: op.ns,
       appName: op.clientMetadata?.application?.name,
-      createdAt: op.cursor.createdAt,
-      secsIdle: op.cursor.secsIdle
+      createdDate: op.cursor.createdDate,
+      lastAccessDate: op.cursor.lastAccessDate
     }))
   }
 })
