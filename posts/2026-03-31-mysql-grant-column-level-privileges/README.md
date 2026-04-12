@@ -105,7 +105,7 @@ SELECT salary FROM mydb.employees;
 
 ```sql
 REVOKE SELECT (salary) ON mydb.employees FROM 'hr_viewer'@'%';
--- If the column was never granted, this is a no-op or raises a warning
+-- If the column was never granted, this raises an error (ERROR 1147)
 ```
 
 To revoke all column grants:
