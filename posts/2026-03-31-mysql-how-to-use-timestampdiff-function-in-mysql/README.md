@@ -20,7 +20,7 @@ TIMESTAMPDIFF(unit, datetime_expr1, datetime_expr2)
 
 Returns `datetime_expr2 - datetime_expr1` in the specified `unit`. The result is negative if `datetime_expr1` is later than `datetime_expr2`.
 
-Supported units: `SECOND`, `MINUTE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, `QUARTER`, `YEAR`.
+Supported units: `MICROSECOND`, `SECOND`, `MINUTE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, `QUARTER`, `YEAR`.
 
 ## Basic Examples
 
