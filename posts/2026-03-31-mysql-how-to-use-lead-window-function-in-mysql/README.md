@@ -131,14 +131,17 @@ FROM daily_sales;
 Use `LEAD()` to find rows where the status changes in the next event:
 
 ```sql
-SELECT
-  user_id,
-  event_time,
-  status,
-  LEAD(status) OVER (PARTITION BY user_id ORDER BY event_time) AS next_status
-FROM user_events
-HAVING next_status IS NOT NULL
-   AND next_status <> status;
+SELECT *
+FROM (
+  SELECT
+    user_id,
+    event_time,
+    status,
+    LEAD(status) OVER (PARTITION BY user_id ORDER BY event_time) AS next_status
+  FROM user_events
+) AS t
+WHERE next_status IS NOT NULL
+  AND next_status <> status;
 ```
 
 ## Calculating Time to Next Event
