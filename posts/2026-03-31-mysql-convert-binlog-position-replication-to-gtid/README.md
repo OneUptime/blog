@@ -12,7 +12,7 @@ GTID-based replication is simpler to manage than binary log position-based repli
 
 ## Prerequisites
 
-- MySQL 5.7.6 or later on all servers (for online GTID migration)
+- MySQL 8.0.23 or later on all servers (the online GTID migration feature exists since 5.7.6, but the SQL syntax used in this guide requires 8.0.23+)
 - All servers running the same or compatible MySQL versions
 - Access to modify `my.cnf` and restart servers
 
@@ -30,9 +30,9 @@ SHOW VARIABLES LIKE 'enforce_gtid_consistency';
 SHOW REPLICA STATUS\G
 ```
 
-## Online Conversion (MySQL 5.7.6+)
+## Online Conversion (MySQL 8.0.23+)
 
-MySQL 5.7.6 introduced online GTID migration through five sequential `gtid_mode` states. Perform these steps on ALL servers (source and all replicas) in order.
+MySQL 5.7.6 introduced online GTID migration through four sequential `gtid_mode` states. Perform these steps on ALL servers (source and all replicas) in order.
 
 **Step 1: Enable enforce_gtid_consistency on all servers**
 
@@ -56,9 +56,9 @@ SET GLOBAL gtid_mode = 'ON_PERMISSIVE';
 **Step 3: Verify no more anonymous transactions in use**
 
 ```sql
--- On the replica, check that all anonymous transactions have been consumed
-SHOW REPLICA STATUS\G
--- Wait until Anonymous_Gtid_Log_Events_Remaining = 0
+-- On all servers, check that no anonymous transactions are pending
+SHOW STATUS LIKE 'ONGOING_ANONYMOUS_TRANSACTION_COUNT';
+-- Wait until the value is 0 on every server
 ```
 
 **Step 4: Enable GTID mode fully on all servers**
@@ -128,21 +128,23 @@ SELECT * FROM mydb.test_gtid ORDER BY created_at DESC LIMIT 1;
 If you need to roll back, reverse the steps:
 
 ```sql
--- On all servers, in reverse order:
-SET GLOBAL gtid_mode = 'ON_PERMISSIVE';
-SET GLOBAL gtid_mode = 'OFF_PERMISSIVE';
-SET GLOBAL gtid_mode = 'OFF';
-SET GLOBAL enforce_gtid_consistency = 'OFF';
-
--- On replica
+-- First, on each replica, switch back to position-based replication
 STOP REPLICA;
 CHANGE REPLICATION SOURCE TO
   SOURCE_AUTO_POSITION = 0,
   SOURCE_LOG_FILE = 'mysql-bin.000010',
   SOURCE_LOG_POS = 157;
 START REPLICA;
+
+-- Then, on all servers, step down gtid_mode in order:
+SET GLOBAL gtid_mode = 'ON_PERMISSIVE';
+SET GLOBAL gtid_mode = 'OFF_PERMISSIVE';
+-- Wait until @@global.gtid_owned is empty on each server
+SELECT @@global.gtid_owned;
+SET GLOBAL gtid_mode = 'OFF';
+SET GLOBAL enforce_gtid_consistency = 'OFF';
 ```
 
 ## Summary
 
-Converting from position-based to GTID replication in MySQL 5.7.6+ is an online operation that does not require downtime. Progress `gtid_mode` through `OFF_PERMISSIVE` and `ON_PERMISSIVE` states on all servers, wait for anonymous transactions to drain, then enable `ON` everywhere. Finally, run `CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1` on each replica and persist the settings in `my.cnf`. The resulting GTID setup is significantly easier to manage for failover, replica addition, and recovery operations.
+Converting from position-based to GTID replication in MySQL 8.0.23+ is an online operation that does not require downtime. Progress `gtid_mode` through `OFF_PERMISSIVE` and `ON_PERMISSIVE` states on all servers, wait for anonymous transactions to drain, then enable `ON` everywhere. Finally, run `CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1` on each replica and persist the settings in `my.cnf`. The resulting GTID setup is significantly easier to manage for failover, replica addition, and recovery operations.
