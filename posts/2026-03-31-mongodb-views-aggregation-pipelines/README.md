@@ -8,7 +8,7 @@ Description: Learn how to define MongoDB views backed by multi-stage aggregation
 
 ---
 
-MongoDB views are defined by an aggregation pipeline. Any valid pipeline stage can be used in a view definition, giving you full data transformation power as a reusable, named query object.
+MongoDB views are defined by an aggregation pipeline. Most aggregation pipeline stages can be used in a view definition, with a few exceptions, giving you full data transformation power as a reusable, named query object.
 
 ## Basic View with Multiple Pipeline Stages
 
