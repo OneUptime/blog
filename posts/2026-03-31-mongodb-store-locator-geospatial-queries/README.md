@@ -121,7 +121,7 @@ async function findStoresByFeature(longitude, latitude, feature, radiusKm = 20) 
   ]).toArray();
 }
 
-// Find stores with parking and pickup within 20 km
+// Find stores with pickup within 20 km
 const pickupStores = await findStoresByFeature(-73.9857, 40.7580, "pickup");
 ```
 
