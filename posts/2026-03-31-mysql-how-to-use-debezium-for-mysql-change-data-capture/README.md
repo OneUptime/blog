@@ -83,24 +83,28 @@ Each Debezium event published to Kafka looks like this for an UPDATE:
 
 ```text
 {
-  "before": {
-    "id": 42,
-    "status": "pending",
-    "updated_at": "2026-03-31T10:00:00Z"
-  },
-  "after": {
-    "id": 42,
-    "status": "shipped",
-    "updated_at": "2026-03-31T10:05:00Z"
-  },
-  "source": {
-    "db": "myapp",
-    "table": "orders",
-    "ts_ms": 1743422700000,
-    "gtid": null,
-    "file": "mysql-bin.000003",
-    "pos": 154,
-    "op": "u"
+  "schema": { ... },
+  "payload": {
+    "before": {
+      "id": 42,
+      "status": "pending",
+      "updated_at": "2026-03-31T10:00:00Z"
+    },
+    "after": {
+      "id": 42,
+      "status": "shipped",
+      "updated_at": "2026-03-31T10:05:00Z"
+    },
+    "source": {
+      "db": "myapp",
+      "table": "orders",
+      "ts_ms": 1743422700000,
+      "gtid": null,
+      "file": "mysql-bin.000003",
+      "pos": 154
+    },
+    "op": "u",
+    "ts_ms": 1743422700000
   }
 }
 ```
