@@ -107,8 +107,9 @@ SECONDARY   (2) - Replicates from primary
 ARBITER     (7) - Votes but holds no data
 STARTUP     (0) - Starting up
 RECOVERING  (3) - Catching up or maintenance
-ROLLBACK    (6) - Rolling back writes after a failover
+UNKNOWN     (6) - Not yet known to another member
 DOWN        (8) - Unreachable
+ROLLBACK    (9) - Rolling back writes after a failover
 ```
 
 ## Filtering the Output
