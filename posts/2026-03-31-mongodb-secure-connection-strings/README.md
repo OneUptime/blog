@@ -76,7 +76,7 @@ env:
 For production environments, retrieve credentials from a secrets manager at runtime:
 
 ```python
-import boto3, os
+import boto3
 from pymongo import MongoClient
 
 def get_secret():
