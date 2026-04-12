@@ -135,8 +135,8 @@ end
 # Create all defined indexes
 rails db:mongoid:create_indexes
 
-# List existing indexes
-rails db:mongoid:list_indexes
+# Remove indexes that exist in the database but are not defined in models
+rails db:mongoid:remove_undefined_indexes
 ```
 
 ## Summary
