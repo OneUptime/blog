@@ -86,7 +86,7 @@ db.products.find({ name: /^laptop/ });
 ### Avoid negation operators on unindexed fields
 
 ```javascript
-// Slow: $ne forces a collection scan
+// Slow: $ne often leads to inefficient index usage or a full collection scan
 db.orders.find({ status: { $ne: "cancelled" } });
 
 // Better: query for the states you DO want
@@ -115,7 +115,7 @@ On Atlas:
 ```bash
 atlas alerts settings create \
   --event QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED \
-  --threshold 1000 \
+  --metricThreshold 1000 \
   --notificationType EMAIL \
   --notificationEmailAddress ops@example.com
 ```
