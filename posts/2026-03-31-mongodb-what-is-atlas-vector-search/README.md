@@ -85,21 +85,35 @@ const results = await db.collection("articles").aggregate([
 
 ## Hybrid Search: Combining Vector and Full-Text
 
-Atlas Search and Atlas Vector Search can be combined using `$unionWith` to blend semantic and keyword relevance (the deprecated `knnBeta` operator has been replaced by the standalone `$vectorSearch` stage):
+Atlas Search and Atlas Vector Search can be combined to blend semantic and keyword relevance. The deprecated `knnBeta` operator has been replaced by the standalone `$vectorSearch` stage. You can use `$unionWith` to run both pipelines and merge results:
 
 ```javascript
 db.articles.aggregate([
   {
-    $search: {
-      index: "default",
-      compound: {
-        should: [
-          { text: { query: "kubernetes scaling", path: "content" } }
-        ]
-      }
+    $vectorSearch: {
+      index: "vector_index",
+      path: "embedding",
+      queryVector: queryEmbedding,
+      numCandidates: 100,
+      limit: 10
     }
   },
-  { $addFields: { score: { $meta: "searchScore" } } }
+  { $addFields: { vs_score: { $meta: "vectorSearchScore" } } },
+  {
+    $unionWith: {
+      coll: "articles",
+      pipeline: [
+        {
+          $search: {
+            index: "default",
+            text: { query: "kubernetes scaling", path: "content" }
+          }
+        },
+        { $limit: 10 },
+        { $addFields: { fts_score: { $meta: "searchScore" } } }
+      ]
+    }
+  }
 ])
 ```
 
