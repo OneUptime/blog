@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Talend, ETL, Data Integration, Stitch
 
-Description: Learn how to configure Stitch (now part of Talend) to replicate MongoDB collections to your data warehouse using the MongoDB connector.
+Description: Learn how to configure Stitch (now part of Qlik, via Talend) to replicate MongoDB collections to your data warehouse using the MongoDB connector.
 
 ---
 
 ## What Is Stitch?
 
-Stitch is a cloud-based ELT service acquired by Talend. It provides a MongoDB connector that replicates collection data to destinations like Snowflake, BigQuery, Redshift, and PostgreSQL. Stitch uses log-based replication (oplog) for low-latency incremental syncing.
+Stitch is a cloud-based ELT service originally acquired by Talend, now part of Qlik. It provides a MongoDB connector that replicates collection data to destinations like Snowflake, BigQuery, Redshift, and PostgreSQL. Stitch uses log-based replication (oplog) for low-latency incremental syncing.
 
 ## Prerequisites
 
@@ -28,9 +28,8 @@ db.createUser({
   user: "stitch",
   pwd: "StitchSecure456!",
   roles: [
-    { role: "read", db: "myDatabase" },
-    { role: "read", db: "local" },
-    { role: "clusterMonitor", db: "admin" }
+    { role: "readAnyDatabase", db: "admin" },
+    { role: "read", db: "local" }
   ]
 })
 ```
@@ -54,7 +53,7 @@ For MongoDB Atlas, use the SRV connection format and enable SSL.
 
 ## Replication Method Selection
 
-Stitch offers two replication methods for MongoDB:
+Stitch offers three replication methods for MongoDB:
 
 **Log-Based Incremental (recommended):**
 - Reads the oplog to capture all inserts, updates, and deletes
@@ -65,6 +64,11 @@ Stitch offers two replication methods for MongoDB:
 - Uses a user-specified cursor field (like `updatedAt`) to detect new and changed records
 - Works without oplog access but misses deletes
 - Suitable for standalone MongoDB instances
+
+**Full Table Replication:**
+- Re-replicates the entire collection on each sync run
+- Uses `_id` as the default replication key
+- Useful when no reliable incremental cursor exists
 
 Set the replication method in the integration settings:
 
@@ -85,7 +89,7 @@ Collection: orders
 Replication Key: updatedAt
 ```
 
-Stitch queries: `{ "updatedAt": { "$gt": <last_replicated_value> } }` on each sync run.
+Stitch queries: `{ "updatedAt": { "$gte": <last_replicated_value> } }` on each sync run. Using `$gte` (greater than or equal) ensures no records are missed at the boundary, though it may result in some duplicate rows being re-replicated.
 
 ## Understanding Stitch's Data Model
 
