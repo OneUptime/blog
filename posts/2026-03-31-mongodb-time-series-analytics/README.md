@@ -213,7 +213,7 @@ async function refreshDailySummary(date) {
         avg:   { $avg: "$temperature" },
         min:   { $min: "$temperature" },
         max:   { $max: "$temperature" },
-        p95:   { $percentile: { input: "$temperature", p: [0.95], method: "approximate" } },
+        p95:   { $percentile: { input: "$temperature", p: [0.95], method: "approximate" } }, // requires MongoDB 7.0+
         count: { $sum: 1 }
       }
     },
