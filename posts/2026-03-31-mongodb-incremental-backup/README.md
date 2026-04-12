@@ -33,7 +33,7 @@ if [ -f "$LAST_TS_FILE" ]; then
 else
   # First run - use current time as baseline
   LAST_TS=$(mongosh "$MONGO_URI" --quiet --eval \
-    "db.getSiblingDB('local').oplog.rs.find().sort({'\$natural':-1}).limit(1)[0].ts.t")
+    "db.getSiblingDB('local').oplog.rs.find().sort({'\$natural':-1}).limit(1).next().ts.getHighBits()")
   echo "$LAST_TS" > "$LAST_TS_FILE"
   echo "Initialized incremental backup baseline at ts=$LAST_TS"
   exit 0
@@ -49,7 +49,7 @@ mongodump \
 
 # Update last timestamp
 NEW_TS=$(mongosh "$MONGO_URI" --quiet --eval \
-  "db.getSiblingDB('local').oplog.rs.find().sort({'\$natural':-1}).limit(1)[0].ts.t")
+  "db.getSiblingDB('local').oplog.rs.find().sort({'\$natural':-1}).limit(1).next().ts.getHighBits()")
 echo "$NEW_TS" > "$LAST_TS_FILE"
 
 echo "Incremental backup complete: $BACKUP_DIR/$DATE (ts: $LAST_TS -> $NEW_TS)"
@@ -64,7 +64,7 @@ PBM provides a production-grade incremental backup system for self-hosted replic
 sudo yum install percona-backup-mongodb
 
 # Configure PBM storage (S3 example)
-cat > /etc/pbm-agent.conf << 'EOF'
+cat > /tmp/pbm-storage-config.yaml << 'EOF'
 storage:
   type: s3
   s3:
@@ -74,18 +74,20 @@ storage:
       access-key-id: AKIAIOSFODNN7EXAMPLE
       secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 EOF
+
+pbm config --file /tmp/pbm-storage-config.yaml
 ```
 
-Start a full backup baseline:
+Start an incremental base backup:
 
 ```bash
-pbm backup --type=logical
+pbm backup --type=incremental --base
 ```
 
 Then run incremental backups on a schedule:
 
 ```bash
-# Take incremental backup (captures changes since last backup)
+# Take incremental backup (captures changes since last base backup)
 pbm backup --type=incremental
 
 # Check backup status
@@ -101,8 +103,8 @@ Set up a weekly full backup with daily incrementals:
 
 ```bash
 # /etc/cron.d/mongodb-backup
-# Weekly full backup on Sunday at 01:00
-0 1 * * 0 mongodb /usr/local/bin/pbm backup --type=logical >> /var/log/mongodb-backup.log 2>&1
+# Weekly incremental base backup on Sunday at 01:00
+0 1 * * 0 mongodb /usr/local/bin/pbm backup --type=incremental --base >> /var/log/mongodb-backup.log 2>&1
 
 # Daily incremental backup Mon-Sat at 01:00
 0 1 * * 1-6 mongodb /usr/local/bin/pbm backup --type=incremental >> /var/log/mongodb-backup.log 2>&1
@@ -117,10 +119,10 @@ To restore from a PBM incremental chain:
 pbm list
 
 # Restore to a specific point in time
-pbm restore 2024-01-15T10:30:00Z
+pbm restore --time="2024-01-15T10:30:00"
 
-# Or restore to the latest incremental
-pbm restore --base-snapshot 2024-01-14T01:00:00Z
+# Or restore to a specific point using a particular base snapshot
+pbm restore --base-snapshot=2024-01-14T01:00:00Z --time="2024-01-15T10:30:00"
 ```
 
 PBM automatically applies all incremental layers on top of the base snapshot during restore.
@@ -130,7 +132,7 @@ PBM automatically applies all incremental layers on top of the base snapshot dur
 After each backup, verify the chain is intact:
 
 ```bash
-pbm status --format=json | python3 -c "
+pbm status -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 backups = data.get('backups', {}).get('snapshot', [])
