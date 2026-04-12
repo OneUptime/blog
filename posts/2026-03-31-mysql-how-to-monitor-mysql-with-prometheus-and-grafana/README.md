@@ -65,7 +65,7 @@ ExecStart=/usr/local/bin/mysqld_exporter \
   --collect.info_schema.innodb_metrics \
   --collect.info_schema.processlist \
   --collect.perf_schema.eventsstatements \
-  --collect.perf_schema.replication_status \
+  --collect.slave_status \
   --web.listen-address=:9104
 Restart=always
 
