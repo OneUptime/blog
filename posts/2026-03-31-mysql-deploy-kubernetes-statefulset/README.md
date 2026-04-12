@@ -30,7 +30,7 @@ flowchart TB
 
 ## Step 1 - Create a Secret for MySQL Credentials
 
-Store the root password in a Kubernetes Secret. The value must be base64-encoded.
+Store the root password in a Kubernetes Secret. When using `--from-literal`, kubectl automatically base64-encodes the values for you.
 
 ```bash
 kubectl create secret generic mysql-secret \
