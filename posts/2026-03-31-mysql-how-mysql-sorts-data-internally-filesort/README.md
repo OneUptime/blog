@@ -54,10 +54,10 @@ MySQL chooses between the two based on the length of the selected columns vs `ma
 
 ```sql
 SHOW VARIABLES LIKE 'max_length_for_sort_data';
--- Default: 4096 bytes
+-- Default: 4096 bytes (deprecated in MySQL 8.0.20)
 ```
 
-If the row length exceeds this, MySQL uses the two-pass algorithm.
+If the row length exceeds this, MySQL uses the two-pass algorithm. Note that in MySQL 8.0.20 and later, this variable is deprecated and the optimizer makes the algorithm choice automatically.
 
 ## Sort Buffer Size
 
@@ -95,7 +95,7 @@ SELECT id, name FROM users ORDER BY created_at DESC;
 ALTER TABLE users ADD INDEX idx_created_at (created_at);
 
 EXPLAIN SELECT id, name FROM users ORDER BY created_at DESC;
--- Extra: Using index (or Using index condition)
+-- Extra: Backward index scan (Using filesort is eliminated)
 ```
 
 ### WHERE + ORDER BY Composite Index
