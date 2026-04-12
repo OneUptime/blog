@@ -77,7 +77,14 @@ db.logs.aggregate([
 ```json
 // Elasticsearch aggregation (equivalent)
 {
-  "query": { "term": { "level": "ERROR" } },
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "level": "ERROR" } },
+        { "range": { "ts": { "gte": "now-1d" } } }
+      ]
+    }
+  },
   "aggs": {
     "by_service": {
       "terms": { "field": "service.keyword", "size": 10 }
@@ -109,4 +116,4 @@ Use MongoDB for: primary application data storage, transactional workflows, comp
 
 ## Summary
 
-Elasticsearch is the superior choice for search-heavy, read-mostly, append-heavy workloads like log analytics. MongoDB is the better fit for general-purpose application databases with mixed CRUD patterns. Many teams run MongoDB as the source of truth and sync data to Elasticsearch for advanced search using tools like Logstash or the MongoDB Connector for BI.
+Elasticsearch is the superior choice for search-heavy, read-mostly, append-heavy workloads like log analytics. MongoDB is the better fit for general-purpose application databases with mixed CRUD patterns. Many teams run MongoDB as the source of truth and sync data to Elasticsearch for advanced search using tools like Logstash, MongoDB change streams, or Kafka connectors.
