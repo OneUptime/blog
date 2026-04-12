@@ -97,17 +97,15 @@ For MongoDB Atlas, configure the IP allowlist in the console or via the Atlas AP
 
 ```bash
 # Add an IP to the Atlas allowlist
-atlas accessLists create \
+atlas accessLists create 203.0.113.45 \
   --projectId <project-id> \
   --type ipAddress \
-  --entry 203.0.113.45 \
   --comment "Office IP"
 
 # Allow a CIDR range
-atlas accessLists create \
+atlas accessLists create 10.0.0.0/8 \
   --projectId <project-id> \
   --type cidrBlock \
-  --entry 10.0.0.0/8 \
   --comment "Private network"
 ```
 
@@ -115,10 +113,10 @@ atlas accessLists create \
 
 ```bash
 # Test from an allowed IP
-mongo --host 10.0.1.5:27017 --authenticationDatabase admin -u admin -p
+mongosh --host 10.0.1.5:27017 --authenticationDatabase admin -u admin -p
 
 # Test from a blocked IP (should timeout or be refused)
-mongo --host 10.0.1.5:27017
+mongosh --host 10.0.1.5:27017
 ```
 
 ## Combining bindIp with Authentication
