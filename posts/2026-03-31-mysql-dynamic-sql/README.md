@@ -33,7 +33,7 @@ The most common use case for dynamic SQL is generating column lists at runtime, 
 SET @columns = NULL;
 
 SELECT GROUP_CONCAT(
-  DISTINCT CONCAT('SUM(CASE WHEN month = ', month_num, ' THEN revenue ELSE 0 END) AS `Month_', month_num, '`')
+  DISTINCT CONCAT('SUM(CASE WHEN MONTH(sale_date) = ', month_num, ' THEN revenue ELSE 0 END) AS `Month_', month_num, '`')
   ORDER BY month_num
 ) INTO @columns
 FROM (SELECT DISTINCT MONTH(sale_date) AS month_num FROM sales) months;
