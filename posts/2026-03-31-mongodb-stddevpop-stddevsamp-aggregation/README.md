@@ -60,9 +60,9 @@ db.sensorReadings.aggregate([
 ])
 ```
 
-## Using in $project
+## Using in $setWindowFields
 
-Both operators can be used in `$project` over window expressions with `$setWindowFields`, not just `$group`. This allows per-document deviation relative to a window:
+Both operators can be used in `$setWindowFields`, not just `$group`. This allows per-document deviation relative to a sliding window:
 
 ```javascript
 db.salesData.aggregate([
@@ -81,7 +81,7 @@ db.salesData.aggregate([
 ])
 ```
 
-This computes a rolling 7-day standard deviation of sales amounts per region.
+This computes a rolling standard deviation over the current document and the 6 preceding documents, per region. For a true time-based window, use `range` with a `unit` instead of `documents`.
 
 ## Handling Null and Missing Values
 
