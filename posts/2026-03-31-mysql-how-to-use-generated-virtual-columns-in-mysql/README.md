@@ -56,7 +56,7 @@ You cannot set generated column values directly - MySQL computes them automatica
 INSERT INTO products (price, tax_rate)
 VALUES (49.99, 0.08);
 
--- MySQL computes: tax_amount = 3.9992, total_price = 53.9892
+-- MySQL computes: tax_amount = 4.00, total_price = 53.99 (rounded to DECIMAL(10,2))
 
 -- Verify the computed values
 SELECT id, price, tax_rate, tax_amount, total_price FROM products WHERE id = 1;
@@ -113,7 +113,7 @@ CREATE TABLE orders (
 
 ## Indexing Generated Columns
 
-Only `STORED` generated columns can be indexed directly. Indexing is the main reason to prefer STORED over VIRTUAL for frequently filtered columns:
+Both `STORED` and `VIRTUAL` generated columns can be indexed in InnoDB (MySQL 5.7.5+). However, STORED columns are preferred when the expression is expensive to compute, since the value is persisted on disk and does not need to be recalculated on every index lookup:
 
 ```sql
 CREATE TABLE employees (
@@ -135,7 +135,7 @@ SELECT * FROM employees WHERE name_lower = 'alice johnson';
 ## Limitations
 
 ```sql
--- Generated columns cannot reference other generated columns
+-- Generated columns can reference other generated columns defined earlier in the table
 -- Generated columns cannot call non-deterministic functions like NOW(), RAND(), UUID()
 -- Subqueries are not allowed in generated column expressions
 
