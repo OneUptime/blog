@@ -108,9 +108,12 @@ db.users.find({
     { username: { $exists: false } }
   ]
 }).forEach((doc) => {
+  const fix = {};
+  if (!doc.email) fix.email = "unknown@example.com";
+  if (!doc.username) fix.username = "unknown_user";
   db.users.updateOne(
     { _id: doc._id },
-    { $set: { email: doc.email || "unknown@example.com" } }
+    { $set: fix }
   );
 });
 
