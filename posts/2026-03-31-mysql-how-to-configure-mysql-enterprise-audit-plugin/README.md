@@ -42,13 +42,7 @@ plugin-load-add = audit_log.so
 audit_log_file = /var/log/mysql/audit.log
 ```
 
-Or set at runtime:
-
-```sql
-SET GLOBAL audit_log_file = '/var/log/mysql/audit.log';
-```
-
-Restart MySQL for static variables to take effect.
+Restart MySQL for the change to take effect. Note that `audit_log_file` is a read-only variable and cannot be changed at runtime with `SET GLOBAL`.
 
 ## Audit Log Format
 
@@ -58,8 +52,7 @@ MySQL Enterprise Audit supports multiple output formats:
 |---|---|
 | `NEW` (default) | New-style XML |
 | `OLD` | Legacy XML |
-| `JSON` | JSON format (MySQL 8.0.14+) |
-| `CSV` | CSV format |
+| `JSON` | JSON format (MySQL 8.0.11+) |
 
 ```text
 [mysqld]
@@ -133,7 +126,7 @@ SELECT audit_log_filter_set_filter('log_failures', '{
 }');
 
 -- Apply to specific user
-SELECT audit_log_filter_set_user('suspicious_user'@'%', 'log_failures');
+SELECT audit_log_filter_set_user('suspicious_user@%', 'log_failures');
 ```
 
 ## Log Rotation
