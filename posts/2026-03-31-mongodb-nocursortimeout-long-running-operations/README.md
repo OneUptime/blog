@@ -121,7 +121,7 @@ This approach is resumable, does not hold server resources between batches, and 
 
 ## Required Privilege
 
-Using `noCursorTimeout` requires the `killCursors` privilege on the collection. In Atlas and managed MongoDB deployments, this may require a specific role.
+Using `noCursorTimeout` does not require any special privilege beyond the standard `find` privilege needed to query the collection. Note that the separate `killCursors` privilege controls the ability to terminate cursors, not to set timeout behavior.
 
 ## Summary
 
