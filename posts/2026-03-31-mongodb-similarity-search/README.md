@@ -44,6 +44,10 @@ Index definition file `vector-index.json`:
     {
       "type": "filter",
       "path": "isActive"
+    },
+    {
+      "type": "filter",
+      "path": "price"
     }
   ]
 }
@@ -193,7 +197,7 @@ def find_similar_items(item_id, top_k=5):
 
 ## Best Practices
 
-- Set `numCandidates` to at least 10x your `limit` - HNSW examines this many candidates before returning the top-k results. Higher values improve recall at the cost of latency.
+- Set `numCandidates` to at least 20x your `limit` - HNSW examines this many candidates before returning the top-k results. Higher values improve recall at the cost of latency.
 - Use `cosine` similarity for normalized embeddings from sentence transformers and `dotProduct` only when embeddings are unit-normalized and you need maximum performance.
 - Add filter fields to your index definition before running filtered queries - filtering on un-indexed fields degrades performance.
 - Re-embed all documents when upgrading your embedding model since vector spaces are not compatible across models.
