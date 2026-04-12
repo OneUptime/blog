@@ -19,9 +19,11 @@ MongoDB's balancer migrates chunks between shards to maintain an even data distr
 db.adminCommand({ listShards: 1 })
 
 // Check chunk counts per shard for a specific collection
+// In MongoDB 6.0+, config.chunks uses uuid instead of ns
 use config
+var collUUID = db.collections.findOne({ _id: 'shop.orders' }).uuid
 db.chunks.aggregate([
-  { $match: { ns: 'shop.orders' } },
+  { $match: { uuid: collUUID } },
   { $group: { _id: '$shard', chunkCount: { $sum: 1 } } },
   { $sort: { chunkCount: -1 } },
 ])
@@ -33,7 +35,7 @@ Also use the helper:
 db.orders.getShardDistribution()
 ```
 
-A healthy cluster shows roughly equal `chunks` counts across shards. An imbalance of more than 8 chunks triggers automatic balancing by default.
+A healthy cluster shows roughly equal `chunks` counts across shards. The migration threshold that triggers automatic balancing depends on the total number of chunks: a difference of 2 for fewer than 20 chunks, 4 for 20 to 79, and 8 for 80 or more.
 
 ## Checking Balancer Status
 
@@ -54,9 +56,6 @@ If the balancer is disabled, re-enable it:
 
 ```javascript
 sh.startBalancer()
-
-// Wait for balancing to complete
-sh.awaitBalancerRound()
 ```
 
 ## Configuring the Balancer Window
@@ -84,7 +83,8 @@ If automatic balancing is too slow, move chunks manually:
 ```javascript
 // Find an over-represented chunk on the hot shard
 use config
-db.chunks.find({ ns: 'shop.orders', shard: 'shard0' })
+var collUUID = db.collections.findOne({ _id: 'shop.orders' }).uuid
+db.chunks.find({ uuid: collUUID, shard: 'shard0' })
   .sort({ 'min.tenantId': 1 }).limit(5)
 
 // Move a specific chunk to a less-loaded shard
@@ -117,7 +117,8 @@ A "jumbo" chunk is one that exceeds the chunk size limit and cannot be migrated 
 ```javascript
 // Find jumbo chunks
 use config
-db.chunks.find({ ns: 'shop.orders', jumbo: true })
+var collUUID = db.collections.findOne({ _id: 'shop.orders' }).uuid
+db.chunks.find({ uuid: collUUID, jumbo: true })
 
 // Split a jumbo chunk manually
 db.adminCommand({
