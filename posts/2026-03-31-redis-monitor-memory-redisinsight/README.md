@@ -163,7 +163,7 @@ RedisInsight shows expiry statistics in the Memory Analysis tab. To check TTL fo
 ```redis
 TTL session:abc       # Remaining seconds
 PTTL session:abc      # Remaining milliseconds
-OBJECT ENCODING mykey # Internal encoding (ziplist, hashtable, etc.)
+OBJECT ENCODING mykey # Internal encoding (listpack, hashtable, etc.)
 ```
 
 ## Profiler Tab
@@ -191,7 +191,7 @@ RedisInsight presents slow log entries in a sortable table with timestamps and e
 
 | Finding | Action |
 |---|---|
-| Many small hashes | Enable `hash-max-listpack-entries 128` to use ziplist encoding |
+| Many small hashes | Enable `hash-max-listpack-entries 128` to use listpack encoding |
 | Many small sets | Enable `set-max-intset-entries 512` |
 | Strings with JSON blobs | Switch to `HASH` fields or use MessagePack compression |
 | Keys with no TTL | Audit and add expiry policies |
