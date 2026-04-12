@@ -23,61 +23,59 @@ This brings the MongoDB query language to the world of stream processing, elimin
 - Atlas change streams (changes to a collection)
 
 **Sink** - Where processed results go. Currently supports:
-- Atlas collections (persist processed results)
-- Kafka topics (forward events to downstream systems)
-- Dead Letter Queue (DLQ) for failed messages
+- Atlas collections via the `$merge` stage (persist processed results)
+- Kafka topics via the `$emit` stage (forward events to downstream systems)
+
+**Dead Letter Queue (DLQ)** - A separate configuration option (not a sink stage) that routes failed messages to an Atlas collection for inspection.
 
 **Tumbling and Hopping Windows** - Time-based grouping for aggregations like 1-minute counts or 5-minute moving sums.
 
 ## Creating a Stream Processor
 
-Stream processors are defined in Atlas using a JSON pipeline or the Atlas CLI:
+Stream processors are created using `mongosh` connected to a Stream Processing Instance, or via the Atlas CLI. The source and sink are defined as `$source` and `$merge` (or `$emit`) stages within the pipeline array:
 
 ```javascript
 // Example: Count orders per minute, write results to Atlas
-{
-  "name": "orderCountProcessor",
-  "source": {
-    "connectionName": "kafkaConnection",
-    "topic": "orders",
-    "config": {
-      "group.id": "asp-consumer-group",
-      "auto.offset.reset": "latest"
+// Run in mongosh connected to a Stream Processing Instance
+sp.createStreamProcessor("orderCountProcessor", [
+  {
+    $source: {
+      connectionName: "kafkaConnection",
+      topic: "orders"
     }
   },
-  "pipeline": [
-    {
-      "$match": { "status": { "$in": ["placed", "confirmed"] } }
-    },
-    {
-      "$tumblingWindow": {
-        "interval": { "size": 1, "unit": "minute" },
-        "pipeline": [
-          {
-            "$group": {
-              "_id": "$region",
-              "orderCount": { "$sum": 1 },
-              "totalRevenue": { "$sum": "$amount" }
-            }
+  {
+    $match: { status: { $in: ["placed", "confirmed"] } }
+  },
+  {
+    $tumblingWindow: {
+      interval: { size: 1, unit: "minute" },
+      pipeline: [
+        {
+          $group: {
+            _id: "$region",
+            orderCount: { $sum: 1 },
+            totalRevenue: { $sum: "$amount" }
           }
-        ]
+        }
+      ]
+    }
+  },
+  {
+    $merge: {
+      into: {
+        connectionName: "atlasConnection",
+        db: "analytics",
+        coll: "orderMetrics"
       }
     }
-  ],
-  "sink": {
-    "connectionName": "atlasConnection",
-    "db": "analytics",
-    "coll": "orderMetrics",
-    "config": {
-      "writeConcern": { "w": "majority" }
-    }
   }
-}
+])
 ```
 
 ## Connecting to Kafka
 
-Define a Kafka connection in Atlas App Services:
+Define a Kafka connection in the Stream Processing instance's Connection Registry (via the Atlas UI or Atlas CLI):
 
 ```json
 {
@@ -95,17 +93,15 @@ Define a Kafka connection in Atlas App Services:
 
 ## Using Change Streams as Source
 
-You can process changes to an Atlas collection as a stream:
+You can process changes to an Atlas collection as a stream by using a `$source` stage that references an Atlas connection:
 
-```json
+```javascript
+// $source stage for an Atlas change stream
 {
-  "source": {
-    "connectionName": "atlasConnection",
-    "db": "shop",
-    "coll": "orders",
-    "config": {
-      "startAfter": {}
-    }
+  $source: {
+    connectionName: "atlasConnection",
+    db: "shop",
+    coll: "orders"
   }
 }
 ```
