@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, Date Function, Database, Query
 
-Description: Learn how to accurately calculate a person's age in MySQL using TIMESTAMPDIFF() and DATEDIFF(), handling birthday edge cases correctly.
+Description: Learn how to accurately calculate a person's age in MySQL using TIMESTAMPDIFF(), handling birthday edge cases correctly.
 
 ---
 
@@ -73,7 +73,7 @@ WHERE MONTH(birthdate) = MONTH(CURDATE())
 
 ## Find Upcoming Birthdays
 
-Find members whose birthday falls within the next 7 days. Because the birthday could cross a year boundary, compare day-of-year values carefully:
+Find members whose birthday falls within the next 7 days. Note that this approach does not handle year-end wrapping (e.g., checking from late December into January):
 
 ```sql
 SELECT
@@ -87,7 +87,7 @@ WHERE
   ) BETWEEN DAYOFYEAR(CURDATE()) AND DAYOFYEAR(CURDATE()) + 7;
 ```
 
-For a simpler but less year-wrap-safe approach:
+A simpler alternative that also does not handle year-end wrapping:
 
 ```sql
 SELECT name, birthdate
