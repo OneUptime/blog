@@ -25,10 +25,12 @@ go get gorm.io/driver/mysql
 package main
 
 import (
+    "log"
+    "time"
+
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
     "gorm.io/gorm/logger"
-    "log"
 )
 
 func main() {
