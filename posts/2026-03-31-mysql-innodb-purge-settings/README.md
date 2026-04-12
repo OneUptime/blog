@@ -45,12 +45,7 @@ SHOW GLOBAL VARIABLES LIKE 'innodb_purge%';
 
 Increase purge threads if HLL grows consistently under write load:
 
-```sql
--- Increase purge threads (requires restart in MySQL 5.7, dynamic in 8.0)
-SET GLOBAL innodb_purge_threads = 8;
-```
-
-In `my.cnf`:
+This variable is not dynamic and requires a server restart to take effect. Set it in `my.cnf`:
 
 ```text
 [mysqld]
@@ -58,7 +53,7 @@ innodb_purge_threads=8
 innodb_purge_batch_size=500
 ```
 
-More threads help when the undo log has records spread across many rollback segments. However, more than 32 threads provides diminishing returns.
+More threads help when the undo log has records spread across many rollback segments. The maximum allowed value is 32.
 
 ## Using Purge Lag Throttling
 
@@ -72,7 +67,7 @@ SET GLOBAL innodb_max_purge_lag = 10000;
 SET GLOBAL innodb_max_purge_lag_delay = 100000;
 ```
 
-The throttle delay is calculated as: `delay = (HLL / innodb_max_purge_lag - 1) * 5` microseconds, capped at `innodb_max_purge_lag_delay`.
+The throttle delay is calculated as: `delay = (purge_lag / innodb_max_purge_lag - 0.9995) * 10000` microseconds (MySQL 8.0.14+), capped at `innodb_max_purge_lag_delay`.
 
 ## Finding Long-Running Transactions That Block Purge
 
@@ -84,7 +79,7 @@ SELECT
     trx_id,
     trx_state,
     trx_started,
-    NOW() - trx_started AS duration_seconds,
+    TIMESTAMPDIFF(SECOND, trx_started, NOW()) AS duration_seconds,
     trx_mysql_thread_id,
     trx_query
 FROM information_schema.INNODB_TRX
@@ -105,7 +100,7 @@ SET GLOBAL innodb_monitor_enable = 'purge_%';
 -- View purge throughput
 SELECT NAME, COUNT
 FROM information_schema.INNODB_METRICS
-WHERE SUBSYSTEM IN ('purge', 'trx')
+WHERE SUBSYSTEM IN ('purge', 'transaction')
   AND STATUS = 'enabled';
 ```
 
