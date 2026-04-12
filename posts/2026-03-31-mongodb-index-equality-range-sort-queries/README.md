@@ -32,17 +32,17 @@ db.users.find({
 ## Wrong Index Order
 
 ```javascript
-// Wrong - range field (createdAt) before sort causes an in-memory sort
+// Suboptimal - equality field (plan) placed after the sort/range field, so it cannot narrow the scan
 db.users.createIndex({ status: 1, createdAt: -1, plan: 1 });
 ```
 
-Running `explain()` on a query with this index shows a `SORT` stage, meaning MongoDB cannot use the index for the sort:
+Running `explain()` on a query with this index shows `totalDocsExamined` much higher than `nReturned`, because MongoDB must scan all index entries matching `status` and the `createdAt` range, then discard rows where `plan` does not match:
 
 ```javascript
 db.users.find({ status: "active", plan: "pro", createdAt: { $gte: cutoff } })
   .sort({ createdAt: -1 })
   .explain("executionStats");
-// winningPlan: { stage: "SORT", ... }
+// totalDocsExamined much higher than nReturned
 ```
 
 ## Correct Index Order (ESR)
