@@ -34,8 +34,7 @@ This configuration ensures `mongod` only accepts connections on the private subn
 Enforce access at the OS level in addition to MongoDB's bind configuration:
 
 ```bash
-# Flush existing rules for MongoDB port
-iptables -F OUTPUT
+# Flush existing INPUT rules (removes ALL existing INPUT rules - use with caution)
 iptables -F INPUT
 
 # Allow MongoDB connections only from app server subnet
