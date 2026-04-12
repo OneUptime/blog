@@ -42,7 +42,7 @@ CALL mysql.sp_set_firewall_mode('app_user@%', 'RECORDING');
 CALL mysql.sp_set_firewall_mode('app_user@%', 'PROTECTING');
 ```
 
-It also includes MySQL Enterprise Audit for comprehensive audit logging and MySQL Enterprise Encryption for encryption at rest.
+It also includes MySQL Enterprise Audit for comprehensive audit logging and MySQL Enterprise Encryption for asymmetric encryption (key generation, encryption/decryption, digital signatures).
 
 ### Enterprise Backup
 
