@@ -75,13 +75,13 @@ spec:
                 - |
                   DATE=$(date +%Y%m%d-%H%M%S)
                   mysqldump \
-                    -h mysql-client.mysql.svc.cluster.local \
+                    -h mysql.mysql.svc.cluster.local \
                     -u root \
                     -p${MYSQL_ROOT_PASSWORD} \
                     --all-databases \
                     --single-transaction \
                     --flush-logs \
-                    --master-data=2 \
+                    --source-data=2 \
                     | gzip > /backup/all-databases-${DATE}.sql.gz
                   echo "Backup completed: all-databases-${DATE}.sql.gz"
               env:
@@ -118,12 +118,12 @@ kubectl get jobs -n mysql
 # View backup logs
 kubectl logs -l job-name=mysql-backup-manual -n mysql
 
-# List backup files
-kubectl exec -n mysql $(kubectl get pod -n mysql -l app=mysql -o jsonpath='{.items[0].metadata.name}') \
-  -- ls -lh /backup/
+# List backup files (start a temporary pod with the backup PVC)
+kubectl run backup-list -n mysql --rm -i --restart=Never --image=busybox \
+  --overrides='{"spec":{"volumes":[{"name":"backup-storage","persistentVolumeClaim":{"claimName":"mysql-backup-pvc"}}],"containers":[{"name":"backup-list","image":"busybox","command":["ls","-lh","/backup/"],"volumeMounts":[{"name":"backup-storage","mountPath":"/backup"}]}]}}'
 ```
 
-## Backup to S3 Using a Sidecar
+## Backup to S3 Using Streaming Upload
 
 For production workloads, push backups to S3 rather than a local PVC:
 
@@ -134,7 +134,7 @@ command:
   - |
     DATE=$(date +%Y%m%d-%H%M%S)
     mysqldump \
-      -h mysql-client.mysql.svc.cluster.local \
+      -h mysql.mysql.svc.cluster.local \
       -u root -p${MYSQL_ROOT_PASSWORD} \
       --all-databases \
       --single-transaction \
@@ -142,7 +142,7 @@ command:
       | aws s3 cp - s3://my-mysql-backups/all-databases-${DATE}.sql.gz
 ```
 
-You will need to add AWS credentials as environment variables or use an IAM role for service accounts (IRSA) on EKS.
+This requires an image that includes both `mysqldump` and the AWS CLI (e.g., a custom image). You will also need to add AWS credentials as environment variables or use an IAM role for service accounts (IRSA) on EKS.
 
 ## Prune Old Backups
 
@@ -157,11 +157,11 @@ find /backup -name "*.sql.gz" -mtime +7 -delete
 
 ```bash
 # Copy the backup file to a running pod
-kubectl cp mysql-backup-20260101-020000.sql.gz mysql/mysql-0:/tmp/
+kubectl cp all-databases-20260101-020000.sql.gz mysql/mysql-0:/tmp/
 
 # Restore
 kubectl exec -it mysql-0 -n mysql -- bash -c \
-  "gunzip -c /tmp/mysql-backup-20260101-020000.sql.gz | mysql -u root -p"
+  "gunzip -c /tmp/all-databases-20260101-020000.sql.gz | mysql -u root -p"
 ```
 
 ## Summary
