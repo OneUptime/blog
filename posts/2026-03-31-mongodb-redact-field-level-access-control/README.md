@@ -40,7 +40,7 @@ db.reports.aggregate([
         if: {
           $or: [
             { $eq: ["$clearance", "public"] },
-            { $not: { $gt: [{ $type: "$clearance" }, "missing"] } }
+            { $eq: [{ $type: "$clearance" }, "missing"] }
           ]
         },
         then: "$$DESCEND",
