@@ -71,12 +71,17 @@ db.users.aggregate([
 
 ## How $sample Is Implemented
 
-MongoDB uses two algorithms depending on `size` relative to the collection:
+MongoDB uses two algorithms depending on the position of `$sample` in the pipeline, the `size` relative to the collection, and the collection size:
 
-- **Less than 5% of the collection**: Uses a pseudo-random cursor - fast and does not require a full collection scan.
-- **5% or more**: Performs a collection scan, assigns random sort keys, and sorts. This is slower for large collections.
+**Pseudo-random cursor (fast path)** — used when all three conditions are met:
 
-For the best performance, keep sample sizes small relative to your total collection size.
+- `$sample` is the first stage of the pipeline.
+- `size` is less than 5% of the total documents in the collection.
+- The collection contains more than 100 documents.
+
+**Random sort (slow path)** — used when any of the above conditions are not met. MongoDB performs a collection scan, assigns random sort keys, and sorts to select documents. This is slower for large collections.
+
+For the best performance, place `$sample` as the first stage in your pipeline and keep sample sizes below 5% of the total collection size.
 
 ## Seeding Test Data with $sample
 
@@ -94,9 +99,8 @@ This writes 100 random users into a `users_test_fixture` collection.
 ## Limitations
 
 - `$sample` does not guarantee true uniform randomness for very large collections with the cursor-based algorithm.
-- The stage cannot be used inside `$facet`.
 - If `size` exceeds the number of documents, all documents are returned (no error).
 
 ## Summary
 
-`$sample` provides a simple, server-side way to retrieve a random subset of documents from a MongoDB collection or aggregation pipeline. It is well-suited for recommendations, A/B test cohorts, data sampling, and test fixture generation. For large collection samples, be aware of the performance characteristics and keep sample sizes below 5% of the collection to use the fast cursor-based path.
+`$sample` provides a simple, server-side way to retrieve a random subset of documents from a MongoDB collection or aggregation pipeline. It is well-suited for recommendations, A/B test cohorts, data sampling, and test fixture generation. For large collection samples, be aware of the performance characteristics — place `$sample` as the first pipeline stage and keep sample sizes below 5% of the collection to use the fast cursor-based path.
