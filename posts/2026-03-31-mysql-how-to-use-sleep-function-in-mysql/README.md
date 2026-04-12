@@ -86,7 +86,7 @@ BEGIN
     SELECT GET_LOCK('my_resource', 0) INTO result_found;
 
     IF result_found = 0 THEN
-      SELECT SLEEP(0.5);  -- Wait 500ms before retry
+      DO SLEEP(0.5);  -- Wait 500ms before retry
       SET attempts = attempts + 1;
     END IF;
   END WHILE;
@@ -116,12 +116,13 @@ DO
 ## Using SLEEP() to Test Replication Lag
 
 ```sql
--- On the primary: run a slow query
-SELECT SLEEP(10), COUNT(*) FROM large_table;
+-- On the primary (statement-based replication):
+-- Use SLEEP() in a DML so it gets written to the binary log
+UPDATE test_table SET updated_at = NOW() WHERE id = 1 AND SLEEP(10) >= 0;
 
--- Meanwhile, check replication lag on the replica:
+-- On the replica, check replication lag:
 SHOW SLAVE STATUS\G
--- Seconds_Behind_Master increases during the sleep
+-- Seconds_Behind_Master increases as the replica replays the SLEEP()
 ```
 
 ## Killing a SLEEP() Query
