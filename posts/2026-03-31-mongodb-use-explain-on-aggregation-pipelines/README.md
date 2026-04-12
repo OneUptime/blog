@@ -71,10 +71,11 @@ nReturned          - Documents returned by the stage
 totalDocsExamined  - Total documents scanned
 totalKeysExamined  - Index keys examined
 executionTimeMillis - Total execution time
-usedDisk           - true if the pipeline spilled to disk
 ```
 
 A high ratio of `totalDocsExamined` to `nReturned` indicates poor selectivity or a missing index.
+
+For stages that can spill to disk (like `$sort` and `$group`), check the stage-level `usedDisk` field in the explain output. If `usedDisk` is `true`, the stage exceeded the memory limit and wrote temporary data to disk.
 
 ## Identifying Whether $match Uses an Index
 
