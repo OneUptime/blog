@@ -99,7 +99,7 @@ CREATE TABLE mfa_secrets (
 UPDATE users
 SET   failed_attempts = failed_attempts + 1,
       locked_until    = CASE
-          WHEN failed_attempts + 1 >= 5 THEN NOW() + INTERVAL 15 MINUTE
+          WHEN failed_attempts >= 5 THEN NOW() + INTERVAL 15 MINUTE
           ELSE locked_until
       END
 WHERE id = ?;
