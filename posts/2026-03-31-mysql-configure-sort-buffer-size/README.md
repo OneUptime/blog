@@ -110,11 +110,11 @@ SELECT * FROM orders ORDER BY created_at DESC LIMIT 100;
 -- Add an index to avoid the sort entirely
 ALTER TABLE orders ADD INDEX idx_created_at (created_at);
 
--- Verify with EXPLAIN
-EXPLAIN SELECT * FROM orders ORDER BY created_at DESC LIMIT 100;
+-- Verify with EXPLAIN FORMAT=JSON
+EXPLAIN FORMAT=JSON SELECT * FROM orders ORDER BY created_at DESC LIMIT 100;
 ```
 
-Look for `"filesort": false` in EXPLAIN JSON output after adding the index.
+Look for `"using_filesort": false` in EXPLAIN JSON output after adding the index.
 
 ## Summary
 
