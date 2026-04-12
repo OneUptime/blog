@@ -108,16 +108,22 @@ mysql -u root -p -e "SET GLOBAL general_log = OFF;"
 grep "specific_table" /var/log/mysql/general.log
 ```
 
-## Log Only Specific Users (MySQL 8.0)
+## Log Only Specific Users
 
-Use the `log_statements_unsafe_for_binlog` approach or filter by user via the audit plugin. For a simpler approach, use session-level logging:
+MySQL does not natively support per-user filtering of the general query log. The general log is a global setting that captures all queries from all users. To filter by user, you have two main options:
+
+**Option 1**: Enable the general log globally and filter the output after the fact using `grep` or SQL queries on the `mysql.general_log` table:
 
 ```sql
--- For a specific debugging session
-SET @@SESSION.general_log = ON;  -- Note: this is a global variable
+SELECT event_time, user_host, command_type, argument
+FROM mysql.general_log
+WHERE user_host LIKE '%appuser%'
+ORDER BY event_time DESC;
 ```
 
-Alternatively, capture only slow queries with `long_query_time = 0` to log all queries to the slow log:
+**Option 2**: Use the MySQL Enterprise Audit plugin (or a third-party audit plugin) which supports per-user filtering natively.
+
+Alternatively, capture all queries with `long_query_time = 0` to log everything to the slow log:
 
 ```sql
 SET GLOBAL slow_query_log = ON;
