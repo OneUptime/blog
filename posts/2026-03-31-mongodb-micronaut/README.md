@@ -40,7 +40,6 @@ mongodb:
 ```java
 import io.micronaut.data.annotation.Id;
 import io.micronaut.data.annotation.MappedEntity;
-import io.micronaut.data.annotation.MappedProperty;
 import org.bson.types.ObjectId;
 
 @MappedEntity("products")
