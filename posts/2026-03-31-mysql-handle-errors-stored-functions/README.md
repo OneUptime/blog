@@ -12,7 +12,7 @@ Error handling in MySQL stored functions is more constrained than in stored proc
 
 ## Declaring a CONTINUE Handler
 
-A `CONTINUE HANDLER` lets the function recover from an error and return a fallback value:
+The simplest approach is a defensive check that prevents the error before it occurs:
 
 ```sql
 DELIMITER //
@@ -107,9 +107,9 @@ SELECT calculate_discount(100.00, 150.00);
 -- ERROR 1644 (45000): Discount percentage must be between 0 and 100
 ```
 
-## Handling Specific Error Codes
+## Handling SQL Warnings
 
-You can handle a specific MySQL error number using `SQLWARNING` or a named condition:
+You can catch warnings raised during operations like type conversion using the `SQLWARNING` class condition:
 
 ```sql
 DELIMITER //
