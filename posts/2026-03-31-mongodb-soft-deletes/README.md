@@ -126,10 +126,9 @@ db.users.createIndex(
   { partialFilterExpression: { deletedAt: null } }
 );
 
-// Index to support the admin "find deleted items" query
+// Index to support the admin "find deleted items" query and the purge job
 db.users.createIndex(
-  { deletedAt: 1 },
-  { sparse: true }  // only index documents where deletedAt exists and is non-null
+  { deletedAt: 1 }
 );
 ```
 
