@@ -53,14 +53,13 @@ client = MongoClient(
 
 ```text
 Covered by retryWrites:
-  insertOne
+  insertOne, insertMany
   updateOne, replaceOne
   deleteOne
   findOneAndUpdate, findOneAndReplace, findOneAndDelete
-  bulkWrite (ordered, single-batch)
+  bulkWrite (when containing only single-document write operations)
 
 NOT covered:
-  insertMany (unordered)
   updateMany, deleteMany
   writes inside a transaction (use withTransaction() instead)
 ```
