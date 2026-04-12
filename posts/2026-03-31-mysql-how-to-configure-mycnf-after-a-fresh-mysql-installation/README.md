@@ -82,7 +82,7 @@ log_error               = /var/log/mysql/error.log
 # Binary log (required for replication)
 log_bin                 = /var/log/mysql/mysql-bin.log
 binlog_format           = ROW
-expire_logs_days        = 7
+binlog_expire_logs_seconds = 604800
 
 [client]
 default-character-set   = utf8mb4
