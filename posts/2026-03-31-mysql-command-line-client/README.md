@@ -84,7 +84,7 @@ SHOW WARNINGS;
 ```text
 \h or help     - show help
 \q or quit     - exit the client
-\r or rehash   - rebuild tab-completion cache
+\# or rehash   - rebuild tab-completion cache
 \s or status   - show connection and server status
 \!             - execute a shell command (e.g., \! ls /tmp)
 \e             - edit the current query in your default editor
@@ -131,8 +131,11 @@ mysql -u app_user -p \
   --ssl-cert=/etc/mysql/certs/client-cert.pem \
   --ssl-key=/etc/mysql/certs/client-key.pem \
   -h db.example.com mydb
+```
 
--- Verify SSL is active
+Once connected, verify SSL is active:
+
+```sql
 SHOW SESSION STATUS LIKE 'Ssl_cipher';
 ```
 
