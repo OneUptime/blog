@@ -68,7 +68,7 @@ Use `range` when you want boundaries based on the sort field's actual values:
 db.dailySales.aggregate([
   {
     $setWindowFields: {
-      sortBy: { dayOfYear: 1 },
+      sortBy: { saleDate: 1 },
       output: {
         // Sum of sales within 3 days before and after
         weeklyContext: {
