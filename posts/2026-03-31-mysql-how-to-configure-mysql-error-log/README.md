@@ -66,13 +66,20 @@ For production, verbosity 2 or 3 is recommended. Verbosity 1 misses important wa
 
 ## Use JSON Error Log Format (MySQL 8.0+)
 
-MySQL 8.0 supports structured JSON error logging, making it easier to parse with log management tools:
+MySQL 8.0 supports structured JSON error logging, making it easier to parse with log management tools. First, install the JSON log component:
+
+```sql
+INSTALL COMPONENT 'file://component_log_sink_json';
+```
+
+Then configure it in `/etc/mysql/mysql.conf.d/mysqld.cnf`:
 
 ```text
 [mysqld]
 log_error_services = log_filter_internal; log_sink_json
-log_error = /var/log/mysql/error.json
 ```
+
+The JSON sink writes to a file based on `log_error`, with a `.NN.json` suffix appended. For example, if `log_error = /var/log/mysql/error.log`, the JSON output goes to `/var/log/mysql/error.log.00.json`.
 
 Sample JSON output:
 
@@ -92,7 +99,13 @@ Sample JSON output:
 
 ## Log to syslog
 
-To integrate with centralized logging on Linux:
+To integrate with centralized logging on Linux, first install the system log component:
+
+```sql
+INSTALL COMPONENT 'file://component_log_sink_syseventlog';
+```
+
+Then configure it in `/etc/mysql/mysql.conf.d/mysqld.cnf`:
 
 ```text
 [mysqld]
@@ -134,7 +147,7 @@ Or use `logrotate`:
 
 ## Common Error Log Messages
 
-### InnoDB recovery message (after unclean shutdown)
+### InnoDB log file creation (first start or upgrade)
 
 ```text
 InnoDB: Log file ./ib_logfile0 did not exist: new to be created
