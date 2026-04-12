@@ -107,7 +107,7 @@ CREATE TABLE locations (
   latitude  DOUBLE NOT NULL,
   longitude DOUBLE NOT NULL,
   elevation DOUBLE,
-  SPATIAL INDEX USING HASH (latitude, longitude)
+  INDEX idx_coords (latitude, longitude)
 );
 
 INSERT INTO locations (name, latitude, longitude, elevation)
