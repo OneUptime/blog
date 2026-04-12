@@ -40,7 +40,9 @@ Supported operators in `partialFilterExpression`:
 - `$exists`
 - Comparison: `$gt`, `$gte`, `$lt`, `$lte`
 - `$type`
-- `$and` (top-level only)
+- `$and`
+- `$or` (MongoDB 5.0+)
+- `$in` (MongoDB 5.0+)
 
 ## Examples
 
@@ -175,8 +177,13 @@ async function main() {
     status: "active"
   }).explain("executionStats");
 
-  const winningStage = plan.queryPlanner.winningPlan.inputStage;
-  console.log("Index used:", winningStage.indexName);
+  // Classic engine: winningPlan.inputStage
+  // SBE engine (MongoDB 5.1+): winningPlan.queryPlan.inputStage
+  const winningPlan = plan.queryPlanner.winningPlan;
+  const inputStage = winningPlan.queryPlan
+    ? winningPlan.queryPlan.inputStage
+    : winningPlan.inputStage;
+  console.log("Index used:", inputStage.indexName);
 
   await client.close();
 }
