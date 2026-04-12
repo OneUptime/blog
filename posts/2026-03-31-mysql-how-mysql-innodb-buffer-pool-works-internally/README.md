@@ -106,7 +106,7 @@ SHOW VARIABLES LIKE 'innodb_buffer_pool_load_at_startup';
 [mysqld]
 innodb_buffer_pool_dump_at_shutdown = ON
 innodb_buffer_pool_load_at_startup = ON
-innodb_buffer_pool_dump_pct = 25   -- Save the hottest 25% of pages
+innodb_buffer_pool_dump_pct = 25   # Save the hottest 25% of pages
 ```
 
 Manually trigger a dump or load:
