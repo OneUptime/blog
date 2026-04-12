@@ -103,7 +103,7 @@ DELIMITER ;
 
 ## AFTER DELETE Trigger - Cascade Audit
 
-Log deleted rows before they are removed:
+Log deleted rows after they are removed:
 
 ```sql
 DELIMITER $$
@@ -170,7 +170,7 @@ DROP TRIGGER IF EXISTS trg_after_insert_order;
 
 - Triggers cannot call stored procedures that return result sets
 - Triggers cannot use transactions directly (`COMMIT`/`ROLLBACK`)
-- Triggers do not fire for changes made by other triggers (no recursive trigger chains by default)
+- A trigger cannot modify a table that is already being used by the statement that invoked it, but cascading triggers across different tables are supported
 - Heavy use of triggers can make debugging and performance tuning more difficult
 
 ## Summary
