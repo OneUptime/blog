@@ -161,7 +161,7 @@ security:
 
 ```javascript
 db.adminCommand({ serverStatus: 1 }).security
-// Look for: "SSLServerSubjectName" and "SSLServerHasCertificateAuthority": true
+// Look for: "SSLServerSubjectName" and "SSLServerCertificateExpirationDate"
 ```
 
 From the shell:
@@ -177,7 +177,7 @@ openssl s_client -connect mongodb.example.com:27017 \
 To rotate certificates on a running server:
 
 ```javascript
-// Load new certificate files without restarting (MongoDB 4.4+)
+// Load new certificate files without restarting (MongoDB 5.0+)
 db.adminCommand({
   rotateCertificates: 1,
   message: "Rotating to new cert expiring 2027"
@@ -204,4 +204,4 @@ ls -la /etc/ssl/mongodb/server.pem
 
 ## Summary
 
-Configure MongoDB TLS using the `net.tls` section in `mongod.conf`. Use `mode: requireTLS` in production and set `allowConnectionsWithoutCertificates: false` for mutual TLS. Provide a PEM file combining the certificate and private key via `certificateKeyFile`, and specify your CA with `CAFile`. Disable TLS 1.0 and 1.1 with `disabledProtocols`. Use `rotateCertificates` for zero-downtime certificate rotation on MongoDB 4.4+. Always verify TLS is active with `serverStatus` and external tools like `openssl s_client`.
+Configure MongoDB TLS using the `net.tls` section in `mongod.conf`. Use `mode: requireTLS` in production and set `allowConnectionsWithoutCertificates: false` for mutual TLS. Provide a PEM file combining the certificate and private key via `certificateKeyFile`, and specify your CA with `CAFile`. Disable TLS 1.0 and 1.1 with `disabledProtocols`. Use `rotateCertificates` for zero-downtime certificate rotation on MongoDB 5.0+. Always verify TLS is active with `serverStatus` and external tools like `openssl s_client`.
