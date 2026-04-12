@@ -51,7 +51,7 @@ client = MongoClient(
 ## Java Driver
 
 ```java
-import com.mongodb.ConnectionString;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 
 String uri = "mongodb://lb.example.com:27017/mydb?loadBalanced=true&tls=true";
