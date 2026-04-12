@@ -15,7 +15,7 @@ GraphQL provides a flexible alternative to REST for MySQL-backed APIs, allowing 
 ```bash
 mkdir graphql-mysql-api && cd graphql-mysql-api
 npm init -y
-npm install @apollo/server graphql mysql2 dataloader
+npm install @apollo/server graphql mysql2 dataloader graphql-tag
 npm install --save-dev nodemon
 ```
 
@@ -123,6 +123,10 @@ module.exports = {
       const [rows] = await pool.query('SELECT * FROM orders WHERE id = ?', [id]);
       return rows[0] || null;
     },
+    users: async () => {
+      const [rows] = await pool.query('SELECT * FROM users');
+      return rows;
+    },
   },
 
   Mutation: {
@@ -142,7 +146,19 @@ module.exports = {
     },
   },
 
+  User: {
+    orders: async (user) => {
+      const [rows] = await pool.query(
+        'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
+        [user.id]
+      );
+      return rows;
+    },
+  },
+
   Order: {
+    userId: (order) => order.user_id,
+    createdAt: (order) => order.created_at,
     user: (order, _, { loaders }) => loaders.user.load(order.user_id),
   },
 };
