@@ -28,6 +28,7 @@ mongodb = { version = "2.8", features = ["tokio-runtime"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 bson = { version = "2.9", features = ["chrono-0_4"] }
+futures = "0.3"
 ```
 
 ## Database Setup and Managed State
