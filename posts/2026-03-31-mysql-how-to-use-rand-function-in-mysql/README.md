@@ -118,14 +118,11 @@ CREATE TABLE coupons (
 INSERT INTO coupons (code, discount_pct) VALUES
 ('SAVE10', 10), ('SAVE20', 20), ('SAVE30', 30);
 
--- Assign a random coupon to each new order
-SELECT o.order_id, c.code, c.discount_pct
-FROM orders o
-JOIN coupons c ON c.id = (
-  SELECT id FROM coupons
-  ORDER BY RAND()
-  LIMIT 1
-);
+-- Pick a random coupon to assign to a new order
+SELECT code, discount_pct
+FROM coupons
+ORDER BY RAND()
+LIMIT 1;
 ```
 
 ## Performance Considerations
