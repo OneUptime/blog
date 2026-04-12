@@ -119,10 +119,10 @@ Compare execution with and without:
 
 ```bash
 # Time without STRAIGHT_JOIN
-mysql -u root -p myapp -e "SELECT SQL_NO_CACHE o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'pending'" > /dev/null
+time mysql -u root -p myapp -e "SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'pending'" > /dev/null
 
 # Time with STRAIGHT_JOIN
-mysql -u root -p myapp -e "SELECT SQL_NO_CACHE STRAIGHT_JOIN o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'pending'" > /dev/null
+time mysql -u root -p myapp -e "SELECT STRAIGHT_JOIN o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'pending'" > /dev/null
 ```
 
 Or use `EXPLAIN ANALYZE` to compare actual execution times.
