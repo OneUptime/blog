@@ -114,15 +114,15 @@ On Atlas, connection limits are enforced by tier. You can also use a connection 
 
 ```bash
 atlas alerts settings create \
-  --eventTypeName CONNECTIONS_PERCENT \
+  --event OUTSIDE_METRIC_THRESHOLD \
   --enabled \
   --notificationType EMAIL \
   --notificationEmailAddress ops@example.com \
-  --metricThresholdMetricName CONNECTIONS_PERCENT \
-  --metricThresholdMode AVERAGE \
-  --metricThresholdOperator GREATER_THAN \
-  --metricThresholdThreshold 80 \
-  --metricThresholdUnits RAW
+  --metricName CONNECTIONS_PERCENT \
+  --metricMode AVERAGE \
+  --metricOperator GREATER_THAN \
+  --metricThreshold 80 \
+  --metricUnits RAW
 ```
 
 ## Summary
