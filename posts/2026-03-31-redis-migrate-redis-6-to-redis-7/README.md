@@ -13,11 +13,11 @@ Redis 7 introduced significant changes including multi-part AOF, ACL improvement
 ## Key Changes in Redis 7
 
 - Multi-part AOF replaces single AOF file (AOF directory instead of single file)
-- ACL LOG now stores more detail and has a `RESET` subcommand
+- ACL LOG now stores more detail; selector-based ACLs added
 - `OBJECT HELP` output changed
 - `SINTERCARD` and `LMPOP`/`ZMPOP` commands added
 - `DEBUG SLEEP` behavior changed
-- Cluster improvements: shard pub/sub, `OBJECT FREQ` in `OBJECT ENCODING`
+- Cluster improvements: sharded pub/sub, `CLUSTER SHARDS` command
 
 ## Pre-Migration Checklist
 
@@ -49,7 +49,7 @@ curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyr
 echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" \
   | sudo tee /etc/apt/sources.list.d/redis.list
 sudo apt-get update
-sudo apt-get install redis=7:7.*
+sudo apt-get install redis=6:7.*
 ```
 
 **Step 2: Configure Redis 7 as a replica of Redis 6**
@@ -122,8 +122,11 @@ redis-cli -h <redis7-host> ACL LOG
 Keep the Redis 6 instance running as a standby for at least 24 hours after migration. If issues arise, update your application connection string to point back to Redis 6.
 
 ```bash
-# To re-enable Redis 6 as primary:
-redis-cli -h <redis6-host> CONFIG SET slave-serve-stale-data yes
+# Point your application connection string back to Redis 6
+# Verify Redis 6 is still accepting writes:
+redis-cli -h <redis6-host> PING
+redis-cli -h <redis6-host> SET rollback-test "ok"
+redis-cli -h <redis6-host> DEL rollback-test
 ```
 
 ## Summary
