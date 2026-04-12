@@ -87,7 +87,7 @@ Even with TCP traffic, Istio captures connection metrics. Query them in Promethe
 # Total bytes sent to MongoDB
 istio_tcp_sent_bytes_total{destination_service_name="mongodb"}
 
-# Active TCP connections to MongoDB
+# Total TCP connections opened to MongoDB
 istio_tcp_connections_opened_total{destination_service_name="mongodb"}
 ```
 
