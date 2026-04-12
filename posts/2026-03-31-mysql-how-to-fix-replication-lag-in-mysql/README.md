@@ -20,7 +20,7 @@ Key fields to check:
 
 - `Seconds_Behind_Source` - current lag
 - `Last_SQL_Error` - whether the SQL thread is erroring
-- `Exec_Master_Log_Pos` vs `Read_Master_Log_Pos` - is the SQL thread falling behind the IO thread?
+- `Exec_Source_Log_Pos` vs `Read_Source_Log_Pos` - is the SQL thread falling behind the IO thread?
 
 Also check if the replica is I/O-bound or CPU-bound:
 
