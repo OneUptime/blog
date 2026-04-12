@@ -82,7 +82,7 @@ The `MATCH ... AGAINST` expression in the SELECT list returns the relevance scor
 
 ## Boolean Mode
 
-Boolean mode supports operators to include, exclude, or require specific words. It does not return relevance scores by default.
+Boolean mode supports operators to include, exclude, or require specific words. Unlike natural language mode, it does not automatically sort results by relevance.
 
 **Syntax:**
 
