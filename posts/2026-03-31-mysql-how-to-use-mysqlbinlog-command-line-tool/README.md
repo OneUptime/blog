@@ -132,19 +132,19 @@ mysqlbinlog -v /var/lib/mysql/binlog.000001
 Output includes `###` comments showing the row values:
 
 ```text
-### UPDATE myapp.orders
+### UPDATE `myapp`.`orders`
 ### WHERE
-###   @1=42 (id)
-###   @2=100.00 (amount)
+###   @1=42
+###   @2=100.00
 ### SET
-###   @2=150.00 (amount)
+###   @2=150.00
 ```
 
 Use `-vv` for more verbose column type information.
 
-## Show Only Specific Event Types
+## Filter by GTID
 
-Use `--include-gtids` or `--exclude-gtids` when using GTID-based replication:
+Use `--include-gtids` or `--exclude-gtids` to filter events when using GTID-based replication:
 
 ```bash
 mysqlbinlog \
