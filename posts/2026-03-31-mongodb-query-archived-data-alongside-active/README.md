@@ -57,7 +57,7 @@ Views are computed on read - they don't store data and always reflect current st
 
 ## Option 3: Atlas Data Federation for Online Archive Queries
 
-When using Atlas Online Archive, data is moved to S3. Query it through Atlas Data Federation:
+When using Atlas Online Archive, data is moved to cloud object storage (S3 on AWS, Azure Blob Storage on Azure, or Google Cloud Storage on GCP). Query it through Atlas Data Federation:
 
 ```javascript
 // Connect to your federated database endpoint
