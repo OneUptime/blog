@@ -92,7 +92,7 @@ After a MySQL restart, the buffer pool starts empty. Enable automatic dump and r
 [mysqld]
 innodb_buffer_pool_dump_at_shutdown = ON
 innodb_buffer_pool_load_at_startup  = ON
-innodb_buffer_pool_dump_pct         = 25  -- dump top 25% (most recently used pages)
+innodb_buffer_pool_dump_pct         = 25  # dump top 25% (most recently used pages)
 ```
 
 Manually dump the buffer pool state:
@@ -144,7 +144,7 @@ SELECT pool_id,
        database_pages,
        old_database_pages,
        modified_database_pages,
-       hit_rate / 1000 AS hit_rate_pct
+       hit_rate / 10 AS hit_rate_pct
 FROM   information_schema.INNODB_BUFFER_POOL_STATS;
 ```
 
@@ -169,7 +169,7 @@ By default, 37% of the buffer pool is the "old" sublist. Adjust if full table sc
 ```ini
 [mysqld]
 innodb_old_blocks_pct  = 37
-innodb_old_blocks_time = 1000  -- milliseconds before page moves to new sublist
+innodb_old_blocks_time = 1000  # milliseconds before page moves to new sublist
 ```
 
 Increasing `innodb_old_blocks_time` protects frequently accessed pages from being evicted by a full table scan.
@@ -177,14 +177,12 @@ Increasing `innodb_old_blocks_time` protects frequently accessed pages from bein
 ## Finding Tables Consuming Most Buffer Pool Pages
 
 ```sql
-SELECT t.table_schema,
-       t.table_name,
+SELECT TABLE_NAME,
        COUNT(*) AS buffer_pool_pages,
        COUNT(*) * 16 / 1024 AS buffer_pool_mb
-FROM   information_schema.INNODB_BUFFER_PAGE ibp
-JOIN   information_schema.INNODB_TABLES t
-       ON ibp.table_name = CONCAT(t.table_schema, '/', t.table_name)
-GROUP  BY t.table_schema, t.table_name
+FROM   information_schema.INNODB_BUFFER_PAGE
+WHERE  TABLE_NAME IS NOT NULL
+GROUP  BY TABLE_NAME
 ORDER  BY buffer_pool_pages DESC
 LIMIT  20;
 ```
