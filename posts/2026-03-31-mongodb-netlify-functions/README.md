@@ -25,7 +25,8 @@ my-app/
 ## Installing Dependencies
 
 ```bash
-npm install mongoose netlify-cli --save-dev
+npm install mongoose
+npm install netlify-cli --save-dev
 ```
 
 ## Connection Caching Utility
@@ -160,4 +161,4 @@ netlify deploy --prod
 
 ## Summary
 
-Netlify Functions access MongoDB the same way as AWS Lambda - cache the Mongoose connection in module scope and check `readyState` before reconnecting. Keep `maxPoolSize` at 3 or lower to manage Atlas connection limits across concurrent function instances, use background functions for batch processing that exceeds the 10-second synchronous timeout, and set the MongoDB URI via the Netlify CLI or dashboard rather than committing it to source control.
+Netlify Functions access MongoDB the same way as AWS Lambda - cache the Mongoose connection in module scope and check `readyState` before reconnecting. Keep `maxPoolSize` at 3 or lower to manage Atlas connection limits across concurrent function instances, use background functions for batch processing that exceeds the 60-second synchronous timeout, and set the MongoDB URI via the Netlify CLI or dashboard rather than committing it to source control.
