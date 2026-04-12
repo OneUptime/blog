@@ -21,8 +21,8 @@ iostat -xm 2 10
 # Check I/O wait percentage (high iowait = disk bottleneck)
 top -bn1 | grep 'Cpu(s)'
 
-# MongoDB-specific: check flush duration
-mongosh --eval "db.serverStatus().backgroundFlushing"
+# MongoDB-specific: check WiredTiger checkpoint duration
+mongosh --eval "printjson(db.serverStatus().wiredTiger['transaction checkpoint'])"
 ```
 
 ## Step 2: Check WiredTiger Eviction Rate
