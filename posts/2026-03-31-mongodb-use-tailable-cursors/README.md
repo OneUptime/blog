@@ -58,7 +58,7 @@ async function tailLogs() {
 
   const cursor = collection.find(
     {},
-    { tailable: true, awaitData: false }
+    { tailable: true, awaitData: true }
   );
 
   for await (const doc of cursor) {
