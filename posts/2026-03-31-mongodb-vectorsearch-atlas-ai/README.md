@@ -45,6 +45,10 @@ First, create a vector search index on your collection through the Atlas UI, Atl
     {
       "type": "filter",
       "path": "inStock"
+    },
+    {
+      "type": "filter",
+      "path": "price"
     }
   ]
 }
@@ -324,7 +328,7 @@ db.articles.aggregate([
 
 - `numCandidates`: how many vectors the HNSW graph examines during the ANN search. Higher = more accurate but slower.
 - `limit`: how many results to return.
-- Rule of thumb: set `numCandidates` to at least 10 times `limit` for good recall. With pre-filters, set it higher.
+- Rule of thumb: set `numCandidates` to at least 20 times `limit` for good recall (90%+). With pre-filters, set it higher.
 
 ## Supported Similarity Functions
 
