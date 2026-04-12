@@ -86,7 +86,6 @@ Convert DynamoDB's typed format to plain MongoDB documents:
 import json
 import gzip
 import os
-from decimal import Decimal
 
 def convert_dynamodb_item(item):
     """Recursively convert DynamoDB typed attributes to plain Python."""
@@ -181,8 +180,7 @@ mongoimport \
   --db myapp \
   --collection users \
   --file /tmp/users_mongodb.json \
-  --numInsertionWorkers 4 \
-  --batchSize 500
+  --numInsertionWorkers 4
 ```
 
 ## Step 5: Create Secondary Indexes
@@ -190,7 +188,7 @@ mongoimport \
 DynamoDB Global Secondary Indexes (GSIs) become regular MongoDB indexes:
 
 ```javascript
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 // If DynamoDB had a GSI on email
 db.users.createIndex({ email: 1 }, { unique: true });
