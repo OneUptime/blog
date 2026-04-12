@@ -47,7 +47,7 @@ db.orders.find().limit(20)
 db.orders.find().sort({ _id: 1 }).skip(100).limit(20)
 
 // Return only specific fields
-db.orders.find().project({ orderId: 1, total: 1, _id: 0 })
+db.orders.find({}, { orderId: 1, total: 1, _id: 0 })
 
 // Count documents matching filter
 db.orders.countDocuments({ status: "pending" })
