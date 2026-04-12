@@ -16,7 +16,9 @@ Before enabling encryption, install a keyring plugin. The simplest option for te
 
 ```sql
 -- Check available keyring plugins
-SHOW PLUGINS LIKE 'keyring%';
+SELECT PLUGIN_NAME, PLUGIN_STATUS
+FROM information_schema.PLUGINS
+WHERE PLUGIN_NAME LIKE 'keyring%';
 ```
 
 Add the keyring plugin to `my.cnf`:
@@ -75,13 +77,18 @@ CREATE TABLESPACE encrypted_ts
 ALTER TABLE orders TABLESPACE encrypted_ts;
 ```
 
-To enable encryption for the InnoDB system tablespace and redo logs, set these variables in `my.cnf`:
+To enable encryption for the redo and undo logs, set these variables in `my.cnf`:
 
 ```text
 [mysqld]
-innodb_sys_tablespace_encrypt=ON
 innodb_redo_log_encrypt=ON
 innodb_undo_log_encrypt=ON
+```
+
+To encrypt the `mysql` system tablespace (available in MySQL 8.0.16+), run:
+
+```sql
+ALTER TABLESPACE mysql ENCRYPTION = 'Y';
 ```
 
 ## Rotating the Master Key
