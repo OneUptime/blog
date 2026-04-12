@@ -13,9 +13,9 @@ Description: Learn how to perform online backups of MySQL NDB Cluster using ndb_
 NDB Cluster backup is performed at the cluster level through the management node. When triggered, each data node writes its portion of the data to a local backup directory simultaneously. The backup captures a consistent snapshot across all data nodes without stopping the cluster. Backups are stored as three file types per data node:
 
 ```text
-BACKUP-<id>.<nodeid>.ctl   - Control file with metadata
-BACKUP-<id>.<nodeid>.Data  - Table data
-BACKUP-<id>.<nodeid>.log   - Redo log for point-in-time recovery
+BACKUP-<id>.<nodeid>.ctl      - Control file with metadata
+BACKUP-<id>-0.<nodeid>.Data   - Table data
+BACKUP-<id>.<nodeid>.log      - Log of committed transactions during backup
 ```
 
 ## Configuring the Backup Directory
@@ -70,15 +70,25 @@ ndb_mgm -e "start backup 5"
 
 ## Checking Available Backups
 
-On any data node, list backup files:
+On any data node, list backup directories:
 
 ```bash
-ls -lh /backup/mysql-cluster/
+ls /backup/mysql-cluster/
 ```
 
 ```text
-BACKUP-1.2.ctl    BACKUP-1.2.Data    BACKUP-1.2.log
-BACKUP-1.3.ctl    BACKUP-1.3.Data    BACKUP-1.3.log
+BACKUP-1/  BACKUP-2/
+```
+
+To see the files inside a specific backup:
+
+```bash
+ls /backup/mysql-cluster/BACKUP-1/
+```
+
+```text
+BACKUP-1-0.2.Data  BACKUP-1.2.ctl  BACKUP-1.2.log
+BACKUP-1-0.3.Data  BACKUP-1.3.ctl  BACKUP-1.3.log
 ```
 
 ## Automating Backups with a Cron Job
@@ -110,14 +120,14 @@ Check that all data node files are present for the backup:
 
 ```bash
 # For backup ID 1 with nodes 2 and 3:
-ls /backup/mysql-cluster/BACKUP-1.*
+ls /backup/mysql-cluster/BACKUP-1/
 ```
 
 Expected files for each data node:
 
 ```text
-BACKUP-1.2.ctl  BACKUP-1.2.Data  BACKUP-1.2.log
-BACKUP-1.3.ctl  BACKUP-1.3.Data  BACKUP-1.3.log
+BACKUP-1-0.2.Data  BACKUP-1.2.ctl  BACKUP-1.2.log
+BACKUP-1-0.3.Data  BACKUP-1.3.ctl  BACKUP-1.3.log
 ```
 
 ## Summary
