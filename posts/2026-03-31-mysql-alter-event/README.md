@@ -15,9 +15,9 @@ Description: Learn how to modify a MySQL event's schedule, body, status, and nam
 ```sql
 ALTER EVENT event_name
     [ON SCHEDULE schedule]
-    [RENAME TO new_name]
     [ON COMPLETION [NOT] PRESERVE]
-    [ENABLE | DISABLE]
+    [RENAME TO new_name]
+    [ENABLE | DISABLE | DISABLE ON SLAVE]
     [COMMENT 'string']
     [DO event_body];
 ```
@@ -122,7 +122,7 @@ WHERE EVENT_SCHEMA = 'mydb'
 
 ## Required Privileges
 
-To alter an event you need the `EVENT` privilege on the schema, or be the event's definer:
+To alter an event you need the `EVENT` privilege on the schema where the event exists:
 
 ```sql
 GRANT EVENT ON mydb.* TO 'scheduler_user'@'localhost';
