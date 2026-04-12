@@ -40,7 +40,6 @@ mongodb://host:27017/mydb
 
 ```javascript
 const { MongoClient } = require('mongodb');
-const fs = require('fs');
 
 const client = new MongoClient('mongodb://host:27017', {
   tls: true,
@@ -61,7 +60,6 @@ await client.connect();
 
 ```python
 from pymongo import MongoClient
-import ssl
 
 client = MongoClient(
     "mongodb://host:27017",
