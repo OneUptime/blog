@@ -110,7 +110,7 @@ SAVE MYSQL USERS TO DISK;
 ## Verifying Backend Health
 
 ```sql
-SELECT hostgroup_id, hostname, port, status, latency_us
+SELECT hostname, port, time_start_us, connect_success_time_us, connect_error
 FROM monitor.mysql_server_connect_log
 ORDER BY time_start_us DESC
 LIMIT 10;
@@ -132,7 +132,7 @@ mysql -u appuser -pAppPass123! -h 127.0.0.1 -P 6033 -e "SELECT @@hostname;"
 ```sql
 -- Change default admin password
 UPDATE global_variables
-SET variable_value='newadminpassword'
+SET variable_value='admin:newadminpassword'
 WHERE variable_name='admin-admin_credentials';
 
 UPDATE global_variables
