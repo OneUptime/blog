@@ -45,17 +45,16 @@ mysql_service 'default' do
 end
 
 # Deploy custom MySQL configuration
-template '/etc/mysql/mysql.conf.d/tuning.cnf' do
-  source 'tuning.cnf.erb'
-  owner  'root'
-  group  'root'
-  mode   '0644'
+mysql_config 'tuning' do
+  instance 'default'
+  source   'tuning.cnf.erb'
   variables(
     max_connections:          node['myapp_mysql']['max_connections'],
     innodb_buffer_pool_size:  node['myapp_mysql']['innodb_buffer_pool_size'],
     slow_query_log_file:      node['myapp_mysql']['slow_query_log_file']
   )
   notifies :restart, 'mysql_service[default]', :delayed
+  action :create
 end
 ```
 
