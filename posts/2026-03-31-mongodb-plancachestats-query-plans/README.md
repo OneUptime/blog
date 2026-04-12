@@ -81,10 +81,11 @@ When you add a new index or change query patterns, stale cached plans can cause 
 // Clear all cached plans for the collection
 db.orders.getPlanCache().clear();
 
-// Clear a specific plan by its query hash
+// Clear cached plans for a specific query shape
 db.orders.getPlanCache().clearPlansByQuery(
-  { status: "pending", region: "us-east" },
-  { status: 1, region: 1 }
+  { status: "pending", region: "us-east" },  // query
+  {},                                         // projection
+  { status: 1, region: 1 }                   // sort
 );
 ```
 
