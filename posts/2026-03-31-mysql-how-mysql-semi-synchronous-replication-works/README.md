@@ -68,7 +68,7 @@ SHOW VARIABLES LIKE 'rpl_semi_sync%';
 | `rpl_semi_sync_source_wait_no_replica` | Wait even with no semi-sync replicas | ON |
 | `rpl_semi_sync_source_wait_for_replica_count` | How many ACKs required | 1 |
 
-### Requiring Multiple ACKs (Lossless Semi-Sync)
+### Requiring Multiple ACKs
 
 ```sql
 -- Require 2 replicas to acknowledge before commit
@@ -86,7 +86,7 @@ Key metrics:
 - `Rpl_semi_sync_source_yes_tx` - transactions committed with semi-sync ACK.
 - `Rpl_semi_sync_source_no_tx` - transactions committed without ACK (fell back to async).
 - `Rpl_semi_sync_source_clients` - number of semi-sync replicas connected.
-- `Rpl_semi_sync_source_avg_net_wait_time` - average wait time in microseconds.
+- `Rpl_semi_sync_source_net_avg_wait_time` - average network wait time in microseconds.
 
 ## After Source Commit vs After Sync (AFTER_SYNC Mode)
 
