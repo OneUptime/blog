@@ -62,7 +62,7 @@ TRANSACTION 123457, ACTIVE 0 sec starting index read
 
 The last line tells you which transaction was chosen as the victim.
 
-### Performance Schema: Recent Deadlock Data
+### Performance Schema: Monitor Lock Waits
 
 ```sql
 SELECT *
@@ -236,8 +236,9 @@ DECLARE deadlock_occurred BOOL DEFAULT FALSE;
 
 retry_loop: LOOP
     BEGIN
-        DECLARE CONTINUE HANDLER FOR SQLSTATE '40001'  -- deadlock error state
+        DECLARE EXIT HANDLER FOR SQLSTATE '40001'  -- deadlock error state
         BEGIN
+            ROLLBACK;
             SET deadlock_occurred = TRUE;
         END;
 
