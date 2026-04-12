@@ -81,8 +81,9 @@ Note: this does not copy data - it physically moves the table's files. Both data
 Renaming a table does NOT automatically update:
 - Views that reference the table
 - Stored procedures and functions that reference the table
-- Foreign key names (the constraint still works but the table is renamed)
 - Application queries
+
+Foreign key constraints that reference the renamed table ARE automatically updated by MySQL.
 
 Check dependencies before renaming:
 
@@ -98,14 +99,6 @@ SELECT ROUTINE_NAME, ROUTINE_TYPE
 FROM INFORMATION_SCHEMA.ROUTINES
 WHERE ROUTINE_SCHEMA = DATABASE()
   AND ROUTINE_DEFINITION LIKE '%old_table_name%';
-
--- Find foreign keys that reference this table
-SELECT
-    TABLE_NAME,
-    CONSTRAINT_NAME
-FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
-WHERE CONSTRAINT_SCHEMA = DATABASE()
-  AND REFERENCED_TABLE_NAME = 'old_table_name';
 ```
 
 ## Rename Permission Requirements
@@ -126,4 +119,4 @@ WHERE TABLE_SCHEMA = DATABASE()
 
 ## Summary
 
-`RENAME TABLE old TO new` is the cleanest way to rename a table in MySQL. It is atomic, supports renaming multiple tables in one statement, and can move tables between databases on the same instance. The operation does not update references in views, stored procedures, or foreign key constraint names, so those must be updated separately. Use the atomic multi-table rename for zero-downtime table swap deployments.
+`RENAME TABLE old TO new` is the cleanest way to rename a table in MySQL. It is atomic, supports renaming multiple tables in one statement, and can move tables between databases on the same instance. The operation does not update references in views or stored procedures, so those must be updated separately. Foreign key constraints referencing the renamed table are automatically updated by MySQL. Use the atomic multi-table rename for zero-downtime table swap deployments.
