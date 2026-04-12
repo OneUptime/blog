@@ -12,7 +12,7 @@ Description: Step-by-step guide to creating a MySQL InnoDB Cluster with three no
 
 MySQL InnoDB Cluster is a built-in high availability solution that combines:
 
-- **MySQL Group Replication** - synchronous multi-primary or single-primary replication
+- **MySQL Group Replication** - virtually synchronous multi-primary or single-primary replication
 - **MySQL Shell AdminAPI** - management interface
 - **MySQL Router** - transparent client routing with automatic failover
 
