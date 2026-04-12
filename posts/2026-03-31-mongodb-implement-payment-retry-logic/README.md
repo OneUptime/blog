@@ -86,7 +86,7 @@ async function claimNextRetry() {
     {
       status: "scheduled",
       nextRetryAt: { $lte: now },
-      attemptCount: { $lt: "$maxAttempts" }
+      $expr: { $lt: ["$attemptCount", "$maxAttempts"] }
     },
     {
       $set: {
@@ -116,7 +116,8 @@ async function processRetry(retryRecord) {
       amount: retryRecord.amount,
       currency: retryRecord.currency,
       customer: retryRecord.customerId,
-      idempotency_key: `${retryRecord.paymentId}-attempt-${retryRecord.attemptCount + 1}`
+    }, {
+      idempotencyKey: `${retryRecord.paymentId}-attempt-${retryRecord.attemptCount + 1}`
     });
     outcome = "succeeded";
   } catch (err) {
