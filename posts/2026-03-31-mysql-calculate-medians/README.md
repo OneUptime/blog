@@ -16,20 +16,23 @@ The median is the value that separates the higher half from the lower half of a 
 
 ## Classic Method Using Subqueries
 
-The traditional approach counts rows and selects the middle position:
+The traditional approach counts rows and selects the middle position. Since MySQL does not allow expressions or subqueries in `LIMIT` and `OFFSET`, a prepared statement is needed:
 
 ```sql
-SELECT AVG(salary) AS median_salary
-FROM (
-  SELECT salary
-  FROM employees
-  ORDER BY salary
-  LIMIT 2 - (SELECT COUNT(*) FROM employees) MOD 2
-  OFFSET (SELECT (COUNT(*) - 1) / 2 FROM employees)
-) AS middle_rows;
+SET @cnt = (SELECT COUNT(*) FROM employees);
+SET @lim = 2 - (@cnt MOD 2);
+SET @off = FLOOR((@cnt - 1) / 2);
+
+PREPARE median_stmt FROM
+  'SELECT AVG(salary) AS median_salary
+   FROM (
+     SELECT salary FROM employees ORDER BY salary LIMIT ? OFFSET ?
+   ) AS middle_rows';
+EXECUTE median_stmt USING @lim, @off;
+DEALLOCATE PREPARE median_stmt;
 ```
 
-The `LIMIT` expression evaluates to 1 for odd counts and 2 for even counts. `OFFSET` skips to the midpoint. `AVG()` on 1 or 2 rows returns the median correctly in both cases.
+The `@lim` variable evaluates to 1 for odd counts and 2 for even counts. `@off` skips to the midpoint. The prepared statement passes these values as `LIMIT` and `OFFSET` parameters. `AVG()` on 1 or 2 rows returns the median correctly in both cases.
 
 ## Using Variables (MySQL 5.x Compatible)
 
@@ -96,22 +99,22 @@ GROUP BY department;
 
 ## Median with Percentile Approximation
 
-For large datasets where approximate results are acceptable, use `PERCENTILE_CONT` equivalents via sorting:
+For large datasets where approximate results are acceptable, `NTILE(2)` can split the data into two halves and average the boundary values:
 
 ```sql
-WITH ordered AS (
+WITH halved AS (
   SELECT
     salary,
-    NTILE(4) OVER (ORDER BY salary) AS quartile
+    NTILE(2) OVER (ORDER BY salary) AS half
   FROM employees
 )
 SELECT
-  AVG(salary) AS approx_median
-FROM ordered
-WHERE quartile = 2;
+  (MAX(CASE WHEN half = 1 THEN salary END) +
+   MIN(CASE WHEN half = 2 THEN salary END)) / 2 AS approx_median
+FROM halved;
 ```
 
-This is not exact but can be faster on very large tables.
+This returns the exact median for even-numbered datasets. For odd counts, `NTILE(2)` places the extra row in the first half, so the result averages the middle value with its neighbor, which may differ slightly from the true median.
 
 ## Performance Considerations
 
