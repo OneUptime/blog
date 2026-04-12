@@ -42,9 +42,9 @@ ALTER USER 'app_user'@'%'
     IDENTIFIED WITH caching_sha2_password BY 'new_password';
 ```
 
-## Removed: Old-Style Stored Procedure Syntax
+## Removed: Implicit GROUP BY Sorting
 
-Several old syntax forms are removed. Ensure stored procedures do not use deprecated syntax:
+Several old SQL behaviors are removed. One of the most common surprises is the implicit sorting change:
 
 ```sql
 -- OLD (may not work): Using GROUP BY with implicit sorting guarantee
@@ -100,8 +100,8 @@ MySQL 8.0 enables stricter SQL modes by default:
 SELECT @@sql_mode;
 
 -- MySQL 8.0 default includes:
--- STRICT_TRANS_TABLES, NO_ZERO_IN_DATE, NO_ZERO_DATE,
--- ERROR_FOR_DIVISION_BY_ZERO, NO_ENGINE_SUBSTITUTION
+-- ONLY_FULL_GROUP_BY, STRICT_TRANS_TABLES, NO_ZERO_IN_DATE,
+-- NO_ZERO_DATE, ERROR_FOR_DIVISION_BY_ZERO, NO_ENGINE_SUBSTITUTION
 
 -- Issues this may cause:
 -- INSERT with zero dates will now fail
