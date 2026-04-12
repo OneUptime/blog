@@ -95,7 +95,7 @@ After revoking, the user can still connect (USAGE is retained) but cannot read a
 
 ## Granting SELECT and SHOW VIEW
 
-If the read-only user also needs to query views, ensure they have `SHOW VIEW` too:
+SELECT privilege alone is sufficient to query data from views. However, if the read-only user also needs to inspect view definitions with `SHOW CREATE VIEW`, grant `SHOW VIEW` too:
 
 ```sql
 GRANT SELECT, SHOW VIEW ON mydb.* TO 'reporter'@'%';
