@@ -14,7 +14,7 @@ NVMe over Fabrics (NVMe-oF) extends the NVMe protocol over TCP or RDMA networks,
 
 ## Prerequisites
 
-- Rook-Ceph cluster v1.12+
+- Rook-Ceph cluster v1.19+ (NVMe-oF gateway support is experimental)
 - Gateway nodes with 25GbE+ networking for best performance
 - NVMe-oF initiator support on client nodes (kernel 5.0+ for TCP)
 
@@ -42,18 +42,15 @@ kubectl apply -f nvmeof-pool.yaml
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEofGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gw
   namespace: rook-ceph
 spec:
-  gatewayConfig:
-    pool: nvmeof-pool
-    serviceId: gateway-service
-    gatewayServerCert: ""
-  ips:
-  - ip: 10.0.0.100
-  - ip: 10.0.0.101
+  image: quay.io/ceph/nvmeof:1.5
+  pool: nvmeof-pool
+  group: gateway-group
+  instances: 2
 ```
 
 ```bash
@@ -61,21 +58,16 @@ kubectl apply -f nvmeof-gateway.yaml
 kubectl -n rook-ceph get pod -l app=ceph-nvmeof
 ```
 
-## Step 3 - Create an NVMe-oF Subsystem
+## Step 3 - Register the Gateway and Create the RBD Image
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash
 
-# Create a subsystem
-ceph nvme-gw create nvmeof-pool gateway-service
+# Register the gateway with the Ceph cluster
+ceph nvme-gw create nvmeof-gw nvmeof-pool gateway-group
 
 # Create an RBD image for NVMe-oF
 rbd create nvmeof-pool/nvme-disk-01 --size 200G --image-feature layering
-
-# Expose the image via NVMe-oF
-ceph nvme-gw subsystem create \
-  nvmeof-pool gateway-service \
-  nqn.2024-01.io.ceph:nvme1
 ```
 
 ## Step 4 - Configure via the NVMe-oF CLI
@@ -85,8 +77,8 @@ kubectl -n rook-ceph exec -it $(kubectl get pod -n rook-ceph -l app=ceph-nvmeof 
 
 python3 -c "
 import grpc
-import nvmeof_gateway_pb2 as pb2
-import nvmeof_gateway_pb2_grpc as pb2_grpc
+from control.proto import gateway_pb2 as pb2
+from control.proto import gateway_pb2_grpc as pb2_grpc
 
 channel = grpc.insecure_channel('localhost:5500')
 stub = pb2_grpc.GatewayStub(channel)
@@ -95,15 +87,17 @@ stub = pb2_grpc.GatewayStub(channel)
 stub.create_subsystem(pb2.create_subsystem_req(
     subsystem_nqn='nqn.2024-01.io.ceph:nvme1',
     serial_number='CEPH0000001',
-    max_namespaces=256
+    max_namespaces=256,
+    enable_ha=True
 ))
 
 # Add namespace (maps RBD image)
-stub.add_namespace(pb2.add_namespace_req(
-    subsystem_nqn='nqn.2024-01.io.ceph:nvme1',
-    rbd_image_name='nvme-disk-01',
+stub.namespace_add(pb2.namespace_add_req(
     rbd_pool_name='nvmeof-pool',
-    nsid=1
+    rbd_image_name='nvme-disk-01',
+    subsystem_nqn='nqn.2024-01.io.ceph:nvme1',
+    nsid=1,
+    block_size=512
 ))
 "
 ```
@@ -135,13 +129,15 @@ nvme list
 
 ```bash
 # Increase queue depth on the NVMe device
-echo 64 > /sys/block/nvme0n1/queue/nr_requests
+echo 1024 > /sys/block/nvme0n1/queue/nr_requests
 
 # Set I/O scheduler to none for NVMe
 echo none > /sys/block/nvme0n1/queue/scheduler
 
 # Check IOPS
 fio --filename=/dev/nvme0n1 \
+  --ioengine=libaio \
+  --direct=1 \
   --rw=randread \
   --bs=4k \
   --iodepth=64 \
