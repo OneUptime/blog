@@ -38,7 +38,7 @@ CREATE TABLE articles (
 CREATE FULLTEXT INDEX ft_title_body ON articles (title, body);
 
 -- Using ALTER TABLE
-ALTER TABLE articles ADD FULLTEXT INDEX ft_title ON articles (title);
+ALTER TABLE articles ADD FULLTEXT INDEX ft_title (title);
 ```
 
 ## Natural Language Search
