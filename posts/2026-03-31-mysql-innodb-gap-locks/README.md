@@ -81,18 +81,22 @@ Switching to READ COMMITTED eliminates gap locks and can resolve blocking issues
 Two transactions can hold gap locks on the same gap simultaneously - gap locks are compatible with each other:
 
 ```sql
--- Both transactions can hold a gap lock on the same range
+-- Assume the orders table has an index on amount,
+-- and no rows exist with amount between 100 and 200.
+
 -- Session 1
 START TRANSACTION;
-SELECT * FROM orders WHERE amount BETWEEN 100 AND 200 FOR UPDATE;
+SELECT * FROM orders WHERE amount = 150 FOR UPDATE;
+-- No matching row; acquires a gap lock only
 
--- Session 2 - can also acquire a gap lock on the same range
+-- Session 2
 START TRANSACTION;
-SELECT * FROM orders WHERE amount BETWEEN 100 AND 200 FOR UPDATE;
+SELECT * FROM orders WHERE amount = 160 FOR UPDATE;
+-- No matching row; acquires a gap lock on the same gap
 -- Both sessions hold gap locks; neither blocks the other
 ```
 
-They only block INSERTs into that gap.
+Gap locks only block INSERTs into that gap, not other gap locks. Note that if matching rows exist, `FOR UPDATE` acquires next-key locks (record lock plus gap lock), and the record lock component will block between sessions.
 
 ## Disabling Gap Locks
 
