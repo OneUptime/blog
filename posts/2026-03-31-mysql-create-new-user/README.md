@@ -85,9 +85,6 @@ GRANT ALL PRIVILEGES ON mydb.* TO 'alice'@'localhost';
 
 -- Grant SELECT only on a specific table
 GRANT SELECT ON mydb.reports TO 'bob'@'%';
-
--- Apply the privilege changes
-FLUSH PRIVILEGES;
 ```
 
 ## Verifying the New User
@@ -100,7 +97,7 @@ SELECT user, host FROM mysql.user WHERE user IN ('alice', 'bob');
 SHOW GRANTS FOR 'alice'@'localhost';
 ```
 
-## Creating Multiple Users in One Statement (MySQL 8.0+)
+## Creating Multiple Users in One Statement
 
 ```sql
 CREATE USER
