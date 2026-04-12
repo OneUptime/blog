@@ -16,7 +16,7 @@ Without the redo log, InnoDB would need to write every change directly to the da
 
 ## How It Works
 
-When a transaction commits, InnoDB writes the changes to the redo log buffer first, then flushes the redo log buffer to the redo log files on disk. This flush is what makes the transaction durable. The actual data pages in the buffer pool may be updated later in the background - this is called a "dirty page" until it is written to disk.
+When a transaction commits, InnoDB writes the changes to the redo log buffer first, then flushes the redo log buffer to the redo log files on disk. This flush is what makes the transaction durable. The actual data pages in the buffer pool are modified in memory during the transaction, making them "dirty pages." A background thread eventually writes these dirty pages to the data files on disk.
 
 ```text
 Transaction commits -->
@@ -27,7 +27,7 @@ Transaction commits -->
 
 ## Redo Log Configuration
 
-In MySQL 8.0 and later, the redo log size is controlled by `innodb_redo_log_capacity`. In older versions, it was controlled by `innodb_log_file_size` and `innodb_log_files_in_group`.
+In MySQL 8.0.30 and later, the redo log size is controlled by `innodb_redo_log_capacity`. In older versions, it was controlled by `innodb_log_file_size` and `innodb_log_files_in_group`.
 
 ```sql
 -- Check current redo log capacity (MySQL 8.0.30+)
