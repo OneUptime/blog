@@ -137,6 +137,9 @@ pool.on('connection', (connection) => {
 Never hardcode credentials. Use environment variables:
 
 ```javascript
+require('dotenv').config();
+const mysql = require('mysql2');
+
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT) || 3306,
@@ -145,6 +148,12 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   connectionLimit: parseInt(process.env.DB_POOL_SIZE) || 10
 });
+```
+
+Install the `dotenv` package to load variables from a `.env` file:
+
+```bash
+npm install dotenv
 ```
 
 Store your configuration in a `.env` file (never commit this to version control):
