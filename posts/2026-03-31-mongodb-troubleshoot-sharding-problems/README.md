@@ -53,9 +53,20 @@ sh.startBalancer()
 
 ```javascript
 // Count chunks per shard for a specific collection
+// On MongoDB 6.0+, the 'ns' field was replaced with 'uuid' in config.chunks
 use config
+
+// MongoDB 5.x and earlier:
 db.chunks.aggregate([
   { $match: { ns: 'mydb.orders' } },
+  { $group: { _id: '$shard', count: { $sum: 1 } } },
+  { $sort: { count: -1 } }
+])
+
+// MongoDB 6.0+:
+var collUUID = db.collections.findOne({ _id: 'mydb.orders' }).uuid
+db.chunks.aggregate([
+  { $match: { uuid: collUUID } },
   { $group: { _id: '$shard', count: { $sum: 1 } } },
   { $sort: { count: -1 } }
 ])
@@ -65,13 +76,14 @@ If one shard has significantly more chunks than others and the balancer is enabl
 
 ```javascript
 // Find jumbo chunks (too large to split and move)
+// On MongoDB 6.0+, match by uuid instead of ns (see Step 3 above)
 db.chunks.find({ ns: 'mydb.orders', jumbo: true }).count()
 
-// Clear jumbo flag manually (only after ensuring the chunk can be split)
-db.chunks.updateOne(
-  { ns: 'mydb.orders', min: { userId: 'someValue' } },
-  { $unset: { jumbo: 1 } }
-)
+// Clear jumbo flag using the clearJumboFlag command (MongoDB 4.2.3+)
+db.adminCommand({
+  clearJumboFlag: 'mydb.orders',
+  find: { userId: 'someValue' }
+})
 
 // Then manually split the chunk
 sh.splitAt('mydb.orders', { userId: 'someMidpointValue' })
@@ -119,15 +131,19 @@ db.adminCommand({ flushRouterConfig: 'mydb.orders' })
 mongosh --host configsvr1:27019 --eval 'rs.status()'
 
 # Look for members with stateStr other than PRIMARY or SECONDARY
-# A config server in RECOVERING state will cause write failures on mongos
+# If enough members are in RECOVERING or down to prevent a majority,
+# the replica set cannot elect a primary and metadata operations will fail
 ```
 
 ## Step 7: Check for Orphaned Documents
 
-After failed chunk migrations, orphaned documents can exist on the wrong shard.
+After failed chunk migrations, orphaned documents can exist on the wrong shard. Starting in MongoDB 4.4, the range deleter automatically cleans up orphaned documents in the background after chunk migrations. On older versions, you can trigger cleanup manually.
 
 ```javascript
-// Run cleanupOrphaned on the shard (run on each shard, not mongos)
+// MongoDB 4.4+: orphaned documents are cleaned up automatically by the range deleter.
+// No manual intervention is needed in most cases.
+
+// MongoDB 4.2 and earlier: run cleanupOrphaned on the shard (not mongos)
 db.adminCommand({
   cleanupOrphaned: 'mydb.orders',
   startingFromKey: { userId: MinKey }
