@@ -10,7 +10,7 @@ Description: Learn how to respond to MongoDB replica set election events, unders
 
 ## What Is a MongoDB Election?
 
-A replica set election occurs when the current primary becomes unavailable or steps down. The remaining voting members elect a new primary. Elections typically complete in 10-30 seconds, during which no writes are accepted. Applications experience a brief window of `NotWritablePrimary` errors.
+A replica set election occurs when the current primary becomes unavailable or steps down. The remaining voting members elect a new primary. Elections typically complete in under 12 seconds (median), during which no writes are accepted. Applications experience a brief window of `NotWritablePrimary` errors.
 
 ## Why Elections Happen
 
@@ -31,7 +31,7 @@ rs.status().members.forEach(m => {
 });
 ```
 
-Watch for `SECONDARY` members with `stateStr: "PRIMARY"` changing or `ELECTING` state.
+Watch for the absence of any member with `stateStr: "PRIMARY"`, which indicates an election is in progress.
 
 Check the system log for election events:
 
@@ -114,13 +114,10 @@ db.getSiblingDB("local").oplog.rs
 
 ```javascript
 // Increase election timeout (milliseconds) to tolerate brief network blips
-rs.reconfig({
-  ...rs.conf(),
-  settings: {
-    electionTimeoutMillis: 10000,  // default: 10000 (10 seconds)
-    heartbeatTimeoutSecs: 10       // default: 10
-  }
-});
+const cfg = rs.conf();
+cfg.settings.electionTimeoutMillis = 15000;  // default: 10000 (10 seconds)
+cfg.settings.heartbeatTimeoutSecs = 15;      // default: 10
+rs.reconfig(cfg);
 ```
 
 ## Summary
