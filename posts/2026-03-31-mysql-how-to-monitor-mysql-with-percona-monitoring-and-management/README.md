@@ -46,8 +46,8 @@ Access the PMM UI at `https://localhost` (default credentials: admin/admin).
 
 ```bash
 # On Ubuntu/Debian
-wget https://repo.percona.com/apt/percona-release_latest.$(lsb_release -sc)_all.deb
-dpkg -i percona-release_latest.$(lsb_release -sc)_all.deb
+wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+dpkg -i percona-release_latest.generic_all.deb
 apt-get update && apt-get install pmm2-client
 
 # On RHEL/CentOS
