@@ -118,8 +118,6 @@ def insert_order(customer_id: int, total: float) -> int:
 With SQLAlchemy, inspect pool statistics:
 
 ```python
-from sqlalchemy import pool as sa_pool
-
 status = engine.pool.status()
 print(status)
 # Pool size: 10  Connections in pool: 4  Current overflow: 0  Current checked out: 2
@@ -145,4 +143,4 @@ engine = create_engine(
 
 ## Summary
 
-For Python applications, SQLAlchemy's `create_engine` with `pool_pre_ping=True` and `pool_recycle` is the recommended approach - it handles stale connections automatically and integrates with Django, FastAPI, Flask-SQLAlchemy, and standalone SQLAlchemy usage. Use `mysql-connector-python`'s built-in pool for simpler scripts that don't need SQLAlchemy. Always size pools based on your CPU core count and measure actual utilization under load.
+For Python applications, SQLAlchemy's `create_engine` with `pool_pre_ping=True` and `pool_recycle` is the recommended approach - it handles stale connections automatically and integrates with FastAPI, Flask-SQLAlchemy, and standalone SQLAlchemy usage. Use `mysql-connector-python`'s built-in pool for simpler scripts that don't need SQLAlchemy. Always size pools based on your CPU core count and measure actual utilization under load.
