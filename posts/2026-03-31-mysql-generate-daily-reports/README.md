@@ -113,7 +113,8 @@ DO
   WHERE DATE(order_date) = CURDATE() - INTERVAL 1 DAY
   ON DUPLICATE KEY UPDATE
     order_count = VALUES(order_count),
-    total_revenue = VALUES(total_revenue);
+    total_revenue = VALUES(total_revenue),
+    unique_customers = VALUES(unique_customers);
 ```
 
 ## Summary
