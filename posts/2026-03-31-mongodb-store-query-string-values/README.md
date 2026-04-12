@@ -61,7 +61,7 @@ db.users.find({ name: { $regex: "^Ali" } });
 // Substring match - cannot use a standard index efficiently
 db.users.find({ name: { $regex: "Smith" } });
 
-// For substring search at scale, use a text index instead
+// For word-based search at scale, use a text index instead
 db.users.createIndex({ name: "text" });
 db.users.find({ $text: { $search: "Smith" } });
 ```
@@ -136,4 +136,4 @@ db.createCollection("users", {
 
 ## Summary
 
-MongoDB stores strings as UTF-8 BSON type 2 with full Unicode support. Case-insensitive queries work best with collation-backed indexes rather than regex, which cannot use standard indexes. Use `$regex` for prefix searches (index-friendly) or text indexes for full-text substring search. Clean and normalize strings using aggregation pipeline operators like `$trim` and `$toLower` in update operations.
+MongoDB stores strings as UTF-8 BSON type 2 with full Unicode support. Case-insensitive queries work best with collation-backed indexes rather than regex, which cannot use standard indexes. Use `$regex` for prefix searches (index-friendly) or text indexes for full-text word search. Clean and normalize strings using aggregation pipeline operators like `$trim` and `$toLower` in update operations.
