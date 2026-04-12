@@ -72,9 +72,9 @@ export const products = mysqlTable('products', {
   stock: int('stock').default(0),
   active: boolean('active').default(true),
   createdAt: timestamp('created_at').defaultNow(),
-}, (table) => ({
-  categoryPriceIdx: index('idx_category_price').on(table.categoryId, table.price),
-}));
+}, (table) => [
+  index('idx_category_price').on(table.categoryId, table.price),
+]);
 ```
 
 ## Running Migrations with drizzle-kit
@@ -82,24 +82,24 @@ export const products = mysqlTable('products', {
 In `drizzle.config.ts`:
 
 ```typescript
-import type { Config } from 'drizzle-kit';
+import { defineConfig } from 'drizzle-kit';
 
-export default {
+export default defineConfig({
   schema: './src/schema.ts',
   out: './drizzle',
-  driver: 'mysql2',
+  dialect: 'mysql',
   dbCredentials: {
     host: 'localhost',
     user: 'root',
     password: 'password',
     database: 'mydb',
   },
-} satisfies Config;
+});
 ```
 
 ```bash
-npx drizzle-kit generate:mysql
-npx drizzle-kit push:mysql
+npx drizzle-kit generate
+npx drizzle-kit push
 ```
 
 ## Querying with Drizzle
@@ -119,7 +119,7 @@ const result = await db
   })
   .from(products)
   .innerJoin(categories, eq(products.categoryId, categories.id))
-  .where(and(lte(products.price, 1000), gt(products.stock, 0)))
+  .where(and(lte(products.price, '1000'), gt(products.stock, 0)))
   .orderBy(products.price)
   .limit(20);
 
@@ -144,8 +144,15 @@ await db.delete(products)
 ## Transactions
 
 ```typescript
+import { sql } from 'drizzle-orm';
+
 await db.transaction(async (tx) => {
-  const [order] = await tx.insert(orders).values({ customerId: 1, total: '999.99' });
+  await tx.insert(products).values({
+    name: 'Keyboard',
+    price: '79.99',
+    stock: 200,
+    categoryId: 1,
+  });
   await tx.update(products)
     .set({ stock: sql`stock - 1` })
     .where(eq(products.id, 1));
