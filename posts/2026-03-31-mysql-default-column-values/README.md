@@ -106,22 +106,22 @@ VALUES ('Gadget', 49.99, DEFAULT);
 -- in_stock gets the column's defined default value (1)
 ```
 
-## TEXT and BLOB Columns Have No Default
+## TEXT and BLOB Column Defaults
 
-`TEXT` and `BLOB` types cannot have a non-NULL default:
+`TEXT` and `BLOB` types cannot have a literal (non-expression) default:
 
 ```sql
--- This will cause an error
+-- This will cause an error (literal default)
 CREATE TABLE docs (
     content TEXT DEFAULT 'placeholder'  -- ERROR
 );
 
--- Use VARCHAR for columns that need a non-null default short string
+-- In MySQL 8.0.13+, use an expression default instead
 CREATE TABLE docs (
-    content VARCHAR(10000) DEFAULT ''
+    content TEXT DEFAULT ('placeholder')  -- OK
 );
 ```
 
 ## Summary
 
-Column defaults reduce the burden on application code by letting the database apply sensible fallback values. Prefer `CURRENT_TIMESTAMP` for audit timestamps, use expression defaults in MySQL 8 for computed initial values, and use `ALTER TABLE ... ALTER COLUMN ... SET DEFAULT` for zero-copy default changes. Remember that `TEXT` and `BLOB` columns do not support non-NULL defaults.
+Column defaults reduce the burden on application code by letting the database apply sensible fallback values. Prefer `CURRENT_TIMESTAMP` for audit timestamps, use expression defaults in MySQL 8 for computed initial values, and use `ALTER TABLE ... ALTER COLUMN ... SET DEFAULT` for zero-copy default changes. Remember that `TEXT` and `BLOB` columns require expression syntax for non-NULL defaults in MySQL 8.0.13+.
