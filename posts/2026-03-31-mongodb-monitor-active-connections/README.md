@@ -89,7 +89,7 @@ mongostat --host localhost:27017 \
 
 ## Identifying Connections by Client
 
-In MongoDB 4.2+, `serverStatus` includes client metadata:
+Use `currentOp` with `$all: true` to see per-connection client metadata:
 
 ```javascript
 db.adminCommand({
