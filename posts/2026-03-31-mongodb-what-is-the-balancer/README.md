@@ -14,12 +14,12 @@ When you shard a MongoDB collection, data is divided into logical units called c
 
 ## How the Balancer Works
 
-The balancer runs on the `mongos` router (or the config server primary in newer versions). It continuously monitors the number of chunks on each shard. When the difference between the shard with the most chunks and the shard with the fewest exceeds a migration threshold, the balancer initiates a chunk migration.
+The balancer runs on the config server primary (in versions before MongoDB 3.4, it ran on one of the `mongos` instances). It continuously monitors the number of chunks on each shard. When the difference between the shard with the most chunks and the shard with the fewest exceeds a migration threshold, the balancer initiates a chunk migration.
 
 A chunk migration:
 1. Copies the chunk's documents from the source shard to the destination shard
-2. Deletes the original documents from the source shard
-3. Updates the chunk catalog on the config servers
+2. Updates the chunk metadata on the config servers so queries are routed to the destination shard
+3. Cleans up the orphaned documents from the source shard asynchronously
 
 During migration, reads and writes continue to be served. The balancer is designed to minimize impact on production traffic.
 
