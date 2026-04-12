@@ -123,9 +123,9 @@ ORDER BY role_name, user_name, host;
 -- Show all grants for a user including role privileges
 SHOW GRANTS FOR 'alice'@'%' USING 'app_reader';
 
--- List roles that apply to the current session
-SELECT ROLE_NAME, IS_DEFAULT, IS_MANDATORY
-FROM information_schema.applicable_roles;
+-- List default roles assigned to users
+SELECT USER, HOST, DEFAULT_ROLE_USER AS role_name, DEFAULT_ROLE_HOST AS role_host
+FROM mysql.default_roles;
 ```
 
 ## Revoking Roles and Dropping Roles
