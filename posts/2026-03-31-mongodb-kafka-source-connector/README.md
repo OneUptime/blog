@@ -21,7 +21,7 @@ You need:
 
 ```bash
 # Install the MongoDB Kafka Connector using Confluent Hub
-confluent-hub install mongodb/kafka-connector:latest
+confluent-hub install mongodb/kafka-connect-mongodb:latest
 # or manually download from https://www.mongodb.com/kafka-connector
 ```
 
