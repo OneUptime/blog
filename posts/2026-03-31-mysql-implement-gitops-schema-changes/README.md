@@ -101,21 +101,20 @@ jobs:
         run: |
           docker run --rm \
             --network host \
-            -e MYSQL_HOST=127.0.0.1 \
-            -e MYSQL_DATABASE=testdb \
-            -e MYSQL_USER=root \
-            -e MYSQL_PASSWORD=testpassword \
-            -v $(pwd)/db:/flyway/sql \
+            -e FLYWAY_URL=jdbc:mysql://127.0.0.1:3306/testdb \
+            -e FLYWAY_USER=root \
+            -e FLYWAY_PASSWORD=testpassword \
+            -v $(pwd)/db/migrations:/flyway/sql \
             flyway/flyway:10 migrate
 
       - name: Verify migration status
         run: |
           docker run --rm \
             --network host \
-            -e MYSQL_HOST=127.0.0.1 \
-            -e MYSQL_DATABASE=testdb \
-            -e MYSQL_USER=root \
-            -e MYSQL_PASSWORD=testpassword \
+            -e FLYWAY_URL=jdbc:mysql://127.0.0.1:3306/testdb \
+            -e FLYWAY_USER=root \
+            -e FLYWAY_PASSWORD=testpassword \
+            -v $(pwd)/db/migrations:/flyway/sql \
             flyway/flyway:10 info
 ```
 
@@ -138,12 +137,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run migrations on staging
-        env:
-          MYSQL_HOST: ${{ secrets.STAGING_MYSQL_HOST }}
-          MYSQL_DATABASE: ${{ secrets.STAGING_MYSQL_DB }}
-          MYSQL_USER: ${{ secrets.STAGING_MYSQL_USER }}
-          MYSQL_PASSWORD: ${{ secrets.STAGING_MYSQL_PASSWORD }}
-        run: flyway migrate
+        run: |
+          docker run --rm \
+            -e FLYWAY_URL=jdbc:mysql://${{ secrets.STAGING_MYSQL_HOST }}:3306/${{ secrets.STAGING_MYSQL_DB }} \
+            -e FLYWAY_USER=${{ secrets.STAGING_MYSQL_USER }} \
+            -e FLYWAY_PASSWORD=${{ secrets.STAGING_MYSQL_PASSWORD }} \
+            -v $(pwd)/db/migrations:/flyway/sql \
+            flyway/flyway:10 migrate
 
   deploy-production:
     needs: deploy-staging
@@ -152,9 +152,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run migrations on production
-        env:
-          MYSQL_HOST: ${{ secrets.PROD_MYSQL_HOST }}
-        run: flyway migrate
+        run: |
+          docker run --rm \
+            -e FLYWAY_URL=jdbc:mysql://${{ secrets.PROD_MYSQL_HOST }}:3306/${{ secrets.PROD_MYSQL_DB }} \
+            -e FLYWAY_USER=${{ secrets.PROD_MYSQL_USER }} \
+            -e FLYWAY_PASSWORD=${{ secrets.PROD_MYSQL_PASSWORD }} \
+            -v $(pwd)/db/migrations:/flyway/sql \
+            flyway/flyway:10 migrate
 ```
 
 ## Summary
