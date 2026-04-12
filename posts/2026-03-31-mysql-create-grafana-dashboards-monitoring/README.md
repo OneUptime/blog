@@ -112,12 +112,13 @@ curl -s http://admin:admin@localhost:3000/api/dashboards/uid/mysql-overview \
   | jq '.dashboard' > mysql-dashboard.json
 ```
 
-To re-import it:
+To re-import it, wrap the dashboard JSON in the required request body and use the `/api/dashboards/db` endpoint:
 
 ```bash
-curl -X POST http://admin:admin@localhost:3000/api/dashboards/import \
-  -H 'Content-Type: application/json' \
-  -d @mysql-dashboard.json
+jq '{dashboard: ., folderId: 0, overwrite: true}' mysql-dashboard.json | \
+  curl -X POST http://admin:admin@localhost:3000/api/dashboards/db \
+    -H 'Content-Type: application/json' \
+    -d @-
 ```
 
 ## Summary
