@@ -47,7 +47,7 @@ public class MongoQEConfig extends AbstractMongoClientConfiguration {
         byte[] localMasterKey = loadMasterKey(); // 96 bytes
 
         Map<String, Map<String, Object>> kmsProviders = Map.of(
-            "local", Map.of("key", new BsonBinary(localMasterKey))
+            "local", Map.of("key", localMasterKey)
         );
 
         BsonDocument encryptedFields = buildEncryptedFieldsMap();
@@ -98,10 +98,11 @@ Use a `CommandLineRunner` to create the collection with encrypted fields before 
 public class CollectionInitializer implements CommandLineRunner {
 
     @Autowired
-    private MongoDatabase db;
+    private MongoDatabaseFactory mongoDbFactory;
 
     @Override
     public void run(String... args) {
+        MongoDatabase db = mongoDbFactory.getMongoDatabase();
         boolean exists = db.listCollectionNames()
             .into(new ArrayList<>())
             .contains("patients");
