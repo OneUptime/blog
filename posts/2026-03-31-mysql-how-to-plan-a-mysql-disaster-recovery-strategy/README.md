@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Disaster Recovery, High Availability, Backup, RTO RTO
+Tags: MySQL, Disaster Recovery, High Availability, Backup, RPO, RTO
 
 Description: Learn how to design a MySQL disaster recovery strategy covering RPO and RTO targets, backup types, replication topology, and failover procedures.
 
@@ -88,19 +88,19 @@ GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
 
 ```sql
 -- On replica
-CHANGE MASTER TO
-  MASTER_HOST='primary.example.com',
-  MASTER_USER='repl',
-  MASTER_PASSWORD='replpass',
-  MASTER_AUTO_POSITION=1;
-START SLAVE;
+CHANGE REPLICATION SOURCE TO
+  SOURCE_HOST='primary.example.com',
+  SOURCE_USER='repl',
+  SOURCE_PASSWORD='replpass',
+  SOURCE_AUTO_POSITION=1;
+START REPLICA;
 ```
 
 Manual failover procedure:
 
 ```bash
 # 1. Promote replica to primary
-mysql -u root -p -e "STOP SLAVE; RESET MASTER;"
+mysql -u root -p -e "STOP REPLICA; RESET REPLICA ALL;"
 
 # 2. Update DNS/load balancer to point to replica IP
 aws route53 change-resource-record-sets ...
@@ -154,8 +154,8 @@ Document your DR procedures:
 
 ### Step 3: Promote replica
 1. Connect to replica: ssh replica.example.com
-2. mysql -u root -p -e "STOP SLAVE; RESET MASTER;"
-3. Verify no replication lag: mysql -e "SHOW SLAVE STATUS\G" (check Seconds_Behind_Master)
+2. mysql -u root -p -e "STOP REPLICA; RESET REPLICA ALL;"
+3. Verify no replication lag: mysql -e "SHOW REPLICA STATUS\G" (check Seconds_Behind_Source)
 
 ### Step 4: Update DNS
 1. Update MySQL CNAME: mysql.example.com -> replica-ip
@@ -185,4 +185,4 @@ curl -f https://app.example.com/api/health
 
 ## Summary
 
-A MySQL DR strategy must be designed around your RPO and RTO targets. Daily backups with binary log shipping cover most small-to-medium businesses (RPO 5 min, RTO 1-2 hours). For lower RTO requirements, synchronous replication with InnoDB Cluster provides automatic failover in under 30 seconds. Document runbooks, test failovers quarterly, and always verify that backups are actually restorable.
+A MySQL DR strategy must be designed around your RPO and RTO targets. Daily backups with binary log shipping cover most small-to-medium businesses (RPO 5 min, RTO 1-2 hours). For lower RTO requirements, virtually synchronous replication with InnoDB Cluster provides automatic failover in under 30 seconds. Document runbooks, test failovers quarterly, and always verify that backups are actually restorable.
