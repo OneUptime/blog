@@ -59,8 +59,8 @@ Never grant `ALL PRIVILEGES` to application accounts.
 ## Enforce Strong Password Policy
 
 ```sql
--- Enable password validation plugin
-INSTALL PLUGIN validate_password SONAME 'validate_password.so';
+-- Enable password validation component (recommended for MySQL 8.0+)
+INSTALL COMPONENT 'file://component_validate_password';
 
 -- Configure policy
 SET GLOBAL validate_password.policy = 'STRONG';
@@ -70,11 +70,10 @@ SET GLOBAL validate_password.number_count = 1;
 SET GLOBAL validate_password.special_char_count = 1;
 ```
 
-Or in `my.cnf`:
+Or in `my.cnf` (the component auto-loads on restart once installed, so no `plugin-load-add` is needed):
 
 ```ini
 [mysqld]
-plugin-load-add=validate_password.so
 validate_password.policy=STRONG
 validate_password.length=14
 ```
@@ -133,8 +132,14 @@ REVOKE FILE ON *.* FROM 'app_user'@'10.0.1.%';
 
 ```sql
 INSTALL PLUGIN audit_log SONAME 'audit_log.so';
-SET GLOBAL audit_log_policy = 'ALL';
-SET GLOBAL audit_log_file = '/var/log/mysql/audit.log';
+```
+
+Then configure the plugin in `my.cnf` (both `audit_log_policy` and `audit_log_file` are read-only and can only be set at server startup):
+
+```ini
+[mysqld]
+audit_log_policy = ALL
+audit_log_file = /var/log/mysql/audit.log
 ```
 
 ## Regularly Rotate Passwords
