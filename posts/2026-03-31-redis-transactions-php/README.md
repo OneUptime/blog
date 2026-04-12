@@ -8,7 +8,7 @@ Description: Learn how to use Redis MULTI/EXEC transactions in PHP with Predis a
 
 ---
 
-Redis transactions group multiple commands so they execute atomically - either all succeed or none do. In PHP you use MULTI/EXEC blocks with either Predis or phpredis.
+Redis transactions group multiple commands so they execute as a single isolated unit - no other client's commands will be interleaved between them. In PHP you use MULTI/EXEC blocks with either Predis or phpredis.
 
 ## MULTI/EXEC with Predis
 
@@ -24,7 +24,8 @@ $results = $client->transaction(function ($tx) {
     $tx->incrBy('balance:user:2', 50);
 });
 
-// Results: [OK, OK, 50, 250]
+// Results: [Status("OK"), Status("OK"), 50, 250]
+// SET results are Predis\Response\Status objects (castable to string "OK")
 print_r($results);
 ```
 
