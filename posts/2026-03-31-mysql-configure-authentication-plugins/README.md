@@ -17,18 +17,25 @@ MySQL uses a pluggable authentication system. Each user account is associated wi
 | Plugin Name | Description |
 |-------------|-------------|
 | `caching_sha2_password` | Default in MySQL 8.0; SHA256-based with server-side caching |
-| `mysql_native_password` | Legacy SHA1-based plugin; deprecated in 8.4 |
-| `sha256_password` | SHA256 without caching; slower than caching_sha2 |
+| `mysql_native_password` | Legacy SHA1-based plugin; deprecated as of 8.0.34, disabled by default in 8.4 |
+| `sha256_password` | SHA256 without caching; deprecated as of 8.0.34, disabled by default in 8.4 |
 | `auth_socket` | Authenticates via OS socket without a password |
 | `mysql_no_login` | Prevents password-based logins (proxy or role use only) |
 
 ## Setting the Default Authentication Plugin Globally
 
-In `my.cnf` or `my.ini`:
+In `my.cnf` or `my.ini` (MySQL 8.0 through 8.0.33):
 
 ```text
 [mysqld]
 default_authentication_plugin = caching_sha2_password
+```
+
+Note: `default_authentication_plugin` was deprecated in MySQL 8.0.34 and removed in 8.4. In MySQL 8.4+, use `authentication_policy` instead:
+
+```text
+[mysqld]
+authentication_policy = caching_sha2_password
 ```
 
 Restart MySQL for the change to take effect:
@@ -40,7 +47,11 @@ sudo systemctl restart mysql
 Check the current default:
 
 ```sql
+-- MySQL 8.0
 SHOW VARIABLES LIKE 'default_authentication_plugin';
+
+-- MySQL 8.4+
+SHOW VARIABLES LIKE 'authentication_policy';
 ```
 
 ## Specifying a Plugin for a Specific User
