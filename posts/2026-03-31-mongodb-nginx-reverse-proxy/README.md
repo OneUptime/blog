@@ -41,7 +41,7 @@ services:
     image: mongo:7.0
     volumes:
       - mongo_data:/data/db
-    command: mongod --auth
+    command: mongod
 
 volumes:
   mongo_data:
