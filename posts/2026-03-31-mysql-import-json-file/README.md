@@ -56,8 +56,8 @@ cursor = conn.cursor()
 
 insert_sql = """
     INSERT INTO users (id, name, email, age)
-    VALUES (%(id)s, %(name)s, %(email)s, %(age)s)
-    ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email), age=VALUES(age)
+    VALUES (%(id)s, %(name)s, %(email)s, %(age)s) AS new
+    ON DUPLICATE KEY UPDATE name=new.name, email=new.email, age=new.age
 """
 
 cursor.executemany(insert_sql, users)
