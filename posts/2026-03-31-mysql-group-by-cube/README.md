@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, GROUP BY, CUBE, Aggregation, Analytics
 
-Description: Learn how to use GROUP BY WITH ROLLUP to simulate CUBE-style cross-tabulated subtotals in MySQL 8.0, generating all combinations of dimension aggregations.
+Description: Learn how to use GROUP BY WITH ROLLUP and UNION ALL to simulate CUBE-style cross-tabulated subtotals in MySQL 8.0, generating all combinations of dimension aggregations.
 
 ---
 
@@ -12,12 +12,12 @@ Description: Learn how to use GROUP BY WITH ROLLUP to simulate CUBE-style cross-
 
 `CUBE` is a GROUP BY extension that generates subtotals for all possible combinations of the grouping columns. For N dimensions, CUBE produces 2^N grouping sets, including the grand total and every combination of partial aggregations.
 
-MySQL 8.0 does not support `GROUP BY WITH CUBE` syntax directly. However, MySQL 8.0 supports `GROUPING SETS` which provides the same capability, and you can approximate CUBE using `UNION ALL` of multiple `GROUP BY WITH ROLLUP` queries or by using `GROUPING SETS` explicitly.
+MySQL 8.0 does not support `GROUP BY WITH CUBE` or `GROUPING SETS` syntax directly. However, you can simulate CUBE behavior using `UNION ALL` of multiple `GROUP BY` queries. MySQL 8.0 does natively support `WITH ROLLUP` for hierarchical subtotals and the `GROUPING()` function (since 8.0.1) to identify subtotal rows.
 
 ```mermaid
 graph TD
-    A["GROUP BY a, b WITH CUBE\n(not native in MySQL)"] --> B["Produces all combos:\n(a, b), (a), (b), ()"]
-    C["MySQL approach:\nGROUPING SETS or UNION ALL"] --> D["(a, b) - detailed rows"]
+    A["GROUP BY a, b WITH CUBE\n(not supported in MySQL)"] --> B["Produces all combos:\n(a, b), (a), (b), ()"]
+    C["MySQL approach:\nUNION ALL of GROUP BY queries"] --> D["(a, b) - detailed rows"]
     C --> E["(a) - subtotal per a"]
     C --> F["(b) - subtotal per b"]
     C --> G["() - grand total"]
@@ -26,11 +26,6 @@ graph TD
 ## Syntax Approaches in MySQL
 
 ```sql
--- MySQL 8.0+: GROUPING SETS (closest to CUBE)
-SELECT col1, col2, AGG(col3)
-FROM table
-GROUP BY GROUPING SETS ((col1, col2), (col1), (col2), ());
-
 -- MySQL: Simulate CUBE with UNION ALL
 SELECT col1, col2, SUM(col3) FROM table GROUP BY col1, col2
 UNION ALL
@@ -74,20 +69,60 @@ INSERT INTO sales_data (region, product, quarter, revenue) VALUES
     ('East',  'Gadget', 'Q2', 12000);
 ```
 
-### CUBE Using GROUPING SETS (MySQL 8.0.1+)
+### Simulating CUBE with UNION ALL
+
+This is the primary approach for achieving full CUBE behavior in MySQL. Each `SELECT` covers one grouping combination:
+
+```sql
+-- Detailed rows (region + product)
+SELECT region, product, SUM(revenue) AS total_revenue FROM sales_data GROUP BY region, product
+UNION ALL
+-- Subtotal by region only
+SELECT region, NULL AS product, SUM(revenue) FROM sales_data GROUP BY region
+UNION ALL
+-- Subtotal by product only
+SELECT NULL AS region, product, SUM(revenue) FROM sales_data GROUP BY product
+UNION ALL
+-- Grand total
+SELECT NULL, NULL, SUM(revenue) FROM sales_data
+ORDER BY region, product;
+```
+
+```text
++--------+---------+---------------+
+| region | product | total_revenue |
++--------+---------+---------------+
+| NULL   | NULL    |     133300.00 |
+| NULL   | Gadget  |      58300.00 |
+| NULL   | Widget  |      75000.00 |
+| East   | NULL    |      53500.00 |
+| East   | Gadget  |      22000.00 |
+| East   | Widget  |      31500.00 |
+| North  | NULL    |      46000.00 |
+| North  | Gadget  |      20000.00 |
+| North  | Widget  |      26000.00 |
+| South  | NULL    |      33800.00 |
+| South  | Gadget  |      16300.00 |
+| South  | Widget  |      17500.00 |
++--------+---------+---------------+
+```
+
+To replace NULLs with readable labels, wrap with a subquery:
 
 ```sql
 SELECT
     IFNULL(region, '(All Regions)')   AS region,
     IFNULL(product, '(All Products)') AS product,
-    SUM(revenue)                      AS total_revenue
-FROM sales_data
-GROUP BY GROUPING SETS (
-    (region, product),   -- detailed: each region + product combo
-    (region),            -- subtotal per region
-    (product),           -- subtotal per product
-    ()                   -- grand total
-)
+    total_revenue
+FROM (
+    SELECT region, product, SUM(revenue) AS total_revenue FROM sales_data GROUP BY region, product
+    UNION ALL
+    SELECT region, NULL, SUM(revenue) FROM sales_data GROUP BY region
+    UNION ALL
+    SELECT NULL, product, SUM(revenue) FROM sales_data GROUP BY product
+    UNION ALL
+    SELECT NULL, NULL, SUM(revenue) FROM sales_data
+) AS cube_result
 ORDER BY region, product;
 ```
 
@@ -110,7 +145,9 @@ ORDER BY region, product;
 +---------------+----------------+---------------+
 ```
 
-### Identify Subtotal Rows with GROUPING()
+### Identify Subtotal Rows with GROUPING() and WITH ROLLUP
+
+The `GROUPING()` function (available since MySQL 8.0.1) works with `WITH ROLLUP` to distinguish subtotal NULLs from actual NULL data. Note that `WITH ROLLUP` produces hierarchical subtotals, not all CUBE combinations:
 
 ```sql
 SELECT
@@ -120,12 +157,7 @@ SELECT
     GROUPING(region)  AS grp_region,
     GROUPING(product) AS grp_product
 FROM sales_data
-GROUP BY GROUPING SETS (
-    (region, product),
-    (region),
-    (product),
-    ()
-)
+GROUP BY region, product WITH ROLLUP
 ORDER BY grp_region DESC, grp_product DESC, region, product;
 ```
 
@@ -134,8 +166,6 @@ ORDER BY grp_region DESC, grp_product DESC, region, product;
 | region| product | total_revenue | grp_region | grp_product |
 +-------+---------+---------------+------------+-------------+
 | (All) | (All)   |     133300.00 | 1          | 1           |
-| (All) | Gadget  |      58300.00 | 1          | 0           |
-| (All) | Widget  |      75000.00 | 1          | 0           |
 | East  | (All)   |      53500.00 | 0          | 1           |
 | North | (All)   |      46000.00 | 0          | 1           |
 | South | (All)   |      33800.00 | 0          | 1           |
@@ -148,48 +178,29 @@ ORDER BY grp_region DESC, grp_product DESC, region, product;
 +-------+---------+---------------+------------+-------------+
 ```
 
-### CUBE Using UNION ALL (Compatibility Approach)
-
-For environments without GROUPING SETS, simulate CUBE with UNION ALL:
-
-```sql
--- Detailed rows (region + product)
-SELECT region, product, SUM(revenue) AS total_revenue FROM sales_data GROUP BY region, product
-UNION ALL
--- Subtotal by region only
-SELECT region, NULL AS product, SUM(revenue) FROM sales_data GROUP BY region
-UNION ALL
--- Subtotal by product only
-SELECT NULL AS region, product, SUM(revenue) FROM sales_data GROUP BY product
-UNION ALL
--- Grand total
-SELECT NULL, NULL, SUM(revenue) FROM sales_data
-ORDER BY region, product;
-```
+Notice that `WITH ROLLUP` does **not** produce `(All, Gadget)` or `(All, Widget)` rows -- it only produces hierarchical subtotals from left to right. This is the key difference from full CUBE behavior.
 
 ### Three-Dimension CUBE Simulation
 
-For three dimensions (region, product, quarter), full CUBE requires 2^3 = 8 grouping combinations:
+For three dimensions (region, product, quarter), full CUBE requires 2^3 = 8 grouping combinations. In MySQL, you must use UNION ALL for all 8:
 
 ```sql
-SELECT
-    CASE GROUPING(region)  WHEN 1 THEN '(All)' ELSE region  END AS region,
-    CASE GROUPING(product) WHEN 1 THEN '(All)' ELSE product END AS product,
-    CASE GROUPING(quarter) WHEN 1 THEN '(All)' ELSE quarter END AS quarter,
-    SUM(revenue) AS total_revenue
-FROM sales_data
-GROUP BY GROUPING SETS (
-    (region, product, quarter),  -- detail
-    (region, product),           -- by region + product
-    (region, quarter),           -- by region + quarter
-    (product, quarter),          -- by product + quarter
-    (region),                    -- by region
-    (product),                   -- by product
-    (quarter),                   -- by quarter
-    ()                           -- grand total
-)
-ORDER BY GROUPING(region), GROUPING(product), GROUPING(quarter),
-         region, product, quarter;
+SELECT region, product, quarter, SUM(revenue) AS total_revenue FROM sales_data GROUP BY region, product, quarter
+UNION ALL
+SELECT region, product, NULL, SUM(revenue) FROM sales_data GROUP BY region, product
+UNION ALL
+SELECT region, NULL, quarter, SUM(revenue) FROM sales_data GROUP BY region, quarter
+UNION ALL
+SELECT NULL, product, quarter, SUM(revenue) FROM sales_data GROUP BY product, quarter
+UNION ALL
+SELECT region, NULL, NULL, SUM(revenue) FROM sales_data GROUP BY region
+UNION ALL
+SELECT NULL, product, NULL, SUM(revenue) FROM sales_data GROUP BY product
+UNION ALL
+SELECT NULL, NULL, quarter, SUM(revenue) FROM sales_data GROUP BY quarter
+UNION ALL
+SELECT NULL, NULL, NULL, SUM(revenue) FROM sales_data
+ORDER BY region, product, quarter;
 ```
 
 ### WITH ROLLUP (Hierarchical, Not Full CUBE)
@@ -205,23 +216,23 @@ FROM sales_data
 GROUP BY region, product WITH ROLLUP;
 ```
 
-ROLLUP produces: (region, product), (region), () but NOT (product) alone. Use GROUPING SETS for full CUBE behavior.
+ROLLUP produces: (region, product), (region), () but NOT (product) alone. For full CUBE behavior, use the UNION ALL approach shown above.
 
-## CUBE vs ROLLUP vs GROUPING SETS
+## CUBE vs ROLLUP
 
 | Feature        | MySQL Support | Groupings Produced             | Best For                        |
 |----------------|---------------|--------------------------------|---------------------------------|
 | WITH ROLLUP    | Yes           | Hierarchical subtotals         | Reports with drill-down levels  |
-| GROUPING SETS  | Yes (8.0.1+)  | Custom-specified combinations  | Flexible multi-dimensional reports |
-| WITH CUBE      | Not directly  | All 2^N combinations           | Cross-tabulation (use GROUPING SETS) |
+| WITH CUBE      | No            | All 2^N combinations           | Cross-tabulation (simulate with UNION ALL) |
 
 ## Best Practices
 
-- Use `GROUPING SETS` in MySQL 8.0.1+ to get CUBE-like results without writing verbose UNION ALL queries.
-- Use `GROUPING(column)` to distinguish NULL subtotals from actual NULL data values.
-- Wrap `GROUPING()` in a `CASE` expression to replace subtotal NULLs with readable labels like "(All)".
-- For two-dimension cross-tabulation, `GROUPING SETS ((a,b),(a),(b),())` is the exact MySQL equivalent of CUBE(a,b).
+- Use `UNION ALL` of multiple `GROUP BY` queries to simulate full CUBE behavior in MySQL.
+- Use `GROUPING(column)` with `WITH ROLLUP` (MySQL 8.0.1+) to distinguish NULL subtotals from actual NULL data values.
+- Wrap subtotal NULLs in `IFNULL()` or `CASE` expressions to replace them with readable labels like "(All)".
+- For two-dimension cross-tabulation, you need four UNION ALL branches: `(a,b)`, `(a)`, `(b)`, and `()`.
+- For N dimensions, be aware that the UNION ALL approach requires 2^N separate queries, which can become verbose. Consider creating a view or stored procedure for reuse.
 
 ## Summary
 
-MySQL 8.0 does not support `GROUP BY WITH CUBE` syntax but provides `GROUPING SETS` which achieves the same result. `GROUPING SETS ((a,b),(a),(b),())` generates all four combinations for two dimensions, equivalent to CUBE. Use `GROUPING(column)` to identify which rows are subtotals vs detail rows. For MySQL versions without GROUPING SETS, simulate CUBE with `UNION ALL` of multiple GROUP BY queries.
+MySQL 8.0 does not support `GROUP BY WITH CUBE` or `GROUPING SETS` syntax. To achieve full CUBE behavior, use `UNION ALL` of multiple `GROUP BY` queries covering all 2^N combinations of your dimensions. MySQL's native `WITH ROLLUP` provides hierarchical subtotals but not all combinations. Use `GROUPING(column)` (MySQL 8.0.1+) with `WITH ROLLUP` to identify subtotal rows. For databases that support `GROUPING SETS` (such as PostgreSQL, SQL Server, or Oracle), you can use `GROUPING SETS ((a,b),(a),(b),())` as a direct equivalent of CUBE.
