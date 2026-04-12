@@ -52,7 +52,7 @@ INSERT INTO scores (id, value) VALUES (4, 15);
 -- Inspect active locks
 SELECT LOCK_MODE, LOCK_TYPE, LOCK_DATA
 FROM performance_schema.data_locks;
--- Shows: X,REC_NOT_GAP for the record, X,GAP for the preceding gap
+-- Shows: X (next-key lock on secondary index), X,GAP (gap lock after range), X,REC_NOT_GAP (record lock on primary key)
 ```
 
 ## Next-Key Locks and Range Queries
@@ -65,7 +65,7 @@ SELECT * FROM scores WHERE value BETWEEN 10 AND 30 FOR UPDATE;
 -- Acquires next-key locks on (negative infinity, 10], (10, 20], (20, 30], and gap lock on (30, +infinity)
 ```
 
-This blocks any insert with a value in the range negative infinity to 30 until the transaction completes.
+This blocks any insert into the index until the transaction completes, since the locked ranges span from negative infinity through positive infinity.
 
 ## Difference from Gap and Record Locks
 
