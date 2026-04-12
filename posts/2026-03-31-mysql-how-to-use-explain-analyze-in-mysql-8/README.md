@@ -12,8 +12,7 @@ Description: Learn how to use EXPLAIN ANALYZE in MySQL 8 to profile query execut
 
 `EXPLAIN ANALYZE` was introduced in MySQL 8.0.18. Unlike `EXPLAIN`, which shows the optimizer's plan without executing the query, `EXPLAIN ANALYZE` actually runs the query and reports:
 - Estimated vs actual row counts
-- Estimated vs actual execution costs
-- Time spent in each step
+- Time spent in each step (actual time per operation)
 - Number of loops (for nested joins)
 
 This makes it the best tool for diagnosing optimizer mis-estimates and slow query plans.
@@ -73,12 +72,14 @@ Then re-run `EXPLAIN ANALYZE` to see if the estimates improve.
 
 ## Using FORMAT=TREE (Default)
 
-The default format is a tree. You can also use `FORMAT=JSON` for programmatic analysis:
+The default and only supported format is TREE. You can explicitly specify it, but no other format is allowed:
 
 ```sql
-EXPLAIN ANALYZE FORMAT=JSON
+EXPLAIN ANALYZE FORMAT=TREE
 SELECT * FROM orders WHERE customer_id = 1;
 ```
+
+Note: Unlike regular `EXPLAIN`, `EXPLAIN ANALYZE` does not support `FORMAT=JSON` or `FORMAT=TRADITIONAL`.
 
 ## Identifying Full Table Scans
 
@@ -108,13 +109,13 @@ GROUP BY e.id, e.name, d.name
 ORDER BY total_sales DESC;
 ```
 
-Look for steps with high `actual time` relative to `estimated time`, and high loop counts that multiply execution time.
+Look for steps with high `actual time` values, large gaps between estimated and actual `rows`, and high loop counts that multiply execution time.
 
 ## Practical Tips
 
 1. Run `EXPLAIN ANALYZE` before and after adding an index to measure the improvement.
 2. High `loops=` counts on inner steps indicate expensive nested loop joins - consider adding covering indexes.
-3. A large gap between `cost=` and `actual time=` suggests stale table statistics.
+3. A large gap between estimated `rows=` and actual `rows=` suggests stale table statistics - run `ANALYZE TABLE` to refresh them.
 4. For DML statements, wrap in a transaction and roll back to avoid side effects:
 
 ```sql
