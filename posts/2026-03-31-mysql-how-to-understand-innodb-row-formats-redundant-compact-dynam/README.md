@@ -45,8 +45,7 @@ ROW_FORMAT=COMPACT ENGINE=InnoDB;
 DYNAMIC is the default row format since MySQL 5.7. It stores long variable-length columns (TEXT, BLOB, VARCHAR > 768 bytes) entirely in overflow pages, keeping only a 20-byte pointer in the main row record.
 
 - More efficient use of B-tree pages when rows contain large columns
-- Supports index key prefixes up to 3072 bytes (when `innodb_large_prefix = ON`)
-- Enables full-text and multi-valued indexes in MySQL 8.0
+- Supports index key prefixes up to 3072 bytes (always enabled in MySQL 8.0; in MySQL 5.7 this required `innodb_large_prefix = ON`, which was removed in 8.0)
 - Recommended for most modern workloads
 
 ```sql
