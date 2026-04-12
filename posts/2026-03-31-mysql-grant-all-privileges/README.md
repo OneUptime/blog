@@ -10,7 +10,7 @@ Description: Learn how to use GRANT ALL PRIVILEGES in MySQL to give a user full 
 
 ## What ALL PRIVILEGES Includes
 
-`ALL PRIVILEGES` is shorthand for granting every applicable privilege at the chosen scope. At the database level it includes SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE, CREATE VIEW, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, EVENT, and TRIGGER.
+`ALL PRIVILEGES` is shorthand for granting every applicable privilege at the chosen scope. At the database level it includes SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE, CREATE VIEW, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, EVENT, and TRIGGER.
 
 ## Granting All Privileges on a Specific Database
 
