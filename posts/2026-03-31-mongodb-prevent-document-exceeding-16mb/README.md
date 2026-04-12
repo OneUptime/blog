@@ -13,7 +13,7 @@ Description: Learn how to stay within MongoDB's 16MB document size limit using s
 Every BSON document in MongoDB must be 16 MB or smaller. This applies to the document as stored on disk, including all embedded sub-documents, arrays, and binary data. Exceeding this limit causes a `BSONObjectTooLarge` error at write time.
 
 ```text
-MongoServerError: Document failed validation: { ... } (BSONObjectTooLarge)
+BSONObj size: 17549583 (0x10BC90F) is invalid. Size must be between 0 and 16793600(16MB)
 ```
 
 The limit exists to encourage good schema design - a document that large is almost always a sign that data should be modelled differently.
