@@ -33,11 +33,12 @@ MongoDB Enterprise Advanced features:
 ```bash
 # Check current MongoDB version and edition
 mongod --version
-# Output: db version v7.0.x (Community)
+# Community shows "modules: none"
+# Enterprise shows "modules: enterprise"
 
-# Confirm no Enterprise flag
-mongod --version | grep -i enterprise
-# No output = Community Edition
+# Confirm no Enterprise module
+mongod --version | grep -i modules
+# Output: modules: none (means Community Edition)
 ```
 
 ## Install MongoDB Enterprise
@@ -46,8 +47,9 @@ On Ubuntu/Debian, add the Enterprise repository and install:
 
 ```bash
 # Add MongoDB Enterprise repository (Ubuntu 22.04)
-wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.com/apt/ubuntu jammy/mongodb-enterprise/7.0 multiverse" \
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.com/apt/ubuntu jammy/mongodb-enterprise/7.0 multiverse" \
   | sudo tee /etc/apt/sources.list.d/mongodb-enterprise-7.0.list
 sudo apt-get update
 sudo apt-get install -y mongodb-enterprise
@@ -97,8 +99,13 @@ auditLog:
   destination: file
   format: JSON
   path: /var/log/mongodb/audit.json
-  filter: '{ atype: { $in: ["authenticate", "createCollection", "dropCollection", "createIndex", "find", "insert", "update", "delete"] } }'
+  filter: '{ atype: { $in: ["authenticate", "createCollection", "dropCollection", "createIndex", "authCheck"] } }'
+
+setParameter:
+  auditAuthorizationSuccess: true
 ```
+
+Note: CRUD operations (find, insert, update, delete) are captured under the `authCheck` audit event type, not as separate `atype` values. The `auditAuthorizationSuccess` parameter must be enabled to log successful authorization checks for read and write operations.
 
 ## Configure LDAP Authentication
 
@@ -125,12 +132,10 @@ setParameter:
 storage:
   dbPath: /var/lib/mongodb
   engine: wiredTiger
-  wiredTiger:
-    engineConfig:
-      encryptionKeyIdentifier: "localKey"
 
 security:
   enableEncryption: true
+  encryptionCipherMode: AES256-CBC
   encryptionKeyFile: /etc/mongodb/keyfile
 ```
 
