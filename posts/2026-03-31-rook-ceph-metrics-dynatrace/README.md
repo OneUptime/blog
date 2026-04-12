@@ -21,31 +21,31 @@ Ensure the Ceph manager exposes metrics:
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph mgr module enable prometheus
 
 # Verify endpoint is reachable
-kubectl -n rook-ceph get svc rook-ceph-mgr -o jsonpath='{.spec.ports[?(@.name=="prometheus")]}'
+kubectl -n rook-ceph get svc rook-ceph-mgr -o jsonpath='{.spec.ports[?(@.name=="http-metrics")]}'
 ```
 
 ## Step 2 - Install the Dynatrace Operator
 
 ```bash
-helm repo add dynatrace https://raw.githubusercontent.com/Dynatrace/dynatrace-operator/main/config/helm/repos/stable
-helm repo update
-
 kubectl create namespace dynatrace
 kubectl apply -f https://github.com/Dynatrace/dynatrace-operator/releases/latest/download/kubernetes.yaml
 
 # Create the DynaKube custom resource
 cat <<EOF | kubectl apply -f -
-apiVersion: dynatrace.com/v1beta1
+apiVersion: dynatrace.com/v1beta6
 kind: DynaKube
 metadata:
   name: dynakube
   namespace: dynatrace
 spec:
   apiUrl: https://<YOUR_ENV_ID>.live.dynatrace.com/api
-  tokens: dynatrace-tokens
-  metricIngestPort: 14499
-  prometheusExporter:
-    enabled: true
+  tokens: dynakube
+  activeGate:
+    capabilities:
+      - kubernetes-monitoring
+      - metrics-ingest
+  extensions:
+    prometheus: {}
 EOF
 ```
 
@@ -95,21 +95,22 @@ curl -X POST "https://<ENV_ID>.live.dynatrace.com/api/v2/metrics/ingest" \
 
 Configure anomaly detection for Ceph metrics:
 
-```yaml
-# dynatrace-metric-event.json
+```json
+// dynatrace-metric-event.json
 {
-  "type": "METRIC_KEY",
-  "metricKey": "ext:ceph.health_status",
+  "metricId": "ceph.health.status",
   "name": "Ceph Health Degraded",
+  "description": "Alerts when Ceph health status is not OK",
   "enabled": true,
-  "conditions": [
-    {
-      "type": "STATIC",
-      "alertCondition": "ABOVE",
-      "threshold": 0,
-      "alertingOnMissingData": true
-    }
-  ],
+  "monitoringStrategy": {
+    "type": "STATIC_THRESHOLD",
+    "threshold": 0,
+    "alertCondition": "ABOVE",
+    "samples": 5,
+    "violatingSamples": 3,
+    "dealertingSamples": 5,
+    "alertingOnMissingData": true
+  },
   "severity": "AVAILABILITY"
 }
 ```
@@ -127,11 +128,11 @@ Use the Dynatrace Data Explorer to visualize Ceph metrics:
 
 ```bash
 # Query available Ceph metrics via API
-curl "https://<ENV_ID>.live.dynatrace.com/api/v2/metrics?metricSelector=ceph:*" \
+curl "https://<ENV_ID>.live.dynatrace.com/api/v2/metrics?metricSelector=ceph.*" \
   -H "Authorization: Api-Token <DT_API_TOKEN>" | jq '.metrics[].metricId'
 ```
 
-Create tiles for OSD utilization, pool capacity, and health status using the Metric Expression Language (MXL).
+Create tiles for OSD utilization, pool capacity, and health status using metric expressions.
 
 ## Summary
 
