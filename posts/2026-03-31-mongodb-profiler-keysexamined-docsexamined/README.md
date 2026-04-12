@@ -37,11 +37,11 @@ Sample output:
   "keysExamined": 45000,
   "docsExamined": 45000,
   "nreturned": 12,
-  "planSummary": "COLLSCAN"
+  "planSummary": "IXSCAN { status: 1 }"
 }
 ```
 
-This is terrible: 45,000 documents examined to return 12.
+This is terrible: 45,000 index keys and documents examined to return 12. The index on `status` is not selective enough.
 
 ## The Three Efficiency Ratios
 
@@ -66,7 +66,7 @@ Problem: > 100
 
 High `docsExamined / nReturned` with `planSummary: "IXSCAN"` means the index narrows results but many documents are still filtered out after fetching - the index isn't selective enough.
 
-### 3. Covered Query Check: keysExamined == docsExamined == 0?
+### 3. Covered Query Check: docsExamined == 0?
 
 If `docsExamined` is 0 and the query returns results, it is a **covered query** - the result came entirely from the index without reading any documents. This is optimal.
 
@@ -86,7 +86,10 @@ Key fields in `executionStats`:
   "totalDocsExamined": 45000,
   "executionTimeMillis": 340,
   "executionStages": {
-    "stage": "COLLSCAN"  // no index used
+    "stage": "FETCH",
+    "inputStage": {
+      "stage": "IXSCAN"  // index used but poor selectivity
+    }
   }
 }
 ```
