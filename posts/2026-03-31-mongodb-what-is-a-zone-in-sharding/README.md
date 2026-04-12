@@ -29,17 +29,17 @@ Step 1: Add shards to zones.
 
 ```javascript
 // Assign shards to geographic zones
-sh.addShardTag("shard01", "EU")
-sh.addShardTag("shard02", "EU")
-sh.addShardTag("shard03", "US")
-sh.addShardTag("shard04", "US")
+sh.addShardToZone("shard01", "EU")
+sh.addShardToZone("shard02", "EU")
+sh.addShardToZone("shard03", "US")
+sh.addShardToZone("shard04", "US")
 ```
 
 Step 2: Define key ranges for each zone.
 
 ```javascript
 // Route EU users (region: "eu") to EU shards
-sh.addTagRange(
+sh.updateZoneKeyRange(
   "mydb.users",
   { region: "eu", _id: MinKey },
   { region: "eu", _id: MaxKey },
@@ -47,7 +47,7 @@ sh.addTagRange(
 )
 
 // Route US users to US shards
-sh.addTagRange(
+sh.updateZoneKeyRange(
   "mydb.users",
   { region: "us", _id: MinKey },
   { region: "us", _id: MaxKey },
@@ -66,20 +66,19 @@ The balancer will migrate chunks to comply with the zone definitions. This may t
 ## Listing and Removing Zone Ranges
 
 ```javascript
-// View all tag ranges for a namespace
+// View all zone ranges for a namespace
 use config
 db.tags.find({ ns: "mydb.users" })
 
 // Remove a zone range
-sh.removeTagRange(
+sh.removeRangeFromZone(
   "mydb.users",
   { region: "eu", _id: MinKey },
-  { region: "eu", _id: MaxKey },
-  "EU"
+  { region: "eu", _id: MaxKey }
 )
 
 // Remove a shard from a zone
-sh.removeShardTag("shard01", "EU")
+sh.removeShardFromZone("shard01", "EU")
 ```
 
 ## Zone Sharding and Shard Key Design
@@ -90,7 +89,7 @@ If you use a hashed shard key, you lose the ability to define contiguous ranges 
 
 ## Balancer Behavior with Zones
 
-The balancer respects zone constraints first, then distributes chunks evenly within each zone. If no shards are assigned to a zone but data falls into its range, the balancer will flag an error. Always ensure every zone-mapped range has at least one shard assigned.
+The balancer respects zone constraints first, then distributes chunks evenly within each zone. If no shards are assigned to a zone but data falls into its range, the balancer cannot migrate those chunks to satisfy the zone constraint and the chunks remain on their current shard. Always ensure every zone-mapped range has at least one shard assigned.
 
 ## Summary
 
