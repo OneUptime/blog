@@ -117,9 +117,9 @@ Look for `IXSCAN` in the winning plan and check `totalDocsExamined` vs `totalDoc
 
 ## Index Limitations on Time Series Collections
 
-- Text indexes and 2dsphere indexes on measurement fields are not supported in MongoDB 7.0 and earlier. Check the release notes for your version.
+- Text indexes are not supported on time series collections. 2dsphere indexes are supported on metaField subfields (MongoDB 6.3+) but not on measurement fields. Check the release notes for your version.
 - Wildcard indexes are not supported on time series collections.
-- You cannot create a unique index on measurement fields (only the auto-created index is unique-like via bucket boundaries).
+- You cannot create a unique index on a time series collection.
 
 ## Dropping Unused Indexes
 
