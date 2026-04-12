@@ -27,7 +27,7 @@ This guide covers both, with emphasis on `sqlx` for modern async Rust.
 [dependencies]
 sqlx    = { version = "0.8", features = ["mysql", "runtime-tokio", "chrono"] }
 tokio   = { version = "1",   features = ["full"] }
-dotenv  = "0.15"
+dotenvy = "0.15"
 ```
 
 ### Connecting with a Pool
@@ -60,7 +60,7 @@ async fn main() -> Result<(), sqlx::Error> {
 ### Querying with Compile-Time Verification
 
 ```rust
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug)]
 struct Product {
     id:    i32,
     name:  String,
