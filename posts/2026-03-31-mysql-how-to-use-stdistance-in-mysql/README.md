@@ -56,7 +56,7 @@ SELECT ST_Distance(
 ) AS distance_km;
 ```
 
-Available units include: `'metre'`, `'kilometre'`, `'foot'`, `'mile'`, `'nautical mile'`.
+Available units include: `'metre'`, `'kilometre'`, `'foot'`, `'Statute mile'`, `'nautical mile'`. You can query `SELECT * FROM INFORMATION_SCHEMA.ST_UNITS_OF_MEASURE WHERE UNIT_TYPE = 'LINEAR'` for the full list.
 
 ## Distance Between Points Stored in a Table
 
@@ -102,7 +102,7 @@ WHERE ST_Distance(position, @origin) < 500000  -- 500 km in meters
 ORDER BY ST_Distance(position, @origin);
 ```
 
-For better performance with large tables, combine with `ST_Within()` or `MBRContains()` to use the spatial index:
+For better performance with large tables, combine with `ST_Within()` or `MBRContains()` to use the spatial index. Note: `ST_Buffer()` with geographic SRS (SRID 4326) requires MySQL 8.0.26+ and only supports Point geometries:
 
 ```sql
 SET @center = ST_GeomFromText('POINT(40.7128 -74.0060)', 4326);
@@ -134,9 +134,9 @@ SELECT ST_Distance(
 -- Returns: 3 (gap between the two rectangles)
 ```
 
-## ST_Distance_Sphere() - Legacy Function
+## ST_Distance_Sphere() - Spherical Alternative
 
-Before MySQL 8.0, `ST_Distance_Sphere()` was used for spherical distance calculations between POINT objects:
+`ST_Distance_Sphere()` is another option for distance calculations between POINT (or MultiPoint) objects. It uses a spherical Earth model rather than the ellipsoidal model used by `ST_Distance()` with SRID 4326, making it slightly less accurate but still useful:
 
 ```sql
 SELECT ST_Distance_Sphere(
