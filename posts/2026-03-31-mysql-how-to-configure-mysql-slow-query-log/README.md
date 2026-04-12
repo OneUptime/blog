@@ -98,7 +98,7 @@ A typical slow query log entry looks like this:
 # Time: 2026-03-31T12:00:00.000000Z
 # User@Host: app[app] @ localhost []  Id: 42
 # Query_time: 2.345678  Lock_time: 0.000123  Rows_sent: 1  Rows_examined: 500000
-SET timestamp=1743422400;
+SET timestamp=1774958400;
 SELECT * FROM orders WHERE status = 'pending';
 ```
 
