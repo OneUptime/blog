@@ -45,7 +45,7 @@ sh.addShardToZone("rs-shard-ap1", "APAC")
 ### Step 2: Enable Sharding and Create the Collection
 
 ```javascript
-sh.enableSharding("myapp")
+// sh.enableSharding("myapp")  // No longer required starting MongoDB 6.0
 
 // Create index on the shard key
 db.users.createIndex({ region: 1, userId: 1 })
@@ -221,11 +221,11 @@ sh.removeShardFromZone("rs-shard-eu1", "EU")
 Check that data is balanced within zones:
 
 ```javascript
-// Count documents per shard
-db.getSiblingDB("config").collection("chunks").aggregate([
+// Count chunks per shard
+db.getSiblingDB("config").getCollection("chunks").aggregate([
   { $match: { ns: "myapp.users" } },
-  { $group: { _id: { shard: "$shard", tag: "$tag" }, count: { $sum: 1 } } },
-  { $sort: { "_id.tag": 1, "_id.shard": 1 } }
+  { $group: { _id: "$shard", count: { $sum: 1 } } },
+  { $sort: { _id: 1 } }
 ]).toArray()
 ```
 
