@@ -76,7 +76,7 @@ ORDER BY week_start;
 
 ## First Day of a Specific Week Number
 
-To find the Monday of a given ISO week number in a given year, combine `STR_TO_DATE()` with `%u` (ISO week, Monday as first day):
+To find the Monday of a given ISO week number in a given year, combine `STR_TO_DATE()` with `%v` (ISO week, Monday as first day):
 
 ```sql
 -- First day of ISO week 10, year 2026
@@ -94,7 +94,7 @@ SELECT
   DATE_ADD(
     MAKEDATE(2026, 1),
     INTERVAL (10 - WEEK(MAKEDATE(2026, 1), 3)) * 7
-    + (1 - WEEKDAY(MAKEDATE(2026, 1))) DAY
+    - WEEKDAY(MAKEDATE(2026, 1)) DAY
   ) AS week_10_monday;
 ```
 
