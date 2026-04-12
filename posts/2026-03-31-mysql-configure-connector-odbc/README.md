@@ -18,7 +18,7 @@ Download the driver from the MySQL website or install via package manager:
 
 ```bash
 # On Ubuntu/Debian
-sudo apt-get install libmyodbc unixodbc
+sudo apt-get install mysql-connector-odbc unixodbc
 
 # On RHEL/CentOS
 sudo yum install mysql-connector-odbc unixODBC
@@ -65,7 +65,7 @@ Database  = myapp
 User      = app_user
 Password  = secure_password
 CharSet   = utf8mb4
-Option    = 3
+Option    = 2
 ```
 
 ### DSN-Less Connection String
@@ -88,12 +88,12 @@ Port      = 3306
 Database  = myapp
 User      = app_user
 Password  = secure_password
-Option    = 3
-# Option=1  - Enable debug trace
-# Option=2  - Do not set ODBC cursor (use MySQL cursors)
-# Option=3  = 1+2 combined
-SslCa     = /path/to/ca-cert.pem
-SslVerifyServerCert = 1
+Option    = 2
+# Option=2  - Return matched rows instead of affected rows (FOUND_ROWS)
+# Option=8  - Allow big result set (BIG_PACKETS)
+# Option=32 - Enable dynamic cursors (DYNAMIC_CURSOR)
+ssl-ca    = /path/to/ca-cert.pem
+ssl-mode  = VERIFY_CA
 ```
 
 ## Testing the Connection
