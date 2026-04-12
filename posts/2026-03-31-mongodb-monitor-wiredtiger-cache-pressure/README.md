@@ -22,7 +22,7 @@ const metrics = {
   usedBytes:          cache["bytes currently in the cache"],
   dirtyBytes:         cache["tracked dirty bytes in the cache"],
   appEvictions:       cache["pages evicted by application threads"],
-  bgEvictions:        cache["pages evicted by background eviction"],
+  bgEvictions:        cache["eviction worker thread evicting pages"],
   readIntoCache:      cache["pages read into cache"],
   writtenFromCache:   cache["pages written from cache"]
 };
