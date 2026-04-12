@@ -99,7 +99,7 @@ For the opposite direction, change the filter to `isActive: false`.
 Toggle a field across all documents matching a condition:
 
 ```javascript
-// Toggle all draft posts to published
+// Toggle isPublished for all draft posts
 db.posts.updateMany(
   { status: "draft", authorId: authorId },
   [
