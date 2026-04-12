@@ -75,9 +75,9 @@ db.orders.find({ customerId: "C123", orderId: "O456" })
 ## Limitations
 
 - You can only append fields; you cannot remove or reorder existing shard key fields.
-- The appended fields must form a valid index prefix.
+- A supporting index must exist whose prefix matches the complete new (refined) shard key.
 - Refining the shard key does not redistribute data - it only changes the metadata used for future chunk splits and migrations.
-- Hashed shard keys cannot be refined.
+- Hashed shard keys can be refined by appending suffix fields, but you cannot change the hashed or range type of existing shard key fields.
 
 ## When to Use Refinement vs Resharding
 
