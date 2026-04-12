@@ -67,8 +67,8 @@ return redis.call('GET', key)
 redis.call('SET', 'key', 'value')
 
 -- redis.pcall: returns error table instead of raising
-local ok, err = redis.pcall('HSET', 'string_key', 'field', 'val')
-if type(ok) == 'table' and ok.err then
+local result = redis.pcall('HSET', 'string_key', 'field', 'val')
+if type(result) == 'table' and result.err then
     return redis.error_reply("Wrong type")
 end
 
@@ -118,7 +118,7 @@ return obj.name
 ## Time and Randomness
 
 ```lua
--- Get current time (seconds, microseconds) - deterministic in scripts
+-- Get current time (seconds, microseconds) - non-deterministic, allowed since Redis 7.0+
 local time = redis.call('TIME')
 local seconds = tonumber(time[1])
 local microseconds = tonumber(time[2])
