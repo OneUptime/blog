@@ -149,7 +149,7 @@ def get_page(page, page_size=10):
     # Compute and cache
     offset = page * page_size
     r.zrangestore(cache_key, 'products', 0, '+inf',
-                   byscore=True, offset=offset, count=page_size)
+                   byscore=True, offset=offset, num=page_size)
     r.expire(cache_key, 300)  # Cache for 5 minutes
     return r.zrange(cache_key, 0, -1, withscores=True)
 
@@ -161,7 +161,6 @@ print(f"Page 0 items: {len(page0)}")  # 10
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -200,7 +199,7 @@ r.zrangestore('catalog:popular', 'catalog:all', 70, '+inf', byscore=True)
 
 # Further intersection with in-stock items
 r.zadd('inventory:in_stock', {'prod:a': 1, 'prod:c': 1, 'prod:f': 1})
-r.zinterstore('catalog:popular_in_stock', 2, 'catalog:popular', 'inventory:in_stock', aggregate='MIN')
+r.zinterstore('catalog:popular_in_stock', ['catalog:popular', 'inventory:in_stock'], aggregate='MIN')
 
 result = r.zrange('catalog:popular_in_stock', 0, -1, withscores=True)
 print(f"Popular in-stock products: {result}")
