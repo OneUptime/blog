@@ -70,7 +70,7 @@ CREATE TABLE locations (
 INSERT INTO zones (name, boundary) VALUES (
   'Manhattan',
   ST_GeomFromText(
-    'POLYGON((40.6979 -74.0201, 40.8785 -73.9076, 40.8785 -74.0201, 40.6979 -74.0201))',
+    'POLYGON((40.6979 -74.0201, 40.6979 -73.9076, 40.8785 -73.9076, 40.8785 -74.0201, 40.6979 -74.0201))',
     4326
   )
 );
@@ -131,7 +131,7 @@ SELECT ST_Within(point_geom, polygon_geom);
 SELECT ST_Contains(polygon_geom, point_geom);
 ```
 
-Use `ST_Contains()` when the second argument (the container) is in your table (indexed), because spatial indexes work on the first argument to `ST_Contains()`.
+Use `ST_Contains()` when the first argument (the container) is an indexed column in your table, because the optimizer can use the spatial index on the first argument of `ST_Contains()`.
 
 ## Polygon Within a Polygon
 
@@ -164,7 +164,7 @@ SELECT ST_Within(
   ST_GeomFromText('POINT(0 0)'),
   ST_GeomFromText('POLYGON((0 0, 5 0, 5 5, 0 5, 0 0))')
 ) AS on_boundary;
--- Returns: 1 (boundary points count as within)
+-- Returns: 0 (boundary points are not considered within in MySQL 8.0+)
 
 -- NULL input returns NULL
 SELECT ST_Within(NULL, ST_GeomFromText('POLYGON((0 0, 5 0, 5 5, 0 5, 0 0))'));
