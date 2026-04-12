@@ -144,7 +144,7 @@ Use a TTL index to automatically delete expired carts:
 db.carts.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 ```
 
-Before TTL deletes a cart, a pre-delete hook or background job must release inventory:
+MongoDB TTL deletions have no pre-delete hooks, so a background job must find and release inventory for expired carts before TTL removes them:
 
 ```javascript
 const expiredCarts = await db.collection("carts").find({
