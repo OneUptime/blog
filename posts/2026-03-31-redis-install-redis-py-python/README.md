@@ -18,13 +18,15 @@ Install from PyPI using pip:
 pip install redis
 ```
 
-For async support (covered separately), the package is the same - no extra install is needed:
+For async support (covered separately), the package is the same - no extra install is needed.
+
+Optionally, install the `hiredis` C parser for faster response parsing:
 
 ```bash
 pip install "redis[hiredis]"
 ```
 
-The optional `hiredis` parser is a C extension that speeds up response parsing by 2-5x in throughput-heavy applications.
+The `hiredis` parser speeds up response parsing by 2-5x in throughput-heavy applications.
 
 ## Verifying the Install
 
