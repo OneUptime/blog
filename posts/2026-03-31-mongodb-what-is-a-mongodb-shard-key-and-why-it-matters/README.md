@@ -73,10 +73,18 @@ sh.shardCollection("orders", { discountCode: 1 })
 ```javascript
 sh.status()
 
-// Check which shard has how many chunks
+// Check which shard has how many chunks (MongoDB 5.x and earlier)
 use config
 db.chunks.aggregate([
   { $match: { ns: "myapp.orders" } },
+  { $group: { _id: "$shard", count: { $sum: 1 } } }
+])
+
+// MongoDB 6.0+: the ns field was replaced by uuid in config.chunks.
+// Look up the collection UUID first, then query by it:
+const collUUID = db.collections.findOne({ _id: "myapp.orders" }).uuid
+db.chunks.aggregate([
+  { $match: { uuid: collUUID } },
   { $group: { _id: "$shard", count: { $sum: 1 } } }
 ])
 ```
