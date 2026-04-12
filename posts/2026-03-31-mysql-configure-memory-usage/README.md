@@ -81,7 +81,7 @@ Run the following to check current per-thread memory use:
 ```sql
 SELECT * FROM performance_schema.memory_summary_global_by_event_name
 WHERE event_name LIKE 'memory/sql/%'
-ORDER BY current_alloc DESC
+ORDER BY CURRENT_NUMBER_OF_BYTES_USED DESC
 LIMIT 10;
 ```
 
