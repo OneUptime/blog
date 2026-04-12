@@ -14,7 +14,7 @@ Notification queues - whether for email, SMS, webhooks, or push notifications - 
 
 ## Retry Strategy Design
 
-The recommended approach uses exponential backoff with full jitter:
+The recommended approach uses exponential backoff with equal jitter:
 
 ```text
 nextRetryAt = now + (2^attempts * baseDelay) * (0.5 + random(0, 0.5))
@@ -158,4 +158,4 @@ await db.collection("notification_queue").createIndex(
 
 ## Summary
 
-Retry logic for MongoDB notification queues uses exponential backoff with full jitter to calculate the next retry time after each failure. Store error history in the document for debugging, move jobs to dead status after exceeding `maxAttempts`, and alert on dead-letter accumulation. The atomic claim pattern prevents duplicate deliveries across multiple worker processes.
+Retry logic for MongoDB notification queues uses exponential backoff with equal jitter to calculate the next retry time after each failure. Store error history in the document for debugging, move jobs to dead status after exceeding `maxAttempts`, and alert on dead-letter accumulation. The atomic claim pattern prevents duplicate deliveries across multiple worker processes.
