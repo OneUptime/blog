@@ -10,7 +10,7 @@ Description: Learn how to use MySQL DAY() and DAYOFMONTH() to extract the day nu
 
 ## Overview
 
-MySQL provides two identical functions for extracting the day-of-month from a date: `DAY()` and `DAYOFMONTH()`. Both return an integer from 1 to 31.
+MySQL provides two identical functions for extracting the day-of-month from a date: `DAY()` and `DAYOFMONTH()`. Both return an integer from 0 to 31 (0 for dates with a zero day part such as `'0000-00-00'`).
 
 **Syntax:**
 
@@ -87,7 +87,7 @@ WHERE YEAR(invoice_date)  = 2024
   AND DAY(invoice_date)   = 15;
 ```
 
-The equivalent range form (index-friendly):
+The equivalent direct comparison (index-friendly for DATE columns):
 
 ```sql
 SELECT *
@@ -105,7 +105,7 @@ FROM orders
 WHERE DAY(order_date) = DAY(LAST_DAY(order_date));
 ```
 
-Find orders on any weekend date (not by weekday but by specific recurring days):
+Find orders on any weekend date (using DAYOFWEEK rather than DAY):
 
 ```sql
 SELECT order_id, order_date
@@ -152,4 +152,4 @@ SELECT DAY(NULL);
 
 ## Summary
 
-`DAY()` and `DAYOFMONTH()` are identical MySQL functions that return the day number (1-31) from a date value. Use them for filtering data by day, detecting end-of-month patterns, or building calendar-based reports. Combine with `YEAR()` and `MONTH()` for precise date targeting, and prefer direct date comparisons over function-wrapped columns on indexed fields for best performance.
+`DAY()` and `DAYOFMONTH()` are identical MySQL functions that return the day number (0-31) from a date value. Use them for filtering data by day, detecting end-of-month patterns, or building calendar-based reports. Combine with `YEAR()` and `MONTH()` for precise date targeting, and prefer direct date comparisons over function-wrapped columns on indexed fields for best performance.
