@@ -1,10 +1,10 @@
-# How to Use $toArray and $toObject in MongoDB Aggregation
+# How to Use $objectToArray and $arrayToObject in MongoDB Aggregation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Aggregation, Pipeline, Array, Expression
 
-Description: Learn how to use $toArray and $toObject in MongoDB aggregation to convert between arrays and objects, enabling flexible document reshaping transformations.
+Description: Learn how to use $objectToArray and $arrayToObject in MongoDB aggregation to convert between arrays and objects, enabling flexible document reshaping transformations.
 
 ---
 
@@ -12,10 +12,10 @@ Description: Learn how to use $toArray and $toObject in MongoDB aggregation to c
 
 Two operators bridge the gap between arrays and objects in aggregation pipelines:
 
-- `$toArray` (available in MongoDB 5.0+) - converts a value to an array
-- `$objectToArray` - converts an embedded document to an array of `{ k, v }` pairs (the inverse of `$arrayToObject`)
+- `$objectToArray` (available since MongoDB 3.4.4) - converts an embedded document to an array of `{ k, v }` pairs
+- `$arrayToObject` (available since MongoDB 3.4.4) - converts an array of `{ k, v }` pairs back to an embedded document
 
-For converting an array of `{ k, v }` pairs back to an object, use `$arrayToObject`.
+These two operators are inverses of each other.
 
 ```mermaid
 flowchart LR
@@ -172,35 +172,6 @@ db.records.aggregate([
     }
   }
 ])
-```
-
-## $toArray (MongoDB 5.0+)
-
-### Syntax
-
-```javascript
-{ $toArray: <expression> }
-```
-
-Converts a scalar value to a single-element array. Returns `null` for null input.
-
-```javascript
-// Input: { _id: 1, tag: "mongodb" }
-db.posts.aggregate([
-  {
-    $project: {
-      tags: { $toArray: "$tag" }
-    }
-  }
-])
-```
-
-Output:
-
-```javascript
-[
-  { _id: 1, tags: ["mongodb"] }
-]
 ```
 
 ## Practical Pipeline: Normalize and Merge Dynamic Objects
