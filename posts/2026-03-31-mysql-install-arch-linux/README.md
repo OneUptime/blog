@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Installation, Arch Linux, Linux, Database
 
-Description: Install MySQL on Arch Linux using the official community repository via pacman, initialize the data directory, and configure the systemd service.
+Description: Install MySQL on Arch Linux using the official repository via pacman, initialize the data directory, and configure the systemd service.
 
 ---
 
 ## How It Works
 
-Arch Linux includes MySQL (the Oracle community build) in its `extra` repository. Unlike Debian or RHEL-based systems, Arch requires a manual data directory initialization step after installing the package before starting the service.
+Arch Linux provides MariaDB as its MySQL implementation in the `extra` repository. When you install the `mysql` package via pacman, you receive MariaDB, which is a fully compatible drop-in replacement. Unlike Debian or RHEL-based systems, Arch requires a manual data directory initialization step after installing the package before starting the service.
 
 ```mermaid
 flowchart LR
-    A[pacman -S mysql] --> B[mysqld --initialize --user=mysql]
-    B --> C[systemctl start mysqld]
-    C --> D[Read temp password from log]
-    D --> E[mysql_secure_installation]
-    E --> F[MySQL ready]
+    A[pacman -S mysql] --> B[mariadb-install-db --user=mysql]
+    B --> C[systemctl start mariadb]
+    C --> D[mysql_secure_installation]
+    D --> E[MySQL ready]
 ```
 
 ## Prerequisites
@@ -41,47 +40,37 @@ sudo pacman -Syu
 sudo pacman -S mysql
 ```
 
-At the prompt, confirm the installation. Pacman installs the MySQL server and client binaries.
+At the prompt, confirm the installation. Pacman installs the MySQL-compatible server and client binaries.
 
-Note: If you prefer MariaDB (which is the Arch community's recommended MySQL drop-in), install `mariadb` instead. This guide focuses on the Oracle MySQL package.
+Note: On Arch Linux, the `mysql` package is provided by MariaDB, which is Arch's official MySQL implementation. If you need Oracle MySQL specifically (e.g., for MySQL-specific features like Group Replication), you must install it from the AUR instead.
 
 ## Step 3 - Initialize the Data Directory
 
 Arch Linux does not automatically initialize the MySQL data directory. You must do this manually.
 
 ```bash
-sudo mysqld --initialize --user=mysql
+sudo mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
 ```
 
 This command:
 - Creates `/var/lib/mysql` and sets ownership to the `mysql` user
 - Initializes system tables
-- Generates a temporary root password in the error log
-
-Retrieve the temporary password.
-
-```bash
-sudo grep 'temporary password' /var/log/mysql/mysqld.log
-```
-
-```text
-[Note] [MY-010454] [Server] A temporary password is generated for root@localhost: Temp#Pass1!
-```
+- Sets up root with no initial password (you will set one during the secure installation step)
 
 ## Step 4 - Start and Enable the MySQL Service
 
 ```bash
-sudo systemctl enable --now mysqld
+sudo systemctl enable --now mariadb
 ```
 
 Verify it is running.
 
 ```bash
-sudo systemctl status mysqld
+sudo systemctl status mariadb
 ```
 
 ```text
-● mysqld.service - MySQL Server
+● mariadb.service - MariaDB database server
      Active: active (running)
 ```
 
@@ -91,7 +80,7 @@ sudo systemctl status mysqld
 sudo mysql_secure_installation
 ```
 
-Enter the temporary password when prompted. You must set a new root password before making other changes. Accept all hardening prompts.
+When prompted for the current root password, press Enter (the root password is empty after initialization). You will then set a new root password. Accept all hardening prompts.
 
 ## Step 6 - Connect and Create a User
 
@@ -114,22 +103,21 @@ mysql --version
 ```
 
 ```text
-mysql  Ver 8.0.x  Distrib 8.0.x, for Linux (x86_64)
+mysql  Ver 15.1 Distrib 10.x.x-MariaDB, for Linux (x86_64) using readline 5.1
 ```
 
 ## Key File Locations
 
 ```text
-/etc/mysql/my.cnf             Primary configuration file
+/etc/my.cnf                   Primary configuration file
+/etc/my.cnf.d/                Modular configuration directory
 /var/lib/mysql/               Data directory
-/var/log/mysql/mysqld.log    Error log
-/run/mysqld/mysqld.pid       PID file
 /run/mysqld/mysqld.sock      Unix socket
 ```
 
 ## Custom Configuration
 
-Edit `/etc/mysql/my.cnf` to tune the server.
+Create a custom configuration file in `/etc/my.cnf.d/` to tune the server.
 
 ```ini
 [mysqld]
@@ -144,14 +132,14 @@ long_query_time       = 2
 Restart after changes.
 
 ```bash
-sudo systemctl restart mysqld
+sudo systemctl restart mariadb
 ```
 
 ## Using MySQL with Arch Wiki Notes
 
-Arch recommends MariaDB as the default MySQL implementation for Arch Linux due to better community packaging. However, if your application requires the Oracle MySQL feature set (e.g., MySQL-specific JSON functions, Group Replication), the `mysql` package from `extra` is the correct choice.
+Arch uses MariaDB as the default MySQL implementation due to better community packaging and open-source licensing. The `mysql` command-line client, `mysql_secure_installation`, and other tools are provided by MariaDB with full compatibility. If your application requires Oracle MySQL-specific features (e.g., Group Replication), you must install Oracle MySQL from the AUR.
 
-Regularly check for updates via the Arch User Repository (AUR) notes when MySQL upgrades are published.
+Regularly check for updates as Arch's rolling-release model delivers MariaDB upgrades quickly.
 
 ```bash
 sudo pacman -Syu mysql
@@ -159,4 +147,4 @@ sudo pacman -Syu mysql
 
 ## Summary
 
-Installing MySQL on Arch Linux requires a manual `mysqld --initialize` step because Arch packages do not run post-install scripts that initialize the data directory automatically. After initialization, start the service with `systemctl`, retrieve the temporary root password from the error log, and run `mysql_secure_installation`. Arch's rolling-release model means MySQL updates arrive quickly; run `pacman -Syu` regularly to stay current.
+Installing MySQL on Arch Linux requires a manual `mariadb-install-db` step because Arch packages do not run post-install scripts that initialize the data directory automatically. After initialization, start the service with `systemctl` and run `mysql_secure_installation` to set a root password and apply hardening options. Arch's rolling-release model means MariaDB updates arrive quickly; run `pacman -Syu` regularly to stay current.
