@@ -17,7 +17,7 @@ The Atlas portal provides charts and log viewers, but the CLI is better for auto
 Logs are retrieved per host. First, identify the hosts in your cluster:
 
 ```bash
-atlas clusters describe myCluster --output json | jq '.mongoURIWithOptions'
+atlas clusters describe myCluster --output json | jq '.connectionStrings.standardSrv'
 atlas processes list
 ```
 
@@ -27,8 +27,7 @@ Download compressed log files from a specific host:
 
 ```bash
 atlas logs download <HOSTNAME> mongodb.gz \
-  --clusterName myCluster \
-  --output /tmp/mongodb.gz
+  --out /tmp/mongodb.gz
 ```
 
 Decompress and search the logs:
@@ -49,10 +48,9 @@ Download only logs from a specific time window:
 
 ```bash
 atlas logs download <HOSTNAME> mongodb.gz \
-  --clusterName myCluster \
   --start 1711900800 \
   --end 1711904400 \
-  --output /tmp/recent.gz
+  --out /tmp/recent.gz
 ```
 
 The `--start` and `--end` values are Unix timestamps.
@@ -98,7 +96,7 @@ DISK_PARTITION_IOPS_WRITE
 Monitor disk I/O to detect storage bottlenecks:
 
 ```bash
-atlas metrics disks <HOSTNAME>:27017 --output json
+atlas metrics disks list <HOSTNAME>:27017 --output json
 ```
 
 ## Viewing Database-Level Metrics
@@ -106,7 +104,7 @@ atlas metrics disks <HOSTNAME>:27017 --output json
 Check stats for a specific database:
 
 ```bash
-atlas metrics databases <HOSTNAME>:27017 myDatabase \
+atlas metrics databases describe <HOSTNAME>:27017 myDatabase \
   --granularity PT5M \
   --period PT1H
 ```
