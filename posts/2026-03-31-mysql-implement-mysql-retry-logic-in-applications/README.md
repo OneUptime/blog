@@ -16,9 +16,9 @@ Not all MySQL errors should trigger a retry. Retryable errors are those caused b
 
 ```text
 1213 (ER_LOCK_DEADLOCK)       - Deadlock; MySQL rolled back the transaction
-1205 (ER_LOCK_WAIT_TIMEOUT)   - Lock wait exceeded; transaction rolled back
-2006 (ER_SERVER_GONE_ERROR)   - Connection lost during query
-2013 (ER_LOST_CONNECTION)     - Lost connection to MySQL server
+1205 (ER_LOCK_WAIT_TIMEOUT)   - Lock wait exceeded; last statement rolled back
+2006 (CR_SERVER_GONE_ERROR)   - Connection lost during query
+2013 (CR_SERVER_LOST)         - Lost connection to MySQL server during query
 ```
 
 Non-retryable errors include constraint violations (1062), syntax errors (1064), and access denied (1045).
