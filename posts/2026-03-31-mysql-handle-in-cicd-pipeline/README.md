@@ -131,13 +131,13 @@ mysql -h 127.0.0.1 -u testuser -ptestpass myapp_test < tests/fixtures/seed.sql
 
 ## Testing Rollback Migrations
 
-Include rollback testing in your pipeline to ensure migrations can be safely reversed:
+Include rollback testing in your pipeline to ensure migrations can be safely reversed. Note that `flyway undo` requires Flyway Teams or Enterprise edition (it is not available in the Community edition):
 
 ```bash
 # Apply migrations
 flyway migrate
 
-# Test rollback
+# Test rollback (requires Flyway Teams or Enterprise)
 flyway undo
 
 # Verify schema state after undo
