@@ -56,10 +56,9 @@ Check for table cache misses:
 
 ```sql
 SELECT
-  (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Opened_tables') /
-  (UNIX_TIMESTAMP() -
-   (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Uptime') / 3600
-  ) AS opens_per_hour;
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Opened_tables') /
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Uptime') * 3600
+  AS opens_per_hour;
 ```
 
 A low `open_tables` relative to `table_open_cache` means the cache has room. If `open_tables` consistently equals `table_open_cache`, increase the cache.
@@ -93,7 +92,7 @@ SHOW VARIABLES LIKE 'table_open_cache_instances';
 +----------------------------+-------+
 ```
 
-Default is 16 (or the number of CPUs, whichever is smaller). The total memory used is `table_open_cache` / `table_open_cache_instances` per instance.
+Default is 16. The total cache is divided evenly, so each instance holds `table_open_cache` / `table_open_cache_instances` entries.
 
 ## Check Operating System File Descriptor Limits
 
@@ -131,7 +130,7 @@ Each open table instance uses approximately 2 KB of memory. For 8000 entries: 80
 There are two related caches:
 
 - `table_open_cache` - file descriptor handles for open table instances
-- `table_definition_cache` - table `.frm` definitions (metadata only)
+- `table_definition_cache` - table definitions from the data dictionary (metadata only)
 
 ```sql
 SHOW VARIABLES LIKE 'table_definition_cache';
