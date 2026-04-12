@@ -77,7 +77,7 @@ GROUP BY order_id;
 SET SESSION group_concat_max_len = 10000;
 ```
 
-## Statistical Functions (MySQL 8.0+)
+## Statistical Functions
 
 ```sql
 SELECT
@@ -153,4 +153,4 @@ HAVING AVG(salary) > 60000;       -- then filter groups
 
 ## Summary
 
-MySQL aggregate functions collapse multiple rows into summary values. COUNT(*) counts rows; COUNT(col) skips NULLs; SUM, AVG, MIN, and MAX work on numeric and date columns. GROUP_CONCAT is unique to MySQL and builds delimited lists. Use HAVING to filter after aggregation, and WITH ROLLUP to add subtotals without a second query.
+MySQL aggregate functions collapse multiple rows into summary values. COUNT(*) counts rows; COUNT(col) skips NULLs; SUM and AVG work on numeric columns; MIN and MAX work on numeric, date, and string columns. GROUP_CONCAT is unique to MySQL and builds delimited lists. Use HAVING to filter after aggregation, and WITH ROLLUP to add subtotals without a second query.
