@@ -79,9 +79,11 @@ BOOK_SLOT_SCRIPT = """
 local avail_key = KEYS[1]
 local booked_key = KEYS[2]
 local booking_key = KEYS[3]
+local user_bookings_key = KEYS[4]
 local slot = ARGV[1]
 local user_id = ARGV[2]
 local score = ARGV[3]
+local booking_id = ARGV[4]
 
 if redis.call('ZSCORE', avail_key, slot) == false then
     return 0
@@ -94,6 +96,7 @@ redis.call('HSET', booking_key,
     'status', 'confirmed',
     'created_at', tostring(redis.call('TIME')[1])
 )
+redis.call('SADD', user_bookings_key, booking_id)
 return 1
 """
 
@@ -111,9 +114,10 @@ def book_slot_for_user(booking_id: str, resource_id: str, slot: str, start_ts: f
         keys=[
             f"slots:available:{resource_id}",
             f"slots:booked:{resource_id}",
-            f"booking:{booking_id}"
+            f"booking:{booking_id}",
+            f"user:{user_id}:bookings"
         ],
-        args=[slot, user_id, str(start_ts)]
+        args=[slot, user_id, str(start_ts), booking_id]
     ) == 1
 
 def cancel_booking(booking_id: str, resource_id: str, slot: str, start_ts: float):
@@ -171,4 +175,4 @@ ZRANGEBYSCORE slots:booked:room:101 1712000000 1712086400 WITHSCORES
 
 ## Summary
 
-Redis booking systems use sorted sets for time-ordered slot availability and Lua scripts for atomic slot reservation that prevents double-booking under concurrent load. Provisional holds with TTLs allow a two-phase booking flow where a slot is temporarily locked during payment processing. Cancellations atomically move slots back to the available set.
+Redis booking systems use sorted sets for time-ordered slot availability and Lua scripts for atomic slot reservation that prevents double-booking under concurrent load. Provisional holds with TTLs allow a two-phase booking flow where a slot is temporarily locked during payment processing. Cancellations move slots back to the available set by removing them from the booked sorted set and re-adding them to the available set.
