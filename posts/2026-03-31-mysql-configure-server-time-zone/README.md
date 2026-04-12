@@ -29,16 +29,16 @@ If `NOW()` and `UTC_TIMESTAMP()` differ, the server is not running in UTC.
 ## Setting the Time Zone Globally at Runtime
 
 ```sql
-SET GLOBAL time_zone = 'UTC';
+SET GLOBAL time_zone = '+00:00';
 ```
 
-This change applies to new connections immediately but does not persist across server restarts. Existing sessions keep their current session time zone.
+This change applies to new connections immediately but does not persist across server restarts. Existing sessions keep their current session time zone. You can also use a named zone like `'UTC'` instead of `'+00:00'`, but named zones require the time zone tables to be loaded first (see "Loading Named Time Zone Data" below).
 
 Confirm the change:
 
 ```sql
 SELECT @@global.time_zone;
--- UTC
+-- +00:00
 ```
 
 ## Setting the Time Zone for the Current Session
@@ -59,11 +59,11 @@ Edit `/etc/mysql/my.cnf` or `/etc/my.cnf` (location varies by distribution):
 default-time-zone = '+00:00'
 ```
 
-Or use a named time zone:
+Or use a named time zone (requires time zone tables to be loaded first — see below):
 
 ```text
 [mysqld]
-default-time-zone = UTC
+default-time-zone = 'UTC'
 ```
 
 Restart MySQL after editing:
@@ -86,10 +86,10 @@ On systems without `/usr/share/zoneinfo` (e.g., some minimal Docker images), dow
 mysql -u root -p mysql < timezone_posix.sql
 ```
 
-After loading, restart MySQL or run:
+After loading, restart MySQL so that it does not continue to serve previously cached time zone data:
 
-```sql
-FLUSH TABLES;
+```bash
+sudo systemctl restart mysql
 ```
 
 Verify that the tables are populated:
@@ -123,7 +123,7 @@ CREATE TABLE demo (
   dt DATETIME  DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO demo VALUES ();
+INSERT INTO demo () VALUES ();
 
 SELECT ts, dt FROM demo;
 -- ts: converted to session TZ on retrieval
