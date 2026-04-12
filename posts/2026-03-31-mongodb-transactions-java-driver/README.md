@@ -36,33 +36,31 @@ MongoCollection<Document> inventory = db.getCollection("inventory");
 The callback API retries on `TransientTransactionError` and `UnknownTransactionCommitResult` automatically:
 
 ```java
-TransactionBody<String> txnBody = (session) -> {
-    for (Document item : cartItems) {
-        Document result = inventory.findOneAndUpdate(
-            session,
-            Filters.and(
-                Filters.eq("productId", item.getString("productId")),
-                Filters.gte("qty", item.getInteger("qty"))
-            ),
-            Updates.inc("qty", -item.getInteger("qty")),
-            new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER)
-        );
-        if (result == null) {
-            throw new RuntimeException("Insufficient stock: " + item.getString("productId"));
-        }
-    }
-
-    orders.insertOne(session, new Document()
-        .append("userId", userId)
-        .append("items", cartItems)
-        .append("status", "placed")
-    );
-
-    return "Order placed";
-};
-
 try (ClientSession session = client.startSession()) {
-    session.withTransaction(txnBody);
+    session.withTransaction(() -> {
+        for (Document item : cartItems) {
+            Document result = inventory.findOneAndUpdate(
+                session,
+                Filters.and(
+                    Filters.eq("productId", item.getString("productId")),
+                    Filters.gte("qty", item.getInteger("qty"))
+                ),
+                Updates.inc("qty", -item.getInteger("qty")),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER)
+            );
+            if (result == null) {
+                throw new RuntimeException("Insufficient stock: " + item.getString("productId"));
+            }
+        }
+
+        orders.insertOne(session, new Document()
+            .append("userId", userId)
+            .append("items", cartItems)
+            .append("status", "placed")
+        );
+
+        return "Order placed";
+    });
 }
 ```
 
@@ -142,7 +140,7 @@ TransactionOptions options = TransactionOptions.builder()
 For asynchronous applications with the reactive streams driver, use `Publisher`-based sessions:
 
 ```java
-reactiveClient.startSession()
+Mono.from(reactiveClient.startSession())
     .flatMap(session ->
         Mono.from(session.withTransaction(() ->
             Mono.from(col.insertOne(session, doc))
