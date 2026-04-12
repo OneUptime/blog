@@ -38,7 +38,7 @@ SELECT columns
 FROM table_name IGNORE INDEX (index_name)
 WHERE condition;
 
--- Scope can be specified (default is FOR JOIN)
+-- Scope can be specified (default applies to all parts of the statement)
 USE INDEX FOR JOIN (index_name)
 USE INDEX FOR ORDER BY (index_name)
 USE INDEX FOR GROUP BY (index_name)
