@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, REGEXP_LIKE, Regular Expression, String Function, Pattern Matching
 
-Description: Learn how to use the REGEXP_LIKE() function in MySQL 8.0+ to test whether a string matches a regular expression pattern with full POSIX regex support.
+Description: Learn how to use the REGEXP_LIKE() function in MySQL 8.0+ to test whether a string matches a regular expression pattern with full ICU regex and Unicode support.
 
 ---
 
@@ -36,7 +36,7 @@ SELECT REGEXP_LIKE('hello123', '^[a-z]+[0-9]+$');
 ## The match_type Parameter
 
 ```sql
--- 'c' - case-sensitive (default for REGEXP_LIKE)
+-- 'c' - case-sensitive (default depends on collation; with utf8mb4_0900_ai_ci, matching is case-insensitive by default)
 SELECT REGEXP_LIKE('Hello', 'hello', 'c');  -- Returns 0
 
 -- 'i' - case-insensitive
