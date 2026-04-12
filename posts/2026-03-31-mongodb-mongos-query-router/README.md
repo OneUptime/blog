@@ -65,9 +65,6 @@ Most administrative commands are routed through `mongos`:
 // List all shards
 sh.status()
 
-// Enable sharding on a database
-sh.enableSharding("myapp")
-
 // Shard a collection
 sh.shardCollection("myapp.orders", { customerId: 1 })
 
@@ -80,10 +77,10 @@ sh.getBalancerState()
 Run multiple `mongos` instances for high availability. Applications should connect to a load balancer or specify multiple `mongos` hosts in their connection string:
 
 ```text
-mongodb://mongos1.example.com:27017,mongos2.example.com:27017/myapp?replicaSet=
+mongodb://mongos1.example.com:27017,mongos2.example.com:27017/myapp
 ```
 
-Use a connection string without `replicaSet` for `mongos` - it is not a replica set member itself.
+Do not include the `replicaSet` parameter when connecting to `mongos` - it is not a replica set member itself.
 
 ## Monitoring mongos Performance
 
@@ -94,11 +91,13 @@ Check slow operations via the `mongos` log or using `currentOp`:
 db.adminCommand({ currentOp: true, secs_running: { $gte: 5 } })
 ```
 
-Check the routing table cache:
+Check the number of chunks for a collection via the config database:
 
 ```javascript
 use config
-db.chunks.find({ ns: "myapp.orders" }).count()
+db.collections.find({ _id: "myapp.orders" }, { uuid: 1 })
+// Use the returned uuid to query chunks
+db.chunks.countDocuments({ uuid: UUID("...") })
 ```
 
 ## Connection Pooling
