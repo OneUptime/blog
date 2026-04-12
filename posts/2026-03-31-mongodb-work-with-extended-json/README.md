@@ -77,8 +77,7 @@ mongoexport \
 mongoimport \
   --uri "mongodb://localhost:27017/shop" \
   --collection orders \
-  --file orders.json \
-  --jsonArray
+  --file orders.json
 ```
 
 ## Parsing Extended JSON in Node.js
