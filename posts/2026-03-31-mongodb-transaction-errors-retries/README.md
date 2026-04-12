@@ -166,8 +166,8 @@ function classifyTransactionError(err) {
     return "WRITE_CONFLICT";
   }
 
-  // Session expired or no longer valid
-  if (err.code === 217 || err.code === 225) {
+  // Session not found or transaction no longer valid
+  if (err.code === 206 || err.code === 251) {
     return "SESSION_EXPIRED";
   }
 
