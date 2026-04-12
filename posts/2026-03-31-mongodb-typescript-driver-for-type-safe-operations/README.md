@@ -63,13 +63,13 @@ console.log('Inserted:', result.insertedId);
 ## Type-Safe Find
 
 ```typescript
-// Return type is inferred as Product | null
+// Return type is inferred as WithId<Product> | null
 const product = await collection.findOne({ name: 'Laptop' });
 if (product) {
   console.log(product.price.toFixed(2)); // TypeScript knows price is a number
 }
 
-// Cursor is typed as FindCursor<Product>
+// Cursor is typed as FindCursor<WithId<Product>>
 const cursor = collection.find({ category: 'electronics' });
 for await (const p of cursor) {
   console.log(`${p.name}: $${p.price}`);
@@ -92,8 +92,6 @@ await collection.updateOne({ name: 'Laptop' }, update);
 ## Projection and Partial Types
 
 ```typescript
-import { WithId } from 'mongodb';
-
 // Only return name and price
 const names = await collection
   .find({}, { projection: { name: 1, price: 1, _id: 0 } })
