@@ -117,7 +117,7 @@ async function recordTransaction(txn) {
 
 ## j:true Is Ignored When journaling Is Disabled
 
-If `mongod` is started with `--nojournal`, the `j: true` write concern parameter is treated as `j: false` because the journal does not exist. In MongoDB 4.0+, journaling cannot be disabled for WiredTiger, so this is less of a concern in modern deployments.
+If `mongod` is started with `--nojournal`, specifying `j: true` causes the write operation to fail with an error because the journal does not exist. In MongoDB 4.0+, journaling cannot be disabled for WiredTiger, so this is not a concern in modern deployments.
 
 ## j:false (Default) Behavior
 
