@@ -24,9 +24,9 @@ SHOW VARIABLES LIKE 'innodb_ft%';
 | `innodb_ft_server_stopword_table` | Custom stopword table | NULL |
 | `innodb_ft_user_stopword_table` | Session-level stopword table | NULL |
 | `innodb_ft_num_word_optimize` | Words optimized per OPTIMIZE call | 2000 |
-| `innodb_ft_cache_size` | Per-index cache for uncommitted data | 8388608 (8MB) |
-| `innodb_ft_total_cache_size` | Total cache across all indexes | 640MB |
-| `innodb_ft_result_cache_limit` | Max memory for a single FTS result | 2GB |
+| `innodb_ft_cache_size` | Per-index cache for uncommitted data | 8000000 (~8MB) |
+| `innodb_ft_total_cache_size` | Total cache across all indexes | 640000000 (~640MB) |
+| `innodb_ft_result_cache_limit` | Max memory for a single FTS result | 2000000000 (~2GB) |
 | `innodb_ft_sort_pll_degree` | Parallel threads for index build | 2 |
 
 ## Setting Minimum Token Size
@@ -87,19 +87,22 @@ SET GLOBAL innodb_ft_enable_stopword = OFF;
 
 ## Configuring Index Build Parallelism
 
-For large tables, speed up FULLTEXT index creation with parallel threads:
+For large tables, speed up FULLTEXT index creation with parallel threads. Note that `innodb_ft_sort_pll_degree` is not dynamic — it must be set at server startup:
+
+```text
+[mysqld]
+innodb_ft_sort_pll_degree = 8
+```
+
+```bash
+# Restart MySQL after changing this
+systemctl restart mysql
+```
+
+Then build the index with more parallelism:
 
 ```sql
-SHOW VARIABLES LIKE 'innodb_ft_sort_pll_degree';
--- Default: 2
-
-SET GLOBAL innodb_ft_sort_pll_degree = 8;
-
--- Now build the index with more parallelism
 ALTER TABLE large_articles ADD FULLTEXT INDEX idx_ft (title, body);
-
--- Restore default
-SET GLOBAL innodb_ft_sort_pll_degree = 2;
 ```
 
 ## Tuning the FTS Cache
@@ -112,7 +115,7 @@ innodb_ft_cache_size = 33554432     -- 32MB per-index cache
 innodb_ft_total_cache_size = 671088640  -- 640MB total FTS cache
 ```
 
-The cache is flushed to the auxiliary tables when it reaches `innodb_ft_cache_size` or when a `COMMIT` triggers a sync.
+The cache is flushed to the auxiliary tables when it reaches `innodb_ft_cache_size`. Note that committed data becomes visible for full-text searches at transaction commit time, but the in-memory cache is not necessarily flushed to disk on each commit.
 
 ## Viewing FTS Auxiliary Tables
 
