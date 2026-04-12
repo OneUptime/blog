@@ -54,8 +54,10 @@ CREATE TABLE events (
     PRIMARY KEY (id),
     KEY idx_calendar_start (calendar_id, start_at),
     KEY idx_start_end      (start_at, end_at),
-    CONSTRAINT fk_evt_calendar FOREIGN KEY (calendar_id) REFERENCES calendars (id) ON DELETE CASCADE,
-    CONSTRAINT fk_evt_creator  FOREIGN KEY (creator_id)  REFERENCES users     (id)
+    KEY idx_recurrence     (recurrence_id),
+    CONSTRAINT fk_evt_calendar   FOREIGN KEY (calendar_id)   REFERENCES calendars (id) ON DELETE CASCADE,
+    CONSTRAINT fk_evt_creator    FOREIGN KEY (creator_id)    REFERENCES users     (id),
+    CONSTRAINT fk_evt_recurrence FOREIGN KEY (recurrence_id) REFERENCES events    (id) ON DELETE CASCADE
 );
 ```
 
