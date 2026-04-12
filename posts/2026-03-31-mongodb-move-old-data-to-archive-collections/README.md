@@ -37,7 +37,7 @@ Using zstd compression on archive collections reduces disk usage significantly f
 
 ## Step 3: Copy Documents to the Archive Collection
 
-Use `$out` in an aggregation pipeline to bulk-copy documents:
+Use `$merge` in an aggregation pipeline to bulk-copy documents:
 
 ```javascript
 db.orders.aggregate([
@@ -80,16 +80,15 @@ For large collections, batch the deletions to avoid locking:
 
 ```javascript
 let deleted = 0;
-let result;
+let ids;
 do {
-  result = db.orders.deleteMany(
-    { createdAt: { $lt: cutoff } },
-    { limit: 1000 }  // Use a cursor loop for batching
-  );
-  // Alternatively use bulkWrite with batches
-  deleted += result.deletedCount;
-  sleep(100); // Brief pause to reduce impact
-} while (result.deletedCount > 0);
+  ids = db.orders.find({ createdAt: { $lt: cutoff } }, { _id: 1 }).limit(1000).toArray();
+  if (ids.length > 0) {
+    const result = db.orders.deleteMany({ _id: { $in: ids.map(d => d._id) } });
+    deleted += result.deletedCount;
+    sleep(100); // Brief pause to reduce impact
+  }
+} while (ids.length > 0);
 print(`Total deleted: ${deleted}`);
 ```
 
