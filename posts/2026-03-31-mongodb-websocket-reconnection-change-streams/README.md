@@ -100,8 +100,10 @@ class ReconnectingWebSocket {
 
     this.ws.onclose = (event) => {
       if (!event.wasClean) {
-        console.warn(`Disconnected. Reconnecting in ${this.delay}ms`);
-        setTimeout(() => this.connect(), this.delay);
+        const jitter = Math.random() * this.delay * 0.5;
+        const reconnectDelay = this.delay + jitter;
+        console.warn(`Disconnected. Reconnecting in ${Math.round(reconnectDelay)}ms`);
+        setTimeout(() => this.connect(), reconnectDelay);
         this.delay = Math.min(this.delay * 2, this.maxDelay);
       }
     };
