@@ -69,9 +69,9 @@ command.CommandText = "SELECT id, name, email FROM customers WHERE status = 'act
 using var reader = await command.ExecuteReaderAsync();
 while (await reader.ReadAsync())
 {
-    int id = reader.GetInt32("id");
-    string name = reader.GetString("name");
-    string email = reader.GetString("email");
+    int id = reader.GetInt32(reader.GetOrdinal("id"));
+    string name = reader.GetString(reader.GetOrdinal("name"));
+    string email = reader.GetString(reader.GetOrdinal("email"));
     Console.WriteLine($"{id}: {name} <{email}>");
 }
 ```
@@ -92,9 +92,9 @@ async Task<Customer?> GetCustomerByEmailAsync(string email, MySqlConnection conn
     {
         return new Customer
         {
-            Id = reader.GetInt32("id"),
-            Name = reader.GetString("name"),
-            Email = reader.GetString("email")
+            Id = reader.GetInt32(reader.GetOrdinal("id")),
+            Name = reader.GetString(reader.GetOrdinal("name")),
+            Email = reader.GetString(reader.GetOrdinal("email"))
         };
     }
     return null;
@@ -209,7 +209,7 @@ public class CustomerRepository
         command.Parameters.AddWithValue("@id", id);
         using var reader = await command.ExecuteReaderAsync();
         if (await reader.ReadAsync())
-            return new Customer { Id = reader.GetInt32("id"), Name = reader.GetString("name") };
+            return new Customer { Id = reader.GetInt32(reader.GetOrdinal("id")), Name = reader.GetString(reader.GetOrdinal("name")) };
         return null;
     }
 }
