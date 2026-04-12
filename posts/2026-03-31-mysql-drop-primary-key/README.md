@@ -29,7 +29,7 @@ Unlike named indexes, a primary key is always called `PRIMARY` in MySQL, so you 
 
 ```sql
 CREATE TABLE products (
-  product_id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT PRIMARY KEY,
   sku        VARCHAR(50) NOT NULL,
   name       VARCHAR(100)
 );
