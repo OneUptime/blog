@@ -57,7 +57,7 @@ Large documents require MongoDB to read and rewrite the entire document on any f
 
 ## Principle 2: Pre-allocate Array Space (Bucket Pattern)
 
-Unbounded array growth causes document moves, which are expensive. The bucket pattern pre-allocates slots and fills them in later.
+Unbounded array growth leads to increasingly large documents, which are expensive to rewrite on every update and consume more WiredTiger cache. The bucket pattern caps document size by grouping entries into fixed-size buckets.
 
 ```javascript
 // Create a bucket document that holds up to 200 readings
@@ -114,11 +114,11 @@ db.events.dropIndex("old_field_1");
 // instead of two separate single-field indexes
 db.events.createIndex({ userId: 1, ts: -1 });
 
-// Enable background index builds to avoid blocking writes
-db.events.createIndex(
-  { sessionId: 1 },
-  { background: true }  // MongoDB 4.2+: all index builds are non-blocking by default
-);
+// Note: the { background: true } option is ignored in MongoDB 4.2+.
+// Index builds now use an optimized process that yields to reads and writes
+// during the main scanning phase, holding an exclusive lock only briefly
+// at the start and end of the build.
+db.events.createIndex({ sessionId: 1 });
 ```
 
 ## Principle 5: Use Write Concern Wisely
@@ -151,17 +151,25 @@ async function bulkIngest(events) {
 Ordered bulk writes stop on first error. Unordered bulk writes parallelise inserts and continue past errors, delivering much higher throughput.
 
 ```javascript
+const { MongoBulkWriteError } = require("mongodb");
+
 async function ingestBatch(db, events) {
   const ops = events.map((e) => ({ insertOne: { document: e } }));
 
-  const result = await db.collection("events").bulkWrite(ops, {
-    ordered: false,  // parallelise; don't halt on first error
-    writeConcern: { w: 1 }
-  });
-
-  console.log(`Inserted: ${result.insertedCount}`);
-  if (result.hasWriteErrors()) {
-    result.getWriteErrors().forEach((err) => console.error(err.errmsg));
+  try {
+    const result = await db.collection("events").bulkWrite(ops, {
+      ordered: false,  // parallelise; don't halt on first error
+      writeConcern: { w: 1 }
+    });
+    console.log(`Inserted: ${result.insertedCount}`);
+  } catch (err) {
+    if (err instanceof MongoBulkWriteError) {
+      // Partial success: some documents may have been inserted
+      console.log(`Inserted: ${err.result.insertedCount}`);
+      err.writeErrors.forEach((e) => console.error(e.errmsg));
+    } else {
+      throw err;
+    }
   }
 }
 ```
@@ -171,10 +179,9 @@ async function ingestBatch(db, events) {
 A single primary replica becomes a bottleneck. Distribute writes across shards using a hashed shard key on a high-cardinality field.
 
 ```javascript
-// Enable sharding on the database
-sh.enableSharding("telemetry");
-
 // Shard the events collection on a hashed sensorId
+// Note: sh.enableSharding() is no longer required in MongoDB 6.0+.
+// Databases are automatically enabled for sharding when you shard a collection.
 sh.shardCollection("telemetry.events", { sensorId: "hashed" });
 
 // Confirm the shard distribution
