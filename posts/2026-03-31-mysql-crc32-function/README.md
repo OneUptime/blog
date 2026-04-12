@@ -27,7 +27,7 @@ SELECT CRC32('hello');
 -- Result: 907060870
 
 SELECT CRC32('Hello');
--- Result: 4289425800  (different - case-sensitive)
+-- Result: 4157704578  (different - case-sensitive)
 
 SELECT CRC32('hello');
 -- Result: 907060870  (same input = same output)
