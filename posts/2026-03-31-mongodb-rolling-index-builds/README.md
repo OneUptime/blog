@@ -10,7 +10,7 @@ Description: Learn how to build indexes one replica set member at a time to avoi
 
 ## Introduction
 
-Building an index on a large collection blocks write performance in older MongoDB versions. Even in MongoDB 4.2+ where background index builds are the default, a rolling index build - creating the index on each secondary in turn before the primary - gives you maximum control and avoids index build impact on production traffic.
+Building an index on a large collection blocks write performance in older MongoDB versions. Even in MongoDB 4.2+ where the optimized index build process holds exclusive locks only at the start and end of the build, a rolling index build - creating the index on each secondary in turn before the primary - gives you maximum control and avoids index build impact on production traffic.
 
 A rolling build works by:
 1. Stopping replication on one secondary
@@ -48,21 +48,18 @@ rs.status().members.forEach(m => {
 
 Note the port number of the secondary you will work on first (e.g., `27017`).
 
-## Step 2: Remove the Secondary from the Replica Set (Optional for Older Versions)
+## Step 2: Shut Down the Secondary
 
-For MongoDB 4.4+ you do not need to remove the member. Instead, use the replica set maintenance mode:
+Connect to the secondary and shut it down gracefully:
 
 ```javascript
-// Connect to the secondary
-rs.secondaryOk()
-db.adminCommand({ replSetMaintenance: true })
+use admin
+db.shutdownServer()
 ```
 
-This puts the member in RECOVERING state, which stops it from serving reads and accepting replication, but keeps it in the replica set config.
+## Step 3: Restart the Secondary as Standalone
 
-## Step 3: Restart the Secondary as Standalone (MongoDB < 4.4)
-
-If you are on an older version or prefer the standalone approach, edit the mongod config on the secondary:
+Edit the mongod config on the secondary to run it as a standalone instance:
 
 ```yaml
 # Comment out replication section and change port
@@ -85,13 +82,12 @@ mongosh --port 27218
 ## Step 4: Build the Index
 
 ```javascript
-// Connect to the standalone (or maintenance-mode secondary)
+// Connect to the standalone instance
 use myDatabase
 db.orders.createIndex(
   { customerId: 1, createdAt: -1 },
   {
     name: "idx_customer_created",
-    background: false,   // standalone always builds in foreground
     comment: "rolling index build"
   }
 )
@@ -180,4 +176,4 @@ db.getReplicationInfo()
 
 ## Summary
 
-Rolling index builds let you add indexes to large MongoDB replica set collections without causing a noticeable write performance dip on the primary. Process one secondary at a time, verify replication catches up before moving to the next node, and always build on the primary last by stepping it down first. In MongoDB 4.4+ you can use `replSetMaintenance` to simplify the process without a standalone restart.
+Rolling index builds let you add indexes to large MongoDB replica set collections without causing a noticeable write performance dip on the primary. Process one secondary at a time, verify replication catches up before moving to the next node, and always build on the primary last by stepping it down first. Always use the standalone restart approach to ensure the index is built independently of replica set coordination.
