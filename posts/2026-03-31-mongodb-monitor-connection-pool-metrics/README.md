@@ -40,9 +40,18 @@ client.on("connectionCreated", () => {
   poolState.available++;
 });
 
+client.on("connectionCheckOutStarted", () => {
+  poolState.waitQueueSize++;
+});
+
 client.on("connectionCheckedOut", () => {
   poolState.checkedOut++;
   poolState.available--;
+  poolState.waitQueueSize--;
+});
+
+client.on("connectionCheckOutFailed", () => {
+  poolState.waitQueueSize--;
 });
 
 client.on("connectionCheckedIn", () => {
@@ -53,14 +62,6 @@ client.on("connectionCheckedIn", () => {
 client.on("connectionClosed", () => {
   poolState.totalConnections--;
   poolState.available--;
-});
-
-client.on("waitQueueEntered", () => {
-  poolState.waitQueueSize++;
-});
-
-client.on("waitQueueExited", () => {
-  poolState.waitQueueSize--;
 });
 
 // Expose metrics
