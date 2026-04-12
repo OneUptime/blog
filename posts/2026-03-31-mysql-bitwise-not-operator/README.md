@@ -75,7 +75,7 @@ FROM data_table;
 
 ```sql
 -- Set bit 3 (OR), toggle bit 1 (XOR), clear bit 0 (AND NOT)
-SELECT (original_flags | 8) ^ 2 & ~1
+SELECT ((original_flags | 8) ^ 2) & ~1
 FROM user_flags;
 ```
 
