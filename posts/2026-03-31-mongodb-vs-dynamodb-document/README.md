@@ -16,7 +16,7 @@ MongoDB and DynamoDB are both document-capable NoSQL databases, but they take ve
 flowchart LR
     subgraph DynamoDB
         PK[Partition key required] --> Items[Items]
-        GSI[GSI - 5 max] --> Items
+        GSI[GSI - 20 max] --> Items
         AccessPatterns[Design for access patterns] --> GSI
     end
 
@@ -29,7 +29,7 @@ flowchart LR
 
 ## Data Modeling
 
-**DynamoDB**: Requires a partition key (and optional sort key) defined at table creation. All access patterns must be planned around these keys. Global Secondary Indexes (GSIs) extend access to 5 additional access patterns per table.
+**DynamoDB**: Requires a partition key (and optional sort key) defined at table creation. All access patterns must be planned around these keys. Global Secondary Indexes (GSIs) extend access to up to 20 additional access patterns per table.
 
 **MongoDB**: Documents can be queried on any field. Secondary indexes can be added at any time without table redesign. Collections have no required schema.
 
@@ -82,7 +82,7 @@ MongoDB's embedded document model keeps related data together, matching intuitiv
 | Aggregation | Full pipeline ($group, $lookup, $unwind, $facet) | Not available (use DynamoDB Streams + Lambda or Athena) |
 | Full-text search | Atlas Search or text indexes | Not available natively |
 | Joins | $lookup aggregation | Not available |
-| Transactions | Multi-document ACID | TransactWriteItems / TransactGetItems (up to 25 items) |
+| Transactions | Multi-document ACID | TransactWriteItems / TransactGetItems (up to 100 actions) |
 | Geospatial queries | 2dsphere, $near, $geoWithin | Not available |
 
 MongoDB query example:
