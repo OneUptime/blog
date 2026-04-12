@@ -93,8 +93,8 @@ INSERT INTO myisam_log_table (message) VALUES ('test');
 ## Checking Current Lock Status
 
 ```sql
--- View what is locked right now
-SELECT * FROM information_schema.TABLE_LOCKS;
+-- View tables that currently have locks
+SHOW OPEN TABLES WHERE In_use > 0;
 
 -- Check MyISAM table lock contention
 SHOW STATUS LIKE 'Table_locks_%';
