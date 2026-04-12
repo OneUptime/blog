@@ -10,7 +10,7 @@ Description: A sparse index skips documents where the indexed field is missing, 
 
 ## Overview
 
-Both sparse indexes and partial indexes are selective MongoDB indexes that do not include every document in the collection. They reduce index size and write overhead by excluding documents that don't need to be indexed. The difference is the exclusion criteria: a sparse index excludes documents where the indexed field is missing or null, while a partial index excludes documents based on any filter expression you define - giving you much more flexibility.
+Both sparse indexes and partial indexes are selective MongoDB indexes that do not include every document in the collection. They reduce index size and write overhead by excluding documents that don't need to be indexed. The difference is the exclusion criteria: a sparse index excludes documents where the indexed field does not exist, while a partial index excludes documents based on a filter expression you define - giving you much more flexibility.
 
 ## Sparse Indexes
 
@@ -38,7 +38,7 @@ db.orders.find({ promoCode: { $exists: false } })
 
 ## Partial Indexes
 
-A partial index includes only documents that satisfy a `partialFilterExpression`. This expression can be any valid query filter, giving you precise control over which documents are indexed.
+A partial index includes only documents that satisfy a `partialFilterExpression`. This expression supports a subset of query operators (`$eq`, `$exists`, `$gt`, `$gte`, `$lt`, `$lte`, `$type`, top-level `$and`; `$in` and `$or` added in MongoDB 5.0), giving you precise control over which documents are indexed.
 
 ```javascript
 // Index only open orders (not closed/cancelled)
@@ -65,8 +65,8 @@ db.users.createIndex(
 
 | Feature | Sparse Index | Partial Index |
 |---|---|---|
-| Exclusion criteria | Field missing/null | Custom filter expression |
-| Filter expressions | No | Yes (any valid query) |
+| Exclusion criteria | Field missing | Custom filter expression |
+| Filter expressions | No | Yes (supported operators) |
 | Compound key support | Yes | Yes |
 | Unique enforcement | On present docs | On docs matching filter |
 | MongoDB version | All versions | 3.2+ |
@@ -76,7 +76,7 @@ db.users.createIndex(
 
 - The indexed field is optional and rarely set
 - You only need to query by the field when it exists
-- Simple exclusion of null/missing values is sufficient
+- Simple exclusion of missing values is sufficient
 
 ```javascript
 // Index on optional phone number field
