@@ -30,7 +30,7 @@ mysql://app_user:secure_password@localhost:3306/myapp
 mysql://app_user:secure_password@db.example.com:3306/myapp?ssl-mode=REQUIRED
 
 # With multiple options
-mysql://app_user:secure_password@localhost/myapp?charset=utf8mb4&parseTime=true&timeout=10s
+mysql://app_user:secure_password@localhost/myapp?charset=utf8mb4&connect_timeout=10&ssl-mode=PREFERRED
 ```
 
 ## URI Components Explained
@@ -130,7 +130,7 @@ production:
 ```text
 charset=utf8mb4          - Character set for the connection
 collation=utf8mb4_unicode_ci - Collation for string comparisons
-ssl-mode=REQUIRED        - Enforce SSL (DISABLED, PREFERRED, REQUIRED, VERIFY_CA)
+ssl-mode=REQUIRED        - Enforce SSL (DISABLED, PREFERRED, REQUIRED, VERIFY_CA, VERIFY_IDENTITY)
 ssl-ca=/path/to/ca.pem   - CA certificate path
 connect_timeout=10       - Seconds to wait for connection
 read_timeout=30          - Seconds to wait for query results
