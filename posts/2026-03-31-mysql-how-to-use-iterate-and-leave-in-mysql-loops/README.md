@@ -132,7 +132,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM sales WHERE MONTH(sale_date) = MONTH(current_month)
                    AND YEAR(sale_date) = YEAR(current_month)) THEN
       SET current_month = DATE_ADD(current_month, INTERVAL 1 MONTH);
-      ITERATE monthly_loop;  -- Skip to UNTIL check
+      ITERATE monthly_loop;  -- Restart loop body (skips UNTIL check)
     END IF;
 
     -- Generate report for this month
