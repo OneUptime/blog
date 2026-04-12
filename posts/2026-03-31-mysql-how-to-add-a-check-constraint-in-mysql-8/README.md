@@ -136,7 +136,7 @@ ADD CONSTRAINT chk_price CHECK (price >= 0);
 ```text
 - CHECK constraints cannot reference other tables (use triggers for that).
 - Subqueries are not allowed in CHECK conditions.
-- Functions with side effects (e.g., stored functions that modify data) are not allowed.
+- Stored functions, user-defined functions, and non-deterministic built-in functions (e.g., NOW(), RAND()) are not allowed. Only literals, deterministic built-in functions, and operators are permitted.
 - CHECK constraints are per-table; they apply to all rows on INSERT and UPDATE.
 ```
 
