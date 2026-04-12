@@ -94,7 +94,7 @@ Take a dump with GTID information included:
 mysqldump -u root -p \
     --all-databases \
     --single-transaction \
-    --master-data=1 \
+    --source-data=2 \
     --set-gtid-purged=ON \
     > /tmp/gtid_dump.sql
 ```
