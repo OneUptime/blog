@@ -107,16 +107,16 @@ After stepdown, a new election occurs and one of the secondaries becomes primary
 ## Checking Who is Primary
 
 ```javascript
-rs.isMaster()
+rs.hello()
 // or
-db.runCommand({ isMaster: 1 })
+db.runCommand({ hello: 1 })
 ```
 
 Output includes:
 
 ```javascript
 {
-  "ismaster": true,  // or false if this is a secondary
+  "isWritablePrimary": true,  // or false if this is a secondary
   "primary": "host1:27017",
   "hosts": ["host1:27017", "host2:27018", "host3:27019"],
   "setName": "rs0"
@@ -176,9 +176,9 @@ With `retryWrites: true` (default), the driver automatically retries the followi
 - `updateOne`, `replaceOne`
 - `deleteOne`
 - `findOneAndUpdate`, `findOneAndReplace`, `findOneAndDelete`
-- Bulk writes (if `ordered: true`)
+- Bulk writes (only if all operations are single-document writes)
 
-Non-retryable: `insertMany` with `ordered: false`, multi-document updates without sessions.
+Non-retryable: `updateMany`, `deleteMany`, and bulk writes containing multi-document operations.
 
 ## Monitoring Failover Events
 
@@ -187,25 +187,24 @@ Set up application-level monitoring for primary change events:
 ```javascript
 const { MongoClient } = require("mongodb");
 
-const client = new MongoClient("mongodb://host1:27017,host2:27018,host3:27019/?replicaSet=rs0");
+const client = new MongoClient("mongodb://host1:27017,host2:27018,host3:27019/?replicaSet=rs0", {
+  monitorCommands: true  // required for command monitoring events
+});
 
-// Listen for topology events
+// Listen for command failures
 client.on("commandFailed", (event) => {
   console.log("Command failed:", event.commandName, event.failure);
 });
 
 // Monitor topology changes
-const topology = client.topology;
-if (topology) {
-  topology.on("topologyChanged", (event) => {
-    const primary = event.newDescription.servers
-      ? [...event.newDescription.servers.values()].find(s => s.type === "RSPrimary")
-      : null;
-    if (primary) {
-      console.log("New primary:", primary.address);
-    }
-  });
-}
+client.on("topologyDescriptionChanged", (event) => {
+  const primary = [...event.newDescription.servers.values()].find(
+    (s) => s.type === "RSPrimary"
+  );
+  if (primary) {
+    console.log("New primary:", primary.address);
+  }
+});
 
 await client.connect();
 ```
