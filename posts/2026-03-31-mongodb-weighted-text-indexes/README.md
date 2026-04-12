@@ -96,7 +96,7 @@ db.articles.find(
 ).sort({ score: { $meta: "textScore" } })
 ```
 
-The index applies weights, while the `category` filter narrows the candidate set before scoring.
+The index applies weights, while the `category` filter further narrows the result set. For the `category` filter to narrow the candidate set *before* scoring, include it as a prefix field in a compound text index.
 
 ## Common Pitfalls
 
