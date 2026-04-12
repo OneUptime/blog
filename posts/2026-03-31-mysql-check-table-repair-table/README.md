@@ -227,7 +227,7 @@ CALL check_all_tables('mydb');
 
 ## Best Practices
 
-- Run `CHECK TABLE` during low-traffic periods - it acquires a read lock (or in some modes a write lock) on the table.
+- Run `CHECK TABLE` during low-traffic periods - it acquires a read lock on the table, blocking writes for the duration. `REPAIR TABLE` acquires a write lock.
 - For InnoDB tables, `CHECK TABLE` is non-blocking in MySQL 8.0+ for read checks; avoid using EXTENDED on large production tables.
 - Use `mysqlcheck --auto-repair` for bulk checks of MyISAM databases.
 - Never rely solely on `REPAIR TABLE` for critical data recovery - always have an up-to-date backup.
