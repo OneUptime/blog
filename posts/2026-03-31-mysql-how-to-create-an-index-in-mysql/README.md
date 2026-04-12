@@ -98,11 +98,11 @@ EXPLAIN SELECT * FROM users WHERE email = 'alice@example.com';
 ```
 
 ```text
-+----+-------------+-------+-------+---------------+-----------+---------+-------+------+-------+
-| id | select_type | table | type  | possible_keys | key       | key_len | ref   | rows | Extra |
-+----+-------------+-------+-------+---------------+-----------+---------+-------+------+-------+
-|  1 | SIMPLE      | users | const | idx_email     | idx_email | 1022    | const |    1 |       |
-+----+-------------+-------+-------+---------------+-----------+---------+-------+------+-------+
++----+-------------+-------+------+---------------+-----------+---------+-------+------+-------+
+| id | select_type | table | type | possible_keys | key       | key_len | ref   | rows | Extra |
++----+-------------+-------+------+---------------+-----------+---------+-------+------+-------+
+|  1 | SIMPLE      | users | ref  | idx_email     | idx_email | 1022    | const |    1 |       |
++----+-------------+-------+------+---------------+-----------+---------+-------+------+-------+
 ```
 
 The `key` column showing `idx_email` confirms the index is being used.
@@ -128,7 +128,7 @@ SHOW INDEX FROM users;
 | Table | Non_unique | Key_name  | Seq_in_index | Column_name |...
 +-------+------------+-----------+--------------+-------------+...
 | users |          0 | PRIMARY   |            1 | id          |...
-| users |          0 | idx_email |            1 | email       |...
+| users |          1 | idx_email |            1 | email       |...
 +-------+------------+-----------+--------------+-------------+...
 ```
 
