@@ -38,7 +38,7 @@ MongoDB's transaction model is designed for short, targeted multi-document opera
 Split what would be one long transaction with savepoints into several smaller independent ones.
 
 ```javascript
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 
 const client = new MongoClient(process.env.MONGO_URI);
 const db = client.db("ecommerce");
@@ -48,6 +48,7 @@ const db = client.db("ecommerce");
 // Step 1: Reserve inventory
 // Step 2: Charge payment
 // Step 3: Create order
+// (runWithTransaction helper is defined in Pattern 2 below)
 
 async function reserveInventory(session, orderId, items) {
   for (const item of items) {
