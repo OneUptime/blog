@@ -289,7 +289,7 @@ db.products.aggregate([
         {
           $bucket: {
             groupBy: "$rating",
-            boundaries: [1, 2, 3, 4, 4.5, 5],
+            boundaries: [1, 2, 3, 4, 4.5, 5.01],
             default: "unrated",
             output: { count: { $sum: 1 } }
           }
