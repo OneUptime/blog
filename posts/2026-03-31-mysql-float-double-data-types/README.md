@@ -38,7 +38,7 @@ column_name FLOAT [(precision)] [UNSIGNED] [NOT NULL] [DEFAULT value]
 column_name DOUBLE [(precision, scale)] [UNSIGNED] [NOT NULL] [DEFAULT value]
 ```
 
-In MySQL 8.0, specifying precision in parentheses for `FLOAT` or `DOUBLE` is **deprecated**. Use the bare type names `FLOAT` and `DOUBLE`.
+In MySQL 8.0.17+, the non-standard `FLOAT(M,D)` and `DOUBLE(M,D)` display-width syntax is **deprecated**. The standard `FLOAT(p)` bit-precision syntax (where p is 0-24 for FLOAT, 25-53 for DOUBLE) remains valid. Prefer the bare type names `FLOAT` and `DOUBLE`.
 
 ## Basic Usage
 
@@ -64,7 +64,8 @@ VALUES
 
 ```sql
 -- FLOAT and DOUBLE are approximate
-SELECT 0.1 + 0.2;
+-- Use E0 notation to force DOUBLE evaluation (bare 0.1 is DECIMAL in MySQL)
+SELECT 0.1E0 + 0.2E0;
 -- Result: 0.30000000000000004
 
 -- Use DECIMAL when exact values are required
@@ -153,11 +154,21 @@ GROUP BY device_id;
 
 ## UNSIGNED FLOAT and DOUBLE
 
+> **Note:** As of MySQL 8.0.17, the `UNSIGNED` attribute for `FLOAT` and `DOUBLE` is deprecated. Use a `CHECK` constraint instead to enforce non-negative values.
+
 ```sql
+-- Deprecated approach
 CREATE TABLE physical_measurements (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     mass_kg     FLOAT UNSIGNED NOT NULL,     -- cannot be negative
     velocity    DOUBLE UNSIGNED NOT NULL     -- cannot be negative
+);
+
+-- Preferred approach (MySQL 8.0.16+)
+CREATE TABLE physical_measurements (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    mass_kg     FLOAT NOT NULL CHECK (mass_kg >= 0),
+    velocity    DOUBLE NOT NULL CHECK (velocity >= 0)
 );
 ```
 
