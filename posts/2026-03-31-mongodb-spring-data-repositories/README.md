@@ -123,8 +123,7 @@ public interface ProductRepository extends MongoRepository<Product, String> {
     List<Product> findByPriceRange(double minPrice, double maxPrice);
 
     @Query("{ 'category': ?0 }")
-    @org.springframework.data.domain.Sort.Order
-    List<Product> findByCategorySorted(String category);
+    List<Product> findByCategorySorted(String category, org.springframework.data.domain.Sort sort);
 
     // Projection - return only name and price fields
     @Query(value = "{ 'category': ?0 }", fields = "{ 'name': 1, 'price': 1 }")
