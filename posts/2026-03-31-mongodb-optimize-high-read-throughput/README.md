@@ -115,7 +115,7 @@ Identify bottlenecks using connection and operation metrics:
 
 ```javascript
 db.adminCommand({ serverStatus: 1 }).opcounters
-// query, getmore, insert, update, delete counts per second
+// query, getmore, insert, update, delete cumulative counts since server start
 ```
 
 ## Summary
