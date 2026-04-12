@@ -12,7 +12,7 @@ Description: Quick reference for MySQL index types including PRIMARY, UNIQUE, FU
 
 ```text
 PRIMARY KEY    - unique, not null, clustered (InnoDB)
-UNIQUE         - enforces uniqueness, allows one NULL
+UNIQUE         - enforces uniqueness, allows multiple NULLs
 INDEX / KEY    - non-unique secondary index
 FULLTEXT       - inverted index for text search
 SPATIAL        - R-tree for geometry columns
@@ -116,10 +116,10 @@ SHOW INDEX FROM orders;
 -- Drop an index
 DROP INDEX idx_last_name ON users;
 
--- Rename (MySQL 8.0+)
+-- Rename (MySQL 5.7+)
 ALTER TABLE users RENAME INDEX idx_old TO idx_new;
 
--- Disable index updates during bulk load
+-- Disable index updates during bulk load (MyISAM only, no effect on InnoDB)
 ALTER TABLE big_table DISABLE KEYS;
 -- ... bulk load ...
 ALTER TABLE big_table ENABLE KEYS;
