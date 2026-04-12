@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Java, BSON, Serialization, Driver
 
-Description: Learn how to serialize and deserialize MongoDB documents in Java using the official driver, POJO codec, and Jackson integration for mapping BSON types to Java classes.
+Description: Learn how to serialize and deserialize MongoDB documents in Java using the official driver, POJO codec, and JSON export settings for mapping BSON types to Java classes.
 
 ---
 
@@ -133,14 +133,14 @@ import org.bson.json.JsonWriterSettings;
 
 Document doc = products.find().first();
 
-// Canonical Extended JSON
-String canonicalJson = doc.toJson();
+// Relaxed Extended JSON (default mode)
+String relaxedJson = doc.toJson();
 
-// Relaxed mode (human-readable, dates as ISO strings)
-JsonWriterSettings relaxed = JsonWriterSettings.builder()
-    .outputMode(JsonMode.RELAXED)
+// Canonical Extended JSON (preserves all BSON type information)
+JsonWriterSettings canonical = JsonWriterSettings.builder()
+    .outputMode(JsonMode.EXTENDED)
     .build();
-String relaxedJson = doc.toJson(relaxed);
+String canonicalJson = doc.toJson(canonical);
 
 // Shell mode (for use in mongosh)
 JsonWriterSettings shellMode = JsonWriterSettings.builder()
