@@ -18,7 +18,7 @@ A B+-tree organizes data in a sorted, balanced tree where:
 - All data lives at the leaf level
 - Leaf nodes are linked for efficient range scans
 
-For MongoDB collections, the key is the `_id` field by default. For indexes, the key is the indexed field value plus the `_id` for uniqueness.
+For MongoDB collections, the key is an internal RecordId (a 64-bit integer). The `_id` index is a separate B-tree that maps `_id` values to RecordIds. For secondary indexes, the key is the indexed field value plus the RecordId for uniqueness.
 
 ```text
 Root Page
@@ -33,7 +33,7 @@ Root Page
 
 ## Page Size
 
-WiredTiger's default page size is 4 KB for leaf pages and 16 KB for internal pages in older versions, though this can vary. In MongoDB, the default `internalPageTargetSize` is 4 KB.
+WiredTiger's default maximum page size is 32 KB for leaf pages (`leaf_page_max`) and 4 KB for internal pages (`internal_page_max`).
 
 ```javascript
 // Check WiredTiger config for a collection
