@@ -70,7 +70,7 @@ This is the most important difference. `NOT IN` has a NULL trap that `NOT EXISTS
 CREATE TABLE A (id INT);
 CREATE TABLE B (id INT);
 INSERT INTO A VALUES (1), (2), (3);
-INSERT INTO B VALUES (1), (2), NULL);
+INSERT INTO B VALUES (1), (2), (NULL);
 
 -- NOT IN with NULL: returns 0 rows (because NULL comparison is UNKNOWN)
 SELECT * FROM A WHERE id NOT IN (SELECT id FROM B);
