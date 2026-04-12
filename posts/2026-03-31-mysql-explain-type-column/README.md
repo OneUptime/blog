@@ -19,7 +19,8 @@ The `type` column in `EXPLAIN` output describes how MySQL accesses rows for each
 The table has exactly one row. Used for single-row system tables. Effectively a constant.
 
 ```sql
-EXPLAIN SELECT @@version\G
+-- A derived table or subquery that materialises to exactly one row:
+EXPLAIN SELECT * FROM (SELECT 1) AS t\G
 -- type: system
 ```
 
@@ -39,7 +40,7 @@ One row from this table is read for each row combination from previous tables. U
 ```sql
 EXPLAIN SELECT o.id, c.name
 FROM orders o JOIN customers c ON o.customer_id = c.id\G
--- customers table: type: eq_ref (if customer_id is PK of customers)
+-- customers table: type: eq_ref (if c.id is PK of customers)
 ```
 
 ### ref
@@ -67,6 +68,26 @@ EXPLAIN SELECT * FROM orders WHERE customer_id = 42 OR customer_id IS NULL\G
 ### index_merge
 
 Two or more indexes are used and results merged (union or intersection).
+
+### unique_subquery
+
+Replaces `eq_ref` for `IN` subqueries that look up a primary key or unique index. MySQL replaces the subquery with an index lookup function.
+
+```sql
+EXPLAIN SELECT * FROM orders
+WHERE customer_id IN (SELECT id FROM customers WHERE active = 1)\G
+-- type: unique_subquery (for the customers subquery)
+```
+
+### index_subquery
+
+Like `unique_subquery`, but for non-unique indexes in `IN` subqueries.
+
+```sql
+EXPLAIN SELECT * FROM customers
+WHERE id IN (SELECT customer_id FROM orders WHERE total > 100)\G
+-- type: index_subquery (if customer_id has a non-unique index)
+```
 
 ### range
 
