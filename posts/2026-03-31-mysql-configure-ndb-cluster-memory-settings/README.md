@@ -19,7 +19,7 @@ All memory parameters are set in `config.ini` on the management node under `[ndb
 ```text
 [ndbd default]
 DataMemory=2G          # Memory for row data storage
-IndexMemory=512M       # Memory for hash indexes (primary key lookups)
+IndexMemory=512M       # Memory for hash indexes (deprecated in NDB 8.0)
 TransactionMemory=256M # Memory for active transactions (MySQL 8.0+)
 ```
 
@@ -43,6 +43,8 @@ Node 2: Data usage is 67%(686 32K pages of total 1024)
 ```
 
 ## IndexMemory
+
+> **Note:** `IndexMemory` is deprecated in NDB 8.0 (MySQL 8.0) and subject to removal in a future release. In NDB 8.0, hash indexes are allocated from `DataMemory`. The parameter below applies to NDB 7.6 and earlier.
 
 `IndexMemory` stores hash index entries for primary keys and unique indexes:
 
@@ -84,12 +86,12 @@ Plan for at least 1-2GB of OS memory overhead per data node in addition to `Data
 
 ## Example: Sizing for a 50GB Dataset
 
-For 50GB of row data distributed across 2 data nodes with `NoOfReplicas=2`:
+For 50GB of row data distributed across 4 data nodes with `NoOfReplicas=2`:
 
 ```text
 [ndbd default]
 NoOfReplicas=2
-# 50GB total data, split across 2 node groups = 25GB per node
+# 50GB total data across 4 nodes / 2 node groups = 25GB per node
 # Add 20% overhead for metadata and fragmentation
 DataMemory=30G
 # Approximately 10% of DataMemory for indexes
@@ -129,4 +131,4 @@ node_id | memory_type  | used      | total     | pct_used
 
 ## Summary
 
-NDB Cluster memory must be sized carefully because exhausting `DataMemory` stops write operations immediately. Size `DataMemory` to hold your full dataset plus 30% headroom, allocate `IndexMemory` at roughly 10-15% of `DataMemory`, and monitor usage via `ndb_mgm -e "all report memory"` and the `ndbinfo.memoryusage` table. Apply changes via rolling data node restarts.
+NDB Cluster memory must be sized carefully because exhausting `DataMemory` stops write operations immediately. Size `DataMemory` to hold your full dataset plus 30% headroom, allocate `IndexMemory` at roughly 10-15% of `DataMemory` (for NDB 7.6 and earlier; in NDB 8.0, hash indexes use `DataMemory`), and monitor usage via `ndb_mgm -e "all report memory"` and the `ndbinfo.memoryusage` table. Apply changes via rolling data node restarts.
