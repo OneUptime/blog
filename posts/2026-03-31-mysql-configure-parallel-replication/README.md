@@ -34,10 +34,8 @@ In `my.cnf` on the replica:
 replica_parallel_type = LOGICAL_CLOCK
 replica_parallel_workers = 8
 
-# Required for parallel replication with GTID
+# Strongly recommended to preserve commit order consistency
 replica_preserve_commit_order = ON
-
-# Coordinate replication transactions with the relay log
 ```
 
 Apply dynamically without restart:
@@ -87,9 +85,9 @@ transaction_write_set_extraction = XXHASH64
 ```
 
 ```sql
--- Apply dynamically on source
-SET GLOBAL binlog_transaction_dependency_tracking = 'WRITESET';
+-- Apply dynamically on source (set extraction algorithm first)
 SET GLOBAL transaction_write_set_extraction = 'XXHASH64';
+SET GLOBAL binlog_transaction_dependency_tracking = 'WRITESET';
 ```
 
 `WRITESET` allows non-conflicting transactions (those touching different rows) to be replayed in parallel on the replica, even if they were not committed simultaneously.
