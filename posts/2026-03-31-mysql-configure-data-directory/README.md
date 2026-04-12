@@ -28,7 +28,7 @@ On most Linux systems, the default is `/var/lib/mysql`. On macOS with Homebrew i
   ├── your_database/      -- One directory per database
   ├── ib_buffer_pool      -- InnoDB buffer pool state
   ├── ibdata1             -- System tablespace
-  ├── ib_logfile0         -- InnoDB redo log (MySQL 5.7)
+  ├── ib_logfile0         -- InnoDB redo log (before 8.0.30)
   ├── binlog.000001       -- Binary log files
   ├── binlog.index        -- Binary log index
   ├── mysql.ibd           -- MySQL 8.0 data dictionary
