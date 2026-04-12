@@ -52,17 +52,18 @@ SELECT
 MySQL 8.0.20 introduced dedicated doublewrite files, separating them from the system tablespace for better I/O performance and more flexibility.
 
 ```sql
--- Check the location of doublewrite files
-SELECT FILE_NAME, FILE_TYPE, TABLESPACE_NAME
-FROM information_schema.FILES
-WHERE FILE_TYPE = 'DOUBLEWRITE';
+-- Check the directory for doublewrite files (MySQL 8.0.20+)
+SHOW VARIABLES LIKE 'innodb_doublewrite_dir';
 
 -- Number of doublewrite files (MySQL 8.0.20+)
 SHOW VARIABLES LIKE 'innodb_doublewrite_files';
+```
 
--- Set the number of doublewrite files (improves parallel write throughput)
--- Default is 2x innodb_buffer_pool_instances
-SET GLOBAL innodb_doublewrite_files = 4;
+```ini
+# In my.cnf - set the number of doublewrite files (improves parallel write throughput)
+# Default is 2x innodb_buffer_pool_instances
+# This is a startup-only variable and cannot be changed at runtime
+innodb_doublewrite_files = 4
 ```
 
 ## When to Disable the Doublewrite Buffer
@@ -78,7 +79,7 @@ SET GLOBAL innodb_doublewrite_files = 4;
 innodb_doublewrite = OFF
 ```
 
-The doublewrite buffer typically adds only 5-10% overhead because the extra writes are sequential - much faster than random I/O. On modern SSDs with atomic write support (e.g., using `innodb_use_native_aio`), the risk of torn pages is lower, and some deployments disable it. However, for most production environments, leaving it enabled is the safe default.
+The doublewrite buffer typically adds only 5-10% overhead because the extra writes are sequential - much faster than random I/O. On modern SSDs or storage systems with hardware-level atomic write support, the risk of torn pages is lower, and some deployments disable it. However, for most production environments, leaving it enabled is the safe default.
 
 ## Verifying Doublewrite Buffer Recovery
 
