@@ -214,8 +214,7 @@ Application clients connect to mongos as if it were a regular mongod:
 const { MongoClient } = require("mongodb");
 
 // Connect to mongos (can have multiple mongos instances for HA)
-const uri = "mongodb://mongos1:27017,mongos2:27017/?replicaSet=rs0";
-const client = new MongoClient("mongodb://mongos1:27017");
+const client = new MongoClient("mongodb://mongos1:27017,mongos2:27017/");
 
 await client.connect();
 
