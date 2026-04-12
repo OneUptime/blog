@@ -149,7 +149,7 @@ schedule_task('reminder:2', now - 10)   # Already overdue
 schedule_task('backup:nightly', now - 5) # Already overdue
 
 due = get_due_tasks()
-print(f"Due tasks: {due}")  # ['backup:nightly', 'reminder:2']
+print(f"Due tasks: {due}")  # ['reminder:2', 'backup:nightly']
 ```
 
 ### Leaderboard - Pop Top N
