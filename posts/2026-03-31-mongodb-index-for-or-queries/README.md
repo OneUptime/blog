@@ -80,10 +80,10 @@ Ensure every field in every `$or` clause has an index.
 
 ## Combining $or with Other Filters
 
-When `$or` is combined with equality filters, MongoDB evaluates the equality filter first using an index, then applies the `$or` as a post-filter:
+When `$or` is combined with other filters, MongoDB distributes the additional predicates into each `$or` clause. Each clause is then evaluated independently and can use its own index, with results merged via index union:
 
 ```javascript
-// The compound filter limits the working set before $or is applied
+// MongoDB pushes the createdAt filter into each $or clause
 db.events.find({
   createdAt: { $gte: new Date("2026-01-01") },
   $or: [{ type: "purchase" }, { type: "refund" }],
