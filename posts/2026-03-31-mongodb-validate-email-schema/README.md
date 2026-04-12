@@ -14,7 +14,7 @@ Application-level validation can be bypassed by direct database writes, migratio
 
 ## Basic Email Pattern Validation
 
-MongoDB schema validation uses `$jsonSchema` with a `pattern` keyword that accepts a BSON regex:
+MongoDB schema validation uses `$jsonSchema` with a `pattern` keyword that accepts a regex string:
 
 ```javascript
 db.createCollection("users", {
@@ -138,7 +138,7 @@ db.runCommand({
 
 ## Limitations to Know
 
-MongoDB's `pattern` uses PCRE-style regex but does not validate email semantics beyond format (e.g., it won't check if the domain has valid MX records). For production systems, combine schema validation with application-level validation using a library like `validator.js` or Python's `email-validator`.
+MongoDB's `pattern` follows JSON Schema draft 4 regex semantics (ECMA 262), though MongoDB internally uses a PCRE2 engine. It does not validate email semantics beyond format (e.g., it won't check if the domain has valid MX records). For production systems, combine schema validation with application-level validation using a library like `validator.js` or Python's `email-validator`.
 
 ```javascript
 // Application-level validation (Node.js) before insert
