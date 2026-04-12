@@ -64,30 +64,37 @@ security:
 A successful run produces output like:
 
 ```text
-Parsing MongoDB Configuration File ...
-Running MongoDB LDAP authorization validation checks ...
-Successfully authenticated with the LDAP server
-LDAP Authorization Mapping:
-  User DN   : cn=alice,ou=users,dc=example,dc=com
-  Roles     : [ { role: "readWrite", db: "appdb" } ]
+Running MongoDB LDAP authorization validation checks...
+
+Checking that an LDAP server has been specified...
+[OK] LDAP server(s) provided in configuration
+
+Connecting to LDAP server at ldap.example.com:389...
+[OK] Connected to LDAP server
+
+Attempting to authenticate against the LDAP server...
+[OK] Successful authentication performed
+
+Checking if the authenticated user is authorized...
+[OK] Successfully acquired the following roles on the 'admin' database:
+  [ { role: "readWrite", db: "appdb" } ]
 ```
 
 If there is a problem, `mongoldap` will print a detailed error such as a failed bind, an empty group result, or an LDAP filter syntax error - far easier to diagnose than sifting through `mongod` logs.
 
 ## Testing with Different User Mapping Strategies
 
-MongoDB supports multiple `userToDNMapping` approaches. Test the transformation step first using `--ldapUserCacheInvalidationInterval 0`:
+MongoDB supports multiple `userToDNMapping` approaches. You can test with a plain username to verify the transformation step resolves the correct DN:
 
 ```bash
-# Test username-to-DN transformation only (no authz query)
+# Test username-to-DN transformation and authz query
 mongoldap \
   --config /etc/mongod.conf \
   --user "alice" \
-  --password "alicepassword" \
-  --ldapUserCacheInvalidationInterval 0
+  --password "alicepassword"
 ```
 
-To test with a custom LDAP URI override without editing the config file:
+To test with a custom LDAP server override without editing the config file:
 
 ```bash
 mongoldap \
