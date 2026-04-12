@@ -83,8 +83,8 @@ SELECT
 SELECT
   DATEDIFF('2024-12-31', '2024-01-01') AS total_days,
   FLOOR(DATEDIFF('2024-12-31', '2024-01-01') / 7) * 5 +
-    MID('0123444401234444012344440123444401234444',
-      WEEKDAY('2024-01-01') * 5 + WEEKDAY('2024-12-31') + 1, 5) AS business_days;
+    MID('0123444401233334012222340111123400012345001234550',
+      WEEKDAY('2024-01-01') * 7 + WEEKDAY('2024-12-31') + 1, 1) AS business_days;
 ```
 
 A cleaner approach using a calendar table is recommended for production use.
