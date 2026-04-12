@@ -28,22 +28,16 @@ db.createCollection("sensorReadings", {
 });
 ```
 
-## Enabling Sharding on the Database
-
-```javascript
-// Connect to mongos
-sh.enableSharding("iot");
-```
-
 ## Sharding the Time Series Collection
 
-In MongoDB 8.0, you can shard on a metaField subfield:
+In MongoDB 8.0, you can shard on a metaField subfield. Starting in MongoDB 6.0, you no longer need to call `sh.enableSharding()` — databases are automatically enabled for sharding.
+
+Starting in MongoDB 8.0, shard keys containing the `timeField` are deprecated. Use only `metaField` subfields for the shard key:
 
 ```javascript
 // Shard by a subfield of the metaField
 sh.shardCollection("iot.sensorReadings", {
-  "metadata.region": 1,
-  "timestamp": 1
+  "metadata.region": 1
 });
 ```
 
@@ -82,37 +76,17 @@ const regions = ["us-east", "us-west", "eu-central", "ap-southeast"];
 
 for (const region of regions) {
   sh.splitAt("iot.sensorReadings", {
-    "metadata.region": region,
-    "timestamp": new Date(0)
+    "metadata.region": region
   });
 }
 
 // Move chunks to specific shards
-sh.moveChunk("iot.sensorReadings", { "metadata.region": "eu-central", "timestamp": new Date(0) }, "shard2");
+sh.moveChunk("iot.sensorReadings", { "metadata.region": "eu-central" }, "shard2");
 ```
 
-## Zone Sharding for Data Locality
+## Zone Sharding Limitation
 
-Use zone sharding to keep data for specific regions on geographically local shards:
-
-```javascript
-sh.addShardTag("shard-eu", "EU");
-sh.addShardTag("shard-us", "US");
-
-sh.addTagRange(
-  "iot.sensorReadings",
-  { "metadata.region": "eu-central", "timestamp": MinKey },
-  { "metadata.region": "eu-central", "timestamp": MaxKey },
-  "EU"
-);
-
-sh.addTagRange(
-  "iot.sensorReadings",
-  { "metadata.region": "us-east", "timestamp": MinKey },
-  { "metadata.region": "us-east", "timestamp": MaxKey },
-  "US"
-);
-```
+Zone sharding is **not supported** for time series collections. The balancer always distributes data in sharded time series collections evenly across all shards in the cluster. If you need data locality for time series workloads, consider using separate sharded clusters per region instead.
 
 ## Query Routing
 
@@ -134,4 +108,4 @@ db.sensorReadings.find({
 
 ## Summary
 
-MongoDB 8.0 enables sharding time series collections on metaField subfields, allowing horizontal scaling for high-volume workloads. Choose a shard key that balances write distribution and query targeting - range-based sharding on a low-cardinality field like region works well for geo-scoped queries, while hashed sharding on a high-cardinality field ensures even distribution at the cost of scatter-gather reads.
+MongoDB 8.0 enables sharding time series collections on metaField subfields, allowing horizontal scaling for high-volume workloads. Note that shard keys containing the `timeField` are deprecated in MongoDB 8.0 - use only `metaField` subfields. Choose a shard key that balances write distribution and query targeting - range-based sharding on a low-cardinality field like region works well for geo-scoped queries, while hashed sharding on a high-cardinality field ensures even distribution at the cost of scatter-gather reads.
