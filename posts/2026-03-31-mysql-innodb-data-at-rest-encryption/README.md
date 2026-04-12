@@ -61,9 +61,9 @@ ALTER TABLE sensitive_data ENCRYPTION='Y';
 This is an online DDL operation in MySQL 8.0+ and does not require a table lock in most cases. Monitor progress:
 
 ```sql
-SELECT STAGE, STATE, WORK_COMPLETED, WORK_ESTIMATED
+SELECT EVENT_NAME, WORK_COMPLETED, WORK_ESTIMATED
 FROM performance_schema.events_stages_current
-WHERE EVENT_NAME LIKE '%alter%';
+WHERE EVENT_NAME LIKE '%encryption%';
 ```
 
 ## Enabling Default Encryption for All New Tables
