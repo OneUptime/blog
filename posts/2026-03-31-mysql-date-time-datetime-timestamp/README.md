@@ -15,7 +15,7 @@ MySQL provides four primary date and time types. Choosing the right one depends 
 ```mermaid
 flowchart LR
     A[Date/Time Types] --> B[DATE\n3 bytes\nDate only]
-    A --> C[TIME\n3-4 bytes\nTime only / Duration]
+    A --> C[TIME\n3-6 bytes\nTime only / Duration]
     A --> D[DATETIME\n5-8 bytes\nDate + Time\nNo timezone]
     A --> E[TIMESTAMP\n4-7 bytes\nDate + Time\nUTC stored\nAuto-convert]
 ```
@@ -29,7 +29,7 @@ flowchart LR
 | `DATETIME` | 5 bytes (+ fractional) | 1000-01-01 00:00:00 to 9999-12-31 23:59:59 | No |
 | `TIMESTAMP` | 4 bytes (+ fractional) | 1970-01-01 00:00:01 UTC to 2038-01-19 03:14:07 UTC | Yes |
 
-All four types support fractional seconds up to 6 decimal places with additional storage (0-3 extra bytes).
+TIME, DATETIME, and TIMESTAMP support fractional seconds up to 6 decimal places with additional storage (0-3 extra bytes). DATE does not support fractional seconds.
 
 ## DATE
 
@@ -62,8 +62,8 @@ FROM employees;
 +--------------+------------+------------+-----------+---------------+
 | name         | birth_date | hire_date  | age_years | tenure_months |
 +--------------+------------+------------+-----------+---------------+
-| Alice Smith  | 1990-04-15 | 2018-06-01 |        35 |            81 |
-| Bob Johnson  | 1985-11-22 | 2020-03-10 |        40 |            60 |
+| Alice Smith  | 1990-04-15 | 2018-06-01 |        35 |            93 |
+| Bob Johnson  | 1985-11-22 | 2020-03-10 |        40 |            72 |
 | Carol Lee    | 1993-07-30 | 2022-09-15 |        32 |            42 |
 +--------------+------------+------------+-----------+---------------+
 ```
@@ -187,7 +187,7 @@ flowchart TD
     A[Need timezone conversion?] -->|Yes| TIMESTAMP
     A -->|No| B{Date range beyond 2038?}
     B -->|Yes| DATETIME
-    B -->|No| C{Need auto-update?}
+    B -->|No| C{Want automatic UTC storage?}
     C -->|Yes| TIMESTAMP
     C -->|No| DATETIME
 ```
