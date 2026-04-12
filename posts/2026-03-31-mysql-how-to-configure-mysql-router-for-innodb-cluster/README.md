@@ -126,7 +126,7 @@ In the logs, look for topology updates:
 
 ## Re-Bootstrapping After Cluster Changes
 
-If you add or remove nodes from the cluster, re-run bootstrap:
+MySQL Router automatically detects topology changes (such as added or removed nodes) through its metadata cache, so re-bootstrapping is not needed for routine cluster membership changes. Re-bootstrap when the Router configuration itself needs to change, such as after a cluster name change, credential rotation, or metadata server update:
 
 ```bash
 sudo mysqlrouter --bootstrap clusteradmin@node1:3306 \
