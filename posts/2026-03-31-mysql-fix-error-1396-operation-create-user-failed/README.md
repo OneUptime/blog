@@ -16,7 +16,7 @@ The most common causes are:
 - The user was removed inconsistently in an older manual recovery flow instead of `DROP USER`
 - A partial `CREATE USER` left inconsistent records in the grant tables
 - The user exists in `mysql.user` but not in the `mysql.db` or `mysql.proxies_priv` tables
-- Replication transferred a `DROP USER` but not the subsequent `CREATE USER`
+- Replication failed to apply a `DROP USER` (due to filtering or an error), so the user still exists when a subsequent `CREATE USER` arrives
 
 ## Check If the User Already Exists
 
