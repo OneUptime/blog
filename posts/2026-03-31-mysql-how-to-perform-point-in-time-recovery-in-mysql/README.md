@@ -63,14 +63,10 @@ Note the position or timestamp just before the damaging event.
 ## Step 2 - Restore the Full Backup
 
 ```bash
-# Stop MySQL
-sudo systemctl stop mysql
-
-# Restore from mysqldump
 mysql -u root -p your_database < /backups/backup_20240510.sql
 ```
 
-Or restore from XtraBackup if that was your backup method.
+If using a physical backup method like XtraBackup, stop MySQL first, restore the data files, then start MySQL again.
 
 ## Step 3 - Apply Binary Logs Up to the Recovery Point
 
