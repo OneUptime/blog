@@ -14,7 +14,7 @@ MongoDB 7.0 introduced compound wildcard indexes, the AutoMerger for automated c
 
 ## Compound Wildcard Indexes
 
-MongoDB 6.0 introduced wildcard indexes, but they could not be combined with other fields in a single index. MongoDB 7.0 lifts this restriction, allowing you to create compound indexes that include both specific field paths and a wildcard component.
+MongoDB 4.2 introduced wildcard indexes, but they could not be combined with other fields in a single index. MongoDB 7.0 lifts this restriction, allowing you to create compound indexes that include both specific field paths and a wildcard component.
 
 ### Creating a Compound Wildcard Index
 
@@ -59,26 +59,26 @@ Look for `IXSCAN` on the compound wildcard index in the `winningPlan`.
 
 ### Limitations
 
-- The wildcard component must be a suffix in the compound index (not the leading field).
-- Compound wildcard indexes cannot include array fields alongside the wildcard.
-- Covered queries are not supported for the wildcard portion.
+- A compound wildcard index can contain only one wildcard term.
+- The non-wildcard fields in a compound wildcard index cannot be multikey (array-valued) fields.
+- Covered queries on the wildcard portion are only supported when the query specifies exactly one field covered by the wildcard, the projection explicitly excludes `_id` and includes only that field, and the field is never an array.
 
 ## AutoMerger
 
 In sharded clusters, chunk splitting over time creates many small chunks, increasing routing overhead and memory usage in `mongos`. MongoDB 7.0 introduces the AutoMerger background process that automatically merges adjacent chunks on the same shard when they can be safely combined.
-
-### Checking AutoMerger Status
-
-```javascript
-db.adminCommand({ autoMergerStatus: 1 })
-```
 
 ### Enabling and Disabling AutoMerger
 
 AutoMerger is enabled by default in MongoDB 7.0. To disable it globally:
 
 ```javascript
-db.adminCommand({ configureAutoMerger: 1, enable: false })
+sh.stopAutoMerger()
+```
+
+To re-enable it globally:
+
+```javascript
+sh.startAutoMerger()
 ```
 
 To disable it for a specific collection:
@@ -87,7 +87,7 @@ To disable it for a specific collection:
 sh.disableAutoMerger("mydb.orders")
 ```
 
-To re-enable:
+To re-enable for a specific collection:
 
 ```javascript
 sh.enableAutoMerger("mydb.orders")
@@ -106,9 +106,9 @@ db.adminCommand({
 
 ## Additional MongoDB 7.0 Highlights
 
-- `$lookup` now pushes `$match` stages inside the lookup pipeline, improving join performance significantly.
-- Time series collections gain secondary index support on non-time and non-metadata fields.
-- `mongodump` and `mongorestore` include the `--numInsertionWorkersPerCollection` flag for faster parallel restores.
+- Slot-based query execution engine (SBE) now supports `$lookup`, `$group`, `$unwind`, and additional aggregation stages, improving pipeline performance.
+- Time series collections support creating a TTL index with a `partialFilterExpression` on the `metaField`.
+- The `mongosh` shell introduces `sh.stopAutoMerger()` and `sh.startAutoMerger()` helper methods for cluster-wide AutoMerger control.
 
 ## Summary
 

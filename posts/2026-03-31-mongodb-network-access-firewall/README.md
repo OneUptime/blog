@@ -139,31 +139,28 @@ Atlas enforces an IP access list at the cluster level. All connections from unli
 ### Add an IP via Atlas CLI
 
 ```bash
-atlas accessLists create \
+atlas accessLists create 203.0.113.50 \
   --projectId <PROJECT_ID> \
   --type ipAddress \
-  --entry 203.0.113.50 \
   --comment "App server prod-1"
 ```
 
 ### Add a CIDR Block
 
 ```bash
-atlas accessLists create \
+atlas accessLists create 10.0.0.0/16 \
   --projectId <PROJECT_ID> \
   --type cidrBlock \
-  --entry 10.0.0.0/16 \
   --comment "VPC private range"
 ```
 
 ### Temporary Access (expires automatically)
 
 ```bash
-atlas accessLists create \
+atlas accessLists create 198.51.100.5 \
   --projectId <PROJECT_ID> \
   --type ipAddress \
-  --entry 198.51.100.5 \
-  --deleteAfterDate "2024-12-31T23:59:59Z" \
+  --deleteAfter "2024-12-31T23:59:59Z" \
   --comment "Temp access for migration"
 ```
 
