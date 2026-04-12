@@ -114,6 +114,13 @@ aws rds create-db-cluster \
   --master-username admin \
   --master-user-password "S3cur3P@ssw0rd" \
   --serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=16
+
+# Add a Serverless v2 instance to the cluster
+aws rds create-db-instance \
+  --db-instance-identifier my-serverless-instance \
+  --db-cluster-identifier my-serverless-aurora \
+  --db-instance-class db.serverless \
+  --engine aurora-mysql
 ```
 
 ## Enable Performance Insights and Slow Query Log
@@ -135,7 +142,7 @@ aws rds modify-db-instance \
 ```bash
 aws rds create-global-cluster \
   --global-cluster-identifier my-global-aurora \
-  --source-db-cluster-identifier arn:aws:rds:us-east-1:123456789:cluster:my-aurora-cluster
+  --source-db-cluster-identifier arn:aws:rds:us-east-1:123456789012:cluster:my-aurora-cluster
 ```
 
 ## Summary
