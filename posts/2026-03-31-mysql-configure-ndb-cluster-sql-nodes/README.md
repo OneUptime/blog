@@ -95,18 +95,20 @@ CREATE TABLE orders (
 ## Verifying Cluster Connectivity
 
 ```sql
-SHOW STATUS LIKE 'ndb_connected';
+SHOW STATUS LIKE 'Ndb_cluster_node_id';
 ```
+
+A non-zero value confirms the SQL node is connected to the cluster:
 
 ```text
-Variable_name  | Value
-ndb_connected  | ON
+Variable_name       | Value
+Ndb_cluster_node_id | 4
 ```
 
-Check the node ID:
+Check the number of data nodes visible:
 
 ```sql
-SHOW STATUS LIKE 'ndb_cluster_node_id';
+SHOW STATUS LIKE 'Ndb_number_of_data_nodes';
 ```
 
 ## SQL Node-Specific Tuning
@@ -118,13 +120,13 @@ Add these to `my.cnf` for better SQL node performance:
 ndbcluster
 ndb-connectstring=192.168.1.10
 
-# Increase API batch sizes
-ndb-batch-size=32768
+# Increase API batch sizes (default is 32768)
+ndb-batch-size=65536
 
 # Allow more concurrent NDB transactions
-ndb-cluster-connection-pool=4
+ndb-cluster-connection-pool=2
 
-# Connection pool for multi-threaded access
+# Assign specific API node IDs to pool connections
 ndb-cluster-connection-pool-nodeids=4,5
 ```
 
@@ -146,4 +148,4 @@ id=5    @192.168.1.14  (mysql-8.0.36 ndb-8.0.36)
 
 ## Summary
 
-SQL nodes are standard MySQL servers with the NDB engine enabled via `ndbcluster` in `my.cnf` and a connection string pointing to the management node. After starting, verify the NDB engine shows as `YES` in `SHOW ENGINES` and `ndb_connected` is `ON`. Create tables with `ENGINE=NDBCLUSTER` to store them in the distributed cluster rather than on local disk.
+SQL nodes are standard MySQL servers with the NDB engine enabled via `ndbcluster` in `my.cnf` and a connection string pointing to the management node. After starting, verify the NDB engine shows as `YES` in `SHOW ENGINES` and `Ndb_cluster_node_id` returns a non-zero value. Create tables with `ENGINE=NDBCLUSTER` to store them in the distributed cluster rather than on local disk.
