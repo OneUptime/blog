@@ -66,9 +66,12 @@ db.users.insertOne({ email: "alice@example.com", name: "Alice" })
 db.users.insertOne({ email: "alice@example.com", name: "Another Alice" })
 // Fails: E11000 duplicate key error collection: myapp.users index: email_1
 
+db.users.insertOne({ email: "bob@example.com", name: "Bob" })
+// Succeeds
+
 // Update to a duplicate email also fails
 db.users.updateOne(
-  { name: "Another Alice" },
+  { name: "Bob" },
   { $set: { email: "alice@example.com" } }
 )
 // Fails: E11000 duplicate key error
