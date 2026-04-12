@@ -98,11 +98,11 @@ SELECT REGEXP_SUBSTR('MySQL 8 is fast', '^[^ ]+') AS first_word;
 ### Full Signature
 
 ```sql
-REGEXP_SUBSTR(str, pattern [, pos [, occurrence [, match_type [, group_num]]]])
+REGEXP_SUBSTR(str, pattern [, pos [, occurrence [, match_type]]])
 ```
 
 - `occurrence` - which match to return (default 1 = first)
-- `group_num` - return a specific capture group
+- `match_type` - modifiers: `'c'` (case sensitive), `'i'` (case insensitive), `'m'` (multiline)
 
 ### Extract Second Number in a String
 
@@ -111,12 +111,14 @@ SELECT REGEXP_SUBSTR('Item 42, Ref 99', '[0-9]+', 1, 2) AS second_number;
 -- Output: 99
 ```
 
-### Extract Capture Groups
+### Extract a Specific Part Using Position and Occurrence
 
 ```sql
-SELECT REGEXP_SUBSTR('2026-03-31', '([0-9]{4})-([0-9]{2})-([0-9]{2})', 1, 1, '', 2) AS month;
+SELECT REGEXP_SUBSTR('2026-03-31', '[0-9]+', 1, 2) AS month;
 -- Output: 03
 ```
+
+This extracts the second numeric match from the string, which corresponds to the month.
 
 ## Practical Use Cases
 
@@ -125,7 +127,7 @@ SELECT REGEXP_SUBSTR('2026-03-31', '([0-9]{4})-([0-9]{2})-([0-9]{2})', 1, 1, '',
 ```sql
 SELECT
   email,
-  REGEXP_SUBSTR(email, '@(.+)', 1, 1, '', 1) AS domain
+  REGEXP_SUBSTR(email, '[^@]+$') AS domain
 FROM customers;
 ```
 
@@ -156,4 +158,4 @@ SELECT REGEXP_REPLACE('<p>Hello <b>World</b></p>', '<[^>]+>', '') AS plain_text;
 
 ## Summary
 
-`REGEXP_REPLACE()` and `REGEXP_SUBSTR()` in MySQL 8 bring full ICU-powered regular expression support to string manipulation. Use `REGEXP_REPLACE()` to clean, normalize, and sanitize text data directly in SQL, and use `REGEXP_SUBSTR()` to extract specific patterns like IDs, emails, or phone numbers. The optional `occurrence` and `group_num` parameters give fine-grained control over which match to act on.
+`REGEXP_REPLACE()` and `REGEXP_SUBSTR()` in MySQL 8 bring full ICU-powered regular expression support to string manipulation. Use `REGEXP_REPLACE()` to clean, normalize, and sanitize text data directly in SQL, and use `REGEXP_SUBSTR()` to extract specific patterns like IDs, emails, or phone numbers. The optional `pos`, `occurrence`, and `match_type` parameters give fine-grained control over which match to act on.
