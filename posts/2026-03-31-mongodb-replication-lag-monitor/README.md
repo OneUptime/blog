@@ -89,13 +89,13 @@ print("Replication lag:", lagSec, "seconds");
 ## Method 4: Using $currentOp to See Replication Operations
 
 ```javascript
-// On the primary, view active replication workers
+// On the primary, view oplog read operations from secondaries
 db.adminCommand({
   currentOp: true,
-  "command.repl": { $exists: true }
+  "ns": "local.oplog.rs"
 });
 
-// Or watch for OPLOG_BATCH_APPLY operations on secondaries
+// On a secondary, view replication batcher and applier threads
 db.adminCommand({
   currentOp: true,
   "desc": "ReplBatcher"
@@ -107,16 +107,17 @@ db.adminCommand({
 ```javascript
 const stats = db.adminCommand({ serverStatus: 1 });
 
-// Replication stats on a secondary
+// Replication stats on the current node
 const replStats = stats.repl;
-print("Is primary:", replStats.ismaster);
+print("Is primary:", replStats.isWritablePrimary);
 print("Is secondary:", replStats.secondary);
 
-// Optime of last applied operation
-const optimes = stats.repl.opTimes;
-print("Applied optime:", optimes.applied);
-print("Durable optime:", optimes.durable);
-print("Last committed:", optimes.lastCommitted);
+// Last write timestamps
+const lastWrite = stats.repl.lastWrite;
+print("Last write optime:", tojson(lastWrite.opTime));
+print("Last write date:", lastWrite.lastWriteDate);
+print("Majority optime:", tojson(lastWrite.majorityOpTime));
+print("Majority write date:", lastWrite.majorityWriteDate);
 ```
 
 ## Method 6: mongostat
@@ -133,7 +134,7 @@ mongostat --host secondary.example.com:27018 \
   1
 ```
 
-Look for the `repl` column - it shows the replication state (PRI, SEC, REC) and the `lagms` field in newer versions.
+Look for the `repl` column - it shows the replication state (PRI, SEC, REC). To monitor actual lag values, use `rs.status()` or the other methods described above.
 
 ## Method 7: Atlas and Cloud Manager
 
@@ -191,7 +192,7 @@ flowchart TD
     L --> F[Long-running index builds on secondary]
 ```
 
-## Investigating Lag with explain()
+## Investigating Lag on Secondaries
 
 If a specific type of operation is causing lag, analyze it on the secondary:
 
