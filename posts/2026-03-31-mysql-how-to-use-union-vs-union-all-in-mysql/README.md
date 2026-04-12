@@ -103,7 +103,7 @@ SELECT 'Unique entries' AS metric, COUNT(*) AS value FROM (
     SELECT email FROM list_b
 ) unique_combined;
 
--- Recursive CTEs require UNION ALL
+-- Recursive CTEs typically use UNION ALL (UNION DISTINCT also works since MySQL 8.0.19)
 WITH RECURSIVE counter AS (
     SELECT 1 AS n
     UNION ALL
@@ -149,9 +149,9 @@ Feature              | UNION          | UNION ALL
 Removes duplicates   | Yes            | No
 Performance          | Slower         | Faster
 Memory usage         | Higher         | Lower
-Use in recursive CTE | No             | Yes (required)
+Use in recursive CTE | Yes (since 8.0.19) | Yes
 Row count            | <= combined    | = sum of all rows
-Sorts result         | Implicitly     | No
+Guaranteed order     | No (use ORDER BY) | No (use ORDER BY)
 ```
 
 ## Summary
