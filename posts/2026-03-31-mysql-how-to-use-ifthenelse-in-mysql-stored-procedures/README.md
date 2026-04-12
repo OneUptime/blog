@@ -64,10 +64,10 @@ CREATE PROCEDURE ProcessOrder(
 )
 BEGIN
   DECLARE order_status VARCHAR(20);
-  DECLARE customer_id INT;
+  DECLARE cust_id INT;
 
   SELECT status, customer_id
-  INTO order_status, customer_id
+  INTO order_status, cust_id
   FROM orders
   WHERE id = order_id;
 
@@ -100,7 +100,7 @@ SELECT @msg;
 DELIMITER //
 
 CREATE PROCEDURE ApplyPricing(
-  IN customer_id INT,
+  IN p_customer_id INT,
   IN base_price DECIMAL(10, 2),
   OUT final_price DECIMAL(10, 2)
 )
@@ -109,10 +109,10 @@ BEGIN
   DECLARE order_count INT;
 
   SELECT is_vip_member INTO is_vip
-  FROM customers WHERE id = customer_id;
+  FROM customers WHERE id = p_customer_id;
 
   SELECT COUNT(*) INTO order_count
-  FROM orders WHERE customer_id = customer_id;
+  FROM orders WHERE customer_id = p_customer_id;
 
   IF is_vip = 1 THEN
     IF order_count > 100 THEN
