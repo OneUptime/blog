@@ -115,10 +115,10 @@ Key metrics:
 | Metric | Meaning |
 |--------|---------|
 | `ibuf_merges` | Total change buffer merges |
-| `ibuf_merged_inserts` | INSERT operations merged |
-| `ibuf_merged_delete_marks` | DELETE marks merged |
+| `ibuf_merges_insert` | INSERT operations merged |
+| `ibuf_merges_delete_mark` | DELETE marks merged |
 | `ibuf_size` | Current change buffer size in pages |
-| `ibuf_discarded_inserts` | Inserts discarded (page was removed before merge) |
+| `ibuf_merges_discard_insert` | Inserts discarded (page was removed before merge) |
 
 ## When to Adjust Change Buffering
 
@@ -163,20 +163,11 @@ innodb_change_buffer_max_size = 10
 The number of pending change buffer merges indicates how much work is deferred:
 
 ```sql
-SELECT variable_name, variable_value
-FROM   performance_schema.global_status
-WHERE  variable_name IN (
-    'Innodb_ibuf_discarded_delete_marks',
-    'Innodb_ibuf_discarded_deletes',
-    'Innodb_ibuf_discarded_inserts',
-    'Innodb_ibuf_free_list',
-    'Innodb_ibuf_merged_delete_marks',
-    'Innodb_ibuf_merged_deletes',
-    'Innodb_ibuf_merged_inserts',
-    'Innodb_ibuf_merges',
-    'Innodb_ibuf_segment_size',
-    'Innodb_ibuf_size'
-);
+SELECT name, count, comment
+FROM   information_schema.INNODB_METRICS
+WHERE  name LIKE 'ibuf%'
+  AND  status = 'enabled'
+ORDER  BY name;
 ```
 
 ## Best Practices
