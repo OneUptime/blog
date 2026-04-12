@@ -78,7 +78,7 @@ MODIFY COLUMN updated_at DATETIME NOT NULL
 
 ## Expression Defaults (MySQL 8.0.13+)
 
-MySQL 8.0.13+ allows any deterministic expression as a default:
+MySQL 8.0.13+ allows expressions as defaults, including non-deterministic functions:
 
 ```sql
 ALTER TABLE orders
@@ -86,7 +86,7 @@ MODIFY COLUMN order_code VARCHAR(20) NOT NULL
     DEFAULT (CONCAT('ORD-', LPAD(FLOOR(RAND() * 100000), 5, '0')));
 ```
 
-Note: `RAND()` is actually non-deterministic, but UUID() and other functions are supported with some restrictions. Expressions must be parenthesized.
+Note: Both deterministic and non-deterministic functions (like `RAND()` and `UUID()`) are supported in expression defaults. Expressions must be parenthesized.
 
 ```sql
 -- UUID default
