@@ -126,4 +126,4 @@ GROUP BY department;
 
 ## Summary
 
-Column aliases defined with `AS` rename columns and expressions in query results. The `AS` keyword is optional but recommended for clarity. Aliases can be used in `ORDER BY` and `GROUP BY` clauses, but not in `WHERE` or `HAVING` (except in MySQL's GROUP BY extension). For aliases containing spaces or reserved words, wrap them in backticks. Aliases are especially valuable for computed expressions and aggregate functions to produce clean, descriptive result column names.
+Column aliases defined with `AS` rename columns and expressions in query results. The `AS` keyword is optional but recommended for clarity. Aliases can be used in `ORDER BY`, `GROUP BY`, and `HAVING` clauses, but not in `WHERE`. For aliases containing spaces or reserved words, wrap them in backticks. Aliases are especially valuable for computed expressions and aggregate functions to produce clean, descriptive result column names.
