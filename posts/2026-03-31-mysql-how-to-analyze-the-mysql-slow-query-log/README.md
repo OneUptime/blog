@@ -20,7 +20,7 @@ Each entry in the slow query log contains header lines starting with `#` followe
 # Time: 2026-03-31T10:00:00.000000Z
 # User@Host: webapp[webapp] @ localhost []  Id: 101
 # Query_time: 3.215000  Lock_time: 0.001200  Rows_sent: 5  Rows_examined: 820000
-SET timestamp=1743415200;
+SET timestamp=1774951200;
 SELECT * FROM products WHERE category_id = 7 AND active = 1;
 ```
 
