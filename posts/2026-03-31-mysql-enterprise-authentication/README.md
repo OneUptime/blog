@@ -92,7 +92,8 @@ SET GLOBAL authentication_kerberos_service_principal = 'mysql/db-host.company.in
 
 -- Create a user authenticated via Kerberos
 CREATE USER 'alice'@'%'
-  IDENTIFIED WITH authentication_kerberos;
+  IDENTIFIED WITH authentication_kerberos
+  BY 'COMPANY.INTERNAL';  -- Kerberos realm name
 ```
 
 Clients authenticate using their Kerberos ticket:
