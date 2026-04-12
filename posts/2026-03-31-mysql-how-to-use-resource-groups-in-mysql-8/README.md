@@ -24,13 +24,13 @@ Use `CREATE RESOURCE GROUP` to define a new group with a specific priority and C
 CREATE RESOURCE GROUP high_priority_group
   TYPE = USER
   VCPU = 0-3
-  THREAD_PRIORITY = -10
+  THREAD_PRIORITY = 0
   ENABLE;
 ```
 
 - `TYPE = USER` means the group is for user connection threads.
 - `VCPU = 0-3` assigns CPU cores 0 through 3 to this group.
-- `THREAD_PRIORITY = -10` gives higher scheduling priority (range is -20 to 19 on Unix, 0 to 19 on Windows).
+- `THREAD_PRIORITY = 0` gives the highest scheduling priority for a USER group (USER range is 0 to 19, SYSTEM range is -20 to 0).
 
 ## Creating a Low-Priority Reporting Group
 
@@ -87,14 +87,14 @@ SELECT * FROM information_schema.RESOURCE_GROUPS;
 Example output:
 
 ```text
-+----------------------+-----------+---------+----------------+-----------------+----------+
-| RESOURCE_GROUP_NAME  | TYPE      | ENABLED | VCPU_IDS       | THREAD_PRIORITY |
-+----------------------+-----------+---------+----------------+-----------------+----------+
-| USR_default          | USER      | YES     | 0-7            | 0               |
-| SYS_default          | SYSTEM    | YES     | 0-7            | 0               |
-| high_priority_group  | USER      | YES     | 0-3            | -10             |
-| reporting_group      | USER      | YES     | 4-7            | 10              |
-+----------------------+-----------+---------+----------------+-----------------+----------+
++----------------------+---------------------+------------------------+----------+-----------------+
+| RESOURCE_GROUP_NAME  | RESOURCE_GROUP_TYPE  | RESOURCE_GROUP_ENABLED | VCPU_IDS | THREAD_PRIORITY |
++----------------------+---------------------+------------------------+----------+-----------------+
+| USR_default          | USER                |                      1 | 0-7      |               0 |
+| SYS_default          | SYSTEM              |                      1 | 0-7      |               0 |
+| high_priority_group  | USER                |                      1 | 0-3      |               0 |
+| reporting_group      | USER                |                      1 | 4-7      |              10 |
++----------------------+---------------------+------------------------+----------+-----------------+
 ```
 
 ## Modifying a Resource Group
