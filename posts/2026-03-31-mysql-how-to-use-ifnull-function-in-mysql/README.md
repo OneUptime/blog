@@ -123,10 +123,10 @@ LEFT JOIN departments d ON e.department_id = d.id;
 ## IFNULL() in ORDER BY
 
 ```sql
--- Sort NULL salaries last
+-- Sort NULL salaries last (treat them as 0 in ascending order)
 SELECT name, salary
 FROM employees
-ORDER BY IFNULL(salary, 0);
+ORDER BY IFNULL(salary, 99999999);
 ```
 
 ## IFNULL() in UPDATE
