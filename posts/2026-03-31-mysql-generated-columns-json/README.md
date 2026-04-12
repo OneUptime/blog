@@ -186,7 +186,7 @@ SELECT sku, category, price FROM products WHERE price BETWEEN 5 AND 20 ORDER BY 
 ## Limitations
 
 - A `VIRTUAL` generated column can have an index, but only `STORED` columns can be part of a foreign key.
-- The expression cannot reference other generated columns or non-deterministic functions.
+- The expression can reference other generated columns only if they are defined earlier in the table (no forward references), and cannot use non-deterministic functions.
 - `TEXT` and `BLOB` generated columns cannot be indexed unless a prefix length is specified.
 - You cannot use `INSERT ... SET generated_col = value` for generated columns; they are read-only.
 
