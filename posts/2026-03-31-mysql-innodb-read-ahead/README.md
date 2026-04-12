@@ -103,16 +103,16 @@ WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_ahead_evicted';
 
 If more than 30% of prefetched pages are evicted before use, read-ahead is too aggressive for your workload - increase the threshold.
 
-## Disabling Read-Ahead Completely
+## Minimizing Read-Ahead
 
-For pure OLTP workloads with random point lookups, read-ahead provides no benefit and wastes I/O and buffer pool space:
+For pure OLTP workloads with random point lookups, read-ahead provides little benefit and wastes I/O and buffer pool space. Set the threshold to its maximum value of 64, so that read-ahead only triggers after all pages in an extent have been accessed sequentially:
 
 ```sql
--- Disable linear read-ahead
-SET GLOBAL innodb_read_ahead_threshold = 0;
+-- Minimize linear read-ahead
+SET GLOBAL innodb_read_ahead_threshold = 64;
 ```
 
-Setting the threshold to 0 completely disables linear read-ahead.
+Note: setting the threshold to 0 does not disable read-ahead. Because InnoDB triggers a read-ahead when the number of sequentially accessed pages is greater than or equal to the threshold, a value of 0 makes read-ahead maximally aggressive. There is no setting to completely disable linear read-ahead, but 64 effectively minimizes it.
 
 ## Summary
 
