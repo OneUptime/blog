@@ -26,14 +26,15 @@ For a JSON array of objects, use a shell script:
 
 ```bash
 #!/bin/bash
-cat products.json | python3 -c "
+python3 << 'PYEOF' | redis-cli --pipe
 import json, sys
-data = json.load(sys.stdin)
+
+data = json.load(open("products.json"))
 for item in data:
-    key = f\"product:{item['id']}\"
+    key = f"product:{item['id']}"
     value = json.dumps(item)
-    print(f'SET {key} {value}')
-" | redis-cli --pipe
+    sys.stdout.write(f"*3\r\n$3\r\nSET\r\n${len(key)}\r\n{key}\r\n${len(value)}\r\n{value}\r\n")
+PYEOF
 ```
 
 ## Option 2: Import JSON Fields as Redis Hashes
