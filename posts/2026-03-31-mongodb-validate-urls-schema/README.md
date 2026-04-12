@@ -137,7 +137,7 @@ website: {
       pattern: "^https?://[a-zA-Z0-9][a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,}(/.*)?$"
     }
   ],
-  description: "Optional HTTPS URL for the company website"
+  description: "Optional HTTP or HTTPS URL for the company website"
 }
 ```
 
