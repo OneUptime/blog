@@ -70,8 +70,10 @@ Use `exclusiveMinimum` and `exclusiveMaximum` when the boundary value itself is 
 ```javascript
 discount: {
   bsonType: "double",
-  exclusiveMinimum: 0,    // must be > 0 (not >= 0)
-  exclusiveMaximum: 100,  // must be < 100 (not <= 100)
+  minimum: 0,
+  exclusiveMinimum: true,    // must be > 0 (not >= 0)
+  maximum: 100,
+  exclusiveMaximum: true,    // must be < 100 (not <= 100)
   description: "Discount percentage must be between 0 and 100 exclusive"
 }
 ```
