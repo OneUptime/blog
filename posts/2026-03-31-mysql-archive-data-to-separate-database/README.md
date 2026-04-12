@@ -85,7 +85,7 @@ while [ "$CURRENT_ID" -le "$MAX_ID" ]; do
     FROM orders
     WHERE id >= $CURRENT_ID AND id < $NEXT_ID
       AND created_at < '$CUTOFF_DATE';
-  " | mysql -h "$ARCH_HOST" -u "$DB_USER" -p"$DB_PASS" orders_archive -e "
+  " | mysql -h "$ARCH_HOST" -u "$DB_USER" -p"$DB_PASS" --local-infile orders_archive -e "
     LOAD DATA LOCAL INFILE '/dev/stdin' IGNORE INTO TABLE orders
     FIELDS TERMINATED BY '\t'
     (id, user_id, total, status, created_at);
@@ -133,6 +133,7 @@ spec:
     spec:
       template:
         spec:
+          restartPolicy: Never
           containers:
             - name: archiver
               image: mysql:8.0
