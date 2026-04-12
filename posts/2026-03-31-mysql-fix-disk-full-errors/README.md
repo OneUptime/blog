@@ -19,8 +19,8 @@ df -h /var/lib/mysql
 # Find the largest files
 du -sh /var/lib/mysql/* | sort -rh | head -20
 
-# Check which MySQL files consume the most space
-du -sh /var/lib/mysql/*.ibd 2>/dev/null | sort -rh | head -10
+# Check which InnoDB tablespace files consume the most space
+find /var/lib/mysql -name "*.ibd" -exec du -sh {} + 2>/dev/null | sort -rh | head -10
 ```
 
 ## Emergency: Free Space Immediately
