@@ -113,16 +113,16 @@ If using GTID replication, `SOURCE_AUTO_POSITION=1` handles positioning automati
 Key configuration variables for tuning clone performance:
 
 ```sql
--- Set maximum clone throughput (bytes/sec), 0 = unlimited
-SET GLOBAL clone_max_data_bandwidth = 104857600; -- 100 MB/s
+-- Set maximum clone throughput (MiB/sec), 0 = unlimited
+SET GLOBAL clone_max_data_bandwidth = 100; -- 100 MiB/s
 
--- Set network transfer buffer size
-SET GLOBAL clone_buffer_size = 4194304; -- 4 MB
+-- Set local clone buffer size
+SET GLOBAL clone_buffer_size = 4194304; -- 4 MiB
 ```
 
 ```ini
 [mysqld]
-clone_max_data_bandwidth = 104857600
+clone_max_data_bandwidth = 100
 clone_autotune_concurrency = ON
 clone_max_concurrency = 16
 ```
