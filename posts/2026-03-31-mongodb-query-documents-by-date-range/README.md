@@ -25,13 +25,13 @@ db.orders.insertOne({
 
 ## Basic Date Range Query
 
-Use `$gte` (greater than or equal) and `$lte` (less than or equal) to bound a date range.
+Use `$gte` (greater than or equal) and `$lt` (less than) to bound a date range.
 
 ```javascript
 db.orders.find({
   createdAt: {
     $gte: new Date("2026-01-01T00:00:00Z"),
-    $lte: new Date("2026-01-31T23:59:59Z")
+    $lt:  new Date("2026-02-01T00:00:00Z")
   }
 });
 ```
