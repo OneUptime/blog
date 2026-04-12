@@ -86,11 +86,11 @@ SHOW VARIABLES LIKE 'innodb_buffer_pool_instances';
 
 ```sql
 SELECT pool_id,
-       page_made_young,
-       page_not_made_young,
-       pages_read,
-       pages_created,
-       pages_written
+       pages_made_young,
+       pages_not_made_young,
+       number_pages_read,
+       number_pages_created,
+       number_pages_written
 FROM information_schema.innodb_buffer_pool_stats;
 
 -- Or in aggregate
