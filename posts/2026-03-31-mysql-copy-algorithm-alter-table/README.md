@@ -18,11 +18,10 @@ Because the COPY algorithm requires rewriting every row in the table, it is the 
 
 1. Create a new empty table with the new structure
 2. Copy all rows from the original table to the new table
-3. Apply any DML changes that occurred during the copy (via a log of changes)
-4. Replace the original table with the new one
-5. Drop the original table
+3. Replace the original table with the new one
+4. Drop the original table
 
-Step 3 is limited under COPY - in contrast to the INPLACE algorithm, COPY does not allow concurrent DML during most operations. Writes are blocked for the full duration.
+Unlike the INPLACE algorithm, which maintains a log of concurrent DML changes and applies them after the rebuild, the COPY algorithm does not allow concurrent DML. Writes are blocked for the full duration.
 
 ## Forcing the COPY Algorithm
 
@@ -63,7 +62,7 @@ ALTER TABLE posts CONVERT TO CHARACTER SET utf8mb4, ALGORITHM = COPY;
 
 ## Checking Which Algorithm Will Be Used
 
-Use `EXPLAIN` is not available for DDL, but you can test with `ALGORITHM = INSTANT` and if it fails, try `INPLACE`, then fall back to understanding COPY is required.
+`EXPLAIN` is not available for DDL statements, but you can test with `ALGORITHM = INSTANT` and if it fails, try `INPLACE`, then fall back to understanding COPY is required.
 
 Alternatively, check the MySQL documentation for the specific operation, or observe behavior:
 
