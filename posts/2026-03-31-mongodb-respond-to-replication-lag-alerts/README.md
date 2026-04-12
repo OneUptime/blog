@@ -25,9 +25,10 @@ Or check raw lag:
 
 ```javascript
 const status = rs.status();
+const primary = status.members.find(m => m.stateStr === "PRIMARY");
 status.members.forEach(m => {
   if (m.stateStr === "SECONDARY") {
-    const lagSec = Math.round((status.members[0].optimeDate - m.optimeDate) / 1000);
+    const lagSec = Math.round((primary.optimeDate - m.optimeDate) / 1000);
     print(m.name, "lag:", lagSec, "seconds");
   }
 });
@@ -82,7 +83,7 @@ for (let i = 0; i < docs.length; i += 500) {
 
 ### Use majority write concern for critical writes
 
-This ensures the primary does not acknowledge the write until secondaries have applied it:
+This ensures the write is acknowledged only after a majority of replica set members have committed it, adding back-pressure that slows the write rate and helps secondaries catch up:
 
 ```javascript
 await db.orders.insertOne(order, { writeConcern: { w: "majority", wtimeout: 5000 } });
