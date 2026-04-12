@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS users_backup AS
 SELECT * FROM users;
 ```
 
-Prevents an error if the table already exists. Note: if it exists, data will still be inserted - it does not skip the whole statement.
+Prevents an error if the table already exists. If the table already exists, no data is inserted — the entire statement is effectively a no-op and MySQL issues a note instead of an error.
 
 ## Copy Structure Only (No Data)
 
