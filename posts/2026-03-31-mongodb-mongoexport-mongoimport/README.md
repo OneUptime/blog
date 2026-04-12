@@ -208,7 +208,7 @@ flowchart TD
 ### Step-by-step migration
 
 ```bash
-# 1. Export from production (last 30 days of orders)
+# 1. Export from production (orders since 2024-01-01)
 mongoexport \
   --uri="mongodb://prod-host:27017/shop?authSource=admin" \
   --collection=orders \
