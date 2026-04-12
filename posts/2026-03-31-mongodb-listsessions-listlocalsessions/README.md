@@ -15,16 +15,16 @@ MongoDB tracks client sessions used for causally consistent reads, transactions,
 | Feature | $listSessions | $listLocalSessions |
 |---------|--------------|-------------------|
 | Source | config.system.sessions (cluster-wide) | Current mongod/mongos memory only |
-| Requires | admin database | Any context |
+| Requires | config database | Any context |
 | Use case | Audit all sessions | Quick in-memory snapshot |
 
 ## Listing All Sessions
 
-Run against the `admin` database:
+Run against the `config` database:
 
 ```js
-use admin;
-db.aggregate([
+use config;
+db.system.sessions.aggregate([
   { $listSessions: {} }
 ]);
 ```
@@ -39,8 +39,8 @@ Each document contains:
 ## Listing Sessions for a Specific User
 
 ```js
-use admin;
-db.aggregate([
+use config;
+db.system.sessions.aggregate([
   {
     $listSessions: {
       users: [{ user: "appUser", db: "myApp" }]
@@ -74,10 +74,10 @@ db.aggregate([
 Sessions that have not been used recently may indicate abandoned connections:
 
 ```js
-use admin;
+use config;
 const cutoff = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
 
-db.aggregate([
+db.system.sessions.aggregate([
   { $listSessions: {} },
   { $match: { lastUse: { $lt: cutoff } } },
   { $project: { "_id.id": 1, lastUse: 1, "user.name": 1 } },
@@ -88,8 +88,8 @@ db.aggregate([
 ## Counting Active Sessions Per User
 
 ```js
-use admin;
-db.aggregate([
+use config;
+db.system.sessions.aggregate([
   { $listSessions: {} },
   {
     $group: {
