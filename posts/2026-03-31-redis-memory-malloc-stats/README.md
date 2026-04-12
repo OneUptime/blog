@@ -22,34 +22,33 @@ Returns a multi-line string containing jemalloc's internal stats.
 
 ## Example Output
 
-```redis
-MEMORY MALLOC-STATS
-# ___ Begin jemalloc statistics ___
-# Version: "5.3.0-0-..."
-# Assertions enabled: false
-# Run-time option settings:
-#   opt.abort: false
-#   opt.abort_conf: false
-#   opt.xmalloc: false
-#   opt.zero: false
-#   opt.tcache: true
-#   opt.lg_tcache_max: 15
-#   opt.background_thread: false
-#   opt.dirty_decay_ms: 10000
-#   opt.muzzy_decay_ms: 10000
-#   opt.narenas: 1
-#   opt.lg_extent_max_active_fit: 6
-# Arenas: 1
-# Quantum size: 16
-# Page size: 4096
-# Maximum thread-cached size class: 32768
-# Source: malloc
-# Number of bins: 40
-# Number of thread-local allocation fastpath arenas: 1
-# Allocated: 104857600, active: 125829120, metadata: 2097152
-# resident: 180355072, mapped: 188743680, retained: 0
-# ...
-# ___ End jemalloc statistics ___
+```
+> MEMORY MALLOC-STATS
+___ Begin jemalloc statistics ___
+Version: "5.3.0-0-..."
+Assertions enabled: false
+Run-time option settings:
+  opt.abort: false
+  opt.abort_conf: false
+  opt.xmalloc: false
+  opt.zero: false
+  opt.tcache: true
+  opt.lg_tcache_max: 15
+  opt.background_thread: false
+  opt.dirty_decay_ms: 10000
+  opt.muzzy_decay_ms: 10000
+  opt.narenas: 1
+  opt.lg_extent_max_active_fit: 6
+Arenas: 1
+Quantum size: 16
+Page size: 4096
+Maximum thread-cached size class: 32768
+Source: malloc
+Number of bins: 40
+Number of thread-local allocation fastpath arenas: 1
+Allocated: 104857600, active: 125829120, metadata: 2097152, resident: 180355072, mapped: 188743680, retained: 0
+...
+___ End jemalloc statistics ___
 ```
 
 ## Key Fields Explained
@@ -81,37 +80,39 @@ A high `resident / allocated` ratio indicates that jemalloc is holding pages tha
 
 ```redis
 INFO memory
-# used_memory:104857600          (= allocated in malloc-stats)
-# used_memory_rss:180355072      (= resident in malloc-stats)
-# mem_fragmentation_ratio:1.72   (= resident / allocated)
+# used_memory:104857600          (≈ Allocated in malloc-stats)
+# used_memory_rss:180355072      (≈ resident in malloc-stats)
+# mem_fragmentation_ratio:1.72   (≈ resident / allocated)
 ```
 
-`MEMORY MALLOC-STATS` provides the raw numbers behind these derived metrics.
+`used_memory` closely tracks jemalloc's `Allocated` stat. `used_memory_rss` is read from the OS (e.g., `/proc/self/stat` on Linux), so it may differ slightly from jemalloc's `resident` stat because it includes all process memory (shared libraries, Lua VM, etc.), not only jemalloc-managed allocations. `MEMORY MALLOC-STATS` provides the raw allocator numbers behind these derived metrics.
 
 ## Parsing for Specific Values
 
 Use the CLI to extract specific numbers from the verbose output:
 
 ```bash
-redis-cli MEMORY MALLOC-STATS | grep -E "^Allocated:|^# resident:"
+redis-cli MEMORY MALLOC-STATS | grep "Allocated:"
 ```
 
-Or use a script:
+This returns the summary line containing `Allocated`, `active`, `metadata`, `resident`, `mapped`, and `retained` values. To extract just the allocated bytes:
 
 ```bash
-redis-cli MEMORY MALLOC-STATS | grep "Allocated:" | awk '{print "Allocated:", $2}'
+redis-cli MEMORY MALLOC-STATS | grep "Allocated:" | awk -F'[, ]+' '{print "Allocated:", $2}'
 ```
 
 ## Decay Time Tuning
 
 jemalloc holds dirty (recently freed) pages before returning them to the OS. Reducing the decay time causes more aggressive memory release:
 
-```redis
+```bash
 # Check current decay settings
-MEMORY MALLOC-STATS | grep decay
+redis-cli MEMORY MALLOC-STATS | grep decay
 # opt.dirty_decay_ms: 10000   (10 seconds)
 # opt.muzzy_decay_ms: 10000
+```
 
+```redis
 # Trigger immediate purge of idle pages
 MEMORY PURGE
 ```
