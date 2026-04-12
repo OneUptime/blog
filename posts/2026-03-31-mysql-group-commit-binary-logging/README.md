@@ -59,7 +59,7 @@ SET GLOBAL binlog_group_commit_sync_no_delay_count = 100;
 ```text
 sync_binlog = 0  - OS decides (fastest, least durable)
 sync_binlog = 1  - Sync after every transaction (most durable, slowest)
-sync_binlog = N  - Sync every N transactions (balanced)
+sync_binlog = N  - Sync every N binary log commit groups (balanced)
 ```
 
 ```sql
@@ -98,16 +98,18 @@ binlog_group_commit_sync_no_delay_count = 100
 
 ## Monitoring Group Commit Efficiency
 
+**Note:** The status variables `Binlog_commits` and `Binlog_group_commits` are available in Percona Server for MySQL and MariaDB, but not in standard Oracle MySQL. If you are using Percona Server or MariaDB, you can query them directly:
+
 ```sql
--- Check binary log status variables
+-- Percona Server / MariaDB only
 SHOW STATUS LIKE 'Binlog_commits';
 SHOW STATUS LIKE 'Binlog_group_commits';
-SHOW STATUS LIKE 'Binlog_group_commit_trigger%';
 ```
 
-Calculate the average group size:
+And calculate the average group size:
 
 ```sql
+-- Percona Server / MariaDB only
 SELECT
     (SELECT VARIABLE_VALUE FROM performance_schema.global_status
      WHERE VARIABLE_NAME = 'Binlog_commits') /
@@ -117,6 +119,8 @@ SELECT
 ```
 
 A ratio greater than 1 indicates group commit is working. Higher ratios mean better batching efficiency.
+
+For standard Oracle MySQL, you can indirectly assess group commit effectiveness by monitoring overall write throughput (transactions per second) and disk I/O before and after tuning the group commit parameters.
 
 ## InnoDB Redo Log and Binary Log Coordination
 
@@ -132,7 +136,7 @@ sync_binlog = 1
 binlog_group_commit_sync_delay = 1000
 binlog_group_commit_sync_no_delay_count = 100
 
-# Required for crash-safe replication
+# Recommended for crash-safe replication
 relay_log_recovery = ON
 ```
 
