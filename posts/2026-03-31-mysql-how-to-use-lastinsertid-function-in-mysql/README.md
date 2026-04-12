@@ -97,7 +97,7 @@ SELECT @temp_id;  -- Still holds the ID even after rollback
 
 ## LAST_INSERT_ID(expr) - Manual Counter
 
-The two-argument form sets a value for `LAST_INSERT_ID()` without performing an INSERT:
+The one-argument form sets a value for `LAST_INSERT_ID()` without performing an INSERT:
 
 ```sql
 -- Create a simple sequence counter
