@@ -51,7 +51,7 @@ Or use the `couchdb-dump` tool for large databases:
 
 ```bash
 npm install -g couchdb-dump
-couchdb-dump -H localhost -d products -u admin -p password > products_dump.json
+couchdb-dump "http://admin:password@localhost:5984/products" > products_dump.json
 ```
 
 ## Transform and Import to MongoDB
