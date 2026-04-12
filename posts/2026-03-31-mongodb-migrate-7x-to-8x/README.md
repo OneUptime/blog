@@ -22,10 +22,10 @@ mongosh --eval "db.version()"
 mongosh --eval "db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })"
 
 # 2. Ensure FCV is set to 7.0 before upgrading
-mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '7.0' })"
+mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '7.0', confirm: true })"
 
-# 3. Check for deprecated operators or features
-mongosh --eval "db.adminCommand({ checkFreeMonitoringStatus: 1 })"
+# 3. Check for deprecated features or incompatible configuration options
+mongosh --eval "db.adminCommand({ buildInfo: 1 })"
 ```
 
 ```text
@@ -45,7 +45,7 @@ Key changes in MongoDB 8.0 to review:
 ```text
 MongoDB 8.0 notable changes:
 - SBE query engine enabled for more aggregation stages
-- Removed legacy mongo shell (use mongosh)
+- Legacy mongo shell was removed in MongoDB 6.0 (ensure you are using mongosh)
 - Changes to explain output format for some queries
 - Improved $lookup and $group performance (may alter query plans)
 - Time-series collection improvements
@@ -68,10 +68,12 @@ Upgrade one replica set member at a time, starting with secondaries:
 sudo systemctl stop mongod
 
 # Step 2: Install MongoDB 8.0 packages (Ubuntu)
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" \
+wget -qO - https://www.mongodb.org/static/pgp/server-8.0.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" \
   | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt-get update
-sudo apt-get install -y mongodb-org=8.0.0
+sudo apt-get install -y mongodb-org
 
 # Step 3: Start mongod and verify
 sudo systemctl start mongod
@@ -92,7 +94,7 @@ Then upgrade the former primary:
 
 ```bash
 sudo systemctl stop mongod
-sudo apt-get install -y mongodb-org=8.0.0
+sudo apt-get install -y mongodb-org
 sudo systemctl start mongod
 ```
 
@@ -115,7 +117,7 @@ Only set FCV to 8.0 after all nodes are running 8.0 and you have verified stabil
 
 ```javascript
 // Set FCV to 8.0 to enable new features
-db.adminCommand({ setFeatureCompatibilityVersion: "8.0" });
+db.adminCommand({ setFeatureCompatibilityVersion: "8.0", confirm: true });
 
 // Verify
 db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 });
