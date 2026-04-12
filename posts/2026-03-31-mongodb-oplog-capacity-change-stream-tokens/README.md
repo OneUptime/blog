@@ -32,7 +32,7 @@ const oldest = db.getSiblingDB("local").oplog.rs
 const newest = db.getSiblingDB("local").oplog.rs
   .find({}, { ts: 1 }).sort({ $natural: -1 }).limit(1).next();
 
-const windowSecs = newest.ts.getTime() - oldest.ts.getTime();
+const windowSecs = newest.ts.t - oldest.ts.t;
 print("Oplog window:", Math.round(windowSecs / 3600), "hours");
 ```
 
@@ -110,7 +110,7 @@ Compare the timestamp on the latest Change Stream event against wall-clock time 
 
 ```javascript
 changeStream.on("change", (event) => {
-  const eventTs = event.clusterTime?.getTime() ?? Date.now() / 1000;
+  const eventTs = event.clusterTime?.t ?? Math.floor(Date.now() / 1000);
   const lagSeconds = Math.floor(Date.now() / 1000) - eventTs;
   metrics.gauge("change_stream_lag_seconds", lagSeconds);
 });
