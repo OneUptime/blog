@@ -64,7 +64,7 @@ Result:
 
 ## Shorthand - Default Frame
 
-The `ROWS UNBOUNDED PRECEDING` frame is the default when `ORDER BY` is specified, so this shorthand also works:
+The default frame when `ORDER BY` is specified is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`. For `SUM()`, this produces the same result as the explicit `ROWS` frame when there are no duplicate `ORDER BY` values, so this shorthand works:
 
 ```sql
 SELECT
