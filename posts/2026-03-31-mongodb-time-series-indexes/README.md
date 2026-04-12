@@ -10,12 +10,12 @@ Description: Learn how to create secondary indexes on MongoDB time series collec
 
 ## Default Indexes on Time Series Collections
 
-When you create a time series collection MongoDB automatically creates a clustered index on the `timeField` and a compound index on `{ metaField: 1, timeField: 1 }`. These cover the most common queries but not measurement-field filters.
+When you create a time series collection MongoDB automatically creates an internal index on the `timeField`. If you specify a `metaField`, MongoDB also creates a compound index on `{ metaField: 1, timeField: 1 }`. These cover the most common queries but not measurement-field filters.
 
 ```mermaid
 flowchart TD
-    TS["Time Series Collection"] --> Auto1["Auto index: { ts: 1 } (clustered)"]
-    TS --> Auto2["Auto index: { 'sensor.id': 1, ts: 1 }"]
+    TS["Time Series Collection"] --> Auto1["Auto index on timeField: ts"]
+    TS --> Auto2["Auto index: { metadata.sensorId: 1, ts: 1 }"]
     TS --> Q1["Query: sensor + time range - FAST"]
     TS --> Q2["Query: filter by temperature - SLOW (no index)"]
     Q2 --> Fix["Add secondary index: { temperature: 1, ts: 1 }"]
@@ -28,9 +28,8 @@ flowchart TD
 // List all indexes on a time series collection
 db.sensor_readings.getIndexes();
 
-// Output will show the automatic indexes:
+// Output will show the automatic indexes, for example:
 // [
-//   { key: { _id: 1 }, name: "_id_", clustered: true },
 //   { key: { "metadata.sensorId": 1, ts: 1 }, name: "metadata.sensorId_1_ts_1" }
 // ]
 ```
@@ -103,7 +102,7 @@ db.sensor_readings.find({
 ## Explaining a Query to Verify Index Usage
 
 ```javascript
-const explanation = await db.collection("sensor_readings")
+const explanation = db.sensor_readings
   .find({
     "metadata.sensorId": "s-1",
     temperature: { $gt: 30 },
@@ -139,17 +138,20 @@ db.sensor_readings.dropIndex({ temperature: 1, humidity: 1 });
 
 ## Limitations of Indexes on Time Series Collections
 
-- Indexes on the `timeField` itself are managed automatically; you cannot drop the clustered index.
+- Indexes on the `timeField` itself are managed automatically; you cannot drop the internal time index.
 - Unique indexes are not supported on time series collections (measurements are not uniquely constrained).
 - Hashed indexes are not supported.
 - Text indexes are not supported on time series collections.
-- `$**` wildcard indexes are not supported.
+- `$**` wildcard indexes are supported starting in MongoDB 6.3; they are not available on earlier versions.
 
 ```javascript
 // These will fail on time series collections:
 db.sensor_readings.createIndex({ temperature: 1 }, { unique: true });     // unsupported
 db.sensor_readings.createIndex({ description: "text" });                   // unsupported
 db.sensor_readings.createIndex({ temperature: "hashed" });                 // unsupported
+
+// Wildcard indexes work on MongoDB 6.3+:
+db.sensor_readings.createIndex({ "$**": 1 });                             // supported (6.3+)
 ```
 
 ## Performance Recommendations
@@ -174,4 +176,4 @@ db.sensor_readings.explain("executionStats").find({ temperature: { $gt: 35 } });
 
 ## Summary
 
-MongoDB time series collections automatically index the `timeField` and `metaField`, but queries filtering on measurement values require explicit secondary indexes. Create compound indexes that include `metaField` fields and the `timeField` alongside measurement fields for the best coverage. Use `explain("executionStats")` to confirm index usage, apply partial indexes for sparse alert conditions, and avoid adding unnecessary indexes since each one adds write overhead during ingestion.
+MongoDB time series collections automatically create internal indexes on the `timeField` and `metaField`, but queries filtering on measurement values require explicit secondary indexes. Create compound indexes that include `metaField` fields and the `timeField` alongside measurement fields for the best coverage. Use `explain("executionStats")` to confirm index usage, apply partial indexes for sparse alert conditions, and avoid adding unnecessary indexes since each one adds write overhead during ingestion.
