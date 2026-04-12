@@ -112,13 +112,14 @@ WHERE INDEX_NAME IS NOT NULL
 ORDER BY OBJECT_SCHEMA, OBJECT_NAME;
 
 -- Find tables with no indexes (full scans only)
-SELECT TABLE_SCHEMA, TABLE_NAME
-FROM information_schema.TABLES
-WHERE TABLE_SCHEMA NOT IN ('mysql','information_schema','performance_schema')
-  AND TABLE_NAME NOT IN (
-      SELECT DISTINCT TABLE_NAME
-      FROM information_schema.STATISTICS
-      WHERE TABLE_SCHEMA = 'mydb'
+SELECT t.TABLE_SCHEMA, t.TABLE_NAME
+FROM information_schema.TABLES t
+WHERE t.TABLE_SCHEMA NOT IN ('mysql','information_schema','performance_schema')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM information_schema.STATISTICS s
+      WHERE s.TABLE_SCHEMA = t.TABLE_SCHEMA
+        AND s.TABLE_NAME = t.TABLE_NAME
   );
 ```
 
@@ -128,7 +129,7 @@ Because every secondary index stores the primary key, a large primary key increa
 
 ```sql
 -- Estimate index size impact
-SELECT INDEX_NAME, STAT_VALUE * 16 / 1024 AS size_kb
+SELECT INDEX_NAME, STAT_VALUE * 16 AS size_kb
 FROM mysql.innodb_index_stats
 WHERE DATABASE_NAME = 'mydb' AND TABLE_NAME = 'orders'
   AND STAT_NAME = 'size';
