@@ -103,7 +103,7 @@ db.adminCommand({ setParameter: 1, transactionLifetimeLimitSeconds: 30 });
 
 ## Root Cause 4: Index Build Consuming Cache
 
-Foreground index builds consume cache. Monitor with:
+Index builds can consume significant cache. Monitor with:
 
 ```javascript
 db.currentOp({ "command.createIndexes": { $exists: true } });
