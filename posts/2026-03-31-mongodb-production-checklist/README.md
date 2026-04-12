@@ -149,7 +149,7 @@ db.serverStatus().globalLock     // Lock contention
 Configure automated backups with `mongodump` via cron:
 
 ```bash
-0 2 * * * mongodump --host localhost --gzip --archive=/backups/mongo-$(date +%Y%m%d).archive
+0 2 * * * mongodump --host localhost --gzip --archive=/backups/mongo-$(date +\%Y\%m\%d).archive
 ```
 
 ## Summary
