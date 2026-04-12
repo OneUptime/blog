@@ -103,7 +103,7 @@ db.runCommand({
       }
     }
   },
-  validationLevel: "warn" // warn only, don't block existing data
+  validationAction: "warn" // warn only, don't block existing data
 });
 ```
 
