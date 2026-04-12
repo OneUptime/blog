@@ -102,7 +102,6 @@ Latency (ms):
          avg:                                  119.23
          max:                                  652.45
          95th percentile:                      193.49
-         99th percentile:                      292.60
          sum:                               960197.76
 ```
 
@@ -110,7 +109,6 @@ Key metrics:
 - **TPS** (transactions/sec) - 134.17 TPS.
 - **QPS** (queries/sec) - 2683.42 QPS.
 - **p95 latency** - 95% of transactions completed within 193ms.
-- **p99 latency** - 99% completed within 292ms.
 
 ## Running Specific Workload Types
 
