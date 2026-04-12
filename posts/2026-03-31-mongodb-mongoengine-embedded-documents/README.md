@@ -93,7 +93,7 @@ orders = Order.objects(items__quantity__gt=1)
 
 ## Updating Embedded Fields
 
-Use the `set__` prefix with dot notation for atomic updates:
+Use the `set__` prefix with double-underscore notation for atomic updates:
 
 ```python
 # Update a top-level embedded field
@@ -109,6 +109,8 @@ Order.objects(customer_id="c123").update(push__items=new_item)
 Embedded documents can be nested to multiple levels:
 
 ```python
+from mongoengine import FloatField
+
 class GeoPoint(EmbeddedDocument):
     lat = FloatField()
     lon = FloatField()
