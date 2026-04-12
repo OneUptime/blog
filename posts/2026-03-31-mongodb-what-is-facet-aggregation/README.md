@@ -106,7 +106,7 @@ db.orders.aggregate([
 ## Important Characteristics
 
 - Each sub-pipeline inside `$facet` starts from the same input documents. Stages in one sub-pipeline do not affect others.
-- `$facet` cannot contain `$facet`, `$out`, `$merge`, or `$geoNear` stages inside its sub-pipelines.
+- `$facet` cannot contain `$facet`, `$out`, `$merge`, `$geoNear`, `$collStats`, `$indexStats`, or `$planCacheStats` stages inside its sub-pipelines.
 - The output of `$facet` is always a single document containing an array for each facet.
 - Memory limits apply: by default, each pipeline stage can use up to 100 MB of RAM. Use `allowDiskUse: true` for large datasets.
 
