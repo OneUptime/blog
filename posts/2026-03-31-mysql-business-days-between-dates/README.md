@@ -29,17 +29,11 @@ This lookup-table approach (from MySQL community resources) is compact but hard 
 SELECT
   -- Complete weeks * 5 weekdays
   (DATEDIFF('2026-03-31', '2026-03-01') DIV 7) * 5
-  -- Add remaining days, subtract weekend days in the remainder
-  + GREATEST(
-      LEAST(
-        WEEKDAY('2026-03-31') + 1,  -- day index of end (Mon=1 ... Fri=5)
-        5
-      ) - GREATEST(
-        WEEKDAY('2026-03-01'),       -- day index of start (Mon=0 ... Sun=6)
-        0
-      ),
-      0
-    ) AS business_days;
+  -- Add weekdays in the remaining partial week
+  + LEAST(WEEKDAY('2026-03-31') + 1, 5)   -- weekdays up to end day, capped at 5
+  - LEAST(WEEKDAY('2026-03-01') + 1, 5)   -- weekdays up to start day, capped at 5
+  + IF(WEEKDAY('2026-03-31') < WEEKDAY('2026-03-01'), 5, 0) -- adjust for week wrap-around
+  AS business_days;
 ```
 
 For most practical uses, a stored function is the cleanest solution.
@@ -53,30 +47,18 @@ CREATE FUNCTION BUSINESS_DAYS(start_date DATE, end_date DATE)
 RETURNS INT
 DETERMINISTIC
 BEGIN
-  DECLARE total_days INT;
   DECLARE full_weeks INT;
-  DECLARE remaining  INT;
   DECLARE start_wd   INT;
   DECLARE end_wd     INT;
 
-  SET total_days = DATEDIFF(end_date, start_date);
-  SET full_weeks = total_days DIV 7;
-  SET remaining  = total_days MOD 7;
+  SET full_weeks = DATEDIFF(end_date, start_date) DIV 7;
   SET start_wd   = WEEKDAY(start_date);   -- 0=Mon ... 6=Sun
   SET end_wd     = WEEKDAY(end_date);
 
   RETURN full_weeks * 5
-    + CASE
-        WHEN remaining = 0 THEN 0
-        WHEN start_wd + remaining <= 4  THEN remaining
-        WHEN start_wd + remaining  = 5  THEN remaining - 1
-        WHEN start_wd + remaining  = 6  THEN remaining - 1
-        WHEN start_wd + remaining  = 7  THEN remaining - 2
-        WHEN start_wd + remaining  = 8  THEN remaining - 2
-        WHEN start_wd + remaining  = 9  THEN remaining - 2
-        WHEN start_wd + remaining >= 10 THEN remaining - 2
-        ELSE 0
-      END;
+    + LEAST(end_wd + 1, 5)
+    - LEAST(start_wd + 1, 5)
+    + IF(end_wd < start_wd, 5, 0);
 END$$
 
 DELIMITER ;
@@ -91,22 +73,22 @@ SELECT BUSINESS_DAYS('2026-03-01', '2026-03-31') AS working_days;
 
 ## Quick Inline Query Without a Function
 
-If you cannot create stored functions, a simpler inline approximation counts calendar days then subtracts weekends:
+If you cannot create stored functions, use the same week-arithmetic formula inline:
 
 ```sql
 SELECT
   s.start_date,
   s.end_date,
-  DATEDIFF(s.end_date, s.start_date) + 1
-    - 2 * (DATEDIFF(s.end_date, s.start_date) DIV 7)
-    - (WEEKDAY(s.end_date) >= 5)
-    - (WEEKDAY(s.start_date) = 6) AS business_days
+  (DATEDIFF(s.end_date, s.start_date) DIV 7) * 5
+    + LEAST(WEEKDAY(s.end_date) + 1, 5)
+    - LEAST(WEEKDAY(s.start_date) + 1, 5)
+    + IF(WEEKDAY(s.end_date) < WEEKDAY(s.start_date), 5, 0) AS business_days
 FROM (
   SELECT '2026-03-01' AS start_date, '2026-03-31' AS end_date
 ) s;
 ```
 
-This is an approximation that works well for ranges of several weeks but may be off by 1 in edge cases involving partial weeks. Test against a calendar for your specific range.
+This produces the same exact result as the stored function and works for any date range.
 
 ## Apply to a Table
 
