@@ -65,7 +65,7 @@ export const Product = models.Product ?? model<IProduct>('Product', schema);
 import { serve }      from '@hono/node-server';
 import { Hono }       from 'hono';
 import { connectDB }  from './db';
-import { Product }    from './models/product';
+import { Product, IProduct } from './models/product';
 
 const app = new Hono();
 
