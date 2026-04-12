@@ -90,7 +90,7 @@ REVOKE SELECT ON mydb.orders FROM 'analyst'@'%';
 | Global | `ON *.*` | All databases and tables |
 | Database | `ON db.*` | All tables in one database |
 | Table | `ON db.table` | One specific table |
-| Column | `ON db.table (col1, col2)` | Specific columns in a table |
+| Column | `priv (col1, col2) ON db.table` | Specific columns in a table |
 
 ## Practical Example - Audit User
 
