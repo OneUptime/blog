@@ -10,7 +10,7 @@ Description: Connect to a remote MySQL server from the command line by configuri
 
 ## How It Works
 
-By default, MySQL listens only on `127.0.0.1` (localhost). To accept remote connections, you must configure `bind-address`, create a MySQL user with a remote host in their account definition, open the firewall port, and optionally enforce SSL/TLS.
+By default, most Linux distribution packages configure MySQL to listen only on `127.0.0.1` (localhost). To accept remote connections, you must configure `bind-address`, create a MySQL user with a remote host in their account definition, open the firewall port, and optionally enforce SSL/TLS.
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ flowchart LR
 
 ## Step 1 - Configure bind-address on the Server
 
-By default, MySQL only listens on `127.0.0.1`. Edit `my.cnf` to listen on the server's private IP or all interfaces.
+Most Linux distribution packages set `bind-address` to `127.0.0.1`. Edit `my.cnf` to listen on the server's private IP or all interfaces.
 
 ```bash
 # Ubuntu / Debian
@@ -51,7 +51,11 @@ bind-address = 0.0.0.0
 Restart MySQL.
 
 ```bash
+# Ubuntu / Debian
 sudo systemctl restart mysql
+
+# RHEL-based
+sudo systemctl restart mysqld
 ```
 
 Verify the server is listening on the new address.
@@ -240,7 +244,7 @@ mysql
 |---|---|
 | `Can't connect to MySQL server on 'x.x.x.x'` | bind-address not set, firewall blocking |
 | `Access denied for user 'u'@'x.x.x.x'` | User not created for that host |
-| `Host 'x.x.x.x' is blocked` | Too many failed logins - run `FLUSH HOSTS` |
+| `Host 'x.x.x.x' is blocked` | Too many failed logins - run `TRUNCATE TABLE performance_schema.host_cache` |
 | `SSL connection error` | SSL required but not configured on client |
 
 ## Summary
