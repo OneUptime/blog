@@ -81,12 +81,12 @@ ORDER BY team_a_player, team_b_player;
 +---------------+---------------+
 | team_a_player | team_b_player |
 +---------------+---------------+
+| NULL          | Eve           |
+| NULL          | Frank         |
 | Alice         | NULL          |
 | Bob           | Bob           |
 | Carol         | Carol         |
 | Dave          | NULL          |
-| NULL          | Eve           |
-| NULL          | Frank         |
 +---------------+---------------+
 ```
 
