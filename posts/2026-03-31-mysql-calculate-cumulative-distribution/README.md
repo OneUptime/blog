@@ -14,7 +14,7 @@ The cumulative distribution function (CDF) tells you the fraction of values in a
 
 ## CUME_DIST() Basics
 
-`CUME_DIST()` returns a value between 0 and 1 representing the proportion of rows with a value less than or equal to the current row:
+`CUME_DIST()` returns a value in the range (0, 1] representing the proportion of rows with a value less than or equal to the current row. It is never 0 because the current row is always counted:
 
 ```sql
 SELECT
