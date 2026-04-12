@@ -85,6 +85,7 @@ Create `/etc/xinetd.d/mysqlchk`:
 ```text
 service mysqlchk
 {
+  type = UNLISTED
   disable = no
   flags = REUSE
   socket_type = stream
@@ -123,6 +124,7 @@ Then use `option httpchk GET /` and `server primary ... check port 9200` in HAPr
 ```text
 listen stats
   bind *:8080
+  mode http
   stats enable
   stats uri /stats
   stats auth admin:secret
