@@ -1,22 +1,21 @@
-# How to Use MongoDB with KeystoneJS
+# How to Use PostgreSQL with KeystoneJS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, KeystoneJS, Node.js
+Tags: PostgreSQL, KeystoneJS, Node.js
 
-Description: Build a content management backend with KeystoneJS and MongoDB, defining lists, fields, and access control with the Keystone GraphQL API.
+Description: Build a content management backend with KeystoneJS and PostgreSQL, defining lists, fields, and access control with the Keystone GraphQL API.
 
 ---
 
-## KeystoneJS and MongoDB
+## KeystoneJS and PostgreSQL
 
-KeystoneJS is a Node.js headless CMS and web application framework that auto-generates a GraphQL API from your schema definitions. It supports both PostgreSQL and MongoDB through its `@keystone-6/core` package, making it a good choice when you need a content API backed by MongoDB's flexible document model.
+KeystoneJS is a Node.js headless CMS and web application framework that auto-generates a GraphQL API from your schema definitions. It supports PostgreSQL, MySQL, and SQLite through its `@keystone-6/core` package, using Prisma as its database layer. PostgreSQL is the recommended database for production use.
 
 ## Project Setup
 
 ```bash
-npm init keystone-app@latest my-cms
-# Choose MongoDB when prompted
+npm create keystone-app@latest my-cms
 cd my-cms
 npm install
 ```
@@ -24,7 +23,8 @@ npm install
 Or set up manually:
 
 ```bash
-npm install @keystone-6/core mongoose
+npm install @keystone-6/core @prisma/client
+npm install --save-dev prisma
 ```
 
 ## Configuration
@@ -37,8 +37,8 @@ import { Post } from './schema'
 
 export default config({
   db: {
-    provider: 'mongodb',
-    url: process.env.DATABASE_URL || 'mongodb://localhost:27017/myapp',
+    provider: 'postgresql',
+    url: process.env.DATABASE_URL || 'postgresql://localhost:5432/myapp',
   },
   lists: {
     Post,
@@ -138,26 +138,25 @@ mutation CreatePost($title: String!, $slug: String!) {
 }
 ```
 
-## Custom Query with Raw MongoDB
+## Custom Query with Prisma
 
-For operations outside the Keystone API:
+For operations outside the Keystone API, you can use the Keystone context to access Prisma directly:
 
 ```typescript
 import { getContext } from '@keystone-6/core/context'
 import config from './keystone'
+import * as PrismaModule from '.prisma/client'
 
-const context = getContext(config, PrismaClient)
+const context = getContext(config, PrismaModule)
 
-// Direct MongoDB query via Mongoose
-const mongoose = require('mongoose')
-const db = mongoose.connection.db
-const topPosts = await db.collection('Post')
-  .find({ status: 'published' })
-  .sort({ viewCount: -1 })
-  .limit(5)
-  .toArray()
+// Direct Prisma query
+const topPosts = await context.prisma.post.findMany({
+  where: { status: { equals: 'published' } },
+  orderBy: { viewCount: 'desc' },
+  take: 5,
+})
 ```
 
 ## Summary
 
-KeystoneJS with MongoDB provides an auto-generated GraphQL API from your list schema definitions, plus an admin UI for content management. Define your lists in `keystone.ts` with field types, relationships, and access control rules. Keystone handles the MongoDB connection, schema migrations, and GraphQL resolver generation, letting you focus on your data model rather than boilerplate infrastructure code.
+KeystoneJS with PostgreSQL provides an auto-generated GraphQL API from your list schema definitions, plus an admin UI for content management. Define your lists in `keystone.ts` with field types, relationships, and access control rules. Keystone handles the database connection, schema migrations via Prisma, and GraphQL resolver generation, letting you focus on your data model rather than boilerplate infrastructure code.
