@@ -74,15 +74,17 @@ You can log to both file and table simultaneously:
 SET GLOBAL log_output = 'FILE,TABLE';
 ```
 
-## Logging Only for a Specific Session
+## Suppressing Logging for a Specific Session
 
-To debug a single application connection without flooding the global log, enable logging just for the current session:
+When the general query log is enabled globally, you can suppress logging for individual sessions that you do not need to capture:
 
 ```sql
-SET SESSION sql_log_off = OFF;
+SET SESSION sql_log_off = ON;
 ```
 
-Note: `sql_log_off = ON` suppresses logging for the session. Setting it to `OFF` ensures the current session is logged even if others are suppressed.
+This is useful when the general log is active for debugging but certain connections (such as monitoring or health-check queries) are generating noise. By default `sql_log_off` is `OFF`, meaning all sessions are logged when the general log is on. Setting it to `ON` for a session prevents that session's statements from being recorded.
+
+Note: `sql_log_off` only suppresses logging for a session when the global general log is already enabled. It cannot enable per-session logging when `general_log` is `OFF`.
 
 ## Truncating the Log Table
 
