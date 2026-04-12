@@ -21,8 +21,8 @@ The setting accepts values from 0 to 6, with each level progressively more aggre
 | 2 | Prevent master thread and purge thread from running |
 | 3 | Skip transaction rollbacks during recovery |
 | 4 | Skip insert buffer merge operations |
-| 5 | Skip undo log lookups for read views (dangerous) |
-| 6 | Skip corrupted pages without crashing; very dangerous |
+| 5 | Do not look at undo logs at startup; treat incomplete transactions as committed (dangerous) |
+| 6 | Skip redo log roll-forward during recovery; very dangerous |
 
 Levels 4, 5, and 6 can result in data appearing inconsistent or missing. Always dump data immediately after achieving startup at these levels.
 
@@ -99,10 +99,12 @@ After exporting data, rebuild a clean MySQL instance:
 # Stop MySQL
 sudo systemctl stop mysql
 
-# Remove corrupted InnoDB files
-sudo rm /var/lib/mysql/ibdata1
-sudo rm /var/lib/mysql/ib_logfile*
-sudo rm /var/lib/mysql/*.ibd 2>/dev/null
+# Back up and remove the corrupted data directory
+sudo mv /var/lib/mysql /var/lib/mysql.bak
+
+# Create a fresh empty data directory
+sudo mkdir /var/lib/mysql
+sudo chown mysql:mysql /var/lib/mysql
 
 # Remove force recovery setting from my.cnf
 sudo sed -i '/innodb_force_recovery/d' /etc/mysql/mysql.conf.d/mysqld.cnf
@@ -110,7 +112,7 @@ sudo sed -i '/innodb_force_recovery/d' /etc/mysql/mysql.conf.d/mysqld.cnf
 # Initialize a clean data directory
 sudo mysqld --initialize --user=mysql
 
-# Start MySQL and restore
+# Start MySQL and restore (use the temporary root password from --initialize output)
 sudo systemctl start mysql
 mysql -u root -p < /backup/emergency_dump_$(date +%Y%m%d).sql
 ```
