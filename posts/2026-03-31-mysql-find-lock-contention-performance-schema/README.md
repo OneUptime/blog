@@ -42,10 +42,11 @@ SELECT
   b.trx_mysql_thread_id AS blocking_thread,
   b.trx_query AS blocking_query,
   TIMESTAMPDIFF(SECOND, r.trx_wait_started, NOW()) AS wait_seconds
-FROM information_schema.INNODB_TRX r
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.INNODB_TRX r
+  ON w.REQUESTING_ENGINE_TRANSACTION_ID = r.trx_id
 JOIN information_schema.INNODB_TRX b
-  ON r.trx_wait_started IS NOT NULL
- AND b.trx_id = r.trx_wait_started
+  ON w.BLOCKING_ENGINE_TRANSACTION_ID = b.trx_id
 ORDER BY wait_seconds DESC;
 ```
 
@@ -96,7 +97,7 @@ SELECT
   t.PROCESSLIST_USER,
   t.PROCESSLIST_DB,
   e.EVENT_NAME,
-  e.WAIT_SOURCE,
+  e.SOURCE,
   e.TIMER_WAIT / 1000000000 AS wait_ms
 FROM performance_schema.threads t
 JOIN performance_schema.events_waits_current e
