@@ -148,8 +148,8 @@ SELECT
     -- Bit 0 (value 1) = product is rollup
     CASE GROUPING(region, product)
         WHEN 3 THEN 'Grand Total'
-        WHEN 2 THEN 'Region Subtotal'
-        WHEN 1 THEN 'Product Subtotal'
+        WHEN 1 THEN 'Region Subtotal'
+        WHEN 2 THEN 'Product Subtotal'
         WHEN 0 THEN 'Detail Row'
     END AS row_type
 FROM quarterly_sales
@@ -158,18 +158,18 @@ ORDER BY grp_bitmask DESC, region, product;
 ```
 
 ```text
-+--------+---------+----------+-------------+------------------+
-| region | product | total    | grp_bitmask | row_type         |
-+--------+---------+----------+-------------+------------------+
-| NULL   | NULL    | 55500.00 | 3           | Grand Total      |
-| NULL   | NULL    |  9500.00 | 2           | Region Subtotal  |
-| North  | NULL    | 26000.00 | 2           | Region Subtotal  |
-| South  | NULL    | 20000.00 | 2           | Region Subtotal  |
-| NULL   | Gadget  |  4500.00 | 0           | Detail Row       |
-| NULL   | Widget  |  5000.00 | 0           | Detail Row       |
-| North  | Widget  | 26000.00 | 0           | Detail Row       |
-| South  | Gadget  | 20000.00 | 0           | Detail Row       |
-+--------+---------+----------+-------------+------------------+
++--------+---------+----------+-------------+-----------------+
+| region | product | total    | grp_bitmask | row_type        |
++--------+---------+----------+-------------+-----------------+
+| NULL   | NULL    | 55500.00 | 3           | Grand Total     |
+| NULL   | NULL    |  9500.00 | 1           | Region Subtotal |
+| North  | NULL    | 26000.00 | 1           | Region Subtotal |
+| South  | NULL    | 20000.00 | 1           | Region Subtotal |
+| NULL   | Gadget  |  4500.00 | 0           | Detail Row      |
+| NULL   | Widget  |  5000.00 | 0           | Detail Row      |
+| North  | Widget  | 26000.00 | 0           | Detail Row      |
+| South  | Gadget  | 20000.00 | 0           | Detail Row      |
++--------+---------+----------+-------------+-----------------+
 ```
 
 ### GROUPING with GROUPING SETS
