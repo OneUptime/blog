@@ -117,7 +117,6 @@ def get_connection():
         user='user',
         password='password',
         database='mydb',
-        autoReconnect=True,
         connection_timeout=60
     )
     return conn
