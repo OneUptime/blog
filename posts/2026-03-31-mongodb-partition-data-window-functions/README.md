@@ -157,7 +157,7 @@ db.products.aggregate([
 
 ## Aggregating the Entire Partition
 
-Omitting the `window` key on an accumulator uses the entire partition:
+To compute a value across the entire partition when `sortBy` is specified, set the window to span all documents explicitly:
 
 ```javascript
 db.employees.aggregate([
@@ -167,8 +167,8 @@ db.employees.aggregate([
       sortBy: { salary: -1 },
       output: {
         deptAvgSalary: {
-          $avg: "$salary"
-          // no window key = whole partition
+          $avg: "$salary",
+          window: { documents: ["unbounded", "unbounded"] }
         },
         salaryRank: { $rank: {} }
       }
