@@ -134,7 +134,7 @@ SHOW VARIABLES LIKE 'innodb_%log_encrypt%';
 
 ```text
 [mysqld]
-encrypt_binlog = ON
+binlog_encryption = ON
 ```
 
 ## Key Rotation
