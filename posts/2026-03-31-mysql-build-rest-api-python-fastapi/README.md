@@ -14,7 +14,7 @@ FastAPI is a modern Python web framework that supports async request handling. P
 
 ```bash
 mkdir fastapi-mysql-api && cd fastapi-mysql-api
-pip install fastapi uvicorn sqlalchemy asyncmy aiomysql python-dotenv pydantic-settings
+pip install fastapi uvicorn sqlalchemy asyncmy python-dotenv pydantic-settings
 ```
 
 ## Database Setup
@@ -61,13 +61,14 @@ from sqlalchemy import Integer, Numeric, String, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 from datetime import datetime
+from decimal import Decimal
 
 class Order(Base):
     __tablename__ = 'orders'
 
     id:         Mapped[int]      = mapped_column(Integer, primary_key=True)
     user_id:    Mapped[int]      = mapped_column(Integer, nullable=False)
-    total:      Mapped[float]    = mapped_column(Numeric(10, 2), nullable=False)
+    total:      Mapped[Decimal]  = mapped_column(Numeric(10, 2), nullable=False)
     status:     Mapped[str]      = mapped_column(String(20), default='pending')
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 ```
@@ -154,6 +155,8 @@ async def update_status(order_id: int, body: OrderStatus, db: AsyncSession = Dep
 ```python
 # app/main.py
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from .routers.orders import router as orders_router
 from .database import engine
 
@@ -164,10 +167,10 @@ app.include_router(orders_router)
 async def health():
     try:
         async with engine.connect() as conn:
-            await conn.execute(engine.dialect.statement_compiler(None, None))
+            await conn.execute(text("SELECT 1"))
         return {'status': 'ok'}
     except Exception:
-        return {'status': 'error'}, 503
+        return JSONResponse(content={'status': 'error'}, status_code=503)
 ```
 
 ```bash
@@ -176,4 +179,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
 ## Summary
 
-A FastAPI MySQL REST API using SQLAlchemy's async engine handles database queries without blocking the event loop, enabling higher throughput under concurrent load. Pydantic models provide automatic request validation and response serialization, while `pool_pre_ping=True` ensures stale connections are recycled automatically. FastAPI's automatic OpenAPI documentation is generated at `/docs`.
+A FastAPI MySQL REST API using SQLAlchemy's async engine handles database queries without blocking the event loop, enabling higher throughput under concurrent load. Pydantic models provide automatic request validation and response serialization, while `pool_pre_ping=True` tests connections before checkout and invalidates stale ones automatically. FastAPI's automatic OpenAPI documentation is generated at `/docs`.
