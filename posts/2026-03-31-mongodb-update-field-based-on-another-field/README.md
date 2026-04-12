@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Update, Aggregation, Pipeline
 
-Description: Learn how to update a MongoDB field using the value of another field in the same document, using update pipeline expressions and $set with $expr.
+Description: Learn how to update a MongoDB field using the value of another field in the same document, using update pipeline expressions and $set with aggregation operators.
 
 ---
 
@@ -159,4 +159,4 @@ console.log(`Updated ${result.modifiedCount} documents`);
 
 ## Summary
 
-Use update pipelines (an array as the second argument) to reference document fields during an update. Aggregation expressions like `$multiply`, `$add`, `$concat`, `$cond`, and `$dateAdd` all work inside update pipeline stages. This feature requires MongoDB 4.2 or later. For complex multi-step transformations, chain multiple `$set` stages in the same array.
+Use update pipelines (an array as the second argument) to reference document fields during an update. Aggregation expressions like `$multiply`, `$add`, `$concat`, and `$cond` all work inside update pipeline stages. This feature requires MongoDB 4.2 or later. The `$dateAdd` operator requires MongoDB 5.0 or later. For complex multi-step transformations, chain multiple `$set` stages in the same array.
