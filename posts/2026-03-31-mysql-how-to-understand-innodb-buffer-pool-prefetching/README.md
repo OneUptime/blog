@@ -114,7 +114,7 @@ For a nightly batch export job that reads millions of rows sequentially, lower t
 
 ```sql
 -- Before batch job
-SET SESSION innodb_read_ahead_threshold = 16;
+SET GLOBAL innodb_read_ahead_threshold = 16;
 
 -- Run the batch export
 SELECT * FROM large_events_table
@@ -122,7 +122,7 @@ ORDER BY event_date
 INTO OUTFILE '/tmp/export.csv';
 
 -- Restore default
-SET SESSION innodb_read_ahead_threshold = 56;
+SET GLOBAL innodb_read_ahead_threshold = 56;
 ```
 
 ## Summary
