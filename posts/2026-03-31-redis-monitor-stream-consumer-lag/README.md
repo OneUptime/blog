@@ -88,18 +88,23 @@ if stuck:
 
 ## Computing Lag on Redis < 7.0
 
-For older Redis versions without the `lag` field:
+For older Redis versions without the `lag` and `entries-read` fields, count entries after the last delivered ID using `XRANGE`:
 
 ```python
 def compute_lag_legacy(stream, group):
-    stream_info = r.xinfo_stream(stream)
     group_info = next(g for g in r.xinfo_groups(stream) if g['name'] == group)
+    last_id = group_info['last-delivered-id']
 
-    stream_length = stream_info['length']
-    entries_read = group_info.get('entries-read') or 0
+    if last_id == '0-0':
+        # No messages delivered yet, lag is the full stream length
+        return r.xlen(stream)
 
-    return max(0, stream_length - entries_read)
+    # XRANGE is inclusive so the result includes last-delivered-id itself
+    entries_after = r.xrange(stream, last_id, '+')
+    return max(0, len(entries_after) - 1)
 ```
+
+Note: This scans entries after the cursor, so it may be slow for very large backlogs. Upgrade to Redis 7.0+ for the O(1) `lag` field.
 
 ## Setting Up Lag Alerts
 
