@@ -87,19 +87,27 @@ If `matchedCount` differs from `modifiedCount`, some documents already had the t
 - Add an index on the filter field to avoid a collection scan.
 
 ```javascript
-// Batched approach using a loop
-let hasMore = true;
-while (hasMore) {
-  const result = await db.collection("logs").updateMany(
-    { archived: false, createdAt: { $lt: cutoffDate } },
-    { $set: { archived: true } },
-    { limit: 1000 }  // Note: limit is not a real updateMany option; use find+bulkWrite for true batching
-  );
-  hasMore = result.modifiedCount > 0;
+// Batched approach using find + bulkWrite
+const batchSize = 1000;
+
+while (true) {
+  const docs = await db.collection("logs")
+    .find({ archived: false, createdAt: { $lt: cutoffDate } })
+    .limit(batchSize)
+    .toArray();
+
+  if (docs.length === 0) break;
+
+  const ops = docs.map(doc => ({
+    updateOne: {
+      filter: { _id: doc._id },
+      update: { $set: { archived: true } }
+    }
+  }));
+
+  await db.collection("logs").bulkWrite(ops);
 }
 ```
-
-For true batching, use `find()` + `bulkWrite()`.
 
 ## Common Mistakes
 
