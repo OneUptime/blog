@@ -102,7 +102,7 @@ innodb_io_capacity_max       - burst cap
 innodb_adaptive_flushing     - dynamic flush rate adjustment
 ```
 
-## Log Writer and Flusher Threads (MySQL 8.0.11+)
+## Log Writer and Flusher Threads (MySQL 8.0.22+)
 
 MySQL 8.0 split the log flushing work into dedicated threads:
 
