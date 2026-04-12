@@ -23,7 +23,7 @@ const accountSchema = new mongoose.Schema({
   // Pessimistic lock fields
   lockedBy: { type: String, default: null },
   lockedAt: { type: Date, default: null },
-  lockExpiresAt: { type: Date, default: null, index: { expireAfterSeconds: 0 } },
+  lockExpiresAt: { type: Date, default: null },
 });
 
 module.exports = mongoose.model('Account', accountSchema);
@@ -34,12 +34,9 @@ module.exports = mongoose.model('Account', accountSchema);
 Use an atomic findOneAndUpdate to set the lock only if it is not currently held:
 
 ```javascript
-const crypto = require('crypto');
-
 const LOCK_DURATION_MS = 10000; // 10 seconds
 
 async function acquireLock(accountId, lockHolder) {
-  const lockToken = crypto.randomBytes(16).toString('hex');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + LOCK_DURATION_MS);
 
@@ -64,8 +61,6 @@ async function acquireLock(accountId, lockHolder) {
   if (!account) {
     throw new Error(`Account ${accountId} is currently locked`);
   }
-
-  return lockToken;
 }
 ```
 
