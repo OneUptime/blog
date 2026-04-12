@@ -43,8 +43,8 @@ The second approach enables all date operators in aggregation. Use raw numbers o
 If you must store as numbers, range queries work the same way:
 
 ```javascript
-const start = new Date("2026-03-01T00:00:00Z").getTime(); // 1740787200000
-const end   = new Date("2026-04-01T00:00:00Z").getTime(); // 1743465600000
+const start = new Date("2026-03-01T00:00:00Z").getTime(); // 1772323200000
+const end   = new Date("2026-04-01T00:00:00Z").getTime(); // 1775001600000
 
 db.events.find({
   epochMs: { $gte: start, $lt: end }
