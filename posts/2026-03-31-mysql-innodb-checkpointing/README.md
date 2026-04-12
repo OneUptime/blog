@@ -53,14 +53,13 @@ innodb_max_dirty_pages_pct_lwm - start flushing early below this watermark
 
 ## Sharp Checkpoint
 
-A sharp checkpoint writes ALL dirty pages to disk. This happens when MySQL shuts down cleanly (`innodb_fast_shutdown = 1` or `2` affects this behavior). A sharp checkpoint makes crash recovery instant after a clean shutdown.
+A sharp checkpoint writes ALL dirty pages to disk. This happens at shutdown when `innodb_fast_shutdown = 0`. With the default value of `1`, dirty pages are still flushed but full purge and change buffer merge are skipped. With a value of `2`, no flushing occurs and crash recovery is required at the next start. A sharp checkpoint (value `0`) makes crash recovery instant after shutdown.
 
 ```sql
--- Fast shutdown (default): no sharp checkpoint of all dirty pages
 SHOW VARIABLES LIKE 'innodb_fast_shutdown';
--- 0 = full purge + sharp checkpoint (slow but clean)
--- 1 = default (skip full purge)
--- 2 = crash recovery at next start (fastest stop)
+-- 0 = full purge + change buffer merge + sharp checkpoint (slow but clean)
+-- 1 = default (flush dirty pages, skip full purge and change buffer merge)
+-- 2 = flush logs only, crash recovery at next start (fastest stop)
 ```
 
 ## Tuning Flush Rate
@@ -78,7 +77,7 @@ Recommended settings for SSDs:
 innodb_io_capacity           = 4000
 innodb_io_capacity_max       = 8000
 innodb_max_dirty_pages_pct   = 10
-innodb_flush_neighbors       = 0    (no neighbor flushing on SSD)
+innodb_flush_neighbors       = 0    # no neighbor flushing on SSD
 ```
 
 For HDDs, `innodb_flush_neighbors = 1` groups adjacent page flushes to improve seek performance.
