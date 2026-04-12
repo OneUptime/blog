@@ -62,7 +62,7 @@ PARTITIONS 16;
 | Feature | KEY | HASH |
 |---|---|---|
 | Column types | Any | Integer expressions only |
-| Hash function | MySQL's internal MD5-based | User expression modulo N |
+| Hash function | MySQL's internal hashing function | User expression modulo N |
 | Default key | Uses primary key | Requires explicit expression |
 | Typical use | String or UUID primary keys | Integer-based sharding |
 
@@ -103,6 +103,10 @@ ORDER BY PARTITION_NAME;
 | p1             |     124891 |
 | p2             |     126012 |
 | p3             |     125299 |
+| p4             |     125100 |
+| p5             |     124750 |
+| p6             |     125688 |
+| p7             |     125328 |
 +----------------+------------+
 ```
 
