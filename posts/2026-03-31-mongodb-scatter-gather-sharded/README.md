@@ -24,7 +24,7 @@ You can also monitor `mongos` statistics:
 
 ```javascript
 db.serverStatus().shardingStatistics
-// totalBroadcastRequests vs totalRequestsWithTargetedShards
+// Check numHostsTargeted to see how operations are distributed across shards
 ```
 
 ## When Scatter-Gather is Unavoidable
@@ -53,7 +53,7 @@ If a shard is temporarily unavailable, this option returns partial results inste
 
 ```javascript
 db.orders.find({ status: "pending" })
-  .allowPartialResults(true)
+  .allowPartialResults()
   .toArray()
 ```
 
