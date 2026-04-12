@@ -22,7 +22,6 @@ The default `electionTimeoutMillis` is 10,000 ms (10 seconds). If your network o
 rs.reconfig({
   _id: "rs0",
   settings: {
-    heartbeatIntervalMillis: 2000,
     electionTimeoutMillis: 15000
   },
   members: [
@@ -93,7 +92,7 @@ rs.reconfig({
 
 ## Avoid Forced Reconfigurations During Peak Load
 
-Running `rs.reconfig()` always triggers an election cycle. Schedule reconfigurations during maintenance windows:
+Running `rs.reconfig()` can trigger an election, especially when changing the set of voting members or their hosts. In MongoDB 4.4+ a safer two-phase reconfig protocol reduces unnecessary elections, but reconfigurations should still be scheduled during maintenance windows:
 
 ```javascript
 // Check current load before reconfiguring
@@ -103,11 +102,11 @@ db.currentOp({ active: true })
 
 ## Alerting on Excess Elections
 
-Track the `replSetElectionDryRunOther` and `replSetElectionOther` counters in `db.serverStatus().repl.replicationElection` metrics to spot anomalies:
+Track election counters in `db.serverStatus().electionMetrics` to spot anomalies. Fields like `electionTimeout`, `priorityTakeover`, `catchUpTakeover`, and `stepUpCmd` each contain `called` and `successful` counts:
 
 ```javascript
 const stats = db.adminCommand({ serverStatus: 1 });
-printjson(stats.repl?.replicationElection);
+printjson(stats.electionMetrics);
 ```
 
 ## Summary
