@@ -219,20 +219,20 @@ Read concern levels for transactions:
 Be aware of these constraints:
 
 - Maximum transaction duration: 60 seconds by default (configurable with `transactionLifetimeLimitSeconds`)
-- Documents modified within a transaction must be less than 16MB total (the BSON document limit)
-- Transactions cannot create new collections; collections must exist before a transaction starts
+- Each individual document is still subject to the 16MB BSON document size limit
+- Before MongoDB 4.4, transactions could not create new collections. Starting with MongoDB 4.4, transactions can create collections and indexes
 - Transactions work only on replica sets and sharded clusters - not on standalone instances
 - Avoid long-running transactions; they hold locks and increase conflict risk
 
 ## Best Practices
 
-- Use `session.withTransaction()` (Node.js) or the `with session.start_transaction()` context manager (Python) - they handle retries and cleanup automatically.
+- Use `session.withTransaction()` (Node.js) or `session.with_transaction()` (Python) for automatic retry logic on transient errors. The `with session.start_transaction()` context manager in Python handles commit and abort but does not retry automatically.
 - Keep transactions as short as possible - minimize the number of operations and avoid user interaction mid-transaction.
-- Pre-create all collections before starting a transaction.
+- Pre-create all collections before starting a transaction (required before MongoDB 4.4).
 - Use `readConcern: snapshot` and `writeConcern: majority` for financial or inventory operations.
 - Handle `TransientTransactionError` and `UnknownTransactionCommitResult` errors explicitly in low-level code.
 - Monitor transaction metrics via `db.serverStatus().transactions`.
 
 ## Summary
 
-MongoDB provides full ACID multi-document transactions for replica sets (4.0+) and sharded clusters (4.2+). Use `session.startTransaction()` to begin, and commit or abort based on whether all operations succeeded. The `withTransaction()` helper in Node.js and the context manager in Python handle retries and cleanup. Keep transactions short, use `snapshot` read concern for consistency, and pre-create all collections before starting a transaction.
+MongoDB provides full ACID multi-document transactions for replica sets (4.0+) and sharded clusters (4.2+). Use `session.startTransaction()` to begin, and commit or abort based on whether all operations succeeded. The `withTransaction()` helper in Node.js and `with_transaction()` in Python handle retries and cleanup. Keep transactions short, use `snapshot` read concern for consistency, and pre-create collections before starting a transaction if using MongoDB versions prior to 4.4.
