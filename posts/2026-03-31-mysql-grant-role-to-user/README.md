@@ -68,11 +68,13 @@ Output now includes the role's privileges:
 +-----------------------------------------------------------+
 ```
 
-## Checking Roles via information_schema
+## Checking Roles via mysql.role_edges
+
+Query role assignments for a specific user:
 
 ```sql
 SELECT FROM_USER, FROM_HOST, TO_USER, TO_HOST, WITH_ADMIN_OPTION
-FROM information_schema.ROLE_TABLE_GRANTS
+FROM mysql.role_edges
 WHERE TO_USER = 'alice';
 ```
 
