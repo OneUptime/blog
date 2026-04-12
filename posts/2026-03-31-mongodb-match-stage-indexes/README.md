@@ -180,7 +180,7 @@ MongoDB can use indexes with `$or` if each branch of the `$or` has its own index
 db.events.createIndex({ type: 1 });
 db.events.createIndex({ userId: 1 });
 
-// $or query can use index intersection or multiple index scans
+// $or query uses a separate index scan per branch and merges results
 db.events.aggregate([
   { $match: {
     $or: [
