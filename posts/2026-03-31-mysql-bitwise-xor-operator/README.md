@@ -98,7 +98,7 @@ SELECT name, permissions
 FROM users
 WHERE (permissions & 3) = (1 ^ 2);
 -- 1 ^ 2 = 3, so this finds users where both are set
--- For exactly one, use: (permissions & 1) != (permissions & 2)
+-- For exactly one, use: (permissions & 3) IN (1, 2)
 ```
 
 ## Using XOR for Parity Checks
