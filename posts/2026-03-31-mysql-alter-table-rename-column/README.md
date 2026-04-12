@@ -11,7 +11,7 @@ Description: Rename a MySQL column using ALTER TABLE RENAME COLUMN (MySQL 8.0) o
 ## How It Works
 
 MySQL provides two ways to rename a column:
-- `RENAME COLUMN` - available since MySQL 8.0.4, changes only the name, leaves definition unchanged
+- `RENAME COLUMN` - available since MySQL 8.0, changes only the name, leaves definition unchanged
 - `CHANGE COLUMN` - available in all MySQL versions, requires you to repeat the full column definition
 
 ```mermaid
