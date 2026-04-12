@@ -42,7 +42,7 @@ integrations:
       PASSWORD: newrelicPass
       AUTH_SOURCE: admin
       SSL: false
-      CLUSTER_NAME: production-cluster
+      MONGODB_CLUSTER_NAME: production-cluster
       METRICS: true
       INVENTORY: true
       EVENTS: true
@@ -89,6 +89,7 @@ async function findUsers() {
 import newrelic.agent
 newrelic.agent.initialize("newrelic.ini")
 
+import os
 from pymongo import MongoClient
 
 @newrelic.agent.function_trace()
@@ -104,21 +105,21 @@ Once data is flowing, use NRQL to analyze MongoDB performance:
 
 ```sql
 -- Check connection usage over time
-SELECT average(mongodb.connections.current)
-FROM Metric
+SELECT average(connections.current)
+FROM MongodSample
 WHERE clusterName = 'production-cluster'
 TIMESERIES 5 minutes
 SINCE 1 hour ago
 
--- Find slowest collections
-SELECT average(mongodb.collection.avgObjSize)
-FROM Metric
+-- Find collections with largest average document size
+SELECT average(collection.avgObjSizeInBytes)
+FROM MongoCollectionSample
 FACET collectionName
 SINCE 1 hour ago
 
 -- Replication lag
-SELECT latest(mongodb.replset.lag)
-FROM Metric
+SELECT latest(replset.replicationLag)
+FROM MongodSample
 FACET memberName
 TIMESERIES
 ```
@@ -126,15 +127,15 @@ TIMESERIES
 ## Creating an Alert Condition
 
 ```bash
-# Using New Relic CLI
-newrelic alerts conditions create \
-  --policy-id <POLICY_ID> \
-  --name "MongoDB High Connection Count" \
-  --type static \
-  --metric "mongodb.connections.current" \
-  --threshold 800 \
-  --threshold-duration 5 \
-  --threshold-occurrences ALL
+# Create a NRQL alert condition via New Relic NerdGraph API
+curl -s https://api.newrelic.com/graphql \
+  -H "Content-Type: application/json" \
+  -H "Api-Key: <YOUR_API_KEY>" \
+  -d @- <<'EOF'
+{
+  "query": "mutation { alertsNrqlConditionStaticCreate(accountId: <YOUR_ACCOUNT_ID>, policyId: \"<POLICY_ID>\", condition: { name: \"MongoDB High Connection Count\", enabled: true, nrql: { query: \"SELECT average(connections.current) FROM MongodSample WHERE clusterName = 'production-cluster'\" }, terms: [{ threshold: 800, thresholdDuration: 300, thresholdOccurrences: ALL, operator: ABOVE, priority: CRITICAL }] }) { id name } }"
+}
+EOF
 ```
 
 ## Summary
