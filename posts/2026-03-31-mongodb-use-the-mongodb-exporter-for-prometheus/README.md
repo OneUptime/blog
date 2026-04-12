@@ -98,8 +98,8 @@ mongodb_mem_virtual_mb                       - Virtual memory (MB)
 
 # Replication metrics
 mongodb_replset_member_health               - Member health (1=healthy)
-mongodb_replset_oplog_tail_timestamp        - Primary oplog position
-mongodb_replset_oplog_head_timestamp        - Secondary oplog position
+mongodb_replset_oplog_head_timestamp        - Latest oplog entry timestamp
+mongodb_replset_oplog_tail_timestamp        - Oldest oplog entry timestamp
 
 # WiredTiger cache
 mongodb_wiredtiger_cache_bytes_currently_in_cache - Cache used
@@ -129,13 +129,13 @@ groups:
         annotations:
           summary: "MongoDB connections above 800"
 
-      - alert: MongoDBReplicationLag
-        expr: (mongodb_replset_oplog_tail_timestamp - mongodb_replset_oplog_head_timestamp) > 30
+      - alert: MongoDBOplogWindowSmall
+        expr: (mongodb_replset_oplog_head_timestamp - mongodb_replset_oplog_tail_timestamp) < 3600
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "MongoDB replication lag exceeds 30 seconds"
+          summary: "MongoDB oplog window is less than 1 hour"
 ```
 
 ## Summary
