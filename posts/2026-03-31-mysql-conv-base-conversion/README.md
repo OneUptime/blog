@@ -20,7 +20,7 @@ CONV(N, from_base, to_base)
 
 - `N` - the number to convert, given as a string or integer.
 - `from_base` - the base of the input number (2 to 36).
-- `to_base` - the target base (2 to 36). A negative value causes unsigned conversion.
+- `to_base` - the target base (2 to 36). A negative value causes signed conversion (preserves the minus sign for negative numbers).
 - Returns `NULL` if any argument is `NULL`, if `from_base` or `to_base` is out of range, or if `N` contains characters invalid for `from_base`.
 
 ---
@@ -75,9 +75,9 @@ SELECT CONV('LFLS', 36, 10);
 
 ---
 
-## Negative `to_base` for Unsigned Representation
+## Negative Numbers and Unsigned Behavior
 
-Using a negative `to_base` treats the number as unsigned (64-bit):
+With positive bases (the default), `CONV()` treats numbers as unsigned 64-bit integers. A negative input wraps around to its unsigned equivalent:
 
 ```sql
 SELECT CONV(-1, 10, 16);
@@ -127,10 +127,10 @@ Store large integer IDs in a shorter representation for URLs or tokens:
 ```sql
 -- Shorten a large user ID for a URL slug
 SELECT CONV(9876543210, 10, 36) AS short_id;
--- Returns: '4LDQYJ' (much shorter than the decimal)
+-- Returns: '4JC8LII' (much shorter than the decimal)
 
 -- Expand it back
-SELECT CONV('4LDQYJ', 36, 10) AS user_id;
+SELECT CONV('4JC8LII', 36, 10) AS user_id;
 -- Returns: '9876543210'
 ```
 
@@ -192,7 +192,7 @@ FROM network_data;
 ```sql
 SELECT CONV(NULL, 10, 16);     -- NULL
 SELECT CONV('XYZ', 16, 10);    -- NULL (X and Y are invalid for base 16)
-SELECT CONV('GH', 36, 10);     -- NULL (G is fine, H is fine in base 36... both valid A-Z)
+SELECT CONV('GH', 36, 10);     -- '593' (G=16, H=17, both valid in base 36)
 SELECT CONV('', 10, 16);       -- '0'
 SELECT CONV(0, 10, 2);         -- '0'
 ```
