@@ -64,8 +64,8 @@ Use `startAtOperationTime` when you do not have a resume token but know the wall
 ```javascript
 const { Timestamp } = require("mongodb");
 
-// Replay events starting from a specific Unix timestamp (seconds, increment)
-const startTime = Timestamp.fromNumber(Math.floor(Date.now() / 1000) - 3600); // 1 hour ago
+// Replay events starting from a specific Unix timestamp
+const startTime = new Timestamp({ t: Math.floor(Date.now() / 1000) - 3600, i: 0 }); // 1 hour ago
 
 const stream = collection.watch([], {
   startAtOperationTime: startTime
