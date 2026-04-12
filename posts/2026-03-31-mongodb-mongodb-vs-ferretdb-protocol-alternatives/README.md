@@ -10,7 +10,7 @@ Description: Compare MongoDB and FerretDB, an open-source MongoDB-compatible dat
 
 ## Overview
 
-FerretDB is an open-source database that speaks the MongoDB wire protocol but stores data in PostgreSQL or SQLite under the hood. It was created in response to MongoDB's Server Side Public License (SSPL), which restricts cloud providers from offering MongoDB as a service. FerretDB aims to be a drop-in replacement for MongoDB workloads that want a fully open-source stack.
+FerretDB is an open-source database that speaks the MongoDB wire protocol but stores data in PostgreSQL under the hood. It was created in response to MongoDB's Server Side Public License (SSPL), which restricts cloud providers from offering MongoDB as a service. FerretDB aims to be a drop-in replacement for MongoDB workloads that want a fully open-source stack.
 
 ## Wire Protocol Compatibility
 
@@ -34,7 +34,7 @@ You can switch from MongoDB to FerretDB by changing only the connection string:
 MONGO_URI=mongodb://mongo-host:27017/mydb
 
 # FerretDB (PostgreSQL backend)
-MONGO_URI=mongodb://ferretdb-host:27017/mydb?authMechanism=PLAIN
+MONGO_URI=mongodb://ferretdb-host:27017/mydb?authMechanism=SCRAM-SHA-256
 ```
 
 ## Backend Storage
@@ -54,7 +54,7 @@ FerretDB does not yet support all MongoDB features. As of early 2026, notable ga
 
 ```text
 Unsupported or partial in FerretDB:
-- Aggregation pipeline stages: $lookup, $facet (partial)
+- Aggregation pipeline stages: $lookup, $facet
 - Transactions (partial support)
 - Change streams
 - GridFS
