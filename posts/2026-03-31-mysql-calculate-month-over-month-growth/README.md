@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Analytics, Lag, Window Function, Growth
 
-Description: Learn how to calculate month-over-month growth rates in MySQL using LAG() window functions, self-joins, and CTEs for trend analysis and reporting.
+Description: Learn how to calculate month-over-month growth rates in MySQL using LAG() window functions and CTEs for trend analysis and reporting.
 
 ---
 
@@ -129,14 +129,18 @@ WITH mom_data AS (
     SUM(total_amount) AS revenue
   FROM orders
   GROUP BY month
+),
+mom_calc AS (
+  SELECT
+    month,
+    revenue,
+    ROUND(100.0 * (revenue - LAG(revenue) OVER (ORDER BY month))
+      / NULLIF(LAG(revenue) OVER (ORDER BY month), 0), 2) AS mom_pct
+  FROM mom_data
 )
-SELECT
-  month,
-  revenue,
-  ROUND(100.0 * (revenue - LAG(revenue) OVER (ORDER BY month))
-    / NULLIF(LAG(revenue) OVER (ORDER BY month), 0), 2) AS mom_pct
-FROM mom_data
-HAVING mom_pct < 0
+SELECT *
+FROM mom_calc
+WHERE mom_pct < 0
 ORDER BY mom_pct ASC;
 ```
 
