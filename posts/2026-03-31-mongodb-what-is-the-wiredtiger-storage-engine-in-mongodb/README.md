@@ -74,9 +74,9 @@ A healthy cache hit ratio is above 95%:
 
 ```javascript
 const wt = db.adminCommand({ serverStatus: 1 }).wiredTiger
-const readFromCache = wt.cache["pages read into cache"]
-const readFromDisk = wt.cache["pages read into cache requiring disk IO"]
-print("Cache hit ratio:", ((1 - readFromDisk/readFromCache) * 100).toFixed(2) + "%")
+const pagesRequested = wt.cache["pages requested from the cache"]
+const cacheMisses = wt.cache["pages read into cache"]
+print("Cache hit ratio:", ((1 - cacheMisses/pagesRequested) * 100).toFixed(2) + "%")
 ```
 
 ## Compression Statistics
