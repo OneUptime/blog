@@ -147,7 +147,7 @@ Repeat for each secondary, then step down the primary and upgrade it.
 ### Set FCV to 7.0
 
 ```javascript
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 // Expected: { version: "7.0" }
 ```
