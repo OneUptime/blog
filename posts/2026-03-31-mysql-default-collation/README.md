@@ -23,7 +23,7 @@ flowchart LR
 ## Common utf8mb4 Collations
 
 ```text
-utf8mb4_unicode_ci       MySQL 5.7 / 8.0 - case-insensitive, Unicode 6.x sorting
+utf8mb4_unicode_ci       MySQL 5.7 / 8.0 - case-insensitive, UCA 4.0.0 sorting
 utf8mb4_general_ci       Legacy - fast but less accurate Unicode sorting
 utf8mb4_0900_ai_ci       MySQL 8.0 default - Unicode 9.0, accent+case insensitive
 utf8mb4_0900_as_cs       MySQL 8.0 - Unicode 9.0, accent+case sensitive
@@ -193,4 +193,4 @@ collation-server = utf8mb4_unicode_ci
 
 ## Summary
 
-MySQL collation determines how string comparisons and sorting work. Set the server-level default in `my.cnf` with `collation-server`, and override it at the database, table, or column level as needed. For new MySQL 8.0 deployments, `utf8mb4_0900_ai_ci` is the best default. For compatibility with MySQL 5.7 applications, use `utf8mb4_unicode_ci`. Use `utf8mb4_bin` for columns that require exact, case-sensitive matching such as tokens, hashes, or passwords stored in plain text.
+MySQL collation determines how string comparisons and sorting work. Set the server-level default in `my.cnf` with `collation-server`, and override it at the database, table, or column level as needed. For new MySQL 8.0 deployments, `utf8mb4_0900_ai_ci` is the best default. For compatibility with MySQL 5.7 applications, use `utf8mb4_unicode_ci`. Use `utf8mb4_bin` for columns that require exact, case-sensitive matching such as tokens or password hashes.
