@@ -72,7 +72,7 @@ conn = mysql.connector.connect(
     password='secure_password',
     database='myapp',
     # Custom connection attributes
-    connection_attrs={
+    conn_attrs={
         'app_name': 'order-service',
         'app_version': '2.4.1',
         'environment': 'production',
@@ -107,15 +107,12 @@ const pool = mysql.createPool({
   user: 'app_user',
   password: 'secure_password',
   database: 'myapp',
-  // Connection attributes via connection init
-  multipleStatements: false
-});
-
-// Set attributes after connection using SET
-pool.on('connection', (conn) => {
-  conn.query(
-    "SET @app_name = 'order-service', @app_version = '2.4.1'"
-  );
+  // Custom connection attributes sent during handshake
+  connectAttributes: {
+    app_name: 'order-service',
+    app_version: '2.4.1',
+    environment: 'production'
+  }
 });
 ```
 
