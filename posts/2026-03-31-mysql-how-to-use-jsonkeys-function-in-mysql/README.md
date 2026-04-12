@@ -25,11 +25,11 @@ Returns a JSON array of strings (the keys), or `NULL` if `json_doc` is `NULL`, t
 ```sql
 -- Get keys of a flat object
 SELECT JSON_KEYS('{"name":"Alice","age":30,"city":"NYC"}');
--- Result: ["name", "age", "city"]
+-- Result: ["age", "city", "name"]
 
 -- Get keys of a nested object via path
 SELECT JSON_KEYS('{"user":{"name":"Alice","age":30}}', '$.user');
--- Result: ["name", "age"]
+-- Result: ["age", "name"]
 
 -- Returns NULL for arrays (not objects)
 SELECT JSON_KEYS('[1,2,3]');
@@ -99,7 +99,7 @@ SELECT JSON_KEYS(@doc);
 
 -- Keys of the nested "profile" object
 SELECT JSON_KEYS(@doc, '$.profile');
--- Result: ["name", "age"]
+-- Result: ["age", "name"]
 
 -- Keys of the nested "settings" object
 SELECT JSON_KEYS(@doc, '$.settings');
