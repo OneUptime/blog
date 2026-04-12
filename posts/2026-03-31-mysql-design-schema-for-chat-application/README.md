@@ -76,7 +76,7 @@ CREATE TABLE messages (
 
 ```sql
 CREATE TABLE message_reads (
-    message_id INT UNSIGNED NOT NULL,
+    message_id BIGINT UNSIGNED NOT NULL,
     user_id    INT UNSIGNED NOT NULL,
     read_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     PRIMARY KEY (message_id, user_id),
