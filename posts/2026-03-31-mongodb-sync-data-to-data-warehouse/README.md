@@ -49,7 +49,6 @@ For large collections, use a timestamp field to sync only new or modified record
 ```python
 from pymongo import MongoClient
 from google.cloud import bigquery
-import json
 from datetime import datetime, timezone
 
 LAST_SYNC = datetime(2026, 3, 30, tzinfo=timezone.utc)
@@ -63,7 +62,6 @@ docs = list(client.myDatabase.orders.find(
 ))
 
 if docs:
-    rows = [json.dumps(d, default=str) for d in docs]
     errors = bq_client.insert_rows_json("myproject.analytics.orders", docs)
     print(f"Synced {len(docs)} rows, errors: {errors}")
 ```
