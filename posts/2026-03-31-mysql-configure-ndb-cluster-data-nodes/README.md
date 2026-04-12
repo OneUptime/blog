@@ -20,7 +20,6 @@ The management node's `config.ini` contains the primary data node settings under
 [ndbd default]
 NoOfReplicas=2
 DataMemory=1G
-IndexMemory=256M
 MaxNoOfConcurrentOperations=200000
 MaxNoOfTables=1024
 MaxNoOfAttributes=10000
@@ -139,4 +138,4 @@ MaxNoOfExecutionThreads=8
 
 ## Summary
 
-Data nodes are the storage backbone of NDB Cluster. Set `DataMemory` and `IndexMemory` to fit your entire working dataset in memory (NDB is primarily an in-memory engine), configure `ndb-connectstring` in each node's `my.cnf` to point at the management node, and prefer `ndbmtd` over `ndbd` for multi-core systems. Always start data nodes after the management node and verify their status with `ndb_mgm -e show`.
+Data nodes are the storage backbone of NDB Cluster. Set `DataMemory` to fit your entire working dataset (data and indexes) in memory (NDB is primarily an in-memory engine), configure `ndb-connectstring` in each node's `my.cnf` to point at the management node, and prefer `ndbmtd` over `ndbd` for multi-core systems. Always start data nodes after the management node and verify their status with `ndb_mgm -e show`.
