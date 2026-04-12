@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Error Handling, Troubleshooting, Table Repair
 
-Description: Learn how to diagnose and repair MySQL tables affected by ERROR 1146 'Table is marked as crashed' using CHECK TABLE and REPAIR TABLE.
+Description: Learn how to diagnose and repair MySQL tables affected by ERROR 1194 'Table is marked as crashed' using CHECK TABLE and REPAIR TABLE.
 
 ---
 
 ## What is ERROR 1146 (Table Crashed)
 
-MySQL ERROR 1146 related to crashed tables typically appears as:
+The "table is marked as crashed" error in MySQL is ERROR 1194:
 
 ```text
 ERROR 1194 (HY000): Table 'table_name' is marked as crashed and should be repaired
 ```
 
-Or sometimes:
+In cases of severe corruption, you may also see ERROR 1146 if the table files are damaged enough that MySQL cannot recognize the table:
 
 ```text
 ERROR 1146 (42S02): Table 'database.table_name' doesn't exist
@@ -77,7 +77,7 @@ For extended repair (slower but more thorough):
 REPAIR TABLE your_table EXTENDED;
 ```
 
-For using a key file backup if the data is intact:
+To recreate the .MYI index file from the .frm table definition when the index is missing or corrupted:
 
 ```sql
 REPAIR TABLE your_table USE_FRM;
