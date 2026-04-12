@@ -122,7 +122,7 @@ MongoDB embedded documents are modelled as Prisma `type` blocks and stored insid
 ```typescript
 await prisma.order.create({
   data: {
-    customerId: 'cust123',
+    customerId: '507f1f77bcf86cd799439011',
     total:      149.99,
     items: [
       { productId: product.id, qty: 1, price: 999.99 }
