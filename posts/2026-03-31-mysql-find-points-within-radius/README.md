@@ -61,7 +61,7 @@ WHERE ST_Within(
 );
 ```
 
-Note: `ST_Buffer()` produces an elliptical approximation. `ST_Distance_Sphere()` is more accurate for radius queries.
+Note: `ST_Buffer()` with geographic spatial reference systems (SRID 4326) is not supported in all MySQL 8.0 versions and may produce an error. When supported, the degree-based radius creates an elliptical approximation that varies by latitude. For accurate radius queries, use `ST_Distance_Sphere()` (Approach 1) instead.
 
 ## Approach 3: Haversine Formula (Decimal Columns)
 
