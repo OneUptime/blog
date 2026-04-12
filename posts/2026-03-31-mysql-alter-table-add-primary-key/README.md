@@ -175,14 +175,17 @@ ALTER TABLE legacy_products ADD PRIMARY KEY (sku);
 
 ## Performance Considerations
 
-In InnoDB, adding a primary key to a large table causes a table rebuild (the entire table is re-written on disk). This can take time and lock the table. Use `pt-online-schema-change` or MySQL 8.0 instant DDL where possible for large tables.
+In InnoDB, adding a primary key to a large table causes a table rebuild (the entire table is re-written on disk). This can take time and lock the table. Use `pt-online-schema-change` or `gh-ost` for large tables in production.
+
+MySQL 8.0 supports `ALGORITHM = INPLACE` for adding a primary key, which avoids a table copy but still requires a rebuild and does not permit concurrent DML (`LOCK = NONE` is not supported for this operation):
 
 ```sql
--- MySQL 8.0 instant DDL for some ALTER TABLE operations (not always applicable for PK)
+-- ALGORITHM = INPLACE avoids a full table copy but still rebuilds the table
+-- LOCK = SHARED allows concurrent reads but blocks writes during the rebuild
 ALTER TABLE legacy_orders
     ADD COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT FIRST,
     ADD PRIMARY KEY (id),
-    ALGORITHM = INPLACE, LOCK = NONE;
+    ALGORITHM = INPLACE, LOCK = SHARED;
 ```
 
 ## Best Practices
