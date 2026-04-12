@@ -100,10 +100,14 @@ Use `TRUNCATE PARTITION` if you plan to continue inserting data into that partit
 DELIMITER //
 CREATE EVENT purge_old_partitions
 ON SCHEDULE EVERY 1 YEAR
+STARTS '2025-01-01 00:00:00'
 DO BEGIN
-    -- Drop data older than 3 years
-    ALTER TABLE page_views
-    DROP PARTITION p2021;
+    -- Dynamically drop the partition older than 3 years
+    SET @part_name = CONCAT('p', YEAR(CURDATE()) - 3);
+    SET @sql = CONCAT('ALTER TABLE page_views DROP PARTITION ', @part_name);
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
 END//
 DELIMITER ;
 ```
