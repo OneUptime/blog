@@ -84,6 +84,12 @@ Create a playbook to install and configure MySQL:
         group: root
         mode: '0644'
       notify: Restart MySQL
+
+  handlers:
+    - name: Restart MySQL
+      service:
+        name: mysql
+        state: restarted
 ```
 
 ## Configuration Template
