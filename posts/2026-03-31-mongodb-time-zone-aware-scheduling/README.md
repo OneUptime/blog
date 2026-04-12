@@ -64,7 +64,7 @@ db.collection("meetings").aggregate([
         }
       },
       hour: {
-        $dateParts: {
+        $dateToParts: {
           date: "$startUtc",
           timezone: "$timezone"
         }
