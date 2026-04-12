@@ -106,9 +106,10 @@ REVOKE 'readonly_role' FROM 'reporting_user'@'%';
 
 ## Applying Changes
 
-In MySQL 8.0, `GRANT` and `REVOKE` changes take effect immediately without needing `FLUSH PRIVILEGES`. For MySQL 5.7 and earlier:
+`GRANT` and `REVOKE` changes take effect immediately in all MySQL versions without needing `FLUSH PRIVILEGES`. The `FLUSH PRIVILEGES` command is only required when you modify the grant tables directly using DML statements (such as `INSERT`, `UPDATE`, or `DELETE` on the `mysql` system database):
 
 ```sql
+-- Only needed after direct grant table modifications, NOT after REVOKE
 FLUSH PRIVILEGES;
 ```
 
@@ -139,4 +140,4 @@ DROP USER 'contractor'@'%';
 
 ## Summary
 
-`REVOKE` removes privileges from MySQL users and roles. Use `REVOKE privilege ON object FROM user` for specific permissions, or `REVOKE ALL PRIVILEGES, GRANT OPTION FROM user` to strip all access. Always verify current privileges with `SHOW GRANTS` before revoking to avoid accidentally removing unintended permissions. In MySQL 8.0, changes take effect immediately without `FLUSH PRIVILEGES`.
+`REVOKE` removes privileges from MySQL users and roles. Use `REVOKE privilege ON object FROM user` for specific permissions, or `REVOKE ALL PRIVILEGES, GRANT OPTION FROM user` to strip all access. Always verify current privileges with `SHOW GRANTS` before revoking to avoid accidentally removing unintended permissions. Changes from `REVOKE` take effect immediately in all MySQL versions; `FLUSH PRIVILEGES` is only needed after direct modifications to the grant tables.
