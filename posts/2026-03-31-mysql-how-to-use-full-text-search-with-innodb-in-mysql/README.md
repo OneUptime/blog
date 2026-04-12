@@ -67,7 +67,7 @@ ORDER BY score DESC
 LIMIT 10;
 ```
 
-Natural language mode ranks results by relevance. Words appearing in more than 50% of rows are treated as stopwords and ignored.
+Natural language mode ranks results by relevance. InnoDB does not apply the 50% row threshold that MyISAM uses, so common words are only filtered by the stopword list.
 
 ## Boolean Mode Search
 
@@ -124,18 +124,17 @@ SELECT * FROM information_schema.INNODB_FT_INDEX_TABLE LIMIT 20;
 
 InnoDB full-text inserts go to an in-memory cache first, then flush to disk during:
 - `OPTIMIZE TABLE`
-- Explicit `FLUSH TABLE ... WITH READ LOCK`
-- Cache reaching `innodb_ft_cache_size` limit
+- Server shutdown
+- Cache reaching `innodb_ft_cache_size` or `innodb_ft_total_cache_size` limit
 
-For bulk inserts, disable the full-text index first:
+For bulk inserts, use `innodb_optimize_fulltext_only` so that `OPTIMIZE TABLE` only rebuilds the full-text index rather than the entire table:
 
 ```sql
--- Disable FT sync during bulk load
 SET GLOBAL innodb_optimize_fulltext_only = ON;
 
 -- Bulk insert data here
 
--- Re-sync FT index
+-- Flush FT cache and rebuild FT index only
 OPTIMIZE TABLE articles;
 SET GLOBAL innodb_optimize_fulltext_only = OFF;
 ```
