@@ -38,7 +38,7 @@ SELECT FOUND_ROWS() AS total_rows;
 
 ### Important deprecation notice
 
-`SQL_CALC_FOUND_ROWS` is deprecated as of MySQL 8.0.17 and may be removed in a future release. The recommended replacement is a separate `COUNT(*)` query, often made cheaper by ensuring the `WHERE` clause uses an index:
+`SQL_CALC_FOUND_ROWS` and `FOUND_ROWS()` are both deprecated as of MySQL 8.0.17 and may be removed in a future release. The recommended replacement is a separate `COUNT(*)` query, often made cheaper by ensuring the `WHERE` clause uses an index:
 
 ```sql
 -- Preferred modern approach
@@ -74,7 +74,7 @@ SELECT FOUND_ROWS(); -- same as the row count of the above result
 | `DELETE` | Number of rows deleted |
 | `LOAD DATA` | Number of rows inserted |
 | `SELECT`, `SHOW` | -1 (not applicable) |
-| `CALL` | -1 (use `ROW_COUNT()` inside the procedure) |
+| `CALL` | Value from the last statement executed in the procedure |
 
 ### Basic examples
 
@@ -165,7 +165,7 @@ flowchart TD
     C -->|Another DML| D[ROW_COUNT updated again]
     C -->|SELECT| E[ROW_COUNT set to -1]
     C -->|SHOW / SET| F[ROW_COUNT set to -1]
-    C -->|Call FOUND_ROWS| G[ROW_COUNT not reset]
+    C -->|SELECT ROW_COUNT()| G[Returns current value, then resets to -1]
 ```
 
 ## Key points to remember
@@ -177,4 +177,4 @@ flowchart TD
 
 ## Summary
 
-`FOUND_ROWS()` is used alongside `SQL_CALC_FOUND_ROWS` (deprecated in 8.0.17) to retrieve total pagination counts without a second query; the modern alternative is an explicit `COUNT(*)`. `ROW_COUNT()` returns the number of rows affected by the most recent `INSERT`, `UPDATE`, or `DELETE` and is essential for verifying that DML operations had the expected impact, especially in stored procedures and application-level concurrency checks.
+`FOUND_ROWS()` is used alongside `SQL_CALC_FOUND_ROWS` (both deprecated in 8.0.17) to retrieve total pagination counts without a second query; the modern alternative is an explicit `COUNT(*)`. `ROW_COUNT()` returns the number of rows affected by the most recent `INSERT`, `UPDATE`, or `DELETE` and is essential for verifying that DML operations had the expected impact, especially in stored procedures and application-level concurrency checks.
