@@ -93,7 +93,7 @@ SELECT
   COUNT(*) AS total_rows,
   COUNT(discount_amount) AS rows_with_discount,
   AVG(discount_amount) AS avg_discount,   -- NULLs excluded from avg
-  SUM(discount_amount) AS total_discounts -- NULLs treated as 0
+  SUM(discount_amount) AS total_discounts -- NULLs excluded from sum
 FROM orders;
 ```
 
