@@ -85,8 +85,8 @@ config.set("inspectDepth", 10)
 // Disable telemetry
 disableTelemetry()
 
-// Set custom prompt
-config.set("prompt", "mydb> ")
+// Set custom prompt (or add to ~/.mongoshrc.js)
+prompt = "mydb> "
 ```
 
 ## Configuring History
@@ -101,11 +101,11 @@ History is stored at `~/.mongodb/mongosh/mongosh_repl_history`.
 ## Setting Custom Editor
 
 ```javascript
-// Use vim for the .editor command
+// Use vim for the edit command
 config.set("editor", "vim")
 ```
 
-Then invoke `.editor` in mongosh to open a multi-line editor.
+Then invoke `edit` in mongosh to open vim as a multi-line editor.
 
 ## Disabling Colors and Enabling Quiet Mode
 
