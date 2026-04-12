@@ -17,8 +17,8 @@ A capped collection is a fixed-size circular buffer collection in MongoDB. When 
 - Fixed maximum size (in bytes, required)
 - Optional maximum document count
 - Insertion order is preserved
-- No `_id` index by default (but `_id` field still exists)
-- Cannot delete individual documents (only drop the whole collection)
+- Has an `_id` field and `_id` index by default (like regular collections)
+- Cannot delete individual documents prior to MongoDB 5.0 (starting in 5.0, individual deletes are supported)
 - Cannot shard a capped collection
 
 ## Creating a Capped Collection
@@ -68,8 +68,6 @@ db.application_logs.find().sort({ $natural: -1 }).limit(50)
 Capped collections support tailable cursors - cursors that stay open and wait for new data, similar to `tail -f` in Unix:
 
 ```javascript
-const cursor = db.application_logs.find({}, { tailable: true, awaitData: true })
-
 // Node.js driver
 const cursor = db.collection("application_logs").find({}, {
   tailable: true,
@@ -80,6 +78,8 @@ for await (const doc of cursor) {
   console.log("New log:", doc.message)
 }
 ```
+
+Note: Tailable cursors are used through application drivers (Node.js, Python, Java, etc.), not through the mongo shell.
 
 ## Checking If a Collection Is Capped
 
