@@ -61,10 +61,12 @@ With INT auto-increment, new rows always append to the last page.
 UUID v7 is time-ordered, combining randomness with monotonically increasing timestamps:
 
 ```sql
--- MySQL does not natively generate UUID v7 yet; use application or a function
--- Example using a user-defined ordering function
-SELECT BIN_TO_UUID(UUID_TO_BIN(UUID(), 1)) AS ordered_uuid;
+-- MySQL does not natively generate UUID v7; generate it in application code
+-- As a workaround, UUID v1 with the swap_flag reorders time bytes for sequential storage:
+SELECT BIN_TO_UUID(UUID_TO_BIN(UUID(), 1), 1) AS ordered_uuid;
 ```
+
+The `swap_flag` parameter in `UUID_TO_BIN()` rearranges the time-low and time-high fields of a UUID v1 value so that the most significant time bits come first, producing a more sequential binary ordering. This is not the same as UUID v7 but provides a similar benefit within MySQL.
 
 UUID v7 reduces page splits because the timestamp prefix keeps insertions mostly sequential.
 
