@@ -37,12 +37,14 @@ XA COMMIT 'txn-order-001';
 XA COMMIT 'txn-inventory-001';
 ```
 
-If the commit fails on one side, roll back both:
+If any participant fails to prepare, roll back all participants:
 
 ```sql
 XA ROLLBACK 'txn-order-001';
 XA ROLLBACK 'txn-inventory-001';
 ```
+
+If a commit fails after prepare, do not roll back the other participants. Instead, retry the failed commit — `XA RECOVER` lists transactions stuck in the PREPARED state.
 
 ## XA Limitations
 
@@ -128,7 +130,7 @@ CREATE TABLE outbox_events (
   event_type   VARCHAR(100) NOT NULL,
   aggregate_id VARCHAR(100) NOT NULL,
   payload      JSON         NOT NULL,
-  published_at TIMESTAMP,
+  published_at TIMESTAMP    NULL DEFAULT NULL,
   created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_unpublished (published_at, created_at)
 ) ENGINE=InnoDB;
