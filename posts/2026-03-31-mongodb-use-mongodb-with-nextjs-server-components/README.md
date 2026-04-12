@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Next.js, Server Component, Mongoose, App Router
+Tags: MongoDB, Next.js, Server Component, App Router
 
 Description: Learn how to fetch MongoDB data directly inside Next.js App Router Server Components for zero-client-bundle database access with built-in caching.
 
@@ -84,12 +84,20 @@ import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { notFound } from 'next/navigation';
 
-export default async function ProductPage({ params }: { params: { id: string } }) {
+interface Product {
+  _id:      ObjectId;
+  name:     string;
+  price:    number;
+  category: string;
+}
+
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const client  = await clientPromise;
   const product = await client
     .db('shop')
     .collection<Product>('products')
-    .findOne({ _id: new ObjectId(params.id) });
+    .findOne({ _id: new ObjectId(id) });
 
   if (!product) notFound();
 
@@ -103,16 +111,23 @@ export default async function ProductPage({ params }: { params: { id: string } }
 }
 ```
 
-## Caching with Next.js fetch Wrappers
+## Caching with React.cache
 
-For re-validation, wrap your data fetch:
+To deduplicate database calls within a single render pass, wrap your data fetch with `React.cache`:
 
 ```typescript
 // lib/getProducts.ts
 import clientPromise from '@/lib/mongodb';
 import { cache } from 'react';
+import type { WithId } from 'mongodb';
 
-export const getProducts = cache(async () => {
+interface Product {
+  name:     string;
+  price:    number;
+  category: string;
+}
+
+export const getProducts = cache(async (): Promise<WithId<Product>[]> => {
   const client = await clientPromise;
   return client
     .db('shop')
