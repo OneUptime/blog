@@ -78,6 +78,7 @@ safe_collection = db.get_collection(
 ```java
 import com.mongodb.WriteConcern;
 import com.mongodb.MongoClientSettings;
+import java.util.concurrent.TimeUnit;
 
 MongoClientSettings settings = MongoClientSettings.builder()
     .writeConcern(WriteConcern.MAJORITY
