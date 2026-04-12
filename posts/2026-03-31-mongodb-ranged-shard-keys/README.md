@@ -24,19 +24,13 @@ A query for `customerId: { $gte: "C200", $lte: "C400" }` targets only shard2.
 
 ## Setting Up Ranged Sharding
 
-### Step 1 - Enable Sharding on the Database
-
-```javascript
-sh.enableSharding("myapp")
-```
-
-### Step 2 - Create an Index on the Shard Key
+### Step 1 - Create an Index on the Shard Key
 
 ```javascript
 db.orders.createIndex({ customerId: 1 })
 ```
 
-### Step 3 - Shard the Collection
+### Step 2 - Shard the Collection
 
 ```javascript
 sh.shardCollection("myapp.orders", { customerId: 1 })
@@ -62,7 +56,7 @@ Chunk: { createdAt: ISODate("2026-01-01") } -> shard3 (all new writes)
 
 Solutions:
 
-**Use a compound key with a hashed prefix:**
+**Use a compound key with a high-cardinality prefix:**
 
 ```javascript
 sh.shardCollection("myapp.orders", { customerId: 1, createdAt: 1 })
@@ -70,7 +64,7 @@ sh.shardCollection("myapp.orders", { customerId: 1, createdAt: 1 })
 
 Inserts spread across shards because `customerId` has high cardinality.
 
-**Add a zone prefix** to distribute monotonic traffic:
+**Add a random bucket prefix** to distribute monotonic traffic:
 
 ```javascript
 // Add a random bucket prefix to the key
@@ -94,8 +88,8 @@ Then manually move chunks to distribute evenly before importing.
 ## Verifying Range Distribution
 
 ```javascript
-use config
-db.chunks.find({ ns: "myapp.orders" }).sort({ min: 1 }).forEach(c => {
+const collDoc = db.getSiblingDB("config").collections.findOne({ _id: "myapp.orders" })
+db.getSiblingDB("config").chunks.find({ uuid: collDoc.uuid }).sort({ min: 1 }).forEach(c => {
   printjson({ shard: c.shard, min: c.min, max: c.max })
 })
 ```
