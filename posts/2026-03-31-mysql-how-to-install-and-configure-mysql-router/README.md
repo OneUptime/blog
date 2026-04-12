@@ -14,7 +14,7 @@ MySQL Router is an open-source middleware component that provides transparent ro
 
 - Routing to InnoDB Cluster or MySQL Replication setups
 - Read/write splitting
-- Connection multiplexing
+- Connection sharing (reuse of idle server connections, available since 8.0.33)
 - Automatic failover detection
 
 ## Installing MySQL Router
