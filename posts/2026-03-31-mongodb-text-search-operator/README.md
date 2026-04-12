@@ -208,7 +208,7 @@ async function textSearch(searchTerm) {
   // Search with scoring
   const results = await articles.find(
     { $text: { $search: searchTerm } },
-    { score: { $meta: "textScore" }, title: 1, tags: 1 }
+    { projection: { score: { $meta: "textScore" }, title: 1, tags: 1 } }
   ).sort({ score: { $meta: "textScore" } }).limit(10).toArray();
 
   console.log(`Results for "${searchTerm}":`);
@@ -226,8 +226,8 @@ textSearch("mongodb index performance").catch(console.error);
 
 - Only one text index per collection.
 - `$text` can only appear once in a query filter.
-- `$text` must be at the top level of the query filter (not inside `$or` or `$and`).
-- Relevance scoring is heuristic and not based on TF-IDF by default.
+- `$text` cannot appear in `$nor` or `$elemMatch` expressions. It can be used in `$or` if all clauses in the `$or` array are indexed.
+- Relevance scoring uses a TF-IDF-like algorithm (term frequency × inverse collection frequency), combined with field weights.
 - Does not support fuzzy matching or autocomplete (use Atlas Search for those).
 
 ## Best Practices
