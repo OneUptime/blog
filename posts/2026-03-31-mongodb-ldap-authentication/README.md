@@ -68,14 +68,10 @@ security:
         }
       ]
     authz:
-      queryTemplate: |
-        {
-          LDAP_SERVER: "ldap.example.com",
-          LDAP_QUERY: "ou=Groups,dc=example,dc=com??sub?(&(objectClass=groupOfNames)(member={USER}))"
-        }
+      queryTemplate: "ou=Groups,dc=example,dc=com??sub?(&(objectClass=groupOfNames)(member={USER}))"
 
 setParameter:
-  authenticationMechanisms: PLAIN
+  authenticationMechanisms: PLAIN,SCRAM-SHA-256
 ```
 
 ## Step 3: Configure userToDNMapping
@@ -185,8 +181,8 @@ db.createUser({
 ## Troubleshooting
 
 ```bash
-# Enable verbose LDAP diagnostics
-mongosh --eval 'db.adminCommand({ setParameter: 1, ldapUserCacheInvalidationInterval: 30 })'
+# Reduce LDAP user cache invalidation interval (in seconds) for faster sync during troubleshooting
+mongosh --eval 'db.adminCommand({ setParameter: 1, ldapUserCacheInvalidationInterval: 10 })'
 
 # Check LDAP connectivity
 ldapsearch -H ldap://ldap.example.com:389 \

@@ -141,10 +141,9 @@ spec:
                 secretKeyRef:
                   name: mongodb-secret
                   key: MONGO_INITDB_ROOT_PASSWORD
-          command:
-            - mongod
+          args:
             - "--replSet"
-            - rs0
+            - "rs0"
             - "--bind_ip_all"
           volumeMounts:
             - name: mongodb-data
