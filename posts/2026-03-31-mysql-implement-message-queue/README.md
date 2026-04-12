@@ -118,4 +118,4 @@ WHERE status = 'completed'
 
 ## Summary
 
-Implement a MySQL message queue using a `jobs` table with a `status` column and `available_at` scheduling. Use `SELECT FOR UPDATE SKIP LOCKED` to enable multiple concurrent workers without row contention. Handle failures with an attempt counter and exponential backoff by updating `available_at`. Regularly purge completed jobs to control table size.
+Implement a MySQL message queue using a `jobs` table with a `status` column and `available_at` scheduling. Use `SELECT FOR UPDATE SKIP LOCKED` to enable multiple concurrent workers without row contention. Handle failures with an attempt counter and a retry delay by updating `available_at`. Regularly purge completed jobs to control table size.
