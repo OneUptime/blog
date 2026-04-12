@@ -61,8 +61,6 @@ aws elasticache create-snapshot \
 aws elasticache copy-snapshot \
   --source-snapshot-name redis-migration-snapshot \
   --target-snapshot-name redis-migration-snapshot-west \
-  --target-bucket my-s3-bucket \
-  --source-region us-east-1 \
   --region us-west-2
 ```
 
@@ -124,7 +122,7 @@ redis-cli -h <target-host> DBSIZE
 
 # Spot-check data
 redis-cli -h <target-host> RANDOMKEY
-redis-cli -h <target-host> DEBUG SLEEP 0  # ping test
+redis-cli -h <target-host> PING
 
 # Check memory
 redis-cli -h <target-host> INFO memory | grep used_memory_human
