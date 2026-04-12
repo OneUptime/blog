@@ -68,7 +68,7 @@ To activate roles automatically at login, set them as default:
 SET DEFAULT ROLE 'developer_role' TO 'bob'@'%';
 
 -- User sets their own default roles
-SET DEFAULT ROLE ALL;
+SET DEFAULT ROLE ALL TO CURRENT_USER();
 ```
 
 Or configure at the global level in `my.cnf`:
@@ -89,13 +89,13 @@ SHOW GRANTS FOR 'bob'@'%';
 -- Show which roles are active in the current session
 SELECT CURRENT_ROLE();
 
--- Query role assignments from information schema
+-- Query role assignments from mysql.role_edges
 SELECT
   FROM_USER,
   FROM_HOST,
   TO_USER,
   TO_HOST
-FROM information_schema.ROLE_TABLE_GRANTS
+FROM mysql.role_edges
 WHERE TO_USER = 'bob';
 ```
 
