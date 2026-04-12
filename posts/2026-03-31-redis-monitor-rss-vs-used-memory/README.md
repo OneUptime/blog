@@ -83,7 +83,7 @@ During `BGSAVE`, the forked child holds a copy-on-write snapshot. Heavy writes d
 ```bash
 # Watch RSS during a BGSAVE
 redis-cli BGSAVE
-watch -n 2 'redis-cli INFO memory | grep -E "used_memory_rss|rdb_bgsave_in_progress"'
+watch -n 2 'redis-cli INFO | grep -E "used_memory_rss|rdb_bgsave_in_progress"'
 ```
 
 Expected behavior: RSS jumps by up to `write_rate * save_duration * avg_object_size` bytes.
@@ -96,7 +96,7 @@ def estimate_bgsave_rss_spike(r):
 
     used_mb = info["used_memory"] / 1024 / 1024
     writes_per_sec = (
-        info_stats.get("total_commands_processed", 0) * 0.3  # assume 30% writes
+        info_stats.get("instantaneous_ops_per_sec", 0) * 0.3  # assume 30% writes
     )
     rdb_saves = info_persistence.get("rdb_last_bgsave_time_sec", 30)
 
