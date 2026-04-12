@@ -39,7 +39,8 @@ plugin-load-add=thread_pool.so
 The thread pool divides connections into **thread groups**. Each group has:
 - A queue of waiting statements.
 - A set of worker threads that pick up and execute statements.
-- A timer thread that monitors stalled groups and adds extra threads if needed.
+
+A single background timer thread monitors all thread groups and adds extra threads to any group where statements appear stalled.
 
 ```text
 Connection 1 ---\                    /--> Worker Thread 1
@@ -59,9 +60,9 @@ SHOW VARIABLES LIKE 'thread_pool%';
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `thread_pool_size` | Number of thread groups (usually = CPU cores) | CPU cores |
+| `thread_pool_size` | Number of thread groups (usually set to CPU cores) | 16 |
 | `thread_pool_max_threads` | Max total threads across all groups | 100000 |
-| `thread_pool_stall_limit` | Milliseconds before a statement is considered stalled | 500 |
+| `thread_pool_stall_limit` | Milliseconds before a statement is considered stalled | 60 |
 | `thread_pool_prio_kickup_timer` | Time before low-priority statements get promoted | 1000 |
 | `thread_pool_high_prio_mode` | How high-priority queue is used | transactions |
 
@@ -97,10 +98,10 @@ SELECT * FROM information_schema.TP_THREAD_GROUP_STATS\G
 SELECT * FROM information_schema.TP_THREAD_STATE;
 ```
 
-Key metrics:
-- `THREAD_COUNT` - active threads in a group.
-- `QUEUE_LENGTH` - statements waiting.
-- `STALL_COUNT` - number of stalls (threads added due to long-running statements).
+Key metrics from `TP_THREAD_GROUP_STATS`:
+- `QUERIES_QUEUED` - number of statements placed in the queue.
+- `STALLED_QUERIES_EXECUTED` - number of stalled queries that were executed.
+- `THREADS_STARTED` - number of threads started.
 
 ## Thread Pool vs Default Thread Model
 
@@ -128,7 +129,7 @@ sudo apt install proxysql
 ```
 
 ```text
-mysql_servers:
+mysql_servers =
 (
   {
     address="127.0.0.1"
