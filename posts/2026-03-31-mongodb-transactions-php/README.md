@@ -27,7 +27,6 @@ composer require mongodb/mongodb
 require 'vendor/autoload.php';
 
 use MongoDB\Client;
-use MongoDB\Driver\Session;
 
 $client = new Client('mongodb://localhost:27017');
 $db = $client->shopdb;
@@ -67,56 +66,35 @@ try {
 
 ## Using the Transactional Callback (Recommended)
 
-The callback-based approach handles transient error retries automatically:
+The `MongoDB\with_transaction()` function handles starting, committing, and retrying transactions automatically:
 
 ```php
+use MongoDB\Driver\Session;
+use function MongoDB\with_transaction;
+
 function transferFunds(Client $client, string $from, string $to, float $amount): void
 {
     $accounts = $client->shopdb->accounts;
     $session = $client->startSession();
 
-    $session->startTransaction();
+    $callback = function (Session $session) use ($accounts, $from, $to, $amount): void {
+        $accounts->updateOne(
+            ['accountId' => $from],
+            ['$inc' => ['balance' => -$amount]],
+            ['session' => $session]
+        );
 
-    $maxRetries = 3;
-    $attempt = 0;
+        $accounts->updateOne(
+            ['accountId' => $to],
+            ['$inc' => ['balance' => $amount]],
+            ['session' => $session]
+        );
+    };
 
-    while (true) {
-        try {
-            $accounts->updateOne(
-                ['accountId' => $from],
-                ['$inc' => ['balance' => -$amount]],
-                ['session' => $session]
-            );
-
-            $accounts->updateOne(
-                ['accountId' => $to],
-                ['$inc' => ['balance' => $amount]],
-                ['session' => $session]
-            );
-
-            $session->commitTransaction();
-            return;
-
-        } catch (\MongoDB\Driver\Exception\CommandException $e) {
-            $labels = $e->getErrorLabels();
-
-            if (in_array('TransientTransactionError', $labels) && $attempt < $maxRetries) {
-                $attempt++;
-                $session->abortTransaction();
-                $session->startTransaction();
-                continue;
-            }
-
-            if (in_array('UnknownTransactionCommitResult', $labels) && $attempt < $maxRetries) {
-                $attempt++;
-                // retry commit only
-                continue;
-            }
-
-            $session->abortTransaction();
-            throw $e;
-        }
-    }
+    with_transaction($session, $callback, [
+        'readConcern'  => new \MongoDB\Driver\ReadConcern('snapshot'),
+        'writeConcern' => new \MongoDB\Driver\WriteConcern('majority'),
+    ]);
 }
 
 transferFunds($client, 'A', 'B', 200.0);
@@ -178,4 +156,4 @@ $session->startTransaction([
 
 ## Summary
 
-MongoDB PHP transactions use a `MongoDB\Driver\Session` created via `$client->startSession()`. Pass the session in the options array to every operation that should participate in the transaction. Check for `TransientTransactionError` and `UnknownTransactionCommitResult` error labels to decide whether to retry. Always call `$session->endSession()` in a `finally` block, and pass `'session' => $session` to every collection operation inside the transaction.
+MongoDB PHP transactions use a `MongoDB\Driver\Session` created via `$client->startSession()`. Pass the session in the options array to every operation that should participate in the transaction. Use `MongoDB\with_transaction()` to automatically handle retries on `TransientTransactionError` and `UnknownTransactionCommitResult` error labels. When managing transactions manually, always call `$session->endSession()` in a `finally` block, and pass `'session' => $session` to every collection operation inside the transaction.
