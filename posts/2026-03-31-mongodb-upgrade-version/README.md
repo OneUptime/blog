@@ -93,12 +93,12 @@ sudo systemctl stop mongod
 Install the new version (Ubuntu/Debian example from 6.0 to 7.0):
 
 ```bash
-# Remove old version
-sudo apt-get remove mongodb-org
+# Import GPG key for new version
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
 
 # Add new repository
-wget -qO- https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
   sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
 # Install new version
@@ -193,7 +193,7 @@ After all replica set members are on the new version, update the Feature Compati
 
 ```javascript
 // Run on the primary
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 Confirm the FCV was updated:
