@@ -72,7 +72,13 @@ grep -i "tablename" /var/log/mysql/error.log
 ```
 
 ```sql
--- Rebuild the data dictionary entry by importing the tablespace
+-- First recreate the table structure (the table must exist in the dictionary)
+CREATE TABLE myapp.tablename (...);
+
+-- Discard the empty tablespace created by CREATE TABLE
+ALTER TABLE myapp.tablename DISCARD TABLESPACE;
+
+-- Copy the .ibd file into the data directory, then import
 ALTER TABLE myapp.tablename IMPORT TABLESPACE;
 ```
 
@@ -81,7 +87,10 @@ ALTER TABLE myapp.tablename IMPORT TABLESPACE;
 If you restored only `.ibd` files without matching dictionary entries:
 
 ```sql
--- Discard the old tablespace
+-- First recreate the table structure so it exists in the data dictionary
+CREATE TABLE tablename (...);
+
+-- Discard the empty tablespace created by CREATE TABLE
 ALTER TABLE tablename DISCARD TABLESPACE;
 
 -- Copy the .ibd file to the data directory
