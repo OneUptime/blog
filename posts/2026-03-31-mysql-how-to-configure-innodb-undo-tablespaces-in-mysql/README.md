@@ -71,7 +71,7 @@ SHOW VARIABLES LIKE 'innodb_undo_log_truncate';
 SELECT
   NAME,
   STATE,
-  ROUND(SIZE / 1024 / 1024, 2) AS size_mb
+  ROUND(FILE_SIZE / 1024 / 1024, 2) AS size_mb
 FROM information_schema.INNODB_TABLESPACES
 WHERE ROW_FORMAT = 'Undo';
 ```
