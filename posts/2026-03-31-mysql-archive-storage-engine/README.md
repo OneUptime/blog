@@ -16,7 +16,7 @@ The name reflects its intended purpose - archiving data that must be retained bu
 
 ## Core Characteristics
 
-ARCHIVE tables support only `INSERT` and `SELECT` operations. You cannot `UPDATE` or `DELETE` individual rows in an ARCHIVE table. This write-once, read-many model simplifies the engine's design and enables aggressive compression.
+ARCHIVE tables support only `INSERT`, `REPLACE`, and `SELECT` operations. You cannot `UPDATE` or `DELETE` individual rows in an ARCHIVE table. This write-once, read-many model simplifies the engine's design and enables aggressive compression.
 
 ```sql
 CREATE TABLE audit_log (
@@ -95,4 +95,4 @@ SHOW ENGINES;
 
 ## Summary
 
-The MySQL ARCHIVE storage engine provides compressed, append-only storage for historical and log data. It supports only INSERT and SELECT, with no UPDATE or DELETE support, and offers only an AUTO_INCREMENT primary key index. Its zlib compression delivers significant space savings over transactional engines for write-once data. ARCHIVE is a specialized tool for compliance logs, audit trails, and historical records where storage efficiency matters more than query flexibility.
+The MySQL ARCHIVE storage engine provides compressed, append-only storage for historical and log data. It supports only INSERT, REPLACE, and SELECT, with no UPDATE or DELETE support, and offers only an AUTO_INCREMENT primary key index. Its zlib compression delivers significant space savings over transactional engines for write-once data. ARCHIVE is a specialized tool for compliance logs, audit trails, and historical records where storage efficiency matters more than query flexibility.
