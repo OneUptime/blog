@@ -15,7 +15,7 @@ Pulumi lets you define cloud infrastructure using general-purpose programming la
 ## Installation
 
 ```bash
-npm install @pulumi/pulumi @pulumi/mongodbatlas
+npm install @pulumi/pulumi @pulumi/mongodbatlas @pulumi/random
 ```
 
 Configure your Atlas credentials:
@@ -60,7 +60,9 @@ export const connectionString = cluster.connectionStrings.apply(
 ## Creating a Database User
 
 ```typescript
-const dbPassword = new pulumi.RandomPassword("db-password", {
+import * as random from "@pulumi/random";
+
+const dbPassword = new random.RandomPassword("db-password", {
   length: 32,
   special: false,
 });
@@ -107,7 +109,7 @@ import * as aws from "@pulumi/aws";
 const dbParam = new aws.ssm.Parameter(`mongo-connection-${env}`, {
   name: `/myapp/${env}/mongodb/connectionString`,
   type: "SecureString",
-  value: pulumi.interpolate`${cluster.connectionStrings[0].standardSrv}`,
+  value: cluster.connectionStrings.apply((cs) => cs[0].standardSrv),
 });
 ```
 
