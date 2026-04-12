@@ -40,7 +40,6 @@ db.collection.aggregate([
       spherical: true,
       maxDistance: <meters>,
       query: { <additionalFilter> },
-      limit: <number>,
       distanceMultiplier: <number>
     }
   }
@@ -151,8 +150,8 @@ db.competitors.aggregate([
 | `distanceField` | Yes | Output field for the computed distance |
 | `spherical` | Recommended | Use Earth sphere geometry |
 | `maxDistance` | No | Maximum distance in meters (for 2dsphere) |
+| `minDistance` | No | Minimum distance in meters (for 2dsphere) |
 | `query` | No | Additional filter on documents |
-| `limit` | No | Max documents to return |
 | `distanceMultiplier` | No | Multiply distance by this factor |
 
 ## Summary
