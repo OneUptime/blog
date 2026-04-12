@@ -41,7 +41,7 @@ EXPLAIN FORMAT=TREE SELECT ...;
 
 | Column | Meaning |
 |--------|---------|
-| id | Step number. Higher = executed first when nested |
+| id | SELECT identifier. Higher values indicate nested subqueries |
 | select_type | SIMPLE, SUBQUERY, DERIVED, UNION, etc. |
 | table | Table being accessed |
 | type | Join type - ranges from best (system) to worst (ALL) |
