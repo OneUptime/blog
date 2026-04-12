@@ -82,7 +82,7 @@ Runtime errors inside triggers that are caught by a `CONTINUE HANDLER` may be si
 tail -100 /var/log/mysql/error.log
 ```
 
-Enable general query logging temporarily to see every statement including those inside trigger bodies:
+Enable general query logging temporarily to see the exact DML statements from clients that cause trigger-related failures:
 
 ```sql
 SET GLOBAL general_log = 'ON';
@@ -94,6 +94,8 @@ After debugging:
 ```sql
 SET GLOBAL general_log = 'OFF';
 ```
+
+Note that the general query log only records statements received from clients, not the individual statements that execute inside trigger bodies. To trace trigger internals at runtime, use the Performance Schema `events_statements_history` table or the debug log table approach from Technique 2.
 
 ## Technique 5 - Reproduce the Trigger Body as a Procedure
 
