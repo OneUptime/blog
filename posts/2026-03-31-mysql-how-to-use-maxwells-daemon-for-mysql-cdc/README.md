@@ -43,7 +43,7 @@ tar -xzf maxwell-1.41.2.tar.gz
 cd maxwell-1.41.2
 ```
 
-Maxwell requires Java 11 or later. Verify your Java version:
+Maxwell requires Java 8 or later. Verify your Java version:
 
 ```bash
 java -version
@@ -87,10 +87,10 @@ bin/maxwell --user='maxwell' --password='strongpassword' \
   --producer=kafka \
   --kafka.bootstrap.servers=broker1:9092,broker2:9092 \
   --kafka_topic=maxwell_cdc \
-  --kafka_partition_hash=primary_key
+  --producer_partition_by=primary_key
 ```
 
-The `--kafka_partition_hash=primary_key` option routes all changes for the same primary key to the same partition, preserving ordered delivery for a given row.
+The `--producer_partition_by=primary_key` option routes all changes for the same primary key to the same partition, preserving ordered delivery for a given row.
 
 ## Filtering Specific Tables
 
@@ -100,7 +100,7 @@ To capture only relevant tables and reduce noise, use include filters:
 bin/maxwell --user='maxwell' --password='strongpassword' \
   --host='127.0.0.1' \
   --producer=stdout \
-  --filter='include: myapp.orders, include: myapp.customers, exclude: myapp.*'
+  --filter='exclude: myapp.*, include: myapp.orders, include: myapp.customers'
 ```
 
 ## Persisting Position with a Config File
@@ -114,7 +114,7 @@ host=127.0.0.1
 producer=kafka
 kafka.bootstrap.servers=broker1:9092
 kafka_topic=maxwell_cdc
-filter=include: myapp.orders, include: myapp.customers
+filter=exclude: myapp.*, include: myapp.orders, include: myapp.customers
 log_level=info
 ```
 
@@ -129,12 +129,12 @@ bin/maxwell --config=/etc/maxwell/config.properties
 Maxwell exposes metrics via JMX or Prometheus. To enable the Prometheus endpoint, add the following to the config file:
 
 ```properties
-metrics_type=prometheus
+metrics_type=http
 metrics_prefix=maxwell
 http_port=8080
 ```
 
-Then scrape `http://localhost:8080/metrics` with your Prometheus instance to track lag, event rates, and replication position.
+Then scrape `http://localhost:8080/prometheus` with your Prometheus instance to track lag, event rates, and replication position.
 
 ## Summary
 
