@@ -91,7 +91,7 @@ Performance          | Limited by MongoDB I/O   | Dedicated, high throughput
 CDN integration      | Manual (stream via API)  | Native CloudFront support
 Backup               | Part of mongodump        | S3 versioning + replication
 Access control       | MongoDB RBAC             | IAM policies + bucket ACLs
-Query on metadata    | Rich MongoDB queries      | Tags + S3 Select (limited)
+Query on metadata    | Rich MongoDB queries      | Tags + object metadata (limited)
 Self-hosted option   | Yes (runs in MongoDB)    | MinIO or Ceph
 Pre-signed URLs      | No                       | Yes (native)
 ```
