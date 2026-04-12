@@ -106,7 +106,7 @@ INSERT INTO weekly_order_report
   (year_week, week_start_date, order_count, total_revenue, unique_customers)
 SELECT
   YEARWEEK(order_date, 3),
-  MIN(DATE(order_date)),
+  MIN(DATE(order_date)) - INTERVAL WEEKDAY(MIN(DATE(order_date))) DAY,
   COUNT(*),
   SUM(total_amount),
   COUNT(DISTINCT customer_id)
