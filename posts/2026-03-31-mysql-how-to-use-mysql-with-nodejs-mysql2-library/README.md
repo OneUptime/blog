@@ -168,7 +168,9 @@ async function transferFunds(fromId, toId, amount) {
 ## Streaming Large Result Sets
 
 ```javascript
-const connection = await mysql.createConnection({ /* config */ });
+const mysql = require('mysql2');
+
+const connection = mysql.createConnection({ /* config */ });
 
 const stream = connection.query('SELECT * FROM large_table').stream();
 
