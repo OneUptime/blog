@@ -38,7 +38,7 @@ The buffer pool is typically the largest consumer. A common rule is to set it to
 SHOW VARIABLES LIKE 'innodb_buffer_pool_size';
 
 -- Check actual usage
-SELECT FORMAT(pool_size/1024/1024, 0) AS pool_MB,
+SELECT FORMAT(pool_size*16/1024, 0) AS pool_MB,
        FORMAT(database_pages*16/1024, 0) AS used_MB,
        FORMAT(free_buffers*16/1024, 0) AS free_MB
 FROM information_schema.INNODB_BUFFER_POOL_STATS;
