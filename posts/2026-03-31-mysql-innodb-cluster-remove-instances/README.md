@@ -33,10 +33,13 @@ cluster.removeInstance('admin@node4:3306')
 MySQL Shell will confirm:
 
 ```text
-The instance will be removed from the InnoDB cluster. Depending on the
-instance being the Seed or not, the Metadata cache may need to be updated.
+The instance will be removed from the InnoDB cluster. Depending on the instance
+being the Seed or not, the Metadata session might become invalid. If so, please
+start a new session to the Metadata Storage R/W instance.
 
-Instance successfully removed from the cluster.
+Attempting to leave from the Group Replication group...
+
+The instance 'node4:3306' was successfully removed from the cluster.
 ```
 
 ## Remove an Offline or Unreachable Instance
@@ -78,14 +81,15 @@ STOP GROUP_REPLICATION;
 SET GLOBAL group_replication_start_on_boot = OFF;
 ```
 
-To fully reset the instance so it can be reused:
+To fully clean up the instance so it can be reused, connect to it with MySQL Shell and drop the metadata schema:
 
 ```javascript
 // In MySQL Shell connected to the removed instance
-dba.resetInstance('admin@node4:3306')
+shell.connect('admin@node4:3306')
+dba.dropMetadataSchema()
 ```
 
-This removes all group replication metadata from the instance.
+This removes the InnoDB Cluster metadata schema from the instance.
 
 ## Handle a Primary Instance Removal
 
@@ -109,7 +113,7 @@ cluster.removeInstance('admin@node1:3306')
 
 ## Update MySQL Router
 
-After removing an instance, restart MySQL Router so it updates its cached topology:
+MySQL Router automatically detects topology changes through its metadata cache, so a restart is not required. However, you can restart it to force an immediate refresh:
 
 ```bash
 sudo systemctl restart mysqlrouter
@@ -130,8 +134,8 @@ cluster.status()
 // Look for "status": "OK" - not "NO_QUORUM" or "OK_NO_TOLERANCE"
 ```
 
-For a 3-node cluster, removing one node leaves 2 nodes which can still maintain quorum. Removing a second would leave 1 node with no quorum.
+For a 3-node cluster, removing one node with `removeInstance()` leaves 2 nodes which can still maintain quorum. Removing a second would leave a 1-node cluster with `OK_NO_TOLERANCE` status — it still has quorum but cannot tolerate any failures. This is different from a node crashing without being removed, which would result in `NO_QUORUM`.
 
 ## Summary
 
-Use `cluster.removeInstance()` in MySQL Shell to remove instances from a MySQL InnoDB Cluster. For offline instances, add `{force: true}`. If removing the primary, switch primary first with `cluster.setPrimaryInstance()`. Clean up the removed instance using `dba.resetInstance()` and restart MySQL Router to update routing topology.
+Use `cluster.removeInstance()` in MySQL Shell to remove instances from a MySQL InnoDB Cluster. For offline instances, add `{force: true}`. If removing the primary, switch primary first with `cluster.setPrimaryInstance()`. Clean up the removed instance using `dba.dropMetadataSchema()`. MySQL Router will automatically update its routing topology.
