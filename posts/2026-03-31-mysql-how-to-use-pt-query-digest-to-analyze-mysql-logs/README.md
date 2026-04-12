@@ -123,7 +123,7 @@ For automated monitoring pipelines, save results to a MySQL table:
 ```bash
 pt-query-digest \
   --review h=localhost,u=root,p=secret,D=percona,t=query_review \
-  --review-history h=localhost,u=root,p=secret,D=percona,t=query_review_history \
+  --history h=localhost,u=root,p=secret,D=percona,t=query_review_history \
   /var/log/mysql/slow.log
 ```
 
