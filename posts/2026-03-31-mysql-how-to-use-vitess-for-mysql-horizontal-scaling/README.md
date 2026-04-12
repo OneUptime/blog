@@ -106,7 +106,7 @@ Define the vschema (Vitess schema) to tell Vitess how to shard:
 Apply the vschema:
 
 ```bash
-vtctldclient ApplyVSchema --keyspace=commerce --vschema_file=vschema.json
+vtctldclient ApplyVSchema --vschema-file=vschema.json commerce
 ```
 
 ## Resharding: Splitting Shards
@@ -115,19 +115,19 @@ When a shard grows too large, you can split it without downtime:
 
 ```bash
 # Start the workflow to reshard from 2 to 4 shards
-vtctldclient Reshard --workflow=reshard2to4 --keyspace=commerce \
-  create --source_shards="-80,80-" --target_shards="-40,40-80,80-c0,c0-"
+vtctldclient Reshard --workflow=reshard2to4 --target-keyspace=commerce \
+  create --source-shards="-80,80-" --target-shards="-40,40-80,80-c0,c0-"
 
 # Monitor progress
-vtctldclient Workflow --keyspace=commerce show --workflow=reshard2to4
+vtctldclient Workflow show --keyspace=commerce --workflow=reshard2to4
 
 # Switch reads
-vtctldclient Reshard --workflow=reshard2to4 --keyspace=commerce \
-  SwitchTraffic --tablet_type=rdonly,replica
+vtctldclient Reshard --workflow=reshard2to4 --target-keyspace=commerce \
+  switchtraffic --tablet-types=rdonly,replica
 
 # Switch writes (cutover)
-vtctldclient Reshard --workflow=reshard2to4 --keyspace=commerce \
-  SwitchTraffic --tablet_type=primary
+vtctldclient Reshard --workflow=reshard2to4 --target-keyspace=commerce \
+  switchtraffic --tablet-types=primary
 ```
 
 ## Connection Pooling
@@ -144,14 +144,14 @@ VTTablet manages MySQL connections efficiently:
 ## Monitoring Vitess
 
 ```bash
-# Vitess exposes Prometheus metrics on port 15000
-curl http://localhost:15000/metrics | grep vitess_query
+# Vitess exposes Prometheus metrics on the VTGate web port
+curl http://localhost:15001/metrics | grep vtgate
 ```
 
 Key metrics to monitor:
-- `vitess_query_count` - queries per second
-- `vitess_query_error_count` - query errors
-- `vitess_transaction_count` - active transactions
+- `vtgate_api_count` - API calls by operation and keyspace
+- `vtgate_api_error_count` - API errors by operation and code
+- `vtgate_queries_processed_total` - total queries processed by plan type
 
 ## Summary
 
