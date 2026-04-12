@@ -74,7 +74,7 @@ Key buffer metrics:
 | --- | --- |
 | `buffer_pool_reads` | Physical disk reads |
 | `buffer_pool_read_requests` | Logical read requests |
-| `buffer_pool_pages_dirty` | Pages with uncommitted modifications |
+| `buffer_pool_pages_dirty` | Pages modified in the buffer pool but not yet flushed to disk |
 | `buffer_pool_pages_flushed` | Pages written to disk |
 | `buffer_LRU_get_free_waits` | Waits to find a free buffer page |
 
