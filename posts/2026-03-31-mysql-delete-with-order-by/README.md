@@ -43,7 +43,7 @@ Delete everything except the most recent 1,000 rows for a given entity:
 ```sql
 DELETE FROM sensor_readings
 WHERE sensor_id = 7
-ORDER BY recorded_at DESC
+ORDER BY recorded_at ASC
 LIMIT (SELECT COUNT(*) - 1000 FROM sensor_readings WHERE sensor_id = 7);
 ```
 
@@ -60,7 +60,7 @@ if to_delete > 0:
     cursor.execute(
         """DELETE FROM sensor_readings
            WHERE sensor_id = %s
-           ORDER BY recorded_at DESC
+           ORDER BY recorded_at ASC
            LIMIT %s""",
         (sensor_id, to_delete)
     )
