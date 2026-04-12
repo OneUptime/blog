@@ -28,7 +28,7 @@ MySQL 5.7 and earlier had a query cache that returned cached result sets for ide
 
 ## Stage 3: Parser
 
-The SQL string is parsed into an abstract syntax tree (AST). The parser validates syntax and resolves identifiers (table names, column names) against the schema:
+The SQL string is parsed into an abstract syntax tree (AST). The parser validates syntax and checks that the statement is structurally correct SQL:
 
 ```sql
 -- If parsing fails, you see syntax errors
@@ -36,7 +36,7 @@ SELECT * FORM orders;
 -- ERROR 1064 (42000): You have an error in your SQL syntax
 ```
 
-The parser also handles macro expansion (e.g., `SELECT *` expands to the actual column list).
+The expansion of `SELECT *` to the actual column list happens later during the preprocessing/resolution phase, not during parsing.
 
 ## Stage 4: Preprocessor
 
@@ -70,7 +70,7 @@ EXPLAIN FORMAT=JSON SELECT ...;
 
 ## Stage 6: Execution Engine
 
-The execution engine implements the physical plan produced by the optimizer. It calls the storage engine API to read and write rows. For joins, it implements nested-loop, hash join, or merge join strategies.
+The execution engine implements the physical plan produced by the optimizer. It calls the storage engine API to read and write rows. For joins, it implements nested-loop join and hash join (added in MySQL 8.0.18) strategies.
 
 For `EXPLAIN ANALYZE` (MySQL 8.0.18+), the execution engine instruments actual row counts and timings:
 
