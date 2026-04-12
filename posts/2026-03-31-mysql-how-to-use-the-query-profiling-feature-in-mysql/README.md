@@ -24,7 +24,7 @@ The slow query log captures queries that exceed a configurable execution time th
 -- Check current status
 SHOW VARIABLES LIKE 'slow_query_log%';
 
--- Enable for the current session
+-- Enable dynamically (affects all new connections)
 SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
 SET GLOBAL long_query_time = 1;  -- Log queries taking > 1 second
@@ -59,7 +59,7 @@ Key fields: `Query_time`, `Lock_time`, `Rows_sent`, `Rows_examined`. A large rat
 # Top 10 slowest queries
 mysqldumpslow -s t -t 10 /var/log/mysql/slow.log
 
-# Top 10 by total time
+# Top 10 by average time
 mysqldumpslow -s at -t 10 /var/log/mysql/slow.log
 
 # Queries matching a pattern
