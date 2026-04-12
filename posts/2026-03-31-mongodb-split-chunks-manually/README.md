@@ -54,7 +54,7 @@ Before importing a large dataset, create initial chunks across all shards:
 ```javascript
 // 1. Enable sharding
 sh.enableSharding("myapp")
-sh.shardCollection("myapp.events", { customerId: "hashed" })
+sh.shardCollection("myapp.events", { customerId: 1 })
 
 // 2. Stop the balancer temporarily
 sh.stopBalancer()
@@ -78,19 +78,16 @@ sh.startBalancer()
 
 ## Using the Admin Command Directly
 
-`sh.splitAt()` is a wrapper for `splitChunk`:
+`sh.splitAt()` is a wrapper for the `split` admin command:
 
 ```javascript
 db.adminCommand({
-  splitChunk: "myapp.orders",
-  from: "shard1",
-  min: { customerId: "C1000" },
-  max: { customerId: "C5000" },
-  splitKeys: [{ customerId: "C3000" }]
+  split: "myapp.orders",
+  middle: { customerId: "C3000" }
 })
 ```
 
-This form lets you specify multiple split points in one command.
+You can also use `find` to let MongoDB choose the split point (equivalent to `sh.splitFind()`), or `bounds` to specify the exact chunk boundaries:
 
 ## Verify Chunks After Splitting
 
