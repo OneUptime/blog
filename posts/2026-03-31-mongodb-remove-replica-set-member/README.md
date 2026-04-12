@@ -60,7 +60,7 @@ You cannot call `rs.remove()` on the primary from itself. First step down the pr
 
 ```javascript
 // Step 1: On the current primary, initiate a stepdown
-rs.stepDown(60);  // 60 seconds for a secondary to catch up and win election
+rs.stepDown(60);  // Old primary is ineligible for re-election for 60 seconds
 
 // Step 2: Connect to the new primary
 mongosh --host newprimary.example.com:27017
