@@ -14,7 +14,7 @@ Transactions inside stored procedures let you group multiple DML statements into
 
 A stored procedure often performs several related writes - for example, inserting an order and decrementing inventory. Without a transaction, a crash between those two statements leaves the database in a partially updated state. Wrapping them in a transaction means either both succeed or neither does.
 
-MySQL uses `START TRANSACTION` (or its alias `BEGIN`) to open a transaction, `COMMIT` to persist changes, and `ROLLBACK` to undo them.
+MySQL uses `START TRANSACTION` to open a transaction, `COMMIT` to persist changes, and `ROLLBACK` to undo them. Outside of stored programs `BEGIN` works as an alias for `START TRANSACTION`, but inside stored procedures the parser treats `BEGIN` as the start of a `BEGIN ... END` block, so you must use `START TRANSACTION`.
 
 ## Basic Transaction Structure
 
