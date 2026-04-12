@@ -18,7 +18,7 @@ Description: Learn how to use MySQL's JSON_PRETTY() function to format JSON docu
 JSON_PRETTY(json_val)
 ```
 
-Returns the JSON value as a formatted string with 2-space indentation. Returns `NULL` if `json_val` is `NULL` or not valid JSON.
+Returns the JSON value as a formatted string with 2-space indentation. Returns `NULL` if `json_val` is `NULL`. Produces an error if the argument is not valid JSON.
 
 ## Basic Examples
 
@@ -29,9 +29,9 @@ SELECT JSON_PRETTY('{"name":"Alice","age":30,"city":"NYC"}');
 
 ```text
 {
-  "name": "Alice",
   "age": 30,
-  "city": "NYC"
+  "city": "NYC",
+  "name": "Alice"
 }
 ```
 
@@ -93,13 +93,13 @@ WHERE id = 1;
 ```sql
 -- Compact (stored format)
 SELECT request_body FROM api_logs WHERE id = 1;
--- {"email": "alice@example.com", "name": "Alice", "roles": ["user", "beta"]}
+-- {"name": "Alice", "email": "alice@example.com", "roles": ["user", "beta"]}
 
 -- Pretty (formatted)
 SELECT JSON_PRETTY(request_body) FROM api_logs WHERE id = 1;
 -- {
---   "email": "alice@example.com",
 --   "name": "Alice",
+--   "email": "alice@example.com",
 --   "roles": [
 --     "user",
 --     "beta"
