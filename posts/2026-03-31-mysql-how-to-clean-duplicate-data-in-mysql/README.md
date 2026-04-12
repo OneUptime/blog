@@ -111,8 +111,8 @@ VALUES ('Alice', 'Smith', 'alice@example.com');
 
 -- Or update existing:
 INSERT INTO users (first_name, last_name, email)
-VALUES ('Alice', 'Smith', 'alice@example.com')
-ON DUPLICATE KEY UPDATE first_name = VALUES(first_name);
+VALUES ('Alice', 'Smith', 'alice@example.com') AS new
+ON DUPLICATE KEY UPDATE first_name = new.first_name;
 ```
 
 ## Summary
