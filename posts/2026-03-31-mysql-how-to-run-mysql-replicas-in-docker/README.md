@@ -62,8 +62,6 @@ services:
       MYSQL_DATABASE: mydb
       MYSQL_USER: appuser
       MYSQL_PASSWORD: appsecret
-      MYSQL_REPLICATION_USER: replicator
-      MYSQL_REPLICATION_PASSWORD: replsecret
     ports:
       - "3306:3306"
     volumes:
@@ -186,7 +184,7 @@ STOP REPLICA;
 -- Start replication again
 START REPLICA;
 
--- Reset replication state (clears relay logs and GTID tracking)
+-- Reset replication state (removes all replication configuration, requiring reconfiguration)
 RESET REPLICA ALL;
 ```
 
