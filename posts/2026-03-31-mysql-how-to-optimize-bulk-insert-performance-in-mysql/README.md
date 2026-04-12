@@ -110,10 +110,10 @@ IGNORE 1 ROWS;
 
 ## Technique 4: Disable Indexes During Load
 
-For initial large data loads, temporarily disable index updates:
+For initial large data loads, temporarily disable index updates. Note that `DISABLE KEYS` only works on MyISAM tables — it is silently ignored on InnoDB:
 
 ```sql
--- Disable non-unique index updates
+-- Disable non-unique index updates (MyISAM only)
 ALTER TABLE products DISABLE KEYS;
 
 -- Load data
