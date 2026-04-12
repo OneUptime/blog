@@ -45,10 +45,10 @@ Note: `INSERT IGNORE` also suppresses other errors. Use with caution.
 
 ```sql
 INSERT INTO users (email, name, last_login)
-VALUES ('alice@example.com', 'Alice', NOW())
+VALUES ('alice@example.com', 'Alice', NOW()) AS new
 ON DUPLICATE KEY UPDATE
-    name       = VALUES(name),
-    last_login = VALUES(last_login);
+    name       = new.name,
+    last_login = new.last_login;
 ```
 
 This inserts if no conflict, otherwise updates the specified columns.
@@ -93,9 +93,10 @@ VALUES
     ('A100', 'Widget A', 9.99),
     ('A101', 'Widget B', 14.99),
     ('A100', 'Widget A v2', 9.99)  -- duplicate sku
+AS new
 ON DUPLICATE KEY UPDATE
-    name  = VALUES(name),
-    price = VALUES(price);
+    name  = new.name,
+    price = new.price;
 ```
 
 ## Application-Level Handling
