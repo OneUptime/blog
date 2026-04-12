@@ -12,22 +12,24 @@ The MySQL Enterprise Firewall is a plugin available in MySQL Enterprise Edition 
 
 ## How the Enterprise Firewall Works
 
-The firewall operates in three modes:
+The firewall operates in four modes:
 
 - **RECORDING** - Learns what queries are legitimate for a user (builds allowlist)
 - **PROTECTING** - Enforces the allowlist, blocking queries not in the learned set
+- **DETECTING** - Logs queries that would be blocked without actually blocking them
 - **OFF** - Disabled for the user
 
 ## Installing the Firewall Plugin
 
-```sql
--- Install the firewall plugin
-INSTALL PLUGIN mysql_firewall SONAME 'mysql_firewall.so';
-INSTALL PLUGIN mysql_firewall_users SONAME 'mysql_firewall.so';
-INSTALL PLUGIN mysql_firewall_whitelist SONAME 'mysql_firewall.so';
+Run the installation script included in the MySQL Enterprise Edition `share` directory. This installs the plugins, creates the required tables, and registers the stored procedures:
+
+```bash
+mysql -u root -p mysql < /path/to/mysql/share/linux_install_firewall.sql
 ```
 
-Or load via `my.cnf`:
+On Windows, use `win_install_firewall.sql` instead.
+
+Or load the plugin via `my.cnf`:
 
 ```text
 [mysqld]
@@ -114,11 +116,23 @@ CALL mysql.sp_set_firewall_mode('app_user@%', 'OFF');
 
 ## Monitoring Blocked Queries
 
+Check the firewall status variables to see how many queries have been accepted or denied:
+
 ```sql
-SELECT * FROM performance_schema.events_statements_history_long
-WHERE sql_text LIKE '%DENIED%'
-ORDER BY event_id DESC;
+SHOW GLOBAL STATUS LIKE 'Firewall%';
 ```
+
+```text
++----------------------------+-------+
+| Variable_name              | Value |
++----------------------------+-------+
+| Firewall_access_denied     | 3     |
+| Firewall_access_granted    | 218   |
+| Firewall_cached_entries    | 5     |
++----------------------------+-------+
+```
+
+Individual blocked queries are logged to the MySQL error log. In DETECTING mode, suspected violations are also written there for review.
 
 ## Summary
 
