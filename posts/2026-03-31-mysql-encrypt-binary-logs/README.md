@@ -75,9 +75,9 @@ SHOW BINARY LOGS;
 SHOW MASTER STATUS\G
 ```
 
-## Checking Encryption Status of Individual Log Files
+## Reading Encrypted Binary Log Files
 
-Use `mysqlbinlog` to inspect whether a log file is encrypted:
+Encrypted binary logs cannot be read directly from disk without the keyring. Use `mysqlbinlog` with `--read-from-remote-server` to read them through the server:
 
 ```bash
 mysqlbinlog --read-from-remote-server \
@@ -87,22 +87,21 @@ mysqlbinlog --read-from-remote-server \
   mysql-bin.000001 | head -20
 ```
 
-Encrypted binary logs cannot be read directly from disk without the keyring.
+To check which log files are encrypted, use `SHOW BINARY LOGS` — the `Encrypted` column indicates `Yes` or `No` for each file.
 
 ## Relay Log Encryption for Replicas
 
-On a replica server, you can also encrypt relay logs:
+The `binlog_encryption` variable controls encryption for both binary log files and relay log files. To encrypt relay logs on a replica, enable `binlog_encryption` on that server — binary logging does not need to be enabled on the replica for relay log encryption to work:
 
 ```text
 [mysqld]
-relay_log_recovery=ON
-relay-log-encryption=ON
+binlog_encryption=ON
 ```
 
 Or set dynamically:
 
 ```sql
-SET GLOBAL relay_log_encryption = ON;
+SET GLOBAL binlog_encryption = ON;
 ```
 
 ## Rotating the Binary Log Encryption Key
@@ -112,7 +111,7 @@ SET GLOBAL relay_log_encryption = ON;
 ALTER INSTANCE ROTATE BINLOG MASTER KEY;
 ```
 
-This generates a new key and re-encrypts the current binary log with it. Existing older log files retain their original keys.
+This generates a new binary log encryption key, rotates the binary log and relay log files, and re-encrypts the file passwords of all existing encrypted log files using the new key. Previous keys that are no longer in use are removed from the keyring.
 
 ## Disabling Binary Log Encryption
 
