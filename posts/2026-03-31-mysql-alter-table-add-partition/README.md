@@ -18,7 +18,7 @@ The `ALTER TABLE ... ADD PARTITION` statement adds one or more new partitions to
 
 - `RANGE` partitioning: add a partition for a higher range
 - `LIST` partitioning: add a partition with new list values
-- `HASH` and `KEY` partitioning: use `COALESCE PARTITION` or `ADD PARTITION n` to increase the partition count
+- `HASH` and `KEY` partitioning: use `ADD PARTITION PARTITIONS n` to increase or `COALESCE PARTITION n` to decrease the partition count
 
 ## Adding a Partition to a RANGE Partitioned Table
 
