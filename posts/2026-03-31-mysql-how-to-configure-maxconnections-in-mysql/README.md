@@ -27,9 +27,9 @@ SHOW VARIABLES LIKE 'max_connections';
 ```text
 +-----------------+-------+
 | Variable_name   | Value |
-+-------+---------+-------+
++-----------------+-------+
 | max_connections | 151   |
-+-------+---------+-------+
++-----------------+-------+
 ```
 
 The default is 151 in most MySQL versions.
@@ -100,15 +100,19 @@ max_connections = 2048 / 4 = 512
 
 ## Reducing Connection Overhead with Connection Pooling
 
-Instead of increasing `max_connections` indefinitely, use a connection pool such as ProxySQL or PgBouncer (for MySQL: ProxySQL):
+Instead of increasing `max_connections` indefinitely, use a connection pooler like ProxySQL:
 
-```ini
+```
 # ProxySQL config (simplified)
-[mysql_servers]
-hostgroup_id=0
-hostname=db.internal
-port=3306
-max_connections=100
+mysql_servers =
+(
+    {
+        hostgroup_id = 0
+        hostname = "db.internal"
+        port = 3306
+        max_connections = 100
+    }
+)
 ```
 
 ProxySQL allows 10,000 frontend connections while using only 100 backend connections to MySQL.
@@ -118,7 +122,7 @@ ProxySQL allows 10,000 frontend connections while using only 100 backend connect
 ```sql
 SELECT
   user,
-  count_star AS total_connections,
+  total_connections,
   current_connections
 FROM performance_schema.accounts
 ORDER BY current_connections DESC;
