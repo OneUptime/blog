@@ -251,11 +251,11 @@ db.runCommand({
 
 Time series collections have some restrictions:
 
-- Documents cannot be deleted individually (delete by time range using the TTL mechanism or a ranged delete).
-- Documents cannot be updated after insertion.
+- In MongoDB 5.0, documents cannot be deleted individually or updated after insertion. Starting in MongoDB 5.1, delete operations and limited updates to measurement fields are supported.
 - Shard key must include the `metaField`.
 - The `timeField` and `metaField` values cannot be changed after collection creation.
-- Capped collections and change streams on time series collections have limited support.
+- Time series collections cannot be capped collections.
+- Change streams on time series collections are supported starting in MongoDB 6.0.
 
 ## Best Practices
 
