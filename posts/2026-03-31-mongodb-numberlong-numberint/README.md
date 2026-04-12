@@ -16,7 +16,7 @@ MongoDB's BSON format distinguishes between three numeric integer types:
 - `NumberLong` (64-bit signed integer, BSON type 18) - values up to 9,223,372,036,854,775,807
 - `Double` (64-bit floating point, BSON type 1) - the default for JavaScript numbers
 
-In mongosh, plain integer literals are stored as `Double` by default, which can cause precision loss for very large integers.
+In the legacy `mongo` shell, plain integer literals are stored as `Double` by default. In `mongosh`, integer literals are stored as `Int32` if they fit in 32 bits, or `Long` if they exceed 32-bit range but remain within the safe integer range. Explicit wrappers are still recommended for clarity and portability.
 
 ## When to Use NumberInt and NumberLong
 
@@ -37,7 +37,7 @@ Verify the stored types:
 ```javascript
 const doc = db.products.findOne({ quantity: NumberInt(50) });
 print(doc.productId);   // NumberLong(9876543210)
-print(doc.quantity);    // 32
+print(doc.quantity);    // 50
 ```
 
 ## Querying with Integer Types
