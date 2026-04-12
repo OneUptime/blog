@@ -10,7 +10,7 @@ Description: Learn how to model documents and indexes in MongoDB to serve fast r
 
 ## What Is a Range-Query-Heavy Workload
 
-Range queries filter documents using inequality operators: `$gt`, `$gte`, `$lt`, `$lte`, `$between`. Dashboards showing the last 7 days of events, paginated reports sorted by timestamp, and price-range product searches all fall into this category.
+Range queries filter documents using inequality operators: `$gt`, `$gte`, `$lt`, `$lte`. Dashboards showing the last 7 days of events, paginated reports sorted by timestamp, and price-range product searches all fall into this category.
 
 ```mermaid
 flowchart TD
@@ -98,7 +98,7 @@ db.logs.insertOne({ ts: new Date("2026-03-31T10:05:00Z"), level: "error" });
 db.logs.find({ ts: { $gte: new Date("2026-03-31T00:00:00Z"), $lt: new Date("2026-04-01T00:00:00Z") } });
 ```
 
-## Principle 5: Use the Attribute Pattern for Sparse Range Fields
+## Principle 5: Use Sparse Indexes for Optional Range Fields
 
 When many documents have no value for a range field, a sparse index avoids indexing nulls and reduces index size.
 
@@ -145,14 +145,14 @@ async function insertEvent(db, event) {
 async function queryRange(db, start, end) {
   // Only query collections that overlap with the range
   const results = [];
-  let cursor = new Date(start);
+  let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
   while (cursor <= end) {
     const col = collectionName(cursor);
     const docs = await db.collection(col).find({
       ts: { $gte: start, $lte: end }
     }).toArray();
     results.push(...docs);
-    cursor.setMonth(cursor.getMonth() + 1);
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
   return results;
 }
