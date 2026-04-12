@@ -10,7 +10,7 @@ Description: Learn how to diagnose and resolve MongoDB memory pressure alerts by
 
 ## What Causes Memory Pressure in MongoDB
 
-MongoDB's WiredTiger storage engine uses an in-memory cache (default: 50% of RAM minus 1 GB). When the working set exceeds the cache size, WiredTiger evicts pages to disk, increasing read latency dramatically. Atlas fires memory pressure alerts when the cache dirty bytes or eviction rate crosses a threshold.
+MongoDB's WiredTiger storage engine uses an in-memory cache (default: 50% of (RAM minus 1 GB)). When the working set exceeds the cache size, WiredTiger evicts pages to disk, increasing read latency dramatically. Atlas fires memory pressure alerts when the cache dirty bytes or eviction rate crosses a threshold.
 
 ## Step 1: Assess Current Memory Usage
 
@@ -92,7 +92,7 @@ storage:
       cacheSizeGB: 8
 ```
 
-On Atlas, scale up the tier to get more RAM. Atlas M30 gives 8 GB RAM, M50 gives 16 GB.
+On Atlas, scale up the tier to get more RAM. Atlas M30 gives 8 GB RAM, M50 gives 32 GB.
 
 ```bash
 atlas clusters update MyCluster --tier M50
