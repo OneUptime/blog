@@ -107,8 +107,8 @@ In very rare scenarios a primary may not detect that it has lost majority (brief
 
 ```javascript
 // On any suspected primary
-db.adminCommand({ isMaster: 1 })
-// Check: "ismaster": true and "primary" field matches this host
+db.adminCommand({ hello: 1 })
+// Check: "isWritablePrimary": true and "primary" field matches this host
 ```
 
 If you discover two nodes both think they are primary, force a step-down on the one with fewer or stale oplog:
@@ -138,8 +138,11 @@ rs.status().members.find(m => m.name === "secondary2.example.com:27017")
 Check oplog replay progress:
 
 ```javascript
-// Connect to the recovering member
-db.adminCommand({ replSetGetStatus: 1 }).initialSyncStatus
+// Compare the recovering member's optimeDate with the primary's
+rs.status().members.forEach(m => {
+  print(m.name, m.stateStr, m.optimeDate)
+})
+// Or use rs.printSecondaryReplicationInfo() for replication lag
 ```
 
 ## Rollback After Partition (Minority Writes)
@@ -171,12 +174,9 @@ Tune these settings to detect partitions faster or avoid false positives on flak
 
 ```javascript
 cfg = rs.conf()
-cfg.settings = {
-  heartbeatIntervalMillis: 2000,    // How often to send heartbeats (default: 2000)
-  heartbeatTimeoutSecs: 10,         // Time before member declared unreachable (default: 10)
-  electionTimeoutMillis: 10000,     // Time before election starts (default: 10000)
-  catchUpTimeoutMillis: 2000        // Time for new primary to catch up before stepping down
-}
+cfg.settings.heartbeatTimeoutSecs = 10          // Time before member declared unreachable (default: 10)
+cfg.settings.electionTimeoutMillis = 10000      // Time before election starts (default: 10000)
+cfg.settings.catchUpTimeoutMillis = -1          // Time for new primary to catch up (default: -1, unlimited)
 rs.reconfig(cfg)
 ```
 
