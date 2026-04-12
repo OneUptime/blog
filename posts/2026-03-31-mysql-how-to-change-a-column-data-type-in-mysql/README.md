@@ -70,7 +70,7 @@ ALTER TABLE users
 MODIFY COLUMN username VARCHAR(200) NOT NULL;
 ```
 
-Narrowing (e.g., VARCHAR(200) to VARCHAR(50)) can truncate data. MySQL will warn but may proceed:
+Narrowing (e.g., VARCHAR(200) to VARCHAR(50)) can cause data loss. In strict SQL mode (the default since MySQL 5.7), MySQL raises an error if any existing data would be truncated. In non-strict mode, data is silently truncated with a warning:
 
 ```sql
 -- Check maximum length before narrowing
@@ -113,21 +113,21 @@ MODIFY COLUMN phone VARCHAR(20) NULL;
 
 ## Online DDL for Data Type Changes
 
-Some type changes are instant in MySQL 8.0 with InnoDB:
+VARCHAR widening can be done in-place in MySQL 8.0 with InnoDB, as long as the number of length bytes stays the same (both within 0–255 or both 256+):
 
 ```sql
--- VARCHAR widening is instant (within same length threshold)
+-- VARCHAR widening is in-place (within same length byte threshold)
 ALTER TABLE users
 MODIFY COLUMN username VARCHAR(200) NOT NULL,
-ALGORITHM=INSTANT;
+ALGORITHM=INPLACE, LOCK=NONE;
 
--- Other changes may require INPLACE or COPY
+-- Other changes like data type modifications require COPY
 ALTER TABLE products
 MODIFY COLUMN price DECIMAL(12, 4) NOT NULL,
-ALGORITHM=INPLACE, LOCK=NONE;
+ALGORITHM=COPY;
 ```
 
-If `ALGORITHM=INSTANT` is not supported, MySQL returns an error and you can fall back to `INPLACE` or `COPY`.
+If the requested algorithm is not supported for a given change, MySQL returns an error. Use `ALGORITHM=INPLACE, LOCK=NONE` for supported operations like VARCHAR widening to allow concurrent DML, and `ALGORITHM=COPY` for data type changes that require a table rebuild.
 
 ## Changing to JSON Type
 
@@ -137,8 +137,8 @@ ALTER TABLE users
 MODIFY COLUMN settings JSON;
 ```
 
-MySQL validates JSON on insert/update after the type change.
+MySQL validates existing data during the ALTER TABLE itself — if any existing value is not valid JSON, the operation fails. After the conversion, all future inserts and updates are also validated.
 
 ## Summary
 
-Use `ALTER TABLE ... MODIFY COLUMN` to change a column's data type in MySQL. Always check the current definition with `SHOW COLUMNS` before modifying, and verify existing data is compatible with the new type - especially when narrowing or changing to more restrictive types. In MySQL 8.0 with InnoDB, use `ALGORITHM=INSTANT` or `ALGORITHM=INPLACE, LOCK=NONE` to minimize disruption on production tables.
+Use `ALTER TABLE ... MODIFY COLUMN` to change a column's data type in MySQL. Always check the current definition with `SHOW COLUMNS` before modifying, and verify existing data is compatible with the new type - especially when narrowing or changing to more restrictive types. In MySQL 8.0 with InnoDB, use `ALGORITHM=INPLACE, LOCK=NONE` for supported operations like VARCHAR widening to minimize disruption on production tables.
