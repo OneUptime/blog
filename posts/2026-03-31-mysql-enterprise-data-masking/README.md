@@ -12,18 +12,22 @@ Description: Learn how to use MySQL Enterprise Data Masking functions to mask, o
 
 MySQL Enterprise Data Masking and De-Identification provides a set of SQL functions that transform sensitive data - replacing real PII with masked or synthetic values. This is essential for compliance (GDPR, HIPAA, PCI DSS) when sharing production data with developers, running tests, or generating reports.
 
-In MySQL 8.0.28+, the feature is delivered as the `data_masking` component.
+In MySQL 8.0.33+, the feature is delivered as a set of `data_masking` components.
 
 ## Installing the Component
 
 ```sql
--- MySQL 8.0.28+
+-- MySQL 8.0.33+ (component-based)
 INSTALL COMPONENT 'file://component_masking';
+INSTALL COMPONENT 'file://component_masking_functions';
 
 -- Older MySQL 8.0 versions use the plugin
 INSTALL PLUGIN data_masking SONAME 'data_masking.so';
 
--- Verify
+-- Verify (component)
+SELECT * FROM mysql.component;
+
+-- Verify (plugin)
 SHOW PLUGINS WHERE Name = 'data_masking';
 ```
 
@@ -42,13 +46,13 @@ mask_uuid(str)                      - mask UUID, keep structure
 ## Masking Credit Card Numbers
 
 ```sql
--- mask_pan: keep first 6 and last 4 digits
+-- mask_pan: mask all but last 4 digits
 SELECT mask_pan('4111111111111111');
--- Result: 411111XXXXXX1111
-
--- mask_pan_relaxed: mask all but last 4
-SELECT mask_pan_relaxed('4111111111111111');
 -- Result: XXXXXXXXXXXX1111
+
+-- mask_pan_relaxed: keep first 6 and last 4 digits
+SELECT mask_pan_relaxed('4111111111111111');
+-- Result: 411111XXXXXX1111
 ```
 
 ## Masking Custom Strings
@@ -56,11 +60,11 @@ SELECT mask_pan_relaxed('4111111111111111');
 ```sql
 -- mask_inner: mask characters between margin offsets
 SELECT mask_inner('John Smith', 2, 2);
--- Result: Jo******th (keeps 2 from start and 2 from end)
+-- Result: JoXXXXXXth (keeps 2 from start and 2 from end)
 
 -- mask_outer: mask characters outside the margins
 SELECT mask_outer('john.doe@example.com', 4, 7);
--- Result: XXXXdoe@example.XXXXX
+-- Result: XXXX.doe@examXXXXXXX
 ```
 
 ## Masking SSN and IBAN
@@ -70,7 +74,7 @@ SELECT mask_ssn('123-45-6789');
 -- Result: XXX-XX-6789
 
 SELECT mask_iban('DE89370400440532013000');
--- Result: DE89XXXXXXXXXXXX3000
+-- Result: DE********************
 ```
 
 ## Generating Random Synthetic Data
