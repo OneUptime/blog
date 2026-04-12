@@ -94,7 +94,7 @@ pt-archiver \
   --statistics
 ```
 
-To archive to a file instead of deleting:
+To archive to another server instead of deleting:
 
 ```bash
 pt-archiver \
