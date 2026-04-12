@@ -42,24 +42,24 @@ services:
     container_name: mongo2
     hostname: mongo2
     ports:
-      - "27018:27017"
+      - "27018:27018"
     volumes:
       - mongo2-data:/data/db
     networks:
       - mongo-net
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27018"]
 
   mongo3:
     image: mongo:7.0
     container_name: mongo3
     hostname: mongo3
     ports:
-      - "27019:27017"
+      - "27019:27019"
     volumes:
       - mongo3-data:/data/db
     networks:
       - mongo-net
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27019"]
 
   mongo-init:
     image: mongo:7.0
@@ -75,8 +75,8 @@ services:
             _id: \"rs0\",
             members: [
               { _id: 0, host: \"mongo1:27017\", priority: 2 },
-              { _id: 1, host: \"mongo2:27017\", priority: 1 },
-              { _id: 2, host: \"mongo3:27017\", priority: 1 }
+              { _id: 1, host: \"mongo2:27018\", priority: 1 },
+              { _id: 2, host: \"mongo3:27019\", priority: 1 }
             ]
           });
         '
@@ -120,9 +120,9 @@ Verify the replica set status:
 
 ```bash
 docker exec -it mongo1 mongosh --eval "rs.status()" | grep -E "name|stateStr"
-# "name" : "mongo1:27017", "stateStr" : "PRIMARY"
-# "name" : "mongo2:27017", "stateStr" : "SECONDARY"
-# "name" : "mongo3:27017", "stateStr" : "SECONDARY"
+# name: 'mongo1:27017', stateStr: 'PRIMARY'
+# name: 'mongo2:27018', stateStr: 'SECONDARY'
+# name: 'mongo3:27019', stateStr: 'SECONDARY'
 ```
 
 ## Connection String
@@ -168,6 +168,8 @@ try {
 } catch (e) {
   await session.abortTransaction();
   console.error("Transaction aborted:", e.message);
+} finally {
+  await session.endSession();
 }
 ```
 
