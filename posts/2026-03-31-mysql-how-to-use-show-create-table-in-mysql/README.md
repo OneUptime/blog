@@ -50,8 +50,8 @@ Create Table: CREATE TABLE `orders` (
 Export DDL for all tables in a database to a SQL file:
 
 ```bash
-mysql -u root -p mydb -e "
-SELECT CONCAT('SHOW CREATE TABLE ', table_name, '\\G')
+mysql -u root -p -N mydb -e "
+SELECT CONCAT('SHOW CREATE TABLE ', table_name, ';')
 FROM information_schema.tables
 WHERE table_schema = 'mydb';" | mysql -u root -p mydb > schema.sql
 ```
