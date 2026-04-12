@@ -26,31 +26,39 @@ This is the most efficient approach: restore one member, start it as a standalon
 sudo systemctl stop mongod
 ```
 
-### Step 2 - Restore Data on the Primary Node
+### Step 2 - Clear Data and Start as Standalone
 
 ```bash
 # Remove existing data
 sudo rm -rf /var/lib/mongodb/*
-
-# Restore from mongodump
-mongorestore --host localhost:27017 --drop /backup/dump/
 ```
 
-If you have a filesystem snapshot (e.g., LVM or EBS snapshot), mount it directly to the data directory instead.
+If you have a filesystem snapshot (e.g., LVM or EBS snapshot), mount it directly to the data directory instead of clearing and restoring.
 
-### Step 3 - Start as Standalone (Skip Replica Set)
-
-Temporarily comment out the replication config in `mongod.conf`:
+Temporarily comment out the replication config in `mongod.conf` so mongod starts as a standalone:
 
 ```yaml
 # replication:
 #   replSetName: "rs0"
 ```
 
-Start mongod and verify data:
+Start mongod:
 
 ```bash
 sudo systemctl start mongod
+```
+
+### Step 3 - Restore Data and Verify
+
+With mongod running as a standalone, restore the backup:
+
+```bash
+mongorestore --host localhost:27017 --drop /backup/dump/
+```
+
+Verify the restored data:
+
+```bash
 mongosh --eval 'db.adminCommand("listDatabases")'
 ```
 
@@ -69,7 +77,7 @@ Restart:
 sudo systemctl restart mongod
 ```
 
-### Step 5 - Re-initiate the Replica Set
+### Step 6 - Re-initiate the Replica Set
 
 ```javascript
 rs.initiate({
@@ -78,7 +86,7 @@ rs.initiate({
 })
 ```
 
-### Step 6 - Add Secondaries
+### Step 7 - Add Secondaries
 
 ```javascript
 rs.add("mongo2:27017")
@@ -89,14 +97,14 @@ The secondaries will perform an initial sync from the restored primary.
 
 ## Method 2 - mongorestore to All Members
 
-For point-in-time consistency, restore the same backup to all members before starting the set:
+For point-in-time consistency, restore the same backup to all members before starting the set. On each member, comment out the replication config in `mongod.conf`, start mongod as a standalone, then restore:
 
 ```bash
-# Run on each member
+# Run on each member (with mongod running as standalone)
 mongorestore --drop /backup/dump/
 ```
 
-Then initiate the replica set with all three hosts at once:
+After restoring all members, stop mongod on each, re-enable replication in `mongod.conf`, restart, then initiate the replica set with all three hosts at once:
 
 ```javascript
 rs.initiate({
@@ -138,7 +146,7 @@ rs.printSecondaryReplicationInfo()
 MongoServerError: not running with --replSet
 ```
 
-The replica set name in `mongod.conf` does not match the backup's config. Ensure `replSetName` is consistent.
+The mongod instance was started without replication enabled. Ensure the `replication` section in `mongod.conf` is uncommented and `replSetName` is set correctly before attempting replica set operations.
 
 ```text
 Error: this node has not yet been added to a replica set
