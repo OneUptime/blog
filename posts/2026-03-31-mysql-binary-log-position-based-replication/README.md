@@ -47,21 +47,21 @@ Take a snapshot of the source database while recording the binary log position:
 mysqldump -u root -p \
   --all-databases \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --flush-logs \
   > /tmp/source_snapshot.sql
 ```
 
-The `--master-data=2` flag writes the binary log position as a comment:
+The `--source-data=2` flag writes the binary log position as a comment:
 
 ```bash
-head -50 /tmp/source_snapshot.sql | grep "CHANGE MASTER"
+head -50 /tmp/source_snapshot.sql | grep "CHANGE REPLICATION SOURCE"
 ```
 
 Output:
 
 ```text
--- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000005', MASTER_LOG_POS=157;
+-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='mysql-bin.000005', SOURCE_LOG_POS=157;
 ```
 
 Note the filename and position values.
@@ -119,14 +119,14 @@ Last_Error: (empty)
 On the source:
 
 ```sql
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 On the replica:
 
 ```sql
 SHOW REPLICA STATUS\G
--- Check: Relay_Master_Log_File and Exec_Master_Log_Pos
+-- Check: Relay_Source_Log_File and Exec_Source_Log_Pos
 ```
 
 ## Pausing and Resuming Replication
@@ -158,4 +158,4 @@ WHERE table_schema = 'mydb';
 
 ## Summary
 
-Binary log position-based replication requires recording the source log file and position at snapshot time, restoring the snapshot on the replica, and using `CHANGE REPLICATION SOURCE TO` with `SOURCE_LOG_FILE` and `SOURCE_LOG_POS` to connect the replica. Use `--master-data=2` with `mysqldump` to capture the position automatically. Monitor replication with `SHOW REPLICA STATUS` and verify `Replica_IO_Running` and `Replica_SQL_Running` are both `Yes` before considering the setup complete.
+Binary log position-based replication requires recording the source log file and position at snapshot time, restoring the snapshot on the replica, and using `CHANGE REPLICATION SOURCE TO` with `SOURCE_LOG_FILE` and `SOURCE_LOG_POS` to connect the replica. Use `--source-data=2` with `mysqldump` to capture the position automatically. Monitor replication with `SHOW REPLICA STATUS` and verify `Replica_IO_Running` and `Replica_SQL_Running` are both `Yes` before considering the setup complete.
