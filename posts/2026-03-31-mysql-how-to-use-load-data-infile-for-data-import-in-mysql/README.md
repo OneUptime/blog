@@ -165,14 +165,17 @@ ALTER TABLE customers ENABLE KEYS;
 
 ## Checking How Many Rows Were Loaded
 
-```sql
-SHOW WARNINGS;
-```
-
-After a `LOAD DATA INFILE`, the output shows:
+After a `LOAD DATA INFILE`, the MySQL client automatically displays a result summary:
 
 ```text
-Rows matched: 5000  Changed: 5000  Warnings: 0
+Query OK, 5000 rows affected (0.12 sec)
+Records: 5000  Deleted: 0  Skipped: 0  Warnings: 0
+```
+
+If there were warnings, view the details with:
+
+```sql
+SHOW WARNINGS;
 ```
 
 ## Summary
