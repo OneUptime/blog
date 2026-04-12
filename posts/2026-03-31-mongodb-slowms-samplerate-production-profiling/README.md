@@ -12,7 +12,7 @@ Profiling in production requires balancing observability with performance. The `
 
 ## The Performance Cost of Profiling
 
-Every profiled operation writes a document to `system.profile`, which is itself a write to the `local` database. At high throughput, even Level 1 profiling can add measurable overhead. The key is capturing enough data to diagnose problems while limiting write amplification.
+Every profiled operation writes a document to `system.profile`, a capped collection in the profiled database. At high throughput, even Level 1 profiling can add measurable overhead. The key is capturing enough data to diagnose problems while limiting write amplification.
 
 ## Understanding slowms
 
@@ -83,7 +83,7 @@ operationProfiling:
   slowOpSampleRate: 0.1
 ```
 
-Note: `sampleRate` in the config file is `slowOpSampleRate` and was added in MongoDB 4.0.
+Note: `sampleRate` in the config file is `slowOpSampleRate` and was added in MongoDB 3.6 (extended to `mongos` in 4.0).
 
 ## Monitoring the system.profile Collection Fill Rate
 
