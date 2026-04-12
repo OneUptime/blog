@@ -55,7 +55,7 @@ mysqldump -u root -p \
 
 ## Exporting Schema with DROP TABLE Statements
 
-For clean re-creation, include `DROP TABLE IF EXISTS` before each `CREATE TABLE`:
+By default, `mysqldump` includes `DROP TABLE IF EXISTS` before each `CREATE TABLE` (as part of the `--opt` group). If you used `--compact` or `--skip-add-drop-table` elsewhere, you can re-enable it explicitly:
 
 ```bash
 mysqldump -u root -p \
@@ -94,9 +94,6 @@ A typical schema export looks like:
 ```sql
 -- MySQL dump 10.13  Distrib 8.0.36
 
-CREATE DATABASE /*!32312 IF NOT EXISTS*/ `myapp`;
-USE `myapp`;
-
 DROP TABLE IF EXISTS `orders`;
 CREATE TABLE `orders` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -115,7 +112,6 @@ CREATE TABLE `orders` (
 # Export schema and commit to version control
 mysqldump -u root -p \
   --no-data \
-  --skip-comments \
   --compact \
   myapp \
   > /repo/db/schema.sql
@@ -125,7 +121,7 @@ git add db/schema.sql
 git commit -m "Update database schema - $(date +%Y-%m-%d)"
 ```
 
-The `--compact` flag removes MySQL version comments and header/footer lines for cleaner diffs. The `--skip-comments` flag removes timestamp comments that would otherwise generate noise in git diffs.
+The `--compact` flag enables `--skip-add-drop-table`, `--skip-add-locks`, `--skip-comments`, `--skip-disable-keys`, and `--skip-set-charset`, producing minimal output for cleaner diffs. Note that `--skip-comments` is already included in `--compact`, so it does not need to be specified separately.
 
 ## Comparing Two Schema Versions
 
@@ -135,4 +131,4 @@ diff /backup/myapp_schema_yesterday.sql /backup/myapp_schema_today.sql
 
 ## Summary
 
-`mysqldump --no-data` exports only DDL statements - `CREATE TABLE`, `CREATE INDEX`, `CREATE PROCEDURE`, etc. - without any row data. Always add `--routines --events --triggers` for a complete schema export. Use `--compact --skip-comments` when storing in version control to minimize diff noise, and `--add-drop-table` when the schema will be applied to an existing database.
+`mysqldump --no-data` exports only DDL statements - `CREATE TABLE`, `CREATE PROCEDURE`, etc. - without any row data. Indexes are included inline within `CREATE TABLE` definitions. Always add `--routines --events --triggers` for a complete schema export. Use `--compact` when storing in version control to minimize diff noise (it already includes `--skip-comments`). Note that `--add-drop-table` is on by default but is disabled by `--compact`, so add it back explicitly if you need `DROP TABLE` statements in compact output.
