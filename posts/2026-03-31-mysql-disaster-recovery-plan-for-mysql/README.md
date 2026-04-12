@@ -26,7 +26,7 @@ Layer your backups for comprehensive coverage:
 ```bash
 # Daily full logical backup
 mysqldump -u root -p --all-databases --single-transaction \
-  --master-data=2 --flush-logs \
+  --source-data=2 --flush-logs \
   | gzip > /var/backups/mysql/full_$(date +%Y%m%d).sql.gz
 
 # Hourly binary log backup
@@ -61,7 +61,7 @@ For minimal RTO, consider MySQL InnoDB Cluster which automates failover:
 ```bash
 # Using MySQL Shell
 mysqlsh -- cluster status
-mysqlsh -- cluster failover
+mysqlsh -- cluster setPrimaryInstance replica.db.example.com:3306
 ```
 
 ## Point-in-Time Recovery Procedure
@@ -110,7 +110,7 @@ DR plans that are never tested fail when needed. Schedule quarterly DR drills:
 
 ```bash
 # Test restore to an isolated environment monthly
-docker run -d --name dr-test --network isolated \
+docker run -d --name dr-test --network isolated -p 3307:3306 \
   -e MYSQL_ROOT_PASSWORD=drtest mysql:8.0
 
 mysql -h 127.0.0.1 -P 3307 -u root -pdrtest < /var/backups/mysql/latest.sql
