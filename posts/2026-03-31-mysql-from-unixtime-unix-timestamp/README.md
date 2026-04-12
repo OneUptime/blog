@@ -28,14 +28,14 @@ UNIX_TIMESTAMP(date)
 
 - Called with no arguments: returns the current Unix timestamp.
 - Called with a `DATE`, `DATETIME`, or `TIMESTAMP` value: converts it to a Unix timestamp.
-- Returns the value in the current session time zone.
+- Interprets the date argument in the current session time zone.
 - Returns `0` or `NULL` for invalid dates.
 
 ### Basic Examples
 
 ```sql
 SELECT UNIX_TIMESTAMP();
--- Returns: current epoch (e.g., 1743460800)
+-- Returns: current epoch (e.g., 1774915200)
 
 SELECT UNIX_TIMESTAMP('2026-03-31 00:00:00');
 -- Returns: epoch integer for that datetime
@@ -71,13 +71,13 @@ FROM_UNIXTIME(unix_timestamp, format)
 SELECT FROM_UNIXTIME(0);
 -- Returns: '1970-01-01 00:00:00'  (in local time)
 
-SELECT FROM_UNIXTIME(1743460800);
+SELECT FROM_UNIXTIME(1774915200);
 -- Returns: corresponding DATETIME
 
-SELECT FROM_UNIXTIME(1743460800, '%Y-%m-%d');
+SELECT FROM_UNIXTIME(1774915200, '%Y-%m-%d');
 -- Returns: date portion formatted as a string
 
-SELECT FROM_UNIXTIME(1743460800, '%W, %M %d, %Y %H:%i');
+SELECT FROM_UNIXTIME(1774915200, '%W, %M %d, %Y %H:%i');
 -- Returns: 'Tuesday, March 31, 2026 00:00'
 
 SELECT FROM_UNIXTIME(NULL);
@@ -90,7 +90,7 @@ SELECT FROM_UNIXTIME(NULL);
 
 ```mermaid
 flowchart LR
-    A["MySQL DATETIME\n'2026-03-31 14:30:00'"] -->|UNIX_TIMESTAMP()| B["Unix epoch integer\n1743424200"]
+    A["MySQL DATETIME\n'2026-03-31 14:30:00'"] -->|UNIX_TIMESTAMP()| B["Unix epoch integer\n1774967400"]
     B -->|FROM_UNIXTIME()| C["MySQL DATETIME\n'2026-03-31 14:30:00'"]
 ```
 
@@ -101,9 +101,9 @@ flowchart LR
 ```sql
 -- Current timestamp with microseconds
 SELECT UNIX_TIMESTAMP(NOW(6));
--- Returns: float with 6 decimal places, e.g., 1743460800.123456
+-- Returns: float with 6 decimal places, e.g., 1774915200.123456
 
-SELECT FROM_UNIXTIME(1743460800.500);
+SELECT FROM_UNIXTIME(1774915200.500);
 -- Returns: '2026-03-31 00:00:00.500000'
 ```
 
