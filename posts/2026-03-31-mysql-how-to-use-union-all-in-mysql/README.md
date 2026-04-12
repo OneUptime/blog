@@ -40,7 +40,7 @@ The performance difference can be significant on large datasets because `UNION` 
 ### Appending Non-Overlapping Data Sets
 
 ```sql
--- Monthly sales reports from separate tables (no overlap)
+-- Quarterly sales reports from separate tables (no overlap)
 SELECT 'Q1' AS quarter, salesperson, amount FROM sales_q1_2025
 UNION ALL
 SELECT 'Q2' AS quarter, salesperson, amount FROM sales_q2_2025
@@ -93,7 +93,7 @@ GROUP BY type;
 
 ## UNION ALL for Recursive CTEs
 
-`UNION ALL` is required in recursive CTEs to combine the base case with the recursive step:
+`UNION ALL` is the standard operator in recursive CTEs to combine the base case with the recursive step. MySQL 8.0.19 and later also supports `UNION DISTINCT` in recursive CTEs, but `UNION ALL` is the most common choice:
 
 ```sql
 -- Generate a sequence of numbers 1-10
