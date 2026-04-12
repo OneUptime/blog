@@ -165,7 +165,7 @@ WITH dept_avg AS (
 SELECT * FROM dept_avg WHERE avg_salary > 70000;
 ```
 
-Look for `"materialized": true` in the JSON output to see if MySQL chose to materialize the CTE.
+Look for `"materialized_from_subquery"` in the JSON output to see if MySQL chose to materialize the CTE. If the CTE was merged (inlined), its underlying tables appear directly in the query plan without a separate materialization entry.
 
 ## When to Use a CTE vs a Subquery
 
