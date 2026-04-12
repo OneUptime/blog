@@ -176,4 +176,4 @@ ON DUPLICATE KEY UPDATE name = VALUES(name);
 
 ## Summary
 
-The most reliable way to delete duplicate rows in MySQL while keeping one is the `ROW_NUMBER()` CTE approach in MySQL 8.0, or a self-join DELETE for MySQL 5.7. Always verify which rows will be deleted by running a SELECT first, and add a UNIQUE constraint after cleanup to prevent future duplicates.
+The most reliable way to delete duplicate rows in MySQL while keeping one is the `ROW_NUMBER()` window function approach in MySQL 8.0, or a self-join DELETE for MySQL 5.7. Always verify which rows will be deleted by running a SELECT first, and add a UNIQUE constraint after cleanup to prevent future duplicates.
