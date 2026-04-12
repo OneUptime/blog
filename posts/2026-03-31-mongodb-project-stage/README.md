@@ -174,7 +174,7 @@ Output:
 ```javascript
 [
   { firstName: "Alice", avgScore: 85, topScore: 92 },
-  { firstName: "Bob",   avgScore: 84.33, topScore: 95 }
+  { firstName: "Bob",   avgScore: 84.33333333333333, topScore: 95 }
 ]
 ```
 
