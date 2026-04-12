@@ -10,7 +10,7 @@ Description: Learn how to use the bind-address configuration option in MySQL to 
 
 ## What Is bind-address?
 
-The `bind-address` option tells MySQL which IP address (network interface) to listen on for incoming TCP/IP connections. By default, MySQL listens on all available interfaces (`0.0.0.0`), which means any machine on the network can attempt to connect.
+The `bind-address` option tells MySQL which IP address (network interface) to listen on for incoming TCP/IP connections. By default, MySQL listens on all available interfaces (`*`), which means any machine on the network can attempt to connect over IPv4 or IPv6.
 
 Restricting `bind-address` adds a network-level layer of security by preventing connections from reaching MySQL entirely.
 
@@ -21,11 +21,11 @@ SHOW VARIABLES LIKE 'bind_address';
 ```
 
 ```text
-+--------------+-----------+
-| Variable_name | Value    |
-+--------------+-----------+
-| bind_address  | 0.0.0.0  |
-+--------------+-----------+
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| bind_address  | *     |
++---------------+-------+
 ```
 
 ## Common bind-address Values
@@ -37,7 +37,7 @@ SHOW VARIABLES LIKE 'bind_address';
 | `0.0.0.0` | Accept connections on all IPv4 interfaces |
 | `::` | Accept connections on all IPv4 and IPv6 interfaces |
 | `192.168.1.10` | Accept connections only on the specified IP |
-| `*` | All interfaces (MySQL 8.0.13+) |
+| `*` | All interfaces (default) |
 
 ## Restricting to Localhost Only
 
