@@ -81,16 +81,9 @@ Column definitions:
 
 The times are cumulative time spent across all operations on that collection during the polling interval. High values indicate heavy activity, not individual query latency.
 
-## Limiting Output to Specific Databases
+## Additional Options
 
-Use `--locks` to include lock information (MongoDB 3.x and earlier; not needed for 4.0+):
-
-```bash
-mongotop --uri "mongodb://adminUser:password@127.0.0.1:27017/?authSource=admin" \
-  --rowcount=30 5
-```
-
-Run for exactly 30 samples then exit:
+Use `--rowcount` to limit the number of times mongotop reports statistics. For example, run for exactly 30 samples at 5-second intervals then exit:
 
 ```bash
 mongotop \
@@ -98,6 +91,8 @@ mongotop \
   --rowcount=30 \
   5
 ```
+
+The `--locks` flag reported per-database lock information in MongoDB 3.x and earlier but is deprecated in MongoDB Database Tools 100.0.0 and is not needed for MongoDB 4.0+.
 
 ## Output as JSON
 
@@ -115,9 +110,9 @@ Sample JSON output:
 
 ```text
 {
-  "topmounts": {
-    "myapp.orders": { "total": { "time": 1200000, "count": 450 }, "readLock": { "time": 50000, "count": 80 }, "writeLock": { "time": 1150000, "count": 370 } },
-    "myapp.products": { "total": { "time": 800000, "count": 3200 }, "readLock": { "time": 750000, "count": 3100 }, "writeLock": { "time": 50000, "count": 100 } }
+  "totals": {
+    "myapp.orders": { "total": { "time": 1200, "count": 450 }, "read": { "time": 50, "count": 80 }, "write": { "time": 1150, "count": 370 } },
+    "myapp.products": { "total": { "time": 800, "count": 3200 }, "read": { "time": 750, "count": 3100 }, "write": { "time": 50, "count": 100 } }
   },
   "ts": "2026-03-31T10:00:05Z"
 }
