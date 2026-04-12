@@ -205,6 +205,7 @@ WHERE 6000 < ALL (
 +-------+--------------+
 | Alice | Engineering  |
 | Bob   | Engineering  |
+| Carol | Marketing    |
 | Frank | Sales        |
 +-------+--------------+
 ```
