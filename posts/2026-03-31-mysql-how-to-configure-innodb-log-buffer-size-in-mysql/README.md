@@ -39,7 +39,7 @@ In `my.cnf`:
 innodb_log_buffer_size = 64M
 ```
 
-As of MySQL 8.0, this variable is dynamic and can be set at runtime:
+As of MySQL 8.0.30, this variable is dynamic and can be set at runtime:
 
 ```sql
 SET GLOBAL innodb_log_buffer_size = 67108864;  -- 64MB
