@@ -25,7 +25,7 @@ sequenceDiagram
 
     Source->>ReplicaIO: Binlog events (real time)
     ReplicaIO->>ReplicaQueue: Write to relay log immediately
-    ReplicaQueue-->>ReplicaSQL: Wait MASTER_DELAY seconds per event
+    ReplicaQueue-->>ReplicaSQL: Wait SOURCE_DELAY seconds per event
     ReplicaSQL->>ReplicaSQL: Apply event after delay
 ```
 
@@ -121,12 +121,14 @@ SHOW REPLICA STATUS\G
 
 -- Performance Schema view
 SELECT
-  CHANNEL_NAME,
-  SQL_DELAY,
-  SQL_REMAINING_DELAY,
-  SERVICE_STATE
-FROM performance_schema.replication_applier_status
-WHERE CHANNEL_NAME = '';
+  c.CHANNEL_NAME,
+  c.DESIRED_DELAY,
+  s.REMAINING_DELAY,
+  s.SERVICE_STATE
+FROM performance_schema.replication_applier_configuration c
+JOIN performance_schema.replication_applier_status s
+  ON c.CHANNEL_NAME = s.CHANNEL_NAME
+WHERE c.CHANNEL_NAME = '';
 ```
 
 ## Combining delayed replication with GTID
