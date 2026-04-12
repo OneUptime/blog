@@ -75,8 +75,8 @@ INSERT INTO user_tags VALUES
 (1, '["database","backend"]'),
 (2, '["redis","caching"]');
 
--- Combine all tags for each user using GROUP_CONCAT and JSON parsing
--- (MySQL does not have a built-in JSON aggregate, so use GROUP_CONCAT)
+-- Combine all tags for each user using MIN/MAX as a workaround
+-- (MySQL has no built-in aggregate that merges JSON arrays)
 SELECT
   user_id,
   JSON_MERGE_PRESERVE(
