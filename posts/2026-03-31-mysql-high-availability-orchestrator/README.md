@@ -41,8 +41,7 @@ Create `/etc/orchestrator/orchestrator.conf.json`:
   "RecoverMasterClusterFilters": ["*"],
   "FailureDetectionPeriodBlockMinutes": 1,
   "DiscoveryByShowSlaveHosts": true,
-  "DetachLostReplicasAfterMasterFailover": true,
-  "AutomaticRecoveryModeActive": true
+  "DetachLostReplicasAfterMasterFailover": true
 }
 ```
 
@@ -50,7 +49,7 @@ Create the Orchestrator MySQL user on all MySQL servers:
 
 ```sql
 CREATE USER 'orchestrator'@'%' IDENTIFIED BY 'orch_secret';
-GRANT SUPER, PROCESS, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'orchestrator'@'%';
+GRANT SUPER, PROCESS, REPLICATION SLAVE, REPLICATION CLIENT, RELOAD ON *.* TO 'orchestrator'@'%';
 GRANT SELECT ON mysql.slave_master_info TO 'orchestrator'@'%';
 FLUSH PRIVILEGES;
 ```
@@ -99,7 +98,7 @@ Orchestrator calls hook scripts at key points in the failover process. Register 
 
 ```json
 {
-  "OnFailoverDetectionProcesses": [
+  "OnFailureDetectionProcesses": [
     "echo 'Failure detected for {failedHost}' >> /var/log/orchestrator/hooks.log"
   ],
   "PostMasterFailoverProcesses": [
