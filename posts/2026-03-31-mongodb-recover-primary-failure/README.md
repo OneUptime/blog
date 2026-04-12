@@ -59,9 +59,9 @@ MongoNotPrimaryError: not primary and secondaryOk=false
 
 ```javascript
 // Run from any secondary
-rs.isMaster()
+db.hello()
 // Look for: "primary" field - if present, a new primary was elected
-rs.isMaster().primary
+db.hello().primary
 
 // Or check rs.status() from any member
 rs.status().members.find(m => m.stateStr === "PRIMARY")
@@ -174,7 +174,6 @@ mongorestore --db ecommerce --collection orders_recovered \
 ```javascript
 // Reduce election timeout for faster detection
 cfg = rs.conf()
-cfg.settings.heartbeatTimeoutSecs = 5      // Default: 10
 cfg.settings.electionTimeoutMillis = 5000  // Default: 10000
 rs.reconfig(cfg)
 
@@ -218,4 +217,4 @@ db.adminCommand({ getDefaultRWConcern: 1 })      // Write concern is majority
 
 ## Summary
 
-MongoDB replica set primary failure is typically handled automatically through election. Monitor recovery with `rs.status()` and `rs.isMaster()`. If automatic election fails due to a minority partition, force-reconfig the replica set to remove the failed member. Check for rollback files if the old primary had uncommitted writes, and restore critical rolled-back documents manually. Configure `retryWrites: true` in your driver and use `w: majority` write concern to minimize data loss risk in future failures.
+MongoDB replica set primary failure is typically handled automatically through election. Monitor recovery with `rs.status()` and `db.hello()`. If automatic election fails due to a minority partition, force-reconfig the replica set to remove the failed member. Check for rollback files if the old primary had uncommitted writes, and restore critical rolled-back documents manually. Configure `retryWrites: true` in your driver and use `w: majority` write concern to minimize data loss risk in future failures.
