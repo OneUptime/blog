@@ -57,7 +57,7 @@ flowchart TD
     <session-factory>
         <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
         <property name="hibernate.connection.url">
-            jdbc:mysql://localhost:3306/myapp?serverTimezone=UTC&amp;characterEncoding=utf8mb4
+            jdbc:mysql://localhost:3306/myapp?serverTimezone=UTC&amp;characterEncoding=UTF-8
         </property>
         <property name="hibernate.connection.username">appuser</property>
         <property name="hibernate.connection.password">secret</property>
@@ -199,9 +199,9 @@ public class UserRepository {
     public Integer save(User user) {
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
             Transaction tx = session.beginTransaction();
-            Integer id = (Integer) session.save(user);
+            session.persist(user);
             tx.commit();
-            return id;
+            return user.getId();
         }
     }
 
@@ -228,7 +228,6 @@ public class UserRepository {
             User user = session.get(User.class, userId);
             if (user != null) {
                 user.setRole(newRole);
-                session.merge(user);
             }
             tx.commit();
         }
@@ -289,4 +288,4 @@ public List<Object[]> getPostCounts() {
 
 ## Summary
 
-Hibernate maps Java entity classes to MySQL tables using JPA annotations. A `SessionFactory` is created once from the configuration and is thread-safe. Individual `Session` objects are opened per transaction or unit of work. CRUD operations use `session.save()`, `session.get()`, `session.merge()`, and `session.remove()`. HQL (Hibernate Query Language) provides a type-safe, object-oriented alternative to SQL, and `JOIN FETCH` solves N+1 loading issues. Native SQL is available through `session.createNativeQuery()` for complex queries that HQL cannot express.
+Hibernate maps Java entity classes to MySQL tables using JPA annotations. A `SessionFactory` is created once from the configuration and is thread-safe. Individual `Session` objects are opened per transaction or unit of work. CRUD operations use `session.persist()`, `session.get()`, `session.merge()`, and `session.remove()`. HQL (Hibernate Query Language) provides a type-safe, object-oriented alternative to SQL, and `JOIN FETCH` solves N+1 loading issues. Native SQL is available through `session.createNativeQuery()` for complex queries that HQL cannot express.
