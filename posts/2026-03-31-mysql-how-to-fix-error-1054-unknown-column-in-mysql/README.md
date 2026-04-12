@@ -100,19 +100,27 @@ ALTER TABLE users ADD COLUMN email VARCHAR(255);
 
 ## Common Cause 5 - ORDER BY with Invalid Alias in UNION
 
+In a UNION, column names are determined by the first SELECT statement. Using a column name from a later SELECT that is not in the first will fail:
+
 ```sql
--- Wrong
+-- Wrong: 'title' is only in the second SELECT
+SELECT id, name FROM employees
+UNION
+SELECT id, title FROM contractors
+ORDER BY title;
+-- ERROR 1054: Unknown column 'title' in 'order clause'
+
+-- Correct: use the column name from the first SELECT
 SELECT id, name FROM employees
 UNION
 SELECT id, title FROM contractors
 ORDER BY name;
--- May cause confusion if 'name' doesn't match the alias
 
--- Correct: use column position or first SELECT column name
+-- Or use column position
 SELECT id, name FROM employees
 UNION
-SELECT id, title AS name FROM contractors
-ORDER BY name;
+SELECT id, title FROM contractors
+ORDER BY 2;
 ```
 
 ## Common Cause 6 - INSERT with Wrong Column List
