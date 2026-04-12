@@ -60,7 +60,7 @@ ROW OPERATIONS
 
 ## Diagnosing Deadlocks
 
-The `TRANSACTIONS` section shows the last deadlock:
+The `LATEST DETECTED DEADLOCK` section shows the last deadlock:
 
 ```sql
 SHOW ENGINE INNODB STATUS\G
@@ -110,7 +110,7 @@ SHOW ENGINE INNODB STATUS\G
 -- Look for the TRANSACTIONS section
 ```
 
-Or query the performance schema for more structured data:
+Or query `information_schema` for more structured data:
 
 ```sql
 SELECT trx_id, trx_state, trx_started, trx_query, trx_rows_locked
@@ -126,9 +126,9 @@ SELECT
     r.trx_query waiting_query,
     b.trx_id blocking_trx_id,
     b.trx_query blocking_query
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 ## SHOW ENGINE PERFORMANCE_SCHEMA STATUS
@@ -161,4 +161,4 @@ mysql -u root -p"$DB_PASS" -e "SHOW ENGINE INNODB STATUS\G" > /tmp/innodb_status
 
 ## Summary
 
-`SHOW ENGINE INNODB STATUS` is MySQL's primary InnoDB diagnostic tool, providing real-time snapshots of deadlocks, active transactions, buffer pool health, and I/O patterns. Use it to diagnose locking issues, tune buffer pool size, and investigate performance problems. Combine it with `information_schema.innodb_trx` and `information_schema.innodb_lock_waits` for structured lock analysis.
+`SHOW ENGINE INNODB STATUS` is MySQL's primary InnoDB diagnostic tool, providing real-time snapshots of deadlocks, active transactions, buffer pool health, and I/O patterns. Use it to diagnose locking issues, tune buffer pool size, and investigate performance problems. Combine it with `information_schema.innodb_trx` and `performance_schema.data_lock_waits` for structured lock analysis.
