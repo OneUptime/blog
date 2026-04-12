@@ -27,11 +27,11 @@ MongoDB supports five read concern levels:
 ## Setting Read Concern in Code
 
 ```javascript
-// Node.js driver - majority read concern on a find operation
-const docs = await db.collection("orders")
-  .find({ status: "pending" })
-  .readConcern("majority")
-  .toArray();
+// Node.js driver - majority read concern at the collection level
+const collection = db.collection("orders", {
+  readConcern: { level: "majority" }
+});
+const docs = await collection.find({ status: "pending" }).toArray();
 ```
 
 ```python
@@ -54,13 +54,13 @@ docs = list(collection.find({"status": "pending"}))
 
 **`majority`** - Use when you need to avoid reading uncommitted or rolled-back data. Suitable for financial systems, inventory checks, and any scenario where consistency is critical.
 
-**`linearizable`** - Use when you absolutely need to see the result of the latest successful write, such as leader election or distributed locking. Note: this requires a single-document query with a filter on `_id`.
+**`linearizable`** - Use when you absolutely need to see the result of the latest successful write, such as leader election or distributed locking. Note: this is only available for reads against the primary, and you should always set `maxTimeMS` to avoid indefinite blocking.
 
 **`snapshot`** - Use inside multi-document ACID transactions to ensure all reads within the transaction see a consistent point-in-time view.
 
 ## Impact on Performance
 
-Stronger read concerns come with higher latency. `majority` requires the node to wait until the write has been replicated before returning data. `linearizable` may contact the primary to verify leadership, adding round-trip overhead. For most applications, `local` (the default) is the right starting point, with `majority` reserved for critical paths.
+Stronger read concerns come with higher latency. `majority` returns data only from a snapshot that has been confirmed as written to a majority of members, so reads may not include the very latest writes. `linearizable` may contact the primary to verify leadership, adding round-trip overhead. For most applications, `local` (the default) is the right starting point, with `majority` reserved for critical paths.
 
 ## Read Concern and Transactions
 
