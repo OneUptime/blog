@@ -87,7 +87,7 @@ mongosh --eval "rs.stepDown()"
 sudo apt-get install -y mongodb-org=7.0.x
 
 # Set the FCV after all nodes are on new version
-mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '7.0' })"
+mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '7.0', confirm: true })"
 ```
 
 ## Rollback Procedure
