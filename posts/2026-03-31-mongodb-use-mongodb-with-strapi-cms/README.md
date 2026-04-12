@@ -10,12 +10,12 @@ Description: Configure Strapi CMS to use MongoDB as the database backend, with c
 
 ## Strapi and MongoDB
 
-Strapi is a headless CMS that supports multiple databases. MongoDB works well with Strapi when your content types benefit from flexible schemas or when you are already running a MongoDB infrastructure. Strapi v4 uses an abstraction layer called Strapi Database that supports MongoDB through its Mongoose connector.
+Strapi is a headless CMS that supports multiple databases. MongoDB works well with Strapi when your content types benefit from flexible schemas or when you are already running a MongoDB infrastructure. Strapi v3 supports MongoDB through its `strapi-connector-mongoose` package. Note that Strapi v4 and later dropped MongoDB support and only work with SQL databases (PostgreSQL, MySQL, MariaDB, SQLite). The examples in this guide apply to Strapi v3.
 
 ## Creating a Strapi Project with MongoDB
 
 ```bash
-npx create-strapi-app@latest my-cms --dbclient=mongo \
+npx create-strapi-app@3 my-cms --dbclient=mongo \
   --dbhost=localhost \
   --dbport=27017 \
   --dbname=strapidb \
@@ -29,19 +29,21 @@ Edit `config/database.js`:
 
 ```javascript
 module.exports = ({ env }) => ({
-  connection: {
-    client: 'mongoose',
-    connection: {
-      host: env('DATABASE_HOST', 'localhost'),
-      port: env.int('DATABASE_PORT', 27017),
-      database: env('DATABASE_NAME', 'strapidb'),
-      username: env('DATABASE_USERNAME', ''),
-      password: env('DATABASE_PASSWORD', ''),
-    },
-    useNullAsDefault: true,
-    options: {
-      authenticationDatabase: 'admin',
-      ssl: env.bool('DATABASE_SSL', false),
+  defaultConnection: 'default',
+  connections: {
+    default: {
+      connector: 'mongoose',
+      settings: {
+        host: env('DATABASE_HOST', 'localhost'),
+        port: env.int('DATABASE_PORT', 27017),
+        database: env('DATABASE_NAME', 'strapidb'),
+        username: env('DATABASE_USERNAME', ''),
+        password: env('DATABASE_PASSWORD', ''),
+      },
+      options: {
+        authenticationDatabase: env('AUTHENTICATION_DATABASE', 'admin'),
+        ssl: env.bool('DATABASE_SSL', false),
+      },
     },
   },
 })
@@ -62,20 +64,22 @@ DATABASE_PASSWORD=strapipass
 Use the Strapi admin panel or the CLI to create content types. Each content type maps to a MongoDB collection:
 
 ```bash
-# Create an Article content type via CLI
-npx strapi generate content-type article
+# Create an Article model via CLI
+npx strapi generate:model article title:string content:richtext publishedAt:datetime
 ```
 
-The generated schema in `src/api/article/content-types/article/schema.json`:
+The generated schema in `api/article/models/Article.settings.json`:
 
 ```json
 {
   "kind": "collectionType",
   "collectionName": "articles",
   "info": {
-    "singularName": "article",
-    "pluralName": "articles",
-    "displayName": "Article"
+    "name": "article",
+    "description": ""
+  },
+  "options": {
+    "timestamps": true
   },
   "attributes": {
     "title": {
@@ -90,9 +94,8 @@ The generated schema in `src/api/article/content-types/article/schema.json`:
       "type": "datetime"
     },
     "author": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "plugin::users-permissions.user"
+      "model": "user",
+      "plugin": "users-permissions"
     }
   }
 }
@@ -103,12 +106,12 @@ The generated schema in `src/api/article/content-types/article/schema.json`:
 When you need a query beyond Strapi's built-in filters, use the entity service or the underlying Mongoose model:
 
 ```javascript
-// src/api/article/services/article.js
+// api/article/services/article.js
 'use strict'
 
 module.exports = {
   async findPopular() {
-    const model = strapi.db.connection.model('Article')
+    const model = strapi.query('article').model
     return model.find({
       publishedAt: { $ne: null },
     })
@@ -119,8 +122,8 @@ module.exports = {
   },
 
   async countByAuthor(authorId) {
-    const model = strapi.db.connection.model('Article')
-    return model.countDocuments({ 'author._id': authorId })
+    const model = strapi.query('article').model
+    return model.countDocuments({ author: authorId })
   },
 }
 ```
@@ -128,32 +131,34 @@ module.exports = {
 ## Custom Controller Endpoint
 
 ```javascript
-// src/api/article/controllers/article.js
+// api/article/controllers/article.js
 'use strict'
 
 module.exports = {
   async popular(ctx) {
-    const articles = await strapi.service('api::article.article').findPopular()
+    const articles = await strapi.services.article.findPopular()
     ctx.body = articles
   },
 }
 ```
 
-Add the route in `src/api/article/routes/article.js`:
+Add the route in `api/article/config/routes.json`:
 
-```javascript
-module.exports = {
-  routes: [
+```json
+{
+  "routes": [
     {
-      method: 'GET',
-      path: '/articles/popular',
-      handler: 'article.popular',
-      config: { policies: [] },
-    },
-  ],
+      "method": "GET",
+      "path": "/articles/popular",
+      "handler": "article.popular",
+      "config": {
+        "policies": []
+      }
+    }
+  ]
 }
 ```
 
 ## Summary
 
-Strapi integrates with MongoDB through its Mongoose connector, configured via `config/database.js` and environment variables. Content types map directly to MongoDB collections, giving you Strapi's admin UI and REST/GraphQL APIs with MongoDB's flexible storage. For queries beyond Strapi's filter system, access the underlying Mongoose model through the entity service to write native MongoDB aggregations and queries.
+Strapi v3 integrates with MongoDB through the `strapi-connector-mongoose` package, configured via `config/database.js` and environment variables. Content types map directly to MongoDB collections, giving you Strapi's admin UI and REST/GraphQL APIs with MongoDB's flexible storage. For queries beyond Strapi's filter system, access the underlying Mongoose model through `strapi.query()` to write native MongoDB aggregations and queries. Note that Strapi v4 and later no longer support MongoDB.
