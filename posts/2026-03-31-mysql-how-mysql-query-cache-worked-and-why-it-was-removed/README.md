@@ -12,7 +12,7 @@ Description: Understand how MySQL's query cache worked, why it caused performanc
 
 The MySQL Query Cache (QC) was a feature that stored the full result set of SELECT statements. If the same query was executed again and the underlying tables had not changed, MySQL returned the cached result directly without parsing, optimizing, or executing the query.
 
-The query cache was available from MySQL 3.23 through MySQL 5.7, and was deprecated in MySQL 5.7.20. It was completely removed in MySQL 8.0.
+The query cache was available from MySQL 4.0.1 through MySQL 5.7, and was deprecated in MySQL 5.7.20. It was completely removed in MySQL 8.0.
 
 ## How the Query Cache Worked
 
@@ -35,8 +35,8 @@ SHOW STATUS LIKE 'Qcache%';
 ```text
 [mysqld]
 query_cache_type = 1
-query_cache_size = 67108864  -- 64MB
-query_cache_limit = 1048576  -- Max 1MB per result
+query_cache_size = 67108864  # 64MB
+query_cache_limit = 1048576  # Max 1MB per result
 ```
 
 ## Why the Query Cache Was Problematic
@@ -73,7 +73,7 @@ Benchmarks consistently showed that enabling the query cache at high concurrency
 ```text
 Concurrency    QC Disabled    QC Enabled
 4 threads      100,000 QPS    95,000 QPS
-16 threads     200,000 QPS    80,000 QPS   (40% SLOWER)
+16 threads     200,000 QPS    80,000 QPS   (60% SLOWER)
 64 threads     300,000 QPS    50,000 QPS   (83% SLOWER)
 ```
 
