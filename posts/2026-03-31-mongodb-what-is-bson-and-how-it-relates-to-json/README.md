@@ -46,7 +46,7 @@ db.events.find({ timestamp: { $gte: ISODate("2024-01-01") } });
 // Number types
 db.metrics.insertOne({
   intValue: NumberInt(42),       // 32-bit int
-  longValue: NumberLong(9007199254740993),  // 64-bit int beyond JS safe integer
+  longValue: NumberLong("9007199254740993"),  // 64-bit int beyond JS safe integer
   decimalValue: NumberDecimal("19.99")  // Exact decimal for financial data
 });
 ```
@@ -77,7 +77,7 @@ print(f"BSON size: {bson_bytes} bytes")
 print(f"Overhead:  {((bson_bytes / json_bytes) - 1) * 100:.1f}%")
 ```
 
-BSON encodes field names as null-terminated strings with length prefixes, enabling fast skip-ahead traversal without parsing all field values.
+BSON includes a document-level length prefix and size information for values, enabling fast skip-ahead traversal without parsing all field values.
 
 ## How MongoDB Drivers Handle BSON
 
@@ -101,11 +101,11 @@ await collection.insertOne(doc);
 # Python with pymongo
 from pymongo import MongoClient
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 
 doc = {
     "_id": ObjectId(),           # BSON ObjectId
-    "created_at": datetime.utcnow(),  # BSON Date
+    "created_at": datetime.now(timezone.utc),  # BSON Date
     "amount": 19.99              # BSON Double
 }
 collection.insert_one(doc)
