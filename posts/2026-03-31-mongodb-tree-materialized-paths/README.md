@@ -48,7 +48,7 @@ Use a regex prefix match to get all nodes under a subtree in a single query:
 ```javascript
 // All descendants of "Computers" (path starts with ",1,2,")
 db.categories.find({ path: /^,1,2,/ });
-// Returns: Laptops, Gaming Laptops
+// Returns: Computers, Laptops, Gaming Laptops (includes the node itself)
 ```
 
 ## Finding All Ancestors
@@ -145,7 +145,7 @@ The depth of any node can be derived from its path without extra queries:
 
 ```javascript
 function getDepth(path) {
-  // Count commas minus 2 (leading and trailing)
+  // Count non-empty segments between the delimiters
   return path.split(",").filter(s => s !== "").length;
 }
 
