@@ -80,15 +80,15 @@ Sample JSON audit record:
 }
 ```
 
-## Option 3: Percona Audit Log Plugin (Community Edition)
+## Option 3: Percona Audit Log Plugin (Community Alternative)
 
-For MySQL Community Edition, use the Percona Audit Log plugin:
+Percona Server is a drop-in replacement for MySQL Community Edition that includes a built-in audit log plugin. Switching to Percona Server gives you audit logging without an Enterprise license:
 
 ```bash
-# Download from Percona
+# Install Percona Server (replaces MySQL Community Edition)
 apt-get install percona-server-server
 
-# Enable the plugin
+# Enable the audit plugin
 mysql -u root -p -e "INSTALL PLUGIN audit_log SONAME 'audit_log.so';"
 ```
 
@@ -129,7 +129,7 @@ DELIMITER ;
 
 ## Option 5: Performance Schema for Login Auditing
 
-Track connection attempts and failures:
+Track query activity by account:
 
 ```sql
 SELECT
