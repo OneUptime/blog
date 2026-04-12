@@ -52,14 +52,15 @@ db.products.insertOne({ name: "Widget", price: -5.00, stock: 10 });
 
 ## Exclusive Bounds: exclusiveMinimum and exclusiveMaximum
 
-Use `exclusiveMinimum` and `exclusiveMaximum` when the boundary value itself should not be allowed:
+Use `exclusiveMinimum` and `exclusiveMaximum` when the boundary value itself should not be allowed. In MongoDB's `$jsonSchema` (based on JSON Schema draft 4), these are boolean flags that modify `minimum` and `maximum`:
 
 ```javascript
 properties: {
   rating: {
     bsonType: "double",
-    exclusiveMinimum: 0,    // must be > 0, not >= 0
-    maximum: 5.0,           // can be exactly 5.0
+    minimum: 0,
+    exclusiveMinimum: true,  // must be > 0, not >= 0
+    maximum: 5.0,            // can be exactly 5.0
     description: "Rating must be greater than 0 and at most 5"
   }
 }
