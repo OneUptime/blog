@@ -93,14 +93,22 @@ def transfer_funds_across_shards(from_user, to_user, amount):
         conn_b.cursor().execute(f"XA END '{xid}-b'")
         conn_b.cursor().execute(f"XA PREPARE '{xid}-b'")
 
-        # Phase 2: Commit both
-        conn_a.cursor().execute(f"XA COMMIT '{xid}-a'")
-        conn_b.cursor().execute(f"XA COMMIT '{xid}-b'")
-
     except Exception:
-        conn_a.cursor().execute(f"XA ROLLBACK '{xid}-a'")
-        conn_b.cursor().execute(f"XA ROLLBACK '{xid}-b'")
+        # Rollback whichever transactions reached the prepared state
+        try:
+            conn_a.cursor().execute(f"XA ROLLBACK '{xid}-a'")
+        except Exception:
+            pass
+        try:
+            conn_b.cursor().execute(f"XA ROLLBACK '{xid}-b'")
+        except Exception:
+            pass
         raise
+
+    # Phase 2: Commit (once both are prepared, commits should succeed;
+    # a failure here is the coordinator-crash scenario requiring manual resolution)
+    conn_a.cursor().execute(f"XA COMMIT '{xid}-a'")
+    conn_b.cursor().execute(f"XA COMMIT '{xid}-b'")
 ```
 
 2PC has a blocking failure mode: if the coordinator crashes after prepare but before commit, participants are stuck with prepared transactions until manual resolution.
