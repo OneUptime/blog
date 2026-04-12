@@ -146,7 +146,7 @@ To require SSL for all connections, set `require_secure_transport`:
 require_secure_transport = ON
 ```
 
-This blocks all non-SSL connections including local Unix socket connections unless they use the socket (which is considered secure locally).
+This requires all TCP/IP connections to use SSL/TLS. Unix socket connections and shared-memory connections are still permitted, as they are considered inherently secure.
 
 ## Summary
 
