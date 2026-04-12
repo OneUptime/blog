@@ -36,7 +36,7 @@ mysqlsh --user=root --password --host=localhost \
   --outputFormat=TEXT
 ```
 
-Or using the deprecated `mysqlcheck` approach:
+Or using the older `mysqlcheck` approach (less comprehensive):
 
 ```bash
 mysqlcheck -u root -p --all-databases --check-upgrade
@@ -71,10 +71,15 @@ ALTER TABLE mydb.mytable CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 
 ### Fix Reserved Word Conflicts
 
-MySQL 8.0 adds new reserved words. Find columns or tables using them:
+MySQL 8.0 adds new reserved words. Find columns using them:
 
-```bash
-mysqlcheck -u root -p --all-databases --check-upgrade 2>&1 | grep "keyword"
+```sql
+SELECT table_schema, table_name, column_name
+FROM information_schema.columns
+WHERE column_name IN ('RANK', 'GROUPS', 'SYSTEM', 'CUME_DIST',
+  'DENSE_RANK', 'EMPTY', 'FIRST_VALUE', 'GROUPING', 'JSON_TABLE',
+  'LAG', 'LAST_VALUE', 'LATERAL', 'LEAD', 'NTH_VALUE', 'NTILE',
+  'OF', 'OVER', 'PERCENT_RANK', 'RECURSIVE', 'ROW_NUMBER', 'ROWS', 'WINDOW');
 ```
 
 Rename conflicting identifiers (e.g., `RANK`, `GROUPS`, `SYSTEM`):
