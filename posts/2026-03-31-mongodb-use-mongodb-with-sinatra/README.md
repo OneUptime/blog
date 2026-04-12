@@ -109,7 +109,7 @@ patch '/items/:id' do
 
   request.body.rewind
   data = JSON.parse(request.body.read)
-  item.update_attributes!(data.slice('name', 'price', 'in_stock'))
+  item.update!(data.slice('name', 'price', 'in_stock'))
   json id: item.id.to_s, name: item.name, price: item.price, inStock: item.in_stock
 end
 
