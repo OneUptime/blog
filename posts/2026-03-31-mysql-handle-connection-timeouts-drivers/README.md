@@ -100,7 +100,7 @@ Properties props = new Properties();
 props.setProperty("user", "app_user");
 props.setProperty("password", "secure_password");
 
-// Connection socket timeout (seconds)
+// Connection socket timeout (milliseconds)
 props.setProperty("connectTimeout", "10000");
 // Socket read timeout (milliseconds)
 props.setProperty("socketTimeout", "30000");
