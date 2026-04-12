@@ -109,7 +109,7 @@ CREATE TABLE articles (
 
 ## Trailing Space Behavior
 
-`CHAR` strips trailing spaces on retrieval. `VARCHAR` preserves them (unless `PAD_CHAR_TO_FULL_LENGTH` SQL mode is set):
+`CHAR` strips trailing spaces on retrieval (unless the `PAD_CHAR_TO_FULL_LENGTH` SQL mode is enabled). `VARCHAR` preserves them:
 
 ```sql
 CREATE TABLE space_test (
