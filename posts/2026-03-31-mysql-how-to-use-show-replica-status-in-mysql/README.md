@@ -51,21 +51,21 @@ Exec_Source_Log_Pos: 4523891
 For a healthy replica, both `Replica_IO_Running` and `Replica_SQL_Running` must be `Yes`:
 
 ```sql
-SELECT
-    Replica_IO_Running,
-    Replica_SQL_Running,
-    Seconds_Behind_Source,
-    Last_IO_Error,
-    Last_SQL_Error
-FROM performance_schema.replication_connection_status;
-```
-
-Or using the older approach:
-
-```sql
 SHOW REPLICA STATUS\G
 -- Replica_IO_Running: Yes (must be Yes)
 -- Replica_SQL_Running: Yes (must be Yes)
+```
+
+Or using performance_schema tables (MySQL 8.0+):
+
+```sql
+SELECT
+    conn.SERVICE_STATE AS io_thread_state,
+    applier.SERVICE_STATE AS sql_thread_state,
+    conn.LAST_ERROR_MESSAGE AS last_io_error
+FROM performance_schema.replication_connection_status conn
+JOIN performance_schema.replication_applier_status applier
+    ON conn.CHANNEL_NAME = applier.CHANNEL_NAME;
 ```
 
 ## Monitoring Replication Lag
@@ -120,6 +120,9 @@ With GTID replication, skip a failed transaction:
 SHOW REPLICA STATUS\G
 -- Look at: Executed_Gtid_Set and Retrieved_Gtid_Set
 
+-- Stop replication before skipping
+STOP REPLICA;
+
 -- Skip the transaction by executing an empty transaction
 SET GTID_NEXT = '3E11FA47-71CA-11E1-9E33-C80AA9429562:42';
 BEGIN;
@@ -133,24 +136,26 @@ START REPLICA;
 The difference between `Read_Source_Log_Pos` and `Exec_Source_Log_Pos` shows how much of the received binary log has been applied:
 
 ```sql
-SELECT
-    Read_Source_Log_Pos - Exec_Source_Log_Pos AS unapplied_bytes
-FROM performance_schema.replication_applier_status_by_worker;
+SHOW REPLICA STATUS\G
+-- Compare Read_Source_Log_Pos and Exec_Source_Log_Pos
+-- When both reference the same log file, the difference is:
+-- Read_Source_Log_Pos - Exec_Source_Log_Pos = unapplied bytes in relay log
 ```
 
 ## Replication with GTID - Checking GTID Sets
 
 ```sql
 SHOW REPLICA STATUS\G
--- Retrieved_Gtid_Set: events received but not yet applied
--- Executed_Gtid_Set: events applied to this replica
+-- Retrieved_Gtid_Set: all GTIDs received from the primary
+-- Executed_Gtid_Set: all GTIDs applied on this replica
 ```
 
 Compare with the primary:
 
 ```sql
--- On primary
+-- On primary (MySQL 8.0)
 SHOW MASTER STATUS\G
+-- MySQL 8.2+ uses: SHOW BINARY LOG STATUS\G
 -- Executed_Gtid_Set: all events that happened on primary
 ```
 
