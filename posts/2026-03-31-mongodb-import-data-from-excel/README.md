@@ -105,6 +105,7 @@ def import_excel_to_mongodb(filename, db_name, collection_name, batch_size=1000)
             total_inserted += len(result.inserted_ids)
             print(f"Inserted batch {i // batch_size + 1}: {len(result.inserted_ids)} documents")
         except BulkWriteError as e:
+            total_inserted += e.details['nInserted']
             print(f"Batch error: {e.details['nInserted']} inserted, {len(e.details['writeErrors'])} errors")
 
     print(f"Total inserted: {total_inserted}")
