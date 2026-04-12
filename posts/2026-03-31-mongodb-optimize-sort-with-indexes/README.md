@@ -74,9 +74,9 @@ db.col.find().sort({ a: -1, b: 1 })   // uses index backward (exact inverse)
 db.col.find().sort({ a: 1, b: 1 })    // cannot use index - in-memory sort
 ```
 
-## Range Filter Before Sort
+## Equality, Sort, Range (ESR) Rule
 
-When a query has a range filter, add the sort field after the range field in the index:
+When a query has both a range filter and a sort, place the sort field before the range field in the index. This follows the ESR rule: Equality fields first, then Sort fields, then Range fields:
 
 ```javascript
 // Query: filter by status, range on createdAt, sort by amount
@@ -85,11 +85,11 @@ db.orders.find({
   createdAt: { $gte: ISODate("2026-01-01") }
 }).sort({ amount: -1 })
 
-// Index to support this
-db.orders.createIndex({ status: 1, createdAt: 1, amount: -1 })
+// Index following the ESR rule
+db.orders.createIndex({ status: 1, amount: -1, createdAt: 1 })
 ```
 
-Note: a range filter field interrupts index-provided sort for subsequent fields. Test with `explain` to verify.
+A range filter field interrupts index-provided sort for subsequent fields. If the range field (`createdAt`) were placed before the sort field (`amount`) in the index, MongoDB would need an in-memory sort. By placing the sort field first, the index provides the sort order directly. Test with `explain` to verify.
 
 ## Aggregation Sort Optimization
 
