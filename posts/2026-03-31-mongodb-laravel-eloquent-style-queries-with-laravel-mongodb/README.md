@@ -117,7 +117,7 @@ $withRating = Product::where('rating', 'exists', true)->get();
 Add the `SoftDeletes` trait just as you would in a standard model:
 
 ```php
-use MongoDB\Laravel\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
