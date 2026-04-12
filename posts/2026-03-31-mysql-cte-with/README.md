@@ -96,8 +96,8 @@ ORDER BY ct.total_spent DESC;
 | name  | country | total_spent | order_count |
 +-------+---------+-------------+-------------+
 | Carol | US      |      500.00 |           1 |
-| Dave  | DE      |      300.00 |           1 |
 | Alice | US      |      370.00 |           2 |
+| Dave  | DE      |      300.00 |           1 |
 +-------+---------+-------------+-------------+
 ```
 
