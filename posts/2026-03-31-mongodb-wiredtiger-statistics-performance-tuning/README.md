@@ -33,8 +33,7 @@ printjson({
   usedPct:            (c["bytes currently in the cache"] / c["maximum bytes configured"] * 100).toFixed(1) + "%",
   dirtyPct:           (c["tracked dirty bytes in the cache"] / c["maximum bytes configured"] * 100).toFixed(1) + "%",
   appEvictions:       c["pages evicted by application threads"],
-  bgEvictions:        c["pages evicted by background eviction"],
-  readsPct:           (c["pages read into cache"] / (c["pages read into cache"] + c["pages read into cache from file"]) * 100).toFixed(1)
+  pagesReadIntoCache: c["pages read into cache"]
 });
 ```
 
