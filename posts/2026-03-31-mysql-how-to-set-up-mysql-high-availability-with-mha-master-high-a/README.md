@@ -34,15 +34,22 @@ Install `mha4mysql-node` on all MySQL servers:
 
 ```bash
 # Install dependencies
-yum install perl perl-DBD-MySQL perl-Config-Tiny perl-Log-Dispatch perl-Parallel-ForkManager
+yum install perl perl-DBD-MySQL
 
 # Install node package
 rpm -ivh mha4mysql-node-0.58-0.el7.centos.noarch.rpm
 ```
 
-Install `mha4mysql-manager` on the management server:
+Install `mha4mysql-node` and `mha4mysql-manager` on the management server:
 
 ```bash
+# Install dependencies (manager requires additional Perl modules)
+yum install perl perl-DBD-MySQL perl-Config-Tiny perl-Log-Dispatch perl-Parallel-ForkManager
+
+# Install node package (required on manager host as well)
+rpm -ivh mha4mysql-node-0.58-0.el7.centos.noarch.rpm
+
+# Install manager package
 rpm -ivh mha4mysql-manager-0.58-0.el7.centos.noarch.rpm
 ```
 
@@ -80,12 +87,13 @@ GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
 ```
 
 ```sql
--- On replicas
+-- On replicas (get MASTER_LOG_FILE and MASTER_LOG_POS from SHOW MASTER STATUS on the primary)
 CHANGE MASTER TO
   MASTER_HOST='192.168.1.101',
   MASTER_USER='replicator',
   MASTER_PASSWORD='ReplPass123!',
-  MASTER_AUTO_POSITION=1;
+  MASTER_LOG_FILE='mysql-bin.000001',
+  MASTER_LOG_POS=154;
 
 START SLAVE;
 ```
