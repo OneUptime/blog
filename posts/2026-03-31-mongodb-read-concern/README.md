@@ -16,9 +16,9 @@ Read concern controls the consistency and isolation properties of data returned 
 flowchart TD
     Q[Read query] --> RC{Read concern level}
     RC --> Local["local: most recent data on this node\n(may be rolled back)"]
-    RC --> Available["available: fastest, no majority check\n(sharded clusters only)"]
+    RC --> Available["available: fastest, no majority check\n(differs from local only on sharded clusters)"]
     RC --> Majority["majority: data acknowledged by majority\n(durable, won't be rolled back)"]
-    RC --> Snapshot["snapshot: point-in-time view\n(required in transactions)"]
+    RC --> Snapshot["snapshot: point-in-time view\n(recommended for transactions)"]
     RC --> Linearizable["linearizable: strongest guarantee\n(reads only from primary, high latency)"]
 ```
 
@@ -34,7 +34,7 @@ flowchart TD
 
 ## Default Read Concern for Transactions
 
-MongoDB uses `snapshot` read concern by default for multi-document transactions. This gives all reads within the transaction a consistent view of the data as of the transaction start time.
+MongoDB transactions inherit the read concern from the session or client level, which defaults to `local`. Regardless of the specified read concern level, all reads within a multi-document transaction see a consistent snapshot of data. Setting `snapshot` explicitly ensures the snapshot is based on majority-committed data.
 
 ```javascript
 const { MongoClient } = require("mongodb");
@@ -43,10 +43,10 @@ const client = new MongoClient(process.env.MONGO_URI);
 await client.connect();
 const db = client.db("banking");
 
-// Default: snapshot read concern
+// Default read concern is inherited (local unless overridden)
 const session = client.startSession();
 session.startTransaction();
-// All reads in this transaction see a consistent snapshot
+// All reads in this transaction see a consistent snapshot regardless of read concern level
 ```
 
 ## Explicitly Setting Read Concern in a Transaction
@@ -171,4 +171,4 @@ const fastRead = await db.collection("cache").findOne(
 
 ## Summary
 
-MongoDB transactions default to `snapshot` read concern, which gives all reads within the transaction a consistent point-in-time view. Use `snapshot` for financial or inventory transactions where reads must not see concurrent writes mid-transaction. Use `majority` for non-transactional reads where you need durability guarantees without full snapshot isolation. Use `linearizable` only for single-document reads on the primary when the strictest consistency is required and higher latency is acceptable.
+MongoDB transactions default to `local` read concern (inherited from the client), but all transactions provide snapshot isolation regardless of the read concern level. Use `snapshot` for financial or inventory transactions where reads must not see concurrent writes mid-transaction. Use `majority` for non-transactional reads where you need durability guarantees without full snapshot isolation. Use `linearizable` only for single-document reads on the primary when the strictest consistency is required and higher latency is acceptable.
