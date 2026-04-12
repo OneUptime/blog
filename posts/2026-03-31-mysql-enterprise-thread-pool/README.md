@@ -10,7 +10,7 @@ Description: Learn how to configure MySQL Enterprise Thread Pool to improve conc
 
 ## What Is MySQL Enterprise Thread Pool?
 
-By default, MySQL creates one thread per connection. At high concurrency this leads to excessive context switching and memory consumption. MySQL Enterprise Thread Pool (available in MySQL Enterprise Edition and also in MySQL Community via the `thread_pool` plugin on some platforms) replaces this one-thread-per-connection model with a pool of worker threads that handle multiple connections, significantly improving throughput at scale.
+By default, MySQL creates one thread per connection. At high concurrency this leads to excessive context switching and memory consumption. MySQL Enterprise Thread Pool (available in MySQL Enterprise Edition) replaces this one-thread-per-connection model with a pool of worker threads that handle multiple connections, significantly improving throughput at scale.
 
 ## Installing the Thread Pool Plugin
 
@@ -30,7 +30,6 @@ Or configure at startup in `my.cnf`:
 ```text
 [mysqld]
 plugin-load-add=thread_pool.so
-thread_handling=pool-of-threads
 ```
 
 ## Key Configuration Variables
@@ -42,12 +41,13 @@ SHOW VARIABLES LIKE 'thread_pool%';
 Important variables:
 
 ```text
-thread_pool_size             - number of thread groups (default: CPU count)
+thread_pool_size                  - number of thread groups (default: 16)
 thread_pool_max_active_query_threads - max active threads per group
-thread_pool_stall_limit      - milliseconds before a stall is detected
-thread_pool_idle_timeout     - seconds before an idle thread exits
-thread_pool_high_prio_mode   - how high-priority connections are handled
-thread_pool_algorithm        - scheduling algorithm (0=default, 1=high-concurrency)
+thread_pool_stall_limit           - milliseconds before a stall is detected (default: 60)
+thread_pool_max_unused_threads    - max permitted unused threads
+thread_pool_high_priority_connection - per-session flag for high-priority scheduling
+thread_pool_prio_kickup_timer     - ms before low-priority statements are moved to high-priority queue
+thread_pool_algorithm             - scheduling algorithm (0=default, 1=high-concurrency)
 ```
 
 ## Tuning Thread Pool Size
@@ -74,17 +74,17 @@ thread_pool_stall_limit=100
 
 ```sql
 -- Check thread group status
-SELECT * FROM information_schema.TP_THREAD_GROUP_STATE\G
+SELECT * FROM performance_schema.TP_THREAD_GROUP_STATE\G
 
 -- Check thread-level state
-SELECT * FROM information_schema.TP_THREAD_STATE
-WHERE TYPE = 'WORKER';
+SELECT * FROM performance_schema.TP_THREAD_STATE
+WHERE TP_THREAD_TYPE = 'QUERY_WORKER_THREAD';
 
 -- Check statistics per thread group
-SELECT GROUP_ID, CONNECTIONS_STARTED, QUERIES_EXECUTED,
-       THREADS_CREATED, STALLS
-FROM information_schema.TP_THREAD_GROUP_STATS
-ORDER BY GROUP_ID;
+SELECT TP_GROUP_ID, CONNECTIONS_STARTED, QUERIES_EXECUTED,
+       THREADS_STARTED, STALLED_QUERIES_EXECUTED
+FROM performance_schema.TP_THREAD_GROUP_STATS
+ORDER BY TP_GROUP_ID;
 ```
 
 ## Understanding Stalls
@@ -101,14 +101,14 @@ SET GLOBAL thread_pool_stall_limit = 500; -- 500ms
 
 ## High-Priority Connections
 
-Transactions already in progress can be assigned high priority to prevent starvation:
+Sessions can be assigned high priority so their queued statements go to the high-priority queue. Additionally, `thread_pool_prio_kickup_timer` controls how long low-priority statements wait before being automatically promoted:
 
 ```sql
--- Configure high-priority mode
-SET GLOBAL thread_pool_high_prio_mode = 'transactions';
+-- Enable high-priority scheduling for this session
+SET SESSION thread_pool_high_priority_connection = 1;
 
--- This ensures in-flight transactions get preferential scheduling
--- reducing deadlock risk under high concurrency
+-- Control how long low-priority statements wait before promotion (default: 1000ms)
+SET GLOBAL thread_pool_prio_kickup_timer = 2000;
 ```
 
 ## Comparing One-Thread-Per-Connection vs Thread Pool
@@ -128,4 +128,4 @@ Thread Pool:
 
 ## Summary
 
-MySQL Enterprise Thread Pool is a high-concurrency optimization that replaces the default one-thread-per-connection model with a managed pool of worker threads. Configure `thread_pool_size` to match your CPU count, tune `thread_pool_stall_limit` based on your query latency profile, and monitor via `information_schema.TP_THREAD_GROUP_STATS` to verify it is reducing stalls and improving throughput in production.
+MySQL Enterprise Thread Pool is a high-concurrency optimization that replaces the default one-thread-per-connection model with a managed pool of worker threads. Configure `thread_pool_size` to match your CPU count, tune `thread_pool_stall_limit` based on your query latency profile, and monitor via `performance_schema.TP_THREAD_GROUP_STATS` to verify it is reducing stalls and improving throughput in production.
