@@ -24,6 +24,7 @@ Use a sorted set where each member is a request timestamp and the score is also 
 -- ARGV[1]: current timestamp in milliseconds
 -- ARGV[2]: window size in milliseconds
 -- ARGV[3]: maximum requests allowed in the window
+-- ARGV[4]: unique request identifier
 
 local key = KEYS[1]
 local now = tonumber(ARGV[1])
