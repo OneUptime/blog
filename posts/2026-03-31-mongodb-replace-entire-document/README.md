@@ -58,13 +58,13 @@ console.log(`Matched: ${result.matchedCount}, Replaced: ${result.modifiedCount}`
 
 ## replaceOne Does Not Change _id
 
-The `_id` field is immutable and is always preserved:
+The `_id` field is immutable and is always preserved. If you include a different `_id` in the replacement document, MongoDB throws an error:
 
 ```javascript
-// Even if you include a different _id, MongoDB ignores it
+// Including a different _id causes an error (code 16837)
 db.users.replaceOne(
   { _id: userId },
-  { _id: "some-other-id", name: "Jane" }  // _id change is rejected
+  { _id: "some-other-id", name: "Jane" }  // Error: _id field cannot be changed
 )
 ```
 
