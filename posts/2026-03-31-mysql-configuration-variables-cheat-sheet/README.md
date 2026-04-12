@@ -23,8 +23,8 @@ SET SESSION sort_buffer_size = 8388608;
 -- Set a global variable (no restart needed for dynamic vars)
 SET GLOBAL max_connections = 500;
 
--- Check if a variable is dynamic
-SELECT variable_name, variable_scope, is_dynamic
+-- Check where a variable's current value was set from
+SELECT variable_name, variable_source, variable_path
 FROM performance_schema.variables_info
 WHERE variable_name = 'max_connections';
 ```
@@ -133,4 +133,4 @@ collation_server     = utf8mb4_unicode_ci
 
 ## Summary
 
-MySQL's configuration variables control nearly every performance and behavior characteristic. The most impactful variables are `innodb_buffer_pool_size` (allocate most available RAM), `innodb_flush_log_at_trx_commit` (durability vs. speed trade-off), `max_connections` (concurrency ceiling), and `slow_query_log` (visibility into bad queries). Always change global variables with SHOW VARIABLES to confirm the change took effect, and update `my.cnf` to persist across restarts.
+MySQL's configuration variables control nearly every performance and behavior characteristic. The most impactful variables are `innodb_buffer_pool_size` (allocate most available RAM), `innodb_flush_log_at_trx_commit` (durability vs. speed trade-off), `max_connections` (concurrency ceiling), and `slow_query_log` (visibility into bad queries). After changing global variables, use SHOW VARIABLES to confirm the change took effect, and update `my.cnf` to persist across restarts.
