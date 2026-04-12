@@ -60,7 +60,7 @@ print("Documents modified:", result.modifiedCount)
 
 ## Applying Updates to All Documents
 
-Pass an empty filter `{}` to update every document in the collection:
+Pass an empty filter `{}` to update every document in the collection. You can also use query operators like `$exists` to target specific subsets:
 
 ```javascript
 // Add a default "active" status to all documents that lack one
@@ -70,9 +70,9 @@ db.users.updateMany(
 )
 ```
 
-## Incrementing a Field on Multiple Documents
+## Multiplying a Field on Multiple Documents
 
-Use `$inc` to apply a numeric increment to all matching documents:
+Use `$mul` to apply a numeric multiplier to all matching documents:
 
 ```javascript
 // Apply a 10% price increase to all products in the Electronics category
@@ -149,16 +149,23 @@ Large `updateMany()` operations can hold locks for extended periods. For very la
 // Process in batches to reduce lock contention
 const batchSize = 1000
 let processed = 0
+let ids
 
 do {
-  const result = db.largeLogs.updateMany(
+  ids = db.largeLogs.find(
     { processed: false },
-    { $set: { processed: true } },
-    { limit: batchSize }  // Note: limit not supported natively - use find+updateOne loop instead
-  )
-  processed += result.modifiedCount
-  print(`Processed ${processed} records`)
-} while (result.modifiedCount === batchSize)
+    { _id: 1 }
+  ).limit(batchSize).map(doc => doc._id)
+
+  if (ids.length > 0) {
+    const result = db.largeLogs.updateMany(
+      { _id: { $in: ids } },
+      { $set: { processed: true } }
+    )
+    processed += result.modifiedCount
+    print(`Processed ${processed} records`)
+  }
+} while (ids.length === batchSize)
 ```
 
 ## Use Cases
