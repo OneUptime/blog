@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Grouping, ROLLUP, CUBE, Aggregation, Analytics
+Tags: MySQL, Grouping, ROLLUP, Aggregation, Analytics
 
-Description: Learn how to use the GROUPING() function in MySQL 8 to distinguish super-aggregate rows from NULL values in ROLLUP and CUBE queries.
+Description: Learn how to use the GROUPING() function in MySQL 8 to distinguish super-aggregate rows from NULL values in ROLLUP queries.
 
 ---
 
@@ -107,18 +107,19 @@ FROM employees
 GROUP BY department, job_title WITH ROLLUP;
 ```
 
-The bitmask values:
+With ROLLUP, the possible bitmask values for this query are:
 - `0` - regular row
-- `1` - job_title is a rollup NULL
-- `2` - department is a rollup NULL
+- `1` - job_title is a rollup NULL (subtotal row)
 - `3` - both are rollup NULLs (grand total)
+
+Note: Value `2` (department rolled up but not job_title) cannot occur with ROLLUP because it rolls up right-to-left. The leftmost column is only rolled up when all columns to its right are already rolled up.
 
 ## Practical Example - Sales Report with Subtotals
 
 ```sql
 SELECT
-  COALESCE(IF(GROUPING(region), NULL, region), 'ALL REGIONS') AS region,
-  COALESCE(IF(GROUPING(product_category), NULL, product_category), 'ALL CATEGORIES') AS category,
+  IF(GROUPING(region), 'ALL REGIONS', region) AS region,
+  IF(GROUPING(product_category), 'ALL CATEGORIES', product_category) AS category,
   SUM(revenue) AS total_revenue,
   COUNT(*) AS num_sales
 FROM sales
