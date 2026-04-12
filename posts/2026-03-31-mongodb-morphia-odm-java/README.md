@@ -139,21 +139,24 @@ datastore.find(Product.class)
 ## Deleting Documents
 
 ```java
+import dev.morphia.DeleteOptions;
+
+// Delete all matching documents
 datastore.find(Product.class)
     .filter(Filters.eq("category", "discontinued"))
-    .delete();
+    .delete(new DeleteOptions().multi(true));
 ```
 
 ## Sorting and Pagination
 
 ```java
 import dev.morphia.query.FindOptions;
-import com.mongodb.client.model.Sorts;
+import dev.morphia.query.Sort;
 
 List<Product> page = datastore.find(Product.class)
     .filter(Filters.eq("category", "electronics"))
     .iterator(new FindOptions()
-        .sort(Sorts.ascending("price"))
+        .sort(Sort.ascending("price"))
         .skip(0)
         .limit(10))
     .toList();
