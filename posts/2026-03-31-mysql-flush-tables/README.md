@@ -43,10 +43,8 @@ This command does two things:
 While the lock is held, the database is in a consistent state - all reads are permitted but no writes can occur. This is the basis of a hot backup:
 
 ```bash
-# In a script: lock, snapshot, unlock
-mysql -e "FLUSH TABLES WITH READ LOCK;"
-# ... take filesystem snapshot or copy data files ...
-mysql -e "UNLOCK TABLES;"
+# The lock is session-scoped, so all commands must run in the same connection
+mysql -e "FLUSH TABLES WITH READ LOCK; SYSTEM lvcreate --snapshot --name dbsnap --size 1G /dev/vg0/mysql; UNLOCK TABLES;"
 ```
 
 ## FLUSH TABLES ... FOR EXPORT
@@ -82,7 +80,7 @@ If `Open_tables` is consistently at the `table_open_cache` limit, MySQL is evict
 Flushing tables has these effects:
 
 - All cached table structures are evicted, increasing next-access latency.
-- Any in-memory InnoDB buffer pool dirty pages are flushed to disk.
+- All open table file descriptors are closed and must be reopened on next access.
 - Waiting queries must wait until the flush completes.
 
 For large databases with many tables, `FLUSH TABLES` can briefly pause the server. Prefer `FLUSH TABLES specific_table` over flushing everything when possible.
