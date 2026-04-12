@@ -62,7 +62,7 @@ mysqladmin -u root -p variables | grep max_connections
 
 ## Ping the Server
 
-Test connectivity without authentication:
+Test if the server is running and accepting connections:
 
 ```bash
 mysqladmin -u root -p ping
@@ -112,9 +112,6 @@ Flush various server caches and logs:
 # Flush all privileges (after manual grant changes)
 mysqladmin -u root -p flush-privileges
 
-# Flush query cache
-mysqladmin -u root -p flush-query-cache
-
 # Flush all tables
 mysqladmin -u root -p flush-tables
 
@@ -124,8 +121,8 @@ mysqladmin -u root -p flush-logs
 # Flush status counters
 mysqladmin -u root -p flush-status
 
-# Flush all of the above
-mysqladmin -u root -p flush-all
+# Flush thread cache
+mysqladmin -u root -p flush-threads
 ```
 
 ## Reload Configuration
