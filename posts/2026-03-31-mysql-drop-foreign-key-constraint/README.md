@@ -113,10 +113,11 @@ A common migration pattern when restructuring a relationship:
 -- 1. Drop the old FK
 ALTER TABLE orders DROP FOREIGN KEY fk_orders_customer;
 
--- 2. Modify the column
+-- 2. Modify both the referenced and referencing columns to the new type
+ALTER TABLE customers MODIFY customer_id BIGINT UNSIGNED NOT NULL;
 ALTER TABLE orders MODIFY customer_id BIGINT UNSIGNED NOT NULL;
 
--- 3. Add the new FK pointing to the updated column
+-- 3. Add the new FK pointing to the updated columns
 ALTER TABLE orders
   ADD CONSTRAINT fk_orders_customer
     FOREIGN KEY (customer_id) REFERENCES customers (customer_id)
