@@ -124,7 +124,7 @@ ERROR 1264 (22003): Out of range value for column 'subtotal' at row 1
 If a value has more decimal places than the scale, MySQL rounds it:
 
 ```sql
--- DECIMAL(10, 2) column - value with 4 decimal places gets rounded
+-- DECIMAL(12, 2) column - value with 4 decimal places gets rounded
 INSERT INTO invoices (customer_id, subtotal, tax_rate, tax_amount, total)
 VALUES (103, 99.9999, 0.0875, 8.75, 108.75);
 -- subtotal stored as 100.00
@@ -141,18 +141,19 @@ CREATE TABLE precision_test (
 
 INSERT INTO precision_test VALUES (0.1 + 0.2, 0.1 + 0.2);
 
-SELECT dec_val, flt_val FROM precision_test;
+-- CAST the FLOAT to a high-precision DECIMAL to reveal the stored imprecision
+SELECT dec_val, CAST(flt_val AS DECIMAL(20, 17)) AS flt_val FROM precision_test;
 ```
 
 ```text
-+---------+--------------------+
-| dec_val | flt_val            |
-+---------+--------------------+
-|    0.30 | 0.30000001192092896|
-+---------+--------------------+
++---------+----------------------+
+| dec_val | flt_val              |
++---------+----------------------+
+|    0.30 | 0.30000001192092896  |
++---------+----------------------+
 ```
 
-DECIMAL returns the exact value `0.30`. FLOAT introduces a small rounding error.
+DECIMAL returns the exact value `0.30`. FLOAT introduces a small rounding error that is revealed when cast to a higher-precision type.
 
 ## Summary
 
