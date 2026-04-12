@@ -146,9 +146,9 @@ Use `getCollectionInfos()` in migration scripts to verify that staging and produ
 
 ```javascript
 const prod = db.getCollectionInfos({ name: "orders" })[0];
-const stageValidator = JSON.stringify(prod.options?.validator ?? {});
+const prodValidator = JSON.stringify(prod.options?.validator ?? {});
 // Export and compare against staging environment validator
-print(stageValidator);
+print(prodValidator);
 ```
 
 ## Summary
