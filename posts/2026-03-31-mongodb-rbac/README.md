@@ -190,7 +190,7 @@ db.getUsers({ showPrivileges: true })
 Check what a specific user can do:
 
 ```javascript
-use admin
+use ecommerce
 db.getUser("orderSvc", { showPrivileges: true })
 ```
 
