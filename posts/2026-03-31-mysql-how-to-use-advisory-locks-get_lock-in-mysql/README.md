@@ -147,7 +147,7 @@ SELECT GET_LOCK('lock_b', 5);
 SELECT RELEASE_ALL_LOCKS();  -- releases both
 ```
 
-**Lock names are case-sensitive:** `GET_LOCK('MyLock', 5)` and `GET_LOCK('mylock', 5)` are different locks.
+**Lock names are case-insensitive:** `GET_LOCK('MyLock', 5)` and `GET_LOCK('mylock', 5)` refer to the same lock. Internally, MySQL converts lock names to lowercase before using them as keys.
 
 **If the connection is lost, all named locks are automatically released.** This prevents orphaned locks.
 
