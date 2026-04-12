@@ -121,8 +121,8 @@ ORDER BY total_revenue DESC;
 | region | total_revenue |
 +--------+---------------+
 | North  | 1829.44       |
-| South  | 1379.93       |
 | East   | 1389.48       |
+| South  | 1379.93       |
 | West   |  549.49       |
 +--------+---------------+
 ```
