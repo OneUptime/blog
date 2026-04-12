@@ -85,6 +85,8 @@ verificationTokens - Stores email verification tokens
 To store extra data on users, use the `events` callbacks:
 
 ```javascript
+import { ObjectId } from 'mongodb';
+
 callbacks: {
   async session({ session, user }) {
     session.user.role = user.role;
@@ -107,8 +109,8 @@ events: {
 
 ```bash
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/mydb
-NEXTAUTH_SECRET=your-random-secret
-NEXTAUTH_URL=https://yourapp.com
+AUTH_SECRET=your-random-secret
+AUTH_URL=https://yourapp.com
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ```
