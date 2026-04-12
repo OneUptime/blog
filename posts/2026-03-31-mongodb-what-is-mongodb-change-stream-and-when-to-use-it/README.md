@@ -110,7 +110,7 @@ cacheInvalidator.on("change", (change) => {
 })
 
 // 2. Sync to Elasticsearch
-const searchSync = db.collection("articles").watch()
+const searchSync = db.collection("articles").watch([], { fullDocument: "updateLookup" })
 searchSync.on("change", async (change) => {
   if (change.operationType === "insert" || change.operationType === "update") {
     await esClient.index({ index: "articles", id: change.documentKey._id, body: change.fullDocument })
@@ -122,7 +122,7 @@ searchSync.on("change", async (change) => {
 // 3. Trigger notifications
 const notifier = db.collection("orders").watch([
   { $match: { "updateDescription.updatedFields.status": "delivered" } }
-])
+], { fullDocument: "updateLookup" })
 notifier.on("change", async (change) => {
   await sendDeliveryNotification(change.fullDocument.userId)
 })
