@@ -15,9 +15,9 @@ MySQL supports three comment styles:
 ### 1 - Hash Comment (Single Line)
 
 ```sql
-SELECT id, name FROM customers; -- Hash comments go to end of line
-SELECT id, name FROM customers # This is also a hash comment
-WHERE status = 'active';
+SELECT id, name FROM customers; # Hash comments go to end of line
+SELECT id, name FROM customers
+WHERE status = 'active'; # Another hash comment
 ```
 
 ### 2 - Double Dash Comment (Single Line)
@@ -28,7 +28,7 @@ FROM customers   -- From the customers table
 WHERE status = 'active';
 ```
 
-Note: The double-dash style requires a space after `--` to avoid ambiguity with values like `--5` (negative five).
+Note: The double-dash style requires a space after `--` to avoid ambiguity with expressions like `a--b` (which could mean `a - (-b)`).
 
 ### 3 - C-Style Block Comment (Multi-Line)
 
@@ -113,13 +113,13 @@ JOIN orders o ON c.id = o.customer_id;
 SELECT /*+ RESOURCE_GROUP(reporting_group) */
   SUM(revenue) FROM sales GROUP BY year;
 
--- Disable hash join for this query
-SELECT /*+ NO_HASH_JOIN(o, c) */
+-- Disable hash join for this query (MySQL 8.0.20+)
+SELECT /*+ NO_BNL(o, c) */
   o.id, c.name
 FROM orders o JOIN customers c ON o.customer_id = c.id;
 ```
 
-Optimizer hints inside `/*+ */` are silently ignored by other SQL databases, making queries portable.
+Optimizer hints inside `/*+ */` are treated as regular comments by most other SQL databases (such as PostgreSQL and SQL Server), making queries portable. Note that Oracle Database also recognizes `/*+ */` for its own optimizer hints, so hints may be interpreted differently there.
 
 ## Documenting Stored Procedures
 
@@ -134,16 +134,16 @@ BEGIN
    * Called by: nightly_cron_job.sh
    * See also: cleanup_stale_orders()
    */
-  DECLARE batch_id INT;
+  DECLARE v_batch_id INT;
 
   -- Create an audit entry for this batch
   INSERT INTO processing_batches (started_at) VALUES (NOW());
-  SET batch_id = LAST_INSERT_ID();
+  SET v_batch_id = LAST_INSERT_ID();
 
   -- Update pending orders older than 24 hours
   UPDATE orders
   SET status = 'processing',
-      batch_id = batch_id,
+      batch_id = v_batch_id,
       updated_at = NOW()
   WHERE status = 'pending'
     AND created_at < NOW() - INTERVAL 24 HOUR;
@@ -151,7 +151,7 @@ BEGIN
   -- Log how many were updated
   UPDATE processing_batches
   SET rows_processed = ROW_COUNT(), completed_at = NOW()
-  WHERE id = batch_id;
+  WHERE id = v_batch_id;
 END$$
 
 DELIMITER ;
