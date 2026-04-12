@@ -81,7 +81,7 @@ WHERE region IN ('USA', 'Canada')
 ## Queries That Prevent Pruning
 
 ```sql
--- Functions applied to the partition column break pruning
+-- Functions that differ from the partitioning expression break pruning
 WHERE MONTH(created_at) = 3       -- Scans all partitions
 
 -- OR conditions involving non-partitioned columns
