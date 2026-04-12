@@ -17,17 +17,17 @@ Every time a client connects to MySQL, a chain of events unfolds beneath the sur
 When a client initiates a connection, MySQL goes through several steps:
 
 1. The client opens a TCP socket to port 3306 (or a Unix socket for local connections).
-2. MySQL's main listener thread accepts the connection and performs the initial handshake.
-3. The server sends a handshake packet including server version, connection ID, and supported authentication plugins.
-4. The client responds with credentials; MySQL authenticates using the configured plugin (default: `caching_sha2_password` in MySQL 8.x).
-5. A dedicated thread is assigned to service the connection.
+2. MySQL's connection manager thread accepts the connection.
+3. A dedicated thread is assigned (created or pulled from the thread cache) to handle the connection.
+4. The assigned thread sends a handshake packet including server version, connection ID, and supported authentication plugins.
+5. The client responds with credentials; the thread authenticates using the configured plugin (default: `caching_sha2_password` in MySQL 8.x).
 
 ```text
 Client --> TCP SYN --> MySQL Listener
-MySQL  --> Handshake Packet --> Client
-Client --> Auth Response --> MySQL
-MySQL  --> OK / Error Packet --> Client
-MySQL  --> Assign Thread --> Connection Established
+MySQL  --> Assign Thread
+Thread --> Handshake Packet --> Client
+Client --> Auth Response --> Thread
+Thread --> OK / Error Packet --> Client (Connection Established)
 ```
 
 ## Thread-Per-Connection Model
@@ -89,7 +89,7 @@ connect_timeout        = 10
 
 ## Connection Errors and Back Log
 
-MySQL maintains a back log queue for connections that arrive while the server is busy accepting others. The `back_log` variable controls the depth of this queue. If it fills up, new connections are refused with "Too many connections."
+MySQL maintains a back log queue for connections that arrive while the server is busy accepting others. The `back_log` variable controls the depth of this TCP listen queue. If it fills up, the operating system refuses new connections at the TCP level (clients see a connection timeout or refusal). Note that the "Too many connections" error is a separate condition caused by `max_connections` being exceeded.
 
 ```sql
 SHOW VARIABLES LIKE 'back_log';
@@ -103,9 +103,9 @@ SHOW STATUS LIKE 'Connection_errors_%';
 SHOW PROCESSLIST;
 
 -- More detail via performance_schema
-SELECT thread_id, user, host, command, time, state
+SELECT THREAD_ID, PROCESSLIST_USER, PROCESSLIST_HOST, PROCESSLIST_COMMAND, PROCESSLIST_TIME, PROCESSLIST_STATE
 FROM performance_schema.threads
-WHERE type = 'FOREGROUND';
+WHERE TYPE = 'FOREGROUND';
 ```
 
 ## Summary
