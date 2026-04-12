@@ -47,9 +47,11 @@ Configure automatic replication from the primary bucket to a DR bucket in anothe
 
 ```json
 {
+  "Role": "arn:aws:iam::123456789:role/s3-replication-role",
   "Rules": [
     {
       "ID": "mysql-backup-replication",
+      "Priority": 1,
       "Status": "Enabled",
       "Filter": {
         "Prefix": "mysql-backups/"
