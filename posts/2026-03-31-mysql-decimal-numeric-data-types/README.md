@@ -10,7 +10,7 @@ Description: Learn how to use DECIMAL and NUMERIC data types in MySQL for exact 
 
 ## What Are DECIMAL and NUMERIC
 
-`DECIMAL` and `NUMERIC` are synonymous in MySQL. Both store **exact fixed-point** numbers, making them the correct choice whenever rounding errors are unacceptable -- financial calculations, tax amounts, measurements, and scientific data. Unlike `FLOAT` or `DOUBLE`, a `DECIMAL` value is stored as a string-like representation internally, guaranteeing that `1.10 + 2.20 = 3.30` exactly.
+`DECIMAL` and `NUMERIC` are synonymous in MySQL. Both store **exact fixed-point** numbers, making them the correct choice whenever rounding errors are unacceptable -- financial calculations, tax amounts, measurements, and scientific data. Unlike `FLOAT` or `DOUBLE`, a `DECIMAL` value is stored in a compact binary format that packs nine decimal digits into four bytes, guaranteeing that `1.10 + 2.20 = 3.30` exactly.
 
 ```mermaid
 flowchart LR
@@ -103,11 +103,11 @@ INSERT INTO account_ledger (account_id, description, debit, credit, balance, ent
 
 ```sql
 -- Floating point rounding
-SELECT 0.1 + 0.2 AS float_result;
+SELECT CAST(0.1 AS DOUBLE) + CAST(0.2 AS DOUBLE) AS float_result;
 -- Result: 0.30000000000000004 (imprecise)
 
--- Exact fixed-point
-SELECT CAST(0.1 AS DECIMAL(5,1)) + CAST(0.2 AS DECIMAL(5,1)) AS decimal_result;
+-- Exact fixed-point (MySQL treats decimal literals as DECIMAL by default)
+SELECT 0.1 + 0.2 AS decimal_result;
 -- Result: 0.3 (exact)
 ```
 
@@ -120,6 +120,8 @@ CREATE TABLE inventory (
     list_price   DECIMAL(10, 2) UNSIGNED NOT NULL
 );
 ```
+
+> **Note:** The `UNSIGNED` attribute for `DECIMAL` and `NUMERIC` columns is deprecated as of MySQL 8.0.17. Consider using a `CHECK` constraint instead: `CHECK (unit_cost >= 0)`.
 
 ## Choosing Precision and Scale
 
@@ -141,8 +143,8 @@ VALUES ('Cable', 9.999, 0.0825, 0.050);
 
 -- Inserting a value exceeding precision: error in strict mode
 INSERT INTO products (name, price, tax_rate, weight_kg)
-VALUES ('Server', 99999999.99, 0.0825, 50.000);
--- price 99999999.99 = 10 digits before decimal, exceeds DECIMAL(10,2) limit
+VALUES ('Server', 999999999.99, 0.0825, 50.000);
+-- price 999999999.99 has 9 integer digits, exceeds DECIMAL(10,2) limit of 8 integer digits
 -- ERROR 1264 (22003): Out of range value for column 'price'
 ```
 
