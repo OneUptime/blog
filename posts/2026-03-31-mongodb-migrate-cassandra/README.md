@@ -71,7 +71,7 @@ For large tables, increase parallelism:
 ```bash
 cqlsh -u cassandra -p password -e "
 COPY myapp.large_table TO '/tmp/large_table.csv'
-WITH HEADER = TRUE AND NUMPROCESSES = 8 AND MAXBATCHSIZE = 5000;
+WITH HEADER = TRUE AND NUMPROCESSES = 8 AND PAGESIZE = 5000;
 "
 ```
 
@@ -202,7 +202,7 @@ mongoimport \
 ## Step 6: Create MongoDB Indexes
 
 ```javascript
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 db.users.createIndex({ email: 1 }, { unique: true });
 db.users.createIndex({ status: 1 });
