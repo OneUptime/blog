@@ -20,9 +20,11 @@ For thumbnails or small icons under 1MB, you can store images directly as Binary
 const { MongoClient, Binary } = require("mongodb")
 const fs = require("fs")
 
+const client = new MongoClient("mongodb://localhost:27017")
+
 async function storeImageInDocument(imagePath, userId) {
   const imageBuffer = fs.readFileSync(imagePath)
-  const db = mongo.db("myapp")
+  const db = client.db("myapp")
 
   await db.collection("users").updateOne(
     { _id: userId },
@@ -55,8 +57,7 @@ const bucket = new GridFSBucket(db, { bucketName: "images" })
 async function uploadImage(fileBuffer, filename, metadata) {
   return new Promise((resolve, reject) => {
     const stream = bucket.openUploadStream(filename, {
-      contentType: "image/jpeg",
-      metadata
+      metadata: { contentType: "image/jpeg", ...metadata }
     })
     stream.end(fileBuffer)
     stream.on("finish", () => resolve(stream.id))
@@ -76,6 +77,7 @@ app.get("/images/:id", async (req, res) => {
 
 ```javascript
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3")
+const { ObjectId } = require("mongodb")
 const sharp = require("sharp")
 
 const s3 = new S3Client({ region: process.env.AWS_REGION })
