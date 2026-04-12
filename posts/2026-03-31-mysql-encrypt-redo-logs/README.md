@@ -75,11 +75,15 @@ ls -la /var/lib/mysql/#innodb_redo/
 
 In MySQL 8.0.30+, redo log files are named `#ib_redo0`, `#ib_redo1`, etc. in the `#innodb_redo` directory.
 
-## Confirming Encryption Is Active via Performance Schema
+## Checking Redo Log Status via Performance Schema
+
+The `log_status` table provides redo log position information useful for online backup coordination:
 
 ```sql
 SELECT * FROM performance_schema.log_status\G
 ```
+
+Note: This table shows log sequence numbers and checkpoint positions, not encryption status directly. Use `SHOW VARIABLES LIKE 'innodb_redo_log_encrypt'` to confirm encryption is enabled.
 
 ## Combined Encryption Configuration
 
