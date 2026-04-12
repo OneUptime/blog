@@ -18,7 +18,7 @@ As a MongoDB collection grows, you may need to shard it for horizontal scalabili
 
 ## Step 1 - Choose a Shard Key
 
-This is the most important and irreversible decision. A poor shard key causes hotspots or scatter-gather queries. Consider:
+This is the most important decision. A poor shard key causes hotspots or scatter-gather queries. While MongoDB 5.0+ allows changing the shard key with `reshardCollection`, it is a heavyweight operation, so choose carefully. Consider:
 
 - **Cardinality** - many distinct values
 - **Query patterns** - fields in frequent equality or range filters
@@ -40,7 +40,7 @@ For an existing collection with data, you must create the index first:
 db.orders.createIndex({ customerId: 1 })
 ```
 
-For large collections, use a background (non-blocking) build by default in MongoDB 4.2+. Monitor progress:
+In MongoDB 4.2+, index builds use an optimized process that is largely non-blocking (exclusive lock held only briefly at start and end). Monitor progress:
 
 ```javascript
 db.adminCommand({ currentOp: 1, $all: true, "command.createIndexes": "orders" })
@@ -49,6 +49,8 @@ db.adminCommand({ currentOp: 1, $all: true, "command.createIndexes": "orders" })
 Wait for the index build to complete before proceeding.
 
 ## Step 3 - Enable Sharding on the Database
+
+Starting in MongoDB 6.0, this step is no longer required - the database is automatically enabled for sharding when you shard its first collection. For MongoDB versions prior to 6.0:
 
 ```javascript
 sh.enableSharding("myapp")
@@ -70,12 +72,13 @@ After sharding, MongoDB starts with a single chunk on the primary shard. The bal
 sh.status()
 ```
 
-Check chunk counts per shard over time:
+Check chunk counts per shard over time (MongoDB 5.0+ replaced the `ns` field with `uuid` in `config.chunks`):
 
 ```javascript
 use config
+const coll = db.collections.findOne({ _id: "myapp.orders" })
 db.chunks.aggregate([
-  { $match: { ns: "myapp.orders" } },
+  { $match: { uuid: coll.uuid } },
   { $group: { _id: "$shard", count: { $sum: 1 } } }
 ])
 ```
@@ -110,8 +113,10 @@ Aim for roughly equal data and document counts across shards.
 Ensure your application connects through `mongos`, not directly to shard nodes:
 
 ```text
-mongodb://mongos1:27017,mongos2:27017/myapp?replicaSet=rs0
+mongodb://mongos1:27017,mongos2:27017/myapp
 ```
+
+Do not include the `replicaSet` parameter when connecting to `mongos` routers, as they are not a replica set.
 
 ## Step 9 - Drop the Original Index (if superseded)
 
