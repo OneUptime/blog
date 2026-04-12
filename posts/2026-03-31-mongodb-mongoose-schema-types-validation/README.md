@@ -112,4 +112,4 @@ try {
 
 ## Summary
 
-Mongoose schema types handle automatic casting and provide built-in validators like `required`, `min`, `max`, `enum`, `match`, `minlength`, and `maxlength`. Custom validators support synchronous and async logic. Nested schemas enforce structure on embedded subdocuments. Trigger validation manually with `model.validate()` to catch errors before saving.
+Mongoose schema types handle automatic casting and provide built-in validators like `required`, `min`, `max`, `enum`, `match`, `minlength`, and `maxlength`. Custom validators support synchronous and async logic. Nested schemas enforce structure on embedded subdocuments. Trigger validation manually with `document.validate()` to catch errors before saving.
