@@ -12,7 +12,7 @@ MongoDB stores all its data in a designated directory on the filesystem. Configu
 
 ## Default Data Directory
 
-By default, MongoDB uses `/var/lib/mongodb` on Linux and `C:\data\db` on Windows. You can verify the current path by checking your `mongod.conf`:
+The `mongod` binary defaults to `/data/db` on Linux and `C:\data\db` on Windows. However, official package installations typically override this to `/var/lib/mongodb` (Debian/Ubuntu) or `/var/lib/mongo` (RHEL/CentOS) via the `mongod.conf` file. You can verify the current path by checking your `mongod.conf`:
 
 ```bash
 grep -i dbPath /etc/mongod.conf
@@ -25,9 +25,9 @@ Edit `/etc/mongod.conf` to change the storage path:
 ```text
 storage:
   dbPath: /data/mongodb
-  journal:
-    enabled: true
 ```
+
+> **Note:** Journaling is always enabled in MongoDB 6.1 and later. The `storage.journal.enabled` option was removed and will cause a startup error if included on modern versions.
 
 Then create the directory and set the correct ownership:
 
@@ -63,7 +63,7 @@ storage:
 
 Key options explained:
 - `cacheSizeGB` - WiredTiger cache size (default is 50% of RAM minus 1 GB)
-- `journalCompressor` - compression for journal data (snappy, zlib, none)
+- `journalCompressor` - compression for journal data (snappy, zlib, zstd, none)
 - `blockCompressor` - compression for collection data (snappy, zlib, zstd, none)
 - `prefixCompression` - reduces index size on disk
 
