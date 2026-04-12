@@ -28,7 +28,7 @@ SELECT
   digest_text,
   count_star AS executions,
   ROUND(sum_cpu_time / 1e12, 2) AS total_cpu_seconds,
-  ROUND(avg_cpu_time / 1e9, 2) AS avg_cpu_ms
+  ROUND(sum_cpu_time / count_star / 1e9, 2) AS avg_cpu_ms
 FROM performance_schema.events_statements_summary_by_digest
 ORDER BY sum_cpu_time DESC
 LIMIT 10;
@@ -59,7 +59,7 @@ SELECT
   rows_examined_avg,
   full_scan
 FROM sys.statement_analysis
-WHERE full_scan = 'YES'
+WHERE full_scan = '*'
 ORDER BY exec_count DESC;
 ```
 
@@ -168,8 +168,8 @@ VALUES (1, 1, '^SELECT', 2, 1);
 # Real-time CPU by thread
 top -p $(pgrep mysqld)
 
-# Show active queries and their CPU time
-mysql -e "SHOW PROCESSLIST;" | awk '$7 > 1 {print}'
+# Show queries running for more than 1 second
+mysql -e "SHOW PROCESSLIST;" | awk '$6 > 1 {print}'
 ```
 
 ## Summary
