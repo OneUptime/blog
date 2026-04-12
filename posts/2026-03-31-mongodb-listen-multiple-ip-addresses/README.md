@@ -76,11 +76,11 @@ ss -tlnp | grep 27017
 netstat -tlnp | grep 27017
 ```
 
-Expected output:
+Expected output (from `ss`):
 
 ```text
-tcp  0.0.0.0:*  LISTEN  0  27017  127.0.0.1:27017  ...
-tcp  0.0.0.0:*  LISTEN  0  27017  10.0.1.5:27017   ...
+LISTEN  0  128  127.0.0.1:27017  0.0.0.0:*  users:(("mongod",...))
+LISTEN  0  128  10.0.1.5:27017   0.0.0.0:*  users:(("mongod",...))
 ```
 
 ## Connecting to a Specific Interface
