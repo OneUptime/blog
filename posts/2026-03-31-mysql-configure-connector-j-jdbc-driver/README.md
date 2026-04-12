@@ -40,9 +40,7 @@ Key URL parameters explained:
 
 ```text
 jdbc:mysql://db.example.com:3306/myapp
-  ?useSSL=true
-  &requireSSL=true
-  &verifyServerCertificate=true
+  ?sslMode=VERIFY_IDENTITY
   &serverTimezone=UTC
   &characterEncoding=UTF-8
   &autoReconnect=false
@@ -67,11 +65,9 @@ public class DatabaseConfig {
 
         config.setJdbcUrl(
             "jdbc:mysql://db.example.com:3306/myapp"
-            + "?useSSL=true"
-            + "&requireSSL=true"
+            + "?sslMode=REQUIRED"
             + "&serverTimezone=UTC"
             + "&characterEncoding=utf8"
-            + "&useUnicode=true"
             + "&connectTimeout=10000"
             + "&socketTimeout=30000"
             + "&autoReconnect=false"
@@ -106,7 +102,7 @@ In Spring Boot, configure Connector/J through `application.yml`:
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:3306/${DB_NAME}?useSSL=true&serverTimezone=UTC&characterEncoding=utf8
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/${DB_NAME}?sslMode=REQUIRED&serverTimezone=UTC&characterEncoding=utf8
     username: ${DB_USER}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -126,9 +122,9 @@ Connector/J supports automatic read/write splitting with the `replication://` pr
 
 ```text
 jdbc:mysql:replication://primary.db.example.com:3306,replica1.db.example.com:3306/myapp
-  ?useSSL=true
+  ?sslMode=REQUIRED
   &serverTimezone=UTC
-  &readFromMasterWhenNoSlaves=true
+  &readFromSourceWhenNoReplicas=true
 ```
 
 In your code, set the connection to read-only for queries that should go to replicas:
@@ -154,4 +150,4 @@ Enable query logging:
 
 ## Summary
 
-Configuring MySQL Connector/J for production requires setting `serverTimezone=UTC`, enabling SSL with certificate verification, tuning connection and socket timeouts, and pairing it with HikariCP for connection pooling. The `maxLifetime` setting ensures connections are recycled before MySQL's `wait_timeout` closes them, preventing `CommunicationsException` errors in long-running applications.
+Configuring MySQL Connector/J for production requires setting `serverTimezone=UTC`, enabling SSL via the `sslMode` property, tuning connection and socket timeouts, and pairing it with HikariCP for connection pooling. The `maxLifetime` setting ensures connections are recycled before MySQL's `wait_timeout` closes them, preventing `CommunicationsException` errors in long-running applications.
