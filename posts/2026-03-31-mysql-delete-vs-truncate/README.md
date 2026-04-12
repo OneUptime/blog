@@ -82,7 +82,7 @@ ROLLBACK;
 -- Rows are restored
 ```
 
-`TRUNCATE` causes an implicit commit before executing and cannot be rolled back in most storage engines:
+`TRUNCATE` causes an implicit commit before and after executing, so it cannot be rolled back:
 
 ```sql
 START TRANSACTION;
