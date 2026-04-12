@@ -109,7 +109,7 @@ Track event execution status:
 
 ```sql
 -- View all scheduled events
-SELECT event_name, status, last_executed, next_execution
+SELECT event_name, status, last_executed, starts, ends
 FROM information_schema.EVENTS
 WHERE event_schema = 'myapp';
 ```
