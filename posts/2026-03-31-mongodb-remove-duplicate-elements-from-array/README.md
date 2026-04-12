@@ -92,7 +92,7 @@ This iterates the array and appends each element only if it has not been seen be
 
 ## Deduplicating Arrays of Subdocuments
 
-For arrays of embedded documents, deduplication by a specific field requires `$reduce` since `$setUnion` performs deep equality:
+For arrays of embedded documents, deduplication by a specific field requires `$reduce` since `$setUnion` performs deep equality on entire subdocuments. Use `$map` to extract the key field from the accumulator before checking with `$in`:
 
 ```javascript
 db.orders.aggregate([
@@ -104,7 +104,12 @@ db.orders.aggregate([
           initialValue: [],
           in: {
             $cond: {
-              if: { $in: ["$$this.productId", "$$value.productId"] },
+              if: {
+                $in: [
+                  "$$this.productId",
+                  { $map: { input: "$$value", as: "v", in: "$$v.productId" } }
+                ]
+              },
               then: "$$value",
               else: { $concatArrays: ["$$value", ["$$this"]] }
             }
@@ -116,22 +121,7 @@ db.orders.aggregate([
 ]);
 ```
 
-Wait - `$in` for subdocument arrays checks the full value, not a nested field. For field-level deduplication use `$map` to extract the field first, then check:
-
-```javascript
-in: {
-  $cond: {
-    if: {
-      $in: [
-        "$$this.productId",
-        { $map: { input: "$$value", as: "v", in: "$$v.productId" } }
-      ]
-    },
-    then: "$$value",
-    else: { $concatArrays: ["$$value", ["$$this"]] }
-  }
-}
-```
+The `$map` extracts `productId` from each subdocument already in the accumulator (`$$value`), producing a flat array of IDs that `$in` can search. Without `$map`, `$in` would not reliably match against a nested field within an array of subdocuments.
 
 ## Summary
 
