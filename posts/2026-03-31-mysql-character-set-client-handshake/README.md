@@ -23,7 +23,7 @@ During connection establishment:
 4. Server adjusts session variables:
    - character_set_client  (encoding of queries sent by client)
    - character_set_results (encoding of results sent to client)
-   - character_set_connection (collation for comparisons)
+   - character_set_connection (character set for literals and number-to-string conversion)
 ```
 
 ## Viewing Current Character Set Settings
@@ -87,6 +87,7 @@ SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET character_set_client = utf8mb4;
 SET character_set_results = utf8mb4;
 SET character_set_connection = utf8mb4;
+SET collation_connection = utf8mb4_unicode_ci;
 ```
 
 Most drivers send `SET NAMES` automatically if configured:
