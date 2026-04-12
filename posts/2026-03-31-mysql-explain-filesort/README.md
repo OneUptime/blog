@@ -44,7 +44,7 @@ CREATE INDEX idx_category_price ON products(category, price);
 
 -- This can use the index for sorting:
 EXPLAIN SELECT * FROM products WHERE category = 'electronics' ORDER BY price;
--- Extra: Using index condition
+-- Extra: Using where (no Using filesort)
 
 -- But this cannot - the WHERE skips the leading column:
 EXPLAIN SELECT * FROM products ORDER BY price;
@@ -83,7 +83,7 @@ EXPLAIN SELECT id, title, published_at FROM posts
 WHERE author_id = 5
 ORDER BY published_at DESC
 LIMIT 10;
--- Extra: Using index condition (filesort eliminated)
+-- Extra: Using where (filesort eliminated)
 ```
 
 ## When Filesort Cannot Be Avoided
