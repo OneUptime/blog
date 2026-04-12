@@ -10,7 +10,7 @@ Description: Learn how to use the REGEXP_REPLACE() function in MySQL 8.0+ to rep
 
 ## What Is REGEXP_REPLACE?
 
-`REGEXP_REPLACE(expr, pattern, replacement [, pos [, occurrence [, match_type]]])` replaces occurrences of a regular expression pattern within a string with a replacement string. It was introduced in MySQL 8.0 and supports full POSIX regular expressions (ICU regex engine).
+`REGEXP_REPLACE(expr, pattern, replacement [, pos [, occurrence [, match_type]]])` replaces occurrences of a regular expression pattern within a string with a replacement string. It was introduced in MySQL 8.0 and uses the ICU (International Components for Unicode) regular expression library, which provides full Unicode support and is multibyte safe.
 
 ```sql
 -- Replace all non-numeric characters
@@ -80,8 +80,12 @@ WHERE phone REGEXP '[^0-9+\\-\\(\\) ]';
 
 -- Standardize email domain to lowercase
 UPDATE users
-SET email = REGEXP_REPLACE(email, '@(.+)$', LOWER('@$1'))
-WHERE email REGEXP '[A-Z]';
+SET email = CONCAT(
+    SUBSTRING_INDEX(email, '@', 1),
+    '@',
+    LOWER(SUBSTRING_INDEX(email, '@', -1))
+)
+WHERE email REGEXP BINARY '@.*[A-Z]';
 
 -- Remove trailing punctuation from product names
 UPDATE products
@@ -96,7 +100,7 @@ You can use REGEXP_REPLACE to extract parts of strings by replacing everything e
 ```sql
 -- Extract only digits from a string
 SELECT REGEXP_REPLACE('Order #12345 from Jan 2025', '[^0-9]', '');
--- Returns: '120252025' (all digits concatenated)
+-- Returns: '123452025' (all digits concatenated)
 
 -- Extract domain from email (remove everything before and including @)
 SELECT REGEXP_REPLACE('user@example.com', '^[^@]+@', '');
@@ -115,7 +119,7 @@ SELECT REGEXP_REPLACE('Hello, World! 2025', '[^a-zA-Z0-9 ]', '');
 -- Returns: 'Hello World 2025'
 
 -- Replace multiple consecutive identical characters
-SELECT REGEXP_REPLACE('Looooong wooord', '(.)\\1+', '\\1');
+SELECT REGEXP_REPLACE('Looooong wooord', '(.)\\1+', '$1');
 -- Returns: 'Long word'
 
 -- Standardize date separators
