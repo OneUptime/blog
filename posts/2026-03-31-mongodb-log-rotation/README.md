@@ -54,10 +54,11 @@ Or use the `logRotate` admin command from mongosh:
 db.adminCommand({ logRotate: 1 })
 ```
 
-Or for mongos in a sharded cluster, specify the process:
+Starting in MongoDB 6.1, you can rotate a specific log component:
 
 ```javascript
-db.adminCommand({ logRotate: "mongod" })
+db.adminCommand({ logRotate: "server" })  // server log only
+db.adminCommand({ logRotate: "audit" })   // audit log only
 ```
 
 After rotation (with `rename` method), the old log file gets a timestamp suffix:
@@ -70,6 +71,8 @@ After rotation (with `rename` method), the old log file gets a timestamp suffix:
 ## Configuring logrotate
 
 `logrotate` is the standard Linux tool for log rotation. It reads configuration files from `/etc/logrotate.d/`.
+
+When using this approach, configure MongoDB with `logRotate: reopen` in `mongod.conf` so that logrotate handles the file rename and MongoDB reopens the log after receiving SIGUSR1.
 
 Create `/etc/logrotate.d/mongodb`:
 
@@ -112,19 +115,9 @@ Force an immediate rotation (bypasses the `daily` schedule):
 sudo logrotate --force /etc/logrotate.d/mongodb
 ```
 
-## Using reopen with logrotate
+## Using copytruncate with logrotate
 
-When using logrotate to rename the file externally, configure MongoDB to reopen (not rename) its log:
-
-```yaml
-systemLog:
-  destination: file
-  path: /var/log/mongodb/mongod.log
-  logAppend: true
-  logRotate: reopen
-```
-
-logrotate configuration with `reopen`:
+As an alternative to the `reopen` + SIGUSR1 approach above, you can use logrotate's `copytruncate` directive. This copies the log file then truncates the original to zero, so no signal to MongoDB is needed and no specific `logRotate` setting in `mongod.conf` is required:
 
 ```text
 /var/log/mongodb/mongod.log {
@@ -138,11 +131,11 @@ logrotate configuration with `reopen`:
 }
 ```
 
-With `copytruncate`, logrotate copies the log file then truncates the original to zero. No signal to MongoDB is needed. However, there is a small window between the copy and truncate where log entries can be missed.
+With `copytruncate`, no `postrotate` script is required. However, there is a small window between the copy and truncate where log entries can be lost.
 
 ## Setting Log Retention Size
 
-MongoDB 4.4+ supports setting a maximum log file size before automatic rotation. Add to `mongod.conf`:
+MongoDB does not have built-in size-based log rotation, but you can use logrotate's `size` directive for size-based rotation instead of time-based rotation. Use the standard `mongod.conf` log configuration:
 
 ```yaml
 systemLog:

@@ -59,9 +59,14 @@ db.investments.aggregate([
       growth: 1,
       years: 1,
       finalAmount: {
-        $multiply: [
-          "$principal",
-          { $pow: [{ $add: [1, "$growth"] }, "$years"] }
+        $round: [
+          {
+            $multiply: [
+              "$principal",
+              { $pow: [{ $add: [1, "$growth"] }, "$years"] }
+            ]
+          },
+          2
         ]
       }
     }
