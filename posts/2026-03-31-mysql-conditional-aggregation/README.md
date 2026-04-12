@@ -48,7 +48,7 @@ Each `CASE` expression returns the revenue value when the condition matches, and
 
 ## Calculating Conditional Averages
 
-To compute an average over a filtered subset, use `AVG()` with `NULLIF` to exclude non-matching rows from the average calculation:
+To compute an average over a filtered subset, omit the `ELSE` clause in the `CASE` expression so that non-matching rows return `NULL`, which `AVG()` ignores automatically:
 
 ```sql
 SELECT
@@ -63,7 +63,7 @@ When the `CASE` expression returns `NULL` (by omitting the `ELSE` clause), `AVG(
 
 ## Counting Distinct Values Conditionally
 
-Combine `COUNT(DISTINCT ...)` with a subquery or use a workaround with `NULLIF`:
+Use `COUNT(DISTINCT ...)` with a `CASE` expression that returns `NULL` for non-matching rows:
 
 ```sql
 SELECT
