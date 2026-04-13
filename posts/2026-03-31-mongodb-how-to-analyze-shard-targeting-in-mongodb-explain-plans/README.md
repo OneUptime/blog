@@ -61,18 +61,20 @@ The explain output for a sharded cluster wraps each shard's plan:
 
 ### Targeted Query (Good)
 
-Only one or a few shards appear in the `shards` array:
+Only one or a few shards appear in the `shards` array. A single-shard targeted query uses the `SINGLE_SHARD` stage:
 
 ```javascript
 {
   "winningPlan": {
-    "stage": "SHARD_MERGE",
+    "stage": "SINGLE_SHARD",
     "shards": [
       { "shardName": "shard01" }  // only 1 shard queried
     ]
   }
 }
 ```
+
+When a query targets multiple (but not all) shards, the stage is `SHARD_MERGE` with a subset of shards listed.
 
 ### Scatter-Gather Query (Bad)
 
@@ -145,7 +147,7 @@ The overall `executionTimeMillis` is the max across all shards, so a slow shard 
 1. Filter does not include the shard key
 2. Range query on shard key spans multiple chunks
 3. $or query where branches route to different shards
-4. Sort on non-shard-key field requires collecting from all shards
+4. Sort does not help with shard targeting — the filter must still include the shard key
 5. Collection is not sharded (routes to primary shard)
 ```
 
@@ -207,10 +209,11 @@ db.orders.aggregate([
 // Inspect chunk distribution
 db.adminCommand({ balancerStatus: 1 });
 
-// Check chunk counts per shard for a namespace
+// Check chunk counts per shard for a namespace (MongoDB 5.0+ uses uuid instead of ns)
 use config;
+const collUUID = db.collections.findOne({ _id: "mydb.orders" }).uuid;
 db.chunks.aggregate([
-  { $match: { ns: "mydb.orders" } },
+  { $match: { uuid: collUUID } },
   { $group: { _id: "$shard", chunkCount: { $sum: 1 } } },
   { $sort: { chunkCount: -1 } }
 ]);
