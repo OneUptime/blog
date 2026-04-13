@@ -14,9 +14,9 @@ Change streams allow applications to subscribe to real-time notifications of dat
 
 Change streams require:
 - MongoDB 3.6+ with replica set or sharded cluster
-- Collection-level streams: any collection
-- Database-level streams: all collections in a DB
-- Deployment-level streams: all changes across all databases
+- Collection-level streams (MongoDB 3.6+): any collection
+- Database-level streams (MongoDB 4.0+): all collections in a DB
+- Deployment-level streams (MongoDB 4.0+): all changes across all databases
 
 ## Basic Change Stream on a Collection
 
