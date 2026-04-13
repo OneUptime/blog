@@ -99,7 +99,7 @@ db.createUser({
 ## View a User's Roles
 
 ```javascript
-use admin
+use myapp
 db.getUser("appservice")
 ```
 
@@ -136,4 +136,4 @@ Avoid assigning `root` to application service accounts.
 
 ## Summary
 
-MongoDB's built-in roles cover the most common access patterns - `read`, `readWrite`, `dbAdmin`, `userAdmin`, and cluster-level roles. Assign the least-privileged role that meets the user's needs, combine roles when necessary, and use `userAdmin` rather than `root` for database administration tasks.
+MongoDB's built-in roles cover the most common access patterns - `read`, `readWrite`, `dbAdmin`, `userAdmin`, and cluster-level roles. Assign the least-privileged role that meets the user's needs, combine roles when necessary, and use specific roles like `dbAdmin` rather than `root` for database administration tasks.
