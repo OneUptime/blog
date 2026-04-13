@@ -20,15 +20,7 @@ net:
     compressors: zlib
 ```
 
-To specify Zlib with a compression level (1-9):
-
-```yaml
-net:
-  compression:
-    compressors: zlib
-```
-
-Note: Wire protocol compression level is set on the client side, not the server.
+Note: The compression level (1-9) cannot be set in `mongod.conf`. It is configured on the client side via driver options or the connection string.
 
 ## Enabling via Command Line
 
