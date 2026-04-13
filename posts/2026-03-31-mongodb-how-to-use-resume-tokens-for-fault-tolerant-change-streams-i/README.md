@@ -125,7 +125,7 @@ Alternatively, start from a specific cluster time:
 const { Timestamp } = require('mongodb');
 
 // Start from a specific Unix timestamp
-const startTime = Timestamp.fromNumber(Math.floor(Date.now() / 1000));
+const startTime = new Timestamp({ t: Math.floor(Date.now() / 1000), i: 0 });
 
 const changeStream = collection.watch([], {
   startAtOperationTime: startTime
@@ -225,7 +225,7 @@ Resume tokens reference oplog positions. If your application is down longer than
 
 ```javascript
 changeStream.on('error', (err) => {
-  if (err.code === 136) {
+  if (err.code === 286) {
     // ChangeStreamHistoryLost - oplog has been overwritten
     console.error('Resume token expired - oplog window exceeded');
     // Must restart from current position (events lost)
