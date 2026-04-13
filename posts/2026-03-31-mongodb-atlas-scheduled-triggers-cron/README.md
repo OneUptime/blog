@@ -82,13 +82,16 @@ exports = async function() {
   const metrics = await db.collection("orders").aggregate(pipeline).toArray();
 
   // Upsert daily summary
-  const bulkOps = metrics.map(m => ({
-    updateOne: {
-      filter: { date: yesterday, category: m._id },
-      update: { $set: { ...m, date: yesterday, updatedAt: new Date() } },
-      upsert: true
-    }
-  }));
+  const bulkOps = metrics.map(m => {
+    const { _id, ...rest } = m;
+    return {
+      updateOne: {
+        filter: { date: yesterday, category: _id },
+        update: { $set: { ...rest, date: yesterday, updatedAt: new Date() } },
+        upsert: true
+      }
+    };
+  });
 
   if (bulkOps.length > 0) {
     await db.collection("daily_metrics").bulkWrite(bulkOps);
@@ -140,7 +143,7 @@ Check execution history in Atlas UI under App Services - Logs. Filter by trigger
 ```bash
 # Atlas Admin API
 curl -H "Authorization: Bearer <token>" \
-  "https://realm.mongodb.com/api/admin/v3.0/groups/<project-id>/apps/<app-id>/logs?type=TRIGGER_SCHEDULED"
+  "https://services.cloud.mongodb.com/api/admin/v3.0/groups/<project-id>/apps/<app-id>/logs?type=TRIGGER_SCHEDULED"
 ```
 
 ## Summary
