@@ -20,7 +20,7 @@ Stored source is valuable when:
 
 ## Enabling Stored Source in the Index Definition
 
-Set `storedSource` to `true` to store all indexed fields, or supply an `include`/`exclude` list:
+Set `storedSource` to `true` to store all fields in the documents, or supply an `include`/`exclude` list:
 
 ```json
 {
@@ -82,7 +82,7 @@ The `$$SEARCH_META` variable and score are always available regardless of stored
 
 ## Verifying the Behavior
 
-You can confirm stored source is being used by examining the `explain` output. Look for `REQUIRES_MONGODB_EXPRESSION_EXECUTION: false` in the search plan - this means Atlas did not go back to the collection.
+You can confirm stored source is being used by examining the `explain` output. When `returnStoredSource` is enabled, the `$_internalSearchIdLookup` stage skips the full document lookup from the collection.
 
 ```javascript
 db.products.explain("executionStats").aggregate([
@@ -100,10 +100,7 @@ db.products.explain("executionStats").aggregate([
 
 Stored source increases the size of the search index on disk since field values are duplicated. Profile the size impact before enabling it across large collections:
 
-```javascript
-db.runCommand({ collStats: "products" })
-// Then compare with Atlas Search index size from Atlas UI metrics
-```
+Check the Atlas Search index size from the **Atlas UI metrics** page or the Atlas Admin API. The standard `collStats` command does not report Atlas Search index sizes since those indexes are managed by the separate `mongot` process.
 
 A common pattern is to store only the fields that appear in search result cards (3-6 fields), keeping the index size manageable.
 
