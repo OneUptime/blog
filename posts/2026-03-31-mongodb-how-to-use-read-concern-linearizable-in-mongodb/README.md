@@ -32,8 +32,7 @@ This ensures strict ordering - the result you see is the most up-to-date majorit
 
 ```javascript
 db.accounts.findOne(
-  { userId: "usr-123" }
-,
+  { userId: "usr-123" },
   null,
   { readConcern: { level: "linearizable" }, maxTimeMS: 5000 }
 );
