@@ -12,7 +12,7 @@ Description: The $accumulator operator in MongoDB lets you define custom accumul
 
 MongoDB's aggregation pipeline includes many built-in accumulator operators like `$sum`, `$avg`, `$min`, `$max`, and `$push`. But sometimes your accumulation logic is too complex to express with these built-ins. The `$accumulator` operator lets you define a custom accumulator using JavaScript functions, giving you full control over how documents are combined within a `$group` stage.
 
-`$accumulator` is available in MongoDB 4.4+ and requires a MongoDB instance with JavaScript enabled (`--setParameter javascriptEnabled=1`).
+`$accumulator` is available in MongoDB 4.4+ and requires server-side JavaScript to be enabled (the default setting; controlled by the `security.javascriptEnabled` configuration option).
 
 ## How $accumulator Works
 
