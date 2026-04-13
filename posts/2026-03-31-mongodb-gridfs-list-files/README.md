@@ -16,7 +16,7 @@ GridFS stores file metadata in the `fs.files` collection. Listing files means qu
 # List all files in the default bucket
 mongofiles -d mydb list
 
-# Search by filename prefix
+# Search for files containing a string in the filename
 mongofiles -d mydb search report
 ```
 
