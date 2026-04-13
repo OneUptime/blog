@@ -56,17 +56,19 @@ curl --user "$PUB_KEY:$PRIV_KEY" --digest \
   --request POST \
   --data '{
     "typeName": "GROUP",
-    "eventTypeName": "HOST_HIGH_MEMORY",
+    "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
     "enabled": true,
     "notifications": [{
       "typeName": "SLACK",
-      "slackApiToken": "",
-      "slackChannelName": "#db-alerts"
+      "apiToken": "<your-slack-api-token>",
+      "channelName": "db-alerts"
     }],
-    "threshold": {
+    "metricThreshold": {
+      "metricName": "SYSTEM_MEMORY_PERCENT_USED",
       "operator": "GREATER_THAN",
       "threshold": 90,
-      "units": "RAW"
+      "units": "RAW",
+      "mode": "AVERAGE"
     }
   }' \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/$GROUP_ID/alertConfigs"
