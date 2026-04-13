@@ -8,7 +8,7 @@ Description: Learn how to use the Atlas Search regex operator to match documents
 
 ---
 
-The `regex` operator in MongoDB Atlas Search applies regular expression pattern matching to string fields in the search index. Unlike MongoDB's `$regex` query operator, Atlas Search `regex` runs on the Lucene index and supports a subset of the Java regular expression syntax.
+The `regex` operator in MongoDB Atlas Search applies regular expression pattern matching to string fields in the search index. Unlike MongoDB's `$regex` query operator, Atlas Search `regex` runs on the Lucene index and uses Lucene regular expression syntax.
 
 ## Requirements
 
@@ -42,22 +42,23 @@ db.products.aggregate([
 
 ## Case-Insensitive Matching
 
-Enable case-insensitive matching with `allowAnalyzedField`:
+Use `allowAnalyzedField` to run regex against fields indexed with an analyzer that lowercases tokens, such as `lucene.standard`:
 
 ```javascript
 db.products.aggregate([
   {
     $search: {
       regex: {
-        query: "(?i)laptop.*pro",
-        path: "name"
+        query: "laptop.*",
+        path: "name",
+        allowAnalyzedField: true
       }
     }
   }
 ])
 ```
 
-The `(?i)` flag at the start of the pattern makes matching case-insensitive.
+When the field uses the `lucene.standard` analyzer, tokens are lowercased. Use a lowercase pattern to match regardless of the original case. Note that with an analyzed field, the regex matches against individual tokens, not the entire field value.
 
 ## Matching Email Patterns
 
@@ -164,7 +165,7 @@ For reliable regex matching, index the field with the `keyword` analyzer to pres
 
 ```text
 - Leading wildcards (.*pattern) are expensive - avoid when possible
-- Prefer anchored patterns (^pattern) for better performance
+- Patterns are implicitly anchored to match the entire token - no need for ^ or $
 - regex does not use term statistics for scoring - all matches get the same score
 - For simple prefix matching, the wildcard operator is more efficient
 ```
