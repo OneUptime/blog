@@ -70,7 +70,7 @@ db.orders.aggregate([
 To count the total number of documents in a collection:
 
 ```javascript
-// Fast: uses collection metadata
+// Count matching documents (runs an aggregation internally)
 db.orders.countDocuments({ status: "pending" });
 
 // Or via aggregation
