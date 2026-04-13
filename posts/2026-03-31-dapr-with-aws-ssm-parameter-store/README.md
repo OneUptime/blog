@@ -68,7 +68,7 @@ spec:
 import requests
 
 def get_parameter(name: str) -> str:
-    # With prefix=/myapp, the component strips /myapp from the path
+    # With prefix=/myapp, the component prepends /myapp to the key
     resp = requests.get(
         f"http://localhost:3500/v1.0/secrets/ssm-secrets/{name}"
     )
@@ -76,26 +76,27 @@ def get_parameter(name: str) -> str:
     # SSM parameters return as {"<param-name>": "<value>"}
     return resp.json().get(name)
 
-# Get log level
-log_level = get_parameter("/myapp/config/log-level")
+# Get log level (prefix /myapp is prepended automatically)
+log_level = get_parameter("config/log-level")
 print(f"Log level: {log_level}")
 
 # Get SecureString (automatically decrypted)
-db_password = get_parameter("/myapp/secrets/db-password")
+db_password = get_parameter("secrets/db-password")
 print("DB password retrieved")
 ```
 
 ## Retrieve Parameters by Path (Bulk)
 
 ```python
-def get_parameters_by_path(path: str) -> dict:
+def get_all_parameters() -> dict:
+    # Bulk endpoint returns all parameters under the configured prefix
     resp = requests.get(
-        f"http://localhost:3500/v1.0/secrets/ssm-secrets/bulk"
+        "http://localhost:3500/v1.0/secrets/ssm-secrets/bulk"
     )
     resp.raise_for_status()
     return resp.json()
 
-all_params = get_parameters_by_path("/myapp")
+all_params = get_all_parameters()
 for name, values in all_params.items():
     print(f"{name}: {values}")
 ```
@@ -117,8 +118,8 @@ spec:
     value: redis:6379
   - name: redisPassword
     secretKeyRef:
-      name: /myapp/secrets/redis-password
-      key: /myapp/secrets/redis-password
+      name: secrets/redis-password
+      key: secrets/redis-password
 ```
 
 ## IAM Policy for SSM Parameter Store
