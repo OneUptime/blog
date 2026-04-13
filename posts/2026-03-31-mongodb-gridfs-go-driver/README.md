@@ -10,13 +10,12 @@ Description: Learn how to store and retrieve large files in MongoDB using GridFS
 
 ## What Is GridFS?
 
-GridFS stores files larger than MongoDB's 16 MB BSON limit by splitting them into chunks. The Go Driver provides the `gridfs` package with a `Bucket` type for uploading, downloading, listing, and deleting files.
+GridFS stores files larger than MongoDB's 16 MB BSON limit by splitting them into chunks. The Go Driver provides the `GridFSBucket` type in the `mongo` package for uploading, downloading, listing, and deleting files.
 
 ## Setup
 
 ```bash
 go get go.mongodb.org/mongo-driver/v2/mongo
-go get go.mongodb.org/mongo-driver/v2/mongo/gridfs
 ```
 
 ## Creating a GridFS Bucket
@@ -27,7 +26,6 @@ package main
 import (
     "context"
     "go.mongodb.org/mongo-driver/v2/mongo"
-    "go.mongodb.org/mongo-driver/v2/mongo/gridfs"
     "go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
@@ -35,13 +33,10 @@ client, _ := mongo.Connect(options.Client().ApplyURI("mongodb://localhost:27017"
 db := client.Database("myapp")
 
 // Default bucket (prefix: "fs")
-bucket, err := gridfs.NewBucket(db)
-if err != nil {
-    log.Fatal(err)
-}
+bucket := db.GridFSBucket()
 
 // Custom bucket
-customBucket, err := gridfs.NewBucket(db,
+customBucket := db.GridFSBucket(
     options.GridFSBucket().
         SetName("uploads").
         SetChunkSizeBytes(1024 * 1024), // 1 MB chunks
@@ -70,7 +65,7 @@ uploadOpts := options.GridFSUpload().
         {Key: "uploadedBy", Value: "user-123"},
     })
 
-fileID, err := bucket.UploadFromStream("report.pdf", file, uploadOpts)
+fileID, err := bucket.UploadFromStream(context.TODO(), "report.pdf", file, uploadOpts)
 if err != nil {
     log.Fatal(err)
 }
@@ -92,7 +87,7 @@ if err != nil {
 }
 defer outFile.Close()
 
-_, err = bucket.DownloadToStream(fileID, outFile)
+_, err = bucket.DownloadToStream(context.TODO(), fileID, outFile)
 if err != nil {
     log.Fatal(err)
 }
@@ -101,7 +96,7 @@ fmt.Println("Download complete")
 // Download by filename (most recent revision)
 outFile2, _ := os.Create("/tmp/report-copy.pdf")
 defer outFile2.Close()
-bucket.DownloadToStreamByName("report.pdf", outFile2)
+bucket.DownloadToStreamByName(context.TODO(), "report.pdf", outFile2)
 ```
 
 ## Streaming Download (for HTTP handlers)
@@ -119,7 +114,7 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 
     w.Header().Set("Content-Type", "application/octet-stream")
 
-    _, err = bucket.DownloadToStream(objectID, w)
+    _, err = bucket.DownloadToStream(r.Context(), objectID, w)
     if err != nil {
         http.Error(w, "File not found", http.StatusNotFound)
     }
@@ -129,14 +124,14 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 ## Listing Files
 
 ```go
-cursor, err := bucket.Find(bson.D{})
+cursor, err := bucket.Find(context.TODO(), bson.D{})
 if err != nil {
     log.Fatal(err)
 }
 defer cursor.Close(context.Background())
 
 for cursor.Next(context.Background()) {
-    var fileInfo gridfs.File
+    var fileInfo mongo.GridFSFile
     if err := cursor.Decode(&fileInfo); err != nil {
         log.Println(err)
         continue
@@ -149,7 +144,7 @@ for cursor.Next(context.Background()) {
 ## Filtering Files by Metadata
 
 ```go
-cursor, err := bucket.Find(bson.D{
+cursor, err := bucket.Find(context.TODO(), bson.D{
     {Key: "metadata.uploadedBy", Value: "user-123"},
 })
 ```
@@ -157,7 +152,7 @@ cursor, err := bucket.Find(bson.D{
 ## Deleting a File
 
 ```go
-err = bucket.Delete(fileID)
+err = bucket.Delete(context.TODO(), fileID)
 if err != nil {
     log.Fatal(err)
 }
@@ -167,17 +162,17 @@ fmt.Println("File deleted")
 ## Renaming a File
 
 ```go
-err = bucket.Rename(fileID, "report-v2.pdf")
+err = bucket.Rename(context.TODO(), fileID, "report-v2.pdf")
 ```
 
 ## Drop the Bucket
 
 ```go
-err = bucket.Drop()
+err = bucket.Drop(context.TODO())
 ```
 
 Drops all files and chunks in the bucket.
 
 ## Summary
 
-GridFS in the MongoDB Go Driver is accessed through a `gridfs.Bucket`. Create buckets with `gridfs.NewBucket()`, upload files with `UploadFromStream()`, download with `DownloadToStream()` or stream directly to an `http.ResponseWriter`. List files with `bucket.Find()` and filter by metadata fields. Always handle errors from `UploadFromStream` and `DownloadToStream` and close streams with `defer`.
+GridFS in the MongoDB Go Driver is accessed through `*mongo.GridFSBucket`. Create buckets with `db.GridFSBucket()`, upload files with `UploadFromStream()`, download with `DownloadToStream()` or stream directly to an `http.ResponseWriter`. List files with `bucket.Find()` and filter by metadata fields. Always handle errors from `UploadFromStream` and `DownloadToStream` and close streams with `defer`.
