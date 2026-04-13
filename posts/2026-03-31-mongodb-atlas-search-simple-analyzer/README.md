@@ -17,8 +17,9 @@ The simple analyzer in MongoDB Atlas Search (based on Lucene's SimpleAnalyzer) i
 
 Unlike the standard analyzer, it does NOT:
 - Remove punctuation as separate tokens
-- Apply stop word removal
 - Handle numbers (numeric characters cause token splits, discarding the numbers)
+
+Note: Neither the simple nor the standard analyzer removes stop words. Stop word removal requires a language-specific analyzer like `lucene.english` or a custom analyzer with an explicit stop word filter.
 
 ## Simple vs. Standard: Key Differences
 
