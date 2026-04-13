@@ -160,7 +160,7 @@ await db.createCollection('users', {
       bsonType: 'object',
       required: ['_id', 'email', 'schemaVersion'],
       properties: {
-        schemaVersion: { bsonType: 'int', minimum: 1 },
+        schemaVersion: { bsonType: 'number', minimum: 1 },
         email: { bsonType: 'string' },
         fullName: { bsonType: 'string' },
         // Old fields optional during migration
@@ -181,7 +181,8 @@ await db.command({
       bsonType: 'object',
       required: ['_id', 'email', 'schemaVersion', 'fullName'],
       properties: {
-        schemaVersion: { bsonType: 'int', enum: [2] },
+        _id: { bsonType: 'string' },
+        schemaVersion: { bsonType: 'number', enum: [2] },
         email: { bsonType: 'string' },
         fullName: { bsonType: 'string' }
       },
