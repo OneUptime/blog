@@ -46,9 +46,7 @@ Different errors point to different problems:
 
 ```javascript
 // Node.js: listen to connection pool events
-const client = new MongoClient(uri, {
-  monitorCommands: true
-})
+const client = new MongoClient(uri)
 
 client.on("connectionPoolCreated", event => {
   console.log("Pool created:", event)
@@ -58,12 +56,14 @@ client.on("connectionCheckedOut", event => {
   // Track how often connections are checked out
 })
 
-client.on("waitQueueTimeoutError", event => {
-  console.error("Pool exhausted - waited too long for connection:", event)
+client.on("connectionCheckOutFailed", event => {
+  console.error("Pool checkout failed:", event.reason, event)
 })
 
 // Get current pool stats via serverStatus
-const stats = db.adminCommand({ serverStatus: 1 }).connections
+const admin = client.db().admin()
+const status = await admin.command({ serverStatus: 1 })
+const stats = status.connections
 console.log("Current connections:", stats.current)
 console.log("Available connections:", stats.available)
 console.log("Total created:", stats.totalCreated)
@@ -110,7 +110,7 @@ db.adminCommand({ serverStatus: 1 }).connections
 }
 */
 
-// Default maxIncomingConnections is 1,000,000 (not the bottleneck usually)
+// Default maxIncomingConnections is 65536 (not the bottleneck usually)
 // The bottleneck is usually maxPoolSize on the driver side
 
 // If current connections approaches your maxPoolSize * numAppInstances,
