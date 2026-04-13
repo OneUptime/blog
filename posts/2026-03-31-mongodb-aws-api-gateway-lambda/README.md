@@ -71,14 +71,12 @@ exports.handler = async (event) => {
 Use the API Gateway v2 HTTP API for lower latency and cost compared to REST API. Define routes with a Lambda integration.
 
 ```yaml
-Type: AWS::Serverless::Api
-Properties:
-  Name: products-api
-  StageName: prod
-  Auth:
-    DefaultAuthorizer: NONE
+Resources:
+  ProductsApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
 
-Functions:
   ProductsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -93,11 +91,13 @@ Functions:
         GetAll:
           Type: HttpApi
           Properties:
+            ApiId: !Ref ProductsApi
             Path: /products
             Method: GET
         GetOne:
           Type: HttpApi
           Properties:
+            ApiId: !Ref ProductsApi
             Path: /products/{id}
             Method: GET
 ```
@@ -112,22 +112,20 @@ NAT_IP=$(aws ec2 describe-nat-gateways \
   --query 'NatGateways[0].NatGatewayAddresses[0].PublicIp' \
   --output text)
 
-atlas accessLists create \
+atlas accessLists create "$NAT_IP/32" \
   --projectId <PROJECT_ID> \
-  --ip "$NAT_IP/32" \
   --comment "Lambda NAT gateway"
 ```
 
 ## Avoiding Connection Exhaustion
 
-MongoDB Atlas free and shared tiers have strict connection limits. Keep `maxPoolSize` at 1 for Lambda, and consider using the MongoDB Data API or Atlas App Services as a connection-pooling proxy for high-concurrency scenarios.
+MongoDB Atlas free and shared tiers have strict connection limits. Keep `maxPoolSize` at 1 for Lambda, and consider using Atlas App Services as a connection-pooling proxy for high-concurrency scenarios.
 
 ```javascript
 const client = new MongoClient(uri, {
   maxPoolSize: 1,
   minPoolSize: 0,
   serverSelectionTimeoutMS: 3000,
-  socketTimeoutMS: 45000,
 });
 ```
 
