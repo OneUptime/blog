@@ -28,7 +28,7 @@ In Atlas UI - App Services - Triggers - Add Trigger, select Authentication as th
   "type": "AUTHENTICATION",
   "config": {
     "operation_type": "CREATE",
-    "providers": ["email/password", "oauth2-google"]
+    "providers": ["local-userpass", "oauth2-google"]
   },
   "function_name": "onUserSignup",
   "disabled": false
@@ -56,7 +56,7 @@ exports = async function(authEvent) {
     userId: user.id,
     email: user.data.email,
     displayName: user.data.name || user.data.email.split("@")[0],
-    provider: user.identities[0].providerType,
+    provider: user.identities[0].provider_type,
     plan: "free",
     settings: {
       notifications: true,
@@ -82,7 +82,7 @@ exports = async function(authEvent) {
 // authEvent contains:
 {
   operationType: "CREATE",   // CREATE, LOGIN, or DELETE
-  providers: ["email/password"],
+  providers: ["local-userpass"],
   user: {
     id: "64abc...",          // Atlas user ID
     type: "normal",
@@ -94,7 +94,7 @@ exports = async function(authEvent) {
     identities: [
       {
         id: "user@example.com",
-        providerType: "local-userpass",
+        provider_type: "local-userpass",
         providerData: {}
       }
     ]
