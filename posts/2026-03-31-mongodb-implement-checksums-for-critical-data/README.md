@@ -47,20 +47,20 @@ const transaction = {
 };
 transaction.checksum = computeChecksum(transaction);
 
-await db.transactions.insertOne(transaction);
+await db.collection("transactions").insertOne(transaction);
 ```
 
 ## Verifying a Checksum on Read
 
 ```javascript
 async function fetchAndVerifyTransaction(transactionId) {
-  const doc = await db.transactions.findOne({ _id: transactionId });
+  const doc = await db.collection("transactions").findOne({ _id: transactionId });
   if (!doc) throw new Error("Transaction not found");
 
   const expectedChecksum = computeChecksum(doc);
   if (doc.checksum !== expectedChecksum) {
     // Alert: document has been modified after creation
-    await db.integrityViolations.insertOne({
+    await db.collection("integrityViolations").insertOne({
       documentId: transactionId,
       collection: "transactions",
       detectedAt: new Date(),
