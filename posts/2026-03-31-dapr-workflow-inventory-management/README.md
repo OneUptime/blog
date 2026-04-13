@@ -27,7 +27,7 @@ When stock falls below the reorder threshold:
 
 ```python
 import dapr.ext.workflow as wf
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 def inventory_reorder_workflow(ctx: wf.DaprWorkflowContext, product: dict):
     ctx.set_custom_status("Checking stock levels")
@@ -81,9 +81,9 @@ def inventory_reorder_workflow(ctx: wf.DaprWorkflowContext, product: dict):
     })
 
     # Step 7 - schedule receiving reminder
-    delivery_date = ctx.parse_datetime(confirmation["deliveryDate"])
+    delivery_date = datetime.fromisoformat(confirmation["deliveryDate"])
     reminder_time = delivery_date - timedelta(hours=2)
-    yield ctx.create_timer_at(reminder_time)
+    yield ctx.create_timer(reminder_time)
     yield ctx.call_activity(send_receiving_reminder, input={"po": po})
 
     return {"status": "confirmed", "poId": po["id"], "eta": confirmation["deliveryDate"]}
