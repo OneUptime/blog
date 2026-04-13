@@ -59,7 +59,7 @@ output {
     uri => "${MONGODB_URI}"
     database => "logs"
     collection => "app_logs"
-    codec => "json"
+    isodate => true
   }
 }
 ```
@@ -94,7 +94,7 @@ output {
     uri => "${MONGODB_URI}"
     database => "logs"
     collection => "%{[fields][service]}_logs"
-    codec => "json"
+    isodate => true
   }
 }
 ```
@@ -164,7 +164,7 @@ db.app_logs.createIndex({ "@timestamp": 1 }, { expireAfterSeconds: 604800 })
 
 - Use the `isodate: true` option in the MongoDB output plugin so timestamps are stored as BSON Date objects rather than strings.
 - Use dynamic collection naming (`collection => "%{service}_logs"`) to partition logs by service for easier management and independent TTL configuration.
-- Set `workers` in the output plugin to increase parallel write throughput for high-volume pipelines.
+- Set `pipeline.workers` in `logstash.yml` (or use the `-w` flag) to increase parallel write throughput for high-volume pipelines.
 - Use Logstash dead letter queues (DLQ) to capture events that fail to write to MongoDB for reprocessing.
 
 ## Summary
