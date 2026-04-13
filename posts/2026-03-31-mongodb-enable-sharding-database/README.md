@@ -31,6 +31,8 @@ flowchart LR
 
 ## Step 1: Enable Sharding on the Database
 
+> **Note:** Starting in MongoDB 6.0, this step is no longer required. Running `shardCollection` automatically enables sharding on the database. The `enableSharding` command still works but has no effect.
+
 ```javascript
 // Connect to mongos
 use admin
@@ -118,7 +120,9 @@ Check the number of chunks:
 
 ```javascript
 use config
-db.chunks.countDocuments({ ns: "ecommerce.orders" })
+// In MongoDB 4.4 and earlier, use { ns: "ecommerce.orders" }
+// In MongoDB 5.0+, the ns field was replaced by uuid
+db.chunks.countDocuments({ uuid: db.collections.findOne({ _id: "ecommerce.orders" }).uuid })
 ```
 
 ## Step 6: Pre-splitting Chunks (Optional)
@@ -158,10 +162,11 @@ db.orders.find({ customerId: "CUST-12345" }).explain("executionStats")
 ## Step 8: Monitor Chunk Distribution
 
 ```javascript
-// Chunks per shard
+// Chunks per shard (MongoDB 5.0+, uses uuid instead of ns)
 use config
+var collUUID = db.collections.findOne({ _id: "ecommerce.orders" }).uuid
 db.chunks.aggregate([
-  { $match: { ns: "ecommerce.orders" } },
+  { $match: { uuid: collUUID } },
   { $group: { _id: "$shard", count: { $sum: 1 } } },
   { $sort: { count: -1 } }
 ])
@@ -175,10 +180,10 @@ db.changelog.find({
 
 ## Disabling Sharding for a Collection (Unshard)
 
-MongoDB 6.0+ supports unsharding a collection:
+MongoDB 8.0+ supports unsharding a collection:
 
 ```javascript
-// MongoDB 6.0+
+// MongoDB 8.0+
 db.adminCommand({
   unshardCollection: "ecommerce.orders",
   toShard: "rs-shard1"
