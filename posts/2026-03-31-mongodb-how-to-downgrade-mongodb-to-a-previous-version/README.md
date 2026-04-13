@@ -10,14 +10,14 @@ Description: Learn how to safely downgrade MongoDB to a previous minor or major 
 
 ## Overview
 
-Downgrading MongoDB is sometimes necessary after discovering compatibility issues with a new version. MongoDB's Feature Compatibility Version (FCV) system provides a window for safe downgrades, but only if the FCV has not been updated to the new version. Once FCV is updated, the only way to roll back is to restore from a backup.
+Downgrading MongoDB is sometimes necessary after discovering compatibility issues with a new version. MongoDB's Feature Compatibility Version (FCV) system controls which features are enabled. Before downgrading to a previous major version, you must set the FCV back to the target version and remove any incompatible features. If incompatible data or features cannot be reversed, the only way to roll back is to restore from a backup.
 
 ## Downgrade Windows
 
 MongoDB supports two downgrade scenarios:
 
 1. **Same major version downgrade** - e.g., 7.0.5 to 7.0.3. Always safe as long as you are within the same major version.
-2. **Major version downgrade** - e.g., 8.0 to 7.0. Only possible if the FCV has NOT been changed to 8.0 yet.
+2. **Major version downgrade** - e.g., 8.0 to 7.0. Requires setting the FCV back to "7.0" and removing any features incompatible with the target version before downgrading binaries.
 
 ## Check Current FCV Before Downgrading
 
@@ -29,7 +29,7 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 // { featureCompatibilityVersion: { version: "7.0" }, ok: 1 }
 ```
 
-If FCV shows the new version (e.g., "8.0"), a major version downgrade requires a full backup restore.
+If FCV shows the new version (e.g., "8.0"), you must set it back to the target version and remove any incompatible features before downgrading binaries.
 
 ## Step 1 - Set FCV to the Lower Version
 
@@ -37,7 +37,7 @@ If FCV was already set to the new version, set it back to the previous version f
 
 ```javascript
 // Connect to primary
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 Wait for the change to replicate to all members:
@@ -160,4 +160,4 @@ storage:
 
 ## Summary
 
-MongoDB downgrades are safe within the same major version at any time. For major version downgrades, you must act before updating the FCV to the new version - otherwise a full backup restore is required. Always back up data before downgrading, perform a rolling downgrade on replica sets (secondaries first, then primary), and verify all members are healthy after the process completes.
+MongoDB downgrades are safe within the same major version at any time. For major version downgrades, you must set the FCV back to the target version and remove any incompatible features before downgrading binaries. If incompatible changes cannot be reversed, a full backup restore is required. Always back up data before downgrading, perform a rolling downgrade on replica sets (secondaries first, then primary), and verify all members are healthy after the process completes.
