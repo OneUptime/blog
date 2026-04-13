@@ -49,11 +49,11 @@ console.log(`Modified: ${result.modifiedCount}`);
 console.log(`Deleted:  ${result.deletedCount}`);
 ```
 
-Unordered mode is faster for independent operations but requires your application to handle partial failures by inspecting `result.writeErrors`.
+Unordered mode is faster for independent operations but requires your application to handle partial failures by catching the `MongoBulkWriteError` and inspecting `err.writeErrors`.
 
 ## Batching Large Operation Sets
 
-When you have thousands of operations, chunk them to avoid hitting the 100,000 operation limit per `bulkWrite` call:
+The Node.js driver automatically splits operations into server batches of 100,000, but chunking large sets yourself is still useful for controlling memory usage and tracking progress:
 
 ```javascript
 async function batchedBulkWrite(collection, operations, batchSize = 1000) {
