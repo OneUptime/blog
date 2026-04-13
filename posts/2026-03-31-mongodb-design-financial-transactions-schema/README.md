@@ -128,7 +128,9 @@ db.transactions.createIndex({ status: 1, createdAt: 1 });
 // Unique constraint on transaction ID for idempotency
 db.transactions.createIndex({ txnId: 1 }, { unique: true });
 
-// TTL index to archive old records to cold storage after 7 years
+// TTL index to automatically delete old records after 7 years
+// Warning: TTL indexes permanently delete documents, not archive them.
+// For financial data, consider a scheduled job to move records to an archive collection instead.
 db.transactions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 220752000 });
 ```
 
