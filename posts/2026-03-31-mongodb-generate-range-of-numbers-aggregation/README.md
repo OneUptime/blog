@@ -42,7 +42,7 @@ db.catalogs.aggregate([
   {
     $addFields: {
       pageCount: {
-        $ceil: { $divide: ["$itemCount", 20] }
+        $toInt: { $ceil: { $divide: ["$itemCount", 20] } }
       }
     }
   },
@@ -82,7 +82,7 @@ db.reports.aggregate([
 
 ## Creating a Number Sequence Document Source
 
-To feed a fixed sequence into a pipeline as if it were a collection, use `$documents` (MongoDB 5.1+) with `$range`:
+To feed a fixed sequence into a pipeline as if it were a collection, use `$documents` (MongoDB 6.0+) with `$range`:
 
 ```javascript
 db.aggregate([
