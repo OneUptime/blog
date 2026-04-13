@@ -64,7 +64,9 @@ def expense_approval_workflow(ctx: wf.DaprWorkflowContext, expense: dict):
 ## Activity: Notify the Approver
 
 ```python
-@wf.activity
+wfr = WorkflowRuntime()
+
+@wfr.activity(name='notify_approver')
 def notify_approver(ctx, data: dict):
     expense = data["expense"]
     workflow_id = data["workflowId"]
@@ -123,10 +125,10 @@ with DaprClient() as d:
 ## Checking Pending Approvals
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/expense_approval_workflow/{instance_id}
+curl http://localhost:3500/v1.0/workflows/dapr/{instance_id}
 ```
 
-Look for `"runtimeStatus": "RUNNING"` and `"serializedCustomStatus": "Waiting for approval"` to find workflows awaiting human input.
+Look for `"runtimeStatus": "RUNNING"` and `"dapr.workflow.custom_status": "Waiting for approval"` in the `properties` object to find workflows awaiting human input.
 
 ## Summary
 
