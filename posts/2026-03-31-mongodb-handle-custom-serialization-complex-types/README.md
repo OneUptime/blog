@@ -12,7 +12,7 @@ Description: Learn how to implement custom serialization for complex types in Mo
 
 The default BSON type mappings cover primitives and common types, but applications often need to store domain-specific types - Money objects, enums, versioned identifiers, geospatial value objects - as BSON fields. Custom serialization keeps the domain model clean while controlling exactly how types are stored.
 
-## Node.js: Custom toBSON and fromBSON
+## Node.js: Custom toBSON
 
 The MongoDB Node.js driver calls `toBSON()` on objects before serialization. Implement it to control how custom types serialize:
 
@@ -60,6 +60,7 @@ console.log(raw.total.toString()); // USD 149.99
 PyMongo's `TypeRegistry` allows registering custom encoders and decoders:
 
 ```python
+from bson import Decimal128
 from bson.codec_options import TypeDecoder, TypeEncoder, TypeRegistry, CodecOptions
 from decimal import Decimal
 
@@ -67,32 +68,20 @@ class DecimalEncoder(TypeEncoder):
     python_type = Decimal
 
     def transform_python(self, value):
-        from bson import Decimal128
         return Decimal128(str(value))
 
 class DecimalDecoder(TypeDecoder):
-    bson_type = type(None)  # Workaround - use fallback_decoder instead
+    bson_type = Decimal128
 
     def transform_bson(self, value):
-        return value
-
-# Use a fallback decoder to convert Decimal128 -> Python Decimal
-def decimal_fallback_decoder(value):
-    from bson import Decimal128
-    if isinstance(value, Decimal128):
         return Decimal(str(value))
-    return value
 
-registry = TypeRegistry(
-    type_encoders=[DecimalEncoder()],
-    fallback_decoder=decimal_fallback_decoder
-)
+registry = TypeRegistry([DecimalEncoder(), DecimalDecoder()])
 codec_options = CodecOptions(type_registry=registry)
 
 collection = db.get_collection("orders", codec_options=codec_options)
 
 # Now Python Decimal works transparently
-from decimal import Decimal
 collection.insert_one({"total": Decimal("149.99")})
 doc = collection.find_one({})
 print(type(doc["total"]))  # <class 'decimal.Decimal'>
@@ -186,4 +175,4 @@ collection.insert_one({"status": OrderStatus.PAID})  # stores "paid"
 
 ## Summary
 
-Custom serialization for complex types in MongoDB is handled differently per language: Node.js uses `toBSON()` for encoding and manual mapping for decoding; Python uses PyMongo's `TypeRegistry` with custom `TypeEncoder` and fallback decoders; Java uses the `Codec<T>` interface registered in a `CodecRegistry`. Store enums as strings (not integers) for readability and use domain value objects like `Money` to encapsulate serialization logic, keeping persistence concerns out of your core domain model.
+Custom serialization for complex types in MongoDB is handled differently per language: Node.js uses `toBSON()` for encoding and manual mapping for decoding; Python uses PyMongo's `TypeRegistry` with custom `TypeEncoder` and `TypeDecoder` classes; Java uses the `Codec<T>` interface registered in a `CodecRegistry`. Store enums as strings (not integers) for readability and use domain value objects like `Money` to encapsulate serialization logic, keeping persistence concerns out of your core domain model.
