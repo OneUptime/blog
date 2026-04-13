@@ -159,7 +159,7 @@ db.orders.aggregate([
       range: {
         step: 1,
         unit: "day",
-        bounds: [ISODate("2024-01-01"), ISODate("2024-01-31")]
+        bounds: [ISODate("2024-01-01"), ISODate("2024-02-01")]
       }
     }
   },
