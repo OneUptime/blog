@@ -217,10 +217,10 @@ curl -X POST http://localhost:5000/api/users/ \
 curl "http://localhost:5000/api/users/?page=1&limit=10"
 
 # Get user by ID
-curl http://localhost:5000/api/users/64abc123def456789012345
+curl http://localhost:5000/api/users/64abc123def4567890123456
 
 # Update user
-curl -X PATCH http://localhost:5000/api/users/64abc123def456789012345 \
+curl -X PATCH http://localhost:5000/api/users/64abc123def4567890123456 \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice Smith"}'
 ```
