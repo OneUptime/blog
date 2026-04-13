@@ -78,12 +78,11 @@ aws ec2 create-route \
 Add your VPC CIDR to Atlas Network Access:
 
 ```bash
-atlas accessLists create \
-  --cidr 10.0.0.0/16 \
+atlas accessList create "10.0.0.0/16" \
   --comment "Application VPC"
 ```
 
-### Step 6: Connect Using Private Endpoint Address
+### Step 6: Connect Using Private Connection String
 
 Once peering is established (status shows AVAILABLE), use the private endpoint in your connection string:
 
