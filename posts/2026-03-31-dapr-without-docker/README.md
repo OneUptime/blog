@@ -72,7 +72,7 @@ brew services start redis
 
 # Ubuntu
 sudo apt-get install redis-server
-sudo systemctl start redis
+sudo systemctl start redis-server
 ```
 
 Create the component file:
@@ -109,7 +109,7 @@ metadata:
     key: password
 ```
 
-### Option 3 - Use a File-Based State Store (No Infrastructure)
+### Option 3 - Use an In-Memory State Store (No Infrastructure)
 
 For simple testing, use a local file state store:
 
@@ -222,10 +222,10 @@ curl http://localhost:3500/v1.0/state/statestore/test
 # Response: "no-docker"
 ```
 
-## CI Pipeline Example (No Docker)
+## CI Pipeline Example (Slim Init)
 
 ```yaml
-# GitHub Actions - no Docker socket required
+# GitHub Actions - Dapr runs without its own containers via slim init
 jobs:
   test:
     runs-on: ubuntu-latest
