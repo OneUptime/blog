@@ -177,7 +177,7 @@ $orders = $user->orders()->where('status', 'pending')->get();
 ## Aggregation with Raw Pipeline
 
 ```php
-use MongoDB\Laravel\Eloquent\Model;
+use App\Models\User;
 
 $results = User::raw(function ($collection) {
     return $collection->aggregate([
