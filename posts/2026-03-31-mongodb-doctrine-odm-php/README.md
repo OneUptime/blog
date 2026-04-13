@@ -30,11 +30,10 @@ Set up the document manager to connect to MongoDB:
 <?php
 use Doctrine\ODM\MongoDB\Configuration;
 use Doctrine\ODM\MongoDB\DocumentManager;
-use Doctrine\ODM\MongoDB\Mapping\Driver\AnnotationDriver;
+use Doctrine\ODM\MongoDB\Mapping\Driver\AttributeDriver;
 use MongoDB\Client;
 
 require_once 'vendor/autoload.php';
-AnnotationDriver::registerAnnotationClasses();
 
 $client = new Client('mongodb://localhost:27017');
 $config = new Configuration();
@@ -42,7 +41,7 @@ $config->setProxyDir('/tmp/proxies');
 $config->setHydratorDir('/tmp/hydrators');
 $config->setDefaultDB('myapp');
 $config->setMetadataDriverImpl(
-    AnnotationDriver::create(__DIR__ . '/src/Documents')
+    AttributeDriver::create(__DIR__ . '/src/Documents')
 );
 
 $dm = DocumentManager::create($client, $config);
