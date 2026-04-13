@@ -21,6 +21,7 @@ docker run -d \
   --name mongo-express \
   -p 8081:8081 \
   -e ME_CONFIG_MONGODB_URL="mongodb://root:password@mongo:27017/" \
+  -e ME_CONFIG_BASICAUTH_ENABLED="true" \
   -e ME_CONFIG_BASICAUTH_USERNAME="admin" \
   -e ME_CONFIG_BASICAUTH_PASSWORD="securepass" \
   mongo-express
@@ -54,12 +55,11 @@ services:
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: root
-      ME_CONFIG_MONGODB_ADMINPASSWORD: rootpassword
       ME_CONFIG_MONGODB_URL: mongodb://root:rootpassword@mongo:27017/
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH_ENABLED: "true"
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: admin123
-      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
 
 volumes:
   mongo_data:
@@ -84,12 +84,12 @@ ME_CONFIG_MONGODB_URL: "mongodb://root:password@mongo1:27017,mongo2:27017,mongo3
 | Environment Variable | Description |
 |---|---|
 | `ME_CONFIG_MONGODB_URL` | Full MongoDB connection string |
+| `ME_CONFIG_MONGODB_ENABLE_ADMIN` | Enable admin access to all databases |
+| `ME_CONFIG_BASICAUTH_ENABLED` | Enable HTTP basic auth for UI |
 | `ME_CONFIG_BASICAUTH_USERNAME` | HTTP basic auth username for UI |
 | `ME_CONFIG_BASICAUTH_PASSWORD` | HTTP basic auth password for UI |
-| `ME_CONFIG_MONGODB_ENABLE_ADMIN` | Show admin database in UI |
-| `ME_CONFIG_SITE_BASEURL` | URL prefix if behind a reverse proxy |
-| `ME_CONFIG_OPTIONS_EDITORTHEME` | Editor color theme |
-| `ME_CONFIG_REQUEST_SIZE` | Max request body size (default: 100kb) |
+| `ME_CONFIG_SITE_BASEURL` | Base URL prefix if behind a reverse proxy |
+| `ME_CONFIG_REQUEST_SIZE` | Max update payload size in MB (default: 50) |
 
 ## Using the Web Interface
 
