@@ -18,6 +18,7 @@ Always end sessions in a `finally` block to guarantee cleanup even when errors o
 
 ```javascript
 const session = client.startSession();
+session.startTransaction();
 
 try {
   // Perform operations with the session
@@ -68,14 +69,14 @@ try {
 ## What Happens When endSession() is Called
 
 When you call `endSession()`:
-1. The driver sends a `endSessions` command to the server.
-2. The server removes the session from its in-memory session table.
-3. The session record in `config.system.sessions` is marked for deletion.
+1. The driver returns the underlying server session to its internal session pool for potential reuse.
+2. When the session pool is full or the `MongoClient` is closed, the driver sends an `endSessions` command to the server.
+3. The server marks the session as expired. The `LogicalSessionCacheRefresh` background task then removes it from the in-memory cache and from `config.system.sessions` on its next run.
 4. Any open transaction associated with the session is automatically aborted.
 
 ## Server-Side Session Cleanup
 
-MongoDB's `LogicalSessionCacheRefresh` background task runs every 5 minutes and removes sessions that have expired (not refreshed within `localLogicalSessionTimeoutMinutes`). You can also manually trigger cleanup:
+MongoDB's `LogicalSessionCacheRefresh` background task runs every 5 minutes (controlled by `logicalSessionRefreshMillis`) and removes sessions that have expired (not refreshed within `localLogicalSessionTimeoutMinutes`, default 30 minutes). You can also manually trigger cleanup:
 
 ```javascript
 // Kill all sessions for a specific user
