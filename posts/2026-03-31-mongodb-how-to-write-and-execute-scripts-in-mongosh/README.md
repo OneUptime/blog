@@ -32,7 +32,7 @@ Scripts are plain JavaScript files that use the mongosh API. Here is a simple se
 
 ```javascript
 // seed.js
-const db = db.getSiblingDB("mydb");
+db = db.getSiblingDB("mydb");
 
 db.users.drop();
 
@@ -67,7 +67,7 @@ function ensureIndex(collection, keyPattern, options = {}) {
   }
 }
 
-const db = db.getSiblingDB("mydb");
+db = db.getSiblingDB("mydb");
 ensureIndex(db.orders, { status: 1, createdAt: -1 });
 ensureIndex(db.orders, { customerId: 1 });
 ```
