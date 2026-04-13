@@ -111,11 +111,11 @@ Click the eye icon on any stage to temporarily disable it. This lets you:
 
 Save pipelines to reuse them later:
 
-1. Click the "Save Pipeline" button (floppy disk icon)
+1. Click the "Save Pipeline" button
 2. Give it a name
-3. Optionally set it as a view (creates a virtual collection)
+3. Click "Save"
 
-Saved pipelines appear in a list and can be opened later.
+Saved pipelines appear in a list and can be opened later. To create a view from a pipeline, see the "Creating a View from a Pipeline" section below.
 
 ## Exporting Pipeline Code
 
