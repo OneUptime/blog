@@ -158,15 +158,15 @@ async function saveCheckpoint(db, id) {
 ## Limitations of Capped Collections
 
 - Documents cannot be deleted individually; only the oldest documents are removed automatically when the cap is reached.
-- Documents can be updated but the updated document size must not change (in-place updates only).
+- Documents can be updated but the updated document must not grow beyond its original size.
 - Capped collections cannot be sharded.
 - `$natural` is the only reliable sort order; non-natural sorts require creating an index.
 
 ```javascript
-// Update is allowed if it doesn't change document size
+// Update is allowed if document does not grow beyond original size
 db.task_queue.updateOne(
   { _id: taskId },
-  { $set: { status: "done" } }  // same-size field update is fine
+  { $set: { status: "done" } }  // allowed because document does not grow
 );
 
 // Deleting individual documents is not allowed
