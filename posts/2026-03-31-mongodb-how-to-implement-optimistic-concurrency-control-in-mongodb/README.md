@@ -53,6 +53,8 @@ async function updateWithOCC(db, collection, docId, updateFn, maxRetries = 3) {
     const updatedDoc = await updateFn(doc)
 
     // 3. Write with version check (atomic)
+    const { _id, __v, ...changes } = updatedDoc
+
     const result = await db.collection(collection).updateOne(
       {
         _id: docId,
@@ -60,7 +62,7 @@ async function updateWithOCC(db, collection, docId, updateFn, maxRetries = 3) {
       },
       {
         $set: {
-          ...updatedDoc,
+          ...changes,
           updatedAt: new Date()
         },
         $inc: { __v: 1 }  // Increment version
