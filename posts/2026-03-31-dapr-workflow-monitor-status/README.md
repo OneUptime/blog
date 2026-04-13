@@ -72,6 +72,8 @@ Possible `runtimeStatus` values:
 | `TERMINATED` | Workflow was explicitly terminated |
 | `SUSPENDED` | Workflow is paused |
 | `PENDING` | Workflow is scheduled but not yet started |
+| `CANCELED` | Workflow was canceled |
+| `CONTINUED_AS_NEW` | Workflow continued as a new instance |
 
 ### Via Go SDK
 
@@ -171,7 +173,7 @@ Suspend a running workflow:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/order-001/suspend
+  http://localhost:3500/v1.0/workflows/dapr/order-001/pause
 ```
 
 Resume a suspended workflow:
@@ -187,9 +189,7 @@ Terminate a stuck or unwanted workflow:
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/order-001/terminate" \
-  -H "Content-Type: application/json" \
-  -d '{"output": "Terminated by admin"}'
+  http://localhost:3500/v1.0/workflows/dapr/order-001/terminate
 ```
 
 ## Purging Workflow History
@@ -197,7 +197,7 @@ curl -X POST \
 After a workflow completes or is terminated, purge its history to free storage:
 
 ```bash
-curl -X DELETE \
+curl -X POST \
   http://localhost:3500/v1.0/workflows/dapr/order-001/purge
 ```
 
