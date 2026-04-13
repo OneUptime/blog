@@ -12,7 +12,7 @@ Description: Learn how to implement Dapr workflow activities in JavaScript using
 
 Workflow activities in Dapr are the discrete, executable steps within a workflow. Each activity performs a concrete task - calling an API, querying a database, or sending a message. The Dapr workflow engine manages activity execution, including retries on failure, so your activity code can focus purely on the task at hand.
 
-In JavaScript (Node.js), activities are plain async functions registered with the Dapr workflow runtime.
+In JavaScript (Node.js), activities are plain async functions, while workflows are generator functions (`function*`) that use `yield` to call activities. Both are registered with the Dapr workflow runtime.
 
 ## Installing the Dapr Node.js SDK
 
@@ -49,23 +49,26 @@ async function processPaymentActivity(ctx, input) {
 
 ## Defining a Workflow That Calls Activities
 
-Workflows orchestrate activities using `ctx.callActivity()`. The workflow pauses until each activity returns:
+Workflows are generator functions that orchestrate activities using `yield ctx.callActivity()`. The workflow pauses at each `yield` until the activity returns:
 
 ```javascript
-const { DaprWorkflowClient, WorkflowRuntime, TWorkflowActivity } = require('@dapr/dapr');
+const { DaprWorkflowClient, WorkflowRuntime } = require('@dapr/dapr');
 
-async function orderWorkflow(ctx, input) {
+function* orderWorkflow(ctx, input) {
   const { orderId, email, payment } = input;
 
   // Call the payment activity
-  const paymentResult = await ctx.callActivity(processPaymentActivity, payment);
+  const paymentResult = yield ctx.callActivity(processPaymentActivity, {
+    ...payment,
+    orderId,
+  });
 
   if (!paymentResult.success) {
     return { status: 'failed', reason: 'payment declined' };
   }
 
   // Call the notification activity
-  await ctx.callActivity(sendEmailActivity, {
+  yield ctx.callActivity(sendEmailActivity, {
     to: email,
     subject: 'Order Confirmed',
     body: `Your order ${orderId} has been confirmed.`,
@@ -139,4 +142,4 @@ async function sendEmailActivity(ctx, input) {
 
 ## Summary
 
-Dapr workflow activities in JavaScript are async functions that integrate cleanly with the Node.js SDK. Register activities alongside your workflow, call them with `ctx.callActivity()`, and let Dapr handle retries and state persistence. This pattern keeps your orchestration logic clean and your side-effect logic isolated in testable activity functions.
+Dapr workflow activities in JavaScript are async functions that integrate cleanly with the Node.js SDK. Workflows themselves are generator functions that use `yield ctx.callActivity()` to call activities. Register activities alongside your workflow, and let Dapr handle retries and state persistence. This pattern keeps your orchestration logic clean and your side-effect logic isolated in testable activity functions.
