@@ -22,9 +22,6 @@ sudo systemctl stop mongod
 # Restart mongod
 sudo systemctl restart mongod
 
-# Reload configuration without full restart
-sudo systemctl reload mongod
-
 # Enable auto-start on boot
 sudo systemctl enable mongod
 
@@ -68,10 +65,12 @@ mongod \
 
 The cleanest way to shut down a running mongod is from within the mongo shell, especially for replica set primaries:
 
-```javascript
-// Connect as admin user
+```bash
+# Connect as admin user
 mongosh --username admin --authenticationDatabase admin
+```
 
+```javascript
 // Graceful shutdown
 db.adminCommand({ shutdown: 1 });
 ```
