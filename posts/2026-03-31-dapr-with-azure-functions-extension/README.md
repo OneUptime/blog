@@ -20,13 +20,16 @@ dotnet add package Microsoft.Azure.WebJobs.Extensions.Dapr --version 1.0.0
 dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Dapr --version 1.0.0
 ```
 
-For Python Azure Functions:
+For Python Azure Functions, add the Dapr extension bundle to `host.json`:
 
-```bash
-# requirements.txt
-azure-functions
-azure-functions-durable
-dapr-ext-func
+```json
+{
+  "version": "2.0",
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[4.0.0, 5.0.0)"
+  }
+}
 ```
 
 ## Trigger a Function from a Dapr Pub/Sub Event
@@ -121,7 +124,7 @@ public static void SaveOrderState(
 
 ```python
 @app.function_name("PublishOrderEvent")
-@app.http_trigger(arg_name="req", route="orders", methods=["POST"])
+@app.route(route="orders", methods=["POST"])
 @app.dapr_publish_output(
     arg_name="order_event",
     pub_sub_name="orderpubsub",
