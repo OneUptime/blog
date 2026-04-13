@@ -169,6 +169,10 @@ db.dailySales.aggregate([
         ma7: {
           $avg: "$revenue",
           window: { documents: [-6, 0] }
+        },
+        windowCount: {
+          $count: {},
+          window: { documents: [-6, 0] }
         }
       }
     }
@@ -177,17 +181,14 @@ db.dailySales.aggregate([
   {
     $match: {
       $expr: {
-        $gte: [
-          { $dayOfYear: "$date" },
-          7
-        ]
+        $gte: ["$windowCount", 7]
       }
     }
   }
 ])
 ```
 
-## Legacy Approach: $group + $lookup (pre-5.0)
+## Legacy Approach: $lookup (pre-5.0)
 
 For MongoDB versions before 5.0:
 
@@ -205,7 +206,7 @@ db.dailySales.aggregate([
               $and: [
                 { $eq: ["$productId", "$$productId"] },
                 { $lte: ["$date", "$$currentDate"] },
-                { $gte: ["$date", { $dateSubtract: { startDate: "$$currentDate", unit: "day", amount: 6 } }] }
+                { $gte: ["$date", { $subtract: ["$$currentDate", 6 * 24 * 60 * 60 * 1000] }] }
               ]
             }
           }
