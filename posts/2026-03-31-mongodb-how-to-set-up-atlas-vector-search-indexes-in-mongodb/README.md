@@ -40,6 +40,7 @@ First, add embeddings to your documents. Use OpenAI, Cohere, or any embedding mo
 
 ```python
 # Python script to add embeddings to MongoDB documents
+import os
 from pymongo import MongoClient
 from openai import OpenAI
 
