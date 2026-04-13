@@ -143,7 +143,7 @@ db.orders.find({ status: "pending" })
 - hint() bypasses the query planner's automatic optimization
 - Hardcoded hints in application code must be updated if indexes change
 - On sharded clusters, hint() applies to each shard independently
-- If the hinted index cannot satisfy the query at all, MongoDB returns an error
+- Hinting an index incompatible with special query operators (e.g., a non-text index for $text queries) causes an error
 ```
 
 ## Summary
