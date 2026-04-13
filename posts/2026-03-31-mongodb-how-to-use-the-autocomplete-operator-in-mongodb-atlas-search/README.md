@@ -43,7 +43,7 @@ Key options:
 - `tokenization` - `edgeGram` (prefix matching) or `nGram` (substring matching)
 - `minGrams` - minimum character prefix length to index
 - `maxGrams` - maximum prefix length to index
-- `foldDiacritics` - normalize accented characters (e.g., treats "e" and "e" as the same)
+- `foldDiacritics` - normalize accented characters (e.g., treats "é" and "e" as the same)
 
 ## Basic Autocomplete Query
 
@@ -259,10 +259,15 @@ db.products.aggregate([
     }
   },
   {
+    $addFields: {
+      searchScore: { $meta: "searchScore" }
+    }
+  },
+  {
     $group: {
       _id: "$title",
       doc: { $first: "$$ROOT" },
-      score: { $max: { $meta: "searchScore" } }
+      score: { $max: "$searchScore" }
     }
   },
   { $sort: { score: -1 } },
