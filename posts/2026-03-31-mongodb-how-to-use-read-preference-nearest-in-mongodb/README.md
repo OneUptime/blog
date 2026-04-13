@@ -20,7 +20,7 @@ The MongoDB driver measures round-trip latency to each replica set member and se
 
 ```javascript
 db.getMongo().setReadPref("nearest");
-db.sessions.findOne({ token: "abc123" }).readPref("nearest");
+db.sessions.find({ token: "abc123" }).readPref("nearest");
 ```
 
 ## Setting in Node.js
@@ -38,15 +38,19 @@ await client.connect();
 
 ## Configuring the Latency Window
 
-Adjust the acceptable latency window (in milliseconds):
+Adjust the acceptable latency window (in milliseconds) at the client level:
 
 ```javascript
-const { ReadPreference } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 // Accept members within 25ms of the fastest member
-const pref = new ReadPreference("nearest", [], { localThresholdMS: 25 });
+const client = new MongoClient(
+  "mongodb://us-east:27017,eu-west:27017,ap-south:27017/?replicaSet=rs0",
+  { readPreference: "nearest", localThresholdMS: 25 }
+);
 
-const doc = await collection.findOne({}, { readPreference: pref });
+await client.connect();
+const doc = await client.db("mydb").collection("mycol").findOne({});
 ```
 
 ## Multi-Region Deployment Pattern
