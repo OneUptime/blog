@@ -42,7 +42,7 @@ const client = new MongoClient("mongodb://localhost:27017", {
   readPreference: new ReadPreference(
     ReadPreference.SECONDARY_PREFERRED,
     null,
-    { maxStalenessSeconds: 30 }   // Only use secondaries lagging <= 30 seconds
+    { maxStalenessSeconds: 90 }   // Only use secondaries lagging <= 90 seconds
   )
 });
 ```
