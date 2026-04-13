@@ -22,7 +22,7 @@ A travel booking platform requires: `flights`, `hotels`, `bookings`, `passengers
   "departureAirport": "JFK",
   "arrivalAirport": "LAX",
   "departureTime": "2026-04-01T08:00:00Z",
-  "arrivalTime":   "2026-04-01T11:15:00Z",
+  "arrivalTime":   "2026-04-01T14:15:00Z",
   "durationMinutes": 375,
   "aircraft": "Boeing 737",
   "stops": 0,
@@ -148,8 +148,9 @@ db.flights.find({
     $lt:  new Date("2026-04-02T00:00:00Z")
   },
   status: "scheduled",
-  "cabins.class": "economy",
-  "cabins.availableSeats": { $gt: 0 }
+  cabins: {
+    $elemMatch: { class: "economy", availableSeats: { $gt: 0 } }
+  }
 })
 ```
 
