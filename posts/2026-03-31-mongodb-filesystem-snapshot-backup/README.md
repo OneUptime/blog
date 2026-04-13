@@ -143,7 +143,7 @@ aws ec2 create-tags \
 # Delete old snapshots
 OLD_SNAPSHOTS=$(aws ec2 describe-snapshots \
   --filters "Name=volume-id,Values=$VOLUME_ID" \
-  --query "Snapshots[?StartTime<='$(date -d '-${RETENTION_DAYS} days' +%Y-%m-%d)'].SnapshotId" \
+  --query "Snapshots[?StartTime<='$(date -d "-${RETENTION_DAYS} days" +%Y-%m-%d)'].SnapshotId" \
   --output text)
 
 for snap in $OLD_SNAPSHOTS; do
