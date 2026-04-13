@@ -76,8 +76,8 @@ mongoexport   --uri="mongodb://localhost:27017"   --db=myapp   --collection=orde
 # Export only specific fields (projection)
 mongoexport   --uri="mongodb://localhost:27017"   --db=myapp   --collection=users   --fields=name,email,createdAt   --out=users-contact.json
 
-# Exclude _id field
-mongoexport   --uri="mongodb://localhost:27017"   --db=myapp   --collection=users   --fields=name,email   --noHeaderLine   --out=users-no-id.json
+# Export only name and email (note: _id is still included by default)
+mongoexport   --uri="mongodb://localhost:27017"   --db=myapp   --collection=users   --fields=name,email   --out=users-contact-only.json
 ```
 
 ## Exporting with Sort and Limit
