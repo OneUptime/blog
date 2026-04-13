@@ -36,7 +36,7 @@ MongoDB Change Stream
 Install dependencies:
 
 ```bash
-npm install mongodb socket.io express ioredis
+npm install mongodb socket.io @socket.io/redis-adapter express ioredis
 ```
 
 ## Shared Redis Pub/Sub Server
@@ -103,19 +103,20 @@ For high-throughput systems, partition the change stream by collection or filter
 const SHARD_ID = parseInt(process.env.SHARD_ID || "0")
 const TOTAL_SHARDS = parseInt(process.env.TOTAL_SHARDS || "3")
 
-// Distribute change stream watching across servers by modding the document ID
+// Partition by a numeric document field (e.g., userId, accountId)
+// Note: $toLong cannot convert ObjectId directly, so use a numeric field instead
 const changeStream = db.collection("events").watch([
   {
     $match: {
       $expr: {
         $eq: [
-          { $mod: [{ $toLong: "$documentKey._id" }, TOTAL_SHARDS] },
+          { $mod: [{ $toLong: "$fullDocument.userId" }, TOTAL_SHARDS] },
           SHARD_ID
         ]
       }
     }
   }
-])
+], { fullDocument: "updateLookup" })
 ```
 
 ## Connection Limits and Backpressure
@@ -146,51 +147,43 @@ function watchCollection(collection, pipeline = []) {
 
 ## Client-Side WebSocket with Reconnection
 
+```html
+<!-- Include the Socket.io client library served automatically by the server -->
+<script src="/socket.io/socket.io.js"></script>
+```
+
 ```javascript
-// Browser client with exponential backoff reconnection
-class RealtimeClient {
-  constructor(url) {
-    this.url = url
-    this.retryDelay = 1000
-    this.maxRetryDelay = 30000
-    this.connect()
-  }
+// Browser client using Socket.io client (compatible with the Socket.io server)
+// Socket.io includes built-in reconnection with exponential backoff
+const socket = io("https://your-server.example.com", {
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 30000,
+  reconnectionAttempts: Infinity
+})
 
-  connect() {
-    this.ws = new WebSocket(this.url)
+socket.on("connect", () => {
+  console.log("Connected:", socket.id)
+})
 
-    this.ws.onopen = () => {
-      console.log("Connected")
-      this.retryDelay = 1000  // reset backoff
-    }
+socket.on("orderChange", (data) => {
+  console.log("Update:", data.type, data.id)
+  // update UI
+})
 
-    this.ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      this.handleUpdate(data)
-    }
-
-    this.ws.onclose = () => {
-      console.log(`Disconnected, retrying in ${this.retryDelay}ms`)
-      setTimeout(() => {
-        this.retryDelay = Math.min(this.retryDelay * 2, this.maxRetryDelay)
-        this.connect()
-      }, this.retryDelay)
-    }
-  }
-
-  handleUpdate(data) {
-    console.log("Update:", data.type, data.id)
-    // update UI
-  }
-}
-
-const client = new RealtimeClient("wss://your-server.example.com")
+socket.on("disconnect", (reason) => {
+  console.log("Disconnected:", reason)
+  // Socket.io reconnects automatically with the configured backoff
+})
 ```
 
 ## Horizontal Scaling with PM2
 
 ```javascript
 // ecosystem.config.js for PM2 cluster mode
+// Important: With cluster mode, each worker opens its own change stream.
+// Use partitioned change streams (see above) so each worker watches a
+// distinct subset of events. Otherwise, clients will receive duplicate messages.
 module.exports = {
   apps: [{
     name: "realtime-server",
@@ -200,7 +193,8 @@ module.exports = {
     env: {
       MONGO_URI: "mongodb+srv://...",
       REDIS_URL: "redis://redis:6379",
-      NODE_ENV: "production"
+      NODE_ENV: "production",
+      TOTAL_SHARDS: "4"  // should match 'instances' count when not using "max"
     }
   }]
 }
