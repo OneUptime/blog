@@ -25,9 +25,9 @@ db.createCollection("webhook_events", {
       properties: {
         url: { bsonType: "string" },
         payload: { bsonType: "object" },
-        status: { enum: ["pending", "delivered", "failed"] },
-        attempts: { bsonType: "int" },
-        maxAttempts: { bsonType: "int" },
+        status: { enum: ["pending", "processing", "delivered", "failed"] },
+        attempts: { bsonType: "number" },
+        maxAttempts: { bsonType: "number" },
         nextRetryAt: { bsonType: "date" },
         lastError: { bsonType: "string" }
       }
@@ -112,12 +112,12 @@ db.webhook_events.createIndex(
 
 ## Dead Letter Queue
 
-Move permanently failed events to a separate collection for investigation:
+Copy permanently failed events to a separate collection for investigation:
 
 ```javascript
 db.webhook_events.aggregate([
   { $match: { status: "failed" } },
-  { $out: "webhook_dead_letter" }
+  { $merge: { into: "webhook_dead_letter", whenMatched: "replace", whenNotMatched: "insert" } }
 ])
 ```
 
