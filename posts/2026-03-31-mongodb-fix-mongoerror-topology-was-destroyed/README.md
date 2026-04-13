@@ -17,6 +17,8 @@ MongoError: Topology was destroyed
     at Server.command (node_modules/mongodb/lib/core/topologies/server.js)
 ```
 
+> **Note:** This error message appears in the MongoDB Node.js driver **3.x**. In driver **4.x and later**, the same condition throws `MongoTopologyClosedError: Topology is closed`. The causes and fixes described below apply to both versions.
+
 ## Common Causes
 
 ### 1. Calling `client.close()` Too Early
@@ -79,17 +81,22 @@ app.get('/users', async (req, res) => {
 
 ### 3. Serverless or Lambda Environments
 
-In serverless functions, the execution context may freeze and reuse the client from a previous invocation, which could have gone stale. Implement a reconnect guard:
+In serverless functions, the execution context may freeze and reuse the client from a previous invocation, which could have gone stale. Cache the client at module scope and let the driver's built-in SDAM mechanism handle reconnection. If the topology was destroyed between invocations, use the retry pattern from Section 4 to catch the error and create a fresh client:
 
 ```javascript
 let client = null;
 
 export async function getClient() {
-  if (!client || !client.topology || !client.topology.isConnected()) {
+  if (!client) {
     client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
   }
   return client;
+}
+
+// Reset the cached client on fatal errors so the next invocation reconnects
+export function resetClient() {
+  client = null;
 }
 ```
 
