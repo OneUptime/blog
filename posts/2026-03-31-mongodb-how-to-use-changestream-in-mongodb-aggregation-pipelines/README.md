@@ -70,17 +70,20 @@ const statusStream = db.orders.watch([
 
 ```javascript
 // Alert when order status changes to "cancelled"
-const cancelStream = db.orders.watch([
-  {
-    $match: {
-      operationType: "update",
-      "fullDocument.status": "cancelled"
+const cancelStream = db.orders.watch(
+  [
+    {
+      $match: {
+        operationType: "update",
+        "fullDocument.status": "cancelled"
+      }
     }
-  }
-])
+  ],
+  { fullDocument: "updateLookup" }
+)
 ```
 
-Note: `fullDocument` is only included when you enable `fullDocument: "updateLookup"`.
+Note: For update events, `fullDocument` is not included by default. You must enable `fullDocument: "updateLookup"` to access it in your pipeline filters.
 
 ## Full Document Lookup
 
@@ -192,6 +195,7 @@ Change stream pipelines support only these aggregation stages:
 - `$addFields`
 - `$set`
 - `$unset`
+- `$redact`
 - `$replaceRoot`
 - `$replaceWith`
 
