@@ -56,6 +56,7 @@ sudo mkfs.xfs /dev/sdc1
 sudo mkdir -p /data/mongodb
 sudo mount /dev/sdc1 /data/mongodb
 echo '/dev/sdc1 /data/mongodb xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+sudo chown -R mongodb:mongodb /data/mongodb
 ```
 
 Install MongoDB 7.0:
@@ -114,6 +115,10 @@ az network nsg rule create \
 ```bash
 sudo systemctl start mongod
 sudo systemctl enable mongod
+
+mongosh --eval "
+rs.initiate();
+"
 
 mongosh --eval "
 use admin;
