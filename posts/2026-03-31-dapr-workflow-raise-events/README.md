@@ -15,7 +15,7 @@ Dapr workflows can pause and wait for external events before continuing. This en
 Use `ctx.wait_for_external_event()` to pause the workflow until a named event arrives:
 
 ```python
-from dapr.ext.workflow import DaprWorkflowContext
+from dapr.ext.workflow import DaprWorkflowContext, when_any
 from datetime import timedelta
 
 def approval_workflow(ctx: DaprWorkflowContext, request: dict):
@@ -68,9 +68,8 @@ curl -X POST \
 ```bash
 dapr workflow raise-event \
   --app-id approval-service \
-  --workflow-id approval-REQ-001 \
-  --event-name approval-decision \
-  --event-data '{"approved":true}'
+  --input '{"approved":true}' \
+  approval-REQ-001/approval-decision
 ```
 
 ## Timeout Pattern with Events
@@ -86,7 +85,7 @@ def time_limited_approval(ctx: DaprWorkflowContext, request: dict):
         ctx.current_utc_datetime + timedelta(hours=48)
     )
 
-    winner = yield ctx.task_any([approval_task, timeout_task])
+    winner = yield when_any([approval_task, timeout_task])
 
     if winner == timeout_task:
         yield ctx.call_activity(escalate_timeout, input=request)
@@ -120,10 +119,10 @@ Raise events in order:
 
 ```python
 # Step 1: Manager approves
-client.raise_workflow_event("order-ORD-001", "manager-approved", {"approved": True})
+client.raise_workflow_event("order-ORD-001", "manager-approved", data={"approved": True})
 
 # Step 2: Finance approves
-client.raise_workflow_event("order-ORD-001", "finance-approved", {"approved": True})
+client.raise_workflow_event("order-ORD-001", "finance-approved", data={"approved": True})
 ```
 
 ## Checking Workflow is Waiting Before Raising
@@ -131,14 +130,16 @@ client.raise_workflow_event("order-ORD-001", "finance-approved", {"approved": Tr
 Verify the workflow is in a state to receive events:
 
 ```python
+from dapr.ext.workflow import WorkflowStatus
+
 def safely_raise_event(instance_id: str, event_name: str, data: dict):
     state = client.get_workflow_state(instance_id)
     if not state:
         raise Exception(f"Workflow {instance_id} not found")
-    if state.runtime_status != "RUNNING":
-        raise Exception(f"Workflow {instance_id} is {state.runtime_status}, not RUNNING")
+    if state.runtime_status != WorkflowStatus.RUNNING:
+        raise Exception(f"Workflow {instance_id} is {state.runtime_status.name}, not RUNNING")
 
-    client.raise_workflow_event(instance_id, event_name, data)
+    client.raise_workflow_event(instance_id, event_name, data=data)
     print(f"Event '{event_name}' sent to workflow {instance_id}")
 ```
 
