@@ -39,11 +39,11 @@ This matches documents where `title` is `"resume"`, `"Resume"`, `"RESUME"`, `"r√
 ```text
 Strength   Ignores accents   Ignores case
 1          YES               YES
-2          YES               NO
+2          NO                YES
 3          NO                NO
 ```
 
-Use strength 1 for maximum permissiveness (ignores both). Use strength 2 to ignore accents only (keeps case sensitivity).
+Use strength 1 for maximum permissiveness (ignores both). Use strength 2 to ignore case only (keeps accent sensitivity).
 
 ## Creating an Accent-Insensitive Index
 
