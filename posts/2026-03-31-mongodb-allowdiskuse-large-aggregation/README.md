@@ -92,7 +92,7 @@ db.orders.aggregate([
 
 ## Disabling allowDiskUse Globally (Security)
 
-To prevent users from enabling disk use, set `allowDiskUseByDefault: false` and restrict the `bypassDocumentValidation` role:
+Starting with MongoDB 6.0, `allowDiskUseByDefault` is `true` by default, meaning aggregation stages can spill to disk without explicitly setting `allowDiskUse: true`. To disable this behavior and require explicit opt-in, set the parameter to `false`:
 
 ```javascript
 db.adminCommand({
@@ -101,7 +101,7 @@ db.adminCommand({
 })
 ```
 
-On MongoDB Atlas, `allowDiskUse` is enabled by default; you can restrict it per cluster tier.
+On MongoDB versions before 6.0, `allowDiskUse` must be explicitly set per aggregation call.
 
 ## When to Use allowDiskUse vs. Creating an Index
 
