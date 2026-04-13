@@ -10,10 +10,10 @@ Description: Learn the key differences between MongoDB and AWS DocumentDB, how t
 
 ## What Is AWS DocumentDB?
 
-AWS DocumentDB is a managed document database service from Amazon that implements a subset of the MongoDB 4.0 API. It is not MongoDB - it uses a different storage engine but exposes a MongoDB-compatible wire protocol, allowing most MongoDB drivers and tools to connect to it.
+AWS DocumentDB is a managed document database service from Amazon that implements a subset of the MongoDB API. It is not MongoDB - it uses a different storage engine but exposes a MongoDB-compatible wire protocol, allowing most MongoDB drivers and tools to connect to it.
 
 Key differences:
-- DocumentDB implements MongoDB 4.0 API (not 5.x or 6.x features)
+- DocumentDB supports MongoDB 3.6, 4.0, and 5.0 API compatibility (not 6.x or 7.x features)
 - Replication and storage work differently under the hood
 - Some MongoDB operators and features are not supported
 - No MongoDB Atlas features (no Atlas Search, no Atlas Stream Processing)
@@ -38,9 +38,6 @@ mongosh "mongodb://username:password@your-cluster.cluster-abc123.us-east-1.docdb
 
 ```javascript
 const { MongoClient } = require("mongodb")
-const fs = require("fs")
-
-const ca = fs.readFileSync("global-bundle.pem")
 
 const client = new MongoClient(
   "mongodb://username:password@your-cluster.cluster-abc123.us-east-1.docdb.amazonaws.com:27017",
@@ -64,7 +61,6 @@ Note: `retryWrites: false` is required for DocumentDB - retryable writes are not
 
 ```python
 from pymongo import MongoClient
-import ssl
 
 client = MongoClient(
     "mongodb://username:password@your-cluster.cluster-abc123.us-east-1.docdb.amazonaws.com:27017",
@@ -87,7 +83,7 @@ SUPPORTED in DocumentDB:
 - Aggregation: $match, $group, $project, $sort, $limit, $skip, $unwind, $lookup
 - Indexes: single field, compound, text, partial, sparse
 - Transactions (within a single replica set)
-- Change streams (limited to cluster-level)
+- Change streams (collection, database, and cluster level)
 
 NOT SUPPORTED:
 - $setWindowFields (window functions - MongoDB 5.0+)
@@ -96,8 +92,7 @@ NOT SUPPORTED:
 - Retryable writes
 - $unionWith
 - Atlas Search / Atlas Vector Search
-- MongoDB 5.x, 6.x, 7.x, 8.x features
-- mongodump/mongorestore with --uri flag (use AWS DMS instead)
+- MongoDB 6.x, 7.x features
 ```
 
 ## Running Basic Operations
@@ -143,9 +138,10 @@ mongodump \
 
 # Import to DocumentDB
 mongorestore \
-  --uri "mongodb://user:pass@docdb-cluster.us-east-1.docdb.amazonaws.com:27017/?tls=true&tlsCAFile=global-bundle.pem" \
+  --host "docdb-cluster.us-east-1.docdb.amazonaws.com:27017" \
+  --username user --password pass \
   --dir ./dump \
-  --ssl --sslCAFile global-bundle.pem
+  --tls --tlsCAFile global-bundle.pem
 ```
 
 ## DocumentDB Elastic Clusters
@@ -165,7 +161,7 @@ Elastic Clusters have a different feature set from standard DocumentDB clusters.
 Choose DocumentDB when:
 - You are heavily invested in AWS and prefer fully managed AWS services
 - You need AWS-native security (VPC, IAM, KMS integration)
-- Your workload uses only MongoDB 4.0 API features
+- Your workload uses only MongoDB 5.0 or earlier API features
 - Cost optimization through AWS reserved pricing matters
 
 Choose MongoDB Atlas when:
@@ -177,4 +173,4 @@ Choose MongoDB Atlas when:
 
 ## Summary
 
-AWS DocumentDB implements the MongoDB 4.0 API with TLS required by default and no support for retryable writes or MongoDB 5.0+ features. Connect using standard MongoDB drivers with `retryWrites: false` and a TLS certificate. While DocumentDB works well for applications using core MongoDB CRUD and aggregation features, applications requiring advanced MongoDB features should use MongoDB Atlas instead.
+AWS DocumentDB implements up to the MongoDB 5.0 API with TLS required by default and no support for retryable writes. Connect using standard MongoDB drivers with `retryWrites: false` and a TLS certificate. While DocumentDB works well for applications using core MongoDB CRUD and aggregation features, applications requiring MongoDB 6.x+ features or Atlas-specific services should use MongoDB Atlas instead.
