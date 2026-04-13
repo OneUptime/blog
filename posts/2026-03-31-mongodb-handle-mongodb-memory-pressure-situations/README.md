@@ -21,7 +21,7 @@ mongosh --eval "db.serverStatus().wiredTiger.cache"
 var cache = db.serverStatus().wiredTiger.cache
 var dirty   = cache['tracked dirty bytes in the cache']
 var max     = cache['maximum bytes configured']
-var evicted = cache['pages evicted because they exceeded the in-memory maximum']
+var evicted = cache['modified pages evicted'] + cache['unmodified pages evicted']
 print(`Dirty: ${(dirty/1024/1024).toFixed(1)} MB`)
 print(`Max:   ${(max/1024/1024).toFixed(1)} MB`)
 print(`Dirty%: ${(dirty/max*100).toFixed(1)}%`)
@@ -32,7 +32,7 @@ Dirty cache above 20% or high eviction counts indicate memory pressure.
 
 ## Tuning the WiredTiger Cache Size
 
-By default, WiredTiger uses 50% of RAM minus 1 GB. Increase it in `mongod.conf`:
+By default, WiredTiger uses 50% of (RAM - 1 GB), or 256 MB, whichever is larger. Increase it in `mongod.conf`:
 
 ```yaml
 storage:
@@ -45,7 +45,7 @@ Only allocate memory that leaves sufficient headroom for the OS, index builds, a
 
 ## Controlling Sort Memory
 
-In-memory sorts that exceed `allowDiskUseByDefault` spill to disk. Check for this:
+In-memory sorts that exceed the sort memory limit (100 MB by default, controlled by `internalQueryMaxBlockingSortMemoryUsageBytes`) spill to disk when `allowDiskUseByDefault` is enabled. Check for this:
 
 ```javascript
 db.system.profile.find({ "usedDisk": true }).limit(5).pretty()
