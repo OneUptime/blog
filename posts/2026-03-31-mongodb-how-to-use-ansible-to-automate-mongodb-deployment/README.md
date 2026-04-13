@@ -117,7 +117,7 @@ mongodb_net_ssl: false
     name:
       - mongodb-org
       - mongodb-org-server
-      - mongodb-org-shell
+      - mongodb-mongosh
       - mongodb-org-tools
     state: present
     update_cache: true
@@ -249,9 +249,6 @@ ansible-playbook site.yml -i inventory/hosts.yml
 
 # Deploy with vault password for secrets
 ansible-playbook site.yml -i inventory/hosts.yml --ask-vault-pass
-
-# Run only installation tasks
-ansible-playbook site.yml -i inventory/hosts.yml --tags install
 
 # Limit to a specific host
 ansible-playbook site.yml -i inventory/hosts.yml --limit mongo1
