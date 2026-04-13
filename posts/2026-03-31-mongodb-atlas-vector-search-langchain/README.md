@@ -65,7 +65,7 @@ vector_store = MongoDBAtlasVectorSearch(
 ## Adding Documents to the Vector Store
 
 ```python
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 docs = [
     Document(
@@ -110,20 +110,24 @@ results = vector_store.similarity_search(
 
 ```python
 from langchain_openai import ChatOpenAI
-from langchain.chains import RetrievalQA
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 retriever = vector_store.as_retriever(search_kwargs={"k": 4})
 
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    retriever=retriever,
-    return_source_documents=True
-)
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer the user's question based on the following context:\n\n{context}"),
+    ("human", "{input}")
+])
 
-result = qa_chain.invoke({"query": "How does Atlas Vector Search work?"})
-print(result["result"])
-for doc in result["source_documents"]:
+question_answer_chain = create_stuff_documents_chain(llm, prompt)
+rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+
+result = rag_chain.invoke({"input": "How does Atlas Vector Search work?"})
+print(result["answer"])
+for doc in result["context"]:
     print(f"  Source: {doc.metadata['source']}")
 ```
 
