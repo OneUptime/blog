@@ -145,7 +145,7 @@ Use secondary reads for:
 - Background jobs processing historical data
 
 Avoid secondary reads for:
-- Reads that must reflect the latest write (use `primary` or `linearizable`)
+- Reads that must reflect the latest write (use `primary` read preference; for the strongest guarantees, also set read concern to `linearizable`)
 - Reads following a critical write in the same session (use sessions to ensure read-your-own-writes)
 
 ## Read-Your-Own-Writes with Sessions
