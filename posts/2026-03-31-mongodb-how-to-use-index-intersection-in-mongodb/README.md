@@ -16,7 +16,7 @@ For example, if you have separate indexes on `status` and `region`, MongoDB migh
 
 ## How Index Intersection Works
 
-MongoDB scans both indexes independently, collects document IDs (ObjectIds) from each, and performs a set intersection to find documents that match all conditions.
+MongoDB scans both indexes independently, collects internal record IDs from each, and performs a set intersection to find documents that match all conditions.
 
 ```javascript
 // Two separate indexes
@@ -38,7 +38,7 @@ Look for `AND_SORTED` or `AND_HASH` stages in the winning plan, which indicate i
 ## AND_SORTED vs AND_HASH
 
 ```text
-AND_SORTED  - Intersects sorted index results (more efficient for range queries)
+AND_SORTED  - Merges two index result streams that are both sorted by RecordId
 AND_HASH    - Hashes results from one index and probes with the other
 ```
 
