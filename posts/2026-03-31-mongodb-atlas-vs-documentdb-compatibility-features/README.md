@@ -10,23 +10,25 @@ Description: Compare MongoDB Atlas and Amazon DocumentDB on wire protocol compat
 
 ## Overview
 
-Amazon DocumentDB is a fully managed document database service on AWS that implements a subset of the MongoDB 4.0 wire protocol. It is not MongoDB - it is a proprietary AWS service that aims for compatibility. MongoDB Atlas is the official managed MongoDB service, available on AWS, Azure, and GCP.
+Amazon DocumentDB is a fully managed document database service on AWS that implements a subset of the MongoDB wire protocol (supporting versions 3.6, 4.0, 5.0, and 8.0). It is not MongoDB - it is a proprietary AWS service that aims for compatibility. MongoDB Atlas is the official managed MongoDB service, available on AWS, Azure, and GCP.
 
 ## Wire Protocol Compatibility
 
-DocumentDB claims MongoDB compatibility, but it implements only a subset of the MongoDB 4.0 API. Many MongoDB 5.x, 6.x, and 7.x features are unavailable.
+DocumentDB claims MongoDB compatibility, but it implements only a subset of the MongoDB API. While it supports up to MongoDB 5.0 and 8.0 compatibility modes, many MongoDB features remain unavailable.
 
 Notable DocumentDB gaps as of 2026:
 
 ```text
 Unsupported or limited in DocumentDB:
-- $lookup with pipeline stages (only equality joins)
-- Change streams (supported but delayed vs MongoDB)
-- Aggregation: $facet, $bucket, $unionWith (partial)
-- Atlas Search (not available)
-- Transactions with multi-statement support (limited)
-- MongoDB 5+ features: time-series collections, slot-based execution
-- Text search ($text) - limited implementation
+- $lookup with correlated subqueries (equality joins and uncorrelated subqueries only)
+- Change streams (supported but with higher latency vs MongoDB)
+- Aggregation: $facet, $unionWith (not supported); $bucket (supported in 8.0 only)
+- Atlas Search and Vector Search (not available - Atlas only)
+- Transactions (supported but with limits: 1-min timeout, 32MB log cap)
+- Time-series collections (not supported)
+- Slot-based query execution engine (not supported)
+- Client-side field-level encryption (not supported)
+- Text search ($text) - supported since DocumentDB 5.0 with limitations (English-only, no array field indexing)
 ```
 
 To check compatibility, test your application against DocumentDB using the MongoDB driver:
@@ -43,7 +45,7 @@ const client = new MongoClient(
 MongoDB Atlas supports the full aggregation pipeline. DocumentDB has notable limitations:
 
 ```javascript
-// Works in MongoDB Atlas, may fail in DocumentDB
+// Works in MongoDB Atlas, fails in DocumentDB (correlated $lookup and $facet unsupported)
 db.orders.aggregate([
   {
     $lookup: {
@@ -77,7 +79,7 @@ Approximate comparison on similar instance sizes:
 
 ```text
 DocumentDB costs (us-east-1, approximate):
-- db.r6g.large instance: ~$0.25/hr per instance
+- db.r6g.large instance: ~$0.34/hr per instance
 - Storage: $0.10/GB-month
 - I/O: $0.20/million requests (can be significant)
 
@@ -106,10 +108,10 @@ mongorestore --uri="mongodb+srv://user:pass@atlas-cluster.mongodb.net/mydb" \
 
 ## When to Use Each
 
-Choose Amazon DocumentDB when: you are locked into AWS, need tight IAM integration, want a familiar face for MongoDB 4.0 workloads, and do not need advanced aggregations or Atlas-specific features.
+Choose Amazon DocumentDB when: you are locked into AWS, need tight IAM integration, want a familiar face for basic MongoDB workloads, and do not need advanced aggregations or Atlas-specific features.
 
 Choose MongoDB Atlas when: you need full MongoDB API compatibility, plan to use Atlas Search or Vector Search, want multi-cloud flexibility, or are running MongoDB 5.x+ workloads.
 
 ## Summary
 
-Amazon DocumentDB is a reasonable choice for simple document storage within AWS if you only use basic MongoDB 4.0 features. For teams using modern MongoDB features, aggregation pipelines, Atlas Search, or multi-cloud deployments, MongoDB Atlas is the more capable and portable option.
+Amazon DocumentDB is a reasonable choice for simple document storage within AWS if you only use the subset of MongoDB features that DocumentDB supports. For teams using modern MongoDB features, aggregation pipelines, Atlas Search, or multi-cloud deployments, MongoDB Atlas is the more capable and portable option.
