@@ -129,15 +129,16 @@ Response includes:
 
 ```json
 {
+  "_id": "5ebad3c87cc5f925db2c6de5",
+  "clusterName": "myCluster",
+  "collName": "events",
+  "dbName": "appdb",
+  "paused": false,
   "state": "ACTIVE",
   "criteria": {
     "type": "DATE",
     "dateField": "createdAt",
     "expireAfterDays": 90
-  },
-  "stats": {
-    "bytesArchived": 52428800,
-    "numDocuments": 125000
   }
 }
 ```
@@ -148,9 +149,10 @@ To pause archiving temporarily:
 
 ```bash
 curl --user "publicKey:privateKey" --digest \
+  --header "Content-Type: application/json" \
   --request PATCH \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
-  --data '{"state": "PAUSED"}'
+  --data '{"paused": true}'
 ```
 
 ## Cost Considerations
