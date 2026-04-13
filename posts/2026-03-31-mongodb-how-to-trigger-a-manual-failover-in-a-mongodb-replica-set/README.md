@@ -27,7 +27,7 @@ rs.stepDown(60, 10);
 
 The arguments are:
 - `stepDownSecs` (60): How many seconds the node refuses to be primary after stepping down
-- `secondaryCatchUpPeriodSecs` (10): How long to wait for a secondary to catch up before forcing stepdown
+- `secondaryCatchUpPeriodSecs` (10): How long to wait for a secondary to catch up before stepping down; if no secondary catches up in time, the command errors and the primary does not step down
 
 After the command, the shell connection will be dropped (you connected to the primary, which is now a secondary). MongoDB automatically holds an election and a secondary becomes the new primary.
 
@@ -59,10 +59,15 @@ rs.reconfig(cfg);
 
 // Now step down the primary - the high-priority secondary will win the election
 rs.stepDown(60);
+```
 
-// After failover, restore original priority
+After the failover completes, connect to the **new primary** and restore the original priority:
+
+```javascript
+// Connect to the new primary, then restore original priority
 const cfg2 = rs.conf();
-cfg2.members[targetIdx].priority = 1;
+const targetIdx2 = cfg2.members.findIndex(m => m.host === "192.168.1.11:27018");
+cfg2.members[targetIdx2].priority = 1;
 rs.reconfig(cfg2);
 ```
 
