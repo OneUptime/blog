@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Audit Log, Compliance, Schema, Index, Change Stream
 
-Description: Learn how to build an immutable audit log system with MongoDB for compliance and security, using capped collections, change streams, and TTL policies.
+Description: Learn how to build an immutable audit log system with MongoDB for compliance and security, using change streams, TTL indexes, and compound indexes.
 
 ---
 
@@ -93,11 +93,23 @@ db.auditLogs.find(
 
 ## Using Change Streams for Real-Time Audit
 
-Capture changes automatically using a change stream:
+Capture changes automatically using a change stream. First, enable pre- and post-images on the collection (requires MongoDB 6.0+):
+
+```javascript
+db.runCommand({
+  collMod: "orders",
+  changeStreamPreAndPostImages: { enabled: true }
+});
+```
+
+Then open the change stream with both `fullDocument` and `fullDocumentBeforeChange` options:
 
 ```javascript
 const pipeline = [{ $match: { operationType: { $in: ["insert", "update", "delete"] } } }];
-const changeStream = db.collection("orders").watch(pipeline, { fullDocumentBeforeChange: "required" });
+const changeStream = db.collection("orders").watch(pipeline, {
+  fullDocument: "required",
+  fullDocumentBeforeChange: "required"
+});
 
 changeStream.on("change", async (change) => {
   await db.collection("auditLogs").insertOne({
