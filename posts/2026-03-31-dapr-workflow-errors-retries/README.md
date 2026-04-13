@@ -37,7 +37,7 @@ flowchart TD
 
 ## Prerequisites
 
-- Dapr v1.10 or later
+- Dapr v1.12 or later
 - Dapr workflow SDK (.NET, Go, or Python)
 
 ## Configuring Retry Policies
@@ -47,22 +47,10 @@ flowchart TD
 ```python
 import dapr.ext.workflow as wf
 from dapr.ext.workflow import DaprWorkflowContext, WorkflowActivityContext
-from dapr.ext.workflow.workflow_activity_config import WorkflowActivityConfig
 from datetime import timedelta
 import logging
 
 wfr = wf.WorkflowRuntime()
-
-# Retry policy: 3 retries, exponential backoff from 5s to 60s
-retry_policy = wf.WorkflowActivityConfig(
-    retry_policy=wf.RetryPolicy(
-        max_number_of_attempts=3,
-        first_retry_interval=timedelta(seconds=5),
-        backoff_coefficient=2.0,
-        max_retry_interval=timedelta(seconds=60),
-        retry_timeout=timedelta(minutes=5)
-    )
-)
 
 @wfr.workflow(name='resilient_workflow')
 def resilient_workflow(ctx: DaprWorkflowContext, order: dict):
@@ -147,7 +135,7 @@ func ResilientWorkflow(ctx *daprwf.WorkflowContext) (any, error) {
     var order OrderInput
     ctx.GetInput(&order)
 
-    retryPolicy := &daprwf.RetryPolicy{
+    retryPolicy := daprwf.RetryPolicy{
         MaxAttempts:          3,
         InitialRetryInterval: 5 * time.Second,
         BackoffCoefficient:   2.0,
@@ -157,7 +145,7 @@ func ResilientWorkflow(ctx *daprwf.WorkflowContext) (any, error) {
     var payment PaymentResult
     err := ctx.CallActivity(ChargePaymentActivity,
         daprwf.ActivityInput(order),
-        daprwf.WithRetryPolicy(retryPolicy),
+        daprwf.ActivityRetryPolicy(retryPolicy),
     ).Await(&payment)
     if err != nil {
         log.Printf("Payment failed after retries for order %s: %v", order.OrderID, err)
@@ -177,7 +165,7 @@ func ResilientWorkflow(ctx *daprwf.WorkflowContext) (any, error) {
             "orderId":       order.OrderID,
             "transactionId": payment.TransactionID,
         }),
-        daprwf.WithRetryPolicy(&daprwf.RetryPolicy{MaxAttempts: 5}),
+        daprwf.ActivityRetryPolicy(daprwf.RetryPolicy{MaxAttempts: 5}),
     ).Await(&tracking)
     if err != nil {
         log.Printf("Shipping failed for order %s: %v", order.OrderID, err)
@@ -252,9 +240,7 @@ If a workflow is stuck in a retrying state, terminate it via the HTTP API:
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/order-001/terminate" \
-  -H "Content-Type: application/json" \
-  -d '{"output": "Manually terminated by operator"}'
+  "http://localhost:3500/v1.0/workflows/dapr/order-001/terminate"
 ```
 
 ## Summary
