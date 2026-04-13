@@ -81,11 +81,11 @@ db.events.aggregate([
 
 ## Numeric vs String Partitions
 
-By default, partition values are strings. You can cast them to integers using a `{partitionName int}` syntax to enable range queries:
+By default, partition values are strings. You can cast them to integers using a `{partitionName : int}` syntax to enable range queries:
 
 ```json
 {
-  "path": "/metrics/year={year int}/month={month int}/day={day int}/{filename}"
+  "path": "/metrics/year={year : int}/month={month : int}/day={day : int}/{filename}"
 }
 ```
 
