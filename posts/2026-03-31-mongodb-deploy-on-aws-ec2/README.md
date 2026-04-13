@@ -44,7 +44,6 @@ sudo mkfs.xfs /dev/xvdf
 sudo mkdir -p /data/mongodb
 sudo mount /dev/xvdf /data/mongodb
 echo '/dev/xvdf /data/mongodb xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
-sudo chown -R mongod:mongod /data/mongodb
 ```
 
 Using XFS and setting `noatime` is recommended by MongoDB for best performance.
@@ -62,6 +61,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
 EOF
 
 sudo yum install -y mongodb-org
+sudo chown -R mongod:mongod /data/mongodb
 ```
 
 ## Configure MongoDB
