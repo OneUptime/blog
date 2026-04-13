@@ -103,7 +103,7 @@ gcloud functions deploy products \
   --trigger-http \
   --allow-unauthenticated \
   --set-env-vars MONGODB_URI="mongodb+srv://..." \
-  --memory=256MB \
+  --memory=256Mi \
   --timeout=60s
 ```
 
@@ -141,12 +141,13 @@ gcloud secrets add-iam-policy-binding MONGODB_URI \
   --role="roles/secretmanager.secretAccessor"
 ```
 
-```yaml
-# In function.yaml
-secretEnvironmentVariables:
-  - key: MONGODB_URI
-    secret: MONGODB_URI
-    version: latest
+Then deploy the function with the secret:
+
+```bash
+gcloud functions deploy products \
+  --gen2 \
+  --set-secrets 'MONGODB_URI=MONGODB_URI:latest' \
+  ...
 ```
 
 ## Summary
