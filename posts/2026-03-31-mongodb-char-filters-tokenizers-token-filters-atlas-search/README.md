@@ -56,7 +56,7 @@ Replaces character sequences. Use for normalizing abbreviations or removing spec
 }
 ```
 
-### Persian (icuNormalize)
+### icuNormalize
 
 For languages using non-ASCII scripts, normalize Unicode characters:
 
@@ -95,17 +95,17 @@ Use for product codes like `SKU-2024-XL` that should remain as single tokens.
 Generates all n-grams of specified length. Enables substring search:
 
 ```json
-{ "type": "nGram", "minGram": 3, "maxGram": 5 }
+{ "type": "nGram", "minGram": 2, "maxGram": 3 }
 ```
 
 Input: `"cat"` with minGram=2, maxGram=3 -> `"ca"`, `"at"`, `"cat"`
 
-### edgeNGram
+### edgeGram
 
 Generates n-grams only from the start of each token. More efficient for autocomplete:
 
 ```json
-{ "type": "edgeNGram", "minGram": 2, "maxGram": 10 }
+{ "type": "edgeGram", "minGram": 2, "maxGram": 10 }
 ```
 
 ### keyword
@@ -191,4 +191,4 @@ Removes leading and trailing whitespace from tokens:
 
 ## Summary
 
-Atlas Search custom analyzers chain char filters, a tokenizer, and token filters into a text processing pipeline. Char filters pre-process raw text (strip HTML, map characters), tokenizers split text into tokens (standard, whitespace, nGram, edgeNGram), and token filters transform or remove tokens (lowercase, stemming, stop words). Combine these components to handle product codes, HTML content, autocomplete, and multilingual text.
+Atlas Search custom analyzers chain char filters, a tokenizer, and token filters into a text processing pipeline. Char filters pre-process raw text (strip HTML, map characters), tokenizers split text into tokens (standard, whitespace, nGram, edgeGram), and token filters transform or remove tokens (lowercase, stemming, stop words). Combine these components to handle product codes, HTML content, autocomplete, and multilingual text.
