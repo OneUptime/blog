@@ -97,9 +97,9 @@ OP_EXECUTION_TIME_READS        - Read operation execution time
 OP_EXECUTION_TIME_WRITES       - Write operation execution time
 OP_EXECUTION_TIME_COMMANDS     - Command execution time
 QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED - Docs scanned per returned (index efficiency)
-QUERY_TARGETING_SCANNED_KEYS_PER_RETURNED   - Keys scanned per returned
+QUERY_TARGETING_SCANNED_PER_RETURNED        - Keys scanned per returned
 CONNECTIONS                    - Total connections
-OPCOUNTERS_QUERY               - Queries per second
+OPCOUNTER_QUERY                - Queries per second
 ```
 
 ## Approach 2: Custom Profiler Alert Script
@@ -235,8 +235,8 @@ async function checkCollectionScans() {
 For Atlas clusters, the Performance Advisor automatically analyzes slow queries and suggests indexes - covering many alerting use cases without custom scripts:
 
 ```bash
-# Get suggested indexes
-atlas performanceAdvisor suggestedIndexes list --clusterName myCluster
+# Get suggested indexes (replace <hostname:port> with your cluster process name)
+atlas performanceAdvisor suggestedIndexes list --processName myCluster-shard-00-00.example.mongodb.net:27017
 ```
 
 ## Summary
