@@ -13,7 +13,7 @@ GraphQL subscriptions push data to clients over a persistent WebSocket connectio
 ## Installing Dependencies
 
 ```bash
-npm install @apollo/server @graphql-tools/schema graphql-ws ws graphql mongoose
+npm install @apollo/server @graphql-tools/schema graphql-ws ws graphql mongoose express graphql-subscriptions
 ```
 
 ## Setting Up WebSocket Transport
@@ -117,7 +117,7 @@ const { withFilter } = require('graphql-subscriptions');
 const resolvers = {
   Subscription: {
     postCreated: {
-      subscribe: () => pubsub.asyncIterator(['POST_CREATED']),
+      subscribe: () => pubsub.asyncIterableIterator(['POST_CREATED']),
       resolve: (payload) => ({
         ...payload.postCreated,
         id: payload.postCreated._id.toString(),
@@ -126,7 +126,7 @@ const resolvers = {
 
     postUpdated: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator(['POST_UPDATED']),
+        () => pubsub.asyncIterableIterator(['POST_UPDATED']),
         (payload, variables) => {
           if (!variables.id) return true;
           return payload.postUpdated._id.toString() === variables.id;
@@ -139,7 +139,7 @@ const resolvers = {
     },
 
     postDeleted: {
-      subscribe: () => pubsub.asyncIterator(['POST_DELETED']),
+      subscribe: () => pubsub.asyncIterableIterator(['POST_DELETED']),
       resolve: (payload) => payload.postDeleted,
     },
   },
