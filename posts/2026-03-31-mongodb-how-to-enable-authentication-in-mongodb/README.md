@@ -14,12 +14,14 @@ By default, MongoDB allows connections from localhost without authentication. Th
 
 ## Step 1: Create the First Admin User
 
-Before enabling authentication, create an admin user. You can only do this from `localhost` without auth, or during a startup with `--noauth` temporarily.
+Before enabling authentication, create an admin user. The localhost exception allows you to connect from `localhost` and create the first user when no users exist in the system.
+
+```bash
+# Connect to MongoDB without auth
+mongosh --host localhost --port 27017
+```
 
 ```javascript
-// Connect to MongoDB without auth
-mongosh --host localhost --port 27017
-
 use admin
 db.createUser({
   user: "admin",
@@ -43,10 +45,10 @@ security:
   authorization: enabled
 ```
 
-Or pass it as a command-line flag:
+Or pass it as a command-line flag instead of editing the config file:
 
 ```bash
-mongod --auth --config /etc/mongod.conf
+mongod --auth
 ```
 
 ## Step 3: Restart mongod
@@ -61,9 +63,12 @@ Try connecting without credentials - should fail:
 
 ```bash
 mongosh --host localhost --port 27017
-# In shell:
+```
+
+```javascript
 db.runCommand({ connectionStatus: 1 })
-# Returns: "You are not currently authenticated."
+// Returns: { authInfo: { authenticatedUsers: [], authenticatedUserRoles: [] }, ok: 1 }
+// Empty arrays confirm you are not authenticated
 ```
 
 Connect with credentials:
