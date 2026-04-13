@@ -141,8 +141,9 @@ const plan = await collection
   .sort({ price: -1 })
   .explain('executionStats');
 
-console.log(plan.executionStats.executionStages.stage);
-// 'IXSCAN' = uses index, 'SORT' = in-memory sort (slower)
+console.log(JSON.stringify(plan.queryPlanner.winningPlan, null, 2));
+// If a 'SORT' stage appears in the plan, it is an in-memory sort (slower)
+// If no 'SORT' stage appears, the index is providing the sort order
 ```
 
 ## Sort Memory Limit
