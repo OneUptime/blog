@@ -137,13 +137,17 @@ a_products = list(products.find({'name': re.compile('^A')}))
 
 ### Anchored regex patterns use indexes
 
-Regex patterns anchored to the start of the string (`^pattern`) can use an index:
+Case-sensitive regex patterns anchored to the start of the string (`^pattern`) can use an index efficiently:
 
 ```javascript
-// This CAN use an index on 'name'
+// This CAN use an index on 'name' (case-sensitive, anchored)
+await products.find({ name: /^Apple/ })
+
+// Case-insensitive regex generally CANNOT use indexes effectively,
+// even with an anchor — the prefix optimization does not apply
 await products.find({ name: /^Apple/i })
 
-// This CANNOT efficiently use an index (pattern in the middle or end)
+// These also CANNOT efficiently use an index (no anchor or end anchor)
 await products.find({ name: /Apple/ })    // no anchor
 await products.find({ name: /Apple$/i })  // end anchor
 ```
@@ -163,19 +167,19 @@ await products.find({ $text: { $search: 'wireless headphones' } })
 
 ```javascript
 const plan = await products
-  .find({ name: /^Apple/i })
+  .find({ name: /^Apple/ })
   .explain('executionStats');
 
 console.log(plan.executionStats.executionStages.stage);
-// 'IXSCAN' for anchored patterns on indexed fields
-// 'COLLSCAN' for unanchored patterns
+// 'FETCH' with inputStage 'IXSCAN' for case-sensitive anchored patterns on indexed fields
+// 'COLLSCAN' for unanchored or case-insensitive patterns
 ```
 
 ## When to Use $regex vs. $text
 
 | Use Case | Recommendation |
 |----------|---------------|
-| Prefix matching (`^pattern`) | `$regex` with index |
+| Case-sensitive prefix matching (`^pattern`) | `$regex` with index |
 | Exact pattern matching | `$regex` |
 | Full-text word search | `$text` with text index |
 | Case-insensitive contains | `$text` (faster) or `$regex` with `i` flag |
@@ -183,4 +187,4 @@ console.log(plan.executionStats.executionStages.stage);
 
 ## Summary
 
-MongoDB's `$regex` operator enables powerful pattern matching on string fields using PCRE syntax. Anchored patterns (starting with `^`) can leverage indexes for efficient execution, while unanchored patterns require full collection scans. Use the `i` option for case-insensitive matching. For full-text search scenarios involving natural language queries, prefer `$text` with a text index over `$regex`, as it is significantly faster on large collections.
+MongoDB's `$regex` operator enables powerful pattern matching on string fields using PCRE syntax. Case-sensitive anchored patterns (starting with `^`) can leverage indexes for efficient execution, while unanchored or case-insensitive patterns require broader scans. Use the `i` option for case-insensitive matching, but be aware it prevents efficient index usage. For full-text search scenarios involving natural language queries, prefer `$text` with a text index over `$regex`, as it is significantly faster on large collections.
