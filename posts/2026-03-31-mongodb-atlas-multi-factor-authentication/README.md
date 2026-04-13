@@ -18,12 +18,12 @@ MFA is configured per-user in the Atlas account settings.
 
 1. Log in to [cloud.mongodb.com](https://cloud.mongodb.com).
 2. Click your username in the top-right corner and select **Account**.
-3. Under **Security** > **Two-Factor Authentication**, click **Enable**.
+3. Under **Security** > **Multi-Factor Authentication**, click **Enable**.
 4. Choose an authenticator method.
 
 Atlas supports the following MFA methods:
 - **TOTP authenticator app** (Google Authenticator, Authy, 1Password) - recommended
-- **SMS one-time password** - convenient but less secure than TOTP
+- **Push notification via Okta Verify** - convenient tap-to-approve on your mobile device
 - **Security key (WebAuthn/FIDO2)** - hardware keys like YubiKey for highest security
 
 ## Setting Up TOTP with an Authenticator App
