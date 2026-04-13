@@ -21,8 +21,7 @@ When you upload a file with GridFS, MongoDB creates a document in `fs.files`:
   chunkSize: 261120,
   uploadDate: ISODate("2026-03-31T09:00:00Z"),
   filename: "report-q1-2026.pdf",
-  contentType: "application/pdf",
-  metadata: { uploadedBy: "user123" }
+  metadata: { contentType: "application/pdf", uploadedBy: "user123" }
 }
 ```
 
@@ -65,7 +64,7 @@ async function uploadFile(db, fileBuffer, fileInfo) {
   const uploadStream = bucket.openUploadStreamWithId(
     gridfsId,
     fileInfo.filename,
-    { contentType: fileInfo.contentType }
+    { metadata: { contentType: fileInfo.contentType } }
   )
 
   await new Promise((resolve, reject) => {
@@ -106,7 +105,7 @@ db.files.find({
   status: "active"
 }).sort({ createdAt: -1 })
 
-// Full-text search on tags
+// Filter by multiple tags
 db.files.find({
   tags: { $all: ["finance", "2026"] }
 })
@@ -127,7 +126,7 @@ When a user requests a file, look up the `gridfsId` and stream from GridFS:
 ```javascript
 async function downloadFile(db, res, fileId) {
   const fileDoc = await db.collection('files').findOne({
-    _id: ObjectId(fileId),
+    _id: new ObjectId(fileId),
     status: 'active'
   })
 
