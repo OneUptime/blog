@@ -56,11 +56,20 @@ db.profiles.createIndex({ phone: 1 }, { unique: true })
 
 db.profiles.insertOne({ name: "Alice", phone: null })  // OK
 db.profiles.insertOne({ name: "Bob", phone: null })    // Error - duplicate null
+db.profiles.insertOne({ name: "Charlie" })             // Error - missing field treated as null
 
-// Solution: use sparse unique index to allow multiple nulls
+// A sparse index only helps with missing fields, not explicit nulls
 db.profiles.dropIndex("phone_1")
 db.profiles.createIndex({ phone: 1 }, { unique: true, sparse: true })
-// Now multiple documents can have phone: null or omit the phone field
+// Multiple documents can omit the phone field, but only one can have phone: null
+
+// Solution: use a partial index to allow multiple nulls and missing fields
+db.profiles.dropIndex("phone_1")
+db.profiles.createIndex(
+  { phone: 1 },
+  { unique: true, partialFilterExpression: { phone: { $type: "string" } } }
+)
+// Now uniqueness is enforced only when phone is a string value
 ```
 
 ## Unique Partial Index
@@ -154,4 +163,4 @@ db.users.createIndex({ email: 1 }, { unique: true })
 
 ## Summary
 
-Unique indexes enforce that all values for an indexed field (or combination of fields) are distinct across documents in a collection. Create them with `{ unique: true }` in `createIndex()`. Duplicate inserts or updates throw error code 11000. Combine with `sparse: true` to allow multiple null values, or with `partialFilterExpression` to restrict uniqueness to a subset of documents. Always check for existing duplicates before creating a unique index on a populated collection.
+Unique indexes enforce that all values for an indexed field (or combination of fields) are distinct across documents in a collection. Create them with `{ unique: true }` in `createIndex()`. Duplicate inserts or updates throw error code 11000. Combine with `partialFilterExpression` to restrict uniqueness to a subset of documents or to allow multiple null/missing values. Always check for existing duplicates before creating a unique index on a populated collection.
