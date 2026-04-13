@@ -14,7 +14,7 @@ The `$project` stage in MongoDB's aggregation pipeline reshapes documents by sel
 
 ```javascript
 db.collection.aggregate([
-  { $project: { field1: 1, field2: 0, newField: "$existingField" } }
+  { $project: { field1: 1, field2: 1, newField: "$existingField" } }
 ])
 ```
 
