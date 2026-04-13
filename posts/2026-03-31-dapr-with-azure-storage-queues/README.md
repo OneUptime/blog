@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Azure, Storage Queue, Pub/Sub, Messaging
+Tags: Dapr, Azure, Storage Queue, Bindings, Messaging
 
-Description: Configure Dapr pub/sub with Azure Storage Queues as a simple, low-cost message queue for decoupling microservices with at-least-once delivery guarantees.
+Description: Configure Dapr bindings with Azure Storage Queues as a simple, low-cost message queue for decoupling microservices with at-least-once delivery guarantees.
 
 ---
 
-Azure Storage Queues are a simple, durable, low-cost message queue service built into Azure Storage. Dapr supports Storage Queues as a pub/sub backend, making it a good choice for basic messaging scenarios where Azure Service Bus overhead is not needed.
+Azure Storage Queues are a simple, durable, low-cost message queue service built into Azure Storage. Dapr supports Storage Queues as an input/output binding, making it a good choice for basic messaging scenarios where Azure Service Bus overhead is not needed.
 
 ## Create a Storage Queue
 
@@ -35,47 +35,48 @@ kubectl create secret generic azure-queue-secret \
   --from-literal=storageKey="$STORAGE_KEY"
 ```
 
-## Configure Dapr Storage Queues Pub/Sub
+## Configure Dapr Storage Queues Binding
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: storagequeuepubsub
+  name: orderqueue
   namespace: default
 spec:
-  type: pubsub.azure.storagequeues
+  type: bindings.azure.storagequeues
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: mydaprqueues
-  - name: storageAccessKey
+  - name: accountKey
     secretKeyRef:
       name: azure-queue-secret
       key: storageKey
-  - name: storageConnectionString
-    value: ""
-  - name: queueEndpointUrl
+  - name: queueName
+    value: order-events
+  - name: endpoint
     value: https://mydaprqueues.queue.core.windows.net
   - name: ttlInSeconds
     value: "86400"
   - name: visibilityTimeout
     value: "30s"
-  - name: maxRetriableErrorsPerSecond
-    value: "10"
   - name: decodeBase64
     value: "false"
 ```
 
-## Publish Messages
+## Send Messages via Output Binding
 
 ```python
 import requests
 
 def publish_order(order: dict):
     resp = requests.post(
-        "http://localhost:3500/v1.0/publish/storagequeuepubsub/order-events",
-        json=order,
+        "http://localhost:3500/v1.0/bindings/orderqueue",
+        json={
+            "operation": "create",
+            "data": order
+        },
         headers={"Content-Type": "application/json"}
     )
     resp.raise_for_status()
@@ -91,7 +92,7 @@ for i in range(5):
     })
 ```
 
-## Subscribe to Queue Messages
+## Receive Messages via Input Binding
 
 ```python
 from flask import Flask, request, jsonify
@@ -99,29 +100,23 @@ import time
 
 app = Flask(__name__)
 
-@app.route('/dapr/subscribe', methods=['GET'])
-def subscribe():
-    return jsonify([{
-        "pubsubname": "storagequeuepubsub",
-        "topic": "order-events",
-        "route": "/process-order"
-    }])
-
-@app.route('/process-order', methods=['POST'])
+# Dapr invokes this route for each message from the queue.
+# The route name must match the binding component name.
+@app.route('/orderqueue', methods=['POST'])
 def process_order():
-    event = request.json
-    order = event.get('data', {})
+    order = request.json
 
     print(f"Processing order: {order['id']}")
     print(f"Total: ${order['total']}")
 
     try:
         fulfill_order(order)
-        return jsonify({"status": "SUCCESS"})
+        return jsonify({"success": True}), 200
     except Exception as e:
         print(f"Processing failed: {e}")
-        # RETRY re-enqueues after visibility timeout
-        return jsonify({"status": "RETRY"})
+        # Return non-200 so the message stays in the queue
+        # and is retried after visibility timeout
+        return jsonify({"success": False}), 500
 
 def fulfill_order(order: dict):
     # Simulate processing
@@ -135,14 +130,17 @@ if __name__ == '__main__':
 ## Set Message TTL
 
 ```python
-# Publish with custom TTL
+# Send with custom TTL via binding metadata
 requests.post(
-    "http://localhost:3500/v1.0/publish/storagequeuepubsub/order-events",
-    json={"id": "order-flash", "type": "flash-sale", "expiresIn": "1h"},
-    headers={
-        "Content-Type": "application/json",
-        "dapr-ttlinseconds": "3600"
-    }
+    "http://localhost:3500/v1.0/bindings/orderqueue",
+    json={
+        "operation": "create",
+        "data": {"id": "order-flash", "type": "flash-sale", "expiresIn": "1h"},
+        "metadata": {
+            "ttlInSeconds": "3600"
+        }
+    },
+    headers={"Content-Type": "application/json"}
 ).raise_for_status()
 ```
 
@@ -152,7 +150,7 @@ requests.post(
 # Azure Storage Queues - when to use:
 # - Simple FIFO messaging
 # - Messages up to 64KB
-# - Up to 7 days message retention
+# - Default 7 days message retention (configurable up to indefinite)
 # - No topic/subscription fan-out needed
 # - Cost-sensitive workloads (lower per-operation cost)
 
@@ -160,11 +158,11 @@ requests.post(
 # - Sessions for ordered processing
 # - Topics with multiple subscriptions (fan-out)
 # - Messages up to 256KB (Standard) or 100MB (Premium)
-# - Up to 14 days message retention
+# - Up to 14 days message retention (Basic), unlimited (Standard/Premium)
 # - Dead-letter queue with detailed reason
 # - Scheduled delivery
 ```
 
 ## Summary
 
-Azure Storage Queues with Dapr provide a simple, low-cost messaging solution for decoupling microservices. The Dapr pub/sub abstraction allows switching from Storage Queues to Service Bus or another broker later without changing application code. For basic work queue patterns with modest throughput requirements, Storage Queues offer the lowest operational complexity and cost.
+Azure Storage Queues with Dapr provide a simple, low-cost messaging solution for decoupling microservices. The Dapr binding abstraction allows switching from Storage Queues to another queue backend later with minimal application code changes. For basic work queue patterns with modest throughput requirements, Storage Queues offer the lowest operational complexity and cost.
