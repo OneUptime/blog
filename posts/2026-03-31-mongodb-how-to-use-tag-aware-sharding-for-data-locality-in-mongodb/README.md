@@ -48,7 +48,6 @@ sh.removeShardFromZone("shard01", "EU");
 The shard key must include the field that identifies the zone:
 
 ```javascript
-sh.enableSharding("mydb");
 sh.shardCollection("mydb.users", { region: 1, _id: 1 });
 ```
 
