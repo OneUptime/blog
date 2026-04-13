@@ -89,7 +89,7 @@ Create a template file `user_template.json`:
   "age": { "$integer": { "min": 18, "max": 80 } },
   "plan": { "$pick": { "array": ["free", "pro", "enterprise"] } },
   "createdAt": { "$date": { "min": "2023-01-01", "max": "2024-12-31" } },
-  "score": { "$float": { "min": 0, "max": 100, "fixed": 2 } }
+  "score": { "$floating": { "min": 0, "max": 100, "fixed": 2 } }
 }
 ```
 
@@ -97,7 +97,7 @@ Generate and import:
 
 ```bash
 mgeneratejs user_template.json -n 10000 | \
-  mongoimport --db testDB --collection users --jsonArray
+  mongoimport --db testDB --collection users
 ```
 
 ## Generating Time-Series Sample Data
