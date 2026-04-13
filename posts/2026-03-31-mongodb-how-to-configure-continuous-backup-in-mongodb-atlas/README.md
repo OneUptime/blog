@@ -28,7 +28,7 @@ curl -X PATCH \
   --digest -u "{publicKey}:{privateKey}" \
   -H "Content-Type: application/json" \
   -d '{
-    "backupEnabled": true,
+    "providerBackupEnabled": true,
     "pitEnabled": true
   }'
 ```
@@ -38,7 +38,7 @@ curl -X PATCH \
 Set snapshot frequency and retention periods:
 
 ```bash
-curl -X PUT \
+curl -X PATCH \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/backup/schedule" \
   --digest -u "{publicKey}:{privateKey}" \
   -H "Content-Type: application/json" \
@@ -90,7 +90,7 @@ curl -X PATCH \
   -d '{ "pitEnabled": true }'
 ```
 
-The oplog window size depends on your cluster tier. M10 clusters provide at least 1 hour of oplog; M30 and above provide up to 24 hours.
+The oplog window size depends on your cluster's write volume and the configured oplog size, not the cluster tier. All dedicated clusters (M10+) support PIT restore when Continuous Cloud Backup is enabled. You can adjust the restore window and oplog minimum retention hours to meet your recovery requirements.
 
 ## Listing Available Snapshots
 
