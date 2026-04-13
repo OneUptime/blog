@@ -77,7 +77,7 @@ db.raw_events.aggregate(
 
 ## Required Privilege
 
-`bypassDocumentValidation` requires the user to have the `bypassDocumentValidation` privilege, which is included in the built-in `dbOwner`, `backup`, `restore`, and `root` roles:
+`bypassDocumentValidation` requires the user to have the `bypassDocumentValidation` privilege, which is included in the built-in `dbAdmin`, `dbOwner`, `restore`, and `root` roles:
 
 ```javascript
 // Grant the privilege to a custom role
@@ -109,7 +109,7 @@ auditLog:
   destination: file
   format: JSON
   path: /var/log/mongodb/auditLog.json
-  filter: '{ atype: { $in: ["insert", "update"] } }'
+  filter: '{ atype: "authCheck", "param.command": { $in: ["insert", "update"] } }'
 ```
 
 This creates an audit trail so you can track which operations bypassed validation and who performed them.
