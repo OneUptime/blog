@@ -14,7 +14,7 @@ A geographically distributed replica set protects against regional outages and e
 
 ## Recommended Topologies
 
-**3-2-1 topology** (most common): Place 3 nodes in the primary region and 2 in a secondary region. The primary region maintains the majority vote, ensuring writes can be acknowledged without cross-region round trips.
+**3-2 topology** (most common): Place 3 nodes in the primary region and 2 in a secondary region. The primary region maintains the majority vote, ensuring writes can be acknowledged without cross-region round trips.
 
 **2-2-1 topology**: 2 nodes in region A, 2 in region B, 1 arbiter in a third region. Elections require cross-region votes, introducing write latency during failovers.
 
@@ -68,10 +68,8 @@ Create a write concern that requires acknowledgment from both regions:
 
 ```javascript
 var cfg = rs.conf()
-cfg.settings = {
-  getLastErrorModes: {
-    multiRegion: { "region": 2 }
-  }
+cfg.settings.getLastErrorModes = {
+  multiRegion: { "region": 2 }
 }
 rs.reconfig(cfg)
 ```
