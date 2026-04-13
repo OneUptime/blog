@@ -25,11 +25,15 @@ db.createRole({
   privileges: [
     {
       resource: { db: "myapp", collection: "orders" },
-      actions: ["find", "listCollections"]
+      actions: ["find"]
     },
     {
       resource: { db: "myapp", collection: "products" },
       actions: ["find"]
+    },
+    {
+      resource: { db: "myapp", collection: "" },
+      actions: ["listCollections"]
     }
   ],
   roles: []
@@ -82,7 +86,7 @@ db.createUser({
 db.getRole("editor", { showPrivileges: true })
 
 // Check current user's privileges
-db.runCommand({ connectionStatus: 1 })
+db.runCommand({ connectionStatus: 1, showPrivileges: true })
 ```
 
 ## Part 2 - Application-Level RBAC
