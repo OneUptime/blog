@@ -10,7 +10,7 @@ Description: Step-by-step guide to safely migrating your MongoDB deployment from
 
 ## Overview
 
-Upgrading MongoDB from 4.x to 5.x brings new features like time-series collections, live resharding, and serverless instances. However, the migration must be done carefully to avoid data loss or downtime. This guide covers the recommended rolling upgrade approach for replica sets and sharded clusters.
+Upgrading MongoDB from 4.x to 5.x brings new features like time-series collections, live resharding, and serverless instances (Atlas). However, the migration must be done carefully to avoid data loss or downtime. This guide covers the recommended rolling upgrade approach for replica sets and sharded clusters.
 
 ## Prerequisites
 
@@ -41,9 +41,9 @@ For Atlas clusters, use the Atlas UI to trigger an on-demand snapshot.
 
 MongoDB 5.0 removes several deprecated operators and configuration options. Audit your application code for:
 
-- Removed `$where` operator usage in aggregation (still allowed in find but restricted)
+- `$where` and other server-side JavaScript expressions are deprecated - plan to migrate away from them
 - `mongo` shell replaced by `mongosh`
-- `db.collection.count()` deprecated - use `countDocuments()` or `estimatedDocumentCount()`
+- `db.collection.count()` deprecated since 4.0 - use `countDocuments()` or `estimatedDocumentCount()`
 
 ```javascript
 // Deprecated - avoid
@@ -103,7 +103,7 @@ Once all members run 5.0, update the FCV:
 db.adminCommand({ setFeatureCompatibilityVersion: "5.0" })
 ```
 
-This is irreversible - you cannot downgrade FCV without a full restore.
+To downgrade FCV later, run `db.adminCommand({ setFeatureCompatibilityVersion: "4.4" })` but you must first remove any 5.0-specific features (e.g., drop time-series collections).
 
 ## Step 6 - Update Application Drivers
 
@@ -111,7 +111,7 @@ Update your MongoDB drivers to versions compatible with 5.0:
 
 ```bash
 # Node.js
-npm install mongodb@5
+npm install mongodb@4
 
 # Python
 pip install pymongo==4.3.3
@@ -149,7 +149,7 @@ If issues arise, roll back using your backup:
 mongorestore --uri="mongodb://localhost:27017" --drop /backup/mongo-4x-backup
 ```
 
-Note: You can only downgrade from 5.0 to 4.4 if FCV has not been updated to 5.0.
+Note: To downgrade from 5.0 to 4.4, you must first set FCV back to "4.4" and remove any 5.0-specific features before downgrading the binaries.
 
 ## Summary
 
