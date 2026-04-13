@@ -109,7 +109,7 @@ For complex calculations, use a custom aggregation pipeline:
 
 ```javascript
 [
-  { "$match": { "status": "completed", "createdAt": { "$gte": { "$date": "2026-01-01" } } } },
+  { "$match": { "status": "completed", "createdAt": { "$gte": { "$date": "2026-01-01T00:00:00Z" } } } },
   { "$group": {
     "_id": { "month": { "$month": "$createdAt" }, "year": { "$year": "$createdAt" } },
     "revenue": { "$sum": "$amount" },
@@ -230,7 +230,7 @@ Editor              Can create and edit charts
 Owner               Full control including sharing
 ```
 
-You can also restrict which fields in a collection are accessible to Charts by configuring field-level access in App Services.
+You can also restrict which fields in a collection are accessible to Charts by configuring field-level access in the Charts data source settings.
 
 ## Best Practices
 
