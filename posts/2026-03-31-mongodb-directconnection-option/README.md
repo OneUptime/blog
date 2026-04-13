@@ -48,7 +48,7 @@ await client.connect();
 // This connects only to host2, regardless of replica set topology
 const db = client.db('admin');
 const status = await db.command({ serverStatus: 1 });
-console.log(`Host: ${status.host}, Role: ${status.repl.ismaster ? 'primary' : 'secondary'}`);
+console.log(`Host: ${status.host}, Role: ${status.repl.isWritablePrimary ? 'primary' : 'secondary'}`);
 ```
 
 ## PyMongo
@@ -70,31 +70,31 @@ print(f"Connected to: {status['host']}")
 ## Java Driver
 
 ```java
-import com.mongodb.ConnectionString;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 
 String uri = "mongodb://host2:27017/?directConnection=true";
 MongoClient client = MongoClients.create(uri);
 ```
 
-## Running Maintenance Commands on a Secondary
+## Running Maintenance Commands on a Specific Node
 
 ```javascript
 const { MongoClient } = require('mongodb');
 
-const secondary = new MongoClient('mongodb://host2:27017', {
+// Connect directly to the primary to trigger a step-down
+const primary = new MongoClient('mongodb://host1:27017', {
   directConnection: true,
 });
 
-await secondary.connect();
+await primary.connect();
 
-// Force a secondary to become primary (admin command)
-const admin = secondary.db('admin');
+const admin = primary.db('admin');
 
-// Trigger a step-down on the current primary (connect to primary first)
+// replSetStepDown must be run on the primary - it forces the primary to step down for 60 seconds
 await admin.command({ replSetStepDown: 60 });
 
-await secondary.close();
+await primary.close();
 ```
 
 ## Comparison: directConnection vs Normal Connection
