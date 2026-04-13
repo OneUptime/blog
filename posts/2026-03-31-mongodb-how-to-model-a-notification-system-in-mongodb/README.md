@@ -19,15 +19,15 @@ A notification document should capture who it's for, what happened, and whether 
 ```javascript
 {
   _id: ObjectId(),
-  userId: ObjectId("64a1b2c3d4e5f6789012345"),
+  userId: ObjectId("64a1b2c3d4e5f67890123450"),
   type: "comment",
   isRead: false,
   createdAt: new Date(),
   data: {
-    actorId: ObjectId("64a1b2c3d4e5f6789012346"),
+    actorId: ObjectId("64a1b2c3d4e5f67890123460"),
     actorName: "Jane Doe",
     resourceType: "post",
-    resourceId: ObjectId("64a1b2c3d4e5f6789012347"),
+    resourceId: ObjectId("64a1b2c3d4e5f67890123470"),
     preview: "Great article!"
   }
 }
@@ -64,9 +64,8 @@ Fetch the latest 20 unread notifications for a user:
 
 ```javascript
 db.notifications.find(
-  { userId: userId, isRead: false },
-  { sort: { createdAt: -1 }, limit: 20 }
-);
+  { userId: userId, isRead: false }
+).sort({ createdAt: -1 }).limit(20);
 ```
 
 Mark all notifications as read in a single bulk write:
