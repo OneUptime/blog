@@ -20,8 +20,9 @@ Hybrid search combines the precision of keyword matching with the semantic under
 
 You need both a text search index and a vector search index on the same collection:
 
+Atlas Search index (for keyword search):
+
 ```json
-// Atlas Search index (for keyword search)
 {
   "mappings": {
     "dynamic": false,
@@ -31,8 +32,11 @@ You need both a text search index and a vector search index on the same collecti
     }
   }
 }
+```
 
-// Atlas Vector Search index (for semantic search)
+Atlas Vector Search index (for semantic search):
+
+```json
 {
   "fields": [
     {
@@ -70,13 +74,19 @@ async function hybridSearch(db, query, queryEmbedding, options = {}) {
       }
     },
     { $limit: 20 },
+    { $addFields: { ks: { $meta: "searchScore" } } },
+    {
+      $setWindowFields: {
+        sortBy: { ks: -1 },
+        output: { ks_rank: { $documentNumber: {} } }
+      }
+    },
     {
       $project: {
         _id: 1,
         title: 1,
         description: 1,
-        ks: { $meta: "searchScore" },
-        type: { $literal: "keyword" }
+        ks_rank: 1
       }
     },
 
@@ -94,27 +104,33 @@ async function hybridSearch(db, query, queryEmbedding, options = {}) {
               limit: 20
             }
           },
+          { $addFields: { vs: { $meta: "vectorSearchScore" } } },
+          {
+            $setWindowFields: {
+              sortBy: { vs: -1 },
+              output: { vs_rank: { $documentNumber: {} } }
+            }
+          },
           {
             $project: {
               _id: 1,
               title: 1,
               description: 1,
-              vs: { $meta: "vectorSearchScore" },
-              type: { $literal: "vector" }
+              vs_rank: 1
             }
           }
         ]
       }
     },
 
-    // Group and merge scores
+    // Group and merge ranks
     {
       $group: {
         _id: "$_id",
         title: { $first: "$title" },
         description: { $first: "$description" },
-        ks: { $max: { $ifNull: ["$ks", 0] } },
-        vs: { $max: { $ifNull: ["$vs", 0] } }
+        ks_rank: { $min: { $ifNull: ["$ks_rank", 1000] } },
+        vs_rank: { $min: { $ifNull: ["$vs_rank", 1000] } }
       }
     },
 
@@ -123,8 +139,8 @@ async function hybridSearch(db, query, queryEmbedding, options = {}) {
       $addFields: {
         rrf: {
           $add: [
-            { $multiply: [keywordWeight, { $divide: [1, { $add: [rrf_k, "$ks"] }] }] },
-            { $multiply: [vectorWeight, { $divide: [1, { $add: [rrf_k, { $multiply: [100, "$vs"] }] }] }] }
+            { $multiply: [keywordWeight, { $divide: [1, { $add: [rrf_k, "$ks_rank"] }] }] },
+            { $multiply: [vectorWeight, { $divide: [1, { $add: [rrf_k, "$vs_rank"] }] }] }
           ]
         }
       }
@@ -150,7 +166,14 @@ def hybrid_search(collection, query: str, query_embedding: list, limit: int = 10
             }
         },
         {"$limit": 20},
-        {"$project": {"_id": 1, "title": 1, "ks": {"$meta": "searchScore"}}},
+        {"$addFields": {"ks": {"$meta": "searchScore"}}},
+        {
+            "$setWindowFields": {
+                "sortBy": {"ks": -1},
+                "output": {"ks_rank": {"$documentNumber": {}}}
+            }
+        },
+        {"$project": {"_id": 1, "title": 1, "ks_rank": 1}},
         {
             "$unionWith": {
                 "coll": collection.name,
@@ -164,16 +187,23 @@ def hybrid_search(collection, query: str, query_embedding: list, limit: int = 10
                             "limit": 20
                         }
                     },
-                    {"$project": {"_id": 1, "title": 1, "vs": {"$meta": "vectorSearchScore"}}}
+                    {"$addFields": {"vs": {"$meta": "vectorSearchScore"}}},
+                    {
+                        "$setWindowFields": {
+                            "sortBy": {"vs": -1},
+                            "output": {"vs_rank": {"$documentNumber": {}}}
+                        }
+                    },
+                    {"$project": {"_id": 1, "title": 1, "vs_rank": 1}}
                 ]
             }
         },
         {"$group": {"_id": "$_id", "title": {"$first": "$title"},
-                    "ks": {"$max": {"$ifNull": ["$ks", 0]}},
-                    "vs": {"$max": {"$ifNull": ["$vs", 0]}}}},
+                    "ks_rank": {"$min": {"$ifNull": ["$ks_rank", 1000]}},
+                    "vs_rank": {"$min": {"$ifNull": ["$vs_rank", 1000]}}}},
         {"$addFields": {"score": {"$add": [
-            {"$divide": [0.4, {"$add": [60, "$ks"]}]},
-            {"$divide": [0.6, {"$add": [60, {"$multiply": [100, "$vs"]}]}]}
+            {"$divide": [0.4, {"$add": [60, "$ks_rank"]}]},
+            {"$divide": [0.6, {"$add": [60, "$vs_rank"]}]}
         ]}}},
         {"$sort": {"score": -1}},
         {"$limit": limit}
