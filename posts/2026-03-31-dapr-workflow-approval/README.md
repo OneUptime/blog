@@ -13,7 +13,7 @@ Approval workflows require human decisions before proceeding. Dapr's external ev
 ## Single-Level Approval Workflow
 
 ```python
-from dapr.ext.workflow import DaprWorkflowContext, WorkflowActivityContext
+from dapr.ext.workflow import DaprWorkflowContext, WorkflowActivityContext, when_any
 from datetime import timedelta
 
 def submit_for_review(ctx: WorkflowActivityContext, request: dict) -> dict:
@@ -38,7 +38,7 @@ def approval_workflow(ctx: DaprWorkflowContext, request: dict):
     approval_event = ctx.wait_for_external_event("approval-decision")
     timeout_event = ctx.create_timer(ctx.current_utc_datetime + timedelta(hours=72))
 
-    winner = yield ctx.task_any([approval_event, timeout_event])
+    winner = yield when_any([approval_event, timeout_event])
 
     if winner == timeout_event:
         yield ctx.call_activity(notify_rejection, input={
@@ -74,7 +74,7 @@ def multi_level_approval_workflow(ctx: DaprWorkflowContext, request: dict):
         event = ctx.wait_for_external_event(f"decision-level-{level}")
         deadline = ctx.create_timer(ctx.current_utc_datetime + timedelta(hours=48))
 
-        winner = yield ctx.task_any([event, deadline])
+        winner = yield when_any([event, deadline])
 
         if winner == deadline:
             yield ctx.call_activity(escalate, input={**request, "stuck_at": approver_role})
@@ -157,4 +157,4 @@ def check_status(request_id):
 
 ## Summary
 
-Dapr workflows provide a clean foundation for approval processes. The `wait_for_external_event()` call pauses the workflow until a decision is raised, surviving restarts without losing state. Timeouts with `task_any()` implement escalation and deadline enforcement. Multi-level approval chains add sequential decision points while keeping orchestration logic centralized in one workflow function.
+Dapr workflows provide a clean foundation for approval processes. The `wait_for_external_event()` call pauses the workflow until a decision is raised, surviving restarts without losing state. Timeouts with `when_any()` implement escalation and deadline enforcement. Multi-level approval chains add sequential decision points while keeping orchestration logic centralized in one workflow function.
