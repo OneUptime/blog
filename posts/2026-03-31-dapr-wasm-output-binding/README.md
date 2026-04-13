@@ -30,36 +30,50 @@ spec:
       value: "file://./functions/transform.wasm"
 ```
 
-You can also reference a remote Wasm file via an HTTP or OCI URL:
+You can also reference a remote Wasm file via an HTTP URL:
 
 ```yaml
     - name: url
-      value: "oci://ghcr.io/myorg/transform:latest"
+      value: "https://example.com/functions/transform.wasm"
 ```
 
 ## Compiling a Wasm Module
 
-Here is a minimal Rust function that doubles an integer and compiles to Wasm:
+The Wasm binary must be compiled with the WebAssembly System Interface (WASI). The binding executes the module's `main` function, passing request data via STDIN and capturing the result from STDOUT.
 
-```bash
-cargo new --lib wasm-transform
-cd wasm-transform
-```
+Here is a minimal Go program that reads input from STDIN, doubles an integer, and writes the result to STDOUT:
 
-Add the following to `src/lib.rs`:
+```go
+package main
 
-```rust
-#[no_mangle]
-pub extern "C" fn transform(value: i32) -> i32 {
-    value * 2
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+type Input struct {
+	Input int `json:"input"`
+}
+
+func main() {
+	var in Input
+	json.NewDecoder(os.Stdin).Decode(&in)
+	fmt.Print(in.Input * 2)
 }
 ```
 
-Compile it:
+Compile it with TinyGo targeting WASI:
 
 ```bash
-cargo build --target wasm32-unknown-unknown --release
-cp target/wasm32-unknown-unknown/release/wasm_transform.wasm ./functions/transform.wasm
+tinygo build -o ./functions/transform.wasm -scheduler=none --no-debug -target=wasi main.go
+```
+
+Alternatively, with Rust, use the `wasm32-wasip1` target:
+
+```bash
+cargo build --target wasm32-wasip1 --release
+cp target/wasm32-wasip1/release/wasm_transform.wasm ./functions/transform.wasm
 ```
 
 ## Invoking the Wasm Binding from Your Service
@@ -92,18 +106,20 @@ async function runWasm() {
 runWasm();
 ```
 
-## Passing Metadata to the Wasm Function
+## Passing Metadata to the Wasm Module
 
-You can pass per-request metadata to control execution behavior:
+You can pass per-request metadata to provide command-line arguments to the Wasm module:
 
 ```javascript
 const result = await client.binding.send(
   "wasm-transformer",
   "execute",
   { input: 10 },
-  { "function-name": "transform" }
+  { "args": "--verbose,--format=json" }
 );
 ```
+
+The `args` field accepts a comma-separated list of arguments that are passed to the Wasm program as `os.Args`.
 
 ## Running the Wasm Binding Locally
 
