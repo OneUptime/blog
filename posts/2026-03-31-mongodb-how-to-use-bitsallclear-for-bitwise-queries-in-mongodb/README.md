@@ -37,7 +37,7 @@ Suppose you store user permissions as a bitmask in a `users` collection:
 { _id: 3, name: "Carol", permissions: 1 }  // binary: 0001 - read only
 ```
 
-Find users who have neither delete (bit 2) nor admin (bit 3) permissions clear - meaning they have neither of those permissions:
+Find users who do not have delete (bit 2) or admin (bit 3) permissions — that is, where both those bits are clear (set to 0):
 
 ```javascript
 // Check bits 2 and 3 are both 0: bitmask = 4 + 8 = 12
@@ -86,9 +86,10 @@ db.featureFlags.find({ flags: { $bitsAllClear: [1, 3] } })
 
 `$bitsAllClear` works on:
 - Integer values (int32, int64)
+- Double values that are whole numbers and fit within a signed 64-bit integer range (e.g., `3.0` works, but `3.5` does not)
 - BinData (binary data)
 
-It does not work on floating-point numbers or other types.
+It will not match doubles that have a fractional component or fall outside the signed 64-bit integer range, and will not match non-numeric types.
 
 ## Working with BinData
 
