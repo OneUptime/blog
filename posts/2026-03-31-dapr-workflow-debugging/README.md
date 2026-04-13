@@ -53,7 +53,7 @@ Response fields to inspect:
 }
 ```
 
-The `runtimeStatus` values are `RUNNING`, `COMPLETED`, `FAILED`, `TERMINATED`, and `PENDING`.
+The `runtimeStatus` values are `RUNNING`, `COMPLETED`, `FAILED`, `TERMINATED`, `PENDING`, and `SUSPENDED`.
 
 ## Setting Custom Status for Visibility
 
