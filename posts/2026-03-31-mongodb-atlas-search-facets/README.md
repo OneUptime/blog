@@ -119,7 +119,7 @@ console.log(JSON.stringify(meta, null, 2));
 
 ## Step 3: Get Documents and Facets in One Round-Trip
 
-Use `$search` with a `$facet` pipeline stage alongside `$searchMeta` called in parallel, or use the `$search` + `$searchMeta` compound in a `$facet` aggregation stage.
+Run a `$search` pipeline for documents and a separate `$searchMeta` pipeline for facet counts in parallel using `Promise.all`. These must be separate queries because both `$search` and `$searchMeta` must be the first stage in their respective pipelines.
 
 ```javascript
 async function searchWithFacets(query, page = 1, pageSize = 20) {
