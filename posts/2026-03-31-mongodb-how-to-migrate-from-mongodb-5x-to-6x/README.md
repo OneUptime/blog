@@ -32,13 +32,13 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 
 MongoDB 6.0 has several behavioral changes worth reviewing:
 
-- `$lookup` now supports pipeline stages with `let` and `pipeline` on sharded collections
-- `$densify` and `$fill` aggregation stages are available in MongoDB 6.0
+- `$lookup` supports pipeline stages with `let` and `pipeline` on sharded collections (introduced in 5.1)
+- `$densify` (introduced in 5.1) and `$fill` (introduced in 5.3) aggregation stages are now available if upgrading from 5.0
 - `serverStatus` output changed - update monitoring queries
 - Legacy `mongo` shell is fully removed; use `mongosh`
 
 ```javascript
-// New $fill operator (6.0+) - forward-fill missing values
+// $fill operator (introduced in 5.3) - forward-fill missing values
 db.stocks.aggregate([
   { $fill: { output: { price: { method: "locf" } } } }
 ])
@@ -107,10 +107,17 @@ db.adminCommand({ setFeatureCompatibilityVersion: "6.0" })
 
 For sharded clusters, the order is critical:
 
-1. Upgrade the config server replica set
-2. Upgrade each shard replica set
-3. Upgrade the `mongos` routers
-4. Update FCV last
+1. Disable the balancer with `sh.stopBalancer()`
+2. Upgrade the config server replica set
+3. Upgrade each shard replica set
+4. Upgrade the `mongos` routers
+5. Re-enable the balancer with `sh.startBalancer()`
+6. Update FCV last
+
+```javascript
+// Disable the balancer before starting
+sh.stopBalancer()
+```
 
 ```bash
 # Upgrade config server secondaries first
@@ -118,10 +125,15 @@ For sharded clusters, the order is critical:
 # Then each shard in sequence
 ```
 
+```javascript
+// Re-enable the balancer after all binaries are upgraded
+sh.startBalancer()
+```
+
 ## Step 7 - Leverage New MongoDB 6.0 Features
 
 ```javascript
-// Queryable Encryption (new in 6.0)
+// Queryable Encryption (preview in 6.0, GA in 7.0)
 const encryptedFieldsMap = {
   "mydb.users": {
     fields: [
@@ -134,7 +146,7 @@ const encryptedFieldsMap = {
   }
 }
 
-// $densify - fill in missing time-series gaps (new in 6.0)
+// $densify - fill in missing time-series gaps (introduced in 5.1)
 db.sensor_readings.aggregate([
   {
     $densify: {
@@ -161,4 +173,4 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 
 ## Summary
 
-Migrating MongoDB 5.x to 6.0 uses a rolling upgrade that starts with secondary replica set members and ends with bumping the FCV. Review breaking changes around aggregation operators and monitoring before upgrading, and take advantage of new features like Queryable Encryption and the `$fill` aggregation stage once the upgrade is complete.
+Migrating MongoDB 5.x to 6.0 uses a rolling upgrade that starts with secondary replica set members and ends with bumping the FCV. Review breaking changes around aggregation operators and monitoring before upgrading, and take advantage of features like Queryable Encryption (preview) and the `$fill` aggregation stage once the upgrade is complete.
