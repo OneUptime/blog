@@ -62,7 +62,7 @@ To distinguish them, combine `$exists`:
 
 ```javascript
 // Only documents with phone explicitly set to null
-db.users.find({ phone: null, phone: { $exists: true } })
+db.users.find({ phone: { $type: "null" } })
 
 // Only documents missing the phone field entirely
 db.users.find({ phone: { $exists: false } })
