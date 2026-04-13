@@ -144,7 +144,7 @@ function timedCollection(db, name, defaultMaxTimeMS = 5000) {
 
 ## Distinguishing Client vs Server Timeouts
 
-Client-side timeouts (`connectTimeoutMS`, `socketTimeoutMS`) trigger before the operation reaches the server. The server may still be executing the operation in the background.
+Client-side timeouts (`connectTimeoutMS`, `socketTimeoutMS`) are enforced by the driver, not the server. `connectTimeoutMS` fires during the initial TCP handshake before any operation is sent. `socketTimeoutMS` fires while waiting for a response on an established connection—the operation has already reached the server, which may still be executing it in the background.
 
 Server-side timeouts (`maxTimeMS`) are enforced by MongoDB and abort the operation on the server.
 
@@ -173,4 +173,4 @@ async function withRetry(fn, maxAttempts = 3, delayMs = 500) {
 
 ## Summary
 
-MongoDB timeout errors are categorized into connection/selection timeouts (client-side configuration) and operation timeouts (`maxTimeMS`, server-side enforcement). Always set `maxTimeMS` on queries that touch large collections to prevent runaway operations. Catch error code 50 for `MaxTimeMSExpired` and `MongoServerSelectionError` for connectivity failures, and implement retry logic only for idempotent operations with exponential backoff.
+MongoDB timeout errors are categorized into connection/selection timeouts (client-side configuration) and operation timeouts (`maxTimeMS`, server-side enforcement). Always set `maxTimeMS` on queries that touch large collections to prevent runaway operations. Catch error code 50 for `MaxTimeMSExpired` and `MongoServerSelectionError` for connectivity failures, and implement retry logic only for idempotent operations with backoff.
