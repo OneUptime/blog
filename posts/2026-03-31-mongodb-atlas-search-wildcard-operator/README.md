@@ -82,23 +82,36 @@ db.products.aggregate([
 
 ## Case-Insensitive Wildcard
 
-By default, `wildcard` is case-sensitive. Set `allowAnalyzedField: true` to search on analyzed fields, but for true case-insensitive matching you need the normalizer in the index mapping:
+By default, `wildcard` is case-sensitive. For case-insensitive matching, define a custom analyzer that combines a `keyword` tokenizer with a `lowercase` token filter in your index definition:
 
 ```json
 {
+  "analyzers": [
+    {
+      "name": "lowercaseKeyword",
+      "charFilters": [],
+      "tokenizer": {
+        "type": "keyword"
+      },
+      "tokenFilters": [
+        {
+          "type": "lowercase"
+        }
+      ]
+    }
+  ],
   "mappings": {
     "fields": {
       "name": {
         "type": "string",
-        "analyzer": "lucene.keyword",
-        "normalizer": "lowercase"
+        "analyzer": "lowercaseKeyword"
       }
     }
   }
 }
 ```
 
-Then query with a lowercase pattern:
+Then query with a lowercase pattern and `allowAnalyzedField: true`:
 
 ```javascript
 db.products.aggregate([
