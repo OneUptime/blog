@@ -50,6 +50,7 @@ curl -s -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
 ```bash
 # Get project-level events for a specific event type
 curl -s -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
+  --header "Accept: application/vnd.atlas.2023-01-01+json" \
   "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/events?eventType=USER_CREATED&itemsPerPage=50" \
   | jq '.results[]'
 ```
@@ -127,6 +128,7 @@ For data-plane audit logging (who ran which query), enable Advanced Auditing on 
 ```bash
 curl -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
   --header "Content-Type: application/json" \
+  --header "Accept: application/vnd.atlas.2023-01-01+json" \
   --request PATCH \
   "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/auditing" \
   --data '{
