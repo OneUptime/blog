@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, $setWindowFields, Moving Average, Aggregation, Window Function
 
-Description: Learn how to calculate simple and weighted moving averages in MongoDB using $setWindowFields with $avg and custom window boundaries.
+Description: Learn how to calculate moving averages in MongoDB using $setWindowFields with $avg and custom window boundaries.
 
 ---
 
@@ -150,7 +150,7 @@ db.sensorReadings.aggregate([
 ]);
 ```
 
-Note: centered windows include future documents, so results may not be available for the last few documents in a stream.
+Note: centered windows include future documents. For the last few documents in a partition, the window will contain fewer documents than specified, so the average is computed over a partial window.
 
 ## Combining Multiple Moving Averages
 
