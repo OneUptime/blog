@@ -94,7 +94,7 @@ import requests
 
 def get_config(keys: list) -> dict:
     resp = requests.get(
-        "http://localhost:3500/v1.0-alpha1/configuration/appconfig",
+        "http://localhost:3500/v1.0/configuration/appconfig",
         params={"key": keys}
     )
     resp.raise_for_status()
@@ -120,37 +120,42 @@ print(f"New checkout: {feature_new_checkout}")
 ## Subscribe to Configuration Changes
 
 ```python
-import threading
+from flask import Flask, request, jsonify
 import requests
 
-def watch_config(keys: list, callback):
+app = Flask(__name__)
+
+# Subscribe to configuration changes
+def subscribe_config(keys: list) -> str:
     resp = requests.get(
-        "http://localhost:3500/v1.0-alpha1/configuration/appconfig/subscribe",
-        params={"key": keys},
-        stream=True
+        "http://localhost:3500/v1.0/configuration/appconfig/subscribe",
+        params={"key": keys}
     )
-    for line in resp.iter_lines():
-        if line:
-            import json
-            change = json.loads(line.decode('utf-8'))
-            callback(change)
+    resp.raise_for_status()
+    subscription_id = resp.json()["id"]
+    print(f"Subscribed with ID: {subscription_id}")
+    return subscription_id
 
-def on_config_change(change: dict):
-    print(f"Config changed: {change}")
+# Dapr pushes configuration changes to this endpoint
+@app.route("/configuration/appconfig/<key>", methods=["POST"])
+def on_config_change(key):
+    change = request.json
+    print(f"Config changed for {key}: {change}")
     # Reload application configuration
-    reload_config()
-
-def reload_config():
     config = get_config(["order-service:max-retries", "order-service:timeout-ms"])
     print(f"Configuration reloaded: {config}")
+    return jsonify({"status": "ok"}), 200
 
-# Start watching in background
-watcher = threading.Thread(
-    target=watch_config,
-    args=(["order-service:max-retries"], on_config_change),
-    daemon=True
-)
-watcher.start()
+# Unsubscribe when no longer needed
+def unsubscribe_config(subscription_id: str):
+    resp = requests.get(
+        f"http://localhost:3500/v1.0/configuration/appconfig/{subscription_id}/unsubscribe"
+    )
+    resp.raise_for_status()
+    print(f"Unsubscribed: {subscription_id}")
+
+sub_id = subscribe_config(["order-service:max-retries"])
+app.run(port=5001)
 ```
 
 ## Update Configuration Values
