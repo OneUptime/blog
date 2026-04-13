@@ -14,7 +14,7 @@ MongoDB 8.0, released in 2024, delivers significant performance improvements and
 
 - **Improved Queryable Encryption** - range queries on encrypted fields (GA)
 - **Query Shape** - better query analysis and plan caching
-- **Bulk write performance** - up to 3x faster bulk inserts
+- **Bulk write performance** - up to 54% faster bulk inserts
 - **Improved time series** - enhanced compression and query planning
 - **Atlas Search improvements** - integrated with core engine
 - **Reduced replication lag** - improved oplog application
@@ -107,7 +107,7 @@ db.orders.getPlanCache().clearPlansByQuery({ status: "pending" })
 MongoDB 8.0 significantly improves bulk insert throughput:
 
 ```javascript
-// MongoDB 8.0 bulk writes are up to 3x faster for large batches
+// MongoDB 8.0 bulk writes are up to 54% faster for large batches
 const documents = Array.from({ length: 100000 }, (_, i) => ({
   _id: i,
   value: Math.random(),
@@ -146,9 +146,9 @@ db.metrics.find({
 // Look for improved IXSCAN plans on time series
 ```
 
-## New $percentile Aggregation Operator
+## $percentile Aggregation Operator
 
-MongoDB 8.0 introduces `$percentile` for statistical aggregations:
+The `$percentile` operator (introduced in MongoDB 7.0) enables statistical aggregations:
 
 ```javascript
 // Calculate P50, P95, P99 latencies
@@ -208,11 +208,11 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 Before upgrading to MongoDB 8.0:
 1. Ensure you are on MongoDB 7.0 with FCV 7.0 set
 2. Review deprecated operator list in MongoDB 8.0 release notes
-3. Test your aggregation pipelines - $percentile and $median are new
+3. Test your aggregation pipelines for compatibility with 8.0 query planner changes
 4. Drivers: update to MongoDB Driver 6.x or later for full 8.0 support
 5. Queryable Encryption range queries require driver and libmongocrypt updates
 ```
 
 ## Summary
 
-MongoDB 8.0 delivers range queries on encrypted fields, making Queryable Encryption practical for financial and compliance workloads. Performance improvements include up to 3x faster bulk writes, better query plan caching with shape analysis, and improved time series query planning. New statistical operators `$percentile` and `$median` simplify latency and distribution analysis in aggregation pipelines.
+MongoDB 8.0 delivers range queries on encrypted fields, making Queryable Encryption practical for financial and compliance workloads. Performance improvements include up to 54% faster bulk writes, better query plan caching with shape analysis, and improved time series query planning. The `$percentile` and `$median` operators (introduced in MongoDB 7.0) simplify latency and distribution analysis in aggregation pipelines.
