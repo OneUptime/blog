@@ -34,7 +34,7 @@ A custom analyzer definition has three parts:
       "tokens": ["the", "a", "an", "is", "in"]
     },
     {
-      "type": "stemming",
+      "type": "snowballStemming",
       "stemmerName": "english"
     }
   ]
@@ -67,8 +67,7 @@ Add the analyzer definition under `analyzers` in the index definition, then refe
         {
           "type": "shingle",
           "minShingleSize": 2,
-          "maxShingleSize": 3,
-          "includeOriginal": true
+          "maxShingleSize": 3
         }
       ]
     }
@@ -90,7 +89,8 @@ Add the analyzer definition under `analyzers` in the index definition, then refe
 {
   "type": "regex",
   "pattern": "[^a-zA-Z0-9]",
-  "replacement": ""
+  "replacement": "",
+  "matches": "all"
 }
 ```
 
@@ -125,7 +125,7 @@ db.products.aggregate([
 
 ## Testing Your Analyzer
 
-Use the `analyzeQuery` Atlas UI panel or the Data API to test how a string is analyzed before committing to an index definition. This prevents surprises where tokens don't match because of unexpected stemming or stop-word removal.
+Use the Search Tester or the "View text analysis" panel in the Atlas UI Visual Editor to test how a string is analyzed before committing to an index definition. This prevents surprises where tokens don't match because of unexpected stemming or stop-word removal.
 
 ## Multi-Analyzer Fields
 
