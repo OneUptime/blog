@@ -122,9 +122,9 @@ Healthcare applications require schemas that balance performance, flexibility fo
 
   procedures: [
     {
-      code: "99395",
+      code: "99396",
       system: "CPT",
-      description: "Periodic preventive medicine exam, 18-39 years",
+      description: "Periodic preventive medicine exam, 40-64 years",
       performedAt: ISODate("2026-03-15T09:30:00Z"),
       providerId: ObjectId("...")
     }
