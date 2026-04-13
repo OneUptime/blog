@@ -14,7 +14,7 @@ MongoDB Atlas Search extends full-text search with geospatial operators, enablin
 
 | Feature | Native Geospatial ($near, $geoWithin) | Atlas Search (geo operators) |
 |---|---|---|
-| Sorts by distance | Yes ($geoNear) | With scoreDetails |
+| Sorts by distance | Yes ($geoNear) | No (binary match) |
 | Combines with full-text search | No | Yes (compound) |
 | Requires Atlas | No | Yes |
 | Faceting | No | Yes |
@@ -44,10 +44,10 @@ Via the Atlas CLI:
 ```bash
 atlas clusters search indexes create \
   --clusterName MyCluster \
-  --db mydb \
-  --collection places \
   --file search-index.json
 ```
+
+The database and collection names are specified inside the JSON config file, not as CLI flags.
 
 ## Using $search with geoWithin
 
@@ -158,7 +158,7 @@ db.routes.aggregate([
 
 Supported `relation` values:
 ```text
-"contains"     - geometry contains the document's shape
+"contains"     - document's shape contains the geometry
 "disjoint"     - geometry does not overlap the document's shape
 "intersects"   - geometry overlaps the document's shape
 "within"       - document's shape is within the geometry
