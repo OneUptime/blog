@@ -184,7 +184,7 @@ db.restaurants.aggregate([
         coordinates: [-73.9857, 40.7580]
       },
       distanceField: "distanceMeters",
-      maxDistance: 1000,
+      maxDistance: 2000,
       spherical: true
     }
   },
@@ -202,9 +202,9 @@ Sample output:
 
 ```javascript
 [
-  { name: "Burger Barn", cuisine: "American", distanceMeters: 104 },
-  { name: "Pasta Palace", cuisine: "Italian", distanceMeters: 107 },
-  { name: "Sushi World", cuisine: "Japanese", distanceMeters: 847 }
+  { name: "Sushi World", cuisine: "Japanese", distanceMeters: 425 },
+  { name: "Burger Barn", cuisine: "American", distanceMeters: 1001 },
+  { name: "Pasta Palace", cuisine: "Italian", distanceMeters: 1069 }
 ]
 ```
 
@@ -267,7 +267,7 @@ For modern applications, use `$near` with a `2dsphere` index to get spherical di
 ## Limitations
 
 - `$near` requires a geospatial index.
-- `$near` cannot be used inside `$or`, `$and`, `$not`, or `$nor` expressions.
+- `$near` cannot be used inside `$or` or `$nor` expressions.
 - `$near` always sorts by distance - you cannot change the sort order.
 - For additional sorting criteria, use the `$geoNear` aggregation stage instead.
 
