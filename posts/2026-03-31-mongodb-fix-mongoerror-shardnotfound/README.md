@@ -57,15 +57,20 @@ db.adminCommand({ listShards: 1 }).shards.forEach(shard => {
 })
 ```
 
-Test connectivity from the `mongos` host to each shard's port. If a shard host has changed IP or DNS, update the shard's connection string:
+Test connectivity from the `mongos` host to each shard's port. If a shard host has changed IP or DNS, update the replica set configuration on the shard itself:
 
 ```javascript
-use admin
-db.adminCommand({
-  addShard: "rs1/newhost1:27017,newhost2:27017",
-  name: "shard1"
+// Connect directly to the shard's replica set primary
+rs.reconfig({
+  _id: "rs1",
+  members: [
+    { _id: 0, host: "newhost1:27017" },
+    { _id: 1, host: "newhost2:27017" }
+  ]
 })
 ```
+
+The `mongos` routers and config servers will automatically detect the updated replica set membership.
 
 ## Step 4: Properly Remove a Decommissioned Shard
 
