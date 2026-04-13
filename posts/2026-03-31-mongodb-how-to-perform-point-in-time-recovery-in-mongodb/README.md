@@ -51,7 +51,7 @@ use admin
 db.adminCommand({
   aggregate: 1,
   pipeline: [
-    { $changeStream: { startAtOperationTime: new Timestamp(1743408000, 1) } }
+    { $changeStream: { startAtOperationTime: new Timestamp(1774951200, 1) } }
   ],
   cursor: {}
 })
@@ -60,8 +60,8 @@ db.adminCommand({
 use local
 db.oplog.rs.find({
   ts: {
-    $gte: Timestamp(1743408000, 1),    // 2026-03-31 10:00:00 UTC
-    $lte: Timestamp(1743411600, 1)     // 2026-03-31 11:00:00 UTC
+    $gte: Timestamp(1774951200, 1),    // 2026-03-31 10:00:00 UTC
+    $lte: Timestamp(1774954800, 1)     // 2026-03-31 11:00:00 UTC
   },
   op: "d"   // d = delete operations
 }).limit(20)
@@ -92,11 +92,15 @@ The `--oplogReplay` flag replays the oplog that was captured during the dump.
 If you need to recover to a time after the backup, replay additional oplog entries:
 
 ```bash
-# Export oplog entries from the recovery time range
-mongoexport --uri "mongodb://source-primary:27017"   --db local   --collection oplog.rs   --query '{"ts": {"$gt": {"$timestamp": {"t": 1743408000, "i": 1}}, "$lte": {"$timestamp": {"t": 1743411600, "i": 1}}}}'   --out /tmp/oplog-recovery.json
+# Dump oplog entries from the source for the recovery time range
+mongodump --uri "mongodb://source-primary:27017"   --db local   --collection oplog.rs   --query '{"ts": {"$gt": {"$timestamp": {"t": 1774951200, "i": 1}}, "$lte": {"$timestamp": {"t": 1774954800, "i": 1}}}}'   --out /tmp/oplog-dump/
 
-# Convert to BSON and replay
-mongorestore --uri "mongodb://localhost:27018"   --oplogReplay   --oplogLimit "1743411600:1"   /backup/oplog-replay/
+# Prepare oplog for replay (mongorestore expects oplog.bson at the dump root)
+mkdir -p /backup/oplog-replay
+mv /tmp/oplog-dump/local/oplog.rs.bson /backup/oplog-replay/oplog.bson
+
+# Replay oplog up to the recovery point
+mongorestore --uri "mongodb://localhost:27018"   --oplogReplay   --oplogLimit "1774954800:1"   /backup/oplog-replay/
 ```
 
 ## Using mongorestore with oplogLimit
@@ -106,7 +110,7 @@ The `--oplogLimit` flag stops replay at a specific timestamp:
 ```bash
 # Restore and replay oplog up to a specific point in time
 # Format: --oplogLimit "UNIX_TIMESTAMP:ORDINAL"
-mongorestore --uri "mongodb://localhost:27018"   --oplogReplay   --oplogLimit "1743411600:1"   /backup/mongodb-20260331/
+mongorestore --uri "mongodb://localhost:27018"   --oplogReplay   --oplogLimit "1774954800:1"   /backup/mongodb-20260331/
 ```
 
 ## Verifying Recovery
