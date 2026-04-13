@@ -66,7 +66,7 @@ safe_pattern = re.escape(user_input)
 results = db.files.find({"name": {"$regex": safe_pattern}})
 ```
 
-`re.escape()` escapes all non-alphanumeric characters.
+`re.escape()` escapes all characters that have special meaning in a regular expression (changed in Python 3.7; earlier versions escaped all non-alphanumeric characters).
 
 ## Escaping in Java
 
