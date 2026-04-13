@@ -22,7 +22,7 @@ This ordering maximizes how much of the index each query can use.
 
 ## Why Order Matters
 
-MongoDB's B-tree indexes are most efficient when high-selectivity conditions appear early. Equality predicates (`$eq`, direct value match) reduce the working set to an exact key range. Sort fields maintain order within that range. Range predicates (`$gt`, `$lt`, `$gte`, `$lte`, `$in`) produce variable-length scans and benefit from being at the end.
+MongoDB's B-tree indexes are most efficient when high-selectivity conditions appear early. Equality predicates (`$eq`, direct value match) reduce the working set to an exact key range. Sort fields maintain order within that range. Range predicates (`$gt`, `$lt`, `$gte`, `$lte`, `$ne`) produce variable-length scans and benefit from being at the end.
 
 ## A Practical Example
 
