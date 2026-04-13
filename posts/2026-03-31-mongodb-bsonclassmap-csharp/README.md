@@ -52,6 +52,7 @@ Register class maps once at application startup (before any MongoDB operations):
 
 ```csharp
 using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Bson;
 
 BsonClassMap.RegisterClassMap<Product>(cm =>
@@ -81,6 +82,7 @@ Register in `Program.cs` before building the host.
 Implement `IBsonSerializer<T>` for non-standard types:
 
 ```csharp
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.IO;
 
@@ -102,6 +104,9 @@ public class MoneySerializer : IBsonSerializer<decimal>
 
     object IBsonSerializer.Deserialize(BsonDeserializationContext ctx,
         BsonDeserializationArgs args) => Deserialize(ctx, args);
+
+    void IBsonSerializer.Serialize(BsonSerializationContext ctx,
+        BsonSerializationArgs args, object value) => Serialize(ctx, args, (decimal)value);
 }
 
 // Register
