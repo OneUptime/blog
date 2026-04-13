@@ -29,8 +29,8 @@ After partition (S2 isolated):
 
   Minority partition: S2 alone
     - S2 cannot reach majority (1/3 < majority)
-    - S2 steps down and becomes unelectable
-    - S2 returns errors for writes, goes to SECONDARY/RECOVERING
+    - S2 remains a secondary but cannot participate in elections
+    - S2 returns errors for writes, may serve stale reads to clients configured for secondary reads
 ```
 
 ## Write Concern and Partition Tolerance
@@ -98,11 +98,11 @@ async function safeWrite(collection, doc) {
   } catch (err) {
     if (err instanceof MongoServerError) {
       if (err.code === 10107 || err.code === 91) {
-        // Not primary or replica set step down
+        // NotWritablePrimary or ShutdownInProgress
         throw new Error("Primary unavailable - possible network partition");
       }
       if (err.code === 64) {
-        // WriteConcernFailed - majority not reached
+        // WriteConcernTimeout - majority not reached
         throw new Error("Write concern failed - possible network partition");
       }
     }
@@ -114,14 +114,14 @@ async function safeWrite(collection, doc) {
 ## Python Error Handling
 
 ```python
+from pymongo import WriteConcern
 from pymongo.errors import NotPrimaryError, ConnectionFailure, WriteConcernError
 
 def safe_write(collection, document):
     try:
-        result = collection.insert_one(
-            document,
-            write_concern={"w": "majority", "wtimeout": 10000}
-        )
+        wc = WriteConcern("majority", wtimeout=10000)
+        coll = collection.with_options(write_concern=wc)
+        result = coll.insert_one(document)
         return result
     except NotPrimaryError:
         raise RuntimeError("Node is not primary - network partition suspected")
@@ -166,7 +166,7 @@ Scenario:
 7. P rolls back W1 (W1 is saved to rollback directory)
 ```
 
-Rollback files are saved to `<dbpath>/rollback/` for manual review.
+Rollback files are saved to `<dbpath>/rollback/<collectionUUID>/` for manual review.
 
 ## Configuring Election Timeouts
 
