@@ -14,7 +14,7 @@ The `$map` aggregation operator applies a transformation expression to each elem
 
 ## Basic Syntax
 
-`$map` requires `input` (the source array), `as` (the variable name for each element), and `in` (the expression applied to each element).
+`$map` requires `input` (the source array) and `in` (the expression applied to each element). The `as` parameter (the variable name for each element) is optional and defaults to `"this"`.
 
 ```javascript
 db.orders.aggregate([
