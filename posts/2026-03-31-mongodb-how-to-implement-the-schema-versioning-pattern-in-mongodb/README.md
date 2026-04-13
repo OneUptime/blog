@@ -69,11 +69,11 @@ function normalizeUser(doc) {
   switch (doc.schemaVersion) {
     case 1:
       // Convert old single phone to phones array
+      const { phone, ...rest } = doc;
       return {
-        ...doc,
+        ...rest,
         schemaVersion: 2,
-        phones: doc.phone ? [{ type: "mobile", number: doc.phone }] : [],
-        phone: undefined
+        phones: phone ? [{ type: "mobile", number: phone }] : []
       };
     case 2:
       // Already current version
