@@ -24,9 +24,7 @@ flowchart LR
 ## Installation
 
 ```bash
-go get go.mongodb.org/mongo-driver/v2/mongo
-go get go.mongodb.org/mongo-driver/v2/mongo/options
-go get go.mongodb.org/mongo-driver/v2/bson
+go get go.mongodb.org/mongo-driver/v2
 ```
 
 ## Connecting to MongoDB
@@ -92,11 +90,11 @@ func main() {
 ```go
 import (
     "time"
-    "go.mongodb.org/mongo-driver/v2/bson/primitive"
+    "go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Order struct {
-    ID         primitive.ObjectID `bson:"_id,omitempty"`
+    ID         bson.ObjectID `bson:"_id,omitempty"`
     CustomerID string             `bson:"customerId"`
     Total      float64            `bson:"total"`
     Status     string             `bson:"status"`
@@ -118,7 +116,7 @@ type OrderItem struct {
 import (
     "context"
     "time"
-    "go.mongodb.org/mongo-driver/v2/bson/primitive"
+    "go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func insertOrder() {
@@ -127,7 +125,7 @@ func insertOrder() {
     defer cancel()
 
     order := Order{
-        ID:         primitive.NewObjectID(),
+        ID:         bson.NewObjectID(),
         CustomerID: "c123",
         Total:      99.98,
         Status:     "pending",
@@ -148,8 +146,8 @@ func insertManyOrders() {
     defer cancel()
 
     docs := []interface{}{
-        Order{ID: primitive.NewObjectID(), CustomerID: "c124", Total: 29.99, Status: "pending", CreatedAt: time.Now().UTC()},
-        Order{ID: primitive.NewObjectID(), CustomerID: "c125", Total: 149.00, Status: "pending", CreatedAt: time.Now().UTC()},
+        Order{ID: bson.NewObjectID(), CustomerID: "c124", Total: 29.99, Status: "pending", CreatedAt: time.Now().UTC()},
+        Order{ID: bson.NewObjectID(), CustomerID: "c125", Total: 149.00, Status: "pending", CreatedAt: time.Now().UTC()},
     }
 
     result, err := coll.InsertMany(ctx, docs)
@@ -197,7 +195,7 @@ func findPendingOrders() ([]Order, error) {
     return orders, nil
 }
 
-func findOneOrder(id primitive.ObjectID) (*Order, error) {
+func findOneOrder(id bson.ObjectID) (*Order, error) {
     coll := getCollection("myapp", "orders")
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
@@ -214,7 +212,7 @@ func findOneOrder(id primitive.ObjectID) (*Order, error) {
 ## Update Operations
 
 ```go
-func updateOrderStatus(id primitive.ObjectID, status string) error {
+func updateOrderStatus(id bson.ObjectID, status string) error {
     coll := getCollection("myapp", "orders")
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
@@ -253,7 +251,7 @@ func upsertConfig(key, value string) error {
 ## Delete Operations
 
 ```go
-func deleteOrder(id primitive.ObjectID) error {
+func deleteOrder(id bson.ObjectID) error {
     coll := getCollection("myapp", "orders")
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
