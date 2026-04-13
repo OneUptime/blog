@@ -12,7 +12,7 @@ Description: Learn how to identify and handle transient MongoDB errors using ret
 
 Transient errors are temporary failures that are expected to resolve without any code change - network hiccups, primary elections, connection pool exhaustion during traffic spikes, and cursor timeouts on slow queries. They differ from persistent errors (authentication failures, schema validation errors) which require code or configuration changes to fix.
 
-MongoDB 4.0+ introduced the concept of "retryable writes" and "retryable reads" which handle some transient failures automatically, but application-level retry logic is still needed for others.
+MongoDB 3.6+ introduced retryable writes, and MongoDB 4.2+ added retryable reads, which handle some transient failures automatically, but application-level retry logic is still needed for others.
 
 ## Enabling MongoDB's Built-In Retryable Writes
 
@@ -30,7 +30,7 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 });
 ```
 
-Retryable writes cover `insertOne`, `updateOne`, `deleteOne`, `findOneAndUpdate`, and `findOneAndDelete`. Multi-document transactions and `insertMany` are not automatically retried.
+Retryable writes cover `insertOne`, `insertMany`, `updateOne`, `deleteOne`, `findOneAndUpdate`, and `findOneAndDelete`. Multi-document transactions are not automatically retried.
 
 ## Identifying Transient vs Persistent Errors
 
@@ -57,7 +57,6 @@ function isTransient(error) {
     13435,  // NotPrimaryNoSecondaryOk
     13436,  // NotPrimaryOrSecondary
     16500,  // RateLimitExceeded (Atlas)
-    91,     // ShutdownInProgress
   ]);
 
   return error.code !== undefined && transientCodes.has(error.code);
