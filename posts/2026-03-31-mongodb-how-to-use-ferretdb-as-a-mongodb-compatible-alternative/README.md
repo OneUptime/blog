@@ -167,9 +167,17 @@ One advantage of FerretDB: you can inspect data directly in PostgreSQL:
 # Connect to PostgreSQL
 psql -U ferretdb -d ferretdb
 
-# FerretDB stores data in JSON columns
-SELECT * FROM ferretdb_mydb.orders LIMIT 5;
+# FerretDB stores documents as JSONB in PostgreSQL
+# The MongoDB database name maps to a PostgreSQL schema
+# Table names include a hash suffix (e.g., orders_a1b2c3d4)
+# Look up actual table names from the metadata table:
+SELECT _jsonb FROM mydb._ferretdb_database_metadata;
+
+# Then query using the actual table name
+SELECT * FROM mydb.orders_<hash_suffix> LIMIT 5;
 ```
+
+Note: The internal PostgreSQL storage format is an implementation detail that may change between FerretDB versions. Refer to the FerretDB docs for the current storage layout.
 
 ## When to Choose FerretDB
 
@@ -195,6 +203,13 @@ Use FerretDB's Docker image in CI to test your application:
 ```yaml
 # GitHub Actions example
 services:
+  postgres:
+    image: postgres:15
+    env:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: testdb
+
   ferretdb:
     image: ghcr.io/ferretdb/ferretdb:latest
     ports:
