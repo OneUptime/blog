@@ -113,7 +113,7 @@ curl --user "${PUBLIC_KEY}:${PRIVATE_KEY}" \
       }
     ]
   }' \
-  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/customDBRoles"
+  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/customDBRoles/roles"
 ```
 
 Assign the custom role to a user:
@@ -201,7 +201,7 @@ With the Node.js driver, connection pool reconnection handles the credential upd
 
 ## Auditing Database Access
 
-Atlas Enterprise tiers support audit logging. Enable it to record authentication attempts, user creation, and privilege changes:
+Atlas M10+ dedicated clusters support audit logging. Enable it to record authentication attempts, user creation, and privilege changes:
 
 Via the Atlas API:
 
@@ -215,7 +215,7 @@ curl --user "${PUBLIC_KEY}:${PRIVATE_KEY}" \
     "enabled": true,
     "auditFilter": "{\"atype\": {\"$in\": [\"authenticate\", \"createUser\", \"dropUser\", \"updateUser\", \"grantRolesToUser\"]}}"
   }' \
-  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/auditing"
+  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/auditLog"
 ```
 
 ## Summary
