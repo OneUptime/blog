@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Atlas Search, Index, Lifecycle, Operation
 
-Description: Learn how to create, update, rebuild, pause, and delete Atlas Search indexes using the Atlas UI, CLI, and Admin API for full index lifecycle management.
+Description: Learn how to create, update, rebuild, and delete Atlas Search indexes using the Atlas UI, CLI, and Admin API for full index lifecycle management.
 
 ---
 
@@ -14,8 +14,8 @@ An Atlas Search index moves through several states during its lifecycle:
 
 ```text
 PENDING -> BUILDING -> READY
-                    -> STALE (if source data changes faster than replication)
-READY   -> PAUSED  -> READY  (can be resumed)
+                    -> FAILED (if the index definition is invalid)
+                    -> STALE  (if source data changes faster than replication)
 READY   -> DELETING
 ```
 
@@ -56,7 +56,7 @@ curl -u "publicKey:privateKey" \
   -H "Content-Type: application/json" \
   --digest \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/MyCluster/fts/indexes" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/MyCluster/fts/indexes" \
   --data @index-definition.json
 ```
 
@@ -80,21 +80,6 @@ atlas clusters search indexes update <indexId> \
 ```
 
 You can also update the index definition in the Atlas UI by clicking the Edit button next to an index.
-
-## Pausing and Resuming an Index
-
-Pausing stops index updates and reduces costs when search is not needed temporarily (e.g., during a maintenance window):
-
-```bash
-# Pause
-curl -u "publicKey:privateKey" --digest \
-  --request PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/MyCluster/fts/indexes/{indexId}" \
-  -H "Content-Type: application/json" \
-  --data '{"status": "PAUSED"}'
-```
-
-A paused index returns no search results. Resume it to return to READY state.
 
 ## Deleting an Index
 
@@ -125,4 +110,4 @@ async function waitForIndexReady(db, collectionName, indexName, maxWaitMs = 6000
 
 ## Summary
 
-Managing the Atlas Search index lifecycle involves creating indexes with JSON definitions via the CLI or Admin API, monitoring their transition through PENDING, BUILDING, and READY states, updating them (which triggers a live rebuild), pausing them during maintenance windows, and deleting them when no longer needed. Always verify index status before depending on search results in your application, especially after deployments that include index updates.
+Managing the Atlas Search index lifecycle involves creating indexes with JSON definitions via the CLI or Admin API, monitoring their transition through PENDING, BUILDING, and READY states, updating them (which triggers a live rebuild), and deleting them when no longer needed. Always verify index status before depending on search results in your application, especially after deployments that include index updates.
