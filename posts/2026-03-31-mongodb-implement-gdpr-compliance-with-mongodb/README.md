@@ -134,7 +134,7 @@ auditLog:
   destination: file
   format: JSON
   path: /var/log/mongodb/auditLog.json
-  filter: '{ atype: { $in: ["find", "update", "delete"] }, "param.ns": { $regex: "users" } }'
+  filter: '{ atype: "authCheck", "param.command": { $in: ["find", "update", "delete"] }, "param.ns": { $regex: "users" } }'
 ```
 
 ## Summary
