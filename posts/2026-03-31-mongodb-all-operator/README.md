@@ -61,10 +61,9 @@ db.articles.find({ tags: { $all: ["mongodb", "nosql"] } })
 To find documents with an array that contains exactly the specified elements (no more, no less), combine `$all` with `$size`:
 
 ```javascript
-// Find documents where tags is exactly ["mongodb", "nosql"]
+// Find documents where tags is exactly ["mongodb", "nosql"] (in any order)
 db.articles.find({
-  tags: { $all: ["mongodb", "nosql"] },
-  tags: { $size: 2 }
+  tags: { $all: ["mongodb", "nosql"], $size: 2 }
 })
 ```
 
