@@ -61,6 +61,7 @@ An ARM template has five main sections:
   "apiVersion": "2023-04-01",
   "name": "mongo-vnet",
   "location": "[resourceGroup().location]",
+  "dependsOn": ["mongo-nsg"],
   "properties": {
     "addressSpace": { "addressPrefixes": ["10.0.0.0/16"] },
     "subnets": [
@@ -140,6 +141,10 @@ An ARM template has five main sections:
       "adminPassword": "[parameters('adminPassword')]"
     },
     "storageProfile": {
+      "osDisk": {
+        "createOption": "FromImage",
+        "managedDisk": { "storageAccountType": "Premium_LRS" }
+      },
       "imageReference": {
         "publisher": "Canonical",
         "offer": "0001-com-ubuntu-server-jammy",
@@ -178,8 +183,8 @@ An ARM template has five main sections:
     "publisher": "Microsoft.Azure.Extensions",
     "type": "CustomScript",
     "typeHandlerVersion": "2.1",
-    "settings": {
-      "script": "[base64(concat('#!/bin/bash\ncurl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg\necho \"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse\" > /etc/apt/sources.list.d/mongodb-org-7.0.list\napt-get update && apt-get install -y mongodb-org\nmkfs.xfs /dev/sdc && mkdir -p /data/mongodb && mount /dev/sdc /data/mongodb\nchown -R mongodb:mongodb /data/mongodb\nsystemctl enable mongod && systemctl start mongod\n'))]"
+    "protectedSettings": {
+      "script": "[base64(concat('#!/bin/bash\ncurl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg\necho \"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse\" > /etc/apt/sources.list.d/mongodb-org-7.0.list\napt-get update && apt-get install -y mongodb-org\nmkfs.xfs /dev/sdc && mkdir -p /data/mongodb && mount /dev/sdc /data/mongodb\nchown -R mongodb:mongodb /data/mongodb\nsed -i \"s|dbPath: /var/lib/mongodb|dbPath: /data/mongodb|\" /etc/mongod.conf\nsed -i \"s/bindIp: 127.0.0.1/bindIp: 0.0.0.0/\" /etc/mongod.conf\necho -e \"\\nreplication:\\n  replSetName: rs0\" >> /etc/mongod.conf\nsystemctl enable mongod && systemctl start mongod\n'))]"
     }
   }
 }
