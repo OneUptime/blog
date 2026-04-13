@@ -121,8 +121,8 @@ db.transactions.createIndex(
 For accounting accuracy, use double-entry bookkeeping where every transaction creates two ledger entries (debit and credit):
 
 ```javascript
-async function recordTransfer(db, fromAccountId, toAccountId, amount, description) {
-  const session = db.getMongo().startSession();
+async function recordTransfer(client, db, fromAccountId, toAccountId, amount, description) {
+  const session = client.startSession();
   session.startTransaction({
     readConcern: { level: "snapshot" },
     writeConcern: { w: "majority" }
