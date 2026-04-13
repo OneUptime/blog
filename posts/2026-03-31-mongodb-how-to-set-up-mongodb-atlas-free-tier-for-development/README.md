@@ -181,10 +181,9 @@ node_modules/
 
 ## M0 Limitations
 
-- Maximum 100 simultaneous connections
+- Maximum 500 simultaneous connections
 - No dedicated RAM - shared with other users
 - No custom roles or LDAP
-- No change streams (requires M10+)
 - No backups or point-in-time recovery
 
 Upgrade to M10 when you need production-grade features.
