@@ -76,7 +76,7 @@ changeStream.on('change', (change) => {
 ```javascript
 const changeStream = collection.watch([], {
   fullDocument: 'required'
-  // 'required', 'updateLookup', 'whenAvailable', 'off' (default)
+  // 'required', 'updateLookup', 'whenAvailable', 'default' (default)
 });
 ```
 
