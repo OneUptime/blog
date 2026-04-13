@@ -21,8 +21,7 @@ doctl compute droplet create mongodb-primary \
   --region nyc3 \
   --size s-4vcpu-8gb \
   --image ubuntu-22-04-x64 \
-  --ssh-keys $(doctl compute ssh-key list --format ID --no-header) \
-  --no-wait
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header)
 ```
 
 For production, use at least `m-4vcpu-32gb` (memory-optimized) so MongoDB's working set fits in RAM.
@@ -51,7 +50,6 @@ SSH into the Droplet:
 sudo mkdir -p /data/mongodb
 sudo mount -o defaults,noatime /dev/disk/by-id/scsi-0DO_Volume_mongodb-data /data/mongodb
 echo '/dev/disk/by-id/scsi-0DO_Volume_mongodb-data /data/mongodb xfs defaults,noatime,nofail 0 2' | sudo tee -a /etc/fstab
-sudo chown -R mongodb:mongodb /data/mongodb
 ```
 
 Install MongoDB:
@@ -65,6 +63,8 @@ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gp
   sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
 sudo apt-get update && sudo apt-get install -y mongodb-org
+
+sudo chown -R mongodb:mongodb /data/mongodb
 ```
 
 ## Configure MongoDB
@@ -92,6 +92,7 @@ Create a DigitalOcean Cloud Firewall:
 ```bash
 doctl compute firewall create \
   --name mongodb-firewall \
+  --droplet-ids $DROPLET_ID \
   --inbound-rules "protocol:tcp,ports:27017,droplet_id:$APP_DROPLET_ID" \
   --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0" \
   --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0"
@@ -104,12 +105,11 @@ This allows MongoDB connections only from the specific application Droplet.
 ```bash
 sudo systemctl start mongod && sudo systemctl enable mongod
 
-mongosh --eval "
-use admin;
+mongosh admin --eval "
 db.createUser({
   user: 'dbadmin',
   pwd: 'ReplaceWithStrongPassword!',
-  roles: ['root']
+  roles: [{ role: 'root', db: 'admin' }]
 });
 "
 ```
