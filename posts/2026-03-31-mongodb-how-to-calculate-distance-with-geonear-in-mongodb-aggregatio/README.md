@@ -88,10 +88,10 @@ db.venues.aggregate([
       distanceField: "distanceMeters",
       maxDistance: 2000,    // Maximum 2000 meters
       minDistance: 100,     // Minimum 100 meters
-      num: 5,               // Return at most 5 documents
       spherical: true
     }
-  }
+  },
+  { $limit: 5 }            // Return at most 5 documents
 ])
 ```
 
@@ -144,7 +144,7 @@ For miles: `distanceMultiplier: 0.000621371` (1 meter = 0.000621371 miles)
 Chain additional stages after `$geoNear` for rich queries:
 
 ```javascript
-// Find nearest 10 venues, group by type, get average distance per type
+// Find nearest 20 venues, group by type, get average distance per type
 db.venues.aggregate([
   {
     $geoNear: {
