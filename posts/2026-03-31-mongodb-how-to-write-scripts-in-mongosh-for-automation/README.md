@@ -197,8 +197,7 @@ const revenueByCategory = db.orders.aggregate([
   { $sort: { revenue: -1 } }
 ]);
 
-print("
-Revenue by Category:");
+print("\nRevenue by Category:");
 revenueByCategory.forEach(row => {
   print(`  ${row._id}: $${row.revenue.toFixed(2)} (${row.units} units)`);
 });
