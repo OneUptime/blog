@@ -117,7 +117,7 @@ db.oplog.rs.stats().maxSize;  // Configured max size in bytes
 // Calculate current oplog window
 const first = db.oplog.rs.find().sort({ $natural: 1 }).limit(1).next();
 const last = db.oplog.rs.find().sort({ $natural: -1 }).limit(1).next();
-const windowHours = (last.ts.getTime() - first.ts.getTime()) / 3600000;
+const windowHours = (last.ts.t - first.ts.t) / 3600;
 print(`Oplog window: ${windowHours.toFixed(1)} hours`);
 ```
 
