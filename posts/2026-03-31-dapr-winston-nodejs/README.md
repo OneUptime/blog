@@ -14,8 +14,7 @@ Winston is the most popular logging library for Node.js. When paired with the Da
 
 ```bash
 # Install dependencies
-npm install @dapr/dapr winston winston-transport
-npm install express
+npm install @dapr/dapr winston express
 ```
 
 ## Create a Shared Logger Module
@@ -60,7 +59,7 @@ module.exports = logger;
 ```javascript
 // app.js
 const express = require('express');
-const { DaprClient, DaprServer } = require('@dapr/dapr');
+const { DaprClient } = require('@dapr/dapr');
 const logger = require('./logger');
 
 const app = express();
@@ -154,12 +153,13 @@ server.start();
 
 ```javascript
 // production-logger.js
+const winston = require('winston');
 const { combine, timestamp, json, errors } = winston.format;
 
 const productionLogger = winston.createLogger({
   format: combine(
     errors({ stack: true }),
-    timestamp({ format: 'ISO' }),
+    timestamp(),
     json()
   ),
   transports: [new winston.transports.Console()]
