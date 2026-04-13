@@ -76,8 +76,8 @@ rm /var/lib/mongodb/diagnostic.data/metrics.interim
 ### Option B: Compact Collections
 
 ```javascript
-// Compact reclaims fragmented space (requires collection-level lock)
-// NOTE: compact requires some free space to work (at least 2x the collection size)
+// Compact reclaims fragmented space (briefly locks the collection at start and end)
+// NOTE: compact requires some additional free disk space to operate
 db.runCommand({ compact: "orders" })
 
 // Check space saved after compact
