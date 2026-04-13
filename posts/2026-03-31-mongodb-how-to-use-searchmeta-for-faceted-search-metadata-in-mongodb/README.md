@@ -166,26 +166,23 @@ db.articles.aggregate([
 
 ## Getting Total Count Only
 
-Use `$searchMeta` with a `count` operator for just the total:
+Use `$searchMeta` with a search operator (without the `facet` collector) to retrieve just the count metadata:
 
 ```javascript
 db.products.aggregate([
   {
     $searchMeta: {
       index: "products_search",
-      count: {
-        type: "total"  // exact count
-      },
       text: { query: "headphones", path: "name" }
     }
   }
 ])
-// Output: { count: { total: 247 } }
+// Output: { count: { lowerBound: 247 } }
 ```
 
 ## Combining $search and $searchMeta
 
-Use `$facet` to get search results AND metadata in one query:
+Run `$search` and `$searchMeta` as parallel queries to get search results AND metadata together:
 
 ```javascript
 async function searchWithFacets(query, page, pageSize) {
