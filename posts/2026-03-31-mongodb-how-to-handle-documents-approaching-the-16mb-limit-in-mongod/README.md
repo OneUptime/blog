@@ -17,7 +17,7 @@ MongoDB enforces a 16MB limit on individual BSON documents. Documents approachin
 ```javascript
 // Find documents larger than 1MB
 db.myCollection.find().forEach(function(doc) {
-  const size = Object.bsonsize(doc);
+  const size = bsonsize(doc);
   if (size > 1024 * 1024) {
     print(`_id: ${doc._id}, size: ${(size / 1024 / 1024).toFixed(2)} MB`);
   }
