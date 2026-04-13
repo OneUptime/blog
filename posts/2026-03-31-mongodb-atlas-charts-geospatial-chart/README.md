@@ -10,10 +10,11 @@ Description: Learn how to create geospatial maps in MongoDB Atlas Charts to visu
 
 ## Geospatial Chart Types in Atlas Charts
 
-MongoDB Atlas Charts supports two geospatial chart types:
+MongoDB Atlas Charts supports three geospatial chart types:
 
-1. **Geo Point** - plots individual documents as markers on a map using lat/lon coordinates
+1. **Geo Scatter** - plots individual documents as markers on a map using lat/lon coordinates
 2. **Geo Choropleth** - fills geographic regions (countries, states) with colors based on aggregate values
+3. **Geo Heatmap** - displays data density as a heat map overlay on a geographic map
 
 Both types render on an interactive map powered by Mapbox, with built-in zoom and pan support.
 
@@ -130,4 +131,4 @@ Without this index, the chart may time out on large collections.
 
 ## Summary
 
-Geospatial charts in MongoDB Atlas Charts support both point maps and choropleth maps. Geo Point charts require a GeoJSON coordinates field and support Color and Size channels for multi-dimensional visualization. Geo Choropleth charts map document field values to geographic regions using aggregate color intensity. Enable point clustering for dense datasets, set default map bounds in Customize, and ensure a 2dsphere index exists for performant queries on large collections.
+Geospatial charts in MongoDB Atlas Charts support point maps, choropleth maps, and heatmaps. Geo Scatter charts accept a GeoJSON coordinates field or separate latitude/longitude fields and support Color and Size channels for multi-dimensional visualization. Geo Choropleth charts map document field values to geographic regions using aggregate color intensity. Enable point clustering for dense datasets, set default map bounds in Customize, and ensure a 2dsphere index exists for performant queries on large collections.
