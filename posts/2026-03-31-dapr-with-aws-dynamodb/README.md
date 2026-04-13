@@ -32,7 +32,7 @@ metadata:
   name: statestore
   namespace: default
 spec:
-  type: state.dynamodb
+  type: state.aws.dynamodb
   version: v1
   metadata:
   - name: region
@@ -142,8 +142,6 @@ print(resp.json())
 
 ```python
 # Save state with TTL (requires ttlAttributeName in component config)
-import time
-
 requests.post("http://localhost:3500/v1.0/state/statestore", json=[{
     "key": "session-abc",
     "value": {"userId": "user-1"},
