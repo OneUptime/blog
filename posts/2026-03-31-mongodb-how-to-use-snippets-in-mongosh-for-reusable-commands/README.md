@@ -34,10 +34,10 @@ Install a snippet by name. For example, the `mongocompat` snippet adds compatibi
 snippet install mongocompat
 ```
 
-After installation, load it in your session:
+After installation, the snippet is automatically loaded and available in your session. You can verify it is installed with:
 
 ```javascript
-load("mongocompat");
+snippet ls
 ```
 
 ## Writing a Custom Snippet
@@ -55,8 +55,8 @@ Write the snippet logic in `index.js`:
 ```javascript
 // index.js
 function dbStats(dbName) {
-  const db = db.getSiblingDB(dbName);
-  const stats = db.stats();
+  const targetDb = db.getSiblingDB(dbName);
+  const stats = targetDb.stats();
   print(`Database: ${dbName}`);
   print(`Collections: ${stats.collections}`);
   print(`Data size: ${(stats.dataSize / 1024 / 1024).toFixed(2)} MB`);
@@ -72,8 +72,6 @@ function slowQueries(threshold = 100) {
     op: op.op
   }));
 }
-
-module.exports = { dbStats, slowQueries };
 ```
 
 ## Using a Local Snippet
@@ -98,16 +96,16 @@ print("Custom utilities loaded");
 
 ## Sharing Snippets with Your Team
 
-Publish snippets to a private npm registry so the team can install them:
-
-```bash
-npm publish --registry https://registry.mycompany.com
-```
-
-Then team members install with:
+To share snippets with your team, host a snippet registry index file that lists your packages. Configure mongosh to use it by setting the `snippetIndexSourceURLs` config option:
 
 ```javascript
-snippet install @mycompany/mongo-utils
+config.set("snippetIndexSourceURLs", "https://registry.mycompany.com/mongosh-snippets/index.bson.br")
+```
+
+Publish your snippet package to a registry (such as npm or a private registry), and list it in your snippet index. Then team members can install with:
+
+```javascript
+snippet install my-mongo-utils
 ```
 
 ## Summary
