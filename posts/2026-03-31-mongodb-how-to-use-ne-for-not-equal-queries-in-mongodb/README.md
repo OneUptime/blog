@@ -35,7 +35,7 @@ const paidItems = await orders
   .find({ price: { $ne: 0 } })
   .toArray();
 
-// Find documents where a field is not null (also matches missing field)
+// Find documents where a field exists and is not null (excludes null and missing fields)
 const withName = await orders
   .find({ customerName: { $ne: null } })
   .toArray();
