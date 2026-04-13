@@ -51,12 +51,12 @@ spec:
   version: v1
   metadata:
   - name: brokers
-    value: "b-1.dapr-events.abc.c1.kafka.us-east-1.amazonaws.com:9094,b-2.dapr-events.abc.c1.kafka.us-east-1.amazonaws.com:9094"
+    value: "b-1.dapr-events.abc.c1.kafka.us-east-1.amazonaws.com:9098,b-2.dapr-events.abc.c1.kafka.us-east-1.amazonaws.com:9098"
   - name: consumerGroup
     value: dapr-consumers
   - name: authType
-    value: "iam"
-  - name: awsRegion
+    value: "awsiam"
+  - name: region
     value: us-east-1
   - name: initialOffset
     value: oldest
@@ -66,7 +66,7 @@ spec:
 
 ## Enable IAM Authentication for MSK
 
-MSK supports IAM authentication (SASL/SCRAM-SHA-512). Ensure the EKS node role or IRSA role has MSK permissions:
+MSK supports IAM authentication using the AWS_MSK_IAM SASL mechanism. Ensure the EKS node role or IRSA role has MSK permissions:
 
 ```bash
 aws iam put-role-policy \
@@ -83,11 +83,14 @@ aws iam put-role-policy \
           "kafka-cluster:ReadData",
           "kafka-cluster:WriteData",
           "kafka-cluster:CreateTopic",
-          "kafka-cluster:DescribeTopic"
+          "kafka-cluster:DescribeTopic",
+          "kafka-cluster:AlterGroup",
+          "kafka-cluster:DescribeGroup"
         ],
         "Resource": [
           "arn:aws:kafka:us-east-1:123456789012:cluster/dapr-events/*",
-          "arn:aws:kafka:us-east-1:123456789012:topic/dapr-events/*"
+          "arn:aws:kafka:us-east-1:123456789012:topic/dapr-events/*",
+          "arn:aws:kafka:us-east-1:123456789012:group/dapr-events/*"
         ]
       }
     ]
@@ -156,12 +159,9 @@ if __name__ == '__main__':
 ```python
 # Publish with a partition key for ordered processing
 requests.post(
-    "http://localhost:3500/v1.0/publish/msk-pubsub/order-placed",
+    "http://localhost:3500/v1.0/publish/msk-pubsub/order-placed?metadata.partitionKey=cust-456",
     json={"id": "order-002", "customerId": "cust-456", "total": 25.00},
-    headers={
-        "Content-Type": "application/json",
-        "partitionKey": "cust-456"  # Same customer orders go to same partition
-    }
+    headers={"Content-Type": "application/json"}
 ).raise_for_status()
 ```
 
