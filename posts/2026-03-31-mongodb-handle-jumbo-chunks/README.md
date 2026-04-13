@@ -66,8 +66,8 @@ The balancer will attempt to split and migrate the chunk again.
 If the chunk has more than one distinct key value, you can split it manually:
 
 ```javascript
-// Split at a known midpoint
-sh.splitAt("myapp.products", { category: "electronics", _id: ObjectId("...") })
+// Split at a known midpoint value within the chunk range
+sh.splitAt("myapp.products", { category: "furniture" })
 ```
 
 To find a good split point:
@@ -97,10 +97,10 @@ This does not remove the jumbo flag but redistributes the data.
 
 ## Option 4 - Refactor the Shard Key (Long-Term Fix)
 
-The only permanent fix for a true low-cardinality jumbo chunk is to change the shard key. MongoDB 5.0+ supports unshard collection and resharding:
+The only permanent fix for a true low-cardinality jumbo chunk is to change the shard key. MongoDB 5.0+ supports resharding:
 
 ```javascript
-// MongoDB 7.0+ resharding
+// MongoDB 5.0+ resharding
 db.adminCommand({
   reshardCollection: "myapp.products",
   key: { category: 1, _id: 1 }  // compound key with higher cardinality
@@ -111,10 +111,10 @@ For older versions, the process requires creating a new sharded collection, copy
 
 ```bash
 # Export from old collection
-mongoexport --collection products --out products_backup.json
+mongoexport --db myapp --collection products --out products_backup.json
 
 # Import to new sharded collection
-mongoimport --collection products_v2 --file products_backup.json
+mongoimport --db myapp --collection products_v2 --file products_backup.json
 ```
 
 ## Prevent Jumbo Chunks
