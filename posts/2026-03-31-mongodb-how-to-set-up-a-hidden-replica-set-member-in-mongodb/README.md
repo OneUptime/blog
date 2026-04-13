@@ -64,7 +64,7 @@ Even though clients cannot discover the hidden member automatically, you can con
 
 ```javascript
 // Direct connection to hidden member for analytics - bypasses replica set routing
-const analyticsClient = new MongoClient("mongodb://192.168.1.14:27021/");
+const analyticsClient = new MongoClient("mongodb://192.168.1.14:27021/?directConnection=true");
 ```
 
 Or via `mongodump` for backups:
