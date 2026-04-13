@@ -40,17 +40,16 @@ find /backup/mongodb-20260331 -name "*.bson" -empty
 `bsondump` converts BSON to human-readable JSON. If it errors, the BSON is corrupt:
 
 ```bash
-# Check a single collection
-bsondump /backup/mongodb-20260331/mydb/orders.bson | tail -1
-# Last line should be: {"summary": {"seen": 12345, "valid": 12345}}
+# Check a single collection - a non-zero exit code means the BSON is corrupt
+bsondump /backup/mongodb-20260331/mydb/orders.bson > /dev/null
+echo $?  # 0 = valid, non-zero = corrupt or unreadable
 
 # Check all collections
-for bson_file in /backup/mongodb-20260331/**/*.bson; do
-  result=$(bsondump "${bson_file}" 2>&1 | tail -1)
-  if echo "${result}" | grep -q '"valid"'; then
+for bson_file in $(find /backup/mongodb-20260331 -name "*.bson"); do
+  if bsondump "${bson_file}" > /dev/null 2>&1; then
     echo "OK: ${bson_file}"
   else
-    echo "ERROR: ${bson_file} - ${result}"
+    echo "ERROR: ${bson_file} may be corrupt"
   fi
 done
 ```
@@ -125,8 +124,15 @@ After restoration, verify indexes are present and valid:
 // Check all indexes exist
 db.orders.getIndexes()
 
-// Rebuild indexes if validation shows issues
-db.orders.reIndex()
+// Rebuild indexes if validation shows issues (drop and recreate)
+// Note: db.collection.reIndex() is deprecated since MongoDB 6.0
+let indexes = db.orders.getIndexes();
+indexes.forEach(function(idx) {
+  if (idx.name !== "_id_") {
+    db.orders.dropIndex(idx.name);
+    db.orders.createIndex(idx.key, { name: idx.name });
+  }
+});
 
 // Verify index stats
 db.orders.aggregate([{ $indexStats: {} }])
@@ -161,7 +167,7 @@ done
 
 # Step 2: Test restore
 mkdir -p "${TEST_DBPATH}"
-mongod --dbpath "${TEST_DBPATH}" --port ${TEST_PORT} --fork   --logpath /tmp/validate-mongod.log --noauth
+mongod --dbpath "${TEST_DBPATH}" --port ${TEST_PORT} --fork   --logpath /tmp/validate-mongod.log
 
 sleep 3
 
