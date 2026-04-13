@@ -70,38 +70,43 @@ def my_activity(ctx: WorkflowActivityContext, input):
 Each workflow instance maps to a virtual Dapr actor. The actor ID is the workflow instance ID:
 
 ```bash
-# Inspect workflow actor state in Redis
-redis-cli KEYS "workflowactors||*"
+# Inspect workflow actor state in Redis (default namespace)
+redis-cli KEYS "*dapr.internal*workflow*"
 ```
 
 The actor persists the event history and current state. This is why workflows survive restarts - the actor simply replays the event log when reactivated.
 
 ## Workflow Scheduler Service
 
-In Kubernetes, the Dapr Scheduler service routes workflow scheduling operations:
+The Dapr Scheduler service manages actor reminders used internally by workflows for scheduling and timers. It runs in both Kubernetes and self-hosted environments:
 
 ```yaml
-# Check scheduler service status
+# Check scheduler service status (Kubernetes)
 kubectl get pods -n dapr-system | grep scheduler
 ```
 
-The scheduler ensures activities are dispatched to available app instances without overwhelming a single pod.
+The Scheduler handles reminder-based scheduling for workflow operations, while the actor placement service ensures workflow instances are distributed across available app replicas.
 
 ## State Store Configuration
 
-Workflows require a state store for event persistence. Configure it in your Dapr configuration:
+Workflows require an actor-compatible state store for event persistence. Configure a state store component that supports actors:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: actorbackend
+  name: statestore
 spec:
-  type: workflowbackend.actor
+  type: state.redis
   version: v1
+  metadata:
+  - name: redisHost
+    value: localhost:6379
+  - name: actorStateStore
+    value: "true"
 ```
 
-Dapr Workflow uses the actor backend by default, so you do not need to define a workflow backend component for normal usage. For production, use a persistent state store like PostgreSQL or Azure Cosmos DB instead of Redis.
+Any state store that supports actors implicitly supports Dapr Workflow. For production, use a persistent state store like PostgreSQL or Azure Cosmos DB instead of Redis.
 
 ## Scaling Considerations
 
