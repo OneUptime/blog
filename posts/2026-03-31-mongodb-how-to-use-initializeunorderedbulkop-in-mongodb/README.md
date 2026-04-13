@@ -153,10 +153,10 @@ await db.collection("products").bulkWrite([
 
 ## Batch Size Limit
 
-Each bulk operation can contain a maximum of 1,000 operations. Split large batches:
+MongoDB automatically splits bulk operations into batches of up to 100,000 operations (the server's `maxWriteBatchSize` limit). You can add any number of operations to a single bulk object and the driver handles batching internally. For very large datasets, manually batching can help manage memory usage:
 
 ```javascript
-function bulkInBatches(collection, documents, batchSize = 1000) {
+function bulkInBatches(collection, documents, batchSize = 10000) {
   for (let i = 0; i < documents.length; i += batchSize) {
     const batch = documents.slice(i, i + batchSize)
     const bulk = collection.initializeUnorderedBulkOp()
