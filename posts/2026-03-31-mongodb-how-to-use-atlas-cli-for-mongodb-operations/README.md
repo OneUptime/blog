@@ -24,7 +24,7 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/atlas-archive-keyring.gpg] h
 sudo apt-get update && sudo apt-get install -y mongodb-atlas-cli
 
 # Windows (Chocolatey)
-choco install mongodb-atlas-cli
+choco install mongodb-atlas
 
 # Verify installation
 atlas --version
@@ -111,8 +111,8 @@ atlas dbusers delete appUser
 
 ```bash
 # Add an IP
-atlas accessLists create \
-  --cidr "10.0.0.0/8" \
+atlas accessLists create "10.0.0.0/8" \
+  --type cidrBlock \
   --comment "Internal network"
 
 # List access list
@@ -144,11 +144,11 @@ atlas backups restores start automated \
 ## Monitoring and Metrics
 
 ```bash
-# View current processes
-atlas metrics processes myCluster \
+# View current processes (use atlas processes list to find hostname:port)
+atlas metrics processes <hostname:port> \
   --period PT1H \
   --granularity PT5M \
-  --metrics CONNECTIONS,OPCOUNTERS_CMD,SYSTEM_CPU_PERCENT
+  --type CONNECTIONS,OPCOUNTERS_CMD,SYSTEM_CPU_PERCENT
 
 # List recent events
 atlas events projects list --limit 20
@@ -160,9 +160,9 @@ atlas alerts list --status OPEN
 ## Logs
 
 ```bash
-# Download cluster logs
-atlas logs download myCluster mongod.gz \
-  --output /tmp/mongod.log.gz \
+# Download cluster logs (use atlas processes list to find hostname)
+atlas logs download <hostname> mongodb.gz \
+  --out /tmp/mongod.log.gz \
   --decompress
 
 # View recent log lines
@@ -172,15 +172,15 @@ gunzip -c /tmp/mongod.log.gz | tail -100
 ## Performance Advisor
 
 ```bash
-# Get index recommendations
+# Get index recommendations (use atlas processes list to find hostname:port)
 atlas performanceAdvisor suggestedIndexes list \
-  --clusterName myCluster
+  --processName <hostname:port>
 
 # Get slow queries
 atlas performanceAdvisor slowQueryLogs list \
-  --clusterName myCluster \
+  --processName <hostname:port> \
   --since $(date -d "24 hours ago" +%s) \
-  --until $(date +%s)
+  --duration 86400000
 ```
 
 ## Atlas CLI in CI/CD Pipelines
