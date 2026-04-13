@@ -81,7 +81,7 @@ async function getPageCursor(collection, cursor, pageSize) {
 }
 
 // First page: GET /api/posts?pageSize=20
-// Next page: GET /api/posts?cursor=64abc123def456789012345&pageSize=20
+// Next page: GET /api/posts?cursor=64abc123def4567890123456&pageSize=20
 ```
 
 ## Cursor Pagination with Custom Sort Field
@@ -129,7 +129,7 @@ async function getPageByCursor(collection, afterId, afterDate, pageSize) {
 
 ```javascript
 // Ensure indexes support your sort order
-await db.collection('posts').createIndex({ _id: -1 });  // default, usually already exists
+// The default { _id: 1 } index already supports descending sort since single-field indexes can be traversed in either direction
 
 // For createdAt + _id compound cursor
 await db.collection('posts').createIndex({ createdAt: -1, _id: -1 });
