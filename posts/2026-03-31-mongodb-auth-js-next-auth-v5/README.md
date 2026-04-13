@@ -15,7 +15,7 @@ Auth.js (formerly NextAuth.js v5) introduces a new unified API that works with N
 ## Installation
 
 ```bash
-npm install next-auth@beta @auth/mongodb-adapter mongodb
+npm install next-auth @auth/mongodb-adapter mongodb
 ```
 
 ## Creating the Shared MongoDB Client
@@ -52,6 +52,7 @@ import clientPromise from './lib/mongodb';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: MongoDBAdapter(clientPromise),
+  session: { strategy: 'jwt' },
   providers: [
     GitHub,
     Credentials({
@@ -65,14 +66,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           .findOne({ email: credentials.email });
         if (!user) return null;
         // Validate password here (use bcrypt in production)
-        return user;
+        return { id: user._id.toString(), email: user.email, name: user.name, role: user.role };
       },
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
-      session.user.id   = user.id;
-      session.user.role = user.role ?? 'member';
+    async jwt({ token, user }) {
+      if (user) {
+        token.role = user.role ?? 'member';
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.user.id   = token.sub;
+      session.user.role = token.role ?? 'member';
       return session;
     },
   },
@@ -127,7 +134,7 @@ export default async function Dashboard() {
 - Configuration is in `auth.js`, not `pages/api/auth/[...nextauth].js`
 - Use `auth()` instead of `getServerSession()` in server components
 - The adapter API is unchanged but the package exports have changed
-- JWT and database sessions are both supported; database sessions store tokens in MongoDB
+- JWT and database sessions are both supported; the Credentials provider requires `session: { strategy: 'jwt' }`
 
 ## Recommended MongoDB Indexes
 
