@@ -105,7 +105,7 @@ print("Ratio:", (s.size / s.storageSize).toFixed(2) + "x")
 
 You can also compress network traffic between clients and MongoDB using Zstd:
 
-```bash
+```yaml
 # In mongod.conf
 net:
   compression:
