@@ -91,7 +91,7 @@ MongoDB's balancer automatically migrates chunks to the new shard. Monitor balan
 
 ```javascript
 sh.status()
-db.getSiblingDB("config").migrations.countDocuments({ state: { $ne: "done" } })
+db.getSiblingDB("config").changelog.find({ what: "moveChunk.commit" }).sort({ time: -1 }).limit(10)
 ```
 
 ## Monitoring Storage Alerts
