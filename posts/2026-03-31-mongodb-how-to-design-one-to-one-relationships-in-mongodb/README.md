@@ -67,15 +67,15 @@ Store the related document in a separate collection and link via a reference:
 ```javascript
 // users collection
 {
-  _id: ObjectId("aaa111"),
+  _id: ObjectId("aaa111aaa111aaa111aaa111"),
   email: "alice@example.com",
   passwordHash: "..."
 }
 
 // userProfiles collection
 {
-  _id: ObjectId("bbb222"),
-  userId: ObjectId("aaa111"),
+  _id: ObjectId("bbb222bbb222bbb222bbb222"),
+  userId: ObjectId("aaa111aaa111aaa111aaa111"),
   firstName: "Alice",
   lastName: "Smith",
   bio: "Software engineer",
