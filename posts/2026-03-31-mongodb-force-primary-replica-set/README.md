@@ -17,7 +17,7 @@ The cleanest approach is to temporarily raise the target member's priority above
 ### Step 1 - Identify the Current Primary and Target
 
 ```javascript
-rs.status().members.map(m => ({ host: m.name, state: m.stateStr, priority: undefined }))
+rs.status().members.map(m => ({ host: m.name, state: m.stateStr }))
 rs.conf().members.map(m => ({ host: m.host, priority: m.priority }))
 ```
 
@@ -44,7 +44,7 @@ MongoDB holds an election. Because mongo2 has the highest priority and is caught
 ### Step 4 - Verify
 
 ```javascript
-rs.isMaster().primary  // should show mongo2:27017
+db.hello().primary  // should show mongo2:27017
 ```
 
 ### Step 5 - Restore Original Priorities
@@ -74,7 +74,7 @@ The target member (the only non-frozen secondary) wins the election. Frozen memb
 
 ## Handling Replication Lag
 
-A member with significant replication lag cannot immediately become primary even with high priority. MongoDB's `catchUpPeriodMillis` setting controls how long a newly elected primary waits to catch up before accepting writes:
+A member with significant replication lag cannot immediately become primary even with high priority. MongoDB's `catchUpTimeoutMillis` setting controls how long a newly elected primary waits to catch up before accepting writes:
 
 ```javascript
 var cfg = rs.conf();
