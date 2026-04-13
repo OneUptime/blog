@@ -74,7 +74,7 @@ const newTablets = await db.categories.insertOne({
   children: []
 });
 
-db.categories.updateOne(
+await db.categories.updateOne(
   { name: "Electronics" },
   { $push: { children: newTablets.insertedId } }
 )
