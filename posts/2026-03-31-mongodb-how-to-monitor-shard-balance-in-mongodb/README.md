@@ -46,8 +46,10 @@ Query the config database for precise counts:
 ```javascript
 use config;
 
+const collUUID = db.collections.findOne({ _id: "mydb.orders" }).uuid;
+
 db.chunks.aggregate([
-  { $match: { ns: "mydb.orders" } },
+  { $match: { uuid: collUUID } },
   {
     $group: {
       _id: "$shard",
@@ -73,8 +75,8 @@ Shard01 has more than twice the chunks of others - a clear imbalance.
 ## Checking the Balancer State
 
 ```javascript
-sh.isBalancerRunning();
 sh.getBalancerState();
+db.adminCommand({ balancerStatus: 1 });
 ```
 
 View the last few balancer rounds:
@@ -119,7 +121,8 @@ Jumbo chunks cannot be split or migrated, causing imbalance to persist:
 
 ```javascript
 use config;
-db.chunks.find({ jumbo: true, ns: "mydb.orders" });
+const collUUID = db.collections.findOne({ _id: "mydb.orders" }).uuid;
+db.chunks.find({ jumbo: true, uuid: collUUID });
 ```
 
 If jumbo chunks exist, investigate the shard key distribution for those key ranges - they likely have extremely high document frequency for those values.
@@ -133,8 +136,9 @@ A simple shell script to alert on imbalance:
 THRESHOLD=1.5
 COUNTS=$(mongosh --quiet --eval "
   use config;
+  const collUUID = db.collections.findOne({ _id: 'mydb.orders' }).uuid;
   const res = db.chunks.aggregate([
-    { \$match: { ns: 'mydb.orders' } },
+    { \$match: { uuid: collUUID } },
     { \$group: { _id: '\$shard', c: { \$sum: 1 } } }
   ]).toArray();
   const counts = res.map(r => r.c);
