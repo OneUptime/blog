@@ -60,7 +60,9 @@ awk 'NR > 1 && NF >= 4 { count[$1]++ } END { for (ns in count) print count[ns], 
 
 ## The --locks Flag
 
-Use `--locks` to see lock wait times instead of I/O times:
+> **Note:** The `--locks` flag only works with MongoDB 2.6 and earlier. On MongoDB 3.0 and later, it fails with "server does not support reporting lock information." Use the `db.serverStatus()` command or the `top` admin command for lock and per-collection timing information on modern MongoDB versions.
+
+Use `--locks` to see lock wait times instead of I/O times (MongoDB 2.6 and earlier only):
 
 ```bash
 mongotop --locks
@@ -81,7 +83,7 @@ High write lock times indicate a write-heavy collection that may be causing read
 mongotop --json 5
 
 # Sample JSON output format:
-# {"mydb.orders":{"read":"230ms","write":"115ms","total":"345ms"},"ts":"2026-03-31T10:00:00Z"}
+# {"totals":{"mydb.orders":{"total":{"time":345,"count":1},"read":{"time":230,"count":1},"write":{"time":115,"count":1}}},"time":"2026-03-31T10:00:00Z"}
 ```
 
 ## Analyzing mongotop Data with Python
@@ -106,26 +108,18 @@ for line in sys.stdin:
         data = json.loads(line)
         sample_count += 1
         
-        for ns, metrics in data.items():
-            if ns == 'ts':
-                continue
-            
-            def parse_ms(val):
-                if isinstance(val, str):
-                    return int(val.replace('ms', ''))
-                return int(val)
-            
-            totals[ns]['read'] += parse_ms(metrics.get('read', '0ms'))
-            totals[ns]['write'] += parse_ms(metrics.get('write', '0ms'))
-            totals[ns]['total'] += parse_ms(metrics.get('total', '0ms'))
+        collections = data.get('totals', {})
+        for ns, metrics in collections.items():
+            totals[ns]['read'] += metrics.get('read', {}).get('time', 0)
+            totals[ns]['write'] += metrics.get('write', {}).get('time', 0)
+            totals[ns]['total'] += metrics.get('total', {}).get('time', 0)
             totals[ns]['count'] += 1
             
     except (json.JSONDecodeError, ValueError, KeyError):
         pass
 
 # Print summary
-print(f"
-Analysis over {sample_count} samples:")
+print(f"\nAnalysis over {sample_count} samples:")
 print(f"{'Namespace':<50} {'Avg Read':>10} {'Avg Write':>11} {'Avg Total':>11}")
 print("-" * 85)
 
