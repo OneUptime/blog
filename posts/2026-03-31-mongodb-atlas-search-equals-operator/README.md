@@ -83,7 +83,7 @@ db.orders.aggregate([
     $search: {
       equals: {
         path: "userId",
-        value: { $oid: "64a1f2c3b4e5f6789abc1234" }
+        value: ObjectId("64a1f2c3b4e5f6789abc1234")
       }
     }
   }
@@ -161,7 +161,7 @@ db.events.aggregate([
     $search: {
       equals: {
         path: "eventDate",
-        value: { $date: "2026-03-15T00:00:00Z" }
+        value: ISODate("2026-03-15T00:00:00Z")
       }
     }
   }
