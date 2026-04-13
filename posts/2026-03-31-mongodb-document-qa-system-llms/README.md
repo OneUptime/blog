@@ -30,7 +30,7 @@ A document Q&A system lets users ask natural-language questions and get answers 
 ## Setup
 
 ```bash
-pip install pymongo openai sentence-transformers tiktoken
+pip install pymongo openai sentence-transformers
 ```
 
 ## Step 1 - Chunk and Embed Documents
@@ -38,7 +38,6 @@ pip install pymongo openai sentence-transformers tiktoken
 ```python
 from sentence_transformers import SentenceTransformer
 from pymongo import MongoClient
-import re
 
 client = MongoClient(MONGODB_URI)
 collection = client["qa_system"]["chunks"]
