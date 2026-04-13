@@ -72,12 +72,12 @@ rs.reconfig(cfg);
 ## Verifying a Member is Hidden
 
 ```javascript
-// rs.status() shows hidden members with their state
+// rs.status() lists hidden members but does not include the hidden field
 rs.status().members.forEach(m => {
-  print(m.name, "state:", m.stateStr, "hidden:", m.hidden || false);
+  print(m.name, "state:", m.stateStr);
 });
 
-// rs.conf() shows hidden: true in the member config
+// rs.conf() shows hidden: true in the member config (use this to check hidden status)
 rs.conf().members.forEach(m => {
   print(m.host, "priority:", m.priority, "hidden:", m.hidden || false);
 });
@@ -179,11 +179,11 @@ hidden.forEach(h => {
 // Fix:
 { _id: 2, host: "hidden:27019", priority: 0, hidden: true }
 
-// ERROR: buildIndexes: false without hidden
-// buildIndexes: false requires both hidden: true and priority: 0
+// ERROR: buildIndexes: false without priority: 0
+// buildIndexes: false requires priority: 0 (hidden: true is recommended but not required)
 { _id: 3, host: "noidx:27020", buildIndexes: false }
 // Fix:
-{ _id: 3, host: "noidx:27020", buildIndexes: false, hidden: true, priority: 0 }
+{ _id: 3, host: "noidx:27020", buildIndexes: false, priority: 0 }
 ```
 
 ## Removing Hidden Status
@@ -194,7 +194,7 @@ To make a hidden member visible to clients again:
 const cfg = rs.conf();
 const m = cfg.members.find(m => m.host === "hidden.example.com:27019");
 m.hidden = false;
-m.priority = 1;  // restore voting eligibility
+m.priority = 1;  // restore eligibility to become primary
 rs.reconfig(cfg);
 ```
 
