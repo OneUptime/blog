@@ -50,8 +50,11 @@ databases:
 
 ```javascript
 // Detailed chunk distribution
-db.getSiblingDB("config").collection("chunks").aggregate([
-  { $match: { ns: "myapp.orders" } },
+// First, get the collection UUID (required for MongoDB 6.0+)
+const collUUID = db.getSiblingDB("config").collections.findOne({ _id: "myapp.orders" }).uuid;
+
+db.getSiblingDB("config").chunks.aggregate([
+  { $match: { uuid: collUUID } },
   { $group: { _id: "$shard", chunkCount: { $sum: 1 } } },
   { $sort: { chunkCount: -1 } }
 ]).toArray()
@@ -67,7 +70,7 @@ sh.isBalancerRunning()
 sh.getBalancerState()
 
 // Get balancer configuration
-db.getSiblingDB("config").collection("settings").findOne({ _id: "balancer" })
+db.getSiblingDB("config").settings.findOne({ _id: "balancer" })
 ```
 
 ### Monitor Active Migrations
@@ -95,7 +98,7 @@ sh.startBalancer()
 Configure the balancer to only run during off-peak hours to minimize impact on production traffic:
 
 ```javascript
-db.getSiblingDB("config").collection("settings").updateOne(
+db.getSiblingDB("config").settings.updateOne(
   { _id: "balancer" },
   {
     $set: {
@@ -112,7 +115,7 @@ db.getSiblingDB("config").collection("settings").updateOne(
 Remove the window to allow balancing at any time:
 
 ```javascript
-db.getSiblingDB("config").collection("settings").updateOne(
+db.getSiblingDB("config").settings.updateOne(
   { _id: "balancer" },
   { $unset: { activeWindow: 1 } }
 )
@@ -189,9 +192,12 @@ async function monitorBalance() {
 
   const config = client.db("config");
 
+  // Get collection UUID (required for MongoDB 6.0+)
+  const collInfo = await config.collection("collections").findOne({ _id: "myapp.orders" });
+
   // Get chunk distribution
   const distribution = await config.collection("chunks").aggregate([
-    { $match: { ns: "myapp.orders" } },
+    { $match: { uuid: collInfo.uuid } },
     { $group: { _id: "$shard", count: { $sum: 1 } } },
     { $sort: { count: -1 } }
   ]).toArray();
@@ -240,7 +246,7 @@ During migration, the source shard serves queries for the migrating chunk until 
 The default chunk size is 128 MB. Smaller chunks migrate faster but create more metadata:
 
 ```javascript
-db.getSiblingDB("config").collection("settings").updateOne(
+db.getSiblingDB("config").settings.updateOne(
   { _id: "chunksize" },
   { $set: { value: 64 } },   // 64 MB chunks
   { upsert: true }
