@@ -24,7 +24,7 @@ Maintain two collections: one for the current document and one for historical ve
 // Current document (latest version)
 // Collection: contracts
 {
-  _id: ObjectId("c001"),
+  _id: ObjectId("60a1b2c3d4e5f6a7b8c9d001"),
   contractId: "CONTRACT-2026-001",
   version: 3,
   status: "active",
@@ -37,7 +37,7 @@ Maintain two collections: one for the current document and one for historical ve
 // Historical versions
 // Collection: contractsHistory
 {
-  _id: ObjectId("h001"),
+  _id: ObjectId("60a1b2c3d4e5f6a7b8c9d002"),
   contractId: "CONTRACT-2026-001",
   version: 1,
   status: "draft",
@@ -48,7 +48,7 @@ Maintain two collections: one for the current document and one for historical ve
 }
 
 {
-  _id: ObjectId("h002"),
+  _id: ObjectId("60a1b2c3d4e5f6a7b8c9d003"),
   contractId: "CONTRACT-2026-001",
   version: 2,
   status: "pending",
@@ -99,10 +99,12 @@ async function updateContract(contractId, updates, updatedBy) {
       { session }
     );
 
-    session.commitTransaction();
+    await session.commitTransaction();
   } catch (e) {
-    session.abortTransaction();
+    await session.abortTransaction();
     throw e;
+  } finally {
+    session.endSession();
   }
 }
 ```
@@ -129,7 +131,7 @@ For documents with small, infrequent changes, embed all versions in one document
 
 ```javascript
 {
-  _id: ObjectId("c001"),
+  _id: ObjectId("60a1b2c3d4e5f6a7b8c9d001"),
   contractId: "CONTRACT-2026-001",
   currentVersion: 3,
   versions: [
@@ -164,33 +166,55 @@ For documents with small, infrequent changes, embed all versions in one document
 
 ```javascript
 async function revertToVersion(contractId, targetVersion, revertedBy) {
-  const historical = await db.contractsHistory.findOne({
-    contractId,
-    version: targetVersion
-  });
+  const session = db.getMongo().startSession();
+  session.startTransaction();
 
-  if (!historical) throw new Error(`Version ${targetVersion} not found`);
+  try {
+    const historical = await db.contractsHistory.findOne(
+      { contractId, version: targetVersion },
+      { session }
+    );
 
-  const current = await db.contracts.findOne({ contractId });
+    if (!historical) throw new Error(`Version ${targetVersion} not found`);
 
-  // Archive current version before reverting
-  await db.contractsHistory.insertOne({
-    ...current,
-    _id: new ObjectId(),
-    archivedAt: new Date()
-  });
+    const current = await db.contracts.findOne(
+      { contractId },
+      { session }
+    );
 
-  // Restore from historical version
-  const restoredDoc = {
-    ...historical,
-    _id: current._id,  // Keep current document ID
-    version: current.version + 1,
-    updatedBy: revertedBy,
-    updatedAt: new Date(),
-    revertedFrom: targetVersion
-  };
+    // Archive current version before reverting
+    await db.contractsHistory.insertOne(
+      {
+        ...current,
+        _id: new ObjectId(),
+        archivedAt: new Date()
+      },
+      { session }
+    );
 
-  await db.contracts.replaceOne({ contractId }, restoredDoc);
+    // Restore from historical version
+    const restoredDoc = {
+      ...historical,
+      _id: current._id,  // Keep current document ID
+      version: current.version + 1,
+      updatedBy: revertedBy,
+      updatedAt: new Date(),
+      revertedFrom: targetVersion
+    };
+
+    await db.contracts.replaceOne(
+      { contractId },
+      restoredDoc,
+      { session }
+    );
+
+    await session.commitTransaction();
+  } catch (e) {
+    await session.abortTransaction();
+    throw e;
+  } finally {
+    session.endSession();
+  }
 }
 ```
 
