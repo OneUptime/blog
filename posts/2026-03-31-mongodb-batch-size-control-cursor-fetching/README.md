@@ -10,7 +10,7 @@ Description: Learn how to configure batch size on MongoDB cursors to control mem
 
 ## How MongoDB Cursors Fetch Documents
 
-MongoDB cursors do not retrieve all matching documents in a single network round trip. Instead, they use a `getMore` command to fetch documents in batches. The default initial batch size is 101 documents for the first response and then 4 MB per `getMore` request for subsequent batches.
+MongoDB cursors do not retrieve all matching documents in a single network round trip. Instead, they use a `getMore` command to fetch documents in batches. The default initial batch size is 101 documents for the first response and then 16 MB per `getMore` request for subsequent batches.
 
 Controlling batch size gives you a balance between memory usage (smaller batches) and network efficiency (fewer round trips with larger batches).
 
