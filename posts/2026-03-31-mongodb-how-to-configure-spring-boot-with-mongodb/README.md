@@ -10,7 +10,7 @@ Description: Learn how to configure Spring Boot with MongoDB using Spring Data M
 
 ## Overview
 
-Spring Data MongoDB integrates MongoDB into Spring Boot applications through auto-configuration, repository abstractions, and an `MongoTemplate` for custom queries. With a few lines of configuration and an interface definition, you get a fully functional data access layer.
+Spring Data MongoDB integrates MongoDB into Spring Boot applications through auto-configuration, repository abstractions, and a `MongoTemplate` for custom queries. With a few lines of configuration and an interface definition, you get a fully functional data access layer.
 
 ## Adding the Dependency
 
@@ -124,6 +124,11 @@ public class UserService {
         return userRepository.findAll();
     }
 
+    public User getUserById(String id) {
+        return userRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("User not found: " + id));
+    }
+
     public User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
             .orElseThrow(() -> new RuntimeException("User not found: " + email));
@@ -196,7 +201,7 @@ public class UserController {
 
     @GetMapping("/{id}")
     public ResponseEntity<User> getUser(@PathVariable String id) {
-        return ResponseEntity.ok(userService.getUserByEmail(id));
+        return ResponseEntity.ok(userService.getUserById(id));
     }
 
     @PostMapping
