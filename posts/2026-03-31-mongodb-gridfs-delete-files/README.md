@@ -41,13 +41,13 @@ async function deleteFile(fileId) {
   await bucket.delete(new ObjectId(fileId));
   console.log(`Deleted file: ${fileId}`);
 
-  client.close();
+  await client.close();
 }
 
 deleteFile("64abc123def456789abcdef0");
 ```
 
-`bucket.delete()` atomically removes the `fs.files` document and all matching `fs.chunks` documents.
+`bucket.delete()` removes the `fs.files` document and all matching `fs.chunks` documents in two separate operations (not atomically).
 
 ## Deleting All Files by Filename (Node.js)
 
