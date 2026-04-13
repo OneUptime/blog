@@ -37,7 +37,7 @@ A covered query is served entirely by an index without reading the document. Def
 ```javascript
 // Create index covering the query AND the projection
 db.products.createIndex(
-  { category._id: 1, price: 1, name: 1, sku: 1 }
+  { "category._id": 1, price: 1, name: 1, sku: 1 }
 );
 
 // This query is covered - never touches document storage
