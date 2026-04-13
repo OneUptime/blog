@@ -15,7 +15,7 @@ Atlas Stream Processing pipelines use the same aggregation syntax as MongoDB que
 Connect to your stream processing instance with `mongosh` before running commands:
 
 ```bash
-mongosh "mongodb://stream.mongodb.net/?directConnection=true" -u admin -p secret
+mongosh "mongodb+srv://admin:secret@sp-instance.example.mongodb.net/"
 ```
 
 ## Creating a Simple Stream Processor
@@ -212,7 +212,7 @@ sp.createStreamProcessor("rollingCounts", [
 
 ## Handling Dead Letter Queue
 
-Route failed messages to a dead letter topic:
+Route failed messages to a dead letter collection by specifying a `dlq` option:
 
 ```javascript
 sp.createStreamProcessor("safeProcessor", [
@@ -237,7 +237,13 @@ sp.createStreamProcessor("safeProcessor", [
       whenMatched: "replace"
     }
   }
-])
+], {
+  dlq: {
+    connectionName: "prod-atlas",
+    db: "events",
+    coll: "deadLetterQueue"
+  }
+})
 ```
 
 ## Listing and Inspecting Processors
@@ -250,8 +256,8 @@ sp.listStreamProcessors()
 sp.orderEvents.stats()
 // Returns: status, messagesIn, messagesOut, errors, watermark
 
-// View pipeline definition
-sp.orderEvents.describe()
+// Sample messages flowing through the processor
+sp.orderEvents.sample()
 ```
 
 ## Summary
