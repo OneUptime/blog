@@ -47,7 +47,7 @@ Limit how stale a secondary can be before it is considered unacceptable:
 
 ```javascript
 const { ReadPreference } = require("mongodb");
-const pref = new ReadPreference("secondary", [], { maxStalenessSeconds: 60 });
+const pref = new ReadPreference("secondary", [], { maxStalenessSeconds: 90 });
 
 const result = await collection.find({}).withReadPreference(pref).toArray();
 ```
