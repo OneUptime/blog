@@ -25,9 +25,10 @@ Create an Atlas Search index with facet fields configured:
         "type": "string",
         "analyzer": "lucene.standard"
       },
-      "brand": {
-        "type": "stringFacet"
-      },
+      "brand": [
+        { "type": "stringFacet" },
+        { "type": "string", "analyzer": "lucene.keyword" }
+      ],
       "category": {
         "type": "stringFacet"
       },
@@ -45,7 +46,7 @@ Create an Atlas Search index with facet fields configured:
 }
 ```
 
-Fields used as facets must be indexed as `stringFacet` or `numberFacet`.
+Fields used as facets must be indexed as `stringFacet` or `numberFacet`. If you also need to filter a facet field using the `text` operator (e.g., in a `compound` query), you must add a `string` type mapping alongside `stringFacet` — the `stringFacet` type only supports facet operations and silently returns empty results if queried with `text`.
 
 ## Basic Facet Query with $searchMeta
 
