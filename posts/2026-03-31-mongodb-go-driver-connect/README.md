@@ -16,8 +16,6 @@ The MongoDB Go Driver is the official library for connecting to MongoDB from Go.
 
 ```bash
 go get go.mongodb.org/mongo-driver/v2/mongo
-go get go.mongodb.org/mongo-driver/v2/mongo/options
-go get go.mongodb.org/mongo-driver/v2/bson
 ```
 
 ## Creating a Client
@@ -63,7 +61,7 @@ opts := options.Client().
     SetMaxPoolSize(100).
     SetMinPoolSize(5).
     SetConnectTimeout(10 * time.Second).
-    SetSocketTimeout(30 * time.Second).
+    SetTimeout(30 * time.Second).
     SetServerSelectionTimeout(5 * time.Second).
     SetAuth(options.Credential{
         Username:   "admin",
@@ -80,11 +78,8 @@ client, err := mongo.Connect(opts)
 // Get database (lazily created)
 db := client.Database("shopdb")
 
-// Get collection - typed via generic
-products := mongo.Collection[Product](db, "products")
-
-// Or untyped (bson.D)
-rawColl := db.Collection("products")
+// Get collection
+products := db.Collection("products")
 ```
 
 ## Defining a Struct with BSON Tags
