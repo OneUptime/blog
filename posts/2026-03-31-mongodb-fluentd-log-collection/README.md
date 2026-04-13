@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Fluentd, Logging, Log Collection, DevOps
 
-Description: Learn how to configure Fluentd to collect application logs and forward them to MongoDB as structured documents using the fluent-plugin-mongodb output plugin.
+Description: Learn how to configure Fluentd to collect application logs and forward them to MongoDB as structured documents using the fluent-plugin-mongo output plugin.
 
 ---
 
 ## Overview
 
-Fluentd is a popular open-source log collector that unifies log data from multiple sources. By using the `fluent-plugin-mongodb` output plugin, you can forward logs from any source (application files, syslog, Docker containers) directly into MongoDB collections.
+Fluentd is a popular open-source log collector that unifies log data from multiple sources. By using the `fluent-plugin-mongo` output plugin, you can forward logs from any source (application files, syslog, Docker containers) directly into MongoDB collections.
 
 ## Installing Fluentd and the MongoDB Plugin
 
