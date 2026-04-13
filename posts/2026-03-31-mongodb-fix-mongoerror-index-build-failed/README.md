@@ -60,7 +60,7 @@ Free up disk space or increase storage, then retry the index build.
 
 ## Cause 3: Index Build Was Killed (Interrupted)
 
-If a `mongod` restarts during an index build, the partially-built index is cleaned up on startup. Rebuild it after the restart:
+If a `mongod` restarts during an index build, MongoDB 4.4 and later automatically resumes the build on startup. On older versions (4.2 and earlier), the partially-built index is discarded and must be rebuilt manually:
 
 ```javascript
 // Check current index builds
@@ -106,10 +106,19 @@ db.adminCommand({ currentOp: true, "command.createIndexes": { $exists: true } })
 
 ```javascript
 // Or watch the collection's index list
-db.collection('orders').indexes()
+await db.collection('orders').indexes()
 ```
 
 ## Aborting a Stuck Index Build
+
+In MongoDB 4.4 and later, drop the in-progress index to abort its build:
+
+```javascript
+// Drop the in-progress index by name to abort the build
+db.collection('orders').dropIndex('userId_1_createdAt_-1');
+```
+
+On older versions, use `killOp` to terminate the build:
 
 ```javascript
 // Find the operation ID
