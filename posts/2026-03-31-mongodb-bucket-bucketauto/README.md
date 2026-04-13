@@ -103,7 +103,7 @@ Note: `_id` represents the lower bound of each bucket. Documents belong to bucke
 
 ### Example 2 - $bucket with a default
 
-A product priced at `5000` would fall outside boundaries `[0, 1500]` and land in the default bucket:
+A product priced at `5000` would fall outside boundaries `[100, 1500]` and land in the default bucket:
 
 ```javascript
 db.products.aggregate([
@@ -111,7 +111,7 @@ db.products.aggregate([
     $bucket: {
       groupBy: "$price",
       boundaries: [100, 500, 1500],
-      default: "Budget",     // catches values < 100 AND >= 1500
+      default: "Budget",     // catches values < 100 OR >= 1500
       output: { count: { $sum: 1 } }
     }
   }
@@ -141,9 +141,9 @@ Output (boundaries are computed automatically):
 
 ```javascript
 [
-  { _id: { min: 5,   max: 75  }, count: 3, avgPrice: 35   },
-  { _id: { min: 75,  max: 450 }, count: 2, avgPrice: 262.5},
-  { _id: { min: 450, max: 1200}, count: 3, avgPrice: 750  }
+  { _id: { min: 5,   max: 150  }, count: 3, avgPrice: 35  },
+  { _id: { min: 150, max: 450  }, count: 2, avgPrice: 250 },
+  { _id: { min: 450, max: 1200 }, count: 3, avgPrice: 750 }
 ]
 ```
 
