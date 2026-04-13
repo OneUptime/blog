@@ -22,7 +22,7 @@ db.createCollection("orderEvents", {
       properties: {
         aggregateId: { bsonType: "string" },
         eventType: { bsonType: "string" },
-        version: { bsonType: "int" },
+        version: { bsonType: "number" },
         payload: { bsonType: "object" },
         occurredAt: { bsonType: "date" }
       }
@@ -131,6 +131,7 @@ const Kafka = require("kafkajs").Kafka;
 
 const kafka = new Kafka({ brokers: ["broker:9092"] });
 const producer = kafka.producer();
+await producer.connect();
 
 eventStream.on("change", async (change) => {
   if (change.operationType !== "insert") return;
