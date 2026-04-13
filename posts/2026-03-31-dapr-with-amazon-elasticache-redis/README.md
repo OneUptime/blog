@@ -23,7 +23,7 @@ aws elasticache create-cache-subnet-group \
 # Create Redis cluster with replication
 aws elasticache create-replication-group \
   --replication-group-id dapr-redis \
-  --description "Dapr Redis cluster" \
+  --replication-group-description "Dapr Redis cluster" \
   --cache-node-type cache.r7g.medium \
   --engine redis \
   --engine-version 7.0 \
@@ -60,7 +60,7 @@ spec:
   version: v1
   metadata:
   - name: redisHost
-    value: "dapr-redis.abc123.ng.0001.use1.cache.amazonaws.com:6380"
+    value: "dapr-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379"
   - name: redisPassword
     secretKeyRef:
       name: elasticache-secret
@@ -88,7 +88,7 @@ spec:
   version: v1
   metadata:
   - name: redisHost
-    value: "dapr-redis.abc123.ng.0001.use1.cache.amazonaws.com:6380"
+    value: "dapr-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379"
   - name: redisPassword
     secretKeyRef:
       name: elasticache-secret
