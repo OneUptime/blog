@@ -16,7 +16,7 @@ Common causes include:
 
 - Your connection string points to a secondary directly (not the replica set URI).
 - A recent failover promoted a new primary and your driver has not yet updated its topology.
-- You are using `readPreference: "secondary"` on a connection that also issues writes.
+- Your application uses `directConnection: true`, which bypasses replica set topology discovery and pins all operations to a single node.
 - The previous primary stepped down and no new primary has been elected yet.
 
 ## Verifying Current Replica Set State
@@ -39,7 +39,7 @@ mongodb://host1:27017,host2:27017,host3:27017/?replicaSet=myReplicaSet
 
 Do not connect directly to a single host without the `replicaSet` parameter - if that host is a secondary, all writes will fail.
 
-## Configuring Write Concern to Route Correctly
+## Configuring the Connection Correctly
 
 In Node.js with the official driver:
 
@@ -84,11 +84,11 @@ If you created a direct connection to a node that was once primary but is now se
 ```javascript
 // Check if the connected host is the primary
 const adminDb = client.db("admin");
-const isMaster = await adminDb.command({ isMaster: 1 });
-console.log("Is Primary:", isMaster.ismaster);
+const hello = await adminDb.command({ hello: 1 });
+console.log("Is Primary:", hello.isWritablePrimary);
 ```
 
-If `isMaster.ismaster` is `false`, your connection is pointed at a secondary. Reconnect using the full replica set URI.
+If `hello.isWritablePrimary` is `false`, your connection is pointed at a secondary. Reconnect using the full replica set URI.
 
 ## When No Primary Is Available
 
