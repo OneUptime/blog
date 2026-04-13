@@ -74,9 +74,9 @@ Indexes slow down write throughput significantly. Drop non-essential indexes bef
 db.events.dropIndex("timestamp_1")
 db.events.dropIndex("userId_1_timestamp_1")
 
-// After bulk load - rebuild in background
-db.events.createIndex({ "timestamp": 1 }, { background: true })
-db.events.createIndex({ "userId": 1, "timestamp": 1 }, { background: true })
+// After bulk load - rebuild indexes
+db.events.createIndex({ "timestamp": 1 })
+db.events.createIndex({ "userId": 1, "timestamp": 1 })
 ```
 
 ## Tuning Write Concern for Speed
@@ -85,7 +85,6 @@ During bulk loading, you may prefer throughput over maximum durability:
 
 ```python
 from pymongo import MongoClient
-from pymongo.write_concern import WriteConcern
 
 # Fastest: no acknowledgment (fire and forget)
 fast_client = MongoClient("mongodb://localhost:27017", w=0)
@@ -145,7 +144,7 @@ Medium documents (1-10KB): batch_size = 1000-2000
 Large documents (>10KB):   batch_size = 100-500
 ```
 
-Batch sizes that exceed 16MB total will be rejected by MongoDB.
+Individual documents cannot exceed 16MB. The driver automatically splits large batches to stay within MongoDB's 48MB wire protocol message limit.
 
 ## Summary
 
