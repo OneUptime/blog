@@ -67,10 +67,7 @@ The `$natural` sort reads documents in their natural insertion order. Reverse na
 A key feature of capped collections is that they support tailable cursors, which wait for new documents instead of closing when the result set is exhausted:
 
 ```javascript
-const cursor = db.recentEvents.find(
-  {},
-  { tailable: true, awaitData: true }
-);
+const cursor = db.recentEvents.find().tailable().awaitData();
 
 while (cursor.hasNext() || cursor.isExhausted() === false) {
   if (cursor.hasNext()) {
