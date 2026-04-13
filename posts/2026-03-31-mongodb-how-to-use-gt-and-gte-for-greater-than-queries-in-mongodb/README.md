@@ -60,7 +60,7 @@ const todayOrders = await orders.find({
 ## Combining $gt and $gte with $lt and $lte for Ranges
 
 ```javascript
-// Products priced between $50 and $200 (exclusive upper bound)
+// Products priced between $50 and $200 (exclusive both ends)
 const midRange = await products.find({
   price: { $gt: 50, $lt: 200 }
 }).toArray();
@@ -156,7 +156,7 @@ const plan = await products
   .find({ category: 'electronics', price: { $gte: 100 } })
   .explain('executionStats');
 
-console.log(plan.executionStats.executionStages.stage);
+console.log(plan.executionStats.executionStages.inputStage.stage);
 // Should show 'IXSCAN' (index scan)
 ```
 
