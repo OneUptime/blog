@@ -40,7 +40,7 @@ db.createUser({
 })
 ```
 
-Actions granted: everything in `read` plus `insert`, `update`, `delete`, `createCollection`, `dropCollection`, `createIndex`.
+Actions granted: everything in `read` plus `insert`, `update`, `remove`, `createCollection`, `dropCollection`, `createIndex`.
 
 ### dbAdmin
 
