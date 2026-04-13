@@ -110,7 +110,7 @@ db.users.find({ deletedAt: { $exists: false } })
 You can use any valid query as the filter:
 
 ```javascript
-// Delete the most recently created temp user
+// Delete a temp user created before 2024-01-01
 db.users.deleteOne({
   role: "temp",
   createdAt: { $lt: new Date("2024-01-01") }
