@@ -117,7 +117,7 @@ db.users.createIndex(
 )
 ```
 
-A sparse index only includes documents where the indexed field exists (and is not null), making it smaller and faster for existence queries.
+A sparse index only includes entries for documents where the indexed field exists, even if the field value is null. Documents that do not contain the field at all are omitted, making the index smaller and faster for existence queries.
 
 ## Summary
 
