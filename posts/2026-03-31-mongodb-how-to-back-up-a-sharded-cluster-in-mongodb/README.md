@@ -42,9 +42,11 @@ sh.isBalancerRunning()
 Wait for any in-progress migrations to complete:
 
 ```javascript
-// Check for active migrations
-db.locks.findOne({ _id: "balancer" })
-// When state is 0, the balancer is stopped
+// Wait until no migration is in progress
+while (sh.isBalancerRunning()) {
+  print("Waiting for balancer to stop...")
+  sleep(1000)
+}
 ```
 
 ## Step 2 - Stop All Writes (Recommended)
@@ -142,8 +144,8 @@ ls -la /backup/sharded/20260331-100000/
 # shard2/    <- shard 2 data
 # shard3/    <- shard 3 data
 
-# Count documents in backup vs live
-mongodump --uri "${SHARD1_URI}" --db mydb --collection orders --dryRun 2>&1 | grep "dumped"
+# Verify backup files can be restored (dry run)
+mongorestore --dryRun --dir /backup/sharded/20260331-100000/shard1/
 ```
 
 ## Summary
