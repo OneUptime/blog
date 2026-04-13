@@ -77,15 +77,17 @@ The FDI storage configuration defines what data sources map to which virtual dat
 The FDI has its own connection string separate from your Atlas cluster:
 
 ```bash
-mongosh "mongodb://data.mongodb-api.com/?appName=yourFDI"
+mongosh "mongodb+srv://<username>:<password>@<fdi-hostname>.mongodb.net/analytics"
 ```
+
+You can find this connection string in the Atlas UI under Data Federation > Connect.
 
 Or via driver:
 
 ```python
 from pymongo import MongoClient
 
-client = MongoClient("mongodb://data.mongodb-api.com/?appName=yourFDI",
+client = MongoClient("mongodb+srv://<fdi-hostname>.mongodb.net/analytics",
                      username="user", password="pass")
 db = client["analytics"]
 ```
