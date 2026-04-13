@@ -23,7 +23,7 @@ net:
   bindIp: "127.0.0.1,10.0.1.10"
 ```
 
-This binds MongoDB to only localhost and `10.0.1.10`. Connections from any other IP are refused at the TCP level.
+This binds MongoDB to only localhost and `10.0.1.10`. Connections to any other interface are refused at the TCP level since MongoDB is not listening there.
 
 For multiple addresses:
 
@@ -95,7 +95,7 @@ Test that connections from unauthorized IPs fail:
 
 ```bash
 # From an unauthorized host - should timeout or refuse
-mongosh --host 10.0.0.1 --port 27017 --connectTimeoutMS 3000
+mongosh "mongodb://10.0.0.1:27017/?connectTimeoutMS=3000"
 ```
 
 Check current connections by IP from mongod:
