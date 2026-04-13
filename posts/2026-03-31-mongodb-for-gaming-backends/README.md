@@ -17,7 +17,7 @@ flowchart LR
     Game[Game Client] --> API[Game API]
     API --> MongoDB[MongoDB]
     MongoDB --> Players[players collection]
-    MongoDB --> Scores[scores collection]
+    MongoDB --> Scores[leaderboards collection]
     MongoDB --> Sessions[game_sessions collection]
     MongoDB --> Achievements[achievements collection]
     MongoDB --> Items[items collection]
