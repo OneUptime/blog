@@ -62,7 +62,7 @@ db.orders.aggregate(
 )
 ```
 
-For `find` with sort on MongoDB 6.0+:
+For `find` with sort on MongoDB 4.4+:
 
 ```javascript
 db.orders.find({}).sort({ amount: -1 }).allowDiskUse(true)
@@ -90,7 +90,7 @@ A `$limit` immediately after `$sort` enables the "top-K" optimization, which onl
 
 ## Increasing the Memory Limit (Advanced)
 
-On MongoDB 6.0+, you can increase the per-operation memory limit via the `internalQueryMaxBlockingSortMemoryUsageBytes` parameter:
+On MongoDB 4.4+, you can increase the per-operation memory limit via the `internalQueryMaxBlockingSortMemoryUsageBytes` parameter:
 
 ```javascript
 db.adminCommand({
