@@ -17,15 +17,15 @@ PyMongo raises specific exceptions for different failure modes. Understanding ea
 ```text
 PyMongoError (base)
   ConnectionFailure
-    NetworkTimeout
-    NotPrimaryError
     AutoReconnect
+      NetworkTimeout
+      NotPrimaryError
+    ServerSelectionTimeoutError
   OperationFailure
     DuplicateKeyError
     BulkWriteError
   InvalidOperation
   ConfigurationError
-  ServerSelectionTimeoutError
 ```
 
 ## Catching Common Exceptions
@@ -41,6 +41,9 @@ from pymongo.errors import (
 
 client = MongoClient("mongodb://localhost:27017/")
 col = client["mydb"]["users"]
+
+# Create a unique index on email
+col.create_index("email", unique=True)
 
 # Catch duplicate key on insert
 try:
