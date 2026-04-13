@@ -126,7 +126,7 @@ db.apiLogs.aggregate([
 
 ## Uneven Distribution Warning
 
-`$bucketAuto` tries to distribute documents evenly, but if many documents share the same value (high cardinality issues), some buckets may have more documents than others:
+`$bucketAuto` tries to distribute documents evenly, but if many documents share the same value (low cardinality), some buckets may have more documents than others:
 
 ```javascript
 // If 1000 documents have price = 10 and you ask for 5 buckets,
