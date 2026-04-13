@@ -59,7 +59,8 @@ db.articles.aggregate([
       compound: {
         must: [{ text: { query: "database performance", path: ["title", "body"] } }],
         filter: [{ range: { path: "publishedAt", gte: new Date("2025-01-01") } }]
-      }
+      },
+      highlight: { path: ["title", "body"] }
     }
   },
   { $project: { title: 1, score: { $meta: "searchScore" }, highlights: { $meta: "searchHighlights" } } },
@@ -83,7 +84,7 @@ Elasticsearch uses a separate REST API with a rich but verbose JSON query DSL:
 
 ## Relevance Tuning and Scoring
 
-Both support BM25 scoring. Atlas Search allows score modification via `$searchMeta`, boosting, and custom scoring functions:
+Both support BM25 scoring. Atlas Search allows score modification via boosting and custom scoring functions within the `score` option:
 
 ```javascript
 // Atlas Search: boost title matches
@@ -104,7 +105,7 @@ Elasticsearch's function score and script score offer more advanced relevance tu
 
 Atlas Search runs inside Atlas - no extra infrastructure, no ETL pipeline to sync data, and no separate cluster to manage. Search indexes update automatically as documents change.
 
-Elasticsearch requires a separate cluster, and you must implement a data sync pipeline (using Logstash, Kafka, or the MongoDB Connector for BI) to keep Elasticsearch in sync with MongoDB.
+Elasticsearch requires a separate cluster, and you must implement a data sync pipeline (using Logstash, Kafka, or the Elastic MongoDB connector) to keep Elasticsearch in sync with MongoDB.
 
 ```bash
 # Example Logstash pipeline for MongoDB to Elasticsearch sync
