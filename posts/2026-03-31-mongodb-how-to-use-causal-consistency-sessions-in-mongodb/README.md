@@ -65,19 +65,21 @@ client = MongoClient("mongodb://localhost:27017/?replicaSet=rs0")
 db = client["myApp"]
 
 with client.start_session(causal_consistency=True) as session:
-    coll = db["accounts"]
+    coll = db.get_collection(
+        "accounts",
+        write_concern=WriteConcern("majority"),
+        read_concern=ReadConcern("majority")
+    )
 
     coll.update_one(
         {"userId": "user123"},
         {"$inc": {"balance": -100}},
-        session=session,
-        write_concern=WriteConcern("majority")
+        session=session
     )
 
     account = coll.find_one(
         {"userId": "user123"},
-        session=session,
-        read_concern=ReadConcern("majority")
+        session=session
     )
     print("Balance:", account["balance"])
 ```
