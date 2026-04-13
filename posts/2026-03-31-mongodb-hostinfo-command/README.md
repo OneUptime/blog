@@ -22,7 +22,7 @@ Connect with `mongosh` and run:
 db.adminCommand({ hostInfo: 1 })
 ```
 
-You must have the `hostInfo` privilege or be in the `clusterMonitor` or `dbAdmin` role to run this command.
+You must have the `hostInfo` privilege or be in the `clusterMonitor` or `hostManager` role to run this command.
 
 ## Reading the Output
 
@@ -70,18 +70,18 @@ Key sections:
 
 ## Checking Memory for WiredTiger Cache Sizing
 
-WiredTiger's default cache is 50% of RAM minus 1 GB. Verify available RAM and compare with the configured cache:
+WiredTiger's default cache is 50% of (RAM minus 1 GB). Verify available RAM and compare with the configured cache:
 
 ```javascript
 const host = db.adminCommand({ hostInfo: 1 });
 const ramMB = host.system.memSizeMB;
-const defaultCacheMB = Math.max(256, ramMB * 0.5 - 1024);
+const defaultCacheMB = Math.max(256, (ramMB - 1024) * 0.5);
 
 print(`Total RAM: ${ramMB} MB`);
 print(`Default WiredTiger cache: ~${defaultCacheMB.toFixed(0)} MB`);
 ```
 
-If the server has only 4 GB of RAM, the default cache will be roughly 1 GB, which may be insufficient for large working sets.
+If the server has only 4 GB of RAM, the default cache will be roughly 1.5 GB, which may be insufficient for large working sets.
 
 ## Detecting NUMA
 
