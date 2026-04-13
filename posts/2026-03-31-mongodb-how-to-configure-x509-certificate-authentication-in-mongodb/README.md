@@ -84,7 +84,6 @@ mongodb://mongo.example.com:27017/?authMechanism=MONGODB-X509&authSource=%24exte
 
 ```javascript
 const { MongoClient } = require("mongodb");
-const fs = require("fs");
 
 const client = new MongoClient("mongodb://mongo.example.com:27017", {
   tls: true,
