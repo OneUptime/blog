@@ -81,7 +81,7 @@ async function setupSurveySystem(db) {
   // Index for anonymous dedup by session
   await responses.createIndex({ surveyId: 1, sessionId: 1 }, {
     unique: true,
-    sparse: true,
+    partialFilterExpression: { sessionId: { $type: 'string' } },
   });
 
   await responses.createIndex({ surveyId: 1, submittedAt: -1 });
@@ -139,6 +139,14 @@ async function getSurveyResults(db, surveyId) {
         { $group: { _id: null, avg: { $avg: `$answers.${qId}` }, count: { $sum: 1 } } },
       ]).next();
       results[qId] = { type: 'rating', avg: stats?.avg?.toFixed(2), count: stats?.count };
+    } else if (question.type === 'multi_choice') {
+      const dist = await db.collection('responses').aggregate([
+        { $match: { surveyId } },
+        { $unwind: `$answers.${qId}` },
+        { $group: { _id: `$answers.${qId}`, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]).toArray();
+      results[qId] = { type: question.type, distribution: dist };
     } else {
       const dist = await db.collection('responses').aggregate([
         { $match: { surveyId } },
