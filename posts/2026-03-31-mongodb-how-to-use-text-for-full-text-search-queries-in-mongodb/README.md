@@ -12,7 +12,7 @@ Description: Learn how to use MongoDB's $text operator with text indexes to perf
 
 MongoDB's `$text` operator performs full-text search on fields that have a text index. It tokenizes the search string, applies stemming, ignores stop words, and matches documents containing any of the search terms.
 
-Full-text search is more powerful than `$regex` for natural language search because it understands word boundaries, handles plurals via stemming, and returns results sorted by relevance.
+Full-text search is more powerful than `$regex` for natural language search because it understands word boundaries, handles plurals via stemming, and supports sorting results by relevance score.
 
 ## Creating a Text Index
 
