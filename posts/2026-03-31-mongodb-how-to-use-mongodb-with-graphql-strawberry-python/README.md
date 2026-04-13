@@ -24,6 +24,9 @@ pip install strawberry-graphql[fastapi] motor python-dotenv
 # db.py
 import motor.motor_asyncio
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)
@@ -34,7 +37,7 @@ products_collection = db["products"]
 ## Defining Types
 
 ```python
-# types.py
+# models.py
 import strawberry
 from typing import Optional, List
 
@@ -60,7 +63,7 @@ class ProductInput:
 # resolvers.py
 from bson import ObjectId
 from db import products_collection
-from types import Product, ProductInput
+from models import Product, ProductInput
 from typing import Optional, List
 
 def doc_to_product(doc: dict) -> Product:
@@ -104,7 +107,7 @@ from strawberry.fastapi import GraphQLRouter
 from fastapi import FastAPI
 from typing import Optional, List
 from resolvers import get_products, get_product, create_product
-from types import Product, ProductInput
+from models import Product, ProductInput
 
 @strawberry.type
 class Query:
