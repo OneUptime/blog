@@ -70,7 +70,7 @@ Output:
 ]
 ```
 
-#### Example 2 - Access the Last Joined Document
+#### Example 2 - Extract First Match After $lookup
 
 After `$lookup`, extract just the first matching document:
 
