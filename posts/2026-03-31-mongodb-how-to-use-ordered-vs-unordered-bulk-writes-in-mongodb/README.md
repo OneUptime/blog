@@ -106,9 +106,11 @@ try {
     { insertOne: { document: { _id: 2, name: "B" } } }           // never runs
   ], { ordered: true })
 } catch (err) {
-  console.error("Failed at operation index:", err.index)
-  console.error("Error code:", err.code)
-  // err.result.result.nInserted shows how many succeeded before failure
+  err.writeErrors.forEach(writeErr => {
+    console.error("Failed at operation index:", writeErr.index)
+    console.error("Error code:", writeErr.code)
+  })
+  console.log("Inserted before failure:", err.result.insertedCount)
 }
 ```
 
@@ -123,7 +125,7 @@ try {
     console.error(`Op ${writeErr.index}: ${writeErr.errmsg}`)
   })
   // Successful operations were still applied
-  console.log("Inserted:", err.result.nInserted)
+  console.log("Inserted:", err.result.insertedCount)
 }
 ```
 
