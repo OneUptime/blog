@@ -48,7 +48,7 @@ await db.collection('posts').updateOne(
 
 ## Cause 2: Missing Field (Null or Undefined)
 
-`$push` on a missing field will initialize it as an array - this actually works in MongoDB 4.2+. But if the field was explicitly set to `null`, it fails:
+`$push` on a missing field will initialize it as an array - this has worked since early MongoDB versions. But if the field was explicitly set to `null`, it fails:
 
 ```javascript
 // Document: { _id: 2, tags: null }
@@ -87,12 +87,12 @@ await db.collection('posts').updateOne(
 A mistyped field path hits an unintended field that holds a scalar:
 
 ```javascript
-// Document: { _id: 3, meta: { tags: [] } }
+// Document: { _id: 3, tags: "legacy-tag", meta: { tags: [] } }
 
-// Typo: "tags" instead of "meta.tags"
+// Typo: "tags" instead of "meta.tags" - hits the root string field
 await db.collection('posts').updateOne(
   { _id: 3 },
-  { $push: { tags: "mongodb" } } // "tags" field doesn't exist at root
+  { $push: { tags: "mongodb" } } // hits root "tags" which is a string, not meta.tags
 );
 ```
 
