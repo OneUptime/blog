@@ -59,7 +59,7 @@ For active tickets with many replies, store comments separately:
 
 ```json
 {
-  "_id": ObjectId(),
+  "_id": "comment-001",
   "ticketId": "ticket-001",
   "authorId": "agent-007",
   "authorType": "agent",
