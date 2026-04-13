@@ -28,10 +28,10 @@ db.orders.find({
 
 ## Replacing $where with $expr
 
-The `$expr` operator lets you use aggregation expression operators in query filters, with proper index support in many cases:
+The `$expr` operator lets you use aggregation expression operators in query filters. It evaluates natively without JavaScript, and can use indexes for simple field-to-constant comparisons:
 
 ```javascript
-// GOOD - $expr with aggregation operators, can leverage indexes
+// GOOD - $expr with aggregation operators, no JavaScript execution
 db.orders.find({
   $expr: {
     $gt: [
@@ -93,7 +93,7 @@ db.users.find({
 
 // GOOD - native $regex
 db.users.find({
-  email: { $regex: /@company\.com$/, $options: "i" }
+  email: { $regex: "@company\\.com$", $options: "i" }
 });
 
 // EVEN BETTER - if you can anchor the regex, indexes can help
