@@ -15,9 +15,8 @@ Airbyte is an open-source ELT platform that syncs data between hundreds of sourc
 ## Installing Airbyte
 
 ```bash
-git clone https://github.com/airbytehq/airbyte.git
-cd airbyte
-docker compose up
+curl -LsfS https://get.airbyte.com | bash -
+abctl local install
 ```
 
 Access the UI at `http://localhost:8000`.
@@ -51,8 +50,7 @@ db.createUser({
   user: "airbyte-reader",
   pwd: "AirbyteReadOnly123",
   roles: [
-    { role: "read", db: "myDatabase" },
-    { role: "read", db: "local" }
+    { role: "readAnyDatabase", db: "admin" }
   ]
 })
 ```
@@ -61,16 +59,12 @@ db.createUser({
 
 Airbyte supports several sync modes for MongoDB collections:
 
-- **Full Refresh - Overwrite** - deletes all destination data and re-syncs
-- **Full Refresh - Append** - appends all documents on each sync
-- **Incremental - Append** - uses a cursor field to sync only new/changed documents
-- **Incremental - Deduped + History** - CDC-based, maintains a deduplicated current state
+- **Full Refresh | Overwrite** - deletes all destination data and re-syncs
+- **Full Refresh | Append** - appends all documents on each sync
+- **Incremental | Append** - CDC-based, syncs only new and changed documents
+- **Incremental | Append + Deduped** - CDC-based, maintains a deduplicated current state
 
-For incremental sync, specify the cursor field:
-
-```text
-Cursor Field: updatedAt
-```
+For incremental sync, the MongoDB source connector uses CDC via change streams to automatically track changes. No cursor field needs to be specified manually.
 
 ## Configuring MongoDB as a Destination
 
@@ -102,7 +96,7 @@ After creating source and destination:
 
 ```text
 Schedule: Every 6 hours
-Sync Mode: Incremental - Append
+Sync Mode: Incremental | Append
 ```
 
 ## Handling Document Schema
@@ -116,9 +110,8 @@ MongoDB documents are schemaless, so Airbyte infers the schema by sampling docum
 docker logs airbyte-server
 
 # Or use the Airbyte API
-curl http://localhost:8001/api/v1/jobs/list \
-  -H "Content-Type: application/json" \
-  -d '{"configId": "<connection-id>", "configTypes": ["sync"]}'
+curl "http://localhost:8000/api/public/v1/jobs?connectionId=<connection-id>" \
+  -H "Authorization: Bearer <api-key>"
 ```
 
 ## Example: MongoDB to BigQuery Pipeline
@@ -126,13 +119,12 @@ curl http://localhost:8001/api/v1/jobs/list \
 ```text
 Source:      MongoDB (myDatabase.orders)
 Destination: BigQuery (analytics.orders)
-Sync Mode:   Incremental - Append
-Cursor:      createdAt
+Sync Mode:   Incremental | Append
 Schedule:    Every hour
 ```
 
-After the first full sync, Airbyte only fetches documents where `createdAt > last_sync_time`, keeping the pipeline efficient as the collection grows.
+After the initial full sync, Airbyte uses CDC via change streams to capture only new inserts, updates, and deletes, keeping the pipeline efficient as the collection grows.
 
 ## Summary
 
-Airbyte makes it straightforward to replicate MongoDB collections to data warehouses or other databases. Configure a read-only MongoDB user, select incremental sync mode with a timestamp cursor for efficiency, and set a schedule. For CDC-based sync that captures deletes and updates, use the Incremental - Deduped + History mode with a replica set source.
+Airbyte makes it straightforward to replicate MongoDB collections to data warehouses or other databases. Configure a read-only MongoDB user with `readAnyDatabase` access, select incremental sync mode for CDC-based efficiency, and set a schedule. For deduplication that captures deletes and updates, use the Incremental | Append + Deduped mode with a replica set source.
