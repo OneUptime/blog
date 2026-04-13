@@ -15,11 +15,10 @@ Content management systems deal with highly variable content structures: article
 ```mermaid
 flowchart LR
     CMS[CMS Application] --> MongoDB[MongoDB]
-    MongoDB --> Articles[articles collection]
-    MongoDB --> Pages[pages collection]
+    MongoDB --> Content[content collection]
     MongoDB --> Media[media collection]
     MongoDB --> Authors[authors collection]
-    MongoDB --> Tags[Embedded in content]
+    MongoDB --> Versions[content_versions collection]
 ```
 
 ## Content Document Schema
