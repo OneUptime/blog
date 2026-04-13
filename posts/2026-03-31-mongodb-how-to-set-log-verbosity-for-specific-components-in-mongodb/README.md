@@ -10,12 +10,12 @@ Description: Learn how to set and adjust log verbosity levels for specific Mongo
 
 ## Introduction
 
-MongoDB has a granular logging system that lets you set verbosity levels per component - such as queries, replication, storage, or network. Rather than enabling verbose logging globally (which produces enormous output), you can target specific subsystems. Verbosity levels range from 0 (default, warnings and errors only) to 5 (most verbose debug output).
+MongoDB has a granular logging system that lets you set verbosity levels per component - such as queries, replication, storage, or network. Rather than enabling verbose logging globally (which produces enormous output), you can target specific subsystems. Verbosity levels range from 0 (default, informational messages including warnings and errors) to 5 (most verbose debug output).
 
 ## Log Verbosity Levels
 
 ```text
-0 - Informational (default) - Warnings and errors
+0 - Informational (default) - Info, warning, and error messages
 1 - Debug level 1 - Basic debug messages
 2 - Debug level 2 - More detailed debug messages
 3 - Debug level 3 - Very detailed debug messages
@@ -25,7 +25,7 @@ MongoDB has a granular logging system that lets you set verbosity levels per com
 
 ## Setting Verbosity at Runtime
 
-Use `setLogLevel` to change verbosity without restarting MongoDB:
+Use `db.adminCommand()` with `setParameter` to change verbosity without restarting MongoDB:
 
 ```javascript
 // Set global verbosity to level 1
