@@ -47,7 +47,6 @@ require("fs").writeFileSync("./output.png", doc.data.buffer);
 
 ```python
 from bson.binary import Binary
-import gridfs
 
 # Direct BinData for small files (< 16 MB BSON limit)
 with open("logo.png", "rb") as f:
