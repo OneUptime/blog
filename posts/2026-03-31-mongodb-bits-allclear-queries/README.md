@@ -192,7 +192,7 @@ flowchart LR
 
 - Field must be a non-negative integer or BinData. Negative integers are not supported.
 - Zero (`0`) matches any bitmask with `$bitsAllClear` since all bits are already clear.
-- Floating-point numbers are not matched even if their integer part satisfies the condition.
+- Floating-point numbers are matched only if they can be exactly represented as a 64-bit signed integer (e.g., `3.0` is treated as `3`). Values like `3.5` or `NaN` will not match.
 
 ## Summary
 
