@@ -96,7 +96,7 @@ async function loadResumeToken() {
 
 ### 3. Replica Set Election
 
-During a primary election, the change stream may encounter a temporary error. Use `startAfter` with `allowPartialResults` or implement reconnect:
+During a primary election, the change stream may encounter a temporary error. Implement a reconnect loop to handle this:
 
 ```javascript
 async function watchWithReconnect(collection, pipeline = []) {
@@ -124,10 +124,12 @@ async function watchWithReconnect(collection, pipeline = []) {
 
 ### 4. Full Document Lookup on Deleted Documents
 
-Using `fullDocument: 'updateLookup'` on a deleted document may throw if the document no longer exists:
+Using `fullDocument: 'updateLookup'` returns `null` for the `fullDocument` field if the document has been deleted before the lookup occurs. To get post-images more reliably, use `fullDocument: 'whenAvailable'` in MongoDB 6.0+, which uses stored post-images instead of a separate lookup. This requires enabling change stream pre- and post-images on the collection first:
 
 ```javascript
-// Use 'whenAvailable' in MongoDB 6.0+
+// Enable pre/post images on the collection
+// db.runCommand({ collMod: 'orders', changeStreamPreAndPostImages: { enabled: true } })
+
 const stream = db.collection('orders').watch([], {
   fullDocument: 'whenAvailable'
 });
