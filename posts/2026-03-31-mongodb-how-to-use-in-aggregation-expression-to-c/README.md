@@ -124,7 +124,7 @@ db.users.aggregate([
     $project: {
       username: 1,
       isRegularUser: {
-        $not: { $in: ["$role", ["admin", "superuser", "moderator"]] }
+        $not: [{ $in: ["$role", ["admin", "superuser", "moderator"]] }]
       }
     }
   }
