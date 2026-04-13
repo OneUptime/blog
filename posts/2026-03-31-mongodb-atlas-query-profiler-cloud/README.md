@@ -22,32 +22,34 @@ MongoDB Atlas includes a built-in Query Profiler that surfaces slow operation da
 
 1. Log in to cloud.mongodb.com
 2. Select your cluster
-3. Click **Performance Advisor** in the left sidebar
+3. Click **Query Insights** in the left sidebar
 4. Click the **Query Profiler** tab (available on M10+ clusters)
 
 The Atlas UI requires no code changes or database access.
 
 ## Setting the Slow Query Threshold
 
-Atlas automatically captures operations exceeding 100 ms by default. You can adjust this per database through the Atlas UI under:
+Atlas uses a managed slow operation threshold by default, which dynamically adjusts based on average operation execution time across the cluster. If you opt out of the managed threshold, it falls back to a fixed 100 ms threshold.
 
-```text
-Cluster -> More Options -> Edit Configuration -> Profiler Settings
+You can set a custom threshold per database using `mongosh`:
+
+```javascript
+// Set profiling level 1 (log slow ops) with a 200ms threshold
+db.setProfilingLevel(1, { slowms: 200 });
 ```
 
-Or via the Atlas Admin API:
+You can also toggle the Atlas-managed slow operation threshold via the Atlas Admin API:
 
 ```bash
-curl -s -u "api-key:api-secret" \
-  -X PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}" \
-  --header "Content-Type: application/json" \
-  --data '{
-    "mongoDBMajorVersion": "7.0",
-    "profiler": {
-      "slowMs": 200
-    }
-  }'
+# Disable the managed slow operation threshold (falls back to fixed 100ms)
+curl -s --digest -u "api-public-key:api-private-key" \
+  -X DELETE \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/managedSlowMs/disable"
+
+# Re-enable the managed slow operation threshold
+curl -s --digest -u "api-public-key:api-private-key" \
+  -X POST \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/managedSlowMs/enable"
 ```
 
 ## Querying the System Profile Programmatically on Atlas
@@ -67,7 +69,7 @@ slowOps.forEach(op => {
 });
 ```
 
-Note: Atlas blocks direct access to the `local` and `config` databases but allows access to `system.profile` in application databases.
+Note: Atlas restricts access to the `local` and `config` databases but allows access to `system.profile` in application databases.
 
 ## Reading Atlas Query Profiler Data
 
@@ -95,9 +97,9 @@ Use Performance Advisor for automated index recommendations. Use Query Profiler 
 ## Exporting Profiler Data via Atlas API
 
 ```bash
-# Get slow query logs
-curl -s -u "api-key:api-secret" \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/logs/mongodb.gz" \
+# Get slow query logs (use the hostname of a specific node, not the cluster name)
+curl -s --digest -u "api-public-key:api-private-key" \
+  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{hostName}/logs/mongodb.gz" \
   -o mongodb.log.gz
 
 # Extract and grep for slow queries
@@ -113,8 +115,8 @@ If profiling overhead is noticeable:
 db.setProfilingLevel(0);
 ```
 
-Note: Atlas may re-enable profiling at Level 1 with the default threshold after cluster restarts.
+Note: Custom profiling settings set via `db.setProfilingLevel()` reset to default values (Level 0) after a node restart. The Atlas Query Profiler UI continues to work independently as it relies on log-based slow query capture.
 
 ## Summary
 
-The Atlas Query Profiler provides a web-based view of slow operations grouped by query shape, without requiring direct database access or shell commands. Use it to identify high-impact slow queries, compare examine-to-return ratios, and act on index recommendations from the Performance Advisor. For programmatic access, query `system.profile` directly via your Atlas connection string. Adjust the slow query threshold through the Atlas UI or API to balance observability with overhead.
+The Atlas Query Profiler provides a web-based view of slow operations grouped by query shape, without requiring direct database access or shell commands. Use it to identify high-impact slow queries, compare examine-to-return ratios, and act on index recommendations from the Performance Advisor. For programmatic access, query `system.profile` directly via your Atlas connection string. Adjust the slow query threshold through `mongosh` or the Atlas Admin API to balance observability with overhead.
