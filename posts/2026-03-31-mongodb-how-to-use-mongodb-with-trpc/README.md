@@ -17,7 +17,7 @@ tRPC provides end-to-end type safety between your TypeScript server and client w
 ```bash
 mkdir trpc-mongo && cd trpc-mongo
 npm init -y
-npm install @trpc/server mongodb zod
+npm install @trpc/server @trpc/client mongodb zod
 npm install -D typescript ts-node @types/node
 ```
 
