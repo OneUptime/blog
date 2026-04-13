@@ -122,7 +122,7 @@ searchArticles("performance tuning").then(console.log);
 ## Caveats
 
 - `$meta: "textScore"` only works when combined with a `$text` query.
-- If no text score is available (e.g., no `$text` match), the field value defaults to 0.
+- If used without a `$text` query (MongoDB 4.4+), `$meta: "textScore"` returns a value without meaning rather than an error. In earlier versions, it requires a `$text` query.
 - Scores are relative to the current result set and cannot be compared across different queries.
 
 ## Summary
