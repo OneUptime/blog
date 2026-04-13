@@ -64,7 +64,7 @@ Use `--type` to control the output format:
 # Extended JSON (default) - preserves BSON type information
 bsondump --type=json /tmp/backup/orders.bson
 
-# Legacy extended JSON (MongoDB 2.x compatible)
+# Non-standard debug format - human-readable but not parseable JSON
 bsondump --type=debug /tmp/backup/orders.bson
 ```
 
