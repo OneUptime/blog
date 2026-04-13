@@ -116,7 +116,7 @@ Apply to multiple documents at once - for example, cap all scores at a maximum b
 // Ensure no product has a price lower than cost (maintain margin floor)
 db.products.updateMany(
   {},
-  { $max: { price: "$cost" } }  // ensure price >= cost using $max
+  [{ $set: { price: { $max: ["$price", "$cost"] } } }]  // aggregation pipeline update
 )
 ```
 
