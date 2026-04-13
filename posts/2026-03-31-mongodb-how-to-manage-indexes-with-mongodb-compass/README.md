@@ -87,7 +87,7 @@ Index only documents matching a condition to reduce index size:
 
 ```javascript
 // In Compass "Partial Filter Expression" field:
-{ "status": { "$in": ["pending", "processing"] } }
+{ "status": { "$eq": "active" }, "priority": { "$gte": 5 } }
 ```
 
 ## Analyzing Index Usage Statistics
