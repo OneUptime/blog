@@ -56,11 +56,8 @@ db.orders.aggregate([
     {
         $project: {
             customerId: 1,
-            amount: 1,
-            // Drop large text fields not needed for aggregation
-            description: 0,
-            notes: 0,
-            metadata: 0
+            amount: 1
+            // Only include the fields needed; all others are excluded automatically
         }
     },
     { $group: { _id: "$customerId", total: { $sum: "$amount" } } }
