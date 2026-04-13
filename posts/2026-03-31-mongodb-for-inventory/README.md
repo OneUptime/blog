@@ -254,7 +254,7 @@ db.inventory.find({
 
 // Low stock report across all products
 db.inventory.find({
-  availableQuantity: { $lte: "$reorderPoint" }
+  $expr: { $lte: ["$availableQuantity", "$reorderPoint"] }
 }).sort({ availableQuantity: 1 })
 
 // Inventory value by category
@@ -291,7 +291,7 @@ db.inventory.createIndex({ "warehouseLocations.warehouseId": 1 });
 db.inventory_movements.createIndex({ productId: 1, createdAt: -1 });
 db.inventory_movements.createIndex({ orderId: 1 });
 
-// TTL: archive movements older than 2 years
+// TTL: auto-delete movements older than 2 years
 db.inventory_movements.createIndex(
   { createdAt: 1 },
   { expireAfterSeconds: 60 * 60 * 24 * 730 }
@@ -300,4 +300,4 @@ db.inventory_movements.createIndex(
 
 ## Summary
 
-MongoDB handles real-time inventory with atomic `findOneAndUpdate` operations that prevent overselling by combining the stock availability check and reservation in a single atomic write. Use the reservation pattern (reserve on checkout, confirm on payment, release on cancellation) rather than immediately deducting stock. Track all stock movements in a separate collection for audit trails, and use TTL indexes to archive old movement records automatically.
+MongoDB handles real-time inventory with atomic `findOneAndUpdate` operations that prevent overselling by combining the stock availability check and reservation in a single atomic write. Use the reservation pattern (reserve on checkout, confirm on payment, release on cancellation) rather than immediately deducting stock. Track all stock movements in a separate collection for audit trails, and use TTL indexes to auto-delete old movement records.
