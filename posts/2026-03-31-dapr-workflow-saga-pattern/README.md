@@ -26,6 +26,9 @@ If payment fails, inventory must be released.
 ```python
 import dapr.ext.workflow as wf
 
+wfr = wf.WorkflowRuntime()
+
+@wfr.workflow(name='order_saga_workflow')
 def order_saga_workflow(ctx: wf.DaprWorkflowContext, order: dict):
     # Step 1 - reserve inventory
     reserved = yield ctx.call_activity(reserve_inventory, input=order)
@@ -52,25 +55,30 @@ def order_saga_workflow(ctx: wf.DaprWorkflowContext, order: dict):
 ## Defining Activities
 
 ```python
-@wf.activity
-def reserve_inventory(ctx, order: dict) -> bool:
+@wfr.activity(name='reserve_inventory')
+def reserve_inventory(ctx: wf.WorkflowActivityContext, order: dict) -> bool:
     # Call inventory service
     resp = requests.post("http://inventory/reserve", json=order)
     return resp.status_code == 200
 
-@wf.activity
-def release_inventory(ctx, order: dict) -> bool:
+@wfr.activity(name='release_inventory')
+def release_inventory(ctx: wf.WorkflowActivityContext, order: dict) -> bool:
     resp = requests.post("http://inventory/release", json=order)
     return resp.status_code == 200
 
-@wf.activity
-def charge_payment(ctx, order: dict) -> bool:
+@wfr.activity(name='charge_payment')
+def charge_payment(ctx: wf.WorkflowActivityContext, order: dict) -> bool:
     resp = requests.post("http://payment/charge", json=order)
     return resp.status_code == 200
 
-@wf.activity
-def refund_payment(ctx, order: dict) -> bool:
+@wfr.activity(name='refund_payment')
+def refund_payment(ctx: wf.WorkflowActivityContext, order: dict) -> bool:
     resp = requests.post("http://payment/refund", json=order)
+    return resp.status_code == 200
+
+@wfr.activity(name='confirm_shipment')
+def confirm_shipment(ctx: wf.WorkflowActivityContext, order: dict) -> bool:
+    resp = requests.post("http://shipment/confirm", json=order)
     return resp.status_code == 200
 ```
 
@@ -91,7 +99,7 @@ with DaprClient() as d:
 ## Checking Saga Status
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/order_saga_workflow/ORD-123
+curl http://localhost:3500/v1.0/workflows/dapr/<instance_id>
 ```
 
 ## Component Configuration
