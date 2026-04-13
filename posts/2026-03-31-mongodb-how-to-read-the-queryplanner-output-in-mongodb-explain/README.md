@@ -104,12 +104,12 @@ The normalized form of your query filter. Useful for seeing how MongoDB internal
 Common stage types:
 - COLLSCAN    : full collection scan (no index)
 - IXSCAN      : index scan
-- FETCH       : retrieve full documents using RIDs from index
+- FETCH       : retrieve full documents from collection using record IDs from index
 - SORT        : in-memory sort (no index supports sort)
-- SORT_MERGE  : merge sorted streams (compound index or multi-key)
+- SORT_MERGE  : merge sorted streams from multiple index scans ($or or index intersection)
 - PROJECTION_SIMPLE : apply a projection
 - LIMIT       : limit result count
-- SKIP        : skip rows
+- SKIP        : skip documents
 - SHARD_MERGE : merge results across shards
 - SHARDING_FILTER : filter orphan documents on shards
 ```
@@ -120,12 +120,12 @@ Plans are read bottom-up (innermost = executed first):
 
 ```javascript
 {
-  "stage": "LIMIT",                    // Step 4: apply limit
+  "stage": "LIMIT",                    // Step 3: apply limit
   "limitAmount": 10,
   "inputStage": {
-    "stage": "FETCH",                  // Step 3: fetch full docs
+    "stage": "FETCH",                  // Step 2: fetch full docs
     "inputStage": {
-      "stage": "IXSCAN",               // Step 2: scan index
+      "stage": "IXSCAN",               // Step 1: scan index
       "indexName": "customerId_status",
       "indexBounds": { ... }
     }
