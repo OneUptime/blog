@@ -64,8 +64,7 @@ The restriction means you should keep transaction scope minimal and move non-cri
 ```javascript
 // Outside the transaction - can use secondary for heavy analytics reads
 const report = await db.collection("orders")
-  .aggregate([/* aggregation pipeline */])
-  .readPreference("secondary")
+  .aggregate([/* aggregation pipeline */], { readPreference: "secondary" })
   .toArray();
 
 // Inside the transaction - only for the atomic write portion
@@ -101,8 +100,7 @@ const collection = db.collection("products");
 
 // Route catalog browsing to secondary
 const products = await collection
-  .find({ category: "electronics" })
-  .readPreference("secondaryPreferred")
+  .find({ category: "electronics" }, { readPreference: "secondaryPreferred" })
   .toArray();
 
 // Only use transaction for checkout
