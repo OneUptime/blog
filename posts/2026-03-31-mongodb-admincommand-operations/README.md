@@ -99,22 +99,19 @@ db.adminCommand({ getLog: "global" }).log.slice(-20).forEach(l => print(l))
 
 // Get startup warnings
 db.adminCommand({ getLog: "startupWarnings" }).log.forEach(l => print(l))
-
-// Clear in-memory diagnostic log (does not affect log files)
-db.adminCommand({ clearLog: "global" })
 ```
 
 ## Index Operations
 
 ```javascript
-// Force all indexes to be rebuilt (use with caution - long operation)
-db.adminCommand({ reIndex: "myCollection" })
+// Force all indexes to be rebuilt (deprecated since MongoDB 6.0)
+db.runCommand({ reIndex: "myCollection" })
 
 // Validate a specific collection
-db.adminCommand({ validate: "myCollection", full: true })
+db.runCommand({ validate: "myCollection", full: true })
 
 // Check for index key size issues
-db.adminCommand({ validate: "myCollection" }).errors
+db.runCommand({ validate: "myCollection" }).errors
 ```
 
 ## Replication Commands
@@ -142,7 +139,7 @@ db.adminCommand({
   name: "rs-shard2"
 })
 
-// Enable sharding on a database
+// Enable sharding on a database (no longer required since MongoDB 6.0)
 db.adminCommand({ enableSharding: "myDatabase" })
 
 // Flush router config cache (run on mongos)
@@ -159,7 +156,7 @@ db.adminCommand({ connPoolStats: 1 })
 db.adminCommand({ dbStats: 1 })
 
 // Compact a specific collection (defragments, reclaims disk space)
-// WARNING: locks the collection for the duration
+// Note: since MongoDB 4.4, compact does not block reads or writes
 db.runCommand({ compact: "myCollection" })
 
 // Fsync and lock (useful before filesystem snapshot)
