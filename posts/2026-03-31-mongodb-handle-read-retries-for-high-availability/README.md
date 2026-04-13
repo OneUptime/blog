@@ -71,6 +71,7 @@ async function readWithRetry(queryFn, maxAttempts = 3) {
         err.code === 91 ||
         err.code === 189 ||
         err.message?.includes("not master") ||
+        err.message?.includes("not primary") ||
         err.message?.includes("node is recovering");
 
       if (isRetryable && attempt < maxAttempts - 1) {
@@ -106,14 +107,14 @@ const collection = db.collection("products").withReadPreference(pref);
 const product = await collection.findOne({ _id: productId });
 ```
 
-Hedged reads are available in MongoDB 4.4 and above and work with `nearest`, `secondary`, and `secondaryPreferred` read preferences.
+Hedged reads are available in MongoDB 4.4 and above with sharded clusters (mongos) and work with `nearest`, `primaryPreferred`, `secondary`, and `secondaryPreferred` read preferences.
 
 ## Monitor Read Failures with serverStatus
 
 Track read errors to detect patterns that indicate replica set instability.
 
 ```javascript
-const status = await db.adminCommand({ serverStatus: 1 });
+const status = await db.admin().command({ serverStatus: 1 });
 console.log({
   connections: status.connections.current,
   networkBytesIn: status.network.bytesIn,
