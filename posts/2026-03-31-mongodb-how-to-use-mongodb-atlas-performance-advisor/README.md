@@ -73,7 +73,7 @@ db.orders.createIndex(
 )
 ```
 
-On MongoDB 4.4+, index builds are non-blocking by default. Monitor progress:
+On MongoDB 4.2+, index builds use an optimized build process and the `background` option is ignored. Monitor progress:
 
 ```javascript
 db.currentOp({ "command.createIndexes": { $exists: true } })
@@ -103,25 +103,34 @@ atlas performanceAdvisor slowQueryLogs list \
   --clusterName myCluster \
   --namespaces "appdb.orders" \
   --since 1704067200 \
-  --until 1704153600
+  --duration 86400000
 ```
 
 The output shows each slow query, execution time, and execution stats.
 
 ## Step 7: Adjust the Slow Query Threshold
 
-The default threshold is 100ms. Adjust it to surface more or fewer queries:
+The default threshold is 100ms. Atlas automatically manages this threshold on dedicated clusters. To set a custom threshold, first disable the managed threshold:
 
 ```bash
-# Set threshold to 50ms to catch more slow queries
-atlas clusters update myCluster \
-  --mongoDBMajorVersion 7.0
+# Disable Atlas-managed slow operation threshold
+atlas performanceAdvisor slowOperationThreshold disable \
+  --projectId myProjectId
+```
 
-# Via mongosh (for self-hosted)
+Then set the threshold via mongosh:
+
+```javascript
+// Set threshold to 50ms to catch more slow queries
 db.setProfilingLevel(1, { slowms: 50 })
 ```
 
-In Atlas, you can set the profiler threshold in the cluster settings.
+To re-enable automatic threshold management:
+
+```bash
+atlas performanceAdvisor slowOperationThreshold enable \
+  --projectId myProjectId
+```
 
 ## Step 8: Validate Index Effectiveness
 
