@@ -12,7 +12,7 @@ Description: Explore MongoDB 6.0's major features including Queryable Encryption
 
 MongoDB 6.0, released in 2022, introduced several major features:
 
-- **Queryable Encryption** (General Availability) - encrypt data client-side and query it without decryption on the server
+- **Queryable Encryption** (Preview) - encrypt data client-side and query it without decryption on the server
 - **Change Stream Pre-Images** - capture before/after document states in change events
 - **Cluster-to-Cluster Sync** (mongosync) - continuous sync between clusters
 - **$densify and $fill** - new aggregation stages for time series gaps
