@@ -13,7 +13,8 @@ Description: Learn how to detect in-memory sorts in MongoDB explain plans, under
 An in-memory sort occurs when MongoDB cannot satisfy a query's sort requirement using an index and must load all matching documents into a buffer, sort them, then return results. This is significantly more expensive than an index-backed sort because:
 
 - All qualifying documents must be loaded into RAM
-- There is a 32MB default memory limit (100MB with `allowDiskUse`)
+- There is a 100MB default memory limit (controlled by `internalQueryMaxBlockingSortMemoryUsageBytes`; 32MB in versions before 4.4)
+- Without `allowDiskUse`, the query fails if the sort exceeds this limit; with `allowDiskUse`, MongoDB spills to disk
 - It blocks further result delivery until the entire sort completes
 
 ## Detecting a SORT Stage
@@ -33,7 +34,7 @@ db.orders.explain("executionStats").find(
   "winningPlan": {
     "stage": "SORT",                        // <-- in-memory sort
     "sortPattern": { "createdAt": -1 },
-    "memLimit": 33554432,                   // 32MB limit
+    "memLimit": 104857600,                   // 100MB limit (default since MongoDB 4.4)
     "type": "simple",
     "inputStage": {
       "stage": "FETCH",
@@ -64,7 +65,7 @@ The `SORT` stage above the `FETCH`/`IXSCAN` stages means: first scan the index f
       "nReturned": 1000,
       "executionTimeMillisEstimate": 230,
       "memUsage": 2847200,      // bytes used by sort buffer
-      "memLimit": 33554432,     // 32MB hard limit
+      "memLimit": 104857600,    // 100MB default limit (since MongoDB 4.4)
       "sortPattern": { "createdAt": -1 },
       "inputStage": { ... }
     }
@@ -144,7 +145,7 @@ db.orders.createIndex({ status: 1, createdAt: -1, amount: 1 });
 
 ## Checking SORT_KEY_GENERATOR Stage
 
-A `SORT_KEY_GENERATOR` stage appears when projections are involved with in-memory sorts:
+In MongoDB 5.0+, a `SORT_KEY_GENERATOR` stage appears as part of in-memory sort processing to extract sort key values from documents:
 
 ```javascript
 {
@@ -164,13 +165,13 @@ This is still an in-memory sort - `SORT_KEY_GENERATOR` just extracts the sort ke
 ## Script to Audit Slow Queries for In-Memory Sorts
 
 ```javascript
-// Check current operations and explain slow queries
+// Check current operations and explain slow queries (MongoDB 4.2+)
 db.currentOp({ active: true, secs_running: { $gte: 1 } }).inprog.forEach(op => {
-  if (op.op === "query" && op.query) {
+  if (op.op === "query" && op.command) {
     const plan = db.getSiblingDB(op.ns.split(".")[0])
       .getCollection(op.ns.split(".")[1])
       .explain("queryPlanner")
-      .find(op.query.filter || {});
+      .find(op.command.filter || {});
 
     const hasSort = JSON.stringify(plan).includes('"stage":"SORT"');
     if (hasSort) {
@@ -182,4 +183,4 @@ db.currentOp({ active: true, secs_running: { $gte: 1 } }).inprog.forEach(op => {
 
 ## Summary
 
-In-memory sorts appear as `SORT` stages in MongoDB explain plans and indicate that no index covers the query's sort requirements. Detect them by checking `winningPlan` for a `SORT` stage and monitor `memUsage` in `executionStats` to anticipate 32MB limit violations. Fix them by creating compound indexes that place equality filter fields first, followed by sort fields, and range filter fields last - the ESR rule. Index-backed sorts eliminate the `SORT` stage entirely and allow MongoDB to stream results without loading all matching documents into memory.
+In-memory sorts appear as `SORT` stages in MongoDB explain plans and indicate that no index covers the query's sort requirements. Detect them by checking `winningPlan` for a `SORT` stage and monitor `memUsage` in `executionStats` to anticipate memory limit violations (100MB by default since MongoDB 4.4). Fix them by creating compound indexes that place equality filter fields first, followed by sort fields, and range filter fields last - the ESR rule. Index-backed sorts eliminate the `SORT` stage entirely and allow MongoDB to stream results without loading all matching documents into memory.
