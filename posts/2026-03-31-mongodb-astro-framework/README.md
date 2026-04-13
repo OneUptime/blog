@@ -32,7 +32,7 @@ import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
 
 export default defineConfig({
-  output: 'hybrid',  // static by default, SSR where opted in
+  output: 'server',  // static by default, SSR where opted in
   adapter: node({ mode: 'standalone' }),
 });
 ```
