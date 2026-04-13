@@ -41,9 +41,7 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/backup/restoreJobs" \
   -H "Content-Type: application/json" \
   -d '{
-    "delivery": {
-      "methodName": "DOWNLOAD"
-    },
+    "deliveryType": "download",
     "snapshotId": "{snapshotId}"
   }'
 ```
@@ -66,7 +64,7 @@ while true; do
     "https://cloud.mongodb.com/api/atlas/v1.0/groups/${GROUP_ID}/clusters/${CLUSTER_NAME}/backup/restoreJobs/${JOB_ID}")
 
   STATUS=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))")
-  URL=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('delivery',{}).get('url',''))")
+  URL=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); urls=d.get('deliveryUrl',[]); print(urls[0] if urls else '')")
 
   echo "Status: $STATUS"
 
@@ -146,6 +144,7 @@ Schedule regular offline copies:
 
 ```python
 import requests
+from requests.auth import HTTPDigestAuth
 import subprocess
 import os
 from datetime import datetime
@@ -153,7 +152,7 @@ from datetime import datetime
 API_BASE = "https://cloud.mongodb.com/api/atlas/v1.0"
 GROUP_ID = os.environ["ATLAS_GROUP_ID"]
 CLUSTER = os.environ["ATLAS_CLUSTER_NAME"]
-AUTH = (os.environ["ATLAS_PUBLIC_KEY"], os.environ["ATLAS_PRIVATE_KEY"])
+AUTH = HTTPDigestAuth(os.environ["ATLAS_PUBLIC_KEY"], os.environ["ATLAS_PRIVATE_KEY"])
 
 def get_latest_snapshot():
     r = requests.get(
