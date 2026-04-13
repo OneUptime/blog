@@ -69,9 +69,7 @@ Always set bounds to control costs and prevent runaway scaling:
   "autoScaling": {
     "diskGBEnabled": true
   },
-  "providerSettings": {
-    "diskSizeGB": 10
-  }
+  "diskSizeGB": 10
 }
 ```
 
