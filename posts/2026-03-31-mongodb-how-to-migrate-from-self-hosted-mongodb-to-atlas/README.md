@@ -61,8 +61,8 @@ Atlas migration servers need to connect to your source. Allow inbound TCP on por
 Or use a reverse SSH tunnel if your server is behind a firewall:
 
 ```bash
-# On source server - tunnel port 27017 to Atlas migration endpoint
-ssh -R 27017:localhost:27017 migration-jumpbox.atlas.mongodb.net
+# On source server - tunnel port 27017 through your own jump host
+ssh -R 27017:localhost:27017 user@your-jumpbox.example.com
 ```
 
 ### Step 3: Start Live Migration in Atlas
@@ -133,7 +133,7 @@ mongomirror \
   --username migrationUser \
   --password MigrationPass123! \
   --authenticationDatabase admin \
-  --destination "mongodb+srv://atlasUser:AtlasPass@cluster0.abc123.mongodb.net" \
+  --destination "cluster0-shard-00-00.abc123.mongodb.net:27017,cluster0-shard-00-01.abc123.mongodb.net:27017,cluster0-shard-00-02.abc123.mongodb.net:27017" \
   --destinationUsername atlasUser \
   --destinationPassword AtlasPass \
   --ssl
