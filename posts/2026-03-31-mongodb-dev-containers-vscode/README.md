@@ -127,22 +127,16 @@ WORKDIR /workspace
 
 ## Using the MongoDB VS Code Extension
 
-After the container starts, the MongoDB extension auto-connects if you add a workspace connection in `.vscode/settings.json`:
+After the container starts, connect to MongoDB through the extension:
 
-```json
-{
-  "mdb.connectionSaving.defaultConnectionSavingLocation": "Workspace",
-  "mdb.connections": [
-    {
-      "id": "dev-mongo",
-      "name": "Dev MongoDB",
-      "connectionOptions": {
-        "connectionString": "mongodb://admin:devpass@localhost:27017/?authSource=admin"
-      }
-    }
-  ]
-}
+1. Open the MongoDB extension sidebar (click the MongoDB leaf icon).
+2. Click **Add Connection** and enter the connection string:
+
 ```
+mongodb://admin:devpass@mongo:27017/?authSource=admin
+```
+
+3. The connection is saved to the workspace automatically because `mdb.connectionSaving.defaultConnectionSavingLocation` is set to `"Workspace"` in `devcontainer.json`.
 
 ## Summary
 
