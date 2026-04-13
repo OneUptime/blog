@@ -19,8 +19,8 @@ Add the Dapr Java SDK to your `pom.xml`:
 ```xml
 <dependency>
   <groupId>io.dapr</groupId>
-  <artifactId>dapr-sdk-workflow</artifactId>
-  <version>1.13.0</version>
+  <artifactId>dapr-sdk-workflows</artifactId>
+  <version>0.13.0</version>
 </dependency>
 ```
 
@@ -32,7 +32,7 @@ Create a workflow class by extending `Workflow`:
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowStub;
 
-public class OrderProcessingWorkflow extends Workflow {
+public class OrderProcessingWorkflow implements Workflow {
     @Override
     public WorkflowStub create() {
         return ctx -> {
@@ -68,8 +68,8 @@ public class OrderProcessingWorkflow extends Workflow {
 Activities are the individual steps in a workflow:
 
 ```java
-import io.dapr.workflows.runtime.WorkflowActivity;
-import io.dapr.workflows.runtime.WorkflowActivityContext;
+import io.dapr.workflows.WorkflowActivity;
+import io.dapr.workflows.WorkflowActivityContext;
 
 public class ValidateOrderActivity implements WorkflowActivity {
     @Override
