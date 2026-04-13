@@ -53,6 +53,8 @@ class OrderActor : Actor, IOrderActor
 // .NET Dapr SDK - similar API
 public class OrderActor : Actor, IOrderActor
 {
+    public OrderActor(ActorHost host) : base(host) { }
+
     public async Task<OrderStatus> PlaceOrderAsync(OrderRequest request)
     {
         var state = await StateManager.GetOrAddStateAsync("order",
@@ -71,7 +73,7 @@ The .NET Dapr SDK deliberately mirrors the Service Fabric Actor API to ease migr
 | Feature | Service Fabric | Dapr |
 |---------|---------------|------|
 | Platform | Azure or on-prem SF cluster | Any (Kubernetes, local, cloud) |
-| Language support | .NET, Java, Go, Python | Any language |
+| Language support | .NET, Java (guest executables for others) | Any language |
 | Infrastructure management | Built-in cluster manager | Relies on Kubernetes |
 | Actor model | Reliable Actors | Virtual Actors |
 | State storage | Reliable Collections | External state store |
