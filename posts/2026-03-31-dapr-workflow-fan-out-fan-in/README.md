@@ -20,7 +20,7 @@ Fan-out/fan-in is a workflow pattern where a single task spawns multiple paralle
 ## Basic Fan-Out/Fan-In Implementation
 
 ```python
-from dapr.ext.workflow import DaprWorkflowContext, WorkflowActivityContext
+from dapr.ext.workflow import DaprWorkflowContext, WorkflowActivityContext, when_all
 
 def process_item(ctx: WorkflowActivityContext, item: dict) -> dict:
     # Simulate processing - replace with real logic
@@ -47,7 +47,7 @@ def batch_processing_workflow(ctx: DaprWorkflowContext, batch: dict):
     ]
 
     # Fan-in: wait for all tasks to complete
-    results = yield ctx.task_all(parallel_tasks)
+    results = yield when_all(parallel_tasks)
 
     # Aggregate the results
     summary = yield ctx.call_activity(aggregate_results, input=results)
@@ -64,7 +64,8 @@ runtime.register_workflow(batch_processing_workflow)
 runtime.register_activity(process_item)
 runtime.register_activity(aggregate_results)
 
-with runtime:
+runtime.start()
+try:
     client = DaprWorkflowClient()
 
     batch = {
@@ -81,11 +82,13 @@ with runtime:
 
     state = client.wait_for_workflow_completion(instance_id, timeout_in_seconds=30)
     print(f"Batch result: {state.serialized_output}")
+finally:
+    runtime.shutdown()
 ```
 
 ## Fan-Out with Partial Failure Handling
 
-Use `task_any` to proceed when at least one task succeeds, or handle individual failures:
+Use `when_any` to proceed when at least one task succeeds, or handle individual failures:
 
 ```python
 def resilient_fan_out(ctx: DaprWorkflowContext, sources: list):
@@ -95,7 +98,7 @@ def resilient_fan_out(ctx: DaprWorkflowContext, sources: list):
     ]
 
     # Wait for all, collecting results and errors separately
-    results = yield ctx.task_all(tasks)
+    results = yield when_all(tasks)
 
     # Filter out failed results
     successes = [r for r in results if r.get("status") != "error"]
@@ -117,7 +120,7 @@ def dynamic_notification_workflow(ctx: DaprWorkflowContext, event: dict):
         for r in recipients
     ]
 
-    results = yield ctx.task_all(notification_tasks)
+    results = yield when_all(notification_tasks)
     delivered = sum(1 for r in results if r.get("delivered"))
     return {"sent_to": len(recipients), "delivered": delivered}
 ```
@@ -132,11 +135,11 @@ def chunked_fan_out(ctx: DaprWorkflowContext, items: list, chunk_size: int = 5):
     for i in range(0, len(items), chunk_size):
         chunk = items[i:i + chunk_size]
         tasks = [ctx.call_activity(process_item, input=item) for item in chunk]
-        chunk_results = yield ctx.task_all(tasks)
+        chunk_results = yield when_all(tasks)
         all_results.extend(chunk_results)
     return all_results
 ```
 
 ## Summary
 
-Dapr workflow fan-out/fan-in uses `ctx.task_all()` to execute multiple activities in parallel and collect all results before proceeding. This pattern is ideal for batch processing, multi-source data fetching, and parallel notification delivery. For very large batches, chunked fan-out provides parallelism control to avoid overwhelming downstream systems.
+Dapr workflow fan-out/fan-in uses `when_all()` to execute multiple activities in parallel and collect all results before proceeding. This pattern is ideal for batch processing, multi-source data fetching, and parallel notification delivery. For very large batches, chunked fan-out provides parallelism control to avoid overwhelming downstream systems.
