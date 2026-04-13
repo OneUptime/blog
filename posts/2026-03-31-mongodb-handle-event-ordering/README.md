@@ -135,7 +135,7 @@ changeStream.on("change", async (event) => {
 });
 ```
 
-Note: On sharded clusters, ordering is guaranteed per shard but not across shards. Use `globalSequence` for cross-shard ordering.
+Note: On sharded clusters, change streams provide a total ordering across shards using cluster time (since MongoDB 4.0). However, cross-shard ordering is based on cluster time rather than strict causality, so use `globalSequence` if your application requires causal ordering across different streams on different shards.
 
 ## Summary
 
