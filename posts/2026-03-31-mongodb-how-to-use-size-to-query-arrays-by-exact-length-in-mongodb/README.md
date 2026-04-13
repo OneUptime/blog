@@ -49,8 +49,10 @@ While `$size` only supports exact matches, you can combine it with other query o
 ```javascript
 // Posts with exactly 2 tags AND a specific tag
 db.posts.find({
-  tags: { $size: 2 },
-  tags: "mongodb"
+  $and: [
+    { tags: { $size: 2 } },
+    { tags: "mongodb" }
+  ]
 })
 ```
 
