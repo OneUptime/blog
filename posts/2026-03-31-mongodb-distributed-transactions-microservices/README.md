@@ -72,6 +72,7 @@ async function placeOrderSaga(orderData) {
     await orderService.confirmOrder(orderId);
   } catch (err) {
     // Compensate in reverse order
+    await paymentService.refundPayment(orderData.userId, orderData.total);
     await inventoryService.releaseStock(orderData.productId, orderData.quantity);
     await orderService.cancelOrder(orderId, err.message);
     throw err;
