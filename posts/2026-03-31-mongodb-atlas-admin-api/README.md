@@ -234,12 +234,14 @@ curl --user "${PUBLIC_KEY}:${PRIVATE_KEY}" \
   --header "Content-Type: application/json" \
   --request POST \
   --data '{
-    "eventTypeName": "NORMALIZED_SYSTEM_CPU_USER",
+    "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
     "enabled": true,
-    "threshold": {
+    "metricThreshold": {
+      "metricName": "NORMALIZED_SYSTEM_CPU_USER",
       "operator": "GREATER_THAN",
       "threshold": 85,
-      "units": "RAW"
+      "units": "RAW",
+      "mode": "AVERAGE"
     },
     "notifications": [
       {
