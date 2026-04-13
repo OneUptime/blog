@@ -102,7 +102,7 @@ Define the analyzer in your Atlas Search index configuration:
     {
       "name": "html_content_analyzer",
       "charFilters": [
-        { "type": "htmlStrip" }
+        { "type": "htmlStrip", "ignoredTags": [] }
       ],
       "tokenizer": { "type": "standard" },
       "tokenFilters": [
@@ -136,7 +136,7 @@ Use the Atlas Search `analyze` API to test your analyzer output:
 
 ```bash
 curl -X POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/analyze" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/fts/analyze" \
   -H "Content-Type: application/json" \
   -d '{
     "analyzer": "html_content_analyzer",
