@@ -192,9 +192,9 @@ const rules = await db.collection("filterRules")
 ```javascript
 // Store URL routing rules as regex patterns
 await db.collection("routes").insertMany([
-  { pattern: /^\/api\/v1\/users\/(\d+)$/, handler: "userHandler", group: 1 },
-  { pattern: /^\/api\/v1\/orders$/, handler: "orderListHandler" },
-  { pattern: /^\/static\/(.+)$/, handler: "staticFileHandler", group: 1 }
+  { pattern: /^\/api\/v1\/users\/(\d+)$/, handler: "userHandler", group: 1, active: true },
+  { pattern: /^\/api\/v1\/orders$/, handler: "orderListHandler", active: true },
+  { pattern: /^\/static\/(.+)$/, handler: "staticFileHandler", group: 1, active: true }
 ])
 
 // Route a request
