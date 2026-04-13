@@ -35,7 +35,7 @@ db.products.aggregate([
 ])
 ```
 
-This matches "I love organic coffee beans" but not "organic roasted coffee beans" (word order interrupted).
+This matches "I love organic coffee beans" but not "organic roasted coffee beans" (words are not consecutive).
 
 ## Searching Multiple Fields
 
