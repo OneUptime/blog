@@ -54,9 +54,9 @@ oci compute volume-attachment attach \
 After attaching, SSH into the instance and connect the iSCSI target:
 
 ```bash
-sudo iscsiadm -m node -o new -T $IQDN -p $IP:$PORT
-sudo iscsiadm -m node -o update -T $IQDN -n node.startup -v automatic
-sudo iscsiadm -m node -T $IQDN -p $IP:$PORT -l
+sudo iscsiadm -m node -o new -T $IQN -p $IP:$PORT
+sudo iscsiadm -m node -o update -T $IQN -n node.startup -v automatic
+sudo iscsiadm -m node -T $IQN -p $IP:$PORT -l
 
 sudo mkfs.xfs /dev/sdb
 sudo mkdir -p /data/mongodb
