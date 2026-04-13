@@ -42,9 +42,6 @@ const client = new MongoClient('mongodb://host1:27017,host2:27017,host3:27017/?r
 
   // Connection timeout
   connectTimeoutMS: 10000,
-
-  // Max time to wait for a connection from the pool
-  waitQueueTimeoutMS: 10000,
 });
 ```
 
@@ -154,7 +151,7 @@ rs.stepDown(60)
 rs.status()
 
 # Verify a new primary was elected
-rs.isMaster()
+db.hello()
 ```
 
 Monitor your application logs during the stepdown to verify:
@@ -172,9 +169,9 @@ async function writeWithRetry(collection, document, maxAttempts = 3) {
       return result;
     } catch (error) {
       const isRetryable = [
-        'NotPrimaryError',
         'NotWritablePrimary',
-        'InterruptedAtPrimaryStepDown',
+        'InterruptedDueToReplStateChange',
+        'PrimarySteppedDown',
       ].includes(error.codeName);
 
       if (isRetryable && attempt < maxAttempts) {
