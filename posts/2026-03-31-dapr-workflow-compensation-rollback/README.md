@@ -167,7 +167,7 @@ func OrderSagaWorkflow(ctx *task.OrchestrationContext) (any, error) {
         task.WithActivityInput(input)).Await(&reservationID); err != nil {
         // Compensate: refund payment
         runCompensations(compensations)
-        ctx.CallActivity(NotifyFailureActivity, task.WithActivityInput(input))
+        ctx.CallActivity(NotifyFailureActivity, task.WithActivityInput(input)).Await(nil)
         return map[string]string{"status": "out_of_stock"}, nil
     }
     // Register compensation
@@ -183,7 +183,7 @@ func OrderSagaWorkflow(ctx *task.OrchestrationContext) (any, error) {
         task.WithActivityInput(input)).Await(&shipmentID); err != nil {
         // Compensate: cancel reservation, refund payment
         runCompensations(compensations)
-        ctx.CallActivity(NotifyFailureActivity, task.WithActivityInput(input))
+        ctx.CallActivity(NotifyFailureActivity, task.WithActivityInput(input)).Await(nil)
         return map[string]string{"status": "shipping_failed"}, nil
     }
 
@@ -221,22 +221,25 @@ import (
 )
 
 func main() {
-    be, _ := sqlite.NewSqliteBackend(sqlite.NewSqliteOptions("./workflow.db"), backend.DefaultLogger())
-    executor := task.NewTaskExecutor(be)
+    r := task.NewTaskRegistry()
+    r.AddOrchestratorN("OrderSagaWorkflow", OrderSagaWorkflow)
+    r.AddActivityN("ValidateOrderActivity", ValidateOrderActivity)
+    r.AddActivityN("ChargePaymentActivity", ChargePaymentActivity)
+    r.AddActivityN("ReserveInventoryActivity", ReserveInventoryActivity)
+    r.AddActivityN("CreateShipmentActivity", CreateShipmentActivity)
+    r.AddActivityN("RefundPaymentActivity", RefundPaymentActivity)
+    r.AddActivityN("CancelInventoryReservationActivity", CancelInventoryReservationActivity)
+    r.AddActivityN("CancelShipmentActivity", CancelShipmentActivity)
+    r.AddActivityN("NotifyFailureActivity", NotifyFailureActivity)
 
-    executor.AddOrchestratorN("OrderSagaWorkflow", OrderSagaWorkflow)
-    executor.AddActivityN("ValidateOrderActivity", ValidateOrderActivity)
-    executor.AddActivityN("ChargePaymentActivity", ChargePaymentActivity)
-    executor.AddActivityN("ReserveInventoryActivity", ReserveInventoryActivity)
-    executor.AddActivityN("CreateShipmentActivity", CreateShipmentActivity)
-    executor.AddActivityN("RefundPaymentActivity", RefundPaymentActivity)
-    executor.AddActivityN("CancelInventoryReservationActivity", CancelInventoryReservationActivity)
-    executor.AddActivityN("CancelShipmentActivity", CancelShipmentActivity)
-    executor.AddActivityN("NotifyFailureActivity", NotifyFailureActivity)
+    ctx := context.Background()
+    be := sqlite.NewSqliteBackend(sqlite.NewSqliteOptions("./workflow.db"), backend.DefaultLogger())
+    worker := backend.NewOrchestrationWorker(be, task.NewTaskExecutor(r), backend.DefaultLogger())
 
-    if err := executor.Start(context.Background()); err != nil {
+    if err := worker.Start(ctx); err != nil {
         log.Fatal(err)
     }
+    defer worker.Shutdown(ctx)
 }
 ```
 
@@ -248,10 +251,10 @@ Use retry options on activities before triggering compensation:
 // Retry up to 3 times before treating as failure
 if err := ctx.CallActivity(ReserveInventoryActivity,
     task.WithActivityInput(input),
-    task.WithActivityRetryPolicy(&task.ActivityRetryPolicy{
-        MaxNumberOfAttempts: 3,
-        FirstRetryInterval:  time.Second,
-        BackoffCoefficient:  2.0,
+    task.WithActivityRetryPolicy(&task.RetryPolicy{
+        MaxAttempts:          3,
+        InitialRetryInterval: time.Second,
+        BackoffCoefficient:   2.0,
     }),
 ).Await(&reservationID); err != nil {
     // Only compensate after all retries are exhausted
