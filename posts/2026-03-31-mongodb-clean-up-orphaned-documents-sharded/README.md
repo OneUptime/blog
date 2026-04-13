@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Sharding, Administration, Cleanup, Maintenance
 
-Description: Learn how orphaned documents occur in sharded MongoDB clusters and how to clean them up using cleanupOrphaned, cleanupReshardCollection, and rangeDeleter settings.
+Description: Learn how orphaned documents occur in sharded MongoDB clusters and how to clean them up using cleanupOrphaned and the rangeDeleter.
 
 ---
 
@@ -22,14 +22,14 @@ Check if any orphaned ranges exist using `sh.status()`:
 sh.status()
 ```
 
-Look for entries with `"jumbo"` flags or ongoing migrations that may have left debris. A more targeted check:
+Look for ongoing migrations that may have been interrupted. A more targeted check:
 
 ```javascript
 use config
 db.migrationCoordinators.find({ state: { $ne: "done" } })
 ```
 
-Also check for pending range deletions:
+Also check for pending range deletions on each shard's primary (connect directly to the shard, not through mongos):
 
 ```javascript
 use config
@@ -38,18 +38,13 @@ db.rangeDeletions.find()
 
 ## Automatic Cleanup via rangeDeleter
 
-MongoDB automatically schedules orphan cleanup after chunk migrations via the range deleter. Verify it is enabled and tune its rate:
-
-```javascript
-// Check current rangeDeleter settings in mongod.conf
-// (no runtime view - check configuration file)
-```
+MongoDB automatically schedules orphan cleanup after chunk migrations via the range deleter. It is enabled by default on shard servers. You can tune the delay before orphaned ranges are cleaned up via the `orphanCleanupDelaySecs` server parameter (default 900 seconds):
 
 In `mongod.conf`:
 
 ```yaml
-sharding:
-  clusterRole: shardsvr
+setParameter:
+  orphanCleanupDelaySecs: 900
 ```
 
 The range deleter runs in the background. Monitor its progress:
@@ -68,8 +63,7 @@ use admin
 db.runCommand({
   cleanupOrphaned: "myDatabase.myCollection",
   startingFromKey: { shardKeyField: MinKey },
-  secondaryThrottle: false,
-  waitForDelete: true
+  secondaryThrottle: false
 })
 ```
 
@@ -81,24 +75,22 @@ let result = { stoppedAtKey: { shardKeyField: MinKey } };
 while (result.stoppedAtKey) {
   result = db.runCommand({
     cleanupOrphaned: "myDatabase.myCollection",
-    startingFromKey: result.stoppedAtKey,
-    waitForDelete: true
+    startingFromKey: result.stoppedAtKey
   });
   print(`Status: ${result.ok}, next: ${tojson(result.stoppedAtKey)}`);
 }
 print("Cleanup complete");
 ```
 
-## MongoDB 6.0+ - reshard and Auto-Cleanup
+## MongoDB 6.0+ - Improved Auto-Cleanup
 
-In MongoDB 6.0+, after resharding a collection, cleanup runs automatically. You can also trigger cleanup via:
+In MongoDB 6.0+, the range deleter has been significantly improved and handles all orphaned document cleanup automatically after chunk migrations and resharding operations. There is no need for manual intervention.
+
+The `cleanupOrphaned` command was removed in MongoDB 6.0. If you are on 6.0 or later, rely on the automatic range deleter. You can monitor its progress using:
 
 ```javascript
-use admin
-db.adminCommand({ cleanupStructuredEncryptionData: 1 })
+db.adminCommand({ currentOp: true, desc: /range/ })
 ```
-
-For general orphan cleanup in 6.0+, the automated range deleter handles everything after migrations. Manual `cleanupOrphaned` is deprecated but still supported.
 
 ## Preventing Orphans
 
@@ -119,4 +111,4 @@ db.changelog.find({ what: "moveChunk.error" }).sort({ time: -1 }).limit(10)
 
 ## Summary
 
-Orphaned documents result from interrupted chunk migrations. MongoDB's range deleter removes them automatically after successful migrations. For manual cleanup on MongoDB 4.x, use `cleanupOrphaned` iteratively on each shard's primary. On MongoDB 6.0+, the automated cleanup handles post-migration orphans without manual intervention.
+Orphaned documents result from interrupted chunk migrations. MongoDB's range deleter removes them automatically after successful migrations. For manual cleanup on MongoDB 4.x, use `cleanupOrphaned` iteratively on each shard's primary. On MongoDB 6.0+, the `cleanupOrphaned` command was removed and the improved range deleter handles all post-migration orphan cleanup automatically.
