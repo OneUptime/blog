@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Keycloak, Authentication, JWT, OAuth2
 
-Description: Integrate self-hosted Keycloak with Dapr JWT middleware to validate realm tokens and forward user roles and attributes to downstream microservices.
+Description: Integrate self-hosted Keycloak with Dapr JWT middleware to validate realm tokens and extract user roles and attributes in downstream microservices.
 
 ---
 
@@ -16,7 +16,7 @@ Keycloak is a popular self-hosted identity provider that issues JWTs. Dapr's bea
 
 ```bash
 # Deploy Keycloak on Kubernetes
-kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/24.0.0/kubernetes/keycloaks.k8s.keycloak.org-v1beta1.yaml
+kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/24.0.0/kubernetes/keycloaks.k8s.keycloak.org-v1.yml
 
 # Or use Helm
 helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -28,7 +28,7 @@ helm install keycloak bitnami/keycloak \
 
 After Keycloak starts:
 1. Create a realm: `my-realm`
-2. Create a client: `dapr-microservices` (access type: bearer-only)
+2. Create a client: `dapr-microservices` (disable Client authentication and all Authentication flow checkboxes)
 3. Note the client ID and realm URL
 
 ## JWKS Endpoint
@@ -94,19 +94,31 @@ echo $TOKEN
 
 ```python
 import json
+import base64
 from fastapi import FastAPI, Request, HTTPException
 
 app = FastAPI()
 
+def decode_jwt_claims(request: Request) -> dict:
+    # Dapr has already validated the token; extract claims from the payload
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return {}
+    token = auth[len("Bearer "):]
+    # JWT payload is the second base64url-encoded segment
+    payload = token.split(".")[1]
+    # Add padding if needed
+    payload += "=" * (-len(payload) % 4)
+    return json.loads(base64.urlsafe_b64decode(payload))
+
 def get_realm_roles(request: Request) -> list[str]:
-    # Keycloak includes realm roles in realm_access claim
-    realm_access = request.headers.get("X-JWT-Realm_access", "{}")
-    return json.loads(realm_access).get("roles", [])
+    # Keycloak includes realm roles in the realm_access claim
+    claims = decode_jwt_claims(request)
+    return claims.get("realm_access", {}).get("roles", [])
 
 def get_client_roles(request: Request, client: str = "dapr-microservices") -> list[str]:
-    resource_access = request.headers.get("X-JWT-Resource_access", "{}")
-    access = json.loads(resource_access)
-    return access.get(client, {}).get("roles", [])
+    claims = decode_jwt_claims(request)
+    return claims.get("resource_access", {}).get(client, {}).get("roles", [])
 
 @app.get("/api/admin/users")
 async def list_users(request: Request):
@@ -133,4 +145,4 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Summary
 
-Keycloak's self-hosted nature makes it a good choice for organizations that need full control over their identity provider. Dapr's bearer token middleware integrates with Keycloak's JWKS endpoint with no additional dependencies. Realm roles and client roles from the Keycloak token flow through as headers, making it easy to implement fine-grained authorization without external calls.
+Keycloak's self-hosted nature makes it a good choice for organizations that need full control over their identity provider. Dapr's bearer token middleware integrates with Keycloak's JWKS endpoint with no additional dependencies. Since Dapr validates the token and forwards the original Authorization header, your service can decode the JWT payload to extract realm roles and client roles for fine-grained authorization without an external verification step.
