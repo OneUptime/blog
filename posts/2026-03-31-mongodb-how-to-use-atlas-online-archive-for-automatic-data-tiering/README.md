@@ -10,12 +10,12 @@ Description: Learn how to configure MongoDB Atlas Online Archive to automaticall
 
 ## What Is Atlas Online Archive
 
-Atlas Online Archive automatically moves infrequently accessed documents from your Atlas cluster to fully managed, cost-effective object storage (S3-compatible). Archived data remains queryable using the same MongoDB connection string.
+Atlas Online Archive automatically moves infrequently accessed documents from your Atlas cluster to fully managed, cost-effective object storage (S3-compatible). Archived data remains queryable via the federated database instance endpoint.
 
 ## How It Works
 
 1. You define an archiving rule based on a date field and age threshold
-2. Atlas moves matching documents to object storage (Parquet format)
+2. Atlas moves matching documents to cloud object storage
 3. Both live and archived data are queryable via the federated endpoint
 4. Archived documents are removed from the primary cluster
 
@@ -98,7 +98,7 @@ For non-date-based archiving, use custom criteria:
 ```json
 {
   "type": "CUSTOM",
-  "query": "{ \"status\": \"completed\", \"updatedAt\": { \"$lt\": { \"$date\": { \"$subtract\": [\"$$NOW\", 7776000000] } } } }"
+  "query": "{ \"status\": \"completed\", \"updatedAt\": { \"$lt\": { \"$date\": \"2025-01-01T00:00:00Z\" } } }"
 }
 ```
 
