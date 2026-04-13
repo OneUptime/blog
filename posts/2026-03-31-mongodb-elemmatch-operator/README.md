@@ -37,8 +37,10 @@ Without `$elemMatch`, this query matches the document even though no single elem
 ```javascript
 // Incorrectly matches - 85 satisfies $gt:80 from Math, 55 satisfies $lt:60 from English
 db.students.find({
-  "scores.score": { $gt: 80 },
-  "scores.score": { $lt: 60 }
+  $and: [
+    { "scores.score": { $gt: 80 } },
+    { "scores.score": { $lt: 60 } }
+  ]
 })
 ```
 
@@ -47,7 +49,7 @@ With `$elemMatch`, only one element must satisfy both conditions:
 ```javascript
 // Correctly requires a SINGLE element to have score > 80 AND < 60 (impossible here)
 db.students.find({
-  scores: { $elemMatch: { score: { $gt: 80 }, score: { $lt: 60 } } }
+  scores: { $elemMatch: { score: { $gt: 80, $lt: 60 } } }
 })
 ```
 
@@ -147,9 +149,10 @@ db.orders.find({
 db.students.find({
   grades: {
     $elemMatch: {
-      score: {
-        $or: [{ $lt: 50 }, { $gt: 95 }]
-      }
+      $or: [
+        { score: { $lt: 50 } },
+        { score: { $gt: 95 } }
+      ]
     }
   }
 })
