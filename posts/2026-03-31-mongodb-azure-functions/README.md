@@ -8,7 +8,7 @@ Description: Learn how to connect MongoDB from Azure Functions using the connect
 
 ---
 
-Azure Functions support MongoDB connections through the standard Mongoose driver. The critical optimization is the same as other serverless platforms: cache the connection in module scope to reuse it across warm invocations and avoid reconnecting on every function call.
+Azure Functions support MongoDB connections through Mongoose, a popular MongoDB ODM for Node.js. The critical optimization is the same as other serverless platforms: cache the connection in module scope to reuse it across warm invocations and avoid reconnecting on every function call.
 
 ## Installing Dependencies
 
