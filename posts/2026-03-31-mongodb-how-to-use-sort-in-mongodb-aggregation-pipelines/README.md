@@ -141,14 +141,14 @@ db.articles.aggregate([
 ])
 ```
 
-## Stable Sort Behavior
+## Sort Consistency
 
-MongoDB's `$sort` is stable - documents with equal sort keys maintain their relative order. This is important when chaining sorts:
+MongoDB's `$sort` does not guarantee a stable sort — documents with equal sort key values may be returned in any order. To ensure a deterministic order, include a unique field such as `_id` in your sort:
 
 ```javascript
-// Sort by date, then by title alphabetically for same-date items
+// Sort by date, then by title, with _id as a tiebreaker for deterministic order
 db.articles.aggregate([
-  { $sort: { publishDate: -1, title: 1 } }
+  { $sort: { publishDate: -1, title: 1, _id: 1 } }
 ])
 ```
 
