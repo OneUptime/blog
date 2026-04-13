@@ -30,10 +30,10 @@ import (
     "context"
     "encoding/json"
     "log"
-    "net/http"
 
     dapr "github.com/dapr/go-sdk/client"
     daprd "github.com/dapr/go-sdk/service/http"
+    "github.com/dapr/go-sdk/service/common"
 )
 
 type Metric struct {
@@ -83,14 +83,18 @@ func recordMetricHandler(ctx context.Context, in *common.InvocationEvent) (*comm
     }
 
     // Save to state store
+    metricData, err := json.Marshal(metric)
+    if err != nil {
+        return nil, err
+    }
     if err := daprClient.SaveState(ctx, "statestore", "metric-"+metric.Name,
-        metric, nil); err != nil {
+        metricData, nil); err != nil {
         return nil, err
     }
 
     // Publish metric recorded event
     if err := daprClient.PublishEvent(ctx, "pubsub", "metric-recorded",
-        metric); err != nil {
+        metricData); err != nil {
         log.Printf("Failed to publish event: %v", err)
     }
 
