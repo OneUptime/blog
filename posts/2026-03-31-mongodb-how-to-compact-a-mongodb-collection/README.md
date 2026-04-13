@@ -45,14 +45,11 @@ print("Reuse blocks:", stats.wiredTiger["block-manager"]["file bytes available f
 // Basic compact command
 db.runCommand({ compact: "orders" })
 
-// Force compact even if enough disk space is available
+// Force compact to run on a replica set primary
 db.runCommand({ compact: "orders", force: true })
-
-// Compact with padding factor (deprecated in WiredTiger)
-db.runCommand({ compact: "orders" })
 ```
 
-The command will block until complete. In MongoDB 4.4+, on a primary it will block all other operations on that database.
+Before MongoDB 4.4, `compact` blocked all operations on the database and required `force: true` to run on a primary. Starting in MongoDB 4.4 (WiredTiger), `compact` no longer blocks CRUD operations — it only blocks metadata operations like `drop`, `createIndex`, and `dropIndex`.
 
 ## Running compact on a Replica Set
 
@@ -111,11 +108,10 @@ print("Index size after:", after.totalIndexSize, "bytes");
 ## Limitations and Considerations
 
 - `compact` only works on WiredTiger storage engine collections
-- The command requires free disk space of approximately the collection size during execution
-- It blocks all operations on the database (on primary) while running
-- For large collections, use a maintenance window
-- `compact` does not run on the `local` database
-- Collections in `config` or `admin` databases require special handling
+- The command may require additional disk space to run
+- Before MongoDB 4.4, it blocks all operations on the database; in 4.4+, it only blocks metadata operations (not CRUD)
+- For large collections on older MongoDB versions, use a maintenance window
+- `compact` does not work on capped collections
 
 ## Automating Compaction for Multiple Collections
 
