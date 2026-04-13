@@ -43,10 +43,10 @@ curl -X POST \
   --digest -u "{publicKey}:{privateKey}" \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryType": "automated",
+    "deliveryType": "pointInTime",
     "targetClusterName": "myRestoredCluster",
     "targetGroupId": "{groupId}",
-    "oplogTs": 1743343800,
+    "oplogTs": 1774881000,
     "oplogInc": 1
   }'
 ```
@@ -83,7 +83,7 @@ curl -X GET \
   --digest -u "{publicKey}:{privateKey}"
 ```
 
-Check `status` field: `QUEUED`, `IN_PROGRESS`, `COMPLETED`, or `FAILED`.
+Check the response for boolean flags: `failed`, `cancelled`, and `expired`. The `finishedAt` field indicates when the restore completed.
 
 ## After the Restore
 
