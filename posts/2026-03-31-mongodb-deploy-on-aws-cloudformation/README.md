@@ -44,6 +44,13 @@ Resources:
       VpcId: !Ref MongoVPC
       CidrBlock: 10.0.2.0/24
       AvailabilityZone: !Select [1, !GetAZs ""]
+
+  MongoSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MongoVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [2, !GetAZs ""]
 ```
 
 ## Security Group
@@ -112,6 +119,13 @@ Self-referencing the security group allows intra-replica-set communication.
             mount -a
             chown -R mongod:mongod /data/mongodb
 
+            # Create keyfile for replica set authentication
+            # In production, retrieve a shared key from AWS Secrets Manager or SSM Parameter Store
+            # All replica set members must use the same keyfile
+            openssl rand -base64 756 > /etc/mongodb-keyfile
+            chmod 400 /etc/mongodb-keyfile
+            chown mongod:mongod /etc/mongodb-keyfile
+
             # Configure mongod
             cat > /etc/mongod.conf <<'EOF'
             storage:
@@ -144,6 +158,7 @@ Self-referencing the security group allows intra-replica-set communication.
       VPCZoneIdentifier:
         - !Ref MongoSubnetA
         - !Ref MongoSubnetB
+        - !Ref MongoSubnetC
       Tags:
         - Key: Name
           Value: mongo-rs-node
@@ -159,8 +174,8 @@ rs.initiate({
   _id: "rs0",
   members: [
     { _id: 0, host: "10.0.1.10:27017" },
-    { _id: 1, host: "10.0.1.11:27017" },
-    { _id: 2, host: "10.0.2.12:27017" }
+    { _id: 1, host: "10.0.2.10:27017" },
+    { _id: 2, host: "10.0.3.10:27017" }
   ]
 })
 ```
