@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Python, Beanie, ODM, Async
 
-Description: Learn how to use Beanie, an async MongoDB ODM built on Motor and Pydantic, to define typed documents and build async MongoDB applications with FastAPI.
+Description: Learn how to use Beanie, an async MongoDB ODM built on Async PyMongo and Pydantic, to define typed documents and build async MongoDB applications with FastAPI.
 
 ---
 
 ## Overview
 
-Beanie is an async ODM for MongoDB that combines Motor (async PyMongo) with Pydantic for schema definition and validation. Documents are Pydantic models, giving you automatic data validation, serialization, and IDE autocompletion alongside async MongoDB operations.
+Beanie is an async ODM for MongoDB that combines Async PyMongo with Pydantic for schema definition and validation. Documents are Pydantic models, giving you automatic data validation, serialization, and IDE autocompletion alongside async MongoDB operations.
 
 ## Installation
 
 ```bash
-pip install beanie motor
+pip install beanie
 ```
 
 ## Defining a Document
@@ -49,11 +49,11 @@ Initialize Beanie with your Motor client and document list at startup:
 
 ```python
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from beanie import init_beanie
 
 async def init():
-    client = AsyncIOMotorClient("mongodb://localhost:27017/")
+    client = AsyncMongoClient("mongodb://localhost:27017/")
     await init_beanie(database=client["mydb"], document_models=[User])
 ```
 
@@ -93,7 +93,7 @@ user.age = 31
 await user.save()
 
 # Atomic update operators
-from beanie.operators import Set, Inc
+from beanie.odm.operators.update.general import Set, Inc
 await User.find_one(User.email == "alice@example.com").update(
     Set({User.role: "admin"})
 )
@@ -118,11 +118,12 @@ await User.find(User.age < 18).delete()
 
 ```python
 from fastapi import FastAPI
+from pymongo import AsyncMongoClient
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    client = AsyncIOMotorClient("mongodb://localhost:27017/")
+    client = AsyncMongoClient("mongodb://localhost:27017/")
     await init_beanie(database=client["mydb"], document_models=[User])
     yield
     client.close()
@@ -140,4 +141,4 @@ async def create(user: User):
 
 ## Summary
 
-Beanie combines Pydantic's type safety with Motor's async MongoDB access. Define documents by extending `beanie.Document`, initialize with `init_beanie()`, and use Pythonic class-based filter syntax for queries. Beanie integrates naturally with FastAPI's lifespan pattern and provides typed, async CRUD operations with automatic validation through Pydantic.
+Beanie combines Pydantic's type safety with Async PyMongo's MongoDB access. Define documents by extending `beanie.Document`, initialize with `init_beanie()`, and use Pythonic class-based filter syntax for queries. Beanie integrates naturally with FastAPI's lifespan pattern and provides typed, async CRUD operations with automatic validation through Pydantic.
