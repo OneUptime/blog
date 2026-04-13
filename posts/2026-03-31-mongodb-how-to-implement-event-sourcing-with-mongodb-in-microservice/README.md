@@ -335,7 +335,10 @@ async function loadOrderWithSnapshot(aggregateId, eventStore, snapshotStore) {
 
   const order = new Order();
   if (snapshot) Object.assign(order, snapshot.state, { _version: snapshot.version });
-  for (const event of events) order._apply(event);
+  for (const event of events) {
+    order._apply(event);
+    order._version = event.sequenceNumber;
+  }
 
   // Save new snapshot every 50 events
   if (events.length >= 50) {
