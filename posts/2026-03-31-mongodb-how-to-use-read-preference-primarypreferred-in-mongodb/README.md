@@ -57,7 +57,7 @@ Combine with `maxStalenessSeconds` to limit how stale secondary reads can be:
 const { MongoClient, ReadPreference } = require("mongodb");
 
 const pref = new ReadPreference("primaryPreferred", [], {
-  maxStalenessSeconds: 30
+  maxStalenessSeconds: 90
 });
 
 const result = await collection.find({}).withReadPreference(pref).toArray();
@@ -68,7 +68,7 @@ const result = await collection.find({}).withReadPreference(pref).toArray();
 Use `primaryPreferred` when:
 - Your application should continue reading during primary elections
 - Slight staleness during failover is acceptable
-- You want to reduce primary read load when secondary data is close enough
+- You want consistent reads from the primary with automatic failover to secondaries
 - You have SLA requirements that cannot tolerate read failures during elections
 
 ```javascript
