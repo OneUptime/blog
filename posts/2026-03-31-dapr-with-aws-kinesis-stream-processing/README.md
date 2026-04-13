@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, AWS, Kinesis, Stream Processing, Pub/Sub
 
-Description: Configure Dapr pub/sub with AWS Kinesis Data Streams to process high-throughput event streams from microservices with at-least-once delivery guarantees.
+Description: Configure Dapr bindings with AWS Kinesis Data Streams to process high-throughput event streams from microservices with at-least-once delivery guarantees.
 
 ---
 
-AWS Kinesis Data Streams provides high-throughput, ordered event streaming. Dapr's Kinesis pub/sub component lets microservices produce and consume stream events without managing shard iterators, checkpointing, or the Kinesis SDK.
+AWS Kinesis Data Streams provides high-throughput, ordered event streaming. Dapr's Kinesis binding component lets microservices produce and consume stream events without managing shard iterators, checkpointing, or the Kinesis SDK.
 
 ## Create a Kinesis Data Stream
 
