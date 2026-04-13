@@ -57,7 +57,7 @@ db.orders.aggregate([
 
 Always sort before grouping when using `$first` so that "first" is deterministic.
 
-## $first as Array Operator (MongoDB 4.4+)
+## $first as Array Operator (MongoDB 5.0+)
 
 In `$project` or `$addFields`, `$first` can also operate on an array field directly (not just as a group accumulator):
 
@@ -117,4 +117,4 @@ Positive values slice from the start; negative values slice from the end.
 
 ## Summary
 
-Use `$first` (MongoDB 4.4+ as an expression) or `$arrayElemAt` with index `0` to extract the first array element as a scalar in aggregation pipelines. Use `$slice: 1` for projection when you need the first element wrapped in an array. Always handle empty arrays with `$ifNull` to avoid null results in downstream pipeline stages.
+Use `$first` (MongoDB 5.0+ as an expression) or `$arrayElemAt` with index `0` to extract the first array element as a scalar in aggregation pipelines. Use `$slice: 1` for projection when you need the first element wrapped in an array. Always handle empty arrays with `$ifNull` to avoid null results in downstream pipeline stages.
