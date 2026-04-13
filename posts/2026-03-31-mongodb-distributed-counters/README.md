@@ -25,7 +25,7 @@ This works well up to a few hundred writes per second per document. For higher t
 
 ## Sharded Counter Pattern
 
-Split the counter across N "shards" (sub-documents), and increment a randomly chosen shard on each write. Read the total by summing all shards.
+Split the counter across N "shards" (separate documents), and increment a randomly chosen shard on each write. Read the total by summing all shards.
 
 ```javascript
 const NUM_SHARDS = 16;
