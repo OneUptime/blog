@@ -10,12 +10,12 @@ Description: Learn how to set up Debezium as a MongoDB CDC connector to capture 
 
 ## Overview
 
-Debezium is an open-source Change Data Capture (CDC) platform that reads MongoDB's oplog to capture every insert, update, delete, and collection event. Unlike the MongoDB Kafka Connector, Debezium reads directly from the oplog, making it useful for capturing all changes including those from legacy drivers that do not support Change Streams.
+Debezium is an open-source Change Data Capture (CDC) platform that uses MongoDB Change Streams to capture every insert, update, and delete event. In Debezium 2.x, the connector exclusively uses the Change Streams API (which internally builds on the oplog) to stream database changes to Kafka topics for event-driven architectures.
 
 ## Architecture
 
 ```text
-MongoDB Oplog (replica set)
+MongoDB Change Streams (replica set)
         |
   Debezium MongoDB Connector
         |
@@ -35,7 +35,7 @@ MongoDB Oplog (replica set)
 
 ## Step 1 - Set Up MongoDB Replica Set
 
-Debezium requires a replica set to read the oplog:
+Debezium requires a replica set to use Change Streams:
 
 ```bash
 mongod --replSet rs0 --port 27017 --dbpath /data/db --logpath /var/log/mongodb/mongod.log
@@ -191,4 +191,4 @@ kafka-console-consumer.sh \
 
 ## Summary
 
-Debezium for MongoDB CDC captures every change via the oplog and publishes structured events to Kafka topics. The connector supports initial snapshots, change stream capture modes, and fine-grained collection filtering. Downstream consumers can process these events to sync data to other databases, invalidate caches, or trigger business workflows.
+Debezium for MongoDB CDC captures every change via Change Streams and publishes structured events to Kafka topics. The connector supports initial snapshots, multiple change stream capture modes, and fine-grained collection filtering. Downstream consumers can process these events to sync data to other databases, invalidate caches, or trigger business workflows.
