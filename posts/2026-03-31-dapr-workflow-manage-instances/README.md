@@ -40,7 +40,7 @@ Via HTTP API:
 ```bash
 curl -X POST http://localhost:3500/v1.0/workflows/dapr/my_workflow/start \
   -H "Content-Type: application/json" \
-  -d '{"input": {"key": "value"}}'
+  -d '{"key": "value"}'
 ```
 
 ## Querying Workflow Status
@@ -152,14 +152,16 @@ curl -X POST http://localhost:3500/v1.0/workflows/dapr/order-processing-ORD-001/
 Block until a workflow finishes (useful in tests and scripts):
 
 ```python
+from dapr.ext.workflow import WorkflowStatus
+
 state = client.wait_for_workflow_completion(
     instance_id="order-processing-ORD-001",
     timeout_in_seconds=120
 )
 
-if state.runtime_status == "COMPLETED":
+if state.runtime_status == WorkflowStatus.COMPLETED:
     print(f"Finished: {state.serialized_output}")
-elif state.runtime_status == "FAILED":
+elif state.runtime_status == WorkflowStatus.FAILED:
     print(f"Failed: {state.failure_details}")
 ```
 
