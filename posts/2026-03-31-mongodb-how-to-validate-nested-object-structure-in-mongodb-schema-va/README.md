@@ -129,21 +129,28 @@ properties: {
 
 ## Conditional Nested Validation
 
-Use `if`/`then`/`else` for conditional rules:
+Use `anyOf` with `not` to express conditional rules (MongoDB's `$jsonSchema` does not support `if`/`then`/`else`):
 
 ```javascript
 {
-  if: {
-    properties: { type: { enum: ["business"] } }
-  },
-  then: {
-    required: ["taxId"],
-    properties: {
-      taxId: { bsonType: "string" }
+  anyOf: [
+    {
+      not: {
+        required: ["type"],
+        properties: { type: { enum: ["business"] } }
+      }
+    },
+    {
+      required: ["taxId"],
+      properties: {
+        taxId: { bsonType: "string" }
+      }
     }
-  }
+  ]
 }
 ```
+
+This reads as: either the document does not have `type` set to `"business"`, or `taxId` must be present and be a string.
 
 ## Viewing and Updating Nested Validators
 
