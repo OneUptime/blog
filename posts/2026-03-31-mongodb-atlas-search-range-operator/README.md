@@ -15,7 +15,8 @@ The `range` operator in MongoDB Atlas Search filters documents based on numeric 
 The `range` operator works on fields indexed as:
 - `number` (int32, int64, double)
 - `date`
-- `string` (with keyword analyzer, for lexicographic range)
+- `objectId`
+- `string` (with `token` field type, for lexicographic range)
 
 ## Basic Numeric Range
 
@@ -86,8 +87,8 @@ db.articles.aggregate([
     $search: {
       range: {
         path: "publishedAt",
-        gte: { $date: "2026-01-01T00:00:00Z" },
-        lt:  { $date: "2026-04-01T00:00:00Z" }
+        gte: ISODate("2026-01-01T00:00:00Z"),
+        lt:  ISODate("2026-04-01T00:00:00Z")
       }
     }
   },
