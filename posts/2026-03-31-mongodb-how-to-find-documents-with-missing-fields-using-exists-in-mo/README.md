@@ -53,7 +53,7 @@ async function auditMissingFields(collectionName, requiredFields) {
       [field]: { $exists: false }
     });
     const nullCount = await collection.countDocuments({
-      [field]: null  // field exists but is null
+      [field]: { $type: 10 }  // field exists but is BSON null
     });
 
     if (missingCount > 0 || nullCount > 0) {
