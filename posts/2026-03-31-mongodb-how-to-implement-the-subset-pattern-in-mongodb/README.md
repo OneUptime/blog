@@ -99,11 +99,13 @@ When a new review is added, insert into the full collection and update the embed
 
 ```javascript
 async function addReview(productId, review) {
+  const now = new Date();
+  const fullReview = { ...review, createdAt: now };
+
   // Insert full review
   await db.reviews.insertOne({
     productId: ObjectId(productId),
-    ...review,
-    createdAt: new Date()
+    ...fullReview
   });
 
   // Update product with new review in subset (keep only last 5)
@@ -112,13 +114,13 @@ async function addReview(productId, review) {
     {
       $push: {
         recentReviews: {
-          $each: [review],
+          $each: [fullReview],
           $sort: { createdAt: -1 },
           $slice: 5  // Keep only 5 most recent
         }
       },
       $inc: { reviewCount: 1 },
-      $set: { lastReviewedAt: new Date() }
+      $set: { lastReviewedAt: now }
     }
   );
 }
