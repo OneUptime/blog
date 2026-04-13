@@ -43,35 +43,9 @@ db.createCollection("metrics_ts", {
 });
 ```
 
-## Step 3: Migrate Data with an Aggregation Pipeline
+## Step 3: Migrate Data with Batched Inserts
 
-Use `$merge` to transform and copy documents from the old collection to the new one:
-
-```javascript
-db.metrics.aggregate([
-  {
-    $project: {
-      _id: 0,
-      recordedAt: 1,
-      metadata: {
-        host: "$host",
-        region: "$region"
-      },
-      cpuPercent: 1,
-      memPercent: 1
-    }
-  },
-  {
-    $merge: {
-      into: "metrics_ts",
-      whenMatched: "keepExisting",
-      whenNotMatched: "insert"
-    }
-  }
-]);
-```
-
-For large collections, process in batches to avoid memory pressure:
+MongoDB does not allow `$merge` to write into a time series collection. Use batched inserts to transform and copy documents from the old collection to the new one:
 
 ```javascript
 const BATCH_SIZE = 10000;
@@ -133,11 +107,14 @@ db.metrics_ts.find({ "metadata.host": "web-01", recordedAt: { $gte: start } });
 Once the new collection is verified and your application is updated:
 
 ```javascript
-// Rename collections atomically
+// Rename the old regular collection out of the way
 db.metrics.renameCollection("metrics_old");
-db.metrics_ts.renameCollection("metrics");
 
-// After confirming the new collection works in production, drop the old one
+// Time series collections cannot be renamed, so update your application
+// to query "metrics_ts" directly, or create a view as an alias:
+db.createView("metrics", "metrics_ts", []);
+
+// After confirming the new setup works in production, drop the old one
 db.metrics_old.drop();
 ```
 
@@ -145,12 +122,12 @@ db.metrics_old.drop();
 
 ```javascript
 // Compare storage before and after
-db.metrics_old.stats().storageSize;
-db.metrics.stats().storageSize;
+db.metrics_old.aggregate([{ $collStats: { storageStats: {} } }]);
+db.metrics_ts.aggregate([{ $collStats: { storageStats: {} } }]);
 ```
 
 Typical compression ratios are 5-10x for numeric time series data with a well-designed metaField.
 
 ## Summary
 
-Migrating from a regular collection to a time series collection involves creating the new collection with the correct `timeField`, `metaField`, and `granularity`, then copying documents with a shape transformation using an aggregation pipeline or batched inserts. Verify row counts and data integrity before switching application queries, and drop the old collection after a successful cutover.
+Migrating from a regular collection to a time series collection involves creating the new collection with the correct `timeField`, `metaField`, and `granularity`, then copying documents with a shape transformation using batched inserts. Verify row counts and data integrity before switching application queries. Since time series collections cannot be renamed, update your application to use the new collection name or create a view as an alias, then drop the old collection after a successful cutover.
