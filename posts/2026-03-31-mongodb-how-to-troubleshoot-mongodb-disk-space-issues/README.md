@@ -96,7 +96,7 @@ db.adminCommand({ replSetResizeOplog: 1, size: 10240 })  // 10GB
 WiredTiger does not immediately return space to the OS after deletes. Use `compact` to reclaim it:
 
 ```javascript
-// Compact a collection - blocks reads/writes during execution
+// Compact a collection (blocks reads/writes in MongoDB 5.0 and earlier; non-blocking in 6.0+)
 db.runCommand({ compact: "orders" })
 
 // Check space before and after
@@ -106,7 +106,7 @@ const after = db.orders.stats({ scale: 1048576 }).storageSize
 print(`Freed: ${(before - after).toFixed(1)} MB`)
 ```
 
-Warning: `compact` blocks the collection. Run during maintenance windows.
+Warning: In MongoDB 5.0 and earlier, `compact` blocks reads and writes on the collection. In MongoDB 6.0+, `compact` is non-blocking. For older versions, run during maintenance windows.
 
 ## Dropping Unused Indexes
 
@@ -146,7 +146,7 @@ kill -USR1 $(pgrep mongod)
 
 # Configure log rotation in mongod.conf
 # systemLog:
-#   logRotateBehavior: rename  # or reopen
+#   logRotate: rename  # or reopen
 #   destination: file
 #   path: /var/log/mongodb/mongod.log
 ```
