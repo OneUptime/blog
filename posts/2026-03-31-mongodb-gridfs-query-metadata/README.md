@@ -103,12 +103,12 @@ db = client["myapp"]
 fs = gridfs.GridFS(db, collection="uploads")
 
 # Find by owner
-owner_files = list(fs.find({"owner": "user_42"}))
+owner_files = list(fs.find({"metadata.owner": "user_42"}))
 
 # Find by department and date range
 from datetime import datetime
 legal_docs = list(fs.find({
-    "department": "legal",
+    "metadata.department": "legal",
     "uploadDate": {
         "$gte": datetime(2026, 1, 1),
         "$lt": datetime(2027, 1, 1)
