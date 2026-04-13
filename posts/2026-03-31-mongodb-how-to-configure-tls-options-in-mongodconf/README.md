@@ -87,7 +87,6 @@ mongosh --host localhost --port 27017 \
 
 ```javascript
 const { MongoClient } = require("mongodb");
-const fs = require("fs");
 
 const client = new MongoClient("mongodb://localhost:27017/mydb", {
   tls: true,
@@ -104,6 +103,7 @@ Never use in production:
 net:
   tls:
     mode: allowTLS
+    certificateKeyFile: /etc/ssl/mongodb/server.pem
     allowInvalidCertificates: true
     allowInvalidHostnames: true
 ```
@@ -113,7 +113,7 @@ net:
 After restarting mongod, verify TLS is enabled:
 
 ```javascript
-db.adminCommand({ serverStatus: 1 }).security.SSLServerSubjectDN
+db.adminCommand({ serverStatus: 1 }).security.SSLServerSubjectName
 ```
 
 ## Summary
