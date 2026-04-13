@@ -141,13 +141,17 @@ In the Chart Builder, add multiple fields to the **X Axis** encoding channel wit
 You can pre-filter a dashboard by passing URL parameters when embedding:
 
 ```text
-https://charts.mongodb.com/charts-xxxx/dashboards/yyyy?filters={"region":"West","status":"active"}
+https://charts.mongodb.com/charts-xxxx/dashboards/yyyy?filter={"region":"West","status":"active"}
 ```
 
 Or via the Charts embedding SDK:
 
 ```javascript
-const dashboard = ChartsEmbedSDK.createDashboard({
+import ChartsEmbedSDK from '@mongodb-js/charts-embed-dom';
+
+const sdk = new ChartsEmbedSDK({ baseUrl: 'https://charts.mongodb.com/charts-project-id' });
+
+const dashboard = sdk.createDashboard({
   dashboardId: 'your-dashboard-id',
   filter: {
     region: "West",
