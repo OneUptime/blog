@@ -33,6 +33,8 @@ sh.enableSharding("myDatabase");
 
 This marks the database as sharding-enabled but does not shard any collections yet. Existing collections remain on the primary shard until you shard them explicitly.
 
+> **Note:** Starting in MongoDB 6.0, calling `sh.enableSharding()` is no longer required. Sharding is automatically enabled on a database when you shard its first collection with `sh.shardCollection()`.
+
 ## Shard a Collection with a Shard Key
 
 Choose a shard key and shard the collection:
@@ -85,12 +87,10 @@ db.adminCommand({ listDatabases: 1 }).databases.filter(
 After inserting data, chunks should distribute across shards:
 
 ```javascript
-db.getSiblingDB("config").chunks.aggregate([
-  { $match: { ns: "myDatabase.events" } },
-  { $group: { _id: "$shard", count: { $sum: 1 } } }
-]);
+use myDatabase
+db.events.getShardDistribution()
 ```
 
 ## Summary
 
-Enabling sharding on a MongoDB database requires a running sharded cluster and is done in two steps: `sh.enableSharding("dbName")` to mark the database, then `sh.shardCollection()` on each collection you want to distribute. Choose your shard key carefully - it determines how data distributes and cannot be easily changed after sharding.
+Enabling sharding on a MongoDB database requires a running sharded cluster. On MongoDB versions before 6.0, call `sh.enableSharding("dbName")` to mark the database, then `sh.shardCollection()` on each collection you want to distribute. On MongoDB 6.0 and later, you can call `sh.shardCollection()` directly. Choose your shard key carefully - it determines how data distributes and cannot be easily changed after sharding.
