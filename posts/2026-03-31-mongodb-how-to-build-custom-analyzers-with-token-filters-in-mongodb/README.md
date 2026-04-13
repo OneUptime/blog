@@ -62,7 +62,7 @@ For English with English-specific stemming:
 ```json
 {
   "type": "snowballStemming",
-  "language": "English"
+  "stemmerName": "english"
 }
 ```
 
@@ -82,7 +82,7 @@ Remove tokens that are too short or too long:
 }
 ```
 
-## Accent Removal (asciiFolding)
+## Accent Removal (icuFolding)
 
 Normalize accented characters to their ASCII equivalents:
 
@@ -135,8 +135,7 @@ Generate multi-token shingles to improve phrase-based scoring:
 {
   "type": "shingle",
   "minShingleSize": 2,
-  "maxShingleSize": 3,
-  "includeOriginal": true
+  "maxShingleSize": 3
 }
 ```
 
