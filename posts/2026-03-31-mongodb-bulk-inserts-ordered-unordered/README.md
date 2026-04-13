@@ -85,7 +85,7 @@ try {
 
 ## Comparing Performance
 
-Unordered inserts are typically faster for large datasets because MongoDB can parallelize the work across shards and storage engines:
+Unordered inserts are typically faster for large datasets because MongoDB can parallelize the work across shards in a sharded cluster and process operations concurrently without strict ordering constraints:
 
 ```javascript
 // Seeding a large collection - use unordered for speed
