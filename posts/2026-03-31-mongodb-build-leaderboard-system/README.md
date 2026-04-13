@@ -22,7 +22,7 @@ A leaderboard system needs to support fast score updates, rank lookups, and time
   score: 12500,
   level: 8,
   achievedAt: ISODate("2026-03-31"),
-  period: "2026-W13"          // ISO week for weekly boards
+  period: "2026-W14"          // ISO week for weekly boards
 }
 ```
 
@@ -53,15 +53,36 @@ Keep only the best score per user per period:
 ```javascript
 async function submitScore(db, { userId, username, gameId, score }) {
   const now = new Date();
-  const period = getISOWeek(now); // "2026-W13"
+  const period = getISOWeek(now); // "2026-W14"
 
+  // Pipeline update (MongoDB 4.2+) keeps level and achievedAt
+  // consistent with the actual best score
   await db.collection('scores').updateOne(
     { userId, gameId, period },
-    {
-      $max: { score },           // only update if new score is higher
-      $set: { username, achievedAt: now, level: Math.floor(score / 1000) },
-      $setOnInsert: { userId, gameId, period, createdAt: now },
-    },
+    [
+      {
+        $set: {
+          userId,
+          gameId,
+          period,
+          username,
+          createdAt: { $ifNull: ['$createdAt', now] },
+          score: { $max: [{ $ifNull: ['$score', 0] }, score] },
+          achievedAt: {
+            $cond: [
+              { $gt: [score, { $ifNull: ['$score', 0] }] },
+              now,
+              { $ifNull: ['$achievedAt', now] }
+            ]
+          },
+          level: {
+            $floor: {
+              $divide: [{ $max: [{ $ifNull: ['$score', 0] }, score] }, 1000]
+            }
+          }
+        }
+      }
+    ],
     { upsert: true }
   );
 }
