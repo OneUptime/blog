@@ -10,7 +10,7 @@ Description: Integrate Auth0 with Dapr middleware to validate tokens and forward
 
 ## Auth0 and Dapr Integration
 
-Auth0 issues JWTs that your Dapr sidecar can validate using the bearer token middleware. Once validated, the sidecar forwards claims as request headers, so individual services never handle raw tokens.
+Auth0 issues JWTs that your Dapr sidecar can validate using the bearer token middleware. The sidecar acts as a gatekeeper — it rejects requests with invalid or missing tokens before they reach your service. Valid requests are forwarded with the original `Authorization` header intact, so your service can decode the already-validated JWT to read claims without needing to verify the signature again.
 
 ## Auth0 Application Setup
 
@@ -91,17 +91,26 @@ curl -X POST https://your-tenant.auth0.com/oauth/token \
 const express = require("express");
 const app = express();
 
+function parseJwtPayload(authHeader) {
+  if (!authHeader?.startsWith("Bearer ")) return {};
+  const token = authHeader.slice(7);
+  const payload = token.split(".")[1];
+  return JSON.parse(Buffer.from(payload, "base64url").toString());
+}
+
 app.get("/api/me", (req, res) => {
-  // Dapr forwards validated Auth0 token claims as headers
-  const userId = req.headers["x-jwt-sub"];
-  const email = req.headers["x-jwt-https://api.myapp.com/email"];
-  const permissions = req.headers["x-jwt-permissions"]?.split(" ") ?? [];
+  // Dapr has already validated the token; decode claims from the forwarded Authorization header
+  const claims = parseJwtPayload(req.headers["authorization"]);
+  const userId = claims.sub;
+  const email = claims["https://api.myapp.com/email"];
+  const permissions = claims.permissions ?? [];
 
   res.json({ userId, email, permissions });
 });
 
 app.get("/api/admin", (req, res) => {
-  const permissions = req.headers["x-jwt-permissions"]?.split(" ") ?? [];
+  const claims = parseJwtPayload(req.headers["authorization"]);
+  const permissions = claims.permissions ?? [];
   if (!permissions.includes("admin:read")) {
     return res.status(403).json({ error: "insufficient permissions" });
   }
@@ -124,4 +133,4 @@ exports.onExecutePostLogin = async (event, api) => {
 
 ## Summary
 
-Auth0 and Dapr integrate cleanly: Auth0 issues signed JWTs, Dapr validates them using the JWKS endpoint, and validated claims arrive at your service as HTTP headers. This keeps auth concerns completely outside your application code and makes it trivial to swap identity providers by updating the Dapr middleware component.
+Auth0 and Dapr integrate cleanly: Auth0 issues signed JWTs, and Dapr validates them using the JWKS endpoint before forwarding the request to your service. Your service can then decode the already-validated token to read claims. This keeps token validation completely outside your application code and makes it trivial to swap identity providers by updating the Dapr middleware component.
