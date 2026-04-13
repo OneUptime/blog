@@ -41,7 +41,8 @@ With `expireAfterSeconds: 0`, documents are deleted when `expiresAt` passes. Thi
 ## Acquiring the Lock
 
 ```python
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timedelta, timezone
 import uuid
 
@@ -53,24 +54,25 @@ def acquire_lock(lock_name: str, ttl_seconds: int = 60) -> str | None:
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=ttl_seconds)
 
-    result = db.locks.find_one_and_update(
-        {
-            "_id": lock_name,
-            "$or": [
-                {"expiresAt": {"$lt": now}},  # lock expired
-                {"_id": {"$exists": False}}    # lock does not exist
-            ]
-        },
-        {
-            "$set": {
-                "holder": holder_id,
-                "acquiredAt": now,
-                "expiresAt": expires_at
-            }
-        },
-        upsert=True,
-        return_document=True
-    )
+    try:
+        result = db.locks.find_one_and_update(
+            {
+                "_id": lock_name,
+                "expiresAt": {"$lt": now}  # lock expired
+            },
+            {
+                "$set": {
+                    "holder": holder_id,
+                    "acquiredAt": now,
+                    "expiresAt": expires_at
+                }
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        )
+    except DuplicateKeyError:
+        # Lock is currently held by another process
+        return None
 
     if result and result.get("holder") == holder_id:
         return holder_id
@@ -139,7 +141,7 @@ with distributed_lock("payment-processor") as lock_id:
 
 **Clock skew:** Use server-side timestamps (`$$NOW` or `new Date()` in the update operator) rather than client-side `datetime.now()` for consistency across hosts.
 
-**Duplicate key on upsert:** The `upsert=True` combined with the filter prevents race conditions - if two processes attempt the upsert simultaneously, only one will win because `_id` is unique.
+**Duplicate key on upsert:** If two processes attempt the upsert simultaneously when no lock document exists, only one will win the insert because `_id` is unique. The other process receives a `DuplicateKeyError`, which the code catches and treats as a failed acquisition.
 
 ## Limitations
 
