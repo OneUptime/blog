@@ -29,7 +29,7 @@ db.temperatures.aggregate([
 ])
 ```
 
-Wait - `$subtract` with two `$max` calls won't work directly in `$group`. Here is the correct pattern:
+Wait - `$subtract` with `$max` and `$min` won't work directly in `$group`. Here is the correct pattern:
 
 ```javascript
 db.temperatures.aggregate([
