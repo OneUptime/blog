@@ -93,7 +93,7 @@ A fleet management system needs: `vehicles`, `drivers`, `trips`, `maintenance`, 
 
 ## Maintenance Records
 
-```json
+```javascript
 {
   "_id": ObjectId(),
   "vehicleId": "vehicle-001",
