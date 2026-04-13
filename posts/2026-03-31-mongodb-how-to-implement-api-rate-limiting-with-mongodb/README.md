@@ -160,27 +160,33 @@ const express = require('express');
 const { MongoClient } = require('mongodb');
 const { createRateLimiter } = require('./middleware/rateLimiter');
 
-const app = express();
-const client = new MongoClient('mongodb://localhost:27017');
-await client.connect();
-const db = client.db('myapp');
+async function main() {
+  const app = express();
+  const client = new MongoClient('mongodb://localhost:27017');
+  await client.connect();
+  const db = client.db('myapp');
 
-// Global rate limit: 100 requests per minute per IP
-app.use(createRateLimiter(db, { limit: 100, windowSeconds: 60 }));
+  // Global rate limit: 100 requests per minute per IP
+  app.use(createRateLimiter(db, { limit: 100, windowSeconds: 60 }));
 
-// Stricter limit for auth endpoints
-app.use('/api/auth', createRateLimiter(db, {
-  limit: 10,
-  windowSeconds: 300,  // 10 attempts per 5 minutes
-  keyGenerator: (req) => `auth:${req.ip}`,
-}));
+  // Stricter limit for auth endpoints
+  app.use('/api/auth', createRateLimiter(db, {
+    limit: 10,
+    windowSeconds: 300,  // 10 attempts per 5 minutes
+    keyGenerator: (req) => `auth:${req.ip}`,
+  }));
 
-// Per-user rate limit for API endpoints
-app.use('/api/', createRateLimiter(db, {
-  limit: 1000,
-  windowSeconds: 3600,
-  keyGenerator: (req) => `user:${req.user?.id || req.ip}`,
-}));
+  // Per-user rate limit for API endpoints
+  app.use('/api/', createRateLimiter(db, {
+    limit: 1000,
+    windowSeconds: 3600,
+    keyGenerator: (req) => `user:${req.user?.id || req.ip}`,
+  }));
+
+  app.listen(3000);
+}
+
+main();
 ```
 
 ## Monitoring Rate Limit Usage
@@ -188,7 +194,6 @@ app.use('/api/', createRateLimiter(db, {
 ```javascript
 async function getRateLimitStats(db, clientId, windowSeconds) {
   const cutoff = new Date(Date.now() - windowSeconds * 1000);
-  const key = `${clientId}:`;
 
   const stats = await db.collection('rate_limits').aggregate([
     {
