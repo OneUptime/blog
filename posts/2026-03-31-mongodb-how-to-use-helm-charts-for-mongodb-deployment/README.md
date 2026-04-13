@@ -51,9 +51,12 @@ auth:
   enabled: true
   rootUser: root
   rootPassword: "RootPassword123!"
-  username: appuser
-  password: "AppPassword456!"
-  database: myapp
+  usernames:
+    - appuser
+  passwords:
+    - "AppPassword456!"
+  databases:
+    - myapp
   replicaSetKey: "ReplicaSetKey789"
 
 replicaSetName: rs0
