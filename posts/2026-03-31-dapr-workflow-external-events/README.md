@@ -42,7 +42,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- Dapr v1.10 or later
+- Dapr v1.11 or later
 - Workflow SDK (.NET, Go, or Python)
 
 ## Implementing External Event Waiting
@@ -118,7 +118,6 @@ wfr.start()
 package main
 
 import (
-    "context"
     "fmt"
     "log"
     "time"
@@ -146,7 +145,7 @@ func ApprovalWorkflow(ctx *daprwf.WorkflowContext) (any, error) {
         daprwf.ActivityInput(ApprovalRequest{
             OrderID:    request.OrderID,
             Amount:     request.Amount,
-            InstanceID: ctx.ID(),
+            InstanceID: ctx.InstanceID(),
         }),
     ).Await(nil)
 
@@ -183,19 +182,31 @@ func ApprovalWorkflow(ctx *daprwf.WorkflowContext) (any, error) {
     return map[string]string{"status": "approved", "tracking": tracking}, nil
 }
 
-func SendApprovalRequestActivity(ctx context.Context, req ApprovalRequest) error {
+func SendApprovalRequestActivity(ctx daprwf.ActivityContext) (any, error) {
+    var req ApprovalRequest
+    if err := ctx.GetInput(&req); err != nil {
+        return nil, err
+    }
     log.Printf("Approval request for order %s ($%.2f). Callback: raiseEvent/%s/approval_decision",
         req.OrderID, req.Amount, req.InstanceID)
-    return nil
+    return nil, nil
 }
 
-func ProcessApprovedOrderActivity(ctx context.Context, input map[string]string) (string, error) {
+func ProcessApprovedOrderActivity(ctx daprwf.ActivityContext) (any, error) {
+    var input map[string]string
+    if err := ctx.GetInput(&input); err != nil {
+        return nil, err
+    }
     return fmt.Sprintf("track-%s-XYZ", input["orderId"]), nil
 }
 
-func CancelRequestActivity(ctx context.Context, input map[string]string) error {
+func CancelRequestActivity(ctx daprwf.ActivityContext) (any, error) {
+    var input map[string]string
+    if err := ctx.GetInput(&input); err != nil {
+        return nil, err
+    }
     log.Printf("Cancelled order %s: %s", input["orderId"], input["reason"])
-    return nil
+    return nil, nil
 }
 ```
 
