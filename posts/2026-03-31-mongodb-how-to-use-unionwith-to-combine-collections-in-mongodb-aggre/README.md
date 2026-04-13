@@ -108,20 +108,9 @@ db.products.aggregate([
 ])
 ```
 
-## Cross-Database Union
+## Same-Database Limitation
 
-Union collections from different databases:
-
-```javascript
-db.getSiblingDB("db1").customers.aggregate([
-  {
-    $unionWith: {
-      coll: "customers",
-      db: "db2"
-    }
-  }
-])
-```
+Note that `$unionWith` only works with collections in the same database. There is no `db` parameter — the `coll` field must reference a collection within the current database. If you need to combine data from different databases, consider using `$lookup` with its cross-database support (available since MongoDB 5.1) or performing application-level merging.
 
 ## Practical Use Case - Multi-Tenant Data Aggregation
 
@@ -194,7 +183,7 @@ db.collectionA.aggregate([
 
 ## Restrictions
 
-- `$unionWith` cannot reference a sharded collection as the secondary collection (the primary can be sharded).
+- When `$unionWith` is nested inside a `$lookup` subquery pipeline, the secondary collection cannot be sharded. In top-level aggregation pipelines, `$unionWith` can reference sharded collections without restriction.
 - The secondary collection's pipeline has the same stage restrictions as any aggregation pipeline.
 - `$out` and `$merge` cannot be used inside the `$unionWith` pipeline.
 
