@@ -101,7 +101,7 @@ Null on no match            No (deletedCount: 0) Yes (returns null)
 
 ## Sort - Only Available in findOneAndDelete()
 
-`findOneAndDelete()` accepts a `sort` option to control which document is selected when multiple match. `deleteOne()` does not support sorting - it deletes the first document found in natural order.
+`findOneAndDelete()` accepts a `sort` option to control which document is selected when multiple match. `deleteOne()` does not support sorting - it deletes the first matching document it finds, but the order is unspecified and depends on the query execution plan.
 
 ```javascript
 // Delete the oldest pending order
