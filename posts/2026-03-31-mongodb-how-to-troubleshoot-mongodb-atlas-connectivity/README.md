@@ -64,7 +64,7 @@ nc -zv cluster0-shard-00-00.abc12.mongodb.net 27017
 # "Connection to cluster0... 27017 port [tcp/*] succeeded!"
 
 # If using SRV, test port 27017 on each shard host
-nslookup _mongodb._tcp.cluster0.abc12.mongodb.net
+nslookup -type=SRV _mongodb._tcp.cluster0.abc12.mongodb.net
 # Should return SRV records with host:port entries
 
 # Test TLS handshake
