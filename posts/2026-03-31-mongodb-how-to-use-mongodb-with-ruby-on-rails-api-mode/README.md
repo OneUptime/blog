@@ -79,7 +79,7 @@ class ProductsController < ApplicationController
   before_action :set_product, only: [:show, :update, :destroy]
 
   def index
-    products = Product.where(in_stock: true).order(name: :asc).page(params[:page])
+    products = Product.where(in_stock: true).order(name: :asc)
     render json: products, status: :ok
   end
 
