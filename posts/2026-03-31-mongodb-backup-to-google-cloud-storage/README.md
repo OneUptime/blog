@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Backup, GCP, Storage, Automation
 
-Description: Learn how to automate MongoDB backups to Google Cloud Storage using mongodump and gsutil, with object lifecycle rules for retention management.
+Description: Learn how to automate MongoDB backups to Google Cloud Storage using mongodump and gcloud storage, with object lifecycle rules for retention management.
 
 ---
 
@@ -50,8 +50,7 @@ echo "Backup created: $BACKUP_SIZE"
 echo "Uploading to GCS..."
 gcloud storage cp \
   "$BACKUP_TMP/$ARCHIVE_NAME" \
-  "$GCS_BUCKET/$GCS_PREFIX/$ARCHIVE_NAME" \
-  --gzip-in-flight
+  "$GCS_BUCKET/$GCS_PREFIX/$ARCHIVE_NAME"
 
 echo "Upload complete"
 rm -f "$BACKUP_TMP/$ARCHIVE_NAME"
