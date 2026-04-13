@@ -46,7 +46,7 @@ spec:
       value: "orderId,customerId,amount"
     - name: usePlainTextConnection
       value: "true"
-    - name: autoComplete
+    - name: autocomplete
       value: "true"
 ```
 
@@ -105,7 +105,7 @@ app.post("/order-worker", async (req, res) => {
 
 ## Manual Job Completion with the Command Binding
 
-If you set `autoComplete: "false"`, you must complete or fail the job manually using the Zeebe Command binding:
+If you set `autocomplete: "false"`, you must complete or fail the job manually using the Zeebe Command binding:
 
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
@@ -133,7 +133,7 @@ async function failJob(jobKey, retries, errorMessage) {
 dapr run \
   --app-id order-processor \
   --app-port 3000 \
-  --components-path ./components \
+  --resources-path ./components \
   node app.js
 ```
 
