@@ -77,7 +77,7 @@ def retry_with_backoff_workflow(ctx: DaprWorkflowContext, task: dict):
             return result
 
         if attempt < max_retries - 1:
-            delay = base_delay_seconds * (2 ** attempt)  # 2, 4, 8, 16, 32 seconds
+            delay = base_delay_seconds * (2 ** attempt)  # 2, 4, 8, 16 seconds
             yield ctx.create_timer(
                 ctx.current_utc_datetime + timedelta(seconds=delay)
             )
@@ -90,6 +90,8 @@ def retry_with_backoff_workflow(ctx: DaprWorkflowContext, task: dict):
 Combine a timer with an external event to implement a timeout:
 
 ```python
+from dapr.ext.workflow import when_any
+
 def approval_with_timeout_workflow(ctx: DaprWorkflowContext, request: dict):
     # Send approval request
     yield ctx.call_activity(send_approval_request, input=request)
@@ -98,7 +100,7 @@ def approval_with_timeout_workflow(ctx: DaprWorkflowContext, request: dict):
     approval_event = ctx.wait_for_external_event("approval-decision")
     timeout = ctx.create_timer(ctx.current_utc_datetime + timedelta(hours=48))
 
-    winner = yield ctx.task_any([approval_event, timeout])
+    winner = yield when_any([approval_event, timeout])
 
     if winner == timeout:
         yield ctx.call_activity(handle_timeout, input=request)
