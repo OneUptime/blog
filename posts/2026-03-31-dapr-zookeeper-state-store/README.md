@@ -28,6 +28,7 @@ docker run -d \
   -p 2181:2181 \
   -p 2888:2888 \
   -p 3888:3888 \
+  -e ZOO_4LW_COMMANDS_WHITELIST=ruok \
   zookeeper:3.8
 ```
 
