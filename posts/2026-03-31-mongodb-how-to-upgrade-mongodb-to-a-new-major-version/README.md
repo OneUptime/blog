@@ -23,13 +23,10 @@ db.version()
 // 2. Check current Feature Compatibility Version
 db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 
-// 3. Check for deprecated usage in current version
-db.adminCommand({ checkMetadataConsistency: 1 })
-
-// 4. Review the driver compatibility matrix
+// 3. Review the driver compatibility matrix
 // https://www.mongodb.com/docs/drivers/
 
-// 5. Check for any collection validation warnings
+// 4. Check for any collection validation warnings
 db.runCommand({ validate: "collection_name", full: true })
 ```
 
@@ -62,8 +59,10 @@ Connect to each secondary and upgrade the mongod binary:
 sudo systemctl stop mongod
 
 # 2. Install new version (example: Ubuntu/Debian)
-wget -qO - https://www.mongodb.org/static/pgp/server-8.0.asc | sudo apt-key add -
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/8.0 multiverse" |   sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt-get update
 sudo apt-get install -y mongodb-org
 
@@ -103,7 +102,7 @@ rs.status().members.forEach(function(m) {
 
 ```javascript
 // Connect to the primary
-db.adminCommand({ setFeatureCompatibilityVersion: "8.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "8.0", confirm: true })
 
 // Verify
 db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
@@ -125,7 +124,7 @@ sudo apt-get install -y mongodb-org
 sudo systemctl start mongod
 
 # 5. Update FCV
-mongosh --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "8.0" })'
+mongosh --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "8.0", confirm: true })'
 ```
 
 ## Post-Upgrade Verification
@@ -162,11 +161,11 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 # If FCV still shows old version, you can stop mongod
 # and reinstall the previous version
 sudo systemctl stop mongod
-sudo apt-get install -y mongodb-org=7.0.x
+sudo apt-get install -y mongodb-org=7.0.12
 sudo systemctl start mongod
 ```
 
-Once the FCV has been updated to the new version, downgrading is no longer supported without a full restore from backup.
+Once the FCV has been updated to the new version, downgrading requires first removing any persisted backwards-incompatible features, lowering the FCV back to the previous version, and then downgrading the binaries. This process is complex and may require MongoDB Support assistance. A full restore from backup is the safest alternative.
 
 ## Summary
 
