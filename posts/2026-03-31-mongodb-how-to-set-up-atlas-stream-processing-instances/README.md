@@ -21,7 +21,7 @@ Key components:
 
 ```text
 - Atlas account with M10+ cluster (stream processing requires a dedicated cluster)
-- Atlas CLI installed: npm install -g @mongodb-js/atlas-cli
+- Atlas CLI installed (brew install mongodb-atlas, or see official install docs)
 - A Kafka cluster or Atlas collection as a data source
 ```
 
@@ -46,7 +46,7 @@ atlas auth login
 # Create a stream processing instance
 atlas streams instances create prod-stream-processor \
   --provider AWS \
-  --region US_EAST_1 \
+  --region VIRGINIA_USA \
   --tier SP10
 
 # List instances
@@ -67,11 +67,13 @@ cat > kafka-connection.json << 'EOF'
   "name": "prod-kafka",
   "type": "Kafka",
   "bootstrapServers": "broker1.kafka.example.com:9092,broker2.kafka.example.com:9092",
+  "authentication": {
+    "mechanism": "SCRAM-512",
+    "username": "kafka-user",
+    "password": "kafka-password"
+  },
   "security": {
-    "protocol": "SASL_SSL",
-    "saslMechanism": "SCRAM-SHA-256",
-    "saslUsername": "kafka-user",
-    "saslPassword": "kafka-password"
+    "protocol": "SASL_SSL"
   }
 }
 EOF
@@ -126,9 +128,6 @@ Once connected with `mongosh`:
 // List available connections
 sp.listConnections()
 
-// Check instance status
-sp.status()
-
 // List all stream processors on this instance
 sp.listStreamProcessors()
 ```
@@ -141,22 +140,24 @@ SP30  - 8 vCPU, 32 GB RAM - moderate production
 SP100 - 32 vCPU, 128 GB RAM - high-throughput production
 ```
 
-Scale an instance:
-
-```bash
-atlas streams instances update prod-stream-processor --tier SP30
-```
+To change the tier, you must create a new instance with the desired tier, as the tier cannot be modified after creation.
 
 ## Monitoring and Logs
 
 ```bash
-# View stream processor logs
-atlas streams processors logs \
-  --instance prod-stream-processor \
-  --processor my-pipeline
+# Download audit logs for the stream processing instance
+atlas streams instances download prod-stream-processor \
+  --out stream-logs.gz
 
 # View instance metrics in Atlas UI:
 # Stream Processing > your instance > Metrics tab
+```
+
+You can also view stream processor statistics from `mongosh`:
+
+```javascript
+// Get stats for a specific processor
+sp.my_pipeline.stats()
 ```
 
 ## Summary
