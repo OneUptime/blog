@@ -92,13 +92,13 @@ db.customers.find({ name: "Alice" }).collation({ locale: "simple" })
 MongoDB does not support changing a collection's default collation in-place. To change it:
 
 1. Create a new collection with the desired collation
-2. Copy the data using `$out` or `mongodump`/`mongorestore`
+2. Copy the data using `$merge` or `mongodump`/`mongorestore`
 3. Rename or swap the collections
 
 ```javascript
 // Export data to a new collection with different collation
 db.createCollection("customers_new", { collation: { locale: "de", strength: 2 } })
-db.customers.aggregate([{ $out: "customers_new" }])
+db.customers.aggregate([{ $merge: { into: "customers_new" } }])
 ```
 
 Then drop the old collection and rename:
@@ -131,7 +131,7 @@ createTenantCollection("tenant_es", "es");
 ## Limitations
 
 - Default collation cannot be changed after collection creation without recreation
-- `_id` comparisons always use binary comparison regardless of collection collation
+- The `_id` index is always created with simple (binary) collation, so `_id` lookups use binary comparison regardless of collection collation
 - Capped collections support default collation
 - Time-series collections support default collation from MongoDB 6.0
 
