@@ -238,7 +238,7 @@ with collection.watch(pipeline, full_document="updateLookup") as stream:
 ## Performance Tips
 
 - Always use `$match` as the first stage to filter as early as possible
-- Filter on indexed fields when possible - server can use index scans for the filter
+- Filter on `operationType` and top-level change event fields first - these are the cheapest comparisons for the server to evaluate
 - Keep `$project` narrow to reduce the size of events sent over the network
 - Avoid complex `$project` transformations that require evaluating full documents
 - For very high-write collections, consider multiple specialized streams rather than one broad stream
