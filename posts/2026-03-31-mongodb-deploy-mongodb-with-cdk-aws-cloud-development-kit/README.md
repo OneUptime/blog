@@ -17,7 +17,6 @@ AWS CDK lets you define cloud infrastructure in TypeScript, Python, or other lan
 ```bash
 mkdir mongodb-cdk && cd mongodb-cdk
 npx cdk init app --language typescript
-npm install @aws-cdk/aws-ec2 @aws-cdk/aws-iam
 ```
 
 ## VPC and Security Group
@@ -80,7 +79,7 @@ const primaryNode = new ec2.Instance(this, 'MongoPrimary', {
   vpc,
   vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6I, ec2.InstanceSize.XLARGE),
-  machineImage: ec2.MachineImage.fromSsm(
+  machineImage: ec2.MachineImage.fromSsmParameter(
     '/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id'
   ),
   securityGroup: mongoSg,
