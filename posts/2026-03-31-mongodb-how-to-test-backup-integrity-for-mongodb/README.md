@@ -95,12 +95,10 @@ db.adminCommand({ listDatabases: 1 }).databases.forEach(function(dbInfo) {
 });
 
 if (failures.length > 0) {
-  print("
-FAILED COLLECTIONS:", failures.join(", "));
+  print("\nFAILED COLLECTIONS:", failures.join(", "));
   quit(1);
 } else {
-  print("
-All collections valid");
+  print("\nAll collections valid");
   quit(0);
 }
 ```
