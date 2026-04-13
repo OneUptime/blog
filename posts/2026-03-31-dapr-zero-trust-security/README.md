@@ -17,7 +17,7 @@ Zero trust security means "never trust, always verify." Every service must authe
 Every Dapr sidecar receives a SPIFFE X.509 certificate. This is the cryptographic identity used for authentication. Verify mTLS is active:
 
 ```bash
-dapr mtls check --kubernetes
+dapr mtls -k
 ```
 
 Ensure short-lived certificates to reduce exposure window:
@@ -69,11 +69,11 @@ spec:
   api:
     allowed:
     - name: state
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
     - name: publish
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
 ```
 
 A payment service should not need actor or workflow APIs.
@@ -111,7 +111,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          dapr.io/enabled: "true"
+          dapr.io/sidecar-injected: "true"
   egress:
   - to:
     - namespaceSelector:
@@ -120,7 +120,7 @@ spec:
   - to:
     - podSelector:
         matchLabels:
-          dapr.io/enabled: "true"
+          dapr.io/sidecar-injected: "true"
 ```
 
 ## Pillar 6: Audit Everything
@@ -140,7 +140,7 @@ Run this checklist before going to production:
 
 ```bash
 # Verify mTLS is on
-dapr mtls check --kubernetes
+dapr mtls -k
 
 # Check all configs have defaultAction: deny
 kubectl get configurations -A -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.accessControl.defaultAction}{"\n"}{end}'
