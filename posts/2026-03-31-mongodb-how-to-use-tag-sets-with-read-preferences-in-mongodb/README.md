@@ -29,15 +29,7 @@ rs.reconfig(config);
 
 ## Verifying Tags
 
-Check current tags on each member:
-
-```javascript
-rs.status().members.forEach(m => {
-  print(`${m.name}: ${JSON.stringify(m.tags)}`);
-});
-```
-
-Or from the config:
+Check current tags on each member from the replica set configuration:
 
 ```javascript
 rs.conf().members.forEach(m => {
