@@ -115,6 +115,7 @@ If multiple application containers need read access to MongoDB backup files, mou
 
 ```yaml
 volumes:
+  mongo_data:
   shared_exports:
 
 services:
@@ -128,7 +129,7 @@ services:
     volumes:
       - shared_exports:/exports
     command: >
-      sh -c "mongodump --uri mongodb://admin:secret@mongo:27017 --out /exports/$(date +%Y%m%d)"
+      sh -c "mongodump --uri mongodb://admin:secret@mongo:27017 --out /exports/$$(date +%Y%m%d)"
 ```
 
 ## Summary
