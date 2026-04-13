@@ -55,6 +55,7 @@ export_to_parquet("products", "products.parquet")
 For large collections, use batched cursor iteration to avoid loading everything into memory:
 
 ```python
+import pymongo
 import pyarrow as pa
 import pyarrow.parquet as pq
 from bson import ObjectId
