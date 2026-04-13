@@ -89,17 +89,14 @@ db.apiLogs.aggregate([
 ]);
 ```
 
-## Approximate vs Exact Method
+## Calculation Method
 
 ```javascript
-// Approximate (faster, uses t-digest algorithm)
+// Approximate (uses t-digest algorithm)
 { $percentile: { input: "$value", p: [0.95], method: "approximate" } }
-
-// Exact (slower but precise, available in some contexts)
-{ $percentile: { input: "$value", p: [0.95], method: "continuous" } }
 ```
 
-Use `"approximate"` for most cases - it is accurate enough for monitoring and analytics.
+The `method` parameter is required and must be `"approximate"`. This uses the t-digest algorithm for fast, memory-efficient percentile estimation that is accurate enough for monitoring and analytics.
 
 ## Alternative for MongoDB Versions Before 7.0
 
