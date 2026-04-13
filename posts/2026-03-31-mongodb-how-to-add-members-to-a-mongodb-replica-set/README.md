@@ -94,7 +94,7 @@ After adding, confirm the member list reflects the change:
 rs.conf()
 ```
 
-Look for the new member in the `members` array with the correct `stateStr` once sync completes.
+Look for the new member in the `members` array with the correct `host`, `priority`, and `votes` values. To check the member's current state, use `rs.status()` and look for `stateStr` (e.g., `SECONDARY` once sync completes).
 
 ## Initial Sync Considerations
 
