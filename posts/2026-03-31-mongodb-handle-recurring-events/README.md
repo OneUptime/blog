@@ -66,6 +66,7 @@ function expandOccurrences(event, rangeStart, rangeEnd) {
     if (recurrence.frequency === "daily") current.setDate(current.getDate() + recurrence.interval);
     else if (recurrence.frequency === "weekly") current.setDate(current.getDate() + 1);
     else if (recurrence.frequency === "monthly") current.setMonth(current.getMonth() + recurrence.interval);
+    else if (recurrence.frequency === "yearly") current.setFullYear(current.getFullYear() + recurrence.interval);
 
     if (recurrence.endDate && current > recurrence.endDate) break;
   }
@@ -114,7 +115,7 @@ Track per-occurrence overrides to allow editing a single instance of a recurring
 ```javascript
 // Mark one occurrence as cancelled
 await db.collection("occurrences").updateOne(
-  { eventId: eventId, start: ISODate("2026-04-14T13:00:00Z") },
+  { eventId: eventId, start: new Date("2026-04-14T13:00:00Z") },
   { $set: { cancelled: true } }
 );
 
