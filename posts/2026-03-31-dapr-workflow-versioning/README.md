@@ -165,8 +165,8 @@ For major rewrites, drain existing instances before deploying new code:
 # 1. Stop accepting new workflow start requests (feature flag or ingress rule)
 
 # 2. Wait for in-flight instances to complete
-# Monitor with metadata API
-curl http://localhost:3500/v1.0/metadata | jq '.activeWorkflows'
+# Query individual instance status via Dapr workflow API (requires tracking instance IDs)
+curl http://localhost:3500/v1.0/workflows/dapr/<instanceId> | jq '.runtimeStatus'
 
 # 3. Once all instances complete, deploy new code
 
@@ -207,12 +207,14 @@ func OrderWorkflowV2(ctx *task.OrchestrationContext) (any, error) {
 ## Monitoring Active Instances by Version
 
 ```bash
-# Query workflow status via Dapr HTTP API
-curl "http://localhost:3500/v1.0/workflows/dapr/OrderWorkflow/instances" | jq '.instances[] | {id, status}'
+# Query individual workflow instance status via Dapr HTTP API (requires instance ID)
+curl "http://localhost:3500/v1.0/workflows/dapr/<instanceId>" | jq '{instanceId: .instanceID, status: .runtimeStatus}'
 
-# Check for instances still running old version
-curl "http://localhost:3500/v1.0/workflows/dapr/OrderWorkflowV1/instances?runtimeStatus=RUNNING"
+# Example: check a specific instance to see if it is still running
+curl "http://localhost:3500/v1.0/workflows/dapr/order-12345" | jq '.runtimeStatus'
 ```
+
+> **Note:** Dapr does not provide an HTTP API to list all workflow instances by name. Track instance IDs in your application (e.g., in a database) so you can query their status individually during migration.
 
 ## Summary
 
