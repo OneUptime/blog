@@ -98,11 +98,11 @@ metadata:
   name: daprconfig
 spec:
   nameResolution:
-    component: "aws-cloudmap"
+    component: "aws.cloudmap"
+    version: "v1"
     configuration:
       region: us-east-1
-      addressType: "ipv4"
-      namespace: "dapr.local"
+      namespaceName: "dapr.local"
 ```
 
 ## Invoke a Service via Dapr with CloudMap
@@ -112,7 +112,7 @@ Once CloudMap is configured, service invocation works the same as on Kubernetes:
 ```python
 import requests
 
-def invoke_order_service(method: str, path: str, body: dict = None):
+def invoke_order_service(path: str, body: dict = None):
     url = f"http://localhost:3500/v1.0/invoke/order-service/method{path}"
 
     if body:
@@ -123,8 +123,8 @@ def invoke_order_service(method: str, path: str, body: dict = None):
     resp.raise_for_status()
     return resp.json()
 
-# Call inventory check on another ECS service
-result = invoke_order_service("GET", "/orders/order-001")
+# Call order details on another ECS service
+result = invoke_order_service("/orders/order-001")
 print(result)
 ```
 
