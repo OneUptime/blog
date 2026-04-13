@@ -105,28 +105,7 @@ db.orders.aggregate([
 
 ## Running Total with Date Range Window
 
-Use a range-based window to sum values within a trailing date period:
-
-```javascript
-db.sales.aggregate([
-  {
-    $setWindowFields: {
-      sortBy: { dateLong: 1 }, // Numeric representation of date
-      output: {
-        trailing7DaySum: {
-          $sum: "$amount",
-          window: {
-            range: [-6, "current"],
-            unit: "day"
-          }
-        }
-      }
-    }
-  }
-]);
-```
-
-For date units, the field in `sortBy` must be a `Date` type:
+Use a range-based window to sum values within a trailing date period. When specifying a `unit`, the `sortBy` field must be a `Date` type:
 
 ```javascript
 db.dailySales.aggregate([
