@@ -234,7 +234,11 @@ export function ChartEmbed({ chartId, filter, height = '400px' }) {
   useEffect(() => {
     chartRef.current = sdk.createChart({ chartId, height, filter });
     chartRef.current.render(containerRef.current).catch(setError);
-    return () => chartRef.current?.destroy?.();
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+    };
   }, [chartId]);
 
   useEffect(() => {
