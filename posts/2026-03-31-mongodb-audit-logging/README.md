@@ -92,28 +92,43 @@ Record all actions by a specific user:
 
 ### Filter by Namespace
 
-Record all write operations against a specific collection:
+Record all write operations against a specific collection. CRUD operations are audited through `authCheck` events, with the specific command in `param.command`:
 
 ```json
 {
-  "atype": {
-    "$in": ["insert", "update", "delete", "drop"]
+  "atype": "authCheck",
+  "param.command": {
+    "$in": ["insert", "update", "delete"]
   },
   "param.ns": "mydb.customers"
 }
 ```
 
+> **Note:** By default, only failed `authCheck` events are logged. To capture successful CRUD operations, enable the `auditAuthorizationSuccess` parameter in your configuration:
+>
+> ```yaml
+> setParameter:
+>   auditAuthorizationSuccess: true
+> ```
+
 ### Combined Filter: Writes on Sensitive Collections
+
+This filter captures CRUD operations (via `authCheck`) and DDL operations (via their specific `atype`) on sensitive collections:
 
 ```json
 {
-  "$and": [
+  "$or": [
     {
-      "atype": {
-        "$in": ["insert", "update", "delete", "drop", "dropCollection"]
+      "atype": "authCheck",
+      "param.command": {
+        "$in": ["insert", "update", "delete"]
+      },
+      "param.ns": {
+        "$in": ["mydb.payments", "mydb.users", "mydb.pii_data"]
       }
     },
     {
+      "atype": "dropCollection",
       "param.ns": {
         "$in": ["mydb.payments", "mydb.users", "mydb.pii_data"]
       }
@@ -129,7 +144,7 @@ mongod \
   --auditDestination file \
   --auditFormat JSON \
   --auditPath /var/log/mongodb/audit.json \
-  --auditFilter '{"atype": {"$in": ["authenticate","insert","update","delete"]}}'
+  --auditFilter '{"atype": {"$in": ["authenticate","authCheck","createCollection","dropCollection"]}}'
 ```
 
 ## Audit Log Entry Structure
@@ -162,17 +177,22 @@ The `result` field is `0` for success and a non-zero error code for failures.
 |---|---|
 | `authenticate` | Login attempt |
 | `logout` | User logout |
-| `authCheck` | Authorization check |
+| `authCheck` | Authorization check (covers CRUD operations) |
 | `createCollection` | Collection created |
 | `dropCollection` | Collection dropped |
-| `insert` | Document inserted |
-| `update` | Document updated |
-| `delete` | Document deleted |
-| `find` | Query executed |
+| `createDatabase` | Database created |
+| `dropDatabase` | Database dropped |
 | `createIndex` | Index created |
+| `dropIndex` | Index dropped |
 | `createUser` | User account created |
 | `dropUser` | User account deleted |
+| `updateUser` | User account updated |
 | `grantRolesToUser` | Roles granted |
+| `revokeRolesFromUser` | Roles revoked |
+| `shutdown` | Server shutdown |
+| `applicationMessage` | Custom audit message |
+
+CRUD operations (`find`, `insert`, `update`, `delete`) are not separate `atype` values. They are captured through `authCheck` events, with the specific operation in the `param.command` field.
 
 ## Rotating the Audit Log
 
