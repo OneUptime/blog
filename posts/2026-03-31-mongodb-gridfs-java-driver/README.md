@@ -138,11 +138,8 @@ try (GridFSDownloadStream downloadStream =
 The default chunk size is 255 KB. Increase it for large sequential reads to reduce the number of chunks MongoDB must read:
 
 ```java
-GridFSBucket largeBucket = GridFSBuckets.create(database,
-    GridFSBucketOptions.builder()
-        .bucketName("videos")
-        .chunkSizeBytes(4 * 1024 * 1024) // 4 MB
-        .build());
+GridFSBucket largeBucket = GridFSBuckets.create(database, "videos")
+    .withChunkSizeBytes(4 * 1024 * 1024); // 4 MB
 ```
 
 ## Summary
