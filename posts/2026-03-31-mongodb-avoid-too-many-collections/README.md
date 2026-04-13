@@ -17,7 +17,7 @@ Each MongoDB collection consumes resources regardless of size:
 - **WiredTiger file handles** - each collection has its own data file
 - **Namespace memory** - collection metadata is held in memory
 - **Index overhead** - each collection's indexes add to the total index count
-- **Replication** - more namespaces means more oplog entries per operation
+- **Replication** - more collections increases initial sync time and namespace management overhead
 
 The practical limit varies by deployment, but systems with thousands of collections regularly experience degraded performance and harder-to-manage schemas.
 
