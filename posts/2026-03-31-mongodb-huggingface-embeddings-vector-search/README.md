@@ -32,7 +32,6 @@ BAAI/bge-large-en-v1.5   1024 dims  - High accuracy, English
 
 ```python
 from sentence_transformers import SentenceTransformer
-import numpy as np
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -77,6 +76,8 @@ print(f"Stored {len(articles)} articles with embeddings")
 ## Batch Processing Large Collections
 
 ```python
+import pymongo
+
 def backfill_embeddings(collection, batch_size: int = 256):
     docs_to_update = list(collection.find(
         {"embedding": {"$exists": False}},
