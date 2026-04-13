@@ -127,9 +127,9 @@ const schema = {
       bsonType: 'object',
       required: ['width', 'height', 'depth'],
       properties: {
-        width: { bsonType: 'double', exclusiveMinimum: 0 },
-        height: { bsonType: 'double', exclusiveMinimum: 0 },
-        depth: { bsonType: 'double', exclusiveMinimum: 0 },
+        width: { bsonType: 'double', minimum: 0, exclusiveMinimum: true },
+        height: { bsonType: 'double', minimum: 0, exclusiveMinimum: true },
+        depth: { bsonType: 'double', minimum: 0, exclusiveMinimum: true },
       }
     }
   }
@@ -244,4 +244,4 @@ await db.command({
 
 ## Summary
 
-MongoDB's `$jsonSchema` validator enforces document structure at the database level, preventing invalid data from ever being stored regardless of the application layer. Define required fields, data types, value ranges, enums, and nested object schemas. Use `validationLevel: 'strict'` with `validationAction: 'error'` in production to reject bad writes immediately. Handle `MongoWriteConcernError` with code `121` in your application to provide meaningful error messages to users when validation fails.
+MongoDB's `$jsonSchema` validator enforces document structure at the database level, preventing invalid data from ever being stored regardless of the application layer. Define required fields, data types, value ranges, enums, and nested object schemas. Use `validationLevel: 'strict'` with `validationAction: 'error'` in production to reject bad writes immediately. Handle `MongoServerError` with code `121` in your application to provide meaningful error messages to users when validation fails.
