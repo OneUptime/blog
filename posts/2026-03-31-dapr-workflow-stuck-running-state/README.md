@@ -15,7 +15,7 @@ Dapr Workflows (built on the Workflow Engine, which uses Actors internally) can 
 Query the status of a specific workflow instance:
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/<workflow-name>/<instance-id>
+curl http://localhost:3500/v1.0/workflows/dapr/<instance-id>
 ```
 
 A stuck workflow returns:
@@ -23,10 +23,10 @@ A stuck workflow returns:
 ```json
 {
   "instanceID": "abc123",
-  "workflowName": "ProcessOrder",
   "createdAt": "2026-03-01T10:00:00Z",
   "lastUpdatedAt": "2026-03-01T10:01:00Z",
-  "runtimeStatus": "RUNNING"
+  "runtimeStatus": "RUNNING",
+  "properties": {}
 }
 ```
 
@@ -45,17 +45,22 @@ If `lastUpdatedAt` has not changed in a long time, the workflow is stuck.
 Prevent infinite waits with timeouts and retries:
 
 ```python
-@wf.activity(name="ProcessPayment")
+import dapr.ext.workflow as wf
+from datetime import timedelta
+
+wfr = wf.WorkflowRuntime()
+
+@wfr.activity(name="ProcessPayment")
 def process_payment(ctx, order_id: str):
     # implementation
 
-@wf.defn(name="ProcessOrder")
+@wfr.workflow(name="ProcessOrder")
 def process_order(ctx: wf.DaprWorkflowContext, order_id: str):
     try:
         result = yield ctx.call_activity(
             process_payment,
             input=order_id,
-            retry_policy=wf.WorkflowActivityRetryPolicy(
+            retry_policy=wf.RetryPolicy(
                 max_number_of_attempts=3,
                 first_retry_interval=timedelta(seconds=5),
                 backoff_coefficient=2.0
@@ -72,14 +77,14 @@ To forcefully terminate a stuck workflow instance:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/<workflow-name>/<instance-id>/terminate
+  http://localhost:3500/v1.0/workflows/dapr/<instance-id>/terminate
 ```
 
 Or purge it entirely (removes all history):
 
 ```bash
-curl -X DELETE \
-  http://localhost:3500/v1.0/workflows/dapr/<workflow-name>/<instance-id>
+curl -X POST \
+  http://localhost:3500/v1.0/workflows/dapr/<instance-id>/purge
 ```
 
 ## Pausing and Resuming
@@ -88,10 +93,10 @@ If the underlying issue is temporary (state store restart), pause then resume:
 
 ```bash
 # Pause
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/<name>/<id>/pause
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/<instance-id>/pause
 
 # After fixing the issue, resume
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/<name>/<id>/resume
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/<instance-id>/resume
 ```
 
 ## Monitoring Workflow State
