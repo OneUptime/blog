@@ -10,13 +10,12 @@ Description: Learn how the standard analyzer works in MongoDB Atlas Search, when
 
 ## What Is the Standard Analyzer?
 
-The standard analyzer is the default text analysis pipeline in MongoDB Atlas Search. It is based on the Lucene StandardAnalyzer and performs three operations in sequence:
+The standard analyzer is the default text analysis pipeline in MongoDB Atlas Search. It is based on the Lucene StandardAnalyzer and performs two operations in sequence:
 
-1. **Tokenization** - splits text on whitespace and punctuation using the `standard` tokenizer
+1. **Tokenization** - splits text on word boundaries using the `standard` tokenizer (based on the Unicode Text Segmentation algorithm)
 2. **Lowercasing** - converts all tokens to lowercase with the `lowercase` token filter
-3. **Stop word removal** - optionally removes common English stop words (disabled by default in Atlas Search)
 
-The result is a set of normalized, lowercase tokens suitable for case-insensitive full-text search.
+The result is a set of normalized, lowercase tokens suitable for case-insensitive full-text search. Note that unlike the raw Lucene StandardAnalyzer, the Atlas Search `lucene.standard` analyzer does not include stop word removal. If you need stop words filtered, create a custom analyzer with a stop word token filter.
 
 ## Creating an Atlas Search Index with the Standard Analyzer
 
@@ -43,7 +42,7 @@ The result is a set of normalized, lowercase tokens suitable for case-insensitiv
 }
 ```
 
-Apply via the Atlas UI, `mongocli`, or the Admin API. The `lucene.standard` identifier is how you reference the standard analyzer in Atlas Search index definitions.
+Apply via the Atlas UI, the `atlas` CLI, or the Admin API. The `lucene.standard` identifier is how you reference the standard analyzer in Atlas Search index definitions.
 
 ## Querying with the Standard Analyzer
 
@@ -77,19 +76,22 @@ The query `"MongoDB Atlas Search full-text"` is analyzed with the same standard 
 
 ```text
 Input:  "MongoDB's Atlas Search is AMAZING!"
-Tokens: ["mongodb's", "atlas", "search", "is", "amazing"]
+
+After standard tokenizer:
+Tokens: ["MongoDB's", "Atlas", "Search", "is", "AMAZING"]
 
 After lowercase filter:
 Tokens: ["mongodb's", "atlas", "search", "is", "amazing"]
 
-Note: "mongodb's" is kept as-is by the standard tokenizer
-(apostrophe handling varies by Lucene version)
+Note: The standard tokenizer preserves original casing — lowercasing
+happens in the next pipeline step. "MongoDB's" is kept as a single
+token (apostrophe handling varies by Lucene version).
 ```
 
-Use the `$searchMeta` `explain` to inspect how your query terms are analyzed:
+You can inspect how the analyzer processes your query by running the search and examining the score. For deeper analysis, use `db.collection.explain().aggregate(...)` with your `$search` pipeline:
 
 ```javascript
-db.articles.aggregate([
+db.articles.explain().aggregate([
   {
     $search: {
       index: "articles_search",
