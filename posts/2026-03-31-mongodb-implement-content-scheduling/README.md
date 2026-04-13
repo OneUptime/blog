@@ -34,7 +34,7 @@ const ContentSchema = new mongoose.Schema({
   },
   publishAt: { type: Date, index: true },    // when to auto-publish
   unpublishAt: { type: Date, index: true },  // when to auto-unpublish
-  expiresAt: Date,                           // TTL for temporary content
+  expiresAt: { type: Date, index: { expireAfterSeconds: 0 } },  // TTL for temporary content
 
   publishedAt: Date,    // actual time published
   unpublishedAt: Date,  // actual time unpublished
@@ -198,4 +198,4 @@ async function getScheduledContent() {
 
 ## Summary
 
-MongoDB content scheduling uses date fields (`publishAt`, `unpublishAt`) combined with a status field to control content lifecycle. A scheduler loop runs every minute and uses `updateMany` to transition content between states when the target time passes. This approach is simple, transactional, and queryable - editors can view the publishing queue by filtering on `status: 'scheduled'`, and the scheduler naturally handles multiple content items in a single atomic update.
+MongoDB content scheduling uses date fields (`publishAt`, `unpublishAt`) combined with a status field to control content lifecycle. A scheduler loop runs every minute and uses `updateMany` to transition content between states when the target time passes. This approach is simple and queryable - editors can view the publishing queue by filtering on `status: 'scheduled'`, and the scheduler processes multiple content items in a single `updateMany` call where each document update is individually atomic.
