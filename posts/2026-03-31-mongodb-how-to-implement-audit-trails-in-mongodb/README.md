@@ -10,7 +10,7 @@ Description: Build a complete document history audit trail in MongoDB that recor
 
 ## Overview
 
-An audit trail records every change made to a document over time, enabling you to answer "what was this document's state at date X?" and "what changed between version 3 and version 4?". Unlike audit logging (which records who did what), an audit trail stores the actual document state at each version, making it possible to reconstruct history and compute diffs. This guide implements two patterns: shadow collection (full document snapshots) and an event sourcing approach.
+An audit trail records every change made to a document over time, enabling you to answer "what was this document's state at date X?" and "what changed between version 3 and version 4?". Unlike audit logging (which records who did what), an audit trail stores the actual document state at each version, making it possible to reconstruct history and compute diffs. This guide implements two patterns: shadow collection (full document snapshots) and an inline history array approach.
 
 ## Pattern 1 - Shadow Collection (Version Snapshots)
 
@@ -21,7 +21,7 @@ Every update to the main document also writes a snapshot to a history collection
 ```javascript
 // products collection (current state)
 {
-  _id: ObjectId("abc"),
+  _id: ObjectId("64a1b2c3d4e5f6a7b8c9d0e1"),
   name: "Widget Pro",
   price: 49.99,
   stock: 100,
@@ -33,7 +33,7 @@ Every update to the main document also writes a snapshot to a history collection
 // products_history collection (snapshots)
 {
   _id: ObjectId("..."),
-  documentId: ObjectId("abc"),
+  documentId: ObjectId("64a1b2c3d4e5f6a7b8c9d0e1"),
   version: 3,
   snapshot: {
     name: "Widget Pro",
@@ -230,28 +230,33 @@ For documents that don't change frequently, store the history inline:
 
 ```javascript
 async function updateWithInlineHistory(db, collection, id, changes, context) {
-  const historyEntry = {
-    version: null,  // will be set by $inc
-    changedBy: context.userId,
-    changedAt: new Date(),
-    changes,
-    reason: context.reason
-  }
+  // Read current version first to compute the new version number
+  const current = await db.collection(collection).findOne({ _id: new ObjectId(id) })
+  if (!current) throw new Error("Document not found")
+
+  const newVersion = (current.__v || 0) + 1
 
   const result = await db.collection(collection).findOneAndUpdate(
-    { _id: new ObjectId(id) },
+    { _id: new ObjectId(id), __v: current.__v },
     {
       $set: changes,
       $inc: { __v: 1 },
       $push: {
         history: {
-          ...historyEntry,
-          version: { $add: ["$__v", 1] }  // Set version after increment
+          version: newVersion,
+          changedBy: context.userId,
+          changedAt: new Date(),
+          changes,
+          reason: context.reason
         }
       }
     },
     { returnDocument: "after" }
   )
+
+  if (!result) {
+    throw new Error("Concurrent modification detected - please retry")
+  }
 
   return result
 }
@@ -299,4 +304,4 @@ db.products_history.createIndex(
 
 ## Summary
 
-Audit trails in MongoDB are best implemented using a shadow history collection that stores version snapshots alongside the main document. Each update writes the changed fields and full snapshot to the history collection atomically, enabling point-in-time reconstruction and diff calculations. Combined with a version counter and optimistic concurrency control, this pattern provides a complete, queryable record of every change to every document with author, timestamp, and reason captured at write time.
+Audit trails in MongoDB are best implemented using a shadow history collection that stores version snapshots alongside the main document. Each update writes the changed fields and full snapshot to the history collection, enabling point-in-time reconstruction and diff calculations. For strict atomicity across both writes, wrap them in a multi-document transaction. Combined with a version counter and optimistic concurrency control, this pattern provides a complete, queryable record of every change to every document with author, timestamp, and reason captured at write time.
