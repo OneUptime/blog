@@ -83,7 +83,7 @@ db.runCommand({ listIndexes: "sessions" })
 
 ## Modifying TTL Expiration Time
 
-You cannot change a TTL index's `expireAfterSeconds` by dropping and recreating it. Use `collMod` instead:
+Instead of dropping and recreating the index, use `collMod` to modify `expireAfterSeconds` without rebuilding the index:
 
 ```javascript
 db.runCommand({
