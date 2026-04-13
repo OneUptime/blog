@@ -81,8 +81,8 @@ db.adminCommand({ fsyncUnlock: 1 })
 EBS snapshots are crash-consistent by default. For application-consistent snapshots, use fsync lock:
 
 ```bash
-# Script for EBS snapshot backup
 #!/bin/bash
+# Script for EBS snapshot backup
 
 INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 VOLUME_ID="vol-0123456789abcdef0"  # MongoDB data volume ID
