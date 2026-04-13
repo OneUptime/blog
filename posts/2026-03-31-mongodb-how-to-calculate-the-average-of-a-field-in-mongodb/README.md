@@ -139,13 +139,13 @@ db.orders.aggregate([
 ## Average by Time Period
 
 ```javascript
-// Average daily revenue by month
+// Average order amount by month
 db.orders.aggregate([
   { $match: { status: "completed" } },
   {
     $group: {
       _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
-      avgDailyRevenue: { $avg: "$amount" },
+      avgOrderAmount: { $avg: "$amount" },
       totalRevenue: { $sum: "$amount" },
       orderCount: { $sum: 1 }
     }
