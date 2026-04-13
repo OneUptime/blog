@@ -17,7 +17,7 @@ Language analyzers in MongoDB Atlas Search are pre-built analyzers tuned for spe
 3. **Stop word removal** - removes high-frequency words (the, is, a, etc.)
 4. **Stemming** - reduces words to their root form for better recall
 
-Stemming is the key advantage over the standard analyzer. It enables a search for "running" to also match documents containing "run", "runs", "runner".
+Stemming is the key advantage over the standard analyzer. It enables a search for "running" to also match documents containing "run", "runs", and "studied" to match "study".
 
 ## Supported Language Analyzers
 
@@ -26,7 +26,7 @@ MongoDB Atlas Search supports the following language analyzers:
 ```text
 lucene.arabic       lucene.armenian     lucene.basque
 lucene.brazilian    lucene.bulgarian    lucene.catalan
-lucene.chinese      lucene.cjk          lucene.czech
+lucene.cjk          lucene.czech
 lucene.danish       lucene.dutch        lucene.english
 lucene.finnish      lucene.french       lucene.galician
 lucene.german       lucene.greek        lucene.hindi
@@ -34,8 +34,8 @@ lucene.hungarian    lucene.indonesian   lucene.irish
 lucene.italian      lucene.japanese     lucene.korean
 lucene.latvian      lucene.norwegian    lucene.persian
 lucene.portuguese   lucene.romanian     lucene.russian
-lucene.sorani       lucene.spanish      lucene.swedish
-lucene.turkish
+lucene.smartcn      lucene.sorani       lucene.spanish
+lucene.swedish      lucene.turkish
 ```
 
 ## Configuring English Language Analyzer
@@ -67,7 +67,7 @@ Input document: "The researchers are studying distributed computing systems"
 
 Tokens after lucene.english analysis:
 ["research", "studi", "distribut", "comput", "system"]
-(stop words "the", "are", "and" removed; words stemmed to roots)
+(stop words "the" and "are" removed; words stemmed to roots)
 ```
 
 Now a search for "study" also matches documents containing "studied", "studies", and "studying":
@@ -158,17 +158,16 @@ Index the same field with both analyzers for stemmed search and exact-match quer
 {
   "mappings": {
     "fields": {
-      "title": [
-        {
-          "type": "string",
-          "analyzer": "lucene.english"
-        },
-        {
-          "type": "string",
-          "analyzer": "lucene.keyword",
-          "name": "title.exact"
+      "title": {
+        "type": "string",
+        "analyzer": "lucene.english",
+        "multi": {
+          "exact": {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
         }
-      ]
+      }
     }
   }
 }
