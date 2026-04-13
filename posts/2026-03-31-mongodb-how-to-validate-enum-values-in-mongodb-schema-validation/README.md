@@ -115,7 +115,7 @@ db.runCommand({
 // Warn instead of reject on violation (good for migration)
 validationAction: "warn"
 
-// Only validate new inserts/updates (skip existing documents)
+// Validate inserts and updates to already-valid documents (skip updates to non-compliant documents)
 validationLevel: "moderate"
 
 // Validate all writes including updates to existing invalid docs
