@@ -85,10 +85,9 @@ async function uploadBuffer(buffer, filename, contentType) {
   const uploadStream = bucket.openUploadStream(filename, { contentType });
 
   await new Promise((resolve, reject) => {
-    uploadStream.end(buffer, (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
+    uploadStream.on('finish', resolve);
+    uploadStream.on('error', reject);
+    uploadStream.end(buffer);
   });
 
   await client.close();
