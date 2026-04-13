@@ -53,9 +53,9 @@ When documents have equal sort values, `$rank` assigns the same rank to tied doc
 
 Use `$documentNumber` when you need a unique row identifier rather than a rank that reflects value ties.
 
-## Keyset Pagination with $documentNumber
+## Offset Pagination with $documentNumber
 
-`$documentNumber` is useful for generating stable row numbers for cursor-based pagination:
+`$documentNumber` is useful for generating row numbers for offset-style pagination:
 
 ```javascript
 // First page
@@ -141,4 +141,4 @@ db.events.aggregate([
 
 ## Summary
 
-`$documentNumber` assigns unique sequential integers to documents within a partition, guaranteed to have no ties or gaps. Use it for row numbering, cursor-based pagination, and top-N-per-partition queries when you need exactly N results regardless of sort value ties. It is the right choice when you want row positions rather than value-based rankings.
+`$documentNumber` assigns unique sequential integers to documents within a partition, guaranteed to have no ties or gaps. Use it for row numbering, pagination, and top-N-per-partition queries when you need exactly N results regardless of sort value ties. It is the right choice when you want row positions rather than value-based rankings.
