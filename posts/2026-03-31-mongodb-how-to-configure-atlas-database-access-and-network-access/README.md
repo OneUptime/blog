@@ -105,7 +105,9 @@ Download the certificate from Atlas and connect:
 ```bash
 mongosh "mongodb+srv://cluster0.abc123.mongodb.net/appdb" \
   --tls \
-  --tlsCertificateKeyFile client.pem
+  --tlsCertificateKeyFile client.pem \
+  --authenticationMechanism MONGODB-X509 \
+  --authenticationDatabase '$external'
 ```
 
 ### Temporary Users with Expiry
@@ -131,24 +133,21 @@ curl --user "publicKey:privateKey" --digest \
 ### Add a Specific IP
 
 ```bash
-atlas accessLists create \
-  --cidr "203.0.113.10/32" \
+atlas accessLists create "203.0.113.10/32" \
   --comment "Production app server"
 ```
 
 ### Add a CIDR Block
 
 ```bash
-atlas accessLists create \
-  --cidr "10.0.0.0/16" \
+atlas accessLists create "10.0.0.0/16" \
   --comment "Internal VPC CIDR"
 ```
 
 ### Allow All IPs (Development Only)
 
 ```bash
-atlas accessLists create \
-  --cidr "0.0.0.0/0" \
+atlas accessLists create "0.0.0.0/0" \
   --comment "DEVELOPMENT ONLY - remove before production"
 ```
 
