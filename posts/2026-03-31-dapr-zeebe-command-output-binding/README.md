@@ -45,13 +45,13 @@ For production with TLS:
 
 ## Deploying a BPMN Process
 
-Before creating instances, deploy your BPMN process definition:
+Before creating instances, deploy your BPMN process definition using the `deploy-resource` operation:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/zeebe-command \
   -H "Content-Type: application/json" \
   -d '{
-    "operation": "deploy-process",
+    "operation": "deploy-resource",
     "metadata": {
       "fileName": "order-process.bpmn"
     },
@@ -113,7 +113,8 @@ async function cancelInstance(processInstanceKey) {
 ## Supported Operations
 
 The Zeebe Command binding supports these operations:
-- `deploy-process` - deploys a BPMN definition
+- `deploy-resource` - deploys a BPMN definition or other resource
+- `deploy-process` - deprecated alias for `deploy-resource`
 - `create-instance` - starts a new process instance
 - `cancel-instance` - cancels an active instance
 - `set-variables` - sets variables on a scope
@@ -123,6 +124,8 @@ The Zeebe Command binding supports these operations:
 - `complete-job` - completes a job
 - `fail-job` - marks a job as failed
 - `update-job-retries` - updates retry count on a job
+- `throw-error` - throws an error on a job
+- `topology` - returns the broker cluster topology
 
 ## Running Locally with Docker
 
