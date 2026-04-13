@@ -108,7 +108,7 @@ db.products.find({ tags: { $all: ["sale", "electronics"] } })
 
 - Confusing `$all` with `$in` - `$all` requires all values to be present, `$in` requires any.
 - Using `$all` on non-array fields - it also works for scalar fields but behavior is less intuitive.
-- Passing an empty array `$all: []` - this matches all documents (vacuously true).
+- Passing an empty array `$all: []` - this matches no documents, which may be unexpected.
 
 ## Summary
 
