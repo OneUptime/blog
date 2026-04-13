@@ -85,7 +85,7 @@ atlas projects invitations invite user@example.com \
   --role GROUP_READ_ONLY \
   --projectId <PROJECT_ID>
 
-# Available project roles:
+# Common project roles:
 # GROUP_OWNER, GROUP_CLUSTER_MANAGER, GROUP_DATA_ACCESS_ADMIN,
 # GROUP_DATA_ACCESS_READ_WRITE, GROUP_DATA_ACCESS_READ_ONLY, GROUP_READ_ONLY
 ```
@@ -120,10 +120,10 @@ resource "mongodbatlas_project" "production" {
 
 ## Project Tags for Cost Allocation
 
-Atlas supports project-level tags for billing breakdown.
+Atlas supports project-level tags for billing breakdown. You can specify tags when creating a project.
 
 ```bash
-atlas projects update <PROJECT_ID> \
+atlas projects create my-project --orgId <ORG_ID> \
   --tag environment=production \
   --tag team=platform
 ```
