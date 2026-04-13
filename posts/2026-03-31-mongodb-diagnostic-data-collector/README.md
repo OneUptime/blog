@@ -12,7 +12,7 @@ The MongoDB Diagnostic Data Collector (FTDC) continuously captures operational m
 
 ## What FTDC Collects
 
-FTDC collects a snapshot of `serverStatus` and other system metrics every second, and a full metadata sample every minute. Collected data includes:
+FTDC collects a snapshot of `serverStatus` and other system metrics every second by default. Collected data includes:
 
 - Memory and CPU usage
 - Lock statistics
@@ -40,12 +40,12 @@ metrics.interim
 
 FTDC is enabled by default. You can tune it in `mongod.conf`:
 
-```text
-diagnosticDataCollectionEnabled: true
-diagnosticDataCollectionPeriodMillis: 1000
-diagnosticDataCollectionSyncPeriodSecs: 10
-diagnosticDataCollectionFileSizeMB: 10
-diagnosticDataCollectionDirectorySizeMB: 200
+```yaml
+setParameter:
+  diagnosticDataCollectionEnabled: true
+  diagnosticDataCollectionPeriodMillis: 1000
+  diagnosticDataCollectionFileSizeMB: 10
+  diagnosticDataCollectionDirectorySizeMB: 200
 ```
 
 Key parameters:
@@ -84,18 +84,19 @@ db.adminCommand({
 
 ## Reading FTDC Data
 
-FTDC files are binary and require the `ftdc` tool or MongoDB's `mongodump` utilities to decode. MongoDB Atlas and MongoDB Support provide tooling for analysis. For self-hosted deployments, you can use the open-source `ftdc` Python library:
+FTDC files are binary and cannot be read directly. MongoDB Atlas and MongoDB Support provide tooling for analysis. For self-hosted deployments, you can use the open-source `pyftdc` Python library:
 
 ```bash
-pip install ftdc-py
+pip install pyftdc
 ```
 
 ```python
-import ftdc
+from pyftdc import FTDCParser
 
-with open("/var/lib/mongodb/diagnostic.data/metrics.2026-03-31T00-00-00Z-00000", "rb") as f:
-    for chunk in ftdc.read(f):
-        print(chunk)
+parser = FTDCParser()
+data = parser.parse("/var/lib/mongodb/diagnostic.data/metrics.2026-03-31T00-00-00Z-00000")
+for metric in data:
+    print(metric)
 ```
 
 ## Sharing FTDC Data with Support
