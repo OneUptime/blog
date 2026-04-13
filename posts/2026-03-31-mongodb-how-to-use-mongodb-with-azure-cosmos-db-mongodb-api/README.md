@@ -12,7 +12,7 @@ Description: Learn how to connect and work with Azure Cosmos DB for MongoDB, und
 
 Azure Cosmos DB for MongoDB is a fully managed database service from Microsoft that implements the MongoDB wire protocol. Applications using MongoDB drivers can connect to Cosmos DB without code changes. It offers global distribution, automatic scaling with Request Units (RUs), and multi-region writes.
 
-Current API compatibility: MongoDB 4.2 (with 5.0 preview available in some regions).
+Current API compatibility: MongoDB 3.2, 3.6, 4.0, 4.2, 5.0, and 6.0 (select the version when creating your Cosmos DB account).
 
 ## Getting a Connection String
 
@@ -37,8 +37,8 @@ const connectionString = process.env.COSMOS_DB_CONNECTION_STRING
 
 const client = new MongoClient(connectionString, {
   // Cosmos DB requires these settings
-  ssl: true,
-  retryWrites: false,  // not supported in Cosmos DB
+  tls: true,
+  retryWrites: false,  // disabled by default in Cosmos DB
   maxIdleTimeMS: 120000
 })
 
@@ -77,9 +77,11 @@ db.runCommand({
   shardKey: "customerId"  // partition key for distribution
 })
 
-// Or use the Cosmos DB extension command
-db.createCollection("products", {
-  shardKey: { _id: "hashed" }  // use _id as partition key
+// For unsharded behavior, use _id as the partition key
+db.runCommand({
+  customAction: "CreateCollection",
+  collection: "products",
+  shardKey: "_id"
 })
 ```
 
@@ -120,7 +122,7 @@ const summary = await db.collection("orders").aggregate([
 
 ## Understanding Request Units (RUs)
 
-Cosmos DB charges in Request Units, not by storage size or compute time:
+Cosmos DB charges based on provisioned throughput (Request Units) and consumed storage (per GB):
 
 ```javascript
 // Every read/write consumes RUs
@@ -147,7 +149,7 @@ SUPPORTED:
 NOT SUPPORTED / LIMITED:
 - $setWindowFields (window functions)
 - Time series collections
-- Retryable writes
+- Retryable writes (supported on API 4.0+ with EnableMongoRetryableWrites capability enabled)
 - $unionWith in all cases
 - Bulk write operations have some limitations
 - Full-text search uses Cosmos DB's own search, not Atlas Search
