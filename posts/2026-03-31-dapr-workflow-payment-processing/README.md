@@ -28,6 +28,9 @@ A typical e-commerce payment flow:
 import dapr.ext.workflow as wf
 from datetime import timedelta
 
+wfr = wf.WorkflowRuntime()
+
+@wfr.workflow(name='payment_processing_workflow')
 def payment_processing_workflow(ctx: wf.DaprWorkflowContext, order: dict):
     # Use order ID as instance ID for idempotency - duplicate starts are safe
     ctx.set_custom_status("Validating order")
@@ -87,8 +90,8 @@ def payment_processing_workflow(ctx: wf.DaprWorkflowContext, order: dict):
 ## Idempotent Payment Authorization
 
 ```python
-@wf.activity
-def authorize_payment(ctx, payment: dict) -> dict:
+@wfr.activity(name='authorize_payment')
+def authorize_payment(ctx: wf.WorkflowActivityContext, payment: dict) -> dict:
     # Use orderId as idempotency key
     resp = requests.post(
         "https://api.stripe.com/v1/payment_intents",
@@ -115,13 +118,12 @@ def authorize_payment(ctx, payment: dict) -> dict:
 ## Starting the Workflow with Idempotency
 
 ```python
-from dapr.clients import DaprClient
+from dapr.ext.workflow import DaprWorkflowClient
 
-with DaprClient() as d:
+with DaprWorkflowClient() as client:
     # Use order ID as the workflow instance ID for idempotency
-    d.start_workflow(
-        workflow_component="dapr",
-        workflow_name="payment_processing_workflow",
+    instance_id = client.schedule_new_workflow(
+        workflow=payment_processing_workflow,
         instance_id=f"order-{order['id']}",  # prevents double-processing
         input=order
     )
@@ -130,22 +132,26 @@ with DaprClient() as d:
 ## Checking Payment Status
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/payment_processing_workflow/order-ORD-123
+curl http://localhost:3500/v1.0/workflows/dapr/order-ORD-123
 ```
 
 ## Retry Policy for Payment Capture
 
-Configure retries for the capture step to handle transient network issues:
+Configure retries for the capture step to handle transient network issues by passing a retry policy to `call_activity`:
 
 ```python
-@wf.activity(retry_policy=wf.RetryPolicy(
-    max_number_of_attempts=3,
-    first_retry_interval=timedelta(seconds=5),
-    backoff_coefficient=2.0
-))
-def capture_payment(ctx, data: dict) -> dict:
-    # Will retry up to 3 times with exponential backoff
-    ...
+capture_result = yield ctx.call_activity(
+    capture_payment,
+    input={
+        "authorizationId": authorization_id,
+        "amount": order["total"]
+    },
+    retry_policy=wf.RetryPolicy(
+        max_number_of_attempts=3,
+        first_retry_interval=timedelta(seconds=5),
+        backoff_coefficient=2.0
+    )
+)
 ```
 
 ## Summary
