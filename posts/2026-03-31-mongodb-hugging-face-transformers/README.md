@@ -15,7 +15,7 @@ Hugging Face Transformers provides thousands of pre-trained NLP models for class
 ## Installation
 
 ```bash
-pip install transformers torch pymongo datasets
+pip install transformers torch pymongo
 ```
 
 ## Generating Embeddings for Documents in MongoDB
@@ -113,8 +113,8 @@ from transformers import pipeline
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 for doc in collection.find({"summary": {"$exists": False}, "wordCount": {"$gt": 200}}):
-    text = doc["content"][:1024]  # BART max input length
-    result = summarizer(text, max_length=150, min_length=40, do_sample=False)
+    text = doc["content"][:4096]  # Rough character limit; pipeline handles token truncation
+    result = summarizer(text, max_length=150, min_length=40, do_sample=False, truncation=True)
     summary = result[0]["summary_text"]
 
     collection.update_one(
@@ -127,7 +127,25 @@ for doc in collection.find({"summary": {"$exists": False}, "wordCount": {"$gt": 
 
 ```javascript
 db.articles.createIndex({ sentiment: 1, sentimentScore: -1 })
-db.articles.createIndex({ "embedding": 1 })  // Used by Atlas Vector Search
+```
+
+To enable vector similarity search on embeddings, create an Atlas Vector Search index via the Atlas UI or the `createSearchIndex` command:
+
+```javascript
+db.articles.createSearchIndex(
+  "vector_index",
+  "vectorSearch",
+  {
+    fields: [
+      {
+        type: "vector",
+        path: "embedding",
+        numDimensions: 384,
+        similarity: "cosine"
+      }
+    ]
+  }
+)
 ```
 
 Query by classification results:
