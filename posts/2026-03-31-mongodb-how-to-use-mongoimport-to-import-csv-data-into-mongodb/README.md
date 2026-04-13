@@ -113,8 +113,7 @@ with open(input_file) as csvfile, open(output_file, 'w') as jsonfile:
             'quantity': int(row['qty']),
             'createdAt': datetime.strptime(row['date'], '%m/%d/%Y').isoformat() + 'Z'
         }
-        jsonfile.write(json.dumps(doc) + '
-')
+        jsonfile.write(json.dumps(doc) + '\n')
 
 print("Preprocessing complete, importing...")
 ```
