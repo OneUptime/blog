@@ -126,7 +126,7 @@ db.content.createIndex({ title: "text", synopsis: "text" })
 db.episodes.createIndex({ contentId: 1, seasonNumber: 1, episodeNumber: 1 })
 
 // Playback state - primary key is the compound _id
-db.playbackState.createIndex({ profileId: 1, lastWatchedAt: -1 })  // "continue watching"
+db.playbackState.createIndex({ "_id.profileId": 1, lastWatchedAt: -1 })  // "continue watching"
 
 // Watchlist
 db.watchlist.createIndex({ profileId: 1, addedAt: -1 })
