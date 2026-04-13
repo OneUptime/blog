@@ -21,21 +21,26 @@ auditLog:
   destination: file
   format: JSON
   path: /var/log/mongodb/audit.json
-  filter: '{ atype: { $in: ["insert","update","delete","authCheck"] } }'
+  filter: '{ atype: { $in: ["authCheck", "authenticate"] } }'
 ```
 
 On Atlas, enable auditing from the Security > Advanced tab. Audit log entries look like:
 
 ```json
 {
-  "atype": "update",
+  "atype": "authCheck",
   "ts": { "$date": "2026-03-31T10:00:00.000Z" },
   "local": { "ip": "127.0.0.1", "port": 27017 },
   "remote": { "ip": "10.0.1.5", "port": 52341 },
   "users": [{ "user": "appUser", "db": "shop" }],
+  "roles": [{ "role": "readWrite", "db": "shop" }],
   "param": {
+    "command": "update",
     "ns": "shop.orders",
-    "command": { "update": "orders", "q": { "_id": "..." }, "u": { "$set": { "status": "cancelled" } } }
+    "args": {
+      "update": "orders",
+      "updates": [{ "q": { "_id": "..." }, "u": { "$set": { "status": "cancelled" } } }]
+    }
   },
   "result": 0
 }
@@ -53,7 +58,10 @@ const pipeline = [
   }}
 ];
 
-const changeStream = db.watch(pipeline, { fullDocument: "updateLookup" });
+const changeStream = db.watch(pipeline, {
+  fullDocument: "updateLookup",
+  fullDocumentBeforeChange: "whenAvailable"
+});
 
 changeStream.on("change", async (event) => {
   await db.auditLog.insertOne({
