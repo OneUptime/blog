@@ -15,8 +15,10 @@ Agenda.js is a lightweight Node.js job scheduling library that uses MongoDB as i
 ## Installation
 
 ```bash
-npm install agenda
+npm install agenda@5
 ```
+
+The examples in this guide use Agenda v5, which supports CommonJS (`require`). Agenda v6 and later are ESM-only and have a different configuration API.
 
 Agenda requires a running MongoDB instance and stores jobs in the `agendaJobs` collection by default.
 
@@ -25,7 +27,6 @@ Agenda requires a running MongoDB instance and stores jobs in the `agendaJobs` c
 ```javascript
 // scheduler.js
 const Agenda = require('agenda');
-const mongoose = require('mongoose');
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/myapp';
 
@@ -135,7 +136,7 @@ agenda.define('process payment', async (job) => {
     await processPayment(orderId, amount);
   } catch (err) {
     if (job.attrs.failCount < 3) {
-      // Reschedule with exponential backoff
+      // Reschedule with increasing delay
       await job.schedule(new Date(Date.now() + (job.attrs.failCount + 1) * 60000));
       await job.save();
     }
