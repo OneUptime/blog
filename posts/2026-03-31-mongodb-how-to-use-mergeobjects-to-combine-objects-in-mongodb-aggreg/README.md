@@ -64,7 +64,7 @@ db.inventory.aggregate([
     $group: {
       _id: "$category",
       allItems: {
-        $mergeObjects: { $arrayToObject: [[["$item", "$stock"]]] }
+        $mergeObjects: { $arrayToObject: [["$item", "$stock"]] }
       }
     }
   }
