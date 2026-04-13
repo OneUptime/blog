@@ -40,7 +40,7 @@ Do NOT use an arbiter when:
 
 Start a `mongod` with the same `--replSet` name but minimal configuration. The arbiter does not need a large `dbpath`:
 
-```bash
+```yaml
 # arbiter mongod.conf
 replication:
   replSetName: "rs0"
@@ -122,9 +122,9 @@ flowchart TD
 
 2. **Only one arbiter per replica set**: MongoDB recommends at most one arbiter per set.
 
-3. **Security concerns**: Arbiters still receive oplog metadata and connection credentials. Run them in the same trusted network as data members.
+3. **Security concerns**: Arbiters exchange authentication credentials with other members during the replication handshake. Run them in the same trusted network as data members.
 
-4. **PSA (Primary-Secondary-Arbiter) sets**: In a PSA set, if the secondary goes down, you lose write majority and the primary will step down because it cannot satisfy `w: majority`. Use `w: 1` or understand this limitation.
+4. **PSA (Primary-Secondary-Arbiter) sets**: In a PSA set, if the secondary goes down, the primary remains running (it still has a majority of votes with the arbiter) but writes with `w: "majority"` will fail because majority of data-bearing voting members cannot acknowledge. Use `w: 1` or understand this limitation.
 
 ```javascript
 // PSA write concern consideration
@@ -134,10 +134,10 @@ db.orders.insertOne(
   { writeConcern: { w: 1 } }  // safe for PSA when secondary is down
 );
 
-// Or set write concern at the collection level:
-db.runCommand({
-  collMod: "orders",
-  writeConcern: { w: 1 }
+// Or set the default write concern at the replica set level:
+db.adminCommand({
+  setDefaultRWConcern: 1,
+  defaultWriteConcern: { w: 1 }
 });
 ```
 
