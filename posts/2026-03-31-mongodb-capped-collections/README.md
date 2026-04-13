@@ -79,7 +79,7 @@ db.appLogs.find({ level: "ERROR" }).sort({ $natural: -1 }).limit(50)
 
 One of the most powerful features of capped collections is the tailable cursor. Like `tail -f` on a log file, a tailable cursor waits for new documents to be inserted instead of closing when it reaches the end.
 
-In mongosh:
+In the legacy mongo shell (`mongo`):
 
 ```javascript
 const cursor = db.appLogs.find().addOption(DBQuery.Option.tailable).addOption(DBQuery.Option.awaitData);
@@ -119,7 +119,7 @@ tailLogs().catch(console.error);
 
 ## Converting a Regular Collection to Capped
 
-MongoDB does not support in-place conversion. Create a new capped collection and copy the data:
+For a safe conversion with full control, create a new capped collection and copy the data:
 
 ```javascript
 // Step 1: Create the capped collection
@@ -173,7 +173,7 @@ The `stats()` output includes `capped: true`, `max` (document limit), and `maxSi
 - You cannot update a document in a way that would increase its size (the updated document cannot be larger than the original).
 - You cannot shard a capped collection.
 - Cannot create TTL indexes on capped collections.
-- The `_id` index is created automatically but is the only index guaranteed to be in natural order.
+- The `_id` index is created automatically. You can create additional secondary indexes on capped collections.
 
 ## Capped Collection for Audit Logs Example
 
