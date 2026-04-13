@@ -58,7 +58,7 @@ sudo tee /etc/logrotate.d/mongodb << 'EOF'
     # Do not rotate if log file is empty
     notifempty
     
-    # Use copytruncate or send signal
+    # Run postrotate script only once for all matched logs
     sharedscripts
     
     # After rotation, signal MongoDB to reopen log file
@@ -135,9 +135,9 @@ For high-traffic deployments, rotate based on size in addition to time:
 
 ```text
 /var/log/mongodb/mongod.log {
-    # Rotate weekly or when file exceeds 500MB
+    # Rotate weekly or when file exceeds 500MB (whichever comes first)
     weekly
-    size 500M
+    maxsize 500M
     rotate 8
     compress
     delaycompress
@@ -152,7 +152,7 @@ For high-traffic deployments, rotate based on size in addition to time:
 
 ## Automating with Cron (Alternative to logrotate)
 
-If you prefer a direct approach without logrotate:
+If you prefer a direct approach without logrotate, note that this requires `logRotate: rename` (the default) in your MongoDB configuration instead of `reopen`, because MongoDB must handle the file renaming itself:
 
 ```bash
 # Add to root's crontab
@@ -161,7 +161,7 @@ sudo crontab -e
 
 ```text
 # Rotate MongoDB logs daily at 1:00 AM
-0 1 * * * /bin/kill -SIGUSR1 $(cat /var/run/mongodb/mongod.pid) 2>/dev/null &&   find /var/log/mongodb -name "*.log.*" -mtime +14 -delete
+0 1 * * * /bin/kill -SIGUSR1 $(cat /var/run/mongodb/mongod.pid) 2>/dev/null && find /var/log/mongodb -name "*.log.*" -mtime +14 -delete
 ```
 
 ## logrotate State File
