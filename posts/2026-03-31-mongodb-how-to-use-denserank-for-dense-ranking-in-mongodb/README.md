@@ -142,8 +142,12 @@ db.employees.aggregate([
       _id: { dept: "$dept", denseRank: "$denseRank" },
       employees: { $push: { name: "$name", salary: "$salary", score: "$performanceScore" } },
       maxSalary: { $max: "$salary" },
-      minSalary: { $min: "$salary" },
-      salaryRange: { $subtract: [{ $max: "$salary" }, { $min: "$salary" }] }
+      minSalary: { $min: "$salary" }
+    }
+  },
+  {
+    $addFields: {
+      salaryRange: { $subtract: ["$maxSalary", "$minSalary"] }
     }
   },
   { $match: { salaryRange: { $gt: 0 } } },  // same rank, different salary
