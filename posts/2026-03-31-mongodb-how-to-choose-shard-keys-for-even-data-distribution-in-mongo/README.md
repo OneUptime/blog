@@ -114,8 +114,9 @@ For more detail:
 
 ```javascript
 use config;
+const coll = db.collections.findOne({ _id: "mydb.orders" });
 db.chunks.aggregate([
-  { $match: { ns: "mydb.orders" } },
+  { $match: { uuid: coll.uuid } },
   { $group: { _id: "$shard", chunks: { $sum: 1 } } }
 ]);
 ```
