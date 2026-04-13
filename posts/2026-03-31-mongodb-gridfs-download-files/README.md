@@ -17,7 +17,7 @@ Once files are stored in GridFS, you retrieve them by opening a download stream 
 mongofiles -d mydb get report.pdf
 
 # Download and save to a specific path
-mongofiles -d mydb get_id --local /tmp/downloaded.pdf <ObjectId>
+mongofiles -d mydb --local /tmp/downloaded.pdf get_id 'ObjectId("64abc123def456789abcdef0")'
 ```
 
 ## Downloading by File ID (Node.js)
