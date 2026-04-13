@@ -64,6 +64,7 @@ For large collections, process documents in batches to respect rate limits:
 
 ```python
 import time
+from pymongo import UpdateOne
 
 def backfill_embeddings(collection, batch_size=100):
     cursor = collection.find(
@@ -92,7 +93,7 @@ def process_batch(collection, docs):
     updates = []
     for doc, emb_data in zip(docs, response.data):
         updates.append(
-            pymongo.UpdateOne(
+            UpdateOne(
                 {"_id": doc["_id"]},
                 {"$set": {"embedding": emb_data.embedding}}
             )
