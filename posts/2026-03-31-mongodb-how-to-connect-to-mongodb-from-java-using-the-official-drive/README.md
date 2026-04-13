@@ -154,10 +154,11 @@ collection.deleteMany(eq("status", "archived"));
 
 ```java
 import com.mongodb.client.AggregateIterable;
+import org.bson.conversions.Bson;
 import static com.mongodb.client.model.Aggregates.*;
 import static com.mongodb.client.model.Accumulators.*;
 
-List<Document> pipeline = Arrays.asList(
+List<Bson> pipeline = Arrays.asList(
     match(eq("active", true)),
     group("$country",
         sum("count", 1),
