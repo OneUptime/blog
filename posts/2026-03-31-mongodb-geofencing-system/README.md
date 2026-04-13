@@ -192,7 +192,7 @@ async function getAssetsInZone(zoneId) {
 ## Querying Recent Geofence Events
 
 ```javascript
-// Find all entries into restricted zones in the last hour
+// Find all zone entries in the last hour
 const oneHourAgo = new Date(Date.now() - 3600000);
 
 db.geofence_events.find({
