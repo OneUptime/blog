@@ -44,12 +44,9 @@ setParameter:
 
 ### Connection Limit
 
-Set the maximum number of incoming connections:
+Set the maximum number of incoming connections. Note that this parameter can also be configured via the `net.maxIncomingConnections` config option, but should only be set in one place to avoid confusion:
 
 ```yaml
-net:
-  maxIncomingConnections: 200
-
 setParameter:
   maxIncomingConnections: 200
 ```
