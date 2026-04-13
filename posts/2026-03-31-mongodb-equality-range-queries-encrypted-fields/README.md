@@ -40,7 +40,7 @@ The driver encrypts `"123-45-6789"` before sending the query. MongoDB matches en
 
 ## Range Queries
 
-Range queries support `$gt`, `$gte`, `$lt`, `$lte`, and `$between` on encrypted numeric or date fields. Configuration requires specifying the data type bounds.
+Range queries support `$gt`, `$gte`, `$lt`, and `$lte` on encrypted numeric or date fields. Configuration requires specifying the data type bounds.
 
 ### Field Configuration for Range
 
