@@ -131,13 +131,13 @@ Register a custom codec for a type:
 
 ```go
 import (
-    "go.mongodb.org/mongo-driver/v2/bson/bsoncodec"
+    "go.mongodb.org/mongo-driver/v2/bson"
     "reflect"
 )
 
 type MyTypeCodec struct{}
 
-// implement ValueEncoder and ValueDecoder interfaces...
+// implement bson.ValueEncoder and bson.ValueDecoder interfaces...
 
 registry := bson.NewRegistry()
 registry.RegisterTypeEncoder(reflect.TypeOf(MyType{}), &MyTypeCodec{})
