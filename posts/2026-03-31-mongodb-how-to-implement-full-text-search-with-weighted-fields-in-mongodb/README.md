@@ -151,7 +151,7 @@ db.articles.find(
 
 ```text
 - Only one text index per collection
-- Cannot combine $text with $or at the top level without $or wrapping $text
+- $text must be a top-level query operator - it cannot be nested inside $or or $nor
 - Case insensitive and diacritic insensitive (by default)
 - No substring matching - only full words (use regex for substring)
 - Not suitable for complex relevance tuning - use Atlas Search for that
