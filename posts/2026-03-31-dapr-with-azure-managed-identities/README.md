@@ -88,12 +88,20 @@ IDENTITY_RESOURCE_ID=$(az identity show \
   --resource-group my-rg \
   --query id --output tsv)
 
-# Assign the identity to the AKS node pool
-az aks nodepool update \
+# Assign the identity to the AKS node pool VMSS
+NODE_RESOURCE_GROUP=$(az aks show \
   --resource-group my-rg \
-  --cluster-name my-aks-cluster \
-  --name nodepool1 \
-  --assign-pod-identity
+  --name my-aks-cluster \
+  --query nodeResourceGroup --output tsv)
+
+VMSS_NAME=$(az vmss list \
+  --resource-group "$NODE_RESOURCE_GROUP" \
+  --query "[0].name" --output tsv)
+
+az vmss identity assign \
+  --resource-group "$NODE_RESOURCE_GROUP" \
+  --name "$VMSS_NAME" \
+  --identities "$IDENTITY_RESOURCE_ID"
 ```
 
 ```yaml
@@ -160,4 +168,4 @@ kubectl logs my-dapr-app-pod -c daprd | grep -i "auth\|identity\|token"
 
 ## Summary
 
-Azure Managed Identities provide credential-free authentication for Dapr components on AKS and Azure Container Apps. System-assigned identities are simpler to set up but share access across all pods on a node, while user-assigned identities offer per-pod access control. For maximum isolation, combine user-assigned managed identities with AKS Pod Identity or workload identity federation, assigning only the minimum required RBAC roles to each identity.
+Azure Managed Identities provide credential-free authentication for Dapr components on AKS and Azure Container Apps. System-assigned identities are simpler to set up but share access across all pods on a node, while user-assigned identities offer per-pod access control. For maximum isolation, combine user-assigned managed identities with workload identity federation, assigning only the minimum required RBAC roles to each identity.
