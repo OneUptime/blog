@@ -29,12 +29,12 @@ Electronics (lft=1, rgt=12)
 
 ```javascript
 db.categories.insertMany([
-  { _id: ObjectId("n001"), name: "Electronics",       lft: 1,  rgt: 12 },
-  { _id: ObjectId("n002"), name: "Laptops",           lft: 2,  rgt: 7  },
-  { _id: ObjectId("n003"), name: "Gaming Laptops",    lft: 3,  rgt: 4  },
-  { _id: ObjectId("n004"), name: "Business Laptops",  lft: 5,  rgt: 6  },
-  { _id: ObjectId("n005"), name: "Phones",            lft: 8,  rgt: 11 },
-  { _id: ObjectId("n006"), name: "Smartphones",       lft: 9,  rgt: 10 }
+  { name: "Electronics",       lft: 1,  rgt: 12 },
+  { name: "Laptops",           lft: 2,  rgt: 7  },
+  { name: "Gaming Laptops",    lft: 3,  rgt: 4  },
+  { name: "Business Laptops",  lft: 5,  rgt: 6  },
+  { name: "Phones",            lft: 8,  rgt: 11 },
+  { name: "Smartphones",       lft: 9,  rgt: 10 }
 ])
 ```
 
@@ -82,8 +82,8 @@ db.categories.find({
 // Easier with depth field added to each node:
 
 db.categories.insertMany([
-  { _id: ObjectId("n001"), name: "Electronics", lft: 1, rgt: 12, depth: 0 },
-  { _id: ObjectId("n002"), name: "Laptops",     lft: 2, rgt: 7,  depth: 1 },
+  { name: "Electronics", lft: 1, rgt: 12, depth: 0 },
+  { name: "Laptops",     lft: 2, rgt: 7,  depth: 1 },
 ])
 
 // Direct children of Electronics (depth = parent depth + 1)
