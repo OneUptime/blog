@@ -25,7 +25,7 @@ atlas clusters search indexes list \
 
 ## Creating a Basic Search Index
 
-A default index indexes all string fields automatically:
+A default index with dynamic mapping indexes all fields with supported data types automatically:
 
 ```bash
 atlas clusters search indexes create \
@@ -125,7 +125,7 @@ while true; do
   STATUS=$(atlas clusters search indexes describe "$INDEX_ID" \
     --clusterName myCluster --output json | jq -r '.status')
   echo "Status: $STATUS"
-  [ "$STATUS" = "STEADY" ] && break
+  [ "$STATUS" = "ACTIVE" ] && break
   sleep 10
 done
 ```
