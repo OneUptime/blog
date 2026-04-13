@@ -156,7 +156,7 @@ app.post('/upload-stream', (req, res) => {
 Copy files from GridFS to S3 without loading into memory:
 
 ```javascript
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 
 async function gridFSToS3(fileId, s3Bucket, s3Key) {
@@ -189,7 +189,6 @@ async function gridFSToS3(fileId, s3Bucket, s3Key) {
 Apply transformations using Node.js Transform streams:
 
 ```javascript
-const { Transform } = require('stream');
 const zlib = require('zlib');
 
 app.get('/download-compressed/:fileId', async (req, res) => {
@@ -211,6 +210,8 @@ app.get('/download-compressed/:fileId', async (req, res) => {
 ## Step 6: Track Streaming Progress
 
 ```javascript
+const fs = require('fs');
+
 async function downloadWithProgress(fileId, outputPath) {
   const files = await bucket.find({ _id: new ObjectId(fileId) }).toArray();
   const totalSize = files[0].length;
