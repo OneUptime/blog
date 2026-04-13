@@ -81,12 +81,10 @@ ASP pipelines are expressed as MongoDB aggregation stages. Open the Stream Proce
     }
   },
   {
-    "$merge": {
-      "into": {
-        "connectionName": "atlasSource",
-        "db": "sensors",
-        "coll": "alerts"
-      }
+    "$emit": {
+      "connectionName": "atlasSource",
+      "db": "sensors",
+      "coll": "alerts"
     }
   }
 ]
@@ -137,11 +135,9 @@ Configure a dead letter queue to capture messages that fail processing:
   "$source": {
     "connectionName": "kafkaSource",
     "topic": "orders",
-    "config": {
-      "deadLetterQueue": {
-        "connectionName": "kafkaSource",
-        "topic": "orders-dlq"
-      }
+    "dlq": {
+      "connectionName": "kafkaSource",
+      "topic": "orders-dlq"
     }
   }
 }
