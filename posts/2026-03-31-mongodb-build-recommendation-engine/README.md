@@ -18,8 +18,8 @@ MongoDB is well-suited for content-based and collaborative filtering recommendat
 // User interaction events
 {
   _id: ObjectId(),
-  userId: ObjectId("user-1"),
-  itemId: ObjectId("item-42"),
+  userId: ObjectId("64a1f8b2c9e7d3a5f8b2c9e7"),
+  itemId: ObjectId("64b2a9c3d8f6e4b7a9c3d8f6"),
   eventType: "view",       // "view", "purchase", "like", "share"
   score: 1,                // weight: view=1, like=2, purchase=5
   createdAt: ISODate()
@@ -122,10 +122,10 @@ async function getPopularItems(db, category, limit = 10) {
     { $match: { createdAt: { $gte: new Date(Date.now() - 7 * 86400 * 1000) } } },
     { $group: { _id: '$itemId', totalScore: { $sum: '$score' }, views: { $sum: 1 } } },
     { $sort: { totalScore: -1 } },
-    { $limit: limit },
     { $lookup: { from: 'items', localField: '_id', foreignField: '_id', as: 'item' } },
     { $unwind: '$item' },
     ...(category ? [{ $match: { 'item.category': category } }] : []),
+    { $limit: limit },
     { $project: { 'item.title': 1, 'item.category': 1, totalScore: 1 } },
   ]).toArray();
 }
