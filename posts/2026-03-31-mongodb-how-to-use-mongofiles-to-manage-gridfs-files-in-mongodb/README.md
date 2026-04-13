@@ -44,9 +44,6 @@ mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   put /p
 
 # Upload with a custom filename in GridFS
 mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   --local /path/to/document.pdf   put "reports/2026-q1-report.pdf"
-
-# Upload from stdin
-cat /path/to/image.jpg | mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   put "images/profile.jpg"
 ```
 
 ## Listing Files in GridFS
@@ -60,7 +57,7 @@ mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   list
 # profile.jpg           204800
 # data-export.csv       51200
 
-# Search for files matching a prefix
+# Search for files containing a substring
 mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   search "reports/"
 ```
 
@@ -74,7 +71,7 @@ mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   get "2
 mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   --local /tmp/downloaded-report.pdf   get "2026-q1-report.pdf"
 
 # Download by ObjectId
-mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   get_id '{"$oid": "65f1234567890abcdef12345"}'
+mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   get_id '{"$oid": "65f1234567890abcdef012345"}'
 ```
 
 ## Deleting Files from GridFS
@@ -84,16 +81,18 @@ mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   get_id
 mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   delete "old-report.pdf"
 
 # Delete by ObjectId
-mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   delete_id '{"$oid": "65f1234567890abcdef12345"}'
+mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   delete_id '{"$oid": "65f1234567890abcdef012345"}'
 ```
 
 ## Working with Custom Chunk Size
 
-The default GridFS chunk size is 255KB. Change it for large file optimization:
+The default GridFS chunk size is 255KB. To use a different chunk size, configure it through the GridFSBucket API in your application driver rather than the `mongofiles` CLI:
 
-```bash
-# Upload with a 1MB chunk size
-mongofiles   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   --chunkSize 1048576   put /path/to/large-video.mp4
+```javascript
+// Node.js example: upload with a 1MB chunk size
+const bucket = new GridFSBucket(db, { chunkSizeBytes: 1048576 });
+const uploadStream = bucket.openUploadStream('large-video.mp4');
+fs.createReadStream('/path/to/large-video.mp4').pipe(uploadStream);
 ```
 
 ## Querying GridFS Metadata in mongosh
