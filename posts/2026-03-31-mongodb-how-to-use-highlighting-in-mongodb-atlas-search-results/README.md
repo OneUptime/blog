@@ -83,8 +83,8 @@ db.articles.aggregate([
       },
       highlight: {
         path: ["title", "summary", "content"],
-        maxNumPassages: 3,     // max number of text passages per field
-        maxCharsToExamine: 100000  // max characters to analyze per field
+        maxNumPassages: 3,     // max number of text passages per document
+        maxCharsToExamine: 100000  // max characters to analyze per document
       }
     }
   },
@@ -102,8 +102,8 @@ db.articles.aggregate([
 ```javascript
 highlight: {
   path: "content",
-  maxNumPassages: 5,       // max snippets to return per field (default: 5)
-  maxCharsToExamine: 500000  // max chars to scan (default: 500000)
+  maxNumPassages: 5,       // max snippets to return per document (default: 5)
+  maxCharsToExamine: 500000  // max chars to scan per document (default: 500000)
 }
 ```
 
