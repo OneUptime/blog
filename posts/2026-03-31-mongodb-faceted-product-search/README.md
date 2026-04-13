@@ -127,7 +127,7 @@ db.products.createIndex({ "attributes.color": 1, category: 1 });
 
 ## Handling Multi-Select Facets
 
-When a user selects multiple brands, apply them as an `$in` filter but exclude that field from the brand facet aggregation so all brand options remain visible:
+When a user selects multiple brands, exclude the brand filter from the outer `$match` and apply it only inside the `results` sub-pipeline so all brand options remain visible in the facet counts:
 
 ```javascript
 const brandFilter = selectedBrands.length
@@ -135,11 +135,10 @@ const brandFilter = selectedBrands.length
   : {};
 
 db.products.aggregate([
-  { $match: { category: "footwear", ...brandFilter } },
+  { $match: { category: "footwear" } }, // no brandFilter here
   { $facet: {
-    results:     [{ $limit: 20 }],
+    results:     [{ $match: brandFilter }, { $limit: 20 }],
     brandFacet:  [
-      { $match: { category: "footwear" } }, // omit brandFilter here
       { $group: { _id: "$brand", count: { $sum: 1 } } }
     ]
   }}
