@@ -56,7 +56,7 @@ The `filter` option limits which events are logged. Without a filter, all audita
 Log only authentication failures:
 
 ```yaml
-filter: '{ atype: "authenticate", "param.result": { $ne: 0 } }'
+filter: '{ atype: "authenticate", result: { $ne: 0 } }'
 ```
 
 Log DDL and user management events:
