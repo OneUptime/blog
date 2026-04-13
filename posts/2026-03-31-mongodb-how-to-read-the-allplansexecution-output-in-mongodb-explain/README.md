@@ -104,12 +104,13 @@ db.orders.explain("allPlansExecution").aggregate([
 
 ## Understanding the Trial Phase
 
-The optimizer runs each candidate plan in parallel for a limited trial period (up to 101 documents or until the fastest plan wins). The `allPlansExecution` array shows stats from this trial, not the full execution.
+The optimizer runs each candidate plan in a round-robin fashion during a limited trial period. The first plan to return 101 results wins. The `allPlansExecution` array shows stats from this trial, not the full execution.
 
 ```text
 Trial phase rules:
-- Each plan is given up to 101 "works" (internal execution units)
-- The first plan to return 101 results OR complete wins
+- Plans compete in rounds of "works" (internal execution units)
+- The first plan to return 101 results (internalQueryPlanEvaluationMaxResults) OR complete wins
+- Each plan has a work budget controlled by internalQueryPlanEvaluationWorks (default 10000)
 - Stats are trial-phase only - not reflective of full query execution
 - The winning plan is then run to completion
 ```
@@ -200,8 +201,8 @@ plans.forEach((plan, i) => {
 If a less optimal plan wins, consider:
 
 ```javascript
-// 1. Check if index statistics are stale - reindex
-db.orders.reIndex();
+// 1. Clear the plan cache to discard stale cached plans
+db.orders.getPlanCache().clear();
 
 // 2. Use hint to force a specific index
 db.orders.find({ status: "pending", region: "west" }).hint("status_region_1");
@@ -213,13 +214,10 @@ db.runCommand({
   indexes: [{ status: 1, region: 1 }]
 });
 
-// 4. Check plan cache
+// 4. Check plan cache for stale entries
 db.orders.getPlanCache().list();
-
-// 5. Clear plan cache if outdated plans are cached
-db.orders.getPlanCache().clear();
 ```
 
 ## Summary
 
-`allPlansExecution` verbosity in MongoDB's `explain()` provides the most complete picture of query optimization by showing trial-phase execution statistics for every candidate plan, not just the winner. By comparing `keysExamined / nReturned` ratios across plans, you can confirm whether the optimizer made the right choice and diagnose cases where a better index is being ignored due to stale statistics or plan cache entries. Always pair it with `executionStats` verbosity when investigating slow queries.
+`allPlansExecution` verbosity in MongoDB's `explain()` provides the most complete picture of query optimization by showing trial-phase execution statistics for every candidate plan, not just the winner. By comparing `keysExamined / nReturned` ratios across plans, you can confirm whether the optimizer made the right choice and diagnose cases where a better index is being ignored due to stale plan cache entries. Since `allPlansExecution` is a superset of `executionStats`, it is the best single verbosity level to use when investigating slow queries.
