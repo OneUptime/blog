@@ -10,13 +10,13 @@ Description: Learn how to use fuzzy matching in MongoDB Atlas Search to tolerate
 
 ## What Is Fuzzy Matching
 
-Fuzzy matching finds documents whose field values are similar but not identical to the query term. It uses Levenshtein distance (edit distance) to measure how many single-character insertions, deletions, or substitutions separate the query from a stored token.
+Fuzzy matching finds documents whose field values are similar but not identical to the query term. It uses Damerau-Levenshtein distance (edit distance) to measure how many single-character insertions, deletions, substitutions, or transpositions of adjacent characters separate the query from a stored token.
 
 ```mermaid
 flowchart TD
     Q["User types: 'Mongdob'"] --> F[Fuzzy match: maxEdits=1]
     F --> C{Edit distance <= 1?}
-    C -->|"'MongoDB' (1 substitution)"| Match[Returned as result]
+    C -->|"'MongoDB' (1 transposition)"| Match[Returned as result]
     C -->|"'PostgreSQL' (7 edits)"| NoMatch[Excluded]
     Match --> Ranked[Scored by similarity + relevance]
 ```
@@ -38,7 +38,7 @@ async function fuzzySearch(query) {
           query: query,
           path: "title",
           fuzzy: {
-            maxEdits: 1,       // 0 = exact, 1 = one edit, 2 = two edits (max)
+            maxEdits: 1,       // 1 = one edit, 2 = two edits (max allowed)
             prefixLength: 3,   // first 3 chars must match exactly (improves precision)
             maxExpansions: 50  // max number of terms considered for each token
           }
@@ -197,7 +197,7 @@ async function fuzzyPhraseSearch(query) {
 
 | Parameter | Values | Effect |
 |---|---|---|
-| `maxEdits` | 0, 1, 2 | Maximum Levenshtein distance. 0 = exact, 2 = most lenient |
+| `maxEdits` | 1, 2 | Maximum Damerau-Levenshtein distance. 1 = one edit, 2 = most lenient (default) |
 | `prefixLength` | integer >= 0 | Characters at the start that must match exactly; reduces false positives |
 | `maxExpansions` | integer | Number of terms the fuzzy query expands to; limit for performance |
 
