@@ -19,7 +19,7 @@ flowchart TD
     Fed --> Archive[Atlas Online Archive\n(warm data)]
     Fed --> S3["Amazon S3\n(cold data / data lake)"]
     Fed --> GCS[Google Cloud Storage]
-    Fed --> ADLS[Azure Data Lake Storage]
+    Fed --> ABS[Azure Blob Storage]
     Fed --> Results[Unified query results]
 ```
 
@@ -32,8 +32,8 @@ flowchart TD
 
 The connection string looks like a standard MongoDB URI:
 
-```yaml
-mongodb://cluster0-shard-00-00.atlas.mongodb.net:27017/?authSource=%24external&ssl=true
+```text
+mongodb://federateddw-abcde.a.query.mongodb.net:27017/?authSource=%24external&tls=true
 ```
 
 For federation the endpoint is provided in the Atlas UI under **Data Federation** > **Connect**.
@@ -44,7 +44,7 @@ Atlas Data Federation uses a JSON storage configuration that maps virtual databa
 
 ```javascript
 // Example storage configuration via Atlas Admin API
-// POST /api/atlas/v1.0/groups/{groupId}/dataFederation
+// POST /api/atlas/v2/groups/{groupId}/dataFederation
 
 {
   "name": "FederatedDW",
