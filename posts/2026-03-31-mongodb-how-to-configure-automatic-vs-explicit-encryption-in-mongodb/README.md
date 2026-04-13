@@ -22,15 +22,15 @@ The driver encrypts fields automatically based on a JSON schema you define. Your
 
 ### Requirements
 
-- MongoDB Enterprise 6.0+ or MongoDB Atlas 6.0+
+- MongoDB Enterprise 7.0+ or MongoDB Atlas 7.0+ (6.0 had a preview that is now deprecated and incompatible)
+- MongoDB 8.0+ for range queries on encrypted fields
 - MongoDB driver version supporting QE
-- `mongocryptd` or `crypt_shared` library
+- `mongocryptd` or `crypt_shared` library (`crypt_shared` is recommended for new projects)
 
 ### Step 1: Set Up Key Management
 
 ```javascript
 const { MongoClient, ClientEncryption } = require('mongodb');
-const { Binary } = require('bson');
 
 // Local key provider (development only - use AWS KMS, Azure, or GCP in production)
 const localMasterKey = require('crypto').randomBytes(96);
@@ -132,7 +132,7 @@ With explicit encryption, your application code manually calls `encrypt()` and `
 
 - You need to encrypt values before storing them in non-standard locations (nested arrays, dynamic fields)
 - You want to encrypt the same value with different keys for different contexts
-- You need encryption in older MongoDB versions or without mongocryptd
+- You want encryption without requiring `mongocryptd` or `crypt_shared`
 
 ### Step 1: Encrypt Explicitly
 
@@ -150,8 +150,9 @@ const clientEncryption = new ClientEncryption(client, {
 // Encrypt a value explicitly
 const encryptedSSN = await clientEncryption.encrypt("123-45-6789", {
   algorithm: "Indexed",      // For queryable fields
-  keyId: dataKeyId
-  // or keyAltName: "patient-data-key"
+  keyId: dataKeyId,
+  queryType: "equality",
+  contentionFactor: 4
 });
 
 // For non-queryable fields use "Unindexed"
@@ -192,8 +193,8 @@ console.log("Record:", recordPlaintext);
 | Schema definition | Required | Not required |
 | Flexibility | Lower | Higher |
 | Queries on encrypted fields | Yes (configured) | Manual query construction |
-| `mongocryptd` required | Yes | No |
-| MongoDB version | 6.0+ Enterprise/Atlas | Any |
+| `mongocryptd`/`crypt_shared` required | Yes | No |
+| MongoDB version | 7.0+ Enterprise/Atlas | 7.0+ Enterprise/Atlas |
 
 ## KMS Provider: AWS KMS (Production)
 
