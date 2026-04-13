@@ -14,6 +14,7 @@ The `geoShape` operator in MongoDB Atlas Search performs geometry-based matching
 
 | Relation | Description |
 |---|---|
+| `contains` | Stored geometry entirely contains the query geometry |
 | `within` | Stored geometry is entirely inside the query geometry |
 | `intersects` | Stored geometry overlaps with the query geometry |
 | `disjoint` | Stored geometry has no overlap with the query geometry |
@@ -27,10 +28,12 @@ Fields must be indexed as `geo` type:
   "mappings": {
     "fields": {
       "area": {
-        "type": "geo"
+        "type": "geo",
+        "indexShapes": true
       },
       "boundary": {
-        "type": "geo"
+        "type": "geo",
+        "indexShapes": true
       }
     }
   }
@@ -198,12 +201,12 @@ db.parks.aggregate([
 
 ```text
 Operator   | Input geometry types   | Relations supported
------------|------------------------|-----------------------------
-geoWithin  | Point documents only   | within (circle or polygon)
-geoShape   | Any GeoJSON geometry   | within, intersects, disjoint
+-----------|------------------------|----------------------------------------------
+geoWithin  | Point documents only   | within (box, circle, or polygon)
+geoShape   | Any GeoJSON geometry   | contains, within, intersects, disjoint
 ```
 
 ## Summary
 
-The `geoShape` operator enables advanced spatial relationship matching in Atlas Search, supporting `within`, `intersects`, and `disjoint` relations between stored GeoJSON geometries and a query shape. It is best suited for applications with polygon-based geographic data, such as service areas, delivery zones, or land parcel management.
+The `geoShape` operator enables advanced spatial relationship matching in Atlas Search, supporting `contains`, `within`, `intersects`, and `disjoint` relations between stored GeoJSON geometries and a query shape. It is best suited for applications with polygon-based geographic data, such as service areas, delivery zones, or land parcel management.
 
