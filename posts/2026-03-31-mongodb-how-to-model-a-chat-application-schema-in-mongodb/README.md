@@ -225,6 +225,8 @@ async function sendMessage(channelId, senderId, text) {
   } catch (e) {
     await session.abortTransaction();
     throw e;
+  } finally {
+    session.endSession();
   }
 }
 ```
