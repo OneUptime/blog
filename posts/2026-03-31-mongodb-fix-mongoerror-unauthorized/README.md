@@ -100,7 +100,7 @@ db.createRole({
   privileges: [
     {
       resource: { db: "mydb", collection: "orders" },
-      actions: ["find", "aggregate"]
+      actions: ["find"]
     }
   ],
   roles: []
