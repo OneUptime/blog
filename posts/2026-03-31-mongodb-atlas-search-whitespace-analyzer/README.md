@@ -22,7 +22,7 @@ It does NOT lowercase tokens, does NOT split on punctuation, and performs no sto
 Input: "New York, NY - 10001"
 
 Whitespace analyzer tokens: ["New", "York,", "NY", "-", "10001"]
-Simple analyzer tokens:     ["new", "york", "ny", "10001"]  (wait - discards "10001")
+Simple analyzer tokens:     ["new", "york", "ny"]  (discards numbers like "10001")
 Standard analyzer tokens:   ["new", "york", "ny", "10001"]
 ```
 
