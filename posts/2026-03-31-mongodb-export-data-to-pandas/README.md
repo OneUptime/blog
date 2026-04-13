@@ -134,7 +134,7 @@ schema = pa.schema([
     ("status", pa.string())
 ])
 
-df = col.find({"status": "completed"}, schema=schema).to_pandas()
+df = col.find_pandas_all({"status": "completed"}, schema=schema)
 print(df.memory_usage(deep=True))
 ```
 
