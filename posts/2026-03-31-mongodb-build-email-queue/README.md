@@ -63,9 +63,10 @@ async function claimNextJob() {
 
   return db.collection("emailQueue").findOneAndUpdate(
     {
-      status: "pending",
-      processAfter: { $lte: now },
-      $or: [{ lockedAt: null }, { lockedAt: { $lt: lockExpiry } }],
+      $or: [
+        { status: "pending", processAfter: { $lte: now } },
+        { status: "processing", lockedAt: { $lt: lockExpiry } },
+      ],
     },
     {
       $set: {
@@ -97,7 +98,7 @@ async function processEmailWorker() {
 
       await db.collection("emailQueue").updateOne(
         { _id: job._id },
-        { $set: { status: "sent", sentAt: new Date(), lockedAt: null } }
+        { $set: { status: "sent", sentAt: new Date(), lockedAt: null, lockedBy: null } }
       );
     } catch (err) {
       const nextStatus = job.attempts >= job.maxAttempts ? "dead" : "pending";
