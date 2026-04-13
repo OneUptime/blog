@@ -142,7 +142,7 @@ db.employees.createIndex({ "personalInfo.lastName": 1, "personalInfo.firstName":
 
 // Leave management
 db.leaveRequests.createIndex({ employeeId: 1, startDate: -1 })
-db.leaveRequests.createIndex({ "workInfo.departmentId": 1, status: 1, startDate: 1 })
+db.leaveRequests.createIndex({ status: 1, startDate: 1 })
 
 // Performance reviews
 db.performanceReviews.createIndex({ employeeId: 1, period: 1 }, { unique: true })
