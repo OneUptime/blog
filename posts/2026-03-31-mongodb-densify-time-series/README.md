@@ -267,7 +267,7 @@ db.metrics.aggregate([
 ## Important Constraints
 
 - `$densify` only generates documents; it does not fill values in generated documents (use `$fill` for that).
-- The `step` must be a positive integer.
+- The `step` must be a positive integer when used with date fields (when `unit` is specified). For numeric fields, `step` can be any positive number.
 - `bounds: "partition"` uses the min and max of the field within each partition; `bounds: "full"` uses the global min and max.
 - When using `bounds: [lower, upper]`, the lower bound is inclusive and the upper bound is exclusive.
 
