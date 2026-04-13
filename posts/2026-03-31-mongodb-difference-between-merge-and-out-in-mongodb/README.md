@@ -29,7 +29,7 @@ db.orders.aggregate([
 
 Key behaviors of `$out`:
 - Replaces the entire target collection atomically
-- Drops existing indexes on the target collection
+- Preserves existing indexes from the target collection
 - Cannot write to a sharded collection
 - Only available as the last stage in a pipeline
 
@@ -92,7 +92,7 @@ db.orders.aggregate([
 |---|---|---|
 | MongoDB version | 2.6+ | 4.2+ |
 | Replaces collection | Yes (always) | No |
-| Preserves indexes | No | Yes |
+| Preserves indexes | Yes | Yes |
 | Sharded target | No | Yes |
 | Upsert support | No | Yes |
 | Incremental updates | No | Yes |
@@ -118,7 +118,7 @@ db.sales.aggregate([
 Use `$merge` when you need to:
 - Incrementally update a running summary without full rebuilds
 - Write to a sharded collection
-- Preserve existing indexes and data not touched by the pipeline
+- Preserve existing data not touched by the pipeline
 
 ```javascript
 // Incrementally update totals as new orders arrive
@@ -137,4 +137,4 @@ db.new_orders.aggregate([
 
 ## Summary
 
-`$out` is a blunt instrument that replaces an entire collection, making it ideal for scheduled full refreshes of reporting tables. `$merge` is the more powerful option, enabling true incremental materialized views by merging pipeline results into existing collections. For any workload requiring upserts, sharded targets, or preserved indexes, `$merge` is the correct choice.
+`$out` is a blunt instrument that replaces an entire collection, making it ideal for scheduled full refreshes of reporting tables. `$merge` is the more powerful option, enabling true incremental materialized views by merging pipeline results into existing collections. For any workload requiring upserts, sharded targets, or incremental updates, `$merge` is the correct choice.
