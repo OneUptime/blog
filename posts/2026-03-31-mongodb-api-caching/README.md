@@ -134,9 +134,9 @@ In addition to server-side caching, set HTTP cache headers so browsers and CDNs 
 
 ```javascript
 app.get('/api/products', cacheMiddleware(300), async (req, res) => {
+    const products = await Product.find().lean();
     res.set('Cache-Control', 'public, max-age=300');
-    res.set('ETag', generateETag(products));
-    // ...
+    await res.sendCached(products);
 });
 ```
 
