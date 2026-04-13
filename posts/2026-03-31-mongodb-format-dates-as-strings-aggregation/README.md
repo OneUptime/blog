@@ -40,7 +40,7 @@ This produces output like `"2026-01-15"`.
 | `%d` | Day (01-31) | 15 |
 | `%H` | Hour (00-23) | 10 |
 | `%M` | Minute (00-59) | 30 |
-| `%S` | Second (00-60) | 00 |
+| `%S` | Second (00-59) | 00 |
 | `%L` | Millisecond (000-999) | 000 |
 
 ## Formatting with Timezone
