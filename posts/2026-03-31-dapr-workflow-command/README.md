@@ -24,13 +24,13 @@ dapr workflow run \
 The command returns the workflow instance ID:
 
 ```text
-Successfully started workflow. Instance ID: abc12345-1234-1234-1234-abc123456789
+Workflow instance started successfully: abc12345-1234-1234-1234-abc123456789
 ```
 
 ## Checking Workflow Status
 
 ```bash
-dapr workflow history abc12345-1234-1234-1234-abc123456789 --app-id order-processor
+dapr workflow history abc12345-1234-1234-1234-abc123456789 --app-id order-processor --output json
 ```
 
 Sample output:
@@ -90,12 +90,12 @@ Start a workflow and poll for completion:
 INSTANCE_ID=$(dapr workflow run \
   OrderFulfillmentWorkflow \
   --app-id order-processor \
-  --input '{"orderId":"ord-999"}' | grep "Instance ID" | awk '{print $NF}')
+  --input '{"orderId":"ord-999"}' | grep "successfully" | awk '{print $NF}')
 
 echo "Started workflow: $INSTANCE_ID"
 
 while true; do
-  STATUS=$(dapr workflow history $INSTANCE_ID --app-id order-processor | jq -r '.runtimeStatus')
+  STATUS=$(dapr workflow history $INSTANCE_ID --app-id order-processor --output json | jq -r '.runtimeStatus')
 
   echo "Status: $STATUS"
   if [[ "$STATUS" == "COMPLETED" || "$STATUS" == "FAILED" ]]; then
