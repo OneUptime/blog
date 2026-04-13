@@ -120,30 +120,12 @@ db.exchange_rates.aggregate([
 ])
 ```
 
-## Handling Authentication
+## Authentication Limitations
 
-For authenticated APIs, use Atlas Data Federation's allowedHosts and secrets configuration. Secrets are stored in Atlas and referenced by name:
+Atlas Data Federation HTTP stores only support publicly accessible URLs that do not require authentication. You cannot configure custom headers or authentication credentials on HTTP store requests. If you need to query authenticated APIs, consider these alternatives:
 
-```json
-{
-  "stores": [
-    {
-      "name": "authenticated-api",
-      "provider": "http",
-      "urls": ["https://internal-api.company.com"],
-      "defaultFormat": ".json",
-      "headers": [
-        {
-          "name": "Authorization",
-          "value": "Bearer {secret:api_bearer_token}"
-        }
-      ]
-    }
-  ]
-}
-```
-
-Store the secret value in Atlas project settings under Data Federation secrets.
+- Place an unauthenticated reverse proxy or API gateway in front of the authenticated service that restricts access by IP allowlisting
+- Periodically fetch data from the authenticated API and store it in S3 or an Atlas collection, then query that data source through Data Federation instead
 
 ## Multiple Endpoint URLs
 
