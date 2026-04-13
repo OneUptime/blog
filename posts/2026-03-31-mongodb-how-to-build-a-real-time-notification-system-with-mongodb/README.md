@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Notification, Change Stream, Real-Time, WebSocket
+Tags: MongoDB, Notification, Change Stream, Real-Time, SSE
 
 Description: Build a scalable real-time notification system using MongoDB Change Streams to push updates to users as events occur in your application.
 
@@ -266,9 +266,15 @@ class NotificationClient {
   }
 
   connect() {
+    // Close any existing connection before reconnecting
+    if (this.eventSource) {
+      this.eventSource.close()
+    }
+
+    // EventSource does not support custom headers, so pass the token
+    // as a query parameter. The server must read it from the query string.
     this.eventSource = new EventSource(
-      `/api/notifications/stream`,
-      { headers: { Authorization: `Bearer ${this.authToken}` } }
+      `/api/notifications/stream?token=${encodeURIComponent(this.authToken)}`
     )
 
     this.eventSource.onmessage = (event) => {
@@ -286,6 +292,7 @@ class NotificationClient {
     }
 
     this.eventSource.onerror = () => {
+      this.eventSource.close()
       // Reconnect after 5 seconds
       setTimeout(() => this.connect(), 5000)
     }
