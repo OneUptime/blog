@@ -111,7 +111,7 @@ async function refreshRollingView() {
 
   // Remove data older than 30 days from the view
   await db.collection("rolling_summary").deleteMany({
-    date: { $lt: thirtyDaysAgo.toISOString().slice(0, 10) }
+    "_id.date": { $lt: thirtyDaysAgo.toISOString().slice(0, 10) }
   });
 
   // Merge today's aggregation

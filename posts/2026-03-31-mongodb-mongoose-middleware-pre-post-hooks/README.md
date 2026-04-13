@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Mongoose, Middleware, Hook, Node.js
 
-Description: Learn how to use Mongoose pre and post middleware hooks to run logic before and after document operations like save, validate, and remove.
+Description: Learn how to use Mongoose pre and post middleware hooks to run logic before and after document operations like save, validate, and deleteOne.
 
 ---
 
 ## Overview
 
-Mongoose middleware (also called hooks) are functions that execute before or after specific operations such as `save`, `validate`, `find`, and `remove`. They allow you to separate cross-cutting concerns like password hashing, auditing, and cascading deletes from your core business logic.
+Mongoose middleware (also called hooks) are functions that execute before or after specific operations such as `save`, `validate`, `find`, and `deleteOne`. They allow you to separate cross-cutting concerns like password hashing, auditing, and cascading deletes from your core business logic.
 
 ## Document Middleware
 
-Document middleware runs on document instances. Common hooks: `validate`, `save`, `remove`, `init`.
+Document middleware runs on document instances. Common hooks: `validate`, `save`, `deleteOne`, `init`.
 
 ```javascript
 const bcrypt = require('bcryptjs');

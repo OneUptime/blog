@@ -53,7 +53,7 @@ mysql -u root -p myapp --batch --silent -e "
 SELECT 'id','name','email','created_at','status'
 UNION
 SELECT id, name, email, created_at, status FROM users;
-" > /tmp/users_with_headers.csv
+" > /tmp/users_with_headers.tsv
 ```
 
 ## Step 2: Export to JSON for Better Type Preservation
@@ -61,7 +61,7 @@ SELECT id, name, email, created_at, status FROM users;
 JSON export preserves types better than CSV:
 
 ```bash
-# Using mysqldump with JSON mode (MySQL 8.0+)
+# Using JSON_OBJECT function (MySQL 5.7.22+)
 mysql -u root -p myapp -e "
 SELECT JSON_OBJECT(
   'id', id,
@@ -163,7 +163,7 @@ print("Orders exported with embedded items")
 
 ## Step 4: Import with mongoimport
 
-Import a JSON Lines file (one document per line):
+Import a JSON array file (all documents wrapped in a single array):
 
 ```bash
 mongoimport \
@@ -171,7 +171,7 @@ mongoimport \
   --db myapp \
   --collection users \
   --file /tmp/users.json \
-  --jsonArray  # if the file is a JSON array
+  --jsonArray
 ```
 
 For JSON Lines format (one document per line, no array wrapper):
@@ -184,16 +184,16 @@ mongoimport \
   --file /tmp/users.json
 ```
 
-For CSV with a header row:
+For TSV with a header row (produced by `mysql --batch`):
 
 ```bash
 mongoimport \
   --uri "mongodb://admin:password@localhost:27017/?authSource=admin" \
   --db myapp \
   --collection users \
-  --type csv \
+  --type tsv \
   --headerline \
-  --file /tmp/users_with_headers.csv
+  --file /tmp/users_with_headers.tsv
 ```
 
 ## Step 5: Create Indexes
@@ -202,7 +202,7 @@ After import, create indexes to match your query patterns:
 
 ```javascript
 // Connect with mongosh
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 
 // Index for common queries
 db.users.createIndex({ email: 1 }, { unique: true });
@@ -218,7 +218,7 @@ db.orders.createIndex({ "items.productId": 1 });
 Compare document counts:
 
 ```bash
-# MySQL row counts
+# MySQL row counts (table_rows is approximate for InnoDB; use COUNT(*) per table for exact counts)
 mysql -u root -p myapp -e "
 SELECT table_name, table_rows
 FROM information_schema.tables
@@ -228,7 +228,7 @@ WHERE table_schema = 'myapp';
 
 ```javascript
 // MongoDB document counts
-const db = db.getSiblingDB("myapp");
+db = db.getSiblingDB("myapp");
 db.getCollectionNames().forEach(c => {
   print(c + ": " + db[c].countDocuments());
 });

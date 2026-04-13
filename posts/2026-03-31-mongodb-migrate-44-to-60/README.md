@@ -40,10 +40,10 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 Check for deprecated usage:
 
 ```bash
-# Run the MongoDB compatibility check tool
-mongocryptd --enableTestCommands 1 --port 27020 &
+# Review MongoDB log for deprecation warnings
+grep -i "deprecat" /var/log/mongodb/mongod.log
 
-# Or use mongosh to check for schema validation issues
+# Use mongosh to list databases and check for schema validation issues
 mongosh "mongodb://localhost:27017" --eval "db.adminCommand({ listDatabases: 1 })"
 ```
 
@@ -90,10 +90,10 @@ db.serverStatus().version
 // "5.0.x"
 ```
 
-Wait for replication to catch up:
+Wait for the secondary to catch up with the primary:
 
 ```javascript
-rs.printReplicationInfo()
+rs.printSecondaryReplicationInfo()
 ```
 
 Repeat for each secondary.
@@ -161,9 +161,9 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 ### Changes in MongoDB 6.0
 
 - `$lookup` and `$graphLookup` now support `let` and pipeline stages in more contexts
-- The `aggregate` command with `$out` requires write concern
+- Aggregation pipeline stages that require more than 100 megabytes of memory now write temporary files to disk by default
 - `$near` and `$nearSphere` no longer supported in aggregation `$match` on time-series collections
-- `BinData` subtype 3 (UUID) behavior standardized
+- Legacy UUID `BinData` subtype 3 handling improved across drivers (subtype 4 is the standard UUID representation)
 
 Check for usage of removed operators:
 

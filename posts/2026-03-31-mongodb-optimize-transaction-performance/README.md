@@ -43,7 +43,7 @@ await session.withTransaction(async (session) => {
 
 ## Read Before Write - Minimize Reads Inside Transactions
 
-Reads inside transactions use `snapshot` isolation and hold read locks. Move non-critical reads outside:
+Reads inside transactions extend the transaction's duration, increasing the chance of write conflicts and timeouts. Move non-critical reads outside:
 
 ```javascript
 // Pre-read catalog data

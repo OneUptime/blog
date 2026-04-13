@@ -100,11 +100,11 @@ This is useful for cursor-based pagination.
 
 ## Detect In-Memory Sort in Logs
 
-Enable the slow query profiler and look for `SORT` in the `planSummary`:
+Enable the slow query profiler and look for queries with in-memory sort stages:
 
 ```javascript
 db.setProfilingLevel(1, { slowms: 50 });
-db.system.profile.find({ planSummary: /SORT/ }).sort({ ts: -1 }).limit(5);
+db.system.profile.find({ hasSortStage: true }).sort({ ts: -1 }).limit(5);
 ```
 
 ## Summary

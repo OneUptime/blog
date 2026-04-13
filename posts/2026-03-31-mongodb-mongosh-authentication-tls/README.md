@@ -106,12 +106,14 @@ Atlas uses well-known CAs, so no custom `--tlsCAFile` is needed.
 
 ## Verifying the TLS Connection
 
-After connecting, confirm TLS is active:
+After connecting, confirm TLS is active by checking the server's TLS configuration and connection security:
 
 ```javascript
-db.adminCommand({ connectionStatus: 1 })
-// Look for "sslMode" in the response
+db.adminCommand({ serverStatus: 1 }).security
+// Shows TLS version info and connection counts
+
 db.adminCommand({ getCmdLineOpts: 1 }).parsed.net.tls
+// Shows the server's TLS startup configuration (requires getCmdLineOpts privilege)
 ```
 
 ## Summary

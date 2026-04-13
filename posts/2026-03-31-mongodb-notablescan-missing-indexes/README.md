@@ -45,7 +45,7 @@ db.users.find({ email: "test@example.com" });
 Error output:
 
 ```text
-MongoServerError: No query solutions
+MongoServerError: No indexed plans available, and running with 'notablescan'
 ```
 
 This signals that you need to create an index:
@@ -100,7 +100,7 @@ mongod --setParameter notablescan=true
 
 Run your full application test suite. Any COLLSCAN will throw an error, surfacing missing indexes before deployment.
 
-**Do not use `notablescan` in production** without careful consideration. Internal MongoDB operations (like `db.adminCommand` and initial sync) can perform collection scans and will fail if this parameter is enabled.
+**Do not use `notablescan` in production** without careful consideration. Internal MongoDB operations (like administrative queries against internal collections) can perform collection scans and will fail if this parameter is enabled.
 
 ## Checking Current Setting
 

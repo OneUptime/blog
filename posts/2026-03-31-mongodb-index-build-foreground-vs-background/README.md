@@ -14,9 +14,10 @@ Building indexes on large collections can take minutes to hours. Understanding h
 
 Starting with MongoDB 4.2, the distinction between foreground and background index builds was eliminated. All index builds now use an optimized hybrid approach:
 
-1. Takes an exclusive lock (`X`) at the start and end of the build
-2. Runs the main scan phase with a less restrictive intent lock (`IX`), allowing concurrent reads and writes
-3. Takes another `X` lock at the end to finalize
+1. Takes an exclusive lock (`X`) at the start to initialize
+2. Runs the main scan phase with a less restrictive intent exclusive lock (`IX`), allowing concurrent reads and writes
+3. Upgrades to a shared lock (`S`) during the drain phase, blocking writes but allowing reads
+4. Takes an exclusive lock (`X`) at the end to finalize and commit the index
 
 This means you no longer need a `background: true` option - it is effectively ignored and the behavior is always "hybrid" (safe for production).
 
@@ -68,14 +69,14 @@ Sample output:
 
 ## Terminating an Index Build
 
-If you need to abort an in-progress build:
+If you need to abort an in-progress build, use `dropIndex()` with the index name or specification:
 
 ```javascript
-// Get the opid from currentOp output
-db.killOp(12345)
+// Abort by dropping the in-progress index
+db.orders.dropIndex("idx_customer_created")
 ```
 
-On replica sets, killing the build on the primary propagates to secondaries.
+On replica sets, running `dropIndex()` on the primary creates an `abortIndexBuild` oplog entry that propagates to secondaries, stopping their builds as well. Do not use `db.killOp()` to terminate index builds on replica sets or sharded clusters.
 
 ## Index Builds on Replica Sets
 
@@ -102,10 +103,10 @@ The `mongos` sends the command to each shard's primary. Builds proceed in parall
 // List indexes to confirm the new index exists
 db.orders.getIndexes()
 
-// Or check stats
-db.orders.stats().indexDetails
+// Or check index details via stats
+db.orders.stats({ indexDetails: true }).indexDetails
 ```
 
 ## Summary
 
-MongoDB 4.2+ makes index builds safe for production by default using a hybrid locking strategy that allows concurrent reads and writes during the bulk scan phase. The `background: true` option is a no-op on modern versions. Use `db.currentOp()` to monitor active builds and `db.killOp()` to abort them if needed. For zero-impact builds on replica sets, consider the rolling index build approach.
+MongoDB 4.2+ makes index builds safe for production by default using a hybrid locking strategy that allows concurrent reads and writes during the bulk scan phase. The `background: true` option is a no-op on modern versions. Use `db.currentOp()` to monitor active builds and `db.collection.dropIndex()` to abort them if needed. For zero-impact builds on replica sets, consider the rolling index build approach.

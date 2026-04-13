@@ -16,7 +16,6 @@ Percona Server for MongoDB (PSMDB) is a fully compatible, open-source drop-in re
 - In-memory storage engine
 - Audit logging
 - KMIP encryption at rest
-- MongoRocks storage engine (RocksDB)
 
 ## Installation on Ubuntu
 
@@ -24,7 +23,7 @@ Percona Server for MongoDB (PSMDB) is a fully compatible, open-source drop-in re
 # Add Percona repository
 wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
 sudo dpkg -i percona-release_latest.generic_all.deb
-sudo percona-release setup psmdb70
+sudo percona-release setup psmdb-70
 
 # Install
 sudo apt-get update
@@ -34,7 +33,7 @@ sudo apt-get install -y percona-server-mongodb
 ## Installation on RHEL / CentOS
 
 ```bash
-sudo percona-release setup psmdb70
+sudo percona-release setup psmdb-70
 sudo yum install -y percona-server-mongodb
 ```
 
@@ -51,7 +50,7 @@ Percona's hot backup feature lets you take a consistent backup without locks:
 
 ```javascript
 // Initiate a hot backup
-db.adminCommand({ createBackup: 1, backupDir: "/var/backups/mongodb/$(date +%F)" });
+db.runCommand({ createBackup: 1, backupDir: "/var/backups/mongodb/backup1" });
 ```
 
 This creates a consistent copy of the data files that can be restored by simply placing them in the `dbPath` directory.
@@ -82,17 +81,17 @@ tail -f /var/log/mongodb/audit.json | python3 -m json.tool
 
 ## Enable Encryption at Rest
 
-PSMDB supports KMIP-based encryption. For local testing, use the local key management option:
+PSMDB supports KMIP-based encryption. Configure the KMIP server connection in `/etc/mongod.conf`:
 
 ```yaml
 security:
   enableEncryption: true
-  encryptionKeyIdentifier: myKey
   kmip:
     serverName: kmip-server.example.com
     port: 5696
     clientCertificateFile: /etc/mongodb/kmip-client.pem
     serverCAFile: /etc/mongodb/kmip-ca.pem
+    keyIdentifier: myKey
 ```
 
 ## Use the In-Memory Storage Engine
@@ -132,4 +131,4 @@ PMM provides dashboards for query analytics, replication lag, and WiredTiger cac
 
 ## Summary
 
-Percona Server for MongoDB is a binary-compatible replacement for MongoDB Community that adds hot backups, audit logging, encryption at rest, and additional storage engines under the AGPL license. Installation follows the same process as MongoDB using the Percona repository. Hot backups, audit filtering, and the in-memory engine can be enabled through `mongod.conf` configuration without any application changes.
+Percona Server for MongoDB is a binary-compatible replacement for MongoDB Community that adds hot backups, audit logging, encryption at rest, and additional storage engines under the SSPL license. Installation follows the same process as MongoDB using the Percona repository. Hot backups, audit filtering, and the in-memory engine can be enabled through `mongod.conf` configuration without any application changes.

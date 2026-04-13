@@ -34,7 +34,7 @@ const activitySchema = new mongoose.Schema({
   recipientIds: [{ type: mongoose.Schema.Types.ObjectId, index: true }],
   // Flexible payload per type
   metadata: mongoose.Schema.Types.Mixed,
-  createdAt: { type: Date, default: Date.now, index: -1 },
+  createdAt: { type: Date, default: Date.now },
 });
 
 // Auto-delete activities older than 90 days
@@ -105,8 +105,7 @@ Push new activities to online users via Socket.io:
 ```javascript
 function watchActivities(io) {
   const stream = Activity.watch(
-    [{ $match: { operationType: 'insert' } }],
-    { fullDocument: 'updateLookup' }
+    [{ $match: { operationType: 'insert' } }]
   );
 
   stream.on('change', (change) => {

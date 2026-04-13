@@ -12,7 +12,7 @@ A multi-cloud MongoDB deployment spreads replica set members across AWS, GCP, Az
 
 ## Architecture Overview
 
-A standard multi-cloud replica set uses three members - one in each cloud - with a hidden arbiter or a majority of voting members in one region to control elections predictably.
+A standard multi-cloud replica set uses three members - one in each cloud - with an arbiter or a majority of voting members in one region to control elections predictably.
 
 ```text
 AWS us-east-1  --> PRIMARY
@@ -73,7 +73,7 @@ In your application, use a read preference that targets a specific tag:
 
 ```javascript
 const client = new MongoClient(uri, {
-  readPreference: ReadPreference.nearest,
+  readPreference: ReadPreference.NEAREST,
   readPreferenceTags: [{ cloud: "gcp" }, {}]
 })
 ```

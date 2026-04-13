@@ -120,7 +120,7 @@ rs.status()
 
 ## Step 7: Rotating the Keyfile
 
-MongoDB supports keyfile rotation in MongoDB 3.4+ using a transition period where both old and new keys are accepted:
+MongoDB supports keyfile rotation in MongoDB 3.6+ using a transition period where both old and new keys are accepted:
 
 ```yaml
 # Step A: Add the new key to all members (both old and new key in the file)

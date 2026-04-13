@@ -117,7 +117,7 @@ This streams documents one at a time without loading the entire collection into 
 
 ## Adding the Pagination Function as a Schema Static
 
-Encapsulate the logic in a plugin for reuse:
+Encapsulate the logic in a static method for reuse:
 
 ```javascript
 postSchema.statics.paginate = async function (query, { limit = 20, cursor } = {}) {

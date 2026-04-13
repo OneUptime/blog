@@ -34,8 +34,8 @@ async function timedBulkWrite(col, operations) {
     durationMs: duration,
     totalOps: operations.length,
     opsPerSecond,
-    nModified: result.nModified,
-    nUpserted: result.nUpserted
+    modifiedCount: result.modifiedCount,
+    upsertedCount: result.upsertedCount
   });
 
   return { result, durationMs: duration, opsPerSecond };

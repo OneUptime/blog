@@ -74,7 +74,6 @@ users = await col.find({"active": True}).to_list(length=100)
 ```python
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId
 import os
 
 app = FastAPI()

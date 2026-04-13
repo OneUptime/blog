@@ -15,7 +15,7 @@ mongosh provides tab-based autocomplete for database names, collection names, fi
 ```javascript
 // Type "db." then press Tab to see all available methods
 db.<Tab>
-// Shows: aggregate, collection, createCollection, dropDatabase, find, ...
+// Shows: adminCommand, aggregate, createCollection, dropDatabase, getCollection, runCommand, ...
 
 // Type "db.orders." then press Tab
 db.orders.<Tab>
@@ -105,25 +105,25 @@ Get help with query plans interactively:
 
 ```javascript
 // Check what explain modes are available
-db.orders.find({ status: "active" }).explain.help()
+db.orders.explain().find().help()
 ```
 
-## Using ? for Quick Reference
+## Using Method Names Without Parentheses
 
-In some versions, appending `?` provides quick docs:
+Type a method name without parentheses to see its help information:
 
 ```javascript
-db.orders.find?
+db.orders.find
 ```
 
 ## Checking mongosh Version and Build Info
 
 ```javascript
-mongosh --version         // from terminal
-version()                 // from inside mongosh
-buildInfo()               // detailed build information
+mongosh --version             // from terminal
+version()                     // mongosh shell version from inside mongosh
+db.serverBuildInfo()          // detailed server build information
 ```
 
 ## Summary
 
-mongosh's tab autocomplete covers database names, collection names, shell helper methods, and driver APIs. Use `db.collection.help()` for contextual method lists with descriptions, `Ctrl+R` for reverse history search, and `.explain.help()` to understand query plan options. These features significantly reduce the need to reference external documentation during interactive sessions.
+mongosh's tab autocomplete covers database names, collection names, shell helper methods, and driver APIs. Use `db.collection.help()` for contextual method lists with descriptions, `Ctrl+R` for reverse history search, and `db.collection.explain().find().help()` to understand query plan options. These features significantly reduce the need to reference external documentation during interactive sessions.

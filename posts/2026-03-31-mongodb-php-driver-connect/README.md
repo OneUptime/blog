@@ -79,15 +79,10 @@ $products = $db->selectCollection('products');
 ## Advanced Connection Options
 
 ```php
-use MongoDB\Driver\ReadPreference;
-use MongoDB\Driver\WriteConcern;
-
 $client = new Client('mongodb://localhost:27017', [
     'connectTimeoutMS'         => 5000,
     'socketTimeoutMS'          => 30000,
     'serverSelectionTimeoutMS' => 5000,
-    'maxPoolSize'              => 100,
-    'minPoolSize'              => 5,
     'readPreference'           => 'secondaryPreferred',
     'w'                        => 'majority',
 ]);
@@ -130,7 +125,7 @@ $client = new Client('mongodb://localhost:27017', [], [
     ],
 ]);
 
-// Return documents as stdClass objects (default)
+// Return documents as BSONDocument objects (default)
 $client = new Client('mongodb://localhost:27017', [], [
     'typeMap' => [
         'array'    => 'MongoDB\Model\BSONArray',
@@ -143,10 +138,18 @@ $client = new Client('mongodb://localhost:27017', [], [
 ## Mapping to Custom Classes
 
 ```php
-class Product {
+use MongoDB\BSON\Unserializable;
+
+class Product implements Unserializable {
     public string $name;
     public float $price;
     public string $category;
+
+    public function bsonUnserialize(array $data): void {
+        $this->name = $data['name'];
+        $this->price = (float) $data['price'];
+        $this->category = $data['category'];
+    }
 }
 
 $collection = $client->shopdb->selectCollection('products', [
@@ -170,4 +173,4 @@ $this->app->singleton(Client::class, function () {
 
 ## Summary
 
-Connecting to MongoDB from PHP requires the `ext-mongodb` PECL extension and the `mongodb/mongodb` Composer library. Create a `MongoDB\Client` with your URI, optionally pass a URI options array to configure timeouts and pool size, and a driver options array to set the type map. Always create the client once (singleton) and share it across requests. Use the type map to control whether documents are returned as BSON objects, PHP arrays, or custom PHP classes.
+Connecting to MongoDB from PHP requires the `ext-mongodb` PECL extension and the `mongodb/mongodb` Composer library. Create a `MongoDB\Client` with your URI, optionally pass a URI options array to configure timeouts and read/write preferences, and a driver options array to set the type map. Always create the client once (singleton) and share it across requests. Use the type map to control whether documents are returned as BSON objects, PHP arrays, or custom PHP classes.

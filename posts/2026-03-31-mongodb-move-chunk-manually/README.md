@@ -26,12 +26,15 @@ Connect to mongos and find the chunk:
 ```javascript
 use config
 
-// Find chunks for a specific collection
-db.chunks.find({ ns: "ecommerce.orders" }).sort({ min: 1 }).pretty()
+// Get the collection UUID (MongoDB 6.0+ uses uuid instead of ns in config.chunks)
+var collUUID = db.collections.findOne({ _id: "ecommerce.orders" }).uuid
+
+// Find chunks for the collection
+db.chunks.find({ uuid: collUUID }).sort({ min: 1 }).pretty()
 
 // Find the chunk containing a specific shard key value
 db.chunks.findOne({
-  ns: "ecommerce.orders",
+  uuid: collUUID,
   min: { $lte: { customerId: "CUST-5000" } },
   max: { $gt: { customerId: "CUST-5000" } }
 })
@@ -89,8 +92,9 @@ db.migrations.find().pretty()
 
 ```javascript
 use config
+var collUUID = db.collections.findOne({ _id: "ecommerce.orders" }).uuid
 db.chunks.findOne({
-  ns: "ecommerce.orders",
+  uuid: collUUID,
   min: { $lte: { customerId: "CUST-5000" } },
   max: { $gt: { customerId: "CUST-5000" } }
 })
@@ -124,9 +128,11 @@ splitPoints.forEach(function(point) {
 })
 
 // Then distribute chunks round-robin
+use config
+var collUUID = db.collections.findOne({ _id: "ecommerce.orders" }).uuid
 var chunks = db.chunks.find(
-  { ns: "ecommerce.orders" },
-  { min: 1 }
+  { uuid: collUUID },
+  { min: 1, shard: 1 }
 ).sort({ "min.customerId": 1 }).toArray()
 
 chunks.forEach(function(chunk, i) {

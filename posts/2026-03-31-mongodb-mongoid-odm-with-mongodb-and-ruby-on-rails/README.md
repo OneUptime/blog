@@ -118,7 +118,7 @@ class Article
 end
 
 class Comment
-  include Mongoid::EmbeddedDocument
+  include Mongoid::Document
   field :body, type: String
   embedded_in :article
 end

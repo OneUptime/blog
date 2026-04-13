@@ -115,13 +115,14 @@ async function canSendNotification(userId, category, channel) {
 
 ## Frequency Limiting
 
-Check and update send frequency atomically:
+Check and update send frequency using a conditional update to avoid race conditions:
 
 ```javascript
 async function checkAndUpdateFrequency(userId, category) {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
+  // Check if a frequency limit is defined
   const prefs = await db.collection("notificationPreferences").findOne(
     { userId },
     { projection: { [`frequency.${category}`]: 1 } }
@@ -130,18 +131,19 @@ async function checkAndUpdateFrequency(userId, category) {
   const freqConfig = prefs?.frequency?.[category];
   if (!freqConfig) return true; // No limit defined
 
-  const { maxPerDay, lastSentAt } = freqConfig;
-  if (lastSentAt && new Date(lastSentAt) >= startOfDay) {
-    return false; // Already sent today
-  }
-
-  // Update lastSentAt atomically
-  await db.collection("notificationPreferences").updateOne(
-    { userId },
+  // Update lastSentAt only if not already sent today
+  const result = await db.collection("notificationPreferences").updateOne(
+    {
+      userId,
+      $or: [
+        { [`frequency.${category}.lastSentAt`]: null },
+        { [`frequency.${category}.lastSentAt`]: { $lt: startOfDay } },
+      ],
+    },
     { $set: { [`frequency.${category}.lastSentAt`]: new Date() } }
   );
 
-  return true;
+  return result.modifiedCount > 0;
 }
 ```
 

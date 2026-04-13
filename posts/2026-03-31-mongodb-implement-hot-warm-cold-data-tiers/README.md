@@ -54,14 +54,13 @@ The warm collection holds data from 30 days to 1 year old:
 const warmCutoff = new Date();
 warmCutoff.setDate(warmCutoff.getDate() - 30);
 
-const yearAgo = new Date();
-yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-
 db.events_hot.aggregate([
   { $match: { createdAt: { $lt: warmCutoff } } },
   { $addFields: { tier: "warm" } },
   { $merge: { into: "events_warm", whenMatched: "replace", whenNotMatched: "insert" } }
 ]);
+
+db.events_hot.deleteMany({ createdAt: { $lt: warmCutoff } });
 ```
 
 Index the warm tier for common reporting queries:

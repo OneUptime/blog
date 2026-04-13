@@ -45,7 +45,7 @@ print(db.serverStatus().metrics.ttl);
 // { deletedDocuments: 12543, passes: 287 }
 ```
 
-## Archiving Cold Data with $out
+## Archiving Cold Data with $merge
 
 Move old data to an archive collection (potentially in a different database or cluster) on a schedule:
 
@@ -96,7 +96,7 @@ sh.status();
 After deleting large amounts of data, WiredTiger reclaims space gradually. Force immediate reclamation:
 
 ```javascript
-// Compact a specific collection (blocks reads/writes during operation)
+// Compact a specific collection (does not block reads/writes since MongoDB 4.4)
 db.runCommand({ compact: "old_events" });
 ```
 

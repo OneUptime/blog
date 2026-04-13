@@ -15,7 +15,7 @@ Odmantic is a modern async ODM for MongoDB that uses Pydantic models as the sche
 ## Installation
 
 ```bash
-pip install odmantic motor
+pip install odmantic
 ```
 
 ## Defining a Model
@@ -23,7 +23,7 @@ pip install odmantic motor
 Odmantic models extend `odmantic.Model`:
 
 ```python
-from typing import Optional, List
+from typing import List
 from odmantic import Model, Field
 from datetime import datetime
 
@@ -85,6 +85,7 @@ asyncio.run(main())
 ## FastAPI Integration
 
 ```python
+from typing import List
 from fastapi import FastAPI, HTTPException, Depends
 from motor.motor_asyncio import AsyncIOMotorClient
 from odmantic import AIOEngine, ObjectId

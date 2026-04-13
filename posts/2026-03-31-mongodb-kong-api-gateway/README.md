@@ -62,6 +62,7 @@ services:
       - name: products-route
         paths:
           - /api/products
+        strip_path: false
         methods:
           - GET
           - POST
@@ -103,12 +104,12 @@ async function start() {
   app.listen(3000, () => console.log("API listening on 3000"));
 }
 
-app.get("/products", async (req, res) => {
+app.get("/api/products", async (req, res) => {
   const docs = await col.find({}).limit(50).toArray();
   res.json(docs);
 });
 
-app.post("/products", async (req, res) => {
+app.post("/api/products", async (req, res) => {
   const result = await col.insertOne(req.body);
   res.status(201).json({ _id: result.insertedId });
 });
@@ -129,6 +130,8 @@ plugins:
       key_claim_name: iss
 ```
 
+The following Admin API commands require Kong running with a database (e.g., PostgreSQL), not the DB-less mode shown earlier. For DB-less mode, add consumers and credentials directly to your `kong.yml` file.
+
 ```bash
 # Create a consumer and generate a JWT credential
 curl -X POST http://localhost:8001/consumers \
@@ -141,14 +144,14 @@ curl -X POST http://localhost:8001/consumers/mobile-app/jwt \
 
 ## Rate Limiting by MongoDB Consumer
 
-Use the rate-limiting plugin scoped per consumer to prevent any single tenant from overwhelming the MongoDB cluster.
+Use the rate-limiting plugin scoped per consumer to prevent any single tenant from overwhelming the MongoDB cluster. These Admin API commands require Kong running with a database, not DB-less mode.
 
 ```bash
 curl -X POST http://localhost:8001/consumers/mobile-app/plugins \
   --data "name=rate-limiting" \
   --data "config.minute=30" \
   --data "config.policy=redis" \
-  --data "config.redis_host=redis"
+  --data "config.redis.host=redis"
 ```
 
 ## Summary

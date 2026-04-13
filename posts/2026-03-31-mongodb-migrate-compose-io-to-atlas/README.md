@@ -78,17 +78,21 @@ mongorestore \
 
 ## Option 2: Live Migration with mongomirror
 
+Note: `mongomirror` reached End of Life on July 31, 2025. MongoDB recommends using the Atlas Live Migration Service in the Atlas UI or `mongosync` for new migrations. The instructions below still apply if you are using `mongomirror`.
+
 For minimal downtime, use `mongomirror` to sync data from Compose.io to Atlas while your application keeps running:
 
 ```bash
 # Download mongomirror from MongoDB tools
 # Run mongomirror to continuously sync
 ./mongomirror \
-  --from "mongodb://composeuser:composepass@compose-host:10601/mydb?ssl=true" \
-  --fromSSL \
-  --to "mongodb+srv://atlasuser:atlaspass@cluster0.mongodb.net/mydb" \
-  --writeConcern "majority" \
-  --compressors snappy
+  --host "compose-rs/compose-host:10601" \
+  --username composeuser \
+  --password composepass \
+  --ssl \
+  --destination "atlas-abc123-shard-0/cluster0-shard-00-00.abc123.mongodb.net:27017,cluster0-shard-00-01.abc123.mongodb.net:27017,cluster0-shard-00-02.abc123.mongodb.net:27017" \
+  --destinationUsername atlasuser \
+  --destinationPassword atlaspass
 ```
 
 Monitor sync progress:
@@ -132,15 +136,14 @@ MONGO_URI=mongodb+srv://user:pass@cluster0.example.mongodb.net/mydb?retryWrites=
 
 ## Recreate Users in Atlas
 
-Compose.io database users must be recreated in Atlas as database users:
+Compose.io database users must be recreated in Atlas. Atlas does not support `db.createUser()` via mongosh — any user modifications made that way are automatically rolled back. Use the Atlas UI, Atlas CLI, or the Atlas Administration API instead:
 
-```javascript
-// Create user in Atlas via mongosh
-db.createUser({
-  user: "appuser",
-  pwd: "newSecurePassword",
-  roles: [{ role: "readWrite", db: "mydb" }]
-});
+```bash
+# Create user in Atlas via Atlas CLI
+atlas dbusers create \
+  --username appuser \
+  --password newSecurePassword \
+  --role readWrite@mydb
 ```
 
 ## Validate the Migration

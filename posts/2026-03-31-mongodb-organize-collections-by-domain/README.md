@@ -52,9 +52,8 @@ const usersDb = client.db("users_domain");
 const ordersDb = client.db("orders_domain");
 const inventoryDb = client.db("inventory_domain");
 
-// Cross-domain lookup uses $lookup with from qualified by database
-// Note: $lookup must reference a collection in the same database
-// For cross-database joins, fetch in application code
+// Cross-database $lookup is supported in MongoDB 5.1+ using from: { db, coll }
+// For broader compatibility or complex joins, fetch in application code
 async function getOrderWithUser(orderId) {
   const order = await ordersDb.collection("orders").findOne({ _id: orderId });
   const user = await usersDb.collection("users").findOne({ _id: order.userId });
@@ -87,7 +86,7 @@ const COLLECTIONS = {
 module.exports = COLLECTIONS;
 
 // Usage
-const { COLLECTIONS } = require("./collections");
+const COLLECTIONS = require("./collections");
 const orders = await db.collection(COLLECTIONS.ORDERS).find({}).toArray();
 ```
 
@@ -97,7 +96,8 @@ Encapsulate collection access in domain-specific repositories.
 
 ```javascript
 class OrderRepository {
-  constructor(db) {
+  constructor(client, db) {
+    this.client = client;
     this.orders = db.collection("orders");
     this.items = db.collection("order_items");
   }
@@ -111,7 +111,7 @@ class OrderRepository {
   }
 
   async createWithItems(orderData, items) {
-    const session = this.orders.s.db.client.startSession();
+    const session = this.client.startSession();
     return session.withTransaction(async () => {
       const { insertedId } = await this.orders.insertOne(
         { ...orderData, createdAt: new Date() },

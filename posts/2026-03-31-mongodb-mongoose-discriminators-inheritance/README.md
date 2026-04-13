@@ -93,12 +93,19 @@ Discriminators also work on embedded arrays:
 
 ```javascript
 const shapeSchema = new Schema({ color: String }, { discriminatorKey: 'type' });
-const containerSchema = new Schema({ shapes: [shapeSchema] });
-const Container = model('Container', containerSchema);
+const circleSchema = new Schema({ radius: Number });
+const rectangleSchema = new Schema({ width: Number, height: Number });
 
-const shapesPath = Container.schema.path('shapes');
-shapesPath.discriminator('Circle',    new Schema({ radius: Number }));
-shapesPath.discriminator('Rectangle', new Schema({ width: Number, height: Number }));
+const containerSchema = new Schema({
+  shapes: [{
+    type: shapeSchema,
+    discriminators: {
+      Circle:    circleSchema,
+      Rectangle: rectangleSchema
+    }
+  }]
+});
+const Container = model('Container', containerSchema);
 
 await Container.create({
   shapes: [

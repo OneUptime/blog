@@ -200,7 +200,7 @@ async function getComments(postId, page = 1, pageSize = 20) {
 }
 ```
 
-### Add a Comment and Increment Count Atomically
+### Add a Comment and Increment Count
 
 ```javascript
 async function addComment(postId, authorId, body) {

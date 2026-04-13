@@ -108,7 +108,7 @@ user.save()
 User.objects(email="alice@example.com").update_one(set__age=31, push__tags="mentor")
 
 # Bulk update
-User.objects(role="guest").update(set__active=False)
+User.objects(role="guest").update(set__role="user")
 ```
 
 ## Deleting Documents

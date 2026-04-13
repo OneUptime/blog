@@ -47,7 +47,7 @@ SAVE MYSQL QUERY RULES TO DISK;
 
 ## Configuring Cache Size
 
-Set the maximum memory allocated to the cache:
+Set the memory threshold used by the cache purging thread. This is a soft limit — when usage exceeds this value, the purging thread becomes more aggressive about evicting entries:
 
 ```sql
 SET mysql-query_cache_size_MB = 256;
@@ -71,8 +71,8 @@ Key variables:
 Query_Cache_count_GET       - total cache lookups
 Query_Cache_count_GET_OK    - cache hits (result found)
 Query_Cache_count_SET       - entries added to cache
-Query_Cache_bytes_IN        - bytes read from cache
-Query_Cache_bytes_OUT       - bytes written to cache
+Query_Cache_bytes_IN        - bytes written into cache
+Query_Cache_bytes_OUT       - bytes read from cache
 Query_Cache_Purged          - entries evicted due to TTL or memory pressure
 ```
 
@@ -80,12 +80,12 @@ A high `GET_OK / GET` ratio indicates the cache is effective.
 
 ## Bypassing Cache for Specific Users
 
-If certain users should always get fresh data (e.g., admin tools), add a rule with `cache_ttl=0` and a lower `rule_id` so it is evaluated first:
+If certain users should always get fresh data (e.g., admin tools), add a rule that matches their queries without setting `cache_ttl`, and use a lower `rule_id` so it is evaluated first. Setting `apply=1` stops rule processing so no later caching rule applies:
 
 ```sql
 INSERT INTO mysql_query_rules (
-  rule_id, active, username, match_pattern, cache_ttl, apply
-) VALUES (1, 1, 'admin_user', '^SELECT', 0, 1);
+  rule_id, active, username, match_pattern, apply
+) VALUES (1, 1, 'admin_user', '^SELECT', 1);
 
 LOAD MYSQL QUERY RULES TO RUNTIME;
 SAVE MYSQL QUERY RULES TO DISK;
@@ -93,15 +93,14 @@ SAVE MYSQL QUERY RULES TO DISK;
 
 ## Clearing the Cache
 
-ProxySQL does not expose a direct `FLUSH CACHE` command, but you can reset the stats and force a cache flush by toggling the `active` flag on cache rules or reloading the runtime:
+In ProxySQL 2.x, flush the entire query cache with a single command:
 
 ```sql
--- Reload variables to purge in-flight entries
-LOAD MYSQL VARIABLES TO RUNTIME;
+PROXYSQL FLUSH QUERY CACHE;
 ```
 
-For a hard flush between deployments, restart ProxySQL. In production, prefer short TTLs over manual flushes.
+In production, prefer short TTLs over manual flushes.
 
 ## Summary
 
-ProxySQL's query cache reduces MySQL load by serving repeated SELECT results from memory using the `cache_ttl` column in `mysql_query_rules`. Monitor hit rates through `stats_mysql_global`, scope caching to specific queries or schemas with regex patterns, and exclude sensitive users with a zero-TTL rule. Keep TTLs short for data that changes frequently to avoid stale reads.
+ProxySQL's query cache reduces MySQL load by serving repeated SELECT results from memory using the `cache_ttl` column in `mysql_query_rules`. Monitor hit rates through `stats_mysql_global`, scope caching to specific queries or schemas with regex patterns, and exclude sensitive users with a non-caching rule. Keep TTLs short for data that changes frequently to avoid stale reads.

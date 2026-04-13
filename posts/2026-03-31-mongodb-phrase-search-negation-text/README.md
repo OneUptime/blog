@@ -54,7 +54,7 @@ db.articles.find({
 })
 ```
 
-Translates to: documents that contain the phrase "sharded cluster" and the word "performance", but do not contain the word "atlas".
+Translates to: documents that contain the phrase "sharded cluster" and do not contain the word "atlas". The keyword "performance" is not required but boosts the relevance score of matching documents.
 
 ## Ranking Results with textScore
 

@@ -114,20 +114,22 @@ db.edges.aggregate([
 
 ```javascript
 // Find all entities reachable from MongoDB within 3 hops
-db.edges.aggregate([
+db.nodes.aggregate([
+  { $match: { _id: "entity:mongodb" } },
   {
     $graphLookup: {
       from: "edges",
-      startWith: "entity:mongodb",
+      startWith: "$_id",
       connectFromField: "to",
       connectToField: "from",
       as: "paths",
-      maxDepth: 3,
+      maxDepth: 2,
       depthField: "depth"
     }
   },
   {
     $project: {
+      name: 1,
       paths: {
         $map: {
           input: "$paths",

@@ -27,9 +27,6 @@ By default, validation performs a normal scan. Full validation reads every data 
 ```javascript
 // Full validation (slower, more thorough)
 db.runCommand({ validate: "orders", full: true });
-
-// Background validation (MongoDB 5.0+) - less impact on performance
-db.runCommand({ validate: "orders", background: true });
 ```
 
 ## Interpreting the Output
@@ -97,25 +94,27 @@ Avoid running full validation on large collections during peak traffic - it can 
 If `validate` finds corruption, the next steps depend on the deployment:
 
 ```javascript
-// Compact the collection to reclaim space and rebuild data files
-db.runCommand({ compact: "orders" });
+// Validate with repair (MongoDB 5.0+) - fixes missing/extra index entries
+db.runCommand({ validate: "orders", repair: true });
 
-// For index corruption, rebuild all indexes
-db.orders.reIndex();
+// Compact the collection to reclaim unused disk space
+db.runCommand({ compact: "orders" });
 
 // For severe corruption, restore from backup
 // mongorestore --db mydb --collection orders dump/mydb/orders.bson
 ```
 
-## validate vs. repairDatabase
+Note: `compact` releases unused disk space back to the operating system but does not fix data corruption. For index-level corruption, use `validate` with `repair: true` (available since MongoDB 5.0), which can insert missing index keys and remove extra index entries.
 
-`repairDatabase` rebuilds all collections and indexes in a database. It is a last resort for severe corruption and requires significant disk space for the rebuild:
+## validate vs. mongod --repair
 
-```javascript
-// Use only for severe corruption - requires downtime
-db.repairDatabase();
+For severe corruption beyond what `validate` with `repair: true` can fix, use the `mongod --repair` command-line option. This rebuilds all collections and indexes in a database and requires significant disk space:
+
+```bash
+# Stop mongod first, then run repair from the command line
+mongod --repair --dbpath /var/lib/mongodb
 ```
 
 ## Summary
 
-Use MongoDB's `validate` command to check collection and index integrity after abnormal events. Run `{ background: true }` on large production collections to minimize performance impact. Check `result.valid` and the `errors` array to identify issues, and follow up with `reIndex()` for index corruption or a backup restore for data corruption. Validate all collections periodically as part of operational health checks.
+Use MongoDB's `validate` command to check collection and index integrity after abnormal events. Check `result.valid` and the `errors` array to identify issues, and follow up with `validate` using `repair: true` for index corruption or a backup restore for data corruption. Validate all collections periodically as part of operational health checks.

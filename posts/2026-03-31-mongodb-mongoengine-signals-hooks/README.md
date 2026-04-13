@@ -24,13 +24,14 @@ signals.pre_save       # Before save()
 signals.post_save      # After save()
 signals.pre_delete     # Before delete()
 signals.post_delete    # After delete()
+signals.pre_save_post_validation  # After validation, before save
 signals.pre_bulk_insert  # Before bulk insert
 signals.post_bulk_insert # After bulk insert
 ```
 
-## Connecting Signals with Decorators
+## Connecting Signals with `connect()`
 
-The cleanest approach is the `@receiver` decorator pattern via the `connect` method:
+The cleanest approach is to define handler functions and wire them up with `connect()`:
 
 ```python
 from mongoengine import Document, StringField, DateTimeField

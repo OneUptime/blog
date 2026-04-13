@@ -18,7 +18,7 @@ Before creating users, map out what each component needs:
 |---|---|---|
 | Read-only dashboard | `find` on specific collections | Custom role with `find` only |
 | Application API | `find`, `insert`, `update` | `readWrite` on app DB only |
-| Background jobs | `find`, `insert`, `aggregate` | Custom role per job |
+| Background jobs | `find`, `insert`, `update` | Custom role per job |
 | DBA tooling | Index management, stats | `dbAdmin` on specific DB |
 | Backups | Read all data | `backup` role or `read` |
 | Monitoring | Server stats only | `clusterMonitor` |

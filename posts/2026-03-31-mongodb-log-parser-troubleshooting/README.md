@@ -45,9 +45,9 @@ mloginfo /var/log/mongodb/mongod.log --restarts
 Sample `--queries` output:
 
 ```text
-namespace           op     pattern                          count  min(ms)  mean(ms)  max(ms)  95%-ile(ms)
-mydb.orders         query  {"status": 1}                    1523    12       234       5211     1843
-mydb.events         query  {"userId": 1, "createdAt": 1}    892     4        67        890      412
+namespace           operation  pattern                          count  min (ms)  max (ms)  95%-ile (ms)  sum (ms)  mean (ms)
+mydb.orders         query      {"status": 1}                    1523    12        5211      1843          356382    234
+mydb.events         query      {"userId": 1, "createdAt": 1}    892     4         890       412           59764     67
 ```
 
 The `pattern` column normalizes query values to `1`, making it easy to spot the same slow query run with different values.
@@ -80,7 +80,6 @@ For JSON-format logs, a small Python script handles targeted analysis:
 
 ```python
 import json
-import sys
 from collections import defaultdict
 
 slow_by_ns = defaultdict(list)
@@ -130,7 +129,7 @@ Generate a timeline chart of query latency:
 
 ```bash
 # Requires matplotlib
-mplotqueries /var/log/mongodb/mongod.log --type scatter --output latency.png
+mplotqueries /var/log/mongodb/mongod.log --type scatter --output-file latency.png
 ```
 
 This generates a scatter plot with time on the x-axis and operation duration on the y-axis, making latency spikes visually obvious.

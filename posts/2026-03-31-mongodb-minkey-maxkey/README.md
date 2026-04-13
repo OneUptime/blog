@@ -17,7 +17,7 @@ Description: Understand MongoDB's special MinKey and MaxKey BSON types, how they
 MongoDB sorts values of different types according to a defined order:
 
 ```text
-MinKey < Null < Numbers < Symbol < String < Object < Array < BinData < ObjectId < Boolean < Date < Timestamp < RegExp < MaxKey
+MinKey < Null < Numbers < Symbol/String < Object < Array < BinData < ObjectId < Boolean < Date < Timestamp < RegExp < MaxKey
 ```
 
 ## Creating MinKey and MaxKey in mongosh
@@ -32,11 +32,11 @@ print(max); // MaxKey()
 
 ## Practical Use in Zone Sharding
 
-`MinKey` and `MaxKey` are most commonly used in zone sharding tag ranges to cover all possible values of a shard key:
+`MinKey` and `MaxKey` are most commonly used in zone sharding to cover all possible values of a shard key:
 
 ```javascript
 // Route all documents with region "US" to US shards
-sh.addTagRange(
+sh.updateZoneKeyRange(
   "mydb.orders",
   { region: "US", _id: MinKey() },
   { region: "US", _id: MaxKey() },
@@ -44,7 +44,7 @@ sh.addTagRange(
 );
 
 // Route everything else to the global shard
-sh.addTagRange(
+sh.updateZoneKeyRange(
   "mydb.orders",
   { region: MinKey() },
   { region: MaxKey() },

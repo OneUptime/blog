@@ -99,7 +99,7 @@ Insert a valid order:
 ```javascript
 db.orders.insertOne({
   customerId: "c123",
-  items: [{ productId: "p1", qty: 2, price: 49.99 }],
+  items: [{ productId: "p1", qty: NumberInt(2), price: 49.99 }],
   status: "pending",
   total: 99.98,
   createdAt: new Date()
@@ -138,7 +138,7 @@ Insert with invalid enum value:
 ```javascript
 db.orders.insertOne({
   customerId: "c123",
-  items: [{ productId: "p1", qty: 2, price: 49.99 }],
+  items: [{ productId: "p1", qty: NumberInt(2), price: 49.99 }],
   status: "unknown",    // not in enum
   total: 99.98,
   createdAt: new Date()

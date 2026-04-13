@@ -40,7 +40,7 @@ Use `$set` with multiple dot-notation paths to update several sub-fields at once
 
 ```javascript
 db.orders.updateOne(
-  { _id: ObjectId("64a1b2c3"), "lineItems.sku": "ABC-001" },
+  { _id: ObjectId("64a1b2c3d4e5f6a7b8c9d0e1"), "lineItems.sku": "ABC-001" },
   {
     $set: {
       "lineItems.$.price": 19.99,

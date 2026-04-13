@@ -206,7 +206,7 @@ async function inspectIndexProperties() {
   const sparseIndexes = indexes.filter(i => i.sparse);
   const textIndexes = indexes.filter(i => Object.values(i.key).includes("text"));
   const geoIndexes = indexes.filter(i =>
-    Object.values(i.key).some(v => ["2dsphere", "2d", "geoHaystack"].includes(v))
+    Object.values(i.key).some(v => ["2dsphere", "2d"].includes(v))
   );
 
   console.log("TTL indexes:", ttlIndexes.map(i => i.name));
@@ -236,7 +236,6 @@ expireAfterSeconds    TTL duration in seconds
 background            (deprecated in 4.2+) build in background
 weights               Text index field weights
 default_language      Text index language
-multiKey              true if indexed field contains arrays
 ```
 
 ## Best Practices

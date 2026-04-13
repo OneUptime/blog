@@ -28,7 +28,7 @@ FROM stats_mysql_connection_pool
 ORDER BY hostgroup, srv_host;
 ```
 
-A `status` of `SHUNNED` means ProxySQL has temporarily removed the server from rotation due to errors. `OFFLINE_HARD` means it was manually taken offline.
+A `status` of `SHUNNED` means ProxySQL has temporarily removed the server from rotation due to errors. `OFFLINE_HARD` means it has been immediately removed from the pool, either by an admin or automatically by the monitor module.
 
 ## Checking Global Query Statistics
 
@@ -73,7 +73,7 @@ SELECT * FROM stats_mysql_query_digest_reset LIMIT 1;
 ProxySQL's monitor module polls replicas and tracks replication lag. Query its log table to see recent readings:
 
 ```sql
-SELECT hostname, port, time_start_us, replication_lag, error
+SELECT hostname, port, time_start_us, repl_lag, error
 FROM mysql_server_replication_lag_log
 ORDER BY time_start_us DESC
 LIMIT 20;
@@ -105,7 +105,7 @@ ProxySQL exposes a `/metrics` HTTP endpoint when the stats web server is enabled
 
 ```bash
 mysql -h 127.0.0.1 -P 6032 -u admin -padmin \
-  -e "SET admin-stats_credentials='stats:stats'; LOAD ADMIN VARIABLES TO RUNTIME;"
+  -e "SET admin-restapi_enabled=1; SET admin-stats_credentials='stats:stats'; LOAD ADMIN VARIABLES TO RUNTIME;"
 ```
 
 Then scrape `http://<proxysql-host>:6070/metrics` with Prometheus. Key metrics include `proxysql_connection_pool_conn_used` and `proxysql_mysql_status_queries`.

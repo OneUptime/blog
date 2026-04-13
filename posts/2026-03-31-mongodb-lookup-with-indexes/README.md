@@ -182,7 +182,7 @@ flowchart LR
     C --> D[Final result]
 ```
 
-## $lookup with Multiple Foreign Fields (MongoDB 5.0+)
+## $lookup with Multiple Foreign Fields (MongoDB 3.6+)
 
 The pipeline-based form allows joining on multiple fields:
 
@@ -279,8 +279,8 @@ db.orders.aggregate([
 db.customers.getIndexes();
 // Ensure the foreignField appears as a key in one of the listed indexes
 
-// If missing, create it
-db.customers.createIndex({ customerId: 1 });
+// If missing, create an index on the foreignField
+db.customers.createIndex({ email: 1 });
 ```
 
 ## Summary

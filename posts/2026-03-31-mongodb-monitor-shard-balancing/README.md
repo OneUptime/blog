@@ -25,7 +25,7 @@ graph TD
     CS -->|Migrate TO| S3
 ```
 
-The balancer moves chunks from the most loaded shard to the least loaded until the difference falls within the threshold (default: 2 for < 20 chunks, 4 for 20-79 chunks, 8 for 80+ chunks).
+The balancer moves chunks from the most loaded shard to the least loaded until the difference falls within the threshold. In MongoDB versions prior to 6.0, the threshold was chunk-count-based (2 for < 20 chunks, 4 for 20-79 chunks, 8 for 80+ chunks). Starting in MongoDB 6.0, the balancer uses data-size-based balancing and triggers migrations when the data difference between shards exceeds three times the configured range size.
 
 ## Step 1: Check Balancer State
 
@@ -60,11 +60,21 @@ Expected output:
 ```javascript
 use config
 
-// Chunk count per shard per namespace
+// Chunk count per shard per collection (MongoDB 6.0+)
+// In 6.0+, config.chunks uses uuid instead of ns
 db.chunks.aggregate([
   {
+    $lookup: {
+      from: "collections",
+      localField: "uuid",
+      foreignField: "uuid",
+      as: "coll"
+    }
+  },
+  { $unwind: "$coll" },
+  {
     $group: {
-      _id: { ns: "$ns", shard: "$shard" },
+      _id: { ns: "$coll._id", shard: "$shard" },
       count: { $sum: 1 }
     }
   },
@@ -85,8 +95,8 @@ Check if a migration is currently in progress:
 
 ```javascript
 use config
-db.migrations.find().pretty()
-// Non-empty = migration in progress
+db.locks.find({ state: { $ne: 0 } }).pretty()
+// Documents with state != 0 indicate active migrations
 ```
 
 From mongos:
@@ -135,7 +145,7 @@ db.settings.updateOne(
   {
     $set: {
       activeWindow: {
-        start: "02:00",  // UTC time
+        start: "02:00",  // config server primary's local time
         stop: "06:00"
       }
     }
@@ -217,20 +227,20 @@ db.changelog.aggregate([
     $group: {
       _id: null,
       totalMigrations: { $sum: 1 },
-      avgDurationMs: { $avg: "$details.cloneLogsVerbose.duration" }
+      avgDurationMs: { $avg: "$details.executionTimeMillis" }
     }
   }
 ])
 ```
 
-## Balancer Thresholds Reference
+## Chunk Size Configuration
 
 ```javascript
-// Change the migration threshold (chunks difference before balancing kicks in)
+// Change the chunk (range) size used by the balancer
 use config
 db.settings.updateOne(
   { _id: "chunksize" },
-  { $set: { value: 64 } },  // chunk size in MB (default: 128)
+  { $set: { value: 64 } },  // chunk size in MB (default: 128 in MongoDB 6.0+)
   { upsert: true }
 )
 ```

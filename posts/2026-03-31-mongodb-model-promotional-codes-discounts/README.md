@@ -48,7 +48,7 @@ db.promoCodes.createIndex({ code: 1 }, { unique: true });
 db.promoCodes.createIndex({ "validity.endDate": 1 }, { expireAfterSeconds: 0 });
 ```
 
-The TTL index on `validity.endDate` can be used to auto-archive expired codes if you set the documents to expire.
+The TTL index on `validity.endDate` can be used to auto-remove expired codes by having MongoDB delete documents once the date has passed.
 
 ## Tracking Per-Customer Usage
 
@@ -105,6 +105,12 @@ async function applyPromoCode(session, code, customerId, orderAmount, items) {
     { session }
   );
   if (result.modifiedCount === 0) throw new Error("Promo code no longer available");
+
+  // Record the redemption for per-customer tracking
+  await db.promoRedemptions.insertOne(
+    { promoCode: code, customerId, orderId: null, discountApplied: calculateDiscount(promo, orderAmount), redeemedAt: new Date() },
+    { session }
+  );
 
   return calculateDiscount(promo, orderAmount);
 }

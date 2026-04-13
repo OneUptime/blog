@@ -91,7 +91,7 @@ insert query update delete getmore command dirty  used flushes vsize   res qrw a
 
 ```text
 insert  - Number of insert operations
-query   - Number of find/count/distinct operations
+query   - Number of query operations (find, aggregate)
 update  - Number of update operations
 delete  - Number of remove operations
 getmore - Number of getmore operations (cursor iteration)
@@ -114,10 +114,10 @@ Useful PromQL queries:
 
 ```text
 # Insert rate
-rate(mongodb_opcounters_insert_total[5m])
+rate(mongodb_ss_opcounters{legacy_op_type="insert"}[5m])
 
 # Total operation rate
-sum(rate(mongodb_opcounters_total[5m])) by (type)
+sum(rate(mongodb_ss_opcounters[5m])) by (legacy_op_type)
 ```
 
 ## Setting Alerts on High Op Rates

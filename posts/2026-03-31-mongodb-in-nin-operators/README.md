@@ -59,7 +59,7 @@ db.users.find({ _id: { $in: userIds } })
 ## Using $in with Numbers
 
 ```javascript
-// Find products with specific priority levels
+// Find tasks with specific priority levels
 db.tasks.find({ priority: { $in: [1, 2, 3] } })
 
 // Find products in specific categories by ID
@@ -93,8 +93,8 @@ db.orders.find({ status: { $nin: ["completed", "cancelled", "refunded"] } })
 An important behavior: `$nin` matches documents where the field does not exist at all:
 
 ```javascript
-// Matches documents where deletedAt is not in the list AND where deletedAt doesn't exist
-db.users.find({ deletedAt: { $nin: [null] } })
+// Also matches documents where the "category" field does not exist
+db.products.find({ category: { $nin: ["electronics", "clothing"] } })
 ```
 
 ## Combining $in with Other Operators

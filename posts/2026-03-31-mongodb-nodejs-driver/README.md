@@ -29,7 +29,7 @@ flowchart LR
 npm install mongodb
 ```
 
-For TypeScript support (types are included in the package from version 5+):
+For TypeScript support (types are included in the package from version 4+):
 
 ```bash
 npm install mongodb

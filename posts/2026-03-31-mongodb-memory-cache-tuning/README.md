@@ -26,13 +26,13 @@ flowchart TD
 
 **OS Filesystem Cache** - the Linux page cache holds recently read disk blocks. MongoDB benefits from this even for data not in the WiredTiger cache.
 
-**Memory mapped I/O** - when data is not in the WiredTiger cache, MongoDB reads from disk. The OS filesystem cache intercepts these reads, so data in the filesystem cache is served from RAM rather than actual disk I/O.
+**OS Page Cache interaction** - when data is not in the WiredTiger cache, MongoDB reads from disk via standard file I/O. The OS filesystem cache intercepts these reads, so data in the filesystem cache is served from RAM rather than actual disk I/O.
 
 ## Configuring WiredTiger Cache Size
 
 The most impactful memory setting is `wiredTiger.engineConfig.cacheSizeGB`.
 
-Default calculation: `max(50% of RAM - 1GB, 256MB)`
+Default calculation: `max(50% of (RAM - 1GB), 256MB)`
 
 Set it explicitly in `mongod.conf`:
 

@@ -8,6 +8,8 @@ Description: Learn how to build offline-first applications using the Realm SDK b
 
 ---
 
+> **Deprecation Notice (September 2024):** MongoDB deprecated Atlas Device Sync and the Atlas Device SDKs (formerly Realm) in September 2024, and the service was **shut down on September 30, 2025**. The Realm local database remains usable as an embedded database, but the cloud sync features described in this post are no longer operational. For offline-first applications going forward, consider alternatives such as building custom sync on top of MongoDB Change Streams, or third-party solutions like Parse, PowerSync, or Couchbase Lite.
+
 ## Overview
 
 Offline-first applications write and read data locally at all times, treating network connectivity as an optional enhancement rather than a requirement. MongoDB Atlas Device Sync with the Realm SDK provides this capability: local Realm acts as the primary database, and Atlas is the sync target when the network is available.
@@ -73,7 +75,7 @@ async function openRealm(user) {
 }
 ```
 
-The `existingRealmFileBehavior: 'openImmediately'` setting ensures the app opens from the local Realm file without waiting for Atlas connectivity.
+The `existingRealmFileBehavior: { type: 'openImmediately' }` setting ensures the app opens from the local Realm file without waiting for Atlas connectivity.
 
 ## Writing Data Optimistically
 
@@ -154,7 +156,7 @@ realm.syncSession?.resume();
 
 ## Best Practices
 
-- Use `existingRealmFileBehavior: 'openImmediately'` in production so returning users never see a loading screen.
+- Use `existingRealmFileBehavior: { type: 'openImmediately' }` in production so returning users never see a loading screen.
 - Show a non-blocking offline indicator rather than error dialogs - users can continue working.
 - Avoid shared mutable fields (like a single `status` field) that multiple users or devices can update simultaneously.
 - Test client reset paths explicitly in your CI pipeline using Realm's test utilities.

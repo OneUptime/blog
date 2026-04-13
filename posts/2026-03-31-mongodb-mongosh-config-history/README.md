@@ -37,9 +37,6 @@ config.set("enableTelemetry", false)
 // Increase object inspection depth (default: 6)
 config.set("inspectDepth", 10)
 
-// Disable the banner on startup
-config.set("disableGreetingMessage", true)
-
 // Customize the number of history entries kept
 config.set("historyLength", 2000)
 ```
@@ -50,8 +47,8 @@ Available config keys include:
 enableTelemetry        - send anonymous usage data
 inspectDepth           - depth for printing nested objects
 historyLength          - max commands stored in history
-disableGreetingMessage - suppress startup banner
-forceDisableTelemetry  - block telemetry at the system level
+editor                 - external editor for the edit command
+snippetAutoload        - auto-load installed snippets on startup
 ```
 
 ## Customizing the Shell Prompt
@@ -61,9 +58,9 @@ Override the default prompt with a function for context-aware display:
 ```javascript
 // Show current database and hostname
 prompt = function() {
-  const db = db.getName();
+  const dbName = db.getName();
   const host = db.adminCommand({ hostInfo: 1 }).system.hostname;
-  return `[${host}] ${db}> `;
+  return `[${host}] ${dbName}> `;
 }
 ```
 
