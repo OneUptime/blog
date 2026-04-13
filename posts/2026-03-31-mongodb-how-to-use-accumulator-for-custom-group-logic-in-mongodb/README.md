@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, $accumulator, Custom Aggregation, $group, JavaScript
 
-Description: Learn how to use MongoDB's $accumulator operator to define custom group logic in aggregation pipelines using JavaScript init, accumulate, and finalize functions.
+Description: Learn how to use MongoDB's $accumulator operator to define custom group logic in aggregation pipelines using JavaScript init, accumulate, merge, and finalize functions.
 
 ---
 
 ## Overview
 
-MongoDB's built-in accumulators (`$sum`, `$avg`, `$max`, etc.) cover most grouping needs. When they do not, `$accumulator` allows you to define fully custom group logic using JavaScript functions. It is available in MongoDB 4.4+ and requires server-side JavaScript to be enabled.
+MongoDB's built-in accumulators (`$sum`, `$avg`, `$max`, etc.) cover most grouping needs. When they do not, `$accumulator` allows you to define fully custom group logic using JavaScript functions. It is available in MongoDB 4.4+ and requires server-side JavaScript to be enabled. Note that server-side JavaScript (including `$accumulator` and `$function`) is deprecated as of MongoDB 8.0.
 
 ## $accumulator Structure
 
-`$accumulator` requires four JavaScript functions:
+`$accumulator` requires three JavaScript functions (`init`, `accumulate`, `merge`) and supports an optional fourth (`finalize`):
 
 ```javascript
 {
@@ -23,7 +23,7 @@ MongoDB's built-in accumulators (`$sum`, `$avg`, `$max`, etc.) cover most groupi
     accumulate: function(state, value) { ... },  // process each document
     accumulateArgs: ["$field"],           // fields passed to accumulate
     merge: function(state1, state2) { ... },  // merge states from shards
-    finalize: function(state) { ... },    // compute final result
+    finalize: function(state) { ... },    // optional: compute final result
     lang: "js"
   }
 }
