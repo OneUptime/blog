@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, AWS, S3, Binding, Object Storage
 
-Description: Use Dapr output and input bindings to interact with AWS S3 for object uploads, downloads, and event-triggered processing without the AWS SDK.
+Description: Use Dapr output bindings to interact with AWS S3 for object uploads, downloads, and listing without the AWS SDK.
 
 ---
 
@@ -55,16 +55,14 @@ spec:
 
 ```python
 import requests
-import base64
 import json
 
-def upload_file(key: str, content: bytes, content_type: str = "application/octet-stream"):
-    encoded = base64.b64encode(content).decode("utf-8")
+def upload_file(key: str, content, content_type: str = "application/octet-stream"):
     resp = requests.post(
         "http://localhost:3500/v1.0/bindings/s3-binding",
         json={
             "operation": "create",
-            "data": encoded,
+            "data": content,
             "metadata": {
                 "key": key,
                 "contentType": content_type
@@ -75,7 +73,7 @@ def upload_file(key: str, content: bytes, content_type: str = "application/octet
     return resp.json()
 
 # Upload a JSON report
-report = json.dumps({"total": 1500, "orders": 42}).encode("utf-8")
+report = {"total": 1500, "orders": 42}
 result = upload_file("reports/daily-2026-03-31.json", report, "application/json")
 print(result)
 ```
@@ -83,8 +81,6 @@ print(result)
 ## Download an Object (Get Operation)
 
 ```python
-import base64
-
 def download_file(key: str) -> bytes:
     resp = requests.post(
         "http://localhost:3500/v1.0/bindings/s3-binding",
@@ -96,7 +92,7 @@ def download_file(key: str) -> bytes:
         }
     )
     resp.raise_for_status()
-    return base64.b64decode(resp.json()["data"])
+    return resp.content
 
 content = download_file("reports/daily-2026-03-31.json")
 print(content.decode("utf-8"))
@@ -105,23 +101,23 @@ print(content.decode("utf-8"))
 ## List Objects
 
 ```python
-def list_objects(prefix: str = "") -> list:
+def list_objects(prefix: str = "") -> dict:
     resp = requests.post(
         "http://localhost:3500/v1.0/bindings/s3-binding",
         json={
             "operation": "list",
-            "metadata": {
+            "data": {
                 "prefix": prefix,
-                "maxResults": "100"
+                "maxResults": 100
             }
         }
     )
     resp.raise_for_status()
     return resp.json()
 
-objects = list_objects(prefix="reports/")
-for obj in objects:
-    print(obj["key"], obj["lastModified"])
+result = list_objects(prefix="reports/")
+for obj in result.get("Contents", []):
+    print(obj["Key"], obj["LastModified"])
 ```
 
 ## Delete an Object
