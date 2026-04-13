@@ -72,6 +72,8 @@ Atlas Search supports true autocomplete via edge n-gram tokenization.
 
 ```json
 {
+  "database": "ecommerce",
+  "collectionName": "products",
   "name": "product-autocomplete",
   "analyzer": "lucene.standard",
   "mappings": {
@@ -111,8 +113,6 @@ Deploy the index:
 ```bash
 atlas clusters search indexes create \
   --clusterName myCluster \
-  --db ecommerce \
-  --collection products \
   --file product-autocomplete-index.json
 ```
 
