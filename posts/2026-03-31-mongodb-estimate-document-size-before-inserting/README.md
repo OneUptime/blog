@@ -49,7 +49,6 @@ if (sizeBytes > LIMIT_BYTES * 0.75) {
 
 ```python
 import bson
-from bson import BSON
 
 def estimate_document_size(doc: dict) -> dict:
     """Estimate the BSON size of a document before insertion."""
