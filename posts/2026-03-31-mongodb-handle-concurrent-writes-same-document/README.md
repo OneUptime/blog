@@ -10,19 +10,19 @@ Description: Understand how MongoDB handles concurrent writes to the same docume
 
 ## How MongoDB Serializes Concurrent Writes
 
-MongoDB uses WiredTiger as its default storage engine, which provides document-level concurrency control using MVCC (Multi-Version Concurrency Control). When two writes target the same document simultaneously, WiredTiger serializes them - the second writer waits for the first to commit or retries automatically.
+MongoDB uses WiredTiger as its default storage engine, which provides document-level concurrency control for write operations and uses MVCC (Multi-Version Concurrency Control) so that readers do not block writers. When two writes target the same document simultaneously, WiredTiger serializes them - the second writer waits for the first to commit or retries automatically.
 
-If both writers are in a transaction, a `WriteConflict` error is raised on the second transaction, which must retry. Outside transactions, MongoDB's driver-level retryable writes handle most transient conflicts automatically.
+If both writers are in a transaction, a `WriteConflict` error is raised on the second transaction, which must retry. Outside transactions, WiredTiger transparently retries write conflicts at the storage engine level, making them invisible to your application.
 
 ## Retryable Writes
 
-Enable retryable writes in your connection string to let the driver automatically retry single-statement write operations:
+Retryable writes let the driver automatically retry single-statement write operations. Since MongoDB 4.2-compatible drivers, retryable writes are enabled by default:
 
 ```javascript
 const client = new MongoClient("mongodb://localhost:27017/?retryWrites=true");
 ```
 
-With retryable writes, operations like `insertOne`, `updateOne`, and `deleteOne` are automatically retried once on network errors or primary failovers without changes to your application code.
+With retryable writes, operations like `insertOne`, `updateOne`, and `deleteOne` are automatically retried once on network errors or primary failovers without changes to your application code. Note that retryable writes handle failover and network issues, not WiredTiger-level write conflicts on the same document - those are handled transparently by the storage engine.
 
 ## Using Atomic Operators to Reduce Contention
 
