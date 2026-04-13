@@ -18,7 +18,7 @@ MongoServerError: WriteConflict: Write conflict during plan execution and retrie
     errorLabels: ['TransientTransactionError']
 ```
 
-MongoDB uses MVCC (multiversion concurrency control). When two transactions each try to modify the same document, the second one to commit wins - the first is aborted with a write conflict.
+MongoDB uses MVCC (multiversion concurrency control) with a first-writer-wins policy. When two transactions each try to modify the same document, the first one to perform the write holds the lock - the second is aborted with a write conflict.
 
 ## Fix 1: Implement the TransientTransactionError Retry Loop
 
