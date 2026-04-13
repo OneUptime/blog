@@ -17,7 +17,7 @@ MongoServerError: insert { insert: "orders" ... } :: caused by :: Connection res
     errorLabels: ['RetryableWriteError']
 ```
 
-Retryable writes are enabled by default in MongoDB drivers 3.6+. They allow the driver to retry a write exactly once after a transient failure.
+Retryable writes were introduced in MongoDB 3.6 and are enabled by default in drivers compatible with MongoDB 4.2+. They allow the driver to retry a write exactly once after a transient failure.
 
 ## How Retryable Writes Work
 
@@ -65,41 +65,30 @@ For production, always use a replica set - it provides retryable writes, failove
 
 Some operations cannot be retried automatically:
 
-- Multi-document writes with `ordered: true` (partial execution)
+- `updateMany()` and `deleteMany()` (cannot guarantee idempotency for partial execution)
 - `mapReduce` with output to a collection
-- Write operations inside a transaction that was already partially committed
+- Write operations with unacknowledged write concern (`{w: 0}`)
 
-For these, use explicit transactions with retry logic:
+For these, use explicit transactions with retry logic. The `session.withTransaction()` helper automatically retries on `TransientTransactionError` and `UnknownTransactionCommitResult`:
 
 ```javascript
-async function runTransactionWithRetry(session, fn) {
-  while (true) {
-    try {
-      await session.withTransaction(fn);
-      return;
-    } catch (err) {
-      if (err.hasErrorLabel('TransientTransactionError')) {
-        continue; // retry the whole transaction
-      }
-      throw err;
-    }
-  }
-}
-
 const session = client.startSession();
-await runTransactionWithRetry(session, async () => {
-  const db = client.db('mydb');
-  await db.collection('inventory').updateOne(
-    { item: 'widget', qty: { $gte: 1 } },
-    { $inc: { qty: -1 } },
-    { session }
-  );
-  await db.collection('orders').insertOne(
-    { item: 'widget', status: 'confirmed' },
-    { session }
-  );
-});
-session.endSession();
+try {
+  await session.withTransaction(async () => {
+    const db = client.db('mydb');
+    await db.collection('inventory').updateOne(
+      { item: 'widget', qty: { $gte: 1 } },
+      { $inc: { qty: -1 } },
+      { session }
+    );
+    await db.collection('orders').insertOne(
+      { item: 'widget', status: 'confirmed' },
+      { session }
+    );
+  });
+} finally {
+  await session.endSession();
+}
 ```
 
 ## Checking Error Labels
