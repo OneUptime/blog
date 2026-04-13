@@ -20,7 +20,7 @@ az signalr create \
   --location eastus \
   --sku Standard_S1 \
   --service-mode Default \
-  --enable-message-logs
+  --enable-message-logs true
 
 # Get the connection string
 SIGNALR_CONN_STR=$(az signalr key list \
@@ -65,9 +65,8 @@ def send_to_user(user_id: str, event: str, data: dict):
             "operation": "create",
             "data": json.dumps(data),
             "metadata": {
-                "userId": user_id,
-                "groupName": "",
-                "hubName": "notifications"
+                "user": user_id,
+                "hub": "notifications"
             }
         }
     )
@@ -92,8 +91,8 @@ def send_to_group(group: str, message: dict):
             "operation": "create",
             "data": json.dumps(message),
             "metadata": {
-                "groupName": group,
-                "hubName": "notifications"
+                "group": group,
+                "hub": "notifications"
             }
         }
     ).raise_for_status()
@@ -117,7 +116,7 @@ def broadcast(message: dict):
             "operation": "create",
             "data": json.dumps(message),
             "metadata": {
-                "hubName": "notifications"
+                "hub": "notifications"
             }
         }
     ).raise_for_status()
