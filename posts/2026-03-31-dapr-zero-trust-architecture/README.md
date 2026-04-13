@@ -84,9 +84,9 @@ spec:
     secretKeyRef:
       name: redis-secret
       key: password
-  scopes:
-  - order-service
-  - order-processor
+scopes:
+- order-service
+- order-processor
 ```
 
 ## Secret Management - No Hardcoded Credentials
@@ -142,7 +142,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          dapr.io/enabled: "true"
+          dapr-enabled: "true"
   egress:
   - to:
     - namespaceSelector:
