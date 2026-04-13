@@ -66,7 +66,7 @@ Group a fixed number of related items per document. This is ideal for time-serie
 }
 ```
 
-Use `$push` with conditional `$addToSet` logic, and create a new bucket when the count reaches the limit:
+Use `$push` with an upsert, and create a new bucket when the count reaches the limit:
 
 ```javascript
 db.sensorBuckets.updateOne(
