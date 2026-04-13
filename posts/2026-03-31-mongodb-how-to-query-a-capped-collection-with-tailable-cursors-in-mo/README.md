@@ -27,13 +27,11 @@ db.createCollection("events", {
 ## Opening a Tailable Cursor (mongo Shell)
 
 ```javascript
-// Opens a tailable cursor that waits for new documents
-var cursor = db.events.find({}).addOption(DBQuery.Option.tailable);
+// Opens a tailable, awaitData cursor that waits for new documents
+var cursor = db.events.find({}).addOption(DBQuery.Option.tailable).addOption(DBQuery.Option.awaitData);
 
-while (cursor.hasNext() || cursor.isAlive()) {
-  if (cursor.hasNext()) {
-    printjson(cursor.next());
-  }
+while (cursor.hasNext()) {
+  printjson(cursor.next());
 }
 ```
 
