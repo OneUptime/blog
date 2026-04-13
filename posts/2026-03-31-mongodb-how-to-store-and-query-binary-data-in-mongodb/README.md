@@ -83,8 +83,9 @@ const dataUrl = `data:image/jpeg;base64,${base64Image}`
 
 ```python
 from pymongo import MongoClient
-from bson.binary import Binary, UuidRepresentation
-import uuid, hashlib
+from bson.binary import Binary
+from datetime import datetime
+import hashlib
 
 client = MongoClient("mongodb://localhost:27017")
 db = client["myapp"]
@@ -98,7 +99,7 @@ doc_hash = hashlib.sha256(pdf_bytes).digest()
 db.documents.insert_one({
     "filename": "report.pdf",
     "content": Binary(pdf_bytes),           # generic BinData
-    "sha256": Binary(doc_hash, 5),          # subtype 5 = MD5 (used for any hash)
+    "sha256": Binary(doc_hash, 0),          # subtype 0 = generic binary
     "uploadedAt": datetime.utcnow()
 })
 ```
