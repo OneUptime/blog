@@ -59,7 +59,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- Dapr v1.10 or later (Workflow is GA in Dapr 1.12+)
+- Dapr v1.10 or later (Workflow is stable/GA in Dapr 1.15+)
 - Dapr CLI installed and initialized
 - A state store component configured
 - Workflow SDK for your language (.NET, Go, Python, Java)
@@ -96,7 +96,6 @@ import (
     "fmt"
     "log"
 
-    "github.com/dapr/durabletask-go/task"
     daprwf "github.com/dapr/go-sdk/workflow"
 )
 
@@ -223,11 +222,12 @@ Response:
 ```json
 {
   "instanceID": "order-001",
-  "workflowName": "order_workflow",
   "createdAt": "2026-03-31T10:00:00Z",
   "lastUpdatedAt": "2026-03-31T10:00:15Z",
   "runtimeStatus": "COMPLETED",
-  "serializedOutput": "{\"orderId\":\"order-001\",\"trackingNumber\":\"tracking-XYZ-789\"}"
+  "properties": {
+    "dapr.workflow.output": "{\"orderId\":\"order-001\",\"trackingNumber\":\"tracking-XYZ-789\"}"
+  }
 }
 ```
 
