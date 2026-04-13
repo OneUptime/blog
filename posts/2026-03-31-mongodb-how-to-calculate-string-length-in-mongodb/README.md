@@ -106,7 +106,7 @@ db.test.aggregate([
 ]);
 ```
 
-For a Japanese string like "Hello" (5 characters, 15 bytes in UTF-8), `$strLenCP` returns 5 while `$strLenBytes` returns 15.
+For a Japanese string like "こんにちは" (5 characters, 15 bytes in UTF-8), `$strLenCP` returns 5 while `$strLenBytes` returns 15.
 
 ## Adding a Length Field for Sorting
 
