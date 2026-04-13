@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Aggregation, Fill, Time-Series, Pipeline
 
-Description: Learn how to use MongoDB's $fill aggregation stage to populate null and missing field values using forward-fill, backward-fill, linear interpolation, or fixed values.
+Description: Learn how to use MongoDB's $fill aggregation stage to populate null and missing field values using forward-fill (locf), linear interpolation, or fixed values.
 
 ---
 
-The `$fill` stage, introduced in MongoDB 5.3, lets you replace `null` or missing field values using several strategies: carry the last known value forward, carry the next value backward, interpolate linearly between known points, or use a fixed constant.
+The `$fill` stage, introduced in MongoDB 5.3, lets you replace `null` or missing field values using several strategies: carry the last known value forward, interpolate linearly between known points, or use a fixed constant.
 
 ## When Do You Need $fill?
 
@@ -89,7 +89,7 @@ db.temps.aggregate([
     }
   }
 ]);
-// sensor A: 20.0, 20.5 (halfway), 21.0 (halfway), 21.5
+// sensor A: 20.0, 20.5 (interpolated at 1/3), 21.0 (interpolated at 2/3), 21.5
 ```
 
 ## Method: value (Constant Replacement)
