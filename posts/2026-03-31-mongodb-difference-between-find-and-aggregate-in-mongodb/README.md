@@ -30,7 +30,7 @@ db.products.find({ inStock: true })
   .limit(10)
 ```
 
-`find()` is internally translated to an aggregation `$match` + `$project` pipeline, so it uses the same query engine. Its syntax is simpler and it works directly with index planning.
+`find()` and `aggregate()` share the same underlying query planner and index infrastructure. The `find()` syntax is simpler and has slightly less overhead for straightforward queries.
 
 ## The aggregate() Method
 
