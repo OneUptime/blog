@@ -65,8 +65,8 @@ Avoid `available` when:
 ## Behavior During Chunk Migrations
 
 During a chunk migration in a sharded cluster:
-- `local` may briefly block reads on moving chunks to avoid orphan exposure
-- `available` never blocks and may return orphaned documents from the source shard
+- `local` uses cached chunk metadata on each shard member to filter out orphaned documents, adding some latency
+- `available` skips these metadata checks entirely and may return orphaned documents from the source shard
 
 This makes `available` suitable for append-only event streams and metrics but not for inventory or account management.
 
