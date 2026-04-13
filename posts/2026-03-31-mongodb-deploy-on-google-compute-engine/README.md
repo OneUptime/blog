@@ -56,7 +56,6 @@ sudo mkfs.xfs /dev/disk/by-id/google-mongodb-data
 sudo mkdir -p /data/mongodb
 sudo mount /dev/disk/by-id/google-mongodb-data /data/mongodb
 echo '/dev/disk/by-id/google-mongodb-data /data/mongodb xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
-sudo chown -R mongodb:mongodb /data/mongodb
 ```
 
 ## Install MongoDB
@@ -70,6 +69,7 @@ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gp
   sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
 sudo apt-get update && sudo apt-get install -y mongodb-org
+sudo chown -R mongodb:mongodb /data/mongodb
 ```
 
 ## Configure MongoDB
