@@ -117,7 +117,10 @@ async function getUserWithMigration(id) {
     const user = await User.findById(id);
     if (user.schemaVersion === 1) {
         const migrated = migrateToV2(user.toObject());
-        await User.updateOne({ _id: user._id }, { $set: migrated });
+        await User.updateOne(
+            { _id: user._id },
+            { $set: { address: migrated.address, schemaVersion: 2 } }
+        );
         return migrated;
     }
     return user;
@@ -165,7 +168,7 @@ Signal to clients when a version will be removed:
 ```javascript
 app.use('/api/v1', (req, res, next) => {
     res.set('Deprecation', 'true');
-    res.set('Sunset', 'Sat, 31 Dec 2026 23:59:59 GMT');
+    res.set('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
     res.set('Link', '</api/v2>; rel="successor-version"');
     next();
 });
