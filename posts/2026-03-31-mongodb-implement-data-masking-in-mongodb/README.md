@@ -35,7 +35,7 @@ db.users.aggregate([
       firstName: "$firstName",
       lastName: "$lastName",
       // Mask credit card - keep last 4 only
-      creditCardLast4: { $substr: ["$creditCard", -4, 4] },
+      creditCardLast4: { $substrCP: ["$creditCard", { $subtract: [{ $strLenCP: "$creditCard" }, 4] }, 4] },
       creditCard: "XXXX-XXXX-XXXX-0000",
     },
   },
