@@ -45,7 +45,6 @@ client = MongoClient(
 
 ```java
 import com.mongodb.MongoClientSettings;
-import com.mongodb.connection.ClusterSettings;
 
 MongoClientSettings settings = MongoClientSettings.builder()
     .applicationName("checkout-service")
@@ -101,7 +100,7 @@ Include the environment and service name to make filtering in logs easier.
 
 ## appName in Profiler Output
 
-When the slow query profiler captures an operation, the `appName` appears in the `client` field:
+When the slow query profiler captures an operation, the `appName` appears as a top-level field in the profile document:
 
 ```javascript
 // In mongosh - query profiler output
