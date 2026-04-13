@@ -106,6 +106,7 @@ db.appLogs.aggregate([
 ```javascript
 db.appLogs.aggregate([
   { $match: { "metadata.service": "api-gateway", duration: { $exists: true } } },
+  { $sort: { duration: 1 } },
   { $group: { _id: null, durations: { $push: "$duration" } } },
   {
     $project: {
