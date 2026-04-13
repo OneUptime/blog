@@ -115,7 +115,7 @@ Workload Type          | Recommended Compressor
 Hot write-heavy        | snappy
 Balanced read/write    | snappy or zstd
 Read-heavy / archival  | zstd
-Legacy / low CPU       | zlib
+Legacy (pre-4.2)       | zlib
 Uncompressible data    | none
 ```
 
