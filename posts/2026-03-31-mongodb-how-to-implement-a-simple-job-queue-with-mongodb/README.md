@@ -175,7 +175,7 @@ async function processJob(job, collection) {
           processingStartedAt: null,
           // Re-schedule with backoff if retrying
           scheduledFor: isFinalAttempt
-            ? undefined
+            ? null
             : new Date(Date.now() + Math.pow(2, job.attempts) * 5000)
         }
       }
