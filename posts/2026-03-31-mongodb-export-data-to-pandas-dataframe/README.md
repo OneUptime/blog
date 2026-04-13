@@ -13,7 +13,7 @@ Exporting MongoDB data into a Pandas DataFrame bridges the gap between MongoDB's
 ## Prerequisites
 
 ```bash
-pip install pymongo pandas
+pip install pymongo pandas openpyxl
 ```
 
 ## Basic Export to DataFrame
