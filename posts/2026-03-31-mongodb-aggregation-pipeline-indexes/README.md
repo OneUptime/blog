@@ -149,7 +149,7 @@ db.orders.createIndex({ status: 1, createdAt: -1, amount: 1 });
 db.orders.aggregate([
   { $match: {
     status: "shipped",               // Equality on status (E)
-    createdAt: { $gte: new Date("2024-01-01") }  // Range on createdAt (R)
+    amount: { $gte: 100 }            // Range on amount (R)
   }},
   { $sort: { createdAt: -1 } },     // Sort on createdAt (S)
   { $group: { _id: "$region", total: { $sum: "$amount" } } }
