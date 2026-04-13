@@ -119,7 +119,7 @@ To return the actual document with the maximum or minimum value, sort and limit:
 // Document with the highest order amount
 db.orders.find().sort({ amount: -1 }).limit(1);
 
-// Or using aggregation with $first after sorting
+// Or using aggregation with $sort and $limit
 db.orders.aggregate([
   { $sort: { amount: -1 } },
   { $limit: 1 }
