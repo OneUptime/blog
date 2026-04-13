@@ -80,8 +80,8 @@ If the server is slow to respond (e.g., Atlas free tier starting up), increase t
 
 ```javascript
 const client = new MongoClient(uri, {
-  serverSelectionTimeoutMS: 30000,  // default is 30000 ms
-  connectTimeoutMS: 15000
+  serverSelectionTimeoutMS: 60000,  // default is 30000 ms
+  connectTimeoutMS: 30000
 });
 ```
 
@@ -176,7 +176,7 @@ async function diagnose(uri) {
   } catch (err) {
     console.error("FAILED:", err.name, err.message);
     if (err.name === "MongoServerSelectionError") {
-      console.error("Topology description:", JSON.stringify(err.topology?.s?.description, null, 2));
+      console.error("Topology description:", JSON.stringify(err.reason, null, 2));
     }
   } finally {
     await client.close();
