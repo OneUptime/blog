@@ -22,7 +22,7 @@ Ideal for:
 ## Prerequisites
 
 - MongoDB 5.0+ for basic time series
-- MongoDB 6.3+ for secondary indexes on metaField
+- MongoDB 6.0+ for secondary indexes on measurement fields
 - MongoDB 7.0+ for mixed schema validation support
 
 ## Step 1: Create a Time Series Collection
@@ -171,7 +171,7 @@ Output:
 
 ## Step 7: Create Secondary Indexes
 
-On MongoDB 6.3+, create indexes on metaField sub-fields for faster queries:
+Create indexes on metaField sub-fields for faster queries (supported since MongoDB 5.0; measurement field indexes require 6.0+):
 
 ```javascript
 db.sensor_readings.createIndex({ "metadata.sensorId": 1, timestamp: 1 })
