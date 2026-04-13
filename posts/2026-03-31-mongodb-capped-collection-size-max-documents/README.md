@@ -86,11 +86,21 @@ Key fields:
 |-------------------------|--------------|-------------|---------------------|-----------------|
 | App access logs         | 1,000         | 300 B        | ~1 hour             | 1 GB            |
 | IoT sensor readings     | 10,000        | 100 B        | ~10 min             | 600 MB          |
-| Background job audit    | 10            | 2 KB         | ~1 week             | 12 MB           |
+| Background job audit    | 10            | 2 KB         | ~1 week             | 12 GB           |
 
 ## Modifying Limits After Creation
 
-Capped collection size and max cannot be changed with `collMod`. You must recreate the collection:
+Starting with MongoDB 6.0, you can modify capped collection limits using `collMod`:
+
+```javascript
+db.runCommand({
+  collMod: "audit_log",
+  cappedSize: 524288000,   // new 500 MB limit
+  cappedMax: 1000000
+})
+```
+
+On MongoDB versions before 6.0, you must drop and recreate the collection:
 
 ```javascript
 db.audit_log.drop()
