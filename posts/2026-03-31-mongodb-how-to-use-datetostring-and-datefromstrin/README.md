@@ -40,7 +40,7 @@ Common format specifiers:
 %d - 2-digit day of month (01-31)
 %H - 2-digit hour (00-23)
 %M - 2-digit minute (00-59)
-%S - 2-digit second (00-60)
+%S - 2-digit second (00-59)
 %L - 3-digit millisecond (000-999)
 %j - 3-digit day of year (001-366)
 %w - 1-digit day of week (1=Sunday)
@@ -191,4 +191,4 @@ db.legacyData.aggregate([
 
 ## Summary
 
-`$dateToString` and `$dateFromString` are essential MongoDB aggregation operators for converting between BSON dates and string representations. Use `$dateToString` for display formatting and date-based grouping, and `$dateFromString` when ingesting data from external systems that provide dates as strings. The `onError` and `onNull` parameters make both operators robust against malformed or missing input.
+`$dateToString` and `$dateFromString` are essential MongoDB aggregation operators for converting between BSON dates and string representations. Use `$dateToString` for display formatting and date-based grouping, and `$dateFromString` when ingesting data from external systems that provide dates as strings. The `onNull` parameter on `$dateToString` and the `onError` and `onNull` parameters on `$dateFromString` make these operators robust against missing or malformed input.
