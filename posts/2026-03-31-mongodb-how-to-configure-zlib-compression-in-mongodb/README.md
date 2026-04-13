@@ -52,13 +52,13 @@ db.createCollection("audit_logs", {
 
 ## Zlib Compression Levels
 
-WiredTiger supports Zlib compression levels 1-9. Level 1 is fastest with least compression; level 9 is slowest with best compression. The default is level 6:
+While Zlib itself supports compression levels 1-9, WiredTiger does not expose a configuration option to set the Zlib compression level. MongoDB's WiredTiger integration uses Zlib's default compression level (level 6) for all Zlib-compressed collections. To use Zlib compression on a collection, simply specify the block compressor:
 
 ```javascript
 db.createCollection("archive", {
   storageEngine: {
     wiredTiger: {
-      configString: "block_compressor=zlib,block_compressor_level=9"
+      configString: "block_compressor=zlib"
     }
   }
 })
@@ -84,9 +84,9 @@ print(`Compression ratio: ${ratio}x`)
 MongoDB does not recompress data in place. Use `mongodump` and `mongorestore` or a change-stream copy to migrate:
 
 ```bash
-mongodump --collection=mylogs --out=/tmp/backup
+mongodump --db=mydb --collection=mylogs --out=/tmp/backup
 # Drop and recreate with Zlib
-mongorestore --collection=mylogs /tmp/backup/mydb/mylogs.bson
+mongorestore --db=mydb --collection=mylogs /tmp/backup/mydb/mylogs.bson
 ```
 
 ## When to Choose Zlib
