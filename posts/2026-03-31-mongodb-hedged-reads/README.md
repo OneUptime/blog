@@ -46,11 +46,7 @@ db.products.find({ category: "electronics" }).readPref("nearest", null, {
 })
 ```
 
-Or in the connection string for the full client:
-
-```text
-mongodb://mongos1:27017,mongos2:27017/myapp?readPreference=nearest&replicaSet=rs0
-```
+For `nearest` read preference, hedged reads are enabled by default on `mongos` since MongoDB 4.4. For other compatible read preferences, enable hedging programmatically through the driver.
 
 In the Node.js driver:
 
@@ -66,7 +62,7 @@ const readPref = new ReadPreference(
   }
 );
 
-const client = new MongoClient("mongodb://mongos1:27017/?replicaSet=rs0", {
+const client = new MongoClient("mongodb://mongos1:27017,mongos2:27017/myapp", {
   readPreference: readPref
 });
 ```
@@ -109,13 +105,13 @@ Response example:
   "hedgingMetrics": {
     "numTotalOperations": 10000,
     "numTotalHedgedOperations": 8750,
-    "numAdvantageousHedgedOperations": 312
+    "numAdvantageouslyHedgedOperations": 312
   }
 }
 ```
 
 - `numTotalHedgedOperations` - reads where a hedge was actually sent
-- `numAdvantageousHedgedOperations` - reads where the hedged (secondary) response came back first
+- `numAdvantageouslyHedgedOperations` - reads where the hedged (secondary) response came back first
 
 ## Cost of Hedged Reads
 
