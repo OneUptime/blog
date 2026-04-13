@@ -42,7 +42,6 @@ package main
 
 import (
     "github.com/dapr/durabletask-go/task"
-    "github.com/microsoft/durabletask-go/backend"
 )
 
 type OrderInput struct {
@@ -57,7 +56,7 @@ type OrderResult struct {
 }
 
 // OrderWorkflow is a sequential saga workflow
-func OrderWorkflow(ctx *task.OrchestrationContext) (any, error) {
+func OrderWorkflow(ctx *task.WorkflowContext) (any, error) {
     var input OrderInput
     if err := ctx.GetInput(&input); err != nil {
         return nil, err
@@ -98,7 +97,7 @@ func OrderWorkflow(ctx *task.OrchestrationContext) (any, error) {
 ## Pattern 2: Fan-Out / Fan-In (Parallel Activities)
 
 ```go
-func BatchProcessingWorkflow(ctx *task.OrchestrationContext) (any, error) {
+func BatchProcessingWorkflow(ctx *task.WorkflowContext) (any, error) {
     var itemIDs []string
     ctx.GetInput(&itemIDs)
 
@@ -126,34 +125,22 @@ func BatchProcessingWorkflow(ctx *task.OrchestrationContext) (any, error) {
 ```go
 import "time"
 
-func ApprovalWorkflow(ctx *task.OrchestrationContext) (any, error) {
+func ApprovalWorkflow(ctx *task.WorkflowContext) (any, error) {
     var requestID string
     ctx.GetInput(&requestID)
 
     // Send approval request
     ctx.CallActivity(SendApprovalEmailActivity, task.WithActivityInput(requestID))
 
-    // Wait up to 48 hours for approval
-    deadline := ctx.CurrentTimeUtc().Add(48 * time.Hour)
-    timerTask := ctx.CreateTimer(deadline)
-
-    approvalTask := ctx.WaitForExternalEvent("approval-received")
-
-    // Race: approval vs timeout
-    winner := task.WhenAny(approvalTask, timerTask)
-    if err := winner.Await(nil); err != nil {
-        return nil, err
-    }
-
-    if winner == timerTask {
+    // Wait up to 48 hours for the approval event (timeout is built in)
+    var approved bool
+    err := ctx.WaitForSingleEvent("approval-received", 48*time.Hour).Await(&approved)
+    if err != nil {
         // Timed out - reject
         ctx.CallActivity(RejectRequestActivity, task.WithActivityInput(requestID))
         return map[string]string{"status": "timed_out"}, nil
     }
 
-    // Approved
-    var approved bool
-    approvalTask.Await(&approved)
     if !approved {
         return map[string]string{"status": "rejected"}, nil
     }
@@ -166,16 +153,16 @@ func ApprovalWorkflow(ctx *task.OrchestrationContext) (any, error) {
 ## Pattern 4: External Event (Human-in-the-Loop)
 
 ```go
-func HumanApprovalWorkflow(ctx *task.OrchestrationContext) (any, error) {
+func HumanApprovalWorkflow(ctx *task.WorkflowContext) (any, error) {
     var orderID string
     ctx.GetInput(&orderID)
 
     // Notify the approver
     ctx.CallActivity(NotifyApproverActivity, task.WithActivityInput(orderID))
 
-    // Wait indefinitely for the external event
+    // Wait for the external event (use a long timeout to approximate indefinite wait)
     var approved bool
-    if err := ctx.WaitForExternalEvent("order-approved").Await(&approved); err != nil {
+    if err := ctx.WaitForSingleEvent("order-approved", 365*24*time.Hour).Await(&approved); err != nil {
         return nil, err
     }
 
@@ -191,11 +178,11 @@ func HumanApprovalWorkflow(ctx *task.OrchestrationContext) (any, error) {
 Raise the external event from a separate service:
 
 ```go
-// Raise event via Dapr client
-err = client.RaiseWorkflowEvent(ctx,
-    instanceID,
-    "order-approved",
-    true, // approved = true
+// Raise event via durabletask client
+import dtc "github.com/dapr/durabletask-go/client"
+
+err = wc.RaiseEvent(ctx, instanceID, "order-approved",
+    dtc.WithEventPayload(true), // approved = true
 )
 ```
 
@@ -204,7 +191,7 @@ err = client.RaiseWorkflowEvent(ctx,
 ```go
 import "time"
 
-func MonitorWorkflow(ctx *task.OrchestrationContext) (any, error) {
+func MonitorWorkflow(ctx *task.WorkflowContext) (any, error) {
     var resourceID string
     ctx.GetInput(&resourceID)
 
@@ -218,7 +205,7 @@ func MonitorWorkflow(ctx *task.OrchestrationContext) (any, error) {
         }
 
         // Wait 30 seconds before checking again
-        ctx.CreateTimer(ctx.CurrentTimeUtc().Add(30 * time.Second)).Await(nil)
+        ctx.CreateTimer(30 * time.Second).Await(nil)
 
         // Continue-as-new to prevent history from growing unbounded
         ctx.ContinueAsNew(resourceID)
@@ -257,40 +244,53 @@ func ShipItemsActivity(ctx task.ActivityContext) (any, error) {
 ## Start the Workflow Worker
 
 ```go
+import (
+    "context"
+    "log"
+
+    "github.com/dapr/durabletask-go/backend"
+    "github.com/dapr/durabletask-go/backend/sqlite"
+    "github.com/dapr/durabletask-go/task"
+)
+
 func main() {
-    w, err := worker.NewTaskHubWorker(backend.NewSqliteBackend("./workflow.db"))
-    if err != nil {
+    // Register workflows and activities
+    r := task.NewTaskRegistry()
+    r.AddOrchestratorN("OrderWorkflow", OrderWorkflow)
+    r.AddOrchestratorN("BatchProcessingWorkflow", BatchProcessingWorkflow)
+    r.AddOrchestratorN("ApprovalWorkflow", ApprovalWorkflow)
+    r.AddActivityN("ValidateOrderActivity", ValidateOrderActivity)
+    r.AddActivityN("ChargePaymentActivity", ChargePaymentActivity)
+    r.AddActivityN("ShipItemsActivity", ShipItemsActivity)
+
+    // Create backend, executor, and workers
+    logger := backend.DefaultLogger()
+    executor := task.NewTaskExecutor(r)
+    be := sqlite.NewSqliteBackend(sqlite.NewSqliteOptions("./workflow.db"), logger)
+    orchestrationWorker := backend.NewOrchestrationWorker(be, executor, logger)
+    activityWorker := backend.NewActivityTaskWorker(be, executor, logger)
+    taskHubWorker := backend.NewTaskHubWorker(be, orchestrationWorker, activityWorker, logger)
+
+    if err := taskHubWorker.Start(context.Background()); err != nil {
         log.Fatal(err)
     }
-
-    w.AddOrchestratorN("OrderWorkflow", OrderWorkflow)
-    w.AddOrchestratorN("BatchProcessingWorkflow", BatchProcessingWorkflow)
-    w.AddOrchestratorN("ApprovalWorkflow", ApprovalWorkflow)
-    w.AddActivityN("ValidateOrderActivity", ValidateOrderActivity)
-    w.AddActivityN("ChargePaymentActivity", ChargePaymentActivity)
-    w.AddActivityN("ShipItemsActivity", ShipItemsActivity)
-
-    w.Start(context.Background())
 }
 ```
 
 ## Start and Monitor Workflows
 
 ```go
-// Start a new workflow instance
-instanceID, err := client.StartWorkflow(ctx, &dapr.StartWorkflowRequest{
-    InstanceID:        "order-" + orderID,
-    WorkflowComponent: "dapr",
-    WorkflowName:      "OrderWorkflow",
-    Input:             orderInput,
-})
+import dtc "github.com/dapr/durabletask-go/client"
 
-// Poll for status
-status, err := client.GetWorkflow(ctx, &dapr.GetWorkflowRequest{
-    InstanceID:        instanceID.InstanceID,
-    WorkflowComponent: "dapr",
-})
-fmt.Printf("Status: %s\n", status.RuntimeStatus)
+// Start a new workflow instance
+id, err := wc.ScheduleNewOrchestration(ctx, "OrderWorkflow",
+    dtc.WithInput(orderInput),
+    dtc.WithInstanceID("order-"+orderID),
+)
+
+// Fetch workflow metadata
+metadata, err := wc.FetchOrchestrationMetadata(ctx, id)
+fmt.Printf("Status: %s\n", metadata.RuntimeStatus.String())
 ```
 
 ## Summary
