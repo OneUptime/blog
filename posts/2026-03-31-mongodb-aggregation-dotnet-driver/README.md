@@ -18,6 +18,15 @@ MongoDB's aggregation framework processes documents through a sequence of stages
 dotnet add package MongoDB.Driver
 ```
 
+Register a camelCase naming convention so C# PascalCase properties map to camelCase fields in MongoDB (used by the BsonDocument examples below):
+
+```csharp
+using MongoDB.Bson.Serialization.Conventions;
+
+var pack = new ConventionPack { new CamelCaseElementNameConvention() };
+ConventionRegistry.Register("camelCase", pack, t => true);
+```
+
 Models:
 
 ```csharp
@@ -109,7 +118,7 @@ foreach (var doc in results)
 ```csharp
 var lookupPipeline = new EmptyPipelineDefinition<Order>()
     .Match(Builders<Order>.Filter.Eq(o => o.Status, "pending"))
-    .Lookup<Order, Customer, OrderWithCustomer>(
+    .Lookup<Order, Order, Customer, OrderWithCustomer>(
         db.GetCollection<Customer>("customers"),
         localField: o => o.CustomerId,
         foreignField: c => c.Id,
@@ -120,7 +129,7 @@ var lookupPipeline = new EmptyPipelineDefinition<Order>()
 var enrichedOrders = await orders.Aggregate(lookupPipeline).ToListAsync();
 ```
 
-## Unwind, AddFields, and Project
+## Unwind and Group
 
 ```csharp
 var pipeline = new EmptyPipelineDefinition<Article>()
@@ -163,8 +172,17 @@ var datePipeline = new[]
 ## Running Explain on a Pipeline
 
 ```csharp
-var cursor = orders.Aggregate(pipeline);
-var explanation = await cursor.ExplainAsync();
+var explainCommand = new BsonDocument
+{
+    { "explain", new BsonDocument
+        {
+            { "aggregate", "orders" },
+            { "pipeline", new BsonArray(datePipeline) },
+            { "cursor", new BsonDocument() }
+        }
+    }
+};
+var explanation = await db.RunCommandAsync<BsonDocument>(explainCommand);
 Console.WriteLine(explanation.ToJson());
 ```
 
