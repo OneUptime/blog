@@ -20,7 +20,9 @@ Atlas Search supports several tokenizer types:
 - `nGram` - generates all n-grams of specified length
 - `edgeGram` - generates n-grams from the start of each token
 - `keyword` - treats the entire input as a single token
-- `regexCaptureGroup` - extracts tokens via regex
+- `regexCaptureGroup` - extracts tokens via regex capture group
+- `regexSplit` - splits tokens using a regex delimiter
+- `uaxUrlEmail` - tokenizes URLs and email addresses as single tokens
 
 ## Standard Tokenizer
 
@@ -46,8 +48,7 @@ Generates prefix tokens for autocomplete functionality:
   "tokenizer": {
     "type": "edgeGram",
     "minGram": 2,
-    "maxGram": 15,
-    "tokenChars": ["letter", "digit"]
+    "maxGram": 15
   }
 }
 ```
@@ -62,8 +63,7 @@ Enables matching at any position within a word:
   "tokenizer": {
     "type": "nGram",
     "minGram": 3,
-    "maxGram": 5,
-    "tokenChars": ["letter", "digit"]
+    "maxGram": 5
   }
 }
 ```
@@ -105,8 +105,7 @@ Extract tokens from structured formats like log lines:
       "tokenizer": {
         "type": "edgeGram",
         "minGram": 2,
-        "maxGram": 20,
-        "tokenChars": ["letter", "digit"]
+        "maxGram": 20
       },
       "tokenFilters": [
         { "type": "lowercase" },
