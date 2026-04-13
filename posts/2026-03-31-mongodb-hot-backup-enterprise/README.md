@@ -58,12 +58,12 @@ The lock window (between `fsyncLock` and `fsyncUnlock`) is typically under a sec
 
 ## Method 2: MongoDB Ops Manager Backup
 
-MongoDB Ops Manager provides automated hot backups for Enterprise deployments with no locking required. Configure the backup agent in `automation-agent.config`:
+MongoDB Ops Manager provides automated hot backups for Enterprise deployments with no locking required. Configure the automation agent in `automation-agent.config`:
 
 ```text
 mmsGroupId=your-group-id
 mmsApiKey=your-api-key
-mmsBaseUrl=https://cloud.mongodb.com
+mmsBaseUrl=https://your-ops-manager-host:8080
 ```
 
 Start backup for a replica set via the Ops Manager API:
@@ -73,7 +73,7 @@ curl -u "publicKey:privateKey" \
   --digest \
   -H "Content-Type: application/json" \
   -X POST \
-  "https://cloud.mongodb.com/api/public/v1.0/groups/{groupId}/backupConfigs/{clusterId}" \
+  "https://your-ops-manager-host:8080/api/public/v1.0/groups/{groupId}/backupConfigs/{clusterId}" \
   -d '{
     "statusName": "STARTED",
     "storageEngineName": "WIRED_TIGER",
@@ -113,7 +113,7 @@ For replica sets, a best practice is to take hot backups from a secondary to avo
 
 ```bash
 # Connect to secondary and verify it's not primary
-mongosh "$SECONDARY_URI" --eval "rs.isMaster().ismaster"
+mongosh "$SECONDARY_URI" --eval "db.hello().isWritablePrimary"
 # Should return false
 
 # Take backup from secondary
