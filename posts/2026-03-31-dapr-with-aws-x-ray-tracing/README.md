@@ -133,7 +133,6 @@ Dapr propagates W3C trace context headers. Your application can add custom annot
 
 ```python
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 
 tracer = trace.get_tracer(__name__)
 
@@ -166,12 +165,12 @@ def get_trace_parent(span) -> str:
 aws xray get-trace-summaries \
   --start-time $(date -d '30 minutes ago' +%s) \
   --end-time $(date +%s) \
-  --filter-expression 'annotation.dapr.app_id = "order-service"' \
+  --filter-expression 'annotation[dapr.app_id] = "order-service"' \
   --region us-east-1
 
 # Get detailed trace
 aws xray batch-get-traces \
-  --trace-ids "1-abc12345-EXAMPLE" \
+  --trace-ids "1-58406520-a006649127e371903a2de979" \
   --region us-east-1
 ```
 
