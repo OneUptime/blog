@@ -71,11 +71,12 @@ Or equivalently:
 db.adminCommand({ fsyncUnlock: 1 })
 ```
 
-If multiple `fsync` lock calls were stacked, call `fsyncUnlock` the same number of times:
+If multiple `fsync` lock calls were stacked, call `fsyncUnlock` the same number of times. Each call to `fsyncUnlock` returns a `lockCount` field showing the number of remaining locks:
 
 ```javascript
-// Check lock count
-db.adminCommand({ serverStatus: 1 }).globalLock.currentQueue
+db.fsyncUnlock()
+// Response includes: { "info": "fsyncUnlock completed", "lockCount": NumberLong(1), "ok": 1 }
+// When lockCount reaches 0, writes are fully re-enabled.
 ```
 
 ## End-to-End Backup Script
