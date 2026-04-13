@@ -17,7 +17,7 @@ MongoDB's read concern and write concern settings control the consistency guaran
 Write concern specifies how many replica set members must acknowledge a write before it is considered successful.
 
 ```javascript
-// Default write concern: wait for primary acknowledgment
+// Primary-only acknowledgment (default is w:"majority" since MongoDB 5.0)
 db.orders.insertOne(
   { customerId: "c1", amount: 100 },
   { writeConcern: { w: 1 } }
