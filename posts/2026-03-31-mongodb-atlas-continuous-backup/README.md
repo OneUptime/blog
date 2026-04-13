@@ -72,7 +72,7 @@ To restore to a specific time:
 
 1. In Atlas, go to **Backup** for your cluster
 2. Click **Restore**
-3. Choose **Continuous Cloud Backup**
+3. Choose **Point in Time Restore**
 4. Select a target time within your retention window
 5. Choose restore target: same cluster, new cluster, or download
 
