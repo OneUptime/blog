@@ -199,11 +199,18 @@ db.sensorData.aggregate([
 
 ## Handling the First Document
 
-If the first document in a sorted sequence has a null value, LOCF cannot fill it (there's no previous value). Use a constant fill as a fallback:
+If the first document in a sorted sequence has a null value, LOCF cannot fill it (there's no previous value). Use a two-pass approach — LOCF first, then a constant fill to catch the remaining leading nulls:
 
 ```javascript
 db.data.aggregate([
-  // First pass: use constant for any still-null values
+  // First pass: LOCF fills all nulls that have a preceding non-null value
+  {
+    $fill: {
+      sortBy: { ts: 1 },
+      output: { value: { method: "locf" } }
+    }
+  },
+  // Second pass: constant fill catches any remaining leading nulls
   {
     $fill: {
       sortBy: { ts: 1 },
