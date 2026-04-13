@@ -10,16 +10,15 @@ Description: Learn how to connect applications to MongoDB Atlas from Node.js, Py
 
 ## Atlas Connection Architecture
 
-Applications connect to MongoDB Atlas through the Atlas load balancer, which routes requests to the appropriate replica set member. The `mongodb+srv` connection string format uses DNS SRV records to automatically discover cluster topology.
+Applications connect to MongoDB Atlas using the `mongodb+srv` connection string format, which uses DNS SRV records to automatically discover cluster topology. The MongoDB driver resolves the SRV record to obtain the addresses of all replica set members, then connects to them directly. The driver routes writes to the primary and reads based on the configured read preference.
 
 ```mermaid
 flowchart LR
     App[Application] --> Driver[MongoDB Driver]
     Driver -->|SRV DNS lookup| DNS["DNS SRV Record\n_mongodb._tcp.cluster0.abc12.mongodb.net"]
-    DNS --> LB[Atlas Load Balancer]
-    LB --> P[Primary]
-    LB --> S1[Secondary 1]
-    LB --> S2[Secondary 2]
+    DNS --> P[Primary]
+    DNS --> S1[Secondary 1]
+    DNS --> S2[Secondary 2]
 ```
 
 ## Getting the Connection String
@@ -75,9 +74,7 @@ const client = new MongoClient(uri, {
 });
 
 async function getClient() {
-  if (!client.topology?.isConnected()) {
-    await client.connect();
-  }
+  await client.connect();
   return client;
 }
 
@@ -92,7 +89,7 @@ const { MongoClient } = require("mongodb");
 let cachedClient = null;
 
 async function connectToDatabase() {
-  if (cachedClient && cachedClient.topology?.isConnected()) {
+  if (cachedClient) {
     return cachedClient;
   }
 
