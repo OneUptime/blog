@@ -10,7 +10,7 @@ Description: Compare MongoDB sparse and partial indexes to understand when each 
 
 ## What Is a Sparse Index?
 
-A sparse index only includes documents where the indexed field exists (is not null or missing). Documents that do not have the field are excluded from the index entirely:
+A sparse index only includes documents where the indexed field exists, even if the field value is null. Documents that do not have the field at all are excluded from the index entirely:
 
 ```javascript
 db.users.createIndex({ phoneNumber: 1 }, { sparse: true })
@@ -94,7 +94,7 @@ This allows multiple unverified users to share the same email while requiring ve
 
 ## Query Compatibility
 
-MongoDB only uses a partial index when the query filter is a subset of the `partialFilterExpression`. This means you must include the filter condition in your query:
+MongoDB only uses a partial index when the query's filter includes the `partialFilterExpression` conditions. This means you must include the filter condition in your query:
 
 ```javascript
 // Uses the partial index (includes status: "pending")
