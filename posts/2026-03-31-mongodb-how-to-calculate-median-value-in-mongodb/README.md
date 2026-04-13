@@ -65,14 +65,14 @@ db.orders.aggregate([
 ])
 ```
 
-For exact results use `method: "exact"`:
+You can also use `$percentile` with `p: [0.5]` to get the median along with other percentiles. Note that `$percentile` returns an array:
 
 ```javascript
 db.orders.aggregate([
   {
     $group: {
       _id: null,
-      p50: { $percentile: { input: "$amount", p: [0.5], method: "exact" } }
+      p50: { $percentile: { input: "$amount", p: [0.5], method: "approximate" } }
     }
   }
 ])
