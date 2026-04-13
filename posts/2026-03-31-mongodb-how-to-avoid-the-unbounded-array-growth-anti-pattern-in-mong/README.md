@@ -189,7 +189,7 @@ await db.collection('users').updateOne(
       recentPurchases: {
         $each: [newPurchase],
         $sort: { purchasedAt: -1 },
-        $slice: 100  // negative = keep last 100
+        $slice: 100  // keep first 100 after sort (i.e. the 100 most recent)
       }
     }
   }
