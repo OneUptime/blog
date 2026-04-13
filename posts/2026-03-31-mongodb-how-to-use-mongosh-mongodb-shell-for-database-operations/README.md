@@ -10,7 +10,7 @@ Description: Learn how to use mongosh, the modern MongoDB Shell, to connect, que
 
 ## What is mongosh
 
-mongosh is the official MongoDB Shell, replacing the legacy `mongo` shell. It provides a modern JavaScript REPL environment with improved autocompletion, syntax highlighting, and better support for async operations. It ships as a standalone tool and is included with MongoDB 5.0+.
+mongosh is the official MongoDB Shell, replacing the legacy `mongo` shell. It provides a modern JavaScript REPL environment with improved autocompletion, syntax highlighting, and better support for async operations. It ships as a standalone tool and is included with MongoDB 6.0+.
 
 ## Installing mongosh
 
@@ -94,8 +94,9 @@ db.users.find({ age: { $gte: 25 } })
 // Find one document
 db.users.findOne({ email: "alice@example.com" })
 
-// Pretty print output
-db.users.find().pretty()
+// mongosh pretty-prints output by default, unlike the legacy mongo shell
+// Use .toArray() to get results as a plain array
+db.users.find().toArray()
 
 // Count documents
 db.users.countDocuments({ age: { $gte: 25 } })
@@ -206,7 +207,7 @@ exit
 // Set result batch size (default: 20)
 config.set("displayBatchSize", 50)
 
-// Disable color output
+// Disable telemetry
 config.set("enableTelemetry", false)
 
 // Show current configuration
