@@ -56,7 +56,7 @@ db.createCollection("orders", {
     }
   },
   validationAction: "error",  // "warn" to log only, "error" to reject invalid docs
-  validationLevel: "strict"   // "strict" = always validate, "moderate" = only on insert
+  validationLevel: "strict"   // "strict" = always validate, "moderate" = skip validation for updates to non-compliant docs
 });
 ```
 
