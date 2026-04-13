@@ -26,15 +26,21 @@ function getUserDisplayName(user) {
 Backfill with a batched update to avoid locking:
 
 ```javascript
+const batchSize = 1000;
 let processed = 0;
 while (true) {
+  const docs = await db.users.find(
+    { displayName: { $exists: false } }
+  ).limit(batchSize).toArray();
+
+  if (docs.length === 0) break;
+
+  const ids = docs.map(d => d._id);
   const result = await db.users.updateMany(
-    { displayName: { $exists: false } },
-    [{ $set: { displayName: { $concat: ["$firstName", " ", "$lastName"] } } }],
-    { limit: 1000 }
+    { _id: { $in: ids } },
+    [{ $set: { displayName: { $concat: ["$firstName", " ", "$lastName"] } } }]
   );
   processed += result.modifiedCount;
-  if (result.modifiedCount === 0) break;
 }
 console.log(`Backfilled ${processed} documents`);
 ```
@@ -71,7 +77,7 @@ function transformUser(doc) {
 Renaming a field requires a three-phase deploy. In phase one, write both old and new field names. In phase two, migrate data. In phase three, stop writing the old field name.
 
 ```javascript
-// Phase 1: Write both field names
+// Phase 2: Migrate existing data to new field name
 db.users.updateMany(
   { newFieldName: { $exists: false } },
   [{ $set: { newFieldName: "$oldFieldName" } }]
@@ -97,7 +103,7 @@ db.collection.updateMany(
 
 ## Using Schema Validation During Migration
 
-MongoDB's schema validation can enforce the new shape while allowing the old shape via `oneOf`:
+MongoDB's schema validation can enforce the new shape while allowing the old shape via `$or`:
 
 ```javascript
 db.runCommand({
