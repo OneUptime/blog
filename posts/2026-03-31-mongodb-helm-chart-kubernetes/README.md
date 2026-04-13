@@ -120,7 +120,8 @@ podAntiAffinityPreset: hard  # spread pods across nodes
 
 service:
   type: ClusterIP
-  port: 27017
+  ports:
+    mongodb: 27017
 ```
 
 Install with the values file:
