@@ -16,7 +16,7 @@ IoT dashboards require storing device metadata, high-frequency sensor readings, 
 
 ```javascript
 db.devices.insertOne({
-  _id: ObjectId("dev001"),
+  _id: ObjectId(),
   deviceId: "sensor-floor1-001",
   name: "Floor 1 Temperature Sensor",
   type: "temperature",
