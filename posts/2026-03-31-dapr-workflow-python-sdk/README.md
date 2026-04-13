@@ -28,7 +28,7 @@ dapr init
 
 ## Defining a Workflow
 
-A workflow is a function decorated with `@wf.workflow`. Activities are the individual steps.
+A workflow is a function decorated with `@wfr.workflow`. Activities are the individual steps.
 
 ```python
 import dapr.ext.workflow as wf
@@ -44,12 +44,12 @@ def order_workflow(ctx: wf.DaprWorkflowContext, order_id: str):
     return f"Order {order_id} completed: {payment}"
 
 @wfr.activity(name="validate_order")
-def validate_order(ctx: wf.ActivityContext, order_id: str) -> bool:
+def validate_order(ctx: wf.WorkflowActivityContext, order_id: str) -> bool:
     print(f"Validating order {order_id}")
     return True
 
 @wfr.activity(name="process_payment")
-def process_payment(ctx: wf.ActivityContext, order_id: str) -> str:
+def process_payment(ctx: wf.WorkflowActivityContext, order_id: str) -> str:
     print(f"Processing payment for {order_id}")
     return "paid"
 ```
@@ -57,29 +57,22 @@ def process_payment(ctx: wf.ActivityContext, order_id: str) -> str:
 ## Starting the Workflow Runtime
 
 ```python
-from dapr.clients import DaprClient
-
 wfr.start()
 
-with DaprClient() as client:
-    instance_id = client.start_workflow(
-        workflow_component="dapr",
-        workflow_name="order_workflow",
-        input="ORD-001"
-    )
-    print(f"Started workflow: {instance_id.instance_id}")
+wf_client = wf.DaprWorkflowClient()
+instance_id = wf_client.schedule_new_workflow(
+    workflow=order_workflow,
+    input="ORD-001"
+)
+print(f"Started workflow: {instance_id}")
 ```
 
 ## Checking Workflow Status
 
 ```python
-with DaprClient() as client:
-    state = client.get_workflow(
-        instance_id="<instance-id>",
-        workflow_component="dapr"
-    )
-    print(f"Status: {state.runtime_status}")
-    print(f"Result: {state.serialized_output}")
+state = wf_client.get_workflow_state(instance_id=instance_id)
+print(f"Status: {state.runtime_status}")
+print(f"Result: {state.serialized_output}")
 ```
 
 ## Handling Errors and Retries
@@ -87,12 +80,10 @@ with DaprClient() as client:
 Use `RetryPolicy` to configure retry behavior on activities:
 
 ```python
-retry = wf.WorkflowActivityOptions(
-    retry_policy=wf.RetryPolicy(
-        max_number_of_attempts=3,
-        first_retry_interval=timedelta(seconds=2),
-        backoff_coefficient=2.0
-    )
+retry = wf.RetryPolicy(
+    max_number_of_attempts=3,
+    first_retry_interval=timedelta(seconds=2),
+    backoff_coefficient=2.0
 )
 
 @wfr.workflow(name="resilient_workflow")
@@ -100,7 +91,7 @@ def resilient_workflow(ctx: wf.DaprWorkflowContext, payload: str):
     result = yield ctx.call_activity(
         flaky_activity,
         input=payload,
-        options=retry
+        retry_policy=retry
     )
     return result
 ```
@@ -115,4 +106,4 @@ dapr run --app-id workflow-app -- python workflow_app.py
 
 ## Summary
 
-The Dapr Python SDK makes building durable workflows straightforward. You define workflows and activities as Python functions, start the workflow runtime, and use the DaprClient to manage workflow instances. Retry policies and activity options provide resilience without complex infrastructure.
+The Dapr Python SDK makes building durable workflows straightforward. You define workflows and activities as Python functions, start the workflow runtime, and use the DaprWorkflowClient to manage workflow instances. Retry policies provide resilience without complex infrastructure.
