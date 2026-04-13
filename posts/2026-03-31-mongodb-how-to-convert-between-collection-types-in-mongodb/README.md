@@ -31,10 +31,10 @@ db.runCommand({
 ```
 
 Important caveats:
-- This acquires a global write lock - run during maintenance
+- This acquires a database-level exclusive lock - run during maintenance
 - Documents exceeding the cap are deleted starting from the oldest
 - You cannot set a `max` document count during conversion (only size)
-- All existing indexes are preserved
+- Secondary indexes are not preserved - only the `_id` index is retained; recreate other indexes after conversion
 
 ```javascript
 // Verify the conversion
