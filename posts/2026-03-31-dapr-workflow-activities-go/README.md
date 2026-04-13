@@ -28,10 +28,9 @@ An activity function accepts a `workflow.ActivityContext` and optional input, re
 package main
 
 import (
-    "context"
     "fmt"
 
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/durabletask-go/workflow"
 )
 
 type PaymentInput struct {
@@ -66,7 +65,7 @@ func ProcessPaymentActivity(ctx workflow.ActivityContext) (any, error) {
 
 ## Defining a Workflow That Calls Activities
 
-Use `workflow.CallActivity()` to schedule activities from within the workflow function:
+Use `ctx.CallActivity()` to schedule activities from within the workflow function:
 
 ```go
 func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
@@ -77,7 +76,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     // Call payment activity
     var paymentResult PaymentResult
-    if err := ctx.CallActivity(ProcessPaymentActivity, workflow.ActivityInput(order.Payment)).
+    if err := ctx.CallActivity(ProcessPaymentActivity, workflow.WithActivityInput(order.Payment)).
         Await(&paymentResult); err != nil {
         return nil, fmt.Errorf("payment activity failed: %w", err)
     }
@@ -88,7 +87,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     // Call email notification activity
     if err := ctx.CallActivity(SendEmailActivity,
-        workflow.ActivityInput(EmailInput{
+        workflow.WithActivityInput(EmailInput{
             To:      order.Email,
             Subject: "Order Confirmed",
             Body:    fmt.Sprintf("Order %s confirmed.", order.OrderID),
@@ -109,33 +108,27 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 package main
 
 import (
+    "context"
     "log"
 
-    dapr "github.com/dapr/go-sdk/client"
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/go-sdk/client"
+    "github.com/dapr/durabletask-go/workflow"
 )
 
 func main() {
-    w, err := workflow.NewWorker()
+    r := workflow.NewRegistry()
+    r.AddWorkflow(OrderWorkflow)
+    r.AddActivity(ProcessPaymentActivity)
+    r.AddActivity(SendEmailActivity)
+
+    wc, err := client.NewWorkflowClient()
     if err != nil {
-        log.Fatalf("failed to create workflow worker: %v", err)
+        log.Fatalf("failed to create workflow client: %v", err)
     }
 
-    // Register workflows and activities
-    if err := w.RegisterWorkflow(OrderWorkflow); err != nil {
-        log.Fatalf("failed to register workflow: %v", err)
-    }
-    if err := w.RegisterActivity(ProcessPaymentActivity); err != nil {
-        log.Fatalf("failed to register activity: %v", err)
-    }
-    if err := w.RegisterActivity(SendEmailActivity); err != nil {
-        log.Fatalf("failed to register activity: %v", err)
-    }
-
-    if err := w.Start(); err != nil {
+    if err := wc.StartWorker(context.Background(), r); err != nil {
         log.Fatalf("failed to start worker: %v", err)
     }
-    defer w.Shutdown()
 
     log.Println("Workflow worker started")
     select {} // Block forever
@@ -146,14 +139,12 @@ func main() {
 
 ```go
 func startOrderWorkflow(orderID string) error {
-    c, err := dapr.NewClient()
+    wc, err := client.NewWorkflowClient()
     if err != nil {
         return err
     }
-    defer c.Close()
 
-    wfClient := workflow.NewClient(workflow.WithDaprClient(c))
-    id, err := wfClient.ScheduleNewWorkflow(context.Background(), "OrderWorkflow",
+    id, err := wc.ScheduleWorkflow(context.Background(), "OrderWorkflow",
         workflow.WithInput(OrderInput{OrderID: orderID}))
     if err != nil {
         return err
