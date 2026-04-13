@@ -13,7 +13,7 @@ Auth0 handles the complexity of authentication while MongoDB stores your applica
 ## Installing Dependencies
 
 ```bash
-npm install express express-oauth2-jwt-bearer mongoose jwks-rsa axios
+npm install express express-oauth2-jwt-bearer mongoose axios
 ```
 
 ## Validating Auth0 JWTs in Express
@@ -54,6 +54,19 @@ const userSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('User', userSchema);
+```
+
+## Adding Profile Claims to the Access Token
+
+By default, Auth0 access tokens only contain the `sub` claim to identify the user. To include `email`, `name`, and `picture` in the access token, create an Auth0 Action with the **Post Login** trigger:
+
+```javascript
+// Auth0 Action: Add profile claims to access token
+exports.onExecutePostLogin = async (event, api) => {
+  api.accessToken.setCustomClaim('email', event.user.email);
+  api.accessToken.setCustomClaim('name', event.user.name);
+  api.accessToken.setCustomClaim('picture', event.user.picture);
+};
 ```
 
 ## Syncing Auth0 Users to MongoDB
