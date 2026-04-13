@@ -150,7 +150,7 @@ This opens MongoDB Compass with the local connection string pre-filled.
 ## Checking Local Deployment Status
 
 ```bash
-atlas deployments describe localDev
+atlas deployments list
 ```
 
 ## Summary
