@@ -27,12 +27,12 @@ flowchart LR
 CSFLE uses two levels of keys:
 
 1. **Customer Master Key (CMK)** - stored in a KMS (AWS KMS, Azure Key Vault, GCP KMS, or local key for testing). The CMK encrypts Data Encryption Keys.
-2. **Data Encryption Key (DEK)** - stored in a MongoDB collection (`keyvault`). The DEK encrypts individual field values.
+2. **Data Encryption Key (DEK)** - stored in a MongoDB collection (`__keyVault`). The DEK encrypts individual field values.
 
 ## CSFLE Modes
 
 - **Automatic CSFLE** (requires MongoDB Enterprise or Atlas) - the driver automatically encrypts/decrypts fields based on a JSON schema without any code changes in CRUD operations.
-- **Explicit CSFLE** (available in all editions) - you call `client.encrypt()` and `client.decrypt()` explicitly in your code.
+- **Explicit CSFLE** (available in all editions) - you call `encrypt()` and `decrypt()` on a `ClientEncryption` object explicitly in your code.
 
 ## Explicit CSFLE Example in Node.js
 
@@ -166,20 +166,19 @@ const { MongoClient, Binary } = require("mongodb");
 const schemaMap = {
   "myapp.patients": {
     bsonType: "object",
-    encryptMetadata: {
-      keyId: [ssnKeyId]
-    },
     properties: {
       ssn: {
         encrypt: {
           bsonType: "string",
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+          keyId: [ssnKeyId]
         }
       },
       creditCard: {
         encrypt: {
           bsonType: "string",
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+          keyId: [ccKeyId]
         }
       }
     }
