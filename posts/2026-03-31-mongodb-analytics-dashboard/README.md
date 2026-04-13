@@ -69,7 +69,7 @@ db.events.aggregate([
 
 ## Computing Conversion Rates
 
-Combine multiple `$group` stages to compare funnel steps. The following pipeline computes the ratio of signups to page views.
+Combine multiple `$group` stages to compare funnel steps. The following pipeline gathers the counts of signups and page views so you can compute the conversion rate in your application.
 
 ```javascript
 db.events.aggregate([
