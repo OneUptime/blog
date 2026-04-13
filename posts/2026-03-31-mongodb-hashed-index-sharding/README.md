@@ -20,16 +20,16 @@ flowchart LR
     A --> B["hash('user001') = 42"]
     A --> C["hash('user002') = 17"]
     A --> D["hash('user003') = 88"]
-    B --> E[Shard 1: range 0-50]
-    C --> F[Shard 2: range 0-50]
-    D --> G[Shard 3: range 51-100]
+    B --> E[Shard 2: range 34-66]
+    C --> F[Shard 1: range 0-33]
+    D --> G[Shard 3: range 67-100]
 ```
 
 Key characteristics:
 - Values are hashed before being stored in the index.
 - Provides even distribution for sequential or monotonically increasing values (like timestamps or auto-incremented IDs).
 - Does not support range queries (the hash of adjacent values is not adjacent).
-- Only supported on single fields (not compound).
+- A compound index can include at most one hashed field (supported since MongoDB 4.4).
 
 ## Syntax
 
@@ -77,12 +77,11 @@ For range queries, use a regular ascending (`1`) or descending (`-1`) index inst
 When setting up sharding for a collection, specify a hashed shard key:
 
 ```bash
-# Enable sharding on the database
-mongosh> sh.enableSharding("myapp")
-
 # Shard the users collection with a hashed shard key
 mongosh> sh.shardCollection("myapp.users", { userId: "hashed" })
 ```
+
+Note: In MongoDB versions before 6.0, you needed to call `sh.enableSharding("myapp")` first. Starting with MongoDB 6.0, all databases are implicitly enabled for sharding, so this step is no longer required.
 
 This creates the hashed index automatically if it does not already exist, and distributes chunks evenly across shards based on the hash of `userId`.
 
@@ -156,7 +155,7 @@ Targeted reads            Yes (equality only) Yes (equality + range)
 - **Use hashed indexes for monotonically increasing shard keys** such as timestamps, ObjectIDs, or auto-incremented numbers to prevent write hot-spots.
 - **Pre-create the hashed index** before sharding a collection to avoid a blocking index build on an already-populated collection.
 - **Do not use hashed indexes for range query workloads.** Hashed shard keys cause scatter-gather for range queries, hitting every shard.
-- **Only one hashed field per index.** MongoDB does not support compound hashed indexes.
+- **Only one hashed field per compound index.** Since MongoDB 4.4, a compound index may include a single hashed field alongside other non-hashed fields.
 - **Monitor chunk distribution** with `sh.status()` after sharding to confirm even distribution.
 
 ## Summary
