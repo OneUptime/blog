@@ -60,8 +60,7 @@ Response:
   "runtimeStatus": "COMPLETED",
   "createdAt": "2026-03-31T10:00:00Z",
   "lastUpdatedAt": "2026-03-31T10:00:45Z",
-  "serializedInput": "{\"id\":\"ORD-001\",\"amount\":99.99}",
-  "serializedOutput": "{\"tracking_number\":\"TRK-001\",\"fulfilled\":true}"
+  "properties": {}
 }
 ```
 
