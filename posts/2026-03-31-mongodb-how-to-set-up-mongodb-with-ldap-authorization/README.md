@@ -128,26 +128,35 @@ const client = new MongoClient(uri);
 
 ## TLS Configuration for LDAP
 
-Always use TLS for LDAP connections in production. Add the CA certificate:
+Always use TLS for LDAP connections in production. MongoDB supports two approaches:
+
+**STARTTLS (port 389)** - upgrades a plaintext connection to TLS:
 
 ```yaml
 security:
   ldap:
-    servers: "ldap.company.com:636"
+    servers: "ldap.company.com:389"
     transportSecurity: tls
-    caFile: "/etc/ssl/certs/ldap-ca.pem"
 ```
 
-For Active Directory with LDAPS (port 636), TLS is typically required.
+**LDAPS (port 636)** - implicit TLS from the start, common with Active Directory:
+
+```yaml
+security:
+  ldap:
+    servers: "ldaps://ldap.company.com:636"
+    transportSecurity: none
+```
+
+When using `ldaps://`, set `transportSecurity: none` because TLS is already handled by the LDAPS protocol. MongoDB uses the operating system's CA certificate store to verify the LDAP server certificate. On Linux, configure `TLS_CACERT` in `/etc/openldap/ldap.conf` to specify a custom CA certificate.
 
 ## Refreshing LDAP Group Cache
 
 MongoDB caches LDAP authorization results. If group membership changes, the cache must expire:
 
 ```yaml
-security:
-  ldap:
-    userCacheInvalidationInterval: 30  # seconds (default 30)
+setParameter:
+  ldapUserCacheInvalidationInterval: 30  # seconds (default 30)
 ```
 
 Force immediate cache invalidation:
