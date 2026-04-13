@@ -8,7 +8,7 @@ Description: Learn how to access fields with dynamic or variable names in MongoD
 
 ---
 
-Sometimes the field name you want to access is stored in another field or computed at runtime. MongoDB's standard `$fieldName` projection syntax requires literal field names. For dynamic access, MongoDB 5.0+ provides `$getField`.
+Sometimes the field name you want to access is stored in another field or computed at runtime. MongoDB's standard `$fieldName` projection syntax requires literal field names. For dynamic access, MongoDB provides `$getField`. Note that `$getField` was introduced in MongoDB 5.0 but only accepted string constants for the `field` parameter. Support for dynamic expressions (such as field path references and `$concat` with field paths) was added in MongoDB 7.2.
 
 ## The Problem with Dynamic Field Names
 
@@ -25,9 +25,9 @@ db.data.aggregate([
 ]);
 ```
 
-## $getField (MongoDB 5.0+)
+## $getField (MongoDB 5.0+, Dynamic Expressions in 7.2+)
 
-`$getField` retrieves a field value by a dynamic name expression:
+`$getField` retrieves a field value by name. In MongoDB 5.0–7.1, the `field` parameter must be a string constant (useful for accessing fields with dots or dollar signs in their names). Starting in MongoDB 7.2, `field` accepts any expression that resolves to a string, enabling truly dynamic field access:
 
 ```javascript
 // Get the value of the field whose name is stored in "targetField"
@@ -91,7 +91,7 @@ db.configs.aggregate([
 
 ## $objectToArray as an Alternative
 
-Before MongoDB 5.0, convert the document to a key-value array and filter by key name:
+Before MongoDB 7.2 (when `$getField` gained dynamic expression support), convert the document to a key-value array and filter by key name. This approach works in MongoDB 3.4.4+:
 
 ```javascript
 db.data.aggregate([
@@ -149,4 +149,4 @@ db.products.aggregate([
 
 ## Summary
 
-Use `$getField` (MongoDB 5.0+) to access fields by dynamic name in aggregation pipelines. It accepts any expression for the `field` argument, enabling computed field names based on document data. For earlier versions, use `$objectToArray` to convert to key-value pairs and filter by key. Combine `$getField` with `$let` when the computed field name is used more than once.
+Use `$getField` to access fields by name in aggregation pipelines. In MongoDB 5.0–7.1, `$getField` only accepts string constants for the `field` parameter, making it useful for fields with special characters in their names. Starting in MongoDB 7.2, `field` accepts any expression that resolves to a string, enabling computed field names based on document data. For versions before 7.2, use `$objectToArray` to convert to key-value pairs and filter by key for truly dynamic field access. Combine `$getField` with `$let` when the computed field name is used more than once.
