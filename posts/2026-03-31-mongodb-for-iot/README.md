@@ -258,7 +258,7 @@ Query devices within a geographic area:
 
 ```javascript
 // Create 2dsphere index for geospatial queries
-db.devices.createIndex({ "location.coordinates": "2dsphere" });
+db.devices.createIndex({ "location.geoPoint": "2dsphere" });
 
 // Store location as GeoJSON Point
 db.devices.updateOne(
