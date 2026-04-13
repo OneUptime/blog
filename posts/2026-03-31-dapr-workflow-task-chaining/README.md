@@ -16,7 +16,7 @@ Task chaining is the most fundamental workflow pattern: a sequence of activities
 Input -> [Activity A] -> [Activity B] -> [Activity C] -> Output
 ```
 
-Each activity transforms the data and passes it forward. The workflow engine ensures exactly-once execution of each activity even across failures.
+Each activity transforms the data and passes it forward. The workflow engine uses event sourcing to skip completed activities during replay, so each step runs at-least-once but is not re-executed after successful completion.
 
 ## Basic Chain Implementation
 
