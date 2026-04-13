@@ -135,6 +135,7 @@ async function login(email, plaintext) {
 ```javascript
 // During login, if the hash starts with $2b$ it is bcrypt - migrate it
 const bcrypt = require('bcrypt');
+const argon2 = require('argon2');
 
 async function loginWithMigration(email, plaintext) {
   const user = await User.findOne({ email }).select('+password');
@@ -144,9 +145,8 @@ async function loginWithMigration(email, plaintext) {
   if (user.password.startsWith('$2b$')) {
     isValid = await bcrypt.compare(plaintext, user.password);
     if (isValid) {
-      // Rehash with argon2
-      const argon2 = require('argon2');
-      user.password = await argon2.hash(plaintext);
+      // Rehash with argon2 via pre-save hook
+      user.password = plaintext;
       await user.save();
     }
   } else {
