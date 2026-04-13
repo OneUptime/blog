@@ -13,7 +13,7 @@ LangChain provides abstractions for building LLM applications, including a Mongo
 ## Setup
 
 ```bash
-pip install langchain langchain-mongodb langchain-openai pymongo
+pip install langchain langchain-community langchain-mongodb langchain-openai pymongo
 ```
 
 ## Step 1: Initialize MongoDB as a Vector Store
@@ -48,8 +48,8 @@ vector_store = MongoDBAtlasVectorSearch(
 Use LangChain document loaders and text splitters to process your knowledge base:
 
 ```python
-from langchain.document_loaders import DirectoryLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 loader = DirectoryLoader("./docs", glob="**/*.txt", loader_cls=TextLoader)
 documents = loader.load()
