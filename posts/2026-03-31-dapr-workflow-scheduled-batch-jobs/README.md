@@ -16,21 +16,19 @@ Batch jobs often involve multiple steps: fetching records, transforming data, wr
 
 Dapr Jobs API triggers workflows on a schedule. The job fires a callback, which starts the workflow.
 
-### Job Schedule Component
+### Registering a Scheduled Job
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: batch-job
-spec:
-  type: jobs.dapr
-  version: v1
-  metadata:
-  - name: schedule
-    value: "@every 1h"
-  - name: data
-    value: '{"source": "orders_table"}'
+Use the Dapr Jobs HTTP API to register a recurring job:
+
+```bash
+curl -X POST "http://localhost:3500/v1.0-alpha1/jobs/batch-job" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schedule": "@every 1h",
+    "data": {
+      "source": "orders_table"
+    }
+  }'
 ```
 
 ## The Batch Workflow in Python
@@ -38,6 +36,9 @@ spec:
 ```python
 import dapr.ext.workflow as wf
 
+wfr = wf.WorkflowRuntime()
+
+@wfr.workflow(name='batch_job_workflow')
 def batch_job_workflow(ctx: wf.DaprWorkflowContext, config: dict):
     # Step 1 - fetch records to process
     records = yield ctx.call_activity(fetch_records, input=config)
@@ -61,28 +62,30 @@ def batch_job_workflow(ctx: wf.DaprWorkflowContext, config: dict):
 ## Activity Definitions
 
 ```python
-@wf.activity
-def fetch_records(ctx, config: dict) -> list:
+import os
+
+@wfr.activity(name='fetch_records')
+def fetch_records(ctx: wf.WorkflowActivityContext, config: dict) -> list:
     import psycopg2
     conn = psycopg2.connect(os.environ["DB_URL"])
     cur = conn.cursor()
     cur.execute("SELECT id, data FROM orders WHERE processed = false LIMIT 1000")
     return [{"id": row[0], "data": row[1]} for row in cur.fetchall()]
 
-@wf.activity
-def process_record(ctx, record: dict) -> dict:
+@wfr.activity(name='process_record')
+def process_record(ctx: wf.WorkflowActivityContext, record: dict) -> dict:
     # Apply transformation logic
     record["data"] = transform(record["data"])
     record["processed"] = True
     return record
 
-@wf.activity
-def write_results(ctx, results: list) -> bool:
+@wfr.activity(name='write_results')
+def write_results(ctx: wf.WorkflowActivityContext, results: list) -> bool:
     # Bulk insert results
     return True
 
-@wf.activity
-def send_notification(ctx, summary: dict):
+@wfr.activity(name='send_notification')
+def send_notification(ctx: wf.WorkflowActivityContext, summary: dict):
     requests.post("http://notifications/batch-complete", json=summary)
 ```
 
@@ -109,11 +112,8 @@ def handle_batch_trigger():
 ## Monitoring Batch Runs
 
 ```bash
-# List all workflow instances
-curl "http://localhost:3500/v1.0/workflows/dapr/batch_job_workflow"
-
-# Check a specific run
-curl "http://localhost:3500/v1.0/workflows/dapr/batch_job_workflow/{instance_id}"
+# Check the status of a specific workflow run
+curl "http://localhost:3500/v1.0/workflows/dapr/{instance_id}"
 ```
 
 ## Handling Large Batches with Chunking
@@ -121,7 +121,8 @@ curl "http://localhost:3500/v1.0/workflows/dapr/batch_job_workflow/{instance_id}
 For very large datasets, chunk the records and run sub-workflows per chunk:
 
 ```python
-def batch_job_workflow(ctx: wf.DaprWorkflowContext, config: dict):
+@wfr.workflow(name='batch_chunk_workflow')
+def batch_chunk_workflow(ctx: wf.DaprWorkflowContext, config: dict):
     chunk_ids = yield ctx.call_activity(get_chunk_ids, input=config)
     sub_tasks = [ctx.call_child_workflow(process_chunk_workflow, input=chunk_id)
                  for chunk_id in chunk_ids]
