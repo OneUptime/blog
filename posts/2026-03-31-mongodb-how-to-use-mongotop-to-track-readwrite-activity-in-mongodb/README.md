@@ -45,7 +45,7 @@ mongotop --uri "mongodb://admin:secret@localhost:27017/admin"
    mydb.inventory    12ms     8ms      4ms
       mydb.users     5ms     5ms      0ms
   mydb.audit_log     3ms     0ms      3ms
-      local.oplog     1ms     0ms      1ms
+   local.oplog.rs     1ms     0ms      1ms
 ```
 
 Column meanings:
@@ -66,14 +66,13 @@ mongotop 3
 # Show a specific number of samples then exit
 mongotop --rowcount 20 5
 
-# Lock to a specific number of results
-mongotop --locks
-
 # Connect to a replica set
 mongotop --host "rs0/mongo1:27017,mongo2:27017"
 ```
 
 ## The --locks Flag
+
+> **Note:** The `--locks` flag only works when connected to MongoDB 2.6 or earlier. On MongoDB 3.0 and newer, it returns an error because per-database lock timing data is no longer reported by the server.
 
 The `--locks` flag reports time spent waiting for locks rather than I/O time:
 
@@ -95,8 +94,8 @@ This view is useful when diagnosing lock contention - high write lock times sugg
 # Output in JSON format
 mongotop --json 5
 
-# Sample output
-# {"mydb.orders": {"read": "230ms", "write": "115ms", "total": "345ms"}, ...}
+# Sample output (one JSON document per line)
+# {"totals":{"mydb.orders":{"total":{"time":345,"count":5},"read":{"time":230,"count":3},"write":{"time":115,"count":2}},...},"time":"2026-03-31T10:00:01Z"}
 ```
 
 Process with a shell pipeline:
@@ -111,9 +110,10 @@ for line in sys.stdin:
         continue
     try:
         data = json.loads(line)
-        for ns, metrics in sorted(data.items(), key=lambda x: x[0]):
-            total = metrics.get('total', '0ms')
-            print(f'{ns:50s} total={total}')
+        totals = data.get('totals', {})
+        for ns, metrics in sorted(totals.items(), key=lambda x: x[0]):
+            total = metrics.get('total', {}).get('time', 0)
+            print(f'{ns:50s} total={total}ms')
     except json.JSONDecodeError:
         pass
 "
@@ -141,9 +141,8 @@ with open('mongotop_data.json') as f:
             continue
         try:
             data = json.loads(line)
-            for ns, metrics in data.items():
-                total_str = metrics.get('total', '0ms')
-                total_ms = int(total_str.replace('ms', ''))
+            for ns, metrics in data.get('totals', {}).items():
+                total_ms = metrics.get('total', {}).get('time', 0)
                 totals[ns] += total_ms
         except (json.JSONDecodeError, ValueError):
             pass
