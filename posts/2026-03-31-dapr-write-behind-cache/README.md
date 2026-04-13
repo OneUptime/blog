@@ -26,7 +26,6 @@ Dapr enables this pattern by combining state management (as the cache) with pub/
 
 ```python
 import httpx
-import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -67,7 +66,7 @@ import databases
 app = FastAPI()
 database = databases.Database("postgresql://user:pass@localhost/products")
 
-@app.post("/dapr/subscribe")
+@app.get("/dapr/subscribe")
 def subscribe():
     return [{"pubsubname": "pubsub", "topic": "product-written", "route": "/flush"}]
 
