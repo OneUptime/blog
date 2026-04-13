@@ -43,27 +43,31 @@ const dataKeyId = await encryption.createDataKey("local", {
 console.log("DEK ID:", dataKeyId.toString("base64"))
 ```
 
-## Define the Encrypted Fields Schema
+## Define the JSON Schema for Encrypted Fields
 
 Map field paths to encryption settings in a JSON schema:
 
 ```javascript
-const encryptedFieldsMap = {
+const schemaMap = {
   "myapp.patients": {
-    fields: [
-      {
-        path: "ssn",
-        bsonType: "string",
-        keyId: dataKeyId,
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+    bsonType: "object",
+    encryptMetadata: {
+      keyId: [dataKeyId]
+    },
+    properties: {
+      ssn: {
+        encrypt: {
+          bsonType: "string",
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+        }
       },
-      {
-        path: "medicalRecordNumber",
-        bsonType: "string",
-        keyId: dataKeyId,
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+      medicalRecordNumber: {
+        encrypt: {
+          bsonType: "string",
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+        }
       }
-    ]
+    }
   }
 }
 ```
@@ -76,7 +80,7 @@ Use **Deterministic** encryption for fields you need to query (equality only). U
 const autoEncryptionOptions = {
   keyVaultNamespace,
   kmsProviders,
-  encryptedFieldsMap
+  schemaMap
 }
 
 const encryptedClient = new MongoClient("mongodb://localhost:27017", {
@@ -110,6 +114,7 @@ console.log(patient.ssn) // "123-45-6789" (decrypted)
 
 ```python
 from pymongo import MongoClient
+from pymongo.encryption import ClientEncryption
 from pymongo.encryption_options import AutoEncryptionOpts
 import os, base64
 
@@ -119,13 +124,23 @@ kms_providers = {
     }
 }
 
+key_vault_client = MongoClient("mongodb://localhost:27017")
+client_encryption = ClientEncryption(
+    kms_providers=kms_providers,
+    key_vault_namespace="encryption.__keyVault",
+    key_vault_client=key_vault_client,
+    codec_options=key_vault_client.codec_options
+)
+data_key_id = client_encryption.create_data_key("local",
+    key_alt_names=["myapp-ssn-key"])
+
 auto_encryption_opts = AutoEncryptionOpts(
     kms_providers=kms_providers,
     key_vault_namespace="encryption.__keyVault",
     schema_map={
         "myapp.patients": {
             "bsonType": "object",
-            "encryptMetadata": { "keyId": ["/keyId"] },
+            "encryptMetadata": { "keyId": [data_key_id] },
             "properties": {
                 "ssn": {
                     "encrypt": {
@@ -156,4 +171,4 @@ console.log(raw.ssn) // Binary/encrypted blob
 
 ## Summary
 
-Automatic CSFLE in MongoDB encrypts designated fields transparently in the driver. Define an `encryptedFieldsMap` schema, configure the client with KMS provider details, and application code reads and writes plain values normally. Use deterministic encryption for queryable fields and random encryption for maximum privacy.
+Automatic CSFLE in MongoDB encrypts designated fields transparently in the driver. Define a `schemaMap` with JSON Schema encryption rules, configure the client with KMS provider details, and application code reads and writes plain values normally. Use deterministic encryption for queryable fields and random encryption for maximum privacy.
