@@ -47,12 +47,12 @@ Implement a scheduled cleanup job that purges old completed workflows:
 import sys
 import time
 from datetime import datetime, timezone, timedelta
-from dapr.ext.workflow import DaprWorkflowClient
+from dapr.ext.workflow import DaprWorkflowClient, WorkflowStatus
 
 client = DaprWorkflowClient()
 
 RETENTION_DAYS = int(sys.argv[1]) if len(sys.argv) > 1 else 7
-TERMINAL_STATES = {"COMPLETED", "FAILED", "TERMINATED"}
+TERMINAL_STATES = {WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.TERMINATED}
 
 def purge_old_workflows(instance_ids: list, retention_days: int) -> dict:
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
 ## Tracking Workflow Instance IDs
 
-Since Dapr does not yet have a built-in list API for all instances, maintain a tracking store:
+While the Dapr CLI provides `dapr workflow list` for querying instances, the HTTP API and Python SDK do not yet expose a programmatic list method. For automated cleanup scripts, maintain a tracking store:
 
 ```python
 import redis
@@ -144,11 +144,11 @@ Track state store growth to validate your retention policy is working:
 # Redis memory usage
 redis-cli INFO memory | grep used_memory_human
 
-# Count workflow keys
-redis-cli KEYS "dapr*" | wc -l
+# Count workflow keys (replace <appid> with your Dapr app ID)
+redis-cli KEYS "<appid>||dapr.internal.*" | wc -l
 
 # Monitor key growth over time
-watch -n 60 "redis-cli KEYS 'dapr*' | wc -l"
+watch -n 60 "redis-cli KEYS '<appid>||dapr.internal.*' | wc -l"
 ```
 
 ## Summary
