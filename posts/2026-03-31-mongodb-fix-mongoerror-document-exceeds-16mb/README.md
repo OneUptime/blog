@@ -13,7 +13,6 @@ Description: Learn why MongoDB documents are limited to 16MB, how to detect over
 MongoDB enforces a hard 16MB BSON document size limit. This covers the entire document including nested subdocuments and arrays. Attempting to insert or update a document that exceeds this limit throws:
 
 ```text
-MongoServerError: Document failed validation
 MongoError: document is larger than the maximum size 16777216
 ```
 
