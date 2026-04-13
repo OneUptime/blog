@@ -19,7 +19,7 @@ A collation document specifies a locale and optional strength settings:
 ```javascript
 {
   locale: "en",
-  strength: 2  // 1=case-insensitive, 2=accent-insensitive, 3=exact
+  strength: 2  // 1=base characters only, 2=case-insensitive, 3=exact (default)
 }
 ```
 
@@ -54,12 +54,9 @@ Without specifying the same collation in the query, MongoDB will not use the col
 Find a user regardless of how they typed their username:
 
 ```javascript
-const result = db.users.findOne(
+db.users.find(
   { username: "ALICE" }
-,
-  null,
-  { collation: { locale: "en", strength: 2 } }
-);
+).collation({ locale: "en", strength: 2 }).limit(1);
 ```
 
 This matches "alice", "Alice", "ALICE", and "aLiCe".
@@ -77,7 +74,7 @@ db.customers.createIndex(
 db.customers.find().sort({ lastName: 1 }).collation({ locale: "fr", strength: 1 });
 ```
 
-French collation correctly handles accented characters like "e", "e", and "e" in sort order.
+French collation correctly handles accented characters like "é", "è", and "ê" in sort order.
 
 ## Collection-Level Collation
 
