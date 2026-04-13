@@ -46,7 +46,7 @@ spec:
   type: bindings.azure.eventgrid
   version: v1
   metadata:
-  - name: topic
+  - name: topicEndpoint
     value: https://my-dapr-events.eastus-1.eventgrid.azure.net/api/events
   - name: accessKey
     secretKeyRef:
