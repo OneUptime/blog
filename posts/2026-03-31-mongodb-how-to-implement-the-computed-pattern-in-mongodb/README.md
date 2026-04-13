@@ -54,7 +54,7 @@ db.movies.findOne({ _id: ObjectId("m001") }, { title: 1, avgRating: 1, reviewCou
 
 ## Updating Pre-Computed Values on Write
 
-When a review is submitted, update the movie's computed fields atomically:
+When a review is submitted, update the movie's computed fields:
 
 ```javascript
 async function submitReview(movieId, rating) {
@@ -127,13 +127,16 @@ movies.forEach(function(movie) {
 Trigger recomputation when reviews change using a change stream:
 
 ```javascript
-const changeStream = db.reviews.watch([
-  { $match: { operationType: { $in: ["insert", "update", "delete"] } } }
-]);
+const changeStream = db.reviews.watch(
+  [{ $match: { operationType: { $in: ["insert", "update", "delete"] } } }],
+  { fullDocument: "updateLookup", fullDocumentBeforeChange: "whenAvailable" }
+);
 
 changeStream.on("change", async (change) => {
-  const movieId = change.fullDocument?.movieId || change.documentKey?.movieId;
-  await recomputeMovieStats(movieId);
+  const movieId = change.fullDocument?.movieId || change.fullDocumentBeforeChange?.movieId;
+  if (movieId) {
+    await recomputeMovieStats(movieId);
+  }
 });
 ```
 
