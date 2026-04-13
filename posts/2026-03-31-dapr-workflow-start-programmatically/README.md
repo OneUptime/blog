@@ -85,6 +85,7 @@ Use deterministic instance IDs to prevent duplicate workflow runs:
 
 ```python
 import hashlib
+from dapr.ext.workflow import WorkflowStatus
 
 def get_workflow_instance_id(workflow_name: str, dedup_key: str) -> str:
     hash_input = f"{workflow_name}:{dedup_key}"
@@ -96,7 +97,7 @@ def start_order_workflow_idempotent(order_id: str, order_data: dict):
 
     # Check if already running
     state = workflow_client.get_workflow_state(instance_id)
-    if state and state.runtime_status in ("RUNNING", "PENDING"):
+    if state and state.runtime_status in (WorkflowStatus.RUNNING, WorkflowStatus.PENDING):
         print(f"Workflow {instance_id} already running")
         return instance_id
 
@@ -134,14 +135,15 @@ def start_batch_workflows(items: list) -> list:
 Validate and sanitize input before starting a workflow:
 
 ```python
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 class OrderInput(BaseModel):
     id: str
     amount: float
     items: list
 
-    @validator("amount")
+    @field_validator("amount")
+    @classmethod
     def amount_positive(cls, v):
         if v <= 0:
             raise ValueError("Amount must be positive")
@@ -153,7 +155,7 @@ def start_validated_order_workflow(raw_input: dict) -> str:
     instance_id = f"order-{order.id}"
     workflow_client.schedule_new_workflow(
         workflow=order_workflow,
-        input=order.dict(),
+        input=order.model_dump(),
         instance_id=instance_id
     )
     return instance_id
