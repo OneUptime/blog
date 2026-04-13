@@ -97,7 +97,7 @@ const client = new MongoClient(uri, {
 ```
 
 - `connectTimeoutMS` - time to establish the initial connection
-- `socketTimeoutMS` - time a socket can be idle before timing out
+- `socketTimeoutMS` - time to wait for a send or receive on a socket before timing out
 - `serverSelectionTimeoutMS` - how long the driver tries to find a suitable server
 
 ## Monitoring Connection Events
