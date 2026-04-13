@@ -10,7 +10,7 @@ Description: Learn how to use MongoDB Compass to build, test, and export queries
 
 ## The Compass Query Bar
 
-MongoDB Compass provides a query bar at the top of the Documents tab that lets you construct MQL filter, projection, sort, skip, and limit clauses interactively. Results update as you type, giving immediate feedback.
+MongoDB Compass provides a query bar at the top of the Documents tab that lets you construct MQL filter, projection, sort, skip, and limit clauses interactively. Compass validates your syntax as you type and executes the query when you click Find or press Enter.
 
 ## Writing a Basic Filter
 
@@ -97,7 +97,7 @@ collection.find(
 
 ```java
 collection.find(eq("category", "electronics"))
-    .projection(fields(include("name", "price"), excludeId()))
+    .projection(include("name", "price"))
     .sort(ascending("price"))
     .limit(25);
 ```
@@ -118,7 +118,7 @@ Query documents where an array field contains a specific value:
 { "tags": "featured" }
 ```
 
-Query for documents where all array values match a condition:
+Query for documents where the array contains all specified values:
 
 ```json
 { "scores": { "$all": [90, 95] } }
