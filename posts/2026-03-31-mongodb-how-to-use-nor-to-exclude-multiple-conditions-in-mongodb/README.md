@@ -96,9 +96,11 @@ const result = await products.find({
 
 // To match only documents where fields exist and are not true:
 const strict = await products.find({
+  archived: { $exists: true },
+  deleted: { $exists: true },
   $nor: [
-    { archived: { $exists: true, $eq: true } },
-    { deleted: { $exists: true, $eq: true } },
+    { archived: true },
+    { deleted: true },
   ]
 }).toArray();
 ```
@@ -120,7 +122,7 @@ const results = await db.collection('products').aggregate([
 ]).toArray();
 ```
 
-As a boolean expression:
+As a boolean expression (note that `$nor` is not available as an aggregation expression, so use `$not` with `$or` instead):
 
 ```javascript
 const withFlags = await products.aggregate([
@@ -128,10 +130,12 @@ const withFlags = await products.aggregate([
     $project: {
       name: 1,
       isClean: {
-        $nor: [
-          { $eq: ['$status', 'discontinued'] },
-          { $lt: ['$price', 5] },
-          { $eq: ['$category', 'test'] },
+        $not: [
+          { $or: [
+            { $eq: ['$status', 'discontinued'] },
+            { $lt: ['$price', 5] },
+            { $eq: ['$category', 'test'] },
+          ]}
         ]
       }
     }
