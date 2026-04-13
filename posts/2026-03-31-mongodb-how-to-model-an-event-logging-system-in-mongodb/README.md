@@ -22,7 +22,7 @@ An event logging system must handle:
 ```javascript
 // events collection
 {
-  _id: ObjectId("e001"),
+  _id: ObjectId("65e8a1b2c3d4e5f6a7b8c9d0"),
   eventType: "user.login",           // Namespaced event type
   severity: "info",                  // info | warn | error | critical
   timestamp: ISODate("2026-03-31T09:00:00Z"),
@@ -217,7 +217,7 @@ db.events.aggregate([
       errorCount: { $sum: 1 }
     }
   },
-  { $sort: { "_id.hour": 1 } }
+  { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1, "_id.hour": 1 } }
 ])
 ```
 
