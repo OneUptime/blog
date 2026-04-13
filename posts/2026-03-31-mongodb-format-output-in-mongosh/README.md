@@ -23,7 +23,7 @@ db.orders.findOne();
 
 ## Outputting as Standard JSON
 
-Use `printjson()` for compact JSON output, or `JSON.stringify()` for full control:
+Use `printjson()` for pretty-printed JSON output, or `JSON.stringify()` for full control:
 
 ```javascript
 const doc = db.orders.findOne();
@@ -81,7 +81,7 @@ print(JSON.stringify(results, null, 2));
 
 ```javascript
 const id = new ObjectId();
-print(id.toJSON());         // { "$oid": "..." }
+print(id.toJSON());         // "507f1f77bcf86cd799439011" (hex string)
 print(id.toString());       // "507f1f77bcf86cd799439011"
 print(id.toHexString());    // same as toString()
 ```
@@ -92,7 +92,7 @@ print(id.toHexString());    // same as toString()
 // Set inspect depth for nested objects (default is 6)
 config.set("inspectDepth", Infinity);
 
-// Disable color output
+// Disable telemetry
 config.set("enableTelemetry", false);
 ```
 
