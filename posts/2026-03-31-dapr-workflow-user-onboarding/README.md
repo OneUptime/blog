@@ -27,6 +27,9 @@ User onboarding involves many coordinated steps: creating accounts in multiple s
 import dapr.ext.workflow as wf
 from datetime import timedelta
 
+wfr = wf.WorkflowRuntime()
+
+@wfr.workflow(name='user_onboarding_workflow')
 def user_onboarding_workflow(ctx: wf.DaprWorkflowContext, user: dict):
     ctx.set_custom_status("Creating account")
 
@@ -82,8 +85,8 @@ def user_onboarding_workflow(ctx: wf.DaprWorkflowContext, user: dict):
 ## Activity: Create User Account
 
 ```python
-@wf.activity
-def create_user_account(ctx, user: dict) -> dict:
+@wfr.activity(name='create_user_account')
+def create_user_account(ctx: wf.WorkflowActivityContext, user: dict) -> dict:
     resp = requests.post("http://user-service/users", json={
         "email": user["email"],
         "name": user["name"],
@@ -136,8 +139,8 @@ with DaprClient() as d:
 ## Sending Timed Email Sequences
 
 ```python
-@wf.activity
-def send_getting_started_guide(ctx, user: dict):
+@wfr.activity(name='send_getting_started_guide')
+def send_getting_started_guide(ctx: wf.WorkflowActivityContext, user: dict):
     requests.post("http://email-service/send", json={
         "to": user["email"],
         "template": "getting-started",
