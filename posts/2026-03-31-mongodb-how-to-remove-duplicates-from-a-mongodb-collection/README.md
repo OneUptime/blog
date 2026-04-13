@@ -156,9 +156,9 @@ db.orders.createIndex(
 );
 ```
 
-If duplicates remain when creating the index, use `dropDups` (MongoDB 2.6 only) or clean up first.
+If duplicates still exist when creating the index, MongoDB will reject the index creation. You must remove all duplicates first using the techniques above before creating the unique index.
 
-## Using findOne with $group to Preview Changes
+## Preview Changes Before Deleting
 
 Before deleting, preview which documents will be removed:
 
