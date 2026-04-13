@@ -35,7 +35,7 @@ Output:
 }
 ```
 
-- `current`: Active connections
+- `current`: Total open connections (including idle)
 - `available`: Remaining connection slots
 - `active`: Connections currently processing a request
 
@@ -115,7 +115,7 @@ Set appropriate pool sizes on each application server. Too large wastes resource
 ```javascript
 // Node.js driver - recommended for most apps
 const client = new MongoClient(uri, {
-  maxPoolSize: 50,        // Max connections per client instance (default: 10)
+  maxPoolSize: 50,        // Max connections per client instance (default: 100)
   minPoolSize: 10,        // Keep 10 connections warm
   maxIdleTimeMS: 60000,   // Close idle connections after 60s
   waitQueueTimeoutMS: 5000  // Timeout if no connection available in 5s
@@ -161,11 +161,11 @@ Required: (10 * 50) + 4 + 10 = 514 -> set to 620 (514 * 1.2)
 Each connection uses ~1MB of thread stack plus memory for in-progress operations. With a 16GB server:
 
 ```text
-WiredTiger cache: 8GB (half of RAM)
+WiredTiger cache: 7.5GB (50% of (RAM - 1GB))
 OS + MongoDB overhead: 4GB
-Connection memory budget: 4GB
+Connection memory budget: 4.5GB
 
-4096MB / 1MB per connection = ~4000 max safe connections
+4608MB / 1MB per connection = ~4500 max safe connections
 ```
 
 Set `maxIncomingConnections` below this threshold.
@@ -196,7 +196,7 @@ On Atlas, `maxIncomingConnections` is set based on cluster tier:
 | M20 | 3000 |
 | M30 | 3000 |
 | M40 | 6000 |
-| M60 | 16000 |
+| M60 | 32000 |
 | M80 | 96000 |
 
 You cannot increase beyond the tier limit on Atlas - upgrade the tier if needed.
