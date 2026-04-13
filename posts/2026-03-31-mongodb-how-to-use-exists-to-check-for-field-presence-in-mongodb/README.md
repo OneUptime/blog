@@ -132,7 +132,9 @@ const stats = await db.collection('users').aggregate([
       _id: null,
       total: { $sum: 1 },
       withPhone: {
-        $sum: { $cond: [{ $ifNull: ['$phone', false] }, 1, 0] }
+        $sum: {
+          $cond: [{ $ne: [{ $type: '$phone' }, 'missing'] }, 1, 0]
+        }
       },
     }
   }
