@@ -25,7 +25,7 @@ For very high throughput, use a dedicated queue like Redis Streams or RabbitMQ.
 {
   _id: ObjectId(),
   type: "sendEmail",           // job type
-  status: "queued",            // queued | processing | completed | failed | dead
+  status: "queued",            // queued | processing | completed | dead
   priority: 1,                 // lower number = higher priority
   payload: {                   // job-specific data
     to: "alice@example.com",
@@ -289,4 +289,4 @@ async recoverStuckJobs(stuckThresholdMs = 300000) {
 
 ## Summary
 
-Implementing a MongoDB job queue relies on `findOneAndUpdate` for atomic job claiming to prevent duplicate processing, status fields to track job lifecycle, and compound indexes on `status` plus `processAfter` for efficient polling. Use exponential backoff between retries and a `maxAttempts` field to prevent poison-pill jobs from blocking the queue. A separate recovery process that re-queues stuck `processing` jobs handles worker crashes without data loss.
+Implementing a MongoDB job queue relies on `findOneAndUpdate` for atomic job claiming to prevent duplicate processing, status fields to track job lifecycle, and compound indexes on `status` plus `processAfter` for efficient polling. Use a retry delay (or exponential backoff for production workloads) and a `maxAttempts` field to prevent poison-pill jobs from blocking the queue. A separate recovery process that re-queues stuck `processing` jobs handles worker crashes without data loss.
