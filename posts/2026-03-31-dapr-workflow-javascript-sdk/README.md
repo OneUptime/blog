@@ -20,7 +20,7 @@ npm install @dapr/dapr
 
 ## Workflow Concepts
 
-- **Workflow**: A durable function that orchestrates activities and sub-workflows
+- **Workflow**: A durable generator function that orchestrates activities and sub-workflows
 - **Activity**: A short-running function that performs actual work (calls APIs, reads state)
 - **WorkflowRuntime**: The host process that executes workflows and activities
 
@@ -49,20 +49,20 @@ async function sendConfirmationActivity(ctx, input) {
   return { emailSent: true };
 }
 
-// Workflow orchestrator - must be deterministic
-async function orderFulfillmentWorkflow(ctx, orderId) {
+// Workflow orchestrator - must be a generator function and deterministic
+function* orderFulfillmentWorkflow(ctx, orderId) {
   // Step 1: Get order
-  const order = await ctx.callActivity(getOrderActivity, orderId);
+  const order = yield ctx.callActivity(getOrderActivity, orderId);
 
   // Step 2: Process payment
-  const payment = await ctx.callActivity(processPaymentActivity, order);
+  const payment = yield ctx.callActivity(processPaymentActivity, order);
 
   if (payment.status !== "success") {
     throw new Error(`Payment failed for order ${orderId}`);
   }
 
   // Step 3: Send confirmation
-  const confirmation = await ctx.callActivity(sendConfirmationActivity, {
+  const confirmation = yield ctx.callActivity(sendConfirmationActivity, {
     orderId: order.orderId,
     paymentId: payment.paymentId,
   });
@@ -136,19 +136,19 @@ async function startOrderWorkflow(orderId) {
 ## Error Handling in Workflows
 
 ```javascript
-async function orderFulfillmentWithRetry(ctx, orderId) {
-  const order = await ctx.callActivity(getOrderActivity, orderId);
+function* orderFulfillmentWithRetry(ctx, orderId) {
+  const order = yield ctx.callActivity(getOrderActivity, orderId);
 
   // Retry payment up to 3 times
   let payment;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      payment = await ctx.callActivity(processPaymentActivity, order);
+      payment = yield ctx.callActivity(processPaymentActivity, order);
       break;
     } catch (err) {
       if (attempt === 3) throw err;
       // Wait before retry (deterministic timer)
-      await ctx.createTimer(new Date(Date.now() + attempt * 5000));
+      yield ctx.createTimer(new Date(Date.now() + attempt * 5000));
     }
   }
 
@@ -171,4 +171,4 @@ await workflowClient.stop();
 
 ## Summary
 
-Building Dapr workflows with the JavaScript SDK involves registering workflow orchestrators and activity functions with the `WorkflowRuntime`, starting the runtime in your Node.js process, and using `DaprWorkflowClient` to trigger and monitor instances. Workflow functions must be deterministic - use `ctx.callActivity` for side effects and `ctx.createTimer` for delays. The SDK handles state checkpointing and replay automatically, making workflows resilient to process restarts.
+Building Dapr workflows with the JavaScript SDK involves registering workflow orchestrators and activity functions with the `WorkflowRuntime`, starting the runtime in your Node.js process, and using `DaprWorkflowClient` to trigger and monitor instances. Workflow functions must be deterministic generator functions - use `yield ctx.callActivity` for side effects and `yield ctx.createTimer` for delays. The SDK handles state checkpointing and replay automatically, making workflows resilient to process restarts.
