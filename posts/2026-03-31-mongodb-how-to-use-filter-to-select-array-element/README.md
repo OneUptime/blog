@@ -14,7 +14,7 @@ The `$filter` aggregation operator lets you select elements from an array based 
 
 ## Basic Syntax
 
-`$filter` requires three fields: `input` (the array), `as` (the variable name for each element), and `cond` (the boolean expression).
+`$filter` requires two fields: `input` (the array) and `cond` (the boolean expression). The `as` field (the variable name for each element) is optional and defaults to `this`.
 
 ```javascript
 db.orders.aggregate([
