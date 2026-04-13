@@ -71,6 +71,7 @@ npm install mongodb socket.io express dotenv
 
 ```javascript
 // server.js
+require("dotenv").config()
 const express = require("express")
 const http = require("http")
 const { Server } = require("socket.io")
@@ -151,6 +152,7 @@ async function sendMessage(db, roomId, senderId, senderName, content, type = "te
 
 ```javascript
 // socket-handlers.js
+const { ObjectId } = require("mongodb")
 const { sendMessage, getMessages, joinRoom } = require("./rooms")
 
 module.exports = function setupSocketHandlers(io, db) {
