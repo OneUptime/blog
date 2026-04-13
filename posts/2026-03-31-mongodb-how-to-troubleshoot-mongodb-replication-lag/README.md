@@ -108,15 +108,14 @@ mongosh --eval "db.serverStatus().wiredTiger.cache"
 // Connect directly to a secondary (use directConnection)
 // mongosh --directConnection mongodb://secondary1:27017
 
-db.adminCommand({ isMaster: 1 })
-// "secondary": true, "hosts": [...], "primary": "primary:27017"
+db.adminCommand({ hello: 1 })
+// "isWritablePrimary": false, "secondary": true, "hosts": [...], "primary": "primary:27017"
 
-// Check what oplog entry the secondary is currently applying
-db.adminCommand({ replSetGetStatus: 1 }).applierBatchSize
-db.adminCommand({ replSetGetStatus: 1 }).lastApplied
+// Check the secondary's applied optime
+db.adminCommand({ replSetGetStatus: 1 }).optimes.appliedOpTime
 
 // Batch apply stats
-db.serverStatus().repl.buffer
+db.serverStatus().metrics.repl.buffer
 ```
 
 ## Priority and Votes Impact on Lag
@@ -128,7 +127,7 @@ rs.conf()
 // A secondary with low priority might be intentionally delayed
 // (e.g., analytics queries)
 rs.conf().members.forEach(m => {
-  print(`${m.host}: priority=${m.priority}, hidden=${m.hidden}, slaveDelay=${m.secondaryDelaySecs || 0}`)
+  print(`${m.host}: priority=${m.priority}, hidden=${m.hidden}, secondaryDelaySecs=${m.secondaryDelaySecs || 0}`)
 })
 ```
 
@@ -152,10 +151,13 @@ mongosh --directConnection --eval "db.adminCommand({ replSetGetStatus: 1 }).memb
 ```
 
 ```javascript
-// Monitor initial sync progress
+// Monitor initial sync progress from the primary
 db.adminCommand({ replSetGetStatus: 1 }).members
-  .filter(m => m.state === 6)  // 6 = STARTUP2 (initial sync)
-  .forEach(m => print(`${m.name}: ${m.initialSyncStatus}`))
+  .filter(m => m.state === 5)  // 5 = STARTUP2 (initial sync)
+  .forEach(m => print(`${m.name}: state=${m.stateStr}`))
+
+// For detailed sync progress, connect directly to the syncing secondary:
+// db.adminCommand({ replSetGetStatus: 1 }).initialSyncStatus
 ```
 
 ## Fixing Persistent Lag
