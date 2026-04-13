@@ -100,6 +100,7 @@ After creating the backup, verify it is readable:
 
 ```bash
 #!/bin/bash
+set -o pipefail
 BACKUP_FILE="$1"
 
 echo "Verifying backup: ${BACKUP_FILE}"
@@ -123,7 +124,6 @@ Add email or Slack notification on failure:
 
 ```bash
 #!/bin/bash
-set -e
 
 BACKUP_BASE="/backup/mongodb"
 DATE=$(date +%Y-%m-%d_%H-%M-%S)
