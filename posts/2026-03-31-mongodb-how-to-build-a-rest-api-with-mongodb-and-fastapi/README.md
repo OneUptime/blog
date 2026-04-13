@@ -11,7 +11,7 @@ Description: Learn how to build an async REST API with FastAPI and Motor (async 
 ## Project Setup
 
 ```bash
-pip install fastapi motor uvicorn pydantic python-dotenv
+pip install fastapi motor uvicorn "pydantic[email]" python-dotenv
 ```
 
 Create `.env`:
@@ -59,19 +59,6 @@ def get_db():
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
-from bson import ObjectId
-
-
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v):
-        if not ObjectId.is_valid(v):
-            raise ValueError('Invalid ObjectId')
-        return ObjectId(v)
 
 
 class UserCreate(BaseModel):
@@ -104,11 +91,11 @@ class UserResponse(BaseModel):
 ```python
 # main.py
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from bson import ObjectId
 from bson.errors import InvalidId
-from datetime import datetime
+from datetime import datetime, timezone
+from pymongo import ReturnDocument
 from database import connect_db, close_db, get_db
 from models import UserCreate, UserUpdate, UserResponse
 
@@ -168,7 +155,7 @@ async def create_user(payload: UserCreate):
     doc = {
         'name': payload.name,
         'email': payload.email.lower(),
-        'created_at': datetime.utcnow(),
+        'created_at': datetime.now(timezone.utc),
     }
 
     from pymongo.errors import DuplicateKeyError
@@ -192,12 +179,12 @@ async def update_user(user_id: str, payload: UserUpdate):
     if not update:
         raise HTTPException(status_code=400, detail='No fields to update')
 
-    update['updated_at'] = datetime.utcnow()
+    update['updated_at'] = datetime.now(timezone.utc)
 
     user = await db.users.find_one_and_update(
         {'_id': oid},
         {'$set': update},
-        return_document=True
+        return_document=ReturnDocument.AFTER
     )
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
