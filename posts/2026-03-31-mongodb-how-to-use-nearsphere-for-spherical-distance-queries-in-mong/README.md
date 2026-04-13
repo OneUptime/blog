@@ -12,7 +12,7 @@ Description: Use MongoDB's $nearSphere operator to query documents by spherical 
 
 `$nearSphere` calculates distances using spherical geometry (treating Earth as a sphere), returning documents sorted by distance from a given point. It works with both `2dsphere` and `2d` indexes.
 
-`$nearSphere` is a legacy operator. For new applications, prefer `$near` with `$geometry`, which also uses spherical geometry when used with `2dsphere` indexes. However, `$nearSphere` remains useful when working with legacy `2d` indexes that need spherical distance calculation.
+`$nearSphere` is not deprecated, but for new applications using `2dsphere` indexes, `$near` with `$geometry` provides equivalent spherical geometry and is the more commonly used approach. However, `$nearSphere` remains the only way to perform spherical distance calculations when working with `2d` indexes and legacy coordinate pairs.
 
 ## $nearSphere vs $near
 
@@ -21,7 +21,7 @@ Description: Use MongoDB's $nearSphere operator to query documents by spherical 
 | Index type | `2dsphere` | `2dsphere` or `2d` |
 | Distance unit (`$maxDistance`) | Meters | Meters (2dsphere) or Radians (2d) |
 | Geometry type | GeoJSON | GeoJSON or legacy coordinate pairs |
-| Recommended | Yes | Legacy use |
+| Recommended | Yes (new apps) | When using `2d` indexes |
 
 ## Basic $nearSphere with 2dsphere Index
 
