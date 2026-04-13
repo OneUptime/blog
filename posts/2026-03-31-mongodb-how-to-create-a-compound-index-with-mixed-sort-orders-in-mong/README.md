@@ -31,7 +31,7 @@ db.users.find({}).sort({ lastName: 1, createdAt: -1 })
 But it does NOT efficiently support:
 
 ```javascript
-db.users.find({}).sort({ lastName: -1, createdAt: 1 })
+db.users.find({}).sort({ lastName: 1, createdAt: 1 })
 ```
 
 ## Understanding Index Prefix Reversal
