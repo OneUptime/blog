@@ -92,7 +92,7 @@ db.orders.find({ "items.qty": { $gt: 5 }, "items.price": { $lt: 50 } })
 db.orders.find({ items: { $elemMatch: { qty: { $gt: 5 }, price: { $lt: 50 } } } })
 ```
 
-## Nested $elemMatch
+## Combining $elemMatch with Other Operators
 
 ```javascript
 // Find users with an address in NY that has a zip starting with "100"
@@ -111,7 +111,7 @@ db.users.find({
 MongoDB can use a multikey index to support `$elemMatch` queries:
 
 ```javascript
-await db.collection("orders").createIndex({ "items.sku": 1 });
+db.orders.createIndex({ "items.sku": 1 });
 
 // Uses multikey index on items.sku
 db.orders.find({
