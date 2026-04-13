@@ -129,9 +129,10 @@ const patient = await db.collection('patients').findOne({ ssn: '123-45-6789' })
 // Rotate a data key - re-encrypt all documents using the new key
 const newKeyId = await encryption.createDataKey('local', { keyAltNames: ['patient-ssn-key-v2'] })
 
-const cursor = db.collection('patients').find({})
+// Use the plain client (without autoEncryption) to read raw encrypted data
+const cursor = plainClient.db('myapp').collection('patients').find({})
 for await (const doc of cursor) {
-  const decrypted = decryptField(doc.ssn)
+  const decrypted = await encryption.decrypt(doc.ssn)
   const reEncrypted = await encryption.encrypt(decrypted, {
     keyId: newKeyId,
     algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic',
