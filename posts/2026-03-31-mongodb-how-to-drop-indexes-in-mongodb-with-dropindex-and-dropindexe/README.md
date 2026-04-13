@@ -50,11 +50,11 @@ db.users.getIndexes()
 // Drop all non-_id indexes on the collection
 db.users.dropIndexes()
 
-// Drop specific indexes by name (array of names)
+// Drop specific indexes by name (array of names, MongoDB 4.2+)
 db.users.dropIndexes(["email_1", "username_1"])
 
-// Drop indexes matching a key pattern (MongoDB 4.4+)
-db.users.dropIndexes([{ email: 1 }, { username: 1 }])
+// Drop a single index by key specification
+db.users.dropIndexes({ email: 1 })
 ```
 
 ## Cannot Drop the _id Index
