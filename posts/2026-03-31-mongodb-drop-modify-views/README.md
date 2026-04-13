@@ -98,7 +98,7 @@ db.getCollectionInfos({ type: "view" }).map(v => v.name)
 
 ## Permission Requirements
 
-To drop or modify a view, the user needs the `dropCollection` privilege on the view's namespace. In a role definition:
+To drop a view, the user needs the `dropCollection` privilege. To modify a view with `collMod`, the user needs the `collMod` privilege. In a role definition:
 
 ```javascript
 {
