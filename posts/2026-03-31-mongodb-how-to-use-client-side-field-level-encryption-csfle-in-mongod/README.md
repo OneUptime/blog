@@ -77,37 +77,47 @@ async function createDataKey() {
 Configure the MongoDB client to automatically encrypt and decrypt fields:
 
 ```javascript
-const { MongoClient, Binary } = require("mongodb");
-
-const encryptedFieldsMap = {
-  "myapp.patients": {
-    fields: [
-      {
-        path: "ssn",
-        bsonType: "string",
-        queries: { queryType: "equality" }  // Enables equality search on encrypted field
-      },
-      {
-        path: "creditCardNumber",
-        bsonType: "string"
-        // No queries: random encryption (more secure, not searchable)
-      },
-      {
-        path: "dateOfBirth",
-        bsonType: "date"
-      }
-    ]
-  }
-};
+const { MongoClient } = require("mongodb");
 
 async function getEncryptedClient(dataKeyId) {
+  const schemaMap = {
+    "myapp.patients": {
+      bsonType: "object",
+      encryptMetadata: {
+        keyId: [dataKeyId]
+      },
+      properties: {
+        ssn: {
+          encrypt: {
+            bsonType: "string",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+            // Deterministic encryption enables equality queries
+          }
+        },
+        creditCardNumber: {
+          encrypt: {
+            bsonType: "string",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+            // Random encryption: more secure, not searchable
+          }
+        },
+        dateOfBirth: {
+          encrypt: {
+            bsonType: "date",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+          }
+        }
+      }
+    }
+  };
+
   return new MongoClient("mongodb://localhost:27017", {
     autoEncryption: {
       keyVaultNamespace: "encryption.__keyVault",
       kmsProviders: {
         local: { key: localMasterKey }
       },
-      encryptedFieldsMap
+      schemaMap
     }
   });
 }
@@ -137,15 +147,15 @@ async function insertPatient(client) {
 
 ## Querying Encrypted Fields
 
-Equality queries work on fields configured with `queryType: "equality"`:
+Equality queries work on fields encrypted with the deterministic algorithm:
 
 ```javascript
-// This works because ssn is configured with queryType: "equality"
+// This works because ssn uses deterministic encryption
 const patient = await patients.findOne({ ssn: "123-45-6789" });
 console.log(patient.ssn);  // "123-45-6789" - decrypted automatically
 ```
 
-Fields encrypted with random encryption (like `creditCardNumber`) are not directly queryable.
+Fields encrypted with the random algorithm (like `creditCardNumber`) are not queryable because the same plaintext produces different ciphertext each time.
 
 ## Using AWS KMS Instead of Local Key
 
@@ -177,7 +187,7 @@ const dataKeyId = await encryption.createDataKey("aws", {
 
 ```javascript
 // Create unique index on key alt names in the key vault
-db.encryption.__keyVault.createIndex(
+db.getSiblingDB("encryption").getCollection("__keyVault").createIndex(
   { keyAltNames: 1 },
   {
     unique: true,
@@ -202,4 +212,4 @@ console.log(rawDoc.creditCardNumber);  // Binary BinData
 
 ## Summary
 
-Client-Side Field Level Encryption in MongoDB encrypts sensitive fields before they reach the server, so the database only stores ciphertext. Configure CSFLE using the `autoEncryption` option in the MongoDB driver with an `encryptedFieldsMap` that specifies which fields to encrypt. Use `queryType: "equality"` for fields that need to be searchable, and random encryption for maximum security on non-searchable fields. In production, always use a cloud KMS (AWS, Azure, GCP) rather than a local master key for secure key management.
+Client-Side Field Level Encryption in MongoDB encrypts sensitive fields before they reach the server, so the database only stores ciphertext. Configure CSFLE using the `autoEncryption` option in the MongoDB driver with a `schemaMap` that specifies which fields to encrypt and which algorithm to use. Use the `AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic` algorithm for fields that need equality queries, and the `AEAD_AES_256_CBC_HMAC_SHA_512-Random` algorithm for maximum security on non-searchable fields. In production, always use a cloud KMS (AWS, Azure, GCP) rather than a local master key for secure key management.
