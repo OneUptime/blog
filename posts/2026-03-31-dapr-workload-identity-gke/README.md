@@ -86,7 +86,7 @@ spec:
   type: secretstores.gcp.secretmanager
   version: v1
   metadata:
-    - name: project
+    - name: project_id
       value: "my-project"
     # No credentials needed - Workload Identity provides them
 ```
