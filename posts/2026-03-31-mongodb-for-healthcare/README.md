@@ -167,7 +167,7 @@ await auditAccess(db, {
   outcome: "success"
 });
 
-// TTL: retain audit logs for 6 years (HIPAA requirement)
+// TTL: retain audit logs for 6 years (common policy aligned with HIPAA documentation retention)
 db.audit_logs.createIndex(
   { timestamp: 1 },
   { expireAfterSeconds: 60 * 60 * 24 * 365 * 6 }
@@ -176,7 +176,7 @@ db.audit_logs.createIndex(
 
 ## Encrypting PHI Fields
 
-Use MongoDB Client-Side Field Level Encryption for PHI fields:
+Use MongoDB Queryable Encryption for PHI fields:
 
 ```javascript
 const encryptedFieldsMap = {
@@ -220,7 +220,9 @@ db.getSiblingDB("admin").createRole({
   roles: []
 });
 
-// Billing role - can see MRN and insurance but not clinical details
+// Billing role - read-only access to the patients collection
+// Note: for field-level restriction (e.g. only MRN and insurance),
+// create a view with $project and grant find on the view instead.
 db.getSiblingDB("admin").createRole({
   role: "billing",
   privileges: [
@@ -261,14 +263,14 @@ db.observations.aggregate([
   {
     $match: {
       code: "4548-4",
-      "value.numeric": { $gt: 8.0 },
       effectiveDateTime: { $gte: new Date("2025-01-01") }
     }
   },
+  { $sort: { effectiveDateTime: 1 } },
   {
     $group: {
       _id: "$patientId",
-      latestHbA1c: { $max: "$value.numeric" }
+      latestHbA1c: { $last: "$value.numeric" }
     }
   },
   { $match: { latestHbA1c: { $gt: 8.0 } } },
@@ -293,4 +295,4 @@ db.audit_logs.createIndex({ userId: 1, timestamp: -1 });
 
 ## Summary
 
-MongoDB's document model is well-suited for healthcare data where patient records are hierarchical with variable structures across individuals. Design patient demographics, problem lists, and medications as embedded documents. Store time-series observations separately for efficient range queries. Implement field-level encryption for PHI fields such as date of birth, phone, and address. Maintain a dedicated audit log collection with a TTL index for HIPAA retention compliance and use role-based access control to enforce least-privilege access to clinical data.
+MongoDB's document model is well-suited for healthcare data where patient records are hierarchical with variable structures across individuals. Design patient demographics, problem lists, and medications as embedded documents. Store time-series observations separately for efficient range queries. Implement Queryable Encryption for PHI fields such as date of birth, phone, and address. Maintain a dedicated audit log collection with a TTL index for retention compliance and use role-based access control to enforce least-privilege access to clinical data.
