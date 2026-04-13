@@ -127,11 +127,11 @@ wfr.start()
 package main
 
 import (
-    "context"
     "fmt"
     "log"
 
     daprwf "github.com/dapr/go-sdk/workflow"
+    "github.com/microsoft/durabletask-go/task"
 )
 
 // Child workflow
@@ -167,7 +167,7 @@ func BatchOrdersWorkflow(ctx *daprwf.WorkflowContext) (any, error) {
     ctx.GetInput(&batch)
 
     // Fan-out child workflows
-    tasks := make([]*daprwf.Task, len(batch.Orders))
+    tasks := make([]task.Task, len(batch.Orders))
     for i, order := range batch.Orders {
         tasks[i] = ctx.CallChildWorkflow(ProcessOrderWorkflow,
             daprwf.ChildWorkflowInput(order),
@@ -208,15 +208,27 @@ type PaymentResult struct {
     TransactionID string `json:"transactionId"`
 }
 
-func ValidateOrderActivity(ctx context.Context, order OrderInput) (bool, error) {
+func ValidateOrderActivity(ctx daprwf.ActivityContext) (any, error) {
+    var order OrderInput
+    if err := ctx.GetInput(&order); err != nil {
+        return nil, err
+    }
     return order.Amount > 0, nil
 }
 
-func ChargePaymentActivity(ctx context.Context, order OrderInput) (PaymentResult, error) {
+func ChargePaymentActivity(ctx daprwf.ActivityContext) (any, error) {
+    var order OrderInput
+    if err := ctx.GetInput(&order); err != nil {
+        return nil, err
+    }
     return PaymentResult{TransactionID: fmt.Sprintf("txn-%s", order.OrderID)}, nil
 }
 
-func ShipOrderActivity(ctx context.Context, input map[string]string) (string, error) {
+func ShipOrderActivity(ctx daprwf.ActivityContext) (any, error) {
+    var input map[string]string
+    if err := ctx.GetInput(&input); err != nil {
+        return nil, err
+    }
     return fmt.Sprintf("track-%s-XYZ", input["orderId"]), nil
 }
 
