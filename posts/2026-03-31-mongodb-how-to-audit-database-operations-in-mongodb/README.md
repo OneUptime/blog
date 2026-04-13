@@ -68,7 +68,7 @@ The oplog is a capped collection on replica sets that records all write operatio
 
 ```javascript
 const oplog = client.db("local").collection("oplog.rs");
-const lastTimestamp = new Timestamp(Date.now() / 1000, 0);
+const lastTimestamp = new Timestamp({ t: Math.floor(Date.now() / 1000), i: 0 });
 
 const cursor = oplog.find(
   {
