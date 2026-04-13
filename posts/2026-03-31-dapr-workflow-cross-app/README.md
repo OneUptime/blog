@@ -19,19 +19,21 @@ A parent workflow in Service A can call a child workflow registered in Service B
 from dapr.ext.workflow import DaprWorkflowContext
 
 def order_fulfillment_workflow(ctx: DaprWorkflowContext, order: dict):
-    # Call activity that triggers cross-service work
+    # Call child workflow in payment-service using app_id
     payment_result = yield ctx.call_child_workflow(
-        workflow=payment_workflow,  # Must be registered in the same app
+        workflow="payment_workflow",
         input={"order_id": order["id"], "amount": order["total"]},
-        instance_id=f"payment-{order['id']}"
+        instance_id=f"payment-{order['id']}",
+        app_id="payment-service"
     )
     if not payment_result.get("success"):
         return {"status": "payment_failed"}
 
     shipping_result = yield ctx.call_child_workflow(
-        workflow=shipping_workflow,
+        workflow="shipping_workflow",
         input={"order_id": order["id"], "address": order["address"]},
-        instance_id=f"shipping-{order['id']}"
+        instance_id=f"shipping-{order['id']}",
+        app_id="shipping-service"
     )
 
     return {"status": "fulfilled", "tracking": shipping_result.get("tracking_number")}
@@ -43,6 +45,7 @@ The recommended pattern is to use activities as the boundary for cross-service c
 
 ```python
 # Activity in order-service calls payment-service via Dapr service invocation
+import json
 from dapr.clients import DaprClient
 from dapr.ext.workflow import WorkflowActivityContext
 
@@ -51,7 +54,7 @@ def charge_payment_activity(ctx: WorkflowActivityContext, order: dict) -> dict:
         response = client.invoke_method(
             app_id="payment-service",
             method_name="charge",
-            data={"order_id": order["id"], "amount": order["total"]},
+            data=json.dumps({"order_id": order["id"], "amount": order["total"]}),
             content_type="application/json"
         )
         return response.json()
@@ -65,6 +68,7 @@ Services publish events when their portion of work completes. Another service's 
 
 ```python
 # payment-service publishes completion event
+import json
 from dapr.clients import DaprClient
 
 def complete_payment(order_id: str, result: dict):
@@ -72,7 +76,7 @@ def complete_payment(order_id: str, result: dict):
         client.publish_event(
             pubsub_name="pubsub",
             topic_name="payment-completed",
-            data={"order_id": order_id, **result}
+            data=json.dumps({"order_id": order_id, **result})
         )
 ```
 
@@ -103,14 +107,14 @@ workflow_client = DaprWorkflowClient()
 def on_payment_completed(event) -> None:
     data = event.data
     instance_id = f"order-{data['order_id']}"
-    workflow_client.raise_workflow_event(instance_id, "payment-result", data)
+    workflow_client.raise_workflow_event(instance_id, "payment-result", data=data)
 ```
 
 ## Cross-Namespace Workflow Coordination in Kubernetes
 
 When services span different Kubernetes namespaces, configure Dapr app IDs with namespace:
 
-```yaml
+```python
 # In the calling activity
 app_id = "payment-service.production"  # namespace-qualified
 ```
