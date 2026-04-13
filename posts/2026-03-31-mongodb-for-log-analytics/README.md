@@ -121,6 +121,7 @@ Node.js application sending structured logs to MongoDB:
 ```javascript
 const { MongoClient } = require("mongodb");
 const winston = require("winston");
+const { PassThrough } = require("stream");
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI);
 await mongoClient.connect();
@@ -129,7 +130,7 @@ const logsDb = mongoClient.db("logs");
 // Custom Winston transport for MongoDB
 class MongoTransport extends winston.transports.Stream {
   constructor(opts) {
-    const passThrough = new require("stream").PassThrough({ objectMode: true });
+    const passThrough = new PassThrough({ objectMode: true });
     super({ stream: passThrough });
     this.collection = opts.collection;
 
