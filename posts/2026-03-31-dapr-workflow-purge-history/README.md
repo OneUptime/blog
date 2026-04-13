@@ -55,13 +55,13 @@ print(f"State after purge: {state}")  # None or not found
 Via CLI:
 
 ```bash
-dapr workflow purge --app-id order-service --workflow-id order-ORD-001
+dapr workflow purge order-ORD-001 --app-id order-service
 ```
 
 Via HTTP API:
 
 ```bash
-curl -X DELETE \
+curl -X POST \
   http://localhost:3500/v1.0/workflows/dapr/order-ORD-001/purge
 ```
 
