@@ -123,6 +123,8 @@ async function getPendingReview(organizationId) {
 GridFS files' metadata can be updated directly on the `files` collection:
 
 ```javascript
+const { MongoClient, ObjectId } = require('mongodb');
+
 async function updateFileStatus(fileId, newStatus) {
   const client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
