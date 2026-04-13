@@ -146,8 +146,8 @@ mongosqld \
 
 The BI Connector samples documents to infer a relational schema. For collections with varied document shapes you can provide a custom schema file.
 
-```json
-// custom_schema.drdl (Document Relational Definition Language)
+```yaml
+# custom_schema.drdl (Document Relational Definition Language)
 schema:
 - db: ecommerce
   tables:
@@ -161,7 +161,7 @@ schema:
       SqlName: _id
       SqlType: varchar(255)
     - Name: total
-      MongoType: float
+      MongoType: float64
       SqlName: total
       SqlType: double
     - Name: status
@@ -173,7 +173,7 @@ schema:
       SqlName: item_sku
       SqlType: varchar(255)
     - Name: items.price
-      MongoType: float
+      MongoType: float64
       SqlName: item_price
       SqlType: double
 ```
@@ -182,7 +182,7 @@ schema:
 # Start mongosqld with custom schema
 mongosqld \
   --mongo-uri "mongodb://localhost:27017" \
-  --schemaPath ./custom_schema.drdl \
+  --schema ./custom_schema.drdl \
   --addr 0.0.0.0:3307
 ```
 
