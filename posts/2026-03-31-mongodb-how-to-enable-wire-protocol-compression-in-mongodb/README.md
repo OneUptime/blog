@@ -58,7 +58,7 @@ const { MongoClient } = require("mongodb");
 
 const client = new MongoClient("mongodb://localhost:27017/mydb", {
   compressors: ["snappy", "zstd"],
-  zlibCompressionLevel: 6 // Only relevant if zlib is used (1-9)
+  zlibCompressionLevel: 6 // Only relevant if zlib is used (0-9)
 });
 
 await client.connect();
@@ -105,8 +105,9 @@ MongoDB uses a handshake process to negotiate compression:
 
 ```text
 1. Client sends its supported compressors list in the isMaster/hello command
-2. Server responds with the first compressor from the client's list that it also supports
-3. All subsequent messages use the negotiated compressor
+2. Server responds with the intersection of its own and the client's supported compressors
+3. Client selects the first compressor from its configured list that appears in the server's response
+4. All subsequent messages use the selected compressor
 ```
 
 If the server and client share no common compressors, communication falls back to uncompressed.
@@ -144,7 +145,7 @@ net:
 // In Node.js driver - set level for client-side
 const client = new MongoClient(uri, {
   compressors: ["zlib"],
-  zlibCompressionLevel: 4 // 1=fastest, 9=best compression, 6=balanced default
+  zlibCompressionLevel: 4 // 0=no compression, 1=fastest, 9=best compression, default=6
 });
 ```
 
