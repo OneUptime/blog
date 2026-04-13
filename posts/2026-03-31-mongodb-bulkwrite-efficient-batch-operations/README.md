@@ -115,7 +115,7 @@ console.log(result.upsertedIds);     // map of index -> upsertedId
 
 - Sending thousands of operations in a single call - chunk them to avoid memory issues.
 - Using `ordered: true` for independent operations, which prevents parallelism.
-- Not handling `BulkWriteError` in unordered mode - partial failures are reported but not thrown unless you check.
+- Not catching `MongoBulkWriteError` in unordered mode - the error is thrown and contains both the write errors and partial success results that you need to inspect.
 
 ## Summary
 
