@@ -8,7 +8,7 @@ Description: Learn how to view, search, and debug Atlas Trigger execution logs i
 
 ---
 
-Atlas Triggers run serverless functions in response to database events, scheduled intervals, or HTTP requests. When triggers fail or behave unexpectedly, the Atlas Trigger Logs UI and the Atlas Administration API give you the visibility you need to diagnose problems quickly.
+Atlas Triggers run serverless functions in response to database events, scheduled intervals, or authentication events. When triggers fail or behave unexpectedly, the Atlas Trigger Logs UI and the Atlas Administration API give you the visibility you need to diagnose problems quickly.
 
 ## Viewing Trigger Logs in the Atlas UI
 
@@ -37,7 +37,7 @@ ATLAS_PRIVATE_KEY="<priv>"
 curl --user "$ATLAS_PUBLIC_KEY:$ATLAS_PRIVATE_KEY" \
   --digest \
   --request GET \
-  "https://realm.mongodb.com/api/admin/v3.0/groups/$GROUP_ID/apps/$APP_ID/logs?type=trigger&errors_only=true"
+  "https://services.cloud.mongodb.com/api/admin/v3.0/groups/$GROUP_ID/apps/$APP_ID/logs?type=DB_TRIGGER&errors_only=true"
 ```
 
 The response is a JSON array. Each entry includes a `logs` array with stdout/stderr output from your trigger function.
@@ -85,13 +85,13 @@ In the Atlas UI, go to **Project Alerts** and create a new alert:
 
 This ensures you are notified immediately when any trigger encounters an unhandled error.
 
-## Debugging Locally with Realm CLI
+## Debugging Locally with the App Services CLI
 
 ```bash
-npm install -g mongodb-realm-cli
+npm install -g atlas-app-services-cli
 
-realm-cli login --api-key "$ATLAS_PUBLIC_KEY" --private-api-key "$ATLAS_PRIVATE_KEY"
-realm-cli pull --app "$APP_ID"
+appservices login --api-key "$ATLAS_PUBLIC_KEY" --private-api-key "$ATLAS_PRIVATE_KEY"
+appservices pull --remote "$APP_ID"
 
 # Inspect the trigger definition
 cat triggers/my_trigger.json
