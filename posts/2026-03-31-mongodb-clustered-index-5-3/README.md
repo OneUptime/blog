@@ -81,7 +81,7 @@ You can still create secondary indexes on clustered collections:
 db.sensorReadings.createIndex({ sensorId: 1, _id: 1 })
 ```
 
-Secondary indexes on clustered collections store the clustered key as the record ID (instead of a RecordID pointer), making them slightly more compact.
+Secondary indexes on clustered collections store the clustered key value (the `_id` field) as the record locator instead of a compact internal RecordId. This means secondary indexes on clustered collections may be slightly larger than on non-clustered collections, especially with large `_id` values. The overall storage savings come from eliminating the separate `_id` index entirely.
 
 ## Clustered vs Regular Collections - When to Choose
 
