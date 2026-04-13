@@ -17,7 +17,7 @@ Running MongoDB in FIPS mode ensures that all cryptographic operations use appro
 ## Prerequisites
 
 FIPS 140-2 mode requires:
-- MongoDB Enterprise 4.0 or later
+- MongoDB Enterprise 4.2 or later
 - An OS with a FIPS-validated cryptographic module (OpenSSL-fips on Linux, Windows CNG on Windows Server)
 - TLS/SSL configured with FIPS-compliant cipher suites
 
