@@ -42,7 +42,7 @@ For breaking schema changes, use two collections and sync data between them duri
 const session = client.startSession();
 session.startTransaction();
 try {
-  const cursor = db.users_blue.find({});
+  const cursor = db.users_blue.find({}, { session });
   for await (const doc of cursor) {
     const transformed = transformToNewSchema(doc);
     await db.users_green.insertOne(transformed, { session });
