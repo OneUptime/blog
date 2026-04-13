@@ -39,7 +39,7 @@ The driver can automatically retry writes on the new primary after an election:
 
 ```javascript
 const client = new MongoClient(uri, {
-  retryWrites: true, // enabled by default in driver 3.6+
+  retryWrites: true, // enabled by default in MongoDB 4.2+ drivers
   retryReads: true
 });
 ```
@@ -108,7 +108,7 @@ rs.status()
 
 // Check election log
 db.adminCommand({ replSetGetStatus: 1 }).members.forEach(m => {
-  print(`${m.name}: state=${m.stateStr}, lag=${m.optimeDurableDate}`);
+  print(`${m.name}: state=${m.stateStr}, lastDurable=${m.optimeDurableDate}`);
 });
 ```
 
