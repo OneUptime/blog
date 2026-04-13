@@ -10,7 +10,7 @@ Description: Learn how to detect and handle write conflicts in MongoDB multi-doc
 
 ## Introduction
 
-Write conflicts in MongoDB occur during multi-document transactions when two operations attempt to modify the same document concurrently. MongoDB uses optimistic concurrency control - it detects conflicts at commit time and throws a `WriteConflict` error (error code 112). Understanding how to handle these conflicts is essential for building reliable transactional applications.
+Write conflicts in MongoDB occur during multi-document transactions when two operations attempt to modify the same document concurrently. MongoDB uses optimistic concurrency control - it detects conflicts when a conflicting write is attempted and throws a `WriteConflict` error (error code 112). Understanding how to handle these conflicts is essential for building reliable transactional applications.
 
 ## Understanding WriteConflict Errors
 
@@ -138,7 +138,7 @@ Reduce write conflicts by minimizing transaction scope and duration:
 // BAD - Long-running transaction increases conflict window
 async function badPattern(session, db) {
   session.startTransaction();
-  const data = await db.collection("reports").find({}).toArray(); // Slow
+  const data = await db.collection("reports").find({}, { session }).toArray(); // Slow
   await processData(data); // External call - still in transaction
   await db.collection("summary").insertOne({ data }, { session });
   await session.commitTransaction();
@@ -160,8 +160,8 @@ async function goodPattern(session, db) {
 Monitor write conflicts in your application logs and MongoDB server stats:
 
 ```javascript
-// Check server status for write conflict counts
-db.adminCommand({ serverStatus: 1 }).wiredTiger.concurrentTransactions;
+// Check WiredTiger transaction statistics including conflicts
+db.adminCommand({ serverStatus: 1 }).wiredTiger.transaction;
 
 // Check operation metrics
 db.adminCommand({ serverStatus: 1 }).metrics.document;
