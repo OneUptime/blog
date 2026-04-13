@@ -33,16 +33,17 @@ db.runCommand({ compact: "orders" });
 
 The `bytesFreed` value shows how many bytes were reclaimed from the collection.
 
-## compact with freeSpaceTargetMB (WiredTiger)
+## compact with freeSpaceTargetMB (MongoDB 7.3+)
 
-In MongoDB 4.4+, specify a minimum amount of free space to trigger compaction:
+In MongoDB 7.3+, specify a minimum amount of storage space in megabytes that must be recoverable for compaction to proceed:
 
 ```javascript
 db.runCommand({
   compact: "events",
   freeSpaceTargetMB: 100
 });
-// Only compacts if >= 100MB of space can be reclaimed
+// Only compacts if >= 100MB of space can be recovered
+// Default value is 20 MB if not specified
 ```
 
 ## Checking Collection Size Before and After
@@ -75,8 +76,8 @@ freeStorageSize  - Space available for reuse (should drop after compact)
 ```text
 WiredTiger:
 - Rewrites collection data files
-- Rebuilds all indexes
-- Blocks the collection during compaction (read/write blocked)
+- Rebuilds all indexes in parallel after compaction
+- MongoDB 4.4+: does not block CRUD operations (only blocks metadata ops like drop/createIndex)
 - Returns space to the OS
 
 MMAPv1 (deprecated):
@@ -105,12 +106,12 @@ db.runCommand({ compact: "largeCollection" })
 
 ```javascript
 // Compact all collections in a database
-const db = db.getSiblingDB("mydb");
-const collections = db.getCollectionNames();
+const mydb = db.getSiblingDB("mydb");
+const collections = mydb.getCollectionNames();
 
 collections.forEach((collName) => {
   print(`Compacting ${collName}...`);
-  const result = db.runCommand({ compact: collName });
+  const result = mydb.runCommand({ compact: collName });
   print(`  Bytes freed: ${result.bytesFreed || "N/A"}`);
 });
 ```
@@ -127,14 +128,15 @@ db.orders.stats().freeStorageSize;
 (db.orders.stats().freeStorageSize / 1024 / 1024).toFixed(2) + " MB";
 ```
 
-## alternative - repairDatabase
+## Alternative - mongod --repair
 
-For more comprehensive recovery (also repairs data files), use `repairDatabase` - but note it takes the entire database offline:
+For more comprehensive recovery (also repairs data files), use the `--repair` startup option on a standalone `mongod` instance. Note that `repairDatabase` was removed in MongoDB 4.2:
 
-```javascript
-db.adminCommand({ repairDatabase: 1 });
-// Takes significantly longer than compact
-// Offline during operation - not suitable for production primaries
+```bash
+# Stop mongod first, then run with --repair
+mongod --dbpath /data/db --repair
+# Rebuilds all data files and indexes
+# The instance must be stopped - not suitable for production primaries
 ```
 
 ## Monitoring compact Progress
@@ -147,4 +149,4 @@ db.adminCommand({ currentOp: 1, "command.compact": { $exists: true } });
 
 ## Summary
 
-The `compact` command is the primary tool for reclaiming disk space and defragmenting MongoDB collections after bulk deletions. On replica sets, run it on secondaries first to avoid primary downtime. Always check `freeStorageSize` in collection stats before and after to measure the effect, and use `freeSpaceTargetMB` in MongoDB 4.4+ to skip compaction when the savings would be minimal.
+The `compact` command is the primary tool for reclaiming disk space and defragmenting MongoDB collections after bulk deletions. On replica sets, run it on secondaries first to avoid primary downtime. Always check `freeStorageSize` in collection stats before and after to measure the effect, and use `freeSpaceTargetMB` in MongoDB 7.3+ to skip compaction when the savings would be minimal.
