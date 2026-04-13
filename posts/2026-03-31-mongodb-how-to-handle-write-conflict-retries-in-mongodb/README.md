@@ -15,14 +15,14 @@ A write conflict occurs when two concurrent operations attempt to modify the sam
 - Highly concurrent document updates
 - WiredTiger storage engine's document-level locking
 
-Write conflicts return error code `112` (`WriteConflict`). Transient transaction errors that should be retried include codes `112`, `251` (NoSuchTransaction), and `267` (TransactionTooOld).
+Write conflicts return error code `112` (`WriteConflict`). Transient transaction errors that should be retried include codes `112`, `251` (NoSuchTransaction), and `225` (TransactionTooOld).
 
 ## Identifying Write Conflict Errors
 
 ```javascript
 // Error code 112 - WriteConflict
 // Error code 251 - NoSuchTransaction
-// Error code 267 - TransactionTooOld
+// Error code 225 - TransactionTooOld
 // Error label "TransientTransactionError" - indicates safe to retry entire transaction
 // Error label "UnknownTransactionCommitResult" - indicates safe to retry commit only
 ```
@@ -63,12 +63,12 @@ async function withTransactionRetry(client, txnFn) {
           throw commitErr;
         }
       }
-      return;
+      throw new Error("Transaction commit failed after max retries");
     } catch (err) {
       await session.abortTransaction();
       if (hasLabel(err, TRANSIENT_LABELS) || err.code === 112) {
         attempt++;
-        await sleep(50 * attempt); // exponential backoff
+        await sleep(50 * Math.pow(2, attempt)); // exponential backoff
         continue;
       }
       throw err;
