@@ -23,20 +23,22 @@ brew install mongodb-atlas-cli
 **On Linux (DEB-based):**
 
 ```bash
-wget https://fastdl.mongodb.org/mongocli/mongodb-atlas-cli_1.14.0_linux_x86_64.deb
-sudo dpkg -i mongodb-atlas-cli_1.14.0_linux_x86_64.deb
+# Replace VERSION with the latest release (e.g., 1.53.2)
+wget https://fastdl.mongodb.org/mongocli/mongodb-atlas-cli_VERSION_linux_x86_64.deb
+sudo dpkg -i mongodb-atlas-cli_VERSION_linux_x86_64.deb
 ```
 
 **On Linux (RPM-based):**
 
 ```bash
-sudo rpm -i https://fastdl.mongodb.org/mongocli/mongodb-atlas-cli_1.14.0_linux_x86_64.rpm
+# Replace VERSION with the latest release (e.g., 1.53.2)
+sudo rpm -i https://fastdl.mongodb.org/mongocli/mongodb-atlas-cli_VERSION_linux_x86_64.rpm
 ```
 
 **On Windows (Chocolatey):**
 
 ```bash
-choco install mongodb-atlas-cli
+choco install mongodb-atlas
 ```
 
 Verify the installation:
@@ -57,7 +59,7 @@ The easiest way to configure the CLI is the interactive setup:
 atlas setup
 ```
 
-This wizard prompts for your public key, private key, and organization ID, then writes a profile to `~/.config/atlascli/config.toml`.
+This wizard opens a browser-based authentication flow, creates a free M0 cluster, and writes a profile to your config directory (`~/.config/atlascli/config.toml` on Linux, `~/Library/Application Support/atlascli/config.toml` on macOS).
 
 ## Manual Profile Configuration
 
@@ -82,7 +84,7 @@ atlas config describe default
 When working with multiple organizations or projects, use named profiles:
 
 ```bash
-atlas config init --profile staging
+atlas auth login --profile staging
 atlas config set project_id <STAGING_PROJECT_ID> --profile staging
 
 # Use a specific profile for a command
