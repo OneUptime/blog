@@ -49,12 +49,12 @@ db.users.createIndex(
   { email: 1 },
   {
     unique: true,
-    partialFilterExpression: { deletedAt: { $exists: false } }
+    partialFilterExpression: { deletedAt: null }
   }
 )
 ```
 
-This index only covers active documents, keeping it compact and ensuring uniqueness only among non-deleted records.
+This index only covers active documents where `deletedAt` is `null` or missing, keeping it compact and ensuring uniqueness only among non-deleted records.
 
 ## Recovering a Soft-Deleted Document
 
