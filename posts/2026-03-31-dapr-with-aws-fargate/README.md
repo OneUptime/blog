@@ -57,11 +57,17 @@ aws ecs create-cluster \
         "--app-port", "8080",
         "--dapr-http-port", "3500",
         "--log-level", "info",
-        "--components-path", "/dapr/components"
+        "--resources-path", "/dapr/components"
       ],
       "portMappings": [
         {"containerPort": 3500},
         {"containerPort": 50001}
+      ],
+      "mountPoints": [
+        {"sourceVolume": "dapr-components", "containerPath": "/dapr/components"}
+      ],
+      "dependsOn": [
+        {"containerName": "dapr-config-init", "condition": "SUCCESS"}
       ],
       "environment": [
         {"name": "AWS_REGION", "value": "us-east-1"}
@@ -122,11 +128,18 @@ aws ec2 create-security-group \
   --description "Dapr Fargate tasks" \
   --vpc-id vpc-0123456789abcdef0
 
-# Allow Dapr sidecar communication within the VPC
+# Allow Dapr HTTP API within the VPC
 aws ec2 authorize-security-group-ingress \
   --group-id sg-0abc123 \
   --protocol tcp \
-  --port 3500-50001 \
+  --port 3500 \
+  --cidr 10.0.0.0/16
+
+# Allow Dapr gRPC within the VPC
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0abc123 \
+  --protocol tcp \
+  --port 50001 \
   --cidr 10.0.0.0/16
 ```
 
