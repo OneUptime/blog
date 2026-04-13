@@ -76,11 +76,10 @@ async function authenticateApiKey(req, res, next, db) {
 
 ## Rate Limiting with MongoDB
 
-Implement sliding window rate limiting using MongoDB's TTL indexes and atomic increment:
+Implement fixed window rate limiting using MongoDB's TTL indexes and atomic increment:
 
 ```javascript
 async function checkRateLimit(db, clientId, limit, windowSeconds) {
-  const windowStart = new Date(Date.now() - windowSeconds * 1000);
   const key = `${clientId}:${Math.floor(Date.now() / (windowSeconds * 1000))}`;
 
   const result = await db.collection('rate_limits').findOneAndUpdate(
