@@ -102,12 +102,12 @@ mongostat --host localhost --port 27017 -n 30
 
 ## Zstd vs Snappy vs Zlib for Wire Compression
 
-| Metric              | Snappy | Zlib  | Zstd  |
-|---------------------|--------|-------|-------|
-| Compression ratio   | 2x     | 3.5x  | 4x+   |
-| Decompress speed    | Fast   | Slow  | Fast  |
-| Compress speed      | Fast   | Med   | Fast  |
-| Min MongoDB version | 3.6    | 3.6   | 4.2   |
+| Metric              | Snappy   | Zlib    | Zstd    |
+|---------------------|----------|---------|---------|
+| Compression ratio   | ~1.5–2x | ~2.5–3x | ~2.8–3x |
+| Decompress speed    | Fast     | Slow    | Fast    |
+| Compress speed      | Fast     | Med     | Fast    |
+| Min MongoDB version | 3.4      | 3.6     | 4.2     |
 
 ## Verifying Active Compression
 
