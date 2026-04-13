@@ -38,7 +38,7 @@ When the server closes a cursor before the client finishes reading it, subsequen
 
 ```javascript
 // Node.js: catching CursorNotFound errors
-const { MongoClient, MongoCursorExhaustedError } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 async function processWithRecovery() {
   const client = new MongoClient("mongodb://localhost:27017");
@@ -100,7 +100,7 @@ while True:
         cursor.close()
 ```
 
-## Checking cursor.isClosed() Before Iteration
+## Checking cursor.closed Before Iteration
 
 Before iterating a stored cursor reference, check whether it is still alive:
 
