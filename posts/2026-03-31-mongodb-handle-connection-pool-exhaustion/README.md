@@ -114,7 +114,7 @@ class Semaphore {
   }
 }
 
-const dbSemaphore = new Semaphore(50); // Match maxPoolSize
+const dbSemaphore = new Semaphore(100); // Match maxPoolSize
 
 async function safeQuery(fn) {
   await dbSemaphore.acquire();
