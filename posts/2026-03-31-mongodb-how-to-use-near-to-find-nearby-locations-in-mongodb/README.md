@@ -205,13 +205,13 @@ for r in results:
 
 - **`$near` with `$geometry`**: Uses spherical calculation (meters) - recommended for real-world coordinates
 - **`$near` without `$geometry`** (with `2d` index): Uses flat calculation (degrees)
-- **`$nearSphere`**: Legacy operator; prefer `$near` with `$geometry`
+- **`$nearSphere`**: Always uses spherical calculation; with GeoJSON + `2dsphere` index, behaves identically to `$near` with `$geometry`
 
 ```javascript
 // Modern approach (use this)
 { $near: { $geometry: { type: "Point", coordinates: [lng, lat] }, $maxDistance: 1000 } }
 
-// Legacy approach (avoid unless using 2d index)
+// Alternative with legacy coordinates (uses spherical math, distance in radians)
 { $nearSphere: [lng, lat], $maxDistance: 0.009 }  // radians
 ```
 
