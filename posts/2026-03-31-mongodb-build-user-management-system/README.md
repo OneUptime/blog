@@ -96,7 +96,7 @@ async function registerUser(db, { email, password, name }) {
 ```javascript
 async function loginUser(db, { email, password }) {
   const user = await db.collection('users').findOne(
-    { email: email.toLowerCase(), isActive: true },
+    { email: email.toLowerCase().trim(), isActive: true },
     { projection: { passwordHash: 1, roles: 1, profile: 1 } }
   );
 
@@ -123,7 +123,7 @@ async function initiatePasswordReset(db, email) {
   const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour
 
   const result = await db.collection('users').updateOne(
-    { email: email.toLowerCase(), isActive: true },
+    { email: email.toLowerCase().trim(), isActive: true },
     { $set: { passwordResetToken: token, passwordResetExpiresAt: expiresAt } }
   );
 
