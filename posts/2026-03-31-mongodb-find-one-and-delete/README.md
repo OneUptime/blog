@@ -142,6 +142,8 @@ try {
 } catch (err) {
   session.abortTransaction()
   throw err
+} finally {
+  session.endSession()
 }
 ```
 
