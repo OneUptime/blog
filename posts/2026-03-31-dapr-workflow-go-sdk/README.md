@@ -26,7 +26,6 @@ Activities are regular Go functions with a specific signature:
 package main
 
 import (
-    "context"
     "fmt"
     "github.com/dapr/go-sdk/workflow"
 )
@@ -151,7 +150,7 @@ func startWorkflow(orderId string) error {
 
     instanceID, err := client.ScheduleNewWorkflow(
         context.Background(),
-        OrderFulfillmentWorkflow,
+        "OrderFulfillmentWorkflow",
         workflow.WithInstanceID("order-"+orderId),
         workflow.WithInput(input),
     )
