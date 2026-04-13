@@ -109,7 +109,7 @@ functions:
   api:
     handler: src/handler.handler
     events:
-      - httpApi:
+      - http:
           path: /users
           method: ANY
     timeout: 30
