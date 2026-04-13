@@ -101,7 +101,7 @@ def create_namespace(ctx, tenant: dict) -> bool:
 ```python
 @wf.activity
 def provision_database(ctx, tenant: dict) -> dict:
-    import subprocess, json
+    import subprocess, json, os
 
     workspace = f"/tmp/tf-{tenant['id']}"
     os.makedirs(workspace, exist_ok=True)
@@ -129,7 +129,7 @@ def provision_database(ctx, tenant: dict) -> dict:
 ## Starting a Provisioning Run
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/provision_tenant_workflow \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/provision_tenant_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"id": "tenant-abc", "region": "us-east-1", "tier": "pro", "domain": "abc.example.com"}'
 ```
@@ -139,7 +139,7 @@ curl -X POST http://localhost:3500/v1.0/workflows/dapr/provision_tenant_workflow
 ```bash
 # Poll until done
 while true; do
-  STATUS=$(curl -s http://localhost:3500/v1.0/workflows/dapr/provision_tenant_workflow/{id} | jq -r .runtimeStatus)
+  STATUS=$(curl -s http://localhost:3500/v1.0/workflows/dapr/{instanceId} | jq -r .runtimeStatus)
   echo "Status: $STATUS"
   [ "$STATUS" != "RUNNING" ] && break
   sleep 5
