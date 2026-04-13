@@ -184,9 +184,9 @@ db.orders.aggregate([
 - Avoid `$lookup` on large collections without indexes on join fields.
 
 ```javascript
-// Index to support the join
-db.customers.createIndex({ _id: 1 })
+// Index to support the join on foreignField
 db.comments.createIndex({ postId: 1 })
+db.orders.createIndex({ customerId: 1 })
 ```
 
 ## Left Outer Join Behavior
