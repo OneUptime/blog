@@ -131,12 +131,18 @@ async function handleMissedRuns(job, handlers) {
     currentDate: job.nextRunAt
   });
 
+  let nextRun;
   while (true) {
     const next = interval.next().toDate();
-    if (next > new Date()) break;
+    if (next > new Date()) {
+      nextRun = next;
+      break;
+    }
     console.log(`Catching up missed run for ${job.name} at ${next}`);
     await handlers[job.name]?.(job);
   }
+
+  return nextRun;
 }
 ```
 
@@ -172,12 +178,13 @@ async function findStuckJobs() {
 
   for (const job of jobs) {
     const interval = parser.parseExpression(job.cronExpression);
-    const prevRun = interval.prev().toDate();
-    const expectedLastRun = interval.prev().toDate();
-    const overdueMins = (Date.now() - job.nextRunAt) / 60000;
+    const next1 = interval.next().toDate();
+    const next2 = interval.next().toDate();
+    const intervalMs = next2 - next1;
+    const overdueMs = Date.now() - job.nextRunAt;
 
-    if (overdueMins > 30) {
-      stuck.push({ name: job.name, overdueMinutes: Math.round(overdueMins) });
+    if (overdueMs > intervalMs * 2) {
+      stuck.push({ name: job.name, overdueMinutes: Math.round(overdueMs / 60000) });
     }
   }
 
