@@ -163,7 +163,7 @@ db.orders.updateOne(
 ## Naming Rules for Identifiers
 
 - Must start with a lowercase letter
-- Can contain only alphanumeric characters and underscores
+- Can contain only alphanumeric characters
 - Cannot be an empty string
 
 ## Summary
