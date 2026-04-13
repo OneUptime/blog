@@ -10,7 +10,7 @@ Description: Learn how to disable MongoDB's legacy REST and HTTP interfaces to r
 
 ## Overview
 
-Older MongoDB versions (before 3.6) shipped with an HTTP status interface on port 28017 and an optional REST interface. These interfaces expose operational information and in some configurations allow unauthenticated read access. Even in newer versions where these are disabled by default, explicitly configuring them as off is an important security hardening step.
+Older MongoDB versions (before 3.6) shipped with an HTTP status interface on port 28017 and an optional REST interface. These interfaces expose operational information and in some configurations allow unauthenticated read access. The HTTP status page was enabled by default before MongoDB 2.6 and disabled by default from 2.6 onward. The REST API was always disabled by default (requiring the `--rest` flag to enable). Both were deprecated in MongoDB 3.2 and removed entirely in 3.6.
 
 ## Checking If the HTTP Interface Is Running
 
@@ -34,7 +34,7 @@ net:
   port: 27017
   bindIp: 127.0.0.1
 
-# MongoDB 3.2 and below: explicitly disable HTTP
+# MongoDB 3.4 and earlier: explicitly disable HTTP
 # net:
 #   http:
 #     enabled: false
@@ -55,11 +55,10 @@ mongod \
   --port 27017 \
   --dbpath /var/lib/mongodb \
   --nohttpinterface \
-  --norest \
   --auth
 ```
 
-The `--nohttpinterface` flag disables the HTTP status page and the `--norest` flag disables the REST API.
+The `--nohttpinterface` flag disables the HTTP status page. The REST API is disabled by default and only activates if you explicitly pass the `--rest` flag, so no flag is needed to disable it.
 
 ## Blocking Port 28017 at the Firewall Level
 
@@ -73,7 +72,7 @@ sudo ufw deny 28017
 sudo iptables -A INPUT -p tcp --dport 28017 -j DROP
 
 # Using firewalld (RHEL/CentOS)
-sudo firewall-cmd --permanent --remove-port=28017/tcp
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" port port="28017" protocol="tcp" reject'
 sudo firewall-cmd --reload
 ```
 
@@ -97,9 +96,7 @@ net:
 
 security:
   authorization: enabled
-
-# Disable server-side JavaScript execution if not needed
-security:
+  # Disable server-side JavaScript execution if not needed
   javascriptEnabled: false
 ```
 
@@ -116,7 +113,8 @@ Review the `parsed` section of the output to confirm your configuration file set
 
 | MongoDB Version | HTTP Interface Status |
 |----------------|----------------------|
-| 2.x, 3.0-3.4   | Enabled by default - must explicitly disable |
+| 2.0-2.4        | HTTP status page enabled by default - must explicitly disable |
+| 2.6-3.4        | Disabled by default (deprecated in 3.2) - verify it is off |
 | 3.6+           | Removed entirely - no action needed |
 
 If you are on MongoDB 3.6 or later, the HTTP and REST interfaces do not exist and no configuration is needed. Focus hardening efforts on disabling unused authentication mechanisms and binding to private IPs.
