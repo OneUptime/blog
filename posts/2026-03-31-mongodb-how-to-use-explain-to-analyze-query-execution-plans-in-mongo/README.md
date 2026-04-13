@@ -14,7 +14,7 @@ Description: Learn how to use MongoDB's explain() method to inspect query execut
 
 ## Basic Usage
 
-Append `.explain()` to any `find()`, `aggregate()`, `update()`, or `delete()` call:
+Chain `.explain()` on a `find()` cursor, or use `db.collection.explain()` before `find()`, `aggregate()`, `update()`, or `delete()`:
 
 ```javascript
 // Returns the query plan without executing the query
@@ -100,7 +100,7 @@ db.orders.createIndex({ status: 1, createdAt: -1 });
 | `COLLSCAN` | Full collection scan - no index used |
 | `IXSCAN` | Index scan |
 | `FETCH` | Fetch documents by _id after IXSCAN |
-| `SORT` | In-memory sort (may use index sort) |
+| `SORT` | In-memory sort (not satisfied by an index) |
 | `SORT_MERGE` | Merge sorted streams from index |
 | `PROJECTION_SIMPLE` | Field projection applied |
 | `LIMIT` | Documents limited |
