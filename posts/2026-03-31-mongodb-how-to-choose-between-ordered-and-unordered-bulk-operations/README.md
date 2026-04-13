@@ -108,6 +108,8 @@ await db.collection("test").bulkWrite(documents, { ordered: true })
 console.timeEnd("ordered")
 // ~1200ms
 
+await db.collection("test").drop()
+
 // Unordered
 console.time("unordered")
 await db.collection("test").bulkWrite(documents, { ordered: false })
@@ -150,8 +152,8 @@ const operations = [
 try {
   await db.collection("items").bulkWrite(operations, { ordered: true })
 } catch (err) {
-  console.log("Failed at index:", err.index)  // 1
-  console.log("Docs inserted:", err.result.nInserted)  // 1 (only _id:1 succeeded)
+  console.log("Failed at index:", err.writeErrors[0].index)  // 1
+  console.log("Docs inserted:", err.result.insertedCount)  // 1 (only _id:1 succeeded)
 }
 
 // UNORDERED: all non-failing ops run
@@ -159,7 +161,7 @@ try {
   await db.collection("items").bulkWrite(operations, { ordered: false })
 } catch (err) {
   console.log("Write errors:", err.writeErrors.length)  // 1
-  console.log("Docs inserted:", err.result.nInserted)  // 2 (_id:1 and _id:2 both inserted)
+  console.log("Docs inserted:", err.result.insertedCount)  // 2 (_id:1 and _id:2 both inserted)
 }
 ```
 
