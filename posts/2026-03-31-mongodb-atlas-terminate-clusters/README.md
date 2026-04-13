@@ -29,8 +29,7 @@ Before terminating a cluster, verify the following:
 ```bash
 # Export the database before termination
 mongodump \
-  --uri "mongodb+srv://user:password@cluster.mongodb.net/" \
-  --db myapp \
+  --uri "mongodb+srv://user:password@cluster.mongodb.net/myapp" \
   --out /backup/$(date +%Y%m%d)-final-dump
 
 # Compress the dump
