@@ -123,7 +123,7 @@ db.users.find({ createdAt: { $gte: ISODate("2024-01-01") } })
 - Cannot use hashed indexes for range queries (hashing destroys ordering)
 - Hashed indexes cannot be multikey (cannot hash array fields)
 - Hashed indexes do not support unique constraints
-- Floating point numbers are rounded to int64 before hashing
+- Floating point numbers are truncated to int64 before hashing
   (1.0, 1.5, 1.9 all hash to the same value as 1)
 - Only one field can be hashed in a compound index
 ```
@@ -136,7 +136,7 @@ sh.status()
 // Look for even chunk distribution across shards
 
 // Or check per-collection
-db.adminCommand({ collStats: "myapp.users" })
+db.getSiblingDB("myapp").runCommand({ collStats: "users" })
 ```
 
 ## Summary
