@@ -10,7 +10,7 @@ Description: Learn how to enable retryable reads in MongoDB to automatically ret
 
 ## What Are Retryable Reads?
 
-Retryable reads allow MongoDB drivers to automatically retry certain read operations when they encounter transient errors such as network hiccups, primary elections, or brief connection drops. Introduced in MongoDB 3.6 and enabled by default in drivers that support the feature, retryable reads reduce the need for manual error handling in read-heavy workloads.
+Retryable reads allow MongoDB drivers to automatically retry certain read operations when they encounter transient errors such as network hiccups, primary elections, or brief connection drops. Introduced with MongoDB 4.2-compatible drivers and enabled by default, retryable reads reduce the need for manual error handling in read-heavy workloads.
 
 ## Enabling Retryable Reads in the Connection String
 
@@ -71,8 +71,8 @@ MongoDB drivers retry reads only on specific error categories:
 ```text
 - Network errors (connection reset, timeout during handshake)
 - NotWritablePrimary errors during primary elections
-- ExceededTimeLimit (only in some versions)
-- Errors with the RetryableWriteError label
+- Node shutdown or state change errors (ShutdownInProgress, InterruptedAtShutdown, InterruptedDueToReplStateChange)
+- ExceededTimeLimit (only in some driver versions)
 ```
 
 Errors such as command failures (`OperationFailed`) or `CursorNotFound` are NOT retried automatically.
@@ -83,16 +83,16 @@ Retryable reads are most effective in replica set deployments where primaries ca
 
 ```javascript
 // Without retryable reads - this may fail during an election
-const doc = await collection.findOne({ _id: userId });
+const doc1 = await collection.findOne({ _id: userId });
 
 // With retryable reads - transparently retried once
-const doc = await collection.findOne({ _id: userId });
+const doc2 = await collection.findOne({ _id: userId });
 // No code change needed - behavior controlled by client config
 ```
 
 ## Checking Driver Support
 
-Not all operations are retryable. Supported operations include `find`, `aggregate` (non-write), `distinct`, `count`, and `listCollections`. Getmore operations on cursors are not retried.
+Not all operations are retryable. Supported operations include `find`, `aggregate` (without `$out` or `$merge`), `distinct`, `count`, `countDocuments`, `estimatedDocumentCount`, `listCollections`, `listDatabases`, and `listIndexes`. Getmore operations on cursors are not retried.
 
 ```javascript
 // Check MongoDB driver version in package.json
