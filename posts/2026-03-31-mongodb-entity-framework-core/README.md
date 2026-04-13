@@ -171,7 +171,7 @@ modelBuilder.Entity<Customer>().OwnsOne(c => c.ShippingAddress);
 
 ## Current Limitations
 
-The MongoDB EF Core provider does not support all EF Core features. Key unsupported items include joins across collections, transactions (as of initial releases), raw SQL, and migrations. For complex aggregations or transactions, use the native MongoDB .NET Driver directly alongside EF Core.
+The MongoDB EF Core provider does not support all EF Core features. Key unsupported items include joins across collections, raw SQL, and migrations. Transactions are supported as of version 8.1.0 and are enabled by default with auto-transactional `SaveChanges` and `SaveChangesAsync`. For complex aggregations or unsupported query patterns, use the native MongoDB .NET Driver directly alongside EF Core.
 
 ## Summary
 
