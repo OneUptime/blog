@@ -86,7 +86,7 @@ db.users.find({ username: { $regex: "^johndoe$", $options: "i" } });
 
 // Option B: collation (uses index, best performance)
 db.users.createIndex({ username: 1 }, { collation: { locale: "en", strength: 2 } });
-db.users.findOne({ username: "JohnDoe" }).collation({ locale: "en", strength: 2 });
+db.users.find({ username: "JohnDoe" }).collation({ locale: "en", strength: 2 }).limit(1);
 
 // Option C: store lowercase in a separate field
 db.users.find({ usernameLower: "johndoe" });
