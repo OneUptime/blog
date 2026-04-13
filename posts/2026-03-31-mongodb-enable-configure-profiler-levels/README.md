@@ -65,7 +65,8 @@ db.setProfilingLevel(1, { slowms: 100, sampleRate: 0.1 });
 By default, `system.profile` holds up to 1 MB of data. On busy systems, this fills quickly. Create it with a larger cap before enabling profiling:
 
 ```javascript
-// Drop if it exists, then recreate with larger cap
+// Disable profiling first, then drop and recreate with larger cap
+db.setProfilingLevel(0);
 db.system.profile.drop();
 db.createCollection("system.profile", {
   capped: true,
@@ -88,19 +89,28 @@ operationProfiling:
 
 Valid `mode` values: `off`, `slowOp`, `all`
 
-## Per-Operation Override
+## Temporarily Profiling All Operations
 
-You can override the profiler threshold per query with the `comment` and `maxTimeMS` options:
+To capture all operations regardless of duration, set `slowms` to -1. This is a global setting that affects all queries on the database:
 
 ```javascript
-db.orders.find({ status: "pending" }).maxTimeMS(500).explain("executionStats");
+// Profile all operations (everything exceeds -1ms)
+db.setProfilingLevel(1, { slowms: -1 });
 ```
 
-Or force profiling of a specific query regardless of duration using a negative `slowms`:
+Use `comment` to tag specific queries so you can find them easily in the profiler output:
 
 ```javascript
-// This specific query will always be profiled
-db.setProfilingLevel(1, { slowms: -1 });
+db.orders.find({ status: "pending" }).comment("debug-order-query");
+
+// Then filter profiler data by comment
+db.system.profile.find({ "command.comment": "debug-order-query" });
+```
+
+Restore your normal threshold when done:
+
+```javascript
+db.setProfilingLevel(1, { slowms: 100 });
 ```
 
 ## Reading Profile Data
