@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Elixir, Phoenix, Mongodb Driver, Database
 
-Description: Learn how to integrate MongoDB into a Phoenix web application using the official MongoDB Elixir driver, with practical CRUD and query examples.
+Description: Learn how to integrate MongoDB into a Phoenix web application using the MongoDB Elixir driver, with practical CRUD and query examples.
 
 ---
 
 ## Why MongoDB with Elixir
 
-Elixir's concurrency model and fault-tolerance pair well with MongoDB's horizontal scalability. While Ecto is the default database layer for Phoenix, the official MongoDB Elixir driver (`mongodb_driver`) lets you interact with MongoDB directly in a process-safe, idiomatic way.
+Elixir's concurrency model and fault-tolerance pair well with MongoDB's horizontal scalability. While Ecto is the default database layer for Phoenix, the community-maintained MongoDB Elixir driver (`mongodb_driver`) lets you interact with MongoDB directly in a process-safe, idiomatic way.
 
 ## Installation
 
