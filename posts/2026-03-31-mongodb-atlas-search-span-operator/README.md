@@ -16,12 +16,12 @@ The `span` operator has several nested clauses:
 
 | Sub-operator | Description |
 |---|---|
-| `spanFirst` | Term appears within N tokens from the start |
-| `spanNear` | Terms appear within N tokens of each other |
-| `spanOr` | Matches any of the given span queries |
-| `spanNot` | Excludes documents matching the inner span |
+| `first` | Term appears within N tokens from the start |
+| `near` | Terms appear within N tokens of each other |
+| `or` | Matches any of the given span queries |
+| `subtract` | Excludes documents matching the excluded span |
 
-## Basic spanNear Example
+## Basic near Example
 
 Find documents where "database" and "performance" appear within 5 tokens of each other:
 
@@ -30,22 +30,18 @@ db.articles.aggregate([
   {
     $search: {
       span: {
-        spanNear: {
+        near: {
           clauses: [
             {
-              span: {
-                spanTerm: {
-                  path: "body",
-                  query: "database"
-                }
+              term: {
+                path: "body",
+                query: "database"
               }
             },
             {
-              span: {
-                spanTerm: {
-                  path: "body",
-                  query: "performance"
-                }
+              term: {
+                path: "body",
+                query: "performance"
               }
             }
           ],
@@ -75,17 +71,13 @@ db.articles.aggregate([
   {
     $search: {
       span: {
-        spanNear: {
+        near: {
           clauses: [
             {
-              span: {
-                spanTerm: { path: "body", query: "query" }
-              }
+              term: { path: "body", query: "query" }
             },
             {
-              span: {
-                spanTerm: { path: "body", query: "optimization" }
-              }
+              term: { path: "body", query: "optimization" }
             }
           ],
           slop: 3,
@@ -100,7 +92,7 @@ db.articles.aggregate([
 ])
 ```
 
-## spanFirst: Term Near Document Start
+## first: Term Near Document Start
 
 Find documents where "introduction" appears in the first 10 tokens:
 
@@ -109,16 +101,14 @@ db.articles.aggregate([
   {
     $search: {
       span: {
-        spanFirst: {
-          query: {
-            span: {
-              spanTerm: {
-                path: "body",
-                query: "introduction"
-              }
+        first: {
+          operator: {
+            term: {
+              path: "body",
+              query: "introduction"
             }
           },
-          end: 10
+          endPositionLte: 10
         }
       }
     }
@@ -129,7 +119,7 @@ db.articles.aggregate([
 ])
 ```
 
-## spanOr: Multiple Proximity Patterns
+## or: Multiple Proximity Patterns
 
 Match documents satisfying any of several proximity patterns:
 
@@ -138,30 +128,26 @@ db.articles.aggregate([
   {
     $search: {
       span: {
-        spanOr: {
+        or: {
           clauses: [
             {
-              span: {
-                spanNear: {
-                  clauses: [
-                    { span: { spanTerm: { path: "body", query: "index" } } },
-                    { span: { spanTerm: { path: "body", query: "performance" } } }
-                  ],
-                  slop: 4,
-                  inOrder: false
-                }
+              near: {
+                clauses: [
+                  { term: { path: "body", query: "index" } },
+                  { term: { path: "body", query: "performance" } }
+                ],
+                slop: 4,
+                inOrder: false
               }
             },
             {
-              span: {
-                spanNear: {
-                  clauses: [
-                    { span: { spanTerm: { path: "body", query: "query" } } },
-                    { span: { spanTerm: { path: "body", query: "speed" } } }
-                  ],
-                  slop: 4,
-                  inOrder: false
-                }
+              near: {
+                clauses: [
+                  { term: { path: "body", query: "query" } },
+                  { term: { path: "body", query: "speed" } }
+                ],
+                slop: 4,
+                inOrder: false
               }
             }
           ]
@@ -181,10 +167,10 @@ db.articles.aggregate([
 Operator | Use case
 ---------|----------------------------------------------------
 phrase   | Exact or near-exact word sequences (slop <= 2)
-span     | Precise positional control, ordered proximity, startof-doc matching
+span     | Precise positional control, ordered proximity, start-of-doc matching
 ```
 
 ## Summary
 
-The `span` operator provides fine-grained positional control over how terms relate to each other within a document. Use `spanNear` for proximity matching, `spanFirst` for terms near the beginning of a field, and `spanOr` when multiple positional patterns are acceptable. It is most useful for legal text, technical documentation, or any domain where word proximity carries semantic meaning.
+The `span` operator provides fine-grained positional control over how terms relate to each other within a document. Use `near` for proximity matching, `first` for terms near the beginning of a field, and `or` when multiple positional patterns are acceptable. It is most useful for legal text, technical documentation, or any domain where word proximity carries semantic meaning.
 
