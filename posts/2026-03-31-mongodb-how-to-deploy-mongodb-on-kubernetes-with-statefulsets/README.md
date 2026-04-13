@@ -105,7 +105,7 @@ spec:
                 secretKeyRef:
                   name: mongodb-secret
                   key: MONGO_INITDB_ROOT_PASSWORD
-          command:
+          args:
             - "mongod"
             - "--replSet"
             - "rs0"
