@@ -18,7 +18,7 @@ MongoDB supports three read concerns inside transactions: `local`, `majority`, a
 
 - `local` - reads the latest data on the current node; may include data that rolls back after a failover
 - `majority` - reads data acknowledged by a majority of replica set members
-- `snapshot` - reads a consistent view of data as of the transaction start timestamp (required for multi-document atomicity guarantees)
+- `snapshot` - reads a consistent view of data as of the transaction start timestamp (provides snapshot isolation for consistent reads within a transaction)
 
 ## Setting Read Concern on a Transaction
 
@@ -59,7 +59,6 @@ try {
 
   // Check stock based on consistent view
   if (inventory.stock < order.quantity) {
-    await session.abortTransaction();
     throw new Error("Insufficient stock");
   }
 
@@ -104,4 +103,4 @@ This ensures reads in a later transaction always see writes from earlier transac
 
 ## Summary
 
-MongoDB transactions default to `snapshot` read concern, which provides consistent point-in-time reads across all operations in the transaction and prevents read skew. Use `majority` when you need externally acknowledged data without full snapshot isolation, and use causally consistent sessions when chaining multiple transactions that depend on each other's results.
+MongoDB transactions do not default to `snapshot` read concern; the default is inherited from the session or client level, which is typically `local`. When you explicitly set `snapshot` read concern, it provides consistent point-in-time reads across all operations in the transaction and prevents read skew. Use `majority` when you need externally acknowledged data without full snapshot isolation, and use causally consistent sessions when chaining multiple transactions that depend on each other's results.
