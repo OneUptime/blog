@@ -10,7 +10,7 @@ Description: Learn how to create a free MongoDB Atlas M0 cluster, configure netw
 
 ## What is MongoDB Atlas Free Tier
 
-MongoDB Atlas M0 is a permanently free shared cluster with 512 MB storage, 100 max connections, and no time limit. It is ideal for:
+MongoDB Atlas M0 is a permanently free shared cluster with 512 MB storage, 500 max connections, and no time limit. It is ideal for:
 - Learning MongoDB.
 - Development and prototyping.
 - Small applications with limited traffic.
@@ -58,10 +58,9 @@ The user is automatically granted `readWriteAnyDatabase` on the free tier.
 You can also create users via the Atlas CLI:
 
 ```bash
-atlas dbusers create atlasAdmin \
+atlas dbusers create readWriteAnyDatabase \
   --username myapp-user \
-  --password "SecurePassword123!" \
-  --role readWriteAnyDatabase
+  --password "SecurePassword123!"
 ```
 
 ### Step 4: Configure Network Access
@@ -78,7 +77,7 @@ Via Atlas CLI:
 atlas accessLists create --currentIp
 
 # Allow all IPs (development only)
-atlas accessLists create --cidrBlock 0.0.0.0/0 --comment "Allow all - dev only"
+atlas accessLists create 0.0.0.0/0 --type cidrBlock --comment "Allow all - dev only"
 ```
 
 ### Step 5: Get the Connection String
@@ -213,11 +212,11 @@ Feature                M0 Free Tier
 -----------------------------------------
 Storage                512 MB
 RAM                    Shared
-Max connections        100
+Max connections        500
 Backups                No automated backups
-Atlas Search           Not available
+Atlas Search           Available (limited indexes)
 Triggers               Available
-Data API               Available
+Data API               Deprecated (EOL Sept 2025)
 Charts                 Available
 Upgrade path           Upgrade to M10+ anytime
 ```
@@ -227,8 +226,8 @@ Upgrade path           Upgrade to M10+ anytime
 After connecting, explore these features in the Atlas UI:
 
 - **Browse Collections** - view and edit documents in a visual interface.
-- **Atlas Search** - create full-text search indexes (upgrade required).
-- **Performance Advisor** - get index recommendations based on query patterns.
+- **Atlas Search** - create full-text search indexes (available on M0 with limitations).
+- **Performance Advisor** - get index recommendations based on query patterns (M10+ required).
 - **Real-Time Performance** - monitor operation rates and connections.
 - **Triggers** - run server-side functions on database events.
 - **Charts** - build dashboards from your data.
@@ -257,7 +256,7 @@ atlas clusters connectionStrings describe Cluster0
 - **Enable IP allowlisting** - restrict access to known IPs in production, not `0.0.0.0/0`.
 - **Use strong, unique passwords** for database users.
 - **Create application-specific users** with minimal required permissions (not `atlasAdmin`).
-- **Monitor connection count** on free tier - the 100 connection limit is easily hit by serverless functions without connection pooling.
+- **Monitor connection count** on free tier - the 500 connection limit can be hit by serverless functions without connection pooling.
 
 ## Summary
 
