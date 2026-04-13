@@ -147,19 +147,16 @@ replication:
 net:
   port: 27017
   bindIp: 0.0.0.0
+  tls:
+    mode: requireTLS
+    certificateKeyFile: /etc/ssl/mongodb/server.pem
+    CAFile: /etc/ssl/mongodb/ca.pem
 
 storage:
   dbPath: /var/lib/mongodb
   wiredTiger:
     engineConfig:
       cacheSizeGB: 8
-
-# Enable TLS for cross-DC communication
-net:
-  tls:
-    mode: requireTLS
-    certificateKeyFile: /etc/ssl/mongodb/server.pem
-    CAFile: /etc/ssl/mongodb/ca.pem
 ```
 
 ## Monitoring Cross-DC Replication Lag
@@ -167,15 +164,21 @@ net:
 Check replication lag between data centers:
 
 ```javascript
-// Check replica set status
+// Check replica set status and config (tags are in rs.conf(), not rs.status())
 const status = rs.status();
+const conf = rs.conf();
+
+// Build a map of member host -> tags from the config
+const tagMap = {};
+conf.members.forEach(m => { tagMap[m.host] = m.tags || {}; });
 
 status.members.forEach(member => {
   if (member.stateStr === 'SECONDARY') {
     const lagSecs = member.optimeDate
       ? (new Date() - member.optimeDate) / 1000
       : 'unknown';
-    console.log(`${member.name}: lag=${lagSecs}s, dc=${member.tags?.dc}`);
+    const dc = tagMap[member.name]?.dc || 'unknown';
+    console.log(`${member.name}: lag=${lagSecs}s, dc=${dc}`);
   }
 });
 ```
