@@ -10,7 +10,7 @@ Description: Learn how to safely downgrade MongoDB to a previous version by sett
 
 ## Introduction
 
-Downgrading MongoDB is sometimes necessary after a failed upgrade, unexpected behavior in a new version, or application compatibility issues. MongoDB supports downgrading one minor version (e.g., 7.0 to 6.0) using the Feature Compatibility Version (FCV) mechanism. You must set the FCV before downgrading the binaries.
+Downgrading MongoDB is sometimes necessary after a failed upgrade, unexpected behavior in a new version, or application compatibility issues. MongoDB supports downgrading one major version (e.g., 7.0 to 6.0) using the Feature Compatibility Version (FCV) mechanism. You must set the FCV before downgrading the binaries.
 
 ## Downgrade Prerequisites
 
@@ -23,7 +23,7 @@ Downgrading MongoDB is sometimes necessary after a failed upgrade, unexpected be
 
 | Scenario | Supported |
 |---|---|
-| 7.0 to 6.0 | Yes (one minor version) |
+| 7.0 to 6.0 | Yes (one major version) |
 | 7.0 to 5.0 | No (must go via 6.0) |
 | After using new 7.0-only features | May require data migration |
 
@@ -141,7 +141,7 @@ rs.stepDown(120)
 Verify a new primary was elected from the downgraded secondaries:
 
 ```javascript
-rs.isMaster().primary
+db.hello().primary
 ```
 
 ## Step 6: Downgrade the Former Primary (Now Secondary)
@@ -199,4 +199,4 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 }).featureComp
 
 ## Summary
 
-Downgrading MongoDB requires setting the Feature Compatibility Version (FCV) to the target version first, then performing a rolling binary replacement starting with secondaries and ending with the primary. Always back up data before starting, verify FCV is set before touching any binary, and wait for each member to rejoin and reach SECONDARY state before proceeding to the next. Downgrades are only supported one minor version at a time, so plan multi-step downgrades (7.0 to 5.0 requires going through 6.0) accordingly.
+Downgrading MongoDB requires setting the Feature Compatibility Version (FCV) to the target version first, then performing a rolling binary replacement starting with secondaries and ending with the primary. Always back up data before starting, verify FCV is set before touching any binary, and wait for each member to rejoin and reach SECONDARY state before proceeding to the next. Downgrades are only supported one major version at a time, so plan multi-step downgrades (7.0 to 5.0 requires going through 6.0) accordingly.
