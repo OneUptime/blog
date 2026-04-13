@@ -80,9 +80,7 @@ Spin up a temporary cluster for integration tests:
       - name: Add CI IP to access list
         run: |
           MY_IP=$(curl -s https://api.ipify.org)
-          atlas accessLists create \
-            --type ipAddress \
-            --entry "$MY_IP" \
+          atlas accessLists create "$MY_IP" \
             --comment "GitHub Actions ${{ github.run_id }}"
 ```
 
