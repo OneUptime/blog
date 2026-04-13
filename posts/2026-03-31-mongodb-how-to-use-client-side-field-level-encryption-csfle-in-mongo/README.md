@@ -49,23 +49,29 @@ const dataKeyId = await encryption.createDataKey("local", {
 console.log("Data key ID:", dataKeyId);
 ```
 
-## Define the Encrypted Fields Schema
+## Define the Encryption Schema
 
 ```javascript
-const encryptedFieldsMap = {
+const schemaMap = {
   "myapp.patients": {
-    fields: [
-      {
-        path: "ssn",
-        bsonType: "string",
-        queries: [{ queryType: "equality" }]  // Queryable Encryption
+    bsonType: "object",
+    encryptMetadata: {
+      keyId: [dataKeyId]
+    },
+    properties: {
+      ssn: {
+        encrypt: {
+          bsonType: "string",
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+        }
       },
-      {
-        path: "medicalHistory",
-        bsonType: "string"
-        // No queries - pure encrypted storage
+      medicalHistory: {
+        encrypt: {
+          bsonType: "string",
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+        }
       }
-    ]
+    }
   }
 };
 ```
@@ -73,13 +79,11 @@ const encryptedFieldsMap = {
 ## Create the Auto-Encrypting Client
 
 ```javascript
-const { AutoEncryptionOptions } = require("mongodb");
-
 const encryptedClient = new MongoClient("mongodb://localhost:27017", {
   autoEncryption: {
     keyVaultNamespace: "encryption.__keyVault",
     kmsProviders: { local: { key: localMasterKey } },
-    encryptedFieldsMap: encryptedFieldsMap,
+    schemaMap: schemaMap,
     extraOptions: {
       cryptSharedLibPath: "/path/to/mongo_crypt_v1.so"
     }
@@ -101,7 +105,7 @@ await patients.insertOne({
   medicalHistory: "..."     // Encrypted by driver
 });
 
-// Query on encrypted field works with Queryable Encryption
+// Equality query works because SSN uses deterministic encryption
 const patient = await patients.findOne({ ssn: "123-45-6789" });
 console.log(patient.ssn); // "123-45-6789" (decrypted by driver)
 ```
@@ -120,4 +124,4 @@ await db.collection("data").insertOne({ sensitiveField: encrypted });
 
 ## Summary
 
-CSFLE encrypts sensitive document fields in the application before they reach the database. The MongoDB server only stores ciphertext and can never access plaintext. Configure auto-encryption with an `encryptedFieldsMap` and a KMS provider for transparent field encryption, or use explicit encryption for fine-grained control. CSFLE is the strongest data protection option when you cannot trust the database server operator.
+CSFLE encrypts sensitive document fields in the application before they reach the database. The MongoDB server only stores ciphertext and can never access plaintext. Configure auto-encryption with a `schemaMap` and a KMS provider for transparent field encryption, or use explicit encryption for fine-grained control. CSFLE is the strongest data protection option when you cannot trust the database server operator.
