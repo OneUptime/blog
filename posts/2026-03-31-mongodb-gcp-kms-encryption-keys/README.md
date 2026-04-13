@@ -105,22 +105,26 @@ console.log("DEK ID:", dataKeyId)
 const autoEncryptionOptions = {
   keyVaultNamespace: "encryption.__keyVault",
   kmsProviders,
-  encryptedFieldsMap: {
+  schemaMap: {
     "myapp.users": {
-      fields: [
-        {
-          path: "email",
-          bsonType: "string",
-          keyId: dataKeyId,
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+      bsonType: "object",
+      encryptMetadata: {
+        keyId: [dataKeyId]
+      },
+      properties: {
+        email: {
+          encrypt: {
+            bsonType: "string",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+          }
         },
-        {
-          path: "phoneNumber",
-          bsonType: "string",
-          keyId: dataKeyId,
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+        phoneNumber: {
+          encrypt: {
+            bsonType: "string",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+          }
         }
-      ]
+      }
     }
   }
 }
