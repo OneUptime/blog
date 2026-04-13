@@ -98,7 +98,7 @@ For the strongest security, set the parameter on each mongod and disable SCRAM-S
 ```javascript
 db.adminCommand({
   setParameter: 1,
-  authenticationMechanisms: "SCRAM-SHA-256"
+  authenticationMechanisms: ["SCRAM-SHA-256"]
 });
 ```
 
