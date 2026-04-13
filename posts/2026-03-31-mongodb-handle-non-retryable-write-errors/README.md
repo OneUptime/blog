@@ -105,7 +105,7 @@ async function bulkInsert(collection, documents) {
 ```javascript
 function isRetryableError(err) {
   // Retryable error codes per MongoDB spec
-  const retryableCodes = new Set([6, 7, 89, 91, 189, 9001, 10107, 11600, 11602, 13435, 13436, 63, 150, 262, 134]);
+  const retryableCodes = new Set([6, 7, 89, 91, 189, 9001, 10107, 11600, 11602, 13435, 13436, 262]);
   return retryableCodes.has(err.code) || err.hasErrorLabel?.('RetryableWriteError');
 }
 
