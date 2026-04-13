@@ -72,8 +72,8 @@ aws iam put-role-policy \
     {
       "name": "dapr-sidecar",
       "image": "daprio/daprd:1.13.0",
+      "entryPoint": ["/daprd"],
       "command": [
-        "./daprd",
         "--app-id", "order-service",
         "--app-port", "8080",
         "--dapr-http-port", "3500",
@@ -91,7 +91,7 @@ aws iam put-role-policy \
         {"sourceVolume": "dapr-config", "containerPath": "/config"}
       ],
       "healthCheck": {
-        "command": ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3500/v1.0/healthz || exit 1"],
+        "command": ["CMD", "curl", "-f", "http://localhost:3500/v1.0/healthz"],
         "interval": 5,
         "timeout": 3,
         "retries": 3,
@@ -108,8 +108,20 @@ aws iam put-role-policy \
     }
   ],
   "volumes": [
-    {"name": "dapr-components", "host": {}},
-    {"name": "dapr-config", "host": {}}
+    {
+      "name": "dapr-components",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-EXAMPLE",
+        "rootDirectory": "/dapr/components"
+      }
+    },
+    {
+      "name": "dapr-config",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-EXAMPLE",
+        "rootDirectory": "/dapr/config"
+      }
+    }
   ]
 }
 ```
