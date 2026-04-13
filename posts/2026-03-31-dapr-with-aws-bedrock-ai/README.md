@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, AWS, Bedrock, AI, Binding, Language Model
+Tags: Dapr, AWS, Bedrock, AI, Conversation, Language Model
 
-Description: Use Dapr output bindings to invoke AWS Bedrock foundation models for text generation and summarization from microservices without embedding Bedrock SDK calls.
+Description: Use Dapr's conversation component to invoke AWS Bedrock foundation models for text generation and summarization from microservices without embedding Bedrock SDK calls.
 
 ---
 
-AWS Bedrock provides access to foundation models from Anthropic, Meta, Amazon, and others via a unified API. Dapr's Bedrock binding lets microservices invoke AI models through the standard binding interface, decoupling AI logic from model-specific SDKs.
+AWS Bedrock provides access to foundation models from Anthropic, Meta, Amazon, and others via a unified API. Dapr's Bedrock conversation component lets microservices invoke AI models through the Conversation building block, decoupling AI logic from model-specific SDKs.
 
 ## Enable Bedrock Model Access
 
@@ -23,16 +23,16 @@ aws bedrock list-foundation-models \
 # Enable: Claude, Titan, Llama as needed
 ```
 
-## Configure the Dapr Bedrock Binding
+## Configure the Dapr Bedrock Conversation Component
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: bedrock-binding
+  name: bedrock
   namespace: default
 spec:
-  type: bindings.aws.bedrock
+  type: conversation.aws.bedrock
   version: v1
   metadata:
   - name: region
@@ -53,28 +53,22 @@ spec:
 
 ```python
 import requests
-import json
 
-def invoke_model(prompt: str, max_tokens: int = 512) -> str:
+def invoke_model(prompt: str) -> str:
     resp = requests.post(
-        "http://localhost:3500/v1.0/bindings/bedrock-binding",
+        "http://localhost:3500/v1.0-alpha1/conversation/bedrock/converse",
         json={
-            "operation": "invoke-model",
-            "data": json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            })
+            "inputs": [
+                {
+                    "content": prompt,
+                    "role": "user"
+                }
+            ]
         }
     )
     resp.raise_for_status()
     result = resp.json()
-    return result.get("content", [{}])[0].get("text", "")
+    return result.get("outputs", [{}])[0].get("result", "")
 
 # Generate a product description
 description = invoke_model(
@@ -102,11 +96,13 @@ def summarize_feedback():
 
 Provide only the bullet points, no introduction."""
 
-    summary = invoke_model(prompt, max_tokens=256)
+    summary = invoke_model(prompt)
     return jsonify({"summary": summary})
 ```
 
-## Use Amazon Titan for Embeddings
+## Use Amazon Titan for Text Generation
+
+You can configure a second conversation component that uses Amazon Titan instead of Claude.
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -114,13 +110,13 @@ kind: Component
 metadata:
   name: bedrock-titan
 spec:
-  type: bindings.aws.bedrock
+  type: conversation.aws.bedrock
   version: v1
   metadata:
   - name: region
     value: us-east-1
   - name: model
-    value: amazon.titan-embed-text-v1
+    value: amazon.titan-text-express-v1
   - name: accessKey
     secretKeyRef:
       name: aws-credentials
@@ -132,19 +128,23 @@ spec:
 ```
 
 ```python
-def get_embedding(text: str) -> list:
+def invoke_titan(prompt: str) -> str:
     resp = requests.post(
-        "http://localhost:3500/v1.0/bindings/bedrock-titan",
+        "http://localhost:3500/v1.0-alpha1/conversation/bedrock-titan/converse",
         json={
-            "operation": "invoke-model",
-            "data": json.dumps({"inputText": text})
+            "inputs": [
+                {
+                    "content": prompt,
+                    "role": "user"
+                }
+            ]
         }
     )
     resp.raise_for_status()
-    return resp.json().get("embedding", [])
+    return resp.json().get("outputs", [{}])[0].get("result", "")
 
-embedding = get_embedding("ergonomic keyboard for developers")
-print(f"Embedding dimensions: {len(embedding)}")
+result = invoke_titan("Explain microservices in one sentence.")
+print(result)
 ```
 
 ## IAM Policy for Bedrock
@@ -161,7 +161,7 @@ print(f"Embedding dimensions: {len(embedding)}")
       ],
       "Resource": [
         "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
       ]
     }
   ]
@@ -170,4 +170,4 @@ print(f"Embedding dimensions: {len(embedding)}")
 
 ## Summary
 
-Dapr's Bedrock binding provides a lightweight integration with AWS foundation models, allowing services to invoke Claude, Titan, and other models through the standard output binding API. This decouples AI capabilities from model-specific client code, making it straightforward to switch models or add AI features to existing services with minimal changes.
+Dapr's Bedrock conversation component provides a lightweight integration with AWS foundation models, allowing services to invoke Claude, Titan, and other models through the Conversation API. This decouples AI capabilities from model-specific client code, making it straightforward to switch models or add AI features to existing services with minimal changes.
