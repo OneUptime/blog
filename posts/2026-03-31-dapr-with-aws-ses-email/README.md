@@ -48,8 +48,6 @@ spec:
       key: secretKey
   - name: emailFrom
     value: noreply@example.com
-  - name: emailFromName
-    value: My Application
 ```
 
 ## Send a Plain Text Email
@@ -81,17 +79,18 @@ send_email(
 
 ## Send an HTML Email
 
+The `data` field in the binding request is used as the HTML body of the email.
+
 ```python
-def send_html_email(to: str, subject: str, html_body: str, text_body: str):
+def send_html_email(to: str, subject: str, html_body: str):
     resp = requests.post(
         "http://localhost:3500/v1.0/bindings/email-binding",
         json={
             "operation": "create",
-            "data": text_body,
+            "data": html_body,
             "metadata": {
                 "emailTo": to,
-                "subject": subject,
-                "emailHtmlBody": html_body
+                "subject": subject
             }
         }
     )
@@ -110,8 +109,7 @@ html = """
 send_html_email(
     to="customer@example.com",
     subject="Order Confirmation - ORD-001",
-    html_body=html,
-    text_body="Your order ORD-001 has been confirmed. Total: $99.99"
+    html_body=html
 )
 ```
 
@@ -125,8 +123,8 @@ requests.post(
         "data": "New high-value order placed: ORD-999",
         "metadata": {
             "emailTo": "ops-lead@example.com",
-            "emailCC": "manager@example.com",
-            "emailBCC": "audit@example.com",
+            "emailCc": "manager@example.com",
+            "emailBcc": "audit@example.com",
             "subject": "Alert: High Value Order"
         }
     }
