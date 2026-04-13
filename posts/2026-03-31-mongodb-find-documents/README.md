@@ -114,7 +114,7 @@ db.products.find({})
 
 ## Counting Matched Documents
 
-Use `.count()` or `countDocuments()` to count results:
+Use `countDocuments()` to count results:
 
 ```javascript
 // Count all active users
@@ -141,8 +141,7 @@ const activeUsers = db.users.find({ status: "active" }).toArray()
 
 ```javascript
 db.products
-  .find({ category: "Electronics", inStock: true })
-  .projection({ name: 1, price: 1, brand: 1 })
+  .find({ category: "Electronics", inStock: true }, { name: 1, price: 1, brand: 1 })
   .sort({ price: 1 })
   .limit(20)
 ```
