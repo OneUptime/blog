@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Collection, Administration, Database, Cleanup
 
-Description: Learn how to drop a MongoDB collection safely using drop(), dropCollection(), and best practices for irreversible deletion in development and production.
+Description: Learn how to drop a MongoDB collection safely using drop(), the drop command, and best practices for irreversible deletion in development and production.
 
 ---
 
@@ -20,9 +20,9 @@ db.myCollection.drop()
 
 The return value is `true` if the collection existed and was dropped, or `false` if it did not exist.
 
-## Using dropCollection Command
+## Using the drop Command
 
-The equivalent admin command form:
+The equivalent command form:
 
 ```javascript
 db.runCommand({ drop: "myCollection" })
@@ -95,14 +95,7 @@ For sharded collections, use `db.runCommand` with the full drop:
 db.runCommand({ drop: "shardedCollection" })
 ```
 
-This removes all chunks and shard metadata. Alternatively, in the admin database:
-
-```javascript
-use admin
-db.runCommand({ dropDatabase: 0 })  // Don't use this - use drop per collection
-```
-
-After dropping a sharded collection, run `sh.status()` to confirm the namespace is gone from the routing table.
+This removes all chunks and shard metadata. After dropping a sharded collection, run `sh.status()` to confirm the namespace is gone from the routing table.
 
 ## Dropping with Write Concern
 
