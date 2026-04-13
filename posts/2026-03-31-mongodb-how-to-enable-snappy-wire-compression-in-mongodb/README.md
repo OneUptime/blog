@@ -103,10 +103,10 @@ Check server status for compression statistics:
 db.adminCommand({ serverStatus: 1 }).network.compression
 ```
 
-Or check the connection:
+Or check the MongoDB log for compression negotiation messages when clients connect:
 
-```javascript
-db.adminCommand({ connectionStatus: 1 })
+```bash
+grep "compression" /var/log/mongodb/mongod.log
 ```
 
 ## When Snappy Wire Compression Helps
