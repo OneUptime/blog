@@ -12,7 +12,7 @@ Azure Key Vault can serve as the Customer Master Key (CMK) provider for MongoDB 
 
 ## Prerequisites
 
-- An Azure Key Vault with a key created (RSA or EC key)
+- An Azure Key Vault with an RSA key created
 - An Azure service principal or managed identity with `Key Vault Crypto User` role
 - MongoDB driver with CSFLE support
 
@@ -100,22 +100,25 @@ Configure the managed identity in your Azure resource and assign the `Key Vault 
 const autoEncryptionOptions = {
   keyVaultNamespace: "encryption.__keyVault",
   kmsProviders,
-  encryptedFieldsMap: {
+  schemaMap: {
     "myapp.patients": {
-      fields: [
-        {
-          path: "nationalId",
-          bsonType: "string",
-          keyId: dataKeyId,
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+      bsonType: "object",
+      properties: {
+        nationalId: {
+          encrypt: {
+            bsonType: "string",
+            keyId: [dataKeyId],
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+          }
         },
-        {
-          path: "medicalNotes",
-          bsonType: "string",
-          keyId: dataKeyId,
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+        medicalNotes: {
+          encrypt: {
+            bsonType: "string",
+            keyId: [dataKeyId],
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+          }
         }
-      ]
+      }
     }
   }
 }
