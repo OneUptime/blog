@@ -104,19 +104,13 @@ mongosh "mongodb://admin:password@localhost:27017/myDatabase?authSource=admin" \
 ## What is NOT Removed
 
 `dropDatabase` removes all data and metadata for the database. However:
-- Users and roles defined at the database level in MongoDB 2.x are removed.
-- In MongoDB 3.0+ with SCRAM, users in the `admin` database with access to the dropped database retain their user accounts - only the data is gone.
+- Users associated with the dropped database are **not** removed. To remove them, run `db.dropAllUsers()` before or after dropping the database.
+- Users in the `admin` database with access to the dropped database retain their user accounts - only the data is gone.
 - Atlas-managed clusters may retain billing data and monitoring history.
 
 ## Disk Space Reclamation
 
-After dropping a database, WiredTiger does not immediately return space to the OS. Run compact on remaining databases or restart `mongod` to reclaim space. On Atlas, storage is reclaimed automatically.
-
-```bash
-# For self-hosted - compact the admin database after large drops
-use admin
-db.runCommand({ compact: "system.users" })
-```
+When a database is dropped, WiredTiger deletes the underlying data files from the filesystem, and the OS reclaims that disk space. This is different from deleting individual documents, where WiredTiger reuses freed space internally but does not shrink collection files. If you need to reclaim space from document deletions in other databases, use the `compact` command on those specific collections.
 
 ## Preventing Accidental Drops
 
