@@ -65,7 +65,7 @@ async function claimNextEmail(db) {
   const lockExpiry = new Date(Date.now() - 5 * 60 * 1000); // 5 min lock timeout
   return db.collection("email_queue").findOneAndUpdate(
     {
-      status: { $in: ["pending"] },
+      status: { $in: ["pending", "processing"] },
       scheduledAt: { $lte: new Date() },
       attempts: { $lt: 3 },
       $or: [
