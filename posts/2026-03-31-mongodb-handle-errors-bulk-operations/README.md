@@ -33,11 +33,11 @@ async function orderedBulkWithErrorHandling(col, documents) {
 
   try {
     const result = await bulk.execute();
-    console.log(`Inserted ${result.nInserted} documents`);
+    console.log(`Inserted ${result.insertedCount} documents`);
   } catch (err) {
     if (err instanceof MongoBulkWriteError) {
       console.error('Bulk write failed');
-      console.log(`Inserted before failure: ${err.result.nInserted}`);
+      console.log(`Inserted before failure: ${err.result.insertedCount}`);
 
       err.result.getWriteErrors().forEach((e) => {
         console.error(`Index ${e.index}: code=${e.code} message=${e.errmsg}`);
@@ -68,7 +68,7 @@ async function unorderedBulkWithErrorHandling(col, documents) {
 
   try {
     const result = await bulk.execute();
-    console.log(`Modified: ${result.nModified}, Upserted: ${result.nUpserted}`);
+    console.log(`Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
   } catch (err) {
     if (err instanceof MongoBulkWriteError) {
       const errors = err.result.getWriteErrors();
