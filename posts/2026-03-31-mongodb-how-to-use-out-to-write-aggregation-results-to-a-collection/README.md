@@ -98,18 +98,20 @@ Application queries hit the pre-computed `leaderboard` collection directly.
 
 ## $out and Indexes
 
-When `$out` replaces a collection, all existing indexes on that collection are dropped. You must recreate them after the pipeline:
+When `$out` replaces a collection, it preserves all existing indexes on the target collection. You do not need to recreate them after the pipeline runs:
 
 ```javascript
-// Run aggregation
+// Create index on the target collection once
+db.customerSummary.createIndex({ totalSpent: -1 })
+
+// Run aggregation - the index is preserved after replacement
 db.orders.aggregate([
   { $group: { _id: "$customerId", totalSpent: { $sum: "$amount" } } },
   { $out: "customerSummary" }
 ])
-
-// Recreate index after $out
-db.customerSummary.createIndex({ totalSpent: -1 })
 ```
+
+If the aggregation fails or violates a unique index constraint, the original collection and its indexes remain unchanged.
 
 ## Verifying Output
 
@@ -170,10 +172,10 @@ Feature          | $out                 | $merge
 Target behavior  | Full replacement     | Selective insert/update
 Atomicity        | Yes (full replace)   | Per-document
 Preserves data   | No                   | Yes (whenMatched options)
-Indexes          | Dropped on replace   | Preserved
+Indexes          | Preserved            | Preserved
 Use case         | Full refresh reports | Incremental updates
 ```
 
 ## Summary
 
-The `$out` stage provides a simple, atomic way to write aggregation results to a collection, making it ideal for scheduled report generation, ETL pipelines, and pre-computing expensive queries. Be aware that it replaces the entire target collection and drops all indexes - always recreate indexes after use and prefer `$merge` when incremental updates are needed.
+The `$out` stage provides a simple, atomic way to write aggregation results to a collection, making it ideal for scheduled report generation, ETL pipelines, and pre-computing expensive queries. Be aware that it replaces the entire target collection, and prefer `$merge` when incremental updates are needed.
