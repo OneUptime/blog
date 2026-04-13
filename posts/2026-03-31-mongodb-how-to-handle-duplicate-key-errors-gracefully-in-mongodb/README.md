@@ -27,7 +27,7 @@ db.users.createIndex({ username: 1 }, { unique: true });
 ## Catching Duplicate Key Errors in Node.js
 
 ```javascript
-const { MongoClient, MongoError } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 const client = new MongoClient("mongodb://localhost:27017");
 await client.connect();
