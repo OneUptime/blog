@@ -100,7 +100,7 @@ const indexStats = await db.collection("orders").aggregate([
 await db.collection("orders").dropIndex("idx_old_unused");
 ```
 
-**2. Archive old documents** to a separate cold-storage collection or Atlas Online Archive.
+**2. Archive old documents** to a separate cold-storage collection. (Note: Atlas Online Archive is only available for dedicated M10+ clusters, not Flex clusters.)
 
 ```javascript
 async function archiveOldDocuments(db, collectionName, cutoffDays = 180) {
@@ -122,7 +122,7 @@ async function archiveOldDocuments(db, collectionName, cutoffDays = 180) {
 **3. Run compaction to reclaim fragmented space.**
 
 ```javascript
-await db.command({ compact: "orders", force: true });
+await db.command({ compact: "orders" });
 ```
 
 ## When to Upgrade to a Dedicated Cluster
@@ -130,7 +130,7 @@ await db.command({ compact: "orders", force: true });
 Upgrade from Flex to a dedicated M10+ cluster when any of these apply:
 
 ```text
-- Storage exceeds 5 GB and costs are increasing linearly
+- Storage is approaching the Flex tier limit of 120 GB
 - Workload requires consistent low-latency reads or writes
 - Application requires more than ~500 concurrent connections
 - You need cross-region read replicas or global clusters
@@ -139,4 +139,4 @@ Upgrade from Flex to a dedicated M10+ cluster when any of these apply:
 
 ## Summary
 
-Atlas Flex cluster storage scales automatically but requires active management to control costs. Monitor storage with `collStats` and the Atlas API, identify top consumers with per-collection breakdowns, set billing alerts via the Atlas API, and reduce footprint through index cleanup and document archival. Upgrade to a dedicated M10+ cluster when storage consistently exceeds 5 GB or when workload demands guaranteed compute resources.
+Atlas Flex cluster storage scales automatically but requires active management to control costs. Monitor storage with `collStats` and the Atlas API, identify top consumers with per-collection breakdowns, set billing alerts via the Atlas API, and reduce footprint through index cleanup and document archival. Upgrade to a dedicated M10+ cluster when storage approaches the Flex tier limit or when workload demands guaranteed compute resources.
