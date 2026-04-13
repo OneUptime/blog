@@ -107,18 +107,32 @@ This query will also match documents containing "couch" and "settee".
 
 ## Combining Synonyms with Fuzzy Search
 
+You cannot use `synonyms` and `fuzzy` together in the same `text` operator. To combine both capabilities, use a `compound` query with separate clauses:
+
 ```javascript
 db.products.aggregate([
   {
     $search: {
-      text: {
-        query: "sneaker",
-        path: "description",
-        synonyms: "product_synonyms",
-        fuzzy: {
-          maxEdits: 1,
-          prefixLength: 3
-        }
+      compound: {
+        should: [
+          {
+            text: {
+              query: "sneaker",
+              path: "description",
+              synonyms: "product_synonyms"
+            }
+          },
+          {
+            text: {
+              query: "sneaker",
+              path: "description",
+              fuzzy: {
+                maxEdits: 1,
+                prefixLength: 3
+              }
+            }
+          }
+        ]
       }
     }
   }
