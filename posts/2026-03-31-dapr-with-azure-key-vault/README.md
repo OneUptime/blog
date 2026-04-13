@@ -138,7 +138,7 @@ spec:
 # Get a specific version of a secret
 resp = requests.get(
     "http://localhost:3500/v1.0/secrets/azure-keyvault/db-password",
-    params={"metadata.version": "abc123def456"}
+    params={"metadata.version_id": "abc123def456"}
 )
 resp.raise_for_status()
 print(resp.json())
