@@ -61,8 +61,8 @@ db.sessionEvents.insertOne({
   ip: "192.168.1.1"
 })
 
-// ObjectId-based _id (already time-ordered)
-db.sessionEvents.insertOne({
+// ObjectId-based _id (already time-ordered) in a non-TTL clustered collection
+db.events.insertOne({
   _id: new ObjectId(),
   userId: "user456",
   action: "purchase",
