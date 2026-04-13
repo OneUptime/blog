@@ -45,7 +45,6 @@ flowchart LR
 package main
 
 import (
-    "context"
     "fmt"
     "log"
     "time"
@@ -72,7 +71,11 @@ type OrderInput struct {
 }
 
 // Activity: Send confirmation email
-func SendEmailActivity(ctx context.Context, input EmailInput) (EmailResult, error) {
+func SendEmailActivity(ctx daprwf.ActivityContext) (any, error) {
+    var input EmailInput
+    if err := ctx.GetInput(&input); err != nil {
+        return nil, err
+    }
     log.Printf("Sending email to %s: %s", input.To, input.Subject)
     // Simulate sending email
     return EmailResult{
@@ -82,16 +85,24 @@ func SendEmailActivity(ctx context.Context, input EmailInput) (EmailResult, erro
 }
 
 // Activity: Update database record
-func UpdateOrderStatusActivity(ctx context.Context, input map[string]string) error {
+func UpdateOrderStatusActivity(ctx daprwf.ActivityContext) (any, error) {
+    var input map[string]string
+    if err := ctx.GetInput(&input); err != nil {
+        return nil, err
+    }
     orderID := input["orderId"]
     status := input["status"]
     log.Printf("Updating order %s to status %s", orderID, status)
     // Simulate DB update
-    return nil
+    return nil, nil
 }
 
 // Activity: Call external API
-func ValidateInventoryActivity(ctx context.Context, input OrderInput) (bool, error) {
+func ValidateInventoryActivity(ctx daprwf.ActivityContext) (any, error) {
+    var input OrderInput
+    if err := ctx.GetInput(&input); err != nil {
+        return nil, err
+    }
     log.Printf("Validating inventory for order %s", input.OrderID)
     // Call external inventory service
     return true, nil
