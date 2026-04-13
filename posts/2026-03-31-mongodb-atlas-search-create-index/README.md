@@ -123,9 +123,7 @@ db.products.aggregate([
 Verify the index is ready before querying:
 
 ```javascript
-db.products.aggregate([
-  { $indexStats: {} }
-])
+db.products.getSearchIndexes()
 ```
 
 Or via Atlas CLI:
