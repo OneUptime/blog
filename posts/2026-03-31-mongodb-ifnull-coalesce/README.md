@@ -10,9 +10,11 @@ Description: Learn how to use $ifNull and $coalesce in MongoDB aggregation to ha
 
 ## How $ifNull and $coalesce Work
 
-`$ifNull` returns a replacement value when an expression evaluates to `null` or is a missing field. `$coalesce` (MongoDB 5.0+) is the multi-argument generalization that returns the first non-null value from a list of expressions.
+`$ifNull` returns a replacement value when an expression evaluates to `null` or is a missing field. Starting in MongoDB 5.0, `$ifNull` accepts any number of input expressions, returning the first non-null value — providing COALESCE-like functionality similar to SQL's `COALESCE`.
 
-Both are essential for defensive pipelines that need to handle incomplete or inconsistent document schemas.
+Note: MongoDB does **not** have a separate `$coalesce` operator. The multi-argument form of `$ifNull` is the idiomatic way to achieve coalesce behavior.
+
+`$ifNull` is essential for defensive pipelines that need to handle incomplete or inconsistent document schemas.
 
 ```mermaid
 flowchart LR
@@ -29,17 +31,20 @@ flowchart LR
 // Two-argument form: if null, use replacement
 { $ifNull: [ <expression>, <replacementIfNull> ] }
 
-// Multi-argument form (MongoDB 4.4+): return first non-null
+// Multi-argument form (MongoDB 5.0+): return first non-null
 { $ifNull: [ <expr1>, <expr2>, ..., <lastDefault> ] }
 ```
 
-### $coalesce (MongoDB 5.0+)
+### COALESCE-like Behavior (MongoDB 5.0+)
+
+The multi-argument form of `$ifNull` provides COALESCE-like behavior, equivalent to SQL's `COALESCE`:
 
 ```javascript
-{ $coalesce: [ <expr1>, <expr2>, ..., <lastDefault> ] }
+// Returns the first non-null, non-missing value from the list
+{ $ifNull: [ <expr1>, <expr2>, ..., <lastDefault> ] }
 ```
 
-`$coalesce` is equivalent to the multi-argument form of `$ifNull`. Both return the first expression that is not `null` or missing.
+MongoDB does **not** have a separate `$coalesce` operator. Use multi-argument `$ifNull` instead.
 
 ## Examples
 
@@ -127,22 +132,9 @@ Output:
 ]
 ```
 
-### Example 4 - $coalesce (MongoDB 5.0+)
+### Example 4 - Multi-Argument $ifNull as COALESCE (MongoDB 5.0+)
 
-`$coalesce` is the semantic equivalent:
-
-```javascript
-db.users.aggregate([
-  {
-    $project: {
-      name: 1,
-      contact: { $coalesce: ["$phone", "$email", "No Contact"] }
-    }
-  }
-])
-```
-
-Produces the same output as Example 3.
+The multi-argument `$ifNull` from Example 3 is the MongoDB equivalent of SQL's `COALESCE`. There is no separate `$coalesce` operator in MongoDB — use multi-argument `$ifNull` as shown in Example 3 to achieve the same result.
 
 ### Example 5 - $ifNull with Default Array
 
@@ -239,7 +231,7 @@ Both handle null values, but differ in approach:
 }
 ```
 
-Note: `$ifNull` also handles missing fields, while `$cond` with `$eq: null` only matches explicitly `null` values.
+Note: Both approaches handle missing fields, since missing fields compare equal to `null` in MongoDB aggregation. The key difference is conciseness — `$ifNull` is shorter and purpose-built for null/missing checks, while `$cond` can express arbitrary conditions beyond null checking.
 
 ## Use Cases
 
@@ -251,4 +243,4 @@ Note: `$ifNull` also handles missing fields, while `$cond` with `$eq: null` only
 
 ## Summary
 
-`$ifNull` returns a replacement value when an expression is `null` or the field is missing. With multiple arguments (MongoDB 4.4+), it returns the first non-null value in the chain. `$coalesce` (MongoDB 5.0+) is the explicit multi-argument equivalent. Use these operators defensively to prevent pipeline errors and provide meaningful defaults for incomplete documents.
+`$ifNull` returns a replacement value when an expression is `null` or the field is missing. With multiple arguments (MongoDB 5.0+), it returns the first non-null value in the chain, providing COALESCE-like functionality. Note that MongoDB does not have a separate `$coalesce` operator — use multi-argument `$ifNull` instead. Use `$ifNull` defensively to prevent pipeline errors and provide meaningful defaults for incomplete documents.
