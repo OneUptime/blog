@@ -10,7 +10,7 @@ Description: Learn how to model a food delivery platform in MongoDB covering res
 
 ## Core Collections
 
-A food delivery platform needs five primary collections: `restaurants`, `menus`, `orders`, `drivers`, and `deliveryTracking`. The schema must support geospatial queries, fast menu reads, and high-volume order writes.
+A food delivery platform needs four primary collections: `restaurants`, `menus`, `orders`, and `drivers`. The schema must support geospatial queries, fast menu reads, and high-volume order writes.
 
 ## Restaurant Collection
 
@@ -81,12 +81,12 @@ Menus are queried in full on every restaurant page view - embed categories and i
     { "status": "preparing", "ts": "2026-03-31T12:02:00Z" }
   ],
   "items": [
-    { "itemId": "item-001", "name": "Margherita", "qty": 2, "priceCents": 1299, "modifier": "Large" }
+    { "itemId": "item-001", "name": "Margherita", "qty": 2, "priceCents": 1799, "modifier": "Large" }
   ],
-  "subtotalCents": 2598,
+  "subtotalCents": 3598,
   "deliveryFeeCents": 199,
-  "taxCents": 214,
-  "totalCents": 3011,
+  "taxCents": 297,
+  "totalCents": 4094,
   "deliveryAddress": {
     "street": "456 Park Ave",
     "city": "New York",
