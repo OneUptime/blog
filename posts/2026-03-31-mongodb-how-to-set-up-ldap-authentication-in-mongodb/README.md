@@ -46,10 +46,10 @@ setParameter:
 
 ## Step 2: Create MongoDB Roles Matching LDAP Groups
 
-MongoDB maps LDAP groups to roles via the `$external` database. Create roles whose names match the LDAP group DNs:
+MongoDB maps LDAP groups to roles on the `admin` database. Create roles whose names match the LDAP group DNs:
 
 ```javascript
-use $external
+use admin
 
 db.createRole({
   role: "cn=dbAdmins,ou=groups,dc=example,dc=com",
