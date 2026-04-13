@@ -28,7 +28,7 @@ Each document must contain a field with a vector (array of floating-point number
 db.articles.insertOne({
   title: "Introduction to machine learning",
   content: "Machine learning is a subset of artificial intelligence...",
-  embedding: [0.023, -0.145, 0.087, /* ...1536 more floats... */]
+  embedding: [0.023, -0.145, 0.087, /* ... 1536 dimensions total */]
 })
 ```
 
