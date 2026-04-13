@@ -141,9 +141,10 @@ Avoid leading wildcards like `/.*pattern/` on large collections - they bypass in
 ## Practical Example - Search Users by Email Domain
 
 ```javascript
-db.users.find({
-  email: { $regex: /@gmail\.com$/i }
-}).project({ name: 1, email: 1 });
+db.users.find(
+  { email: { $regex: /@gmail\.com$/i } },
+  { name: 1, email: 1 }
+);
 ```
 
 ## Practical Example - Extract Version Numbers from Logs
