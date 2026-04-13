@@ -98,16 +98,12 @@ db.system.profile.aggregate([
 // Find collections with the most collection scans
 db.adminCommand({ serverStatus: 1 }).metrics.queryExecutor
 
-// Use collStats to look for scan ratios
-const collections = db.getCollectionNames()
-collections.forEach(name => {
-  const stats = db.getCollection(name).stats()
-  if (stats.count > 10000) {
-    const explain = db.getCollection(name).find({}).explain("executionStats")
-    if (explain.executionStats.totalDocsExamined > 100000) {
-      print(`High scan on ${name}: ${explain.executionStats.totalDocsExamined} docs examined`)
-    }
-  }
+// Find queries from the profiler that performed collection scans
+db.system.profile.find({
+  planSummary: /COLLSCAN/
+}).sort({ millis: -1 }).limit(10).forEach(op => {
+  print(`COLLSCAN on ${op.ns}: ${op.millis}ms`)
+  print(`  Query: ${JSON.stringify(op.command.filter || op.command.query)}`)
 })
 ```
 
