@@ -30,7 +30,7 @@ const typeMap = {
 function mongooseTypeToGraphQL(schemaType) {
   const instance = schemaType.instance;
   if (instance === 'Array') {
-    const caster = schemaType.caster;
+    const caster = schemaType.embeddedSchemaType;
     if (!caster) return '[String]';
     const inner = typeMap[caster.instance] || 'String';
     return `[${inner}]`;
