@@ -61,6 +61,8 @@ spec:
       key: storageKey
   - name: storageContainerName
     value: checkpoints
+  - name: consumerID
+    value: inventory-consumer
 ```
 
 With managed identity:
@@ -93,9 +95,9 @@ def publish_event(event: dict):
     resp = requests.post(
         "http://localhost:3500/v1.0/publish/eventhubs-pubsub/order-events",
         json=event,
-        headers={
-            "Content-Type": "application/json",
-            "partitionKey": event.get("customerId", "default")
+        headers={"Content-Type": "application/json"},
+        params={
+            "metadata.partitionKey": event.get("customerId", "default")
         }
     )
     resp.raise_for_status()
@@ -122,10 +124,7 @@ def subscribe():
     return jsonify([{
         "pubsubname": "eventhubs-pubsub",
         "topic": "order-events",
-        "route": "/order-events",
-        "metadata": {
-            "consumerID": "inventory-consumer"
-        }
+        "route": "/order-events"
     }])
 
 @app.route('/order-events', methods=['POST'])
@@ -148,12 +147,18 @@ if __name__ == '__main__':
 ## Check Consumer Group Lag
 
 ```bash
-# Monitor consumer group offset lag
+# Show consumer group details
 az eventhubs eventhub consumer-group show \
   --consumer-group-name inventory-consumer \
   --eventhub-name order-events \
   --namespace-name my-dapr-eventhubs \
   --resource-group my-rg
+
+# Monitor partition-level metrics (offset lag) via Azure Monitor
+az monitor metrics list \
+  --resource /subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.EventHub/namespaces/my-dapr-eventhubs/eventhubs/order-events \
+  --metric IncomingMessages OutgoingMessages \
+  --interval PT1M
 ```
 
 ## Summary
