@@ -139,23 +139,42 @@ atlas privateEndpoints gcp create \
 ### Step 2: Create Forwarding Rules in GCP
 
 ```bash
+# Reserve internal IP addresses for each endpoint
+gcloud compute addresses create atlas-psc-ip-1 \
+  --region=us-central1 \
+  --subnet=my-subnet \
+  --addresses=10.0.0.10
+
+gcloud compute addresses create atlas-psc-ip-2 \
+  --region=us-central1 \
+  --subnet=my-subnet \
+  --addresses=10.0.0.11
+
 # Create forwarding rules for each Atlas endpoint
 gcloud compute forwarding-rules create atlas-endpoint-1 \
-  --network=my-vpc \
   --region=us-central1 \
-  --ip-protocol=TCP \
-  --ports=1024-65535 \
+  --network=my-vpc \
+  --address=atlas-psc-ip-1 \
   --target-service-attachment=projects/atlas-project/regions/us-central1/serviceAttachments/atlas-attachment-1
 
 gcloud compute forwarding-rules create atlas-endpoint-2 \
-  --network=my-vpc \
   --region=us-central1 \
-  --ip-protocol=TCP \
-  --ports=1024-65535 \
+  --network=my-vpc \
+  --address=atlas-psc-ip-2 \
   --target-service-attachment=projects/atlas-project/regions/us-central1/serviceAttachments/atlas-attachment-2
 ```
 
 GCP requires multiple forwarding rules (one per Atlas node endpoint).
+
+### Step 3: Register with Atlas
+
+```bash
+atlas privateEndpoints gcp interfaces create \
+  --endpointServiceId <atlasEndpointServiceId> \
+  --gcpProjectId <yourGcpProjectId> \
+  --endpointGroupName atlas-endpoint-group \
+  --endpoints endpoint1=atlas-psc-ip-1,endpoint2=atlas-psc-ip-2
+```
 
 ## Security Group Configuration (AWS)
 
@@ -192,7 +211,7 @@ db.runCommand({ ping: 1 })
 | CIDR conflicts | No issue | Must not overlap |
 | Route table changes | Not required | Required |
 | Direction | One-way (your VPC to Atlas) | Bidirectional |
-| Cross-region | Not supported | Not supported |
+| Cross-region | Supported (regionalized endpoints) | Not supported |
 
 ## Summary
 
