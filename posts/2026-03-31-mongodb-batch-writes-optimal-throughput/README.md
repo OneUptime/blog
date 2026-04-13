@@ -91,7 +91,7 @@ async function writeInBatches(collection, documents, batchSize = OPTIMAL_BATCH_S
         } catch (err) {
             if (err.code === 11000) {
                 // Handle duplicate key errors from ordered: false
-                totalInserted += err.result?.nInserted || 0;
+                totalInserted += err.result?.insertedCount || 0;
                 errors.push({ batch: i / batchSize, count: err.writeErrors?.length });
             } else {
                 throw err;
@@ -130,17 +130,30 @@ await collection.insertMany(docs, {
 
 ```javascript
 // ordered: false maximizes throughput for independent documents
-const result = await collection.bulkWrite(
-    operations,
-    { ordered: false, writeConcern: { w: 1 } }
-);
+try {
+    const result = await collection.bulkWrite(
+        operations,
+        { ordered: false, writeConcern: { w: 1 } }
+    );
 
-console.log({
-    inserted: result.insertedCount,
-    updated: result.modifiedCount,
-    deleted: result.deletedCount,
-    errors: result.hasWriteErrors() ? result.getWriteErrors().length : 0
-});
+    console.log({
+        inserted: result.insertedCount,
+        updated: result.modifiedCount,
+        deleted: result.deletedCount,
+        errors: 0
+    });
+} catch (err) {
+    if (err.result) {
+        console.log({
+            inserted: err.result.insertedCount,
+            updated: err.result.modifiedCount,
+            deleted: err.result.deletedCount,
+            errors: err.writeErrors?.length || 0
+        });
+    } else {
+        throw err;
+    }
+}
 ```
 
 ## Monitoring Batch Write Throughput
