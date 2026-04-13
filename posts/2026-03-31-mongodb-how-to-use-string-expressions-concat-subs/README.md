@@ -55,7 +55,7 @@ db.orders.aggregate([
     $project: {
       orderId: 1,
       prefix: { $substrCP: ["$orderId", 0, 3] },
-      suffix: { $substrCP: ["$orderId", 3, -1] }
+      suffix: { $substr: ["$orderId", 3, -1] }
     }
   }
 ])
@@ -115,7 +115,7 @@ db.employees.aggregate([
       badge: {
         $concat: [
           { $toUpper: { $substrCP: ["$firstName", 0, 1] } },
-          { $toLower: { $substrCP: ["$firstName", 1, -1] } },
+          { $toLower: { $substr: ["$firstName", 1, -1] } },
           " ",
           { $toUpper: "$lastName" }
         ]
