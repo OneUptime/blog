@@ -81,7 +81,7 @@ async function processWithForAwait() {
 
 ## map() - Transform Documents While Iterating
 
-In the MongoDB shell, cursor objects have a `map()` method that transforms documents while still streaming them.
+Both the MongoDB shell and the Node.js driver provide a `map()` method on cursor objects that transforms documents while streaming them.
 
 ```javascript
 // Shell: transform while iterating
@@ -92,15 +92,16 @@ const summaries = db.orders.find({ status: "completed" }).map(doc => ({
 }));
 ```
 
-In Node.js, use `toArray()` combined with JavaScript's native `Array.map()`:
+In the Node.js driver, cursors also have a `map()` method. It returns a mapped cursor that applies the transform as documents are iterated:
 
 ```javascript
-const summaries = (await collection.find({ status: "completed" }).toArray())
+const summaries = await collection.find({ status: "completed" })
   .map(doc => ({
     id: doc._id,
     customer: doc.customerId,
     total: doc.total
-  }));
+  }))
+  .toArray();
 ```
 
 For large collections, use a streaming approach with a transform function instead:
@@ -124,7 +125,7 @@ for await (const summary of mapCursor(cursor, doc => ({ id: doc._id, total: doc.
 toArray()       - Simple, loads all docs into memory, use for small result sets
 forEach()       - Streams documents, lower memory, synchronous-style callback
 for await...of  - Streams documents, full async/await support, preferred method
-map()           - Shell utility, transforms while streaming; use array.map in drivers
+map()           - Transforms while streaming, available in both shell and Node.js driver
 ```
 
 ## Summary
