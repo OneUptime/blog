@@ -56,19 +56,23 @@ async function publishTask(taskId, payload) {
 }
 
 // Publish 10 tasks
-for (let i = 1; i <= 10; i++) {
-  await publishTask(`task-${i}`, {
-    imageUrl: `https://cdn.example.com/image-${i}.jpg`,
-    width: 800,
-    height: 600,
-  });
+async function main() {
+  for (let i = 1; i <= 10; i++) {
+    await publishTask(`task-${i}`, {
+      imageUrl: `https://cdn.example.com/image-${i}.jpg`,
+      width: 800,
+      height: 600,
+    });
+  }
 }
+
+main().catch(console.error);
 ```
 
 ## Implementing the Worker (Consumer)
 
 ```javascript
-const { DaprServer } = require('@dapr/dapr');
+const { DaprServer, DaprPubSubStatusEnum } = require('@dapr/dapr');
 
 const server = new DaprServer({
   serverHost: '127.0.0.1',
@@ -84,15 +88,15 @@ server.pubsub.subscribe('task-queue', 'image-processing', async (data) => {
     // Simulate image processing work
     await resizeImage(imageUrl, targetWidth, targetHeight);
     console.log(`[Worker] Task ${taskId} completed successfully`);
-    return { status: 'SUCCESS' };
+    return DaprPubSubStatusEnum.SUCCESS;
   } catch (err) {
     console.error(`[Worker] Task ${taskId} failed:`, err.message);
     // Return DROP to discard, or omit to trigger retry
-    return { status: 'RETRY' };
+    return DaprPubSubStatusEnum.RETRY;
   }
 });
 
-await server.start();
+server.start().catch(console.error);
 ```
 
 ## Running Multiple Workers
@@ -142,17 +146,16 @@ annotations:
 Configure a dead letter topic to capture messages that fail after all retries:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: image-processing-sub
 spec:
   topic: image-processing
-  route: /process
+  routes:
+    default: /process
   pubsubname: task-queue
   deadLetterTopic: image-processing-dlq
-  bulk:
-    enabled: false
 ```
 
 ## Summary
