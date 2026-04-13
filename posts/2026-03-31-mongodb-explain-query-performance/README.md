@@ -115,8 +115,7 @@ Here `nReturned` equals `totalKeysExamined` and `totalDocsExamined` - a well-opt
 Before adding an index:
 
 ```javascript
-db.users.createIndex({})  // no index on email
-
+// No index exists on the email field yet
 db.users.find({ email: "alice@example.com" }).explain("executionStats")
 ```
 
@@ -223,7 +222,7 @@ COLLSCAN      Full collection scan (no index)
 IXSCAN        Index scan (good)
 FETCH         Fetch documents using index results
 SORT          In-memory sort (no index for sort)
-SORT_KEY_GENERATOR  Sort using index (efficient)
+SORT_KEY_GENERATOR  Generates sort keys for in-memory sort
 PROJECTION_COVERED  Covered query - no doc fetch needed
 PROJECTION_DEFAULT  Projection from fetched documents
 EOF           End of file - no results
@@ -236,7 +235,7 @@ Symptom                           Diagnosis
 -------------------------------------------------
 COLLSCAN                          Add an index on filter fields
 totalDocsExamined >> nReturned    Poor index selectivity
-SORT stage (not SORT_KEY_GENERATOR)  Add sort field to index
+SORT stage present               Add sort field to index
 executionTimeMillis is high       Check all of the above
 IXSCAN but still slow             Index may not be selective enough
 ```
