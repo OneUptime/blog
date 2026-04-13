@@ -146,7 +146,8 @@ public override async Task<PaymentResult> RunAsync(
     }
     catch (InvalidOperationException ex)
     {
-        // Permanent failure - wrap to prevent retries
+        // Permanent failure - wrap with context for clearer error diagnostics
+        // Note: Dapr retry policy still retries all thrown exceptions regardless of type
         throw new ApplicationException($"Payment permanently rejected: {ex.Message}", ex);
     }
 }
@@ -178,4 +179,4 @@ public async Task ProcessPaymentActivity_SuccessfulCharge_ReturnsPaymentId()
 
 ## Summary
 
-Dapr workflow activities in .NET are classes that inherit `WorkflowActivity<TInput, TOutput>` and receive dependencies via standard .NET DI. Register activities using `AddDaprWorkflow` in `Program.cs`, then call them from workflow orchestrators with `CallActivityAsync`. Apply retry policies at the call site in the workflow, and distinguish retryable (throw) from permanent (wrap in non-retryable exception) failures within the activity itself. Activities are unit testable in isolation without a running Dapr runtime.
+Dapr workflow activities in .NET are classes that inherit `WorkflowActivity<TInput, TOutput>` and receive dependencies via standard .NET DI. Register activities using `AddDaprWorkflow` in `Program.cs`, then call them from workflow orchestrators with `CallActivityAsync`. Apply retry policies at the call site in the workflow, and wrap permanent failures with descriptive context to aid diagnostics in the workflow orchestrator. Activities are unit testable in isolation without a running Dapr runtime.
