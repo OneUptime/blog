@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, CMS, API, Node.js, Content
 
-Description: Learn how to build a headless CMS API with MongoDB, covering content types, flexible schemas, media management, and a content delivery API.
+Description: Learn how to build a headless CMS API with MongoDB, covering content types, flexible schemas, and a content delivery API.
 
 ---
 
@@ -57,7 +57,7 @@ const EntrySchema = new mongoose.Schema({
 
 EntrySchema.index({ contentType: 1, status: 1, publishedAt: -1 });
 EntrySchema.index({ contentType: 1, locale: 1 });
-EntrySchema.index({ 'data.$**': 'text' }); // wildcard text index
+EntrySchema.index({ '$**': 'text' }); // wildcard text index
 
 module.exports = mongoose.model('Entry', EntrySchema);
 ```
