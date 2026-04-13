@@ -93,14 +93,16 @@ spec:
 import requests
 
 def publish_order_event(order: dict, scheduled_enqueue_time: str = None):
-    headers = {"Content-Type": "application/json"}
+    url = "http://localhost:3500/v1.0/publish/servicebus-pubsub/order-events"
+    params = {}
     if scheduled_enqueue_time:
-        headers["metadata.ScheduledEnqueueTimeUtc"] = scheduled_enqueue_time
+        params["metadata.ScheduledEnqueueTimeUtc"] = scheduled_enqueue_time
 
     requests.post(
-        "http://localhost:3500/v1.0/publish/servicebus-pubsub/order-events",
+        url,
         json=order,
-        headers=headers
+        headers={"Content-Type": "application/json"},
+        params=params
     ).raise_for_status()
 
 # Immediate publish
