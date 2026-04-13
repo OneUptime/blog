@@ -66,10 +66,10 @@ db.orders.dropIndex("legacy_compound_1")
 Stricter write concerns block the client until more replicas acknowledge:
 
 ```javascript
-// w: 1 (default) - fastest, acknowledged by primary only
+// w: 1 - acknowledged by primary only
 await db.collection("events").insertOne(event, { writeConcern: { w: 1 } })
 
-// w: "majority" - waits for majority of replica set to acknowledge - slower
+// w: "majority" (default since MongoDB 5.0) - waits for majority of replica set to acknowledge
 await db.collection("criticalData").insertOne(data, { writeConcern: { w: "majority" } })
 
 // w: 0 - fire and forget - fastest but no guarantee
