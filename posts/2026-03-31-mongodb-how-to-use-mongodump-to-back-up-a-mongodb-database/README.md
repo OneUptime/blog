@@ -69,7 +69,7 @@ Instead of separate BSON files, create a single compressed archive:
 mongodump --uri "mongodb://admin:secret@localhost:27017"   --archive=/backup/mongodb-backup-$(date +%Y%m%d).gz   --gzip
 
 # Dump to stdout for piping
-mongodump --uri "mongodb://admin:secret@localhost:27017"   --archive   --gzip | gzip > /backup/mongodb-$(date +%Y%m%d).gz
+mongodump --uri "mongodb://admin:secret@localhost:27017"   --archive   --gzip > /backup/mongodb-$(date +%Y%m%d).gz
 ```
 
 ## Reading from a Secondary (Replica Set)
@@ -142,7 +142,7 @@ else
 fi
 
 # Remove backups older than retention period
-find "${BACKUP_DIR}" -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
+find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
 echo "Old backups cleaned up"
 ```
 
