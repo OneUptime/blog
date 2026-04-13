@@ -95,7 +95,7 @@ db.currentOp({
 
 ## Using maxTimeMS as a Preventive Measure
 
-Rather than reacting with `killOp`, set `maxTimeMS` on queries to auto-cancel slow operations at the driver level:
+Rather than reacting with `killOp`, set `maxTimeMS` on queries to auto-cancel slow operations. This limit is enforced server-side, so the server aborts the operation if it exceeds the specified time:
 
 ```javascript
 db.orders.find({ status: "pending" }).maxTimeMS(5000).toArray();
