@@ -16,7 +16,11 @@ Extract, Transform, Load (ETL) pipelines process large volumes of data in stages
 
 ```python
 import dapr.ext.workflow as wf
+from datetime import timedelta
 
+wfr = wf.WorkflowRuntime()
+
+@wfr.workflow(name='etl_pipeline_workflow')
 def etl_pipeline_workflow(ctx: wf.DaprWorkflowContext, config: dict):
     ctx.set_custom_status("Extracting data")
 
@@ -36,11 +40,15 @@ def etl_pipeline_workflow(ctx: wf.DaprWorkflowContext, config: dict):
 
     ctx.set_custom_status(f"Loading {len(transformed)} records")
 
-    # Load: write to destination
+    # Load: write to destination with retry policy
+    retry_policy = wf.RetryPolicy(
+        max_number_of_attempts=3,
+        first_retry_interval=timedelta(seconds=30)
+    )
     yield ctx.call_activity(load_data, input={
         "records": transformed,
         "destination": config["destination"]
-    })
+    }, retry_policy=retry_policy)
 
     # Notify completion
     yield ctx.call_activity(send_etl_report, input={
@@ -55,7 +63,7 @@ def etl_pipeline_workflow(ctx: wf.DaprWorkflowContext, config: dict):
 ## Extract Activity
 
 ```python
-@wf.activity
+@wfr.activity(name='extract_data')
 def extract_data(ctx, config: dict) -> list:
     import psycopg2
 
@@ -72,7 +80,7 @@ def extract_data(ctx, config: dict) -> list:
 ## Transform Activity
 
 ```python
-@wf.activity
+@wfr.activity(name='transform_chunk')
 def transform_chunk(ctx, chunk: list) -> list:
     transformed = []
     for record in chunk:
@@ -89,7 +97,7 @@ def transform_chunk(ctx, chunk: list) -> list:
 ## Load Activity
 
 ```python
-@wf.activity
+@wfr.activity(name='load_data')
 def load_data(ctx, payload: dict) -> bool:
     import clickhouse_driver
 
@@ -124,7 +132,7 @@ with DaprClient() as d:
 
 ## Scheduling ETL Runs
 
-Use the Dapr Jobs API to trigger the ETL workflow on a schedule:
+Use the Dapr Cron binding to trigger the ETL workflow on a schedule:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -132,11 +140,13 @@ kind: Component
 metadata:
   name: daily-etl
 spec:
-  type: jobs.dapr
+  type: bindings.cron
   version: v1
   metadata:
   - name: schedule
     value: "0 2 * * *"
+  - name: direction
+    value: "input"
 ```
 
 ## Handling ETL Failures
@@ -144,10 +154,15 @@ spec:
 If the load step fails, Dapr Workflow can retry it without re-running the expensive extract and transform steps, since those activities already completed and their results are persisted in the workflow state.
 
 ```python
-@wf.activity(retry_policy=wf.RetryPolicy(max_number_of_attempts=3, first_retry_interval=timedelta(seconds=30)))
-def load_data(ctx, payload: dict) -> bool:
-    # Retry up to 3 times with 30s delay
-    ...
+# Inside the workflow, pass retry_policy to call_activity:
+retry_policy = wf.RetryPolicy(
+    max_number_of_attempts=3,
+    first_retry_interval=timedelta(seconds=30)
+)
+yield ctx.call_activity(load_data, input={
+    "records": transformed,
+    "destination": config["destination"]
+}, retry_policy=retry_policy)
 ```
 
 ## Summary
