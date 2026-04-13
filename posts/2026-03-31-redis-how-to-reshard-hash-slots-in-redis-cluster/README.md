@@ -24,7 +24,7 @@ Each key maps to a slot via:
 slot = CRC16(key) % 16384
 ```
 
-Moving a slot means moving all keys belonging to that slot. Redis handles this online — keys remain accessible during migration through ASK redirects.
+Moving a slot means moving all keys belonging to that slot. Redis handles this online - keys remain accessible during migration through ASK redirects.
 
 ## Checking Current Slot Distribution
 

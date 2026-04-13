@@ -131,7 +131,7 @@ LINES TERMINATED BY '\n'
 ALTER TABLE products ALTER CHECK chk_stock_non_negative ENFORCED;
 ```
 
-Note that re-enabling an existing constraint with ENFORCED does not validate rows that were inserted while the constraint was not enforced. If you need to ensure all existing rows satisfy the constraint, drop and re-add it instead — adding a new CHECK constraint validates all existing rows.
+Note that re-enabling an existing constraint with ENFORCED does not validate rows that were inserted while the constraint was not enforced. If you need to ensure all existing rows satisfy the constraint, drop and re-add it instead - adding a new CHECK constraint validates all existing rows.
 
 ## NOT ENFORCED Option
 

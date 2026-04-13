@@ -84,7 +84,7 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   ceph config set mds mds_cache_trim_decay_rate 0.5
 ```
 
-The `mds_cache_reservation` option (default 0.05) controls what fraction of the cache limit the MDS tries to keep free — increasing it to 0.10 triggers trimming earlier. The `mds_cache_trim_decay_rate` (default 1.0) controls the half-life of the trim throttle — lowering it to 0.5 allows the MDS to trim more frequently.
+The `mds_cache_reservation` option (default 0.05) controls what fraction of the cache limit the MDS tries to keep free - increasing it to 0.10 triggers trimming earlier. The `mds_cache_trim_decay_rate` (default 1.0) controls the half-life of the trim throttle - lowering it to 0.5 allows the MDS to trim more frequently.
 
 ## Step 4 - Add Active MDS Daemons
 

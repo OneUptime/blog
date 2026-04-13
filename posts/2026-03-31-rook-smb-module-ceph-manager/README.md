@@ -68,7 +68,7 @@ net use Z: \\192.168.1.20\share1 /user:EXAMPLE\alice password123
 
 ## SMB in Kubernetes Environments
 
-Rook does not natively support SMB — there is no `CephSMBCluster` CRD. The Ceph SMB manager module relies on `cephadm` orchestration, which Rook replaces with its own Kubernetes-native orchestration.
+Rook does not natively support SMB - there is no `CephSMBCluster` CRD. The Ceph SMB manager module relies on `cephadm` orchestration, which Rook replaces with its own Kubernetes-native orchestration.
 
 For Kubernetes environments, the community-recommended approach is the [samba-operator](https://github.com/samba-in-kubernetes/samba-operator) project, which provides CRDs such as `SmbShare` and can work alongside Rook-managed Ceph clusters:
 

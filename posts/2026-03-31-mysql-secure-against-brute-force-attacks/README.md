@@ -14,7 +14,7 @@ MySQL's default configuration accepts connections on port 3306 from any host tha
 
 ## Setting max_connect_errors
 
-MySQL blocks a host after it exceeds `max_connect_errors` consecutive protocol-level connection errors (such as interrupted handshakes), not failed authentication attempts. Once blocked, the host sees `ERROR 1129 (HY000): Host is blocked`. Note that wrong-password attempts do not increment this counter — use the Connection Control plugin or account lockout policies (described below) for authentication-based brute force protection.
+MySQL blocks a host after it exceeds `max_connect_errors` consecutive protocol-level connection errors (such as interrupted handshakes), not failed authentication attempts. Once blocked, the host sees `ERROR 1129 (HY000): Host is blocked`. Note that wrong-password attempts do not increment this counter - use the Connection Control plugin or account lockout policies (described below) for authentication-based brute force protection.
 
 ```ini
 [mysqld]

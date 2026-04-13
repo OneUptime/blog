@@ -59,7 +59,7 @@ done
 
 ## Using Pre-Created Pools with RGW
 
-RGW automatically detects and uses pools that already exist. If you pre-create the pools listed above before starting the RGW daemon, it will use them without attempting to recreate them. No additional configuration is needed — simply ensure all required pools exist before RGW initialization.
+RGW automatically detects and uses pools that already exist. If you pre-create the pools listed above before starting the RGW daemon, it will use them without attempting to recreate them. No additional configuration is needed - simply ensure all required pools exist before RGW initialization.
 
 ## Customizing Pool Names in Zone Configuration
 

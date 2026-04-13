@@ -137,7 +137,7 @@ ALTER TABLE users
 MODIFY COLUMN settings JSON;
 ```
 
-MySQL validates existing data during the ALTER TABLE itself — if any existing value is not valid JSON, the operation fails. After the conversion, all future inserts and updates are also validated.
+MySQL validates existing data during the ALTER TABLE itself - if any existing value is not valid JSON, the operation fails. After the conversion, all future inserts and updates are also validated.
 
 ## Summary
 

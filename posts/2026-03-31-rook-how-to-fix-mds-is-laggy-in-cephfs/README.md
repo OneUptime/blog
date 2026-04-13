@@ -158,7 +158,7 @@ spec:
     activeStandby: true
 ```
 
-With `activeStandby: true`, Rook deploys a standby MDS daemon that can quickly take over the active rank if the active MDS fails or becomes unresponsive. Note that a standby MDS does not have the metadata cache pre-loaded — it will rebuild its cache after taking over, but failover is still faster because the daemon is already running.
+With `activeStandby: true`, Rook deploys a standby MDS daemon that can quickly take over the active rank if the active MDS fails or becomes unresponsive. Note that a standby MDS does not have the metadata cache pre-loaded - it will rebuild its cache after taking over, but failover is still faster because the daemon is already running.
 
 ## Step 8 - Restart the Laggy MDS
 

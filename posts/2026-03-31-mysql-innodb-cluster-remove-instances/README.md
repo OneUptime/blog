@@ -134,7 +134,7 @@ cluster.status()
 // Look for "status": "OK" - not "NO_QUORUM" or "OK_NO_TOLERANCE"
 ```
 
-For a 3-node cluster, removing one node with `removeInstance()` leaves 2 nodes which can still maintain quorum. Removing a second would leave a 1-node cluster with `OK_NO_TOLERANCE` status — it still has quorum but cannot tolerate any failures. This is different from a node crashing without being removed, which would result in `NO_QUORUM`.
+For a 3-node cluster, removing one node with `removeInstance()` leaves 2 nodes which can still maintain quorum. Removing a second would leave a 1-node cluster with `OK_NO_TOLERANCE` status - it still has quorum but cannot tolerate any failures. This is different from a node crashing without being removed, which would result in `NO_QUORUM`.
 
 ## Summary
 

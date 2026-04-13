@@ -82,7 +82,7 @@ grep "osdmap" /tmp/kvstore-dump.txt | head -20
 ## Repair a Corrupt RocksDB Store
 
 ```bash
-# Attempt RocksDB repair (potentially destructive — use as last resort)
+# Attempt RocksDB repair (potentially destructive - use as last resort)
 ceph-kvstore-tool rocksdb \
   /var/lib/ceph/mon/ceph-a/store.db \
   destructive-repair

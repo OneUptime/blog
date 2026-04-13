@@ -123,7 +123,7 @@ SADD user_ids "admin"
 OBJECT ENCODING user_ids  # listpack (immediate conversion, Redis 7.2+)
 ```
 
-intset only works when every member is an integer. Adding one string forces conversion — to `listpack` if the set is small enough (under `set-max-listpack-entries`), or to `hashtable` otherwise.
+intset only works when every member is an integer. Adding one string forces conversion - to `listpack` if the set is small enough (under `set-max-listpack-entries`), or to `hashtable` otherwise.
 
 ## Scanning for Over-Threshold Sets
 

@@ -67,7 +67,7 @@ Adjust OSD weights to encourage rebalancing away from full OSDs:
 ceph osd reweight osd.5 0.8
 ```
 
-The `reweight-by-utilization` command automatically adjusts weights based on disk usage. The numeric argument is the overload threshold — OSDs with utilization above this percentage of the average will be reweighted down. The default is 120 (20% above average). Lower it to be more aggressive:
+The `reweight-by-utilization` command automatically adjusts weights based on disk usage. The numeric argument is the overload threshold - OSDs with utilization above this percentage of the average will be reweighted down. The default is 120 (20% above average). Lower it to be more aggressive:
 
 ```bash
 ceph osd reweight-by-utilization 110

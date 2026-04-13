@@ -87,7 +87,7 @@ SET GLOBAL innodb_ft_enable_stopword = OFF;
 
 ## Configuring Index Build Parallelism
 
-For large tables, speed up FULLTEXT index creation with parallel threads. Note that `innodb_ft_sort_pll_degree` is not dynamic — it must be set at server startup:
+For large tables, speed up FULLTEXT index creation with parallel threads. Note that `innodb_ft_sort_pll_degree` is not dynamic - it must be set at server startup:
 
 ```text
 [mysqld]

@@ -32,15 +32,15 @@ sequenceDiagram
 
 Write conflicts occur in two common scenarios:
 
-**Scenario 1 — Concurrent lock contention:**
+**Scenario 1 - Concurrent lock contention:**
 1. Transaction A writes document X, acquiring a lock on it.
 2. Transaction B attempts to write document X while Transaction A holds the lock.
 3. Transaction B's write operation fails with a WriteConflict error after a brief wait.
 
-**Scenario 2 — Stale snapshot:**
+**Scenario 2 - Stale snapshot:**
 1. Transaction A starts and takes a snapshot of the data.
 2. Transaction B modifies document X and commits.
-3. Transaction A attempts to write document X — MongoDB detects that the document changed since A's snapshot and fails with a WriteConflict error.
+3. Transaction A attempts to write document X - MongoDB detects that the document changed since A's snapshot and fails with a WriteConflict error.
 
 ## Reproducing a Write Conflict
 
@@ -56,7 +56,7 @@ s1.getDatabase("myapp").inventory.updateOne(
   { _id: "product1" },
   { $inc: { stock: -1 } }
 );
-// Write succeeds — s1 now holds a lock on product1
+// Write succeeds - s1 now holds a lock on product1
 // Do NOT commit yet
 
 // Session 2 (run while Session 1 has not committed)
@@ -66,7 +66,7 @@ s2.getDatabase("myapp").inventory.updateOne(
   { _id: "product1" },
   { $inc: { stock: -1 } }
 );
-// This write throws WriteConflict — product1 is locked by Session 1
+// This write throws WriteConflict - product1 is locked by Session 1
 
 // Back in Session 1
 s1.commitTransaction();  // This succeeds

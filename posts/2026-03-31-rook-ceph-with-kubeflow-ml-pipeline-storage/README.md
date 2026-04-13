@@ -60,7 +60,7 @@ stringData:
 Update the MinIO service to point to Ceph RGW:
 
 ```yaml
-# ExternalName only creates a DNS CNAME alias — it does not proxy or remap ports.
+# ExternalName only creates a DNS CNAME alias - it does not proxy or remap ports.
 # Ensure the CephObjectStore gateway port matches what Kubeflow expects (default 9000).
 apiVersion: v1
 kind: Service

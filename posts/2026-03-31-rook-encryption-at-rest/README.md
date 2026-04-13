@@ -189,7 +189,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd info replicapool/$IMAGE_NAME
 ```
 
-The output confirms the RBD image was provisioned. Note that LUKS encryption is applied by the CSI driver at the node level and is transparent to Ceph, so it will not appear as an RBD image feature. To verify LUKS encryption is active, check on the node where the PVC is mounted using `lsblk --fs` — encrypted volumes show a `crypto_LUKS` device wrapping the mapped RBD device.
+The output confirms the RBD image was provisioned. Note that LUKS encryption is applied by the CSI driver at the node level and is transparent to Ceph, so it will not appear as an RBD image feature. To verify LUKS encryption is active, check on the node where the PVC is mounted using `lsblk --fs` - encrypted volumes show a `crypto_LUKS` device wrapping the mapped RBD device.
 
 ## Enabling Ceph Manager Messenger Encryption
 

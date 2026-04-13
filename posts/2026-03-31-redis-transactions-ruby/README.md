@@ -72,7 +72,7 @@ end
 
 ## Discarding a Transaction
 
-In redis-rb v5+, `multi` must be called with a block. To discard a transaction, raise an exception inside the block — redis-rb sends DISCARD automatically:
+In redis-rb v5+, `multi` must be called with a block. To discard a transaction, raise an exception inside the block - redis-rb sends DISCARD automatically:
 
 ```ruby
 begin

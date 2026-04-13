@@ -52,7 +52,7 @@ Starting in MongoDB 4.4, `compact` can run directly on a primary replica set mem
 db.runCommand({ compact: "orders" })
 ```
 
-Since MongoDB 4.4, `compact` no longer holds a blocking write lock — it yields to allow read and write operations. However, it is still best to run it during low-traffic windows to minimize performance impact.
+Since MongoDB 4.4, `compact` no longer holds a blocking write lock - it yields to allow read and write operations. However, it is still best to run it during low-traffic windows to minimize performance impact.
 
 ## Running compact on a Secondary First
 

@@ -108,7 +108,7 @@ ALTER TABLE mytable
 
 ## Deprecated: ZEROFILL Attribute
 
-`ZEROFILL` and the display width attribute for integer types are deprecated in MySQL 8.0 and will be removed in a future version. Note that `UNSIGNED` for integer types (INT, BIGINT, etc.) is still valid and not deprecated — only `UNSIGNED` for FLOAT, DOUBLE, and DECIMAL is deprecated:
+`ZEROFILL` and the display width attribute for integer types are deprecated in MySQL 8.0 and will be removed in a future version. Note that `UNSIGNED` for integer types (INT, BIGINT, etc.) is still valid and not deprecated - only `UNSIGNED` for FLOAT, DOUBLE, and DECIMAL is deprecated:
 
 ```sql
 -- Old: not recommended

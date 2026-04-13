@@ -124,7 +124,7 @@ After the pod runs, check the CSI node plugin logs to confirm encryption was app
 kubectl logs -n rook-ceph -l app=csi-cephfsplugin -c csi-cephfsplugin | grep -i fscrypt
 ```
 
-You should see log entries indicating the encryption policy was set on the volume directory. The OSDs store the encrypted file data, while the MDS stores encrypted metadata such as filenames and directory entries. Neither the MDS nor OSDs are aware of the encryption — only clients with the correct key can decrypt the contents.
+You should see log entries indicating the encryption policy was set on the volume directory. The OSDs store the encrypted file data, while the MDS stores encrypted metadata such as filenames and directory entries. Neither the MDS nor OSDs are aware of the encryption - only clients with the correct key can decrypt the contents.
 
 ## Summary
 

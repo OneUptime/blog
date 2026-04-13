@@ -63,7 +63,7 @@ async function generateReport() {
   try {
     const db = client.db('shop');
 
-    // Run sequentially — sessions are not safe for concurrent use
+    // Run sequentially - sessions are not safe for concurrent use
     const orderCount = await db.collection('orders').countDocuments(
       { status: 'completed' },
       { session }

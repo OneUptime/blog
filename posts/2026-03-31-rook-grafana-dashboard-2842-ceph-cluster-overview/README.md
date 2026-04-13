@@ -70,7 +70,7 @@ In Grafana:
 4. Select your Prometheus data source
 5. Click Import
 
-Or via the Grafana API (two-step process — fetch the dashboard JSON from grafana.com, then import it):
+Or via the Grafana API (two-step process - fetch the dashboard JSON from grafana.com, then import it):
 
 ```bash
 # Fetch the dashboard JSON from grafana.com

@@ -99,7 +99,7 @@ curl -s http://localhost:22222 | python3 -m json.tool | grep -E "requests|connec
 
 ## Limitations to Know
 
-Twemproxy supports multi-key commands like MGET and MSET through command fragmentation — it splits them across backends and reassembles the results (note that MSET is not atomic across shards). However, commands that operate across keys like RENAME, SDIFF, SINTER, SUNION, and ZUNIONSTORE are not supported unless all keys reside on the same backend. Use hash tags `{prefix}` to colocate related keys:
+Twemproxy supports multi-key commands like MGET and MSET through command fragmentation - it splits them across backends and reassembles the results (note that MSET is not atomic across shards). However, commands that operate across keys like RENAME, SDIFF, SINTER, SUNION, and ZUNIONSTORE are not supported unless all keys reside on the same backend. Use hash tags `{prefix}` to colocate related keys:
 
 ```python
 # Both keys go to the same shard because of the hash tag

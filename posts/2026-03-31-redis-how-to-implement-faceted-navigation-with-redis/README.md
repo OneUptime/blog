@@ -108,7 +108,7 @@ def search_with_facets(filters: dict, price_min=None, price_max=None):
             r.expire(price_key, 60)
             facet_keys.append(price_key)
         else:
-            # Price range matched nothing — clean up and return empty
+            # Price range matched nothing - clean up and return empty
             for key in temp_keys:
                 r.delete(key)
             return []

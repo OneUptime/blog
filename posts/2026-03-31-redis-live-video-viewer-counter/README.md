@@ -141,4 +141,4 @@ def update_peak_viewers(stream_id: str, current_count: int):
 
 ## Summary
 
-A Redis live viewer counter uses sets for per-stream session tracking (enabling accurate deduplication), sorted sets for a real-time trending ranking, and Pub/Sub for instant count broadcasts. Heartbeat-based presence refreshes the TTL on the entire set key, so the set expires only when all activity on a stream stops. Note that individual stale sessions within a set are not automatically removed — if a viewer disconnects without calling `viewer_leave`, their session ID remains until the whole set expires.
+A Redis live viewer counter uses sets for per-stream session tracking (enabling accurate deduplication), sorted sets for a real-time trending ranking, and Pub/Sub for instant count broadcasts. Heartbeat-based presence refreshes the TTL on the entire set key, so the set expires only when all activity on a stream stops. Note that individual stale sessions within a set are not automatically removed - if a viewer disconnects without calling `viewer_leave`, their session ID remains until the whole set expires.

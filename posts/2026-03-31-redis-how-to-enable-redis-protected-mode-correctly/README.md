@@ -20,7 +20,7 @@ Redis enters protected mode when ALL of the following are true:
 1. `protected-mode yes` is set in redis.conf (the default)
 2. No password is set for the default user (no `requirepass` and no ACL password)
 
-In Redis versions before 7.0, there was an additional condition: no `bind` directive was explicitly configured. Starting with Redis 7.0, the bind directive no longer affects whether protected mode activates — only the two conditions above matter.
+In Redis versions before 7.0, there was an additional condition: no `bind` directive was explicitly configured. Starting with Redis 7.0, the bind directive no longer affects whether protected mode activates - only the two conditions above matter.
 
 If any of those conditions is false, protected mode does not restrict connections.
 

@@ -50,7 +50,7 @@ Output should be `true`.
 
 Host networking grants CSI pods access to all host network interfaces and ports. This is a privilege escalation relative to pod-network-only mode. To minimize risk:
 
-1. Note that CSI node plugins require privileged access for mount and device operations — restrict capabilities to only what is needed rather than granting blanket privileges
+1. Note that CSI node plugins require privileged access for mount and device operations - restrict capabilities to only what is needed rather than granting blanket privileges
 2. Apply NetworkPolicy to restrict outbound traffic from CSI plugin pods to only Ceph monitor ports
 3. Audit node-level firewall rules to verify CSI pods cannot reach unexpected services
 

@@ -10,7 +10,7 @@ Description: Set up multi-layer caching with D3N in Ceph RGW combining local SSD
 
 ## Overview
 
-A multi-layer caching strategy maximizes cache hit rates by serving objects from the fastest available cache layer. For Ceph RGW with D3N, you can layer local SSD cache and an optional CDN or reverse proxy in front of RGW. D3N is a local per-instance read cache — it does not coordinate cache state across RGW instances. For cross-instance cache coordination, see Ceph's D4N feature which adds a Redis-based directory layer.
+A multi-layer caching strategy maximizes cache hit rates by serving objects from the fastest available cache layer. For Ceph RGW with D3N, you can layer local SSD cache and an optional CDN or reverse proxy in front of RGW. D3N is a local per-instance read cache - it does not coordinate cache state across RGW instances. For cross-instance cache coordination, see Ceph's D4N feature which adds a Redis-based directory layer.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Each layer serves different purposes:
 
 ## Layer 1: D3N Local SSD Cache
 
-D3N caches read requests on local storage using asynchronous I/O. It is a read-only cache — writes pass through directly to RADOS.
+D3N caches read requests on local storage using asynchronous I/O. It is a read-only cache - writes pass through directly to RADOS.
 
 ```bash
 # Enable D3N with a large SSD cache
@@ -109,4 +109,4 @@ tail -f /var/log/nginx/access.log | grep -E "HIT|MISS|BYPASS"
 
 ## Summary
 
-A multi-layer caching strategy combines D3N local SSD caching with an optional Nginx reverse proxy for the highest possible cache hit rates. Nginx catches repeated public reads at the HTTP layer, while D3N handles datacenter-level repeated reads on local NVMe/SSD storage. Note that D3N is a per-instance local cache without cross-instance coordination — for workloads requiring shared cache state across multiple RGW instances, evaluate Ceph's D4N feature which provides Redis-based cache directory and coordination.
+A multi-layer caching strategy combines D3N local SSD caching with an optional Nginx reverse proxy for the highest possible cache hit rates. Nginx catches repeated public reads at the HTTP layer, while D3N handles datacenter-level repeated reads on local NVMe/SSD storage. Note that D3N is a per-instance local cache without cross-instance coordination - for workloads requiring shared cache state across multiple RGW instances, evaluate Ceph's D4N feature which provides Redis-based cache directory and coordination.

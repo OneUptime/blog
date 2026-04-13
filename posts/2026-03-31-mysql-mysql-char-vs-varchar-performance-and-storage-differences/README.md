@@ -135,7 +135,7 @@ CHAR strips trailing spaces on retrieval:
 ```sql
 CREATE TABLE c (code CHAR(5));
 INSERT INTO c VALUES ('AB   ');
-SELECT code, LENGTH(code) FROM c;  -- Returns 'AB', 2 — trailing spaces stripped
+SELECT code, LENGTH(code) FROM c;  -- Returns 'AB', 2 - trailing spaces stripped
 ```
 
 For string comparisons, whether trailing spaces are ignored depends on the collation, not the data type. PAD SPACE collations (like `utf8mb4_general_ci`) ignore trailing spaces, while NO PAD collations (like `utf8mb4_0900_ai_ci`, the default in MySQL 8.0) treat them as significant.

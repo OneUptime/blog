@@ -83,7 +83,7 @@ app.get('/auth/callback', async (req, res) => {
 
   const key = `oauth:state:${state}`;
 
-  // Get and delete (one-time use) — not truly atomic; see Lua script below
+  // Get and delete (one-time use) - not truly atomic; see Lua script below
   const storedState = await redis.hGetAll(key);
   await redis.del(key);
 

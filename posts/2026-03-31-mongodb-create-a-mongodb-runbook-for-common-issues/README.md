@@ -48,7 +48,7 @@ mongosh --eval "rs.stepDown(30)"
 # If a secondary is stuck in STARTUP2, perform an initial sync:
 # 1. Stop the secondary mongod process
 # 2. Delete its data directory contents
-# 3. Restart mongod — it will automatically perform an initial sync from the primary
+# 3. Restart mongod - it will automatically perform an initial sync from the primary
 ```
 
 ## Issue 2: Connection Pool Exhausted

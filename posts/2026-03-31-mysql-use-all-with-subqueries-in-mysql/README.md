@@ -86,7 +86,7 @@ SELECT id, name FROM employees
 WHERE department NOT IN (SELECT department FROM excluded_departments);
 ```
 
-Note: `!= ALL` has the same NULL trap as `NOT IN` — if the subquery contains any NULL values, no rows are returned.
+Note: `!= ALL` has the same NULL trap as `NOT IN` - if the subquery contains any NULL values, no rows are returned.
 
 ## Edge Cases
 

@@ -109,7 +109,7 @@ FROM regions;
 
 ## Envelope of a Point
 
-For a single `POINT`, the envelope is degenerate — MySQL returns the point itself rather than a polygon:
+For a single `POINT`, the envelope is degenerate - MySQL returns the point itself rather than a polygon:
 
 ```sql
 SELECT ST_AsText(

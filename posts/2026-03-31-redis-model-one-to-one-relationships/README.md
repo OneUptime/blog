@@ -153,7 +153,7 @@ def atomic_link(r, user_id, email):
     pipe.execute()
 ```
 
-MULTI/EXEC ensures both commands execute atomically — no other client will see a state where only one side is written. However, if the server crashes before the transaction is persisted to disk, the entire transaction (not just one side) could be lost depending on your AOF fsync policy.
+MULTI/EXEC ensures both commands execute atomically - no other client will see a state where only one side is written. However, if the server crashes before the transaction is persisted to disk, the entire transaction (not just one side) could be lost depending on your AOF fsync policy.
 
 ## Summary
 

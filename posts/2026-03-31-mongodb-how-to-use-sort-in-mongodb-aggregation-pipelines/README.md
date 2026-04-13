@@ -143,7 +143,7 @@ db.articles.aggregate([
 
 ## Sort Consistency
 
-MongoDB's `$sort` does not guarantee a stable sort — documents with equal sort key values may be returned in any order. To ensure a deterministic order, include a unique field such as `_id` in your sort:
+MongoDB's `$sort` does not guarantee a stable sort - documents with equal sort key values may be returned in any order. To ensure a deterministic order, include a unique field such as `_id` in your sort:
 
 ```javascript
 // Sort by date, then by title, with _id as a tiebreaker for deterministic order

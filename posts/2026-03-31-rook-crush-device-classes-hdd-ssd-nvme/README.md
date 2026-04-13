@@ -55,7 +55,7 @@ ceph osd tree | grep osd.0
 
 ## Manually Assigning Device Classes
 
-Assign device classes explicitly. An OSD can only have one class at a time — to change an existing class, you must first remove it with `rm-device-class`:
+Assign device classes explicitly. An OSD can only have one class at a time - to change an existing class, you must first remove it with `rm-device-class`:
 
 ```bash
 # Assign SSD class to an OSD (fails if the OSD already has a class)

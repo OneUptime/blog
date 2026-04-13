@@ -53,7 +53,7 @@ storage:
     enabled: false
 ```
 
-**Warning:** Disabling journaling means data written since the last checkpoint may be lost on crash. Never disable journaling on replica set members. Starting in MongoDB 6.1, journaling cannot be disabled at all — the `storage.journal.enabled` option was removed and journaling is always on.
+**Warning:** Disabling journaling means data written since the last checkpoint may be lost on crash. Never disable journaling on replica set members. Starting in MongoDB 6.1, journaling cannot be disabled at all - the `storage.journal.enabled` option was removed and journaling is always on.
 
 ## WiredTiger Journal Settings
 

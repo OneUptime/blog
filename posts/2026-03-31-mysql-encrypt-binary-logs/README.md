@@ -87,11 +87,11 @@ mysqlbinlog --read-from-remote-server \
   mysql-bin.000001 | head -20
 ```
 
-To check which log files are encrypted, use `SHOW BINARY LOGS` — the `Encrypted` column indicates `Yes` or `No` for each file.
+To check which log files are encrypted, use `SHOW BINARY LOGS` - the `Encrypted` column indicates `Yes` or `No` for each file.
 
 ## Relay Log Encryption for Replicas
 
-The `binlog_encryption` variable controls encryption for both binary log files and relay log files. To encrypt relay logs on a replica, enable `binlog_encryption` on that server — binary logging does not need to be enabled on the replica for relay log encryption to work:
+The `binlog_encryption` variable controls encryption for both binary log files and relay log files. To encrypt relay logs on a replica, enable `binlog_encryption` on that server - binary logging does not need to be enabled on the replica for relay log encryption to work:
 
 ```text
 [mysqld]

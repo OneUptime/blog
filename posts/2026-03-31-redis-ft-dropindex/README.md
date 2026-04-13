@@ -132,7 +132,7 @@ flowchart TD
     style E fill:#ff4444,color:#fff
 ```
 
-The `DD` flag is destructive. It deletes only documents that were successfully indexed — keys that failed indexation or were not yet indexed (if async indexing was still in progress) are not deleted. Use it only when you intend to remove both the index and the source data.
+The `DD` flag is destructive. It deletes only documents that were successfully indexed - keys that failed indexation or were not yet indexed (if async indexing was still in progress) are not deleted. Use it only when you intend to remove both the index and the source data.
 
 ## Summary
 

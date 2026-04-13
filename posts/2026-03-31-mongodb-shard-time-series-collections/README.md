@@ -30,7 +30,7 @@ db.createCollection("sensorReadings", {
 
 ## Sharding the Time Series Collection
 
-In MongoDB 8.0, you can shard on a metaField subfield. Starting in MongoDB 6.0, you no longer need to call `sh.enableSharding()` — databases are automatically enabled for sharding.
+In MongoDB 8.0, you can shard on a metaField subfield. Starting in MongoDB 6.0, you no longer need to call `sh.enableSharding()` - databases are automatically enabled for sharding.
 
 Starting in MongoDB 8.0, shard keys containing the `timeField` are deprecated. Use only `metaField` subfields for the shard key:
 

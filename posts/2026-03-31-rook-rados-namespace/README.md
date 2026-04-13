@@ -94,7 +94,7 @@ kubectl get cephblockpoolradosnamespace -n rook-ceph
 
 ## Create StorageClass per Namespace
 
-Each `CephBlockPoolRadosNamespace` resource generates a unique `clusterID` in its status. This `clusterID` — not the main cluster's `rook-ceph` ID — is what ties the StorageClass to a specific RADOS namespace. Retrieve it first:
+Each `CephBlockPoolRadosNamespace` resource generates a unique `clusterID` in its status. This `clusterID` - not the main cluster's `rook-ceph` ID - is what ties the StorageClass to a specific RADOS namespace. Retrieve it first:
 
 ```bash
 TEAM_A_CLUSTER_ID=$(kubectl -n rook-ceph get cephblockpoolradosnamespace team-a-namespace \

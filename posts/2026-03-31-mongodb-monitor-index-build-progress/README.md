@@ -130,7 +130,7 @@ while (true) {
 
 ## Monitoring on Replica Sets
 
-Since MongoDB 4.4, index builds are coordinated across replica set members via a commit quorum — the primary issues a `startIndexBuild` oplog entry and all data-bearing members build simultaneously. However, each member constructs the index data locally and progress may differ. Monitor progress on each member separately:
+Since MongoDB 4.4, index builds are coordinated across replica set members via a commit quorum - the primary issues a `startIndexBuild` oplog entry and all data-bearing members build simultaneously. However, each member constructs the index data locally and progress may differ. Monitor progress on each member separately:
 
 ```bash
 mongosh "mongodb://secondary1:27017" --eval \

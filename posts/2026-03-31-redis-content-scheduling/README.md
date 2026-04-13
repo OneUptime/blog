@@ -58,7 +58,7 @@ def unpublish_expired_content():
 
 ## Rescheduling Content
 
-Update the publish time by calling `zadd` again — it updates the score in place if the member already exists:
+Update the publish time by calling `zadd` again - it updates the score in place if the member already exists:
 
 ```python
 def reschedule_content(content_id: str, new_publish_at: float):

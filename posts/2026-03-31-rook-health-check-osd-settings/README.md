@@ -32,7 +32,7 @@ spec:
         interval: 60s
 ```
 
-`interval` is how often the operator polls OSD health (default: 60 seconds). `disabled` controls whether the health check runs at all. Note that the `timeout` field, while accepted in the YAML schema, is only used by the `mon` health checker — it has no effect under the `osd` section.
+`interval` is how often the operator polls OSD health (default: 60 seconds). `disabled` controls whether the health check runs at all. Note that the `timeout` field, while accepted in the YAML schema, is only used by the `mon` health checker - it has no effect under the `osd` section.
 
 ## OSD Removal vs Ceph's Own osd.down Mechanism
 

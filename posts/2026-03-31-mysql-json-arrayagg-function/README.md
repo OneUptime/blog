@@ -18,7 +18,7 @@ Syntax:
 JSON_ARRAYAGG(col_or_expr) [over_clause]
 ```
 
-The optional `over_clause` allows `JSON_ARRAYAGG()` to be used as a window function (available since MySQL 8.0.14). Note that unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function call — the order of elements in the resulting array is undefined.
+The optional `over_clause` allows `JSON_ARRAYAGG()` to be used as a window function (available since MySQL 8.0.14). Note that unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function call - the order of elements in the resulting array is undefined.
 
 ## Basic Usage
 
@@ -58,7 +58,7 @@ Result:
 
 ## Controlling Element Order
 
-Unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function — the element order is undefined by the MySQL specification. To produce a sorted JSON array, use a subquery that orders the rows before aggregation:
+Unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function - the element order is undefined by the MySQL specification. To produce a sorted JSON array, use a subquery that orders the rows before aggregation:
 
 ```sql
 SELECT

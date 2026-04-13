@@ -99,7 +99,7 @@ radosgw-admin global ratelimit disable \
 
 ## Priority of Rate Limits
 
-Per-user and per-bucket rate limits override the global defaults for their respective scopes. When both a user-level and bucket-level rate limit are active, both are enforced simultaneously — a request is rejected if either limit is exceeded.
+Per-user and per-bucket rate limits override the global defaults for their respective scopes. When both a user-level and bucket-level rate limit are active, both are enforced simultaneously - a request is rejected if either limit is exceeded.
 
 If no per-user or per-bucket rate limit is set for a given scope, the global rate limit applies as the default.
 

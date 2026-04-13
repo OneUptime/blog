@@ -26,7 +26,7 @@ This optimization is particularly valuable for:
 
 ## Requirements
 
-- Ceph Tentacle (20.2+) or later — all Monitors and OSDs must be upgraded
+- Ceph Tentacle (20.2+) or later - all Monitors and OSDs must be upgraded
 - All OSDs must use BlueStore
 - Erasure code profile must use the Jerasure or ISA-L plugin with the `reed_sol_van` technique (the default)
 

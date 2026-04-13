@@ -65,7 +65,7 @@ ceph config show osd.0 bluestore_warn_on_free_fragmentation
 
 ### Set Appropriate min_alloc_size
 
-The `min_alloc_size` is baked into the OSD at creation time. It cannot be changed after the OSD is created — the OSD must be reprovisioned for a new value to take effect. The current default is 4096 (4KB). For HDD workloads with larger sequential writes, a larger value like 65536 (64KB) can reduce fragmentation:
+The `min_alloc_size` is baked into the OSD at creation time. It cannot be changed after the OSD is created - the OSD must be reprovisioned for a new value to take effect. The current default is 4096 (4KB). For HDD workloads with larger sequential writes, a larger value like 65536 (64KB) can reduce fragmentation:
 
 ```bash
 # This only takes effect for newly created OSDs
@@ -128,7 +128,7 @@ Note: `ceph daemon` communicates via the local admin socket and only works for O
 
 ```bash
 #!/bin/bash
-# Run this on each OSD host — ceph daemon only works for local OSDs
+# Run this on each OSD host - ceph daemon only works for local OSDs
 for OSD in $(ceph osd ls); do
   SCORE=$(ceph daemon osd.$OSD bluestore allocator score block 2>/dev/null | \
     python3 -c "import sys,json; print(json.load(sys.stdin).get('fragmentation_rating','N/A'))")
