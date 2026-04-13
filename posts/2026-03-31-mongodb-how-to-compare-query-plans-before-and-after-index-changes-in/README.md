@@ -99,11 +99,11 @@ db.orders.createIndex({ status: 1 });
 // After: create compound index covering filter, sort, and projection
 db.orders.createIndex(
   { status: 1, region: 1, createdAt: -1 },
-  { name: "status_region_createdAt", background: true }
+  { name: "status_region_createdAt" }
 );
 
-// Wait for index build to complete
-db.orders.stats().indexBuilds;  // empty when build is done
+// Check if the index build is still in progress
+db.currentOp({ "command.createIndexes": "orders" });  // empty results when build is done
 ```
 
 ## Step 4 - Capture the New Plan
@@ -159,8 +159,8 @@ Metric                 Before       After        Change
 executionTimeMillis    245          3            -98.8% IMPROVED
 totalKeysExamined      10000        50           -99.5% IMPROVED
 totalDocsExamined      10000        50           -99.5% IMPROVED
-examineRatio           100          1            -99.0% IMPROVED
-nReturned              100          100          0.0% SAME
+examineRatio           200          1            -99.5% IMPROVED
+nReturned              50           50           0.0% SAME
 
 Index used:    status_1 -> status_region_createdAt
 Stages:        SORT,FETCH,IXSCAN -> FETCH,IXSCAN
