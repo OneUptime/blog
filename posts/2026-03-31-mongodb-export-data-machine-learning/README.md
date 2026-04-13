@@ -107,8 +107,6 @@ print(classification_report(y_test, model.predict(X_test_scaled)))
 ## Write Predictions Back to MongoDB
 
 ```python
-import numpy as np
-
 df["churn_probability"] = model.predict_proba(scaler.transform(X))[:, 1]
 df["predicted_churn"] = (df["churn_probability"] > 0.5).astype(int)
 
