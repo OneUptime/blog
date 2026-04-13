@@ -95,13 +95,13 @@ db.events.aggregate([
 When a user queries "all events on March 31 in Chicago", convert their local range to UTC before querying.
 
 ```javascript
-// Local: 2026-03-31 00:00 Chicago = UTC 2026-03-31T06:00:00Z (UTC-6 in winter)
-// Local: 2026-03-31 23:59 Chicago = UTC 2026-04-01T05:59:00Z
+// Local: 2026-03-31 00:00 Chicago = UTC 2026-03-31T05:00:00Z (UTC-5, CDT)
+// Local: 2026-04-01 00:00 Chicago = UTC 2026-04-01T05:00:00Z
 
 db.events.find({
   startAt: {
-    $gte: new Date("2026-03-31T06:00:00Z"),
-    $lt: new Date("2026-04-01T06:00:00Z")
+    $gte: new Date("2026-03-31T05:00:00Z"),
+    $lt: new Date("2026-04-01T05:00:00Z")
   }
 });
 ```
@@ -109,10 +109,10 @@ db.events.find({
 Perform this conversion in the application layer using a library like `date-fns-tz` (Node.js) or `pytz` (Python).
 
 ```javascript
-const { zonedTimeToUtc } = require("date-fns-tz");
+const { fromZonedTime } = require("date-fns-tz");
 const tz = "America/Chicago";
-const start = zonedTimeToUtc("2026-03-31 00:00:00", tz);
-const end = zonedTimeToUtc("2026-03-31 23:59:59", tz);
+const start = fromZonedTime("2026-03-31 00:00:00", tz);
+const end = fromZonedTime("2026-04-01 00:00:00", tz);
 ```
 
 ## Extracting Date Parts in Local Time
