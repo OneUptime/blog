@@ -12,7 +12,7 @@ MongoDB Atlas Search uses a Lucene-based relevance scoring model by default. Eve
 
 ## Default Scoring
 
-By default, Atlas Search uses TF-IDF (term frequency - inverse document frequency) scoring combined with field-length normalization. A match on a rare term in a short field scores higher than a match on a common term in a long field.
+By default, Atlas Search uses BM25 (Best Match 25) scoring, which incorporates term frequency, inverse document frequency, and field-length normalization. A match on a rare term in a short field scores higher than a match on a common term in a long field.
 
 ```javascript
 db.products.aggregate([
