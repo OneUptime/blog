@@ -115,7 +115,6 @@ For entry-point services (API gateways, HTTP handlers), generate a new trace ID:
 
 ```python
 import os
-import time
 
 def generate_traceparent():
     trace_id = os.urandom(16).hex()
@@ -142,14 +141,18 @@ def create_order():
 ## Verifying Trace Propagation
 
 ```bash
-# Make a request and check the trace in Zipkin
-TRACE_ID=$(curl -s -X POST http://localhost:3500/v1.0/invoke/service-b/method/process \
-  -H "Content-Type: application/json" \
-  -H "traceparent: 00-$(openssl rand -hex 16)-$(openssl rand -hex 8)-01" \
-  -d '{}' -w "%{header_traceparent}" | grep traceparent | cut -d'-' -f2)
+# Generate a traceparent header and extract the trace ID
+TRACEPARENT="00-$(openssl rand -hex 16)-$(openssl rand -hex 8)-01"
+TRACE_ID=$(echo "$TRACEPARENT" | cut -d'-' -f2)
 
-# Search by trace ID in Zipkin
-curl "http://localhost:9411/api/v2/traces?traceId=$TRACE_ID"
+# Make a request with the generated traceparent
+curl -s -X POST http://localhost:3500/v1.0/invoke/service-b/method/process \
+  -H "Content-Type: application/json" \
+  -H "traceparent: $TRACEPARENT" \
+  -d '{}'
+
+# Look up the trace in Zipkin by trace ID
+curl "http://localhost:9411/api/v2/trace/$TRACE_ID"
 ```
 
 ## Summary
