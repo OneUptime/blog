@@ -30,13 +30,14 @@ db.articles.insertMany([
 ## Verifying It Is a Multikey Index
 
 ```javascript
-db.articles.getIndexes()
-// Look for "multikey": true in the index metadata
-
-// Or use explain()
+// Use explain() to check if an index is multikey
 db.articles.find({ tags: "mongodb" }).explain("executionStats")
 // winningPlan.inputStage.stage will show "IXSCAN"
 // winningPlan.inputStage.isMultiKey will be true
+
+// Or use $indexStats to see multikey status
+db.articles.aggregate([{ $indexStats: {} }])
+// Each entry includes an "isMultiKey" field
 ```
 
 ## Querying with a Multikey Index
