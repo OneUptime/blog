@@ -60,7 +60,7 @@ db.products.updateMany(
 );
 ```
 
-## Conditionally Setting a Field with $cond
+## Conditionally Setting a Field with $switch
 
 ```javascript
 // Set tier based on points value - computed from existing data
@@ -107,7 +107,7 @@ Multiple pipeline stages can be chained in the array.
 ## Updating with Date Calculations
 
 ```javascript
-// Set expiresAt to 30 days from now if not already set
+// Set expiresAt to 30 days after createdAt if not already set (requires MongoDB 5.0+)
 db.subscriptions.updateMany(
   { expiresAt: { $exists: false } },
   [
