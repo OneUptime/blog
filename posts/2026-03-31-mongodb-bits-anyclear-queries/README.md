@@ -128,7 +128,7 @@ db.tenants.find({
     $bitsAllSet:   [0]          // but must have encryption
   }
 });
-// Returns: beta (14=1110, has encryption but missing bit 0 only if 14&1=0)
+// Returns: gamma (9=1001, has encryption but missing tls and audit)
 ```
 
 ## Aggregation Use Case
@@ -164,10 +164,12 @@ db.tenants.find(
 ).explain("executionStats");
 ```
 
+Note: Bitwise query operators like `$bitsAnyClear` cannot use indexes to match the predicate. The query results in a collection scan (COLLSCAN). An index on `compliance` may still help if the query includes additional non-bitwise conditions that can leverage the index.
+
 ```mermaid
 flowchart LR
-    Q["$bitsAnyClear query"] --> I[Index scan on compliance]
-    I --> F[Bitwise filter: field AND mask != mask]
+    Q["$bitsAnyClear query"] --> S[Collection scan]
+    S --> F[Bitwise filter: field AND mask != mask]
     F --> R[Non-compliant documents]
 ```
 
