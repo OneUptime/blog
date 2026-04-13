@@ -123,7 +123,7 @@ sp.createStreamProcessor("enrichOrders", [
 
 ## Conditional Routing with $emit
 
-Route messages to different topics based on content:
+Route messages to different topics based on content using a dynamic expression for the topic field:
 
 ```javascript
 sp.createStreamProcessor("routeEvents", [
@@ -134,27 +134,18 @@ sp.createStreamProcessor("routeEvents", [
     }
   },
 
-  // Separate high-value transactions to a priority topic
+  // Route transactions to different topics based on amount
   {
-    $facet: {
-      highValue: [
-        { $match: { amount: { $gte: 1000 } } },
-        {
-          $emit: {
-            connectionName: "prod-kafka",
-            topic: "high-value-transactions"
-          }
+    $emit: {
+      connectionName: "prod-kafka",
+      topic: {
+        $switch: {
+          branches: [
+            { case: { $gte: ["$amount", 1000] }, then: "high-value-transactions" }
+          ],
+          default: "standard-transactions"
         }
-      ],
-      standard: [
-        { $match: { amount: { $lt: 1000 } } },
-        {
-          $emit: {
-            connectionName: "prod-kafka",
-            topic: "standard-transactions"
-          }
-        }
-      ]
+      }
     }
   }
 ])
@@ -186,8 +177,7 @@ sp.createStreamProcessor("validateAndProcess", [
     }
   },
 
-  // Route invalid messages to a dead letter queue
-  // Route valid messages to processing
+  // Filter out invalid messages and keep only valid ones
   { $match: { isValid: true } },
   { $unset: "isValid" },
 
