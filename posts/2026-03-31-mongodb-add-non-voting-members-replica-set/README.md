@@ -43,7 +43,7 @@ cfg.members[idx].priority = 0
 rs.reconfig(cfg)
 ```
 
-Both `votes` and `priority` must be 0 together - a node cannot have votes without a non-zero priority, and vice versa (with exceptions for arbiters).
+A member with `votes: 0` must also have `priority: 0`. However, a member can have `priority: 0` while retaining `votes: 1` (e.g., hidden members). Arbiters are the exception: they always have `votes: 1` and `priority: 0`.
 
 ## Verify Non-Voting Configuration
 
