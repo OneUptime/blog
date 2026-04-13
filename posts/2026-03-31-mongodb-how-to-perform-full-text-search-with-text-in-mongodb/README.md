@@ -37,7 +37,7 @@ Once the index is in place, use `$text` with the `$search` field to find matchin
 // Find documents containing "mongodb"
 db.articles.find({ $text: { $search: "mongodb" } });
 
-// Find documents containing "full text" (both words, either order)
+// Find documents containing "full" or "text" (logical OR of terms)
 db.articles.find({ $text: { $search: "full text" } });
 
 // Find documents containing the exact phrase
@@ -126,7 +126,7 @@ db.articles.countDocuments({
 ## Limitations to Know
 
 - Only one text index per collection is allowed.
-- The `$text` operator cannot be used in `$or` expressions unless all other clauses also use text indexes.
+- The `$text` operator cannot be used in `$or` expressions unless all clauses in the `$or` array are indexed.
 - Text indexes can be large and slow down write operations; use them selectively.
 - Partial word matching (prefix search) is not supported by `$text` - use regex for that instead.
 
