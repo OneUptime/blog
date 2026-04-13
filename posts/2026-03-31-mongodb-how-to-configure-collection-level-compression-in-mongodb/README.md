@@ -158,13 +158,12 @@ Time series collections generally achieve very high compression (10:1 or more) d
 ## Compression and CPU Tradeoff
 
 ```javascript
-// Monitor CPU usage while running compression-heavy workloads
-db.serverStatus().cpu
-// If CPU is consistently high, consider switching from zlib to zstd or snappy
-
 // Check WiredTiger cache and I/O for storage efficiency
 db.serverStatus().wiredTiger.cache
-db.serverStatus().wiredTiger.block_manager
+db.serverStatus().wiredTiger["block-manager"]
+
+// If CPU is consistently high, consider switching from zlib to zstd or snappy
+// Use OS-level tools (top, htop, mongostat) to monitor CPU usage
 ```
 
 ## Summary
