@@ -8,7 +8,7 @@ Description: Learn how to use the Atlas Search near operator to score documents 
 
 ---
 
-The `near` operator in MongoDB Atlas Search scores documents based on how close a numeric or date field value is to a specified pivot. Documents nearest to the target score highest, and score degrades as values move further away. This is distinct from geospatial `near` - it works with numbers and dates.
+The `near` operator in MongoDB Atlas Search scores documents based on how close a numeric or date field value is to a specified origin. Documents nearest to the target score highest, and score degrades as values move further away. This is distinct from geospatial `near` - it works with numbers and dates.
 
 ## How near Scoring Works
 
