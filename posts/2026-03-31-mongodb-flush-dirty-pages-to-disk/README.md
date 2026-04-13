@@ -41,7 +41,7 @@ db.adminCommand({ fsync: 1 })
 Sample output:
 
 ```text
-{ info: 'all dbs flushed', ok: 1 }
+{ ok: 1 }
 ```
 
 This does not lock the database - writes can continue immediately after.
@@ -87,16 +87,16 @@ db.adminCommand({ currentOp: 1 }).fsyncLock
 
 ## WiredTiger Checkpoint Behavior
 
-WiredTiger automatically checkpoints (flushes dirty pages) every 60 seconds by default. To adjust the checkpoint interval:
+WiredTiger automatically checkpoints (flushes dirty pages) every 60 seconds by default. To adjust the checkpoint interval in the configuration file:
 
-```text
+```yaml
 storage:
   wiredTiger:
     engineConfig:
-      checkpointSizeMB: 0
+      configString: "checkpoint=(wait=30)"
 ```
 
-Or set at runtime:
+Or set at runtime without restarting:
 
 ```javascript
 db.adminCommand({
