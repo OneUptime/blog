@@ -61,7 +61,6 @@ Output with an index (good):
 ```text
 {
   stage: "FETCH",
-  filter: { status: { $eq: "pending" } },
   inputStage: {
     stage: "IXSCAN",
     keyPattern: { customerId: 1, status: 1 },
@@ -83,7 +82,7 @@ Stage glossary:
 | `IXSCAN` | Index scan - an index was used |
 | `FETCH` | Fetching documents from collection after an index scan |
 | `SORT` | In-memory sort - may indicate a missing sort index |
-| `SORT_MERGE` | Merging sorted streams - used for index intersection |
+| `AND_SORTED` | Merging sorted streams - used for index intersection |
 | `PROJECTION_COVERED` | Query answered entirely from index (no FETCH needed) |
 | `SHARD_MERGE` | Merging results from multiple shards |
 
