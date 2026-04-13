@@ -32,9 +32,9 @@ The command is synchronous and blocks the collection during execution. On WiredT
 Before running `compact`, check the ratio of data size to storage size:
 
 ```javascript
-const stats = db.orders.stats(1048576);
-print(`Data size: ${stats.size.toFixed(2)} MB`);
-print(`Storage size: ${stats.storageSize.toFixed(2)} MB`);
+const stats = db.orders.stats();
+print(`Data size: ${(stats.size / 1048576).toFixed(2)} MB`);
+print(`Storage size: ${(stats.storageSize / 1048576).toFixed(2)} MB`);
 print(`Fragmentation ratio: ${(stats.storageSize / stats.size).toFixed(2)}`);
 ```
 
@@ -59,16 +59,16 @@ mongosh --host <new-secondary>:27017 --eval 'db.runCommand({ compact: "orders" }
 After compaction, compare storage stats:
 
 ```javascript
-const after = db.orders.stats(1048576);
-print(`After compact - Storage size: ${after.storageSize.toFixed(2)} MB`);
+const after = db.orders.stats();
+print(`After compact - Storage size: ${(after.storageSize / 1048576).toFixed(2)} MB`);
 ```
 
 ## Alternatives to compact
 
 For continuous space reclamation, consider:
 
-- Using WiredTiger's built-in background checkpointing
-- Setting appropriate `wiredTigerEngineConfig` cache and journal settings
+- Using `autoCompact` (available in MongoDB 8.0+) for automatic background compaction
+- Using TTL indexes to automatically expire old documents and prevent unbounded growth
 - Rebuilding collections via `mongodump` and `mongorestore` for extreme cases
 
 ## Summary
