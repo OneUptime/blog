@@ -99,7 +99,7 @@ curl -X POST http://localhost:3500/v1.0/workflows/dapr/travel_booking_workflow/s
 ## Checking Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/travel_booking_workflow/instances/INSTANCE_ID
+curl http://localhost:3500/v1.0/workflows/dapr/INSTANCE_ID
 ```
 
 Response:
@@ -108,8 +108,14 @@ Response:
 {
   "instanceID": "abc-123",
   "workflowName": "travel_booking_workflow",
+  "createdAt": "2024-01-15T10:30:00Z",
+  "lastUpdatedAt": "2024-01-15T10:30:05Z",
   "runtimeStatus": "COMPLETED",
-  "serializedOutput": "{\"status\": \"compensated\", \"error\": \"hotel unavailable\"}"
+  "properties": {
+    "dapr.workflow.custom_status": "",
+    "dapr.workflow.input": "{\"orderId\": \"ord-999\", \"destination\": \"Paris\", \"nights\": 3}",
+    "dapr.workflow.output": "{\"status\": \"compensated\", \"error\": \"hotel unavailable\"}"
+  }
 }
 ```
 
