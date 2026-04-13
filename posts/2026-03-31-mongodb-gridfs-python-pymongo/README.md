@@ -8,7 +8,7 @@ Description: Learn how to upload, download, list, and delete files in MongoDB Gr
 
 ---
 
-PyMongo provides two APIs for working with GridFS: the high-level `gridfs.GridFS` class for simple operations and the lower-level `gridfs.GridIn`/`GridOut` classes for more control. This guide covers both, along with a Flask integration example.
+PyMongo provides two APIs for working with GridFS: the high-level `gridfs.GridFS` class for simple operations and the lower-level `gridfs.GridIn`/`GridOut` classes for more control. This guide covers the high-level `GridFS` API, along with a Flask integration example.
 
 ## Setup
 
