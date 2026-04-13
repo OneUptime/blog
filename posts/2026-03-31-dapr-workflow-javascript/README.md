@@ -23,7 +23,7 @@ npm install @dapr/dapr
 Activities are the individual steps within a workflow:
 
 ```javascript
-const { ActivityContext } = require("@dapr/dapr");
+const { WorkflowActivityContext } = require("@dapr/dapr");
 
 async function validateOrderActivity(ctx, orderId) {
   console.log(`Validating order: ${orderId}`);
@@ -51,23 +51,23 @@ async function shipOrderActivity(ctx, orderId) {
 ```javascript
 const { WorkflowContext } = require("@dapr/dapr");
 
-async function orderProcessingWorkflow(ctx, orderId) {
+const orderProcessingWorkflow = async function* (ctx, orderId) {
   console.log(`Starting workflow for order: ${orderId}`);
 
   // Call activities sequentially
-  const validation = await ctx.callActivity(validateOrderActivity, orderId);
+  const validation = yield ctx.callActivity(validateOrderActivity, orderId);
 
   if (!validation.valid) {
     return { status: "rejected", orderId };
   }
 
-  const payment = await ctx.callActivity(processPaymentActivity, orderId);
+  const payment = yield ctx.callActivity(processPaymentActivity, orderId);
 
   if (!payment.success) {
     return { status: "payment-failed", orderId };
   }
 
-  const shipping = await ctx.callActivity(shipOrderActivity, orderId);
+  const shipping = yield ctx.callActivity(shipOrderActivity, orderId);
 
   return {
     status: "completed",
@@ -75,7 +75,7 @@ async function orderProcessingWorkflow(ctx, orderId) {
     transactionId: payment.transactionId,
     trackingNumber: shipping.trackingNumber,
   };
-}
+};
 ```
 
 ## Registering and Starting the Runtime
@@ -126,16 +126,16 @@ await workflowClient.stop();
 
 ## Parallel Activity Execution
 
-Run activities in parallel using `Promise.all`:
+Run activities in parallel using `ctx.whenAll`:
 
 ```javascript
-async function parallelWorkflow(ctx, orderIds) {
+const parallelWorkflow = async function* (ctx, orderIds) {
   const tasks = orderIds.map((id) =>
     ctx.callActivity(validateOrderActivity, id)
   );
-  const results = await ctx.when_all(tasks);
+  const results = yield ctx.whenAll(tasks);
   return results;
-}
+};
 ```
 
 ## Summary
