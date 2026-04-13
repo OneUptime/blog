@@ -75,7 +75,7 @@ const results = await db.collection("orders").aggregate(
 ).toArray();
 ```
 
-Note: `allowDiskUse` is not available for regular `find()` queries - only aggregation pipelines.
+Note: Prior to MongoDB 4.4, `allowDiskUse` is only available for aggregation pipelines, not regular `find()` queries. See Fix 3 for `find()` support in MongoDB 4.4+.
 
 ## Fix 3 - Use cursor.allowDiskUse() in MongoDB 4.4+
 
