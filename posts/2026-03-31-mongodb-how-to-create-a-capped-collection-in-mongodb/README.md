@@ -81,13 +81,13 @@ db.logs.find().sort({ $natural: -1 });
 
 ## Updating Documents in a Capped Collection
 
-Updates are allowed as long as the document size does not change (or grow). You cannot increase a document's size:
+Updates are allowed as long as the document size does not change. You cannot increase or decrease a document's size:
 
 ```javascript
-// Allowed: updating a field to a value of the same or smaller size
+// Allowed: updating an existing field to a value of the same size
 db.logs.updateOne(
   { level: "WARN" },
-  { $set: { acknowledged: true } }
+  { $set: { level: "SEEN" } }
 );
 ```
 
@@ -97,7 +97,7 @@ db.logs.updateOne(
 - You cannot shard a capped collection.
 - Capped collections cannot use TTL indexes.
 - The `$out` aggregation stage cannot write to a capped collection.
-- Transactions on capped collections have limited support.
+- You cannot write to capped collections in transactions.
 
 ## Converting a Regular Collection to Capped
 
