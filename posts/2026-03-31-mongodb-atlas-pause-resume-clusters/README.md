@@ -10,15 +10,15 @@ Description: Pause and resume MongoDB Atlas clusters on a schedule to save costs
 
 ## Overview
 
-MongoDB Atlas allows M10 through M40 dedicated clusters to be paused when not in use. A paused cluster stops charging for compute while retaining all data and configuration. Pausing development and staging clusters outside working hours can reduce costs by 60% or more.
+MongoDB Atlas allows M10+ dedicated clusters to be paused when not in use. A paused cluster stops charging for compute while retaining all data and configuration. Pausing development and staging clusters outside working hours can reduce costs by 60% or more.
 
 ## Limitations
 
 ```text
-- Pausing is available on M10-M40 tiers only (not M0/Flex/Serverless)
-- A cluster cannot be paused if it has active Atlas Search nodes
+- Pausing is available on M10+ dedicated tiers only (not M0/Flex/Serverless/NVMe)
+- Pausing a cluster with Atlas Search nodes deletes Search Node data; it is rebuilt automatically on resume
 - Auto-pausing after inactivity (M0) differs from manual pausing
-- Clusters paused for more than 30 days are automatically terminated by Atlas
+- Clusters paused for more than 30 days are automatically resumed by Atlas
 ```
 
 ## Pausing a Cluster with the Atlas CLI
@@ -112,7 +112,7 @@ jobs:
 
 ## Waiting for the Cluster to Resume
 
-A resumed cluster enters `RESTARTING` state before becoming `IDLE`. Wait before running database operations.
+A resumed cluster enters `REPAIRING` state before becoming `IDLE`. Wait before running database operations.
 
 ```bash
 #!/usr/bin/env bash
