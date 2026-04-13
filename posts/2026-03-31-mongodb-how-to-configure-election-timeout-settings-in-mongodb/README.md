@@ -53,16 +53,6 @@ cfg.settings.heartbeatTimeoutSecs = 10  // default is 10 seconds
 rs.reconfig(cfg)
 ```
 
-## heartbeatIntervalMillis
-
-The interval between heartbeat pings:
-
-```javascript
-cfg = rs.conf()
-cfg.settings.heartbeatIntervalMillis = 2000  // default is 2000ms
-rs.reconfig(cfg)
-```
-
 ## Catchup Period
 
 After election, the new primary enters a catchup phase to apply any missing operations:
@@ -79,23 +69,21 @@ rs.reconfig(cfg)
 For high-availability production environments:
 
 ```javascript
-cfg.settings = {
-  electionTimeoutMillis: 10000,
-  heartbeatTimeoutSecs: 10,
-  heartbeatIntervalMillis: 2000,
-  catchUpTimeoutMillis: 60000
-}
+cfg = rs.conf()
+cfg.settings.electionTimeoutMillis = 10000
+cfg.settings.heartbeatTimeoutSecs = 10
+cfg.settings.catchUpTimeoutMillis = 60000
+rs.reconfig(cfg)
 ```
 
 For low-latency trading or SLA-sensitive workloads:
 
 ```javascript
-cfg.settings = {
-  electionTimeoutMillis: 5000,
-  heartbeatTimeoutSecs: 5,
-  heartbeatIntervalMillis: 1000,
-  catchUpTimeoutMillis: 30000
-}
+cfg = rs.conf()
+cfg.settings.electionTimeoutMillis = 5000
+cfg.settings.heartbeatTimeoutSecs = 5
+cfg.settings.catchUpTimeoutMillis = 30000
+rs.reconfig(cfg)
 ```
 
 ## Monitoring Election Events
@@ -110,4 +98,4 @@ Look for `electionDate` and `lastHeartbeatMessage` fields to confirm members are
 
 ## Summary
 
-MongoDB election timeouts are configured via `rs.reconfig()` on the `settings` object. The key parameters are `electionTimeoutMillis`, `heartbeatTimeoutSecs`, and `heartbeatIntervalMillis`. Reducing these values speeds up failover but increases sensitivity to transient network issues, so tuning should be based on your infrastructure's actual reliability characteristics.
+MongoDB election timeouts are configured via `rs.reconfig()` on the `settings` object. The key parameters are `electionTimeoutMillis`, `heartbeatTimeoutSecs`, `catchUpTimeoutMillis`, and `catchUpTakeoverDelayMillis`. Reducing these values speeds up failover but increases sensitivity to transient network issues, so tuning should be based on your infrastructure's actual reliability characteristics.
