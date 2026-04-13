@@ -39,12 +39,12 @@ Mode:            insert
 **Mode options:**
 - `insert` - always inserts (fails on duplicate `_id`)
 - `update` - updates matching documents or ignores non-matching
-- `upsert` - updates if found, inserts if not
 
-For upsert mode, set the Update Query Key field to the field used for matching:
+For upsert behavior, set Mode to `update`, enable the `Upsert` property, and set the Update Query Key field to the field used for matching:
 
 ```text
-Mode:             upsert
+Mode:             update
+Upsert:           true
 Update Query Key: eventId
 ```
 
@@ -86,10 +86,11 @@ Then reference it in your document via Expression Language if needed.
 
 ## Handling Duplicate Documents
 
-To prevent duplicate inserts, use upsert mode with a natural key:
+To prevent duplicate inserts, use update mode with upsert enabled and a natural key:
 
 ```text
-Mode:             upsert
+Mode:             update
+Upsert:           true
 Update Query Key: sourceRecordId
 ```
 
@@ -100,10 +101,10 @@ This ensures each source record is written exactly once, making the pipeline ide
 NiFi sends one document per FlowFile by default. To improve throughput, merge FlowFiles into batches before writing:
 
 ```text
-[GetKafka] --> [MergeContent] --> [SplitJson] --> [PutMongo]
+[ConsumeKafka] --> [MergeContent] --> [SplitJson] --> [PutMongo]
 ```
 
-Or use `PutMongoRecord` which internally handles batching through the record writer's batch size setting.
+Or use `PutMongoRecord` which processes all records in a FlowFile as a batch insert.
 
 ## Error Handling
 
@@ -127,4 +128,4 @@ For MongoDB-side monitoring, check the `opcounters.insert` metric in Atlas or vi
 
 ## Summary
 
-PutMongo and PutMongoRecord give NiFi flexible options for writing to MongoDB. Use `insert` mode for append-only pipelines, `upsert` mode for idempotent pipelines, and PutMongoRecord for schema-aware record streams. Always connect the failure relationship to a reliable error handler to prevent data loss.
+PutMongo and PutMongoRecord give NiFi flexible options for writing to MongoDB. Use `insert` mode for append-only pipelines, `update` mode with `Upsert` enabled for idempotent pipelines, and PutMongoRecord for schema-aware record streams. Always connect the failure relationship to a reliable error handler to prevent data loss.
