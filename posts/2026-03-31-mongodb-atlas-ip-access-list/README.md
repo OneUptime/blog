@@ -48,30 +48,27 @@ Add your current IP:
 ```bash
 # Get current IP and add it
 MY_IP=$(curl -s https://checkip.amazonaws.com)
-atlas accessLists create --ip "$MY_IP" --comment "Developer laptop"
+atlas accessLists create "$MY_IP" --comment "Developer laptop"
 ```
 
 Add a specific IP:
 
 ```bash
-atlas accessLists create \
-  --ip "203.0.113.50" \
+atlas accessLists create "203.0.113.50" \
   --comment "Production server static IP"
 ```
 
 Add a CIDR block:
 
 ```bash
-atlas accessLists create \
-  --cidr "10.0.0.0/16" \
+atlas accessLists create "10.0.0.0/16" \
   --comment "AWS VPC private range"
 ```
 
 Add a temporary entry (expires after a date):
 
 ```bash
-atlas accessLists create \
-  --ip "198.51.100.20" \
+atlas accessLists create "198.51.100.20" \
   --comment "Contractor access - expires end of week" \
   --deleteAfter "2026-04-07T23:59:59Z"
 ```
@@ -172,7 +169,7 @@ done
 
 # Add new IP
 echo "Adding new IP: $NEW_IP"
-atlas accessLists create --ip "$NEW_IP" --comment "$COMMENT"
+atlas accessLists create "$NEW_IP" --comment "$COMMENT"
 ```
 
 ## Using VPC CIDR for Static Ranges
@@ -181,8 +178,7 @@ For applications running in AWS, add the VPC CIDR block rather than individual i
 
 ```bash
 # Add entire VPC CIDR - all instances in the VPC can reach Atlas
-atlas accessLists create \
-  --cidr "10.10.0.0/16" \
+atlas accessLists create "10.10.0.0/16" \
   --comment "Production VPC us-east-1"
 ```
 
@@ -203,7 +199,7 @@ atlas accessLists list --output json | \
   done
 
 # Keep only the private endpoint VPC CIDR
-atlas accessLists create --cidr "10.0.0.0/8" --comment "Private ranges only"
+atlas accessLists create "10.0.0.0/8" --comment "Private ranges only"
 ```
 
 ## Summary
