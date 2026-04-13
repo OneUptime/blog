@@ -84,6 +84,7 @@ import (
     "net/http"
 
     dapr "github.com/dapr/go-sdk/client"
+    "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/http"
     "go.uber.org/zap"
     "myapp/logger"
@@ -100,7 +101,7 @@ func main() {
 
     s := daprd.NewService(":6001")
     s.AddServiceInvocationHandler("/api/orders", handleOrder)
-    s.AddTopicEventHandler(&daprd.Subscription{
+    s.AddTopicEventHandler(&common.Subscription{
         PubsubName: "pubsub",
         Topic:      "payments",
         Route:      "/events/payments",
@@ -113,8 +114,8 @@ func main() {
     }
 }
 
-func handleOrder(ctx context.Context, in *daprd.InvocationEvent) (*daprd.Content, error) {
-    fields := logger.DaprFields(in.TraceID, "")
+func handleOrder(ctx context.Context, in *common.InvocationEvent) (*common.Content, error) {
+    fields := logger.DaprFields("", "")
     log := logger.Logger.With(fields...)
 
     var order Order
@@ -150,16 +151,17 @@ func handleOrder(ctx context.Context, in *daprd.InvocationEvent) (*daprd.Content
     }
 
     log.Info("Order processed successfully")
-    return &daprd.Content{
+    return &common.Content{
         ContentType: "application/json",
         Data:        []byte(`{"status":"created"}`),
     }, nil
 }
 
-func handlePaymentEvent(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handlePaymentEvent(ctx context.Context, e *common.TopicEvent) (bool, error) {
     log := logger.Logger.With(
         zap.String("eventId", e.ID),
         zap.String("topic", e.Topic),
+        zap.String("traceParent", e.TraceParent),
     )
     log.Info("Processing payment event")
     // process...
