@@ -45,28 +45,27 @@ db.collectionGrowthLog.createIndex({ collectionName: 1, timestamp: 1 })
 
 // Take a snapshot function
 function snapshotCollectionGrowth(db, collectionNames) {
-  const snapshot = {
-    timestamp: new Date(),
-    collections: {}
-  }
+  const records = []
 
   collectionNames.forEach(name => {
     try {
       const stats = db.getCollection(name).stats({ scale: 1048576 })
-      snapshot.collections[name] = {
+      records.push({
+        collectionName: name,
+        timestamp: new Date(),
         documentCount: stats.count,
         dataSizeMB: stats.size,
         storageSizeMB: stats.storageSize,
         indexSizeMB: stats.totalIndexSize,
         avgDocSizeBytes: stats.avgObjSize
-      }
+      })
     } catch (e) {
-      snapshot.collections[name] = { error: e.message }
+      records.push({ collectionName: name, timestamp: new Date(), error: e.message })
     }
   })
 
-  db.collectionGrowthLog.insertOne(snapshot)
-  return snapshot
+  db.collectionGrowthLog.insertMany(records)
+  return records
 }
 
 // Take a snapshot now
@@ -84,18 +83,18 @@ exports = async function() {
   const db = cluster.db("mydb")
 
   const collections = ["orders", "users", "events"]
-  const adminDb = cluster.db("admin")
 
-  const records = collections.map(name => {
-    const stats = db.collection(name).stats()
-    return {
+  const records = []
+  for (const name of collections) {
+    const stats = await db.command({ collStats: name })
+    records.push({
       collectionName: name,
       timestamp: new Date(),
       documentCount: stats.count,
       storageSizeMB: Math.round(stats.storageSize / 1048576 * 100) / 100,
       dataSizeMB: Math.round(stats.size / 1048576 * 100) / 100
-    }
-  })
+    })
+  }
 
   await db.collection("collectionGrowthLog").insertMany(records)
 }
@@ -132,10 +131,15 @@ db.collectionGrowthLog.aggregate([
     $setWindowFields: {
       sortBy: { sampleTime: 1 },
       output: {
-        dailyDocGrowth: {
-          $subtract: ["$maxCount", { $shift: { output: "$maxCount", by: -1 } }]
+        prevDayCount: {
+          $shift: { output: "$maxCount", by: -1 }
         }
       }
+    }
+  },
+  {
+    $addFields: {
+      dailyDocGrowth: { $subtract: ["$maxCount", "$prevDayCount"] }
     }
   }
 ])
