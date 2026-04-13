@@ -52,53 +52,60 @@ const { MongoClient, ObjectId } = require("mongodb")
 const { v4: uuidv4 } = require("uuid")
 const path = require("path")
 
-const app = express()
-const s3 = new S3Client({ region: process.env.AWS_REGION })
-const mongo = new MongoClient(process.env.MONGODB_URI)
-await mongo.connect()
-const db = mongo.db("fileservice")
+async function main() {
+  const app = express()
+  const s3 = new S3Client({ region: process.env.AWS_REGION })
+  const mongo = new MongoClient(process.env.MONGODB_URI)
+  await mongo.connect()
+  const db = mongo.db("fileservice")
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
-  fileFilter: (req, file, cb) => {
-    const allowed = ["image/jpeg", "image/png", "application/pdf", "text/csv"]
-    cb(null, allowed.includes(file.mimetype))
-  }
-})
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+    fileFilter: (req, file, cb) => {
+      const allowed = ["image/jpeg", "image/png", "application/pdf", "text/csv"]
+      cb(null, allowed.includes(file.mimetype))
+    }
+  })
 
-app.post("/upload", upload.single("file"), async (req, res) => {
-  try {
-    const fileId = uuidv4()
-    const ext = path.extname(req.file.originalname)
-    const s3Key = `files/${req.user.id}/${fileId}${ext}`
+  app.post("/upload", upload.single("file"), async (req, res) => {
+    try {
+      const fileId = uuidv4()
+      const ext = path.extname(req.file.originalname)
+      const s3Key = `files/${req.user.id}/${fileId}${ext}`
 
-    await s3.send(new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET,
-      Key: s3Key,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype
-    }))
+      await s3.send(new PutObjectCommand({
+        Bucket: process.env.S3_BUCKET,
+        Key: s3Key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype
+      }))
 
-    const result = await db.collection("files").insertOne({
-      filename: req.file.originalname,
-      displayName: req.body.displayName || req.file.originalname,
-      s3Key,
-      s3Bucket: process.env.S3_BUCKET,
-      contentType: req.file.mimetype,
-      size: req.file.size,
-      uploadedBy: new ObjectId(req.user.id),
-      tags: req.body.tags ? req.body.tags.split(",").map(t => t.trim()) : [],
-      isPublic: req.body.isPublic === "true",
-      downloadCount: 0,
-      createdAt: new Date()
-    })
+      const result = await db.collection("files").insertOne({
+        filename: req.file.originalname,
+        displayName: req.body.displayName || req.file.originalname,
+        s3Key,
+        s3Bucket: process.env.S3_BUCKET,
+        contentType: req.file.mimetype,
+        size: req.file.size,
+        uploadedBy: new ObjectId(req.user.id),
+        tags: req.body.tags ? req.body.tags.split(",").map(t => t.trim()) : [],
+        isPublic: req.body.isPublic === "true",
+        downloadCount: 0,
+        createdAt: new Date()
+      })
 
-    res.status(201).json({ fileId: result.insertedId })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
+      res.status(201).json({ fileId: result.insertedId })
+    } catch (err) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  // ... additional routes (see sections below) ...
+
+  app.listen(3000)
+}
+main()
 ```
 
 ## Download with Pre-Signed URLs
