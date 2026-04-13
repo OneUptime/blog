@@ -83,7 +83,7 @@ Configure Fluent Bit to use HTTP output:
     Host        log-receiver.logging.svc.cluster.local
     Port        8080
     URI         /logs
-    Format      json_lines
+    Format      json
     tls         off
 ```
 
