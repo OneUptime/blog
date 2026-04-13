@@ -44,8 +44,8 @@ client = MongoClient("mongodb://localhost:27017/?retryWrites=true")
 MongoClientSettings settings = MongoClientSettings.builder()
     .retryWrites(true)
     .applyConnectionString(new ConnectionString("mongodb://localhost:27017"))
-    .build()
-MongoClient client = MongoClients.create(settings)
+    .build();
+MongoClient client = MongoClients.create(settings);
 ```
 
 ## What Retryable Writes Protect Against
@@ -74,7 +74,7 @@ Not all write operations are retryable:
 ```javascript
 // RETRYABLE: these are automatically retried
 db.collection.insertOne()
-db.collection.insertMany()        // only in ordered mode with all inserts
+db.collection.insertMany()
 db.collection.updateOne()
 db.collection.replaceOne()
 db.collection.deleteOne()
@@ -143,28 +143,19 @@ Inside a transaction, retryable writes use the transaction's session. The entire
 
 ```javascript
 const session = client.startSession()
-let retries = 0
 
-while (retries < 3) {
-  try {
-    await session.withTransaction(async () => {
-      await ordersCollection.insertOne({ item: "abc", qty: 5 }, { session })
-      await inventoryCollection.updateOne(
-        { item: "abc" },
-        { $inc: { qty: -5 } },
-        { session }
-      )
-    })
-    break  // success
-  } catch (err) {
-    if (err.hasErrorLabel("TransientTransactionError") && retries < 2) {
-      retries++
-      continue
-    }
-    throw err
-  } finally {
-    await session.endSession()
-  }
+try {
+  // withTransaction() automatically retries on TransientTransactionError
+  await session.withTransaction(async () => {
+    await ordersCollection.insertOne({ item: "abc", qty: 5 }, { session })
+    await inventoryCollection.updateOne(
+      { item: "abc" },
+      { $inc: { qty: -5 } },
+      { session }
+    )
+  })
+} finally {
+  await session.endSession()
 }
 ```
 
