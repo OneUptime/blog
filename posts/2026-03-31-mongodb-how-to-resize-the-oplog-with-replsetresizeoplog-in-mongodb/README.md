@@ -61,7 +61,7 @@ use local
 var start = db.oplog.rs.find().sort({ $natural: 1 }).limit(1).next();
 var end = db.oplog.rs.find().sort({ $natural: -1 }).limit(1).next();
 
-var duration = (end.ts.getHighBits() - start.ts.getHighBits()) / 3600;  // hours
+var duration = (end.ts.t - start.ts.t) / 3600;  // hours
 var sizeGB = db.oplog.rs.stats().size / 1024 / 1024 / 1024;
 var rateGBPerHour = sizeGB / duration;
 
@@ -123,9 +123,11 @@ use local
 db.oplog.rs.stats().maxSize / 1024 / 1024 + " MB current max"
 ```
 
-## Making the Resize Permanent
+## Persisting the Resize
 
-`replSetResizeOplog` is temporary - it resets to the configured size on restart. To make it permanent, set `replication.oplogSizeMB` in `mongod.conf`:
+Starting in MongoDB 4.0, `replSetResizeOplog` changes are persistent - the new oplog size survives restarts. In MongoDB 3.6, the change was temporary and would reset on restart.
+
+It is still good practice to set `replication.oplogSizeMB` in `mongod.conf` so that the intended size is explicit in your configuration:
 
 ```yaml
 # /etc/mongod.conf
@@ -134,17 +136,7 @@ replication:
   oplogSizeMB: 20480
 ```
 
-On Atlas, configure via the Atlas UI under cluster settings or API:
-
-```bash
-curl --user "publicKey:privateKey" --digest \
-  --request PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}" \
-  --header "Content-Type: application/json" \
-  --data '{"replicationSpecs": [{"regionsConfig": {"US_EAST_1": {"analyticsNodes": 0, "electableNodes": 3, "priority": 7, "readOnlyNodes": 0}}}]}'
-```
-
-On Atlas, the oplog size is automatically managed and scales with cluster tier.
+On Atlas, the oplog size is automatically managed and scales with cluster tier. You can configure a minimum oplog window through the Atlas UI under cluster settings.
 
 ## Shrinking the Oplog
 
@@ -172,4 +164,4 @@ Add more headroom if:
 
 ## Summary
 
-`replSetResizeOplog` dynamically resizes the oplog on a running MongoDB node without requiring a restart. Calculate the required size based on write throughput and desired window duration, run the command on all replica set members, and persist the configuration in `mongod.conf` to survive restarts. Larger oplogs provide longer windows for secondary catch-up, change stream resume tokens, and migration operations.
+`replSetResizeOplog` dynamically resizes the oplog on a running MongoDB node without requiring a restart. Starting in MongoDB 4.0, the change persists through restarts. Calculate the required size based on write throughput and desired window duration, run the command on all replica set members, and set `oplogSizeMB` in `mongod.conf` to keep your configuration explicit. Larger oplogs provide longer windows for secondary catch-up, change stream resume tokens, and migration operations.
