@@ -51,7 +51,7 @@ insert query update delete getmore command dirty  used flushes vsize   res qrw a
 Column meanings:
 - `insert/query/update/delete` - operations per second for each type
 - `getmore` - getMore operations per second (cursor iteration)
-- `command` - commands per second (shown as `executed|failed`)
+- `command` - commands per second (shown as `local|replicated`)
 - `dirty` - percentage of WiredTiger cache that is dirty (modified, not yet flushed)
 - `used` - percentage of WiredTiger cache currently in use
 - `flushes` - WiredTiger checkpoints per interval
@@ -90,12 +90,13 @@ The `--discover` flag automatically connects to all members of a replica set and
 mongostat --discover --host "rs0/mongo1:27017"
 ```
 
-Output shows a column per host:
+Output shows a row per host with additional `set` and `repl` columns:
 
 ```text
-                 mongo1:27017             mongo2:27017             mongo3:27017
-insert query update delete ... conn       insert query ... conn       insert query ... conn
-     5   123      8      1 ...   10            0     3 ...    9            0     2 ...    9
+         host insert query update delete getmore command dirty  used flushes  vsize   res qrw arw net_in net_out conn set repl                time
+mongo1:27017      5   123      8      1       0    45|0  0.1% 50.3%       0  1.57G 1.02G 0|0 0|0  15.2k  234.5k   10 rs0  PRI Mar 31 10:00:02.000
+mongo2:27017      0     3      0      0       0     2|0  0.0% 50.1%       0  1.57G 1.02G 0|0 0|0   158b   62.4k    9 rs0  SEC Mar 31 10:00:02.000
+mongo3:27017      0     2      0      0       0     2|0  0.0% 50.1%       0  1.57G 1.02G 0|0 0|0   158b   62.4k    9 rs0  SEC Mar 31 10:00:02.000
 ```
 
 ## Interpreting Key Metrics
@@ -137,16 +138,16 @@ mongostat --columns "insert,query,update,delete,conn"
 mongostat --json
 
 # Parse with Python
-mongostat --json | python3 -c "
+mongostat --json | python3 -c '
 import sys, json
 for line in sys.stdin:
     try:
         data = json.loads(line)
         for host, metrics in data.items():
-            print(f'{host}: queries={metrics["query"]}, conn={metrics["conn"]}')
+            print("{}: queries={}, conn={}".format(host, metrics["query"], metrics["conn"]))
     except json.JSONDecodeError:
         pass
-"
+'
 ```
 
 ## Summary
