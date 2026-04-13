@@ -60,7 +60,7 @@ db.adminCommand({
 Check the health log for dbCheck results:
 
 ```javascript
-db.getSiblingDB("local").healthlog
+db.getSiblingDB("local").system.healthlog
   .find({ severity: { $ne: "info" } })
   .sort({ when: -1 })
   .limit(20);
@@ -107,15 +107,33 @@ const corruptIds = [ObjectId("..."), ObjectId("...")]; // from validate output
 db.orders.find({ _id: { $in: corruptIds } });
 ```
 
-If the documents cannot be read, restore them from a backup:
+If the documents cannot be read, restore them from a backup. Restore the collection to a temporary namespace, then copy the needed documents back:
 
 ```bash
+# Restore the backup to a temporary collection
 mongorestore \
-  --uri "mongodb://localhost:27017" \
-  --db shop \
+  --host localhost --port 27017 \
+  --db shop_restore_tmp \
   --collection orders \
-  --query '{"_id": {"$in": [{"$oid": "..."}]}}' \
   /path/to/backup/shop/orders.bson
+```
+
+Then copy the specific corrupt documents from the temporary collection:
+
+```javascript
+const corruptIds = [ObjectId("..."), ObjectId("...")];
+db.getSiblingDB("shop_restore_tmp").orders
+  .find({ _id: { $in: corruptIds } })
+  .forEach(doc => {
+    db.getSiblingDB("shop").orders.replaceOne(
+      { _id: doc._id },
+      doc,
+      { upsert: true }
+    );
+  });
+
+// Clean up
+db.getSiblingDB("shop_restore_tmp").dropDatabase();
 ```
 
 ## Step 6: Enable Runtime Corruption Detection
