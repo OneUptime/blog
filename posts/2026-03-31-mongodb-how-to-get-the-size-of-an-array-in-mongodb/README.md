@@ -10,7 +10,7 @@ Description: Learn how to get the size of an array field in MongoDB using $size 
 
 ## Introduction
 
-MongoDB provides multiple ways to get the size of an array field. The `$size` operator in queries matches documents where an array has a specific length, while `$size` in aggregation returns the count of elements. For range queries on array size, you need a workaround using `$where` or a stored size field. This guide covers all approaches with practical examples.
+MongoDB provides multiple ways to get the size of an array field. The `$size` operator in queries matches documents where an array has a specific length, while `$size` in aggregation returns the count of elements. For range queries on array size, you can use `$expr` with the aggregation `$size` operator or a stored size field. This guide covers all approaches with practical examples.
 
 ## Getting Array Size in Aggregation
 
