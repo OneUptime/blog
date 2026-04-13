@@ -55,14 +55,14 @@ Atlas can alert you when spending exceeds a threshold.
 curl -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
   --header "Content-Type: application/json" \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v2/orgs/${ORG_ID}/alertConfigs" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/alertConfigs" \
   --data '{
-    "eventTypeName": "CREDIT_CARD_CURRENT_BILL_THRESHOLD_EXCEEDED",
+    "eventTypeName": "PENDING_INVOICE_OVER_THRESHOLD",
     "enabled": true,
     "threshold": {
       "operator": "GREATER_THAN",
       "threshold": 500,
-      "units": "RAW_COUNT"
+      "units": "RAW"
     },
     "notifications": [
       {
@@ -79,7 +79,7 @@ curl -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
 **Pause development clusters overnight.**
 
 ```bash
-# Pause a non-production cluster (M10-M40 only, not M0/Flex)
+# Pause a non-production cluster (M10+ dedicated clusters only, not M0/Flex)
 atlas clusters pause dev-cluster --projectId <PROJECT_ID>
 ```
 
@@ -103,9 +103,15 @@ jobs:
 **Right-size clusters using the Performance Advisor.**
 
 ```bash
-# Get cluster metrics to assess right-sizing
+# List processes to find the process ID (hostname:port) for your cluster
 curl -s -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
-  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/clusters/my-cluster/metrics/measurements?granularity=P1D&period=P7D&m=SYSTEM_CPU_PERCENT&m=SYSTEM_MEMORY_PERCENT" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/processes" \
+  | jq '.results[] | {id: .id, userAlias: .userAlias}'
+
+# Get process metrics to assess right-sizing
+PROCESS_ID="your-hostname:27017"
+curl -s -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/processes/${PROCESS_ID}/measurements?granularity=P1D&period=P7D&m=PROCESS_CPU_USER&m=SYSTEM_MEMORY_USED" \
   | jq '.measurements[] | {name: .name, dataPoints: [.dataPoints[-3:][].value]}'
 ```
 
