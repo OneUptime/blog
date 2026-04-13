@@ -131,7 +131,7 @@ const accountStatus = req.headers["x-jwt-extension_accountstatus"];
 # After obtaining a token from your B2C login flow
 TOKEN="eyJhbGci..."
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:3500/v1.0/invoke/consumer-api/method/profile
+  http://localhost:3500/v1.0/invoke/consumer-api/method/api/profile
 ```
 
 ## Summary
