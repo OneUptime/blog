@@ -101,8 +101,7 @@ OUTPUT_DIR="/backup/exports/$(date +%Y%m%d)"
 mkdir -p "${OUTPUT_DIR}"
 
 # Get list of collections
-COLLECTIONS=$(mongosh "${MONGO_URI}" --quiet --eval   "db.getSiblingDB('${DB}').getCollectionNames().join('
-')")
+COLLECTIONS=$(mongosh "${MONGO_URI}" --quiet --eval "db.getSiblingDB('${DB}').getCollectionNames().join('\n')")
 
 for COLL in ${COLLECTIONS}; do
   echo "Exporting ${DB}.${COLL}..."
