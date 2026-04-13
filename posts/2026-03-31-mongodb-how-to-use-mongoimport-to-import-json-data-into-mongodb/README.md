@@ -78,7 +78,7 @@ mongoimport   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   --col
 ## Handling Import Errors
 
 ```bash
-# Stop on first error (default behavior - use --stopOnError)
+# Stop on first error (by default mongoimport continues past errors)
 mongoimport   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   --collection orders   --stopOnError   --file /tmp/orders.json
 
 # Continue on errors and report them
@@ -90,10 +90,10 @@ grep -E "imported|failed|error" /tmp/import-log.txt
 
 ## Importing with Type Coercion
 
-Sometimes JSON files have string values that should be stored as numbers or dates. Use mongoimport's type hints:
+For CSV or TSV imports, mongoimport can coerce field types using `--columnsHaveTypes`. This does not apply to JSON imports, where types are preserved from the JSON itself:
 
 ```bash
-# Import with field type specifications
+# Import CSV with field type specifications (--columnsHaveTypes is only valid for CSV/TSV)
 mongoimport   --uri "mongodb://admin:secret@localhost:27017"   --db mydb   --collection orders   --columnsHaveTypes   --fields "orderId.string(),total.double(),createdAt.date(2006-01-02)"   --file /tmp/orders.csv   --type csv
 ```
 
