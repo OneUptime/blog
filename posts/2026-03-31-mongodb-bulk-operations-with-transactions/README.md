@@ -44,7 +44,7 @@ async function bulkTransfer(client, transfers) {
       const debitResult = await debitBulk.execute();
 
       // Verify all debits succeeded
-      if (debitResult.nModified !== transfers.length) {
+      if (debitResult.modifiedCount !== transfers.length) {
         throw new Error('Insufficient funds for one or more transfers');
       }
 
