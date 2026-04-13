@@ -15,13 +15,13 @@ Apache Beam provides a unified programming model for batch and streaming data pi
 ## Installing Dependencies
 
 ```bash
-pip install apache-beam[gcp] pymongo
+pip install apache-beam pymongo
 ```
 
-For the MongoDB connector:
+The `pymongo` library is included in Apache Beam's core dependencies, but listing it explicitly ensures you have a compatible version. For Google Cloud Dataflow support, add the GCP extras:
 
 ```bash
-pip install apache-beam apache-beam[mongodb]
+pip install apache-beam[gcp] pymongo
 ```
 
 ## Reading from MongoDB
