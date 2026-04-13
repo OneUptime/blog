@@ -41,7 +41,7 @@ Note that GeoJSON uses `[longitude, latitude]` order, which is the opposite of t
 
 ## Creating a 2dsphere Index
 
-Without a 2dsphere index, geospatial operators like `$near` and `$geoWithin` will not work.
+A 2dsphere index is required for operators like `$near` and significantly improves performance for `$geoWithin`.
 
 ```javascript
 db.locations.createIndex({ location: "2dsphere" });
