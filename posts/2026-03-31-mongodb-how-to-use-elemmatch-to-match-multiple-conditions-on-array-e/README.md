@@ -23,13 +23,13 @@ Consider a `scores` collection:
 { _id: 2, results: [{ score: 60, grade: "C" }, { score: 95, grade: "A" }] }
 ```
 
-This query finds both documents (incorrectly):
+This query finds both documents:
 
 ```javascript
 db.scores.find({ "results.score": { $gt: 80 }, "results.grade": "A" })
 ```
 
-Document 2 matches because `score: 95 > 80` and `grade: "A"` exist - but not on the same element. Document 2 has score 95 on an "A" element, so this happens to be correct here. But consider a more problematic case:
+Both documents happen to match correctly here because each has an element with both `score > 80` and `grade: "A"`. But this approach is fundamentally flawed because MongoDB evaluates each condition independently across all array elements. Consider a more problematic case:
 
 ```javascript
 { _id: 3, results: [{ score: 90, grade: "B" }, { score: 50, grade: "A" }] }
