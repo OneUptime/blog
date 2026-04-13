@@ -31,7 +31,7 @@ exports = async function() {
 };
 ```
 
-## POST Request with JSON Body
+## POST Request with Form-Encoded Body
 
 ```javascript
 exports = async function(orderDocument) {
@@ -175,4 +175,4 @@ async function callWithBackoff(url, headers, maxAttempts = 3) {
 
 ## Summary
 
-`context.http` in Atlas Functions supports GET, POST, PUT, PATCH, and DELETE requests with custom headers and bodies. Store API credentials as Atlas Secrets accessed via `context.values.get()`. Use `Promise.all` for parallel requests to reduce latency, implement exponential backoff for rate-limited APIs, and record webhook delivery status back in MongoDB documents for observability.
+`context.http` in Atlas Functions supports GET, POST, PUT, PATCH, and DELETE requests with custom headers and bodies. Store API credentials as Atlas Secrets accessed via `context.values.get()`. Use `Promise.all` for parallel requests to reduce latency, implement retry logic with backoff for rate-limited APIs, and record webhook delivery status back in MongoDB documents for observability.
