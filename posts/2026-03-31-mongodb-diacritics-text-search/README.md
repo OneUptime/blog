@@ -17,8 +17,8 @@ db.restaurants.createIndex({ name: "text" })
 
 db.restaurants.insertMany([
   { name: "Café du Monde" },
-  { name: "Café Etienne" },
-  { name: "Caffe Reggio" }
+  { name: "Cafè Etienne" },
+  { name: "Cafe Reggio" }
 ])
 
 // All three match because accents are folded
