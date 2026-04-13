@@ -44,7 +44,7 @@ mongodb+srv://username:password@cluster0.abc123.mongodb.net/mydb?retryWrites=tru
 Test the SRV DNS resolution:
 
 ```bash
-nslookup _mongodb._tcp.cluster0.abc123.mongodb.net
+nslookup -type=SRV _mongodb._tcp.cluster0.abc123.mongodb.net
 ```
 
 If DNS resolution fails, check that your DNS server can resolve Atlas SRV records, or use the standard connection string with explicit hosts:
@@ -109,7 +109,7 @@ If `mongosh` connects but your application does not, compare driver versions and
 Verify the Atlas cluster is running and not in maintenance mode:
 
 1. Check Atlas Dashboard - cluster status should be green
-2. Check Atlas Status page at status.mongodb.com
+2. Check Atlas Status page at status.cloud.mongodb.com
 3. Review Atlas alerts for any ongoing incidents
 
 ## Summary
