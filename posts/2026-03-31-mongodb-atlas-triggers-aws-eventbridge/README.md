@@ -45,13 +45,14 @@ aws.partner/mongodb.com/stitch.trigger/<trigger-id>
 After Atlas creates the Partner Event Source, activate it in the AWS Console:
 
 ```bash
-# List partner event sources
-aws events list-partner-event-source-accounts \
-  --event-source-name "aws.partner/mongodb.com/stitch.trigger/<trigger-id>"
+# List partner event sources shared with your account
+aws events list-event-sources \
+  --name-prefix "aws.partner/mongodb.com"
 
 # Create an event bus from the partner source
+# The bus name must exactly match the partner event source name
 aws events create-event-bus \
-  --name "mongodb-atlas-events" \
+  --name "aws.partner/mongodb.com/stitch.trigger/<trigger-id>" \
   --event-source-name "aws.partner/mongodb.com/stitch.trigger/<trigger-id>"
 ```
 
@@ -63,17 +64,17 @@ Route Atlas events to a Lambda function:
 # Create a rule matching all Atlas trigger events
 aws events put-rule \
   --name "atlas-trigger-all" \
-  --event-bus-name "mongodb-atlas-events" \
-  --event-pattern '{"source": ["aws.partner/mongodb.com"]}' \
+  --event-bus-name "aws.partner/mongodb.com/stitch.trigger/<trigger-id>" \
+  --event-pattern '{"source": [{"prefix": "aws.partner/mongodb.com"}]}' \
   --state ENABLED
 
 # Add Lambda as the target
 aws events put-targets \
   --rule "atlas-trigger-all" \
-  --event-bus-name "mongodb-atlas-events" \
+  --event-bus-name "aws.partner/mongodb.com/stitch.trigger/<trigger-id>" \
   --targets '[{
     "Id": "process-atlas-event",
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:process-mongodb-change"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:process-mongodb-change"
   }]'
 ```
 
@@ -121,7 +122,7 @@ Route only insert events for the "orders" collection to one Lambda, and delete e
 
 ```json
 {
-  "source": ["aws.partner/mongodb.com"],
+  "source": [{"prefix": "aws.partner/mongodb.com"}],
   "detail": {
     "operationType": ["insert"],
     "ns": {
