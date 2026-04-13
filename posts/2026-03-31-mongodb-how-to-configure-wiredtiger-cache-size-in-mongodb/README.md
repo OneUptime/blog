@@ -114,9 +114,9 @@ Check the cache eviction and miss rates to determine if the cache is undersized:
 ```javascript
 const stats = db.serverStatus().wiredTiger.cache;
 
-const evictions = stats["pages evicted by application threads"];
-const reads = stats["pages read into cache"];
-const hitRatio = 1 - reads / (reads + evictions);
+const requested = stats["pages requested from the cache"];
+const readFromDisk = stats["pages read into cache"];
+const hitRatio = 1 - (readFromDisk / requested);
 
 print(`Cache hit ratio: ${(hitRatio * 100).toFixed(1)}%`);
 ```
@@ -139,9 +139,9 @@ storage:
       prefixCompression: true
 ```
 
-## Dynamic Adjustment (MongoDB 4.4+)
+## Dynamic Adjustment (MongoDB 3.2+)
 
-As of MongoDB 4.4, you can change the cache size at runtime without restart:
+As of MongoDB 3.2, you can change the cache size at runtime without restart:
 
 ```javascript
 db.adminCommand({
@@ -158,4 +158,4 @@ db.adminCommand({ getParameter: 1, wiredTigerEngineRuntimeConfig: 1 });
 
 ## Summary
 
-WiredTiger cache size is one of the most impactful MongoDB performance settings. The default formula works well for general workloads, but dedicated database servers benefit from increasing it to 60-70% of RAM. Monitor cache hit ratios via `serverStatus` to detect undersizing, and use dynamic configuration changes in MongoDB 4.4+ to tune without downtime.
+WiredTiger cache size is one of the most impactful MongoDB performance settings. The default formula works well for general workloads, but dedicated database servers benefit from increasing it to 50-60% of RAM. Monitor cache hit ratios via `serverStatus` to detect undersizing, and use dynamic configuration changes in MongoDB 3.2+ to tune without downtime.
