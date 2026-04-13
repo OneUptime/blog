@@ -10,7 +10,7 @@ Description: Implement Dapr workflow activities in Python using the dapr-ext-wor
 
 ## Overview
 
-Dapr workflow activities in Python are regular functions decorated with the `@activity` decorator (or registered directly with the `WorkflowRuntime`). They receive input, perform side effects, and return output. Activities can call external services, interact with databases, or publish events - all the work that workflow orchestrators must not do directly.
+Dapr workflow activities in Python are regular functions registered with the `WorkflowRuntime` (either via explicit `register_activity` calls or the `@wfr.activity` decorator on a runtime instance). They receive input, perform side effects, and return output. Activities can call external services, interact with databases, or publish events - all the work that workflow orchestrators must not do directly.
 
 ## Installation
 
@@ -138,21 +138,21 @@ if __name__ == "__main__":
 from dapr.ext.workflow import DaprWorkflowClient
 
 def start_order_workflow(order_id: str):
-    with DaprWorkflowClient() as client:
-        instance_id = client.schedule_new_workflow(
-            workflow=order_fulfillment_workflow,
-            input=order_id,
-            instance_id=f"order-{order_id}"
-        )
-        print(f"Started workflow: {instance_id}")
+    client = DaprWorkflowClient()
+    instance_id = client.schedule_new_workflow(
+        workflow=order_fulfillment_workflow,
+        input=order_id,
+        instance_id=f"order-{order_id}"
+    )
+    print(f"Started workflow: {instance_id}")
 
-        # Poll for completion
-        state = client.wait_for_workflow_completion(
-            instance_id=instance_id,
-            timeout_in_seconds=30
-        )
-        print(f"Workflow status: {state.runtime_status}")
-        return state.serialized_output
+    # Poll for completion
+    state = client.wait_for_workflow_completion(
+        instance_id=instance_id,
+        timeout_in_seconds=30
+    )
+    print(f"Workflow status: {state.runtime_status}")
+    return state.serialized_output
 ```
 
 ## Testing Activities in Isolation
