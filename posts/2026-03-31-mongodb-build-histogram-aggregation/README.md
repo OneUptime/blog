@@ -10,7 +10,7 @@ Description: Learn how to build a histogram in MongoDB using the $bucket and $bu
 
 ## Introduction
 
-A histogram groups numeric values into ranges (buckets) and counts how many documents fall into each range. MongoDB provides two dedicated aggregation stages for this: `$bucket` for fixed boundaries and `$bucketAuto` for automatic equal-width buckets.
+A histogram groups numeric values into ranges (buckets) and counts how many documents fall into each range. MongoDB provides two dedicated aggregation stages for this: `$bucket` for fixed boundaries and `$bucketAuto` for automatic evenly distributed buckets.
 
 ## Sample Data
 
