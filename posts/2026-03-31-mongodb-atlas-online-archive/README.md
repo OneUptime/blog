@@ -90,7 +90,7 @@ const annualRevenue = await db.collection("events").aggregate([
 
 ## Step 4: Query Only the Archive (Exclude Cluster Data)
 
-Target only archived data by adding a filter on `$arch.status` (the internal archive flag) or by using the archive-specific collection in the federated view.
+Target only archived data by connecting to the **archive-only** federated database instance (Atlas creates a separate connection string for archive-only queries in addition to the combined cluster + archive endpoint).
 
 ```javascript
 // Use partition field filters to limit archive scans
@@ -107,7 +107,7 @@ const q1Archive = await db.collection("events").find({
 
 ```javascript
 // Use the Atlas Admin API to check archive status
-// GET /api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives
+// GET /api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives
 
 // Via Atlas UI: Online Archive tab shows:
 // - Status (Active / Paused)
@@ -122,7 +122,7 @@ You can pause archival to stop new documents from being moved without deleting e
 
 ```javascript
 // Atlas Admin API - pause archival rule
-// PATCH /api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}
+// PATCH /api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}
 // { "paused": true }
 
 // Resume:
@@ -131,9 +131,10 @@ You can pause archival to stop new documents from being moved without deleting e
 
 ## Step 7: Restore Archived Data to the Cluster
 
-If you need archived data back in the cluster for processing, use Atlas Data Federation aggregation with `$out` to write it back.
+If you need archived data back in the cluster for processing, pause the archive first, then use Atlas Data Federation aggregation with `$merge` to write it back. Connect using the **archive-only** connection string.
 
 ```javascript
+// Pause the archive before restoring data, then connect to the archive-only endpoint
 // Write archived data back to a collection in the live cluster
 await db.collection("events").aggregate([
   {
@@ -142,9 +143,16 @@ await db.collection("events").aggregate([
     }
   },
   {
-    $out: {
-      db:   "production",
-      coll: "events_q1_2025_restored"
+    $merge: {
+      into: {
+        atlas: {
+          clusterName: "myCluster",
+          db: "production",
+          coll: "events_q1_2025_restored"
+        }
+      },
+      whenMatched: "keepExisting",
+      whenNotMatched: "insert"
     }
   }
 ]).toArray();
@@ -153,9 +161,9 @@ await db.collection("events").aggregate([
 ## Cost Model
 
 Online Archive charges are based on:
-- **Data scanned** per query (GB scanned) - optimise by using partition fields in queries.
-- **Data stored** in S3 (GB per month) - significantly cheaper than Atlas cluster storage.
-- **Compute** for the federated query engine.
+- **Data processed** per query ($5 per TB, 10 MB minimum per query) - optimise by using partition fields in queries.
+- **Data stored** in cloud object storage (GB per month) - significantly cheaper than Atlas cluster storage.
+- **Data returned/transferred** from queries.
 
 ```javascript
 // Cost optimisation: always include partition fields in archive queries
@@ -178,4 +186,4 @@ db.collection("events").find({
 
 ## Summary
 
-MongoDB Atlas Online Archive automatically moves documents older than a configured threshold from your Atlas cluster to managed S3 storage, reducing cluster costs while maintaining query access via a federated endpoint. Connect to the federated URI to query hot and cold data together, use partition fields in filters for cost-efficient scans, and restore archived data back to the cluster with an aggregation `$out` stage when needed.
+MongoDB Atlas Online Archive automatically moves documents older than a configured threshold from your Atlas cluster to managed S3 storage, reducing cluster costs while maintaining query access via a federated endpoint. Connect to the federated URI to query hot and cold data together, use partition fields in filters for cost-efficient scans, and restore archived data back to the cluster with an aggregation `$merge` stage when needed.
