@@ -60,18 +60,11 @@ openssl x509 -req -days 3650 -in server.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out server.crt
 ```
 
-Combine the server certificate and key into a single PEM file (required by MongoDB):
-
-```bash
-cat server.crt server.key > /etc/ssl/mongodb/mongodb.pem
-```
-
-Set proper permissions:
+Combine the server certificate and key into a single PEM file (required by MongoDB), set up the directory, and apply proper permissions:
 
 ```bash
 sudo mkdir -p /etc/ssl/mongodb
 sudo cp ca.crt /etc/ssl/mongodb/ca.crt
-sudo cp server.crt server.key /etc/ssl/mongodb/
 cat server.crt server.key | sudo tee /etc/ssl/mongodb/mongodb.pem > /dev/null
 sudo chown -R mongodb:mongodb /etc/ssl/mongodb
 sudo chmod 600 /etc/ssl/mongodb/mongodb.pem
@@ -156,7 +149,6 @@ mongosh "mongodb://127.0.0.1:27017/?tls=true&tlsCAFile=/etc/ssl/mongodb/ca.crt&t
 
 ```javascript
 const { MongoClient } = require("mongodb");
-const fs = require("fs");
 
 const client = new MongoClient("mongodb://127.0.0.1:27017/myapp", {
   tls: true,
@@ -178,7 +170,6 @@ main().catch(console.error);
 
 ```python
 import pymongo
-import ssl
 
 client = pymongo.MongoClient(
     "mongodb://127.0.0.1:27017/myapp",
