@@ -118,7 +118,7 @@ const result = await db.collection("users").insertMany(userArray, { ordered: fal
 try {
   await db.collection("users").insertMany(users, { ordered: false });
 } catch (error) {
-  if (error.code === 11000 || error.name === "BulkWriteError") {
+  if (error.code === 11000 || error.name === "MongoBulkWriteError") {
     const inserted = error.result.insertedCount;
     const failed = error.writeErrors.length;
     console.log(`Inserted: ${inserted}, Duplicates skipped: ${failed}`);
