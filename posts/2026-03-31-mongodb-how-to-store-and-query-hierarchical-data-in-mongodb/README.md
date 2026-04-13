@@ -10,7 +10,7 @@ Description: Learn the main patterns for storing and querying hierarchical tree 
 
 ## Introduction
 
-Hierarchical data such as category trees, org charts, comment threads, and folder structures requires careful schema design in MongoDB. Unlike relational databases with recursive CTEs, MongoDB uses document-oriented patterns to represent trees. The main patterns are: parent reference, array of ancestors (materialized path), and the nested set model. Each has different trade-offs for read vs write performance.
+Hierarchical data such as category trees, org charts, comment threads, and folder structures requires careful schema design in MongoDB. Unlike relational databases with recursive CTEs, MongoDB uses document-oriented patterns to represent trees. The main patterns are: parent reference, array of ancestors (materialized path), and the path string approach. Each has different trade-offs for read vs write performance.
 
 ## Pattern 1 - Parent Reference
 
@@ -176,7 +176,6 @@ async function moveNode(nodeId, newParentId) {
   const node = db.categories.findOne({ _id: nodeId });
   const newParent = db.categories.findOne({ _id: newParentId });
 
-  const oldAncestorPath = [...node.ancestors, nodeId];
   const newAncestorPrefix = [...newParent.ancestors, newParentId];
 
   // Update the moved node
