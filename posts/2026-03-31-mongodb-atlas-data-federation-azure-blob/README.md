@@ -20,18 +20,19 @@ Atlas Data Federation supports Azure Blob Storage as a data source alongside S3 
 
 In the Atlas UI, navigate to Data Federation - then Private Endpoints / Access Settings. Create a new Azure store credential with:
 
-```bash
-# Atlas CLI approach
-atlas dataFederation stores create \
-  --projectId <project-id> \
-  --name azure-blob-store \
-  --provider azure \
-  --serviceUrl "https://mystorageaccount.blob.core.windows.net" \
-  --containerName "my-data-container" \
-  --tenantId "<azure-tenant-id>" \
-  --clientId "<service-principal-client-id>" \
-  --secret "<client-secret>"
+```javascript
+// Data Federation admin CLI (mongosh connected to the FDI)
+db.runCommand({
+  createStore: "azure-blob-store",
+  provider: "azure",
+  azure: {
+    serviceURL: "https://mystorageaccount.blob.core.windows.net",
+    containerName: "my-data-container"
+  }
+})
 ```
+
+Credentials (tenant ID, client ID, and client secret) are configured separately in the Atlas UI under Data Federation access settings for the Azure store.
 
 ## Storage Configuration for Azure Blob
 
