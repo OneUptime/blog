@@ -121,7 +121,7 @@ db.students.insertMany([
 
 // Find students with any grade score above 80
 db.students.find({ "grades.score": { $gt: 80 } })
-// Returns both Alice (90 and 85) and Bob (75 qualifies... wait: only Alice)
+// Returns only Alice (scores 90 and 85 are both above 80; Bob's scores are 60 and 75)
 ```
 
 ## Querying by Array Index
