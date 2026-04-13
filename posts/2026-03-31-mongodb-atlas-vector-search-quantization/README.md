@@ -48,14 +48,14 @@ This reduces the in-memory index footprint from ~24GB to ~6GB for 10 million 153
       "type": "vector",
       "path": "embedding",
       "numDimensions": 1536,
-      "similarity": "dotProduct",
+      "similarity": "cosine",
       "quantization": "binary"
     }
   ]
 }
 ```
 
-Binary quantization works best with models that produce high-dimensional embeddings (1536 or 3072 dimensions). Use `dotProduct` similarity rather than `cosine` for binary quantization.
+Binary quantization works best with models that produce high-dimensional embeddings (1024 dimensions or more).
 
 ## Measuring Recall Impact
 
@@ -117,7 +117,7 @@ Increase `numCandidates` to recover recall after enabling quantization:
 | ada-002 | 1536 | scalar |
 | Small local models | 384 | none (already small) |
 
-Binary quantization is most effective for models with 1536+ dimensions because information is distributed across more bits.
+Binary quantization is most effective for models with 1024+ dimensions because information is distributed across more bits.
 
 ## Cost Benefit
 
@@ -132,4 +132,4 @@ Smaller indexes also mean faster query times because more of the index fits in R
 
 ## Summary
 
-Quantization in Atlas Vector Search compresses the search index with minimal recall impact. Scalar quantization provides a safe 4x reduction suitable for most workloads. Binary quantization offers 32x compression but works best with high-dimensional embeddings and the `dotProduct` similarity metric. In both cases, raise `numCandidates` slightly to compensate for the small recall loss.
+Quantization in Atlas Vector Search compresses the search index with minimal recall impact. Scalar quantization provides a safe 4x reduction suitable for most workloads. Binary quantization offers 32x compression but works best with high-dimensional embeddings (1024+ dimensions). In both cases, raise `numCandidates` slightly to compensate for the small recall loss.
