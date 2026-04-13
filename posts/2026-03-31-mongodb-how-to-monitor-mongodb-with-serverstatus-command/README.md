@@ -20,8 +20,8 @@ Connect to MongoDB using mongosh and run the command:
 // Get full server status
 db.serverStatus()
 
-// Get specific sections only
-db.serverStatus({ connections: 1, opcounters: 1, mem: 1 })
+// Exclude sections you don't need
+db.serverStatus({ repl: 0, metrics: 0, locks: 0 })
 
 // Pretty print for readability
 printjson(db.serverStatus())
@@ -49,7 +49,7 @@ Returns:
 }
 ```
 
-- `current` - number of active client connections
+- `current` - number of incoming connections from clients (includes both active and idle)
 - `available` - number of additional connections the server can accept
 - `totalCreated` - cumulative count of all connections ever created
 
@@ -157,7 +157,7 @@ Returns replication status for replica set members:
   hosts: ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
   setName: "rs0",
   setVersion: 1,
-  ismaster: true,
+  isWritablePrimary: true,
   me: "mongo1:27017"
 }
 ```
