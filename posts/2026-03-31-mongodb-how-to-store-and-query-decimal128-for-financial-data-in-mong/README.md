@@ -106,7 +106,7 @@ db.transactions.aggregate([
 ]);
 ```
 
-Computing a running balance per account:
+Collecting all transactions per account:
 
 ```javascript
 db.transactions.aggregate([
