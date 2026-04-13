@@ -77,9 +77,9 @@ db.orders.aggregate([
       in: {
         path: "userId",
         value: [
-          { $oid: "64a1f2c3b4e5f6789abc1234" },
-          { $oid: "64a1f2c3b4e5f6789abc1235" },
-          { $oid: "64a1f2c3b4e5f6789abc1236" }
+          ObjectId("64a1f2c3b4e5f6789abc1234"),
+          ObjectId("64a1f2c3b4e5f6789abc1235"),
+          ObjectId("64a1f2c3b4e5f6789abc1236")
         ]
       }
     }
