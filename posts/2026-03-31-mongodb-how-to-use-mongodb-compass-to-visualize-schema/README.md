@@ -107,12 +107,12 @@ Compass schema analysis helps identify good index candidates:
 
 After identifying candidates in the Schema tab, switch to the **Indexes** tab to create and manage indexes.
 
-## Exporting Schema Information
+## Using Schema Analysis to Create Validation Rules
 
-MongoDB Compass can generate a JSON Schema document from your collection analysis. In the Schema tab, click **Export Schema** to get a JSON Schema that reflects the inferred structure, useful for validation rules:
+The insights from the Schema tab can inform validation rules for your collection. Switch to the **Validation** tab in Compass to define a `$jsonSchema` validator based on what you observed in the schema analysis:
 
 ```javascript
-// Generated JSON Schema for validation
+// Example $jsonSchema validation based on schema analysis
 db.createCollection('users', {
   validator: {
     $jsonSchema: {
