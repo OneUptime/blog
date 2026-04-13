@@ -19,7 +19,7 @@ A popular page with 1,000 views per second generates 1,000 write operations per 
 ```javascript
 // Called 1000 times per second
 db.articles.updateOne(
-  { _id: ObjectId("art001") },
+  { _id: ObjectId("6650a1b2c3d4e5f678901234") },
   { $inc: { viewCount: 1 } }
 )
 ```
