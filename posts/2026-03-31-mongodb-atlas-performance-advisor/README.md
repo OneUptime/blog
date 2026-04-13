@@ -57,9 +57,8 @@ Click any suggestion to see the query shapes driving it:
 ```javascript
 // Query shape 1 (2,100 executions, avg 1,850 ms)
 db.orders.find(
-  { "status": "pending" },
-  { "sort": { "createdAt": -1 } }
-)
+  { "status": "pending" }
+).sort({ "createdAt": -1 })
 
 // Query shape 2 (6,642 executions, avg 980 ms)
 db.orders.find(
@@ -83,20 +82,19 @@ Copy the index command shown in the advisor:
 ```javascript
 db.getSiblingDB("shop").orders.createIndex(
   { "status": 1, "createdAt": -1 },
-  { name: "status_createdAt_idx", background: true }
+  { name: "status_createdAt_idx" }
 )
 ```
 
 ### Via Atlas CLI
 
 ```bash
-atlas clusters indexes create \
+atlas clusters indexes create status_createdAt_idx \
   --projectId <PROJECT_ID> \
   --clusterName myCluster \
   --db shop \
   --collection orders \
-  --key "status:1,createdAt:-1" \
-  --indexName "status_createdAt_idx"
+  --key status:1,createdAt:-1
 ```
 
 ## Evaluating Index Suggestions
