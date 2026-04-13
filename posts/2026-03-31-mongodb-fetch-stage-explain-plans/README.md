@@ -23,7 +23,7 @@ The FETCH stage exists because indexes store a subset of fields - when you need 
 ## Reading a FETCH Stage in explain()
 
 ```javascript
-db.orders.find({ userId: "usr_123" }, { projection: { amount: 1, status: 1 } })
+db.orders.find({ userId: "usr_123" }, { amount: 1, status: 1 })
   .explain("executionStats");
 ```
 
@@ -100,7 +100,7 @@ db.orders.createIndex({ userId: 1, status: 1, amount: 1 });
 // Query and projection both covered by the index
 db.orders.find(
   { userId: "usr_123", status: "pending" },
-  { projection: { userId: 1, status: 1, amount: 1, _id: 0 } }
+  { userId: 1, status: 1, amount: 1, _id: 0 }
 ).explain("executionStats");
 ```
 
