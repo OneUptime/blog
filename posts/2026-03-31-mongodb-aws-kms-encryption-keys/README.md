@@ -13,7 +13,7 @@ Using AWS KMS as the KMS provider for MongoDB CSFLE means your Customer Master K
 ## Prerequisites
 
 - An AWS KMS symmetric key (CMK) created in your AWS account
-- IAM role or user with `kms:GenerateDataKey` and `kms:Decrypt` permissions on the CMK
+- IAM role or user with `kms:Encrypt` and `kms:Decrypt` permissions on the CMK
 - MongoDB driver with CSFLE support
 
 ## Create an AWS KMS Key
@@ -24,7 +24,7 @@ In the AWS Console or CLI, create a symmetric encryption key:
 aws kms create-key \
   --description "MongoDB CSFLE master key" \
   --key-usage ENCRYPT_DECRYPT \
-  --query "KeyMetadata.KeyId" \
+  --query "KeyMetadata.Arn" \
   --output text
 ```
 
@@ -41,7 +41,7 @@ Attach this policy to the IAM role your application uses:
     {
       "Effect": "Allow",
       "Action": [
-        "kms:GenerateDataKey",
+        "kms:Encrypt",
         "kms:Decrypt"
       ],
       "Resource": "arn:aws:kms:us-east-1:123456789012:key/YOUR-KEY-ID"
@@ -108,16 +108,20 @@ AWS SDK credential chain picks up instance profile credentials automatically.
 const autoEncryptionOptions = {
   keyVaultNamespace: "encryption.__keyVault",
   kmsProviders,
-  encryptedFieldsMap: {
+  schemaMap: {
     "myapp.patients": {
-      fields: [
-        {
-          path: "ssn",
-          bsonType: "string",
-          keyId: dataKeyId,
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+      bsonType: "object",
+      encryptMetadata: {
+        keyId: [dataKeyId]
+      },
+      properties: {
+        ssn: {
+          encrypt: {
+            bsonType: "string",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+          }
         }
-      ]
+      }
     }
   }
 }
@@ -132,7 +136,6 @@ const encryptedClient = new MongoClient("mongodb://localhost:27017", {
 ```python
 import os
 from pymongo import MongoClient
-from pymongo.encryption_options import AutoEncryptionOpts
 from pymongo.encryption import ClientEncryption
 
 kms_providers = {
