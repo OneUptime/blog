@@ -10,7 +10,7 @@ Description: Learn how to properly close MongoDB cursors to prevent resource lea
 
 ## Why Cursor Cleanup Matters
 
-Every open cursor in MongoDB consumes server-side memory and holds a reference to query state. MongoDB allows up to 16,384 open cursors per connection by default. In high-throughput applications that open many cursors without closing them explicitly, this limit can be reached quickly, causing new queries to fail with `TooManyCursors` errors.
+Every open cursor in MongoDB consumes server-side memory and holds a reference to query state. In high-throughput applications that open many cursors without closing them explicitly, server memory can be exhausted quickly, causing new queries to fail with errors like `cannot open a new cursor since too many cursors are already opened`.
 
 Proper cursor management is fundamental to application stability.
 
