@@ -72,12 +72,12 @@ await db.collection('logs').insertOne(
 );
 ```
 
-## Cause 4: Using w:majority in a Standalone Deployment
+## Cause 4: Misconfigured Replica Set Topology
 
-Write concern `"majority"` on a standalone MongoDB instance always times out because there are no secondaries to replicate to:
+If a replica set member is misconfigured (e.g., removed from the config but the application still connects to it as a standalone), `w: "majority"` may not behave as expected. Note that on a true standalone mongod, MongoDB treats `w: "majority"` as equivalent to `w: 1`, so it will not time out. However, if you are intentionally running standalone, explicitly set `w: 1` for clarity:
 
 ```javascript
-// For standalone, use w:1
+// For standalone, use w:1 for clarity
 const client = new MongoClient(uri, {
   writeConcern: { w: 1, j: true }
 });
@@ -100,8 +100,11 @@ const fastConcern = { w: 1, j: false };
 
 ```javascript
 // In mongosh
-db.adminCommand({ replSetGetStatus: 1 }).members.forEach(m => {
-  print(`${m.name}: lag=${m.optimeDate} health=${m.health}`);
+const status = db.adminCommand({ replSetGetStatus: 1 });
+const primary = status.members.find(m => m.stateStr === 'PRIMARY');
+status.members.forEach(m => {
+  const lagMs = primary ? primary.optimeDate - m.optimeDate : 0;
+  print(`${m.name}: state=${m.stateStr} lagMs=${lagMs} health=${m.health}`);
 });
 ```
 
