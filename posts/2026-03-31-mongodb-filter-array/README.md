@@ -91,7 +91,7 @@ Output:
 ```javascript
 [
   { _id: 1, name: "Alice", highScores: [82, 91, 73] },
-  { _id: 2, name: "Bob",   highScores: [70, 90] }
+  { _id: 2, name: "Bob",   highScores: [90] }
 ]
 ```
 
@@ -169,7 +169,7 @@ Output:
 
 ```javascript
 [
-  { _id: 1, name: "Alice", premiumInStock: [{ product: "Laptop", price: 1200, inStock: true }] },
+  { _id: 1, name: "Alice", premiumInStock: [{ product: "Laptop", price: 1200, inStock: true }, { product: "Monitor", price: 600, inStock: true }] },
   { _id: 2, name: "Bob",   premiumInStock: [{ product: "Desk",   price: 450,  inStock: true }] }
 ]
 ```
