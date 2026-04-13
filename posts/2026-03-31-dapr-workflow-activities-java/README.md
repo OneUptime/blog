@@ -22,13 +22,13 @@ Add the Dapr SDK to your `pom.xml`:
 <dependency>
   <groupId>io.dapr</groupId>
   <artifactId>dapr-sdk-workflows</artifactId>
-  <version>1.12.0</version>
+  <version>0.12.0</version>
 </dependency>
 ```
 
 ## Defining a Workflow Activity
 
-Implement the `WorkflowActivity` interface and annotate the class so Dapr can register it:
+Implement the `WorkflowActivity` interface to define the activity's logic:
 
 ```java
 import io.dapr.workflows.runtime.WorkflowActivity;
