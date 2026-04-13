@@ -24,7 +24,7 @@ for (const item of items) {
 await collection.insertMany(items.slice(0, 1000));
 ```
 
-`insertMany()` accepts up to 100,000 documents per call (MongoDB's default batch limit) and is the fastest way to insert large datasets.
+`insertMany()` can accept any number of documents. The driver automatically splits the request into batches of up to 100,000 operations (the server's `maxWriteBatchSize` limit) if needed, so you do not have to manage this split yourself. It is the fastest way to insert large datasets.
 
 ## Splitting Large Datasets into Batches
 
@@ -119,16 +119,23 @@ await batchPriceUpdate(db.collection("products"), updates, 500);
 ## Monitoring Bulk Write Results
 
 ```javascript
-const result = await collection.bulkWrite(operations, { ordered: false });
-
-console.log({
-  inserted: result.insertedCount,
-  matched: result.matchedCount,
-  modified: result.modifiedCount,
-  deleted: result.deletedCount,
-  upserted: result.upsertedCount,
-  errors: result.hasWriteErrors() ? result.getWriteErrors() : []
-});
+try {
+  const result = await collection.bulkWrite(operations, { ordered: false });
+  console.log({
+    inserted: result.insertedCount,
+    matched: result.matchedCount,
+    modified: result.modifiedCount,
+    deleted: result.deletedCount,
+    upserted: result.upsertedCount
+  });
+} catch (error) {
+  if (error.code === 65) { // MongoBulkWriteError
+    console.log("Partial result:", error.result);
+    console.log("Write errors:", error.writeErrors);
+  } else {
+    throw error;
+  }
+}
 ```
 
 ## Choosing the Right Batch Size
