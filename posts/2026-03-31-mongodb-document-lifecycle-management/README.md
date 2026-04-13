@@ -98,7 +98,7 @@ Use change streams to record every state change in an audit log collection.
 ```javascript
 const changeStream = db.collection("documents").watch(
   [{ $match: { "updateDescription.updatedFields.status": { $exists: true } } }],
-  { fullDocument: "updateLookup" }
+  { fullDocument: "updateLookup", fullDocumentBeforeChange: "whenAvailable" }
 );
 
 changeStream.on("change", async (change) => {
