@@ -93,8 +93,8 @@ mongodb_connections{state="available"}
 rate(mongodb_op_counters_total[5m])
 
 # Memory usage
-mongodb_mem_resident_mb
-mongodb_mem_virtual_mb
+mongodb_memory{type="resident"}
+mongodb_memory{type="virtual"}
 
 # Replication lag (seconds)
 mongodb_rs_members_optimeDate
@@ -112,18 +112,22 @@ Import the official MongoDB dashboard from Grafana Labs:
 2. Go to Dashboards - Import
 3. Enter dashboard ID `2583` (MongoDB Overview) or `7353`
 
-Or import via API:
+Or import via API (fetching dashboard JSON from Grafana.com first):
 
 ```bash
+# Fetch the dashboard JSON from Grafana.com
+DASHBOARD_JSON=$(curl -s https://grafana.com/api/dashboards/2583/revisions/latest/download)
+
+# Import into your Grafana instance
 curl -X POST \
   http://admin:admin@localhost:3000/api/dashboards/import \
   -H "Content-Type: application/json" \
-  -d '{
-    "dashboard": {"id": null},
-    "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}],
-    "overwrite": true,
-    "folderId": 0
-  }'
+  -d "{
+    \"dashboard\": $DASHBOARD_JSON,
+    \"inputs\": [{\"name\": \"DS_PROMETHEUS\", \"type\": \"datasource\", \"pluginId\": \"prometheus\", \"value\": \"Prometheus\"}],
+    \"overwrite\": true,
+    \"folderId\": 0
+  }"
 ```
 
 ## Step 5 - Key Dashboard Panels to Build
@@ -190,23 +194,47 @@ groups:
           summary: "MongoDB replication lag high"
           description: "Replication lag is {{ $value }} seconds"
 
-      - alert: MongoDBLowCacheHitRatio
+      - alert: MongoDBWiredTigerCacheUsageHigh
         expr: |
-          rate(mongodb_wiredtiger_cache_pages_read_into_cache_total[5m]) /
-          (rate(mongodb_wiredtiger_cache_pages_read_into_cache_total[5m]) +
-           rate(mongodb_wiredtiger_cache_unmodified_pages_evicted_total[5m])) < 0.8
+          mongodb_wiredtiger_cache_bytes_currently_in_cache /
+          mongodb_wiredtiger_cache_maximum_bytes_configured > 0.95
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "MongoDB WiredTiger cache hit ratio is low"
+          summary: "MongoDB WiredTiger cache usage is above 95%"
+          description: "WiredTiger cache is {{ $value | humanizePercentage }} full"
 ```
 
-Apply the rules:
+Apply the rules by copying to the Prometheus rules directory and reloading:
 
 ```bash
-kubectl apply -f mongodb-alerts.yaml
-# or copy to Prometheus rules directory
+# Copy to Prometheus rules directory
+cp mongodb-alerts.yaml /etc/prometheus/rules/mongodb-alerts.yaml
+
+# Reload Prometheus to pick up the new rules
+curl -X POST http://localhost:9090/-/reload
+```
+
+If using the Prometheus Operator on Kubernetes, wrap the rules in a `PrometheusRule` CRD instead:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mongodb-alerts
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: mongodb
+      rules:
+        # ... same rules as above
+```
+
+```bash
+kubectl apply -f mongodb-prometheusrule.yaml
 ```
 
 ## Step 7 - Monitor on Kubernetes with ServiceMonitor
