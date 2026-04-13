@@ -107,9 +107,10 @@ Timeouts can be caused by:
 - Overloaded MongoDB servers with a full operation queue
 - DNS resolution delays when using replica set connection strings
 
-Enable TCP keep-alive to prevent firewalls from dropping idle connections:
+In the Node.js driver v6+, TCP keep-alive is always enabled with a default initial delay of 300 seconds. In older driver versions (v5.x and below), you can enable it explicitly:
 
 ```javascript
+// Node.js driver v5.x and below only
 const client = new MongoClient("mongodb://localhost:27017", {
   keepAlive: true,
   keepAliveInitialDelay: 120000
