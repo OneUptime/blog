@@ -152,8 +152,8 @@ Output:
 
 ```javascript
 [
-  { _id: 1, firstName: "Alice", salary: 75000, salaryTier: "High"   },
-  { _id: 2, firstName: "Bob",   salary: 60000, salaryTier: "Medium" }
+  { _id: 1, firstName: "Alice", lastName: "Smith", salary: 75000, hoursPerWeek: 40, salaryTier: "High"   },
+  { _id: 2, firstName: "Bob",   lastName: "Jones", salary: 60000, hoursPerWeek: 35, salaryTier: "Medium" }
 ]
 ```
 
