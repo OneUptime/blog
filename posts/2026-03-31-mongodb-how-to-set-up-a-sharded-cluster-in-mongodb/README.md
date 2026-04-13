@@ -98,7 +98,6 @@ sh.addShard("shard2RS/192.168.1.40:27018,192.168.1.41:27018,192.168.1.42:27018")
 ## Step 5: Enable Sharding on a Database and Collection
 
 ```javascript
-sh.enableSharding("myapp");
 sh.shardCollection("myapp.events", { userId: "hashed" });
 ```
 
