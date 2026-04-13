@@ -92,7 +92,7 @@ mongosh --host localhost \
 
 ## Remove MONGODB-CR Entirely
 
-`MONGODB-CR` was deprecated in MongoDB 3.0 and removed in 4.0. If you are running an older version, ensure no users still rely on it:
+`MONGODB-CR` was deprecated in MongoDB 3.6 and removed in 4.0. If you are running an older version, ensure no users still rely on it:
 
 ```javascript
 // Check for users with MONGODB-CR credentials
