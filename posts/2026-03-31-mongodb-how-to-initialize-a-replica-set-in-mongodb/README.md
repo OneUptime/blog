@@ -62,7 +62,7 @@ systemLog:
 
 Connect to one node and run `rs.initiate()`:
 
-```javascript
+```bash
 mongosh --host 192.168.1.10 --port 27017
 ```
 
