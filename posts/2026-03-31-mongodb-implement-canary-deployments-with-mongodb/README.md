@@ -34,7 +34,7 @@ If the canary version queries on a new field, add the index before rolling out t
 // Run this before deploying the canary
 await db.users.createIndex(
   { tier: 1 },
-  { background: true, sparse: true }
+  { sparse: true }
 );
 ```
 
