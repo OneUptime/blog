@@ -47,7 +47,7 @@ Connect to the secondary and restart it:
 mongosh --host secondary1:27017
 
 # Verify it is a secondary
-rs.isMaster().ismaster  // Should be false
+db.hello().isWritablePrimary  // Should be false
 
 # Disconnect and restart the service
 exit
@@ -132,17 +132,29 @@ rs.conf();
 
 ## Handling Index Builds During Rolling Maintenance
 
-For index builds, use rolling index creation to avoid blocking the primary:
+For rolling index builds, stop each secondary, restart it as a standalone instance (without `--replSet`), build the index, then restart it as a replica set member:
 
-```javascript
-// Step 1: Build index on secondaries (connect to each secondary)
-db.adminCommand({ setParameter: 1, maxIndexBuildMemoryUsageMegabytes: 500 });
-db.orders.createIndex({ customerId: 1, status: 1 });
-
-// Step 2: Step down primary, then build on new secondary
+```bash
+# On each secondary: stop mongod, restart as standalone on a different port
+sudo systemctl stop mongod
+mongod --port 27218 --dbpath /var/lib/mongo --bind_ip localhost
 ```
 
-Or use background index builds with `background: true` (deprecated in 4.4+, use hidden index pattern instead).
+```javascript
+// Connect to the standalone instance and build the index
+mongosh --port 27218
+db.orders.createIndex({ customerId: 1, status: 1 });
+```
+
+```bash
+# Stop the standalone instance and restart as a replica set member
+# (use your normal mongod.conf which includes the replSet option)
+sudo systemctl start mongod
+```
+
+Repeat for each secondary, then step down the primary and repeat on the former primary.
+
+Note: The `background` option for index builds was deprecated in MongoDB 4.2. Starting in 4.2, all index builds use an optimized process that only holds the exclusive lock at the beginning and end of the build.
 
 ## Rolling Configuration Change Example
 
@@ -178,8 +190,9 @@ MEMBERS=("secondary1:27017" "secondary2:27017")
 PRIMARY="primary:27017"
 
 for MEMBER in "${MEMBERS[@]}"; do
+  HOST="${MEMBER%%:*}"
   echo "Maintaining $MEMBER..."
-  ssh "$MEMBER" "sudo systemctl stop mongod && sudo apt-get upgrade -y mongodb-org && sudo systemctl start mongod"
+  ssh "$HOST" "sudo systemctl stop mongod && sudo apt-get upgrade -y mongodb-org && sudo systemctl start mongod"
 
   echo "Waiting for $MEMBER to rejoin..."
   until mongosh --quiet --host "$PRIMARY" --eval \
@@ -193,8 +206,9 @@ echo "Stepping down primary..."
 mongosh --host "$PRIMARY" --eval "rs.stepDown(60)"
 sleep 30
 
+PRIMARY_HOST="${PRIMARY%%:*}"
 echo "Applying maintenance to former primary..."
-ssh "$PRIMARY" "sudo systemctl stop mongod && sudo apt-get upgrade -y mongodb-org && sudo systemctl start mongod"
+ssh "$PRIMARY_HOST" "sudo systemctl stop mongod && sudo apt-get upgrade -y mongodb-org && sudo systemctl start mongod"
 ```
 
 ## Summary
