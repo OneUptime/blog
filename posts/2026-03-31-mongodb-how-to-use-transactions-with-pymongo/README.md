@@ -10,7 +10,7 @@ Description: Learn how to use multi-document ACID transactions in MongoDB with P
 
 ## Overview
 
-MongoDB supports multi-document ACID transactions on replica sets and sharded clusters since version 4.0. PyMongo provides two APIs for transactions: the core session-based API and a convenient callback API that handles retries automatically.
+MongoDB supports multi-document ACID transactions on replica sets since version 4.0 and on sharded clusters since version 4.2. PyMongo provides two APIs for transactions: the core session-based API and a convenient callback API that handles retries automatically.
 
 ## Prerequisites
 
@@ -161,6 +161,8 @@ def run_commit_with_retry(session):
 ## Multi-Collection Transaction Example
 
 ```python
+from datetime import datetime
+
 def place_order(client, user_id, items):
     orders = client["store"]["orders"]
     inventory = client["store"]["inventory"]
