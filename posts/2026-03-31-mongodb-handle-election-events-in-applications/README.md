@@ -27,7 +27,7 @@ const client = new MongoClient("mongodb://mongo1:27017,mongo2:27017,mongo3:27017
 });
 ```
 
-Retryable writes cover single-document operations such as `insertOne`, `updateOne`, `deleteOne`, `findOneAndUpdate`, and `findOneAndDelete`. Multi-document writes with `insertMany` (ordered) are also retried as a batch.
+Retryable writes cover single-document operations such as `insertOne`, `updateOne`, `deleteOne`, `findOneAndUpdate`, and `findOneAndDelete`. Multi-document writes with `insertMany` and `bulkWrite` (when composed of single-document operations) are also retryable.
 
 ## Listening to SDAM Events
 
@@ -46,8 +46,8 @@ client.on("serverDescriptionChanged", (event) => {
 
 client.on("topologyDescriptionChanged", (event) => {
   const { newDescription } = event;
-  const hasPrimary = newDescription.servers.some(
-    ([, s]) => s.type === "RSPrimary"
+  const hasPrimary = Array.from(newDescription.servers.values()).some(
+    (s) => s.type === "RSPrimary"
   );
   if (!hasPrimary) {
     console.warn("No primary available - replica set election underway");
