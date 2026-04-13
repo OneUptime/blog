@@ -57,6 +57,18 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "db_password" {
+  description = "Password for the application database user"
+  type        = string
+  sensitive   = true
+}
+
+variable "readonly_password" {
+  description = "Password for the read-only database user"
+  type        = string
+  sensitive   = true
+}
 ```
 
 ## Creating a Project
@@ -101,7 +113,7 @@ resource "mongodbatlas_cluster" "main" {
     minimum_enabled_tls_protocol = "TLS1_2"
   }
 
-  labels {
+  tags {
     key   = "environment"
     value = var.environment
   }
@@ -193,7 +205,10 @@ terraform plan -var="atlas_public_key=$ATLAS_PUB" \
                -var="atlas_org_id=$ATLAS_ORG"
 
 # Apply changes
-terraform apply -auto-approve
+terraform apply -auto-approve \
+               -var="atlas_public_key=$ATLAS_PUB" \
+               -var="atlas_private_key=$ATLAS_PRIV" \
+               -var="atlas_org_id=$ATLAS_ORG"
 ```
 
 ## Managing Secrets Securely
