@@ -39,7 +39,6 @@ Heat Map            - Density by two categorical dimensions
 Geo Map             - GeoJSON point data on a map
 Table               - Tabular display with sorting
 Number Chart        - Single KPI metric
-Candlestick         - OHLC financial data
 ```
 
 ## Building a Time-Series Line Chart
