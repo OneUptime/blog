@@ -213,18 +213,18 @@ curl -X POST http://localhost:3000/api/users \
   -d '{"name": "Alice", "email": "alice@example.com"}'
 
 # List users
-curl http://localhost:3000/api/users?page=1&limit=10
+curl "http://localhost:3000/api/users?page=1&limit=10"
 
 # Get single user
-curl http://localhost:3000/api/users/64abc123def456789012345
+curl http://localhost:3000/api/users/64abc123def4567890123456
 
 # Update user
-curl -X PATCH http://localhost:3000/api/users/64abc123def456789012345 \
+curl -X PATCH http://localhost:3000/api/users/64abc123def4567890123456 \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice Smith"}'
 
 # Delete user
-curl -X DELETE http://localhost:3000/api/users/64abc123def456789012345
+curl -X DELETE http://localhost:3000/api/users/64abc123def4567890123456
 ```
 
 ## Summary
