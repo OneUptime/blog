@@ -140,7 +140,7 @@ curl --user "publicKey:privateKey" --digest \
 Connect to the federated database endpoint using mongosh:
 
 ```bash
-mongosh "mongodb://myFederatedDB.example.mongodb.net/logs" \
+mongosh "mongodb+srv://myFederatedDB.example.mongodb.net/logs" \
   --username myUser --password myPassword
 ```
 
