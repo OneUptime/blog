@@ -84,7 +84,7 @@ dapr run \
 In a separate terminal, trigger the workflow:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/order_saga_workflow \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/order_saga_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"id": "TEST-001", "items": ["item-1"], "total": 25.00}'
 ```
@@ -93,7 +93,7 @@ Poll for completion:
 
 ```bash
 INSTANCE_ID="<from above response>"
-curl http://localhost:3500/v1.0/workflows/dapr/order_saga_workflow/$INSTANCE_ID
+curl http://localhost:3500/v1.0/workflows/dapr/$INSTANCE_ID
 ```
 
 ## Writing an Automated Integration Test
@@ -109,7 +109,7 @@ WORKFLOW_NAME = "order_saga_workflow"
 
 def start_workflow(payload: dict) -> str:
     resp = requests.post(
-        f"http://localhost:{DAPR_PORT}/v1.0/workflows/dapr/{WORKFLOW_NAME}",
+        f"http://localhost:{DAPR_PORT}/v1.0/workflows/dapr/{WORKFLOW_NAME}/start",
         json=payload
     )
     resp.raise_for_status()
@@ -117,7 +117,7 @@ def start_workflow(payload: dict) -> str:
 
 def get_workflow_status(instance_id: str) -> dict:
     resp = requests.get(
-        f"http://localhost:{DAPR_PORT}/v1.0/workflows/dapr/{WORKFLOW_NAME}/{instance_id}"
+        f"http://localhost:{DAPR_PORT}/v1.0/workflows/dapr/{instance_id}"
     )
     resp.raise_for_status()
     return resp.json()
@@ -140,7 +140,7 @@ def test_order_saga_success():
     })
     final_status = wait_for_completion(instance_id)
     assert final_status["runtimeStatus"] == "COMPLETED"
-    assert "success" in final_status["serializedOutput"]
+    assert "success" in final_status["properties"]["dapr.workflow.output"]
 ```
 
 ## Using Mock Components for Testing
