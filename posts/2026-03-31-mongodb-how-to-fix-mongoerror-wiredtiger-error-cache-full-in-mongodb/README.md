@@ -62,7 +62,7 @@ storage:
 ```
 
 ```javascript
-// Change at runtime (MongoDB 3.2+)
+// Change at runtime (MongoDB 3.0+)
 db.adminCommand({
   setParameter: 1,
   wiredTigerEngineRuntimeConfig: "cache_size=8G"
@@ -191,7 +191,7 @@ db.orders.createIndex({ status: 1, createdAt: -1 });
 // Use projection to load only needed fields
 db.orders.find({ status: "pending" }, { customerId: 1, total: 1 });
 
-// Archive old data to reduce hot collection size
+// Automatically expire old data to reduce hot collection size (TTL index deletes docs after 90 days)
 db.orders.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 });
 ```
 
