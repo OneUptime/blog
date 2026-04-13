@@ -93,10 +93,31 @@ const summary = await db.collection('users').aggregate([
       _id: null,
       total: { $sum: 1 },
       hasPhone: {
-        $sum: { $cond: [{ $and: [{ $ne: ["$phone", null] }] }, 1, 0] }
+        $sum: {
+          $cond: [
+            { $and: [
+              { $ne: [{ $type: "$phone" }, "missing"] },
+              { $ne: ["$phone", null] }
+            ]},
+            1, 0
+          ]
+        }
       },
       phoneIsNull: {
-        $sum: { $cond: [{ $eq: ["$phone", null] }, 1, 0] }
+        $sum: {
+          $cond: [
+            { $and: [
+              { $ne: [{ $type: "$phone" }, "missing"] },
+              { $eq: ["$phone", null] }
+            ]},
+            1, 0
+          ]
+        }
+      },
+      phoneMissing: {
+        $sum: {
+          $cond: [{ $eq: [{ $type: "$phone" }, "missing"] }, 1, 0]
+        }
       }
     }
   }
@@ -105,7 +126,7 @@ const summary = await db.collection('users').aggregate([
 
 ## Indexing Null and Missing Fields
 
-Sparse indexes only index documents where the field exists (non-null):
+Sparse indexes only index documents where the field exists, including null values. They skip documents where the field is missing entirely:
 
 ```javascript
 // Sparse index - does not include documents where phone is missing
@@ -121,7 +142,7 @@ A partial index to cover both null and missing:
 // Index only documents that HAVE a phone value (not null, not missing)
 await db.collection('users').createIndex(
   { phone: 1 },
-  { partialFilterExpression: { phone: { $exists: true, $ne: null } } }
+  { partialFilterExpression: { phone: { $type: 'string' } } }
 );
 ```
 
