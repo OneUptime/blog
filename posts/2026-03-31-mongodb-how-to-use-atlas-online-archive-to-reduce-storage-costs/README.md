@@ -27,7 +27,7 @@ Moving 1TB of historical data can save over $200/month.
 
 ```bash
 curl -X POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
   --digest -u "{publicKey}:{privateKey}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -74,7 +74,7 @@ db.adminCommand({ listDatabases: 1 }).databases.forEach(d => {
 ```bash
 # Check archive status
 curl -X GET \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
   --digest -u "{publicKey}:{privateKey}" | jq '.state'
 ```
 
@@ -100,7 +100,9 @@ db.application_logs.find({
 ```bash
 # Pause archiving (data stays in archive, new data stops being moved)
 curl -X PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
+  --digest -u "{publicKey}:{privateKey}" \
+  -H "Content-Type: application/json" \
   -d '{ "paused": true }'
 ```
 
