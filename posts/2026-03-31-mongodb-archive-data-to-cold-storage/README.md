@@ -25,7 +25,7 @@ mongoexport \
   --type=json
 ```
 
-For large collections, add `--limit` and paginate using `--skip` or use a date range per run.
+For large collections, add `--limit` and paginate using date ranges in `--query` per run.
 
 ## Step 2: Compress the Export
 
@@ -127,10 +127,17 @@ echo "Archive uploaded successfully"
 To restore data when needed:
 
 ```bash
-# Retrieve from Glacier (may take 1-5 minutes for GLACIER_IR)
+# For GLACIER_IR objects, download directly (millisecond retrieval):
 aws s3 cp \
   s3://my-mongodb-archives/events/2023/events_2023.json.gz \
   ./events_2023.json.gz
+
+# For DEEP_ARCHIVE objects, initiate a restore first (takes up to 12 hours):
+aws s3api restore-object \
+  --bucket my-mongodb-archives \
+  --key events/2023/events_2023.json.gz \
+  --restore-request '{"Days":7,"GlacierJobParameters":{"Tier":"Standard"}}'
+# Wait for restore to complete, then download with aws s3 cp
 
 gunzip events_2023.json.gz
 mongoimport --uri="${MONGO_URI}" --collection=events_archive --file=events_2023.json
