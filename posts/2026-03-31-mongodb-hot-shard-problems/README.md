@@ -46,8 +46,8 @@ Watch for one shard with significantly higher `insert`, `query`, or `update` cou
 
 ### Check CPU and I/O on Shard Nodes
 
-```bash
-# Run on the hot shard's primary node
+```javascript
+// Run on the hot shard's primary node
 db.adminCommand({ serverStatus: 1 }).opcounters
 ```
 
@@ -122,17 +122,17 @@ db.orders.createIndex({ tenantId: 1, userId: 1 })
 Use zone sharding to explicitly assign a key range to specific shards:
 
 ```javascript
-// Tag shard0 and shard1 to handle different tenant ranges
-sh.addShardTag('shard0', 'tenants-a-m')
-sh.addShardTag('shard1', 'tenants-n-z')
+// Assign shard0 and shard1 to handle different tenant zones
+sh.addShardToZone('shard0', 'tenants-a-m')
+sh.addShardToZone('shard1', 'tenants-n-z')
 
-sh.addTagRange('shop.orders',
+sh.updateZoneKeyRange('shop.orders',
   { tenantId: 'a' },
   { tenantId: 'n' },
   'tenants-a-m'
 )
 
-sh.addTagRange('shop.orders',
+sh.updateZoneKeyRange('shop.orders',
   { tenantId: 'n' },
   { tenantId: MaxKey },
   'tenants-n-z'
