@@ -15,27 +15,29 @@ Algolia is a hosted search platform known for its speed, relevance tuning, and I
 ## Setting Up Algolia Client
 
 ```javascript
-const algoliasearch = require("algoliasearch")
+const { algoliasearch } = require("algoliasearch")
 const { MongoClient } = require("mongodb")
 
-const algolia = algoliasearch(
+const client = algoliasearch(
   process.env.ALGOLIA_APP_ID,
   process.env.ALGOLIA_ADMIN_KEY
 )
-const index = algolia.initIndex("products")
 
 // Configure index settings
-await index.setSettings({
-  searchableAttributes: [
-    "name",
-    "description",
-    "unordered(tags)",
-    "category"
-  ],
-  attributesForFaceting: ["category", "brand", "inStock"],
-  customRanking: ["desc(popularity)", "asc(price)"],
-  attributesToHighlight: ["name", "description"],
-  typoTolerance: true
+await client.setSettings({
+  indexName: "products",
+  indexSettings: {
+    searchableAttributes: [
+      "name",
+      "description",
+      "unordered(tags)",
+      "category"
+    ],
+    attributesForFaceting: ["category", "brand", "inStock"],
+    customRanking: ["desc(popularity)", "asc(price)"],
+    attributesToHighlight: ["name", "description"],
+    typoTolerance: true
+  }
 })
 ```
 
@@ -61,8 +63,8 @@ async function importToAlgolia() {
     popularity: product.views || 0
   }))
 
-  const { objectIDs } = await index.saveObjects(records)
-  console.log(`Indexed ${objectIDs.length} records`)
+  await client.saveObjects({ indexName: "products", objects: records })
+  console.log(`Indexed ${records.length} records`)
 
   await mongo.close()
 }
@@ -85,20 +87,23 @@ async function startChangeStreamSync() {
       case "update":
       case "replace": {
         const doc = change.fullDocument
-        await index.saveObject({
-          objectID,
-          name: doc.name,
-          description: doc.description,
-          category: doc.category,
-          price: doc.price,
-          inStock: doc.stock > 0,
-          tags: doc.tags || [],
-          popularity: doc.views || 0
+        await client.saveObject({
+          indexName: "products",
+          body: {
+            objectID,
+            name: doc.name,
+            description: doc.description,
+            category: doc.category,
+            price: doc.price,
+            inStock: doc.stock > 0,
+            tags: doc.tags || [],
+            popularity: doc.views || 0
+          }
         })
         break
       }
       case "delete":
-        await index.deleteObject(objectID)
+        await client.deleteObject({ indexName: "products", objectID })
         break
     }
   })
@@ -125,7 +130,11 @@ changeStream.on("change", async (change) => {
       updatedFields[field] = value
     }
 
-    await index.partialUpdateObject({ objectID, ...updatedFields })
+    await client.partialUpdateObject({
+      indexName: "products",
+      objectID,
+      attributesToUpdate: updatedFields
+    })
   }
 })
 ```
@@ -133,7 +142,7 @@ changeStream.on("change", async (change) => {
 ## InstantSearch React Front End
 
 ```javascript
-import algoliasearch from "algoliasearch/lite"
+import { liteClient as algoliasearch } from "algoliasearch/lite"
 import { InstantSearch, SearchBox, Hits, RefinementList } from "react-instantsearch"
 
 const searchClient = algoliasearch(
@@ -154,4 +163,4 @@ function App() {
 
 ## Summary
 
-MongoDB and Algolia integrate through batch import for existing data and Change Streams for ongoing sync. Use `saveObject` with an `objectID` matching MongoDB's `_id.toString()` to ensure idempotent upserts. For write-heavy collections, `partialUpdateObject` reduces Algolia write unit consumption by only syncing changed fields. Pair with Algolia's InstantSearch libraries to deliver sub-100ms search experiences with minimal front-end code.
+MongoDB and Algolia integrate through batch import for existing data and Change Streams for ongoing sync. Use `saveObject` with an `objectID` matching MongoDB's `_id.toString()` in the record body to ensure idempotent upserts. For write-heavy collections, `partialUpdateObject` reduces Algolia write unit consumption by only syncing changed fields. Pair with Algolia's InstantSearch libraries to deliver sub-100ms search experiences with minimal front-end code.
