@@ -44,8 +44,6 @@ services:
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: devpassword
       ME_CONFIG_MONGODB_URL: mongodb://admin:devpassword@mongo:27017/
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: password
@@ -131,7 +129,7 @@ command: mongod --replSet rs0 --bind_ip_all
 
 ```bash
 # Initialize the replica set after starting
-docker exec mongo-dev mongosh --eval "rs.initiate()"
+docker exec mongo-dev mongosh -u admin -p devpassword --authenticationDatabase admin --eval "rs.initiate()"
 ```
 
 ## Summary
