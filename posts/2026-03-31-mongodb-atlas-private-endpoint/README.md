@@ -77,8 +77,7 @@ echo "Created endpoint: $VPC_ENDPOINT_ID"
 ### Step 3: Register the VPC Endpoint with Atlas
 
 ```bash
-atlas privateEndpoints aws interfaces create \
-  --endpointServiceId <ATLAS_ENDPOINT_SERVICE_ID> \
+atlas privateEndpoints aws interfaces create <ATLAS_ENDPOINT_SERVICE_ID> \
   --privateEndpointId "$VPC_ENDPOINT_ID"
 ```
 
@@ -146,8 +145,7 @@ echo "Atlas private IP: $PRIVATE_IP"
 ### Step 3: Register the Endpoint with Atlas
 
 ```bash
-atlas privateEndpoints azure interfaces create \
-  --endpointServiceId <ATLAS_SERVICE_ID> \
+atlas privateEndpoints azure interfaces create <ATLAS_SERVICE_ID> \
   --privateEndpointId "<AZURE_PE_RESOURCE_ID>" \
   --privateEndpointIPAddress "$PRIVATE_IP"
 ```
@@ -198,16 +196,14 @@ nc -zv <private-endpoint-host> 27017
 When using private endpoints, you can remove public IPs from the Atlas access list. Add your VPC's private CIDR range:
 
 ```bash
-atlas accessLists create \
-  --cidr "10.0.0.0/16" \
+atlas accessLists create "10.0.0.0/16" \
   --comment "App VPC private range for private endpoint"
 ```
 
 For even tighter security, set the access list to only allow the specific private endpoint IP:
 
 ```bash
-atlas accessLists create \
-  --ip "10.0.5.10" \
+atlas accessLists create "10.0.5.10" \
   --comment "Private endpoint IP only"
 ```
 
