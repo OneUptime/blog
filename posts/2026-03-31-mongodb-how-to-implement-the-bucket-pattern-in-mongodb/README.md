@@ -65,6 +65,8 @@ Use `findOneAndUpdate` with `upsert` to add readings to the current bucket:
 const now = new Date();
 const bucketStart = new Date(now);
 bucketStart.setMinutes(0, 0, 0); // Truncate to hour
+const bucketEnd = new Date(bucketStart);
+bucketEnd.setHours(bucketEnd.getHours() + 1); // End of hour window
 
 db.sensorBuckets.findOneAndUpdate(
   {
@@ -79,10 +81,8 @@ db.sensorBuckets.findOneAndUpdate(
     $inc: { count: 1, sum: 22.5 },
     $min: { min: 22.5 },
     $max: { max: 22.5 },
-    $set: {
-      bucketEnd: now,
-      sensorId: "s001",
-      bucketStart: bucketStart
+    $setOnInsert: {
+      bucketEnd: bucketEnd
     }
   },
   {
@@ -102,8 +102,7 @@ const endTime = ISODate("2026-03-31T12:00:00Z");
 
 db.sensorBuckets.find({
   sensorId: "s001",
-  bucketStart: { $gte: startTime },
-  bucketEnd: { $lte: endTime }
+  bucketStart: { $gte: startTime, $lt: endTime }
 })
 ```
 
