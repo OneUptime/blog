@@ -29,8 +29,9 @@ Self-hosted requires you to handle all operational tasks: installing MongoDB, co
 
 ```bash
 # Self-hosted: install MongoDB on Ubuntu
-wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/7.0 multiverse" \
+curl -fsSL https://pgp.mongodb.com/server-7.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
   | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 sudo apt-get update && sudo apt-get install -y mongodb-org
 
@@ -40,9 +41,9 @@ mongod --replSet rs0 --bind_ip_all
 
 ## Cost Comparison
 
-Atlas pricing is transparent but can be expensive at scale. An M30 cluster (4 vCPU, 16 GB RAM) costs approximately $0.20/hr per node, so a 3-node replica set is around $440/month before storage and data transfer.
+Atlas pricing is transparent but can be expensive at scale. An M30 cluster (2 vCPU, 8 GB RAM) costs approximately $0.54/hr per node, so a 3-node replica set is around $1,180/month before storage and data transfer.
 
-Self-hosted on AWS EC2: an r6g.xlarge (4 vCPU, 32 GB RAM) costs ~$0.20/hr. Three nodes = ~$440/month for compute only, but you save on Atlas markup. However, add:
+Self-hosted on AWS EC2: an r6g.xlarge (4 vCPU, 32 GB RAM) costs ~$0.20/hr. Three nodes = ~$440/month for compute only, which is significantly less than Atlas. However, add:
 
 ```text
 Self-hosted hidden costs:
@@ -63,7 +64,7 @@ Atlas-only features:
 - Atlas Search (Lucene-based full-text search)
 - Atlas Vector Search (AI/embedding search)
 - Atlas Data Federation (query S3/Atlas together)
-- Atlas App Services (serverless functions, sync)
+- Atlas Triggers (database triggers, scheduled triggers)
 - Atlas Charts (data visualization)
 - Automated performance advisor
 - Online archive (tiered storage)
@@ -79,11 +80,11 @@ Atlas provides continuous backup with point-in-time recovery (PITR), configurabl
 # Atlas: restore to a point in time via CLI
 atlas backups restores start pointInTime \
   --clusterName myCluster \
-  --pointInTimeUTCMillis 1700000000000 \
+  --pointInTimeUTCSeconds 1700000000 \
   --targetClusterName myRestoreCluster
 ```
 
-Self-hosted backup typically uses `mongodump` or `mongodump`-based tools, which create logical backups that can be slow on large datasets.
+Self-hosted backup typically uses `mongodump` for logical backups or filesystem snapshot-based tools, which can be slow on large datasets.
 
 ```bash
 # Self-hosted logical backup
