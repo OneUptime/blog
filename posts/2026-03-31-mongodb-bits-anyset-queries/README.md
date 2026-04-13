@@ -204,9 +204,9 @@ db.members.find({ roles: { $bitsAllSet: [1, 2] } });
 
 ## Limitations
 
-- The queried field must be a non-negative integer or BinData.
+- The queried field must be numeric (int, long, or double) or BinData. The bitmask argument must be a non-negative integer.
 - A bitmask of `0` with `$bitsAnySet` will never match any document because checking for any bit set in zero always returns false.
-- Float fields are not evaluated even if the truncated integer would match.
+- Double fields with a non-zero fractional part are not matched. Doubles that represent whole numbers (e.g. 3.0) are converted to integers and evaluated normally.
 
 ## Summary
 
