@@ -40,7 +40,7 @@ insert query update delete getmore command dirty  used flushes vsize   res qrw a
 Column guide:
 - `insert/query/update/delete` - operations per second; `*0` means zero operations
 - `getmore` - cursor getMore operations per second
-- `command` - commands per second as `executed|failed`
+- `command` - commands per second as `local|replicated`
 - `dirty` - percentage of WiredTiger cache with dirty (unwritten) pages
 - `used` - percentage of WiredTiger cache currently used
 - `flushes` - WiredTiger checkpoint flushes per interval
@@ -104,7 +104,7 @@ mongostat --discover --host "rs0/mongo1:27017"
 mongostat --host "mongo1:27017,mongo2:27017,mongo3:27017"
 ```
 
-Output includes a column per host, letting you compare primary vs secondary activity.
+Output includes one row per host per interval, with `host`, `set`, and `repl` columns identifying each member and its role, letting you compare primary vs secondary activity.
 
 ## Capturing and Analyzing mongostat Output
 
