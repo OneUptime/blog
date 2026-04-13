@@ -19,6 +19,7 @@ mongodb = { version = "2", features = ["tokio-runtime"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 bson = { version = "2", features = ["chrono-0_4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
@@ -110,7 +111,7 @@ use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
 use chrono::Utc;
 use mongodb::Collection;
-use crate::models::{User, CreateUserRequest, UpdateUserRequest, UserResponse};
+use crate::models::{User, CreateUserRequest, UserResponse};
 
 pub async fn list_users(
     col: web::Data<Collection<User>>,
