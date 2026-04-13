@@ -44,7 +44,7 @@ class WriteThroughCache {
     const cacheKey = `${collection}:${id}`
     const docWithId = { ...document, _id: new ObjectId(id) }
 
-    // Write to both stores atomically (best-effort)
+    // Write to both stores concurrently (best-effort)
     const [mongoResult] = await Promise.all([
       this.db.collection(collection).replaceOne(
         { _id: new ObjectId(id) },
@@ -114,9 +114,6 @@ const user = await cache.read("users", userId)
 import json
 import redis
 from pymongo import MongoClient
-from bson import ObjectId
-import os
-from datetime import datetime
 
 class WriteThroughCache:
     def __init__(self, redis_url, mongo_uri, db_name, default_ttl=600):
@@ -153,7 +150,7 @@ async function safeWrite(collection, id, document) {
       redis.setex(`${collection}:${id}`, 600, JSON.stringify(document))
     ])
   } catch (err) {
-    // If Redis fails, delete the stale key so next read re-populates
+    // If either write fails, delete the cache key to prevent stale data
     await redis.del(`${collection}:${id}`).catch(() => {})
     throw err
   }
