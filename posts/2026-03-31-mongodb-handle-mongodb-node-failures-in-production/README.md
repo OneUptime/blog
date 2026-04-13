@@ -74,7 +74,11 @@ async function runTransactionWithRetry(fn, session) {
       await session.commitTransaction();
       return;
     } catch (err) {
-      await session.abortTransaction();
+      try {
+        await session.abortTransaction();
+      } catch (_) {
+        // Abort may fail if the transaction was already ended by the server
+      }
       if (err.hasErrorLabel("TransientTransactionError")) {
         attempt++;
         continue;
