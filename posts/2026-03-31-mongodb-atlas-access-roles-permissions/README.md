@@ -40,8 +40,8 @@ atlas organizations invitations invite user@example.com \
 Project roles control access to clusters, network settings, and monitoring within a project.
 
 ```bash
-# Add a user to a project as cluster manager
-atlas projects users add user@example.com \
+# Invite a user to a project as cluster manager
+atlas projects invitations create user@example.com \
   --projectId <PROJECT_ID> \
   --role GROUP_CLUSTER_MANAGER
 ```
@@ -79,8 +79,8 @@ Built-in roles like `readWrite` often grant more access than needed. Create cust
 
 ```bash
 atlas customDbRoles create orders_reader \
-  --privilege "orders_db.orders:find" \
-  --privilege "orders_db.products:find" \
+  --privilege FIND@orders_db.orders \
+  --privilege FIND@orders_db.products \
   --projectId <PROJECT_ID>
 
 # Assign the custom role to a user
@@ -97,7 +97,7 @@ Or use the Admin API for fine-grained privilege control.
 curl -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
   --header "Content-Type: application/json" \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/customDBRoles" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/${PROJECT_ID}/customDBRoles/roles" \
   --data '{
     "roleName": "orders_reader",
     "actions": [
