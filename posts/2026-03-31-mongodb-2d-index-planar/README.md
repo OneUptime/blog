@@ -193,12 +193,13 @@ db.locations.aggregate([
 Feature                2d Index              2dsphere Index
 -----------------------------------------------------------
 Coordinate system      Flat plane            Spherical (Earth)
-Coordinate format      [x, y] or {x,y}       GeoJSON objects
+Coordinate format      [x, y] or {x,y}      GeoJSON and legacy pairs
 Accuracy for Earth     Low (flat approx)     High (accurate)
 Use case               Games, floor plans    Real-world geo
-Operators supported    $near, $geoWithin     $near, $nearSphere,
-                       $center, $box                    $geoWithin, $geoIntersects
-GeoJSON support        Partial               Full
+Operators supported    $near, $nearSphere,   $near, $nearSphere,
+                       $geoWithin,           $geoWithin, $geoIntersects
+                       $center, $box
+GeoJSON support        No                    Full
 ```
 
 ## Best Practices
