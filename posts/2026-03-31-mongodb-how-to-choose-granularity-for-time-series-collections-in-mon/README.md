@@ -174,12 +174,22 @@ Use the result to guide your granularity choice:
 
 ## Changing Granularity
 
-You cannot modify granularity on an existing collection. Recreate the collection:
+Starting with MongoDB 6.0, you can increase granularity on an existing collection using `collMod` (for example, from `seconds` to `minutes` or from `minutes` to `hours`). You cannot decrease it.
+
+```javascript
+// Increase granularity from seconds to minutes
+db.runCommand({
+  collMod: "sensor_readings",
+  timeseries: { granularity: "minutes" }
+})
+```
+
+If you need to decrease granularity, you must recreate the collection:
 
 ```javascript
 // 1. Create new collection with correct granularity
 db.createCollection("sensor_readings_v2", {
-  timeseries: { timeField: "timestamp", metaField: "metadata", granularity: "minutes" }
+  timeseries: { timeField: "timestamp", metaField: "metadata", granularity: "seconds" }
 })
 
 // 2. Copy data
