@@ -89,7 +89,7 @@ db.events.aggregate([
       mau: { $size: "$activeUsers" }
     }
   },
-  { $sort: { period: 1 } }
+  { $sort: { "_id.year": 1, "_id.month": 1 } }
 ])
 ```
 
