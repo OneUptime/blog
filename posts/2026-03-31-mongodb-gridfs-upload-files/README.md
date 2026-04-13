@@ -15,7 +15,7 @@ GridFS is MongoDB's specification for storing and retrieving files larger than t
 The quickest way to upload a file is with the `mongofiles` command-line tool:
 
 ```bash
-mongofiles -d mydb put /path/to/report.pdf
+mongofiles -d mydb put report.pdf
 ```
 
 Output:
