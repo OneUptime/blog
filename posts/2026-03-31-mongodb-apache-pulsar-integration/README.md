@@ -147,12 +147,17 @@ bin/pulsar-admin topics stats persistent://public/default/mongodb-orders
 Use Pulsar Schema Registry to enforce event schemas:
 
 ```python
-# Define Avro schema for events
-schema_definition = '{"type":"record","name":"OrderEvent","fields":[{"name":"orderId","type":"string"},{"name":"status","type":"string"},{"name":"total","type":"double"}]}'
+from pulsar.schema import Record, String, Double, AvroSchema
+
+# Define schema as a Record subclass
+class OrderEvent(Record):
+    orderId = String()
+    status = String()
+    total = Double()
 
 producer = client.create_producer(
   "persistent://public/default/mongodb-orders",
-  schema=pulsar.schema.AvroSchema(schema_definition)
+  schema=AvroSchema(OrderEvent)
 )
 ```
 
