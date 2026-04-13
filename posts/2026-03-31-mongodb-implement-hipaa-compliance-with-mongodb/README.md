@@ -109,7 +109,7 @@ auditLog:
   path: /var/log/mongodb/audit.json
   filter: '{
     atype: {
-      $in: ["authenticate", "authCheck", "logout", "find", "update", "delete"]
+      $in: ["authenticate", "authCheck", "logout", "createUser", "dropUser", "updateUser"]
     }
   }'
 ```
@@ -125,7 +125,7 @@ from datetime import datetime
 for line in sys.stdin:
   doc = json.loads(line)
   if doc.get('param', {}).get('ns', '').endswith('.patients'):
-    ts = datetime.fromisoformat(doc['ts']['date'])
+    ts = datetime.fromisoformat(doc['ts']['$date'])
     if ts.hour < 7 or ts.hour > 20:
       print('After-hours PHI access:', doc['users'], doc['atype'], doc['ts'])
 "
