@@ -89,13 +89,13 @@ db.orders.find({ status: "shipped" })
 db.orders.updateMany(
   { status: "pending" },
   { $set: { flagged: true } },
-  { hint: { status: 1 } }
+  { hint: { status: 1, createdAt: -1 } }
 );
 
 // Force an index on deleteMany
 db.orders.deleteMany(
-  { createdAt: { $lt: new Date("2023-01-01") } },
-  { hint: { createdAt: 1 } }
+  { status: "cancelled", createdAt: { $lt: new Date("2023-01-01") } },
+  { hint: { status: 1, createdAt: -1 } }
 );
 ```
 
