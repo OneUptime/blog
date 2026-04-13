@@ -84,14 +84,24 @@ Find all documents waiting for a specific reviewer at the current step.
 async function getPendingForReviewer(db, reviewerId) {
   return db.collection("proposals").find({
     status: "pending_review",
-    approvalChain: {
-      $elemMatch: {
-        assignedTo: reviewerId,
-        decision: null,
-        $expr: {
-          $eq: ["$step", "$currentStep"],
+    $expr: {
+      $gt: [
+        {
+          $size: {
+            $filter: {
+              input: "$approvalChain",
+              cond: {
+                $and: [
+                  { $eq: ["$$this.step", "$currentStep"] },
+                  { $eq: ["$$this.assignedTo", reviewerId] },
+                  { $eq: ["$$this.decision", null] },
+                ],
+              },
+            },
+          },
         },
-      },
+        0,
+      ],
     },
   }).toArray();
 }
