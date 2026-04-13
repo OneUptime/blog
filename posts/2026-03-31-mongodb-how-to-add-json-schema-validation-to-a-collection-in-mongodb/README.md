@@ -21,6 +21,7 @@ db.createCollection("users", {
       bsonType: "object",
       required: ["username", "email", "createdAt"],
       properties: {
+        _id: { bsonType: "objectId" },
         username: {
           bsonType: "string",
           minLength: 3,
