@@ -82,6 +82,7 @@ public record UpdateUserRequest(string? Name, string? Email);
 
 ```csharp
 // Repositories/UserRepository.cs
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using MongoApi.Models;
 using MongoApi.Settings;
