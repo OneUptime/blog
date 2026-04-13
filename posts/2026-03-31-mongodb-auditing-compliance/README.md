@@ -86,10 +86,18 @@ Common `atype` values and what they capture:
 | updateUser | User modified (password, roles) |
 | grantRolesToUser | Roles added to user |
 | logout | Session logout |
-| find | Read operations (high volume) |
-| insert | Insert operations (high volume) |
-| update | Update operations |
-| delete | Delete operations |
+
+To audit CRUD operations (find, insert, update, delete), filter on `authCheck` events with a specific `param.command`. The `authCheck` atype fires for every authorization check, so filtering by command type avoids capturing unrelated checks:
+
+```yaml
+filter: |
+  {
+    atype: "authCheck",
+    "param.command": { $in: ["find", "insert", "update", "delete"] }
+  }
+```
+
+> **Note:** Auditing CRUD operations produces high volume. Use targeted namespace filters to limit output.
 
 ## Step 3: Audit Filter Examples
 
@@ -105,7 +113,7 @@ filter: '{ atype: { $in: ["authenticate", "logout"] } }'
 filter: |
   {
     atype: "authenticate",
-    "param.result": { $ne: 0 }
+    "result": { $ne: 0 }
   }
 ```
 
@@ -133,7 +141,8 @@ filter: |
 ```yaml
 filter: |
   {
-    atype: { $in: ["find", "insert", "update", "delete"] },
+    atype: "authCheck",
+    "param.command": { $in: ["find", "insert", "update", "delete"] },
     "param.ns": "payments.transactions"
   }
 ```
@@ -159,10 +168,9 @@ Each JSON entry looks like:
   "param": {
     "user": "appUser",
     "db": "ecommerce",
-    "mechanism": "SCRAM-SHA-256",
-    "result": 0     // 0 = success, non-zero = failure code
+    "mechanism": "SCRAM-SHA-256"
   },
-  "result": 0
+  "result": 0       // 0 = success, non-zero = failure code
 }
 ```
 
