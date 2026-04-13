@@ -14,7 +14,7 @@ MongoDB Atlas is MongoDB's official managed cloud database service, available on
 
 ## MongoDB API Compatibility
 
-Cosmos DB for MongoDB implements a subset of the MongoDB wire protocol. As of 2026, Cosmos DB supports MongoDB API version 4.2 and 6.0 (in preview). Full compatibility with MongoDB 7.x features is not guaranteed.
+Cosmos DB for MongoDB implements a subset of the MongoDB wire protocol. As of 2026, Cosmos DB supports MongoDB API versions 3.2 through 7.0 (all GA). Full compatibility with all features in each version is not guaranteed — Cosmos DB documents supported and unsupported features for each version.
 
 ```javascript
 // Connection string for Cosmos DB for MongoDB
@@ -33,7 +33,7 @@ Cosmos DB was designed from day one for global multi-region active-active writes
 Cosmos DB global distribution:
 - Multi-region writes: supported natively
 - Automatic conflict resolution (last-write-wins or custom)
-- Latency SLA: <10ms read, <15ms write at p99 globally
+- Latency SLA: <10ms read and write at p99 globally
 ```
 
 MongoDB Atlas global clusters allow geographically distributed reads and writes via zone sharding, but multi-region writes require application-level conflict handling.
@@ -85,14 +85,18 @@ MongoDB equivalents:
 
 ## Azure Ecosystem Integration
 
-Cosmos DB integrates tightly with Azure services: Azure Functions triggers, Event Grid, Synapse Link for analytics, and Azure Active Directory authentication.
+Cosmos DB integrates tightly with Azure services: Azure Functions triggers, Event Grid, Synapse Link for analytics, and Microsoft Entra ID authentication.
 
 ```javascript
 // Cosmos DB change feed (equivalent to MongoDB change streams)
+const { ChangeFeedStartFrom } = require("@azure/cosmos");
 const container = client.database("mydb").container("orders");
-const changeFeedIterator = container.items.getChangeFeedIterator({ startFromBeginning: true });
-for await (const result of changeFeedIterator) {
-  console.log(result.result);
+const iterator = container.items.getChangeFeedIterator({
+  changeFeedStartFrom: ChangeFeedStartFrom.Beginning()
+});
+while (iterator.hasMoreResults) {
+  const response = await iterator.readNext();
+  console.log(response.result);
 }
 ```
 
