@@ -74,9 +74,6 @@ sudo systemctl stop mongod
 # Restart MongoDB
 sudo systemctl restart mongod
 
-# Reload configuration without full restart
-sudo systemctl reload mongod
-
 # Enable MongoDB to start on boot
 sudo systemctl enable mongod
 
@@ -171,6 +168,8 @@ Add these settings:
 [Service]
 Restart=on-failure
 RestartSec=10s
+
+[Unit]
 StartLimitBurst=5
 StartLimitIntervalSec=60s
 ```
