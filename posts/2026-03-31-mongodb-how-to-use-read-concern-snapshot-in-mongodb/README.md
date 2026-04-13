@@ -10,7 +10,7 @@ Description: Learn how to use read concern snapshot in MongoDB transactions to g
 
 ## Introduction
 
-Read concern `snapshot` provides a consistent view of data at a single point in time across multiple read operations within a transaction. It is only available inside multi-document transactions and ensures that all reads in the transaction see the same majority-committed snapshot, eliminating non-repeatable reads and phantoms.
+Read concern `snapshot` provides a consistent view of data at a single point in time across multiple read operations within a transaction. It was originally available only inside multi-document transactions (MongoDB 4.0+), though starting in MongoDB 5.0 it can also be used outside transactions for `find`, `aggregate`, and `distinct` operations. Within a transaction, it ensures that all reads see the same majority-committed snapshot, eliminating non-repeatable reads and phantoms.
 
 ## How "snapshot" Works
 
@@ -21,7 +21,7 @@ When a transaction starts with read concern `snapshot`, MongoDB pins all reads t
 
 ## Availability
 
-Read concern `snapshot` is only supported inside transactions. Attempting to use it outside a transaction returns an error.
+In MongoDB 4.0 through 4.4, read concern `snapshot` is only supported inside transactions. Starting in MongoDB 5.0, it is also available outside transactions for `find`, `aggregate`, and `distinct` operations on both replica sets and sharded clusters.
 
 ## Using snapshot in a Transaction
 
@@ -80,7 +80,7 @@ Use `snapshot` when you need consistency across multiple reads in a single trans
 
 ## Limitations
 
-- Only available in transactions (MongoDB 4.0+)
+- Available in transactions starting with MongoDB 4.0. Available outside transactions for certain read operations starting with MongoDB 5.0.
 - Transactions have a maximum duration (default 60 seconds) and size limit
 - Long-running transactions hold a snapshot which can increase storage pressure
 
