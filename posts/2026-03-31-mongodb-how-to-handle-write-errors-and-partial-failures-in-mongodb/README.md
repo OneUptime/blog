@@ -66,8 +66,8 @@ try {
   ], { ordered: true })
 } catch (err) {
   if (err.name === "MongoBulkWriteError") {
-    console.log("Failed at index:", err.index)
-    console.log("Succeeded before failure:", err.result.nInserted)
+    console.log("Failed at index:", err.writeErrors[0].index)
+    console.log("Succeeded before failure:", err.result.insertedCount)
     // Retry from err.index + 1 if needed
   }
 }
@@ -89,9 +89,9 @@ try {
     })
 
     // Count what succeeded
-    console.log("Inserted:", err.result.nInserted)
-    console.log("Modified:", err.result.nModified)
-    console.log("Deleted:", err.result.nDeleted)
+    console.log("Inserted:", err.result.insertedCount)
+    console.log("Modified:", err.result.modifiedCount)
+    console.log("Deleted:", err.result.deletedCount)
 
     // Identify failed document IDs for retry or logging
     const failedIndexes = new Set(err.writeErrors.map(e => e.index))
@@ -161,7 +161,7 @@ try {
     { writeConcern: { w: "majority", wtimeout: 5000 } }
   )
 } catch (err) {
-  if (err.name === "WriteConcernError") {
+  if (err.name === "MongoWriteConcernError") {
     console.error("Replication not confirmed within timeout")
     // The write may have succeeded - check if document exists
     const existing = await db.collection("critical").findOne({ data: "important" })
