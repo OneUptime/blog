@@ -131,7 +131,7 @@ The aggregation form supports dynamic array slicing and can be combined with oth
 
 - `$slice` only works on arrays. Applying it to a non-array field returns the field as-is.
 - In query projections, `$slice` cannot be combined with the positional `$` operator on the same field.
-- Negative skip values are not supported in the `[skip, limit]` form.
+- In the `[skip, limit]` form, a negative skip value counts from the end of the array. For example, `$slice: [-3, 2]` starts 3 from the end and returns up to 2 elements.
 
 ## Summary
 
