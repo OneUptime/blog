@@ -10,7 +10,7 @@ Description: Learn how to add new shards to a running MongoDB sharded cluster, v
 
 ## Introduction
 
-Adding a shard to an existing MongoDB sharded cluster increases storage capacity and distributes query load. MongoDB's balancer automatically migrates chunks to the new shard after it is added. You can add a standalone mongod or a replica set as a shard - replica sets are strongly recommended for production.
+Adding a shard to an existing MongoDB sharded cluster increases storage capacity and distributes query load. MongoDB's balancer automatically migrates chunks to the new shard after it is added. Each shard must be deployed as a replica set.
 
 ## Before You Add a Shard
 
