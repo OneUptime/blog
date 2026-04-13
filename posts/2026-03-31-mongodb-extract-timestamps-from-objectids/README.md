@@ -16,7 +16,7 @@ Every MongoDB ObjectId contains a 4-byte Unix timestamp in its first 4 bytes, re
 
 ```javascript
 const id = new ObjectId("507f1f77bcf86cd799439011");
-print(id.getTimestamp()); // ISODate("2012-10-17T20:46:31.000Z")
+print(id.getTimestamp()); // ISODate("2012-10-17T21:13:27.000Z")
 ```
 
 For an existing document:
