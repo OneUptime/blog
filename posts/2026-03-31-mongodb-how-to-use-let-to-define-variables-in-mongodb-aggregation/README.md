@@ -77,15 +77,17 @@ db.products.aggregate([
 db.products.aggregate([
   {
     $project: {
-      $let: {
-        vars: {
-          discountedPrice: {
-            $multiply: ["$originalPrice", { $subtract: [1, "$discountRate"] }]
+      pricing: {
+        $let: {
+          vars: {
+            discountedPrice: {
+              $multiply: ["$originalPrice", { $subtract: [1, "$discountRate"] }]
+            }
+          },
+          in: {
+            finalPrice: "$$discountedPrice",
+            savings: { $subtract: ["$originalPrice", "$$discountedPrice"] }
           }
-        },
-        in: {
-          finalPrice: "$$discountedPrice",
-          savings: { $subtract: ["$originalPrice", "$$discountedPrice"] }
         }
       }
     }
