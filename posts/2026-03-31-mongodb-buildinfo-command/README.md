@@ -54,7 +54,7 @@ The helper only returns the version string. Use `buildInfo` directly when you ne
   "bits": 64,
   "debug": false,
   "maxBsonObjectSize": 16777216,
-  "storageEngines": ["devnull", "ephemeralForTest", "wiredTiger"],
+  "storageEngines": ["devnull", "wiredTiger"],
   "ok": 1
 }
 ```
