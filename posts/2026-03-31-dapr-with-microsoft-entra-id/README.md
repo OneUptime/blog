@@ -78,7 +78,7 @@ spec:
 
 ## Authenticate with Client Certificate
 
-Client certificates are more secure than secrets and do not expire by default:
+Client certificates are more secure than secrets and are not vulnerable to leaking in logs or environment variables:
 
 ```bash
 # Generate a self-signed certificate
@@ -99,10 +99,12 @@ az ad app credential reset \
   --cert "@dapr-cert.pem" \
   --append
 
-# Store certificate as Kubernetes Secret
+# Combine certificate and private key into a single PEM for Dapr
+cat dapr-cert.pem dapr-key.pem > dapr-combined.pem
+
+# Store combined PEM as Kubernetes Secret
 kubectl create secret generic entra-cert \
-  --from-file=certificate=dapr-cert.pem \
-  --from-file=key=dapr-key.pem
+  --from-file=certificate=dapr-combined.pem
 ```
 
 ```yaml
