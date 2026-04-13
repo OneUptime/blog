@@ -95,17 +95,13 @@ mongodb://user:password@mongo.example.com:27017/mydb?tls=true&tlsCAFile=/path/to
 
 ## Verifying TLS is Active
 
-Connect and check the TLS details:
+Check TLS version statistics via server status:
 
 ```javascript
-db.adminCommand({ connectionStatus: 1 })
+db.serverStatus().transportSecurity
 ```
 
-Or check via the server status:
-
-```javascript
-db.serverStatus().connections
-```
+This returns counts of connections by TLS version (e.g., TLS 1.2, TLS 1.3).
 
 Use `openssl s_client` for network-level verification:
 
