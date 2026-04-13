@@ -107,10 +107,8 @@ await cache.invalidate("users", userId.toString())
 
 ```python
 import json
-from functools import wraps
 import redis
 from pymongo import MongoClient
-import os
 
 class ReadThroughCache:
     def __init__(self, redis_url, mongo_uri, db_name, default_ttl=300):
