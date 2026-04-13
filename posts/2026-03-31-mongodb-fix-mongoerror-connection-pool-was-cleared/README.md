@@ -32,7 +32,7 @@ Fix the root cause, and the pool clearing will stop.
 
 ## Step 2: Enable Retryable Writes and Reads
 
-The driver can automatically retry once after a pool-clearing event if retryable writes are enabled (they are by default in driver version 3.6+):
+The driver can automatically retry once after a pool-clearing event if retryable writes are enabled (they are by default in drivers compatible with MongoDB 4.2+):
 
 ```javascript
 const client = new MongoClient(uri, {
@@ -103,7 +103,7 @@ const result = await withRetry(() =>
 
 ```javascript
 client.on('connectionPoolCleared', (event) => {
-  console.error('Pool cleared:', event.address, 'Reason:', event.serviceId);
+  console.error('Pool cleared:', event.address);
 });
 
 client.on('connectionCheckOutFailed', (event) => {
