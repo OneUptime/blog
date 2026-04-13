@@ -15,7 +15,7 @@ Encryption at rest protects data stored on disk from unauthorized access if phys
 ## Requirements
 
 - MongoDB Enterprise 3.2+
-- WiredTiger storage engine (default in MongoDB 3.0+)
+- WiredTiger storage engine (default in MongoDB 3.2+)
 - A Key Management Interoperability Protocol (KMIP) server or a local keyfile
 
 ## Option 1: Local Key Management (Development/Testing)
@@ -41,13 +41,7 @@ storage:
 
 security:
   enableEncryption: true
-  encryptionKeyIdentifier: "MyLocalKey"
-  kmip:
-    # For local keyfile, use the keyVaultNamespace approach
-    # or use the command line flag
-
-# Alternative: use command line
-# mongod --enableEncryption --encryptionKeyFile /etc/mongodb/keyfile
+  encryptionKeyFile: /etc/mongodb/keyfile
 ```
 
 Start with local keyfile:
@@ -97,17 +91,6 @@ grep -i encrypt /var/log/mongodb/mongod.log
 # Expected: "Encryption at rest is enabled"
 ```
 
-Using mongosh:
-
-```javascript
-db.serverStatus().security
-// Should show:
-// {
-//   "SSLServerSubjectDN": "...",
-//   "javascriptEnabled": true
-// }
-```
-
 Check via administrative command:
 
 ```javascript
@@ -125,6 +108,7 @@ Rotate the encryption key without data re-encryption (MongoDB Enterprise 3.4+):
 mongod --enableEncryption \
        --kmipRotateMasterKey \
        --kmipServerName kmip.company.internal \
+       --kmipServerCAFile /etc/mongodb/kmip-ca.pem \
        --kmipClientCertificateFile /etc/mongodb/kmip-client.pem
 ```
 
@@ -138,7 +122,7 @@ mongodump --uri="mongodb://admin:password@localhost:27017" \
           --out /backup/dump_2026_03_31
 
 # The dump files are NOT encrypted - encrypt the backup storage separately
-tar czf - /backup/dump_2026_03_31 | openssl enc -aes-256-cbc -k "$BACKUP_KEY" \
+tar czf - /backup/dump_2026_03_31 | openssl enc -aes-256-cbc -pbkdf2 -k "$BACKUP_KEY" \
   > /secure-backup/dump_2026_03_31.tar.gz.enc
 ```
 
