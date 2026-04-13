@@ -14,7 +14,7 @@ MongoDB 7.0 is a Long-Term Support (LTS) release that brings compound wildcard i
 
 ## Prerequisites
 
-- All replica set members run MongoDB 6.3 (latest 6.x release)
+- All replica set members run MongoDB 6.0 (latest 6.0.x patch release)
 - FCV is set to 6.0
 - A complete backup is available
 - MongoDB drivers are updated to 6.0+ compatible versions
@@ -115,7 +115,7 @@ sudo systemctl start mongod
 ```javascript
 // Connect to the new primary
 use admin
-db.adminCommand({ setFeatureCompatibilityVersion: "7.0" })
+db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })
 ```
 
 ## Step 6 - Upgrade Drivers
