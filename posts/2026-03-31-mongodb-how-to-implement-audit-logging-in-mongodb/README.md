@@ -24,36 +24,53 @@ auditLog:
   format: JSON
   path: /var/log/mongodb/audit.json
   filter: '{
-    atype: {
-      $in: [
-        "authenticate",
-        "authCheck",
-        "createCollection",
-        "dropCollection",
-        "createIndex",
-        "dropIndex",
-        "insert",
-        "update",
-        "delete",
-        "find"
-      ]
-    }
+    $or: [
+      {
+        atype: {
+          $in: [
+            "authenticate",
+            "createCollection",
+            "dropCollection",
+            "createIndex",
+            "dropIndex"
+          ]
+        }
+      },
+      {
+        atype: "authCheck",
+        "param.command": {
+          $in: ["find", "insert", "update", "delete"]
+        }
+      }
+    ]
   }'
 ```
 
-Sample audit log entry:
+Note: CRUD operations (find, insert, update, delete) are not their own audit event types. They are captured via `authCheck` events where `param.command` indicates the operation. To log successful CRUD operations, you must also enable `auditAuthorizationSuccess`:
+
+```yaml
+setParameter:
+  auditAuthorizationSuccess: true
+```
+
+Sample audit log entry for an insert operation:
 
 ```json
 {
-  "atype": "insert",
+  "atype": "authCheck",
   "ts": { "$date": "2026-03-31T12:00:00.000Z" },
   "local": { "ip": "127.0.0.1", "port": 27017 },
   "remote": { "ip": "10.0.0.5", "port": 54321 },
   "users": [{ "user": "appuser", "db": "myapp" }],
   "roles": [{ "role": "readWrite", "db": "myapp" }],
   "param": {
+    "command": "insert",
     "ns": "myapp.orders",
-    "doc": { "_id": { "$oid": "abc123" } }
+    "args": {
+      "insert": "orders",
+      "ordered": true,
+      "$db": "myapp"
+    }
   },
   "result": 0
 }
@@ -61,7 +78,18 @@ Sample audit log entry:
 
 ## Approach 2 - Application-Level Audit with Change Streams
 
-For richer context (user IDs, HTTP request info, business fields), use Change Streams:
+For richer context (user IDs, HTTP request info, business fields), use Change Streams.
+
+To use `fullDocumentBeforeChange` (pre-images), you must first enable `changeStreamPreAndPostImages` on each collection you want to watch:
+
+```javascript
+db.runCommand({
+  collMod: "orders",
+  changeStreamPreAndPostImages: { enabled: true }
+})
+```
+
+Without this, `fullDocumentBeforeChange` will be `null` even with the `"whenAvailable"` option.
 
 ### Audit Log Schema
 
@@ -174,12 +202,14 @@ function createAuditMiddleware(db) {
           resourceId: req.auditResourceId,
           userId: req.user?.id,
           userEmail: req.user?.email,
-          ipAddress: req.ip || req.connection.remoteAddress,
+          ipAddress: req.ip || req.socket.remoteAddress,
           userAgent: req.headers["user-agent"],
           requestId: req.headers["x-request-id"],
           method: req.method,
           path: req.path,
-          statusCode: res.statusCode
+          statusCode: res.statusCode,
+          before: req.auditBefore || null,
+          after: req.auditAfter || null
         }
 
         // Non-blocking - don't wait for the log to be written
