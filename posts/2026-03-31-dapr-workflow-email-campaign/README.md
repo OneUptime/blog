@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Workflow, Email, Campaign, Marketing Automation, Orchestration
 
-Description: Learn how to orchestrate multi-step email marketing campaigns using Dapr Workflow, with timed sequences, behavior-based branching, and A/B testing support.
+Description: Learn how to orchestrate multi-step email marketing campaigns using Dapr Workflow, with timed sequences and behavior-based branching.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to orchestrate multi-step email marketing campaigns using
 
 An email campaign is a sequence of timed emails sent to subscribers based on their behavior. Drip campaigns, onboarding sequences, and re-engagement flows all follow this pattern. Dapr Workflow's durable timers and external event support make it ideal for orchestrating these sequences without cron jobs or custom state machines.
 
-## Example: 5-Day Drip Campaign
+## Example: 7-Day Drip Campaign
 
 1. Send Day 0 welcome email immediately
 2. Wait 1 day, then send introduction email
@@ -102,7 +102,6 @@ def drip_campaign_workflow(ctx: wf.DaprWorkflowContext, subscriber: dict):
 ## Activity: Send Email via SendGrid
 
 ```python
-@wf.activity
 def send_campaign_email(ctx, data: dict):
     payload = {
         "personalizations": [{"to": [{"email": data["email"]}]}],
