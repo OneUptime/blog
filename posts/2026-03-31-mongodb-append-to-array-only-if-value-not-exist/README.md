@@ -38,7 +38,7 @@ db.posts.updateOne({ _id: id }, { $addToSet: { tags: "mongodb" } })
 
 ## $addToSet with Embedded Objects
 
-For arrays of objects, `$addToSet` uses deep equality to check for duplicates:
+For arrays of objects, `$addToSet` checks for an exact match, including field order:
 
 ```javascript
 db.users.updateOne(
@@ -51,7 +51,7 @@ db.users.updateOne(
 )
 ```
 
-The entire object must match exactly for `$addToSet` to consider it a duplicate. If any field differs, a new element is added.
+The entire object must match exactly - same fields, same values, and same field order - for `$addToSet` to consider it a duplicate. For example, `{ resource: "invoices", action: "read" }` and `{ action: "read", resource: "invoices" }` are treated as different documents. If any field or the ordering differs, a new element is added.
 
 ## Adding Multiple Unique Values with $each
 
