@@ -32,13 +32,13 @@ Event ordering guarantees that trigger events are processed in the order they oc
     "collection": "orders",
     "database": "production",
     "service_name": "mongodb-atlas",
-    "full_document": true
+    "full_document": true,
+    "unordered": false
   },
   "event_processors": {
     "FUNCTION": {
       "config": {
-        "function_name": "processOrder",
-        "ordered": true
+        "function_name": "processOrder"
       }
     }
   }
@@ -85,7 +85,7 @@ exports = async function(changeEvent) {
 For transient errors (network timeouts, external API failures), retry within the function:
 
 ```javascript
-async function withRetry(fn, maxAttempts = 3, delayMs = 1000) {
+async function withRetry(fn, maxAttempts = 3) {
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -93,9 +93,9 @@ async function withRetry(fn, maxAttempts = 3, delayMs = 1000) {
     } catch (err) {
       lastError = err;
       console.warn(`Attempt ${attempt} failed: ${err.message}`);
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
-      }
+      // Note: Atlas Functions do not support setTimeout, so retries
+      // execute immediately. For delayed retries, use a scheduled
+      // trigger to reprocess events from a dead-letter collection.
     }
   }
   throw lastError;
@@ -107,12 +107,13 @@ exports = async function(changeEvent) {
   await withRetry(async () => {
     const response = await context.http.post({
       url: "https://api.external.com/events",
-      body: JSON.stringify({ event: "order_created", data: doc })
+      body: JSON.stringify({ event: "order_created", data: doc }),
+      headers: { "Content-Type": ["application/json"] }
     });
     if (response.statusCode >= 500) {
       throw new Error(`External API returned ${response.statusCode}`);
     }
-  }, 3, 500);
+  }, 3);
 };
 ```
 
@@ -149,14 +150,14 @@ Create an Atlas alert on trigger failure count:
 ## Viewing Trigger Logs
 
 ```bash
-# Via Atlas CLI
-atlas logs download --projectId <id> --type APP_SERVICES
+# Via App Services CLI
+appservices logs list --app <app-id> --errors
 
 # Via Admin API - filter for trigger errors
 curl -H "Authorization: Bearer <token>" \
-  "https://realm.mongodb.com/api/admin/v3.0/groups/<project-id>/apps/<app-id>/logs?type=TRIGGER_FAILURE"
+  "https://services.cloud.mongodb.com/api/admin/v3.0/groups/<project-id>/apps/<app-id>/logs?type=TRIGGER_FAILURE"
 ```
 
 ## Summary
 
-Atlas trigger error handling involves enabling event ordering for sequential guarantees, wrapping function code in try-catch, writing failed events to a dead-letter collection, and implementing exponential backoff retries for transient failures. For ordered triggers, choose whether to re-throw errors (pausing the trigger for manual intervention) or swallow them (allowing processing to continue at the risk of skipped events).
+Atlas trigger error handling involves enabling event ordering for sequential guarantees, wrapping function code in try-catch, writing failed events to a dead-letter collection, and implementing retries for transient failures. For ordered triggers, choose whether to re-throw errors (pausing the trigger for manual intervention) or swallow them (allowing processing to continue at the risk of skipped events).
