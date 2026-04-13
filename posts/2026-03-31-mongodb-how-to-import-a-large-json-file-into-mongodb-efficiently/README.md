@@ -79,23 +79,18 @@ If you have a large JSON array file, convert it to JSON Lines first:
 jq -c '.[]' large_array.json > output.jsonl
 ```
 
-For very large files where jq loads the whole file:
+For very large files that do not fit in memory, use a streaming JSON parser like `ijson`:
 
 ```bash
-# Use python for streaming conversion
+# Install ijson for streaming JSON parsing
+pip install ijson
+
+# Stream-convert JSON array to JSON Lines without loading the entire file
 python3 -c "
-import json, sys
-decoder = json.JSONDecoder()
-with open('large_array.json') as f:
-    content = f.read()
-pos = content.find('[') + 1
-while pos < len(content):
-    try:
-        obj, end = decoder.raw_decode(content, pos)
+import ijson, json
+with open('large_array.json', 'rb') as f:
+    for obj in ijson.items(f, 'item'):
         print(json.dumps(obj))
-        pos = content.find('{', end)
-    except:
-        break
 " > output.jsonl
 ```
 
