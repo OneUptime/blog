@@ -67,7 +67,7 @@ Key fields to monitor:
 
 ```text
 "bytes currently in the cache"       - total cache used
-"tracked bytes belonging to leaf"    - data in cache
+"tracked bytes belonging to leaf pages in the cache" - leaf page data in cache
 "pages read into cache"              - disk reads (high = indexes not in RAM)
 "pages evicted from cache"           - evictions (high = memory pressure)
 ```
