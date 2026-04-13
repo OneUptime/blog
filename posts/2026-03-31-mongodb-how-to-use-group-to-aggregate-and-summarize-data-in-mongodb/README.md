@@ -30,7 +30,7 @@ The `$group` stage groups documents by a specified expression (the `_id` field) 
 | `$avg` | Computes average |
 | `$min` | Finds minimum value |
 | `$max` | Finds maximum value |
-| `$count` | Counts documents (use `{ $sum: 1 }`) |
+| `$count` | Counts documents in each group (MongoDB 5.0+; use `{ $sum: 1 }` for older versions) |
 | `$push` | Creates array of values |
 | `$addToSet` | Creates array of unique values |
 | `$first` | Gets first value in group |
