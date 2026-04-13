@@ -10,7 +10,7 @@ Description: Learn how to use MongoDB's $documents stage to generate inline docu
 
 ## What Is the $documents Stage?
 
-The `$documents` stage (introduced in MongoDB 5.1) generates a sequence of documents from a literal array within an aggregation pipeline. It allows you to create documents "inline" without needing a collection - useful for testing, reference data lookups, and cross-joining with static data.
+The `$documents` stage (introduced in MongoDB 6.0) generates a sequence of documents from a literal array within an aggregation pipeline. It allows you to create documents "inline" without needing a collection - useful for testing, reference data lookups, and cross-joining with static data.
 
 `$documents` can only be used in `db.aggregate()` (not `collection.aggregate()`), as it creates documents from scratch rather than reading from a collection.
 
@@ -42,12 +42,12 @@ db.aggregate([
 ])
 ```
 
-Output:
+Output (auto-generated `_id` fields omitted for brevity):
 
 ```javascript
-{ month: 1, name: "January" }
-{ month: 2, name: "February" }
-{ month: 3, name: "March" }
+{ _id: ObjectId("..."), month: 1, name: "January" }
+{ _id: ObjectId("..."), month: 2, name: "February" }
+{ _id: ObjectId("..."), month: 3, name: "March" }
 ```
 
 ## Joining Inline Data with a Collection
