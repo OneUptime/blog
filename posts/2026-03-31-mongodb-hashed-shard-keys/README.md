@@ -18,7 +18,7 @@ Hashed shard keys distribute documents by hashing the shard key field value, pro
 
 ## How Hashed Sharding Works
 
-MongoDB hashes the shard key value using a 64-bit MD5 hash and uses the hash to determine chunk placement. Documents with adjacent shard key values end up on different shards:
+MongoDB computes a hash of the shard key value, producing a 64-bit integer, and uses that hash to determine chunk placement. Documents with adjacent shard key values end up on different shards:
 
 ```text
 customerId "C001" -> hash(C001) -> shard2
@@ -29,6 +29,8 @@ customerId "C003" -> hash(C003) -> shard3
 ## Setting Up Hashed Sharding
 
 ### Step 1 - Enable Sharding on the Database
+
+> **Note:** Starting in MongoDB 6.0, `sh.enableSharding()` is no longer required. The database is automatically enabled for sharding when you shard the first collection. You can skip this step on MongoDB 6.0+.
 
 ```javascript
 sh.enableSharding("myapp")
@@ -57,13 +59,14 @@ sh.shardCollection("myapp.users", { userId: "hashed" })
 
 ## Pre-Splitting with Hashed Keys
 
-For empty collections being pre-filled with large datasets, pre-split to distribute immediately:
+For empty collections being pre-filled with large datasets, MongoDB automatically creates initial chunks distributed across all shards when using a hashed shard key. On MongoDB versions prior to 7.2, you could control this with `numInitialChunks`:
 
 ```javascript
+// MongoDB < 7.2 only — numInitialChunks was removed in 7.2
 sh.shardCollection("myapp.logs", { _id: "hashed" }, false, { numInitialChunks: 8 })
 ```
 
-`numInitialChunks` creates N initial chunks distributed across shards, avoiding balancer overhead at import time.
+On MongoDB 7.2+, initial chunk creation for hashed shard keys is automatic and does not require this parameter.
 
 ## Verify Distribution
 
@@ -100,12 +103,14 @@ db.events.find().sort({ _id: 1 })
 
 **Compound hashed keys (one hashed field only):**
 
+Starting in MongoDB 4.4, compound hashed shard keys are supported. The hashed field can be at any position, but only one field can be hashed:
+
 ```javascript
 // Valid: compound key with hashed prefix
 sh.shardCollection("myapp.logs", { ts: "hashed", level: 1 })
 
-// NOT valid: hashed field cannot be in the middle or end
-// sh.shardCollection("myapp.logs", { level: 1, ts: "hashed" })
+// Also valid: hashed field at the end (MongoDB 4.4+)
+sh.shardCollection("myapp.logs", { level: 1, ts: "hashed" })
 ```
 
 ## Hashed vs Ranged Sharding Comparison
