@@ -17,7 +17,7 @@ Eleventy (11ty) uses a `_data` directory for global data that is available to al
 ```bash
 mkdir eleventy-mongodb && cd eleventy-mongodb
 npm init -y
-npm install @11ty/eleventy mongodb dotenv
+npm install @11ty/eleventy mongodb dotenv luxon
 ```
 
 Create the project structure:
