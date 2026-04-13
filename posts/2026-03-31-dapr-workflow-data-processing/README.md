@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Workflow, Data Processing, ETL, Pipeline
 
-Description: Build reliable data processing pipelines using Dapr workflows with fan-out parallelism, error handling, checkpointing, and exactly-once activity execution.
+Description: Build reliable data processing pipelines using Dapr workflows with fan-out parallelism, error handling, checkpointing, and at-least-once activity execution.
 
 ---
 
-Data processing pipelines - ETL jobs, batch transformations, data enrichment pipelines - are excellent fits for Dapr workflows. The durable execution model guarantees that processed records are not re-processed on failure, and fan-out patterns enable parallel data processing.
+Data processing pipelines - ETL jobs, batch transformations, data enrichment pipelines - are excellent fits for Dapr workflows. The durable execution model provides at-least-once execution guarantees for activities, and fan-out patterns enable parallel data processing. Designing activities to be idempotent ensures safe retries on failure.
 
 ## Pipeline Design
 
@@ -66,7 +66,7 @@ def data_pipeline_workflow(ctx: DaprWorkflowContext, config: dict):
         ctx.call_activity(process_record, input=record)
         for record in records
     ]
-    results = yield ctx.task_all(process_tasks)
+    results = yield ctx.when_all(process_tasks)
 
     # Step 3: Filter successful results
     successful = [r for r in results if r.get("status") == "processed"]
@@ -104,7 +104,7 @@ def large_dataset_workflow(ctx: DaprWorkflowContext, config: dict):
         print(f"Processing chunk {i // chunk_size + 1}: records {i}-{i + len(chunk)}")
 
         tasks = [ctx.call_activity(process_record, input=r) for r in chunk]
-        chunk_results = yield ctx.task_all(tasks)
+        chunk_results = yield ctx.when_all(tasks)
         all_results.extend(chunk_results)
 
     yield ctx.call_activity(write_results, input=all_results)
@@ -123,7 +123,7 @@ def checkpointed_pipeline(ctx: DaprWorkflowContext, config: dict):
     for i in range(0, len(records), chunk_size):
         chunk = records[i:i + chunk_size]
         tasks = [ctx.call_activity(process_record, input=r) for r in chunk]
-        results = yield ctx.task_all(tasks)
+        results = yield ctx.when_all(tasks)
 
         # Checkpoint: write each chunk as it completes
         yield ctx.call_activity(write_results, input=results)
@@ -143,17 +143,20 @@ for wf in [data_pipeline_workflow, large_dataset_workflow]:
 for act in [discover_records, process_record, write_results, generate_report]:
     runtime.register_activity(act)
 
-with runtime:
-    client = DaprWorkflowClient()
-    instance_id = client.schedule_new_workflow(
-        workflow=data_pipeline_workflow,
-        input={"source_table": "raw_events", "since": "2026-03-30"},
-        instance_id="pipeline-2026-03-31"
-    )
-    state = client.wait_for_workflow_completion(instance_id, timeout_in_seconds=3600)
-    print(f"Pipeline result: {state.serialized_output}")
+runtime.start()
+
+client = DaprWorkflowClient()
+instance_id = client.schedule_new_workflow(
+    workflow=data_pipeline_workflow,
+    input={"source_table": "raw_events", "since": "2026-03-30"},
+    instance_id="pipeline-2026-03-31"
+)
+state = client.wait_for_workflow_completion(instance_id, timeout_in_seconds=3600)
+print(f"Pipeline result: {state.serialized_output}")
+
+runtime.shutdown()
 ```
 
 ## Summary
 
-Dapr workflows provide a durable, fault-tolerant foundation for data processing pipelines. The fan-out/fan-in pattern processes records in parallel with exactly-once semantics per activity. Chunking controls memory and parallelism for large datasets. Intermediate write checkpoints ensure partial progress is committed even if the workflow is interrupted, eliminating costly full restarts from scratch.
+Dapr workflows provide a durable, fault-tolerant foundation for data processing pipelines. The fan-out/fan-in pattern processes records in parallel with at-least-once execution per activity, so designing activities to be idempotent is recommended. Chunking controls memory and parallelism for large datasets. Intermediate write checkpoints ensure partial progress is committed even if the workflow is interrupted, eliminating costly full restarts from scratch.
