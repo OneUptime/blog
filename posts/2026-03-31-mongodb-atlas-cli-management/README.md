@@ -42,7 +42,7 @@ sudo mv atlas /usr/local/bin/
 On Windows:
 
 ```bash
-winget install MongoDB.AtlasCLI
+winget install -e --id MongoDB.MongoDBAtlasCLI
 ```
 
 Verify:
@@ -185,23 +185,23 @@ atlas accessLists list
 Add a specific IP address:
 
 ```bash
-atlas accessLists create \
-  --ip 203.0.113.10 \
+atlas accessLists create 203.0.113.10 \
+  --type ipAddress \
   --comment "Office static IP"
 ```
 
 Add a CIDR block:
 
 ```bash
-atlas accessLists create \
-  --cidr 10.0.0.0/8 \
+atlas accessLists create 10.0.0.0/8 \
+  --type cidrBlock \
   --comment "VPC internal range"
 ```
 
 Allow access from anywhere (not recommended for production):
 
 ```bash
-atlas accessLists create --ip 0.0.0.0/0 --comment "Open access"
+atlas accessLists create 0.0.0.0/0 --type cidrBlock --comment "Open access"
 ```
 
 Remove an entry:
@@ -241,7 +241,7 @@ atlas backups snapshots create myCluster --desc "Pre-migration snapshot"
 Restore from a snapshot:
 
 ```bash
-atlas backups restores start \
+atlas backups restores start automated \
   --clusterName myCluster \
   --snapshotId <SNAPSHOT_ID> \
   --targetClusterName myRestoredCluster \
@@ -280,9 +280,9 @@ atlas dbusers create \
 
 echo "Adding CI runner IP to access list..."
 MY_IP=$(curl -s https://checkip.amazonaws.com)
-atlas accessLists create \
+atlas accessLists create "$MY_IP" \
   --projectId "$PROJECT_ID" \
-  --ip "$MY_IP" \
+  --type ipAddress \
   --comment "CI runner for build $CI_BUILD_NUMBER"
 
 echo "Done. Connection details:"
@@ -302,7 +302,7 @@ atlas clusters list
 atlas clusters list --output json
 
 # Go template for custom formatting
-atlas clusters list --output "go-template={{range .}}{{.Name}}{{end}}"
+atlas clusters list --output go-template="{{range .}}{{.Name}}{{end}}"
 ```
 
 ## Summary
