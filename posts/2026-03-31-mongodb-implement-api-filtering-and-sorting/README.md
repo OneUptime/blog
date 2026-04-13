@@ -144,7 +144,9 @@ const plan = await db.collection("orders")
   .explain("executionStats");
 
 console.log(plan.executionStats.executionStages.stage);
-// Should output "IXSCAN" not "COLLSCAN"
+// Should output "FETCH" (not "COLLSCAN") with an "IXSCAN" input stage
+console.log(plan.executionStats.executionStages.inputStage.stage);
+// Should output "IXSCAN"
 ```
 
 ## Summary
