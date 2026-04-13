@@ -21,7 +21,7 @@ User query image -> CLIP encoder -> $vectorSearch -> Similar images
 ## Setup
 
 ```bash
-pip install pymongo torch torchvision transformers pillow
+pip install pymongo torch torchvision transformers pillow flask
 ```
 
 ## Step 1: Generate Image Embeddings with CLIP
@@ -135,6 +135,7 @@ def vector_search(query_vec: list, limit: int, category: str = None) -> list:
         },
         {
             "$project": {
+                "_id": 0,
                 "filename": 1,
                 "image_url": 1,
                 "category": 1,
