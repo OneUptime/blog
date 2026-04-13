@@ -217,7 +217,7 @@ results.forEach((doc) => {
 
 ## Search Index Requirement
 
-Highlighting requires the field to use a `string` type with a standard analyzer. Dynamic mappings automatically satisfy this for text fields.
+Highlighting requires the field to be indexed as a `string` type with `indexOptions` set to `offsets` (the default). Any analyzer can be used. Dynamic mappings automatically satisfy this for text fields.
 
 ```javascript
 // Minimal index definition that supports highlighting
@@ -227,13 +227,11 @@ Highlighting requires the field to use a `string` type with a standard analyzer.
     "fields": {
       "title": {
         "type": "string",
-        "analyzer": "lucene.standard",
-        "store": true
+        "analyzer": "lucene.standard"
       },
       "body": {
         "type": "string",
-        "analyzer": "lucene.standard",
-        "store": true
+        "analyzer": "lucene.standard"
       }
     }
   }
