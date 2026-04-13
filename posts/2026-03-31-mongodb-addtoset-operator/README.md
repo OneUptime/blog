@@ -74,7 +74,7 @@ db.users.updateOne(
 
 ## Adding Embedded Documents
 
-`$addToSet` performs a deep equality check for objects - the entire object must match to be considered a duplicate:
+`$addToSet` performs an exact equality check for objects - the document must have the same fields, values, **and field order** to be considered a duplicate:
 
 ```javascript
 // Before: { _id: 3, skills: [{ name: "JavaScript", level: "advanced" }] }
@@ -89,6 +89,12 @@ db.developers.updateOne(
 db.developers.updateOne(
   { _id: 3 },
   { $addToSet: { skills: { name: "JavaScript", level: "advanced" } } }
+)
+
+// Same fields and values but different order - it IS added (not a duplicate)
+db.developers.updateOne(
+  { _id: 3 },
+  { $addToSet: { skills: { level: "advanced", name: "JavaScript" } } }
 )
 ```
 
@@ -147,4 +153,4 @@ This makes it ideal for retry-safe event handlers.
 
 ## Summary
 
-`$addToSet` is the duplicate-safe array append operator. It checks whether the value already exists before adding it, making the operation idempotent and safe to call multiple times. Use `$each` to add multiple values simultaneously, each checked independently. For embedded documents, `$addToSet` uses deep equality to detect duplicates. Use `$addToSet` over `$push` whenever array uniqueness is a requirement - such as for tags, roles, permissions, and unique identifiers.
+`$addToSet` is the duplicate-safe array append operator. It checks whether the value already exists before adding it, making the operation idempotent and safe to call multiple times. Use `$each` to add multiple values simultaneously, each checked independently. For embedded documents, `$addToSet` uses exact equality including field order to detect duplicates. Use `$addToSet` over `$push` whenever array uniqueness is a requirement - such as for tags, roles, permissions, and unique identifiers.
