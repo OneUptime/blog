@@ -28,6 +28,9 @@ Traditional CI/CD pipelines are static YAML files. For dynamic pipelines - where
 import dapr.ext.workflow as wf
 from datetime import timedelta
 
+wfr = wf.WorkflowRuntime()
+
+@wfr.workflow
 def deployment_pipeline_workflow(ctx: wf.DaprWorkflowContext, release: dict):
     service = release["service"]
     version = release["version"]
@@ -101,7 +104,7 @@ def deployment_pipeline_workflow(ctx: wf.DaprWorkflowContext, release: dict):
 ## Activity: Deploy with Kubectl
 
 ```python
-@wf.activity
+@wfr.activity
 def deploy_to_environment(ctx, data: dict) -> dict:
     import subprocess
 
@@ -147,7 +150,7 @@ def approve_deployment():
 ## Triggering the Pipeline
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/deployment_pipeline_workflow \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/deployment_pipeline_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"service": "api-server", "version": "v2.5.0", "gitSha": "abc123"}'
 ```
