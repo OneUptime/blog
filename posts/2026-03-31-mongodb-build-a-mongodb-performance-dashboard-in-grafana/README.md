@@ -47,7 +47,7 @@ mongodb_connections{state="current"}
 mongodb_connections{state="available"}
 ```
 
-Set thresholds at 80% of `maxIncomingConnections` (default 65535) to color-code pressure.
+Set thresholds at 80% of `maxIncomingConnections` (default 65536) to color-code pressure.
 
 ## Panel 3: Operations Per Second (Time Series)
 
@@ -61,8 +61,8 @@ Display all operation types (insert, query, update, delete, command, getmore) as
 
 ```promql
 (
-  max(mongodb_replset_oplog_tail_timestamp) by (set)
-  - min(mongodb_replset_oplog_head_timestamp) by (set)
+  mongodb_mongod_replset_member_optime_date{member_state="PRIMARY"}
+  - on() group_right() mongodb_mongod_replset_member_optime_date{member_state="SECONDARY"}
 )
 ```
 
