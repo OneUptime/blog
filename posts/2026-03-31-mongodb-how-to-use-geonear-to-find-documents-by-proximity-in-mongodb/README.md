@@ -22,8 +22,7 @@ The `$geoNear` stage outputs documents sorted by proximity to a given point. It 
     query: {},                  // optional additional filter
     spherical: true,            // true for 2dsphere, false for 2d
     distanceMultiplier: 1,      // optional: multiplier for distance
-    includeLocs: "locField",    // optional: include matched location
-    limit: 100                  // optional: number of documents
+    includeLocs: "locField"     // optional: include matched location
   }
 }
 ```
@@ -98,7 +97,7 @@ db.restaurants.aggregate([
 
 ## Limiting Results
 
-Get the 5 nearest restaurants:
+Get the 5 nearest restaurants using a `$limit` stage after `$geoNear`:
 
 ```javascript
 db.restaurants.aggregate([
@@ -106,10 +105,10 @@ db.restaurants.aggregate([
     $geoNear: {
       near: { type: "Point", coordinates: [-73.99, 40.75] },
       distanceField: "distance",
-      spherical: true,
-      limit: 5
+      spherical: true
     }
-  }
+  },
+  { $limit: 5 }
 ])
 ```
 
