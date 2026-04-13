@@ -89,8 +89,7 @@ module Api
       # GET /api/v1/users
       def index
         page = (params[:page] || 1).to_i
-        limit = [[params[:limit].to_i, 1].max, 100].min
-        limit = 20 if limit == 0
+        limit = params[:limit].present? ? [[params[:limit].to_i, 1].max, 100].min : 20
 
         users = User.all.order_by(created_at: :desc).page(page).per(limit)
         total = User.count
@@ -202,7 +201,7 @@ curl -X POST http://localhost:3000/api/v1/users \
 curl "http://localhost:3000/api/v1/users?page=1&limit=10"
 
 # Update user
-curl -X PATCH http://localhost:3000/api/v1/users/64abc123def456789012345 \
+curl -X PATCH http://localhost:3000/api/v1/users/64abc123def4567890123456 \
   -H "Content-Type: application/json" \
   -d '{"user": {"name": "Alice Smith"}}'
 ```
