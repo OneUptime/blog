@@ -124,10 +124,10 @@ Performance Advisor -> Suggested Indexes
 ## Step 7 - Create and Monitor
 
 ```javascript
-// Create in background (non-blocking on older versions)
+// In MongoDB 4.2+, index builds are optimized automatically (background option is ignored)
 db.orders.createIndex(
   { userId: 1, status: 1 },
-  { background: true, name: "idx_userId_status" }
+  { name: "idx_userId_status" }
 );
 
 // Verify after creation
