@@ -53,8 +53,7 @@ exports = async function(orderId) {
   const response = await context.http.post({
     url: "https://api.fulfillment.example.com/orders",
     headers: { "Authorization": [`Bearer ${context.values.get("FULFILLMENT_API_KEY")}`] },
-    body: JSON.stringify({ orderId }),
-    encodeBodyAsJSON: true
+    body: JSON.stringify({ orderId })
   })
 
   if (response.statusCode !== 200) {
