@@ -10,7 +10,7 @@ Description: Learn how to install the MongoDB Node.js driver, connect to a Mongo
 
 ## Overview
 
-The official MongoDB Node.js driver (`mongodb` npm package) provides direct, low-level access to MongoDB from Node.js applications. It is the foundation for higher-level ORMs like Mongoose and is the best choice when you want full control over your database interactions.
+The official MongoDB Node.js driver (`mongodb` npm package) provides direct, low-level access to MongoDB from Node.js applications. It is the foundation for higher-level ODMs like Mongoose and is the best choice when you want full control over your database interactions.
 
 ## Installation
 
