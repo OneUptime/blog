@@ -147,12 +147,9 @@ def handle_order():
 import requests
 
 requests.post(
-    "http://localhost:3500/v1.0/publish/orderpubsub/orders",
+    "http://localhost:3500/v1.0/publish/orderpubsub/orders?metadata.ttlInSeconds=300",
     json={"id": "order-002", "total": 25.00},
-    headers={
-        "Content-Type": "application/json",
-        "dapr-ttlinseconds": "300"
-    }
+    headers={"Content-Type": "application/json"}
 ).raise_for_status()
 ```
 
