@@ -49,7 +49,7 @@ timeDiffHours : 1.0
 
 ```javascript
 rs.printReplicationInfo()    // primary oplog window
-rs.printSlaveReplicationInfo() // secondary lag
+rs.printSecondaryReplicationInfo() // secondary lag
 ```
 
 A secondary lag greater than the oplog window means the secondary will fall out of sync.
@@ -98,7 +98,7 @@ A good rule of thumb: the oplog window should be at least 24 hours, ideally 72 h
 
 ```javascript
 // Writes per second * seconds per hour * desired hours * average op size
-// Example: 1000 ops/sec * 3600 * 72 hours * 200 bytes = ~518 GB
+// Example: 1000 ops/sec * 3600 * 72 hours * 200 bytes = ~48 GB
 // Most deployments need 2-50 GB
 
 // Check your write rate
