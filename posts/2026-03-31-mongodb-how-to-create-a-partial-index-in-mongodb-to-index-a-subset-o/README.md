@@ -74,10 +74,10 @@ db.orders.find({ customerId: "c1" }).sort({ amount: -1 })
 Index only documents where a field exists and is not null:
 
 ```javascript
-// Index only documents that have a phone number
+// Index only documents that have a phone number (excludes null and missing)
 db.contacts.createIndex(
   { phone: 1 },
-  { partialFilterExpression: { phone: { $exists: true, $ne: null } } }
+  { partialFilterExpression: { phone: { $type: "string" } } }
 )
 
 // Index only documents with a non-empty name
@@ -85,7 +85,7 @@ db.profiles.createIndex(
   { name: 1 },
   {
     partialFilterExpression: {
-      name: { $exists: true, $type: "string", $ne: "" }
+      name: { $type: "string", $gt: "" }
     }
   }
 )
@@ -125,9 +125,11 @@ Allowed:
 - $gt, $gte, $lt, $lte
 - $type
 - $and (logical AND of the above)
+- $or (top-level only)
+- $in
 
 Not allowed:
-- $or, $in, $not, $nor
+- $ne, $not, $nor
 - Aggregation expressions
 - Full text search operators
 ```
