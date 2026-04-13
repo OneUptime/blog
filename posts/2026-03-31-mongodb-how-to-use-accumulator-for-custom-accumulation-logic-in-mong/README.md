@@ -12,11 +12,11 @@ Description: Learn how to define custom group accumulators using $accumulator in
 
 `$accumulator` is a MongoDB aggregation operator that lets you define custom accumulation logic using JavaScript functions. It is used in `$group` stages when built-in accumulators like `$sum`, `$avg`, `$min`, and `$max` cannot express the required computation.
 
-Note: `$accumulator` requires the `mongod` process to have JavaScript execution enabled (`--enableJavaScriptExecution`). It is available in MongoDB 4.4+.
+Note: `$accumulator` requires JavaScript execution to be enabled on the `mongod` process (it is enabled by default; ensure `security.javascriptEnabled` is not set to `false`). It is available in MongoDB 4.4+.
 
 ## Basic $accumulator Structure
 
-`$accumulator` accepts four required functions and two optional parameters:
+`$accumulator` accepts three required functions and additional required and optional parameters:
 
 ```javascript
 {
@@ -138,18 +138,24 @@ db.events.aggregate([
       _id: "$sessionId",
       uniquePages: {
         $accumulator: {
-          init: function() { return { pages: new Set() }; },
+          init: function() { return { pages: [] }; },
           accumulate: function(state, page) {
-            state.pages.add(page);
+            if (state.pages.indexOf(page) === -1) {
+              state.pages.push(page);
+            }
             return state;
           },
           accumulateArgs: ["$page"],
           merge: function(s1, s2) {
-            s2.pages.forEach(function(p) { s1.pages.add(p); });
+            s2.pages.forEach(function(p) {
+              if (s1.pages.indexOf(p) === -1) {
+                s1.pages.push(p);
+              }
+            });
             return s1;
           },
           finalize: function(state) {
-            return Array.from(state.pages);
+            return state.pages;
           },
           lang: "js"
         }
@@ -165,7 +171,7 @@ db.events.aggregate([
 - $accumulator uses JavaScript execution which is slower than native operators
 - Prefer built-in accumulators ($sum, $avg, $push, $addToSet) when possible
 - $accumulator is ideal for: median, mode, custom statistical functions
-- On sharded clusters, merge() must be idempotent and commutative
+- On sharded clusters, merge() must be associative and commutative
 - Use initArgs to pass initialization parameters to the init function
 ```
 
