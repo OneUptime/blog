@@ -20,7 +20,7 @@ Connect via mongosh and run:
 // Show all in-progress operations
 db.currentOp()
 
-// Newer preferred syntax
+// Alternative admin command syntax (deprecated since MongoDB 4.2)
 db.adminCommand({ currentOp: 1 })
 ```
 
@@ -64,7 +64,7 @@ Key fields:
 - `secs_running` - how long the operation has been running
 - `planSummary` - execution plan (COLLSCAN indicates a full collection scan)
 - `waitingForLock` - true if the operation is blocked waiting for a lock
-- `op` - operation type: query, insert, update, delete, command, getmore
+- `op` - operation type: query, insert, update, remove, command, getmore
 
 ## Filtering Operations
 
@@ -75,7 +75,7 @@ The `currentOp` command accepts a filter document:
 db.currentOp({ secs_running: { $gt: 5 } })
 
 // Show only write operations
-db.currentOp({ op: { $in: ["insert", "update", "delete"] } })
+db.currentOp({ op: { $in: ["insert", "update", "remove"] } })
 
 // Show operations waiting for locks
 db.currentOp({ waitingForLock: true })
