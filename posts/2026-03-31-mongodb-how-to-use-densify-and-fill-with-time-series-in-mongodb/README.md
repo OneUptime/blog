@@ -130,6 +130,7 @@ db.sensor_readings.aggregate([
   },
   {
     $fill: {
+      sortBy: { timestamp: 1 },
       output: {
         temperature: { method: "locf" },
         humidity: { method: "locf" }
@@ -157,7 +158,7 @@ db.sensor_readings.aggregate([
       output: {
         temperature: { method: "linear" }
       },
-      sortBy: { timestamp: 1 }    // Required for linear interpolation
+      sortBy: { timestamp: 1 }    // Required for locf and linear methods
     }
   }
 ])
