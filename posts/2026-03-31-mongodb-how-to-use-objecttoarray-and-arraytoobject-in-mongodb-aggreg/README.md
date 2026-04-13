@@ -111,7 +111,7 @@ db.users.aggregate([
             input: { $objectToArray: "$$ROOT" },
             as: "field",
             cond: {
-              $not: { $in: ["$$field.k", ["password", "ssn", "_id"]] }
+              $not: [ { $in: ["$$field.k", ["password", "ssn", "_id"]] } ]
             }
           }
         }
