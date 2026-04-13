@@ -58,7 +58,7 @@ const endsWith = await db.collection('products').find({
 
 ## Performance Warning: Regex Without Index
 
-A regex with a leading wildcard (`.*/widget`) performs a collection scan. An index on the field helps only with prefix anchored patterns (`/^widget/`).
+A regex with a leading wildcard (`/.*widget/`) performs a collection scan. An index on the field helps only with prefix anchored patterns (`/^widget/`).
 
 ```javascript
 // This uses the index on 'name' (prefix-anchored, case-sensitive)
@@ -70,18 +70,17 @@ For arbitrary substring searches, prefer full-text search.
 
 ## Full-Text Search With $text
 
-For efficient substring and full-word searching, create a text index:
+For efficient full-word searching, create a text index:
 
 ```javascript
 // Create a text index on one or more fields
 await db.collection('products').createIndex({ name: 'text', description: 'text' });
 
 // Search for "widget" or "gadget"
-const results = await db.collection('products').find({
-  $text: { $search: 'widget gadget' }
-}, {
-  score: { $meta: 'textScore' }
-}).sort({ score: { $meta: 'textScore' } }).toArray();
+const results = await db.collection('products').find(
+  { $text: { $search: 'widget gadget' } },
+  { projection: { score: { $meta: 'textScore' } } }
+).sort({ score: { $meta: 'textScore' } }).toArray();
 ```
 
 Text index limitations: only one text index per collection, no support for partial word matching.
