@@ -26,9 +26,8 @@ atlas accessLists list --output json
 Allow a specific IP address to connect:
 
 ```bash
-atlas accessLists create \
+atlas accessLists create "203.0.113.42" \
   --type ipAddress \
-  --entry "203.0.113.42" \
   --comment "Office NAT gateway"
 ```
 
@@ -37,9 +36,8 @@ atlas accessLists create \
 Allow an entire subnet - useful for office networks or VPN exit ranges:
 
 ```bash
-atlas accessLists create \
+atlas accessLists create "10.0.0.0/8" \
   --type cidrBlock \
-  --entry "10.0.0.0/8" \
   --comment "Internal VPN range"
 ```
 
@@ -56,11 +54,10 @@ atlas accessLists create --currentIp --comment "My workstation"
 Grant time-limited access - useful for contractors or debugging sessions:
 
 ```bash
-atlas accessLists create \
+atlas accessLists create "198.51.100.10" \
   --type ipAddress \
-  --entry "198.51.100.10" \
   --comment "Contractor access" \
-  --deleteAfterDate "2026-04-15T18:00:00Z"
+  --deleteAfter "2026-04-15T18:00:00Z"
 ```
 
 The entry is automatically removed at the specified time.
@@ -80,7 +77,7 @@ For private connectivity between your AWS VPC and Atlas, create a peering connec
 ```bash
 atlas networking peering create aws \
   --atlasCidrBlock "192.168.248.0/21" \
-  --awsAccountId "123456789012" \
+  --accountId "123456789012" \
   --vpcId "vpc-0a1b2c3d4e5f" \
   --routeTableCidrBlock "10.0.0.0/16" \
   --region "us-east-1"
@@ -122,11 +119,10 @@ A common pattern for ephemeral CI runners that need temporary access:
 #!/bin/bash
 MY_IP=$(curl -s https://api.ipify.org)
 
-atlas accessLists create \
+atlas accessLists create "$MY_IP" \
   --type ipAddress \
-  --entry "$MY_IP" \
   --comment "GitHub Actions runner" \
-  --deleteAfterDate "$(date -u -d '+1 hour' '+%Y-%m-%dT%H:%M:%SZ')"
+  --deleteAfter "$(date -u -d '+1 hour' '+%Y-%m-%dT%H:%M:%SZ')"
 
 # Run tests...
 npm test
@@ -136,4 +132,4 @@ atlas accessLists delete "$MY_IP" --force
 
 ## Summary
 
-The Atlas CLI gives you full control over network access without logging into the portal. Use `atlas accessLists create` for IP-based access, `--deleteAfterDate` for temporary grants, and `atlas networking peering` or `atlas privateEndpoints` for private connectivity. Automating these steps in CI pipelines ensures access is always intentional and traceable.
+The Atlas CLI gives you full control over network access without logging into the portal. Use `atlas accessLists create` for IP-based access, `--deleteAfter` for temporary grants, and `atlas networking peering` or `atlas privateEndpoints` for private connectivity. Automating these steps in CI pipelines ensures access is always intentional and traceable.
