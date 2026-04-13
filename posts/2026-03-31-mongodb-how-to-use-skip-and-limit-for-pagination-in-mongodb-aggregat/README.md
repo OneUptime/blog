@@ -96,7 +96,7 @@ Instead of `$skip`, use a range query on an indexed field:
 
 ```javascript
 // Initial page
-let lastId = null;
+let lastSeenId = null;
 
 // First page
 db.products.aggregate([
