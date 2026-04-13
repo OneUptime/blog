@@ -52,7 +52,7 @@ curl -X PATCH \
 
 ### Via Terraform (Atlas Provider)
 
-```javascript
+```hcl
 resource "mongodbatlas_cluster" "my_cluster" {
   project_id = var.atlas_project_id
   name       = "my-production-cluster"
@@ -61,7 +61,7 @@ resource "mongodbatlas_cluster" "my_cluster" {
   provider_region_name        = "US_EAST_1"
   provider_instance_size_name = "M30"
 
-  cloud_backup = true  // Enable Cloud Backup
+  cloud_backup = true  # Enable Cloud Backup
 
   advanced_configuration {
     javascript_enabled = false
@@ -73,9 +73,9 @@ resource "mongodbatlas_cluster" "my_cluster" {
 
 Configure custom snapshot frequency and retention:
 
-```javascript
-// Atlas Admin API: Set backup policy
-curl -X PUT \
+```bash
+# Atlas Admin API: Set backup policy
+curl -X PATCH \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/backup/schedule" \
   --digest -u "{publicKey}:{privateKey}" \
   -H "Content-Type: application/json" \
@@ -180,15 +180,13 @@ curl -X POST \
       "targetClusterName": "my-staging-cluster",
       "targetGroupId": "{stagingGroupId}"
     },
-    "oplogTs": 1711858800,
-    "oplogInc": 1,
     "pointInTimeUTCSeconds": 1711858800
   }'
 ```
 
 For a snapshot restore (not PITR):
 
-```javascript
+```json
 {
   "delivery": {
     "methodName": "AUTOMATED_RESTORE",
