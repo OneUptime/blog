@@ -123,7 +123,9 @@ curl -X POST http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001/purge
 |---|---|
 | RUNNING | Actively executing |
 | COMPLETED | Finished successfully |
+| CONTINUED_AS_NEW | Restarted with new input |
 | FAILED | Terminated with error |
+| CANCELED | Canceled by request |
 | TERMINATED | Forcefully stopped |
 | PENDING | Not yet started |
 | SUSPENDED | Paused awaiting resume |
