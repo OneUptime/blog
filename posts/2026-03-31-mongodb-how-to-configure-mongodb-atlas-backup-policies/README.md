@@ -110,7 +110,7 @@ curl --user "publicKey:privateKey" --digest \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}" \
   --header "Content-Type: application/json" \
   --data '{
-    "pitrEnabled": true
+    "pitEnabled": true
   }'
 ```
 
@@ -125,7 +125,7 @@ Create a snapshot outside the scheduled policy:
 ```bash
 atlas backups snapshots create myCluster \
   --desc "Pre-migration snapshot" \
-  --retention 7
+  --retentionInDays 7
 ```
 
 Or via API:
@@ -148,8 +148,8 @@ curl --user "publicKey:privateKey" --digest \
 atlas backups snapshots list myCluster
 
 # Describe a specific snapshot
-atlas backups snapshots describe myCluster \
-  --snapshotId 5f4015d7b1234567890abcde
+atlas backups snapshots describe 5f4015d7b1234567890abcde \
+  --clusterName myCluster
 ```
 
 ## Step 6: Restore from Snapshot
