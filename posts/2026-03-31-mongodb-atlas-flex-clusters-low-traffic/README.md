@@ -17,7 +17,7 @@ Atlas Flex clusters are MongoDB Atlas's replacement for the legacy shared-tier M
 Flex clusters sit between the free M0 cluster and dedicated M10+ clusters in the Atlas hierarchy:
 
 - No fixed compute reservation - you pay for operations and storage used
-- Up to 5 GB storage included, auto-scaling beyond that
+- Up to 5 GB storage included, with usage-based billing beyond that
 - Supports most MongoDB features: transactions, aggregation, indexes
 - No dedicated RAM or vCPU guarantee - throughput scales with demand
 - Available in most AWS, Azure, and GCP regions
@@ -36,7 +36,7 @@ The cluster is ready in about two minutes.
 
 ```bash
 # Install the Atlas CLI
-brew install mongodb-atlas
+brew install mongodb-atlas-cli
 
 # Authenticate
 atlas auth login
@@ -63,7 +63,6 @@ curl -X POST \
     "name": "my-flex-cluster",
     "providerSettings": {
       "backingProviderName": "AWS",
-      "providerName": "FLEX",
       "regionName": "US_EAST_1"
     }
   }'
@@ -98,7 +97,7 @@ run().catch(console.error).finally(() => client.close());
 ```text
 - No dedicated compute: throughput is limited for high-concurrency workloads
 - No auto-pause: Flex clusters do not pause when idle (unlike M0)
-- Connection limit: lower than dedicated clusters (~500 connections max)
+- Connection limit: lower than dedicated clusters (500 connections max)
 - No cross-region failover
 - No custom MongoDB version selection
 ```
