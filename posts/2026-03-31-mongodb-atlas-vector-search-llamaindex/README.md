@@ -54,7 +54,7 @@ vector_store = MongoDBAtlasVectorSearch(
     mongodb_client=client,
     db_name="rag_db",
     collection_name="documents",
-    index_name="vector_index"
+    vector_index_name="vector_index"
 )
 
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
