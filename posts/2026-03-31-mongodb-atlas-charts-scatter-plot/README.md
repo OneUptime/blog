@@ -62,8 +62,7 @@ Atlas Charts scatter plots support zoom and pan interactivity in dashboards. Cli
 When thousands of points overlap, individual points become invisible. Address this with:
 
 1. **Opacity reduction**: In Customize, lower the point opacity to 20-40% so overlapping points create darker regions.
-2. **Jitter**: Enable jitter to slightly randomize point positions and spread out overlapping values.
-3. **Custom pipeline sampling**: Use a pipeline to sample a representative subset:
+2. **Custom pipeline sampling**: Use a pipeline to sample a representative subset:
 
 ```javascript
 [
@@ -105,4 +104,4 @@ This immediately highlights servers that are handling high traffic but suffering
 
 ## Summary
 
-Scatter plots in MongoDB Atlas Charts map two numeric fields to X and Y axes to reveal correlations and outliers. The Color and Size channels add two more data dimensions. Built-in trend lines, jitter, and opacity controls handle overplotting, while zoom and pan interactivity lets dashboard users drill into dense regions. Custom aggregation pipelines provide full control over the data shape before it reaches the chart.
+Scatter plots in MongoDB Atlas Charts map two numeric fields to X and Y axes to reveal correlations and outliers. The Color and Size channels add two more data dimensions. Built-in trend lines and opacity controls handle overplotting, while zoom and pan interactivity lets dashboard users drill into dense regions. Custom aggregation pipelines provide full control over the data shape before it reaches the chart.
