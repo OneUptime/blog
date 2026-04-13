@@ -43,13 +43,32 @@ flowchart TD
 
 ### Via Atlas CLI
 
+Save the autoscaling configuration to a JSON file and pass it with `--file`:
+
+```json
+// compute-autoscaling.json
+{
+  "autoScaling": {
+    "compute": {
+      "enabled": true,
+      "scaleDownEnabled": true
+    }
+  },
+  "providerSettings": {
+    "autoScaling": {
+      "compute": {
+        "minInstanceSize": "M10",
+        "maxInstanceSize": "M50"
+      }
+    }
+  }
+}
+```
+
 ```bash
 atlas clusters update myCluster \
   --projectId <PROJECT_ID> \
-  --autoScalingComputeEnabled \
-  --autoScalingComputeScaleDownEnabled \
-  --autoScalingMinInstanceSize M10 \
-  --autoScalingMaxInstanceSize M50
+  --file compute-autoscaling.json
 ```
 
 ### Via Atlas API
@@ -63,9 +82,15 @@ curl --user "publicKey:privateKey" --digest \
     "autoScaling": {
       "compute": {
         "enabled": true,
-        "scaleDownEnabled": true,
-        "minInstanceSize": "M10",
-        "maxInstanceSize": "M50"
+        "scaleDownEnabled": true
+      }
+    },
+    "providerSettings": {
+      "autoScaling": {
+        "compute": {
+          "minInstanceSize": "M10",
+          "maxInstanceSize": "M50"
+        }
       }
     }
   }'
@@ -83,10 +108,19 @@ Storage autoscaling only scales upward. It increases disk size automatically and
 
 ### Via Atlas CLI
 
+```json
+// storage-autoscaling.json
+{
+  "autoScaling": {
+    "diskGBEnabled": true
+  }
+}
+```
+
 ```bash
 atlas clusters update myCluster \
   --projectId <PROJECT_ID> \
-  --autoScalingDiskGBEnabled
+  --file storage-autoscaling.json
 ```
 
 ## Autoscaling Thresholds
@@ -116,12 +150,29 @@ Scale-down must be explicitly enabled and respects the configured minimum tier.
 
 Bounds prevent over-scaling or excessive cost spikes:
 
+```json
+// tier-bounds.json
+{
+  "autoScaling": {
+    "compute": {
+      "enabled": true
+    }
+  },
+  "providerSettings": {
+    "autoScaling": {
+      "compute": {
+        "minInstanceSize": "M20",
+        "maxInstanceSize": "M60"
+      }
+    }
+  }
+}
+```
+
 ```bash
 atlas clusters update myCluster \
   --projectId <PROJECT_ID> \
-  --autoScalingComputeEnabled \
-  --autoScalingMinInstanceSize M20 \
-  --autoScalingMaxInstanceSize M60
+  --file tier-bounds.json
 ```
 
 If CPU spikes push the cluster to M60 and it stays there, autoscaling stops because the maximum is reached. Atlas sends a notification when the maximum tier is hit.
@@ -144,23 +195,29 @@ curl --user "publicKey:privateKey" --digest \
 ## Terraform Configuration
 
 ```hcl
-resource "mongodbatlas_cluster" "main" {
-  project_id = var.project_id
-  name       = "my-cluster"
-
-  auto_scaling_compute_enabled            = true
-  auto_scaling_compute_scale_down_enabled = true
-  auto_scaling_disk_gb_enabled            = true
-
-  provider_auto_scaling_compute_min_instance_size = "M10"
-  provider_auto_scaling_compute_max_instance_size = "M60"
-
-  provider_name               = "AWS"
-  provider_region_name        = "US_EAST_1"
-  provider_instance_size_name = "M20"
-
+resource "mongodbatlas_advanced_cluster" "main" {
+  project_id   = var.project_id
+  name         = "my-cluster"
   cluster_type = "REPLICASET"
-  replication_factor = 3
+
+  replication_specs {
+    region_configs {
+      electable_specs {
+        instance_size = "M20"
+        node_count    = 3
+      }
+      auto_scaling {
+        compute_enabled            = true
+        compute_scale_down_enabled = true
+        compute_min_instance_size  = "M10"
+        compute_max_instance_size  = "M60"
+        disk_gb_enabled            = true
+      }
+      provider_name = "AWS"
+      priority      = 7
+      region_name   = "US_EAST_1"
+    }
+  }
 }
 ```
 
