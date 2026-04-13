@@ -84,7 +84,7 @@ All tenants share the same collections, distinguished by a `tenantId` field:
 ```javascript
 // Shared orders collection
 {
-  _id: ObjectId("ord001"),
+  _id: ObjectId("6607a1b2c3d4e5f6a7b8c901"),
   tenantId: "tenant_a",
   customerId: "cust123",
   total: 199.99,
@@ -93,7 +93,7 @@ All tenants share the same collections, distinguished by a `tenantId` field:
 }
 
 {
-  _id: ObjectId("ord002"),
+  _id: ObjectId("6607a1b2c3d4e5f6a7b8c902"),
   tenantId: "tenant_b",
   customerId: "cust456",
   total: 89.99,
@@ -123,7 +123,7 @@ Always maintain a tenants collection for tenant metadata:
 ```javascript
 // tenants collection
 {
-  _id: ObjectId("t001"),
+  _id: ObjectId("6607a1b2c3d4e5f6a7b8c001"),
   tenantId: "tenant_a",
   name: "Acme Corporation",
   plan: "enterprise",
