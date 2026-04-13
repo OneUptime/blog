@@ -8,9 +8,11 @@ Description: Learn how to enable and use MongoDB's built-in free monitoring feat
 
 ---
 
+> **Deprecation Notice:** MongoDB free monitoring was deprecated in April 2023 and the hosted dashboard was fully decommissioned in August 2023. The commands described below still exist in older MongoDB versions (4.0–5.x) but no longer upload data or return a working dashboard URL. For Community Edition monitoring, use a Prometheus `mongodb_exporter` deployment or upgrade to MongoDB Atlas.
+
 ## What Is MongoDB Free Monitoring?
 
-MongoDB Community Edition includes a free monitoring service that uploads operational metrics to a hosted dashboard at `cloud.mongodb.com/freemonitoring`. It collects CPU usage, memory usage, operation counts, operation execution time, and replication oplog window - giving you a quick health overview without setting up Prometheus or other external tools.
+MongoDB Community Edition (versions 4.0 through 5.x) included a free monitoring service that uploaded operational metrics to a hosted dashboard at `cloud.mongodb.com/freemonitoring`. It collected CPU usage, memory usage, operation counts, operation execution time, and replication oplog window - giving you a quick health overview without setting up Prometheus or other external tools.
 
 Free monitoring is opt-in and can be enabled per deployment.
 
@@ -115,4 +117,4 @@ For production workloads needing custom alerts, longer retention, or per-collect
 
 ## Summary
 
-MongoDB Community's free monitoring feature provides a zero-config performance dashboard for standalone and replica set deployments. Enable it with `db.enableFreeMonitoring()`, visit the provided URL, and get immediate visibility into latency, memory, CPU, and oplog window metrics retained for 24 hours. It is an excellent starting point for new deployments before you invest in a full observability stack.
+MongoDB Community's free monitoring feature provided a zero-config performance dashboard for standalone and replica set deployments in versions 4.0 through 5.x. However, this service was deprecated in April 2023 and fully decommissioned in August 2023. For current MongoDB Community deployments, use a Prometheus `mongodb_exporter` setup or MongoDB Atlas for monitoring capabilities.
