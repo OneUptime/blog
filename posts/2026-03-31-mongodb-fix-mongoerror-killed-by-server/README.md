@@ -65,8 +65,7 @@ Idle cursors are killed by the server after `cursorTimeoutMillis` (default: 10 m
 
 ```javascript
 const cursor = db.collection('records')
-  .find({})
-  .noCursorTimeout(true); // prevent idle kill
+  .find({}, { noCursorTimeout: true }); // prevent idle kill
 
 try {
   for await (const doc of cursor) {
