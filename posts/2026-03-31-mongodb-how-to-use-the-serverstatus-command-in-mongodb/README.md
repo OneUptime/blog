@@ -41,7 +41,7 @@ print(`Available: ${conns.available}`);
 print(`Total created: ${conns.totalCreated}`);
 ```
 
-A high `current` approaching `available` means you are near the connection limit.
+A low `available` value (approaching 0) means you are near the connection limit.
 
 ### Memory Usage
 
@@ -85,7 +85,7 @@ function serverHealth() {
   print(`Uptime: ${(s.uptimeMillis / 1000 / 3600).toFixed(1)} hours`);
   print(`Connections: ${s.connections.current}/${s.connections.current + s.connections.available}`);
   print(`Resident memory: ${s.mem.resident} MB`);
-  print(`Ops/sec (insert): ${s.opcounters.insert}`);
+  print(`Total inserts: ${s.opcounters.insert}`);
   print(`Active reads: ${s.globalLock.activeClients.readers}`);
   print(`Active writes: ${s.globalLock.activeClients.writers}`);
 }
