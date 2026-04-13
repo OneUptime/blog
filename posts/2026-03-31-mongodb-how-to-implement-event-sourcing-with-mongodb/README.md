@@ -46,7 +46,6 @@ Event sourcing stores every state change as an immutable event document instead 
 
 ```javascript
 // eventStore.js
-const { MongoClient } = require('mongodb');
 
 class EventStore {
   constructor(db) {
