@@ -121,7 +121,7 @@ db.sales.explain("executionStats").aggregate([
             "indexName": "region_date_1",
             "indexBounds": {
               "region": ["[\"west\", \"west\"]"],
-              "date": ["[new Date(1735689600000), new Date(MaxKey)]"]
+              "date": ["[new Date(1767225600000), new Date(MaxKey)]"]
             }
           }
         }
@@ -138,18 +138,18 @@ db.sales.explain("executionStats").aggregate([
 
 ## Example 2 - Detecting an Unoptimized Pipeline
 
-When `$project` or `$addFields` appears before `$match`, MongoDB cannot push the match down to use an index:
+When `$match` filters on a field computed by a preceding `$addFields` or `$project`, no index can satisfy the filter. Note that if a `$match` does not depend on computed fields, MongoDB's optimizer may automatically reorder it before `$addFields` or `$project`:
 
 ```javascript
-// BAD: $project before $match blocks index pushdown
+// BAD: $match on a computed field cannot use an index
 db.orders.explain("executionStats").aggregate([
   { $addFields: { fullName: { $concat: ["$firstName", " ", "$lastName"] } } },
-  { $match: { status: "pending" } }   // too late for index pushdown
+  { $match: { fullName: "John Doe" } }   // computed field, no index possible
 ]);
 
-// GOOD: $match first
+// GOOD: $match on indexed fields first, then compute
 db.orders.explain("executionStats").aggregate([
-  { $match: { status: "pending" } },  // uses index
+  { $match: { status: "pending" } },  // uses index on status
   { $addFields: { fullName: { $concat: ["$firstName", " ", "$lastName"] } } }
 ]);
 ```
@@ -202,7 +202,7 @@ db.orders.explain("executionStats").aggregate([
 ```javascript
 {
   "stage": "SORT",
-  "memLimit": 33554432,             // 32MB limit
+  "memLimit": 104857600,             // 100MB limit (default since MongoDB 4.4)
   "memUsage": 8340000,              // 8MB used
   "sortPattern": { "amount": -1 },
   "inputStage": { ... }
