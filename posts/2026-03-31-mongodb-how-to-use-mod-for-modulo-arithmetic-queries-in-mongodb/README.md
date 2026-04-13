@@ -18,7 +18,7 @@ The syntax is:
 { field: { $mod: [divisor, remainder] } }
 ```
 
-Both `divisor` and `remainder` must be integers. MongoDB will return documents where `field % divisor === remainder`.
+Both `divisor` and `remainder` should be numbers. If non-integer values are provided, MongoDB truncates them to integers before performing the operation. MongoDB will return documents where `field % divisor === remainder`.
 
 ## Basic Usage
 
@@ -100,13 +100,13 @@ db.tasks.updateOne(
 
 ## Error Cases
 
-If you pass non-integer values or an array with fewer than two elements, MongoDB returns an error:
+If you pass an array with fewer than two elements, MongoDB returns an error:
 
 ```text
 Error: $mod requires an array with two elements [divisor, remainder]
 ```
 
-Always validate your inputs before running modulo queries in production code.
+Note that non-integer values do not cause an error — MongoDB truncates them to integers. For example, `{ $mod: [2.5, 0] }` is treated as `{ $mod: [2, 0] }`. Always validate your inputs before running modulo queries in production code.
 
 ## Summary
 
