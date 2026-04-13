@@ -51,18 +51,22 @@ if (collections.length > 0) {
 }
 ```
 
-### 2. Running aggregation or index commands on a missing collection
+### 2. Dropping an Index on a Missing Collection
 
 ```javascript
 // Fails if 'orders' does not exist
-await db.collection('orders').createIndex({ userId: 1 });
+await db.collection('orders').dropIndex('userId_1');
 ```
 
-In MongoDB, inserting a document implicitly creates the collection. You can also create it explicitly:
+Note that `createIndex` does **not** trigger this error — it implicitly creates the collection if it does not exist. However, `dropIndex` and `dropIndexes` require the collection to already exist.
+
+**Fix:** Ensure the collection exists before dropping indexes:
 
 ```javascript
-await db.createCollection('orders');
-await db.collection('orders').createIndex({ userId: 1 });
+const collections = await db.listCollections({ name: 'orders' }).toArray();
+if (collections.length > 0) {
+  await db.collection('orders').dropIndex('userId_1');
+}
 ```
 
 ### 3. Wrong Database Name
