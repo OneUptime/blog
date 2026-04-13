@@ -31,7 +31,11 @@ OTel Collector
 
 ```bash
 npm install \
+  @opentelemetry/api \
   @opentelemetry/sdk-node \
+  @opentelemetry/sdk-metrics \
+  @opentelemetry/resources \
+  @opentelemetry/semantic-conventions \
   @opentelemetry/auto-instrumentations-node \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/exporter-metrics-otlp-http \
@@ -48,12 +52,12 @@ const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http")
 const { OTLPMetricExporter } = require("@opentelemetry/exporter-metrics-otlp-http")
 const { PeriodicExportingMetricReader } = require("@opentelemetry/sdk-metrics")
 const { Resource } = require("@opentelemetry/resources")
-const { SemanticResourceAttributes } = require("@opentelemetry/semantic-conventions")
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require("@opentelemetry/semantic-conventions")
 
 const sdk = new NodeSDK({
   resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: "my-app",
-    [SemanticResourceAttributes.SERVICE_VERSION]: "1.0.0"
+    [ATTR_SERVICE_NAME]: "my-app",
+    [ATTR_SERVICE_VERSION]: "1.0.0"
   }),
   traceExporter: new OTLPTraceExporter({
     url: "http://otel-collector:4318/v1/traces"
@@ -68,8 +72,8 @@ const sdk = new NodeSDK({
     getNodeAutoInstrumentations({
       "@opentelemetry/instrumentation-mongodb": {
         enabled: true,
-        dbStatementSerializer: (commandName, commandObj) => {
-          return JSON.stringify({ cmd: commandName, ...commandObj })
+        dbStatementSerializer: (commandObj) => {
+          return JSON.stringify(commandObj)
         }
       }
     })
@@ -184,7 +188,7 @@ db.createUser({
 For fine-grained tracing, add manual spans:
 
 ```javascript
-const { trace, context } = require("@opentelemetry/api")
+const { trace } = require("@opentelemetry/api")
 
 const tracer = trace.getTracer("my-app")
 
