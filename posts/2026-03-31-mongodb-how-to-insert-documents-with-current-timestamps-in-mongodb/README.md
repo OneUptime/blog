@@ -121,4 +121,4 @@ db.sessions.insertOne({
 
 ## Summary
 
-MongoDB provides multiple ways to insert current timestamps: `new Date()` and `ISODate()` in mongosh and JavaScript drivers, and `$$NOW` in aggregation pipelines. The standard pattern is to set both `createdAt` and `updatedAt` on insert, then update only `updatedAt` on modifications. Combining timestamp fields with TTL indexes automates document expiry for sessions, logs, and temporary data.
+MongoDB provides multiple ways to insert current timestamps: `new Date()` in mongosh and JavaScript drivers, `ISODate()` in mongosh, and `$$NOW` in aggregation pipelines. The standard pattern is to set both `createdAt` and `updatedAt` on insert, then update only `updatedAt` on modifications. Combining timestamp fields with TTL indexes automates document expiry for sessions, logs, and temporary data.
