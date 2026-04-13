@@ -43,7 +43,7 @@ Store each language variant in its own field and map each to the appropriate ana
 At query time, route the query to the field matching the user's language:
 
 ```javascript
-const langField = `title_${userLocale}` || "title_en";
+const langField = userLocale ? `title_${userLocale}` : "title_en";
 
 db.articles.aggregate([
   {
@@ -125,26 +125,26 @@ Atlas Search exposes standard Lucene language analyzers:
 
 ```text
 lucene.arabic       lucene.armenian     lucene.basque
-lucene.catalan      lucene.chinese      lucene.cjk
-lucene.czech        lucene.danish       lucene.dutch
-lucene.english      lucene.finnish      lucene.french
-lucene.galician     lucene.german       lucene.greek
-lucene.hindi        lucene.hungarian    lucene.indonesian
-lucene.irish        lucene.italian      lucene.latvian
-lucene.norwegian    lucene.persian      lucene.portuguese
-lucene.romanian     lucene.russian      lucene.sorani
-lucene.spanish      lucene.swedish      lucene.turkish
+lucene.catalan      lucene.cjk          lucene.czech
+lucene.danish        lucene.dutch        lucene.english
+lucene.finnish       lucene.french       lucene.galician
+lucene.german        lucene.greek        lucene.hindi
+lucene.hungarian     lucene.indonesian   lucene.irish
+lucene.italian       lucene.latvian      lucene.norwegian
+lucene.persian       lucene.portuguese   lucene.romanian
+lucene.russian       lucene.smartcn      lucene.sorani
+lucene.spanish       lucene.swedish      lucene.turkish
 ```
 
 ## Handling CJK Languages
 
-Chinese, Japanese, and Korean require special treatment because they do not use whitespace as token boundaries. Use `lucene.cjk` for mixed CJK content or `lucene.chinese` for Chinese-specific processing:
+Chinese, Japanese, and Korean require special treatment because they do not use whitespace as token boundaries. Use `lucene.cjk` for mixed CJK content or `lucene.smartcn` for Chinese-specific processing:
 
 ```json
 {
   "title_zh": {
     "type": "string",
-    "analyzer": "lucene.chinese"
+    "analyzer": "lucene.smartcn"
   },
   "title_ja": {
     "type": "string",
