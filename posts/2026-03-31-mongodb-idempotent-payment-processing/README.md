@@ -39,7 +39,7 @@ db.transactions.createIndex(
   _id: "txn_abc123",
   idempotencyKey: "ord-001-attempt-1",
   orderId: "ord-001",
-  status: "processing",
+  status: "pending",
   amount: 5000,
   currency: "USD",
   createdAt: ISODate("2026-03-31T10:00:00Z"),
@@ -96,12 +96,16 @@ async function processPayment(orderId, amount, paymentMethod) {
   // Step 3: Call the payment processor
   let processorResult;
   try {
-    processorResult = await stripe.charges.create({
-      amount,
-      currency: "usd",
-      source: paymentMethod,
-      idempotency_key: idempotencyKey  // Pass key to processor too
-    });
+    processorResult = await stripe.charges.create(
+      {
+        amount,
+        currency: "usd",
+        source: paymentMethod
+      },
+      {
+        idempotencyKey: idempotencyKey  // Pass key to processor too
+      }
+    );
 
     await db.collection("transactions").updateOne(
       { idempotencyKey, status: "pending" },
