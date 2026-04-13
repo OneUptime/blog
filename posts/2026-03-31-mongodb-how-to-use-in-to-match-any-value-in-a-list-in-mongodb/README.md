@@ -148,7 +148,7 @@ const plan = await products
   .find({ status: { $in: ['active', 'pending'] } })
   .explain('executionStats');
 
-console.log(plan.executionStats.executionStages.stage);
+console.log(plan.executionStats.executionStages.inputStage.stage);
 // 'IXSCAN' - using the index
 ```
 
