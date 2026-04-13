@@ -144,8 +144,7 @@ Run backup tests independently of the backup schedule to catch issues sooner:
 Store test results for trend analysis:
 
 ```python
-import json
-import datetime
+from datetime import datetime, timezone, timedelta
 import pymongo
 
 def record_backup_test_result(backup_name, passed, duration_sec, error_msg=None):
@@ -153,7 +152,7 @@ def record_backup_test_result(backup_name, passed, duration_sec, error_msg=None)
     db = client["ops"]
     db["backup_tests"].insert_one({
         "backup_name": backup_name,
-        "tested_at": datetime.datetime.utcnow(),
+        "tested_at": datetime.now(timezone.utc),
         "passed": passed,
         "duration_seconds": duration_sec,
         "error": error_msg
@@ -163,7 +162,7 @@ def record_backup_test_result(backup_name, passed, duration_sec, error_msg=None)
 def check_recent_failures():
     client = pymongo.MongoClient("mongodb://admin:pass@localhost:27017")
     db = client["ops"]
-    cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     failures = list(db["backup_tests"].find(
         {"tested_at": {"$gte": cutoff}, "passed": False},
         {"backup_name": 1, "tested_at": 1, "error": 1}
