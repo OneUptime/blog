@@ -49,11 +49,11 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: mydaprblob
-  - name: container
+  - name: containerName
     value: dapr-files
-  - name: storageAccessKey
+  - name: accountKey
     secretKeyRef:
       name: azure-storage-secret
       key: storageKey
@@ -68,9 +68,9 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: mydaprblob
-  - name: container
+  - name: containerName
     value: dapr-files
   - name: azureClientId
     value: ""
@@ -80,15 +80,14 @@ spec:
 
 ```python
 import requests
-import base64
+import json
 
-def upload_blob(blob_name: str, content: bytes, content_type: str = "application/octet-stream"):
-    encoded = base64.b64encode(content).decode("utf-8")
+def upload_blob(blob_name: str, content: str, content_type: str = "application/octet-stream"):
     resp = requests.post(
         "http://localhost:3500/v1.0/bindings/blob-binding",
         json={
             "operation": "create",
-            "data": encoded,
+            "data": content,
             "metadata": {
                 "blobName": blob_name,
                 "contentType": content_type
@@ -99,8 +98,7 @@ def upload_blob(blob_name: str, content: bytes, content_type: str = "application
     return resp.json()
 
 # Upload a report
-import json
-report = json.dumps({"date": "2026-03-31", "totalOrders": 150}).encode("utf-8")
+report = json.dumps({"date": "2026-03-31", "totalOrders": 150})
 result = upload_blob("reports/2026-03-31.json", report, "application/json")
 print(result)
 ```
@@ -119,7 +117,7 @@ def download_blob(blob_name: str) -> bytes:
         }
     )
     resp.raise_for_status()
-    return base64.b64decode(resp.json()["data"])
+    return resp.content
 
 content = download_blob("reports/2026-03-31.json")
 report = json.loads(content)
@@ -134,10 +132,12 @@ def list_blobs(prefix: str = "") -> list:
         "http://localhost:3500/v1.0/bindings/blob-binding",
         json={
             "operation": "list",
-            "metadata": {
+            "data": {
                 "prefix": prefix,
-                "maxResults": "50",
-                "include": "metadata"
+                "maxResults": 50,
+                "include": {
+                    "metadata": True
+                }
             }
         }
     )
@@ -159,7 +159,7 @@ def delete_blob(blob_name: str):
             "operation": "delete",
             "metadata": {
                 "blobName": blob_name,
-                "deleteSnapshotsOption": "include"
+                "deleteSnapshots": "include"
             }
         }
     ).raise_for_status()
