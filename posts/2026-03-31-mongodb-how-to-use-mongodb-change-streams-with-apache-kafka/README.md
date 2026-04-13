@@ -67,7 +67,7 @@ cp mongo-kafka-connect-1.11.0-all.jar $KAFKA_HOME/plugins/
 Or use Confluent Hub:
 
 ```bash
-confluent-hub install mongodb/kafka-connector:latest
+confluent-hub install mongodb/kafka-connect-mongodb:latest
 ```
 
 ## Step 3 - Configure the Source Connector
@@ -83,7 +83,6 @@ Create a connector configuration file:
     "database": "ecommerce",
     "collection": "orders",
     "topic.prefix": "mongo",
-    "publish.full.document.only": "true",
     "change.stream.full.document": "updateLookup",
     "pipeline": "[{\"$match\": {\"operationType\": {\"$in\": [\"insert\", \"update\", \"delete\"]}}}]"
   }
@@ -177,7 +176,7 @@ Filter which changes are published to Kafka:
 ## Step 8 - Monitor the Pipeline
 
 ```bash
-# Check connector lag
+# Check connector lag (requires Kafka Connect 3.5+)
 curl http://localhost:8083/connectors/mongodb-source-connector/offsets
 
 # Kafka consumer group lag
