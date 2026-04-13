@@ -41,6 +41,8 @@ module.exports = mongoose.model('Content', ContentSchema);
 
 ```javascript
 // models/ContentVersion.js - version history
+const mongoose = require('mongoose');
+
 const ContentVersionSchema = new mongoose.Schema({
   contentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Content', required: true, index: true },
   version: { type: Number, required: true },
