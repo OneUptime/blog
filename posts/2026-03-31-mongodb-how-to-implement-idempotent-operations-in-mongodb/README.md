@@ -148,7 +148,7 @@ async function ensureUser(db, externalId, email, name) {
 }
 ```
 
-## Pattern 3 - Conditional Update with Status Machine
+## Pattern 3 - Conditional Update with State Machine
 
 Prevent double-processing by only allowing transitions from a specific state:
 
