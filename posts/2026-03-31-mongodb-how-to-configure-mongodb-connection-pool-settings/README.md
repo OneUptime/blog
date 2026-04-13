@@ -93,7 +93,9 @@ client = MongoClient(
 ```java
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import java.util.concurrent.TimeUnit;
 
 MongoClientSettings settings = MongoClientSettings.builder()
     .applyConnectionString(new ConnectionString("mongodb://localhost:27017"))
