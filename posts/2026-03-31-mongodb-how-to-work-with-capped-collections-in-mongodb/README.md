@@ -17,7 +17,7 @@ Key characteristics:
 - Optional maximum document count
 - Documents are stored and returned in insertion order
 - Support tailable cursors for real-time streaming
-- No document deletions allowed (only natural expiry)
+- No individual document deletions before MongoDB 5.0 (starting in 5.0, deletes are permitted)
 
 ## Creating a Capped Collection
 
@@ -76,15 +76,10 @@ Use `$natural: -1` to query in reverse insertion order (most recent first).
 Tailable cursors are the most powerful feature of capped collections. They stay open after reaching the end of the collection and block until new documents arrive - similar to `tail -f` on a log file:
 
 ```javascript
-// Open a tailable cursor
+// Open a tailable cursor in mongosh
 const cursor = db.applicationLogs.find(
-  { level: "ERROR" },
-  {
-    tailable: true,
-    awaitData: true,
-    noCursorTimeout: true
-  }
-)
+  { level: "ERROR" }
+).tailable({ awaitData: true }).noCursorTimeout()
 
 // In Node.js with the MongoDB driver
 const cursor = db.collection("applicationLogs").find(
@@ -112,8 +107,8 @@ db.applicationLogs.stats()
 ```javascript
 // These operations are NOT allowed on capped collections:
 
-// 1. No document deletion
-db.applicationLogs.deleteOne({ _id: someId })  // ERROR
+// 1. No document deletion (before MongoDB 5.0; starting in 5.0, deletes are allowed)
+db.applicationLogs.deleteOne({ _id: someId })  // ERROR before MongoDB 5.0
 
 // 2. No updates that increase document size
 db.applicationLogs.updateOne(
@@ -138,12 +133,12 @@ db.runCommand({
 })
 ```
 
-Note: this acquires a global write lock and may impact performance on busy systems.
+Note: this acquires a database-level exclusive lock and may impact performance on busy systems.
 
 ## Practical Use Case: Application Log Buffer
 
 ```javascript
-// Setup: create collection for last 7 days of logs
+// Setup: create a capped collection for recent logs
 db.createCollection("recentLogs", {
   capped: true,
   size: 104857600,  // 100MB
