@@ -27,14 +27,15 @@ db.orders.find({ status: "confirmed" }).readConcern("majority");
 ## Setting Read Concern in Node.js
 
 ```javascript
-const { MongoClient, ReadConcern } = require("mongodb");
+const { MongoClient } = require("mongodb");
 const client = new MongoClient("mongodb://localhost:27017");
 await client.connect();
 
-const collection = client.db("mydb").collection("orders");
+const collection = client
+  .db("mydb")
+  .collection("orders", { readConcern: { level: "majority" } });
 const confirmed = await collection
   .find({ status: "confirmed" })
-  .withReadConcern(new ReadConcern("majority"))
   .toArray();
 ```
 
@@ -50,17 +51,17 @@ await collection.insertOne(
 );
 
 // Read back with majority concern
-const order = await collection.findOne(
-  { orderId: "ORD-001" },
-  { readConcern: { level: "majority" } }
-);
+const majorityCollection = collection.withOptions({
+  readConcern: { level: "majority" }
+});
+const order = await majorityCollection.findOne({ orderId: "ORD-001" });
 ```
 
 This pattern ensures the data you write is the data you read back.
 
 ## Behavior in Transactions
 
-Using `majority` in a session transaction gives the highest consistency for multi-document operations:
+Using `majority` in a session transaction provides durable reads for multi-document operations. For the strongest transactional consistency, consider `snapshot` read concern, which gives a point-in-time view across all reads in the transaction. Here is an example using `majority`:
 
 ```javascript
 const session = client.startSession();
@@ -83,7 +84,7 @@ try {
 
 ## Enabling on the Replica Set
 
-Read concern `majority` requires that `enableMajorityReadConcern` is enabled (it is the default in MongoDB 3.6+). Verify:
+In MongoDB 5.0 and later, read concern `majority` is always enabled and cannot be disabled. In MongoDB 3.6 through 4.4, it required the `enableMajorityReadConcern` server parameter to be set to `true`, which was the default. If you are running MongoDB 4.4 or earlier, you can verify with:
 
 ```javascript
 db.adminCommand({ getParameter: 1, enableMajorityReadConcern: 1 });
