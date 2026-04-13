@@ -97,7 +97,7 @@ db.users.aggregate([
 ])
 ```
 
-Documents with no `roles` field (or null/empty array) are preserved with `roles` as null.
+Documents with a null `roles` field are preserved with `roles` set to null. Documents with a missing `roles` field or an empty array are preserved but without the `roles` field in the output.
 
 ## Combining with $lookup
 
