@@ -142,20 +142,22 @@ db.userSettings.find({
 
 ## Indexing for $bitsAllSet Performance
 
-Regular ascending indexes can speed up `$bitsAllSet` queries when combined with equality or range filters. MongoDB will use the index to narrow the candidate set, then apply the bitwise check:
+`$bitsAllSet` does not use indexes directly. A standalone bitwise query results in a collection scan (COLLSCAN). However, when you combine `$bitsAllSet` with other indexed predicates such as equality or range filters, MongoDB uses those indexes to narrow the candidate set before applying the bitwise check:
 
 ```javascript
-db.users.createIndex({ permissions: 1 });
+// An index on the bitwise field alone does NOT help $bitsAllSet
+db.users.createIndex({ status: 1 });
 
-// Check the query plan
-db.users.find({ permissions: { $bitsAllSet: 6 } }).explain("executionStats");
+// MongoDB uses the index on status, then applies the bitwise filter
+db.users.find({
+  status: "active",
+  permissions: { $bitsAllSet: 6 }
+}).explain("executionStats");
 ```
-
-For highly selective queries, an index on the field reduces the number of documents scanned:
 
 ```mermaid
 flowchart LR
-    Q[Query: bitsAllSet 6] --> I[Index Scan on permissions]
+    Q[Query: bitsAllSet 6 + status filter] --> I[Index Scan on status]
     I --> F[FETCH and apply bitwise filter]
     F --> R[Result set]
 ```
@@ -197,9 +199,9 @@ db.users.aggregate([
 
 ## Limitations
 
-- The field must be a non-negative integer or BinData type. Negative integers are not supported.
+- The field must be a numeric or BinData type. The bitmask argument (the query value) must be a non-negative integer.
 - Float values (e.g., `7.5`) are not matched even if the integer portion satisfies the condition.
-- `$bitsAllSet` does not use indexes in a fully optimal way for all bitmask values; test with `explain()` for large collections.
+- `$bitsAllSet` does not use indexes directly; combine with other indexed predicates and test with `explain()` for large collections.
 
 ```javascript
 // Verify your query behavior with explain
@@ -210,4 +212,4 @@ db.users.find(
 
 ## Summary
 
-`$bitsAllSet` queries documents where all the specified bits are set to 1 in a numeric or BinData field. It is the right operator when you need to enforce that multiple flags are simultaneously active, such as checking that a user has both read and write permissions. Pair it with `$bitsAllClear`, `$bitsAnySet`, or `$bitsAnyClear` for precise bitwise filtering, and create a regular index on the field to help MongoDB narrow the candidate set before applying the bitwise check.
+`$bitsAllSet` queries documents where all the specified bits are set to 1 in a numeric or BinData field. It is the right operator when you need to enforce that multiple flags are simultaneously active, such as checking that a user has both read and write permissions. Pair it with `$bitsAllClear`, `$bitsAnySet`, or `$bitsAnyClear` for precise bitwise filtering, and combine with other indexed predicates to help MongoDB narrow the candidate set before applying the bitwise check.
