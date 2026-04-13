@@ -185,16 +185,16 @@ db.restaurants.aggregate([
 ## Step 8: Index Rules and Limitations
 
 ```javascript
-// A compound index can have only ONE 2dsphere field
+// A compound index can include multiple 2dsphere fields (since MongoDB 2.6+)
 // This is valid:
 db.places.createIndex({ location: "2dsphere", category: 1 })
 
-// This is NOT valid (two 2dsphere fields):
-// db.places.createIndex({ location: "2dsphere", area: "2dsphere" })
+// This is also valid (two 2dsphere fields):
+db.places.createIndex({ location: "2dsphere", area: "2dsphere" })
 
-// 2dsphere indexes cannot be sparse unless explicitly set
+// 2dsphere indexes are not sparse by default (MongoDB 4.4+)
 db.places.createIndex({ location: "2dsphere" }, { sparse: true })
-// Required if some documents don't have the location field
+// Set sparse: true if some documents don't have the location field
 ```
 
 ## Step 9: Validate GeoJSON Coordinates
