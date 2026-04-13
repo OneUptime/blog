@@ -114,6 +114,8 @@ linode-cli firewalls device-create FIREWALL_ID \
 ```bash
 sudo systemctl start mongod && sudo systemctl enable mongod
 
+mongosh --eval "rs.initiate()"
+
 mongosh admin --eval "
 db.createUser({
   user: 'admin',
