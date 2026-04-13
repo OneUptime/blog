@@ -64,7 +64,7 @@ Partition fields determine how archived data is organized in object storage. Cho
 ```bash
 curl --user "publicKey:privateKey" --digest \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
   --header "Content-Type: application/json" \
   --data '{
     "dbName": "appdb",
@@ -101,7 +101,7 @@ MongoDB routes the query appropriately - recent data from the cluster, older dat
 To query only archived data (avoiding cluster scan):
 
 ```javascript
-// Use $expr with date comparison for archive-targeted queries
+// Filter by dates older than the archive threshold to target archived data
 db.events.aggregate([
   {
     $match: {
@@ -122,7 +122,7 @@ Instead of date-based archiving, use a custom query for more flexibility:
 ```bash
 curl --user "publicKey:privateKey" --digest \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
   --header "Content-Type: application/json" \
   --data '{
     "dbName": "appdb",
@@ -142,7 +142,7 @@ curl --user "publicKey:privateKey" --digest \
 ```bash
 # List all archives and their stats
 curl --user "publicKey:privateKey" --digest \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives"
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives"
 ```
 
 Response includes:
@@ -163,8 +163,9 @@ Pause without losing archived data:
 ```bash
 curl --user "publicKey:privateKey" --digest \
   --request PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
-  --data '{"state": "PAUSED"}'
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}" \
+  --header "Content-Type: application/json" \
+  --data '{"paused": true}'
 ```
 
 Deleting an archive permanently deletes archived data - use caution.
