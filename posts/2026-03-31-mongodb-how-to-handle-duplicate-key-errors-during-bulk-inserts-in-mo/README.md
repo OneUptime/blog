@@ -29,7 +29,7 @@ try {
     { _id: "user3", name: "Charlie" }   // never inserted
   ])
 } catch (err) {
-  console.log("Inserted:", err.result.nInserted)  // only 1
+  console.log("Inserted:", err.result.insertedCount)  // only 1
 }
 ```
 
@@ -46,7 +46,7 @@ try {
 } catch (err) {
   if (err.code === 11000 || (err.writeErrors && err.writeErrors.some(e => e.code === 11000))) {
     console.log("Some duplicates skipped, continuing")
-    console.log("Inserted:", err.result.nInserted)
+    console.log("Inserted:", err.result.insertedCount)
   } else {
     throw err
   }
@@ -128,8 +128,8 @@ try {
   if (err.writeErrors) {
     err.writeErrors.forEach(e => {
       if (e.code === 11000) {
-        // Extract which field caused the duplicate
-        console.log("Duplicate on:", e.err.keyValue)
+        // Log the duplicate key error details
+        console.log("Duplicate on:", e.errmsg)
       }
     })
   }
@@ -176,7 +176,7 @@ async function bulkInsertWithMetrics(collection, documents) {
     }
 
     return {
-      inserted: err.result.nInserted,
+      inserted: err.result.insertedCount,
       duplicates
     }
   }
