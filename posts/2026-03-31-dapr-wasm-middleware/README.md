@@ -10,7 +10,7 @@ Description: Learn how to configure the Dapr Wasm middleware to run custom reque
 
 ## Introduction
 
-The Dapr Wasm middleware (`middleware.http.wasm`) executes WebAssembly modules in the HTTP request pipeline. This lets you write custom middleware logic in any language that compiles to Wasm (Go, Rust, C, TinyGo) and run it inside the Dapr sidecar without modifying your application.
+The Dapr Wasm middleware (`middleware.http.wasm`) executes WebAssembly modules in the HTTP request pipeline using the [http-wasm](https://http-wasm.io/) HTTP Handler ABI. This lets you write custom middleware logic in TinyGo (or any language that implements the http-wasm guest ABI) and run it inside the Dapr sidecar without modifying your application. Under the hood, Dapr uses the [wazero](https://wazero.io/) WebAssembly runtime, which requires no CGO dependencies.
 
 ## Use Cases
 
@@ -21,34 +21,37 @@ The Dapr Wasm middleware (`middleware.http.wasm`) executes WebAssembly modules i
 
 ## Writing a Wasm Middleware in TinyGo
 
+Dapr Wasm middleware guests must implement the [http-wasm HTTP Handler ABI](https://http-wasm.io/http-handler-abi/). The easiest way to do this is with the [`http-wasm-guest-tinygo`](https://github.com/http-wasm/http-wasm-guest-tinygo) SDK.
+
 ```go
 // middleware/main.go
 package main
 
 import (
-    "fmt"
-    "unsafe"
+    "strings"
+
+    "github.com/http-wasm/http-wasm-guest-tinygo/handler"
+    "github.com/http-wasm/http-wasm-guest-tinygo/handler/api"
 )
 
-//export malloc
-func malloc(size uint32) uint32 {
-    buf := make([]byte, size)
-    return uint32(uintptr(unsafe.Pointer(&buf[0])))
+func main() {
+    handler.HandleRequestFn = handleRequest
 }
 
-//export handle_request
-func handle_request(ptr, size uint32) uint64 {
-    // Read incoming request bytes
-    request := readMemory(ptr, size)
-    fmt.Printf("Handling request: %d bytes\n", len(request))
+// handleRequest is called on every inbound HTTP request.
+// Return next=true to continue to the next handler, or false to stop.
+func handleRequest(req api.Request, resp api.Response) (next bool, reqCtx uint32) {
+    // Add a custom header to the request
+    req.Headers().Set("X-Processed-By", "dapr-wasm")
 
-    // Add a custom header by modifying the request
-    modified := addHeader(request, "X-Processed-By", "dapr-wasm")
+    // Example: rewrite a URI prefix
+    if uri := req.GetURI(); strings.HasPrefix(uri, "/v2") {
+        req.SetURI("/v1" + uri[3:])
+    }
 
-    return writeResponse(modified)
+    next = true // continue processing
+    return
 }
-
-func main() {}
 ```
 
 ## Compiling to Wasm with TinyGo
@@ -56,32 +59,15 @@ func main() {}
 ```bash
 tinygo build \
   -o middleware.wasm \
+  -scheduler=none \
+  --no-debug \
   -target=wasi \
   ./middleware/
 ```
 
-## Using Rust for Wasm Middleware
+## Language Support
 
-```rust
-// src/lib.rs
-use std::collections::HashMap;
-
-#[no_mangle]
-pub fn handle_request(ptr: *mut u8, len: usize) -> u64 {
-    // Read request bytes
-    let request = unsafe {
-        std::slice::from_raw_parts(ptr, len)
-    };
-
-    // Add custom header
-    println!("Processing request: {} bytes", request.len());
-    0 // Return 0 to continue processing
-}
-```
-
-```bash
-cargo build --target wasm32-wasi --release
-```
+Currently, the only official http-wasm guest SDK is for TinyGo ([`http-wasm-guest-tinygo`](https://github.com/http-wasm/http-wasm-guest-tinygo)). In theory, any language that compiles to Wasm and implements the [http-wasm HTTP Handler ABI](https://http-wasm.io/http-handler-abi/) can be used, but no official guest SDKs exist yet for Rust, C, or AssemblyScript.
 
 ## Component Configuration
 
@@ -144,11 +130,11 @@ curl -v http://localhost:3500/v1.0/invoke/wasm-service/method/hello
 
 ## Benefits of Wasm Middleware
 
-- Language-agnostic: write in Go, Rust, C, or AssemblyScript
-- Sandboxed execution: Wasm runs in a secure sandbox
-- High performance: near-native execution speed
-- Portable: the same `.wasm` file runs on any platform
+- Sandboxed execution: Wasm runs in a secure sandbox via the wazero runtime
+- High performance: near-native execution speed with no CGO dependencies
+- Portable: the same `.wasm` file runs on any platform Dapr supports
+- Extensible: the http-wasm ABI is an open standard, and additional language SDKs can be added over time
 
 ## Summary
 
-Dapr Wasm middleware extends the sidecar pipeline with custom WebAssembly logic. Compile your middleware in any Wasm-compatible language, reference the binary in the component YAML, and attach it to the HTTP pipeline. This provides a language-agnostic, sandboxed way to add custom request processing without modifying your application or the Dapr sidecar source code.
+Dapr Wasm middleware extends the sidecar pipeline with custom WebAssembly logic using the http-wasm HTTP Handler ABI. Write your middleware in TinyGo using the `http-wasm-guest-tinygo` SDK, compile it to a `.wasm` binary, reference it in the component YAML, and attach it to the HTTP pipeline. This provides a sandboxed way to add custom request processing without modifying your application or the Dapr sidecar source code.
