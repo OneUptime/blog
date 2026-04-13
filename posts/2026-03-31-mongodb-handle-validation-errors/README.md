@@ -90,12 +90,12 @@ function parseValidationError(err) {
           });
         }
       } else if (error.operatorName === 'properties') {
-        for (const [prop, propErrors] of Object.entries(error.propertiesNotSatisfied || {})) {
-          for (const propErr of propErrors.details || []) {
+        for (const propError of error.propertiesNotSatisfied || []) {
+          for (const propErr of propError.details || []) {
             fields.push({
-              field: prop,
+              field: propError.propertyName,
               rule: propErr.operatorName,
-              message: propErr.description || `Validation failed for '${prop}'`
+              message: propErr.description || `Validation failed for '${propError.propertyName}'`
             });
           }
         }
