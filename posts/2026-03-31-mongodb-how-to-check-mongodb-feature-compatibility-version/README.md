@@ -111,7 +111,8 @@ mongosh --eval "db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 
 
 # Step 2: Ensure FCV matches current binary before upgrading
 # If binary is 6.0 and FCV is 5.0, set FCV to 6.0 first
-mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '6.0', confirm: true })"
+# Note: confirm parameter is only required on MongoDB 7.0+
+mongosh --eval "db.adminCommand({ setFeatureCompatibilityVersion: '6.0' })"
 
 # Step 3: Upgrade binary (rolling upgrade for replica sets)
 # Stop mongod, replace binary, start mongod - one node at a time
