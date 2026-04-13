@@ -60,7 +60,7 @@ Use dot notation to project specific nested fields:
 ```javascript
 const order = await db.collection('orders').findOne(
   { _id: orderId },
-  { projection: { 'address.city': 1, 'address.country': 1, total: 1 } }
+  { projection: { 'address.city': 1, 'address.country': 1, total: 1, _id: 0 } }
 );
 // Returns: { total: 99.99, address: { city: "New York", country: "US" } }
 ```
