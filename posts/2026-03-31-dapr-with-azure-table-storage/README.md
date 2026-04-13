@@ -32,8 +32,15 @@ CONN_STR=$(az storage account show-connection-string \
   --resource-group my-rg \
   --query connectionString --output tsv)
 
+# Get the account key
+ACCOUNT_KEY=$(az storage account keys list \
+  --account-name mydaprstorage \
+  --resource-group my-rg \
+  --query '[0].value' --output tsv)
+
 kubectl create secret generic azure-table-secret \
-  --from-literal=connectionString="$CONN_STR"
+  --from-literal=connectionString="$CONN_STR" \
+  --from-literal=accountKey="$ACCOUNT_KEY"
 ```
 
 ## Configure the Dapr Table Storage State Store
