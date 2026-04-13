@@ -95,7 +95,7 @@ db.orders.updateOne(
 | Removal basis | Position (first or last) | Value or condition |
 | Number removed | Always exactly 1 | All matching elements |
 | Accepts conditions | No | Yes |
-| Works on nested docs | No | Yes |
+| Matches nested doc fields | No | Yes |
 | Use case | Queue/stack operations | Data cleanup, filtering |
 
 ## Using $pullAll
