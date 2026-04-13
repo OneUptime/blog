@@ -164,14 +164,16 @@ pipeline := mongo.Pipeline{
 ## Aggregation with Options
 
 ```go
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+
 opts := options.Aggregate().
-    SetAllowDiskUse(true).
-    SetMaxTime(30 * time.Second)
+    SetAllowDiskUse(true)
 
 cursor, err := orders.Aggregate(ctx, pipeline, opts)
 ```
 
-`SetAllowDiskUse(true)` allows MongoDB to spill to disk for large pipelines that exceed the 100 MB memory limit.
+`SetAllowDiskUse(true)` allows MongoDB to spill to disk for large pipelines that exceed the 100 MB memory limit. To set a timeout for the aggregation operation, use `context.WithTimeout` rather than a driver-level option.
 
 ## Summary
 
