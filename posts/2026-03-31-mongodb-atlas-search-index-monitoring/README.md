@@ -41,7 +41,7 @@ In the Atlas UI, navigate to your cluster - then Metrics - then Atlas Search. Ke
 
 A rising replication lag indicates mongot cannot keep up with write throughput. This leads to stale results.
 
-## Using $searchMeta to Check Score Distribution
+## Using $searchMeta to Check Result Counts
 
 Run a `$searchMeta` aggregation to understand how your results are distributed before adding pagination or boosts:
 
@@ -66,9 +66,9 @@ Enable the slow query profiler on your cluster and filter for search operations:
 db.setProfilingLevel(1, { slowms: 100 });
 
 db.system.profile.find({
-  "command.$search": { $exists: true }
+  "command.pipeline.$search": { $exists: true }
 }, {
-  "command.$search": 1,
+  "command.pipeline": 1,
   millis: 1,
   ts: 1
 }).sort({ millis: -1 }).limit(20)
