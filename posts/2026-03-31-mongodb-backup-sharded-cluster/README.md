@@ -40,17 +40,19 @@ mongodump \
 
 ## Back Up Each Shard
 
-Back up each shard's replica set independently. Connect to a secondary to avoid impacting the primary:
+Back up each shard's replica set independently. Use `--readPreference secondaryPreferred` to read from a secondary and avoid impacting the primary:
 
 ```bash
 # Shard 1
 mongodump \
   --host shard1RS/shard1a.example.com:27018,shard1b.example.com:27018 \
+  --readPreference secondaryPreferred \
   --out /backup/shard1-$(date +%F)
 
 # Shard 2
 mongodump \
   --host shard2RS/shard2a.example.com:27018,shard2b.example.com:27018 \
+  --readPreference secondaryPreferred \
   --out /backup/shard2-$(date +%F)
 ```
 
@@ -119,7 +121,7 @@ mongodump --host configReplSet/cfg1:27019,cfg2:27019 --db config --out "$BACKUP_
 # Backup shards
 for SHARD in "shard1RS/shard1a:27018" "shard2RS/shard2a:27018"; do
   NAME=$(echo "$SHARD" | cut -d/ -f1)
-  mongodump --host "$SHARD" --out "$BACKUP_DIR/$NAME"
+  mongodump --host "$SHARD" --readPreference secondaryPreferred --out "$BACKUP_DIR/$NAME"
 done
 
 # Resume balancer
