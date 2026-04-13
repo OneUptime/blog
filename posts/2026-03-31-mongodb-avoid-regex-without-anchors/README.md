@@ -86,7 +86,7 @@ db.users.find({ emailDomain: /^company/ });
 
 ## Case-Insensitive Anchored Queries
 
-Case-insensitive regex options (`i`) disable index usage even for anchored patterns in older MongoDB versions. Use a case-insensitive collation index instead:
+Case-insensitive regex options (`i`) disable index usage even for anchored patterns. Additionally, `$regex` does not support collation and cannot use case-insensitive collation indexes. To perform case-insensitive searches efficiently, avoid regex and use string comparison with a collation index:
 
 ```javascript
 // Create case-insensitive index
@@ -95,8 +95,8 @@ db.users.createIndex(
   { collation: { locale: "en", strength: 2 } }
 );
 
-// Query with matching collation - uses index
-db.users.find({ username: /^alice/i }).collation({ locale: "en", strength: 2 });
+// Query with matching collation - uses index (no regex needed)
+db.users.find({ username: "alice" }).collation({ locale: "en", strength: 2 });
 ```
 
 ## When Unanchored Regex Is Acceptable
