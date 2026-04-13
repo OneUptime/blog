@@ -26,7 +26,7 @@ The keyword analyzer is the right choice for:
 
 - **Exact match search** on identifiers, codes, and slugs
 - **Faceted search** on category values, status fields, and enum fields
-- **Sorting** by a text field (Atlas Search requires a keyword-analyzed field for sort)
+- **Sorting** by a text field (using a `token` type mapping in the Atlas Search index)
 - **Auto-suggest** on structured values like country codes or product SKUs
 - Fields where the entire value is the searchable unit
 
@@ -98,11 +98,11 @@ db.products.aggregate([
 ])
 ```
 
-The `brand`, `category`, and `status` fields must be indexed with `lucene.keyword` for faceting to work.
+The `brand`, `category`, and `status` fields must be indexed with `stringFacet` type for faceting to work. They can also be indexed with `lucene.keyword` for exact-match queries on those fields.
 
-## Sorting with the Keyword Analyzer
+## Sorting with Atlas Search
 
-Atlas Search uses a keyword-analyzed field for text sorting:
+Atlas Search uses a `token` type mapping for sorting by string fields:
 
 ```javascript
 {
@@ -111,12 +111,10 @@ Atlas Search uses a keyword-analyzed field for text sorting:
       "title": [
         {
           "type": "string",
-          "analyzer": "lucene.standard"  // for search
+          "analyzer": "lucene.standard"
         },
         {
-          "type": "string",
-          "analyzer": "lucene.keyword",
-          "name": "title.keyword"        // for sorting
+          "type": "token"
         }
       ]
     }
@@ -124,34 +122,38 @@ Atlas Search uses a keyword-analyzed field for text sorting:
 }
 ```
 
-Sort by the keyword sub-field:
+Sort by the title field using the `sort` option within `$search`:
 
 ```javascript
 db.articles.aggregate([
-  { $search: { index: "articles_search", text: { query: "mongodb", path: "title" } } },
-  { $sort: { "title.keyword": 1 } }
+  {
+    $search: {
+      index: "articles_search",
+      text: { query: "mongodb", path: "title" },
+      sort: { title: 1 }
+    }
+  }
 ])
 ```
 
 ## Combining Keyword with Standard Analyzer
 
-A common pattern is to index the same field twice - once with standard for search, once with keyword for faceting and sorting:
+A common pattern is to index the same field with multiple analyzers using the `multi` property - once with standard for full-text search, once with keyword for exact match:
 
 ```javascript
 {
   "mappings": {
     "fields": {
-      "category": [
-        {
-          "type": "string",
-          "analyzer": "lucene.standard"
-        },
-        {
-          "type": "string",
-          "analyzer": "lucene.keyword",
-          "name": "category.keyword"
+      "category": {
+        "type": "string",
+        "analyzer": "lucene.standard",
+        "multi": {
+          "keyword": {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
         }
-      ]
+      }
     }
   }
 }
@@ -159,4 +161,4 @@ A common pattern is to index the same field twice - once with standard for searc
 
 ## Summary
 
-The MongoDB Atlas Search keyword analyzer indexes the entire field value as a single unmodified token. It is the right choice for exact-match queries on identifiers and codes, faceted search on categorical fields, and sorting by text fields. For fields that need both word-level search and exact-match/faceting capabilities, use a multi-analyzer mapping combining `lucene.standard` for search and `lucene.keyword` for facets and sort.
+The MongoDB Atlas Search keyword analyzer indexes the entire field value as a single unmodified token. It is the right choice for exact-match queries on identifiers and codes. For faceted search, use `stringFacet` type mappings, and for sorting, use `token` type mappings. For fields that need both word-level search and exact-match capabilities, use the `multi` property to combine `lucene.standard` for search and `lucene.keyword` for exact match.
