@@ -32,10 +32,7 @@ module.exports = {
       options: {
         connectionString: process.env.MONGODB_URI,
         dbName: 'myblog',
-        collection: ['posts', 'authors'],
-        map: {
-          posts: { content: 'String', publishedAt: 'Date' }
-        }
+        collection: ['posts', 'authors']
       }
     }
   ]
