@@ -73,6 +73,7 @@ Keep a real-time `orderSummaries` collection updated whenever an order is insert
 // Function: upsertOrderSummary
 exports = async function(changeEvent) {
   const { operationType, documentKey, fullDocument } = changeEvent;
+  const db = context.services.get("mongodb-atlas").db("production");
 
   if (operationType === "delete") {
     // Remove the summary when the order is deleted
@@ -81,7 +82,6 @@ exports = async function(changeEvent) {
   }
 
   const order = fullDocument;
-  const db = context.services.get("mongodb-atlas").db("production");
 
   const summary = {
     orderId: order._id,
