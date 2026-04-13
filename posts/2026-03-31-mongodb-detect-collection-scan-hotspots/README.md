@@ -98,7 +98,7 @@ For the most common COLLSCAN pattern, extract fields and create the index:
 // Hotspot query shape: { type: "click", userId: "u-42" }, sort: { timestamp: -1 }
 db.events.createIndex(
   { type: 1, userId: 1, timestamp: -1 },
-  { name: "idx_type_userId_ts", background: true }
+  { name: "idx_type_userId_ts" }
 );
 ```
 
