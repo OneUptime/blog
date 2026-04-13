@@ -165,10 +165,10 @@ Output:
 [
   {
     priceRanges: [
-      { _id: 0,    count: 1, items: ["Lamp"]    },
-      { _id: 200,  count: 1, items: ["Chair"]   },
-      { _id: 500,  count: 2, items: ["Monitor", "Desk"] },
-      { _id: 1000, count: 2, items: ["Laptop", "Phone"] }
+      { _id: 0,    count: 1, items: ["Lamp"]              },
+      { _id: 200,  count: 2, items: ["Chair", "Desk"]     },
+      { _id: 500,  count: 2, items: ["Monitor", "Phone"]  },
+      { _id: 1000, count: 1, items: ["Laptop"]            }
     ],
     stockStatus: [
       { _id: false, count: 1 },
