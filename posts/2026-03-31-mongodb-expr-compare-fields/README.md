@@ -101,7 +101,7 @@ db.contacts.find({
 
 ### Overdue Orders
 
-Find orders where `shippedAt` is null or `shippedAt` is after `expectedDelivery`:
+Find orders where `shippedAt` is after `expectedDelivery`:
 
 ```javascript
 db.orders.find({
