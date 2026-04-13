@@ -32,7 +32,7 @@ fs = gridfs.GridFS(db)
 
 # Or use GridFSBucket for more control
 from gridfs import GridIn, GridOut
-from pymongo.errors import GridFSError
+from gridfs.errors import GridFSError
 ```
 
 ## Uploading a File
