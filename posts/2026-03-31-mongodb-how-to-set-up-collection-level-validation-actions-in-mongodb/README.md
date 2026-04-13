@@ -84,7 +84,7 @@ try {
           propertiesNotSatisfied: [
             { propertyName: "username",
               description: "Must be a string between 3 and 50 characters",
-              details: [{ operatorName: "minLength", specifiedAs: 3, reason: "...", consideredValue: "ab" }]
+              details: [{ operatorName: "minLength", specifiedAs: { minLength: 3 }, reason: "...", consideredValue: "ab" }]
             }
           ]
         }
@@ -124,7 +124,7 @@ await db.collection("legacyOrders").insertOne({
 Check the MongoDB log for validation warnings:
 
 ```bash
-grep "Document failed validation" /var/log/mongodb/mongod.log
+grep "Document would fail validation" /var/log/mongodb/mongod.log
 ```
 
 ## Validation Levels
