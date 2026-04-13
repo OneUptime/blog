@@ -88,7 +88,6 @@ package main
 import (
     "encoding/json"
     "net/http"
-    "strings"
 )
 
 func getOktaGroups(r *http.Request) []string {
@@ -143,7 +142,7 @@ Include in token type: Access Token
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:3500/v1.0/invoke/api-service/method/reports
+  http://localhost:3500/v1.0/invoke/api-service/method/api/reports
 ```
 
 ## Summary
