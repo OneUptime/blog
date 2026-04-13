@@ -54,7 +54,8 @@ Upload a file:
 mongofiles \
   --uri "mongodb://admin:password@127.0.0.1:27017/?authSource=admin" \
   --db myapp \
-  put /path/to/report.pdf
+  --local /path/to/report.pdf \
+  put report.pdf
 ```
 
 Download a file:
@@ -234,8 +235,8 @@ for grid_file in fs.find():
 fs.delete(file_id)
 
 # Find by filename
-if fs.exists(filename="report.pdf"):
-    grid_out = fs.find_one({"filename": "report.pdf"})
+grid_out = fs.find_one({"filename": "report.pdf"})
+if grid_out:
     print(grid_out.filename)
 ```
 
@@ -269,7 +270,7 @@ db["uploads.files"].createIndex({ "metadata.contentType": 1, uploadDate: -1 })
 - Use a named bucket (e.g., `{ bucketName: "uploads" }`) instead of the default `fs` to avoid conflicts if you use multiple buckets.
 - Always store metadata (content type, uploader, expiry date) in the `metadata` field for easy filtering.
 - For large files in a busy application, stream uploads and downloads rather than loading entire files into memory.
-- Add a TTL index on `fs.files.uploadDate` for automatic expiration of temporary uploads.
+- To expire temporary uploads, use a scheduled cleanup job that calls `bucket.delete()` (or `fs.delete()` in Python) for each expired file. Do not use a TTL index on `fs.files`, as it only removes the file document and leaves orphaned chunks in `fs.chunks`.
 - For files over 1GB or for CDN delivery, consider object storage (S3, GCS) and store only the URL in MongoDB.
 
 ## Summary
