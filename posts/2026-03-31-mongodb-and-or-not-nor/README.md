@@ -125,7 +125,7 @@ db.users.find({
 `$nor` also matches documents where the field does not exist:
 
 ```javascript
-// Matches docs where deletedAt doesn't exist OR deletedAt is not a real date
+// Matches docs where deletedAt does not exist
 db.records.find({
   $nor: [
     { deletedAt: { $exists: true } }
