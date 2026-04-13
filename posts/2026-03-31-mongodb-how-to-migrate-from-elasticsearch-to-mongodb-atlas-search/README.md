@@ -18,7 +18,7 @@ MongoDB Atlas Search embeds Apache Lucene-powered full-text search directly into
 - Data is always consistent - no replication lag
 - Unified query language (MongoDB aggregation)
 - Lower infrastructure cost
-- ACID transactions work across documents and search indexes
+- Search indexes update automatically as documents change
 
 ## Step 1 - Assess Your Elasticsearch Usage
 
@@ -53,16 +53,24 @@ In MongoDB Atlas, create a search index from the Atlas UI or via the CLI:
   "mappings": {
     "dynamic": false,
     "fields": {
-      "name": {
-        "type": "string",
-        "analyzer": "lucene.english",
-        "multi": {
-          "keywordAnalyzer": {
-            "type": "string",
-            "analyzer": "lucene.keyword"
+      "name": [
+        {
+          "type": "string",
+          "analyzer": "lucene.english",
+          "multi": {
+            "keywordAnalyzer": {
+              "type": "string",
+              "analyzer": "lucene.keyword"
+            }
           }
+        },
+        {
+          "type": "autocomplete",
+          "tokenization": "edgeGram",
+          "minGrams": 3,
+          "maxGrams": 15
         }
-      },
+      ],
       "description": {
         "type": "string",
         "analyzer": "lucene.english"
@@ -111,10 +119,22 @@ db.products.aggregate([
   {
     $search: {
       index: "products-search",
-      text: {
-        query: "wireless headphones",
-        path: ["name", "description"],
-        score: { boost: { path: "name", value: 2 } }
+      compound: {
+        should: [
+          {
+            text: {
+              query: "wireless headphones",
+              path: "name",
+              score: { boost: { value: 2 } }
+            }
+          },
+          {
+            text: {
+              query: "wireless headphones",
+              path: "description"
+            }
+          }
+        ]
       }
     }
   },
@@ -272,7 +292,7 @@ After validating Atlas Search results match Elasticsearch:
 systemctl stop monstache
 
 # Verify no traffic hitting Elasticsearch
-curl "localhost:9200/_nodes/stats/indices?pretty" | grep search_rate
+curl "localhost:9200/_nodes/stats/indices/search?pretty" | grep query_total
 
 # Remove Elasticsearch from docker-compose or helm
 ```
