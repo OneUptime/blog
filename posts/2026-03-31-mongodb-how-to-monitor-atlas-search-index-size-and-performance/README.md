@@ -69,7 +69,7 @@ db.products.aggregate([
 List available search metrics:
 
 ```bash
-curl -u "publicKey:privateKey" \
+curl --digest -u "publicKey:privateKey" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/fts/metrics" \
   | jq '.measurements[].name'
 ```
@@ -77,7 +77,7 @@ curl -u "publicKey:privateKey" \
 Fetch a specific metric (e.g., index size):
 
 ```bash
-curl -u "publicKey:privateKey" \
+curl --digest -u "publicKey:privateKey" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/fts/metrics/measurements?granularity=PT1H&period=P1D&metrics=SEARCH_INDEX_SIZE" \
   | jq '.measurements[]'
 ```
@@ -98,7 +98,7 @@ Key metrics to track:
 Replication lag measures how far behind the Atlas Search index is from the latest writes. High lag means search results are stale:
 
 ```bash
-curl -u "publicKey:privateKey" \
+curl --digest -u "publicKey:privateKey" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/fts/metrics/measurements?granularity=PT1M&period=PT1H&metrics=SEARCH_MAX_REPLICATION_LAG"
 ```
 
@@ -124,10 +124,10 @@ db.products.explain("executionStats").aggregate([
 ```
 
 Look for:
-- `IXSCAN` - index scan used (good)
-- `COLLSCAN` - collection scan (slow)
-- `timeMillis` - execution time
-- `nReturned` - documents returned
+- `executionTimeMillisEstimate` - time spent in each pipeline stage
+- `nReturned` - documents returned from the search stage
+- `$_internalSearchMongotRemote` - the internal stage representing mongot execution
+- `$_internalSearchIdLookup` - the stage where MongoDB fetches full documents by _id
 
 ## Setting Up Alerts for Atlas Search
 
@@ -139,7 +139,7 @@ In the Atlas UI under **Alerts**, create alert conditions for:
 Via the API:
 
 ```bash
-curl -X POST -u "publicKey:privateKey" \
+curl -X POST --digest -u "publicKey:privateKey" \
   -H "Content-Type: application/json" \
   "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/alertConfigs" \
   -d '{
