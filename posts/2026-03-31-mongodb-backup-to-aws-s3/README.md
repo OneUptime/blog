@@ -16,7 +16,7 @@ AWS S3 provides durable, geo-redundant object storage with 99.999999999% (11 nin
 
 - `mongodump` and the AWS CLI installed on the MongoDB host
 - An S3 bucket created in your target region
-- An IAM role or user with `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` permissions on the bucket
+- An IAM role or user with `s3:PutObject`, `s3:GetObject`, and `s3:ListBucket` permissions on the bucket
 - `mongodump` version compatible with your MongoDB server version
 
 ## Backup Script
@@ -124,10 +124,7 @@ Add the backup script to cron for nightly execution:
 
 ```bash
 # /etc/cron.d/mongodb-s3-backup
-0 2 * * * mongodb \
-  MONGO_URI="mongodb://user:pass@localhost:27017" \
-  S3_BUCKET="my-mongodb-backups" \
-  /usr/local/bin/mongodb-backup-s3.sh >> /var/log/mongodb-backup.log 2>&1
+0 2 * * * mongodb MONGO_URI="mongodb://user:pass@localhost:27017" S3_BUCKET="my-mongodb-backups" /usr/local/bin/mongodb-backup-s3.sh >> /var/log/mongodb-backup.log 2>&1
 ```
 
 ## Restoring from S3
