@@ -59,10 +59,10 @@ Atlas scales up when CPU utilization exceeds **~75%** over a 1-hour window. You 
 Monitor CPU in Atlas Metrics:
 
 ```bash
-atlas metrics processes myCluster \
+atlas metrics processes myCluster-shard-00-00.ab1cd.mongodb.net:27017 \
   --period P1D \
   --granularity PT5M \
-  --metrics SYSTEM_CPU_PERCENT
+  --type SYSTEM_CPU_USER
 ```
 
 ### Step 4: Configure Scale-Down Behavior
@@ -158,7 +158,7 @@ View past scaling events:
 ```bash
 atlas events projects list \
   --limit 20 \
-  --eventType AUTO_SCALING_INITIATED
+  --type AUTO_SCALING_INITIATED
 ```
 
 ## Best Practices
