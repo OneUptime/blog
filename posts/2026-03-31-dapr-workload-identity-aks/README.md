@@ -10,7 +10,7 @@ Description: Configure Dapr components on AKS to use Azure Workload Identity Fed
 
 ## What Is Azure Workload Identity Federation?
 
-Azure Workload Identity Federation (formerly Pod Identity) allows Kubernetes pods to authenticate to Azure services using their Kubernetes service account identity, without needing to manage Azure credentials. It works by federating the Kubernetes OIDC token with Azure AD to obtain Azure access tokens.
+Azure Workload Identity Federation (the successor to AAD Pod Identity) allows Kubernetes pods to authenticate to Azure services using their Kubernetes service account identity, without needing to manage Azure credentials. It works by federating the Kubernetes OIDC token with Microsoft Entra ID to obtain Azure access tokens.
 
 ## Prerequisites
 
@@ -96,8 +96,6 @@ spec:
   metadata:
     - name: vaultName
       value: "myKeyVault"
-    - name: azureClientId
-      value: "<IDENTITY_CLIENT_ID>"
 ```
 
 ## Step 7 - Label the Pod for Workload Identity
