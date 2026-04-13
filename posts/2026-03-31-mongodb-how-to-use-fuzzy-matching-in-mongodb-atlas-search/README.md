@@ -35,7 +35,7 @@ db.products.aggregate([
         query: "laptap",   // typo for "laptop"
         path: "title",
         fuzzy: {
-          maxEdits: 1      // allow 1 edit (0 = exact, 1 = 1 edit, 2 = 2 edits)
+          maxEdits: 1      // allow 1 edit (1 or 2; omit fuzzy for exact match)
         }
       }
     }
@@ -53,7 +53,7 @@ db.products.aggregate([
 
 ```javascript
 fuzzy: {
-  maxEdits: 1,          // Maximum edit distance (0, 1, or 2)
+  maxEdits: 1,          // Maximum edit distance (1 or 2)
   prefixLength: 2,      // Number of leading characters that must match exactly
   maxExpansions: 50     // Max number of query term variations to consider
 }
@@ -191,9 +191,9 @@ db.products.aggregate([
 Fuzzy matching is computationally more expensive than exact matching:
 
 ```text
-maxEdits: 0  - Exact match, fastest
 maxEdits: 1  - Good balance of tolerance and performance
 maxEdits: 2  - More permissive but slower, can return unexpected results
+(Omit the fuzzy option entirely for exact matching)
 
 Recommendations:
 - Use prefixLength: 2-4 to anchor the first chars for performance
@@ -243,4 +243,4 @@ db.products.aggregate([
 
 ## Summary
 
-Fuzzy matching in MongoDB Atlas Search uses Levenshtein distance to find documents despite typos and spelling errors. The `maxEdits` parameter (0, 1, or 2) controls how many character edits are tolerated, while `prefixLength` improves performance by requiring the first N characters to match exactly. Use `maxEdits: 1` with `prefixLength: 3-4` as a good starting point for most search interfaces. Combine fuzzy matching with the `compound` operator to add structured filters without losing typo tolerance, and boost exact matches using `should` clauses to ensure perfectly spelled queries rank above fuzzy matches.
+Fuzzy matching in MongoDB Atlas Search uses Levenshtein distance to find documents despite typos and spelling errors. The `maxEdits` parameter (1 or 2) controls how many character edits are tolerated, while `prefixLength` improves performance by requiring the first N characters to match exactly. Use `maxEdits: 1` with `prefixLength: 3-4` as a good starting point for most search interfaces. Combine fuzzy matching with the `compound` operator to add structured filters without losing typo tolerance, and boost exact matches using `should` clauses to ensure perfectly spelled queries rank above fuzzy matches.
