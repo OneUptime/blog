@@ -64,7 +64,6 @@ docker run -d \
 ## Using Docker Compose
 
 ```yaml
-version: "3.8"
 services:
   mongodb:
     image: mongo:7.0
@@ -156,15 +155,15 @@ docker exec mongodb mongodump \
   --username admin \
   --password secret123 \
   --authenticationDatabase admin \
-  --out /data/db/backup
+  --out /tmp/backup
 
 # Copy backup from container to host
-docker cp mongodb:/data/db/backup ./mongo-backup
+docker cp mongodb:/tmp/backup ./mongo-backup
 ```
 
 ## Upgrade MongoDB Version with Persistent Volume
 
-Because data lives on the volume, upgrading is safe:
+Because data lives on the volume, you can replace the container with a newer image version:
 
 ```bash
 # Stop the old container
@@ -177,8 +176,10 @@ docker run -d \
   -e MONGO_INITDB_ROOT_USERNAME=admin \
   -e MONGO_INITDB_ROOT_PASSWORD=secret123 \
   -v mongodb_data:/data/db \
-  mongo:7.0
+  mongo:8.0
 ```
+
+Always check the [MongoDB release notes](https://www.mongodb.com/docs/manual/release-notes/) before upgrading. MongoDB only supports upgrading one major version at a time (for example, 7.0 to 8.0).
 
 ## Summary
 
