@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Elasticsearch, Data Sync, Monstache, Change Stream
 
-Description: Sync MongoDB data to Elasticsearch in real-time using Monstache or the MongoDB Kafka Connector to enable full-text search alongside MongoDB's document store.
+Description: Sync MongoDB data to Elasticsearch in real-time using Monstache or Change Streams to enable full-text search alongside MongoDB's document store.
 
 ---
 
 ## Overview
 
-MongoDB excels at flexible document storage and transactional workloads, while Elasticsearch shines at full-text search, faceted search, and log analytics. Syncing data between them lets you use MongoDB as the source of truth while leveraging Elasticsearch's search capabilities. This guide covers three approaches: Monstache (purpose-built sync tool), Change Streams with a custom consumer, and the MongoDB Kafka Connector with an Elasticsearch Sink.
+MongoDB excels at flexible document storage and transactional workloads, while Elasticsearch shines at full-text search, faceted search, and log analytics. Syncing data between them lets you use MongoDB as the source of truth while leveraging Elasticsearch's search capabilities. This guide covers Monstache (a purpose-built sync tool), Change Streams with a custom consumer, and an initial bulk sync approach for existing data.
 
 ## Approach 1 - Monstache (Recommended)
 
@@ -33,7 +33,7 @@ sudo mv monstache /usr/local/bin/
 mongo-url = "mongodb://localhost:27017/?replicaSet=rs0"
 elasticsearch-urls = ["http://localhost:9200"]
 
-# Index all collections from these databases
+# Direct read these specific namespaces on startup
 direct-read-namespaces = ["ecommerce.products", "ecommerce.users"]
 
 # Resume sync after restart using MongoDB resume tokens
@@ -84,8 +84,7 @@ curl "http://localhost:9200/products/_search?q=widget&pretty"
 
 ```python
 from pymongo import MongoClient
-from elasticsearch import Elasticsearch, helpers
-import json
+from elasticsearch import Elasticsearch
 
 mongo_client = MongoClient("mongodb://localhost:27017/?replicaSet=rs0")
 es_client = Elasticsearch(["http://localhost:9200"])
@@ -155,7 +154,8 @@ def initial_sync(db_name, collection_name, index_name, batch_size=500):
         es_client,
         generate_actions(),
         chunk_size=batch_size,
-        raise_on_error=False
+        raise_on_error=False,
+        stats_only=True
     )
     print(f"Synced: {success}, Failed: {failed}")
 
