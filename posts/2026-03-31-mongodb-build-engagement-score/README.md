@@ -16,7 +16,7 @@ An engagement score is a composite metric that quantifies how actively a user in
 
 Assume an `events` collection:
 
-```json
+```javascript
 {
   "_id": ObjectId("..."),
   "userId": "user_800",
@@ -44,6 +44,7 @@ db.events.aggregate([
   {
     $project: {
       userId: 1,
+      timestamp: 1,
       eventWeight: {
         $switch: {
           branches: [
