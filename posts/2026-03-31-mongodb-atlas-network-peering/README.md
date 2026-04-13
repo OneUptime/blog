@@ -24,7 +24,7 @@ flowchart LR
 
 - MongoDB Atlas M10 or higher cluster (M0/M2/M5 do not support peering)
 - Your cloud VPC and Atlas VPC CIDR ranges must not overlap
-- Appropriate IAM/IAM permissions to create peering connections in your cloud account
+- Appropriate IAM permissions to create peering connections in your cloud account
 
 ## Setting Up VPC Peering on AWS
 
@@ -87,9 +87,7 @@ Allow outbound traffic from your application security group to the Atlas CIDR on
 ```bash
 aws ec2 authorize-security-group-egress \
   --group-id sg-0a1b2c3d4e5f \
-  --protocol tcp \
-  --port 27017 \
-  --cidr 192.168.0.0/21
+  --ip-permissions IpProtocol=tcp,FromPort=27017,ToPort=27017,IpRanges='[{CidrIp=192.168.0.0/21}]'
 ```
 
 ### Step 5: Add the App VPC CIDR to Atlas IP Access List
@@ -115,6 +113,7 @@ Step 2: Create peering via the Atlas CLI:
 ```bash
 atlas networking peering create azure \
   --atlasCidrBlock "192.168.0.0/21" \
+  --directoryId "your-azure-ad-directory-id" \
   --subscriptionId "your-azure-subscription-id" \
   --resourceGroupName "myResourceGroup" \
   --vnetName "myVNet"
@@ -133,19 +132,19 @@ az network vnet peering create \
 
 ## Connecting Over the Peered Connection
 
-After peering is established, Atlas provides a private connection string:
+After peering is established, use the standard connection string. With VPC peering active, the standard hostnames automatically resolve to private IPs when accessed from within the peered VPC:
 
 ```bash
 atlas clusters connectionStrings describe myCluster
 ```
 
-Look for the `private` or `privateSrv` field. Use this instead of the standard connection string in your application:
+Use the `standard` or `standardSrv` connection string (not the `private`/`privateSrv` strings, which are for Private Endpoints such as AWS PrivateLink):
 
 ```javascript
 const { MongoClient } = require("mongodb");
 
-// Use private SRV endpoint for peered connections
-const uri = "mongodb+srv://appuser:password@mycluster-private.abcde.mongodb.net/myapp?retryWrites=true&w=majority";
+// Standard SRV endpoint resolves to private IPs over peered connection
+const uri = "mongodb+srv://appuser:password@mycluster.abcde.mongodb.net/myapp?retryWrites=true&w=majority";
 
 const client = new MongoClient(uri);
 await client.connect();
