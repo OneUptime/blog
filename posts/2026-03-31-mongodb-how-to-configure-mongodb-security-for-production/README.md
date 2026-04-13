@@ -123,7 +123,9 @@ security:
   authorization: enabled
 ```
 
-## Enable Audit Logging
+## Enable Audit Logging (Enterprise/Atlas Only)
+
+Audit logging is available only in MongoDB Enterprise and MongoDB Atlas.
 
 ```yaml
 auditLog:
