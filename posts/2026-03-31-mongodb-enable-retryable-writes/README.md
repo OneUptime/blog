@@ -16,7 +16,7 @@ Without retryable writes, applications must implement their own retry logic for 
 
 ## Enabling Retryable Writes
 
-Retryable writes are enabled by default in MongoDB drivers 4.0 and later. To be explicit or to enable them on older driver versions:
+Retryable writes are enabled by default in MongoDB 4.2-compatible drivers and later. To be explicit or to enable them on older driver versions:
 
 In the connection string:
 
@@ -51,26 +51,26 @@ client = MongoClient(
 Not all write operations support retryable writes. Retryable operations include:
 
 ```text
-Retryable                  Not Retryable
----------                  -------------
-insertOne                  insertMany (ordered)
-insertMany (unordered)     updateMany
-updateOne                  deleteMany
-replaceOne                 bulkWrite with unordered: false
-deleteOne                  mapReduce
-findOneAndUpdate           aggregate with $out or $merge
+Retryable                          Not Retryable
+---------                          -------------
+insertOne                          updateMany
+insertMany                         deleteMany
+updateOne                          mapReduce
+replaceOne                         aggregate with $out or $merge
+deleteOne
+findOneAndUpdate
 findOneAndDelete
 findOneAndReplace
-bulkWrite (ordered)
+bulkWrite (single-document ops only)
 ```
 
-Multi-document updates and deletes are excluded because retrying them without idempotency could result in duplicating the effect.
+Multi-document updates (`updateMany`) and deletes (`deleteMany`) are excluded because retrying them without idempotency could result in duplicating the effect. `bulkWrite` is retryable only when it contains single-document operations (e.g., `insertOne`, `updateOne`, `replaceOne`, `deleteOne`).
 
 ## How Retryable Writes Work
 
 When a retryable write fails with a transient error:
 
-1. The driver detects the error is transient (network error, `NotMaster`, `NotPrimaryOrSecondary`, etc.)
+1. The driver detects the error is transient (network error, `NotWritablePrimary`, `NotPrimaryOrSecondary`, etc.)
 2. The driver waits for a new primary to be elected (using server monitoring)
 3. The driver retries the operation **exactly once** against the new primary
 4. If the second attempt also fails, the error is returned to the application
@@ -99,15 +99,18 @@ In rare cases you may want to disable them - for example, if your application pe
 mongodb://mongo1:27017/myapp?retryWrites=false&replicaSet=rs0
 ```
 
-Or at the collection level in Python:
+Or in the Python driver constructor:
 
 ```python
-collection = db.get_collection("orders", write_concern=WriteConcern(w=1))
-collection_no_retry = collection.with_options(
-    write_concern=WriteConcern(w=1),
-    codec_options=collection.codec_options
+from pymongo import MongoClient
+
+client = MongoClient(
+    "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0",
+    retryWrites=False
 )
 ```
+
+Note: retryable writes can only be disabled at the client level, not per-collection.
 
 ## Requirements
 
@@ -123,7 +126,7 @@ Retryable writes require:
 ```text
 Retryable Error Types
 - Network timeout / socket closed
-- NotMaster (primary stepped down)
+- NotWritablePrimary (primary stepped down)
 - NotPrimaryOrSecondary
 - PrimarySteppedDown
 - ShutdownInProgress
@@ -144,9 +147,13 @@ const client = new MongoClient(uri, {
 });
 
 client.on("commandFailed", (event) => {
-  if (event.failure && event.failure.message.includes("retryable")) {
-    console.log(`Retrying write: ${event.commandName} on ${event.address}`);
-  }
+  console.log(
+    `Command failed: ${event.commandName} on ${event.address} - ${event.failure.message}`
+  );
+});
+
+client.on("commandSucceeded", (event) => {
+  console.log(`Command succeeded: ${event.commandName} on ${event.address}`);
 });
 ```
 
