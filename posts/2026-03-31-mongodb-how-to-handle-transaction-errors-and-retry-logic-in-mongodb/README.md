@@ -43,9 +43,13 @@ async function withTransaction(client, txnFunc, maxRetries = 3) {
       await session.commitTransaction();
       return;
     } catch (error) {
-      await session.abortTransaction();
+      try {
+        await session.abortTransaction();
+      } catch {
+        // Transaction may already be aborted by the server
+      }
 
-      if (isTransientError(error) && attempts < maxRetries - 1) {
+      if (error.hasErrorLabel?.("TransientTransactionError") && attempts < maxRetries - 1) {
         attempts++;
         const delay = Math.min(100 * Math.pow(2, attempts), 2000);
         await new Promise(resolve => setTimeout(resolve, delay));
