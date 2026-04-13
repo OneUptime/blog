@@ -119,7 +119,7 @@ SELECT
   table_name,
   rows_synced,
   sync_time
-FROM fivetran_audit.log
+FROM fivetran_log.log
 WHERE connector_id = 'mongodb_prod'
 ORDER BY sync_time DESC
 LIMIT 20;
@@ -132,9 +132,11 @@ Pause the connector during maintenance windows or to manage Fivetran credits:
 This is done through the Fivetran UI or API:
 
 ```bash
-curl -X POST \
-  "https://api.fivetran.com/v1/connectors/<connector_id>/pause" \
-  -H "Authorization: Bearer <token>"
+curl -X PATCH \
+  "https://api.fivetran.com/v1/connectors/<connector_id>" \
+  -H "Authorization: Basic <base64-encoded-api-key:api-secret>" \
+  -H "Content-Type: application/json" \
+  -d '{"paused": true}'
 ```
 
 ## Summary
