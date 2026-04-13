@@ -62,14 +62,12 @@ Group readings into hourly buckets for efficient time-range queries:
   temperature: {
     min: 21.2,
     max: 24.8,
-    sum: 1368.0,
-    avg: 22.8
+    sum: 1368.0
   },
   humidity: {
     min: 45.1,
     max: 58.3,
-    sum: 3078.6,
-    avg: 51.3
+    sum: 3078.6
   },
   readings: [
     { t: ISODate("2026-03-31T08:00:00Z"), temp: 22.1, hum: 51.2 },
