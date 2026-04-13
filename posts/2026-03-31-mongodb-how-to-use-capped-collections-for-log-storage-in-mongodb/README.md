@@ -34,11 +34,11 @@ Keep log documents small to maximize the number of entries within the size limit
 Size the collection based on your expected log volume and retention period:
 
 ```javascript
-// ~50 bytes per log entry, keep ~200k entries = roughly 10 MB
+// ~150 bytes per log entry, keep ~65k entries = roughly 10 MB
 db.createCollection("appLogs", {
   capped: true,
   size: 10485760,  // 10 MB
-  max: 200000      // hard cap at 200k documents
+  max: 65000       // hard cap at 65k documents
 });
 ```
 
