@@ -109,7 +109,7 @@ db.products.updateMany(
 
 - The identifier must start with a lowercase letter.
 - Every identifier used in the update expression must have a corresponding entry in `arrayFilters`.
-- `arrayFilters` is ignored if no `$[identifier]` appears in the update.
+- Each entry in `arrayFilters` must correspond to a `$[identifier]` used in the update expression; unused filters cause an error.
 
 ## Summary
 
