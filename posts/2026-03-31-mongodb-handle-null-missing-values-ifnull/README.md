@@ -103,7 +103,7 @@ Documents with no `region` field group together under `"unassigned"` instead of 
 { $cond: { if: { $eq: ["$field", null] }, then: "default", else: "$field" } }
 ```
 
-Note: `$cond: { if: "$field" }` treats `0`, `""`, and `false` as falsy, while `$ifNull` only substitutes for null/missing. Use `$ifNull` when you specifically want to handle null and absence while keeping falsy non-null values intact.
+Note: `$cond: { if: "$field" }` treats `0`, `false`, `null`, and `undefined` as falsy, while `$ifNull` only substitutes for null/missing. Use `$ifNull` when you specifically want to handle null and absence while keeping other falsy non-null values like `0` and `false` intact.
 
 ## Null vs. Missing: What $ifNull Handles
 
