@@ -57,7 +57,7 @@ dapr run --app-id myapp --config workflowconfig.yaml -- dotnet run
 
 ## Optimize State Store Backend
 
-Use Redis with pipelining enabled as the workflow state store for low-latency history reads:
+Use Redis as the workflow state store for low-latency history reads. Since Dapr workflows are built on actors, the state store must have `actorStateStore` enabled:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -72,6 +72,8 @@ spec:
       value: redis-master:6379
     - name: enableTLS
       value: "false"
+    - name: actorStateStore
+      value: "true"
     - name: maxRetries
       value: "3"
     - name: ttlInSeconds
@@ -83,7 +85,7 @@ spec:
 Keep activity inputs and outputs small. For large payloads, store data in blob storage and pass only references:
 
 ```csharp
-[DaprWorkflowActivity]
+[WorkflowActivity]
 public class ProcessLargeFileActivity : WorkflowActivity<string, string>
 {
     public override async Task<string> RunAsync(WorkflowActivityContext ctx, string blobUrl)
@@ -102,13 +104,13 @@ Enable Dapr metrics and create a Prometheus alert for slow workflows:
 
 ```bash
 # Check workflow latency in Prometheus
-dapr_workflow_operation_latency_bucket{app_id="myapp", operation="ExecuteActivity"}
+dapr_runtime_workflow_operation_latency_bucket{app_id="myapp", operation="ExecuteActivity"}
 ```
 
 ```yaml
 # Prometheus alert rule
 - alert: DaprWorkflowSlowExecution
-  expr: histogram_quantile(0.99, dapr_workflow_operation_latency_bucket) > 5000
+  expr: histogram_quantile(0.99, dapr_runtime_workflow_operation_latency_bucket) > 5000
   for: 5m
   labels:
     severity: warning
