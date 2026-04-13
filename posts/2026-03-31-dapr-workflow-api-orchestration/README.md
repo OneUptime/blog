@@ -113,17 +113,15 @@ spec:
   targets:
     apps:
       pricing-service:
-        outbound:
-          retry: externalApiRetry
+        retry: externalApiRetry
       ai-service:
-        outbound:
-          retry: externalApiRetry
+        retry: externalApiRetry
 ```
 
 ## Starting the Orchestration
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/ProductEnrichmentWorkflow \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/ProductEnrichmentWorkflow/start \
   -H "Content-Type: application/json" \
   -d '{"id": "PROD-789", "name": "Wireless Headphones", "category": "electronics"}'
 ```
@@ -131,7 +129,7 @@ curl -X POST http://localhost:3500/v1.0/workflows/dapr/ProductEnrichmentWorkflow
 ## Monitoring API Orchestration Progress
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/ProductEnrichmentWorkflow/{instance_id}
+curl http://localhost:3500/v1.0/workflows/dapr/{instance_id}
 ```
 
 The `serializedCustomStatus` field shows which API call is currently in progress when you set custom status messages in your workflow.
