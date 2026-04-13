@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Atlas Data Federation, S3
 
-Description: Use the $out stage in MongoDB Atlas Data Federation aggregation pipelines to write query results back to S3 in JSON or CSV format for downstream processing.
+Description: Use the $out stage in MongoDB Atlas Data Federation aggregation pipelines to write query results back to S3 in formats like JSON, CSV, and Parquet for downstream processing.
 
 ---
 
@@ -41,7 +41,7 @@ db.orders.aggregate([
       s3: {
         bucket: "my-analytics-bucket",
         region: "us-east-1",
-        filename: "customer-summary/2024-01/{yyyy}/{mm}/{dd}/part",
+        filename: "customer-summary/2024-01/part",
         format: {
           name: "json",
           maxFileSize: "100MB"
@@ -55,10 +55,15 @@ db.orders.aggregate([
 ## Supported Output Formats
 
 ```text
-json    - Newline-delimited JSON (one document per line)
-csv     - Comma-separated, headers from field names
-bson    - BSON binary format
-parquet - Apache Parquet columnar format (best for analytics)
+json      - MongoDB Extended JSON (one document per line)
+json.gz   - Gzip-compressed JSON
+csv       - Comma-separated, headers from field names
+csv.gz    - Gzip-compressed CSV
+tsv       - Tab-separated values
+tsv.gz    - Gzip-compressed TSV
+bson      - BSON binary format
+bson.gz   - Gzip-compressed BSON
+parquet   - Apache Parquet columnar format (best for analytics)
 ```
 
 Parquet is the recommended format for downstream analytics tools:
@@ -79,9 +84,32 @@ Parquet is the recommended format for downstream analytics tools:
 }
 ```
 
-## Dynamic Path Templates
+## Dynamic Path Construction
 
-Use date-based path templates for automatic partitioning in S3:
+Build date-based paths programmatically for automatic partitioning in S3. In `mongosh`, construct the filename before passing it to the pipeline:
+
+```javascript
+var now = new Date();
+var datePath = "reports/" + now.getUTCFullYear() + "/" +
+  String(now.getUTCMonth() + 1).padStart(2, "0") + "/" +
+  String(now.getUTCDate()).padStart(2, "0") + "/summary";
+
+db.orders.aggregate([
+  { $match: { status: "completed" } },
+  {
+    $out: {
+      s3: {
+        bucket: "data-lake",
+        region: "us-east-1",
+        filename: datePath,
+        format: { name: "json" }
+      }
+    }
+  }
+])
+```
+
+You can also use an aggregation expression in the `filename` field to partition output by a document field:
 
 ```javascript
 {
@@ -89,14 +117,12 @@ Use date-based path templates for automatic partitioning in S3:
     s3: {
       bucket: "data-lake",
       region: "us-east-1",
-      filename: "reports/{yyyy}/{mm}/{dd}/summary",
+      filename: { $concat: ["reports/", { $toString: "$region" }, "/output"] },
       format: { name: "json" }
     }
   }
 }
 ```
-
-The placeholders `{yyyy}`, `{mm}`, `{dd}`, `{hh}` are substituted with the current UTC date/time at query execution.
 
 ## Writing from Atlas Collection to S3
 
@@ -119,7 +145,7 @@ db.getSiblingDB("production").getCollection("events").aggregate([
       s3: {
         bucket: "event-archive",
         region: "us-east-1",
-        filename: "events/unprocessed/{yyyy}-{mm}-{dd}",
+        filename: "events/unprocessed/" + new Date().toISOString().slice(0, 10),
         format: { name: "json", maxFileSize: "50MB" }
       }
     }
@@ -167,4 +193,4 @@ export_daily_summary()
 
 ## Summary
 
-The `$out` stage in Atlas Data Federation writes aggregation results to S3 in multiple formats including JSON, CSV, and Parquet. Use date-based path templates for automatic Hive-style partitioning. This enables you to run complex transformations in MongoDB's aggregation language and materialize the results in a data lake without separate ETL tooling.
+The `$out` stage in Atlas Data Federation writes aggregation results to S3 in multiple formats including JSON, CSV, and Parquet. Construct date-based paths programmatically or use aggregation expressions in the `filename` field for partitioned output. This enables you to run complex transformations in MongoDB's aggregation language and materialize the results in a data lake without separate ETL tooling.
