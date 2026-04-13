@@ -183,7 +183,7 @@ try {
   err.writeErrors.forEach(e => {
     print(`  Index ${e.index}: ${e.errmsg}`)
   })
-  print("Inserted count:", err.result.nInserted)
+  print("Inserted count:", err.result.insertedCount)
 }
 ```
 
@@ -222,13 +222,13 @@ Individual operations (100 items): 100 network round trips
 bulkWrite (100 items):             1 network round trip
 ```
 
-For large batches, performance gains are significant. MongoDB still limits bulk operations to 100,000 operations per batch and 16 MB per operation.
+For large batches, performance gains are significant. The server processes bulk writes in internal batches of up to 100,000 operations (the driver splits larger batches automatically), and individual documents cannot exceed 16 MB (the BSON document size limit).
 
 ## Use Cases
 
 - Syncing data from an external source (insert new, update changed, delete removed)
 - Applying a set of migration changes in a single batch
-- Processing a batch of event-driven changes atomically
+- Processing a batch of event-driven changes efficiently
 - Seeding or importing data with mixed operation types
 - Applying configuration updates across multiple documents efficiently
 
