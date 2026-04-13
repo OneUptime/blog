@@ -172,7 +172,7 @@ const plan = await products
 // Look for 'OR' stage with two IXSCAN children in explain output
 ```
 
-If one clause of `$or` cannot use an index, MongoDB falls back to a full collection scan for that clause. Ensure all `$or` clauses have index coverage for best performance.
+If any clause of `$or` cannot use an index, MongoDB falls back to a full collection scan for the entire query. Ensure all `$or` clauses have index coverage for best performance.
 
 ## Nested $or and $and
 
