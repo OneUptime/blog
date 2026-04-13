@@ -50,7 +50,7 @@ Oplog entry (MongoDB converts to absolute value):
 
 If this entry is replayed, balance is set to 150 regardless of how many times it runs.
 
-### Array $push Becomes Full Document Replacement
+### Array $push Becomes Absolute Array Value
 
 For array modifications, MongoDB may record the full new array state:
 
@@ -130,10 +130,9 @@ You can manually replay oplog entries to verify behavior:
 use local
 const entry = db.oplog.rs.findOne({ op: "u", ns: "mydb.orders" });
 
-// Replay manually on a test collection
-use mydb
-db.orders_test.updateOne(entry.o2, entry.o);
-db.orders_test.updateOne(entry.o2, entry.o);  // second replay - same result
+// Replay using applyOps - can be applied multiple times safely
+db.adminCommand({ applyOps: [entry] });
+db.adminCommand({ applyOps: [entry] });  // second replay - same result
 ```
 
 ## Summary
