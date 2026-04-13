@@ -136,7 +136,7 @@ db.articles.insertOne({
 - Text indexes can be large - they store stems of all indexed words
 - $text queries cannot use other index types in the same query
 - Text index does not support $regex or $where
-- Case-insensitive by default (diacritic sensitive by default)
+- Case-insensitive by default (diacritic insensitive by default)
 - Use Atlas Search for more advanced full-text search features
 ```
 
