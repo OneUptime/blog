@@ -18,7 +18,7 @@ A minimal MongoDB ETL pipeline has three phases:
 Extract -> Transform -> Load
   |            |           |
 Source DB   Clean/Map   MongoDB
-CSV File    Validate    insert_many()
+CSV File    Validate    bulk_write()
 REST API    Enrich
 ```
 
@@ -43,6 +43,7 @@ df = extract_from_postgres(
 ## Transformation Phase
 
 ```python
+import pandas as pd
 from datetime import datetime
 
 def transform_customers(df):
@@ -90,7 +91,9 @@ def load_to_mongodb(documents, collection, batch_size=1000, id_field="externalId
             total_modified += result.modified_count
         except BulkWriteError as e:
             errors += len(e.details.get("writeErrors", []))
-            print(f"Batch error: {e.details['nInserted']} inserted")
+            total_upserted += e.details.get("nUpserted", 0)
+            total_modified += e.details.get("nModified", 0)
+            print(f"Batch error: {errors} write errors")
 
         print(f"Progress: {min(i + batch_size, len(documents))}/{len(documents)}")
 
