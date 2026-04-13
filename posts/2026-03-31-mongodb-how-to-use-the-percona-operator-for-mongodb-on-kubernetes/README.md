@@ -48,6 +48,8 @@ kubectl -n psmdb create secret generic my-cluster-secrets \
   --from-literal=MONGODB_CLUSTER_ADMIN_PASSWORD=clusterpass123 \
   --from-literal=MONGODB_CLUSTER_MONITOR_USER=clusterMonitor \
   --from-literal=MONGODB_CLUSTER_MONITOR_PASSWORD=monitorpass123 \
+  --from-literal=MONGODB_DATABASE_ADMIN_USER=databaseAdmin \
+  --from-literal=MONGODB_DATABASE_ADMIN_PASSWORD=databaseadminpass123 \
   --from-literal=MONGODB_USER_ADMIN_USER=userAdmin \
   --from-literal=MONGODB_USER_ADMIN_PASSWORD=useradminpass123
 ```
