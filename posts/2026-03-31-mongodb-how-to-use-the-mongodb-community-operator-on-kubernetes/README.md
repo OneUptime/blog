@@ -193,7 +193,7 @@ spec:
       enabled: true
       certificateKeySecretRef:
         name: mongodb-tls-cert
-      caCertificateSecretRef:
+      caConfigMapRef:
         name: mongodb-ca-cert
 ```
 
@@ -203,6 +203,9 @@ Generate the TLS certificate using cert-manager or manually:
 kubectl -n mongodb create secret tls mongodb-tls-cert \
   --cert=tls.crt \
   --key=tls.key
+
+kubectl -n mongodb create configmap mongodb-ca-cert \
+  --from-file=ca.crt
 ```
 
 ## Summary
