@@ -30,13 +30,13 @@ print("Workflow terminated")
 
 # Verify
 state = client.get_workflow_state("order-processing-ORD-001")
-print(f"Status: {state.runtime_status}")  # TERMINATED
+print(f"Status: {state.runtime_status.name}")  # TERMINATED
 ```
 
 ## Terminating via CLI
 
 ```bash
-dapr workflow terminate --app-id order-service --workflow-id order-processing-ORD-001
+dapr workflow terminate order-processing-ORD-001 --app-id order-service
 ```
 
 ## Terminating via HTTP API
@@ -51,7 +51,7 @@ curl -X POST \
 Workflows do not receive a termination callback. However, you can check if the workflow was asked to stop by using an external event as a cancellation signal:
 
 ```python
-from dapr.ext.workflow import DaprWorkflowContext
+from dapr.ext.workflow import DaprWorkflowContext, when_any
 from datetime import timedelta
 
 def cancellable_workflow(ctx: DaprWorkflowContext, params: dict):
@@ -62,7 +62,7 @@ def cancellable_workflow(ctx: DaprWorkflowContext, params: dict):
     cancel_event = ctx.wait_for_external_event("cancel")
     timeout = ctx.create_timer(ctx.current_utc_datetime + timedelta(hours=2))
 
-    winner = yield ctx.task_any([work_task, cancel_event, timeout])
+    winner = yield when_any([work_task, cancel_event, timeout])
 
     if winner == cancel_event:
         yield ctx.call_activity(handle_cancellation, input=params)
@@ -93,7 +93,7 @@ def gracefully_cancel(instance_id: str):
 
     # 3. Force terminate if it has not completed
     state = client.get_workflow_state(instance_id)
-    if state and state.runtime_status not in ("COMPLETED", "FAILED"):
+    if state and state.runtime_status.name not in ("COMPLETED", "FAILED"):
         client.terminate_workflow(instance_id)
         print(f"Force terminated: {instance_id}")
 ```
@@ -107,7 +107,7 @@ def terminate_all_running(instance_ids: list):
     terminated = []
     for instance_id in instance_ids:
         state = client.get_workflow_state(instance_id)
-        if state and state.runtime_status in ("RUNNING", "SUSPENDED"):
+        if state and state.runtime_status.name in ("RUNNING", "SUSPENDED"):
             client.terminate_workflow(instance_id)
             terminated.append(instance_id)
     print(f"Terminated {len(terminated)} workflows")
