@@ -101,7 +101,7 @@ db.orders.dropIndex({ region: 1 })
 
 ## Rolling Index Drop in Production
 
-In production, consider dropping indexes during low-traffic windows. Dropping an index is generally fast and does not lock the collection in MongoDB 4.4+.
+In production, consider dropping indexes during low-traffic windows. Dropping an index is generally fast, though it briefly acquires an exclusive collection lock.
 
 ```bash
 # Use mongosh to drop index safely
