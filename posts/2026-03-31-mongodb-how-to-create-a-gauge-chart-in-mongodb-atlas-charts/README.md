@@ -108,7 +108,9 @@ For more complex gauge values, use a custom aggregation pipeline in the data sou
   {
     $match: {
       metric: "cpuUtilization",
-      timestamp: { $gte: { $subtract: [new Date(), 3600000] } }
+      $expr: {
+        $gte: ["$timestamp", { $subtract: [new Date(), 3600000] }]
+      }
     }
   },
   {
@@ -170,7 +172,7 @@ Infrastructure monitoring:
 
 Business KPIs:
 - Monthly sales target completion (0 - target amount)
-- NPS score (0 to 100)
+- NPS score (-100 to 100)
 - Customer satisfaction score
 
 SLA and reliability:
