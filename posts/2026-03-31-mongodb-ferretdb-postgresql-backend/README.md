@@ -65,7 +65,7 @@ docker compose up -d
 FerretDB listens on port 27017 and accepts standard MongoDB connections:
 
 ```bash
-mongosh "mongodb://localhost:27017/mydb"
+mongosh "mongodb://ferretdb:ferretdbpassword@localhost:27017/mydb"
 ```
 
 You can now run MongoDB commands:
@@ -82,7 +82,7 @@ The connection string is identical to a standard MongoDB connection:
 ```python
 import pymongo
 
-client = pymongo.MongoClient("mongodb://localhost:27017/")
+client = pymongo.MongoClient("mongodb://ferretdb:ferretdbpassword@localhost:27017/")
 db = client["mydb"]
 collection = db["users"]
 
@@ -113,7 +113,6 @@ FerretDB supports structured logging for observability:
 ferretdb:
   environment:
     FERRETDB_LOG_LEVEL: info
-    FERRETDB_LOG_FORMAT: json
     FERRETDB_TELEMETRY: disable
 ```
 
@@ -124,10 +123,11 @@ Pipe these logs into your observability platform to track query patterns and err
 FerretDB does not implement the full MongoDB API. Check compatibility before migrating:
 
 ```bash
-# Run the FerretDB compatibility test suite
-docker run --rm ghcr.io/ferretdb/ferretdb-dev:latest \
-  --test.run TestCompat \
-  --postgresql-url postgres://ferretdb:ferretdbpassword@postgres:5432/ferretdb
+# Start FerretDB in diff-normal mode to compare responses against MongoDB
+docker run --rm ghcr.io/ferretdb/ferretdb:latest \
+  --mode=diff-normal \
+  --proxy-addr=mongodb://localhost:27017 \
+  --postgresql-url=postgres://ferretdb:ferretdbpassword@postgres:5432/ferretdb
 ```
 
 As of early 2026, FerretDB supports most CRUD operations, basic aggregation, and standard indexes but lacks some advanced aggregation operators and Atlas-specific features.
