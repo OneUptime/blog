@@ -148,7 +148,7 @@ print(f"Monitor started: {instance_id}")
 Stop the monitor when it is no longer needed:
 
 ```bash
-dapr workflow terminate --app-id myapp --workflow-id monitor-batch-export-20260331
+dapr workflow terminate monitor-batch-export-20260331 --app-id myapp
 ```
 
 ## Summary
