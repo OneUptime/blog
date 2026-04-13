@@ -85,13 +85,15 @@ Analyze your actual query patterns and design indexes that serve multiple query 
 // Instead of separate indexes for each query shape:
 db.orders.createIndex({ userId: 1 });
 db.orders.createIndex({ userId: 1, status: 1 });
-db.orders.createIndex({ userId: 1, createdAt: -1 });
 
-// One well-designed compound index can serve all three:
+// One well-designed compound index can serve both and add sort support:
 db.orders.createIndex({ userId: 1, status: 1, createdAt: -1 });
 // Serves: { userId } queries (prefix)
 //         { userId, status } queries (prefix)
 //         { userId, status, sort by createdAt } queries (full)
+// Note: this does NOT efficiently serve { userId, sort by createdAt }
+// queries without a status filter. Keep a separate { userId: 1, createdAt: -1 }
+// index if you need that pattern.
 ```
 
 ## Target Index Count Guidelines
