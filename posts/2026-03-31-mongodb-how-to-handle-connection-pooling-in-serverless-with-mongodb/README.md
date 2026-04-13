@@ -10,7 +10,7 @@ Description: Solve MongoDB connection exhaustion in serverless environments like
 
 ## Overview
 
-Serverless functions like AWS Lambda, Vercel Functions, and Google Cloud Functions spin up thousands of instances simultaneously, each trying to open its own MongoDB connection. Without proper connection management, you can exhaust MongoDB's connection limit (by default 100,000 connections on Atlas but much lower on self-hosted). This guide covers strategies to handle MongoDB connections efficiently in serverless environments.
+Serverless functions like AWS Lambda, Vercel Functions, and Google Cloud Functions spin up thousands of instances simultaneously, each trying to open its own MongoDB connection. Without proper connection management, you can exhaust MongoDB's connection limit (which varies by Atlas cluster tier, from 500 on free/shared clusters up to 128,000 on the largest dedicated tiers, and defaults to 65,536 on self-hosted). This guide covers strategies to handle MongoDB connections efficiently in serverless environments.
 
 ## The Problem
 
@@ -70,31 +70,27 @@ exports.handler = async (event) => {
 }
 ```
 
-## Solution 2 - Use MongoDB Atlas Data API
+## Solution 2 - Use a Lightweight HTTP-Based Approach
 
-For very high concurrency with minimal connection overhead, use the Atlas Data API (HTTP-based, no persistent connections):
+> **Note:** The MongoDB Atlas Data API, which previously offered a stateless HTTP interface to Atlas, was deprecated in September 2024 and shut down on September 30, 2025. If you need an HTTP-based approach without persistent connections, consider building a thin API layer (e.g., using a long-running service or container) that manages a shared connection pool and exposes REST endpoints to your serverless functions.
+
+For very high concurrency scenarios, an HTTP-based intermediary avoids each serverless instance maintaining its own MongoDB connection:
 
 ```javascript
-// No persistent connections - each request is stateless HTTP
-const ATLAS_DATA_API_URL = process.env.ATLAS_DATA_API_URL
-const ATLAS_API_KEY = process.env.ATLAS_API_KEY
+// Example: call your own API gateway or backend service that manages
+// a shared MongoDB connection pool
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL
 
 async function findUser(userId) {
-  const response = await fetch(`${ATLAS_DATA_API_URL}/action/findOne`, {
-    method: "POST",
+  const response = await fetch(`${API_GATEWAY_URL}/users/${userId}`, {
+    method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "api-key": ATLAS_API_KEY
-    },
-    body: JSON.stringify({
-      dataSource: "Cluster0",
-      database: "myapp",
-      collection: "users",
-      filter: { id: userId }
-    })
+      "Authorization": `Bearer ${process.env.API_TOKEN}`
+    }
   })
   const data = await response.json()
-  return data.document
+  return data
 }
 
 exports.handler = async (event) => {
@@ -103,17 +99,9 @@ exports.handler = async (event) => {
 }
 ```
 
-## Solution 3 - MongoDB Atlas Connection Pooling Proxy
+## Solution 3 - Reduce Client-Side Pool Size
 
-Atlas provides a built-in connection pooler. Enable it in the Atlas UI or via the CLI:
-
-```bash
-# Enable connection pooling in Atlas cluster settings
-# Connection string format with pooling proxy:
-# mongodb+srv://user:pass@cluster.mongodb.net/?maxPoolSize=10
-```
-
-Configure your serverless function to use a reduced pool:
+Connection pooling in MongoDB is managed by the driver on the client side via the `maxPoolSize` option. In serverless environments, each function instance should use a small pool to limit the total number of connections across all instances:
 
 ```javascript
 const client = new MongoClient(process.env.MONGODB_URI, {
@@ -142,8 +130,7 @@ async function dbConnect() {
     maxPoolSize: 10,
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
-    bufferCommands: false,
-    bufferTimeoutMS: 20000
+    bufferCommands: false
   })
 
   isConnected = mongoose.connection.readyState === 1
@@ -206,10 +193,8 @@ export default async function handler(req, res) {
 ## Monitor Connection Usage
 
 ```javascript
-// Log connection pool stats
-const client = new MongoClient(uri, {
-  monitorCommands: true
-})
+// Log connection pool stats (CMAP events are emitted by default)
+const client = new MongoClient(uri)
 
 client.on("connectionPoolCreated", (event) => {
   console.log("Pool created:", event)
@@ -233,4 +218,4 @@ db.serverStatus().connections
 
 ## Summary
 
-Handling MongoDB connections in serverless requires caching the MongoClient instance at the module level so warm function invocations reuse existing connections rather than opening new ones. Set `maxPoolSize` low (5-10) per instance to avoid overwhelming MongoDB during spikes, configure `maxIdleTimeMS` to clean up connections after periods of inactivity, and consider the Atlas Data API for extreme concurrency scenarios where HTTP-based access is preferable to persistent TCP connections.
+Handling MongoDB connections in serverless requires caching the MongoClient instance at the module level so warm function invocations reuse existing connections rather than opening new ones. Set `maxPoolSize` low (5-10) per instance to avoid overwhelming MongoDB during spikes, configure `maxIdleTimeMS` to clean up connections after periods of inactivity, and consider an HTTP-based intermediary service for extreme concurrency scenarios where stateless access is preferable to persistent TCP connections.
