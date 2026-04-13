@@ -94,6 +94,7 @@ jobs:
           PAUSED=$( [ "${{ github.event.inputs.action }}" = "pause" ] && echo "true" || echo "false" )
           curl -s -u "${ATLAS_PUBLIC_KEY}:${ATLAS_PRIVATE_KEY}" --digest \
             --header "Content-Type: application/json" \
+            --header "Accept: application/vnd.atlas.2023-01-01+json" \
             --request PATCH \
             "https://cloud.mongodb.com/api/atlas/v2/groups/${ATLAS_PROJECT_ID}/clusters/my-cluster" \
             --data "{\"paused\": ${PAUSED}}"
