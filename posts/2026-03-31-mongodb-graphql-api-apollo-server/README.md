@@ -13,7 +13,7 @@ Apollo Server 4 combined with MongoDB via Mongoose gives you a powerful GraphQL 
 ## Installing Dependencies
 
 ```bash
-npm install @apollo/server graphql mongoose graphql-tag
+npm install @apollo/server graphql mongoose graphql-tag jsonwebtoken
 ```
 
 ## Defining the Mongoose Model
