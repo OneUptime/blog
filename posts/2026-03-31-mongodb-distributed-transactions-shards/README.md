@@ -8,7 +8,7 @@ Description: Learn how MongoDB coordinates distributed transactions across multi
 
 ---
 
-MongoDB 4.2 extended multi-document transactions to sharded clusters, enabling ACID-compliant writes across multiple shards in a single transaction. Under the hood, MongoDB uses a two-phase commit (2PC) protocol coordinated by the `mongos` router. This guide explains how distributed transactions work and how to use them effectively.
+MongoDB 4.2 extended multi-document transactions to sharded clusters, enabling ACID-compliant writes across multiple shards in a single transaction. Under the hood, MongoDB uses a two-phase commit (2PC) protocol coordinated by a designated coordinator shard. This guide explains how distributed transactions work and how to use them effectively.
 
 ## Requirements for Sharded Transactions
 
@@ -19,10 +19,12 @@ MongoDB 4.2 extended multi-document transactions to sharded clusters, enabling A
 
 ## How Distributed Transactions Work
 
-When a transaction touches documents on multiple shards, `mongos` coordinates a two-phase commit:
+When a transaction touches documents on multiple shards, MongoDB coordinates a two-phase commit using a designated **coordinator shard**:
 
-1. **Prepare phase**: `mongos` sends a `prepareTransaction` command to each participant shard. Each shard locks the affected documents and writes a prepare record to its oplog.
-2. **Commit phase**: Once all shards confirm they are prepared, `mongos` sends `commitTransaction` to all participants. If any shard fails to prepare, `mongos` sends `abortTransaction` to all.
+1. **Prepare phase**: The coordinator shard sends a `prepareTransaction` command to each participant shard. Each shard locks the affected documents and writes a prepare record to its oplog.
+2. **Commit phase**: Once all shards confirm they are prepared, the coordinator sends `commitTransaction` to all participants. If any shard fails to prepare, the coordinator sends `abortTransaction` to all.
+
+The `mongos` initiates the process by forwarding the client's commit request to the coordinator shard (via `coordinateCommitTransaction`), but it is the coordinator shard that drives the two-phase commit protocol.
 
 This ensures all-or-nothing semantics across shards.
 
@@ -148,7 +150,7 @@ db.adminCommand({
 })
 ```
 
-Key fields to watch: `transaction.parameters.txnNumber`, `transaction.timeopenMicros`, and `waitingForLock`.
+Key fields to watch: `transaction.parameters.txnNumber`, `transaction.timeOpenMicros`, and `waitingForLock`.
 
 ## Summary
 
