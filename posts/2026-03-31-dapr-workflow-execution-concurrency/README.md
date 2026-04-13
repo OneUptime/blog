@@ -47,14 +47,16 @@ from dapr.ext.workflow import WorkflowRuntime
 
 runtime = WorkflowRuntime(
     host="localhost",
-    port=50001
+    port="50001",
+    maximum_concurrent_orchestration_work_items=50,
+    maximum_concurrent_activity_work_items=100
 )
 
 # Register workflows and activities
 runtime.register_workflow(order_workflow)
 runtime.register_activity(process_payment)
 
-# Start with concurrency limits
+# Start the runtime with concurrency limits applied
 runtime.start()
 ```
 
@@ -133,7 +135,9 @@ spec:
 When workflow submissions exceed concurrency limits, Dapr queues them. Implement backpressure at the API layer:
 
 ```python
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+
+app = Flask(__name__)
 
 MAX_QUEUE_DEPTH = 1000
 
