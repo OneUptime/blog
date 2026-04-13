@@ -10,7 +10,7 @@ Description: Learn how to import CSV files with custom delimiters, quoted fields
 
 ## Introduction
 
-MongoDB's `mongoimport` tool supports CSV import with configurable delimiters, header handling, and field type mapping. Whether your CSV uses tabs, pipes, semicolons, or other separators, you can import it directly with the right flags. For advanced transformations, Python with pymongo provides full control over parsing and conversion.
+MongoDB's `mongoimport` tool supports CSV and TSV import with header handling and field type mapping. Natively, `mongoimport` only supports comma (CSV) and tab (TSV) delimiters. For files with other separators like pipes or semicolons, you can preprocess the file before importing or use Python with pymongo for full control over parsing and conversion.
 
 ## Basic CSV Import
 
@@ -38,19 +38,23 @@ mongoimport \
 
 Use `--type tsv` for tab-delimited files.
 
-## Custom Delimiter with --fieldSeparator (Pipe-Delimited)
+## Custom Delimiter - Pipe-Delimited (Preprocessing)
+
+`mongoimport` does not natively support custom delimiters beyond comma and tab. For pipe-delimited files, preprocess the file to convert it to CSV before importing:
 
 ```bash
+# Convert pipe-delimited file to CSV
+sed 's/|/,/g' products_pipe.csv > products.csv
+
 mongoimport \
   --uri "mongodb://localhost:27017/mydb" \
   --collection products \
   --type csv \
-  --fieldSeparator "|" \
   --headerline \
   --file products.csv
 ```
 
-Example pipe-delimited file:
+Example pipe-delimited source file:
 
 ```text
 id|name|price|category
@@ -58,6 +62,8 @@ id|name|price|category
 2|Widget B|14.99|Electronics
 3|Gadget X|29.99|Tools
 ```
+
+Note: If your field values contain commas, use the Python approach shown later in this post for safer parsing.
 
 ## Specifying Fields Manually (No Header Row)
 
@@ -94,7 +100,7 @@ orderId.int32(),customerId.string(),amount.double(),createdAt.date(2006-01-02)
 1002,c002,149.50,2026-01-16
 ```
 
-Supported types: `int32()`, `int64()`, `double()`, `boolean()`, `string()`, `date(format)`, `date_ms()`, `objectid()`, `decimal()`.
+Supported types: `auto()`, `binary(base32|base64|hex)`, `boolean()`, `date(format)`, `date_go(format)`, `date_ms(format)`, `date_oracle(format)`, `decimal()`, `double()`, `int32()`, `int64()`, `string()`.
 
 ## Ignoring Blank Fields
 
@@ -206,7 +212,6 @@ mongoimport \
   --collection products \
   --type csv \
   --headerline \
-  --fieldSeparator "," \
   --mode upsert \
   --upsertFields "productId" \
   --file updated_products.csv
@@ -214,4 +219,4 @@ mongoimport \
 
 ## Summary
 
-`mongoimport` handles CSV import with custom delimiters via `--fieldSeparator` and type conversions via `--columnsHaveTypes`. For tab-delimited files, use `--type tsv`. Python with the `csv` module or pandas gives you full control over field parsing, type conversion, and batch sizes for large or complex files. Use upsert mode for incremental loads to update existing documents without creating duplicates.
+`mongoimport` handles CSV and TSV import natively with type conversions via `--columnsHaveTypes`. For tab-delimited files, use `--type tsv`. For files with other delimiters (pipes, semicolons), preprocess them to CSV or use Python with the `csv` module or pandas for full control over field parsing, type conversion, and batch sizes. Use upsert mode for incremental loads to update existing documents without creating duplicates.
