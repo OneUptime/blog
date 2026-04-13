@@ -71,7 +71,7 @@ An education platform needs: `courses`, `lessons`, `enrollments`, `quizzes`, `su
 
 ```json
 {
-  "_id": ObjectId(),
+  "_id": "enrollment-001",
   "userId": "user-student-99",
   "courseId": "course-001",
   "status": "active",
@@ -92,8 +92,9 @@ An education platform needs: `courses`, `lessons`, `enrollments`, `quizzes`, `su
 
 ## Quiz and Submission Collections
 
+Quiz:
+
 ```json
-// Quiz
 {
   "_id": "quiz-mod01",
   "courseId": "course-001",
@@ -112,10 +113,11 @@ An education platform needs: `courses`, `lessons`, `enrollments`, `quizzes`, `su
 }
 ```
 
+Submission:
+
 ```json
-// Submission
 {
-  "_id": ObjectId(),
+  "_id": "submission-001",
   "quizId": "quiz-mod01",
   "userId": "user-student-99",
   "courseId": "course-001",
