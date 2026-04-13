@@ -98,10 +98,11 @@ exports = async function(changeEvent) {
     await http.post({
       url: "https://api.myservice.com/webhooks/order-shipped",
       headers: { "Content-Type": ["application/json"] },
-      body: JSON.stringify({
+      body: {
         orderId: fullDocument._id.toString(),
         trackingNumber: fullDocument.trackingNumber
-      })
+      },
+      encodeBodyAsJSON: true
     });
   }
 };
@@ -130,7 +131,7 @@ curl -X POST \
     "name": "onOrderInserted",
     "type": "DATABASE",
     "config": {
-      "service_id": "your-service-id",
+      "service_name": "mongodb-atlas",
       "database": "store",
       "collection": "orders",
       "operation_types": ["INSERT"],
@@ -151,7 +152,7 @@ View execution logs in the Atlas UI under **App Services > Logs**. Each invocati
 
 ## Step 9: Handle Errors and Retries
 
-Triggers automatically retry on transient failures. For permanent failures, use error handling:
+Triggers may become suspended due to network disruptions or cluster changes. Atlas sends email notifications when a trigger is suspended. You can configure `tolerate_resume_errors` to allow automatic resumption without reprocessing missed events. For application-level failures, use error handling:
 
 ```javascript
 exports = async function(changeEvent) {
