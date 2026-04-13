@@ -183,9 +183,8 @@ async function sendSMS(to, body) {
 // Get unread notifications for a user
 async function getUnreadNotifications(userId) {
   return db.notifications.find(
-    { userId: new ObjectId(userId), read: false },
-    { sort: { createdAt: -1 }, limit: 20 }
-  ).toArray();
+    { userId: new ObjectId(userId), read: false }
+  ).sort({ createdAt: -1 }).limit(20).toArray();
 }
 
 // Mark notifications as read
