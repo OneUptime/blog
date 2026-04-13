@@ -29,7 +29,7 @@ mongosh --version
 
 1. Log in to [cloud.mongodb.com](https://cloud.mongodb.com)
 2. Navigate to your cluster and click **Connect**
-3. Choose **Shell** under the "Connect your application" options
+3. Choose **Shell** from the connection method options
 4. Copy the connection string (it looks like the example below)
 
 ## Connecting with Username and Password
@@ -86,13 +86,13 @@ db.orders.find({ status: "pending" }).sort({ createdAt: -1 }).limit(5)
 
 ## Connecting via Private Endpoint
 
-If your Atlas cluster uses private endpoints, ensure your IP is in the Atlas IP access list or use VPC peering, then connect normally:
+If your Atlas cluster uses private endpoints (AWS PrivateLink, Azure Private Link, or GCP Private Service Connect), Atlas provides a separate private connection string. Copy the private endpoint connection string from the Atlas UI and connect:
 
 ```bash
-mongosh "mongodb+srv://myuser:mypassword@cluster0.abc12.mongodb.net/mydb" \
-  --tls \
-  --tlsCAFile /path/to/ca.pem
+mongosh "mongodb+srv://myuser:mypassword@cluster0-pl-0.abc12.mongodb.net/mydb"
 ```
+
+TLS is enabled by default for all Atlas `mongodb+srv://` connections, so the `--tls` flag is not required.
 
 ## Troubleshooting Connection Issues
 
