@@ -24,7 +24,7 @@ db.users.createIndex({ email: 1 })
 db.users.createIndex({ createdAt: -1 })
 ```
 
-Index direction matters for range queries and sorting. For single field equality queries, direction does not affect performance since MongoDB can traverse the index in either direction.
+For a single field index, the sort order of the index key does not matter because MongoDB can traverse the index in either direction. Index direction becomes important only for compound indexes with multiple fields sorted in different directions.
 
 ## Verifying the Index Was Created
 
@@ -53,7 +53,7 @@ db.orders.find({ "shipping.address.city": "New York" })
 ```javascript
 db.users.find({ email: "alice@example.com" }).explain("executionStats")
 // Look for "IXSCAN" in winningPlan - confirms index was used
-// "totalDocsExamined" should be much lower than "totalDocsExamined" without index
+// "totalDocsExamined" should be close to the number of matched documents, not the total collection size
 ```
 
 ## Creating an Index with Options
