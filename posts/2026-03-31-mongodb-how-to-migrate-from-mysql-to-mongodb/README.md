@@ -103,8 +103,8 @@ mysqldump --no-create-info --tab=/tmp/export/ \
   --fields-terminated-by=',' --fields-optionally-enclosed-by='"' \
   myapp users orders addresses
 
-# Or export to JSON using SELECT INTO OUTFILE
-mysql -u root -p myapp -e "
+# Or export to JSON using the mysql client
+mysql -u root -p -N myapp -e "
   SELECT JSON_OBJECT(
     'id', id,
     'name', name,
@@ -141,6 +141,9 @@ cursor.execute("""
 id_map = {}   # map MySQL int IDs to MongoDB ObjectIds
 
 for row in cursor.fetchall():
+    if row["id"] in id_map:
+        continue  # skip extra rows from LEFT JOIN when user has multiple addresses
+
     oid = ObjectId()
     id_map[row["id"]] = oid
 
