@@ -23,7 +23,6 @@ The client does not trust the CA that signed the server's certificate. For self-
 
 ```javascript
 // Node.js - provide the CA certificate
-import { readFileSync } from 'fs';
 const client = new MongoClient(uri, {
   tls: true,
   tlsCAFile: '/path/to/ca.pem'
@@ -46,7 +45,7 @@ sudo update-ca-certificates
 sudo update-ca-trust
 ```
 
-### 2. Hostname Mismatch
+## Cause 2: Hostname Mismatch
 
 The server certificate was issued for a different hostname than the one in the connection string:
 
@@ -96,7 +95,7 @@ Restart mongod after updating the certificate.
 
 ## Cause 4: TLS Version Mismatch
 
-MongoDB 4.0+ requires TLS 1.2 or higher. If the client or server is configured to use an older version:
+MongoDB 4.2+ deprecated TLS 1.0 and 1.1, and MongoDB 6.0+ effectively requires TLS 1.2 or higher. If the client or server is configured to use an older version:
 
 ```yaml
 # mongod.conf - disable old TLS versions
@@ -107,10 +106,12 @@ net:
 ```
 
 ```javascript
-// Node.js client - ensure TLS 1.2+
+// Node.js client - ensure TLS 1.2+ at the runtime level
+import tls from 'tls';
+tls.DEFAULT_MIN_VERSION = 'TLSv1.2';
+
 const client = new MongoClient(uri, {
-  tls: true,
-  tlsMinVersion: 'TLSv1.2'
+  tls: true
 });
 ```
 
