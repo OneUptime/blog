@@ -115,7 +115,7 @@ db.routes.find({
 ## $nearSphere - Spherical Distance Search
 
 ```javascript
-// Using $nearSphere for spherical calculations (radians)
+// Using $nearSphere for spherical distance search (meters with GeoJSON)
 db.places.find({
   location: {
     $nearSphere: {
