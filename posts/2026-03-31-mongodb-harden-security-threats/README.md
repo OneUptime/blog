@@ -71,7 +71,7 @@ iptables -A INPUT -p tcp --dport 27017 -j DROP
 
 ## 5. Disable the HTTP Interface and REST API
 
-In older MongoDB versions, the HTTP status interface and REST API are enabled by default. Disable them:
+In MongoDB versions before 3.2, the HTTP status interface was enabled by default on port 28017. In MongoDB 3.2–3.4, it was deprecated and disabled by default. If you are running MongoDB 3.2–3.4, ensure these remain disabled:
 
 ```yaml
 net:
@@ -81,7 +81,7 @@ net:
     RESTInterfaceEnabled: false
 ```
 
-In MongoDB 3.6+, these are disabled by default.
+In MongoDB 3.6+, the HTTP interface and REST API were completely removed. These configuration options are no longer valid and should not be included in your `mongod.conf`.
 
 ## 6. Disable JavaScript Execution (If Not Needed)
 
