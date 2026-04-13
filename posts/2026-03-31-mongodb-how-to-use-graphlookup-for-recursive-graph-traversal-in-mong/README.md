@@ -74,7 +74,7 @@ db.employees.aggregate([
       connectFromField: "name",
       connectToField: "reportsTo",
       as: "directAndIndirectReports",
-      maxDepth: 1  // only direct reports
+      maxDepth: 1  // direct reports and their direct reports
     }
   }
 ])
