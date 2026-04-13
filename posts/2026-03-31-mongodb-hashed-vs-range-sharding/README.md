@@ -141,10 +141,10 @@ Distribution (random)      Even                  Even
 Range queries              Efficient (targeted)  Scatter-gather
 Equality queries           Targeted              Targeted
 Pre-splitting needed       Yes (for monotonic)   No (built-in)
-Good for time-series       Only with pre-split   Yes
+Good for time-series       Only with pre-split   Writes only (reads scatter)
 Good for random IDs        Yes                   Yes
 Good for ordered reads     Yes                   No
-Zone sharding support      Yes                   No
+Zone sharding support      Yes                   Yes (on hashed values)
 ```
 
 ## Compound Shard Keys: Combining Both Strategies
@@ -152,7 +152,7 @@ Zone sharding support      Yes                   No
 A compound shard key can use one field for distribution and another for range querying within that distribution:
 
 ```javascript
-// customerId (hashed for distribution) + createdAt (range within customer)
+// customerId (range-based prefix for targeting) + createdAt (range within customer)
 db.orders.createIndex({ customerId: 1, createdAt: 1 })
 sh.shardCollection("myapp.orders", { customerId: 1, createdAt: 1 })
 ```
@@ -192,7 +192,7 @@ async function analyzeSharding() {
   }
 
   // Check chunk distribution
-  const chunks = await db.getSiblingDB("config")
+  const chunks = await client.db("config")
     .collection("chunks")
     .aggregate([
       { $match: { ns: "myapp.orders" } },
@@ -229,7 +229,7 @@ analyzeSharding().catch(console.error);
 - **Use range sharding** when your applications do range scans and can pre-split chunks.
 - **Pre-split chunks before bulk loading** into a range-sharded collection to avoid hot-spots.
 - **Monitor distribution** with `sh.status()` and the config.chunks collection.
-- **Avoid mixing hashed and range** - a compound hashed+range index is not supported. Hashed shard keys must be single-field.
+- **Compound hashed shard keys** - Starting in MongoDB 4.4, compound indexes with a single hashed field are supported, allowing a compound shard key like `{ fieldA: "hashed", fieldB: 1 }`.
 
 ## Summary
 
