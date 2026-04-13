@@ -126,6 +126,7 @@ After finding duplicates, remove all but the first (lowest ObjectId):
 
 ```javascript
 db.users.aggregate([
+  { $sort: { _id: 1 } },
   {
     $group: {
       _id: "$email",
@@ -135,7 +136,7 @@ db.users.aggregate([
   },
   { $match: { count: { $gt: 1 } } }
 ]).forEach(group => {
-  // Keep the first id, delete the rest
+  // Keep the first id (lowest ObjectId), delete the rest
   const [keep, ...remove] = group.ids;
   db.users.deleteMany({ _id: { $in: remove } });
 })
