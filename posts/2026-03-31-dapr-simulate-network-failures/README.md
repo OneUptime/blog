@@ -38,7 +38,7 @@ Toxiproxy is a programmable TCP proxy for simulating network conditions:
 # Install toxiproxy
 brew install toxiproxy
 # or via docker
-docker run -d -p 8474:8474 -p 6380:6380 shopify/toxiproxy
+docker run -d -p 8474:8474 -p 6380:6380 ghcr.io/shopify/toxiproxy
 
 # Create a proxy for Redis (used by Dapr state store)
 toxiproxy-cli create redis-proxy --listen 0.0.0.0:6380 --upstream redis:6379
@@ -129,8 +129,9 @@ spec:
   targets:
     components:
       statestore:
-        timeout: networkTimeout
-        retry: networkRetry
+        outbound:
+          timeout: networkTimeout
+          retry: networkRetry
 ```
 
 ## Summary
