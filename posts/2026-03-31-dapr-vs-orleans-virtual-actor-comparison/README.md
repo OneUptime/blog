@@ -29,14 +29,12 @@ public interface IOrderGrain : IGrainWithStringKey
 }
 
 // Implementation
-public class OrderGrain : Grain, IOrderGrain
+public class OrderGrain : Grain<OrderState>, IOrderGrain
 {
-    private OrderState _state;
-
     public async Task PlaceOrder(OrderDetails details)
     {
-        _state.Details = details;
-        _state.Status = OrderStatus.Pending;
+        State.Details = details;
+        State.Status = OrderStatus.Pending;
         await WriteStateAsync();
     }
 }
