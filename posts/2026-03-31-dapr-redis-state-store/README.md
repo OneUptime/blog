@@ -85,7 +85,9 @@ For Redis with TLS (Redis Cloud, Upstash, etc.):
 ## Connecting to Redis Sentinel (High Availability)
 
 ```yaml
-    - name: redisSentinelMasterName
+    - name: failover
+      value: "true"
+    - name: sentinelMasterName
       value: "mymaster"
     - name: redisHost
       value: "sentinel1:26379,sentinel2:26379,sentinel3:26379"
@@ -96,8 +98,8 @@ For Redis with TLS (Redis Cloud, Upstash, etc.):
 ```yaml
     - name: redisHost
       value: "redis-cluster-node1:6379"
-    - name: enableRedisClusterMode
-      value: "true"
+    - name: redisType
+      value: "cluster"
 ```
 
 ## Basic State Operations
