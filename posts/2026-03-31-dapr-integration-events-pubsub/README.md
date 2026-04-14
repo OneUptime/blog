@@ -102,7 +102,6 @@ The notification service translates the integration event to its own domain mode
 
 ```python
 from flask import Flask, request, jsonify
-import json
 
 app = Flask(__name__)
 
@@ -150,10 +149,10 @@ spec:
   pubsubname: orders-pubsub
   topic: order-confirmed-v1
   route: /integration-events/order-confirmed
-  scopes:
-  - notification-service
-  - fulfillment-service
-  - analytics-service
+scopes:
+- notification-service
+- fulfillment-service
+- analytics-service
 ```
 
 ## Event Schema Registry
