@@ -23,6 +23,10 @@ gcloud config set project my-project-id
 # Create a topic
 gcloud pubsub topics create orders
 
+# Create dead-letter topic and subscription (must exist before referencing)
+gcloud pubsub topics create orders-dlq
+gcloud pubsub subscriptions create orders-dlq-sub --topic=orders-dlq
+
 # Create a subscription for the processor service
 gcloud pubsub subscriptions create orders-processor \
   --topic=orders \
@@ -30,10 +34,6 @@ gcloud pubsub subscriptions create orders-processor \
   --message-retention-duration=7d \
   --dead-letter-topic=orders-dlq \
   --max-delivery-attempts=5
-
-# Create dead-letter topic and subscription
-gcloud pubsub topics create orders-dlq
-gcloud pubsub subscriptions create orders-dlq-sub --topic=orders-dlq
 ```
 
 ## Service Account and Permissions
@@ -59,7 +59,8 @@ Store the service account key as a Kubernetes secret:
 
 ```bash
 kubectl create secret generic gcp-sa-key \
-  --from-file=key.json=/tmp/sa-key.json
+  --from-literal=private_key_id="$(jq -r .private_key_id /tmp/sa-key.json)" \
+  --from-literal=private_key="$(jq -r .private_key /tmp/sa-key.json)"
 ```
 
 Create the Dapr component:
