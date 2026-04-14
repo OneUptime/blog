@@ -44,25 +44,24 @@ go build ./...
 go test ./... -v -count=1
 ```
 
-Migrate a common breaking change - the `SaveStateWithETag` signature change:
+Choose the right state method for your use case - `SaveState` for simple writes and `SaveStateWithETag` for optimistic concurrency:
 
 ```go
-// Old API (pre-1.10)
-err := client.SaveStateWithETag(ctx,
-    "statestore",
-    "key",
-    data,
-    "etag-value",
-    &dapr.StateOptions{},
-    map[string]string{},
-)
-
-// New API (1.10+)
+// SaveState - use when ETags are not required
 err := client.SaveState(ctx,
     "statestore",
     "key",
     data,
     map[string]string{"ttlInSeconds": "3600"},
+)
+
+// SaveStateWithETag - use for optimistic concurrency control
+err := client.SaveStateWithETag(ctx,
+    "statestore",
+    "key",
+    data,
+    "etag-value",
+    map[string]string{},
 )
 ```
 
@@ -173,7 +172,7 @@ jobs:
   check-sdk-versions:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Check Go SDK
       run: |
         LATEST=$(curl -s https://api.github.com/repos/dapr/go-sdk/releases/latest | jq -r '.tag_name')
