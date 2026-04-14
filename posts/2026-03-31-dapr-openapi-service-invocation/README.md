@@ -77,23 +77,23 @@ async def create_order(order_id: str, product: str, quantity: int):
 
 ## Validating Requests Against the OpenAPI Schema
 
-You can enforce the OpenAPI schema at the sidecar level using middleware. Configure a Dapr middleware component with the `requestBodyValidation` option:
+When using FastAPI, request validation happens automatically at the application level. The Pydantic models that define your OpenAPI schema also validate incoming requests. Any request that does not match the schema returns a 422 error with details about the validation failure:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: openapi-validator
-spec:
-  type: middleware.http.routeralias
-  version: v1
-  metadata:
-  - name: routes
-    value: |
-      /orders=/orders
+```python
+# The Order model already enforces the schema on every request
+class Order(BaseModel):
+    order_id: str
+    product: str
+    quantity: int
+
+@app.post("/orders", summary="Create a new order")
+async def create_order(order: Order):
+    # FastAPI validates the request body against the Order model
+    # before this function is called
+    return {"status": "created", "order_id": order.order_id}
 ```
 
-For deeper validation, use a dedicated validation middleware such as `middleware.http.opa` with a policy that reads the schema.
+For additional cross-cutting validation or authorization, Dapr provides the `middleware.http.opa` component, which applies Open Policy Agent policies to incoming requests before they reach your application.
 
 ## Documenting Service Dependencies
 
