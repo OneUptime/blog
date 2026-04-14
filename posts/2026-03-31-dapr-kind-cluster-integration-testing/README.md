@@ -55,7 +55,7 @@ helm install redis bitnami/redis \
 
 ## Load Local Images into Kind
 
-Kind does not pull from a remote registry by default. Load your locally built images:
+Kind nodes run their own containerd runtime, separate from your local Docker daemon. Locally built images are not available inside the cluster unless you load them explicitly:
 
 ```bash
 docker build -t my-app:test .
@@ -130,9 +130,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: engineerd/setup-kind@v0.5.0
+      - uses: engineerd/setup-kind@v0.6.2
         with:
           version: v0.23.0
+      - name: Install Dapr CLI
+        run: wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
       - name: Install Dapr
         run: dapr init -k --wait
       - name: Run integration tests
