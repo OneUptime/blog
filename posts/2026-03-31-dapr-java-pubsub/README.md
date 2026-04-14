@@ -99,14 +99,16 @@ public Mono<Void> handleOrderPlaced(@RequestBody CloudEvent<OrderPlaced> event) 
 ## Bulk Publishing
 
 ```java
-List<BulkPublishRequestEntry> entries = List.of(
-    new BulkPublishRequestEntry("entry-1",
+List<BulkPublishEntry<OrderPlaced>> entries = List.of(
+    new BulkPublishEntry<>("entry-1",
         new OrderPlaced("ord-1", "Widget", 9.99), "application/json"),
-    new BulkPublishRequestEntry("entry-2",
+    new BulkPublishEntry<>("entry-2",
         new OrderPlaced("ord-2", "Gadget", 19.99), "application/json"));
 
-BulkPublishResponse<?> result = client.bulkPublishEvents(
-    "pubsub", "order-placed", entries, null).block();
+BulkPublishRequest<OrderPlaced> request = new BulkPublishRequest<>(
+    "pubsub", "order-placed", entries);
+
+BulkPublishResponse<OrderPlaced> result = client.publishEvents(request).block();
 ```
 
 ## Running the Subscriber
