@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Service Invocation, API Gateway, Microservice, Kubernetes
 
-Description: Learn how to integrate Dapr service invocation with popular API gateways like Kong, NGINX, and Envoy to expose microservices securely and efficiently.
+Description: Learn how to integrate Dapr service invocation with popular API gateways like Kong and NGINX to expose microservices securely and efficiently.
 
 ---
 
@@ -17,7 +17,8 @@ Dapr service invocation lets microservices call each other by name without hard-
 ```mermaid
 graph LR
     Client -->|HTTPS| Gateway[API Gateway]
-    Gateway -->|HTTP :3500| DaprSidecarA[Dapr Sidecar - frontend]
+    Gateway -->|HTTP :80| Frontend[Frontend Service]
+    Frontend -->|localhost:3500| DaprSidecarA[Dapr Sidecar - frontend]
     DaprSidecarA -->|Service Invocation| DaprSidecarB[Dapr Sidecar - orderservice]
     DaprSidecarB --> OrderService[Order Service :8080]
 ```
