@@ -258,8 +258,8 @@ func main() {
 SQS FIFO queues support exactly-once delivery. Configure the component to use FIFO:
 
 ```yaml
-  - name: sqsQueueType
-    value: "fifo"
+  - name: fifo
+    value: "true"
   - name: fifoMessageGroupID
     value: "mygroup"
 ```
