@@ -23,7 +23,7 @@ Your application must respond with `200 OK` to acknowledge the job. Any other st
 
 ```python
 from flask import Flask, request, jsonify
-import json, base64, logging
+import logging
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -31,9 +31,8 @@ logger = logging.getLogger(__name__)
 @app.route("/job/nightly-report", methods=["POST"])
 def handle_nightly_report():
     try:
-        # Extract job data
-        body = request.get_json()
-        job_data = decode_job_data(body)
+        # The request body contains the job data as plain JSON
+        job_data = request.get_json() or {}
 
         logger.info(f"Job triggered: nightly-report, data: {job_data}")
 
@@ -46,31 +45,16 @@ def handle_nightly_report():
         logger.error(f"Job handler failed: {e}", exc_info=True)
         # Return 500 to signal failure - Dapr may retry
         return jsonify({"error": str(e)}), 500
-
-def decode_job_data(body: dict) -> dict:
-    """Decode base64-encoded job data from the trigger payload."""
-    if not body:
-        return {}
-    data = body.get("data", {})
-    value = data.get("value", "e30=")
-    try:
-        return json.loads(base64.b64decode(value))
-    except Exception:
-        return {}
 ```
 
 ## Accessing Job Metadata
 
-Dapr includes job metadata in the trigger payload:
+The job name is conveyed through the URL path (`/job/{job-name}`), not in the request body. Use a path parameter to extract it:
 
 ```python
-@app.route("/job/my-job", methods=["POST"])
-def handle_my_job():
-    body = request.get_json()
-
-    # Job payload structure
-    job_name = body.get("name")
-    job_data = decode_job_data(body)
+@app.route("/job/<job_name>", methods=["POST"])
+def handle_job(job_name):
+    job_data = request.get_json() or {}
 
     logger.info(f"Handling job: {job_name}")
     logger.info(f"Job data: {job_data}")
@@ -96,14 +80,13 @@ func jobHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    var payload map[string]any
-    if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+    var jobData map[string]any
+    if err := json.NewDecoder(r.Body).Decode(&jobData); err != nil {
         log.Printf("Failed to decode job payload: %v", err)
         w.WriteHeader(http.StatusBadRequest)
         return
     }
 
-    jobData := decodeJobData(payload)
     log.Printf("Job triggered with data: %v", jobData)
 
     if err := processJob(jobData); err != nil {
@@ -127,15 +110,14 @@ Jobs may be delivered more than once in edge cases. Make handlers idempotent:
 
 ```python
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Track recently processed jobs to prevent duplicate execution
 processed_jobs = {}
 
 @app.route("/job/send-report", methods=["POST"])
 def handle_send_report():
-    body = request.get_json()
-    job_data = decode_job_data(body)
+    job_data = request.get_json() or {}
 
     # Create idempotency key from job data and current hour
     now = datetime.utcnow()
@@ -161,8 +143,7 @@ import threading
 
 @app.route("/job/data-export", methods=["POST"])
 def handle_data_export():
-    body = request.get_json()
-    job_data = decode_job_data(body)
+    job_data = request.get_json() or {}
 
     # Start processing in background thread
     thread = threading.Thread(target=run_data_export, args=(job_data,))
@@ -187,8 +168,7 @@ def run_data_export(job_data: dict):
 ```python
 @app.route("/job/critical-job", methods=["POST"])
 def handle_critical_job():
-    body = request.get_json()
-    job_data = decode_job_data(body)
+    job_data = request.get_json() or {}
 
     try:
         process_critical_job(job_data)
@@ -223,8 +203,7 @@ def dispatch_job(job_name: str):
         logger.error(f"Unknown job: {job_name}")
         return jsonify({"error": f"Unknown job: {job_name}"}), 404
 
-    body = request.get_json()
-    job_data = decode_job_data(body)
+    job_data = request.get_json() or {}
 
     try:
         handler(job_data)
