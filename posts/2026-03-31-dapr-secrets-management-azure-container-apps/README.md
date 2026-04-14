@@ -18,7 +18,8 @@ Dapr secrets management abstracts secret retrieval behind a unified API. On Azur
 az keyvault create \
   --name dapr-keyvault \
   --resource-group rg-dapr \
-  --location eastus
+  --location eastus \
+  --enable-rbac-authorization true
 
 # Store a secret
 az keyvault secret set \
@@ -45,11 +46,11 @@ PRINCIPAL_ID=$(az containerapp identity show \
   --resource-group rg-dapr \
   --query principalId -o tsv)
 
-# Grant Key Vault access
-az keyvault set-policy \
-  --name dapr-keyvault \
-  --object-id $PRINCIPAL_ID \
-  --secret-permissions get list
+# Grant Key Vault access via RBAC
+az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee "$PRINCIPAL_ID" \
+  --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/rg-dapr/providers/Microsoft.KeyVault/vaults/dapr-keyvault"
 ```
 
 ## Step 3: Configure the Dapr Secret Store Component
@@ -101,13 +102,10 @@ Reference Key Vault secrets in other Dapr components:
 # statestore.yaml
 componentType: state.azure.cosmosdb
 version: v1
+secretStoreComponent: "secretstore"
 metadata:
   - name: masterKey
-    secretKeyRef:
-      name: cosmos-primary-key
-      key: cosmos-primary-key
-auth:
-  secretStore: secretstore
+    secretRef: cosmos-primary-key
 ```
 
 ## Step 6: Bulk Secret Retrieval
