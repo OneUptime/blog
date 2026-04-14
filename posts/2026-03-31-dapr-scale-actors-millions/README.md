@@ -96,7 +96,6 @@ helm upgrade --install dapr dapr/dapr \
   --create-namespace \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --set dapr_placement.keepAliveTime=2s
 ```
 
@@ -121,7 +120,7 @@ kubectl logs -n dapr-system dapr-placement-server-0 | grep -i "host added"
 
 # Check actor count via Dapr metrics
 kubectl port-forward -n dapr-system svc/dapr-placement-server 9090:9090
-curl http://localhost:9090/metrics | grep dapr_placement_actor_count
+curl http://localhost:9090/metrics | grep dapr_placement_actor_runtimes_total
 ```
 
 ## Summary
