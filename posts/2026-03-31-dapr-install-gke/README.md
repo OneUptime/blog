@@ -46,8 +46,6 @@ kubectl create namespace dapr-system
 helm install dapr dapr/dapr \
   --namespace dapr-system \
   --set global.ha.enabled=true \
-  --set dapr_operator.replicaCount=2 \
-  --set dapr_sentry.replicaCount=2 \
   --wait
 
 # Verify
@@ -70,8 +68,6 @@ spec:
   metadata:
   - name: projectId
     value: "my-project-id"
-  - name: topic
-    value: "my-topic"
 ```
 
 ## Set Up Workload Identity for Dapr
