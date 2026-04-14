@@ -117,19 +117,18 @@ spec:
         policy: exponential
         maxInterval: 10s
         maxRetries: 5
+    circuitBreakers:
+      stateCircuitBreaker:
+        maxRequests: 1
+        interval: 30s
+        timeout: 60s
+        trip: consecutiveFailures >= 5
   targets:
     components:
       statestore:
         outbound:
           retry: stateRetry
           circuitBreaker: stateCircuitBreaker
-    policies:
-      circuitBreakers:
-        stateCircuitBreaker:
-          maxRequests: 1
-          interval: 30s
-          timeout: 60s
-          trip: consecutiveFailures >= 5
 ```
 
 ## Step 5 - Reload the Component After Fixing
