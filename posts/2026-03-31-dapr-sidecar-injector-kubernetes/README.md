@@ -47,34 +47,28 @@ dapr-sidecar-injector            1          30d
 kubectl describe mutatingwebhookconfiguration dapr-sidecar-injector
 ```
 
-The webhook fires on `CREATE` operations for pods where:
-- The namespace has the label `dapr-enabled: true`, OR
-- The pod has the annotation `dapr.io/enabled: "true"`
+The webhook fires on `CREATE` operations for pods. By default, the webhook's `namespaceSelector` is empty, so it applies to all namespaces. Injection only occurs when a pod has the annotation `dapr.io/enabled: "true"`. You can customize the `namespaceSelector` in the Helm values to restrict which namespaces the webhook applies to.
 
 ## What the Injector Adds to a Pod
 
 When the injector processes a pod, it adds:
 
-1. The `daprd` init container (for certificate setup, Dapr 1.13 and earlier)
-2. The `daprd` sidecar container
-3. Environment variables (`DAPR_HTTP_PORT`, `DAPR_GRPC_PORT`, `APP_ID`)
-4. Volume mounts for certificates and components
-5. Liveness and readiness probes for the sidecar
+1. The `daprd` sidecar container
+2. Environment variables (`DAPR_HTTP_PORT`, `DAPR_GRPC_PORT`, `APP_PROTOCOL`)
+3. Volume mounts for certificates and components
+4. Liveness (TCP socket) and readiness (HTTP) probes for the sidecar
 
 The resulting pod spec looks like:
 
 ```yaml
 spec:
-  initContainers:
-  - name: dapr-init         # sets up certs (older versions)
-    image: daprio/dapr:1.14.0
   containers:
   - name: order-service     # your app container (unchanged)
     image: myregistry/order-service:latest
   - name: daprd             # injected sidecar
     image: daprio/dapr:1.14.0
     args:
-    - ./daprd
+    - /daprd
     - --app-id
     - order-service
     - --app-port
@@ -84,9 +78,9 @@ spec:
     - --dapr-grpc-port
     - "50001"
     - --sentry-address
-    - dapr-sentry.dapr-system.svc.cluster.local:50001
+    - dapr-sentry.dapr-system.svc.cluster.local:443
     - --control-plane-address
-    - dapr-api.dapr-system.svc.cluster.local:80
+    - dapr-api.dapr-system.svc.cluster.local:443
     - --placement-host-address
     - dapr-placement-server.dapr-system.svc.cluster.local:50005
     ports:
@@ -99,15 +93,14 @@ spec:
     - name: dapr-metrics
       containerPort: 9090
     livenessProbe:
-      httpGet:
-        path: /v1.0/healthz
-        port: 3500
+      tcpSocket:
+        port: 3501
       initialDelaySeconds: 3
       periodSeconds: 6
     readinessProbe:
       httpGet:
         path: /v1.0/healthz
-        port: 3500
+        port: 3501
       initialDelaySeconds: 3
       periodSeconds: 6
 ```
@@ -123,15 +116,25 @@ metadata:
     dapr.io/app-id: "order-service"
 ```
 
-## Enabling Injection for an Entire Namespace
+## Restricting Injection to Specific Namespaces
 
-Label a namespace to automatically inject sidecars into all pods:
+By default, the sidecar injector webhook applies to all namespaces. You can restrict it to specific namespaces by customizing the `namespaceSelector` in the Helm values. For example, to only inject sidecars in namespaces labeled `dapr-injection: enabled`:
 
-```bash
-kubectl label namespace default dapr-enabled=true
+```yaml
+# Helm values
+dapr_sidecar_injector:
+  namespaceSelector:
+    matchLabels:
+      dapr-injection: enabled
 ```
 
-With this label, every pod in the namespace receives a sidecar, even without the `dapr.io/enabled` annotation.
+Then label the target namespace:
+
+```bash
+kubectl label namespace default dapr-injection=enabled
+```
+
+Note that even with namespace-level filtering, each pod still requires the `dapr.io/enabled: "true"` annotation for the sidecar to be injected.
 
 ## Verifying Injection
 
@@ -180,7 +183,7 @@ kubectl logs -n dapr-system -l app=dapr-sidecar-injector --tail=50
 
 ```bash
 kubectl describe pod <pod-name>
-kubectl logs <pod-name> -c dapr-init
+kubectl logs <pod-name> -c daprd
 ```
 
 ### Sidecar Crashing
@@ -223,4 +226,4 @@ Multiple replicas of the injector work independently; Kubernetes distributes adm
 
 ## Summary
 
-The Dapr Sidecar Injector is a Mutating Admission Webhook that intercepts pod creation requests. When a pod carries the `dapr.io/enabled: "true"` annotation, the injector adds the `daprd` container with all required ports, environment variables, probes, and control plane addresses. The injector reads the full set of `dapr.io/*` annotations to configure the injected sidecar. Pods can also inherit injection from namespace labels without individual annotation requirements.
+The Dapr Sidecar Injector is a Mutating Admission Webhook that intercepts pod creation requests. When a pod carries the `dapr.io/enabled: "true"` annotation, the injector adds the `daprd` container with all required ports, environment variables, probes, and control plane addresses. The injector reads the full set of `dapr.io/*` annotations to configure the injected sidecar. The webhook's namespace scope can be customized via Helm values to restrict which namespaces it applies to.
