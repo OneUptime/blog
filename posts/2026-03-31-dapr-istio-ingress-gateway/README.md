@@ -35,7 +35,7 @@ kubectl label namespace default istio-injection=enabled
 
 ## Dapr and Istio Configuration
 
-When running both Dapr and Istio, disable Istio mTLS to avoid conflicts with Dapr mTLS:
+When running both Dapr and Istio, keep Dapr mTLS enabled and disable Istio mTLS on Dapr-specific ports to avoid double-encryption conflicts. First, ensure Dapr mTLS is enabled:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -49,7 +49,7 @@ spec:
     allowedClockSkew: "15m"
 ```
 
-Disable Istio PeerAuthentication for Dapr ports:
+Then disable Istio mTLS on Dapr sidecar ports using PeerAuthentication:
 
 ```yaml
 apiVersion: security.istio.io/v1beta1
@@ -64,7 +64,7 @@ spec:
   portLevelMtls:
     "3500":
       mode: DISABLE
-    "3501":
+    "50002":
       mode: DISABLE
     "50001":
       mode: DISABLE
