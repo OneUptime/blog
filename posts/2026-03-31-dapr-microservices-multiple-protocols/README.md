@@ -64,7 +64,7 @@ func callHttpService(ctx context.Context) {
     resp, err := client.InvokeMethod(ctx,
         "http-service",         // target app-id
         "api/orders",           // method path
-        "application/json",
+        "get",                  // HTTP verb
     )
     if err != nil {
         log.Fatal(err)
