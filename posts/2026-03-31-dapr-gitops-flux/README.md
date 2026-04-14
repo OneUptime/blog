@@ -123,7 +123,7 @@ spec:
 
 ```yaml
 # Automatically update image tags when new images are pushed
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: order-service
@@ -133,7 +133,7 @@ spec:
   interval: 1m
 
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: order-service
