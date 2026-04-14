@@ -31,6 +31,10 @@ echo -n "supersecretpassword" | gcloud secrets versions add db-password \
   --project=my-gcp-project
 
 # Create an API key secret
+gcloud secrets create stripe-api-key \
+  --replication-policy=automatic \
+  --project=my-gcp-project
+
 echo -n "sk_live_abc123" | gcloud secrets versions add stripe-api-key \
   --data-file=- \
   --project=my-gcp-project
@@ -75,7 +79,7 @@ spec:
   type: secretstores.gcp.secretmanager
   version: v1
   metadata:
-    - name: project
+    - name: project_id
       value: "my-gcp-project"
 ```
 
@@ -86,15 +90,15 @@ For local development or non-GKE environments, use a service account key file:
 ```yaml
 spec:
   metadata:
-    - name: project
+    - name: project_id
       value: "my-gcp-project"
-    - name: privateKeyID
+    - name: private_key_id
       value: "key-id"
-    - name: privateKey
+    - name: private_key
       secretKeyRef:
         name: gcp-sa-key
         key: private-key
-    - name: clientEmail
+    - name: client_email
       value: "dapr-secrets-sa@my-gcp-project.iam.gserviceaccount.com"
 ```
 
@@ -115,7 +119,7 @@ Response:
 To retrieve a specific version:
 
 ```bash
-curl "http://localhost:3500/v1.0/secrets/gcp-secret-store/db-password?metadata.version=2"
+curl "http://localhost:3500/v1.0/secrets/gcp-secret-store/db-password?metadata.version_id=2"
 ```
 
 ## Summary
