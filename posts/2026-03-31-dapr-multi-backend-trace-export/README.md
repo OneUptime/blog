@@ -53,9 +53,9 @@ data:
             probabilistic: {sampling_percentage: 10}
 
     exporters:
-      # Internal Jaeger for developer debugging
-      jaeger:
-        endpoint: jaeger.monitoring:14250
+      # Internal Jaeger for developer debugging (Jaeger supports OTLP natively)
+      otlp/jaeger:
+        endpoint: jaeger.monitoring:4317
         tls:
           insecure: true
 
@@ -77,7 +77,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [batch, tail_sampling]
-          exporters: [jaeger, otlp/tempo, otlp/honeycomb]
+          exporters: [otlp/jaeger, otlp/tempo, otlp/honeycomb]
 ```
 
 ## Separate Pipelines per Backend
@@ -91,7 +91,7 @@ service:
     traces/debug:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 
     # Sampled traces to Tempo (cheaper storage)
     traces/longterm:
@@ -102,7 +102,7 @@ service:
     # High-priority traces to Honeycomb
     traces/analysis:
       receivers: [otlp]
-      processors: [batch, filter_sampling]
+      processors: [batch, tail_sampling]
       exporters: [otlp/honeycomb]
 ```
 
@@ -129,7 +129,7 @@ spec:
 
 ```bash
 kubectl create secret generic otel-collector-secrets \
-  --from-literal=honeycomb-key=YOUR_KEY \
+  --from-literal=HONEYCOMB_API_KEY=YOUR_KEY \
   -n monitoring
 
 # Mount in collector deployment
