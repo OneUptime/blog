@@ -14,7 +14,7 @@ NATS JetStream KV is a key-value store built on top of the JetStream persistence
 
 ## Prerequisites
 
-- NATS server (version 2.6 or later) with JetStream enabled
+- NATS server (version 2.2 or later) with JetStream enabled
 - Dapr CLI and runtime installed
 - nats CLI tool for verification
 
