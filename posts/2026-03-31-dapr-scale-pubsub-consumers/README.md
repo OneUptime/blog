@@ -127,6 +127,9 @@ metadata:
   name: order-processor
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: order-processor
   template:
     metadata:
       labels:
