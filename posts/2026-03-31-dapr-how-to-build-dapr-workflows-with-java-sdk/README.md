@@ -201,10 +201,10 @@ public class WorkflowApp {
 
     public static void main(String[] args) throws InterruptedException, TimeoutException {
         // Build and start the workflow runtime
-        WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder()
-            .registerWorkflow(OrderWorkflow.class)
-            .registerActivity(ProcessOrderActivity.class)
-            .registerActivity(ChargePaymentActivity.class);
+        WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder();
+        builder.registerWorkflow(OrderWorkflow.class);
+        builder.registerActivity(ProcessOrderActivity.class);
+        builder.registerActivity(ChargePaymentActivity.class);
 
         try (WorkflowRuntime runtime = builder.build()) {
             runtime.start(false);
@@ -247,7 +247,7 @@ dapr run --app-id order-workflow --dapr-grpc-port 50001 -- java -jar target/work
 Use `Task.whenAll` to run multiple activities in parallel and collect their results.
 
 ```java
-import io.dapr.workflows.Task;
+import com.microsoft.durabletask.Task;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -275,7 +275,7 @@ public class BatchOrderWorkflow extends Workflow {
             }
 
             // Fan-in: wait for all to complete
-            List<Map> results = Task.whenAll(tasks).await();
+            List<Map> results = ctx.allOf(tasks).await();
 
             Map<String, Object> summary = new HashMap<>();
             summary.put("processed", results.size());
@@ -291,8 +291,8 @@ public class BatchOrderWorkflow extends Workflow {
 Add retry policies and compensation logic to handle failures gracefully.
 
 ```java
-import io.dapr.workflows.runtime.WorkflowTaskOptions;
-import io.dapr.workflows.runtime.RetryPolicy;
+import io.dapr.workflows.WorkflowTaskOptions;
+import io.dapr.workflows.WorkflowTaskRetryPolicy;
 import java.time.Duration;
 
 public class ResilientOrderWorkflow extends Workflow {
@@ -303,7 +303,7 @@ public class ResilientOrderWorkflow extends Workflow {
             Map<String, Object> input = ctx.getInput(Map.class);
 
             // Configure retry policy for the activity
-            RetryPolicy retryPolicy = new RetryPolicy(
+            WorkflowTaskRetryPolicy retryPolicy = new WorkflowTaskRetryPolicy(
                 3,                         // max retries
                 Duration.ofSeconds(5),     // first retry interval
                 1.5,                       // backoff coefficient
@@ -317,8 +317,8 @@ public class ResilientOrderWorkflow extends Workflow {
                 Map<String, Object> processResult = ctx.callActivity(
                     ProcessOrderActivity.class.getName(),
                     input,
-                    Map.class,
-                    options
+                    options,
+                    Map.class
                 ).await();
 
                 Map<String, Object> paymentInput = new HashMap<>();
@@ -328,8 +328,8 @@ public class ResilientOrderWorkflow extends Workflow {
                 Map<String, Object> paymentResult = ctx.callActivity(
                     ChargePaymentActivity.class.getName(),
                     paymentInput,
-                    Map.class,
-                    options
+                    options,
+                    Map.class
                 ).await();
 
                 ctx.complete(paymentResult);
