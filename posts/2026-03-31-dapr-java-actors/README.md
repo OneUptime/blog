@@ -47,6 +47,7 @@ public interface CounterActor {
 ## Implementing the Actor
 
 ```java
+import io.dapr.actors.ActorId;
 import io.dapr.actors.runtime.AbstractActor;
 import io.dapr.actors.runtime.ActorRuntimeContext;
 import reactor.core.publisher.Mono;
@@ -61,14 +62,20 @@ public class CounterActorImpl extends AbstractActor implements CounterActor {
 
     @Override
     public Mono<Void> increment() {
-        return this.getActorStateManager().getOrDefault(COUNT_KEY, Integer.class, 0)
+        return this.getActorStateManager().contains(COUNT_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(COUNT_KEY, Integer.class)
+                : Mono.just(0))
             .flatMap(count ->
                 this.getActorStateManager().set(COUNT_KEY, count + 1));
     }
 
     @Override
     public Mono<Integer> getCount() {
-        return this.getActorStateManager().getOrDefault(COUNT_KEY, Integer.class, 0);
+        return this.getActorStateManager().contains(COUNT_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(COUNT_KEY, Integer.class)
+                : Mono.just(0));
     }
 
     @Override
@@ -104,14 +111,14 @@ public class ActorApplication {
 
 ```java
 import io.dapr.actors.ActorId;
-import io.dapr.actors.client.ActorProxy;
+import io.dapr.actors.client.ActorClient;
 import io.dapr.actors.client.ActorProxyBuilder;
 
-try (ActorProxyBuilder<CounterActor> builder =
-        new ActorProxyBuilder<>(CounterActor.class, new DaprClientBuilder())) {
+try (ActorClient actorClient = new ActorClient()) {
+    ActorProxyBuilder<CounterActor> builder =
+        new ActorProxyBuilder<>(CounterActor.class, actorClient);
 
-    ActorProxy proxy = builder.build(new ActorId("counter-alice"));
-    CounterActor actor = (CounterActor) proxy;
+    CounterActor actor = builder.build(new ActorId("counter-alice"));
 
     actor.increment().block();
     actor.increment().block();
@@ -133,7 +140,8 @@ protected Mono<Void> onActivate() {
         "reportCallback",
         null,
         Duration.ofSeconds(10),
-        Duration.ofMinutes(1));
+        Duration.ofMinutes(1))
+        .then();
 }
 
 public Mono<Void> reportCallback(byte[] state) {
