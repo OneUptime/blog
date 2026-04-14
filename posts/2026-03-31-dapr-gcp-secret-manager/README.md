@@ -46,7 +46,7 @@ spec:
   type: secretstores.gcp.secretmanager
   version: v1
   metadata:
-  - name: projectId
+  - name: project_id
     value: "my-gcp-project"
   - name: type
     value: "service_account"
@@ -59,7 +59,7 @@ spec:
 curl http://localhost:3500/v1.0/secrets/gcpsecretmanager/db-password
 
 # Get a specific version
-curl "http://localhost:3500/v1.0/secrets/gcpsecretmanager/db-password?metadata.version=2"
+curl "http://localhost:3500/v1.0/secrets/gcpsecretmanager/db-password?metadata.version_id=2"
 ```
 
 Using the Go SDK:
