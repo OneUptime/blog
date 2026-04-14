@@ -55,7 +55,7 @@ For a Redis instance with authentication:
 
 ## Supported Operations
 
-The Redis binding supports four operations:
+The Redis binding supports three core operations:
 
 ```text
 create  - SET a key with an optional TTL
