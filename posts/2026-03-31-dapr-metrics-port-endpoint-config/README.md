@@ -8,20 +8,20 @@ Description: Configure the Dapr sidecar metrics port, path, and namespace settin
 
 ---
 
-By default, Dapr sidecars expose metrics on port 9090 at the `/metrics` path. You may need to change these defaults when port 9090 conflicts with your application, when running multiple Dapr-enabled containers, or when your Prometheus setup uses custom scrape paths.
+By default, Dapr sidecars expose metrics on port 9090 at the root path `/`. You may need to change these defaults when port 9090 conflicts with your application, when running multiple Dapr-enabled containers, or when your Prometheus setup uses custom scrape paths.
 
 ## Default Metrics Configuration
 
 Without any configuration, the Dapr sidecar exposes:
 - Port: `9090`
-- Path: `/metrics`
+- Path: `/` (the metrics server responds to any path, so `/metrics` also works)
 - Enabled: `true`
 
 Verify the default metrics endpoint is working:
 
 ```bash
 kubectl port-forward pod/order-service-xxx 9090:9090
-curl http://localhost:9090/metrics | head -20
+curl http://localhost:9090/ | head -20
 ```
 
 ## Changing the Metrics Port
@@ -61,11 +61,17 @@ metadata:
     dapr.io/enable-metrics: "false"
 ```
 
-Or set the global default in the Dapr Helm values:
+Or set the global default in a Dapr Configuration resource:
 
 ```yaml
-dapr_config:
-  metricsEnabled: false
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: daprconfig
+  namespace: default
+spec:
+  metrics:
+    enabled: false
 ```
 
 ## Configuring Metrics via Helm
@@ -75,10 +81,8 @@ When installing Dapr with Helm, configure metrics globally:
 ```bash
 helm install dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.metrics.enabled=true \
-  --set dapr_operator.metrics.port=9090 \
-  --set dapr_sentry.metrics.enabled=true \
-  --set dapr_placement.metrics.enabled=true
+  --set global.prometheus.enabled=true \
+  --set global.prometheus.port=9090
 ```
 
 ## Using a Custom Metrics Namespace
@@ -154,9 +158,9 @@ kubectl logs deploy/order-service -c daprd | grep -i "metrics"
 Expected output:
 
 ```text
-INFO metrics server started on :9090
+level=info msg="metrics server started on 0.0.0.0:9090/"
 ```
 
 ## Summary
 
-Dapr metrics port configuration uses the `dapr.io/metrics-port` annotation for per-deployment overrides and Helm values for cluster-wide defaults. When using the Prometheus Operator, expose the metrics port as a named Kubernetes Service port so ServiceMonitors can reference it by name. Always verify the sidecar logs confirm the metrics server started on the expected port before debugging scrape configuration issues.
+Dapr metrics port configuration uses the `dapr.io/metrics-port` annotation for per-deployment overrides, a Dapr Configuration resource for sidecar-wide defaults, and Helm values (`global.prometheus.*`) for control plane components. When using the Prometheus Operator, expose the metrics port as a named Kubernetes Service port so ServiceMonitors can reference it by name. Always verify the sidecar logs confirm the metrics server started on the expected port before debugging scrape configuration issues.
