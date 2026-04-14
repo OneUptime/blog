@@ -10,7 +10,7 @@ Description: Enable automatic client-side encryption for Dapr state store data u
 
 ## Overview
 
-Dapr supports automatic encryption of state values before they are written to the state store. Encryption is performed by the Dapr sidecar using AES-256-GCM before data leaves the process. The state store backend (Redis, CosmosDB, etc.) stores only ciphertext. Decryption happens transparently on reads.
+Dapr supports automatic encryption of state values before they are written to the state store. Encryption is performed by the Dapr sidecar using AES in Galois/Counter Mode (GCM) before data leaves the process, supporting 128, 192, and 256-bit keys. The state store backend (Redis, CosmosDB, etc.) stores only ciphertext. Decryption happens transparently on reads.
 
 ## How State Encryption Works
 
@@ -35,7 +35,7 @@ sequenceDiagram
 
 ## Step 1: Generate an Encryption Key
 
-The primary encryption key must be a 32-byte (256-bit) AES key encoded as hex or base64:
+Dapr AES-GCM encryption supports 128-bit (16-byte), 192-bit (24-byte), and 256-bit (32-byte) keys. The Dapr docs recommend 128-bit keys. The following example generates a 256-bit key:
 
 ```bash
 # Generate a 32-byte random key and hex-encode it
@@ -116,7 +116,7 @@ During rotation:
 
 ## Step 5: Self-Hosted Mode
 
-For local development, use a local secret store or inline key:
+For local development, use a local secret store. Encryption keys are always fetched from a secret and cannot be supplied as plaintext values in the component metadata:
 
 ```yaml
 # components/statestore.yaml (self-hosted)
@@ -131,10 +131,14 @@ spec:
   - name: redisHost
     value: localhost:6379
   - name: primaryEncryptionKey
-    value: "a9f7e2d1c3b4a5867890abcdef012345a9f7e2d1c3b4a5867890abcdef012345"
+    secretKeyRef:
+      name: encryptionkey
+      key: key
+auth:
+  secretStore: localsecretstore
 ```
 
-Avoid inline keys in production. Use secret store references instead.
+Create a local secrets file (e.g., `secrets.json`) containing the key and configure a `secretstores.local.file` component to reference it.
 
 ## Step 6: Verify Encryption at Rest
 
@@ -150,7 +154,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
 redis-cli -h localhost
 
 # Read the raw value
-GET "order-service||secret-order"
+GET "statestore||secret-order"
 # Output: binary/base64 blob - NOT plaintext
 ```
 
@@ -173,6 +177,8 @@ result = await client.get_state("statestore", "secret-order")
 ```
 
 ## Supported State Stores
+
+Dapr state store encryption is supported by **all** Dapr state stores. Common examples include:
 
 | State Store | Encryption Support |
 |---|---|
