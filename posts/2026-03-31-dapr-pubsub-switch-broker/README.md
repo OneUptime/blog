@@ -69,7 +69,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: amqp://guest:guest@rabbitmq:5672
   - name: durable
     value: "true"
@@ -93,8 +93,8 @@ spec:
     value: kafka-broker:9092
   - name: consumerGroup
     value: order-service
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
 ```
 
 On Kubernetes, apply the updated component and restart the deployment:
@@ -119,7 +119,7 @@ Run with the appropriate directory:
 
 ```bash
 # Development
-dapr run --components-path ./components/dev -- python app.py
+dapr run --resources-path ./components/dev -- python app.py
 
 # Production (Kubernetes uses namespace-scoped components)
 kubectl apply -f components/prod/
