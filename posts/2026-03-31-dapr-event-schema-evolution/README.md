@@ -16,7 +16,7 @@ Event schema evolution is the process of changing the structure of events publis
 
 Safe changes (backward compatible):
 - Adding optional fields with defaults
-- Adding new enum values at the end
+- Adding new enum values (in Avro, only if the reader schema specifies an enum default)
 - Widening field types (int to long)
 
 Unsafe changes (breaking):
@@ -161,13 +161,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Start Schema Registry
+      run: |
+        docker compose up -d schema-registry
+        until curl -sf http://localhost:8081/subjects > /dev/null; do sleep 2; done
     - name: Check schema compatibility
       run: |
-        docker run --rm \
-          -v $(pwd)/schemas:/schemas \
-          confluentinc/cp-schema-registry:7.5.0 \
-          kafka-avro-console-producer \
-          --schema-compatibility BACKWARD
+        # Register the baseline schema
+        curl -sf -X POST http://localhost:8081/subjects/OrderPlaced-value/versions \
+          -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+          -d @schemas/OrderPlaced-baseline.json
+        # Check compatibility of the evolved schema against latest
+        RESULT=$(curl -sf -X POST \
+          http://localhost:8081/compatibility/subjects/OrderPlaced-value/versions/latest \
+          -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+          -d @schemas/OrderPlaced-evolved.json)
+        echo "$RESULT"
+        echo "$RESULT" | jq -e '.is_compatible == true'
 ```
 
 ## Summary
