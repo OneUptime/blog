@@ -61,7 +61,7 @@ export class DaprOrderRepository implements IOrderRepository {
     }
 
     async save(order: Order): Promise<void> {
-        // Use bulk state save for atomicity
+        // Use bulk state save to persist order and index in a single call
         const states = [
             { key: order.id, value: order },
         ];
@@ -80,7 +80,7 @@ export class DaprOrderRepository implements IOrderRepository {
             value: existingIndex,
         });
 
-        await this.dapr.state.saveBulk(this.storeName, states);
+        await this.dapr.state.save(this.storeName, states);
     }
 
     async delete(orderId: string): Promise<void> {
