@@ -46,8 +46,9 @@ data:
     # Add Dapr-specific fields
     <filter dapr.**>
       @type record_transformer
+      enable_ruby true
       <record>
-        dapr_app_id ${record.dig("kubernetes", "labels", "dapr.io/app-id") || "unknown"}
+        dapr_app_id ${record.dig("kubernetes", "annotations", "dapr.io/app-id") || "unknown"}
         log_source "dapr-sidecar"
       </record>
     </filter>
@@ -57,8 +58,6 @@ data:
       @type elasticsearch
       host elasticsearch.logging
       port 9200
-      index_name dapr-logs
-      type_name _doc
       logstash_format true
       logstash_prefix dapr
       <buffer>
