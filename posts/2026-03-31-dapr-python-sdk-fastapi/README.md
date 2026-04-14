@@ -42,7 +42,7 @@ class Order(BaseModel):
 Use the `@dapr_app.subscribe` decorator to register a topic handler:
 
 ```python
-@dapr_app.subscribe(pubsub_name="pubsub", topic="orders")
+@dapr_app.subscribe(pubsub="pubsub", topic="orders")
 async def handle_order(event: Order):
     print(f"Received order: {event.order_id} - {event.item} x{event.quantity}")
     return {"status": "SUCCESS"}
@@ -74,7 +74,8 @@ async def get_order(order_id: str):
         )
         if result.data:
             return {"order": result.data.decode("utf-8")}
-        return {"error": "Order not found"}, 404
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content={"error": "Order not found"}, status_code=404)
 ```
 
 ## Invoking Another Service
