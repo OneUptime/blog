@@ -299,11 +299,18 @@ public class OrderProcessor : IHostedService, IDisposable
 
     private async Task ProcessOrdersAsync(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        try
         {
-            // Process an order batch
-            _logger.LogDebug("Processing order batch");
-            await Task.Delay(100, token).ConfigureAwait(false);
+            while (!token.IsCancellationRequested)
+            {
+                // Process an order batch
+                _logger.LogDebug("Processing order batch");
+                await Task.Delay(100, token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when shutdown is requested
         }
         _logger.LogInformation("Order processor drained successfully");
     }
