@@ -10,7 +10,7 @@ Description: Learn how to implement a lightweight feature flag system using Dapr
 
 ## Introduction
 
-Feature flags (also called feature toggles) let you enable or disable features at runtime without redeploying code. While dedicated tools like LaunchDarkly exist, many teams need a simpler solution. Dapr State Management combined with the Configuration API provides a fast, durable feature flag store that any service can read.
+Feature flags (also called feature toggles) let you enable or disable features at runtime without redeploying code. While dedicated tools like LaunchDarkly exist, many teams need a simpler solution. Dapr State Management provides a fast, durable feature flag store that any service can read.
 
 ## Feature Flag Architecture
 
