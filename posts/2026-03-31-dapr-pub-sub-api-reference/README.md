@@ -45,10 +45,10 @@ curl -X POST \
 
 ## Bulk Publishing
 
-**POST** `/v1.0.1/publish/bulk/{pubsubName}/{topic}`
+**POST** `/v1.0/publish/bulk/{pubsubName}/{topic}`
 
 ```bash
-curl -X POST http://localhost:3500/v1.0.1/publish/bulk/pubsub/orders \
+curl -X POST http://localhost:3500/v1.0/publish/bulk/pubsub/orders \
   -H "Content-Type: application/json" \
   -d '[
     {
@@ -74,7 +74,9 @@ app.get("/dapr/subscribe", (req, res) => {
     {
       pubsubname: "pubsub",
       topic: "orders",
-      route: "/orders-handler",
+      routes: {
+        default: "/orders-handler"
+      },
       metadata: {
         rawPayload: "false"
       }
@@ -90,14 +92,14 @@ app.post("/orders-handler", (req, res) => {
   const cloudEvent = req.body;
   console.log("Received:", cloudEvent.data);
 
-  // Return 200 to ACK the message
+  // Return 200 with status SUCCESS to ACK the message
   res.status(200).json({ status: "SUCCESS" });
 
-  // Return 404 to drop the message
-  // res.status(404).json({ status: "DROP" });
+  // Return 200 with status DROP to drop the message
+  // res.status(200).json({ status: "DROP" });
 
-  // Return 500 to RETRY
-  // res.status(500).json({ status: "RETRY" });
+  // Return 200 with status RETRY to retry the message
+  // res.status(200).json({ status: "RETRY" });
 });
 ```
 
