@@ -119,7 +119,7 @@ az containerapp env dapr-component set \
   --dapr-component-name pubsub \
   --yaml - << 'EOF'
 name: pubsub
-componentType: pubsub.azure.servicebus
+componentType: pubsub.azure.servicebus.topics
 version: v1
 metadata:
   - name: connectionString
@@ -142,7 +142,7 @@ az containerapp create \
   --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
   --target-port 5000 \
   --ingress external \
-  --dapr-enabled true \
+  --enable-dapr \
   --dapr-app-id order-service \
   --dapr-app-port 5000 \
   --dapr-app-protocol http \
@@ -224,7 +224,7 @@ az containerapp create \
   --image myregistry.azurecr.io/notification-service:latest \
   --target-port 5001 \
   --ingress internal \
-  --dapr-enabled true \
+  --enable-dapr \
   --dapr-app-id notification-service \
   --dapr-app-port 5001 \
   --min-replicas 1 \
@@ -254,10 +254,11 @@ az containerapp update \
   --scale-rule-name servicebus-scale \
   --scale-rule-type azure-servicebus \
   --scale-rule-metadata \
-    "queueName=orders" \
+    "topicName=orders" \
+    "subscriptionName=order-service" \
     "messageCount=10" \
     "activationMessageCount=1" \
-  --scale-rule-auth "connectionFromSecretRef=servicebus-connection"
+  --scale-rule-auth "connection=servicebus-connection"
 ```
 
 ## Summary
