@@ -28,8 +28,8 @@ kubectl get configmap dapr-trust-bundle -n dapr-system -o yaml
 Customize certificate lifetimes via Helm:
 
 ```yaml
-dapr_sentry:
-  config:
+global:
+  mtls:
     workloadCertTTL: 24h
     allowedClockSkew: 15m
 ```
@@ -39,8 +39,8 @@ Apply:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_sentry.config.workloadCertTTL=24h \
-  --set dapr_sentry.config.allowedClockSkew=15m \
+  --set global.mtls.workloadCertTTL=24h \
+  --set global.mtls.allowedClockSkew=15m \
   --reuse-values
 ```
 
@@ -52,7 +52,7 @@ Ensure mTLS is enabled in your Dapr Configuration resource:
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
-  name: default
+  name: daprsystem
   namespace: dapr-system
 spec:
   mtls:
@@ -72,7 +72,7 @@ Check the trust bundle that Sentry distributes to all sidecars:
 ```bash
 # View the CA certificate
 kubectl get secret dapr-trust-bundle -n dapr-system \
-  -o jsonpath='{.data.issuer\.crt}' | base64 -d | openssl x509 -text -noout
+  -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -text -noout
 ```
 
 ## Verifying mTLS Is Active
@@ -80,8 +80,9 @@ kubectl get secret dapr-trust-bundle -n dapr-system \
 Test that two services are communicating over mTLS:
 
 ```bash
-# Enable debug logging on sidecar to see TLS handshakes
-kubectl annotate pod <pod-name> dapr.io/log-level=debug
+# Set debug logging on the sidecar via the deployment pod template annotation
+# dapr.io/log-level: "debug"
+# Then restart or redeploy the pod for the annotation to take effect
 
 # Check sidecar logs for TLS connection events
 kubectl logs <pod-name> -c daprd | grep -i "tls\|mtls\|cert"
@@ -94,7 +95,6 @@ Run Sentry with 3 replicas for HA:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_sentry.replicaCount=3 \
   --set global.ha.enabled=true \
   --reuse-values
 ```
