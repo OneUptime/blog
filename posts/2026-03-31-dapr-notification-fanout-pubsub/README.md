@@ -62,6 +62,8 @@ await emailServer.pubsub.subscribe('notify-pubsub', 'user.alert', async (event) 
     html: `<p>${event.body}</p><a href="${event.link}">View details</a>`
   });
 });
+
+await emailServer.start();
 ```
 
 ## SMS Channel Consumer
@@ -79,6 +81,8 @@ await smsServer.pubsub.subscribe('notify-pubsub', 'user.alert', async (event) =>
     body: `ALERT: ${event.title} - ${event.body.slice(0, 100)}`
   });
 });
+
+await smsServer.start();
 ```
 
 ## Push Notification Consumer
@@ -100,6 +104,8 @@ await pushServer.pubsub.subscribe('notify-pubsub', 'user.alert', async (event) =
     })
   ));
 });
+
+await pushServer.start();
 ```
 
 ## Slack Consumer
@@ -117,17 +123,46 @@ await slackServer.pubsub.subscribe('notify-pubsub', 'user.alert', async (event) 
     attachments: [{ color: event.severity === 'critical' ? 'danger' : 'warning' }]
   });
 });
+
+await slackServer.start();
 ```
 
 ## Controlling Fan-Out with Consumer Groups
 
 Each channel service uses a different Dapr app ID, so Dapr creates independent consumer group subscriptions - all four get every message:
 
-```bash
-kubectl annotate deployment email-service dapr.io/app-id=email-notification-service
-kubectl annotate deployment sms-service dapr.io/app-id=sms-notification-service
-kubectl annotate deployment push-service dapr.io/app-id=push-notification-service
-kubectl annotate deployment slack-service dapr.io/app-id=slack-notification-service
+```yaml
+# email-service deployment
+spec:
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "email-notification-service"
+
+# sms-service deployment
+spec:
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "sms-notification-service"
+
+# push-service deployment
+spec:
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "push-notification-service"
+
+# slack-service deployment
+spec:
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "slack-notification-service"
 ```
 
 ## Summary
