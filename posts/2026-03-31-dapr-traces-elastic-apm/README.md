@@ -52,7 +52,7 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "inventory-service"
   dapr.io/config: "dapr-elastic-apm"
-  dapr.io/sidecar-env-vars: "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer YOUR_SECRET_TOKEN"
+  dapr.io/env: "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer YOUR_SECRET_TOKEN"
 ```
 
 ## Via OpenTelemetry Collector
@@ -110,7 +110,7 @@ Once traces arrive, Kibana's APM service map shows Dapr service dependencies. En
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env-vars: "OTEL_RESOURCE_ATTRIBUTES=service.name=inventory-service,service.version=1.0.0"
+  dapr.io/env: "OTEL_RESOURCE_ATTRIBUTES=service.name=inventory-service,service.version=1.0.0"
 ```
 
 ## Custom Transactions in Application Code
@@ -119,7 +119,6 @@ Augment Dapr spans with your own application spans using the OTEL SDK:
 
 ```python
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 
 tracer = trace.get_tracer("inventory-service")
 
