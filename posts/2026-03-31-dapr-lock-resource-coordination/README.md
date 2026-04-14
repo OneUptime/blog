@@ -41,11 +41,7 @@ const INSTANCE_ID = require("os").hostname() + "-" + process.pid;
 async function exportReport(reportId) {
   const resourceId = `report-export-${reportId}`;
 
-  const lockResp = await client.lock.lock("lockstore", {
-    resourceId,
-    lockOwner: INSTANCE_ID,
-    expiryInSeconds: 60,
-  });
+  const lockResp = await client.lock.lock("lockstore", resourceId, INSTANCE_ID, 60);
 
   if (!lockResp.success) {
     console.log(`Export for ${reportId} already running on another instance`);
@@ -56,10 +52,7 @@ async function exportReport(reportId) {
     console.log(`Exporting report ${reportId}...`);
     await generateAndUploadReport(reportId);
   } finally {
-    await client.lock.unlock("lockstore", {
-      resourceId,
-      lockOwner: INSTANCE_ID,
-    });
+    await client.lock.unlock("lockstore", resourceId, INSTANCE_ID);
     console.log(`Lock released for ${reportId}`);
   }
 }
@@ -73,11 +66,7 @@ Coordinate calls to an external API that allows only one concurrent request per 
 async function callExternalAPI(accountId, payload) {
   const resourceId = `external-api-${accountId}`;
 
-  const lock = await client.lock.lock("lockstore", {
-    resourceId,
-    lockOwner: INSTANCE_ID,
-    expiryInSeconds: 15,
-  });
+  const lock = await client.lock.lock("lockstore", resourceId, INSTANCE_ID, 15);
 
   if (!lock.success) {
     throw new Error("External API busy for this account - retry later");
@@ -89,7 +78,7 @@ async function callExternalAPI(accountId, payload) {
       body: JSON.stringify(payload),
     }).then(r => r.json());
   } finally {
-    await client.lock.unlock("lockstore", { resourceId, lockOwner: INSTANCE_ID });
+    await client.lock.unlock("lockstore", resourceId, INSTANCE_ID);
   }
 }
 ```
@@ -121,7 +110,7 @@ const lockSuccesses = new Counter("lock_successes_total");
 
 async function lockedOperation(resourceId) {
   lockAttempts.inc({ resource: resourceId });
-  const result = await client.lock.lock("lockstore", { resourceId, lockOwner: INSTANCE_ID, expiryInSeconds: 30 });
+  const result = await client.lock.lock("lockstore", resourceId, INSTANCE_ID, 30);
   if (result.success) {
     lockSuccesses.inc({ resource: resourceId });
   }
