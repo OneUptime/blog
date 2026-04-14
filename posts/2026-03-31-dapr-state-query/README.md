@@ -12,7 +12,7 @@ Description: Learn how to use the Dapr state query API to filter, sort, and pagi
 
 The Dapr state query API (alpha feature) lets you search state stores using filter expressions, sorting, and pagination without needing direct database access. This is useful for listing and filtering items stored by your application, such as orders by status or users by region.
 
-Currently supported state stores: MongoDB, Azure Cosmos DB, PostgreSQL, CockroachDB, MySQL.
+Currently supported state stores: MongoDB, Azure Cosmos DB, PostgreSQL, CockroachDB.
 
 ## Query API Endpoint
 
@@ -34,7 +34,7 @@ A query request supports three optional fields:
 
 ## Prerequisites
 
-- Dapr initialized with a query-capable state store (MongoDB, Cosmos DB, or PostgreSQL)
+- Dapr initialized with a query-capable state store (MongoDB, Cosmos DB, PostgreSQL, or CockroachDB)
 - State items saved with JSON values
 
 ## Saving Queryable State
@@ -88,6 +88,12 @@ Response:
 {"EQ": {"status": "pending"}}
 ```
 
+### Not Equal
+
+```json
+{"NEQ": {"status": "cancelled"}}
+```
+
 ### Comparison
 
 ```json
@@ -95,6 +101,12 @@ Response:
 {"LT": {"amount": 200}}
 {"GTE": {"amount": 100}}
 {"LTE": {"amount": 200}}
+```
+
+### Membership
+
+```json
+{"IN": {"status": ["pending", "shipped"]}}
 ```
 
 ### Logical AND
