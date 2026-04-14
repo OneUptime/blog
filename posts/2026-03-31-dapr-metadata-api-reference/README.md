@@ -25,13 +25,18 @@ Sample response:
 ```json
 {
   "id": "order-service",
-  "activeActorsCount": [
-    {
-      "type": "OrderActor",
-      "count": 42
-    }
-  ],
-  "registeredComponents": [
+  "actorRuntime": {
+    "runtimeStatus": "RUNNING",
+    "activeActors": [
+      {
+        "type": "OrderActor",
+        "count": 42
+      }
+    ],
+    "hostReady": true,
+    "placement": "placement:50005"
+  },
+  "components": [
     {
       "name": "statestore",
       "type": "state.redis",
@@ -47,11 +52,17 @@ Sample response:
   ],
   "subscriptions": [
     {
+      "type": "DECLARATIVE",
       "pubsubname": "pubsub",
       "topic": "orders",
-      "routes": {
-        "default": "/orders-handler"
-      }
+      "rules": [
+        {
+          "match": "",
+          "path": "/orders-handler"
+        }
+      ],
+      "deadLetterTopic": "",
+      "metadata": {}
     }
   ],
   "extended": {}
@@ -63,7 +74,7 @@ Sample response:
 Parse the components list to verify expected components are loaded:
 
 ```bash
-curl -s http://localhost:3500/v1.0/metadata | jq '.registeredComponents[].name'
+curl -s http://localhost:3500/v1.0/metadata | jq '.components[].name'
 ```
 
 Expected output:
@@ -83,7 +94,7 @@ curl -s http://localhost:3500/v1.0/metadata | jq '.subscriptions'
 ## Checking Actor Counts
 
 ```bash
-curl -s http://localhost:3500/v1.0/metadata | jq '.activeActorsCount'
+curl -s http://localhost:3500/v1.0/metadata | jq '.actorRuntime.activeActors'
 ```
 
 ## Setting Custom Metadata
