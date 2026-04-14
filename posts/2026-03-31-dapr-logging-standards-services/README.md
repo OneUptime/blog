@@ -65,8 +65,6 @@ logger.info('Order processed', {
 Dapr propagates W3C trace context headers. Extract and include them in your logs:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
-
 app.post('/orders', (req, res) => {
   const traceParent = req.headers['traceparent'] || '';
   const traceId = traceParent.split('-')[1] || 'unknown';
@@ -97,13 +95,15 @@ data:
       @type tail
       path /var/log/containers/*.log
       tag kubernetes.*
-      format json
+      <parse>
+        @type json
+      </parse>
     </source>
     <filter kubernetes.**>
       @type record_transformer
       <record>
         app_id ${record.dig("kubernetes", "labels", "app")}
-        dapr_app_id ${record.dig("kubernetes", "annotations", "dapr_io/app-id")}
+        dapr_app_id ${record.dig("kubernetes", "annotations", "dapr.io/app-id")}
       </record>
     </filter>
     <match **>
@@ -119,9 +119,9 @@ data:
 Dynamically change Dapr sidecar log level without restarting:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/metadata \
-  -H "Content-Type: application/json" \
-  -d '{"key": "log-level", "value": "debug"}'
+curl -X PUT http://localhost:3500/v1.0/metadata/logLevel \
+  -H "Content-Type: text/plain" \
+  -d 'debug'
 ```
 
 ## Alerting on Error Logs
