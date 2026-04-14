@@ -26,7 +26,6 @@ A typical healthcare data platform includes:
 ```bash
 dapr init --kubernetes --wait
 kubectl create namespace healthcare
-dapr init --kubernetes --namespace healthcare
 ```
 
 ## Storing Patient Records with Encrypted State
@@ -66,12 +65,14 @@ def save_patient_record(patient_id: str, data: dict):
 When new lab results arrive, publish them to a topic for downstream processing:
 
 ```python
+import json
+
 def publish_lab_result(patient_id: str, result: dict):
     with DaprClient() as client:
         client.publish_event(
             pubsub_name="pubsub",
             topic_name="lab-results",
-            data={"patientId": patient_id, "result": result},
+            data=json.dumps({"patientId": patient_id, "result": result}),
             data_content_type="application/json"
         )
 ```
@@ -85,7 +86,7 @@ app = App()
 
 @app.subscribe(pubsub_name="pubsub", topic="lab-results")
 def handle_lab_result(event) -> None:
-    data = event.data()
+    data = event.Data()
     if data.get("result", {}).get("severity") == "critical":
         notify_provider(data["patientId"])
     log_audit_event("lab_result_received", data["patientId"])
