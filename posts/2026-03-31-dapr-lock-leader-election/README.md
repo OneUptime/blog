@@ -53,8 +53,6 @@ const (
     renewEvery = 10 * time.Second
 )
 
-var instanceID = os.Hostname
-
 func tryBecomeLeader(client dapr.Client) bool {
     hostname, _ := os.Hostname()
     resp, err := client.TryLockAlpha1(context.Background(), lockStore, &dapr.LockRequest{
@@ -103,11 +101,17 @@ func main() {
 
 ## Renewing Leadership
 
-To hold leadership across multiple intervals, re-acquire the lock before it expires:
+To hold leadership across multiple intervals, release the current lock and immediately re-acquire it before another instance can claim it:
 
 ```go
 func renewLeadership(client dapr.Client) bool {
     hostname, _ := os.Hostname()
+    // Release the current lock first - TryLockAlpha1 uses SetNX internally,
+    // which fails if the key already exists, even for the same owner.
+    client.UnlockAlpha1(context.Background(), lockStore, &dapr.UnlockRequest{
+        LockOwner:  hostname,
+        ResourceID: resourceID,
+    })
     resp, _ := client.TryLockAlpha1(context.Background(), lockStore, &dapr.LockRequest{
         LockOwner:       hostname,
         ResourceID:      resourceID,
@@ -117,7 +121,7 @@ func renewLeadership(client dapr.Client) bool {
 }
 ```
 
-Call `renewLeadership` every `renewEvery` seconds. If renewal fails (another instance acquired), stop leader tasks gracefully.
+Call `renewLeadership` every `renewEvery` seconds. Note that there is a brief window between unlock and re-lock where another instance could acquire the lock. If renewal fails, stop leader tasks gracefully.
 
 ## Simulating Failover
 
