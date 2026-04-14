@@ -70,15 +70,16 @@ kubectl logs payment-service-abc -c daprd | grep "kafka-pubsub"
 The PostgreSQL state store creates its table on first initialization if it does not exist. Pre-create it to avoid a slow DDL operation at startup:
 
 ```sql
-CREATE TABLE IF NOT EXISTS dapr_state (
-  key TEXT NOT NULL,
-  value JSONB NOT NULL,
-  etag TEXT NOT NULL,
-  expiration_time TIMESTAMP WITH TIME ZONE,
-  update_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (key)
+-- Table name must match the tableName metadata field in your component YAML (default: state)
+-- Schema below is for the PostgreSQL v2 state store component (recommended)
+CREATE TABLE IF NOT EXISTS state (
+  key text NOT NULL PRIMARY KEY,
+  value bytea NOT NULL,
+  isbinary boolean NOT NULL,
+  etag uuid NOT NULL DEFAULT gen_random_uuid(),
+  expiredate TIMESTAMP WITH TIME ZONE
 );
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dapr_state_exp ON dapr_state(expiration_time);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_state_expiredate ON state(expiredate);
 ```
 
 ## Increasing Connection Pool Size
@@ -89,7 +90,11 @@ Reduce component initialization retries by tuning connection pool settings:
 spec:
   metadata:
   - name: connectionString
-    value: "host=postgres port=5432 user=dapr password=secret dbname=daprdb pool_max_conns=10 pool_min_conns=2"
+    value: "host=postgres port=5432 user=dapr password=secret dbname=daprdb"
+  - name: maxConns
+    value: "10"
+  - name: connectionMaxIdleTime
+    value: "30s"
 ```
 
 ## Parallelizing Component Initialization
@@ -115,7 +120,7 @@ Enable Dapr metrics to track component init duration:
 kubectl port-forward pod/order-service-abc 9090:9090
 
 # Query initialization duration
-curl http://localhost:9090/metrics | grep dapr_component_init_total
+curl http://localhost:9090/metrics | grep dapr_runtime_component_init_total
 ```
 
 ## Summary
