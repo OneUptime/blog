@@ -51,7 +51,9 @@ Available values:
 |-------|------------------|----------|
 | `appid` | `{appId}||{key}` | Per-app isolation (default) |
 | `name` | `{componentName}||{key}` | Isolation by component name |
+| `namespace` | `{namespace}.{appId}||{key}` | Namespace-scoped isolation (falls back to `appid` if no namespace is set) |
 | `none` | `{key}` | Shared state, no prefix |
+| Any other string | `{customPrefix}||{key}` | Custom prefix value |
 
 ## Using the Default appid Prefix
 
@@ -81,17 +83,27 @@ When you read state via Dapr, the sidecar automatically prepends your app ID, so
 curl http://localhost:3500/v1.0/state/statestore/order-001
 ```
 
-## Cross-App Key Access
+## Cross-App State Sharing
 
-To read another app's state (for read-only scenarios), construct the full key with the prefix manually:
+Dapr does not allow one app to read another app's prefixed keys through the state API. The `||` separator is a reserved string and cannot appear in user-supplied keys — Dapr rejects such requests with an error. To share state between services, configure a dedicated state store component with `keyPrefix: none`:
 
-```bash
-# inventory service reading orderservice's state
-# URL-encode the || separator as %7C%7C
-curl http://localhost:3500/v1.0/state/statestore/orderservice%7C%7Corder-001
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: sharedstore
+  namespace: default
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis-master:6379
+    - name: keyPrefix
+      value: none
 ```
 
-This bypasses the normal app ID prefix logic. Only use this for read operations and document the cross-service dependency clearly.
+Both services then read and write the same raw keys without any automatic prefix. Document cross-service state dependencies clearly when using this pattern.
 
 ## Switching to name Prefix
 
@@ -120,6 +132,7 @@ spec:
 ```bash
 # Both orderservice and inventory read/write the same "cart-42" entry
 curl -X POST http://localhost:3500/v1.0/state/statestore \
+  -H "Content-Type: application/json" \
   -d '[{"key": "cart-42", "value": {"items": []}}]'
 ```
 
