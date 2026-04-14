@@ -27,53 +27,39 @@ In-flight instance at Step B when deploy happens:
 - Next step should be Step C (from history) but code says Step X - MISMATCH
 ```
 
-## Strategy 1 - Version Check with GetVersion
+## Strategy 1 - Patch-Based Versioning with IsPatched
 
-The safest approach is to embed a version marker in the workflow and branch on it:
+The safest approach for incremental changes is to use `IsPatched` to conditionally branch at specific points in the workflow:
 
 ```csharp
 using Dapr.Workflow;
 
 public class OrderWorkflow : Workflow<OrderRequest, OrderResult>
 {
-    private const int CURRENT_VERSION = 2;
-
     public override async Task<OrderResult> RunAsync(WorkflowContext context, OrderRequest input)
     {
-        // Read the version at which this instance was started
-        int version = await context.GetVersionAsync("main", 1, CURRENT_VERSION);
-
-        if (version == 1)
-        {
-            // Old code path for v1 instances
-            return await RunV1Async(context, input);
-        }
-        else
-        {
-            // New code path for v2 instances
-            return await RunV2Async(context, input);
-        }
-    }
-
-    private async Task<OrderResult> RunV1Async(WorkflowContext context, OrderRequest input)
-    {
         await context.CallActivityAsync(nameof(ValidateOrderActivity), input);
-        await context.CallActivityAsync(nameof(ProcessOrderActivity), input);
-        return new OrderResult("Completed", "v1");
-    }
 
-    private async Task<OrderResult> RunV2Async(WorkflowContext context, OrderRequest input)
-    {
-        await context.CallActivityAsync(nameof(ValidateOrderActivity), input);
-        await context.CallActivityAsync(nameof(FraudCheckActivity), input);   // new in v2
+        // Patch: add fraud check between validation and processing
+        if (context.IsPatched("add-fraud-check"))
+        {
+            await context.CallActivityAsync(nameof(FraudCheckActivity), input);
+        }
+
         await context.CallActivityAsync(nameof(ProcessOrderActivity), input);
-        await context.CallActivityAsync(nameof(NotifyCustomerActivity), input); // new in v2
-        return new OrderResult("Completed", "v2");
+
+        // Patch: add customer notification after processing
+        if (context.IsPatched("add-customer-notification"))
+        {
+            await context.CallActivityAsync(nameof(NotifyCustomerActivity), input);
+        }
+
+        return new OrderResult("Completed", "");
     }
 }
 ```
 
-`GetVersionAsync` returns the version stored in the workflow history for existing instances, and sets `CURRENT_VERSION` for new instances. This way, in-flight v1 instances continue on the v1 path while new v2 instances use the new path.
+`IsPatched` records the patch check in the workflow instance history the first time it is evaluated. For new instances, it returns `true`, so they execute the new code path. For in-flight instances replaying from history, it returns `false`, so they follow the original path. Patch identifiers must be unique within a workflow and should never be reused across deployments.
 
 ## Strategy 2 - Deploy New Workflow Type for Major Changes
 
@@ -109,13 +95,11 @@ public class OrderWorkflowV2 : Workflow<OrderRequest, OrderResult>
 Route new requests to V2 while V1 instances complete:
 
 ```csharp
-app.MapPost("/orders", async (OrderRequest req, DaprClient client) =>
+app.MapPost("/orders", async (OrderRequest req, DaprWorkflowClient workflowClient) =>
 {
-    var instanceId = $"order-{req.OrderId}";
-    await client.StartWorkflowAsync(
-        workflowComponent: "dapr",
-        workflowName: "OrderWorkflowV2", // point new orders to v2
-        instanceId: instanceId,
+    var instanceId = await workflowClient.ScheduleNewWorkflowAsync(
+        name: nameof(OrderWorkflowV2), // point new orders to v2
+        instanceId: $"order-{req.OrderId}",
         input: req
     );
     return Results.Accepted(instanceId);
@@ -155,4 +139,4 @@ UNSAFE changes (require versioning):
 
 ## Summary
 
-Safe Dapr workflow versioning requires understanding that workflow replay must be deterministic with respect to execution history. The `GetVersionAsync` method provides a first-class mechanism for branching on version within a single workflow class, while deploying separate workflow class versions handles major refactors. Always identify in-flight instances before deploying breaking changes to long-running workflows.
+Safe Dapr workflow versioning requires understanding that workflow replay must be deterministic with respect to execution history. The `IsPatched` method provides a first-class mechanism for conditionally branching within a single workflow class, while deploying separate named workflow versions handles major refactors. Always identify in-flight instances before deploying breaking changes to long-running workflows.
