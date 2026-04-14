@@ -14,23 +14,21 @@ Backpressure occurs when a subscriber cannot process messages as fast as they ar
 
 ## Limit Concurrent Message Handlers
 
-For Kafka, control the number of messages processed simultaneously:
+For Kafka, Dapr does not support a component-level concurrency setting. Instead, use the `app-max-concurrency` sidecar annotation to limit concurrent message delivery to your app:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: pubsub
+  name: order-processor
 spec:
-  type: pubsub.kafka
-  version: v1
-  metadata:
-  - name: brokers
-    value: kafka:9092
-  - name: consumerGroup
-    value: order-service
-  - name: maxConcurrentHandlers
-    value: "5"  # Process max 5 messages at once
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-processor"
+        dapr.io/app-port: "3000"
+        dapr.io/app-max-concurrency: "5"  # Process max 5 messages at once
 ```
 
 For RabbitMQ, use the `prefetchCount` setting:
@@ -64,7 +62,7 @@ app.post("/orders", async (req, res) => {
 });
 ```
 
-Dapr treats 429 as a retryable error and backs off before redelivering.
+Dapr treats any non-2xx, non-404 status code (including 429) as a retryable error and will redeliver the message. To add backoff between retries, configure a resiliency policy with exponential retry as shown below.
 
 ## Configure Retry with Backoff
 
@@ -81,9 +79,7 @@ spec:
       consumerRetry:
         policy: exponential
         maxRetries: 10
-        initialInterval: 500ms
         maxInterval: 60s
-        multiplier: 2
   targets:
     components:
       pubsub:
