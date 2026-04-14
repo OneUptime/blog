@@ -87,13 +87,14 @@ else:
 ## Publishing with the Dapr Python SDK
 
 ```python
+import json
 from dapr.clients import DaprClient
 
 with DaprClient() as client:
     result = client.publish_event(
         pubsub_name="pubsub",
         topic_name="orders",
-        data={"orderId": "123", "item": "book"},
+        data=json.dumps({"orderId": "123", "item": "book"}),
         data_content_type="application/json"
     )
     print(f"Published: {result}")
@@ -142,10 +143,8 @@ func main() {
 Add metadata headers to control message behavior:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/pubsub/orders?metadata.partitionKey=user-456&metadata.ttlInSeconds=3600" \
   -H "Content-Type: application/json" \
-  -H "metadata.partitionKey: user-456" \
-  -H "metadata.ttlInSeconds: 3600" \
   -d '{"orderId": "123"}'
 ```
 
@@ -155,7 +154,9 @@ In Python:
 response = requests.post(
     f"http://localhost:3500/v1.0/publish/pubsub/orders",
     headers={
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
+    },
+    params={
         "metadata.partitionKey": "user-456",
         "metadata.ttlInSeconds": "3600"
     },
@@ -168,7 +169,7 @@ response = requests.post(
 For high-throughput scenarios, use the bulk publish API:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/publish/bulk/pubsub/orders \
+curl -X POST http://localhost:3500/v1.0/publish/bulk/pubsub/orders \
   -H "Content-Type: application/json" \
   -d '[
     {"entryId": "1", "event": {"orderId": "101"}, "contentType": "application/json"},
