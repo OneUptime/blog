@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Outbox Pattern, State Management, Pub/Sub, Microservice
 
-Description: Learn how to implement the transactional outbox pattern in Dapr to guarantee exactly-once message delivery alongside state updates without distributed transactions.
+Description: Learn how to implement the transactional outbox pattern in Dapr to guarantee at-least-once message delivery alongside state updates without distributed transactions.
 
 ---
 
@@ -110,8 +110,8 @@ curl -X POST http://localhost:3500/v1.0/state/statestore/transaction \
             "status": "created"
           },
           "metadata": {
-            "outbox.cloudevent.type": "order.created",
-            "outbox.cloudevent.source": "orderservice"
+            "cloudevent.type": "order.created",
+            "cloudevent.source": "orderservice"
           }
         }
       }
@@ -150,8 +150,8 @@ func createOrder(ctx context.Context, client dapr.Client, order Order) error {
                 Key:   order.OrderID,
                 Value: data,
                 Metadata: map[string]string{
-                    "outbox.cloudevent.type":   "order.created",
-                    "outbox.cloudevent.source": "orderservice",
+                    "cloudevent.type":   "order.created",
+                    "cloudevent.source": "orderservice",
                 },
             },
         },
@@ -231,4 +231,4 @@ def handle_order_created():
 
 ## Summary
 
-Dapr's transactional outbox pattern guarantees that state updates and event publications either both succeed or both fail, eliminating the dual-write problem. Configure it by setting `outboxPublishPubsub` and `outboxPublishTopic` metadata on your state store component, then use the transactional state API with `outbox.cloudevent.*` metadata keys. The pattern delivers at-least-once semantics, so design your subscribers to be idempotent for complete reliability.
+Dapr's transactional outbox pattern guarantees that state updates and event publications either both succeed or both fail, eliminating the dual-write problem. Configure it by setting `outboxPublishPubsub` and `outboxPublishTopic` metadata on your state store component, then use the transactional state API with `cloudevent.*` metadata keys. The pattern delivers at-least-once semantics, so design your subscribers to be idempotent for complete reliability.
