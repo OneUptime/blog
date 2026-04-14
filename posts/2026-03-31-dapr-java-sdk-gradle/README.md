@@ -36,22 +36,20 @@ repositories {
 }
 ```
 
-## Managing Dapr Versions with Platform BOM
+## Adding Dapr Dependencies
 
-Import the Dapr BOM as a platform dependency:
+Add the Dapr SDK dependencies with explicit versions:
 
 ```kotlin
 dependencies {
-    implementation(platform("io.dapr:dapr-sdk-bom:1.13.0"))
-
-    // Core Dapr client - no version needed
-    implementation("io.dapr:dapr-sdk")
+    // Core Dapr client
+    implementation("io.dapr:dapr-sdk:1.13.0")
 
     // Spring Boot integration
-    implementation("io.dapr:dapr-sdk-springboot")
+    implementation("io.dapr:dapr-sdk-springboot:1.13.0")
 
     // Workflow support
-    implementation("io.dapr:dapr-sdk-workflow")
+    implementation("io.dapr:dapr-sdk-workflows:0.13.0")
 
     // Spring Boot starter
     implementation("io.dapr.spring:dapr-spring-boot-starter:0.13.0")
@@ -72,23 +70,24 @@ Define versions centrally in `gradle/libs.versions.toml`:
 ```toml
 [versions]
 dapr = "1.13.0"
+dapr-workflows = "0.13.0"
 dapr-spring = "0.13.0"
 spring-boot = "3.3.0"
 
 [libraries]
 dapr-sdk = { group = "io.dapr", name = "dapr-sdk", version.ref = "dapr" }
 dapr-sdk-springboot = { group = "io.dapr", name = "dapr-sdk-springboot", version.ref = "dapr" }
+dapr-sdk-workflows = { group = "io.dapr", name = "dapr-sdk-workflows", version.ref = "dapr-workflows" }
 dapr-spring-starter = { group = "io.dapr.spring", name = "dapr-spring-boot-starter", version.ref = "dapr-spring" }
-dapr-bom = { group = "io.dapr", name = "dapr-sdk-bom", version.ref = "dapr", type = "pom" }
 ```
 
 Reference in `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation(platform(libs.dapr.bom))
     implementation(libs.dapr.sdk)
     implementation(libs.dapr.sdk.springboot)
+    implementation(libs.dapr.sdk.workflows)
     implementation(libs.dapr.spring.starter)
 }
 ```
@@ -134,4 +133,4 @@ Run it with:
 
 ## Summary
 
-Configuring the Dapr Java SDK in a Gradle project with Kotlin DSL is clean and type-safe. Using the Dapr BOM platform dependency keeps versions consistent across all SDK modules, and a custom `daprRun` task makes it easy to launch your application with the Dapr sidecar during local development.
+Configuring the Dapr Java SDK in a Gradle project with Kotlin DSL is clean and type-safe. Using a Gradle version catalog keeps versions consistent across all SDK modules, and a custom `daprRun` task makes it easy to launch your application with the Dapr sidecar during local development.
