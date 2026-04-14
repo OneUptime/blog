@@ -101,8 +101,8 @@ Delivery Guarantee: At-least-once (default)
 Flow:
 1. Dapr delivers event to subscriber endpoint
 2. If subscriber returns 2xx: message acknowledged, not redelivered
-3. If subscriber returns 4xx: message dropped (permanent failure)
-4. If subscriber returns 5xx: message retried or sent to dead letter topic
+3. If subscriber returns 404: message dropped (permanent failure)
+4. If subscriber returns other non-2xx (including 5xx): message retried or sent to dead letter topic
 5. If subscriber times out: message retried
 
 Application must be idempotent - handle duplicate delivery gracefully
@@ -123,7 +123,7 @@ async function processOrder(data) {
     await fulfillOrder(data);
 
     // Mark as processed
-    await daprClient.state.save('statestore', `processed-${data.orderId}`, { ts: Date.now() });
+    await daprClient.state.save('statestore', [{ key: `processed-${data.orderId}`, value: { ts: Date.now() } }]);
 }
 ```
 
@@ -153,4 +153,4 @@ app.post('/events/order-created-dlq', express.json(), async (req, res) => {
 
 ## Summary
 
-Dapr pub/sub provides a portable event-driven messaging API with CloudEvents formatting, at-least-once delivery, declarative or programmatic subscriptions, and dead letter topics. The key interview points are the delivery guarantee (at-least-once requires idempotent handlers), the acknowledgment protocol (2xx/4xx/5xx response codes), and the portability across brokers via component YAML.
+Dapr pub/sub provides a portable event-driven messaging API with CloudEvents formatting, at-least-once delivery, declarative or programmatic subscriptions, and dead letter topics. The key interview points are the delivery guarantee (at-least-once requires idempotent handlers), the acknowledgment protocol (2xx/404/5xx response codes), and the portability across brokers via component YAML.
