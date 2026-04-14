@@ -26,12 +26,15 @@ az monitor log-analytics workspace create \
   --resource-group dapr-demo \
   --workspace-name dapr-workspace
 
-# Create Application Insights
+# Create Application Insights (use the full resource ID for --workspace)
 az monitor app-insights component create \
   --app dapr-tracing \
   --location eastus \
   --resource-group dapr-demo \
-  --workspace dapr-workspace
+  --workspace "$(az monitor log-analytics workspace show \
+    --resource-group dapr-demo \
+    --workspace-name dapr-workspace \
+    --query id -o tsv)"
 
 # Get the connection string
 az monitor app-insights component show \
@@ -158,8 +161,9 @@ dependencies
 az monitor scheduled-query create \
   --resource-group dapr-demo \
   --name high-latency-alert \
-  --scopes "/subscriptions/.../components/dapr-tracing" \
-  --condition "count 'SELECT * FROM dependencies WHERE duration > 1000' > 10" \
+  --scopes "/subscriptions/<sub-id>/resourceGroups/dapr-demo/providers/microsoft.insights/components/dapr-tracing" \
+  --condition "count 'HighLatencyQuery' > 10" \
+  --condition-query HighLatencyQuery="dependencies | where duration > 1000" \
   --window-size 5m \
   --evaluation-frequency 1m
 ```
