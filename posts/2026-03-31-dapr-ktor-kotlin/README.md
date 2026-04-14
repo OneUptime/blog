@@ -18,6 +18,7 @@ Create a new Ktor project using the Gradle DSL:
 // build.gradle.kts
 plugins {
     kotlin("jvm") version "1.9.21"
+    kotlin("plugin.serialization") version "1.9.21"
     id("io.ktor.plugin") version "2.3.6"
 }
 
@@ -42,7 +43,6 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.reactor.awaitSingle
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -69,6 +69,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.reactor.awaitSingleOrNull
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -95,9 +96,9 @@ fun Application.configureProductRoutes(daprClient: DaprClient) {
                 val products = state.value?.toMutableList() ?: mutableListOf<Any>()
                 products.add(product)
 
-                daprClient.saveState("statestore", "all-products", products).awaitSingle()
-                daprClient.saveState("statestore", "product-${product.id}", product).awaitSingle()
-                daprClient.publishEvent("pubsub", "product-created", product).awaitSingle()
+                daprClient.saveState("statestore", "all-products", products).awaitSingleOrNull()
+                daprClient.saveState("statestore", "product-${product.id}", product).awaitSingleOrNull()
+                daprClient.publishEvent("pubsub", "product-created", product).awaitSingleOrNull()
 
                 call.respond(HttpStatusCode.Created, product)
             }
@@ -129,6 +130,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.reactor.awaitSingleOrNull
 import kotlinx.serialization.json.*
 
 fun Application.configureDaprRoutes(daprClient: DaprClient) {
@@ -158,7 +160,7 @@ fun Application.configureDaprRoutes(daprClient: DaprClient) {
 
                 state.value?.let { product ->
                     val updated = product.copy(stock = newStock)
-                    daprClient.saveState("statestore", "product-$productId", updated).awaitSingle()
+                    daprClient.saveState("statestore", "product-$productId", updated).awaitSingleOrNull()
                 }
             }
 
@@ -180,4 +182,4 @@ dapr run \
 
 ## Summary
 
-Ktor and Dapr combine Kotlin coroutines with cloud-native building blocks for highly concurrent, lightweight microservices. Using `awaitSingle()` from `kotlinx-coroutines-reactor` converts Dapr's reactive Mono types to coroutine-friendly suspend functions, keeping Ktor route handlers clean and non-blocking.
+Ktor and Dapr combine Kotlin coroutines with cloud-native building blocks for highly concurrent, lightweight microservices. Using `awaitSingle()` and `awaitSingleOrNull()` from `kotlinx-coroutines-reactor` converts Dapr's reactive Mono types to coroutine-friendly suspend functions, keeping Ktor route handlers clean and non-blocking. Use `awaitSingle()` for methods that return a value (like `getState()`) and `awaitSingleOrNull()` for void operations (like `saveState()` and `publishEvent()`).
