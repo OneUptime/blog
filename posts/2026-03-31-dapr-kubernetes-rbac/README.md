@@ -13,7 +13,7 @@ Description: Configure Kubernetes RBAC to control access to Dapr component CRDs,
 Dapr uses Kubernetes service accounts and RBAC for several purposes:
 - The Dapr Operator needs permission to read/watch component CRDs cluster-wide
 - Applications can use RBAC to restrict which teams can create/modify Dapr components
-- Dapr mTLS handles app-to-app authorization, but Kubernetes RBAC secures the control plane
+- Dapr mTLS handles app-to-app authentication and encryption, while Kubernetes RBAC secures the control plane
 
 ## Viewing Dapr's Built-In RBAC
 
