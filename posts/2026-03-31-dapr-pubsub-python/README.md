@@ -83,26 +83,27 @@ Create a Flask subscriber:
 
 ```python
 # notification_service.py
-import json
 from flask import Flask, request, jsonify
-from dapr.ext.flask import DaprApp
+from flask_dapr import DaprApp
 
 app = Flask(__name__)
 dapr_app = DaprApp(app)
 
 @dapr_app.subscribe(pubsub="pubsub", topic="order-created")
-def handle_order_created(event):
-    data = json.loads(event.Data)
+def handle_order_created():
+    event = request.get_json()
+    data = event.get("data", {})
     print(f"Sending confirmation for order: {data['orderId']}")
     send_confirmation_email(data["customerId"], data["orderId"])
-    return jsonify(success=True)
+    return jsonify({"status": "SUCCESS"}), 200
 
 @dapr_app.subscribe(pubsub="pubsub", topic="order-cancelled")
-def handle_order_cancelled(event):
-    data = json.loads(event.Data)
+def handle_order_cancelled():
+    event = request.get_json()
+    data = event.get("data", {})
     print(f"Processing cancellation for order: {data['orderId']}")
     process_refund(data["orderId"])
-    return jsonify(success=True)
+    return jsonify({"status": "SUCCESS"}), 200
 
 if __name__ == "__main__":
     app.run(port=5001)
@@ -111,7 +112,7 @@ if __name__ == "__main__":
 ## Installing the Flask Extension
 
 ```bash
-pip install dapr-ext-flask
+pip install flask-dapr
 ```
 
 ## Subscribing with Raw HTTP (No Extension)
