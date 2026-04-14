@@ -45,17 +45,19 @@ import (
     "log"
     "net"
 
+    commonv1 "github.com/dapr/dapr/pkg/proto/common/v1"
     pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
     "google.golang.org/grpc"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 type server struct {
     pb.UnimplementedAppCallbackServer
 }
 
-func (s *server) OnInvoke(ctx context.Context, req *pb.InvokeRequest) (*pb.InvokeResponse, error) {
+func (s *server) OnInvoke(ctx context.Context, req *commonv1.InvokeRequest) (*commonv1.InvokeResponse, error) {
     log.Printf("Received invocation: method=%s", req.Method)
-    return &pb.InvokeResponse{
+    return &commonv1.InvokeResponse{
         Data: &anypb.Any{Value: []byte(`{"status":"ok"}`)},
     }, nil
 }
@@ -91,7 +93,7 @@ func main() {
     defer client.Close()
 
     resp, err := client.InvokeMethod(context.Background(),
-        "grpc-service", "process", "application/json")
+        "grpc-service", "process", "post")
     if err != nil {
         log.Fatal(err)
     }
@@ -101,7 +103,9 @@ func main() {
 
 ## Enabling gRPC Proxying (Pass-through)
 
-For native gRPC-to-gRPC communication, enable gRPC proxying in the Dapr Configuration:
+For native gRPC-to-gRPC communication, Dapr supports gRPC proxying. Since Dapr v1.7, gRPC proxying is stable and enabled by default — no additional configuration is needed.
+
+For older Dapr versions (prior to v1.7), enable gRPC proxying in the Dapr Configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -110,7 +114,7 @@ metadata:
   name: grpcconfig
 spec:
   features:
-  - name: GrpcProxy
+  - name: proxy.grpc
     enabled: true
 ```
 
