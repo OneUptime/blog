@@ -23,6 +23,7 @@ public class FeatureFlagService : IHostedService
     private readonly ILogger<FeatureFlagService> _logger;
     private Dictionary<string, string> _flags = new();
     private string? _subscriptionId;
+    private CancellationTokenSource? _cts;
 
     public FeatureFlagService(
         DaprClient daprClient,
@@ -37,7 +38,7 @@ public class FeatureFlagService : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Read initial values
-        var items = await _daprClient.GetConfigurationAsync(
+        var items = await _daprClient.GetConfiguration(
             "configstore",
             new[] { "feature-new-checkout", "feature-dark-mode" },
             cancellationToken: cancellationToken);
@@ -48,23 +49,28 @@ public class FeatureFlagService : IHostedService
         }
 
         // Subscribe to changes
-        var subscription = await _daprClient.SubscribeConfigurationAsync(
+        _cts = new CancellationTokenSource();
+        var subscription = await _daprClient.SubscribeConfiguration(
             "configstore",
             new[] { "feature-new-checkout", "feature-dark-mode" },
-            HandleConfigurationChange,
-            cancellationToken: cancellationToken);
+            cancellationToken: _cts.Token);
 
         _subscriptionId = subscription.Id;
-    }
 
-    private void HandleConfigurationChange(
-        string storeName, IReadOnlyDictionary<string, ConfigurationItem> changes)
-    {
-        foreach (var (key, item) in changes)
+        // Process updates in background
+        _ = Task.Run(async () =>
         {
-            _logger.LogInformation("Config changed: {Key} = {Value}", key, item.Value);
-            _flags[key] = item.Value;
-        }
+            await foreach (var changes in subscription.Source
+                .WithCancellation(_cts.Token))
+            {
+                foreach (var (key, item) in changes)
+                {
+                    _logger.LogInformation(
+                        "Config changed: {Key} = {Value}", key, item.Value);
+                    _flags[key] = item.Value;
+                }
+            }
+        });
     }
 
     public bool IsEnabled(string flagName)
@@ -75,9 +81,10 @@ public class FeatureFlagService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _cts?.Cancel();
         if (_subscriptionId != null)
         {
-            await _daprClient.UnsubscribeConfigurationAsync(
+            await _daprClient.UnsubscribeConfiguration(
                 "configstore", _subscriptionId, cancellationToken);
         }
     }
@@ -106,9 +113,9 @@ public class FeatureFlagServiceTests
     public async Task StartAsync_LoadsInitialFlags()
     {
         _mockDapr
-            .Setup(d => d.GetConfigurationAsync(
+            .Setup(d => d.GetConfiguration(
                 "configstore",
-                new[] { "feature-new-checkout", "feature-dark-mode" },
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<IReadOnlyDictionary<string, string>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GetConfigurationResponse(
@@ -119,19 +126,31 @@ public class FeatureFlagServiceTests
                 }));
 
         _mockDapr
-            .Setup(d => d.SubscribeConfigurationAsync(
+            .Setup(d => d.SubscribeConfiguration(
                 It.IsAny<string>(),
                 It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<Action<string, IReadOnlyDictionary<string, ConfigurationItem>>>(),
                 It.IsAny<IReadOnlyDictionary<string, string>>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SubscribeConfigurationResponse("sub-1",
-                new CancellationTokenSource().Token));
+            .ReturnsAsync(new SubscribeConfigurationResponse(
+                new EmptyConfigurationSource("sub-1")));
 
         await _service.StartAsync(default);
 
         Assert.True(_service.IsEnabled("feature-new-checkout"));
         Assert.False(_service.IsEnabled("feature-dark-mode"));
+    }
+
+    private class EmptyConfigurationSource : ConfigurationSource
+    {
+        private readonly string _id;
+        public EmptyConfigurationSource(string id) => _id = id;
+        public override string Id => _id;
+        public override async IAsyncEnumerator<IDictionary<string, ConfigurationItem>>
+            GetAsyncEnumerator(CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 }
 ```
@@ -140,7 +159,7 @@ public class FeatureFlagServiceTests
 
 ```bash
 # Update a config value in Redis (Dapr config store)
-redis-cli set dapr.config.feature-new-checkout "false"
+redis-cli set feature-new-checkout "false"
 ```
 
 ```csharp
@@ -153,7 +172,7 @@ public async Task ConfigChange_UpdatesFeatureFlag()
 
     // Simulate a change via Redis CLI or Dapr HTTP API
     await _redisDb.StringSetAsync(
-        "dapr.config.feature-new-checkout", "false");
+        "feature-new-checkout", "false");
 
     // Wait for subscription update
     await Task.Delay(1000);
@@ -164,4 +183,4 @@ public async Task ConfigChange_UpdatesFeatureFlag()
 
 ## Summary
 
-Testing Dapr Configuration changes involves two phases: verifying that `GetConfigurationAsync` loads initial values correctly (unit test with mocks), and verifying that your subscription handler reacts to runtime changes (integration test with real Redis). Mock the full configuration response including version strings, and use brief delays in integration tests to allow subscription callbacks to fire after value updates.
+Testing Dapr Configuration changes involves two phases: verifying that `GetConfiguration` loads initial values correctly (unit test with mocks), and verifying that your subscription handler reacts to runtime changes (integration test with real Redis). Mock the full configuration response including version strings, and use brief delays in integration tests to allow subscription callbacks to fire after value updates.
