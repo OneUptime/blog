@@ -136,12 +136,17 @@ func scatterGatherWithTimeout(
     // Wait for timeout or all vendors to respond
     <-ctx.Done()
 
+    // Drain buffered results without closing the channel to avoid
+    // a race with goroutines that may still be sending
     var quotes []PriceQuote
-    close(quoteCh)
-    for q := range quoteCh {
-        quotes = append(quotes, q)
+    for {
+        select {
+        case q := <-quoteCh:
+            quotes = append(quotes, q)
+        default:
+            return quotes
+        }
     }
-    return quotes
 }
 ```
 
@@ -185,16 +190,12 @@ func handlePriceSearch(w http.ResponseWriter, r *http.Request) {
     var search ProductSearch
     json.NewDecoder(r.Body).Decode(&search)
 
-    quotes, err := scatterGatherWithTimeout(
+    quotes := scatterGatherWithTimeout(
         r.Context(),
         daprClient,
         search,
         2*time.Second,  // Gather responses within 2 seconds
     )
-    if err != nil {
-        http.Error(w, err.Error(), 500)
-        return
-    }
 
     result := aggregate(quotes)
     json.NewEncoder(w).Encode(result)
