@@ -54,7 +54,7 @@ spec:
     policies:
     - appId: order-service
       defaultAction: deny
-      namespaceId: "production"
+      namespace: "production"
       operations:
       - name: /orders
         httpVerb: ["POST"]
@@ -127,7 +127,7 @@ Checklist:
 ## 7. Workflow and Actors
 
 Checklist:
-- [ ] Workflow state store is Redis (not in-memory)
+- [ ] Workflow state store uses a durable, actor-compatible store (e.g., Redis, PostgreSQL — not in-memory)
 - [ ] Actor placement service has `replicaCount >= 3`
 - [ ] Actor idle timeout and scan interval tuned for your workload
 - [ ] Workflow history purge configured to prevent unbounded growth
@@ -150,7 +150,7 @@ Checklist:
 # Useful diagnostic commands
 dapr list -k                                    # list all Dapr apps in cluster
 dapr logs -k -a order-service                  # sidecar logs
-kubectl exec -it <pod> -c daprd -- /daprd help  # sidecar CLI
+kubectl logs <pod> -c daprd                    # sidecar logs directly
 ```
 
 ## Summary
