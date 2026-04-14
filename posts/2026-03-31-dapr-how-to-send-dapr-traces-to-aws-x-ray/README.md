@@ -19,7 +19,7 @@ Dapr Sidecar
     | OTLP (gRPC port 4317)
     v
 OpenTelemetry Collector
-    | AWS X-Ray OTLP (port 2000)
+    | X-Ray API (HTTPS)
     v
 AWS X-Ray Service
     |
@@ -39,10 +39,10 @@ spec:
   tracing:
     samplingRate: "0.1"    # 10% sampling in production to control X-Ray costs
     otel:
-      endpointAddress: "http://otel-collector:4317"
+      endpointAddress: "otel-collector:4317"
       isSecure: false
       protocol: grpc
-  metric:
+  metrics:
     enabled: true
 ```
 
@@ -136,8 +136,8 @@ data:
         log_stream_name: "otel-traces"
         region: "us-east-1"
 
-      logging:
-        loglevel: warn
+      debug:
+        verbosity: basic
 
     service:
       pipelines:
@@ -218,7 +218,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.propagate import extract
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from flask import Flask, request, jsonify
 import os
