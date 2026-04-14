@@ -66,7 +66,7 @@ helm install dapr dapr/dapr \
   --set dapr_operator.runAsNonRoot=true \
   --set dapr_sentry.runAsNonRoot=true \
   --set dapr_placement.runAsNonRoot=true \
-  --set dapr_scheduler.runAsNonRoot=true \
+  --set dapr_scheduler.securityContext.runAsNonRoot=true \
   --wait
 ```
 
@@ -85,17 +85,17 @@ oc adm policy add-scc-to-user dapr-scc \
 
 oc adm policy add-scc-to-user dapr-scc \
   -z dapr-placement -n dapr-system
+
+oc adm policy add-scc-to-user dapr-scc \
+  -z dapr-scheduler -n dapr-system
 ```
 
 ## Enabling Sidecar Injection on OpenShift
 
-OpenShift projects require namespace-level annotations for Dapr injection:
+Dapr sidecar injection is controlled through pod-level annotations on your deployments:
 
 ```bash
-# Annotate the project namespace for Dapr injection
-oc label namespace my-project dapr-enabled=true
-
-# Apply to a deployment
+# Annotate a deployment for Dapr sidecar injection
 oc annotate deployment order-service \
   dapr.io/enabled="true" \
   dapr.io/app-id="order-service" \
