@@ -96,9 +96,9 @@ app.get('/dapr/subscribe', (req, res) => {
   ]);
 });
 
-// Handle messages
+// Handle messages (Dapr wraps payloads in a CloudEvents envelope)
 app.post('/orders', (req, res) => {
-  const order = req.body;
+  const order = req.body.data;
   console.log('Received order:', order.id);
   processOrder(order);
   res.sendStatus(200); // ACK
@@ -128,7 +128,7 @@ spec:
     value: "localhost:6379"
   - name: consumerID
     value: "order-processor"
-  - name: maxLen
+  - name: maxLenApprox
     value: "1000"
 ```
 
