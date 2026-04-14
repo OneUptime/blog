@@ -44,19 +44,17 @@ spec:
   metadata:
   - name: url
     value: "https://dapr-cosmos-account.documents.azure.com:443/"
-  - name: preferredLocations
-    value: "East US,West Europe"
 ```
 
 ## Option 2 - AWS DynamoDB Global Tables
 
-Enable DynamoDB Global Tables for multi-region active-active replication:
+Enable DynamoDB Global Tables for multi-region active-active replication by adding a replica to an existing table:
 
 ```bash
-# Convert to a Global Table
-aws dynamodb create-global-table \
-  --global-table-name DaprState \
-  --replication-group RegionName=us-east-1 RegionName=eu-west-1 \
+# Add a replica in eu-west-1 (table must already exist in us-east-1)
+aws dynamodb update-table \
+  --table-name DaprState \
+  --replica-updates 'Create={RegionName=eu-west-1}' \
   --region us-east-1
 ```
 
@@ -117,7 +115,8 @@ metadata:
   name: statestore-endpoint
   annotations:
     external-dns.alpha.kubernetes.io/hostname: statestore.myapp.io
-    external-dns.alpha.kubernetes.io/aws-routing-policy: latency
+    external-dns.alpha.kubernetes.io/set-identifier: statestore-us-east-1
+    external-dns.alpha.kubernetes.io/aws-region: us-east-1
 ```
 
 ## Handling Replication Lag
@@ -125,13 +124,19 @@ metadata:
 Design your application to handle eventual consistency during replication:
 
 ```javascript
+import { DaprClient, StateConsistencyEnum } from "@dapr/dapr";
+
+const client = new DaprClient();
+
 // Use strong consistency for reads where cross-region sync is critical
 const result = await client.state.get("cosmos-statestore", "critical-config", {
-  consistency: "strong"
+  consistency: StateConsistencyEnum.CONSISTENCY_STRONG
 });
 
 // Use eventual consistency for read-heavy, less critical paths
-const cachedResult = await client.state.get("cosmos-statestore", "popular-product");
+const cachedResult = await client.state.get("cosmos-statestore", "popular-product", {
+  consistency: StateConsistencyEnum.CONSISTENCY_EVENTUAL
+});
 ```
 
 ## Summary
