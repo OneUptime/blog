@@ -88,13 +88,13 @@ And a Python FastAPI equivalent:
 
 ```python
 from fastapi import FastAPI, Response
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = FastAPI()
 
 @app.post("/scheduled-task")
 async def handle_cron():
-    print(f"Cron triggered at: {datetime.utcnow().isoformat()}")
+    print(f"Cron triggered at: {datetime.now(timezone.utc).isoformat()}")
     try:
         await run_scheduled_job()
         return Response(status_code=200)
@@ -115,7 +115,7 @@ Use the Dapr CLI to run your app with the component loaded:
 dapr run \
   --app-id my-scheduler \
   --app-port 3000 \
-  --components-path ./components \
+  --resources-path ./components \
   node app.js
 ```
 
@@ -137,8 +137,14 @@ kind: Deployment
 metadata:
   name: my-scheduler
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-scheduler
   template:
     metadata:
+      labels:
+        app: my-scheduler
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "my-scheduler"
