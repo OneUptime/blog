@@ -136,7 +136,7 @@ publish("orders", {
 publish("reminders", {
     "userId": "USR-001",
     "message": "Your trial expires tomorrow"
-}, metadata={"scheduled_enqueue_time_utc": "2026-04-01T09:00:00Z"})
+}, metadata={"ScheduledEnqueueTimeUtc": "2026-04-01T09:00:00Z"})
 ```
 
 ## Subscriber Service
@@ -200,8 +200,8 @@ curl -X POST \
 To guarantee ordered processing per customer, use message sessions:
 
 ```yaml
-  - name: enableEntityManagement
-    value: "true"
+  - name: disableEntityManagement
+    value: "false"
   - name: requireSessions
     value: "true"
 ```
