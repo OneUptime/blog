@@ -66,7 +66,6 @@ curl -X POST http://localhost:3500/v1.0/publish/pubsub/prices \
 ```python
 import requests
 import os
-import time
 
 DAPR_HTTP_PORT = os.environ.get("DAPR_HTTP_PORT", "3500")
 
@@ -156,39 +155,26 @@ async function publishWithTTL(pubsub, topic, data, ttlSeconds) {
   console.log(`Published to ${topic} with TTL=${ttlSeconds}s`);
 }
 
-// Publish with different TTL values
-await publishWithTTL('pubsub', 'flash-sales', {
-  productId: 'FLASH-001',
-  discount: 50,
-  code: 'FLASH50'
-}, 3600); // 1 hour flash sale
+async function main() {
+  // Publish with different TTL values
+  await publishWithTTL('pubsub', 'flash-sales', {
+    productId: 'FLASH-001',
+    discount: 50,
+    code: 'FLASH50'
+  }, 3600); // 1 hour flash sale
 
-await publishWithTTL('pubsub', 'alerts', {
-  severity: 'warning',
-  message: 'High CPU usage detected'
-}, 300); // 5-minute alert window
+  await publishWithTTL('pubsub', 'alerts', {
+    severity: 'warning',
+    message: 'High CPU usage detected'
+  }, 300); // 5-minute alert window
+}
+
+main();
 ```
 
 ## Component-Level Default TTL
 
 Set a default TTL for all messages in a pub/sub component:
-
-### Redis
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: pubsub
-spec:
-  type: pubsub.redis
-  version: v1
-  metadata:
-  - name: redisHost
-    value: localhost:6379
-  - name: processingTimeout
-    value: "60s"
-```
 
 ### Azure Service Bus
 
