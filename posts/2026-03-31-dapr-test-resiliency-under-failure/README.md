@@ -52,9 +52,10 @@ spec:
         circuitBreaker: defaultCircuitBreaker
     components:
       statestore:
-        timeout: defaultTimeout
-        retry: defaultRetry
-        circuitBreaker: defaultCircuitBreaker
+        outbound:
+          timeout: defaultTimeout
+          retry: defaultRetry
+          circuitBreaker: defaultCircuitBreaker
 ```
 
 ```bash
@@ -104,7 +105,7 @@ for i in {1..20}; do
 done
 ```
 
-After 5 consecutive failures, you should see `503` responses immediately (circuit open), then after 30 seconds, one probe request succeeds and the circuit closes.
+After 5 consecutive failures, you should see `500` responses immediately (circuit open), then after 30 seconds, one probe request succeeds and the circuit closes.
 
 ## Test Timeout Policy
 
@@ -118,7 +119,7 @@ func slowHandler(w http.ResponseWriter, r *http.Request) {
 ```
 
 ```bash
-# This should return 504 after 3 seconds due to Dapr timeout
+# This should return 500 after 3 seconds due to Dapr timeout
 time curl http://localhost:3500/v1.0/invoke/slowservice/method/slow
 ```
 
@@ -129,9 +130,9 @@ time curl http://localhost:3500/v1.0/invoke/slowservice/method/slow
 curl -s http://localhost:9090/api/v1/query \
   --data-urlencode 'query=dapr_resiliency_count{app_id="myapp",name="defaultRetry"}'
 
-# Circuit breaker state (0=closed, 1=open, 2=half-open)
+# Circuit breaker state (returns 4 series with status label: unknown, closed, half-open, open; current state has value 1)
 curl -s http://localhost:9090/api/v1/query \
-  --data-urlencode 'query=dapr_resiliency_cb_state{app_id="myapp"}'
+  --data-urlencode 'query=dapr_resiliency_cb_state{app_id="myapp",status="open"}'
 ```
 
 ## Automate with a Test Script
