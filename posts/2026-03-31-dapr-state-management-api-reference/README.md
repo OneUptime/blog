@@ -126,8 +126,8 @@ curl -X POST \
 
 | Option | Description |
 |---|---|
-| `first-write` | Last writer wins (default) |
-| `last-write` | First writer wins, reject concurrent writes |
+| `first-write` | First writer wins, reject concurrent writes via ETag |
+| `last-write` | Last writer wins (default) |
 
 ## Consistency Options
 
