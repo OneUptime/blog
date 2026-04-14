@@ -170,8 +170,13 @@ metadata:
   namespace: production
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
     metadata:
+      labels:
+        app: api-gateway
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "api-gateway"
