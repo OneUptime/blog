@@ -40,9 +40,10 @@ spec:
   targets:
     components:
       statestore:
-        retry: dbRetry
-        timeout: dbTimeout
-        circuitBreaker: dbCB
+        outbound:
+          retry: dbRetry
+          timeout: dbTimeout
+          circuitBreaker: dbCB
 ```
 
 ```bash
@@ -67,9 +68,9 @@ spec:
     secretKeyRef:
       name: postgres-secret
       key: connectionString
-  - name: maxIdleConns
+  - name: maxConns
     value: "5"
-  - name: connMaxIdleTime
+  - name: connectionMaxIdleTime
     value: "30s"
 ```
 
