@@ -52,10 +52,10 @@ spec:
     value: "kafka-broker:9092"
   - name: maxMessageBytes
     value: "10485760"
-  - name: fetchMin
+  - name: consumerFetchMin
     value: "1048576"       # Fetch at least 1MB per poll
-  - name: fetchWait
-    value: "500ms"         # Wait 500ms to accumulate messages
+  - name: consumerFetchDefault
+    value: "2097152"       # Default fetch size of 2MB per request
   - name: channelBufferSize
     value: "512"           # Larger internal buffer
 ```
