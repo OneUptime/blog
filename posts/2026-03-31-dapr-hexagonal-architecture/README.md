@@ -42,7 +42,7 @@ src/
 ```python
 # core/ports/outbound/OrderRepositoryPort.py
 from abc import ABC, abstractmethod
-from domain.order import Order
+from core.domain.order import Order
 
 class OrderRepositoryPort(ABC):
 
