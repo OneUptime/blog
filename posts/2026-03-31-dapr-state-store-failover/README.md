@@ -27,7 +27,6 @@ spec:
     retries:
       stateRetry:
         policy: exponential
-        initialInterval: 100ms
         maxInterval: 5s
         maxRetries: 5
 
@@ -127,7 +126,7 @@ groups:
 - name: dapr-state-store
   rules:
   - alert: DaprStateStoreHighErrorRate
-    expr: rate(dapr_component_state_get_total{success="false"}[5m]) > 0.05
+    expr: rate(dapr_component_state_count{operation="get", success="false"}[5m]) > 0.05
     for: 2m
     labels:
       severity: critical
