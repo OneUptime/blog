@@ -51,6 +51,7 @@ package main
 
 import (
   "context"
+  "fmt"
   "log"
   dapr "github.com/dapr/go-sdk/client"
 )
@@ -115,15 +116,15 @@ config = load_all_config()
 print(f"Loaded {len(config)} secret values")
 ```
 
-## Using Metadata for Prefix Filtering
+## Using Metadata with Bulk Secrets
 
-Some backends support filtering secrets by prefix. With AWS Secrets Manager:
+Some secret store backends support metadata query parameters. For example, with AWS Secrets Manager you can specify a version stage:
 
 ```bash
-curl "http://localhost:3500/v1.0/secrets/aws-store/bulk?metadata.path=myapp/prod"
+curl "http://localhost:3500/v1.0/secrets/aws-store/bulk?metadata.version_stage=AWSCURRENT"
 ```
 
-This returns only secrets under the `myapp/prod/` path.
+The supported metadata keys depend on the secret store component. Check the Dapr documentation for your specific backend.
 
 ## Caching Bulk Secrets at Startup
 
@@ -148,16 +149,22 @@ func GetConfig(ctx context.Context) *AppConfig {
 
 ## Access Control Considerations
 
-The bulk secrets API returns all secrets your app is authorized to see based on scoping rules. If your component has `allowedSecrets` configured, the bulk endpoint only returns those secrets:
+The bulk secrets API returns all secrets your app is authorized to see based on scoping rules. If your Dapr configuration has `allowedSecrets` configured for the store, the bulk endpoint only returns those secrets:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: appconfig
 spec:
-  type: secretstores.kubernetes
-  version: v1
-  allowedSecrets:
-  - database-password
-  - api-key
-  - jwt-secret
+  secrets:
+    scopes:
+      - storeName: mysecretstore
+        defaultAccess: deny
+        allowedSecrets:
+          - database-password
+          - api-key
+          - jwt-secret
 ```
 
 ## Summary
