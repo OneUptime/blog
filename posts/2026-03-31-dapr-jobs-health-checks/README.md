@@ -47,7 +47,6 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/health-check-database \
 
 ```javascript
 const express = require('express');
-const https = require('https');
 
 const app = express();
 app.use(express.json());
@@ -158,7 +157,6 @@ Handle health alert notifications via Pub/Sub:
 
 ```python
 from flask import Flask, request
-import json
 
 app = Flask(__name__)
 
