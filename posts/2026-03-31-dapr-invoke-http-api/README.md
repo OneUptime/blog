@@ -60,13 +60,17 @@ curl "http://localhost:3500/v1.0/invoke/search-service/method/search?q=dapr&limi
 ```javascript
 const axios = require('axios');
 
-const response = await axios.post(
-  'http://localhost:3500/v1.0/invoke/order-service/method/orders',
-  { item: 'widget', qty: 5 },
-  { headers: { 'Content-Type': 'application/json' } }
-);
+async function createOrder() {
+  const response = await axios.post(
+    'http://localhost:3500/v1.0/invoke/order-service/method/orders',
+    { item: 'widget', qty: 5 },
+    { headers: { 'Content-Type': 'application/json' } }
+  );
 
-console.log(response.data);
+  console.log(response.data);
+}
+
+createOrder();
 ```
 
 ## Handling Errors
@@ -74,9 +78,9 @@ console.log(response.data);
 Dapr propagates HTTP status codes from the target service. Non-2xx responses indicate failure:
 
 ```bash
-# 404 - app-id not found or method not registered
-# 500 - target service returned an error
-# 503 - target service is unavailable
+# 400 - method name not given
+# 403 - invocation forbidden by access control
+# 500 - request failed (e.g., app-id not found or target service error)
 ```
 
 Always check the response status in your code:
