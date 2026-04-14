@@ -120,7 +120,7 @@ Monitor whether your PDB is allowing or blocking disruptions:
 
 ```bash
 kubectl describe pdb order-service-pdb
-# Look for: Disruptions Allowed: 1
+# Look for: Allowed disruptions: 2
 # And: Current Healthy: 3
 ```
 
