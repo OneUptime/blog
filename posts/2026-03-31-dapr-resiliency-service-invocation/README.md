@@ -64,7 +64,7 @@ annotations:
 Your application code does not change. Call the service as usual:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 const client = new DaprClient();
 
 async function processPayment(orderId, amount) {
@@ -80,6 +80,7 @@ async function processPayment(orderId, amount) {
 ```
 
 ```python
+import json
 from dapr.clients import DaprClient
 
 with DaprClient() as d:
@@ -88,7 +89,8 @@ with DaprClient() as d:
         'payment-service',
         'charge',
         data=json.dumps({"orderId": "123", "amount": 99.99}),
-        content_type='application/json'
+        content_type='application/json',
+        http_verb='POST'
     )
 ```
 
