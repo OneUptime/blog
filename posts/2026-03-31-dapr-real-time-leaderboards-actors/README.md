@@ -25,6 +25,8 @@ public interface IPlayerActor : IActor
 [Actor(TypeName = "PlayerActor")]
 public class PlayerActor : Actor, IPlayerActor
 {
+    public PlayerActor(ActorHost host) : base(host) { }
+
     public async Task<int> AddScore(int points)
     {
         var stats = await StateManager.GetOrAddStateAsync("stats",
@@ -35,12 +37,10 @@ public class PlayerActor : Actor, IPlayerActor
         await StateManager.SetStateAsync("stats", stats);
 
         // Notify leaderboard aggregator
-        var daprClient = new DaprClient();
-        await daprClient.InvokeActorMethodAsync<object>(
-            "LeaderboardActor", "global",
-            "UpdateScore",
-            new ScoreUpdate { PlayerId = Id.GetId(), Score = stats.Score }
-        );
+        var proxy = ProxyFactory.CreateActorProxy<ILeaderboardActor>(
+            new ActorId("global"), "LeaderboardActor");
+        await proxy.UpdateScore(
+            new ScoreUpdate { PlayerId = Id.GetId(), Score = stats.Score });
 
         return stats.Score;
     }
@@ -58,32 +58,37 @@ A single `LeaderboardActor` maintains the sorted top players:
 
 ```csharp
 [Actor(TypeName = "LeaderboardActor")]
-public class LeaderboardActor : Actor, ILeaderboardActor
+public class LeaderboardActor : Actor, ILeaderboardActor, IRemindable
 {
+    private readonly DaprClient _daprClient;
     private const int TopN = 100;
+
+    public LeaderboardActor(ActorHost host, DaprClient daprClient) : base(host)
+    {
+        _daprClient = daprClient;
+    }
 
     public async Task UpdateScore(ScoreUpdate update)
     {
         var board = await StateManager.GetOrAddStateAsync(
-            "leaderboard", new SortedList<int, string>());
+            "leaderboard", new Dictionary<string, int>());
 
-        // Remove old entry if exists
-        var oldEntry = board.FirstOrDefault(kv => kv.Value == update.PlayerId);
-        if (oldEntry.Value != null) board.Remove(oldEntry.Key);
-
-        // Insert updated score
-        board[update.Score] = update.PlayerId;
+        // Update player's score
+        board[update.PlayerId] = update.Score;
 
         // Keep only top N
-        while (board.Count > TopN)
-            board.RemoveAt(0);
+        if (board.Count > TopN)
+        {
+            board = board.OrderByDescending(kv => kv.Value)
+                .Take(TopN)
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
 
         await StateManager.SetStateAsync("leaderboard", board);
 
         // Broadcast updated top 10
-        var top10 = board.Reverse().Take(10).ToList();
-        var daprClient = new DaprClient();
-        await daprClient.PublishEventAsync("pubsub", "leaderboard-updates", top10);
+        var top10 = board.OrderByDescending(kv => kv.Value).Take(10).ToList();
+        await _daprClient.PublishEventAsync("pubsub", "leaderboard-updates", top10);
     }
 }
 ```
@@ -91,19 +96,16 @@ public class LeaderboardActor : Actor, ILeaderboardActor
 ## Score Submission API
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, ActorProxyBuilder, ActorId } = require('@dapr/dapr');
 const client = new DaprClient();
+const playerActorBuilder = new ActorProxyBuilder('PlayerActor', client);
 
 // Express endpoint to receive game events
 app.post('/game/score', async (req, res) => {
   const { playerId, points } = req.body;
 
-  const newScore = await client.actor.invoke(
-    'PlayerActor',
-    playerId,
-    'addScore',
-    { points }
-  );
+  const actor = playerActorBuilder.build(new ActorId(playerId));
+  const newScore = await actor.AddScore(points);
 
   res.json({ playerId, newScore });
 });
@@ -122,14 +124,16 @@ const connections = new Set();
 
 wss.on('connection', (ws) => connections.add(ws));
 
-const daprServer = new DaprServer({ serverPort: 3001 });
+const daprServer = new DaprServer({ serverPort: "3001" });
 
-daprServer.pubsub.subscribe('pubsub', 'leaderboard-updates', async (data) => {
+await daprServer.pubsub.subscribe('pubsub', 'leaderboard-updates', async (data) => {
   const message = JSON.stringify({ type: 'leaderboard', rankings: data });
   connections.forEach(ws => {
     if (ws.readyState === WebSocket.OPEN) ws.send(message);
   });
 });
+
+await daprServer.start();
 ```
 
 ## Configure Actor Reminders for Periodic Publishing
@@ -150,8 +154,9 @@ protected override async Task OnActivateAsync()
 public async Task ReceiveReminderAsync(string reminderName, byte[] state,
     TimeSpan dueTime, TimeSpan period)
 {
-    var board = await StateManager.GetStateAsync<SortedList<int, string>>("leaderboard");
-    await daprClient.PublishEventAsync("pubsub", "leaderboard-updates", board);
+    var board = await StateManager.GetStateAsync<Dictionary<string, int>>("leaderboard");
+    var sorted = board.OrderByDescending(kv => kv.Value).ToList();
+    await _daprClient.PublishEventAsync("pubsub", "leaderboard-updates", sorted);
 }
 ```
 
