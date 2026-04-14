@@ -28,7 +28,6 @@ The supported placement settings are the HA and keep-alive values exposed by the
 ```yaml
 dapr_placement:
   ha: true
-  replicaCount: 3
   keepAliveTime: 2s
   keepAliveTimeout: 3s
 ```
@@ -40,7 +39,6 @@ helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --reuse-values
 ```
 
@@ -55,13 +53,13 @@ metadata:
   name: actor-service
 spec:
   template:
+    metadata:
+      annotations:
+        dapr.io/graceful-shutdown-seconds: "25"
     spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: actor-service
-          env:
-            - name: DAPR_GRACEFUL_SHUTDOWN_SECONDS
-              value: "25"
 ```
 
 ## Detecting Rebalancing in Your Application
@@ -90,9 +88,9 @@ async function waitForSidecarReady() {
 Use Prometheus to track how often rebalancing occurs:
 
 ```bash
-# Query placement rebalancing metric
-dapr_placement_host_count
-dapr_placement_table_update_total
+# Query placement rebalancing metrics
+dapr_placement_runtimes_total
+dapr_placement_actorruntimes_total
 ```
 
 Set up an alert if rebalancing is too frequent, which may indicate unstable node membership.
