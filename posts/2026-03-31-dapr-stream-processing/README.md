@@ -31,9 +31,9 @@ spec:
   - name: consumerGroup
     value: stream-processors
   - name: initialOffset
-    value: earliest
-  - name: authRequired
-    value: "false"
+    value: oldest
+  - name: authType
+    value: "none"
 ```
 
 ## Publishing Events to a Stream
@@ -118,7 +118,7 @@ await server.pubsub.subscribeBulk(
 Subscribe only to events matching specific criteria using routing:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: high-temp-subscription
