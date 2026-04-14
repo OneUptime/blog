@@ -17,8 +17,8 @@ Ephemeral containers are temporary containers you inject into a running pod for 
 Find the pod you want to debug and attach an ephemeral container:
 
 ```bash
-# List Dapr-enabled pods
-kubectl get pods -l dapr.io/enabled=true
+# List pods (Dapr-injected pods show an extra container in the READY column)
+kubectl get pods
 
 # Attach an ephemeral debug container
 kubectl debug -it pod/order-service-abc123 \
@@ -38,7 +38,7 @@ Once inside the ephemeral container, query the Dapr sidecar's metadata endpoint:
 wget -qO- http://localhost:3500/v1.0/healthz
 
 # Get Dapr metadata including loaded components
-wget -qO- http://localhost:3500/v1.0/metadata | python3 -m json.tool
+wget -qO- http://localhost:3500/v1.0/metadata
 
 # Check Dapr sidecar version
 wget -qO- http://localhost:3500/v1.0/metadata | grep -i version
@@ -50,10 +50,10 @@ Test connectivity to Dapr components from within the pod network:
 
 ```bash
 # Test Redis connectivity (used by Dapr state store)
-nc -zv redis-master.default.svc.cluster.local 6379
+nc -w 2 redis-master.default.svc.cluster.local 6379 </dev/null && echo "Connected" || echo "Connection failed"
 
 # Test Kafka connectivity (used by Dapr pub/sub)
-nc -zv kafka.default.svc.cluster.local 9092
+nc -w 2 kafka.default.svc.cluster.local 9092 </dev/null && echo "Connected" || echo "Connection failed"
 
 # Check DNS resolution
 nslookup dapr-placement-server.dapr-system.svc.cluster.local
