@@ -28,10 +28,13 @@ spec:
     matchLabels:
       app: ravendb
   template:
+    metadata:
+      labels:
+        app: ravendb
     spec:
       containers:
       - name: ravendb
-        image: ravendb/ravendb:6.0-ubuntu-latest
+        image: ravendb/ravendb:6.0-latest
         ports:
         - containerPort: 8080
           name: http
@@ -43,7 +46,7 @@ spec:
         - name: RAVEN_License_Eula_Accepted
           value: "true"
         - name: RAVEN_Security_UnsecuredAccessAllowed
-          value: "PublicNetwork"
+          value: "PrivateNetwork"
         volumeMounts:
         - name: ravendb-data
           mountPath: /var/lib/ravendb/data
@@ -83,7 +86,7 @@ metadata:
   name: ravendb-state
   namespace: default
 spec:
-  type: state.rethinkdb
+  type: state.ravendb
   version: v1
   metadata:
   - name: serverUrl
@@ -153,13 +156,9 @@ Configure a three-node RavenDB cluster:
 
 ```bash
 # Add nodes to cluster via RavenDB API
-curl -X PUT http://ravendb-0:8080/admin/cluster/node \
-  -H "Content-Type: application/json" \
-  -d '{"Url": "http://ravendb-1:8080", "Tag": "B"}'
+curl -X PUT "http://ravendb-0:8080/admin/cluster/node?url=http://ravendb-1:8080&tag=B"
 
-curl -X PUT http://ravendb-0:8080/admin/cluster/node \
-  -H "Content-Type: application/json" \
-  -d '{"Url": "http://ravendb-2:8080", "Tag": "C"}'
+curl -X PUT "http://ravendb-0:8080/admin/cluster/node?url=http://ravendb-2:8080&tag=C"
 ```
 
 Update the Dapr component to use all cluster nodes:
