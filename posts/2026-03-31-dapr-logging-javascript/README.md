@@ -20,10 +20,10 @@ By default, the Dapr JavaScript SDK logs to the console with minimal output. You
 const { DaprClient, LogLevel } = require("@dapr/dapr");
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: "3500",
   logger: {
-    level: LogLevel.Debug,  // Verbose: Debug, Info, Warn, Error, Disable
+    level: LogLevel.Debug,  // Options: Debug, Verbose, Info, Warn, Error
   },
 });
 ```
@@ -32,12 +32,11 @@ const client = new DaprClient({
 
 | Level | Use Case |
 |---|---|
-| `LogLevel.Verbose` | Maximum detail for deep debugging |
-| `LogLevel.Debug` | Development and troubleshooting |
+| `LogLevel.Debug` | Maximum detail for deep debugging |
+| `LogLevel.Verbose` | Development and troubleshooting |
 | `LogLevel.Info` | Standard production logging |
 | `LogLevel.Warn` | Warnings only |
 | `LogLevel.Error` | Errors only |
-| `LogLevel.Disable` | Disable all SDK logging |
 
 ## Custom Logger Integration with Winston
 
@@ -62,18 +61,17 @@ const winstonLogger = winston.createLogger({
 // Wrap Winston as a Dapr logger
 const daprLogger = {
   level: LogLevel.Info,
-  services: {
+  service: {
     error: (message) => winstonLogger.error(message),
     warn: (message) => winstonLogger.warn(message),
     info: (message) => winstonLogger.info(message),
     verbose: (message) => winstonLogger.verbose(message),
     debug: (message) => winstonLogger.debug(message),
-    silly: (message) => winstonLogger.silly(message),
   },
 };
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: "3500",
   logger: daprLogger,
 });
@@ -90,7 +88,7 @@ const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
   clientOptions: {
-    daprHost: "http://localhost",
+    daprHost: "127.0.0.1",
     daprPort: "3501",
     logger: daprLogger,
   },
