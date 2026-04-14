@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Resiliency, Retry, Microservice, Kubernetes
 
-Description: Configure automatic retry policies for Dapr service invocation and pub/sub using the Resiliency CRD with constant, linear, and exponential backoff strategies.
+Description: Configure automatic retry policies for Dapr service invocation and pub/sub using the Resiliency CRD with constant and exponential backoff strategies.
 
 ---
 
@@ -43,7 +43,7 @@ spec:
   policies:
     retries:
       <policy-name>:
-        policy: <constant|linear|exponential>
+        policy: <constant|exponential>
         duration: <duration>
         maxInterval: <duration>
         maxRetries: <int>
@@ -91,29 +91,9 @@ spec:
         retry: constantRetry
 ```
 
-### Linear Backoff
-
-Wait time increases linearly with each attempt (`duration * attempt`):
-
-```yaml
-spec:
-  policies:
-    retries:
-      linearRetry:
-        policy: linear
-        duration: 500ms
-        maxInterval: 10s
-        maxRetries: 8
-
-  targets:
-    apps:
-      payment-service:
-        retry: linearRetry
-```
-
 ### Exponential Backoff
 
-Wait time doubles each attempt (most common for production):
+Wait time increases exponentially with each attempt (most common for production):
 
 ```yaml
 spec:
@@ -121,10 +101,9 @@ spec:
     retries:
       exponentialRetry:
         policy: exponential
-        initialInterval: 100ms
+        duration: 100ms
         maxInterval: 30s
         maxRetries: 10
-        multiplier: 2.0
 
   targets:
     apps:
@@ -145,7 +124,7 @@ spec:
     retries:
       defaultRetry:
         policy: exponential
-        initialInterval: 200ms
+        duration: 200ms
         maxInterval: 60s
         maxRetries: 5
 
@@ -176,11 +155,11 @@ spec:
     retries:
       jitteredRetry:
         policy: exponential
-        initialInterval: 100ms
+        duration: 100ms
         maxInterval: 30s
         maxRetries: 7
-        multiplier: 1.5
-        matchHttpResponseCodes: [429, 500, 502, 503, 504]
+        matching:
+          httpStatusCodes: "429,500-504"
 ```
 
 ## Pub/Sub Inbound Retry
@@ -205,12 +184,12 @@ spec:
 
 ## Self-Hosted Mode (Local YAML)
 
-In self-hosted mode, place the Resiliency file in the components directory:
+In self-hosted mode, place the Resiliency file in the resources directory:
 
 ```bash
 dapr run \
   --app-id order-service \
-  --components-path ./components \
+  --resources-path ./components \
   -- go run main.go
 ```
 
@@ -225,7 +204,7 @@ spec:
     retries:
       defaultRetry:
         policy: exponential
-        initialInterval: 100ms
+        duration: 100ms
         maxInterval: 15s
         maxRetries: 5
   targets:
@@ -262,4 +241,4 @@ dapr run --app-id order-service --log-level debug -- go run main.go
 
 ## Summary
 
-Dapr Resiliency CRD allows you to declare retry policies (constant, linear, exponential) in YAML and bind them to service invocations or component calls without changing application code. Policies are named and reused across multiple targets. For production systems, exponential backoff with jitter and `matchHttpResponseCodes` filtering is the recommended pattern to handle transient failures gracefully.
+Dapr Resiliency CRD allows you to declare retry policies (constant, exponential) in YAML and bind them to service invocations or component calls without changing application code. Policies are named and reused across multiple targets. For production systems, exponential backoff with `matching.httpStatusCodes` filtering is the recommended pattern to handle transient failures gracefully.
