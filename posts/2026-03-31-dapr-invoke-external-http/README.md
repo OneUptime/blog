@@ -36,7 +36,7 @@ Apply the component:
 ```bash
 kubectl apply -f stripe-api.yaml
 kubectl create secret generic stripe-secret \
-  --from-literal=api-key="sk_live_xxxx"
+  --from-literal=api-key="Bearer sk_live_xxxx"
 ```
 
 ## Invoking the External Endpoint
@@ -49,7 +49,7 @@ curl -X POST http://localhost:3500/v1.0/invoke/stripe-api/method/v1/charges \
 
 Dapr routes this to `https://api.stripe.com/v1/charges` with the Authorization header injected from the secret.
 
-## Using the Python SDK
+## Using Python
 
 ```python
 import requests
@@ -73,8 +73,8 @@ spec:
   targets:
     httpEndpoints:
       stripe-api:
-        retryPolicy: retryThrice
-        timeoutPolicy: fiveSeconds
+        retry: retryThrice
+        timeout: fiveSeconds
   policies:
     retries:
       retryThrice:
