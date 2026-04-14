@@ -41,8 +41,8 @@ annotations:
 JSON log output example:
 
 ```json
-{"level":"info","ts":"2026-03-31T10:05:22Z","msg":"component loaded","app_id":"order-service","component_name":"statestore","component_type":"state.redis"}
-{"level":"info","ts":"2026-03-31T10:05:23Z","msg":"api_response","status":200,"method":"GetState","elapsed_ms":3.5}
+{"level":"info","time":"2026-03-31T10:05:22Z","msg":"component loaded","app_id":"order-service","component_name":"statestore","component_type":"state.redis"}
+{"level":"info","time":"2026-03-31T10:05:23Z","msg":"api_response","status":200,"method":"GetState","elapsed_ms":3.5}
 ```
 
 ## Enabling API Call Logging
