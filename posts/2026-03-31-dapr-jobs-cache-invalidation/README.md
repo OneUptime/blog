@@ -82,11 +82,14 @@ app.post('/job/invalidate-product-cache', async (req, res) => {
 async function deleteCacheKeys(keys) {
   if (keys.length === 0) return;
 
-  const bulkDelete = keys.map(key => ({ key, etag: '' }));
-  await fetch(`${DAPR_URL}/v1.0/state/${STATE_STORE}/bulk`, {
-    method: 'DELETE',
+  const operations = keys.map(key => ({
+    operation: 'delete',
+    request: { key }
+  }));
+  await fetch(`${DAPR_URL}/v1.0/state/${STATE_STORE}/transaction`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(bulkDelete)
+    body: JSON.stringify({ operations })
   });
 }
 
@@ -111,20 +114,19 @@ app.listen(6001);
 
 ## Using Redis Directly via Dapr Binding
 
-For Redis-backed caches, use the Dapr Redis binding to execute a pattern-based flush:
+For Redis-backed caches, use the Dapr Redis binding to delete specific cache keys:
 
 ```python
 import requests
 import json
 
-def invalidate_cache_by_pattern(pattern: str):
+def invalidate_cache_key(key: str):
     response = requests.post(
         "http://localhost:3500/v1.0/bindings/redis-binding",
         json={
             "operation": "delete",
             "metadata": {
-                "key": pattern,
-                "del-match": "true"
+                "key": key
             }
         }
     )
@@ -148,7 +150,7 @@ func handleCacheInvalidation(ctx context.Context, job *common.JobEvent) error {
     // Warmup with fresh data
     freshConfig := loadConfigFromDatabase()
     for k, v := range freshConfig {
-        daprClient.SaveState(ctx, "statestore", k, v, nil)
+        daprClient.SaveState(ctx, "statestore", k, []byte(v), nil)
     }
 
     log.Println("Cache invalidation and warmup complete")
