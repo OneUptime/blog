@@ -100,13 +100,13 @@ Response:
 
 ```json
 [
-  {"key": "order:001", "data": {"orderId": "001", "status": "pending"}, "etag": "1"},
-  {"key": "order:002", "data": {"orderId": "002", "status": "shipped"}, "etag": "2"},
-  {"key": "order:003", "data": null, "etag": ""}
+  {"key": "order:001", "value": {"orderId": "001", "status": "pending"}, "etag": "1"},
+  {"key": "order:002", "value": {"orderId": "002", "status": "shipped"}, "etag": "2"},
+  {"key": "order:003", "value": null, "etag": ""}
 ]
 ```
 
-Keys with no data return `null` without an error.
+Keys with no value return `null` without an error.
 
 ## Deleting State
 
@@ -241,14 +241,13 @@ sequenceDiagram
 
 | Status Code | Meaning |
 |-------------|---------|
-| 204 | Success (save/delete) |
 | 200 | Success (get/bulk) |
+| 204 | Success (save/delete) or key not found (get) |
 | 400 | Bad request (malformed body) |
-| 404 | Key not found returns empty body with 200, not 404 |
 | 409 | ETag conflict (first-write concurrency) |
 | 500 | State store error |
 
-Note: Getting a nonexistent key returns `200 OK` with an empty body, not a 404.
+Note: Getting a nonexistent key returns `204 No Content` with an empty body, not a 404.
 
 ## Summary
 
