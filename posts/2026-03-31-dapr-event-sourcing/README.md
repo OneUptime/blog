@@ -119,6 +119,7 @@ func (a *Account) Apply(event Event) {
     case events.AccountOpened:
         var data struct{ InitialBalance float64 }
         json.Unmarshal(event.Data, &data)
+        a.ID = event.AggregateID
         a.Balance = data.InitialBalance
         a.Status = "open"
     case events.MoneyDeposited:
