@@ -28,8 +28,6 @@ spec:
   metadata:
   - name: brokers
     value: "kafka-broker:9092"
-  - name: consumerGroup
-    value: "task-workers"
   - name: authType
     value: "none"
 ```
@@ -40,7 +38,6 @@ spec:
 package main
 
 import (
-    "context"
     "encoding/json"
     "fmt"
     "net/http"
