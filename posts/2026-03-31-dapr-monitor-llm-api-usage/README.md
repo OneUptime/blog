@@ -91,7 +91,7 @@ def record_metrics(metrics: ConversationMetrics):
                 "success": metrics.success,
                 "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             },
-            "options": {"ttlInSeconds": 86400}  # Retain 24 hours
+            "metadata": {"ttlInSeconds": "86400"}  # Retain 24 hours
         }]
     )
 
