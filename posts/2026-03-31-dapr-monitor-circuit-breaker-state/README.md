@@ -92,7 +92,7 @@ rate(
 
 ## Alerting on Circuit Breaker Trips
 
-Create a Prometheus alert rule that fires when a circuit breaker trips more than once in 5 minutes:
+Create a Prometheus alert rule that fires when a circuit breaker trips at least once in 5 minutes:
 
 ```yaml
 groups:
