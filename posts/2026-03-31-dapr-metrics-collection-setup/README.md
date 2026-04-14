@@ -12,9 +12,9 @@ Dapr exposes Prometheus-compatible metrics from each sidecar and from the contro
 
 ## How Dapr Exposes Metrics
 
-Each Dapr sidecar exposes metrics on port 9090 by default at the `/metrics` endpoint. The Dapr control plane components (daprd, dapr-operator, dapr-sentry, dapr-placement) also expose their own metrics endpoints.
+Each Dapr sidecar exposes metrics on port 9090 by default at the `/metrics` endpoint. The Dapr control plane components (dapr-operator, dapr-sentry, dapr-placement, dapr-scheduler, dapr-sidecar-injector) also expose their own metrics endpoints.
 
-Metrics are disabled by default in some installations, so you need to verify they are enabled.
+Metrics are enabled by default. You can verify they are working by checking the metrics endpoint on each sidecar.
 
 ## Step 1 - Enable Metrics on Dapr Sidecars
 
@@ -54,7 +54,7 @@ curl http://localhost:9090/metrics | grep dapr_
 You should see metrics like:
 
 ```text
-dapr_grpc_server_io_latency_bucket{...} 0
+dapr_grpc_io_server_server_latency_bucket{...} 0
 dapr_http_server_request_count{...} 42
 dapr_component_pubsub_ingress_latencies_bucket{...} 5
 ```
