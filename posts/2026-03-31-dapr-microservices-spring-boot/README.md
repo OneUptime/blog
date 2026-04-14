@@ -134,12 +134,12 @@ Use the Dapr CLI to start each service:
 ```bash
 # Terminal 1 - Order Service
 dapr run --app-id order-service --app-port 8081 \
-  --components-path ./dapr/components \
+  --resources-path ./dapr/components \
   -- java -jar order-service.jar
 
 # Terminal 2 - Inventory Service
 dapr run --app-id inventory-service --app-port 8082 \
-  --components-path ./dapr/components \
+  --resources-path ./dapr/components \
   -- java -jar inventory-service.jar
 ```
 
