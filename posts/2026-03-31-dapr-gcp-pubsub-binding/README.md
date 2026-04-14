@@ -104,14 +104,8 @@ const app = express();
 app.use(express.json());
 
 app.post("/order-events", async (req, res) => {
-  // Pub/Sub delivers base64-encoded data
-  let message;
-  if (req.body.message) {
-    const data = Buffer.from(req.body.message.data, "base64").toString("utf8");
-    message = JSON.parse(data);
-  } else {
-    message = req.body;
-  }
+  // Dapr delivers the decoded message data directly in req.body
+  const message = req.body;
 
   console.log(`Processing ${message.eventType} for order ${message.orderId}`);
 
@@ -140,24 +134,15 @@ app.listen(3000);
 
 ## Setting Message Attributes
 
-GCP Pub/Sub supports message attributes for filtering:
-
-```javascript
-await client.binding.send(
-  "order-events",
-  "create",
-  orderPayload,
-  {
-    region: "us-west1",
-    eventType: "order.placed",
-    priority: "high",
-  }
-);
-```
-
-Create a subscription with attribute filter:
+GCP Pub/Sub supports message attributes for subscription-level filtering. Note that the Dapr GCP Pub/Sub binding does not currently forward request metadata as Pub/Sub message attributes. To use attribute-based filtering, publish messages with attributes using the GCP client library directly or the `gcloud` CLI, and create a filtered subscription:
 
 ```bash
+# Publish a message with attributes using gcloud
+gcloud pubsub topics publish order-events \
+  --message='{"orderId":"ORD-001"}' \
+  --attribute=priority=high,region=us-west1
+
+# Create a subscription with attribute filter
 gcloud pubsub subscriptions create high-priority-sub \
   --topic=order-events \
   --message-filter='attributes.priority = "high"'
@@ -165,4 +150,4 @@ gcloud pubsub subscriptions create high-priority-sub \
 
 ## Summary
 
-The Dapr GCP Pub/Sub binding provides a straightforward way to publish and consume messages from Google Cloud Pub/Sub without the GCP client library. Configure the binding with your service account credentials, use the `create` operation to publish, and implement an HTTP endpoint to consume messages. Pub/Sub's message attributes enable subscription-level filtering for efficient event routing across services.
+The Dapr GCP Pub/Sub binding provides a straightforward way to publish and consume messages from Google Cloud Pub/Sub without the GCP client library. Configure the binding with your service account credentials, use the `create` operation to publish, and implement an HTTP endpoint to consume messages. For advanced use cases like attribute-based subscription filtering, you can complement the Dapr binding with direct GCP Pub/Sub CLI or client library calls.
