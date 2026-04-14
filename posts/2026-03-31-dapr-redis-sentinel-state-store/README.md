@@ -93,7 +93,7 @@ kubectl exec -n redis redis-node-0 -- \
 Watch Sentinel elect a new primary:
 
 ```bash
-kubectl logs -n redis redis-node-1 -f | grep "LFAILOVER\|elected"
+kubectl logs -n redis redis-node-1 -f | grep "failover\|elected-leader"
 ```
 
 Your Dapr application should continue serving state requests within seconds of the failover.
