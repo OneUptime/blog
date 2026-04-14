@@ -77,6 +77,8 @@ spec:
   metadata:
     - name: brokers
       value: "kafka:9092"
+    - name: authType
+      value: "none"
     - name: consumerGroup
       value: "order-processor"
 ---
@@ -103,13 +105,11 @@ Temporarily modify publishers to write to both brokers:
 import requests
 
 def publish_order(order):
-    payload = {"data": order}
-
     # Publish to both brokers
     requests.post("http://localhost:3500/v1.0/publish/kafka-pubsub/orders",
-                  json=payload)
+                  json=order)
     requests.post("http://localhost:3500/v1.0/publish/servicebus-pubsub/orders",
-                  json=payload)
+                  json=order)
 ```
 
 ### Step 5: Migrate Consumers
