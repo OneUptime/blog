@@ -105,17 +105,17 @@ data:
           http:
             endpoint: 0.0.0.0:4318
     exporters:
-      jaeger:
-        endpoint: jaeger-collector.monitoring.svc.cluster.local:14250
+      otlp/jaeger:
+        endpoint: jaeger-collector.monitoring.svc.cluster.local:4317
         tls:
           insecure: true
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger, debug]
 ```
 
 ### Tracing in Self-Hosted Mode with Zipkin
@@ -180,14 +180,9 @@ scrape_configs:
     - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_enabled]
       action: keep
       regex: "true"
-    - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_metrics_port]
-      action: replace
+    - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_dapr_io_metrics_port]
+      separator: ':'
       target_label: __address__
-      regex: (.+)
-      replacement: ${1}
-    - source_labels: [__meta_kubernetes_pod_ip]
-      target_label: __address__
-      replacement: $1:9090
 ```
 
 ### Key Dapr Metrics
@@ -204,10 +199,12 @@ scrape_configs:
 
 ### Grafana Dashboard
 
-Import the official Dapr Grafana dashboard (ID `12269`) or use the dashboards from the Dapr GitHub repository:
+Import the official Dapr Grafana dashboard (ID `12269`) from the Grafana dashboard marketplace, or use the dashboard JSON files from the Dapr GitHub repository by importing them through the Grafana UI (Dashboards > Import) or the Grafana HTTP API:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/master/grafana/system-services-monitoring.json
+curl -X POST http://localhost:3000/api/dashboards/db \
+  -H "Content-Type: application/json" \
+  -d @system-services-monitoring.json
 ```
 
 ## Part 3 - Structured Logging
