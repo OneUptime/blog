@@ -14,7 +14,7 @@ The Dapr PHP SDK (`dapr/php-sdk`) lets PHP applications use Dapr building blocks
 
 ## Prerequisites
 
-- PHP 8.0 or higher
+- PHP 8.4 or higher
 - Composer
 - Dapr CLI installed
 
@@ -51,10 +51,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use Dapr\Client\DaprClient;
 
-// Default: connects to localhost:3500
-$client = DaprClient::clientBuilder()
-    ->withHttpClient(new \GuzzleHttp\Client())
-    ->build();
+// Default: connects to http://127.0.0.1:3500
+$client = DaprClient::clientBuilder()->build();
 
 echo "Dapr client created successfully\n";
 ```
@@ -65,14 +63,11 @@ The SDK supports PHP-DI for injecting the Dapr runtime:
 
 ```php
 <?php
-use DI\ContainerBuilder;
-use Dapr\DaprClient;
+use Dapr\App;
+use Dapr\Client\DaprClient;
 
-$builder = new ContainerBuilder();
-$builder->addDefinitions(\Dapr\App::get_definitions());
-$container = $builder->build();
-
-$client = $container->get(DaprClient::class);
+$app = App::create();
+$client = $app->run(fn(DaprClient $client) => $client);
 ```
 
 ## Saving and Reading State
@@ -84,14 +79,14 @@ use Dapr\Client\DaprClient;
 $client = DaprClient::clientBuilder()->build();
 
 // Save state
-$client->trySaveState(
+$client->saveState(
     storeName: 'statestore',
     key: 'user-001',
     value: ['name' => 'Alice', 'email' => 'alice@example.com']
 );
 
 // Read state
-$state = $client->tryGetState(
+$state = $client->getState(
     storeName: 'statestore',
     key: 'user-001',
     asType: 'array'
@@ -142,7 +137,6 @@ curl http://localhost:3500/v1.0/state/statestore/user-001
 ```bash
 # Override Dapr sidecar port
 export DAPR_HTTP_PORT=3500
-export DAPR_GRPC_PORT=50001
 
 # App token for Dapr API auth
 export APP_API_TOKEN=your-token
