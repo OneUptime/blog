@@ -90,36 +90,34 @@ const server = new DaprServer({
 });
 
 // Subscribe with routing rules
-server.pubsub.subscribeWithOptions('events-pubsub', 'orders', {
-  route: {
-    rules: [
-      {
-        match: 'event.data.orderType == "express"',
-        path: '/orders/express',
-      },
-      {
-        match: 'event.data.region == "eu-west"',
-        path: '/orders/eu',
-      },
-    ],
-    default: '/orders/default',
-  },
+await server.pubsub.subscribe('events-pubsub', 'orders', {
+  default: '/orders/default',
+  rules: [
+    {
+      match: 'event.data.orderType == "express"',
+      path: '/orders/express',
+    },
+    {
+      match: 'event.data.region == "eu-west"',
+      path: '/orders/eu',
+    },
+  ],
 });
 
 // Handler for express orders
-server.pubsub.subscribe('events-pubsub', 'orders/express', async (data) => {
+server.pubsub.subscribeToRoute('events-pubsub', 'orders', 'orders/express', async (data) => {
   console.log(`Express order received: ${data.orderId} in ${data.region}`);
   await processExpressOrder(data);
 });
 
 // Handler for EU orders
-server.pubsub.subscribe('events-pubsub', 'orders/eu', async (data) => {
+server.pubsub.subscribeToRoute('events-pubsub', 'orders', 'orders/eu', async (data) => {
   console.log(`EU order received: ${data.orderId}`);
   await processEUOrder(data);
 });
 
 // Default handler
-server.pubsub.subscribe('events-pubsub', 'orders/default', async (data) => {
+server.pubsub.subscribeToRoute('events-pubsub', 'orders', 'orders/default', async (data) => {
   console.log(`Standard order received: ${data.orderId}`);
   await processStandardOrder(data);
 });
