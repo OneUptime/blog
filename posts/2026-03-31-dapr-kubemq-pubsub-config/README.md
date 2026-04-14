@@ -48,15 +48,25 @@ kubectl get service kubemq-cluster -n kubemq
 # PORT: 50000
 ```
 
-## Creating an API Token
+## Creating an Auth Token
 
 ```bash
 # Install kubemqctl
-brew install kubemq/tools/kubemqctl
+curl -sL https://get.kubemq.io/install | sudo sh
 
-# Get auth token
-kubemqctl cluster context set --host localhost --port 8080
-kubemqctl auth create-token --name dapr-token --expiry 365
+# Generate an RSA key pair for JWT authentication
+openssl genrsa -out private.pem 2048
+openssl rsa -in private.pem -pubout -out public.pem
+
+# Configure KubeMQ cluster with the public key for token verification
+kubemqctl create cluster --authentication-enabled \
+  --authentication-public-key-file ./public.pem \
+  --authentication-public-key-type "RS256"
+
+# Generate a JWT token signed with the private key using any JWT tool
+# The token should be stored in a Kubernetes secret for the Dapr component
+kubectl create secret generic kubemq-secret \
+  --from-literal=authToken=<your-jwt-token> -n default
 ```
 
 ## Dapr Component Configuration
@@ -73,8 +83,6 @@ spec:
   metadata:
   - name: address
     value: "kubemq-cluster.kubemq.svc.cluster.local:50000"
-  - name: channel
-    value: "orders"
   - name: group
     value: "order-processors"
   - name: clientID
@@ -85,12 +93,6 @@ spec:
       key: authToken
   - name: store
     value: "true"
-  - name: concurrency
-    value: "10"
-  - name: pollMaxItems
-    value: "32"
-  - name: defaultChannelSize
-    value: "1"
 ```
 
 ## Publishing Messages
