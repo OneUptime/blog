@@ -82,10 +82,9 @@ data:
       urls = ["http://order-service.default.svc:9090/metrics",
               "http://payment-service.default.svc:9090/metrics"]
       metric_version = 2
-      tags_ignore = ["le"]
+      tagexclude = ["le"]
 
     [[inputs.prometheus]]
-      kubernetes_services = ["http://kubernetes.default.svc:443/api/v1/services"]
       monitor_kubernetes_pods = true
       monitor_kubernetes_pods_namespace = "default"
       kubernetes_label_selector = "dapr.io/enabled=true"
@@ -115,8 +114,8 @@ from(bucket: "dapr-metrics")
 from(bucket: "dapr-metrics")
   |> range(start: -30m)
   |> filter(fn: (r) => r._measurement == "dapr_http_server_latency_bucket")
-  |> group(columns: ["app_id", "le"])
-  |> quantile(q: 0.99, method: "estimate_tdigest")
+  |> group(columns: ["app_id"])
+  |> histogramQuantile(quantile: 0.99)
   |> yield(name: "p99_latency")
 ```
 
