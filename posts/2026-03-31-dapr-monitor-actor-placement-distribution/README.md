@@ -18,45 +18,52 @@ The placement service uses a consistent hash ring to assign actor types to speci
 
 ## Enabling Placement Metrics
 
-The placement service exposes metrics on port 9091 by default:
+The placement service exposes metrics on port 9090 by default:
 
 ```bash
 # Check placement service metrics
-kubectl port-forward svc/dapr-placement-server 9091:9091 -n dapr-system
+kubectl port-forward svc/dapr-placement-server 9090:9090 -n dapr-system
 
-curl http://localhost:9091/metrics | grep dapr_placement
+curl http://localhost:9090/metrics | grep dapr_placement
 ```
 
-Key metrics:
+Key placement service metrics:
 
 ```bash
-# Total actors per pod
-dapr_placement_actor_count
+# Connected Dapr sidecars
+dapr_placement_runtimes_total
+
+# Actor runtimes reported to placement
+dapr_placement_actorruntimes_total
+```
+
+Key sidecar actor metrics (exposed by each daprd sidecar on its metrics port):
+
+```bash
+# Total actor activations
+dapr_runtime_actor_activated_total
+
+# Total actor deactivations
+dapr_runtime_actor_deactivated_total
 
 # Rebalancing events
-dapr_placement_actor_rebalanced_total
-
-# Placement latency
-dapr_placement_lookup_latency_ms_bucket
-
-# Connected Dapr sidecars
-dapr_placement_runtime_total
+dapr_runtime_actor_rebalanced_total
 ```
 
 ## Prometheus Queries for Placement Health
 
 ```bash
-# Actor count per pod (should be roughly equal)
-dapr_placement_actor_count by (pod)
+# Active actors per pod (approximate using activation/deactivation counters)
+sum by (pod) (increase(dapr_runtime_actor_activated_total[1h]) - increase(dapr_runtime_actor_deactivated_total[1h]))
 
 # Actor distribution coefficient of variation (lower = more even)
-stddev(dapr_placement_actor_count) / avg(dapr_placement_actor_count)
+stddev by () (sum by (pod) (increase(dapr_runtime_actor_activated_total[1h]) - increase(dapr_runtime_actor_deactivated_total[1h]))) / avg by () (sum by (pod) (increase(dapr_runtime_actor_activated_total[1h]) - increase(dapr_runtime_actor_deactivated_total[1h])))
 
 # Rebalancing rate (should be low outside deployments)
-rate(dapr_placement_actor_rebalanced_total[5m])
+rate(dapr_runtime_actor_rebalanced_total[5m])
 
-# Active actors per actor type
-sum by (actor_type) (dapr_actor_activated_total - dapr_actor_deactivated_total)
+# Activation rate per actor type
+sum by (actor_type) (rate(dapr_runtime_actor_activated_total[5m]))
 ```
 
 ## Grafana Dashboard for Placement
@@ -69,7 +76,7 @@ sum by (actor_type) (dapr_actor_activated_total - dapr_actor_deactivated_total)
       "title": "Actors per Pod",
       "type": "bar",
       "targets": [{
-        "expr": "dapr_placement_actor_count"
+        "expr": "sum by (pod) (increase(dapr_runtime_actor_activated_total[1h]) - increase(dapr_runtime_actor_deactivated_total[1h]))"
       }],
       "fieldConfig": {
         "thresholds": {
@@ -85,7 +92,7 @@ sum by (actor_type) (dapr_actor_activated_total - dapr_actor_deactivated_total)
       "title": "Rebalancing Events/min",
       "type": "stat",
       "targets": [{
-        "expr": "sum(rate(dapr_placement_actor_rebalanced_total[1m])) * 60"
+        "expr": "sum(rate(dapr_runtime_actor_rebalanced_total[1m])) * 60"
       }]
     }
   ]
@@ -94,12 +101,12 @@ sum by (actor_type) (dapr_actor_activated_total - dapr_actor_deactivated_total)
 
 ## Detecting Hot Spots
 
-```bash
+```yaml
 # Alert when one pod has more than 2x the average actor count
 - alert: ActorHotSpot
   expr: |
-    max(dapr_placement_actor_count) >
-    2 * avg(dapr_placement_actor_count)
+    max(sum by (pod) (increase(dapr_runtime_actor_activated_total[1h]) - increase(dapr_runtime_actor_deactivated_total[1h]))) >
+    2 * avg(sum by (pod) (increase(dapr_runtime_actor_activated_total[1h]) - increase(dapr_runtime_actor_deactivated_total[1h])))
   for: 5m
   labels:
     severity: warning
@@ -112,25 +119,23 @@ sum by (actor_type) (dapr_actor_activated_total - dapr_actor_deactivated_total)
 Check per-type counts to find which actor types are concentrated:
 
 ```bash
-# Activate count per type
+# Activation rate per type
 sum by (actor_type) (
-  rate(dapr_actor_activated_total[5m])
+  rate(dapr_runtime_actor_activated_total[5m])
 )
 ```
 
-## Inspecting Placement via Dapr Debug API
+## Inspecting Placement via Dapr Metadata API
 
 ```bash
-# Get current placement table for your app
-curl http://localhost:3500/v1.0/metadata | jq '.actors'
+# Get active actor types for your app
+curl http://localhost:3500/v1.0/metadata | jq '.actorRuntime.activeActors'
 
-# Response shows registered actor types
-{
-  "actors": [
-    {"type": "OrderActor", "count": 142},
-    {"type": "CustomerActor", "count": 87}
-  ]
-}
+# Response shows registered actor types and their counts
+[
+  {"type": "OrderActor", "count": 142},
+  {"type": "CustomerActor", "count": 87}
+]
 ```
 
 ## Scaling Recommendations
