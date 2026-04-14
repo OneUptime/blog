@@ -10,7 +10,7 @@ Description: Configure Dapr structured logging to integrate with Google Cloud Lo
 
 ## Overview
 
-Google Cloud Logging (formerly Stackdriver Logging) aggregates logs from all your GKE workloads. Dapr emits structured JSON logs by default, which Cloud Logging parses automatically. By tuning Dapr's log level and format, you can filter, analyze, and alert on microservice log events.
+Google Cloud Logging (formerly Stackdriver Logging) aggregates logs from all your GKE workloads. Dapr can be configured to emit structured JSON logs, which Cloud Logging parses automatically. By enabling JSON log format and tuning Dapr's log level, you can filter, analyze, and alert on microservice log events.
 
 ## Prerequisites
 
@@ -25,8 +25,7 @@ Set Dapr to emit JSON logs via Helm values:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set global.logAsJson=true \
-  --set global.logLevel=info
+  --set global.logAsJson=true
 ```
 
 Or set per-app via annotations:
@@ -92,8 +91,8 @@ gcloud alpha monitoring policies create \
   --display-name="Dapr Error Spike" \
   --condition-display-name="Error log count > 10" \
   --condition-filter='metric.type="logging.googleapis.com/user/dapr-errors"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-duration=60s \
+  --if="> 10" \
+  --duration=60s \
   --notification-channels=my-channel
 ```
 
@@ -115,7 +114,7 @@ SELECT
   jsonPayload.app_id,
   jsonPayload.level,
   COUNT(*) as count
-FROM `my-project.dapr_logs.k8s_container_*`
+FROM `my-project.dapr_logs.stdout`
 WHERE DATE(_PARTITIONTIME) = CURRENT_DATE()
 GROUP BY 1, 2
 ORDER BY 3 DESC;
