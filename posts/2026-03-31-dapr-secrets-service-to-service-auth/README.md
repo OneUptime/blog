@@ -72,7 +72,7 @@ Store the JWT signing key in Dapr secrets and use it to issue and verify tokens:
 ```python
 import httpx
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 async def get_jwt_secret() -> str:
     async with httpx.AsyncClient() as client:
@@ -85,8 +85,8 @@ async def create_service_token(caller_service: str) -> str:
     secret = await get_jwt_secret()
     payload = {
         "sub": caller_service,
-        "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(minutes=5)
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5)
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
@@ -100,7 +100,7 @@ async def verify_service_token(token: str) -> dict:
 Inject an auth header when invoking another Dapr service:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient();
 
