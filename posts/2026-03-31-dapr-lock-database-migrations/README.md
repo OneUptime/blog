@@ -89,27 +89,33 @@ def migrations_complete():
 
 ## Using an Init Container
 
-Alternatively, run migrations in a Kubernetes init container that only the first pod executes:
+You can run migrations in a Kubernetes init container so they complete before the main application starts. However, because the Dapr sidecar is injected as a regular container, it is not available during init container execution by default. To make Dapr accessible to init containers, enable the native sidecar feature (requires Kubernetes 1.28+):
 
 ```yaml
-initContainers:
-- name: migrate
-  image: myapp:latest
-  command: ["python", "migrate.py"]
-  env:
-  - name: POD_NAME
-    valueFrom:
-      fieldRef:
-        fieldPath: metadata.name
-  - name: DAPR_HTTP_PORT
-    value: "3500"
+metadata:
+  annotations:
+    dapr.io/enabled: "true"
+    dapr.io/app-id: "myapp"
+    dapr.io/enable-native-sidecar: "true"
+spec:
+  initContainers:
+  - name: migrate
+    image: myapp:latest
+    command: ["python", "migrate.py"]
+    env:
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: DAPR_HTTP_PORT
+      value: "3500"
 ```
 
-Since init containers run before the main container, combined with the Dapr lock, migrations are guaranteed to complete before the app starts.
+With native sidecar injection, the Dapr sidecar starts as a Kubernetes native sidecar container (an init container with `restartPolicy: Always`) before the migration init container, so Dapr APIs are available. Migrations are then guaranteed to complete before the main app container starts.
 
 ## Kubernetes Job Alternative
 
-Use a Kubernetes Job with Dapr for one-time migrations:
+Use a Kubernetes Job with Dapr for one-time migrations. Set `restartPolicy` to `Never` so the pod does not restart after the Dapr sidecar shuts down:
 
 ```yaml
 apiVersion: batch/v1
@@ -123,12 +129,23 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "migrator"
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: migrator
         image: myapp:latest
         command: ["python", "migrate.py"]
 ```
+
+After migrations complete, you must call the Dapr shutdown API so the sidecar exits and the Job finishes. Otherwise the pod will hang indefinitely:
+
+```python
+import requests
+
+def shutdown_dapr():
+    requests.post("http://localhost:3500/v1.0/shutdown")
+```
+
+Call `shutdown_dapr()` at the end of your `migrate.py` script after all migrations have run.
 
 ## Locking Per Migration Version
 
