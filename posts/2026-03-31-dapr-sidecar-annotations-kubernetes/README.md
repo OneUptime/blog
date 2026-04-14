@@ -33,9 +33,6 @@ metadata:
     # Use grpc if your app uses gRPC (default: http)
     dapr.io/app-protocol: "http"
 
-    # Enable gRPC proxying for service invocation
-    dapr.io/enable-api-logging: "true"
-
     # Set max request body size in MB (default: 4)
     dapr.io/http-max-request-size: "16"
 
@@ -93,6 +90,9 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
       labels:
