@@ -65,10 +65,9 @@ annotations:
 Then invoke it with the Dapr gRPC endpoint:
 
 ```python
-from grpc import insecure_channel
 import grpc
 
-channel = insecure_channel('localhost:50001')
+channel = grpc.insecure_channel('localhost:50001')
 # Use the Dapr gRPC proxy - pass the app-id as metadata
 metadata = [('dapr-app-id', 'target-service')]
 ```
@@ -90,7 +89,7 @@ Verify your app responds correctly on the configured port and protocol:
 
 ```bash
 # For HTTP app
-curl http://localhost:8080/dapr/subscribe
+curl http://localhost:8080/healthz
 
 # For gRPC app - use grpc_cli or grpcurl
 grpcurl -plaintext localhost:50051 list
