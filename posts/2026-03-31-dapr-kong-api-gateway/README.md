@@ -48,8 +48,13 @@ metadata:
   namespace: default
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
@@ -157,6 +162,7 @@ spec:
   - http:
       paths:
       - path: /v1.0/invoke/order-service
+        pathType: Prefix
         backend:
           service:
             name: order-service-dapr
