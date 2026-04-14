@@ -65,18 +65,18 @@ data:
     exporters:
       zipkin:
         endpoint: "http://zipkin.monitoring:9411/api/v2/spans"
-      jaeger:
-        endpoint: "jaeger-collector.monitoring:14250"
+      otlp/jaeger:
+        endpoint: "jaeger-collector.monitoring:4317"
         tls:
           insecure: true
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          exporters: [zipkin, jaeger, logging]
+          exporters: [zipkin, otlp/jaeger, debug]
 ```
 
 ```bash
@@ -161,7 +161,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [zipkin, jaeger, otlp/tempo]
+      exporters: [zipkin, otlp/jaeger, otlp/tempo]
 ```
 
 ## Summary
