@@ -114,22 +114,24 @@ function pushToSubscribers(deviceId, data) {
 ## Subscribe to Telemetry and Alerts
 
 ```javascript
-const daprServer = new DaprServer({ serverPort: 3001 });
+const daprServer = new DaprServer({ serverPort: "3001" });
 
-// Push telemetry updates to subscribed clients
-daprServer.pubsub.subscribe('pubsub', 'device-state-changes', async (event) => {
-  pushToSubscribers(event.deviceId, event);
-});
+(async () => {
+  // Push telemetry updates to subscribed clients
+  await daprServer.pubsub.subscribe('pubsub', 'device-state-changes', async (event) => {
+    pushToSubscribers(event.deviceId, event);
+  });
 
-// Push alert notifications
-daprServer.pubsub.subscribe('pubsub', 'alert-triggered', async (alert) => {
-  const message = JSON.stringify({ type: 'alert', ...alert });
-  for (const ws of clients.values()) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(message);
-  }
-});
+  // Push alert notifications
+  await daprServer.pubsub.subscribe('pubsub', 'alert-triggered', async (alert) => {
+    const message = JSON.stringify({ type: 'alert', ...alert });
+    for (const ws of clients.values()) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(message);
+    }
+  });
 
-await daprServer.start();
+  await daprServer.start();
+})();
 ```
 
 ## Frontend Connection Logic
