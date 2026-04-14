@@ -91,9 +91,9 @@ spec:
 
 Configure global load balancing to route traffic to the nearest healthy region:
 
-```yaml
-# AWS Route53 latency-based routing example
-# route53-policy.json
+```json
+// AWS Route53 latency-based routing example
+// route53-policy.json
 {
   "Comment": "Multi-region Dapr routing",
   "Changes": [
