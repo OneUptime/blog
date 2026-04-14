@@ -67,7 +67,7 @@ spec:
       endpointAddress: http://otel-collector.monitoring:4317
       isSecure: false
       protocol: grpc
-  metric:
+  metrics:
     enabled: true
 ```
 
