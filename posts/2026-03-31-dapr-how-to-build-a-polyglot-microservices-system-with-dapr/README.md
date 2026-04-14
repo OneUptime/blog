@@ -121,7 +121,6 @@ The order service processes orders, saves state, and publishes events:
 
 ```python
 # order-service/app.py
-import json
 import requests
 from flask import Flask, request, jsonify
 
