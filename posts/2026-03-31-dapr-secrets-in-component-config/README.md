@@ -158,7 +158,7 @@ auth:
 If `auth.secretStore` is not specified, Dapr uses the default secret store for the environment:
 
 - **Kubernetes**: uses the built-in `kubernetes` secret store automatically
-- **Self-hosted (local)**: uses the `local.file` secret store
+- **Self-hosted (local)**: no default secret store is assumed automatically. You must configure a secret store component (such as `secretstores.local.file`) and reference it via `auth.secretStore`. Note: `dapr init` creates a default local file secret store component in `~/.dapr/components/`.
 
 You can override the default by specifying `auth.secretStore` explicitly.
 
