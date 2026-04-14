@@ -127,13 +127,12 @@ func main() {
 ### Python
 
 ```python
-import asyncio
 from dapr.clients import DaprClient
 
-async def main():
-    async with DaprClient() as client:
+def main():
+    with DaprClient() as client:
         # Single secret
-        secret = await client.get_secret(
+        secret = client.get_secret(
             store_name="secretstore",
             key="DB_PASSWORD",
         )
@@ -141,18 +140,18 @@ async def main():
         print(f"DB password retrieved (length: {len(db_password)})")
 
         # API key
-        api_secret = await client.get_secret(
+        api_secret = client.get_secret(
             store_name="secretstore",
             key="API_KEY",
         )
         print(f"API key: {api_secret.secret['API_KEY']}")
 
         # Bulk secrets
-        bulk = await client.get_bulk_secret(store_name="secretstore")
+        bulk = client.get_bulk_secret(store_name="secretstore")
         for key, values in bulk.secrets.items():
             print(f"Secret {key} = {list(values.values())[0][:3]}...")
 
-asyncio.run(main())
+main()
 ```
 
 ### TypeScript
@@ -234,7 +233,7 @@ services:
 
 ## Step 7: Use in Kubernetes with Env from Secrets
 
-Inject Kubernetes secrets as environment variables into the pod (both app container and daprd sidecar):
+Inject Kubernetes secrets as environment variables into the app container with `envFrom`, and pass them to the Dapr sidecar using the `dapr.io/env` annotation so the `secretstores.local.env` component can read them:
 
 ```yaml
 apiVersion: apps/v1
@@ -242,12 +241,18 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "my-service"
         dapr.io/app-port: "8080"
+        dapr.io/env: "DB_PASSWORD=my-database-password,API_KEY=my-api-key"
     spec:
       containers:
       - name: my-service
