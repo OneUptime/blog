@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
 ```yaml
 # subscription-with-routing.yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-subscription
