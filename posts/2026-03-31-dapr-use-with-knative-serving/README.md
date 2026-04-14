@@ -53,8 +53,8 @@ spec:
     metadata:
       annotations:
         # Knative annotations
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "20"
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "20"
         autoscaling.knative.dev/target: "100"
         # Dapr annotations
         dapr.io/enabled: "true"
@@ -82,7 +82,7 @@ For pub/sub-driven scale-to-zero, use Knative Eventing as the trigger:
 apiVersion: sources.knative.dev/v1
 kind: ApiServerSource
 metadata:
-  name: kafka-trigger
+  name: k8s-event-source
 spec:
   serviceAccountName: default
   resources:
@@ -125,12 +125,14 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__meta_kubernetes_pod_label_serving_knative_dev_revision]
         action: keep
+        regex: .+
   - job_name: dapr-sidecar
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_app_id]
         action: keep
+        regex: .+
 ```
 
 ## Summary
