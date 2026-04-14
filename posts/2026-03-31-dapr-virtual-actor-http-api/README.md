@@ -121,7 +121,7 @@ dapr run \
   --app-id bank-actor-service \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node app.js
 ```
 
