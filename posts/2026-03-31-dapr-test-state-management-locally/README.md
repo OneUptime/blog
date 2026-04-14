@@ -129,7 +129,7 @@ Run dapr with the custom components directory:
 dapr run \
   --app-id my-test-service \
   --app-port 3000 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node app.js
 ```
 
