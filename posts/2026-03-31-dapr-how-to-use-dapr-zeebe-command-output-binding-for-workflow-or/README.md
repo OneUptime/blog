@@ -70,10 +70,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/zeebe-command \
   -d '{
     "data": {},
     "metadata": {
-      "operation": "deploy-process",
-      "bpmnFilePath": "/processes/order-fulfillment.bpmn"
+      "fileName": "/processes/order-fulfillment.bpmn"
     },
-    "operation": "deploy-process"
+    "operation": "deploy-resource"
   }'
 ```
 
@@ -190,10 +189,12 @@ curl -X POST http://localhost:3500/v1.0/bindings/zeebe-command \
 ## Supported Operations
 
 ```text
-deploy-process      - deploy a BPMN file to Zeebe
+topology            - get the current topology of the Zeebe cluster
+deploy-resource     - deploy a BPMN or DMN resource to Zeebe
 create-instance     - start a new process instance
 cancel-instance     - cancel a running instance
 set-variables       - update variables on an instance
+resolve-incident    - resolve an incident by key
 publish-message     - publish a correlation message
 activate-jobs       - fetch and activate jobs for processing
 complete-job        - mark a job as successfully completed
