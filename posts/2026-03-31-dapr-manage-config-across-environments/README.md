@@ -58,9 +58,9 @@ spec:
     secretKeyRef:
       name: redis-credentials
       key: password
-  scopes:
-  - order-service
-  - notification-service
+scopes:
+- order-service
+- notification-service
 ```
 
 ## Development Overlay
