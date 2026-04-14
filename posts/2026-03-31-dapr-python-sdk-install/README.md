@@ -14,12 +14,12 @@ The Dapr Python SDK provides both synchronous and asynchronous clients for inter
 
 ## Prerequisites
 
-- Python 3.9 or later
+- Python 3.10 or later
 - Dapr CLI installed and initialized
 
 ```bash
 # Install Dapr CLI
-wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
+wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 
 # Initialize Dapr locally
 dapr init
@@ -40,10 +40,10 @@ For gRPC support (recommended for production):
 pip install dapr dapr-ext-grpc
 ```
 
-For async support:
+For FastAPI integration:
 
 ```bash
-pip install dapr[grpc]
+pip install dapr-ext-fastapi
 ```
 
 ## Project Structure
@@ -76,9 +76,9 @@ import os
 from dapr.clients import DaprClient
 
 dapr_host = os.environ.get("DAPR_HOST", "localhost")
-dapr_http_port = os.environ.get("DAPR_HTTP_PORT", "3500")
+dapr_grpc_port = os.environ.get("DAPR_GRPC_PORT", "50001")
 
-with DaprClient(address=f"{dapr_host}:{dapr_http_port}") as client:
+with DaprClient(address=f"{dapr_host}:{dapr_grpc_port}") as client:
     client.save_state("statestore", "hello", "world")
     result = client.get_state("statestore", "hello")
     print("Value:", result.data.decode("utf-8"))
@@ -125,7 +125,7 @@ dapr run \
   --app-id my-python-app \
   --app-port 5000 \
   --dapr-http-port 3500 \
-  --components-path ./dapr/components \
+  --resources-path ./dapr/components \
   -- python app.py
 ```
 
