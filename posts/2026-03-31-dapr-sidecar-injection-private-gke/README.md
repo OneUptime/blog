@@ -16,7 +16,7 @@ In a standard GKE cluster, the Kubernetes API server (control plane) can reach n
 
 Dapr's admission webhook listens on port 4000 (injector) by default. If GKE's control plane cannot reach this port, pod creation hangs and times out:
 
-```yaml
+```text
 Error from server (Timeout): error when creating "deployment.yaml":
 Timeout: request did not complete within requested timeout
 ```
@@ -65,9 +65,9 @@ If you installed Dapr via Helm and customized the port, check your Helm values:
 helm get values dapr -n dapr-system | grep -i port
 ```
 
-## Alternative: Change the Webhook Port
+## Alternative: Adjust the Webhook Failure Policy
 
-If you cannot modify firewall rules, reconfigure Dapr to use an already-allowed port. GKE allows ports 443, 8443, and 9443 from the control plane:
+If you cannot modify firewall rules immediately, you can set the webhook failure policy so that pod creation proceeds even when the injector is unreachable. GKE private clusters allow ports 443 and 10250 from the control plane by default, and the Dapr injector listens on port 4000, which is not in this list:
 
 ```bash
 helm upgrade dapr dapr/dapr -n dapr-system \
@@ -75,17 +75,11 @@ helm upgrade dapr dapr/dapr -n dapr-system \
   --reuse-values
 ```
 
-Or change the injector port to 9443 if your firewall allows it.
+Note that with this setting, pods will start without Dapr sidecars when the injector is unreachable. This is a temporary workaround, not a fix. The recommended solution is the firewall rule described above.
 
 ## Using Autopilot GKE
 
-GKE Autopilot manages its own network policies. Sidecar injection requires the Dapr injector to be reachable, so use the standard port 4000 and ensure your Autopilot cluster allows the webhook:
-
-```bash
-gcloud container clusters update <cluster-name> \
-  --enable-master-authorized-networks \
-  --master-authorized-networks <cidr>
-```
+GKE Autopilot manages node infrastructure and firewall rules automatically. You can still create VPC firewall rules that apply to Autopilot node network tags. Use the same approach as standard private clusters: identify the control plane CIDR and node network tags, then create a firewall rule allowing TCP port 4000. Verify the rule is applied by testing sidecar injection on a sample pod.
 
 ## Testing After the Fix
 
