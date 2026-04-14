@@ -16,7 +16,7 @@ Kubernetes CronJobs poll at a cluster level. When you need per-entity polling - 
 
 ```csharp
 [Actor(TypeName = "SubscriptionMonitor")]
-public class SubscriptionMonitorActor : Actor, ISubscriptionMonitorActor, IRemindable
+public class SubscriptionMonitorActor : Actor, ISubscriptionMonitorActor
 {
     private const string StateKey = "subscription";
     private const string TimerName = "poll-timer";
@@ -49,10 +49,11 @@ public class SubscriptionMonitorActor : Actor, ISubscriptionMonitorActor, IRemin
         try
         {
             var status = await externalBillingApi.GetSubscriptionStatusAsync(state.SubscriptionId);
+            var previousStatus = state.LastStatus;
             state.LastChecked = DateTime.UtcNow;
             state.LastStatus = status;
 
-            if (status == "past_due" && state.LastStatus != "past_due")
+            if (status == "past_due" && previousStatus != "past_due")
             {
                 // Status changed - publish alert
                 await daprClient.PublishEventAsync("pubsub", "subscription.past-due", new
@@ -76,33 +77,32 @@ public class SubscriptionMonitorActor : Actor, ISubscriptionMonitorActor, IRemin
     {
         await UnregisterTimerAsync(TimerName);
     }
-
-    public async Task ReceiveReminderAsync(string _, ...) { }
 }
 ```
 
 ## Managing Poll Actors from a Controller
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
-const client = new DaprClient();
+const DAPR_HTTP_PORT = process.env.DAPR_HTTP_PORT || '3500';
+const DAPR_URL = `http://localhost:${DAPR_HTTP_PORT}`;
 
 // Start monitoring a subscription every 60 seconds
 async function startMonitoring(subscriptionId) {
-  await client.actor.invoke(
-    'SubscriptionMonitor',
-    subscriptionId,
-    'StartMonitoringAsync',
-    { subscriptionId, pollIntervalSeconds: 60 }
+  await fetch(
+    `${DAPR_URL}/v1.0/actors/SubscriptionMonitor/${subscriptionId}/method/StartMonitoringAsync`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscriptionId, pollIntervalSeconds: 60 })
+    }
   );
 }
 
 // Stop monitoring (e.g., on cancellation)
 async function stopMonitoring(subscriptionId) {
-  await client.actor.invoke(
-    'SubscriptionMonitor',
-    subscriptionId,
-    'StopMonitoringAsync'
+  await fetch(
+    `${DAPR_URL}/v1.0/actors/SubscriptionMonitor/${subscriptionId}/method/StopMonitoringAsync`,
+    { method: 'PUT' }
   );
 }
 
