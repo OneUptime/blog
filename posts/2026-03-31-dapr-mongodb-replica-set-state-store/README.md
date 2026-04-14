@@ -26,9 +26,9 @@ helm install mongodb bitnami/mongodb \
   --set architecture=replicaset \
   --set replicaCount=3 \
   --set auth.rootPassword=rootSecret \
-  --set auth.username=dapr \
-  --set auth.password=daprSecret \
-  --set auth.database=daprstate \
+  --set auth.usernames[0]=dapr \
+  --set auth.passwords[0]=daprSecret \
+  --set auth.databases[0]=daprstate \
   --set persistence.size=20Gi
 ```
 
@@ -126,9 +126,9 @@ Create indexes for frequently queried keys:
 // Connect to the daprstate database
 use daprstate
 
-// Index for TTL-based expiry
+// Index for TTL-based expiry (must be a single-field index)
 db.state.createIndex(
-  { "_id": 1, "expireAt": 1 },
+  { "expireAt": 1 },
   { expireAfterSeconds: 0, name: "ttl_index" }
 );
 
