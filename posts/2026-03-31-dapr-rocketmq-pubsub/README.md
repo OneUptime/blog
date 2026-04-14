@@ -65,8 +65,8 @@ spec:
       value: "dapr-producer-group"
     - name: retries
       value: "3"
-    - name: sendTimeOut
-      value: "10000"
+    - name: sendTimeOutSec
+      value: "10"
 ```
 
 Place this file in your Dapr components directory (`~/.dapr/components/` for self-hosted mode).
