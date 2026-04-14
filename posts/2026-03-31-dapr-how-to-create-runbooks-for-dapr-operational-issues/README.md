@@ -43,8 +43,8 @@ kubectl get pod my-app-pod -o jsonpath='{.metadata.annotations}' | jq .
 # Check admission webhook
 kubectl get mutatingwebhookconfiguration | grep dapr
 
-# Check webhook logs
-kubectl logs -n dapr-system -l app=dapr-operator --tail=50
+# Check sidecar injector logs
+kubectl logs -n dapr-system -l app=dapr-sidecar-injector --tail=50
 
 # Check if namespace has Dapr enabled label
 kubectl get namespace default --show-labels
@@ -104,8 +104,8 @@ kubectl create secret generic redis-secret \
 # Trigger component reload by restarting the app
 kubectl rollout restart deployment/my-app
 
-# Verify state API is accessible
-kubectl exec -it my-app-pod -c daprd -- \
+# Verify state API is accessible (exec into the app container, not daprd which is distroless)
+kubectl exec -it my-app-pod -c my-app -- \
   wget -qO- http://localhost:3500/v1.0/healthz
 ```
 
@@ -126,9 +126,9 @@ kubectl logs -l app=subscriber -c daprd | \
 # For Redis Streams - check consumer group lag
 redis-cli XPENDING pubsub-topic consumer-group - + 100
 
-# Check Dapr metrics
-kubectl port-forward svc/dapr-metrics 9090:9090 -n dapr-system
-# Query: dapr_pubsub_incoming_messages_total
+# Check Dapr sidecar metrics (each sidecar exposes metrics on port 9090)
+kubectl port-forward deployment/subscriber 9090:9090
+# Query: curl http://localhost:9090/metrics | grep dapr_pubsub_incoming_messages_total
 
 # Check if subscriber is crashing
 kubectl describe pod -l app=subscriber | grep -A 10 "Last State"
@@ -160,7 +160,7 @@ watch -n 2 "redis-cli XLEN pubsub-topic"
 ```bash
 # Check certificate expiry dates
 kubectl get secret dapr-trust-bundle -n dapr-system \
-  -o jsonpath='{.data.root\.crt}' | base64 -d | \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d | \
   openssl x509 -noout -dates
 
 # Check sentry logs
@@ -176,8 +176,8 @@ kubectl get pods -n dapr-system -l app=dapr-sentry
 ```bash
 # Rotate issuer certificate (keep same root CA)
 dapr mtls renew-certificate -k \
-  --private-key ./issuer.key \
-  --public-key ./issuer.crt \
+  --issuer-private-key ./issuer.key \
+  --issuer-public-certificate ./issuer.crt \
   --ca-root-certificate ./ca.crt
 
 # Restart all sidecars to pick up new certs
@@ -200,8 +200,8 @@ kubectl get secret dapr-trust-bundle -n dapr-system \
 kubectl logs -l app=target-service -c daprd | \
   grep -i "registered\|app port\|health"
 
-# Verify app health endpoint
-kubectl exec -it caller-pod -c daprd -- \
+# Verify app health endpoint (exec into the app container, not daprd which is distroless)
+kubectl exec -it caller-pod -- \
   wget -qO- http://localhost:3500/v1.0/invoke/target-service/method/health
 
 # Check Dapr name resolution
