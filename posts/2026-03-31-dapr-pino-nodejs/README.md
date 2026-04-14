@@ -10,7 +10,7 @@ Description: Integrate Pino, the high-performance Node.js logger, with Dapr serv
 
 ## Why Pino for Dapr Node.js Services?
 
-Pino is significantly faster than Winston and Bunyan due to its approach of minimizing work in the hot path - serialization happens in a worker thread. For high-throughput Dapr microservices handling thousands of pub/sub events per second, Pino's performance advantage is measurable.
+Pino is significantly faster than Winston and Bunyan due to its approach of minimizing work in the hot path - in-process serialization is kept minimal, and I/O is offloaded to a worker thread when transports are configured. For high-throughput Dapr microservices handling thousands of pub/sub events per second, Pino's performance advantage is measurable.
 
 ```bash
 # Install Pino and Dapr SDK
@@ -57,7 +57,7 @@ const daprClient = new DaprClient();
 // Pino HTTP middleware with Dapr header extraction
 app.use(pinoHttp({
   logger,
-  customProps: (req) => ({
+  customProps: (req, res) => ({
     traceId: extractTraceId(req.headers['traceparent']),
     callerAppId: req.headers['dapr-app-id'] || 'external',
     daprRequestId: req.headers['x-request-id'] || ''
@@ -113,12 +113,12 @@ const server = new DaprServer({ serverPort: '3001' });
 
 server.pubsub.subscribe('pubsub', 'payment-events', async (data, headers) => {
   // Create a child logger with event context
+  // Note: CloudEvents attributes (id, source, type) are not available in headers
+  // with the default Dapr JS SDK pub/sub callback. Use data fields for context.
   const eventLog = logger.child({
-    eventId: headers['ce-id'],
-    eventSource: headers['ce-source'],
-    eventType: headers['ce-type'],
     traceId: extractTraceId(headers['traceparent']),
-    paymentId: data.paymentId
+    paymentId: data.paymentId,
+    orderId: data.orderId
   });
 
   const start = Date.now();
