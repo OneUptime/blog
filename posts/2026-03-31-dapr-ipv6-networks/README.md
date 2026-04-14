@@ -26,7 +26,7 @@ kubectl get pods -o wide | head -5
 
 ## Configuring Dapr for IPv6
 
-By default, the Dapr sidecar binds to `0.0.0.0` (IPv4). On dual-stack clusters, you may need to configure it to bind to `::` for IPv6:
+In Kubernetes, the Dapr sidecar listens on `[::1],127.0.0.1` by default, so IPv6 loopback works out of the box. You can customize this with the `dapr.io/sidecar-listen-addresses` annotation. To configure Dapr SDKs to connect to the sidecar over IPv6, set the `DAPR_HTTP_ENDPOINT` environment variable:
 
 ```yaml
 apiVersion: apps/v1
@@ -41,13 +41,14 @@ spec:
         dapr.io/app-id: "my-service"
         dapr.io/app-port: "8080"
         dapr.io/config: "appconfig"
+        dapr.io/sidecar-listen-addresses: "[::1],127.0.0.1"
     spec:
       containers:
       - name: my-service
         image: my-service:latest
         env:
-        - name: DAPR_HOST
-          value: "::1"  # IPv6 loopback for sidecar communication
+        - name: DAPR_HTTP_ENDPOINT
+          value: "http://[::1]:3500"  # Tells Dapr SDKs to connect via IPv6 loopback
 ```
 
 ## Component Configuration with IPv6 Addresses
@@ -135,12 +136,18 @@ data:
 Dapr's name resolution component uses Kubernetes DNS for service discovery. On IPv6 clusters, ensure your app's HTTP client supports IPv6:
 
 ```javascript
-// Node.js - ensure IPv6 support
+// Node.js - ensure IPv6 support when resolving hostnames
 const http = require('http');
+
+// Prefer IPv6 when resolving hostnames (localhost resolves to ::1)
 const agent = new http.Agent({ family: 6 });
 
-// Dapr HTTP calls use localhost (::1 in IPv6-only)
-const daprUrl = `http://[::1]:3500/v1.0/invoke/target-service/method/endpoint`;
+// Dapr HTTP calls use localhost (resolves to ::1 with family: 6)
+const daprUrl = 'http://localhost:3500/v1.0/invoke/target-service/method/endpoint';
+
+http.get(daprUrl, { agent }, (res) => {
+  // handle response
+});
 ```
 
 ## Summary
