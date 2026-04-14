@@ -26,8 +26,8 @@ helm upgrade dapr dapr/dapr \
 Monitor the rollout:
 
 ```bash
-kubectl rollout status statefulset/dapr-scheduler -n dapr-system
-kubectl get pods -n dapr-system -l app=dapr-scheduler -w
+kubectl rollout status statefulset/dapr-scheduler-server -n dapr-system
+kubectl get pods -n dapr-system -l app.kubernetes.io/name=dapr-scheduler -w
 ```
 
 ## Configuring etcd Cluster for 3 Replicas
@@ -38,7 +38,7 @@ When scaling to 3 replicas, configure the etcd initial cluster correctly:
 dapr_scheduler:
   replicaCount: 3
   extraArgs:
-    - --etcd-initial-cluster=dapr-scheduler-0=http://dapr-scheduler-0.dapr-scheduler-headless:2380,dapr-scheduler-1=http://dapr-scheduler-1.dapr-scheduler-headless:2380,dapr-scheduler-2=http://dapr-scheduler-2.dapr-scheduler-headless:2380
+    - --etcd-initial-cluster=dapr-scheduler-server-0=http://dapr-scheduler-server-0.dapr-scheduler-server:2380,dapr-scheduler-server-1=http://dapr-scheduler-server-1.dapr-scheduler-server:2380,dapr-scheduler-server-2=http://dapr-scheduler-server-2.dapr-scheduler-server:2380
     - --etcd-initial-cluster-state=new
 ```
 
@@ -62,11 +62,11 @@ dapr_scheduler:
 
 ```bash
 # Check quorum status
-kubectl exec -n dapr-system dapr-scheduler-0 -- \
+kubectl exec -n dapr-system dapr-scheduler-server-0 -- \
   etcdctl --endpoints=http://localhost:2379 endpoint health --cluster
 
 # Check member list
-kubectl exec -n dapr-system dapr-scheduler-0 -- \
+kubectl exec -n dapr-system dapr-scheduler-server-0 -- \
   etcdctl --endpoints=http://localhost:2379 member list
 ```
 
@@ -93,7 +93,7 @@ dapr_scheduler:
       whenUnsatisfiable: DoNotSchedule
       labelSelector:
         matchLabels:
-          app: dapr-scheduler
+          app.kubernetes.io/name: dapr-scheduler
 ```
 
 ## Summary
