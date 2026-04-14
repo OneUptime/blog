@@ -16,11 +16,12 @@ A kill switch is an emergency feature disable mechanism. When a new feature caus
 
 ```bash
 # Initialize kill switches for all major features
+# Redis values use the format: value||version
 redis-cli MSET \
-  "kill-switches||payment-v2" "false" \
-  "kill-switches||recommendation-engine" "false" \
-  "kill-switches||new-checkout" "false" \
-  "kill-switches||ai-search" "false"
+  "payment-v2" "false||1" \
+  "recommendation-engine" "false||1" \
+  "new-checkout" "false||1" \
+  "ai-search" "false||1"
 ```
 
 ## Dapr Configuration Component
@@ -41,7 +42,6 @@ spec:
 ## Kill Switch Manager
 
 ```python
-import asyncio
 import threading
 from dapr.clients import DaprClient
 
@@ -50,31 +50,31 @@ class KillSwitchManager:
         self.store_name = store_name
         self._switches: dict[str, bool] = {}
         self._lock = threading.RLock()
+        self._client = None
 
     def load_initial(self, features: list[str]):
         with DaprClient() as client:
-            items = client.get_configuration(self.store_name, features)
+            resp = client.get_configuration(self.store_name, features)
             with self._lock:
-                for key, item in items.configuration.items():
+                for key, item in resp.items.items():
                     self._switches[key] = item.value.lower() == "true"
                     print(f"Kill switch loaded: {key} = {self._switches[key]}")
 
     def subscribe(self, features: list[str]):
-        def _watch():
-            with DaprClient() as client:
-                sub = client.subscribe_configuration(self.store_name, features)
-                for resp in sub:
-                    for key, item in resp.items():
-                        killed = item.value.lower() == "true"
-                        with self._lock:
-                            self._switches[key] = killed
-                        if killed:
-                            print(f"KILL SWITCH ACTIVATED: {key}")
-                        else:
-                            print(f"Kill switch deactivated: {key}")
+        def _on_change(id: str, resp):
+            for key, item in resp.items.items():
+                killed = item.value.lower() == "true"
+                with self._lock:
+                    self._switches[key] = killed
+                if killed:
+                    print(f"KILL SWITCH ACTIVATED: {key}")
+                else:
+                    print(f"Kill switch deactivated: {key}")
 
-        thread = threading.Thread(target=_watch, daemon=True)
-        thread.start()
+        self._client = DaprClient()
+        self._subscription_id = self._client.subscribe_configuration(
+            self.store_name, features, handler=_on_change
+        )
 
     def is_killed(self, feature: str) -> bool:
         with self._lock:
@@ -117,13 +117,13 @@ async def recommendations(user_id: str):
 
 ```bash
 # Immediately kill a feature across all pods
-redis-cli SET "kill-switches||payment-v2" "true"
+redis-cli SET "payment-v2" "true||2"
 
 # Verify via Dapr API
 curl http://localhost:3500/v1.0/configuration/kill-switches?key=payment-v2
 
 # Restore when issue is resolved
-redis-cli SET "kill-switches||payment-v2" "false"
+redis-cli SET "payment-v2" "false||3"
 ```
 
 ## Monitoring Kill Switch Status
@@ -131,10 +131,10 @@ redis-cli SET "kill-switches||payment-v2" "false"
 ```bash
 # Check all kill switch states
 redis-cli MGET \
-  "kill-switches||payment-v2" \
-  "kill-switches||recommendation-engine" \
-  "kill-switches||new-checkout" \
-  "kill-switches||ai-search"
+  "payment-v2" \
+  "recommendation-engine" \
+  "new-checkout" \
+  "ai-search"
 ```
 
 ## Summary
