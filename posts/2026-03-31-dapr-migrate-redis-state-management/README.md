@@ -66,7 +66,7 @@ spec:
   - name: redisHost
     value: "localhost:6379"
   - name: keyPrefix
-    value: "cart"
+    value: "name"
   - name: ttlInSeconds
     value: "86400"
 ```
@@ -98,7 +98,6 @@ async function deleteCart(userId) {
 }
 
 async function addItem(userId, item) {
-  // Use transactions for atomic read-modify-write
   const cart = await getCart(userId) || [];
   const existing = cart.findIndex(i => i.productId === item.productId);
   if (existing >= 0) {
