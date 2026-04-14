@@ -23,8 +23,7 @@ dapr init
 
 ```python
 # grpc_service.py
-from dapr.ext.grpc import App
-from dapr.clients.grpc._response import InvokeMethodResponse
+from dapr.ext.grpc import App, InvokeMethodRequest, InvokeMethodResponse
 import json
 
 app = App()
