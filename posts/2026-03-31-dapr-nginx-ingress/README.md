@@ -91,14 +91,14 @@ spec:
     http:
       paths:
       - path: /orders(/|$)(.*)
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: order-service
             port:
               number: 80
       - path: /inventory(/|$)(.*)
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: inventory-service
