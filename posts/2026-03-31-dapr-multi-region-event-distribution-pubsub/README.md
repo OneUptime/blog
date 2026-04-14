@@ -57,7 +57,7 @@ spec:
 ## Bridge Service: Replicate to Secondary Regions
 
 ```javascript
-const { DaprServer, DaprClient } = require('@dapr/dapr');
+import { DaprServer, DaprClient } from '@dapr/dapr';
 const server = new DaprServer();
 const client = new DaprClient();
 
