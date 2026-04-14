@@ -127,7 +127,7 @@ groups:
 - name: dapr-partitions
   rules:
   - alert: CircuitBreakerOpen
-    expr: dapr_resiliency_state_count{state="open"} > 0
+    expr: dapr_resiliency_cb_state{status="open"} > 0
     for: 1m
     labels:
       severity: critical
