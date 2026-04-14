@@ -68,8 +68,6 @@ spec:
     value: ""
   - name: tableName
     value: "DAPR_STATE"
-  - name: metadataTableName
-    value: "DAPR_STATE_METADATA"
 ```
 
 For Oracle Autonomous Database or Wallet-based connections:
