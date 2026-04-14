@@ -73,7 +73,7 @@ The `secretKeyRef.name` is the Kubernetes Secret name (or the key in another sec
 
 ## Scoping Components to Applications
 
-Use the `scopes` array to restrict which Dapr app IDs can access a component:
+Use the top-level `scopes` array to restrict which Dapr app IDs can access a component:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -86,26 +86,30 @@ spec:
   metadata:
     - name: redisHost
       value: "redis:6379"
-  scopes:
-    - order-service
-    - inventory-service
+scopes:
+  - order-service
+  - inventory-service
 ```
 
 If `scopes` is omitted, all applications in the namespace can use the component.
 
 ## Component Auth Policies
 
-Some components support an `auth` field for additional authentication configuration:
+Components support a top-level `auth` field to specify which secret store to use for resolving `secretKeyRef` references:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: cosmosdb
+auth:
+  secretStore: azure-keyvault
 spec:
   type: state.azure.cosmosdb
   version: v1
   metadata:
     - name: url
       value: "https://myaccount.documents.azure.com:443/"
-  auth:
-    secretStore: azure-keyvault
 ```
 
 ## Applying Components
