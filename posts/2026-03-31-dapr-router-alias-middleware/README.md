@@ -60,7 +60,7 @@ dapr run \
   --app-id order-service \
   --app-port 8080 \
   --config ./config/router-pipeline.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python app.py
 ```
 
