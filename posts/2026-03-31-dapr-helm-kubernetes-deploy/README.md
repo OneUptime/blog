@@ -14,7 +14,7 @@ While `dapr init -k` provides a quick start, Helm is the recommended method for 
 
 ## Prerequisites
 
-- Kubernetes 1.22+
+- Kubernetes (supported versions per [Dapr's version skew policy](https://docs.dapr.io/operations/support/support-release-policy/))
 - Helm 3.x installed
 - `kubectl` configured for your cluster
 - Sufficient RBAC permissions to create cluster-level resources
@@ -26,7 +26,7 @@ helm repo add dapr https://dapr.github.io/helm-charts/
 helm repo update
 
 # List available Dapr versions
-helm search repo dapr --dap 5
+helm search repo dapr --versions | head -5
 ```
 
 ## Step 2: Install Dapr (Basic)
@@ -75,14 +75,8 @@ dapr_placement:
     limits:
       cpu: "500m"
       memory: "1Gi"
-  raft:
-    logStorePath: "/var/log/dapr/raft.db"
-  volumeMounts:
-  - name: raft-store
-    mountPath: /var/log/dapr
-  volumes:
-  - name: raft-store
-    emptyDir: {}
+  cluster:
+    logStorePath: "/var/run/dapr/raft-log"
 
 dapr_sentry:
   replicaCount: 2
@@ -147,22 +141,13 @@ Expected output:
 
 ## Step 5: Configure Custom Sidecar Defaults
 
-Set default sidecar resource limits applied to all apps:
+Set default sidecar security settings applied to all apps:
 
 ```yaml
 dapr_sidecar_injector:
   sidecarDropALLCapabilities: true
-  defaultContainerConfig:
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-    limits:
-      cpu: "500m"
-      memory: "256Mi"
-    securityContext:
-      allowPrivilegeEscalation: false
-      readOnlyRootFilesystem: true
-      runAsNonRoot: true
+  sidecarRunAsNonRoot: true
+  sidecarReadOnlyRootFilesystem: true
 ```
 
 ## Step 6: Enable Dapr Dashboard
@@ -205,6 +190,7 @@ helm uninstall dapr --namespace dapr-system
 kubectl delete crd \
   components.dapr.io \
   configurations.dapr.io \
+  httpendpoints.dapr.io \
   resiliency.dapr.io \
   subscriptions.dapr.io
 ```
@@ -227,8 +213,19 @@ spec:
     chart: dapr
     targetRevision: "1.14.0"
     helm:
-      valueFiles:
-      - dapr-values.yaml
+      values: |
+        global:
+          logAsJson: true
+          mtls:
+            enabled: true
+        dapr_operator:
+          replicaCount: 2
+        dapr_placement:
+          replicaCount: 3
+        dapr_sentry:
+          replicaCount: 2
+        dapr_sidecar_injector:
+          replicaCount: 2
   destination:
     server: https://kubernetes.default.svc
     namespace: dapr-system
@@ -248,7 +245,7 @@ spec:
 | `dapr_sentry.replicaCount` | Sentry replicas | `1` |
 | `dapr_sidecar_injector.replicaCount` | Injector replicas | `1` |
 | `global.logAsJson` | JSON structured logs | `false` |
-| `global.imagePullPolicy` | Container image pull policy | `Always` |
+| `global.imagePullPolicy` | Container image pull policy | `IfNotPresent` |
 
 ## Summary
 
