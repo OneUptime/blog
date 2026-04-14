@@ -36,8 +36,6 @@ spec:
       value: "none"
     - name: maxMessageBytes
       value: "1048576"
-    - name: fetchMessageMaxBytes
-      value: "1048576"
     - name: consumeRetryInterval
       value: "200ms"
     - name: initialOffset
@@ -53,22 +51,12 @@ Configure via Kafka broker and component settings to prevent unnecessary rebalan
 ```yaml
 metadata:
   - name: sessionTimeout
-    value: "10000"
+    value: "10s"
   - name: heartbeatInterval
-    value: "3000"
+    value: "3s"
 ```
 
 The heartbeat interval should be one-third of the session timeout. If your processing takes longer than the session timeout, Kafka will trigger a rebalance.
-
-### Max Poll Interval
-
-For slow processing tasks, increase the max poll interval:
-
-```yaml
-metadata:
-  - name: maxPollIntervalMs
-    value: "300000"
-```
 
 ## Scaling Consumers
 
@@ -82,22 +70,18 @@ metadata:
 spec:
   replicas: 4
   template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-processor"
+        dapr.io/app-port: "5000"
     spec:
       containers:
         - name: app
           image: order-processor:latest
-        - name: dapr-sidecar
-          # Dapr injects automatically via annotation
 ```
 
-Add Dapr annotations:
-
-```yaml
-annotations:
-  dapr.io/enabled: "true"
-  dapr.io/app-id: "order-processor"
-  dapr.io/app-port: "5000"
-```
+The Dapr sidecar injector automatically adds the sidecar container to pods with the `dapr.io/enabled: "true"` annotation. You do not need to declare the sidecar container manually.
 
 Kafka will distribute partitions across up to `N` replicas, where `N` equals the partition count on the topic.
 
@@ -115,28 +99,26 @@ kafka-consumer-groups.sh \
 
 ## Rebalancing Strategies
 
-Use `CooperativeStickyAssignor` to reduce rebalancing disruption:
+Dapr exposes the `consumerGroupRebalanceStrategy` metadata field to control how partitions are assigned across consumers. The supported strategies are `range` (default), `sticky`, and `roundrobin`:
 
 ```yaml
 metadata:
-  - name: groupInstanceID
-    value: "order-processor-${HOSTNAME}"
+  - name: consumerGroupRebalanceStrategy
+    value: "sticky"
 ```
 
-Setting a `groupInstanceID` enables static membership, preventing rebalances when pods restart within the session timeout window.
+Using `sticky` reduces partition movement during rebalances by attempting to keep existing partition assignments intact.
 
 ## Processing Failures
 
-When Dapr receives a non-200 response from your app, it retries based on `consumeRetryInterval`. Tune this to balance retry speed against broker load:
+When Dapr encounters errors consuming from Kafka topics, it retries based on `consumeRetryInterval`. For application-level message handling, your app should return a JSON body with `{"status": "RETRY"}` to request redelivery, or `{"status": "DROP"}` to discard the message. Tune the retry interval to balance retry speed against broker load:
 
 ```yaml
 metadata:
   - name: consumeRetryInterval
     value: "500ms"
-  - name: consumeRetryMaxElapsedTime
-    value: "15s"
 ```
 
 ## Summary
 
-Tuning Kafka consumer groups in Dapr involves balancing session timeouts, heartbeat intervals, and partition counts against your deployment scale. Enable static membership with `groupInstanceID` to reduce rebalancing during rolling restarts. Monitor consumer lag to detect processing bottlenecks and scale replicas up to the partition count for maximum parallelism.
+Tuning Kafka consumer groups in Dapr involves balancing session timeouts, heartbeat intervals, and partition counts against your deployment scale. Use the `sticky` rebalance strategy to reduce partition movement during rolling restarts. Monitor consumer lag to detect processing bottlenecks and scale replicas up to the partition count for maximum parallelism.
