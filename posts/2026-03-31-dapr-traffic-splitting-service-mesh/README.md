@@ -69,7 +69,7 @@ spec:
 ## Create Istio DestinationRule
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout
@@ -89,7 +89,7 @@ spec:
 Start with 90% to v1 and 10% to v2:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout
@@ -134,7 +134,7 @@ Watch Istio metrics to compare v1 and v2 error rates:
 ```bash
 kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant 'http://localhost:9090' \
-  'sum(rate(istio_requests_total{destination_service="checkout.default.svc.cluster.local",response_code!~"5.."}[5m])) by (destination_version)'
+  'sum(rate(istio_requests_total{destination_service="checkout.default.svc.cluster.local",response_code=~"5.."}[5m])) by (destination_version)'
 ```
 
 ## Integrate with Dapr Observability
@@ -143,7 +143,7 @@ Track Dapr-level metrics per app version using labels:
 
 ```yaml
 # PromQL for Dapr invocation success rate by version
-sum(rate(dapr_service_invocation_req_sent_total{app_id="checkout",status="200"}[5m])) by (pod)
+sum(rate(dapr_runtime_service_invocation_res_recv_total{app_id="checkout",status="200"}[5m])) by (pod)
 ```
 
 ## Complete the Rollout or Rollback
