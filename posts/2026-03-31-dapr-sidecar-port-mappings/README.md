@@ -17,7 +17,7 @@ Default Dapr sidecar ports:
 - **50001**: gRPC API port (app to Dapr)
 - **50002**: Internal gRPC port (Dapr to Dapr)
 - **9090**: Metrics port (Prometheus scrape)
-- **7777**: Profile/debug port
+- **7777**: Profile port (only active when profiling is enabled via `--enable-profiling`)
 
 ## Configuring Ports via Annotations
 
@@ -35,11 +35,9 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "my-service"
         dapr.io/app-port: "8080"
-        dapr.io/http-port: "3500"
         dapr.io/grpc-port: "50001"
         dapr.io/internal-grpc-port: "50002"
         dapr.io/metrics-port: "9090"
-        dapr.io/profile-port: "7777"
     spec:
       containers:
       - name: my-service
@@ -55,7 +53,6 @@ When multiple Dapr-enabled containers share a pod's network namespace, port conf
 ```yaml
 # Service A in a multi-container pod
 dapr.io/app-id: "service-a"
-dapr.io/http-port: "3500"
 dapr.io/grpc-port: "50001"
 dapr.io/metrics-port: "9090"
 
