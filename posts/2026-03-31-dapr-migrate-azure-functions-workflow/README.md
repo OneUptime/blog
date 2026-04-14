@@ -20,8 +20,8 @@ Azure Durable Functions is excellent but vendor-locked to Azure. It requires Azu
 | Activity Function | Activity class |
 | `context.CallActivityAsync` | `context.CallActivityAsync` |
 | `context.WaitForExternalEvent` | `context.WaitForExternalEventAsync` |
-| `DurableClient.StartNewAsync` | `daprClient.StartWorkflowAsync` |
-| `DurableClient.GetStatusAsync` | `daprClient.GetWorkflowAsync` |
+| `DurableClient.StartNewAsync` | `daprWorkflowClient.ScheduleNewWorkflowAsync` |
+| `DurableClient.GetStatusAsync` | `daprWorkflowClient.GetWorkflowStateAsync` |
 | Azure Storage | Redis / Kubernetes Secrets / any Dapr state store |
 
 ## Before: Azure Durable Function
@@ -61,7 +61,6 @@ public static async Task<bool> ReserveInventory(
 
 ```csharp
 // Workflow (orchestrator equivalent)
-[DaprWorkflow]
 public class OrderWorkflow : Workflow<OrderInput, OrderResult>
 {
     public override async Task<OrderResult> RunAsync(
@@ -81,7 +80,6 @@ public class OrderWorkflow : Workflow<OrderInput, OrderResult>
 }
 
 // Activity (activity function equivalent)
-[DaprWorkflowActivity]
 public class ReserveInventoryActivity : WorkflowActivity<OrderInput, bool>
 {
     private readonly IInventoryService _inventory;
@@ -126,9 +124,8 @@ After (Dapr Workflow):
 public async Task<IActionResult> StartOrder([FromBody] OrderInput input)
 {
     var instanceId = $"order-{input.OrderId}";
-    await _daprClient.StartWorkflowAsync(
-        workflowComponent: "dapr",
-        workflowName: nameof(OrderWorkflow),
+    await _daprWorkflowClient.ScheduleNewWorkflowAsync(
+        name: nameof(OrderWorkflow),
         instanceId: instanceId,
         input: input);
 
@@ -143,7 +140,7 @@ dapr run \
   --app-id order-service \
   --app-port 5000 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- dotnet run
 ```
 
