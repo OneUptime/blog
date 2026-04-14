@@ -16,7 +16,7 @@ Azure IoT Edge runs Docker containers as modules on edge devices. You can deploy
 
 In IoT Edge, each module is a Docker container. Dapr runs as a sidecar to your application module using the IoT Edge networking model:
 
-```json
+```text
 [Sensor Module] -> [App Module + Dapr Sidecar] -> [IoT Hub / Azure Storage]
 ```
 
@@ -41,12 +41,7 @@ In IoT Edge, each module is a Docker container. Dapr runs as a sidecar to your a
             "type": "docker",
             "settings": {
               "image": "daprio/daprd:1.13.0",
-              "createOptions": "{\"HostConfig\":{\"NetworkMode\":\"host\"}}"
-            },
-            "env": {
-              "APP_ID": {"value": "edge-app"},
-              "APP_PORT": {"value": "8080"},
-              "COMPONENTS_PATH": {"value": "/components"}
+              "createOptions": "{\"HostConfig\":{\"NetworkMode\":\"host\"},\"Cmd\":[\"./daprd\",\"--app-id\",\"edge-app\",\"--app-port\",\"8080\",\"--resources-path\",\"/components\"]}"
             }
           }
         }
@@ -91,7 +86,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: "tcps://myhub.azure-devices.net:8883"
+    value: "ssl://myhub.azure-devices.net:8883"
   - name: clientID
     value: "edge-device-001"
   - name: username
