@@ -93,7 +93,7 @@ data:
     [INPUT]
         Name tail
         Path /var/log/containers/*daprd*.log
-        Parser docker
+        multiline.parser docker, cri
         Tag dapr.*
         Mem_Buf_Limit 5MB
         Skip_Long_Lines On
@@ -110,8 +110,7 @@ data:
         Match dapr.*
         Host elasticsearch.logging.svc
         Port 9200
-        Index dapr-logs
-        Type _doc
+        Suppress_Type_Name On
         HTTP_User elastic
         HTTP_Passwd ${ELASTIC_PASSWORD}
         TLS On
@@ -154,9 +153,9 @@ curl -X PUT "http://elasticsearch:9200/_index_template/dapr-logs" \
   }'
 ```
 
-## Setting Up Kibana Alerts
+## Setting Up Elasticsearch Watcher Alerts
 
-Create a Kibana alert for error log spikes:
+Create an Elasticsearch Watcher alert for error log spikes:
 
 ```bash
 # Error rate alert via Elasticsearch Watcher
