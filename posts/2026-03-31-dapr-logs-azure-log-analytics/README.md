@@ -130,8 +130,8 @@ az monitor scheduled-query create \
   --resource-group my-resource-group \
   --name "DaprHighErrorRate" \
   --scopes /subscriptions/{sub-id}/resourceGroups/my-rg/providers/Microsoft.OperationalInsights/workspaces/dapr-logs-workspace \
-  --condition "count > 50" \
-  --condition-query "ContainerLog | where ContainerName == 'daprd' | extend L = parse_json(LogEntry) | where L.level == 'error' | count" \
+  --condition "count 'DaprErrors' > 50" \
+  --condition-query DaprErrors="ContainerLog | where ContainerName == 'daprd' | extend L = parse_json(LogEntry) | where L.level == 'error'" \
   --evaluation-frequency 5m \
   --window-size 5m \
   --severity 2 \
