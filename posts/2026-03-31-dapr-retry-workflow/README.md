@@ -35,7 +35,6 @@ The `backoffCoefficient` doubles the wait time after each failure. A first retry
 ## Building the Workflow
 
 ```csharp
-[DaprWorkflow]
 public class OrderProcessingWorkflow : Workflow<OrderInput, OrderResult>
 {
     public override async Task<OrderResult> RunAsync(
@@ -77,7 +76,6 @@ public class OrderProcessingWorkflow : Workflow<OrderInput, OrderResult>
 ## Implementing a Retryable Activity
 
 ```csharp
-[DaprWorkflowActivity]
 public class ReserveInventoryActivity : WorkflowActivity<string, bool>
 {
     private readonly InventoryClient _client;
@@ -108,19 +106,18 @@ builder.Services.AddDaprWorkflow(options =>
 });
 ```
 
-Start the workflow using the Dapr client:
+Start the workflow using the Dapr workflow client:
 
 ```csharp
-await daprClient.StartWorkflowAsync(
-    workflowComponent: "dapr",
-    workflowName: nameof(OrderProcessingWorkflow),
+await daprWorkflowClient.ScheduleNewWorkflowAsync(
+    name: nameof(OrderProcessingWorkflow),
     instanceId: orderId,
     input: orderInput);
 ```
 
 ## Handling Non-Retryable Errors
 
-Not all errors should be retried. Wrap business logic exceptions to signal permanent failure:
+Not all errors should be retried. The Dapr Workflow retry policy retries all exceptions by default, so you cannot prevent retries by throwing a different exception type. Instead, catch business logic errors inside the activity and return a failure value:
 
 ```csharp
 public override async Task<bool> RunAsync(
@@ -130,14 +127,14 @@ public override async Task<bool> RunAsync(
     {
         return await _client.ReserveAsync(orderId);
     }
-    catch (InsufficientStockException ex)
+    catch (InsufficientStockException)
     {
-        // Do not retry business logic errors
-        throw new InvalidOperationException(ex.Message);
+        // Return false instead of throwing - Dapr retries all thrown exceptions
+        return false;
     }
 }
 ```
 
 ## Summary
 
-Dapr Workflow retry policies let you configure per-activity backoff strategies without polluting your business logic. By combining `maxNumberOfAttempts`, `firstRetryInterval`, and `backoffCoefficient`, you get exponential backoff with minimal boilerplate. Non-retryable errors should be thrown as non-transient exceptions so Dapr does not waste retries on permanent failures.
+Dapr Workflow retry policies let you configure per-activity backoff strategies without polluting your business logic. By combining `maxNumberOfAttempts`, `firstRetryInterval`, and `backoffCoefficient`, you get exponential backoff with minimal boilerplate. Since Dapr retries all thrown exceptions, handle non-retryable errors by catching them inside the activity and returning a failure value instead of throwing.
