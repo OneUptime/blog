@@ -148,12 +148,26 @@ processors:
 3. View the flame graph for individual traces
 4. Use APM > Service Map to see dependencies
 
-Query the trace API:
+Search for traces via the Spans API:
 
 ```bash
-curl -X GET "https://api.datadoghq.com/api/v1/trace/your-trace-id" \
+curl -X POST "https://api.datadoghq.com/api/v2/spans/events/search" \
   -H "DD-API-KEY: your-api-key" \
-  -H "DD-APPLICATION-KEY: your-app-key"
+  -H "DD-APPLICATION-KEY: your-app-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "attributes": {
+        "filter": {
+          "from": "now-1h",
+          "to": "now",
+          "query": "service:order-service"
+        },
+        "sort": "timestamp"
+      },
+      "type": "search_request"
+    }
+  }'
 ```
 
 ## Creating APM Monitors
@@ -165,9 +179,9 @@ curl -X POST "https://api.datadoghq.com/api/v1/monitor" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Dapr Order Service High Latency",
-    "type": "trace analytics alert",
+    "type": "query alert",
     "query": "avg(last_5m):avg:trace.http.request.duration{service:order-service} > 1",
-    "message": "Order service p99 latency exceeded 1s"
+    "message": "Order service average latency exceeded 1s"
   }'
 ```
 
