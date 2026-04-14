@@ -93,7 +93,7 @@ Explain the three circuit breaker states:
 # Apply resiliency policy to a running Dapr app
 kubectl apply -f resiliency.yaml -n production
 # Verify the policy is loaded
-dapr components -k
+kubectl get resiliency -n production
 ```
 
 ## Interview Framing: Benefits Over Custom Code
