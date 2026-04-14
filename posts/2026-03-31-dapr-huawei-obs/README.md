@@ -79,19 +79,17 @@ curl -X POST http://localhost:3500/v1.0/bindings/huawei-obs \
 From a Python microservice:
 
 ```python
-import base64
 import json
 from dapr.clients import DaprClient
 
 def archive_order(order_data: dict, order_id: str):
     content = json.dumps(order_data)
-    encoded = base64.b64encode(content.encode()).decode()
 
     with DaprClient() as client:
         client.invoke_binding(
             binding_name="huawei-obs",
             operation="create",
-            data=encoded,
+            data=content,
             binding_metadata={
                 "key": f"orders/{order_id}.json",
                 "contentType": "application/json"
