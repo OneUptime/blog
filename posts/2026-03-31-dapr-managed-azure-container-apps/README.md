@@ -111,8 +111,7 @@ import requests
 
 # The checkout service calls the inventory service
 response = requests.get(
-    'http://localhost:3500/v1.0/invoke/inventory/method/stock',
-    headers={'dapr-app-id': 'inventory'}
+    'http://localhost:3500/v1.0/invoke/inventory/method/stock'
 )
 data = response.json()
 print(f"Stock level: {data['quantity']}")
