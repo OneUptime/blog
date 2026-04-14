@@ -24,14 +24,14 @@ pip install dapr dapr-ext-fastapi fastapi uvicorn python-json-logger
 import logging
 import os
 import sys
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 def setup_logger(name: str = __name__) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
     handler = logging.StreamHandler(sys.stdout)
-    formatter = jsonlogger.JsonFormatter(
+    formatter = JsonFormatter(
         fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
         rename_fields={"levelname": "level", "asctime": "timestamp"}
@@ -46,9 +46,10 @@ def setup_logger(name: str = __name__) -> logging.Logger:
 
 ```python
 # main.py
+import json
 import logging
 import contextvars
-from fastapi import FastAPI, Request, Header
+from fastapi import FastAPI, Request
 from dapr.clients import DaprClient
 from logger import setup_logger
 
@@ -97,10 +98,10 @@ async def create_order(order: dict):
 
     try:
         with DaprClient() as client:
-            client.save_state("statestore", f"order-{order_id}", order)
+            client.save_state("statestore", f"order-{order_id}", json.dumps(order))
             logger.info("Order saved to state store", extra={"orderId": order_id})
 
-            client.publish_event("pubsub", "order-created", order)
+            client.publish_event("pubsub", "order-created", json.dumps(order), data_content_type="application/json")
             logger.info("Order event published", extra={"orderId": order_id})
 
         return {"orderId": order_id, "status": "created"}
