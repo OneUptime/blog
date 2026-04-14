@@ -145,7 +145,7 @@ Each Dapr cluster connects to its local Redis Enterprise endpoint:
 
 ```yaml
   metadata:
-  - name: maxConnections
+  - name: poolSize
     value: "100"
   - name: dialTimeout
     value: "5s"
