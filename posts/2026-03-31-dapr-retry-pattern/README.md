@@ -66,6 +66,8 @@ package main
 
 import (
     "context"
+    "encoding/json"
+    "fmt"
     "log"
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -97,7 +99,7 @@ func checkInventory(client dapr.Client, productID string, qty int) (bool, error)
 ## Per-Route Retry for Pub/Sub
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-subscription
@@ -165,10 +167,10 @@ func handleOrder(ctx context.Context, e *common.TopicEvent) (bool, error) {
 
 ```bash
 # Total retry attempts
-dapr_resiliency_count{app_id="order-service",policy="retry",status="retry"}
+dapr_resiliency_count{app_id="order-service",name="service-retry",policy="retry",flow_direction="outbound"}
 
 # Failed after exhausting retries
-dapr_resiliency_count{app_id="order-service",policy="retry",status="failed"}
+dapr_resiliency_count{app_id="order-service",name="service-retry",policy="retry",flow_direction="outbound",status="closed"}
 ```
 
 ## Summary
