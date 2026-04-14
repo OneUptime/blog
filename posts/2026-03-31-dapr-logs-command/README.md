@@ -50,30 +50,28 @@ dapr logs --app-id order-service \
 
 ## Tailing Logs in Real Time
 
-Use the `--follow` flag to stream logs continuously:
+The `dapr logs` command does not support a follow/streaming mode. To tail Dapr sidecar logs in real time, use `kubectl logs` and target the `daprd` container directly:
 
 ```bash
-dapr logs --app-id order-service --kubernetes --follow
+kubectl logs deployment/order-service -c daprd -n default --follow
 ```
 
 Press `Ctrl+C` to stop following.
 
 ## Filtering by Time Window
 
+The `dapr logs` command does not support time-based filtering. To fetch Dapr sidecar logs within a specific time window, use `kubectl logs` targeting the `daprd` container:
+
 Fetch logs from the last 30 minutes:
 
 ```bash
-dapr logs --app-id order-service \
-          --kubernetes \
-          --since 30m
+kubectl logs deployment/order-service -c daprd -n default --since=30m
 ```
 
 Or since a specific timestamp:
 
 ```bash
-dapr logs --app-id order-service \
-          --kubernetes \
-          --since-time "2026-03-31T09:30:00Z"
+kubectl logs deployment/order-service -c daprd -n default --since-time="2026-03-31T09:30:00Z"
 ```
 
 ## Diagnosing Component Load Failures
@@ -105,4 +103,4 @@ dapr logs --app-id order-service --kubernetes 2>&1 | grep -i error
 
 ## Summary
 
-`dapr logs` provides direct access to Dapr sidecar logs without navigating Kubernetes pod names and container selectors. It is the fastest way to diagnose component initialization failures, mTLS handshake errors, and sidecar startup issues. Combine it with `--follow` for real-time log tailing during incident investigation.
+`dapr logs` provides direct access to Dapr sidecar logs without navigating Kubernetes pod names and container selectors. It is the fastest way to diagnose component initialization failures, mTLS handshake errors, and sidecar startup issues. For real-time log tailing during incident investigation, use `kubectl logs` with `--follow` targeting the `daprd` container.
