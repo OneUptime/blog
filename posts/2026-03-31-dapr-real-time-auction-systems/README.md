@@ -23,9 +23,14 @@ public interface IAuctionActor : IActor
 }
 
 [Actor(TypeName = "AuctionActor")]
-public class AuctionActor : Actor, IAuctionActor
+public class AuctionActor : Actor, IAuctionActor, IRemindable
 {
     private readonly DaprClient _dapr;
+
+    public AuctionActor(ActorHost host, DaprClient dapr) : base(host)
+    {
+        _dapr = dapr;
+    }
 
     public async Task<BidResult> PlaceBid(Bid bid)
     {
@@ -68,20 +73,22 @@ public class AuctionActor : Actor, IAuctionActor
 ## Bid Submission API
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
-const client = new DaprClient();
+const DAPR_PORT = process.env.DAPR_HTTP_PORT || '3500';
 
 app.post('/auctions/:auctionId/bid', async (req, res) => {
   const { auctionId } = req.params;
   const { bidderId, amount } = req.body;
 
   try {
-    const result = await client.actor.invoke(
-      'AuctionActor',
-      auctionId,
-      'placeBid',
-      { bidderId, amount }
+    const response = await fetch(
+      `http://localhost:${DAPR_PORT}/v1.0/actors/AuctionActor/${auctionId}/method/PlaceBid`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bidderId, amount })
+      }
     );
+    const result = await response.json();
 
     res.json(result);
   } catch (err) {
@@ -107,13 +114,15 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => auctionRooms.get(auctionId)?.delete(ws));
 });
 
-daprServer.pubsub.subscribe('pubsub', 'bid-updates', async (update) => {
-  const room = auctionRooms.get(update.auctionId);
+daprServer.pubsub.subscribe('pubsub', 'bid-updates', async (data) => {
+  const room = auctionRooms.get(data.auctionId);
   if (room) {
-    const msg = JSON.stringify({ type: 'new-bid', ...update });
+    const msg = JSON.stringify({ type: 'new-bid', ...data });
     room.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.send(msg); });
   }
 });
+
+await daprServer.start();
 ```
 
 ## Auction Timer with Actor Reminders
@@ -128,7 +137,7 @@ protected override async Task OnActivateAsync()
 
     if (timeRemaining > TimeSpan.Zero)
     {
-        await RegisterReminderAsync("close-auction", null, timeRemaining, TimeSpan.FromMilliseconds(-1));
+        await RegisterReminderAsync("close-auction", null, timeRemaining, Timeout.InfiniteTimeSpan);
     }
 }
 
