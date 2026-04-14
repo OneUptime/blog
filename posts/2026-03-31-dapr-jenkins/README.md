@@ -15,6 +15,7 @@ Jenkins is a widely-used CI/CD platform that can build, test, and deploy Dapr ap
 Install the following Jenkins plugins:
 - Docker Pipeline
 - Kubernetes CLI Plugin
+- Slack Notification Plugin (for build notifications)
 - Blue Ocean (optional, for visualization)
 
 ## Declarative Jenkinsfile
