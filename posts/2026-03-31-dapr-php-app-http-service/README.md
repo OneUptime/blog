@@ -88,14 +88,14 @@ class OrderHandler {
 
     public function create(array $body): array {
         $orderId = $body['id'] ?? uniqid('ORD-');
-        $this->dapr->trySaveState('statestore', $orderId, $body);
+        $this->dapr->saveState('statestore', $orderId, $body);
         $this->dapr->publishEvent('pubsub', 'orders', $body);
         return ['order_id' => $orderId, 'status' => 'created'];
     }
 
     public function get(string $orderId): array {
-        $state = $this->dapr->tryGetState('statestore', $orderId, 'array');
-        return $state->value ?? ['error' => 'not found'];
+        $state = $this->dapr->getState('statestore', $orderId, 'array');
+        return $state ?? ['error' => 'not found'];
     }
 
     public function subscribe(): array {
@@ -140,7 +140,7 @@ $router->dispatch();
 dapr run \
   --app-id order-php-service \
   --app-port 8080 \
-  --components-path ./components \
+  --resources-path ./components \
   -- php -S 0.0.0.0:8080 public/index.php
 ```
 
@@ -159,9 +159,10 @@ dapr invoke \
 ```php
 <?php
 use Dapr\Client\DaprClient;
+use Dapr\Client\AppId;
 
 $client = DaprClient::clientBuilder()->build();
-$response = $client->invokeMethod('order-php-service', 'orders', 'POST', [
+$response = $client->invokeMethod('POST', new AppId('order-php-service'), 'orders', [
     'id'   => 'ORD-43',
     'item' => 'doohickey'
 ]);
