@@ -25,7 +25,7 @@ Alertmanager handles routing, deduplication, and silencing. PagerDuty handles on
 Create a PagerDuty integration in your service:
 
 1. In PagerDuty, go to Services - your service - Integrations
-2. Add an integration of type "Prometheus"
+2. Add an integration of type "Events API v2"
 3. Copy the Integration Key
 
 Configure Alertmanager with the PagerDuty integration key:
@@ -40,7 +40,7 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  receiver: 'default'
+  receiver: 'dapr-warning-pagerduty'
   routes:
     - match:
         severity: critical
