@@ -26,17 +26,15 @@ spec:
     handlers: []
   tracing:
     samplingRate: "0.01"
-  metric:
+  metrics:
     enabled: false
-  features:
-    - name: AppHealthCheck
-      enabled: true
 ```
 
 Set aggressive health-check intervals so traffic routes away from cold instances immediately:
 
 ```yaml
 annotations:
+  dapr.io/enable-app-health-check: "true"
   dapr.io/app-health-check-path: "/healthz"
   dapr.io/app-health-probe-interval: "3"
   dapr.io/app-health-probe-timeout: "500"
@@ -48,21 +46,20 @@ annotations:
 Pre-initialize the Dapr client at module load time rather than per-request:
 
 ```python
-import asyncio
 from dapr.clients import DaprClient
 
 # Module-level initialization - runs once at cold start
 _dapr_client = None
 
-async def get_client():
+def get_client():
     global _dapr_client
     if _dapr_client is None:
         _dapr_client = DaprClient()
     return _dapr_client
 
-async def handle_request(event):
-    client = await get_client()
-    result = await client.get_state("statestore", event["key"])
+def handle_request(event):
+    client = get_client()
+    result = client.get_state("statestore", event["key"])
     return result.data
 ```
 
@@ -100,10 +97,11 @@ with DaprClient(address="localhost:50001") as client:
 Use bulk state APIs to reduce round-trips:
 
 ```python
-from dapr.clients.grpc._request import TransactionalStateOperation, OperationType
+from dapr.clients import DaprClient
+from dapr.clients.grpc._state import StateItem
 
 items = [
-    {"key": f"item-{i}", "value": f"value-{i}"}
+    StateItem(key=f"item-{i}", value=f"value-{i}")
     for i in range(20)
 ]
 
