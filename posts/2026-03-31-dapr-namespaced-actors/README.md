@@ -14,21 +14,11 @@ Namespaced actors in Dapr allow you to run the same actor type in multiple Kuber
 
 By default, Dapr's placement service treats actor types globally. With namespace support enabled, the placement service partitions actor placement by namespace, so `Counter/001` in `tenant-a` is distinct from `Counter/001` in `tenant-b`.
 
-## Enabling Namespace-Scoped Actor Placement
+## How Namespace-Scoped Actor Placement Works
 
-In the Dapr Helm chart values, enable namespace-scoped placement:
+Dapr's placement service automatically partitions actor placement by namespace when actors are deployed in separate Kubernetes namespaces. Sidecars in one namespace do not receive placement information for applications in another namespace. No special Helm configuration is needed to enable this — it is the default behavior of the placement service.
 
-```yaml
-# values.yaml for dapr helm chart
-dapr_placement:
-  namespace_scoped: true
-```
-
-Or apply the annotation to your namespace:
-
-```bash
-kubectl label namespace tenant-a dapr.io/enable-api-logging=true
-```
+To use namespaced actors, deploy your actor services and their state store components in separate Kubernetes namespaces, as shown in the sections below.
 
 ## Deploying Actor Services Per Namespace
 
@@ -70,15 +60,16 @@ spec:
 
 ## Calling Actors Across Namespaces
 
-Actors in different namespaces cannot call each other directly. Cross-namespace communication should go through service invocation with namespace-qualified app IDs:
+Actors in different namespaces cannot call each other directly. The placement service does not share placement information across namespaces, so an actor in `tenant-a` has no way to route to an actor in `tenant-b`. If you need cross-namespace communication, use Dapr service invocation with namespace-qualified app IDs:
 
 ```bash
-# Invoke actor in tenant-a from a service in another namespace
-curl -X POST http://localhost:3500/v1.0/actors/Counter/counter-001/method/Increment \
-  -H "Dapr-Namespace: tenant-a" \
+# Invoke a service (not an actor) in tenant-a from another namespace
+curl -X POST http://localhost:3500/v1.0/invoke/counter-service.tenant-a/method/increment \
   -H "Content-Type: application/json" \
   -d '{"amount": 1}'
 ```
+
+Note that this invokes a service method, not an actor method directly. The target service can then interact with its local actors within its own namespace.
 
 ## Self-Hosted Namespaces
 
@@ -94,8 +85,17 @@ NAMESPACE=tenant-a dapr run --app-id counter-service \
 
 Check that actors are registered in the correct namespace via the placement HTTP endpoint:
 
+First, ensure the placement metadata endpoint is enabled. In Helm, set:
+
+```yaml
+dapr_placement:
+  metadataEnabled: true
+```
+
+Then query the placement state:
+
 ```bash
-curl http://localhost:9090/placement/state
+curl http://localhost:8080/placement/state
 ```
 
 The response includes actor type registrations with their namespace tags.
