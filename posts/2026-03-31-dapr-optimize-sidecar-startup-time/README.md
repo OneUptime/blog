@@ -24,7 +24,7 @@ kubectl get pod order-service-abc -o jsonpath='{.status.conditions[?(@.type=="Re
 kubectl describe pod order-service-abc | grep -A 5 "daprd"
 
 # Use kube-state-metrics to track startup duration
-# kube_pod_container_status_ready_time - kube_pod_container_status_running_time
+# kube_pod_status_container_ready_time - kube_pod_container_state_started
 ```
 
 ## Pre-Pull Sidecar Images
@@ -57,7 +57,7 @@ spec:
 
 ## Disabling Unused Components
 
-Each component Dapr loads adds initialization time. Disable components not needed by specific services:
+Each component Dapr loads adds initialization time. Disable built-in components not needed by specific services, and use the `scopes` field in component specs to restrict which app IDs load each component:
 
 ```yaml
 apiVersion: apps/v1
@@ -71,7 +71,6 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
         dapr.io/disable-builtin-k8s-secret-store: "true"
-        dapr.io/component-namespaces: "order-namespace"
 ```
 
 ## Tuning Sidecar Readiness and Liveness Probes
@@ -105,15 +104,15 @@ annotations:
 Prevent your application from receiving traffic before Dapr is ready:
 
 ```javascript
-const http = require('http');
-
 async function waitForDapr(maxWaitMs = 10000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
-      await fetch('http://localhost:3500/v1.0/healthz');
-      console.log('Dapr sidecar is ready');
-      return;
+      const res = await fetch('http://localhost:3500/v1.0/healthz');
+      if (res.ok) {
+        console.log('Dapr sidecar is ready');
+        return;
+      }
     } catch {
       await new Promise(r => setTimeout(r, 500));
     }
