@@ -22,9 +22,9 @@ Dapr works with any OIDC-compliant provider:
 - Google Identity
 - Dex
 
-## Configuring OAuth2 Middleware
+## Configuring OAuth2 Client Credentials Middleware
 
-Create a Dapr middleware component for OIDC token validation:
+Use the OAuth2 client credentials middleware to automatically obtain and attach tokens to outgoing requests. This is useful for service-to-service authentication where your Dapr app needs to call APIs protected by an OIDC provider:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
