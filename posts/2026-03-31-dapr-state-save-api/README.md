@@ -117,7 +117,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
 
 ```bash
 # First, get the current ETag
-ETAG=$(curl -s -I http://localhost:3500/v1.0/state/statestore/order-123 | grep -i etag | awk '{print $2}')
+ETAG=$(curl -s -I http://localhost:3500/v1.0/state/statestore/order-123 | grep -i etag | awk '{print $2}' | tr -d '"\r')
 
 # Save with ETag check
 curl -X POST http://localhost:3500/v1.0/state/statestore \
