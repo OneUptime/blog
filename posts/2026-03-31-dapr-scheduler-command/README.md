@@ -28,35 +28,38 @@ Sample output:
 
 ## Running the Scheduler Locally
 
-In self-hosted mode, the scheduler server can be started explicitly:
+In self-hosted mode, the scheduler starts automatically when you initialize Dapr:
 
 ```bash
-dapr scheduler run --port 6060
+dapr init
 ```
+
+The scheduler service runs alongside the other Dapr control plane services. You can verify it is running by checking the process list or Dapr dashboard.
 
 ## Scheduling a Job via the Jobs API
 
 Once the Scheduler is running, create a scheduled job using the Dapr Jobs API from your application:
 
 ```python
-from dapr.clients import DaprClient
-import json
+from dapr.clients import DaprClient, Job
 
 with DaprClient() as client:
-    client.schedule_job(
+    job = Job(
         name="daily-report",
         schedule="0 9 * * *",
-        data=json.dumps({"reportType": "daily", "format": "pdf"}).encode()
     )
+    client.schedule_job_alpha1(job=job)
     print("Daily report job scheduled")
 ```
 
 ## Managing Jobs with the HTTP API
 
-List scheduled jobs via the sidecar HTTP API:
+Create a scheduled job via the sidecar HTTP API:
 
 ```bash
-curl http://localhost:3500/v1.0-alpha1/jobs
+curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report \
+  -H "Content-Type: application/json" \
+  -d '{"schedule": "0 9 * * *"}'
 ```
 
 Get a specific job:
@@ -94,7 +97,8 @@ Configure the scheduler with custom replica counts for high availability:
 
 ```bash
 dapr init --kubernetes \
-          --set dapr_scheduler.replicaCount=3 \
+          --set global.ha.enabled=true \
+          --set global.ha.replicaCount=3 \
           --wait
 ```
 
