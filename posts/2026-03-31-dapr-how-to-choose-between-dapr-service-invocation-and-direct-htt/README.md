@@ -49,7 +49,7 @@ async function getOrder(orderId) {
 Or using the Dapr SDK:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient();
 
@@ -57,7 +57,7 @@ async function getOrder(orderId) {
   const result = await client.invoker.invoke(
     'order-service',
     `orders/${orderId}`,
-    'GET'
+    HttpMethod.GET
   );
   return result;
 }
@@ -108,6 +108,7 @@ spec:
   policies:
     retries:
       retryPolicy:
+        policy: constant
         maxRetries: 3
         duration: 5s
   targets:
