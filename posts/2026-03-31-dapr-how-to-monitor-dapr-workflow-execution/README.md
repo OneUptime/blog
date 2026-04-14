@@ -100,23 +100,21 @@ public override async Task<OrderResult> RunAsync(WorkflowContext context, OrderR
 Check a specific workflow instance:
 
 ```bash
-dapr workflow history order-workflow-abc123 --app-id orderservice
+dapr workflow get order-workflow-abc123 --app-id orderservice
 ```
 
 Terminate a stuck workflow:
 
 ```bash
-dapr workflow terminate \
-  --app-id orderservice \
-  --workflow-id order-workflow-abc123
+dapr workflow terminate order-workflow-abc123 \
+  --app-id orderservice
 ```
 
 Purge completed workflow history:
 
 ```bash
-dapr workflow purge \
-  --app-id orderservice \
-  --workflow-id order-workflow-abc123
+dapr workflow purge order-workflow-abc123 \
+  --app-id orderservice
 ```
 
 ## Enabling OpenTelemetry Tracing
@@ -149,10 +147,10 @@ Each workflow and activity generates a span, allowing you to see end-to-end late
 Dapr emits the following workflow-related metrics:
 
 ```text
-dapr_workflow_operation_count - total workflow operations by status
-dapr_workflow_operation_latency - duration of workflow operations
-dapr_activity_operation_count - total activity operations
-dapr_activity_operation_latency - duration of activity executions
+dapr_runtime_workflow_operation_count - total workflow operations by status
+dapr_runtime_workflow_operation_latency - duration of workflow operations
+dapr_runtime_workflow_activity_operation_count - total activity operations
+dapr_runtime_workflow_activity_operation_latency - duration of activity executions
 ```
 
 Example Prometheus scrape config:
@@ -170,16 +168,16 @@ scrape_configs:
 Track workflow success vs failure rate:
 
 ```text
-rate(dapr_workflow_operation_count{status="success"}[5m])
+rate(dapr_runtime_workflow_operation_count{status="success"}[5m])
 /
-rate(dapr_workflow_operation_count[5m])
+rate(dapr_runtime_workflow_operation_count[5m])
 ```
 
 Alert on high failure rate:
 
 ```yaml
 alert: DaprWorkflowHighFailureRate
-expr: rate(dapr_workflow_operation_count{status="failed"}[5m]) > 0.1
+expr: rate(dapr_runtime_workflow_operation_count{status="failed"}[5m]) > 0.1
 for: 2m
 labels:
   severity: critical
