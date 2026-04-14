@@ -35,7 +35,7 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp' | grep OOM
 
 ## Default Dapr Sidecar Memory Limits
 
-By default, Dapr injects sidecars with 256Mi memory limit, which may be insufficient for high-throughput applications. Override via annotations:
+By default, Dapr does not set memory limits on injected sidecar containers. Without explicit configuration, the daprd sidecar can consume as much memory as the node allows, which may lead to OOMKilled errors if a Kubernetes LimitRange applies namespace defaults or if the node runs low on memory. Set resource limits via annotations:
 
 ```yaml
 annotations:
@@ -45,24 +45,29 @@ annotations:
   dapr.io/sidecar-cpu-request: "250m"
 ```
 
-## Tuning via Helm Values
+## Setting Resource Limits via Annotations
 
-Set default resource limits for all injected sidecars in the Helm chart:
+There is no Helm value to globally set default resource limits on all injected sidecar containers. Sidecar resources must be configured per-pod using the annotations shown above. To enforce consistent limits across a namespace without annotating every pod, apply a Kubernetes `LimitRange`:
 
 ```yaml
-# values.yaml
-dapr_sidecar_injector:
-  injectorResources:
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-    limits:
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dapr-sidecar-limits
+  namespace: <namespace>
+spec:
+  limits:
+  - type: Container
+    default:
       cpu: "500m"
       memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
 ```
 
 ```bash
-helm upgrade dapr dapr/dapr -n dapr-system -f values.yaml --reuse-values
+kubectl apply -f limitrange.yaml -n <namespace>
 ```
 
 ## Profiling Memory Usage
@@ -96,29 +101,30 @@ kind: Configuration
 metadata:
   name: appconfig
 spec:
-  metric:
+  metrics:
     enabled: true
     rules:
-    - name: dapr_service_invocation_req_sent_total
+    - name: dapr_runtime_service_invocation_req_sent_total
       labels:
       - name: app_id
         regex: {}
 ```
 
-## Configuring Actor Memory Thresholds
+## Tuning Actor Idle Timeout and Scan Interval
 
-For actor-heavy workloads, tune the actor scan interval to garbage collect inactive actors sooner:
+For actor-heavy workloads, reduce the actor idle timeout and scan interval to deactivate and garbage collect inactive actors sooner. These values are configured in your application's actor runtime configuration (returned from the `/dapr/config` endpoint), not in the Dapr Configuration CRD:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: appconfig
-spec:
-  features:
-  - name: ActorStateTTL
-    enabled: true
+```json
+{
+  "entities": ["MyActor"],
+  "actorIdleTimeout": "5m",
+  "actorScanInterval": "10s",
+  "drainOngoingCallTimeout": "30s",
+  "drainRebalancedActors": true
+}
 ```
+
+The default `actorIdleTimeout` is 60 minutes and `actorScanInterval` is 30 seconds. Lowering these values causes inactive actors to be deactivated more frequently, freeing memory.
 
 ## Summary
 
