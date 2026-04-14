@@ -57,7 +57,7 @@ spec:
   type: state.redis
   version: v1
   auth:
-    secretStore: kubernetes-secrets   # Use this store for secretKeyRef lookups
+    secretStore: kubernetes   # Use this store for secretKeyRef lookups
   metadata:
   - name: redisHost
     value: "redis:6379"
@@ -117,7 +117,7 @@ spec:
 
 ## Multiple Secret References in One Component
 
-A pub/sub component with both broker URL and credentials from secrets:
+A pub/sub component with both broker hostname and credentials from secrets:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -130,10 +130,10 @@ spec:
   auth:
     secretStore: kubernetes
   metadata:
-  - name: host
+  - name: hostname
     secretKeyRef:
       name: rabbitmq-connection
-      key: host
+      key: hostname
   - name: username
     secretKeyRef:
       name: rabbitmq-connection
@@ -148,7 +148,7 @@ Create the combined secret:
 
 ```bash
 kubectl create secret generic rabbitmq-connection \
-  --from-literal=host=amqp://rabbitmq:5672 \
+  --from-literal=hostname=rabbitmq:5672 \
   --from-literal=username=myapp \
   --from-literal=password=rabbitmq-secret-password
 ```
