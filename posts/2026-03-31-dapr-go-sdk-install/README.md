@@ -88,6 +88,7 @@ import (
     "log"
     "net/http"
 
+    "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/http"
 )
 
