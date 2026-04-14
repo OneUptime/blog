@@ -55,25 +55,37 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/trial-expiry-user456 \
 In Python, dynamically schedule a job when a user signs up:
 
 ```python
-import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from dapr.clients import DaprClient
+from dapr.clients.grpc._jobs import Job
+from google.protobuf.any_pb2 import Any as GrpcAny
 
-async def schedule_onboarding_sequence(user_id: str):
+def schedule_onboarding_sequence(user_id: str):
     with DaprClient() as client:
         # Schedule welcome email in 1 hour
-        await client.schedule_job_alpha1(
-            name=f"welcome-email-{user_id}",
-            due_time="1h",
-            data=f'{{"userId": "{user_id}", "action": "welcome"}}'
+        welcome_data = GrpcAny(value=json.dumps(
+            {"userId": user_id, "action": "welcome"}
+        ).encode())
+        client.schedule_job_alpha1(
+            job=Job(
+                name=f"welcome-email-{user_id}",
+                due_time="1h",
+                data=welcome_data,
+            )
         )
 
         # Schedule follow-up check in 3 days
         followup_time = datetime.now(timezone.utc) + timedelta(days=3)
-        await client.schedule_job_alpha1(
-            name=f"followup-{user_id}",
-            due_time=followup_time.isoformat(),
-            data=f'{{"userId": "{user_id}", "action": "followup"}}'
+        followup_data = GrpcAny(value=json.dumps(
+            {"userId": user_id, "action": "followup"}
+        ).encode())
+        client.schedule_job_alpha1(
+            job=Job(
+                name=f"followup-{user_id}",
+                due_time=followup_time.isoformat(),
+                data=followup_data,
+            )
         )
 
         print(f"Scheduled onboarding sequence for user {user_id}")
@@ -91,7 +103,7 @@ app.use(express.json());
 // Handle welcome email jobs (dynamic job names use prefix matching)
 app.post('/job/:jobName', (req, res) => {
   const { jobName } = req.params;
-  const payload = JSON.parse(req.body?.data?.value || '{}');
+  const payload = JSON.parse(req.body?.value || '{}');
 
   if (jobName.startsWith('welcome-email-')) {
     sendWelcomeEmail(payload.userId)
