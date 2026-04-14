@@ -27,7 +27,7 @@ The service mesh applies routing rules at the Envoy layer between sidecars.
 Route Dapr service invocation traffic between versions:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -52,7 +52,7 @@ spec:
 Apply the corresponding DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -85,7 +85,7 @@ Istio sees the `x-version` header and routes to the v2 subset.
 Layer mesh-level retry policies on top of Dapr's application-level retries:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
