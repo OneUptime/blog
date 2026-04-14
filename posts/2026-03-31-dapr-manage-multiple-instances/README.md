@@ -114,7 +114,7 @@ dapr list
 # Get metadata for each
 dapr list | awk 'NR>1{print $1}' | while read app; do
   echo "=== $app ==="
-  curl -s http://localhost:$(dapr list | grep $app | awk '{print $3}')/v1.0/metadata
+  curl -s http://localhost:$(dapr list | grep $app | awk '{print $2}')/v1.0/metadata
 done
 ```
 
