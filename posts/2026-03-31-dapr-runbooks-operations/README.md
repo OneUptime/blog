@@ -72,7 +72,7 @@ helm upgrade --install dapr dapr/dapr \
 # Identify which app_id has high error rate
 kubectl exec -it prometheus-0 -n monitoring -- \
   promtool query instant \
-  'topk(5, rate(dapr_service_invocation_req_sent_total{status_code!~"2.."}[5m]))'
+  'topk(5, rate(dapr_runtime_service_invocation_req_sent_total{status_code!~"2.."}[5m]))'
 
 # Check sidecar logs for the affected service
 kubectl logs -l app=order-service -c daprd --tail=100
@@ -99,8 +99,8 @@ kubectl get resiliency -A
 # Check subscription configuration
 kubectl get subscriptions -A
 
-# Check dead-letter counts
-kubectl exec redis-0 -- redis-cli LLEN "app-id||topic-name"
+# Check dead-letter counts (Redis Streams)
+kubectl exec redis-0 -- redis-cli XLEN "app-id||topic-name"
 
 # View consumer group lag
 kubectl exec redis-0 -- redis-cli XPENDING mystream mygroup - + 10
@@ -125,8 +125,8 @@ kubectl rollout restart deployment/message-processor
 kubectl logs -n dapr-system -l app=dapr-sentry --tail=50 | grep -i cert
 
 # Verify cert expiry
-kubectl get secret dapr-trust-bundle -n dapr-system -o yaml | \
-  grep -A5 "ca.crt" | \
+kubectl get secret dapr-trust-bundle -n dapr-system \
+  -o jsonpath='{.data.ca\.crt}' | \
   base64 -d | openssl x509 -noout -dates
 ```
 
