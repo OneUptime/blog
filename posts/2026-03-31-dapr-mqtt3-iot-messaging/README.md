@@ -86,7 +86,7 @@ spec:
     value: "false"
   - name: cleanSession
     value: "false"
-  - name: clientId
+  - name: consumerID
     value: "dapr-iot-gateway"
 ```
 
@@ -118,7 +118,7 @@ def on_mqtt_message(client, userdata, msg):
     )
     print(f"Forwarded {msg.topic}: {payload}")
 
-client = mqtt.Client(client_id="dapr-gateway-bridge")
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="dapr-gateway-bridge")
 client.on_message = on_mqtt_message
 client.connect(BROKER_HOST, 1883)
 client.subscribe("sensors/#", qos=1)
@@ -179,14 +179,15 @@ app.listen(3000, () => console.log('Sensor processor on port 3000'));
 MQTT uses `/` as a path separator. When using Dapr's MQTT3 component directly, configure topic mapping:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: temperature-subscription
 spec:
   pubsubname: iot-pubsub
   topic: sensors/temperature
-  route: /temperature
+  routes:
+    default: /temperature
 ```
 
 Note: MQTT wildcard subscriptions (`#`, `+`) are supported in the Dapr MQTT3 component for subscribing to device hierarchies.
