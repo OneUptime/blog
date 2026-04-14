@@ -122,8 +122,9 @@ app.get("/dapr/subscribe", (req, res) => {
 });
 
 app.post("/handlers/award-points", async (req, res) => {
-  const { orderId, customerId, total } = req.body.data;
-  await awardLoyaltyPoints(customerId, total * 0.01);
+  const { orderId } = req.body.data;
+  const order = await client.state.get("statestore", `order:${orderId}`);
+  await awardLoyaltyPoints(order.customerId, order.total * 0.01);
   res.sendStatus(200);
 });
 ```
