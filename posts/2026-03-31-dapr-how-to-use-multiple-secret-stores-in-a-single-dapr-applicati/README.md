@@ -114,7 +114,7 @@ import os
 
 DAPR_HTTP_PORT = int(os.getenv("DAPR_HTTP_PORT", "3500"))
 
-def get_secret(store_name: str, secret_name: str, key: str = None) -> str:
+def get_secret(store_name: str, secret_name: str, key: str = None):
     """Fetch a secret from a specific Dapr secret store."""
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/secrets/{store_name}/{secret_name}"
     response = requests.get(url)
@@ -144,12 +144,13 @@ class SecretManager:
 
     def get_stripe_api_key(self) -> str:
         """Fetch Stripe key from Azure Key Vault."""
-        return get_secret(self.STORE_PAYMENTS, "stripe-api-key", "value")
+        return get_secret(self.STORE_PAYMENTS, "stripe-api-key", "stripe-api-key")
 
     def get_redis_password(self) -> str:
         """Fetch Redis password from local secrets (dev) or AWS (prod)."""
-        store = self.STORE_LOCAL if os.getenv("ENV") == "development" else self.STORE_DB
-        return get_secret(store, "redis.password" if store == self.STORE_LOCAL else "prod/redis/credentials", "password")
+        if os.getenv("ENV") == "development":
+            return get_secret(self.STORE_LOCAL, "redis.password", "redis.password")
+        return get_secret(self.STORE_DB, "prod/redis/credentials", "password")
 
     def get_all_database_config(self) -> dict:
         """Bulk fetch all secrets for database configuration."""
