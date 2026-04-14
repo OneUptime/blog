@@ -49,6 +49,15 @@ route:
       receiver: dapr-platform-team
 
 receivers:
+  - name: default-opsgenie
+    opsgenie_configs:
+      - api_key: YOUR_OPSGENIE_API_KEY
+        message: '{{ .GroupLabels.alertname }}'
+        priority: P2
+        responders:
+          - name: platform-engineering
+            type: team
+
   - name: dapr-critical-team
     opsgenie_configs:
       - api_key: YOUR_OPSGENIE_API_KEY
@@ -100,7 +109,7 @@ stringData:
     receivers:
       - name: dapr-platform-team
         opsgenie_configs:
-          - api_key: ${OPSGENIE_API_KEY}
+          - api_key: YOUR_OPSGENIE_API_KEY
             priority: P2
 ```
 
