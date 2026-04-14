@@ -157,7 +157,7 @@ async def process_payment(request: Request):
 Query all log entries for a specific correlation ID:
 
 ```bash
-# In Loki or CloudWatch Logs
+# In Grafana Loki (LogQL)
 {app="payment-service"} | json | correlationId="abc-123-..."
 ```
 
