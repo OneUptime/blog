@@ -93,8 +93,6 @@ spec:
     value: "pulsar+ssl://pulsar-broker.pulsar.svc.cluster.local:6651"
   - name: enableTLS
     value: "true"
-  - name: tlsTrustCertsFilePath
-    value: "/etc/pulsar/certs/ca.crt"
   - name: token
     secretKeyRef:
       name: pulsar-jwt-secret
@@ -104,8 +102,6 @@ spec:
   - name: namespace
     value: "orders"
   - name: persistent
-    value: "true"
-  - name: partitionedTopic
     value: "true"
   - name: receiverQueueSize
     value: "1000"
@@ -270,9 +266,6 @@ spec:
   topic: orders
   route: /orders
   deadLetterTopic: orders-dead-letter
-  metadata:
-    deliverAfter: "5s"
-    deliverAt: ""
 ```
 
 ## Summary
