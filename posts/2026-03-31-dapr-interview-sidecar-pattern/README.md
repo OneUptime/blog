@@ -40,10 +40,9 @@ spec:
 # 2. Kubernetes Admission Webhook fires on pod creation
 kubectl apply -f deployment.yaml
 
-# 3. Dapr Injector adds:
-#    - Init container: dapr-init (copies daprd binary)
-#    - Sidecar container: daprd
-#    - Volume: dapr-config, dapr-certs
+# 3. Dapr Sidecar Injector adds:
+#    - Sidecar container: daprd (runs from daprd container image)
+#    - Volumes for identity certs and trust anchors
 
 # 4. Resulting pod has 2 containers:
 kubectl get pod orderservice-xxx -o jsonpath='{.spec.containers[*].name}'
@@ -65,19 +64,19 @@ Example:   Sidecar delivers pub/sub message to app's /events/order-created route
 ## Sidecar Lifecycle
 
 ```bash
-# Startup order (managed by init container)
-1. Init container: dapr-init copies daprd binary to shared volume
-2. App container starts
-3. daprd sidecar starts, connects to Dapr control plane
+# Startup order
+1. App container and daprd sidecar container start simultaneously
+2. daprd connects to Dapr control plane (Sentry, Placement, Operator)
+3. daprd waits for app to be reachable on app-port
 4. daprd registers app with Placement service (for actors)
 5. daprd subscribes to pub/sub topics (reads app's /dapr/subscribe endpoint)
-6. App is ready to serve traffic
+6. Pod is ready to serve traffic
 
 # Shutdown order
-1. Kubernetes sends SIGTERM to pod
-2. daprd waits for in-flight requests to complete
-3. App shuts down
-4. daprd shuts down
+1. Kubernetes sends SIGTERM to all containers in the pod simultaneously
+2. daprd begins graceful shutdown: stops accepting new requests, drains in-flight requests
+3. App receives SIGTERM and begins its own shutdown
+4. Both containers terminate (within terminationGracePeriodSeconds)
 ```
 
 ## Why Sidecar vs Library?
@@ -96,11 +95,11 @@ Example:   Sidecar delivers pub/sub message to app's /events/order-created route
 "The sidecar adds one localhost network hop per Dapr call. For HTTP, this is typically 1-5ms of additional latency. For gRPC, it's even less. The overhead is usually acceptable given the benefits."
 
 **Q: Can you use Dapr without the sidecar?**
-"In Dapr 1.9+, there's an experimental standalone mode for testing, but production usage requires the sidecar. The sidecar is where the building block logic lives."
+"No. Dapr's architecture fundamentally requires the daprd sidecar process - all building block logic (state, pub/sub, service invocation) runs inside it. In self-hosted mode, you run daprd locally via `dapr run` instead of Kubernetes injection, but the sidecar process is always present."
 
 **Q: How many sidecars run in a cluster?**
 "One per Dapr-enabled pod. In a cluster with 100 pods annotated with `dapr.io/enabled: true`, you have 100 daprd sidecars. Each is isolated to its pod."
 
 ## Summary
 
-The Dapr sidecar pattern deploys `daprd` as a co-located process in each pod, injected automatically by the Dapr Operator via a Kubernetes admission webhook. The application communicates with the sidecar on localhost, keeping infrastructure concerns out of application code. The main trade-off is per-pod resource overhead (RAM/CPU) in exchange for language portability, operational consistency, and automatic cross-cutting concern handling.
+The Dapr sidecar pattern deploys `daprd` as a co-located process in each pod, injected automatically by the Dapr Sidecar Injector via a Kubernetes mutating admission webhook. The application communicates with the sidecar on localhost, keeping infrastructure concerns out of application code. The main trade-off is per-pod resource overhead (RAM/CPU) in exchange for language portability, operational consistency, and automatic cross-cutting concern handling.
