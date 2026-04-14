@@ -14,7 +14,7 @@ In a microservices architecture, distributed locks are needed when services acro
 
 Multiple microservices share a single Dapr lock store component. Each service acquires and releases locks via its local Dapr sidecar. The lock store (Redis) acts as the coordination point.
 
-```json
+```text
 [Service A sidecar] ----\
 [Service B sidecar] -------> [Redis Lock Store]
 [Service C sidecar] ----/
@@ -65,7 +65,7 @@ This prevents unintended services from acquiring locks.
 
 Establish a naming convention for resource IDs to avoid collisions:
 
-```json
+```text
 {domain}-{entity-type}-{entity-id}
 ```
 
@@ -80,9 +80,11 @@ Two services - `order-service` and `inventory-service` - must coordinate stock r
 
 ```python
 # order-service
+LOCK_EXPIRY_SECONDS = 30
+
 async def reserve_inventory(order_id: str, sku: str):
     resource_id = f"inventory-sku-{sku}"
-    lock = await acquire_lock("lockstore", resource_id, f"order-service-{POD_NAME}")
+    lock = await acquire_lock("lockstore", resource_id, f"order-service-{POD_NAME}", LOCK_EXPIRY_SECONDS)
     if not lock:
         raise Exception(f"Cannot reserve {sku} - inventory update in progress")
     try:
@@ -97,9 +99,11 @@ async def reserve_inventory(order_id: str, sku: str):
 
 ```python
 # inventory-service
+LOCK_EXPIRY_SECONDS = 30
+
 async def restock_sku(sku: str, quantity: int):
     resource_id = f"inventory-sku-{sku}"
-    lock = await acquire_lock("lockstore", resource_id, f"inventory-service-{POD_NAME}")
+    lock = await acquire_lock("lockstore", resource_id, f"inventory-service-{POD_NAME}", LOCK_EXPIRY_SECONDS)
     if not lock:
         raise Exception(f"Cannot restock {sku} - another update in progress")
     try:
