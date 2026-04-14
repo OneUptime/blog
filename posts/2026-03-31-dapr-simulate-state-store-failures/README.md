@@ -84,25 +84,26 @@ spec:
 
 ```yaml
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
-  name: redis-pod-failure
+  name: redis-pod-failure-schedule
   namespace: default
 spec:
-  action: pod-failure
-  mode: one
-  selector:
-    namespaces:
-      - default
-    labelSelectors:
-      app: redis
-  duration: "60s"
-  scheduler:
-    cron: "@every 10m"
+  schedule: "@every 10m"
+  type: PodChaos
+  podChaos:
+    action: pod-failure
+    mode: one
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: redis
+    duration: "60s"
 ```
 
 ```bash
-kubectl apply -f redis-pod-failure.yaml
+kubectl apply -f redis-pod-failure-schedule.yaml
 ```
 
 ## Configure Dapr Resiliency for State Store
@@ -133,9 +134,10 @@ spec:
   targets:
     components:
       statestore:
-        timeout: stateTimeout
-        retry: stateRetry
-        circuitBreaker: stateCircuitBreaker
+        outbound:
+          timeout: stateTimeout
+          retry: stateRetry
+          circuitBreaker: stateCircuitBreaker
 ```
 
 ## Observe Application Behavior
