@@ -34,12 +34,12 @@ pip3 install dapr dapr-ext-workflow flask
 ```python
 # app.py
 import time
-from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext
-from dapr.clients import DaprClient
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext, DaprWorkflowClient
 from flask import Flask, request, jsonify
 
 flask_app = Flask(__name__)
 workflow_runtime = WorkflowRuntime()
+wf_client = DaprWorkflowClient()
 
 # Activity 1: Check Inventory
 @workflow_runtime.activity(name='check_inventory')
@@ -90,22 +90,16 @@ def order_workflow(ctx: DaprWorkflowContext, order: dict):
 @flask_app.route('/start-workflow', methods=['POST'])
 def start_workflow():
     order = request.get_json()
-    with DaprClient() as client:
-        result = client.start_workflow(
-            workflow_component="dapr",
-            workflow_name="order_workflow",
-            input=order,
-            instance_id=f"order-{order['orderId']}"
-        )
-    return jsonify({"instanceId": result.instance_id})
+    instance_id = wf_client.schedule_new_workflow(
+        workflow=order_workflow,
+        input=order,
+        instance_id=f"order-{order['orderId']}"
+    )
+    return jsonify({"instanceId": instance_id})
 
 @flask_app.route('/workflow/<instance_id>', methods=['GET'])
 def get_workflow(instance_id):
-    with DaprClient() as client:
-        state = client.get_workflow(
-            instance_id=instance_id,
-            workflow_component="dapr"
-        )
+    state = wf_client.get_workflow_state(instance_id=instance_id)
     return jsonify({
         "instanceId": state.instance_id,
         "status": state.runtime_status.name,
@@ -166,11 +160,12 @@ Response:
 
 | Status | Description |
 |--------|-------------|
+| `PENDING` | Workflow is scheduled but not yet started |
 | `RUNNING` | Workflow is executing |
 | `COMPLETED` | Workflow finished successfully |
 | `FAILED` | Workflow encountered an unhandled error |
 | `TERMINATED` | Workflow was manually terminated |
-| `SUSPENDED` | Workflow is waiting for an external event |
+| `SUSPENDED` | Workflow was explicitly paused via pause API |
 
 ## Terminating a Workflow
 
@@ -184,7 +179,7 @@ curl -X POST \
 Remove the workflow history:
 
 ```bash
-curl -X DELETE \
+curl -X POST \
   "http://localhost:3500/v1.0/workflows/dapr/order-ord-001/purge"
 ```
 
