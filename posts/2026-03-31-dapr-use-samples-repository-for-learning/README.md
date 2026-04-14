@@ -29,8 +29,7 @@ quickstarts/
   secrets_management/ - Secret store access
   configuration/      - Configuration API
   actors/             - Virtual actors
-  workflow/           - Workflow orchestration
-  observability/      - Tracing and metrics
+  workflows/          - Workflow orchestration
 ```
 
 ## Running a Quickstart
@@ -39,13 +38,14 @@ Each quickstart has self-contained instructions. Start with pub/sub as a represe
 
 ```bash
 cd quickstarts/pub_sub/python/sdk
-pip install -r requirements.txt
 
-# Terminal 1 - start the checkout service
-dapr run --app-id checkout --app-port 6002 -- python3 checkout.py
-
-# Terminal 2 - start the order processor
+# Terminal 1 - start the order processor (subscriber)
+cd order-processor && pip install -r requirements.txt
 dapr run --app-id order-processor --app-port 6001 -- python3 app.py
+
+# Terminal 2 - start the checkout service (publisher)
+cd checkout && pip install -r requirements.txt
+dapr run --app-id checkout -- python3 app.py
 ```
 
 Watch messages flow between services in the terminal output without any message broker configuration in your code.
@@ -56,11 +56,11 @@ Most quickstarts provide examples in multiple languages and communication styles
 
 ```bash
 ls quickstarts/service_invocation/
-# go/      java/      javascript/      python/      dotnet/
-# Each has: http/ (raw HTTP) and sdk/ (language SDK) subdirectories
+# csharp/      go/      java/      javascript/      python/
+# Each has an http/ subdirectory with raw HTTP examples
 ```
 
-Use the `http` variant to understand the underlying API calls, then switch to the `sdk` variant to see idiomatic SDK usage.
+Use the `http` variant to understand the underlying Dapr API calls. Other quickstarts like `pub_sub` and `state_management` provide `sdk` variants that show idiomatic SDK usage.
 
 ## Using the Dapr Samples Repository
 
@@ -73,9 +73,9 @@ ls samples/
 
 Notable samples include:
 
-- `distributed-calculator` - Multi-language microservices
-- `hello-kubernetes` - Kubernetes deployment walkthrough
-- `dapr-traffic-control` - Fine-grained state and pub/sub demo
+- `distributed-calculator` - Multi-language microservices (also available in `dapr/quickstarts/tutorials/`)
+- `hello-kubernetes` - Kubernetes deployment walkthrough (located in `dapr/quickstarts/tutorials/`)
+- `dapr-traffic-control` - Traffic control system demo using multiple Dapr building blocks (external community sample)
 
 ## Modifying Samples for Experimentation
 
@@ -86,7 +86,7 @@ git clone https://github.com/dapr/quickstarts.git
 cd quickstarts/state_management/python/sdk
 
 # Swap the state store from Redis to an in-memory store
-cat components/statestore.yaml
+cat ../../resources/statestore.yaml
 # Change spec.type from state.redis to state.in-memory
 ```
 
@@ -101,9 +101,11 @@ This pattern lets you isolate component behavior from application logic.
 
 ## Running Quickstarts in Kubernetes
 
+Each quickstart that supports Kubernetes has deployment manifests in its directory. For example, to deploy the pub/sub quickstart:
+
 ```bash
-cd quickstarts/pub_sub/deploy
-kubectl apply -f .
+cd quickstarts/tutorials/hello-kubernetes
+kubectl apply -f ./deploy
 kubectl get pods -w
 ```
 
