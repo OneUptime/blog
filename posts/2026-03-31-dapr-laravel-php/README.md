@@ -184,14 +184,20 @@ class DaprController extends Controller
 }
 ```
 
-Register routes in `routes/api.php`:
+Register routes in `routes/web.php`. Since this is a Dapr microservice receiving JSON requests (not browser form submissions), disable CSRF protection for these routes:
 
 ```php
-Route::get('/products', [ProductController::class, 'index']);
-Route::post('/products', [ProductController::class, 'store']);
-Route::get('/products/{id}', [ProductController::class, 'show']);
-Route::get('/dapr/subscribe', [DaprController::class, 'subscribe']);
-Route::post('/dapr/events/inventory-updated', [DaprController::class, 'handleInventoryUpdated']);
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\DaprController;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+
+Route::withoutMiddleware([ValidateCsrfToken::class])->group(function () {
+    Route::get('/products', [ProductController::class, 'index']);
+    Route::post('/products', [ProductController::class, 'store']);
+    Route::get('/products/{id}', [ProductController::class, 'show']);
+    Route::get('/dapr/subscribe', [DaprController::class, 'subscribe']);
+    Route::post('/dapr/events/inventory-updated', [DaprController::class, 'handleInventoryUpdated']);
+});
 ```
 
 ## Running with Dapr CLI
