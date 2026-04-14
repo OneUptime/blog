@@ -10,7 +10,7 @@ Description: Learn how to configure exponential backoff retry policies in Dapr t
 
 ## Overview
 
-Exponential backoff increases the wait time between each retry attempt, typically multiplying by a factor after each failure. This reduces pressure on an already-struggling service and prevents thundering herd scenarios where many callers simultaneously hammer a recovering dependency. Dapr's `exponential` retry policy supports full customization of growth rate, maximum interval, and jitter.
+Exponential backoff increases the wait time between each retry attempt, multiplying by a factor after each failure. This reduces pressure on an already-struggling service and prevents thundering herd scenarios where many callers simultaneously hammer a recovering dependency. Dapr's `exponential` retry policy uses a built-in growth rate of 1.5x and a randomization factor of 0.5 for jitter, while letting you configure the initial interval, maximum interval, and retry count.
 
 ## Configuring Exponential Backoff
 
@@ -25,39 +25,35 @@ spec:
     retries:
       standardExponential:
         policy: exponential
-        initialInterval: 500ms
-        multiplier: 2.0
+        duration: 500ms
         maxInterval: 30s
         maxRetries: 8
-        randomizationFactor: 0.5
 ```
 
-With `initialInterval: 500ms` and `multiplier: 2.0`, the retry intervals grow as follows (before jitter):
+With `duration: 500ms` and Dapr's built-in 1.5x multiplier, the retry intervals grow as follows (before jitter):
 
 | Attempt | Interval |
 |---|---|
 | 1 | 500ms |
-| 2 | 1s |
-| 3 | 2s |
-| 4 | 4s |
-| 5 | 8s |
-| 6 | 16s |
-| 7 | 30s (capped) |
-| 8 | 30s (capped) |
+| 2 | 750ms |
+| 3 | 1.1s |
+| 4 | 1.7s |
+| 5 | 2.5s |
+| 6 | 3.8s |
+| 7 | 5.7s |
+| 8 | 8.5s |
 
-## The Role of randomizationFactor
+## Built-in Jitter
 
-`randomizationFactor` adds jitter to each computed interval. With a factor of `0.5`, each interval is multiplied by a random value between `0.5` and `1.5`. This spreads retry timing across callers and avoids synchronized retry storms:
+Dapr's exponential backoff includes a built-in randomization factor of 0.5. Each computed interval is multiplied by a random value between 0.5 and 1.5. This spreads retry timing across callers and avoids synchronized retry storms:
 
 ```yaml
 retries:
-  jitteredExponential:
+  exponentialWithLongerCap:
     policy: exponential
-    initialInterval: 1s
-    multiplier: 1.5
+    duration: 1s
     maxInterval: 60s
     maxRetries: 10
-    randomizationFactor: 0.5
 ```
 
 ## Applying to Services and Components
@@ -68,7 +64,7 @@ targets:
     payment-gateway:
       retry: standardExponential
     notification-service:
-      retry: jitteredExponential
+      retry: exponentialWithLongerCap
   components:
     postgres-state:
       outbound:
@@ -84,17 +80,17 @@ targets:
   components:
     orders-kafka:
       inbound:
-        retry: jitteredExponential
+        retry: exponentialWithLongerCap
 ```
 
 This means if the subscriber crashes during message processing, Dapr backs off before redelivering, giving the service time to recover.
 
 ## Calculating Max Total Time
 
-With `maxRetries: 8`, `initialInterval: 500ms`, `multiplier: 2.0`, and `maxInterval: 30s`, the worst-case total retry time (before jitter) is approximately:
+With `maxRetries: 8`, `duration: 500ms`, Dapr's built-in 1.5x multiplier, and `maxInterval: 30s`, the worst-case total retry time (before jitter) is approximately:
 
 ```text
-500ms + 1s + 2s + 4s + 8s + 16s + 30s + 30s = 91.5s
+500ms + 750ms + 1.1s + 1.7s + 2.5s + 3.8s + 5.7s + 8.5s ≈ 24.6s
 ```
 
 Add the per-attempt timeout to get the absolute worst case. Plan your upstream timeouts and SLAs accordingly.
@@ -105,11 +101,9 @@ Add the per-attempt timeout to get the absolute worst case. Plan your upstream t
 retries:
   dbReconnect:
     policy: exponential
-    initialInterval: 1s
-    multiplier: 2.0
+    duration: 1s
     maxInterval: 30s
     maxRetries: -1
-    randomizationFactor: 0.3
 
 targets:
   components:
@@ -122,4 +116,4 @@ Using `maxRetries: -1` with exponential backoff is safe for database connections
 
 ## Summary
 
-Dapr's exponential backoff retry policy increases wait time between retries with configurable multiplier, cap, and jitter. It is the recommended strategy for most production scenarios because it reduces load on recovering services and naturally prevents synchronized retry bursts from multiple callers.
+Dapr's exponential backoff retry policy increases wait time between retries using a built-in 1.5x multiplier and jitter, with configurable initial interval, cap, and retry count. It is the recommended strategy for most production scenarios because it reduces load on recovering services and naturally prevents synchronized retry bursts from multiple callers.
