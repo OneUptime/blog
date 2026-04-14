@@ -75,17 +75,29 @@ dapr run \
 
 ## Application Code
 
-Your app does not need to validate tokens - Dapr handles it:
+Your app does not need to validate tokens - Dapr handles it. Only authenticated requests reach your application. If you need to access token claims, parse the JWT from the `Authorization` header:
 
 ```python
+import json
+import base64
 from flask import Flask, request
 
 app = Flask(__name__)
 
 @app.route("/api/profile")
 def profile():
-    # Dapr has already validated the token
-    user_sub = request.headers.get("X-User-Sub", "unknown")
+    # Dapr has already validated the token; only authenticated requests arrive here.
+    # To access claims, decode the JWT payload (signature already verified by Dapr).
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth.split(" ", 1)[1]
+        payload = token.split(".")[1]
+        # Add padding for base64 decoding
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        user_sub = claims.get("sub", "unknown")
+    else:
+        user_sub = "unknown"
     return {"message": "Access granted", "user": user_sub}
 ```
 
