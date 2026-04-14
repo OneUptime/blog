@@ -107,7 +107,7 @@ dapr run \
 ## Expected Output
 
 ```text
-DB password retrieved: ****************
+DB password retrieved: **************
 API key retrieved: my-a...
 JWT secret retrieved: jwt-...
 
