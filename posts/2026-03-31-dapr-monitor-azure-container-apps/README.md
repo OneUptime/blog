@@ -60,29 +60,30 @@ az monitor log-analytics query \
 
 ## Step 3: Enable Application Insights Tracing
 
-Configure the Dapr tracing component:
+Create an Application Insights resource and configure the Container Apps environment:
 
-```yaml
-# appinsights-tracing.yaml
-componentType: middleware.http.nethttpadaptor
-version: v1
-metadata:
-  - name: connectionString
-    secretRef: appinsights-key
+```bash
+APPINSIGHTS_CONN=$(az monitor app-insights component create \
+  --app dapr-insights \
+  --resource-group rg-dapr \
+  --location eastus \
+  --query connectionString -o tsv)
+
+az containerapp env update \
+  --name aca-env \
+  --resource-group rg-dapr \
+  --dapr-connection-string $APPINSIGHTS_CONN
 ```
 
-Or configure via Dapr Configuration:
+Or include it when creating the environment:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: tracing-config
-spec:
-  tracing:
-    samplingRate: "1"
-    zipkin:
-      endpointAddress: http://appinsights-collector:9411/api/v2/spans
+```bash
+az containerapp env create \
+  --name aca-env \
+  --resource-group rg-dapr \
+  --logs-workspace-id $LOG_WS \
+  --logs-workspace-key $LOG_KEY \
+  --dapr-connection-string $APPINSIGHTS_CONN
 ```
 
 ## Step 4: Monitor Service Invocation Metrics
@@ -106,7 +107,7 @@ az monitor metrics alert create \
   --name dapr-error-alert \
   --resource-group rg-dapr \
   --scopes /subscriptions/<sub>/resourceGroups/rg-dapr/providers/Microsoft.App/containerApps/orders-service \
-  --condition "count ContainerAppRequests >= 10 where StatusCode includes '5'" \
+  --condition "count Requests >= 10 where statusCodeCategory includes 5xx" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --action /subscriptions/<sub>/resourceGroups/rg-dapr/providers/microsoft.insights/actionGroups/ops-team
