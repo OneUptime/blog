@@ -15,10 +15,10 @@ Service invocation success rate is one of the most important reliability signals
 When Dapr routes service calls, it emits metrics on both the calling and receiving sidecars:
 
 - `dapr_http_server_request_count` - requests received by sidecar (with HTTP status code)
-- `dapr_http_client_request_count` - requests sent by sidecar to target service
-- `dapr_service_invocation_req_sent_total` - service invocation attempts with success label
+- `dapr_http_client_completed_count` - completed requests sent by sidecar to target service
+- `dapr_runtime_service_invocation_req_sent_total` - service invocation attempts with success label
 
-Labels include `app_id` (target service), `method`, `status`, and `namespace`.
+Labels include `app_id` (target service), `method`, `status`, and `path`.
 
 ## Querying Success Rates
 
