@@ -55,23 +55,6 @@ helm upgrade dapr dapr/dapr \
 
 Pod-level annotations override global defaults.
 
-## Set Resources via Dapr Configuration
-
-Define resource defaults in a Dapr `Configuration` resource:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: default-config
-  namespace: default
-spec:
-  tracing:
-    samplingRate: "1"
-  metric:
-    enabled: true
-```
-
 ## Recommended Resource Sizing by Workload Type
 
 ```text
@@ -149,8 +132,8 @@ kubectl top pods -n production --sort-by=memory
 Use Prometheus and Grafana to track trends:
 
 ```bash
-# Query sidecar CPU usage
-dapr_sidecar_cpu_seconds_total{app_id="payment-service"}
+# Query sidecar CPU usage (standard process metric exposed by daprd)
+process_cpu_seconds_total{app_id="payment-service"}
 
 # Query sidecar memory
 container_memory_working_set_bytes{container="daprd", namespace="production"}
@@ -189,7 +172,7 @@ If memory limit is reached, the sidecar OOMs and the pod is restarted. Signs of 
 
 ```bash
 # Check for OOM kills
-kubectl get events -n production --field-selector reason=OOMKilling
+kubectl get events -n production --field-selector reason=OOMKilled
 
 # Check container restart counts
 kubectl get pods -n production -o wide
