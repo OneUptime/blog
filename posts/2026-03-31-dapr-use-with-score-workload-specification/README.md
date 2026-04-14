@@ -17,24 +17,20 @@ Developers should not need to know Kubernetes internals to run their service. A 
 ```yaml
 # score.yaml - developer writes this
 apiVersion: score.dev/v1b1
-kind: Workload
 metadata:
   name: order-service
-spec:
-  containers:
-    order-service:
-      image: myrepo/order-service:latest
-      resources:
-        requests:
-          cpu: 250m
-          memory: 256Mi
-  resources:
-    state:
-      type: dapr-state-store
-    events:
-      type: dapr-pubsub
-    db-password:
-      type: secret
+containers:
+  order-service:
+    image: myrepo/order-service:latest
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+resources:
+  state:
+    type: dapr-state-store
+  events:
+    type: dapr-pubsub
 ```
 
 The Score CLI then generates the target platform's YAML with Dapr annotations included.
@@ -109,9 +105,8 @@ Create a provisioner that maps Score resource types to Dapr components:
 # Generate Kubernetes YAML from score.yaml
 score-k8s generate score.yaml
 
-# Output in manifests/
-ls manifests/
-# deployment.yaml  service.yaml  dapr-statestore.yaml  dapr-pubsub.yaml
+# Output is a single manifests file
+cat manifests.yaml
 ```
 
 The generated deployment will include Dapr annotations automatically:
@@ -135,7 +130,8 @@ Generate a Docker Compose file for local development using score-compose:
 # Install score-compose
 brew install score-spec/tap/score-compose
 
-# Generate docker-compose.yaml
+# Initialize and generate compose.yaml
+score-compose init
 score-compose generate score.yaml
 docker compose up
 ```
