@@ -68,7 +68,7 @@ Use the Prometheus Adapter to expose Dapr metrics to HPA:
 ```yaml
 # prometheus-adapter-config.yaml
 rules:
-- seriesQuery: 'dapr_http_server_request_count{namespace!="",pod!=""}'
+- seriesQuery: 'dapr_http_server_request_count_total{namespace!="",pod!=""}'
   resources:
     overrides:
       namespace: {resource: "namespace"}
@@ -76,7 +76,7 @@ rules:
   name:
     matches: "^(.*)_total"
     as: "${1}_per_second"
-  metricsQuery: 'rate(dapr_http_server_request_count{<<.LabelMatchers>>}[2m])'
+  metricsQuery: 'rate(dapr_http_server_request_count_total{<<.LabelMatchers>>}[2m])'
 ```
 
 ```yaml
