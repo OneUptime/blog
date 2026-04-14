@@ -136,41 +136,70 @@ sequenceDiagram
     participant PubSub as Dapr Pub/Sub
     participant Processor as Order Processor
 
-    Caller->>PubSub: publish("orders.request", {correlationId, payload})
+    Note over Caller,PubSub: At startup
+    Caller->>PubSub: subscribe("orders.reply")
     Processor->>PubSub: subscribe("orders.request")
+
+    Note over Caller,Processor: At request time
+    Caller->>PubSub: publish("orders.request", {correlationId, payload})
     PubSub->>Processor: deliver event
     Processor->>PubSub: publish("orders.reply", {correlationId, result})
-    Caller->>PubSub: subscribe("orders.reply")
     PubSub->>Caller: deliver result
     Caller->>Caller: match by correlationId
 ```
 
 ### Caller Sends Request
 
-```go
-// caller sends request with correlation ID
-import "github.com/google/uuid"
+Dapr subscriptions are registered at startup and cannot be added dynamically at runtime. Subscribe to a single reply topic and route responses by correlation ID.
 
+```go
+// Register a single reply handler at startup (before s.Start())
+var (
+    pendingRequests = make(map[string]chan map[string]interface{})
+    mu              sync.Mutex
+)
+
+s.AddTopicEventHandler(&common.Subscription{
+    PubsubName: "pubsub",
+    Topic:      "orders.reply",
+    Route:      "/orders/reply",
+}, func(ctx context.Context, e *common.TopicEvent) (bool, error) {
+    var reply map[string]interface{}
+    json.Unmarshal(e.RawData, &reply)
+
+    corrID := reply["correlationId"].(string)
+    mu.Lock()
+    ch, ok := pendingRequests[corrID]
+    mu.Unlock()
+    if ok {
+        ch <- reply
+    }
+    return false, nil
+})
+
+// To send a request and wait for a reply:
 correlationID := uuid.New().String()
+replyCh := make(chan map[string]interface{}, 1)
+
+mu.Lock()
+pendingRequests[correlationID] = replyCh
+mu.Unlock()
 
 request := map[string]interface{}{
     "correlationId": correlationID,
-    "replyTopic":    "orders.reply." + correlationID,
     "payload":       order,
 }
 data, _ := json.Marshal(request)
 
-// Subscribe to the reply topic BEFORE publishing
-s.AddTopicEventHandler(&common.Subscription{
-    PubsubName: "pubsub",
-    Topic:      "orders.reply." + correlationID,
-    Route:      "/orders/reply/" + correlationID,
-}, func(ctx context.Context, e *common.TopicEvent) (bool, error) {
-    fmt.Printf("Got reply for %s: %s\n", correlationID, e.RawData)
-    return false, nil
-})
-
 client.PublishEvent(ctx, "pubsub", "orders.request", data)
+
+// Wait for reply
+reply := <-replyCh
+fmt.Printf("Got reply for %s: %v\n", correlationID, reply)
+
+mu.Lock()
+delete(pendingRequests, correlationID)
+mu.Unlock()
 ```
 
 ### Processor Replies
@@ -181,7 +210,6 @@ func handleOrderRequest(ctx context.Context, e *common.TopicEvent) (bool, error)
     json.Unmarshal(e.RawData, &request)
 
     correlationID := request["correlationId"].(string)
-    replyTopic := request["replyTopic"].(string)
 
     // Process...
     result := map[string]interface{}{
@@ -191,8 +219,8 @@ func handleOrderRequest(ctx context.Context, e *common.TopicEvent) (bool, error)
     }
     data, _ := json.Marshal(result)
 
-    // Publish reply
-    daprClient.PublishEvent(ctx, "pubsub", replyTopic, data)
+    // Publish reply to the shared reply topic
+    daprClient.PublishEvent(ctx, "pubsub", "orders.reply", data)
     return false, nil
 }
 ```
@@ -209,12 +237,12 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     // Run activities asynchronously
     var validated bool
-    if err := ctx.CallActivity(ValidateOrder, workflow.ActivityInput(input)).Await(&validated); err != nil {
+    if err := ctx.CallActivity(ValidateOrder, workflow.WithActivityInput(input)).Await(&validated); err != nil {
         return nil, err
     }
 
     var charged bool
-    if err := ctx.CallActivity(ChargePayment, workflow.ActivityInput(input)).Await(&charged); err != nil {
+    if err := ctx.CallActivity(ChargePayment, workflow.WithActivityInput(input)).Await(&charged); err != nil {
         return nil, err
     }
 
