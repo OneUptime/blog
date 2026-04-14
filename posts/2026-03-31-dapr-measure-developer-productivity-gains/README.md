@@ -66,9 +66,9 @@ Re-measure after 3 and 6 months of adoption:
 
 ```bash
 # Lines of code removed (git log approach)
-git log --since="2025-01-01" --until="2026-01-01" --stat | \
+git log --since="2025-01-01" --until="2026-01-01" --numstat | \
   grep -E "kafka|redis|rabbitmq" | \
-  awk '{deletions += $4} END {print "Lines removed:", deletions}'
+  awk '{deletions += $2} END {print "Lines removed:", deletions}'
 ```
 
 Survey engineers quarterly:
