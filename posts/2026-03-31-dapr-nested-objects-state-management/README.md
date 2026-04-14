@@ -115,7 +115,7 @@ public async Task UpdateOrderPaymentAndStatusAsync(
     var ops = new List<StateTransactionRequest>
     {
         new(stateKey, JsonSerializer.SerializeToUtf8Bytes(order),
-            StateOperationType.Upsert, etag)
+            StateOperationType.Upsert) { ETag = etag }
     };
 
     await _dapr.ExecuteStateTransactionAsync("statestore", ops);
