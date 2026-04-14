@@ -42,8 +42,8 @@ err = client.DeleteState(ctx, "statestore", "user:42", nil)
 
 // Batch save
 items := []*dapr.SetStateItem{
-    {Key: "a", Value: dapr.Raw(`"val-a"`), Etag: nil},
-    {Key: "b", Value: dapr.Raw(`"val-b"`), Etag: nil},
+    {Key: "a", Value: []byte(`"val-a"`), Etag: nil},
+    {Key: "b", Value: []byte(`"val-b"`), Etag: nil},
 }
 err = client.SaveBulkState(ctx, "statestore", items...)
 ```
@@ -93,11 +93,13 @@ all, err := client.GetBulkSecret(ctx, "local-secret-store", nil)
 items, err := client.GetConfigurationItem(ctx, "config-store", "feature-flag-x")
 
 // Subscribe to configuration changes
-sub, err := client.SubscribeConfigurationItems(ctx, "config-store",
+subscriptionID, err := client.SubscribeConfigurationItems(ctx, "config-store",
     []string{"feature-flag-x"}, func(id string, items map[string]*dapr.ConfigurationItem) {
         fmt.Printf("Config changed: %v\n", items)
     })
-defer sub.Close()
+
+// Unsubscribe when done
+err = client.UnsubscribeConfigurationItems(ctx, "config-store", subscriptionID)
 ```
 
 ## Closing the Client
