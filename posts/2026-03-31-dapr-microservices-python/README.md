@@ -90,7 +90,7 @@ def subscribe():
 @app.route("/handle-order", methods=["POST"])
 def handle_order():
     body = request.get_json()
-    order = json.loads(body.get("data", "{}"))
+    order = body.get("data", {})
     item = order.get("item")
     qty = order.get("quantity", 1)
 
