@@ -84,7 +84,7 @@ spec:
     samplingRate: "1"
     zipkin:
       endpointAddress: http://jaeger-collector.observability:9411/api/v2/spans
-  metric:
+  metrics:
     enabled: true
 ```
 
@@ -140,8 +140,8 @@ spec:
     value: redis-cluster.shared-infra.svc.cluster.local:6379
   - name: actorStateStore
     value: "true"
-  - name: replicaCount
-    value: "3"
+  - name: redisType
+    value: "cluster"
 ```
 
 Track adoption milestones in your roadmap:
