@@ -27,6 +27,7 @@ sequenceDiagram
     S-->>A: value, ETag "3"
 
     B->>S: GET /state/statestore/account-1
+    S->>R: Read
     R-->>S: value + ETag "3"
     S-->>B: value, ETag "3"
 
@@ -159,10 +160,10 @@ curl -X DELETE http://localhost:3500/v1.0/state/statestore/account-1 \
 | State Store | ETag Implementation |
 |-------------|-------------------|
 | Redis | Lua script checks hash version |
-| PostgreSQL | `xmin` system column |
+| PostgreSQL | Random UUID (v2 component) |
 | Azure Cosmos DB | `_etag` field |
-| DynamoDB | Conditional expression on version attribute |
-| MongoDB | Document version field |
+| DynamoDB | Conditional expression on ETag attribute |
+| MongoDB | `_etag` field with UUID |
 
 The ETag value format varies by store but Dapr's API is consistent.
 
