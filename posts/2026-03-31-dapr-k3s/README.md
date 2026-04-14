@@ -27,7 +27,7 @@ kubectl get nodes
 
 ## Installing Dapr on k3s
 
-k3s uses containerd, so specify the container runtime when installing Dapr:
+k3s uses containerd, which works out of the box with Dapr's Helm installation:
 
 ```bash
 # Add Dapr Helm repo
@@ -110,7 +110,7 @@ spec:
   version: v1
   metadata:
   - name: redisHost
-    value: redis.default.svc.cluster.local:6379
+    value: redis-master.default.svc.cluster.local:6379
   - name: actorStateStore
     value: "false"
 ```
