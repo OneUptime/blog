@@ -21,7 +21,7 @@ metadata:
   name: dapr-config
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
     http:
       increasedCardinality: false
@@ -63,31 +63,33 @@ The most important Dapr metrics for production:
 
 ```bash
 # Request success rate per app
-dapr_service_invocation_req_sent_total
+dapr_runtime_service_invocation_req_sent_total
 
 # gRPC server request latency
 dapr_grpc_io_server_server_latency
 
 # Pub/sub message processing
-dapr_pubsub_incoming_messages_total
-dapr_pubsub_publish_count
+dapr_component_pubsub_ingress_count
+dapr_component_pubsub_egress_count
 
 # Actor placement
-dapr_placement_actor_count
+dapr_placement_runtimes_total
 ```
 
 ## Grafana Dashboard Setup
 
-Import the official Dapr Grafana dashboards:
+Import the official Dapr Grafana dashboards from the [dapr/dapr GitHub repository](https://github.com/dapr/dapr/tree/master/grafana):
 
 ```bash
-# Dashboard IDs for Grafana.com
-# Dapr System Services: 14850
-# Dapr Sidecar: 14848
+# Download official Dapr dashboard JSON files
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-sidecar-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-actor-dashboard.json
 
-# Via Grafana CLI
-grafana-cli dashboards import 14850
-grafana-cli dashboards import 14848
+# Import via Grafana HTTP API
+curl -X POST http://localhost:3000/api/dashboards/db \
+  -H "Content-Type: application/json" \
+  -d @grafana-system-services-dashboard.json
 ```
 
 Or provision them via ConfigMap:
