@@ -10,17 +10,17 @@ Description: Configure persistent storage for Dapr Scheduler jobs in self-hosted
 
 ## Overview
 
-The Dapr Scheduler service manages job scheduling for the Jobs API. By default in self-hosted mode, job data is stored in memory and lost on restart. Configuring persistence ensures your scheduled jobs survive process restarts.
+The Dapr Scheduler service manages job scheduling for the Jobs API. In self-hosted mode, the scheduler uses an embedded etcd instance with a default data directory of `./data` (relative to the working directory). Configuring an explicit, absolute data directory ensures your scheduled jobs are stored in a predictable location and survive process restarts reliably.
 
 ## Prerequisites
 
 - Dapr CLI v1.14+
 - Dapr initialized in self-hosted mode
-- `etcd` or embedded storage configured
+- Embedded etcd (included with Dapr by default)
 
 ## Step 1: Understand Scheduler Storage
 
-The Dapr Scheduler uses an embedded `etcd` instance for storage when running in Kubernetes, but in self-hosted mode it defaults to an in-memory store. You can configure a file-based persistence path.
+The Dapr Scheduler uses an embedded `etcd` instance for storage in both Kubernetes and self-hosted mode. In self-hosted mode, the default data directory is `./data` (relative to the working directory), which can be unreliable. You should configure an explicit, absolute path for the data directory.
 
 Check the scheduler binary location:
 
@@ -37,7 +37,7 @@ Run the scheduler with a persistent data directory:
 ```bash
 ~/.dapr/bin/scheduler \
   --port 50006 \
-  --data-dir ~/.dapr/scheduler-data \
+  --etcd-data-dir ~/.dapr/scheduler-data \
   --log-level info &
 ```
 
@@ -66,7 +66,6 @@ import json
 job = {
     "schedule": "@every 5m",
     "data": {
-        "@type": "type.googleapis.com/google.protobuf.StringValue",
         "value": "process-batch"
     }
 }
@@ -102,7 +101,7 @@ curl http://localhost:3500/v1.0-alpha1/jobs/batch-processor
 
 # Stop and restart scheduler
 kill $(pgrep -f scheduler)
-~/.dapr/bin/scheduler --port 50006 --data-dir ~/.dapr/scheduler-data &
+~/.dapr/bin/scheduler --port 50006 --etcd-data-dir ~/.dapr/scheduler-data &
 
 # Jobs should still be present
 curl http://localhost:3500/v1.0-alpha1/jobs/batch-processor
@@ -110,4 +109,4 @@ curl http://localhost:3500/v1.0-alpha1/jobs/batch-processor
 
 ## Summary
 
-Configuring Dapr Scheduler with a persistent data directory ensures your scheduled jobs are not lost when the process restarts. By specifying `--data-dir` when launching the scheduler and pointing apps to the scheduler address, you get reliable job persistence in self-hosted mode. This is critical for production-like local development and testing scenarios.
+Configuring Dapr Scheduler with an explicit data directory ensures your scheduled jobs are stored in a predictable location and are not lost when the process restarts. By specifying `--etcd-data-dir` with an absolute path when launching the scheduler and pointing apps to the scheduler address, you get reliable job persistence in self-hosted mode. This is critical for production-like local development and testing scenarios.
