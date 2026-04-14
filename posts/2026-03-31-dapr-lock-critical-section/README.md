@@ -136,10 +136,10 @@ If you cannot acquire the lock within a deadline, fail fast rather than blocking
 func tryWithTimeout(client dapr.Client, resourceID string, fn func() error) error {
     deadline := time.Now().Add(5 * time.Second)
     for time.Now().Before(deadline) {
-        resp, _ := client.TryLockAlpha1(ctx, "lockstore", &dapr.LockRequest{
+        resp, err := client.TryLockAlpha1(context.Background(), "lockstore", &dapr.LockRequest{
             LockOwner: owner, ResourceID: resourceID, ExpiryInSeconds: 30,
         })
-        if resp.Success {
+        if err == nil && resp.Success {
             defer unlockResource(client, resourceID)
             return fn()
         }
