@@ -19,14 +19,14 @@ package main
 
 import (
     "time"
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/durabletask-go/workflow"
 )
 
 func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     var order Order
     ctx.GetInput(&order)
 
-    retryPolicy := workflow.ActivityRetryPolicy{
+    retryPolicy := &workflow.RetryPolicy{
         MaxAttempts:          5,
         InitialRetryInterval: 2 * time.Second,
         BackoffCoefficient:   2.0,
@@ -36,8 +36,8 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     var result PaymentResult
     err := ctx.CallActivity(ProcessPayment,
-        workflow.ActivityInput(order),
-        workflow.WithRetryPolicy(retryPolicy)).Await(&result)
+        workflow.WithActivityInput(order),
+        workflow.WithActivityRetryPolicy(retryPolicy)).Await(&result)
 
     if err != nil {
         return nil, err
@@ -102,14 +102,14 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     ctx.GetInput(&order)
 
     // Aggressive retry for idempotent payment check
-    checkPolicy := workflow.ActivityRetryPolicy{
+    checkPolicy := &workflow.RetryPolicy{
         MaxAttempts:          10,
         InitialRetryInterval: 1 * time.Second,
         BackoffCoefficient:   1.5,
     }
 
     // Conservative retry for email (idempotency via dedup)
-    emailPolicy := workflow.ActivityRetryPolicy{
+    emailPolicy := &workflow.RetryPolicy{
         MaxAttempts:          3,
         InitialRetryInterval: 10 * time.Second,
         BackoffCoefficient:   2.0,
@@ -117,12 +117,12 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     var paymentStatus PaymentStatus
     ctx.CallActivity(CheckPaymentStatus,
-        workflow.ActivityInput(order.PaymentID),
-        workflow.WithRetryPolicy(checkPolicy)).Await(&paymentStatus)
+        workflow.WithActivityInput(order.PaymentID),
+        workflow.WithActivityRetryPolicy(checkPolicy)).Await(&paymentStatus)
 
     ctx.CallActivity(SendConfirmationEmail,
-        workflow.ActivityInput(order),
-        workflow.WithRetryPolicy(emailPolicy)).Await(nil)
+        workflow.WithActivityInput(order),
+        workflow.WithActivityRetryPolicy(emailPolicy)).Await(nil)
 
     return map[string]any{"status": "complete"}, nil
 }
@@ -131,23 +131,23 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 ## No-Retry Policy for Non-Idempotent Activities
 
 ```go
-noRetry := workflow.ActivityRetryPolicy{
+noRetry := &workflow.RetryPolicy{
     MaxAttempts: 1,
 }
 
 // Charge credit card - only once
 ctx.CallActivity(ChargeCreditCard,
-    workflow.ActivityInput(paymentDetails),
-    workflow.WithRetryPolicy(noRetry)).Await(&result)
+    workflow.WithActivityInput(paymentDetails),
+    workflow.WithActivityRetryPolicy(noRetry)).Await(&result)
 ```
 
 ## Observing Retry Attempts
 
-Dapr workflow emits retry-related events in the history:
+Check workflow status to see the outcome after retries complete:
 
 ```bash
-curl "http://localhost:3500/v1.0/workflows/dapr/order-123/status" \
-  | jq '.properties["dapr.workflow.history"]'
+curl "http://localhost:3500/v1.0/workflows/dapr/order-123" \
+  | jq '.'
 ```
 
 ## Summary
