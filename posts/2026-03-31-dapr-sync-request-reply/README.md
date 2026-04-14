@@ -24,7 +24,7 @@ Dapr handles service discovery via mDNS (local) or Kubernetes DNS (K8s), elimina
 ## Invoking a Service
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient();
 
@@ -33,7 +33,7 @@ async function getOrderDetails(orderId) {
     const response = await client.invoker.invoke(
       'order-service',           // Target app ID
       `orders/${orderId}`,        // Method path
-      'GET'                       // HTTP method
+      HttpMethod.GET              // HTTP method
     );
     return response;
   } catch (error) {
@@ -46,7 +46,7 @@ async function createOrder(orderData) {
   const response = await client.invoker.invoke(
     'order-service',
     'orders',
-    'POST',
+    HttpMethod.POST,
     orderData
   );
   return response;
@@ -139,10 +139,10 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
 
     dapr "github.com/dapr/go-sdk/client"
-    "google.golang.org/protobuf/types/known/anypb"
 )
 
 func getInventoryLevel(productId string) (int, error) {
@@ -152,11 +152,17 @@ func getInventoryLevel(productId string) (int, error) {
     }
     defer client.Close()
 
-    resp, err := client.InvokeMethod(
+    content := &dapr.DataContent{
+        ContentType: "application/json",
+        Data:        []byte(fmt.Sprintf(`{"productId":"%s"}`, productId)),
+    }
+
+    resp, err := client.InvokeMethodWithContent(
         context.Background(),
         "inventory-service",
         "getLevel",
-        "application/json",
+        "POST",
+        content,
     )
     if err != nil {
         return 0, fmt.Errorf("failed to invoke inventory service: %w", err)
@@ -189,7 +195,7 @@ def request_reply_over_pubsub(request_topic: str, reply_topic: str,
             "statestore",
             f"reply:{correlation_id}",
             json.dumps({"waiting": True}),
-            metadata={"ttlInSeconds": str(timeout + 5)}
+            state_metadata={"ttlInSeconds": str(timeout + 5)}
         )
 
         # Publish request with correlation ID
