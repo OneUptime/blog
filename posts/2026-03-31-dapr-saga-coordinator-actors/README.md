@@ -29,15 +29,11 @@ const SAGA_STATES = {
 ## Order Saga Coordinator Actor
 
 ```javascript
-class OrderSagaActor {
-  constructor(host) {
-    this.stateManager = host.stateManager;
-    this.actorId = host.id;
-    this.client = new (require('@dapr/dapr').DaprClient)();
-  }
+const { AbstractActor, HttpMethod } = require('@dapr/dapr');
 
+class OrderSagaActor extends AbstractActor {
   async start(order) {
-    await this.stateManager.set('saga', {
+    await this.getStateManager().setState('saga', {
       orderId: order.id,
       order,
       state: SAGA_STATES.STARTED,
@@ -49,7 +45,7 @@ class OrderSagaActor {
   }
 
   async executeStep() {
-    const saga = await this.stateManager.get('saga');
+    const saga = await this.getStateManager().getState('saga');
 
     switch (saga.state) {
       case SAGA_STATES.STARTED:
@@ -69,8 +65,8 @@ class OrderSagaActor {
 
   async reserveInventory(saga) {
     try {
-      const reservation = await this.client.invokeMethod(
-        'inventory-service', 'reserve', 'POST', { items: saga.order.items }
+      const reservation = await this.getDaprClient().invoker.invoke(
+        'inventory-service', 'reserve', HttpMethod.POST, { items: saga.order.items }
       );
       await this.updateSagaState(SAGA_STATES.INVENTORY_RESERVED, { reservationId: reservation.id });
       await this.executeStep();
@@ -81,8 +77,8 @@ class OrderSagaActor {
 
   async chargePayment(saga) {
     try {
-      const charge = await this.client.invokeMethod(
-        'payment-service', 'charge', 'POST',
+      const charge = await this.getDaprClient().invoker.invoke(
+        'payment-service', 'charge', HttpMethod.POST,
         { orderId: saga.orderId, amount: saga.order.totalAmount }
       );
       await this.updateSagaState(SAGA_STATES.PAYMENT_CHARGED, { chargeId: charge.id });
@@ -97,12 +93,12 @@ class OrderSagaActor {
 
     // Compensate in reverse order
     if ([SAGA_STATES.PAYMENT_CHARGED, SAGA_STATES.SHIPMENT_CREATED].includes(saga.state)) {
-      await this.client.invokeMethod('payment-service', 'refund', 'POST', {
+      await this.getDaprClient().invoker.invoke('payment-service', 'refund', HttpMethod.POST, {
         chargeId: saga.context.chargeId
       });
     }
     if ([SAGA_STATES.INVENTORY_RESERVED, SAGA_STATES.PAYMENT_CHARGED].includes(saga.state)) {
-      await this.client.invokeMethod('inventory-service', 'release', 'POST', {
+      await this.getDaprClient().invoker.invoke('inventory-service', 'release', HttpMethod.POST, {
         reservationId: saga.context.reservationId
       });
     }
@@ -111,11 +107,11 @@ class OrderSagaActor {
   }
 
   async updateSagaState(newState, context = {}) {
-    const saga = await this.stateManager.get('saga');
+    const saga = await this.getStateManager().getState('saga');
     saga.history.push({ state: saga.state, at: Date.now() });
     saga.state = newState;
     saga.context = { ...(saga.context || {}), ...context };
-    await this.stateManager.set('saga', saga);
+    await this.getStateManager().setState('saga', saga);
   }
 }
 ```
@@ -123,14 +119,16 @@ class OrderSagaActor {
 ## Starting a Saga
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, ActorProxyBuilder, ActorId } = require('@dapr/dapr');
 const client = new DaprClient();
+const builder = new ActorProxyBuilder(OrderSagaActor, client);
 
 app.post('/orders', async (req, res) => {
   const order = await createOrderRecord(req.body);
 
   // Each order gets its own coordinator actor
-  await client.actor.invoke('OrderSagaActor', order.id, 'start', order);
+  const sagaActor = builder.build(new ActorId(order.id));
+  await sagaActor.start(order);
 
   res.json({ orderId: order.id, status: 'processing' });
 });
@@ -140,9 +138,8 @@ app.post('/orders', async (req, res) => {
 
 ```javascript
 app.get('/orders/:orderId/saga-status', async (req, res) => {
-  const saga = await client.actor.invoke(
-    'OrderSagaActor', req.params.orderId, 'getSagaState'
-  );
+  const sagaActor = builder.build(new ActorId(req.params.orderId));
+  const saga = await sagaActor.getSagaState();
   res.json(saga);
 });
 ```
