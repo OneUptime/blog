@@ -20,7 +20,7 @@ New Relic is a full-stack observability platform with strong distributed tracing
 
 ## Direct OTLP Export to New Relic
 
-New Relic accepts OTLP data directly without needing a collector:
+New Relic accepts OTLP data directly without needing a collector. Dapr supports custom OTLP headers via the `headers` field:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -35,18 +35,20 @@ spec:
       endpointAddress: "otlp.nr-data.net:4317"
       isSecure: true
       protocol: grpc
+      headers:
+        - "api-key=your-new-relic-license-key"
 ```
 
-Store the New Relic License Key:
+Note: The direct approach requires the License Key in plaintext in the configuration. For better secret management, use the OTel Collector approach below, which supports environment variable substitution for the key.
+
+## OTel Collector with New Relic Exporter
+
+Store the New Relic License Key as a Kubernetes secret:
 
 ```bash
 kubectl create secret generic newrelic-secret \
   --from-literal=licenseKey="your-new-relic-license-key"
 ```
-
-Note: New Relic's OTLP endpoint requires the License Key passed as a header. Use the OTel Collector approach to inject this header automatically.
-
-## OTel Collector with New Relic Exporter
 
 ```yaml
 apiVersion: v1
@@ -158,13 +160,33 @@ FACET name
 ## Creating Alerts
 
 ```bash
-# Using New Relic CLI
-newrelic alerts conditions create \
-  --policy-id 12345 \
-  --name "Dapr High Latency" \
-  --type baseline \
-  --nrql "SELECT average(duration.ms) FROM Span WHERE service.name = 'order-service'" \
-  --baseline-direction upper_only
+# Using New Relic NerdGraph API
+curl -s https://api.newrelic.com/graphql \
+  -H "Content-Type: application/json" \
+  -H "API-Key: $NEW_RELIC_USER_KEY" \
+  -d @- <<'EOF'
+{
+  "query": "mutation($accountId: Int!, $policyId: ID!, $condition: AlertsNrqlConditionStaticInput!) { alertsNrqlConditionStaticCreate(accountId: $accountId, policyId: $policyId, condition: $condition) { id name } }",
+  "variables": {
+    "accountId": YOUR_ACCOUNT_ID,
+    "policyId": "12345",
+    "condition": {
+      "name": "Dapr High Latency",
+      "enabled": true,
+      "nrql": {
+        "query": "SELECT average(duration.ms) FROM Span WHERE service.name = 'order-service'"
+      },
+      "terms": [{
+        "threshold": 500,
+        "thresholdOccurrences": "ALL",
+        "thresholdDuration": 300,
+        "operator": "ABOVE",
+        "priority": "CRITICAL"
+      }]
+    }
+  }
+}
+EOF
 ```
 
 ## Summary
