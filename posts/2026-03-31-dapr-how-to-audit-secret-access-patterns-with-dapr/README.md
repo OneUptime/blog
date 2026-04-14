@@ -38,8 +38,8 @@ The Dapr sidecar will now output JSON logs like:
 ```json
 {
   "level": "info",
-  "ts": "2026-03-31T10:00:00.000Z",
-  "logger": "dapr.runtime",
+  "time": "2026-03-31T10:00:00.000Z",
+  "scope": "dapr.runtime",
   "msg": "secret request",
   "app_id": "order-service",
   "store": "aws-secrets",
@@ -61,7 +61,7 @@ spec:
   logging:
     apiLogging:
       enabled: true
-      obfuscateHTTPBodies: true
+      obfuscateURLs: true
   tracing:
     samplingRate: "1"
     zipkin:
@@ -86,7 +86,7 @@ spec:
     value: ".*"
 ```
 
-For a custom audit middleware using the Dapr Pluggable Component SDK, write the interceptor in Python:
+For a custom audit interceptor, build a proxy service that logs all secret API requests:
 
 ```python
 # audit_middleware.py
@@ -94,7 +94,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -136,9 +136,9 @@ def after_request(response):
     if "/v1.0/secrets/" in path:
         parts = path.split("/")
         # Extract store name and secret name from path
-        if len(parts) >= 5:
-            store_name = parts[4]
-            secret_name = "/".join(parts[5:]) if len(parts) > 5 else "unknown"
+        if len(parts) >= 4:
+            store_name = parts[3]
+            secret_name = "/".join(parts[4:]) if len(parts) > 4 else "unknown"
 
             latency_ms = round((time.time() - request.start_time) * 1000, 2)
 
@@ -273,7 +273,7 @@ Write queries to detect unusual secret access in your SIEM or log analytics syst
 # audit_analyzer.py
 import json
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict
 
 def analyze_secret_access(logs: List[dict]) -> Dict:
@@ -290,8 +290,6 @@ def analyze_secret_access(logs: List[dict]) -> Dict:
         "high_frequency_apps": [],
         "anomalies": []
     }
-
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
 
     for log in logs:
         app_id = log.get("appId", "unknown")
