@@ -26,7 +26,7 @@ Look for `throttled_time` increasing over time. A high `throttled_time` confirms
 Alternatively, use Prometheus:
 
 ```text
-rate(container_cpu_cfs_throttled_seconds_total{container="daprd"}[5m])
+rate(container_cpu_cfs_throttled_periods_total{container="daprd"}[5m])
   / rate(container_cpu_cfs_periods_total{container="daprd"}[5m])
 ```
 
