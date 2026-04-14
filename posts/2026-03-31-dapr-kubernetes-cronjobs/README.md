@@ -49,11 +49,21 @@ The CronJob container publishes a message and then exits cleanly:
 ```javascript
 const { DaprClient } = require('@dapr/dapr');
 
+async function waitForSidecar() {
+  while (true) {
+    try {
+      const res = await fetch('http://localhost:3500/v1.0/healthz');
+      if (res.ok) return;
+    } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
 async function main() {
   const client = new DaprClient();
 
   // Wait for Dapr sidecar to be ready
-  await client.wait(10000);
+  await waitForSidecar();
 
   const report = {
     date: new Date().toISOString(),
@@ -93,16 +103,17 @@ Use it as an entrypoint wrapper in your container image.
 
 ## Graceful Sidecar Shutdown
 
-Dapr's sidecar must be shut down cleanly when the job completes. Use the shutdown API:
+Dapr's sidecar must be shut down cleanly when the job completes. Call the shutdown API explicitly before the process exits:
 
 ```javascript
-async function shutdown() {
+async function shutdownSidecar() {
   await fetch('http://localhost:3500/v1.0/shutdown', { method: 'POST' });
 }
 
-process.on('beforeExit', async () => {
-  await shutdown();
-});
+// Call explicitly before process.exit() — do not rely on beforeExit,
+// as it does not fire when process.exit() is called.
+await shutdownSidecar();
+process.exit(0);
 ```
 
 ## CronJob with Concurrency Policy
