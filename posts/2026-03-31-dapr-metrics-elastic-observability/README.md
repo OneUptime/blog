@@ -22,9 +22,8 @@ kind: Configuration
 metadata:
   name: dapr-elastic-config
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 ```yaml
@@ -59,11 +58,14 @@ data:
     inputs:
       - type: prometheus/metrics
         streams:
-          - period: 15s
+          - data_stream:
+              dataset: prometheus.collector
+              namespace: dapr
+              type: metrics
+            period: 15s
             hosts:
               - http://order-service.default.svc:9090
             metrics_path: /metrics
-            namespace: dapr
         processors:
           - add_kubernetes_metadata:
               host: ${NODE_NAME}
@@ -88,7 +90,6 @@ data:
           - "order-service.default.svc:9090"
           - "payment-service.default.svc:9090"
         metrics_path: /metrics
-        namespace: dapr
         processors:
           - add_fields:
               fields:
