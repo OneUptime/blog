@@ -20,7 +20,7 @@ GitHub Actions provides a powerful CI/CD platform for automating Dapr microservi
 
 ## Workflow Structure
 
-A complete Dapr CI/CD workflow has three stages: test, build, and deploy.
+A complete Dapr CI/CD workflow has four stages: test, build, validate, and deploy.
 
 ## Stage 1: Integration Testing with Dapr
 
@@ -41,8 +41,7 @@ jobs:
 
     - name: Install Dapr CLI
       run: |
-        wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh
-        bash install.sh -b /usr/local/bin
+        wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 
     - name: Initialize Dapr
       run: dapr init --slim
@@ -58,7 +57,7 @@ jobs:
           --app-id order-service \
           --app-port 3000 \
           --dapr-http-port 3500 \
-          --components-path ./components/test \
+          --resources-path ./components/test \
           -- npm run test:integration &
         sleep 5
         npm run test:e2e
@@ -101,16 +100,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install Dapr CLI
-      run: |
-        wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh
-        bash install.sh -b /usr/local/bin
-
     - name: Validate Component Manifests
       run: |
         for file in k8s/components/*.yaml; do
           echo "Validating $file"
-          dapr validate --k8s -f "$file"
+          kubectl apply --dry-run=client -f "$file"
         done
 ```
 
