@@ -83,7 +83,7 @@ Use NRQL in the New Relic Query Builder:
 -- All Dapr sidecar error logs in the last hour
 SELECT *
 FROM Log
-WHERE containerName = 'daprd'
+WHERE container_name = 'daprd'
 AND level = 'error'
 SINCE 1 hour ago
 LIMIT 100
@@ -93,7 +93,7 @@ LIMIT 100
 -- Error rate by Dapr app over time
 SELECT count(*)
 FROM Log
-WHERE containerName = 'daprd'
+WHERE container_name = 'daprd'
 AND level = 'error'
 FACET app_id
 SINCE 24 hours ago
@@ -104,7 +104,7 @@ TIMESERIES 5 minutes
 -- Find component initialization failures
 SELECT message, app_id, component
 FROM Log
-WHERE containerName = 'daprd'
+WHERE container_name = 'daprd'
 AND message LIKE '%failed%'
 SINCE 1 hour ago
 ORDER BY timestamp DESC
@@ -112,37 +112,60 @@ ORDER BY timestamp DESC
 
 ## Step 5 - Create a New Relic Alert
 
-Alert on Dapr error log spikes:
+Alert on Dapr error log spikes using the NerdGraph API:
 
-```bash
-newrelic alerts conditions create \
-  --policy-id <POLICY_ID> \
-  --name "Dapr Sidecar Errors" \
-  --type "logs_static" \
-  --query "containerName = 'daprd' AND level = 'error'" \
-  --threshold 10 \
-  --threshold-duration 5 \
-  --threshold-occurrences "all"
+```graphql
+mutation {
+  alertsNrqlConditionStaticCreate(
+    accountId: <YOUR_ACCOUNT_ID>
+    policyId: <POLICY_ID>
+    condition: {
+      name: "Dapr Sidecar Errors"
+      enabled: true
+      nrql: {
+        query: "SELECT count(*) FROM Log WHERE container_name = 'daprd' AND level = 'error'"
+      }
+      terms: [
+        {
+          threshold: 10
+          thresholdOccurrences: ALL
+          thresholdDuration: 300
+          operator: ABOVE
+          priority: CRITICAL
+        }
+      ]
+    }
+  ) {
+    id
+    name
+  }
+}
 ```
 
 ## Step 6 - Build a New Relic Dashboard
 
-Create a dashboard with Dapr log insights:
+Create a dashboard with Dapr log insights using the NerdGraph `dashboardCreate` mutation:
 
 ```json
 {
   "name": "Dapr Sidecar Logs",
+  "permissions": "PUBLIC_READ_WRITE",
   "pages": [
     {
       "name": "Overview",
       "widgets": [
         {
           "title": "Error Count by App",
-          "nrqlQueries": [
-            {
-              "query": "SELECT count(*) FROM Log WHERE containerName = 'daprd' AND level = 'error' FACET app_id TIMESERIES"
-            }
-          ]
+          "visualization": { "id": "viz.area" },
+          "layout": { "column": 1, "row": 1, "height": 3, "width": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": "<YOUR_ACCOUNT_ID>",
+                "query": "SELECT count(*) FROM Log WHERE container_name = 'daprd' AND level = 'error' FACET app_id TIMESERIES"
+              }
+            ]
+          }
         }
       ]
     }
@@ -152,4 +175,4 @@ Create a dashboard with Dapr log insights:
 
 ## Summary
 
-Sending Dapr logs to New Relic uses the nri-bundle Helm chart which deploys Fluent Bit for log collection. Enable JSON logging in Dapr to make NRQL queries more powerful by allowing field-level filtering. Use the `containerName = 'daprd'` filter in NRQL to isolate sidecar logs and build dashboards that track error rates, component failures, and initialization issues per Dapr app ID.
+Sending Dapr logs to New Relic uses the nri-bundle Helm chart which deploys Fluent Bit for log collection. Enable JSON logging in Dapr to make NRQL queries more powerful by allowing field-level filtering. Use the `container_name = 'daprd'` filter in NRQL to isolate sidecar logs and build dashboards that track error rates, component failures, and initialization issues per Dapr app ID.
