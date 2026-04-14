@@ -25,24 +25,28 @@ kind: Configuration
 metadata:
   name: metrics-config
 spec:
-  metric:
+  metrics:
     enabled: true
     rules:
-    - labels:
-      - name: app_id
-        regex:
-          order-service: "order-service"
-          payment-service: "payment-service"
+      - name: dapr_runtime_service_invocation_req_sent_total
+        labels:
+          - name: method
+            regex:
+              "orders/": "orders/.+"
 ```
 
 ## Key Dapr Prometheus Metrics
 
 ```bash
-# Service invocation metrics
-dapr_service_invocation_req_sent_total          # Rate
-dapr_service_invocation_req_recv_total          # Rate (receiver side)
-dapr_service_invocation_response_recv_total     # Errors (check status label)
-dapr_service_invocation_req_sent_latency_ms_bucket  # Duration
+# Service invocation metrics (HTTP)
+dapr_http_server_request_count                          # Rate & Errors (has app_id, method, status labels)
+dapr_http_server_latency_bucket                         # Duration (histogram)
+
+# Service invocation metrics (runtime)
+dapr_runtime_service_invocation_req_sent_total          # Rate (sender side)
+dapr_runtime_service_invocation_req_recv_total          # Rate (receiver side)
+dapr_runtime_service_invocation_res_recv_total          # Response count
+dapr_runtime_service_invocation_res_recv_latency_ms_bucket  # Duration (histogram)
 
 # Pub/sub metrics
 dapr_component_pubsub_ingress_count             # Subscribe rate
@@ -50,8 +54,7 @@ dapr_component_pubsub_egress_count              # Publish rate
 dapr_component_pubsub_ingress_latencies_bucket  # Subscribe duration
 
 # State store metrics
-dapr_component_state_get_total                  # Get rate
-dapr_component_state_set_total                  # Set rate
+dapr_component_state_count                      # Operations (filter by operation label: get, set, delete)
 dapr_component_state_latencies_bucket           # State operation duration
 ```
 
@@ -71,20 +74,20 @@ spec:
     # Rate: requests per second per service
     - record: dapr:service_invocation:rate5m
       expr: |
-        sum(rate(dapr_service_invocation_req_sent_total[5m])) by (app_id, method)
+        sum(rate(dapr_http_server_request_count[5m])) by (app_id, method)
 
     # Error rate: failed requests / total
     - record: dapr:service_invocation:error_rate5m
       expr: |
-        sum(rate(dapr_service_invocation_req_sent_total{status=~"5.."}[5m])) by (app_id)
+        sum(rate(dapr_http_server_request_count{status=~"5.."}[5m])) by (app_id)
         /
-        sum(rate(dapr_service_invocation_req_sent_total[5m])) by (app_id)
+        sum(rate(dapr_http_server_request_count[5m])) by (app_id)
 
     # Duration: p99 latency
     - record: dapr:service_invocation:latency_p99
       expr: |
         histogram_quantile(0.99,
-          sum(rate(dapr_service_invocation_req_sent_latency_ms_bucket[5m])) by (app_id, le)
+          sum(rate(dapr_http_server_latency_bucket[5m])) by (app_id, le)
         )
 
     # Pub/sub error rate
