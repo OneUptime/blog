@@ -21,26 +21,6 @@ When installing Dapr with Helm, set node selectors for all control plane compone
 global:
   nodeSelector:
     kubernetes.io/os: linux
-
-dapr_operator:
-  nodeSelector:
-    kubernetes.io/os: linux
-
-dapr_sentry:
-  nodeSelector:
-    kubernetes.io/os: linux
-
-dapr_placement:
-  nodeSelector:
-    kubernetes.io/os: linux
-
-dapr_sidecar_injector:
-  nodeSelector:
-    kubernetes.io/os: linux
-
-dapr_dashboard:
-  nodeSelector:
-    kubernetes.io/os: linux
 ```
 
 ```bash
