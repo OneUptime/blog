@@ -102,8 +102,8 @@ spec:
   metadata:
     - name: redisHost
       value: "redis-enterprise:6379"
-  scopes:
-    - enterprise-api
+scopes:
+  - enterprise-api
 ---
 # Standard tier - shared Redis
 apiVersion: dapr.io/v1alpha1
@@ -116,8 +116,8 @@ spec:
   metadata:
     - name: redisHost
       value: "redis-shared:6379"
-  scopes:
-    - standard-api
+scopes:
+  - standard-api
 ```
 
 ## Per-Tenant Pub/Sub Topics
