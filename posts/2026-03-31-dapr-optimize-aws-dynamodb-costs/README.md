@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, AWS, DynamoDB, Cost, State Management
 
-Description: Optimize AWS DynamoDB costs when used as a Dapr state store by using on-demand capacity, TTL cleanup, partition key design, and DynamoDB Accelerator for read-heavy workloads.
+Description: Optimize AWS DynamoDB costs when used as a Dapr state store by using on-demand capacity, TTL cleanup, partition key design, and CloudWatch monitoring for cost alerts.
 
 ---
 
@@ -75,7 +75,6 @@ aws dynamodb update-time-to-live \
 In your Dapr state operations, set TTL values:
 
 ```javascript
-const timestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour TTL
 await daprClient.state.save('statestore', [
   {
     key: 'session:xyz',
@@ -124,8 +123,10 @@ aws cloudwatch put-metric-alarm \
   --alarm-name dapr-dynamodb-cost-alert \
   --metric-name EstimatedCharges \
   --namespace AWS/Billing \
+  --dimensions Name=Currency,Value=USD \
   --statistic Maximum \
   --period 86400 \
+  --evaluation-periods 1 \
   --threshold 50 \
   --comparison-operator GreaterThanThreshold \
   --alarm-actions arn:aws:sns:us-east-1:123456789:billing-alerts
