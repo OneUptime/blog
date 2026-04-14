@@ -33,16 +33,15 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: product-api
-  annotations:
-    dapr.io/enabled: "true"
-    dapr.io/app-id: "product-api"
-    dapr.io/app-port: "3000"
 spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "50"
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "product-api"
+        dapr.io/app-port: "3000"
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "50"
         autoscaling.knative.dev/target: "10"  # 10 concurrent requests per pod
     spec:
       containers:
