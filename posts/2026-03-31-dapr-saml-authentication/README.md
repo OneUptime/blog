@@ -17,36 +17,38 @@ Dapr does not have native SAML support, but you can integrate SAML authenticatio
 The recommended architecture is:
 
 ```bash
-Client -> SAML SP (e.g., oauth2-proxy or Authelia) -> Dapr Sidecar -> App
+Client -> SAML-to-OIDC Bridge (e.g., Keycloak or oauth2-proxy) -> Dapr Sidecar -> App
 ```
 
-The SAML SP handles the IdP redirect flow, validates the SAML assertion, and sets a session cookie or Authorization header that downstream Dapr middleware validates.
+The SAML-to-OIDC bridge handles the IdP redirect flow, validates the SAML assertion, issues a JWT, and sets a session cookie or Authorization header that downstream Dapr middleware validates.
 
-## Setting Up Authelia as SAML SP
+## Setting Up the OIDC Provider
 
-Authelia supports SAML 2.0 and can issue OAuth2/OIDC tokens after SAML authentication:
+After the SAML-to-OIDC bridge authenticates the user, you need an OIDC provider to issue JWT tokens that Dapr can validate. Authelia can serve as the OIDC provider in this architecture. Note that Authelia does not support SAML directly — you need a separate SAML SP such as Keycloak or oauth2-proxy to handle the SAML assertion flow.
 
 ```yaml
 # authelia-config.yaml
 server:
-  host: 0.0.0.0
-  port: 9091
+  address: 'tcp://:9091/'
 
 authentication_backend:
   ldap:
-    url: ldap://ldap.example.com
+    address: 'ldap://ldap.example.com'
     base_dn: dc=example,dc=com
 
 session:
-  domain: example.com
+  cookies:
+    - domain: example.com
 
 identity_providers:
   oidc:
     hmac_secret: very-secret-key
-    issuer_private_key: /secrets/oidc.key
+    jwks:
+      - key_id: dapr-key
+        key: /secrets/oidc.pem
     clients:
-      - id: dapr-app
-        secret: client-secret
+      - client_id: dapr-app
+        client_secret: '$pbkdf2-sha512$310000$...'  # use a hashed secret
         scopes:
           - openid
           - profile
@@ -104,6 +106,7 @@ def require_saml_group(group_name: str):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             token = request.headers.get("Authorization", "").replace("Bearer ", "")
+            # Signature already verified by Dapr's bearer middleware upstream
             claims = jwt.decode(token, options={"verify_signature": False})
 
             groups = claims.get("groups", [])
@@ -133,4 +136,4 @@ curl -v https://myapp.example.com/api/data
 
 ## Summary
 
-Integrate SAML authentication with Dapr by using a SAML service provider like Authelia as a reverse proxy that converts SAML assertions into JWT tokens. Configure Dapr's bearer token middleware to validate the JWT and extract user claims. Application code reads SAML attributes (groups, roles) from the validated JWT claims for authorization decisions.
+Integrate SAML authentication with Dapr by using a SAML-to-OIDC bridge such as Keycloak or oauth2-proxy that converts SAML assertions into JWT tokens. Configure Dapr's bearer token middleware to validate the JWT. Application code reads SAML attributes (groups, roles) from the validated JWT claims for authorization decisions.
