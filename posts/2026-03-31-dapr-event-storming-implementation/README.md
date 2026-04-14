@@ -29,7 +29,7 @@ Event storming produces these artifacts, which map directly to Dapr concepts:
 
 From an event storming session, you discover this flow:
 
-```json
+```text
 [Place Order Command] -> OrderPlaced Event
 OrderPlaced -> [Reserve Inventory Policy] -> InventoryReserved Event
 InventoryReserved -> [Charge Payment Policy] -> PaymentProcessed Event
@@ -55,28 +55,32 @@ Each lilac sticky (policy) becomes a Dapr subscription:
 
 ```yaml
 # Reserve Inventory Policy
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: reserve-inventory-policy
 spec:
   pubsubname: orders-pubsub
   topic: OrderPlaced
-  route: /inventory/reserve
-  scopes:
-  - inventory-service
+  routes:
+    default: /inventory/reserve
+scopes:
+- inventory-service
+
+---
 
 # Charge Payment Policy
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: charge-payment-policy
 spec:
   pubsubname: orders-pubsub
   topic: InventoryReserved
-  route: /payments/charge
-  scopes:
-  - payment-service
+  routes:
+    default: /payments/charge
+scopes:
+- payment-service
 ```
 
 ## Implementing Aggregates as Services
@@ -85,7 +89,7 @@ Each yellow aggregate becomes a Dapr-enabled microservice:
 
 ```python
 from flask import Flask, request, jsonify
-import dapr.clients as dapr
+from dapr.clients import DaprClient
 import json
 
 app = Flask(__name__)
@@ -97,7 +101,7 @@ def place_order():
     order_id = generate_order_id()
 
     # Save aggregate state
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         client.save_state(
             store_name="statestore",
             key=f"order:{order_id}",
@@ -113,7 +117,8 @@ def place_order():
         client.publish_event(
             pubsub_name="orders-pubsub",
             topic_name="OrderPlaced",
-            data={"orderId": order_id, "customerId": order_data["customerId"]}
+            data=json.dumps({"orderId": order_id, "customerId": order_data["customerId"]}),
+            data_content_type='application/json',
         )
 
     return jsonify({"orderId": order_id}), 201
@@ -128,12 +133,13 @@ def reserve_inventory():
     reserved = perform_inventory_reservation(order_id)
 
     if reserved:
-        with dapr.DaprClient() as client:
+        with DaprClient() as client:
             # Publish next event in chain
             client.publish_event(
                 pubsub_name="orders-pubsub",
                 topic_name="InventoryReserved",
-                data={"orderId": order_id, "reservationId": reserved["id"]}
+                data=json.dumps({"orderId": order_id, "reservationId": reserved["id"]}),
+                data_content_type='application/json',
             )
 
     return jsonify({"status": "SUCCESS"}), 200
@@ -162,11 +168,11 @@ app.use(express.json());
 app.post('/readmodel/order-summary', async (req, res) => {
   const event = req.body;
 
-  if (event.type === 'OrderPlaced') {
+  if (event.topic === 'OrderPlaced') {
     await updateOrderSummary(event.data.orderId, 'placed');
-  } else if (event.type === 'PaymentProcessed') {
+  } else if (event.topic === 'PaymentProcessed') {
     await updateOrderSummary(event.data.orderId, 'paid');
-  } else if (event.type === 'OrderFulfilled') {
+  } else if (event.topic === 'OrderFulfilled') {
     await updateOrderSummary(event.data.orderId, 'fulfilled');
   }
 
