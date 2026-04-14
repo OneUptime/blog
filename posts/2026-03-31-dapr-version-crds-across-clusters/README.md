@@ -58,7 +58,7 @@ Dapr's Helm chart manages CRDs:
 helm repo update
 
 # Production cluster
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --version 1.13.0 \
   --namespace dapr-system \
   --create-namespace \
@@ -66,7 +66,7 @@ helm upgrade dapr dapr/dapr \
   --kube-context prod-cluster
 
 # Staging cluster
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --version 1.13.0 \
   --namespace dapr-system \
   --create-namespace \
@@ -80,7 +80,7 @@ Use Flux HelmRelease to declare the desired Dapr version per cluster:
 
 ```yaml
 # clusters/production/dapr-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: dapr
