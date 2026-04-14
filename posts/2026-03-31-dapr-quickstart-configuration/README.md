@@ -18,13 +18,13 @@ sequenceDiagram
     participant Sidecar as Dapr Sidecar
     participant Redis as Redis Config Store
     App->>Sidecar: GET /v1.0/configuration/configstore?key=feature-a
-    Sidecar->>Redis: HGET feature-a
+    Sidecar->>Redis: GET feature-a
     Redis->>Sidecar: "true"
-    Sidecar->>App: {items: {"feature-a": {value: "true"}}}
+    Sidecar->>App: {"feature-a": {value: "true"}}
     App->>Sidecar: Subscribe to feature-a changes
     Note over Redis: Admin changes feature-a to "false"
     Redis->>Sidecar: Keyspace notification
-    Sidecar->>App: SSE/gRPC: feature-a changed to "false"
+    Sidecar->>App: POST callback: feature-a changed to "false"
 ```
 
 ## Prerequisites
@@ -33,11 +33,7 @@ sequenceDiagram
 dapr init   # starts Redis on port 6379
 ```
 
-Enable Redis keyspace notifications (required for subscriptions):
-
-```bash
-docker exec dapr_redis redis-cli CONFIG SET notify-keyspace-events KEA
-```
+Dapr automatically enables Redis keyspace notifications when you subscribe to configuration changes. No manual Redis configuration is needed.
 
 ## Configuration Store Component
 
@@ -60,7 +56,7 @@ spec:
 ## Seed Configuration Values in Redis
 
 ```bash
-docker exec dapr_redis redis-cli HSET feature-flags \
+docker exec dapr_redis redis-cli MSET \
   feature-new-ui "true" \
   feature-checkout-v2 "false" \
   max-retries "3" \
@@ -73,31 +69,48 @@ docker exec dapr_redis redis-cli HSET feature-flags \
 # app.py
 import requests
 import os
-import json
 import threading
 import time
+from flask import Flask, request as flask_request
 
 DAPR_HTTP_PORT = os.getenv('DAPR_HTTP_PORT', '3500')
+APP_PORT = os.getenv('APP_PORT', '5050')
 CONFIG_STORE = 'configstore'
+
+app = Flask(__name__)
 
 def get_config(keys: list) -> dict:
     key_params = "&".join(f"key={k}" for k in keys)
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/configuration/{CONFIG_STORE}?{key_params}"
     response = requests.get(url)
-    items = response.json().get('items', {})
-    return {k: v['value'] for k, v in items.items()}
+    data = response.json()
+    return {k: v['value'] for k, v in data.items()}
 
-def subscribe_config(keys: list):
-    """Subscribe to configuration changes (polling approach via alpha API)."""
+def subscribe_config(keys: list) -> str:
+    """Subscribe to configuration changes via Dapr HTTP API."""
     key_params = "&".join(f"key={k}" for k in keys)
-    url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/configuration/{CONFIG_STORE}/subscribe?{key_params}"
-    response = requests.get(url, stream=True)
-    for line in response.iter_lines():
-        if line:
-            update = json.loads(line.decode())
-            items = update.get('items', {})
-            for key, meta in items.items():
-                print(f"Config changed: {key} = {meta['value']}")
+    url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/configuration/{CONFIG_STORE}/subscribe?{key_params}"
+    response = requests.get(url)
+    subscription_id = response.json().get('id')
+    print(f"Subscribed with ID: {subscription_id}")
+    return subscription_id
+
+@app.route('/configuration/<store_name>/<key>', methods=['POST'])
+def config_handler(store_name, key):
+    """Receive configuration change notifications from Dapr."""
+    body = flask_request.json
+    items = body.get('items', [])
+    for item in items:
+        print(f"Config changed: {item['key']} = {item['value']}")
+    return '', 200
+
+# Start Flask in a background thread to receive Dapr callbacks
+flask_thread = threading.Thread(
+    target=lambda: app.run(port=int(APP_PORT)),
+    daemon=True
+)
+flask_thread.start()
+time.sleep(1)
 
 # Read initial configuration
 config = get_config(['feature-new-ui', 'feature-checkout-v2', 'max-retries', 'timeout-seconds'])
@@ -105,13 +118,8 @@ print("Initial configuration:")
 for key, value in config.items():
     print(f"  {key}: {value}")
 
-# Subscribe to changes in background thread
-sub_thread = threading.Thread(
-    target=subscribe_config,
-    args=[['feature-new-ui', 'feature-checkout-v2']],
-    daemon=True
-)
-sub_thread.start()
+# Subscribe to changes (Dapr will POST to /configuration/<store>/<key>)
+subscribe_config(['feature-new-ui', 'feature-checkout-v2'])
 
 # Simulate the application using config values
 for i in range(5):
@@ -125,9 +133,10 @@ for i in range(5):
 ## Run the Application
 
 ```bash
-pip3 install requests
+pip3 install requests flask
 dapr run \
   --app-id config-app \
+  --app-port 5050 \
   --dapr-http-port 3500 \
   --resources-path ./components \
   -- python3 app.py
@@ -138,7 +147,7 @@ dapr run \
 In another terminal, update a value in Redis:
 
 ```bash
-docker exec dapr_redis redis-cli HSET feature-flags feature-new-ui "false"
+docker exec dapr_redis redis-cli SET feature-new-ui "false"
 ```
 
 The subscription stream will emit the update immediately:
@@ -153,13 +162,13 @@ Store the subscription ID returned by the subscribe call:
 
 ```python
 response = requests.get(
-    f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/configuration/{CONFIG_STORE}/subscribe?key=feature-new-ui"
+    f"http://localhost:{DAPR_HTTP_PORT}/v1.0/configuration/{CONFIG_STORE}/subscribe?key=feature-new-ui"
 )
 subscription_id = response.json().get('id')
 
 # Unsubscribe
 requests.get(
-    f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/configuration/{CONFIG_STORE}/{subscription_id}/unsubscribe"
+    f"http://localhost:{DAPR_HTTP_PORT}/v1.0/configuration/{CONFIG_STORE}/{subscription_id}/unsubscribe"
 )
 ```
 
