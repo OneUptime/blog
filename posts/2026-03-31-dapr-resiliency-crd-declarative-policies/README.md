@@ -47,6 +47,7 @@ spec:
         inbound:
           timeout: <timeout-name>
           retry: <retry-name>
+          circuitBreaker: <cb-name>
         outbound:
           timeout: <timeout-name>
           retry: <retry-name>
