@@ -97,7 +97,6 @@ router = ConsistentHashRouter([
 
 ```python
 import httpx
-from dapr.clients import DaprClient
 
 DAPR_PORT = 3500
 
