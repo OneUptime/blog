@@ -14,7 +14,7 @@ SQLite is a self-contained, serverless database engine that stores data in a sin
 
 ## Prerequisites
 
-- Dapr CLI installed (version 1.10 or later)
+- Dapr CLI installed (version 1.11 or later)
 - No additional server setup required - SQLite is file-based
 
 ## Configuring the Dapr SQLite State Store
@@ -47,7 +47,7 @@ For production edge deployments, use an absolute path:
 
 ```yaml
   - name: connectionString
-    value: "file:/var/data/dapr-state.db?_journal=WAL&_timeout=5000"
+    value: "file:/var/data/dapr-state.db"
 ```
 
 Apply the component in your local Dapr environment:
