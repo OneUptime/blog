@@ -95,14 +95,12 @@ with DaprClient() as client:
 
 ## Service B Validating the Token
 
-Service B receives the request with the injected Bearer token and validates it:
+Service B receives the request with the injected Bearer token and can validate it:
 
 ```python
 from flask import Flask, request
-import jwt
 
 app = Flask(__name__)
-JWKS_URL = "https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
 
 @app.route("/data")
 def get_data():
@@ -110,8 +108,8 @@ def get_data():
     if not auth.startswith("Bearer "):
         return {"error": "missing token"}, 401
     token = auth.removeprefix("Bearer ")
-    # Validate the token using your JWKS endpoint
-    print(f"Received valid token: {token[:20]}...")
+    # TODO: Validate the token using your JWKS endpoint
+    print(f"Received token: {token[:20]}...")
     return {"data": "protected resource"}
 ```
 
