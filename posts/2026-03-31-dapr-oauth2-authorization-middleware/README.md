@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, OAuth2, Middleware, Security, Authorization
 
-Description: Learn how to configure the Dapr OAuth2 authorization middleware to protect service invocations with OAuth2 authorization code flow and token validation.
+Description: Learn how to configure the Dapr OAuth2 authorization middleware to protect service invocations with the OAuth2 authorization code flow.
 
 ---
 
 ## Introduction
 
-Dapr's OAuth2 middleware component enables you to protect your services with OAuth2 authorization without adding auth code to each service. When configured, Dapr intercepts incoming HTTP requests and validates OAuth2 tokens or initiates the authorization code flow before forwarding the request to your application.
+Dapr's OAuth2 middleware component enables you to protect your services with OAuth2 authorization without adding auth code to each service. When configured, Dapr intercepts incoming HTTP requests and initiates the OAuth2 authorization code flow, redirecting unauthenticated users to the identity provider, exchanging the authorization code for a token, and forwarding the token to your application.
 
 ## How It Works
 
-The OAuth2 middleware sits between the Dapr sidecar and your application. For each incoming request, Dapr checks for a valid OAuth2 token. If the token is missing or invalid, Dapr redirects the client to the authorization server.
+The OAuth2 middleware sits between the Dapr sidecar and your application. For each incoming request, Dapr checks whether the user has completed the OAuth2 authorization code flow. If not, Dapr redirects the client to the authorization server to obtain a token.
 
 ## Component Configuration
 
@@ -37,9 +37,9 @@ spec:
     - name: scopes
       value: "openid,profile,email"
     - name: authURL
-      value: "https://accounts.google.com/o/oauth2/auth"
+      value: "https://accounts.google.com/o/oauth2/v2/auth"
     - name: tokenURL
-      value: "https://accounts.google.com/o/oauth2/token"
+      value: "https://oauth2.googleapis.com/token"
     - name: redirectURL
       value: "https://myapp.example.com/callback"
     - name: authHeaderName
@@ -95,7 +95,7 @@ spec:
 
 ## Accessing the Token in Your Application
 
-After Dapr validates the token, it forwards the original request with the authorization header intact. Your app can read it directly:
+After Dapr completes the OAuth2 authorization code flow, it forwards the request with the obtained token in the authorization header. Your app can read it directly:
 
 ```python
 from flask import Flask, request
@@ -105,7 +105,7 @@ app = Flask(__name__)
 @app.route("/protected")
 def protected():
     auth_header = request.headers.get("Authorization", "")
-    # Token has already been validated by Dapr middleware
+    # Token was obtained via Dapr OAuth2 authorization code flow
     return {"message": "Access granted", "auth": auth_header[:20] + "..."}
 ```
 
@@ -124,4 +124,4 @@ docker run -p 8180:8080 ghcr.io/navikt/mock-oauth2-server:latest
 
 ## Summary
 
-Dapr OAuth2 middleware offloads token validation and authorization code flow from your services to the sidecar. Configure the middleware component with your OAuth2 provider details, attach it to the HTTP pipeline via a Configuration resource, and apply the config to your app. Your service receives requests only after Dapr has verified the token.
+Dapr OAuth2 middleware offloads the OAuth2 authorization code flow from your services to the sidecar. Configure the middleware component with your OAuth2 provider details, attach it to the HTTP pipeline via a Configuration resource, and apply the config to your app. Dapr handles the redirect to the identity provider, exchanges the authorization code for a token, and forwards authenticated requests with the token to your service.
