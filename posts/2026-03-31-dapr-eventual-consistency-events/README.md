@@ -149,7 +149,7 @@ def get_order_with_local_read(order_id: str, local_cache: dict):
 curl http://localhost:3500/v1.0/state/statestore/saga:ord-001
 
 # List all in-flight sagas (requires direct DB access)
-psql -c "SELECT key, value->>'status' as status FROM dapr_state WHERE key LIKE 'order-service||saga:%'"
+psql -c "SELECT key, value->>'status' as status FROM state WHERE key LIKE 'order-service||saga:%'"
 ```
 
 ## Summary
