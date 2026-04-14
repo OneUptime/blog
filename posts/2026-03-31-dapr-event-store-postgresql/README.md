@@ -53,6 +53,8 @@ Use the Dapr state API to append events transactionally. Each event gets a uniqu
 package eventstore
 
 import (
+    "context"
+    "encoding/json"
     "fmt"
     "time"
     dapr "github.com/dapr/go-sdk/client"
@@ -70,14 +72,19 @@ type Event struct {
 func AppendEvent(client dapr.Client, event Event) error {
     key := fmt.Sprintf("%s:%s:%d", event.AggregateType, event.AggregateID, event.Sequence)
 
+    data, err := json.Marshal(event)
+    if err != nil {
+        return fmt.Errorf("failed to marshal event: %w", err)
+    }
+
     return client.SaveStateWithETag(
         context.Background(),
         "event-store",
         key,
-        event,
+        data,
         "",  // empty ETag = create new (fails if key exists)
         map[string]string{},
-        &dapr.StateOptions{Concurrency: dapr.StateConcurrencyFirstWrite},
+        dapr.WithConcurrency(dapr.StateConcurrencyFirstWrite),
     )
 }
 ```
