@@ -18,6 +18,7 @@ k8s/
     kustomization.yaml
     statestore.yaml
     pubsub.yaml
+    appconfig.yaml
   overlays/
     dev/
       kustomization.yaml
@@ -25,6 +26,7 @@ k8s/
     production/
       kustomization.yaml
       statestore-patch.yaml
+      dapr-config-patch.yaml
 ```
 
 ## Define the Base Component
@@ -48,10 +50,22 @@ spec:
 ```
 
 ```yaml
+# k8s/base/appconfig.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: appconfig
+spec:
+  tracing:
+    samplingRate: "0"
+```
+
+```yaml
 # k8s/base/kustomization.yaml
 resources:
   - statestore.yaml
   - pubsub.yaml
+  - appconfig.yaml
 ```
 
 ## Create an Overlay for Each Environment
@@ -63,7 +77,7 @@ Each overlay patches the base to override environment-specific values.
 resources:
   - ../../base
 patches:
-  - statestore-patch.yaml
+  - path: statestore-patch.yaml
 namespace: production
 ```
 
@@ -116,8 +130,8 @@ Add it to the overlay kustomization:
 
 ```yaml
 patches:
-  - statestore-patch.yaml
-  - dapr-config-patch.yaml
+  - path: statestore-patch.yaml
+  - path: dapr-config-patch.yaml
 ```
 
 ## Use ConfigMapGenerator for Non-Sensitive Values
