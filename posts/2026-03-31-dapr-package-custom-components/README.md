@@ -120,6 +120,23 @@ spec:
   {{- end }}
 ```
 
+## Secret for Sensitive Metadata
+
+If the component requires a connection string or other secrets, include a Secret template:
+
+```yaml
+# templates/secret.yaml
+{{- if .Values.component.config.connectionString }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "dapr-custom-state.fullname" . }}-secret
+type: Opaque
+stringData:
+  connectionString: {{ .Values.component.config.connectionString | quote }}
+{{- end }}
+```
+
 ## Publishing to Helm OCI Registry
 
 ```bash
