@@ -122,10 +122,10 @@ spec:
       value: redis-master:6379
     - name: keyPrefix
       value: none
-  scopes:
-    - orderservice
-    - inventory
-    - frontend
+scopes:
+  - orderservice
+  - inventory
+  - frontend
 ```
 
 Only `orderservice`, `inventory`, and `frontend` can access this component. Other apps receive a `403 Forbidden` response.
