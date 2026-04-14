@@ -93,13 +93,13 @@ Check how actors are distributed across instances using the Dapr metrics endpoin
 
 ```bash
 # Per-instance actor count
-curl http://localhost:9090/metrics | grep dapr_actor_active_actors
+curl http://localhost:9090/metrics | grep dapr_runtime_actor
 ```
 
 Expected output shows balanced distribution:
 
 ```text
-dapr_actor_active_actors{app_id="counter-service",actor_type="Counter",namespace="default"} 342
+dapr_runtime_actor_active_actors{app_id="counter-service",actor_type="Counter",namespace="default"} 342
 ```
 
 ## State Store Considerations
