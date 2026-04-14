@@ -51,11 +51,16 @@ kubectl get networkpolicies -A | grep -i dapr
 The embedded etcd in the Scheduler can have leader election problems in HA setups:
 
 ```bash
-# Check etcd leader status across all replicas
+# Check etcd leader status across all replicas via port-forward
+# Note: The Scheduler container uses a distroless image, so etcdctl is not available inside the container.
+# Instead, port-forward the etcd client port and run etcdctl from your local machine.
 for i in 0 1 2; do
-  echo "=== dapr-scheduler-$i ==="
-  kubectl exec -n dapr-system dapr-scheduler-$i -- \
-    etcdctl --endpoints=http://localhost:2379 endpoint status
+  echo "=== dapr-scheduler-server-$i ==="
+  kubectl port-forward -n dapr-system dapr-scheduler-server-$i 2379:2379 &
+  PF_PID=$!
+  sleep 2
+  etcdctl --endpoints=http://localhost:2379 endpoint status
+  kill $PF_PID
 done
 ```
 
@@ -63,7 +68,7 @@ Expected output shows one leader and others as followers.
 
 ## Fixing Missed Schedules
 
-If the Scheduler was down during a scheduled trigger window, Dapr does not replay missed jobs by default. You can manually trigger a missed job:
+If the Scheduler was down during a scheduled trigger window, Dapr will queue undelivered jobs in an internal staging queue and attempt to deliver them once a suitable sidecar becomes available. However, for recurring jobs where multiple occurrences were missed during extended downtime, not all missed occurrences will be replayed. You can manually trigger a missed job:
 
 ```bash
 # Manually invoke the job callback
@@ -78,8 +83,8 @@ If etcd data is corrupted, reset the Scheduler (this loses all scheduled jobs):
 
 ```bash
 # Delete PVCs to reset state
-kubectl delete statefulset dapr-scheduler -n dapr-system
-kubectl delete pvc -n dapr-system -l app=dapr-scheduler
+kubectl delete statefulset dapr-scheduler-server -n dapr-system
+kubectl delete pvc -n dapr-system -l app=dapr-scheduler-server
 
 # Redeploy
 helm upgrade dapr dapr/dapr --namespace dapr-system --reuse-values
