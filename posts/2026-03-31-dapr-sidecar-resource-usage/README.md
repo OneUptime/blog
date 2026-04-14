@@ -37,7 +37,7 @@ order-service-7d8f9c-xyz   daprd          8m           64Mi
 
 ## Querying Sidecar Metrics with Prometheus
 
-Use container-level metrics from kube-state-metrics and cAdvisor:
+Use container-level metrics from cAdvisor (exposed via the kubelet):
 
 ```text
 # CPU usage for all daprd containers
@@ -47,7 +47,7 @@ rate(container_cpu_usage_seconds_total{container="daprd"}[5m])
 container_memory_working_set_bytes{container="daprd"}
 
 # CPU throttling rate
-rate(container_cpu_throttled_seconds_total{container="daprd"}[5m])
+rate(container_cpu_cfs_throttled_seconds_total{container="daprd"}[5m])
   / rate(container_cpu_usage_seconds_total{container="daprd"}[5m])
 ```
 
