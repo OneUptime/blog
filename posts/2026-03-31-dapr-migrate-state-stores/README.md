@@ -34,12 +34,14 @@ kubectl scale deployment myapp --replicas=0
 # Step 2: Export data from old store (Redis example)
 redis-cli --scan --pattern "myapp||*" | while read key; do
   value=$(redis-cli GET "$key")
-  echo "$key|$value"
+  # Strip the appid prefix (myapp||) for Dapr API calls
+  dapr_key="${key#*||}"
+  printf '%s\t%s\n' "$dapr_key" "$value"
 done > state_backup.txt
 
 # Step 3: Import to new store (PostgreSQL example)
 # Use the Dapr HTTP API with the new component configured
-while IFS='|' read -r key value; do
+while IFS=$'\t' read -r key value; do
   curl -X POST http://localhost:3500/v1.0/state/new-statestore \
     -H "Content-Type: application/json" \
     -d "[{\"key\": \"$key\", \"value\": $value}]"
