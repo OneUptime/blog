@@ -14,7 +14,7 @@ Install KiND and Dapr CLI:
 
 ```bash
 # Install KiND
-go install sigs.k8s.io/kind@v0.22.0
+go install sigs.k8s.io/kind@v0.31.0
 # Or with brew on macOS
 brew install kind
 
@@ -60,7 +60,6 @@ Expected output once stable:
 
 ```bash
 NAME                                     READY   STATUS    RESTARTS   AGE
-dapr-dashboard-5d9d9f5b6-xtz4c          1/1     Running   0          90s
 dapr-operator-6f7bb9f4d9-m2v9p          1/1     Running   0          90s
 dapr-placement-server-0                  1/1     Running   0          90s
 dapr-sentry-7f6c4bcfb6-qrwzn            1/1     Running   0          90s
@@ -102,7 +101,7 @@ spec:
 ```yaml
 # .github/workflows/integration-test.yaml
 - name: Create KiND cluster
-  uses: helm/kind-action@v1.8.0
+  uses: helm/kind-action@v1.14.0
   with:
     cluster_name: dapr-test
 
