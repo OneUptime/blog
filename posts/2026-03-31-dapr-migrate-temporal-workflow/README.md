@@ -16,12 +16,12 @@ Temporal is a powerful workflow engine that requires running separate Temporal s
 
 | Temporal | Dapr Workflow |
 |----------|---------------|
-| Workflow function | Workflow class |
-| Activity function | Activity class |
-| `workflow.ExecuteActivity` | `context.CallActivityAsync` |
+| Workflow function | Workflow function |
+| Activity function | Activity function |
+| `workflow.ExecuteActivity` | `ctx.CallActivity` |
 | `workflow.GetVersion` | (replay-safe by default) |
-| `workflow.Sleep` | `context.CreateTimer` |
-| `workflow.GetSignalChannel` | `context.WaitForExternalEventAsync` |
+| `workflow.Sleep` | `ctx.CreateTimer` |
+| `workflow.GetSignalChannel` | `ctx.WaitForExternalEvent` |
 | Worker | Dapr sidecar + service |
 | Temporal Server | Dapr runtime |
 
@@ -33,6 +33,7 @@ package workflows
 
 import (
     "time"
+    "go.temporal.io/sdk/temporal"
     "go.temporal.io/sdk/workflow"
     "myapp/activities"
 )
@@ -53,7 +54,7 @@ func OrderWorkflow(ctx workflow.Context, input OrderInput) (OrderResult, error) 
     var paymentId string
     err = workflow.ExecuteActivity(ctx, activities.ProcessPayment, input).Get(ctx, &paymentId)
     if err != nil {
-        _ = workflow.ExecuteActivity(ctx, activities.ReleaseInventory, input.OrderId)
+        _ = workflow.ExecuteActivity(ctx, activities.ReleaseInventory, input.OrderId).Get(ctx, nil)
         return OrderResult{Status: "PaymentFailed"}, err
     }
 
@@ -68,7 +69,7 @@ func OrderWorkflow(ctx workflow.Context, input OrderInput) (OrderResult, error) 
 package workflows
 
 import (
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/durabletask-go/workflow"
 )
 
 func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
@@ -78,7 +79,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     }
 
     var reserved bool
-    if err := ctx.CallActivity(ReserveInventoryActivity, workflow.ActivityInput(input)).
+    if err := ctx.CallActivity(ReserveInventoryActivity, workflow.WithActivityInput(input)).
         Await(&reserved); err != nil {
         return OrderResult{Status: "OutOfStock"}, nil
     }
@@ -88,9 +89,9 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     }
 
     var paymentId string
-    if err := ctx.CallActivity(ProcessPaymentActivity, workflow.ActivityInput(input)).
+    if err := ctx.CallActivity(ProcessPaymentActivity, workflow.WithActivityInput(input)).
         Await(&paymentId); err != nil {
-        ctx.CallActivity(ReleaseInventoryActivity, workflow.ActivityInput(input.OrderId))
+        ctx.CallActivity(ReleaseInventoryActivity, workflow.WithActivityInput(input.OrderId))
         return OrderResult{Status: "PaymentFailed"}, nil
     }
 
@@ -119,20 +120,21 @@ Temporal requires a separate worker process. With Dapr, your application is the 
 ```go
 // main.go
 func main() {
-    w, err := workflow.NewWorker()
+    r := workflow.NewRegistry()
+    r.AddWorkflow(OrderWorkflow)
+    r.AddActivity(ReserveInventoryActivity)
+    r.AddActivity(ProcessPaymentActivity)
+    r.AddActivity(ReleaseInventoryActivity)
+
+    wfClient, err := client.NewWorkflowClient()
     if err != nil {
         log.Fatal(err)
     }
 
-    w.RegisterWorkflow(OrderWorkflow)
-    w.RegisterActivity(ReserveInventoryActivity)
-    w.RegisterActivity(ProcessPaymentActivity)
-    w.RegisterActivity(ReleaseInventoryActivity)
-
-    if err = w.Start(); err != nil {
+    if err = wfClient.StartWorker(context.Background(), r); err != nil {
         log.Fatal(err)
     }
-    defer w.Shutdown()
+    defer wfClient.Close()
 
     // Start your HTTP server alongside
     http.ListenAndServe(":8080", router)
@@ -142,15 +144,16 @@ func main() {
 ## Starting a Workflow
 
 ```go
-daprClient, _ := dapr.NewClient()
-defer daprClient.Close()
+wfClient, err := client.NewWorkflowClient()
+if err != nil {
+    log.Fatal(err)
+}
+defer wfClient.Close()
 
-resp, err := daprClient.StartWorkflow(ctx, &dapr.StartWorkflowRequest{
-    InstanceID:        "order-" + orderId,
-    WorkflowComponent: "dapr",
-    WorkflowName:      "OrderWorkflow",
-    Input:             inputBytes,
-})
+instanceID, err := wfClient.ScheduleWorkflow(ctx, "OrderWorkflow",
+    workflow.WithInstanceID("order-"+orderId),
+    workflow.WithInput(input),
+)
 ```
 
 ## Summary
