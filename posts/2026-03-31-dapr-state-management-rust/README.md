@@ -17,7 +17,7 @@ Dapr State Management gives Rust applications a consistent, backend-agnostic API
 ```toml
 # Cargo.toml
 [dependencies]
-dapr = "0.13"
+dapr = "0.17"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -54,7 +54,8 @@ async fn save_profile(client: &mut DaprClient) -> Result<(), Box<dyn std::error:
         plan: "pro".to_string(),
     };
 
-    client.save_state("statestore", "user-alice", &profile).await?;
+    let value = serde_json::to_vec(&profile)?;
+    client.save_state("statestore", "user-alice", value, None, None, None).await?;
     println!("Profile saved for alice");
     Ok(())
 }
@@ -64,13 +65,15 @@ async fn save_profile(client: &mut DaprClient) -> Result<(), Box<dyn std::error:
 
 ```rust
 async fn get_profile(client: &mut DaprClient) -> Result<(), Box<dyn std::error::Error>> {
-    let profile: Option<UserProfile> = client
+    let response = client
         .get_state("statestore", "user-alice", None)
         .await?;
 
-    match profile {
-        Some(p) => println!("User: {} ({})", p.username, p.plan),
-        None    => println!("Profile not found"),
+    if response.data.is_empty() {
+        println!("Profile not found");
+    } else {
+        let profile: UserProfile = serde_json::from_slice(&response.data)?;
+        println!("User: {} ({})", profile.username, profile.plan);
     }
     Ok(())
 }
@@ -86,23 +89,18 @@ async fn delete_profile(client: &mut DaprClient) -> Result<(), Box<dyn std::erro
 }
 ```
 
-## Bulk State Reads
+## Reading Multiple State Keys
 
 ```rust
 async fn bulk_get(client: &mut DaprClient) -> Result<(), Box<dyn std::error::Error>> {
-    let keys = vec![
-        "user-alice".to_string(),
-        "user-bob".to_string(),
-        "user-carol".to_string(),
-    ];
+    let keys = vec!["user-alice", "user-bob", "user-carol"];
 
-    let result = client.get_bulk_state("statestore", keys, None).await?;
-
-    for item in result.items {
-        if !item.data.is_empty() {
-            println!("Key: {}", item.key);
+    for key in keys {
+        let response = client.get_state("statestore", key, None).await?;
+        if !response.data.is_empty() {
+            println!("Key: {}", key);
         } else {
-            println!("Key: {} - not found", item.key);
+            println!("Key: {} - not found", key);
         }
     }
     Ok(())
@@ -112,7 +110,8 @@ async fn bulk_get(client: &mut DaprClient) -> Result<(), Box<dyn std::error::Err
 ## Transactional State Updates
 
 ```rust
-use dapr::dapr::dapr::proto::runtime::v1 as dapr_v1;
+use dapr::dapr::proto::runtime::v1 as dapr_v1;
+use dapr::dapr::proto::common::v1 as common_v1;
 
 async fn transactional_update(client: &mut DaprClient) -> Result<(), Box<dyn std::error::Error>> {
     let order = serde_json::json!({"status": "shipped"});
@@ -120,16 +119,16 @@ async fn transactional_update(client: &mut DaprClient) -> Result<(), Box<dyn std
 
     let operations = vec![
         dapr_v1::TransactionalStateOperation {
-            operationtype: "upsert".to_string(),
-            request: Some(dapr_v1::StateItem {
+            operation_type: "upsert".to_string(),
+            request: Some(common_v1::StateItem {
                 key: "order-001".to_string(),
                 value: serde_json::to_vec(&order)?,
                 ..Default::default()
             }),
         },
         dapr_v1::TransactionalStateOperation {
-            operationtype: "upsert".to_string(),
-            request: Some(dapr_v1::StateItem {
+            operation_type: "upsert".to_string(),
+            request: Some(common_v1::StateItem {
                 key: "inventory-widget".to_string(),
                 value: serde_json::to_vec(&inventory)?,
                 ..Default::default()
@@ -137,7 +136,13 @@ async fn transactional_update(client: &mut DaprClient) -> Result<(), Box<dyn std
         },
     ];
 
-    client.execute_state_transaction("statestore", operations, None).await?;
+    let request = dapr_v1::ExecuteStateTransactionRequest {
+        store_name: "statestore".to_string(),
+        operations,
+        metadata: Default::default(),
+    };
+
+    client.0.execute_state_transaction(request).await?;
     println!("Transaction committed");
     Ok(())
 }
@@ -154,4 +159,4 @@ dapr run \
 
 ## Summary
 
-The Dapr Rust SDK provides a fully async state management API covering single saves, bulk reads, deletes, and transactions. All operations use serde for serialization, making it easy to work with typed Rust structs. The state backend can be swapped from Redis to PostgreSQL or Cosmos DB by updating the component YAML without changing any Rust code.
+The Dapr Rust SDK provides a fully async state management API covering saves, reads, deletes, and transactions. State values are passed as `Vec<u8>`, so you use serde to serialize and deserialize your Rust structs. The state backend can be swapped from Redis to PostgreSQL or Cosmos DB by updating the component YAML without changing any Rust code.
