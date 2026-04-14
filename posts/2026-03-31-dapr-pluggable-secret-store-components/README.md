@@ -27,7 +27,6 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "fmt"
 
     dapr "github.com/dapr-sandbox/components-go-sdk"
@@ -42,12 +41,12 @@ type CustomSecretStore struct {
 }
 
 func (s *CustomSecretStore) Init(ctx context.Context, req *proto.SecretStoreInitRequest) (*proto.SecretStoreInitResponse, error) {
-    for _, m := range req.Metadata.Properties {
-        switch m.Key {
+    for key, value := range req.Metadata.Properties {
+        switch key {
         case "apiEndpoint":
-            s.apiEndpoint = m.Value
+            s.apiEndpoint = value
         case "apiToken":
-            s.apiToken = m.Value
+            s.apiToken = value
         }
     }
     return &proto.SecretStoreInitResponse{}, nil
@@ -61,14 +60,14 @@ func (s *CustomSecretStore) Features(ctx context.Context, req *proto.FeaturesReq
 
 func (s *CustomSecretStore) Get(ctx context.Context, req *proto.GetSecretRequest) (*proto.GetSecretResponse, error) {
     // Fetch secret from your custom API
-    secret, err := s.fetchFromAPI(req.Name, req.Metadata)
+    secret, err := s.fetchFromAPI(req.Key, req.Metadata)
     if err != nil {
-        return nil, fmt.Errorf("secret %q not found: %w", req.Name, err)
+        return nil, fmt.Errorf("secret %q not found: %w", req.Key, err)
     }
 
     return &proto.GetSecretResponse{
         Data: map[string]string{
-            req.Name: secret,
+            req.Key: secret,
         },
     }, nil
 }
@@ -78,11 +77,12 @@ func (s *CustomSecretStore) BulkGet(ctx context.Context, req *proto.BulkGetSecre
         Data: make(map[string]*proto.SecretResponse),
     }
 
-    for _, name := range req.Names {
-        secret, err := s.fetchFromAPI(name, req.Metadata)
-        if err != nil {
-            continue
-        }
+    // BulkGet returns all available secrets
+    allSecrets := map[string]string{
+        "db-password": "supersecret123",
+        "api-key":     "myapikey456",
+    }
+    for name, secret := range allSecrets {
         response.Data[name] = &proto.SecretResponse{
             Secrets: map[string]string{name: secret},
         }
@@ -90,13 +90,13 @@ func (s *CustomSecretStore) BulkGet(ctx context.Context, req *proto.BulkGetSecre
     return response, nil
 }
 
-func (s *CustomSecretStore) fetchFromAPI(name string, metadata map[string]string) (string, error) {
+func (s *CustomSecretStore) fetchFromAPI(key string, metadata map[string]string) (string, error) {
     // Implement your API call here
     secrets := map[string]string{
         "db-password": "supersecret123",
         "api-key":     "myapikey456",
     }
-    if val, ok := secrets[name]; ok {
+    if val, ok := secrets[key]; ok {
         return val, nil
     }
     return "", fmt.Errorf("not found")
