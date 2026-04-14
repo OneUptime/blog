@@ -22,22 +22,21 @@ kind: Configuration
 metadata:
   name: dapr-config
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 Scrape the metrics endpoint:
 
 ```bash
-curl http://localhost:9090/metrics | grep dapr_state
+curl http://localhost:9090/metrics | grep dapr_component_state
 ```
 
 Relevant metrics include:
-- `dapr_state_get_total` - total get operations
-- `dapr_state_set_total` - total set operations
-- `dapr_state_delete_total` - total delete operations
-- `dapr_state_get_duration_milliseconds_bucket` - get latency histogram
+- `dapr_component_state_count{operation="get"}` - total get operations
+- `dapr_component_state_count{operation="set"}` - total set operations
+- `dapr_component_state_count{operation="delete"}` - total delete operations
+- `dapr_component_state_latencies` - operation latency histogram
 
 These tell you volume and latency but not cache hits vs misses. For that, instrument your application code.
 
