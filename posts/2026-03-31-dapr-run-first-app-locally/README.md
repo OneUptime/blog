@@ -15,7 +15,7 @@ In this guide you will install the Dapr CLI, initialize the local Dapr environme
 ## Prerequisites
 
 - Docker Desktop installed and running
-- Node.js 18+ or Python 3.9+ (examples use both)
+- Node.js 18+ (used in the example below)
 - A terminal on macOS, Linux, or Windows (WSL2)
 
 ## Step 1 - Install the Dapr CLI
