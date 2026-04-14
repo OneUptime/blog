@@ -218,7 +218,7 @@ with DaprClient() as client:
 Key Vault supports versioning. To retrieve a specific version:
 
 ```bash
-curl "http://localhost:3500/v1.0/secrets/azurekeyvault/db-password?metadata.version=abc123def456"
+curl "http://localhost:3500/v1.0/secrets/azurekeyvault/db-password?metadata.version_id=abc123def456"
 ```
 
 ## Using Workload Identity (AKS)
