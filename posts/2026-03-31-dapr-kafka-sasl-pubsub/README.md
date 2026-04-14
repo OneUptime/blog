@@ -39,9 +39,9 @@ spec:
         name: kafka-secret
         key: password
     - name: saslMechanism
-      value: "PLAIN"
-    - name: tlsEnabled
-      value: "true"
+      value: "PLAINTEXT"
+    - name: disableTls
+      value: "false"
 ```
 
 ## SASL/SCRAM-SHA-512 Configuration
@@ -71,10 +71,10 @@ spec:
         name: kafka-secret
         key: password
     - name: saslMechanism
-      value: "SCRAM-SHA-512"
-    - name: tlsEnabled
-      value: "true"
-    - name: tlsSkipVerify
+      value: "SHA-512"
+    - name: disableTls
+      value: "false"
+    - name: skipVerify
       value: "false"
 ```
 
@@ -132,14 +132,15 @@ with DaprClient() as client:
 ```
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
 spec:
   pubsubname: kafka-pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
 ```
 
 ## Testing Connectivity
@@ -155,4 +156,4 @@ kubectl run kafka-test --image=confluentinc/cp-kafka \
 
 ## Summary
 
-Configuring SASL authentication for Dapr Kafka pub/sub requires setting `authType: password`, providing username/password from Kubernetes secrets, and specifying the mechanism (PLAIN or SCRAM-SHA-512). SCRAM-SHA-512 is recommended for production as it uses a challenge-response protocol that never sends the password directly. Always pair SASL with TLS (`tlsEnabled: "true"`) to prevent credential interception.
+Configuring SASL authentication for Dapr Kafka pub/sub requires setting `authType: password`, providing username/password from Kubernetes secrets, and specifying the mechanism (`PLAINTEXT` or `SHA-512`). SCRAM-SHA-512 is recommended for production as it uses a challenge-response protocol that never sends the password directly. Always pair SASL with TLS (`disableTls: "false"`) to prevent credential interception.
