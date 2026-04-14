@@ -101,7 +101,6 @@ import (
 
     pb "myapp/proto"
     "google.golang.org/grpc"
-    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type orderServer struct {
