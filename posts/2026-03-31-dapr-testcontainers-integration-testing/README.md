@@ -26,6 +26,12 @@ Testcontainers is a library that starts and stops Docker containers programmatic
     <version>1.19.7</version>
     <scope>test</scope>
 </dependency>
+<dependency>
+    <groupId>org.awaitility</groupId>
+    <artifactId>awaitility</artifactId>
+    <version>4.3.0</version>
+    <scope>test</scope>
+</dependency>
 ```
 
 ## Starting Redis and Dapr Sidecar
@@ -33,6 +39,7 @@ Testcontainers is a library that starts and stops Docker containers programmatic
 ```java
 // DaprIntegrationTest.java
 import org.junit.jupiter.api.*;
+import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.utility.DockerImageName;
@@ -54,10 +61,10 @@ public class DaprIntegrationTest {
         .withExposedPorts(3500, 50001)
         .withCommand(
             "./daprd",
-            "-app-id", "test-service",
-            "-dapr-http-port", "3500",
-            "-components-path", "/components",
-            "-log-level", "error"
+            "--app-id", "test-service",
+            "--dapr-http-port", "3500",
+            "--resources-path", "/components",
+            "--log-level", "error"
         )
         .withClasspathResourceMapping(
             "dapr-components", "/components", BindMode.READ_ONLY
