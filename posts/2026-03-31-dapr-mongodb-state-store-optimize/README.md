@@ -58,14 +58,13 @@ use daprstate
 
 // TTL index for automatic state expiration
 db.state.createIndex(
-  { "expireDate": 1 },
-  { expireAfterSeconds: 0, background: true }
+  { "_ttl": 1 },
+  { expireAfterSeconds: 0 }
 )
 
 // Compound index for key + ETag lookups
 db.state.createIndex(
-  { "_id": 1, "etag": 1 },
-  { background: true }
+  { "_id": 1, "_etag": 1 }
 )
 
 // Check index usage
@@ -85,8 +84,8 @@ Choose the right write concern based on your consistency requirements:
 // For durability across replica set majority (recommended)
 // Set in Dapr component: writeConcern: "majority"
 
-// Check current write concern
-db.runCommand({ getLastError: 1, w: "majority", j: true })
+// Check default read/write concern
+db.adminCommand({ getDefaultRWConcern: 1 })
 ```
 
 ## Connection Pool Configuration
@@ -105,6 +104,8 @@ package main
 
 import (
     "context"
+    "encoding/json"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
