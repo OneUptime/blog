@@ -127,7 +127,7 @@ data:
 
 ## Splunk Search Queries
 
-Once logs are ingested, use SPL (Splunk Processing Language) to query Dapr logs:
+Once logs are ingested, use SPL (Search Processing Language) to query Dapr logs:
 
 ```text
 # Find all errors from the payment service
@@ -149,7 +149,7 @@ index=dapr_logs sourcetype="dapr:json"
 
 Build a Splunk dashboard with key panels:
 
-```toml
+```text
 # Panel 1: Log volume by service
 index=dapr_logs | timechart count by app_id
 
