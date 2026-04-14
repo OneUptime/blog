@@ -56,7 +56,7 @@ Query Log Analytics for component errors:
 
 ```bash
 az monitor log-analytics query \
-  --workspace myworkspace \
+  --workspace $WORKSPACE_ID \
   --analytics-query "
     ContainerAppConsoleLogs_CL
     | where ContainerName_s == 'daprd'
