@@ -49,11 +49,13 @@ dapr mtls export -o ./certs
 dapr mtls expiry
 ```
 
-To rotate issuer certificates while keeping the same root (rolling update):
+To rotate certificates automatically using the Dapr CLI:
 
 ```bash
-kubectl rollout restart deployment dapr-sentry -n dapr-system
+dapr mtls renew-certificate -k --restart
 ```
+
+This renews the certificates and restarts all Dapr control plane services (Sentry, Operator, Placement, Sidecar Injector, and Scheduler). After the control plane restarts, you must also restart all Dapr-enabled application pods to pick up the new trust bundle.
 
 For a full root certificate rotation, follow the Dapr docs procedure and update the trust bundle secret:
 
@@ -88,7 +90,9 @@ Configure Dapr Helm to use external certificates:
 
 ```bash
 helm upgrade dapr dapr/dapr -n dapr-system \
-  --set-string dapr_sentry.trustAnchorsFile=/var/run/secrets/dapr.io/tls/ca.crt \
+  --set-file dapr_sentry.tls.root.certPEM=./certs/ca.crt \
+  --set-file dapr_sentry.tls.issuer.certPEM=./certs/issuer.crt \
+  --set-file dapr_sentry.tls.issuer.keyPEM=./certs/issuer.key \
   --reuse-values
 ```
 
@@ -97,11 +101,11 @@ helm upgrade dapr dapr/dapr -n dapr-system \
 In non-production environments only, you can disable mTLS:
 
 ```bash
-kubectl patch configuration appconfig -n default \
+kubectl patch configuration daprsystem -n dapr-system \
   --type merge \
   -p '{"spec":{"mtls":{"enabled":false}}}'
 ```
 
 ## Summary
 
-Dapr mTLS certificate issues typically involve expired certificates or trust chain mismatches. Regularly check certificate expiry with `dapr mtls expiry`, rotate issuer certificates by restarting Sentry, and consider using cert-manager for automated certificate lifecycle management in production environments.
+Dapr mTLS certificate issues typically involve expired certificates or trust chain mismatches. Regularly check certificate expiry with `dapr mtls expiry`, rotate certificates using `dapr mtls renew-certificate -k --restart`, and consider using cert-manager for automated certificate lifecycle management in production environments.
