@@ -15,12 +15,12 @@ You want verbose debug logs when diagnosing an issue, but info-level logging the
 ## Storing Log Level Config
 
 ```bash
-# Set initial log levels per service
+# Set initial log levels per service (format: "value||version")
 redis-cli MSET \
-  "log-config||api-gateway:level" "info" \
-  "log-config||payment-service:level" "warn" \
-  "log-config||order-service:level" "info" \
-  "log-config||user-service:level" "error"
+  "api-gateway:level" "info||1" \
+  "payment-service:level" "warn||1" \
+  "order-service:level" "info||1" \
+  "user-service:level" "error||1"
 ```
 
 ## Dapr Configuration Component
@@ -74,22 +74,28 @@ class DynamicLogger:
             items = client.get_configuration(
                 self.store_name, [f"{self.service_name}:level"]
             )
-            for key, item in items.configuration.items():
+            for key, item in items.items.items():
                 level = LEVEL_MAP.get(item.value.lower(), logging.INFO)
                 self.logger.setLevel(level)
                 self.logger.info(f"Log level set to {item.value}")
 
     def watch_level(self):
+        def handler(id: str, resp):
+            for key in resp.items:
+                item = resp.items[key]
+                level = LEVEL_MAP.get(item.value.lower(), logging.INFO)
+                self.logger.setLevel(level)
+                print(f"[{self.service_name}] Log level changed to {item.value}")
+
         def _run():
             with DaprClient() as client:
-                sub = client.subscribe_configuration(
-                    self.store_name, [f"{self.service_name}:level"]
+                client.subscribe_configuration(
+                    store_name=self.store_name,
+                    keys=[f"{self.service_name}:level"],
+                    handler=handler,
                 )
-                for resp in sub:
-                    for _, item in resp.items():
-                        level = LEVEL_MAP.get(item.value.lower(), logging.INFO)
-                        self.logger.setLevel(level)
-                        print(f"[{self.service_name}] Log level changed to {item.value}")
+                # Block to keep the subscription alive
+                threading.Event().wait()
 
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
@@ -126,13 +132,13 @@ async def get_user(user_id: str):
 
 ```bash
 # Enable debug logging for api-gateway during an incident
-redis-cli SET "log-config||api-gateway:level" "debug"
+redis-cli SET "api-gateway:level" "debug||2"
 
 # Restore to info after debugging
-redis-cli SET "log-config||api-gateway:level" "info"
+redis-cli SET "api-gateway:level" "info||3"
 
 # Silence a noisy service
-redis-cli SET "log-config||payment-service:level" "error"
+redis-cli SET "payment-service:level" "error||2"
 ```
 
 ## Verifying via Dapr API
