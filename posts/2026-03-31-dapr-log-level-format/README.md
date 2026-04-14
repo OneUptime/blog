@@ -65,20 +65,20 @@ dapr run \
 ```json
 {
   "level": "info",
-  "ts": "2026-03-31T10:00:00.000Z",
+  "time": "2026-03-31T10:00:00.000Z",
+  "type": "log",
   "msg": "starting Dapr Runtime",
   "app_id": "my-service",
   "scope": "dapr.runtime",
   "instance": "my-host-pod-abc123",
-  "ver": "1.14.0",
-  "component": ""
+  "ver": "1.14.0"
 }
 ```
 
 ### Plain Text Log Sample
 
 ```text
-time="2026-03-31T10:00:00Z" level=info msg="starting Dapr Runtime" app_id=my-service scope=dapr.runtime ver=1.14.0
+time="2026-03-31T10:00:00Z" level=info type=log msg="starting Dapr Runtime" app_id=my-service scope=dapr.runtime ver=1.14.0
 ```
 
 ## Kubernetes Configuration
@@ -121,7 +121,7 @@ Set defaults for all sidecars deployed in the cluster:
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --set dapr_operator.logLevel=info \
-  --set dapr_sidecar_injector.sidecarImage.logLevel=info \
+  --set dapr_sidecar_injector.logLevel=info \
   --set global.logAsJson=true
 ```
 
@@ -131,7 +131,6 @@ Or via `values.yaml`:
 # helm/values.yaml
 global:
   logAsJson: true
-  logLevel: info
 
 dapr_operator:
   logLevel: info
@@ -148,10 +147,10 @@ The Dapr system pods (operator, placement, sentry, scheduler) have their own log
 # Check current Dapr system service log levels
 kubectl logs -n dapr-system -l app=dapr-operator | head -5
 
-# Change log level via patch
-kubectl set env deployment/dapr-operator \
-  -n dapr-system \
-  LOG_LEVEL=debug
+# Change log level via Helm upgrade
+helm upgrade dapr dapr/dapr \
+  --namespace dapr-system \
+  --set dapr_operator.logLevel=debug
 ```
 
 ## Structured Log Fields Reference
@@ -159,14 +158,13 @@ kubectl set env deployment/dapr-operator \
 | Field | Description |
 |---|---|
 | `level` | Log level (`debug`, `info`, `warn`, `error`) |
-| `ts` | ISO 8601 timestamp |
+| `time` | ISO 8601 timestamp |
+| `type` | Log entry type (always `log`) |
 | `msg` | Human-readable message |
 | `app_id` | Dapr app ID |
 | `scope` | Internal Dapr subsystem (`dapr.runtime`, `dapr.grpc.api`, etc.) |
 | `instance` | Pod or host name |
 | `ver` | Dapr runtime version |
-| `component` | Component name if related to a component operation |
-| `error` | Error string (only on error level) |
 
 ## Fluentd / FluentBit Integration
 
