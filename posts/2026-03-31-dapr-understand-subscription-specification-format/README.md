@@ -15,26 +15,27 @@ Dapr supports both programmatic and declarative subscriptions. Declarative subsc
 A minimal subscription YAML requires the pub/sub component name, topic, and route:
 
 ```yaml
-apiVersion: dapr.io/v1alpha2
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-sub
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
 ```
 
 - `spec.pubsubname` - The name of the Dapr pub/sub component
 - `spec.topic` - The topic name to subscribe to
-- `spec.route` - The HTTP endpoint on your app that receives messages
+- `spec.routes.default` - The HTTP endpoint on your app that receives messages
 
 ## Content-Based Routing
 
-Use the `routes` field (instead of `route`) to route messages to different endpoints based on CloudEvents attributes:
+Use the `routes.rules` field to route messages to different endpoints based on CloudEvents attributes:
 
 ```yaml
-apiVersion: dapr.io/v1alpha2
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-sub
@@ -57,14 +58,15 @@ The `match` expression uses the Common Expression Language (CEL) to evaluate Clo
 Configure a dead-letter topic to capture messages that fail processing repeatedly:
 
 ```yaml
-apiVersion: dapr.io/v1alpha2
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-sub
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
   deadLetterTopic: orders-dlq
 ```
 
@@ -75,14 +77,15 @@ Messages exceeding the retry policy of the resiliency spec are forwarded to `ord
 Enable bulk delivery to receive multiple messages in a single request for higher throughput:
 
 ```yaml
-apiVersion: dapr.io/v1alpha2
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-sub
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
   bulkSubscribe:
     enabled: true
     maxMessagesCount: 100
@@ -105,16 +108,17 @@ Your app receives a `BulkSubscribeRequest` body containing an array of messages:
 Add `scopes` to restrict which app IDs can use this subscription:
 
 ```yaml
-apiVersion: dapr.io/v1alpha2
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-sub
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
-  scopes:
-    - order-processor
+  routes:
+    default: /orders
+scopes:
+  - order-processor
 ```
 
 ## Applying Subscriptions
@@ -129,4 +133,4 @@ cp subscription.yaml ~/.dapr/components/
 
 ## Summary
 
-Dapr subscription YAML uses `apiVersion: dapr.io/v1alpha2` and the `Subscription` kind. The `spec` section wires a pub/sub component topic to an application route, with support for CEL-based content routing, dead-letter topics, bulk delivery, and application scoping.
+Dapr subscription YAML uses `apiVersion: dapr.io/v2alpha1` and the `Subscription` kind. The `spec` section wires a pub/sub component topic to an application route, with support for CEL-based content routing, dead-letter topics, bulk delivery, and application scoping.
