@@ -26,7 +26,7 @@ kubectl label namespace production \
 
 ## Configuring Dapr for Restricted Profile
 
-The restricted profile requires non-root users and read-only root filesystems. Configure Dapr annotations accordingly:
+The restricted profile requires non-root users, a seccomp profile, dropping all capabilities, and preventing privilege escalation. Configure Dapr annotations accordingly:
 
 ```yaml
 apiVersion: apps/v1
@@ -73,14 +73,16 @@ Update the Dapr Helm values to use restricted-compatible settings:
 ```yaml
 # values.yaml for dapr helm chart
 global:
-  securityContext:
-    runAsNonRoot: true
+  seccompProfile: RuntimeDefault
 
 dapr_operator:
   replicaCount: 2
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
+  runAsNonRoot: true
+
+dapr_sidecar_injector:
+  sidecarRunAsNonRoot: true
+  sidecarDropALLCapabilities: true
+  sidecarReadOnlyRootFilesystem: true
 ```
 
 ```bash
@@ -108,14 +110,17 @@ kubectl label namespace dapr-system \
 
 ## Auditing Existing Pods
 
-Find non-compliant pods in a Dapr namespace:
+Enable audit and warn modes on a namespace so that PSS violations are logged and surfaced:
 
 ```bash
 kubectl label namespace production \
-  pod-security.kubernetes.io/audit=restricted --overwrite
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/warn=restricted --overwrite
 
-# Check audit events
-kubectl get events -n production | grep PodSecurity
+# Audit violations are recorded in the Kubernetes API server audit log,
+# not as Kubernetes Events. Check the audit log on your API server or
+# use warn mode which returns warnings inline with kubectl commands:
+kubectl get pods -n production
 ```
 
 ## Summary
