@@ -73,7 +73,7 @@ curl -u "${PUBLIC_KEY}:${PRIVATE_KEY}" --digest \
   }'
 ```
 
-Note: Storage can only be increased, not decreased.
+Note: Storage increases are performed in place with zero downtime. Storage decreases require Atlas to provision new volumes and sync data, which causes downtime on each node during the process.
 
 ## Enabling Auto-Scaling
 
