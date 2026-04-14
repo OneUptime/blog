@@ -122,13 +122,19 @@ spec:
 ## Verifying Ingestion
 
 ```bash
-# Check trace ingestion via Dynatrace API
-curl "https://your-environment-id.live.dynatrace.com/api/v2/distributed-tracing/spans" \
+# Check OTel Collector logs for successful exports to Dynatrace
+kubectl logs -l app=otel-collector -n monitoring --tail=100 | grep -i "export"
+
+# Verify traces appear in Dynatrace:
+# Open your Dynatrace environment and navigate to Distributed Traces.
+# Filter by service name "order-service" and time range "Last 30 minutes".
+
+# Or query discovered services via the Entities API (requires entities.read scope):
+curl "https://your-environment-id.live.dynatrace.com/api/v2/entities" \
   -H "Authorization: Api-Token your-token" \
   -G \
-  --data-urlencode "from=now-30m" \
-  --data-urlencode "spanField=service.name" \
-  --data-urlencode "spanValue=order-service"
+  --data-urlencode "entitySelector=type(SERVICE),entityName(\"order-service\")" \
+  --data-urlencode "from=now-30m"
 ```
 
 ## Using DQL to Analyze Traces
