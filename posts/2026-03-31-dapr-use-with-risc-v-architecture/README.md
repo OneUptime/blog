@@ -30,7 +30,7 @@ cd dapr
 # Cross-compile daprd for Linux RISC-V 64-bit
 GOOS=linux GOARCH=riscv64 go build \
   -o dist/daprd_riscv64 \
-  ./cmd/daprd/main.go
+  ./cmd/daprd/
 
 # Verify the binary architecture
 file dist/daprd_riscv64
@@ -68,10 +68,9 @@ curl -sfL https://get.k3s.io | sh -
 
 # Deploy your custom Dapr image via Helm
 helm install dapr dapr/dapr \
-  --set dapr_operator.image.name=myrepo/dapr-operator \
-  --set dapr_operator.image.tag=riscv64 \
-  --set dapr_sidecar_injector.image.name=myrepo/daprd \
-  --set dapr_sidecar_injector.image.tag=riscv64 \
+  --set global.registry=myrepo \
+  --set global.tag=riscv64 \
+  --create-namespace \
   -n dapr-system
 ```
 
@@ -86,7 +85,7 @@ scp dist/daprd_riscv64 user@risc-v-device:/usr/local/bin/daprd
 # Run your application with Dapr on the device
 daprd --app-id sensor-processor \
       --app-port 3000 \
-      --components-path ./components &
+      --resources-path ./components &
 
 python3 sensor_app.py
 ```
