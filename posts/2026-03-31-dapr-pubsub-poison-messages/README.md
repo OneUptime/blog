@@ -12,9 +12,9 @@ Description: Learn how to detect and handle poison messages in Dapr pub/sub usin
 
 A poison message is a message that repeatedly causes a consumer to fail processing, often due to corrupt data, missing fields, or unrecoverable errors. Without proper handling, a poison message can block queue processing indefinitely.
 
-## Configure Max Delivery Count
+## Configure a Dead-Letter Topic
 
-Limit how many times Dapr retries a failed message before routing it to a dead-letter topic:
+Route failed messages to a dead-letter topic by setting `deadLetterTopic` on your subscription:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -26,11 +26,9 @@ spec:
   topic: orders
   route: /orders
   deadLetterTopic: orders-dead-letter
-  metadata:
-    maxDeliveryCount: "3"
 ```
 
-After 3 failed delivery attempts, the message moves to `orders-dead-letter` automatically.
+By default, any message that fails processing is immediately sent to `orders-dead-letter`. To retry messages before dead-lettering, pair this with a Resiliency policy (shown below).
 
 ## Subscribe to the Dead-Letter Topic
 
@@ -71,16 +69,16 @@ app.post("/orders", (req, res) => {
   } catch (err) {
     if (err instanceof ValidationError) {
       // Permanent failure - do not retry, send to dead-letter
-      res.status(404).json({ status: "DROP" });
+      res.json({ status: "DROP" });
     } else if (err instanceof TransientError) {
       // Temporary failure - retry
-      res.status(500).send();
+      res.json({ status: "RETRY" });
     }
   }
 });
 ```
 
-Status 404 or `DROP` body tells Dapr to stop retrying. Status 500 triggers a retry.
+Returning `{"status": "DROP"}` tells Dapr to stop retrying and route the message to the dead-letter topic. Returning `{"status": "RETRY"}` tells Dapr to redeliver the message.
 
 ## Configure Resiliency for Retry Backoff
 
@@ -97,7 +95,7 @@ spec:
       pubsubRetry:
         policy: exponential
         maxRetries: 3
-        initialInterval: 1s
+        duration: 1s
         maxInterval: 30s
   targets:
     components:
@@ -124,4 +122,4 @@ def handle_dead_letter():
 
 ## Summary
 
-Poison messages in Dapr pub/sub are handled by setting `maxDeliveryCount` on subscriptions and configuring a `deadLetterTopic` to capture failed messages. Use response status codes to distinguish transient from permanent failures, and subscribe to the dead-letter topic to store, alert, and analyze unprocessable messages.
+Poison messages in Dapr pub/sub are handled by configuring a `deadLetterTopic` on subscriptions to capture failed messages and pairing it with a Resiliency retry policy to control how many attempts are made before dead-lettering. Use response status codes to distinguish transient from permanent failures, and subscribe to the dead-letter topic to store, alert, and analyze unprocessable messages.
