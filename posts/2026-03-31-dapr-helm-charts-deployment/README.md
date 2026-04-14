@@ -104,10 +104,10 @@ spec:
     secretKeyRef:
       name: {{ .Values.components.pubsub.secretName }}
       key: password
-  scopes:
-  {{- range .Values.components.pubsub.scopes }}
-  - {{ . }}
-  {{- end }}
+scopes:
+{{- range .Values.components.pubsub.scopes }}
+- {{ . }}
+{{- end }}
 {{- end }}
 ```
 
