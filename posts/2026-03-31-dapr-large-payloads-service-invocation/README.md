@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Service Invocation, Performance, Streaming, Payload
+Tags: Dapr, Service Invocation, Performance, Payload
 
-Description: Handle large payloads in Dapr service invocation using chunking, compression, reference patterns, and streaming to avoid size limits and performance degradation.
+Description: Handle large payloads in Dapr service invocation using chunking, compression, and reference patterns to avoid size limits and performance degradation.
 
 ---
 
 ## Large Payload Challenges in Dapr
 
-Dapr service invocation has practical payload size limits imposed by gRPC (default 4MB) and HTTP proxy buffers. Sending large documents, reports, or data exports directly through service invocation causes timeouts and memory spikes. There are four strategies to handle this.
+Dapr service invocation has practical payload size limits imposed by gRPC (default 4MB) and HTTP proxy buffers. Sending large documents, reports, or data exports directly through service invocation causes timeouts and memory spikes. There are three strategies to handle this, plus a configuration option to increase the limit.
 
 ## Strategy 1: Chunked Transfer
 
@@ -99,7 +99,7 @@ func invokeWithCompression(ctx context.Context, client dapr.Client,
 
     // Only compress if payload is large enough
     if len(raw) < 10*1024 { // 10KB threshold
-        return client.InvokeMethodWithContent(ctx, appId, method, "application/json",
+        return client.InvokeMethodWithContent(ctx, appId, method, "post",
             &dapr.DataContent{Data: raw, ContentType: "application/json"})
     }
 
@@ -118,7 +118,7 @@ func invokeWithCompression(ctx context.Context, client dapr.Client,
     }
 
     wrapperBytes, _ := json.Marshal(wrapper)
-    return client.InvokeMethodWithContent(ctx, appId, method, "application/json",
+    return client.InvokeMethodWithContent(ctx, appId, method, "post",
         &dapr.DataContent{Data: wrapperBytes, ContentType: "application/json"})
 }
 ```
@@ -129,7 +129,7 @@ Store large data in a shared store and pass a reference key:
 
 ```javascript
 // Node.js - reference pattern
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 const crypto = require('crypto');
 
 const client = new DaprClient();
@@ -141,12 +141,12 @@ async function invokeWithReference(appId, method, largePayload) {
 
   await client.state.save('statestore', [
     { key: stateKey, value: largePayload,
-      options: { metadata: { ttlInSeconds: '300' } } }
+      metadata: { ttlInSeconds: '300' } }
   ]);
 
   // Invoke with just the reference
   const result = await client.invoker.invoke(
-    appId, method, 'POST',
+    appId, method, HttpMethod.POST,
     { payloadRef: stateKey, transferId: refId }
   );
 
@@ -158,8 +158,7 @@ async function invokeWithReference(appId, method, largePayload) {
 // Receiver retrieves the large payload from state
 app.post('/api/process-report', async (req, res) => {
   const { payloadRef } = req.body;
-  const [stateItem] = await daprClient.state.get('statestore', payloadRef);
-  const largePayload = stateItem;
+  const largePayload = await daprClient.state.get('statestore', payloadRef);
   // process...
   res.json({ status: 'processed' });
 });
@@ -167,18 +166,21 @@ app.post('/api/process-report', async (req, res) => {
 
 ## Increase gRPC Max Message Size
 
+On Kubernetes, set the annotation on your pod spec:
+
 ```yaml
-# dapr-config.yaml - increase gRPC payload limit
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: appconfig
-spec:
-  api:
-    grpc:
-      maxRequestBodySize: 16  # MB
-      maxResponseBodySize: 16  # MB
+annotations:
+  dapr.io/enabled: "true"
+  dapr.io/max-body-size: "16Mi"
 ```
+
+For self-hosted mode, pass the flag when running your app:
+
+```bash
+dapr run --app-id myapp --max-body-size 16Mi -- ./myapp
+```
+
+This applies to both HTTP and gRPC traffic.
 
 ## Summary
 
