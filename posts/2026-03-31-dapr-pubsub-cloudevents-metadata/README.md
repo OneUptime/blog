@@ -24,19 +24,21 @@ A Dapr-wrapped message includes these envelope fields:
 | `specversion` | CloudEvents specification version |
 | `datacontenttype` | MIME type of the data payload |
 | `traceid` | Distributed trace ID |
+| `traceparent` | W3C Trace Context parent ID (same value as traceid) |
+| `tracestate` | W3C Trace Context state |
 | `time` | ISO 8601 timestamp |
 | `topic` | The pub/sub topic name |
 | `pubsubname` | Name of the Dapr pub/sub component |
 
 ## Publishing with Custom CloudEvents Metadata
 
-When publishing via the Dapr HTTP API, you can add custom CloudEvents extension attributes by including them as HTTP headers with the prefix `ce-`:
+When publishing via the Dapr HTTP API, you can add custom CloudEvents extension attributes by including them as HTTP headers with the prefix `ce_`:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/publish/kafka-pubsub/orders \
   -H "Content-Type: application/json" \
-  -H "ce-correlationid: order-abc-123" \
-  -H "ce-environment: production" \
+  -H "ce_correlationid: order-abc-123" \
+  -H "ce_environment: production" \
   -d '{"orderId": "abc-123", "amount": 99.99}'
 ```
 
@@ -123,13 +125,17 @@ When publishing binary or non-JSON payloads, set the `datacontenttype` header ex
 ```bash
 curl -X POST http://localhost:3500/v1.0/publish/kafka-pubsub/images \
   -H "Content-Type: application/octet-stream" \
-  -H "ce-imageid: img-456" \
+  -H "ce_specversion: 1.0" \
+  -H "ce_type: image.upload" \
+  -H "ce_source: myapp" \
+  -H "ce_id: img-event-001" \
+  -H "ce_imageid: img-456" \
   --data-binary @image.png
 ```
 
 ## Using Metadata for Message Routing
 
-You can use CloudEvents extension attributes to implement custom routing logic in your subscriber. For example, route to different handlers based on `ce-environment`:
+You can use CloudEvents extension attributes to implement custom routing logic in your subscriber. For example, route to different handlers based on `ce_environment`:
 
 ```javascript
 app.post('/orders', (req, res) => {
@@ -145,4 +151,4 @@ app.post('/orders', (req, res) => {
 
 ## Summary
 
-Dapr automatically wraps published messages in CloudEvents envelopes that include tracing, source, and type metadata. You can extend these envelopes with custom attributes using the `ce-` header prefix or SDK publish metadata options. Subscribers receive the full envelope and can read both standard and custom metadata fields to implement routing, correlation, and observability logic.
+Dapr automatically wraps published messages in CloudEvents envelopes that include tracing, source, and type metadata. You can extend these envelopes with custom attributes using the `ce_` header prefix or SDK publish metadata options. Subscribers receive the full envelope and can read both standard and custom metadata fields to implement routing, correlation, and observability logic.
