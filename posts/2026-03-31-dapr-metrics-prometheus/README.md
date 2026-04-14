@@ -19,11 +19,11 @@ Dapr sidecars expose metrics at `http://localhost:9090/metrics` (on the sidecar,
 | Metric Family | Description |
 |---|---|
 | `dapr_http_server_request_count` | Count of inbound HTTP requests |
-| `dapr_http_client_request_count` | Count of outbound service invocations |
+| `dapr_http_client_completed_count` | Count of outbound service invocations |
 | `dapr_http_server_latency` | Latency histogram for inbound requests |
-| `dapr_http_client_latency` | Latency histogram for outbound invocations |
+| `dapr_http_client_roundtrip_latency` | Latency histogram for outbound invocations |
 | `dapr_component_pubsub_*` | Pub/sub publish and subscription metrics |
-| `dapr_actor_*` | Actor activation, deactivation, method call metrics |
+| `dapr_runtime_actor_*` | Actor activation, deactivation, method call metrics |
 | `dapr_runtime_*` | Dapr runtime health and internal metrics |
 
 ## Prerequisites
@@ -136,28 +136,24 @@ Dapr provides pre-built Grafana dashboards. Import them from the Dapr GitHub rep
 
 ```bash
 # Download dashboard JSONs
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/dapr-system-services-dashboard.json
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/dapr-sidecar-dashboard.json
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/dapr-actor-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-sidecar-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-actor-dashboard.json
 ```
-
-Or import directly via Grafana ID from grafana.com:
-- Dapr System Services: `11001`
-- Dapr Sidecar Metrics: `11002`
 
 ## Step 5: Key Metrics to Monitor
 
 ### Service Invocation Rate
 
 ```promql
-rate(dapr_http_client_request_count[5m])
+rate(dapr_http_client_completed_count[5m])
 ```
 
 ### Service Invocation Latency (P99)
 
 ```promql
 histogram_quantile(0.99,
-  sum(rate(dapr_http_client_latency_bucket[5m])) by (app_id, method, le)
+  sum(rate(dapr_http_client_roundtrip_latency_bucket[5m])) by (app_id, method, le)
 )
 ```
 
@@ -175,10 +171,10 @@ rate(dapr_http_server_request_count[5m])
 rate(dapr_component_pubsub_egress_count[5m])
 ```
 
-### Actor Active Count
+### Actor Pending Calls
 
 ```promql
-dapr_actor_active_actors
+dapr_runtime_actor_pending_actor_calls
 ```
 
 ## Step 6: Access Prometheus and Grafana
