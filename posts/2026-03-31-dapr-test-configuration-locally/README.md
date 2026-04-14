@@ -18,7 +18,7 @@ Install the Dapr CLI and initialize it in self-hosted mode:
 dapr init
 ```
 
-This starts a local Redis instance that serves as the default configuration store.
+This starts a local Redis instance and sets up default state store and pub/sub components. You will need to create a configuration store component separately.
 
 ## Defining the Configuration Component
 
@@ -48,8 +48,8 @@ Populate Redis with test values using the Redis CLI:
 
 ```bash
 redis-cli MSET \
-  "appconfig||feature-x" "{\"value\":\"true\",\"version\":\"1\"}" \
-  "appconfig||max-retries" "{\"value\":\"5\",\"version\":\"1\"}"
+  "feature-x" "true||1" \
+  "max-retries" "5||1"
 ```
 
 ## Reading Configuration in Your App
@@ -64,10 +64,8 @@ Expected response:
 
 ```json
 {
-  "items": {
-    "feature-x": { "value": "true", "version": "1" },
-    "max-retries": { "value": "5", "version": "1" }
-  }
+  "feature-x": { "value": "true" },
+  "max-retries": { "value": "5" }
 }
 ```
 
@@ -76,7 +74,7 @@ Expected response:
 Start your app with Dapr and subscribe to config changes:
 
 ```bash
-dapr run --app-id myapp --app-port 3000 --components-path ./components -- node app.js
+dapr run --app-id myapp --app-port 3000 --resources-path ./components -- node app.js
 ```
 
 In your app, subscribe to changes and log updates:
@@ -86,15 +84,15 @@ const { DaprClient } = require("@dapr/dapr");
 const client = new DaprClient();
 
 async function watchConfig() {
-  const subscription = await client.configuration.subscribeWithKeys(
+  const stream = await client.configuration.subscribeWithKeys(
     "configstore",
     ["feature-x", "max-retries"],
     (update) => {
       console.log("Config updated:", update);
     }
   );
-  // Unsubscribe after 60 seconds
-  setTimeout(() => subscription.unsubscribe(), 60000);
+  // Stop watching after 60 seconds
+  setTimeout(() => stream.stop(), 60000);
 }
 watchConfig();
 ```
@@ -104,7 +102,7 @@ watchConfig();
 Update a key in Redis to simulate a runtime config change:
 
 ```bash
-redis-cli SET "appconfig||feature-x" "{\"value\":\"false\",\"version\":\"2\"}"
+redis-cli SET "feature-x" "false||2"
 ```
 
 Your subscription callback should fire with the new value within seconds.
@@ -120,7 +118,7 @@ apps:
     appDirPath: ./src
     appPort: 3000
     command: ["node", "app.js"]
-    resourcesPath: ./components
+    resourcesPaths: [./components]
 ```
 
 Start everything with:
