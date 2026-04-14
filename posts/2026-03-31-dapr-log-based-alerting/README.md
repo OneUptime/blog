@@ -63,7 +63,7 @@ Create a threshold alert when the error rate exceeds 5 errors per minute:
       datasourceUid: loki-datasource
       model:
         expr: |
-          sum(rate({job="dapr-containers", level="error"}[1m])) > 0.08
+          sum(rate({job="dapr-containers", level="error"}[1m])) > 0.083
   for: 2m
   annotations:
     summary: "Dapr error rate exceeds threshold"
