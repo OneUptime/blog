@@ -79,8 +79,8 @@ spec:
   metadata:
   - name: connectionString
     value: "host=pgbouncer port=6432 dbname=daprdb user=dapr password=secret sslmode=require pool_max_conns=10"
-  - name: tableName
-    value: "dapr_state"
+  - name: tablePrefix
+    value: "dapr_"
   - name: cleanupInterval
     value: "1h"
 ```
@@ -98,7 +98,7 @@ CREATE INDEX CONCURRENTLY idx_dapr_state_key_btree
 -- Partial index for frequently accessed hot keys
 CREATE INDEX CONCURRENTLY idx_dapr_state_hot
   ON dapr_state (key)
-  WHERE update_time > NOW() - INTERVAL '1 hour';
+  WHERE updated_at > NOW() - INTERVAL '1 hour';
 ```
 
 ## Monitoring Query Performance
