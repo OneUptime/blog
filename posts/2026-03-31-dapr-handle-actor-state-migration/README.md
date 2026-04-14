@@ -46,22 +46,30 @@ type VersionedState struct {
 }
 ```
 
-## Migration Logic in OnActivate
+## Migration Logic with Lazy Initialization
+
+The Dapr Go SDK does not provide a user-overridable activation lifecycle hook (unlike the .NET SDK's `OnActivateAsync`). Instead, use a lazy-initialization helper that each actor method calls before accessing state:
 
 ```go
 type OrderActor struct {
     actor.ServerImplBaseCtx
     state   OrderStateV2
     version int
+    loaded  bool
 }
 
-func (a *OrderActor) OnActivate(ctx context.Context) error {
+func (a *OrderActor) ensureStateLoaded(ctx context.Context) error {
+    if a.loaded {
+        return nil // already loaded and migrated
+    }
+
     var versioned VersionedState
     err := a.GetStateManager().Get(ctx, "state", &versioned)
     if err != nil {
         // No state yet - initialize fresh
         a.state = OrderStateV2{Currency: "USD"}
         a.version = 2
+        a.loaded = true
         return nil
     }
 
@@ -71,11 +79,13 @@ func (a *OrderActor) OnActivate(ctx context.Context) error {
         json.Unmarshal(versioned.Data, &v1)
         a.state = a.migrateV1ToV2(v1)
         a.version = 2
+        a.loaded = true
         // Save migrated state immediately
         return a.saveState(ctx)
     case 2:
         json.Unmarshal(versioned.Data, &a.state)
         a.version = 2
+        a.loaded = true
     default:
         return fmt.Errorf("unknown state version: %d", versioned.Version)
     }
@@ -106,12 +116,16 @@ For large actor fleets, migrate on access rather than all at once:
 
 ```go
 func (a *OrderActor) GetOrder(ctx context.Context) (*OrderStateV2, error) {
-    // State is already migrated in OnActivate
+    if err := a.ensureStateLoaded(ctx); err != nil {
+        return nil, err
+    }
     return &a.state, nil
 }
 
 func (a *OrderActor) UpdateOrder(ctx context.Context, update OrderUpdate) error {
-    // Apply update to V2 state and save
+    if err := a.ensureStateLoaded(ctx); err != nil {
+        return err
+    }
     a.state.Status = update.Status
     return a.saveState(ctx) // Saves as V2
 }
@@ -172,4 +186,4 @@ func TestMigrateV1ToV2(t *testing.T) {
 
 ## Summary
 
-Actor state migration in Dapr requires versioned state wrappers with migration logic in `OnActivate`. Migrate on first access for zero-downtime schema evolution, save migrated state immediately to avoid re-migrating on every activation, and use background migrators for bulk updates. Always test migration logic independently and use `omitempty` for backward-compatible additive changes.
+Actor state migration in Dapr requires versioned state wrappers with migration logic in a lazy-initialization helper (since the Go SDK does not expose an activation lifecycle hook). Migrate on first access for zero-downtime schema evolution, save migrated state immediately to avoid re-migrating on every activation, and use background migrators for bulk updates. Always test migration logic independently and use `omitempty` for backward-compatible additive changes.
