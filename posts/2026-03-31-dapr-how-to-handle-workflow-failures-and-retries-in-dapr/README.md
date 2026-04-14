@@ -55,8 +55,8 @@ public class OrderWorkflow : Workflow<OrderRequest, OrderResult>
         }
         catch (WorkflowTaskFailedException ex)
         {
-            context.SetCustomStatus($"Workflow failed: {ex.FailureDetails.Message}");
-            return new OrderResult { Success = false, Error = ex.FailureDetails.Message };
+            context.SetCustomStatus($"Workflow failed: {ex.FailureDetails.ErrorMessage}");
+            return new OrderResult { Success = false, Error = ex.FailureDetails.ErrorMessage };
         }
     }
 }
@@ -65,16 +65,16 @@ public class OrderWorkflow : Workflow<OrderRequest, OrderResult>
 ## Configuring Retry Policies in Python
 
 ```python
-from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext, RetryPolicy
 from datetime import timedelta
 
 def order_workflow(ctx: DaprWorkflowContext, order: dict):
-    retry_policy = {
-        'maxNumberOfAttempts': 5,
-        'firstRetryInterval': timedelta(seconds=2),
-        'backoffCoefficient': 2.0,
-        'maxRetryInterval': timedelta(minutes=1),
-    }
+    retry_policy = RetryPolicy(
+        first_retry_interval=timedelta(seconds=2),
+        max_number_of_attempts=5,
+        backoff_coefficient=2.0,
+        max_retry_interval=timedelta(minutes=1),
+    )
 
     try:
         inventory = yield ctx.call_activity(
