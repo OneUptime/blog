@@ -12,7 +12,7 @@ Description: Learn what the Dapr Operator service does in Kubernetes, how it man
 
 The Dapr Operator is a Kubernetes controller that manages Dapr Custom Resource Definitions (CRDs). It runs in the `dapr-system` namespace and is responsible for:
 
-1. Watching `Component`, `Configuration`, `Resiliency`, and `Subscription` CRDs
+1. Watching `Component`, `Configuration`, `HTTPEndpoint`, `Resiliency`, and `Subscription` CRDs
 2. Delivering CRD updates to running Dapr sidecars
 3. Managing the lifecycle of Dapr-related resources in Kubernetes
 
@@ -24,6 +24,7 @@ flowchart TD
     subgraph Kubernetes API
         CRD_C[Component CRDs]
         CRD_Cfg[Configuration CRDs]
+        CRD_H[HTTPEndpoint CRDs]
         CRD_R[Resiliency CRDs]
         CRD_S[Subscription CRDs]
     end
@@ -33,6 +34,7 @@ flowchart TD
     end
     Operator -->|watches| CRD_C
     Operator -->|watches| CRD_Cfg
+    Operator -->|watches| CRD_H
     Operator -->|watches| CRD_R
     Operator -->|watches| CRD_S
     Operator -->|pushes updates| Sidecar1
@@ -101,7 +103,7 @@ Key permissions:
 rules:
 - apiGroups: ["dapr.io"]
   resources: ["components", "configurations", "resiliencies", "subscriptions", "httpendpoints"]
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get", "list"]
@@ -146,13 +148,12 @@ With hot-reload enabled, changing a component's connection string or credentials
 
 ## Operator High Availability
 
-In production, run the Operator with multiple replicas using leader election:
+In production, run the Operator with multiple replicas. Leader election is built into the Operator and activates automatically when multiple replicas are running:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.replicaCount=3 \
-  --set dapr_operator.leaderElection=true
+  --set dapr_operator.replicaCount=3
 ```
 
 Or in the Helm values file:
@@ -160,7 +161,6 @@ Or in the Helm values file:
 ```yaml
 dapr_operator:
   replicaCount: 3
-  leaderElection: true
   resources:
     requests:
       cpu: 100m
