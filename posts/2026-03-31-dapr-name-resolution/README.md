@@ -56,7 +56,7 @@ On Kubernetes, Dapr uses the cluster's internal DNS. Each Dapr-enabled app is re
 
 No additional configuration is needed. The sidecar discovers other apps through:
 
-```json
+```text
 {app-id}-dapr.{namespace}.svc.cluster.local
 ```
 
@@ -141,7 +141,7 @@ curl http://localhost:3500/v1.0/invoke/service-b.production/method/hello
 Or set the `dapr-app-id` header with the namespace qualifier:
 
 ```bash
-curl http://localhost:3500/v1.0/invoke/service-b/method/hello \
+curl http://localhost:3500/hello \
   -H "dapr-app-id: service-b.production"
 ```
 
