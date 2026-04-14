@@ -38,7 +38,7 @@ dapr status --kubernetes | grep placement
 The sidecar metadata endpoint shows registered actor types from the Placement table:
 
 ```bash
-curl http://localhost:3500/v1.0/metadata | jq '.activeActorsCount'
+curl http://localhost:3500/v1.0/metadata | jq '.actors'
 ```
 
 Response:
@@ -71,9 +71,9 @@ grpc.health.v1.Health
 When your app starts with actor types registered, the sidecar:
 
 1. Connects to the Placement service via gRPC streaming
-2. Sends a `RegisterActorHost` message with the actor types it hosts
+2. Sends a `Host` message via the `ReportDaprStatus` stream with the actor types it hosts
 3. Receives updated placement tables as a stream
-4. Forwards placement tables to all connected sidecars
+4. The Placement service disseminates updated placement tables to all connected sidecars
 
 Your app declares actor types by returning them from the `/dapr/config` endpoint:
 
@@ -123,7 +123,7 @@ For production, run the Placement service with at least 3 replicas for leader el
 
 ```bash
 dapr init --kubernetes \
-          --set dapr_placement.replicaCount=3 \
+          --set dapr_placement.ha=true \
           --wait
 ```
 
