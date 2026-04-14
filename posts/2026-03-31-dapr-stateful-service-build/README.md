@@ -62,6 +62,7 @@ orderservice/
 from flask import Flask, request, jsonify
 from dapr.clients import DaprClient
 from dapr.clients.grpc._state import StateOptions, Consistency, Concurrency
+import json
 import uuid
 
 app = Flask(__name__)
@@ -81,7 +82,7 @@ def create_order():
         client.save_state(
             store_name=STORE,
             key=order_id,
-            value=str(order),
+            value=json.dumps(order),
             options=StateOptions(
                 consistency=Consistency.strong,
                 concurrency=Concurrency.last_write
@@ -96,7 +97,7 @@ def get_order(order_id):
         result = client.get_state(store_name=STORE, key=order_id)
         if not result.data:
             return jsonify({"error": "not found"}), 404
-        return result.data, 200
+        return jsonify(json.loads(result.data)), 200
 
 
 @app.route("/orders/<order_id>", methods=["PUT"])
@@ -108,7 +109,6 @@ def update_order(order_id):
         if not current.data:
             return jsonify({"error": "not found"}), 404
 
-        import json
         order = json.loads(current.data)
         order["status"] = data.get("status", order["status"])
 
@@ -139,7 +139,7 @@ pip install flask dapr
 dapr run \
   --app-id orderservice \
   --app-port 8080 \
-  --components-path ./components \
+  --resources-path ./components \
   -- python main.py
 ```
 
@@ -212,6 +212,8 @@ curl -X DELETE http://localhost:8080/orders/abc-123
 When an order ships, update state and publish an event atomically:
 
 ```python
+from dapr.clients.grpc._state import TransactionalStateOperation
+
 @app.route("/orders/<order_id>/ship", methods=["POST"])
 def ship_order(order_id):
     with DaprClient() as client:
@@ -219,20 +221,14 @@ def ship_order(order_id):
         client.execute_state_transaction(
             store_name=STORE,
             operations=[
-                {
-                    "operation": "upsert",
-                    "request": {
-                        "key": order_id,
-                        "value": '{"status": "shipped"}'
-                    }
-                },
-                {
-                    "operation": "upsert",
-                    "request": {
-                        "key": f"shipped-log-{order_id}",
-                        "value": '{"event": "shipped"}'
-                    }
-                }
+                TransactionalStateOperation(
+                    key=order_id,
+                    data=json.dumps({"status": "shipped"})
+                ),
+                TransactionalStateOperation(
+                    key=f"shipped-log-{order_id}",
+                    data=json.dumps({"event": "shipped"})
+                )
             ]
         )
     return jsonify({"status": "shipped"}), 200
