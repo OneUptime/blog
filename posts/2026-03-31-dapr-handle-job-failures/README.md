@@ -8,17 +8,18 @@ Description: Learn how to handle job failures in Dapr, including retry strategie
 
 ---
 
-Dapr Jobs does not have built-in retry logic for failed job handlers - if your handler returns a non-200 response, the job does not automatically retry. Understanding this behavior and implementing your own retry and failure handling strategies is critical for reliable job execution.
+Dapr Jobs has basic built-in retry logic - by default, if your handler returns a non-200 response, the job retries up to 3 times with a 1-second delay. You can customize this with the `failure_policy` field (using `constant` for configurable retries or `drop` to skip retries entirely). However, the built-in retry is limited, so implementing your own complementary retry and failure handling strategies is important for reliable job execution.
 
 ## Understanding Dapr Jobs Failure Behavior
 
 When a job triggers and your handler returns a non-200 status:
 - The job failure is logged by the Dapr sidecar
-- The job **does not retry** the failed execution
-- The next scheduled execution proceeds as normal
+- By default, the job **retries up to 3 times** with a 1-second delay between attempts
+- You can configure a `failure_policy` on the job: `constant` allows custom `max_retries` and `interval`, while `drop` disables retries entirely
+- The next scheduled execution proceeds as normal regardless of failure
 - There is no built-in dead-letter mechanism
 
-This means your handler must be resilient and handle its own retry logic for transient failures.
+While the built-in retries handle simple transient failures, your handler should still be resilient and implement additional retry logic for more complex failure scenarios.
 
 ## Implementing Retry Logic in Job Handlers
 
@@ -175,4 +176,4 @@ func handleDailyReport(ctx context.Context, job *common.JobEvent) error {
 
 ## Summary
 
-Dapr Jobs requires you to implement failure handling within your job handlers since there is no built-in retry mechanism. Combining handler-level retries, dead-letter patterns via Pub/Sub, and idempotent execution guards provides a comprehensive strategy for reliable job execution in production systems.
+Dapr Jobs provides basic built-in retry behavior (3 retries by default, configurable via `failure_policy`), but robust production systems benefit from additional failure handling within your job handlers. Combining the built-in retries with handler-level retries, dead-letter patterns via Pub/Sub, and idempotent execution guards provides a comprehensive strategy for reliable job execution.
