@@ -48,10 +48,10 @@ istioctl create-remote-secret \
 
 ```bash
 # Cluster A
-dapr init -k --kubeconfig cluster-a.kubeconfig
+KUBECONFIG=cluster-a.kubeconfig dapr init -k
 
 # Cluster B
-dapr init -k --kubeconfig cluster-b.kubeconfig
+KUBECONFIG=cluster-b.kubeconfig dapr init -k
 ```
 
 ## Cross-Cluster Service Discovery
@@ -69,7 +69,7 @@ metadata:
 spec:
   hosts:
     - inventory-service.production.svc.cluster-b.local
-  location: MESH_EXTERNAL
+  location: MESH_INTERNAL
   ports:
     - number: 80
       name: http
