@@ -62,7 +62,7 @@ with DaprClient() as client:
 
 ```python
 import json
-from cloudevents.http import CloudEvent
+from dapr.clients import DaprClient
 
 with DaprClient() as client:
     order = {"orderId": "order-123", "customerId": "user-42", "total": 49.99}
@@ -79,7 +79,8 @@ with DaprClient() as client:
 ## Service Invocation
 
 ```python
-from dapr.clients.http.dapr_invocation_http_client import DaprInvocationHttpClient
+import json
+from dapr.clients import DaprClient
 
 with DaprClient() as client:
     # GET request
