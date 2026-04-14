@@ -14,13 +14,13 @@ The `dapr uninstall` command removes the Dapr runtime, its binaries, and support
 
 ## Uninstalling in Self-Hosted Mode
 
-Remove Dapr and its default containers (Redis, Zipkin):
+Remove the Dapr placement container and binaries:
 
 ```bash
 dapr uninstall
 ```
 
-To also remove the Docker containers:
+To also remove the Docker containers and all Dapr configuration:
 
 ```bash
 dapr uninstall --all
@@ -29,8 +29,9 @@ dapr uninstall --all
 The `--all` flag removes:
 - The Redis Docker container
 - The Zipkin Docker container
-- Dapr binary files from `~/.dapr/bin/`
-- Default component files from `~/.dapr/components/`
+- The Scheduler Docker container
+- The `dapr_scheduler` Docker volume
+- The entire `~/.dapr/` directory (binaries, components, configuration, and scheduler data)
 
 ## Uninstalling from Kubernetes
 
@@ -38,7 +39,7 @@ The `--all` flag removes:
 dapr uninstall --kubernetes
 ```
 
-This removes all Dapr control plane components from the `dapr-system` namespace and deletes the namespace itself.
+This removes all Dapr control plane components (Helm releases) from the `dapr-system` namespace. The namespace itself is not deleted automatically; remove it manually with `kubectl delete namespace dapr-system` if needed.
 
 ## Removing from a Specific Namespace
 
@@ -56,7 +57,7 @@ To also delete all Dapr custom resource definitions:
 dapr uninstall --kubernetes --all
 ```
 
-Warning: the `--all` flag will delete all Dapr CRDs and any Component, Configuration, Subscription, and Resiliency resources in the cluster. This is destructive and irreversible.
+Warning: the `--all` flag will delete all Dapr CRDs and any Component, Configuration, Subscription, Resiliency, and HTTPEndpoint resources in the cluster. This is destructive and irreversible.
 
 ## Uninstall and Reinstall Script
 
@@ -98,7 +99,7 @@ kubectl get crds | grep dapr.io
 sudo rm /usr/local/bin/dapr
 
 # Windows (PowerShell)
-Remove-Item "$env:USERPROFILE\.dapr\bin\dapr.exe"
+Remove-Item "$env:SystemDrive\dapr\dapr.exe"
 ```
 
 ## Summary
