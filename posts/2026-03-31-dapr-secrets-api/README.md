@@ -48,8 +48,8 @@ spec:
     value: "https://vault.example.com:8200"
   - name: vaultToken
     value: "YOUR_VAULT_TOKEN"
-  - name: vaultMountPath
-    value: "secret/data"
+  - name: enginePath
+    value: "secret"
 ```
 
 ## Retrieving a Secret via HTTP
@@ -110,7 +110,7 @@ func main() {
     panic(err)
   }
 
-  fmt.Printf("Got secret: %s\n", maskSecret(dbPassword))
+  fmt.Printf("Got secret of length: %d\n", len(dbPassword))
 }
 ```
 
@@ -134,7 +134,7 @@ Pass optional metadata to the secrets API for backends that support versioning:
 
 ```bash
 # AWS Secrets Manager with version
-curl "http://localhost:3500/v1.0/secrets/aws-secretstore/my-api-key?metadata.versionId=AWSPREVIOUS"
+curl "http://localhost:3500/v1.0/secrets/aws-secretstore/my-api-key?metadata.version_stage=AWSPREVIOUS"
 ```
 
 ## Security Best Practices
