@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Secret, HashiCorp Vault, Security, Configuration
 
-Description: Learn how to configure the Dapr HashiCorp Vault secret store component to read secrets from Vault using token, AppRole, or Kubernetes authentication methods.
+Description: Learn how to configure the Dapr HashiCorp Vault secret store component to read secrets from Vault using token-based authentication, with tokens obtained via direct token creation, AppRole, or Kubernetes auth methods.
 
 ---
 
@@ -134,7 +134,7 @@ spec:
   - name: enginePath
     value: "secret"
   - name: vaultKVUsePrefix
-    value: "true"
+    value: "false"
 ```
 
 Create the Kubernetes secret holding the Vault token:
@@ -144,7 +144,18 @@ kubectl create secret generic vault-token-secret \
   --from-literal=token=<your-vault-token>
 ```
 
-### Using AppRole Authentication
+### Using a Token Obtained via AppRole
+
+The Dapr Vault component authenticates using tokens only. When using AppRole, obtain a token externally (e.g., via an init container or a script) and provide it to the component. Store the token in a Kubernetes secret:
+
+```bash
+# Log in via AppRole and extract the token
+VAULT_TOKEN=$(vault write -field=token auth/approle/login \
+  role_id="<your-role-id>" secret_id="<your-secret-id>")
+
+kubectl create secret generic vault-approle-token \
+  --from-literal=token=$VAULT_TOKEN
+```
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -158,21 +169,19 @@ spec:
   metadata:
   - name: vaultAddr
     value: "https://vault.example.com:8200"
-  - name: vaultAuth
-    value: "approle"
-  - name: roleID
+  - name: vaultToken
     secretKeyRef:
-      name: vault-approle-creds
-      key: roleId
-  - name: secretID
-    secretKeyRef:
-      name: vault-approle-creds
-      key: secretId
+      name: vault-approle-token
+      key: token
   - name: enginePath
     value: "secret"
+  - name: vaultKVUsePrefix
+    value: "false"
 ```
 
-### Using Kubernetes Authentication
+### Using a Token Obtained via Kubernetes Auth
+
+For Kubernetes deployments, use the [Vault Agent Injector](https://developer.hashicorp.com/vault/docs/platform/k8s/injector) to authenticate with Vault using the Kubernetes auth method and write a token to a shared volume. Then point the Dapr component to the token file:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -186,13 +195,15 @@ spec:
   metadata:
   - name: vaultAddr
     value: "https://vault.example.com:8200"
-  - name: vaultAuth
-    value: "kubernetes"
-  - name: vaultKubernetesRole
-    value: "dapr-role"
+  - name: vaultTokenMountPath
+    value: "/vault/secrets/token"
   - name: enginePath
     value: "secret"
+  - name: vaultKVUsePrefix
+    value: "false"
 ```
+
+The Vault Agent Injector writes the token to the path specified in `vaultTokenMountPath`. Add the appropriate Vault Agent annotations to your pod spec to enable injection.
 
 ## Step 4: Read Secrets in Your Application
 
@@ -264,8 +275,8 @@ For secrets stored at nested paths (e.g., `secret/data/app/prod/db`):
 curl "http://localhost:3500/v1.0/secrets/vault/app/prod/db"
 ```
 
-Set `vaultKVUsePrefix: "true"` in the component to prepend `data/` automatically for KV v2.
+Set `vaultKVUsePrefix: "false"` in the component to access the secret path directly without the default `dapr/` prefix being prepended. When `vaultKVUsePrefix` is `"true"` (the default), Dapr prepends the `vaultKVPrefix` (default `"dapr"`) to the secret name.
 
 ## Summary
 
-Dapr's HashiCorp Vault integration supports multiple authentication methods - token, AppRole, and Kubernetes - making it flexible for both development and production. Configure your secret engine path and authentication in the Dapr component YAML, and read secrets through the standard Dapr API. For Kubernetes deployments, use the Vault Kubernetes auth method to authenticate using service account tokens without managing static credentials.
+Dapr's HashiCorp Vault integration authenticates using tokens, which can be obtained through various Vault auth methods - direct token creation, AppRole, or Kubernetes auth. Configure your secret engine path and token in the Dapr component YAML, and read secrets through the standard Dapr API. For Kubernetes deployments, use the Vault Agent Injector to handle Kubernetes auth and write tokens to a file that the Dapr component reads via `vaultTokenMountPath`.
