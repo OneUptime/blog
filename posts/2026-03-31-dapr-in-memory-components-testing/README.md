@@ -61,7 +61,7 @@ dapr run \
   --app-id myapp \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ./components/test \
+  --resources-path ./components/test \
   -- node server.js
 ```
 
@@ -163,7 +163,6 @@ public class InMemoryDaprTests : IClassFixture<WebApplicationFactory<Program>>
 In-memory components do not support:
 - Cross-process state sharing (each sidecar has its own memory)
 - Persistence across test runs
-- Dapr Workflow state (use Redis even for tests)
 
 ## Summary
 
