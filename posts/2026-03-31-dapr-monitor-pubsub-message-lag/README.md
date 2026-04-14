@@ -19,9 +19,9 @@ Dapr acts as a pub/sub proxy - the actual message broker (Kafka, RabbitMQ, Redis
 
 Dapr exposes these key metrics:
 
-- `dapr_pubsub_subscribe_count` - total messages received by subscribers
-- `dapr_pubsub_publish_count` - total messages published
-- `dapr_pubsub_incoming_messages_total` - raw incoming message count
+- `dapr_component_pubsub_ingress_count` - total messages received by subscribers
+- `dapr_component_pubsub_egress_count` - total messages published
+- `dapr_component_pubsub_ingress_latencies` - event processing latency for incoming messages
 
 ## Monitoring Kafka Consumer Lag with Dapr
 
@@ -86,7 +86,7 @@ spec:
 
         - alert: DaprPubSubSubscriberNotProcessing
           expr: |
-            rate(dapr_pubsub_subscribe_count[5m]) == 0
+            rate(dapr_component_pubsub_ingress_count[5m]) == 0
             and
             kafka_consumergroup_lag > 0
           for: 3m
@@ -104,7 +104,7 @@ Track how fast your Dapr subscriber is processing messages:
 ```bash
 # Query processing rate via Prometheus
 curl 'http://prometheus:9090/api/v1/query' \
-  --data-urlencode 'query=rate(dapr_pubsub_subscribe_count{success="true"}[5m])'
+  --data-urlencode 'query=rate(dapr_component_pubsub_ingress_count{success="true"}[5m])'
 ```
 
 Visualize lag trends in Grafana with this dashboard query:
