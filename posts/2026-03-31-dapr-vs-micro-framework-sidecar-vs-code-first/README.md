@@ -19,7 +19,10 @@ Dapr and code-first microservice frameworks like Micro (go-micro) represent two 
 ## A Service in Micro (Go)
 
 ```go
+package main
+
 import (
+    "context"
     "go-micro.dev/v4"
     "go-micro.dev/v4/registry"
 )
