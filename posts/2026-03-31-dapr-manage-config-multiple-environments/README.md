@@ -105,7 +105,7 @@ metadata:
 spec:
   tracing:
     samplingRate: "1"
-  metric:
+  metrics:
     enabled: true
 ```
 
@@ -118,10 +118,10 @@ annotations:
 
 ## Validate Before Applying
 
-Use the Dapr CLI to validate component files before deploying to any environment:
+Use a dry-run to validate component files against the Kubernetes API before deploying to any environment:
 
 ```bash
-dapr components validate -f components/production/statestore.yaml
+kubectl apply --dry-run=client -f components/production/statestore.yaml
 ```
 
 ## Summary
