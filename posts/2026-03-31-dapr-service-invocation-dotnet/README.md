@@ -10,7 +10,9 @@ Description: Invoke Dapr services from .NET using DaprClient and HttpClient with
 
 ## Overview
 
-Dapr service invocation in .NET supports two patterns: using `DaprClient.InvokeMethodAsync` for typed gRPC-based calls, and using `DaprClient.CreateInvokeHttpClient` for HttpClient-style requests. Both handle service discovery and mTLS automatically.
+Dapr service invocation in .NET supports two patterns: using `DaprClient.InvokeMethodAsync` for typed calls, and using `DaprClient.CreateInvokeHttpClient` for HttpClient-style requests. Both handle service discovery and mTLS automatically.
+
+> **Note:** The `InvokeMethodAsync` and `InvokeMethodWithResponseAsync` methods are marked as obsolete in the current Dapr .NET SDK. The recommended approach is to use a native HTTP client with `InvocationHandler` or `CreateInvokeHttpClient` for service invocation. The examples below still work but will produce compiler warnings.
 
 ## Pattern 1: DaprClient.InvokeMethodAsync
 
@@ -147,4 +149,4 @@ public async Task<IActionResult> Checkout(
 
 ## Summary
 
-Dapr service invocation in .NET offers two ergonomic patterns: the typed `InvokeMethodAsync` API for straightforward calls, and the HttpClient factory for teams preferring familiar HTTP semantics. Both patterns eliminate the need for service discovery or hardcoded URLs, and the DaprClient handles retries, mTLS, and tracing automatically. Always inject `DaprClient` via DI rather than creating instances manually.
+Dapr service invocation in .NET offers two ergonomic patterns: the typed `InvokeMethodAsync` API for straightforward calls, and the HttpClient factory for teams preferring familiar HTTP semantics. Both patterns eliminate the need for service discovery or hardcoded URLs, and the DaprClient handles mTLS and tracing automatically. For retries and circuit breaking, configure Dapr [resiliency policies](https://docs.dapr.io/operations/resiliency/). Since `InvokeMethodAsync` is now obsolete, prefer the HttpClient factory pattern with `CreateInvokeHttpClient` or `InvocationHandler` for new projects. Always inject `DaprClient` via DI rather than creating instances manually.
