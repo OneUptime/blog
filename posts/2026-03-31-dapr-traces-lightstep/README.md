@@ -42,7 +42,7 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "payment-service"
   dapr.io/config: "dapr-lightstep-tracing"
-  dapr.io/sidecar-env-vars: "OTEL_EXPORTER_OTLP_HEADERS=lightstep-access-token=YOUR_TOKEN"
+  dapr.io/env: "OTEL_EXPORTER_OTLP_HEADERS=lightstep-access-token=YOUR_TOKEN"
 ```
 
 ## Collector-Based Configuration
@@ -66,22 +66,22 @@ data:
     processors:
       batch:
         timeout: 5s
-      retry_on_failure:
-        enabled: true
-        initial_interval: 5s
-        max_elapsed_time: 300s
 
     exporters:
       otlp/lightstep:
         endpoint: ingest.lightstep.com:443
         headers:
           lightstep-access-token: "${LIGHTSTEP_TOKEN}"
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_elapsed_time: 300s
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [batch, retry_on_failure]
+          processors: [batch]
           exporters: [otlp/lightstep]
 ```
 
@@ -124,7 +124,7 @@ Lightstep automatically builds a service diagram from Dapr trace data. Ensure se
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env-vars: "OTEL_RESOURCE_ATTRIBUTES=service.name=payment-service,service.version=2.1.0,deployment.environment=production,lightstep-access-token=YOUR_TOKEN"
+  dapr.io/env: "OTEL_RESOURCE_ATTRIBUTES=service.name=payment-service,OTEL_EXPORTER_OTLP_HEADERS=lightstep-access-token=YOUR_TOKEN"
 ```
 
 ## Sampling Strategy
