@@ -24,6 +24,7 @@ At-least-once delivery is the standard guarantee across most brokers (Kafka, Rab
 The simplest approach is designing operations that produce the same result regardless of how many times they run.
 
 ```python
+import os
 from flask import Flask, request
 import psycopg2
 
@@ -140,9 +141,8 @@ Always use `event['id']` as your deduplication key.
 When publishing, set a deterministic ID:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/kafka-pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/kafka-pubsub/orders?metadata.cloudevent.id=order-ORD-1001-v1" \
   -H "Content-Type: application/json" \
-  -H "metadata.cloudevent.id: order-ORD-1001-v1" \
   -d '{"orderId": "ORD-1001"}'
 ```
 
