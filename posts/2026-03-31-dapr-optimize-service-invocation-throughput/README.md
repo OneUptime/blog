@@ -74,7 +74,7 @@ def invoke_order_service(order_data: dict):
         data=json.dumps(order_data),
         content_type="application/json"
     )
-    return json.loads(response.data)
+    return json.loads(response.content)
 ```
 
 ## Configure Retry and Timeout Policies
