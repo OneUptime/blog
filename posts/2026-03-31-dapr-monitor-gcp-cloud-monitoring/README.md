@@ -33,9 +33,8 @@ spec:
     samplingRate: "1"
     zipkin:
       endpointAddress: "http://otel-collector-svc:9411/api/v2/spans"
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 ## Deploying the OpenTelemetry Collector
@@ -117,26 +116,26 @@ Example dashboard JSON for request rate:
 
 ## Setting Up Alerting Policies
 
-Create an alert for high error rate:
+Create an alert for high non-2xx request count:
 
 ```bash
 gcloud alpha monitoring policies create \
   --notification-channels=my-channel \
   --display-name="Dapr High Error Rate" \
-  --condition-display-name="Error rate > 5%" \
-  --condition-filter='metric.type="custom.googleapis.com/dapr/dapr_http_server_request_count" AND metric.labels.status_code!~"2.."' \
-  --condition-threshold-value=0.05 \
+  --condition-display-name="Non-2xx request count > 5" \
+  --condition-filter='metric.type="custom.googleapis.com/dapr/dapr_http_server_request_count" AND NOT metric.labels.status = monitoring.regex.full_match("2..")' \
+  --condition-threshold-value=5 \
+  --condition-threshold-comparison=COMPARISON_GT \
   --condition-threshold-duration=60s
 ```
 
 ## Viewing Traces in Cloud Trace
 
-Dapr traces exported via the OpenTelemetry Collector appear in Google Cloud Trace automatically. Query traces:
+Dapr traces exported via the OpenTelemetry Collector appear in Google Cloud Trace automatically. You can browse and filter traces using the Trace Explorer in the Google Cloud Console, or query them programmatically via the Cloud Trace API:
 
 ```bash
-gcloud trace traces list \
-  --filter="displayName:order-service" \
-  --limit=10
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://cloudtrace.googleapis.com/v2/projects/my-gcp-project/traces?filter=+root:/order-service"
 ```
 
 ## Summary
