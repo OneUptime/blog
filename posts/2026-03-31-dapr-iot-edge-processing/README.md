@@ -88,6 +88,10 @@ import (
     "net/http"
 )
 
+type CloudEvent struct {
+    Data Alert `json:"data"`
+}
+
 type Alert struct {
     DeviceID    string  `json:"deviceId"`
     Temperature float64 `json:"temperature"`
@@ -95,8 +99,9 @@ type Alert struct {
 }
 
 func alertHandler(w http.ResponseWriter, r *http.Request) {
-    var alert Alert
-    json.NewDecoder(r.Body).Decode(&alert)
+    var event CloudEvent
+    json.NewDecoder(r.Body).Decode(&event)
+    alert := event.Data
     fmt.Printf("ALERT: Device %s reported %.1f C (severity: %s)\n",
         alert.DeviceID, alert.Temperature, alert.Severity)
     w.WriteHeader(http.StatusOK)
