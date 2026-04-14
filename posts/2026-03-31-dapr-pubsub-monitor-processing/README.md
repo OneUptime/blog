@@ -41,7 +41,7 @@ metadata:
   name: daprconfig
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
   tracing:
     samplingRate: "1"
