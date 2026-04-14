@@ -29,10 +29,8 @@ spec:
     value: "false"
   - name: maxMessageBytes
     value: "10485760"      # 10MB max message
-  - name: fetchMin
+  - name: consumerFetchMin
     value: "65536"          # Fetch at least 64KB before returning
-  - name: fetchDefault
-    value: "1048576"        # Default fetch size 1MB
   - name: channelBufferSize
     value: "1024"           # Internal channel buffer
   - name: consumerFetchDefault
@@ -86,23 +84,19 @@ Publish multiple events in a single API call:
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._request import TransactionalStateOperation
 import json
 
 def bulk_publish(events: list):
     with DaprClient() as client:
-        messages = [
-            {"entryId": str(i), "event": json.dumps(e), "contentType": "application/json"}
-            for i, e in enumerate(events)
-        ]
-        response = client.publish_event_bulk(
+        data = [json.dumps(e) for e in events]
+        response = client.publish_events(
             pubsub_name="pubsub",
             topic_name="events",
-            entries=messages
+            data=data,
+            data_content_type="application/json"
         )
-        failed = [r for r in response.failedEntries if r]
-        if failed:
-            print(f"Failed to publish {len(failed)} events")
+        if response.failed_entries:
+            print(f"Failed to publish {len(response.failed_entries)} events")
 ```
 
 ## Scale Consumer Partitions
