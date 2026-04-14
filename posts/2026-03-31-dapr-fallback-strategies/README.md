@@ -74,7 +74,7 @@ class ServiceWithFallback:
 Return safe defaults when a configuration or recommendation service is unavailable:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient();
 
@@ -90,8 +90,7 @@ async function getAppConfig() {
     const config = await client.invoker.invoke(
       'config-service',
       'app-config',
-      {},
-      { method: 'GET' }
+      HttpMethod.GET,
     );
     return config;
   } catch (err) {
@@ -105,8 +104,7 @@ async function getRecommendations(userId) {
     return await client.invoker.invoke(
       'recommendation-service',
       `recommendations/${userId}`,
-      {},
-      { method: 'GET' }
+      HttpMethod.GET,
     );
   } catch (err) {
     console.warn(`Recommendations unavailable for ${userId}, returning trending items`);
@@ -125,6 +123,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
 
     dapr "github.com/dapr/go-sdk/client"
@@ -206,7 +205,7 @@ spec:
     circuitBreakers:
       primaryCB:
         timeout: 30s
-        trip: consecutiveFailures(3)
+        trip: consecutiveFailures > 3
   targets:
     apps:
       stripe-service:
