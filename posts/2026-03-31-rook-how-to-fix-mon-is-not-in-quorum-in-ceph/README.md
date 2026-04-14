@@ -26,7 +26,7 @@ Output with a missing monitor:
 e5: 3 mons at {a=[v2:10.0.0.1:3300/0,v1:10.0.0.1:6789/0],b=[v2:10.0.0.2:3300/0,v1:10.0.0.2:6789/0],c=[v2:10.0.0.3:3300/0,v1:10.0.0.3:6789/0]}, election epoch 12, quorum 0,1 a,b
 ```
 
-MON `c` is out of quorum — it is listed in the monmap but absent from the quorum list.
+MON `c` is out of quorum - it is listed in the monmap but absent from the quorum list.
 
 Also check:
 

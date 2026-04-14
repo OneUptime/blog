@@ -62,7 +62,7 @@ sh.shardCollection("myapp.users", { userId: "hashed" })
 For empty collections being pre-filled with large datasets, MongoDB automatically creates initial chunks distributed across all shards when using a hashed shard key. On MongoDB versions prior to 7.2, you could control this with `numInitialChunks`:
 
 ```javascript
-// MongoDB < 7.2 only — numInitialChunks was removed in 7.2
+// MongoDB < 7.2 only - numInitialChunks was removed in 7.2
 sh.shardCollection("myapp.logs", { _id: "hashed" }, false, { numInitialChunks: 8 })
 ```
 

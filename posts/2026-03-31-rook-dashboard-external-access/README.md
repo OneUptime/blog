@@ -137,7 +137,7 @@ spec:
                   number: 8443
 ```
 
-Note: With SSL passthrough, no TLS secret is needed on the Ingress — the Ceph dashboard's own certificate is used end-to-end.
+Note: With SSL passthrough, no TLS secret is needed on the Ingress - the Ceph dashboard's own certificate is used end-to-end.
 
 ### Option B - TLS Termination at Ingress (HTTP to dashboard backend)
 

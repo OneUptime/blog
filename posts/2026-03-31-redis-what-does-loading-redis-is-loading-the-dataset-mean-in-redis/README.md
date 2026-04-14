@@ -24,7 +24,7 @@ The LOADING state occurs:
 
 1. Redis has RDB persistence enabled (`save` directives in `redis.conf`) and is loading `dump.rdb` at startup
 2. Redis has AOF persistence enabled (`appendonly yes`) and is replaying the `appendonly.aof` file
-3. Both RDB and AOF are enabled — Redis prioritizes loading from the AOF file since it is guaranteed to be the most complete
+3. Both RDB and AOF are enabled - Redis prioritizes loading from the AOF file since it is guaranteed to be the most complete
 4. A replica is loading a full sync from the primary
 
 The duration depends on dataset size and disk I/O speed. A 10 GB RDB file on an SSD might load in 30-60 seconds. On a spinning disk, it could take several minutes.

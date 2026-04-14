@@ -110,7 +110,7 @@ db.products.aggregate([
 
 ## Same-Database Limitation
 
-Note that `$unionWith` only works with collections in the same database. There is no `db` parameter — the `coll` field must reference a collection within the current database. If you need to combine data from different databases, consider using `$lookup` with its cross-database support (available since MongoDB 5.1) or performing application-level merging.
+Note that `$unionWith` only works with collections in the same database. There is no `db` parameter - the `coll` field must reference a collection within the current database. If you need to combine data from different databases, consider using `$lookup` with its cross-database support (available since MongoDB 5.1) or performing application-level merging.
 
 ## Practical Use Case - Multi-Tenant Data Aggregation
 

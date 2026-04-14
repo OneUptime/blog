@@ -30,7 +30,7 @@ The most common cause is losing too many primary nodes simultaneously:
 
 ### Quorum Failure
 
-Redis Cluster uses a gossip protocol and requires a majority of master nodes to agree for automatic failover. With 3 primaries, you need at least 2 masters reachable. Adding replicas does not change this quorum requirement — with 3 primaries and 3 replicas, you still need at least 2 masters reachable for failover to proceed.
+Redis Cluster uses a gossip protocol and requires a majority of master nodes to agree for automatic failover. With 3 primaries, you need at least 2 masters reachable. Adding replicas does not change this quorum requirement - with 3 primaries and 3 replicas, you still need at least 2 masters reachable for failover to proceed.
 
 ### Manual Failover or Misconfiguration
 

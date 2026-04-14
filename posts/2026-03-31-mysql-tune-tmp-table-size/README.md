@@ -106,7 +106,7 @@ Some conditions force MySQL to use on-disk temporary tables regardless of `tmp_t
 EXPLAIN SELECT name, description FROM products GROUP BY category;
 ```
 
-The `Extra` column will show `Using temporary` when MySQL needs a temporary table for the query. This alone does not indicate whether the table is in memory or on disk — use the `Created_tmp_disk_tables` status variable or Performance Schema to determine that. When BLOB or TEXT columns are involved, rewriting the query or adding an index is more effective than increasing the memory limit.
+The `Extra` column will show `Using temporary` when MySQL needs a temporary table for the query. This alone does not indicate whether the table is in memory or on disk - use the `Created_tmp_disk_tables` status variable or Performance Schema to determine that. When BLOB or TEXT columns are involved, rewriting the query or adding an index is more effective than increasing the memory limit.
 
 ## Memory Impact Calculation
 

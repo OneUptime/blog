@@ -199,7 +199,7 @@ db.sensorData.aggregate([
 
 ## Handling the First Document
 
-If the first document in a sorted sequence has a null value, LOCF cannot fill it (there's no previous value). Use a two-pass approach — LOCF first, then a constant fill to catch the remaining leading nulls:
+If the first document in a sorted sequence has a null value, LOCF cannot fill it (there's no previous value). Use a two-pass approach - LOCF first, then a constant fill to catch the remaining leading nulls:
 
 ```javascript
 db.data.aggregate([

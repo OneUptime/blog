@@ -14,7 +14,7 @@ MongoDB Atlas is MongoDB's official managed cloud database service, available on
 
 ## MongoDB API Compatibility
 
-Cosmos DB for MongoDB implements a subset of the MongoDB wire protocol. As of 2026, Cosmos DB supports MongoDB API versions 3.2 through 7.0 (all GA). Full compatibility with all features in each version is not guaranteed — Cosmos DB documents supported and unsupported features for each version.
+Cosmos DB for MongoDB implements a subset of the MongoDB wire protocol. As of 2026, Cosmos DB supports MongoDB API versions 3.2 through 7.0 (all GA). Full compatibility with all features in each version is not guaranteed - Cosmos DB documents supported and unsupported features for each version.
 
 ```javascript
 // Connection string for Cosmos DB for MongoDB

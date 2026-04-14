@@ -32,7 +32,7 @@ Sample output:
 
 ## Checking Across Namespaces
 
-The `dapr status -k` command automatically discovers Dapr control plane components across all namespaces. There is no need to specify a namespace flag — the command detects whichever namespace Dapr is installed in and reports status accordingly.
+The `dapr status -k` command automatically discovers Dapr control plane components across all namespaces. There is no need to specify a namespace flag - the command detects whichever namespace Dapr is installed in and reports status accordingly.
 
 ## Output Format
 

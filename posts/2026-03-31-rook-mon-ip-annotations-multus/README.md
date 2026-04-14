@@ -12,7 +12,7 @@ When using Multus with Rook-Ceph, the Multus network attachment definition (NAD)
 
 ## The Problem with Multi-Network Pods
 
-When a pod has multiple network interfaces (primary Kubernetes network + Multus secondary network), it is important to understand which IP each daemon advertises. With Rook's Multus support, daemons that rely on Kubernetes Service IPs — including monitors, managers, and Rados Gateways — do not listen on the Multus NAD interface. Instead, they listen on the default pod network and are accessed via Service ClusterIPs. The Multus NAD is attached to the pod so the daemon can communicate with other daemons (like OSDs) over the storage network.
+When a pod has multiple network interfaces (primary Kubernetes network + Multus secondary network), it is important to understand which IP each daemon advertises. With Rook's Multus support, daemons that rely on Kubernetes Service IPs - including monitors, managers, and Rados Gateways - do not listen on the Multus NAD interface. Instead, they listen on the default pod network and are accessed via Service ClusterIPs. The Multus NAD is attached to the pod so the daemon can communicate with other daemons (like OSDs) over the storage network.
 
 This is documented in the Rook network providers documentation:
 
@@ -28,7 +28,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon dump
 0: [v2:10.96.0.15:3300/0,v1:10.96.0.15:6789/0] mon.a
 ```
 
-With Multus, you will see Kubernetes Service ClusterIPs (e.g., `10.96.x.x`) in the monitor map. This is expected — monitors are reached via Service IPs while they use the Multus interface for outbound communication to OSDs and other daemons.
+With Multus, you will see Kubernetes Service ClusterIPs (e.g., `10.96.x.x`) in the monitor map. This is expected - monitors are reached via Service IPs while they use the Multus interface for outbound communication to OSDs and other daemons.
 
 ## Configuring Multus in the CephCluster Spec
 
@@ -80,7 +80,7 @@ data:
   maxMonId: "2"
 ```
 
-The `data` field contains the monitor endpoints (Service ClusterIPs with Multus, or node IPs with host networking), and the `mapping` field maps each monitor to its node. The `Address` in the mapping refers to the node address, not the Multus IP. Do not manually edit this ConfigMap — the Rook operator manages it and manual changes may be overwritten or cause inconsistencies.
+The `data` field contains the monitor endpoints (Service ClusterIPs with Multus, or node IPs with host networking), and the `mapping` field maps each monitor to its node. The `Address` in the mapping refers to the node address, not the Multus IP. Do not manually edit this ConfigMap - the Rook operator manages it and manual changes may be overwritten or cause inconsistencies.
 
 ## Checking Multus Interfaces on Monitor Pods
 

@@ -44,7 +44,7 @@ XA ROLLBACK 'txn-order-001';
 XA ROLLBACK 'txn-inventory-001';
 ```
 
-If a commit fails after prepare, do not roll back the other participants. Instead, retry the failed commit — `XA RECOVER` lists transactions stuck in the PREPARED state.
+If a commit fails after prepare, do not roll back the other participants. Instead, retry the failed commit - `XA RECOVER` lists transactions stuck in the PREPARED state.
 
 ## XA Limitations
 

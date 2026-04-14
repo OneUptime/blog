@@ -61,7 +61,7 @@ The `crushLocationLabels` list specifies which Kubernetes node labels the CSI dr
 
 ## How Rook Maps Node Labels to the CRUSH Hierarchy
 
-Rook automatically detects topology labels on Kubernetes nodes during OSD deployment. When a node has labels like `topology.kubernetes.io/zone=us-east-1a` or `topology.rook.io/rack=rack-01`, Rook places the OSD into the corresponding CRUSH map bucket. No additional CephCluster CR configuration is needed for CRUSH placement — the node labels are the source of truth.
+Rook automatically detects topology labels on Kubernetes nodes during OSD deployment. When a node has labels like `topology.kubernetes.io/zone=us-east-1a` or `topology.rook.io/rack=rack-01`, Rook places the OSD into the corresponding CRUSH map bucket. No additional CephCluster CR configuration is needed for CRUSH placement - the node labels are the source of truth.
 
 Make sure to label your nodes before deploying OSDs, so Rook places them in the correct CRUSH buckets from the start.
 

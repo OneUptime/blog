@@ -96,7 +96,7 @@ A growing `entries_behind_master` value indicates insufficient bandwidth.
 
 ## Step 5 - Set Up Prometheus Alerts for Lag
 
-Alert when mirroring falls behind acceptable thresholds. The metric names below are illustrative — actual names depend on your Ceph version and monitoring exporter. Check your Ceph MGR Prometheus module output for the available `ceph_rbd_mirror_*` metrics:
+Alert when mirroring falls behind acceptable thresholds. The metric names below are illustrative - actual names depend on your Ceph version and monitoring exporter. Check your Ceph MGR Prometheus module output for the available `ceph_rbd_mirror_*` metrics:
 
 ```yaml
 groups:

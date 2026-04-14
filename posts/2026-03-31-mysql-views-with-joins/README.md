@@ -67,7 +67,7 @@ JOIN products p     ON oi.product_id = p.id;
 
 ## Updatability of JOIN Views
 
-A JOIN view can be updatable if at least one of the joined tables is "key-preserved" — meaning each row in that table appears at most once in the view result. Only columns from key-preserved tables can be updated through the view:
+A JOIN view can be updatable if at least one of the joined tables is "key-preserved" - meaning each row in that table appears at most once in the view result. Only columns from key-preserved tables can be updated through the view:
 
 ```sql
 -- Update allowed for employees columns only (key-preserved side)

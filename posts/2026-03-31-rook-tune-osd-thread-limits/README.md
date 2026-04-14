@@ -18,10 +18,10 @@ The main OSD thread settings are:
 
 | Parameter | Default (SSD) | Default (HDD) | Description |
 | --- | --- | --- | --- |
-| `osd_op_num_threads_per_shard_ssd` | 2 | — | Threads per I/O shard for SSDs/NVMe |
-| `osd_op_num_threads_per_shard_hdd` | — | 5 | Threads per I/O shard for HDDs |
-| `osd_op_num_shards_ssd` | 8 | — | Number of I/O operation shards for SSDs/NVMe |
-| `osd_op_num_shards_hdd` | — | 1 | Number of I/O operation shards for HDDs |
+| `osd_op_num_threads_per_shard_ssd` | 2 | - | Threads per I/O shard for SSDs/NVMe |
+| `osd_op_num_threads_per_shard_hdd` | - | 5 | Threads per I/O shard for HDDs |
+| `osd_op_num_shards_ssd` | 8 | - | Number of I/O operation shards for SSDs/NVMe |
+| `osd_op_num_shards_hdd` | - | 1 | Number of I/O operation shards for HDDs |
 | `osd_recovery_max_active` | 10 | 3 | Maximum concurrent recovery operations |
 
 ## Configuring I/O Threads

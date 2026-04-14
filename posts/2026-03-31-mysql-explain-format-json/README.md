@@ -133,7 +133,7 @@ How many rows MySQL estimates it needs to examine. Ideally close to `rows_produc
 
 ### filtered
 
-Percentage of rows remaining after applying the table condition. `100.00` = all examined rows match (no extra filtering needed). Low values (e.g., `1.00`) mean only 1% of examined rows satisfy the condition — the index is returning many rows that are then discarded, which typically indicates you need a more selective index.
+Percentage of rows remaining after applying the table condition. `100.00` = all examined rows match (no extra filtering needed). Low values (e.g., `1.00`) mean only 1% of examined rows satisfy the condition - the index is returning many rows that are then discarded, which typically indicates you need a more selective index.
 
 ### attached_condition
 

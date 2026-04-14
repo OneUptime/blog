@@ -112,7 +112,7 @@ Restrict `FLUSHALL` in production using ACLs:
 ACL SETUSER app_user ~* +@all -FLUSHALL -FLUSHDB -CONFIG
 ```
 
-You can also disable the command entirely in `redis.conf`, though `rename-command` is deprecated and may be removed in a future Redis version — ACLs are the preferred approach:
+You can also disable the command entirely in `redis.conf`, though `rename-command` is deprecated and may be removed in a future Redis version - ACLs are the preferred approach:
 
 ```redis
 rename-command FLUSHALL ""

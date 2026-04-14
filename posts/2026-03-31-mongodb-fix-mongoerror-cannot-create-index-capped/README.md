@@ -36,7 +36,7 @@ Capped collections automatically have the `_id` index. You can create most addit
 
 1. **TTL indexes are not allowed** - capped collections manage expiry through size limits, not TTL
 
-Other index types — including unique, text, geospatial, and compound indexes — are allowed on capped collections:
+Other index types - including unique, text, geospatial, and compound indexes - are allowed on capped collections:
 
 ```javascript
 // This IS allowed
@@ -115,4 +115,4 @@ await db.collection('cappedLogs').createIndex({ severity: 1, service: 1 });
 
 ## Summary
 
-Capped collections do not support TTL indexes. If you need time-based document expiry, migrate to a regular collection with a TTL index, or implement application-level size management. Other index types — including unique, text, geospatial, and compound indexes — are supported on capped collections.
+Capped collections do not support TTL indexes. If you need time-based document expiry, migrate to a regular collection with a TTL index, or implement application-level size management. Other index types - including unique, text, geospatial, and compound indexes - are supported on capped collections.
