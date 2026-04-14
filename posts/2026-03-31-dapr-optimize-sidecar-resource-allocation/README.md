@@ -120,12 +120,11 @@ Override sidecar defaults cluster-wide during Dapr installation:
 
 ```yaml
 # dapr-values.yaml
-dapr_operator:
-  sidecarInjector:
-    defaultCPURequest: "50m"
-    defaultCPULimit: "500m"
-    defaultMemoryRequest: "64Mi"
-    defaultMemoryLimit: "256Mi"
+dapr_sidecar_injector:
+  sidecarCPURequest: "50m"
+  sidecarCPULimit: "500m"
+  sidecarMemoryRequest: "64Mi"
+  sidecarMemoryLimit: "256Mi"
 ```
 
 ```bash
