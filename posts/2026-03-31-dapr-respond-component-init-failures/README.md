@@ -80,13 +80,13 @@ kubectl edit component statestore -n my-namespace
 
 ## Step 4 - Check Namespace Scoping
 
-Components in the `dapr-system` namespace or with no namespace apply globally. If a component is deployed to the wrong namespace, the sidecar may not find it:
+Dapr components in Kubernetes are namespace-scoped. The sidecar only loads components from the namespace where the application is deployed. If a component is deployed to the wrong namespace, the sidecar will not find it:
 
 ```bash
 kubectl get component -A | grep statestore
 ```
 
-Ensure the component namespace matches the application namespace, or use a global component with explicit namespace in metadata.
+Ensure the component namespace matches the application namespace.
 
 ## Step 5 - Verify Backend Connectivity
 
