@@ -46,11 +46,10 @@ Build only the production stage:
 docker build --target production -t order-service:1.0.0 .
 ```
 
-Run tests in CI before building the final image:
+Run tests in CI before building the final image. Tests execute during the build step itself — if the build succeeds, the tests passed:
 
 ```bash
 docker build --target tester -t order-service:test .
-docker run --rm order-service:test
 docker build --target production -t order-service:1.0.0 .
 ```
 
@@ -88,7 +87,7 @@ RUN npm run build
 FROM node:20-alpine AS production
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
@@ -103,6 +102,8 @@ ARG APP_VERSION=dev
 
 FROM golang:1.22-alpine AS builder
 ARG APP_VERSION
+WORKDIR /build
+COPY . .
 RUN go build -ldflags="-X main.Version=${APP_VERSION}" -o server .
 
 FROM gcr.io/distroless/static:nonroot AS production
