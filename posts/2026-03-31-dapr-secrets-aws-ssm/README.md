@@ -113,10 +113,10 @@ Response:
 }
 ```
 
-For GetParametersByPath, retrieve all parameters under your prefix:
+To retrieve all parameters under your configured prefix, use the bulk secrets endpoint:
 
 ```bash
-curl "http://localhost:3500/v1.0/secrets/ssm-store/bulk?metadata.path=/myapp"
+curl "http://localhost:3500/v1.0/secrets/ssm-store/bulk"
 ```
 
 ## Annotate Your Kubernetes Deployment
