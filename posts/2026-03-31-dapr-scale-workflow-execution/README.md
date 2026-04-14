@@ -25,19 +25,11 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<SendNotificationActivity>();
 });
 
-// Configure worker concurrency
-builder.Services.Configure<WorkflowEngineOptions>(options =>
-{
-    // Max concurrent orchestrator executions per pod
-    options.MaxConcurrentWorkflowInvocations = 100;
-    // Max concurrent activity executions per pod
-    options.MaxConcurrentActivityInvocations = 500;
-});
-
 var app = builder.Build();
-app.MapDaprWorkflowEndpoints();
 app.Run();
 ```
+
+Workflow concurrency is controlled at the Dapr sidecar level using the `dapr.io/app-max-concurrency` annotation on the pod, not in application code. Set this in your Kubernetes deployment annotations to limit how many concurrent requests the sidecar delivers to each worker pod.
 
 ## Deployment for Workflow Workers
 
@@ -48,6 +40,9 @@ metadata:
   name: workflow-worker
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: workflow-worker
   template:
     metadata:
       labels:
@@ -141,13 +136,11 @@ spec:
 ## Monitoring Workflow Throughput
 
 ```bash
-# Check workflow instance count
-curl "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingWorkflow/instances" | \
-  jq '.instances | length'
+# Check status of a specific workflow instance
+curl "http://localhost:3500/v1.0/workflows/dapr/order-12345" | jq '.runtimeStatus'
 
-# Check running vs completed
-curl "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingWorkflow/instances?runtimeStatus=Running" | \
-  jq '.instances | length'
+# Use the Dapr CLI to list workflow instances
+dapr workflow list --workflow-component dapr
 ```
 
 ## Summary
