@@ -117,7 +117,7 @@ Enable Dapr API access logs to capture every inbound and outbound request:
 
 ```yaml
 annotations:
-  dapr.io/api-logging: "true"
+  dapr.io/enable-api-logging: "true"
 ```
 
 This adds entries for each Dapr API call:
