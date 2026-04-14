@@ -57,7 +57,7 @@ spec:
       value: "60s"
     - name: maxLenApprox
       value: "1000"
-    - name: maxRetries
+    - name: redisMaxRetries
       value: "3"
 ```
 
