@@ -57,11 +57,11 @@ spec:
     secretKeyRef:
       name: rethinkdb-secret
       key: password
-  - name: archiveChanges
+  - name: archive
     value: "false"
 ```
 
-The `archiveChanges` option, when set to `true`, writes all state changes to an archive table, enabling audit trails and event replay.
+The `archive` option, when set to `true`, writes all state changes to an archive table, enabling audit trails and event replay.
 
 Create the secret and apply the component:
 
@@ -119,7 +119,7 @@ Use the RethinkDB admin UI or ReQL to query stored data:
 
 ```javascript
 // ReQL query to inspect Dapr state
-r.db("dapr").table("state").limit(10).run(conn);
+r.db("dapr").table("daprstate").limit(10).run(conn);
 ```
 
 ## Summary
