@@ -63,7 +63,7 @@ func main() {
             break
         }
 
-        fmt.Printf("Received: %s\n", string(msg.Data()))
+        fmt.Printf("Received: %s\n", string(msg.RawData))
 
         if err := msg.Success(); err != nil {
             log.Printf("Failed to ack message: %v", err)
@@ -84,7 +84,7 @@ for {
         return
     }
 
-    if err := processMessage(msg.Data()); err != nil {
+    if err := processMessage(msg.RawData); err != nil {
         log.Printf("Processing failed, retrying: %v", err)
         // Return the message for retry
         if retryErr := msg.Retry(); retryErr != nil {
