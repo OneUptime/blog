@@ -44,8 +44,8 @@ curl http://localhost:9090/metrics | grep dapr_component
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `dapr_component_state_operations_total` | Counter | Total state operations by type and status |
-| `dapr_component_state_operation_duration_milliseconds` | Histogram | Latency per state operation |
+| `dapr_component_state_count` | Counter | Total state operations by component, operation, and success |
+| `dapr_component_state_latencies` | Histogram | Latency of state operations in milliseconds |
 | `dapr_http_server_request_count` | Counter | HTTP requests to Dapr sidecar |
 | `dapr_http_server_latency` | Histogram | Sidecar HTTP request latency |
 
@@ -78,15 +78,15 @@ scrape_configs:
 
 ```promql
 # Total state operations per second by operation type
-rate(dapr_component_state_operations_total[5m])
+rate(dapr_component_state_count[5m])
 ```
 
 ### State Operation Error Rate
 
 ```promql
 # Error rate for state store operations
-rate(dapr_component_state_operations_total{status="error"}[5m])
-/ rate(dapr_component_state_operations_total[5m])
+rate(dapr_component_state_count{success="false"}[5m])
+/ rate(dapr_component_state_count[5m])
 ```
 
 ### P95 State Operation Latency
@@ -94,7 +94,7 @@ rate(dapr_component_state_operations_total{status="error"}[5m])
 ```promql
 # 95th percentile latency for state operations
 histogram_quantile(0.95,
-  rate(dapr_component_state_operation_duration_milliseconds_bucket[5m])
+  rate(dapr_component_state_latencies_bucket[5m])
 )
 ```
 
@@ -102,13 +102,13 @@ histogram_quantile(0.95,
 
 ```promql
 # Read operations per second
-rate(dapr_component_state_operations_total{operation="get"}[5m])
+rate(dapr_component_state_count{operation="get"}[5m])
 
 # Write operations per second
-rate(dapr_component_state_operations_total{operation="set"}[5m])
+rate(dapr_component_state_count{operation="set"}[5m])
 
 # Delete operations per second
-rate(dapr_component_state_operations_total{operation="delete"}[5m])
+rate(dapr_component_state_count{operation="delete"}[5m])
 ```
 
 ## Grafana Dashboard
@@ -124,7 +124,7 @@ Create a dashboard with these panels:
       "type": "graph",
       "targets": [
         {
-          "expr": "sum(rate(dapr_component_state_operations_total[5m])) by (operation)",
+          "expr": "sum(rate(dapr_component_state_count[5m])) by (operation)",
           "legendFormat": "{{operation}}"
         }
       ]
@@ -134,7 +134,7 @@ Create a dashboard with these panels:
       "type": "stat",
       "targets": [
         {
-          "expr": "100 * sum(rate(dapr_component_state_operations_total{status='error'}[5m])) / sum(rate(dapr_component_state_operations_total[5m]))"
+          "expr": "100 * sum(rate(dapr_component_state_count{success='false'}[5m])) / sum(rate(dapr_component_state_count[5m]))"
         }
       ]
     },
@@ -143,7 +143,7 @@ Create a dashboard with these panels:
       "type": "graph",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(dapr_component_state_operation_duration_milliseconds_bucket[5m]))"
+          "expr": "histogram_quantile(0.95, rate(dapr_component_state_latencies_bucket[5m]))"
         }
       ]
     }
@@ -160,8 +160,8 @@ groups:
     rules:
       - alert: DaprStateHighErrorRate
         expr: |
-          rate(dapr_component_state_operations_total{status="error"}[5m])
-          / rate(dapr_component_state_operations_total[5m]) > 0.01
+          rate(dapr_component_state_count{success="false"}[5m])
+          / rate(dapr_component_state_count[5m]) > 0.01
         for: 2m
         labels:
           severity: warning
@@ -172,7 +172,7 @@ groups:
       - alert: DaprStateHighLatency
         expr: |
           histogram_quantile(0.95,
-            rate(dapr_component_state_operation_duration_milliseconds_bucket[5m])
+            rate(dapr_component_state_latencies_bucket[5m])
           ) > 100
         for: 5m
         labels:
@@ -208,8 +208,8 @@ spec:
 ```
 
 In Zipkin or Jaeger you will see spans like:
-- `CallLocal/statestore/get`
-- `CallLocal/statestore/set`
+- `GET /v1.0/state/statestore/{key}`
+- `POST /v1.0/state/statestore`
 
 These show state operations as child spans of incoming HTTP requests.
 
@@ -233,4 +233,4 @@ redis-cli -h redis-master INFO memory | grep used_memory_human
 
 ## Summary
 
-Monitor Dapr state store performance by scraping the sidecar's `/metrics` endpoint with Prometheus. Key metrics to track are `dapr_component_state_operations_total` for throughput and error rate, and `dapr_component_state_operation_duration_milliseconds` for latency percentiles. Set alerts when error rate exceeds 1% or P95 latency exceeds 100ms. Pair metrics with distributed tracing to see state operations as spans within request traces, giving full context for slow requests.
+Monitor Dapr state store performance by scraping the sidecar's `/metrics` endpoint with Prometheus. Key metrics to track are `dapr_component_state_count` for throughput and error rate, and `dapr_component_state_latencies` for latency percentiles. Set alerts when error rate exceeds 1% or P95 latency exceeds 100ms. Pair metrics with distributed tracing to see state operations as spans within request traces, giving full context for slow requests.
