@@ -38,7 +38,7 @@ spec:
     value: "https://api.example.com/webhook"
 ```
 
-The `url` field is the base URL of the external service. You can override the path and method at invocation time.
+The `url` field is the base URL of the external service. You can override the path at invocation time via metadata and set the HTTP method via the `operation` field.
 
 ## Invoke the HTTP Binding from Your Application
 
@@ -53,8 +53,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/external-api \
       "orderId": "12345"
     },
     "metadata": {
-      "path": "/orders/notify",
-      "method": "POST"
+      "path": "/orders/notify"
     },
     "operation": "post"
   }'
@@ -75,7 +74,6 @@ async function notifyExternalService(orderId) {
     orderId: orderId,
   }, {
     path: '/orders/notify',
-    method: 'POST',
   });
 
   console.log('Response from external API:', response);
@@ -99,7 +97,7 @@ with DaprClient() as client:
             "Content-Type": "application/json"
         }
     )
-    print("Status:", resp.status_code)
+    print("Response:", resp.text())
 ```
 
 ## Supported Operations
@@ -107,6 +105,7 @@ with DaprClient() as client:
 The HTTP output binding supports several operations that map to HTTP methods:
 
 ```text
+create  - HTTP PUT
 get     - HTTP GET
 post    - HTTP POST
 put     - HTTP PUT
@@ -114,6 +113,7 @@ patch   - HTTP PATCH
 delete  - HTTP DELETE
 options - HTTP OPTIONS
 head    - HTTP HEAD
+trace   - HTTP TRACE
 ```
 
 ## Pass Custom Headers
@@ -148,7 +148,7 @@ spec:
         maxRetries: 3
         duration: 2s
   targets:
-    bindings:
+    components:
       external-api:
         outbound:
           retry: http-retry
