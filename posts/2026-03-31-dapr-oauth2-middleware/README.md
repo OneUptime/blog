@@ -30,7 +30,7 @@ metadata:
   name: oauth2
   namespace: default
 spec:
-  type: middleware.http.oauth2
+  type: middleware.http.oauth2clientcredentials
   version: v1
   metadata:
   - name: clientId
