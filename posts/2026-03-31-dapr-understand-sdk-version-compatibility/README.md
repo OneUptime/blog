@@ -8,7 +8,7 @@ Description: Learn how Dapr SDK versions align with runtime versions, how to pic
 
 ---
 
-Dapr provides official SDKs for Go, Python, Java, .NET, JavaScript, PHP, and Rust. Each SDK targets a specific set of Dapr runtime versions. Using mismatched versions can cause subtle failures.
+Dapr provides official SDKs for Go, Python, Java, .NET, JavaScript, and PHP, with a Rust SDK in development. Each SDK targets a specific set of Dapr runtime versions. Using mismatched versions can cause subtle failures.
 
 ## SDK to Runtime Compatibility Matrix
 
