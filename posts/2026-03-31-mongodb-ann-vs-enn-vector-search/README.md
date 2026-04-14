@@ -122,7 +122,7 @@ numCandidates = 500  -> ~99% recall, moderate
 numCandidates = 2000 -> ~99.9% recall, slow
 ```
 
-A good starting point is `numCandidates = limit * 10`.
+A good starting point is `numCandidates = limit * 20`, as recommended in the MongoDB documentation.
 
 ## Summary
 
