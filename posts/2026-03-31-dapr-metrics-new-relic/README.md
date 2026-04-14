@@ -87,14 +87,14 @@ Use NRQL to query Dapr metrics in the New Relic Query Builder:
 ```sql
 SELECT rate(sum(dapr_http_server_request_count), 1 minute)
 FROM Metric
-WHERE dapr_app_id IS NOT NULL
-FACET dapr_app_id
+WHERE app_id IS NOT NULL
+FACET app_id
 SINCE 30 minutes ago
 TIMESERIES
 ```
 
 ```sql
-SELECT percentile(dapr_http_server_latency_ms, 99)
+SELECT percentile(dapr_http_server_latency, 99)
 FROM Metric
 FACET app_id
 SINCE 1 hour ago
@@ -129,15 +129,16 @@ resource "newrelic_one_dashboard" "dapr_dashboard" {
 ## Setting Up Alerts in New Relic
 
 ```bash
-# Use New Relic CLI to create an alert condition
-newrelic alerts conditions create \
+# Use New Relic CLI to create an NRQL alert condition
+newrelic nrql alertscondition create \
+  --accountId <ACCOUNT_ID> \
   --policy-id <POLICY_ID> \
   --name "Dapr High Error Rate" \
   --type "static" \
-  --metric "dapr_http_server_request_count" \
-  --threshold 50 \
-  --threshold-duration 5 \
-  --threshold-occurrences "all"
+  --nrql "SELECT count(*) FROM Metric WHERE metricName = 'dapr_http_server_request_count' AND error = 'true'" \
+  --critical-threshold 50 \
+  --critical-threshold-duration 300 \
+  --critical-threshold-occurrences "all"
 ```
 
 ## Summary
