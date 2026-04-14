@@ -98,9 +98,8 @@ public class DaprOrderRepository : IOrderRepository
         // Queue operation - not yet committed
         _pendingOps.Add(new StateTransactionRequest(
             key: order.Id,
-            jsonSerializerOptions: null,
-            operationType: StateOperationType.Upsert,
             value: JsonSerializer.SerializeToUtf8Bytes(order),
+            operationType: StateOperationType.Upsert,
             etag: null
         ));
     }
@@ -109,9 +108,8 @@ public class DaprOrderRepository : IOrderRepository
     {
         _pendingOps.Add(new StateTransactionRequest(
             key: orderId,
-            jsonSerializerOptions: null,
-            operationType: StateOperationType.Delete,
             value: null,
+            operationType: StateOperationType.Delete,
             etag: null
         ));
     }
