@@ -67,8 +67,9 @@ def subscribe():
 @app.route('/responses', methods=['POST'])
 def handle_response():
     event = request.json
-    correlation_id = event.get('correlationId')
-    result = event.get('result')
+    data = event.get('data', {})
+    correlation_id = data.get('correlationId')
+    result = data.get('result')
     if correlation_id in pending_requests:
         pending_requests[correlation_id] = result
         print(f"Received response for {correlation_id}: {result}")
@@ -91,9 +92,10 @@ def subscribe():
 @app.route('/requests', methods=['POST'])
 def handle_request():
     event = request.json
-    correlation_id = event.get('correlationId')
-    reply_to = event.get('replyTo')
-    payload = event.get('payload')
+    data = event.get('data', {})
+    correlation_id = data.get('correlationId')
+    reply_to = data.get('replyTo')
+    payload = data.get('payload')
 
     # Process the request
     result = {"processed": True, "input": payload, "computedValue": 42}
