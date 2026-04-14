@@ -23,9 +23,8 @@ metadata:
   name: daprconfig
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 Deploy Dapr with metrics:
@@ -40,18 +39,18 @@ helm upgrade dapr dapr/dapr \
 
 ```bash
 # Workflow scheduling latency
-dapr_workflow_scheduled_total
+dapr_runtime_workflow_scheduling_latency
 
 # Workflow execution duration
-dapr_workflow_execution_latency_ms_bucket
+dapr_runtime_workflow_execution_latency_bucket
 
 # Activity execution count and latency
-dapr_workflow_activity_execution_latency_ms_bucket
-dapr_workflow_activity_execution_count
+dapr_runtime_workflow_activity_execution_latency_bucket
+dapr_runtime_workflow_activity_execution_count
 
-# Workflow completion by status
-dapr_workflow_completed_total{status="COMPLETED"}
-dapr_workflow_completed_total{status="FAILED"}
+# Workflow execution count by status
+dapr_runtime_workflow_execution_count{status="success"}
+dapr_runtime_workflow_execution_count{status="failed"}
 ```
 
 ## Prometheus Scrape Configuration
@@ -75,24 +74,24 @@ scrape_configs:
 
 ```bash
 # Workflow throughput (completions per minute)
-rate(dapr_workflow_completed_total{status="COMPLETED"}[1m]) * 60
+rate(dapr_runtime_workflow_execution_count{status="success"}[1m]) * 60
 
 # Workflow failure rate
-rate(dapr_workflow_completed_total{status="FAILED"}[5m]) /
-  rate(dapr_workflow_completed_total[5m])
+rate(dapr_runtime_workflow_execution_count{status="failed"}[5m]) /
+  rate(dapr_runtime_workflow_execution_count[5m])
 
 # P95 workflow execution latency
 histogram_quantile(0.95,
-  rate(dapr_workflow_execution_latency_ms_bucket[5m]))
+  rate(dapr_runtime_workflow_execution_latency_bucket[5m]))
 
 # Slowest activities by P99 latency
 histogram_quantile(0.99,
-  sum by (activity_type, le)(
-    rate(dapr_workflow_activity_execution_latency_ms_bucket[5m])
+  sum by (activity_name, le)(
+    rate(dapr_runtime_workflow_activity_execution_latency_bucket[5m])
   ))
 
 # Active (running) workflow count
-dapr_workflow_scheduled_total - dapr_workflow_completed_total
+dapr_runtime_workflow_operation_count{operation="create_workflow"} - dapr_runtime_workflow_execution_count
 ```
 
 ## Grafana Dashboard Configuration
@@ -105,21 +104,21 @@ dapr_workflow_scheduled_total - dapr_workflow_completed_total
       "title": "Workflow Completions/min",
       "type": "stat",
       "targets": [{
-        "expr": "sum(rate(dapr_workflow_completed_total{status='COMPLETED'}[1m])) * 60"
+        "expr": "sum(rate(dapr_runtime_workflow_execution_count{status='success'}[1m])) * 60"
       }]
     },
     {
       "title": "Failure Rate %",
       "type": "gauge",
       "targets": [{
-        "expr": "100 * sum(rate(dapr_workflow_completed_total{status='FAILED'}[5m])) / sum(rate(dapr_workflow_completed_total[5m]))"
+        "expr": "100 * sum(rate(dapr_runtime_workflow_execution_count{status='failed'}[5m])) / sum(rate(dapr_runtime_workflow_execution_count[5m]))"
       }]
     },
     {
       "title": "P95 Workflow Latency (ms)",
       "type": "graph",
       "targets": [{
-        "expr": "histogram_quantile(0.95, rate(dapr_workflow_execution_latency_ms_bucket[5m]))"
+        "expr": "histogram_quantile(0.95, rate(dapr_runtime_workflow_execution_latency_bucket[5m]))"
       }]
     }
   ]
@@ -134,8 +133,8 @@ groups:
   rules:
   - alert: HighWorkflowFailureRate
     expr: |
-      rate(dapr_workflow_completed_total{status="FAILED"}[5m]) /
-      rate(dapr_workflow_completed_total[5m]) > 0.05
+      rate(dapr_runtime_workflow_execution_count{status="failed"}[5m]) /
+      rate(dapr_runtime_workflow_execution_count[5m]) > 0.05
     for: 5m
     labels:
       severity: warning
@@ -145,7 +144,7 @@ groups:
   - alert: WorkflowLatencyHigh
     expr: |
       histogram_quantile(0.95,
-        rate(dapr_workflow_execution_latency_ms_bucket[5m])) > 30000
+        rate(dapr_runtime_workflow_execution_latency_bucket[5m])) > 30000
     for: 10m
     labels:
       severity: critical
