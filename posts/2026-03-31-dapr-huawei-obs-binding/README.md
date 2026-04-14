@@ -73,7 +73,6 @@ package main
 
 import (
   "context"
-  "encoding/base64"
   "os"
 
   dapr "github.com/dapr/go-sdk/client"
@@ -88,7 +87,7 @@ func uploadFile(ctx context.Context, client dapr.Client, filePath, objectKey str
   in := &dapr.InvokeBindingRequest{
     Name:      "huawei-obs",
     Operation: "create",
-    Data:      []byte(base64.StdEncoding.EncodeToString(fileBytes)),
+    Data:      fileBytes,
     Metadata: map[string]string{
       "key":         objectKey,
       "contentType": "application/octet-stream",
