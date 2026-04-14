@@ -29,7 +29,8 @@ dapr init --slim
 This installs:
 - The `daprd` binary (the sidecar)
 - The Dapr placement service binary
-- Default component configurations pointing to in-memory stores
+
+Note that slim mode does not install any default component configurations (such as Redis). You must provide your own component files.
 
 Verify installation:
 
@@ -51,10 +52,10 @@ In slim mode, you start the placement service yourself:
 ~/.dapr/bin/placement &
 
 # Or specify a custom port
-~/.dapr/bin/placement --port 50006
+~/.dapr/bin/placement --port 6050
 ```
 
-The placement service is required only if you use Dapr actors. For non-actor use cases, you can skip it.
+The placement service is required if you use Dapr actors or workflows (which use actors internally). For non-actor and non-workflow use cases, you can skip it.
 
 ## Run Your Application with Dapr
 
@@ -63,8 +64,8 @@ dapr run \
   --app-id my-service \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --placement-host-address localhost:50006 \
-  --components-path ./components \
+  --placement-host-address localhost:50005 \
+  --resources-path ./components \
   node app.js
 ```
 
@@ -148,7 +149,9 @@ spec:
   version: v1
   metadata:
   - name: connectionString
-    value: "file:dapr-state.db?_busy_timeout=5000"
+    value: "dapr-state.db"
+  - name: busyTimeout
+    value: "5s"
 ```
 
 SQLite is file-based and requires no server process.
@@ -167,8 +170,8 @@ dapr run \
   --app-port 3001 \
   --dapr-http-port 3501 \
   --dapr-grpc-port 50001 \
-  --placement-host-address localhost:50006 \
-  --components-path ./components \
+  --placement-host-address localhost:50005 \
+  --resources-path ./components \
   node service-a.js
 
 # Terminal 3 - Service B
@@ -177,8 +180,8 @@ dapr run \
   --app-port 3002 \
   --dapr-http-port 3502 \
   --dapr-grpc-port 50002 \
-  --placement-host-address localhost:50006 \
-  --components-path ./components \
+  --placement-host-address localhost:50005 \
+  --resources-path ./components \
   node service-b.js
 ```
 
