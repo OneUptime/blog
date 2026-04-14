@@ -47,8 +47,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
@@ -70,13 +75,13 @@ eksctl create iamserviceaccount \
   --namespace default \
   --cluster my-eks-cluster \
   --region us-east-1 \
-  --attach-policy-arn arn:aws:iam::123456789:policy/OrderServicePolicy \
+  --attach-policy-arn arn:aws:iam::123456789012:policy/OrderServicePolicy \
   --override-existing-serviceaccounts \
   --approve
 
 # The SA gets the annotation automatically:
 kubectl describe serviceaccount order-service-sa
-# Annotations: eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/...
+# Annotations: eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/...
 ```
 
 ## Workload Identity for GKE
@@ -96,7 +101,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ## Using Service Account Tokens in Dapr Components
 
-For Dapr components that authenticate via service account tokens (e.g., Vault):
+For Dapr components that authenticate via a token file (e.g., Vault):
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -112,10 +117,8 @@ spec:
     value: "https://vault.internal:8200"
   - name: skipVerify
     value: "false"
-  - name: k8sMount
-    value: "kubernetes"
-  - name: k8sTokenPath
-    value: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  - name: vaultTokenMountPath
+    value: "/var/run/secrets/vault/token"
 ```
 
 ## Summary
