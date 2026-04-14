@@ -47,6 +47,7 @@ import io.dapr.client.DaprClientBuilder;
 import io.dapr.client.domain.State;
 import io.dapr.client.domain.StateOptions;
 import java.time.Duration;
+import java.util.Map;
 
 @Service
 public class DistributedCacheService {
@@ -64,12 +65,11 @@ public class DistributedCacheService {
     public void set(String key, Object value, int ttlSeconds) {
         StateOptions options = new StateOptions(
             null,
-            StateOptions.StateConcurrency.LAST_WRITE,
-            new StateOptions.StateRetryPolicy(
-                StateOptions.StateRetryPolicy.RetryPattern.LINEAR, 3
-            )
+            StateOptions.Concurrency.LAST_WRITE
         );
-        daprClient.saveState(CACHE_STORE, key, value, options).block(Duration.ofSeconds(2));
+        Map<String, String> metadata = Map.of("ttlInSeconds", String.valueOf(ttlSeconds));
+        daprClient.saveState(CACHE_STORE, key, null, value, metadata, options)
+            .block(Duration.ofSeconds(2));
     }
 
     public void delete(String key) {
@@ -134,7 +134,7 @@ curl http://localhost:3500/v1.0/healthz/outbound
 Use Dapr's Prometheus metrics to track state operation latency and error rates:
 
 ```bash
-curl http://localhost:9090/metrics | grep dapr_state
+curl http://localhost:9090/metrics | grep dapr_component_state
 ```
 
 ## Summary
