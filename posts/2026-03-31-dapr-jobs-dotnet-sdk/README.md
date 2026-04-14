@@ -10,12 +10,12 @@ Description: Schedule and manage Dapr Jobs from .NET applications using the Jobs
 
 ## Overview
 
-The Dapr Jobs API (v1.14+) provides a durable scheduler for one-time and recurring jobs. Unlike cron bindings, jobs survive Dapr restarts and can be managed programmatically. The .NET SDK exposes jobs via the gRPC API.
+The Dapr Jobs API (v1.14+) provides a durable scheduler for one-time and recurring jobs. Unlike cron bindings, jobs survive Dapr restarts and can be managed programmatically. The .NET SDK exposes jobs via the `DaprJobsClient`.
 
 ## Prerequisites
 
 ```bash
-dotnet add package Dapr.Client
+dotnet add package Dapr.Jobs
 ```
 
 Dapr v1.14+ with scheduler service enabled.
@@ -23,24 +23,22 @@ Dapr v1.14+ with scheduler service enabled.
 ## Step 1: Schedule a One-Time Job
 
 ```csharp
-using Dapr.Client;
-using Google.Protobuf.WellKnownTypes;
+using Dapr.Jobs;
+using Dapr.Jobs.Models;
+using System.Text.Json;
 
 public class JobScheduler
 {
-    private readonly DaprClient _dapr;
+    private readonly DaprJobsClient _dapr;
 
-    public JobScheduler(DaprClient dapr) => _dapr = dapr;
+    public JobScheduler(DaprJobsClient dapr) => _dapr = dapr;
 
-    public async Task ScheduleOneTimeJob(string jobName, DateTime runAt, object payload)
+    public async Task ScheduleOneTimeJob(string jobName, DateTimeOffset runAt, object payload)
     {
-        await _dapr.ScheduleJobAlpha1Async(
+        await _dapr.ScheduleJobAsync(
             jobName,
-            new Dapr.Client.ScheduleJobRequest
-            {
-                DueTime = runAt.ToString("o"),
-                Data = Any.Pack(new StringValue { Value = System.Text.Json.JsonSerializer.Serialize(payload) })
-            }
+            DaprJobSchedule.FromDateTime(runAt),
+            payload: JsonSerializer.SerializeToUtf8Bytes(payload)
         );
         Console.WriteLine($"Job '{jobName}' scheduled for {runAt}");
     }
@@ -53,33 +51,29 @@ public class JobScheduler
 public async Task ScheduleRecurringJob(string jobName, string schedule)
 {
     // Cron expression or @every notation
-    await _dapr.ScheduleJobAlpha1Async(
+    await _dapr.ScheduleJobAsync(
         jobName,
-        new Dapr.Client.ScheduleJobRequest
-        {
-            Schedule = schedule,     // "@every 10m" or "0 9 * * MON-FRI"
-            Repeats = 0,             // 0 = unlimited
-            Data = Any.Pack(new StringValue { Value = "{\"type\":\"report-generation\"}" })
-        }
+        DaprJobSchedule.FromExpression(schedule),  // "@every 10m" or "0 9 * * MON-FRI"
+        payload: JsonSerializer.SerializeToUtf8Bytes(new { type = "report-generation" }),
+        repeats: 0                                  // 0 = unlimited
     );
 }
 ```
 
 ## Step 3: Handle Job Callbacks
 
-Register an endpoint that Dapr calls when a job triggers:
+Register a handler that Dapr calls when a job triggers:
 
 ```csharp
 // Program.cs
-var app = builder.Build();
-app.MapPost("/job/{jobName}", HandleJob);
-app.Run();
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddDaprJobsClient();
 
-async Task HandleJob(string jobName, HttpContext ctx, JobScheduler scheduler)
+var app = builder.Build();
+app.MapDaprScheduledJobHandler(async (string jobName, ReadOnlyMemory<byte> payload) =>
 {
-    using var reader = new StreamReader(ctx.Request.Body);
-    var body = await reader.ReadToEndAsync();
-    Console.WriteLine($"Job triggered: {jobName}, data: {body}");
+    var data = System.Text.Encoding.UTF8.GetString(payload.Span);
+    Console.WriteLine($"Job triggered: {jobName}, data: {data}");
 
     switch (jobName)
     {
@@ -90,17 +84,16 @@ async Task HandleJob(string jobName, HttpContext ctx, JobScheduler scheduler)
             await RunCleanup();
             break;
     }
-
-    ctx.Response.StatusCode = 200;
-}
+});
+app.Run();
 ```
 
 ## Step 4: Get Job Status
 
 ```csharp
-public async Task<Dapr.Client.GetJobResponse> GetJob(string jobName)
+public async Task<DaprJobDetails> GetJob(string jobName)
 {
-    var job = await _dapr.GetJobAlpha1Async(jobName);
+    var job = await _dapr.GetJobAsync(jobName);
     Console.WriteLine($"Job: {jobName}, Schedule: {job.Schedule}, DueTime: {job.DueTime}");
     return job;
 }
@@ -111,7 +104,7 @@ public async Task<Dapr.Client.GetJobResponse> GetJob(string jobName)
 ```csharp
 public async Task CancelJob(string jobName)
 {
-    await _dapr.DeleteJobAlpha1Async(jobName);
+    await _dapr.DeleteJobAsync(jobName);
     Console.WriteLine($"Job '{jobName}' cancelled");
 }
 ```
@@ -121,29 +114,26 @@ public async Task CancelJob(string jobName)
 ```csharp
 public class OrderReminderService
 {
-    private readonly DaprClient _dapr;
+    private readonly DaprJobsClient _dapr;
 
-    public OrderReminderService(DaprClient dapr) => _dapr = dapr;
+    public OrderReminderService(DaprJobsClient dapr) => _dapr = dapr;
 
-    public async Task SchedulePaymentReminder(string orderId, DateTime dueAt)
+    public async Task SchedulePaymentReminder(string orderId, DateTimeOffset dueAt)
     {
-        await _dapr.ScheduleJobAlpha1Async(
+        await _dapr.ScheduleJobAsync(
             $"payment-reminder-{orderId}",
-            new Dapr.Client.ScheduleJobRequest
-            {
-                DueTime = dueAt.ToString("o"),
-                Data = Any.Pack(new StringValue { Value = orderId })
-            }
+            DaprJobSchedule.FromDateTime(dueAt),
+            payload: JsonSerializer.SerializeToUtf8Bytes(new { orderId })
         );
     }
 
     public async Task CancelReminder(string orderId)
     {
-        await _dapr.DeleteJobAlpha1Async($"payment-reminder-{orderId}");
+        await _dapr.DeleteJobAsync($"payment-reminder-{orderId}");
     }
 }
 ```
 
 ## Summary
 
-Dapr Jobs in .NET provide a simple API for scheduling durable, persistent tasks. Jobs are stored in the Dapr Scheduler service and survive restarts, unlike in-memory timers. The `ScheduleJobAlpha1Async` method handles both one-time (via `DueTime`) and recurring (via `Schedule`) jobs, with callback delivery to your application's HTTP endpoint when the trigger fires.
+Dapr Jobs in .NET provide a simple API for scheduling durable, persistent tasks. Jobs are stored in the Dapr Scheduler service and survive restarts, unlike in-memory timers. The `ScheduleJobAsync` method handles both one-time (via `DaprJobSchedule.FromDateTime`) and recurring (via `DaprJobSchedule.FromExpression`) jobs, with callback delivery to your application via the `MapDaprScheduledJobHandler` endpoint when the trigger fires.
