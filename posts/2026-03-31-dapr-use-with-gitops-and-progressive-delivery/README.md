@@ -149,9 +149,9 @@ spec:
         prometheus:
           address: http://prometheus:9090
           query: |
-            sum(rate(dapr_http_server_response_count{status_code=~"5.*",app_id="order-service"}[5m]))
+            sum(rate(dapr_http_server_request_count{status=~"5..",app_id="order-service"}[5m]))
             /
-            sum(rate(dapr_http_server_response_count{app_id="order-service"}[5m]))
+            sum(rate(dapr_http_server_request_count{app_id="order-service"}[5m]))
 ```
 
 ## Validating Component Changes via GitOps
