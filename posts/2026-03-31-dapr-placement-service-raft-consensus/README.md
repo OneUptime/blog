@@ -56,7 +56,6 @@ helm upgrade --install dapr dapr/dapr \
   --create-namespace \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --reuse-values
 ```
 
@@ -73,7 +72,7 @@ kubectl top pods -n dapr-system -l app=dapr-placement-server
 
 ```bash
 # Raft-related metrics
-curl http://dapr-placement-server-0.dapr-system:9090/metrics | grep raft
+curl http://dapr-placement-server-0.dapr-placement-server.dapr-system:9090/metrics | grep raft
 
 # Actor registration events
 kubectl logs -n dapr-system dapr-placement-server-0 | grep "host added\|host removed"
