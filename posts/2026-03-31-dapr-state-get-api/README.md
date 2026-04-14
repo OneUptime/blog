@@ -77,8 +77,7 @@ from dapr.clients import DaprClient
 with DaprClient() as client:
     result = client.get_state(
         store_name='statestore',
-        key='order-123',
-        state_options={'consistency': 'strong'}
+        key='order-123'
     )
     print(result.data)
     print(result.etag)
