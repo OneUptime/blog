@@ -135,10 +135,10 @@ build:
         dest: /app/src
       - src: "config/*.yaml"
         dest: /app/config
-    hooks:
-      after:
-      - container:
-          command: ["node", "-e", "process.exit(0)"]
+      hooks:
+        after:
+        - container:
+            command: ["node", "-e", "process.exit(0)"]
 ```
 
 ## CI/CD Pipeline Integration
@@ -165,9 +165,10 @@ deploy:
       chartPath: charts/order-service
       valuesFiles:
       - charts/order-service/values-dev.yaml
-      setValues:
+      setValueTemplates:
         image.tag: "{{.IMAGE_TAG}}"
-        dapr.enabled: true
+      setValues:
+        dapr.enabled: "true"
 ```
 
 ## Summary
