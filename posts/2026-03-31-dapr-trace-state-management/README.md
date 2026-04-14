@@ -50,7 +50,7 @@ DAPR_URL = "http://localhost:3500"
 
 @app.route('/orders/<order_id>', methods=['GET'])
 def get_order(order_id):
-    # GET state - Dapr creates a span: dapr.state.get
+    # GET state - Dapr creates a span named after the HTTP path
     resp = requests.get(
         f"{DAPR_URL}/v1.0/state/redis-state/{order_id}",
         headers={"traceparent": request.headers.get("traceparent", "")}
@@ -66,7 +66,7 @@ def create_order():
     data = request.json
     order_id = data['orderId']
 
-    # SET state - Dapr creates a span: dapr.state.set
+    # SET state - Dapr creates a span named after the HTTP path
     requests.post(
         f"{DAPR_URL}/v1.0/state/redis-state",
         json=[{"key": order_id, "value": data}],
@@ -95,7 +95,7 @@ Dapr's transactional state creates a single span wrapping all operations:
 
 ```python
 def update_order_and_inventory(order_id, item_id):
-    # Single span: dapr.state.transaction
+    # Single span for the transaction request
     requests.post(
         f"{DAPR_URL}/v1.0/state/redis-state/transaction",
         json={
@@ -126,15 +126,14 @@ State operation spans have these attributes:
 
 | Attribute | Value |
 |---|---|
-| `db.system` | `redis` |
-| `db.statement` | key name |
-| `net.peer.name` | redis host |
-| `net.peer.port` | 6379 |
+| `db.system` | `state` |
+| `db.statement` | HTTP method and path (e.g., `GET /v1.0/state/redis-state/order123`) |
+| `db.name` | state store name (e.g., `redis-state`) |
 
 Search for slow state operations:
 
 ```bash
-curl "http://localhost:16686/api/v2/traces?service=order-service&minDuration=100000&operation=DaprStateGet"
+curl "http://localhost:16686/api/traces?service=order-service&minDuration=100ms"
 ```
 
 ## Identifying N+1 State Patterns
@@ -161,17 +160,18 @@ resp = requests.post(
 )
 ```
 
-The trace collapses to a single `dapr.state.bulk` span.
+The trace collapses to a single bulk state span.
 
 ## State Store Latency Alerting
 
-Using the OTel Collector, filter state operation spans and export latency metrics:
+Using the OTel Collector's spanmetrics connector, derive latency metrics from state operation spans:
 
 ```yaml
-processors:
+connectors:
   spanmetrics:
-    metrics_exporter: prometheus
-    latency_histogram_buckets: [1ms, 5ms, 10ms, 50ms, 100ms, 500ms]
+    histogram:
+      explicit:
+        buckets: [1ms, 5ms, 10ms, 50ms, 100ms, 500ms]
     dimensions:
       - name: db.system
       - name: service.name
