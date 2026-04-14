@@ -102,8 +102,8 @@ Track how long initialization takes using Dapr's Prometheus metrics:
 # Check sidecar ready time
 kubectl logs my-pod -c daprd | grep "dapr initialized"
 
-# View startup duration metric
-curl http://localhost:9090/metrics | grep dapr_runtime_init_total
+# View component initialization metric
+curl http://localhost:9090/metrics | grep dapr_runtime_component_init_total
 ```
 
 ## Summary
