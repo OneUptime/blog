@@ -17,7 +17,7 @@ Without filtering, every subscriber receives all messages on a topic and must di
 Dapr supports routing messages to different endpoints within the same topic based on message content.
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-sub
@@ -40,9 +40,8 @@ Messages are routed based on the CloudEvents `type` attribute.
 Publish messages with custom metadata:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/pubsub/orders?metadata.region=us-east" \
   -H "Content-Type: application/json" \
-  -H "metadata.region: us-east" \
   -d '{
     "type": "order.created",
     "region": "us-east",
@@ -60,7 +59,7 @@ routes:
     path: /orders/us-east
   - match: event.data.region == "eu-west"
     path: /orders/eu-west
-  - match: event.data.amount > 1000
+  - match: int(event.data.amount) > 1000
     path: /orders/high-value
   default: /orders/standard
 ```
