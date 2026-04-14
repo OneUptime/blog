@@ -30,6 +30,8 @@ services:
     build: ./caller
     environment:
       - DAPR_HTTP_PORT=3500
+    ports:
+      - "3500:3500"
     depends_on:
       - callee
       - placement
@@ -38,14 +40,17 @@ services:
     image: daprio/daprd:1.14.0
     command:
       - "./daprd"
-      - "-app-id"
+      - "--app-id"
       - "caller"
-      - "-app-port"
+      - "--app-port"
       - "8080"
-      - "-dapr-http-port"
+      - "--dapr-http-port"
       - "3500"
-      - "-log-level"
+      - "--log-level"
       - "error"
+    network_mode: "service:caller"
+    depends_on:
+      - caller
 
   callee:
     build: ./callee
@@ -56,10 +61,13 @@ services:
     image: daprio/daprd:1.14.0
     command:
       - "./daprd"
-      - "-app-id"
+      - "--app-id"
       - "callee"
-      - "-app-port"
+      - "--app-port"
       - "8081"
+    network_mode: "service:callee"
+    depends_on:
+      - callee
 
   placement:
     image: daprio/placement:1.14.0
@@ -74,9 +82,12 @@ services:
 package integration_test
 
 import (
-    "testing"
-    "net/http"
     "encoding/json"
+    "fmt"
+    "net/http"
+    "strings"
+    "testing"
+    "time"
 )
 
 func TestServiceInvocation(t *testing.T) {
@@ -112,8 +123,11 @@ func waitForDapr(t *testing.T, port int) {
     t.Helper()
     for i := 0; i < 30; i++ {
         resp, err := http.Get(fmt.Sprintf("http://localhost:%d/v1.0/healthz", port))
-        if err == nil && resp.StatusCode == http.StatusNoContent {
-            return
+        if err == nil {
+            resp.Body.Close()
+            if resp.StatusCode == http.StatusNoContent {
+                return
+            }
         }
         time.Sleep(1 * time.Second)
     }
