@@ -98,7 +98,7 @@ kubectl apply -f service-account.yaml
 
 ## Step 5 - Configure Dapr AWS Components
 
-SQS pubsub component without static credentials:
+SNS/SQS pubsub component without static credentials:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -106,11 +106,9 @@ kind: Component
 metadata:
   name: sqs-pubsub
 spec:
-  type: pubsub.aws.sqs
+  type: pubsub.aws.snssqs
   version: v1
   metadata:
-    - name: endpoint
-      value: ""
     - name: region
       value: "us-east-1"
     # No accessKey or secretKey - IRSA provides credentials
