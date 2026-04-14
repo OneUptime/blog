@@ -68,17 +68,30 @@ dapr.io/sidecar-cpu-limit: "1000m"
 dapr.io/sidecar-memory-limit: "512Mi"
 ```
 
-## Setting Global Defaults with Helm
+## Applying Resource Annotations Consistently
 
-You can set default sidecar resources globally when installing or upgrading the Dapr Helm chart:
+Dapr does not support setting global default sidecar resources via Helm. The per-pod annotation approach described above is the only supported method. To apply consistent resource annotations across all your deployments, add them to a shared pod template or use a policy engine like Kyverno to automatically inject the annotations:
 
-```bash
-helm upgrade dapr dapr/dapr \
-  --namespace dapr-system \
-  --set dapr_sidecar_injector.defaultConfig.cpuRequest=100m \
-  --set dapr_sidecar_injector.defaultConfig.memoryRequest=128Mi \
-  --set dapr_sidecar_injector.defaultConfig.cpuLimit=500m \
-  --set dapr_sidecar_injector.defaultConfig.memoryLimit=256Mi
+```yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: dapr-sidecar-resources
+spec:
+  rules:
+    - name: add-sidecar-resources
+      match:
+        resources:
+          kinds:
+            - Pod
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              dapr.io/sidecar-cpu-request: "100m"
+              dapr.io/sidecar-memory-request: "128Mi"
+              dapr.io/sidecar-cpu-limit: "500m"
+              dapr.io/sidecar-memory-limit: "256Mi"
 ```
 
 ## Monitor Actual Usage
