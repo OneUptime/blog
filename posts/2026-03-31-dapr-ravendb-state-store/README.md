@@ -52,25 +52,21 @@ metadata:
   name: ravendb-statestore
   namespace: default
 spec:
-  type: state.raven.db
+  type: state.ravendb
   version: v1
   metadata:
-  - name: serverUrl
+  - name: serverURL
     value: "http://localhost:8080"
   - name: databaseName
     value: "DaprState"
-  - name: noWaitForIndexing
-    value: "false"
-  - name: modifyDocumentId
-    value: "true"
 ```
 
 For secured RavenDB with a client certificate:
 
 ```yaml
-  - name: certPemPath
+  - name: certPath
     value: "/path/to/client.crt"
-  - name: keyPemPath
+  - name: keyPath
     value: "/path/to/client.key"
 ```
 
