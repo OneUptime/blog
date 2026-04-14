@@ -77,18 +77,9 @@ docker run -d \
   -e POSTGRES_PASSWORD=mysecret \
   -p 5432:5432 \
   postgres:15
-
-# Create state table
-docker exec -it dapr-postgres psql -U postgres -c "
-  CREATE TABLE IF NOT EXISTS state (
-    key TEXT NOT NULL PRIMARY KEY,
-    value JSONB NOT NULL,
-    isbinary BOOLEAN NOT NULL,
-    etag UUID,
-    expiredate TIMESTAMPTZ
-  );
-"
 ```
+
+Dapr's PostgreSQL v2 component automatically creates the required tables on first use, so no manual schema setup is needed.
 
 Replace the component file:
 
@@ -104,8 +95,6 @@ spec:
   metadata:
   - name: connectionString
     value: "host=localhost user=postgres password=mysecret port=5432 connect_timeout=10 database=postgres"
-  - name: tableName
-    value: state
 ```
 
 No application code changes needed. Restart your sidecar and the same API calls work with PostgreSQL.
@@ -231,8 +220,8 @@ spec:
     value: dapr-group
   - name: authType
     value: none
-  - name: autoOffsetReset
-    value: earliest
+  - name: initialOffset
+    value: oldest
 ```
 
 Same publisher and subscriber code works with Kafka.
@@ -283,7 +272,7 @@ kubectl apply -f statestore.yaml -n production
 
 ```bash
 # Check loaded components
-curl http://localhost:3500/v1.0/metadata | jq '.registeredComponents'
+curl http://localhost:3500/v1.0/metadata | jq '.components'
 ```
 
 ```json
