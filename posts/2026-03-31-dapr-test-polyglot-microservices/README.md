@@ -42,7 +42,9 @@ def test_create_order_publishes_event():
 package main
 
 import (
+    "context"
     "testing"
+    "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
 )
 
@@ -78,6 +80,8 @@ Use the official Dapr test utilities for Go:
 package integration
 
 import (
+    "context"
+    "encoding/json"
     "testing"
     "github.com/dapr/go-sdk/client"
     "github.com/stretchr/testify/assert"
@@ -93,8 +97,10 @@ func TestStateRoundTrip(t *testing.T) {
     ctx := context.Background()
     key := "test-key-" + t.Name()
     value := map[string]string{"test": "value"}
+    data, err := json.Marshal(value)
+    assert.NoError(t, err)
 
-    err = c.SaveState(ctx, "statestore", key, value, nil)
+    err = c.SaveState(ctx, "statestore", key, data, nil)
     assert.NoError(t, err)
 
     result, err := c.GetState(ctx, "statestore", key, nil)
