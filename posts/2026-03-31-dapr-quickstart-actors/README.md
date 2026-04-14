@@ -14,11 +14,11 @@ A `SmartDevice` actor that tracks a device's on/off state and data. Each device 
 
 ```mermaid
 flowchart LR
-    Client[Client App] -->|PUT /v1.0/actors/SmartDevice/device-1/method/turnOn| SA[Sidecar A]
+    Client[Client App] -->|PUT /v1.0/actors/SmartDevice/device-1/method/TurnOn| SA[Sidecar A]
     SA -->|lookup placement table| Placement[Placement Service]
     Placement -->|device-1 is on pod-2| SA
     SA -->|forward to pod-2 sidecar| SB[Sidecar B]
-    SB -->|POST /actors/SmartDevice/device-1/method/turnOn| ActorHost[Actor Host App]
+    SB -->|PUT /actors/SmartDevice/device-1/method/TurnOn| ActorHost[Actor Host App]
 ```
 
 ## Prerequisites
@@ -47,11 +47,13 @@ spec:
 # actor-host/app.py
 from dapr.actor import Actor, ActorInterface, actormethod
 from dapr.actor.runtime.runtime import ActorRuntime
-from dapr.actor.runtime.config import ActorRuntimeConfig, ActorTypeConfig
-from flask import Flask, request, jsonify
-import json
+from dapr.actor.runtime.config import ActorRuntimeConfig
+from dapr.ext.fastapi import DaprActor
+from fastapi import FastAPI
+import uvicorn
 
-flask_app = Flask(__name__)
+app = FastAPI()
+dapr_actor = DaprActor(app)
 
 class SmartDeviceInterface(ActorInterface):
     @actormethod(name="TurnOn")
@@ -78,58 +80,28 @@ class SmartDeviceActor(Actor, SmartDeviceInterface):
         print(f"Device {self.id.id} turned OFF")
 
     async def get_status(self) -> dict:
-        status = await self._state_manager.try_get_state("status")
-        return {"deviceId": self.id.id, "status": status.value or "unknown"}
+        has_value, val = await self._state_manager.try_get_state("status")
+        return {"deviceId": self.id.id, "status": val if has_value else "unknown"}
 
-# Register the actor type
-ActorRuntime.set_actor_config(
-    ActorRuntimeConfig(actor_idle_timeout="1h", actor_scan_interval="30s")
-)
-
-@flask_app.route('/dapr/config', methods=['GET'])
-def get_dapr_config():
-    return jsonify({
-        "entities": ["SmartDevice"],
-        "actorIdleTimeout": "1h",
-        "actorScanInterval": "30s",
-        "drainOngoingCallTimeout": "60s",
-        "drainRebalancedActors": True
-    })
-
-@flask_app.route('/healthz', methods=['GET'])
-def healthz():
-    return '', 200
-
-@flask_app.route('/actors/<actor_type>/<actor_id>/method/<method_name>', methods=['PUT'])
-def invoke_actor(actor_type, actor_id, method_name):
-    import asyncio
-    actor = SmartDeviceActor(None, type('id', (), {'id': actor_id})())
-    data = request.get_json() or {}
-    loop = asyncio.new_event_loop()
-    if method_name == 'TurnOn':
-        loop.run_until_complete(actor.turn_on())
-        return '', 200
-    elif method_name == 'TurnOff':
-        loop.run_until_complete(actor.turn_off())
-        return '', 200
-    elif method_name == 'GetStatus':
-        result = loop.run_until_complete(actor.get_status())
-        return jsonify(result)
-    return jsonify({"error": "unknown method"}), 404
+@app.on_event("startup")
+async def startup():
+    config = ActorRuntimeConfig()
+    ActorRuntime.set_actor_config(config)
+    await ActorRuntime.register_actor(SmartDeviceActor)
 
 if __name__ == '__main__':
-    flask_app.run(port=5001)
+    uvicorn.run(app, port=5001)
 ```
 
 ## Run the Actor Host
 
 ```bash
-pip3 install dapr flask
+pip3 install dapr dapr-ext-fastapi fastapi uvicorn
 dapr run \
   --app-id smart-device-host \
   --app-port 5001 \
   --dapr-http-port 3500 \
-  -- python3 app.py
+  -- uvicorn app:app --port 5001
 ```
 
 ## Invoke Actor Methods from a Client
@@ -165,7 +137,7 @@ curl -X POST \
   }'
 ```
 
-Your actor must implement a `receiveReminder` method (or handler endpoint) to process reminders.
+Your actor must implement a `receive_reminder` method (or handler endpoint) to process reminders.
 
 ## Actor Timers (Non-Persistent)
 
@@ -204,16 +176,14 @@ flowchart TD
 
 ## Dapr Config Endpoint
 
-Your actor host app must expose `/dapr/config` to declare actor types:
+Your actor host app must expose `/dapr/config` to declare actor types. When using `dapr-ext-fastapi`, the `DaprActor` extension registers this endpoint automatically based on actors registered with `ActorRuntime.register_actor`. The response looks like:
 
-```python
-@app.route('/dapr/config', methods=['GET'])
-def get_dapr_config():
-    return jsonify({
-        "entities": ["SmartDevice", "UserActor"],
-        "actorIdleTimeout": "1h",
-        "actorScanInterval": "30s"
-    })
+```json
+{
+    "entities": ["SmartDevice"],
+    "actorIdleTimeout": "1h0m0s0ms",
+    "actorScanInterval": "0h0m30s0ms"
+}
 ```
 
 ## Summary
