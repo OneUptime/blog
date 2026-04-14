@@ -32,7 +32,7 @@ async function getOrdersSequential(orderIds) {
 
 // Efficient: bulk read
 async function getOrdersBulk(orderIds) {
-  const keys = orderIds.map(id => ({ key: `order:${id}` }));
+  const keys = orderIds.map(id => `order:${id}`);
   const results = await client.state.getBulk('statestore', keys);
   return results
     .filter(r => r.data)
@@ -104,9 +104,9 @@ spec:
   metadata:
   - name: redisHost
     value: redis:6379
-  - name: maxRetries
+  - name: redisMaxRetries
     value: "3"
-  - name: maxRetryBackoff
+  - name: redisMaxRetryInterval
     value: "2s"
   - name: enableTLS
     value: "false"
@@ -140,10 +140,10 @@ Track state store read performance with Dapr metrics:
 
 ```bash
 # Query Dapr state store latency histogram
-curl http://localhost:9090/metrics | grep dapr_component_state_get_latencies_bucket
+curl http://localhost:9090/metrics | grep dapr_component_state_latencies_bucket
 
 # Check p99 read latency
-# dapr_component_state_get_latencies_bucket{component="statestore",le="25"} / total
+# dapr_component_state_latencies_bucket{component="statestore",le="25"} / total
 ```
 
 ## Summary
