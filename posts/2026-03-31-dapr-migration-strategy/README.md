@@ -90,7 +90,7 @@ r.set(f"order:{order_id}", json.dumps(order))
 ```python
 from dapr.clients import DaprClient
 with DaprClient() as d:
-    d.save_state('statestore', f'order-{order_id}', order)
+    d.save_state('statestore', f'order-{order_id}', json.dumps(order))
 ```
 
 Deploy alongside the old code with a feature flag for gradual rollout:
