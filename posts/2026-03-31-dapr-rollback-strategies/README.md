@@ -59,7 +59,7 @@ ERROR_RATE_THRESHOLD = 0.05  # 5% error rate triggers rollback
 OBSERVATION_WINDOW = 120     # seconds to observe after deployment
 
 def get_error_rate(app_id: str, window: str = "2m") -> float:
-    query = f'sum(rate(dapr_http_server_request_count{{app_id="{app_id}",status_code=~"5.."}}[{window}])) / sum(rate(dapr_http_server_request_count{{app_id="{app_id}"}}[{window}]))'
+    query = f'sum(rate(dapr_http_server_request_count{{app_id="{app_id}",status=~"5.."}}[{window}])) / sum(rate(dapr_http_server_request_count{{app_id="{app_id}"}}[{window}]))'
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
     result = resp.json()["data"]["result"]
     if not result:
