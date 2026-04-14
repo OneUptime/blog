@@ -36,7 +36,6 @@ spec:
 ## Implementing Read-Through Cache in Python
 
 ```python
-import json
 import httpx
 from typing import Optional
 
@@ -86,9 +85,31 @@ async def get_product(product_id: str) -> dict:
 
 ## Handling Cache Miss Concurrency
 
-Under high load, multiple requests may hit the cache simultaneously on a miss and all try to populate it. Use Dapr's distributed lock to prevent the thundering herd:
+Under high load, multiple requests may hit the cache simultaneously on a miss and all try to populate it. Use Dapr's distributed lock to prevent the thundering herd.
+
+First, configure a Redis-backed lock component (separate from the state store):
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: redis-lock
+spec:
+  type: lock.redis
+  version: v1
+  metadata:
+  - name: redisHost
+    value: redis:6379
+  - name: redisPassword
+    value: ""
+  - name: enableTLS
+    value: "false"
+```
+
+Then implement the lock-protected cache miss handler:
 
 ```python
+import asyncio
 import uuid
 
 LOCK_STORE = "redis-lock"
