@@ -10,7 +10,7 @@ Description: Configure the Dapr SQL Server v2 state store with ETag concurrency,
 
 ## SQL Server v2 State Store Overview
 
-The Dapr SQL Server state store v2 (`state.sqlserver`) supports optimistic concurrency via row version ETags, TTL-based expiry, and the State Query API through JSON column indexing. It works with SQL Server 2016+, Azure SQL Database, and Azure SQL Managed Instance.
+The Dapr SQL Server state store v2 (`state.sqlserver` with `version: v2`) supports optimistic concurrency via ROWVERSION-based ETags and TTL-based expiry. It works with SQL Server, Azure SQL Database, and Azure SQL Managed Instance. Note that v2 does not support the Dapr State Query API, and data cannot be migrated between v1 and v2 components.
 
 ## Component Configuration
 
@@ -22,7 +22,7 @@ metadata:
   namespace: default
 spec:
   type: state.sqlserver
-  version: v1
+  version: v2
   metadata:
     - name: connectionString
       secretKeyRef:
@@ -32,8 +32,8 @@ spec:
       value: "DaprState"
     - name: schema
       value: "dbo"
-    - name: cleanupInterval
-      value: "5m"
+    - name: cleanupIntervalInSeconds
+      value: "300"
     - name: indexedProperties
       value: '[{"column": "UserTier", "property": "userTier", "type": "nvarchar(50)"}]'
 ```
@@ -51,17 +51,15 @@ Dapr auto-creates the table on startup:
 
 ```sql
 CREATE TABLE [dbo].[DaprState] (
-    [Key]          NVARCHAR(900) NOT NULL PRIMARY KEY,
-    [Data]         NVARCHAR(MAX) NOT NULL,
-    [IsBinary]     BIT NOT NULL,
-    [ETag]         INT NOT NULL,
-    [ExpireDate]   DATETIME2 NULL,
-    [UpdateTime]   DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    [Key]          NVARCHAR(200) NOT NULL PRIMARY KEY,
+    [Data]         NVARCHAR(MAX) NULL,
+    [BinaryData]   VARBINARY(MAX) NULL,
+    [isBinary]     BIT NOT NULL DEFAULT(0),
+    [RowVersion]   ROWVERSION NOT NULL,
+    [InsertDate]   DATETIME2 NOT NULL DEFAULT(GETDATE()),
+    [UpdateDate]   DATETIME2 NULL,
+    [ExpireDate]   DATETIME2 NULL
 );
-
-CREATE INDEX [IX_DaprState_ExpireDate]
-    ON [dbo].[DaprState] ([ExpireDate])
-    WHERE [ExpireDate] IS NOT NULL;
 ```
 
 ## Using ETag Concurrency
@@ -88,9 +86,9 @@ if (!saved)
 }
 ```
 
-## State Query API with Indexed Properties
+## Indexed Properties
 
-Index JSON properties to enable efficient queries:
+The v2 component supports `indexedProperties` to create additional computed columns in the state table based on JSON fields:
 
 ```yaml
 - name: indexedProperties
@@ -102,25 +100,7 @@ Index JSON properties to enable efficient queries:
     ]
 ```
 
-Then query using the State Query API:
-
-```csharp
-var query = new StateQueryRequest
-{
-    Filter = new Dictionary<string, object>
-    {
-        ["AND"] = new[]
-        {
-            new { EQ = new { key = "status", value = "active" } },
-            new { GT = new { key = "score", value = 50 } }
-        }
-    },
-    Sort = new[] { new { Key = "score", Order = "DESC" } },
-    Page = new { Limit = 20 }
-};
-
-var result = await client.QueryStateAsync<UserProfile>("statestore", query);
-```
+**Important:** The v2 SQL Server component does not support the Dapr State Query API. Indexed properties create dedicated SQL columns that can be queried directly via SQL, but the Dapr query API (`/v1.0-alpha1/state/<storeName>/query`) is only available with the v1 component.
 
 ## TTL Configuration
 
@@ -139,13 +119,15 @@ await client.SaveStateAsync(
 
 ## Azure SQL with Managed Identity
 
-For Azure SQL Database, use Managed Identity instead of passwords:
+For Azure SQL Database, use Microsoft Entra ID (formerly Azure AD) with Managed Identity instead of passwords. Set the `useAzureAD` metadata field to `true` and omit credentials from the connection string:
 
 ```yaml
 - name: connectionString
-  value: "sqlserver://sqlserver.database.windows.net?database=DaprState&encrypt=true&authentication=ActiveDirectoryMSI"
+  value: "sqlserver://sqlserver.database.windows.net:1433?database=DaprState"
+- name: useAzureAD
+  value: "true"
 ```
 
 ## Summary
 
-The Dapr SQL Server v2 state store uses integer-based ETags (row versions) for optimistic concurrency and supports TTL cleanup via a background process keyed on the `ExpireDate` column. Define `indexedProperties` in the component spec to create dedicated SQL columns for JSON fields you want to filter or sort in the State Query API. For Azure deployments, Managed Identity authentication eliminates the need for stored credentials.
+The Dapr SQL Server v2 state store uses ROWVERSION-based ETags for optimistic concurrency and supports TTL cleanup via a background process keyed on the `ExpireDate` column. Define `indexedProperties` in the component spec to create dedicated SQL columns for JSON fields, which can be queried directly via SQL. Note that the v2 component does not support the Dapr State Query API. For Azure deployments, Microsoft Entra ID authentication with Managed Identity eliminates the need for stored credentials.
