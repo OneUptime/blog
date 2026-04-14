@@ -137,7 +137,7 @@ from fastapi import FastAPI
 app = FastAPI()
 dapr_app = DaprApp(app)
 
-@dapr_app.subscribe(pubsub_name="pubsub", topic="orders", route="/handlers/orders")
+@dapr_app.subscribe(pubsub="pubsub", topic="orders", route="/handlers/orders")
 async def handle_order(event):
     print(f"Order received: {event.data}")
     return {"success": True}
