@@ -151,10 +151,10 @@ spec:
 
 ```bash
 # Find all traces for order-completed topic
-curl "http://localhost:16686/api/v2/traces?service=order-processor&operation=dapr.subscribe"
+curl "http://localhost:16686/api/traces?service=order-processor&operation=dapr.subscribe"
 
 # Find traces with errors in pub/sub
-curl "http://localhost:16686/api/v2/traces?service=order-processor&tags=error:true&operation=dapr.subscribe"
+curl "http://localhost:16686/api/traces?service=order-processor&tag=error:true&operation=dapr.subscribe"
 ```
 
 ## Summary
