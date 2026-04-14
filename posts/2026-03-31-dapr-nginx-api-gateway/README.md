@@ -79,16 +79,16 @@ kind: Ingress
 metadata:
   name: user-service-ingress
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/rewrite-target: /v1.0/invoke/user-service/method/$2
     nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
         paths:
           - path: /users(/|$)(.*)
-            pathType: Prefix
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: user-service
@@ -118,8 +118,8 @@ Pass custom headers to the Dapr sidecar for tracing and routing:
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      more_set_headers "dapr-app-id: user-service";
-      more_set_headers "traceparent: $http_traceparent";
+      proxy_set_header dapr-app-id user-service;
+      proxy_set_header traceparent $http_traceparent;
 ```
 
 ## Enabling TLS with a Certificate
