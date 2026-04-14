@@ -80,10 +80,15 @@ To allow services in Cluster B to invoke services in Cluster A with mTLS, Cluste
 kubectl get secret dapr-trust-bundle -n dapr-system \
   -o jsonpath='{.data.ca\.crt}' | base64 -d > cluster-a-root.crt
 
-# On Cluster B - add Cluster A's root CA to the trust bundle
+# On Cluster B - export the existing trust bundle and append Cluster A's root CA
+kubectl get secret dapr-trust-bundle -n dapr-system \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d > combined-ca-bundle.crt
+cat cluster-a-root.crt >> combined-ca-bundle.crt
+
+# Update the ca.crt field with the combined bundle
 kubectl patch secret dapr-trust-bundle -n dapr-system \
   --type='json' \
-  -p='[{"op": "add", "path": "/data/cluster-a-ca.crt", "value": "'$(base64 -w0 cluster-a-root.crt)'"}]'
+  -p='[{"op": "replace", "path": "/data/ca.crt", "value": "'$(base64 < combined-ca-bundle.crt | tr -d '\n')'"}]'
 ```
 
 ## Use Case 3 - Verifying a Workload Certificate
