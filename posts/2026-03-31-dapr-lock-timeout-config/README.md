@@ -73,30 +73,13 @@ Call `refresh_lock` before starting a long critical section to keep renewing the
 
 ## Verifying Lock TTL in Redis
 
-Check the remaining TTL on a lock in Redis:
+Check the remaining TTL on a lock in Redis. The default key format uses the app ID and resource ID:
 
 ```bash
-redis-cli TTL "lockstore||invoice-generator||worker-1"
+redis-cli TTL "lock||<appID>||invoice-generator"
 ```
 
-This returns the seconds remaining before the lock auto-expires.
-
-## Component-Level Max Lock Duration
-
-Some Dapr lock store implementations support a maximum lock duration at the component level. For Redis:
-
-```yaml
-spec:
-  type: lock.redis
-  version: v1
-  metadata:
-  - name: redisHost
-    value: redis:6379
-  - name: maxLockWaitTimeInSeconds
-    value: "60"
-```
-
-This limits how long any single lock can be held, providing a safety cap even if clients request longer expiries.
+Replace `<appID>` with your Dapr application ID. This returns the seconds remaining before the lock auto-expires.
 
 ## Summary
 
