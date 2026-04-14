@@ -35,13 +35,13 @@ order-2024-01-01-003
 ...
 ```
 
-All keys share the same prefix, and many state stores use prefix-based routing, causing all writes to go to the same partition.
+All keys share a date-based prefix with low cardinality. In state stores that use range-based partitioning, keys that sort together land on the same partition, causing write hotspots.
 
 ### Good Key Design (Distributed)
 
 Include a high-cardinality field early in the key:
 
-```json
+```text
 {userId}-order-{orderId}
 {sessionId}-cart
 {tenantId}-{resourceType}-{resourceId}
