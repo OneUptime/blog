@@ -75,7 +75,6 @@ Register Dapr in Program.cs:
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers().AddDapr();
-builder.Services.AddDaprClient();
 
 var app = builder.Build();
 app.MapControllers();
@@ -175,7 +174,7 @@ public async Task<IActionResult> GetProductWithErrorHandling(string productId)
         );
         return Ok(product);
     }
-    catch (InvocationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    catch (InvocationException ex) when (ex.Response?.StatusCode == System.Net.HttpStatusCode.NotFound)
     {
         return NotFound($"Product {productId} not found");
     }
