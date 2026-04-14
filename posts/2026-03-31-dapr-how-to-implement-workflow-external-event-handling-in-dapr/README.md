@@ -32,11 +32,9 @@ Orchestrator                     External System
 ## Setting Up the Project
 
 ```bash
-dotnet new console -n ApprovalWorkflow
+dotnet new web -n ApprovalWorkflow
 cd ApprovalWorkflow
 dotnet add package Dapr.Workflow
-dotnet add package Microsoft.Extensions.Hosting
-dotnet add package Microsoft.AspNetCore.App
 ```
 
 ## Implementing the Orchestrator with Event Waiting
@@ -60,16 +58,14 @@ public class ExpenseApprovalWorkflow : Workflow<ExpenseReport, string>
         context.SetCustomStatus("Waiting for manager approval...");
 
         // Step 2: Wait for external approval event (up to 72 hours)
-        ApprovalDecision? decision;
-        using var cts = new CancellationTokenSource();
-        
-        var approvalTask = context.WaitForExternalEventAsync<ApprovalDecision>(
-            eventName: "ApprovalDecision",
-            timeout: TimeSpan.FromHours(72));
-
-        decision = await approvalTask;
-
-        if (decision == null)
+        ApprovalDecision decision;
+        try
+        {
+            decision = await context.WaitForExternalEventAsync<ApprovalDecision>(
+                eventName: "ApprovalDecision",
+                timeout: TimeSpan.FromHours(72));
+        }
+        catch (TaskCanceledException)
         {
             // Timeout occurred - escalate
             await context.CallActivityAsync<bool>("EscalateExpense", report);
@@ -195,7 +191,7 @@ app.MapGet("/expenses/{reportId}", async (string reportId, DaprWorkflowClient cl
     {
         InstanceId = reportId,
         Status = state.RuntimeStatus.ToString(),
-        CustomStatus = state.SerializedCustomStatus
+        CustomStatus = state.ReadCustomStatusAs<string>()
     });
 });
 
@@ -209,7 +205,7 @@ Once the workflow is waiting, any service can raise the event via the Dapr HTTP 
 ```bash
 # Approve the expense
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/ExpenseApprovalWorkflow/expense-1234/raiseEvent/ApprovalDecision" \
+  "http://localhost:3500/v1.0/workflows/dapr/expense-1234/raiseEvent/ApprovalDecision" \
   -H "Content-Type: application/json" \
   -d '{
     "decision": "approved",
@@ -219,7 +215,7 @@ curl -X POST \
 
 # Reject the expense
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/ExpenseApprovalWorkflow/expense-1234/raiseEvent/ApprovalDecision" \
+  "http://localhost:3500/v1.0/workflows/dapr/expense-1234/raiseEvent/ApprovalDecision" \
   -H "Content-Type: application/json" \
   -d '{
     "decision": "rejected",
