@@ -14,7 +14,7 @@ The Dapr Scheduler service exposes health endpoints for liveness and readiness c
 
 ```bash
 # Check scheduler health directly
-kubectl exec -it dapr-scheduler-0 -n dapr-system -- wget -qO- http://localhost:8080/healthz
+kubectl exec -it dapr-scheduler-server-0 -n dapr-system -- wget -qO- http://localhost:8080/healthz
 ```
 
 ## Kubernetes Probe Configuration
@@ -22,7 +22,7 @@ kubectl exec -it dapr-scheduler-0 -n dapr-system -- wget -qO- http://localhost:8
 Verify the scheduler's probes are configured correctly in the StatefulSet:
 
 ```bash
-kubectl get statefulset dapr-scheduler -n dapr-system -o yaml | grep -A 15 livenessProbe
+kubectl get statefulset dapr-scheduler-server -n dapr-system -o yaml | grep -A 15 livenessProbe
 ```
 
 You can customize probe thresholds via Helm:
@@ -33,7 +33,6 @@ dapr_scheduler:
     failureThreshold: 5
     initialDelaySeconds: 10
     periodSeconds: 10
-    timeoutSeconds: 5
   readinessProbe:
     failureThreshold: 3
     initialDelaySeconds: 5
@@ -53,7 +52,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: dapr-scheduler
+      app: dapr-scheduler-server
   endpoints:
     - port: metrics
       interval: 30s
@@ -69,7 +68,7 @@ dapr_scheduler_jobs_created_total
 dapr_scheduler_jobs_triggered_total
 
 # Failed job triggers
-dapr_scheduler_jobs_failed_total
+dapr_scheduler_trigger_jobs_failed_total
 
 # etcd leader status
 etcd_server_is_leader
@@ -92,7 +91,7 @@ groups:
           summary: "Dapr Scheduler is down"
 
       - alert: DaprSchedulerHighJobFailureRate
-        expr: rate(dapr_scheduler_jobs_failed_total[5m]) > 0.1
+        expr: rate(dapr_scheduler_trigger_jobs_failed_total[5m]) > 0.1
         for: 5m
         labels:
           severity: warning
@@ -106,10 +105,10 @@ Parse scheduler logs for health indicators:
 
 ```bash
 # Watch for etcd election events
-kubectl logs -n dapr-system -l app=dapr-scheduler --follow | grep -i "leader\|election\|error"
+kubectl logs -n dapr-system -l app=dapr-scheduler-server --follow | grep -i "leader\|election\|error"
 
 # Check for connection issues
-kubectl logs -n dapr-system dapr-scheduler-0 | grep -i "connection refused\|timeout"
+kubectl logs -n dapr-system dapr-scheduler-server-0 | grep -i "connection refused\|timeout"
 ```
 
 ## Summary
