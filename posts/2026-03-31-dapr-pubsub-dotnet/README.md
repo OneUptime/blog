@@ -22,8 +22,7 @@ dotnet add package Dapr.AspNetCore
 ```csharp
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllers().AddDapr();
-builder.Services.AddDaprClient();
+builder.Services.AddControllers().AddDapr();  // Also registers DaprClient
 
 var app = builder.Build();
 app.UseCloudEvents();
@@ -97,7 +96,7 @@ public class NotificationController : ControllerBase
 ## Dead Letter Topics
 
 ```csharp
-[Topic("pubsub", "order-created", deadLetterTopic: "order-created-dlq")]
+[Topic("pubsub", "order-created", DeadLetterTopic = "order-created-dlq")]
 [HttpPost("order-created")]
 public async Task<IActionResult> OnOrderCreated(OrderCreatedEvent order)
 {
@@ -117,7 +116,8 @@ public async Task<IActionResult> OnOrderCreated(OrderCreatedEvent order)
 ## Bulk Subscribe
 
 ```csharp
-[BulkSubscribe("pubsub", "metrics", maxMessagesCount: 100, maxAwaitDurationMs: 1000)]
+[Topic("pubsub", "metrics")]
+[BulkSubscribe("metrics", 100, 1000)]
 [HttpPost("metrics")]
 public async Task<ActionResult<BulkSubscribeAppResponse>> OnMetrics(
     BulkSubscribeMessage<MetricEvent> bulkMessage)
