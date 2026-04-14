@@ -35,10 +35,10 @@ curl http://localhost:3500/v1.0/state/statestore/session-abc123
 Check whether a returned value has an expiry:
 
 ```bash
-# Response includes Dapr-TTL-Expire-Time header if TTL was set
+# Response includes metadata.ttlExpireTime header if TTL was set
 curl -v http://localhost:3500/v1.0/state/statestore/session-abc123 2>&1 | \
-  grep "Dapr-TTL"
-# Dapr-TTL-Expire-Time: 2026-03-31T12:05:00Z
+  grep -i "ttlExpireTime"
+# Metadata.ttlExpireTime: 2026-03-31T12:05:00Z
 ```
 
 ## TTL with Redis Backend
@@ -60,7 +60,7 @@ spec:
   - name: enableTLS
     value: "false"
   # No special TTL configuration needed for Redis
-  # Dapr uses SETEX or EXPIRE natively
+  # Dapr uses EXPIRE natively
 ```
 
 Verify TTL is applied in Redis:
@@ -91,36 +91,35 @@ spec:
   - name: connectionString
     value: "host=postgres user=dapr password=dapr dbname=daprstate port=5432"
   - name: cleanupInterval
-    value: "60"      # Run cleanup every 60 seconds (default: 300)
+    value: "60s"     # Run cleanup every 60 seconds (default: 1h)
   - name: tablePrefix
     value: "dapr_"
 ```
 
-The Dapr PostgreSQL state store creates a table with an `expiredate` column:
+The Dapr PostgreSQL v2 state store creates a table with an `expires_at` column:
 
 ```sql
--- Dapr creates this schema automatically
+-- Dapr creates this schema automatically (v2)
 CREATE TABLE dapr_state (
     key        TEXT NOT NULL PRIMARY KEY,
-    value      JSONB NOT NULL,
-    isbinary   BOOLEAN NOT NULL,
-    etag       VARCHAR(50) NOT NULL,
-    insertdate TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updatedate TIMESTAMP WITH TIME ZONE NULL,
-    expiredate TIMESTAMP WITH TIME ZONE NULL  -- NULL = no expiration
+    value      BYTEA NOT NULL,
+    etag       UUID NOT NULL DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NULL  -- NULL = no expiration
 );
 
-CREATE INDEX ON dapr_state (expiredate);
+CREATE INDEX ON dapr_state (expires_at);
 
--- Dapr's cleanup query (runs every cleanupInterval seconds):
--- DELETE FROM dapr_state WHERE expiredate IS NOT NULL AND expiredate < NOW();
+-- Dapr's cleanup query (runs every cleanupInterval):
+-- DELETE FROM dapr_state WHERE expires_at IS NOT NULL AND expires_at < NOW();
 ```
 
 Lower `cleanupInterval` for short-lived data (like user sessions) to reclaim space faster.
 
 ## TTL with Azure Cosmos DB Backend
 
-Azure Cosmos DB has built-in TTL support at the container level. Dapr sets the `_ts` field and uses the Cosmos DB TTL attribute:
+Azure Cosmos DB has built-in TTL support at the container level. Dapr sets the `ttl` field on each document and Cosmos DB uses it together with the system `_ts` timestamp to determine expiration:
 
 ```yaml
 # components/statestore-cosmos.yaml
@@ -270,12 +269,12 @@ public record UserSession(string UserId, string Email, DateTime LoginTime);
 Backend          TTL Mechanism              Cleanup Method         Precision
 -----------      -------------------        ------------------     ---------
 Redis            EXPIRE / EXPIREAT          Redis internal         ~1 second
-PostgreSQL       expiredate column          Background goroutine   cleanupInterval
-Azure CosmosDB   _ttl document field        Cosmos DB internal     ~1 minute
+PostgreSQL       expires_at column          Background goroutine   cleanupInterval
+Azure CosmosDB   ttl document field         Cosmos DB internal     ~1 minute
 MongoDB          TTL index on field         MongoDB background     ~60 seconds
 MySQL            expires_at column          Dapr cleanup loop      cleanupInterval
 ```
 
 ## Summary
 
-Dapr state TTL provides a unified interface for expiring state entries by including `ttlInSeconds` in the state write metadata. The sidecar maps this to the native expiration mechanism of each backend: Redis EXPIRE for Redis, an `expiredate` column with a periodic cleanup goroutine for PostgreSQL, and document-level TTL attributes for Azure Cosmos DB and MongoDB. For short-lived data like sessions and caches, set `cleanupInterval` on PostgreSQL-backed stores to a low value (30-60 seconds) to reclaim storage promptly, since row deletion only happens at each cleanup interval rather than exactly at expiry.
+Dapr state TTL provides a unified interface for expiring state entries by including `ttlInSeconds` in the state write metadata. The sidecar maps this to the native expiration mechanism of each backend: Redis EXPIRE for Redis, an `expires_at` column with a periodic cleanup goroutine for PostgreSQL, and document-level TTL attributes for Azure Cosmos DB and MongoDB. For short-lived data like sessions and caches, set `cleanupInterval` on PostgreSQL-backed stores to a low value (30-60 seconds) to reclaim storage promptly, since row deletion only happens at each cleanup interval rather than exactly at expiry.
