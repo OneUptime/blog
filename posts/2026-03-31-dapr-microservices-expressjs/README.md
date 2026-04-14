@@ -41,13 +41,13 @@ order-service/
 ```javascript
 // src/app.js
 const express = require("express");
-const { DaprServer, DaprClient } = require("@dapr/dapr");
+const { DaprClient } = require("@dapr/dapr");
 
 const app = express();
 app.use(express.json());
 
 const daprClient = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: process.env.DAPR_HTTP_PORT || "3500",
 });
 
@@ -94,10 +94,14 @@ const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
   clientOptions: {
-    daprHost: "http://localhost",
+    daprHost: "127.0.0.1",
     daprPort: "3501",
   },
 });
+
+async function processOrder(order) {
+  console.log(`Processing order ${order.id} with status ${order.status}`);
+}
 
 async function registerSubscriptions() {
   await server.pubsub.subscribe("pubsub", "order-created", async (data) => {
