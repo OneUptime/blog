@@ -32,9 +32,9 @@ spec:
     secretKeyRef:
       name: redis-secret
       key: password
-  scopes:
-  - user-service
-  - profile-api
+scopes:
+- user-service
+- profile-api
 ```
 
 Only `user-service` and `profile-api` can use the `user-profiles-state` store. Other services' sidecars will not load this component at all.
@@ -56,10 +56,10 @@ spec:
   - name: redisHost
     value: "redis:6379"
   - name: keyPrefix
-    value: "orders"
-  scopes:
-  - order-service
-  - order-history-service
+    value: "name"
+scopes:
+- order-service
+- order-history-service
 ---
 # Inventory state - only for inventory domain
 apiVersion: dapr.io/v1alpha1
@@ -73,12 +73,12 @@ spec:
   - name: redisHost
     value: "redis:6379"
   - name: keyPrefix
-    value: "inventory"
-  scopes:
-  - inventory-service
+    value: "name"
+scopes:
+- inventory-service
 ```
 
-The `keyPrefix` metadata ensures keys are automatically prefixed, providing an additional logical separation even if services share the same Redis instance.
+The `keyPrefix` metadata set to `name` ensures keys are automatically prefixed with the component name (e.g., `orders-state` or `inventory-state`), providing an additional logical separation even if services share the same Redis instance. Valid `keyPrefix` values are `appid` (default), `name`, `namespace`, and `none`.
 
 ## Verifying Scope Enforcement
 
@@ -93,7 +93,7 @@ An app not in the scope list will not see the component in its metadata. Attempt
 ```bash
 # From an unauthorized service
 curl -X GET "http://localhost:3500/v1.0/state/user-profiles-state/user123"
-# Expected: error - component not found
+# Expected: HTTP 400 error - state store not found or misconfigured
 ```
 
 ## Combining Scopes with Encryption
@@ -101,11 +101,12 @@ curl -X GET "http://localhost:3500/v1.0/state/user-profiles-state/user123"
 For state stores containing sensitive data, combine scoping with state store encryption:
 
 ```yaml
-metadata:
-- name: primaryEncryptionKey
-  secretKeyRef:
-    name: state-encryption-key
-    key: key
+spec:
+  metadata:
+  - name: primaryEncryptionKey
+    secretKeyRef:
+      name: state-encryption-key
+      key: key
 scopes:
 - payment-service
 ```
@@ -114,7 +115,7 @@ Even if the Redis instance is accessed directly, the data is encrypted with a ke
 
 ## Dynamic Scope Changes
 
-When you update the `scopes` field on a component and reapply it, the Dapr operator propagates the change. New sidecars started after the update respect the new scopes. Existing sidecars need a restart to pick up the change:
+When you update the `scopes` field on a component and reapply it, the change is stored in Kubernetes but is not automatically propagated to running sidecars by default. To enable automatic propagation without restarts, you can enable the `HotReload` feature gate (a preview feature). Otherwise, existing sidecars need a restart to pick up the change:
 
 ```bash
 kubectl apply -f updated-state-component.yaml
