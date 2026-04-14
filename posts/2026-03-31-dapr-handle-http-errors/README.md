@@ -69,7 +69,7 @@ def invoke_with_retry(app_id: str, method: str, data: dict, max_retries: int = 3
             response.raise_for_status()
             return response.json()
         if attempt < max_retries - 1:
-            wait = 2 ** attempt  # 1s, 2s, 4s
+            wait = 2 ** attempt  # 1s, 2s
             time.sleep(wait)
 
     response.raise_for_status()
@@ -112,15 +112,21 @@ spec:
 kubectl apply -f resiliency.yaml
 ```
 
-## Handling 404 - Service Not Found
+## Handling 404 and 500 - Service or Method Not Found
 
-A 404 from service invocation means the target app is not registered with Dapr:
+A 404 from service invocation is a passthrough from the target service, meaning the method or endpoint does not exist on that service. When the target app itself is not registered with Dapr, Dapr returns a 500 with error code `ERR_DIRECT_INVOKE`:
 
 ```python
-response = httpx.post(f"http://localhost:3500/v1.0/invoke/nonexistent-service/method/ping")
+response = httpx.post(f"http://localhost:3500/v1.0/invoke/target-service/method/nonexistent")
 if response.status_code == 404:
-    # Service is not registered - check app-id spelling and that sidecar is running
-    raise ServiceNotAvailableError("Target service not found in Dapr registry")
+    # The target service exists but the method was not found
+    raise MethodNotFoundError("Method does not exist on the target service")
+
+if response.status_code == 500:
+    error_body = response.json()
+    if error_body.get("errorCode") == "ERR_DIRECT_INVOKE":
+        # The target app is not registered - check app-id spelling and that sidecar is running
+        raise ServiceNotAvailableError("Target service not found in Dapr registry")
 ```
 
 ## JavaScript Example with Axios
