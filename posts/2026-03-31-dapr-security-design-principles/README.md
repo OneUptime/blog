@@ -144,7 +144,7 @@ Reference it in your pod annotation:
 
 ```yaml
 annotations:
-  dapr.io/app-token-secret: "dapr-api-token"
+  dapr.io/api-token-secret: "dapr-api-token"
 ```
 
 Your application must then include the token header:
@@ -218,7 +218,7 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: dapr-system
-  - ports:
+    ports:
     - port: 3500    # Dapr HTTP
     - port: 50001   # Dapr gRPC
 ```
