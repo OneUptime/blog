@@ -16,7 +16,7 @@ Huawei Cloud Secret Management Service (CSMS) provides centralized storage for a
 
 - Huawei Cloud account with CSMS service enabled
 - Secrets created in CSMS
-- IAM credentials with `SMN ReadOnlyAccess` policy for CSMS
+- IAM credentials with CSMS read permissions (`csms:secret:get`, `csms:secret:getVersion`, `kms:cmk:decryptDataKey`)
 - Dapr installed
 
 ## Creating Secrets in Huawei CSMS
@@ -25,16 +25,18 @@ From Huawei Cloud Console or CLI:
 
 ```bash
 # Create a secret
-hcloud csms create-secret \
+hcloud KMS CreateSecret \
   --name="dapr/db-password" \
-  --secret-string='{"password": "s3cr3t"}' \
-  --description="Database password for order service"
+  --secret_string='{"password": "s3cr3t"}' \
+  --description="Database password for order service" \
+  --cli-region="cn-north-4"
 
 # Create a binary secret
-hcloud csms create-secret \
+hcloud KMS CreateSecret \
   --name="dapr/tls-cert" \
-  --binary-value=@cert.pem \
-  --description="TLS certificate"
+  --secret_binary=@cert.pem \
+  --description="TLS certificate" \
+  --cli-region="cn-north-4"
 ```
 
 ## Configuring the Dapr Secrets Component
@@ -55,10 +57,10 @@ spec:
     secretKeyRef:
       name: huawei-credentials
       key: accessKey
-  - name: secretKey
+  - name: secretAccessKey
     secretKeyRef:
       name: huawei-credentials
-      key: secretKey
+      key: secretAccessKey
 ```
 
 ## Retrieving Secrets
@@ -114,13 +116,15 @@ CSMS supports versioned secrets for zero-downtime rotation:
 
 ```bash
 # Create a new version of the secret
-hcloud csms create-secret-version \
-  --secret-name="dapr/db-password" \
-  --secret-string='{"password": "new-s3cr3t"}'
+hcloud KMS CreateSecretVersion \
+  --secret_name="dapr/db-password" \
+  --secret_string='{"password": "new-s3cr3t"}' \
+  --cli-region="cn-north-4"
 
 # List versions
-hcloud csms list-secret-versions \
-  --secret-name="dapr/db-password"
+hcloud KMS ListSecretVersions \
+  --secret_name="dapr/db-password" \
+  --cli-region="cn-north-4"
 ```
 
 Dapr always fetches the latest active version automatically.
