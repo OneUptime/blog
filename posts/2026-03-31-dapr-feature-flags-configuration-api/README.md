@@ -16,15 +16,15 @@ Use a consistent naming convention for feature flag keys:
 
 ```bash
 # Boolean flags
-redis-cli SET myapp||ff.new-checkout-flow "false"
-redis-cli SET myapp||ff.enhanced-search "true"
-redis-cli SET myapp||ff.beta-dashboard "false"
+redis-cli SET ff.new-checkout-flow "false"
+redis-cli SET ff.enhanced-search "true"
+redis-cli SET ff.beta-dashboard "false"
 
 # Percentage rollout flags
-redis-cli SET myapp||ff.new-checkout-flow.rollout-pct "0"
+redis-cli SET ff.new-checkout-flow.rollout-pct "0"
 
 # User-segment flags
-redis-cli SET myapp||ff.beta-features.allowed-users "user123,user456,user789"
+redis-cli SET ff.beta-features.allowed-users "user123,user456,user789"
 ```
 
 ## Simple Boolean Feature Flag
@@ -89,11 +89,11 @@ import httpx
 
 def get_rollout_pct(flag_name: str) -> int:
     resp = httpx.get(
-        f"http://localhost:3500/v1.0-alpha1/configuration/appconfig",
+        f"http://localhost:3500/v1.0/configuration/appconfig",
         params={"key": f"ff.{flag_name}.rollout-pct"}
     )
-    items = resp.json().get("items", {})
-    item = items.get(f"ff.{flag_name}.rollout-pct", {})
+    data = resp.json()
+    item = data.get(f"ff.{flag_name}.rollout-pct", {})
     return int(item.get("value", "0"))
 
 def is_flag_enabled_for_user(flag_name: str, user_id: str) -> bool:
@@ -113,17 +113,17 @@ def is_flag_enabled_for_user(flag_name: str, user_id: str) -> bool:
 
 ```bash
 # Enable new checkout flow for 10% of users
-redis-cli SET myapp||ff.new-checkout-flow "true"
-redis-cli SET myapp||ff.new-checkout-flow.rollout-pct "10"
+redis-cli SET ff.new-checkout-flow "true"
+redis-cli SET ff.new-checkout-flow.rollout-pct "10"
 
 # Increase to 50%
-redis-cli SET myapp||ff.new-checkout-flow.rollout-pct "50"
+redis-cli SET ff.new-checkout-flow.rollout-pct "50"
 
 # Full rollout
-redis-cli SET myapp||ff.new-checkout-flow.rollout-pct "100"
+redis-cli SET ff.new-checkout-flow.rollout-pct "100"
 
 # Emergency kill switch
-redis-cli SET myapp||ff.new-checkout-flow "false"
+redis-cli SET ff.new-checkout-flow "false"
 ```
 
 ## Monitoring Flag Usage
