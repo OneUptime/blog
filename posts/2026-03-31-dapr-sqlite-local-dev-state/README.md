@@ -34,7 +34,7 @@ spec:
   version: v1
   metadata:
   - name: connectionString
-    value: "file:/tmp/dapr-state.db?mode=rwc&_journal=WAL&_timeout=5000"
+    value: "file:/tmp/dapr-state.db?mode=rwc"
   - name: tableName
     value: "state"
   - name: timeout
@@ -126,13 +126,13 @@ Since SQLite is a local file, you can inspect state directly:
 sqlite3 /tmp/dapr-state.db
 
 -- List all state keys
-SELECT key, etag, updatetime FROM state;
+SELECT key, etag, update_time FROM state;
 
 -- View specific state value
 SELECT key, value FROM state WHERE key = 'order-service||order:001';
 
 -- Check expiring state
-SELECT key, expiredate FROM state WHERE expiredate IS NOT NULL;
+SELECT key, expiration_time FROM state WHERE expiration_time IS NOT NULL;
 ```
 
 ## CI/CD Integration Testing
