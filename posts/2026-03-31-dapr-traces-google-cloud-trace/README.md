@@ -64,14 +64,11 @@ data:
       batch:
         timeout: 5s
       resourcedetection:
-        detectors: [gke, gce]
+        detectors: [gcp]
 
     exporters:
       googlecloud:
         project: YOUR_PROJECT_ID
-        trace:
-          client_options:
-            api_endpoint: cloudtrace.googleapis.com
 
     service:
       pipelines:
@@ -123,11 +120,8 @@ curl -X POST http://localhost:3500/v1.0/invoke/order-service/method/create \
   -H "Content-Type: application/json" \
   -d '{"orderId": "123"}'
 
-# Query traces via gcloud CLI
-gcloud trace list \
-  --project=YOUR_PROJECT_ID \
-  --start-time=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ) \
-  --limit=10
+# View traces in the GCP Console
+# Navigate to: https://console.cloud.google.com/traces/list?project=YOUR_PROJECT_ID
 ```
 
 Navigate to Cloud Trace in the GCP Console and filter by `app_id` label to view Dapr service spans.
@@ -138,7 +132,7 @@ Add service-level resource attributes that appear as labels in Cloud Trace:
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env-vars: "OTEL_RESOURCE_ATTRIBUTES=service.name=order-service,service.version=1.2.0,environment=production"
+  dapr.io/env: "OTEL_RESOURCE_ATTRIBUTES=service.name=order-service,service.version=1.2.0,environment=production"
 ```
 
 ## Summary
