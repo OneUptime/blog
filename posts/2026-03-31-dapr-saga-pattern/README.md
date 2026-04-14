@@ -26,7 +26,8 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/go-sdk/client"
+    "github.com/dapr/durabletask-go/workflow"
 )
 
 type OrderInput struct {
@@ -45,24 +46,24 @@ func OrderSaga(ctx *workflow.WorkflowContext) (any, error) {
 
     // Step 1: Reserve payment
     var paymentResult PaymentResult
-    if err := ctx.CallActivity(ReservePayment, workflow.ActivityInput(input)).Await(&paymentResult); err != nil {
+    if err := ctx.CallActivity(ReservePayment, workflow.WithActivityInput(input)).Await(&paymentResult); err != nil {
         return nil, err
     }
 
     // Step 2: Reserve inventory
     var inventoryResult InventoryResult
-    if err := ctx.CallActivity(ReserveInventory, workflow.ActivityInput(input)).Await(&inventoryResult); err != nil {
+    if err := ctx.CallActivity(ReserveInventory, workflow.WithActivityInput(input)).Await(&inventoryResult); err != nil {
         // Compensate: release payment
-        ctx.CallActivity(ReleasePayment, workflow.ActivityInput(paymentResult.PaymentID)).Await(nil)
+        ctx.CallActivity(ReleasePayment, workflow.WithActivityInput(paymentResult.PaymentID)).Await(nil)
         return nil, fmt.Errorf("inventory reservation failed: %w", err)
     }
 
     // Step 3: Create shipment
     var shipmentResult ShipmentResult
-    if err := ctx.CallActivity(CreateShipment, workflow.ActivityInput(input)).Await(&shipmentResult); err != nil {
+    if err := ctx.CallActivity(CreateShipment, workflow.WithActivityInput(input)).Await(&shipmentResult); err != nil {
         // Compensate in reverse order
-        ctx.CallActivity(ReleaseInventory, workflow.ActivityInput(inventoryResult.ReservationID)).Await(nil)
-        ctx.CallActivity(ReleasePayment, workflow.ActivityInput(paymentResult.PaymentID)).Await(nil)
+        ctx.CallActivity(ReleaseInventory, workflow.WithActivityInput(inventoryResult.ReservationID)).Await(nil)
+        ctx.CallActivity(ReleasePayment, workflow.WithActivityInput(paymentResult.PaymentID)).Await(nil)
         return nil, fmt.Errorf("shipment creation failed: %w", err)
     }
 
@@ -102,24 +103,26 @@ func ReleasePayment(ctx workflow.ActivityContext) (any, error) {
 
 ```go
 func main() {
-    w, err := workflow.NewWorker()
+    r := workflow.NewRegistry()
+
+    r.AddWorkflow(OrderSaga)
+    r.AddActivity(ReservePayment)
+    r.AddActivity(ReserveInventory)
+    r.AddActivity(CreateShipment)
+    r.AddActivity(ReleasePayment)
+    r.AddActivity(ReleaseInventory)
+
+    wfClient, err := client.NewWorkflowClient()
     if err != nil {
         panic(err)
     }
 
-    w.RegisterWorkflow(OrderSaga)
-    w.RegisterActivity(ReservePayment)
-    w.RegisterActivity(ReserveInventory)
-    w.RegisterActivity(CreateShipment)
-    w.RegisterActivity(ReleasePayment)
-    w.RegisterActivity(ReleaseInventory)
-
-    if err := w.Start(); err != nil {
+    ctx := context.Background()
+    if err := wfClient.StartWorker(ctx, r); err != nil {
         panic(err)
     }
 
-    wfClient, _ := workflow.NewClient()
-    instanceID, _ := wfClient.ScheduleNewWorkflow(context.Background(), "OrderSaga",
+    instanceID, _ := wfClient.ScheduleWorkflow(ctx, "OrderSaga",
         workflow.WithInput(OrderInput{
             OrderID:    "ord-001",
             CustomerID: "cust-123",
@@ -135,7 +138,7 @@ func main() {
 ## Checking Saga Status
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/OrderSaga/instances/INSTANCE_ID
+curl http://localhost:3500/v1.0/workflows/dapr/INSTANCE_ID
 ```
 
 ## Summary
