@@ -51,11 +51,14 @@ Create a `.vscode/launch.json` configuration:
     {
       "name": "Attach to Dapr Go Service",
       "type": "go",
+      "debugAdapter": "dlv-dap",
       "request": "attach",
       "mode": "remote",
-      "remotePath": "/app",
       "port": 2345,
       "host": "127.0.0.1",
+      "substitutePath": [
+        { "from": "${workspaceFolder}", "to": "/app" }
+      ],
       "showLog": true,
       "trace": "verbose"
     }
@@ -130,7 +133,7 @@ VS Code configuration:
 ```json
 {
   "name": "Attach to Dapr Python Service",
-  "type": "python",
+  "type": "debugpy",
   "request": "attach",
   "connect": {
     "host": "localhost",
