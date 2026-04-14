@@ -54,8 +54,6 @@ spec:
   containerNames:
     - daprd
   duration: "10m"
-  scheduler:
-    cron: "@every 3m"
 ```
 
 ```bash
