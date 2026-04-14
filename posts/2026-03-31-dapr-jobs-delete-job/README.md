@@ -35,7 +35,7 @@ curl -X DELETE http://localhost:3500/v1.0-alpha1/jobs/nightly-report
 curl -v -X DELETE http://localhost:3500/v1.0-alpha1/jobs/my-scheduled-job
 ```
 
-A successful deletion returns HTTP `204 No Content`. A job that does not exist returns `404`.
+A successful deletion returns HTTP `204 No Content`. If the job does not exist, the API returns a `500` error.
 
 ## Deleting a Job via Python SDK
 
@@ -47,11 +47,11 @@ def delete_job(name: str) -> bool:
     """Delete a scheduled job. Returns True if deleted, False if not found."""
     with DaprClient() as d:
         try:
-            d.delete_job(name=name)
+            d.delete_job_alpha1(name)
             print(f"Job deleted: {name}")
             return True
         except DaprInternalError as e:
-            if "not found" in str(e).lower() or "404" in str(e):
+            if "not found" in str(e).lower():
                 print(f"Job not found (already deleted or never existed): {name}")
                 return False
             raise
@@ -135,7 +135,7 @@ def delete_user_account(user_id: str):
     with DaprClient() as d:
         for row in user_jobs:
             try:
-                d.delete_job(name=row["job_name"])
+                d.delete_job_alpha1(row["job_name"])
                 print(f"Deleted job: {row['job_name']}")
             except Exception as e:
                 print(f"Could not delete job {row['job_name']}: {e}")
@@ -147,27 +147,23 @@ def delete_user_account(user_id: str):
 
 ### Replace a Recurring Job (Update Schedule)
 
-Dapr Jobs API does not have an update operation. To change a job's schedule, delete and recreate it:
+Dapr Jobs API does not have a dedicated update endpoint. To change a job's schedule, recreate it with the `overwrite` flag set to `True`:
 
 ```python
-def update_job_schedule(name: str, new_schedule: str, data: dict):
-    """Update a recurring job's schedule by deleting and recreating it."""
-    # Delete existing job (ignore if not found)
-    with DaprClient() as d:
-        try:
-            d.delete_job(name=name)
-        except Exception:
-            pass
+import json
+from dapr.clients import DaprClient
+from dapr.clients.grpc._helpers import Job
+from google.protobuf.any_pb2 import Any as GrpcAny
 
-        # Recreate with new schedule
-        d.schedule_job(
-            name=name,
-            schedule=new_schedule,
-            data={
-                "@type": "type.googleapis.com/google.protobuf.StringValue",
-                "value": base64.b64encode(json.dumps(data).encode()).decode()
-            }
-        )
+def update_job_schedule(name: str, new_schedule: str, data: dict):
+    """Update a recurring job's schedule by recreating it with overwrite."""
+    job_data = GrpcAny()
+    job_data.value = json.dumps(data).encode("utf-8")
+
+    job = Job(name=name, schedule=new_schedule, data=job_data)
+
+    with DaprClient() as d:
+        d.schedule_job_alpha1(job=job, overwrite=True)
     print(f"Job '{name}' updated to schedule: {new_schedule}")
 ```
 
@@ -188,7 +184,7 @@ def cleanup_jobs_on_shutdown():
     with DaprClient() as d:
         for job_name in APPLICATION_JOBS:
             try:
-                d.delete_job(name=job_name)
+                d.delete_job_alpha1(job_name)
                 print(f"Deleted job on shutdown: {job_name}")
             except Exception as e:
                 print(f"Could not delete job {job_name}: {e}")
@@ -214,4 +210,4 @@ def safe_delete_job(name: str):
 
 ## Summary
 
-Deleting Dapr jobs is straightforward with the DELETE API or SDK methods. Key patterns include canceling one-time jobs before they fire (storing job names at creation), cleaning up all user-associated jobs on account deletion, and replacing recurring jobs by deleting and recreating them with the new schedule. Always handle 404 errors gracefully since jobs may have already executed or been deleted.
+Deleting Dapr jobs is straightforward with the DELETE API or SDK methods. Key patterns include canceling one-time jobs before they fire (storing job names at creation), cleaning up all user-associated jobs on account deletion, and replacing recurring jobs by deleting and recreating them with the new schedule. Always handle errors gracefully since jobs may have already executed or been deleted.
