@@ -188,7 +188,7 @@ if __name__ == '__main__':
 Define routing rules in a Subscription manifest for Kubernetes:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-routing
