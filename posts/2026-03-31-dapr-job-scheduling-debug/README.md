@@ -28,8 +28,7 @@ curl -v -X POST http://localhost:3500/v1.0-alpha1/jobs/debug-job \
   -d '{
     "schedule": "@every 5m",
     "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "test"
+      "message": "test"
     }
   }'
 
@@ -43,13 +42,14 @@ Dapr supports both cron expressions and duration formats. Invalid expressions ca
 
 ```bash
 # Valid formats:
-# "@every 5m"         - every 5 minutes
-# "0 */2 * * *"      - every 2 hours (cron)
-# "@daily"            - once per day
-# "2026-03-31T15:00:00Z"  - one-time at specific time
+# "@every 5m"              - every 5 minutes
+# "0 0 */2 * * *"         - every 2 hours (6-field cron: seconds minutes hours day month weekday)
+# "@daily"                 - once per day
+# Use "dueTime" field with "2026-03-31T15:00:00Z" for one-time scheduling
 
+# Dapr uses 6-field cron (with seconds): seconds minutes hours day-of-month month day-of-week
 # Test cron expression validity online or with:
-python3 -c "from croniter import croniter; print(croniter.is_valid('0 */2 * * *'))"
+python3 -c "from croniter import croniter; print(croniter.is_valid('0 */2 * * * *'))"
 ```
 
 ## Checking Job Status via API
@@ -59,7 +59,7 @@ python3 -c "from croniter import croniter; print(croniter.is_valid('0 */2 * * *'
 curl http://localhost:3500/v1.0-alpha1/jobs/my-job | python3 -m json.tool
 ```
 
-Response includes schedule, last trigger time, and data payload.
+Response includes schedule, repeats, and data payload.
 
 ## Tracing Job Trigger Events
 
@@ -102,7 +102,7 @@ Jobs may trigger late if there is significant clock skew between the Scheduler a
 
 ```bash
 # Check time on scheduler pods
-kubectl exec -n dapr-system dapr-scheduler-0 -- date
+kubectl exec -n dapr-system dapr-scheduler-server-0 -- date
 
 # Check time on app pod
 kubectl exec -n default <app-pod> -- date
