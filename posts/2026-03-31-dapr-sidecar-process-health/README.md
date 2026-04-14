@@ -22,7 +22,7 @@ curl -v http://localhost:3500/v1.0/healthz
 This endpoint checks:
 - daprd process is running
 - All components initialized successfully
-- App health check passed (if configured)
+- App channel is initialized (if configured)
 
 ## Kubernetes Liveness and Readiness Probes
 
@@ -38,7 +38,7 @@ You can override the default probe settings with annotations:
 annotations:
   dapr.io/sidecar-liveness-probe-delay-seconds: "3"
   dapr.io/sidecar-liveness-probe-period-seconds: "6"
-  dapr.io/sidecar-liveness-probe-failure-threshold: "3"
+  dapr.io/sidecar-liveness-probe-threshold: "3"
   dapr.io/sidecar-readiness-probe-delay-seconds: "3"
   dapr.io/sidecar-readiness-probe-period-seconds: "6"
 ```
@@ -56,16 +56,13 @@ annotations:
 Key health-related metrics to monitor:
 
 ```text
-# Sidecar uptime
-dapr_runtime_init_total
-
 # Component initialization status
-dapr_component_init_total{success="true"}
-dapr_component_init_total{success="false"}
+dapr_runtime_component_init_total
+dapr_runtime_component_init_fail_total
 
 # gRPC and HTTP server errors
-dapr_grpc_server_completed_rpcs{grpc_server_status!="OK"}
-dapr_http_server_request_count{http_status_code=~"5.."}
+dapr_grpc_io_server_completed_rpcs{grpc_server_status!="OK"}
+dapr_http_server_request_count{status=~"5.."}
 ```
 
 ## AlertManager Rules for Sidecar Health
@@ -77,7 +74,7 @@ groups:
   - name: dapr-sidecar
     rules:
       - alert: DaprSidecarComponentInitFailed
-        expr: dapr_component_init_total{success="false"} > 0
+        expr: dapr_runtime_component_init_fail_total > 0
         for: 1m
         labels:
           severity: critical
@@ -85,7 +82,7 @@ groups:
           summary: "Dapr component failed to initialize on {{ $labels.app_id }}"
 
       - alert: DaprSidecarHighErrorRate
-        expr: rate(dapr_http_server_request_count{http_status_code=~"5.."}[5m]) > 0.1
+        expr: rate(dapr_http_server_request_count{status=~"5.."}[5m]) > 0.1
         for: 2m
         labels:
           severity: warning
@@ -110,7 +107,7 @@ count_over_time({container="daprd"} |= "error" [5m])
 The metadata API returns detailed sidecar status including loaded components:
 
 ```bash
-curl http://localhost:3500/v1.0/metadata | jq '{components: .components, activeActorsCount: .activeActorsCount}'
+curl http://localhost:3500/v1.0/metadata | jq '{components: .components, actors: .actors}'
 ```
 
 If a component is missing from the list, it failed to load.
