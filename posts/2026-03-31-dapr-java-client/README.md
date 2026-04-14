@@ -49,6 +49,8 @@ List<State<User>> states = client.getBulkState("statestore", keys, User.class).b
 
 ## Service Invocation
 
+> **Note:** The `invokeMethod` API is deprecated in the current Dapr Java SDK. The recommended approach is to use language-native HTTP or gRPC clients for service invocation instead.
+
 ```java
 import io.dapr.client.domain.HttpExtension;
 
@@ -73,8 +75,6 @@ byte[] result = client.invokeMethod(
 ## Publishing Events
 
 ```java
-import io.dapr.client.domain.CloudEvent;
-
 // Publish a simple event
 client.publishEvent("pubsub", "order-placed",
     new OrderPlaced("ord-1", 99.99)).block();
