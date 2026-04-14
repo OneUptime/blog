@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, State Management, Redis, Microservice, Key-Value Store
 
-Description: Configure Dapr state management with Redis as the backing store and learn how to save, get, delete, and query state using the Dapr HTTP and SDK APIs.
+Description: Configure Dapr state management with Redis as the backing store and learn how to save, get, and delete state using the Dapr HTTP and SDK APIs.
 
 ---
 
@@ -74,7 +74,7 @@ spec:
     value: "true"
   - name: enableTLS
     value: "false"
-  - name: db
+  - name: redisDB
     value: "0"
   - name: maxRetries
     value: "3"
@@ -232,7 +232,7 @@ await client.state.delete("statestore", "user:alice");
 
 Dapr prefixes all state keys with the app ID to avoid collisions. The key format in Redis is:
 
-```json
+```text
 {app-id}||{key}
 ```
 
