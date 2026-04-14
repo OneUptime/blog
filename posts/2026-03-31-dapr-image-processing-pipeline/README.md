@@ -69,13 +69,13 @@ async def upload_image(file: UploadFile = File(...), user_id: str = ""):
             "uploadedBy": user_id
         }))
 
-        client.publish_event("pubsub", "image-uploaded", {
+        client.publish_event("pubsub", "image-uploaded", json.dumps({
             "imageId": image_id,
             "filename": file.filename,
             "contentType": file.content_type,
             "width": width, "height": height,
             "sizeBytes": len(content)
-        })
+        }), data_content_type='application/json')
 
     return {"imageId": image_id, "status": "processing",
             "dimensions": f"{width}x{height}"}
@@ -96,21 +96,21 @@ import (
     "image"
     "image/jpeg"
     _ "image/png"
-    "image/draw"
 
     dapr "github.com/dapr/go-sdk/client"
+    common "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/http"
     "golang.org/x/image/draw"
 )
 
-var sizVariants = []struct{ Name string; Width, Height int }{
+var sizeVariants = []struct{ Name string; Width, Height int }{
     {"thumbnail", 150, 150},
     {"small", 320, 240},
     {"medium", 800, 600},
     {"large", 1920, 1080},
 }
 
-func handleImageUploaded(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handleImageUploaded(ctx context.Context, e *common.TopicEvent) (bool, error) {
     var event map[string]interface{}
     json.Unmarshal(e.RawData, &event)
     imageID := event["imageId"].(string)
@@ -171,9 +171,10 @@ server.pubsub.subscribe('pubsub', 'image-resized', async (data) => {
   const optimizedVariants = [];
 
   for (const variant of variants) {
-    const [state] = await client.state.get(
+    const stateRaw = await client.state.get(
       'statestore', `image-${imageId}-${variant}`
     );
+    const state = JSON.parse(stateRaw);
     const imgBuffer = Buffer.from(state.data, 'base64');
 
     // Convert to WebP for best compression
