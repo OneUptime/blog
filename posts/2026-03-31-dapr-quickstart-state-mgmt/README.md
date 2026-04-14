@@ -144,12 +144,6 @@ transaction = {
         }
     ]
 }
-requests.post(f"{STATESTORE_URL.replace('/state/', '/state/')}/transaction", json=transaction)
-```
-
-Wait - the transaction endpoint:
-
-```python
 requests.post(
     f"http://localhost:{DAPR_HTTP_PORT}/v1.0/state/statestore/transaction",
     json=transaction
