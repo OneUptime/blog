@@ -49,8 +49,6 @@ spec:
   metadata:
     - name: model
       value: "llama3.2"
-    - name: endpoint
-      value: "http://localhost:11434"
 ```
 
 ## Unit Testing with the Echo Component
@@ -99,7 +97,7 @@ Run tests with the echo component:
 dapr run \
   --app-id test-app \
   --app-port 6001 \
-  --components-path ./components/test \
+  --resources-path ./components/test \
   -- npm test
 ```
 
@@ -132,7 +130,7 @@ def test_real_llm_response_is_coherent():
     response = requests.post(
         "http://localhost:3500/v1.0-alpha1/conversation/llm-provider/converse",
         json={
-            "inputs": [{"message": "What is 2 + 2?", "role": "user"}],
+            "inputs": [{"content": "What is 2 + 2?", "role": "user"}],
             "parameters": {"temperature": 0.0}
         }
     )
@@ -149,7 +147,7 @@ def test_response_contains_json_when_requested():
         "http://localhost:3500/v1.0-alpha1/conversation/llm-provider/converse",
         json={
             "inputs": [{
-                "message": 'Return only valid JSON: {"status": "ok"}',
+                "content": 'Return only valid JSON: {"status": "ok"}',
                 "role": "user"
             }],
             "parameters": {"temperature": 0.0}
@@ -178,7 +176,7 @@ def test_summary_format():
         "http://localhost:3500/v1.0-alpha1/conversation/llm-provider/converse",
         json={
             "inputs": [{
-                "message": "Summarize this as exactly 3 bullet points: Kubernetes is a container orchestration system. It automates deployment. It manages scaling.",
+                "content": "Summarize this as exactly 3 bullet points: Kubernetes is a container orchestration system. It automates deployment. It manages scaling.",
                 "role": "user"
             }]
         }
@@ -200,14 +198,14 @@ test-unit:
 	dapr run \
 		--app-id test-app \
 		--app-port 6001 \
-		--components-path ./components/test \
+		--resources-path ./components/test \
 		-- npm test
 
 test-integration:
 	dapr run \
 		--app-id test-app \
 		--app-port 6001 \
-		--components-path ./components/test/ollama \
+		--resources-path ./components/test/ollama \
 		-- pytest test/test_integration.py -v
 
 test: test-unit test-integration
