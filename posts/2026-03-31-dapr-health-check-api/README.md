@@ -42,19 +42,17 @@ HTTP/1.1 500 Internal Server Error
 
 ## Outbound Health Check
 
-The outbound health check validates not just sidecar health but also that configured components are reachable:
+The outbound health check validates not just sidecar health but also that configured components have initialized successfully:
 
 ```bash
 curl -i http://localhost:3500/v1.0/healthz/outbound
 ```
 
 This checks:
-- State store connectivity (can Dapr connect to Redis/PostgreSQL?)
-- Pub/sub broker connectivity
-- Secret store availability
-- Binding connections
+- All component initialization status
+- Dapr HTTP port availability
 
-If any component is unreachable, the endpoint returns `500` with details.
+If any component has not initialized, the endpoint returns `500`.
 
 ## Metadata API for Component Health
 
@@ -69,10 +67,10 @@ Example response:
 ```json
 {
   "id": "order-service",
-  "activeActorsCount": [
+  "actors": [
     {"type": "OrderActor", "count": 3}
   ],
-  "registeredComponents": [
+  "components": [
     {
       "name": "redis-state",
       "type": "state.redis",
@@ -83,10 +81,10 @@ Example response:
       "name": "kafka-pubsub",
       "type": "pubsub.kafka",
       "version": "v1",
-      "capabilities": ["SUBSCRIBE_WILDCARDS"]
+      "capabilities": []
     }
   ],
-  "extendedMetadata": {
+  "extended": {
     "daprRuntimeVersion": "1.12.0"
   }
 }
