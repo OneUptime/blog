@@ -86,16 +86,18 @@ spec:
   metadata:
   - name: brokers
     value: "kafka.tenant-a.svc.cluster.local:9092"
+  - name: authType
+    value: "none"
   - name: consumerGroup
     value: "tenant-a-consumers"
 ```
 
 ## Option 4 - Subscription Filters
 
-Apply content-based filters to subscriptions to only process messages for the correct tenant:
+Use routing rules in subscriptions to route messages based on tenant identity:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: filtered-orders-sub
@@ -103,11 +105,11 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
-  bulkSubscribe:
-    enabled: false
-  filter: |
-    event.data.tenantId == "tenant-a"
+  routes:
+    rules:
+    - match: event.data.tenantId == "tenant-a"
+      path: /orders/process
+    default: /orders/discard
 ```
 
 ## Validating Isolation
@@ -127,4 +129,4 @@ kubectl logs tenant-b-pod -c app | grep "orderId: 123"
 
 ## Summary
 
-Dapr pub/sub tenant isolation is achieved through component scoping to restrict access by app ID, topic prefixing to logically separate messages on shared brokers, separate broker instances for complete physical isolation, and subscription filters for content-based routing. The appropriate level depends on your compliance requirements and tolerance for shared infrastructure.
+Dapr pub/sub tenant isolation is achieved through component scoping to restrict access by app ID, topic prefixing to logically separate messages on shared brokers, separate broker instances for complete physical isolation, and routing rules for content-based routing. The appropriate level depends on your compliance requirements and tolerance for shared infrastructure.
