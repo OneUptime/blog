@@ -36,7 +36,6 @@ pip3 install dapr cryptography
 ```python
 # generate-key.py
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
 import json, base64
 
 # Generate RSA key pair
@@ -45,9 +44,9 @@ private_key = rsa.generate_private_key(
     key_size=2048
 )
 
-# Export as JWKS
+# Export public key numbers
 pub = private_key.public_key()
-pub_numbers = pub.public_key().public_numbers() if hasattr(pub, 'public_key') else pub.public_numbers()
+pub_numbers = pub.public_numbers()
 
 print("Key generated. For production, store in Azure Key Vault or AWS KMS.")
 print("For local testing, use the dapr local.jwks component.")
@@ -65,7 +64,7 @@ cat > components/keys.json << 'EOF'
       "kty": "oct",
       "kid": "mykey",
       "k": "qmLDb03LyHF4tqbQwxDt3ArDfPHNbwp7b-EW9XCFBSA",
-      "alg": "A256CBC"
+      "alg": "A256KW"
     }
   ]
 }
@@ -92,7 +91,7 @@ spec:
             "kty": "oct",
             "kid": "mykey",
             "k": "qmLDb03LyHF4tqbQwxDt3ArDfPHNbwp7b-EW9XCFBSA",
-            "alg": "A256CBC"
+            "alg": "A256KW"
           }
         ]
       }
@@ -105,37 +104,31 @@ spec:
 import requests
 import base64
 import os
-import json
 
 DAPR_HTTP_PORT = os.getenv('DAPR_HTTP_PORT', '3500')
 CRYPTO_STORE = 'local-crypto'
 
 def encrypt_value(plaintext: str, key_name: str) -> str:
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/crypto/{CRYPTO_STORE}/encrypt"
-    payload = {
-        "plaintext": base64.b64encode(plaintext.encode()).decode(),
-        "options": {
-            "keyName": key_name,
-            "keyWrapAlgorithm": "A256KW"
-        }
+    headers = {
+        "dapr-key-name": key_name,
+        "dapr-key-wrap-algorithm": "A256KW",
+        "Content-Type": "application/octet-stream"
     }
-    response = requests.put(url, json=payload)
+    response = requests.put(url, data=plaintext.encode(), headers=headers)
     if response.status_code == 200:
-        return response.json().get('ciphertext', '')
+        return base64.b64encode(response.content).decode()
     raise Exception(f"Encryption failed: {response.status_code} {response.text}")
 
 def decrypt_value(ciphertext: str, key_name: str) -> str:
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/crypto/{CRYPTO_STORE}/decrypt"
-    payload = {
-        "ciphertext": ciphertext,
-        "options": {
-            "keyName": key_name
-        }
+    headers = {
+        "dapr-key-name": key_name,
+        "Content-Type": "application/octet-stream"
     }
-    response = requests.put(url, json=payload)
+    response = requests.put(url, data=base64.b64decode(ciphertext), headers=headers)
     if response.status_code == 200:
-        plaintext_b64 = response.json().get('plaintext', '')
-        return base64.b64decode(plaintext_b64).decode()
+        return response.content.decode()
     raise Exception(f"Decryption failed: {response.status_code} {response.text}")
 
 # Test data
@@ -198,8 +191,9 @@ auth:
 ```
 
 ```python
-# Same application code, different store name
-ciphertext = encrypt_value("my-secret-data", "my-key-name", store="azure-keyvault-crypto")
+# Same application code, just change the store name
+CRYPTO_STORE = 'azure-keyvault-crypto'
+ciphertext = encrypt_value("my-secret-data", "my-key-name")
 ```
 
 ## Streaming Encryption for Large Files
@@ -207,9 +201,8 @@ ciphertext = encrypt_value("my-secret-data", "my-key-name", store="azure-keyvaul
 For large files, use the streaming API:
 
 ```python
-DAPR_GRPC_PORT = os.getenv('DAPR_GRPC_PORT', '50001')
-
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
 with DaprClient() as client:
     # Encrypt a file
@@ -218,11 +211,11 @@ with DaprClient() as client:
 
     encrypted = client.encrypt(
         data=plaintext,
-        options={
-            "componentName": "local-crypto",
-            "keyName": "mykey",
-            "keyWrapAlgorithm": "A256KW"
-        }
+        options=EncryptOptions(
+            component_name="local-crypto",
+            key_name="mykey",
+            key_wrap_algorithm="A256KW",
+        ),
     )
 
     with open("encrypted-report.bin", "wb") as f:
