@@ -84,8 +84,6 @@ spec:
     value: "namesrv:9876"
   - name: groupName
     value: "dapr-consumer-group"
-  - name: accessProto
-    value: "tcp"
   - name: retries
     value: "3"
   - name: consumerModel
@@ -161,8 +159,6 @@ For strictly ordered message processing, enable `consumeOrderly`:
 ```yaml
   - name: consumeOrderly
     value: "true"
-  - name: consumeConcurrently
-    value: "false"
 ```
 
 ## Summary
