@@ -17,7 +17,6 @@ Workflow testing has two valuable levels:
 ## Workflow Under Test
 
 ```csharp
-[DaprWorkflow]
 public class OrderFulfillmentWorkflow : Workflow<OrderInput, FulfillmentResult>
 {
     public override async Task<FulfillmentResult> RunAsync(
@@ -150,26 +149,26 @@ public async Task Workflow_CompletesOnHappyPath()
 {
     var instanceId = $"test-workflow-{Guid.NewGuid()}";
 
-    await _daprClient.StartWorkflowAsync(
-        workflowComponent: "dapr",
-        workflowName: nameof(OrderFulfillmentWorkflow),
-        instanceId: instanceId,
+    await _workflowClient.ScheduleNewWorkflowAsync(
+        nameof(OrderFulfillmentWorkflow),
+        instanceId,
         input: new OrderInput { CustomerId = "cust-1", PaymentToken = "tok_ok" });
 
     // Poll until complete
     WorkflowState? state = null;
     for (int i = 0; i < 20; i++)
     {
-        state = await _daprClient.GetWorkflowAsync(instanceId, "dapr",
-            nameof(OrderFulfillmentWorkflow));
+        state = await _workflowClient.GetWorkflowStateAsync(
+            instanceId, getInputsAndOutputs: true);
 
-        if (state?.RuntimeStatus is "COMPLETED" or "FAILED")
+        if (state?.RuntimeStatus is
+            WorkflowRuntimeStatus.Completed or WorkflowRuntimeStatus.Failed)
             break;
 
         await Task.Delay(500);
     }
 
-    Assert.Equal("COMPLETED", state?.RuntimeStatus);
+    Assert.Equal(WorkflowRuntimeStatus.Completed, state?.RuntimeStatus);
     var result = state!.ReadOutputAs<FulfillmentResult>();
     Assert.Equal("Completed", result.Status);
 }
