@@ -47,8 +47,6 @@ The bridge subscribes to Dapr events and forwards them to WebSocket clients:
 ```javascript
 const express = require('express');
 const WebSocket = require('ws');
-const { DaprServer } = require('@dapr/dapr');
-
 const app = express();
 app.use(express.json());
 
@@ -81,14 +79,15 @@ app.listen(3000);
 ## Configure the Subscription
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: dashboard-metrics-sub
 spec:
   pubsubname: pubsub
   topic: dashboard-metrics
-  route: /dashboard-metrics
+  routes:
+    default: /dashboard-metrics
 ```
 
 ## Frontend JavaScript Client
@@ -118,7 +117,7 @@ ws.onclose = () => {
 Use Dapr's topic routing to fan out different event types:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: dashboard-multi-sub
@@ -127,9 +126,9 @@ spec:
   topic: dashboard-events
   routes:
     rules:
-    - match: event.type == "metrics"
+    - match: event.data.type == "metrics"
       path: /metrics
-    - match: event.type == "alerts"
+    - match: event.data.type == "alerts"
       path: /alerts
     default: /events
 ```
