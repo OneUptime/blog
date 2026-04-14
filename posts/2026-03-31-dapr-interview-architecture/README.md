@@ -25,7 +25,8 @@ A strong interview answer covers three layers: the sidecar process, building blo
                          - Placement Service
                          - Sentry (mTLS)
                          - Operator (Kubernetes)
-                         - Dashboard
+                         - Injector (Sidecar Injection)
+                         - Scheduler (Jobs/Reminders)
 ```
 
 ## Building Blocks - Be Ready to List All
@@ -38,9 +39,11 @@ A strong interview answer covers three layers: the sidecar process, building blo
 5. Actors                 - virtual actor model
 6. Secrets Management     - secret store abstraction
 7. Configuration          - dynamic app configuration
-8. Distributed Lock       - distributed mutex
+8. Distributed Lock       - distributed mutex (alpha)
 9. Workflow               - durable, long-running processes
-10. Cryptography          - key management and encryption
+10. Cryptography          - key management and encryption (alpha)
+11. Jobs                  - scheduled and periodic tasks (alpha)
+12. Conversations         - LLM interaction abstraction (alpha)
 ```
 
 ## Control Plane Components
@@ -50,13 +53,13 @@ Placement Service    - tracks actor distribution across pods
 Sentry               - certificate authority for mTLS
 Operator             - manages component and configuration CRDs
 Injector             - injects daprd sidecar into pods
-Dashboard            - observability UI
+Scheduler            - manages jobs, actor reminders, and workflow reminders
 ```
 
 ## How the Sidecar Gets Injected
 
 ```yaml
-# You annotate your pod, Dapr Operator injects the sidecar
+# You annotate your pod, Dapr Sidecar Injector injects the sidecar
 metadata:
   annotations:
     dapr.io/enabled: "true"
@@ -65,7 +68,7 @@ metadata:
 ```
 
 ```bash
-# The operator webhook intercepts pod creation and adds:
+# The injector webhook intercepts pod creation and adds:
 # 1. daprd container
 # 2. Init container (dapr-init)
 # 3. Volume mounts for config and certs
@@ -78,7 +81,7 @@ App calls: GET http://localhost:3500/v1.0/state/statestore/key123
 
 1. App -> Dapr sidecar HTTP API (localhost:3500)
 2. Sidecar reads component config: statestore = state.redis
-3. Sidecar -> Redis: GET dapr||orderservice||key123
+3. Sidecar -> Redis: GET orderservice||key123
 4. Redis returns value
 5. Sidecar returns JSON to app
 ```
@@ -101,8 +104,8 @@ App calls: GET http://localhost:3500/v1.0/state/statestore/key123
 "The application loses access to Dapr building blocks. The application should implement health checks for the sidecar and return 503 during downtime. Kubernetes restarts the sidecar container quickly."
 
 **Q: Can Dapr run outside Kubernetes?**
-"Yes - `dapr init` sets up a self-hosted mode using Docker Compose for local development. The same application code runs unchanged in both environments."
+"Yes - `dapr init` sets up a self-hosted mode using Docker containers for local development. The same application code runs unchanged in both environments."
 
 ## Summary
 
-Explaining Dapr architecture in an interview requires covering the sidecar model (app talks to localhost sidecar, not directly to infrastructure), the 10 building blocks (state, pub/sub, service invocation, actors, workflow, etc.), the component system (infrastructure configured via YAML CRDs), and the Kubernetes control plane components. Drawing the architecture diagram while explaining it demonstrates system-level thinking.
+Explaining Dapr architecture in an interview requires covering the sidecar model (app talks to localhost sidecar, not directly to infrastructure), the 12 building blocks (state, pub/sub, service invocation, actors, workflow, jobs, etc.), the component system (infrastructure configured via YAML CRDs), and the Kubernetes control plane components. Drawing the architecture diagram while explaining it demonstrates system-level thinking.
