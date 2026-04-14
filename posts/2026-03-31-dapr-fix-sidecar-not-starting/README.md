@@ -67,14 +67,16 @@ kubectl describe secret redis-secret
 ## Step 5: Check Port Conflicts
 
 ```bash
-# Dapr uses ports 3500 (HTTP), 50001 (gRPC), 9090 (metrics), 3501 (internal)
+# Dapr uses ports 3500 (HTTP), 50001 (gRPC), 9090 (metrics), 50002 (internal gRPC)
 # If your app uses any of these, change them
 
 # Check what ports the app container binds
 kubectl exec myapp-xxxxxxxxx -c myapp -- ss -tlnp
 
-# Change Dapr's HTTP port if 3500 is taken
-# Annotation: dapr.io/http-port: "3600"
+# Change Dapr's gRPC port if 50001 is taken
+# Annotation: dapr.io/grpc-port: "50002"
+# Note: The HTTP port (3500) cannot be changed via annotation in Kubernetes.
+# If your app conflicts with port 3500, change your app's port instead.
 ```
 
 ## Step 6: Check Network Policies
@@ -84,7 +86,7 @@ kubectl exec myapp-xxxxxxxxx -c myapp -- ss -tlnp
 kubectl get networkpolicies -n default
 kubectl get networkpolicies -n dapr-system
 
-# Sidecar needs to reach dapr-operator on port 80 and dapr-sentry on port 50001
+# Sidecar needs to reach dapr-api (operator) on port 80 and dapr-sentry on port 443
 kubectl exec myapp-xxxxxxxxx -c daprd -- \
   nc -zv dapr-api.dapr-system.svc.cluster.local 80
 ```
