@@ -103,7 +103,7 @@ dapr run --app-id my-app \
          -- node server.js
 ```
 
-Valid levels are `debug`, `info`, `warning`, and `error`.
+Valid levels are `debug`, `info`, `warn`, `error`, `fatal`, and `panic`.
 
 ## Summary
 
