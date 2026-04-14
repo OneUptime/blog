@@ -24,6 +24,8 @@ This installs:
 - The Dapr sidecar binary
 - A Redis container for state and pub/sub
 - A Zipkin container for distributed tracing
+- A placement service container for actor support
+- A scheduler service container for job scheduling
 - Default component YAML files in `~/.dapr/components/`
 
 ## Specifying a Dapr Version
@@ -42,7 +44,7 @@ Use slim mode when Docker is not available, such as in CI environments:
 dapr init --slim
 ```
 
-Slim mode installs the sidecar binaries without spinning up Redis or Zipkin containers. You must supply your own component configurations.
+Slim mode installs the sidecar binaries without spinning up any Docker containers (no Redis, Zipkin, placement, or scheduler). Default configuration files are not created, so you must supply your own component configurations.
 
 ## Kubernetes Installation
 
@@ -62,9 +64,9 @@ Expected output:
 
 ```text
 NAME                                     READY   STATUS    RESTARTS
-dapr-dashboard-5d5b6ccf-abc12            1/1     Running   0
 dapr-operator-7d7d8d6c9b-xyz34           1/1     Running   0
 dapr-placement-server-0                  1/1     Running   0
+dapr-scheduler-server-0                  1/1     Running   0
 dapr-sentry-6f5b9c7d8-def56             1/1     Running   0
 dapr-sidecar-injector-8b9c7d5f6-ghi78   1/1     Running   0
 ```
