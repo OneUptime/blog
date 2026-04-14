@@ -24,7 +24,6 @@ metadata:
 spec:
   metric:
     enabled: true
-    port: 9090
 ```
 
 ```yaml
@@ -41,10 +40,10 @@ Deploy the Dynatrace Operator in your Kubernetes cluster:
 ```bash
 kubectl create namespace dynatrace
 
-kubectl apply -f https://github.com/Dynatrace/dynatrace-operator/releases/download/v0.15.0/kubernetes.yaml
+kubectl apply -f https://github.com/Dynatrace/dynatrace-operator/releases/latest/download/kubernetes.yaml
 
 kubectl apply -f - <<EOF
-apiVersion: dynatrace.com/v1beta1
+apiVersion: dynatrace.com/v1beta6
 kind: DynaKube
 metadata:
   name: dynakube
@@ -58,7 +57,9 @@ spec:
     capabilities:
       - routing
       - kubernetes-monitoring
-      - prometheus-scraper
+      - metrics-ingest
+  extensions:
+    prometheus: {}
 EOF
 ```
 
@@ -76,7 +77,6 @@ annotations:
   metrics.dynatrace.com/scrape: "true"
   metrics.dynatrace.com/port: "9090"
   metrics.dynatrace.com/path: "/metrics"
-  metrics.dynatrace.com/prefix: "dapr_"
 ```
 
 ## Using the Dynatrace Extensions Framework
@@ -124,11 +124,8 @@ timeseries requests = rate(sum(dapr.http.server.request.count)), by:{app_id}
 -- P95 latency
 timeseries p95_latency = percentile(dapr.http.server.latency, 95), by:{app_id}
 
--- Resiliency activations in last hour
-fetch bizevents
-| filter dapr.resiliency.activations.total > 0
-| summarize count = sum(dapr.resiliency.activations.total), by:{app_id}
-| sort count desc
+-- Resiliency activations
+timeseries activations = sum(dapr.resiliency.activations.total), by:{app_id}
 ```
 
 ## Creating a Dynatrace Dashboard for Dapr
