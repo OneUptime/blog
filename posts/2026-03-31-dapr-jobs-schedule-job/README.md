@@ -36,13 +36,12 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/hourly-report \
   -d '{
     "schedule": "@every 1h",
     "data": {
-      "type": "text/plain",
-      "value": "eyJyZXBvcnRUeXBlIjogInNhbGVzIn0="
+      "reportType": "sales"
     }
   }'
 ```
 
-The `data.value` is base64-encoded JSON: `{"reportType": "sales"}`.
+The `data` field accepts any JSON-serializable value or object.
 
 ## Scheduling a Job via Go SDK
 
@@ -53,14 +52,13 @@ import (
     "context"
     "encoding/json"
     "log"
-    "time"
-    dapr "github.com/dapr/go-sdk/client"
+
+    daprc "github.com/dapr/go-sdk/client"
     "google.golang.org/protobuf/types/known/anypb"
-    commonv1 "github.com/dapr/go-sdk/dapr/proto/common/v1"
 )
 
 func scheduleJob(jobName string, schedule string, data map[string]any) error {
-    client, err := dapr.NewClient()
+    client, err := daprc.NewClient()
     if err != nil {
         return err
     }
@@ -68,13 +66,10 @@ func scheduleJob(jobName string, schedule string, data map[string]any) error {
 
     jobData, _ := json.Marshal(data)
 
-    job := &dapr.Job{
-        Name:     jobName,
-        Schedule: schedule,
-        Data: &anypb.Any{
-            Value: jobData,
-        },
-    }
+    job := daprc.NewJob(jobName,
+        daprc.WithJobSchedule(schedule),
+        daprc.WithJobData(&anypb.Any{Value: jobData}),
+    )
 
     return client.ScheduleJobAlpha1(context.Background(), job)
 }
@@ -96,19 +91,16 @@ func main() {
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._request import JobScheduleRequest
-import json, base64
+from dapr.clients.grpc._jobs import Job
+from google.protobuf.any_pb2 import Any as GrpcAny
+import json
 
 def schedule_job(name: str, schedule: str, data: dict):
     with DaprClient() as d:
-        job_data = base64.b64encode(json.dumps(data).encode()).decode()
+        job_data = GrpcAny(value=json.dumps(data).encode("utf-8"))
 
-        d.schedule_job(
-            name=name,
-            schedule=schedule,
-            data={"@type": "type.googleapis.com/google.protobuf.StringValue",
-                  "value": job_data}
-        )
+        job = Job(name=name, schedule=schedule, data=job_data)
+        d.schedule_job_alpha1(job)
         print(f"Job '{name}' scheduled with schedule: {schedule}")
 
 # Schedule various jobs
@@ -139,17 +131,16 @@ schedule_job("hourly-cache-refresh", "@every 1h", {"cache": "products"})
 
 ```python
 from flask import Flask, request
-import json, base64
+import json
 
 app = Flask(__name__)
 
 @app.route("/job/daily-sales-report", methods=["POST"])
 def handle_daily_sales_report():
     """Dapr calls this endpoint when the job triggers."""
-    raw = request.get_json()
+    job_data = request.get_json()
 
-    # Decode the job data
-    job_data = json.loads(base64.b64decode(raw.get("data", {}).get("value", "e30=")))
+    # Access the job data payload
     report_type = job_data.get("reportType", "unknown")
 
     print(f"Running {report_type} report...")
@@ -174,8 +165,8 @@ Response:
 {
   "name": "daily-sales-report",
   "schedule": "0 9 * * *",
-  "data": {...},
-  "status": "SCHEDULED"
+  "repeats": 0,
+  "data": {...}
 }
 ```
 
