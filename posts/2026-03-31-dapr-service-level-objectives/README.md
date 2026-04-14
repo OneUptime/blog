@@ -102,9 +102,9 @@ Define a latency-based SLO alongside availability:
 
 ```bash
 # Fraction of requests completing under 200ms
-sum(rate(dapr_http_server_request_latency_ms_bucket{app_id="checkout",le="200"}[5m]))
+sum(rate(dapr_http_server_latency_bucket{app_id="checkout",le="200"}[5m]))
 /
-sum(rate(dapr_http_server_request_latency_ms_count{app_id="checkout"}[5m]))
+sum(rate(dapr_http_server_latency_count{app_id="checkout"}[5m]))
 ```
 
 Alert when latency SLO is at risk:
@@ -113,7 +113,7 @@ Alert when latency SLO is at risk:
   - alert: DaprLatencySLOAtRisk
     expr: |
       histogram_quantile(0.99,
-        rate(dapr_http_server_request_latency_ms_bucket{app_id="checkout"}[5m])
+        sum by (le) (rate(dapr_http_server_latency_bucket{app_id="checkout"}[5m]))
       ) > 500
     for: 5m
     labels:
