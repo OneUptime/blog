@@ -26,7 +26,7 @@ graph LR
 
 ## Core Proto Files
 
-Dapr's gRPC interface is defined in the `dapr/proto` repository. The two main service definitions are:
+Dapr's gRPC interface is defined in the `dapr/dapr` repository under `dapr/proto/`. The two main service definitions are:
 
 | Proto file | Service | Purpose |
 |---|---|---|
@@ -57,7 +57,7 @@ service Dapr {
 
   // Publish / Subscribe
   rpc PublishEvent(PublishEventRequest) returns (google.protobuf.Empty);
-  rpc BulkPublishEventAlpha1(BulkPublishRequest) returns (BulkPublishResponse);
+  rpc BulkPublishEventAlpha1(BulkPublishRequest) returns (BulkPublishResponse); // deprecated
 
   // Secrets
   rpc GetSecret(GetSecretRequest) returns (GetSecretResponse);
@@ -69,8 +69,8 @@ service Dapr {
   rpc RegisterActorReminder(RegisterActorReminderRequest) returns (google.protobuf.Empty);
 
   // Workflow
-  rpc StartWorkflowAlpha1(StartWorkflowRequest) returns (StartWorkflowResponse);
-  rpc GetWorkflowAlpha1(GetWorkflowRequest) returns (GetWorkflowResponse);
+  rpc StartWorkflowBeta1(StartWorkflowRequest) returns (StartWorkflowResponse);
+  rpc GetWorkflowBeta1(GetWorkflowRequest) returns (GetWorkflowResponse);
 
   // Cryptography
   rpc EncryptAlpha1(stream EncryptRequest) returns (stream EncryptResponse);
@@ -146,7 +146,7 @@ func daprPort() string {
 }
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:"+daprPort(),
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
