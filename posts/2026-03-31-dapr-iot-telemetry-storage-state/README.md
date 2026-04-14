@@ -172,7 +172,7 @@ def get_fleet_summaries():
             if data:
                 results[device_id] = json.loads(data)
 
-    return json.dumps(results), 200
+    return results, 200
 ```
 
 ## Summary
