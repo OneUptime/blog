@@ -244,10 +244,10 @@ When actors are a bottleneck, the call queue depth grows. Monitor this via Dapr 
 
 ```bash
 # Prometheus query for actor pending calls (high value = bottleneck)
-# dapr_actor_pending_actor_calls{actor_type="BankAccount"}
+# dapr_runtime_actor_pending_actor_calls{actor_type="BankAccount"}
 
 # Check via Dapr sidecar metrics endpoint
-curl http://localhost:9090/metrics | grep dapr_actor_pending
+curl http://localhost:9090/metrics | grep dapr_runtime_actor_pending
 
 # Use Grafana dashboard ID 11150 for Dapr actor metrics
 ```
