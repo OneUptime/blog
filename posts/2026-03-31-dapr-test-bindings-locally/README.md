@@ -26,7 +26,7 @@ Reference it when starting your app:
 dapr run \
   --app-id my-service \
   --app-port 3000 \
-  --components-path ./components/local \
+  --resources-path ./components/local \
   node app.js
 ```
 
@@ -38,7 +38,7 @@ The simplest way to test an output binding is to call the Dapr sidecar directly 
 
 ```bash
 # Start the sidecar standalone
-dapr run --app-id test-client --dapr-http-port 3500 --components-path ./components/local
+dapr run --app-id test-client --dapr-http-port 3500 --resources-path ./components/local
 
 # In another terminal, invoke the binding
 curl -X POST http://localhost:3500/v1.0/bindings/my-binding \
@@ -48,7 +48,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/my-binding \
 
 ### Using a Local Storage Binding
 
-The `local.localstorage` binding writes files to disk, making it easy to verify output binding behavior:
+The `bindings.localstorage` binding writes files to disk, making it easy to verify output binding behavior:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
