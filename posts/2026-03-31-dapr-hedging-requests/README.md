@@ -12,7 +12,7 @@ Description: Learn how to implement the hedged request pattern in Dapr to reduce
 
 Request hedging sends the same request to multiple service instances simultaneously (or with a small delay) and uses whichever response arrives first. Unlike retries (which wait for failure), hedging proactively reduces tail latency - the slow P99/P999 cases where a single instance happens to be slow.
 
-Dapr does not have a built-in hedging policy, but you can implement hedging in application code using Go's goroutines, JavaScript's `Promise.race`, or Python's `asyncio.gather`.
+Dapr does not have a built-in hedging policy, but you can implement hedging in application code using Go's goroutines, JavaScript's `Promise.any`, or Python's `asyncio`.
 
 ## Pattern 1: Immediate Parallel Hedging
 
@@ -24,7 +24,6 @@ package main
 import (
     "context"
     "fmt"
-    "sync"
 
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -99,7 +98,7 @@ async function hedgedRequest(client, appIds, method, data, hedgeDelay = 200) {
         setTimeout(async () => {
           if (settled) return;
           try {
-            const result = await client.invoker.invoke(appId, method, data, { method: 'POST' });
+            const result = await client.invoker.invoke(appId, method, "POST", data);
             res({ result, appId });
           } catch (err) {
             rej({ err, appId });
@@ -142,40 +141,41 @@ const result = await hedgedRequest(
 
 ```python
 import asyncio
-from dapr.clients.grpc.client import DaprGrpcClient
+import json
+from dapr.aio.clients import DaprClient
 
 async def hedged_invoke(app_ids: list, method: str, data: dict, hedge_delay: float = 0.1):
     """
     Invoke a method across multiple app instances.
     Returns the first successful response.
     """
-    async def invoke_one(app_id: str, delay: float):
-        if delay > 0:
-            await asyncio.sleep(delay)
-        # Create a fresh client per coroutine (thread-safe)
-        with DaprGrpcClient() as client:
-            response = client.invoke_method(
+    async with DaprClient() as client:
+        async def invoke_one(app_id: str, delay: float):
+            if delay > 0:
+                await asyncio.sleep(delay)
+            response = await client.invoke_method(
                 app_id=app_id,
                 method_name=method,
-                data=data,
+                data=json.dumps(data),
+                content_type="application/json",
             )
             return {"result": response.json(), "app_id": app_id}
 
-    tasks = [
-        asyncio.create_task(invoke_one(app_id, i * hedge_delay))
-        for i, app_id in enumerate(app_ids)
-    ]
+        tasks = [
+            asyncio.create_task(invoke_one(app_id, i * hedge_delay))
+            for i, app_id in enumerate(app_ids)
+        ]
 
-    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
-    # Cancel remaining tasks
-    for task in pending:
-        task.cancel()
+        # Cancel remaining tasks
+        for task in pending:
+            task.cancel()
 
-    for task in done:
-        result = task.result()
-        print(f"Hedged request completed by: {result['app_id']}")
-        return result["result"]
+        for task in done:
+            result = task.result()
+            print(f"Hedged request completed by: {result['app_id']}")
+            return result["result"]
 
     raise RuntimeError("All hedged requests failed")
 ```
