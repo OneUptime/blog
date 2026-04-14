@@ -18,16 +18,18 @@ Create a Node.js GraphQL gateway using Apollo Server and the Dapr JavaScript SDK
 
 ```javascript
 // gateway.js
-const { ApolloServer, gql } = require("apollo-server-express");
+const { ApolloServer } = require("@apollo/server");
+const { expressMiddleware } = require("@apollo/server/express4");
 const express = require("express");
-const { DaprClient } = require("@dapr/dapr");
+const cors = require("cors");
+const { DaprClient, HttpMethod } = require("@dapr/dapr");
 
 const dapr = new DaprClient({
     daprHost: "localhost",
     daprPort: process.env.DAPR_HTTP_PORT || "3500"
 });
 
-const typeDefs = gql`
+const typeDefs = `#graphql
     type User {
         id: ID!
         name: String!
@@ -62,7 +64,7 @@ const resolvers = {
             const response = await dapr.invoker.invoke(
                 "user-service",
                 `users/${id}`,
-                "GET"
+                HttpMethod.GET
             );
             return response;
         },
@@ -71,7 +73,7 @@ const resolvers = {
             const response = await dapr.invoker.invoke(
                 "order-service",
                 `orders/${id}`,
-                "GET"
+                HttpMethod.GET
             );
             return response;
         },
@@ -80,7 +82,7 @@ const resolvers = {
             const response = await dapr.invoker.invoke(
                 "order-service",
                 `orders?userId=${userId}`,
-                "GET"
+                HttpMethod.GET
             );
             return response;
         }
@@ -91,7 +93,7 @@ const resolvers = {
             const response = await dapr.invoker.invoke(
                 "order-service",
                 `orders?userId=${user.id}`,
-                "GET"
+                HttpMethod.GET
             );
             return response;
         }
@@ -109,8 +111,13 @@ metadata:
   namespace: production
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: graphql-gateway
   template:
     metadata:
+      labels:
+        app: graphql-gateway
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "graphql-gateway"
@@ -141,10 +148,10 @@ spec:
   type: middleware.http.oauth2clientcredentials
   version: v1
   metadata:
-  - name: clientID
+  - name: clientId
     secretKeyRef:
       name: oauth-secret
-      key: clientID
+      key: clientId
   - name: clientSecret
     secretKeyRef:
       name: oauth-secret
@@ -169,7 +176,7 @@ const userLoader = new DataLoader(async (userIds) => {
     const response = await dapr.invoker.invoke(
         "user-service",
         "users/batch",
-        "POST",
+        HttpMethod.POST,
         { ids: userIds }
     );
     return userIds.map(id => response.find(u => u.id === id));
@@ -192,15 +199,22 @@ async function startServer() {
     const server = new ApolloServer({
         typeDefs,
         resolvers,
-        context: ({ req }) => ({
-            authToken: req.headers.authorization,
-            userLoader
-        }),
         introspection: process.env.NODE_ENV !== "production"
     });
 
     await server.start();
-    server.applyMiddleware({ app, path: "/graphql" });
+
+    app.use(
+        "/graphql",
+        cors(),
+        express.json(),
+        expressMiddleware(server, {
+            context: async ({ req }) => ({
+                authToken: req.headers.authorization,
+                userLoader
+            })
+        })
+    );
 
     app.listen(4000, () => {
         console.log("GraphQL Gateway on :4000/graphql");
