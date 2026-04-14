@@ -56,7 +56,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/weekly-newsletter \
 from flask import Flask, request, jsonify
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from jinja2 import Template
 
 app = Flask(__name__)
@@ -126,9 +126,9 @@ def send_email_via_dapr(to: str, subject: str, html: str):
             "operation": "create",
             "metadata": {
                 "emailTo": to,
-                "subject": subject,
-                "emailHtml": html
-            }
+                "subject": subject
+            },
+            "data": html
         }
     )
 
