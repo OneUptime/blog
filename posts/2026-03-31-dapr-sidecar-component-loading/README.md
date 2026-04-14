@@ -12,9 +12,7 @@ When the Dapr sidecar starts, it loads component definitions from Kubernetes CRD
 
 ## How Component Discovery Works
 
-In Kubernetes mode, daprd reads `Component` CRDs from the Kubernetes API server. It loads:
-1. Components in the same namespace as the pod
-2. Components in the `default` namespace if global components are configured
+In Kubernetes mode, daprd reads `Component` CRDs from the Kubernetes API server. It loads components that are deployed in the same namespace as the pod. Components in other namespaces are not visible to the sidecar.
 
 ## Scoping Components to Specific Apps
 
@@ -32,9 +30,9 @@ spec:
   metadata:
     - name: redisHost
       value: "redis:6379"
-  scopes:
-    - order-service
-    - payment-service
+scopes:
+  - order-service
+  - payment-service
 ```
 
 With this configuration, only pods with `dapr.io/app-id: order-service` or `dapr.io/app-id: payment-service` load this component. Other apps in the same namespace are not affected.
@@ -47,7 +45,7 @@ To prevent a component from being loaded by any app, set its namespace to one th
 
 Dapr loads components in an unspecified order. If component B depends on component A (for example, a pub/sub component that uses a secret from a secret store), the secret store must be loaded first.
 
-Dapr handles this by retrying component initialization with exponential backoff. You can see these retries in the logs:
+Dapr handles this by retrying component initialization. You can see these retries in the logs:
 
 ```bash
 kubectl logs my-pod -c daprd | grep "component failed to init"
@@ -90,7 +88,7 @@ In self-hosted mode, Dapr loads components from a local directory:
 
 ```bash
 dapr run --app-id my-service \
-  --components-path ./components \
+  --resources-path ./components \
   -- node app.js
 ```
 
