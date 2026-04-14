@@ -54,10 +54,10 @@ annotations:
   dapr.io/app-id: "my-service"
   dapr.io/sidecar-liveness-probe-delay-seconds: "10"
   dapr.io/sidecar-liveness-probe-period-seconds: "5"
-  dapr.io/sidecar-liveness-probe-failure-threshold: "5"
+  dapr.io/sidecar-liveness-probe-threshold: "5"
   dapr.io/sidecar-readiness-probe-delay-seconds: "5"
   dapr.io/sidecar-readiness-probe-period-seconds: "5"
-  dapr.io/sidecar-readiness-probe-failure-threshold: "3"
+  dapr.io/sidecar-readiness-probe-threshold: "3"
 ```
 
 Increase `liveness-probe-delay-seconds` if the sidecar takes longer to initialize in your environment (e.g., slow secret resolution or large component loading).
