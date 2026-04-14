@@ -75,16 +75,15 @@ func encryptSensitiveData(ctx context.Context, client dapr.Client, plaintext str
     // Encrypt using Vault Transit via Dapr
     encrypted, err := client.Encrypt(ctx,
         strings.NewReader(plaintext),
-        dapr.EncryptRequestOptions{
+        dapr.EncryptOptions{
             ComponentName:    "vault-crypto",
             KeyName:          "app-data-key",
-            Algorithm:        "AES",
+            KeyWrapAlgorithm: "AES",
         },
     )
     if err != nil {
         return "", fmt.Errorf("encryption failed: %w", err)
     }
-    defer encrypted.Close()
 
     ciphertext, err := io.ReadAll(encrypted)
     if err != nil {
@@ -96,7 +95,7 @@ func encryptSensitiveData(ctx context.Context, client dapr.Client, plaintext str
 func decryptSensitiveData(ctx context.Context, client dapr.Client, ciphertext string) (string, error) {
     decrypted, err := client.Decrypt(ctx,
         strings.NewReader(ciphertext),
-        dapr.DecryptRequestOptions{
+        dapr.DecryptOptions{
             ComponentName: "vault-crypto",
             KeyName:       "app-data-key",
         },
@@ -104,7 +103,6 @@ func decryptSensitiveData(ctx context.Context, client dapr.Client, ciphertext st
     if err != nil {
         return "", fmt.Errorf("decryption failed: %w", err)
     }
-    defer decrypted.Close()
 
     plaintext, err := io.ReadAll(decrypted)
     if err != nil {
@@ -169,8 +167,9 @@ vault write transit/rewrap/app-data-key \
 
 ```bash
 # Encrypt via Dapr sidecar HTTP API
-curl -X POST http://localhost:3500/v1.0-alpha1/crypto/vault-crypto/encrypt \
+curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/vault-crypto/encrypt \
   -H "dapr-key-name: app-data-key" \
+  -H "dapr-key-wrap-algorithm: AES" \
   -H "Content-Type: application/octet-stream" \
   --data-binary "sensitive data here"
 ```
