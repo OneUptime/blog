@@ -14,7 +14,7 @@ Slow application startup affects deployment rollouts, auto-scaling responsivenes
 
 ## Metrics to Track
 
-Dapr exposes Prometheus metrics for sidecar initialization. The key metric is `dapr_runtime_init_total` along with component initialization durations.
+Dapr exposes Prometheus metrics for sidecar initialization. The key metric is `dapr_runtime_component_init_total` along with component initialization failure counts.
 
 Enable metrics in your Dapr configuration:
 
@@ -24,7 +24,7 @@ kind: Configuration
 metadata:
   name: appconfig
 spec:
-  metric:
+  metrics:
     enabled: true
   tracing:
     samplingRate: "1"
@@ -44,11 +44,11 @@ annotations:
 Then query startup duration in PromQL:
 
 ```bash
-# Average sidecar init time per app
-avg by (app_id) (dapr_runtime_init_total)
+# Total initialized components per app
+sum by (app_id) (dapr_runtime_component_init_total)
 
-# Component load duration
-dapr_component_init_total{success="true"}
+# Component initialization failures
+dapr_runtime_component_init_fail_total
 ```
 
 ## Using Zipkin Traces for Startup Analysis
@@ -67,7 +67,7 @@ spec:
       endpointAddress: http://zipkin.monitoring:9411/api/v2/spans
 ```
 
-After deploying, look for spans labeled `dapr.runtime/init` in your Zipkin UI to pinpoint which component takes the longest to initialize.
+After deploying, use the Zipkin UI to inspect traces from your application. Note that Dapr traces API calls (service invocation, pub/sub, bindings) rather than the sidecar boot sequence itself, so tracing is most useful for diagnosing slow requests after startup rather than component initialization time.
 
 ## Checking Logs for Slow Component Init
 
@@ -104,7 +104,7 @@ spec:
       value: redis-master:6379
 ```
 
-Reduce `initTimeout` from the default 30s if you want faster failure detection.
+The default `initTimeout` is 5s. Increase it if components need more time to connect, or keep it low for faster failure detection.
 
 ## Kubernetes Liveness and Readiness Probes
 
@@ -123,4 +123,4 @@ This ensures your app only receives traffic once the Dapr sidecar reports health
 
 ## Summary
 
-Monitoring Dapr application startup time involves scraping Prometheus metrics from the sidecar, analyzing Zipkin traces for component init spans, and reviewing sidecar logs for slow component loading. Setting per-component `initTimeout` values and tuning Kubernetes readiness probes ensures that slow startups are detected and handled gracefully.
+Monitoring Dapr application startup time involves scraping Prometheus metrics from the sidecar, configuring Zipkin tracing for post-startup request diagnostics, and reviewing sidecar logs for slow component loading. Setting per-component `initTimeout` values and tuning Kubernetes readiness probes ensures that slow startups are detected and handled gracefully.
