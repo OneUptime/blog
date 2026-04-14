@@ -55,7 +55,7 @@ spec:
 const { DaprClient } = require("@dapr/dapr");
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: "3500",
 });
 
@@ -116,11 +116,11 @@ async function main() {
 ## Passing Metadata for Store-Specific Options
 
 ```javascript
-// Vault: specify a namespace
+// Vault: specify a secret version
 const secret = await client.secret.get(
   "vault-secrets",
   "my-secret",
-  { "version": "2" }
+  "metadata.version_id=2"
 );
 ```
 
