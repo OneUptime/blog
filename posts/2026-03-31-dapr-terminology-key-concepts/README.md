@@ -58,7 +58,7 @@ dapr run --app-id order-service -- node app.js
 
 ### Building Block
 
-A named API category exposed by the Dapr sidecar. Each building block solves one distributed systems problem. The 11 building blocks are: Service Invocation, State Management, Publish/Subscribe, Bindings, Secrets Management, Configuration, Virtual Actors, Workflow, Distributed Lock, Cryptography, and Jobs.
+A named API category exposed by the Dapr sidecar. Each building block solves one distributed systems problem. The 12 building blocks are: Service Invocation, State Management, Publish/Subscribe, Bindings, Secrets Management, Configuration, Virtual Actors, Workflow, Distributed Lock, Cryptography, Jobs, and Conversation.
 
 ### Component
 
@@ -158,7 +158,7 @@ The unique identifier for a specific actor instance. `OrderActor/order-123` mean
 
 ### Placement Table
 
-A distributed hash ring maintained by the Placement service that maps actor IDs to their hosting sidecar.
+A distributed hash table maintained by the Placement service that maps actor types to their hosting sidecars.
 
 ### Reminder
 
