@@ -78,9 +78,11 @@ Create a Spring Boot subscriber that listens for order events:
 // OrderSubscriber.java
 import io.dapr.Topic;
 import io.dapr.client.domain.CloudEvent;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
 @RestController
 public class OrderSubscriber {
@@ -105,7 +107,7 @@ public class OrderSubscriber {
 }
 ```
 
-The Spring Boot app must also declare the subscription endpoint via Dapr's subscription protocol. Add to `application.properties`:
+The `@Topic` annotation automatically registers the subscription with Dapr at startup. Configure the Spring Boot server port in `application.properties`:
 
 ```properties
 server.port=8080
