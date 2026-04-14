@@ -16,14 +16,14 @@ Dapr captures metrics from both the calling service (client) and the receiving s
 
 **Server-side metrics:**
 - `dapr_http_server_request_count` - total HTTP requests received
-- `dapr_http_server_latency_ms` - server-side processing latency
-- `dapr_grpc_server_io_latency_ms` - gRPC server latency
+- `dapr_http_server_latency` - server-side processing latency
+- `dapr_grpc_io_server_server_latency` - gRPC server latency
 
 **Client-side metrics:**
-- `dapr_http_client_roundtrip_latency_ms` - full round-trip latency including network
-- `dapr_grpc_client_io_latency_ms` - gRPC client call latency
+- `dapr_http_client_roundtrip_latency` - full round-trip latency including network
+- `dapr_grpc_io_client_roundtrip_latency` - gRPC client call latency
 
-Labels available: `app_id`, `method`, `status_code`, `protocol`
+Labels available: `app_id`, `method`, `status`
 
 ## Request Rate Queries
 
@@ -35,11 +35,11 @@ sum by (app_id, method) (
 
 # Outgoing call rate (client side)
 sum by (app_id) (
-  rate(dapr_http_client_roundtrip_latency_ms_count[5m])
+  rate(dapr_http_client_roundtrip_latency_count[5m])
 )
 
-# HTTP status code breakdown
-sum by (app_id, status_code) (
+# HTTP status breakdown
+sum by (app_id, status) (
   rate(dapr_http_server_request_count[5m])
 )
 ```
@@ -50,7 +50,7 @@ sum by (app_id, status_code) (
 # Success rate per receiving app
 1 - (
   sum by (app_id) (
-    rate(dapr_http_server_request_count{status_code!~"2.."}[5m])
+    rate(dapr_http_server_request_count{status!~"2.."}[5m])
   )
   / sum by (app_id) (
     rate(dapr_http_server_request_count[5m])
@@ -60,7 +60,7 @@ sum by (app_id, status_code) (
 # Services with success rate below 99%
 (
   1 - sum by (app_id) (
-    rate(dapr_http_server_request_count{status_code!~"2.."}[5m])
+    rate(dapr_http_server_request_count{status!~"2.."}[5m])
   )
   / sum by (app_id) (
     rate(dapr_http_server_request_count[5m])
@@ -76,14 +76,14 @@ The difference between client round-trip and server-side latency reveals network
 # Server-side P99 latency
 histogram_quantile(0.99,
   sum by (le, app_id) (
-    rate(dapr_http_server_latency_ms_bucket[5m])
+    rate(dapr_http_server_latency_bucket[5m])
   )
 )
 
 # Client round-trip P99 latency
 histogram_quantile(0.99,
   sum by (le, app_id) (
-    rate(dapr_http_client_roundtrip_latency_ms_bucket[5m])
+    rate(dapr_http_client_roundtrip_latency_bucket[5m])
   )
 )
 ```
@@ -110,7 +110,7 @@ groups:
   - alert: DaprServiceHighErrorRate
     expr: |
       sum by (app_id) (
-        rate(dapr_http_server_request_count{status_code="500"}[5m])
+        rate(dapr_http_server_request_count{status="500"}[5m])
       )
       / sum by (app_id) (
         rate(dapr_http_server_request_count[5m])
