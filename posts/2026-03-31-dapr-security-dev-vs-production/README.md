@@ -140,7 +140,7 @@ kubectl get components -A -o yaml \
   && echo "FAIL: Found plaintext secrets" || echo "PASS"
 
 echo "Checking API token secrets..."
-kubectl get deployments -A -o jsonpath='{range .items[*]}{.metadata.annotations.dapr\.io/api-token-secret}{"\n"}{end}' \
+kubectl get deployments -A -o jsonpath='{range .items[*]}{.spec.template.metadata.annotations.dapr\.io/api-token-secret}{"\n"}{end}' \
   | grep -v "^$" | wc -l
 ```
 
