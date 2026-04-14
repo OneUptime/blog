@@ -64,8 +64,8 @@ Kubernetes ships with built-in system priority classes that you can also use:
 # List built-in priority classes
 kubectl get priorityclass
 
-# system-cluster-critical: 2000000000 (highest)
-# system-node-critical: 2000001000
+# system-cluster-critical: 2000000000
+# system-node-critical: 2000001000 (highest)
 # Use these for Dapr control plane in critical deployments
 ```
 
