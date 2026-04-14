@@ -35,9 +35,8 @@ metadata:
   name: dapr-config
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 ## Step 2: Annotate Pods for Prometheus Scraping
@@ -87,9 +86,9 @@ Dapr provides official Grafana dashboard JSON files. Import them:
 
 ```bash
 # Download dashboards
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/system-services-dashboard.json
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/sidecar-dashboard.json
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/actor-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-sidecar-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-actor-dashboard.json
 ```
 
 In Grafana, go to Dashboards - Import and upload each file.
@@ -99,10 +98,10 @@ In Grafana, go to Dashboards - Import and upload each file.
 | Metric | Description |
 |--------|-------------|
 | `dapr_http_server_request_count` | Total HTTP requests |
-| `dapr_http_server_latency_ms` | Request latency histogram |
+| `dapr_http_server_latency` | Request latency histogram |
 | `dapr_grpc_io_server_completed_rpcs` | gRPC call counts |
-| `dapr_component_pubsub_count` | Pub/sub message counts |
-| `dapr_runtime_actor_active_actors` | Active actor count |
+| `dapr_component_pubsub_ingress_count` | Pub/sub ingress message counts |
+| `dapr_runtime_actor_pending_actor_calls` | Pending actor calls |
 
 Query example in Grafana:
 
@@ -123,7 +122,7 @@ spec:
     - name: dapr
       rules:
         - alert: DaprHighErrorRate
-          expr: rate(dapr_http_server_request_count{status="5xx"}[5m]) > 0.1
+          expr: rate(dapr_http_server_request_count{status=~"5.."}[5m]) > 0.1
           for: 2m
           labels:
             severity: warning
