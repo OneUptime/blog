@@ -16,7 +16,7 @@ In a Dapr microservices architecture, each service and its Dapr sidecar produce 
 
 A typical Dapr log aggregation pipeline looks like:
 
-```json
+```text
 [App Container] --> [stdout]
 [Dapr Sidecar]  --> [stdout]    --> Fluent Bit DaemonSet --> Log Backend
 [Dapr Operator] --> [stdout]                                (Loki/ES/Splunk)
@@ -127,7 +127,7 @@ correlationId: "abc-123-def-456"
 
 Standardize log level field names across polyglot services:
 
-```yaml
+```ini
 # Fluent Bit filter to normalize level fields
 [FILTER]
     Name lua
@@ -143,7 +143,7 @@ function normalize_level(tag, timestamp, record)
     if level then
         record["level"] = string.lower(level)
     end
-    return 1, timestamp, record
+    return 2, timestamp, record
 end
 ```
 
