@@ -37,7 +37,7 @@ scopes:
 - shipping-service
 ```
 
-In this example, only pods with the Dapr app ID `order-service` or `shipping-service` can read or write `orders-statestore`. Any other service that attempts to use it will receive a 403 error.
+In this example, only pods with the Dapr app ID `order-service` or `shipping-service` can read or write `orders-statestore`. Any other service that attempts to use it will receive an error indicating the state store is not configured, because Dapr does not load scoped components for apps outside the scope list.
 
 ## Setting the Dapr App ID
 
@@ -93,7 +93,7 @@ After deploying, you can confirm enforcement with a curl command from a pod that
 ```bash
 # From a pod with app-id: analytics-service (not in scope)
 curl -v http://localhost:3500/v1.0/state/orders-statestore/order-123
-# Expected: HTTP 403 Forbidden
+# Expected: HTTP 400 — state store orders-statestore is not configured
 ```
 
 And from an allowed pod:
