@@ -38,24 +38,33 @@ Rotate a Redis password without restarting services:
 #!/bin/bash
 # rotate-redis-secret.sh
 
+OLD_PASSWORD=$(kubectl get secret redis-secret -n production \
+  -o jsonpath='{.data.password}' | base64 -d)
 NEW_PASSWORD=$(openssl rand -base64 32)
 
-echo "[1] Creating new Redis password in Kubernetes secret..."
+echo "[1] Update Redis itself to accept the new password..."
+# Existing authenticated connections continue to work after this change.
+redis-cli -h redis.internal -a "$OLD_PASSWORD" \
+  CONFIG SET requirepass "$NEW_PASSWORD"
+
+echo "[2] Updating Kubernetes secret with the new password..."
 kubectl create secret generic redis-secret \
   --from-literal=password="$NEW_PASSWORD" \
   -n production \
   --dry-run=client -o yaml | kubectl apply -f -
 
-echo "[2] Wait for sidecar to pick up new secret..."
+echo "[3] Annotating the component to trigger a sidecar reload..."
+# Dapr hot-reload watches Component CRs, not Secret resources.
+# Annotating the component forces the Dapr operator to push the update.
+kubectl annotate component statestore -n production \
+  rotated-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
+
+echo "[4] Wait for sidecar to pick up new configuration..."
 sleep 10
 
-echo "[3] Verify connectivity with new secret..."
+echo "[5] Verify connectivity with new secret..."
 kubectl exec -n production deployment/test-service -c daprd -- \
   curl -sf http://localhost:3500/v1.0/healthz
-
-echo "[4] Update Redis itself to accept the new password..."
-redis-cli -h redis.internal -a "$OLD_PASSWORD" \
-  CONFIG SET requirepass "$NEW_PASSWORD"
 
 echo "Secret rotation complete with no downtime."
 ```
