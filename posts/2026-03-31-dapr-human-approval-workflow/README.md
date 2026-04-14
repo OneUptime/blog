@@ -46,12 +46,15 @@ public class ExpenseApprovalWorkflow : Workflow<ExpenseRequest, ApprovalResult>
         );
 
         // Step 3: Wait for human approval (timeout after 48 hours)
-        var approval = await context.WaitForExternalEventAsync<ApprovalDecision>(
-            "approval-decision",
-            TimeSpan.FromHours(48)
-        );
-
-        if (approval == null)
+        ApprovalDecision approval;
+        try
+        {
+            approval = await context.WaitForExternalEventAsync<ApprovalDecision>(
+                "approval-decision",
+                TimeSpan.FromHours(48)
+            );
+        }
+        catch (TaskCanceledException)
         {
             // Timeout - escalate
             await context.CallActivityAsync(
@@ -134,7 +137,7 @@ app.get('/expenses/:instanceId/status', async (req, res) => {
   res.json({
     instanceId: status.instanceId,
     status: status.runtimeStatus,
-    result: status.serializedOutput
+    result: status.properties['dapr.workflow.output']
   });
 });
 ```
