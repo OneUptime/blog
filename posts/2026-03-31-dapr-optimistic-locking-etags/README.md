@@ -15,9 +15,6 @@ Optimistic locking assumes conflicts are rare. Instead of holding a lock during 
 ## Reading a Value with Its ETag
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
-const client = new DaprClient();
-
 async function getWithETag(storeName, key) {
   // The raw HTTP API returns etag in the response header
   const response = await fetch(
