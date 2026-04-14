@@ -59,6 +59,8 @@ services:
 package main
 
 import (
+    "fmt"
+
     "github.com/dapr/go-sdk/workflow"
 )
 
@@ -94,6 +96,7 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
+    "strings"
     "testing"
     "time"
 )
@@ -129,7 +132,8 @@ func TestWorkflowExecution(t *testing.T) {
         t.Errorf("workflow did not complete, status: %v", status["runtimeStatus"])
     }
 
-    output := status["serializedOutput"].(string)
+    props := status["properties"].(map[string]interface{})
+    output := props["dapr.workflow.output"].(string)
     if !strings.Contains(output, "shipped") {
         t.Errorf("expected shipped in output, got: %s", output)
     }
