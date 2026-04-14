@@ -55,7 +55,7 @@ spec:
   type: secretstores.tencentcloud.ssm
   version: v1
   metadata:
-    - name: secretID
+    - name: secretId
       secretKeyRef:
         name: tencent-credentials
         key: secret-id
@@ -111,7 +111,7 @@ async def get_db_credentials():
 Tencent SSM supports secret versions. Retrieve a specific version:
 
 ```bash
-curl "http://localhost:3500/v1.0/secrets/tencent-ssm/myapp-db-credentials?metadata.version=SSMUserDefinedVersion-1"
+curl "http://localhost:3500/v1.0/secrets/tencent-ssm/myapp-db-credentials?metadata.version_id=SSMUserDefinedVersion-1"
 ```
 
 ## Scoping the Component
@@ -119,15 +119,20 @@ curl "http://localhost:3500/v1.0/secrets/tencent-ssm/myapp-db-credentials?metada
 Restrict which services can use the Tencent SSM component:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: tencent-ssm
+  namespace: production
 spec:
   type: secretstores.tencentcloud.ssm
   version: v1
   metadata:
     - name: region
       value: "ap-guangzhou"
-  scopes:
-    - backend-service
-    - worker-service
+scopes:
+  - backend-service
+  - worker-service
 ```
 
 ## Summary
