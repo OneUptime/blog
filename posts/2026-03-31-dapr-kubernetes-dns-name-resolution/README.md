@@ -52,6 +52,7 @@ spec:
     policies:
       - appId: order-service
         defaultAction: allow
+        trustDomain: "cluster.local"
         namespace: production
 ```
 
@@ -61,16 +62,15 @@ You can explicitly define the Kubernetes name resolution component to customize 
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: app-config
   namespace: default
 spec:
-  type: nameresolution.kubernetes
-  version: v1
-  metadata:
-    - name: clusterDomain
-      value: "cluster.local"
+  nameResolution:
+    component: "kubernetes"
+    configuration:
+      clusterDomain: "cluster.local"
 ```
 
 Apply it:
@@ -105,7 +105,7 @@ kubectl logs myapp-pod -c daprd | grep -i "name resolution\|resolve"
 Dapr creates a Kubernetes service for each app. Confirm your app is registered:
 
 ```bash
-kubectl get svc -l app=order-service -n default
+kubectl get svc -l dapr.io/app-id=order-service -n default
 ```
 
 If the service is missing, check that the Dapr sidecar is running:
