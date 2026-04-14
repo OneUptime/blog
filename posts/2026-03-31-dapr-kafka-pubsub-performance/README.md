@@ -84,17 +84,15 @@ spec:
 Configure the Dapr component for high-throughput publishing:
 
 ```yaml
-  - name: producerMaxMessageBytes
+  - name: maxMessageBytes
     value: "1000000"
-  - name: producerFetchMin
+  - name: consumerFetchMin
     value: "1"
-  - name: ackWaitTime
-    value: "3s"
-  - name: requiredAcks
-    value: "WaitForAll"
+  - name: compression
+    value: "snappy"
 ```
 
-`WaitForAll` ensures no data loss. For lower latency at the cost of some durability, use `WaitForLocal`.
+The `maxMessageBytes` field controls the maximum message size for both producers and consumers. The `consumerFetchMin` field sets the minimum number of bytes the broker waits for before responding to a fetch request, which can improve throughput by batching. The `compression` field accepts `none`, `gzip`, `snappy`, `lz4`, or `zstd`.
 
 ## Monitoring Kafka Consumer Lag
 
@@ -132,7 +130,7 @@ Alert when lag exceeds your SLO threshold using a Prometheus rule:
 Enable compression to reduce network overhead:
 
 ```yaml
-  - name: producerCompressionCodec
+  - name: compression
     value: "snappy"
 ```
 
