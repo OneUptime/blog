@@ -23,12 +23,14 @@ Both systems use event sourcing and replay to make workflows durable:
 **Dapr Workflow (Python):**
 
 ```python
-import dapr.ext.workflow as wf
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext
 
-@wf.defn(name="OrderWorkflow")
-def order_workflow(ctx: wf.DaprWorkflowContext, order_id: str):
+wfr = WorkflowRuntime()
+
+@wfr.workflow(name="OrderWorkflow")
+def order_workflow(ctx: DaprWorkflowContext, order_id: str):
     result = yield ctx.call_activity(validate_order, input=order_id)
-    if not result.valid:
+    if not result["valid"]:
         return {"status": "rejected"}
     payment = yield ctx.call_activity(charge_payment, input=order_id)
     yield ctx.call_activity(ship_order, input=order_id)
@@ -38,7 +40,8 @@ def order_workflow(ctx: wf.DaprWorkflowContext, order_id: str):
 **Temporal (Python):**
 
 ```python
-from temporalio import workflow, activity
+from datetime import timedelta
+from temporalio import workflow
 
 @workflow.defn
 class OrderWorkflow:
