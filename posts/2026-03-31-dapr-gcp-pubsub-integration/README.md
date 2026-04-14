@@ -44,7 +44,7 @@ spec:
   metadata:
   - name: projectId
     value: "my-gcp-project"
-  - name: maxConcurrentHandlers
+  - name: maxConcurrentConnections
     value: "10"
   - name: maxOutstandingMessages
     value: "100"
@@ -65,13 +65,14 @@ curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
 Or from a Python application:
 
 ```python
+import json
 from dapr.clients import DaprClient
 
 with DaprClient() as client:
     resp = client.publish_event(
         pubsub_name="pubsub",
         topic_name="orders",
-        data={"orderId": "1001", "product": "widget"},
+        data=json.dumps({"orderId": "1001", "product": "widget"}),
         data_content_type="application/json"
     )
     print(f"Published event: {resp}")
