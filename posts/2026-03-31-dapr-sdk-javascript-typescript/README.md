@@ -40,7 +40,7 @@ dapr init
 
 ```typescript
 // src/client.ts
-import { DaprClient, CommunicationProtocolEnum } from "@dapr/dapr";
+import { DaprClient, CommunicationProtocolEnum, HttpMethod } from "@dapr/dapr";
 
 const DAPR_HOST = process.env.DAPR_HOST ?? "http://localhost";
 const DAPR_HTTP_PORT = process.env.DAPR_HTTP_PORT ?? "3500";
@@ -69,7 +69,7 @@ async function main() {
   const resp = await client.invoker.invoke(
     "inventory-service",
     "checkStock",
-    "POST",
+    HttpMethod.POST,
     { query: "status" }
   );
   console.log("Inventory:", resp);
@@ -156,7 +156,7 @@ await client.state.transaction("statestore", [
 
 ```typescript
 // Bulk save
-await client.state.saveBulk("statestore", [
+await client.state.save("statestore", [
   { key: "k1", value: "v1" },
   { key: "k2", value: "v2" },
 ]);
@@ -175,8 +175,15 @@ interface OrderActorInterface {
   process(payload: object): Promise<object>;
 }
 
+// The actor implementation class (extends AbstractActor in its definition)
+class OrderActor implements OrderActorInterface {
+  async process(payload: object): Promise<object> {
+    return payload;
+  }
+}
+
 const client = new DaprClient();
-const builder = new ActorProxyBuilder<OrderActorInterface>("OrderActor", client);
+const builder = new ActorProxyBuilder<OrderActorInterface>(OrderActor, client);
 const actor = builder.build(new ActorId("order-1"));
 
 const result = await actor.process({ amount: 50 });
