@@ -14,7 +14,7 @@ The Dapr Jobs API provides a built-in job scheduling system that lets your micro
 
 ## Prerequisites
 
-- Dapr 1.13 or later installed
+- Dapr 1.14 or later installed
 - A running application with a Dapr sidecar
 - Dapr Scheduler service running (included in standard Dapr installation)
 
@@ -26,13 +26,10 @@ Create a one-time job that fires after a delay:
 curl -X POST http://localhost:3500/v1.0-alpha1/jobs/send-reminder \
   -H "Content-Type: application/json" \
   -d '{
-    "job": {
-      "schedule": "@every 30s",
-      "data": {
-        "@type": "type.googleapis.com/google.protobuf.StringValue",
-        "value": "{\"userId\": \"u123\", \"message\": \"Your trial expires soon\"}"
-      },
-      "ttl": "5m"
+    "dueTime": "30s",
+    "data": {
+      "userId": "u123",
+      "message": "Your trial expires soon"
     }
   }'
 ```
@@ -43,13 +40,9 @@ Create a recurring cron-based job:
 curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report \
   -H "Content-Type: application/json" \
   -d '{
-    "job": {
-      "schedule": "0 8 * * *",
-      "repeats": 0,
-      "data": {
-        "@type": "type.googleapis.com/google.protobuf.StringValue",
-        "value": "{\"reportType\": \"daily-summary\"}"
-      }
+    "schedule": "0 8 * * *",
+    "data": {
+      "reportType": "daily-summary"
     }
   }'
 ```
@@ -68,10 +61,10 @@ app.use(express.json());
 // Handler for the 'daily-report' job
 app.post('/job/daily-report', async (req, res) => {
     console.log('Daily report job triggered:', req.body);
-    const data = JSON.parse(req.body.value);
+    const reportType = req.body.reportType;
 
     try {
-        await generateDailyReport(data.reportType);
+        await generateDailyReport(reportType);
         console.log('Report generated successfully');
         res.sendStatus(200);
     } catch (err) {
@@ -86,16 +79,14 @@ app.listen(3000, () => console.log('App listening on port 3000'));
 ### Python with Flask
 
 ```python
-from flask import Flask, request, jsonify
-import json
+from flask import Flask, request
 
 app = Flask(__name__)
 
 @app.route('/job/daily-report', methods=['POST'])
 def handle_daily_report():
     body = request.get_json()
-    data = json.loads(body.get('value', '{}'))
-    report_type = data.get('reportType')
+    report_type = body.get('reportType')
 
     print(f'Job triggered: daily-report for type={report_type}')
 
@@ -113,24 +104,29 @@ if __name__ == '__main__':
 ## Managing Jobs with the .NET SDK
 
 ```csharp
-using Dapr.Client;
-using Google.Protobuf.WellKnownTypes;
+using Dapr.Jobs;
+using Dapr.Jobs.Models;
+using System.Text;
+using System.Text.Json;
 
-var client = new DaprClientBuilder().Build();
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddDaprJobsClient();
+var app = builder.Build();
+
+var client = app.Services.GetRequiredService<DaprJobsClient>();
 
 // Schedule a job
-var job = new DaprJobSchedule("0 9 * * MON-FRI");  // Weekdays at 9am
-await client.ScheduleJobAsync(
-    jobName: "weekly-invoice",
-    schedule: job,
-    payload: new StringValue { Value = "{\"customerId\": \"c456\"}" }
+var schedule = DaprJobSchedule.FromExpression("0 9 * * MON-FRI");  // Weekdays at 9am
+var payload = Encoding.UTF8.GetBytes(
+    JsonSerializer.Serialize(new { customerId = "c456" })
 );
+await client.ScheduleJobAsync("weekly-invoice", schedule, payload);
 
 Console.WriteLine("Job scheduled");
 
 // Get job details
 var jobDetails = await client.GetJobAsync("weekly-invoice");
-Console.WriteLine($"Next run: {jobDetails.Schedule}");
+Console.WriteLine($"Schedule: {jobDetails.Schedule}");
 
 // Delete a job
 await client.DeleteJobAsync("weekly-invoice");
@@ -151,15 +147,15 @@ with DaprClient() as client:
         data=b'{"userId": "u789", "message": "Reminder"}',
         repeats=24  # Run 24 times then stop
     )
-    client.schedule_job(job)
+    client.schedule_job_alpha1(job)
     print("Job scheduled")
 
     # Get job status
-    details = client.get_job("send-reminder")
+    details = client.get_job_alpha1("send-reminder")
     print(f"Job schedule: {details.schedule}")
 
     # Delete job
-    client.delete_job("send-reminder")
+    client.delete_job_alpha1("send-reminder")
     print("Job deleted")
 ```
 
@@ -169,9 +165,10 @@ with DaprClient() as client:
 |--------|---------|---------|
 | Cron | `0 8 * * *` | Every day at 8am |
 | Period | `@every 30m` | Every 30 minutes |
-| Once | `@once` | Run once immediately |
+| Due time | `"30s"` (via `dueTime` field) | Run once after 30 seconds |
 | Named | `@daily` | Every day at midnight |
 | Named | `@weekly` | Every Sunday at midnight |
+| Named | `@hourly` | Every hour |
 
 ## Running with the Dapr CLI
 
@@ -185,15 +182,17 @@ dapr run \
   -- node app.js
 ```
 
-Test by manually triggering the job handler:
+Test the callback handler directly by calling your app:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report
+curl -X POST http://localhost:3000/job/daily-report \
+  -H "Content-Type: application/json" \
+  -d '{"reportType": "daily-summary"}'
 ```
 
-## Listing and Querying Jobs
+## Getting Job Details
 
-Get all jobs for the current application:
+Retrieve details for a specific job by name:
 
 ```bash
 curl http://localhost:3500/v1.0-alpha1/jobs/daily-report
@@ -203,11 +202,10 @@ Response:
 
 ```json
 {
-  "job": {
-    "name": "daily-report",
-    "schedule": "0 8 * * *",
-    "repeats": 0,
-    "dueTime": "2026-04-01T08:00:00Z"
+  "name": "daily-report",
+  "schedule": "0 8 * * *",
+  "data": {
+    "reportType": "daily-summary"
   }
 }
 ```
