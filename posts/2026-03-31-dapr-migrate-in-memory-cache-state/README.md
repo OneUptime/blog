@@ -142,9 +142,16 @@ const resp = await axios.get(`${STATE_URL}/session-001`);
 const etag = resp.headers['etag'];
 
 // Update only if ETag matches (prevents lost updates)
-await axios.put(`${STATE_URL}/session-001`, newValue, {
-  headers: { 'If-Match': etag }
-});
+await axios.post(STATE_URL, [
+  {
+    key: 'session-001',
+    value: newValue,
+    etag: etag,
+    options: {
+      concurrency: 'first-write'
+    }
+  }
+]);
 ```
 
 ## Summary
