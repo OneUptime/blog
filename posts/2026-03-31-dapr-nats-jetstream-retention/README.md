@@ -10,7 +10,7 @@ Description: Configure NATS JetStream stream retention policies for Dapr pub/sub
 
 ## Overview
 
-NATS JetStream provides persistent messaging with configurable retention policies that determine when messages are discarded from streams. Dapr's NATS JetStream pub/sub component lets you configure these policies to match your durability requirements - from ephemeral work queues to long-term event logs.
+NATS JetStream provides persistent messaging with configurable retention policies that determine when messages are discarded from streams. These retention policies are configured at the NATS JetStream stream level, not through Dapr component metadata. You create and configure streams with the desired retention using the NATS CLI or server configuration, then point your Dapr pub/sub component at the stream.
 
 ## Retention Policy Types
 
@@ -21,6 +21,8 @@ JetStream supports three retention modes:
 - `workqueue`: Delete messages after acknowledgment (each message consumed once)
 
 ## Dapr Component Configuration
+
+The Dapr `pubsub.jetstream` component configures consumer-level settings. Stream-level settings like retention policy, message limits, and max age must be configured on the NATS server directly (see sections below).
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -38,16 +40,6 @@ spec:
       value: "dapr-jetstream"
     - name: streamName
       value: "ORDERS"
-    - name: retentionPolicy
-      value: "limits"
-    - name: maxMsgs
-      value: "1000000"
-    - name: maxBytes
-      value: "1073741824"
-    - name: maxAge
-      value: "24h"
-    - name: maxMsgSize
-      value: "1048576"
     - name: replicas
       value: "3"
     - name: deliverPolicy
@@ -58,36 +50,44 @@ spec:
       value: "30s"
     - name: maxDeliver
       value: "5"
-    - name: filterSubject
-      value: ""
 ```
 
 ## Limits-Based Retention
 
-Discard oldest messages when limits are hit:
+Create a stream with limits-based retention using the NATS CLI. Messages are discarded when size, age, or count limits are hit:
 
-```yaml
-metadata:
-  - name: retentionPolicy
-    value: "limits"
-  - name: maxMsgs
-    value: "500000"       # keep last 500K messages
-  - name: maxAge
-    value: "168h"         # keep messages for 7 days
-  - name: maxBytes
-    value: "5368709120"   # keep up to 5GB
-  - name: discardPolicy
-    value: "old"          # discard oldest when limit hit
+```bash
+kubectl exec -it nats-0 -- nats stream add ORDERS \
+  --subjects="orders.>" \
+  --retention=limits \
+  --max-msgs=500000 \
+  --max-age=168h \
+  --max-bytes=5368709120 \
+  --max-msg-size=1048576 \
+  --discard=old \
+  --replicas=3 \
+  --storage=file
 ```
 
 ## Work Queue Retention
 
-Each message is consumed exactly once:
+Create a stream with work queue retention. Each message is consumed exactly once:
+
+```bash
+kubectl exec -it nats-0 -- nats stream add TASKS \
+  --subjects="tasks.>" \
+  --retention=work \
+  --discard=old \
+  --replicas=3 \
+  --storage=file
+```
+
+Then configure the Dapr component with explicit acknowledgment:
 
 ```yaml
 metadata:
-  - name: retentionPolicy
-    value: "workqueue"
+  - name: streamName
+    value: "TASKS"
   - name: ackPolicy
     value: "explicit"
   - name: maxDeliver
@@ -98,25 +98,26 @@ metadata:
 
 ## Interest-Based Retention
 
-Retain messages only while consumers are active:
-
-```yaml
-metadata:
-  - name: retentionPolicy
-    value: "interest"
-  - name: maxAge
-    value: "1h"
-```
-
-## Creating Streams via NATS CLI
-
-Verify the stream configuration created by Dapr:
+Create a stream with interest-based retention. Messages are retained only while consumers are active:
 
 ```bash
-# Install NATS CLI
+kubectl exec -it nats-0 -- nats stream add EVENTS \
+  --subjects="events.>" \
+  --retention=interest \
+  --max-age=1h \
+  --replicas=3 \
+  --storage=file
+```
+
+## Inspecting Streams via NATS CLI
+
+Verify stream configuration and consumer state:
+
+```bash
+# View detailed stream info including retention policy
 kubectl exec -it nats-0 -- nats stream info ORDERS
 
-# View retention policy
+# List all streams
 kubectl exec -it nats-0 -- nats stream ls
 
 # Check consumer lag
@@ -162,4 +163,4 @@ kubectl exec -it nats-0 -- nats stream report
 
 ## Summary
 
-NATS JetStream retention policies for Dapr pub/sub are configured via component metadata: `limits` retains messages until size or age thresholds are exceeded, `workqueue` deletes after acknowledgment for task queue patterns, and `interest` retains only while consumers are subscribed. For durable event streaming, use `limits` with `maxAge` set to your replay window. For task processing, use `workqueue` with explicit ack and a `maxDeliver` retry limit to handle failures.
+NATS JetStream retention policies are configured at the stream level using the NATS CLI or server configuration, then referenced by the Dapr `pubsub.jetstream` component via `streamName`. The three retention modes are: `limits` retains messages until size or age thresholds are exceeded, `workqueue` deletes after acknowledgment for task queue patterns, and `interest` retains only while consumers are subscribed. For durable event streaming, use `limits` with `--max-age` set to your replay window. For task processing, use `workqueue` with explicit ack and a `maxDeliver` retry limit in the Dapr component to handle failures.
