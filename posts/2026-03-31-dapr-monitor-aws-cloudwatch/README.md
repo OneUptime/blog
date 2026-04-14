@@ -56,7 +56,7 @@ data:
               replacement: "$1:9090"
 
     exporters:
-      awscloudwatch:
+      awsemf:
         region: us-east-1
         namespace: Dapr/Metrics
         log_group_name: /dapr/metrics
@@ -66,7 +66,7 @@ data:
       pipelines:
         metrics:
           receivers: [prometheus]
-          exporters: [awscloudwatch]
+          exporters: [awsemf]
 ```
 
 ## Ship Dapr Logs to CloudWatch with FluentBit
@@ -123,9 +123,9 @@ aws cloudwatch put-metric-alarm \
 # Alarm on high pub/sub processing latency
 aws cloudwatch put-metric-alarm \
   --alarm-name "DaprHighPubSubLatency" \
-  --metric-name "dapr_pubsub_egress_latencies" \
+  --metric-name "dapr_component_pubsub_egress_latencies" \
   --namespace "Dapr/Metrics" \
-  --statistic p99 \
+  --extended-statistic p99 \
   --period 60 \
   --threshold 1000 \
   --comparison-operator GreaterThanThreshold \
@@ -143,9 +143,9 @@ aws cloudwatch put-metric-alarm \
 # dapr_http_client_request_count     - outbound requests
 
 # Pub/Sub metrics
-# dapr_pubsub_ingress_count          - messages received
-# dapr_pubsub_egress_count           - messages published
-# dapr_pubsub_egress_latencies       - publish latency
+# dapr_component_pubsub_ingress_count    - messages received
+# dapr_component_pubsub_egress_count     - messages published
+# dapr_component_pubsub_egress_latencies - publish latency
 
 # State store metrics
 # dapr_state_query_total             - state operations
