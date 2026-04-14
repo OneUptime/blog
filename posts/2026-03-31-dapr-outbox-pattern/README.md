@@ -25,6 +25,8 @@ The order is saved but downstream services never know about it.
 
 ## Implementing the Outbox Pattern with Dapr
 
+> **Note:** Dapr v1.12+ includes built-in outbox pattern support via state store component metadata (`outboxPublishPubsub` and `outboxPublishTopic`), which automatically publishes state changes as events without manual relay code. The manual implementation below is useful for understanding the pattern and for cases where you need custom relay logic.
+
 Dapr's transactional state operations let you atomically write domain state and outbox entries using a state store that supports transactions (Redis, PostgreSQL, etc.).
 
 ### State Store Configuration
