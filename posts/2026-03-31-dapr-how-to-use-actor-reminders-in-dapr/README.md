@@ -10,7 +10,7 @@ Description: Learn how to use actor reminders in Dapr to schedule durable, persi
 
 ## What Are Actor Reminders in Dapr
 
-Actor reminders are durable, persisted scheduled callbacks attached to a Dapr virtual actor. Unlike timers, reminders survive actor deactivation and process restarts - Dapr stores them in the configured state store and re-activates the actor to deliver them at the scheduled time.
+Actor reminders are durable, persisted scheduled callbacks attached to a Dapr virtual actor. Unlike timers, reminders survive actor deactivation and process restarts - Dapr persists them via the Scheduler service (default since Dapr v1.15; older versions used the actor state store) and re-activates the actor to deliver them at the scheduled time.
 
 Use reminders for critical scheduled tasks like billing cycles, SLA deadline checks, subscription renewals, and any work that must not be lost if the service restarts.
 
@@ -27,7 +27,7 @@ using Dapr.Actors.Runtime;
 using System.Text.Json;
 
 [Actor(TypeName = "SubscriptionActor")]
-public class SubscriptionActor : Actor, ISubscriptionActor
+public class SubscriptionActor : Actor, ISubscriptionActor, IRemindable
 {
     public SubscriptionActor(ActorHost host) : base(host) { }
 
@@ -79,11 +79,11 @@ public class SubscriptionActor : Actor, ISubscriptionActor
 ## Register a Reminder in Python
 
 ```python
-from dapr.actor import Actor
+from dapr.actor import Actor, Remindable
 from datetime import timedelta
 import json
 
-class OrderActor(Actor):
+class OrderActor(Actor, Remindable):
     async def schedule_sla_check(self, order_data: dict):
         # Save state
         await self._state_manager.set_state("order", order_data)
@@ -125,7 +125,7 @@ curl -X POST \
   }'
 ```
 
-The `data` field is base64-encoded. `dueTime` and `period` use Go duration format.
+The `data` field is a string (base64-encoding is one option for binary payloads). `dueTime` and `period` support Go duration format (e.g. `"24h"`) as well as ISO 8601 durations (e.g. `"PT24H"`).
 
 Get a reminder:
 
@@ -144,7 +144,7 @@ curl -X DELETE \
 
 ```csharp
 [Actor(TypeName = "BillingActor")]
-public class BillingActor : Actor, IBillingActor
+public class BillingActor : Actor, IBillingActor, IRemindable
 {
     private const string BillingReminderName = "billing-cycle";
 
@@ -187,4 +187,4 @@ public class BillingActor : Actor, IBillingActor
 
 ## Summary
 
-Dapr actor reminders provide durable, persisted scheduling that survives actor deactivation and restarts - guaranteed at-least-once delivery backed by the configured state store. They are the right choice for business-critical recurring tasks like billing, SLA monitoring, subscription renewal notifications, and any scheduled work that cannot be lost. For lightweight, ephemeral scheduling within an active session, use actor timers instead.
+Dapr actor reminders provide durable, persisted scheduling that survives actor deactivation and restarts - guaranteed at-least-once delivery backed by the Scheduler service (or state store in older Dapr versions). They are the right choice for business-critical recurring tasks like billing, SLA monitoring, subscription renewal notifications, and any scheduled work that cannot be lost. For lightweight, ephemeral scheduling within an active session, use actor timers instead.
