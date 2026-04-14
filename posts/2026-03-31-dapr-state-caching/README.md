@@ -188,7 +188,6 @@ Prevent thundering herd when cache expires:
 
 ```python
 import threading
-import time
 
 _lock_map = {}
 _lock_map_lock = threading.Lock()
