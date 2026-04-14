@@ -87,9 +87,9 @@ spec:
     value: "https://vault.healthcare.internal:8200"
   - name: enginePath
     value: "hipaa"
-  scopes:
-  - phi-processor
-  - ehr-service
+scopes:
+- phi-processor
+- ehr-service
 ```
 
 ## Audit Logging for Access Controls
@@ -154,8 +154,8 @@ spec:
     secretKeyRef:
       name: redis-tls
       key: client.key
-  scopes:
-  - phi-processor
+scopes:
+- phi-processor
 ```
 
 ## Summary
