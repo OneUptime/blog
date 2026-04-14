@@ -51,6 +51,10 @@ metadata:
   name: catalog-service-v2
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+      version: v2
   template:
     metadata:
       annotations:
@@ -115,22 +119,61 @@ curl http://localhost:3500/v1.0/invoke/catalog-service/method/v2/products
 
 ## Strategy 3: Canary Deployment with Dapr
 
-Use Kubernetes traffic splitting to send a percentage of traffic to v2:
+Run both versions with the same Dapr app ID so that Dapr's name resolution discovers all pods and round-robins traffic across them. Traffic percentage is controlled by replica counts:
 
 ```yaml
-apiVersion: v1
-kind: Service
+# v1 canary deployment
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: catalog-service
+  name: catalog-service-v1
 spec:
+  replicas: 9
   selector:
-    app: catalog-service  # Selects both v1 and v2 pods
-  ports:
-    - port: 80
-      targetPort: 3500
+    matchLabels:
+      app: catalog-service
+      version: v1
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "catalog-service"
+        dapr.io/app-port: "8080"
+      labels:
+        app: catalog-service
+        version: v1
+    spec:
+      containers:
+        - name: catalog-service
+          image: myregistry/catalog-service:1.5.0
+---
+# v2 canary deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+      version: v2
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "catalog-service"
+        dapr.io/app-port: "8080"
+      labels:
+        app: catalog-service
+        version: v2
+    spec:
+      containers:
+        - name: catalog-service
+          image: myregistry/catalog-service:2.0.0
 ```
 
-Control traffic percentage via replica counts:
+Because both deployments share the same `dapr.io/app-id`, Dapr automatically discovers all pods through its internal headless service and distributes traffic via round-robin. Control the traffic split by scaling replica counts:
 
 ```bash
 # 10% canary - 1 v2 replica vs 9 v1 replicas
@@ -148,25 +191,27 @@ Use separate topic subscriptions for different versions:
 
 ```yaml
 # v1 subscription
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-v1
 spec:
   topic: orders
   pubsubname: pubsub
-  route: /orders/v1/handle
+  routes:
+    default: /orders/v1/handle
 
 ---
 # v2 subscription (migrating consumers)
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-v2
 spec:
   topic: orders-v2
   pubsubname: pubsub
-  route: /orders/v2/handle
+  routes:
+    default: /orders/v2/handle
 ```
 
 ## Monitoring Version Traffic
