@@ -68,7 +68,7 @@ targets:
 
 ## Timeout Behavior
 
-When a timeout fires, Dapr cancels the request and returns an error to the caller. If a retry policy is also configured, Dapr immediately attempts the next retry (up to `maxRetries`):
+When a timeout fires, Dapr cancels the request and returns an error to the caller. If a retry policy is also configured, Dapr attempts the next retry after the specified backoff duration (up to `maxRetries`):
 
 ```yaml
 policies:
