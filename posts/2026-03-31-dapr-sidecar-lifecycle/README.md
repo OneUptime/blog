@@ -69,6 +69,7 @@ After components are loaded, the sidecar waits for your application to be health
 
 ```yaml
 annotations:
+  dapr.io/enable-app-health-check: "true"      # required to enable app health checks
   dapr.io/app-health-check-path: "/healthz"
   dapr.io/app-health-probe-interval: "3"       # check every 3 seconds
   dapr.io/app-health-probe-timeout: "500"      # timeout in ms
@@ -115,17 +116,10 @@ The default startup order in a Dapr-enabled pod:
 3. The sidecar polls your app's health endpoint
 4. Once your app is healthy, the sidecar marks itself as ready
 
-To ensure your app waits for the sidecar before processing:
-
-```yaml
-annotations:
-  dapr.io/wait-for-sidecar-before-app-start: "false"  # default
-```
-
-Or in your app startup code:
+To ensure your app waits for the sidecar before processing, poll the health endpoint in your app startup code:
 
 ```python
-import requests, time
+import os, requests, time
 
 def wait_for_sidecar():
     dapr_port = os.getenv('DAPR_HTTP_PORT', '3500')
@@ -167,7 +161,7 @@ Configure drain timeout:
 
 ```yaml
 annotations:
-  dapr.io/graceful-shutdown-seconds: "5"   # default: 0 (no wait)
+  dapr.io/graceful-shutdown-seconds: "10"  # default: 5
 ```
 
 In self-hosted mode:
@@ -175,7 +169,7 @@ In self-hosted mode:
 ```bash
 dapr run \
   --app-id myapp \
-  --graceful-shutdown-seconds 10 \
+  --dapr-graceful-shutdown-seconds 10 \
   -- node app.js
 ```
 
