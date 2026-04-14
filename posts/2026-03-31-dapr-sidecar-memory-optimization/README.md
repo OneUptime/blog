@@ -40,11 +40,11 @@ Set Go runtime environment variables to reduce heap growth via the sidecar envir
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env: "GOGC=50,GOMEMLIMIT=100MiB"
+  dapr.io/env: "GOGC=50,GOMEMLIMIT=100MiB"
 ```
 
 - `GOGC=50`: Trigger GC more frequently (default 100), reducing peak heap
-- `GOMEMLIMIT=100MiB`: Hard cap on Go runtime memory (Go 1.19+)
+- `GOMEMLIMIT=100MiB`: Soft memory limit for the Go runtime (Go 1.19+), triggers more aggressive GC as usage approaches the limit
 
 ## Disable Unused Features
 
@@ -81,10 +81,10 @@ metadata:
 spec:
   type: state.redis
   version: v1
-  scopes:
-  - order-service
-  - inventory-service
-  # All other services won't load this component
+scopes:
+- order-service
+- inventory-service
+# All other services won't load this component
 ```
 
 ## Monitor Memory Over Time
