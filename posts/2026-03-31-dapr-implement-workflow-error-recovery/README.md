@@ -18,7 +18,6 @@ Dapr Workflow provides try-catch-style error handling where activity failures ar
 package main
 
 import (
-    "errors"
     "fmt"
     "github.com/dapr/go-sdk/workflow"
 )
@@ -29,7 +28,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     var paymentResult PaymentResult
     err := ctx.CallActivity(ProcessPayment,
-        workflow.ActivityInput(order)).Await(&paymentResult)
+        workflow.WithActivityInput(order)).Await(&paymentResult)
 
     if err != nil {
         // Log the failure and return a structured error
@@ -39,13 +38,13 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     var shipResult ShipResult
     err = ctx.CallActivity(ShipOrder,
-        workflow.ActivityInput(order)).Await(&shipResult)
+        workflow.WithActivityInput(order)).Await(&shipResult)
 
     if err != nil {
         // Compensate: refund the payment
         var refundResult RefundResult
         ctx.CallActivity(RefundPayment,
-            workflow.ActivityInput(paymentResult.PaymentID)).Await(&refundResult)
+            workflow.WithActivityInput(paymentResult.PaymentID)).Await(&refundResult)
         return nil, fmt.Errorf("shipment failed, payment refunded: %w", err)
     }
 
@@ -98,7 +97,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     var order Order
     ctx.GetInput(&order)
 
-    retryPolicy := workflow.ActivityRetryPolicy{
+    retryPolicy := &workflow.RetryPolicy{
         MaxAttempts:          3,
         InitialRetryInterval: 5 * time.Second,
         BackoffCoefficient:   2.0,
@@ -107,8 +106,8 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     var result PaymentResult
     err := ctx.CallActivity(ProcessPayment,
-        workflow.ActivityInput(order),
-        workflow.WithRetryPolicy(retryPolicy)).Await(&result)
+        workflow.WithActivityInput(order),
+        workflow.WithActivityRetryPolicy(retryPolicy)).Await(&result)
 
     if err != nil {
         var actErr *ActivityError
@@ -135,14 +134,14 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     // Execute steps, tracking what completed for compensation
     var payment PaymentResult
     if err := ctx.CallActivity(ProcessPayment,
-        workflow.ActivityInput(order)).Await(&payment); err != nil {
+        workflow.WithActivityInput(order)).Await(&payment); err != nil {
         return nil, err
     }
     completedSteps = append(completedSteps, "payment")
 
     var inventory InventoryResult
     if err := ctx.CallActivity(ReserveInventory,
-        workflow.ActivityInput(order)).Await(&inventory); err != nil {
+        workflow.WithActivityInput(order)).Await(&inventory); err != nil {
         // Compensate completed steps in reverse order
         compensate(ctx, completedSteps, order, payment)
         return nil, err
@@ -157,7 +156,7 @@ func compensate(ctx *workflow.WorkflowContext, steps []string, order Order, paym
         case "payment":
             var r RefundResult
             ctx.CallActivity(RefundPayment,
-                workflow.ActivityInput(payment.PaymentID)).Await(&r)
+                workflow.WithActivityInput(payment.PaymentID)).Await(&r)
         }
     }
 }
@@ -166,11 +165,11 @@ func compensate(ctx *workflow.WorkflowContext, steps []string, order Order, paym
 ## Monitoring Failed Workflows
 
 ```bash
-# List failed workflows
-curl "http://localhost:3500/v1.0/workflows/dapr?status=FAILED"
+# Get workflow instance status
+curl "http://localhost:3500/v1.0/workflows/dapr/order-123" | jq '.runtimeStatus'
 
-# Get failure details
-curl "http://localhost:3500/v1.0/workflows/dapr/order-123/status" | jq '.failureDetails'
+# Get workflow instance details including failure info
+curl "http://localhost:3500/v1.0/workflows/dapr/order-123" | jq '.properties'
 ```
 
 ## Summary
