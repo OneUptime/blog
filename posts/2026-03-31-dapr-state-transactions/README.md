@@ -12,7 +12,7 @@ Description: Learn how to use Dapr state transactions to execute multiple upsert
 
 Dapr state transactions allow you to execute multiple upsert (insert or update) and delete operations in a single atomic request. Either all operations succeed or none do. This is critical for maintaining consistency across related state items, such as updating an order status while deleting a shopping cart.
 
-Not all state stores support transactions. Supported stores include Redis (single-key transactions), PostgreSQL, MongoDB, Azure Cosmos DB, CockroachDB, and MySQL.
+Not all state stores support transactions. Supported stores include Redis (multi-key batches via MULTI/EXEC, but without rollback guarantees), PostgreSQL, MongoDB, Azure Cosmos DB, CockroachDB, and MySQL.
 
 ## How Transactions Work
 
@@ -39,7 +39,7 @@ sequenceDiagram
 ## Prerequisites
 
 - Dapr initialized with a transactional state store
-- Redis (supports single-shard multi-key transactions) or PostgreSQL/CosmosDB for full transactions
+- Redis (supports multi-key transaction batches, but without rollback — if one operation fails, others still execute) or PostgreSQL/CosmosDB for full ACID transactions
 
 ## Transaction via HTTP API
 
@@ -145,7 +145,7 @@ execute_order_transaction("ORD-001", "CUST-42", "cart:CUST-42")
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._request import TransactionalStateOperation, OperationType
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 import json
 
 with DaprClient() as client:
@@ -157,16 +157,16 @@ with DaprClient() as client:
                 "status": "confirmed",
                 "total": 249.99
             }).encode(),
-            operation_type=OperationType.upsert
+            operation_type=TransactionOperationType.upsert
         ),
         TransactionalStateOperation(
             key="inventory:ITEM-A",
             data=json.dumps({"stock": 48}).encode(),
-            operation_type=OperationType.upsert
+            operation_type=TransactionOperationType.upsert
         ),
         TransactionalStateOperation(
             key="cart:CUST-43",
-            operation_type=OperationType.delete
+            operation_type=TransactionOperationType.delete
         )
     ]
 
@@ -261,7 +261,7 @@ You can include ETags for optimistic concurrency within a transaction:
 }
 ```
 
-If the ETag does not match, the entire transaction is rolled back with a `409 Conflict` response.
+If the ETag does not match, the entire transaction fails and returns a `500 Error` response. Note that `409 Conflict` is only returned for individual (non-transactional) state save and delete operations.
 
 ## Transactional Metadata
 
