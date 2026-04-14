@@ -24,34 +24,37 @@ App -> Dapr HTTP Port (3500) -> [Middleware 1] -> [Middleware 2] -> App Handler
 
 ## Implementing a Custom Middleware Component
 
-Dapr HTTP middleware uses Go's `fasthttp` middleware pattern. Create a middleware that adds custom authentication headers:
+Dapr HTTP middleware implements the `Middleware` interface from `components-contrib` using Go's standard `net/http` handler pattern. Create a middleware that adds custom authentication headers:
 
 ```go
-package main
+package custommiddleware
 
 import (
-    "github.com/dapr/dapr/pkg/middleware"
-    "github.com/valyala/fasthttp"
+    "net/http"
+
+    "github.com/dapr/components-contrib/middleware"
 )
 
 // CustomAuthMiddleware validates a custom token header
-func NewCustomAuthMiddleware(metadata middleware.Metadata) (middleware.FastHTTPMiddleware, error) {
+type CustomAuthMiddleware struct{}
+
+func (m *CustomAuthMiddleware) GetHandler(metadata middleware.Metadata) (func(next http.Handler) http.Handler, error) {
     secret := metadata.Properties["secret"]
 
-    return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-        return func(ctx *fasthttp.RequestCtx) {
-            token := string(ctx.Request.Header.Peek("X-Custom-Token"))
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            token := r.Header.Get("X-Custom-Token")
 
             if token != secret {
-                ctx.Response.SetStatusCode(fasthttp.StatusUnauthorized)
-                ctx.Response.SetBodyString(`{"error": "unauthorized"}`)
+                w.WriteHeader(http.StatusUnauthorized)
+                w.Write([]byte(`{"error": "unauthorized"}`))
                 return
             }
 
             // Add a downstream header with verified identity
-            ctx.Request.Header.Set("X-Verified-User", "service-account")
-            next(ctx)
-        }
+            r.Header.Set("X-Verified-User", "service-account")
+            next.ServeHTTP(w, r)
+        })
     }, nil
 }
 ```
@@ -62,15 +65,19 @@ func NewCustomAuthMiddleware(metadata middleware.Metadata) (middleware.FastHTTPM
 package main
 
 import (
-    "github.com/dapr/dapr/pkg/components"
-    httpMiddleware "github.com/dapr/dapr/pkg/middleware/http"
+    contribMiddleware "github.com/dapr/components-contrib/middleware"
+    httpMiddlewareLoader "github.com/dapr/dapr/pkg/components/middleware/http"
+    "github.com/dapr/kit/logger"
+
+    custommiddleware "myapp/middleware"
 )
 
 func init() {
-    components.RegisterHTTPMiddleware("middleware.http.custom-auth",
-        func(metadata middleware.Metadata) (middleware.FastHTTPMiddleware, error) {
-            return NewCustomAuthMiddleware(metadata)
+    httpMiddlewareLoader.DefaultRegistry.RegisterComponent(
+        func(log logger.Logger) contribMiddleware.Middleware {
+            return &custommiddleware.CustomAuthMiddleware{}
         },
+        "custom-auth",
     )
 }
 ```
@@ -78,26 +85,41 @@ func init() {
 ## Building a Request Logger Middleware
 
 ```go
-func NewRequestLoggerMiddleware(metadata middleware.Metadata) (middleware.FastHTTPMiddleware, error) {
+type statusResponseWriter struct {
+    http.ResponseWriter
+    statusCode int
+}
+
+func (w *statusResponseWriter) WriteHeader(code int) {
+    w.statusCode = code
+    w.ResponseWriter.WriteHeader(code)
+}
+
+type RequestLoggerMiddleware struct{}
+
+func (m *RequestLoggerMiddleware) GetHandler(metadata middleware.Metadata) (func(next http.Handler) http.Handler, error) {
     logLevel := metadata.Properties["logLevel"]
 
-    return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-        return func(ctx *fasthttp.RequestCtx) {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             start := time.Now()
 
+            // Wrap ResponseWriter to capture status code
+            wrapped := &statusResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
             // Process request
-            next(ctx)
+            next.ServeHTTP(wrapped, r)
 
             duration := time.Since(start)
             if logLevel == "info" {
                 log.Printf("[MIDDLEWARE] %s %s -> %d (%s)",
-                    ctx.Method(),
-                    ctx.Path(),
-                    ctx.Response.StatusCode(),
+                    r.Method,
+                    r.URL.Path,
+                    wrapped.statusCode,
                     duration,
                 )
             }
-        }
+        })
     }, nil
 }
 ```
@@ -138,19 +160,21 @@ spec:
 ## Rate Limiting Middleware
 
 ```go
-func NewRateLimitMiddleware(metadata middleware.Metadata) (middleware.FastHTTPMiddleware, error) {
+type RateLimitMiddleware struct{}
+
+func (m *RateLimitMiddleware) GetHandler(metadata middleware.Metadata) (func(next http.Handler) http.Handler, error) {
     maxRPS, _ := strconv.Atoi(metadata.Properties["maxRequestsPerSecond"])
     limiter := rate.NewLimiter(rate.Limit(maxRPS), maxRPS)
 
-    return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-        return func(ctx *fasthttp.RequestCtx) {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             if !limiter.Allow() {
-                ctx.Response.SetStatusCode(fasthttp.StatusTooManyRequests)
-                ctx.Response.SetBodyString(`{"error": "rate limit exceeded"}`)
+                w.WriteHeader(http.StatusTooManyRequests)
+                w.Write([]byte(`{"error": "rate limit exceeded"}`))
                 return
             }
-            next(ctx)
-        }
+            next.ServeHTTP(w, r)
+        })
     }, nil
 }
 ```
@@ -162,7 +186,7 @@ dapr run \
   --app-id my-app \
   --app-port 8080 \
   --config ./config/appconfig.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- go run main.go
 
 # Test middleware is applied
@@ -175,4 +199,4 @@ curl -H "X-Custom-Token: correct-token" http://localhost:3500/v1.0/invoke/target
 
 ## Summary
 
-Dapr HTTP middleware components provide a powerful extension point for cross-cutting concerns like authentication, rate limiting, and request transformation. By implementing the fasthttp middleware pattern and registering it as a Dapr component, you can add organizational security policies or observability logic to the Dapr pipeline declaratively through Configuration manifests.
+Dapr HTTP middleware components provide a powerful extension point for cross-cutting concerns like authentication, rate limiting, and request transformation. By implementing the `Middleware` interface and registering it as a Dapr component, you can add organizational security policies or observability logic to the Dapr pipeline declaratively through Configuration manifests.
