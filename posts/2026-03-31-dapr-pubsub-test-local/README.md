@@ -58,7 +58,7 @@ app.listen(3000, () => console.log("Listening on port 3000"));
 ## Publish a Test Message via CLI
 
 ```bash
-# Publish using Dapr CLI (no running app needed)
+# Publish using Dapr CLI (requires the Dapr sidecar to be running)
 dapr publish \
   --publish-app-id order-processor \
   --pubsub pubsub \
@@ -107,7 +107,7 @@ services:
       - "--app-id=publisher"
       - "--app-port=3000"
       - "--dapr-http-port=3500"
-      - "--components-path=/components"
+      - "--resources-path=/components"
     volumes:
       - ./components:/components
     network_mode: "service:publisher"
@@ -119,7 +119,7 @@ services:
       - "--app-id=subscriber"
       - "--app-port=3001"
       - "--dapr-http-port=3501"
-      - "--components-path=/components"
+      - "--resources-path=/components"
     volumes:
       - ./components:/components
     network_mode: "service:subscriber"
