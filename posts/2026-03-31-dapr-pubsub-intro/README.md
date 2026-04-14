@@ -77,7 +77,6 @@ POST http://localhost:{dapr-port}/v1.0/publish/{pubsub-name}/{topic}
 ```python
 import requests
 import os
-import json
 
 DAPR_HTTP_PORT = os.environ.get("DAPR_HTTP_PORT", "3500")
 
@@ -117,10 +116,10 @@ async function publish(pubsubName, topic, data) {
   console.log(`Published to ${topic}`);
 }
 
-await publish('pubsub', 'orders', {
+publish('pubsub', 'orders', {
   orderId: 'ORD-002',
   total: 149.99
-});
+}).catch(console.error);
 ```
 
 ## Subscribing to Messages
