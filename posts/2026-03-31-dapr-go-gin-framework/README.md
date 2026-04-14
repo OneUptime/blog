@@ -25,6 +25,7 @@ go get github.com/dapr/go-sdk/client@latest
 package main
 
 import (
+    "encoding/json"
     "log"
     "net/http"
 
@@ -46,8 +47,6 @@ func main() {
     app := &App{dapr: daprClient}
 
     r := gin.Default()
-    r.Use(gin.Logger())
-    r.Use(gin.Recovery())
 
     // Dapr required endpoints
     r.GET("/dapr/subscribe", app.subscribeHandler)
@@ -153,7 +152,7 @@ func (a *App) handleInventoryUpdated(c *gin.Context) {
 
 ```bash
 dapr run --app-id product-service --app-port 8080 --app-protocol http \
-  --components-path ./components -- go run main.go
+  --resources-path ./components -- go run main.go
 ```
 
 ## Summary
