@@ -31,7 +31,7 @@ sequenceDiagram
 
 ```bash
 dapr --version   # Dapr CLI 1.14+
-docker --version # Docker for Redis container
+docker --version # Docker for dapr init containers
 ```
 
 Initialize Dapr if not already done:
@@ -68,7 +68,7 @@ if __name__ == '__main__':
 ## The Checkout Service (Caller)
 
 ```python
-# checkout-service/app.py
+# checkout/app.py
 import requests
 import os
 import time
