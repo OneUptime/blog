@@ -21,21 +21,9 @@ Dapr uses the `partitionKey` metadata field when publishing to Kafka. If not spe
 When publishing via the Dapr HTTP API, pass the partition key in metadata:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/kafka-pubsub/order-events \
+curl -X POST "http://localhost:3500/v1.0/publish/kafka-pubsub/order-events?metadata.partitionKey=customer-123" \
   -H "Content-Type: application/json" \
-  -H "metadata.partitionKey: customer-123" \
   -d '{"orderId": "ORD-9001", "customerId": "customer-123", "action": "created"}'
-```
-
-Or in the request body metadata:
-
-```bash
-curl -X POST http://localhost:3500/v1.0/publish/kafka-pubsub/order-events \
-  -H "Content-Type: application/json" \
-  -d '{
-    "data": {"orderId": "ORD-9001", "customerId": "customer-123"},
-    "metadata": {"partitionKey": "customer-123"}
-  }'
 ```
 
 ## Partition Key in Go SDK
@@ -45,6 +33,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -129,7 +118,7 @@ Without partition keys:
 
 ## Rebalancing After Scaling
 
-When you scale Dapr consumer replicas, Kafka triggers a rebalance. During rebalancing (typically a few seconds), consumption pauses. Use cooperative rebalancing to minimize downtime:
+When you scale Dapr consumer replicas, Kafka triggers a rebalance. During rebalancing (typically a few seconds), consumption pauses. Use static group membership to minimize downtime during deployments:
 
 ```yaml
 metadata:
