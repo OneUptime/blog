@@ -45,12 +45,9 @@ DAPR_HTTP_PORT = 3500
 async def publish_order_event(event_type: str, order_id: str, payload: dict):
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/ordered-pubsub/order-events",
+            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/ordered-pubsub/order-events?metadata.partitionKey={order_id}",
             json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "metadata.partitionKey": order_id  # Same order always goes to same partition
-            }
+            headers={"Content-Type": "application/json"}
         )
 
 # All events for the same order_id go to the same partition and are consumed in order
@@ -64,7 +61,6 @@ await publish_order_event("OrderShipped", "order-123", {"orderId": "order-123", 
 Add a sequence number to events so consumers can detect and handle out-of-order delivery:
 
 ```python
-import asyncio
 from collections import defaultdict
 
 sequence_counters = defaultdict(int)
@@ -82,9 +78,9 @@ async def publish_ordered_event(order_id: str, event_type: str, data: dict):
 
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/ordered-pubsub/order-events",
+            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/ordered-pubsub/order-events?metadata.partitionKey={order_id}",
             json=event,
-            headers={"metadata.partitionKey": order_id}
+            headers={"Content-Type": "application/json"}
         )
 ```
 
