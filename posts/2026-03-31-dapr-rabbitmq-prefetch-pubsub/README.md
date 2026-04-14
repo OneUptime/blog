@@ -118,8 +118,8 @@ When your application returns a non-2xx status, Dapr rejects the message. Config
 metadata:
   - name: requeueInFailure
     value: "true"
-  - name: deadLetterExchange
-    value: "dlx-orders"
+  - name: enableDeadLetter
+    value: "true"
 ```
 
 With `requeueInFailure: true`, failed messages go back to the queue and can cause infinite loops. Use a dead-letter exchange instead.
