@@ -32,12 +32,24 @@ server:
   ha:
     enabled: true
     replicas: 3
-  storage:
-    consul:
-      address: "consul:8500"
-      path: "openbao/"
-  ui:
-    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "consul" {
+        path = "openbao/"
+        address = "consul:8500"
+      }
+
+      service_registration "kubernetes" {}
+
+ui:
+  enabled: true
 ```
 
 ## Initialize and Configure OpenBao
