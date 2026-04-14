@@ -37,22 +37,23 @@ spec:
 ## Appending an Event
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, StateConcurrencyEnum } = require('@dapr/dapr');
 const client = new DaprClient();
 
 async function appendEvent(aggregateId, event) {
   const eventsKey = `order:${aggregateId}:events`;
 
-  // Use optimistic concurrency with eTag to prevent lost updates
-  const { data: events, eTag } = await client.state.getBulk('event-store', [eventsKey]);
-  const currentEvents = events[eventsKey] || [];
+  // Use getBulk to retrieve the value along with its ETag for optimistic concurrency
+  const items = await client.state.getBulk('event-store', [eventsKey]);
+  const entry = items.find(i => i.key === eventsKey);
+  const currentEvents = entry?.data || [];
 
   await client.state.save('event-store', [
     {
       key: eventsKey,
       value: [...currentEvents, { ...event, timestamp: Date.now() }],
-      etag: eTag,
-      options: { concurrency: 'first-write' }
+      etag: entry?.etag,
+      options: { concurrency: StateConcurrencyEnum.CONCURRENCY_FIRST_WRITE }
     }
   ]);
 }
