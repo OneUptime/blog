@@ -49,11 +49,23 @@ app = Flask(__name__)
 
 @app.route("/dapr/subscribe", methods=["GET"])
 def subscribe():
-    return jsonify([{
-        "pubsubname": "pipeline-pubsub",
-        "topic": "raw-events",
-        "route": "/ingest"
-    }])
+    return jsonify([
+        {
+            "pubsubname": "pipeline-pubsub",
+            "topic": "raw-events",
+            "route": "/ingest"
+        },
+        {
+            "pubsubname": "pipeline-pubsub",
+            "topic": "transform-queue",
+            "route": "/transform"
+        },
+        {
+            "pubsubname": "pipeline-pubsub",
+            "topic": "load-queue",
+            "route": "/load"
+        }
+    ])
 
 @app.route("/ingest", methods=["POST"])
 def ingest():
@@ -142,6 +154,9 @@ def load():
 
     print(f"Loaded event {event_id}")
     return jsonify({"status": "SUCCESS"})
+
+if __name__ == "__main__":
+    app.run(port=5000)
 ```
 
 ## Injecting Test Events
