@@ -28,7 +28,7 @@ Invoke services via gRPC client:
 import dapr "github.com/dapr/go-sdk/client"
 
 client, _ := dapr.NewClient()
-resp, err := client.InvokeMethod(ctx, "target-service", "process", "application/json")
+resp, err := client.InvokeMethod(ctx, "target-service", "process", "post")
 ```
 
 ## Use Unix Domain Sockets
