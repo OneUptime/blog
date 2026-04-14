@@ -49,7 +49,7 @@ Each Dapr-enabled pod contains both the app container and the `daprd` sidecar. A
 # App container: 200m CPU, 128Mi memory each
 # Dapr sidecar: 100m CPU, 64Mi memory each
 # Total per pod: 300m CPU, 192Mi memory
-# Total for 20 pods: 6 CPU, 3.84Gi memory (requests)
+# Total for 20 pods: 6 CPU, 3.75Gi memory (requests)
 # Plan quota with 20-30% headroom
 ```
 
