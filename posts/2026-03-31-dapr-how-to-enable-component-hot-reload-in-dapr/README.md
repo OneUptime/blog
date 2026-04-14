@@ -14,7 +14,7 @@ Dapr component hot reload allows the Dapr sidecar to detect and apply changes to
 
 ## Prerequisites
 
-- Dapr v1.12+ installed
+- Dapr v1.13+ installed
 - Dapr operator running in the cluster (Kubernetes mode)
 - Basic familiarity with Dapr components and configurations
 
@@ -147,20 +147,13 @@ kubectl annotate component statestore \
 
 When Dapr detects a component change:
 
-1. The sidecar receives a notification from the Dapr operator
-2. The current component is gracefully drained (in-flight requests complete)
+1. The sidecar detects the component update (via Kubernetes watch API or file system change)
+2. The current component is closed
 3. The new component configuration is initialized
 4. The new component replaces the old one
 5. New requests use the updated component
 
-```text
-Timeline:
-t=0s   Component update applied to Kubernetes
-t=1s   Dapr operator notifies sidecar of change
-t=2s   Sidecar drains current component
-t=3s   New component initialized with updated config
-t=4s   Sidecar resumes normal operation with new component
-```
+Note: The component is briefly unavailable during the close and reinitialize cycle. If initialization fails and `spec.ignoreErrors` is `false` (the default), the sidecar will gracefully shut down. If `spec.ignoreErrors` is `true`, the sidecar continues running without the component registered.
 
 ## Observe Hot Reload Events in Logs
 
@@ -168,11 +161,11 @@ t=4s   Sidecar resumes normal operation with new component
 kubectl logs deployment/my-service -c daprd --follow | grep -i "reload\|component"
 ```
 
-Expected output during a reload:
+Expected output during a reload (actual log messages may vary by version):
 
 ```text
 INFO  Component statestore changed. Reloading...
-INFO  Draining current state.redis component
+INFO  Closing current state.redis component
 INFO  Initializing state.redis with updated configuration
 INFO  Component statestore reloaded successfully
 ```
@@ -180,10 +173,10 @@ INFO  Component statestore reloaded successfully
 ## Limitations of Hot Reload
 
 ```text
-- Actor state stores cannot be hot-reloaded (would lose in-flight actors)
-- Components used by active workflow instances should not be changed
-- Input binding components (triggers) require careful handling during reload
-- Not all component types support graceful drain - test in staging first
+- Actor state stores cannot be hot-reloaded; changes are ignored and require a sidecar restart
+- Workflow backends cannot be hot-reloaded; changes are ignored and require a sidecar restart
+- The component is briefly unavailable during the close and reinitialize cycle
+- If reinitialization fails and spec.ignoreErrors is false (default), the sidecar shuts down gracefully
 ```
 
 ## Use in Self-Hosted Mode
@@ -194,13 +187,14 @@ For self-hosted mode, hot reload watches the components directory for file chang
 dapr run \
   --app-id my-service \
   --app-port 3000 \
-  --components-path ./components \
+  --resources-path ./components \
+  --config ./config.yaml \
   --enable-api-logging \
   node app.js
 ```
 
-Edit any file in `./components/` and Dapr detects the change within the configured poll interval (default 5 seconds).
+Where `config.yaml` contains the `HotReload` feature flag enabled (as shown in the configuration section above). Edit any file in `./components/` and Dapr detects the change automatically.
 
 ## Summary
 
-Dapr component hot reload allows configuration changes to state stores, pub/sub brokers, and bindings to take effect at runtime without pod restarts. Enable the `HotReload` feature flag in your Dapr `Configuration`, apply it to your deployment, and Dapr will watch for component changes via Kubernetes API and reload them gracefully. This is particularly valuable for credential rotation, endpoint migration, and TTL configuration updates in production systems.
+Dapr component hot reload allows configuration changes to state stores, pub/sub brokers, and bindings to take effect at runtime without pod restarts. Enable the `HotReload` feature flag in your Dapr `Configuration`, apply it to your deployment, and Dapr will watch for component changes via Kubernetes API (or file system in self-hosted mode) and reload them automatically. Note that the component is briefly unavailable during the reload cycle. This is particularly valuable for credential rotation, endpoint migration, and TTL configuration updates in production systems.
