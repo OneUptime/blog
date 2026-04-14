@@ -69,6 +69,7 @@ metadata:
   namespace: default
 spec:
   ttlSecondsAfterFinished: 300
+  backoffLimit: 2
   template:
     metadata:
       annotations:
@@ -83,7 +84,6 @@ spec:
         env:
         - name: DAPR_HTTP_PORT
           value: "3500"
-      backoffLimit: 2
 ```
 
 ## CronJob with Dapr
