@@ -125,9 +125,18 @@ curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
 
 # Publish a standard order
 curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
-  -H "Content-Type: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{"orderId": "ORD-STD-002", "total": 49.99}'
+  -H "Content-Type: application/cloudevents+json" \
+  -d '{
+    "specversion": "1.0",
+    "type": "order.standard",
+    "source": "order-service",
+    "id": "d4e5f6",
+    "datacontenttype": "application/json",
+    "data": {
+      "orderId": "ORD-STD-002",
+      "total": 49.99
+    }
+  }'
 ```
 
 ## Verifying Routing Behavior
