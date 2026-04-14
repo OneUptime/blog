@@ -71,7 +71,6 @@ public class InventoryClientTests
                 HttpMethod.Get,
                 "inventory-service",
                 "products/sku-1/stock",
-                It.IsAny<IReadOnlyCollection<(string, string)>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
@@ -92,7 +91,6 @@ public class InventoryClientTests
                 "inventory-service",
                 "reservations",
                 request,
-                It.IsAny<IReadOnlyCollection<(string, string)>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
