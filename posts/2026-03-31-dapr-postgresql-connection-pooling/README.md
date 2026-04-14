@@ -28,6 +28,9 @@ spec:
     matchLabels:
       app: pgbouncer
   template:
+    metadata:
+      labels:
+        app: pgbouncer
     spec:
       containers:
       - name: pgbouncer
@@ -50,8 +53,10 @@ spec:
           value: "500"
         - name: PGBOUNCER_DEFAULT_POOL_SIZE
           value: "20"
+        - name: PGBOUNCER_PORT
+          value: "6432"
         ports:
-        - containerPort: 5432
+        - containerPort: 6432
 ```
 
 ## Dapr PostgreSQL State Store Component
@@ -72,15 +77,13 @@ spec:
     secretKeyRef:
       name: pg-dapr-secret
       key: connectionString
-  - name: tableName
-    value: "dapr_state"
-  - name: schemaName
-    value: "dapr"
-  - name: timeoutInSeconds
-    value: "20"
+  - name: tablePrefix
+    value: "dapr."
+  - name: timeout
+    value: "20s"
   - name: maxConns
     value: "5"
-  - name: connMaxIdleTime
+  - name: connectionMaxIdleTime
     value: "5m"
   - name: cleanupInterval
     value: "1h"
@@ -91,7 +94,7 @@ Create the connection string secret, pointing at PgBouncer:
 ```bash
 kubectl create secret generic pg-dapr-secret \
   --namespace production \
-  --from-literal=connectionString="host=pgbouncer.db.svc.cluster.local port=5432 user=dapr password=secret dbname=appstate pool_mode=transaction sslmode=require"
+  --from-literal=connectionString="host=pgbouncer.db.svc.cluster.local port=6432 user=dapr password=secret dbname=appstate sslmode=require"
 ```
 
 ## Schema Initialization
@@ -101,18 +104,18 @@ Dapr's PostgreSQL state store requires a table. Let Dapr create it automatically
 ```sql
 CREATE SCHEMA IF NOT EXISTS dapr;
 
-CREATE TABLE IF NOT EXISTS dapr.dapr_state (
-    key         TEXT NOT NULL,
-    value       JSONB NOT NULL,
-    etag        TEXT NOT NULL,
-    expirytime  TIMESTAMPTZ,
-    updatetime  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT dapr_state_pkey PRIMARY KEY (key)
+CREATE TABLE IF NOT EXISTS dapr.state (
+    key         TEXT NOT NULL PRIMARY KEY,
+    value       BYTEA NOT NULL,
+    etag        UUID NOT NULL DEFAULT gen_random_uuid(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ,
+    expires_at  TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS dapr_state_expirytime_idx
-    ON dapr.dapr_state (expirytime)
-    WHERE expirytime IS NOT NULL;
+CREATE INDEX IF NOT EXISTS state_expires_at_idx
+    ON dapr.state (expires_at)
+    WHERE expires_at IS NOT NULL;
 ```
 
 ## Tuning Pool Size Per Sidecar
@@ -131,7 +134,7 @@ Monitor active connections in PgBouncer:
 
 ```bash
 kubectl exec -n db deploy/pgbouncer -- \
-  psql -h localhost -p 5432 -U pgbouncer pgbouncer -c "SHOW POOLS;"
+  psql -h localhost -p 6432 -U pgbouncer pgbouncer -c "SHOW POOLS;"
 ```
 
 Expected output shows `cl_active` (client connections) well above `sv_active` (backend connections), confirming multiplexing is working.
