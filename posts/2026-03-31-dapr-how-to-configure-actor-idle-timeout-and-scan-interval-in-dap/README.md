@@ -15,9 +15,8 @@ Dapr virtual actors are lazily activated when first invoked and deactivated afte
 When a method is called on a dormant actor:
 1. Dapr's placement service routes the call to the correct host
 2. The actor is instantiated and `OnActivateAsync` runs
-3. State is loaded from the configured state store
-4. The method executes
-5. State is saved
+3. The method executes (state is loaded on-demand via `StateManager` calls)
+4. State is saved
 
 When an actor is idle for `actorIdleTimeout`, the scan loop deactivates it:
 1. `OnDeactivateAsync` runs (save any final state, release resources)
@@ -233,31 +232,28 @@ print(f"Sessions: {sessions}")
 ```bash
 # Prometheus queries for actor health
 
-# Activation rate (high rate = actors deactivating too frequently)
-# rate(dapr_actor_activated_total[5m])
+# Deactivation rate (high rate = actors deactivating too frequently)
+# rate(dapr_runtime_actor_deactivated_total[5m])
 
-# Deactivation rate  
-# rate(dapr_actor_deactivated_total[5m])
-
-# Active actor count per type
-# dapr_actor_active_actors{actor_type="DeviceTwin"}
+# Pending actor calls
+# dapr_runtime_actor_pending_actor_calls
 
 # Scrape Dapr metrics endpoint
-curl -s http://localhost:9090/metrics | grep dapr_actor | head -20
+curl -s http://localhost:9090/metrics | grep dapr_runtime_actor | head -20
 ```
 
 ```yaml
-# Grafana alert: high activation rate suggests timeout is too short
+# Grafana alert: high deactivation rate suggests timeout is too short
 groups:
 - name: dapr-actors
   rules:
-  - alert: DaprActorHighActivationRate
-    expr: rate(dapr_actor_activated_total[5m]) > 100
+  - alert: DaprActorHighDeactivationRate
+    expr: rate(dapr_runtime_actor_deactivated_total[5m]) > 100
     for: 5m
     labels:
       severity: warning
     annotations:
-      summary: "Actor activation rate > 100/s - consider increasing idle timeout"
+      summary: "Actor deactivation rate > 100/s - consider increasing idle timeout"
 ```
 
 ## Summary
