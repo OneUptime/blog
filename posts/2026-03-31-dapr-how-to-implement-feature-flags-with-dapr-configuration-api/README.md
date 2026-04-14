@@ -69,6 +69,7 @@ redis-cli set "feature.new-checkout-flow" '{"enabled":false,"rolloutPercentage":
 
 ```python
 # feature_flags.py
+import hashlib
 import json
 import os
 import threading
@@ -101,7 +102,7 @@ def load_initial_flags():
     )
     
     if resp.status_code == 200:
-        items = resp.json().get("items", {})
+        items = resp.json()
         with _cache_lock:
             for key, item in items.items():
                 raw_value = item.get("value", "false")
@@ -134,7 +135,7 @@ def is_enabled(flag_name: str, user_id: str = "") -> bool:
         rollout_pct = value.get("rolloutPercentage", 0)
         if rollout_pct > 0 and user_id:
             # Consistent hash-based rollout
-            user_hash = hash(user_id) % 100
+            user_hash = int(hashlib.sha256(user_id.encode()).hexdigest(), 16) % 100
             return user_hash < rollout_pct
         
         return value.get("enabled", False)
