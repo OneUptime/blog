@@ -111,7 +111,6 @@ curl -X POST http://localhost:3500/v1.0/bindings/s3-bucket \
 ```python
 import requests
 import os
-import base64
 
 DAPR_HTTP_PORT = os.environ.get("DAPR_HTTP_PORT", "3500")
 
@@ -206,7 +205,7 @@ spec:
   metadata:
   - name: brokers
     value: "localhost:9092"
-  - name: topics
+  - name: publishTopic
     value: "events"
   - name: direction
     value: "output"
@@ -261,6 +260,7 @@ func invokeBinding(bindingName, operation string, data interface{}, meta map[str
     if err != nil {
         return err
     }
+    defer resp.Body.Close()
     if resp.StatusCode >= 300 {
         return fmt.Errorf("binding invocation failed: %d", resp.StatusCode)
     }
@@ -291,16 +291,16 @@ spec:
   type: bindings.postgresql
   version: v1
   metadata:
-  - name: url
+  - name: connectionString
     value: "host=localhost user=postgres password=secret dbname=mydb sslmode=disable"
   - name: direction
     value: "output"
 ```
 
 ```python
-invoke_binding("postgres-output", "exec", data={
+invoke_binding("postgres-output", "exec", metadata={
     "sql": "INSERT INTO audit_log (action, user_id, timestamp) VALUES ($1, $2, NOW())",
-    "params": ["order_created", "USR-001"]
+    "params": '["order_created", "USR-001"]'
 })
 ```
 
