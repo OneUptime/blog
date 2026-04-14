@@ -37,10 +37,7 @@ STORE = "statestore"
 def increment(key: str, amount: int = 1, max_retries: int = 10) -> int:
     for attempt in range(max_retries):
         with DaprClient() as client:
-            result = client.get_state(
-                STORE, key,
-                state_options=StateOptions(consistency=Consistency.strong)
-            )
+            result = client.get_state(STORE, key)
             current = json.loads(result.data) if result.data else {"value": 0}
             new_value = current["value"] + amount
 
@@ -155,10 +152,7 @@ def deduct_inventory(product_id: str, qty: int) -> bool:
 
     for attempt in range(max_retries):
         with DaprClient() as client:
-            result = client.get_state(
-                STORE, key,
-                state_options=StateOptions(consistency=Consistency.strong)
-            )
+            result = client.get_state(STORE, key)
             if not result.data:
                 return False
 
