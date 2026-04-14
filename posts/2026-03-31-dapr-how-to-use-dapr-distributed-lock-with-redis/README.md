@@ -145,16 +145,16 @@ async function runDailyReport() {
 ```python
 from dapr.clients import DaprClient
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 
 LOCK_STORE = 'redislock'
 
-@asynccontextmanager
-async def distributed_lock(resource_id: str, ttl_seconds: int = 30):
+@contextmanager
+def distributed_lock(resource_id: str, ttl_seconds: int = 30):
     lock_owner = str(uuid.uuid4())
     client = DaprClient()
 
-    resp = client.lock(
+    resp = client.try_lock(
         store_name=LOCK_STORE,
         resource_id=resource_id,
         lock_owner=lock_owner,
@@ -177,10 +177,10 @@ async def distributed_lock(resource_id: str, ttl_seconds: int = 30):
         client.close()
 
 # Usage
-async def process_payment(payment_id: str):
-    async with distributed_lock(f"payment:{payment_id}", ttl_seconds=60):
+def process_payment(payment_id: str):
+    with distributed_lock(f"payment:{payment_id}", ttl_seconds=60):
         print(f"Processing payment {payment_id}")
-        await execute_payment(payment_id)
+        execute_payment(payment_id)
 ```
 
 ## Handle Lock Contention
