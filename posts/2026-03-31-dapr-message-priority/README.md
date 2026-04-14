@@ -76,7 +76,7 @@ spec:
 
 ## Approach 2 - RabbitMQ Priority Queues
 
-RabbitMQ supports native message priority (0-9). Configure the Dapr RabbitMQ component with `maxPriority`:
+RabbitMQ supports native message priority (0-9). Configure the Dapr RabbitMQ component and subscription with `maxPriority`:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -91,11 +91,21 @@ spec:
     value: amqp://guest:guest@rabbitmq:5672
   - name: consumerID
     value: task-processor
-  - name: maxPriority
-    value: "10"
+---
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: task-subscription
+spec:
+  topic: tasks
+  routes:
+    default: /process-task
+  pubsubname: priority-pubsub
+  metadata:
+    maxPriority: "9"
 ```
 
-Publish with a priority level via message metadata:
+Publish with a priority level via query parameter metadata:
 
 ```python
 async def publish_with_priority(task: dict, priority: int):
@@ -104,10 +114,8 @@ async def publish_with_priority(task: dict, priority: int):
         await client.post(
             f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/priority-pubsub/tasks",
             json=task,
-            headers={
-                "Content-Type": "application/json",
-                "metadata.priority": str(priority)
-            }
+            params={"metadata.priority": str(priority)},
+            headers={"Content-Type": "application/json"}
         )
 
 await publish_with_priority({"taskId": "weekly-report"}, priority=1)
@@ -158,4 +166,4 @@ Alert when high-priority queues grow beyond a threshold, indicating consumer lag
 
 ## Summary
 
-Implementing message priority with Dapr involves choosing between dedicated priority topics (simple, any broker) or native priority queues (RabbitMQ with `maxPriority` metadata). Priority topics give the most control through resource allocation, while RabbitMQ native priority provides broker-level ordering guarantees. Both approaches integrate cleanly with Dapr's pub/sub API without requiring changes to how subscribers are written.
+Implementing message priority with Dapr involves choosing between dedicated priority topics (simple, any broker) or native priority queues (RabbitMQ with `maxPriority` in the subscription metadata). Priority topics give the most control through resource allocation, while RabbitMQ native priority provides broker-level ordering guarantees. Both approaches integrate cleanly with Dapr's pub/sub API without requiring changes to how subscribers are written.
