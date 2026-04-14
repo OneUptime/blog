@@ -30,17 +30,16 @@ mkdir dapr-pulumi && cd dapr-pulumi
 pulumi new typescript
 
 # Install required packages
-npm install @pulumi/kubernetes @pulumi/helm
+npm install @pulumi/kubernetes
 ```
 
 ## Installing Dapr with Pulumi (TypeScript)
 
 ```typescript
 import * as k8s from "@pulumi/kubernetes";
-import * as helm from "@pulumi/kubernetes/helm";
 
 // Install Dapr via Helm
-const daprRelease = new helm.v3.Release("dapr", {
+const daprRelease = new k8s.helm.v3.Release("dapr", {
     chart: "dapr",
     repositoryOpts: {
         repo: "https://dapr.github.io/helm-charts/",
@@ -63,6 +62,7 @@ export const daprNamespace = daprRelease.namespace;
 ## Creating Dapr Components with Pulumi
 
 ```typescript
+import * as pulumi from "@pulumi/pulumi";
 import * as k8s from "@pulumi/kubernetes";
 
 interface DaprComponentArgs {
@@ -118,11 +118,17 @@ const redisCache = new azure.cache.Redis("dapr-redis", {
     enableNonSslPort: false,
 });
 
+// Get Redis access keys
+const redisKeys = azure.cache.listRedisKeysOutput({
+    resourceGroupName: resourceGroup.name,
+    name: redisCache.name,
+});
+
 // Store Redis password in Kubernetes secret
 const redisSecret = new k8s.core.v1.Secret("redis-secret", {
     metadata: { name: "redis-secret", namespace: "default" },
     stringData: {
-        password: redisCache.accessKeys.apply(k => k.primaryKey),
+        password: redisKeys.primaryKey,
     },
 });
 
