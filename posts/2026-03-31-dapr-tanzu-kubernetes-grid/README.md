@@ -72,7 +72,7 @@ kubectl label namespace production \
 
 ## Tanzu Observability Integration
 
-Configure Dapr to send traces to Tanzu Observability (Wavefront):
+Configure Dapr to send traces to Tanzu Observability (Wavefront) through a Wavefront proxy:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -84,10 +84,10 @@ spec:
   tracing:
     samplingRate: "0.1"
     otel:
-      endpointAddress: "https://vmware.wavefront.com/report"
-      isSecure: true
+      endpointAddress: "wavefront-proxy.observability:4318"
+      isSecure: false
       protocol: http
-  metric:
+  metrics:
     enabled: true
 ```
 
@@ -123,8 +123,6 @@ kind: Service
 metadata:
   name: order-service
   namespace: production
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
 spec:
   type: LoadBalancer
   selector:
