@@ -37,7 +37,7 @@ import { DaprClient } from "@dapr/dapr";
       provide: "DAPR_CLIENT",
       useFactory: () => {
         return new DaprClient({
-          daprHost: process.env.DAPR_HOST ?? "http://localhost",
+          daprHost: process.env.DAPR_HOST ?? "127.0.0.1",
           daprPort: process.env.DAPR_HTTP_PORT ?? "3500",
         });
       },
@@ -112,8 +112,13 @@ export class OrdersController {
 Register a subscription endpoint:
 
 ```typescript
+import { Controller, Post, Body } from "@nestjs/common";
+import { OrdersService } from "./orders.service";
+
 @Controller()
 export class SubscriptionsController {
+  constructor(private readonly ordersService: OrdersService) {}
+
   @Post("payment-processed")
   async handlePaymentProcessed(@Body() event: any) {
     const order = event.data;
@@ -144,7 +149,7 @@ export class AppModule {}
 dapr run \
   --app-id order-service \
   --app-port 3000 \
-  --components-path ./dapr/components \
+  --resources-path ./dapr/components \
   -- npm run start
 ```
 
