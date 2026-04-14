@@ -26,8 +26,10 @@ Order Management -> Shipment Service (Dapr) -> Warehouse Service (Dapr)
 import dapr.ext.workflow as wf
 from datetime import timedelta
 
-@wf.workflow
-def shipment_workflow(ctx, order: dict):
+wf_runtime = wf.WorkflowRuntime()
+
+@wf_runtime.workflow(name='shipment_workflow')
+def shipment_workflow(ctx: wf.DaprWorkflowContext, order: dict):
     # Step 1: Create shipment record
     shipment = yield ctx.call_activity(create_shipment_record, input=order)
 
@@ -39,12 +41,10 @@ def shipment_workflow(ctx, order: dict):
     })
 
     # Step 3: Wait for warehouse to confirm pick (up to 4 hours)
-    try:
-        pick_confirmed = yield ctx.wait_for_external_event(
-            "pick-confirmed",
-            timeout_in_seconds=14400
-        )
-    except TimeoutError:
+    pick_event = ctx.wait_for_external_event("pick-confirmed")
+    pick_timeout = ctx.create_timer(timedelta(hours=4))
+    winner = yield wf.when_any([pick_event, pick_timeout])
+    if winner == pick_timeout:
         yield ctx.call_activity(escalate_pick_delay, input=shipment)
 
     # Step 4: Book carrier
@@ -58,8 +58,9 @@ def shipment_workflow(ctx, order: dict):
     label = yield ctx.call_activity(generate_label, input=booking)
 
     # Step 6: Wait for handoff to carrier (up to 24 hours)
-    yield ctx.wait_for_external_event("carrier-handoff",
-                                       timeout_in_seconds=86400)
+    handoff_event = ctx.wait_for_external_event("carrier-handoff")
+    handoff_timeout = ctx.create_timer(timedelta(hours=24))
+    yield wf.when_any([handoff_event, handoff_timeout])
 
     # Step 7: Begin tracking updates
     yield ctx.call_activity(start_tracking, input={
@@ -92,6 +93,7 @@ Handle tracking updates:
 
 ```python
 # tracking_service/tracking.py
+import json
 from flask import Flask, request, jsonify
 from dapr.clients import DaprClient
 
@@ -165,8 +167,10 @@ def confirm_pick(pick_id: str):
 Call a route optimization service during carrier booking:
 
 ```python
-@wf.activity
-def book_carrier(ctx, input_data: dict) -> dict:
+wf_runtime = wf.WorkflowRuntime()
+
+@wf_runtime.activity(name='book_carrier')
+def book_carrier(ctx: wf.WorkflowActivityContext, input_data: dict) -> dict:
     shipment = input_data['shipment']
     destination = input_data['destination']
 
