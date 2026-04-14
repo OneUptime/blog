@@ -101,8 +101,6 @@ spec:
       value: "/var/run/secrets/vault/token"
     - name: enginePath
       value: "secret"
-    - name: vaultKVVersion
-      value: "v2"
 ```
 
 Store a secret in Vault:
@@ -126,10 +124,14 @@ spec:
   metadata:
     - name: url
       value: "https://api.stripe.com/v1"
-    - name: authHeader
+    - name: securityToken
       secretKeyRef:
-        name: dapr/bindings/stripe
+        name: bindings/stripe
         key: apiKey
+    - name: securityTokenHeader
+      value: "Authorization"
+auth:
+  secretStore: vault-store
 ```
 
 ## Secret Store Permission Requirements
