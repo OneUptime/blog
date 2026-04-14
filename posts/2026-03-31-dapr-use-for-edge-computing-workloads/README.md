@@ -26,7 +26,7 @@ dapr run \
   --app-id edge-sensor \
   --app-port 8080 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- python3 sensor.py
 ```
 
@@ -58,45 +58,60 @@ from datetime import datetime
 
 DAPR_URL = "http://localhost:3500"
 
-def collect_and_store(sensor_id, reading):
-    # Store locally first (works offline)
+def get_pending_keys():
+    # Retrieve the list of keys waiting to be synced
+    response = requests.get(f"{DAPR_URL}/v1.0/state/localstore/pending-keys")
+    if response.status_code == 200 and response.json():
+        return response.json()
+    return []
+
+def save_pending_keys(keys):
     requests.post(
         f"{DAPR_URL}/v1.0/state/localstore",
-        json=[{
-            "key": f"sensor-{sensor_id}-{int(time.time())}",
-            "value": {
-                "sensorId": sensor_id,
-                "reading": reading,
-                "timestamp": datetime.utcnow().isoformat(),
-                "synced": False
-            }
-        }]
+        json=[{"key": "pending-keys", "value": keys}]
     )
+
+def collect_and_store(sensor_id, reading):
+    key = f"sensor-{sensor_id}-{int(time.time())}"
+    data = {
+        "sensorId": sensor_id,
+        "reading": reading,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    # Store reading locally (works offline)
+    requests.post(
+        f"{DAPR_URL}/v1.0/state/localstore",
+        json=[{"key": key, "value": data}]
+    )
+
+    # Track the key in a pending list for later sync
+    pending = get_pending_keys()
+    pending.append(key)
+    save_pending_keys(pending)
 
 def sync_to_cloud():
-    # Get unsynced readings
-    response = requests.post(
-        f"{DAPR_URL}/v1.0/state/localstore/query",
-        json={"filter": {"EQ": {"synced": False}}}
-    )
-    readings = response.json()
+    pending = get_pending_keys()
+    remaining = []
 
-    for item in readings.get("results", []):
+    for key in pending:
+        # Retrieve the stored reading
+        response = requests.get(f"{DAPR_URL}/v1.0/state/localstore/{key}")
+        if response.status_code != 200 or not response.json():
+            continue
+        data = response.json()
+
         # Publish to cloud pub/sub (best-effort)
         try:
             requests.post(
                 f"{DAPR_URL}/v1.0/publish/cloud-pubsub/sensor-data",
-                json=item["data"],
+                json=data,
                 timeout=5
             )
-            # Mark as synced
-            item["data"]["synced"] = True
-            requests.post(
-                f"{DAPR_URL}/v1.0/state/localstore",
-                json=[{"key": item["key"], "value": item["data"]}]
-            )
         except requests.exceptions.RequestException:
-            pass  # Will retry on next sync cycle
+            remaining.append(key)  # Will retry on next sync cycle
+
+    save_pending_keys(remaining)
 ```
 
 ## Cloud Pub/Sub Component (Sync When Online)
@@ -112,7 +127,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: "tcps://iot-hub.example.com:8883"
+    value: "ssl://iot-hub.example.com:8883"
   - name: qos
     value: "1"
   - name: retain
@@ -135,8 +150,7 @@ curl -sfL https://get.k3s.io | sh -
 dapr init -k \
   --set global.ha.enabled=false \
   --set dapr_sidecar_injector.replicaCount=1 \
-  --set dapr_operator.replicaCount=1 \
-  --set dapr_placement.replicaCount=1
+  --set dapr_operator.replicaCount=1
 
 # Verify
 kubectl get pods -n dapr-system
