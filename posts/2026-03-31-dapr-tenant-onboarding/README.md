@@ -102,7 +102,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: provision
-        image: bitnami/redis:latest
+        image: alpine/helm:latest
         command:
         - /bin/sh
         - -c
