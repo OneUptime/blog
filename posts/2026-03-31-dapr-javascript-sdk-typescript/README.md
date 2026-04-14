@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, TypeScript, JavaScript, Node.js, Type Safety
 
-Description: Learn how to use the Dapr JavaScript SDK with TypeScript for type-safe distributed microservices with interfaces, generics, and decorators.
+Description: Learn how to use the Dapr JavaScript SDK with TypeScript for type-safe distributed microservices with interfaces and generics.
 
 ---
 
@@ -45,7 +45,7 @@ Configure `tsconfig.json`:
 import { DaprClient } from "@dapr/dapr";
 
 const client = new DaprClient({
-  daprHost: process.env.DAPR_HOST ?? "http://localhost",
+  daprHost: process.env.DAPR_HOST ?? "localhost",
   daprPort: process.env.DAPR_HTTP_PORT ?? "3500",
 });
 ```
@@ -122,7 +122,7 @@ interface IOrderActor {
 
 class OrderActor extends AbstractActor implements IOrderActor {
   async getStatus(): Promise<string> {
-    return (await this.getStateManager().getState<string>("status")) ?? "pending";
+    return (await this.getStateManager<string>().getState("status")) ?? "pending";
   }
 
   async updateStatus(status: string): Promise<void> {
