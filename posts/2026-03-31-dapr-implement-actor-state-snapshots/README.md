@@ -22,7 +22,6 @@ package main
 import (
     "context"
     "github.com/dapr/go-sdk/actor"
-    "encoding/json"
 )
 
 type OrderState struct {
@@ -61,18 +60,27 @@ const snapshotKey = "snapshot"
 
 type OrderActor struct {
     actor.ServerImplBaseCtx
-    state    *OrderState
-    isDirty  bool
+    daprClient client.Client
+    state      *OrderState
+    isDirty    bool
 }
 
-func (a *OrderActor) OnActivate(ctx context.Context) error {
-    // Load snapshot on activation (single read)
-    var snapshot OrderState
-    err := a.GetStateManager().Get(ctx, snapshotKey, &snapshot)
-    if err != nil && !isNotFound(err) {
+// loadSnapshot loads state from a single snapshot key.
+// The Go SDK has no OnActivate lifecycle hook, so call this
+// at the start of each actor method that accesses state.
+func (a *OrderActor) loadSnapshot(ctx context.Context) error {
+    if a.state != nil {
+        return nil // already loaded
+    }
+    exists, err := a.GetStateManager().Contains(ctx, snapshotKey)
+    if err != nil {
         return err
     }
-    if err == nil {
+    if exists {
+        var snapshot OrderState
+        if err := a.GetStateManager().Get(ctx, snapshotKey, &snapshot); err != nil {
+            return err
+        }
         a.state = &snapshot
     } else {
         a.state = &OrderState{Status: "new"}
@@ -81,6 +89,9 @@ func (a *OrderActor) OnActivate(ctx context.Context) error {
 }
 
 func (a *OrderActor) UpdateStatus(ctx context.Context, newStatus string) error {
+    if err := a.loadSnapshot(ctx); err != nil {
+        return err
+    }
     a.state.Status = newStatus
     a.isDirty = true
     return a.saveSnapshot(ctx)
@@ -97,14 +108,6 @@ func (a *OrderActor) saveSnapshot(ctx context.Context) error {
     a.isDirty = false
     return nil
 }
-
-func (a *OrderActor) OnDeactivate() error {
-    if a.isDirty {
-        ctx := context.Background()
-        return a.saveSnapshot(ctx)
-    }
-    return nil
-}
 ```
 
 ## Periodic Snapshot with Timers
@@ -113,7 +116,7 @@ Save snapshots on a schedule to avoid losing state on sudden termination:
 
 ```go
 func (a *OrderActor) RegisterSnapshotTimer(ctx context.Context) error {
-    return a.RegisterActorTimer(ctx, &actor.RegisterTimerRequest{
+    return a.daprClient.RegisterActorTimer(ctx, &client.RegisterActorTimerRequest{
         ActorType: a.Type(),
         ActorID:   a.ID(),
         Name:      "snapshot-timer",
@@ -160,12 +163,12 @@ func (a *OrderActor) loadVersionedSnapshot(ctx context.Context) error {
 func BenchmarkActivation(b *testing.B) {
     // Measure time for actor activation with snapshot
     for i := 0; i < b.N; i++ {
-        actor := NewOrderActorWithSnapshot()
-        actor.OnActivate(context.Background())
+        a := NewOrderActorWithSnapshot()
+        a.loadSnapshot(context.Background())
     }
 }
 ```
 
 ## Summary
 
-Actor state snapshots reduce activation time from N state store reads (one per field) to a single read by aggregating all state into one composite key. Implement `OnActivate` to load the snapshot, save on every mutation for strong durability, or use a Dapr timer for periodic saves as a performance trade-off. Add version fields to snapshots to support schema migrations as your actor evolves.
+Actor state snapshots reduce activation time from N state store reads (one per field) to a single read by aggregating all state into one composite key. Load the snapshot lazily on first access (the Dapr Go SDK has no automatic `OnActivate` lifecycle hook), save on every mutation for strong durability, or use a Dapr timer for periodic saves as a performance trade-off. Add version fields to snapshots to support schema migrations as your actor evolves.
