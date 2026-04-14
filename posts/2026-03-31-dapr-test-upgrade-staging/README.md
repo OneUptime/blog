@@ -130,7 +130,7 @@ class TestDaprUpgrade:
         resp = httpx.get(f"{BASE_URL}/v1.0/metadata")
         assert resp.status_code == 200
         metadata = resp.json()
-        assert "runtimeMetadata" in metadata
+        assert "runtimeVersion" in metadata
 ```
 
 Run the tests:
