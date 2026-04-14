@@ -18,21 +18,21 @@ Dapr exposes metrics for state store operations via Prometheus:
 
 ```bash
 # Total state operations
-dapr_state_req_total
+dapr_component_state_count
 
 # Failed state operations
-dapr_state_req_total{success="false"}
+dapr_component_state_count{success="false"}
 
 # Error rate
-rate(dapr_state_req_total{success="false"}[5m])
+rate(dapr_component_state_count{success="false"}[5m])
 ```
 
 Query the error rate to detect when the backend starts rejecting writes:
 
 ```bash
 # State store error rate percentage
-100 * rate(dapr_state_req_total{success="false"}[5m])
-  / rate(dapr_state_req_total[5m])
+100 * rate(dapr_component_state_count{success="false"}[5m])
+  / rate(dapr_component_state_count[5m])
 ```
 
 ## Monitoring Redis Backend Capacity
@@ -102,7 +102,8 @@ spec:
       rules:
         - alert: DaprStateStoreErrors
           expr: |
-            rate(dapr_state_req_total{success="false"}[5m]) > 0.1
+            rate(dapr_component_state_count{success="false"}[5m])
+              / rate(dapr_component_state_count[5m]) > 0.1
           for: 3m
           labels:
             severity: critical
