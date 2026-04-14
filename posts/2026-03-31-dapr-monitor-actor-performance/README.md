@@ -24,35 +24,35 @@ annotations:
 Verify metrics are available:
 
 ```bash
-curl http://localhost:9090/metrics | grep dapr_actor
+curl http://localhost:9090/metrics | grep dapr_runtime_actor
 ```
 
 ## Key Actor Metrics
 
-### Active Actor Count
+### Pending Actor Calls
 
 ```text
-dapr_actor_active_actors{app_id="counter-service",actor_type="Counter",namespace="default"}
+dapr_runtime_actor_pending_actor_calls{app_id="counter-service",actor_type="Counter"}
 ```
 
-High counts indicate actors are not being deactivated. Check your idle timeout configuration.
+High counts indicate actors are contending for locks, suggesting hot actors or slow method execution. Check your idle timeout and concurrency configuration.
 
 ### Method Invocation Latency
 
 ```text
-dapr_actor_method_duration_bucket{app_id="counter-service",actor_type="Counter",method="Increment"}
+dapr_http_server_latency_bucket{app_id="counter-service",method="POST",path="/v1.0/actors/Counter/{id}/method/Increment"}
 ```
 
-Use this histogram to identify slow actor methods.
+Actor method invocations are tracked through Dapr HTTP server metrics. Use this histogram to identify slow actor methods. Configure `http.pathMatching` in the Dapr metrics configuration to control path label cardinality.
 
-### Activation and Deactivation Rate
+### Deactivation Rate and Pending Calls
 
 ```text
-dapr_actor_activations_total{actor_type="Counter"}
-dapr_actor_deactivations_total{actor_type="Counter"}
+dapr_runtime_actor_deactivated_total{app_id="counter-service",actor_type="Counter"}
+dapr_runtime_actor_pending_actor_calls{app_id="counter-service",actor_type="Counter"}
 ```
 
-A high activation rate with low deactivation rate signals actors are accumulating in memory.
+A low deactivation rate paired with rising pending actor calls signals actors are accumulating in memory.
 
 ## Prometheus Scrape Configuration
 
@@ -67,41 +67,41 @@ scrape_configs:
 
 ## Grafana Dashboard Queries
 
-### Active Actors Over Time
+### Pending Actor Calls Over Time
 
 ```promql
-sum(dapr_actor_active_actors{app_id="counter-service"}) by (actor_type)
+sum(dapr_runtime_actor_pending_actor_calls{app_id="counter-service"}) by (actor_type)
 ```
 
 ### P99 Method Latency
 
 ```promql
 histogram_quantile(0.99,
-  sum(rate(dapr_actor_method_duration_bucket{actor_type="Counter"}[5m])) by (le, method)
+  sum(rate(dapr_http_server_latency_bucket{app_id="counter-service",path=~"/v1.0/actors/Counter/.*"}[5m])) by (le, path)
 )
 ```
 
-### Activation Rate Per Minute
+### Deactivation Rate Per Minute
 
 ```promql
-sum(rate(dapr_actor_activations_total{actor_type="Counter"}[1m])) by (actor_type)
+sum(rate(dapr_runtime_actor_deactivated_total{app_id="counter-service",actor_type="Counter"}[1m])) by (actor_type)
 ```
 
 ## Setting Up Alerts
 
-Alert when active actor count grows unboundedly:
+Alert when pending actor calls grow unboundedly:
 
 ```yaml
-# alertmanager rule
+# prometheus alerting rule
 groups:
 - name: dapr-actors
   rules:
-  - alert: ActorCountTooHigh
-    expr: dapr_actor_active_actors{actor_type="Counter"} > 10000
+  - alert: PendingActorCallsTooHigh
+    expr: dapr_runtime_actor_pending_actor_calls{actor_type="Counter"} > 100
     for: 5m
     annotations:
-      summary: "Actor count exceeds threshold"
-      description: "Counter actor count is {{ $value }}, check idle timeout settings"
+      summary: "Pending actor calls exceeds threshold"
+      description: "Counter actor pending calls is {{ $value }}, check for hot actors or slow methods"
 ```
 
 Alert on high method latency:
@@ -110,11 +110,11 @@ Alert on high method latency:
   - alert: ActorMethodLatencyHigh
     expr: |
       histogram_quantile(0.99,
-        sum(rate(dapr_actor_method_duration_bucket[5m])) by (le, actor_type, method)
-      ) > 1.0
+        sum(rate(dapr_http_server_latency_bucket{path=~"/v1.0/actors/.*"}[5m])) by (le, app_id, path)
+      ) > 1000
     for: 2m
     annotations:
-      summary: "Actor method P99 latency exceeds 1 second"
+      summary: "Actor HTTP request P99 latency exceeds 1 second"
 ```
 
 ## Correlating with Application Traces
@@ -123,4 +123,4 @@ Cross-reference Prometheus metrics with Zipkin or Jaeger traces by correlating t
 
 ## Summary
 
-Dapr's built-in Prometheus metrics provide everything needed to monitor actor performance at scale. Tracking active actor counts, method latency histograms, and activation rates gives you early warning of configuration issues and performance bottlenecks. Combining metrics with distributed tracing provides complete observability for production actor-based systems.
+Dapr's built-in Prometheus metrics provide the foundation for monitoring actor performance at scale. Tracking pending actor calls, HTTP server latency for actor method invocations, and deactivation rates gives you early warning of configuration issues and performance bottlenecks. Combining metrics with distributed tracing provides complete observability for production actor-based systems.
