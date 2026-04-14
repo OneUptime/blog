@@ -135,7 +135,7 @@ Measure actual Dapr state throughput:
 # Redis native benchmark
 redis-benchmark -h localhost -p 6379 \
   -n 100000 -c 50 -q \
-  SET "dapr||myapp||key" value
+  SET "myapp||key" value
 
 # Dapr-level benchmark using k6 or hey
 hey -n 10000 -c 50 \
