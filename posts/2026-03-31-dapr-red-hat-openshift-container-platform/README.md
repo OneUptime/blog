@@ -28,6 +28,18 @@ spec:
   displayName: Community Operators
 EOF
 
+# Create namespace and OperatorGroup for Dapr
+oc new-project dapr-system
+
+cat <<EOF | oc apply -f -
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: dapr-operator-group
+  namespace: dapr-system
+spec: {}
+EOF
+
 # Subscribe to Dapr operator
 cat <<EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1alpha1
@@ -119,7 +131,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: dapr-metrics
-  namespace: openshift-monitoring
+  namespace: dapr-system
   labels:
     app.kubernetes.io/component: dapr
 spec:
@@ -141,7 +153,7 @@ Enable user workload monitoring:
 oc patch configmap cluster-monitoring-config \
   -n openshift-monitoring \
   --type merge \
-  -p '{"data": {"config.yaml": "enableUserWorkload: true\n"}}'
+  -p '{"data": {"config.yaml": "enableUserWorkloadMonitoring: true\n"}}'
 ```
 
 ## OpenShift Routes for Dapr Applications
