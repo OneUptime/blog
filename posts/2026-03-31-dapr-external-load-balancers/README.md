@@ -33,9 +33,6 @@ spec:
   - name: http
     port: 80
     targetPort: 8080
-  - name: dapr-http
-    port: 3500
-    targetPort: 3500
 ```
 
 ## NGINX Ingress with Header Forwarding
@@ -48,7 +45,6 @@ kind: Ingress
 metadata:
   name: api-ingress
   annotations:
-    nginx.ingress.kubernetes.io/proxy-pass-headers: "traceparent,tracestate,dapr-app-id"
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header traceparent $http_traceparent;
       proxy_set_header tracestate $http_tracestate;
@@ -101,9 +97,9 @@ spec:
 Configure the load balancer health check to use Dapr's health endpoint:
 
 ```yaml
-# AWS ALB Ingress annotation
-nginx.ingress.kubernetes.io/healthcheck-path: "/v1.0/healthz"
-nginx.ingress.kubernetes.io/healthcheck-port: "3500"
+# AWS ALB Ingress annotations
+alb.ingress.kubernetes.io/healthcheck-path: "/v1.0/healthz"
+alb.ingress.kubernetes.io/healthcheck-port: "3500"
 ```
 
 Your application's Kubernetes probe:
