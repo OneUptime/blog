@@ -30,11 +30,9 @@ spec:
     retries:
       outputRetry:
         policy: exponential
-        initialInterval: 500ms
-        multiplier: 2.0
+        duration: 500ms
         maxInterval: 30s
         maxRetries: 5
-        randomizationFactor: 0.5
       inputRetry:
         policy: constant
         duration: 2s
@@ -102,14 +100,18 @@ app.post('/cron-job', async (req, res) => {
 app.listen(3000);
 ```
 
-## Applying Default Policies to All Bindings
+## Applying Policies to Multiple Bindings
 
-Use the `default` target to apply a baseline policy to all binding components:
+Apply the same policy to each binding component by referencing the same named policies:
 
 ```yaml
 targets:
   components:
-    default:
+    aws-s3-binding:
+      outbound:
+        timeout: bindingTimeout
+        retry: outputRetry
+    kafka-output-binding:
       outbound:
         timeout: bindingTimeout
         retry: outputRetry
@@ -144,7 +146,7 @@ kubectl logs deployment/my-service -c daprd \
   | grep -E "binding|retry|circuit" | tail -30
 
 curl http://localhost:9090/metrics \
-  | grep "dapr_component_binding"
+  | grep "dapr_component.*binding"
 ```
 
 ## Summary
