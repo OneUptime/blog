@@ -18,7 +18,6 @@ cd OrderProcessingWorkflow
 dotnet add package Dapr.Workflow
 dotnet add package Microsoft.Extensions.Hosting
 dotnet add package Microsoft.Extensions.Http
-dotnet add package Microsoft.AspNetCore.App
 ```
 
 Define your models:
@@ -283,7 +282,7 @@ while (true)
     
     Console.WriteLine(
         $"[{DateTime.Now:HH:mm:ss}] Status: {state.RuntimeStatus} | " +
-        $"{state.SerializedCustomStatus}");
+        $"{state.ReadCustomStatusAs<string>()}");
     
     if (state.IsWorkflowCompleted)
     {
@@ -335,19 +334,19 @@ dapr run \
 
 ```bash
 # Get workflow instance state
-curl "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}"
+curl "http://localhost:3500/v1.0/workflows/dapr/${ORDER_ID}"
 
 # Terminate a workflow
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/terminate"
+  "http://localhost:3500/v1.0/workflows/dapr/${ORDER_ID}/terminate"
 
 # Pause a workflow
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/pause"
+  "http://localhost:3500/v1.0/workflows/dapr/${ORDER_ID}/pause"
 
 # Resume a paused workflow
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/resume"
+  "http://localhost:3500/v1.0/workflows/dapr/${ORDER_ID}/resume"
 ```
 
 ## Summary
