@@ -53,8 +53,8 @@ def mark_processed(message_id: str, ttl_seconds: int = 86400):
         json=[{
             "key": f"dedup-{message_id}",
             "value": "processed",
-            "options": {
-                "ttlInSeconds": ttl_seconds
+            "metadata": {
+                "ttlInSeconds": str(ttl_seconds)
             }
         }]
     )
@@ -115,6 +115,7 @@ For SQL-backed services, use a unique constraint on the message ID column as the
 
 ```python
 # db_handler.py
+import os
 import psycopg2
 from contextlib import contextmanager
 
@@ -247,9 +248,10 @@ spec:
         maxInterval: 15s
         maxRetries: 3
   targets:
-    apps:
-      order-processor:
-        retry: pubsubRetry
+    components:
+      pubsub:
+        inbound:
+          retry: pubsubRetry
 ```
 
 Configure a dead letter topic for messages that fail after all retries:
