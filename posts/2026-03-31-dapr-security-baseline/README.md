@@ -145,7 +145,7 @@ spec:
     - protocol: TCP
       port: 50001
     - protocol: TCP
-      port: 3500
+      port: 6500
 ```
 
 ## Security Baseline Verification Script
