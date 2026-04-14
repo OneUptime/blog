@@ -29,9 +29,9 @@ Configure the communication protocol and body size limits:
 
 ```yaml
 annotations:
-  dapr.io/app-protocol: "http"        # http, grpc, https, grpcs
-  dapr.io/http-max-request-size: "16" # MB
-  dapr.io/http-read-buffer-size: "64" # KB
+  dapr.io/app-protocol: "http"        # http, grpc, https, grpcs, h2c
+  dapr.io/http-max-request-size: "16" # MB (deprecated; use --max-body-size)
+  dapr.io/http-read-buffer-size: "64" # KB (deprecated; use --read-buffer-size)
   dapr.io/app-max-concurrency: "20"   # max concurrent requests
 ```
 
