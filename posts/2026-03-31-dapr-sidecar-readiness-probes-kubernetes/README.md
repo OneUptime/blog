@@ -14,7 +14,7 @@ Readiness probes control when Kubernetes adds a pod to the load balancer endpoin
 
 ## Default Readiness Probe Settings
 
-Dapr's default readiness probe calls `/v1.0/healthz/outbound` which returns 200 only when all components are initialized:
+Dapr's default readiness probe calls `/v1.0/healthz` which returns 204 when the sidecar is healthy:
 
 - `initialDelaySeconds`: 3
 - `periodSeconds`: 6
@@ -36,12 +36,12 @@ spec:
         dapr.io/app-id: "order-processor"
         dapr.io/app-port: "8080"
         # Wait longer for components to connect
-        dapr.io/sidecar-readiness-probe-delay: "10"
+        dapr.io/sidecar-readiness-probe-delay-seconds: "10"
         # Check every 5 seconds
-        dapr.io/sidecar-readiness-probe-period: "5"
+        dapr.io/sidecar-readiness-probe-period-seconds: "5"
         # More lenient failure threshold
-        dapr.io/sidecar-readiness-probe-failure-threshold: "10"
-        dapr.io/sidecar-readiness-probe-timeout: "3"
+        dapr.io/sidecar-readiness-probe-threshold: "10"
+        dapr.io/sidecar-readiness-probe-timeout-seconds: "3"
     spec:
       containers:
       - name: order-processor
@@ -91,13 +91,13 @@ For components that take longer to connect (e.g., Kafka with auth):
 
 ```yaml
 annotations:
-  dapr.io/sidecar-readiness-probe-delay: "30"
-  dapr.io/sidecar-readiness-probe-failure-threshold: "20"
-  dapr.io/sidecar-readiness-probe-period: "5"
+  dapr.io/sidecar-readiness-probe-delay-seconds: "30"
+  dapr.io/sidecar-readiness-probe-threshold: "20"
+  dapr.io/sidecar-readiness-probe-period-seconds: "5"
 ```
 
 This allows up to 30 + (20 * 5) = 130 seconds before marking the pod as failed.
 
 ## Summary
 
-Dapr sidecar readiness probes use the `/v1.0/healthz/outbound` endpoint to verify all components are initialized before accepting traffic. Tune `sidecar-readiness-probe-delay` and `sidecar-readiness-probe-failure-threshold` for components with longer startup times to prevent premature readiness failures during rolling deployments.
+Dapr sidecar readiness probes use the `/v1.0/healthz` endpoint to verify the sidecar is healthy before accepting traffic. Tune `sidecar-readiness-probe-delay-seconds` and `sidecar-readiness-probe-threshold` for components with longer startup times to prevent premature readiness failures during rolling deployments.
