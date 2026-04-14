@@ -49,7 +49,7 @@ Check for running workflows, actors, and jobs that should complete before upgrad
 
 ```bash
 # Check actor distribution
-kubectl logs -n dapr-system deployment/dapr-placement-server | grep -i "host count"
+kubectl logs -n dapr-system statefulset/dapr-placement-server | grep -i "host count"
 
 # Check for active workflow instances
 # (application-specific - query your workflow monitoring endpoint)
@@ -82,6 +82,9 @@ kubectl get subscriptions -A -o yaml > subscriptions-backup.yaml
 # Backup resiliency policies
 kubectl get resiliency -A -o yaml > resiliency-backup.yaml
 
+# Backup HTTP endpoints
+kubectl get httpendpoints -A -o yaml > httpendpoints-backup.yaml
+
 # Save current Dapr control plane image tags
 kubectl get deployment -n dapr-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'
 ```
@@ -98,7 +101,7 @@ curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh 
 dapr upgrade --help
 
 # Upgrade Dapr runtime on Kubernetes
-dapr upgrade -k --runtime-version 1.14.0 --wait
+dapr upgrade -k --runtime-version 1.14.0
 ```
 
 Monitor the upgrade:
@@ -180,14 +183,18 @@ kubectl get pod -l app=order-service -o jsonpath='{.items[0].spec.containers[?(@
 
 ## Step 7: Upgrade CRDs (if applicable)
 
-Some Dapr versions include CRD changes. Upgrade CRDs separately when required:
+Some Dapr versions include CRD changes. Helm does not upgrade CRDs automatically, so you must apply them manually:
 
 ```bash
 # Check if CRD updates are needed (per release notes)
 kubectl get crd | grep dapr
 
-# Apply updated CRDs (Helm does this automatically with --wait)
-helm upgrade dapr dapr/dapr --namespace dapr-system --version 1.14.0
+# Download and apply updated CRDs manually
+kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/components.yaml
+kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/configuration.yaml
+kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/subscription.yaml
+kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/resiliency.yaml
+kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/httpendpoints.yaml
 ```
 
 ## Step 8: Post-Upgrade Validation
@@ -203,7 +210,7 @@ kubectl exec deployment/test-client -- \
 kubectl logs -l app=order-service -c daprd --since=10m | grep -i error
 
 # Verify Placement Service actor distribution
-kubectl logs -n dapr-system deployment/dapr-placement-server | tail -20
+kubectl logs -n dapr-system statefulset/dapr-placement-server | tail -20
 ```
 
 ## Rollback Procedure
