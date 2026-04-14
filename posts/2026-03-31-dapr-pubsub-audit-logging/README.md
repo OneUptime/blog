@@ -27,8 +27,8 @@ spec:
     value: kafka:9092
   - name: consumerGroup
     value: audit-consumers
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
 ```
 
 ## Publish Audit Events from Services
@@ -115,7 +115,7 @@ def ingest_audit():
             ),
         )
         conn.commit()
-    return "", 200
+    return {"status": "SUCCESS"}, 200
 ```
 
 ## Routing Audit Events by Service
@@ -145,11 +145,31 @@ Configure the dead-letter topic to prevent audit event loss:
 
 ```yaml
 spec:
+  pubsubname: audit-pubsub
   topic: audit-events
   route: /audit/ingest
   deadLetterTopic: audit-dead-letter
-  metadata:
-    maxDeliveryCount: "5"
+```
+
+Control retry behavior before messages are sent to the dead-letter topic using a Resiliency resource:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: audit-resiliency
+spec:
+  policies:
+    retries:
+      auditRetry:
+        policy: constant
+        duration: 5s
+        maxRetries: 5
+  targets:
+    components:
+      audit-pubsub:
+        inbound:
+          retry: auditRetry
 ```
 
 ## Summary
