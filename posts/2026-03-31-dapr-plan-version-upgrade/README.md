@@ -32,7 +32,7 @@ echo "[1] Checking Dapr CLI version..."
 dapr --version
 
 echo "[2] Current Kubernetes version..."
-kubectl version --short
+kubectl version
 
 echo "[3] Listing installed Dapr components..."
 kubectl get components --all-namespaces
@@ -80,7 +80,7 @@ Choose an upgrade strategy based on your risk tolerance:
 Dapr recommends upgrading control plane before sidecars:
 
 ```text
-1. Upgrade Dapr control plane (dapr-operator, dapr-sentry, placement-server)
+1. Upgrade Dapr control plane (dapr-operator, dapr-sentry, dapr-sidecar-injector, dapr-scheduler-server, dapr-placement-server)
 2. Restart services one by one to update sidecar versions
 3. Upgrade Dapr CLI on developer workstations
 4. Update Dapr SDK versions in application code (separate sprint if needed)
@@ -117,12 +117,10 @@ upgrade_plan:
 Notify stakeholders and set a maintenance window:
 
 ```bash
-# Create a Kubernetes event for the upgrade
-kubectl create event dapr-upgrade-scheduled \
-  --namespace=dapr-system \
-  --reason=UpgradePlanned \
-  --message="Dapr upgrade to v1.14.0 scheduled for 2026-04-15T02:00:00Z" \
-  --type=Normal
+# Record the planned upgrade as an annotation on the dapr-system namespace
+kubectl annotate namespace dapr-system \
+  dapr.io/upgrade-planned="v1.14.0 scheduled for 2026-04-15T02:00:00Z" \
+  --overwrite
 ```
 
 ## Summary
