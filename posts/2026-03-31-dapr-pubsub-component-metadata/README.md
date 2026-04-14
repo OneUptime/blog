@@ -31,8 +31,8 @@ spec:
     value: newest        # newest or oldest
   - name: maxMessageBytes
     value: "1048576"     # 1MB
-  - name: authRequired
-    value: "true"
+  - name: authType
+    value: "password"
   - name: saslUsername
     secretKeyRef:
       name: kafka-secret
@@ -42,7 +42,7 @@ spec:
       name: kafka-secret
       key: password
   - name: saslMechanism
-    value: SCRAM-SHA-256
+    value: SHA-256
 ```
 
 ## RabbitMQ Component Metadata
@@ -56,7 +56,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: amqp://rabbitmq:5672
   - name: durable
     value: "true"         # Persist messages to disk
@@ -66,7 +66,7 @@ spec:
     value: "false"        # Manual acknowledgment
   - name: reconnectWait
     value: "5"            # Seconds between reconnect attempts
-  - name: concurrency
+  - name: concurrencyMode
     value: parallel       # parallel or single
   - name: maxLen
     value: "10000"        # Max messages in queue
