@@ -90,7 +90,7 @@ with DaprClient() as client:
     )
     print(f"Found {len(result.results)} results")
     for item in result.results:
-        data = json.loads(item.data)
+        data = json.loads(item.value)
         print(f"  {item.key}: {data['name']} score={data['score']}")
 ```
 
