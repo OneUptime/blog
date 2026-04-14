@@ -119,8 +119,8 @@ rules:
 Check who has access to Dapr CRDs:
 
 ```bash
-kubectl auth can-i list components.dapr.io --as=user:developer1 -n default
-kubectl auth can-i create components.dapr.io --as=user:developer1 -n default
+kubectl auth can-i list components.dapr.io --as=developer1 -n default
+kubectl auth can-i create components.dapr.io --as=developer1 -n default
 ```
 
 ## Using ClusterRoles for Multi-Namespace Access
