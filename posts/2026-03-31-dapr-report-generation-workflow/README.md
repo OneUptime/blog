@@ -86,11 +86,13 @@ def fetch_sales_data(ctx: WorkflowActivityContext, date_range: dict) -> dict:
         GROUP BY DATE(created_at)
         ORDER BY date
     """, (date_range['start'], date_range['end']))
-    return {"rows": result.fetchall(), "total": sum(r['revenue'] for r in result)}
+    rows = result.fetchall()
+    return {"rows": rows, "total": sum(r['revenue'] for r in rows)}
 
 def render_report(ctx: WorkflowActivityContext, params: dict) -> dict:
     from weasyprint import HTML
     import jinja2
+    import base64
 
     loader = jinja2.FileSystemLoader('templates')
     env = jinja2.Environment(loader=loader)
@@ -100,19 +102,20 @@ def render_report(ctx: WorkflowActivityContext, params: dict) -> dict:
     pdf_bytes = HTML(string=html_content).write_pdf()
 
     return {
-        "content": pdf_bytes,
+        "content": base64.b64encode(pdf_bytes).decode('utf-8'),
         "format": "pdf"
     }
 
 def store_report(ctx: WorkflowActivityContext, payload: dict) -> str:
     import boto3
+    import base64
     s3 = boto3.client('s3')
     key = f"reports/{payload['reportId']}.{payload['format']}"
 
     s3.put_object(
         Bucket='company-reports',
         Key=key,
-        Body=payload['content'],
+        Body=base64.b64decode(payload['content']),
         ContentType='application/pdf'
     )
 
@@ -128,11 +131,11 @@ from dapr.ext.workflow import DaprWorkflowClient
 def trigger_report():
     request_data = request.json
 
-    with DaprWorkflowClient() as client:
-        instance_id = client.schedule_new_workflow(
-            workflow=report_generation_workflow,
-            input=request_data
-        )
+    client = DaprWorkflowClient()
+    instance_id = client.schedule_new_workflow(
+        workflow=report_generation_workflow,
+        input=request_data
+    )
 
     return jsonify({"instanceId": instance_id, "status": "started"}), 202
 ```
@@ -142,8 +145,8 @@ def trigger_report():
 ```python
 @app.route('/reports/status/<instance_id>', methods=['GET'])
 def get_report_status(instance_id: str):
-    with DaprWorkflowClient() as client:
-        state = client.get_workflow_state(instance_id)
+    client = DaprWorkflowClient()
+    state = client.get_workflow_state(instance_id)
 
     return jsonify({
         "status": state.runtime_status.name,
