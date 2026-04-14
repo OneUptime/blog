@@ -111,7 +111,7 @@ func (s *ChatServer) HandleRoomMessage(ctx context.Context, e *common.TopicEvent
     // Get all users in this room
     roomData, _ := s.daprClient.GetState(ctx, "statestore", "room:"+msg.RoomID+":members", nil)
     var memberIDs []string
-    json.Unmarshal(roomData, &memberIDs)
+    json.Unmarshal(roomData.Value, &memberIDs)
 
     // Deliver to locally connected users
     msgJSON, _ := json.Marshal(msg)
