@@ -90,7 +90,7 @@ public class GetOrderQueryHandler : IRequestHandler<GetOrderQuery, GetOrderResul
 
     public async Task<GetOrderResult?> Handle(GetOrderQuery request, CancellationToken ct)
     {
-        var order = await _dapr.GetStateAsync<Order>("statestore", request.OrderId, ct);
+        var order = await _dapr.GetStateAsync<Order>("statestore", request.OrderId, cancellationToken: ct);
         if (order is null) return null;
 
         return new GetOrderResult(order.Id, order.Status, order.Items);
