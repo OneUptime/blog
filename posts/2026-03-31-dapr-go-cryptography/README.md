@@ -32,8 +32,10 @@ Generate a local key for testing:
 
 ```bash
 mkdir -p keys
-dapr crypto local keygen --algorithm AES256
-# Outputs key file to ./keys/
+# Generate a 256-bit symmetric key for testing
+openssl rand -out keys/mykey 32
+# Or generate an RSA key pair
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out keys/rsa-private-key.pem
 ```
 
 ## Encrypting Data
@@ -65,10 +67,10 @@ func main() {
     encryptedStream, err := client.Encrypt(ctx,
         bytes.NewReader(plaintext),
         dapr.EncryptOptions{
-            ComponentName:    "crypto-store",
-            KeyName:          "mykey",
-            Algorithm:        "AES256-GCM",
-            DataEncryptionKey: "mykey",
+            ComponentName:        "crypto-store",
+            KeyName:              "mykey",
+            KeyWrapAlgorithm:     "A256KW",
+            DataEncryptionCipher: "aes-gcm",
         })
     if err != nil {
         log.Fatalf("encrypt error: %v", err)
@@ -104,22 +106,18 @@ log.Printf("Decrypted: %s", decrypted)
 
 ## Wrapping and Unwrapping Keys
 
-For envelope encryption (encrypting a data encryption key with a key-encrypting key):
+The Dapr Cryptography building block supports envelope encryption (wrapping a data encryption key with a key-encrypting key) through the Subtle Crypto gRPC API (`SubtleWrapKeyAlpha1` / `SubtleUnwrapKeyAlpha1`). However, these operations are not yet exposed in the Go SDK's high-level client. The high-level `Encrypt` method handles envelope encryption internally when you specify a `KeyWrapAlgorithm` — Dapr generates a random data encryption key, wraps it with the named key, and includes the wrapped key in the ciphertext output.
+
+To use an RSA key for key wrapping during encryption:
 
 ```go
-// Wrap a DEK with the KEK stored in the crypto component
-wrappedKey, err := client.WrapKey(ctx, []byte(dataEncryptionKey), dapr.WrapKeyOptions{
-    ComponentName: "crypto-store",
-    KeyName:       "master-key",
-    Algorithm:     "RSA-OAEP-256",
-})
-
-// Unwrap later
-originalDEK, err := client.UnwrapKey(ctx, wrappedKey, dapr.UnwrapKeyOptions{
-    ComponentName: "crypto-store",
-    KeyName:       "master-key",
-    Algorithm:     "RSA-OAEP-256",
-})
+encryptedStream, err := client.Encrypt(ctx,
+    bytes.NewReader(plaintext),
+    dapr.EncryptOptions{
+        ComponentName:    "crypto-store",
+        KeyName:          "master-key",
+        KeyWrapAlgorithm: "RSA-OAEP-256",
+    })
 ```
 
 ## Using Azure Key Vault for Production
