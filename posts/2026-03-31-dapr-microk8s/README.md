@@ -32,9 +32,8 @@ Enable DNS, storage, and Helm support needed for Dapr:
 ```bash
 # Enable core add-ons
 microk8s enable dns
-microk8s enable storage
-microk8s enable helm3
 microk8s enable hostpath-storage
+microk8s enable helm3
 
 # Optional: Enable ingress for external access
 microk8s enable ingress
