@@ -132,8 +132,8 @@ spec:
       value: redis-master:6379
     - name: redisDB
       value: "1"    # Redis DB 1 for ACME
-  scopes:
-    - orderservice
+scopes:
+  - orderservice
 ---
 # tenant-globex-statestore.yaml
 apiVersion: dapr.io/v1alpha1
@@ -148,8 +148,8 @@ spec:
       value: redis-master:6379
     - name: redisDB
       value: "2"    # Redis DB 2 for Globex
-  scopes:
-    - orderservice
+scopes:
+  - orderservice
 ```
 
 ```python
@@ -183,7 +183,7 @@ spec:
       secretKeyRef:
         name: acme-pg-secret
         key: connectionString
-    - name: tableName
+    - name: tablePrefix
       value: state
 ```
 
