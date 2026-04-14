@@ -80,10 +80,10 @@ spec:
       key: privateKey
   - name: region
     value: "us-ashburn-1"
+  - name: compartmentOCID
+    value: "ocid1.compartment.oc1..your-compartment"
   - name: bucketName
     value: "dapr-state-bucket"
-  - name: namespace
-    value: "your-oci-namespace"
 ```
 
 For OCI compute instances with Instance Principal authentication:
