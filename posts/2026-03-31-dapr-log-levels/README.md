@@ -55,22 +55,19 @@ dapr run \
   --log-level debug \
   -- python app.py
 
-# Or use environment variable
-DAPR_LOG_LEVEL=warn dapr run --app-id myapp --app-port 3000 -- python app.py
+# Or set log level for the daprd process directly
+daprd --app-id myapp --app-port 3000 --log-level warn
 ```
 
 ## Changing Log Level at Runtime
 
-Dapr supports dynamic log level changes via the sidecar HTTP API without restarting:
+Dapr does not currently support dynamic log level changes via the sidecar API. To change the log level, update the annotation or CLI flag and restart the sidecar:
 
 ```bash
-# Change to debug level on a running sidecar
-curl -X POST http://localhost:3500/v1.0/metadata \
-  -H "Content-Type: application/json" \
-  -d '{"level": "debug"}'
-
-# Verify the current log level
-curl http://localhost:3500/v1.0/metadata | jq '.extended.daprRuntimeVersion'
+# For Kubernetes deployments, update the annotation and restart
+kubectl patch deployment payment-service -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"dapr.io/log-level":"debug"}}}}}'
+kubectl rollout restart deployment/payment-service
 ```
 
 ## Recommended Level by Environment
@@ -121,10 +118,13 @@ kubectl logs deploy/order-service -c daprd | grep "WARN" | head -5
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --reuse-values \
-  --set global.logLevel=info \
+  --set dapr_operator.logLevel=info \
+  --set dapr_sentry.logLevel=info \
+  --set dapr_placement.logLevel=info \
+  --set dapr_sidecar_injector.logLevel=info \
   --set global.logAsJson=true
 ```
 
 ## Summary
 
-Dapr log levels control sidecar verbosity from `debug` (all API calls) to `fatal` (only startup failures). Use `info` for standard production workloads and `warn` for high-volume services where log costs are a concern. For live troubleshooting, Dapr supports dynamic log level changes via the metadata API without pod restarts. Always pair log level configuration with JSON format (`dapr.io/log-as-json: "true"`) for structured log parsing.
+Dapr log levels control sidecar verbosity from `debug` (all API calls) to `fatal` (only startup failures). Use `info` for standard production workloads and `warn` for high-volume services where log costs are a concern. Log level changes require a sidecar restart. Always pair log level configuration with JSON format (`dapr.io/log-as-json: "true"`) for structured log parsing.
