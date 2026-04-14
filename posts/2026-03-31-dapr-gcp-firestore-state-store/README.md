@@ -88,7 +88,7 @@ spec:
     secretKeyRef:
       name: gcp-secret
       key: client_id
-  - name: collection
+  - name: entity_kind
     value: "DaprState"
 ```
 
