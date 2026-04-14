@@ -17,18 +17,18 @@ Kubernetes provides DNS-based service discovery, but you often need to configure
 ```bash
 # Payment service connection config
 redis-cli MSET \
-  "service-config||payment-service:host" "payment-svc.payments.svc.cluster.local" \
-  "service-config||payment-service:port" "3500" \
-  "service-config||payment-service:timeout" "5000" \
-  "service-config||payment-service:maxRetries" "3" \
-  "service-config||payment-service:enabled" "true"
+  "payment-service:host" "payment-svc.payments.svc.cluster.local" \
+  "payment-service:port" "3500" \
+  "payment-service:timeout" "5000" \
+  "payment-service:maxRetries" "3" \
+  "payment-service:enabled" "true"
 
 # Order service config
 redis-cli MSET \
-  "service-config||order-service:host" "order-svc.orders.svc.cluster.local" \
-  "service-config||order-service:port" "3500" \
-  "service-config||order-service:timeout" "10000" \
-  "service-config||order-service:maxRetries" "5"
+  "order-service:host" "order-svc.orders.svc.cluster.local" \
+  "order-service:port" "3500" \
+  "order-service:timeout" "10000" \
+  "order-service:maxRetries" "5"
 ```
 
 ## Dapr Configuration Component
@@ -122,7 +122,7 @@ async function callPaymentService(payload: object): Promise<object> {
   }
 
   const response = await fetch(
-    `http://${endpoint.host}:${endpoint.port}/v1.0/invoke/payment-service/method/charge`,
+    `http://localhost:${endpoint.port}/v1.0/invoke/payment-service/method/charge`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -139,10 +139,10 @@ async function callPaymentService(payload: object): Promise<object> {
 
 ```bash
 # Increase timeout for payment service during a slow period
-redis-cli SET "service-config||payment-service:timeout" "15000"
+redis-cli SET "payment-service:timeout" "15000"
 
 # Disable a service for maintenance
-redis-cli SET "service-config||payment-service:enabled" "false"
+redis-cli SET "payment-service:enabled" "false"
 ```
 
 ## Summary
