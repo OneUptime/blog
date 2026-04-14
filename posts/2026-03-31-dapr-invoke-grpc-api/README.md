@@ -14,7 +14,7 @@ gRPC offers lower latency and smaller message sizes compared to HTTP/JSON. Dapr 
 
 ## Dapr gRPC Service Invocation Architecture
 
-```json
+```text
 [Client App] --> [Client Dapr Sidecar :50001] --> [Target Dapr Sidecar :50001] --> [Target App]
 ```
 
@@ -25,6 +25,7 @@ The client calls `InvokeService` on the Dapr gRPC API, and Dapr routes the call 
 ```go
 import (
     "context"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -36,7 +37,7 @@ func main() {
     defer client.Close()
 
     // Invoke gRPC service
-    resp, err := client.InvokeMethod(context.Background(), "order-service", "placeOrder", "application/json")
+    resp, err := client.InvokeMethod(context.Background(), "order-service", "placeOrder", "post")
     if err != nil {
         panic(err)
     }
@@ -50,7 +51,7 @@ func main() {
 Dapr also supports proxying arbitrary gRPC calls using the `dapr-app-id` metadata header. This avoids the need to use `InvokeService` explicitly:
 
 ```go
-conn, _ := grpc.Dial("localhost:50001", grpc.WithInsecure())
+conn, _ := grpc.Dial("localhost:50001", grpc.WithTransportCredentials(insecure.NewCredentials()))
 ctx := metadata.AppendToOutgoingContext(context.Background(), "dapr-app-id", "order-service")
 
 // Use your generated proto client with this connection
