@@ -21,7 +21,7 @@ dapr init
 
 ## Using DaprClient in Async Handlers
 
-`DaprClient` is synchronous, so use `asyncio.get_event_loop().run_in_executor` to avoid blocking the event loop:
+`DaprClient` is synchronous, so use `asyncio.get_running_loop().run_in_executor` to avoid blocking the event loop:
 
 ```python
 import asyncio
@@ -32,7 +32,7 @@ import json
 executor = ThreadPoolExecutor(max_workers=10)
 
 async def async_get_state(key: str) -> str | None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _get():
         with DaprClient() as client:
             result = client.get_state(store_name="statestore", key=key)
@@ -40,7 +40,7 @@ async def async_get_state(key: str) -> str | None:
     return await loop.run_in_executor(executor, _get)
 
 async def async_save_state(key: str, value: str):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _save():
         with DaprClient() as client:
             client.save_state(store_name="statestore", key=key, value=value)
@@ -74,7 +74,7 @@ async def get_order(order_id: str):
 
 ```python
 async def async_publish(topic: str, data: dict):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _publish():
         with DaprClient() as client:
             client.publish_event(
