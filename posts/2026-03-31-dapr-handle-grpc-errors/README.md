@@ -30,7 +30,6 @@ When using Dapr's gRPC API or invoking gRPC-based services through Dapr, errors 
 ```python
 import grpc
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import StateItem
 
 with DaprClient() as client:
     try:
@@ -57,6 +56,7 @@ with DaprClient() as client:
 ```go
 import (
     "context"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -141,9 +141,7 @@ spec:
         maxInterval: 5s
         maxRetries: 3
         matching:
-          gRPCStatusCodes:
-            - UNAVAILABLE
-            - INTERNAL
+          gRPCStatusCodes: "13,14"
   targets:
     components:
       statestore:
