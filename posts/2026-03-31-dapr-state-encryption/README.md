@@ -51,12 +51,7 @@ kubectl create secret generic state-encryption-key \
 
 ## Key Requirements
 
-Dapr state encryption supports the following key formats:
-
-| Algorithm | Key Length |
-|-----------|-----------|
-| AES-CBC | 16, 24, or 32 bytes |
-| AES-GCM | 16, 24, or 32 bytes |
+Dapr state encryption uses AES internally (the specific mode is an implementation detail managed by Dapr). The encryption key must be 16, 24, or 32 bytes, corresponding to AES-128, AES-192, or AES-256.
 
 ## Using Encryption in Your Application
 
