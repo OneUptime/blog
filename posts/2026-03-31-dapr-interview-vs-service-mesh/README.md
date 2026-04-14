@@ -43,7 +43,7 @@ Network Layer (L4/L7):    Service Mesh (Istio/Linkerd)
 | Traffic splitting | Basic | Advanced |
 | Workflow | Yes | No |
 | Language portability | Any language via HTTP/gRPC | Any (network level) |
-| Resource overhead | Sidecar per pod (~100MB) | Proxy per pod (~50MB) |
+| Resource overhead | Sidecar per pod (~50MB) | Proxy per pod (~60MB) |
 
 ## Can They Be Used Together?
 
@@ -90,7 +90,7 @@ Use a Service Mesh when you need:
 # mTLS is on by default for service-to-service calls
 
 # Verify mTLS is enabled
-kubectl get configuration default -o yaml | grep mtls
+kubectl get configuration daprsystem -n dapr-system -o yaml | grep mtls
 ```
 
 ```yaml
