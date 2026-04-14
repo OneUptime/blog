@@ -59,9 +59,9 @@ close   - close the database connection
 curl -X POST http://localhost:3500/v1.0/bindings/postgres-db \
   -H "Content-Type: application/json" \
   -d '{
-    "data": {
+    "metadata": {
       "sql": "INSERT INTO orders (id, customer, amount) VALUES ($1, $2, $3)",
-      "params": ["order-001", "Alice", 149.99]
+      "params": "[\"order-001\", \"Alice\", 149.99]"
     },
     "operation": "exec"
   }'
@@ -73,9 +73,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/postgres-db \
 curl -X POST http://localhost:3500/v1.0/bindings/postgres-db \
   -H "Content-Type: application/json" \
   -d '{
-    "data": {
+    "metadata": {
       "sql": "SELECT id, customer, amount FROM orders WHERE customer = $1",
-      "params": ["Alice"]
+      "params": "[\"Alice\"]"
     },
     "operation": "query"
   }'
@@ -84,10 +84,13 @@ curl -X POST http://localhost:3500/v1.0/bindings/postgres-db \
 Response:
 
 ```json
-[
-  ["order-001", "Alice", 149.99],
-  ["order-005", "Alice", 75.00]
-]
+{
+  "metadata": {
+    "operation": "query",
+    "sql": "SELECT id, customer, amount FROM orders WHERE customer = $1"
+  },
+  "data": "[[\"order-001\",\"Alice\",149.99],[\"order-005\",\"Alice\",75.00]]"
+}
 ```
 
 ## Use in a Node.js Application
@@ -99,32 +102,32 @@ const client = new DaprClient();
 const BINDING = 'postgres-db';
 
 async function insertOrder(order) {
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'INSERT INTO orders (id, customer, amount, status) VALUES ($1, $2, $3, $4)',
-    params: [order.id, order.customer, order.amount, 'pending'],
+    params: JSON.stringify([order.id, order.customer, order.amount, 'pending']),
   });
   console.log('Order inserted:', order.id);
 }
 
 async function getOrdersByCustomer(customer) {
-  const result = await client.binding.send(BINDING, 'query', {
+  const result = await client.binding.send(BINDING, 'query', '', {
     sql: 'SELECT id, customer, amount, status FROM orders WHERE customer = $1 ORDER BY created_at DESC',
-    params: [customer],
+    params: JSON.stringify([customer]),
   });
   return result;
 }
 
 async function updateOrderStatus(orderId, status) {
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
-    params: [status, orderId],
+    params: JSON.stringify([status, orderId]),
   });
 }
 
 async function deleteOldOrders(daysOld) {
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'DELETE FROM orders WHERE created_at < NOW() - INTERVAL \'1 day\' * $1',
-    params: [daysOld],
+    params: JSON.stringify([daysOld]),
   });
 }
 ```
@@ -146,10 +149,10 @@ def insert_record(table: str, data: dict):
         client.invoke_binding(
             binding_name=BINDING,
             operation='exec',
-            data=json.dumps({
+            binding_metadata={
                 'sql': sql,
-                'params': list(data.values())
-            })
+                'params': json.dumps(list(data.values()))
+            }
         )
 
 def query_records(sql: str, params: list = None):
@@ -157,7 +160,10 @@ def query_records(sql: str, params: list = None):
         resp = client.invoke_binding(
             binding_name=BINDING,
             operation='query',
-            data=json.dumps({'sql': sql, 'params': params or []})
+            binding_metadata={
+                'sql': sql,
+                'params': json.dumps(params or [])
+            }
         )
         return json.loads(resp.text())
 ```
@@ -171,9 +177,9 @@ Always use parameterized queries with placeholders instead of string concatenati
 const sql = `SELECT * FROM users WHERE email = '${email}'`;
 
 // CORRECT - use parameterized query
-const result = await client.binding.send(BINDING, 'query', {
+const result = await client.binding.send(BINDING, 'query', '', {
   sql: 'SELECT * FROM users WHERE email = $1',
-  params: [email],
+  params: JSON.stringify([email]),
 });
 ```
 
