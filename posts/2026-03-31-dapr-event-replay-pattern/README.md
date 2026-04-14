@@ -24,7 +24,7 @@ Event replay is the process of re-processing historical events to reconstruct st
 Build a replay service that reads from the event store and re-publishes:
 
 ```python
-import dapr.clients as dapr
+from dapr.clients import DaprClient
 import json
 import time
 from typing import Optional
@@ -43,7 +43,7 @@ class EventReplayService:
         delay_ms: int = 10
     ):
         """Replay events for a specific aggregate"""
-        with dapr.DaprClient() as client:
+        with DaprClient() as client:
             stream_key = f"stream:{aggregate_type}:{aggregate_id}"
             result = client.get_state(self.event_store_name, stream_key)
 
@@ -86,7 +86,7 @@ class EventReplayService:
         batch_size: int = 100
     ):
         """Replay a batch of events to a specific topic"""
-        with dapr.DaprClient() as client:
+        with DaprClient() as client:
             for i in range(0, len(events), batch_size):
                 batch = events[i:i + batch_size]
                 for event in batch:
@@ -151,14 +151,15 @@ def reserve_inventory(items: list):
 ## Dapr Subscription for Replay Topic
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-placed-replay
 spec:
   pubsubname: orders-pubsub
   topic: OrderPlaced.replay
-  route: /orders/placed
+  routes:
+    default: /orders/placed
   scopes:
   - read-model-service
 ```
