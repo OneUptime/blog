@@ -16,6 +16,7 @@ The HashiCorp Vault API is powerful but verbose: you manage tokens, lease renewa
 
 ```python
 # vault_client.py - direct hvac
+import os
 import hvac
 
 VAULT_ADDR  = 'http://vault:8200'
@@ -100,7 +101,7 @@ def get_api_key(service_name):
 
 ## Vault Kubernetes Auth
 
-Instead of a static token, use Kubernetes service account auth:
+Instead of a static token, use a Vault Agent sidecar or init container to perform Kubernetes auth and write the resulting Vault token to a file. Then point `vaultTokenMountPath` at that file:
 
 ```yaml
 spec:
@@ -110,14 +111,14 @@ spec:
   - name: vaultAddr
     value: "http://vault:8200"
   - name: vaultTokenMountPath
-    value: "/var/run/secrets/kubernetes.io/serviceaccount/token"
-  - name: vaultKubernetesRole
-    value: "order-service-role"
+    value: "/vault/secrets/token"
   - name: skipVerify
     value: "false"
   - name: tlsServerName
     value: "vault"
 ```
+
+The Vault Agent sidecar handles the Kubernetes service account login and writes a renewable Vault token to the path above. This keeps authentication concerns outside of Dapr and your application code.
 
 ## Listing Available Secrets
 
