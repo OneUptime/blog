@@ -8,7 +8,7 @@ Description: Diagnose and fix Dapr 'host address unreachable' errors when servic
 
 ---
 
-"Host address unreachable" errors in Dapr indicate that the sidecar cannot resolve or connect to the target service's sidecar. This can be caused by DNS resolution failures, name resolution issues in the Dapr placement service, or incorrect app IDs.
+"Host address unreachable" errors in Dapr indicate that the sidecar cannot resolve or connect to the target service's sidecar. This can be caused by DNS resolution failures, name resolution component issues, or incorrect app IDs.
 
 ## Understanding Service Discovery in Dapr
 
