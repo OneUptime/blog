@@ -45,8 +45,8 @@ spec:
 For HTTP API access, Dapr supports token-based authentication to protect the sidecar API from unauthorized callers within the same pod network.
 
 ```bash
-# Set the app API token
-export APP_API_TOKEN="my-secret-token"
+# Set the Dapr API token
+export DAPR_API_TOKEN="my-secret-token"
 
 # Dapr sidecar validates this header on inbound calls
 curl -H "dapr-api-token: my-secret-token" \
@@ -91,7 +91,7 @@ A key security feature is how Dapr abstracts secret stores. Applications request
 curl http://localhost:3500/v1.0/secrets/my-secret-store/db-password
 
 # Response
-# {"db-password": {"db-password": "supersecretvalue"}}
+# {"db-password": "supersecretvalue"}
 ```
 
 ```yaml
@@ -120,9 +120,8 @@ Structure your answer as defense in depth:
 4. **Secret layer** - Applications never handle raw secret store credentials
 
 ```bash
-# View Dapr certificate details
-kubectl exec -it my-pod -c daprd -- \
-  dapr mtls check --app-id my-app --namespace default
+# Check if mTLS is enabled in the Kubernetes cluster
+dapr mtls -k
 ```
 
 ## Summary
