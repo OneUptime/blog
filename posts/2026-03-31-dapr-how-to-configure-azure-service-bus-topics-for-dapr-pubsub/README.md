@@ -61,8 +61,6 @@ spec:
       key: connectionString
   - name: maxConcurrentHandlers
     value: "10"
-  - name: prefetchCount
-    value: "100"
   - name: maxActiveMessages
     value: "800"
   - name: lockDurationInSec
@@ -224,19 +222,21 @@ if __name__ == '__main__':
 
 ## Dead Letter Handling
 
-Azure Service Bus automatically sends failed messages to dead-letter subscriptions:
+Configure Dapr to route failed messages to a dead letter topic by adding `deadLetterTopic` to your subscription:
 
-```bash
-# View dead-letter messages
-az servicebus topic subscription message receive \
-  --namespace-name $NAMESPACE_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --topic-name orders \
-  --name dapr-orders-subscriber \
-  --sub-queue DeadLetterMessages
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Subscription
+metadata:
+  name: orders-subscription
+spec:
+  pubsubname: pubsub
+  topic: orders
+  route: /orders/process
+  deadLetterTopic: orders-deadletter
 ```
 
-Process dead letters with Dapr:
+Then subscribe to the dead letter topic to process failed messages:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -245,9 +245,11 @@ metadata:
   name: orders-dlq-subscription
 spec:
   pubsubname: pubsub
-  topic: orders/$DeadLetterQueue
+  topic: orders-deadletter
   route: /orders/dead-letter
 ```
+
+When your subscriber returns an error status, Dapr publishes the message to `orders-deadletter` for later inspection or reprocessing. You can also view Azure Service Bus native dead-letter messages (caused by exceeding max delivery count) using Service Bus Explorer in the Azure Portal.
 
 ## Message Sessions for FIFO Ordering
 
@@ -255,6 +257,8 @@ Enable sessions for ordered processing per entity (e.g., per customer):
 
 ```yaml
 metadata:
+- name: requireSessions
+  value: "true"
 - name: sessionIdleTimeoutInSec
   value: "30"
 ```
@@ -272,4 +276,4 @@ await _daprClient.PublishEventAsync("pubsub", "orders", order, metadata);
 
 ## Summary
 
-Azure Service Bus Topics with Dapr provide enterprise-grade pub/sub with fan-out delivery, dead-lettering, and optional FIFO ordering via message sessions. Managed Identity authentication eliminates the need to store connection strings in Kubernetes secrets. The Dapr component's `maxConcurrentHandlers` and `prefetchCount` settings let you tune throughput to match your application's processing capacity without changing application code.
+Azure Service Bus Topics with Dapr provide enterprise-grade pub/sub with fan-out delivery, dead-lettering, and optional FIFO ordering via message sessions. Managed Identity authentication eliminates the need to store connection strings in Kubernetes secrets. The Dapr component's `maxConcurrentHandlers` and `maxActiveMessages` settings let you tune throughput to match your application's processing capacity without changing application code.
