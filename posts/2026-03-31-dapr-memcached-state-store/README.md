@@ -56,8 +56,6 @@ spec:
     value: "10"
   - name: timeout
     value: "5000"
-  - name: ttlInSeconds
-    value: "3600"
 ```
 
 For a Memcached cluster with multiple nodes:
@@ -96,7 +94,7 @@ const session = await client.state.get("memcached-statestore", "session-abc123")
 console.log("Session:", session);
 ```
 
-Check the TTL behavior - Memcached automatically expires keys after the configured TTL:
+Check the TTL behavior - set a per-request TTL and Memcached automatically expires keys after that duration:
 
 ```bash
 # Using the HTTP API to save state with explicit metadata
