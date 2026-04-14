@@ -71,8 +71,8 @@ r.setex(f"session:{user_id}", 3600, json.dumps(session))
 **Dapr state store:**
 ```python
 with DaprClient() as d:
-    d.save_state('statestore', f'session-{user_id}', session,
-                 state_options=StateOptions(ttl=3600))
+    d.save_state('statestore', f'session-{user_id}', json.dumps(session),
+                 state_metadata={"ttlInSeconds": "3600"})
 ```
 
 If you might swap Redis for Memcached or a managed cache service, Dapr wins. If Redis is permanent, custom may be simpler.
