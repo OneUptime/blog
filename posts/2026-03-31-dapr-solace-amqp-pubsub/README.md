@@ -100,7 +100,6 @@ curl -X POST http://localhost:3500/v1.0/publish/solace-pubsub/trade-events \
 ## Subscribing in Python
 
 ```python
-from dapr.clients import DaprClient
 from flask import Flask, request
 
 app = Flask(__name__)
@@ -116,14 +115,15 @@ def handle_trade():
 Declarative subscription:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: trade-sub
 spec:
   pubsubname: solace-pubsub
   topic: trade-events
-  route: /trade-events
+  routes:
+    default: /trade-events
 ```
 
 ## Running the Service
