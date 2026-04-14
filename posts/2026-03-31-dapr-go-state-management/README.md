@@ -80,11 +80,7 @@ data, _ := json.Marshal(count)
 etag := item.Etag
 
 // Save only if ETag matches
-opts := &dapr.StateOptions{
-    Concurrency: dapr.StateConcurrencyFirstWrite,
-    Consistency: dapr.StateConsistencyStrong,
-}
-if err := client.SaveStateWithETag(ctx, store, "counter", etag, data, nil); err != nil {
+if err := client.SaveStateWithETag(ctx, store, "counter", data, etag, nil); err != nil {
     log.Printf("concurrent update detected: %v", err)
 }
 ```
@@ -94,8 +90,8 @@ if err := client.SaveStateWithETag(ctx, store, "counter", etag, data, nil); err 
 ```go
 // Bulk save
 items := []*dapr.SetStateItem{
-    {Key: "user:1", Value: dapr.Raw(`{"name":"Alice"}`)},
-    {Key: "user:2", Value: dapr.Raw(`{"name":"Bob"}`)},
+    {Key: "user:1", Value: []byte(`{"name":"Alice"}`)},
+    {Key: "user:2", Value: []byte(`{"name":"Bob"}`)},
 }
 if err := client.SaveBulkState(ctx, store, items...); err != nil {
     log.Fatal(err)
@@ -117,7 +113,7 @@ ops := []*dapr.StateOperation{
         Type: dapr.StateOperationTypeUpsert,
         Item: &dapr.SetStateItem{
             Key:   "order:1",
-            Value: dapr.Raw(`{"status":"paid"}`),
+            Value: []byte(`{"status":"paid"}`),
         },
     },
     {
