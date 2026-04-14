@@ -178,7 +178,6 @@ data:
       host elasticsearch.logging.svc.cluster.local
       port 9200
       index_name dapr-logs
-      type_name _doc
       include_timestamp true
       <buffer>
         @type file
@@ -197,7 +196,6 @@ data:
       host elasticsearch.logging.svc.cluster.local
       port 9200
       index_name app-logs
-      type_name _doc
       include_timestamp true
     </match>
 ```
@@ -267,7 +265,7 @@ After setup, search Kibana for Dapr-specific log fields:
 
 Example Kibana query:
 
-```yaml
+```
 app_id: "order-service" AND level: "error"
 ```
 
@@ -275,10 +273,22 @@ app_id: "order-service" AND level: "error"
 
 For resource-constrained clusters, use Fluent Bit instead of Fluentd:
 
+Create a values file for Fluent Bit:
+
+```yaml
+# fluent-bit-values.yaml
+config:
+  outputs: |
+    [OUTPUT]
+        Name  es
+        Match *
+        Host  elasticsearch.logging.svc.cluster.local
+```
+
 ```bash
 helm install fluent-bit fluent/fluent-bit \
   --namespace kube-system \
-  --set config.outputs="[OUTPUT]\n    Name  es\n    Host  elasticsearch.logging.svc.cluster.local"
+  -f fluent-bit-values.yaml
 ```
 
 ## Summary
