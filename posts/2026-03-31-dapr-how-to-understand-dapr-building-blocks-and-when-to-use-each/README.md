@@ -12,7 +12,7 @@ Description: Learn what Dapr building blocks are, what problem each one solves, 
 
 Dapr (Distributed Application Runtime) provides a set of "building blocks" - standardized APIs for common distributed systems concerns. Each building block solves a specific problem that microservices developers encounter repeatedly. Instead of implementing distributed systems primitives yourself or picking vendor-specific SDKs, Dapr provides a consistent API that works across many underlying providers.
 
-The Dapr sidecar pattern injects an `daprd` proxy container alongside your application. Your application calls `localhost:3500` for Dapr APIs, and the sidecar handles the complexities of the underlying infrastructure.
+The Dapr sidecar pattern injects a `daprd` proxy container alongside your application. Your application calls `localhost:3500` for Dapr APIs, and the sidecar handles the complexities of the underlying infrastructure.
 
 ## Building Block 1 - Service Invocation
 
@@ -76,7 +76,8 @@ requests.post("http://localhost:3500/v1.0/publish/pubsub/orders",
 ```python
 # Output binding - invoke an external system
 requests.post("http://localhost:3500/v1.0/bindings/smtp",
-    json={"operation": "create", "data": {"subject": "Order Confirmed", "body": "..."}})
+    json={"operation": "create", "data": "Your order has been confirmed.",
+          "metadata": {"emailTo": "customer@example.com", "subject": "Order Confirmed"}})
 ```
 
 **Providers:** Kafka, Cron, SMTP, Twilio, storage buckets, databases.
@@ -132,7 +133,7 @@ response = requests.get("http://localhost:3500/v1.0/configuration/configstore?ke
 
 ```python
 # Acquire lock
-requests.post("http://localhost:3500/v1.0-alpha1/lock/lockstore/lock",
+requests.post("http://localhost:3500/v1.0-alpha1/lock/lockstore",
     json={"resourceId": "order-processor", "lockOwner": "instance-1", "expiryInSeconds": 30})
 ```
 
