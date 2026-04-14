@@ -78,12 +78,10 @@ curl -X POST http://localhost:3500/v1.0/bindings/local-files \
   }'
 ```
 
-Response:
+Response body contains the raw file content:
 
-```json
-{
-  "data": "Hello from Dapr Local Storage!"
-}
+```text
+Hello from Dapr Local Storage!
 ```
 
 ## Delete a File
