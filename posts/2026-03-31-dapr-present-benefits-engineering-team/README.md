@@ -36,7 +36,7 @@ r.set('order:123', json.dumps(order), ex=3600)
 ```python
 from dapr.clients import DaprClient
 with DaprClient() as d:
-    d.save_state('statestore', 'order-123', order)
+    d.save_state('statestore', 'order-123', json.dumps(order))
 ```
 
 Then live-swap the component from Redis to PostgreSQL by changing one YAML line, showing zero code changes needed.
@@ -57,7 +57,7 @@ Compare this to the complexity of maintaining multiple infrastructure SDKs and i
 **"What if Dapr is abandoned?"**
 
 Show the project health:
-- CNCF incubating project (as of 2021)
+- CNCF graduated project (incubating since 2021, graduated in 2024)
 - Large corporate sponsors (Microsoft, Alibaba, Intel)
 - Active development cadence
 
