@@ -158,7 +158,7 @@ const app = express();
 app.use(express.json());
 
 app.post("/handle-order", (req, res) => {
-  const order = req.body;
+  const order = req.body.data;
   console.log("Received order:", order.orderId, "amount:", order.amount);
   // Process the order
   res.sendStatus(200);
