@@ -21,7 +21,6 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "time"
     "github.com/dapr/go-sdk/actor"
 )
@@ -78,17 +77,16 @@ func (a *MetricAggregatorActor) flush(ctx context.Context, state *MetricAggregat
 ```go
 func (a *MetricAggregatorActor) OnActivate() error {
     // Register timer to flush every 5 seconds
-    return a.GetStateManager().RegisterActorTimer(
-        context.Background(),
-        &actor.TimerConfig{
-            CallbackFunc: "FlushBuffer",
-            DueTime:      5 * time.Second,
-            Period:       5 * time.Second,
-        },
+    return a.RegisterActorTimer(
+        "flushTimer",
+        "FlushBuffer",
+        nil,
+        5*time.Second,
+        5*time.Second,
     )
 }
 
-func (a *MetricAggregatorActor) FlushBuffer(ctx context.Context) error {
+func (a *MetricAggregatorActor) FlushBuffer(ctx context.Context, data []byte) error {
     var state MetricAggregatorState
     a.GetStateManager().Get(ctx, "buffer", &state)
 
@@ -109,6 +107,8 @@ package main
 
 import (
     "context"
+    "encoding/json"
+    "time"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -120,15 +120,22 @@ func sendMetric(client dapr.Client, serviceID, metricName string, value float64)
         Timestamp:  time.Now().Unix(),
     }
 
+    data, err := json.Marshal(event)
+    if err != nil {
+        return err
+    }
+
     // Route to the same actor for the same service (actor ID = serviceID)
-    return client.InvokeActorMethod(
+    _, err = client.InvokeActor(
         context.Background(),
-        "MetricAggregator",
-        serviceID,     // Actor ID - same service routes to same actor
-        "AddMetric",
-        event,
-        nil,
+        &dapr.InvokeActorRequest{
+            ActorType: "MetricAggregator",
+            ActorID:   serviceID,     // Same service routes to same actor
+            Method:    "AddMetric",
+            Data:      data,
+        },
     )
+    return err
 }
 ```
 
@@ -176,13 +183,13 @@ func (rb *RequestBuffer) Add(req Request) {
 
 ```go
 func main() {
-    server := daprd.NewService(":8080")
+    s := daprd.NewService(":8080")
 
-    server.AddActorImplFactoryContext(func() actor.Server {
-        return &MetricAggregatorActor{}
-    })
+    s.RegisterActor(&MetricAggregatorActor{})
 
-    server.Start()
+    if err := s.Start(); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
