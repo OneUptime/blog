@@ -24,7 +24,7 @@ Check the unlock response to detect expiry:
 
 ```python
 from dapr.clients import DaprClient
-from dapr.proto.runtime.v1.dapr_pb2 import UnlockResponse
+from dapr.clients.grpc._response import UnlockResponseStatus
 
 with DaprClient() as client:
     # Acquire
@@ -36,14 +36,14 @@ with DaprClient() as client:
             process()
         finally:
             result = client.unlock("lockstore", "my-resource", POD_NAME)
-            if result.status != 0:  # 0 = success
+            if result.status != UnlockResponseStatus.success:
                 print(f"WARN: Unlock failed - lock may have expired during processing!")
                 # Take corrective action - check for duplicate processing
 ```
 
 ## Implementing Lock Renewal (Heartbeat)
 
-For operations that may exceed the lock TTL, renew the lock periodically:
+For operations that may exceed the lock TTL, renew the lock periodically. Dapr does not provide a dedicated lock extension API, so renewal requires releasing and re-acquiring the lock. This introduces a brief race window where another instance could acquire the lock between the unlock and try_lock calls:
 
 ```python
 import threading
@@ -67,11 +67,16 @@ class LockRenewer:
         self.active = False
 
     def _renew_loop(self):
-        interval = self.expiry * 0.6  # Renew at 60% of TTL
+        interval = self.expiry * 0.5  # Renew at 50% of TTL
         while self.active:
             time.sleep(interval)
             if not self.active:
                 break
+            # Dapr does not support extending a lock TTL directly.
+            # Release and re-acquire to reset the expiry.
+            self.client.unlock(
+                self.store, self.resource, self.owner
+            )
             resp = self.client.try_lock(
                 self.store, self.resource, self.owner, self.expiry
             )
@@ -106,18 +111,19 @@ expiry = calculate_expiry(10)  # returns 20 seconds
 
 ## Guarding Against Post-Expiry Side Effects
 
-Check that the lock is still valid before committing irreversible operations:
+Commit while still holding the lock, then check the unlock response to detect if the lock expired during your operation:
 
 ```python
-def safe_commit(client, resource, owner):
-    # Re-verify we still hold the lock before committing
-    result = client.unlock("lockstore", resource, owner)
-    if result.status != 0:
-        # Lock expired - roll back any in-progress changes
-        rollback()
-        raise Exception("Lock expired before commit - operation rolled back")
-    # Proceed with commit
+from dapr.clients.grpc._response import UnlockResponseStatus
+
+def safe_commit(client, store, resource, owner):
+    # Commit while the lock is still held
     commit()
+    # Release and check if the lock was still ours
+    result = client.unlock(store, resource, owner)
+    if result.status != UnlockResponseStatus.success:
+        # Lock expired during processing - another instance may have also committed
+        raise Exception("Lock expired during operation - check for duplicate writes")
 ```
 
 ## Alerting on Frequent Expirations
@@ -126,12 +132,13 @@ Track unlock failures to surface expiry issues:
 
 ```python
 from prometheus_client import Counter
+from dapr.clients.grpc._response import UnlockResponseStatus
 
 lock_expiry_counter = Counter("lock_expiry_total", "Locks that expired before explicit release", ["resource"])
 
 def monitored_unlock(client, store, resource, owner):
     result = client.unlock(store, resource, owner)
-    if result.status != 0:
+    if result.status != UnlockResponseStatus.success:
         lock_expiry_counter.labels(resource=resource).inc()
 ```
 
