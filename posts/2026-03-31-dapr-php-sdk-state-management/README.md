@@ -30,22 +30,22 @@ use Dapr\Client\DaprClient;
 $client = DaprClient::clientBuilder()->build();
 
 // Save state
-$client->trySaveState(
+$client->saveState(
     storeName: 'statestore',
     key: 'product-001',
     value: ['name' => 'Widget', 'price' => 9.99, 'stock' => 100]
 );
 
 // Get state
-$state = $client->tryGetState(
+$state = $client->getState(
     storeName: 'statestore',
     key: 'product-001',
     asType: 'array'
 );
-echo "Product: " . $state->value['name'] . "\n";
+echo "Product: " . $state['name'] . "\n";
 
 // Delete state
-$client->tryDeleteState(
+$client->deleteState(
     storeName: 'statestore',
     key: 'product-001'
 );
@@ -60,8 +60,8 @@ Define typed state classes for cleaner code:
 <?php
 use Dapr\State\Attributes\StateStore;
 
-#[StateStore('statestore', \Dapr\Consistency\EventualLastWrite::class)]
-class ProductState extends \Dapr\State\AppState {
+#[StateStore('statestore', \Dapr\consistency\EventualLastWrite::class)]
+class ProductState {
     public string $name = '';
     public float $price = 0.0;
     public int $stock = 0;
@@ -75,15 +75,14 @@ Retrieve multiple keys in one call:
 ```php
 <?php
 $keys = ['product-001', 'product-002', 'product-003'];
-$states = $client->tryGetBulkState(
+$states = $client->getBulkState(
     storeName: 'statestore',
-    keys: $keys,
-    asType: 'array'
+    keys: $keys
 );
 
-foreach ($states as $state) {
-    if ($state->value !== null) {
-        echo $state->key . ": " . $state->value['name'] . "\n";
+foreach ($states as $key => $item) {
+    if ($item['value'] !== null) {
+        echo $key . ": " . $item['value']['name'] . "\n";
     }
 }
 ```
@@ -95,28 +94,22 @@ Use transactions to atomically update multiple keys:
 ```php
 <?php
 use Dapr\Client\DaprClient;
-use Dapr\State\TransactionalState;
+use Dapr\Client\StateTransactionRequest;
 
 $client = DaprClient::clientBuilder()->build();
 
 $operations = [
-    [
-        'operation' => 'upsert',
-        'request' => [
-            'key' => 'order-001',
-            'value' => json_encode(['status' => 'shipped'])
-        ]
-    ],
-    [
-        'operation' => 'upsert',
-        'request' => [
-            'key' => 'inventory-widget',
-            'value' => json_encode(['stock' => 97])
-        ]
-    ]
+    StateTransactionRequest::upsert(
+        key: 'order-001',
+        value: $client->serializer->as_json(['status' => 'shipped'])
+    ),
+    StateTransactionRequest::upsert(
+        key: 'inventory-widget',
+        value: $client->serializer->as_json(['stock' => 97])
+    )
 ];
 
-$client->executeStateTransaction('statestore', $operations);
+$client->executeStateTransaction(storeName: 'statestore', operations: $operations);
 echo "Transaction committed\n";
 ```
 
@@ -124,14 +117,14 @@ echo "Transaction committed\n";
 
 ```php
 <?php
-$state = $client->tryGetState(
+$state = $client->getStateAndEtag(
     storeName: 'statestore',
     key: 'counter',
     asType: 'int'
 );
 
-$currentEtag = $state->etag;
-$newValue = ($state->value ?? 0) + 1;
+$currentEtag = $state['etag'];
+$newValue = ($state['value'] ?? 0) + 1;
 
 // Only save if the value has not changed since we read it
 $client->trySaveState(
@@ -139,7 +132,7 @@ $client->trySaveState(
     key: 'counter',
     value: $newValue,
     etag: $currentEtag,
-    concurrency: 'first-write'
+    consistency: \Dapr\consistency\StrongFirstWrite::instance()
 );
 ```
 
