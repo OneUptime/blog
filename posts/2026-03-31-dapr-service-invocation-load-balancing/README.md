@@ -63,7 +63,7 @@ Add logging to track which pod handles each request:
 
 ```javascript
 const os = require('os');
-app.post('/orders', (req, res) => {
+app.get('/orders', (req, res) => {
   console.log(`Request handled by: ${os.hostname()}`);
   res.json({ status: 'ok', host: os.hostname() });
 });
