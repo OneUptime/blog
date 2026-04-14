@@ -101,6 +101,9 @@ server.pubsub.subscribe("pubsub", "ride-requests", async (data) => {
 When a match is made, the matching service invokes the driver service directly:
 
 ```javascript
+const { DaprClient, HttpMethod } = require("@dapr/dapr");
+const client = new DaprClient();
+
 async function assignRide(driverId, riderId) {
   await client.invoker.invoke(
     "driver-service",
