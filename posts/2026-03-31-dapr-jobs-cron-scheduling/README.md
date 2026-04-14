@@ -14,17 +14,17 @@ Dapr Jobs provides a built-in scheduling mechanism that supports cron expression
 
 Dapr Jobs supports two scheduling formats: standard cron expressions and interval shorthand.
 
-**Cron expressions** (7-field format including seconds):
+**Cron expressions** (6-field format including seconds):
 
 ```text
-* * * * * * *
-| | | | | | |
-| | | | | | day of week (0-7)
-| | | | | month (1-12)
-| | | | day of month (1-31)
-| | | hour (0-23)
-| | minute (0-59)
-| second (0-59)
+* * * * * *
+| | | | | |
+| | | | | day of week (0-6)
+| | | | month (1-12)
+| | | day of month (1-31)
+| | hour (0-23)
+| minute (0-59)
+second (0-59)
 ```
 
 **Interval shorthand:**
@@ -110,7 +110,9 @@ import (
     "log"
 
     dapr "github.com/dapr/go-sdk/client"
+    "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/grpc"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 func main() {
@@ -118,10 +120,12 @@ func main() {
     c, _ := dapr.NewClient()
     defer c.Close()
 
+    jobData, _ := json.Marshal(map[string]string{"type": "weekly-report"})
+
     job := &dapr.Job{
         Name:     "weekly-report",
         Schedule: "@weekly",
-        Data:     mustMarshal(map[string]string{"type": "weekly-report"}),
+        Data:     &anypb.Any{Value: jobData},
     }
 
     if err := c.ScheduleJobAlpha1(context.Background(), job); err != nil {
