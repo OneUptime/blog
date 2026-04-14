@@ -17,9 +17,9 @@ Pluggable components extend Dapr with custom implementations of built-in buildin
 Create a new .NET 8 project and add the Dapr pluggable components SDK:
 
 ```bash
-dotnet new web -n CustomStateStore
+dotnet new console -n CustomStateStore
 cd CustomStateStore
-dotnet add package Dapr.PluggableComponents.AspNetCore --prerelease
+dotnet add package Dapr.PluggableComponents.AspNetCore
 ```
 
 ## Implementing the State Store Interface
@@ -42,20 +42,20 @@ public class InMemoryStateStore : IStateStore, IBulkStateStore
         return Task.CompletedTask;
     }
 
-    public Task<StateStoreGetResponse> GetAsync(StateStoreGetRequest request, CancellationToken token = default)
+    public Task<StateStoreGetResponse?> GetAsync(StateStoreGetRequest request, CancellationToken token = default)
     {
         lock (_lock)
         {
             if (_store.TryGetValue(request.Key, out var entry))
             {
-                return Task.FromResult(new StateStoreGetResponse
+                return Task.FromResult<StateStoreGetResponse?>(new StateStoreGetResponse
                 {
                     Data = entry.data,
-                    ETag = new ETag { Value = entry.etag }
+                    ETag = entry.etag
                 });
             }
         }
-        return Task.FromResult(new StateStoreGetResponse());
+        return Task.FromResult<StateStoreGetResponse?>(new StateStoreGetResponse());
     }
 
     public Task SetAsync(StateStoreSetRequest request, CancellationToken token = default)
@@ -81,17 +81,19 @@ public class InMemoryStateStore : IStateStore, IBulkStateStore
 
 ## Registering the Component in Program.cs
 
-Wire up the pluggable component with the ASP.NET Core host:
+Wire up the pluggable component using the Dapr pluggable components application host:
 
 ```csharp
-var app = WebApplication.CreateBuilder(args)
-    .AddDaprPluggableComponentsServices()
-    .Build();
+using Dapr.PluggableComponents;
 
-app.AddDaprPluggableComponents(options =>
-{
-    options.RegisterStateStore<InMemoryStateStore>();
-});
+var app = DaprPluggableComponentsApplication.Create();
+
+app.RegisterService(
+    "custom-in-memory",
+    serviceBuilder =>
+    {
+        serviceBuilder.RegisterStateStore<InMemoryStateStore>();
+    });
 
 app.Run();
 ```
@@ -108,9 +110,7 @@ metadata:
 spec:
   type: state.custom-in-memory
   version: v1
-  metadata:
-  - name: socketFolder
-    value: "/tmp/dapr-components-sockets"
+  metadata: []
 ```
 
 ## Running and Testing
@@ -123,16 +123,16 @@ dotnet run --project CustomStateStore &
 
 # Run your app with Dapr
 dapr run --app-id test-app \
-  --components-path ./components \
+  --resources-path ./components \
   -- dotnet run --project MyApp
 ```
 
-Verify the component is registered:
+Verify the Dapr sidecar is running and your app is connected:
 
 ```bash
-dapr components --kubernetes=false
+dapr list
 ```
 
 ## Summary
 
-Building a Dapr pluggable component in .NET involves implementing a gRPC interface from the Dapr pluggable components SDK, registering it with an ASP.NET Core host, and pointing a component YAML to the socket file. This pattern lets teams extend Dapr with proprietary data stores or messaging systems without forking the Dapr runtime. The .NET SDK handles the gRPC plumbing, so implementation focuses on business logic.
+Building a Dapr pluggable component in .NET involves implementing a gRPC interface from the Dapr pluggable components SDK, registering it with the `DaprPluggableComponentsApplication` host, and pointing a component YAML to the socket file. This pattern lets teams extend Dapr with proprietary data stores or messaging systems without forking the Dapr runtime. The .NET SDK handles the gRPC plumbing, so implementation focuses on business logic.
