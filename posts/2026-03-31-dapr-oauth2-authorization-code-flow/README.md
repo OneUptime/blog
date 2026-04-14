@@ -107,7 +107,7 @@ def get_profile():
         return jsonify({"error": "Unauthorized"}), 401
 
     token = auth_header.split(' ')[1]
-    # Decode without verification (Dapr already validated the token)
+    # Decode without verification (token was obtained directly from the IdP by Dapr)
     claims = jwt.decode(token, options={"verify_signature": False})
 
     return jsonify({
