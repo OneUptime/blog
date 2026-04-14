@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Azure Monitor, Logging, Kubernetes, Observability
 
-Description: Configure Azure Monitor Container Insights or OMS Agent to collect and analyze Dapr sidecar logs from AKS clusters.
+Description: Configure Azure Monitor Container Insights to collect and analyze Dapr sidecar logs from AKS clusters.
 
 ---
 
@@ -27,8 +27,8 @@ az aks enable-addons \
 ### Verify Collection
 
 ```bash
-# Check the OMS agent pods are running
-kubectl get pods -n kube-system | grep omsagent
+# Check the Azure Monitor Agent pods are running
+kubectl get pods -n kube-system | grep ama-logs
 ```
 
 Container Insights collects all container stdout logs by default, which includes the Dapr sidecar (`daprd`).
@@ -50,18 +50,18 @@ Navigate to your Log Analytics workspace in the Azure portal and use KQL:
 
 ```kusto
 // All Dapr sidecar logs from the last hour
-ContainerLog
+ContainerLogV2
 | where ContainerName == "daprd"
 | where TimeGenerated > ago(1h)
-| project TimeGenerated, PodName, LogEntry
+| project TimeGenerated, PodName, LogMessage
 | order by TimeGenerated desc
 ```
 
 ```kusto
 // Parse JSON log entries for structured fields
-ContainerLog
+ContainerLogV2
 | where ContainerName == "daprd"
-| extend ParsedLog = parse_json(LogEntry)
+| extend ParsedLog = parse_json(LogMessage)
 | project TimeGenerated, PodName,
     LogLevel = ParsedLog.level,
     Message = ParsedLog.msg,
@@ -72,9 +72,9 @@ ContainerLog
 
 ```kusto
 // Error rate by Dapr app over time
-ContainerLog
+ContainerLogV2
 | where ContainerName == "daprd"
-| extend ParsedLog = parse_json(LogEntry)
+| extend ParsedLog = parse_json(LogMessage)
 | where ParsedLog.level == "error"
 | summarize ErrorCount = count() by
     bin(TimeGenerated, 5m),
@@ -91,8 +91,8 @@ az monitor scheduled-query create \
   --resource-group myResourceGroup \
   --name "DaprSidecarErrors" \
   --scopes /subscriptions/<sub>/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace \
-  --condition-query "ContainerLog | where ContainerName == 'daprd' | extend L = parse_json(LogEntry) | where L.level == 'error' | summarize count()" \
-  --condition "count > 10" \
+  --condition-query Placeholder_1="ContainerLogV2 | where ContainerName == 'daprd' | extend L = parse_json(LogMessage) | where L.level == 'error'" \
+  --condition "count 'Placeholder_1' > 10" \
   --evaluation-frequency 5m \
   --window-size 10m \
   --severity 2 \
@@ -108,7 +108,7 @@ For more control, use a Data Collection Rule to filter which container logs are 
   "properties": {
     "dataFlows": [
       {
-        "streams": ["Microsoft-ContainerLog"],
+        "streams": ["Microsoft-ContainerLogV2"],
         "destinations": ["logAnalytics"],
         "transformKql": "source | where ContainerName == 'daprd'"
       }
