@@ -48,8 +48,8 @@ spec:
     value: "incoming-orders"
   - name: consumerGroup
     value: "binding-consumer-group"
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
   - name: direction
     value: "input"
 ```
@@ -66,14 +66,10 @@ app = Flask(__name__)
 
 @app.route('/kafka-orders', methods=['POST'])
 def handle_kafka_order():
-    # Dapr passes the event data in the request body
-    event = request.get_json()
-    print(f"Received binding event:")
-    print(f"  Data: {event.get('data')}")
-    print(f"  Metadata: {event.get('metadata')}")
+    # Dapr posts the event data directly as the request body
+    order_data = request.get_json()
+    print(f"Received binding event: {order_data}")
 
-    # Access the message payload
-    order_data = event.get("data")
     if order_data:
         process_order(order_data)
 
@@ -99,26 +95,16 @@ dapr run \
 
 ## Input Binding Event Format
 
-Dapr delivers events in this format:
+Dapr POSTs the event data directly as the request body to your endpoint. For example, a Kafka message containing JSON arrives as:
 
 ```json
 {
-  "data": "{\"orderId\": \"ORD-001\", \"amount\": 99.99}",
-  "datacontenttype": "application/json",
-  "id": "abc123",
-  "metadata": {
-    "key": "order-001",
-    "offset": "5",
-    "partition": "0",
-    "topic": "incoming-orders",
-    "timestamp": "2026-03-31T10:00:00Z"
-  },
-  "source": "kafka-orders",
-  "specversion": "1.0",
-  "time": "2026-03-31T10:00:00Z",
-  "type": "bindings.kafka"
+  "orderId": "ORD-001",
+  "amount": 99.99
 }
 ```
+
+Binding-specific metadata (such as the Kafka topic, partition, and offset) is passed via HTTP headers, not in the body.
 
 ## Node.js Handler
 
@@ -129,13 +115,12 @@ app.use(express.json());
 
 // The route name matches the binding component name
 app.post('/kafka-orders', (req, res) => {
-  const { data, metadata } = req.body;
-  console.log('Binding event received:');
-  console.log('Data:', data);
-  console.log('Metadata:', metadata);
+  // Dapr posts the event data directly as the request body
+  const order = req.body;
+  console.log('Binding event received:', order);
 
   // Process the order
-  processOrder(JSON.parse(data));
+  processOrder(order);
 
   // Acknowledge by returning 200
   res.status(200).send();
@@ -160,17 +145,18 @@ import (
     "net/http"
 )
 
-type BindingEvent struct {
-    Data     interface{}            `json:"data"`
-    Metadata map[string]string      `json:"metadata"`
+type Order struct {
+    OrderID string  `json:"orderId"`
+    Amount  float64 `json:"amount"`
 }
 
 func main() {
     // Handler name matches binding component name
     http.HandleFunc("/kafka-orders", func(w http.ResponseWriter, r *http.Request) {
-        var event BindingEvent
-        json.NewDecoder(r.Body).Decode(&event)
-        fmt.Printf("Binding event: %+v\n", event)
+        // Dapr posts the event data directly as the request body
+        var order Order
+        json.NewDecoder(r.Body).Decode(&order)
+        fmt.Printf("Binding event: %+v\n", order)
 
         // Acknowledge with 200
         w.WriteHeader(200)
@@ -218,13 +204,13 @@ spec:
   type: bindings.azure.storagequeues
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: "mystorageaccount"
-  - name: storageAccessKey
+  - name: accountKey
     secretKeyRef:
       name: azure-storage-secret
       key: accessKey
-  - name: queue
+  - name: queueName
     value: "trigger-queue"
   - name: direction
     value: "input"
@@ -260,8 +246,7 @@ You can return data from your handler to send back to the binding source (if sup
 ```python
 @app.route('/kafka-orders', methods=['POST'])
 def handle_kafka_order():
-    event = request.get_json()
-    order = event.get("data")
+    order = request.get_json()
 
     result = process_order(order)
 
