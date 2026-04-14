@@ -113,10 +113,13 @@ await buffer.write('user:123', { name: 'Alice', score: 100 });
 ETag-based optimistic concurrency adds a read-before-write. Skip it when not needed:
 
 ```javascript
-// With ETag (slower) - use only when conflict detection is required
+// With ETag (slower) - requires a prior read to obtain the current ETag
+const [item] = await client.state.getBulk('statestore', ['counter']);
+
 await client.state.save('statestore', [{
   key: 'counter',
   value: '42',
+  etag: item.etag,
   options: { concurrency: 'first-write' }
 }]);
 
