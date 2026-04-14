@@ -60,8 +60,10 @@ def order_fulfillment_workflow(ctx: wf.DaprWorkflowContext, order: dict):
 ## Defining Activities
 
 ```python
+import time
+
 @wfr.activity(name='validate_order')
-def validate_order(ctx: wf.ActivityContext, order: dict) -> dict:
+def validate_order(ctx: wf.WorkflowActivityContext, order: dict) -> dict:
     if not order.get('items'):
         return {'valid': False, 'reason': 'No items in order'}
     if order.get('total', 0) <= 0:
@@ -69,7 +71,7 @@ def validate_order(ctx: wf.ActivityContext, order: dict) -> dict:
     return {'valid': True}
 
 @wfr.activity(name='reserve_inventory')
-def reserve_inventory(ctx: wf.ActivityContext, order: dict) -> dict:
+def reserve_inventory(ctx: wf.WorkflowActivityContext, order: dict) -> dict:
     # Call inventory service via Dapr service invocation
     import requests
     response = requests.post(
@@ -79,7 +81,7 @@ def reserve_inventory(ctx: wf.ActivityContext, order: dict) -> dict:
     return response.json()
 
 @wfr.activity(name='ship_order')
-def ship_order(ctx: wf.ActivityContext, order: dict) -> dict:
+def ship_order(ctx: wf.WorkflowActivityContext, order: dict) -> dict:
     return {'trackingNumber': f"TRK-{order['orderId']}-{int(time.time())}"}
 ```
 
