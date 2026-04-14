@@ -38,9 +38,8 @@ spec:
 When publishing, include a partition key using the `partitionKey` metadata field:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/pubsub/orders?metadata.partitionKey=customer-42" \
   -H "Content-Type: application/json" \
-  -H "metadata.partitionKey: customer-42" \
   -d '{"orderId": "1001", "customerId": "42", "event": "created"}'
 ```
 
@@ -68,7 +67,7 @@ const pending = new Map();
 let nextExpected = 1;
 
 app.post("/orders", (req, res) => {
-  const { seq, ...event } = req.body;
+  const { seq, ...event } = req.body.data;
   pending.set(seq, event);
 
   while (pending.has(nextExpected)) {
@@ -93,6 +92,10 @@ spec:
   type: pubsub.kafka
   version: v1
   metadata:
+  - name: brokers
+    value: kafka:9092
+  - name: consumerGroup
+    value: order-processor
   - name: maxConcurrentHandlers
     value: "1"
 ```
