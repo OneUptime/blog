@@ -26,9 +26,7 @@ First, enable metrics on your Dapr control plane and sidecars:
 # Enable metrics in Dapr Helm chart
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.metrics.enabled=true \
-  --set dapr_sentry.metrics.enabled=true \
-  --set dapr_placement.metrics.enabled=true
+  --set global.prometheus.enabled=true
 ```
 
 Configure a Prometheus scrape job:
@@ -73,7 +71,7 @@ Dapr exposes request latency histograms. Query the 99th percentile:
 ```bash
 # p99 latency for service invocation
 histogram_quantile(0.99,
-  sum(rate(dapr_http_server_request_latency_ms_bucket{app_id="checkout"}[5m])) by (le)
+  sum(rate(dapr_http_server_latency_bucket{app_id="checkout"}[5m])) by (le)
 )
 ```
 
@@ -85,8 +83,8 @@ kind: Configuration
 metadata:
   name: appconfig
 spec:
-  metric:
-    latencyDistribution:
+  metrics:
+    latencyDistributionBuckets:
       - 1
       - 5
       - 10
