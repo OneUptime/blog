@@ -179,7 +179,7 @@ app.post('/checkout', async (req, res) => {
   const tracestate = req.headers['tracestate'];
 
   // Forward to downstream service
-  await axios.post('http://localhost:3500/v1.0/invoke/payment-service/method/charge', payload, {
+  await axios.post('http://localhost:3500/v1.0/invoke/payment-service/method/charge', req.body, {
     headers: {
       'traceparent': traceparent,
       'tracestate': tracestate
