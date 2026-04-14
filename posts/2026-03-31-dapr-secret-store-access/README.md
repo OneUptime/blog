@@ -23,7 +23,7 @@ metadata:
   name: kubernetes
   namespace: default
 spec:
-  type: secret.kubernetes
+  type: secretstores.kubernetes
   version: v1
 ```
 
@@ -38,7 +38,7 @@ metadata:
   name: vault
   namespace: default
 spec:
-  type: secret.hashicorp.vault
+  type: secretstores.hashicorp.vault
   version: v1
   metadata:
   - name: vaultAddr
