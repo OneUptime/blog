@@ -33,7 +33,7 @@ spec:
     - name: redisHost
       value: "redis:6379"
     - name: keyPrefix
-      value: "snapshots"
+      value: "name"
 ```
 
 ## Snapshot Data Structure
@@ -65,8 +65,13 @@ func SaveSnapshot(client dapr.Client, aggregateType, aggregateID string, state i
         TakenAt:       time.Now(),
     }
 
+    data, err := json.Marshal(snap)
+    if err != nil {
+        return err
+    }
+
     key := fmt.Sprintf("%s:%s", aggregateType, aggregateID)
-    return client.SaveState(context.Background(), "snapshot-store", key, snap, nil)
+    return client.SaveState(context.Background(), "snapshot-store", key, data, nil)
 }
 ```
 
