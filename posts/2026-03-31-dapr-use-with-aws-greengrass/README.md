@@ -61,7 +61,7 @@ Manifests:
       Run:
         Script: python3 {artifacts:path}/sensor_processor.py
     Artifacts:
-      - URI: s3://my-bucket/sensor_processor.py
+      - Uri: s3://my-bucket/sensor_processor.py
 ```
 
 ## Dapr Component: AWS DynamoDB State Store
@@ -99,7 +99,7 @@ kind: Component
 metadata:
   name: cloud-pubsub
 spec:
-  type: pubsub.snssqs
+  type: pubsub.aws.snssqs
   version: v1
   metadata:
   - name: region
@@ -122,9 +122,6 @@ spec:
 
 ```python
 import requests
-import json
-import os
-import boto3
 import time
 
 DAPR_URL = "http://localhost:3500"
