@@ -91,7 +91,7 @@ try {
     payload
   );
 } catch (err) {
-  if (err.response?.status === 503) {
+  if (err.response?.status === 500) {
     // Circuit is open - implement fallback
     console.log('Payment service unavailable, queuing for later');
     await enqueueForRetry(payload);
@@ -102,10 +102,10 @@ try {
 ## Monitoring Circuit Breaker State
 
 ```bash
-# Check Dapr metrics for circuit breaker trips
-curl http://localhost:9090/metrics | grep circuit_breaker
+# Check Dapr metrics for circuit breaker state
+curl http://localhost:9090/metrics | grep dapr_resiliency_cb
 ```
 
 ## Summary
 
-Dapr circuit breakers stop cascading failures by automatically opening when a service exceeds a failure threshold. Configure them in a Resiliency resource with `trip` conditions, `timeout` for recovery waiting period, and `maxRequests` for half-open probing. Implement fallback logic in your application to handle the 503 response when a circuit is open.
+Dapr circuit breakers stop cascading failures by automatically opening when a service exceeds a failure threshold. Configure them in a Resiliency resource with `trip` conditions, `timeout` for recovery waiting period, and `maxRequests` for half-open probing. Implement fallback logic in your application to handle the error response when a circuit is open.
