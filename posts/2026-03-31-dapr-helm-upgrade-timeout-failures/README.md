@@ -68,7 +68,8 @@ Force a rollout if needed:
 
 ```bash
 kubectl rollout restart deployment dapr-operator dapr-sentry \
-  dapr-placement-server dapr-sidecar-injector -n dapr-system
+  dapr-sidecar-injector -n dapr-system
+kubectl rollout restart statefulset dapr-placement-server -n dapr-system
 ```
 
 ## Rolling Back a Failed Upgrade
@@ -84,7 +85,7 @@ Verify the rollback succeeded:
 
 ```bash
 kubectl get pods -n dapr-system
-dapr version -k
+dapr status -k
 ```
 
 ## Upgrading in Stages
@@ -109,7 +110,7 @@ Run before any upgrade:
 ```bash
 # Check current status
 kubectl get pods -n dapr-system
-dapr version -k
+dapr status -k
 
 # Back up components and configurations
 kubectl get components -A -o yaml > dapr-components-backup.yaml
