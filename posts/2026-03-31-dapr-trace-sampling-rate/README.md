@@ -164,8 +164,8 @@ service:
 Then query:
 
 ```text
-otelcol_processor_tail_sampling_count_traces_sampled
-otelcol_processor_tail_sampling_count_traces_not_sampled
+otelcol_processor_tail_sampling_count_traces_sampled{sampled="true"}
+otelcol_processor_tail_sampling_count_traces_sampled{sampled="false"}
 ```
 
 ## Summary
