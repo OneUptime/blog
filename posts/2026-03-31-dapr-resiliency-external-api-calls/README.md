@@ -25,7 +25,7 @@ spec:
     retries:
       apiRetry:
         policy: exponential
-        initialInterval: 2s
+        duration: 2s
         maxInterval: 30s
         maxRetries: 4
     timeouts:
@@ -39,9 +39,10 @@ spec:
   targets:
     components:
       stripe-payment:
-        retry: apiRetry
-        timeout: apiTimeout
-        circuitBreaker: apiCB
+        outbound:
+          retry: apiRetry
+          timeout: apiTimeout
+          circuitBreaker: apiCB
 ```
 
 ```bash
