@@ -34,7 +34,7 @@ spec:
     value: "dapr"
   - name: maxConns
     value: "20"
-  - name: connMaxIdleTime
+  - name: connectionMaxIdleTime
     value: "5m"
   - name: cleanupInterval
     value: "1h"
@@ -105,21 +105,22 @@ kubectl create secret generic postgres-secret \
 Dapr PostgreSQL state store supports multi-key transactions:
 
 ```python
-import dapr.clients as dapr
-from dapr.clients.grpc._state import TransactionalStateOperation, OperationType
+import json
+from dapr.clients import DaprClient
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 def transfer_inventory(from_item: str, to_item: str, quantity: int):
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         operations = [
             TransactionalStateOperation(
                 key=f"inventory:{from_item}",
-                data={"quantity": -quantity},
-                operation_type=OperationType.upsert
+                data=json.dumps({"quantity": -quantity}),
+                operation_type=TransactionOperationType.upsert
             ),
             TransactionalStateOperation(
                 key=f"inventory:{to_item}",
-                data={"quantity": quantity},
-                operation_type=OperationType.upsert
+                data=json.dumps({"quantity": quantity}),
+                operation_type=TransactionOperationType.upsert
             ),
         ]
 
@@ -134,6 +135,8 @@ def transfer_inventory(from_item: str, to_item: str, quantity: int):
 
 ```sql
 -- Tune for OLTP workloads
+-- Note: shared_buffers and wal_buffers require a server restart to take effect.
+-- The other parameters below can be applied with pg_reload_conf().
 ALTER SYSTEM SET shared_buffers = '1GB';
 ALTER SYSTEM SET effective_cache_size = '3GB';
 ALTER SYSTEM SET work_mem = '16MB';
@@ -142,7 +145,9 @@ ALTER SYSTEM SET checkpoint_completion_target = '0.9';
 ALTER SYSTEM SET wal_buffers = '64MB';
 ALTER SYSTEM SET random_page_cost = '1.1';
 
+-- Reload config for parameters that don't require a restart
 SELECT pg_reload_conf();
+-- Then restart PostgreSQL to apply shared_buffers and wal_buffers
 ```
 
 ## Summary
