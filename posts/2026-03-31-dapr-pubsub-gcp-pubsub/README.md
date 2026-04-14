@@ -17,7 +17,7 @@ flowchart LR
     Publisher[Publisher App] -->|POST /v1.0/publish| Sidecar1[Dapr Sidecar]
     Sidecar1 -->|Publish| GCPTopic[GCP Pub/Sub Topic]
     GCPTopic -->|Push / Pull| Sidecar2[Dapr Sidecar]
-    Sidecar2 -->|POST /handle-event| Subscriber[Subscriber App]
+    Sidecar2 -->|POST /handle-order| Subscriber[Subscriber App]
 ```
 
 ## Prerequisites
@@ -105,7 +105,9 @@ Store the service account key as a Kubernetes secret:
 
 ```bash
 kubectl create secret generic gcp-pubsub-secret \
-  --from-file=gcp-key.json=./gcp-key.json \
+  --from-literal=privateKeyId="$(jq -r '.private_key_id' gcp-key.json)" \
+  --from-literal=privateKey="$(jq -r '.private_key' gcp-key.json)" \
+  --from-literal=clientId="$(jq -r '.client_id' gcp-key.json)" \
   --namespace default
 ```
 
@@ -231,7 +233,7 @@ dapr run \
 
 ```yaml
   metadata:
-  - name: maxConcurrentHandlers
+  - name: maxConcurrentConnections
     value: "10"
   - name: enableMessageOrdering
     value: "true"
