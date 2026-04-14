@@ -66,8 +66,8 @@ Store the full event history and derive current state by replaying events:
 ```python
 # order_aggregate.py
 import json
-import time
 from dapr.clients import DaprClient
+from dapr.clients.grpc._state import TransactionalStateOperation, TransactionOperationType
 
 STORE = "statestore"
 
@@ -111,22 +111,17 @@ def handle_order_event(event: dict):
         client.execute_state_transaction(
             store_name=STORE,
             operations=[
-                {
-                    "operation": "upsert",
-                    "request": {
-                        "key": state_key,
-                        "value": json.dumps(new_state),
-                        "etag": state_result.etag,
-                        "options": {"concurrency": "first-write"}
-                    }
-                },
-                {
-                    "operation": "upsert",
-                    "request": {
-                        "key": events_key,
-                        "value": json.dumps(events)
-                    }
-                }
+                TransactionalStateOperation(
+                    key=state_key,
+                    data=json.dumps(new_state),
+                    etag=state_result.etag,
+                    operation_type=TransactionOperationType.upsert
+                ),
+                TransactionalStateOperation(
+                    key=events_key,
+                    data=json.dumps(events),
+                    operation_type=TransactionOperationType.upsert
+                )
             ]
         )
 ```
