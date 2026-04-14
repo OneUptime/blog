@@ -181,8 +181,6 @@ def handle_order(request):
 |--------|---------|
 | `traceparent` | W3C TraceContext - carries trace ID and span ID |
 | `tracestate` | Vendor-specific trace state |
-| `X-B3-TraceId` | Zipkin B3 (also supported) |
-| `X-B3-SpanId` | Zipkin B3 span ID |
 
 ## Verifying Trace Propagation
 
