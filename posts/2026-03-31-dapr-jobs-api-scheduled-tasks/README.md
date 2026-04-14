@@ -10,7 +10,7 @@ Description: Learn how to use Dapr's Jobs API to schedule and manage recurring a
 
 ## Introduction
 
-Dapr's Jobs API (alpha/stable in Dapr 1.14+) provides a distributed job scheduling building block. You can schedule one-shot or recurring jobs using cron expressions or durations, and Dapr will invoke a callback on your application at the scheduled time. Unlike actor reminders (which are per-actor-instance), Jobs are application-level scheduled tasks.
+Dapr's Jobs API (alpha in Dapr 1.14+) provides a distributed job scheduling building block. You can schedule one-shot or recurring jobs using cron expressions or durations, and Dapr will invoke a callback on your application at the scheduled time. Unlike actor reminders (which are per-actor-instance), Jobs are application-level scheduled tasks.
 
 Use cases:
 - Database cleanup or archival jobs
@@ -31,13 +31,13 @@ flowchart LR
 
 ## Prerequisites
 
-- Dapr v1.13 or later (Jobs API)
+- Dapr v1.14 or later (Jobs API)
 - Dapr Scheduler service deployed (installed with `dapr init -k`)
 
 ## Step 1: Verify Scheduler Service is Running
 
 ```bash
-kubectl get pods -n dapr-system -l app=dapr-scheduler-server
+kubectl get pods -n dapr-system -l app=dapr-scheduler
 
 dapr status -k | grep scheduler
 ```
@@ -47,11 +47,10 @@ dapr status -k | grep scheduler
 ### One-Shot Job (Runs Once)
 
 ```bash
-curl -X PUT \
+curl -X POST \
   http://localhost:3500/v1.0-alpha1/jobs/cleanup-old-data \
   -H "Content-Type: application/json" \
   -d '{
-    "schedule": "@every 1m",
     "dueTime": "2026-04-01T02:00:00Z",
     "data": {
       "type": "cleanup",
@@ -64,12 +63,11 @@ curl -X PUT \
 ### Recurring Job (Cron Expression)
 
 ```bash
-curl -X PUT \
+curl -X POST \
   http://localhost:3500/v1.0-alpha1/jobs/daily-report \
   -H "Content-Type: application/json" \
   -d '{
     "schedule": "0 6 * * *",
-    "repeats": 0,
     "data": {
       "type": "report",
       "recipients": ["team@example.com"]
@@ -89,7 +87,7 @@ Common schedules:
 ### Job with Repeat Count
 
 ```bash
-curl -X PUT \
+curl -X POST \
   http://localhost:3500/v1.0-alpha1/jobs/welcome-email-campaign \
   -H "Content-Type: application/json" \
   -d '{
@@ -242,8 +240,6 @@ Response:
 {
   "name": "daily-report",
   "schedule": "0 6 * * *",
-  "repeats": 0,
-  "lastRunTime": "2026-03-31T06:00:00Z",
   "data": {"type": "report", "recipients": ["team@example.com"]}
 }
 ```
