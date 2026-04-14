@@ -30,7 +30,7 @@ dotnet add reference ../MyActorApp/MyActorApp.csproj
 
 ## Unit Testing Actor Methods with Mocked StateManager
 
-The key to fast unit tests is mocking `IActorStateManager`. The `ActorHost` constructor accepts a mock host for testing:
+The key to fast unit tests is mocking `IActorStateManager`. Use `ActorHost.CreateForTest` to create a test host, then inject the mock state manager via reflection since `StateManager` has a protected setter on the `Actor` base class:
 
 ```csharp
 // Tests/ShoppingCartActorTests.cs
@@ -49,7 +49,6 @@ public class ShoppingCartActorTests
         _stateManagerMock = new Mock<IActorStateManager>();
         
         // Create a test actor host
-        var actorTypeInfo = ActorTypeInformation.Get(typeof(ShoppingCartActor), "ShoppingCart");
         var host = ActorHost.CreateForTest<ShoppingCartActor>(
             new ActorTestOptions
             {
@@ -58,6 +57,10 @@ public class ShoppingCartActorTests
             });
 
         _actor = new ShoppingCartActor(host);
+
+        // Inject mock state manager (StateManager has a protected setter on the Actor base class)
+        typeof(Actor).GetProperty(nameof(Actor.StateManager))!
+            .SetValue(_actor, _stateManagerMock.Object);
     }
 
     [Fact]
@@ -264,7 +267,7 @@ public class ShoppingCartIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AddAndRetrieveCartItem_ShouldPersistAcrossActorInstances()
     {
-        var options = new ActorProxyOptions { HttpEndpoint = new Uri($"http://localhost:{DaprPort}") };
+        var options = new ActorProxyOptions { HttpEndpoint = $"http://localhost:{DaprPort}" };
         var proxy = ActorProxy.Create<IShoppingCartActor>(
             new ActorId("integration-cart-1"), "ShoppingCart", options);
 
