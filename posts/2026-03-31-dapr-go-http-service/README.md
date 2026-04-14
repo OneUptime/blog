@@ -130,7 +130,7 @@ func main() {
 
 ```bash
 dapr run --app-id order-service --app-port 8080 --app-protocol http \
-  --components-path ./components -- go run main.go
+  --resources-path ./components -- go run main.go
 ```
 
 ## Summary
