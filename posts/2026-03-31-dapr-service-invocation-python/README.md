@@ -93,7 +93,7 @@ if __name__ == "__main__":
 Include custom headers in service invocations:
 
 ```python
-from dapr.clients.grpc._request import MetadataDict
+from dapr.clients.grpc._helpers import MetadataDict
 
 with DaprClient() as client:
     metadata: MetadataDict = {
@@ -126,7 +126,7 @@ dapr run --app-id order-service --app-port 5000 \
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: ResiliencyPolicy
+kind: Resiliency
 metadata:
   name: service-resiliency
 spec:
@@ -139,8 +139,7 @@ spec:
   targets:
     apps:
       inventory-service:
-        outbound:
-          retry: default-retry
+        retry: default-retry
 ```
 
 ## Summary
