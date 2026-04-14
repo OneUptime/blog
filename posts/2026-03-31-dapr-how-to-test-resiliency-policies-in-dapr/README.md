@@ -33,12 +33,11 @@ spec:
     retries:
       test-retry:
         policy: exponential
-        initialInterval: 1s
+        duration: 1s
         maxInterval: 10s
         maxRetries: 3
     timeouts:
-      test-timeout:
-        duration: 5s
+      test-timeout: 5s
     circuitBreakers:
       test-cb:
         maxRequests: 1
@@ -227,8 +226,8 @@ test_circuit_breaker_opens()
 Dapr exports resiliency metrics to Prometheus. Query them to verify policy behavior:
 
 ```bash
-# Check retry count metric
-curl http://localhost:9090/api/v1/query?query=dapr_resiliency_count_total{policy_name="test-retry"}
+# Check resiliency policy execution count
+curl http://localhost:9090/api/v1/query?query=dapr_resiliency_count{policy_name="test-retry"}
 
 # Check circuit breaker state changes
 curl http://localhost:9090/api/v1/query?query=dapr_resiliency_cb_state{name="test-cb"}
