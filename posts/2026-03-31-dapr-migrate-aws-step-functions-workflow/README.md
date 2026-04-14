@@ -22,7 +22,7 @@ AWS Step Functions is powerful but limited to AWS. State definitions are written
 | Parallel State | `Task.WhenAll` |
 | Wait State | `context.CreateTimer` |
 | Callback with `waitForTaskToken` | `context.WaitForExternalEventAsync` |
-| `StartExecution` API | `daprClient.StartWorkflowAsync` |
+| `StartExecution` API | `daprWorkflowClient.ScheduleNewWorkflowAsync` |
 
 ## Before: Step Functions ASL
 
@@ -62,7 +62,6 @@ AWS Step Functions is powerful but limited to AWS. State definitions are written
 ## After: Dapr Workflow
 
 ```csharp
-[DaprWorkflow]
 public class OrderWorkflow : Workflow<OrderInput, OrderResult>
 {
     public override async Task<OrderResult> RunAsync(
