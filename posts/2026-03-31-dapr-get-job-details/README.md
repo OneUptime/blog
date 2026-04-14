@@ -35,10 +35,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/my-report-job \
   -d '{
     "schedule": "@every 1h",
     "repeats": 10,
-    "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "generate-report"
-    }
+    "data": "generate-report"
   }'
 ```
 
@@ -57,10 +54,7 @@ The response contains the full job definition:
   "name": "my-report-job",
   "schedule": "@every 1h",
   "repeats": 10,
-  "data": {
-    "@type": "type.googleapis.com/google.protobuf.StringValue",
-    "value": "generate-report"
-  }
+  "data": "generate-report"
 }
 ```
 
@@ -92,34 +86,33 @@ func main() {
     }
 
     fmt.Printf("Job Name: %s\n", job.Name)
-    fmt.Printf("Schedule: %s\n", job.Schedule)
-    fmt.Printf("Repeats: %d\n", job.Repeats)
+    fmt.Printf("Schedule: %s\n", *job.Schedule)
+    fmt.Printf("Repeats: %d\n", *job.Repeats)
 }
 ```
 
 Using the Python SDK:
 
 ```python
-import asyncio
 from dapr.clients import DaprClient
 
-async def get_job():
+def get_job():
     with DaprClient() as client:
-        job = await client.get_job_alpha1("my-report-job")
+        job = client.get_job_alpha1("my-report-job")
         print(f"Job Name: {job.name}")
         print(f"Schedule: {job.schedule}")
         print(f"Remaining Repeats: {job.repeats}")
 
-asyncio.run(get_job())
+get_job()
 ```
 
 ## Handling Job Not Found
 
-When a job does not exist, the API returns a 404 error. Handle this gracefully:
+When a job does not exist, the API returns a 500 error. Handle this gracefully:
 
 ```bash
 curl -v http://localhost:3500/v1.0-alpha1/jobs/nonexistent-job
-# HTTP/1.1 404 Not Found
+# HTTP/1.1 500 Internal Server Error
 ```
 
 In Go:
