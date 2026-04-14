@@ -96,15 +96,15 @@ for i in $(seq 1 100); do
 done
 ```
 
-## Publishing to Kubernetes Topics
+## Publishing in Kubernetes Environments
+
+The `dapr publish` command works in self-hosted mode only and does not support Kubernetes directly. To publish a test message in a Kubernetes environment, use `kubectl exec` to call the Dapr sidecar HTTP API from within a pod:
 
 ```bash
-dapr publish --publish-app-id my-publisher \
-             --pubsub pubsub \
-             --topic orders \
-             --data '{"orderId":"k8s-001"}' \
-             --kubernetes \
-             --namespace production
+kubectl exec -n production deploy/my-app -c my-app -- \
+  curl -s -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
+    -H "Content-Type: application/json" \
+    -d '{"orderId":"k8s-001"}'
 ```
 
 ## Summary
