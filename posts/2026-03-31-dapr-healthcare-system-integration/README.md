@@ -29,6 +29,7 @@ Encrypt all PHI before storing:
 ```python
 # patient_service/patient.py
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 import json
 import base64
 
@@ -44,15 +45,20 @@ def save_patient(patient_id: str, patient_data: dict):
     with DaprClient() as client:
         encrypted_data = {}
 
+        encrypt_options = EncryptOptions(
+            component_name=CRYPTO_COMPONENT,
+            key_name=PHI_KEY,
+            key_wrap_algorithm="RSA",
+        )
+
         for field, value in patient_data.items():
             if field in PHI_FIELDS and value:
                 plaintext = str(value).encode('utf-8')
                 encrypted = client.encrypt(
                     data=plaintext,
-                    options={"componentName": CRYPTO_COMPONENT,
-                             "keyName": PHI_KEY, "algorithm": "A256GCM"}
+                    options=encrypt_options,
                 )
-                encrypted_data[field] = base64.b64encode(encrypted.data).decode()
+                encrypted_data[field] = base64.b64encode(encrypted.read()).decode()
                 encrypted_data[f"_phi_{field}"] = True
             else:
                 encrypted_data[field] = value
@@ -119,9 +125,12 @@ Manage lab order workflows with Dapr Workflow:
 ```python
 # lab_service/workflows/lab_order_workflow.py
 import dapr.ext.workflow as wf
+from datetime import timedelta
 
-@wf.workflow
-def lab_order_workflow(ctx, order: dict):
+wf_runtime = wf.WorkflowRuntime()
+
+@wf_runtime.workflow(name='lab_order_workflow')
+def lab_order_workflow(ctx: wf.DaprWorkflowContext, order: dict):
     # Step 1: Validate order
     validation = yield ctx.call_activity(validate_lab_order, input=order)
     if not validation['approved']:
@@ -130,9 +139,13 @@ def lab_order_workflow(ctx, order: dict):
     # Step 2: Route to appropriate lab
     lab_assignment = yield ctx.call_activity(assign_lab, input=order)
 
-    # Step 3: Wait for results (may take hours)
-    results = yield ctx.wait_for_external_event("lab-results-received",
-                                                 timeout_in_seconds=86400)
+    # Step 3: Wait for results (may take hours) with timeout
+    event_task = ctx.wait_for_external_event("lab-results-received")
+    timeout_task = ctx.create_timer(timedelta(seconds=86400))
+    winner = yield wf.when_any([event_task, timeout_task])
+    if winner == timeout_task:
+        return {'status': 'timed_out', 'order_id': order['id']}
+    results = winner
 
     # Step 4: Notify clinician
     yield ctx.call_activity(notify_clinician, input={
