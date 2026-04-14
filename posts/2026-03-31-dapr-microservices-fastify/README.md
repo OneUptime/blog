@@ -30,7 +30,7 @@ const { DaprClient } = require("@dapr/dapr");
 const fastify = Fastify({ logger: true });
 
 const daprClient = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: process.env.DAPR_HTTP_PORT || "3500",
 });
 
@@ -115,15 +115,19 @@ const { DaprServer } = require("@dapr/dapr");
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3501" },
+  clientOptions: { daprHost: "127.0.0.1", daprPort: "3501" },
 });
 
-await server.pubsub.subscribe("pubsub", "order-created", async (data) => {
-  console.log("Order created, checking inventory for:", data.productId);
-  await updateInventory(data.productId, data.quantity);
-});
+async function main() {
+  await server.pubsub.subscribe("pubsub", "order-created", async (data) => {
+    console.log("Order created, checking inventory for:", data.productId);
+    await updateInventory(data.productId, data.quantity);
+  });
 
-await server.start();
+  await server.start();
+}
+
+main().catch(console.error);
 ```
 
 ## Starting the Server
