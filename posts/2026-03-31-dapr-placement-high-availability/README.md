@@ -28,7 +28,6 @@ helm upgrade --install dapr dapr/dapr \
   --create-namespace \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --wait
 ```
 
@@ -43,7 +42,6 @@ helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --wait
 ```
 
