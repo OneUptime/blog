@@ -21,7 +21,7 @@ Sidecar HTTP         req/s vs capacity     request queue depth     HTTP 4xx/5xx 
 Service Invocation   active connections    pending calls           invocation failures
 State Store          ops/s vs capacity     pending ops             state errors
 Pub/Sub              msg throughput        pending messages        delivery failures
-Actors               active actors         pending method calls    actor errors
+Actors               activated actors      pending method calls    actor errors
 gRPC                 concurrent streams    stream backlog          gRPC status errors
 ```
 
@@ -39,7 +39,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      dapr.io/sidecar-metrics-enabled: "true"
+      dapr.io/enabled: "true"
   endpoints:
   - port: dapr-metrics
     path: /metrics
@@ -48,7 +48,7 @@ spec:
 # Annotate pods to expose Dapr metrics port
 # In your Deployment spec:
 # annotations:
-#   dapr.io/enable-metrics: "true"
+#   dapr.io/enabled: "true"
 #   dapr.io/metrics-port: "9090"
 ```
 
@@ -61,7 +61,7 @@ kind: Configuration
 metadata:
   name: appconfig
 spec:
-  metric:
+  metrics:
     enabled: true
     rules:
     - labels:
@@ -83,17 +83,17 @@ sum(rate(dapr_http_server_request_count{app_id="order-service"}[5m])) by (method
 sum(rate(dapr_grpc_io_server_completed_rpcs[5m])) by (grpc_server_method)
 
 # Outbound service invocation rate
-rate(dapr_component_service_invocation_latencies_count[5m])
+rate(dapr_runtime_service_invocation_req_sent_total[5m])
 ```
 
 **State Store Utilization:**
 
 ```promql
 # State store operations per second
-sum(rate(dapr_component_state_query_total[5m])) by (component, operation)
+sum(rate(dapr_component_state_count[5m])) by (component, operation)
 
 # Component operation throughput
-sum(rate(dapr_component_state_query_total{success="true"}[5m]))
+sum(rate(dapr_component_state_count{success="true"}[5m]))
 ```
 
 **Pub/Sub Utilization:**
@@ -114,21 +114,21 @@ Saturation measures the queue depth or backlog - work that is waiting.
 
 ```promql
 # Pending actor method calls (high = saturation)
-dapr_actor_pending_actor_calls{actor_type="OrderActor"}
+dapr_runtime_actor_pending_actor_calls{actor_type="OrderActor"}
 
-# Active actors (approaching max = saturation)
-dapr_actor_active_actors / on() group_left() dapr_actor_max_active_actors
+# Activated actors count
+dapr_runtime_actor_activated_total
 ```
 
 **HTTP Request Queue:**
 
 ```promql
-# Inflight HTTP requests to the sidecar
-dapr_http_server_active_requests{app_id="order-service"}
+# HTTP request rate to the sidecar
+rate(dapr_http_server_request_count{app_id="order-service"}[5m])
 
 # P99 latency spike indicates saturation
 histogram_quantile(0.99, 
-  rate(dapr_http_server_latency_ms_bucket[5m])
+  rate(dapr_http_server_latency_bucket[5m])
 ) > 1000
 ```
 
@@ -154,15 +154,15 @@ sum(rate(dapr_http_server_request_count{status=~"5.."}[5m])) by (app_id) /
 sum(rate(dapr_http_server_request_count[5m])) by (app_id)
 
 # Service invocation failures
-rate(dapr_component_service_invocation_latencies_count{success="false"}[5m])
+rate(dapr_runtime_service_invocation_req_sent_total{status="failed"}[5m])
 ```
 
 **State Store Errors:**
 
 ```promql
 # State store failure rate
-sum(rate(dapr_component_state_query_total{success="false"}[5m])) by (component) /
-sum(rate(dapr_component_state_query_total[5m])) by (component)
+sum(rate(dapr_component_state_count{success="false"}[5m])) by (component) /
+sum(rate(dapr_component_state_count[5m])) by (component)
 ```
 
 **Pub/Sub Errors:**
@@ -200,7 +200,7 @@ spec:
     interval: 30s
     rules:
     - alert: DaprActorQueueSaturated
-      expr: dapr_actor_pending_actor_calls > 100
+      expr: dapr_runtime_actor_pending_actor_calls > 100
       for: 5m
       labels:
         severity: warning
@@ -210,7 +210,7 @@ spec:
     - alert: DaprHighP99Latency
       expr: |
         histogram_quantile(0.99,
-          rate(dapr_http_server_latency_ms_bucket[5m])
+          rate(dapr_http_server_latency_bucket[5m])
         ) > 2000
       for: 5m
       labels:
@@ -235,7 +235,7 @@ spec:
 
     - alert: DaprStateStoreErrors
       expr: |
-        sum(rate(dapr_component_state_query_total{success="false"}[5m])) by (component) > 0.5
+        sum(rate(dapr_component_state_count{success="false"}[5m])) by (component) > 0.5
       for: 2m
       labels:
         severity: critical
@@ -258,12 +258,16 @@ spec:
 helm repo add grafana https://grafana.github.io/helm-charts
 helm install grafana grafana/grafana --namespace monitoring
 
-# Import the official Dapr dashboard (ID: 11150)
-# Grafana UI -> Dashboards -> Import -> Enter ID 11150
+# Download the official Dapr Grafana dashboards from the Dapr repo
+# https://github.com/dapr/dapr/tree/master/grafana
+# Available dashboards:
+#   grafana-system-services-dashboard.json
+#   grafana-sidecar-dashboard.json
+#   grafana-actor-dashboard.json
 
-# Or apply via configmap
+# Apply via configmap
 kubectl create configmap dapr-dashboard \
-  --from-file=dapr-dashboard.json \
+  --from-file=grafana-sidecar-dashboard.json \
   --namespace monitoring
 ```
 
@@ -277,7 +281,7 @@ Row 1 - Utilization:
 
 Row 2 - Saturation:
   - P50/P95/P99 latency (multi-line)
-  - Active actors vs max (gauge)
+  - Pending actor calls (gauge)
   - HTTP concurrent requests (gauge)
 
 Row 3 - Errors:
@@ -288,4 +292,4 @@ Row 3 - Errors:
 
 ## Summary
 
-Applying the USE method to Dapr metrics gives you a structured monitoring strategy covering Utilization (throughput rates), Saturation (queue depths and latency spikes), and Errors (failure rates per component). The most critical metrics are p99 latency for saturation detection, error rate for reliability SLO tracking, and pub/sub pending message count for consumer lag alerting. Configure PrometheusRule resources for automated alerting and import the Dapr Grafana dashboard (ID 11150) as a starting point for building a comprehensive USE dashboard for your Dapr deployment.
+Applying the USE method to Dapr metrics gives you a structured monitoring strategy covering Utilization (throughput rates), Saturation (queue depths and latency spikes), and Errors (failure rates per component). The most critical metrics are p99 latency for saturation detection, error rate for reliability SLO tracking, and pub/sub pending message count for consumer lag alerting. Configure PrometheusRule resources for automated alerting and import the official Dapr Grafana dashboards from the Dapr GitHub repository as a starting point for building a comprehensive USE dashboard for your Dapr deployment.
