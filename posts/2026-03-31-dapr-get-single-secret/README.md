@@ -39,6 +39,7 @@ package main
 
 import (
   "context"
+  "fmt"
   "log"
   dapr "github.com/dapr/go-sdk/client"
 )
@@ -118,17 +119,17 @@ Some backends support fetching specific secret versions:
 
 ```bash
 # AWS Secrets Manager - previous version
-curl "http://localhost:3500/v1.0/secrets/aws-store/api-key?metadata.versionId=AWSPREVIOUS"
+curl "http://localhost:3500/v1.0/secrets/aws-store/api-key?metadata.version_id=AWSPREVIOUS"
 
 # AWS Secrets Manager - specific version
-curl "http://localhost:3500/v1.0/secrets/aws-store/api-key?metadata.versionId=abc123"
+curl "http://localhost:3500/v1.0/secrets/aws-store/api-key?metadata.version_id=abc123"
 ```
 
 In Go:
 
 ```go
 secret, err := client.GetSecret(ctx, "aws-store", "api-key", map[string]string{
-  "versionId": "AWSPREVIOUS",
+  "version_id": "AWSPREVIOUS",
 })
 ```
 
