@@ -79,6 +79,9 @@ func (a *OrderActor) appendEvent(ctx context.Context, eventType EventType, data 
 }
 
 func (a *OrderActor) CreateOrder(ctx context.Context, input CreateOrderInput) error {
+    if err := a.ensureStateLoaded(ctx); err != nil {
+        return err
+    }
     data := map[string]any{
         "customerId": input.CustomerID,
         "items":      input.Items,
@@ -94,6 +97,9 @@ func (a *OrderActor) CreateOrder(ctx context.Context, input CreateOrderInput) er
 }
 
 func (a *OrderActor) PayOrder(ctx context.Context, paymentID string) error {
+    if err := a.ensureStateLoaded(ctx); err != nil {
+        return err
+    }
     if err := a.appendEvent(ctx, OrderPaid, map[string]string{
         "paymentId": paymentID,
     }); err != nil {
@@ -111,8 +117,13 @@ func (a *OrderActor) saveCurrentVersion(ctx context.Context) {
 
 ## Replaying Events to Reconstruct State
 
+The Dapr Go SDK does not provide a user-overridable activation lifecycle hook, so state must be loaded on demand. Use a lazy-initialization helper that each actor method calls before accessing state:
+
 ```go
-func (a *OrderActor) OnActivate(ctx context.Context) error {
+func (a *OrderActor) ensureStateLoaded(ctx context.Context) error {
+    if a.version > 0 {
+        return nil // already loaded
+    }
     // Load current version number
     var currentVersion int
     a.GetStateManager().Get(ctx, "current-version", &currentVersion)
@@ -151,6 +162,9 @@ func (a *OrderActor) applyEvent(event DomainEvent) {
 
 ```go
 func (a *OrderActor) GetEventHistory(ctx context.Context) ([]DomainEvent, error) {
+    if err := a.ensureStateLoaded(ctx); err != nil {
+        return nil, err
+    }
     events := make([]DomainEvent, 0, a.version)
     for i := 1; i <= a.version; i++ {
         var event DomainEvent
