@@ -134,19 +134,10 @@ func (la *LogAggregator) flush(ctx context.Context) {
     }
 
     // Send to Elasticsearch via HTTP binding
-    docs := make([]map[string]any, len(batch))
-    for i, entry := range batch {
-        docs[i] = map[string]any{
-            "index": map[string]string{"_index": "logs-" + time.Now().Format("2006.01.02")},
-        }
-        data, _ := json.Marshal(entry)
-        docs[i]["data"] = string(data)
-    }
-
     bulkBody := buildElasticsearchBulk(batch)
     la.daprClient.InvokeBinding(ctx, &dapr.InvokeBindingRequest{
         Name:      "elasticsearch",
-        Operation: "bulk",
+        Operation: "post",
         Data:      []byte(bulkBody),
     })
 }
