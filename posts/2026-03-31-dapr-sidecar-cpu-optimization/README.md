@@ -81,10 +81,10 @@ By default, Go uses all available CPUs. Limit the Go runtime to match CPU limits
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env: "GOMAXPROCS=1"
+  dapr.io/env: "GOMAXPROCS=1"
 ```
 
-This prevents the runtime from spinning up goroutines for CPUs that the container won't get time on due to limits.
+This prevents the Go scheduler from creating OS threads for CPUs that the container won't get time on due to limits, reducing unnecessary context switching overhead.
 
 ## Tune mTLS Refresh Interval
 
