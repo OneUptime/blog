@@ -14,8 +14,8 @@ A well-defined on-call procedure for Dapr reduces panic during incidents by givi
 
 Configure PagerDuty or OpsGenie schedules aligned with your team's time zones:
 
-```yaml
-# OpsGenie rotation configuration (API payload)
+```json
+// OpsGenie rotation configuration (API payload)
 {
   "name": "Dapr Platform On-Call",
   "type": "weekly",
@@ -55,7 +55,7 @@ route:
 receivers:
 - name: dapr-pagerduty-critical
   pagerduty_configs:
-  - service_key: "${PAGERDUTY_KEY}"
+  - routing_key: "${PAGERDUTY_KEY}"
     severity: critical
     client: "Prometheus AlertManager"
     client_url: "https://grafana.company.com"
@@ -76,7 +76,7 @@ echo "=== Recent Error Events ==="
 kubectl get events -n dapr-system --sort-by='.lastTimestamp' | tail -20
 
 echo "=== Sidecar Status (sample) ==="
-kubectl get pods --all-namespaces -l "dapr.io/sidecar-injected=true" | \
+kubectl get pods --all-namespaces -l "dapr.io/enabled=true" | \
   grep -v Running | head -20
 
 echo "=== Recent Error Logs ==="
@@ -141,7 +141,7 @@ After each P1 or P2 incident, run a blameless post-incident review:
 ```bash
 # Gather incident timeline from Prometheus
 curl -s "http://prometheus:9090/api/v1/query_range" \
-  --data-urlencode "query=rate(dapr_service_invocation_req_sent_total{status_code!~'2..'}[5m])" \
+  --data-urlencode "query=rate(dapr_runtime_service_invocation_req_sent_total{status_code!~'2..'}[5m])" \
   --data-urlencode "start=2026-03-30T00:00:00Z" \
   --data-urlencode "end=2026-03-31T00:00:00Z" \
   --data-urlencode "step=60" | jq '.data.result'
