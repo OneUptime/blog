@@ -93,7 +93,7 @@ For AWS Secrets Manager, ensure the pod's IAM role has the right permissions:
         "secretsmanager:GetSecretValue",
         "secretsmanager:DescribeSecret"
       ],
-      "Resource": "arn:aws:secretsmanager:us-east-1:123456789:secret:myapp/*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:myapp/*"
     }
   ]
 }
