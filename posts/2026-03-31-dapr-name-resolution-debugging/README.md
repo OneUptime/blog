@@ -26,7 +26,7 @@ The metadata endpoint shows loaded components and registered services:
 curl http://localhost:3500/v1.0/metadata | jq .
 ```
 
-If your name resolution component is not listed under `registeredComponents`, it failed to load. Check component YAML syntax and verify the file is in the correct components directory.
+If your name resolution component is not listed under `components`, it failed to load. Check component YAML syntax and verify the file is in the correct components directory.
 
 ## Step 2: Enable Debug Logging
 
@@ -111,10 +111,10 @@ consul monitor -log-level=debug
 
 ## Debugging SQLite Issues
 
-Inspect the SQLite database directly:
+Inspect the SQLite database directly using the path from your component's `connectionString` metadata field:
 
 ```bash
-sqlite3 /tmp/dapr-nameresolution.db \
+sqlite3 /path/to/your/nr.db \
   "SELECT appID, address, port, updateTime FROM hosts ORDER BY updateTime DESC;"
 ```
 
@@ -131,7 +131,7 @@ metadata:
 Also verify the database file is accessible from all services:
 
 ```bash
-ls -la /tmp/dapr-nameresolution.db
+ls -la /path/to/your/nr.db
 ```
 
 ## Using the Dapr CLI for Invocation Testing
@@ -141,8 +141,7 @@ Test direct invocation to isolate resolution from application logic:
 ```bash
 dapr invoke --app-id order-service \
   --method health \
-  --verb GET \
-  --log-level debug
+  --verb GET
 ```
 
 ## Summary
