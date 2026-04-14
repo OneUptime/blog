@@ -63,14 +63,10 @@ spec:
         - name: COLLECTOR_ZIPKIN_HOST_PORT
           value: ":9411"
         ports:
-        - containerPort: 5775
-          protocol: UDP
-        - containerPort: 6831
-          protocol: UDP
-        - containerPort: 6832
-          protocol: UDP
-        - containerPort: 5778
         - containerPort: 16686
+        - containerPort: 4317
+        - containerPort: 4318
+        - containerPort: 14250
         - containerPort: 14268
         - containerPort: 9411
 ---
@@ -136,11 +132,10 @@ EOF
 docker run -d \
   --name jaeger \
   -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
-  -p 5775:5775/udp \
-  -p 6831:6831/udp \
-  -p 6832:6832/udp \
-  -p 5778:5778 \
   -p 16686:16686 \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -p 14250:14250 \
   -p 14268:14268 \
   -p 9411:9411 \
   jaegertracing/all-in-one:latest
@@ -198,8 +193,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 exporters:
-  jaeger:
-    endpoint: jaeger.default.svc.cluster.local:14250
+  otlp/jaeger:
+    endpoint: jaeger.default.svc.cluster.local:4317
     tls:
       insecure: true
 
@@ -207,7 +202,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 ## Step 4: Annotate Your Deployments
@@ -252,25 +247,27 @@ Dapr adds standard attributes to spans:
 | Attribute | Value Example |
 |---|---|
 | `dapr.api` | `ServiceInvocation` |
-| `dapr.app_id` | `order-service` |
-| `dapr.target_app_id` | `payment-service` |
+| `dapr.protocol` | `http` |
+| `dapr.status_code` | `200` |
 | `net.peer.name` | `payment-service.default` |
-| `http.method` | `POST` |
-| `http.status_code` | `200` |
+| `http.request.method` | `POST` |
+| `rpc.service` | `ServiceInvocation` |
 
-## Production Sampling with Jaeger Agent
+## Production Sampling Configuration
 
-For high-throughput production systems, use Jaeger's remote sampling:
+For high-throughput production systems, reduce the sampling rate to avoid overwhelming your tracing backend:
 
 ```yaml
 spec:
   tracing:
-    samplingRate: "0"  # Let Jaeger agent decide
+    samplingRate: "0.1"  # Sample 10% of traces
     otel:
-      endpointAddress: "jaeger-agent.default.svc.cluster.local:4317"
+      endpointAddress: "otel-collector.default.svc.cluster.local:4317"
+      isSecure: false
+      protocol: "grpc"
 ```
 
-Configure Jaeger with probabilistic or rate-limiting sampling strategies in the Jaeger deployment.
+Note that setting `samplingRate` to `"0"` disables tracing entirely. Use a value between `"0"` and `"1"` to control the sampling percentage. For more granular sampling control, configure probabilistic or rate-limiting sampling strategies in the OpenTelemetry Collector.
 
 ## Summary
 
