@@ -45,8 +45,7 @@ spec:
 ```bash
 helm install dapr dapr/dapr \
   --namespace dapr-system \
-  --set global.logAsJson=true \
-  --set global.logLevel=info
+  --set global.logAsJson=true
 ```
 
 Or update an existing installation:
@@ -65,9 +64,11 @@ The standard Dapr JSON log entry contains these fields:
 | Field | Type | Description |
 |-------|------|-------------|
 | `time` | string | ISO 8601 timestamp |
-| `level` | string | debug, info, warn, error, fatal |
+| `level` | string | debug, info, warn, error |
 | `msg` | string | Log message |
 | `ver` | string | Dapr runtime version |
+| `type` | string | Log type (e.g., log) |
+| `scope` | string | Logging scope |
 | `app_id` | string | Dapr app ID |
 | `instance` | string | Pod name |
 
