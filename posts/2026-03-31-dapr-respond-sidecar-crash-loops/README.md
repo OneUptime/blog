@@ -31,8 +31,14 @@ kubectl logs orders-api-7d8b9c6f4-xkp2m -c daprd --previous
 Common messages to look for:
 - `failed to load component` - component misconfiguration
 - `error authenticating with Dapr` - certificate or mTLS issue
-- `OOMKilled` - memory limit exceeded
 - `failed to connect to placement service` - actor placement host unreachable
+
+Also check for OOMKill termination (visible via `kubectl describe pod`, not in logs):
+
+```bash
+kubectl describe pod orders-api-7d8b9c6f4-xkp2m -n my-namespace | grep -A 3 "Last State"
+# Look for Reason: OOMKilled, Exit Code: 137
+```
 
 ## Step 2 - Inspect Component Configuration
 
@@ -72,13 +78,13 @@ kubectl get secret redis-secret -n my-namespace
 Dapr uses mTLS certificates issued by the control plane. Expired certificates cause sidecar crashes:
 
 ```bash
-kubectl get secret dapr-trust-bundle -n dapr-system -o yaml | grep expiry
+dapr mtls expiry
 ```
 
 Renew the trust bundle if needed:
 
 ```bash
-dapr mtls renew-certificate -k --valid-until 8760h
+dapr mtls renew-certificate -k --valid-until 365
 ```
 
 ## Step 4 - Check Resource Limits
