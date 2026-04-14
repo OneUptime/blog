@@ -48,7 +48,7 @@ FROM node:20-alpine
 
 # Dependencies change rarely - cache this layer
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Source changes often - this layer rebuilds frequently
 COPY src/ ./src/
@@ -65,6 +65,7 @@ For interpreted languages, remove caches and temp files in the same `RUN` layer 
 ```dockerfile
 FROM python:3.12-slim
 
+COPY requirements.txt ./
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc && \
     pip install --no-cache-dir -r requirements.txt && \
