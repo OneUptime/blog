@@ -26,7 +26,7 @@ spec:
   metadata:
     - name: rego
       value: |
-        package http.authz
+        package http
 
         default allow = false
 
@@ -50,7 +50,7 @@ spec:
 OPA uses the Rego language for policy definitions:
 
 ```rego
-package http.authz
+package http
 
 import future.keywords.if
 import future.keywords.in
@@ -99,7 +99,7 @@ dapr run \
   --app-id policy-protected-service \
   --app-port 8080 \
   --config ./config/opa-pipeline.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python app.py
 ```
 
