@@ -37,6 +37,7 @@ spec:
           image: jaegertracing/all-in-one:1.53
           ports:
             - containerPort: 16686  # UI
+            - containerPort: 4317   # OTLP gRPC
             - containerPort: 14268  # HTTP collector
             - containerPort: 14250  # gRPC collector
             - containerPort: 9411   # Zipkin compatible
@@ -59,6 +60,9 @@ spec:
     - name: zipkin
       port: 9411
       targetPort: 9411
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
     - name: grpc
       port: 14250
       targetPort: 14250
@@ -105,7 +109,7 @@ OTel Collector config to export to Jaeger:
 ```yaml
 exporters:
   otlp/jaeger:
-    endpoint: jaeger.monitoring.svc.cluster.local:14250
+    endpoint: jaeger.monitoring.svc.cluster.local:4317
     tls:
       insecure: true
 
