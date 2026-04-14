@@ -59,14 +59,14 @@ kubectl apply -f configstore.yaml -n <namespace>
 
 ## Using the Correct API Version
 
-The Configuration API is in alpha state. Use the correct versioned endpoint:
+The Configuration API is stable and uses the `v1.0` endpoint. Use the correct versioned endpoint:
 
 ```bash
 # HTTP - get configuration
-curl http://localhost:3500/v1.0-alpha1/configuration/configstore?key=mykey
+curl http://localhost:3500/v1.0/configuration/configstore?key=mykey
 
 # Subscribe to configuration changes
-curl http://localhost:3500/v1.0-alpha1/configuration/configstore/subscribe?key=mykey
+curl http://localhost:3500/v1.0/configuration/configstore/subscribe?key=mykey
 ```
 
 For gRPC, ensure your SDK version supports the GetConfiguration method:
@@ -85,22 +85,22 @@ with DaprClient() as d:
 
 ## Setting Configuration Values in Redis
 
-Configuration values in Redis use a special key format. Set them using the Redis CLI:
+Configuration values in Redis use a special value format that includes a version number. Set them using the Redis CLI:
 
 ```bash
-redis-cli MSET myapp||mykey "myvalue"
-# Format: <appid>||<key>
+redis-cli MSET mykey "myvalue||1"
+# Format: <value>||<version>
 ```
 
-Or without app-id scoping:
+You can set multiple keys at once:
 
 ```bash
-redis-cli SET mykey "myvalue"
+redis-cli MSET mykey "myvalue||1" anotherkey "anothervalue||1"
 ```
 
-## Enabling the Alpha API
+## Enabling the Alpha API (Older Dapr Versions)
 
-On some Dapr versions, alpha APIs need explicit enablement in the Dapr configuration:
+On older Dapr versions where the Configuration API was still in alpha, you may need to explicitly enable it in the Dapr configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -114,6 +114,8 @@ spec:
       version: v1alpha1
       protocol: http
 ```
+
+In current Dapr versions (1.14+), the Configuration API is stable and does not require explicit enablement.
 
 ## SDK Version Compatibility
 
@@ -129,4 +131,4 @@ Update to a version that supports the Configuration API (Dapr SDK 1.8+ for Pytho
 
 ## Summary
 
-The GetConfiguration unimplemented error is fixed by creating a valid configuration store component (such as `configuration.redis`), using the `v1.0-alpha1` API endpoint, and ensuring your Dapr SDK version supports the Configuration API. Remember to pre-populate configuration values in Redis using the correct key format.
+The GetConfiguration unimplemented error is fixed by creating a valid configuration store component (such as `configuration.redis`), using the `v1.0` API endpoint, and ensuring your Dapr SDK version supports the Configuration API. Remember to pre-populate configuration values in Redis using the correct value format (`value||version`).
