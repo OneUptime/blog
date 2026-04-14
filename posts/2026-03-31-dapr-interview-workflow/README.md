@@ -12,15 +12,18 @@ Description: Explain Dapr Workflow in a technical interview covering durability,
 
 **Strong interview answer:**
 
-"Dapr Workflow is a durable workflow engine built on the Durable Task Framework. Workflows survive process restarts, crashes, and scaling events because every step is persisted to a state store. You write workflows as code - ordinary C#, Python, or Java functions - and Dapr handles the durability, retries, and long-running execution. Workflows consist of an orchestrator function that sequences activities, and activity functions that do the actual work."
+"Dapr Workflow is a durable workflow engine built on the Durable Task Framework. Workflows survive process restarts, crashes, and scaling events because every step is persisted to a state store. You write workflows as code - ordinary C#, Python, Java, Go, or JavaScript functions - and Dapr handles the durability, retries, and long-running execution. Workflows consist of an orchestrator function that sequences activities, and activity functions that do the actual work."
 
 ## Orchestrator and Activity Model
 
 ```python
 import dapr.ext.workflow as wf
 
+# Create a WorkflowRuntime instance - decorators are registered on this
+wfr = wf.WorkflowRuntime()
+
 # Orchestrator - defines the sequence of steps
-@wf.workflow(name="order-fulfillment")
+@wfr.workflow(name="order-fulfillment")
 def order_fulfillment(ctx: wf.DaprWorkflowContext, order_id: str):
     # Sequential activities
     validated = yield ctx.call_activity(validate_order, input=order_id)
@@ -29,7 +32,7 @@ def order_fulfillment(ctx: wf.DaprWorkflowContext, order_id: str):
     return shipped
 
 # Activities - do actual work (can call external APIs, databases)
-@wf.activity(name="validate-order")
+@wfr.activity(name="validate-order")
 def validate_order(ctx: wf.WorkflowActivityContext, order_id: str) -> dict:
     # Runs once, result persisted
     order = fetch_order_from_db(order_id)
@@ -40,13 +43,13 @@ def validate_order(ctx: wf.WorkflowActivityContext, order_id: str) -> dict:
 
 ```python
 # BAD - non-deterministic (fails on replay)
-@wf.workflow
+@wfr.workflow
 def bad_workflow(ctx, input):
     timestamp = datetime.now()  # Different value on replay!
     random_id = uuid.uuid4()    # Different value on replay!
 
 # GOOD - use Dapr-provided deterministic APIs
-@wf.workflow
+@wfr.workflow
 def good_workflow(ctx: wf.DaprWorkflowContext, input):
     timestamp = ctx.current_utc_datetime  # Deterministic
     # Use activity for any non-deterministic work
@@ -57,7 +60,7 @@ def good_workflow(ctx: wf.DaprWorkflowContext, input):
 
 **Fan-out/Fan-in:**
 ```python
-@wf.workflow
+@wfr.workflow
 def parallel_processing(ctx: wf.DaprWorkflowContext, order_ids: list):
     # Launch all activities in parallel
     tasks = [ctx.call_activity(process_order, input=oid) for oid in order_ids]
@@ -68,7 +71,7 @@ def parallel_processing(ctx: wf.DaprWorkflowContext, order_ids: list):
 
 **External Event Wait:**
 ```python
-@wf.workflow
+@wfr.workflow
 def approval_workflow(ctx: wf.DaprWorkflowContext, request_id: str):
     yield ctx.call_activity(notify_approver, input=request_id)
     # Pause until approval event arrives
@@ -99,9 +102,9 @@ curl -X POST http://localhost:3500/v1.0/workflows/dapr/abc-123-xyz/raiseEvent/ap
 
 | Aspect | Dapr Workflow | Temporal | AWS Step Functions |
 |--------|---------------|----------|--------------------|
-| Code language | C#/Python/Java/Go | Go/Java/.NET/PHP | JSON/YAML DSL |
+| Code language | C#/Python/Java/Go/JS | Go/Java/.NET/Python/TypeScript/PHP | JSON/YAML DSL |
 | Self-hosted | Yes | Yes | No (AWS only) |
-| State backend | Pluggable (Redis, etc.) | Cassandra/MySQL | Managed |
+| State backend | Pluggable (Redis, etc.) | Cassandra/MySQL/PostgreSQL | Managed |
 | Long-running | Yes (years) | Yes | Yes (1 year max) |
 | Replay model | Event sourcing | Event sourcing | Managed |
 | Cost | Open source | Open source (hosting cost) | Per state transition |
