@@ -27,30 +27,23 @@ kubectl logs -n dapr-system dapr-placement-server-0 | grep -i "leader\|raft"
 
 ## Tuning Actor Scan and Idle Timeout
 
-Configure actor garbage collection to remove inactive actors from the placement ring:
+Configure actor garbage collection to remove inactive actors from the placement ring. Actor runtime settings are configured in your application code and returned via the `/dapr/config` endpoint:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: actor-config
-spec:
-  actor:
-    actorIdleTimeout: "1h"
-    actorScanInterval: "30s"
-    drainOngoingCallTimeout: "60s"
-    drainRebalancedActors: true
-    reentrancyConfig:
-      enabled: false
-    remindersStoragePartitions: 0
+```json
+{
+  "entities": ["OrderActor"],
+  "actorIdleTimeout": "1h",
+  "actorScanInterval": "30s",
+  "drainOngoingCallTimeout": "60s",
+  "drainRebalancedActors": true,
+  "reentrancy": {
+    "enabled": false
+  },
+  "remindersStoragePartitions": 0
+}
 ```
 
-Apply to your service:
-
-```yaml
-annotations:
-  dapr.io/config: "actor-config"
-```
+Each Dapr SDK provides a way to return this configuration at startup. For example, in the JavaScript SDK, pass these options when creating the `DaprServer`.
 
 ## Actor Type Registration
 
@@ -60,17 +53,20 @@ Register only the actor types your service hosts to keep the placement ring lean
 const { DaprServer } = require('@dapr/dapr');
 const server = new DaprServer();
 
+// Initialize actor support first
+await server.actor.init();
+
 // Only register actor types this pod hosts
 server.actor.registerActor(OrderActor);
 // Do NOT register actors from other services on this pod
 
-await server.actor.init();
+await server.start();
 ```
 
 Verify registration:
 
 ```bash
-curl http://localhost:3500/v1.0/actors | jq '.activeActorsCount'
+curl http://localhost:3500/v1.0/metadata | jq '.actors'
 ```
 
 ## Reducing Placement Rebalancing During Scaling
@@ -98,7 +94,7 @@ Check placement distribution across pods:
 
 ```bash
 # View actor counts per pod
-curl http://localhost:3500/v1.0/metadata | jq '.activeActorsCount'
+curl http://localhost:3500/v1.0/metadata | jq '.actors'
 
 # Check placement service health
 kubectl exec -n dapr-system dapr-placement-server-0 -- \
@@ -112,13 +108,13 @@ kubectl logs -n dapr-system dapr-placement-server-0 -f | grep "disseminate"
 
 For services with many actors using reminders, increase reminder storage partitions to reduce contention on the state store:
 
-```yaml
-spec:
-  actor:
-    remindersStoragePartitions: 16
+```json
+{
+  "remindersStoragePartitions": 16
+}
 ```
 
-This distributes reminder storage across 16 keys instead of one, reducing hot key contention in Redis:
+Set this value in your application's actor runtime configuration (via the `/dapr/config` endpoint). This distributes reminder storage across 16 keys instead of one, reducing hot key contention in Redis:
 
 ```bash
 # Verify partitions in Redis
