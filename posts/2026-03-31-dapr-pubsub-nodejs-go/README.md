@@ -168,7 +168,7 @@ func handleUserEvent(ctx context.Context, e *common.TopicEvent) (retry bool, err
         if isTransient(err) {
             return true, err  // Signal Dapr to retry
         }
-        return false, err  // Permanent failure - send to dead letter
+        return false, err  // Permanent failure - drop (or dead-letter if configured)
     }
     return false, nil
 }
