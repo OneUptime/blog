@@ -19,11 +19,12 @@ mkdir dapr-custom-pubsub && cd dapr-custom-pubsub
 go mod init github.com/myorg/dapr-custom-pubsub
 
 go get github.com/dapr-sandbox/components-go-sdk@latest
+go get github.com/dapr/components-contrib@latest
 ```
 
 ## Implementing the Pub/Sub Interface
 
-The pub/sub interface requires Init, Features, Publish, Subscribe, and Ping:
+The pub/sub interface requires Init, Features, Publish, Subscribe, and Close:
 
 ```go
 package main
@@ -33,65 +34,69 @@ import (
     "sync"
 
     dapr "github.com/dapr-sandbox/components-go-sdk"
-    pubsub "github.com/dapr-sandbox/components-go-sdk/pubsub/v1"
-    proto "github.com/dapr/dapr/pkg/proto/components/v1"
+    sdkpubsub "github.com/dapr-sandbox/components-go-sdk/pubsub/v1"
+    "github.com/dapr/components-contrib/pubsub"
 )
 
 type InMemoryPubSub struct {
     mu          sync.RWMutex
-    subscribers map[string][]chan *proto.TopicEventRequest
+    subscribers map[string][]chan *pubsub.NewMessage
 }
 
-func (p *InMemoryPubSub) Init(ctx context.Context, req *proto.PubSubInitRequest) (*proto.PubSubInitResponse, error) {
-    p.subscribers = make(map[string][]chan *proto.TopicEventRequest)
-    return &proto.PubSubInitResponse{}, nil
+func (p *InMemoryPubSub) Init(metadata pubsub.Metadata) error {
+    p.subscribers = make(map[string][]chan *pubsub.NewMessage)
+    return nil
 }
 
-func (p *InMemoryPubSub) Features(ctx context.Context, req *proto.FeaturesRequest) (*proto.FeaturesResponse, error) {
-    return &proto.FeaturesResponse{
-        Features: []string{"MESSAGE_TTL"},
-    }, nil
+func (p *InMemoryPubSub) Features() []pubsub.Feature {
+    return []pubsub.Feature{pubsub.FeatureMessageTTL}
 }
 
-func (p *InMemoryPubSub) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
+func (p *InMemoryPubSub) Publish(req *pubsub.PublishRequest) error {
     p.mu.RLock()
     defer p.mu.RUnlock()
 
     topic := req.Topic
     if subs, ok := p.subscribers[topic]; ok {
-        event := &proto.TopicEventRequest{
-            Data:        req.Data,
-            DataContentType: req.DataContentType,
-            Topic:       topic,
-            PubsubName:  req.PubsubName,
+        msg := &pubsub.NewMessage{
+            Data:     req.Data,
+            Topic:    topic,
+            Metadata: req.Metadata,
         }
         for _, ch := range subs {
             select {
-            case ch <- event:
+            case ch <- msg:
             default:
                 // Non-blocking send
             }
         }
     }
-    return &proto.PublishResponse{}, nil
+    return nil
 }
 
-func (p *InMemoryPubSub) Subscribe(req *proto.SubscribeRequest, stream proto.PubSub_SubscribeServer) error {
+func (p *InMemoryPubSub) Subscribe(ctx context.Context, req pubsub.SubscribeRequest, handler pubsub.Handler) error {
     p.mu.Lock()
-    ch := make(chan *proto.TopicEventRequest, 100)
+    ch := make(chan *pubsub.NewMessage, 100)
     p.subscribers[req.Topic] = append(p.subscribers[req.Topic], ch)
     p.mu.Unlock()
 
-    for {
-        select {
-        case event := <-ch:
-            if err := stream.Send(event); err != nil {
-                return err
+    go func() {
+        for {
+            select {
+            case msg := <-ch:
+                if err := handler(ctx, msg); err != nil {
+                    // Handler returned error, message not acknowledged
+                }
+            case <-ctx.Done():
+                return
             }
-        case <-stream.Context().Done():
-            return nil
         }
-    }
+    }()
+    return nil
+}
+
+func (p *InMemoryPubSub) Close() error {
+    return nil
 }
 ```
 
@@ -101,7 +106,7 @@ func (p *InMemoryPubSub) Subscribe(req *proto.SubscribeRequest, stream proto.Pub
 func main() {
     store := &InMemoryPubSub{}
 
-    dapr.Register("custom-pubsub", dapr.WithPubSub(func() pubsub.PubSub {
+    dapr.Register("custom-pubsub", dapr.WithPubSub(func() sdkpubsub.PubSub {
         return store
     }))
 
@@ -145,7 +150,7 @@ spec:
 ```bash
 # Build and run
 go build -o custom-pubsub .
-DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components ./custom-pubsub &
+DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets ./custom-pubsub &
 
 # Test publish
 curl -X POST http://localhost:3500/v1.0/publish/custom-pubsub/orders \
@@ -158,21 +163,15 @@ curl -X POST http://localhost:3500/v1.0/publish/custom-pubsub/orders \
 Properly handle message acknowledgments to prevent redelivery:
 
 ```go
-func (p *InMemoryPubSub) Subscribe(req *proto.SubscribeRequest, stream proto.PubSub_SubscribeServer) error {
-    for event := range p.getEvents(req.Topic) {
-        if err := stream.Send(event); err != nil {
-            return err
+func (p *InMemoryPubSub) Subscribe(ctx context.Context, req pubsub.SubscribeRequest, handler pubsub.Handler) error {
+    go func() {
+        for msg := range p.getEvents(req.Topic) {
+            if err := handler(ctx, msg); err != nil {
+                // Handler returned error, re-enqueue for retry
+                p.requeue(msg)
+            }
         }
-        // Wait for ack/nack before processing next message
-        status, err := stream.Recv()
-        if err != nil {
-            return err
-        }
-        if status.Status == proto.TopicEventResponse_RETRY {
-            // Re-enqueue for retry
-            p.requeue(event)
-        }
-    }
+    }()
     return nil
 }
 ```
