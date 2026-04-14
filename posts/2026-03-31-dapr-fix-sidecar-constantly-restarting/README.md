@@ -26,7 +26,8 @@ kubectl describe pod <pod-name> | grep -A10 "daprd" | grep -A5 "Last State"
 Common exit codes:
 - `OOMKilled`: Sidecar ran out of memory
 - `Error` / `Exit Code 1`: Configuration or component initialization failure
-- `Exit Code 2`: Signal received, possibly from Kubernetes
+- `Exit Code 137`: SIGKILL, often accompanies OOMKilled or forced pod deletion
+- `Exit Code 143`: SIGTERM, graceful shutdown requested by Kubernetes
 
 ## Step 2: Examine Sidecar Logs
 
@@ -56,7 +57,7 @@ Also tune Go GC to prevent heap growth:
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env: "GOMEMLIMIT=200MiB,GOGC=50"
+  dapr.io/env: "GOMEMLIMIT=200MiB,GOGC=50"
 ```
 
 ## Step 4: Fix Component Initialization Failures
@@ -71,8 +72,8 @@ kubectl logs <pod-name> -c daprd --previous | grep "component"
 Fix the underlying component issue:
 
 ```bash
-# Verify Redis is accessible from the pod
-kubectl exec -it <pod-name> -c daprd -- \
+# Verify Redis is accessible from the pod (exec into app container, as daprd uses a distroless image)
+kubectl exec -it <pod-name> -c myapp -- \
   nc -zv redis 6379
 
 # If unreachable, check Redis deployment
@@ -98,7 +99,7 @@ kubectl logs -n dapr-system -l app=dapr-sentry --tail=20
 Verify Sentry is reachable:
 
 ```bash
-kubectl exec -it <pod-name> -c daprd -- \
+kubectl exec -it <pod-name> -c myapp -- \
   nc -zv dapr-sentry.dapr-system.svc.cluster.local 443
 ```
 
