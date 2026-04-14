@@ -17,7 +17,7 @@ Declarative subscriptions are preferred for GitOps workflows since they don't re
 ## Basic Subscription CRD
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
@@ -25,12 +25,13 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
+  routes:
+    default: /orders/process
 ```
 
 - `pubsubname` - the Component CRD name of the pub/sub component
 - `topic` - the topic to subscribe to
-- `route` - the HTTP path on the app to deliver messages
+- `routes.default` - the HTTP path on the app to deliver messages
 
 Apply it and restart the pod to pick up the subscription:
 
@@ -44,7 +45,7 @@ kubectl rollout restart deployment/orders-api
 Route different message types to different handler endpoints:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
@@ -66,7 +67,7 @@ spec:
 Configure a dead letter topic for messages that fail after all retries:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
@@ -74,7 +75,8 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
+  routes:
+    default: /orders/process
   deadLetterTopic: orders-deadletter
 ```
 
@@ -83,7 +85,7 @@ spec:
 Enable bulk subscription to receive batches of messages:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
@@ -91,7 +93,8 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
+  routes:
+    default: /orders/process
   bulkSubscribe:
     enabled: true
     maxMessagesCount: 100
@@ -117,15 +120,21 @@ app.post('/orders/process', (req, res) => {
 
 ## Scoping Subscriptions to Specific Apps
 
-The Subscription CRD applies to any app in the namespace that subscribes to the pubsub component. To restrict it to a specific app, use the `scopes` field:
+The Subscription CRD applies to any app in the namespace that subscribes to the pubsub component. To restrict it to a specific app, use the top-level `scopes` field:
 
 ```yaml
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: orders-subscription
+  namespace: default
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
-  scopes:
-  - orders-api
+  routes:
+    default: /orders/process
+scopes:
+- orders-api
 ```
 
 ## Validating Subscriptions
