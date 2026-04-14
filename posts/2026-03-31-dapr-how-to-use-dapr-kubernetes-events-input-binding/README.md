@@ -70,11 +70,11 @@ spec:
     value: "10"
 ```
 
-To watch events across all namespaces, leave `namespace` empty or omit it.
+The `namespace` field is required and specifies which namespace to watch for events.
 
 ## Handle Kubernetes Events in Your Application
 
-Dapr sends HTTP POST requests to an endpoint matching the component name (`/k8s-events`) in your application:
+Dapr sends HTTP POST requests to an endpoint matching the component name (`/k8s-events`) in your application. The payload is wrapped in an envelope with `event` (the action type: `add`, `update`, or `delete`), `newVal` (the new Kubernetes Event object), and `oldVal` (the previous Kubernetes Event object):
 
 ```javascript
 const express = require('express');
@@ -83,16 +83,21 @@ const app = express();
 app.use(express.json());
 
 app.post('/k8s-events', (req, res) => {
-  const event = req.body;
+  const { event: action, newVal, oldVal } = req.body;
+  // action is "add", "update", or "delete"
+  // For "add"/"update", the event data is in newVal
+  // For "delete", the event data is in oldVal
+  const k8sEvent = action === 'delete' ? oldVal : newVal;
 
   console.log('Kubernetes Event received:');
-  console.log('  Type:', event.type);
-  console.log('  Reason:', event.reason);
-  console.log('  Message:', event.message);
-  console.log('  Object:', event.involvedObject?.name);
-  console.log('  Namespace:', event.involvedObject?.namespace);
+  console.log('  Action:', action);
+  console.log('  Type:', k8sEvent.type);
+  console.log('  Reason:', k8sEvent.reason);
+  console.log('  Message:', k8sEvent.message);
+  console.log('  Object:', k8sEvent.involvedObject?.name);
+  console.log('  Namespace:', k8sEvent.involvedObject?.namespace);
 
-  handleKubernetesEvent(event);
+  handleKubernetesEvent(k8sEvent);
 
   res.status(200).send('OK');
 });
@@ -107,7 +112,7 @@ function handleKubernetesEvent(event) {
     handleOOMKillEvent(event);
   }
 
-  if (event.reason === 'Backoff') {
+  if (event.reason === 'BackOff') {
     handleCrashLoopEvent(event);
   }
 }
@@ -136,7 +141,14 @@ app = FastAPI()
 
 @app.post("/k8s-events")
 async def handle_k8s_event(request: Request):
-    event = await request.json()
+    payload = await request.json()
+
+    action = payload.get('event', '')  # "add", "update", or "delete"
+    new_val = payload.get('newVal', {})
+    old_val = payload.get('oldVal', {})
+
+    # For "add"/"update", event data is in newVal; for "delete", it's in oldVal
+    event = old_val if action == 'delete' else new_val
 
     event_type = event.get('type', '')
     reason = event.get('reason', '')
@@ -146,7 +158,7 @@ async def handle_k8s_event(request: Request):
     obj_kind = obj.get('kind', '')
     namespace = obj.get('namespace', '')
 
-    print(f"[{event_type}] {obj_kind}/{obj_name} in {namespace}: {reason} - {message}")
+    print(f"[{action}] [{event_type}] {obj_kind}/{obj_name} in {namespace}: {reason} - {message}")
 
     if event_type == 'Warning':
         await process_warning_event(event)
@@ -164,29 +176,35 @@ async def process_warning_event(event):
 
 ## Kubernetes Event Structure
 
-A typical Kubernetes event object received by your handler:
+The Dapr binding delivers events in a wrapper envelope. Here is a typical payload received by your handler:
 
 ```json
 {
-  "apiVersion": "v1",
-  "kind": "Event",
-  "type": "Warning",
-  "reason": "BackOff",
-  "message": "Back-off restarting failed container",
-  "count": 5,
-  "firstTimestamp": "2026-03-31T10:00:00Z",
-  "lastTimestamp": "2026-03-31T10:05:00Z",
-  "involvedObject": {
-    "kind": "Pod",
-    "name": "my-app-6d8f9-xk2lp",
-    "namespace": "default"
-  },
-  "source": {
-    "component": "kubelet",
-    "host": "node-1"
+  "event": "add",
+  "oldVal": {},
+  "newVal": {
+    "apiVersion": "v1",
+    "kind": "Event",
+    "type": "Warning",
+    "reason": "BackOff",
+    "message": "Back-off restarting failed container",
+    "count": 5,
+    "firstTimestamp": "2026-03-31T10:00:00Z",
+    "lastTimestamp": "2026-03-31T10:05:00Z",
+    "involvedObject": {
+      "kind": "Pod",
+      "name": "my-app-6d8f9-xk2lp",
+      "namespace": "default"
+    },
+    "source": {
+      "component": "kubelet",
+      "host": "node-1"
+    }
   }
 }
 ```
+
+The `event` field indicates the action (`add`, `update`, or `delete`). For `add` events, the Kubernetes Event data is in `newVal`. For `delete` events, it is in `oldVal`. For `update` events, both `oldVal` and `newVal` are populated.
 
 ## Filter Events by Reason
 
@@ -199,9 +217,10 @@ const CRITICAL_REASONS = new Set([
 ]);
 
 app.post('/k8s-events', (req, res) => {
-  const event = req.body;
-  if (CRITICAL_REASONS.has(event.reason)) {
-    sendAlertToSlack(event);
+  const { event: action, newVal, oldVal } = req.body;
+  const k8sEvent = action === 'delete' ? oldVal : newVal;
+  if (CRITICAL_REASONS.has(k8sEvent.reason)) {
+    sendAlertToSlack(k8sEvent);
   }
   res.status(200).send('OK');
 });
