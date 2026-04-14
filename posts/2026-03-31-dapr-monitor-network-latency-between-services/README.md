@@ -37,12 +37,14 @@ kubectl annotate deployment service-b dapr.io/config=tracing
 
 ## Prometheus Metrics for Service Invocation
 
-Dapr tracks invocation latency in the `dapr_service_invocation_req_sent_total` and `dapr_http_client_completed_count` metrics. To query p99 latency:
+Dapr exposes service invocation metrics including `dapr_runtime_service_invocation_req_sent_total` (request count) and `dapr_http_client_roundtrip_latency` (latency histogram). To query p99 latency:
 
 ```bash
-# P99 service invocation latency in milliseconds
+# P99 service invocation latency
 histogram_quantile(0.99,
-  rate(dapr_http_client_roundtrip_latency_ms_bucket[5m])
+  sum by (le) (
+    rate(dapr_http_client_roundtrip_latency_bucket[5m])
+  )
 )
 ```
 
@@ -51,7 +53,7 @@ You can also break it down by target:
 ```bash
 histogram_quantile(0.95,
   sum by (app_id, le) (
-    rate(dapr_service_invocation_req_sent_total[5m])
+    rate(dapr_http_client_roundtrip_latency_bucket[5m])
   )
 )
 ```
@@ -69,10 +71,10 @@ log.Printf("service-b invocation took %dms", elapsed.Milliseconds())
 
 ## Grafana Dashboard Setup
 
-Import the official Dapr Grafana dashboard (ID 13411) or build a custom one:
+Import the official Dapr Grafana dashboard or build a custom one. Download the dashboard JSON from the Dapr repository and import it via the Grafana UI (Dashboards > Import):
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/master/grafana/dapr-system-services-monitor.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
 ```
 
 Key panels to add:
@@ -109,7 +111,9 @@ spec:
         - alert: DaprHighServiceLatency
           expr: |
             histogram_quantile(0.99,
-              rate(dapr_http_client_roundtrip_latency_ms_bucket[5m])
+              sum by (le) (
+                rate(dapr_http_client_roundtrip_latency_bucket[5m])
+              )
             ) > 500
           for: 2m
           labels:
