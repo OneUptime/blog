@@ -69,6 +69,7 @@ package eventstore
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -78,13 +79,16 @@ const storeName = "event-store"
 func AppendEvent(ctx context.Context, client dapr.Client, event DomainEvent) error {
     key := buildKey(event.AggregateType, event.AggregateID, event.Sequence)
 
-    // Use first-write-wins concurrency: fails if key already exists
-    opts := &dapr.StateOptions{
-        Concurrency: dapr.StateConcurrencyFirstWrite,
-        Consistency: dapr.StateConsistencyStrong,
+    data, err := json.Marshal(event)
+    if err != nil {
+        return fmt.Errorf("failed to marshal event: %w", err)
     }
 
-    return client.SaveStateWithETag(ctx, storeName, key, event, "", map[string]string{}, opts)
+    // Use first-write-wins concurrency: fails if key already exists
+    return client.SaveStateWithETag(ctx, storeName, key, data, "", map[string]string{},
+        dapr.WithConcurrency(dapr.StateConcurrencyFirstWrite),
+        dapr.WithConsistency(dapr.StateConsistencyStrong),
+    )
 }
 
 func buildKey(aggregateType, aggregateID string, seq int64) string {
