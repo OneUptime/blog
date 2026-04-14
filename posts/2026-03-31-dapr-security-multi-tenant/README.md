@@ -55,9 +55,9 @@ spec:
   metadata:
   - name: redisHost
     value: "redis-tenant-a:6379"
-  scopes:
-  - order-service
-  - inventory-service
+scopes:
+- order-service
+- inventory-service
 ```
 
 Only `order-service` and `inventory-service` within `tenant-a` can use this state store.
