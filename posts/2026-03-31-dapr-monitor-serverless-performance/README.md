@@ -23,7 +23,7 @@ metadata:
   name: monitoring-config
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
     port: 9090
   tracing:
@@ -47,21 +47,23 @@ annotations:
 The most important Dapr metrics for serverless workloads:
 
 ```bash
-# Service invocation latency (p50/p95/p99)
-dapr_service_invocation_req_sent_total
-dapr_service_invocation_req_recv_total
+# Service invocation count and latency
+dapr_runtime_service_invocation_req_sent_total
+dapr_runtime_service_invocation_req_recv_total
+dapr_runtime_service_invocation_res_recv_latency_ms
 
-# State store operation duration
-dapr_state_get_total
-dapr_state_set_total
+# State store operations
+dapr_component_state_count
+dapr_component_state_latencies
 
 # Pub/sub message processing
-dapr_pubsub_incoming_messages_total
-dapr_pubsub_process_duration_milliseconds
+dapr_component_pubsub_ingress_count
+dapr_component_pubsub_ingress_latencies
+dapr_component_pubsub_egress_count
 
-# Sidecar resource usage
-dapr_runtime_restart_total
-process_resident_memory_bytes
+# Sidecar HTTP/gRPC performance
+dapr_http_server_request_count
+dapr_grpc_io_server_completed_rpcs
 ```
 
 ## Prometheus Scrape Configuration
@@ -87,17 +89,17 @@ scrape_configs:
 Key PromQL queries for a Dapr performance dashboard:
 
 ```bash
-# Average service invocation latency
-rate(dapr_grpc_io_server_completed_rpcs_sum[5m]) /
-rate(dapr_grpc_io_server_completed_rpcs_count[5m])
+# Average gRPC server latency
+rate(dapr_grpc_io_server_server_latency_sum[5m]) /
+rate(dapr_grpc_io_server_server_latency_count[5m])
 
-# Error rate per service
-sum(rate(dapr_service_invocation_req_sent_total{success="false"}[5m]))
+# HTTP error rate per service
+sum(rate(dapr_http_server_response_count{status=~"5.."}[5m]))
   by (app_id)
 
 # State store p95 latency
 histogram_quantile(0.95,
-  rate(dapr_state_get_duration_milliseconds_bucket[5m]))
+  rate(dapr_component_state_latencies_bucket[5m]))
 ```
 
 ## Application-Level Custom Metrics
@@ -137,7 +139,7 @@ groups:
       - alert: DaprHighLatency
         expr: |
           histogram_quantile(0.99,
-            rate(dapr_service_invocation_req_sent_total[5m])) > 0.5
+            rate(dapr_http_server_latency_bucket[5m])) > 500
         for: 2m
         labels:
           severity: warning
