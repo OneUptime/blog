@@ -38,7 +38,6 @@ The publisher sends a message to a topic and does not block waiting for subscrib
 
 ```python
 import requests
-import json
 
 DAPR_HOST = "http://localhost"
 DAPR_HTTP_PORT = 3500
@@ -76,7 +75,9 @@ def subscribe():
         {
             'pubsubname': 'pubsub',
             'topic': 'orders',
-            'route': '/orders'
+            'routes': {
+                'default': '/orders'
+            }
         }
     ]
     return jsonify(subscriptions)
@@ -84,8 +85,9 @@ def subscribe():
 @app.route('/orders', methods=['POST'])
 def process_order():
     event = request.json
-    order_id = event.get('orderId')
-    amount = event.get('amount')
+    data = event.get('data', {})
+    order_id = data.get('orderId')
+    amount = data.get('amount')
     print(f"Processing order {order_id} for ${amount}")
     # Process the order asynchronously
     return jsonify({"status": "SUCCESS"})
