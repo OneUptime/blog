@@ -81,7 +81,6 @@ curl http://localhost:3502/v1.0/invoke/order-service/method/orders
 
 ```javascript
 const axios = require('axios');
-const { exec } = require('child_process');
 
 describe('Order Service Integration', () => {
   beforeAll(async () => {
@@ -118,4 +117,4 @@ dapr list
 
 ## Summary
 
-Test Dapr service invocation locally using `dapr run` for individual services or `dapr run -f dapr.yaml` for multi-service setups. Use `dapr invoke` for quick CLI-based testing or write integration tests against the local sidecar HTTP port. All invocation features including retries and mTLS work in self-hosted mode.
+Test Dapr service invocation locally using `dapr run` for individual services or `dapr run -f dapr.yaml` for multi-service setups. Use `dapr invoke` for quick CLI-based testing or write integration tests against the local sidecar HTTP port. Invocation features including retries work in self-hosted mode. mTLS is also supported but requires running the Sentry service and configuring certificates.
