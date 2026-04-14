@@ -66,23 +66,23 @@ Manage runtime upgrades as a controlled process:
 
 ```bash
 # Check current versions across clusters
-dapr status -k --kubeconfig staging.kubeconfig
-dapr status -k --kubeconfig production.kubeconfig
+KUBECONFIG=staging.kubeconfig dapr status -k
+KUBECONFIG=production.kubeconfig dapr status -k
 
 # Upgrade staging first
-dapr upgrade --runtime-version 1.15.0 -k \
-  --kubeconfig staging.kubeconfig
+KUBECONFIG=staging.kubeconfig dapr upgrade -k \
+  --runtime-version 1.15.0
 
 # Validate after staging upgrade
 kubectl get pods -n dapr-system
-dapr status -k --kubeconfig staging.kubeconfig
+KUBECONFIG=staging.kubeconfig dapr status -k
 
 # Run conformance suite against staging
 # ... run your integration tests ...
 
 # Schedule production upgrade with change management
-dapr upgrade --runtime-version 1.15.0 -k \
-  --kubeconfig production.kubeconfig
+KUBECONFIG=production.kubeconfig dapr upgrade -k \
+  --runtime-version 1.15.0
 ```
 
 ## Component Change Management
