@@ -66,8 +66,8 @@ spec:
     value: "dapr-consumer-group"
   - name: clientID
     value: "dapr-kafka-client"
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
   - name: initialOffset
     value: "newest"
   - name: maxMessageBytes
@@ -227,18 +227,14 @@ To replay all messages from the start of the topic:
 ## Advanced Kafka Configuration
 
 ```yaml
-  - name: fetchMin
+  - name: consumerFetchMin
     value: "1"
-  - name: fetchDefault
+  - name: consumerFetchDefault
     value: "1048576"
-  - name: rebalanceTimeout
-    value: "60s"
   - name: sessionTimeout
     value: "10s"
   - name: heartbeatInterval
     value: "3s"
-  - name: maxProcessingTime
-    value: "30s"
 ```
 
 ## Verifying with Kafka CLI
