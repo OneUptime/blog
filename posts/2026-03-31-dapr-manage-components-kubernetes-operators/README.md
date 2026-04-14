@@ -60,16 +60,16 @@ kubectl patch component statestore -n default --type=merge \
 kubectl logs my-pod -c daprd | grep "component reloaded"
 ```
 
-## Using the Operator for Component Versioning
+## Updating Components with the Operator
 
-The operator tracks which component version each sidecar has loaded. To deploy a new component version without downtime:
+When hot reload is enabled, the operator propagates component changes to sidecars without downtime. To update a component's configuration:
 
-1. Create a new component with updated spec
-2. The operator propagates the change to sidecars
+1. Modify the Component CRD with the updated spec
+2. The operator detects the change and propagates it to sidecars
 3. Sidecars reload the component live
 
 ```bash
-# Version 1 to version 2 migration
+# Update the statestore component to point to a new Redis instance
 kubectl apply -f - <<EOF
 apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -92,8 +92,8 @@ EOF
 The operator exposes metrics for component update operations:
 
 ```bash
-kubectl port-forward svc/dapr-operator -n dapr-system 8080:8080
-curl http://localhost:8080/metrics | grep component
+kubectl port-forward svc/dapr-api -n dapr-system 9090:9090
+curl http://localhost:9090/metrics | grep component
 ```
 
 Check operator pod health:
