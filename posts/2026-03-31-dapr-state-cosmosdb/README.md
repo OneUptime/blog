@@ -131,8 +131,8 @@ The stored document in Cosmos DB looks like:
   "id": "myapp||order:123",
   "partitionKey": "myapp",
   "value": {"amount": 99.99, "status": "pending"},
-  "etag": "\"00000000-0000-0000-0000-...\"",
-  "ttlAttributeName": "_ts"
+  "_etag": "\"00000000-0000-0000-xxxx-xxxxxxxxxxxx\"",
+  "_ts": 1617000000
 }
 ```
 
@@ -140,6 +140,7 @@ The stored document in Cosmos DB looks like:
 
 ```python
 from dapr.clients import DaprClient
+from dapr.clients.grpc._state import StateOptions, Concurrency
 import json
 
 with DaprClient() as client:
@@ -161,8 +162,9 @@ with DaprClient() as client:
         store_name="statestore",
         key="order:123",
         value=json.dumps({"orderId": "123", "amount": 99.99, "status": "completed"}),
-        state_metadata={"contentType": "application/json"},
-        options={"concurrency": "first-write", "etag": result.etag}
+        etag=result.etag,
+        options=StateOptions(concurrency=Concurrency.first_write),
+        state_metadata={"contentType": "application/json"}
     )
 ```
 
@@ -238,17 +240,17 @@ Assign the "Cosmos DB Built-in Data Contributor" role to the managed identity.
 
 ## Configuring Consistency Level
 
-Control the consistency level for individual state operations using metadata:
+Control the Dapr consistency level for individual state operations:
 
-```python
-client.get_state(
-    store_name="statestore",
-    key="order:123",
-    state_metadata={"consistency": "strong"}
-)
+```bash
+# Strong consistency (read your own writes)
+curl "http://localhost:3500/v1.0/state/statestore/order:123?consistency=strong"
+
+# Eventual consistency
+curl "http://localhost:3500/v1.0/state/statestore/order:123?consistency=eventual"
 ```
 
-Supported values: `eventual`, `strong`.
+Supported values: `eventual`, `strong`. These are Dapr-level consistency options that control read behavior. They are separate from the Cosmos DB account-level consistency setting configured during account creation.
 
 ## Summary
 
