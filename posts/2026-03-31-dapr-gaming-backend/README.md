@@ -89,7 +89,7 @@ func awardXP(c *gin.Context) {
 
     updated, _ := json.Marshal(player)
     daprClient.SaveStateWithETag(ctx, "player-statestore",
-        "player:"+playerID, string(updated), state.Etag, nil, nil)
+        "player:"+playerID, updated, state.Etag, nil)
 
     c.JSON(http.StatusOK, player)
 }
@@ -103,7 +103,6 @@ Use Dapr actors for game sessions - each actor represents one game match:
 // GameSessionActor.cs
 using Dapr.Actors.Runtime;
 
-[Actor(TypeName = "GameSessionActor")]
 public class GameSessionActor : Actor, IGameSessionActor
 {
     private const string SESSION_STATE_KEY = "sessionState";
