@@ -130,12 +130,13 @@ import (
 
     pb "github.com/example/greeter"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/metadata"
 )
 
 func main() {
     // Connect to the local Dapr gRPC sidecar
-    conn, err := grpc.Dial("localhost:50001", grpc.WithInsecure())
+    conn, err := grpc.NewClient("localhost:50001", grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
         log.Fatal(err)
     }
@@ -190,7 +191,7 @@ func main() {
         context.Background(),
         "greeter-service",
         "SayHello",
-        "grpc",
+        "post",
         &dapr.DataContent{
             ContentType: "application/json",
             Data:        []byte(`{"name": "Bob"}`),
