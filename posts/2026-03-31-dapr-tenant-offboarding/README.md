@@ -75,16 +75,18 @@ kubectl cp "$TENANT_ID/redis-0:/tmp/tenant-dump.rdb" \
   "./archive/${TENANT_ID}-$(date +%Y%m%d).rdb"
 ```
 
-Or use a Dapr-aware export that reads via the state API:
+Or use a Dapr-aware export that reads via the state query API:
 
 ```bash
-curl "http://tenant-api.${TENANT_ID}:3500/v1.0/state/statestore?key=all" \
+curl -X POST "http://tenant-api.${TENANT_ID}:3500/v1.0-alpha1/state/statestore/query" \
+  -H "Content-Type: application/json" \
+  -d '{"filter": {}}' \
   > "./archive/${TENANT_ID}-state.json"
 ```
 
 ## Step 4 - Remove Dapr Components
 
-Delete Dapr CRDs for the tenant:
+Delete Dapr custom resources for the tenant:
 
 ```bash
 kubectl delete component --all -n "$TENANT_ID"
