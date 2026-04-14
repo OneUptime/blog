@@ -36,8 +36,8 @@ spec:
       key: password
   - name: enableTLS
     value: "true"
-  - name: replicaCount
-    value: "2"
+  - name: failover
+    value: "true"
 ```
 
 ## Redis Active-Passive Cross-Region Replication
@@ -46,7 +46,7 @@ Configure Redis replication from primary to DR region using Redis replication:
 
 ```bash
 # On DR region Redis instance
-redis-cli -h redis-dr.internal CONFIG SET replica-of redis-primary.us-east.internal 6379
+redis-cli -h redis-dr.internal REPLICAOF redis-primary.us-east.internal 6379
 
 # Verify replication lag
 redis-cli -h redis-primary.us-east.internal INFO replication | grep master_repl_offset
@@ -80,8 +80,6 @@ spec:
     value: "AppState"
   - name: collection
     value: "StateCollection"
-  - name: consistencyLevel
-    value: "Session"
 ```
 
 Configure geo-replication in Terraform:
