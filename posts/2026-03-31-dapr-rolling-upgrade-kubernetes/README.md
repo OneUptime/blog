@@ -53,7 +53,6 @@ helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --version "$TARGET_VERSION" \
   --set global.ha.enabled=true \
-  --set dapr_operator.watchInterval=10s \
   --atomic \
   --timeout 15m
 
@@ -80,9 +79,8 @@ NAMESPACES=("development" "staging" "production")
 for NS in "${NAMESPACES[@]}"; do
   echo "=== Rolling restart of $NS namespace ==="
 
-  DEPLOYMENTS=$(kubectl get deployments -n "$NS" \
-    -l dapr.io/enabled=true \
-    -o jsonpath='{.items[*].metadata.name}')
+  DEPLOYMENTS=$(kubectl get deployments -n "$NS" -o json | \
+    jq -r '.items[] | select(.spec.template.metadata.annotations["dapr.io/enabled"] == "true") | .metadata.name')
 
   for DEPLOYMENT in $DEPLOYMENTS; do
     echo "  Restarting $DEPLOYMENT in $NS..."
@@ -111,8 +109,8 @@ Monitor the upgrade while it runs:
 NAMESPACE="${1:-production}"
 
 while true; do
-    TOTAL=$(kubectl get pods -n "$NAMESPACE" \
-      -l dapr.io/enabled=true --no-headers | wc -l)
+    TOTAL=$(kubectl get pods -n "$NAMESPACE" -o json | \
+      jq '[.items[] | select(.spec.containers[].name == "daprd")] | length')
     UPDATED=$(kubectl get pods -n "$NAMESPACE" \
       -o json | jq '[.items[] |
       select(.spec.containers[] | .name == "daprd" and (.image | test("1.14")))] |
