@@ -70,18 +70,18 @@ dapr init -k
 
 ## Step 3: Configure Dapr to Disable mTLS
 
-When Istio handles mTLS, disable Dapr's built-in mTLS to avoid conflicts:
-
-```bash
-dapr mtls disable -k
-```
-
-Or via Helm:
+When Istio handles mTLS, disable Dapr's built-in mTLS to avoid conflicts. Use Helm to update the configuration:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --set global.mtls.enabled=false
+```
+
+If you are installing Dapr for the first time, you can disable mTLS during initialization:
+
+```bash
+dapr init -k --enable-mtls=false
 ```
 
 Alternatively, keep Dapr mTLS enabled and configure Istio to exclude Dapr ports from its mTLS policy (more complex but provides layered security).
