@@ -41,8 +41,8 @@ If `notAfter` has passed or is within days, renew immediately.
 The simplest renewal uses the Dapr CLI:
 
 ```bash
-# Renew for 2 years
-dapr mtls renew-certificate -k --valid-until 17520h
+# Renew for 2 years (730 days)
+dapr mtls renew-certificate -k --valid-until 730
 ```
 
 Verify renewal succeeded:
@@ -85,10 +85,9 @@ Install with custom certificates:
 
 ```bash
 dapr init -k \
-  --set dapr_sentry.trust_domain=my-cluster.example.com \
-  --root-certificate root.crt \
-  --issuer-certificate issuer.crt \
-  --issuer-private-key issuer.key
+  --set dapr_sentry.tls.root.certPEM="$(cat root.crt | base64)" \
+  --set dapr_sentry.tls.issuer.certPEM="$(cat issuer.crt | base64)" \
+  --set dapr_sentry.tls.issuer.keyPEM="$(cat issuer.key | base64)"
 ```
 
 ## Step 5 - Set Up Expiry Monitoring
@@ -97,7 +96,7 @@ Add a Prometheus alert to catch expiry before it occurs:
 
 ```yaml
 - alert: DaprCertificateExpiringSoon
-  expr: (dapr_cert_expiry_timestamp - time()) < 604800
+  expr: (dapr_sentry_issuercert_expiry_timestamp - time()) < 604800
   for: 1h
   labels:
     severity: warning
