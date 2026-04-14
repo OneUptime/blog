@@ -90,15 +90,14 @@ func handleNewPost(ctx context.Context, e *common.TopicEvent) (bool, error) {
     json.Unmarshal(followersItem.Value, &followers)
 
     // Fan out to each follower's feed actor
+    activityData, _ := json.Marshal(activity)
     for _, followerID := range followers {
-        daprClient.InvokeActorMethod(
-            ctx,
-            "Feed",
-            followerID,
-            "AddActivity",
-            activity,
-            nil,
-        )
+        daprClient.InvokeActor(ctx, &dapr.InvokeActorRequest{
+            ActorType: "Feed",
+            ActorID:   followerID,
+            Method:    "AddActivity",
+            Data:      activityData,
+        })
     }
     return false, nil
 }
@@ -189,19 +188,19 @@ func handleGetFeed(w http.ResponseWriter, r *http.Request) {
         limit = 20
     }
 
-    var activities []Activity
-    err := daprClient.InvokeActorMethod(
-        r.Context(),
-        "Feed",
-        userID,
-        "GetFeed",
-        struct{ Offset, Limit int }{offset, limit},
-        &activities,
-    )
+    reqData, _ := json.Marshal(struct{ Offset, Limit int }{offset, limit})
+    resp, err := daprClient.InvokeActor(r.Context(), &dapr.InvokeActorRequest{
+        ActorType: "Feed",
+        ActorID:   userID,
+        Method:    "GetFeed",
+        Data:      reqData,
+    })
     if err != nil {
         http.Error(w, err.Error(), 500)
         return
     }
+    var activities []Activity
+    json.Unmarshal(resp.Data, &activities)
 
     json.NewEncoder(w).Encode(activities)
 }
