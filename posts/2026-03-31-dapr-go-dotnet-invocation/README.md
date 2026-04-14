@@ -17,17 +17,17 @@ Create a .NET Minimal API that the Go service will call:
 ```csharp
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://0.0.0.0:8080");
 var app = builder.Build();
 
 app.MapPost("/process", (ProcessRequest request) =>
 {
-    var result = new ProcessResult
-    {
-        JobId = Guid.NewGuid().ToString(),
-        Status = "accepted",
-        Input = request.Payload,
-        ProcessedAt = DateTime.UtcNow
-    };
+    var result = new ProcessResult(
+        JobId: Guid.NewGuid().ToString(),
+        Status: "accepted",
+        Input: request.Payload,
+        ProcessedAt: DateTime.UtcNow
+    );
     return Results.Ok(result);
 });
 
@@ -68,8 +68,6 @@ import (
     "net/http"
 
     dapr "github.com/dapr/go-sdk/client"
-    "github.com/dapr/go-sdk/service/common"
-    daprd "github.com/dapr/go-sdk/service/http"
 )
 
 type ProcessRequest struct {
@@ -116,16 +114,16 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(result)
 }
 
+func handleSubmit(w http.ResponseWriter, r *http.Request) {
+    fmt.Println("Received invocation from .NET service")
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"status": "received"})
+}
+
 func main() {
-    s := daprd.NewService(":8080")
-    s.AddServiceInvocationHandler("/submit", &common.InvocationHandler{
-        Fn: func(ctx context.Context, in *common.InvocationEvent) (*common.Content, error) {
-            fmt.Println("Received invocation")
-            return nil, nil
-        },
-    })
     http.HandleFunc("/submit-job", submitJob)
-    log.Fatal(http.ListenAndServe(":8080", nil))
+    http.HandleFunc("/submit", handleSubmit)
+    log.Fatal(http.ListenAndServe(":8081", nil))
 }
 ```
 
@@ -135,6 +133,8 @@ The .NET service can also call back to the Go service:
 
 ```csharp
 // In .NET service calling Go service
+// Requires: builder.Services.AddDaprClient(); before builder.Build()
+// Requires NuGet package: Dapr.AspNetCore
 app.MapGet("/trigger-go", async (DaprClient daprClient) =>
 {
     var response = await daprClient.InvokeMethodAsync<ProcessRequest, ProcessResult>(
