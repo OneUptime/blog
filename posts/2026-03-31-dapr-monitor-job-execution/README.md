@@ -21,7 +21,7 @@ kind: Configuration
 metadata:
   name: appconfig
 spec:
-  metric:
+  metrics:
     enabled: true
   tracing:
     samplingRate: "1"
@@ -33,7 +33,7 @@ Key job metrics exposed by Dapr sidecar:
 
 ```text
 dapr_http_server_request_count{app_id, method, path, status}
-dapr_http_server_latency_ms{app_id, method, path}
+dapr_http_server_latency{app_id, method, path}
 ```
 
 For job-specific metrics, instrument your handler:
