@@ -64,20 +64,20 @@ Reduce mTLS handshake frequency by extending certificate TTL:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_sentry.workloadCertTTL=24h  # Default: 24h, increase if rotation is expensive
+  --set global.mtls.workloadCertTTL=24h  # Default: 24h, increase if rotation is expensive
 ```
 
-Use TLS session resumption to avoid repeated handshakes:
+Reduce per-request overhead by keeping the HTTP middleware pipeline minimal:
 
 ```yaml
-# Enable keep-alive in Dapr configuration
+# Minimal middleware configuration for reduced per-request overhead
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
   name: network-config
 spec:
   httpPipeline:
-    handlers: []   # Minimal middleware = less per-request overhead
+    handlers: []   # No middleware = less per-request overhead
 ```
 
 ## Kubernetes Network Policy Optimization
@@ -130,7 +130,7 @@ Break down where time is spent:
 ```bash
 # Measure loopback latency (app to sidecar)
 kubectl exec -it <pod> -c app -- \
-  curl -w "TCP connect: %{time_connect}s, Transfer: %{time_transfer}s\n" \
+  curl -w "TCP connect: %{time_connect}s, First byte: %{time_starttransfer}s\n" \
   -o /dev/null -s http://localhost:3500/v1.0/metadata
 
 # Measure inter-sidecar latency
