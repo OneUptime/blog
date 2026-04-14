@@ -104,7 +104,7 @@ requests.post(BASE, json=[{
 
 ```python
 # Bulk save
-requests.post(f'http://localhost:3500/v1.0/state/statestore/bulk', json=[
+requests.post(f'http://localhost:3500/v1.0/state/statestore', json=[
     {'key': f'item-{i}', 'value': {'qty': i * 10}}
     for i in range(1, 6)
 ])
