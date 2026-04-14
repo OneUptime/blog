@@ -173,16 +173,33 @@ initContainers:
     echo "Vault is ready"
 ```
 
-## Handling Dapr Startup Dependencies
+## Handling Secret Store Resilience with Dapr Resiliency Policies
 
-Configure Dapr to wait for secret stores to be ready:
+Configure Dapr's built-in resiliency policies to automatically retry and circuit-break secret store operations at the sidecar level:
 
 ```yaml
-# In Dapr configuration
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: secret-store-resiliency
 spec:
-  features:
-  - name: WaitForSecretStores
-    enabled: true
+  policies:
+    retries:
+      secretStoreRetry:
+        policy: constant
+        duration: 5s
+        maxRetries: 3
+    circuitBreakers:
+      secretStoreCB:
+        maxRequests: 1
+        timeout: 30s
+        trip: consecutiveFailures > 3
+  targets:
+    components:
+      my-secret-store:
+        outbound:
+          retry: secretStoreRetry
+          circuitBreaker: secretStoreCB
 ```
 
 ## Summary
