@@ -78,43 +78,67 @@ cilium hubble enable
 
 # Watch live Dapr traffic
 hubble observe --namespace production --follow \
-  --port 3500 \
-  --output json | jq '{src: .source.namespace, dst: .destination.namespace, verdict: .verdict}'
+  --to-port 3500 \
+  --output json | jq '{src: .flow.source.namespace, dst: .flow.destination.namespace, verdict: .flow.verdict}'
 ```
 
 This shows every Dapr sidecar-to-sidecar call at the kernel level, complementing Dapr's distributed traces.
 
 ## eBPF Bandwidth Limiting for Dapr Services
 
-Use Cilium's bandwidth manager to throttle noisy Dapr services:
+Use Cilium's bandwidth manager to throttle noisy Dapr services. First, ensure the bandwidth manager is enabled during Cilium installation:
+
+```bash
+helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values \
+  --set bandwidthManager.enabled=true
+```
+
+Then annotate the pod to apply bandwidth limits:
 
 ```yaml
-apiVersion: cilium.io/v2
-kind: CiliumBandwidthManager
+apiVersion: v1
+kind: Pod
 metadata:
-  name: order-processor-bwm
+  name: order-processor
+  labels:
+    app: order-processor
+  annotations:
+    kubernetes.io/egress-bandwidth: "100M"
 spec:
-  endpointSelector:
-    matchLabels:
-      app: order-processor
-  bandwidth:
-    egress:
-      rate: "100Mbit"
+  containers:
+    - name: order-processor
+      image: order-processor:latest
 ```
 
 This prevents a single service's Dapr traffic from saturating the cluster network.
 
 ## Mutual Authentication Layers
 
-Dapr provides mTLS between sidecars at the application layer. Cilium adds a separate mutual authentication layer at the network layer using SPIFFE/SPIRE identity:
+Dapr provides mTLS between sidecars at the application layer. Cilium adds a separate mutual authentication layer at the network layer using SPIFFE/SPIRE identity. Enable SPIRE integration during Cilium installation:
+
+```bash
+helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values \
+  --set authentication.mutual.spire.enabled=true \
+  --set authentication.mutual.spire.install.enabled=true
+```
+
+Then require mutual authentication in a CiliumNetworkPolicy:
 
 ```yaml
-# Cilium mutual auth policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dapr-mutual-auth
 spec:
-  authentication:
-    mode: "required"
-    spire:
-      agentSocketPath: "/run/spire/sockets/agent.sock"
+  endpointSelector:
+    matchLabels:
+      app: order-processor
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: checkout-service
+      authentication:
+        mode: "required"
 ```
 
 Running both provides defense-in-depth: even if Dapr mTLS is misconfigured, Cilium's network-level identity still blocks unauthorized connections.
