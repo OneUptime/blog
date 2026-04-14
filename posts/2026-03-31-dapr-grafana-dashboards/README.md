@@ -21,9 +21,13 @@ Grafana dashboards give you a visual overview of how your Dapr services are perf
 The Dapr project publishes pre-built Grafana dashboards. Import them from the Dapr GitHub repository:
 
 ```bash
-# Download the official Dapr dashboard JSON
+# Download the official Dapr system services dashboard JSON
 curl -o dapr-system-services.json \
-  https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-components-dashboard.json
+  https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
+
+# Other available dashboards:
+# grafana-sidecar-dashboard.json   - Dapr sidecar metrics
+# grafana-actor-dashboard.json     - Dapr actor metrics
 ```
 
 In Grafana, go to **Dashboards > Import**, upload the JSON file, and select your Prometheus data source.
@@ -48,9 +52,9 @@ Panel settings:
 
 ```text
 # P50, P95, P99 latency for service invocation
-histogram_quantile(0.50, sum by (le, app_id) (rate(dapr_http_server_latency_ms_bucket[5m])))
-histogram_quantile(0.95, sum by (le, app_id) (rate(dapr_http_server_latency_ms_bucket[5m])))
-histogram_quantile(0.99, sum by (le, app_id) (rate(dapr_http_server_latency_ms_bucket[5m])))
+histogram_quantile(0.50, sum by (le, app_id) (rate(dapr_http_server_latency_bucket[5m])))
+histogram_quantile(0.95, sum by (le, app_id) (rate(dapr_http_server_latency_bucket[5m])))
+histogram_quantile(0.99, sum by (le, app_id) (rate(dapr_http_server_latency_bucket[5m])))
 ```
 
 Use a multi-query panel with different display names for each percentile.
@@ -72,7 +76,7 @@ Track failed requests to catch regressions:
 ```text
 # HTTP error rate (non-2xx)
 sum by (app_id) (
-  rate(dapr_http_server_request_count{status_code!~"2.."}[5m])
+  rate(dapr_http_server_request_count{status!~"2.."}[5m])
 )
 /
 sum by (app_id) (
@@ -80,14 +84,17 @@ sum by (app_id) (
 )
 ```
 
-## Actor Activation Panel
+## Actor Metrics Panel
 
 ```text
-# Actor activation rate
-rate(dapr_actor_activated_total[5m])
+# Pending actor calls by actor type
+dapr_runtime_actor_pending_actor_calls
 
-# Active actors count
-dapr_actor_active_actors
+# Actor timers count
+dapr_runtime_actor_timers
+
+# Actor reminders count
+dapr_runtime_actor_reminders
 ```
 
 ## Dashboard Variables
@@ -131,4 +138,4 @@ data:
 
 ## Summary
 
-Grafana dashboards for Dapr should cover service invocation rates, latency percentiles, error rates, pub/sub throughput, and actor metrics. Start with the official Dapr dashboards from GitHub, then customize with template variables to filter by namespace and app ID. Provisioning dashboards as ConfigMaps ensures they survive Grafana restarts and are version-controlled alongside your infrastructure code.
+Grafana dashboards for Dapr should cover service invocation rates, latency percentiles, error rates, pub/sub throughput, and actor metrics such as pending calls, timers, and reminders. Start with the official Dapr dashboards from GitHub, then customize with template variables to filter by namespace and app ID. Provisioning dashboards as ConfigMaps ensures they survive Grafana restarts and are version-controlled alongside your infrastructure code.
