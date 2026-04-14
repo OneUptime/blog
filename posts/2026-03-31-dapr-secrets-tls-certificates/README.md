@@ -108,15 +108,17 @@ spec:
   metadata:
     - name: brokers
       value: "kafka:9093"
-    - name: tlsCa
+    - name: authType
+      value: "mtls"
+    - name: caCert
       secretKeyRef:
         name: tls-certs
         key: ca.crt
-    - name: tlsCert
+    - name: clientCert
       secretKeyRef:
         name: tls-certs
         key: tls.crt
-    - name: tlsKey
+    - name: clientKey
       secretKeyRef:
         name: tls-certs
         key: tls.key
