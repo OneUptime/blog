@@ -149,8 +149,8 @@ spec:
 Apply it:
 
 ```bash
-# Self-hosted: place in ~/.dapr/resiliency/
-cp app-resiliency.yaml ~/.dapr/resiliency/
+# Self-hosted: place in the resources directory (default: ~/.dapr/components/)
+cp app-resiliency.yaml ~/.dapr/components/
 
 # Kubernetes:
 kubectl apply -f app-resiliency.yaml
