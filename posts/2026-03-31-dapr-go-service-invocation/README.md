@@ -65,14 +65,9 @@ if err != nil {
 }
 ```
 
-## Invocation with Custom Headers
+## Invocation with Custom Content
 
 ```go
-meta := map[string][]string{
-    "x-correlation-id": {"req-abc-123"},
-    "x-tenant-id":      {"tenant-42"},
-}
-
 resp, err := client.InvokeMethodWithCustomContent(
     ctx,
     "payment-service",
@@ -80,7 +75,6 @@ resp, err := client.InvokeMethodWithCustomContent(
     "POST",
     "application/json",
     map[string]any{"amount": 99.99, "currency": "USD"},
-    meta,
 )
 ```
 
@@ -100,7 +94,7 @@ func main() {
         log.Fatal(err)
     }
 
-    s.Start()
+    log.Fatal(s.Start())
 }
 
 func getProductHandler(ctx context.Context, in *common.InvocationEvent) (*common.Content, error) {
