@@ -29,7 +29,7 @@ import (
     "fmt"
     "net/http"
 
-    "gopkg.in/ldap.v3"
+    "github.com/go-ldap/ldap/v3"
 )
 
 func ldapAuthMiddleware(next http.Handler) http.Handler {
