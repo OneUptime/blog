@@ -83,8 +83,8 @@ await daprClient.pubsub.publish('pubsub', 'order-requests', {
   correlationId: uuidv4(),
 });
 
-// Subscribe to the reply topic
-await daprClient.pubsub.subscribe('pubsub', `order-replies-${clientId}`, async (data) => {
+// Subscribe to the reply topic (subscriptions use DaprServer, not DaprClient)
+await daprServer.pubsub.subscribe('pubsub', `order-replies-${clientId}`, async (data) => {
   console.log('Order result:', data);
 });
 ```
