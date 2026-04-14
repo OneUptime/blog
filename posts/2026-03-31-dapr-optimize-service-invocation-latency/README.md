@@ -45,14 +45,14 @@ annotations:
 Use the Dapr gRPC proxying in your client:
 
 ```javascript
-const { DaprClient, CommunicationProtocol } = require('@dapr/dapr');
+const { DaprClient, CommunicationProtocolEnum, HttpMethod } = require('@dapr/dapr');
 
 // Use gRPC protocol for Dapr client
 const client = new DaprClient({
-  communicationProtocol: CommunicationProtocol.GRPC
+  communicationProtocol: CommunicationProtocolEnum.GRPC
 });
 
-const result = await client.invoker.invoke('inventory-service', 'check-stock', 'POST', { orderId: '123' });
+const result = await client.invoker.invoke('inventory-service', 'check-stock', HttpMethod.POST, { orderId: '123' });
 ```
 
 ## Enabling HTTP Keep-Alives
