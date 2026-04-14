@@ -42,7 +42,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: amqp://guest:guest@rabbitmq:5672
   - name: durable
     value: "true"
@@ -137,15 +137,19 @@ spec:
 Limit which apps can access each broker using scoping:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: kafka-pubsub
 spec:
   type: pubsub.kafka
   version: v1
   metadata:
   - name: brokers
     value: kafka:9092
-  scopes:
-  - analytics-service
-  - data-pipeline
+scopes:
+- analytics-service
+- data-pipeline
 ```
 
 ## Summary
