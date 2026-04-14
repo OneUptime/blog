@@ -26,13 +26,14 @@ my-platform/
     config/               # Dapr Configuration CRDs
       tracing.yaml
       metrics.yaml
+    resiliency/           # Dapr Resiliency policies (separate CRD)
       resiliency.yaml
     subscriptions/        # Pub/sub subscription manifests
   services/
     order-service/
       src/
       Dockerfile
-      dapr.yaml           # Local self-hosted Dapr config
+      dapr.yaml           # Multi-App Run template
     payment-service/
       src/
       Dockerfile
@@ -74,7 +75,7 @@ order-service/
     integration/          # Tests using Dapr local runner
   Dockerfile
   package.json
-  dapr.yaml               # Local Dapr config for self-hosted
+  dapr.yaml               # Multi-App Run template
 ```
 
 ## Dapr Component Directory Organization
@@ -125,7 +126,6 @@ spec:
 Provide a docker-compose file for running all services with Dapr locally:
 
 ```yaml
-version: "3.9"
 services:
   redis:
     image: redis:7-alpine
@@ -143,11 +143,11 @@ services:
     image: daprio/daprd:1.13.0
     command:
       - ./daprd
-      - -app-id
+      - --app-id
       - order-service
-      - -app-port
+      - --app-port
       - "8080"
-      - -components-path
+      - --resources-path
       - /dapr/components/local
     volumes:
       - ./dapr/components/local:/dapr/components/local
@@ -162,7 +162,7 @@ services:
 Provide a Makefile to standardize development workflows:
 
 ```makefile
-.PHONY: dev test deploy
+.PHONY: dev test deploy-staging lint-components
 
 dev:
 	docker-compose up -d
@@ -176,7 +176,7 @@ deploy-staging:
 	kubectl apply -f deploy/kubernetes/ -n staging
 
 lint-components:
-	dapr components validate ./dapr/components/production/
+	kubectl apply --dry-run=client -f ./dapr/components/production/
 ```
 
 ## Summary
