@@ -38,7 +38,7 @@ kind: Configuration
 metadata:
   name: edge-config
 spec:
-  metric:
+  metrics:
     enabled: false
   tracing:
     samplingRate: "0"
@@ -83,7 +83,7 @@ dapr run \
   --app-port 8080 \
   --dapr-http-port 3500 \
   --log-level warn \
-  --enable-metrics=false \
+  --config edge-config.yaml \
   -- python sensor.py
 ```
 
