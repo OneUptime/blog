@@ -86,21 +86,20 @@ def get_payment_status(order_id: str) -> dict:
 
 ## Per-Request Timeout Override
 
-Set a timeout on an individual call using gRPC metadata:
+Set a timeout on an individual call using the built-in `timeout` parameter:
 
 ```python
-import grpc
+import json
 from dapr.clients import DaprClient
 
-def call_with_deadline(app_id: str, method: str, data: dict, timeout_sec: float):
+def call_with_deadline(app_id: str, method: str, data: dict, timeout_sec: int):
     with DaprClient() as client:
-        metadata = (("dapr-timeout-ms", str(int(timeout_sec * 1000))),)
         response = client.invoke_method(
             app_id=app_id,
             method_name=method,
             data=json.dumps(data),
             content_type="application/json",
-            metadata=metadata
+            timeout=timeout_sec
         )
         return json.loads(response.data)
 ```
@@ -111,7 +110,7 @@ Dapr exposes Prometheus metrics for timeout tracking:
 
 ```bash
 # Check timeout rate for payment-service invocations
-curl http://localhost:9090/api/v1/query?query=dapr_service_invocation_req_sent_total{app_id="order-service",status="504"}
+curl http://localhost:9090/api/v1/query?query=dapr_runtime_service_invocation_res_recv_total{app_id="order-service",status="504"}
 ```
 
 Add a Grafana alert for sustained timeout spikes:
@@ -119,7 +118,7 @@ Add a Grafana alert for sustained timeout spikes:
 ```yaml
 alert: ServiceInvocationTimeoutHigh
 expr: |
-  rate(dapr_service_invocation_req_sent_total{status="504"}[5m]) > 0.05
+  rate(dapr_runtime_service_invocation_res_recv_total{status="504"}[5m]) > 0.05
 for: 2m
 labels:
   severity: warning
