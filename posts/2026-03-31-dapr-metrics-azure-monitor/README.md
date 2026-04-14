@@ -40,7 +40,7 @@ metadata:
     dapr.io/metrics-port: "9090"
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
-    prometheus.io/path: "/metrics"
+    prometheus.io/path: "/"
 ```
 
 ## Step 3 - Create a Custom Scrape Config
@@ -79,29 +79,26 @@ Open the Azure portal and navigate to your Azure Monitor workspace. Use the Metr
 rate(dapr_http_server_request_count[5m])
 ```
 
-Or use the Azure CLI:
+Or query via the Prometheus API endpoint:
 
 ```bash
-az monitor metrics list \
-  --resource /subscriptions/<sub>/resourceGroups/myRG/providers/microsoft.monitor/accounts/myWorkspace \
-  --metric dapr_http_server_request_count \
-  --output table
+curl -G "https://<query-endpoint>.prometheus.monitor.azure.com/api/v1/query" \
+  --header "Authorization: Bearer $(az account get-access-token --resource https://prometheus.monitor.azure.com --query accessToken -o tsv)" \
+  --data-urlencode "query=rate(dapr_http_server_request_count[5m])"
 ```
 
 ## Step 5 - Set Up Alerts
 
-Create an alert rule for high error rates:
+Create a Prometheus rule group for high error rates:
 
 ```bash
-az monitor scheduled-query create \
+az alerts-management prometheus-rule-group create \
   --resource-group myResourceGroup \
+  --cluster-name myAKSCluster \
   --name "DaprHighErrorRate" \
   --scopes /subscriptions/<sub>/resourceGroups/myRG/providers/microsoft.monitor/accounts/myWorkspace \
-  --condition "count > 10" \
-  --condition-query "rate(dapr_http_server_request_count{status_code!~'2..'}[5m])" \
-  --evaluation-frequency 5m \
-  --window-size 10m \
-  --severity 2
+  --interval PT5M \
+  --rules "[{\"alert\":\"DaprHighErrorRate\",\"expression\":\"rate(dapr_http_server_request_count{status_code!~'2..'}[5m]) > 10\",\"for\":\"PT10M\",\"severity\":2}]"
 ```
 
 ## Step 6 - Import Dapr Dashboard in Azure Managed Grafana
@@ -110,7 +107,7 @@ In Azure Managed Grafana, import the official Dapr dashboard:
 
 1. Navigate to your Grafana instance in the Azure portal.
 2. Go to Dashboards > Import.
-3. Enter Grafana dashboard ID `15401` (Dapr system services) or upload the JSON.
+3. Download the dashboard JSON from the [Dapr GitHub releases](https://github.com/dapr/dapr/releases) (e.g., `grafana-system-services-dashboard.json`) and upload it.
 
 ## Summary
 
