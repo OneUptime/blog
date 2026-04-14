@@ -75,7 +75,7 @@ def test_handle_order(client):
         "type": "com.dapr.event.sent",
         "source": "test",
         "id": "test-event-1",
-        "data": json.dumps({"order_id": "001", "item": "book"}),
+        "data": {"order_id": "001", "item": "book"},
         "datacontenttype": "application/json"
     }
     response = client.post(
@@ -105,7 +105,8 @@ def dapr_sidecar():
         "--app-id", "test-app",
         "--app-port", "8080",
         "--dapr-http-port", "3501",
-        "--components-path", "./test-components",
+        "--dapr-grpc-port", "50051",
+        "--resources-path", "./test-components",
         "--", "python", "app.py"
     ])
     time.sleep(3)
@@ -115,7 +116,7 @@ def dapr_sidecar():
 def test_state_roundtrip():
     from dapr.clients import DaprClient
     import os
-    os.environ["DAPR_HTTP_PORT"] = "3501"
+    os.environ["DAPR_GRPC_PORT"] = "50051"
 
     with DaprClient() as client:
         client.save_state("statestore", "test-key", "test-value")
