@@ -29,12 +29,15 @@ Use Dapr Workflow for multi-step payment orchestration with compensation:
 
 ```python
 # payment_service/workflows/payment_workflow.py
-from dapr.ext.workflow import DaprWorkflowContext, ActivityContext
-import dapr.ext.workflow as wf
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext
+from dapr.clients import DaprClient
 from decimal import Decimal
+import json
 
-@wf.activity
-def validate_account(ctx: ActivityContext, payment: dict) -> dict:
+wfr = WorkflowRuntime()
+
+@wfr.activity(name='validate_account')
+def validate_account(ctx: WorkflowActivityContext, payment: dict) -> dict:
     """Verify source account has sufficient funds"""
     with DaprClient() as client:
         account = json.loads(
@@ -45,8 +48,8 @@ def validate_account(ctx: ActivityContext, payment: dict) -> dict:
             return {"valid": False, "reason": "insufficient_funds"}
         return {"valid": True, "balance": account['balance']}
 
-@wf.activity
-def fraud_check(ctx: ActivityContext, payment: dict) -> dict:
+@wfr.activity(name='fraud_check')
+def fraud_check(ctx: WorkflowActivityContext, payment: dict) -> dict:
     """Call fraud detection service"""
     with DaprClient() as client:
         result = client.invoke_method(
@@ -57,8 +60,8 @@ def fraud_check(ctx: ActivityContext, payment: dict) -> dict:
         )
         return json.loads(result.data)
 
-@wf.activity
-def debit_account(ctx: ActivityContext, payment: dict) -> dict:
+@wfr.activity(name='debit_account')
+def debit_account(ctx: WorkflowActivityContext, payment: dict) -> dict:
     """Atomically debit source account"""
     with DaprClient() as client:
         # Use state transaction for atomicity
@@ -77,8 +80,8 @@ def debit_account(ctx: ActivityContext, payment: dict) -> dict:
         )
         return {"debited": True, "new_balance": account['balance']}
 
-@wf.activity
-def credit_account(ctx: ActivityContext, payment: dict) -> dict:
+@wfr.activity(name='credit_account')
+def credit_account(ctx: WorkflowActivityContext, payment: dict) -> dict:
     """Credit destination account"""
     with DaprClient() as client:
         account_state = client.get_state(
@@ -91,7 +94,7 @@ def credit_account(ctx: ActivityContext, payment: dict) -> dict:
                           f"account:{payment['to_account']}", json.dumps(account))
         return {"credited": True}
 
-@wf.workflow
+@wfr.workflow(name='payment_workflow')
 def payment_workflow(ctx: DaprWorkflowContext, payment: dict):
     # Step 1: Validate
     validation = yield ctx.call_activity(validate_account, input=payment)
@@ -176,9 +179,9 @@ spec:
       - appId: api-gateway
         defaultAction: allow
       - appId: audit-service
-        httpPolicies:
-          - path: /events/*
-            methods: [POST]
+        operations:
+          - name: /events/*
+            httpVerb: [POST]
             action: allow
 ```
 
