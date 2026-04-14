@@ -76,7 +76,8 @@ class OrderActor(Actor, OrderActorInterface):
         return {"success": True}
 
     async def get_status(self) -> str:
-        return await self._state_manager.get_state("status") or "pending"
+        has_value, status = await self._state_manager.try_get_state("status")
+        return status if has_value else "pending"
 ```
 
 ## Integration Test
