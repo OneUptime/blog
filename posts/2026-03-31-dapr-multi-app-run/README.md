@@ -111,7 +111,7 @@ apps:
   metricsPort: 9091
   profilePort: 7771
   command: ["node", "app.js"]
-  appProtocol: http             # http | grpc | https | grpcs
+  appProtocol: http             # http | grpc | https | grpcs | h2c
   unixDomainSocket: ""
   resourcesPath: ./order-service/components   # service-specific components
   configFilePath: ./order-service/config.yaml  # service-specific config
@@ -213,31 +213,6 @@ spec:
     samplingRate: "1"
     zipkin:
       endpointAddress: http://localhost:9411/api/v2/spans
-```
-
-## Template Variables
-
-Multi-app run supports reading from `.env` files:
-
-```bash
-# .env
-REDIS_HOST=localhost
-KAFKA_BROKERS=localhost:9092
-```
-
-```yaml
-# dapr.yaml
-apps:
-- appID: order-service
-  command: ["node", "app.js"]
-  env:
-    REDIS_HOST: "${REDIS_HOST}"
-```
-
-Load the env file:
-
-```bash
-dapr run -f dapr.yaml --env-file .env
 ```
 
 ## Log Filtering
