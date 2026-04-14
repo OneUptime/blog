@@ -16,7 +16,7 @@ For example, given handlers `[A, B, C]`:
 - Request path: A -> B -> C -> app
 - Response path: app -> C -> B -> A
 
-This ordering matters significantly when components depend on each other, such as authentication before rate limiting, or tracing before compression.
+This ordering matters significantly when components depend on each other, such as authentication before rate limiting, or policy validation before request processing.
 
 ## Defining Pipeline Order
 
@@ -35,11 +35,11 @@ spec:
         type: middleware.http.bearer
       - name: rate-limiter
         type: middleware.http.ratelimit
-      - name: response-compressor
+      - name: response-transform
         type: middleware.http.uppercase
 ```
 
-In this configuration, every request is first authenticated, then rate-checked, and finally processed by the response transform.
+In this configuration, every request is first authenticated, then rate-checked, and finally processed by the response transformation handler.
 
 ## Component Definitions for Each Handler
 
@@ -82,23 +82,25 @@ kubectl apply -f config/ordered-pipeline.yaml
 
 Placing authentication before rate limiting ensures that unauthenticated requests are rejected early without consuming rate limit quota. If order were reversed, unauthenticated requests would burn through rate limits before being blocked.
 
-For tracing and observability, always put the tracing middleware first so it captures the full request lifecycle including all downstream middleware processing time:
+For request validation, placing an Open Policy Agent (OPA) middleware first ensures that all requests are validated against your policies before authentication or rate limiting:
 
 ```yaml
 spec:
   httpPipeline:
     handlers:
-      - name: zipkin-tracer
-        type: middleware.http.uppercase
+      - name: request-validator
+        type: middleware.http.opa
       - name: bearer-auth
         type: middleware.http.bearer
       - name: rate-limiter
         type: middleware.http.ratelimit
 ```
 
+Note: Distributed tracing in Dapr is configured via the `spec.tracing` section of the Configuration resource, not as a middleware handler.
+
 ## Reordering Without Downtime
 
-You can update the pipeline configuration and apply it without restarting your application. Dapr picks up configuration changes when the pod is restarted:
+Dapr requires a sidecar restart to pick up Configuration changes. You can achieve this with minimal downtime using a rolling restart:
 
 ```bash
 kubectl apply -f updated-pipeline-config.yaml
