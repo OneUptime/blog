@@ -24,7 +24,7 @@ When `dapr init` fails, you'll typically see one of these errors:
 
 ## Diagnosing the Root Cause
 
-Start by running init with verbose output:
+Start by running init with JSON-formatted output for easier diagnosis:
 
 ```bash
 dapr init --log-as-json
@@ -88,8 +88,8 @@ docker info
 docker pull redis:6
 docker pull openzipkin/zipkin
 
-# Then run init with --slim to skip container setup
-dapr init --slim
+# Then run init normally - it will use the pre-pulled images
+dapr init
 ```
 
 For airgapped environments, retag images from an internal registry:
@@ -104,7 +104,7 @@ dapr init
 
 ## Fix 4 - Use Slim Mode
 
-Slim mode installs the Dapr CLI and binary without setting up Redis or Zipkin containers:
+Slim mode installs the Dapr binary without setting up the placement service, scheduler service, Redis, or Zipkin containers:
 
 ```bash
 dapr init --slim
@@ -178,8 +178,8 @@ kubectl create secret docker-registry dapr-pull-secret \
 After resolving the issue, confirm Dapr is running:
 
 ```bash
-# Self-hosted
-dapr status
+# Self-hosted - verify containers are running
+docker ps --filter name=dapr_
 
 # Kubernetes
 dapr status -k
@@ -188,10 +188,10 @@ dapr status -k
 Expected output for self-hosted:
 
 ```text
-  NAME         NAMESPACE    HEALTHY  STATUS   REPLICAS  VERSION  AGE  CREATED
-  zipkin       dapr_zipkin  True     Running  1         ...      ...  ...
-  placement    dapr_dapr    True     Running  1         ...      ...  ...
-  redis        dapr_redis   True     Running  1         ...      ...  ...
+CONTAINER ID   IMAGE               COMMAND                  STATUS         NAMES
+...            daprio/dapr:...     "./placement"            Up X minutes   dapr_placement
+...            redis:6             "docker-entrypoint.s…"   Up X minutes   dapr_redis
+...            openzipkin/zipkin   "start-zipkin"           Up X minutes   dapr_zipkin
 ```
 
 ## Summary
