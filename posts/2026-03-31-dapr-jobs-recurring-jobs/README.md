@@ -14,50 +14,50 @@ Recurring jobs run on a defined schedule - either a cron expression for calendar
 
 ## Cron Expression Syntax
 
-Dapr Jobs uses standard 5-field cron syntax:
+Dapr Jobs uses 6-field cron syntax (with a seconds field):
 
 ```text
-Minute  Hour  DayOfMonth  Month  DayOfWeek
-  0      9        *          *      MON-FRI
+Second  Minute  Hour  DayOfMonth  Month  DayOfWeek
+  0       0       9       *         *      MON-FRI
 ```
 
 ```python
 SCHEDULES = {
-    "every_minute":          "* * * * *",
-    "every_5_minutes":       "*/5 * * * *",
-    "every_hour":            "0 * * * *",
-    "daily_at_midnight":     "0 0 * * *",
-    "daily_9am_weekdays":    "0 9 * * MON-FRI",
-    "weekly_monday_8am":     "0 8 * * MON",
-    "monthly_first_2am":     "0 2 1 * *",
-    "quarterly_first_of_qtr":"0 0 1 1,4,7,10 *"
+    "every_minute":          "0 * * * * *",
+    "every_5_minutes":       "0 */5 * * * *",
+    "every_hour":            "0 0 * * * *",
+    "daily_at_midnight":     "0 0 0 * * *",
+    "daily_9am_weekdays":    "0 0 9 * * MON-FRI",
+    "weekly_monday_8am":     "0 0 8 * * MON",
+    "monthly_first_2am":     "0 0 2 1 * *",
+    "quarterly_first_of_qtr":"0 0 0 1 1,4,7,10 *"
 }
 ```
 
 ## Creating Recurring Jobs via Python SDK
 
 ```python
-from dapr.clients import DaprClient
-import json, base64
+from dapr.clients import DaprClient, Job
+from google.protobuf.any_pb2 import Any as GrpcAny
+import json
 
 def create_recurring_job(name: str, schedule: str, data: dict):
     with DaprClient() as d:
-        encoded_data = base64.b64encode(json.dumps(data).encode()).decode()
+        job_data = GrpcAny(value=json.dumps(data).encode())
 
-        d.schedule_job(
-            name=name,
-            schedule=schedule,
-            data={
-                "@type": "type.googleapis.com/google.protobuf.StringValue",
-                "value": encoded_data
-            }
+        d.schedule_job_alpha1(
+            Job(
+                name=name,
+                schedule=schedule,
+                data=job_data
+            )
         )
         print(f"Recurring job created: '{name}' | schedule: {schedule}")
 
 # Common recurring jobs
 create_recurring_job(
     name="nightly-db-backup",
-    schedule="0 2 * * *",
+    schedule="0 0 2 * * *",
     data={"database": "production", "retention_days": 30}
 )
 
@@ -69,13 +69,13 @@ create_recurring_job(
 
 create_recurring_job(
     name="weekly-user-digest",
-    schedule="0 8 * * MON",
+    schedule="0 0 8 * * MON",
     data={"email_template": "weekly-digest", "segment": "all"}
 )
 
 create_recurring_job(
     name="monthly-invoice-generation",
-    schedule="0 0 1 * *",
+    schedule="0 0 0 1 * *",
     data={"billing_cycle": "monthly"}
 )
 ```
@@ -116,8 +116,8 @@ func main() {
         data     map[string]any
     }{
         {"cache-warmup", "@every 30m", map[string]any{"caches": []string{"users", "products"}}},
-        {"health-report", "0 9 * * MON-FRI", map[string]any{"channels": []string{"slack"}}},
-        {"db-vacuum", "0 3 * * SUN", map[string]any{"tables": []string{"events", "logs"}}},
+        {"health-report", "0 0 9 * * MON-FRI", map[string]any{"channels": []string{"slack"}}},
+        {"db-vacuum", "0 0 3 * * SUN", map[string]any{"tables": []string{"events", "logs"}}},
     }
 
     for _, j := range jobs {
@@ -182,27 +182,30 @@ def decode_payload(body: dict) -> dict:
 ## Registering Jobs at Application Startup
 
 ```python
-import atexit
-from dapr.clients import DaprClient
+from dapr.clients import DaprClient, Job
+from google.protobuf.any_pb2 import Any as GrpcAny
+import json, logging
+
+logger = logging.getLogger(__name__)
 
 def register_recurring_jobs():
     """Register all recurring jobs when the application starts."""
     jobs = [
-        ("nightly-db-backup", "0 2 * * *", {"database": "production"}),
+        ("nightly-db-backup", "0 0 2 * * *", {"database": "production"}),
         ("hourly-metrics-flush", "@every 1h", {"metrics": ["errors", "latency"]}),
-        ("weekly-digest", "0 8 * * MON", {"template": "weekly"}),
+        ("weekly-digest", "0 0 8 * * MON", {"template": "weekly"}),
     ]
 
     with DaprClient() as d:
         for name, schedule, data in jobs:
             try:
-                d.schedule_job(
-                    name=name,
-                    schedule=schedule,
-                    data={
-                        "@type": "type.googleapis.com/google.protobuf.StringValue",
-                        "value": base64.b64encode(json.dumps(data).encode()).decode()
-                    }
+                job_data = GrpcAny(value=json.dumps(data).encode())
+                d.schedule_job_alpha1(
+                    Job(
+                        name=name,
+                        schedule=schedule,
+                        data=job_data
+                    )
                 )
                 logger.info(f"Registered recurring job: {name}")
             except Exception as e:
