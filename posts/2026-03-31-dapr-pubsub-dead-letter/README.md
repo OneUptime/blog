@@ -108,7 +108,7 @@ def handle_order():
         print(f"Inventory error for {order_id}: {e}. Will retry.")
         return jsonify({"status": "RETRY"}), 200
     except Exception as e:
-        print(f"Permanent failure for {order_id}: {e}. Dropping to DLT.")
+        print(f"Permanent failure for {order_id}: {e}. Dropping message.")
         return jsonify({"status": "DROP"}), 200
 
 def process_order(order):
@@ -222,7 +222,7 @@ app.post('/process-payment', async (req, res) => {
     res.json({ status: 'SUCCESS' });
   } catch (err) {
     if (err.code === 'CARD_DECLINED') {
-      // Permanent failure - forward to dead letter
+      // Permanent failure - discard message
       res.json({ status: 'DROP' });
     } else {
       // Transient failure - retry
