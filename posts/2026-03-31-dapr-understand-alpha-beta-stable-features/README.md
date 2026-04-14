@@ -81,7 +81,7 @@ spec:
 
 ```bash
 # List enabled features in running sidecar
-curl http://localhost:3500/v1.0/metadata | jq '.extended.featuresEnabled'
+curl http://localhost:3500/v1.0/metadata | jq '.enabledFeatures'
 ```
 
 ## Examples of Feature Tiers
@@ -90,7 +90,7 @@ curl http://localhost:3500/v1.0/metadata | jq '.extended.featuresEnabled'
 |---------|------|-------|
 | Service invocation | Stable | Default, no opt-in needed |
 | Actor reminders | Stable | Default |
-| Workflow API | Beta | Enabled by default in recent versions |
+| Workflow API | Stable | Enabled by default since Dapr 1.12 |
 | Actor State TTL | Alpha | Must enable via feature flag |
 | Component hot reload | Alpha | Must enable via feature flag |
 
