@@ -22,13 +22,14 @@ object OrderActor {
   case class GetStatus(replyTo: ActorRef[OrderStatus]) extends Command
 
   def apply(orderId: String): Behavior[Command] =
-    Behaviors.setup { context =>
-      Behaviors.receiveMessage {
-        case PlaceOrder(id, replyTo) =>
-          // process order
-          replyTo ! OrderResponse.Accepted
-          Behaviors.same
-      }
+    Behaviors.receiveMessage {
+      case PlaceOrder(id, replyTo) =>
+        // process order
+        replyTo ! OrderResponse.Accepted
+        Behaviors.same
+      case GetStatus(replyTo) =>
+        replyTo ! OrderStatus.Pending
+        Behaviors.same
     }
 }
 ```
@@ -54,9 +55,9 @@ class OrderActor(Actor):
 | Message passing | Explicit, typed | HTTP/gRPC method calls |
 | Supervision | Hierarchical trees | Not present |
 | Location transparency | Built-in clustering | Dapr placement service |
-| Concurrency model | Configurable (mailbox) | Turn-based (single-threaded) |
+| Concurrency model | Message-driven (one message at a time per actor, configurable mailbox) | Turn-based (single-threaded) |
 | Language | JVM (Scala/Java) | Any language |
-| State persistence | Manual (event sourcing or external) | Built-in via Dapr state store |
+| State persistence | Framework-supported (Akka Persistence with event sourcing) | Built-in via Dapr state store |
 
 ## Akka's Strengths
 
@@ -81,7 +82,7 @@ spec:
   version: v1
   metadata:
   - name: connectionString
-    value: "host=postgres;dbname=dapr"
+    value: "host=postgres database=dapr"
   - name: actorStateStore
     value: "true"
 ```
@@ -95,7 +96,7 @@ spec:
 
 ## When to Choose Dapr Actors
 
-- Polyglot team needing actors across Python, Go, Java, Node.js
+- Polyglot team needing actors across .NET, Python, Go, Java, Node.js
 - Simple virtual actor semantics with built-in state persistence
 - Already using Dapr for other building blocks
 - Want infrastructure portability for the state backend
