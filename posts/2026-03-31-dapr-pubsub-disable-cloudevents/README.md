@@ -10,7 +10,7 @@ Description: Disable Dapr's automatic CloudEvents wrapping to publish and receiv
 
 ## Overview
 
-By default, Dapr wraps all pub/sub messages in a CloudEvents 1.0 envelope. When interoperating with external systems (legacy apps, cloud provider SDKs, or other frameworks) that do not understand CloudEvents, you need raw message mode. Dapr supports this via the `rawPayload` metadata flag or a per-component configuration.
+By default, Dapr wraps all pub/sub messages in a CloudEvents 1.0 envelope. When interoperating with external systems (legacy apps, cloud provider SDKs, or other frameworks) that do not understand CloudEvents, you need raw message mode. Dapr supports this via the `rawPayload` metadata flag on publish calls or the `isRawPayload` metadata on subscriptions.
 
 ## With vs Without CloudEvents
 
@@ -57,8 +57,8 @@ err = client.PublishEvent(ctx, "pubsub", "orders",
 ```python
 from dapr.clients import DaprClient
 
-async with DaprClient() as client:
-    await client.publish_event(
+with DaprClient() as client:
+    client.publish_event(
         pubsub_name="pubsub",
         topic_name="orders",
         data=b'{"orderId":"order-1","total":99.95}',
@@ -76,53 +76,9 @@ await client.pubsub.publish("pubsub", "orders",
 );
 ```
 
-## Option 3: Component-Level Raw Payload
+## Option 3: Per-Subscription Raw Payload via Declarative YAML
 
-Configure the component to always use raw payloads (no CloudEvents wrapping for all messages):
-
-```yaml
-# components/pubsub-raw.yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: pubsub-raw
-  namespace: default
-spec:
-  type: pubsub.redis
-  version: v1
-  metadata:
-  - name: redisHost
-    value: localhost:6379
-  - name: redisPassword
-    value: ""
-  # All publish/subscribe on this component bypass CloudEvents
-```
-
-For Kafka, use `rawPayload` in the component metadata:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: kafka-raw
-  namespace: default
-spec:
-  type: pubsub.kafka
-  version: v1
-  metadata:
-  - name: brokers
-    value: kafka:9092
-  - name: authType
-    value: none
-  - name: rawPayload
-    value: "true"
-```
-
-## Subscribing to Raw Messages
-
-When receiving raw messages, the payload is not wrapped in a CloudEvent. Configure the subscription to expect raw data:
-
-### YAML Subscription with rawPayload
+Instead of setting `rawPayload` on every publish call, you can configure raw mode on the subscription side using a declarative YAML subscription. This tells Dapr to deliver messages to your app without CloudEvent unwrapping:
 
 ```yaml
 # components/subscription-raw.yaml
@@ -133,10 +89,17 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
   metadata:
-    rawPayload: "true"
+    isRawPayload: "true"
 ```
+
+This is useful when consuming messages from external producers that do not wrap messages in CloudEvents.
+
+## Subscribing to Raw Messages
+
+When receiving raw messages, the payload is not wrapped in a CloudEvent. Your application handler receives the original bytes directly.
 
 ### Go Subscriber for Raw Messages
 
@@ -205,7 +168,7 @@ When an external system (non-Dapr) publishes to the same broker, it does not pro
 ```bash
 # An external system publishes directly to Kafka
 # No CloudEvent envelope
-kafka-console-producer.sh --topic orders --broker kafka:9092
+kafka-console-producer.sh --topic orders --bootstrap-server kafka:9092
 > {"orderId":"ext-1","source":"legacy-system"}
 
 # Dapr subscriber with rawPayload=true will receive the plain JSON
@@ -213,4 +176,4 @@ kafka-console-producer.sh --topic orders --broker kafka:9092
 
 ## Summary
 
-Dapr's default CloudEvents wrapping can be disabled per-publish using the `rawPayload=true` metadata flag, per-component via the `rawPayload` metadata field in the component YAML, or per-subscription via the subscription metadata. Raw mode is essential when integrating with external systems or legacy brokers that do not understand CloudEvents. Subscribers configured for raw mode receive the original payload bytes in `e.RawData` without CloudEvent fields.
+Dapr's default CloudEvents wrapping can be disabled per-publish using the `rawPayload=true` metadata flag, or per-subscription using the `isRawPayload=true` metadata in a declarative YAML subscription (or `rawPayload` in programmatic SDK subscriptions). Raw mode is essential when integrating with external systems or legacy brokers that do not understand CloudEvents. Subscribers configured for raw mode receive the original payload bytes in `e.RawData` without CloudEvent fields.
