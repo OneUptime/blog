@@ -82,8 +82,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
