@@ -83,6 +83,10 @@ kubectl set image deployment/dapr-sentry \
 kubectl set image deployment/dapr-sidecar-injector \
   dapr-sidecar-injector=docker.io/daprio/injector:1.12.5 \
   -n dapr-system
+
+kubectl set image statefulset/dapr-placement-server \
+  dapr-placement-server=docker.io/daprio/placement:1.12.5 \
+  -n dapr-system
 ```
 
 ## Avoiding Failed Upgrades
