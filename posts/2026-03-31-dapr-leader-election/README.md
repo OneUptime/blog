@@ -41,7 +41,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
     "os"
     "time"
@@ -98,9 +97,6 @@ func (le *LeaderElection) StepDown(ctx context.Context) error {
 
 ```go
 func (le *LeaderElection) Run(ctx context.Context, task func(ctx context.Context) error) {
-    renewTicker := time.NewTicker(lockDuration / 2)
-    defer renewTicker.Stop()
-
     for {
         select {
         case <-ctx.Done():
@@ -197,4 +193,4 @@ spec:
 
 ## Summary
 
-Dapr's distributed lock API provides the foundation for leader election across multiple service replicas. By acquiring a time-limited lock and renewing it while performing work, only one instance runs singleton tasks at a time. Lock expiry ensures automatic failover if the leader crashes, making this pattern resilient to instance failures.
+Dapr's distributed lock API provides the foundation for leader election across multiple service replicas. By acquiring a time-limited lock before performing work, only one instance runs singleton tasks at a time. Lock expiry ensures automatic failover if the leader crashes, making this pattern resilient to instance failures.
