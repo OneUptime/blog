@@ -85,10 +85,8 @@ const client = new DaprClient({
 async function checkInventory(productId, quantity) {
   return await client.invoker.invoke(
     'inventory-service',
-    `inventory/${productId}`,
-    'GET',
-    null,
-    { quantity }
+    `inventory/${productId}?quantity=${quantity}`,
+    'GET'
   );
 }
 
@@ -135,7 +133,7 @@ dapr run \
   --app-id order-service \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node server.js
 ```
 
@@ -144,7 +142,7 @@ dapr run \
   --app-id inventory-service \
   --app-port 3001 \
   --dapr-http-port 3501 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node inventory.js
 ```
 
