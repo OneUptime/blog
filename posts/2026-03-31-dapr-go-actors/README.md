@@ -33,43 +33,33 @@ package actors
 
 import (
     "context"
-    "encoding/json"
 
-    dapr "github.com/dapr/go-sdk/actor"
+    "github.com/dapr/go-sdk/actor"
 )
 
 type CounterActorImpl struct {
-    dapr.ServerImplBase
+    actor.ServerImplBaseCtx
 }
 
 func (a *CounterActorImpl) Type() string { return "CounterActor" }
 
 func (a *CounterActorImpl) Increment(ctx context.Context) error {
-    count, err := a.getCount(ctx)
-    if err != nil {
-        return err
-    }
-    data, _ := json.Marshal(count + 1)
-    return a.GetStateManager().Set(ctx, "count", data)
+    var count int
+    _ = a.GetStateManager().Get(ctx, "count", &count)
+    return a.GetStateManager().Set(ctx, "count", count+1)
 }
 
 func (a *CounterActorImpl) GetCount(ctx context.Context) (int, error) {
-    return a.getCount(ctx)
+    var count int
+    err := a.GetStateManager().Get(ctx, "count", &count)
+    if err != nil {
+        return 0, nil
+    }
+    return count, nil
 }
 
 func (a *CounterActorImpl) Reset(ctx context.Context) error {
-    data, _ := json.Marshal(0)
-    return a.GetStateManager().Set(ctx, "count", data)
-}
-
-func (a *CounterActorImpl) getCount(ctx context.Context) (int, error) {
-    raw, err := a.GetStateManager().Get(ctx, "count")
-    if err != nil || raw == nil {
-        return 0, nil
-    }
-    var count int
-    json.Unmarshal(raw, &count)
-    return count, nil
+    return a.GetStateManager().Set(ctx, "count", 0)
 }
 ```
 
@@ -81,7 +71,7 @@ package main
 import (
     "log"
 
-    "github.com/dapr/go-sdk/actor/config"
+    "github.com/dapr/go-sdk/actor"
     daprd "github.com/dapr/go-sdk/service/http"
     "myapp/actors"
 )
@@ -89,7 +79,9 @@ import (
 func main() {
     s := daprd.NewService(":8080")
 
-    s.RegisterActor(&actors.CounterActorImpl{})
+    s.RegisterActorImplFactoryContext(func() actor.ServerContext {
+        return &actors.CounterActorImpl{}
+    })
 
     if err := s.Start(); err != nil {
         log.Fatal(err)
@@ -99,20 +91,39 @@ func main() {
 
 ## Calling an Actor from a Client
 
+Define a client stub struct with function fields that match the actor methods, then use `ImplActorClientStub` to wire them up:
+
 ```go
-proxy := client.NewActorProxy(
-    dapr.NewActorID("counter-1"),
-    "CounterActor",
-)
+// Define the client stub
+type CounterClientStub struct {
+    Increment func(ctx context.Context) error
+    GetCount  func(ctx context.Context) (int, error)
+    Reset     func(ctx context.Context) error
+}
+
+func (c *CounterClientStub) Type() string { return "CounterActor" }
+func (c *CounterClientStub) ID() string   { return "counter-1" }
+```
+
+Then invoke actor methods through the stub:
+
+```go
+daprClient, err := dapr.NewClient()
+if err != nil {
+    log.Fatal(err)
+}
+
+stub := new(CounterClientStub)
+daprClient.ImplActorClientStub(stub)
 
 // Increment
-if err := proxy.Call(ctx, "Increment", nil); err != nil {
+if err := stub.Increment(ctx); err != nil {
     log.Fatal(err)
 }
 
 // Get count
-var count int
-if err := proxy.CallWithResult(ctx, "GetCount", nil, &count); err != nil {
+count, err := stub.GetCount(ctx)
+if err != nil {
     log.Fatal(err)
 }
 log.Printf("Count: %d", count)
@@ -120,16 +131,29 @@ log.Printf("Count: %d", count)
 
 ## Adding a Reminder
 
+Register a reminder using the Dapr client:
+
 ```go
-func (a *CounterActorImpl) OnActivate() error {
-    return a.RegisterActorReminder(&dapr.ActorReminder{
-        Name:    "daily-reset",
-        DueTime: "24h",
-        Period:  "24h",
-        Data:    nil,
-    })
+daprClient, err := dapr.NewClient()
+if err != nil {
+    log.Fatal(err)
 }
 
+err = daprClient.RegisterActorReminder(ctx, &dapr.RegisterActorReminderRequest{
+    ActorType: "CounterActor",
+    ActorID:   "counter-1",
+    Name:      "daily-reset",
+    DueTime:   "24h",
+    Period:    "24h",
+})
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+Then handle the reminder callback in the actor by implementing the `ReminderCallee` interface:
+
+```go
 func (a *CounterActorImpl) ReminderCall(reminderName string, state []byte,
     dueTime string, period string) {
     if reminderName == "daily-reset" {
