@@ -28,11 +28,8 @@ spec:
       # Base policy - used by most services
       standardRetry:
         policy: exponential
-        initialInterval: 1s
-        multiplier: 2.0
         maxInterval: 30s
         maxRetries: 5
-        randomizationFactor: 0.5
 
       # Override for critical services - faster, fewer retries
       criticalRetry:
@@ -43,11 +40,8 @@ spec:
       # Override for idempotent batch jobs - more patient
       batchRetry:
         policy: exponential
-        initialInterval: 5s
-        multiplier: 2.0
         maxInterval: 300s
         maxRetries: 20
-        randomizationFactor: 0.3
 
       # Override for rate-limited external APIs
       rateLimitRetry:
@@ -63,8 +57,6 @@ Reference the correct policy for each target:
 ```yaml
   targets:
     apps:
-      default:
-        retry: standardRetry
       payment-service:
         retry: criticalRetry
       report-generator:
@@ -75,7 +67,7 @@ Reference the correct policy for each target:
         retry: standardRetry
 ```
 
-`payment-service` uses `criticalRetry` (fail fast with 2 retries), while `report-generator` uses `batchRetry` (patient with 20 retries). The `default` target catches all other services.
+`payment-service` uses `criticalRetry` (fail fast with 2 retries), while `report-generator` uses `batchRetry` (patient with 20 retries). Services not listed in the targets section use Dapr's built-in retry behavior. To override the built-in default for all service-to-service calls, define a policy named `DaprBuiltInServiceRetries`.
 
 ## Override at Component Level
 
@@ -90,9 +82,6 @@ Apply different retry policies to different component operations:
       audit-log-state:
         outbound:
           retry: batchRetry
-      default:
-        outbound:
-          retry: standardRetry
 ```
 
 ## Combining Overrides Across Policy Types
