@@ -12,13 +12,15 @@ The official Dapr documentation at [docs.dapr.io](https://docs.dapr.io) is compr
 
 ## Documentation Structure
 
-The Dapr docs are organized into five main sections:
+The Dapr docs are organized into seven main sections:
 
+- **Concepts** - Architecture explanations and design decisions
 - **Getting started** - Installation, quickstarts, and tutorials for new users
 - **Developing applications** - Building blocks, SDKs, and how-to guides
+- **Developing AI** - AI agent integrations, Dapr Agents, and MCP
 - **Operations** - Deployment, observability, and cluster management
 - **Reference** - API specs, CLI reference, and component schemas
-- **Concepts** - Architecture explanations and design decisions
+- **Contributing** - Documentation contributions, SDKs, and roadmap
 
 ## Finding Building Block Docs
 
@@ -28,10 +30,10 @@ For example, to find pub/sub subscription configuration:
 
 ```text
 Developing applications
-  > Message broker
-    > How-to: Publish a message
-    > How-to: Subscribe to messages
-    > Subscription spec
+  > Building blocks
+    > Publish & subscribe
+      > How to: Publish a message and subscribe to a topic
+      > Declarative, streaming, and programmatic subscription types
 ```
 
 ## Using the API Reference
@@ -105,4 +107,4 @@ cd quickstarts/tutorials/hello-world
 
 ## Summary
 
-The Dapr documentation is organized into getting started, developing applications, operations, reference, and concepts sections. Use the version switcher to match your runtime version, and search with specific terms to find component specs, API references, and how-to guides efficiently.
+The Dapr documentation is organized into concepts, getting started, developing applications, developing AI, operations, reference, and contributing sections. Use the version switcher to match your runtime version, and search with specific terms to find component specs, API references, and how-to guides efficiently.
