@@ -72,7 +72,7 @@ def handle_charge_payment():
 def charge_customer(order_id: str, amount: float, customer_id: str):
     print(f"Charging ${amount} for order {order_id} to customer {customer_id}")
 
-app.listen(8080)
+app.run(port=8080)
 ```
 
 ## Dapr State Store for Idempotency
@@ -109,7 +109,7 @@ def handle_fulfill_order():
             store_name="statestore",
             key=idempotency_key,
             value=json.dumps(result),
-            metadata={"ttlInSeconds": "86400"}
+            state_metadata={"ttlInSeconds": "86400"}
         )
 
     return jsonify(result), 200
@@ -118,7 +118,7 @@ def fulfill_order(order_id: str) -> dict:
     print(f"Fulfilling order {order_id}")
     return {"orderId": order_id, "status": "fulfilled", "trackingId": f"TRK-{order_id}"}
 
-app.listen(8080)
+app.run(port=8080)
 ```
 
 ## Database-Level Idempotency
