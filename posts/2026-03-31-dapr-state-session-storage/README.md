@@ -20,8 +20,10 @@ graph TD
     LB -->|Round robin| R1[Replica 1]
     LB -->|Round robin| R2[Replica 2]
     LB -->|Round robin| R3[Replica 3]
-    R1 & R2 & R3 -->|Read/write session| Sidecar[Dapr Sidecar]
-    Sidecar -->|Session data| Redis[(Redis)]
+    R1 -->|Read/write session| S1[Dapr Sidecar 1]
+    R2 -->|Read/write session| S2[Dapr Sidecar 2]
+    R3 -->|Read/write session| S3[Dapr Sidecar 3]
+    S1 & S2 & S3 -->|Session data| Redis[(Redis)]
 ```
 
 Any replica can serve any user request because session data lives in the shared state store.
@@ -191,8 +193,13 @@ metadata:
   name: webapp
 spec:
   replicas: 3       # Multiple replicas all share the same session store
+  selector:
+    matchLabels:
+      app: webapp
   template:
     metadata:
+      labels:
+        app: webapp
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "webapp"
@@ -225,4 +232,4 @@ curl -b /tmp/cookies.txt http://webapp/profile
 
 ## Summary
 
-Dapr State Management with TTL support is an excellent distributed session store. Configure a state store component (Redis recommended for session workloads), use per-key `ttlInSeconds` metadata to control session expiry, and refresh the TTL on every access to implement sliding session windows. Since all replicas share the same Dapr sidecar and state store, sessions work seamlessly across horizontal scale-out without sticky sessions or shared in-memory state.
+Dapr State Management with TTL support is an excellent distributed session store. Configure a state store component (Redis recommended for session workloads), use per-key `ttlInSeconds` metadata to control session expiry, and refresh the TTL on every access to implement sliding session windows. Since each replica's Dapr sidecar connects to the same shared state store, sessions work seamlessly across horizontal scale-out without sticky sessions or shared in-memory state.
