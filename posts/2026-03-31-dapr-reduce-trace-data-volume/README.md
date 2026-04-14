@@ -95,14 +95,13 @@ Health checks generate many traces with zero diagnostic value:
 ```yaml
 processors:
   filter/health:
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - "/healthz"
-          - "/readyz"
-          - "/livez"
-          - "dapr/config"
+    error_mode: ignore
+    traces:
+      span:
+        - 'name == "/healthz"'
+        - 'name == "/readyz"'
+        - 'name == "/livez"'
+        - 'name == "dapr/config"'
 ```
 
 ## Strategy 4: Reduce Span Attributes
@@ -111,17 +110,19 @@ Trim large or unnecessary span attributes:
 
 ```yaml
 processors:
-  attributes:
+  attributes/remove-bodies:
     actions:
       # Remove large HTTP body attributes
       - key: http.request.body
         action: delete
       - key: http.response.body
         action: delete
-      # Truncate long URLs
-      - key: http.url
-        action: update
-        value: "${http.url:0:200}"
+  transform/truncate:
+    trace_statements:
+      - context: span
+        statements:
+          # Truncate all span attribute values to 200 characters
+          - truncate_all(attributes, 200)
 ```
 
 ## Strategy 5: Per-Service Sampling Rates
