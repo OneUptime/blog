@@ -64,7 +64,7 @@ Saturation measures how overloaded the system is. In Dapr, look for queue depth 
 
 ```bash
 # Pending actor reminders (saturation signal)
-dapr_actor_reminders_total{app_id="my-service"}
+dapr_runtime_actor_reminders{app_id="my-service"}
 
 # Message backlog on pub/sub component
 dapr_component_pubsub_ingress_count{app_id="my-service", topic="orders"}
@@ -91,7 +91,7 @@ Errors are the most actionable signal. Dapr exposes error counts per component a
 
 ```bash
 # State store errors
-dapr_component_state_get_total{success="false",app_id="my-service"}
+dapr_component_state_count{operation="get",success="false",app_id="my-service"}
 
 # Service invocation errors by status code
 dapr_http_server_request_count{app_id="my-service",status="500"}
@@ -112,7 +112,7 @@ helm install grafana grafana/grafana \
   --set datasources."datasources\.yaml".datasources[0].url=http://prometheus-server
 ```
 
-Import the Dapr community Grafana dashboard (ID: 14234) and extend it with USE-specific panels for each of your Dapr-enabled services.
+Import a Dapr Grafana dashboard from the [official Dapr Grafana templates](https://github.com/dapr/dapr/tree/master/grafana) and extend it with USE-specific panels for each of your Dapr-enabled services.
 
 ## Summary
 
