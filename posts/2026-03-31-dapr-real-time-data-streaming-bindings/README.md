@@ -36,8 +36,8 @@ spec:
     value: stream-processor
   - name: initialOffset
     value: newest
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
 ```
 
 ## Handle Incoming Stream Data
@@ -66,7 +66,6 @@ def handle_sensor_reading():
     # Forward to output binding
     return jsonify({
         "to": ["processed-readings"],
-        "storeName": "processed-readings",
         "data": processed
     }), 200
 ```
@@ -86,8 +85,6 @@ spec:
   metadata:
   - name: brokers
     value: kafka-broker:9092
-  - name: topics
-    value: processed-sensor-data
   - name: publishTopic
     value: processed-sensor-data
 ```
