@@ -142,7 +142,7 @@ integrations:
       dapr_request_rate:
         query: 'sum(rate(dapr_http_server_request_count{app_id="{{service.daprAppId}}"}[5m]))'
       dapr_error_rate:
-        query: 'sum(rate(dapr_http_server_response_count{app_id="{{service.daprAppId}}", status_code=~"5.*"}[5m]))'
+        query: 'sum(rate(dapr_http_server_request_count{app_id="{{service.daprAppId}}", status=~"5.*"}[5m]))'
 ```
 
 ## Automated Dapr Standards Enforcement
