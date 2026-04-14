@@ -83,7 +83,7 @@ var options = new StateOptions
     Concurrency = ConcurrencyMode.FirstWrite
 };
 
-await _dapr.SaveStateAsync(Store, "user-1", user, etag: etag, stateOptions: options);
+bool saved = await _dapr.TrySaveStateAsync(Store, "user-1", user, etag, stateOptions: options);
 ```
 
 ## Transactions
@@ -91,6 +91,9 @@ await _dapr.SaveStateAsync(Store, "user-1", user, etag: etag, stateOptions: opti
 ```csharp
 public async Task TransferCredits(string fromKey, string toKey, int amount)
 {
+    var fromBalance = await _dapr.GetStateAsync<int>(Store, fromKey);
+    var toBalance = await _dapr.GetStateAsync<int>(Store, toKey);
+
     var operations = new List<StateTransactionRequest>
     {
         new StateTransactionRequest(fromKey, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(fromBalance - amount), StateOperationType.Upsert),
@@ -112,7 +115,7 @@ var items = Enumerable.Range(1, 10).Select(i =>
 await _dapr.SaveBulkStateAsync(Store, items);
 
 // Bulk get
-var keys = Enumerable.Range(1, 10).Select(i => $"product-{i}");
+var keys = Enumerable.Range(1, 10).Select(i => $"product-{i}").ToList();
 var results = await _dapr.GetBulkStateAsync(Store, keys, parallelism: 5);
 
 foreach (var item in results)
