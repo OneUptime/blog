@@ -74,9 +74,20 @@ targets:
 
 ## What Gets Retried
 
-Dapr retries operations that fail with retryable errors. For HTTP, these include `429 Too Many Requests`, `502 Bad Gateway`, `503 Service Unavailable`, and `504 Gateway Timeout`. For gRPC, retryable codes include `UNAVAILABLE` and `RESOURCE_EXHAUSTED`.
+By default, Dapr retries all failed operations regardless of the error code. To limit retries to specific errors, use the `matching` field in your retry policy to filter by HTTP status codes or gRPC status codes:
 
-Non-retryable errors (like `400 Bad Request` or `404 Not Found`) are not retried because retrying a bad request will not succeed.
+```yaml
+retries:
+  filteredRetry:
+    policy: constant
+    duration: 1s
+    maxRetries: 5
+    matching:
+      httpStatusCodes: "429,502,503,504"
+      gRPCStatusCodes: "14"
+```
+
+Without a `matching` filter, every failed call is retried up to `maxRetries` times.
 
 ## Retry with Jitter to Avoid Thundering Herd
 
