@@ -35,8 +35,8 @@ public class DeviceTwinActor : Actor, IDeviceTwinActor, IRemindable
 
     public async Task<DeviceTwin> GetTwinAsync()
     {
-        var reported = await StateManager.GetOrCreateStateAsync("reported", new Dictionary<string, object>());
-        var desired = await StateManager.GetOrCreateStateAsync("desired", new Dictionary<string, object>());
+        var reported = await StateManager.GetOrAddStateAsync("reported", new Dictionary<string, object>());
+        var desired = await StateManager.GetOrAddStateAsync("desired", new Dictionary<string, object>());
         return new DeviceTwin { Reported = reported, Desired = desired };
     }
 }
@@ -64,11 +64,11 @@ DAPR_PORT = 3500
 DEVICE_ID = "sensor-42"
 
 def update_reported_state(device_id: str, state: dict):
-    url = f"http://localhost:{DAPR_PORT}/v1.0/actors/DeviceTwinActor/{device_id}/method/UpdateReportedState"
+    url = f"http://localhost:{DAPR_PORT}/v1.0/actors/DeviceTwinActor/{device_id}/method/UpdateReportedStateAsync"
     requests.post(url, json=state)
 
 def get_twin(device_id: str) -> dict:
-    url = f"http://localhost:{DAPR_PORT}/v1.0/actors/DeviceTwinActor/{device_id}/method/GetTwin"
+    url = f"http://localhost:{DAPR_PORT}/v1.0/actors/DeviceTwinActor/{device_id}/method/GetTwinAsync"
     return requests.get(url).json()
 
 # Device reports its temperature
