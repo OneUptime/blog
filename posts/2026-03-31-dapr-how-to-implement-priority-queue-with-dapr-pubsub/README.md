@@ -21,7 +21,7 @@ The three common approaches are:
 
 ## Setting Up Multiple Priority Topics
 
-Configure separate Dapr pub/sub components for each priority level using Redis Streams.
+Configure a Dapr pub/sub component using Redis Streams. You will use a single component with separate topics for each priority level.
 
 ```yaml
 # dapr/components/pubsub.yaml
