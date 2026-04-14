@@ -8,7 +8,7 @@ Description: Configure the Dapr placement service to use an in-memory Raft store
 
 ---
 
-By default, the Dapr placement service persists its Raft log to disk. For local development, CI pipelines, and integration test environments, you can run the placement service with an in-memory Raft store that does not require persistent volumes. This simplifies setup and speeds up test environments.
+The Dapr placement service uses an in-memory Raft store by default (`inmem-store-enabled` defaults to `true`). This is ideal for local development, CI pipelines, and integration test environments as it does not require persistent volumes. For production Kubernetes deployments, you can configure disk-based persistence with the `raft-logstore-path` flag. This guide covers working with in-memory placement across different environments.
 
 ## When to Use In-Memory Raft
 
@@ -26,7 +26,7 @@ When you run `dapr init`, the placement service starts with in-memory storage by
 
 ```bash
 dapr init
-# Placement service starts at localhost:50006 with in-memory state
+# Placement service starts at localhost:50005 with in-memory state
 ```
 
 Verify it is running:
@@ -48,19 +48,17 @@ services:
     image: daprio/placement:1.14.0
     command:
       - "./placement"
-      - "-port"
+      - "--port"
       - "50006"
-      - "-log-level"
+      - "--log-level"
       - "error"
-      - "-initial-cluster"
-      - ""        # Empty = single node, no disk persistence
     ports:
       - "50006:50006"
 ```
 
-## Kubernetes with emptyDir
+## Kubernetes Deployment
 
-In a Kubernetes test environment, use an `emptyDir` volume for the Raft log:
+In a Kubernetes test environment, deploy the placement service with the default in-memory Raft store. No persistent volumes are needed:
 
 ```yaml
 apiVersion: apps/v1
@@ -77,19 +75,13 @@ spec:
           image: daprio/placement:1.14.0
           command: ["./placement"]
           args:
-            - "-port"
+            - "--port"
             - "50006"
-            - "-log-level"
+            - "--log-level"
             - "error"
-          volumeMounts:
-            - name: raft-data
-              mountPath: /var/lib/dapr/placement
-      volumes:
-        - name: raft-data
-          emptyDir: {}
 ```
 
-This gives the placement service a directory to write to, but data is lost when the pod restarts - acceptable for test environments.
+Since in-memory Raft is the default, no volume mounts are required. Placement state is lost when the pod restarts - acceptable for test environments.
 
 ## Sidecar Connection to Test Placement
 
