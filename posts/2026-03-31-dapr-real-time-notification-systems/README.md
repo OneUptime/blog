@@ -55,6 +55,7 @@ The router subscribes to the main topic and routes to channel-specific topics ba
 ```python
 from flask import Flask, request, jsonify
 from dapr.clients import DaprClient
+import json
 
 app = Flask(__name__)
 
@@ -68,13 +69,13 @@ def handle_notification():
 
     with DaprClient() as client:
         if prefs.get('email'):
-            client.publish_event('pubsub', 'email-notifications', event['data'])
+            client.publish_event('pubsub', 'email-notifications', json.dumps(event['data']))
 
         if prefs.get('push'):
-            client.publish_event('pubsub', 'push-notifications', event['data'])
+            client.publish_event('pubsub', 'push-notifications', json.dumps(event['data']))
 
         if prefs.get('sms') and is_urgent(event['data']['eventType']):
-            client.publish_event('pubsub', 'sms-notifications', event['data'])
+            client.publish_event('pubsub', 'sms-notifications', json.dumps(event['data']))
 
     return jsonify({"status": "routed"}), 200
 ```
@@ -108,8 +109,8 @@ spec:
   pubsubname: pubsub
   topic: notifications
   route: /notifications
-  scopes:
-  - notification-router
+scopes:
+- notification-router
 ---
 apiVersion: dapr.io/v1alpha1
 kind: Subscription
@@ -119,8 +120,8 @@ spec:
   pubsubname: pubsub
   topic: email-notifications
   route: /email-notifications
-  scopes:
-  - email-worker
+scopes:
+- email-worker
 ```
 
 ## Handle Delivery Failures with Dead Letters
