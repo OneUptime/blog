@@ -61,7 +61,7 @@ var requestCount int64
 
 func handler(w http.ResponseWriter, r *http.Request) {
     count := atomic.AddInt64(&requestCount, 1)
-    // Fail for first 100ms after every 10 seconds
+    // Fail 5 out of every 10 requests (alternating groups of 5)
     if count%10 < 5 {
         w.WriteHeader(http.StatusServiceUnavailable)
         fmt.Fprint(w, "503 error")
@@ -72,7 +72,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    http.HandleFunc("/method/check", handler)
+    http.HandleFunc("/check", handler)
     http.ListenAndServe(":8080", nil)
 }
 ```
@@ -129,7 +129,7 @@ watch -n 1 'curl -s http://localhost:9090/api/v1/query \
   | jq ".data.result[0].value[1]"'
 ```
 
-Values: `0` = closed, `1` = open, `2` = half-open.
+Values: `0` = closed, `1` = half-open, `2` = open.
 
 ## Verify Recovery After Load Subsides
 
