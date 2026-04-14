@@ -144,7 +144,7 @@ Response:
 }
 ```
 
-Read a specific key:
+Read a secret from a specific namespace:
 
 ```bash
 curl "http://localhost:3500/v1.0/secrets/kubernetes/db-credentials?metadata.namespace=default"
@@ -220,22 +220,31 @@ curl http://localhost:3500/v1.0/secrets/kubernetes/bulk
 
 ## Restricting Secret Access with Component Scoping
 
-Limit which apps can access specific secrets using `allowedSecrets` and `deniedSecrets`:
+Limit which apps can access specific secrets using `allowedSecrets` and `deniedSecrets` in a Dapr Configuration resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: kubernetes
-  namespace: default
+  name: appconfig
 spec:
-  type: secretstores.kubernetes
-  version: v1
-  metadata:
-  - name: defaultAccess
-    value: deny
-  - name: allowedSecrets
-    value: '["db-credentials", "api-keys"]'
+  secrets:
+    scopes:
+      - storeName: kubernetes
+        defaultAccess: deny
+        allowedSecrets:
+          - db-credentials
+          - api-keys
+```
+
+Apply the configuration and annotate your application deployment to use it:
+
+```bash
+kubectl apply -f appconfig.yaml
+```
+
+```bash
+kubectl annotate deployment myapp dapr.io/config=appconfig
 ```
 
 ## Summary
