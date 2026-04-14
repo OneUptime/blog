@@ -40,7 +40,7 @@ spec:
   metadata:
   - name: bucket
     value: "my-dapr-bucket"
-  - name: projectId
+  - name: project_id
     value: "my-gcp-project"
   - name: decodeBase64
     value: "false"
