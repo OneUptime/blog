@@ -14,38 +14,38 @@ Dapr Jobs provides a durable job scheduling API that lets you schedule work to r
 
 ## Adding the Dependency
 
-Add the Dapr Java SDK to your `pom.xml`:
+Add the Dapr Java SDK to your `pom.xml`. The Jobs API requires at least version 1.15.0:
 
 ```xml
 <dependency>
   <groupId>io.dapr</groupId>
   <artifactId>dapr-sdk</artifactId>
-  <version>1.13.0</version>
+  <version>1.15.0</version>
 </dependency>
 ```
 
-## Creating a DaprClient
+## Creating a DaprPreviewClient
+
+The Jobs API is available on `DaprPreviewClient`:
 
 ```java
-import io.dapr.client.DaprClient;
+import io.dapr.client.DaprPreviewClient;
 import io.dapr.client.DaprClientBuilder;
 
-DaprClient client = new DaprClientBuilder().build();
+DaprPreviewClient client = new DaprClientBuilder().buildPreviewClient();
 ```
 
 ## Scheduling a One-Time Job
 
-Schedule a job to run once at a specific time:
+Schedule a job to run once at a specific time using a due time:
 
 ```java
 import io.dapr.client.domain.ScheduleJobRequest;
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
-ScheduleJobRequest request = ScheduleJobRequest.newBuilder()
-    .setName("send-report")
-    .setData("monthly-report".getBytes())
-    .setSchedule("@every 1m")
-    .build();
+ScheduleJobRequest request = new ScheduleJobRequest("send-report",
+        Instant.parse("2026-04-01T10:00:00Z"))
+    .setData("monthly-report".getBytes());
 
 client.scheduleJob(request).block();
 System.out.println("Job scheduled successfully");
@@ -53,15 +53,15 @@ System.out.println("Job scheduled successfully");
 
 ## Scheduling a Recurring Job
 
-Use cron expressions for recurring jobs:
+Use cron expressions for recurring jobs. Dapr uses a six-field cron format that includes seconds:
 
 ```java
-ScheduleJobRequest recurringRequest = ScheduleJobRequest.newBuilder()
-    .setName("cleanup-job")
+import io.dapr.client.domain.JobSchedule;
+
+ScheduleJobRequest recurringRequest = new ScheduleJobRequest("cleanup-job",
+        JobSchedule.fromString("0 0 2 * * *"))  // Daily at 2 AM
     .setData("cleanup-old-records".getBytes())
-    .setSchedule("0 2 * * *")  // Daily at 2 AM
-    .setRepeats(0)              // 0 means unlimited repeats
-    .build();
+    .setRepeat(0);  // 0 means unlimited repeats
 
 client.scheduleJob(recurringRequest).block();
 ```
@@ -97,9 +97,10 @@ public class JobController {
 Retrieve information about a scheduled job:
 
 ```java
+import io.dapr.client.domain.GetJobRequest;
 import io.dapr.client.domain.GetJobResponse;
 
-GetJobResponse job = client.getJob("send-report").block();
+GetJobResponse job = client.getJob(new GetJobRequest("send-report")).block();
 System.out.println("Job name: " + job.getName());
 System.out.println("Job schedule: " + job.getSchedule());
 ```
@@ -109,23 +110,18 @@ System.out.println("Job schedule: " + job.getSchedule());
 Cancel a job when it is no longer needed:
 
 ```java
-client.deleteJob("send-report").block();
+import io.dapr.client.domain.DeleteJobRequest;
+
+client.deleteJob(new DeleteJobRequest("send-report")).block();
 System.out.println("Job deleted");
 ```
 
-## Dapr Component Configuration
+## Running with Dapr
 
-Ensure your Dapr sidecar has the scheduler service enabled in your component YAML:
+The Jobs API uses the Dapr scheduler service, which runs automatically alongside the sidecar. No additional configuration or feature flags are required. Start your application with:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: myconfig
-spec:
-  features:
-    - name: SchedulerReminders
-      enabled: true
+```bash
+dapr run --app-id myapp --app-port 8080 -- java -jar target/myapp.jar
 ```
 
 ## Summary
