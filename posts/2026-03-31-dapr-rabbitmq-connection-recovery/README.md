@@ -20,11 +20,10 @@ Configure a RabbitMQ cluster with quorum queues for durability:
 # Start a RabbitMQ cluster with Docker Compose
 docker-compose up -d
 
-# Enable quorum queues via policy
-rabbitmqctl set_policy ha-queues "^orders" \
-  '{"queue-mode":"lazy","queue-type":"quorum"}' \
-  --priority 0 \
-  --apply-to queues
+# Declare a quorum queue (queue type must be set at declaration time, not via policy)
+rabbitmqadmin declare queue name=orders durable=true \
+  arguments='{"x-queue-type":"quorum"}' \
+  -u admin -p secret
 ```
 
 RabbitMQ Docker Compose for development:
@@ -70,7 +69,7 @@ spec:
     value: "false"
   - name: reconnectWait
     value: "3"
-  - name: concurrency
+  - name: concurrencyMode
     value: "parallel"
   - name: prefetchCount
     value: "10"
@@ -120,14 +119,15 @@ func publishWithRetry(orderData interface{}) error {
             backoff *= 2
             continue
         }
-        defer client.Close()
 
         ctx := context.Background()
         err = client.PublishEvent(ctx, "rabbitmq-pubsub", "orders", orderData)
         if err == nil {
+            client.Close()
             return nil
         }
 
+        client.Close()
         fmt.Printf("Attempt %d: publish failed: %v\n", attempt+1, err)
         time.Sleep(backoff)
         backoff *= 2
