@@ -105,7 +105,6 @@ If ETag does not match: `409 Conflict`
 ```python
 import requests
 import os
-import json
 import time
 
 DAPR_HTTP_PORT = os.environ.get("DAPR_HTTP_PORT", "3500")
@@ -209,6 +208,7 @@ func saveWithETag(key string, value *Account, etag string) (bool, error) {
     if err != nil {
         return false, err
     }
+    defer resp.Body.Close()
     return resp.StatusCode == 204, nil
 }
 
