@@ -10,30 +10,29 @@ Description: Learn how to set time-to-live (TTL) on Dapr pub/sub messages so exp
 
 ## Why Message Expiration Matters
 
-Not all messages are useful forever. A "price update" event from 10 minutes ago is irrelevant if a newer update already arrived. A "flash sale started" event should not be processed hours after the sale ended. Dapr pub/sub supports per-message TTL using the `ttlInSeconds` metadata field. Expired messages are dropped by the broker before delivery.
+Not all messages are useful forever. A "price update" event from 10 minutes ago is irrelevant if a newer update already arrived. A "flash sale started" event should not be processed hours after the sale ended. Dapr pub/sub supports per-message TTL using the `ttlInSeconds` metadata field. Expired messages are dropped by the Dapr runtime when the sidecar receives them, preventing stale events from reaching your application.
 
 ## Setting TTL When Publishing a Message
 
-Add `ttlInSeconds` to the message metadata when publishing:
+Add `ttlInSeconds` as a query parameter to the publish URL:
 
 ```python
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 
 DAPR_HTTP_PORT = 3500
 
 async def publish_price_update(product_id: str, new_price: float):
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/pubsub/price-updates",
+            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/pubsub/price-updates?metadata.ttlInSeconds=60",
             json={
                 "productId": product_id,
                 "newPrice": new_price,
-                "updatedAt": datetime.utcnow().isoformat()
+                "updatedAt": datetime.now(timezone.utc).isoformat()
             },
             headers={
-                "Content-Type": "application/json",
-                "metadata.ttlInSeconds": "60"  # Expire after 60 seconds
+                "Content-Type": "application/json"
             }
         )
 ```
@@ -51,17 +50,18 @@ import httpx
 async def publish_flash_sale_start(sale_id: str, duration_minutes: int):
     sale_ends_at = datetime.now(timezone.utc).timestamp() + (duration_minutes * 60)
 
+    ttl_seconds = duration_minutes * 60
+
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/pubsub/flash-sales",
+            f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/pubsub/flash-sales?metadata.ttlInSeconds={ttl_seconds}",
             json={
                 "saleId": sale_id,
                 "discountPercent": 30,
                 "endsAt": datetime.fromtimestamp(sale_ends_at, tz=timezone.utc).isoformat()
             },
             headers={
-                "Content-Type": "application/json",
-                "metadata.ttlInSeconds": str(duration_minutes * 60)
+                "Content-Type": "application/json"
             }
         )
 ```
@@ -97,17 +97,17 @@ async def handle_price_update(request: Request):
 
 ## TTL with Different Dapr Pub/Sub Backends
 
-TTL support varies by backend:
+All Dapr pub/sub components support message TTL because the Dapr runtime handles the expiration logic. When the sidecar receives a message, it checks the TTL and discards expired messages before forwarding them to your application. Some backends also support native TTL at the broker level:
 
-| Backend | TTL Support | Notes |
+| Backend | Native Broker TTL | Notes |
 |---|---|---|
-| Redis Streams | Yes | Via Redis Stream MAXLEN and XADD |
-| Kafka | Yes | Via message timestamp and consumer check |
-| RabbitMQ | Yes | Via x-message-ttl queue argument |
-| Azure Service Bus | Yes | Via TimeToLive property |
-| Google Cloud Pub/Sub | Partial | Via message retention |
+| Redis Streams | No | TTL handled by Dapr runtime |
+| Kafka | No | TTL handled by Dapr runtime |
+| RabbitMQ | Yes | Also supports native x-message-ttl |
+| Azure Service Bus | Yes | Dapr forwards TTL to native TimeToLive property |
+| Google Cloud Pub/Sub | No | TTL handled by Dapr runtime |
 
-Check the Dapr documentation for your specific component to confirm TTL support and behavior.
+Check the Dapr documentation for your specific component for details on native TTL behavior.
 
 ## Combining TTL with Dead Letter Topics
 
@@ -129,4 +129,4 @@ Subscribe to `price-updates-expired` to alert or log when messages expire too fr
 
 ## Summary
 
-Dapr pub/sub message TTL prevents stale events from being processed by setting `metadata.ttlInSeconds` at publish time. The broker discards expired messages before delivery, keeping consumer processing focused on relevant, timely data. Combining broker-level TTL with an application-level age check and dead letter monitoring creates a robust expiration strategy for time-sensitive messaging scenarios.
+Dapr pub/sub message TTL prevents stale events from being processed by setting `metadata.ttlInSeconds` as a query parameter at publish time. The Dapr runtime checks message age when the sidecar receives them and discards expired messages before delivering them to your application. Combining runtime-level TTL with an application-level age check and dead letter monitoring creates a robust expiration strategy for time-sensitive messaging scenarios.
