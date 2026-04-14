@@ -42,7 +42,7 @@ exporters:
   googlecloud:
     project: my-gcp-project
     trace:
-      endpoint: cloudtrace.googleapis.com:443
+      endpoint: cloudtrace.googleapis.com
 ```
 
 ## Approach 2: Direct Zipkin to Cloud Trace
@@ -53,8 +53,9 @@ Use Stackdriver Zipkin proxy as an alternative:
 docker run -d \
   -p 9411:9411 \
   --name zipkin-stackdriver \
-  gcr.io/cloud-trace/zipkin-collector:latest \
-  --google-project-id=my-gcp-project
+  -e STORAGE_TYPE=stackdriver \
+  -e STACKDRIVER_PROJECT_ID=my-gcp-project \
+  openzipkin/zipkin-gcp:latest
 ```
 
 Point Dapr to this proxy:
@@ -98,11 +99,9 @@ def checkout():
 Navigate to Cloud Trace in the GCP Console. Filter by service name using the `dapr.io/app-id` label:
 
 ```bash
-# List recent traces for a specific service
-gcloud trace traces list \
-  --project=my-gcp-project \
-  --filter="labels.\"dapr.io/app-id\"=order-service" \
-  --limit=20
+# List recent traces for a specific service using the Cloud Trace API
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://cloudtrace.googleapis.com/v1/projects/my-gcp-project/traces?filter=%2Blabel:dapr.io/app-id:order-service&pageSize=20"
 ```
 
 ## Custom Span Attributes
@@ -110,7 +109,12 @@ gcloud trace traces list \
 Add custom attributes to spans for better filtering:
 
 ```go
-import "go.opentelemetry.io/otel"
+import (
+    "context"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+)
 
 func processOrder(ctx context.Context, orderId string) {
     tracer := otel.Tracer("order-service")
