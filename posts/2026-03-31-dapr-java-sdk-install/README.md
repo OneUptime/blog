@@ -14,36 +14,26 @@ The Dapr Java SDK provides blocking and reactive (Project Reactor) clients for a
 
 ## Prerequisites
 
-- Java 17 or later
+- Java 11 or later
 - Maven 3.8+ or Gradle 8+
 - Dapr CLI installed and `dapr init` completed
 
 ## Maven Setup
 
-Add the Dapr BOM and SDK to your `pom.xml`:
+Add the Dapr SDK to your `pom.xml`:
 
 ```xml
-<dependencyManagement>
-  <dependencies>
-    <dependency>
-      <groupId>io.dapr</groupId>
-      <artifactId>dapr-sdk-bom</artifactId>
-      <version>1.12.0</version>
-      <type>pom</type>
-      <scope>import</scope>
-    </dependency>
-  </dependencies>
-</dependencyManagement>
-
 <dependencies>
   <dependency>
     <groupId>io.dapr</groupId>
     <artifactId>dapr-sdk</artifactId>
+    <version>1.14.1</version>
   </dependency>
   <!-- For Spring Boot integration -->
   <dependency>
     <groupId>io.dapr</groupId>
     <artifactId>dapr-sdk-springboot</artifactId>
+    <version>1.14.1</version>
   </dependency>
 </dependencies>
 ```
@@ -53,9 +43,8 @@ Add the Dapr BOM and SDK to your `pom.xml`:
 ```groovy
 // build.gradle
 dependencies {
-    implementation platform('io.dapr:dapr-sdk-bom:1.12.0')
-    implementation 'io.dapr:dapr-sdk'
-    implementation 'io.dapr:dapr-sdk-springboot'
+    implementation 'io.dapr:dapr-sdk:1.14.1'
+    implementation 'io.dapr:dapr-sdk-springboot:1.14.1'
 }
 ```
 
@@ -97,7 +86,24 @@ client.saveState("statestore", "key1", "value1")
 
 ## Spring Boot Auto-Configuration
 
-With `dapr-sdk-springboot`, inject `DaprClient` directly into Spring beans:
+With `dapr-sdk-springboot`, you can use `DaprClient` in Spring beans after defining a bean for it:
+
+```java
+import io.dapr.client.DaprClient;
+import io.dapr.client.DaprClientBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class DaprConfig {
+    @Bean
+    public DaprClient daprClient() {
+        return new DaprClientBuilder().build();
+    }
+}
+```
+
+Then inject it into your services:
 
 ```java
 import io.dapr.client.DaprClient;
@@ -124,4 +130,4 @@ dapr run --app-id java-service --app-port 8080 --components-path ./components \
 
 ## Summary
 
-The Dapr Java SDK installs as a standard Maven/Gradle dependency with an optional BOM for version management. The `DaprClientBuilder` auto-discovers the sidecar via environment variables. For Spring Boot applications, the `dapr-sdk-springboot` starter enables `@Autowired DaprClient` with zero configuration, making all Dapr building blocks available anywhere in the application context.
+The Dapr Java SDK installs as a standard Maven/Gradle dependency. The `DaprClientBuilder` auto-discovers the sidecar via environment variables. For Spring Boot applications, add the `dapr-sdk-springboot` dependency and define a `DaprClient` bean to make all Dapr building blocks available anywhere in the application context via `@Autowired`.
