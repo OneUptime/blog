@@ -43,27 +43,27 @@ data:
     }
 ```
 
-Then configure the Dapr name resolution component in Cluster 1 to know about the second cluster:
+Then configure the Dapr name resolution in Cluster 1 to resolve services in the second cluster using a custom template:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
-  namespace: default
+  name: cross-cluster-config
 spec:
-  type: nameresolution.kubernetes
-  version: v1
-  metadata:
-    - name: clusterDomain
-      value: "cluster.local"
+  nameResolution:
+    component: "kubernetes"
+    configuration:
+      template: "{{"{{"}} .ID {{"}}"}}-dapr.{{"{{"}} .Namespace {{"}}"}}.svc.cluster2.local:{{"{{"}} .Port {{"}}"}}"
 ```
 
-Invoke a service in Cluster 2 using the full qualified domain:
+Invoke a service in Cluster 2:
 
 ```bash
-curl http://localhost:3500/v1.0/invoke/order-service.default\%40cluster2.local/method/orders
+curl http://localhost:3500/v1.0/invoke/order-service/method/orders
 ```
+
+Note: With this configuration, all service invocations resolve to Cluster 2. For bidirectional communication, each cluster needs its own Configuration pointing to the other cluster's domain.
 
 ## Approach 2: Consul WAN Federation
 
@@ -81,28 +81,22 @@ helm install consul hashicorp/consul \
   --set server.extraConfig='{"datacenter":"dc2","primary_datacenter":"dc1","retry_join_wan":["consul-server.dc1.example.com"]}'
 ```
 
-Configure the Dapr Consul component with WAN awareness:
+Configure the Dapr Consul name resolution with WAN awareness:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: consul-cross-dc-config
 spec:
-  type: nameresolution.consul
-  version: v1
-  metadata:
-    - name: client
-      value: |
-        {
-          "address": "consul.default.svc.cluster.local:8500",
-          "datacenter": "dc1"
-        }
-    - name: queryOptions
-      value: |
-        {
-          "datacenter": "dc2"
-        }
+  nameResolution:
+    component: "consul"
+    configuration:
+      client:
+        address: "consul.default.svc.cluster.local:8500"
+        datacenter: "dc1"
+      queryOptions:
+        datacenter: "dc2"
 ```
 
 ## Approach 3: Service Mesh with External Endpoints
@@ -110,7 +104,7 @@ spec:
 Using Istio's ServiceEntry, expose services from one cluster to another:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cluster2-order-service
@@ -130,12 +124,15 @@ spec:
 Configure NameFormat to route to the mesh endpoint:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: mesh-cross-cluster-config
 spec:
-  type: nameresolution.nameformat
-  version: v1
-  metadata:
-    - name: nameFormat
-      value: "{{"{{"}} .ID {{"}}"}}.cluster2.internal"
+  nameResolution:
+    component: "nameformat"
+    configuration:
+      format: "{appid}.cluster2.internal"
 ```
 
 ## Testing Cross-Cluster Resolution
