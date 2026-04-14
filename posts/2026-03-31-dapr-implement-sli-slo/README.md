@@ -51,15 +51,15 @@ spec:
         - record: dapr:sli:latency_p99_5m
           expr: |
             histogram_quantile(0.99,
-              sum(rate(dapr_http_server_request_duration_msec_bucket[5m]))
+              sum(rate(dapr_http_server_latency_bucket[5m]))
               by (app_id, le)
             )
 
         - record: dapr:sli:latency_under_500ms_ratio
           expr: |
-            sum(rate(dapr_http_server_request_duration_msec_bucket{le="500"}[5m])) by (app_id)
+            sum(rate(dapr_http_server_latency_bucket{le="500"}[5m])) by (app_id)
             /
-            sum(rate(dapr_http_server_request_duration_msec_count[5m])) by (app_id)
+            sum(rate(dapr_http_server_latency_count[5m])) by (app_id)
 ```
 
 ## SLO Alerting with Error Budget Burn Rate
@@ -101,9 +101,7 @@ Track error budget remaining as a Prometheus metric:
 ```promql
 # Error budget remaining (30-day window, 99.9% availability SLO)
 (
-  0.999 - (
-    1 - avg_over_time(dapr:sli:request_success_rate_5m[30d])
-  )
+  avg_over_time(dapr:sli:request_success_rate_5m[30d]) - 0.999
 ) / (1 - 0.999)
 ```
 
@@ -116,7 +114,7 @@ Create a Grafana dashboard with:
 avg(dapr:sli:request_success_rate_5m{app_id="checkout-service"})
 
 # 30-day error budget burn (gauge)
-(0.999 - (1 - avg_over_time(dapr:sli:request_success_rate_1h{app_id="checkout-service"}[30d]))) / (1 - 0.999)
+(avg_over_time(dapr:sli:request_success_rate_1h{app_id="checkout-service"}[30d]) - 0.999) / (1 - 0.999)
 
 # Latency SLO compliance (time series)
 dapr:sli:latency_under_500ms_ratio{app_id="checkout-service"}
