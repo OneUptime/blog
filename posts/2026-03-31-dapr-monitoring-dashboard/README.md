@@ -21,7 +21,7 @@ metadata:
   name: dapr-config
   namespace: production
 spec:
-  metric:
+  metrics:
     enabled: true
   mtls:
     enabled: true
@@ -61,7 +61,7 @@ spec:
 ```bash
 # Service invocation throughput
 dapr_http_server_request_count{app_id, status_code, path}
-dapr_grpc_server_completed_rpcs{app_id, grpc_server_method, grpc_server_status}
+dapr_grpc_io_server_completed_rpcs{app_id, grpc_server_method, grpc_server_status}
 
 # Service invocation latency
 dapr_http_server_latency_bucket{app_id, path}
@@ -72,12 +72,12 @@ dapr_component_pubsub_egress_count{app_id, topic, success}
 dapr_component_pubsub_ingress_latencies_bucket{app_id, topic}
 
 # State store metrics
-dapr_component_state_get_count{app_id, success}
-dapr_component_state_set_count{app_id, success}
+dapr_component_state_count{app_id, operation="get", success}
+dapr_component_state_count{app_id, operation="set", success}
 
 # Sidecar resource usage
-dapr_runtime_mem_sys_bytes{app_id}
-process_cpu_seconds_total{app=daprd}
+go_memstats_alloc_bytes{app_id}
+process_cpu_seconds_total
 ```
 
 ## Grafana Dashboard JSON Panels
@@ -128,13 +128,14 @@ Key panels to include in your dashboard:
 ```bash
 # Dapr provides official Grafana dashboards
 # Download from the Dapr GitHub repository
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/dashboard-dapr-sidecar-resources.json
-curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/dashboard-dapr-system-services.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-sidecar-dashboard.json
+curl -O https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
 
 # Import via Grafana API
-curl -X POST http://grafana:3000/api/dashboards/import \
+curl -X POST http://grafana:3000/api/dashboards/db \
   -H "Content-Type: application/json" \
-  -d @dashboard-dapr-sidecar-resources.json
+  -H "Authorization: Bearer <your-grafana-api-key>" \
+  -d "{\"dashboard\": $(cat grafana-sidecar-dashboard.json), \"overwrite\": true}"
 ```
 
 ## Summary
