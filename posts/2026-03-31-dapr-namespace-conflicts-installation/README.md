@@ -62,12 +62,7 @@ helm install dapr dapr/dapr \
   --wait
 ```
 
-Then configure your apps to find the control plane in the new namespace:
-
-```yaml
-annotations:
-  dapr.io/control-plane-namespace: "my-dapr-system"
-```
+The Helm chart automatically configures the sidecar injector and all control plane components in the new namespace. No additional per-app annotations are needed - the sidecar injector webhook will point injected `daprd` sidecars to the correct control plane address.
 
 ## Resolving CRD Conflicts
 
@@ -79,7 +74,7 @@ kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr
 kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/configuration.yaml
 kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/subscription.yaml
 kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/resiliency.yaml
-kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/httpendpoint.yaml
+kubectl apply -f https://raw.githubusercontent.com/dapr/dapr/v1.14.0/charts/dapr/crds/httpendpoints.yaml
 ```
 
 Then run the Helm upgrade:
