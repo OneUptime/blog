@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Pub/Sub, Messaging, Event-Driven, Microservice
 
-Description: Publish messages to a Dapr pub/sub topic using the HTTP API, gRPC, and language SDKs with real CloudEvent payloads and component configuration examples.
+Description: Publish messages to a Dapr pub/sub topic using the HTTP API and language SDKs with real CloudEvent payloads and component configuration examples.
 
 ---
 
@@ -216,7 +216,7 @@ publishOrder('abc-123', 'laptop', 999.99).catch(console.error);
 Dapr supports publishing multiple messages in a single API call:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/publish/bulk/pubsub/orders \
+curl -X POST http://localhost:3500/v1.0/publish/bulk/pubsub/orders \
   -H "Content-Type: application/json" \
   -d '[
     {
@@ -232,12 +232,17 @@ curl -X POST http://localhost:3500/v1.0-alpha1/publish/bulk/pubsub/orders \
   ]'
 ```
 
-Response:
+A successful bulk publish returns `204 No Content`. If some entries fail, the response includes the failed entries:
 
 ```json
 {
-  "failedEntries": [],
-  "invalidEntries": []
+  "failedEntries": [
+    {
+      "entryId": "entry1",
+      "error": "error message"
+    }
+  ],
+  "errorCode": "ERR_PUBSUB_PUBLISH_MESSAGE"
 }
 ```
 
