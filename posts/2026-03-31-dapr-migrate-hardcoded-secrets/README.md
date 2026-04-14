@@ -30,7 +30,7 @@ Pick a backend appropriate for your environment. For Kubernetes clusters:
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: app-secrets
+  name: secret-store
   namespace: production
 spec:
   type: secretstores.kubernetes
@@ -85,7 +85,7 @@ After:
 import httpx
 
 def get_db_password() -> str:
-    resp = httpx.get("http://localhost:3500/v1.0/secrets/app-secrets/db-password")
+    resp = httpx.get("http://localhost:3500/v1.0/secrets/secret-store/app-secrets")
     resp.raise_for_status()
     return resp.json()["db-password"]
 
