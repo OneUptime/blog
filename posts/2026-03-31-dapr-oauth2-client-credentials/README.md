@@ -84,31 +84,21 @@ annotations:
 
 ## Validating the Token on the Receiving Service
 
-For the receiving service to validate incoming tokens, add a `Bearer` middleware or use an identity-aware proxy. You can combine the OAuth2 middleware with the `oauth2` validator middleware:
+For the receiving service to validate incoming tokens, use Dapr's `middleware.http.bearer` middleware. This middleware verifies JWT tokens by checking the issuer and audience claims against the identity provider's public keys:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: oauth2-validator
+  name: bearer-token-validator
 spec:
-  type: middleware.http.oauth2
+  type: middleware.http.bearer
   version: v1
   metadata:
-  - name: clientId
+  - name: audience
     value: "my-api-client-id"
-  - name: clientSecret
-    secretKeyRef:
-      name: oauth-secret
-      key: apiClientSecret
-  - name: authURL
-    value: "https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize"
-  - name: tokenURL
-    value: "https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token"
-  - name: redirectURL
-    value: "https://my-app/callback"
-  - name: scopes
-    value: "openid"
+  - name: issuer
+    value: "https://login.microsoftonline.com/{tenant-id}/v2.0"
 ```
 
 ## Testing the Flow
