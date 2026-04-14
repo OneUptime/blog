@@ -16,9 +16,9 @@ When Kubernetes terminates a pod, Dapr needs time to drain in-flight requests, c
 
 When a pod receives `SIGTERM`:
 1. Kubernetes stops sending new traffic to the pod
-2. Dapr sets the app health check to unhealthy
+2. Dapr shuts down its API endpoints, causing its health probes to fail
 3. Dapr waits for in-flight requests to complete
-4. Dapr closes component connections
+4. Dapr closes component connections (state stores, pub/sub, bindings, etc.)
 5. The sidecar exits
 
 ## Configuring Shutdown Timeout
