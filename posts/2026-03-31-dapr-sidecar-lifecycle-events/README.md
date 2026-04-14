@@ -21,7 +21,7 @@ annotations:
   dapr.io/app-port: "8080"
 ```
 
-The injector also adds an init container that blocks the application container from starting until the Dapr runtime is ready.
+The sidecar runs as a regular container alongside your application in the same pod.
 
 ## Startup Phase
 
@@ -30,7 +30,7 @@ During startup, daprd:
 2. Loads all component definitions from Kubernetes CRDs
 3. Initializes each component (Redis, Kafka, etc.)
 4. Starts its HTTP and gRPC API servers on ports 3500 and 50001
-5. Calls your app's health endpoint (`/healthz`) to confirm the app is ready
+5. Optionally calls your app's health endpoint if app health checks are enabled via `dapr.io/enable-app-health-check: "true"` (the default health check path is `/healthz`)
 
 Only after these steps does daprd report itself as ready.
 
@@ -53,14 +53,13 @@ Kubernetes readiness probes on the sidecar use this endpoint. Until Dapr is read
 
 ## App-to-Dapr Ordering
 
-A common issue is the application starting and immediately trying to call Dapr APIs before daprd has finished loading components. You can configure a grace period:
+A common issue is the application starting and immediately trying to call Dapr APIs before daprd has finished loading components. To avoid this, your application should check the Dapr health endpoint before making API calls:
 
-```yaml
-annotations:
-  dapr.io/sidecar-ready-timeout-seconds: "30"
+```bash
+curl http://localhost:3500/v1.0/healthz
 ```
 
-This tells Dapr to wait up to 30 seconds for your app to become healthy before considering itself ready.
+Dapr SDKs include built-in retry logic that handles this automatically. You can also use Kubernetes native sidecars (available in Kubernetes 1.29+) by setting `dapr.io/sidecar-container: "true"` to ensure the sidecar starts before the application container.
 
 ## Shutdown Phase
 
@@ -76,15 +75,15 @@ You can control the grace period:
 
 ```yaml
 annotations:
-  dapr.io/sidecar-graceful-shutdown-seconds: "5"
+  dapr.io/graceful-shutdown-seconds: "5"
 ```
 
-## Init Container Behavior
+## Sidecar Container Image
 
-The Dapr init container (`dapr-init`) ensures the sidecar binary is present before starting. In air-gapped environments, you may need to pre-pull the init container image.
+The Dapr sidecar runs using the `daprio/daprd` container image. In air-gapped environments, you may need to pre-pull the sidecar image.
 
 ```bash
-docker pull daprio/dapr:1.14.0
+docker pull daprio/daprd:1.14.0
 ```
 
 ## Observing Lifecycle Events in Logs
