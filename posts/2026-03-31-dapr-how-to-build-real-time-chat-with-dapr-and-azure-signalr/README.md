@@ -30,8 +30,8 @@ Chat Server Instance 1    Chat Server Instance 2
 When Browser A sends a message:
 1. The message hits Chat Server Instance 1 via REST
 2. Instance 1 publishes the message to Dapr pub/sub
-3. Both chat server instances receive the event
-4. Each instance calls Azure SignalR to push to connected clients
+3. One chat server instance receives the event (Dapr delivers to one instance in the consumer group)
+4. That instance calls Azure SignalR Service, which pushes the message to all clients in the group
 
 ## Setting Up Azure SignalR Service
 
@@ -62,7 +62,6 @@ echo "SignalR Connection String: $SIGNALR_CONNECTION_STRING"
 ```csharp
 // Program.cs
 using Microsoft.AspNetCore.SignalR;
-using Azure.Messaging.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -149,17 +148,17 @@ public class ChatController : ControllerBase
             Timestamp = DateTime.UtcNow
         };
 
-        // Publish to Dapr pub/sub so ALL server instances receive it
+        // Publish to Dapr pub/sub so one server instance processes it
         await _daprClient.PublishEventAsync(
             "pubsub",
-            $"chat-room-{roomId}",
+            "chat-messages",
             message);
 
         return Accepted(new { messageId = message.Id });
     }
 
     // Dapr pub/sub subscription handler
-    [Topic("pubsub", "chat-room-{roomId}")]
+    [Topic("pubsub", "chat-messages")]
     [HttpPost("internal/room-message")]
     public async Task<IActionResult> HandleRoomMessage([FromBody] ChatMessage message)
     {
@@ -198,8 +197,6 @@ spec:
   metadata:
   - name: redisHost
     value: "redis:6379"
-  - name: consumerID
-    value: "{hostname}"  # Each instance gets a unique consumer ID
 ```
 
 For production, use Azure Service Bus or Azure Event Hubs for better durability:
@@ -319,4 +316,4 @@ EOF
 
 ## Summary
 
-Combining Dapr pub/sub with Azure SignalR Service creates a scalable real-time chat architecture where the WebSocket connection management is fully delegated to the managed SignalR service, and message fanout across server instances is handled by Dapr's pub/sub API. Each chat server instance subscribes to room-specific topics, receives messages from all instances, and pushes them to local SignalR group. This pattern scales horizontally without any sticky sessions or custom connection tracking code.
+Combining Dapr pub/sub with Azure SignalR Service creates a scalable real-time chat architecture where the WebSocket connection management is fully delegated to the managed SignalR service, and message routing across server instances is handled by Dapr's pub/sub API. Each chat server instance subscribes to the chat messages topic, and when an instance receives a message, it pushes it to the correct SignalR group via Azure SignalR Service, which delivers it to all connected clients. This pattern scales horizontally without any sticky sessions or custom connection tracking code.
