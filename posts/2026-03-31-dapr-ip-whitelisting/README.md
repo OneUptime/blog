@@ -8,11 +8,11 @@ Description: Learn how to implement IP whitelisting with Dapr middleware to rest
 
 ---
 
-IP whitelisting restricts service access to requests originating from known, trusted IP addresses. Dapr provides a `middleware.http.routerchecker` component and you can also implement IP filtering through Dapr's allow/deny list middleware, protecting services without touching application code.
+IP whitelisting restricts service access to requests originating from known, trusted IP addresses. Dapr does not include a dedicated IP allowlist middleware, but you can implement IP filtering using the `middleware.http.opa` component with a Rego policy, Kubernetes NetworkPolicies, and application-level checks, protecting services without touching application code.
 
 ## Using the Allow List Middleware
 
-Dapr provides `middleware.http.sentinel` for more advanced traffic control, but the most practical approach for IP filtering is using Dapr's middleware combined with network policies.
+Dapr's `middleware.http.opa` component lets you define Open Policy Agent rules that inspect incoming requests, including headers like `X-Forwarded-For`, to enforce IP-based access control. Combine this with Kubernetes NetworkPolicies for defense-in-depth.
 
 ## IP Allow List Middleware Component
 
@@ -23,11 +23,36 @@ metadata:
   name: ip-allowlist
   namespace: default
 spec:
-  type: middleware.http.ipAllowlist
+  type: middleware.http.opa
   version: v1
   metadata:
-  - name: allowedRanges
-    value: "10.0.0.0/8,192.168.1.0/24,172.16.0.0/12"
+  - name: defaultStatus
+    value: "403"
+  - name: includedHeaders
+    value: "X-Forwarded-For"
+  - name: rego
+    value: |
+      package dapr.http
+
+      default allow = false
+
+      allow {
+        xff := input.request.headers["X-Forwarded-For"]
+        client := trim_space(split(xff, ",")[0])
+        net.cidr_contains("10.0.0.0/8", client)
+      }
+
+      allow {
+        xff := input.request.headers["X-Forwarded-For"]
+        client := trim_space(split(xff, ",")[0])
+        net.cidr_contains("192.168.1.0/24", client)
+      }
+
+      allow {
+        xff := input.request.headers["X-Forwarded-For"]
+        client := trim_space(split(xff, ",")[0])
+        net.cidr_contains("172.16.0.0/12", client)
+      }
 ```
 
 ## Apply via Dapr Configuration
@@ -42,7 +67,7 @@ spec:
   httpPipeline:
     handlers:
     - name: ip-allowlist
-      type: middleware.http.ipAllowlist
+      type: middleware.http.opa
 ```
 
 ## Annotate Protected Services
