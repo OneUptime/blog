@@ -81,11 +81,13 @@ Use the SendGrid output binding to send emails:
 app.post("/notify/order-confirmed", async (req, res) => {
   const { orderId, customerId, email, total } = req.body.data;
 
-  await client.binding.send("sendgrid", "create", {
-    to: email,
-    subject: `Order ${orderId} Confirmed`,
-    html: `<p>Your order for $${total} has been confirmed.</p>`,
-  });
+  await client.binding.send("sendgrid", "create",
+    `<p>Your order for $${total} has been confirmed.</p>`,
+    {
+      emailTo: email,
+      subject: `Order ${orderId} Confirmed`,
+    },
+  );
 
   console.log(`Confirmation email sent for order ${orderId}`);
   res.sendStatus(200);
@@ -98,10 +100,10 @@ app.post("/notify/order-confirmed", async (req, res) => {
 app.post("/notify/order-shipped", async (req, res) => {
   const { orderId, phone, trackingNumber } = req.body.data;
 
-  await client.binding.send("twilio-sms", "create", {
-    toNumber: phone,
-    body: `Your order ${orderId} has shipped! Tracking: ${trackingNumber}`,
-  });
+  await client.binding.send("twilio-sms", "create",
+    `Your order ${orderId} has shipped! Tracking: ${trackingNumber}`,
+    { toNumber: phone },
+  );
 
   res.sendStatus(200);
 });
@@ -117,15 +119,17 @@ app.post("/notify/payment-failed", async (req, res) => {
 
   // Fan out to all channels in parallel
   await Promise.allSettled([
-    client.binding.send("sendgrid", "create", {
-      to: email,
-      subject: "Payment Failed",
-      html: `<p>Your payment of $${amount} for order ${orderId} failed. Please update your payment method.</p>`,
-    }),
-    client.binding.send("twilio-sms", "create", {
-      toNumber: phone,
-      body: `Payment failed for order ${orderId}. Please update your payment details.`,
-    }),
+    client.binding.send("sendgrid", "create",
+      `<p>Your payment of $${amount} for order ${orderId} failed. Please update your payment method.</p>`,
+      {
+        emailTo: email,
+        subject: "Payment Failed",
+      },
+    ),
+    client.binding.send("twilio-sms", "create",
+      `Payment failed for order ${orderId}. Please update your payment details.`,
+      { toNumber: phone },
+    ),
   ]);
 
   res.sendStatus(200);
@@ -146,7 +150,7 @@ async function shouldNotify(customerId, notificationType, cooldownSeconds) {
     {
       key,
       value: true,
-      options: { ttlInSeconds: cooldownSeconds },
+      metadata: { ttlInSeconds: cooldownSeconds.toString() },
     },
   ]);
   return true;
