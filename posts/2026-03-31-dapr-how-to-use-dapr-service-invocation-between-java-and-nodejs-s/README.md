@@ -198,7 +198,7 @@ The Node.js service can also invoke methods on a Java service:
 
 ```javascript
 // Node.js calling Java service via Dapr
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient({
   daprHost: '127.0.0.1',
@@ -209,7 +209,7 @@ async function getShippingQuote(orderId) {
   const result = await client.invoker.invoke(
     'shipping-service',  // Java Spring Boot service
     `shipping/quote/${orderId}`,
-    'GET'
+    HttpMethod.GET
   );
   return result;
 }
@@ -218,7 +218,7 @@ async function requestShipment(payload) {
   const result = await client.invoker.invoke(
     'shipping-service',
     'shipping/create',
-    'POST',
+    HttpMethod.POST,
     payload
   );
   return result;
@@ -237,7 +237,7 @@ services:
 
   inventory-dapr:
     image: daprio/daprd:latest
-    command: ["./daprd", "-app-id", "inventory-service", "-app-port", "3000"]
+    command: ["./daprd", "--app-id", "inventory-service", "--app-port", "3000"]
     network_mode: "service:inventory-service"
 
   order-service:
@@ -249,7 +249,7 @@ services:
 
   order-dapr:
     image: daprio/daprd:latest
-    command: ["./daprd", "-app-id", "order-service", "-app-port", "8080"]
+    command: ["./daprd", "--app-id", "order-service", "--app-port", "8080"]
     network_mode: "service:order-service"
 ```
 
