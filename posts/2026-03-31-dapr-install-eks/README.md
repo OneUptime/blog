@@ -15,8 +15,7 @@ Description: Install Dapr on Amazon EKS using Helm with high-availability mode, 
 aws configure
 
 # Install eksctl
-brew tap weaveworks/tap
-brew install weaveworks/tap/eksctl
+brew install eksctl
 
 # Install Dapr CLI
 wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
@@ -52,7 +51,6 @@ kubectl create namespace dapr-system
 helm install dapr dapr/dapr \
   --namespace dapr-system \
   --set global.ha.enabled=true \
-  --set dapr_placement.replicaCount=3 \
   --wait
 
 dapr status -k
@@ -71,7 +69,7 @@ aws iam create-policy \
     "Statement": [{
       "Effect": "Allow",
       "Action": ["sqs:*"],
-      "Resource": "arn:aws:sqs:us-east-1:123456789:my-queue"
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:my-queue"
     }]
   }'
 
@@ -81,11 +79,11 @@ eksctl create iamserviceaccount \
   --namespace default \
   --cluster dapr-eks \
   --region us-east-1 \
-  --attach-policy-arn arn:aws:iam::123456789:policy/DaprSQSPolicy \
+  --attach-policy-arn arn:aws:iam::123456789012:policy/DaprSQSPolicy \
   --approve
 ```
 
-## Configure Dapr SQS Pub/Sub Component
+## Configure Dapr SNS/SQS Pub/Sub Component
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -94,15 +92,11 @@ metadata:
   name: pubsub
   namespace: default
 spec:
-  type: pubsub.aws.sqs
+  type: pubsub.aws.snssqs
   version: v1
   metadata:
   - name: region
     value: "us-east-1"
-  - name: sqsQueueName
-    value: "my-queue"
-  - name: snsTopicName
-    value: "my-topic"
 ```
 
 ```bash
