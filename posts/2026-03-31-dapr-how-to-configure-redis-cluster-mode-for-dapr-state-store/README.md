@@ -42,8 +42,8 @@ helm upgrade --install redis-cluster bitnami/redis-cluster \
   --set cluster.replicas=1 \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
-  --set auth.enabled=true \
-  --set auth.password=mySecurePassword \
+  --set usePassword=true \
+  --set password=mySecurePassword \
   --wait
 ```
 
@@ -239,7 +239,7 @@ spec:
     - alert: DaprStateStoreHighLatency
       expr: |
         histogram_quantile(0.99,
-          rate(dapr_component_state_query_latencies_bucket[5m])
+          sum(rate(dapr_component_state_latencies_bucket[5m])) by (le)
         ) > 0.5
       for: 5m
       labels:
@@ -248,12 +248,12 @@ spec:
         summary: "Dapr state store p99 latency > 500ms"
     - alert: DaprStateStoreErrors
       expr: |
-        rate(dapr_component_state_query_total{success="false"}[5m]) > 0.1
+        rate(dapr_component_state_count{success="false"}[5m]) > 0.1
       for: 2m
       labels:
         severity: critical
       annotations:
-        summary: "Dapr state store error rate exceeds 10%"
+        summary: "Dapr state store errors > 0.1 per second"
 ```
 
 Monitor Redis Cluster slot rebalancing:
