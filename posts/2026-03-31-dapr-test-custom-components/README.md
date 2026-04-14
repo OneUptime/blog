@@ -62,7 +62,7 @@ func TestInMemoryStore_ETagConsistency(t *testing.T) {
 
 ## Integration Testing with a Real Dapr Sidecar
 
-Use `testcontainers-go` to spin up a Dapr sidecar in tests:
+Spin up a Dapr sidecar alongside the component process and test through the Dapr client:
 
 ```go
 func TestIntegration_StateRoundTrip(t *testing.T) {
@@ -99,23 +99,33 @@ git clone https://github.com/dapr/components-contrib.git
 cd components-contrib
 
 # Run conformance tests against your component
-go test ./tests/conformance/... \
-  -run TestStateStoreConformance \
-  -v \
-  -component-config ./tests/config/mycomponent.json
+# The -tags=conftests build tag is required (test files use //go:build conftests)
+CGO_ENABLED=0 go test -v -tags=conftests -count=1 -timeout=15m \
+  ./tests/conformance \
+  --run="TestStateConformance/custom-state"
 ```
 
-Conformance test config:
+Conformance tests use convention-based configuration. Add your component to the test manifest at `tests/config/state/tests.yml`:
 
-```json
-{
-  "componentName": "custom-state",
-  "componentType": "state",
-  "operations": ["get", "set", "delete", "bulk"],
-  "config": {
-    "socketFolder": "/tmp/test-sockets"
-  }
-}
+```yaml
+componentType: state
+components:
+  - component: custom-state
+    operations: ["transaction", "etag", "first-write"]
+```
+
+Then create a Dapr component YAML at `tests/config/state/custom-state/statestore.yaml`:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.custom-state
+  metadata:
+  - name: socketFolder
+    value: /tmp/test-sockets
 ```
 
 ## Testing Error Cases
