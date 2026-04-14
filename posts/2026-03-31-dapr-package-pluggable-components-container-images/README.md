@@ -18,6 +18,8 @@ Dapr pluggable components are standalone binaries or services that run alongside
 # Build stage
 FROM golang:1.22-alpine AS builder
 
+ARG TARGETARCH
+
 WORKDIR /app
 
 # Copy dependency files first for layer caching
@@ -26,7 +28,7 @@ RUN go mod download
 
 # Copy source and build
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go build -ldflags="-w -s" -o /bin/component .
 
 # Runtime stage - minimal image
