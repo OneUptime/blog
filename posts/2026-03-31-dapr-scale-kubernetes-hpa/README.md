@@ -50,8 +50,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
@@ -67,33 +72,27 @@ spec:
           limits:
             cpu: "1000m"
             memory: "512Mi"
-      - name: daprd
-        # Dapr injects this - set resources in Dapr config
+      # Dapr sidecar is automatically injected - set its resources via annotations
 ```
 
 ## Dapr Sidecar Resource Limits
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
+# Apply sidecar resource limits in deployment pod template annotations
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: dapr-config
+  name: order-service
 spec:
-  # Sidecar resource settings via annotations
-  # dapr.io/sidecar-cpu-request: "100m"
-  # dapr.io/sidecar-memory-request: "128Mi"
-  # dapr.io/sidecar-cpu-limit: "300m"
-  # dapr.io/sidecar-memory-limit: "256Mi"
-```
-
-```yaml
-# Apply sidecar resource limits in deployment annotations
-metadata:
-  annotations:
-    dapr.io/sidecar-cpu-request: "100m"
-    dapr.io/sidecar-memory-request: "128Mi"
-    dapr.io/sidecar-cpu-limit: "300m"
-    dapr.io/sidecar-memory-limit: "256Mi"
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-service"
+        dapr.io/sidecar-cpu-request: "100m"
+        dapr.io/sidecar-memory-request: "128Mi"
+        dapr.io/sidecar-cpu-limit: "300m"
+        dapr.io/sidecar-memory-limit: "256Mi"
 ```
 
 ## Custom Metrics HPA with Dapr Prometheus Metrics
@@ -107,7 +106,7 @@ helm install prometheus-adapter prometheus-community/prometheus-adapter \
 ```
 
 ```yaml
-# prometheus-adapter config for Dapr service invocation latency
+# prometheus-adapter config for Dapr service invocation request rate
 rules:
   custom:
   - seriesQuery: 'dapr_service_invocation_req_sent_total{namespace!="",pod!=""}'
