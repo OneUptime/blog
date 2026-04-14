@@ -32,7 +32,7 @@ spec:
     value: "false"
   - name: reconnectWait
     value: "0"
-  - name: concurrency
+  - name: concurrencyMode
     value: "parallel"
   - name: prefetchCount
     value: "10"
@@ -45,9 +45,7 @@ spec:
 Dapr maps each pub/sub topic to a RabbitMQ exchange. The exchange kind affects routing:
 
 - `fanout` - All bound queues receive every message (default Dapr behavior)
-- `direct` - Route by exact routing key
 - `topic` - Route by pattern-matched routing key
-- `headers` - Route by message header attributes
 
 For most Dapr use cases, `fanout` is correct since Dapr manages the consumer group (queue) binding.
 
@@ -98,8 +96,8 @@ rabbitmqadmin declare queue \
 Enable dead-letter configuration in the Dapr component:
 
 ```yaml
-  - name: deadLetterExchange
-    value: "orders-dlx"
+  - name: enableDeadLetter
+    value: "true"
   - name: maxLen
     value: "10000"
 ```
@@ -113,11 +111,9 @@ Configure acknowledgment and prefetch for reliable processing:
     value: "false"     # Manual ack - don't lose messages on consumer crash
   - name: prefetchCount
     value: "5"         # Fetch 5 messages per consumer before waiting for acks
-  - name: ackWaitTime
-    value: "30s"       # Time to process before nack
 ```
 
-With manual ack, messages are only removed from the queue after the Dapr subscriber returns HTTP 200. A 404 or 500 causes a nack, re-queuing the message.
+With manual ack, messages are only removed from the queue after the Dapr subscriber returns a successful response. The subscriber can return a JSON body with a `status` field: `SUCCESS` (ack), `RETRY` (nack and requeue), or `DROP` (ack and discard). A non-2xx response triggers a retry, except for HTTP 404, which causes the message to be dropped.
 
 ## Monitoring RabbitMQ Metrics
 
