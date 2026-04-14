@@ -194,10 +194,13 @@ The incoming bulk message structure:
 
 ```json
 {
+  "topic": "orders",
+  "metadata": {},
   "entries": [
     {
       "entryId": "unique-entry-id-1",
       "event": {
+        "specversion": "1.0",
         "id": "cloud-event-id-1",
         "source": "publisher-service",
         "type": "com.dapr.event.sent",
@@ -212,6 +215,7 @@ The incoming bulk message structure:
     {
       "entryId": "unique-entry-id-2",
       "event": {
+        "specversion": "1.0",
         "id": "cloud-event-id-2",
         "source": "publisher-service",
         "type": "com.dapr.event.sent",
@@ -246,7 +250,12 @@ Your handler must return per-message statuses:
 }
 ```
 
-This allows partial batch success - some messages succeed while others are retried.
+Valid status values:
+- `SUCCESS`: Message processed successfully
+- `RETRY`: Message will be redelivered by Dapr
+- `DROP`: Message is discarded (a warning is logged, but the message will not be retried)
+
+This allows partial batch success - some messages succeed, others are retried, and poison messages can be dropped.
 
 ## When to Use Bulk Subscribe
 
