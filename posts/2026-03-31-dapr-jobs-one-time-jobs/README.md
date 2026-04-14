@@ -41,7 +41,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/welcome-followup-user123 \
 "30s"      # 30 seconds from now
 "5m"       # 5 minutes from now
 "2h"       # 2 hours from now
-"7d"       # 7 days from now (note: "d" may not be supported, use "168h")
+# "7d" is NOT valid — Go durations do not support "d"; use "168h" for 7 days
 
 # RFC3339 timestamps (absolute time)
 "2026-04-15T09:00:00Z"    # Specific UTC time
@@ -52,6 +52,9 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/welcome-followup-user123 \
 
 ```python
 from dapr.clients import DaprClient
+from dapr.clients.grpc._jobs import Job
+from google.protobuf.any_pb2 import Any as ProtobufAny
+from google.protobuf.wrappers_pb2 import StringValue
 from datetime import datetime, timedelta, timezone
 import json, base64
 
@@ -60,14 +63,12 @@ def schedule_one_time_job(name: str, due_time: str, data: dict):
     with DaprClient() as d:
         encoded = base64.b64encode(json.dumps(data).encode()).decode()
 
-        d.schedule_job(
-            name=name,
-            due_time=due_time,
-            data={
-                "@type": "type.googleapis.com/google.protobuf.StringValue",
-                "value": encoded
-            }
-        )
+        string_val = StringValue(value=encoded)
+        any_data = ProtobufAny()
+        any_data.Pack(string_val)
+
+        job = Job(name=name, due_time=due_time, data=any_data)
+        d.schedule_job_alpha1(job)
         print(f"One-time job scheduled: '{name}' | due: {due_time}")
 
 # Follow-up email 24 hours after signup
@@ -111,7 +112,6 @@ import (
     "context"
     "encoding/json"
     "log"
-    "time"
     dapr "github.com/dapr/go-sdk/client"
     "google.golang.org/protobuf/types/known/anypb"
 )
@@ -124,7 +124,7 @@ func scheduleOneTimeJob(name, dueTime string, data map[string]any) error {
 
     return client.ScheduleJobAlpha1(context.Background(), &dapr.Job{
         Name:    name,
-        DueTime: dueTime,
+        DueTime: &dueTime,
         Data:    &anypb.Any{Value: jobData},
     })
 }
@@ -202,7 +202,7 @@ curl -X DELETE http://localhost:3500/v1.0-alpha1/jobs/welcome-followup-user123
 def cancel_followup(user_id: str):
     """Cancel the followup email if user opts out."""
     with DaprClient() as d:
-        d.delete_job(name=f"welcome-followup-{user_id}")
+        d.delete_job_alpha1(name=f"welcome-followup-{user_id}")
     print(f"Cancelled followup for user {user_id}")
 ```
 
