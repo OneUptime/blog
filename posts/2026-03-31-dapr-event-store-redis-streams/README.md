@@ -33,10 +33,8 @@ spec:
       value: "redis:6379"
     - name: processingTimeout
       value: "60s"
-    - name: redeliveryDelay
-      value: "2000"
-    - name: maxRetries
-      value: "3"
+    - name: redeliverInterval
+      value: "2s"
 ```
 
 ## Publishing Events to a Stream
@@ -139,14 +137,30 @@ redis-cli XRANGE orders-stream 1711900000000-0 + COUNT 50
 
 ## Dead Letter Topics
 
-Configure a dead letter topic for events that fail processing after max retries:
+Configure a dead letter topic for events that fail processing. Dead letter topics are set at the subscription level, not the component level. In a declarative subscription:
 
 ```yaml
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
 metadata:
-  - name: maxRetries
-    value: "3"
-  - name: deadLetterTopic
-    value: "orders-dead-letter"
+  name: order-events
+spec:
+  topic: OrderCreated
+  routes:
+    default: /events/order-created
+  pubsubname: event-stream
+  deadLetterTopic: orders-dead-letter
+```
+
+Or programmatically when defining a subscription in Go:
+
+```go
+s.AddTopicEventHandler(&common.Subscription{
+    PubsubName:      "event-stream",
+    Topic:           "OrderCreated",
+    Route:           "/events/order-created",
+    DeadLetterTopic: "orders-dead-letter",
+}, handleOrderCreated)
 ```
 
 ## Summary
