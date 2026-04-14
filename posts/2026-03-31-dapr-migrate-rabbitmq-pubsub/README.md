@@ -69,7 +69,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: "amqp://localhost:5672"
   - name: durable
     value: "true"
@@ -79,7 +79,7 @@ spec:
     value: "false"
   - name: reconnectWait
     value: "0"
-  - name: concurrency
+  - name: concurrencyMode
     value: "parallel"
 ```
 
@@ -116,12 +116,12 @@ app.get('/dapr/subscribe', (req, res) => {
 });
 
 app.post('/order-created', async (req, res) => {
-  const order = req.body;
+  const order = req.body.data;
   await processOrder(order);
   res.sendStatus(200);
 });
 
-app.listen(3000, () => console.log('Subscriber running on port 3000'));
+app.listen(3001, () => console.log('Subscriber running on port 3001'));
 ```
 
 ## Content-Type for Structured Events
@@ -144,7 +144,7 @@ dapr run \
   --app-id order-publisher \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node publisher.js
 ```
 
@@ -153,7 +153,7 @@ dapr run \
   --app-id order-subscriber \
   --app-port 3001 \
   --dapr-http-port 3501 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node subscriber.js
 ```
 
