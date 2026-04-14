@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CLI, Upgrade, Kubernetes, Version Management
 
-Description: Learn how to use the dapr upgrade command to upgrade the Dapr runtime on Kubernetes or in self-hosted mode to a newer version.
+Description: Learn how to use the dapr upgrade command to upgrade the Dapr control plane on Kubernetes to a newer version.
 
 ---
 
 ## Overview
 
-The `dapr upgrade` command upgrades the Dapr control plane components on a Kubernetes cluster or the Dapr runtime binaries in self-hosted mode. It performs a rolling upgrade of all control plane pods while preserving your component and configuration resources.
+The `dapr upgrade` command upgrades the Dapr control plane components on a Kubernetes cluster. It uses Helm under the hood to upgrade the control plane pods while preserving your component and configuration resources. Note that `dapr upgrade` is Kubernetes-only; for self-hosted upgrades, use `dapr uninstall --all` followed by installing the new CLI and running `dapr init`.
 
 ## Upgrading Dapr on Kubernetes
 
@@ -26,21 +26,33 @@ Upgrade to a specific version:
 dapr upgrade --kubernetes --runtime-version 1.14.0
 ```
 
-## Waiting for the Upgrade to Complete
+## Setting a Timeout for the Upgrade
 
-Use `--wait` to block until all pods are running the new version:
+Use `--timeout` to control how long the CLI waits for the upgrade to complete (default is 300 seconds):
 
 ```bash
-dapr upgrade --kubernetes --runtime-version 1.14.0 --wait --timeout 300
+dapr upgrade --kubernetes --runtime-version 1.14.0 --timeout 600
 ```
 
 ## Upgrading in Self-Hosted Mode
 
+The `dapr upgrade` command does not support self-hosted mode. To upgrade a self-hosted Dapr installation:
+
+1. Uninstall the current version:
+
 ```bash
-dapr upgrade --runtime-version 1.14.0
+dapr uninstall --all
 ```
 
-This downloads and replaces the Dapr sidecar binary. Restart your applications to pick up the new version.
+2. Download and install the new Dapr CLI version from https://github.com/dapr/cli/releases
+
+3. Re-initialize Dapr:
+
+```bash
+dapr init --runtime-version 1.14.0
+```
+
+Restart your applications to pick up the new version.
 
 ## Pre-Upgrade Checklist
 
@@ -70,8 +82,7 @@ For air-gapped environments:
 ```bash
 dapr upgrade --kubernetes \
              --runtime-version 1.14.0 \
-             --image-registry myregistry.example.com/dapr \
-             --wait
+             --image-registry myregistry.example.com/dapr
 ```
 
 ## Verifying the Upgrade
@@ -85,11 +96,11 @@ dapr status --kubernetes
 Expected output:
 
 ```text
-  NAME                   NAMESPACE    HEALTHY  STATUS    VERSION
-  dapr-operator          dapr-system  True     Running   1.14.0
-  dapr-placement-server  dapr-system  True     Running   1.14.0
-  dapr-sentry            dapr-system  True     Running   1.14.0
-  dapr-sidecar-injector  dapr-system  True     Running   1.14.0
+  NAME                   NAMESPACE    HEALTHY  STATUS   REPLICAS  VERSION  AGE  CREATED
+  dapr-operator          dapr-system  True     Running  1         1.14.0   1m   2024-01-01 00:00.00
+  dapr-placement-server  dapr-system  True     Running  1         1.14.0   1m   2024-01-01 00:00.00
+  dapr-sentry            dapr-system  True     Running  1         1.14.0   1m   2024-01-01 00:00.00
+  dapr-sidecar-injector  dapr-system  True     Running  1         1.14.0   1m   2024-01-01 00:00.00
 ```
 
 ## Rolling Back if Needed
@@ -97,9 +108,9 @@ Expected output:
 If the upgrade causes issues, downgrade by specifying the previous version:
 
 ```bash
-dapr upgrade --kubernetes --runtime-version 1.13.0 --wait
+dapr upgrade --kubernetes --runtime-version 1.13.0
 ```
 
 ## Summary
 
-`dapr upgrade` handles the complexity of upgrading the Dapr control plane with a single command. Always use `--wait` in automated pipelines to prevent workloads from starting before the control plane is ready. Test upgrades in staging first and keep the previous version number handy for quick rollbacks.
+`dapr upgrade` handles the complexity of upgrading the Dapr control plane on Kubernetes with a single command. Use `--timeout` to control how long the CLI waits for the upgrade to complete in automated pipelines. Test upgrades in staging first and keep the previous version number handy for quick rollbacks.
