@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Tracing, Splunk, OpenTelemetry, Observability
 
-Description: Configure Dapr to send distributed traces to Splunk Observability Cloud using the OpenTelemetry Collector with Splunk HEC or OTLP SAPM exporter.
+Description: Configure Dapr to send distributed traces to Splunk Observability Cloud using the OpenTelemetry Collector with the SAPM or OTLP/HTTP exporter.
 
 ---
 
@@ -38,7 +38,7 @@ data:
       batch:
         timeout: 5s
       resourcedetection:
-        detectors: [k8snode, k8sattributes]
+        detectors: [env, k8snode]
       attributes:
         actions:
           - key: deployment.environment
@@ -102,7 +102,7 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "order-service"
   dapr.io/config: "dapr-splunk-tracing"
-  dapr.io/sidecar-env-vars: "OTEL_RESOURCE_ATTRIBUTES=service.name=order-service,deployment.environment=production"
+  dapr.io/env: "OTEL_RESOURCE_ATTRIBUTES=service.name=order-service,deployment.environment=production"
 ```
 
 ## Kubernetes Enrichment
@@ -129,10 +129,10 @@ This adds pod-level context to every Dapr span in Splunk APM.
 Navigate to Splunk Observability > APM > Service Map. Your Dapr services appear as nodes with edges representing service-to-service calls. Filter by `deployment.environment` tag to separate prod from staging traces.
 
 ```bash
-# Verify traces are flowing
+# Verify traces are flowing using the Splunk Observability APM API
 curl -X GET \
-  "https://api.YOUR_REALM.signalfx.com/v2/trace?service=order-service&limit=5" \
-  -H "X-SF-Token: YOUR_ACCESS_TOKEN" | jq '.traces | length'
+  "https://api.YOUR_REALM.signalfx.com/v2/apm/trace/TRACE_ID/latest" \
+  -H "X-SF-Token: YOUR_ACCESS_TOKEN" | jq '.spans | length'
 ```
 
 ## Summary
