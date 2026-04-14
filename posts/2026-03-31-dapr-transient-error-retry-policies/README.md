@@ -31,7 +31,7 @@ spec:
         maxRetries: 5
         matching:
           httpStatusCodes: "408,429,500,502,503,504"
-          gRPCStatusCodes: "UNAVAILABLE,DEADLINE_EXCEEDED"
+          gRPCStatusCodes: "4,14"
     timeouts:
       generalTimeout: 10s
   targets:
@@ -79,8 +79,6 @@ policies:
 
     exponentialRetry:
       policy: exponential
-      initialInterval: 500ms
-      multiplier: 2
       maxInterval: 60s
       maxRetries: 10
 ```
