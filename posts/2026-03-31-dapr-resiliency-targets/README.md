@@ -116,15 +116,15 @@ spec:
         trip: consecutiveFailures >= 5
   targets:
     apps:
-      default:
-        timeout: standardTimeout
-        retry: defaultRetry
       payment-service:
         timeout: quickTimeout
         retry: fastRetry
         circuitBreaker: serviceCB
+      inventory-service:
+        timeout: standardTimeout
+        retry: defaultRetry
     components:
-      default:
+      my-state-store:
         outbound:
           timeout: standardTimeout
           retry: defaultRetry
@@ -150,4 +150,4 @@ targets:
 
 ## Summary
 
-Dapr resiliency targets provide the mapping layer between named policies and the specific services, components, and actors they protect. Using `default` targets as a baseline and specific named targets for critical services gives you a two-tier approach: sensible defaults for everything and fine-tuned control where it matters most.
+Dapr resiliency targets provide the mapping layer between named policies and the specific services, components, and actors they protect. By listing each app, component, and actor target explicitly and assigning only the policies they need, you get fine-tuned control over resiliency behavior across your entire system.
