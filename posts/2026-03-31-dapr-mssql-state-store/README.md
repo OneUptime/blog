@@ -82,8 +82,8 @@ spec:
     value: ""
   - name: schema
     value: "dbo"
-  - name: cleanupInterval
-    value: "1h"
+  - name: cleanupIntervalInSeconds
+    value: "3600"
 ```
 
 Apply the component:
@@ -131,9 +131,9 @@ kubectl create secret generic mssql-secret \
 ```sql
 -- View all state entries
 SELECT TOP 10 [Key], CAST([Data] AS NVARCHAR(MAX)) AS Value,
-  [UpdateTime], [ETag]
+  [UpdateDate], [RowVersion]
 FROM dbo.DaprState
-ORDER BY UpdateTime DESC;
+ORDER BY [UpdateDate] DESC;
 ```
 
 ## Summary
