@@ -131,7 +131,7 @@ az monitor metrics list \
 
 ## Use Autoscale for Provisioned Throughput
 
-If you use provisioned throughput, enable autoscale to scale between 10-100x of the minimum RU/s automatically:
+If you use provisioned throughput, enable autoscale to automatically scale between 10% and 100% of the configured max RU/s:
 
 ```bash
 az cosmosdb sql database throughput update \
