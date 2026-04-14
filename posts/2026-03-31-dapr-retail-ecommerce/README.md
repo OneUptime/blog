@@ -27,7 +27,7 @@ Cart data is per-user, session-like data that benefits from Dapr's distributed s
 
 ```typescript
 // cart-service/src/routes/cart.ts
-import { DaprClient } from '@dapr/dapr';
+import { DaprClient, HttpMethod } from '@dapr/dapr';
 import express from 'express';
 
 const router = express.Router();
@@ -51,7 +51,7 @@ router.post('/:userId/items', async (req, res) => {
 
   // Get current product price via service invocation
   const product = await daprClient.invoker.invoke(
-    'product-service', `products/${productId}`, 'GET'
+    'product-service', `products/${productId}`, HttpMethod.GET
   );
 
   const cart = await daprClient.state.get('cart-statestore', `cart:${userId}`)
@@ -85,10 +85,12 @@ export default router;
 
 ```python
 # order_service/workflows/checkout_workflow.py
-import dapr.ext.workflow as wf
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext
 
-@wf.workflow
-def checkout_workflow(ctx, checkout: dict):
+wfr = WorkflowRuntime()
+
+@wfr.workflow(name='checkout_workflow')
+def checkout_workflow(ctx: DaprWorkflowContext, checkout: dict):
     # Validate and reserve inventory
     reservation = yield ctx.call_activity(reserve_inventory, input=checkout)
     if not reservation['success']:
@@ -177,7 +179,7 @@ def refresh_promotions():
     """Called by Dapr cron binding every 6 hours"""
     with DaprClient() as client:
         promotions = client.invoke_method(
-            "pricing-service", "promotions/active", "GET"
+            "pricing-service", "promotions/active", http_verb="GET"
         )
         client.save_state("product-statestore", "active-promotions",
                           promotions.data.decode())
