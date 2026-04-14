@@ -73,16 +73,14 @@ When installing Dapr with Helm, configure Scheduler storage:
 helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
   --set dapr_scheduler.cluster.storageSize=5Gi \
-  --set dapr_scheduler.cluster.storageClassName=fast-ssd \
-  --set dapr_scheduler.replicaCount=3
+  --set dapr_scheduler.cluster.storageClassName=fast-ssd
 ```
 
-For high availability, use at least 3 replicas:
+The Scheduler always runs with 3 replicas in Kubernetes (this is not configurable via Helm). Customize storage and resources:
 
 ```yaml
 # values.yaml
 dapr_scheduler:
-  replicaCount: 3
   cluster:
     storageSize: 5Gi
     storageClassName: "standard"
@@ -114,7 +112,6 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/persistence-test \
   -d '{
     "schedule": "@every 1h",
     "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
       "value": "test"
     }
   }'
@@ -132,7 +129,7 @@ curl http://localhost:3500/v1.0-alpha1/jobs/persistence-test
 Check Scheduler logs for etcd and job persistence issues:
 
 ```bash
-kubectl logs -n dapr-system -l app=dapr-scheduler --tail=50
+kubectl logs -n dapr-system -l app=dapr-scheduler-server --tail=50
 ```
 
 Look for lines like:
