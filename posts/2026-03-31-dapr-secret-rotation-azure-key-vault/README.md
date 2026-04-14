@@ -79,7 +79,7 @@ Set up a rotation policy in Azure Key Vault to automatically rotate secrets:
 
 ```bash
 # Set a rotation policy for a secret (rotates 30 days before expiry)
-az keyvault secret set-rotation-policy \
+az keyvault secret rotation-policy update \
   --vault-name mycompany-vault \
   --name db-password \
   --value '{
@@ -141,7 +141,7 @@ az eventgrid event-subscription create \
   --name secret-rotation-sub \
   --source-resource-id /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/mycompany-vault \
   --endpoint https://myapp.example.com/rotation-webhook \
-  --event-delivery-schema CloudEventSchemaV1_0 \
+  --event-delivery-schema EventGridSchema \
   --included-event-types Microsoft.KeyVault.SecretNewVersionCreated
 ```
 
