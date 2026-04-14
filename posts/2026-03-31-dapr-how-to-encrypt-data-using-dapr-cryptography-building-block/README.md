@@ -20,24 +20,18 @@ The Dapr Cryptography building block provides encryption and decryption capabili
 
 ## Define a Local Key Store for Development
 
-For local development, use a JSON-based key store:
+For local development, place key files in a directory that the component reads from. The filename becomes the key name used in API calls:
 
 ```bash
-# Create the key configuration file
+# Create the key directory and generate key files
 mkdir -p ~/.dapr/certs
-cat > ~/.dapr/certs/local-keys.json << 'EOF'
-{
-  "version": "1",
-  "keys": [
-    {
-      "name": "mykey",
-      "type": "AES-CBC",
-      "size": 256,
-      "key": "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY="
-    }
-  ]
-}
-EOF
+
+# Generate a 256-bit symmetric key file (filename is the key name)
+openssl rand 32 > ~/.dapr/certs/mykey
+
+# Or generate an RSA private key for asymmetric encryption
+openssl genpkey -algorithm RSA -out ~/.dapr/certs/rsa-private-key.pem \
+  -pkeyopt rsa_keygen_bits:4096
 ```
 
 Define the cryptography component:
@@ -106,24 +100,26 @@ curl -X PUT \
 ## Use in a Node.js Application
 
 ```javascript
-const { DaprClient, CryptoClient } = require('@dapr/dapr');
+const { DaprClient, CommunicationProtocolEnum } = require('@dapr/dapr');
 const { Buffer } = require('buffer');
 
-const client = new DaprClient();
+// Crypto operations require gRPC; they are not available over HTTP
+const client = new DaprClient({
+  daprHost: '127.0.0.1',
+  daprPort: '50001',
+  communicationProtocol: CommunicationProtocolEnum.GRPC,
+});
 const CRYPTO_COMPONENT = 'local-crypto';
 const KEY_NAME = 'mykey';
 
 async function encryptData(plaintext) {
   const plaintextBuffer = Buffer.from(plaintext, 'utf8');
 
-  const encrypted = await client.crypto.encrypt(
-    CRYPTO_COMPONENT,
-    plaintextBuffer,
-    {
-      keyName: KEY_NAME,
-      keyWrapAlgorithm: 'A256KW',
-    }
-  );
+  const encrypted = await client.crypto.encrypt(plaintextBuffer, {
+    componentName: CRYPTO_COMPONENT,
+    keyName: KEY_NAME,
+    keyWrapAlgorithm: 'AES',
+  });
 
   return encrypted.toString('base64');
 }
@@ -131,10 +127,9 @@ async function encryptData(plaintext) {
 async function decryptData(encryptedBase64) {
   const encryptedBuffer = Buffer.from(encryptedBase64, 'base64');
 
-  const decrypted = await client.crypto.decrypt(
-    CRYPTO_COMPONENT,
-    encryptedBuffer
-  );
+  const decrypted = await client.crypto.decrypt(encryptedBuffer, {
+    componentName: CRYPTO_COMPONENT,
+  });
 
   return decrypted.toString('utf8');
 }
@@ -164,6 +159,7 @@ async function getUserSSN(userId) {
 
 ```python
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 import base64
 
 CRYPTO_COMPONENT = 'local-crypto'
@@ -172,23 +168,28 @@ KEY_NAME = 'mykey'
 def encrypt_data(plaintext: str) -> str:
     with DaprClient() as client:
         plaintext_bytes = plaintext.encode('utf-8')
-        encrypted = client.encrypt(
+        resp = client.encrypt(
             data=plaintext_bytes,
-            options={
-                'componentName': CRYPTO_COMPONENT,
-                'keyName': KEY_NAME,
-                'keyWrapAlgorithm': 'A256KW',
-            }
+            options=EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=KEY_NAME,
+                key_wrap_algorithm='AES',
+            ),
         )
+        encrypted = resp.read()
         return base64.b64encode(encrypted).decode('utf-8')
 
 def decrypt_data(encrypted_b64: str) -> str:
     with DaprClient() as client:
         encrypted_bytes = base64.b64decode(encrypted_b64)
-        decrypted = client.decrypt(
+        resp = client.decrypt(
             data=encrypted_bytes,
-            options={'componentName': CRYPTO_COMPONENT}
+            options=DecryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=KEY_NAME,
+            ),
         )
+        decrypted = resp.read()
         return decrypted.decode('utf-8')
 
 # Encrypt credit card number before storage
@@ -201,13 +202,14 @@ def store_payment_method(user_id: str, card_number: str):
 ## Supported Algorithms
 
 ```text
-Encryption:
-  AES-CBC        - symmetric, fast for large data
-  AES-GCM        - symmetric with authentication
-  ChaCha20-Poly1305 - modern symmetric cipher
+Data Encryption Ciphers:
+  aes-gcm            - symmetric with authentication (default)
+  chacha20-poly1305  - modern symmetric cipher
 
-Key Wrapping:
+Key Wrapping Algorithms:
   A256KW         - AES key wrap, 256-bit key
+  A128CBC        - AES 128-bit CBC key wrap
+  A192CBC        - AES 192-bit CBC key wrap
   RSA-OAEP-256   - asymmetric key wrapping with SHA-256
 
 Signing (available in some providers):
