@@ -42,7 +42,7 @@ public class FirmwareUpdateActor : Actor, IFirmwareUpdateActor
     }
 
     public async Task<UpdateState> GetStatusAsync()
-        => await StateManager.GetOrCreateStateAsync("update", new UpdateState());
+        => await StateManager.GetOrAddStateAsync("update", new UpdateState());
 }
 ```
 
@@ -50,6 +50,7 @@ public class FirmwareUpdateActor : Actor, IFirmwareUpdateActor
 
 ```python
 import dapr.ext.workflow as wf
+import requests
 
 def firmware_rollout_workflow(ctx: wf.DaprWorkflowContext, input: dict):
     devices = yield ctx.call_activity(get_target_devices, input=input)
@@ -76,7 +77,6 @@ def firmware_rollout_workflow(ctx: wf.DaprWorkflowContext, input: dict):
 
 
 def get_target_devices(ctx, input: dict) -> list:
-    import requests
     resp = requests.get(f"http://localhost:3500/v1.0/state/device-store/fleet-{input['group']}")
     return resp.json()
 
@@ -85,7 +85,7 @@ def push_firmware_batch(ctx, input: dict) -> dict:
     failures = 0
     for device_id in input["devices"]:
         resp = requests.post(
-            f"http://localhost:3500/v1.0/actors/FirmwareUpdateActor/{device_id}/method/StartUpdate",
+            f"http://localhost:3500/v1.0/actors/FirmwareUpdateActor/{device_id}/method/StartUpdateAsync",
             json={"version": input["version"], "url": f"https://firmware.example.com/{input['version']}.bin"}
         )
         if resp.status_code != 200:
@@ -102,13 +102,13 @@ DEVICE_ID=$(hostname)
 DAPR_SIDECAR="http://localhost:3500"
 
 while true; do
-  STATUS=$(curl -s "$DAPR_SIDECAR/v1.0/actors/FirmwareUpdateActor/$DEVICE_ID/method/GetStatus" | jq -r '.status')
+  STATUS=$(curl -s "$DAPR_SIDECAR/v1.0/actors/FirmwareUpdateActor/$DEVICE_ID/method/GetStatusAsync" | jq -r '.status')
 
   if [ "$STATUS" == "pending" ]; then
-    URL=$(curl -s "$DAPR_SIDECAR/v1.0/actors/FirmwareUpdateActor/$DEVICE_ID/method/GetStatus" | jq -r '.firmwareUrl')
+    URL=$(curl -s "$DAPR_SIDECAR/v1.0/actors/FirmwareUpdateActor/$DEVICE_ID/method/GetStatusAsync" | jq -r '.firmwareUrl')
     wget -O /tmp/firmware.bin "$URL"
     flash_firmware /tmp/firmware.bin && \
-      curl -s -X POST "$DAPR_SIDECAR/v1.0/actors/FirmwareUpdateActor/$DEVICE_ID/method/ReportProgress" \
+      curl -s -X POST "$DAPR_SIDECAR/v1.0/actors/FirmwareUpdateActor/$DEVICE_ID/method/ReportProgressAsync" \
         -H "Content-Type: application/json" \
         -d '{"status":"complete","progressPercent":100}'
   fi
@@ -121,7 +121,7 @@ done
 
 ```bash
 # Check workflow instance status
-curl http://localhost:3500/v1.0/workflows/dapr/firmware-rollout-wf/instances/rollout-v2-1-0
+curl http://localhost:3500/v1.0/workflows/dapr/rollout-v2-1-0
 
 # Check a specific device actor state
 curl http://localhost:3500/v1.0/actors/FirmwareUpdateActor/sensor-42/state/update
