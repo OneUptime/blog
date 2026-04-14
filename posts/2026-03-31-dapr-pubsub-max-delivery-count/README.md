@@ -222,8 +222,7 @@ curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
   -H "Content-Type: application/json" \
   -d '{"orderId": "fail-123", "item": "broken-item"}'
 
-# Observe retries in sidecar logs
-dapr logs --app-id order-processor
+# Observe retries in the dapr run terminal output above
 ```
 
 ## Summary
