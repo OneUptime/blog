@@ -18,6 +18,7 @@ Create a Kubernetes secret with your connection strings:
 kubectl create secret generic connection-strings \
   --from-literal=postgres-url="postgresql://appuser:s3cr3t@postgres:5432/mydb?sslmode=require" \
   --from-literal=redis-url="redis://:redispassword@redis:6379/0" \
+  --from-literal=redis-password="redispassword" \
   --from-literal=rabbitmq-url="amqp://user:pass@rabbitmq:5672/vhost" \
   -n production
 ```
@@ -121,7 +122,7 @@ curl -s http://localhost:3500/v1.0/secrets/app-secrets/connection-strings | jq '
 Expected output shows the available keys:
 
 ```json
-["postgres-url", "rabbitmq-url", "redis-url"]
+["postgres-url", "rabbitmq-url", "redis-password", "redis-url"]
 ```
 
 ## Summary
