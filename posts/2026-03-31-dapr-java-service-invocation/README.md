@@ -39,7 +39,7 @@ public class InvokeExample {
 ## Invoking with a Typed Response
 
 ```java
-import io.dapr.client.domain.TypeRef;
+import io.dapr.utils.TypeRef;
 
 Product product = client.invokeMethod(
     "catalog-service",
@@ -97,9 +97,9 @@ public class ProductController {
 ```java
 import io.dapr.client.domain.InvokeMethodRequest;
 
-Map<String, String[]> headers = Map.of(
-    "x-correlation-id", new String[]{"corr-abc-123"},
-    "x-tenant-id",      new String[]{"tenant-42"});
+Map<String, String> headers = Map.of(
+    "x-correlation-id", "corr-abc-123",
+    "x-tenant-id",      "tenant-42");
 
 InvokeMethodRequest req = new InvokeMethodRequest("order-service", "orders")
     .setHttpExtension(HttpExtension.POST)
@@ -117,8 +117,8 @@ try {
         "catalog-service", "products/missing",
         null, HttpExtension.GET, new TypeRef<Product>() {}).block();
 } catch (io.dapr.exceptions.DaprException ex) {
-    System.err.println("Status: " + ex.getStatusCode());
-    System.err.println("Message: " + ex.getStatusMessage());
+    System.err.println("Status: " + ex.getHttpStatusCode());
+    System.err.println("Message: " + ex.getMessage());
 }
 ```
 
