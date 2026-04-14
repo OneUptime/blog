@@ -10,7 +10,7 @@ Description: Learn how to configure Dapr's in-memory state store for fast local 
 
 ## Overview
 
-Dapr's in-memory state store is the simplest possible state backend - it stores all state in the application's memory with no external dependencies. This makes it ideal for local development, unit testing, and quick prototyping. Because state is stored in-process, it does not survive restarts and cannot be shared across multiple instances.
+Dapr's in-memory state store is the simplest possible state backend - it stores all state in the Dapr sidecar's memory with no external dependencies. This makes it ideal for local development, unit testing, and quick prototyping. Because state is stored in the sidecar process, it does not survive restarts and cannot be shared across multiple instances.
 
 ## When to Use the In-Memory State Store
 
