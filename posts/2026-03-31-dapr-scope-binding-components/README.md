@@ -16,7 +16,7 @@ Component scoping lets you explicitly define which application IDs can use which
 
 ## How Component Scoping Works
 
-Dapr uses the `scopes` field in the component spec to restrict access. You list the app IDs that are allowed to use the component. All other apps in the same namespace will be denied access.
+Dapr uses the `scopes` field in the component YAML to restrict access. You list the app IDs that are allowed to use the component. All other apps in the same namespace will be denied access.
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -92,10 +92,10 @@ Start two apps with different IDs and verify that only the scoped app can use th
 
 ```bash
 # Start the allowed app
-dapr run --app-id payment-service --app-port 3001 --components-path ./components node payment.js
+dapr run --app-id payment-service --app-port 3001 --resources-path ./components node payment.js
 
 # Start a different app - should be denied
-dapr run --app-id rogue-service --app-port 3002 --components-path ./components node rogue.js
+dapr run --app-id rogue-service --app-port 3002 --resources-path ./components node rogue.js
 ```
 
 From `rogue-service`:
@@ -104,7 +104,7 @@ From `rogue-service`:
 curl -X POST http://localhost:3500/v1.0/bindings/payment-gateway \
   -H "Content-Type: application/json" \
   -d '{"operation": "post", "data": {}}'
-# Returns: 403 Forbidden or component not found error
+# Returns: component not found error (the binding is not loaded for this app)
 ```
 
 ## Dynamic Scoping with Multiple Environments
@@ -121,9 +121,9 @@ components/
     payment-gateway.yaml    # scopes: [] (all apps, for developer access)
 ```
 
-## Combining Scopes with Namespace-Level Auth Policies
+## Combining Scopes with Service Invocation Access Control
 
-For Kubernetes deployments, combine scoping with Dapr's access control lists for a complete security model:
+For Kubernetes deployments, combine component scoping with Dapr's service invocation access control policies for a complete security model. Note that access control policies in a Dapr Configuration resource govern **service-to-service invocation** (the invoke API), not component access. Component access is controlled solely by the `scopes` field on the Component YAML.
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -136,6 +136,7 @@ spec:
     policies:
       - appId: payment-service
         defaultAction: allow
+        namespace: "production"
 ```
 
 ## Summary
