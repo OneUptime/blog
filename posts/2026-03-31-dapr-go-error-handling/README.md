@@ -84,7 +84,7 @@ In topic event handlers, the return value controls whether Dapr retries delivery
 ```go
 func handleEvent(ctx context.Context, e *common.TopicEvent) (retry bool, err error) {
     var payload MyPayload
-    if err := e.DataAs(&payload); err != nil {
+    if err := e.Struct(&payload); err != nil {
         // Bad message format - never going to succeed, do not retry
         log.Printf("Invalid message format: %v", err)
         return false, nil // drop the message
