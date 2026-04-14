@@ -48,13 +48,9 @@ def subscribe():
 @app.route('/events/cdr', methods=['POST'])
 def handle_cdr_batch():
     """Process a batch of call detail records"""
-    cloud_events = request.json
-
-    if isinstance(cloud_events, list):
-        # Bulk subscription - process multiple CDRs
-        cdrs = [evt.get('data', {}) for evt in cloud_events]
-    else:
-        cdrs = [cloud_events.get('data', {})]
+    envelope = request.json
+    entries = envelope.get('entries', [])
+    cdrs = [entry['event'].get('data', {}) for entry in entries]
 
     enriched_cdrs = []
     billing_events = []
@@ -75,9 +71,16 @@ def handle_cdr_batch():
 
         # Batch publish billing events
         for billing_event in billing_events:
-            client.publish_event("telecom-pubsub", "billing-event", billing_event)
+            client.publish_event("telecom-pubsub", "billing-event",
+                                 json.dumps(billing_event))
 
-    return jsonify({'status': 'SUCCESS', 'processed': len(cdrs)})
+    # Return per-entry statuses as required by bulk subscribe
+    return jsonify({
+        'statuses': [
+            {'entryId': entry['entryId'], 'status': 'SUCCESS'}
+            for entry in entries
+        ]
+    })
 
 def enrich_cdr(cdr: dict) -> dict:
     """Add derived fields to CDR"""
@@ -156,7 +159,8 @@ def handle_network_alarm():
             )
 
         # Publish for downstream correlation
-        client.publish_event("telecom-pubsub", "network-alarm", alarm)
+        client.publish_event("telecom-pubsub", "network-alarm",
+                             json.dumps(alarm))
 
     return jsonify({'status': 'SUCCESS'})
 ```
