@@ -53,12 +53,28 @@ spec:
   type: pubsub.gcp.pubsub
   version: v1
   metadata:
+    - name: type
+      value: "service_account"
     - name: projectId
       value: "your-gcp-project-id"
-    - name: credentialsJson
+    - name: privateKeyId
+      value: "<PRIVATE_KEY_ID>"
+    - name: clientEmail
+      value: "dapr-pubsub@your-project-id.iam.gserviceaccount.com"
+    - name: clientId
+      value: "<CLIENT_ID>"
+    - name: authUri
+      value: "https://accounts.google.com/o/oauth2/auth"
+    - name: tokenUri
+      value: "https://oauth2.googleapis.com/token"
+    - name: authProviderX509CertUrl
+      value: "https://www.googleapis.com/oauth2/v1/certs"
+    - name: clientX509CertUrl
+      value: "https://www.googleapis.com/robot/v1/metadata/x509/dapr-pubsub%40your-project-id.iam.gserviceaccount.com"
+    - name: privateKey
       secretKeyRef:
         name: gcp-credentials
-        key: sa-key.json
+        key: private-key
     - name: maxOutstandingMessages
       value: "1000"
     - name: maxOutstandingBytes
@@ -67,11 +83,11 @@ spec:
       value: "10"
 ```
 
-Store the service account key:
+Store the private key from your service account key file:
 
 ```bash
 kubectl create secret generic gcp-credentials \
-  --from-file=sa-key.json=./sa-key.json
+  --from-literal=private-key="$(jq -r '.private_key' sa-key.json)"
 ```
 
 ## Using Workload Identity on GKE
