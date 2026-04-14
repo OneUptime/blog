@@ -36,8 +36,8 @@ kubectl get pods -n dapr-system
 # Verify a sidecar has received its certificate
 kubectl logs -n default -l app=my-service -c daprd | grep -i "cert"
 
-# Check Dapr operator logs for cert issuance
-kubectl logs -n dapr-system -l app=dapr-operator
+# Check Dapr Sentry logs for cert issuance
+kubectl logs -n dapr-system -l app=dapr-sentry
 ```
 
 ## SPIFFE Identity Format
@@ -45,7 +45,7 @@ kubectl logs -n dapr-system -l app=dapr-operator
 Each Dapr service gets a SPIFFE identity of the form:
 
 ```yaml
-spiffe://cluster.local/ns/{namespace}/app/{app-id}
+spiffe://cluster.local/ns/{namespace}/{app-id}
 ```
 
 ## Access Control Based on SPIFFE Identity
@@ -76,13 +76,12 @@ spec:
 
 ```python
 from fastapi import FastAPI, Request
-import ssl
 import re
 
 app = FastAPI()
 
 def extract_spiffe_id(cert_header: str) -> str | None:
-    # Dapr forwards: X-Forwarded-Client-Cert: By=spiffe://...,Hash=...,Subject=...
+    # X-Forwarded-Client-Cert: By=<proxy-URI>;Hash=<hash>;URI=spiffe://...
     match = re.search(r"URI=spiffe://([^,;\"]+)", cert_header)
     return f"spiffe://{match.group(1)}" if match else None
 
