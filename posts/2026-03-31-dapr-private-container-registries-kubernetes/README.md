@@ -89,7 +89,8 @@ Or set a global default in Helm:
 
 ```yaml
 dapr_sidecar_injector:
-  sidecarImageName: "registry.internal.example.com/daprio/daprd"
+  image:
+    name: "registry.internal.example.com/daprio/daprd"
 ```
 
 ## Verifying Images Are Pulled from Private Registry
