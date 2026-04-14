@@ -41,7 +41,7 @@ The script automatically detects your OS and architecture, then replaces the exi
 ## Upgrading on macOS with Homebrew
 
 ```bash
-brew upgrade dapr-cli
+brew upgrade dapr/tap/dapr-cli
 ```
 
 Verify the install:
@@ -71,7 +71,7 @@ To pin a specific CLI version:
 ```bash
 # Install CLI version 1.12.0
 wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - \
-  | /bin/bash -s -- --version 1.12.0
+  | /bin/bash -s 1.12.0
 ```
 
 ## Upgrading the Dapr Runtime After CLI Upgrade
@@ -79,8 +79,9 @@ wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O 
 After upgrading the CLI, you may also need to upgrade the Dapr runtime:
 
 ```bash
-# Upgrade self-hosted runtime
-dapr upgrade --runtime-version 1.13.3
+# Upgrade self-hosted runtime by reinitializing
+dapr uninstall
+dapr init
 
 # Upgrade Kubernetes runtime
 dapr upgrade -k --runtime-version 1.13.3
@@ -95,4 +96,4 @@ dapr status -k   # for Kubernetes deployments
 
 ## Summary
 
-Upgrade the Dapr CLI by re-running the official installation script or using a package manager like Homebrew or Winget. After upgrading the CLI, also upgrade the Dapr runtime with `dapr upgrade` to maintain version compatibility between the CLI and runtime.
+Upgrade the Dapr CLI by re-running the official installation script or using a package manager like Homebrew or Winget. After upgrading the CLI, also upgrade the Dapr runtime — use `dapr uninstall` followed by `dapr init` for self-hosted, or `dapr upgrade -k` for Kubernetes — to maintain version compatibility between the CLI and runtime.
