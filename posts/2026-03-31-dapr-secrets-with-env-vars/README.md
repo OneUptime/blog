@@ -68,13 +68,17 @@ kind: Deployment
 spec:
   template:
     spec:
+      volumes:
+        - name: shared-env
+          emptyDir: {}
       initContainers:
         - name: secrets-init
-          image: curlimages/curl:latest
+          image: alpine:latest
           command:
             - sh
             - -c
             - |
+              apk add --no-cache curl jq > /dev/null 2>&1 &&
               curl -s http://dapr-api:3500/v1.0/secrets/vault-store/app-secrets \
                 | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' \
                 > /shared/app.env
@@ -83,9 +87,7 @@ spec:
               mountPath: /shared
       containers:
         - name: my-app
-          envFrom:
-            - secretRef:
-                name: app-env-file
+          command: ["sh", "-c", "set -a && . /shared/app.env && set +a && exec my-app"]
           volumeMounts:
             - name: shared-env
               mountPath: /shared
@@ -96,7 +98,7 @@ spec:
 For Node.js services, you can use Dapr to bootstrap your dotenv configuration:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+import { DaprClient } from '@dapr/dapr';
 
 async function bootstrapEnv() {
   const client = new DaprClient();
