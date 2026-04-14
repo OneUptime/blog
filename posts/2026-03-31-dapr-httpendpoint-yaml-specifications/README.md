@@ -105,7 +105,7 @@ spec:
     timeouts:
       api-timeout: 15s
   targets:
-    httpEndpoints:
+    apps:
       stripe-api:
         retry: api-retry
         timeout: api-timeout
