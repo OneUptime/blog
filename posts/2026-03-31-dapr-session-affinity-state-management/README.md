@@ -26,8 +26,6 @@ spec:
   metadata:
     - name: redisHost
       value: "redis:6379"
-    - name: defaultTtlInSeconds
-      value: "1800"   # 30 minute session timeout
 ```
 
 ## Writing Session Data on Login
@@ -81,7 +79,10 @@ async function getSession(sessionId) {
 
 ```javascript
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const app = express();
+
+app.use(cookieParser());
 
 app.use(async (req, res, next) => {
   const sessionId = req.cookies['session-id'];
