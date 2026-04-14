@@ -10,16 +10,15 @@ Description: Learn how to handle Dapr service invocation errors gracefully using
 
 ## Dapr Service Invocation Error Codes
 
-When a Dapr service invocation fails, the sidecar returns a standard HTTP error code:
+When a Dapr service invocation fails, the sidecar itself returns one of these HTTP error codes:
 
 | Status Code | Cause |
 |-------------|-------|
-| 400 | Bad request from the application |
-| 403 | Access control policy denied |
-| 404 | App ID or method not found |
-| 408 | Request timed out |
-| 500 | Application error |
-| 503 | Service unavailable or circuit open |
+| 400 | Method name not given |
+| 403 | Invocation forbidden by access control |
+| 500 | Request failed (covers app not found, timeout, network error, or circuit breaker open) |
+
+The Dapr sidecar also passes through any HTTP status code returned by the called service. For example, if the target service returns a 404, 408, or 503, you will receive those codes in the caller's response. When handling errors, account for both sidecar-generated and service pass-through codes.
 
 ## Basic Error Handling in Node.js
 
