@@ -16,9 +16,9 @@ Dapr exposes Prometheus metrics for service invocation on port 9090 of the sidec
 |--------|-------------|
 | `dapr_http_server_request_count` | Total requests received |
 | `dapr_http_server_latency` | Server-side latency histogram |
-| `dapr_http_client_request_count` | Outbound request count |
-| `dapr_http_client_latency` | Client-side latency histogram |
-| `dapr_grpc_server_io_server_latency` | gRPC server latency |
+| `dapr_http_client_completed_count` | Outbound request count |
+| `dapr_http_client_roundtrip_latency` | Client-side latency histogram |
+| `dapr_grpc_io_server_server_latency` | gRPC server latency |
 
 ## Scraping Metrics with Prometheus
 
@@ -44,21 +44,21 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: true
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: "${1}:9090"
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: "${1}:${2}"
 ```
 
 ## Key PromQL Queries
 
 ```bash
 # Average request latency per app
-rate(dapr_http_client_latency_sum[5m]) / rate(dapr_http_client_latency_count[5m])
+rate(dapr_http_client_roundtrip_latency_sum[5m]) / rate(dapr_http_client_roundtrip_latency_count[5m])
 
 # Error rate per app
-rate(dapr_http_client_request_count{status!="200"}[5m])
+rate(dapr_http_client_completed_count{status!="200"}[5m])
 
 # P99 latency by method
 histogram_quantile(0.99, rate(dapr_http_server_latency_bucket[5m]))
@@ -71,12 +71,13 @@ Import the official Dapr dashboard:
 ```bash
 # Download official dashboard JSON
 curl -o dapr-dashboard.json \
-  https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-dapr-system-services-dashboard.json
+  https://raw.githubusercontent.com/dapr/dapr/master/grafana/grafana-system-services-dashboard.json
 
 # Import via Grafana API
 curl -X POST http://localhost:3000/api/dashboards/import \
   -H "Content-Type: application/json" \
-  -d @dapr-dashboard.json
+  -H "Authorization: Bearer <API_KEY>" \
+  -d "{\"dashboard\": $(cat dapr-dashboard.json), \"overwrite\": true}"
 ```
 
 ## Distributed Tracing for Latency Analysis
