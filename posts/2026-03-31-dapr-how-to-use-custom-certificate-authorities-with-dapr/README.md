@@ -19,7 +19,7 @@ Dapr uses a three-tier certificate hierarchy:
 2. **Issuer certificate** - Signs workload certificates, signed by the root CA
 3. **Workload certificates** - Short-lived (24h default) certificates per sidecar
 
-All three are stored in the `dapr-trust-bundle` secret in the `dapr-system` namespace.
+The root CA certificate, issuer certificate, and issuer key are stored in the `dapr-trust-bundle` secret in the `dapr-system` namespace. Workload certificates are issued dynamically by Sentry and held in memory by each sidecar.
 
 ## Generate a Custom Root CA
 
@@ -85,9 +85,9 @@ openssl verify -CAfile ca.crt issuer.crt
 
 ```bash
 dapr init -k \
-  --set dapr_sentry.tls.issuer.certPEM="$(cat issuer.crt | base64)" \
-  --set dapr_sentry.tls.issuer.keyPEM="$(cat issuer.key | base64)" \
-  --set dapr_sentry.tls.root.certPEM="$(cat ca.crt | base64)"
+  --set-string dapr_sentry.tls.issuer.certPEM="$(cat issuer.crt)" \
+  --set-string dapr_sentry.tls.issuer.keyPEM="$(cat issuer.key)" \
+  --set-string dapr_sentry.tls.root.certPEM="$(cat ca.crt)"
 ```
 
 Or using Helm:
@@ -113,7 +113,7 @@ kubectl delete secret dapr-trust-bundle -n dapr-system
 kubectl create secret generic dapr-trust-bundle \
   --from-file=issuer.crt=./issuer.crt \
   --from-file=issuer.key=./issuer.key \
-  --from-file=root.crt=./ca.crt \
+  --from-file=ca.crt=./ca.crt \
   -n dapr-system
 
 # Restart Dapr sentry to pick up new certs
@@ -128,7 +128,7 @@ Check that Dapr is using your custom CA:
 ```bash
 # Get the current trust bundle
 kubectl get secret dapr-trust-bundle -n dapr-system \
-  -o jsonpath='{.data.root\.crt}' | base64 -d | \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d | \
   openssl x509 -text -noout | grep -E "(Issuer|Subject)"
 
 # Check sentry logs for cert operations
@@ -147,7 +147,7 @@ helm install cert-manager jetstack/cert-manager \
   --set installCRDs=true
 ```
 
-Create a ClusterIssuer using your CA:
+Create an Issuer using your CA:
 
 ```yaml
 # dapr-ca-secret.yaml
@@ -214,7 +214,7 @@ Monitor certificate expiration dates:
 
 echo "=== Dapr Root CA ==="
 kubectl get secret dapr-trust-bundle -n dapr-system \
-  -o jsonpath='{.data.root\.crt}' | base64 -d | \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d | \
   openssl x509 -noout -dates
 
 echo "=== Dapr Issuer Cert ==="
