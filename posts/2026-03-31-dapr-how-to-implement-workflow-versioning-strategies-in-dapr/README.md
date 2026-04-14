@@ -149,28 +149,31 @@ The safest approach for major rewrites: stop accepting new instances, wait for a
 # drain-workflow.sh
 
 APP_ID="order-processor"
-DAPR_PORT=3500
 
 echo "Stopping new workflow intake (deploy feature flag or stop traffic)..."
 # Typically done via a load balancer rule or feature flag
 
 echo "Waiting for in-flight workflows to complete..."
-while true; do
-  # Query running workflows via Dapr HTTP API
-  RUNNING=$(curl -s "http://localhost:${DAPR_PORT}/v1.0-alpha1/workflows/dapr/OrderWorkflowV1/query" \
-    -H "Content-Type: application/json" \
-    -d '{"filter":{"runtimeStatus":["RUNNING","SUSPENDED"]}}' | \
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('workflowInstances', [])))")
-  
-  echo "In-flight instances: ${RUNNING}"
-  
-  if [ "${RUNNING}" -eq 0 ]; then
-    echo "All instances complete. Safe to deploy new version."
-    break
-  fi
-  
-  sleep 30
-done
+# Dapr does not provide an HTTP API to list all workflow instances by name.
+# Track active instance IDs in your own database, or use the Dapr CLI to check
+# individual instances by ID.
+
+# Example: check a known instance by ID via the Dapr HTTP API
+INSTANCE_ID="order-42"
+STATUS=$(curl -s "http://localhost:3500/v1.0/workflows/dapr/${INSTANCE_ID}" | \
+  python3 -c "import sys,json; print(json.load(sys.stdin).get('runtimeStatus','UNKNOWN'))")
+echo "Instance ${INSTANCE_ID} status: ${STATUS}"
+
+# In practice, iterate over your tracked instance IDs:
+# for id in $(get_active_instance_ids); do
+#   STATUS=$(curl -s "http://localhost:3500/v1.0/workflows/dapr/${id}" | \
+#     python3 -c "import sys,json; print(json.load(sys.stdin).get('runtimeStatus','UNKNOWN'))")
+#   if [ "${STATUS}" = "RUNNING" ] || [ "${STATUS}" = "SUSPENDED" ]; then
+#     echo "Instance ${id} still active (${STATUS}). Waiting..."
+#     # continue polling
+#   fi
+# done
+echo "All instances complete. Safe to deploy new version."
 ```
 
 ## Using GetCurrentUtcDateTime for Safe Timing
@@ -205,24 +208,23 @@ public class OrderWorkflow : Workflow<OrderInput, string>
 Use the Dapr HTTP API to query and monitor workflows by version:
 
 ```bash
-# List all running OrderWorkflowV1 instances
-curl -X POST \
-  "http://localhost:3500/v1.0-alpha1/workflows/dapr/OrderWorkflowV1/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "filter": {
-      "runtimeStatus": ["RUNNING", "SUSPENDED"]
-    },
-    "maxInstanceCount": 100
-  }'
-
-# Get status of a specific instance
-curl "http://localhost:3500/v1.0-alpha1/workflows/dapr/OrderWorkflowV1/{instanceId}"
+# Get status of a specific workflow instance
+curl "http://localhost:3500/v1.0/workflows/dapr/{instanceId}"
 
 # Terminate a stuck instance if needed
 curl -X POST \
-  "http://localhost:3500/v1.0-alpha1/workflows/dapr/OrderWorkflowV1/{instanceId}/terminate"
+  "http://localhost:3500/v1.0/workflows/dapr/{instanceId}/terminate"
+
+# Pause a running instance
+curl -X POST \
+  "http://localhost:3500/v1.0/workflows/dapr/{instanceId}/pause"
+
+# Purge a completed or terminated instance
+curl -X POST \
+  "http://localhost:3500/v1.0/workflows/dapr/{instanceId}/purge"
 ```
+
+Note: Dapr does not provide an HTTP API to bulk-query or list workflow instances by name or status. To monitor in-flight instances across versions, track active instance IDs in your application's database when you start each workflow, then query their status individually using the endpoint above.
 
 ## Summary
 
