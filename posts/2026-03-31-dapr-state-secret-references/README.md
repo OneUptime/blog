@@ -14,7 +14,7 @@ Embedding passwords or connection strings directly in Dapr component YAML files 
 
 ## Setting Up a Kubernetes Secret Store
 
-The simplest approach on Kubernetes is to use the built-in `secretstore.kubernetes` component, which reads from Kubernetes Secrets:
+The simplest approach on Kubernetes is to use the built-in `secretstores.kubernetes` component, which reads from Kubernetes Secrets:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
