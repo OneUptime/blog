@@ -10,7 +10,7 @@ Description: Learn how to enforce least privilege secret access in Dapr using co
 
 ## The Principle of Least Privilege for Secrets
 
-Least privilege means each service should only have access to the secrets it needs, nothing more. Without controls, any Dapr service can read any secret from a configured store. Dapr provides two mechanisms to enforce restrictions: component scoping (which services can use a component) and allowed/denied secret lists (which secrets a component exposes).
+Least privilege means each service should only have access to the secrets it needs, nothing more. Without controls, any Dapr service can read any secret from a configured store. Dapr provides two mechanisms to enforce restrictions: component scoping (which services can use a component) and secret scoping via a Dapr Configuration resource (which secrets a store exposes using allowed/denied lists).
 
 ## Component Scoping: Restricting Which Services Use a Store
 
@@ -28,17 +28,17 @@ spec:
   metadata:
   - name: vaultName
     value: "payment-vault"
-  # Only these app IDs can use this component
-  scopes:
-  - payment-service
-  - billing-service
+# Only these app IDs can use this component
+scopes:
+- payment-service
+- billing-service
 ```
 
 Any service with a different `app-id` attempting to use `payment-secrets` will receive an error. The `orders-service` or `user-service` cannot access payment vault secrets even if they try.
 
 ## Allowed Secrets List
 
-Restrict which specific secrets a component exposes, even to scoped services:
+Restrict which specific secrets a component exposes using a Dapr Configuration resource. First, define the component:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -52,26 +52,48 @@ spec:
   metadata:
   - name: defaultNamespace
     value: "production"
-  # Whitelist specific secrets
-  - name: allowedSecrets
-    value: "db-password,api-key,jwt-secret"
-  scopes:
-  - api-service
+scopes:
+- api-service
+```
+
+Then, create a Configuration resource that specifies which secrets are allowed:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: appconfig
+spec:
+  secrets:
+    scopes:
+    - storeName: app-secrets
+      defaultAccess: deny
+      allowedSecrets:
+      - db-password
+      - api-key
+      - jwt-secret
 ```
 
 The `api-service` can only read `db-password`, `api-key`, and `jwt-secret`. Requests for any other secret return an error.
 
 ## Denied Secrets List
 
-Alternatively, deny specific secrets while allowing everything else:
+Alternatively, deny specific secrets while allowing everything else using a Configuration resource:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: appconfig
 spec:
-  type: secretstores.kubernetes
-  version: v1
-  metadata:
-  - name: deniedSecrets
-    value: "admin-credentials,root-password,internal-key"
+  secrets:
+    scopes:
+    - storeName: app-secrets
+      defaultAccess: allow
+      deniedSecrets:
+      - admin-credentials
+      - root-password
+      - internal-key
 ```
 
 ## Per-Service Secret Components
@@ -93,10 +115,8 @@ spec:
     value: "https://vault.example.com:8200"
   - name: vaultKVPrefix
     value: "secret/orders"   # Only can read from secret/orders/*
-  - name: allowedSecrets
-    value: "database,stripe-webhook-key"
-  scopes:
-  - orders-service
+scopes:
+- orders-service
 ---
 # Component for the auth service - only has access to auth-related secrets
 apiVersion: dapr.io/v1alpha1
@@ -112,10 +132,30 @@ spec:
     value: "https://vault.example.com:8200"
   - name: vaultKVPrefix
     value: "secret/auth"     # Only can read from secret/auth/*
-  - name: allowedSecrets
-    value: "jwt-signing-key,oauth-client-secret"
-  scopes:
-  - auth-service
+scopes:
+- auth-service
+```
+
+Then restrict each store's accessible secrets via a Configuration resource:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: appconfig
+spec:
+  secrets:
+    scopes:
+    - storeName: orders-secrets
+      defaultAccess: deny
+      allowedSecrets:
+      - database
+      - stripe-webhook-key
+    - storeName: auth-secrets
+      defaultAccess: deny
+      allowedSecrets:
+      - jwt-signing-key
+      - oauth-client-secret
 ```
 
 ## Application Code: Reading Scoped Secrets
@@ -175,4 +215,4 @@ roleRef:
 
 ## Summary
 
-Dapr secret access can be restricted using component-level scoping (which services can access a component), allowed or denied secrets lists (which secrets are exposed), and per-service secret store components pointing to isolated vault paths. Combine these with Kubernetes RBAC for layered defense. The goal is that a compromised service can only access the secrets it legitimately needs, limiting blast radius.
+Dapr secret access can be restricted using component-level scoping (which services can access a component), a Dapr Configuration resource with allowed or denied secrets lists (which secrets are exposed per store), and per-service secret store components pointing to isolated vault paths. Combine these with Kubernetes RBAC for layered defense. The goal is that a compromised service can only access the secrets it legitimately needs, limiting blast radius.
