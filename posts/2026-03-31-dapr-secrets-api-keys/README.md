@@ -84,18 +84,7 @@ async def charge_customer(amount: int, token: str):
 
 ## Caching Secrets to Reduce Latency
 
-Dapr caches secrets by default. You can configure the TTL to balance freshness versus latency. In your Dapr component:
-
-```yaml
-spec:
-  metadata:
-    - name: vaultAddr
-      value: "https://vault.internal:8200"
-    - name: skipVerify
-      value: "false"
-```
-
-For application-level caching, store the key in memory after first retrieval and refresh on a schedule rather than per-request.
+Dapr does not provide built-in secret caching with a configurable TTL. To reduce latency, implement application-level caching: store the key in memory after first retrieval and refresh on a schedule rather than fetching per-request.
 
 ## Scoping API Key Access
 
@@ -109,12 +98,12 @@ metadata:
 spec:
   type: secretstores.hashicorp.vault
   version: v1
-  scopes:
-    - payment-service
-    - notification-service
+scopes:
+  - payment-service
+  - notification-service
 ```
 
-Services not in the scopes list receive a 403 when attempting to read from this store.
+Services not in the scopes list will not have the secret store component loaded, preventing them from accessing secrets in this store.
 
 ## Summary
 
