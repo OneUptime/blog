@@ -119,11 +119,12 @@ dapr run \
 ## Handling 429 in the Calling App
 
 ```go
-// Go client
+// Go client (requires "google.golang.org/grpc/codes" and "google.golang.org/grpc/status")
 resp, err := client.InvokeMethodWithContent(ctx, "order-service", "createOrder", "post", content)
 if err != nil {
-    // Check for 429 rate limit response
-    if daprErr, ok := err.(*dapr.DaprError); ok && daprErr.HTTPStatusCode() == 429 {
+    // Rate-limited requests map to gRPC ResourceExhausted
+    st := status.Convert(err)
+    if st.Code() == codes.ResourceExhausted {
         time.Sleep(time.Second)
         // Retry or enqueue the request
     }
@@ -133,13 +134,13 @@ if err != nil {
 
 ```python
 # Python client
-import asyncio
+import time
 from dapr.clients import DaprClient
 from dapr.clients.exceptions import DaprInternalError
 
-async with DaprClient() as client:
+with DaprClient() as client:
     try:
-        resp = await client.invoke_method(
+        resp = client.invoke_method(
             app_id="order-service",
             method_name="createOrder",
             http_verb="POST",
@@ -147,7 +148,7 @@ async with DaprClient() as client:
         )
     except DaprInternalError as e:
         if "429" in str(e):
-            await asyncio.sleep(1)
+            time.sleep(1)
             # retry
 ```
 
