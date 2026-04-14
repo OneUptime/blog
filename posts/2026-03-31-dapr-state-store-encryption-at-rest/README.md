@@ -42,14 +42,14 @@ spec:
       key: secondary-key
 ```
 
-Dapr uses AES-256-GCM for encryption. The key must be a 32-byte base64-encoded string.
+Dapr uses AES-GCM for encryption, with the key size (128, 192, or 256 bits) determined by the length of the key provided. The key must be a hex-encoded string (e.g., 32 hex characters for a 128-bit key or 64 hex characters for a 256-bit key).
 
 ## Generating Encryption Keys
 
 ```bash
-# Generate a 256-bit key
-PRIMARY_KEY=$(openssl rand -base64 32)
-SECONDARY_KEY=$(openssl rand -base64 32)
+# Generate a 256-bit (32-byte) hex-encoded key
+PRIMARY_KEY=$(openssl rand 32 | hexdump -v -e '/1 "%02x"')
+SECONDARY_KEY=$(openssl rand 32 | hexdump -v -e '/1 "%02x"')
 
 # Store in Kubernetes secret
 kubectl create secret generic state-encryption-keys \
@@ -82,7 +82,7 @@ kubectl create secret generic state-encryption-keys \
 
 ## Using Dapr Secrets API for Key Retrieval
 
-Reference keys from a secrets store rather than a Kubernetes secret:
+Reference keys from a secrets store rather than a Kubernetes secret by setting `auth.secretStore` to the name of a Dapr secret store component:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -99,11 +99,13 @@ spec:
       key: connectionString
   - name: primaryEncryptionKey
     secretKeyRef:
-      name: vault-kv-dapr
-      key: state-primary-key
+      name: state-encryption-keys
+      key: primary-key
+  auth:
+    secretStore: vault-kv-dapr
 ```
 
-Where `vault-kv-dapr` is a Dapr secret component backed by HashiCorp Vault:
+Where `vault-kv-dapr` is a Dapr secret store component backed by HashiCorp Vault:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -133,7 +135,7 @@ kubectl patch secret state-encryption-keys -n production \
   -p='[{"op": "replace", "path": "/data/secondary-key", "value": "'$(kubectl get secret state-encryption-keys -n production -o jsonpath='{.data.primary-key}')'"}]'
 
 # Step 2: Generate and set new primary key
-NEW_KEY=$(openssl rand -base64 32 | base64)
+NEW_KEY=$(echo -n "$(openssl rand 32 | hexdump -v -e '/1 "%02x"')" | base64)
 kubectl patch secret state-encryption-keys -n production \
   --type=json \
   -p='[{"op": "replace", "path": "/data/primary-key", "value": "'$NEW_KEY'"}]'
@@ -142,7 +144,7 @@ kubectl patch secret state-encryption-keys -n production \
 kubectl rollout restart deployment -n production -l dapr.io/enabled=true
 ```
 
-Dapr decrypts data with the secondary key if the primary key fails, enabling zero-downtime rotation.
+Dapr tracks which encryption key was used for each state item. During rotation, existing data is decrypted with the secondary key and new writes use the primary key, enabling zero-downtime rotation. Old data is re-encrypted with the new primary key when the application writes it again.
 
 ## Verifying Encryption
 
@@ -150,10 +152,10 @@ Confirm data is encrypted in the backing store by inspecting values directly:
 
 ```bash
 # Connect to Redis and check a key - value should be unreadable binary
-kubectl exec -n redis redis-master-0 -- redis-cli GET "dapr||myapp||mykey"
+kubectl exec -n redis redis-master-0 -- redis-cli GET "myapp||mykey"
 # Output: binary/encrypted data, not JSON
 ```
 
 ## Summary
 
-Dapr state store encryption is enabled by adding `primaryEncryptionKey` and `secondaryEncryptionKey` to component metadata, with Dapr performing AES-256-GCM encryption before values leave the sidecar. Key rotation uses the two-key scheme: promote the current primary to secondary, then set a new primary key, and restart pods without downtime. Integrating with cloud KMS or HashiCorp Vault centralizes key management and enables automatic rotation policies.
+Dapr state store encryption is enabled by adding `primaryEncryptionKey` and `secondaryEncryptionKey` to component metadata, with Dapr performing AES-GCM encryption before values leave the sidecar. Key rotation uses the two-key scheme: promote the current primary to secondary, then set a new primary key, and restart pods without downtime. Dapr tracks which key encrypted each item, so existing data is decrypted with the secondary key while new writes use the primary key. Integrating with cloud KMS or HashiCorp Vault centralizes key management and enables automatic rotation policies.
