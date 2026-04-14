@@ -10,7 +10,7 @@ Description: Build Python microservices with the official Dapr Python SDK for st
 
 ## Overview
 
-The Dapr Python SDK (`dapr-client`) provides an async-first client for interacting with the Dapr sidecar and a FastAPI/Flask extension for receiving invocations and pub/sub events. It communicates with the sidecar over gRPC.
+The Dapr Python SDK (`dapr-client`) provides an async-first client for interacting with the Dapr sidecar and a FastAPI/Flask extension for receiving invocations and pub/sub events. It communicates with the sidecar over gRPC for most operations, with service invocation defaulting to HTTP.
 
 ## Architecture
 
@@ -42,7 +42,7 @@ dapr init
 # client.py
 import asyncio
 import json
-from dapr.clients import DaprClient
+from dapr.aio.clients import DaprClient
 
 async def main():
     async with DaprClient() as client:
@@ -123,18 +123,19 @@ dapr run \
 ## Step 3: State Transactions
 
 ```python
-from dapr.clients import DaprClient
-from dapr.clients.grpc._state import StateItem, TransactionalStateOperation, TransactionOperationType
+from dapr.aio.clients import DaprClient
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 async with DaprClient() as client:
     ops = [
         TransactionalStateOperation(
+            key="order-2",
+            data=json.dumps({"id": "order-2"}),
             operation_type=TransactionOperationType.upsert,
-            item=StateItem(key="order-2", value=json.dumps({"id": "order-2"})),
         ),
         TransactionalStateOperation(
+            key="order-1",
             operation_type=TransactionOperationType.delete,
-            item=StateItem(key="order-1", value=""),
         ),
     ]
     await client.execute_state_transaction(store_name="statestore", operations=ops)
@@ -143,6 +144,7 @@ async with DaprClient() as client:
 ## Step 4: Bulk State Operations
 
 ```python
+from dapr.aio.clients import DaprClient
 from dapr.clients.grpc._state import StateItem
 
 async with DaprClient() as client:
@@ -167,7 +169,7 @@ async with DaprClient() as client:
 
 ```python
 from dapr.actor import ActorProxy, ActorId
-from dapr.clients import DaprClient
+from dapr.aio.clients import DaprClient
 
 # Define the actor interface
 class OrderActorInterface:
