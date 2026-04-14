@@ -212,7 +212,7 @@ kubectl port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 -n moni
 
 # Query Dapr service invocation error rate
 # In Prometheus UI, run:
-# rate(dapr_http_server_request_count{status_code=~"5.."}[1m])
+# rate(dapr_http_server_request_count{status=~"5.."}[1m])
 ```
 
 Write a test validation script:
