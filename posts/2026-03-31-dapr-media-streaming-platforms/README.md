@@ -24,11 +24,12 @@ Content Upload -> Ingestion Service (Dapr) -> Transcoding Workflow (Dapr)
 
 ```python
 # transcoding_service/workflows/transcode_workflow.py
-import dapr.ext.workflow as wf
-from datetime import timedelta
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, when_all
 
-@wf.workflow
-def transcode_workflow(ctx, content: dict):
+wfr = WorkflowRuntime()
+
+@wfr.workflow(name='transcode_workflow')
+def transcode_workflow(ctx: DaprWorkflowContext, content: dict):
     content_id = content['content_id']
 
     # Step 1: Validate uploaded content
@@ -50,7 +51,7 @@ def transcode_workflow(ctx, content: dict):
         transcode_tasks.append(task)
 
     # Wait for all transcoding tasks
-    results = yield wf.when_all(transcode_tasks)
+    results = yield when_all(transcode_tasks)
 
     failed_profiles = [r for r in results if not r.get('success')]
     if failed_profiles:
@@ -173,8 +174,6 @@ spec:
       value: viewer-analytics
     - name: region
       value: us-east-1
-    - name: partitionKey
-      value: user_id
 ```
 
 ```python
