@@ -16,15 +16,21 @@ Ensure Dapr is initialized in self-hosted mode with the Scheduler service:
 
 ```bash
 dapr init
-dapr status
 ```
 
-Expected output includes:
+Verify the Scheduler and other Dapr services are running:
+
+```bash
+docker ps
+```
+
+Expected output includes containers for:
 
 ```text
-NAME            VERSION     STATUS      PID
-dapr-scheduler  1.x.x       Running     12345
-dapr-placement  1.x.x       Running     12346
+dapr_scheduler
+dapr_placement
+dapr_redis
+dapr_zipkin
 ```
 
 If the Scheduler is not running, upgrade Dapr CLI and reinitialize:
@@ -57,8 +63,8 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/local-test-job \
     "schedule": "@every 10s",
     "repeats": 3,
     "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "{\"test\": true, \"iteration\": 1}"
+      "test": true,
+      "iteration": 1
     }
   }'
 
@@ -79,12 +85,11 @@ For faster iteration, test the handler endpoint directly without waiting for the
 # Simulate what Dapr sends when a job fires
 curl -X POST http://localhost:6001/job/local-test-job \
   -H "Content-Type: application/json" \
-  -H "X-DaprAppID: job-test-app" \
+  -H "dapr-app-id: job-test-app" \
   -d '{
     "name": "local-test-job",
     "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "{\"test\": true}"
+      "test": true
     }
   }'
 ```
@@ -105,10 +110,7 @@ describe('Job Handlers', () => {
         .post('/job/daily-cleanup')
         .send({
           name: 'daily-cleanup',
-          data: {
-            '@type': 'type.googleapis.com/google.protobuf.StringValue',
-            value: JSON.stringify({ target: 'sessions', olderThan: '24h' })
-          }
+          data: { target: 'sessions', olderThan: '24h' }
         });
 
       expect(response.status).toBe(200);
@@ -148,10 +150,7 @@ curl -s -X POST http://localhost:${DAPR_PORT}/v1.0-alpha1/jobs/e2e-test \
   -d '{
     "schedule": "@every 5s",
     "repeats": 1,
-    "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "e2e-test"
-    }
+    "data": "e2e-test"
   }'
 
 echo "Waiting 8 seconds for job to trigger..."
