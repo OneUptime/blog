@@ -27,8 +27,8 @@ Establish baselines during normal operation using Prometheus range queries:
 # Average request rate per service over past week
 curl 'http://prometheus:9090/api/v1/query_range' \
   --data-urlencode 'query=sum(rate(dapr_http_server_request_count[5m])) by (app_id)' \
-  --data-urlencode 'start=7d ago' \
-  --data-urlencode 'end=now' \
+  --data-urlencode "start=$(date -d '7 days ago' +%s)" \
+  --data-urlencode "end=$(date +%s)" \
   --data-urlencode 'step=1h'
 ```
 
@@ -46,7 +46,7 @@ avg_over_time(
 )
 
 # State store operations per second
-sum(rate(dapr_state_get_total[5m]) + rate(dapr_state_set_total[5m])) by (storeName)
+sum(rate(dapr_component_state_count{operation="get"}[5m]) + rate(dapr_component_state_count{operation="set"}[5m])) by (component)
 ```
 
 ## Projecting Growth Requirements
@@ -73,12 +73,12 @@ Track state store growth to plan storage capacity:
 
 ```promql
 # State write rate - project backend storage growth
-sum(rate(dapr_state_set_total{success="true"}[5m])) by (storeName)
+sum(rate(dapr_component_state_count{operation="set",success="true"}[5m])) by (component)
 
 # State read-to-write ratio (plan caching strategy)
-sum(rate(dapr_state_get_total[5m])) by (storeName)
+sum(rate(dapr_component_state_count{operation="get"}[5m])) by (component)
 /
-sum(rate(dapr_state_set_total[5m])) by (storeName)
+sum(rate(dapr_component_state_count{operation="set"}[5m])) by (component)
 ```
 
 ## Pub/Sub Throughput Planning
@@ -86,13 +86,13 @@ sum(rate(dapr_state_set_total[5m])) by (storeName)
 ```promql
 # Peak pub/sub throughput for broker sizing
 max_over_time(
-  sum(rate(dapr_pubsub_publish_count[5m]))[24h:5m]
+  sum(rate(dapr_component_pubsub_egress_count[5m]))[24h:5m]
 )
 
 # Consumer processing capacity vs publish rate
-sum(rate(dapr_pubsub_subscribe_count[5m])) by (topic)
+sum(rate(dapr_component_pubsub_ingress_count[5m])) by (topic)
 /
-sum(rate(dapr_pubsub_publish_count[5m])) by (topic)
+sum(rate(dapr_component_pubsub_egress_count[5m])) by (topic)
 ```
 
 ## Creating a Capacity Planning Report
