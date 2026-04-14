@@ -98,7 +98,8 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
   deadLetterTopic: orders-dead
 ```
 
