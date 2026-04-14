@@ -12,7 +12,7 @@ Every Dapr-enabled pod runs a `daprd` sidecar container. At scale, sidecar resou
 
 ## Key Sidecar Resource Metrics
 
-Kubernetes exposes container-level metrics through `kube_pod_container_resource_usage` (kube-state-metrics) and container metrics from cAdvisor:
+Kubernetes exposes container-level usage metrics through cAdvisor (via kubelet). kube-state-metrics provides resource specifications via `kube_pod_container_resource_requests` and `kube_pod_container_resource_limits`. Key cAdvisor metrics for monitoring actual usage:
 
 - `container_cpu_usage_seconds_total` - CPU time consumed
 - `container_memory_working_set_bytes` - actual memory in use
@@ -63,31 +63,7 @@ spec:
         dapr.io/sidecar-memory-limit: "256Mi"
 ```
 
-Set cluster-wide defaults in the Dapr Configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: daprconfig
-spec:
-  features: []
-```
-
-Or use the Dapr Helm values:
-
-```yaml
-dapr_sidecar_injector:
-  sidecarContainers:
-    daprd:
-      resources:
-        requests:
-          cpu: "50m"
-          memory: "64Mi"
-        limits:
-          cpu: "200m"
-          memory: "256Mi"
-```
+Note that when installing Dapr using Helm, no default sidecar resource limits or requests are set. The Dapr Configuration CRD also does not support cluster-wide sidecar resource defaults. Per-pod annotations (shown above) are the recommended way to configure sidecar resources for each deployment.
 
 ## Alerting on Sidecar Resource Overconsumption
 
@@ -130,11 +106,14 @@ Use Prometheus to detect memory leaks over time:
 
 ```bash
 # Query memory growth over 1 hour window
+# start and end must be RFC3339 or Unix timestamps
+END=$(date +%s)
+START=$(( END - 3600 ))
 curl 'http://prometheus:9090/api/v1/query_range' \
   --data-urlencode 'query=container_memory_working_set_bytes{container="daprd"}' \
-  --data-urlencode 'start=1h ago' \
-  --data-urlencode 'end=now' \
-  --data-urlencode 'step=5m'
+  --data-urlencode "start=${START}" \
+  --data-urlencode "end=${END}" \
+  --data-urlencode 'step=300'
 ```
 
 ## Summary
