@@ -16,7 +16,7 @@ MQTT is the de-facto protocol for IoT devices: it is lightweight, works over unr
 IoT Devices          MQTT Broker         Dapr Sidecar        App Service
   +--------+          +---------+         +-----------+       +----------+
   | Sensor | -MQTT--> | EMQX /  | <------ | MQTT      | HTTP  | Telemetry|
-  | Device |          | Mosquito|         | Binding   | ----> | Processor|
+  | Device |          | Mosquitto|        | Binding   | ----> | Processor|
   +--------+          +---------+         +-----------+       +----------+
                                                                     |
                                                               Dapr State/
@@ -69,7 +69,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: "mqtt://mosquitto:1883"
+    value: "tcp://mosquitto:1883"
   - name: topic
     value: "devices/+/telemetry"   # Wildcard: subscribe to all device telemetry topics
   - name: qos
@@ -78,7 +78,7 @@ spec:
     value: "false"
   - name: cleanSession
     value: "true"
-  - name: clientID
+  - name: consumerID
     value: "dapr-iot-ingestion"
   - name: backOffMaxRetries
     value: "10"
@@ -97,7 +97,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: "mqtts://broker.hivemq.cloud:8883"
+    value: "ssl://broker.hivemq.cloud:8883"
   - name: topic
     value: "factory/+/+/telemetry"
   - name: qos
@@ -164,8 +164,8 @@ def save_telemetry(device_id: str, telemetry: DeviceTelemetry):
                 "timestamp": telemetry.timestamp,
                 "updatedAt": int(time.time())
             },
-            "options": {
-                "ttlInSeconds": 3600  # Expire stale device state after 1 hour
+            "metadata": {
+                "ttlInSeconds": "3600"  # Expire stale device state after 1 hour
             }
         }]
     )
