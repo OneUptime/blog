@@ -14,20 +14,13 @@ Dapr pluggable components communicate with the sidecar via gRPC over Unix domain
 
 ## Project Setup
 
-Initialize a Go module and install the SDK:
+Initialize a Go module and install the proto-generated gRPC stubs:
 
 ```bash
 mkdir dapr-custom-state && cd dapr-custom-state
 go mod init github.com/myorg/dapr-custom-state
-go get github.com/dapr-sandbox/components-contrib/state
-go get github.com/dapr/dapr/pkg/components/pluggable
-```
-
-For the pluggable component server, use the proto-generated gRPC stubs:
-
-```bash
-go get google.golang.org/grpc
 go get github.com/dapr/dapr/pkg/proto/components/v1
+go get google.golang.org/grpc
 ```
 
 ## Implementing the State Store Interface
@@ -40,10 +33,10 @@ import (
     "sync"
 
     proto "github.com/dapr/dapr/pkg/proto/components/v1"
-    "google.golang.org/grpc"
 )
 
 type InMemoryStore struct {
+    proto.UnimplementedStateStoreServer
     mu    sync.RWMutex
     store map[string][]byte
 }
