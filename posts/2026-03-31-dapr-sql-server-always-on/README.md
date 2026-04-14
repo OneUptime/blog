@@ -67,7 +67,7 @@ spec:
       key: connectionString
   - name: tableName
     value: "DaprState"
-  - name: schemaName
+  - name: schema
     value: "dbo"
   - name: keyType
     value: "string"
@@ -75,8 +75,8 @@ spec:
     value: "200"
   - name: indexedProperties
     value: '[{"column": "OrderId", "property": "orderId", "type": "nvarchar(50)"}]'
-  - name: cleanupInterval
-    value: "1h"
+  - name: cleanupIntervalInSeconds
+    value: "3600"
 ```
 
 Create the connection string pointing to the AG listener:
@@ -127,7 +127,6 @@ WHERE OrderId = 'ord-12345';
 
 ```csharp
 using Dapr.Client;
-using System.Text.Json;
 
 public class OrderStateService
 {
