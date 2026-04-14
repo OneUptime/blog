@@ -124,7 +124,7 @@ kubectl rollout status deployment/my-api-service -n default
 
 ```bash
 # Check sidecar versions on running pods
-kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.initContainers[*]}{.image}{"\n"}{end}{end}' | grep daprd
+kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | grep daprd
 ```
 
 ## Handle Stateful Workloads (Actors)
