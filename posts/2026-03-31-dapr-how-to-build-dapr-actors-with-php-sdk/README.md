@@ -29,6 +29,7 @@ dapr-actors-php/
     Actors/
       CounterActor.php
       CounterActorInterface.php
+      CounterState.php
     bootstrap.php
   dapr/
     components/
@@ -86,9 +87,27 @@ interface CounterActorInterface
 }
 ```
 
+## Defining the Actor State
+
+Actor state in the Dapr PHP SDK is managed by subclassing `ActorState`. Public properties on the state class are automatically persisted to and loaded from the Dapr state store.
+
+```php
+<?php
+
+namespace App\Actors;
+
+use Dapr\Actors\ActorState;
+
+class CounterState extends ActorState
+{
+    public int $count = 0;
+    public array $history = [];
+}
+```
+
 ## Implementing the Actor Class
 
-Implement the interface by extending `Actor` and using the actor's state manager for persistence.
+Implement the interface by extending `Actor` and injecting the actor state via the constructor.
 
 ```php
 <?php
@@ -97,26 +116,22 @@ namespace App\Actors;
 
 use Dapr\Actors\Actor;
 use Dapr\Actors\Attributes\DaprType;
-use Dapr\Actors\ActorState;
 
 #[DaprType('CounterActor')]
 class CounterActor extends Actor implements CounterActorInterface
 {
-    // Actor state is automatically persisted by Dapr
-    private int $count = 0;
-    private array $history = [];
+    public function __construct(
+        string $id,
+        private CounterState $state
+    ) {
+        parent::__construct($id);
+    }
 
-    public function onActivate(): void
+    public function on_activation(): void
     {
         // Called when the actor is first activated
-        // Load state from Dapr state store
-        $savedCount = $this->stateManager->get('count', 0);
-        $savedHistory = $this->stateManager->get('history', []);
-
-        $this->count = $savedCount;
-        $this->history = $savedHistory;
-
-        echo "Actor {$this->id} activated with count {$this->count}" . PHP_EOL;
+        // State properties are automatically loaded from the Dapr state store
+        echo "Actor {$this->id} activated with count {$this->state->count}" . PHP_EOL;
     }
 
     public function increment(int $amount): void
@@ -125,46 +140,44 @@ class CounterActor extends Actor implements CounterActorInterface
             throw new \InvalidArgumentException('Amount must be positive');
         }
 
-        $this->count += $amount;
-        $this->history[] = [
+        $this->state->count += $amount;
+
+        $history = $this->state->history;
+        $history[] = [
             'action' => 'increment',
             'amount' => $amount,
             'timestamp' => date('Y-m-d H:i:s'),
-            'newCount' => $this->count
+            'newCount' => $this->state->count
         ];
+        $this->state->history = $history;
 
-        // Persist updated state
-        $this->stateManager->set('count', $this->count);
-        $this->stateManager->set('history', $this->history);
-
-        echo "Counter incremented by {$amount}, new count: {$this->count}" . PHP_EOL;
+        echo "Counter incremented by {$amount}, new count: {$this->state->count}" . PHP_EOL;
     }
 
     public function getCount(): int
     {
-        return $this->count;
+        return $this->state->count;
     }
 
     public function reset(): void
     {
-        $this->history[] = [
+        $history = $this->state->history;
+        $history[] = [
             'action' => 'reset',
-            'previousCount' => $this->count,
+            'previousCount' => $this->state->count,
             'timestamp' => date('Y-m-d H:i:s'),
             'newCount' => 0
         ];
-        $this->count = 0;
-
-        $this->stateManager->set('count', $this->count);
-        $this->stateManager->set('history', $this->history);
+        $this->state->history = $history;
+        $this->state->count = 0;
     }
 
     public function getHistory(): array
     {
-        return $this->history;
+        return $this->state->history;
     }
 
-    public function onDeactivate(): void
+    public function on_deactivation(): void
     {
         // Called when the actor is about to be deactivated
         echo "Actor {$this->id} deactivating" . PHP_EOL;
@@ -184,37 +197,37 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use Dapr\App;
 use App\Actors\CounterActor;
+use App\Actors\CounterActorInterface;
+use Dapr\Actors\ActorProxy;
 
 $app = App::create(
-    configuration: [],
-    register: function(\DI\ContainerBuilder $builder) {
-        // Register actor types
-        $builder->addDefinitions([]);
-    }
+    configure: fn(\DI\ContainerBuilder $builder) => $builder->addDefinitions([
+        // Register actor types with the Dapr runtime
+        'dapr.actors' => [CounterActor::class],
+    ])
 );
-
-// Register the actor with Dapr
-$app->register_actor(CounterActor::class);
 
 // Add custom routes for direct API access
 $app->post('/counter/{actorId}/increment', function(
     string $actorId,
-    \Psr\Http\Message\RequestInterface $request
-) use ($app) {
+    \Psr\Http\Message\RequestInterface $request,
+    ActorProxy $actorProxy
+) {
     $body = json_decode((string) $request->getBody(), true);
     $amount = $body['amount'] ?? 1;
 
     // Use the Dapr actor proxy to call the actor
-    $proxy = $app->get_actor_proxy(CounterActorInterface::class, $actorId);
+    $proxy = $actorProxy->get(CounterActorInterface::class, $actorId);
     $proxy->increment($amount);
 
     return ['success' => true, 'actorId' => $actorId];
 });
 
 $app->get('/counter/{actorId}', function(
-    string $actorId
-) use ($app) {
-    $proxy = $app->get_actor_proxy(CounterActorInterface::class, $actorId);
+    string $actorId,
+    ActorProxy $actorProxy
+) {
+    $proxy = $actorProxy->get(CounterActorInterface::class, $actorId);
     $count = $proxy->getCount();
     $history = $proxy->getHistory();
 
@@ -272,7 +285,7 @@ curl -X PUT http://localhost:3500/v1.0/actors/CounterActor/user-123/state \
 
 ## Working with Timers and Reminders
 
-PHP actors support timers and reminders by registering callbacks that the Dapr runtime invokes.
+PHP actors support timers and reminders by registering callbacks that the Dapr runtime invokes. Timers are not persisted and are lost if the actor is deactivated, while reminders are persisted and survive deactivation.
 
 ```php
 <?php
@@ -280,50 +293,67 @@ PHP actors support timers and reminders by registering callbacks that the Dapr r
 namespace App\Actors;
 
 use Dapr\Actors\Actor;
+use Dapr\Actors\ActorState;
 use Dapr\Actors\Attributes\DaprType;
+use Dapr\Actors\Reminder;
+use Dapr\Actors\Timer;
+
+class SessionState extends ActorState
+{
+    public int $last_activity = 0;
+    public string $status = 'active';
+}
 
 #[DaprType('SessionActor')]
 class SessionActor extends Actor
 {
-    public function onActivate(): void
+    public function __construct(
+        string $id,
+        private SessionState $state
+    ) {
+        parent::__construct($id);
+    }
+
+    public function on_activation(): void
     {
+        $this->state->last_activity = time();
+
         // Register a reminder that fires after 30 minutes
-        $this->createReminder('session-expiry', [
-            'dueTime' => '0h30m0s',
-            'period' => '',  // fire once
-            'data' => base64_encode(json_encode(['reason' => 'inactivity']))
-        ]);
+        $this->create_reminder(new Reminder(
+            name: 'session-expiry',
+            due_time: new \DateInterval('PT30M'),
+            data: ['reason' => 'inactivity']
+        ));
 
         // Register a timer for heartbeats (not persisted)
-        $this->createTimer('heartbeat', [
-            'dueTime' => '0h1m0s',
-            'period' => '0h5m0s',
-            'callback' => 'heartbeatCallback',
-            'data' => null
-        ]);
+        $this->create_timer(new Timer(
+            name: 'heartbeat',
+            due_time: new \DateInterval('PT1M'),
+            period: new \DateInterval('PT5M'),
+            callback: 'heartbeatCallback'
+        ));
     }
 
     public function heartbeatCallback(): void
     {
-        $lastActivity = $this->stateManager->get('last_activity', time());
-        echo "Heartbeat for actor {$this->id}, last active: " . date('H:i:s', $lastActivity) . PHP_EOL;
-        $this->stateManager->set('last_activity', time());
+        echo "Heartbeat for actor {$this->id}, last active: " . date('H:i:s', $this->state->last_activity) . PHP_EOL;
+        $this->state->last_activity = time();
     }
 
-    public function receiveReminder(string $reminderName, mixed $data): void
+    public function remind(string $name, Reminder $data): void
     {
-        if ($reminderName === 'session-expiry') {
+        if ($name === 'session-expiry') {
             echo "Session {$this->id} expired" . PHP_EOL;
-            $this->stateManager->set('status', 'expired');
+            $this->state->status = 'expired';
             // Delete the timer as the session is done
-            $this->deleteTimer('heartbeat');
+            $this->delete_timer('heartbeat');
         }
     }
 
     public function ping(): void
     {
         // Update last activity time to prevent expiry
-        $this->stateManager->set('last_activity', time());
+        $this->state->last_activity = time();
     }
 }
 ```
