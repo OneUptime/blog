@@ -92,17 +92,25 @@ spec:
 
 ## Application Code - Trust Validated Claims
 
-After Dapr validates the JWT, your application can read claims from the forwarded headers:
+After Dapr validates the JWT, your application can decode claims from the `Authorization` header. Since Dapr has already verified the token signature, expiry, and audience, you can safely decode the payload without re-validating:
 
 ```javascript
 const express = require('express');
 const app = express();
 
 app.get('/api/user-data', (req, res) => {
-    // Dapr has already validated the JWT; read forwarded claims
-    const userId = req.headers['x-jwt-claim-sub'];
-    const email = req.headers['x-jwt-claim-email'];
-    const scope = req.headers['x-jwt-claim-scope'];
+    // Dapr has already validated the JWT; decode claims from the Authorization header
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No token found' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+
+    const userId = payload.sub;
+    const email = payload.email;
+    const scope = payload.scope;
 
     if (!userId) {
         return res.status(401).json({ error: 'No user identity found' });
@@ -138,4 +146,4 @@ curl -H "Authorization: Bearer $EXPIRED_TOKEN" \
 
 ## Summary
 
-Dapr's bearer auth middleware validates JWT tokens using JWKS from the identity provider's discovery endpoint, handling signature verification, expiry, and audience checks automatically. Your application receives only pre-authenticated requests and can read validated claims from forwarded headers. This cleanly separates authentication from business logic.
+Dapr's bearer auth middleware validates JWT tokens using JWKS from the identity provider's discovery endpoint, handling signature verification, expiry, and audience checks automatically. Your application receives only pre-authenticated requests and can decode validated claims directly from the JWT in the `Authorization` header. This cleanly separates authentication from business logic.
