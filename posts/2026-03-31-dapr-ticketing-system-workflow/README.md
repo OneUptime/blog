@@ -17,6 +17,8 @@ A support ticketing system manages customer issues through defined stages: creat
 ```go
 package main
 
+import "time"
+
 type TicketPriority string
 type TicketStatus string
 
@@ -70,7 +72,7 @@ func TicketWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     var ticket Ticket
     ctx.GetInput(&ticket)
 
-    ticket.CreatedAt = time.Now()
+    ticket.CreatedAt = ctx.CurrentUTCDateTime()
     ticket.SLADeadline = ticket.CreatedAt.Add(slaDurations[ticket.Priority])
 
     // Step 1: Auto-triage (categorize and route)
@@ -82,7 +84,7 @@ func TicketWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     ctx.CallActivity(NotifyTeam, workflow.ActivityInput(ticket)).Await(nil)
 
     // Step 2: Wait for assignment (with SLA timer)
-    slaDuration := time.Until(ticket.SLADeadline)
+    slaDuration := ticket.SLADeadline.Sub(ctx.CurrentUTCDateTime())
     assignEvent := ctx.WaitForExternalEvent("ticket-assigned", slaDuration)
 
     var assignment AssignmentEvent
@@ -97,7 +99,7 @@ func TicketWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     ticket.AssigneeID = assignment.AssigneeID
 
     // Step 3: Wait for resolution
-    resolveEvent := ctx.WaitForExternalEvent("ticket-resolved", time.Until(ticket.SLADeadline))
+    resolveEvent := ctx.WaitForExternalEvent("ticket-resolved", ticket.SLADeadline.Sub(ctx.CurrentUTCDateTime()))
 
     var resolution ResolutionEvent
     if err := resolveEvent.Await(&resolution); err != nil {
@@ -122,8 +124,9 @@ func TicketWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     }
 
     if !confirm.Satisfied {
-        // Reopen
-        return TicketWorkflow(ctx) // Restart workflow
+        // Reopen - restart the workflow with the same ticket
+        ctx.ContinueAsNew(ticket, true)
+        return nil, nil
     }
 
     ctx.CallActivity(CloseTicket, workflow.ActivityInput(ticket)).Await(nil)
@@ -147,7 +150,7 @@ func handleAssignTicket(w http.ResponseWriter, r *http.Request) {
 
     wfClient, _ := workflow.NewClient()
     wfClient.RaiseEvent(r.Context(), req.WorkflowInstanceID, "ticket-assigned",
-        AssignmentEvent{AssigneeID: req.AssigneeID})
+        workflow.WithEventPayload(AssignmentEvent{AssigneeID: req.AssigneeID}))
     w.WriteHeader(http.StatusAccepted)
 }
 
@@ -160,7 +163,7 @@ func handleResolveTicket(w http.ResponseWriter, r *http.Request) {
 
     wfClient, _ := workflow.NewClient()
     wfClient.RaiseEvent(r.Context(), req.WorkflowInstanceID, "ticket-resolved",
-        ResolutionEvent{Summary: req.Summary})
+        workflow.WithEventPayload(ResolutionEvent{Summary: req.Summary}))
     w.WriteHeader(http.StatusAccepted)
 }
 ```
@@ -168,12 +171,8 @@ func handleResolveTicket(w http.ResponseWriter, r *http.Request) {
 ## Ticket Dashboard Query
 
 ```bash
-# List all active tickets
-curl http://localhost:3500/v1.0/workflows/dapr/TicketWorkflow/instances \
-  -H "Content-Type: application/json"
-
-# Check specific ticket status
-curl http://localhost:3500/v1.0/workflows/dapr/TicketWorkflow/instances/TICKET-123
+# Check specific ticket status by instance ID
+curl http://localhost:3500/v1.0/workflows/dapr/TICKET-123
 ```
 
 ## Summary
