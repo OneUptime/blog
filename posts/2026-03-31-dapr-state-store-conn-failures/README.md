@@ -73,6 +73,7 @@ kubectl apply -f statestore-resiliency.yaml
 Do not let state store failures crash your service. Implement a fallback:
 
 ```python
+import json
 from dapr.clients import DaprClient
 from dapr.clients.exceptions import DaprInternalError
 import logging
@@ -140,7 +141,6 @@ package main
 
 import (
     "context"
-    "errors"
     dapr "github.com/dapr/go-sdk/client"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -207,7 +207,7 @@ spec:
 kubectl logs deployment/myapp -c daprd --follow | grep -i "state\|error\|fail"
 
 # Prometheus metric for state store errors
-dapr_component_state_operations_total{component="statestore",status="error"}
+dapr_component_state_count{component="statestore",status="error"}
 ```
 
 Set up an alert when error rate exceeds threshold:
@@ -216,8 +216,8 @@ Set up an alert when error rate exceeds threshold:
 # Prometheus alert rule
 - alert: DaprStateStoreHighErrorRate
   expr: |
-    rate(dapr_component_state_operations_total{status="error"}[5m])
-    / rate(dapr_component_state_operations_total[5m]) > 0.05
+    rate(dapr_component_state_count{status="error"}[5m])
+    / rate(dapr_component_state_count[5m]) > 0.05
   for: 2m
   labels:
     severity: warning
