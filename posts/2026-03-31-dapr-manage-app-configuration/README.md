@@ -24,16 +24,12 @@ Before diving into Dapr specifics, establish these principles for your configura
 Use a consistent naming convention for configuration keys:
 
 ```bash
-# Redis CLI - set configuration values with environment prefix
-redis-cli SET production||myapp.max-connections "100"
-redis-cli SET production||myapp.cache-ttl-seconds "300"
-redis-cli SET production||myapp.log-level "warn"
-redis-cli SET production||myapp.rate-limit-rps "1000"
-
-redis-cli SET staging||myapp.max-connections "20"
-redis-cli SET staging||myapp.cache-ttl-seconds "60"
-redis-cli SET staging||myapp.log-level "debug"
-redis-cli SET staging||myapp.rate-limit-rps "100"
+# Redis CLI - set configuration values (value||version format)
+# Use separate Dapr components per environment, each pointing to its own Redis instance or DB
+redis-cli SET myapp.max-connections "100||1"
+redis-cli SET myapp.cache-ttl-seconds "300||1"
+redis-cli SET myapp.log-level "warn||1"
+redis-cli SET myapp.rate-limit-rps "1000||1"
 ```
 
 ## Defining the Configuration Component
@@ -56,8 +52,6 @@ spec:
       secretKeyRef:
         name: redis-secret
         key: password
-    - name: keyPrefix
-      value: "production"
 ```
 
 ## Building a Configuration Service Wrapper
@@ -69,7 +63,6 @@ import Axios from 'axios';
 
 interface ConfigItem {
   value: string;
-  version: string;
 }
 
 export class AppConfig {
@@ -83,10 +76,10 @@ export class AppConfig {
 
     try {
       const resp = await Axios.get(
-        `${this.DAPR_URL}/v1.0-alpha1/configuration/${this.STORE_NAME}`,
+        `${this.DAPR_URL}/v1.0/configuration/${this.STORE_NAME}`,
         { params: { key } }
       );
-      const item = resp.data.items[key];
+      const item = resp.data[key];
       if (item) {
         this.cache.set(key, item);
         return item.value;
@@ -120,8 +113,8 @@ const featureEnabled = await AppConfig.getBool('myapp.feature-new-ui', false);
 Update a configuration value and all subscribed services react automatically:
 
 ```bash
-# Change log level across all services
-redis-cli SET production||myapp.log-level "debug"
+# Change log level across all services (update value, bump version)
+redis-cli SET myapp.log-level "debug||2"
 
 # This triggers subscription callbacks in all running services
 # No restarts needed
@@ -141,10 +134,10 @@ REQUIRED_CONFIG_KEYS = [
 async def validate_config():
     for key in REQUIRED_CONFIG_KEYS:
         resp = httpx.get(
-            f"http://localhost:3500/v1.0-alpha1/configuration/appconfig?key={key}"
+            f"http://localhost:3500/v1.0/configuration/appconfig?key={key}"
         )
-        items = resp.json().get("items", {})
-        if key not in items or not items[key]["value"]:
+        config = resp.json()
+        if key not in config or not config[key]["value"]:
             raise RuntimeError(f"Required configuration key missing: {key}")
     print("All required configuration keys present")
 ```
