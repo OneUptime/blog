@@ -73,14 +73,11 @@ spec:
     samplingRate: "0.1"
   metric:
     enabled: true
-    rules:
-    - selector:
-        prefixes:
-        - dapr_http_server
-        - dapr_component_state
+    http:
+      increasedCardinality: false
 ```
 
-Reduce sampling rate and limit which metrics are collected.
+Reduce sampling rate and lower metric cardinality to decrease memory usage.
 
 ## Step 4 - Adjust Memory Limits
 
@@ -132,8 +129,8 @@ spec:
 
 Then set TTL in actor state operations:
 
-```javascript
-await actorStateManager.setStateAsync('key', value, { ttlInSeconds: 3600 });
+```csharp
+await this.StateManager.SetStateAsync("key", value, TimeSpan.FromSeconds(3600));
 ```
 
 ## Summary
