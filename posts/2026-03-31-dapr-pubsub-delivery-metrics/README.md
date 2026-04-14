@@ -15,22 +15,19 @@ Pub/sub messaging in Dapr provides reliable event delivery between microservices
 Dapr tracks metrics for both the publisher side (egress) and subscriber side (ingress):
 
 **Egress (publishing) metrics:**
-- `dapr_component_pubsub_egress_count` - total messages published
-- `dapr_component_pubsub_egress_fail_count` - publish failures
-- `dapr_component_pubsub_egress_latencies_ms` - publish latency
+- `dapr_component_pubsub_egress_count` - total messages published (label `success="true"` or `"false"`)
+- `dapr_component_pubsub_egress_latencies` - publish latency (unit: milliseconds)
 
 **Ingress (subscribing) metrics:**
-- `dapr_component_pubsub_ingress_count` - total messages received
-- `dapr_component_pubsub_ingress_fail_count` - processing failures
-- `dapr_component_pubsub_drop_count` - messages dropped
-- `dapr_component_pubsub_ingress_latencies_ms` - processing latency
+- `dapr_component_pubsub_ingress_count` - total messages received (label `process_status` indicates `success`, `retry`, or `drop`)
+- `dapr_component_pubsub_ingress_latencies` - processing latency (unit: milliseconds)
 
 ## Publish Success Rate
 
 ```text
 # Publish success rate per topic
 1 - (
-  rate(dapr_component_pubsub_egress_fail_count[5m])
+  rate(dapr_component_pubsub_egress_count{success="false"}[5m])
   / rate(dapr_component_pubsub_egress_count[5m])
 )
 
@@ -46,7 +43,7 @@ rate(dapr_component_pubsub_ingress_count[5m])
 
 # Processing success rate
 1 - (
-  rate(dapr_component_pubsub_ingress_fail_count[5m])
+  rate(dapr_component_pubsub_ingress_count{process_status!="success"}[5m])
   / rate(dapr_component_pubsub_ingress_count[5m])
 )
 ```
@@ -57,10 +54,10 @@ Message drops indicate the subscriber cannot keep up or there is a configuration
 
 ```text
 # Drop rate - any drops mean potential message loss
-rate(dapr_component_pubsub_drop_count[5m])
+rate(dapr_component_pubsub_ingress_count{process_status="drop"}[5m])
 
 # Drop percentage
-rate(dapr_component_pubsub_drop_count[5m])
+rate(dapr_component_pubsub_ingress_count{process_status="drop"}[5m])
 / rate(dapr_component_pubsub_ingress_count[5m]) * 100
 ```
 
@@ -70,13 +67,13 @@ rate(dapr_component_pubsub_drop_count[5m])
 # P99 message processing time per topic
 histogram_quantile(0.99,
   sum by (le, topic, component) (
-    rate(dapr_component_pubsub_ingress_latencies_ms_bucket[5m])
+    rate(dapr_component_pubsub_ingress_latencies_bucket[5m])
   )
 )
 
 # Average processing time
-sum by (topic) (rate(dapr_component_pubsub_ingress_latencies_ms_sum[5m]))
-/ sum by (topic) (rate(dapr_component_pubsub_ingress_latencies_ms_count[5m]))
+sum by (topic) (rate(dapr_component_pubsub_ingress_latencies_sum[5m]))
+/ sum by (topic) (rate(dapr_component_pubsub_ingress_latencies_count[5m]))
 ```
 
 ## Alert Rules for Pub/Sub Health
@@ -86,7 +83,7 @@ groups:
 - name: dapr-pubsub
   rules:
   - alert: DaprMessageDrop
-    expr: rate(dapr_component_pubsub_drop_count[5m]) > 0
+    expr: rate(dapr_component_pubsub_ingress_count{process_status="drop"}[5m]) > 0
     for: 1m
     labels:
       severity: critical
@@ -96,7 +93,7 @@ groups:
 
   - alert: DaprPublishFailures
     expr: |
-      rate(dapr_component_pubsub_egress_fail_count[5m]) > 0.1
+      rate(dapr_component_pubsub_egress_count{success="false"}[5m]) > 0.1
     for: 3m
     labels:
       severity: warning
@@ -107,7 +104,7 @@ groups:
     expr: |
       histogram_quantile(0.99,
         sum by (le, topic) (
-          rate(dapr_component_pubsub_ingress_latencies_ms_bucket[5m])
+          rate(dapr_component_pubsub_ingress_latencies_bucket[5m])
         )
       ) > 5000
     for: 5m
@@ -125,7 +122,7 @@ Dapr does not expose consumer lag directly, but you can approximate it from proc
 # Rising processing latency trend suggests growing lag
 deriv(
   histogram_quantile(0.50,
-    sum by (le, topic) (rate(dapr_component_pubsub_ingress_latencies_ms_bucket[10m]))
+    sum by (le, topic) (rate(dapr_component_pubsub_ingress_latencies_bucket[10m]))
   )[30m:]
 ) > 0
 ```
