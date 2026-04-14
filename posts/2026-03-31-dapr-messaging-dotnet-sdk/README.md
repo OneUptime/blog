@@ -23,7 +23,6 @@ dotnet add package Dapr.AspNetCore
 
 ```csharp
 using Dapr.Client;
-using CloudNative.CloudEvents;
 
 public class EventPublisher
 {
@@ -49,11 +48,12 @@ public class EventPublisher
 ```csharp
 public async Task PublishBatch(IEnumerable<OrderEvent> events)
 {
-    var messages = events.Select(e => new BulkPublishMessage<OrderEvent>
-    {
-        Event = e,
-        Metadata = new Dictionary<string, string> { ["partitionKey"] = e.OrderId }
-    }).ToList();
+    var messages = events.Select((e, i) => new BulkPublishEntry<OrderEvent>(
+        entryId: i.ToString(),
+        eventData: e,
+        contentType: "application/json",
+        metadata: new Dictionary<string, string> { ["partitionKey"] = e.OrderId }
+    )).ToList();
 
     var result = await _dapr.BulkPublishEventAsync(
         pubsubName: "pubsub",
@@ -80,7 +80,7 @@ Use topic rules to route messages based on content:
 public class OrderRouterController : ControllerBase
 {
     // Route high-value orders to priority topic
-    [Topic("pubsub", "orders", "event.type == \"order-created\" && event.data.total > 1000")]
+    [Topic("pubsub", "orders", "event.type == \"order-created\" && event.data.total > 1000", 1)]
     [HttpPost("/orders/high-value")]
     public IActionResult HandleHighValueOrder(Order order)
     {
@@ -89,7 +89,7 @@ public class OrderRouterController : ControllerBase
     }
 
     // Standard orders
-    [Topic("pubsub", "orders", "event.type == \"order-created\" && event.data.total <= 1000")]
+    [Topic("pubsub", "orders", "event.type == \"order-created\" && event.data.total <= 1000", 2)]
     [HttpPost("/orders/standard")]
     public IActionResult HandleStandardOrder(Order order)
     {
@@ -105,7 +105,7 @@ public class OrderRouterController : ControllerBase
 [ApiController]
 public class OrderProcessorController : ControllerBase
 {
-    [Topic("pubsub", "orders", deadLetterTopic: "orders-dlq")]
+    [Topic("pubsub", "orders", DeadLetterTopic = "orders-dlq")]
     [HttpPost("/orders")]
     public async Task<IActionResult> ProcessOrder(Order order)
     {
@@ -116,9 +116,9 @@ public class OrderProcessorController : ControllerBase
         }
         catch (ValidationException ex)
         {
-            // Permanent failure - send to DLQ
+            // Permanent failure - drop message, routes to dead letter topic
             Console.WriteLine($"Validation failed: {ex.Message}");
-            return UnprocessableEntity(ex.Message);
+            return NotFound(); // Dapr treats 404 as DROP → sends to DLQ
         }
         catch (TransientException)
         {
@@ -158,7 +158,7 @@ public IActionResult OnOrder([FromBody] CloudEvent<Order> cloudEvent)
 {
     Console.WriteLine($"Type: {cloudEvent.Type}");
     Console.WriteLine($"Source: {cloudEvent.Source}");
-    Console.WriteLine($"Time: {cloudEvent.Time}");
+    Console.WriteLine($"Subject: {cloudEvent.Subject}");
     Console.WriteLine($"Order ID: {cloudEvent.Data?.Id}");
     return Ok();
 }
