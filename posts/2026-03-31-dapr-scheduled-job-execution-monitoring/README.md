@@ -23,8 +23,8 @@ dapr_scheduler_jobs_triggered_total
 # Jobs that failed to trigger
 dapr_scheduler_jobs_failed_total
 
-# Job execution latency (if instrumented)
-dapr_runtime_job_handler_duration_milliseconds
+# Job trigger latency histogram
+dapr_scheduler_trigger_latency
 ```
 
 Create a Grafana panel to track execution rate over time:
@@ -75,11 +75,11 @@ Store job execution history in a Dapr state store for auditing:
 ```python
 from dapr.clients import DaprClient
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def record_job_success(job_name: str, duration: float):
     with DaprClient() as client:
-        key = f"job-history-{job_name}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        key = f"job-history-{job_name}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
         client.save_state(
             store_name="statestore",
             key=key,
@@ -87,7 +87,7 @@ def record_job_success(job_name: str, duration: float):
                 "job": job_name,
                 "status": "success",
                 "duration": duration,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
         )
 ```
@@ -102,12 +102,12 @@ groups:
     rules:
       - alert: DaprJobNotTriggered
         expr: >
-          time() - dapr_scheduler_last_trigger_timestamp{job_name="daily-report"} > 90000
+          increase(dapr_scheduler_jobs_triggered_total{type="job"}[25h]) == 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Daily report job has not triggered in 25+ hours"
+          summary: "No Dapr scheduled jobs have triggered in 25+ hours"
 ```
 
 ## Distributed Tracing for Job Execution
