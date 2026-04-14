@@ -90,9 +90,9 @@ spec:
   topic: monitoring-alerts
   routes:
     rules:
-    - match: event.severity == "critical"
+    - match: event.data.severity == "critical"
       path: /handle-critical
-    - match: event.severity == "warning"
+    - match: event.data.severity == "warning"
       path: /handle-warning
     default: /handle-info
 ```
@@ -149,16 +149,19 @@ server.pubsub.subscribe('pubsub', 'monitoring-alerts', async (alert) => {
 Publish processed alert data for dashboards:
 
 ```python
+import json
+from dapr.clients import DaprClient
+
 @app.route('/system-metrics', methods=['POST'])
 def metrics_handler():
     data = request.json['data']
 
     # Store rolling window in Dapr state
     with DaprClient() as client:
-        client.publish_event('pubsub', 'dashboard-feed', {
+        client.publish_event('pubsub', 'dashboard-feed', json.dumps({
             "type": "metric",
             "data": data
-        })
+        }))
 
     return '', 200
 ```
