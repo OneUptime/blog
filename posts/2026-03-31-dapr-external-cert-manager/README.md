@@ -95,16 +95,15 @@ kubectl apply -f dapr-issuer.yaml
 
 ## Configuring Dapr to Use the cert-manager Secret
 
-Tell Dapr Sentry to use the certificate secret created by cert-manager:
+By default, Dapr Sentry reads certificates from the `dapr-trust-bundle` secret in the `dapr-system` namespace, but it expects keys named `ca.crt`, `issuer.crt`, and `issuer.key`. cert-manager creates secrets with keys `tls.crt`, `tls.key`, and `ca.crt`. To bridge this mismatch, configure Dapr to use cert-manager's key names:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_sentry.trustAnchorsFile="" \
+  --set global.issuerFilenames.cert=tls.crt \
+  --set global.issuerFilenames.key=tls.key \
   --reuse-values
 ```
-
-Dapr Sentry automatically reads from the `dapr-trust-bundle` secret.
 
 ## Verifying the Integration
 
