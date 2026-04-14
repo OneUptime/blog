@@ -50,7 +50,7 @@ spec:
       protocol: grpc
 ```
 
-Note: Dapr's OTel configuration does not support custom headers directly. Use the OTel Collector to inject the auth token header.
+Note: Dapr supports custom headers via the `spec.tracing.otel.headers` field with `secretKeyRef` for Kubernetes secrets, so direct export with auth is possible. However, routing through the OTel Collector is recommended for production as it enables batching, processing, and multi-backend fanout.
 
 ## OTel Collector with Dash0 Auth Header
 
@@ -152,20 +152,21 @@ curl -X POST http://localhost:3500/v1.0/invoke/downstream-service/method/ping \
 
 Create an alert in the Dash0 UI for high latency:
 
-1. Navigate to Alerts > Create Alert
-2. Select metric: `span.duration` with p99 aggregation
+1. Navigate to Monitoring > Alerting and configure a new alert check
+2. Use the `dash0.spans.duration` histogram metric with a p99 quantile
 3. Filter by `service.name = "order-service"`
 4. Set threshold and notification channel
 
 ## Querying Trace Data
 
-Dash0 supports OTel-native queries. Use the trace search:
+Dash0 supports filtering and querying trace data. Use the filter bar in the trace explorer to search by attributes:
 
 ```text
 service.name = "order-service"
-AND span.kind = "server"
-AND span.duration > 500ms
+span.kind = "server"
 ```
+
+For metric-based queries (e.g., latency analysis), Dash0 uses PromQL with native histogram metrics like `dash0.spans.duration`.
 
 ## Summary
 
