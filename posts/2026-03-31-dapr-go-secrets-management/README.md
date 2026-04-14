@@ -135,8 +135,10 @@ spec:
       secretKeyRef:
         name: vault-token
         key: token
+  auth:
+    secretStore: kubernetes-secret-store
 ```
 
 ## Summary
 
-The Dapr Go secrets API is three functions: `GetSecret`, `GetBulkSecret`, and the metadata map for version pinning. By configuring the secret store in a YAML component, you can use the same Go code in development (local file), staging (Kubernetes Secrets), and production (HashiCorp Vault or AWS Secrets Manager) without any application changes.
+The Dapr Go secrets API has two functions: `GetSecret` and `GetBulkSecret`. Both accept an optional metadata map for passing store-specific parameters such as secret version selection. By configuring the secret store in a YAML component, you can use the same Go code in development (local file), staging (Kubernetes Secrets), and production (HashiCorp Vault or AWS Secrets Manager) without any application changes.
