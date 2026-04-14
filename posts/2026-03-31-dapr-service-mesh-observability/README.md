@@ -37,7 +37,7 @@ spec:
 Configure Istio to export metrics to the same Prometheus instance:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -74,8 +74,8 @@ Create a Grafana dashboard that combines Dapr and Istio metrics:
 # Example PromQL queries for a combined dashboard
 
 # Dapr service invocation success rate
-sum(rate(dapr_service_invocation_req_sent_total{status="200"}[5m])) /
-sum(rate(dapr_service_invocation_req_sent_total[5m]))
+sum(rate(dapr_runtime_service_invocation_res_recv_total{status="200"}[5m])) /
+sum(rate(dapr_runtime_service_invocation_res_recv_total[5m]))
 
 # Istio request success rate
 sum(rate(istio_requests_total{response_code="200"}[5m])) /
@@ -107,8 +107,8 @@ groups:
   rules:
   - alert: DaprHighErrorRate
     expr: |
-      sum(rate(dapr_service_invocation_req_sent_total{status!="200"}[5m])) /
-      sum(rate(dapr_service_invocation_req_sent_total[5m])) > 0.05
+      sum(rate(dapr_runtime_service_invocation_res_recv_total{status!="200"}[5m])) /
+      sum(rate(dapr_runtime_service_invocation_res_recv_total[5m])) > 0.05
     for: 2m
     labels:
       severity: warning
