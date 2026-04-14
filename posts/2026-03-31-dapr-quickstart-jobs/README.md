@@ -73,8 +73,8 @@ def schedule_daily_report():
                 "reportType": "sales-summary",
                 "recipients": ["team@example.com"],
                 "format": "pdf"
-            },
-            "repeats": 0   # 0 = infinite
+            }
+            # omit "repeats" for unlimited triggers
         }
     )
     return jsonify({"scheduled": True, "status": response.status_code})
@@ -159,12 +159,7 @@ Response:
 {
   "name": "daily-report",
   "schedule": "@daily",
-  "data": {"reportType": "sales-summary"},
-  "repeats": 0,
-  "status": {
-    "lastRunTime": null,
-    "nextRunTime": "2026-04-01T00:00:00Z"
-  }
+  "data": {"reportType": "sales-summary"}
 }
 ```
 
