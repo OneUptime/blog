@@ -14,13 +14,13 @@ File processing pipelines ingest uploaded files, transform them, and store resul
 
 ## Binding Configuration
 
-S3 input binding triggers processing when files are uploaded:
+The Dapr S3 binding is output-only — it supports operations like `get`, `create`, `list`, and `delete`, but cannot trigger on file uploads directly. To build an event-driven pipeline, configure S3 to send upload notifications to an SQS queue, then use a Dapr SQS input binding to trigger processing:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: s3-input
+  name: s3-source
 spec:
   type: bindings.aws.s3
   version: v1
@@ -37,8 +37,6 @@ spec:
       secretKeyRef:
         name: aws-secret
         key: secretAccessKey
-    - name: direction
-      value: "input"
 ---
 apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -60,8 +58,29 @@ spec:
       secretKeyRef:
         name: aws-secret
         key: secretAccessKey
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: s3-notifications
+spec:
+  type: bindings.aws.sqs
+  version: v1
+  metadata:
+    - name: queueURL
+      value: "https://sqs.us-east-1.amazonaws.com/123456789012/s3-upload-notifications"
+    - name: region
+      value: "us-east-1"
+    - name: accessKey
+      secretKeyRef:
+        name: aws-secret
+        key: accessKeyId
+    - name: secretKey
+      secretKeyRef:
+        name: aws-secret
+        key: secretAccessKey
     - name: direction
-      value: "output"
+      value: "input"
 ```
 
 ## File Processing Service
@@ -71,12 +90,13 @@ package main
 
 import (
     "context"
-    "encoding/base64"
     "encoding/json"
-    "net/http"
+    "fmt"
     "path/filepath"
-    daprd "github.com/dapr/go-sdk/service/http"
+
     dapr "github.com/dapr/go-sdk/client"
+    common "github.com/dapr/go-sdk/service/common"
+    daprd "github.com/dapr/go-sdk/service/http"
 )
 
 type FileProcessor struct {
@@ -95,13 +115,41 @@ func main() {
     processor := &FileProcessor{daprClient: client}
 
     s := daprd.NewService(":8080")
-    s.AddBindingInvocationHandler("s3-input", processor.processFile)
-    s.Start()
+    s.AddBindingInvocationHandler("s3-notifications", processor.processFile)
+    if err := s.Start(); err != nil {
+        panic(err)
+    }
 }
 
 func (fp *FileProcessor) processFile(ctx context.Context, in *common.BindingEvent) ([]byte, error) {
-    var event S3Event
-    json.Unmarshal(in.Data, &event)
+    // Parse S3 event notification delivered via SQS
+    var notification struct {
+        Records []struct {
+            S3 struct {
+                Bucket struct {
+                    Name string `json:"name"`
+                } `json:"bucket"`
+                Object struct {
+                    Key  string `json:"key"`
+                    Size int64  `json:"size"`
+                    ETag string `json:"eTag"`
+                } `json:"object"`
+            } `json:"s3"`
+        } `json:"Records"`
+    }
+    json.Unmarshal(in.Data, &notification)
+
+    if len(notification.Records) == 0 {
+        return []byte(`{"status":"skipped","reason":"no records"}`), nil
+    }
+
+    record := notification.Records[0].S3
+    event := S3Event{
+        Bucket: record.Bucket.Name,
+        Key:    record.Object.Key,
+        Size:   record.Object.Size,
+        ETag:   record.Object.ETag,
+    }
 
     ext := filepath.Ext(event.Key)
 
@@ -124,7 +172,7 @@ func (fp *FileProcessor) processFile(ctx context.Context, in *common.BindingEven
 func (fp *FileProcessor) processCSV(ctx context.Context, event S3Event) ([]byte, error) {
     // Download file via S3 binding
     fileData, err := fp.daprClient.InvokeBinding(ctx, &dapr.InvokeBindingRequest{
-        Name:      "s3-input",
+        Name:      "s3-source",
         Operation: "get",
         Metadata:  map[string]string{"key": event.Key},
     })
@@ -152,8 +200,8 @@ func (fp *FileProcessor) processCSV(ctx context.Context, event S3Event) ([]byte,
 
     // Publish completion event
     fp.daprClient.PublishEvent(ctx, "pubsub", "file-processed", map[string]string{
-        "inputKey":  event.Key,
-        "outputKey": outputKey,
+        "inputKey":    event.Key,
+        "outputKey":   outputKey,
         "recordCount": fmt.Sprintf("%d", len(records)),
     })
 
@@ -167,7 +215,7 @@ func (fp *FileProcessor) processCSV(ctx context.Context, event S3Event) ([]byte,
 func (fp *FileProcessor) processImage(ctx context.Context, event S3Event) ([]byte, error) {
     // Get image bytes
     fileResp, _ := fp.daprClient.InvokeBinding(ctx, &dapr.InvokeBindingRequest{
-        Name:      "s3-input",
+        Name:      "s3-source",
         Operation: "get",
         Metadata:  map[string]string{"key": event.Key},
     })
@@ -218,4 +266,4 @@ func transformStage(ctx context.Context, e *common.TopicEvent) (bool, error) {
 
 ## Summary
 
-Dapr bindings provide a vendor-agnostic interface to object storage and event triggers for file processing pipelines. S3 input bindings trigger processing on file uploads, output bindings store results, and pub/sub chains pipeline stages asynchronously. This architecture handles CSV, image, and PDF processing without AWS SDK or S3 client imports in your business logic code.
+Dapr bindings provide a vendor-agnostic interface to object storage and event triggers for file processing pipelines. Since the S3 binding is output-only, S3 upload notifications are routed through an SQS input binding to trigger processing. S3 output bindings handle reading source files and storing results, while pub/sub chains pipeline stages asynchronously. This architecture handles CSV, image, and PDF processing without AWS SDK or S3 client imports in your business logic code.
