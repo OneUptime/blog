@@ -77,19 +77,20 @@ spec:
 version: 1
 common:
   resourcesPath: ./components/test
-  logLevel: warn     # reduce test output noise
 
 apps:
   - appID: order-service
     appDirPath: ./src/OrderService
     appPort: 5000
     daprHTTPPort: 3500
+    logLevel: warn     # reduce test output noise
     command: ["dotnet", "run", "--environment", "Testing"]
 
   - appID: inventory-stub
     appDirPath: ./tests/Stubs/InventoryStub
     appPort: 5001
     daprHTTPPort: 3501
+    logLevel: warn
     command: ["dotnet", "run"]
 ```
 
@@ -146,7 +147,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install Dapr CLI
-      run: wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | bash
+      run: wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
     - name: Initialize Dapr (slim)
       run: dapr init --slim
     - name: Run integration tests
