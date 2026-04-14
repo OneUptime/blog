@@ -25,11 +25,11 @@ docker run -d \
   -p 9000:9000 \
   -e username_admin_globalaccesslevel=admin \
   -e username_admin_password=admin \
-  --shm-size=2g \
+  --shm-size=1g \
   solace/solace-pubsub-standard:latest
 ```
 
-Configure topics and queues using the Solace CLI (SEMP API):
+Configure topics and queues using the SEMP REST API:
 
 ```bash
 # Create a queue for the orders topic
