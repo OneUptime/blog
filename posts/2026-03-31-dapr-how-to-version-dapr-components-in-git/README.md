@@ -115,15 +115,13 @@ spec:
       key: password
   - name: enableTLS
     value: "true"
-  - name: replicaCount
-    value: "3"
 ```
 
 ```yaml
 # overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
 namespace: production
 patches:
@@ -223,7 +221,7 @@ Add a pre-commit hook or CI check to validate component YAML:
 
 echo "Validating Dapr component manifests..."
 
-for file in $(find . -name "*.yaml" -path "*/components/*"); do
+for file in $(find . -name "*.yaml"); do
   # Check required fields
   if ! grep -q "kind: Component" "$file" 2>/dev/null; then
     continue
