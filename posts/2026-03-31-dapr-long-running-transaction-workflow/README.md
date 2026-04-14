@@ -26,7 +26,6 @@ Map out each step and its compensation:
 ## Implementing the Saga Workflow
 
 ```csharp
-[DaprWorkflow]
 public class OrderSagaWorkflow : Workflow<OrderInput, OrderResult>
 {
     public override async Task<OrderResult> RunAsync(
@@ -86,7 +85,6 @@ public class OrderSagaWorkflow : Workflow<OrderInput, OrderResult>
 ## Compensation Activities
 
 ```csharp
-[DaprWorkflowActivity]
 public class RefundPaymentActivity : WorkflowActivity<string, bool>
 {
     private readonly PaymentService _payments;
@@ -111,7 +109,7 @@ Dapr Workflow preserves the custom status string in its state store:
 
 ```bash
 # Query workflow status
-curl http://localhost:3500/v1.0/workflows/dapr/order-saga-001/status
+curl http://localhost:3500/v1.0/workflows/dapr/order-saga-001
 ```
 
 Response:
@@ -120,8 +118,12 @@ Response:
 {
   "instanceID": "order-saga-001",
   "workflowName": "OrderSagaWorkflow",
+  "createdAt": "2026-03-31T10:00:00Z",
+  "lastUpdatedAt": "2026-03-31T10:01:30Z",
   "runtimeStatus": "RUNNING",
-  "customStatus": "Compensating due to: Payment gateway timeout"
+  "properties": {
+    "dapr.workflow.custom_status": "\"Compensating due to: Payment gateway timeout\""
+  }
 }
 ```
 
