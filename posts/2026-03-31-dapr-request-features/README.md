@@ -89,7 +89,7 @@ order history while deleting needed audit records.
 - This is compatible with existing TTL semantics - no breaking change
 EOF
 )"
-```bash
+```
 
 ## Submit a Formal Proposal
 
@@ -150,8 +150,8 @@ gh issue comment 1234 \
 ## Track Your Request
 
 ```bash
-# Watch the issue for updates
-gh api repos/dapr/dapr/issues/1234/subscriptions -X PUT
+# Watch the issue for updates (opens in browser to subscribe)
+gh issue view 1234 --repo dapr/dapr --web
 
 # Check if it was added to a milestone
 gh issue view 1234 --repo dapr/dapr --json milestone
