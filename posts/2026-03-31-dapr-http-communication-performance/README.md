@@ -17,20 +17,12 @@ When Dapr services communicate via HTTP, requests flow from your app through the
 Avoid the TCP handshake overhead on every request by using persistent connections. In Node.js:
 
 ```javascript
-const http = require('http');
 const { DaprClient } = require('@dapr/dapr');
-
-const agent = new http.Agent({
-    keepAlive: true,
-    maxSockets: 50,
-    keepAliveMsecs: 30000,
-});
 
 const client = new DaprClient({
     daprHost: '127.0.0.1',
     daprPort: '3500',
-    httpEndpoint: 'http://127.0.0.1:3500',
-    agent: agent,
+    isKeepAlive: true, // enabled by default; ensures connection reuse
 });
 ```
 
@@ -72,7 +64,7 @@ spec:
   targets:
     apps:
       orderservice:
-        timeout: httpTimeout
+        timeout: defaultTimeout
         retry: defaultRetry
 ```
 
@@ -84,40 +76,25 @@ kubectl apply -f httpresiliency.yaml
 
 ## Enable HTTP/2 for the Dapr Sidecar
 
-HTTP/2 multiplexing reduces head-of-line blocking. Force HTTP/2 in Dapr:
+HTTP/2 multiplexing reduces head-of-line blocking. Enable HTTP/2 cleartext in Dapr by setting the app protocol to `h2c`:
 
 ```yaml
 annotations:
-  dapr.io/app-protocol: "http"
-  dapr.io/http2-enabled: "true"
+  dapr.io/app-protocol: "h2c"
   dapr.io/max-body-size: "32Mi"
-  dapr.io/http-read-buffer-size: "32"
+  dapr.io/read-buffer-size: "32Ki"
 ```
 
 ## Compress Large Response Payloads
 
-Enable middleware-level compression for HTTP responses:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: httpmiddleware
-spec:
-  type: middleware.http.routeralias
-  version: v1
-  metadata:
-    - name: routes
-      value: |
-        {
-          "/api/large": "/v1.0/invoke/dataservice/method/large"
-        }
-```
-
-For custom compression in Go:
+Implement gzip compression in your app handler to reduce payload sizes over the wire. In Go:
 
 ```go
-import "compress/gzip"
+import (
+    "compress/gzip"
+    "net/http"
+    "strings"
+)
 
 func compressedHandler(w http.ResponseWriter, r *http.Request) {
     if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
