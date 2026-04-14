@@ -18,7 +18,7 @@ Dapr sidecar resources can be configured at three levels:
 
 1. **Per-pod annotations** - override for a specific application
 2. **Global default** - set via Helm values for all pods cluster-wide
-3. **Dapr Configuration resource** - scoped to apps using that configuration
+3. **Dapr Configuration resource** - controls runtime behavior (note: resource limits are set via annotations or Helm, not the Configuration CRD)
 
 ## Method 1: Per-Pod Annotations
 
@@ -47,19 +47,15 @@ spec:
 
 ## Method 2: Global Defaults via Helm
 
-Set defaults applied to all sidecars in the cluster:
+Set defaults applied to all sidecars in the cluster using Helm values:
 
 ```yaml
 # dapr-values.yaml
 dapr_sidecar_injector:
-  defaultContainerConfig: |
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "500m"
-        memory: "256Mi"
+  sidecarCPURequest: "100m"
+  sidecarMemoryRequest: "128Mi"
+  sidecarCPULimit: "500m"
+  sidecarMemoryLimit: "256Mi"
 ```
 
 Apply with Helm:
@@ -70,19 +66,17 @@ helm upgrade dapr dapr/dapr \
   --values dapr-values.yaml
 ```
 
-## Method 3: ConfigMap for Sidecar Defaults
+Note: Per-pod annotations override these global defaults.
 
-Dapr uses a ConfigMap in `dapr-system` for sidecar injection configuration:
+## Method 3: Dapr Configuration Resource
 
-```bash
-kubectl get configmap dapr-config -n dapr-system -o yaml
-```
-
-Edit to set default resource constraints:
+Dapr uses a custom resource of kind `Configuration` (apiVersion `dapr.io/v1alpha1`) for runtime settings. You can view the default configuration with:
 
 ```bash
-kubectl edit configmap dapr-config -n dapr-system
+kubectl get configuration daprsystem -n dapr-system -o yaml
 ```
+
+While the `Configuration` resource controls runtime behavior (tracing, metrics, middleware), sidecar resource limits are set via pod annotations or Helm values, not through this resource.
 
 ## Full Annotation Reference
 
@@ -97,13 +91,13 @@ annotations:
   dapr.io/sidecar-memory-request: "128Mi"
 
   # Liveness and readiness probe timeouts
-  dapr.io/sidecar-liveness-probe-delay: "3"
-  dapr.io/sidecar-liveness-probe-timeout: "3"
-  dapr.io/sidecar-liveness-probe-period: "6"
+  dapr.io/sidecar-liveness-probe-delay-seconds: "3"
+  dapr.io/sidecar-liveness-probe-timeout-seconds: "3"
+  dapr.io/sidecar-liveness-probe-period-seconds: "6"
   dapr.io/sidecar-liveness-probe-threshold: "3"
-  dapr.io/sidecar-readiness-probe-delay: "3"
-  dapr.io/sidecar-readiness-probe-timeout: "3"
-  dapr.io/sidecar-readiness-probe-period: "6"
+  dapr.io/sidecar-readiness-probe-delay-seconds: "3"
+  dapr.io/sidecar-readiness-probe-timeout-seconds: "3"
+  dapr.io/sidecar-readiness-probe-period-seconds: "6"
   dapr.io/sidecar-readiness-probe-threshold: "3"
 
   # Image and security
@@ -180,15 +174,21 @@ groups:
 
 ## Security Context for Sidecar
 
-Also configure a security context to harden the sidecar:
+Also configure a security context to harden the sidecar. The seccomp profile can be set per-pod via annotation, while dropping all capabilities is a global Helm setting:
 
 ```yaml
+# Per-pod annotation
 annotations:
-  dapr.io/sidecar-drop-all-capabilities: "true"
   dapr.io/sidecar-seccomp-profile-type: "RuntimeDefault"
 ```
 
-This drops all Linux capabilities and applies a seccomp profile to the Dapr sidecar.
+```yaml
+# Global Helm value (applies to all sidecars)
+dapr_sidecar_injector:
+  sidecarDropALLCapabilities: true
+```
+
+This applies a seccomp profile per-pod and drops all Linux capabilities cluster-wide for Dapr sidecars.
 
 ## Vertical Pod Autoscaler (VPA) for Sidecars
 
