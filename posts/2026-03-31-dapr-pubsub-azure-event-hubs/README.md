@@ -18,7 +18,7 @@ flowchart LR
     Sidecar -->|AMQP/HTTPS| EventHub[Azure Event Hub\nordering-events]
     EventHub -->|Partition 0..N| CG[Consumer Group\ndapr-order-processor]
     CG --> Sidecar2[Dapr Sidecar]
-    Sidecar2 -->|POST /handle| Subscriber[Subscriber App]
+    Sidecar2 -->|POST /handle-order| Subscriber[Subscriber App]
     Sidecar2 -->|Checkpoint| Blob[Azure Blob Storage]
 ```
 
@@ -122,10 +122,6 @@ spec:
     value: "checkpoints"
   - name: consumerID
     value: "dapr-order-processor"
-  - name: partitionCount
-    value: "4"
-  - name: messageCount
-    value: "100"
 ```
 
 Apply:
