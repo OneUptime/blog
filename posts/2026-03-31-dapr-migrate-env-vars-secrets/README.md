@@ -70,8 +70,9 @@ spec:
     value: "/"
 ```
 
+secrets.json (local dev only — gitignored):
+
 ```json
-// secrets.json (local dev only - gitignored)
 {
   "db-password": "localdev123",
   "payment-api-key": "pk_test_abc123",
