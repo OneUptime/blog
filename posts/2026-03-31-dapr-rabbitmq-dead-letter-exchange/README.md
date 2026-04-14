@@ -64,30 +64,29 @@ spec:
 
 ## Application Handler
 
-Return a non-200 status to trigger dead-lettering:
+Handle messages and signal success, drop, or retry to Dapr:
 
 ```python
 from flask import Flask, request, jsonify
-import json
 
 app = Flask(__name__)
 
 @app.route('/orders', methods=['POST'])
 def handle_order():
     event = request.json
-    data = json.loads(event.get('data', '{}'))
+    data = event.get('data', {})
 
     try:
         process_order(data)
         return jsonify({"status": "SUCCESS"}), 200
     except ValidationError as e:
-        # Do NOT retry validation errors - send to DLQ
+        # Do NOT retry validation errors - discard permanently
         app.logger.error(f"Validation failed: {e}")
-        return jsonify({"status": "DROP"}), 200  # Dapr drops without requeueing
+        return jsonify({"status": "DROP"}), 200  # Dapr acks and discards the message
     except TransientError as e:
-        # Retry transient errors
+        # Retry transient errors; exhausted retries route to DLQ
         app.logger.warning(f"Transient error: {e}")
-        return '', 500  # Dapr will retry
+        return '', 500  # Dapr will retry, then dead-letter on exhaustion
 
 @app.route('/orders-dlq', methods=['POST'])
 def handle_dead_letter():
