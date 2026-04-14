@@ -14,40 +14,39 @@ Dapr Workflow uses event sourcing to persist every workflow state transition. Ch
 
 ## How Dapr Workflow Checkpoints Work
 
-Every workflow activity completion is recorded to the state store as an event. When a workflow resumes after failure, it replays its history from the last checkpoint to reconstruct in-memory state.
+Every workflow activity completion is recorded to the state store as an event. When a workflow resumes after failure, it replays the entire event history from the beginning to reconstruct in-memory state. Activities that already completed return their cached results without re-executing.
 
 ```go
 package main
 
 import (
-    "context"
-    "github.com/dapr/durabletask-go/task"
-    dapr "github.com/dapr/go-sdk/client"
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/durabletask-go/workflow"
 )
 
 // Workflow with explicit checkpointing via activities
 func OrderProcessingWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     var order Order
-    ctx.GetInput(&order)
+    if err := ctx.GetInput(&order); err != nil {
+        return nil, err
+    }
 
     // Checkpoint 1: Payment
     var paymentResult PaymentResult
-    if err := ctx.CallActivity(ProcessPayment, workflow.ActivityInput(order)).
+    if err := ctx.CallActivity(ProcessPayment, workflow.WithActivityInput(order)).
         Await(&paymentResult); err != nil {
         return nil, err
     }
 
     // Checkpoint 2: Inventory reservation
     var inventoryResult InventoryResult
-    if err := ctx.CallActivity(ReserveInventory, workflow.ActivityInput(order)).
+    if err := ctx.CallActivity(ReserveInventory, workflow.WithActivityInput(order)).
         Await(&inventoryResult); err != nil {
         return nil, err
     }
 
     // Checkpoint 3: Fulfillment
     var shipResult ShipResult
-    if err := ctx.CallActivity(ShipOrder, workflow.ActivityInput(order)).
+    if err := ctx.CallActivity(ShipOrder, workflow.WithActivityInput(order)).
         Await(&shipResult); err != nil {
         return nil, err
     }
@@ -84,7 +83,7 @@ func ProcessLargeDataset(ctx context.Context, items []string) (string, error) {
         }
 
         // Save progress checkpoint
-        progress := map[string]int{"processed": end}
+        progress, _ := json.Marshal(map[string]int{"processed": end})
         daprClient.SaveState(ctx, "statestore",
             "job-progress-"+ctx.Value("instanceID").(string),
             progress, nil)
@@ -99,16 +98,15 @@ Query workflow state to determine if it was mid-execution:
 
 ```bash
 # Check workflow state
-curl http://localhost:3500/v1.0/workflows/dapr/order-workflow-123/status
+curl http://localhost:3500/v1.0/workflows/dapr/order-workflow-123
 
-# Response shows last completed step
+# Response shows workflow status
 {
   "instanceID": "order-workflow-123",
   "workflowName": "OrderProcessingWorkflow",
   "runtimeStatus": "RUNNING",
-  "properties": {
-    "dapr.workflow.last_updated_at": "2026-03-31T10:00:00Z"
-  }
+  "createdAt": "2026-03-31T09:00:00Z",
+  "lastUpdatedAt": "2026-03-31T10:00:00Z"
 }
 ```
 
@@ -118,14 +116,11 @@ Checkpoint data accumulates over time. Purge completed workflows:
 
 ```bash
 # Purge a specific completed workflow
-curl -X DELETE \
+curl -X POST \
   http://localhost:3500/v1.0/workflows/dapr/order-workflow-123/purge
-
-# Purge all completed workflows (use with caution)
-curl -X POST http://localhost:3500/v1.0/workflows/dapr/purge \
-  -H "Content-Type: application/json" \
-  -d '{"createdTimeTo": "2026-03-01T00:00:00Z", "status": "COMPLETED"}'
 ```
+
+Note: Dapr does not provide a bulk purge API. To purge multiple completed workflows, iterate through each instance and call the purge endpoint individually.
 
 ## State Store Configuration for Workflow
 
@@ -141,7 +136,7 @@ spec:
   - name: redisHost
     value: "redis:6379"
   - name: keyPrefix
-    value: "workflow"
+    value: "name"
   - name: actorStateStore
     value: "true"
 ```
