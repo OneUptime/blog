@@ -38,7 +38,7 @@ class TestStateStoreCompat:
             # Delete
             client.delete_state("statestore", "compat-test-key")
             deleted = client.get_state("statestore", "compat-test-key")
-            assert deleted.data is None
+            assert deleted.data == b""
 
     def test_bulk_state_operations(self):
         with DaprClient() as client:
@@ -88,7 +88,8 @@ class TestServiceInvocationCompat:
                 method_name="health",
                 http_verb="GET"
             )
-            assert response.status_code == 200
+            # invoke_method raises DaprInternalError on failure
+            assert response is not None
 ```
 
 ## Running Compatibility Tests
@@ -132,7 +133,6 @@ package compat_test
 import (
     "context"
     "testing"
-    "time"
     dapr "github.com/dapr/go-sdk/client"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
