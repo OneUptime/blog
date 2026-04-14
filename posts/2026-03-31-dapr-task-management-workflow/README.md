@@ -51,22 +51,22 @@ func TaskWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
     // Step 1: Assign task to appropriate person
     var assignment AssignmentResult
-    if err := ctx.CallActivity(AssignTask, workflow.ActivityInput(task)).Await(&assignment); err != nil {
+    if err := ctx.CallActivity(AssignTask, workflow.WithActivityInput(task)).Await(&assignment); err != nil {
         return nil, err
     }
     task.AssigneeID = assignment.AssigneeID
 
     // Notify assignee
-    ctx.CallActivity(NotifyAssignee, workflow.ActivityInput(task)).Await(nil)
+    ctx.CallActivity(NotifyAssignee, workflow.WithActivityInput(task)).Await(nil)
 
     // Step 2: Wait for completion or deadline
     deadlineDuration := time.Until(task.Deadline)
-    completionEvent := ctx.WaitForExternalEvent("task-completed", deadlineDuration)
+    completionEvent := ctx.WaitForSingleEvent("task-completed", deadlineDuration)
 
     var completionData TaskCompletion
     if err := completionEvent.Await(&completionData); err != nil {
         // Deadline exceeded - escalate
-        return ctx.CallActivity(EscalateTask, workflow.ActivityInput(task)).Await(nil)
+        return ctx.CallActivity(EscalateTask, workflow.WithActivityInput(task)).Await(nil)
     }
 
     // Step 3: Route to approval if required
@@ -75,7 +75,7 @@ func TaskWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     }
 
     // Low priority: auto-approve
-    return ctx.CallActivity(CompleteTask, workflow.ActivityInput(map[string]any{
+    return ctx.CallActivity(CompleteTask, workflow.WithActivityInput(map[string]any{
         "task":       task,
         "completion": completionData,
         "approved":   true,
@@ -84,10 +84,10 @@ func TaskWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
 func approvalSubFlow(ctx *workflow.WorkflowContext, task Task, completion TaskCompletion) (any, error) {
     // Notify approver
-    ctx.CallActivity(NotifyApprover, workflow.ActivityInput(task)).Await(nil)
+    ctx.CallActivity(NotifyApprover, workflow.WithActivityInput(task)).Await(nil)
 
     // Wait for approval decision (48-hour window)
-    approvalEvent := ctx.WaitForExternalEvent("approval-decision", 48*time.Hour)
+    approvalEvent := ctx.WaitForSingleEvent("approval-decision", 48*time.Hour)
 
     var decision ApprovalDecision
     if err := approvalEvent.Await(&decision); err != nil {
@@ -96,13 +96,13 @@ func approvalSubFlow(ctx *workflow.WorkflowContext, task Task, completion TaskCo
     }
 
     if !decision.Approved {
-        return ctx.CallActivity(RejectTask, workflow.ActivityInput(map[string]any{
+        return ctx.CallActivity(RejectTask, workflow.WithActivityInput(map[string]any{
             "task":   task,
             "reason": decision.Notes,
         })).Await(nil)
     }
 
-    return ctx.CallActivity(CompleteTask, workflow.ActivityInput(map[string]any{
+    return ctx.CallActivity(CompleteTask, workflow.WithActivityInput(map[string]any{
         "task":     task,
         "approved": true,
     })).Await(nil)
