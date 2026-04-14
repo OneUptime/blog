@@ -30,10 +30,10 @@ dapr --version
 ```
 
 Common preview features include:
-- Scheduler service
-- App health checks (now stable in 1.13+)
-- Outbox pattern
-- Query API for state stores
+- Actor state TTL
+- Hot reload
+- Workflows clustered deployment
+- App health checks (now stable in recent versions)
 
 ## Enabling Preview Features in Dapr Configuration
 
@@ -47,9 +47,9 @@ metadata:
   namespace: default
 spec:
   features:
-    - name: SchedulerReminders
+    - name: ActorStateTTL
       enabled: true
-    - name: ActorTypeMetadata
+    - name: HotReload
       enabled: true
 ```
 
@@ -80,7 +80,7 @@ metadata:
   name: daprConfig
 spec:
   features:
-    - name: SchedulerReminders
+    - name: ActorStateTTL
       enabled: true
 ```
 
@@ -91,8 +91,7 @@ Follow these practices to use preview features safely:
 1. **Never enable preview features in production without testing in staging first**
 2. **Pin your Dapr version** when using preview features - do not auto-upgrade:
 
-```yaml
-# In your Dapr runtime configuration
+```bash
 # Pin to a specific version
 dapr init --runtime-version 1.13.2
 ```
@@ -107,14 +106,14 @@ dapr init --runtime-version 1.13.2
 4. **Write feature flags in your application** to disable the preview feature path:
 
 ```python
-ENABLE_SCHEDULER_REMINDERS = os.getenv("ENABLE_SCHEDULER_REMINDERS", "false").lower() == "true"
+ENABLE_ACTOR_STATE_TTL = os.getenv("ENABLE_ACTOR_STATE_TTL", "false").lower() == "true"
 
-if ENABLE_SCHEDULER_REMINDERS:
-    # Use new scheduler-based reminder
-    client.create_reminder_with_scheduler(...)
+if ENABLE_ACTOR_STATE_TTL:
+    # Use actor state TTL for automatic expiration
+    client.save_state_with_ttl(store_name, key, value, ttl_seconds=3600)
 else:
-    # Fall back to actor-based reminder
-    client.register_actor_reminder(...)
+    # Fall back to manual state cleanup
+    client.save_state(store_name, key, value)
 ```
 
 ## Graduating from Preview to Stable
