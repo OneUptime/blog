@@ -67,9 +67,9 @@ spec:
     value: "my-keyvault"
   - name: azureClientId
     value: "managed-identity-client-id"
-  scopes:
-  - payment-service
-  - data-processor
+scopes:
+- payment-service
+- data-processor
 ```
 
 ## Audit Logging for CC7.2 Monitoring
@@ -78,7 +78,6 @@ SOC 2 requires monitoring of system components for anomalies:
 
 ```python
 import structlog
-import json
 from datetime import datetime
 
 log = structlog.get_logger()
@@ -103,7 +102,7 @@ def audit_secret_access(app_id: str, secret_name: str, action: str):
         secret=secret_name,
         action=action,
         compliance_framework="SOC2",
-        control_id="CC6.7"
+        control_id="CC6.1"
     )
 ```
 
@@ -126,9 +125,9 @@ spec:
       labels:
         severity: critical
         compliance: soc2
-        control: CC9.1
+        control: CC7.2
       annotations:
-        summary: "SOC2 CC9.1: Service {{ $labels.app_id }} unavailable"
+        summary: "SOC2 CC7.2: Service payment-service unavailable"
 ```
 
 ## Change Management - Component Version Control
