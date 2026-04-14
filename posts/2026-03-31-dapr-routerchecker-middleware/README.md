@@ -10,7 +10,7 @@ Description: Learn how to configure the Dapr RouterChecker middleware to validat
 
 ## Introduction
 
-The Dapr RouterChecker middleware (`middleware.http.routerchecker`) validates incoming HTTP request paths against a regular expression allow-list. Requests with paths that do not match the configured pattern are rejected with a 403 Forbidden response before they reach your application. This adds a defense layer against path traversal and unexpected route access.
+The Dapr RouterChecker middleware (`middleware.http.routerchecker`) validates incoming HTTP request paths against a regular expression allow-list. Requests with paths that do not match the configured pattern are rejected with a 400 Bad Request response before they reach your application. This adds a defense layer against path traversal and unexpected route access.
 
 ## Component Configuration
 
@@ -68,7 +68,7 @@ dapr run \
   --app-id secure-service \
   --app-port 8080 \
   --config ./config/routerchecker-pipeline.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python app.py
 ```
 
@@ -102,11 +102,11 @@ curl http://localhost:3500/v1.0/invoke/secure-service/method/api/orders
 
 # Blocked - does not match pattern
 curl http://localhost:3500/v1.0/invoke/secure-service/method/admin/users
-# Returns 403 Forbidden
+# Returns 400 Bad Request
 
 # Blocked - path traversal attempt
 curl http://localhost:3500/v1.0/invoke/secure-service/method/../etc/passwd
-# Returns 403 Forbidden
+# Returns 400 Bad Request
 ```
 
 ## Combining RouterChecker with Rate Limiting
