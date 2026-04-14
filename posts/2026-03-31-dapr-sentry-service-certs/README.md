@@ -178,14 +178,12 @@ kubectl logs -n dapr-system -l app=dapr-sentry | grep "cert issued\|signed\|erro
 
 ## Sentry in Self-Hosted Mode
 
-In self-hosted mode, Sentry is not used - mTLS is disabled by default. You can enable it explicitly:
+In self-hosted mode, mTLS is disabled by default and Sentry is not started automatically. You can enable mTLS by running the Sentry binary separately and configuring `daprd` to use it:
 
 ```bash
-dapr run \
-  --app-id myapp \
+daprd --app-id myapp \
   --enable-mtls \
-  --sentry-address localhost:50001 \
-  -- node app.js
+  --sentry-address localhost:50001
 ```
 
 You would also need to run the Sentry binary separately in self-hosted mode, which is uncommon outside of testing.
