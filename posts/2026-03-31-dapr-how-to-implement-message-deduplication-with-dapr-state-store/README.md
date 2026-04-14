@@ -133,7 +133,7 @@ def mark_as_processed(message_id: str, metadata: dict) -> bool:
             "ttlInSeconds": str(DEDUP_TTL_SECONDS)
         },
         "options": {
-            "concurrency": "first-write",  # Only succeed if key does not exist
+            "concurrency": "first-write",  # ETag-based optimistic concurrency
             "consistency": "strong"
         }
     }
@@ -146,7 +146,7 @@ def mark_as_processed(message_id: str, metadata: dict) -> bool:
     return response.status_code == 204
 
 
-@app.route('/subscribe', methods=['GET'])
+@app.route('/dapr/subscribe', methods=['GET'])
 def subscribe():
     """Tell Dapr which topics to subscribe to."""
     return jsonify([
