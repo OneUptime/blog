@@ -12,34 +12,34 @@ Dapr abstracts state management through state store components backed by Redis, 
 
 ## State Store Metrics Reference
 
-Dapr emits these metrics for state operations:
+Dapr emits two metrics for state operations, using labels to distinguish operation types and outcomes:
 
-- `dapr_component_state_get_total` - GET requests
-- `dapr_component_state_get_failed_total` - GET failures
-- `dapr_component_state_get_latencies_ms` - GET latency histogram
-- `dapr_component_state_set_total` - SET (save) requests
-- `dapr_component_state_set_failed_total` - SET failures
-- `dapr_component_state_set_latencies_ms` - SET latency histogram
-- `dapr_component_state_delete_total` - DELETE requests
-- `dapr_component_state_delete_failed_total` - DELETE failures
+- `dapr_component_state_count` - Counter for state operations (GET, SET, DELETE, etc.)
+- `dapr_component_state_latencies` - Histogram for state operation latency in milliseconds
+
+Key labels on these metrics:
+
+- `app_id` - Application ID
+- `component` - State store component name
+- `namespace` - Kubernetes namespace
+- `operation` - Operation type: `get`, `set`, `delete`, `bulk_get`, `bulk_delete`, `query`, `transaction`
+- `success` - `"true"` or `"false"` indicating operation outcome
 
 ## Operation Rate Queries
 
 ```text
 # GET rate per state store component
-rate(dapr_component_state_get_total{app_id="order-service"}[5m])
+rate(dapr_component_state_count{app_id="order-service", operation="get"}[5m])
 
 # SET rate
-rate(dapr_component_state_set_total{app_id="order-service"}[5m])
+rate(dapr_component_state_count{app_id="order-service", operation="set"}[5m])
 
 # DELETE rate
-rate(dapr_component_state_delete_total{app_id="order-service"}[5m])
+rate(dapr_component_state_count{app_id="order-service", operation="delete"}[5m])
 
 # Total state operation rate
 sum by (component) (
-  rate(dapr_component_state_get_total[5m])
-  + rate(dapr_component_state_set_total[5m])
-  + rate(dapr_component_state_delete_total[5m])
+  rate(dapr_component_state_count[5m])
 )
 ```
 
@@ -47,23 +47,15 @@ sum by (component) (
 
 ```text
 # GET error rate per component
-rate(dapr_component_state_get_failed_total[5m])
+rate(dapr_component_state_count{operation="get", success="false"}[5m])
 
 # SET error rate
-rate(dapr_component_state_set_failed_total[5m])
+rate(dapr_component_state_count{operation="set", success="false"}[5m])
 
 # Overall error percentage
-(
-  rate(dapr_component_state_get_failed_total[5m])
-  + rate(dapr_component_state_set_failed_total[5m])
-  + rate(dapr_component_state_delete_failed_total[5m])
-)
+sum(rate(dapr_component_state_count{success="false"}[5m]))
 /
-(
-  rate(dapr_component_state_get_total[5m])
-  + rate(dapr_component_state_set_total[5m])
-  + rate(dapr_component_state_delete_total[5m])
-) * 100
+sum(rate(dapr_component_state_count[5m])) * 100
 ```
 
 ## Latency Analysis
@@ -72,22 +64,21 @@ rate(dapr_component_state_set_failed_total[5m])
 # P99 GET latency
 histogram_quantile(0.99,
   sum by (le, component) (
-    rate(dapr_component_state_get_latencies_ms_bucket[5m])
+    rate(dapr_component_state_latencies_bucket{operation="get"}[5m])
   )
 )
 
 # P99 SET latency
 histogram_quantile(0.99,
   sum by (le, component) (
-    rate(dapr_component_state_set_latencies_ms_bucket[5m])
+    rate(dapr_component_state_latencies_bucket{operation="set"}[5m])
   )
 )
 
-# Average latency comparison: GET vs SET
-avg by (component) (
-  sum_over_time(dapr_component_state_get_latencies_ms_sum[5m])
-  / sum_over_time(dapr_component_state_get_latencies_ms_count[5m])
-)
+# Average GET latency
+sum by (component) (rate(dapr_component_state_latencies_sum{operation="get"}[5m]))
+/
+sum by (component) (rate(dapr_component_state_latencies_count{operation="get"}[5m]))
 ```
 
 ## Alert Rules
@@ -97,7 +88,7 @@ groups:
 - name: dapr-state-store
   rules:
   - alert: DaprStateStoreGetErrors
-    expr: rate(dapr_component_state_get_failed_total[5m]) > 0
+    expr: rate(dapr_component_state_count{operation="get", success="false"}[5m]) > 0
     for: 2m
     labels:
       severity: warning
@@ -105,7 +96,7 @@ groups:
       summary: "State store GET failures on {{ $labels.component }}"
 
   - alert: DaprStateStoreSetErrors
-    expr: rate(dapr_component_state_set_failed_total[5m]) > 0
+    expr: rate(dapr_component_state_count{operation="set", success="false"}[5m]) > 0
     for: 2m
     labels:
       severity: warning
@@ -116,7 +107,7 @@ groups:
     expr: |
       histogram_quantile(0.99,
         sum by (le, component) (
-          rate(dapr_component_state_get_latencies_ms_bucket[5m])
+          rate(dapr_component_state_latencies_bucket{operation="get"}[5m])
         )
       ) > 200
     for: 5m
