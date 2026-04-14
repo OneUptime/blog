@@ -22,11 +22,7 @@ let contentionCount = 0;
 let successCount = 0;
 
 async function tryAcquireLock(resourceId, owner) {
-  const resp = await client.lock.lock("lockstore", {
-    resourceId,
-    lockOwner: owner,
-    expiryInSeconds: 30,
-  });
+  const resp = await client.lock.lock("lockstore", resourceId, owner, 30);
   if (resp.success) {
     successCount++;
   } else {
@@ -103,7 +99,7 @@ async function processQueue() {
       await processItem(item);
     }
   } finally {
-    await client.lock.unlock("lockstore", { resourceId: "work-processor", lockOwner: INSTANCE_ID });
+    await client.lock.unlock("lockstore", "work-processor", INSTANCE_ID);
     isProcessing = false;
   }
 }
@@ -123,7 +119,7 @@ async function runIfAvailable(taskName) {
   try {
     await runTask(taskName);
   } finally {
-    await client.lock.unlock("lockstore", { resourceId: taskName, lockOwner: INSTANCE_ID });
+    await client.lock.unlock("lockstore", taskName, INSTANCE_ID);
   }
 }
 ```
