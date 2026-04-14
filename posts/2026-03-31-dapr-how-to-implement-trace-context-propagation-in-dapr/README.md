@@ -35,7 +35,7 @@ For pub/sub, trace context is embedded in the CloudEvent `extensions` field:
   "type": "orders",
   "source": "order-service",
   "id": "abc123",
-  "traceid": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
   "tracestate": "",
   "data": { "orderId": "ord-42" }
 }
@@ -94,19 +94,19 @@ data:
         send_batch_size: 1024
 
     exporters:
-      jaeger:
-        endpoint: "jaeger:14250"
+      otlp/jaeger:
+        endpoint: "jaeger:4317"
         tls:
           insecure: true
-      logging:
-        loglevel: info
+      debug:
+        verbosity: basic
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger, debug]
 ---
 apiVersion: apps/v1
 kind: Deployment
