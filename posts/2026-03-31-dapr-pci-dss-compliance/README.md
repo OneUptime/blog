@@ -95,9 +95,9 @@ spec:
       key: password
   - name: enableTLS
     value: "true"
-  scopes:
-  - tokenization-service
-  - payment-processor
+scopes:
+- tokenization-service
+- payment-processor
 ```
 
 ## Comprehensive Audit Logging (Req 10)
@@ -121,7 +121,7 @@ def log_chd_access(action: str, masked_pan: str, result: str):
         "action": action,
         "masked_pan": masked_pan,
         "result": result,
-        "source_app": request.headers.get("X-Dapr-App-Id"),
+        "source_app": request.headers.get("dapr-app-id"),
         "source_ip": request.remote_addr,
         "pci_requirement": "10.2"
     }))
@@ -135,7 +135,7 @@ def tokenize():
     return jsonify({"token": token, "maskedPan": masked_pan})
 
 def generate_token(pan: str) -> str:
-    import hashlib, secrets
+    import secrets
     return secrets.token_hex(16)
 ```
 
