@@ -80,6 +80,7 @@ import time
 from flask import Flask, request, jsonify
 from dapr.clients import DaprClient
 from dapr.clients.grpc._state import StateOptions, Concurrency, Consistency
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 app = Flask(__name__)
 STORE = "cart-store"
@@ -183,10 +184,10 @@ def checkout(user_id: str):
         client.execute_state_transaction(
             store_name=STORE,
             operations=[
-                {
-                    "operation": "delete",
-                    "request": {"key": cart_key(user_id)}
-                }
+                TransactionalStateOperation(
+                    operation_type=TransactionOperationType.delete,
+                    key=cart_key(user_id),
+                )
             ]
         )
 
@@ -210,7 +211,7 @@ When a cart TTL expires, Dapr automatically removes the key. To implement abando
 
 ```bash
 # Dapr Jobs API to schedule daily abandoned cart check
-curl -X POST http://localhost:3500/v1.0/jobs/abandoned-cart-check \
+curl -X POST http://localhost:3500/v1.0-alpha1/jobs/abandoned-cart-check \
   -H "Content-Type: application/json" \
   -d '{
     "schedule": "@every 1h",
