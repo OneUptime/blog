@@ -56,18 +56,20 @@ kubectl apply -f order-resiliency.yaml
 | `duration` | Base delay between retries | `1s` |
 | `maxInterval` | Cap for exponential delay | `30s` |
 
-## Adding Jitter to Prevent Thundering Herd
+## Jitter and Matching Status Codes
+
+Dapr automatically applies jitter to exponential backoff retries using a random multiplier between 0.5 and 1.5, so no explicit jitter configuration is needed. To control which errors trigger retries, use the `matching` block:
 
 ```yaml
 retries:
-  retryWithJitter:
+  retryWithMatching:
     policy: exponential
     maxRetries: 5
     duration: 500ms
     maxInterval: 15s
     matching:
       httpStatusCodes: "500,502,503,504"
-      gRPCStatusCodes: "UNAVAILABLE,RESOURCE_EXHAUSTED"
+      gRPCStatusCodes: "8,14"
 ```
 
 ## Applying Retry to Self-Hosted Mode
