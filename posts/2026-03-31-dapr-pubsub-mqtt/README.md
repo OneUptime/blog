@@ -48,7 +48,7 @@ password_file /mosquitto/config/passwords
 EOF
 
 # Create a password file
-docker run --rm -v $(pwd)/mosquitto/config:/mosquitto/config \
+docker run --rm -it -v $(pwd)/mosquitto/config:/mosquitto/config \
   eclipse-mosquitto:2 \
   mosquitto_passwd -c /mosquitto/config/passwords dapr
 
@@ -136,7 +136,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: "mqtt://mosquitto:1883"
+    value: "tcp://mosquitto:1883"
   - name: qos
     value: "1"
   - name: retain
@@ -152,7 +152,7 @@ For authenticated MQTT:
 ```yaml
   metadata:
   - name: url
-    value: "mqtt://mosquitto:1883"
+    value: "tcp://mosquitto:1883"
   - name: username
     secretKeyRef:
       name: mqtt-secret
@@ -177,7 +177,7 @@ kubectl create secret generic mqtt-secret \
 ```yaml
   metadata:
   - name: url
-    value: "mqtts://mosquitto-tls:8883"
+    value: "ssl://mosquitto-tls:8883"
   - name: caCert
     secretKeyRef:
       name: mqtt-tls-secret
