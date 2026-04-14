@@ -28,14 +28,14 @@ curl http://localhost:9090/metrics | grep dapr_pubsub
 Key metrics to watch:
 
 ```text
-dapr_pubsub_incoming_messages_total   - messages received by sidecar
-dapr_pubsub_processing_latency       - time from receive to app ack
-dapr_component_pubsub_egress_count   - messages published
+dapr_component_pubsub_ingress_count      - messages received by sidecar
+dapr_component_pubsub_ingress_latencies  - time from receive to app ack
+dapr_component_pubsub_egress_count       - messages published
 ```
 
 ## Tuning Dapr Pub/Sub Concurrency
 
-The `maxConcurrentHandlers` setting controls how many messages the sidecar delivers to your app concurrently.
+The `app-max-concurrency` setting controls how many messages the sidecar delivers to your app concurrently.
 
 ```yaml
 # dapr/subscriptions.yaml
@@ -166,21 +166,13 @@ spec:
   - name: consumerGroup
     value: "order-consumer-group"
   # Increase fetch size for batching
-  - name: fetchMin
+  - name: consumerFetchMin
     value: "65536"
-  - name: fetchDefault
+  - name: consumerFetchDefault
     value: "1048576"
-  # Batch producer messages
-  - name: producerLingerMs
-    value: "5"
-  - name: producerBatchSize
-    value: "32768"
   # Compression reduces network I/O
-  - name: compressionCodec
+  - name: compression
     value: "snappy"
-  # Maximum messages per fetch
-  - name: maxProcessingTime
-    value: "5000"
   - name: channelBufferSize
     value: "256"
 ```
@@ -214,16 +206,13 @@ spec:
   metadata:
   - name: redisHost
     value: "redis-cluster:6379"
-  # Number of messages to read per poll
-  - name: readCount
-    value: "100"
   # How long to block waiting for messages (ms)
   - name: processingTimeout
     value: "5000ms"
   # Retry on delivery failure
   - name: redeliverInterval
     value: "60000ms"
-  # How many delivery attempts before dropping
+  # Approximate max stream length before trimming old entries
   - name: maxLenApprox
     value: "100000"
   - name: enableTLS
