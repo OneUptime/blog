@@ -57,19 +57,19 @@ data:
             services: ["order-service", "payment-service"]
 
     exporters:
-      jaeger:
-        endpoint: jaeger-collector.monitoring.svc.cluster.local:14250
+      otlp/jaeger:
+        endpoint: jaeger-collector.monitoring.svc.cluster.local:4317
         tls:
           insecure: true
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
 
     service:
       pipelines:
         traces:
           receivers: [otlp, zipkin]
           processors: [memory_limiter, batch]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger, debug]
 ```
 
 Deploy the collector:
@@ -156,8 +156,8 @@ Export to both Jaeger and a commercial APM:
 
 ```yaml
 exporters:
-  jaeger:
-    endpoint: jaeger:14250
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
   datadog:
@@ -170,7 +170,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger, datadog]
+      exporters: [otlp/jaeger, datadog]
 ```
 
 ## Testing the Pipeline
