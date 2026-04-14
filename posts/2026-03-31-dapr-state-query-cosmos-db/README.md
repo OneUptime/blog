@@ -94,7 +94,7 @@ with DaprClient() as client:
     )
 
     for item in result.results:
-        data = json.loads(item.data)
+        data = json.loads(item.value)
         print(f"{item.key}: score={data['score']}")
 
     print(f"Continuation token: {result.token}")
@@ -127,14 +127,12 @@ Add composite indexes for sort operations to reduce RU consumption:
 
 ```json
 {
-  "indexingPolicy": {
-    "compositeIndexes": [
-      [
-        {"path": "/value/tier", "order": "ascending"},
-        {"path": "/value/score", "order": "descending"}
-      ]
+  "compositeIndexes": [
+    [
+      {"path": "/value/tier", "order": "ascending"},
+      {"path": "/value/score", "order": "descending"}
     ]
-  }
+  ]
 }
 ```
 
@@ -142,6 +140,7 @@ Apply via Azure CLI:
 
 ```bash
 az cosmosdb sql container update \
+  --resource-group YOUR_RESOURCE_GROUP \
   --account-name YOUR_ACCOUNT \
   --database-name DaprDatabase \
   --name DaprState \
