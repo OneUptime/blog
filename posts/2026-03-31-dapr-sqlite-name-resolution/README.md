@@ -14,51 +14,45 @@ Dapr's default self-hosted name resolution uses mDNS, which relies on multicast 
 
 This is ideal for development environments, single-host deployments, and CI/CD pipelines.
 
-## Configuring the SQLite Name Resolution Component
+## Configuring SQLite Name Resolution
 
-Create a component file for SQLite name resolution:
+Name resolution in Dapr is configured through a **Configuration** resource, not a Component resource. Create a configuration file:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.sqlite
-  version: v1
-  metadata:
-    - name: connectionString
-      value: "/tmp/dapr-nameresolution.db"
-    - name: timeout
-      value: "10s"
-    - name: cleanupInterval
-      value: "1m"
-    - name: updateInterval
-      value: "5s"
+  nameResolution:
+    component: "sqlite"
+    version: "v1"
+    configuration:
+      connectionString: "/tmp/dapr-nameresolution.db"
+      timeout: "1s"
+      cleanupInterval: "1h"
+      updateInterval: "5s"
 ```
 
-Place this file in your components directory:
-
-```bash
-mkdir -p ~/.dapr/components
-cp nameresolution-sqlite.yaml ~/.dapr/components/
-```
+Place this file as your Dapr configuration (e.g., `~/.dapr/config.yaml`), or pass it explicitly with the `--config` flag when running Dapr.
 
 ## Running Multiple Services with SQLite Resolution
 
-All services on the same host share the same SQLite database file. Start multiple services pointing to the same components directory:
+All services on the same host share the same SQLite database file. Start multiple services pointing to the same configuration:
 
 ```bash
 # Terminal 1
 dapr run --app-id order-service \
   --app-port 8080 \
-  --components-path ~/.dapr/components \
+  --config ~/.dapr/config.yaml \
+  --resources-path ~/.dapr/components \
   -- ./order-service
 
 # Terminal 2
 dapr run --app-id payment-service \
   --app-port 8081 \
-  --components-path ~/.dapr/components \
+  --config ~/.dapr/config.yaml \
+  --resources-path ~/.dapr/components \
   -- ./payment-service
 ```
 
@@ -70,58 +64,89 @@ Inspect the SQLite database to confirm services are registered:
 
 ```bash
 sqlite3 /tmp/dapr-nameresolution.db \
-  "SELECT appID, address, port, updateTime FROM hosts;"
+  "SELECT app_id, address, last_update FROM hosts;"
 ```
 
 Expected output:
 
 ```text
-order-service|127.0.0.1|50001|2026-03-31T12:00:00Z
-payment-service|127.0.0.1|50002|2026-03-31T12:00:01Z
+order-service|127.0.0.1:50001|1743339600
+payment-service|127.0.0.1:50002|1743339601
 ```
+
+Note that `address` includes the port (as `host:port`), and `last_update` is stored as a Unix epoch timestamp.
 
 ## Using SQLite in Docker Compose
 
-Mount a shared volume so all containers use the same database:
+Mount a shared volume so all containers use the same database. In Docker Compose, each application needs a separate `daprd` sidecar container:
 
 ```yaml
 version: "3.8"
 services:
   order-service:
     image: myapp/order-service
+
+  order-service-dapr:
+    image: "daprio/daprd:latest"
+    command:
+      [
+        "./daprd",
+        "--app-id", "order-service",
+        "--app-port", "8080",
+        "--resources-path", "/components",
+        "--config", "/config/config.yaml",
+      ]
     volumes:
       - dapr-db:/tmp
       - ./components:/components
-    environment:
-      - DAPR_COMPONENTS_PATH=/components
+      - ./config:/config
+    network_mode: "service:order-service"
 
   payment-service:
     image: myapp/payment-service
+
+  payment-service-dapr:
+    image: "daprio/daprd:latest"
+    command:
+      [
+        "./daprd",
+        "--app-id", "payment-service",
+        "--app-port", "8081",
+        "--resources-path", "/components",
+        "--config", "/config/config.yaml",
+      ]
     volumes:
       - dapr-db:/tmp
       - ./components:/components
+      - ./config:/config
+    network_mode: "service:payment-service"
 
 volumes:
   dapr-db:
 ```
+
+Note: SQLite name resolution is designed for scenarios where all Dapr instances access the database through the same locally-mounted disk. Using it with a database file accessed over the network (e.g., NFS/SMB) is not supported and may cause data corruption.
 
 ## Configuration Parameters Explained
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `connectionString` | Path to the SQLite database file | Required |
-| `timeout` | Database operation timeout | `10s` |
-| `cleanupInterval` | How often stale entries are removed | `1m` |
+| `timeout` | Database operation timeout | `1s` |
+| `cleanupInterval` | How often stale entries are removed | `1h` |
 | `updateInterval` | How often the host entry is refreshed | `5s` |
 
 Tune `updateInterval` and `cleanupInterval` based on your deployment. For fast-cycling containers, use shorter intervals to ensure stale entries are cleared quickly:
 
 ```yaml
-metadata:
-  - name: updateInterval
-    value: "2s"
-  - name: cleanupInterval
-    value: "10s"
+spec:
+  nameResolution:
+    component: "sqlite"
+    version: "v1"
+    configuration:
+      connectionString: "/tmp/dapr-nameresolution.db"
+      updateInterval: "2s"
+      cleanupInterval: "10s"
 ```
 
 ## Limitations
