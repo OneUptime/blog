@@ -21,7 +21,8 @@ KubeMQ is a Kubernetes-native enterprise message broker that supports multiple m
 ## Installing KubeMQ on Kubernetes
 
 ```bash
-kubectl apply -f https://get.kubemq.io/deploy
+kubectl apply -f https://deploy.kubemq.io/init
+kubectl apply -f https://deploy.kubemq.io/key/<your-license-key>
 ```
 
 Verify KubeMQ is running:
@@ -54,7 +55,7 @@ spec:
         key: token
     - name: group
       value: "dapr-consumers"
-    - name: defaultStore
+    - name: store
       value: "false"
 ```
 
@@ -95,14 +96,15 @@ curl -X POST http://localhost:3500/v1.0/publish/kubemq-pubsub/notifications \
 Define a declarative subscription:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: notifications-subscription
 spec:
   pubsubname: kubemq-pubsub
   topic: notifications
-  route: /notify
+  routes:
+    default: /notify
 ```
 
 Handle the event in your application:
@@ -127,12 +129,8 @@ KubeMQ supports persistent message stores. Enable it in the component:
 
 ```yaml
 metadata:
-  - name: defaultStore
+  - name: store
     value: "true"
-  - name: storeMaxMessages
-    value: "1000"
-  - name: storeMaxRetention
-    value: "60m"
 ```
 
 ## Starting the Service
