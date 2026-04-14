@@ -21,7 +21,7 @@ dapr init
 
 ## Publishing an Event
 
-Use `DaprClient::tryPublishEvent` to publish to any configured pubsub component:
+Use `DaprClient::publishEvent` to publish to any configured pubsub component:
 
 ```php
 <?php
@@ -41,38 +41,41 @@ $orderPayload = [
 $client->publishEvent(
     pubsubName: 'pubsub',
     topicName: 'orders',
-    data: $orderPayload,
-    metadata: ['content-type' => 'application/json']
+    data: $orderPayload
 );
 
 echo "Published order ORD-001\n";
 ```
 
-## Subscribing with Attribute-Based Routing
+## Subscribing with the SDK's App Class
 
-The PHP SDK supports attribute-based subscription using the `#[Topic]` attribute on controller methods:
+The PHP SDK provides an `App` class that handles subscription registration and routing via the DI container. Configure subscriptions using `Subscription` objects:
 
 ```php
 <?php
-use Dapr\Attributes\FromBody;
-use Dapr\PubSub\Subscribe;
-use Dapr\PubSub\Topic;
+require_once 'vendor/autoload.php';
 
-class OrderController {
-    #[Subscribe]
-    #[Topic(pubsub: 'pubsub', name: 'orders')]
-    public function handleOrder(#[FromBody] array $order): \Dapr\PubSub\CloudEvent {
-        echo "Received order: " . $order['order_id'] . "\n";
-        $this->processOrder($order);
-        return \Dapr\PubSub\CloudEvent::success();
-    }
+use Dapr\App;
+use Dapr\PubSub\Subscription;
 
-    private function processOrder(array $order): void {
-        // Process the order
-        echo "Processing item: " . $order['item'] . " x" . $order['quantity'] . "\n";
-    }
-}
+$app = App::create(configure: fn(\DI\ContainerBuilder $builder) => $builder->addDefinitions([
+    'dapr.subscriptions' => [
+        new Subscription('pubsub', 'orders', '/handle-order'),
+    ],
+]));
+
+$app->post('/handle-order', function () {
+    $body = json_decode(file_get_contents('php://input'), true);
+    $order = $body['data'] ?? [];
+    echo "Received order: " . $order['order_id'] . "\n";
+    echo "Processing item: " . $order['item'] . " x" . $order['quantity'] . "\n";
+    return ['status' => 'SUCCESS'];
+});
+
+$app->start();
 ```
+
+The handler returns `['status' => 'SUCCESS']` to acknowledge the message. You can also return `['status' => 'RETRY']` to requeue or `['status' => 'DROP']` to discard it.
 
 ## Manual Subscription Registration
 
@@ -144,4 +147,4 @@ dapr publish \
 
 ## Summary
 
-The Dapr PHP SDK supports both attribute-based and manual subscription registration. Publishing events requires only a `DaprClient` instance and a call to `publishEvent`. The CloudEvent success/retry/drop responses control message acknowledgment behavior, giving you fine-grained control over message processing semantics.
+The Dapr PHP SDK supports both programmatic (via the `App` class and `Subscription` objects) and manual subscription registration. Publishing events requires only a `DaprClient` instance and a call to `publishEvent`. The SUCCESS/RETRY/DROP status responses control message acknowledgment behavior, giving you fine-grained control over message processing semantics.
