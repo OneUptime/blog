@@ -93,7 +93,8 @@ def get_preferences(user_id: str):
         if not result.data:
             # Return defaults for new users
             return jsonify({**DEFAULT_PREFERENCES, "userId": user_id}), 200
-        return result.data, 200
+        prefs = json.loads(result.data)
+        return jsonify(prefs), 200
 
 
 @app.route("/preferences/<user_id>", methods=["PUT"])
@@ -183,14 +184,14 @@ spec:
       value: redis-master:6379
     - name: keyPrefix
       value: none
-  scopes:
-    - preferences-service   # writes
-    - notification-service  # reads
-    - recommendation-engine # reads
-    - analytics-service     # reads
+scopes:
+  - preferences-service   # writes
+  - notification-service  # reads
+  - recommendation-engine # reads
+  - analytics-service     # reads
 ```
 
-Non-scoped services receive a `403 Forbidden` when accessing this component.
+Non-scoped services receive an `ERR_COMPONENT_NOT_FOUND` error when attempting to access this component.
 
 ## Caching Preferences for Performance
 
