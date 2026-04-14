@@ -64,34 +64,35 @@ spec:
 Actor method invocations are automatically protected by the resiliency policy. No code changes are required in the caller:
 
 ```python
-from dapr.clients import DaprClient
-import json
+import asyncio
+from dapr.actor import ActorProxy, ActorId
 
-with DaprClient() as d:
+async def main():
     # If OrderActor is unavailable due to rebalancing,
     # Dapr will retry per the actorRetry policy
-    response = d.invoke_actor(
-        actor_type='OrderActor',
-        actor_id='order-123',
-        method='processPayment',
-        data=json.dumps({"amount": 99.99, "currency": "USD"})
+    proxy = ActorProxy.create('OrderActor', ActorId('order-123'))
+    response = await proxy.invoke_method(
+        'processPayment',
+        {"amount": 99.99, "currency": "USD"}
     )
+
+asyncio.run(main())
 ```
 
 In the actor host, implement your method normally:
 
 ```go
 type OrderActor struct {
-    dapr *dapr.Actor
+    actor.ServerImplBaseCtx
 }
 
-func (a *OrderActor) ProcessPayment(ctx context.Context, in *bindings.InvokeRequest) (*bindings.InvokeResponse, error) {
+func (a *OrderActor) ProcessPayment(ctx context.Context, req *PaymentRequest) ([]byte, error) {
     // If this returns an error, the caller's resiliency policy retries the invocation
-    result, err := chargePaymentGateway(in.Data)
+    result, err := chargePaymentGateway(req)
     if err != nil {
         return nil, fmt.Errorf("payment failed: %w", err)
     }
-    return &bindings.InvokeResponse{Data: result}, nil
+    return result, nil
 }
 ```
 
@@ -101,9 +102,9 @@ Resiliency policies also apply to actor reminder callbacks. If a reminder fires 
 
 ```javascript
 class OrderActor extends AbstractActor {
-  async processOrderReminder(data) {
+  async receiveReminder(state) {
     try {
-      await this.checkOrderExpiry(data);
+      await this.checkOrderExpiry(state);
     } catch (err) {
       // Throw to trigger reminder retry
       throw new Error(`Order reminder processing failed: ${err.message}`);
