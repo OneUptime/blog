@@ -16,7 +16,7 @@ This makes your AI-enabled services portable - you can switch LLM providers by c
 
 ## Prerequisites
 
-- Dapr CLI installed (v1.14+)
+- Dapr CLI installed (v1.15+)
 - An OpenAI API key or Azure OpenAI deployment
 - Basic familiarity with Dapr components
 
@@ -58,16 +58,18 @@ metadata:
   name: azure-llm
   namespace: default
 spec:
-  type: conversation.azure.openai
+  type: conversation.openai
   version: v1
   metadata:
-  - name: endpoint
-    value: "https://my-openai.openai.azure.com/"
-  - name: apiKey
+  - name: apiType
+    value: "azure"
+  - name: key
     secretKeyRef:
       name: azure-openai-secret
       key: apiKey
-  - name: deploymentName
+  - name: endpoint
+    value: "https://my-openai.openai.azure.com/"
+  - name: model
     value: "gpt-4"
   - name: apiVersion
     value: "2024-02-01"
@@ -82,13 +84,13 @@ curl -X POST \
   -d '{
     "inputs": [
       {
-        "message": "Summarize the following text in 3 bullet points: Dapr is a portable, event-driven runtime that makes it easy for any developer to build resilient, stateless and stateful applications that run on the cloud and edge.",
+        "content": "Summarize the following text in 3 bullet points: Dapr is a portable, event-driven runtime that makes it easy for any developer to build resilient, stateless and stateful applications that run on the cloud and edge.",
         "role": "user"
       }
     ],
+    "temperature": 0.5,
     "parameters": {
-      "temperature": 0.5,
-      "maxTokens": 200
+      "maxTokens": "200"
     }
   }'
 ```
@@ -99,8 +101,7 @@ Response:
 {
   "outputs": [
     {
-      "result": "- Dapr is a portable, event-driven runtime for building microservices\n- Supports both stateless and stateful applications\n- Designed for cloud and edge deployment",
-      "role": "assistant"
+      "result": "- Dapr is a portable, event-driven runtime for building microservices\n- Supports both stateless and stateful applications\n- Designed for cloud and edge deployment"
     }
   ]
 }
@@ -109,26 +110,33 @@ Response:
 ## Use in a Node.js Application
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
-
-const client = new DaprClient();
+const DAPR_HTTP_PORT = process.env.DAPR_HTTP_PORT || '3500';
 const LLM_COMPONENT = 'openai-llm';
 
 async function askLLM(userMessage, systemPrompt = null) {
   const inputs = [];
 
   if (systemPrompt) {
-    inputs.push({ message: systemPrompt, role: 'system' });
+    inputs.push({ content: systemPrompt, role: 'system' });
   }
 
-  inputs.push({ message: userMessage, role: 'user' });
+  inputs.push({ content: userMessage, role: 'user' });
 
-  const response = await client.conversation.converse(LLM_COMPONENT, inputs, {
-    temperature: 0.7,
-    maxTokens: 1000,
-  });
+  const response = await fetch(
+    `http://localhost:${DAPR_HTTP_PORT}/v1.0-alpha1/conversation/${LLM_COMPONENT}/converse`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inputs,
+        temperature: 0.7,
+        parameters: { maxTokens: '1000' },
+      }),
+    }
+  );
 
-  return response.outputs[0].result;
+  const data = await response.json();
+  return data.outputs[0].result;
 }
 
 // Example: document summarization service
@@ -159,7 +167,6 @@ async function reviewCode(codeSnippet, language) {
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._proto.dapr.proto.runtime.v1 import dapr_pb2
 
 LLM_COMPONENT = 'openai-llm'
 
@@ -168,14 +175,15 @@ def ask_llm(user_message: str, system_prompt: str = None, max_tokens: int = 500)
         inputs = []
 
         if system_prompt:
-            inputs.append({'message': system_prompt, 'role': 'system'})
+            inputs.append({'content': system_prompt, 'role': 'system'})
 
-        inputs.append({'message': user_message, 'role': 'user'})
+        inputs.append({'content': user_message, 'role': 'user'})
 
-        response = client.converse(
+        response = client.converse_alpha1(
             name=LLM_COMPONENT,
             inputs=inputs,
-            parameters={'temperature': 0.7, 'maxTokens': max_tokens}
+            temperature=0.7,
+            parameters={'maxTokens': str(max_tokens)}
         )
 
         return response.outputs[0].result
@@ -206,25 +214,31 @@ Return only the SQL query, no explanation."""
 ## Implement Conversation History
 
 ```javascript
+const DAPR_HTTP_PORT = process.env.DAPR_HTTP_PORT || '3500';
+
 class ConversationSession {
   constructor(llmComponent, systemPrompt) {
     this.component = llmComponent;
     this.history = systemPrompt
-      ? [{ message: systemPrompt, role: 'system' }]
+      ? [{ content: systemPrompt, role: 'system' }]
       : [];
-    this.client = new DaprClient();
   }
 
   async chat(userMessage) {
-    this.history.push({ message: userMessage, role: 'user' });
+    this.history.push({ content: userMessage, role: 'user' });
 
-    const response = await this.client.conversation.converse(
-      this.component,
-      this.history
+    const response = await fetch(
+      `http://localhost:${DAPR_HTTP_PORT}/v1.0-alpha1/conversation/${this.component}/converse`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: this.history }),
+      }
     );
 
-    const reply = response.outputs[0].result;
-    this.history.push({ message: reply, role: 'assistant' });
+    const data = await response.json();
+    const reply = data.outputs[0].result;
+    this.history.push({ content: reply, role: 'assistant' });
 
     return reply;
   }
