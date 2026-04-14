@@ -59,7 +59,7 @@ The `maxMessagesCount` sets the maximum batch size and `maxAwaitDurationMs` is t
 
 ```yaml
 # bulk-subscription.yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: bulk-orders-subscription
@@ -172,7 +172,7 @@ Dapr delivers bulk messages in this format:
     }
   ],
   "id": "batch-xyz",
-  "pubsubname": "pubsub",
+  "pubsubName": "pubsub",
   "topic": "orders"
 }
 ```
@@ -242,15 +242,13 @@ app.listen(3001);
 Combine bulk subscribe with bulk publish for maximum throughput:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/publish/bulk/pubsub/orders \
+curl -X POST http://localhost:3500/v1.0/publish/bulk/pubsub/orders \
   -H "Content-Type: application/json" \
-  -d '{
-    "entries": [
-      {"entryId": "1", "event": {"orderId": "ORD-001"}, "contentType": "application/json"},
-      {"entryId": "2", "event": {"orderId": "ORD-002"}, "contentType": "application/json"},
-      {"entryId": "3", "event": {"orderId": "ORD-003"}, "contentType": "application/json"}
-    ]
-  }'
+  -d '[
+    {"entryId": "1", "event": {"orderId": "ORD-001"}, "contentType": "application/json"},
+    {"entryId": "2", "event": {"orderId": "ORD-002"}, "contentType": "application/json"},
+    {"entryId": "3", "event": {"orderId": "ORD-003"}, "contentType": "application/json"}
+  ]'
 ```
 
 ## Performance Tuning
