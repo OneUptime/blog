@@ -141,9 +141,12 @@ rules:
 The Gateway API controller exports standard metrics:
 
 ```bash
-# Envoy Gateway metrics
-kubectl port-forward svc/envoy-gateway-metrics 8888 -n envoy-gateway-system
-curl http://localhost:8888/metrics | grep gateway_
+# Envoy Gateway metrics (port-forward to the controller pod)
+export ENVOY_POD_NAME=$(kubectl get pod -n envoy-gateway-system \
+  --selector=control-plane=envoy-gateway,app.kubernetes.io/instance=eg \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward pod/$ENVOY_POD_NAME -n envoy-gateway-system 19001:19001
+curl http://localhost:19001/metrics | grep gateway_
 ```
 
 ## Summary
