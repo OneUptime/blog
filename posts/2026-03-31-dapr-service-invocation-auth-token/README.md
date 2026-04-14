@@ -22,9 +22,9 @@ sequenceDiagram
     participant AppB as App B
 
     AppA->>SidecarA: POST /v1.0/invoke/appb/method/hello\n+ dapr-api-token header
-    SidecarA->>SidecarB: Forward with token
-    SidecarB->>SidecarB: Validate dapr-api-token
-    SidecarB->>AppB: Forwarded request (token stripped)
+    SidecarA->>SidecarA: Validate dapr-api-token
+    SidecarA->>SidecarB: Forward via mTLS
+    SidecarB->>AppB: Forward request to app
     AppB-->>SidecarB: 200 OK
     SidecarB-->>SidecarA: 200 OK
     SidecarA-->>AppA: 200 OK
@@ -81,7 +81,7 @@ spec:
 
 ## Calling a Token-Protected Service
 
-When the target sidecar requires a token, the calling app must include `dapr-api-token` in every invocation request:
+When the caller's sidecar is configured with an API token, the calling app must include `dapr-api-token` in every request to its local sidecar:
 
 ```bash
 # Caller must know the shared token
@@ -179,8 +179,8 @@ dapr mtls -k
 ```mermaid
 graph TD
     A[Caller App] -->|1. Attach API Token| SA[Dapr Sidecar A]
-    SA -->|2. mTLS handshake| SB[Dapr Sidecar B]
-    SB -->|3. Validate API Token| SB
+    SA -->|2. Validate API Token| SA
+    SA -->|3. mTLS handshake| SB[Dapr Sidecar B]
     SB -->|4. Forward clean request| B[Target App]
 ```
 
