@@ -58,7 +58,7 @@ sequenceDiagram
     participant Sidecar as daprd
     participant Placement as Placement Service
     participant OtherSidecar as Other daprd instances
-    App->>Sidecar: GET /v1.0/actors/healthy (register)
+    Sidecar->>App: GET /dapr/config (discover actor types)
     Sidecar->>Placement: Stream: RegisterHost {appId, actorTypes}
     Placement->>Placement: Update hash ring
     Placement->>Sidecar: Stream: PlacementOrder {operation, tables}
@@ -121,7 +121,7 @@ In production, run Placement with 3 replicas using Raft consensus for leader ele
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --set dapr_placement.replicaCount=3 \
-  --set dapr_placement.cluster.storageClassName=fast-ssd
+  --set dapr_placement.volumeclaims.storageClassName=fast-ssd
 ```
 
 Raft requires an odd number of nodes (1, 3, or 5) to achieve a quorum. With 3 replicas, the cluster can tolerate one failure.
