@@ -24,7 +24,7 @@ flowchart LR
     S1 -->|OTLP gRPC :4317| OTELCollector[OTel Collector]
     S2 -->|OTLP gRPC :4317| OTELCollector
 
-    OTELCollector -->|Jaeger exporter| Jaeger[Jaeger]
+    OTELCollector -->|OTLP exporter| Jaeger[Jaeger]
     OTELCollector -->|Zipkin exporter| Zipkin[Zipkin]
     OTELCollector -->|OTLP exporter| Tempo[Grafana Tempo]
     OTELCollector -->|Datadog exporter| DD[Datadog]
@@ -70,8 +70,8 @@ data:
           value: production
 
     exporters:
-      jaeger:
-        endpoint: jaeger.default.svc.cluster.local:14250
+      otlp/jaeger:
+        endpoint: jaeger.default.svc.cluster.local:4317
         tls:
           insecure: true
       zipkin:
@@ -80,7 +80,7 @@ data:
         endpoint: tempo.monitoring.svc.cluster.local:4317
         tls:
           insecure: true
-      logging:
+      debug:
         verbosity: detailed
 
     service:
@@ -88,7 +88,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch, resource]
-          exporters: [jaeger, zipkin, otlp/tempo]
+          exporters: [otlp/jaeger, zipkin, otlp/tempo]
 ```
 
 Deploy the Collector:
@@ -211,7 +211,7 @@ from flask import Flask, request
 
 # Initialize OpenTelemetry
 tracer_provider = TracerProvider()
-otlp_exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
+otlp_exporter = OTLPSpanExporter(endpoint="otel-collector:4317", insecure=True)
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 trace.set_tracer_provider(tracer_provider)
 tracer = trace.get_tracer(__name__)
@@ -249,6 +249,7 @@ import (
     "net/http"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
