@@ -51,7 +51,7 @@ When running with Dapr locally, these are passed through to the sidecar:
 dapr run \
   --app-id my-service \
   --app-port 3000 \
-  --components-path ~/.dapr/components \
+  --resources-path ~/.dapr/components \
   -- node server.js
 ```
 
@@ -96,8 +96,6 @@ services:
     environment:
       - DATABASE_PASSWORD=devpassword
       - STRIPE_API_KEY=sk_test_local
-    depends_on:
-      - dapr-sidecar
 
   dapr-sidecar:
     image: daprio/daprd:latest
@@ -105,12 +103,13 @@ services:
       - "./daprd"
       - "--app-id=my-service"
       - "--app-port=3000"
-      - "--components-path=/components"
+      - "--resources-path=/components"
     environment:
       - DATABASE_PASSWORD=devpassword
       - STRIPE_API_KEY=sk_test_local
     volumes:
       - ./components:/components
+    network_mode: "service:my-service"
 ```
 
 Both containers need the environment variables since the sidecar reads them on behalf of the app.
@@ -118,7 +117,7 @@ Both containers need the environment variables since the sidecar reads them on b
 ## Limitations to Be Aware Of
 
 The local env store has important limitations for production:
-- Secrets are visible in `ps aux` output and `/proc/PID/environ`
+- Secrets are visible in `ps auxe` output and `/proc/PID/environ`
 - No access control or scoping enforcement
 - No audit logging
 - No versioning or rotation support
