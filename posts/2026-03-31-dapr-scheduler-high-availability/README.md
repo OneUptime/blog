@@ -10,14 +10,15 @@ Description: Configure Dapr Scheduler for high availability with 3 replicas, cro
 
 ## HA Architecture for Dapr Scheduler
 
-The Dapr Scheduler uses embedded etcd for job storage. To achieve high availability, deploy 3 or 5 replicas in a StatefulSet. etcd requires quorum - a majority of nodes must be available. With 3 replicas, 1 can fail while maintaining quorum. With 5 replicas, 2 can fail.
+The Dapr Scheduler uses embedded etcd for job storage. The Helm chart deploys the Scheduler as a 3-replica StatefulSet to form a 3-node etcd cluster. etcd requires quorum - a majority of nodes must be available. With 3 replicas, 1 can fail while maintaining quorum.
 
 ## Deploying in HA Mode
+
+The Dapr Scheduler always runs as a 3-replica StatefulSet (hardcoded in the Helm chart to form a 3-node etcd cluster). Enable HA mode for the other control plane services:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_scheduler.replicaCount=3 \
   --set global.ha.enabled=true \
   --reuse-values
 ```
@@ -30,25 +31,12 @@ global:
     enabled: true
 
 dapr_scheduler:
-  replicaCount: 3
-  volumeclaim:
+  cluster:
     storageClassName: "premium-ssd"
-    requestsStorage: "32Gi"
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: 1
-      memory: 2Gi
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app: dapr-scheduler
-          topologyKey: kubernetes.io/hostname
+    storageSize: "32Gi"
 ```
+
+The Scheduler's pod anti-affinity and zone distribution are built into the Helm chart template. Use `global.ha.topologyKey` (default: `topology.kubernetes.io/zone`) to control which topology key the anti-affinity uses.
 
 ## Pod Disruption Budget
 
@@ -64,7 +52,7 @@ spec:
   minAvailable: 2
   selector:
     matchLabels:
-      app: dapr-scheduler
+      app: dapr-scheduler-server
 ```
 
 Apply:
@@ -75,32 +63,34 @@ kubectl apply -f dapr-scheduler-pdb.yaml
 
 ## Cross-Zone Distribution
 
-Spread replicas across availability zones:
+The Dapr Scheduler Helm chart includes built-in pod anti-affinity that spreads replicas across topology zones. Configure the topology key used for distribution:
 
 ```yaml
-dapr_scheduler:
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: DoNotSchedule
-      labelSelector:
-        matchLabels:
-          app: dapr-scheduler
+global:
+  ha:
+    topologyKey: topology.kubernetes.io/zone
 ```
+
+This is the default value. The chart applies a preferred pod anti-affinity rule using this key to spread `dapr-scheduler-server` pods across zones.
 
 ## Verifying HA Health
 
-After configuring HA, verify all nodes are members of the etcd cluster:
+After configuring HA, verify all 3 Scheduler pods are running and ready:
 
 ```bash
-kubectl exec -n dapr-system dapr-scheduler-0 -- \
-  etcdctl --endpoints=http://localhost:2379 member list --write-out=table
+kubectl get pods -n dapr-system -l app=dapr-scheduler-server
+```
+
+Check the Scheduler logs for etcd cluster membership messages:
+
+```bash
+kubectl logs -n dapr-system dapr-scheduler-server-0 | grep "etcd"
 ```
 
 Simulate a failure by deleting one pod and confirming jobs still trigger:
 
 ```bash
-kubectl delete pod dapr-scheduler-1 -n dapr-system
+kubectl delete pod dapr-scheduler-server-1 -n dapr-system
 # Verify jobs still work
 curl http://localhost:3500/v1.0-alpha1/jobs/test-job
 ```
