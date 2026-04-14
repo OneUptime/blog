@@ -10,7 +10,7 @@ Description: Learn how to implement priority messaging with Dapr pub/sub using s
 
 ## Why Priority Messaging?
 
-Not all messages are equal. A payment failure alert should preempt a weekly digest newsletter. Dapr pub/sub does not natively support priority queues, but separate topics per priority tier combined with consumer concurrency settings achieve the same effect.
+Not all messages are equal. A payment failure alert should preempt a weekly digest newsletter. While some Dapr pub/sub brokers like RabbitMQ support priority queues natively via `maxPriority`, most — including Redis — do not. Separate topics per priority tier combined with consumer concurrency settings provide a broker-agnostic alternative.
 
 ## Priority Topic Design
 
