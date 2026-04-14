@@ -83,8 +83,7 @@ The response includes a `token` for fetching the next page:
 ```json
 {
   "results": [...],
-  "token": "eyJwYWdlIjogMn0=",
-  "metadata": {"count": "10"}
+  "token": "eyJwYWdlIjogMn0="
 }
 ```
 
