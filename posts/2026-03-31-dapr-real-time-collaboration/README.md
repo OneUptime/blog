@@ -50,8 +50,8 @@ public class DocumentActor : Actor, IDocumentActor
 
         // Broadcast change to all collaborators
         await _daprClient.PublishEventAsync("pubsub",
-            $"doc-{op.DocumentId}-changes",
-            new DocumentChange { Operation = op, NewContent = newContent });
+            "doc-changes",
+            new { documentId = op.DocumentId, change = new DocumentChange { Operation = op, NewContent = newContent } });
     }
 
     public async Task<string> GetContent()
@@ -86,7 +86,7 @@ wss.on('connection', (ws, req) => {
   ws.on('message', async (data) => {
     const operation = JSON.parse(data);
     // Route operation to the document actor
-    await daprClient.actor.invoke('DocumentActor', documentId, 'applyOperation', operation);
+    await daprClient.actor.invoke('DocumentActor', documentId, 'ApplyOperation', operation);
   });
 
   ws.on('close', () => {
