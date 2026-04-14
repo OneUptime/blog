@@ -129,10 +129,10 @@ spec:
   pubsubname: pubsub
   topic: gdpr-erasure
   route: /gdpr/erasure
-  scopes:
-  - notification-service
-  - analytics-service
-  - recommendation-service
+scopes:
+- notification-service
+- analytics-service
+- recommendation-service
 ```
 
 ## Audit Logging for GDPR
