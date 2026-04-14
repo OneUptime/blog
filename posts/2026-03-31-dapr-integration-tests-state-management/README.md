@@ -25,6 +25,8 @@ services:
 
   app:
     build: .
+    ports:
+      - "3500:3500"
     environment:
       - DAPR_HTTP_PORT=3500
     depends_on:
