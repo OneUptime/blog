@@ -59,10 +59,7 @@ dapr_sentry_cert_sign_request_received_total
 dapr_sentry_cert_sign_success_total
 
 # Failed certificate issuances
-dapr_sentry_cert_sign_failed_total
-
-# Certificate issuance latency
-dapr_sentry_cert_sign_duration_ms
+dapr_sentry_cert_sign_failure_total
 ```
 
 ## ServiceMonitor for Prometheus Operator
@@ -76,7 +73,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: dapr-sentry
+      app.kubernetes.io/part-of: dapr
+      app.kubernetes.io/component: sentry
   endpoints:
     - port: metrics
       interval: 30s
@@ -98,7 +96,7 @@ groups:
 
       - alert: DaprSentryHighFailureRate
         expr: >
-          rate(dapr_sentry_cert_sign_failed_total[5m]) /
+          rate(dapr_sentry_cert_sign_failure_total[5m]) /
           rate(dapr_sentry_cert_sign_request_received_total[5m]) > 0.05
         for: 5m
         labels:
