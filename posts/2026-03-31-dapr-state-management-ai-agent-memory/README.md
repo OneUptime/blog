@@ -86,7 +86,7 @@ def load_team_context(agent_ids: list) -> list:
             store_name="agentmemory",
             keys=keys
         )
-        return [json.loads(r.data) for r in results if r.data]
+        return [json.loads(r.data) for r in results.items if r.data]
 ```
 
 ## Querying Agent Memory with State Query API
@@ -112,6 +112,8 @@ with DaprClient() as client:
 Use ETags to prevent race conditions when multiple agent instances update the same memory:
 
 ```python
+from dapr.clients.grpc._state import StateOptions, Concurrency
+
 def update_memory_safe(session_id: str, new_data: dict):
     with DaprClient() as client:
         current = client.get_state(
@@ -123,7 +125,7 @@ def update_memory_safe(session_id: str, new_data: dict):
             key=f"session:{session_id}",
             value=json.dumps(new_data),
             etag=current.etag,
-            options=StateOptions(concurrency=StateConcurrency.first_write)
+            options=StateOptions(concurrency=Concurrency.first_write)
         )
 ```
 
