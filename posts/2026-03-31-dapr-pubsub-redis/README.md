@@ -46,9 +46,9 @@ spec:
 ```yaml
   - name: maxLenApprox
     value: "1000"        # approximate stream length cap
-  - name: maxRetries
+  - name: redisMaxRetries
     value: "3"
-  - name: maxRetryInterval
+  - name: redisMaxRetryInterval
     value: "2s"
   - name: processingTimeout
     value: "60s"
@@ -123,7 +123,7 @@ dapr run \
 ```python
 # subscriber.py
 from flask import Flask, request, jsonify
-import json
+import argparse
 
 app = Flask(__name__)
 
@@ -153,7 +153,10 @@ def handle_order():
     return jsonify({"status": "SUCCESS"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=5001)
+    args = parser.parse_args()
+    app.run(host="0.0.0.0", port=args.port)
 ```
 
 Start the subscriber:
@@ -204,13 +207,13 @@ Inspect the Redis Streams directly:
 redis-cli keys "*"
 
 # Read messages from the orders stream
-redis-cli xread COUNT 10 STREAMS pubsub||orders 0
+redis-cli xread COUNT 10 STREAMS orders 0
 
 # Check consumer groups
-redis-cli xinfo groups pubsub||orders
+redis-cli xinfo groups orders
 ```
 
-The stream key format is `{pubsub-component-name}||{topic}`.
+The stream key is the topic name (e.g., `orders`).
 
 ## Multiple Consumers (Competing Consumers)
 
@@ -231,7 +234,7 @@ Both instances join the same consumer group and split the message load.
 Redis Streams retain messages until the stream is trimmed. To replay from the beginning, reset the consumer group offset:
 
 ```bash
-redis-cli xgroup setid pubsub||orders order-subscriber 0
+redis-cli xgroup setid orders order-subscriber 0
 ```
 
 ## Summary
