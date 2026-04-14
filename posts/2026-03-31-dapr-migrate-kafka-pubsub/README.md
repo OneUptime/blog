@@ -119,9 +119,9 @@ app.get('/dapr/subscribe', (req, res) => {
 });
 
 app.post('/order-events', async (req, res) => {
-  const event = req.body;
+  const event = req.body.data;
   await handleOrderEvent(event);
-  res.sendStatus(200);
+  res.json({ status: 'SUCCESS' });
 });
 
 app.listen(3001);
@@ -140,8 +140,8 @@ async function publishBulk(events) {
   }));
 
   await axios.post(
-    'http://localhost:3500/v1.0-alpha1/publish/bulk/order-events/order-events',
-    { entries: messages }
+    'http://localhost:3500/v1.0/publish/bulk/order-events/order-events',
+    messages
   );
 }
 ```
@@ -167,7 +167,7 @@ spec:
 No code changes - just point Dapr at a different component directory:
 
 ```bash
-dapr run --components-path ./components-local -- node consumer.js
+dapr run --resources-path ./components-local -- node consumer.js
 ```
 
 ## Summary
