@@ -8,7 +8,7 @@ Description: Implement a shared database pattern with Dapr where multiple servic
 
 ---
 
-While database-per-service is the ideal microservices pattern, real-world systems often require multiple services to access shared data. Dapr supports a controlled shared database pattern using key namespacing and read-only access scopes to enable shared reads while protecting write ownership. This guide shows how to implement this safely.
+While database-per-service is the ideal microservices pattern, real-world systems often require multiple services to access shared data. Dapr supports a controlled shared database pattern using component scopes, key namespacing, and convention-based write ownership to enable shared reads while protecting data integrity. This guide shows how to implement this safely.
 
 ## When to Use the Shared State Store Pattern
 
@@ -64,7 +64,7 @@ def save_product(product: dict):
 def publish_catalog_update(product: dict):
     with DaprClient() as client:
         # Notify consumers via pub/sub
-        client.publish_event("pubsub", "catalog-updated", product)
+        client.publish_event("pubsub", "catalog-updated", json.dumps(product))
 ```
 
 ```python
@@ -85,7 +85,7 @@ def get_product(product_id: str) -> dict:
 
 ## Enforcing Write Ownership
 
-Use Dapr's state store transactions to make writes atomic and ownership clear:
+Use Dapr's ETag-based optimistic concurrency to make writes safe and ownership clear:
 
 ```python
 # catalog_service/catalog_writer.py
@@ -104,8 +104,8 @@ def update_product_with_version(product: dict):
             value=json.dumps(product),
             etag=etag,  # Optimistic lock
             options=StateOptions(
-                concurrency=StateConcurrency.FIRST_WRITE,
-                consistency=StateConsistency.STRONG
+                concurrency=Concurrency.first_write,
+                consistency=Consistency.strong
             )
         )
 ```
@@ -154,7 +154,7 @@ spec:
       rules:
         - alert: SharedStoreUnauthorizedWrite
           expr: |
-            rate(dapr_state_set_total{storeName="shared-catalog-store", app_id!="catalog-service"}[5m]) > 0
+            rate(dapr_component_state_count{component="shared-catalog-store", operation="set", app_id!="catalog-service"}[5m]) > 0
           labels:
             severity: critical
           annotations:
