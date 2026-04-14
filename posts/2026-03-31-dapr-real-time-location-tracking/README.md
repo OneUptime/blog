@@ -74,7 +74,7 @@ def process_location():
         client.publish_event(
             'pubsub',
             f"device-{data['deviceId']}-location",
-            data
+            json.dumps(data)
         )
 
     return '', 200
@@ -104,7 +104,7 @@ server.pubsub.subscribe('pubsub', 'location-updates', async (update) => {
     const stateKey = `geofence:${update.deviceId}:${fence.id}`;
 
     const prev = await client.state.get('statestore', stateKey);
-    const wasInside = prev?.data === 'true';
+    const wasInside = prev === 'true';
 
     if (isInside !== wasInside) {
       // Fence crossing event
