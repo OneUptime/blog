@@ -29,7 +29,7 @@ Upload Service --> [video-uploaded]
 
 ```python
 # upload_service.py
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File
 from dapr.clients import DaprClient
 import uuid, json, base64
 
@@ -75,13 +75,13 @@ async def upload_video(
         }))
 
         # Trigger pipeline start
-        client.publish_event("pubsub", "video-uploaded", {
+        client.publish_event("pubsub", "video-uploaded", json.dumps({
             "videoId": video_id,
             "filename": file.filename,
             "title": title,
             "sizeBytes": len(content),
             "qualityProfiles": QUALITY_PROFILES
-        })
+        }), data_content_type="application/json")
 
     return {"videoId": video_id, "status": "processing"}
 ```
@@ -100,7 +100,7 @@ import (
     "os/exec"
 
     dapr "github.com/dapr/go-sdk/client"
-    daprd "github.com/dapr/go-sdk/service/http"
+    "github.com/dapr/go-sdk/service/common"
 )
 
 type TranscodeEvent struct {
@@ -111,7 +111,7 @@ type TranscodeEvent struct {
     Bitrate  string `json:"bitrate"`
 }
 
-func handleVideoUploaded(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handleVideoUploaded(ctx context.Context, e *common.TopicEvent) (bool, error) {
     var event map[string]interface{}
     json.Unmarshal(e.RawData, &event)
 
@@ -136,7 +136,7 @@ func handleVideoUploaded(ctx context.Context, e *daprd.TopicEvent) (bool, error)
     return false, nil
 }
 
-func handleTranscodeJob(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handleTranscodeJob(ctx context.Context, e *common.TopicEvent) (bool, error) {
     var job TranscodeEvent
     json.Unmarshal(e.RawData, &job)
 
