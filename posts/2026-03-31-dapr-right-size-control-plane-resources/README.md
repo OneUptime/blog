@@ -14,7 +14,10 @@ The Dapr control plane consists of:
 - `dapr-operator` - reconciles CRDs, moderate CPU/memory
 - `dapr-sentry` - issues certificates, CPU-intensive during pod churn
 - `dapr-placement` - manages actor placement, memory-intensive for large actor deployments
-- `dapr-dashboard` - optional, low resource but unnecessary in production
+- `dapr-sidecar-injector` - injects Dapr sidecars into pods, moderate CPU/memory
+- `dapr-scheduler` - schedules jobs and reminders, moderate resource usage
+
+The Dapr dashboard (`dapr-dashboard`) is an optional component installed as a separate Helm chart (`dapr/dapr-dashboard`), not part of the main `dapr/dapr` chart.
 
 Default resource allocations are conservative for broad compatibility but are often overprovisioned for small to medium clusters.
 
@@ -121,17 +124,13 @@ helm upgrade dapr dapr/dapr \
 
 ## Step 4 - Remove the Dashboard in Production
 
-The dashboard is not needed in production and consumes ~50m CPU and 64Mi memory:
-
-```yaml
-dapr_dashboard:
-  enabled: false
-```
+The dashboard is installed as a separate Helm chart (`dapr/dapr-dashboard`) and is not needed in production. If installed, uninstall it to reclaim resources:
 
 ```bash
-helm upgrade dapr dapr/dapr -n dapr-system \
-  --set dapr_dashboard.enabled=false
+helm uninstall dapr-dashboard -n dapr-system
 ```
+
+If you have not yet installed the dashboard, simply skip installing the `dapr/dapr-dashboard` chart in production environments.
 
 ## Step 5 - Scale HA Replicas Appropriately
 
@@ -151,6 +150,8 @@ global:
     enabled: true
     replicaCount: 2  # 2 instead of 3 for cost savings with acceptable availability
 ```
+
+Note: In HA mode, the Dapr Placement service always runs 3 replicas regardless of the `replicaCount` setting. The custom replica count applies to operator, sentry, and sidecar-injector.
 
 ## Step 6 - Monitor After Right-Sizing
 
