@@ -10,46 +10,43 @@ Description: Learn how to configure Dapr's NameFormat name resolution component 
 
 ## What Is NameFormat Name Resolution?
 
-The `nameresolution.nameformat` component in Dapr allows you to define a custom hostname pattern that maps Dapr app IDs to network addresses. Instead of relying on dynamic discovery (mDNS, Consul, etc.), NameFormat uses a Go template to construct the target hostname from the app ID.
+The `nameformat` name resolution component in Dapr allows you to define a custom hostname pattern that maps Dapr app IDs to network addresses. Instead of relying on dynamic discovery (mDNS, Consul, etc.), NameFormat uses simple string replacement to construct the target hostname from the app ID.
 
-This is useful in environments where service hostnames follow predictable patterns, such as `{appid}.service.internal` or `{appid}.namespace.svc.cluster.local`.
+This is useful in environments where service hostnames follow predictable patterns, such as `{appid}.service.internal` or `{appid}.default.svc.cluster.local`.
 
 ## Basic Configuration
 
-Create a NameFormat name resolution component:
+Configure NameFormat name resolution in a Dapr Configuration resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.nameformat
-  version: v1
-  metadata:
-    - name: nameFormat
-      value: "{{"{{"}} .ID {{"}}"}}.services.internal"
+  nameResolution:
+    component: "nameformat"
+    version: "v1"
+    configuration:
+      format: "{appid}.services.internal"
 ```
 
 With this configuration, an app ID of `order-service` resolves to `order-service.services.internal`.
 
-## Using Template Variables
+## Using the Format Placeholder
 
-The template supports the following variables:
+The `format` field supports one placeholder:
 
-- `.ID` - the Dapr app ID
-- `.Namespace` - the app's namespace
-- `.Port` - the Dapr sidecar port
+- `{appid}` - replaced with the Dapr app ID at resolution time
 
-Example with namespace:
+Example targeting a specific Kubernetes namespace:
 
 ```yaml
-metadata:
-  - name: nameFormat
-    value: "{{"{{"}} .ID {{"}}"}}.{{"{{"}} .Namespace {{"}}"}}.svc.cluster.local"
+configuration:
+  format: "{appid}.production.svc.cluster.local"
 ```
 
-An invocation of `order-service` in namespace `production` resolves to:
+An invocation of `order-service` resolves to:
 `order-service.production.svc.cluster.local`
 
 ## Custom DNS Subdomain Example
@@ -58,15 +55,15 @@ For an environment where each service has a DNS entry in a custom subdomain:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.nameformat
-  version: v1
-  metadata:
-    - name: nameFormat
-      value: "dapr-{{"{{"}} .ID {{"}}"}}.internal.example.com"
+  nameResolution:
+    component: "nameformat"
+    version: "v1"
+    configuration:
+      format: "dapr-{appid}.internal.example.com"
 ```
 
 With this pattern:
@@ -75,27 +72,28 @@ With this pattern:
 
 Ensure your DNS server has entries for each service matching this pattern.
 
-## Applying the Component
+## Applying the Configuration
 
-Place the component in your Dapr components directory:
-
-```bash
-cp nameresolution-nameformat.yaml ~/.dapr/components/
-```
-
-Or reference it via `--components-path`:
+For self-hosted mode, reference the configuration file when running your app:
 
 ```bash
 dapr run --app-id order-service \
   --app-port 8080 \
-  --components-path ./components \
+  --config ./appconfig.yaml \
   -- ./order-service
 ```
 
-For Kubernetes:
+For Kubernetes, apply the Configuration resource:
 
 ```bash
-kubectl apply -f nameresolution-nameformat.yaml
+kubectl apply -f appconfig.yaml
+```
+
+Then annotate your deployment to use it:
+
+```yaml
+annotations:
+  dapr.io/config: "appconfig"
 ```
 
 ## Testing NameFormat Resolution
@@ -133,4 +131,4 @@ dapr run --app-id myapp --log-level debug \
 
 ## Summary
 
-The NameFormat name resolution component maps Dapr app IDs to hostnames using Go templates. It is ideal for environments with predictable service hostname patterns. Configure the `nameFormat` template with app ID, namespace, and port variables to match your infrastructure's DNS naming convention.
+The NameFormat name resolution component maps Dapr app IDs to hostnames using the `{appid}` placeholder in a format string. It is ideal for environments with predictable service hostname patterns. Configure the `format` field in a Dapr Configuration resource to match your infrastructure's DNS naming convention.
