@@ -26,16 +26,16 @@ spec:
   metadata:
     - name: vaultAddr
       value: "https://vault.internal:8200"
-  scopes:
-    - payment-service
-    - billing-worker
+scopes:
+  - payment-service
+  - billing-worker
 ```
 
-Any service with an app ID not in the `scopes` list will receive a `403 Forbidden` when trying to call the secrets API for this component. Even discovering the component name via the metadata API is blocked.
+Any service with an app ID not in the `scopes` list will not have the component loaded at all. The secret store will be invisible to that service — attempts to access it will fail as if the component does not exist.
 
 ## Secret-Level Scoping with Allow and Deny Lists
 
-Within a secret store, you can further control which secret keys a service is allowed to read using the Configuration API or via the secret store component's `allowedSecrets` and `deniedSecrets` metadata:
+Within a secret store, you can further control which secret keys a service is allowed to read using a Dapr Configuration resource with `allowedSecrets` and `deniedSecrets` fields:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
