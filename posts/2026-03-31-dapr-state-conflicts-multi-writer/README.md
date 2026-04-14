@@ -53,14 +53,14 @@ When overwriting a key with the same logical result, just use last-write mode:
 
 ```javascript
 async function updateHeartbeat(serviceId) {
-  const { DaprClient } = require('@dapr/dapr');
+  const { DaprClient, StateConcurrencyEnum } = require('@dapr/dapr');
   const client = new DaprClient();
 
   // Multiple replicas writing heartbeats - last-write is fine
   await client.state.save('state-store', [{
     key: `heartbeat:${serviceId}`,
     value: { timestamp: Date.now(), instanceId: process.env.HOSTNAME },
-    options: { concurrency: 'last-write' }
+    options: { concurrency: StateConcurrencyEnum.CONCURRENCY_LAST_WRITE }
   }]);
 }
 ```
@@ -109,6 +109,7 @@ async function mergeCounters(counterKey, increment) {
     if (writeResp.status !== 409) throw new Error('Write failed');
     await new Promise(r => setTimeout(r, 50 * (i + 1)));
   }
+  throw new Error('Conflict resolution failed after retries');
 }
 ```
 
