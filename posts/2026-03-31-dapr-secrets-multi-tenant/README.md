@@ -67,7 +67,7 @@ async def get_tenant_secret(tenant_id: str, secret_key: str) -> str:
         resp = await client.get(
             f"http://localhost:3500/v1.0/secrets/vault-store/{secret_name}"
         )
-        return resp.json()[secret_key]
+        return resp.json()["value"]
 
 # Usage
 db_password = await get_tenant_secret("tenant-a", "db-password")
@@ -91,9 +91,9 @@ spec:
       value: "https://vault:8200"
     - name: vaultKVPrefix
       value: "tenant-a"
-  scopes:
-    - tenant-a-service
-    - tenant-a-worker
+scopes:
+  - tenant-a-service
+  - tenant-a-worker
 ```
 
 ```yaml
@@ -110,9 +110,9 @@ spec:
       value: "https://vault:8200"
     - name: vaultKVPrefix
       value: "tenant-b"
-  scopes:
-    - tenant-b-service
-    - tenant-b-worker
+scopes:
+  - tenant-b-service
+  - tenant-b-worker
 ```
 
 ## Validating Isolation
