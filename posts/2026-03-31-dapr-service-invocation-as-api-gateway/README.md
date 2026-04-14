@@ -23,7 +23,7 @@ metadata:
   name: dapr-api-gateway
   namespace: production
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /v1.0/invoke/$2/method/$3
+    nginx.ingress.kubernetes.io/rewrite-target: /v1.0/invoke/$1/method/$2
     nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: nginx
@@ -37,7 +37,7 @@ spec:
           service:
             name: dapr-api-token-injector
             port:
-              number: 3500
+              number: 8080
 ```
 
 ## API Token Injection Proxy
@@ -144,8 +144,8 @@ spec:
     handlers:
     - name: jwt-validator
       type: middleware.http.bearer
-    - name: request-logger
-      type: middleware.http.routeralias
+    - name: rate-limiter
+      type: middleware.http.ratelimit
   tracing:
     samplingRate: "1"
     otel:
