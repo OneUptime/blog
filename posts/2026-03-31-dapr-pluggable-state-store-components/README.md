@@ -25,53 +25,90 @@ go get github.com/dapr-sandbox/components-go-sdk@latest
 
 ## Implementing the State Store Interface
 
-The state store interface requires implementing Init, Features, Get, Set, Delete, and Ping:
+The state store interface requires implementing Init, Features, Get, Set, Delete, Close, and the bulk operations (BulkGet, BulkSet, BulkDelete). The SDK translates between gRPC proto types and the `components-contrib` state store interface automatically, so you work with familiar `components-contrib` types:
 
 ```go
 package main
 
 import (
     "context"
-    "github.com/dapr-sandbox/components-go-sdk/state/v1"
-    proto "github.com/dapr/dapr/pkg/proto/components/v1"
+
+    "github.com/dapr/components-contrib/state"
 )
 
 type MyCustomStore struct {
     storage map[string][]byte
 }
 
-func (s *MyCustomStore) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+func (s *MyCustomStore) Init(ctx context.Context, metadata state.Metadata) error {
     // Initialize connection to your backing store
     s.storage = make(map[string][]byte)
-    return &proto.InitResponse{}, nil
+    return nil
 }
 
-func (s *MyCustomStore) Features(ctx context.Context, req *proto.FeaturesRequest) (*proto.FeaturesResponse, error) {
-    return &proto.FeaturesResponse{
-        Features: []string{"ETAG", "TRANSACTIONAL"},
-    }, nil
+func (s *MyCustomStore) Features() []state.Feature {
+    return []state.Feature{state.FeatureETag, state.FeatureTransactional}
 }
 
-func (s *MyCustomStore) Get(ctx context.Context, req *proto.GetRequest) (*proto.GetResponse, error) {
+func (s *MyCustomStore) Get(ctx context.Context, req *state.GetRequest) (*state.GetResponse, error) {
     val, ok := s.storage[req.Key]
     if !ok {
-        return &proto.GetResponse{}, nil
+        return &state.GetResponse{}, nil
     }
-    return &proto.GetResponse{Data: val}, nil
+    return &state.GetResponse{Data: val}, nil
 }
 
-func (s *MyCustomStore) Set(ctx context.Context, req *proto.SetRequest) (*proto.SetResponse, error) {
-    s.storage[req.Key] = req.Value
-    return &proto.SetResponse{}, nil
+func (s *MyCustomStore) Set(ctx context.Context, req *state.SetRequest) error {
+    s.storage[req.Key] = req.Value.([]byte)
+    return nil
 }
 
-func (s *MyCustomStore) Delete(ctx context.Context, req *proto.DeleteRequest) (*proto.DeleteResponse, error) {
+func (s *MyCustomStore) Delete(ctx context.Context, req *state.DeleteRequest) error {
     delete(s.storage, req.Key)
-    return &proto.DeleteResponse{}, nil
+    return nil
 }
 
-func (s *MyCustomStore) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
-    return &proto.PingResponse{}, nil
+func (s *MyCustomStore) Close() error {
+    // Clean up any resources
+    return nil
+}
+
+// BulkGet, BulkSet, and BulkDelete are also required by the interface.
+// You can implement them by iterating over individual operations:
+
+func (s *MyCustomStore) BulkGet(ctx context.Context, req []state.GetRequest, opts state.BulkGetOpts) ([]state.BulkGetResponse, error) {
+    var responses []state.BulkGetResponse
+    for _, r := range req {
+        resp, err := s.Get(ctx, &r)
+        if err != nil {
+            responses = append(responses, state.BulkGetResponse{Key: r.Key, Error: err.Error()})
+            continue
+        }
+        responses = append(responses, state.BulkGetResponse{Key: r.Key, Data: resp.Data})
+    }
+    return responses, nil
+}
+
+func (s *MyCustomStore) BulkSet(ctx context.Context, req []state.SetRequest, opts state.BulkStoreOpts) error {
+    for _, r := range req {
+        if err := s.Set(ctx, &r); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (s *MyCustomStore) BulkDelete(ctx context.Context, req []state.DeleteRequest, opts state.BulkStoreOpts) error {
+    for _, r := range req {
+        if err := s.Delete(ctx, &r); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (s *MyCustomStore) GetComponentMetadata() (map[string]string, error) {
+    return map[string]string{}, nil
 }
 ```
 
@@ -117,37 +154,35 @@ spec:
 # Build the component
 go build -o custom-statestore .
 
-# Run it - it creates a Unix socket for Dapr to connect to
-DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components \
+# Run it - it creates a Unix socket for Dapr to connect to.
+# Both the component and Dapr sidecar must share the same socket folder.
+DAPR_COMPONENT_SOCKETS_FOLDER=/tmp/dapr-components-sockets \
   ./custom-statestore &
 
-# Run Dapr with the component socket path
-dapr run \
+# Run Dapr with the same socket folder set via environment variable
+DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets \
+  dapr run \
   --app-id my-app \
   --app-port 8080 \
   --components-path ./components \
-  --unix-domain-socket /tmp/dapr-components \
   -- ./my-app
 ```
 
 ## Transactional Support
 
-For transactional state stores, implement the Transact method:
+For transactional state stores, implement the `Multi` method from the `state.TransactionalStore` interface:
 
 ```go
-func (s *MyCustomStore) Transact(ctx context.Context, req *proto.TransactionalStateRequest) (*proto.TransactionalStateResponse, error) {
-    // Begin transaction
-    for _, op := range req.Operations {
-        switch op.Request.(type) {
-        case *proto.TransactionalStateOperation_Set:
-            setOp := op.GetSet()
-            s.storage[setOp.Key] = setOp.Value
-        case *proto.TransactionalStateOperation_Delete:
-            deleteOp := op.GetDelete()
-            delete(s.storage, deleteOp.Key)
+func (s *MyCustomStore) Multi(ctx context.Context, request *state.TransactionalStateRequest) error {
+    for _, op := range request.Operations {
+        switch req := op.(type) {
+        case state.SetRequest:
+            s.storage[req.Key] = req.Value.([]byte)
+        case state.DeleteRequest:
+            delete(s.storage, req.Key)
         }
     }
-    return &proto.TransactionalStateResponse{}, nil
+    return nil
 }
 ```
 
