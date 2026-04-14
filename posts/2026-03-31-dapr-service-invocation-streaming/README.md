@@ -12,27 +12,11 @@ Description: Learn how to stream responses through Dapr service invocation using
 
 Dapr supports streaming HTTP responses through service invocation. When a target service sends a chunked or streaming response, Dapr forwards each chunk to the client as it arrives rather than buffering the entire response.
 
-## Enabling HTTP Streaming
+## HTTP Streaming Behavior
 
-Enable streaming mode on the Dapr sidecar:
+Since Dapr v1.12, HTTP streaming through service invocation is enabled by default. Dapr automatically detects streaming requests — those using chunked transfer encoding or without a known `Content-Length` header — and forwards response chunks directly to the caller without buffering them in memory.
 
-```yaml
-annotations:
-  dapr.io/enable-app-health-check: "true"
-  dapr.io/http-stream-response-size: "0"
-```
-
-Or configure in the Dapr configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: appconfig
-spec:
-  httpPipeline:
-    handlers: []
-```
+No special annotations or configuration are required to enable streaming. Note that retry policies are bypassed for streaming requests because the request body is consumed as it is read and cannot be replayed.
 
 ## Implementing a Chunked Streaming Endpoint
 
@@ -110,7 +94,7 @@ curl http://localhost:3500/v1.0/invoke/order-service/method/orders/export \
 
 ## gRPC Streaming
 
-For gRPC server streaming, Dapr supports it natively when the app is configured with `dapr.io/app-protocol: grpc`:
+For gRPC server streaming, Dapr supports it natively when the app is configured with `dapr.io/app-protocol: grpc`. Clients must set the `dapr-stream` metadata to `true` when making streaming RPCs. Note that resiliency policies only apply to the initial handshake — if a stream is interrupted after establishment, the application must recreate it.
 
 ```go
 func (s *OrderServer) WatchOrders(req *pb.WatchRequest, stream pb.OrderService_WatchOrdersServer) error {
