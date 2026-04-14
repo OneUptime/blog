@@ -104,7 +104,7 @@ spec:
 
 ## Scale to Zero with Traffic Restoration
 
-When scaling from zero, Dapr's pub/sub automatically reconnects and delivers buffered messages:
+When KEDA scales the deployment from zero, a new pod is created with a fresh Dapr sidecar. The message broker (e.g., Kafka) retains messages regardless of consumer availability, so the consumer rejoins its consumer group and resumes processing from the last committed offset:
 
 ```python
 from flask import Flask, request, jsonify
@@ -129,14 +129,14 @@ def process_order():
 ## Monitoring KEDA Scaling Events
 
 ```bash
-# Watch scaling events
-kubectl get events --field-selector reason=KEDA -w
+# Watch scaling events for ScaledObjects
+kubectl get events --field-selector involvedObject.kind=ScaledObject -w
 
 # Check ScaledObject status
 kubectl describe scaledobject order-consumer-scaledobject
 
 # View current replica count
-kubectl get hpa -l app=order-consumer
+kubectl get hpa -l scaledobject.keda.sh/name=order-consumer-scaledobject
 ```
 
 ## Summary
