@@ -88,7 +88,7 @@ spec:
 
     # Key management
     - name: keyPrefix
-      value: appid          # appid | name | none
+      value: appid          # appid | name | namespace | none
     - name: ttlInSeconds
       value: "86400"        # Default TTL for all keys
 
@@ -111,11 +111,9 @@ spec:
         key: connectionString
       # Format: "host=HOST port=5432 user=USER password=PASS dbname=DB sslmode=require"
 
-    # Schema and table
-    - name: schema
-      value: public
-    - name: tableName
-      value: dapr_state
+    # Table prefix
+    - name: tablePrefix
+      value: ""
 
     # Cleanup of expired (TTL) entries
     - name: cleanupInterval
@@ -124,10 +122,8 @@ spec:
     # Connection pool (pgxpool)
     - name: maxConns
       value: "20"
-    - name: connMaxIdleTime
+    - name: connectionMaxIdleTime
       value: "5m"
-    - name: connMaxLifetime
-      value: "30m"
 
     # Key management
     - name: keyPrefix
@@ -151,12 +147,6 @@ spec:
       value: daprdb
     - name: collection
       value: state
-    - name: partitionKey
-      value: "/partitionKey"
-    - name: operationTimeout
-      value: "10s"
-    - name: contentType
-      value: "application/json"
 ```
 
 ## Managing Secrets for Metadata
