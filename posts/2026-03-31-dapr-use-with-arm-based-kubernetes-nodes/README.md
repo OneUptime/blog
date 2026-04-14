@@ -31,7 +31,7 @@ eksctl create cluster \
   --name dapr-arm64-cluster \
   --region us-east-1 \
   --nodes 3 \
-  --node-type m7g.xlarge \   # Graviton3
+  --node-type m7g.xlarge \
   --with-oidc
 
 # Verify node architecture
