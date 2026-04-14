@@ -64,24 +64,19 @@ spec:
     value: "30000"
   - name: heartbeatInterval
     value: "3000"
-  - name: rebalanceTimeout
-    value: "60000"
-  - name: maxProcessingTime
-    value: "200ms"
 ```
 
 Key settings for rebalancing:
 - `sessionTimeout`: Time before Kafka considers a consumer dead (increase for slow processing)
 - `heartbeatInterval`: How often consumers send heartbeats (should be 1/3 of sessionTimeout)
-- `rebalanceTimeout`: Max time for all consumers to rejoin after rebalance
+- `consumerGroupRebalanceStrategy`: Partition assignment strategy (`range`, `sticky`, or `roundrobin`)
 
 ## Idempotent Message Handler
 
 Because rebalancing can cause redelivery, make your handler idempotent:
 
 ```python
-from dapr.ext.grpc import App
-from dapr.clients.grpc._response import TopicEventResponse
+from dapr.ext.grpc import App, TopicEventResponse
 import redis
 import json
 
@@ -112,26 +107,16 @@ def process_business_logic(data):
 app.run(6002)
 ```
 
-## Cooperative Sticky Rebalancing
+## Sticky Rebalance Strategy
 
-Reduce rebalancing disruption by enabling the cooperative sticky assignor:
-
-```yaml
-  - name: groupInstanceID
-    value: "pod-$(POD_NAME)"
-```
-
-Add the pod name as an environment variable in your deployment:
+Reduce rebalancing disruption by using the sticky partition assignment strategy:
 
 ```yaml
-env:
-- name: POD_NAME
-  valueFrom:
-    fieldRef:
-      fieldPath: metadata.name
+  - name: consumerGroupRebalanceStrategy
+    value: "sticky"
 ```
 
-Static group membership with `groupInstanceID` prevents unnecessary rebalances when pods restart within the session timeout window.
+The sticky assignor minimizes partition movement during rebalances. When a consumer leaves and rejoins, it tries to retain the same partition assignments, reducing the number of partitions that need to be reassigned across the group.
 
 ## Monitoring Rebalancing with Prometheus
 
@@ -152,4 +137,4 @@ groups:
 
 ## Summary
 
-Handling Kafka rebalancing in Dapr pub/sub applications requires a combination of proper timeout configuration, idempotent message handlers, and static group membership. The cooperative sticky assignor minimizes partition movement during rebalances, reducing the window where processing is paused. Monitoring consumer group state with Prometheus alerts helps detect stuck rebalances before they impact production workloads.
+Handling Kafka rebalancing in Dapr pub/sub applications requires a combination of proper timeout configuration, idempotent message handlers, and a sticky rebalance strategy. The sticky partition assignor minimizes partition movement during rebalances, reducing the window where processing is paused. Monitoring consumer group state with Prometheus alerts helps detect stuck rebalances before they impact production workloads.
