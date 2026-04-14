@@ -389,6 +389,10 @@ jobs:
     environment: production
     steps:
     - uses: actions/checkout@v4
+    - name: Install kustomize
+      run: |
+        curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar -xz
+        sudo mv kustomize /usr/local/bin/
     - name: Apply production overlay
       run: kustomize build dapr-configs/overlays/production | kubectl apply -f -
       env:
