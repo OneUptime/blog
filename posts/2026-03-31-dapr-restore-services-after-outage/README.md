@@ -45,7 +45,7 @@ helm upgrade --install dapr dapr/dapr \
 echo "[3] Verifying Dapr control plane health..."
 kubectl rollout status deployment/dapr-operator -n dapr-system --timeout=120s
 kubectl rollout status deployment/dapr-sentry -n dapr-system --timeout=120s
-kubectl rollout status deployment/dapr-placement-server -n dapr-system --timeout=120s
+kubectl rollout status statefulset/dapr-placement-server -n dapr-system --timeout=120s
 
 echo "Dapr system restored."
 ```
@@ -163,9 +163,9 @@ check() {
 }
 
 check "All Dapr system pods running" \
-  "kubectl get pods -n dapr-system | grep -v Running | grep -v NAME | grep -qv ."
+  "test -z \"\$(kubectl get pods -n dapr-system --no-headers | grep -v Running)\""
 check "All application pods running" \
-  "kubectl get pods -n $NAMESPACE | grep -v Running | grep -v NAME | grep -qv ."
+  "test -z \"\$(kubectl get pods -n $NAMESPACE --no-headers | grep -v Running)\""
 check "Dapr sidecar injected on pods" \
   "kubectl get pods -n $NAMESPACE -o jsonpath='{.items[*].spec.containers[*].name}' | grep -q daprd"
 
@@ -175,4 +175,4 @@ echo "Results: $PASS passed, $FAIL failed"
 
 ## Summary
 
-Restoring Dapr services after an outage follows a four-step sequence: restore the Dapr control plane via Helm, restore component configurations from Git or object storage backup, verify state store connectivity and data integrity, then scale up application services in dependency order. Automate each step as a standalone script so your team can execute the recovery sequence reliably under pressure. Post-restore health checks confirm that all components are functional before declaring the incident resolved.
+Restoring Dapr services after an outage follows a five-step sequence: restore the Dapr control plane via Helm, restore component configurations from Git or object storage backup, verify state store connectivity and data integrity, then scale up application services in dependency order. Automate each step as a standalone script so your team can execute the recovery sequence reliably under pressure. Post-restore health checks confirm that all components are functional before declaring the incident resolved.
