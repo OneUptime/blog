@@ -10,11 +10,12 @@ Description: Respond to Dapr control plane outages by understanding impact scope
 
 ## Understanding the Dapr Control Plane
 
-The Dapr control plane consists of four key components in the `dapr-system` namespace:
+The Dapr control plane consists of these key components in the `dapr-system` namespace:
 - `dapr-operator` - manages Component and Configuration CRDs
+- `dapr-sidecar-injector` - injects the Dapr sidecar into annotated pods
 - `dapr-sentry` - issues mTLS certificates to sidecars
 - `dapr-placement` - manages actor placement tables
-- `dapr-dashboard` - optional management UI
+- `dapr-dashboard` - optional management UI (installed separately)
 
 An outage of any of these affects running workloads differently. Existing sidecars with valid certificates continue running, but new pod startups fail.
 
@@ -71,7 +72,7 @@ kubectl get secret dapr-trust-bundle -n dapr-system \
 Renew if expiry is near:
 
 ```bash
-dapr mtls renew-certificate -k --valid-until 8760h
+dapr mtls renew-certificate -k --valid-until 365 --restart
 ```
 
 ## Step 5 - Configure High Availability
@@ -79,7 +80,7 @@ dapr mtls renew-certificate -k --valid-until 8760h
 Prevent future outages by enabling HA mode during Dapr installation:
 
 ```bash
-dapr init -k --set global.ha.enabled=true
+dapr init -k --enable-ha
 ```
 
 Or with Helm:
