@@ -132,10 +132,10 @@ public class DeleteOrderHandler(IOrderWriter writer) { }
 High-level modules depend on abstractions, not on DaprClient directly:
 
 ```csharp
-// BAD - depends on concrete DaprClient
+// BAD - depends on DaprClient directly
 public class OrderService
 {
-    private readonly DaprClient _dapr; // concrete dependency
+    private readonly DaprClient _dapr; // infrastructure dependency
 
     public async Task CreateOrder(Order order)
     {
