@@ -27,13 +27,13 @@ kubectl logs -n dapr-system -l app=dapr-sidecar-injector --tail=50
 
 ## Check Namespace Label
 
-By default, Dapr injects sidecars only into namespaces labeled with `dapr-enabled=true` when the webhook uses namespace selectors. Some installations require the label:
+Dapr's default installation does not require namespace labels for sidecar injection — the pod annotation `dapr.io/enabled: "true"` is sufficient. However, if the webhook is configured with a namespace selector (for example, via Helm values), injection only occurs in namespaces matching the selector:
 
 ```bash
 # Check your namespace labels
 kubectl get namespace default --show-labels
 
-# Add the label if needed
+# Add a label if your webhook requires it
 kubectl label namespace default dapr-enabled=true
 
 # Or check what selector the webhook uses
@@ -50,9 +50,9 @@ A common cause of missing injection is annotation typos:
 kubectl get pod myapp-xxxxxxxxx -o jsonpath='{.metadata.annotations}'
 
 # Correct annotation format:
-# dapr.io/enabled: "true"  (not "True" or "1")
-# dapr.io/app-id: "myapp"  (must be lowercase, no spaces)
-# dapr.io/app-port: "8080" (must be a string, not an integer)
+# dapr.io/enabled: "true"  (case-insensitive, but "1" does not work)
+# dapr.io/app-id: "myapp"  (no spaces, valid DNS name recommended)
+# dapr.io/app-port: "8080" (quoting is recommended YAML practice)
 ```
 
 ## Debug with a Test Pod
@@ -89,18 +89,19 @@ kubectl describe pod test-injection | grep -E "daprd|sidecar|dapr"
 kubectl get secret dapr-sidecar-injector-cert -n dapr-system -o yaml | \
   grep "tls.crt" | awk '{print $2}' | base64 -d | openssl x509 -noout -dates
 
-# If expired, restart the sidecar injector to regenerate
+# If expired, renew certificates first, then restart to pick up new certs
+dapr mtls renew-certificate -k
 kubectl rollout restart deployment/dapr-sidecar-injector -n dapr-system
 ```
 
 ## Check Admission Controller Logs
 
 ```bash
-# Look for injection errors in API server audit logs
+# Look for injection errors in API server container logs
 kubectl logs -n kube-system -l component=kube-apiserver --tail=100 | \
   grep -i "dapr\|webhook\|admission"
 ```
 
 ## Summary
 
-Dapr sidecar injection failures are most commonly caused by missing namespace labels, annotation typos, or webhook TLS certificate expiry. Always verify the sidecar injector pod is running, check the namespace label requirements, and confirm annotations use lowercase string values. Restarting the sidecar injector deployment regenerates TLS certificates when they expire.
+Dapr sidecar injection failures are most commonly caused by annotation typos, webhook namespace selector misconfiguration, or webhook TLS certificate expiry. Always verify the sidecar injector pod is running, check whether a namespace selector is configured, and confirm annotations use correct values. When TLS certificates expire, renew them with `dapr mtls renew-certificate` and restart the sidecar injector to pick up the new certificates.
