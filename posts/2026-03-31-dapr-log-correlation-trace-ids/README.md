@@ -59,11 +59,9 @@ package logging
 
 import (
     "context"
-    "fmt"
 
     "go.opentelemetry.io/otel/trace"
     "go.uber.org/zap"
-    "go.uber.org/zap/zapcore"
 )
 
 func TraceFields(ctx context.Context) []zap.Field {
