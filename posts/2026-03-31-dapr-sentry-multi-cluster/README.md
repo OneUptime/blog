@@ -29,13 +29,20 @@ openssl req -new -x509 -days 3650 \
 Each cluster gets a unique issuer certificate signed by the shared root CA:
 
 ```bash
+# Create a CA extensions config for issuer certificates
+cat > ca-ext.cnf << EOF
+[v3_ca]
+basicConstraints = critical, CA:TRUE, pathlen:0
+keyUsage = critical, keyCertSign, cRLSign
+EOF
+
 # Cluster 1 issuer
 openssl genrsa -out cluster1-issuer.key 2048
 openssl req -new -key cluster1-issuer.key -out cluster1-issuer.csr \
   -subj "/CN=Dapr Cluster 1 Issuer/O=MyOrg"
 openssl x509 -req -in cluster1-issuer.csr \
   -CA shared-root-ca.crt -CAkey shared-root-ca.key -CAcreateserial \
-  -out cluster1-issuer.crt -days 365 -extensions v3_ca
+  -out cluster1-issuer.crt -days 365 -extfile ca-ext.cnf -extensions v3_ca
 
 # Cluster 2 issuer
 openssl genrsa -out cluster2-issuer.key 2048
@@ -43,60 +50,49 @@ openssl req -new -key cluster2-issuer.key -out cluster2-issuer.csr \
   -subj "/CN=Dapr Cluster 2 Issuer/O=MyOrg"
 openssl x509 -req -in cluster2-issuer.csr \
   -CA shared-root-ca.crt -CAkey shared-root-ca.key -CAcreateserial \
-  -out cluster2-issuer.crt -days 365 -extensions v3_ca
+  -out cluster2-issuer.crt -days 365 -extfile ca-ext.cnf -extensions v3_ca
 ```
 
-## Step 3 - Deploy Secrets to Each Cluster
+## Step 3 - Deploy Dapr with Certificates on Each Cluster
 
-```bash
-# Cluster 1
-kubectl --context=cluster1 create secret generic dapr-trust-bundle \
-  -n dapr-system \
-  --from-file=ca.crt=shared-root-ca.crt \
-  --from-file=issuer.crt=cluster1-issuer.crt \
-  --from-file=issuer.key=cluster1-issuer.key
-
-# Cluster 2
-kubectl --context=cluster2 create secret generic dapr-trust-bundle \
-  -n dapr-system \
-  --from-file=ca.crt=shared-root-ca.crt \
-  --from-file=issuer.crt=cluster2-issuer.crt \
-  --from-file=issuer.key=cluster2-issuer.key
-```
-
-## Step 4 - Deploy Dapr on Each Cluster
-
-Install Dapr on each cluster referencing the trust bundle:
+Install Dapr on each cluster, passing the certificate files via Helm values. The Dapr Helm chart manages the `dapr-trust-bundle` secret internally, so certificates must be provided during installation rather than as a manually created secret.
 
 ```bash
 # Cluster 1
 helm install dapr dapr/dapr \
   --kube-context=cluster1 \
   --namespace dapr-system \
-  --create-namespace
+  --create-namespace \
+  --set-file dapr_sentry.tls.root.certPEM=shared-root-ca.crt \
+  --set-file dapr_sentry.tls.issuer.certPEM=cluster1-issuer.crt \
+  --set-file dapr_sentry.tls.issuer.keyPEM=cluster1-issuer.key
 
 # Cluster 2
 helm install dapr dapr/dapr \
   --kube-context=cluster2 \
   --namespace dapr-system \
-  --create-namespace
+  --create-namespace \
+  --set-file dapr_sentry.tls.root.certPEM=shared-root-ca.crt \
+  --set-file dapr_sentry.tls.issuer.certPEM=cluster2-issuer.crt \
+  --set-file dapr_sentry.tls.issuer.keyPEM=cluster2-issuer.key
 ```
 
-## Step 5 - Configure Cross-Cluster Name Resolution
+## Step 4 - Configure Cross-Cluster Name Resolution
 
-Use a name resolution component like Consul or an ingress to route cross-cluster calls:
+Use a name resolution component like Consul or an ingress to route cross-cluster calls. Configure Consul name resolution in the Dapr Configuration resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.consul
-  version: v1
-  metadata:
-    - name: clientAddress
-      value: "consul.cluster2.example.com:8500"
+  nameResolution:
+    component: "consul"
+    configuration:
+      client:
+        address: "consul.cluster2.example.com:8500"
+      selfRegister: true
 ```
 
 ## Verifying Cross-Cluster mTLS
