@@ -20,7 +20,7 @@ Dapr emits metrics, logs, and distributed traces that can be shipped to Azure Mo
 
 ## Enabling Dapr Telemetry
 
-By default, Dapr emits Prometheus metrics on port 9090 and Zipkin traces on port 9411. Enable them in the Dapr configuration:
+By default, Dapr exposes Prometheus metrics on port 9090 and can send traces in Zipkin format to a configured collector endpoint. Configure telemetry in the Dapr configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -33,7 +33,7 @@ spec:
     samplingRate: "1"
     zipkin:
       endpointAddress: "http://otel-collector:9411/api/v2/spans"
-  metric:
+  metrics:
     enabled: true
 ```
 
