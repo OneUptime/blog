@@ -71,6 +71,7 @@ async function createOrder(order) {
 
 ```javascript
 const server = new DaprServer();
+const client = new DaprClient();
 
 await server.pubsub.subscribe('events-pubsub', 'order.created', async (event) => {
   const viewKey = `user:${event.userId}:order-summary`;
@@ -120,6 +121,11 @@ If a projection consumer crashes and misses events, replay by republishing histo
 
 ```javascript
 async function rebuildProjection(userId) {
+  const viewKey = `user:${userId}:order-summary`;
+
+  // Clear existing projection before replaying
+  await client.state.delete('projection-store', viewKey);
+
   const orders = await db.query('SELECT * FROM orders WHERE user_id = $1', [userId]);
   for (const order of orders) {
     await client.pubsub.publish('events-pubsub', 'order.created', order);
