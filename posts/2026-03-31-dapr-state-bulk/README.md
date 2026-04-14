@@ -33,7 +33,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
   ]'
 ```
 
-All items are saved atomically where supported, or as a batch otherwise.
+All items are saved as a batch. This is not atomic — individual items may succeed or fail independently. For atomic multi-key writes, use the transaction endpoint.
 
 ## Bulk Get
 
@@ -250,7 +250,7 @@ graph TD
     A[1000 items to save] --> B{Approach}
     B -->|Individual saves| C[1000 HTTP requests\n~1000ms round-trips]
     B -->|Bulk save| D[1 HTTP request\n~5ms round-trip]
-    D --> E[20x throughput improvement]
+    D --> E[200x fewer round-trips]
 ```
 
 For best performance:
