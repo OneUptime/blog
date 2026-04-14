@@ -64,10 +64,11 @@ When you need to store lease metadata alongside the lock, use state with ETags:
 ```javascript
 async function acquireStateLease(resourceId, ownerId, ttlSeconds) {
   const leaseKey = `lease:${resourceId}`;
-  const { data: existing, eTag } = await client.state.getBulk('config-store', [leaseKey]);
+  const items = await client.state.getBulk('config-store', [leaseKey]);
+  const entry = items.find(i => i.key === leaseKey);
 
-  if (existing[leaseKey]) {
-    const lease = existing[leaseKey];
+  if (entry && entry.data) {
+    const lease = entry.data;
     if (Date.now() < lease.expiresAt) {
       return { acquired: false, owner: lease.ownerId };
     }
@@ -83,7 +84,7 @@ async function acquireStateLease(resourceId, ownerId, ttlSeconds) {
           acquiredAt: Date.now(),
           expiresAt: Date.now() + ttlSeconds * 1000
         },
-        etag: eTag,
+        etag: entry ? entry.etag : undefined,
         options: { concurrency: 'first-write' }
       }
     ]);
