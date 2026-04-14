@@ -49,8 +49,6 @@ package main
 import (
     "context"
     dapr "github.com/dapr/go-sdk/client"
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
 )
 
 func invokeDownstream(ctx context.Context) {
@@ -106,7 +104,7 @@ Inspect the downstream service logs to confirm the same trace ID appears.
 
 ## Validating in Zipkin
 
-Open the Zipkin UI and search for the trace ID from the `traceparent` header. You should see a flame graph spanning all services involved in the request chain.
+Open the Zipkin UI and search for the trace ID from the `traceparent` header. You should see a trace timeline spanning all services involved in the request chain.
 
 ```bash
 kubectl port-forward svc/zipkin 9411:9411 -n monitoring
