@@ -28,7 +28,8 @@ oci db autonomous-database create \
   --db-name DaprStateATP \
   --display-name "Dapr State ATP" \
   --db-workload OLTP \
-  --cpu-core-count 1 \
+  --compute-model ECPU \
+  --compute-count 2 \
   --data-storage-size-in-tbs 1 \
   --admin-password ATPAdminPass123! \
   --is-auto-scaling-enabled true
@@ -75,8 +76,6 @@ spec:
     value: "/wallet"
   - name: tableName
     value: "DAPR_STATE"
-  - name: metadataTableName
-    value: "DAPR_STATE_METADATA"
 ```
 
 Mount the wallet in your Dapr sidecar:
