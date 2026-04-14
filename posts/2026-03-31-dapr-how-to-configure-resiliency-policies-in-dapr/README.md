@@ -41,17 +41,12 @@ spec:
         initialInterval: 1s
         maxInterval: 60s
         maxRetries: 10
-        backoffMultiplier: 2.0
+        multiplier: 2.0
 
     timeouts:
-      fast-timeout:
-        duration: 3s
-
-      standard-timeout:
-        duration: 30s
-
-      long-timeout:
-        duration: 120s
+      fast-timeout: 3s
+      standard-timeout: 30s
+      long-timeout: 120s
 
     circuitBreakers:
       standard-cb:
@@ -76,8 +71,7 @@ spec:
         maxRetries: 5
 
     timeouts:
-      service-timeout:
-        duration: 10s
+      service-timeout: 10s
 
     circuitBreakers:
       service-cb:
@@ -143,7 +137,7 @@ retries:
     initialInterval: 500ms   # first retry after 500ms
     maxInterval: 60s         # cap at 60s
     maxRetries: 8
-    backoffMultiplier: 2.0   # double each time
+    multiplier: 2.0          # double each time
 ```
 
 ## Configure Circuit Breakers
@@ -171,11 +165,8 @@ HALF-OPEN - one probe request allowed to test recovery
 
 ```yaml
 timeouts:
-  payment-timeout:
-    duration: 15s    # individual call timeout
-
-  batch-timeout:
-    duration: 5m     # longer timeout for batch operations
+  payment-timeout: 15s    # individual call timeout
+  batch-timeout: 5m       # longer timeout for batch operations
 ```
 
 Apply to specific services:
@@ -217,7 +208,7 @@ For self-hosted mode, place the file in your components directory and Dapr will 
 
 ```bash
 dapr run --app-id my-app \
-  --components-path ./components \
+  --resources-path ./components \
   node app.js
 ```
 
@@ -226,10 +217,11 @@ dapr run --app-id my-app \
 Check that Dapr loaded your resiliency resource:
 
 ```bash
-dapr components --namespace default
-# Should show your resiliency component
-
+# In Kubernetes mode:
 kubectl get resiliency -n default
+
+# In self-hosted mode, check Dapr sidecar logs for:
+# "resiliency configuration loaded" messages at startup
 ```
 
 ## Summary
