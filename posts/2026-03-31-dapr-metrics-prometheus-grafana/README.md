@@ -25,7 +25,6 @@ metadata:
 spec:
   metric:
     enabled: true
-    port: 9090
 ```
 
 Apply to pods:
@@ -33,7 +32,6 @@ Apply to pods:
 ```yaml
 annotations:
   dapr.io/config: "dapr-metrics-config"
-  dapr.io/enable-metrics: "true"
   dapr.io/metrics-port: "9090"
 ```
 
@@ -67,9 +65,9 @@ Also scrape the Dapr control plane:
   - job_name: dapr-system
     static_configs:
       - targets:
-          - dapr-operator.dapr-system.svc:8080
-          - dapr-sentry.dapr-system.svc:8080
-          - dapr-placement-server.dapr-system.svc:8080
+          - dapr-operator.dapr-system.svc:9091
+          - dapr-sentry.dapr-system.svc:9091
+          - dapr-placement-server.dapr-system.svc:9091
 ```
 
 ## Key Dapr Prometheus Metrics
@@ -79,9 +77,9 @@ Also scrape the Dapr control plane:
 | `dapr_http_server_request_count` | Total HTTP requests to the sidecar |
 | `dapr_http_server_latency` | Request processing latency histogram |
 | `dapr_http_client_sent_bytes` | Bytes sent by the sidecar HTTP client |
-| `dapr_component_pubsub_count` | Pub/sub message count |
+| `dapr_component_pubsub_ingress_count` | Pub/sub incoming message count |
 | `dapr_resiliency_activations_total` | Resiliency policy activations |
-| `dapr_actor_active_actors` | Count of active Dapr actors |
+| `dapr_runtime_actor_pending_actor_calls` | Pending actor method invocations |
 
 ## Useful PromQL Queries
 
