@@ -104,7 +104,7 @@ data:
     [INPUT]
         Name tail
         Path /var/log/containers/*daprd*.log
-        Parser docker
+        Parser cri
         Tag dapr.*
 
     [FILTER]
@@ -116,7 +116,7 @@ data:
     [OUTPUT]
         Name stackdriver
         Match dapr.*
-        project ${GCP_PROJECT_ID}
+        export_to_project_id ${GCP_PROJECT_ID}
         resource k8s_container
         k8s_cluster_name my-cluster
         k8s_cluster_location us-central1-a
