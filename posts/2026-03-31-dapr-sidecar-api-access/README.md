@@ -24,14 +24,14 @@ spec:
   api:
     allowed:
       - name: state
-        version: v1
-        protocol: HTTP
+        version: v1.0
+        protocol: http
       - name: state
         version: v1
-        protocol: gRPC
+        protocol: grpc
 ```
 
-With this configuration, only the state management API is accessible. Calls to pub/sub, service invocation, or other APIs return 403.
+With this configuration, only the state management API is accessible. Calls to pub/sub, service invocation, or other APIs are rejected.
 
 ## Applying the Configuration to a Specific App
 
@@ -50,13 +50,14 @@ The following API names can be used in allowlists:
 
 ```yaml
 - state
-- pubsub
+- publish
 - bindings
 - secrets
 - actors
 - configuration
 - lock
-- workflow
+- unlock
+- workflows
 - crypto
 - jobs
 ```
@@ -69,12 +70,12 @@ If your application uses gRPC, include both protocols:
 spec:
   api:
     allowed:
-      - name: pubsub
+      - name: publish
+        version: v1.0
+        protocol: http
+      - name: publish
         version: v1
-        protocol: HTTP
-      - name: pubsub
-        version: v1
-        protocol: gRPC
+        protocol: grpc
 ```
 
 ## Blocking Specific APIs
@@ -86,8 +87,8 @@ spec:
   api:
     denied:
       - name: actors
-        version: v1
-        protocol: HTTP
+        version: v1.0
+        protocol: http
 ```
 
 This denies access to the actors API while keeping all other APIs accessible.
@@ -97,17 +98,13 @@ This denies access to the actors API while keeping all other APIs accessible.
 After applying the configuration, verify that restricted APIs return the expected error:
 
 ```bash
-# This should return 403 if pubsub is not in the allowlist
+# This should return 404 if publish is not in the allowlist
 curl -X POST http://localhost:3500/v1.0/publish/mypubsub/orders \
   -H "Content-Type: application/json" \
   -d '{"orderId": "123"}'
 ```
 
-Expected response:
-
-```json
-{"errorCode":"ERR_API_UNALLOWED","message":"state API is not allowed"}
-```
+When an API is not in the allowlist, the sidecar does not register the route, so the request returns a 404 Not Found response.
 
 ## Summary
 
