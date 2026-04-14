@@ -14,10 +14,12 @@ By default, Dapr's HTTP server enforces limits on header sizes to prevent resour
 
 ## Default Header Limits
 
-Dapr uses the Go `net/http` defaults:
-- Maximum header size: 1 MB per header field
+Dapr uses the fasthttp library (not Go's standard `net/http`), which has:
+- Default read buffer size: 4 KB
 - Maximum number of headers: no hard limit by default
-- Total request header size: configurable via `--dapr-http-max-request-size`
+- Header size limit: configurable via `--dapr-http-read-buffer-size`
+
+Note: The `--dapr-http-max-request-size` flag controls the maximum **request body** size (default 4 MB), not header size.
 
 ## Configuring the Maximum Header Size
 
@@ -43,7 +45,7 @@ dapr run --app-id api-gateway \
 
 ## Diagnosing Header Size Issues
 
-If a client receives a `431 Request Header Fields Too Large` response, check the sidecar logs:
+If a client receives a `431 Request Header Fields Too Large` response or a "Too big request header" error from the Dapr sidecar, check the sidecar logs:
 
 ```bash
 kubectl logs -l app=api-gateway -c daprd | grep "header"
