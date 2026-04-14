@@ -30,59 +30,28 @@ Sample output:
   dapr-scheduler-server  dapr-system  True     Running   1         1.13.0   2h
 ```
 
-## Checking a Custom Namespace
+## Checking Across Namespaces
 
-If you installed Dapr into a non-default namespace:
+The `dapr status -k` command automatically discovers Dapr control plane components across all namespaces. There is no need to specify a namespace flag — the command detects whichever namespace Dapr is installed in and reports status accordingly.
 
-```bash
-dapr status --kubernetes --namespace my-dapr-system
-```
+## Output Format
 
-## JSON Output
-
-```bash
-dapr status --kubernetes --output json
-```
-
-Sample JSON output:
-
-```json
-[
-  {
-    "name": "dapr-operator",
-    "namespace": "dapr-system",
-    "healthy": "True",
-    "status": "Running",
-    "replicas": 1,
-    "version": "1.13.0",
-    "age": "2h"
-  },
-  {
-    "name": "dapr-sentry",
-    "namespace": "dapr-system",
-    "healthy": "True",
-    "status": "Running",
-    "replicas": 1,
-    "version": "1.13.0",
-    "age": "2h"
-  }
-]
-```
+The `dapr status -k` command outputs a text table. There is no built-in JSON output mode for this command. The table includes columns for NAME, NAMESPACE, HEALTHY, STATUS, REPLICAS, VERSION, and AGE, as shown in the basic usage example above.
 
 ## Using in a Deployment Pipeline
 
-Check Dapr control plane health before deploying workloads:
+Check Dapr control plane health before deploying workloads by parsing the text table output:
 
 ```bash
 #!/bin/bash
 echo "Checking Dapr control plane health..."
-STATUS=$(dapr status --kubernetes --output json)
+STATUS=$(dapr status -k)
 
-UNHEALTHY=$(echo $STATUS | jq '[.[] | select(.healthy != "True")] | length')
+UNHEALTHY=$(echo "$STATUS" | tail -n +2 | awk '$3 != "True" { print }')
 
-if [ "$UNHEALTHY" -gt 0 ]; then
-  echo "ERROR: $UNHEALTHY Dapr control plane component(s) are unhealthy"
-  echo $STATUS | jq '.[] | select(.healthy != "True")'
+if [ -n "$UNHEALTHY" ]; then
+  echo "ERROR: Dapr control plane component(s) are unhealthy:"
+  echo "$UNHEALTHY"
   exit 1
 fi
 
@@ -114,4 +83,4 @@ All components should show the new version and `Running` status.
 
 ## Summary
 
-`dapr status` is the go-to command for verifying that the Dapr control plane is healthy after installation, upgrades, or cluster restarts. Its JSON output integrates cleanly into CI/CD pipelines and monitoring scripts, enabling automated readiness checks before workload deployments proceed.
+`dapr status` is the go-to command for verifying that the Dapr control plane is healthy after installation, upgrades, or cluster restarts. Its tabular output can be parsed in CI/CD pipelines and monitoring scripts, enabling automated readiness checks before workload deployments proceed.
