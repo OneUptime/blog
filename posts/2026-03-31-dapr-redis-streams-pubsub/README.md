@@ -19,15 +19,15 @@ Redis Streams is a log-based data structure in Redis that provides durable, orde
 
 ## Redis Streams vs Redis List Pub/Sub
 
-| Feature | Redis Streams | Redis Pub/Sub (List) |
+| Feature | Redis Streams | Redis Pub/Sub |
 |---------|--------------|---------------------|
 | Durability | Yes (persisted) | No (fire-and-forget) |
 | Consumer groups | Yes | No |
 | Message replay | Yes | No |
 | Acknowledgment | Yes | No |
-| Dapr component | `pubsub.redis` | Same component |
+| Dapr component | `pubsub.redis` | Not a Dapr component |
 
-Dapr's Redis pub/sub component uses Streams for reliable delivery when the `enableTLS` and `processingTimeout` options are configured.
+Dapr's `pubsub.redis` component always uses Redis Streams internally for message delivery, providing consumer group semantics and at-least-once guarantees.
 
 ## Configuring the Dapr Redis Streams Pub/Sub Component
 
@@ -51,10 +51,8 @@ spec:
     value: "false"
   - name: processingTimeout
     value: "60s"
-  - name: redeliveryDelay
+  - name: redeliverInterval
     value: "2s"
-  - name: maxRetries
-    value: "3"
   - name: maxLenApprox
     value: "1000"
   - name: consumerID
@@ -118,8 +116,8 @@ redis-cli XRANGE user-events - + COUNT 10
 # Check consumer group lag
 redis-cli XINFO GROUPS user-events
 
-# View pending (unacknowledged) messages
-redis-cli XPENDING user-events dapr-group - + 10
+# View pending (unacknowledged) messages (replace <app-id> with your Dapr app ID)
+redis-cli XPENDING user-events <app-id> - + 10
 ```
 
 ## Monitoring Message Throughput
@@ -128,10 +126,10 @@ redis-cli XPENDING user-events dapr-group - + 10
 # Check stream length
 redis-cli XLEN user-events
 
-# Monitor publish rate in real-time
-redis-cli --stat | grep xadd
+# Monitor publish commands in real-time
+redis-cli MONITOR | grep XADD
 ```
 
 ## Summary
 
-Dapr with Redis Streams pub/sub delivers reliable, durable messaging using your existing Redis infrastructure, with consumer group semantics and at-least-once delivery guarantees. The `processingTimeout` and `maxRetries` settings ensure messages are redelivered if a consumer fails, while `maxLenApprox` prevents streams from growing unbounded.
+Dapr with Redis Streams pub/sub delivers reliable, durable messaging using your existing Redis infrastructure, with consumer group semantics and at-least-once delivery guarantees. The `processingTimeout` and `redeliverInterval` settings ensure messages are redelivered if a consumer fails, while `maxLenApprox` prevents streams from growing unbounded.
