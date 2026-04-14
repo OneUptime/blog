@@ -38,10 +38,8 @@ spec:
       value: "false"
     - name: cleanSession
       value: "true"
-    - name: clientId
+    - name: consumerID
       value: "dapr-{podName}"
-    - name: backOffMaxRetries
-      value: "3"
 ```
 
 ## QoS 0 - High-Throughput Telemetry
@@ -136,29 +134,26 @@ metadata:
 
 ## Authentication with Username/Password
 
+Credentials are embedded directly in the broker URL:
+
 ```yaml
 metadata:
-  - name: username
-    secretKeyRef:
-      name: mqtt-credentials
-      key: username
-  - name: password
-    secretKeyRef:
-      name: mqtt-credentials
-      key: password
+  - name: url
+    value: "tcp://myuser:mypassword@mosquitto:1883"
 ```
 
 ## Subscription Example
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: temperature-sub
 spec:
   pubsubname: mqtt-pubsub
   topic: sensors/temperature
-  route: /temperature
+  routes:
+    default: /temperature
 ```
 
 MQTT wildcard topics can be used with `+` (single level) and `#` (multi-level):
