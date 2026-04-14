@@ -80,7 +80,7 @@ public class DeviceActor : Actor, IDeviceActor
 
     private async Task DeliverCommand(DeviceCommand command)
     {
-        var daprClient = new DaprClient();
+        var daprClient = new DaprClientBuilder().Build();
         await daprClient.PublishEventAsync(
             "pubsub",
             $"device-{Id.GetId()}-commands",
@@ -95,7 +95,7 @@ public class DeviceActor : Actor, IDeviceActor
     {
         await UpdateCommandStatus(commandId, "acknowledged");
 
-        var daprClient = new DaprClient();
+        var daprClient = new DaprClientBuilder().Build();
         await daprClient.PublishEventAsync("pubsub", "command-acks", new
         {
             CommandId = commandId,
@@ -114,6 +114,9 @@ Bridge MQTT messages to Dapr events:
 import paho.mqtt.client as mqtt
 from dapr.clients import DaprClient
 import json
+import requests
+
+DAPR_HTTP_PORT = 3500
 
 def on_message(client, userdata, msg):
     topic_parts = msg.topic.split('/')
@@ -122,19 +125,19 @@ def on_message(client, userdata, msg):
 
     payload = json.loads(msg.payload)
 
-    with DaprClient() as dapr:
-        if message_type == 'telemetry':
-            dapr.publish_event('pubsub', 'iot-events', payload)
-        elif message_type == 'ack':
-            # Route ACK to device actor
-            dapr.invoke_actor(
-                actor_type='DeviceActor',
-                actor_id=device_id,
-                method='acknowledgeCommand',
-                data=json.dumps(payload['commandId']).encode()
-            )
+    if message_type == 'telemetry':
+        with DaprClient() as dapr:
+            dapr.publish_event('pubsub', 'iot-events',
+                               json.dumps(payload),
+                               data_content_type='application/json')
+    elif message_type == 'ack':
+        # Route ACK to device actor via Dapr HTTP API
+        requests.post(
+            f'http://localhost:{DAPR_HTTP_PORT}/v1.0/actors/DeviceActor/{device_id}/method/acknowledgeCommand',
+            json=payload['commandId']
+        )
 
-mqtt_client = mqtt.Client()
+mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 mqtt_client.on_message = on_message
 mqtt_client.connect('mqtt-broker', 1883)
 mqtt_client.subscribe('devices/+/telemetry')
@@ -145,19 +148,21 @@ mqtt_client.loop_forever()
 ## Issue Commands via API
 
 ```python
+import requests as http_requests
+
+DAPR_HTTP_PORT = 3500
+
 @app.route('/devices/<device_id>/commands', methods=['POST'])
 def send_command(device_id: str):
     command = request.json
 
-    with DaprClient() as client:
-        command_id = client.invoke_actor(
-            actor_type='DeviceActor',
-            actor_id=device_id,
-            method='queueCommand',
-            data=json.dumps(command).encode()
-        )
+    response = http_requests.post(
+        f'http://localhost:{DAPR_HTTP_PORT}/v1.0/actors/DeviceActor/{device_id}/method/queueCommand',
+        json=command
+    )
 
-    return jsonify({"commandId": json.loads(command_id.data)}), 202
+    command_id = response.json()
+    return jsonify({"commandId": command_id}), 202
 ```
 
 ## Check Command Status
