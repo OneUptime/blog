@@ -42,14 +42,22 @@ public class ApprovalWorkflow : Workflow<OrderRequest, OrderResult>
         // Step 2: wait for human approval (up to 24 hours)
         Console.WriteLine($"[{context.InstanceId}] Waiting for approval...");
 
-        var approvalEvent = await context.WaitForExternalEventAsync<ApprovalDecision>(
-            eventName: "approval-decision",
-            timeout: TimeSpan.FromHours(24)
-        );
-
-        if (approvalEvent == null || !approvalEvent.Approved)
+        ApprovalDecision approvalEvent;
+        try
         {
-            return new OrderResult("Rejected", approvalEvent?.Reason ?? "Timed out");
+            approvalEvent = await context.WaitForExternalEventAsync<ApprovalDecision>(
+                eventName: "approval-decision",
+                timeout: TimeSpan.FromHours(24)
+            );
+        }
+        catch (TaskCanceledException)
+        {
+            return new OrderResult("Rejected", "Timed out waiting for approval");
+        }
+
+        if (!approvalEvent.Approved)
+        {
+            return new OrderResult("Rejected", approvalEvent.Reason);
         }
 
         Console.WriteLine($"[{context.InstanceId}] Approved by {approvalEvent.ApprovedBy}");
@@ -119,7 +127,7 @@ When the human approver clicks "Approve" in your admin panel:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/order-wf-001/raiseEvent/approval-decision \
+  http://localhost:3500/v1.0/workflows/dapr/order-wf-001/raiseEvent/approval-decision \
   -H "Content-Type: application/json" \
   -d '{
     "approved": true,
@@ -132,7 +140,7 @@ For rejection:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/order-wf-001/raiseEvent/approval-decision \
+  http://localhost:3500/v1.0/workflows/dapr/order-wf-001/raiseEvent/approval-decision \
   -H "Content-Type: application/json" \
   -d '{
     "approved": false,
@@ -168,7 +176,7 @@ app.MapPost("/admin/orders/{instanceId}/approve", async (string instanceId, Appr
 ## Check Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/order-wf-001
+curl http://localhost:3500/v1.0/workflows/dapr/order-wf-001
 ```
 
 Response:
@@ -176,10 +184,10 @@ Response:
 ```json
 {
   "instanceID": "order-wf-001",
-  "workflowName": "ApprovalWorkflow",
   "runtimeStatus": "RUNNING",
   "createdAt": "2026-03-31T10:00:00Z",
-  "lastUpdatedAt": "2026-03-31T10:05:00Z"
+  "lastUpdatedAt": "2026-03-31T10:05:00Z",
+  "properties": {}
 }
 ```
 
