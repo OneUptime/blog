@@ -36,7 +36,7 @@ metadata:
   name: statestore
 spec:
   type: state.postgresql
-  version: v2
+  version: v1
   metadata:
     - name: connectionString
       secretKeyRef:
@@ -44,10 +44,8 @@ spec:
         key: connection-string
     - name: actorStateStore
       value: "true"
-    - name: cleanupInterval
-      value: "1h"
-    - name: tablePrefix
-      value: "dapr_"
+    - name: tableName
+      value: "dapr_state"
 ```
 
 Store the connection string:
@@ -79,7 +77,7 @@ CREATE TABLE dapr_state (
 
 ## Using State Queries with PostgreSQL
 
-PostgreSQL v2 state store supports the Dapr State Query API:
+PostgreSQL v1 state store supports the Dapr State Query API:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
@@ -141,7 +139,7 @@ For connection pooling with PgBouncer:
 ```yaml
     - name: connectionString
       value: "host=pgbouncer port=5432 user=dapruser password=secret dbname=daprstate sslmode=disable"
-    - name: connMaxIdleTime
+    - name: connectionMaxIdleTime
       value: "5m"
 ```
 
@@ -166,4 +164,4 @@ WHERE expiredtime < NOW();
 
 ## Summary
 
-The Dapr PostgreSQL state store provides ACID-compliant, queryable state persistence suitable for production workloads requiring strong consistency and durable storage. Using version v2 of the component unlocks state query support, enabling complex filtering that is not available with Redis or simple key-value backends.
+The Dapr PostgreSQL state store provides ACID-compliant, queryable state persistence suitable for production workloads requiring strong consistency and durable storage. Using version v1 of the component enables state query support, allowing complex filtering directly against JSONB-stored state data.
