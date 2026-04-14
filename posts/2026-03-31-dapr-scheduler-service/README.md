@@ -41,7 +41,7 @@ sequenceDiagram
     Sidecar->>Scheduler: Schedule job (name, schedule, data)
     Scheduler->>Etcd: Persist job definition
     Scheduler->>Sidecar: Ack
-    Sidecar->>App: 204 OK
+    Sidecar->>App: 204 No Content
     Note over Scheduler: At scheduled time
     Scheduler->>Sidecar: Trigger: daily-cleanup
     Sidecar->>App: POST /job/daily-cleanup (with job data)
@@ -155,11 +155,7 @@ Response:
 {
   "name": "send-report",
   "schedule": "@every 24h",
-  "data": {"reportType": "daily-sales"},
-  "status": {
-    "lastRunTime": "2026-03-31T00:00:00Z",
-    "nextRunTime": "2026-04-01T00:00:00Z"
-  }
+  "data": {"reportType": "daily-sales"}
 }
 ```
 
@@ -171,23 +167,23 @@ curl -X DELETE http://localhost:3500/v1.0-alpha1/jobs/send-report
 
 ## High Availability
 
-Run the Scheduler with 3 replicas for production:
-
-```yaml
-dapr_scheduler:
-  replicaCount: 3
-  etcd:
-    dataDir: /var/run/dapr/scheduler
-    storageClassName: fast-ssd
-```
+Enable high availability for the Scheduler in production:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_scheduler.replicaCount=3
+  --set global.ha.enabled=true
 ```
 
-The embedded etcd cluster uses Raft consensus and requires an odd number of replicas.
+You can also enable HA for the Scheduler independently:
+
+```bash
+helm upgrade dapr dapr/dapr \
+  --namespace dapr-system \
+  --set dapr_scheduler.ha=true
+```
+
+The embedded etcd cluster uses Raft consensus. When HA is enabled, the Scheduler runs with 3 replicas by default.
 
 ## Scheduler Port Configuration
 
