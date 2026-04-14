@@ -24,8 +24,7 @@ spec:
     retries:
       standard:
         policy: exponential
-        duration: 5s
-        maxDuration: 15s
+        maxInterval: 15s
         maxRetries: 3
     circuitBreakers:
       shared:
@@ -41,8 +40,9 @@ spec:
         circuitBreaker: shared
     components:
       statestore:
-        timeout: general
-        retry: standard
+        outbound:
+          timeout: general
+          retry: standard
 ```
 
 ## Retry Policies
@@ -98,7 +98,7 @@ circuitBreakers:
     trip: consecutiveFailures >= 3
 ```
 
-The `trip` expression uses CEL. Available variables are `consecutiveFailures`, `failureRatio`, and `requests`.
+The `trip` expression uses CEL. Available variables are `consecutiveFailures`, `totalFailures`, `requests`, and `consecutiveSuccesses`.
 
 ## Targets
 
@@ -117,8 +117,9 @@ targets:
         timeout: fast
         retry: constant-retry
     statestore:
-      timeout: normal
-      retry: standard
+      outbound:
+        timeout: normal
+        retry: standard
 ```
 
 For components, you can apply separate policies to `inbound` and `outbound` traffic.
