@@ -70,7 +70,6 @@ touch .devcontainer/Dockerfile
 ## docker-compose.yml for Dapr Services
 
 ```yaml
-version: "3.8"
 services:
   app:
     build: .
@@ -107,10 +106,11 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu
 # Install Dapr CLI
 RUN wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 
+# Switch to vscode user before initializing Dapr so runtime is installed in /home/vscode/.dapr/
+USER vscode
+
 # Initialize Dapr (slim mode - no Docker-in-Docker)
 RUN dapr init --slim
-
-USER vscode
 ```
 
 ## Setup Script
@@ -121,6 +121,9 @@ USER vscode
 set -e
 
 echo "Setting up Dapr development environment..."
+
+# Ensure components directory exists (dapr init --slim does not create it)
+mkdir -p ~/.dapr/components
 
 # Initialize Dapr with Redis and Zipkin component files
 cat > ~/.dapr/components/statestore.yaml << 'EOF'
@@ -162,7 +165,7 @@ dapr run \
   --app-id orderservice \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ~/.dapr/components \
+  --resources-path ~/.dapr/components \
   --config ~/.dapr/config.yaml \
   -- node app.js
 ```
