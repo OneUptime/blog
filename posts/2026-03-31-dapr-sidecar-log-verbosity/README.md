@@ -56,9 +56,10 @@ With JSON logging enabled, each log line is a structured JSON object:
   "time": "2026-03-31T10:00:00Z",
   "level": "info",
   "type": "log",
-  "msg": "component loaded",
-  "component": "statestore",
-  "scope": "dapr.runtime"
+  "msg": "component loaded. name: statestore (state.redis/v1)",
+  "scope": "dapr.runtime",
+  "instance": "inventory-service-pod-xxxx",
+  "ver": "1.14.0"
 }
 ```
 
@@ -75,22 +76,27 @@ dapr run --app-id my-service \
 
 ## Setting Global Log Level via Helm
 
-Set a default log level for all sidecars when deploying Dapr with Helm:
+Set the log level for Dapr system components (sidecar injector, operator, placement, sentry) when deploying Dapr with Helm:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_sidecar_injector.defaultConfig.logLevel=info
+  --set dapr_sidecar_injector.logLevel=info \
+  --set dapr_operator.logLevel=info \
+  --set dapr_placement.logLevel=info \
+  --set dapr_sentry.logLevel=info
 ```
+
+To set the default log level for injected sidecars, use the `dapr.io/log-level` annotation on each pod or apply it across deployments using Kustomize or a policy engine.
 
 ## Filtering Logs by Component
 
 With JSON logging, use jq to filter logs from specific scopes or components:
 
 ```bash
-kubectl logs my-pod -c daprd | jq 'select(.scope == "dapr.contrib")'
+kubectl logs my-pod -c daprd | jq 'select(.scope == "dapr.runtime")'
 kubectl logs my-pod -c daprd | jq 'select(.level == "error")'
-kubectl logs my-pod -c daprd | jq 'select(.component == "statestore")'
+kubectl logs my-pod -c daprd | jq 'select(.msg | contains("statestore"))'
 ```
 
 ## Temporarily Increasing Verbosity
