@@ -22,9 +22,9 @@ Kratix is a framework for building internal developer platforms on Kubernetes us
 ## Understanding Kratix Promises
 
 A Kratix Promise consists of:
-- `xaasCrd`: The API developers use to request resources
-- `workerClusterResources`: Base resources to install on worker clusters
-- `xaasRequestPipeline`: Steps executed when a developer makes a request
+- `api`: The CRD that developers use to request resources
+- `dependencies`: Base resources to install on worker clusters
+- `workflows`: Pipeline steps executed when a developer makes a request
 
 ## Creating a Dapr Promise
 
@@ -37,7 +37,7 @@ metadata:
   name: dapr
   namespace: default
 spec:
-  xaasCrd:
+  api:
     apiVersion: apiextensions.k8s.io/v1
     kind: CustomResourceDefinition
     metadata:
@@ -50,10 +50,14 @@ spec:
       scope: Namespaced
       versions:
       - name: v1alpha1
+        served: true
+        storage: true
         schema:
           openAPIV3Schema:
+            type: object
             properties:
               spec:
+                type: object
                 properties:
                   namespace:
                     type: string
@@ -70,7 +74,7 @@ spec:
 Define the base Dapr installation for all worker clusters:
 
 ```yaml
-  workerClusterResources:
+  dependencies:
   - apiVersion: v1
     kind: Namespace
     metadata:
@@ -83,7 +87,7 @@ Define the base Dapr installation for all worker clusters:
     spec:
       chart: dapr
       repo: https://dapr.github.io/helm-charts/
-      version: "1.13.0"
+      version: "1.17.4"
       valuesContent: |-
         global:
           ha:
@@ -96,10 +100,18 @@ Define the base Dapr installation for all worker clusters:
 Create the pipeline that provisions Dapr components per request:
 
 ```yaml
-  xaasRequestPipeline:
-  - name: dapr-namespace-provisioner
-    image: myregistry/dapr-provisioner:v1
-    imagePullPolicy: Always
+  workflows:
+    resource:
+      configure:
+      - apiVersion: platform.kratix.io/v1alpha1
+        kind: Pipeline
+        metadata:
+          name: dapr-namespace-provisioner
+        spec:
+          containers:
+          - name: dapr-namespace-provisioner
+            image: myregistry/dapr-provisioner:v1
+            imagePullPolicy: Always
 ```
 
 Pipeline script in the container:
@@ -107,11 +119,11 @@ Pipeline script in the container:
 ```bash
 #!/bin/bash
 # Read the request
-NAMESPACE=$(cat /input/object.yaml | yq '.spec.namespace')
-HA_ENABLED=$(cat /input/object.yaml | yq '.spec.haEnabled')
+NAMESPACE=$(yq '.spec.namespace' /kratix/input/object.yaml)
+HA_ENABLED=$(yq '.spec.haEnabled' /kratix/input/object.yaml)
 
 # Generate Dapr component configuration
-cat > /output/dapr-config.yaml << EOF
+cat > /kratix/output/dapr-config.yaml << EOF
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
