@@ -22,8 +22,8 @@ Your App Code
 
 Cloud A (AWS):           Cloud B (Azure):        Cloud C (GCP):
 state.aws.dynamodb       state.azure.cosmosdb    state.gcp.firestore
-pubsub.aws.snssqs        pubsub.azure.servicebus pubsub.gcp.pubsub
-secretstores.aws.ssm     secretstores.azure.kv   secretstores.gcp.secretmanager
+pubsub.aws.snssqs        pubsub.azure.servicebus.topics pubsub.gcp.pubsub
+secretstores.aws.parameterstore secretstores.azure.keyvault secretstores.gcp.secretmanager
 ```
 
 ## AWS Component Configuration
@@ -149,9 +149,15 @@ spec:
     - name: brokers
       value: "pkc-xxxx.us-east-1.aws.confluent.cloud:9092"
     - name: authType
-      value: "sasl"
+      value: "password"
+    - name: saslUsername
+      value: "<confluent-api-key>"
+    - name: saslPassword
+      secretKeyRef:
+        name: kafka-credentials
+        key: saslPassword
     - name: saslMechanism
-      value: "PLAIN"
+      value: "PLAINTEXT"
 ```
 
 Deploy this identical component YAML to all three clouds to enable cross-cloud pub/sub.
@@ -165,11 +171,12 @@ Run a portability test to verify your app behaves identically across clouds:
 for CLOUD in aws azure gcp; do
   echo "Testing on $CLOUD..."
   kubectl config use-context $CLOUD-cluster
+  kubectl delete pod portability-test --ignore-not-found
   kubectl run portability-test \
     --image=myrepo/test-runner:latest \
     --env="TARGET_URL=http://order-service:8080" \
     --restart=Never
-  kubectl wait --for=condition=complete pod/portability-test --timeout=60s
+  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/portability-test --timeout=60s
   kubectl logs portability-test
 done
 ```
