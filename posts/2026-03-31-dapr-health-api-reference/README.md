@@ -22,7 +22,7 @@ Check whether the Dapr sidecar itself is healthy:
 curl http://localhost:3500/v1.0/healthz
 ```
 
-Returns HTTP 200 when the sidecar is running and ready. Returns HTTP 500 when the sidecar is not ready.
+Returns HTTP 204 when the sidecar is running and ready. Returns HTTP 500 when the sidecar is not ready.
 
 ## Sidecar Outbound Health Check
 
@@ -34,7 +34,7 @@ Check whether the sidecar can reach all configured components (state stores, pub
 curl http://localhost:3500/v1.0/healthz/outbound
 ```
 
-This is more comprehensive than `/healthz` because it validates connectivity to external dependencies. Use this for readiness probes.
+Unlike `/healthz`, this endpoint does not require the app channel to be established. It confirms that components are initialized and the HTTP port is available, making it useful for applications that need to call Dapr APIs before the app is fully ready.
 
 ## Kubernetes Probe Configuration
 
@@ -66,9 +66,10 @@ Dapr can also probe your application and pause sidecar operations if the app is 
 
 ```yaml
 annotations:
+  dapr.io/enable-app-health-check: "true"
   dapr.io/app-health-check-path: "/health"
   dapr.io/app-health-probe-interval: "30"
-  dapr.io/app-health-probe-timeout: "5"
+  dapr.io/app-health-probe-timeout: "500"
   dapr.io/app-health-threshold: "3"
 ```
 
@@ -120,7 +121,7 @@ def wait_for_dapr(port=3500, timeout=60):
     while time.time() - start < timeout:
         try:
             r = requests.get(f"http://localhost:{port}/v1.0/healthz/outbound")
-            if r.status_code == 200:
+            if r.status_code == 204:
                 print("Dapr sidecar ready")
                 return
         except requests.ConnectionError:
