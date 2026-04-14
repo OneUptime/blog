@@ -131,7 +131,7 @@ public class UserServiceHttpTests : IDisposable
 }
 ```
 
-## Approach 3: Dapr Test Kit (Python)
+## Approach 3: Mocking Dapr in Python
 
 For Python services using the `dapr` SDK:
 
