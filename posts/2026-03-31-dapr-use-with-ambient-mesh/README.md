@@ -102,9 +102,9 @@ kubectl port-forward svc/zipkin 9411 -n dapr-monitoring
 # Ambient mesh metrics (network layer)
 kubectl port-forward svc/prometheus 9090 -n istio-system
 
-# Query ambient TCP metrics
+# Query ambient TCP metrics (in ambient mode, ztunnel reports as source/destination)
 curl http://localhost:9090/api/v1/query \
-  --data-urlencode 'query=istio_tcp_connections_opened_total{reporter="ztunnel"}'
+  --data-urlencode 'query=istio_tcp_connections_opened_total{reporter="source"}'
 ```
 
 ## Summary
