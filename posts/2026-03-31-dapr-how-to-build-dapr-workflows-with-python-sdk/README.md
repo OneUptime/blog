@@ -43,12 +43,12 @@ my-workflow-app/
 
 ## Defining Workflow Activities
 
-Activities are the individual units of work within a workflow. Each activity is a plain Python function decorated with `@wf.activity`.
+Activities are the individual units of work within a workflow. Each activity is a plain Python function that gets registered with the workflow runtime.
 
 ```python
 import dapr.ext.workflow as wf
 
-def process_order_activity(ctx: wf.ActivityContext, input: dict) -> dict:
+def process_order_activity(ctx: wf.WorkflowActivityContext, input: dict) -> dict:
     order_id = input.get("order_id")
     quantity = input.get("quantity")
     # Simulate order processing logic
@@ -56,13 +56,13 @@ def process_order_activity(ctx: wf.ActivityContext, input: dict) -> dict:
     total = quantity * 10.0
     return {"order_id": order_id, "total": total, "status": "processed"}
 
-def send_notification_activity(ctx: wf.ActivityContext, input: dict) -> str:
+def send_notification_activity(ctx: wf.WorkflowActivityContext, input: dict) -> str:
     order_id = input.get("order_id")
     email = input.get("email")
     print(f"Sending notification to {email} for order {order_id}")
     return f"Notification sent to {email}"
 
-def charge_payment_activity(ctx: wf.ActivityContext, input: dict) -> dict:
+def charge_payment_activity(ctx: wf.WorkflowActivityContext, input: dict) -> dict:
     order_id = input.get("order_id")
     amount = input.get("amount")
     print(f"Charging {amount} for order {order_id}")
@@ -117,7 +117,6 @@ def order_processing_workflow(ctx: wf.DaprWorkflowContext, order_input: dict) ->
 Wire everything together in your main application file and start the workflow runtime.
 
 ```python
-import time
 import dapr.ext.workflow as wf
 from workflow import (
     order_processing_workflow,
