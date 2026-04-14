@@ -64,11 +64,20 @@ with DaprClient() as client:
 
 ## Checking Remaining TTL
 
-After saving a key with TTL, you can read the remaining time from the response metadata:
+Dapr does not return the remaining TTL or expiration time when you retrieve a state entry via a simple GET request. If you need to track expiration, store the expiry timestamp as part of your value:
 
-```bash
-curl -v http://localhost:3500/v1.0/state/statestore/session:user-123
-# Response header: metadata.ttlExpireTime: 2024-01-15T11:00:00Z
+```javascript
+await client.state.save('statestore', [
+  {
+    key: 'session:user-123',
+    value: {
+      userId: 'user-123',
+      role: 'admin',
+      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString()
+    },
+    metadata: { ttlInSeconds: '3600' }
+  }
+]);
 ```
 
 ## Common TTL Use Cases
@@ -91,9 +100,7 @@ state.redis       # Native TTL support via EXPIRE
 state.mongodb     # TTL index support
 state.cosmosdb    # TTL via document TTL setting
 state.dynamodb    # TTL via DynamoDB TTL attribute
-
-# Not supported
-state.postgresql  # No native TTL (requires manual cleanup)
+state.postgresql  # TTL via expiration column and background garbage collector
 ```
 
 ## Refreshing TTL on Access
@@ -119,4 +126,4 @@ async function getSessionWithSlide(sessionId) {
 
 ## Summary
 
-Set TTL on Dapr state entries using the `ttlInSeconds` metadata field in your save request. The state store automatically expires and removes the entry after the specified duration. TTL is supported by Redis, MongoDB, Cosmos DB, and DynamoDB state backends. For sliding expiration, re-save the key with the TTL on each access.
+Set TTL on Dapr state entries using the `ttlInSeconds` metadata field in your save request. The state store automatically expires and removes the entry after the specified duration. TTL is supported by Redis, MongoDB, Cosmos DB, DynamoDB, and PostgreSQL state backends. For sliding expiration, re-save the key with the TTL on each access.
