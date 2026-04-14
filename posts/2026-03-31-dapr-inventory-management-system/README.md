@@ -33,7 +33,7 @@ type StockLevel struct {
 }
 
 type InventoryActor struct {
-    actor.ServerImplBase
+    actor.ServerImplBaseCtx
 }
 
 func (a *InventoryActor) Type() string {
@@ -56,7 +56,12 @@ func (a *InventoryActor) Reserve(ctx context.Context, req *struct{ Qty int; Orde
 
     stock.Available -= req.Qty
     stock.Reserved += req.Qty
-    return a.GetStateManager().Set(ctx, "stock", stock)
+    err := a.GetStateManager().Set(ctx, "stock", stock)
+    if err != nil {
+        return err
+    }
+    a.checkReorder(ctx, stock)
+    return nil
 }
 
 func (a *InventoryActor) Commit(ctx context.Context, req *struct{ Qty int; OrderID string }) error {
@@ -119,27 +124,26 @@ func reserveAcrossWarehouses(daprClient dapr.Client, sku string, qty int, orderI
 
     for _, warehouse := range warehouses {
         actorID := fmt.Sprintf("%s@%s", sku, warehouse)
+        resp, err := daprClient.InvokeActor(context.Background(), &dapr.InvokeActorRequest{
+            ActorType: "Inventory",
+            ActorID:   actorID,
+            Method:    "GetStock",
+        })
+        if err != nil {
+            continue
+        }
         var stock StockLevel
-        err := daprClient.InvokeActorMethod(
-            context.Background(),
-            "Inventory",
-            actorID,
-            "GetStock",
-            nil,
-            &stock,
-        )
-        if err != nil || stock.Available < qty {
+        if err := json.Unmarshal(resp.Data, &stock); err != nil || stock.Available < qty {
             continue
         }
 
-        err = daprClient.InvokeActorMethod(
-            context.Background(),
-            "Inventory",
-            actorID,
-            "Reserve",
-            struct{ Qty int; OrderID string }{qty, orderID},
-            nil,
-        )
+        reqData, _ := json.Marshal(struct{ Qty int; OrderID string }{qty, orderID})
+        _, err = daprClient.InvokeActor(context.Background(), &dapr.InvokeActorRequest{
+            ActorType: "Inventory",
+            ActorID:   actorID,
+            Method:    "Reserve",
+            Data:      reqData,
+        })
         if err == nil {
             return warehouse, nil
         }
@@ -160,14 +164,13 @@ func handleStockAdjustment(w http.ResponseWriter, r *http.Request) {
     json.NewDecoder(r.Body).Decode(&req)
 
     actorID := sku + "@warehouse-central"
-    err := daprClient.InvokeActorMethod(
-        r.Context(),
-        "Inventory",
-        actorID,
-        "Receive",
-        struct{ Qty int; PurchaseOrderID string }{req.Qty, "ADJ-" + uuid.New().String()},
-        nil,
-    )
+    reqData, _ := json.Marshal(struct{ Qty int; PurchaseOrderID string }{req.Qty, "ADJ-" + uuid.New().String()})
+    _, err := daprClient.InvokeActor(r.Context(), &dapr.InvokeActorRequest{
+        ActorType: "Inventory",
+        ActorID:   actorID,
+        Method:    "Receive",
+        Data:      reqData,
+    })
     if err != nil {
         http.Error(w, err.Error(), 500)
         return
