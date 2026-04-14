@@ -20,10 +20,12 @@ Create dedicated namespaces for each tenant:
 kubectl create namespace tenant-a
 kubectl create namespace tenant-b
 
-# Label namespaces for Dapr injection
-kubectl label namespace tenant-a dapr-enabled=true
-kubectl label namespace tenant-b dapr-enabled=true
+# Label namespaces for organizational purposes
+kubectl label namespace tenant-a tenant=tenant-a
+kubectl label namespace tenant-b tenant=tenant-b
 ```
+
+Note: Dapr sidecar injection is controlled via pod-level annotations (`dapr.io/enabled: "true"` and `dapr.io/app-id: "myapp"`), not namespace labels. Add these annotations to your pod specs or deployments in each tenant namespace.
 
 ## Deploying Tenant-Specific Components
 
@@ -67,7 +69,7 @@ Both tenants use the same component name (`statestore`) but the namespace ensure
 
 ## Namespace-Scoped Service Invocation
 
-By default, Dapr service invocation is namespace-scoped. An app in `tenant-a` can only invoke services in the same namespace without explicit cross-namespace configuration:
+By default, Dapr service invocation targets the calling app's namespace. An app in `tenant-a` calling a service by app ID alone will reach services in the same namespace. Cross-namespace invocation is allowed by default using the `appid.namespace` format — to restrict it, use Dapr access control policies:
 
 ```javascript
 // This call from tenant-a can only reach tenant-a services
@@ -85,9 +87,9 @@ const response = await fetch(
 );
 ```
 
-## Configure Namespace-Level Trust Domains
+## Configure mTLS Per Namespace
 
-For stronger isolation, configure separate mTLS trust domains per tenant namespace:
+Enable mTLS in each tenant namespace for encrypted sidecar-to-sidecar communication:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -101,6 +103,8 @@ spec:
     workloadCertTTL: "24h"
     allowedClockSkew: "15m"
 ```
+
+Note: In a single-cluster Dapr installation, all namespaces share the same Sentry CA and trust domain. This configuration enables mTLS for workloads in the namespace but does not create isolated trust domains. For full trust domain isolation, you would need separate Dapr control plane installations.
 
 ## Apply Network Policies
 
@@ -127,6 +131,21 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: tenant-a
+  # Allow DNS resolution (required for service discovery)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow communication with Dapr control plane (Sentry, placement, operator)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: dapr-system
 ```
 
 ## Summary
