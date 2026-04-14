@@ -15,9 +15,10 @@ Dapr service invocation is protocol-agnostic at the HTTP level. Since GraphQL ty
 ## Exposing a GraphQL Endpoint
 
 ```javascript
-const { ApolloServer, gql } = require('@apollo/server');
+const { ApolloServer } = require('@apollo/server');
 const { expressMiddleware } = require('@apollo/server/express4');
 const express = require('express');
+const gql = require('graphql-tag');
 
 const typeDefs = gql`
   type Order {
@@ -34,10 +35,17 @@ const typeDefs = gql`
   }
 `;
 
-const app = express();
-app.use(express.json());
-app.use('/graphql', expressMiddleware(server));
-app.listen(3000);
+const server = new ApolloServer({ typeDefs });
+
+async function start() {
+  await server.start();
+  const app = express();
+  app.use(express.json());
+  app.use('/graphql', expressMiddleware(server));
+  app.listen(3000);
+}
+
+start();
 ```
 
 ## Invoking a GraphQL Query Through Dapr
@@ -75,7 +83,7 @@ curl -X POST http://localhost:3500/v1.0/invoke/order-service/method/graphql \
 ## Using the Node.js Dapr SDK
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 const client = new DaprClient();
 
 const query = `
