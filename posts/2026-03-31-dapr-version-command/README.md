@@ -43,20 +43,14 @@ Sample JSON output:
 
 ```json
 {
-  "Cli": "1.13.0",
-  "Runtime": "1.13.0"
+  "Cli version": "1.13.0",
+  "Runtime version": "1.13.0"
 }
 ```
 
 ## Version Compatibility Rules
 
-Dapr follows a supported version policy. The CLI and runtime should be on the same minor version. A mismatch warning is printed when they differ:
-
-```yaml
-CLI version: 1.13.0
-Runtime version: 1.12.5
-WARNING: mismatched CLI and runtime versions
-```
+Dapr follows a supported version policy. The CLI and runtime should be on the same minor version. You can verify this by comparing the two version numbers in the `dapr version` output. If they differ, upgrade the CLI or runtime to align them.
 
 Check the compatibility matrix at https://docs.dapr.io/operations/support/support-release-policy/
 
@@ -66,8 +60,8 @@ Capture and validate versions in CI before running tests:
 
 ```bash
 #!/bin/bash
-CLI_VER=$(dapr version --output json | jq -r '.Cli')
-RUNTIME_VER=$(dapr version --output json | jq -r '.Runtime')
+CLI_VER=$(dapr version --output json | jq -r '."Cli version"')
+RUNTIME_VER=$(dapr version --output json | jq -r '."Runtime version"')
 
 echo "CLI: $CLI_VER | Runtime: $RUNTIME_VER"
 
@@ -92,7 +86,7 @@ If the CLI is older than the runtime, upgrade the CLI:
 
 ```bash
 # macOS with Homebrew
-brew upgrade dapr-cli
+brew upgrade dapr/tap/dapr-cli
 
 # Linux
 wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | DAPR_INSTALL_DIR=/usr/local/bin sh
