@@ -68,7 +68,7 @@ app.post('/orders', async (req, res) => {
 app.listen(3000);
 ```
 
-## Using Output Bindings for Event-Driven Responses
+## Using Pub/Sub for Event-Driven Responses
 
 Instead of tight coupling, emit events after processing:
 
@@ -105,7 +105,7 @@ spec:
       queueLength: "5"
 ```
 
-With `minReplicaCount: 0`, the deployment scales to zero when there are no messages. The Dapr sidecar wakes the container as traffic arrives.
+With `minReplicaCount: 0`, the deployment scales to zero when there are no messages. KEDA monitors the trigger source and scales the deployment back up when new messages arrive.
 
 ## Invoking a Serverless Backend from Another Service
 
