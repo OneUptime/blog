@@ -64,7 +64,7 @@ app.run(port=5000)
 Use Dapr topic routing to route different event types to specialized processors:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: iot-event-router
@@ -73,12 +73,12 @@ spec:
   topic: iot-events
   routes:
     rules:
-    - match: event.sensorType == "temperature"
-      path: /process-temperature
-    - match: event.sensorType == "motion"
-      path: /process-motion
-    - match: event.sensorType == "power"
-      path: /process-power
+      - match: event.data.sensorType == "temperature"
+        path: /process-temperature
+      - match: event.data.sensorType == "motion"
+        path: /process-motion
+      - match: event.data.sensorType == "power"
+        path: /process-power
     default: /process-generic
 ```
 
@@ -104,13 +104,13 @@ def process_temperature():
 
         # Anomaly: temperature > 2 standard deviations from average
         if abs(temp - new_avg) > 2 * 5:  # Simplified std dev check
-            client.publish_event('pubsub', 'iot-anomalies', {
+            client.publish_event('pubsub', 'iot-anomalies', json.dumps({
                 "deviceId": device_id,
                 "sensorType": "temperature",
                 "value": temp,
                 "expectedAvg": new_avg,
                 "severity": "high" if abs(temp - new_avg) > 20 else "medium"
-            })
+            }))
 
     return '', 200
 ```
