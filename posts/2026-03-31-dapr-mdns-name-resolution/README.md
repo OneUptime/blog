@@ -40,39 +40,42 @@ curl http://localhost:3501/v1.0/invoke/order-service/method/orders
 
 ## Explicit mDNS Component Configuration
 
-Dapr uses mDNS by default in self-hosted mode but you can be explicit in your component file:
+Dapr uses mDNS by default in self-hosted mode but you can be explicit in your Dapr configuration file:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.mdns
-  version: v1
-  metadata:
-    - name: subscriberAddressFamily
-      value: "ipv4"
+  nameResolution:
+    component: "mdns"
+    version: "v1"
 ```
 
-Place this in your components directory (default `~/.dapr/components/`) or pass it via `--components-path`:
+Save this as a configuration file (e.g., `config.yaml`) and reference it via `--config`:
 
 ```bash
 dapr run --app-id myapp \
-  --components-path ./components \
+  --config ./config.yaml \
   -- ./myapp
 ```
 
 ## Handling Multi-Interface Environments
 
-On machines with multiple network interfaces, mDNS may not resolve correctly. Specify the interface explicitly:
+On machines with multiple network interfaces, mDNS may not resolve correctly. The mDNS component in Dapr does not provide configuration for interface selection, so you may need to adjust your OS network settings or switch to a name resolution component that supports address filtering, such as HashiCorp Consul:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
 metadata:
-  - name: subscriberAddressFamily
-    value: "ipv4"
-  - name: addressPrefix
-    value: "192.168.1."
+  name: appconfig
+spec:
+  nameResolution:
+    component: "consul"
+    version: "v1"
+    configuration:
+      selfRegister: true
 ```
 
 ## Testing mDNS Discovery
