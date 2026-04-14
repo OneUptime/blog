@@ -40,7 +40,7 @@ Create a publisher using `DaprClient`:
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
 
-const client = new DaprClient({ daprHost: "http://localhost", daprPort: "3500" });
+const client = new DaprClient({ daprHost: "127.0.0.1", daprPort: "3500" });
 
 async function publishOrderCreated(order) {
   await client.pubsub.publish("pubsub", "order-created", {
@@ -63,7 +63,7 @@ const { DaprServer } = require("@dapr/dapr");
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3501" },
+  clientOptions: { daprHost: "127.0.0.1", daprPort: "3501" },
 });
 
 await server.pubsub.subscribe("pubsub", "order-created", async (data) => {
@@ -81,7 +81,7 @@ Configure a dead letter topic for failed messages:
 ```javascript
 await server.pubsub.subscribeWithOptions("pubsub", "order-created", {
   deadLetterTopic: "order-created-failed",
-  handler: async (data) => {
+  callback: async (data) => {
     if (!data.orderId) {
       throw new Error("Invalid order data");
     }
@@ -117,7 +117,7 @@ await client.pubsub.publish(
   "pubsub",
   "notifications",
   { userId: "user-42", message: "Your order shipped!" },
-  { ttlInSeconds: "300", partitionKey: "user-42" }
+  { metadata: { ttlInSeconds: "300", partitionKey: "user-42" } }
 );
 ```
 
