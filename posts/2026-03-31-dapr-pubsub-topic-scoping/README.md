@@ -14,11 +14,14 @@ When multiple services share a single Dapr pub/sub component, any service can by
 
 ## How Pub/Sub Scoping Works
 
-Scoping is configured at the component level using two metadata fields:
+Scoping is configured at the component level using these metadata fields:
 
 - `publishingScopes`: Defines which app IDs can publish to which topics
 - `subscriptionScopes`: Defines which app IDs can subscribe to which topics
 - `allowedTopics`: Restricts the entire component to a list of allowed topics
+- `protectedTopics`: Topics that require explicit grant via `publishingScopes` or `subscriptionScopes` (apps not listed are denied)
+
+Note: By default, apps **not** listed in `publishingScopes` or `subscriptionScopes` have unrestricted access to all topics. Only listed apps are restricted to their specified topics. Use `protectedTopics` to enforce default-deny behavior on specific topics.
 
 ## Configuring Topic Scoping
 
@@ -45,10 +48,12 @@ spec:
 ```
 
 In this example:
-- Only `checkout-service` can publish to the `orders` topic
-- Only `payment-service` can publish to the `payments` topic
+- `checkout-service` is restricted to publishing only to the `orders` topic
+- `payment-service` is restricted to publishing only to the `payments` topic
+- Apps not listed in `publishingScopes` (e.g., `notification-service`) can still publish to any allowed topic by default
 - `inventory-service` can only subscribe to `orders`
 - `notification-service` can subscribe to all three topics
+- Apps not listed in `subscriptionScopes` can still subscribe to any allowed topic by default
 
 ## Restricting with allowedTopics
 
@@ -63,10 +68,10 @@ An attempt to publish to a topic called `debug-events` would be blocked.
 
 ## Testing Scoping Restrictions
 
-Try publishing from an unauthorized app:
+Try publishing from an app restricted by `publishingScopes`:
 
 ```bash
-# From inventory-service (not in publishingScopes for orders)
+# From payment-service (restricted to publishing only to "payments")
 curl -X POST http://localhost:3500/v1.0/publish/orders-pubsub/orders \
   -H "Content-Type: application/json" \
   -d '{"orderId": "123"}'
