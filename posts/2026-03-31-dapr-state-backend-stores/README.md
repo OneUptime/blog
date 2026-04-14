@@ -52,9 +52,7 @@ spec:
       value: "86400"
 ```
 
-Supports: Transactions, ETags, TTL, Bulk operations.
-
-Does NOT support: Query API.
+Supports: Transactions, ETags, TTL, Bulk operations, Query API (requires RedisSearch and RedisJSON modules).
 
 ## PostgreSQL
 
@@ -72,17 +70,17 @@ spec:
   metadata:
     - name: connectionString
       value: "host=pg-primary port=5432 user=dapr password=secret dbname=dapr_state sslmode=require"
-    - name: schema
-      value: dapr_schema
-    - name: tableName
+    - name: tablePrefix
       value: state
     - name: cleanupInterval
       value: "1h"
 ```
 
-The PostgreSQL component creates its own table with columns: `key`, `value`, `isbinary`, `etag`, `expiredate`.
+The PostgreSQL v2 component stores values as BYTEA and creates its own table with columns: `key`, `value`, `etag`, `expiredate`.
 
-Supports: Transactions, ETags, TTL, Query API (via JSONB).
+Supports: Transactions, ETags, TTL.
+
+Does NOT support: Query API (v2 uses BYTEA storage; Query API was only available in v1 which used JSONB).
 
 ## Azure Cosmos DB
 
@@ -146,9 +144,7 @@ spec:
       value: expiresAt
 ```
 
-Supports: ETags (conditional expressions), TTL (via DynamoDB TTL attribute).
-
-Does NOT support: Server-side transactions in Dapr (client-side only).
+Supports: Transactions (max 100 operations per transaction), ETags (conditional expressions), TTL (via DynamoDB TTL attribute).
 
 ## MongoDB
 
@@ -178,9 +174,9 @@ spec:
       value: dapr_state
     - name: collectionName
       value: state
-    - name: writeconcern
+    - name: writeConcern
       value: majority
-    - name: readconcern
+    - name: readConcern
       value: majority
 ```
 
@@ -188,12 +184,12 @@ Supports: Transactions (replica set required), ETags, TTL, Query API.
 
 ## Feature Comparison
 
-| Feature | Redis | PostgreSQL | Cosmos DB | DynamoDB | MongoDB |
-|---------|-------|-----------|-----------|---------|---------|
-| Transactions | Yes | Yes | Partial | No | Yes (replica set) |
+| Feature | Redis | PostgreSQL v2 | Cosmos DB | DynamoDB | MongoDB |
+|---------|-------|---------------|-----------|---------|---------|
+| Transactions | Yes | Yes | Partial | Yes (100 op limit) | Yes (replica set) |
 | ETags | Yes | Yes | Yes | Yes | Yes |
 | TTL | Yes | Yes | Yes | Yes | Yes |
-| Query API | No | Yes | No | No | Yes |
+| Query API | Yes (with modules) | No | No | No | Yes |
 | Bulk Get | Yes | Yes | Yes | Yes | Yes |
 | Multi-region | No | Depends | Yes | Yes (global tables) | Yes (Atlas) |
 
@@ -203,6 +199,7 @@ Your application code does not change between backends:
 
 ```python
 # This code works identically against Redis, PostgreSQL, Cosmos DB, etc.
+import json
 from dapr.clients import DaprClient
 
 def save_order(order_id: str, order_data: dict):
