@@ -197,7 +197,7 @@ def update_with_retry(key: str, update_fn, max_retries: int = 3):
         # Read current value and ETag
         resp = requests.get(f"{DAPR_URL}/state/statestore/{key}")
         
-        if resp.status_code == 404:
+        if resp.status_code == 204:
             current = None
             etag = None
         elif resp.status_code == 200:
@@ -260,7 +260,7 @@ def bulk_upsert_orders(orders: list[dict]):
     ]
     
     resp = requests.post(
-        f"{DAPR_URL}/state/statestore/bulk",
+        f"{DAPR_URL}/state/statestore",
         json=operations
     )
     return resp.status_code == 204
