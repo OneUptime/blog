@@ -28,7 +28,7 @@ spec:
     samplingRate: "1"
     zipkin:
       endpointAddress: "http://zipkin.observability:9411/api/v2/spans"
-  metric:
+  metrics:
     enabled: true
   features:
   - name: HotReload
@@ -45,7 +45,7 @@ metadata:
 spec:
   tracing:
     samplingRate: "0.1"
-  metric:
+  metrics:
     enabled: false
   features:
   - name: HotReload
@@ -110,15 +110,11 @@ spec:
   features:
   - name: ActorStateTTL
     enabled: true
-  - name: WorkflowActorScanInterval
+  - name: WorkflowsClusteredDeployment
     enabled: false
 ```
 
-Query the active configuration in your application:
-
-```bash
-curl http://localhost:3500/v1.0/configuration/tenant-config
-```
+Note that Dapr's Configuration CRD settings are applied at sidecar startup and cannot be queried at runtime via an HTTP API. The `/v1.0/configuration/` API endpoint is for the Configuration building block, which reads from external configuration stores — not the sidecar's own Configuration CRD.
 
 ## Automating Configuration Deployment
 
