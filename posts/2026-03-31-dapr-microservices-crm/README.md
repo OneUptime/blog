@@ -27,8 +27,13 @@ metadata:
   name: contact-service
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: contact-service
   template:
     metadata:
+      labels:
+        app: contact-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "contact-service"
@@ -76,7 +81,8 @@ async def create_contact(contact: dict):
             f"contact-{contact['contactId']}", json.dumps(contact))
 
         # Publish contact created event
-        client.publish_event("pubsub", "contact-created", contact)
+        client.publish_event("pubsub", "contact-created",
+            json.dumps(contact), data_content_type='application/json')
 
     return {"contactId": contact["contactId"], "status": "created"}
 
@@ -96,7 +102,7 @@ async def get_contact(contact_id: str):
 ```javascript
 // pipeline-service.js
 const express = require('express');
-const { DaprClient, DaprServer } = require('@dapr/dapr');
+const { DaprClient, DaprServer, HttpMethod } = require('@dapr/dapr');
 
 const app = express();
 const client = new DaprClient();
@@ -110,7 +116,7 @@ app.post('/api/deals', async (req, res) => {
 
   // Verify contact exists via service invocation
   const contact = await client.invoker.invoke(
-    'contact-service', `api/contacts/${contactId}`, 'GET'
+    'contact-service', `api/contacts/${contactId}`, HttpMethod.GET
   );
 
   if (!contact) {
@@ -181,7 +187,7 @@ public class ReminderActor : Actor, IReminderActor, IRemindable
 
     private async Task SendFollowUpNotificationAsync(string contactId)
     {
-        using var client = new DaprClient();
+        using var client = new DaprClientBuilder().Build();
         await client.PublishEventAsync("pubsub", "follow-up-due",
             new { ContactId = contactId, DueAt = DateTime.UtcNow });
     }
