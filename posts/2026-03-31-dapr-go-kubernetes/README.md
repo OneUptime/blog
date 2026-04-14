@@ -145,4 +145,4 @@ spec:
 
 ## Summary
 
-Deploying a Dapr Go service to Kubernetes requires a minimal Dockerfile, Dapr component YAML files applied to the cluster, and three Dapr-specific annotations on the Deployment pod template. The Dapr operator injects the sidecar automatically, and your Go service connects to it via `dapr.NewClient()` which reads the injected `DAPR_GRPC_PORT` environment variable.
+Deploying a Dapr Go service to Kubernetes requires a minimal Dockerfile, Dapr component YAML files applied to the cluster, and Dapr-specific annotations on the Deployment pod template. The Dapr operator injects the sidecar automatically, and your Go service connects to it via `dapr.NewClient()` which reads the injected `DAPR_GRPC_PORT` environment variable.
