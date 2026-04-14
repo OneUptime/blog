@@ -45,7 +45,6 @@ helm upgrade --install dapr dapr/dapr \
   --create-namespace \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --set dapr_placement.keepAliveTime=2s \
   --set dapr_placement.keepAliveTimeout=3s \
   --wait
@@ -53,7 +52,7 @@ helm upgrade --install dapr dapr/dapr \
 
 ## Operator-Facing Settings
 
-**`dapr_placement.replicaCount`**: Run an odd number of replicas, typically `3` for the smallest production-ready cluster.
+**Replica count**: When HA is enabled, the Helm chart hardcodes the placement service to `3` replicas. This is not configurable via a separate Helm value; enabling HA automatically sets the replica count.
 
 **`dapr_placement.keepAliveTime`**: Controls how often peers send keep-alive traffic.
 
@@ -66,10 +65,10 @@ Avoid hand-crafting placement peer lists or undocumented Raft flags. The support
 ## Checking Raft Leader
 
 ```bash
-# The leader will log "leadership acquired"
+# The leader will log "entering leader state" (requires debug log level)
 for i in 0 1 2; do
   echo "=== Replica $i ==="
-  kubectl logs dapr-placement-server-$i -n dapr-system | grep -i "leadership\|leader" | tail -3
+  kubectl logs dapr-placement-server-$i -n dapr-system | grep -i "entering leader state\|leader" | tail -3
 done
 ```
 
@@ -81,7 +80,7 @@ To resolve a suspected split-brain:
 1. Verify connectivity between all placement pods
 2. Restore quorum before changing settings
 3. Restart only failed or isolated placement pods if needed
-4. Check that only one pod logs "leadership acquired"
+4. Check that only one pod logs "entering leader state"
 
 ```bash
 kubectl get pods -n dapr-system -l app=dapr-placement-server -o wide
