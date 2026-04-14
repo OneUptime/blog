@@ -26,7 +26,7 @@ metadata:
 spec:
   version: 3.5.0
   replicas: 2
-  connectCluster: "dr-cluster"
+  connectCluster: "dr"
   clusters:
   - alias: "primary"
     bootstrapServers: kafka-primary.us-east.internal:9092
