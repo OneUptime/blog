@@ -40,7 +40,16 @@ vault write auth/kubernetes/role/dapr-app-role \
   ttl=1h
 ```
 
-Configure the Dapr component to use Kubernetes auth:
+Dapr's Vault component only supports token-based authentication. To use Kubernetes auth, deploy the [Vault Agent Injector](https://developer.hashicorp.com/vault/docs/platform/k8s/injector) which handles Kubernetes authentication and writes a Vault token for Dapr to consume. Add these annotations to your application pod spec:
+
+```yaml
+annotations:
+  vault.hashicorp.com/agent-inject: "true"
+  vault.hashicorp.com/role: "dapr-app-role"
+  vault.hashicorp.com/agent-inject-token: "true"
+```
+
+Configure the Dapr component to read the token written by Vault Agent at `/vault/secrets/token`:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -52,19 +61,15 @@ spec:
   version: v1
   metadata:
     - name: vaultAddr
-      value: "http://vault.vault-system.svc.cluster.local:8200"
+      value: "https://vault.vault-system.svc.cluster.local:8200"
     - name: skipVerify
       value: "false"
     - name: tlsServerName
       value: "vault.vault-system.svc.cluster.local"
     - name: vaultKVPrefix
       value: "myapp"
-    - name: auth
-      value: "kubernetes"
     - name: vaultTokenMountPath
-      value: "/var/run/secrets/kubernetes.io/serviceaccount/token"
-    - name: vaultKubernetesRole
-      value: "dapr-app-role"
+      value: "/vault/secrets/token"
 ```
 
 ## Configuring AppRole Auth Method
@@ -85,6 +90,18 @@ vault read auth/approle/role/dapr-role/role-id
 vault write -f auth/approle/role/dapr-role/secret-id
 ```
 
+Since Dapr requires a pre-authenticated Vault token, use Vault Agent or an init container to authenticate via AppRole and store the resulting token in a Kubernetes secret:
+
+```bash
+# Authenticate with AppRole and store the token
+VAULT_TOKEN=$(vault write -field=token auth/approle/login \
+  role_id="$ROLE_ID" \
+  secret_id="$SECRET_ID")
+
+kubectl create secret generic vault-token \
+  --from-literal=token="$VAULT_TOKEN"
+```
+
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -96,14 +113,10 @@ spec:
   metadata:
     - name: vaultAddr
       value: "https://vault.example.com:8200"
-    - name: vaultRoleID
+    - name: vaultToken
       secretKeyRef:
-        name: vault-approle
-        key: roleId
-    - name: vaultRoleSecretID
-      secretKeyRef:
-        name: vault-approle
-        key: secretId
+        name: vault-token
+        key: token
 ```
 
 ## Accessing Secrets in Your Application
@@ -129,4 +142,4 @@ curl http://localhost:3500/v1.0/secrets/vault-secrets/database-password
 
 ## Summary
 
-Dapr integrates with HashiCorp Vault through multiple auth methods. Use Kubernetes auth on Kubernetes clusters for credential-free authentication - Dapr presents the pod's service account token to Vault for verification. Use AppRole for non-Kubernetes environments with RoleID and SecretID stored as Kubernetes secrets. Access Vault secrets in your app through the Dapr secrets API without any Vault SDK dependencies.
+Dapr integrates with HashiCorp Vault through token-based authentication. For Kubernetes-hosted workloads, use the Vault Agent Injector to handle Kubernetes auth - it authenticates with Vault using the pod's service account token and writes a Vault token that Dapr reads from a shared volume. For non-Kubernetes environments, authenticate with AppRole externally and provide the resulting token to Dapr via a Kubernetes secret or file mount. Access Vault secrets in your app through the Dapr secrets API without any Vault SDK dependencies.
