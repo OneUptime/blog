@@ -89,11 +89,12 @@ CREATE TABLE IF NOT EXISTS dapr_state (
     key          TEXT NOT NULL PRIMARY KEY,
     value        JSONB NOT NULL,
     isbinary     BOOLEAN NOT NULL,
-    etag         TEXT NOT NULL,
-    expireat     TIMESTAMPTZ DEFAULT NULL,
-    updatetime   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    expiredate   TIMESTAMPTZ DEFAULT NULL,
+    updatedate   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
+
+Note: There is no explicit `etag` column. Dapr v1 uses PostgreSQL's built-in `xmin` system column as the ETag for optimistic concurrency control.
 
 Verify it was created:
 
@@ -148,7 +149,7 @@ with DaprClient() as client:
         {"key": "product:125", "value": json.dumps({"name": "Nut", "price": 0.50})},
     ]
     client.save_bulk_state(store_name="statestore", states=[
-        dapr.clients.grpc._request.StateItem(key=i["key"], value=i["value"].encode())
+        dapr.clients.grpc._state.StateItem(key=i["key"], value=i["value"].encode())
         for i in items
     ])
 ```
@@ -159,7 +160,7 @@ PostgreSQL's ACID properties enable true atomic transactions:
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._request import TransactionalStateOperation, OperationType
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 with DaprClient() as client:
     # Atomic transfer: deduct from source, add to destination
@@ -167,12 +168,12 @@ with DaprClient() as client:
         TransactionalStateOperation(
             key="account:alice",
             data=json.dumps({"balance": 800}).encode(),
-            operation_type=OperationType.upsert
+            operation_type=TransactionOperationType.upsert
         ),
         TransactionalStateOperation(
             key="account:bob",
             data=json.dumps({"balance": 1200}).encode(),
-            operation_type=OperationType.upsert
+            operation_type=TransactionOperationType.upsert
         )
     ]
     client.execute_state_transaction(
