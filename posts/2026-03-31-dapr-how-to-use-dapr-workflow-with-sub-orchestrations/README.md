@@ -38,7 +38,7 @@ public class FulfillmentWorkflow : Workflow<FulfillmentRequest, FulfillmentResul
         await context.CallActivityAsync(nameof(PackageItemsActivity), request);
         await context.CallActivityAsync(nameof(ScheduleShipmentActivity), request);
 
-        return new FulfillmentResult { TrackingNumber = Guid.NewGuid().ToString() };
+        return new FulfillmentResult { TrackingNumber = context.NewGuid().ToString() };
     }
 }
 ```
@@ -163,7 +163,9 @@ var fulfillment = await context.CallChildWorkflowAsync<FulfillmentResult>(
     new ChildWorkflowTaskOptions
     {
         InstanceId = $"fulfillment-{order.OrderId}",
-        RetryPolicy = new WorkflowRetryPolicy(maxNumberOfAttempts: 3)
+        RetryPolicy = new WorkflowRetryPolicy(
+            maxNumberOfAttempts: 3,
+            firstRetryInterval: TimeSpan.FromSeconds(5))
     }
 );
 ```
@@ -206,7 +208,7 @@ catch (WorkflowTaskFailedException ex)
 {
     // Child workflow failed - compensate
     await context.CallActivityAsync(nameof(RefundPaymentActivity), order);
-    return new OrderResult { Success = false, Error = ex.FailureDetails.Message };
+    return new OrderResult { Success = false, Error = ex.FailureDetails.ErrorMessage };
 }
 ```
 
