@@ -25,14 +25,13 @@ Or via the Rancher CLI:
 ```bash
 # Log in to Rancher
 rancher login https://rancher.company.com \
-  --token <api-token> \
-  --context <cluster-name>
+  --token <api-token>
 
 # Add Dapr helm repo
 rancher catalog add dapr https://dapr.github.io/helm-charts/
 
 # Install Dapr
-rancher app install dapr \
+rancher app install dapr dapr \
   --namespace dapr-system \
   --set global.ha.enabled=true
 ```
@@ -139,12 +138,23 @@ metadata:
   namespace: dapr-apps
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "my-service"
         dapr.io/app-port: "8080"
+    spec:
+      containers:
+      - name: my-service
+        image: my-service:latest
+        ports:
+        - containerPort: 8080
 ```
 
 ```bash
