@@ -66,7 +66,7 @@ groups:
           severity: critical
         annotations:
           summary: "All Dapr Sentry instances are down"
-          description: "Certificate issuance is unavailable. Services have {{ $value }} hours before cert expiry."
+          description: "Certificate issuance is unavailable. Workload certificates expire within 24 hours without renewal."
 ```
 
 ## Recovery Procedure
