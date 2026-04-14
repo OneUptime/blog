@@ -41,8 +41,9 @@ gcloud iam service-accounts keys create ./dapr-sa-key.json \
 ### Store in Kubernetes and Reference in Component
 
 ```bash
-kubectl create secret generic gcp-sa-key \
-  --from-file=key.json=./dapr-sa-key.json
+kubectl create secret generic gcp-sa-key-fields \
+  --from-literal=privateKeyId="$(jq -r '.private_key_id' ./dapr-sa-key.json)" \
+  --from-literal=privateKey="$(jq -r '.private_key' ./dapr-sa-key.json)"
 ```
 
 Use the key fields in your component spec:
