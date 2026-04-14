@@ -74,13 +74,11 @@ curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
 
 ## Step 2: Set a Custom CloudEvent Type and Source
 
-Pass metadata headers to override CloudEvent attributes:
+Pass metadata query parameters to override CloudEvent attributes:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/pubsub/orders?metadata.cloudevent.type=order.created&metadata.cloudevent.source=order-service/v2" \
   -H "Content-Type: application/json" \
-  -H "metadata.cloudevent.type: order.created" \
-  -H "metadata.cloudevent.source: order-service/v2" \
   -d '{"orderId": "order-2"}'
 ```
 
@@ -175,8 +173,8 @@ spec:
 ```python
 from dapr.clients import DaprClient
 
-async with DaprClient() as client:
-    await client.publish_event(
+with DaprClient() as client:
+    client.publish_event(
         pubsub_name="pubsub",
         topic_name="orders",
         data=b'{"orderId":"order-3"}',
@@ -205,4 +203,4 @@ async with DaprClient() as client:
 
 ## Summary
 
-Dapr automatically wraps published messages in CloudEvents 1.0 envelopes. The sidecar sets standard fields (`specversion`, `id`, `source`, `type`, `time`, `traceparent`) and embeds your payload in the `data` field. Subscribers receive the full CloudEvent envelope and can access metadata alongside the payload. CloudEvent attributes can be customised via metadata headers when publishing. To disable wrapping entirely, use the `rawPayload` metadata flag or configure the component with `disableEntityManagement`.
+Dapr automatically wraps published messages in CloudEvents 1.0 envelopes. The sidecar sets standard fields (`specversion`, `id`, `source`, `type`, `time`, `traceparent`) and embeds your payload in the `data` field. Subscribers receive the full CloudEvent envelope and can access metadata alongside the payload. CloudEvent attributes can be customised via metadata headers when publishing. To disable wrapping entirely, set `rawPayload` to `"true"` in the publish metadata or in the component metadata.
