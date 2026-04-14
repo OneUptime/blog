@@ -14,7 +14,7 @@ A service that sends prompts to an LLM (OpenAI GPT-4 or a compatible provider) t
 
 ```mermaid
 flowchart LR
-    App[Application] -->|POST /v1.0-alpha1/conversation/llm/converse| Sidecar[Dapr Sidecar]
+    App[Application] -->|POST /v1.0-alpha2/conversation/llm/converse| Sidecar[Dapr Sidecar]
     Sidecar -->|optional PII scrub| PII[PII Scrubber]
     Sidecar -->|forward prompt| LLM[LLM Provider\nOpenAI / Anthropic / etc.]
     LLM --> Sidecar
@@ -48,8 +48,8 @@ spec:
       key: api-key
   - name: model
     value: gpt-4o-mini
-  - name: cachingEnabled
-    value: "true"    # cache identical prompts
+  - name: responseCacheTTL
+    value: "10m"    # cache identical prompts for 10 minutes
 auth:
   secretStore: local-store
 ```
@@ -59,7 +59,9 @@ Create the secret:
 ```bash
 cat > secrets.json << 'EOF'
 {
-  "api-key": "sk-your-openai-api-key-here"
+  "openai-secret": {
+    "api-key": "sk-your-openai-api-key-here"
+  }
 }
 EOF
 ```
@@ -91,22 +93,31 @@ app = Flask(__name__)
 DAPR_HTTP_PORT = os.getenv('DAPR_HTTP_PORT', '3500')
 
 def converse(messages: list, scrub_pii: bool = False) -> str:
-    url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/conversation/llm/converse"
+    url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha2/conversation/llm/converse"
+    formatted = []
+    for msg in messages:
+        role, content = msg["role"], msg["content"]
+        if role == "user":
+            formatted.append({"ofUser": {"content": [{"text": content}]}})
+        elif role == "system":
+            formatted.append({"ofSystem": {"content": [{"text": content}]}})
+        elif role == "assistant":
+            formatted.append({"ofAssistant": {"content": content}})
     payload = {
-        "inputs": messages,
-        "parameters": {
-            "temperature": 0.7,
-            "maxTokens": 500
-        }
+        "inputs": [{
+            "messages": formatted,
+            "scrubPii": scrub_pii
+        }],
+        "temperature": 0.7
     }
-    if scrub_pii:
-        payload["scrubPII"] = True
 
     response = requests.post(url, json=payload)
     if response.status_code == 200:
         outputs = response.json().get('outputs', [])
         if outputs:
-            return outputs[0].get('result', '')
+            choices = outputs[0].get('choices', [])
+            if choices:
+                return choices[0].get('message', {}).get('content', '')
     raise Exception(f"Conversation failed: {response.status_code} {response.text}")
 
 # Simple question answering
@@ -174,7 +185,7 @@ auth:
 Switch the component name in the API call:
 
 ```python
-url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha1/conversation/claude/converse"
+url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0-alpha2/conversation/claude/converse"
 ```
 
 ## Using a Hugging Face Model
@@ -198,7 +209,7 @@ spec:
 
 ## Caching Identical Prompts
 
-When `cachingEnabled: "true"`, the sidecar caches responses to identical prompts:
+When `responseCacheTTL` is set on the component, the sidecar caches responses to identical prompts for the specified duration:
 
 ```python
 # These two calls result in only one LLM API call
@@ -214,16 +225,16 @@ Full request structure:
 ```json
 {
   "inputs": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Hello, how are you?"}
+    {
+      "messages": [
+        {"ofSystem": {"content": [{"text": "You are a helpful assistant."}]}},
+        {"ofUser": {"content": [{"text": "Hello, how are you?"}]}}
+      ],
+      "scrubPii": false
+    }
   ],
-  "parameters": {
-    "temperature": 0.7,
-    "maxTokens": 1000,
-    "topP": 1.0
-  },
-  "scrubPII": false,
-  "conversationContext": "session-123"
+  "temperature": 0.7,
+  "contextId": "session-123"
 }
 ```
 
@@ -233,11 +244,19 @@ Response:
 {
   "outputs": [
     {
-      "result": "I am doing well, thank you for asking!",
-      "parameters": {
-        "model": "gpt-4o-mini",
+      "choices": [
+        {
+          "finishReason": "stop",
+          "message": {
+            "content": "I am doing well, thank you for asking!"
+          }
+        }
+      ],
+      "model": "gpt-4o-mini",
+      "usage": {
         "promptTokens": 25,
-        "completionTokens": 12
+        "completionTokens": 12,
+        "totalTokens": 37
       }
     }
   ]
