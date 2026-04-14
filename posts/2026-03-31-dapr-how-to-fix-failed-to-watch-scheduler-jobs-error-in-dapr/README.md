@@ -27,7 +27,7 @@ This indicates the sidecar cannot connect to the Dapr Scheduler service, which i
 In Kubernetes mode, verify the scheduler is running:
 
 ```bash
-kubectl get pods -n dapr-system -l app=dapr-scheduler
+kubectl get pods -n dapr-system -l app=dapr-scheduler-server
 kubectl get svc -n dapr-system | grep scheduler
 ```
 
@@ -40,7 +40,7 @@ dapr status -k
 Check the scheduler pod logs:
 
 ```bash
-kubectl logs -n dapr-system -l app=dapr-scheduler --tail=100
+kubectl logs -n dapr-system -l app=dapr-scheduler-server --tail=100
 ```
 
 ## Upgrade Dapr to Include Scheduler
@@ -55,22 +55,18 @@ dapr upgrade -k --runtime-version 1.14.0
 dapr status -k
 ```
 
-For self-hosted mode:
+For self-hosted mode, install the new CLI version first, then reinitialize:
 
 ```bash
-dapr upgrade
+dapr uninstall
+# Install the latest Dapr CLI (see https://docs.dapr.io/getting-started/install-dapr-cli/)
+dapr init --runtime-version 1.14.0
 dapr status
 ```
 
 ## Verify Scheduler Connectivity
 
-Check that the scheduler service address is correct in the sidecar configuration:
-
-```bash
-kubectl describe configmap -n dapr-system dapr-config
-```
-
-Look for `schedulerHostAddress` or similar fields. The default address is:
+Check that the scheduler service address is correct. The sidecar connects to the scheduler via the `--scheduler-host-address` flag or the `dapr.io/scheduler-host-address` pod annotation. The default address is:
 
 ```text
 dapr-scheduler-server.dapr-system.svc.cluster.local:50006
@@ -145,22 +141,21 @@ annotations:
 
 ## Self-Hosted Mode Fix
 
-In self-hosted mode, start the scheduler manually if it isn't running:
+In self-hosted mode, the scheduler runs as a separate Docker container. Check if it is running:
 
 ```bash
-# Check if scheduler process is running
-ps aux | grep daprd
+# Check if the scheduler container is running
+docker ps | grep dapr-scheduler
 
-# Reinitialize Dapr to ensure all components are running
+# If not running, reinitialize Dapr to ensure all components are started
 dapr uninstall
 dapr init
 ```
 
-Check that the `.dapr` directory has scheduler configuration:
+Verify the scheduler container is now running:
 
 ```bash
-ls ~/.dapr/
-cat ~/.dapr/config.yaml
+docker ps | grep scheduler
 ```
 
 ## Validate the Fix
