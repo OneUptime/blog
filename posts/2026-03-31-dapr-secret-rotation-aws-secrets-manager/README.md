@@ -104,7 +104,7 @@ AWS Secrets Manager calls a Lambda function with four lifecycle steps: `createSe
 ```python
 import boto3
 import json
-import random
+import secrets
 import string
 
 def lambda_handler(event, context):
@@ -115,8 +115,9 @@ def lambda_handler(event, context):
     client = boto3.client('secretsmanager')
 
     if step == 'createSecret':
-        # Generate a new password
-        new_password = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+        # Generate a new password using cryptographically secure randomness
+        alphabet = string.ascii_letters + string.digits
+        new_password = ''.join(secrets.choice(alphabet) for _ in range(32))
         try:
             client.get_secret_value(SecretId=secret_id, VersionId=token, VersionStage='AWSPENDING')
         except client.exceptions.ResourceNotFoundException:
