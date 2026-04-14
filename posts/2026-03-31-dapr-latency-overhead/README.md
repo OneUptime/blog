@@ -107,8 +107,9 @@ Enable pprof profiling on the sidecar to identify CPU hot paths:
 ```yaml
 annotations:
   dapr.io/enable-profiling: "true"
-  dapr.io/profile-port: "7777"
 ```
+
+The sidecar exposes pprof on port 7777 by default:
 
 ```bash
 go tool pprof http://localhost:7777/debug/pprof/profile?seconds=30
