@@ -24,7 +24,7 @@ npm install @dapr/dapr
 const { DaprClient } = require("@dapr/dapr");
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: process.env.DAPR_HTTP_PORT || "3500",
 });
 ```
@@ -33,11 +33,9 @@ const client = new DaprClient({
 
 ```javascript
 async function scheduleReport() {
-  await client.jobs.schedule({
-    name: "monthly-report",
-    schedule: "@every 30s",
-    data: JSON.stringify({ reportType: "monthly", format: "pdf" }),
-    repeats: 1,
+  await client.jobs.schedule("monthly-report", {
+    data: { reportType: "monthly", format: "pdf" },
+    dueTime: "30s",
   });
   console.log("Report job scheduled");
 }
@@ -49,10 +47,9 @@ Use cron syntax for recurring schedules:
 
 ```javascript
 async function scheduleCleanup() {
-  await client.jobs.schedule({
-    name: "daily-cleanup",
-    schedule: "0 3 * * *",  // 3 AM daily
-    data: JSON.stringify({ olderThanDays: 30 }),
+  await client.jobs.schedule("daily-cleanup", {
+    data: { olderThanDays: 30 },
+    schedule: "0 0 3 * * *",  // 3 AM daily (6-field cron with seconds)
   });
   console.log("Cleanup job scheduled");
 }
@@ -68,18 +65,16 @@ const { DaprServer } = require("@dapr/dapr");
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3501" },
+  clientOptions: { daprHost: "127.0.0.1", daprPort: "3501" },
 });
 
 // Handle job by name
-await server.jobs.listen("monthly-report", async (jobData) => {
-  const data = JSON.parse(jobData.data ?? "{}");
+await server.jobs.listen("monthly-report", async (data) => {
   console.log("Generating report:", data.reportType);
   await generateReport(data);
 });
 
-await server.jobs.listen("daily-cleanup", async (jobData) => {
-  const data = JSON.parse(jobData.data ?? "{}");
+await server.jobs.listen("daily-cleanup", async (data) => {
   console.log("Running cleanup, older than:", data.olderThanDays, "days");
   await cleanupRecords(data.olderThanDays);
 });
@@ -93,7 +88,6 @@ await server.start();
 const job = await client.jobs.get("monthly-report");
 console.log("Job name:", job.name);
 console.log("Schedule:", job.schedule);
-console.log("Repeats remaining:", job.repeats);
 ```
 
 ## Deleting a Job
@@ -107,18 +101,7 @@ console.log("Job cancelled");
 
 ## Dapr Configuration for Jobs
 
-Ensure the Dapr Scheduler service is running. Enable it in your Dapr Configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: appconfig
-spec:
-  features:
-    - name: SchedulerReminders
-      enabled: true
-```
+The Jobs API requires the Dapr Scheduler service to be running. When using the Dapr CLI for local development, the Scheduler service starts automatically with `dapr init`. No additional feature flags or configuration are needed.
 
 ## Running the Application
 
