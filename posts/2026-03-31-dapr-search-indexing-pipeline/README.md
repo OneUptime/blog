@@ -36,13 +36,18 @@ class ContentPublisher:
         action: "created", "updated", "deleted"
         """
         with DaprClient() as client:
-            client.publish_event("pubsub", "content-published", {
-                "contentType": content_type,  # "article", "product", "user"
-                "contentId": content_id,
-                "action": action,
-                "data": data,
-                "source": "product-service"
-            })
+            client.publish_event(
+                pubsub_name="pubsub",
+                topic_name="content-published",
+                data=json.dumps({
+                    "contentType": content_type,  # "article", "product", "user"
+                    "contentId": content_id,
+                    "action": action,
+                    "data": data,
+                    "source": "product-service"
+                }),
+                data_content_type="application/json",
+            )
 
 # Example usage in a product service
 publisher = ContentPublisher()
@@ -70,11 +75,10 @@ package main
 import (
     "context"
     "encoding/json"
-    "log"
     "strings"
 
     dapr "github.com/dapr/go-sdk/client"
-    daprd "github.com/dapr/go-sdk/service/http"
+    "github.com/dapr/go-sdk/service/common"
 )
 
 type ContentEvent struct {
@@ -85,7 +89,7 @@ type ContentEvent struct {
     Source      string                 `json:"source"`
 }
 
-func handleContentPublished(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handleContentPublished(ctx context.Context, e *common.TopicEvent) (bool, error) {
     var event ContentEvent
     json.Unmarshal(e.RawData, &event)
 
@@ -197,7 +201,7 @@ async def index_content(event: dict):
     action = data.get("action", "created")
 
     if action == "deleted":
-        await es.delete(index=content_type, id=content_id, ignore=[404])
+        await es.options(ignore_status=[404]).delete(index=content_type, id=content_id)
     else:
         await es.index(
             index=content_type,
