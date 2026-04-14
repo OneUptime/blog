@@ -17,7 +17,7 @@ Testing event-driven systems built with Dapr requires different strategies at ea
 Mock the Dapr client to test handler logic in isolation:
 
 ```python
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import json
 import pytest
 
@@ -162,7 +162,7 @@ dapr init --slim
 dapr run \
   --app-id test-service \
   --app-port 8080 \
-  --components-path ./test/components \
+  --resources-path ./test/components \
   -- pytest tests/integration/
 ```
 
