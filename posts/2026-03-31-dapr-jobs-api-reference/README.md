@@ -29,10 +29,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report \
   -H "Content-Type: application/json" \
   -d '{
     "schedule": "@daily",
-    "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "{\"reportType\":\"sales\",\"format\":\"pdf\"}"
-    }
+    "data": "{\"reportType\":\"sales\",\"format\":\"pdf\"}"
   }'
 ```
 
@@ -43,8 +40,8 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report \
 | `@daily` | Every day at midnight |
 | `@hourly` | Every hour |
 | `@every 30m` | Every 30 minutes |
-| `0 9 * * MON-FRI` | Weekdays at 9:00 AM |
-| `0 */6 * * *` | Every 6 hours |
+| `0 0 9 * * MON-FRI` | Weekdays at 9:00 AM |
+| `0 0 */6 * * *` | Every 6 hours |
 
 ## Creating a One-Shot Job
 
@@ -55,10 +52,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/send-reminder \
   -H "Content-Type: application/json" \
   -d '{
     "dueTime": "2026-04-01T09:00:00Z",
-    "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "{\"userId\":\"user-123\",\"message\":\"Your trial expires tomorrow\"}"
-    }
+    "data": "{\"userId\":\"user-123\",\"message\":\"Your trial expires tomorrow\"}"
   }'
 ```
 
@@ -76,10 +70,7 @@ Response:
 {
   "name": "daily-report",
   "schedule": "@daily",
-  "data": {
-    "@type": "type.googleapis.com/google.protobuf.StringValue",
-    "value": "{\"reportType\":\"sales\"}"
-  }
+  "data": "{\"reportType\":\"sales\"}"
 }
 ```
 
@@ -112,15 +103,15 @@ def handle_daily_report():
 
 ```python
 from dapr.clients import DaprClient
-import json
+from dapr.clients.grpc._jobs import Job
 
 with DaprClient() as client:
-    client.schedule_job(
+    job = Job(
         name="weekly-cleanup",
-        schedule="0 2 * * SUN",
-        data=json.dumps({"target": "temp-files"}).encode(),
+        schedule="0 0 2 * * SUN",
         ttl="1h"
     )
+    client.schedule_job_alpha1(job)
     print("Weekly cleanup job scheduled")
 ```
 
@@ -134,10 +125,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/limited-retry \
   -d '{
     "schedule": "@every 5m",
     "repeats": 3,
-    "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "{\"task\":\"retry-failed-payment\"}"
-    }
+    "data": "{\"task\":\"retry-failed-payment\"}"
   }'
 ```
 
