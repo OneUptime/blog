@@ -67,7 +67,7 @@ app.use(express.json());
 
 app.post('/job/daily-sales-report', async (req, res) => {
   try {
-    const params = JSON.parse(req.body?.data?.value || '{}');
+    const params = JSON.parse(req.body?.value || '{}');
     console.log(`Generating ${params.reportType} report for ${params.period}`);
 
     // Fetch data from data source
@@ -128,6 +128,8 @@ Allow users to request custom reports with a one-time job:
 
 ```python
 from dapr.clients import DaprClient
+from dapr.clients.grpc._jobs import Job
+from google.protobuf.any_pb2 import Any as GrpcAny
 import json
 
 def schedule_custom_report(user_id: str, start_date: str, end_date: str):
@@ -139,11 +141,15 @@ def schedule_custom_report(user_id: str, start_date: str, end_date: str):
             "endDate": end_date
         })
 
-        client.schedule_job_alpha1(
+        data = GrpcAny(value=job_data.encode("utf-8"))
+
+        job = Job(
             name=f"custom-report-{user_id}-{start_date}",
             due_time="5m",  # generate in 5 minutes
-            data=job_data
+            data=data,
         )
+
+        client.schedule_job_alpha1(job=job)
         print(f"Scheduled custom report for {user_id}")
 ```
 
