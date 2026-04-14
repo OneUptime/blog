@@ -154,6 +154,7 @@ services:
     build: ./TaskApi
     ports:
       - "5000:80"
+      - "3500:3500"
   task-api-dapr:
     image: daprio/daprd:latest
     command: ["./daprd", "-app-id", "task-api", "-app-port", "80", "-dapr-http-port", "3500"]
