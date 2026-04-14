@@ -48,16 +48,17 @@ To receive raw messages, mark the subscription as raw:
 ### Declarative Subscription with Raw Mode
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: raw-order-subscription
 spec:
   topic: orders
-  route: /orders/received
+  routes:
+    default: /orders/received
   pubsubname: pubsub
   metadata:
-    rawPayload: "true"
+    isRawPayload: "true"
 ```
 
 ### Programmatic Subscription with Raw Mode
@@ -80,30 +81,32 @@ def subscribe():
 
 ## Handling Raw Messages in the Subscriber
 
-When `rawPayload: true` is set on a subscription, your endpoint receives the message directly without CloudEvent wrapping:
+Even with `rawPayload` set on a subscription, Dapr still delivers the message to your app wrapped in a CloudEvent envelope. The raw payload is base64-encoded in the `data_base64` field with content type `application/octet-stream`:
 
 ```python
 from fastapi import FastAPI, Request
 import json
+import base64
 
 app = FastAPI()
 
 @app.post("/orders/received")
 async def receive_order(request: Request):
-    # Without CloudEvents, body IS the message
-    body = await request.json()
+    # Dapr delivers a CloudEvent even in raw mode
+    cloud_event = await request.json()
     
-    # For a Dapr raw publish, body looks like:
-    # {"orderId": "123", "item": "book"}
-    print(f"Raw message: {body}")
+    # Raw payload is base64-encoded in the data_base64 field
+    raw_data = base64.b64decode(cloud_event.get("data_base64", ""))
+    body = json.loads(raw_data)
     
+    # body is now: {"orderId": "123", "item": "book"}
     order_id = body.get("orderId")
     print(f"Processing order: {order_id}")
     
     return {"status": "SUCCESS"}
 ```
 
-**Compare to CloudEvent mode** where you'd need `body.get("data", {})` to extract the payload.
+**Compare to CloudEvent mode** where the payload is directly available in the `data` field via `cloud_event.get("data", {})`.
 
 ## Handling Non-Dapr Published Messages
 
@@ -112,15 +115,18 @@ When consuming messages published by non-Dapr systems (e.g., raw Kafka producers
 ```python
 @app.post("/kafka/messages")
 async def receive_kafka_message(request: Request):
-    # Message from a non-Dapr Kafka producer
-    body = await request.body()
+    # Dapr wraps the raw Kafka message in a CloudEvent
+    cloud_event = await request.json()
     
-    # May be bytes, decode accordingly
+    # Decode the base64-encoded raw payload
+    raw_data = base64.b64decode(cloud_event.get("data_base64", ""))
+    
+    # May be JSON or plain text, decode accordingly
     try:
-        data = json.loads(body)
+        data = json.loads(raw_data)
     except json.JSONDecodeError:
         # Handle plain text messages
-        data = body.decode('utf-8')
+        data = raw_data.decode('utf-8')
     
     print(f"Received from Kafka: {data}")
     return {"status": "SUCCESS"}
@@ -128,7 +134,7 @@ async def receive_kafka_message(request: Request):
 
 ## Mixing Raw and CloudEvent Messages
 
-You can have some subscriptions in raw mode and others in CloudEvent mode on the same topic. However, this can create confusion - a message published with `rawPayload=true` received by a CloudEvent subscription will have the raw payload nested inside the CloudEvent `data` field as a string.
+You can have some subscriptions in raw mode and others in CloudEvent mode on the same topic. However, this can create confusion - a non-raw subscription may fail to correctly parse a raw message from the broker, since it expects CloudEvent format.
 
 Best practice: be consistent within a topic - either all publishers use raw mode or all use CloudEvents.
 
@@ -147,9 +153,10 @@ In the subscriber:
 ```python
 @app.post("/notifications")
 async def receive_notification(request: Request):
-    # Plain text body
-    message = await request.body()
-    text = message.decode('utf-8')
+    # Dapr delivers a CloudEvent with base64-encoded raw payload
+    cloud_event = await request.json()
+    raw_data = base64.b64decode(cloud_event.get("data_base64", ""))
+    text = raw_data.decode('utf-8')
     print(f"Notification: {text}")
     return {"status": "SUCCESS"}
 ```
@@ -176,4 +183,4 @@ CloudEvent messages appear as JSON with full CloudEvent structure.
 
 ## Summary
 
-Raw message publishing in Dapr bypasses the CloudEvents wrapper by adding `metadata.rawPayload=true` to the publish request. Subscribe in raw mode with the same metadata key to receive the payload directly without CloudEvent unpacking. Use raw mode when integrating with existing Kafka ecosystems, legacy systems, or any non-Dapr consumer that expects plain JSON or text payloads.
+Raw message publishing in Dapr bypasses the CloudEvents wrapper by adding `metadata.rawPayload=true` to the publish request. Subscribe in raw mode with the `rawPayload` (programmatic) or `isRawPayload` (declarative) metadata key to tell Dapr to treat broker messages as raw data. Note that Dapr still delivers the payload to your app wrapped in a CloudEvent envelope with the raw data base64-encoded in `data_base64`. Use raw mode when integrating with existing Kafka ecosystems, legacy systems, or any non-Dapr consumer that expects plain JSON or text payloads at the broker level.
