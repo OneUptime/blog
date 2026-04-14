@@ -31,7 +31,7 @@ Received CloudEvent:
 {
   "specversion": "1.0",
   "type": "com.dapr.event.sent",
-  "source": "order-service",
+  "source": "Dapr",
   "id": "a4d4b6f3-2c8e-4f5a-9c1d-7b9e8a3f2d1c",
   "time": "2026-03-31T10:00:00Z",
   "datacontenttype": "application/json",
@@ -154,26 +154,27 @@ async def receive_order(request: Request):
 
 ## Using the Dapr SDK for CloudEvents
 
-The Dapr Python SDK provides a CloudEvent helper:
+The Dapr Python SDK can publish custom CloudEvents by serializing them as JSON:
 
 ```python
+import json
+import uuid
 from dapr.clients import DaprClient
-from cloudevents.http import CloudEvent
 
 with DaprClient() as client:
-    ce = CloudEvent(
-        attributes={
-            "type": "com.example.orders.placed",
-            "source": "/order-service",
-            "datacontenttype": "application/json"
-        },
-        data={"orderId": "123", "item": "book"}
-    )
+    cloud_event = {
+        "specversion": "1.0",
+        "type": "com.example.orders.placed",
+        "source": "/order-service",
+        "id": str(uuid.uuid4()),
+        "datacontenttype": "application/json",
+        "data": {"orderId": "123", "item": "book"}
+    }
     
     client.publish_event(
         pubsub_name="pubsub",
         topic_name="orders",
-        data=ce,
+        data=json.dumps(cloud_event),
         data_content_type="application/cloudevents+json"
     )
 ```
