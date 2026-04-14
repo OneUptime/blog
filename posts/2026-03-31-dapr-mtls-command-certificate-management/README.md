@@ -29,7 +29,7 @@ Mutual TLS is enabled in your Kubernetes cluster
 The Dapr sentry service manages a certificate chain with a root CA and workload certificates. Check when they expire:
 
 ```bash
-dapr mtls expiry --kubernetes
+dapr mtls expiry
 ```
 
 Sample output:
@@ -46,8 +46,7 @@ Plan certificate rotation before these dates to avoid service disruptions.
 Export the trust bundle for use in external services or custom mTLS validation:
 
 ```bash
-dapr mtls export --kubernetes \
-                 --out ./dapr-certs
+dapr mtls export --out ./dapr-certs
 ```
 
 This creates:
@@ -95,10 +94,9 @@ Warning: never disable mTLS in production environments.
 
 ## Verifying mTLS with a Test Service Call
 
-Confirm mTLS is working by invoking a service and checking sidecar logs for TLS handshake messages:
+Confirm mTLS is working by checking sidecar logs for TLS handshake messages:
 
 ```bash
-dapr invoke --app-id target-service --method health --verb GET --kubernetes
 dapr logs --app-id target-service --kubernetes | grep -i "tls"
 ```
 
