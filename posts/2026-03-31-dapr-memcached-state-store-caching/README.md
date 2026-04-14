@@ -53,9 +53,7 @@ spec:
   - name: maxIdleConnections
     value: "10"
   - name: timeout
-    value: "1000ms"
-  - name: ttlInSeconds
-    value: "300"
+    value: "1000"
 ```
 
 ## Cache-Aside Pattern with Dapr
@@ -90,7 +88,7 @@ def get_product_with_cache(product_id: str) -> dict:
             store_name="memcached-cache",
             key=cache_key,
             value=json.dumps(product),
-            metadata={"ttlInSeconds": "300"}
+            state_metadata={"ttlInSeconds": "300"}
         )
 
         return product
@@ -118,6 +116,7 @@ package main
 import (
     "context"
     "encoding/json"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
