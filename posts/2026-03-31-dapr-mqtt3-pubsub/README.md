@@ -100,27 +100,27 @@ spec:
     value: "false"
   - name: cleanSession
     value: "true"
-  - name: clientID
+  - name: consumerID
     value: "dapr-mqtt-client"
-  - name: backOffMaxRetries
-    value: "0"
 ```
 
 For TLS and authentication:
 
 ```yaml
   - name: url
-    value: "tls://mosquitto.default.svc.cluster.local:8883"
-  - name: username
-    value: "dapr-user"
-  - name: password
-    secretKeyRef:
-      name: mqtt-secret
-      key: password
+    value: "ssl://mosquitto.default.svc.cluster.local:8883"
   - name: caCert
     secretKeyRef:
       name: mqtt-tls
       key: ca.crt
+  - name: clientCert
+    secretKeyRef:
+      name: mqtt-tls
+      key: client.crt
+  - name: clientKey
+    secretKeyRef:
+      name: mqtt-tls
+      key: client.key
 ```
 
 QoS levels:
