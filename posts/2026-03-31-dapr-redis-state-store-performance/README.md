@@ -65,9 +65,6 @@ Optimize Redis server settings for Dapr workloads:
 redis-cli CONFIG SET maxmemory 4gb
 redis-cli CONFIG SET maxmemory-policy allkeys-lru
 
-# Optimize TCP backlog for high connection rates
-redis-cli CONFIG SET tcp-backlog 511
-
 # Disable unnecessary persistence for pure cache use cases
 redis-cli CONFIG SET save ""
 
@@ -89,33 +86,33 @@ redis-cli CONFIG SET no-appendfsync-on-rewrite yes
 Use ETags for optimistic concurrency to reduce retry conflicts:
 
 ```python
-import dapr.clients as dapr
-from dapr.clients.grpc._state import StateItem
+import json
+from dapr.clients import DaprClient
+from dapr.clients.grpc._state import StateOptions, Consistency, Concurrency
 
 def update_cart_with_etag(user_id: str, cart_items: list):
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         # Get current state with ETag
         response = client.get_state(
             store_name="redis-state",
             key=f"cart:{user_id}",
-            state_options=dapr.StateOptions(
-                consistency=dapr.Consistency.Strong
-            )
         )
 
         current_etag = response.etag
-        cart = response.data or {"items": []}
+        raw = response.data
+        cart = json.loads(raw) if raw else {"items": []}
         cart["items"].extend(cart_items)
 
         # Save with ETag for optimistic concurrency
         client.save_state(
             store_name="redis-state",
             key=f"cart:{user_id}",
-            value=str(cart),
+            value=json.dumps(cart),
             etag=current_etag,
-            options=dapr.StateOptions(
-                concurrency=dapr.Concurrency.FirstWrite
-            )
+            options=StateOptions(
+                concurrency=Concurrency.first_write,
+                consistency=Consistency.strong,
+            ),
         )
 ```
 
@@ -128,20 +125,30 @@ package main
 
 import (
     "context"
+    "encoding/json"
+    "fmt"
+
     dapr "github.com/dapr/go-sdk/client"
 )
 
 func saveBatchOrders(orders []Order) error {
-    client, _ := dapr.NewClient()
+    client, err := dapr.NewClient()
+    if err != nil {
+        return fmt.Errorf("failed to create dapr client: %w", err)
+    }
     defer client.Close()
 
     ctx := context.Background()
     items := make([]*dapr.SetStateItem, len(orders))
 
     for i, order := range orders {
+        data, err := json.Marshal(order)
+        if err != nil {
+            return fmt.Errorf("failed to marshal order %s: %w", order.ID, err)
+        }
         items[i] = &dapr.SetStateItem{
             Key:   fmt.Sprintf("order:%s", order.ID),
-            Value: dapr.Marshal(order),
+            Value: data,
             Etag:  &dapr.ETag{Value: order.Etag},
             Options: &dapr.StateOptions{
                 Concurrency: dapr.StateConcurrencyLastWrite,
@@ -165,7 +172,7 @@ redis-cli SLOWLOG GET 10
 # Monitor real-time stats
 redis-cli --stat
 
-# Check memory usage per key pattern
+# Find biggest keys by element count per data type
 redis-cli --bigkeys
 
 # View connection pool stats
