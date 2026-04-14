@@ -55,7 +55,7 @@ spec:
 - `resource`: The request path pattern to apply the rule to
 - `threshold`: Maximum requests per `statIntervalInMs` window
 - `tokenCalculateStrategy`: `0` = Direct, `1` = WarmUp
-- `controlBehavior`: `0` = Reject immediately, `1` = WarmUp, `2` = Wait
+- `controlBehavior`: `0` = Reject immediately, `1` = Throttling (queuing)
 - `statIntervalInMs`: The sliding window duration in milliseconds
 
 ## Attaching to the HTTP Pipeline
@@ -90,7 +90,7 @@ Sentinel also supports circuit breaking based on error rate or slow request rati
       [
         {
           "resource": "POST:/orders",
-          "strategy": 0,
+          "strategy": 1,
           "retryTimeoutMs": 3000,
           "minRequestAmount": 10,
           "statIntervalMs": 5000,
@@ -99,7 +99,7 @@ Sentinel also supports circuit breaking based on error rate or slow request rati
       ]
 ```
 
-`strategy: 0` is error ratio. A 50% error rate over 10 requests in 5 seconds trips the breaker for 3 seconds.
+`strategy: 1` is error ratio (`0` = slow request ratio, `2` = error count). A 50% error rate over 10 requests in 5 seconds trips the breaker for 3 seconds.
 
 ## Testing Rate Limiting
 
