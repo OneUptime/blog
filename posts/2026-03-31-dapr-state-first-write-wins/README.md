@@ -53,8 +53,7 @@ const axios = require('axios');
 async function updateOrderStatus(orderId, newStatus) {
   // Step 1: Read current state and ETag
   const getRes = await axios.get(
-    `http://localhost:3500/v1.0/state/statestore/${orderId}`,
-    { headers: { 'consistency': 'strong' } }
+    `http://localhost:3500/v1.0/state/statestore/${orderId}?consistency=strong`
   );
   const etag = getRes.headers['etag'];
   const current = getRes.data;
@@ -107,14 +106,17 @@ async function updateWithRetry(key, updateFn, maxRetries = 3) {
 ## Using the Go SDK
 
 ```go
-item, etag, err := client.GetStateWithETag(ctx, "statestore", "order-123", nil)
-updated := applyUpdate(item)
+item, err := client.GetState(ctx, "statestore", "order-123", nil)
+if err != nil {
+    log.Fatal(err)
+}
+updated := applyUpdate(item.Value)
 
-err = client.SaveStateWithETag(ctx, "statestore", "order-123", updated, etag, &dapr.StateOptions{
-    Concurrency: dapr.StateConcurrencyFirstWrite,
-    Consistency: dapr.StateConsistencyStrong,
-})
-if status.Code(err) == codes.FailedPrecondition {
+err = client.SaveStateWithETag(ctx, "statestore", "order-123", updated, item.Etag, nil,
+    dapr.WithConcurrency(dapr.StateConcurrencyFirstWrite),
+    dapr.WithConsistency(dapr.StateConsistencyStrong),
+)
+if status.Code(err) == codes.Aborted {
     log.Println("ETag mismatch - concurrent modification")
 }
 ```
