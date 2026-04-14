@@ -20,11 +20,11 @@ Dapr surfaces several metrics relevant to retries:
 
 | Metric | Description |
 |--------|-------------|
-| `dapr_resiliency_count_total` | Total resiliency policy activations |
+| `dapr_resiliency_count` | Total resiliency policy executions |
 | `dapr_resiliency_activations_total` | Number of times a policy was activated |
-| `dapr_service_invocation_req_sent_total` | Total outbound service invocation requests |
+| `dapr_runtime_service_invocation_req_sent_total` | Total outbound service invocation requests |
 
-Filter by labels such as `policy`, `target`, and `flow_direction` to isolate retry activity.
+Filter by labels such as `policy`, `name`, `namespace`, and `appId` to isolate retry activity.
 
 ## Configuring Prometheus to Scrape Dapr Metrics
 
@@ -53,12 +53,12 @@ Use PromQL to calculate retry rates over time:
 # Rate of resiliency policy activations per second over 5 minutes
 rate(dapr_resiliency_activations_total[5m])
 
-# Retry rate for a specific target service
-rate(dapr_resiliency_activations_total{target="order-service", policy="retryForever"}[5m])
+# Retry rate for a specific app filtered by retry policy
+rate(dapr_resiliency_activations_total{appId="order-service", policy="retry"}[5m])
 
 # Ratio of retried requests vs total requests
 rate(dapr_resiliency_activations_total[5m]) /
-  rate(dapr_service_invocation_req_sent_total[5m])
+  rate(dapr_runtime_service_invocation_req_sent_total[5m])
 ```
 
 ## Creating a Grafana Alert for High Retry Rates
@@ -78,7 +78,7 @@ groups:
           severity: warning
         annotations:
           summary: "High Dapr retry rate detected"
-          description: "Retry rate for {{ $labels.target }} exceeds 0.1/s for 2 minutes."
+          description: "Retry rate for {{ $labels.appId }} exceeds 0.1/s for 2 minutes."
 ```
 
 ## Enabling Metrics on a Dapr Sidecar
@@ -91,9 +91,8 @@ kind: Configuration
 metadata:
   name: daprconfig
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 Apply to your pod with the annotation:
