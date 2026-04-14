@@ -20,17 +20,17 @@ Create a dedicated Kubernetes namespace for longhaul tests:
 kubectl create namespace dapr-longhaul
 ```
 
-Deploy the Dapr longhaul test apps from the Dapr test repository:
+Deploy the Dapr longhaul test apps from the Dapr test infrastructure repository:
 
 ```bash
-git clone https://github.com/dapr/dapr.git
-cd dapr/tests/apps/longhaul
+git clone https://github.com/dapr/test-infra.git
+cd test-infra
 
 # Deploy publisher
-kubectl apply -f publisher.yaml -n dapr-longhaul
+kubectl apply -f longhaul-test/streaming-pubsub-publisher.yml -n dapr-longhaul
 
 # Deploy subscriber
-kubectl apply -f subscriber.yaml -n dapr-longhaul
+kubectl apply -f longhaul-test/streaming-pubsub-subscriber.yml -n dapr-longhaul
 ```
 
 ## Implementing a Custom Longhaul Test
@@ -59,7 +59,8 @@ def run_longhaul_publisher():
                 client.publish_event(
                     pubsub_name="pubsub",
                     topic_name="longhaul",
-                    data=json.dumps(event)
+                    data=json.dumps(event),
+                    data_content_type="application/json",
                 )
                 iteration += 1
                 if iteration % 1000 == 0:
@@ -81,8 +82,9 @@ Set up continuous metric collection:
 ```bash
 # Watch memory growth over time
 while true; do
+    ts="$(date '+%Y-%m-%d %H:%M:%S')"
     kubectl top pods -n dapr-longhaul --containers | \
-        awk '/daprd/ {print strftime("%Y-%m-%d %H:%M:%S"), $0}' >> memory-log.txt
+        awk -v ts="$ts" '/daprd/ {print ts, $0}' >> memory-log.txt
     sleep 60
 done
 ```
@@ -97,10 +99,12 @@ import pandas as pd
 df = pd.read_csv('memory-log.txt', sep=r'\s+',
                  names=['date', 'time', 'pod', 'container', 'cpu', 'memory'])
 df['mem_mb'] = df['memory'].str.replace('Mi', '').astype(float)
-df['hour'] = pd.to_datetime(df['date'] + ' ' + df['time']).dt.hour
+df['timestamp'] = pd.to_datetime(df['date'] + ' ' + df['time'])
+df = df.sort_values('timestamp')
+df['hour_bucket'] = (df['timestamp'] - df['timestamp'].min()).dt.total_seconds() // 3600
 
 # Check for monotonically increasing memory
-growth = df.groupby('hour')['mem_mb'].mean().diff()
+growth = df.groupby('hour_bucket')['mem_mb'].mean().diff().dropna()
 if (growth > 0).all():
     print("WARNING: Memory is growing continuously - possible leak")
 ```
