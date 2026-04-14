@@ -23,9 +23,8 @@ metadata:
   name: dapr-config
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 ```yaml
@@ -169,8 +168,8 @@ aws cloudwatch put-metric-alarm \
   --threshold 50 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:dapr-alerts \
-  --ok-actions arn:aws:sns:us-east-1:123456789:dapr-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:dapr-alerts \
+  --ok-actions arn:aws:sns:us-east-1:123456789012:dapr-alerts
 ```
 
 ## Using Amazon Managed Service for Prometheus
