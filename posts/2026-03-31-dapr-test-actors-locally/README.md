@@ -21,7 +21,8 @@ package main
 
 import (
   "context"
-  "testing"
+  "encoding/json"
+  "fmt"
 )
 
 // Simple in-memory state manager mock
@@ -100,7 +101,7 @@ docker run -d --name redis-test -p 6379:6379 redis:7-alpine
 dapr run --app-id counter-test \
   --app-port 8080 \
   --dapr-http-port 3500 \
-  --components-path ./test/components \
+  --resources-path ./test/components \
   -- go run ./cmd/server
 ```
 
