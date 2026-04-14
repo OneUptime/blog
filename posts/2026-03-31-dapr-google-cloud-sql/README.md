@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Google Cloud SQL, PostgreSQL, GKE, State Management
 
-Description: Configure Dapr state management with Google Cloud SQL for PostgreSQL on GKE, using the Cloud SQL Auth Proxy, Workload Identity, and connection pooling for secure access.
+Description: Configure Dapr state management with Google Cloud SQL for PostgreSQL on GKE, using the Cloud SQL Auth Proxy and Workload Identity for secure access.
 
 ---
 
@@ -22,8 +22,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
