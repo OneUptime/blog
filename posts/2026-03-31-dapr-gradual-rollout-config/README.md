@@ -16,9 +16,9 @@ A gradual rollout (also called a canary release at the feature level) exposes a 
 
 ```bash
 # Start at 0% - feature is off for all users
-redis-cli SET "rollouts||new-search-engine:percentage" "0"
-redis-cli SET "rollouts||new-search-engine:enabled" "true"
-redis-cli SET "rollouts||new-search-engine:startedAt" "2026-03-31T00:00:00Z"
+redis-cli SET "new-search-engine:percentage" "0"
+redis-cli SET "new-search-engine:enabled" "true"
+redis-cli SET "new-search-engine:startedAt" "2026-03-31T00:00:00Z"
 ```
 
 ## Dapr Configuration Component
@@ -34,8 +34,6 @@ spec:
   metadata:
   - name: redisHost
     value: "redis:6379"
-  - name: subscribeOnly
-    value: "false"
 ```
 
 ## Rollout Gate Middleware
@@ -122,7 +120,7 @@ WAIT_MINUTES=30
 
 for pct in "${INCREMENTS[@]}"; do
   echo "Setting rollout to ${pct}%..."
-  redis-cli SET "rollouts||${FEATURE}:percentage" "${pct}"
+  redis-cli SET "${FEATURE}:percentage" "${pct}"
 
   echo "Waiting ${WAIT_MINUTES} minutes before next increment..."
   sleep $((WAIT_MINUTES * 60))
@@ -131,7 +129,7 @@ for pct in "${INCREMENTS[@]}"; do
   ERROR_RATE=$(curl -s http://metrics.internal/api/error-rate?feature=$FEATURE | jq '.rate')
   if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
     echo "Error rate ${ERROR_RATE} too high, rolling back to 0%"
-    redis-cli SET "rollouts||${FEATURE}:percentage" "0"
+    redis-cli SET "${FEATURE}:percentage" "0"
     exit 1
   fi
 done
