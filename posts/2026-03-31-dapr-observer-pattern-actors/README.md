@@ -16,7 +16,7 @@ The observer pattern lets multiple observers subscribe to a subject and receive 
 
 ```typescript
 interface IStockTickerActor {
-  subscribe(observerActorType: string, observerActorId: string): Promise<void>;
+  subscribe(request: { observerActorType: string; observerActorId: string }): Promise<void>;
   unsubscribe(observerActorId: string): Promise<void>;
   updatePrice(newPrice: number): Promise<void>;
   getCurrentPrice(): Promise<number>;
@@ -34,14 +34,14 @@ public class StockTickerActor : Actor, IStockTickerActor
 
     public StockTickerActor(ActorHost host) : base(host) { }
 
-    public async Task SubscribeAsync(string observerActorType, string observerActorId)
+    public async Task SubscribeAsync(SubscribeRequest request)
     {
         var observers = await StateManager.GetOrAddStateAsync<List<ObserverRef>>(
             ObserversKey, new List<ObserverRef>());
 
-        if (!observers.Any(o => o.ActorId == observerActorId))
+        if (!observers.Any(o => o.ActorId == request.ObserverActorId))
         {
-            observers.Add(new ObserverRef { ActorType = observerActorType, ActorId = observerActorId });
+            observers.Add(new ObserverRef { ActorType = request.ObserverActorType, ActorId = request.ObserverActorId });
             await StateManager.SetStateAsync(ObserversKey, observers);
         }
     }
@@ -63,7 +63,7 @@ public class StockTickerActor : Actor, IStockTickerActor
         {
             await NotifyObserversAsync(new PriceUpdate
             {
-                Symbol = this.Id,
+                Symbol = this.Id.GetId(),
                 OldPrice = oldPrice,
                 NewPrice = newPrice,
                 ChangedAt = DateTime.UtcNow
@@ -78,7 +78,7 @@ public class StockTickerActor : Actor, IStockTickerActor
 
         var notifyTasks = observers.Select(obs =>
             ActorProxy.Create(new ActorId(obs.ActorId), obs.ActorType)
-                .InvokeMethodAsync("OnPriceChanged", update)
+                .InvokeMethodAsync("OnPriceChangedAsync", update)
         );
 
         await Task.WhenAll(notifyTasks);
@@ -132,7 +132,7 @@ await client.actor.invoke('StockTicker', 'AAPL', 'SubscribeAsync', {
 
 // Price feed pushes updates
 async function publishPriceUpdate(symbol, price) {
-  await client.actor.invoke('StockTicker', symbol, 'UpdatePriceAsync', { newPrice: price });
+  await client.actor.invoke('StockTicker', symbol, 'UpdatePriceAsync', price);
 }
 ```
 
