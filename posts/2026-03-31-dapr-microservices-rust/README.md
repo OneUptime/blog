@@ -53,6 +53,7 @@ pub struct StockResponse {
 use actix_web::{web, App, HttpServer, HttpResponse};
 use dapr::Client;
 use common::Order;
+use prost_types::Any;
 use serde_json::json;
 
 async fn create_order(body: web::Json<Order>) -> HttpResponse {
@@ -67,7 +68,10 @@ async fn create_order(body: web::Json<Order>) -> HttpResponse {
         .invoke_service(
             "inventory-service",
             "reserve",
-            Some(serde_json::to_vec(&check_body).unwrap())
+            Some(Any {
+                type_url: "".to_string(),
+                value: serde_json::to_vec(&check_body).unwrap(),
+            }),
         )
         .await;
 
@@ -83,7 +87,17 @@ async fn create_order(body: web::Json<Order>) -> HttpResponse {
     };
 
     // Save order state
-    client.save_state("statestore", &order.order_id, &order).await.unwrap();
+    client
+        .save_state(
+            "statestore",
+            order.order_id.clone(),
+            serde_json::to_vec(&order).unwrap(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
     // Publish order confirmed event
     client
