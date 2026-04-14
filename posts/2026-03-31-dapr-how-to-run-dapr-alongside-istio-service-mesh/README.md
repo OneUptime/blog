@@ -28,7 +28,7 @@ Key areas of overlap:
 | mTLS | Dapr Sentry CA | Istio Citadel/istiod CA |
 | Observability | Dapr metrics + traces | Istio telemetry |
 | Traffic management | Dapr resiliency | Istio VirtualService |
-| Service discovery | Dapr placement + name-based | Istio service registry |
+| Service discovery | Dapr name resolution (K8s DNS) | Istio service registry |
 
 The recommended approach: use Istio for network-level concerns (traffic routing, L4 mTLS enforcement) and Dapr for application-level concerns (state, pub/sub, service invocation APIs). Disable Dapr's mTLS to avoid double-encrypting traffic that Istio already encrypts.
 
@@ -70,7 +70,7 @@ Create an Istio `PeerAuthentication` policy for the Dapr system namespace:
 
 ```yaml
 # istio-dapr-peer-auth.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: dapr-system-peer-auth
@@ -138,7 +138,7 @@ Istio VirtualService for external traffic to an app:
 
 ```yaml
 # order-service-vs.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -168,7 +168,7 @@ Configure both Dapr and Istio to send traces to the same Zipkin or Jaeger instan
 ```bash
 # Install Istio with Zipkin addon
 istioctl install --set profile=demo
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/zipkin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.25/samples/addons/extras/zipkin.yaml
 
 # Configure Dapr to use the same Zipkin
 kubectl apply -f - << 'EOF'
