@@ -153,7 +153,6 @@ Application code is unchanged - Dapr handles encryption transparently:
 # app.py
 import os
 import requests
-import json
 
 DAPR_PORT = int(os.environ.get("DAPR_HTTP_PORT", 3500))
 STATE_URL = f"http://localhost:{DAPR_PORT}/v1.0/state/statestore"
