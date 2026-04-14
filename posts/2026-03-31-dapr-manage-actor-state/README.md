@@ -74,7 +74,7 @@ func (a *OrderActor) Cancel(ctx context.Context) error {
 
 ```go
 type OrderActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *OrderActor) PlaceOrder(ctx context.Context, req *PlaceOrderRequest) error {
@@ -98,7 +98,6 @@ func (a *OrderActor) PlaceOrder(ctx context.Context, req *PlaceOrderRequest) err
 
 ```python
 from dapr.actor import Actor
-from dapr.actor.runtime.context import ActorRuntimeContext
 
 class OrderActor(Actor):
     async def ship_order(self, tracking_number: str):
