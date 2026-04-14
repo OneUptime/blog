@@ -15,7 +15,7 @@ Testing Dapr Node.js applications requires two levels of testing: unit tests tha
 ## Installing Test Dependencies
 
 ```bash
-npm install --save-dev jest @jest/globals jest-mock
+npm install --save-dev jest supertest testcontainers
 ```
 
 ## Unit Testing with Jest Mocks
@@ -79,15 +79,15 @@ Test Express routes with mocked Dapr:
 
 ```javascript
 const request = require("supertest");
-const { app, daprClient } = require("./app");
 
-jest.mock("./app", () => ({
-  app: require("express")(),
-  daprClient: {
+jest.mock("@dapr/dapr", () => ({
+  DaprClient: jest.fn().mockImplementation(() => ({
     state: { save: jest.fn(), get: jest.fn() },
     pubsub: { publish: jest.fn() },
-  },
+  })),
 }));
+
+const { app, daprClient } = require("./app");
 
 describe("POST /orders", () => {
   test("returns 201 with created order", async () => {
