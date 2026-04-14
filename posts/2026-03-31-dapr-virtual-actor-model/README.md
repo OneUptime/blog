@@ -37,18 +37,9 @@ Two calls to `Counter/counter-001` are guaranteed to never run concurrently - Da
 
 When a method is invoked on an actor:
 1. Dapr's placement service determines which app instance hosts that actor ID.
-2. If the actor is not active, Dapr calls the `OnActivateAsync` callback on the hosting instance.
-3. State is loaded from the configured state store.
-4. The method executes.
-5. Updated state is saved back to the state store.
-
-```go
-// OnActivate is called when the actor first becomes active
-func (a *CounterActor) OnActivate() error {
-  log.Printf("Actor %s activated", a.actorID)
-  return nil
-}
-```
+2. If the actor is not active, Dapr activates it on the hosting instance.
+3. The method executes, accessing state on demand from the configured state store.
+4. Updated state is saved back to the state store after the method completes.
 
 ## Turn-Based Concurrency
 
