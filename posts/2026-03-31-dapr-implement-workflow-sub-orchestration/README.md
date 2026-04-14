@@ -59,7 +59,7 @@ func FulfillmentWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     var paymentResult ChargeResult
     if err := ctx.CallChildWorkflow(PaymentWorkflow,
         workflow.ChildWorkflowInput(order),
-        workflow.WithChildWorkflowInstanceID("payment-"+order.ID)).
+        workflow.ChildWorkflowInstanceID("payment-"+order.ID)).
         Await(&paymentResult); err != nil {
         return nil, fmt.Errorf("payment sub-workflow failed: %w", err)
     }
@@ -68,7 +68,7 @@ func FulfillmentWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     var inventoryResult InventoryResult
     if err := ctx.CallChildWorkflow(InventoryWorkflow,
         workflow.ChildWorkflowInput(order),
-        workflow.WithChildWorkflowInstanceID("inventory-"+order.ID)).
+        workflow.ChildWorkflowInstanceID("inventory-"+order.ID)).
         Await(&inventoryResult); err != nil {
         // Compensate payment
         ctx.CallChildWorkflow(RefundWorkflow,
@@ -140,10 +140,10 @@ func main() {
 
 ```bash
 # Get parent workflow status
-curl "http://localhost:3500/v1.0/workflows/dapr/fulfillment-order-123/status"
+curl "http://localhost:3500/v1.0/workflows/dapr/fulfillment-order-123"
 
 # Get child workflow status directly
-curl "http://localhost:3500/v1.0/workflows/dapr/payment-order-123/status"
+curl "http://localhost:3500/v1.0/workflows/dapr/payment-order-123"
 ```
 
 ## Summary
