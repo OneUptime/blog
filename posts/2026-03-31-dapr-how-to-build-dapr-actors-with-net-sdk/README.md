@@ -249,7 +249,7 @@ public class SessionActor : Actor, ISessionActor, IRemindable
         );
     }
 
-    public async Task HeartbeatTimerCallback(byte[] state)
+    private async Task HeartbeatTimerCallback(byte[] state)
     {
         Logger.LogInformation("Heartbeat timer fired for actor {ActorId}", Id.GetId());
         await StateManager.SetStateAsync("last-heartbeat", DateTime.UtcNow);
@@ -274,7 +274,6 @@ public class SessionActor : Actor, ISessionActor, IRemindable
 
 public interface ISessionActor : IActor
 {
-    Task HeartbeatTimerCallback(byte[] state);
 }
 ```
 
