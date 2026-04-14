@@ -21,20 +21,26 @@ An actor activation storm occurs when thousands of actors need to activate simul
 
 ## Configuring Scan Intervals to Spread Activation
 
-Spread idle timeout scanning to avoid synchronized deactivations:
+Spread idle timeout scanning to avoid synchronized deactivations. Actor runtime settings are configured through your application via the `/dapr/config` endpoint, not the Dapr Configuration CRD:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: actorconfig
-  namespace: default
-spec:
-  actor:
-    actorIdleTimeout: "1h"
-    actorScanInterval: "30s"    # Stagger the scan window
-    drainOngoingCallTimeout: "60s"
-    drainRebalancedActors: true
+```go
+import "net/http"
+import "encoding/json"
+
+func daprConfigHandler(w http.ResponseWriter, r *http.Request) {
+    config := map[string]interface{}{
+        "entities":                []string{"OrderActor"},
+        "actorIdleTimeout":       "1h",
+        "actorScanInterval":      "30s",   // Stagger the scan window
+        "drainOngoingCallTimeout": "60s",
+        "drainRebalancedActors":  true,
+    }
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(config)
+}
+
+// Register in your HTTP server:
+// http.HandleFunc("/dapr/config", daprConfigHandler)
 ```
 
 A 30-second scan interval means deactivations are spread across a 30-second window, reducing the thundering herd.
@@ -47,7 +53,6 @@ Instead of activating all actors immediately on startup, use a warm-up worker th
 package main
 
 import (
-    "context"
     "time"
     "net/http"
     "fmt"
@@ -115,25 +120,31 @@ spec:
 
 ## Rate Limiting Actor Activation
 
-Add a semaphore in your actor's `OnActivate` to cap concurrent activations:
+Since actor activation in Dapr is triggered on the first method invocation, add a semaphore in your actor method handler to cap concurrent activations:
 
 ```go
-import "golang.org/x/sync/semaphore"
+import (
+    "context"
+    "fmt"
+    "time"
+
+    "golang.org/x/sync/semaphore"
+)
 
 var activationSem = semaphore.NewWeighted(20) // Max 20 concurrent activations
 
-func (a *OrderActor) OnActivate(ctx context.Context) error {
+func (a *OrderActor) Ping(ctx context.Context) (string, error) {
     // Acquire semaphore with timeout
     timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
     defer cancel()
 
     if err := activationSem.Acquire(timeoutCtx, 1); err != nil {
-        return fmt.Errorf("activation throttled: %w", err)
+        return "", fmt.Errorf("activation throttled: %w", err)
     }
     defer activationSem.Release(1)
 
     // Load state from store
-    return a.loadState(ctx)
+    return "ok", a.loadState(ctx)
 }
 ```
 
@@ -141,11 +152,11 @@ func (a *OrderActor) OnActivate(ctx context.Context) error {
 
 ```bash
 # Prometheus query for activation rate
-rate(dapr_actor_activated_total[1m])
+rate(dapr_runtime_actor_activated_total[1m])
 
 # Alert if activation rate spikes
 - alert: ActorActivationStorm
-  expr: rate(dapr_actor_activated_total[1m]) > 100
+  expr: rate(dapr_runtime_actor_activated_total[1m]) > 100
   for: 2m
   labels:
     severity: warning
