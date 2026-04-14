@@ -36,7 +36,9 @@ package main
 
 import (
   "context"
+  "encoding/json"
   "fmt"
+  "log"
 
   dapr "github.com/dapr/go-sdk/client"
 )
@@ -51,18 +53,22 @@ type BalanceResponse struct {
 }
 
 func main() {
-  client, _ := dapr.NewClient()
+  client, err := dapr.NewClient()
+  if err != nil {
+    log.Fatalf("failed to create client: %v", err)
+  }
   defer client.Close()
 
   ctx := context.Background()
 
   // Invoke a method with a request body
   req := TransferRequest{ToAccount: "acct-002", Amount: 150.00}
+  data, _ := json.Marshal(req)
   resp, err := client.InvokeActor(ctx, &dapr.InvokeActorRequest{
     ActorType: "BankAccount",
     ActorID:   "acct-001",
     Method:    "Transfer",
-    Data:      mustMarshal(req),
+    Data:      data,
   })
   if err != nil {
     panic(err)
@@ -75,17 +81,19 @@ func main() {
 ## Invoking via the Python SDK
 
 ```python
-from dapr.clients import DaprClient
+import asyncio
 import json
+from dapr.actor import ActorProxy, ActorId
 
-with DaprClient() as client:
-    resp = client.invoke_actor(
-        actor_type="BankAccount",
-        actor_id="acct-001",
-        method="Transfer",
-        data=json.dumps({"toAccount": "acct-002", "amount": 150.00}).encode()
+async def main():
+    proxy = ActorProxy.create("BankAccount", ActorId("acct-001"))
+    resp = await proxy.invoke_method(
+        "Transfer",
+        json.dumps({"toAccount": "acct-002", "amount": 150.00}).encode()
     )
-    print("Response:", resp.data)
+    print("Response:", resp)
+
+asyncio.run(main())
 ```
 
 ## Handling Method Responses
