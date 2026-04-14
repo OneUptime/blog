@@ -226,7 +226,6 @@ func main() {
 ```python
 from fastapi import FastAPI
 from dapr.ext.fastapi import DaprApp
-from dapr.clients.grpc._response import TopicEventResponse
 
 app = FastAPI()
 dapr_app = DaprApp(app)
@@ -235,12 +234,12 @@ dapr_app = DaprApp(app)
 @dapr_app.subscribe(pubsub="pubsub", topic="orders")
 async def handle_order(event: dict):
     print(f"Order: {event['data']}")
-    return TopicEventResponse("success")
+    return {"status": "SUCCESS"}
 
 @dapr_app.subscribe(pubsub="pubsub", topic="payments")
 async def handle_payment(event: dict):
     print(f"Payment: {event['data']}")
-    return TopicEventResponse("success")
+    return {"status": "SUCCESS"}
 
 # FastAPI generates /dapr/subscribe automatically
 ```
@@ -253,7 +252,7 @@ import { DaprServer } from "@dapr/dapr";
 const server = new DaprServer({
   serverHost: "localhost",
   serverPort: "6000",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3500" },
+  clientOptions: { daprHost: "localhost", daprPort: "3500" },
 });
 
 // SDK registers /dapr/subscribe automatically
