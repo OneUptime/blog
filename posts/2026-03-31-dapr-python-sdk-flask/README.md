@@ -10,12 +10,12 @@ Description: Learn how to integrate the Dapr Python SDK with Flask to handle pub
 
 ## Introduction
 
-Flask is a popular Python micro-framework that works well with Dapr for building microservices. The `dapr-ext-grpc` and `dapr` packages give Flask applications access to state management, pub/sub, and service invocation capabilities with minimal setup.
+Flask is a popular Python micro-framework that works well with Dapr for building microservices. The `dapr` package gives Flask applications access to state management, pub/sub, and service invocation capabilities with minimal setup.
 
 ## Prerequisites
 
 ```bash
-pip install dapr flask
+pip install dapr flask cloudevents
 dapr init
 ```
 
