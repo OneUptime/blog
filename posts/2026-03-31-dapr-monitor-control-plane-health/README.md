@@ -31,8 +31,8 @@ Use Kubernetes liveness and readiness probes combined with Prometheus metrics. F
 
 ```bash
 kubectl get pods -n dapr-system -o wide
-kubectl port-forward svc/dapr-operator 8080:8080 -n dapr-system
-curl http://localhost:8080/metrics | grep dapr_operator
+kubectl port-forward svc/dapr-operator 9090:9090 -n dapr-system
+curl http://localhost:9090/ | grep dapr_operator
 ```
 
 Create a ServiceMonitor for each control plane component:
@@ -53,7 +53,7 @@ spec:
   endpoints:
     - port: metrics
       interval: 15s
-      path: /metrics
+      path: /
 ```
 
 ## Alerting Rules for Control Plane Health
@@ -117,12 +117,26 @@ Supplement Prometheus with Kubernetes health checks using a periodic job:
 #!/bin/bash
 # control-plane-health-check.sh
 NAMESPACE="dapr-system"
-COMPONENTS=("dapr-operator" "dapr-sidecar-injector" "dapr-placement-server" "dapr-sentry")
+DEPLOYMENTS=("dapr-operator" "dapr-sidecar-injector" "dapr-sentry")
+STATEFULSETS=("dapr-placement-server")
 
-for component in "${COMPONENTS[@]}"; do
+for component in "${DEPLOYMENTS[@]}"; do
   READY=$(kubectl get deployment "$component" -n "$NAMESPACE" \
     -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
   DESIRED=$(kubectl get deployment "$component" -n "$NAMESPACE" \
+    -o jsonpath='{.spec.replicas}' 2>/dev/null)
+
+  if [[ "$READY" != "$DESIRED" ]]; then
+    echo "ALERT: $component not fully ready ($READY/$DESIRED replicas)"
+  else
+    echo "OK: $component ($READY/$DESIRED replicas)"
+  fi
+done
+
+for component in "${STATEFULSETS[@]}"; do
+  READY=$(kubectl get statefulset "$component" -n "$NAMESPACE" \
+    -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+  DESIRED=$(kubectl get statefulset "$component" -n "$NAMESPACE" \
     -o jsonpath='{.spec.replicas}' 2>/dev/null)
 
   if [[ "$READY" != "$DESIRED" ]]; then
