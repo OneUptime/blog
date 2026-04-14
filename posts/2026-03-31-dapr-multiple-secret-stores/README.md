@@ -43,8 +43,8 @@ spec:
     secretKeyRef:
       name: vault-access-token
       key: token
-  - name: vaultMountPath
-    value: "secret/data"
+  - name: enginePath
+    value: "secret"
 ```
 
 ```yaml
@@ -92,6 +92,7 @@ package main
 
 import (
   "context"
+  "fmt"
   dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -141,13 +142,13 @@ metadata:
 spec:
   type: state.postgresql
   version: v1
-  auth:
-    secretStore: vault-secrets   # Use vault for this component's secrets
   metadata:
   - name: connectionString
     secretKeyRef:
       name: postgres-connection
       key: connectionString
+auth:
+  secretStore: vault-secrets   # Use vault for this component's secrets
 ```
 
 ## Migration Pattern: Dual-Store Reads
