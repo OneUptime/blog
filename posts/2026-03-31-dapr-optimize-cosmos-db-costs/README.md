@@ -121,9 +121,9 @@ Query the logs to find expensive operations:
 # KQL query in Log Analytics
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.DOCUMENTDB"
-| where requestCharge_s > "10"
-| project TimeGenerated, operationType_s, requestCharge_s, statusCode_s
-| order by requestCharge_s desc
+| where todouble(requestCharge_s) > 10
+| project TimeGenerated, operationType_s, todouble(requestCharge_s), statusCode_s
+| order by todouble(requestCharge_s) desc
 ```
 
 ## Summary
