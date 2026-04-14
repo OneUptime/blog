@@ -13,6 +13,7 @@ Description: Learn how to cleanly uninstall Dapr from a self-hosted environment,
 When you run `dapr init`, Dapr installs the following in self-hosted mode:
 
 - Dapr placement service container
+- Dapr scheduler service container
 - Zipkin container (for tracing)
 - Redis container (for state and pub/sub)
 - Dapr binaries in `~/.dapr/bin/`
@@ -26,39 +27,31 @@ To remove Dapr from self-hosted mode, run:
 dapr uninstall
 ```
 
-This removes the Docker containers and the Dapr binaries. The output looks like:
-
-```bash
-Removing Dapr from your machine...
-Removing container: dapr_zipkin
-Removing container: dapr_redis
-Removing container: dapr_placement
-Removing Dapr from path
-Dapr has been removed successfully
-```
+This removes the Dapr placement container and the Dapr binaries. It does not remove the Redis, Zipkin, or Scheduler containers, since you may be using them for other purposes.
 
 ## Removing All Configuration Files
 
-The basic uninstall does not remove configuration files. To also delete the `~/.dapr` directory:
+The basic uninstall does not remove configuration files or the Redis, Zipkin, and Scheduler containers. To remove everything, use:
 
 ```bash
 dapr uninstall --all
 ```
 
 This removes:
+- All Dapr containers (placement, scheduler, Redis, Zipkin)
 - `~/.dapr/bin/` - runtime binaries
 - `~/.dapr/components/` - default components
 - `~/.dapr/config.yaml` - default configuration
 
 ## Slim Mode Uninstall
 
-If you initialized Dapr without Docker using `dapr init --slim`, uninstall accordingly:
+If you initialized Dapr without Docker using `dapr init --slim`, uninstall using the standard command:
 
 ```bash
-dapr uninstall --slim
+dapr uninstall
 ```
 
-This removes only the runtime binaries without trying to stop containers.
+Since no containers were created in slim mode, this removes only the runtime binaries. There is no `--slim` flag for the uninstall command.
 
 ## Manual Cleanup
 
@@ -66,8 +59,8 @@ If the uninstall command fails, clean up manually:
 
 ```bash
 # Stop and remove Dapr containers
-docker stop dapr_placement dapr_redis dapr_zipkin
-docker rm dapr_placement dapr_redis dapr_zipkin
+docker stop dapr_placement dapr_scheduler dapr_redis dapr_zipkin
+docker rm dapr_placement dapr_scheduler dapr_redis dapr_zipkin
 
 # Remove Dapr directory
 rm -rf ~/.dapr
@@ -94,4 +87,4 @@ which dapr
 
 ## Summary
 
-Uninstall Dapr from self-hosted mode using `dapr uninstall` to remove containers and binaries, or `dapr uninstall --all` to also delete the `~/.dapr` configuration directory. For slim installations without Docker, use the `--slim` flag.
+Uninstall Dapr from self-hosted mode using `dapr uninstall` to remove the placement container and binaries, or `dapr uninstall --all` to remove all containers and the `~/.dapr` configuration directory. For slim installations without Docker, the standard `dapr uninstall` command works since no containers need to be removed.
