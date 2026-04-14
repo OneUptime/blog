@@ -17,7 +17,6 @@ This pattern improves reusability - an `OrderFulfillmentWorkflow` can be reused 
 ## Defining the Sub-Workflow
 
 ```csharp
-[DaprWorkflow]
 public class PaymentWorkflow : Workflow<PaymentRequest, PaymentResult>
 {
     public override async Task<PaymentResult> RunAsync(
@@ -38,7 +37,6 @@ public class PaymentWorkflow : Workflow<PaymentRequest, PaymentResult>
 ```
 
 ```csharp
-[DaprWorkflow]
 public class ShipmentWorkflow : Workflow<ShipmentRequest, ShipmentResult>
 {
     public override async Task<ShipmentResult> RunAsync(
@@ -59,7 +57,6 @@ public class ShipmentWorkflow : Workflow<ShipmentRequest, ShipmentResult>
 ## Composing the Parent Workflow
 
 ```csharp
-[DaprWorkflow]
 public class OrderWorkflow : Workflow<OrderInput, OrderResult>
 {
     public override async Task<OrderResult> RunAsync(
@@ -115,7 +112,7 @@ var childInstanceId = $"{input.OrderId}-payment";
 var paymentResult = await context.CallChildWorkflowAsync<PaymentResult>(
     nameof(PaymentWorkflow),
     new PaymentRequest { OrderId = input.OrderId, Amount = input.TotalAmount },
-    new ChildWorkflowOptions { InstanceId = childInstanceId });
+    new ChildWorkflowTaskOptions { InstanceId = childInstanceId });
 ```
 
 ## Registering All Workflows
