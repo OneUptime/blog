@@ -16,7 +16,7 @@ In high-latency environments - cross-region deployments, satellite connections, 
 
 Default timeouts in Dapr:
 - Service invocation: no default timeout (relies on HTTP client defaults)
-- Actor invocation: 60 seconds
+- Actor drain ongoing call timeout: 60 seconds
 - State store operations: component-specific (typically 5-30 seconds)
 - Pub/Sub ack timeout: component-specific
 
@@ -65,20 +65,33 @@ spec:
 
 ## Per-Service Timeout Configuration
 
-Apply resiliency policies to specific service invocations:
+Apply resiliency policies to specific service invocations by defining named policies and referencing them in targets:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: per-service-policy
+spec:
+  policies:
+    timeouts:
+      crossRegionTimeout: 45s
+      localTimeout: 5s
+
+    retries:
+      crossRegionRetry:
+        policy: exponential
+        maxInterval: 30s
+        maxRetries: 3
+        duration: 2s
+
   targets:
     apps:
       remote-service:
-        timeout: 45s      # Extended for cross-region calls
-        retry:
-          policy: exponential
-          maxInterval: 30s
-          maxRetries: 3
-          duration: 2s
+        timeout: crossRegionTimeout
+        retry: crossRegionRetry
       local-service:
-        timeout: 5s       # Short timeout for same-region
+        timeout: localTimeout
 ```
 
 ## State Store Timeout Tuning
@@ -96,16 +109,16 @@ spec:
   metadata:
     - name: redisHost
       value: redis.remote-region:6379
-    - name: redisConnectTimeout
-      value: "10000"    # 10 seconds connection timeout (ms)
-    - name: redisReadTimeout
-      value: "30000"    # 30 seconds read timeout (ms)
-    - name: redisWriteTimeout
-      value: "30000"    # 30 seconds write timeout (ms)
+    - name: dialTimeout
+      value: "10s"
+    - name: readTimeout
+      value: "30s"
+    - name: writeTimeout
+      value: "30s"
     - name: poolSize
       value: "20"
     - name: poolTimeout
-      value: "30000"
+      value: "30s"
 ```
 
 ## Pub/Sub Configuration for High Latency
@@ -119,16 +132,12 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-    - name: host
+    - name: connectionString
       value: amqp://remote-rabbitmq:5672
-    - name: connectionAttempts
-      value: "10"
-    - name: connectionWait
+    - name: reconnectWait
       value: "5s"
     - name: heartBeat
       value: "60s"    # Extended heartbeat for high-latency links
-    - name: publishTimeout
-      value: "30s"
 ```
 
 ## Actor Configuration for High Latency
