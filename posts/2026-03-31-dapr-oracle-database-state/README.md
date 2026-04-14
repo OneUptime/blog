@@ -43,20 +43,20 @@ Dapr creates the state table automatically, but you can pre-create it for better
 
 ```sql
 CREATE TABLE dapr_state.state (
-  key        VARCHAR2(512)   NOT NULL,
-  value      CLOB,
-  binary_data BLOB,
-  etag       VARCHAR2(50),
-  metadata   CLOB,
-  create_time TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
-  update_time TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
-  expire_date TIMESTAMP,
+  key             VARCHAR2(100)   NOT NULL,
+  value           CLOB            NOT NULL,
+  binary_yn       VARCHAR2(1)     NOT NULL,
+  etag            VARCHAR2(50)    NOT NULL,
+  creation_time   TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+  expiration_time TIMESTAMP WITH TIME ZONE NULL,
+  update_time     TIMESTAMP WITH TIME ZONE NULL,
   CONSTRAINT pk_state PRIMARY KEY (key)
 );
 
 -- Index for TTL-based cleanup
-CREATE INDEX idx_state_expire ON dapr_state.state (expire_date)
-  WHERE expire_date IS NOT NULL;
+-- Oracle B-tree indexes automatically exclude all-NULL entries,
+-- so no partial index clause is needed.
+CREATE INDEX idx_state_expire ON dapr_state.state (expiration_time);
 ```
 
 ## Dapr Component Configuration
@@ -77,12 +77,8 @@ spec:
       key: connectionString
   - name: tableName
     value: "STATE"
-  - name: schemaName
-    value: "DAPR_STATE"
   - name: oracleWalletLocation
     value: "/opt/oracle/wallets"
-  - name: cleanupInterval
-    value: "1h"
 ```
 
 Create the connection string secret:
@@ -112,6 +108,10 @@ import io.dapr.client.DaprClient;
 import io.dapr.client.DaprClientBuilder;
 import io.dapr.client.domain.State;
 import io.dapr.client.domain.StateOptions;
+import io.dapr.client.domain.TransactionalStateOperation;
+import io.dapr.client.domain.TransactionalStateOperation.OperationType;
+
+import java.util.List;
 
 public class OracleStateExample {
     public static void main(String[] args) {
@@ -134,7 +134,7 @@ public class OracleStateExample {
                 "oracle-state",
                 List.of(
                     new TransactionalStateOperation<>(
-                        OperationType.upsert,
+                        OperationType.UPSERT,
                         new State<>("customer:C001",
                             new CustomerState("C001", "ACME Corp", 600000.00),
                             null, new StateOptions(StateOptions.Consistency.STRONG, null))
@@ -157,4 +157,4 @@ For Oracle Data Guard failover, use a SCAN listener connection string:
 
 ## Summary
 
-Oracle Database as a Dapr state store enables enterprise teams to adopt microservices incrementally while reusing existing Oracle infrastructure and expertise. The Oracle Autonomous Database with wallet-based authentication provides secure, managed connectivity. Using Oracle's native TTL-based cleanup and partition pruning keeps the state table performant as data volume grows.
+Oracle Database as a Dapr state store enables enterprise teams to adopt microservices incrementally while reusing existing Oracle infrastructure and expertise. The Oracle Autonomous Database with wallet-based authentication provides secure, managed connectivity. Using TTL-based expiration keeps the state table performant as data volume grows.
