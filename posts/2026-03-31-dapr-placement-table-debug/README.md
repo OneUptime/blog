@@ -21,10 +21,10 @@ The Dapr Placement service maintains a distributed hash table mapping actor type
 Start debugging by examining placement service logs:
 
 ```bash
-kubectl logs -n dapr-system -l app=dapr-placement-server --tail=100
+kubectl logs -n dapr-system -l app=dapr-placement --tail=100
 
 # Filter for errors specifically
-kubectl logs -n dapr-system -l app=dapr-placement-server | grep -iE "error|warn|fail"
+kubectl logs -n dapr-system -l app=dapr-placement | grep -iE "error|warn|fail"
 ```
 
 ## Verifying Actor Registration
