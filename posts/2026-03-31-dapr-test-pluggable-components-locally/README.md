@@ -16,10 +16,10 @@ Pluggable components run as separate processes communicating with the Dapr sidec
 
 ```bash
 # Create the socket directory Dapr and your component will share
-mkdir -p /tmp/dapr-components
+mkdir -p /tmp/dapr-components-sockets
 
 # Set environment variable for socket location
-export DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components
+export DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets
 ```
 
 ## Running the Component for Local Testing
@@ -31,11 +31,11 @@ From your component directory:
 go build -o ./bin/my-component .
 
 # Run with socket folder set
-DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components ./bin/my-component &
+DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets ./bin/my-component &
 COMPONENT_PID=$!
 
 # Verify the socket was created
-ls -la /tmp/dapr-components/
+ls -la /tmp/dapr-components-sockets/
 # Should show: my-component.sock
 ```
 
@@ -57,14 +57,13 @@ spec:
       value: "test-connection"
 ```
 
-Run Dapr pointing to the component socket:
+Run Dapr with the environment variable set so the sidecar discovers the pluggable component socket:
 
 ```bash
-dapr run \
+DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets dapr run \
   --app-id test-app \
   --app-port 8080 \
   --components-path ./components \
-  --unix-domain-socket /tmp/dapr-components \
   --log-level debug \
   -- python3 -m http.server 8080
 ```
@@ -89,8 +88,8 @@ func TestCustomStateStore_GetSet(t *testing.T) {
     // Initialize
     _, err := store.Init(context.Background(), &proto.InitRequest{
         Metadata: &proto.MetadataRequest{
-            Properties: []*proto.MetadataEntry{
-                {Key: "connectionString", Value: "test"},
+            Properties: map[string]string{
+                "connectionString": "test",
             },
         },
     })
@@ -128,15 +127,14 @@ func TestCustomStateStore_GetSet(t *testing.T) {
 # test-integration.sh
 
 # Start component
-DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components ./bin/my-component &
+DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets ./bin/my-component &
 sleep 1
 
 # Start test app with Dapr
-dapr run \
+DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets dapr run \
   --app-id test-app \
   --app-port 8080 \
   --components-path ./test/components \
-  --unix-domain-socket /tmp/dapr-components \
   -- go run test/main.go &
 sleep 3
 
@@ -160,13 +158,13 @@ kill $!
 
 ```bash
 # Run component with debug logging
-LOG_LEVEL=debug DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components ./bin/my-component
+LOG_LEVEL=debug DAPR_COMPONENTS_SOCKETS_FOLDER=/tmp/dapr-components-sockets ./bin/my-component
 
 # Run Dapr with debug logging
 dapr run --log-level debug ...
 
 # Monitor gRPC traffic with grpcurl
-grpcurl -unix /tmp/dapr-components/my-component.sock \
+grpcurl -unix /tmp/dapr-components-sockets/my-component.sock \
   list dapr.proto.components.v1.StateStore
 ```
 
