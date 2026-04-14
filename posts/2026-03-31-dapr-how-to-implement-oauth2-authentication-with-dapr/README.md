@@ -30,7 +30,7 @@ If the middleware rejects a request (e.g., invalid token), your app never sees i
 
 ## Configuring the OAuth2 Middleware
 
-Dapr supports two OAuth2 middleware components:
+Dapr supports three OAuth2-related middleware components:
 
 - `middleware.http.oauth2` - performs the OAuth2 authorization code flow (for browser-based flows)
 - `middleware.http.oauth2clientcredentials` - performs client credentials flow (service-to-service)
@@ -226,8 +226,7 @@ spec:
     handlers:
     - name: oauth2-middleware
       type: middleware.http.bearer
-  # Note: outbound middleware requires Dapr 1.11+
-  httpPipelineOutbound:
+  appHttpPipeline:
     handlers:
     - name: oauth2-outbound
       type: middleware.http.oauth2clientcredentials
