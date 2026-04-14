@@ -87,16 +87,20 @@ Configure TTL on events when they are stored. Dapr state stores that support TTL
 func AppendEventWithTTL(client dapr.Client, event Event, ttlSeconds int) error {
     key := fmt.Sprintf("%s:%s:%d", event.AggregateType, event.AggregateID, event.Sequence)
 
+    data, err := json.Marshal(event)
+    if err != nil {
+        return fmt.Errorf("failed to marshal event: %w", err)
+    }
+
     return client.SaveStateWithETag(
         context.Background(),
         "event-store",
         key,
-        event,
+        data,
         "",
         map[string]string{
             "ttlInSeconds": fmt.Sprintf("%d", ttlSeconds),
         },
-        nil,
     )
 }
 ```
@@ -105,26 +109,27 @@ Note: Only use TTL for events where you have taken a snapshot. Expiring events w
 
 ## Running Compaction as a Scheduled Job
 
-Run compaction as a Dapr jobs API scheduled task:
+Schedule compaction programmatically using the Dapr Jobs API:
 
-```yaml
-# Schedule compaction every night at 2 AM
-apiVersion: dapr.io/v1alpha1
-kind: Job
-metadata:
-  name: event-compaction
-spec:
-  schedule: "0 2 * * *"
-  data:
-    aggregateTypes: ["Order", "User", "Product"]
-    retentionDays: 90
+```go
+// Schedule compaction every night at 2 AM using the Dapr Jobs API
+schedule := "0 2 * * *"
+job := &dapr.Job{
+    Name:     "event-compaction",
+    Schedule: &schedule,
+}
+if err := client.ScheduleJobAlpha1(context.Background(), job); err != nil {
+    log.Fatalf("failed to schedule compaction job: %v", err)
+}
 ```
 
 ```go
-// Job handler
-http.HandleFunc("/jobs/event-compaction", func(w http.ResponseWriter, r *http.Request) {
-    var config CompactionConfig
-    json.NewDecoder(r.Body).Decode(&config)
+// Job handler — Dapr calls POST /job/<name> when the job triggers
+http.HandleFunc("/job/event-compaction", func(w http.ResponseWriter, r *http.Request) {
+    config := CompactionConfig{
+        AggregateTypes: []string{"Order", "User", "Product"},
+        RetentionDays:  90,
+    }
 
     cutoff := time.Now().AddDate(0, 0, -config.RetentionDays)
     for _, aggType := range config.AggregateTypes {
