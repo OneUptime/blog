@@ -21,14 +21,15 @@ There are two ways to define subscriptions:
 Create a `Subscription` custom resource:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-subscription
   namespace: default
 spec:
   topic: orders
-  route: /orders/received
+  routes:
+    default: /orders/received
   pubsubname: pubsub
 scopes:
   - order-processor
@@ -86,7 +87,7 @@ Dapr checks your HTTP response to determine what to do next:
 |----------|--------|
 | `{"status": "SUCCESS"}` or 200 | Message acknowledged, removed from queue |
 | `{"status": "RETRY"}` | Dapr retries delivery |
-| `{"status": "DROP"}` | Message dropped, sent to dead-letter topic |
+| `{"status": "DROP"}` | Message dropped, warning logged |
 | 5xx error | Dapr retries delivery |
 
 ## Programmatic Subscription
@@ -106,12 +107,16 @@ def subscribe():
         {
             'pubsubname': 'pubsub',
             'topic': 'orders',
-            'route': '/orders/received'
+            'routes': {
+                'default': '/orders/received'
+            }
         },
         {
             'pubsubname': 'pubsub',
             'topic': 'payments',
-            'route': '/payments/received'
+            'routes': {
+                'default': '/payments/received'
+            }
         }
     ]
     return jsonify(subscriptions)
@@ -135,14 +140,16 @@ def receive_payment():
 
 ```python
 from dapr.ext.grpc import App
+from dapr.ext.grpc._response import TopicEventResponse
 import json
 
 app = App()
 
 @app.subscribe(pubsub_name='pubsub', topic='orders')
-def order_subscriber(event) -> None:
+def order_subscriber(event) -> TopicEventResponse:
     data = json.loads(event.Data())
     print(f"Received order: {data}")
+    return TopicEventResponse('success')
 ```
 
 ## Routing Messages Based on Content
@@ -150,7 +157,7 @@ def order_subscriber(event) -> None:
 Use routing rules to send messages to different endpoints based on content:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-routing-subscription
@@ -185,4 +192,4 @@ curl -X POST http://localhost:<your-app-port>/orders/received \
 
 ## Summary
 
-Dapr topic subscriptions can be declared via YAML `Subscription` resources or programmatically via the `/dapr/subscribe` endpoint. Your application receives messages as HTTP POST requests to your defined routes, wrapped in CloudEvent envelopes. Return `{"status": "SUCCESS"}` to acknowledge, `RETRY` for transient failures, or `DROP` to discard problematic messages. Routing rules allow content-based message routing to different handlers within the same application.
+Dapr topic subscriptions can be declared via YAML `Subscription` resources or programmatically via the `/dapr/subscribe` endpoint. Your application receives messages as HTTP POST requests to your defined routes, wrapped in CloudEvent envelopes. Return `{"status": "SUCCESS"}` to acknowledge, `RETRY` for transient failures, or `DROP` to discard problematic messages (a warning is logged). Routing rules allow content-based message routing to different handlers within the same application.
