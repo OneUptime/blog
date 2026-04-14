@@ -136,19 +136,19 @@ func PriorityDispatcherWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     ctx.GetInput(&task)
 
     // Critical tasks: immediate processing
-    if task.Priority == int(PriorityCritical) {
-        return ctx.CallActivity(ProcessTask, workflow.ActivityInput(task)).Await(nil)
+    if task.Priority == PriorityCritical {
+        return ctx.CallActivity(ProcessTask, workflow.WithActivityInput(task)).Await(nil)
     }
 
     // High priority: small delay
-    if task.Priority == int(PriorityHigh) {
+    if task.Priority == PriorityHigh {
         ctx.CreateTimer(2 * time.Second).Await(nil)
-        return ctx.CallActivity(ProcessTask, workflow.ActivityInput(task)).Await(nil)
+        return ctx.CallActivity(ProcessTask, workflow.WithActivityInput(task)).Await(nil)
     }
 
     // Low priority: wait for off-peak hours
     ctx.CreateTimer(30 * time.Minute).Await(nil)
-    return ctx.CallActivity(ProcessTask, workflow.ActivityInput(task)).Await(nil)
+    return ctx.CallActivity(ProcessTask, workflow.WithActivityInput(task)).Await(nil)
 }
 ```
 
