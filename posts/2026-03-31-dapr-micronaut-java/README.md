@@ -31,6 +31,10 @@ Add Dapr SDK to `pom.xml`:
     <version>1.10.0</version>
 </dependency>
 <dependency>
+    <groupId>io.micronaut.reactor</groupId>
+    <artifactId>micronaut-reactor</artifactId>
+</dependency>
+<dependency>
     <groupId>io.micronaut</groupId>
     <artifactId>micronaut-http-client</artifactId>
 </dependency>
