@@ -14,7 +14,7 @@ The Dapr Rust SDK (`dapr` crate) provides an async-first client for interacting 
 
 ## Prerequisites
 
-- Rust 1.70 or higher
+- Rust 1.78 or higher
 - Cargo
 - Dapr CLI installed
 
@@ -27,7 +27,7 @@ dapr init
 ```toml
 # Cargo.toml
 [dependencies]
-dapr = "0.13"
+dapr = "0.17"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -58,21 +58,20 @@ The Dapr gRPC port defaults to `50001`. Override it with the `DAPR_GRPC_PORT` en
 export DAPR_GRPC_PORT=50001
 ```
 
-Or connect explicitly:
+Or connect with an explicit port using `connect_with_port`:
 
 ```rust
-use std::env;
-
-let port: u16 = env::var("DAPR_GRPC_PORT")
-    .unwrap_or_else(|_| "50001".to_string())
-    .parse()?;
-let addr = format!("https://127.0.0.1:{}", port);
-let mut client = Client::<dapr::client::TonicClient>::connect(addr).await?;
+let addr = "https://127.0.0.1".to_string();
+let port = "50001".to_string();
+let mut client = Client::<dapr::client::TonicClient>::connect_with_port(addr, port).await?;
 ```
+
+Note that `Client::connect` reads `DAPR_GRPC_PORT` internally and appends it to the address, so you should not include the port in the address string when using `connect`.
 
 ## Saving and Retrieving State
 
 ```rust
+use dapr::Client;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -93,18 +92,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         stock: 100,
     };
 
-    // Save state
+    // Save state (value must be Vec<u8>)
     client
-        .save_state("statestore", "product-001", &product)
+        .save_state(
+            "statestore",
+            "product-001",
+            serde_json::to_vec(&product)?,
+            None,
+            None,
+            None,
+        )
         .await?;
     println!("State saved");
 
-    // Get state
-    let result: Option<Product> = client
+    // Get state (returns GetStateResponse with data as Vec<u8>)
+    let response = client
         .get_state("statestore", "product-001", None)
         .await?;
 
-    if let Some(p) = result {
+    if !response.data.is_empty() {
+        let p: Product = serde_json::from_slice(&response.data)?;
         println!("Retrieved: {} at ${}", p.name, p.price);
     }
 
