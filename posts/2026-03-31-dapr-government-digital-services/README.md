@@ -51,10 +51,10 @@ spec:
   metadata:
   - name: vaultAddr
     value: "https://vault.agency.gov:8200"
-  - name: tlsClientCert
-    value: "/certs/client.crt"
-  - name: tlsClientKey
-    value: "/certs/client.key"
+  - name: caCert
+    value: "/certs/ca.crt"
+  - name: skipVerify
+    value: "false"
   - name: vaultTokenMountPath
     value: "/var/run/secrets/vault"
 ```
