@@ -28,7 +28,7 @@ import (
 )
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "inventory-service:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -70,7 +70,7 @@ import (
 
 func main() {
     // Connect to local Dapr sidecar, not directly to inventory-service
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50001",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -150,7 +150,7 @@ dapr run \
   --app-id order-service \
   --app-protocol grpc \
   --app-port 50052 \
-  --components-path ./components \
+  --resources-path ./components \
   -- go run main.go
 ```
 
