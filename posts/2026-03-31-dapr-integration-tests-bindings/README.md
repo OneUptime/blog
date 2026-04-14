@@ -15,9 +15,9 @@ Dapr bindings connect your application to external systems like cron schedulers,
 - **Output bindings**: Your app writes to an external system (e.g., send email, write to S3)
 - **Input bindings**: An external trigger invokes your app (e.g., cron job, queue message)
 
-## Test Setup for Output Bindings
+## Test Setup for Input Bindings
 
-Use a cron output binding to trigger a scheduled operation and verify the result:
+Use a cron input binding to trigger a scheduled operation and verify the result:
 
 ```yaml
 # components/cron-binding.yaml
@@ -136,7 +136,7 @@ func TestHttpOutputBinding(t *testing.T) {
     http.Post(
         "http://localhost:3500/v1.0/bindings/http-output",
         "application/json",
-        strings.NewReader(`{"data": {"key": "value"}, "metadata": {"path": "/target"}}`),
+        strings.NewReader(`{"operation": "post", "data": {"key": "value"}, "metadata": {"path": "/target"}}`),
     )
 
     select {
