@@ -17,7 +17,7 @@ Traefik is a modern reverse proxy and load balancer built for dynamic environmen
 Install Traefik using Helm:
 
 ```bash
-helm repo add traefik https://helm.traefik.io/traefik
+helm repo add traefik https://traefik.github.io/charts
 helm repo update
 
 helm install traefik traefik/traefik -n traefik --create-namespace \
@@ -73,7 +73,7 @@ spec:
 Use Traefik's `IngressRoute` CRD to route traffic to the Dapr sidecar:
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: product-route
@@ -97,7 +97,7 @@ spec:
 Strip the `/products` prefix before forwarding to the Dapr invoke path:
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: strip-prefix
@@ -112,7 +112,7 @@ spec:
 Inject the `dapr-app-id` header so Dapr knows the target service:
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: add-dapr-headers
@@ -127,7 +127,7 @@ spec:
 Configure Traefik to manage TLS certificates automatically:
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: product-route-tls
@@ -137,6 +137,9 @@ spec:
   routes:
     - match: Host(`api.example.com`) && PathPrefix(`/products`)
       kind: Rule
+      middlewares:
+        - name: strip-prefix
+        - name: add-dapr-headers
       services:
         - name: product-service
           port: 3500
@@ -149,7 +152,7 @@ spec:
 Send a request through Traefik to the Dapr-managed service:
 
 ```bash
-curl https://api.example.com/products/v1.0/invoke/product-service/method/list
+curl https://api.example.com/products/list
 ```
 
 Traefik handles TLS termination and prefix stripping, then forwards the request to the Dapr sidecar, which routes it to the product service container.
