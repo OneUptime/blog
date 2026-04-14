@@ -52,8 +52,6 @@ spec:
     value: "orders-events"
   - name: outboxDiscardWhenMissingState
     value: "false"
-  - name: outboxPollInterval
-    value: "50ms"
 ```
 
 Configure the pub/sub component:
@@ -74,7 +72,7 @@ spec:
 
 ## Writing Transactions with the Outbox
 
-When you use Dapr's transactional state API with outbox enabled, include outbox metadata in your state operations.
+When you use Dapr's transactional state API with outbox enabled, Dapr automatically publishes a message to the configured pub/sub topic for each state operation in the transaction. You do not need to create separate outbox records — just save your state normally and Dapr handles the rest. You can optionally customize the CloudEvent envelope using `cloudevent.*` metadata on individual operations.
 
 ```python
 import requests
@@ -91,14 +89,12 @@ def create_order_with_outbox(order: dict) -> str:
     Dapr's outbox will publish the event after the transaction commits.
     """
     order_id = order.get("orderId", str(uuid.uuid4()))
-    event_id = str(uuid.uuid4())
 
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/state/{STATE_STORE}/transaction"
 
     transaction_body = {
         "operations": [
             {
-                # Save the order state
                 "operation": "upsert",
                 "request": {
                     "key": f"order:{order_id}",
@@ -108,27 +104,10 @@ def create_order_with_outbox(order: dict) -> str:
                         "amount": order.get("amount"),
                         "status": "created",
                         "createdAt": datetime.utcnow().isoformat() + "Z"
-                    }
-                }
-            },
-            {
-                # Write the outbox event - Dapr reads and publishes this
-                "operation": "upsert",
-                "request": {
-                    "key": f"outbox:{event_id}",
-                    "value": {
-                        "id": event_id,
-                        "type": "OrderCreated",
-                        "source": "order-service",
-                        "orderId": order_id,
-                        "customerId": order.get("customerId"),
-                        "amount": order.get("amount"),
-                        "timestamp": datetime.utcnow().isoformat() + "Z"
                     },
                     "metadata": {
-                        "outbox.publishTopic": "orders-events",
-                        "outbox.eventType": "OrderCreated",
-                        "ttlInSeconds": "3600"
+                        "cloudevent.type": "OrderCreated",
+                        "cloudevent.source": "order-service"
                     }
                 }
             }
@@ -177,7 +156,7 @@ def subscribe():
 def handle_order_event():
     envelope = request.json
     event_data = envelope.get("data", {})
-    event_type = event_data.get("type", "")
+    event_type = envelope.get("type", "")
 
     print(f"Received event: {event_type}")
 
@@ -279,4 +258,4 @@ if __name__ == "__main__":
 
 ## Summary
 
-The Dapr outbox pattern eliminates the dual-write problem in distributed microservices by atomically persisting state changes and pending event records in a single transaction. You learned how to enable Dapr's native outbox feature using state store metadata, write transactional operations that include outbox event records, build downstream subscribers that consume reliably delivered events, and implement a manual outbox relay for scenarios where the native feature is unavailable. This approach ensures your microservices publish exactly the events that correspond to committed state changes, making your system data-consistent and resilient to failures.
+The Dapr outbox pattern eliminates the dual-write problem in distributed microservices by atomically persisting state changes and publishing events in a single transaction. You learned how to enable Dapr's native outbox feature using state store metadata, write transactional state operations that Dapr automatically publishes as events, build downstream subscribers that consume reliably delivered events, and implement a manual outbox relay for scenarios where the native feature is unavailable. This approach ensures your microservices publish exactly the events that correspond to committed state changes, making your system data-consistent and resilient to failures.
