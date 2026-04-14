@@ -100,8 +100,8 @@ public async Task ServiceInvocation_RetriesAfterTransientFailures()
     stopwatch.Stop();
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    // Exponential backoff: ~1s + ~2s = at least 3s total
-    Assert.True(stopwatch.Elapsed > TimeSpan.FromSeconds(2));
+    // Exponential backoff adds measurable delay across retries
+    Assert.True(stopwatch.Elapsed > TimeSpan.FromSeconds(1));
 }
 ```
 
@@ -154,23 +154,9 @@ public async Task CircuitBreaker_OpensAfterConsecutiveFailures()
 }
 ```
 
-## Chaos Testing with Dapr Fault Injection
+## Chaos Testing Beyond Stubs
 
-Dapr 1.14+ supports fault injection via configuration:
-
-```yaml
-# components/fault-injection.yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: fault-config
-spec:
-  httpPipeline:
-    handlers:
-    - name: fault
-      type: middleware.http.fault
-      version: v1
-```
+For more advanced fault injection beyond application-level stubs, consider external chaos engineering tools such as Chaos Mesh or Litmus that can inject network-level faults (latency, packet loss, partition) between your services and the Dapr sidecar. These tools complement the stub-based approach shown above by testing infrastructure-level failures that application code cannot simulate.
 
 ## Summary
 
