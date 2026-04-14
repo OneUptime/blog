@@ -60,7 +60,9 @@ Log4j 2 is the standard enterprise logging framework for Java applications. When
             <JsonLayout compact="true" eventEol="true" objectMessageAsJsonObject="true">
                 <KeyValuePair key="service" value="order-service"/>
             </JsonLayout>
-            <TimeBasedTriggeringPolicy/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+            </Policies>
         </RollingFile>
     </Appenders>
 
@@ -84,7 +86,10 @@ import io.dapr.client.DaprClientBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.ThreadContext;
+import io.dapr.client.domain.HttpExtension;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -103,7 +108,7 @@ public class OrderController {
         // Propagate Dapr trace context to Log4j ThreadContext
         String traceParent = headers.getOrDefault("traceparent", "");
         ThreadContext.put("traceId", extractTraceId(traceParent));
-        ThreadContext.put("daprAppId", headers.getOrDefault("dapr-app-id", "unknown"));
+        ThreadContext.put("daprAppId", headers.getOrDefault("dapr-caller-app-id", "unknown"));
 
         try {
             logger.info("Creating order orderId={} customerId={}",
