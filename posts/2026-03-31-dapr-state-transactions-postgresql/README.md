@@ -34,22 +34,22 @@ spec:
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import TransactionalStateOperation, OperationType
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 with DaprClient() as client:
     operations = [
         TransactionalStateOperation(
-            operation_type=OperationType.upsert,
+            operation_type=TransactionOperationType.upsert,
             key="order:456",
             data='{"status": "confirmed", "total": 150.00}'
         ),
         TransactionalStateOperation(
-            operation_type=OperationType.upsert,
+            operation_type=TransactionOperationType.upsert,
             key="inventory:item-99",
             data='{"quantity": 48}'
         ),
         TransactionalStateOperation(
-            operation_type=OperationType.delete,
+            operation_type=TransactionOperationType.delete,
             key="cart:user-789"
         ),
     ]
@@ -65,32 +65,25 @@ with DaprClient() as client:
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import TransactionalStateOperation, OperationType, StateOptions, Consistency, Concurrency
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 # Read current state to get ETags
 with DaprClient() as client:
     order = client.get_state("statestore", "order:456")
     inventory = client.get_state("statestore", "inventory:item-99")
 
-    options = StateOptions(
-        concurrency=Concurrency.first_write,
-        consistency=Consistency.strong
-    )
-
     operations = [
         TransactionalStateOperation(
-            operation_type=OperationType.upsert,
+            operation_type=TransactionOperationType.upsert,
             key="order:456",
             data='{"status": "shipped"}',
-            etag=order.etag,
-            options=options
+            etag=order.etag
         ),
         TransactionalStateOperation(
-            operation_type=OperationType.upsert,
+            operation_type=TransactionOperationType.upsert,
             key="inventory:item-99",
             data='{"quantity": 47}',
-            etag=inventory.etag,
-            options=options
+            etag=inventory.etag
         ),
     ]
 
@@ -107,9 +100,9 @@ If any operation in the transaction fails (e.g., ETag mismatch), PostgreSQL roll
 ```sql
 -- Dapr executes this internally
 BEGIN;
-  UPDATE dapr_state SET value = $1, etag = gen_random_uuid()
+  UPDATE state SET value = $1, etag = gen_random_uuid()
     WHERE key = $2 AND etag = $3;
-  UPDATE dapr_state SET value = $4, etag = gen_random_uuid()
+  UPDATE state SET value = $4, etag = gen_random_uuid()
     WHERE key = $5 AND etag = $6;
 COMMIT;
 -- If any UPDATE affects 0 rows, Dapr raises an error and PostgreSQL rolls back
@@ -126,19 +119,20 @@ def process_payment(order_id, amount):
             # Step 1: reserve funds
             client.execute_state_transaction("statestore", [
                 TransactionalStateOperation(
-                    OperationType.upsert, f"reservation:{order_id}",
-                    f'{{"amount": {amount}, "status": "reserved"}}'
+                    key=f"reservation:{order_id}",
+                    data=f'{{"amount": {amount}, "status": "reserved"}}'
                 )
             ])
 
             # Step 2: update order
             client.execute_state_transaction("statestore", [
                 TransactionalStateOperation(
-                    OperationType.upsert, f"order:{order_id}",
-                    '{"paymentStatus": "paid"}'
+                    key=f"order:{order_id}",
+                    data='{"paymentStatus": "paid"}'
                 ),
                 TransactionalStateOperation(
-                    OperationType.delete, f"reservation:{order_id}"
+                    operation_type=TransactionOperationType.delete,
+                    key=f"reservation:{order_id}"
                 )
             ])
         except Exception as e:
