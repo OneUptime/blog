@@ -47,9 +47,9 @@ def publish_with_headers(event_type: str, priority: str, region: str, payload: d
                 # These become CloudEvents extensions / headers
                 "cloudevent.type": event_type,
                 "cloudevent.source": "order-service",
-                "priority": priority,      # custom header
-                "region": region,          # custom header
-                "version": "v2",           # custom header
+                "cloudevent.priority": priority,      # custom extension
+                "cloudevent.region": region,          # custom extension
+                "cloudevent.version": "v2",           # custom extension
             },
         )
 
@@ -74,16 +74,16 @@ spec:
   routes:
     rules:
     # Route by event type AND priority header
-    - match: 'event.type == "order.created" && event.extensions.priority == "high"'
+    - match: 'event.type == "order.created" && event.priority == "high"'
       path: /events/priority-orders
     # Route by region header
-    - match: 'event.extensions.region == "eu-west"'
+    - match: 'event.region == "eu-west"'
       path: /events/eu
     # Route by event type only
     - match: 'event.type == "order.cancelled"'
       path: /events/cancellations
     # Route by version header
-    - match: 'event.extensions.version == "v2"'
+    - match: 'event.version == "v2"'
       path: /events/v2
     default: /events/default
   scopes:
@@ -99,12 +99,12 @@ const { DaprServer, DaprClient } = require('@dapr/dapr');
 const client = new DaprClient();
 
 async function publishEvent(type, headers, data) {
-  await client.pubsub.publish('events-pubsub', 'system-events', data, {
-    metadata: {
-      'cloudevent.type': type,
-      ...headers,
-    },
-  });
+  // Prefix custom keys with 'cloudevent.' so they become CloudEvents extensions
+  const metadata = { 'cloudevent.type': type };
+  for (const [key, value] of Object.entries(headers)) {
+    metadata[`cloudevent.${key}`] = value;
+  }
+  await client.pubsub.publish('events-pubsub', 'system-events', data, { metadata });
 }
 
 // Subscriber
@@ -114,11 +114,11 @@ server.pubsub.subscribeWithOptions('events-pubsub', 'system-events', {
   route: {
     rules: [
       {
-        match: 'event.extensions.priority == "high"',
+        match: 'event.priority == "high"',
         path: '/events/high-priority',
       },
       {
-        match: 'event.extensions.region == "eu-west"',
+        match: 'event.region == "eu-west"',
         path: '/events/eu',
       },
     ],
