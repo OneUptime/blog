@@ -107,9 +107,9 @@ async function placeOrder(orderId, cartId, item) {
 Include an ETag to prevent conflicts when multiple services update the same key:
 
 ```javascript
-const { data: currentOrder, etag } = await client.state.getWithETag(
+const [{ data: currentOrder, etag }] = await client.state.getBulk(
   "statestore",
-  "order-123"
+  ["order-123"]
 );
 
 await client.state.transaction("statestore", [
@@ -118,7 +118,8 @@ await client.state.transaction("statestore", [
     request: {
       key: "order-123",
       value: { ...currentOrder, status: "shipped" },
-      options: { concurrency: "first-write", etag },
+      etag,
+      options: { concurrency: "first-write" },
     },
   },
 ]);
