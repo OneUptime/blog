@@ -28,8 +28,7 @@ Create the JWT signing secret:
 
 ```bash
 kubectl create secret generic auth-secrets \
-  --from-literal=jwtSigningKey=$(openssl rand -base64 64) \
-  --from-literal=bcryptCost=12
+  --from-literal=jwtSigningKey=$(openssl rand -base64 64)
 ```
 
 ## Authentication Service
@@ -40,6 +39,7 @@ package main
 import (
     "context"
     "encoding/json"
+    "fmt"
     "net/http"
     "time"
     "github.com/golang-jwt/jwt/v5"
@@ -62,7 +62,7 @@ func NewAuthService() (*AuthService, error) {
     secret, err := client.GetSecret(
         context.Background(),
         "secretstore",
-        "jwtSigningKey",
+        "auth-secrets",
         nil,
     )
     if err != nil {
