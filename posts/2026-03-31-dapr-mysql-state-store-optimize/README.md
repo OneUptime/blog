@@ -53,9 +53,9 @@ Dapr creates the state table automatically. Review and optimize the schema:
 -- Review the auto-created table structure
 DESCRIBE dapr_state.state;
 
--- Add index for TTL cleanup (expiredAt column)
-CREATE INDEX idx_state_expiredat
-  ON dapr_state.state (expiredAt)
+-- Add index for TTL cleanup (expiredate column)
+CREATE INDEX idx_state_expiredate
+  ON dapr_state.state (expiredate)
   ALGORITHM=INPLACE LOCK=NONE;
 
 -- Analyze table statistics
@@ -71,8 +71,9 @@ SHOW INDEX FROM dapr_state.state;
 -- Set buffer pool to 70-80% of available RAM (e.g., 4GB for 6GB RAM)
 SET GLOBAL innodb_buffer_pool_size = 4294967296;
 
--- Use multiple buffer pool instances for high concurrency
-SET GLOBAL innodb_buffer_pool_instances = 4;
+-- innodb_buffer_pool_instances is not dynamic;
+-- set in my.cnf and restart the server:
+-- innodb_buffer_pool_instances = 4
 
 -- Tune log file size for write-heavy workloads
 -- (set in my.cnf, requires restart)
@@ -94,7 +95,8 @@ innodb_flush_log_at_trx_commit = 2
 innodb_io_capacity = 2000
 innodb_io_capacity_max = 4000
 max_connections = 500
-thread_pool_size = 16
+# thread_pool_size requires MySQL Enterprise Edition
+# thread_pool_size = 16
 ```
 
 ## ProxySQL Connection Pooling
@@ -120,7 +122,7 @@ SAVE MYSQL SERVERS TO DISK;
 
 ```python
 import dapr.clients as dapr
-from dapr.clients.grpc._state import TransactionalStateOperation, OperationType
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 import json
 
 def atomic_order_update(order_id: str, user_id: str, new_status: str):
@@ -129,12 +131,12 @@ def atomic_order_update(order_id: str, user_id: str, new_status: str):
             TransactionalStateOperation(
                 key=f"order:{order_id}",
                 data=json.dumps({"status": new_status, "updatedAt": "2026-03-31"}),
-                operation_type=OperationType.upsert
+                operation_type=TransactionOperationType.upsert
             ),
             TransactionalStateOperation(
                 key=f"user-order-history:{user_id}",
                 data=json.dumps({"lastOrderId": order_id, "lastStatus": new_status}),
-                operation_type=OperationType.upsert
+                operation_type=TransactionOperationType.upsert
             )
         ]
 
