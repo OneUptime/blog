@@ -100,16 +100,14 @@ func (svc *NotificationService) HandleNotification(ctx context.Context, e *commo
 }
 
 func (svc *NotificationService) sendEmail(ctx context.Context, notif Notification) error {
-    body := fmt.Sprintf(`{
-        "emailTo": "%s",
-        "subject": "%s",
-        "htmlBody": "%s"
-    }`, notif.Channel, notif.Subject, svc.renderTemplate(notif))
-
     _, err := svc.daprClient.InvokeBinding(ctx, &dapr.InvokeBindingRequest{
         Name:      "sendgrid-email",
         Operation: "create",
-        Data:      []byte(body),
+        Data:      []byte(svc.renderTemplate(notif)),
+        Metadata: map[string]string{
+            "emailTo": notif.Channel,
+            "subject": notif.Subject,
+        },
     })
     return err
 }
@@ -126,8 +124,6 @@ spec:
   type: bindings.twilio.sms
   version: v1
   metadata:
-    - name: toNumber
-      value: "+15551234567"
     - name: fromNumber
       value: "+15559876543"
     - name: accountSid
@@ -142,14 +138,13 @@ spec:
 
 ```go
 func (svc *NotificationService) sendSMS(ctx context.Context, notif Notification) error {
-    body, _ := json.Marshal(map[string]string{
-        "toNumber": notif.Channel,
-        "body":     notif.Body,
-    })
     _, err := svc.daprClient.InvokeBinding(ctx, &dapr.InvokeBindingRequest{
         Name:      "twilio-sms",
         Operation: "create",
-        Data:      body,
+        Data:      []byte(notif.Body),
+        Metadata: map[string]string{
+            "toNumber": notif.Channel,
+        },
     })
     return err
 }
