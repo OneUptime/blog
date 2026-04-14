@@ -123,9 +123,10 @@ spec:
 
 | Status | Meaning |
 |---|---|
-| 200-299 | Success, response passed through |
-| 404 | Target app not found or endpoint not registered |
-| 500 | Target app returned 5xx |
+| XXX | Upstream status returned from target app |
+| 400 | Method name not given |
+| 403 | Invocation forbidden by access control |
+| 500 | Request failed or target app unreachable |
 
 ## Summary
 
