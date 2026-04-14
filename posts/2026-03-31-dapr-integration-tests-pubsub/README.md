@@ -31,6 +31,8 @@ services:
 
   publisher:
     build: ./publisher
+    ports:
+      - "3500:3500"
     environment:
       - DAPR_HTTP_PORT=3500
 
@@ -44,6 +46,9 @@ services:
       - "/components"
     volumes:
       - ./components:/components
+    network_mode: "service:publisher"
+    depends_on:
+      - publisher
 
   subscriber:
     build: ./subscriber
@@ -62,6 +67,9 @@ services:
       - "/components"
     volumes:
       - ./components:/components
+    network_mode: "service:subscriber"
+    depends_on:
+      - subscriber
 ```
 
 ## Pub/Sub Component for Testing
@@ -88,10 +96,9 @@ spec:
 # test_pubsub.py
 import requests
 import time
-import threading
 import pytest
 
-received_messages = []
+SUBSCRIBER_URL = "http://localhost:8081"
 
 def test_publish_and_receive():
     # Publish a message via Dapr
@@ -102,10 +109,11 @@ def test_publish_and_receive():
     )
     assert resp.status_code == 204
 
-    # Wait for the subscriber to process the message
+    # Poll the subscriber to verify the message was received
     deadline = time.time() + 10
     while time.time() < deadline:
-        if "integration-test-001" in received_messages:
+        received = requests.get(f"{SUBSCRIBER_URL}/received").json()
+        if "integration-test-001" in received:
             return
         time.sleep(0.5)
 
@@ -120,20 +128,47 @@ The subscriber service exposes an endpoint that Dapr calls when a message arrive
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+received_messages = []
+dead_letter_messages = []
 
 @app.route("/dapr/subscribe", methods=["GET"])
 def subscribe():
-    return jsonify([{
-        "pubsubname": "test-pubsub",
-        "topic": "orders",
-        "route": "/orders"
-    }])
+    return jsonify([
+        {
+            "pubsubname": "test-pubsub",
+            "topic": "orders",
+            "route": "/orders",
+            "deadLetterTopic": "orders-deadletter"
+        },
+        {
+            "pubsubname": "test-pubsub",
+            "topic": "orders-deadletter",
+            "route": "/dead-letters"
+        }
+    ])
 
 @app.route("/orders", methods=["POST"])
 def handle_order():
     data = request.json
-    received_messages.append(data.get("data", {}).get("orderId"))
+    order_id = data.get("data", {}).get("orderId")
+    if order_id == "FAIL_THIS":
+        return jsonify({"status": "RETRY"})
+    received_messages.append(order_id)
     return jsonify({"status": "SUCCESS"})
+
+@app.route("/dead-letters", methods=["POST"])
+def handle_dead_letter():
+    data = request.json
+    dead_letter_messages.append(data.get("data", {}).get("orderId"))
+    return jsonify({"status": "SUCCESS"})
+
+@app.route("/received", methods=["GET"])
+def get_received():
+    return jsonify(received_messages)
+
+@app.route("/dead-letter-messages", methods=["GET"])
+def get_dead_letters():
+    return jsonify(dead_letter_messages)
 ```
 
 ## Testing Dead Letter Topics
@@ -147,9 +182,15 @@ def test_dead_letter_routing():
         "http://localhost:3500/v1.0/publish/test-pubsub/orders",
         json={"orderId": "FAIL_THIS"},
     )
-    time.sleep(5)
-    # Check the dead letter topic received the message
-    assert "FAIL_THIS" in dead_letter_messages
+    # Poll the subscriber's dead letter endpoint
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        dead_letters = requests.get(f"{SUBSCRIBER_URL}/dead-letter-messages").json()
+        if "FAIL_THIS" in dead_letters:
+            return
+        time.sleep(0.5)
+
+    pytest.fail("Message was not routed to dead letter topic within timeout")
 ```
 
 ## Running the Tests
