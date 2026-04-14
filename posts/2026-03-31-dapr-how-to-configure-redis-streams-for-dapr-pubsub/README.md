@@ -84,10 +84,6 @@ spec:
     value: "60s"
   - name: redeliverInterval
     value: "30s"
-  - name: maxRetries
-    value: "3"
-  - name: maxRetryWaitTime
-    value: "120s"
   - name: concurrency
     value: "10"
   - name: queueDepth
@@ -98,7 +94,7 @@ Key metadata fields:
 - `maxLenApprox` - approximate maximum stream length before trimming
 - `processingTimeout` - how long before a message is considered unacknowledged
 - `redeliverInterval` - how often to check for unacknowledged messages
-- `maxRetries` - retry count before sending to dead letter
+- `concurrency` - number of concurrent workers processing messages
 
 ## Publisher Example
 
@@ -176,20 +172,40 @@ app.listen(3000, () => console.log('Subscriber listening on port 3000'));
 
 ## Configuring Dead Letter Topics
 
-Route failed messages to a dead letter topic after max retries:
+Route failed messages to a dead letter topic after delivery retries are exhausted:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
   deadLetterTopic: orders-dlq
-  metadata:
-    maxDeliveryCount: "3"
+```
+
+Control how many retries occur before dead-lettering by defining a resiliency policy:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: pubsub-resiliency
+spec:
+  policies:
+    retries:
+      pubsubRetry:
+        policy: constant
+        duration: 5s
+        maxRetries: 3
+  targets:
+    components:
+      pubsub:
+        inbound:
+          retry: pubsubRetry
 ```
 
 Subscribe to the dead letter queue:
