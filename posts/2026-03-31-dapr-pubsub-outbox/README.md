@@ -38,18 +38,16 @@ flowchart TD
 
 ## Enabling the Outbox Feature
 
-In your Dapr configuration:
+The outbox pattern is enabled by adding outbox metadata fields to your state store component configuration. No separate feature flag is required in the Dapr Configuration resource.
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: daprConfig
-spec:
-  features:
-  - name: ActorStateTTL
-    enabled: true
-```
+The key metadata fields on the state store component are:
+
+- `outboxPublishPubsub`: The pub/sub component to publish outbox messages to
+- `outboxPublishTopic`: The topic to publish outbox messages to
+- `outboxPubsub`: (Optional) The pub/sub used internally by Dapr for the outbox mechanism
+- `outboxDiscardWhenMissingState`: (Optional) Discard the message if the state entry is missing
+
+See the next section for a complete component configuration example.
 
 ## Configuring the State Store for Outbox
 
