@@ -21,18 +21,20 @@ dapr = "0.13"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-prost = "0.12"
+prost = "0.11"
+prost-types = "0.11"
 ```
 
 ## Basic Service Invocation
 
 ```rust
 use dapr::Client;
+use prost_types::Any;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::<dapr::client::TonicClient>::connect(
-        "https://127.0.0.1".to_string()
+        "https://127.0.0.1:50001".to_string()
     ).await?;
 
     let request_body = serde_json::json!({
@@ -44,7 +46,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoke_service(
             "order-service",
             "create-order",
-            Some(serde_json::to_vec(&request_body)?)
+            Some(Any {
+                type_url: String::new(),
+                value: serde_json::to_vec(&request_body)?,
+            })
         )
         .await?;
 
@@ -63,6 +68,7 @@ Deserialize the response into a typed struct:
 
 ```rust
 use serde::Deserialize;
+use prost_types::Any;
 
 #[derive(Deserialize, Debug)]
 struct OrderResponse {
@@ -82,7 +88,14 @@ async fn create_order(
     });
 
     let response = client
-        .invoke_service("order-service", "create-order", Some(serde_json::to_vec(&body)?))
+        .invoke_service(
+            "order-service",
+            "create-order",
+            Some(Any {
+                type_url: String::new(),
+                value: serde_json::to_vec(&body)?,
+            })
+        )
         .await?;
 
     let data = response.data.unwrap_or_default().value;
@@ -160,8 +173,6 @@ dapr invoke \
 ## Error Handling for Service Calls
 
 ```rust
-use dapr::error::Status;
-
 match client.invoke_service("order-service", "create-order", Some(body)).await {
     Ok(response) => {
         println!("Success: {:?}", response.data);
