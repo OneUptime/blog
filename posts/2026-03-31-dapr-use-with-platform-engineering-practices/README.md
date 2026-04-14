@@ -80,7 +80,7 @@ jobs:
       - name: Check required Dapr annotations
         run: |
           APP_ID=$(yq '.spec.template.metadata.annotations["dapr.io/app-id"]' k8s/deployment.yaml)
-          if [ -z "$APP_ID" ]; then
+          if [ -z "$APP_ID" ] || [ "$APP_ID" = "null" ]; then
             echo "ERROR: dapr.io/app-id annotation missing"
             exit 1
           fi
