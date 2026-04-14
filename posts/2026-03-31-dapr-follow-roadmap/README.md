@@ -56,7 +56,6 @@ Significant features go through a proposal process:
 gh issue list \
   --repo dapr/proposals \
   --state open \
-  --label "proposal" \
   --limit 20
 
 # Watch the proposals repo for notifications
@@ -88,8 +87,8 @@ gh api repos/dapr/dapr/subscription \
   -X PUT \
   -f subscribed=true
 
-# Filter email notifications to only include feature issues
-# GitHub Settings -> Notifications -> Filter by label: "feature-request"
+# Filter notifications in your GitHub inbox using:
+# label:kind/feature repo:dapr/dapr
 ```
 
 ## Automate Roadmap Monitoring
@@ -108,7 +107,7 @@ echo "-- Features --"
 gh issue list \
   --repo "$REPO" \
   --milestone "$MILESTONE" \
-  --label "feature-request" \
+  --label "kind/feature" \
   --state open \
   --json number,title \
   --jq '.[] | "#\(.number): \(.title)"'
@@ -118,7 +117,7 @@ echo "-- Bug Fixes --"
 gh issue list \
   --repo "$REPO" \
   --milestone "$MILESTONE" \
-  --label "bug" \
+  --label "kind/bug" \
   --state open \
   --json number,title \
   --jq '.[] | "#\(.number): \(.title)"'
@@ -138,7 +137,7 @@ To suggest features or vote on existing proposals:
 gh issue create \
   --repo dapr/dapr \
   --title "feat: add support for X in building block Y" \
-  --label "feature-request" \
+  --label "kind/feature" \
   --body "## Use Case
 I need this because...
 
