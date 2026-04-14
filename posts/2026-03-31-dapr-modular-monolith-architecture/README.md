@@ -134,7 +134,7 @@ spec:
     - name: redisHost
       value: redis:6379
     - name: keyPrefix
-      value: orders
+      value: name
 ```
 
 ## Extracting a Module to Microservice
@@ -152,7 +152,7 @@ No inter-module communication code changes needed - Dapr handles routing automat
 # Update subscription routing
 kubectl patch subscription inventory-subscription \
   --type merge \
-  -p '{"spec":{"route":"/inventory/on-order-created"}}'
+  -p '{"spec":{"routes":{"default":"/inventory/on-order-created"}}}'
 ```
 
 ## Summary
