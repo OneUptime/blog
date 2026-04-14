@@ -69,11 +69,11 @@ close   - close the database connection
 curl -X POST http://localhost:3500/v1.0/bindings/mysql-db \
   -H "Content-Type: application/json" \
   -d '{
-    "data": {
+    "operation": "exec",
+    "metadata": {
       "sql": "INSERT INTO users (id, name, email) VALUES (?, ?, ?)",
-      "params": ["u001", "Alice", "alice@example.com"]
-    },
-    "operation": "exec"
+      "params": "[\"u001\", \"Alice\", \"alice@example.com\"]"
+    }
   }'
 ```
 
@@ -85,11 +85,11 @@ Note: MySQL uses `?` as a placeholder (not `$1` like PostgreSQL).
 curl -X POST http://localhost:3500/v1.0/bindings/mysql-db \
   -H "Content-Type: application/json" \
   -d '{
-    "data": {
+    "operation": "query",
+    "metadata": {
       "sql": "SELECT id, name, email FROM users WHERE active = ?",
-      "params": [1]
-    },
-    "operation": "query"
+      "params": "[1]"
+    }
   }'
 ```
 
@@ -97,8 +97,8 @@ Response:
 
 ```json
 [
-  ["u001", "Alice", "alice@example.com"],
-  ["u002", "Bob", "bob@example.com"]
+  {"id": "u001", "name": "Alice", "email": "alice@example.com"},
+  {"id": "u002", "name": "Bob", "email": "bob@example.com"}
 ]
 ```
 
@@ -111,34 +111,34 @@ const client = new DaprClient();
 const BINDING = 'mysql-db';
 
 async function createUser(user) {
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'INSERT INTO users (id, name, email, created_at) VALUES (?, ?, ?, NOW())',
-    params: [user.id, user.name, user.email],
+    params: JSON.stringify([user.id, user.name, user.email]),
   });
   console.log('User created:', user.id);
 }
 
 async function getUserById(userId) {
-  const rows = await client.binding.send(BINDING, 'query', {
+  const resp = await client.binding.send(BINDING, 'query', '', {
     sql: 'SELECT id, name, email, created_at FROM users WHERE id = ? LIMIT 1',
-    params: [userId],
+    params: JSON.stringify([userId]),
   });
-  if (!rows || rows.length === 0) return null;
-  const [id, name, email, createdAt] = rows[0];
+  if (!resp || resp.length === 0) return null;
+  const { id, name, email, created_at: createdAt } = resp[0];
   return { id, name, email, createdAt };
 }
 
 async function updateUserEmail(userId, newEmail) {
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'UPDATE users SET email = ?, updated_at = NOW() WHERE id = ?',
-    params: [newEmail, userId],
+    params: JSON.stringify([newEmail, userId]),
   });
 }
 
 async function deleteInactiveUsers(daysSinceActive) {
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'DELETE FROM users WHERE last_login < DATE_SUB(NOW(), INTERVAL ? DAY)',
-    params: [daysSinceActive],
+    params: JSON.stringify([daysSinceActive]),
   });
 }
 ```
@@ -156,7 +156,8 @@ def exec_sql(sql: str, params: list = None):
         client.invoke_binding(
             binding_name=BINDING,
             operation='exec',
-            data=json.dumps({'sql': sql, 'params': params or []})
+            data='',
+            binding_metadata={'sql': sql, 'params': json.dumps(params or [])}
         )
 
 def query_sql(sql: str, params: list = None):
@@ -164,7 +165,8 @@ def query_sql(sql: str, params: list = None):
         resp = client.invoke_binding(
             binding_name=BINDING,
             operation='query',
-            data=json.dumps({'sql': sql, 'params': params or []})
+            data='',
+            binding_metadata={'sql': sql, 'params': json.dumps(params or [])}
         )
         return json.loads(resp.text())
 
@@ -180,7 +182,7 @@ rows = query_sql(
     [50.0]
 )
 for row in rows:
-    print(f"Product: {row[1]}, Price: ${row[2]}")
+    print(f"Product: {row['name']}, Price: ${row['price']}")
 ```
 
 ## Handle Transactions via Multiple Exec Calls
@@ -190,15 +192,15 @@ The MySQL binding does not natively support multi-statement transactions in a si
 ```javascript
 async function transferFunds(fromAccount, toAccount, amount) {
   // Step 1: Debit
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?',
-    params: [amount, fromAccount, amount],
+    params: JSON.stringify([amount, fromAccount, amount]),
   });
 
   // Step 2: Credit
-  await client.binding.send(BINDING, 'exec', {
+  await client.binding.send(BINDING, 'exec', '', {
     sql: 'UPDATE accounts SET balance = balance + ? WHERE id = ?',
-    params: [amount, toAccount],
+    params: JSON.stringify([amount, toAccount]),
   });
 
   console.log(`Transferred $${amount} from ${fromAccount} to ${toAccount}`);
