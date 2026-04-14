@@ -66,7 +66,7 @@ allow {
 
 allow {
   input.request.method == "DELETE"
-  "admin" in input.request.headers["x-user-roles"]
+  input.request.headers["x-user-roles"] == "admin"
 }
 ```
 
@@ -94,7 +94,7 @@ spec:
   metadata:
   - name: rego
     value: |
-      package http.authz
+      package http
       default allow = false
       allow {
         input.request.method != "DELETE"
