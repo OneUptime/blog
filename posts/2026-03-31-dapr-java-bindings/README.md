@@ -19,17 +19,20 @@ import io.dapr.client.DaprClient;
 import io.dapr.client.DaprClientBuilder;
 import io.dapr.client.domain.InvokeBindingRequest;
 
+import java.util.Map;
+
 public class BindingExample {
     public static void main(String[] args) throws Exception {
         try (DaprClient client = new DaprClientBuilder().build()) {
 
             // Send an email via SendGrid binding
-            Map<String, Object> emailData = Map.of(
-                "emailTo", "user@example.com",
-                "subject", "Order Confirmed",
-                "body", "Your order ord-1 has been confirmed.");
+            InvokeBindingRequest request = new InvokeBindingRequest("sendgrid", "create")
+                .setData("Your order ord-1 has been confirmed.")
+                .setMetadata(Map.of(
+                    "emailTo", "user@example.com",
+                    "subject", "Order Confirmed"));
 
-            client.invokeBinding("sendgrid", "create", emailData).block();
+            client.invokeBinding(request).block();
             System.out.println("Email sent");
         }
     }
@@ -97,30 +100,32 @@ public class CronController {
 }
 ```
 
-## Input Binding: AWS S3 Upload Trigger
+## Input Binding: Kafka Consumer
 
 ```yaml
-# components/s3-input.yaml
+# components/kafka-input.yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: s3-trigger
+  name: kafka-input
 spec:
-  type: bindings.aws.s3
+  type: bindings.kafka
   version: v1
   metadata:
-    - name: bucket
-      value: "my-uploads-bucket"
-    - name: region
-      value: "us-east-1"
+    - name: brokers
+      value: "kafka:9092"
+    - name: topics
+      value: "file-uploads"
+    - name: consumerGroup
+      value: "upload-processor"
 ```
 
 ```java
-@PostMapping("/s3-trigger")
-public ResponseEntity<Void> handleS3Upload(@RequestBody S3Event event) {
-    System.out.printf("New file uploaded: %s (%d bytes)%n",
-        event.getKey(), event.getSize());
-    processUpload(event.getKey());
+@PostMapping("/kafka-input")
+public ResponseEntity<Void> handleUploadEvent(@RequestBody(required = false) byte[] body) {
+    String message = new String(body, java.nio.charset.StandardCharsets.UTF_8);
+    System.out.println("Received event: " + message);
+    processEvent(message);
     return ResponseEntity.ok().build();
 }
 ```
@@ -137,4 +142,4 @@ System.out.println("Response: " + new String(result));
 
 ## Summary
 
-Dapr bindings in Java decouple your service from vendor-specific SDKs. Output bindings are a single `invokeBinding` call, while input bindings are handled by a Spring Boot `@PostMapping` endpoint whose path matches the component name. This makes adding new integrations - cron triggers, cloud storage events, message queues - a matter of adding a YAML component and a new controller method.
+Dapr bindings in Java decouple your service from vendor-specific SDKs. Output bindings are a single `invokeBinding` call, while input bindings are handled by a Spring Boot `@PostMapping` endpoint whose path matches the component name. This makes adding new integrations - cron triggers, message queues, email services - a matter of adding a YAML component and a new controller method.
