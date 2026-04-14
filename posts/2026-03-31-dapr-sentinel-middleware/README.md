@@ -44,7 +44,7 @@ spec:
         [
           {
             "resource": "POST:/api/orders",
-            "strategy": 0,
+            "strategy": 1,
             "retryTimeoutMs": 3000,
             "minRequestAmount": 10,
             "statIntervalMs": 5000,
@@ -72,7 +72,7 @@ Flow rules limit requests per resource:
 
 - `tokenCalculateStrategy: 0` = direct concurrency counting
 - `controlBehavior: 0` = reject excess requests
-- `controlBehavior: 2` = queue excess requests (warm-up)
+- `controlBehavior: 1` = throttle excess requests (queue with rate limiting)
 
 ## Circuit Breaker Rules
 
@@ -80,7 +80,7 @@ Flow rules limit requests per resource:
 [
   {
     "resource": "POST:/api/payments",
-    "strategy": 0,
+    "strategy": 1,
     "retryTimeoutMs": 5000,
     "minRequestAmount": 5,
     "statIntervalMs": 10000,
@@ -89,7 +89,7 @@ Flow rules limit requests per resource:
 ]
 ```
 
-- `strategy: 0` = error ratio based
+- `strategy: 1` = error ratio based
 - `threshold: 0.4` = open circuit when 40% of requests fail
 - `retryTimeoutMs` = wait 5 seconds before trying to close the circuit
 
