@@ -144,8 +144,10 @@ resources:
 kubectl logs -n monitoring deployment/otel-collector | \
   grep "TracesExporter" | tail -20
 
-# Prometheus metric for accepted vs dropped spans
-dapr_sampling_rate
+# Prometheus metrics for accepted vs dropped spans (from OTel Collector)
+# otelcol_processor_tail_sampling_count_traces_sampled
+# otelcol_processor_tail_sampling_count_spans_sampled
+# otelcol_exporter_sent_spans
 ```
 
 ## Summary
