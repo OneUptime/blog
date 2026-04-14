@@ -25,6 +25,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "log"
 
     "github.com/dapr/go-sdk/service/common"
@@ -119,7 +120,7 @@ dapr run \
 
 | Feature | HTTP Service | gRPC Service |
 |---|---|---|
-| Serialization | JSON (CloudEvents) | Protobuf |
+| Serialization | JSON | Protobuf |
 | Latency | Higher | Lower |
 | Browser friendly | Yes | No |
 | Streaming | Limited | Full |
