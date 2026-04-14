@@ -23,7 +23,7 @@ kind: Configuration
 metadata:
   name: dapr-config
 spec:
-  metric:
+  metrics:
     enabled: true
   tracing:
     samplingRate: "1"
@@ -73,7 +73,7 @@ Track consumer processing rate:
 
 ```promql
 # Messages processed per second
-rate(dapr_component_pubsub_ingress_count{success="true",topic="OrderPlaced"}[1m])
+rate(dapr_component_pubsub_ingress_count{status="success",topic="OrderPlaced"}[1m])
 ```
 
 Monitor processing latency P99:
@@ -172,8 +172,8 @@ kafka-consumer-groups.sh \
   --describe \
   --group dapr-consumer-group
 
-# Prometheus JMX exporter metrics
-kafka_consumer_group_lag{group="dapr-consumer-group", topic="OrderPlaced"}
+# Kafka exporter metrics (e.g., danielqsj/kafka_exporter)
+kafka_consumergroup_lag{consumergroup="dapr-consumer-group", topic="OrderPlaced"}
 ```
 
 Grafana alert for consumer lag:
@@ -183,12 +183,12 @@ groups:
 - name: dapr-pubsub
   rules:
   - alert: DaprConsumerLagHigh
-    expr: kafka_consumer_group_lag{group=~"dapr-.*"} > 1000
+    expr: kafka_consumergroup_lag{consumergroup=~"dapr-.*"} > 1000
     for: 5m
     labels:
       severity: warning
     annotations:
-      summary: "Dapr consumer group {{ $labels.group }} is lagging"
+      summary: "Dapr consumer group {{ $labels.consumergroup }} is lagging"
 ```
 
 ## Summary
