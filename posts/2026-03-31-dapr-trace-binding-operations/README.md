@@ -98,13 +98,13 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "myaccount"
-    - name: storageAccessKey
+    - name: accountKey
       secretKeyRef:
         name: storage-secret
         key: accessKey
-    - name: container
+    - name: containerName
       value: "uploads"
 ```
 
@@ -147,21 +147,21 @@ Dapr binding spans include:
 
 | Attribute | Example |
 |---|---|
-| `db.type` | `bindings` |
-| `db.instance` | `kafka-binding` |
-| `db.statement` | operation type |
+| `db.system` | `bindings` |
+| `db.name` | `kafka-binding` |
+| `db.statement` | `POST /v1.0/bindings/kafka-binding` |
 
 ## Searching for Binding Traces
 
 ```bash
 # Find all binding invocations
-curl "http://localhost:16686/api/v2/traces?service=order-service&operation=DaprOutputBinding"
+curl "http://localhost:16686/api/traces?service=order-service&tags=%7B%22db.system%22%3A%22bindings%22%7D"
 
 # Find slow binding calls
-curl "http://localhost:16686/api/v2/traces?service=order-service&minDuration=1000000&operation=DaprOutputBinding"
+curl "http://localhost:16686/api/traces?service=order-service&minDuration=1s&tags=%7B%22db.system%22%3A%22bindings%22%7D"
 
 # Find binding errors
-curl "http://localhost:16686/api/v2/traces?service=order-service&tags=error:true&operation=DaprOutputBinding"
+curl "http://localhost:16686/api/traces?service=order-service&tags=%7B%22error%22%3A%22true%22%2C%22db.system%22%3A%22bindings%22%7D"
 ```
 
 ## Debugging Binding Failures
