@@ -73,7 +73,7 @@ spec:
     - name: model
       value: "llama3.2"
     - name: endpoint
-      value: "http://localhost:11434"
+      value: "http://localhost:11434/v1"
 ```
 
 ## Application Code (Provider-Agnostic)
@@ -91,8 +91,8 @@ def ask_llm(question: str, temperature: float = 0.5) -> str:
     response = requests.post(
         f"{DAPR_URL}/v1.0-alpha1/conversation/{LLM_COMPONENT}/converse",
         json={
-            "inputs": [{"message": question, "role": "user"}],
-            "parameters": {"temperature": temperature, "max_tokens": 500}
+            "inputs": [{"content": question, "role": "user"}],
+            "temperature": temperature
         }
     )
     response.raise_for_status()
@@ -162,7 +162,7 @@ spec:
     - name: model
       value: "llama3.2"
     - name: endpoint
-      value: "http://ollama:11434"
+      value: "http://ollama:11434/v1"
     {{- end }}
 ```
 
@@ -184,7 +184,7 @@ def ask_with_fallback(question: str) -> str:
         try:
             response = requests.post(
                 f"{DAPR_URL}/v1.0-alpha1/conversation/{component}/converse",
-                json={"inputs": [{"message": question, "role": "user"}]},
+                json={"inputs": [{"content": question, "role": "user"}]},
                 timeout=10
             )
             if response.ok:
