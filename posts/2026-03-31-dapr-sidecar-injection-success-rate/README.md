@@ -53,22 +53,22 @@ The sidecar injector exposes metrics for tracking injection operations:
 
 ```bash
 # Total injection requests
-dapr_sidecar_injector_sidecar_injection_requests_total
+dapr_injector_sidecar_injection_requests_total
 
 # Failed injections
-dapr_sidecar_injector_failed_total
+dapr_injector_sidecar_injection_failed_total
 
 # Successful injections
-dapr_sidecar_injector_succeeded_total
+dapr_injector_sidecar_injection_succeeded_total
 ```
 
 Calculate injection success rate:
 
 ```bash
 # Success rate over 5 minutes
-rate(dapr_sidecar_injector_succeeded_total[5m])
+rate(dapr_injector_sidecar_injection_succeeded_total[5m])
 /
-rate(dapr_sidecar_injector_sidecar_injection_requests_total[5m])
+rate(dapr_injector_sidecar_injection_requests_total[5m])
 ```
 
 ## Alerting on Injection Failures
@@ -79,7 +79,7 @@ groups:
     rules:
       - alert: DaprSidecarInjectionHighFailureRate
         expr: >
-          rate(dapr_sidecar_injector_failed_total[5m]) > 0
+          rate(dapr_injector_sidecar_injection_failed_total[5m]) > 0
         for: 2m
         labels:
           severity: warning
