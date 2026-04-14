@@ -28,10 +28,9 @@ Available properties in `application.yml`:
 
 ```yaml
 dapr:
-  http:
-    endpoint: http://localhost:3500
-  grpc:
-    endpoint: localhost:50001
+  client:
+    http-endpoint: http://localhost:3500
+    grpc-endpoint: localhost:50001
   pubsub:
     name: pubsub
   statestore:
@@ -64,13 +63,12 @@ public class DaprConfig {
 
 ## Using DaprStateStoreRepository
 
-The auto-configuration provides a Spring Data-style repository backed by Dapr state store:
+The auto-configuration provides a Spring Data-style repository backed by Dapr state store. Enable it with the `@EnableDaprRepositories` annotation and extend the standard `CrudRepository`:
 
 ```java
-import io.dapr.spring.data.DaprKeyValueRepository;
 import org.springframework.data.repository.CrudRepository;
 
-public interface OrderRepository extends DaprKeyValueRepository<Order, String> {
+public interface OrderRepository extends CrudRepository<Order, String> {
 }
 ```
 
@@ -128,8 +126,10 @@ public class NotificationService {
 To disable specific auto-configured beans, use `@SpringBootApplication(exclude = ...)`:
 
 ```java
+import io.dapr.spring.boot.autoconfigure.client.DaprClientAutoConfiguration;
+
 @SpringBootApplication(exclude = {
-    DaprAutoConfiguration.class
+    DaprClientAutoConfiguration.class
 })
 public class Application {
     public static void main(String[] args) {
