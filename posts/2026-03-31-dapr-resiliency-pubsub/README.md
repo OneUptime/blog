@@ -78,7 +78,7 @@ app.post('/orders', async (req, res) => {
   } catch (err) {
     if (isTransient(err)) {
       // Tell Dapr to retry this message
-      res.status(500).send({ status: 'RETRY' });
+      res.status(200).send({ status: 'RETRY' });
     } else {
       // Tell Dapr to drop this message (dead-letter it)
       res.status(200).send({ status: 'DROP' });
@@ -106,14 +106,15 @@ func ordersHandler(w http.ResponseWriter, r *http.Request) {
 Configure a dead-letter topic for messages that exhaust all retries:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
 spec:
   pubsubname: orders-kafka
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
   deadLetterTopic: orders-dead-letter
 ```
 
