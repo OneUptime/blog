@@ -33,13 +33,9 @@ spec:
       value: "EventStore"
     - name: collection
       value: "DomainEvents"
-    - name: consistencyLevel
-      value: "Strong"
-    - name: contentType
-      value: "application/json"
 ```
 
-Use `consistencyLevel: Strong` to ensure all reads reflect the latest committed writes, which is critical for detecting concurrency conflicts.
+Configure your Cosmos DB account's default consistency level to **Strong** in the Azure portal to ensure all reads reflect the latest committed writes, which is critical for detecting concurrency conflicts. Note that strong consistency requires a single-write-region topology.
 
 ## Event Schema
 
@@ -72,6 +68,7 @@ package eventstore
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -84,12 +81,15 @@ func AppendEvent(ctx context.Context, client dapr.Client, event DomainEvent) err
         event.Sequence,
     )
 
-    opts := &dapr.StateOptions{
-        Concurrency: dapr.StateConcurrencyFirstWrite,
-        Consistency: dapr.StateConsistencyStrong,
+    data, err := json.Marshal(event)
+    if err != nil {
+        return err
     }
 
-    return client.SaveStateWithETag(ctx, "event-store", key, event, "", nil, opts)
+    return client.SaveStateWithETag(ctx, "event-store", key, data, "", nil,
+        dapr.WithConcurrency(dapr.StateConcurrencyFirstWrite),
+        dapr.WithConsistency(dapr.StateConsistencyStrong),
+    )
 }
 ```
 
@@ -98,6 +98,8 @@ func AppendEvent(ctx context.Context, client dapr.Client, event DomainEvent) err
 Iterate over sequence numbers to reconstruct the full event stream:
 
 ```go
+import "encoding/json"
+
 func ReadStream(ctx context.Context, client dapr.Client, aggregateType, aggregateID string, fromSeq int64) ([]DomainEvent, error) {
     var events []DomainEvent
 
@@ -131,11 +133,15 @@ func AppendEvents(ctx context.Context, client dapr.Client, events []DomainEvent)
     for _, event := range events {
         key := fmt.Sprintf("%s||%s||%010d",
             event.AggregateType, event.AggregateID, event.Sequence)
+        data, err := json.Marshal(event)
+        if err != nil {
+            return err
+        }
         ops = append(ops, &dapr.StateOperation{
             Type: dapr.StateOperationTypeUpsert,
             Item: &dapr.SetStateItem{
                 Key:   key,
-                Value: event,
+                Value: data,
                 Options: &dapr.StateOptions{
                     Concurrency: dapr.StateConcurrencyFirstWrite,
                 },
@@ -149,16 +155,16 @@ func AppendEvents(ctx context.Context, client dapr.Client, events []DomainEvent)
 
 ## Global Distribution
 
-To replicate event streams across Azure regions, configure multi-region writes in Cosmos DB and point each region's Dapr sidecar to the local endpoint:
+To replicate event streams across Azure regions, configure multi-region reads in Cosmos DB with a single write region and point each region's Dapr sidecar to the account endpoint:
 
 ```yaml
 metadata:
   - name: url
-    value: "https://myaccount-eastus.documents.azure.com:443/"
-  - name: preferredLocations
-    value: "East US,West Europe,Southeast Asia"
+    value: "https://myaccount.documents.azure.com:443/"
 ```
+
+Cosmos DB automatically routes reads to the nearest available region. Note that strong consistency is only supported with a single-write-region topology. If you enable multi-region writes, the strongest available consistency level is bounded staleness.
 
 ## Summary
 
-Azure Cosmos DB's strong consistency, global distribution, and partition-based scaling make it an excellent backend for a Dapr-powered event store. Sequential key design prevents duplicate events, transactional state operations enable multi-event appends atomically, and the Cosmos DB multi-region write capability keeps event streams replicated worldwide with low latency.
+Azure Cosmos DB's partition-based scaling and global distribution make it an excellent backend for a Dapr-powered event store. Sequential key design prevents duplicate events, transactional state operations enable multi-event appends atomically, and Cosmos DB's multi-region read replicas keep event streams available worldwide with low read latency. Configure strong consistency at the account level with a single write region to ensure linearizable reads for concurrency conflict detection.
