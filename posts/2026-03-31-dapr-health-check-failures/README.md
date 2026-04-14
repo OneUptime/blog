@@ -50,16 +50,16 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "myapp"
   dapr.io/app-port: "8080"
-  dapr.io/sidecar-liveness-probe-delay: "15"
-  dapr.io/sidecar-readiness-probe-delay: "15"
-  dapr.io/sidecar-liveness-probe-period: "20"
-  dapr.io/sidecar-readiness-probe-period: "20"
-  dapr.io/sidecar-liveness-probe-timeout: "5"
+  dapr.io/sidecar-liveness-probe-delay-seconds: "15"
+  dapr.io/sidecar-readiness-probe-delay-seconds: "15"
+  dapr.io/sidecar-liveness-probe-period-seconds: "20"
+  dapr.io/sidecar-readiness-probe-period-seconds: "20"
+  dapr.io/sidecar-liveness-probe-timeout-seconds: "5"
 ```
 
 ## Application Health Endpoint
 
-Dapr can also check your application's health before marking it ready. Configure the app health check in your component or via annotation:
+Dapr can also check your application's health before marking it ready. Configure the app health check via annotations:
 
 ```yaml
 annotations:
@@ -87,14 +87,14 @@ kubectl exec -it <pod-name> -c <app-container> -- \
   curl -s http://localhost:3500/v1.0/healthz
 ```
 
-A healthy response returns an empty body with a `204` or `200` status code.
+A healthy response returns an empty body with a `204 No Content` status code.
 
 ## Component Health Failures
 
 If a required component (like a state store) fails to connect, Dapr may report as unhealthy. Check component status:
 
 ```bash
-dapr components -k -n <namespace>
+dapr components -k --namespace <namespace>
 ```
 
 Fix the underlying component connectivity issue - incorrect credentials, unreachable host, or wrong port.
