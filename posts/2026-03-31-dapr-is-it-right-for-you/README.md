@@ -120,7 +120,6 @@ dapr-sentry-xxx                          1/1
 dapr-placement-server-xxx                1/1
 dapr-scheduler-server-xxx                1/1
 dapr-sidecar-injector-xxx                1/1
-dapr-dashboard-xxx                       1/1
 ```
 
 Each pod is lightweight (<256Mi memory), but your team needs to understand how to:
