@@ -27,13 +27,11 @@ flowchart TD
     A --> C[Deploy dapr-sidecar-injector]
     A --> D[Deploy dapr-placement]
     A --> E[Deploy dapr-sentry]
-    A --> F[Deploy dapr-dashboard]
-    B --> G[dapr-system namespace]
-    C --> G
-    D --> G
-    E --> G
-    F --> G
-    G --> H[Cluster Ready for Dapr Apps]
+    B --> F[dapr-system namespace]
+    C --> F
+    D --> F
+    E --> F
+    F --> G[Cluster Ready for Dapr Apps]
 ```
 
 ## Installing Dapr on Kubernetes with the CLI
@@ -44,7 +42,7 @@ dapr init -k
 
 Expected output:
 
-```yaml
+```text
 Making the jump to hyperspace...
 Note: To install Dapr using Helm, see here: https://docs.dapr.io/getting-started/install-dapr-kubernetes/
 
@@ -89,7 +87,6 @@ dapr-sentry            dapr-system  True     Running   1         1.14.x
 dapr-operator          dapr-system  True     Running   1         1.14.x
 dapr-placement-server  dapr-system  True     Running   1         1.14.x
 dapr-sidecar-injector  dapr-system  True     Running   1         1.14.x
-dapr-dashboard         dapr-system  True     Running   1         0.14.x
 ```
 
 Check the pods directly:
@@ -176,6 +173,14 @@ kubectl apply -f statestore.yaml
 
 ## Accessing the Dapr Dashboard
 
+The Dapr Dashboard is not installed by default. Install it separately with Helm:
+
+```bash
+helm install dapr-dashboard dapr/dapr-dashboard --namespace dapr-system
+```
+
+Then open it with:
+
 ```bash
 dapr dashboard -k
 ```
@@ -208,4 +213,4 @@ helm uninstall dapr --namespace dapr-system
 
 ## Summary
 
-Initializing Dapr on Kubernetes deploys five control plane components into the `dapr-system` namespace: operator, sidecar injector, placement server, sentry (mTLS certificate authority), and dashboard. Applications opt in to Dapr by adding annotations to their pod specs, which triggers automatic sidecar injection. Helm is recommended for production deployments since it provides fine-grained configuration control.
+Initializing Dapr on Kubernetes deploys four control plane components into the `dapr-system` namespace: operator, sidecar injector, placement server, and sentry (mTLS certificate authority). The dashboard can be installed separately via its own Helm chart. Applications opt in to Dapr by adding annotations to their pod specs, which triggers automatic sidecar injection. Helm is recommended for production deployments since it provides fine-grained configuration control.
