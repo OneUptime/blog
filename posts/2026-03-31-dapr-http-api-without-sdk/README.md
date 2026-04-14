@@ -187,12 +187,12 @@ curl "${DAPR_BASE}/v1.0/configuration/configstore/subscribe?key=feature-flags"
 
 ```bash
 # Acquire lock
-curl -X POST ${DAPR_BASE}/v1.0/lock/lockstore \
+curl -X POST ${DAPR_BASE}/v1.0-alpha1/lock/lockstore \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "resource1", "lockOwner": "app-instance-1", "expiryInSeconds": 60}'
 
 # Release lock
-curl -X POST ${DAPR_BASE}/v1.0/unlock/lockstore \
+curl -X POST ${DAPR_BASE}/v1.0-alpha1/unlock/lockstore \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "resource1", "lockOwner": "app-instance-1"}'
 ```
@@ -218,7 +218,6 @@ curl ${DAPR_BASE}/v1.0/metadata
 
 ```python
 import os
-import json
 import requests
 
 BASE = f"http://localhost:{os.environ.get('DAPR_HTTP_PORT', 3500)}"
