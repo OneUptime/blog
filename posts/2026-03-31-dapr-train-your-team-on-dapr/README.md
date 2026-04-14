@@ -75,7 +75,7 @@ cd quickstarts/tutorials/hello-world
 cd quickstarts/pub_sub/python/sdk
 # Engineers add topic routing to the subscription
 
-cd quickstarts/workflow/python/sdk
+cd quickstarts/workflows/python/sdk
 # Advanced: wire up a multi-step workflow
 ```
 
