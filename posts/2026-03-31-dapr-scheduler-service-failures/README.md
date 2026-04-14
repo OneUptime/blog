@@ -74,7 +74,7 @@ When the Scheduler recovers from a failure, verify it is healthy before relying 
 
 ```bash
 # Check all replicas are running
-kubectl get pods -n dapr-system -l app=dapr-scheduler
+kubectl get pods -n dapr-system -l app=dapr-scheduler-server
 
 # Verify etcd leader election
 kubectl exec -n dapr-system dapr-scheduler-0 -- \
@@ -106,15 +106,21 @@ def check_and_replay_missed_jobs():
 
 ## Preventing Single Points of Failure
 
-Always run 3 replicas in production:
+The Dapr Scheduler is deployed as a 3-replica StatefulSet by default (hardcoded in the Helm chart to form a 3-node etcd cluster). Ensure you have not scaled it down manually:
+
+```bash
+kubectl get statefulset -n dapr-system dapr-scheduler-server
+```
+
+If you need to install Dapr with HA enabled for the other control plane services as well, use:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_scheduler.replicaCount=3 \
+  --set global.ha.enabled=true \
   --reuse-values
 ```
 
 ## Summary
 
-Handle Dapr Scheduler failures by running 3 replicas for HA, setting up Prometheus alerts for early detection, and implementing application-level missed-execution detection. After recovery, verify etcd leader election and check that jobs are still registered. Design critical workflows to detect gaps in job execution and replay them when needed.
+Handle Dapr Scheduler failures by verifying the default 3-replica StatefulSet is healthy, setting up Prometheus alerts for early detection, and implementing application-level missed-execution detection. After recovery, verify etcd leader election and check that jobs are still registered. Design critical workflows to detect gaps in job execution and replay them when needed.
