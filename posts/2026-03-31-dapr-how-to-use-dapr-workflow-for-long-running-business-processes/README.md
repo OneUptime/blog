@@ -56,10 +56,17 @@ public class LoanApplicationWorkflow : Workflow<LoanApplication, LoanDecision>
         });
 
         // Wait up to 3 business days for underwriter decision
-        var underwriterDecision = await context.WaitForExternalEventAsync<UnderwriterDecision>(
-            eventName: "underwriter-decision",
-            timeout: TimeSpan.FromDays(3)
-        );
+        UnderwriterDecision? underwriterDecision = null;
+        try
+        {
+            underwriterDecision = await context.WaitForExternalEventAsync<UnderwriterDecision>(
+                eventName: "underwriter-decision",
+                timeout: TimeSpan.FromDays(3));
+        }
+        catch (TaskCanceledException)
+        {
+            // Timed out waiting for underwriter
+        }
 
         if (underwriterDecision == null)
         {
@@ -68,10 +75,16 @@ public class LoanApplicationWorkflow : Workflow<LoanApplication, LoanDecision>
             await context.CallActivityAsync(nameof(EscalateApplicationActivity), app);
 
             // Wait another 2 days for escalation response
-            underwriterDecision = await context.WaitForExternalEventAsync<UnderwriterDecision>(
-                "underwriter-decision",
-                TimeSpan.FromDays(2)
-            );
+            try
+            {
+                underwriterDecision = await context.WaitForExternalEventAsync<UnderwriterDecision>(
+                    "underwriter-decision",
+                    TimeSpan.FromDays(2));
+            }
+            catch (TaskCanceledException)
+            {
+                // Timed out again
+            }
 
             if (underwriterDecision == null)
             {
@@ -99,10 +112,17 @@ public class LoanApplicationWorkflow : Workflow<LoanApplication, LoanDecision>
         context.SetCustomStatus("Awaiting applicant signature");
         await context.CallActivityAsync(nameof(SendDocumentsToApplicantActivity), documentPackage);
 
-        var signature = await context.WaitForExternalEventAsync<SignatureEvent>(
-            "documents-signed",
-            TimeSpan.FromDays(7)
-        );
+        SignatureEvent? signature = null;
+        try
+        {
+            signature = await context.WaitForExternalEventAsync<SignatureEvent>(
+                "documents-signed",
+                TimeSpan.FromDays(7));
+        }
+        catch (TaskCanceledException)
+        {
+            // Timed out waiting for signature
+        }
 
         if (signature == null)
         {
@@ -140,7 +160,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0/workflows/dapr/LoanApplicationWorkflow/loan-app-001/raiseEvent/underwriter-decision" \
+  "http://localhost:3500/v1.0/workflows/dapr/loan-app-001/raiseEvent/underwriter-decision" \
   -H "Content-Type: application/json" \
   -d '{
     "approved": true,
@@ -154,7 +174,7 @@ curl -X POST \
 ## Check Workflow Status Anytime
 
 ```bash
-curl "http://localhost:3500/v1.0/workflows/dapr/LoanApplicationWorkflow/loan-app-001"
+curl "http://localhost:3500/v1.0/workflows/dapr/loan-app-001"
 ```
 
 Response:
@@ -180,7 +200,7 @@ async function getApplicationStatus(instanceId) {
   const status = await client.workflow.get(instanceId);
 
   return {
-    id: status.instanceId,
+    id: status.instanceID,
     status: status.runtimeStatus,
     currentStep: status.customStatus,
     startedAt: status.createdAt,
