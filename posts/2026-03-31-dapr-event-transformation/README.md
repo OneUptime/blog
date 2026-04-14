@@ -17,7 +17,7 @@ Event transformation converts incoming events from one format or schema to anoth
 Transform events as they arrive in your subscriber:
 
 ```javascript
-const { DaprServer, DaprClient } = require('@dapr/dapr');
+const { DaprServer, DaprClient, DaprPubSubStatusEnum } = require('@dapr/dapr');
 const server = new DaprServer();
 const client = new DaprClient();
 
@@ -131,7 +131,7 @@ await server.pubsub.subscribe('pubsub', 'orders-v1', async (event) => {
   try {
     const transformed = transformOrderV1ToV2(event);
     await client.pubsub.publish('pubsub', 'orders-v2', transformed);
-    return { status: 'SUCCESS' };
+    return DaprPubSubStatusEnum.SUCCESS;
   } catch (err) {
     console.error('Transformation failed:', err.message);
     await client.pubsub.publish('pubsub', 'transform-failures', {
@@ -139,7 +139,7 @@ await server.pubsub.subscribe('pubsub', 'orders-v1', async (event) => {
       error: err.message,
       timestamp: Date.now()
     });
-    return { status: 'DROP' };
+    return DaprPubSubStatusEnum.DROP;
   }
 });
 ```
