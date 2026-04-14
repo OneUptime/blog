@@ -23,7 +23,7 @@ kubectl get statefulset -n dapr-system dapr-placement-server
 
 ## Scaling to High Availability
 
-Scale the placement service to 3 replicas for single-zone HA, or 5 replicas for multi-zone deployments, through the Helm release that manages the Dapr control plane:
+Enable HA mode to scale the placement service to 3 replicas (the replica count is hardcoded and cannot be changed) through the Helm release that manages the Dapr control plane:
 
 ```bash
 helm upgrade --install dapr dapr/dapr \
@@ -31,7 +31,6 @@ helm upgrade --install dapr dapr/dapr \
   --create-namespace \
   --set global.ha.enabled=true \
   --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --set dapr_placement.keepAliveTime=2s
 ```
 
@@ -90,8 +89,8 @@ topologySpreadConstraints:
 curl http://dapr-placement-server-0.dapr-system:9090/metrics | grep -E "placement|raft"
 
 # Key metrics:
-# dapr_placement_runtimehosts_total - number of registered sidecars
-# dapr_placement_actortypes_total - number of registered actor types
+# dapr_placement_runtimes_total - number of registered runtimes (sidecars)
+# dapr_placement_actor_runtimes_total - number of registered actor runtimes
 ```
 
 ```bash
@@ -111,4 +110,4 @@ dapr_placement:
 
 ## Summary
 
-Scale the Dapr placement service to at least 3 replicas in production to provide Raft consensus fault tolerance. Use the documented Helm values such as `global.ha.enabled`, `dapr_placement.ha`, `dapr_placement.replicaCount`, and the keep-alive settings rather than relying on undocumented placement internals. Combine that with Pod Disruption Budgets, topology spread constraints, and metrics-based monitoring to keep actor routing healthy at scale.
+Scale the Dapr placement service to 3 replicas in production by enabling HA mode, which provides Raft consensus fault tolerance. Use the documented Helm values such as `global.ha.enabled`, `dapr_placement.ha`, and the keep-alive settings rather than relying on undocumented placement internals. Combine that with Pod Disruption Budgets, topology spread constraints, and metrics-based monitoring to keep actor routing healthy at scale.
