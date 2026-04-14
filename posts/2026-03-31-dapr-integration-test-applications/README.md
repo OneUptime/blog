@@ -22,7 +22,7 @@ dapr run \
   --app-id order-service \
   --app-port 5000 \
   --dapr-http-port 3500 \
-  --components-path ./components/test \
+  --resources-path ./components/test \
   -- dotnet run --project OrderService &
 
 APP_PID=$!
@@ -157,4 +157,4 @@ public async Task PlaceOrder_PublishesOrderCreatedEvent()
 
 ## Summary
 
-Integration tests for Dapr applications use real Dapr sidecars with in-memory components so tests run fast without external infrastructure. Start your service with `dapr run` pointing to test components, then call its HTTP endpoints and verify state was persisted using the Dapr client directly. In-memory state and pub/sub components are perfect for CI/CD pipelines.
+Integration tests for Dapr applications use real Dapr sidecars with in-memory components so tests run fast without external infrastructure. Start your service with `dapr run` pointing to a test resources directory, then call its HTTP endpoints and verify state was persisted using the Dapr client directly. In-memory state and pub/sub components are perfect for CI/CD pipelines.
