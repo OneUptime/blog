@@ -10,7 +10,7 @@ Description: Learn how to write unit tests for Dapr applications by mocking the 
 
 ## Unit Testing Philosophy for Dapr
 
-Unit tests should verify business logic in isolation. When your service uses `DaprClient` to save state or publish events, the test should not spin up a real Dapr sidecar. Instead, mock the `DaprClient` interface so tests run fast and deterministically.
+Unit tests should verify business logic in isolation. When your service uses `DaprClient` to save state or publish events, the test should not spin up a real Dapr sidecar. Instead, mock the `DaprClient` abstract class so tests run fast and deterministically.
 
 ## Mocking DaprClient with Moq (C#)
 
@@ -63,7 +63,7 @@ public class OrderServiceTests
                 "statestore",
                 It.IsAny<string>(),
                 It.IsAny<OrderRequest>(),
-                It.IsAny<IReadOnlyList<StateOptions>>(),
+                It.IsAny<StateOptions>(),
                 It.IsAny<IReadOnlyDictionary<string, string>>(),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -89,7 +89,7 @@ public class OrderServiceTests
             "statestore",
             orderId,
             request,
-            It.IsAny<IReadOnlyList<StateOptions>>(),
+            It.IsAny<StateOptions>(),
             It.IsAny<IReadOnlyDictionary<string, string>>(),
             It.IsAny<CancellationToken>()), Times.Once);
 
