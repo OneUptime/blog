@@ -13,7 +13,7 @@ Description: Learn how Dapr uses mutual TLS (mTLS) to encrypt and authenticate a
 Dapr's Sentry service acts as a certificate authority (CA), automatically issuing short-lived workload certificates to every Dapr sidecar. All service-to-service communication between Dapr sidecars is encrypted and mutually authenticated using these certificates - with no application code changes required.
 
 Key properties:
-- All inter-sidecar traffic is encrypted with TLS 1.3
+- All inter-sidecar traffic is encrypted with TLS (1.2 minimum)
 - Each sidecar has its own certificate identifying it by app ID
 - Certificates rotate automatically (default: 24 hours)
 - mTLS can be disabled per namespace for development/testing
@@ -97,16 +97,20 @@ metadata:
     dapr.io/config: "app-config"
 ```
 
-To disable mTLS globally (affects the Dapr control plane):
+To disable mTLS globally via Helm (affects the Dapr control plane):
 
 ```bash
-dapr mtls disable -k
+helm upgrade dapr dapr/dapr \
+  --namespace dapr-system \
+  --set global.mtls.enabled=false
 ```
 
 Re-enable:
 
 ```bash
-dapr mtls enable -k
+helm upgrade dapr dapr/dapr \
+  --namespace dapr-system \
+  --set global.mtls.enabled=true
 ```
 
 ## Custom Root Certificate
