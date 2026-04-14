@@ -59,7 +59,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: https://httpbin.org/post
+    value: https://httpbin.org
   - name: direction
     value: "output"
 ```
@@ -68,7 +68,7 @@ spec:
 
 ```python
 # app.py
-from flask import Flask, request, jsonify
+from flask import Flask
 import requests
 import os
 
@@ -182,7 +182,7 @@ kind: Component
 metadata:
   name: sendgrid
 spec:
-  type: bindings.sendgrid
+  type: bindings.twilio.sendgrid
   version: v1
   metadata:
   - name: apiKey
@@ -238,7 +238,7 @@ Different binding types support different operations:
 | `bindings.http` | `create` |
 | `bindings.aws.s3` | `create`, `get`, `delete`, `list` |
 | `bindings.kafka` | `create` |
-| `bindings.sendgrid` | `create` |
+| `bindings.twilio.sendgrid` | `create` |
 | `bindings.azure.storagequeues` | `create` |
 
 ## Summary
