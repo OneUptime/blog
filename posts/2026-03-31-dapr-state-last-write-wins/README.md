@@ -50,7 +50,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
 ## Using the Node.js SDK
 
 ```javascript
-const { DaprClient, ConcurrencyOptions } = require('@dapr/dapr');
+const { DaprClient } = require('@dapr/dapr');
 const client = new DaprClient();
 
 // Last-write-wins is the default
