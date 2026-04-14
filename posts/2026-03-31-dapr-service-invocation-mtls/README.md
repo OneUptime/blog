@@ -94,24 +94,14 @@ openssl x509 -req -days 365 -in issuer.csr \
   -CA ca.crt -CAkey ca.key -CAcreateserial -out issuer.crt
 ```
 
-Create the Kubernetes secret:
-
-```bash
-kubectl create secret generic dapr-trust-bundle \
-  --from-file=ca.crt=ca.crt \
-  --from-file=issuer.crt=issuer.crt \
-  --from-file=issuer.key=issuer.key \
-  -n dapr-system
-```
-
 Install Dapr with the custom CA:
 
 ```bash
 helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
-  --set-string dapr_sentry.trustAnchorsFile=ca.crt \
-  --set-string dapr_sentry.issuerCertFile=issuer.crt \
-  --set-string dapr_sentry.issuerKeyFile=issuer.key
+  --set-string dapr_sentry.tls.root.certPEM="$(cat ca.crt)" \
+  --set-string dapr_sentry.tls.issuer.certPEM="$(cat issuer.crt)" \
+  --set-string dapr_sentry.tls.issuer.keyPEM="$(cat issuer.key)"
 ```
 
 ## Enabling mTLS in Self-Hosted Mode
@@ -203,8 +193,8 @@ kubectl rollout restart deployment/dapr-sentry -n dapr-system
 Use `tcpdump` or Wireshark to verify traffic between sidecars is encrypted:
 
 ```bash
-# On the node, capture traffic on port 3500 (if you can reach it)
-tcpdump -i eth0 -n port 3500 -w capture.pcap
+# On the node, capture traffic on the Dapr internal gRPC port (default 50002)
+tcpdump -i eth0 -n port 50002 -w capture.pcap
 ```
 
 All inter-sidecar traffic should show TLS handshake records, not plaintext.
