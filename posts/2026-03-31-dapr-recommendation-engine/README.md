@@ -28,6 +28,8 @@ package main
 import (
     "context"
     "encoding/json"
+    "time"
+
     "github.com/dapr/go-sdk/actor"
 )
 
@@ -40,7 +42,7 @@ type UserProfile struct {
 }
 
 type UserProfileActor struct {
-    actor.ServerImplBase
+    actor.ServerImplBaseCtx
 }
 
 func (a *UserProfileActor) Type() string {
@@ -73,6 +75,9 @@ func (a *UserProfileActor) RecordPurchase(ctx context.Context, req *PurchaseEven
 
     profile.PurchasedItems = append(profile.PurchasedItems, req.ItemID)
     // Purchases carry more weight than views
+    if profile.CategoryScores == nil {
+        profile.CategoryScores = make(map[string]float64)
+    }
     profile.CategoryScores[req.Category] += 5.0
     profile.LastUpdated = time.Now().Unix()
 
@@ -102,14 +107,14 @@ func (bp *BehaviorProcessor) HandleViewEvent(ctx context.Context, e *common.Topi
     json.Unmarshal(e.RawData, &event)
 
     // Update user profile actor
-    return false, bp.daprClient.InvokeActorMethod(
-        ctx,
-        "UserProfile",
-        event.UserID,
-        "RecordView",
-        ViewEvent{ItemID: event.ItemID, Category: event.Category},
-        nil,
-    )
+    data, _ := json.Marshal(ViewEvent{ItemID: event.ItemID, Category: event.Category})
+    _, err := bp.daprClient.InvokeActor(ctx, &dapr.InvokeActorRequest{
+        ActorType: "UserProfile",
+        ActorID:   event.UserID,
+        Method:    "RecordView",
+        Data:      data,
+    })
+    return false, err
 }
 ```
 
@@ -122,15 +127,15 @@ type RecommendationService struct {
 
 func (rs *RecommendationService) GetRecommendations(ctx context.Context, userID string, count int) ([]string, error) {
     // Get user profile from actor
+    resp, err := rs.daprClient.InvokeActor(ctx, &dapr.InvokeActorRequest{
+        ActorType: "UserProfile",
+        ActorID:   userID,
+        Method:    "GetProfile",
+    })
     var profile UserProfile
-    err := rs.daprClient.InvokeActorMethod(
-        ctx,
-        "UserProfile",
-        userID,
-        "GetProfile",
-        nil,
-        &profile,
-    )
+    if err == nil && resp != nil {
+        json.Unmarshal(resp.Data, &profile)
+    }
     if err != nil || profile.UserID == "" {
         // Cold start: return popular items
         return rs.getPopularItems(ctx, count)
