@@ -52,7 +52,7 @@ dapr run \
   --app-id api-service \
   --app-port 8080 \
   --config ./config/ratelimit-pipeline.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python api.py
 ```
 
@@ -62,12 +62,13 @@ The token bucket refills at `maxRequestsPerSecond` tokens per second. Each reque
 
 Example response when rate limit is exceeded:
 
-```yaml
+```
 HTTP/1.1 429 Too Many Requests
-Retry-After: 1
-Content-Type: application/json
+X-Rate-Limit-Limit: 100
+X-Rate-Limit-Duration: 1
+Content-Type: text/plain; charset=utf-8
 
-{"error": "rate limit exceeded"}
+You have reached maximum request limit.
 ```
 
 ## Combining with Other Middleware
@@ -103,8 +104,8 @@ done
 Your app does not need to handle rate limiting - Dapr returns 429 before requests reach your code. However, you can log rate limit events by monitoring Dapr metrics:
 
 ```bash
-# Dapr exposes Prometheus metrics including rate limit hits
-curl http://localhost:9090/metrics | grep ratelimit
+# Dapr exposes Prometheus metrics; filter for HTTP 429 responses
+curl http://localhost:9090/metrics | grep 'dapr_http_server_request_count.*429'
 ```
 
 ## Kubernetes Deployment
