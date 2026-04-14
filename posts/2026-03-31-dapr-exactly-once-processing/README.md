@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Pub/Sub, Idempotency, Messaging, State
 
-Description: Learn how to achieve exactly-once message processing in Dapr by combining idempotency keys, state store deduplication, and the transactional outbox pattern.
+Description: Learn how to achieve exactly-once message processing in Dapr by combining idempotency keys, state store deduplication, and transactional state operations.
 
 ---
 
@@ -38,7 +38,6 @@ Always include a unique, deterministic message ID in every published event:
 
 ```javascript
 const { DaprClient } = require('@dapr/dapr');
-const { v4: uuidv4 } = require('uuid');
 
 const client = new DaprClient();
 
@@ -94,18 +93,12 @@ async def handle_order(request: Request):
         # Mark as processed in the state store
         dapr.save_state(
             store_name="statestore",
-            states=[{
-                "key": dedup_key,
-                "value": json.dumps({
-                    "processedAt": "2026-03-31T12:00:00Z",
-                    "orderId": order_id
-                }),
-                "options": {
-                    "metadata": {
-                        "ttlInSeconds": "86400"  # expire after 24h
-                    }
-                }
-            }]
+            key=dedup_key,
+            value=json.dumps({
+                "processedAt": "2026-03-31T12:00:00Z",
+                "orderId": order_id
+            }),
+            state_metadata={"ttlInSeconds": "86400"}  # expire after 24h
         )
 
     return {"status": "SUCCESS"}
@@ -113,7 +106,7 @@ async def handle_order(request: Request):
 
 ## Using Dapr Transactions for Atomic Processing
 
-For operations that must be atomic (process + record), use transactional state operations:
+For operations that update multiple state keys atomically (e.g., recording a dedup marker alongside business state), use `ExecuteStateTransaction`:
 
 ```go
 package main
@@ -138,17 +131,36 @@ func processExactlyOnce(ctx context.Context, client dapr.Client, message Message
     }
 
     // Execute business logic
-    if err := executeBusiness(message); err != nil {
+    result, err := executeBusiness(message)
+    if err != nil {
         return err
     }
 
-    // Record as processed (atomic with the business state)
+    // Atomically save the business result and the dedup marker
     processed, _ := json.Marshal(map[string]string{
         "messageId": message.ID,
         "status":    "processed",
     })
+    resultData, _ := json.Marshal(result)
 
-    return client.SaveState(ctx, "statestore", dedupKey, processed, nil)
+    ops := []*dapr.StateOperation{
+        {
+            Type: dapr.StateOperationTypeUpsert,
+            Item: &dapr.SetStateItem{
+                Key:   dedupKey,
+                Value: processed,
+            },
+        },
+        {
+            Type: dapr.StateOperationTypeUpsert,
+            Item: &dapr.SetStateItem{
+                Key:   "order-result:" + message.ID,
+                Value: resultData,
+            },
+        },
+    }
+
+    return client.ExecuteStateTransaction(ctx, "statestore", nil, ops)
 }
 ```
 
