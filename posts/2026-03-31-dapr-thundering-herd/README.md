@@ -25,13 +25,10 @@ spec:
       exponential-with-jitter:
         policy: exponential
         maxRetries: 5
-        duration: 100ms
         maxInterval: 30s
-        # Jitter prevents synchronized retries
-        multiplier: 2
+        # Dapr's exponential backoff includes jitter automatically
     timeouts:
-      service-timeout:
-        duration: 5s
+      service-timeout: 5s
     circuitBreakers:
       shared-cb:
         maxRequests: 5
@@ -50,8 +47,8 @@ spec:
 
 ```python
 import asyncio
-import time
-from dapr.clients import DaprClient
+from dapr.aio.clients import DaprClient
+from dapr.clients.grpc._state import StateOptions, Consistency
 
 CACHE_TTL = 300  # 5 minutes
 LOCK_TTL = 10    # 10 seconds
@@ -63,8 +60,8 @@ class StampedePreventingCache:
 
     async def get_or_compute(self, key: str, compute_fn) -> dict:
         # Check cache first
-        with DaprClient() as client:
-            cached = client.get_state(self.store, key)
+        async with DaprClient() as client:
+            cached = await client.get_state(self.store, key)
             if cached.data:
                 return cached.json()
 
@@ -72,13 +69,13 @@ class StampedePreventingCache:
             lock_key = f"lock:{key}"
             lock_acquired = False
             try:
-                client.save_state(self.store, lock_key, "locked",
-                    state_options={"consistency": "strong"})
+                await client.save_state(self.store, lock_key, "locked",
+                    options=StateOptions(consistency=Consistency.strong))
                 lock_acquired = True
             except Exception:
                 # Lock already held - wait and retry
                 await asyncio.sleep(0.5 + (hash(key) % 500) / 1000.0)
-                second_check = client.get_state(self.store, key)
+                second_check = await client.get_state(self.store, key)
                 if second_check.data:
                     return second_check.json()
 
@@ -87,11 +84,11 @@ class StampedePreventingCache:
                     # Compute the value (DB query, API call, etc.)
                     value = await compute_fn(key)
                     # Store with TTL
-                    client.save_state(self.store, key, value,
-                        metadata={"ttlInSeconds": str(CACHE_TTL)})
+                    await client.save_state(self.store, key, value,
+                        state_metadata={"ttlInSeconds": str(CACHE_TTL)})
                     return value
                 finally:
-                    client.delete_state(self.store, lock_key)
+                    await client.delete_state(self.store, lock_key)
 ```
 
 ## Bulkhead Pattern to Isolate Call Paths
