@@ -84,6 +84,12 @@ def archive_audit_logs():
     logger.info(f"Archived {archived} audit log entries older than {cutoff}")
     return jsonify({"archived": archived}), 200
 
+def parse_duration_hours(duration_str: str) -> int:
+    """Parse a duration string like '24h' or '2160h' into hours."""
+    if duration_str.endswith('h'):
+        return int(duration_str[:-1])
+    raise ValueError(f"Unsupported duration format: {duration_str}")
+
 def calculate_cutoff(duration_str: str) -> datetime:
     hours = parse_duration_hours(duration_str)
     return datetime.utcnow() - timedelta(hours=hours)
@@ -96,6 +102,15 @@ def delete_expired_sessions(cutoff: datetime) -> int:
                 (cutoff,)
             )
             return cur.rowcount
+
+def count_expired_sessions(cutoff: datetime) -> int:
+    with psycopg2.connect(DB_CONN) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM sessions WHERE expires_at < %s",
+                (cutoff,)
+            )
+            return cur.fetchone()[0]
 
 def archive_old_logs(cutoff: datetime) -> int:
     with psycopg2.connect(DB_CONN) as conn:
