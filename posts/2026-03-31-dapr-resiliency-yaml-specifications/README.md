@@ -62,7 +62,7 @@ spec:
 Dapr supports two retry policy types:
 
 - `constant` - waits a fixed `duration` between each attempt
-- `exponential` - doubles the wait up to `maxInterval`
+- `exponential` - increases the wait by a configurable multiplier (default 1.5) up to `maxInterval`
 
 ```yaml
 retries:
