@@ -100,7 +100,7 @@ def evaluate_alerts():
                     "channels": rule['channels'],
                     "triggeredAt": telemetry['timestamp']
                 }
-                client.publish_event('pubsub', 'alert-triggered', alert)
+                client.publish_event('pubsub', 'alert-triggered', json.dumps(alert), data_content_type='application/json')
 
     return '', 200
 
@@ -142,7 +142,7 @@ def deduplicate_alert():
         )
 
         # Route to notification channels
-        client.publish_event('pubsub', 'alert-notify', alert)
+        client.publish_event('pubsub', 'alert-notify', json.dumps(alert), data_content_type='application/json')
 
     return '', 200
 ```
@@ -150,6 +150,8 @@ def deduplicate_alert():
 ## Notification Router
 
 ```python
+import json
+
 @app.route('/alert-notify', methods=['POST'])
 def route_notification():
     event = request.json
@@ -157,7 +159,7 @@ def route_notification():
 
     with DaprClient() as client:
         for channel in alert.get('channels', []):
-            client.publish_event('pubsub', f'notify-{channel}', alert)
+            client.publish_event('pubsub', f'notify-{channel}', json.dumps(alert), data_content_type='application/json')
 
     return '', 200
 ```
@@ -165,16 +167,18 @@ def route_notification():
 ## Alert Dashboard Feed
 
 ```python
+import json
+
 @app.route('/alert-triggered', methods=['POST'])
 def feed_dashboard():
     event = request.json
     alert = event['data']
 
     with DaprClient() as client:
-        client.publish_event('pubsub', 'dashboard-alerts', {
+        client.publish_event('pubsub', 'dashboard-alerts', json.dumps({
             "type": "iot-alert",
             "data": alert
-        })
+        }), data_content_type='application/json')
 
     return '', 200
 ```
