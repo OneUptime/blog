@@ -31,9 +31,9 @@ import (
     "context"
     "encoding/json"
     "log"
-    "net/http"
 
     dapr "github.com/dapr/go-sdk/client"
+    "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/http"
 )
 
