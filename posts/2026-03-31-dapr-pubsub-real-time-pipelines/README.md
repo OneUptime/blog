@@ -142,23 +142,22 @@ app.post("/consumers/storage", async (req, res) => {
 
 ## Handling Backpressure
 
-When a consumer is slow, configure max concurrency in the component:
+When a consumer is slow, configure bulk subscribe in the subscription to batch messages and reduce overhead:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
 metadata:
-  name: pubsub
+  name: enriched-events-sub
 spec:
-  type: pubsub.kafka
-  version: v1
-  metadata:
-  - name: brokers
-    value: kafka-broker:9092
-  - name: maxBulkSubCount
-    value: "10"
-  - name: maxBulkSubAwaitDurationMs
-    value: "1000"
+  topic: enriched-events
+  routes:
+    default: /consumers/analytics
+  pubsubname: pubsub
+  bulkSubscribe:
+    enabled: true
+    maxMessagesCount: 10
+    maxAwaitDurationMs: 1000
 ```
 
 ## Pipeline Monitoring
@@ -167,10 +166,10 @@ Track pipeline throughput with Dapr metrics:
 
 ```bash
 # Messages processed per second per stage
-rate(dapr_pubsub_incoming_messages_total[1m])
+rate(dapr_component_pubsub_ingress_count[1m])
 
 # Processing latency per topic
-histogram_quantile(0.99, dapr_pubsub_processing_latency_ms_bucket)
+histogram_quantile(0.99, dapr_component_pubsub_ingress_latencies_bucket[1m])
 ```
 
 ## Summary
