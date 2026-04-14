@@ -10,11 +10,11 @@ Description: Learn how to use the Dapr Multi-App Run template to start multiple 
 
 ## What Is Dapr Multi-App Run
 
-Dapr Multi-App Run (introduced in Dapr 1.12) allows you to define multiple Dapr applications and their configurations in a single YAML template file, then start all of them with one `dapr run -f` command. This replaces the need to open multiple terminals and run separate `dapr run` commands for each service.
+Dapr Multi-App Run (introduced in Dapr 1.10) allows you to define multiple Dapr applications and their configurations in a single YAML template file, then start all of them with one `dapr run -f` command. This replaces the need to open multiple terminals and run separate `dapr run` commands for each service.
 
 ## Prerequisites
 
-- Dapr CLI v1.12+ installed
+- Dapr CLI v1.10+ installed
 - Self-hosted Dapr initialized (`dapr init`)
 - Multiple services to run locally
 
@@ -136,15 +136,6 @@ apps:
   env:                           # environment variables
     NODE_ENV: development
     PORT: "3000"
-```
-
-## Run a Subset of Apps
-
-Start only specific services from the template using `--app-id`:
-
-```bash
-# Start only order-service and payment-service
-dapr run -f dapr.yaml --app-id order-service --app-id payment-service
 ```
 
 ## Use Environment Files
