@@ -155,8 +155,8 @@ For production high availability:
 ```yaml
     - name: host
       value: "mongo1:27017,mongo2:27017,mongo3:27017"
-    - name: replicaSet
-      value: "rs0"
+    - name: params
+      value: "?replicaSet=rs0"
     - name: writeConcern
       value: "majority"
 ```
@@ -167,14 +167,14 @@ For production high availability:
 // Using mongosh
 use daprstate
 
-// List all state entries
-db.state.find({}, { key: 1, _id: 0 }).limit(20)
+// List all state keys
+db.state.find({}, { _id: 1, value: 0, _etag: 0 }).limit(20)
 
 // Find by value field
 db.state.find({ "value.status": "active" })
 
-// Check update times
-db.state.find().sort({ updateTime: -1 }).limit(10)
+// List recent entries by etag
+db.state.find({}, { _id: 1, _etag: 1 }).limit(10)
 ```
 
 ## Summary
