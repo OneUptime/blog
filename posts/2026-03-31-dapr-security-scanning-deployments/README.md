@@ -31,11 +31,11 @@ trivy image --format json --output scan-results.json myrepo/order-service:latest
 ## Kubernetes Manifest Scanning with Kubesec
 
 ```bash
-# Install kubesec
+# Scan with kubesec hosted API
 curl -sSX POST --data-binary @deployment.yaml https://v2.kubesec.io/scan
 
 # Or run locally
-docker run -i kubesec/kubesec:512c5e0 scan /dev/stdin < deployment.yaml
+docker run -i kubesec/kubesec:v2 scan /dev/stdin < deployment.yaml
 ```
 
 A secure Dapr deployment manifest:
@@ -46,8 +46,13 @@ kind: Deployment
 metadata:
   name: secure-service
 spec:
+  selector:
+    matchLabels:
+      app: secure-service
   template:
     metadata:
+      labels:
+        app: secure-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "secure-service"
@@ -135,6 +140,7 @@ jobs:
         exit-code: 1
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
+      if: always()
       with:
         sarif_file: trivy-results.sarif
 
