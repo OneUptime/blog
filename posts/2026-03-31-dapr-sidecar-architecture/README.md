@@ -94,7 +94,7 @@ daprd \
   --app-port 3000 \
   --dapr-http-port 3500 \
   --dapr-grpc-port 50001 \
-  --components-path ~/.dapr/components \
+  --resources-path ~/.dapr/resources \
   --config ~/.dapr/config.yaml
 ```
 
