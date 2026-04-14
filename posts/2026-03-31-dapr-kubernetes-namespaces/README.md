@@ -44,12 +44,11 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
         dapr.io/app-port: "8080"
-        dapr.io/namespace: "team-a"
 ```
 
 ## Cross-Namespace Service Invocation
 
-To call a service in another namespace, use the `namespace` query parameter:
+To call a service in another namespace, use the `appId.namespace` format in the invocation URL:
 
 ```bash
 # From team-a, invoke payment-service in team-b
