@@ -32,8 +32,10 @@ public interface IDeviceActor : IActor
 }
 
 [Actor(TypeName = "DeviceActor")]
-public class DeviceActor : Actor, IDeviceActor
+public class DeviceActor : Actor, IDeviceActor, IRemindable
 {
+    public DeviceActor(ActorHost host) : base(host) { }
+
     public async Task ReportState(DeviceState state)
     {
         var shadow = await StateManager.GetOrAddStateAsync("shadow", new DeviceShadow());
@@ -47,7 +49,7 @@ public class DeviceActor : Actor, IDeviceActor
             TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
 
         // Publish state change event
-        var daprClient = new DaprClient();
+        var daprClient = new DaprClientBuilder().Build();
         await daprClient.PublishEventAsync("pubsub", "device-state-changes",
             new { DeviceId = Id.GetId(), State = state });
     }
@@ -66,7 +68,7 @@ public class DeviceActor : Actor, IDeviceActor
         await StateManager.SetStateAsync("shadow", shadow);
 
         // Publish config update for device to pick up
-        var daprClient = new DaprClient();
+        var daprClient = new DaprClientBuilder().Build();
         await daprClient.PublishEventAsync("pubsub", $"device-{Id.GetId()}-config",
             config);
     }
@@ -93,7 +95,8 @@ The gateway receives telemetry from devices and routes to actors:
 
 ```python
 from flask import Flask, request, jsonify
-from dapr.clients import DaprClient
+from dapr.actor import ActorProxy, ActorId
+import asyncio
 import json
 
 app = Flask(__name__)
@@ -102,14 +105,10 @@ app = Flask(__name__)
 def receive_telemetry(device_id: str):
     telemetry = request.json
 
-    with DaprClient() as client:
-        # Update device actor state
-        client.invoke_actor(
-            actor_type='DeviceActor',
-            actor_id=device_id,
-            method='reportState',
-            data=json.dumps(telemetry).encode()
-        )
+    # Invoke device actor to update state
+    proxy = ActorProxy.create('DeviceActor', ActorId(device_id))
+    asyncio.run(proxy.invoke_method(
+        'reportState', json.dumps(telemetry).encode()))
 
     return jsonify({"status": "accepted"}), 202
 
@@ -117,13 +116,9 @@ def receive_telemetry(device_id: str):
 def update_device_config(device_id: str):
     config = request.json
 
-    with DaprClient() as client:
-        client.invoke_actor(
-            actor_type='DeviceActor',
-            actor_id=device_id,
-            method='updateConfig',
-            data=json.dumps(config).encode()
-        )
+    proxy = ActorProxy.create('DeviceActor', ActorId(device_id))
+    asyncio.run(proxy.invoke_method(
+        'updateConfig', json.dumps(config).encode()))
 
     return jsonify({"status": "config_pending"}), 200
 ```
@@ -133,14 +128,10 @@ def update_device_config(device_id: str):
 ```python
 @app.route('/devices/<device_id>/shadow', methods=['GET'])
 def get_device_shadow(device_id: str):
-    with DaprClient() as client:
-        state = client.invoke_actor(
-            actor_type='DeviceActor',
-            actor_id=device_id,
-            method='getState'
-        )
+    proxy = ActorProxy.create('DeviceActor', ActorId(device_id))
+    result = asyncio.run(proxy.invoke_method('getState'))
 
-    return jsonify(json.loads(state.data)), 200
+    return jsonify(json.loads(result)), 200
 ```
 
 ## Bulk Device Operations
@@ -149,20 +140,15 @@ Invoke operations on multiple devices concurrently:
 
 ```python
 import asyncio
-from dapr.aio.clients import DaprClient as AsyncDaprClient
+from dapr.actor import ActorProxy, ActorId
 
 async def push_config_to_fleet(device_ids: list, config: dict):
-    async with AsyncDaprClient() as client:
-        tasks = [
-            client.invoke_actor(
-                actor_type='DeviceActor',
-                actor_id=device_id,
-                method='updateConfig',
-                data=json.dumps(config).encode()
-            )
-            for device_id in device_ids
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = [
+        ActorProxy.create('DeviceActor', ActorId(device_id)).invoke_method(
+            'updateConfig', json.dumps(config).encode())
+        for device_id in device_ids
+    ]
+    await asyncio.gather(*tasks, return_exceptions=True)
 ```
 
 ## Summary
