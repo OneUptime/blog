@@ -15,17 +15,16 @@ Traditional rate limiting requires a shared counter in Redis or a database. Dapr
 ## Token Bucket Throttle Actor
 
 ```javascript
-class TokenBucketActor {
-  constructor(host) {
-    this.stateManager = host.stateManager;
-    this.actorId = host.id;
-  }
+const { AbstractActor } = require('@dapr/dapr');
 
-  async checkAndConsume(cost = 1, config = {}) {
+class TokenBucketActor extends AbstractActor {
+
+  async checkAndConsume(params = {}) {
     const {
+      cost = 1,
       capacity = 100,        // max tokens in bucket
       refillRate = 10,       // tokens added per second
-    } = config;
+    } = params;
 
     const now = Date.now();
     const bucket = await this.stateManager.get('bucket') || {
@@ -58,12 +57,12 @@ class TokenBucketActor {
 ## Fixed Window Rate Limiter Actor
 
 ```javascript
-class FixedWindowActor {
-  constructor(host) {
-    this.stateManager = host.stateManager;
-  }
+const { AbstractActor } = require('@dapr/dapr');
 
-  async checkAndIncrement(limit = 60, windowSeconds = 60) {
+class FixedWindowActor extends AbstractActor {
+
+  async checkAndIncrement(params = {}) {
+    const { limit = 60, windowSeconds = 60 } = params;
     const now = Date.now();
     const windowStart = Math.floor(now / (windowSeconds * 1000)) * windowSeconds * 1000;
     const windowKey = `window:${windowStart}`;
@@ -84,17 +83,16 @@ class FixedWindowActor {
 ## Middleware Using the Throttle Actor
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, ActorProxyBuilder, ActorId } = require('@dapr/dapr');
 const client = new DaprClient();
+const throttleBuilder = new ActorProxyBuilder('TokenBucketActor', client);
 
 async function rateLimitMiddleware(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(401).json({ error: 'Missing API key' });
 
-  const result = await client.actor.invoke(
-    'TokenBucketActor',
-    `apikey:${apiKey}`,
-    'checkAndConsume',
+  const actor = throttleBuilder.build(new ActorId(`apikey:${apiKey}`));
+  const result = await actor.checkAndConsume(
     { cost: 1, capacity: 100, refillRate: 10 }
   );
 
@@ -114,13 +112,11 @@ app.use('/api', rateLimitMiddleware);
 ## Per-Endpoint Throttling
 
 ```javascript
+const windowBuilder = new ActorProxyBuilder('FixedWindowActor', client);
+
 async function checkEndpointLimit(userId, endpoint) {
-  return client.actor.invoke(
-    'FixedWindowActor',
-    `user:${userId}:${endpoint}`,
-    'checkAndIncrement',
-    { limit: 10, windowSeconds: 60 }
-  );
+  const actor = windowBuilder.build(new ActorId(`user:${userId}:${endpoint}`));
+  return actor.checkAndIncrement({ limit: 10, windowSeconds: 60 });
 }
 
 app.post('/api/send-email', async (req, res) => {
