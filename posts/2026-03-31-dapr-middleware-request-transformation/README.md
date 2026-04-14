@@ -49,18 +49,19 @@ Write a Wasm middleware in Go/TinyGo to inject headers:
 package main
 
 import (
-    "strings"
+    "github.com/http-wasm/http-wasm-guest-tinygo/handler"
+    "github.com/http-wasm/http-wasm-guest-tinygo/handler/api"
 )
 
-//export handle_request
-func handle_request() int32 {
-    // Inject correlation ID header
-    setRequestHeader("X-Correlation-ID", generateCorrelationID())
-    setRequestHeader("X-Processed-By", "dapr-middleware")
-    return 0 // Continue processing
+func main() {
+    handler.HandleRequestFn = handleRequest
 }
 
-func main() {}
+func handleRequest(req api.Request, resp api.Response) (next bool, reqCtx uint32) {
+    // Inject headers into the request
+    req.Headers().Set("X-Processed-By", "dapr-middleware")
+    return true, 0 // Continue processing
+}
 ```
 
 ## Component for Wasm Transformation
@@ -96,9 +97,9 @@ spec:
     - name: routes
       value: |
         {
-          "/v1/order":  "/api/orders",
-          "/v1/orders": "/api/orders",
-          "/order":     "/api/orders"
+          "/v1/order":  "/v1.0/invoke/transform-service/method/api/orders",
+          "/v1/orders": "/v1.0/invoke/transform-service/method/api/orders",
+          "/order":     "/v1.0/invoke/transform-service/method/api/orders"
         }
 ```
 
@@ -131,12 +132,10 @@ app = Flask(__name__)
 
 @app.route("/api/orders", methods=["POST"])
 def create_order():
-    # These headers were injected by Dapr middleware
-    correlation_id = request.headers.get("X-Correlation-ID", "none")
+    # This header was injected by Dapr Wasm middleware
     processed_by = request.headers.get("X-Processed-By", "none")
-    print(f"Correlation ID: {correlation_id}")
     print(f"Processed By: {processed_by}")
-    return {"status": "ok", "correlation_id": correlation_id}
+    return {"status": "ok", "processed_by": processed_by}
 ```
 
 ```bash
@@ -144,12 +143,12 @@ dapr run \
   --app-id transform-service \
   --app-port 5000 \
   --config ./config/transform-pipeline.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- flask run --port 5000
 
-# Call the legacy path - gets normalized to /api/orders
+# Call the alias path - gets normalized to /v1.0/invoke/transform-service/method/api/orders
 curl -X POST \
-  http://localhost:3500/v1.0/invoke/transform-service/method/v1/order \
+  http://localhost:3500/v1/order \
   -H "Content-Type: application/json" \
   -d '{"item":"widget"}'
 ```
@@ -159,12 +158,18 @@ curl -X POST \
 For response transformation, use a Wasm module that intercepts the response:
 
 ```go
-//export handle_response
-func handle_response(status_code int32) int32 {
-    if status_code == 200 {
-        setResponseHeader("X-Cache-Control", "max-age=60")
-    }
-    return status_code
+// In the same Wasm module, register a response handler:
+func main() {
+    handler.HandleRequestFn = handleRequest
+    handler.HandleResponseFn = handleResponse
+}
+
+func handleRequest(req api.Request, resp api.Response) (next bool, reqCtx uint32) {
+    return true, 0 // Continue to next handler
+}
+
+func handleResponse(reqCtx uint32, req api.Request, resp api.Response, isError bool) {
+    resp.Headers().Set("X-Cache-Control", "max-age=60")
 }
 ```
 
