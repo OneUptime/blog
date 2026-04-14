@@ -17,7 +17,7 @@ Dapr Pub/Sub enables Rust microservices to communicate asynchronously through a 
 ```toml
 # Cargo.toml
 [dependencies]
-dapr = "0.13"
+dapr = "0.17"
 actix-web = "4"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Subscribing with Actix-web
 
 ```rust
-use actix_web::{web, App, HttpServer, HttpResponse, middleware};
+use actix_web::{web, App, HttpServer, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -174,4 +174,4 @@ async fn handle_order(event: web::Json<CloudEvent>) -> HttpResponse {
 
 ## Summary
 
-Dapr Pub/Sub in Rust separates publishing (using `DaprClient::publish_event`) from subscribing (using HTTP endpoint registration). Actix-web is a natural fit for the subscriber side. CloudEvents are deserialized automatically by the Dapr sidecar before forwarding to your handler. Metadata options let you configure TTL, ordering, and raw payloads per-publish.
+Dapr Pub/Sub in Rust separates publishing (using `Client::publish_event`) from subscribing (using HTTP endpoint registration). Actix-web is a natural fit for the subscriber side. CloudEvents are deserialized automatically by the Dapr sidecar before forwarding to your handler. Metadata options let you configure TTL, ordering, and raw payloads per-publish.
