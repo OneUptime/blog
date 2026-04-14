@@ -45,6 +45,7 @@ using Dapr.Client;
 using MediatR;
 
 public record CreateOrderCommand(string CustomerId, List<string> Items) : IRequest<CreateOrderResponse>;
+public record OrderCreatedEvent(string OrderId, string CustomerId);
 
 public class CreateOrderHandler : IRequestHandler<CreateOrderCommand, CreateOrderResponse>
 {
@@ -73,11 +74,8 @@ public class CreateOrderHandler : IRequestHandler<CreateOrderCommand, CreateOrde
         await _dapr.SaveStateAsync("statestore", order.Id, order, cancellationToken: ct);
 
         // Dapr pub/sub publish - within the slice
-        await _dapr.PublishEventAsync("pubsub", "order-created", new
-        {
-            OrderId = order.Id,
-            CustomerId = order.CustomerId,
-        }, ct);
+        await _dapr.PublishEventAsync("pubsub", "order-created",
+            new OrderCreatedEvent(order.Id, order.CustomerId), ct);
 
         return new CreateOrderResponse(order.Id, order.Status);
     }
@@ -157,7 +155,7 @@ public async Task CreateOrder_SavesStateAndPublishesEvent()
     mockDapr.Verify(d => d.SaveStateAsync("statestore", It.IsAny<string>(), It.IsAny<Order>(),
         null, null, It.IsAny<CancellationToken>()), Times.Once);
     mockDapr.Verify(d => d.PublishEventAsync("pubsub", "order-created",
-        It.IsAny<object>(), It.IsAny<CancellationToken>()), Times.Once);
+        It.IsAny<OrderCreatedEvent>(), It.IsAny<CancellationToken>()), Times.Once);
 }
 ```
 
