@@ -73,17 +73,15 @@ with DaprClient() as client:
 ### Go SDK
 
 ```go
-err := client.SaveState(ctx, "statestore", "account-balance-42",
-    []byte(`{"balance":5000,"currency":"USD"}`),
-    map[string]string{},
-)
-// Note: consistency options are passed via StateOptions
-opts := dapr.StateOptions{
-    Consistency: dapr.StateConsistencyStrong,
-    Concurrency: dapr.StateConcurrencyLastWrite,
+item := &dapr.SetStateItem{
+    Key:   "account-balance-42",
+    Value: []byte(`{"balance":5000,"currency":"USD"}`),
+    Options: &dapr.StateOptions{
+        Concurrency: dapr.StateConcurrencyLastWrite,
+        Consistency: dapr.StateConsistencyStrong,
+    },
 }
-err = client.SaveStateWithETag(ctx, "statestore", "account-balance-42",
-    []byte(`{"balance":5000}`), "", &opts, nil)
+err := client.SaveBulkState(ctx, "statestore", item)
 ```
 
 ## Setting Strong Consistency on a Get Operation
@@ -121,8 +119,6 @@ spec:
       value: redis-sentinel:26379
     - name: sentinelMasterName
       value: mymaster
-    - name: replicaCount
-      value: "2"
 ```
 
 ### PostgreSQL
@@ -147,6 +143,8 @@ PostgreSQL with synchronous_commit=on (the default) provides strong consistency 
 A common pattern is to write with strong consistency and immediately verify the write:
 
 ```python
+from dapr.clients.grpc._request import TransactionalStateOperation, OperationType
+
 def transfer_funds(from_account: str, to_account: str, amount: float):
     with DaprClient() as client:
         strong = StateOptions(consistency=Consistency.strong, concurrency=Concurrency.first_write)
@@ -165,18 +163,18 @@ def transfer_funds(from_account: str, to_account: str, amount: float):
         client.execute_state_transaction(
             store_name="statestore",
             operations=[
-                {"operation": "upsert", "request": {
-                    "key": from_account,
-                    "value": json.dumps(from_data),
-                    "etag": from_result.etag,
-                    "options": {"concurrency": "first-write", "consistency": "strong"}
-                }},
-                {"operation": "upsert", "request": {
-                    "key": to_account,
-                    "value": json.dumps(to_data),
-                    "etag": to_result.etag,
-                    "options": {"concurrency": "first-write", "consistency": "strong"}
-                }}
+                TransactionalStateOperation(
+                    key=from_account,
+                    data=json.dumps(from_data).encode(),
+                    etag=from_result.etag,
+                    operation_type=OperationType.upsert
+                ),
+                TransactionalStateOperation(
+                    key=to_account,
+                    data=json.dumps(to_data).encode(),
+                    etag=to_result.etag,
+                    operation_type=OperationType.upsert
+                )
             ]
         )
 ```
