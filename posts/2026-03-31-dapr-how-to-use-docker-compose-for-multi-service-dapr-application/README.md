@@ -20,7 +20,7 @@ my-dapr-app/
   components/
     statestore.yaml
     pubsub.yaml
-    zipkin.yaml
+    config.yaml
   order-service/
     app.py
     Dockerfile
