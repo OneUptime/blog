@@ -105,8 +105,6 @@ Attach this IAM policy to the role:
         "dynamodb:GetItem",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem",
-        "dynamodb:BatchGetItem",
-        "dynamodb:BatchWriteItem",
         "dynamodb:TransactWriteItems"
       ],
       "Resource": "arn:aws:dynamodb:us-east-1:ACCOUNT_ID:table/dapr-statestore"
@@ -224,8 +222,6 @@ Dapr stores each state key as a DynamoDB item with the following structure:
   "key": {"S": "myapp||session:user123"},
   "value": {"S": "{\"userId\":\"user123\",\"token\":\"abc123token\"}"},
   "etag": {"S": "\"abc123\""},
-  "insertionDate": {"N": "1709123456"},
-  "updateDate": {"N": "1709123456"},
   "expirationTime": {"N": "1741234567"}
 }
 ```
@@ -254,7 +250,7 @@ Now when you save state with a TTL:
 ```bash
 curl -X POST http://localhost:3500/v1.0/state/statestore \
   -H "Content-Type: application/json" \
-  -d '[{"key": "cache:item1", "value": "data", "options": {"ttlInSeconds": 3600}}]'
+  -d '[{"key": "cache:item1", "value": "data", "metadata": {"ttlInSeconds": "3600"}}]'
 ```
 
 ## Endpoint Configuration for LocalStack
