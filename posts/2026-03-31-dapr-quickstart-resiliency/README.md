@@ -108,7 +108,7 @@ for i in range(1, 11):
         response = requests.post(
             ORDER_URL,
             json={"orderId": i},
-            timeout=10
+            timeout=60
         )
         elapsed = (time.time() - start) * 1000
         print(f"Order {i}: HTTP {response.status_code} ({elapsed:.0f}ms)")
@@ -184,11 +184,11 @@ FAIL_MODE=timeout dapr run \
   -- python3 order-processor/app.py
 ```
 
-The 3-second timeout fires and the retry policy kicks in:
+The 3-second timeout fires on each attempt and the retry policy retries with 5-second delays between attempts:
 
 ```text
-Order 1: HTTP 504 (3021ms)  <- timeout, retried 3 times = ~9s total
-Order 2: HTTP 503 (1ms)     <- circuit open after 3 failures
+Order 1: HTTP 504 (24100ms)  <- timed out, all 3 retries exhausted with 5s delays
+Order 2: HTTP 503 (1ms)      <- circuit open after consecutive failures
 ```
 
 ## Scenario 4 - Circuit Recovery
