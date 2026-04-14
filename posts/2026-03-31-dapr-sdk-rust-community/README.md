@@ -10,13 +10,13 @@ Description: Use the community Dapr Rust SDK to build microservices in Rust with
 
 ## Overview
 
-The Dapr Rust SDK (`dapr-client`) is a community-maintained crate that wraps the Dapr gRPC interface. It provides an async client built on Tokio and Tonic for interacting with the Dapr sidecar from Rust applications.
+The Dapr Rust SDK (`dapr`) is a community-maintained crate that wraps the Dapr gRPC interface. It provides an async client built on Tokio and Tonic for interacting with the Dapr sidecar from Rust applications.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    RustApp["Rust App\n(dapr-client crate)"]
+    RustApp["Rust App\n(dapr crate)"]
     Sidecar["Dapr Sidecar\n:50001 gRPC"]
     Redis["Redis State Store"]
     RabbitMQ["RabbitMQ Pub/Sub"]
@@ -37,12 +37,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dapr = "0.15"
+dapr = "0.17"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tonic = "0.11"
-prost = "0.12"
+tonic = "0.12"
+prost-types = "0.13"
 ```
 
 Install Dapr:
@@ -55,6 +55,7 @@ dapr init
 
 ```rust
 // src/main.rs
+use dapr::client::TonicClient;
 use dapr::Client;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
@@ -73,14 +74,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("DAPR_GRPC_PORT").unwrap_or_else(|_| "50001".to_string())
     );
 
-    let mut client = Client::connect(addr).await?;
+    let mut client = Client::<TonicClient>::connect(addr).await?;
 
     // --- Save State ---
     let order = Order { id: "order-1".to_string(), total: 99.95 };
     let data = serde_json::to_vec(&order)?;
 
     client
-        .save_state(vec![("statestore", "order-1", data.clone())])
+        .save_state("statestore", "order-1", data.clone(), None, None, None)
         .await?;
     println!("State saved");
 
@@ -95,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     metadata.insert("Content-Type".to_string(), "application/json".to_string());
 
     client
-        .publish_event("pubsub", "orders", data, Some(metadata))
+        .publish_event("pubsub", "orders", "application/json", data, Some(metadata))
         .await?;
     println!("Event published");
 
@@ -106,12 +107,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Step 2: Service Invocation
 
 ```rust
+use dapr::client::TonicClient;
 use dapr::Client;
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = Client::connect("http://localhost:50001").await?;
+    let mut client = Client::<TonicClient>::connect("http://localhost:50001").await?;
 
     let payload = serde_json::to_vec(&json!({ "query": "status" }))?;
 
@@ -119,14 +121,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoke_service(
             "inventory-service",
             "checkStock",
-            Some(dapr::appcallback::InvokeRequest {
-                method: "checkStock".to_string(),
-                data: Some(prost_types::Any {
-                    type_url: "application/json".to_string(),
-                    value: payload,
-                }),
-                content_type: "application/json".to_string(),
-                http_extension: None,
+            Some(prost_types::Any {
+                type_url: "application/json".to_string(),
+                value: payload,
             }),
         )
         .await?;
@@ -142,14 +139,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Step 3: Secret Retrieval
 
 ```rust
+use dapr::client::TonicClient;
 use dapr::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = Client::connect("http://localhost:50001").await?;
+    let mut client = Client::<TonicClient>::connect("http://localhost:50001").await?;
 
     let secret = client
-        .get_secret("secretstore", "db-password", None)
+        .get_secret("secretstore", "db-password")
         .await?;
 
     let password = secret.data.get("db-password").cloned().unwrap_or_default();
