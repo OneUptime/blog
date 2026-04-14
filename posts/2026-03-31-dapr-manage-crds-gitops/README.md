@@ -161,7 +161,7 @@ Add a CI pipeline step to validate Dapr CRDs before merging:
   run: |
     kubectl apply --dry-run=server \
       -f clusters/production/dapr/ \
-      --kube-context staging
+      --context staging
 ```
 
 ## Summary
