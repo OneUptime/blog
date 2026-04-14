@@ -88,7 +88,7 @@ app.listen(3000, () => console.log('App listening on 3000'));
 dapr run --app-id order-service \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   node app.js
 ```
 
@@ -130,7 +130,7 @@ def test_order_subscription():
     proc = subprocess.Popen([
         'dapr', 'run', '--app-id', 'test-app',
         '--app-port', '5000',
-        '--components-path', './components',
+        '--resources-path', './components',
         'python', 'app.py'
     ])
     time.sleep(2)
