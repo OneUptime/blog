@@ -34,12 +34,10 @@ spec:
   metadata:
   - name: brokers
     value: "localhost:9092"
-  - name: topics
-    value: "orders"
   - name: publishTopic
     value: "orders"
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
 ```
 
 For consuming messages (input binding) - same component type, add `consumerGroup`:
@@ -60,8 +58,8 @@ spec:
     value: "orders"
   - name: consumerGroup
     value: "my-consumer-group"
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
   - name: initialOffset
     value: "newest"
 ```
@@ -153,8 +151,8 @@ spec:
     value: "kafka.production.example.com:9093"
   - name: topics
     value: "orders"
-  - name: authRequired
-    value: "true"
+  - name: authType
+    value: "password"
   - name: saslUsername
     value: "my-kafka-user"
   - name: saslPassword
