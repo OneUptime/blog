@@ -59,7 +59,7 @@ metadata:
   name: alibabacloud-oos
   namespace: production
 spec:
-  type: secretstores.alibabacloud.parameterstore
+  type: secretstores.alicloud.parameterstore
   version: v1
   metadata:
     - name: regionId
@@ -89,7 +89,7 @@ For Alibaba Cloud Container Service for Kubernetes (ACK), use RRSA (RAM Roles fo
 
 ```yaml
 spec:
-  type: secretstores.alibabacloud.parameterstore
+  type: secretstores.alicloud.parameterstore
   version: v1
   metadata:
     - name: regionId
@@ -129,7 +129,10 @@ func getDbConfig() (string, string, error) {
     var secret map[string]string
     json.NewDecoder(resp.Body).Decode(&secret)
 
-    hostResp, _ := http.Get("http://localhost:3500/v1.0/secrets/alibabacloud-oos/myapp.db.host")
+    hostResp, err := http.Get("http://localhost:3500/v1.0/secrets/alibabacloud-oos/myapp.db.host")
+    if err != nil {
+        return "", "", err
+    }
     defer hostResp.Body.Close()
     var hostSecret map[string]string
     json.NewDecoder(hostResp.Body).Decode(&hostSecret)
