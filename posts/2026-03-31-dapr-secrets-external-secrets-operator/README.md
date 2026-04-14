@@ -139,7 +139,7 @@ spec:
   data:
     - secretKey: password
       remoteRef:
-        key: secret/data/kafka/dapr
+        key: kafka/dapr
         property: password
 ```
 
