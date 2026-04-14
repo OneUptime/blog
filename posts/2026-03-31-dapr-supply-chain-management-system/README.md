@@ -50,7 +50,6 @@ dapr run -f dapr.yaml
 Use Dapr workflows to orchestrate the order fulfillment process:
 
 ```csharp
-[WorkflowName("OrderFulfillmentWorkflow")]
 public class OrderFulfillmentWorkflow : Workflow<OrderRequest, OrderResult>
 {
     public override async Task<OrderResult> RunAsync(
