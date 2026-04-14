@@ -29,8 +29,8 @@ Individual Gets (50 keys):
 
 Bulk Get (50 keys):
   App -> Sidecar: POST /bulk with 50 keys  (1 HTTP round-trip)
-  Sidecar -> Backend: MGET key-1...key-50  (1 backend call for Redis)
-  Total: 1 round-trip, 1 backend call
+  Sidecar -> Backend: GET key-1...key-50   (parallelized per "parallelism" setting)
+  Total: 1 round-trip, parallelized backend reads
 ```
 
 ## Bulk State Read API
@@ -219,6 +219,7 @@ For event-driven services that write many state entries from pub/sub handlers, b
 
 ```python
 # batch_writer.py
+import os
 import threading
 import time
 import requests
@@ -296,4 +297,4 @@ print("All metrics flushed")
 
 ## Summary
 
-Dapr's bulk state APIs dramatically reduce the performance overhead of state-intensive microservices. Use `POST /v1.0/state/{storeName}/bulk` for multi-key reads instead of issuing individual GET requests - especially for Redis where MGET collapses all reads to a single backend call. For writes, always pass an array to the state save endpoint rather than writing one key at a time. For very high-throughput event processors, implement a client-side buffer that flushes writes in configurable batches. The combination of bulk APIs and batching can reduce Dapr state operation overhead by an order of magnitude for workloads with many keys per request.
+Dapr's bulk state APIs dramatically reduce the performance overhead of state-intensive microservices. Use `POST /v1.0/state/{storeName}/bulk` for multi-key reads instead of issuing individual GET requests - the bulk get collapses all reads into a single app-to-sidecar round-trip, and the sidecar parallelizes backend reads according to the `parallelism` setting. For writes, always pass an array to the state save endpoint rather than writing one key at a time. For very high-throughput event processors, implement a client-side buffer that flushes writes in configurable batches. The combination of bulk APIs and batching can reduce Dapr state operation overhead by an order of magnitude for workloads with many keys per request.
