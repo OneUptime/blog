@@ -23,7 +23,7 @@ There are three main approaches:
 Track progress directly inside the workflow:
 
 ```python
-import dapr.ext.workflow as wf
+from dapr.ext.workflow import DaprWorkflowContext
 from dataclasses import dataclass, asdict
 
 @dataclass
@@ -42,7 +42,7 @@ def batch_workflow(ctx: DaprWorkflowContext, config: dict):
         result = yield ctx.call_activity(process_record, input=record)
         results.append(result)
 
-        # Emit progress event every 10% or every 100 records
+        # Emit progress event every 10%
         if (i + 1) % max(1, total // 10) == 0:
             progress = BatchProgress(
                 total=total,
@@ -62,6 +62,7 @@ For long-running jobs where the workflow may span many service restarts:
 ```python
 import json
 import threading
+from datetime import datetime, timezone
 from dapr.clients import DaprClient
 
 class BatchProgressTracker:
@@ -73,20 +74,21 @@ class BatchProgressTracker:
         with DaprClient() as client:
             client.save_state('statestore', f'job:{self.job_id}:progress',
                 json.dumps({"total": total, "processed": 0, "failed": 0,
-                            "startedAt": datetime.utcnow().isoformat(),
+                            "startedAt": datetime.now(timezone.utc).isoformat(),
                             "status": "running"}))
 
     def increment(self, success: bool):
-        with DaprClient() as client:
-            current = json.loads(
-                client.get_state('statestore', f'job:{self.job_id}:progress').data
-            )
-            current['processed'] += 1
-            if not success:
-                current['failed'] += 1
+        with self._lock:
+            with DaprClient() as client:
+                current = json.loads(
+                    client.get_state('statestore', f'job:{self.job_id}:progress').data
+                )
+                current['processed'] += 1
+                if not success:
+                    current['failed'] += 1
 
-            client.save_state('statestore', f'job:{self.job_id}:progress',
-                json.dumps(current))
+                client.save_state('statestore', f'job:{self.job_id}:progress',
+                    json.dumps(current))
 
     def get_progress(self) -> dict:
         with DaprClient() as client:
@@ -99,15 +101,19 @@ class BatchProgressTracker:
 Emit progress events for real-time dashboard updates:
 
 ```python
+import json
+from dapr.clients import DaprClient
+from dapr.ext.workflow import WorkflowActivityContext
+
 def publish_progress(ctx: WorkflowActivityContext, progress: dict):
     with DaprClient() as client:
-        client.publish_event('pubsub', 'batch-progress-events', {
+        client.publish_event('pubsub', 'batch-progress-events', json.dumps({
             "jobId": progress.get("jobId"),
             "percentComplete": progress['percentComplete'],
             "processed": progress['processed'],
             "total": progress['total'],
             "estimatedCompletionTime": estimate_completion(progress)
-        })
+        }))
 ```
 
 ## Progress API Endpoint
@@ -119,8 +125,9 @@ Expose a REST endpoint for job progress:
 def get_job_progress(job_id: str):
     # Try Dapr Workflow state first
     try:
-        with DaprWorkflowClient() as client:
-            state = client.get_workflow_state(job_id)
+        wf_client = DaprWorkflowClient()
+        state = wf_client.get_workflow_state(job_id)
+        if state is not None:
             return jsonify({
                 "workflowStatus": state.runtime_status.name,
                 "lastUpdated": str(state.last_updated_at)
@@ -148,6 +155,7 @@ from prometheus_client import Gauge, Counter, generate_latest
 batch_processed = Counter('batch_records_processed_total', 'Records processed', ['job_id'])
 batch_failed = Counter('batch_records_failed_total', 'Records failed', ['job_id'])
 batch_percent = Gauge('batch_percent_complete', 'Percent complete', ['job_id'])
+batch_last_progress = Gauge('batch_job_last_progress_time', 'Last progress timestamp', ['job_id'])
 
 @app.route('/metrics')
 def metrics():
