@@ -51,7 +51,6 @@ kubectl create namespace dapr-system
 helm install dapr dapr/dapr \
   --namespace dapr-system \
   --set global.ha.enabled=true \
-  --set dapr_placement.replicaCount=3 \
   --wait
 ```
 
@@ -107,7 +106,7 @@ az aks enable-addons \
   --addons monitoring \
   --name dapr-aks \
   --resource-group dapr-rg \
-  --workspace-resource-id /subscriptions/.../workspaces/my-workspace
+  --workspace-resource-id /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.OperationalInsights/workspaces/<workspace-name>
 ```
 
 ## Summary
