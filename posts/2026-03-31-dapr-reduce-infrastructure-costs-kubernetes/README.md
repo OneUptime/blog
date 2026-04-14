@@ -61,7 +61,7 @@ metadata:
 spec:
   tracing:
     samplingRate: "0"
-  metric:
+  metrics:
     enabled: false
 ```
 
@@ -87,8 +87,6 @@ global:
 dapr_operator:
   replicaCount: 1
 dapr_sentry:
-  replicaCount: 1
-dapr_placement:
   replicaCount: 1
 ```
 
