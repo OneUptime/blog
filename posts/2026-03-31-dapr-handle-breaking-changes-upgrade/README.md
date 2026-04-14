@@ -93,14 +93,11 @@ package main
 
 import (
     "context"
-    "os"
     dapr "github.com/dapr/go-sdk/client"
 )
 
 func getSecretCompat(ctx context.Context, client dapr.Client, store, name string) (string, error) {
-    daprVersion := os.Getenv("DAPR_RUNTIME_VERSION")
-
-    // Use appropriate API version based on runtime
+    // Wrap the secret call so migration logic stays in one place
     secret, err := client.GetSecret(ctx, store, name, nil)
     if err != nil {
         return "", err
@@ -150,7 +147,7 @@ def get_state(key: str) -> str:
             result = client.get_state(
                 store_name="statestore",
                 key=key,
-                state_options=None
+                state_metadata=None
             )
         return result.data.decode("utf-8") if result.data else None
 ```
