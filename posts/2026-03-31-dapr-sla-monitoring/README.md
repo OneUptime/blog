@@ -14,7 +14,7 @@ SLA monitoring for Dapr deployments requires defining service level objectives (
 
 Common SLOs for Dapr-enabled services:
 
-- **Availability**: 99.9% of service invocation requests succeed (non-5xx)
+- **Availability**: 99.9% of service invocation requests return 2xx
 - **Latency**: p99 request latency below 200ms
 - **Pub/Sub Delivery**: 99.95% of published messages are delivered within 30 seconds
 
@@ -35,19 +35,19 @@ spec:
     rules:
     - record: job:dapr_service_invocation_success:rate5m
       expr: |
-        sum(rate(dapr_service_invocation_req_sent_total{
-          status_code=~"2.."
+        sum(rate(dapr_runtime_service_invocation_req_sent_total{
+          status=~"2.."
         }[5m])) by (app_id)
         /
-        sum(rate(dapr_service_invocation_req_sent_total[5m])) by (app_id)
+        sum(rate(dapr_runtime_service_invocation_req_sent_total[5m])) by (app_id)
 
     - record: job:dapr_service_invocation_success:rate1h
       expr: |
-        sum(rate(dapr_service_invocation_req_sent_total{
-          status_code=~"2.."
+        sum(rate(dapr_runtime_service_invocation_req_sent_total{
+          status=~"2.."
         }[1h])) by (app_id)
         /
-        sum(rate(dapr_service_invocation_req_sent_total[1h])) by (app_id)
+        sum(rate(dapr_runtime_service_invocation_req_sent_total[1h])) by (app_id)
 ```
 
 ## Error Budget Calculation
