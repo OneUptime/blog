@@ -35,9 +35,9 @@ spec:
         image: edge-service:latest
 ```
 
-## Reducing Pub/Sub Message Size
+## Tuning Pub/Sub Message Settings
 
-Configure message batching in your pub/sub component to reduce per-message overhead:
+Configure message size limits in your pub/sub component to control network overhead:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -60,7 +60,7 @@ spec:
 
 ## Compressing State Store Payloads
 
-For applications storing large objects, compress before saving state:
+For applications storing large objects, compress at the application level before saving state. Dapr does not provide built-in compression, so you handle it yourself and use a custom metadata tag to track the encoding:
 
 ```javascript
 const zlib = require('zlib');
@@ -77,6 +77,8 @@ async function saveCompressedState(key, data) {
 }
 ```
 
+Note: The `metadata` field here is custom application metadata passed through to the state store. Your application must also decompress when reading the value back.
+
 ## Limiting Telemetry Data
 
 Reduce observability data volume in low-bandwidth environments:
@@ -89,12 +91,8 @@ metadata:
 spec:
   tracing:
     samplingRate: "0.01"  # Only 1% sampling
-  metric:
-    enabled: true
-    rules:
-      - labels: []
-        regex:
-          operation: "GET|POST"
+  metrics:
+    enabled: false
 ```
 
 Disable metrics entirely for the lowest overhead:
@@ -103,9 +101,9 @@ Disable metrics entirely for the lowest overhead:
 dapr.io/enable-metrics: "false"
 ```
 
-## Configuring Actor Reminder Intervals
+## Configuring Actor Runtime Settings
 
-Reduce actor heartbeat frequency to lower control-plane traffic:
+Reduce actor placement frequency to lower control-plane traffic. Actor runtime parameters are configured programmatically through your application code, not through the Configuration CRD. Enable the ActorStateTTL preview feature in your Dapr configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -116,12 +114,21 @@ spec:
   features:
     - name: ActorStateTTL
       enabled: true
-  actor:
-    actorIdleTimeout: 60m    # Long idle timeout reduces churn
-    actorScanInterval: 30s   # Less frequent scanning
-    drainOngoingCallTimeout: 30s
-    drainRebalancedActors: true
 ```
+
+Then configure actor timeouts and scan intervals in your application. For example, in .NET:
+
+```csharp
+builder.Services.AddActors(options =>
+{
+    options.ActorIdleTimeout = TimeSpan.FromMinutes(60);
+    options.ActorScanInterval = TimeSpan.FromSeconds(30);
+    options.DrainOngoingCallTimeout = TimeSpan.FromSeconds(30);
+    options.DrainRebalancedActors = true;
+});
+```
+
+Longer idle timeouts reduce actor deactivation and reactivation churn, while less frequent scanning lowers placement table traffic.
 
 ## Optimizing State Operations
 
