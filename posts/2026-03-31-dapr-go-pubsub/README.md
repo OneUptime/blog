@@ -58,12 +58,12 @@ func main() {
 
 ```go
 // Publish with custom CloudEvent metadata
-if err := client.PublishEventWithContentType(
+if err := client.PublishEvent(
     ctx,
     "pubsub",
     "order-placed",
     event,
-    "application/json",
+    dapr.PublishEventWithContentType("application/json"),
 ); err != nil {
     log.Fatal(err)
 }
@@ -99,7 +99,7 @@ func handleOrderPlaced(ctx context.Context, e *common.TopicEvent) (retry bool, e
     log.Printf("Topic: %s, Source: %s, ID: %s", e.Topic, e.Source, e.ID)
 
     var order OrderPlaced
-    if err := e.DataAs(&order); err != nil {
+    if err := e.Struct(&order); err != nil {
         return false, err // do not retry deserialization errors
     }
 
@@ -122,13 +122,16 @@ sub := &common.Subscription{
 ## Bulk Publishing
 
 ```go
-entries := []dapr.BulkPublishRequestEntry{
-    {EntryID: "1", Event: OrderPlaced{OrderID: "o1"}, ContentType: "application/json"},
-    {EntryID: "2", Event: OrderPlaced{OrderID: "o2"}, ContentType: "application/json"},
+events := []interface{}{
+    OrderPlaced{OrderID: "o1"},
+    OrderPlaced{OrderID: "o2"},
 }
-result, err := client.BulkPublishEventAlpha1(ctx, "pubsub", "order-placed", entries, nil)
-for _, failed := range result.FailedEntries {
-    log.Printf("Failed entry %s: %s", failed.EntryId, failed.ErrorMessage)
+result := client.PublishEvents(ctx, "pubsub", "order-placed", events)
+if result.Error != nil {
+    log.Printf("Bulk publish error: %v", result.Error)
+}
+for _, failed := range result.FailedEvents {
+    log.Printf("Failed event: %v", failed)
 }
 ```
 
