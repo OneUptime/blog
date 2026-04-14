@@ -42,6 +42,7 @@ helm rollback dapr "$PREVIOUS_REVISION" \
 echo "[3] Verifying control plane health after rollback..."
 kubectl rollout status deployment/dapr-operator -n dapr-system --timeout=5m
 kubectl rollout status deployment/dapr-sentry -n dapr-system --timeout=5m
+kubectl rollout status deployment/dapr-sidecar-injector -n dapr-system --timeout=5m
 
 echo "Control plane rolled back successfully."
 kubectl get pods -n dapr-system
@@ -59,14 +60,11 @@ NAMESPACE="${1:-production}"
 
 echo "=== Rolling Back Sidecars in $NAMESPACE ==="
 
-# Force rollout undo for all dapr-enabled deployments
-DEPLOYMENTS=$(kubectl get deployments -n "$NAMESPACE" \
-  -o jsonpath='{.items[*].metadata.name}')
+# Rollout undo for all dapr-enabled deployments
+DEPLOYMENTS=$(kubectl get deployments -n "$NAMESPACE" -o json | \
+  jq -r '.items[] | select(.spec.template.metadata.annotations["dapr.io/enabled"]=="true") | .metadata.name')
 
 for DEPLOYMENT in $DEPLOYMENTS; do
-    PREVIOUS_IMAGE=$(kubectl rollout history deployment/"$DEPLOYMENT" \
-      -n "$NAMESPACE" --revision=1 2>/dev/null | grep "daprd" | awk '{print $1}')
-
     if kubectl rollout undo deployment/"$DEPLOYMENT" -n "$NAMESPACE"; then
         kubectl rollout status deployment/"$DEPLOYMENT" \
           -n "$NAMESPACE" --timeout=3m
