@@ -73,7 +73,7 @@ services:
       "--app-port", "8080",
       "--app-channel-address", "order-service",
       "--dapr-http-port", "3500",
-      "--components-path", "/components"
+      "--resources-path", "/components"
     ]
     volumes:
       - ./components:/components
