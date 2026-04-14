@@ -45,7 +45,7 @@ spec:
   topic: events
   routes:
     rules:
-    - match: event.type == "payment.completed" && event.data.amount > 1000
+    - match: event.type == "payment.completed" && int(event.data.amount) > 1000
       path: /large-payments
     - match: event.type == "payment.completed" && event.data.currency == "EUR"
       path: /eur-payments
@@ -85,14 +85,16 @@ def subscribe():
 @app.route('/large-payments', methods=['POST'])
 def handle_large_payment():
     event = request.json
-    amount = event.get('amount')
+    data = event.get('data', {})
+    amount = data.get('amount')
     print(f"Large payment alert: ${amount} - triggering fraud review")
     return jsonify({"status": "SUCCESS"})
 
 @app.route('/failed-payments', methods=['POST'])
 def handle_failed_payment():
     event = request.json
-    print(f"Payment failed: {event.get('paymentId')} - sending retry notification")
+    data = event.get('data', {})
+    print(f"Payment failed: {data.get('paymentId')} - sending retry notification")
     return jsonify({"status": "SUCCESS"})
 
 @app.route('/ignored', methods=['POST'])
