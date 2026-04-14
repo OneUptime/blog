@@ -24,6 +24,8 @@ Tilt is a local development tool for Kubernetes that watches your code, rebuilds
 Create a `Tiltfile` in your project root:
 
 ```python
+load('ext://restart_process', 'docker_build_with_restart')
+
 # Install Dapr (once per cluster)
 local_resource(
     'dapr-install',
@@ -33,16 +35,16 @@ local_resource(
 )
 
 # Deploy Dapr components
-k8s_yaml('k8s/components/')
+k8s_yaml(listdir('k8s/components/'))
 
 # Build and deploy order-service
-docker_build(
+docker_build_with_restart(
     'myorg/order-service',
     context='services/order-service',
+    entrypoint=['node', 'src/index.js'],
     live_update=[
         sync('services/order-service/src', '/app/src'),
         run('npm install', trigger=['services/order-service/package.json']),
-        restart_container()
     ]
 )
 
@@ -94,6 +96,8 @@ spec:
 For a multi-service setup:
 
 ```python
+load('ext://restart_process', 'docker_build_with_restart')
+
 # Infrastructure
 local_resource('dapr-install', cmd='dapr status -k | grep -q Running || dapr init -k')
 
@@ -114,12 +118,12 @@ spec:
 services = ['order-service', 'inventory-service', 'payment-service']
 
 for svc in services:
-    docker_build(
+    docker_build_with_restart(
         f'myorg/{svc}',
         context=f'services/{svc}',
+        entrypoint=['node', 'src/index.js'],
         live_update=[
             sync(f'services/{svc}/src', '/app/src'),
-            restart_container()
         ]
     )
     k8s_yaml(f'k8s/deployments/{svc}.yaml')
