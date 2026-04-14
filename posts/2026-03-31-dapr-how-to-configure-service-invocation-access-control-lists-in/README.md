@@ -87,14 +87,14 @@ kubectl apply -f order-service-deployment.yaml
 
 ## Verify Access Control Works
 
-Test that the frontend can call allowed operations:
+Test that the frontend can call allowed operations. On Kubernetes, use `curl` against the Dapr sidecar HTTP API from within the calling pod:
 
 ```bash
-# From within the frontend pod
-dapr invoke --app-id order-service --method orders --verb GET
+# From within the frontend-service pod
+curl http://localhost:3500/v1.0/invoke/order-service/method/orders
 # Expected: 200 OK
 
-dapr invoke --app-id order-service --method /orders/admin-metrics --verb GET
+curl http://localhost:3500/v1.0/invoke/order-service/method/orders/admin-metrics
 # Expected: 403 Forbidden (not in ACL)
 ```
 
