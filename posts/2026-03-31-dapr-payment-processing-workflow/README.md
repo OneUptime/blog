@@ -19,8 +19,7 @@ Payment processing requires reliability, auditability, and careful failure handl
 2. Payment Authorization (synchronous, reversible)
 3. Order Fulfillment    (async, long-running)
 4. Payment Capture      (synchronous, final)
-5. Settlement           (async, batch)
-6. Customer Notification (async, fire-and-forget)
+5. Customer Notification (async, fire-and-forget)
 ```
 
 ## Payment Data Models
@@ -121,7 +120,7 @@ func PaymentWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 ## Fraud Check Activity
 
 ```go
-func RunFraudCheck(ctx workflow.ActivityContext) (any, error) {
+func RunFraudCheck(ctx *workflow.ActivityContext) (any, error) {
     var payment PaymentRequest
     ctx.GetInput(&payment)
 
