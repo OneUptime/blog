@@ -63,6 +63,7 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
+    "time"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -76,7 +77,7 @@ func handleScheduledTrigger(w http.ResponseWriter, r *http.Request) {
     defer client.Close()
 
     instanceID := fmt.Sprintf("process-%d", time.Now().UnixNano())
-    client.StartWorkflowAlpha1(r.Context(), &dapr.StartWorkflowRequest{
+    client.StartWorkflowBeta1(r.Context(), &dapr.StartWorkflowRequest{
         InstanceID:        instanceID,
         WorkflowComponent: "dapr",
         WorkflowName:      "EventProcessingWorkflow",
