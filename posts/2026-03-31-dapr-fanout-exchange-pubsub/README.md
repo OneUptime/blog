@@ -62,16 +62,20 @@ publish_product_update("prod-100", {"price": 29.99, "stock": 500})
 // cache-service/index.js
 const { DaprServer } = require('@dapr/dapr');
 
-const server = new DaprServer({ serverPort: '3001' });
+async function main() {
+  const server = new DaprServer({ serverPort: '3001' });
 
-server.pubsub.subscribe('broadcast-pubsub', 'product-updates', async (data) => {
-  console.log(`[Cache] Invalidating cache for product ${data.productId}`);
-  await cacheStore.delete(`product:${data.productId}`);
-  await cacheStore.delete(`product-list`);
-  return { status: 'SUCCESS' };
-});
+  server.pubsub.subscribe('broadcast-pubsub', 'product-updates', async (data) => {
+    console.log(`[Cache] Invalidating cache for product ${data.productId}`);
+    await cacheStore.delete(`product:${data.productId}`);
+    await cacheStore.delete(`product-list`);
+    return { status: 'SUCCESS' };
+  });
 
-await server.start();
+  await server.start();
+}
+
+main().catch(console.error);
 ```
 
 ## Subscriber 2: Search Index Service
@@ -80,15 +84,19 @@ await server.start();
 // search-service/index.js
 const { DaprServer } = require('@dapr/dapr');
 
-const server = new DaprServer({ serverPort: '3002' });
+async function main() {
+  const server = new DaprServer({ serverPort: '3002' });
 
-server.pubsub.subscribe('broadcast-pubsub', 'product-updates', async (data) => {
-  console.log(`[Search] Updating index for product ${data.productId}`);
-  await searchIndex.updateDocument('products', data.productId, data.changes);
-  return { status: 'SUCCESS' };
-});
+  server.pubsub.subscribe('broadcast-pubsub', 'product-updates', async (data) => {
+    console.log(`[Search] Updating index for product ${data.productId}`);
+    await searchIndex.updateDocument('products', data.productId, data.changes);
+    return { status: 'SUCCESS' };
+  });
 
-await server.start();
+  await server.start();
+}
+
+main().catch(console.error);
 ```
 
 ## Subscriber 3: Audit Log Service
@@ -97,21 +105,25 @@ await server.start();
 // audit-service/index.js
 const { DaprServer } = require('@dapr/dapr');
 
-const server = new DaprServer({ serverPort: '3003' });
+async function main() {
+  const server = new DaprServer({ serverPort: '3003' });
 
-server.pubsub.subscribe('broadcast-pubsub', 'product-updates', async (data) => {
-  console.log(`[Audit] Recording update for product ${data.productId}`);
-  await auditLog.record({
-    entityType: 'product',
-    entityId: data.productId,
-    action: 'updated',
-    changes: data.changes,
-    timestamp: data.timestamp,
+  server.pubsub.subscribe('broadcast-pubsub', 'product-updates', async (data) => {
+    console.log(`[Audit] Recording update for product ${data.productId}`);
+    await auditLog.record({
+      entityType: 'product',
+      entityId: data.productId,
+      action: 'updated',
+      changes: data.changes,
+      timestamp: data.timestamp,
+    });
+    return { status: 'SUCCESS' };
   });
-  return { status: 'SUCCESS' };
-});
 
-await server.start();
+  await server.start();
+}
+
+main().catch(console.error);
 ```
 
 ## Kubernetes Deployment for Fanout
