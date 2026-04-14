@@ -85,13 +85,15 @@ containers:
 
 ## Sharing a Volume Between App and Dapr Sidecar
 
-You can share a volume between the application container and the daprd sidecar using the `dapr.io/volume-mounts` annotation:
+You can share a volume between the application container and the daprd sidecar using the `dapr.io/volume-mounts` annotation. This mounts the volume as **read-only** in the sidecar. Use `dapr.io/volume-mounts-rw` instead if the sidecar needs write access:
 
 ```yaml
 annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "myapp"
   dapr.io/volume-mounts: "shared-data:/tmp/dapr-shared"
+  # Or for read-write access:
+  # dapr.io/volume-mounts-rw: "shared-data:/tmp/dapr-shared"
 ```
 
 ```yaml
