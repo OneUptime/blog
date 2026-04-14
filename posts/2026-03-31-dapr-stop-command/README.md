@@ -85,7 +85,7 @@ echo "All Dapr apps stopped."
 When `dapr stop` is called:
 
 1. Dapr sends a `SIGTERM` signal to your application
-2. Your app has a grace period (default 10 seconds) to finish in-flight requests
+2. Your app has a grace period (default 5 seconds) to finish in-flight requests
 3. The Dapr sidecar then shuts down and deregisters from the placement service
 4. Any open state transactions are flushed if the store supports it
 
