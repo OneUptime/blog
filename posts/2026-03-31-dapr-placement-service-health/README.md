@@ -56,10 +56,10 @@ Key placement service metrics:
 # Number of connected sidecars
 dapr_placement_runtimes_total
 
-# Raft leader election count (should be low in stable cluster)
-dapr_placement_leader_election_total
+# Leadership status (1 = leader, 0 = not leader)
+dapr_placement_leader_status
 
-# Actor table dissemination duration
+# Actor heartbeat timestamp (seconds since last report)
 dapr_placement_actor_heartbeat_timestamp
 ```
 
@@ -79,13 +79,13 @@ groups:
         annotations:
           summary: "Dapr placement service is down"
 
-      - alert: DaprPlacementLeaderElectionFrequent
-        expr: rate(dapr_placement_leader_election_total[10m]) > 0.1
-        for: 5m
+      - alert: DaprPlacementNoLeader
+        expr: max(dapr_placement_leader_status{job="dapr-placement-server"}) == 0
+        for: 1m
         labels:
-          severity: warning
+          severity: critical
         annotations:
-          summary: "Dapr placement service is experiencing frequent leader elections"
+          summary: "No Dapr placement service instance is reporting as leader"
 
       - alert: DaprPlacementLowReplicas
         expr: count(up{job="dapr-placement-server"} == 1) < 2
