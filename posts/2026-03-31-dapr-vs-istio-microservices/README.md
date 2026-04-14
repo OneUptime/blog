@@ -12,7 +12,7 @@ Dapr and Istio are both popular tools for microservices on Kubernetes, but they 
 
 ## What Each Tool Does
 
-**Istio** is a service mesh. It operates at the network layer (Layer 7) and intercepts all traffic between services using sidecar proxies (Envoy). Istio provides:
+**Istio** is a service mesh. It operates at the application protocol layer (Layer 7) and intercepts all traffic between services using sidecar proxies (Envoy). Istio provides:
 - Traffic management (routing, load balancing, retries)
 - Mutual TLS between all services (transparent)
 - Observability (metrics, traces, logs via Envoy)
@@ -61,7 +61,7 @@ Use Istio when you need:
 - Authorization policies between services
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
