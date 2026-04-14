@@ -18,9 +18,10 @@ By default, Dapr will attempt to forward traffic to your app as soon as the side
 
 ```yaml
 annotations:
+  dapr.io/enable-app-health-check: "true"  # Required to enable health checks
   dapr.io/app-health-check-path: "/healthz"
   dapr.io/app-health-probe-interval: "5"   # Check every 5 seconds
-  dapr.io/app-health-probe-timeout: "3"    # 3 second timeout
+  dapr.io/app-health-probe-timeout: "3000" # 3000 millisecond timeout
   dapr.io/app-health-threshold: "3"        # 3 consecutive failures before marking unhealthy
 ```
 
@@ -94,11 +95,15 @@ spec:
 
 ## Dapr Sidecar Wait-for-App
 
-Dapr can delay component initialization until your app is healthy, preventing messages from being delivered before the app is ready:
+By default, the Dapr sidecar blocks during initialization until your app is listening on its configured port. To go further and have Dapr pause delivering messages and service invocations until your app reports healthy at runtime, enable app health checks:
 
 ```yaml
 annotations:
-  dapr.io/wait-for-app-start: "60"  # Wait up to 60 seconds for app health
+  dapr.io/enable-app-health-check: "true"
+  dapr.io/app-health-check-path: "/healthz"
+  dapr.io/app-health-probe-interval: "5"
+  dapr.io/app-health-probe-timeout: "500"
+  dapr.io/app-health-threshold: "3"
 ```
 
 ## Ordering with Kubernetes Jobs
@@ -124,4 +129,4 @@ Use ArgoCD sync waves or Helm hooks to ensure migrations run before service depl
 
 ## Summary
 
-Dapr startup order management combines app health check annotations, init containers for dependency readiness, Kubernetes startup and readiness probes, and optional wait-for-app-start delays. Layer these mechanisms to ensure each service starts only when its dependencies are genuinely ready to serve traffic.
+Dapr startup order management combines app health check annotations, init containers for dependency readiness, Kubernetes startup and readiness probes, and the sidecar's built-in wait-for-app behavior. Layer these mechanisms to ensure each service starts only when its dependencies are genuinely ready to serve traffic.
