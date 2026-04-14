@@ -187,7 +187,7 @@ spec:
 ```go
 func storeTelemetry(client dapr.Client, t DeviceTelemetry) error {
     lines := buildLineProtocol(t)
-    _, err := client.InvokeBinding(context.Background(), &dapr.InvokeBindingRequest{
+    _, err := client.InvokeOutputBinding(context.Background(), &dapr.InvokeBindingRequest{
         Name:      "influxdb-output",
         Operation: "create",
         Data:      []byte(lines),
