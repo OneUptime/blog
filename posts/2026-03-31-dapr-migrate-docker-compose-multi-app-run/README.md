@@ -10,7 +10,7 @@ Description: Learn how to replace Docker Compose for local Dapr development with
 
 ## Why Switch to Dapr Multi-App Run?
 
-When developing with Dapr locally, Docker Compose files grow complex: you define each service, its Dapr sidecar, shared component volumes, and networking. Dapr Multi-App Run (introduced in Dapr 1.12) provides a single YAML file that starts all services and their sidecars without Docker at all - just processes managed by the Dapr CLI.
+When developing with Dapr locally, Docker Compose files grow complex: you define each service, its Dapr sidecar, shared component volumes, and networking. Dapr Multi-App Run (introduced in Dapr CLI v1.10) provides a single YAML file that starts all services and their sidecars without Docker at all - just processes managed by the Dapr CLI.
 
 ## Before: Docker Compose with Dapr
 
@@ -31,7 +31,7 @@ services:
       --app-id order-service
       --app-port 3000
       --dapr-http-port 3500
-      --components-path /components
+      --resources-path /components
     volumes:
       - ./components:/components
     depends_on:
@@ -49,7 +49,7 @@ services:
       --app-id inventory-service
       --app-port 3001
       --dapr-http-port 3501
-      --components-path /components
+      --resources-path /components
     volumes:
       - ./components:/components
     depends_on:
@@ -152,7 +152,7 @@ apps:
 |---------|---------------|-------------------|
 | Sidecar configuration | Per-service Docker container | Inline in dapr.yaml |
 | Hot reload | Requires volume mounts | Native process - use nodemon etc. |
-| Startup order | `depends_on` | Sequential by default |
+| Startup order | `depends_on` | Simultaneous |
 | Debugging | Attach to container | Attach to local process |
 | No Docker needed | No | Yes |
 
