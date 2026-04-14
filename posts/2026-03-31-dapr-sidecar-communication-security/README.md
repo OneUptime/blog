@@ -10,7 +10,7 @@ Description: Learn how Dapr secures sidecar-to-sidecar communication with mTLS, 
 
 ## Overview
 
-Dapr secures all communication between sidecars using mutual TLS (mTLS) by default in Kubernetes mode. Each sidecar receives a SPIFFE-compliant X.509 certificate issued by the Dapr control plane, and both sides of every connection verify each other's certificates before exchanging data. This prevents eavesdropping and impersonation attacks.
+Dapr secures all communication between sidecars using mutual TLS (mTLS) by default in Kubernetes mode. Each sidecar receives an X.509 certificate issued by the Dapr control plane, and both sides of every connection verify each other's certificates before exchanging data. This prevents eavesdropping and impersonation attacks.
 
 ## How Dapr mTLS Works
 
@@ -72,12 +72,10 @@ spec:
     allowedClockSkew: "5m"
 ```
 
-Apply via the Dapr control plane configuration:
+Apply by editing the Dapr system configuration directly:
 
 ```bash
-helm upgrade dapr dapr/dapr \
-  --namespace dapr-system \
-  --set dapr_sentry.config.workloadCertTTL=1h
+kubectl edit configuration daprsystem -n dapr-system
 ```
 
 ## Using Custom Root Certificates
@@ -92,12 +90,14 @@ kubectl create secret generic dapr-trust-bundle \
   -n dapr-system
 ```
 
-Then install Dapr with the existing certs flag:
+Then install Dapr referencing the certificate files:
 
 ```bash
 helm install dapr dapr/dapr \
   --namespace dapr-system \
-  --set-string dapr_sentry.config.existingRootCertificate=true
+  --set-file dapr_sentry.tls.issuer.certPEM=./issuer.crt \
+  --set-file dapr_sentry.tls.issuer.keyPEM=./issuer.key \
+  --set-file dapr_sentry.tls.root.certPEM=./ca.crt
 ```
 
 ## Monitoring Certificate Expiry
@@ -105,8 +105,8 @@ helm install dapr dapr/dapr \
 Check certificate status using the Dapr CLI:
 
 ```bash
-dapr mtls check --kubernetes
-dapr mtls expiry --kubernetes
+dapr mtls -k
+dapr mtls expiry
 ```
 
 ## Summary
