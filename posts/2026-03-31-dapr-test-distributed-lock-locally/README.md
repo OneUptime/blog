@@ -48,7 +48,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/lock/lockstore \
 # Expected: {"success":true}
 
 # Verify in Redis
-redis-cli TTL "lockstore||test-lock||local-test"
+redis-cli TTL "lockstore||test-lock"
 # Expected: some positive number < 30
 
 # Release the lock
@@ -77,7 +77,7 @@ curl -X POST http://localhost:3502/v1.0-alpha1/lock/lockstore \
 Start a second Dapr app on a different port for the second "instance":
 
 ```bash
-dapr run --app-id app-b --dapr-http-port 3502 --components-path ./components -- sleep 3600
+dapr run --app-id app-b --dapr-http-port 3502 --resources-path ./components -- sleep 3600
 ```
 
 ## Test 3: Lock Expiry
@@ -108,7 +108,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/lock/lockstore \
 # Try to unlock as owner-B (should fail)
 curl -X POST http://localhost:3500/v1.0-alpha1/unlock/lockstore \
   -d '{"resourceId":"owner-test","lockOwner":"owner-B"}'
-# Expected: {"status":1} or {"status":3} -- Not the owner
+# Expected: {"status":2} -- LOCK_BELONGS_TO_OTHERS
 ```
 
 ## Test 5: Unit Testing with a Mock
