@@ -14,7 +14,7 @@ NATS JetStream is the persistence layer of NATS, providing durable, subject-base
 
 ## Prerequisites
 
-- NATS server (version 2.6 or later) with JetStream enabled
+- NATS server (version 2.2 or later) with JetStream enabled
 - Dapr CLI and runtime installed
 - nats CLI for verification
 
@@ -28,8 +28,8 @@ helm repo update
 
 helm install nats nats/nats \
   --set config.jetstream.enabled=true \
-  --set config.jetstream.fileStorage.enabled=true \
-  --set config.jetstream.fileStorage.size=10Gi \
+  --set config.jetstream.fileStore.enabled=true \
+  --set config.jetstream.fileStore.pvc.size=10Gi \
   --set config.cluster.enabled=true \
   --set config.cluster.replicas=3 \
   --namespace nats \
@@ -63,10 +63,8 @@ spec:
     value: "dapr-durable"
   - name: streamName
     value: "DAPR_EVENTS"
-  - name: maxMessages
-    value: "-1"
-  - name: deliverAll
-    value: "false"
+  - name: deliverPolicy
+    value: "new"
   - name: startSequence
     value: "0"
   - name: ackWait
@@ -136,8 +134,8 @@ nats --server nats://localhost:4222 consumer next DAPR_EVENTS dapr-durable --cou
 JetStream allows replaying messages from a specific sequence or time, useful for recovering from consumer failures:
 
 ```yaml
-  - name: deliverAll
-    value: "true"
+  - name: deliverPolicy
+    value: "all"
   - name: startSequence
     value: "0"
 ```
