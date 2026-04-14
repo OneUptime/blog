@@ -19,7 +19,7 @@ The Dapr JavaScript SDK (`@dapr/dapr`) provides a client and server API for Node
 
 ```bash
 # Install Dapr CLI on macOS/Linux
-wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
+wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 
 # Initialize Dapr locally
 dapr init
@@ -55,7 +55,7 @@ Create a client that connects to the Dapr sidecar:
 ```javascript
 const { DaprClient, CommunicationProtocolEnum } = require("@dapr/dapr");
 
-const daprHost = process.env.DAPR_HOST || "http://localhost";
+const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
 const client = new DaprClient({
@@ -113,7 +113,7 @@ dapr run \
   --app-id my-dapr-app \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ./dapr/components \
+  --resources-path ./dapr/components \
   -- node src/index.js
 ```
 
@@ -121,7 +121,7 @@ dapr run \
 
 | Variable | Default | Description |
 |---|---|---|
-| `DAPR_HOST` | `http://localhost` | Dapr sidecar host |
+| `DAPR_HOST` | `127.0.0.1` | Dapr sidecar host |
 | `DAPR_HTTP_PORT` | `3500` | Dapr HTTP port |
 | `DAPR_GRPC_PORT` | `50001` | Dapr gRPC port |
 
