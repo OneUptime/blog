@@ -23,18 +23,18 @@ metadata:
   name: daprconfig
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
-Apply this configuration and reference it in your deployment annotation:
+Apply this configuration and reference it in your deployment annotation. The metrics port defaults to `9090` and can be changed with the `dapr.io/metrics-port` annotation:
 
 ```yaml
 annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "order-service"
   dapr.io/config: "daprconfig"
+  dapr.io/metrics-port: "9090"
 ```
 
 ## Key Pub/Sub Throughput Metrics
@@ -118,11 +118,11 @@ sum by (app_id, topic) (
 )
 ```
 
-**Average Publish Latency (ms):**
+**P95 Publish Latency (ms):**
 ```promql
 histogram_quantile(0.95,
   rate(dapr_component_pubsub_egress_latencies_bucket[5m])
-) / 1000
+)
 ```
 
 ## Alerting on Low Throughput
