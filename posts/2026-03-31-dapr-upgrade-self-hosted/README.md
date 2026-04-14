@@ -43,11 +43,19 @@ dapr --version
 
 ## Step 3: Uninstall the Current Dapr Runtime
 
+Back up your component configuration files before uninstalling:
+
 ```bash
-dapr uninstall
+cp -r ~/.dapr/components ~/.dapr/components-backup
 ```
 
-This stops and removes the Redis and Zipkin containers but does NOT remove your component configuration files in `~/.dapr/components/`.
+Then uninstall:
+
+```bash
+dapr uninstall --all
+```
+
+The `--all` flag removes the Dapr binaries, the Redis, Zipkin, Scheduler, and Placement containers, and the entire `~/.dapr/` directory (including your component files — hence the backup above).
 
 Verify cleanup:
 
@@ -62,6 +70,12 @@ docker ps -a | grep dapr
 dapr init
 # Or specify an exact version
 dapr init --runtime-version 1.14.0
+```
+
+Then restore your component files:
+
+```bash
+cp -r ~/.dapr/components-backup/* ~/.dapr/components/
 ```
 
 Confirm the upgrade:
@@ -122,4 +136,4 @@ dapr run --app-id my-app --app-port 8080 node app.js
 
 ## Summary
 
-Upgrading Dapr in self-hosted mode is a three-step process: upgrade the CLI, uninstall the old runtime, and reinitialize with the new version. Your component configuration files are preserved across upgrades, but you should always review release notes for breaking changes. Testing the upgraded runtime with a simple `dapr run` command confirms a successful upgrade before restarting all services.
+Upgrading Dapr in self-hosted mode is a three-step process: upgrade the CLI, uninstall the old runtime with `dapr uninstall --all`, and reinitialize with the new version. Back up your `~/.dapr/components/` directory before uninstalling, as the `--all` flag removes the entire `~/.dapr/` directory. Always review release notes for breaking changes. Testing the upgraded runtime with a simple `dapr run` command confirms a successful upgrade before restarting all services.
