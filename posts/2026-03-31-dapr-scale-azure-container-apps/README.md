@@ -40,13 +40,13 @@ az containerapp update \
   --scale-rule-name sb-scaling \
   --scale-rule-type azure-servicebus \
   --scale-rule-metadata queueName=orders messageCount=5 \
-  --scale-rule-auth connectionFromSecretRef=sb-connection
+  --scale-rule-auth connection=sb-connection
 ```
 
 ## Step 3: Define Scaling in Bicep
 
-```yaml
-# containerapp-scale.bicep
+```bicep
+// containerapp-scale.bicep
 scale: {
   minReplicas: 1
   maxReplicas: 20
