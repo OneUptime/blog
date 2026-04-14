@@ -80,7 +80,7 @@ spec:
     secretKeyRef:
       name: aws-creds-tenant-a
       key: access-key
-  - name: secretAccessKey
+  - name: secretKey
     secretKeyRef:
       name: aws-creds-tenant-a
       key: secret-key
@@ -95,7 +95,7 @@ Enforce that tenant A's IAM role can only access secrets prefixed with `/tenant-
     {
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
-      "Resource": "arn:aws:secretsmanager:us-east-1:123456789:secret:/tenant-a/*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:/tenant-a/*"
     }
   ]
 }
@@ -139,8 +139,7 @@ Configure Vault audit logging to track which tenant accessed which secrets:
 vault audit enable file file_path=/vault/logs/audit.log
 
 # In tenant-a namespace
-vault namespace exec -namespace tenant-a \
-  vault audit enable file file_path=/vault/logs/tenant-a-audit.log
+vault audit enable -namespace=tenant-a file file_path=/vault/logs/tenant-a-audit.log
 ```
 
 ## Summary
