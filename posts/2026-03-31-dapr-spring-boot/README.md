@@ -20,7 +20,7 @@ Add the Dapr Spring Boot starter to your `pom.xml`:
 <dependency>
   <groupId>io.dapr.spring</groupId>
   <artifactId>dapr-spring-boot-starter</artifactId>
-  <version>0.13.0</version>
+  <version>1.16.0</version>
 </dependency>
 ```
 
@@ -29,8 +29,10 @@ Add the Dapr Spring Boot starter to your `pom.xml`:
 Configure the Dapr connection in `application.properties`:
 
 ```properties
-dapr.http.endpoint=http://localhost:3500
-dapr.grpc.endpoint=localhost:50001
+dapr.client.http-endpoint=http://localhost
+dapr.client.http-port=3500
+dapr.client.grpc-endpoint=localhost
+dapr.client.grpc-port=50001
 ```
 
 ## Injecting DaprClient
