@@ -15,8 +15,9 @@ Dapr's pub/sub building block abstracts message brokers like Redis Streams, Kafk
 Dapr guarantees at-least-once delivery. If your subscriber returns a non-success HTTP status, Dapr retries the message. This means:
 
 - Returning `200` ACKs the message
-- Returning `404` or `500` causes Dapr to retry (and eventually dead-letter if configured)
-- Returning `204` with `{"status": "DROP"}` explicitly drops the message
+- Returning `404` causes Dapr to drop the message with an error log
+- Returning `500` (or other non-2xx, non-404) causes Dapr to retry (and eventually dead-letter if configured)
+- Returning `200` with `{"status": "DROP"}` explicitly drops the message
 
 ## Checking If Messages Are Being Published
 
@@ -71,7 +72,7 @@ scopes:
 
 ## Configuring Dead Letter Topics
 
-Messages that repeatedly fail delivery go to a dead letter topic. Configure and monitor it:
+Messages that fail delivery go to a dead letter topic. By default, dead-lettering happens on the first failure unless a resiliency policy with retries is configured. Configure and monitor it:
 
 ```yaml
 spec:
@@ -103,7 +104,7 @@ def process_order():
         return '', 200
     except Exception as e:
         # Retry will happen
-        return jsonify({"status": "RETRY"}), 500
+        return jsonify({"status": "RETRY"}), 200
 ```
 
 ## Checking Broker Connectivity
