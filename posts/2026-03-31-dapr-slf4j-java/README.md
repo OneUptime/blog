@@ -44,7 +44,6 @@ SLF4J (Simple Logging Facade for Java) is the standard logging API used by most 
                 <includeMdcKeyName>traceId</includeMdcKeyName>
                 <includeMdcKeyName>spanId</includeMdcKeyName>
                 <includeMdcKeyName>daprAppId</includeMdcKeyName>
-                <includeMdcKeyName>daprRequestId</includeMdcKeyName>
                 <customFields>{"service":"order-service","env":"production"}</customFields>
             </encoder>
         </appender>
@@ -140,7 +139,13 @@ public class DaprMdcFilter implements Filter {
         String daprAppId = httpRequest.getHeader("dapr-app-id");
         String daprCallerId = httpRequest.getHeader("dapr-caller-app-id");
 
-        MDC.put("traceParent", traceParent != null ? traceParent : "");
+        if (traceParent != null && !traceParent.isEmpty()) {
+            String[] parts = traceParent.split("-");
+            if (parts.length >= 3) {
+                MDC.put("traceId", parts[1]);
+                MDC.put("spanId", parts[2]);
+            }
+        }
         MDC.put("daprAppId", daprAppId != null ? daprAppId : "");
         MDC.put("callerAppId", daprCallerId != null ? daprCallerId : "");
 
