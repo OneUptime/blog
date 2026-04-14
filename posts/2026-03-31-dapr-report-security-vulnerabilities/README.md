@@ -14,20 +14,22 @@ Security vulnerabilities in distributed systems like Dapr can affect thousands o
 
 ## Where to Report Vulnerabilities
 
-Dapr uses GitHub's private security advisory feature for vulnerability reporting. Do not open a public GitHub issue for a security vulnerability.
+Do not open a public GitHub issue for a security vulnerability.
 
-To report a vulnerability:
-
-1. Navigate to `https://github.com/dapr/dapr/security/advisories`
-2. Click "Report a vulnerability"
-3. Fill in the advisory form with reproduction steps, affected versions, and impact assessment
-
-Alternatively, email the Dapr security team directly:
+The primary way to report a vulnerability is by emailing the Dapr security team:
 
 ```bash
 # Email address for security reports
 security@dapr.io
 ```
+
+Include a descriptive subject line and write the issue description in English with example configuration or code demonstrating reproduction.
+
+Alternatively, use GitHub's private security advisory feature:
+
+1. Navigate to `https://github.com/dapr/dapr/security/advisories`
+2. Click "Report a vulnerability"
+3. Fill in the advisory form with reproduction steps, affected versions, and impact assessment
 
 ## What to Include in Your Report
 
@@ -53,9 +55,8 @@ After you submit a report, expect the following timeline:
 
 | Phase | Timeframe |
 |-------|-----------|
-| Acknowledgment | Within 3 business days |
-| Initial assessment | Within 7 business days |
-| Patch development | 30-90 days depending on severity |
+| Acknowledgment | Ideally within 3 working days |
+| Triage, patching, and announcement | Within 30 days |
 | Public disclosure | After patch release |
 
 ## CVE Assignment
@@ -77,4 +78,4 @@ Dapr does not currently offer a paid bug bounty program, but reporters are publi
 
 ## Summary
 
-Report Dapr security vulnerabilities privately through GitHub security advisories or by emailing security@dapr.io. Include reproduction steps, affected versions, and impact assessment. Dapr follows coordinated disclosure with acknowledgment within 3 business days and patches issued before public announcement.
+Report Dapr security vulnerabilities privately by emailing security@dapr.io or through GitHub security advisories. Include reproduction steps, affected versions, and impact assessment. Dapr follows coordinated disclosure with acknowledgment ideally within 3 working days and full resolution (triage, patching, and announcement) within 30 days.
