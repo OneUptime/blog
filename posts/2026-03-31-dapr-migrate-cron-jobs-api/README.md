@@ -59,29 +59,21 @@ main().catch(err => {
 
 ## After: Dapr Jobs API
 
-Remove the CronJob manifest. Register the job with Dapr:
-
-```bash
-# Register a recurring job via Dapr CLI
-dapr job create \
-  --name daily-report \
-  --schedule "0 6 * * *" \
-  --data '{"reportType":"daily","recipients":["team@company.com"]}'
-```
-
-Or via the Dapr HTTP API:
+Remove the CronJob manifest. Register the job via the Dapr HTTP API:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report \
   -H "Content-Type: application/json" \
   -d '{
-    "schedule": "0 6 * * *",
+    "schedule": "0 0 6 * * *",
     "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "{\"reportType\":\"daily\"}"
+      "reportType": "daily",
+      "recipients": ["team@company.com"]
     }
   }'
 ```
+
+Note: Dapr uses six-field cron expressions where the first field is seconds. The expression `0 0 6 * * *` means every day at 06:00:00.
 
 Handle the job trigger in your long-running service:
 
@@ -91,8 +83,8 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-app.post('/jobs/daily-report', async (req, res) => {
-  const payload = JSON.parse(req.body.data?.value || '{}');
+app.post('/job/daily-report', async (req, res) => {
+  const payload = req.body;
   console.log('Job triggered:', payload);
 
   try {
@@ -117,26 +109,24 @@ app.listen(3000);
 
 ```bash
 # Run once at a specific time
-dapr job create \
-  --name end-of-year-close \
-  --due-time "2026-12-31T23:59:00Z" \
-  --data '{"period":"FY2026"}'
+curl -X POST http://localhost:3500/v1.0-alpha1/jobs/end-of-year-close \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dueTime": "2026-12-31T23:59:00Z",
+    "data": {
+      "period": "FY2026"
+    }
+  }'
 ```
 
 ## Managing Jobs
 
 ```bash
-# List all registered jobs
-dapr job list
-
 # Get job details
-dapr job get --name daily-report
+curl -X GET http://localhost:3500/v1.0-alpha1/jobs/daily-report
 
 # Delete a job
-dapr job delete --name daily-report
-
-# Run a job immediately (useful for testing)
-dapr job run --name daily-report
+curl -X DELETE http://localhost:3500/v1.0-alpha1/jobs/daily-report
 ```
 
 ## Combining with Dapr Workflow for Durability
@@ -144,15 +134,13 @@ dapr job run --name daily-report
 For jobs that need checkpointing, start a Dapr Workflow from the job handler:
 
 ```javascript
-app.post('/jobs/daily-report', async (req, res) => {
+const { DaprClient } = require('@dapr/dapr');
+const daprClient = new DaprClient();
+
+app.post('/job/daily-report', async (req, res) => {
   const instanceId = `report-${new Date().toISOString().slice(0,10)}`;
 
-  await daprClient.startWorkflow({
-    workflowComponent: 'dapr',
-    workflowName: 'DailyReportWorkflow',
-    instanceId,
-    input: req.body
-  });
+  await daprClient.workflow.start('DailyReportWorkflow', req.body, instanceId);
 
   res.sendStatus(202);
 });
