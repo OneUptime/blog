@@ -96,7 +96,7 @@ spec:
     - name: saslMechanism
       value: "SCRAM-SHA-256"
     - name: authType
-      value: "scram"
+      value: "password"
 ```
 
 Both on-premises and cloud services use identical pub/sub component configuration.
