@@ -32,7 +32,7 @@ docker network create coherence-net
 docker run -d --name coherence-1 \
   --network coherence-net \
   -p 1408:1408 \
-  -p 9000:9000 \
+  -p 30000:30000 \
   ghcr.io/oracle/coherence-ce:22.06.8
 
 docker run -d --name coherence-2 \
@@ -40,10 +40,10 @@ docker run -d --name coherence-2 \
   ghcr.io/oracle/coherence-ce:22.06.8
 ```
 
-Verify cluster membership:
+Verify cluster membership using the Management over REST API:
 
 ```bash
-docker exec coherence-1 /coherence/bin/cohctl get members -u http://localhost:9000/management/coherence/cluster
+curl http://localhost:30000/management/coherence/cluster/members
 ```
 
 ## Configuring the Dapr Component
@@ -57,25 +57,21 @@ metadata:
   name: coherence-statestore
   namespace: default
 spec:
-  type: state.oraclecoherence
+  type: state.coherence
   version: v1
   metadata:
-  - name: address
+  - name: serverAddress
     value: "coherence-1:1408"
-  - name: cacheName
-    value: "dapr-state"
-  - name: nearCacheEnabled
-    value: "true"
   - name: nearCacheTTL
-    value: "60000"
+    value: "60s"
   - name: requestTimeout
-    value: "10000"
+    value: "10s"
 ```
 
 For a multi-node Coherence cluster, specify multiple addresses:
 
 ```yaml
-  - name: address
+  - name: serverAddress
     value: "coherence-1:1408,coherence-2:1408"
 ```
 
@@ -115,15 +111,13 @@ console.log("Session:", session);
 Coherence's near cache stores frequently accessed items in the application process memory, eliminating network round trips for hot keys:
 
 ```yaml
-  - name: nearCacheEnabled
-    value: "true"
   - name: nearCacheTTL
-    value: "30000"
-  - name: nearCacheHighUnits
+    value: "30s"
+  - name: nearCacheUnits
     value: "10000"
 ```
 
-With near caching enabled, repeated reads of the same key are served from local memory:
+With a non-zero `nearCacheTTL`, repeated reads of the same key are served from local memory:
 
 ```bash
 # First read - fetched from cluster
