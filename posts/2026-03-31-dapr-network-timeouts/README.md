@@ -46,61 +46,51 @@ spec:
           timeout: slow
 ```
 
-## Sidecar-Level Network Timeouts
+## Sidecar-Level Configuration
 
-Configure global HTTP client timeouts for the Dapr sidecar via Helm values or annotations:
-
-```yaml
-# Helm values for Dapr system chart
-dapr_sidecar_injector:
-  sidecarContainerImage: daprio/daprd:1.14.0
-  injectedSideCarContainerSettings:
-    env:
-    - name: DAPR_HTTP_CLIENT_TIMEOUT
-      value: "30"
-    - name: DAPR_GRPC_KEEPALIVE_TIMEOUT
-      value: "10"
-```
-
-Or via pod annotations:
+Configure sidecar-level network settings via Kubernetes pod annotations:
 
 ```yaml
 annotations:
   dapr.io/config: "app-config"
-  dapr.io/http-read-buffer-size: "4096"
-  dapr.io/http-max-request-size: "10"
+  dapr.io/graceful-shutdown-seconds: "30"
+  dapr.io/max-body-size: "16Mi"
+  dapr.io/read-buffer-size: "16Ki"
 ```
+
+The `graceful-shutdown-seconds` annotation controls how long the sidecar waits during shutdown for in-flight requests to complete (default is 5 seconds). The `max-body-size` and `read-buffer-size` annotations control request body and header buffer limits respectively. For actual request-level timeout control, use Resiliency policies or per-request SDK timeouts as described in the other sections.
 
 ## Per-Request Timeout Override
 
-Pass a timeout for individual calls using the `dapr-timeout-ms` metadata header:
+Pass a timeout for individual calls using the SDK `timeout` parameter:
 
 ```python
 from dapr.clients import DaprClient
 import json
 
-def call_with_custom_timeout(app_id: str, method: str, data: dict, timeout_ms: int):
+def call_with_custom_timeout(app_id: str, method: str, data: dict, timeout_seconds: int):
     with DaprClient() as client:
         response = client.invoke_method(
             app_id=app_id,
             method_name=method,
             data=json.dumps(data),
             content_type="application/json",
-            metadata=(("dapr-timeout-ms", str(timeout_ms)),)
+            timeout=timeout_seconds,
         )
         return json.loads(response.data)
 
 # Use a 3-second timeout for this specific call
-result = call_with_custom_timeout("slow-service", "process", payload, 3000)
+result = call_with_custom_timeout("slow-service", "process", payload, 3)
 ```
 
 ## Timeout Hierarchy
 
-Dapr applies timeouts in the following order (most specific wins):
+Dapr applies timeouts at two different points in the call chain:
 
-1. Per-request `dapr-timeout-ms` metadata
-2. Resiliency policy timeout for the specific target
-3. Global sidecar HTTP client timeout
+1. **SDK `timeout` parameter**: Sets a client-side gRPC deadline covering the entire round trip from the application to the local Dapr sidecar and back.
+2. **Resiliency policy timeout**: Applies on the sidecar side when making the outbound call to the target service.
+
+The effective timeout is whichever fires first. If the SDK timeout is shorter than the resiliency policy timeout, the client-side deadline cancels the call before the resiliency timeout triggers. If the resiliency policy timeout is shorter, the sidecar returns a timeout error to the application within the SDK deadline.
 
 ## Monitoring Timeout Errors
 
@@ -109,7 +99,7 @@ Use Dapr Prometheus metrics to track timeout rates:
 ```bash
 # Count timeout responses (408, 504)
 curl -s http://localhost:9090/api/v1/query \
-  --data-urlencode 'query=sum(rate(dapr_http_client_completed_count{status_code=~"408|504"}[5m])) by (app_id)'
+  --data-urlencode 'query=sum(rate(dapr_http_client_completed_count{status=~"408|504"}[5m])) by (app_id)'
 ```
 
 Alert when timeout rate spikes:
@@ -119,7 +109,7 @@ groups:
 - name: dapr-timeouts
   rules:
   - alert: HighTimeoutRate
-    expr: rate(dapr_http_client_completed_count{status_code="408"}[5m]) > 0.1
+    expr: rate(dapr_http_client_completed_count{status="408"}[5m]) > 0.1
     for: 3m
     labels:
       severity: warning
@@ -129,4 +119,4 @@ groups:
 
 ## Summary
 
-Dapr network timeouts should be configured at the resiliency policy level for per-target control, with global sidecar settings as a safety net. Per-request timeout overrides handle special cases like user-initiated long-running operations. Prometheus metrics on 408 and 504 status codes provide real-time visibility into timeout rates and trigger alerts before resource exhaustion occurs.
+Dapr network timeouts should be configured at the resiliency policy level for per-target control. Per-request SDK timeout overrides handle special cases like user-initiated long-running operations. Prometheus metrics on 408 and 504 status codes provide real-time visibility into timeout rates and trigger alerts before resource exhaustion occurs.
