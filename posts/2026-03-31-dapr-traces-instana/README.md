@@ -95,7 +95,7 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "catalog-service"
   dapr.io/config: "dapr-instana-tracing"
-  dapr.io/sidecar-env-vars: "OTEL_RESOURCE_ATTRIBUTES=service.name=catalog-service,service.version=1.0.0"
+  dapr.io/env: "OTEL_RESOURCE_ATTRIBUTES=service.name=catalog-service"
 ```
 
 ## Direct Agent Export (No Collector)
@@ -124,7 +124,7 @@ Instana automatically correlates OpenTelemetry traces with infrastructure metric
 ```bash
 # Check that the Instana agent is ready to accept OTLP
 kubectl exec -n instana-agent daemonset/instana-agent -- \
-  curl -s http://localhost:42699/com.instana.agent.main/status | jq '.status'
+  curl -s http://localhost:42699/status | jq '.status'
 ```
 
 ## Viewing Traces in Instana
