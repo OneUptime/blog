@@ -20,7 +20,6 @@ Add HTTParty for Dapr HTTP calls in `Gemfile`:
 
 ```ruby
 gem 'httparty'
-gem 'faraday'
 ```
 
 Create a Dapr client service:
