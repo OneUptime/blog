@@ -34,7 +34,7 @@ Without an API allowlist, a Dapr application can call all Dapr APIs through its 
 
 ## Define an API Allowlist via Configuration
 
-Create a `Configuration` resource with an `allowedAPIs` section:
+Create a `Configuration` resource with an `api.allowed` section:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -46,20 +46,20 @@ spec:
   api:
     allowed:
     - name: state
-      version: v1
-      protocol: HTTP
-    - name: pubsub
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
+    - name: publish
+      version: v1.0
+      protocol: http
     - name: state
       version: v1
-      protocol: gRPC
-    - name: pubsub
+      protocol: grpc
+    - name: publish
       version: v1
-      protocol: gRPC
+      protocol: grpc
 ```
 
-This configuration allows only state management and pub/sub APIs. All other APIs (bindings, actors, secrets, etc.) will return `403 Forbidden`.
+This configuration allows only state management and pub/sub APIs. All other APIs (bindings, actors, secrets, etc.) will be blocked — HTTP requests to blocked APIs return `404 Not Found` (because the endpoints are not registered), and gRPC calls return `Unimplemented`.
 
 ## Apply the Configuration to a Deployment
 
@@ -91,9 +91,9 @@ metadata:
 spec:
   api:
     allowed:
-    - name: pubsub
-      version: v1
-      protocol: HTTP
+    - name: publish
+      version: v1.0
+      protocol: http
 ```
 
 ## Example - Data Service Allowlist
@@ -110,11 +110,11 @@ spec:
   api:
     allowed:
     - name: state
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
     - name: state
       version: v1
-      protocol: gRPC
+      protocol: grpc
 ```
 
 ## Example - Full API Config with Multiple Building Blocks
@@ -131,49 +131,55 @@ spec:
   api:
     allowed:
     - name: state
-      version: v1
-      protocol: HTTP
-    - name: pubsub
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
+    - name: publish
+      version: v1.0
+      protocol: http
     - name: bindings
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
     - name: secrets
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
     - name: metadata
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
     - name: healthz
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
 ```
 
 Available API names:
 
 ```text
 state          - state management
-pubsub         - pub/sub messaging
+publish        - pub/sub messaging
 bindings       - input/output bindings
 actors         - virtual actors
 secrets        - secret store
 configuration  - configuration store
 lock           - distributed lock
+unlock         - distributed unlock
 workflows      - workflow engine
 invoke         - service-to-service invocation
 metadata       - sidecar metadata
 healthz        - health check endpoint
+shutdown       - sidecar shutdown
+crypto         - cryptography
+subtlecrypto   - subtle cryptography
+jobs           - job scheduling
+conversation   - conversation AI
 ```
 
 ## Test API Restriction
 
-Verify that a blocked API returns 403:
+Verify that a blocked API is not accessible:
 
 ```bash
 # If secrets API is not in the allowlist:
 curl http://localhost:3500/v1.0/secrets/mysecretstore/mykey
-# Expected: 403 Forbidden
+# Expected: 404 Not Found (endpoint is not registered)
 
 # If state API is in the allowlist:
 curl http://localhost:3500/v1.0/state/statestore/mykey
@@ -195,11 +201,11 @@ spec:
   api:
     allowed:
     - name: state
-      version: v1
-      protocol: HTTP
-    - name: pubsub
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
+    - name: publish
+      version: v1.0
+      protocol: http
 EOF
 
 # Run with the config
@@ -220,11 +226,11 @@ spec:
   api:
     allowed:
     - name: state
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
     - name: invoke
-      version: v1
-      protocol: HTTP
+      version: v1.0
+      protocol: http
   accessControl:
     defaultAction: deny
     policies:
