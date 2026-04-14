@@ -137,7 +137,7 @@ def purchase_order_workflow(ctx, po: dict):
 def create_purchase_order(ctx: WorkflowActivityContext, po: dict):
     with DaprClient() as client:
         client.save_state("statestore", f"po-{po['purchaseOrderId']}", json.dumps(po))
-        client.publish_event("pubsub", "po-created", po)
+        client.publish_event("pubsub", "po-created", json.dumps(po))
 ```
 
 ## Finance Service - Event-Driven Ledger
