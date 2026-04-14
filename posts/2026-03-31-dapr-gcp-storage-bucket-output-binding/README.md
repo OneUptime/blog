@@ -83,7 +83,7 @@ async function uploadReport(reportName, reportData, contentType = "application/j
     "create",
     typeof reportData === "string" ? reportData : JSON.stringify(reportData),
     {
-      name: reportName,
+      key: reportName,
       contentType,
     }
   );
@@ -113,7 +113,7 @@ async function downloadObject(objectName) {
     "document-store",
     "get",
     null,
-    { name: objectName }
+    { key: objectName }
   );
   return result;
 }
@@ -131,7 +131,7 @@ async function deleteObject(objectName) {
     "document-store",
     "delete",
     null,
-    { name: objectName }
+    { key: objectName }
   );
   console.log(`Deleted: ${objectName}`);
 }
@@ -146,8 +146,8 @@ async function listObjects(prefix) {
   const result = await client.binding.send(
     "document-store",
     "list",
-    null,
-    { prefix }
+    { prefix },
+    {}
   );
   return result;
 }
@@ -157,9 +157,9 @@ console.log(`Found ${todayReports.length} objects for today`);
 todayReports.forEach((obj) => console.log("-", obj.name));
 ```
 
-## Setting Object Metadata
+## Setting Content Type
 
-GCS supports custom metadata on objects. Pass metadata via the request:
+You can specify the content type when uploading objects via the `contentType` metadata field:
 
 ```javascript
 await client.binding.send(
@@ -167,25 +167,26 @@ await client.binding.send(
   "create",
   reportContent,
   {
-    name: "reports/q1-2026.json",
+    key: "reports/q1-2026.json",
     contentType: "application/json",
-    "x-goog-meta-environment": "production",
-    "x-goog-meta-generated-by": "analytics-service",
-    "x-goog-meta-report-version": "3.0",
   }
 );
 ```
 
+Note: The Dapr GCP Storage Bucket binding supports setting `key` and `contentType` on objects. Custom GCS object metadata (`x-goog-meta-*` headers) is not supported through the Dapr binding API. If you need custom object metadata, use the GCS client library directly.
+
 ## Serving Public Objects via CDN
 
-For public assets, set the bucket's IAM to allow `allUsers`:
+For public assets, set the bucket's IAM to allow `allUsers` read access:
 
 ```bash
-gsutil iam ch allUsers:objectViewer gs://my-dapr-documents/public
+gsutil iam ch allUsers:objectViewer gs://my-dapr-documents
 
-# Objects uploaded to public/ prefix are accessible at:
+# Objects in the bucket are then accessible at:
 # https://storage.googleapis.com/my-dapr-documents/public/logo.png
 ```
+
+Note: This grants public read access to the **entire bucket**. GCS IAM policies apply at the bucket level, not per prefix. If you need only certain objects to be public, use a separate bucket for public assets.
 
 ## Summary
 
