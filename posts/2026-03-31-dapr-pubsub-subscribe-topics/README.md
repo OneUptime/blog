@@ -174,6 +174,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     "log"
 
@@ -207,7 +208,7 @@ func main() {
 
 func handleOrder(ctx context.Context, e *common.TopicEvent) (retry bool, err error) {
     var order Order
-    if err := e.DataAs(&order); err != nil {
+    if err := json.Unmarshal(e.RawData, &order); err != nil {
         return false, fmt.Errorf("failed to parse order: %w", err)
     }
 
