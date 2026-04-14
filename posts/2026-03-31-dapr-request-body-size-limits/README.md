@@ -14,7 +14,7 @@ Dapr's sidecar HTTP server enforces a default maximum request body size of 4 MB.
 
 ## Default Limit and the Problem
 
-The default `dapr-http-max-request-size` is 4 MB. If your service receives a payload larger than this, Dapr rejects it before it reaches your application:
+The default `max-body-size` is 4 MB. If your service receives a payload larger than this, Dapr rejects it before it reaches your application:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/invoke/upload-service/method/upload \
@@ -32,14 +32,14 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "upload-service"
   dapr.io/app-port: "8080"
-  dapr.io/http-max-request-size: "64"
+  dapr.io/max-body-size: "64Mi"
 ```
 
 For local development with the CLI:
 
 ```bash
 dapr run --app-id upload-service \
-  --dapr-http-max-request-size 64 \
+  --max-body-size 64Mi \
   --app-port 8080 \
   -- node server.js
 ```
@@ -110,14 +110,14 @@ Larger body limits increase memory consumption per request. Set limits appropria
 
 ```yaml
 # For file upload services: 64MB
-dapr.io/http-max-request-size: "64"
+dapr.io/max-body-size: "64Mi"
 
 # For API services with JSON payloads: 8MB
-dapr.io/http-max-request-size: "8"
+dapr.io/max-body-size: "8Mi"
 
-# For lightweight microservices: keep default 4MB
+# For lightweight microservices: keep default 4Mi
 ```
 
 ## Summary
 
-Dapr's `http-max-request-size` annotation controls the maximum body size accepted by the sidecar HTTP server. Increase it per-service based on actual payload needs, and also configure your application framework's own body parser limits to match, ensuring large requests are handled end-to-end without truncation.
+Dapr's `max-body-size` annotation controls the maximum body size accepted by the sidecar HTTP server. Increase it per-service based on actual payload needs, and also configure your application framework's own body parser limits to match, ensuring large requests are handled end-to-end without truncation.
