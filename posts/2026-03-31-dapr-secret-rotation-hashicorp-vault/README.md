@@ -36,8 +36,6 @@ spec:
     value: "true"
   - name: enginePath
     value: "secret"
-  - name: vaultVersionedKV
-    value: "true"
 ```
 
 ## Reading the Current Secret Version
@@ -66,8 +64,11 @@ Set up a rotation script that creates a new secret version in Vault:
 #!/bin/bash
 # rotate-db-secret.sh
 
+export VAULT_ADDR="https://vault.example.com:8200"
 NEW_PASSWORD=$(openssl rand -base64 32)
-VAULT_ADDR="https://vault.example.com:8200"
+
+# Fetch the current password from Vault
+CURRENT_PASSWORD=$(vault kv get -field=password secret/database/app-credentials)
 
 # Update the password in the actual database first
 mysql -u admin -p"${CURRENT_PASSWORD}" -e \
