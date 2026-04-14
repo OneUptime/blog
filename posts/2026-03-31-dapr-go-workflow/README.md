@@ -15,7 +15,8 @@ Dapr Workflow provides a durable execution engine for long-running business proc
 ## Installing the SDK
 
 ```bash
-go get github.com/dapr/go-sdk/workflow@latest
+go get github.com/dapr/go-sdk@latest
+go get github.com/dapr/durabletask-go@latest
 ```
 
 ## Defining Activities
@@ -28,8 +29,10 @@ package main
 import (
     "context"
     "fmt"
+    "log"
 
-    "github.com/dapr/go-sdk/workflow"
+    "github.com/dapr/durabletask-go/workflow"
+    "github.com/dapr/go-sdk/client"
 )
 
 func ReserveInventoryActivity(ctx workflow.ActivityContext) (any, error) {
@@ -74,7 +77,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     // Step 1: Reserve inventory
     var reserved struct{ Reserved bool }
     if err := ctx.CallActivity(ReserveInventoryActivity,
-        workflow.ActivityInput(map[string]any{
+        workflow.WithActivityInput(map[string]any{
             "productId": order.ProductID,
             "quantity":  order.Quantity,
         })).Await(&reserved); err != nil {
@@ -88,7 +91,7 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
     // Step 2: Process payment
     var payment struct{ TransactionId string }
     if err := ctx.CallActivity(ProcessPaymentActivity,
-        workflow.ActivityInput(map[string]any{
+        workflow.WithActivityInput(map[string]any{
             "amount":   order.Amount,
             "currency": "USD",
         })).Await(&payment); err != nil {
@@ -107,25 +110,26 @@ func OrderWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
 ```go
 func main() {
-    w, err := workflow.NewWorker()
+    r := workflow.NewRegistry()
+    r.AddWorkflow(OrderWorkflow)
+    r.AddActivity(ReserveInventoryActivity)
+    r.AddActivity(ProcessPaymentActivity)
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    // Create workflow client and start worker
+    wclient, err := client.NewWorkflowClient()
     if err != nil {
         log.Fatal(err)
     }
 
-    w.RegisterWorkflow(OrderWorkflow)
-    w.RegisterActivity(ReserveInventoryActivity)
-    w.RegisterActivity(ProcessPaymentActivity)
-
-    if err := w.Start(); err != nil {
+    if err := wclient.StartWorker(ctx, r); err != nil {
         log.Fatal(err)
     }
-    defer w.Shutdown()
 
     // Start a workflow instance
-    client, _ := workflow.NewClient()
-    defer client.Close()
-
-    id, err := client.ScheduleNewWorkflow(context.Background(),
+    id, err := wclient.ScheduleWorkflow(ctx,
         "OrderWorkflow",
         workflow.WithInstanceID("order-workflow-1"),
         workflow.WithInput(map[string]any{
@@ -135,6 +139,9 @@ func main() {
             "amount":    99.99,
         }),
     )
+    if err != nil {
+        log.Fatal(err)
+    }
     log.Printf("Started workflow: %s", id)
 }
 ```
