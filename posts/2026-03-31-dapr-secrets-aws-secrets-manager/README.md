@@ -62,12 +62,18 @@ aws secretsmanager create-secret \
     {
       "Effect": "Allow",
       "Action": [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:ListSecrets"
+        "secretsmanager:GetSecretValue"
       ],
       "Resource": [
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "*"
     }
   ]
 }
@@ -92,7 +98,7 @@ metadata:
   name: aws-secrets-manager
   namespace: default
 spec:
-  type: secretstores.aws.secretsmanager
+  type: secretstores.aws.secretmanager
   version: v1
   metadata:
   - name: region
@@ -129,7 +135,7 @@ metadata:
   name: aws-secrets-manager
   namespace: default
 spec:
-  type: secretstores.aws.secretsmanager
+  type: secretstores.aws.secretmanager
   version: v1
   metadata:
   - name: region
@@ -247,10 +253,10 @@ AWS Secrets Manager supports version IDs and staging labels:
 
 ```bash
 # By version ID
-curl "http://localhost:3500/v1.0/secrets/aws-secrets-manager/prod/db-credentials?metadata.versionId=abc123"
+curl "http://localhost:3500/v1.0/secrets/aws-secrets-manager/prod/db-credentials?metadata.version_id=abc123"
 
 # By version stage label
-curl "http://localhost:3500/v1.0/secrets/aws-secrets-manager/prod/db-credentials?metadata.versionStage=AWSPREVIOUS"
+curl "http://localhost:3500/v1.0/secrets/aws-secrets-manager/prod/db-credentials?metadata.version_stage=AWSPREVIOUS"
 ```
 
 ## Bulk Secret Retrieval
