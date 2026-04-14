@@ -18,11 +18,10 @@ Dapr exposes Prometheus metrics from each sidecar on port 9090. The key binding 
 
 | Metric | Description |
 |--------|-------------|
-| `dapr_component_input_binding_success_total` | Count of successfully processed binding triggers |
-| `dapr_component_input_binding_failure_total` | Count of failed binding trigger deliveries |
-| `dapr_component_output_binding_success_total` | Count of successful output binding calls |
-| `dapr_component_output_binding_failure_total` | Count of failed output binding calls |
-| `dapr_component_output_binding_latency` | Latency of output binding calls (histogram) |
+| `dapr_component_input_binding_count` | Count of input binding trigger events (use `status` label to filter by `success` or `failure`) |
+| `dapr_component_input_binding_latencies` | Latency of input binding event processing (histogram) |
+| `dapr_component_output_binding_count` | Count of output binding operations (use `status` label to filter by `success` or `failure`) |
+| `dapr_component_output_binding_latencies` | Latency of output binding calls (histogram) |
 
 ## Collecting Metrics with Prometheus
 
@@ -35,9 +34,8 @@ metadata:
   name: dapr-config
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
-    port: 9090
 ```
 
 Configure Prometheus to scrape Dapr sidecars:
@@ -51,9 +49,12 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_enabled]
         action: keep
         regex: "true"
+      - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_enable_metrics]
+        action: keep
+        regex: "true"
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
-        replacement: "$1:9090"
+        replacement: "${1}:9090"
     metrics_path: /metrics
 ```
 
@@ -62,21 +63,21 @@ scrape_configs:
 Calculate binding trigger throughput (messages per second):
 
 ```promql
-rate(dapr_component_input_binding_success_total[5m])
+rate(dapr_component_input_binding_count{status="success"}[5m])
 ```
 
 Calculate error rate as a percentage:
 
 ```promql
-100 * rate(dapr_component_input_binding_failure_total[5m])
-  / (rate(dapr_component_input_binding_success_total[5m]) + rate(dapr_component_input_binding_failure_total[5m]))
+100 * rate(dapr_component_input_binding_count{status="failure"}[5m])
+  / rate(dapr_component_input_binding_count[5m])
 ```
 
 P99 latency for output bindings:
 
 ```promql
 histogram_quantile(0.99,
-  rate(dapr_component_output_binding_latency_bucket[5m])
+  rate(dapr_component_output_binding_latencies_bucket[5m])
 )
 ```
 
@@ -88,7 +89,7 @@ groups:
     rules:
       - alert: BindingHighErrorRate
         expr: |
-          rate(dapr_component_input_binding_failure_total[5m]) > 0.05
+          rate(dapr_component_input_binding_count{status="failure"}[5m]) > 0.05
         for: 2m
         labels:
           severity: warning
@@ -97,7 +98,7 @@ groups:
 
       - alert: BindingOutputLatencyHigh
         expr: |
-          histogram_quantile(0.95, rate(dapr_component_output_binding_latency_bucket[5m])) > 2
+          histogram_quantile(0.95, rate(dapr_component_output_binding_latencies_bucket[5m])) > 2
         for: 5m
         labels:
           severity: critical
@@ -128,7 +129,7 @@ Each binding trigger creates a trace span that flows through your application, m
 Supplement Dapr's metrics with custom instrumentation in your binding handler:
 
 ```javascript
-const { Counter, Histogram, register } = require("prom-client");
+const { Histogram, register } = require("prom-client");
 
 const processingDuration = new Histogram({
   name: "binding_handler_duration_seconds",
