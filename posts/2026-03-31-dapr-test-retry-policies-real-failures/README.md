@@ -86,7 +86,7 @@ time curl -X POST http://localhost:3500/v1.0/invoke/target-service/method/proces
 curl http://localhost:8080/calls
 ```
 
-Expected output shows timestamps with exponential gaps: 100ms, 200ms, 400ms between retries.
+Expected output shows timestamps with exponentially increasing gaps. Dapr calculates each interval as `PreviousBackOff * (random 0.5–1.5) * 1.5`, so starting from 100ms the gaps approximate 100ms, 150ms, 225ms — but with randomized jitter, the exact intervals vary between runs.
 
 ## Test Retry with Network-Level Failure
 
