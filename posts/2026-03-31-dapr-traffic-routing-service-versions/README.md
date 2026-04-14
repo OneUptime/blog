@@ -42,6 +42,8 @@ async function invokeOrderService(req, body) {
 
 ## Approach 2: Kubernetes Service with Label Selectors
 
+This approach manages traffic at the Kubernetes Service level, which is useful for ingress traffic or non-Dapr callers. Note that Dapr service invocation uses its own name resolution and sidecar-to-sidecar gRPC, so it bypasses Kubernetes Service routing. Use this for traffic entering through an ingress controller or direct HTTP clients.
+
 Create a stable service name and switch the selector to point to the active version:
 
 ```yaml
@@ -102,7 +104,7 @@ spec:
         version: v2
 ```
 
-Dapr service invocation calls resolve through Istio, inheriting the traffic split.
+Note that Dapr service invocation uses its own name resolution and sidecar-to-sidecar gRPC, so it bypasses Istio VirtualService rules. For Istio traffic splitting to take effect, route traffic through the Kubernetes Service (for example, via an ingress gateway) rather than through Dapr's invoke API.
 
 ## Approach 4: Header-Based Routing
 
