@@ -102,10 +102,12 @@ spec:
     - name: vaultToken
       value: "hvs.yourtoken"
     - name: vaultKVUsePrefix
-      value: "true"
+      value: "false"
 ```
 
-### Kubernetes Auth
+### Kubernetes Auth (via Vault Agent Sidecar)
+
+The Dapr Vault component does not natively support Kubernetes auth. Instead, use a Vault Agent sidecar to authenticate with Vault using Kubernetes auth and write the resulting token to a file. Dapr reads this token via `vaultTokenMountPath`.
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -119,10 +121,10 @@ spec:
   metadata:
     - name: vaultAddr
       value: "http://vault.vault.svc.cluster.local:8200"
-    - name: vaultKubernetesRole
-      value: "dapr-role"
+    - name: vaultTokenMountPath
+      value: "/tmp/vault/.vault-token"
     - name: vaultKVUsePrefix
-      value: "true"
+      value: "false"
     - name: skipVerify
       value: "false"
 ```
