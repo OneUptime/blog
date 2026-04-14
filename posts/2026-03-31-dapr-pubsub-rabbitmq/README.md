@@ -114,7 +114,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: "amqp://dapr:daprpassword@rabbitmq:5672"
   - name: durable
     value: "true"
@@ -126,7 +126,7 @@ spec:
     value: "true"
   - name: prefetchCount
     value: "10"
-  - name: reconnectWait
+  - name: reconnectWaitSeconds
     value: "0"
   - name: enableDeadLetter
     value: "true"
@@ -141,7 +141,7 @@ spec:
 Use a Kubernetes secret for the host URL in production:
 
 ```yaml
-  - name: host
+  - name: connectionString
     secretKeyRef:
       name: rabbitmq-secret
       key: host
@@ -239,7 +239,7 @@ For production RabbitMQ with TLS:
 
 ```yaml
   metadata:
-  - name: host
+  - name: connectionString
     value: "amqps://dapr:daprpassword@rabbitmq-tls:5671"
   - name: caCert
     secretKeyRef:
