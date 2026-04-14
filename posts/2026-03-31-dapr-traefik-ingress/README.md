@@ -27,7 +27,8 @@ helm repo update
 helm upgrade --install traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set ports.web.redirectTo.port=websecure \
+  --set ports.web.redirections.entryPoint.to=websecure \
+  --set ports.web.redirections.entryPoint.scheme=https \
   --set ports.websecure.tls.enabled=true
 ```
 
@@ -152,12 +153,12 @@ spec:
 
 ## Forwarding Trace Headers
 
-Configure Traefik to forward W3C trace context headers:
+Configure Traefik to enable Zipkin distributed tracing (Traefik v2):
 
 ```yaml
-# In Traefik values.yaml
+# In Traefik v2 values.yaml
 additionalArguments:
-- "--tracing=true"
+- "--tracing.zipkin=true"
 - "--tracing.zipkin.httpEndpoint=http://zipkin:9411/api/v2/spans"
 - "--tracing.serviceName=traefik"
 ```
