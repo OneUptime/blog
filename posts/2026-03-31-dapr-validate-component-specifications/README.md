@@ -22,7 +22,7 @@ dapr init
 
 # Run your app with verbose logging to surface component errors
 dapr run --app-id test-app \
-         --components-path ./components \
+         --resources-path ./components \
          --log-level debug \
          -- sleep 5
 ```
@@ -31,19 +31,16 @@ Check the output for lines like `[WARN] ... error loading component` or `[ERR] .
 
 ## Schema-Based Validation with Kubeconform
 
-Dapr publishes JSON schemas for its CRDs. Use `kubeconform` to validate before applying:
+JSON schemas for Dapr CRDs are available via the [datreeio/CRDs-catalog](https://github.com/datreeio/CRDs-catalog). Use `kubeconform` to validate before applying:
 
 ```bash
 # Install kubeconform
 brew install kubeconform
 
-# Download Dapr CRD schemas
-git clone https://github.com/dapr/dapr --depth=1
-python3 charts/dapr/crds-to-json-schema.py
-
-# Validate your components directory
+# Validate your components directory using schemas from the CRDs-catalog
 kubeconform \
-  -schema-location ./schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json \
+  -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
   -summary \
   ./components/*.yaml
 ```
@@ -113,7 +110,11 @@ jobs:
           sudo mv kubeconform /usr/local/bin/
       - name: Validate components
         run: |
-          kubeconform -summary ./components/*.yaml
+          kubeconform \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -summary \
+            ./components/*.yaml
 ```
 
 ## Summary
