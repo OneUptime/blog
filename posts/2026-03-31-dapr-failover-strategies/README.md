@@ -37,13 +37,16 @@ spec:
         maxInterval: 15s
         maxRetries: 5
 
+    timeouts:
+      component-timeout: 5s
+
   targets:
     components:
       statestore:
         outbound:
           circuitBreaker: primary-state-cb
           retry: exponential-retry
-          timeout: 5s
+          timeout: component-timeout
       pubsub:
         outbound:
           circuitBreaker: primary-state-cb
@@ -105,6 +108,8 @@ spec:
   metadata:
   - name: brokers
     value: "kafka-primary:9092"
+  - name: authType
+    value: "none"
   - name: consumerGroup
     value: "production"
 ```
@@ -127,6 +132,7 @@ spec:
 Toggle between components using an environment variable:
 
 ```python
+import json
 import os
 from dapr.clients import DaprClient
 
@@ -137,7 +143,8 @@ def publish_event(topic: str, data: dict):
         client.publish_event(
             pubsub_name=PUBSUB_NAME,
             topic_name=topic,
-            data=str(data)
+            data=json.dumps(data),
+            data_content_type="application/json",
         )
 ```
 
@@ -175,12 +182,12 @@ spec:
   - name: dapr.failover
     rules:
     - alert: DaprCircuitBreakerOpen
-      expr: dapr_resiliency_circuit_breakers_state == 2
+      expr: dapr_resiliency_cb_state{status="open"} == 1
       for: 1m
       labels:
         severity: warning
       annotations:
-        summary: "Dapr circuit breaker is open for component {{ \$labels.component }}"
+        summary: "Dapr circuit breaker is open for {{ \$labels.target }} ({{ \$labels.name }})"
 EOF
 ```
 
