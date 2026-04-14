@@ -16,7 +16,7 @@ Self-hosted mode lets you run Dapr on your local machine without Kubernetes. Eac
 
 - Dapr CLI installed (`dapr --version` should work)
 - Docker installed and running (for Redis and Zipkin containers)
-- Ports 6379 (Redis), 9411 (Zipkin), and 3500 (Dapr HTTP) available
+- Ports 6379 (Redis), 9411 (Zipkin), 50005 (placement), 50006 (scheduler), and 3500 (Dapr HTTP) available
 
 ## How Self-Hosted Initialization Works
 
@@ -28,6 +28,7 @@ flowchart TD
     A --> C[Pull Redis Docker image]
     A --> D[Pull Zipkin Docker image]
     B --> E[Start placement service container]
+    B --> E2[Start scheduler service container]
     C --> F[Start Redis container on port 6379]
     D --> G[Start Zipkin container on port 9411]
     A --> H[Write default component YAML files]
@@ -59,7 +60,7 @@ After `dapr init`, the following are available on your machine:
 - `~/.dapr/bin/daprd` - the Dapr runtime binary
 - `~/.dapr/components/` - default component YAML files
 - `~/.dapr/config.yaml` - default configuration file
-- Docker containers: `dapr_redis`, `dapr_placement`, `dapr_zipkin`
+- Docker containers: `dapr_redis`, `dapr_placement`, `dapr_scheduler`, `dapr_zipkin`
 
 Check the running containers:
 
@@ -71,7 +72,8 @@ You should see:
 
 ```text
 CONTAINER ID   IMAGE                    PORTS
-...            daprio/dapr              0.0.0.0:50005->50005/tcp
+...            daprio/dapr              0.0.0.0:50005->50005/tcp   (placement)
+...            daprio/dapr              0.0.0.0:50006->50006/tcp   (scheduler)
 ...            redis:6                  0.0.0.0:6379->6379/tcp
 ...            openzipkin/zipkin        0.0.0.0:9411->9411/tcp
 ```
@@ -124,7 +126,7 @@ If Docker is not available, use the slim init flag:
 dapr init --slim
 ```
 
-This installs only the `daprd` binary and the placement service binary without pulling container images. You will need to provide your own state store and pub/sub brokers.
+This installs only the `daprd` binary and the Dapr dashboard without pulling container images or starting the placement and scheduler services. You will need to provide your own state store, pub/sub brokers, and run the placement service manually if needed.
 
 ## Initializing a Specific Runtime Version
 
@@ -134,15 +136,22 @@ dapr init --runtime-version 1.13.0
 
 ## Verifying the Installation
 
+Check the Dapr version:
+
 ```bash
-dapr status
+dapr --version
 ```
 
-Expected output:
+Check that the Dapr containers are running:
 
-```text
-NAME            NAMESPACE  HEALTHY  STATUS   REPLICAS  VERSION  AGE
-dapr_placement  dapr       True     Running  1         1.14.x   1m
+```bash
+docker ps --filter "name=dapr_"
+```
+
+List any running Dapr applications:
+
+```bash
+dapr list
 ```
 
 ## Running Your First App
@@ -155,13 +164,13 @@ dapr run --app-id myapp --app-port 3000 --dapr-http-port 3500 -- node app.js
 
 ## Uninstalling
 
-To remove all Dapr containers and binaries:
+To remove the Dapr runtime:
 
 ```bash
 dapr uninstall
 ```
 
-To also remove Docker containers and images:
+To also remove Docker containers and the default `~/.dapr` directory:
 
 ```bash
 dapr uninstall --all
