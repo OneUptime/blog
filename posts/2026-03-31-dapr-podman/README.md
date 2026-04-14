@@ -17,6 +17,7 @@ flowchart TD
     CLI[Dapr CLI] -->|--container-runtime podman| Podman[Podman]
     Podman -->|start containers| Redis[redis:6 container]
     Podman -->|start containers| Placement[dapr placement container]
+    Podman -->|start containers| Scheduler[dapr scheduler container]
     Podman -->|start containers| Zipkin[zipkin container]
     CLI --> Sidecar[daprd process]
     Sidecar <-->|localhost:6379| Redis
@@ -59,6 +60,7 @@ Downloading binaries and setting up components...
 Container images are being pulled via Podman...
 dapr_redis container created
 dapr_placement container created
+dapr_scheduler container created
 dapr_zipkin container created
 Success! Dapr is up and running.
 ```
@@ -75,12 +77,13 @@ Output:
 CONTAINER ID  IMAGE                    NAMES
 ...           redis:6                  dapr_redis
 ...           daprio/dapr:1.14.0       dapr_placement
+...           daprio/dapr:1.14.0       dapr_scheduler
 ...           openzipkin/zipkin        dapr_zipkin
 ```
 
 ## Running Applications with Podman
 
-The `dapr run` command works the same way - the `--container-runtime` flag is only needed for `dapr init` and `dapr stop`:
+The `dapr run` command works the same way - the `--container-runtime` flag is only needed for `dapr init` and `dapr uninstall`:
 
 ```bash
 dapr run \
@@ -92,11 +95,13 @@ dapr run \
 
 ## Stopping Dapr with Podman
 
+Stop a running Dapr application by app ID:
+
 ```bash
-dapr stop --all --container-runtime podman
+dapr stop --app-id myapp
 ```
 
-Or uninstall everything:
+Or uninstall Dapr and remove all containers:
 
 ```bash
 dapr uninstall --container-runtime podman
@@ -152,16 +157,17 @@ In CI environments (GitHub Actions, GitLab CI) that have Podman available:
 ```yaml
 # GitHub Actions example
 - name: Initialize Dapr with Podman
+  run: dapr init --container-runtime podman
+
+- name: Run tests with Dapr
   run: |
-    dapr init --container-runtime podman --slim
     dapr run \
       --app-id test-app \
       --dapr-http-port 3500 \
-      --container-runtime podman \
       -- python3 -m pytest tests/
 
-- name: Stop Dapr
-  run: dapr stop --all --container-runtime podman
+- name: Uninstall Dapr
+  run: dapr uninstall --container-runtime podman
 ```
 
 ## Slim Init with Podman
@@ -172,7 +178,7 @@ If you don't need the full Redis and Zipkin setup:
 dapr init --slim --container-runtime podman
 ```
 
-Slim init only installs the `daprd` binary and the placement service binary without pulling container images. You provide your own state store and pub/sub backends.
+Slim init only installs the `daprd` and `placement` binaries without pulling container images or installing default components. You provide your own state store and pub/sub backends.
 
 ## Podman Desktop Integration
 
@@ -203,4 +209,4 @@ curl http://localhost:3500/v1.0/state/statestore/hello
 
 ## Summary
 
-Using Dapr with Podman requires passing `--container-runtime podman` to `dapr init` and `dapr uninstall`. The `dapr run` command works identically regardless of the container runtime. Rootless Podman may require explicit network configuration or container IP addresses in component files. Podman Compose supports the same `docker-compose.yaml` format for multi-service local development setups.
+Using Dapr with Podman requires passing `--container-runtime podman` to `dapr init` and `dapr uninstall`. The `dapr run` and `dapr stop` commands work identically regardless of the container runtime. Rootless Podman may require explicit network configuration or container IP addresses in component files. Podman Compose supports the same `docker-compose.yaml` format for multi-service local development setups.
