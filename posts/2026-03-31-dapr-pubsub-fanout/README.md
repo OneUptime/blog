@@ -44,8 +44,8 @@ spec:
   pubsubname: pubsub
   topic: order-placed
   route: /inventory/reserve
-  scopes:
-  - inventory-service
+scopes:
+- inventory-service
 ```
 
 ```yaml
@@ -58,8 +58,8 @@ spec:
   pubsubname: pubsub
   topic: order-placed
   route: /notifications/send
-  scopes:
-  - notification-service
+scopes:
+- notification-service
 ```
 
 ```yaml
@@ -72,8 +72,8 @@ spec:
   pubsubname: pubsub
   topic: order-placed
   route: /analytics/track
-  scopes:
-  - analytics-service
+scopes:
+- analytics-service
 ```
 
 ## Each Subscriber Handles Independently
