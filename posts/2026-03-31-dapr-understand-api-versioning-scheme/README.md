@@ -40,7 +40,7 @@ Dapr uses three stability labels in API versions:
 | Prefix | Meaning |
 |--------|---------|
 | `v1.0` | Stable - no breaking changes within this version |
-| `v1.0` | Beta - may change, but close to stable |
+| `v1.0-beta1` | Beta - may change, but close to stable |
 | `v1.0-alpha1` | Alpha - experimental, may change or be removed |
 
 Alpha APIs require opting in via the `dapr.io/config` annotation pointing to a Dapr Configuration resource.
@@ -81,7 +81,7 @@ Alpha gRPC APIs use packages like `dapr.proto.runtime.v1alpha1`.
 When using the Go SDK, import stable protos from:
 
 ```go
-import pb "github.com/dapr/go-sdk/dapr/proto/runtime/v1"
+import pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
 ```
 
 ## What Stable Guarantees
@@ -105,4 +105,4 @@ The response includes the runtime version, registered components, and subscripti
 
 ## Summary
 
-Dapr HTTP APIs use `/v1.0/` prefixes for stable endpoints and `/v1.0-alpha1/` or `/v1.0/` for pre-stable features. Alpha APIs must be explicitly enabled via a Dapr Configuration resource. The `v1.0` stable APIs guarantee backwards compatibility within a major version, while alpha and beta APIs may change between Dapr releases.
+Dapr HTTP APIs use `/v1.0/` prefixes for stable endpoints and `/v1.0-alpha1/` or `/v1.0-beta1/` for pre-stable features. Alpha APIs must be explicitly enabled via a Dapr Configuration resource. The `v1.0` stable APIs guarantee backwards compatibility within a major version, while alpha and beta APIs may change between Dapr releases.
