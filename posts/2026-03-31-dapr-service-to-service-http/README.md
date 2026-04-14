@@ -161,10 +161,10 @@ On Kubernetes with multiple namespaces, specify the namespace in the app ID:
 curl http://localhost:3500/v1.0/invoke/service-b.production/method/hello
 ```
 
-Or use the full FQDN format:
+Or use the HTTP proxy format with the `dapr-app-id` header:
 
 ```bash
-curl "http://localhost:3500/v1.0/invoke/service-b/method/hello" \
+curl http://localhost:3500/hello \
   -H "dapr-app-id: service-b.production"
 ```
 
