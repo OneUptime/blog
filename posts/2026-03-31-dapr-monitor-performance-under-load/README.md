@@ -33,11 +33,11 @@ scrape_configs:
   - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_enable_metrics]
     action: keep
     regex: "true"
-  - source_labels: [__meta_kubernetes_pod_annotation_dapr_io_metrics_port]
+  - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_dapr_io_metrics_port]
     action: replace
     target_label: __address__
-    regex: (.+)
-    replacement: $1
+    regex: (.+);(.+)
+    replacement: $1:$2
 ```
 
 ## Key Dapr Metrics to Watch
@@ -46,10 +46,10 @@ scrape_configs:
 |---|---|
 | `dapr_http_server_request_count` | Total requests by method/status |
 | `dapr_http_server_latency` | Request latency histogram |
-| `dapr_component_pubsub_publish_count` | Pub/sub publish operations |
-| `dapr_component_state_get_count` | State store read operations |
-| `dapr_component_state_set_count` | State store write operations |
-| `dapr_grpc_server_completed_rpcs` | gRPC completed RPCs |
+| `dapr_component_pubsub_egress_count` | Pub/sub publish operations |
+| `dapr_component_state_count{operation="get"}` | State store read operations |
+| `dapr_component_state_count{operation="set"}` | State store write operations |
+| `dapr_grpc_io_server_completed_rpcs` | gRPC completed RPCs |
 
 ## Grafana Dashboard Queries
 
@@ -57,9 +57,9 @@ Query P99 service invocation latency:
 
 ```promql
 histogram_quantile(0.99,
-  rate(dapr_http_server_latency_bucket{
+  sum(rate(dapr_http_server_latency_bucket{
     app_id="order-service"
-  }[5m])
+  }[5m])) by (le)
 )
 ```
 
@@ -68,7 +68,7 @@ Query error rate by service:
 ```promql
 sum(rate(dapr_http_server_request_count{
   app_id="order-service",
-  status_code=~"5.."
+  status=~"5.."
 }[5m])) /
 sum(rate(dapr_http_server_request_count{
   app_id="order-service"
@@ -85,7 +85,7 @@ groups:
   rules:
   - alert: DaprHighErrorRate
     expr: |
-      sum(rate(dapr_http_server_request_count{status_code=~"5.."}[5m])) by (app_id)
+      sum(rate(dapr_http_server_request_count{status=~"5.."}[5m])) by (app_id)
       / sum(rate(dapr_http_server_request_count[5m])) by (app_id) > 0.01
     for: 2m
     labels:
