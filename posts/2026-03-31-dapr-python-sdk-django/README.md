@@ -110,11 +110,13 @@ class OrderView(APIView):
 ```python
 # orders/urls.py
 from django.urls import path
-from .views import OrderView
+from .views import OrderView, subscribe, handle_inventory_update
 
 urlpatterns = [
     path("orders/", OrderView.as_view()),
     path("orders/<str:order_id>/", OrderView.as_view()),
+    path("dapr/subscribe", subscribe),
+    path("inventory-update", handle_inventory_update),
 ]
 ```
 
