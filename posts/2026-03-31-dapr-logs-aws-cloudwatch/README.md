@@ -62,7 +62,7 @@ data:
     [INPUT]
         Name tail
         Path /var/log/containers/*daprd*.log
-        Parser docker
+        Parser cri
         Tag dapr.sidecar
         DB /var/log/flb_dapr.db
         Mem_Buf_Limit 5MB
@@ -102,7 +102,7 @@ Attach the required IAM policy to the EKS node role or Fluent Bit service accoun
         "logs:PutLogEvents",
         "logs:DescribeLogStreams"
       ],
-      "Resource": "arn:aws:logs:us-east-1:*:log-group:/eks/dapr/*"
+      "Resource": "arn:aws:logs:us-east-1:*:log-group:/eks/dapr/*:*"
     }
   ]
 }
@@ -154,7 +154,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 50 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:dapr-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:dapr-alerts
 ```
 
 ## Summary
