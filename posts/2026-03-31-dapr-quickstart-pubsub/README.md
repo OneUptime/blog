@@ -142,12 +142,9 @@ To publish raw messages without the CloudEvents wrapper:
 
 ```python
 requests.post(
-    PUBSUB_URL,
+    PUBSUB_URL + "?metadata.rawPayload=true",
     data=json.dumps(order),
-    headers={
-        "Content-Type": "application/json",
-        "dapr-pubsub-raw-payload": "true"
-    }
+    headers={"Content-Type": "application/json"}
 )
 ```
 
