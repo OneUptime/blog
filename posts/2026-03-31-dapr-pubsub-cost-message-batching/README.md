@@ -14,13 +14,14 @@ Cloud-hosted message brokers like Azure Service Bus, AWS SQS, and Google Pub/Sub
 
 ## Configuring Bulk Publish in Dapr
 
-Dapr 1.10+ supports bulk publish, which sends multiple messages in a single HTTP call:
+Dapr supports bulk publish (introduced in 1.10, stable since 1.17), which sends multiple messages in a single call:
 
 ```go
 package main
 
 import (
     "context"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -28,33 +29,31 @@ func main() {
     client, _ := dapr.NewClient()
     defer client.Close()
 
-    messages := []dapr.BulkPublishRequestEntry{
-        {EntryID: "1", Event: []byte(`{"orderId": "101"}`), ContentType: "application/json"},
-        {EntryID: "2", Event: []byte(`{"orderId": "102"}`), ContentType: "application/json"},
-        {EntryID: "3", Event: []byte(`{"orderId": "103"}`), ContentType: "application/json"},
+    events := []interface{}{
+        map[string]string{"orderId": "101"},
+        map[string]string{"orderId": "102"},
+        map[string]string{"orderId": "103"},
     }
 
-    result, err := client.BulkPublishEventAlpha1(
+    result := client.PublishEvents(
         context.Background(),
         "order-pubsub",
         "orders",
-        messages,
-        map[string]string{},
+        events,
     )
-    if err != nil {
-        panic(err)
+    if result.Error != nil {
+        panic(result.Error)
     }
 
-    for _, entry := range result.FailedEntries {
-        // handle per-message failures
-        _ = entry.EntryID
+    if len(result.FailedEvents) > 0 {
+        fmt.Printf("%d events failed to publish\n", len(result.FailedEvents))
     }
 }
 ```
 
 ## Configuring the Pub/Sub Component for Batching
 
-Configure the underlying broker component to support batching:
+Configure the underlying broker component:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -70,38 +69,48 @@ spec:
     secretKeyRef:
       name: servicebus-secret
       key: connectionString
-  - name: maxBulkSubCount
-    value: "100"
-  - name: maxBulkPubBytes
-    value: "131072"
   - name: publishMaxRetries
     value: "3"
-  - name: minConnectionRecoveryInSecs
+  - name: minConnectionRecoveryInSec
     value: "2"
+```
+
+Then configure bulk subscribe via a Subscription resource:
+
+```yaml
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: order-bulk-subscription
+spec:
+  pubsubname: order-pubsub
+  topic: orders
+  routes:
+    default: /orders
+  bulkSubscribe:
+    enabled: true
+    maxMessagesCount: 100
+    maxAwaitDurationMs: 1000
 ```
 
 ## Bulk Subscribe Handler
 
-On the consumer side, register a bulk subscription handler to process batches efficiently:
+On the consumer side, handle bulk messages with a standard HTTP endpoint. When using the declarative Subscription above with `bulkSubscribe` enabled, Dapr delivers batches to your route:
 
 ```python
-from dapr.ext.fastapi import DaprApp
-from fastapi import FastAPI
-from dapr.clients.grpc._response import TopicEventBulkResponse, TopicEventBulkResponseEntry
+from fastapi import FastAPI, Request
 
 app = FastAPI()
-dapr_app = DaprApp(app)
 
-@dapr_app.subscribe(pubsub_name="order-pubsub", topic="orders", bulk_subscribe=True)
-async def handle_bulk_orders(bulk_message):
-    responses = []
-    for entry in bulk_message.entries:
-        order = entry.get_data()
+@app.post("/orders")
+async def handle_bulk_orders(request: Request):
+    bulk_message = await request.json()
+    statuses = []
+    for entry in bulk_message.get("entries", []):
+        order = entry.get("event", {})
         # process each order
-        responses.append(
-            TopicEventBulkResponseEntry(entry_id=entry.entry_id, status="SUCCESS")
-        )
-    return TopicEventBulkResponse(statuses=responses)
+        statuses.append({"entryId": entry["entryId"], "status": "SUCCESS"})
+    return {"statuses": statuses}
 ```
 
 ## Estimating Cost Savings
@@ -123,4 +132,4 @@ For 10,000 messages per minute at $0.40 per million API calls (AWS SQS pricing):
 
 ## Summary
 
-Dapr's bulk publish and bulk subscribe APIs reduce message broker API calls by grouping multiple messages into single operations, directly lowering cloud messaging costs. Configure `maxBulkSubCount` on your pub/sub component and use the `BulkPublishEventAlpha1` SDK method to enable batching. For high-throughput services, batching can reduce broker costs by an order of magnitude while also improving overall publish throughput.
+Dapr's bulk publish and bulk subscribe APIs reduce message broker API calls by grouping multiple messages into single operations, directly lowering cloud messaging costs. Configure `bulkSubscribe` on your Subscription resource and use the `PublishEvents` SDK method to enable batching. For high-throughput services, batching can reduce broker costs by an order of magnitude while also improving overall publish throughput.
