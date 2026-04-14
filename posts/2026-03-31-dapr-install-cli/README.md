@@ -56,7 +56,7 @@ winget install Dapr.CLI
 ### Option 3: Chocolatey
 
 ```powershell
-choco install dapr-cli
+choco install dapr
 ```
 
 After installation, open a new PowerShell window and verify:
@@ -94,13 +94,13 @@ Runtime version: n/a
 
 ## Installing on Linux
 
-Use the install script with curl:
+Use the install script with wget:
 
 ```bash
 wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 ```
 
-Or with wget:
+Or download and run separately:
 
 ```bash
 wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh && bash install.sh
@@ -116,11 +116,10 @@ dapr --version
 
 ## Installing a Specific Version
 
-To install a pinned version, set the `DAPR_CLI_VERSION` environment variable before running the install script:
+To install a pinned version, pass the version number as an argument to the install script:
 
 ```bash
-export DAPR_CLI_VERSION=1.13.0
-curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
+curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash -s 1.13.0
 ```
 
 ## Upgrading the Dapr CLI
@@ -128,7 +127,7 @@ curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh 
 On macOS with Homebrew:
 
 ```bash
-brew upgrade dapr-cli
+brew upgrade dapr/tap/dapr-cli
 ```
 
 On Linux/Windows with the install script, re-running the script installs the latest version over the existing one.
