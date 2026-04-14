@@ -16,14 +16,14 @@ By default, Dapr service invocation resolves app IDs within the same namespace. 
 
 To invoke a service in a different namespace, use the fully qualified name format:
 
-```json
-{app-id}.{namespace}.svc.cluster.local
+```text
+{app-id}.{namespace}
 ```
 
 HTTP example:
 
 ```bash
-curl http://localhost:3500/v1.0/invoke/order-service.production.svc.cluster.local/method/orders
+curl http://localhost:3500/v1.0/invoke/order-service.production/method/orders
 ```
 
 This tells Dapr to resolve `order-service` in the `production` namespace.
@@ -37,7 +37,7 @@ defer client.Close()
 // Invoke service in a different namespace
 resp, err := client.InvokeMethod(
     context.Background(),
-    "order-service.production.svc.cluster.local",
+    "order-service.production",
     "orders",
     "GET",
 )
@@ -94,8 +94,8 @@ dapr init -k --namespace production
 dapr init -k --namespace staging
 ```
 
-Services in each namespace can still invoke each other using the fully qualified name syntax.
+Note that services managed by separate Dapr control planes cannot discover each other by default. Use this approach when you need strict isolation between namespaces, not when you need cross-namespace invocation.
 
 ## Summary
 
-Invoke Dapr services across namespaces by using the fully qualified app ID format `{app-id}.{namespace}.svc.cluster.local`. Ensure network policies allow cross-namespace traffic and that shared components are scoped to include the calling app. For maximum isolation, consider deploying separate Dapr control planes per namespace.
+Invoke Dapr services across namespaces by using the fully qualified app ID format `{app-id}.{namespace}`. Ensure network policies allow cross-namespace traffic and that shared components are scoped to include the calling app. For maximum isolation, consider deploying separate Dapr control planes per namespace, but note that this prevents cross-namespace service discovery.
