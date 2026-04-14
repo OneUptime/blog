@@ -32,7 +32,7 @@ spec:
   type: middleware.http.bearer
   version: v1
   metadata:
-  - name: issuerURL
+  - name: issuer
     value: "https://my-tenant.auth0.com/"
   - name: audience
     value: "https://api.my-app.com"
@@ -44,7 +44,7 @@ For Keycloak:
 
 ```yaml
   metadata:
-  - name: issuerURL
+  - name: issuer
     value: "https://keycloak.example.com/realms/my-realm"
   - name: audience
     value: "my-api-client"
@@ -56,7 +56,7 @@ For Azure AD:
 
 ```yaml
   metadata:
-  - name: issuerURL
+  - name: issuer
     value: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
   - name: audience
     value: "api://your-app-id"
@@ -119,31 +119,37 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Access Token Claims in Your Application
 
-After Dapr validates the token, it passes the decoded claims to your application in request headers. Read them in Node.js:
+After Dapr validates the token, the original `Authorization` header is still forwarded to your application. You can decode the JWT to access claims. Read them in Node.js:
 
 ```javascript
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const app = express();
 
-// Dapr forwards validated token claims as headers
-app.get('/api/profile', (req, res) => {
-  // Standard headers set by Dapr OIDC middleware
-  const sub = req.headers['x-forwarded-user'];         // user subject
-  const email = req.headers['x-forwarded-email'];      // email claim
-  const scopes = req.headers['x-forwarded-scopes'];    // space-separated scopes
+// Extract claims from the validated JWT
+function getClaims(req) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.replace('Bearer ', '');
+  // Token is already validated by Dapr — safe to decode without verification
+  return jwt.decode(token) || {};
+}
 
-  console.log(`Authenticated user: ${sub} (${email})`);
+app.get('/api/profile', (req, res) => {
+  const claims = getClaims(req);
+
+  console.log(`Authenticated user: ${claims.sub} (${claims.email})`);
 
   res.json({
-    userId: sub,
-    email: email,
+    userId: claims.sub,
+    email: claims.email,
     message: 'Profile data for authenticated user'
   });
 });
 
 // Scope-based authorization (after Dapr validates the JWT)
 app.delete('/api/resources/:id', (req, res) => {
-  const scopes = (req.headers['x-forwarded-scopes'] || '').split(' ');
+  const claims = getClaims(req);
+  const scopes = (claims.scope || '').split(' ');
 
   if (!scopes.includes('write:resources')) {
     return res.status(403).json({ error: 'Insufficient scope' });
@@ -157,15 +163,23 @@ app.delete('/api/resources/:id', (req, res) => {
 ## Access Claims in Python
 
 ```python
+import jwt
 from fastapi import FastAPI, Request, HTTPException
 
 app = FastAPI()
 
+def get_claims(request: Request) -> dict:
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header.replace("Bearer ", "", 1)
+    # Token is already validated by Dapr — safe to decode without verification
+    return jwt.decode(token, options={"verify_signature": False})
+
 @app.get("/api/profile")
 async def get_profile(request: Request):
-    user_id = request.headers.get("x-forwarded-user")
-    email = request.headers.get("x-forwarded-email")
-    scopes = request.headers.get("x-forwarded-scopes", "").split()
+    claims = get_claims(request)
+    user_id = claims.get("sub")
+    email = claims.get("email")
+    scopes = claims.get("scope", "").split()
 
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -178,7 +192,8 @@ async def get_profile(request: Request):
 
 @app.post("/api/admin-action")
 async def admin_action(request: Request):
-    scopes = request.headers.get("x-forwarded-scopes", "").split()
+    claims = get_claims(request)
+    scopes = claims.get("scope", "").split()
 
     if "admin" not in scopes:
         raise HTTPException(status_code=403, detail="Admin scope required")
@@ -206,4 +221,4 @@ Or handle it at the application level by checking if the user header is present.
 
 ## Summary
 
-The Dapr OIDC bearer middleware provides automatic JWT validation for incoming requests without modifying application code. By defining the middleware component with your OIDC provider's issuer URL and JWKS endpoint, and referencing it in a Configuration pipeline, Dapr rejects unauthenticated requests at the sidecar level and forwards validated token claims to your service as HTTP headers for authorization decisions.
+The Dapr OIDC bearer middleware provides automatic JWT validation for incoming requests without modifying application code. By defining the middleware component with your OIDC provider's issuer URL and JWKS endpoint, and referencing it in a Configuration pipeline, Dapr rejects unauthenticated requests at the sidecar level. Your application can then decode the already-validated JWT from the `Authorization` header to extract claims for authorization decisions.
