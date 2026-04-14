@@ -86,7 +86,7 @@ echo "Backup complete: ${OUTPUT_DIR}"
 
 ## Redis Native Backup (RDB Snapshot)
 
-For Redis-backed state stores, trigger a synchronous save:
+For Redis-backed state stores, trigger a background save:
 
 ```bash
 # Trigger BGSAVE on the Redis instance
@@ -113,15 +113,15 @@ kubectl cp default/redis-master-0:/data/dump.rdb \
 ## Restoring State from Redis RDB
 
 ```bash
-# Stop Redis (or use a replica for restore testing)
-kubectl scale statefulset redis-master --replicas=0 -n default
-
-# Copy backup RDB into pod volume
+# Copy backup RDB into the running Redis pod
 kubectl cp ./redis-backup-20260331.rdb \
   default/redis-master-0:/data/dump.rdb
 
-# Restart Redis
-kubectl scale statefulset redis-master --replicas=1 -n default
+# Restart the pod so Redis loads the restored RDB on startup
+kubectl delete pod redis-master-0 -n default
+
+# Wait for the StatefulSet to recreate the pod
+kubectl wait --for=condition=Ready pod/redis-master-0 -n default --timeout=60s
 
 # Verify keys are restored
 kubectl exec -n default redis-master-0 -- redis-cli KEYS "*"
@@ -129,7 +129,7 @@ kubectl exec -n default redis-master-0 -- redis-cli KEYS "*"
 
 ## Restoring State via Dapr HTTP API
 
-Restore individual keys using the state PUT endpoint:
+Restore individual keys using the state POST endpoint:
 
 ```bash
 # Restore a single key
@@ -229,9 +229,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              redis-cli -h redis-master -a $REDIS_PASSWORD BGSAVE
-              sleep 5
-              cp /data/dump.rdb /backup/dump-$(date +%Y%m%d%H%M%S).rdb
+              redis-cli -h redis-master -a $REDIS_PASSWORD --rdb /backup/dump-$(date +%Y%m%d%H%M%S).rdb
               echo "Backup completed"
             volumeMounts:
             - name: backup-storage
