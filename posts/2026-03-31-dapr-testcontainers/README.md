@@ -41,11 +41,13 @@ dotnet add package Testcontainers.Redis
 // OrderServiceContainerTests.cs
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Networks;
 using Testcontainers.Redis;
 
 [Collection("Testcontainers")]
 public class OrderServiceContainerTests : IAsyncLifetime
 {
+    private INetwork _network = null!;
     private RedisContainer _redis = null!;
     private IContainer _daprPlacement = null!;
     private IContainer _daprSidecar = null!;
@@ -53,9 +55,16 @@ public class OrderServiceContainerTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Create a shared Docker network
+        _network = new NetworkBuilder()
+            .Build();
+        await _network.CreateAsync();
+
         // Start Redis
         _redis = new RedisBuilder()
             .WithImage("redis:7-alpine")
+            .WithNetwork(_network)
+            .WithNetworkAliases("redis")
             .Build();
         await _redis.StartAsync();
 
@@ -63,6 +72,8 @@ public class OrderServiceContainerTests : IAsyncLifetime
         _daprPlacement = new ContainerBuilder()
             .WithImage("daprio/dapr:1.14")
             .WithCommand("./placement", "--port", "50006")
+            .WithNetwork(_network)
+            .WithNetworkAliases("placement")
             .WithPortBinding(50006, 50006)
             .Build();
         await _daprPlacement.StartAsync();
@@ -75,11 +86,11 @@ public class OrderServiceContainerTests : IAsyncLifetime
                 "--app-id", "order-service",
                 "--app-port", "5000",
                 "--dapr-http-port", "3500",
-                "--placement-host-address", "host.docker.internal:50006",
+                "--placement-host-address", "placement:50006",
                 "--components-path", "/components")
             .WithResourceMapping("./components/test", "/components")
+            .WithNetwork(_network)
             .WithPortBinding(3500, 3500)
-            .WithNetwork("host")
             .Build();
         await _daprSidecar.StartAsync();
 
@@ -119,22 +130,24 @@ public class OrderServiceContainerTests : IAsyncLifetime
         await _daprSidecar.DisposeAsync();
         await _daprPlacement.DisposeAsync();
         await _redis.DisposeAsync();
+        await _network.DisposeAsync();
     }
 }
 ```
 
-## Simplified: Use Dapr Dev Mode Container
+## Simplified: Minimal Dapr Sidecar
 
-Dapr provides an all-in-one dev container for testing:
+For simpler tests that do not need actors or the placement service, you can run a standalone Dapr sidecar:
 
 ```csharp
-var daprDev = new ContainerBuilder()
-    .WithImage("daprio/dapr:1.14")
+var daprSidecar = new ContainerBuilder()
+    .WithImage("daprio/daprd:1.14")
+    .WithCommand("./daprd", "--app-id", "myapp", "--dapr-http-port", "3500", "--dapr-grpc-port", "50001")
     .WithPortBinding(3500, 3500)
     .WithPortBinding(50001, 50001)
     .Build();
 
-await daprDev.StartAsync();
+await daprSidecar.StartAsync();
 ```
 
 ## Component Mapping
@@ -156,7 +169,7 @@ spec:
 ## Running Tests
 
 ```bash
-dotnet test --filter "Collection=Testcontainers" --logger "console;verbosity=normal"
+dotnet test --filter "FullyQualifiedName~OrderServiceContainerTests" --logger "console;verbosity=normal"
 ```
 
 ## Summary
