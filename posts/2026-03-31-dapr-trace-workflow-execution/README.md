@@ -94,15 +94,14 @@ def reserve_inventory(ctx: WorkflowActivityContext, input_data: dict):
 ## Starting a Workflow
 
 ```python
-from dapr.clients import DaprClient
+from dapr.ext.workflow import DaprWorkflowClient
 
-with DaprClient() as client:
-    instance_id = client.start_workflow(
-        workflow_component="dapr",
-        workflow_name="order-processing-workflow",
-        input={"orderId": "ORD-1001", "total": 99.99, "items": [...]}
-    )
-    print(f"Started workflow: {instance_id}")
+client = DaprWorkflowClient()
+instance_id = client.schedule_new_workflow(
+    workflow=order_processing_workflow,
+    input={"orderId": "ORD-1001", "total": 99.99, "items": [...]}
+)
+print(f"Started workflow: {instance_id}")
 ```
 
 ## Reading Workflow Traces
@@ -135,17 +134,17 @@ def order_processing_workflow(ctx: DaprWorkflowContext, order_data: dict):
 Check workflow status:
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/order-processing-workflow/instance/{instanceId}
+curl http://localhost:3500/v1.0/workflows/dapr/{instanceId}
 ```
 
 ## Analyzing Failed Workflows
 
 ```bash
 # Find failed workflow traces
-curl "http://localhost:16686/api/v2/traces?service=order-service&operation=StartWorkflow&tags=error:true"
+curl "http://localhost:16686/api/traces?service=order-service&operation=StartWorkflow&tags=error:true"
 
 # Find slow workflows (>5 seconds)
-curl "http://localhost:16686/api/v2/traces?service=order-service&operation=StartWorkflow&minDuration=5000000"
+curl "http://localhost:16686/api/traces?service=order-service&operation=StartWorkflow&minDuration=5000000"
 ```
 
 ## Summary
