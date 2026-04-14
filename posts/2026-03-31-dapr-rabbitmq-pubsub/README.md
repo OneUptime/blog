@@ -25,6 +25,13 @@ Use the RabbitMQ Cluster Kubernetes Operator:
 ```bash
 kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"
 
+# Pre-create the default user Secret so the operator uses your credentials
+kubectl create secret generic dapr-rabbitmq-default-user \
+  --from-literal=username=dapr \
+  --from-literal=password=rabbitpassword \
+  --from-literal=host=dapr-rabbitmq.default.svc.cluster.local \
+  --from-literal=port="5672"
+
 kubectl apply -f - <<EOF
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
@@ -45,8 +52,6 @@ spec:
   rabbitmq:
     additionalConfig: |
       default_vhost = /
-      default_user = dapr
-      default_pass = rabbitpassword
 EOF
 ```
 
@@ -62,7 +67,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: "amqp://dapr:rabbitpassword@dapr-rabbitmq.default.svc.cluster.local:5672"
   - name: durable
     value: "true"
@@ -76,8 +81,8 @@ spec:
     value: "false"
   - name: prefetchCount
     value: "10"
-  - name: reconnectWait
-    value: "5s"
+  - name: reconnectWaitSeconds
+    value: "5"
   - name: maxLen
     value: "0"
   - name: exchangeKind
@@ -134,7 +139,7 @@ Handle events in your service:
 
 ```javascript
 app.post("/process-invoice", async (req, res) => {
-  const invoice = req.body;
+  const invoice = req.body.data;
   try {
     await generatePDF(invoice);
     await sendToCustomer(invoice.customerId, invoice.invoiceId);
@@ -151,8 +156,8 @@ app.post("/process-invoice", async (req, res) => {
 Configure RabbitMQ DLQ for failed message handling:
 
 ```bash
-# Create DLQ exchange and queue via rabbitmqctl
-rabbitmqctl eval 'rabbit_amqqueue:declare({resource, <<"/">>, queue, <<"invoices-dlq">>}, false, true, [], none, <<"system">>).'
+# Create DLQ queue via rabbitmqadmin (requires the management plugin)
+rabbitmqadmin -u dapr -p rabbitpassword declare queue name=invoices-dlq durable=true
 ```
 
 ## Summary
