@@ -66,7 +66,7 @@ kind: Component
 metadata:
   name: sendgrid-binding
 spec:
-  type: bindings.sendgrid
+  type: bindings.twilio.sendgrid
   version: v1
   metadata:
     - name: apiKey
@@ -144,10 +144,10 @@ Use case: Order fulfillment, multi-step approval processes, ETL pipelines.
 Encrypt/decrypt data and manage keys without exposing key material to the app:
 
 ```go
-resp, _ := client.EncryptAlpha1(ctx, &dapr.EncryptRequest{
+enc, _ := client.Encrypt(ctx, bytes.NewReader([]byte("sensitive data")), dapr.EncryptOptions{
     ComponentName: "vault-crypto",
     KeyName:       "customer-data-key",
-    PlainText:     []byte("sensitive data"),
+    Algorithm:     "RSA",
 })
 ```
 
