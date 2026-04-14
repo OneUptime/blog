@@ -17,14 +17,14 @@ Dapr sidecar injection uses a Kubernetes MutatingWebhookConfiguration to interce
 The most common cause is a missing or incorrect annotation:
 
 ```yaml
-# Correct
+# Correct - always quote annotation values
 annotations:
-  dapr.io/enabled: "true"   # Must be "true", not true (boolean)
+  dapr.io/enabled: "true"
   dapr.io/app-id: "myservice"
 
-# Wrong - boolean instead of string
+# Not recommended - unquoted boolean may cause issues with Helm or other YAML processors
 annotations:
-  dapr.io/enabled: true   # This won't trigger injection
+  dapr.io/enabled: true   # kubectl coerces this to "true", but some tools may not
 ```
 
 Check your running pod:
