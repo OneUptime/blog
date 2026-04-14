@@ -37,7 +37,7 @@ graph LR
 | Component | type | Purpose |
 |---|---|---|
 | Rate Limit | `middleware.http.ratelimit` | Throttle inbound requests |
-| OAuth2 | `middleware.http.oauth2` | Validate OAuth2 bearer tokens |
+| OAuth2 | `middleware.http.oauth2` | Enable OAuth2 Authorization Code flow |
 | OAuth2 Client Credentials | `middleware.http.oauth2clientcredentials` | Fetch and attach access tokens |
 | Bearer | `middleware.http.bearer` | Validate JWT bearer tokens |
 | OPA Policies | `middleware.http.opa` | Open Policy Agent authorisation |
@@ -136,7 +136,7 @@ spec:
   type: middleware.http.oauth2clientcredentials
   version: v1
   metadata:
-  - name: clientID
+  - name: clientId
     value: "your-client-id"
   - name: clientSecret
     secretKeyRef:
@@ -147,7 +147,7 @@ spec:
   - name: scopes
     value: "api://order-service/.default"
   - name: authStyle
-    value: "1"  # 1 = in header, 2 = in params
+    value: "1"  # 0 = auto-detect, 1 = POST body params, 2 = Basic Auth header
 ```
 
 Add to the `appHttpPipeline` (outbound):
@@ -219,7 +219,7 @@ spec:
   metadata:
   - name: url
     value: "file://./custom-middleware.wasm"
-  - name: guest
+  - name: guestConfig
     value: "http_handler"
 ```
 
