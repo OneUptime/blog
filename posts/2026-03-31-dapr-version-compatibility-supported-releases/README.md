@@ -65,7 +65,7 @@ Some SDK methods require a minimum runtime version. Verify before using:
 # Query the Dapr sidecar metadata to get runtime version
 import httpx
 response = httpx.get("http://localhost:3500/v1.0/metadata")
-runtime_version = response.json().get("runtimeMetadata", {}).get("runtimeVersion")
+runtime_version = response.json().get("runtimeVersion")
 print(f"Dapr runtime: {runtime_version}")
 ```
 
@@ -75,7 +75,7 @@ Dapr requires a minimum Kubernetes version. Check the matrix before upgrading ei
 
 ```bash
 # Check Kubernetes version
-kubectl version --short
+kubectl version
 
 # Check Dapr's minimum Kubernetes requirement for your target version
 # https://docs.dapr.io/operations/hosting/kubernetes/kubernetes-overview/
@@ -89,8 +89,8 @@ Dapr supports single minor version upgrades only. Do not skip minor versions:
 # Correct: 1.13 -> 1.14 -> 1.15
 # Incorrect: 1.13 -> 1.15
 
-# Check current runtime version
-dapr version -k
+# Check current runtime version in Kubernetes
+dapr status -k
 
 # Upgrade to next minor version
 dapr upgrade --runtime-version 1.14.0 -k
