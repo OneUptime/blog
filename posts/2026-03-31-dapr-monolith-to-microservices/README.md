@@ -123,9 +123,10 @@ def subscribe():
 
 @app.route('/handle-order-event', methods=['POST'])
 def handle_event():
-    data = request.get_json()
-    if data.get('type') == 'order.placed':
-        send_confirmation_email(data['email'], data['orderId'])
+    event = request.get_json()
+    event_data = event.get('data', {})
+    if event_data.get('type') == 'order.placed':
+        send_confirmation_email(event_data['email'], event_data['orderId'])
     return '', 200
 ```
 
@@ -221,7 +222,7 @@ During migration, both will run simultaneously. Dapr handles routing between the
 
 ```bash
 # View all registered Dapr apps
-kubectl get pods --all-namespaces -l dapr.io/enabled=true
+kubectl get pods --all-namespaces -l dapr.io/sidecar-injected=true
 
 # Check service discovery
 curl http://localhost:3500/v1.0/metadata | jq '.appConnectionProperties'
