@@ -45,12 +45,12 @@ kubectl apply -f app-resiliency.yaml
 
 ## How Timeout Errors Appear
 
-When a timeout is exceeded, the caller receives HTTP 408 Request Timeout:
+When a timeout is exceeded, the caller receives HTTP 500 Internal Server Error:
 
 ```bash
 curl -v http://localhost:3500/v1.0/invoke/slow-service/method/compute
-# HTTP/1.1 408 Request Timeout
-# {"errorCode":"ERR_DIRECT_INVOKE","message":"timeout"}
+# HTTP/1.1 500 Internal Server Error
+# {"errorCode":"ERR_DIRECT_INVOKE","message":"context deadline exceeded"}
 ```
 
 ## Handling Timeout Errors in Node.js
@@ -64,7 +64,7 @@ async function invokeWithHandling(appId, method, data) {
     );
     return res.data;
   } catch (err) {
-    if (err.response?.status === 408) {
+    if (err.response?.status === 500 && err.response?.data?.message?.includes('deadline exceeded')) {
       console.error(`Timeout calling ${appId}/${method}`);
       // Return cached result or throw a typed error
       throw new TimeoutError(`${appId} did not respond in time`);
@@ -96,7 +96,7 @@ spec:
         timeout: shortTimeout
 ```
 
-Total time with 3 retries and 2s timeout per attempt: up to 6 seconds plus backoff delays.
+Total time with 3 retries and 2s timeout per attempt: up to 8 seconds (4 total attempts) plus backoff delays.
 
 ## Self-Hosted Timeout Configuration
 
@@ -115,11 +115,13 @@ For state store and pub/sub operations:
 targets:
   components:
     statestore:
-      timeout: defaultTimeout
+      outbound:
+        timeout: defaultTimeout
     pubsub:
-      timeout: 10s
+      outbound:
+        timeout: pubsubTimeout
 ```
 
 ## Summary
 
-Configure Dapr service invocation timeouts using Resiliency policy `timeouts` definitions, then apply them to app targets. Timeout errors return HTTP 408 to the caller. Set different timeout values for different services based on their expected latency profiles, and handle 408 errors with fallbacks or typed exceptions in your application code.
+Configure Dapr service invocation timeouts using Resiliency policy `timeouts` definitions, then apply them to app targets. Timeout errors return HTTP 500 to the caller with a "context deadline exceeded" message. Set different timeout values for different services based on their expected latency profiles, and handle timeout errors with fallbacks or typed exceptions in your application code.
