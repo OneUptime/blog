@@ -45,7 +45,11 @@ class NotificationPublisher:
           "data": { "orderId": "...", "amount": 99.99 }
         }
         """
-        self.client.publish_event(self.pubsub, self.topic, notification)
+        self.client.publish_event(
+            self.pubsub, self.topic,
+            json.dumps(notification),
+            data_content_type="application/json"
+        )
 
     def send_bulk(self, notifications: list):
         for n in notifications:
@@ -66,7 +70,7 @@ app.use(express.json());
 // Get notification channels for a user
 app.get('/api/preferences/:userId', async (req, res) => {
   const { userId } = req.params;
-  const [prefs] = await client.state.get('statestore', `prefs-${userId}`);
+  const prefs = await client.state.get('statestore', `prefs-${userId}`);
 
   const defaults = {
     email: true, sms: false, push: true, webhook: false,
@@ -92,7 +96,7 @@ app.listen(8080);
 
 ```csharp
 // Email subscriber
-[Topic("pubsub", "notifications", "type == 'order_confirmation' || type == 'password_reset'")]
+[Topic("pubsub", "notifications", "event.type == 'order_confirmation' || event.type == 'password_reset'", 1)]
 [HttpPost("notifications/email")]
 public async Task<IActionResult> HandleEmailNotification(
     [FromBody] CloudEvent<Notification> cloudEvent)
@@ -101,9 +105,9 @@ public async Task<IActionResult> HandleEmailNotification(
 
     // Get user preferences
     var prefs = await _dapr.InvokeMethodAsync<UserPreferences>(
+        HttpMethod.Get,
         "preferences-service",
-        $"api/preferences/{notification.UserId}",
-        HttpMethod.Get);
+        $"api/preferences/{notification.UserId}");
 
     if (!prefs.Email)
     {
@@ -186,8 +190,10 @@ func handleSMSNotification(ctx context.Context, e *daprd.TopicEvent) (bool, erro
 
 ```python
 # webhook_service.py
+import json
 import httpx
 from fastapi import FastAPI
+from dapr.clients import DaprClient
 from dapr.ext.fastapi import DaprApp
 
 app = FastAPI()
