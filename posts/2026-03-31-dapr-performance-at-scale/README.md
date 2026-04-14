@@ -32,12 +32,12 @@ kubectl scale deployment dapr-sentry \
 
 ## Tuning the Placement Service for Actors
 
-For large actor deployments, tune the Placement service:
+For large actor deployments, enable high availability for the Placement service:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_placement.replicaCount=3 \
+  --set dapr_placement.ha=true \
   --set dapr_placement.logLevel=warn
 ```
 
@@ -54,14 +54,14 @@ kubectl label namespace payments-prod dapr.io/enabled=true
 kubectl apply -f payments-components/ -n payments-prod
 ```
 
-## Reduce Control Plane Load with Watch Intervals
+## Enable the Injector Watchdog for Reliable Sidecar Injection
 
-Tune how frequently Dapr watches for component changes:
+The Dapr Operator includes an injector watchdog that periodically polls all pods to confirm sidecar injection succeeded. This is useful at scale where occasional injection failures can occur. It is disabled by default:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.watchInterval=60s   # Default is 0 (immediate)
+  --set dapr_operator.watchInterval=60s   # Default is 0 (disabled)
 ```
 
 ## Connection Pool Sizing for High-Pod-Count Clusters
@@ -80,7 +80,7 @@ spec:
   - name: redisHost
     value: "redis:6379"
   - name: poolSize
-    value: "200"    # Allow 200 total connections (shared across all pods)
+    value: "200"    # Max connections per sidecar (each pod gets its own pool)
   - name: maxRetries
     value: "3"
 ```
@@ -118,4 +118,4 @@ kubectl top pods --containers -A | \
 
 ## Summary
 
-At scale, Dapr performance depends on both per-service optimizations and control plane capacity. Scale the Operator, Sentry, and Placement services to handle large cluster sizes, tune watch intervals to reduce reconciliation load, configure state store connection pools to handle many concurrent sidecar connections, and use namespace isolation to prevent noisy-neighbor effects between service domains.
+At scale, Dapr performance depends on both per-service optimizations and control plane capacity. Scale the Operator, Sentry, and Placement services to handle large cluster sizes, enable the injector watchdog for reliable sidecar injection, configure state store connection pools to handle many concurrent sidecar connections, and use namespace isolation to prevent noisy-neighbor effects between service domains.
