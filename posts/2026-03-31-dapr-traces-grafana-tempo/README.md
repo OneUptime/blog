@@ -76,18 +76,57 @@ data:
           exporters: [otlp]
 ```
 
-Deploy the collector:
+Deploy the collector with the ConfigMap mounted:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:latest
+          args: ["--config=/etc/otel/config.yaml"]
+          ports:
+            - containerPort: 4317
+            - containerPort: 4318
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - port: 4317
+      targetPort: 4317
+```
+
+Apply both the ConfigMap and the collector manifests:
 
 ```bash
 kubectl apply -f otel-collector-configmap.yaml
-
-kubectl create deployment otel-collector \
-  --image=otel/opentelemetry-collector-contrib:latest \
-  --namespace monitoring
-
-kubectl expose deployment otel-collector \
-  --port=4317 --target-port=4317 \
-  --namespace monitoring
+kubectl apply -f otel-collector-deployment.yaml
 ```
 
 ## Configure Dapr to Export to the Collector
@@ -123,13 +162,14 @@ annotations:
 Add Tempo as a data source in Grafana:
 
 ```bash
-# Via Grafana API
+# Via Grafana API (using default admin credentials)
 curl -X POST http://grafana:3000/api/datasources \
+  -u admin:admin \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Tempo",
     "type": "tempo",
-    "url": "http://tempo:3100",
+    "url": "http://tempo:3200",
     "access": "proxy"
   }'
 ```
@@ -145,7 +185,7 @@ curl -X POST http://localhost:3500/v1.0/invoke/target-service/method/hello \
   -d '{"message": "test"}'
 
 # Query Tempo for recent traces
-curl "http://tempo:3100/api/search?limit=5" | jq '.traces[].rootServiceName'
+curl "http://tempo:3200/api/search?limit=5" | jq '.traces[].rootServiceName'
 ```
 
 ## Summary
