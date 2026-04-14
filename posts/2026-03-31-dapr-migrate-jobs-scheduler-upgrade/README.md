@@ -10,7 +10,7 @@ Description: Migrate scheduled jobs safely during a Dapr Scheduler upgrade by ex
 
 ## Why Job Migration Is Needed
 
-When upgrading Dapr Scheduler between major versions, the embedded etcd data format or schema may change. To prevent job loss, export all job definitions before upgrading and re-import them after the new version is running. This is especially important when going from Dapr 1.13 to 1.14 or later.
+When upgrading Dapr Scheduler between versions, embedded etcd state or scheduler behavior may change. To prevent job loss, export all job definitions before upgrading and re-import them after the new version is running. The Jobs API was introduced in Dapr 1.14, so this applies when upgrading from 1.14 to later versions (e.g., 1.15+).
 
 ## Step 1 - Export Existing Jobs
 
@@ -55,14 +55,14 @@ Perform the Helm upgrade:
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --version 1.14.0 \
-  --reuse-values
+  --wait
 
-kubectl rollout status statefulset/dapr-scheduler -n dapr-system
+kubectl rollout status statefulset/dapr-scheduler-server -n dapr-system
 ```
 
 ## Step 4 - Re-Import Jobs
 
-After the upgrade, re-create the jobs:
+After the upgrade, re-create the jobs. Note that jobs using relative `dueTime` or `ttl` values (e.g., `"30s"`) will have been stored as absolute timestamps in the export. Review and adjust these fields before re-importing if needed.
 
 ```bash
 #!/bin/bash
@@ -98,7 +98,7 @@ If the upgrade fails, restore from the backup and roll back:
 
 ```bash
 helm rollback dapr -n dapr-system
-kubectl rollout status statefulset/dapr-scheduler -n dapr-system
+kubectl rollout status statefulset/dapr-scheduler-server -n dapr-system
 # Re-import jobs from export directory
 ```
 
