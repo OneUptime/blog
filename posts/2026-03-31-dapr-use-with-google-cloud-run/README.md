@@ -37,7 +37,7 @@ spec:
         - name: DAPR_HTTP_PORT
           value: "3500"
       - name: daprd
-        image: daprio/daprd:1.13.0
+        image: daprio/daprd:1.15.0
         args:
         - "--app-id"
         - "order-service"
@@ -45,7 +45,7 @@ spec:
         - "8080"
         - "--dapr-http-port"
         - "3500"
-        - "--components-path"
+        - "--resources-path"
         - "/components"
         - "--log-level"
         - "info"
@@ -54,23 +54,14 @@ spec:
           mountPath: /components
       volumes:
       - name: components
-        configMap:
-          name: dapr-components
+        secret:
+          secretName: dapr-components
 ```
 
 ## Deploying via gcloud CLI
 
 ```bash
-# Deploy using gcloud run deploy
-gcloud run deploy order-service \
-  --image gcr.io/my-project/order-service:latest \
-  --region us-central1 \
-  --platform managed \
-  --allow-unauthenticated \
-  --container app \
-  --container daprd
-
-# Apply via YAML
+# Deploy via YAML (recommended for multi-container)
 gcloud run services replace cloud-run-service.yaml --region us-central1
 ```
 
@@ -88,10 +79,6 @@ spec:
   metadata:
   - name: projectId
     value: "my-gcp-project"
-  - name: credentialsJson
-    secretKeyRef:
-      name: gcp-credentials
-      key: credentials.json
 ```
 
 ## Dapr Component: Firestore State Store
@@ -106,14 +93,10 @@ spec:
   type: state.gcp.firestore
   version: v1
   metadata:
-  - name: projectId
+  - name: project_id
     value: "my-gcp-project"
-  - name: collection
-    value: "dapr-state"
-  - name: credentialsJson
-    secretKeyRef:
-      name: gcp-credentials
-      key: credentials.json
+  - name: entity_kind
+    value: "DaprState"
 ```
 
 ## Application Code Using Dapr
