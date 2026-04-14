@@ -79,8 +79,10 @@ func (r *Router) proxyToMonolith(w http.ResponseWriter, req *http.Request) {
 package main
 
 import (
+    "context"
     "encoding/json"
-    "net/http"
+
+    "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/http"
 )
 
@@ -91,11 +93,19 @@ func main() {
     s.Start()
 }
 
-func getUserHandler(ctx nethttp.Context) {
-    userID := ctx.PathValue("id")
+func getUserHandler(ctx context.Context, in *common.InvocationEvent) (*common.Content, error) {
+    // Parse user ID from the request path
+    userID := parseUserID(in.QueryString)
     // Serve from new microservice data store
     user := getUserFromNewStore(userID)
-    json.NewEncoder(ctx.ResponseWriter()).Encode(user)
+    data, err := json.Marshal(user)
+    if err != nil {
+        return nil, err
+    }
+    return &common.Content{
+        Data:        data,
+        ContentType: "application/json",
+    }, nil
 }
 ```
 
