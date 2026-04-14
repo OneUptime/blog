@@ -47,7 +47,7 @@ The Dapr CLI provides a built-in command to renew certificates:
 curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
 
 # Renew the certificates (this regenerates root CA and issuer certs)
-dapr mtls renew-certificate -k --valid-until 365d
+dapr mtls renew-certificate -k --valid-until 365
 ```
 
 The `--valid-until` flag sets the new certificate validity period.
