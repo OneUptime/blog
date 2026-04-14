@@ -70,7 +70,7 @@ spec:
         timeout: longOp
         retry: shortRetry
         circuitBreaker: simpleCB
-        circuitBreakerScope: type
+        circuitBreakerScope: type  # "id", "type", or "both"
 ```
 
 ## Retry Policies
@@ -89,16 +89,13 @@ retries:
 
 ### Exponential Backoff
 
-Doubles the wait time after each failure:
+Increases the wait time after each failure using a 1.5x multiplier with randomized jitter:
 
 ```yaml
 retries:
   expRetry:
     policy: exponential
-    initialInterval: 500ms    # first retry after 500ms
     maxInterval: 30s          # cap at 30 seconds
-    multiplier: 1.5           # growth factor
-    randomizationFactor: 0.5  # jitter
     maxRetries: 10
 ```
 
@@ -126,7 +123,7 @@ targets:
       timeout: normal
 ```
 
-If the timeout expires, Dapr returns a `504 Gateway Timeout` to your application.
+If the timeout expires, Dapr terminates the operation (if possible) and returns an error to your application.
 
 ## Circuit Breakers
 
@@ -197,10 +194,10 @@ targets:
       timeout: normal
       retry: expRetry
       circuitBreaker: productCB
-      circuitBreakerScope: type  # "id" or "type"
+      circuitBreakerScope: type  # "id", "type", or "both"
 ```
 
-`circuitBreakerScope: type` means one circuit breaker per actor type. `circuitBreakerScope: id` means one circuit breaker per actor instance.
+`circuitBreakerScope: type` means one circuit breaker per actor type. `circuitBreakerScope: id` means one circuit breaker per actor instance. `circuitBreakerScope: both` means one circuit breaker scoped to both actor type and instance ID.
 
 ## Registering a Resiliency Resource
 
@@ -216,11 +213,7 @@ In Kubernetes:
 kubectl apply -f myresiliency.yaml -n default
 ```
 
-Verify it is loaded:
-
-```bash
-dapr resiliency --app-id myapp
-```
+Verify the resource is applied by checking your Dapr logs or dashboard for the loaded resiliency configuration.
 
 ## Testing Resiliency
 
@@ -235,7 +228,7 @@ for i in {1..10}; do
 done
 ```
 
-After 5 consecutive failures, subsequent calls return `503 Service Unavailable` immediately while the circuit is open.
+After 5 consecutive failures, subsequent calls fail immediately with an error while the circuit is open, without reaching the target service.
 
 ## Summary
 
