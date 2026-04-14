@@ -12,7 +12,7 @@ By default, any Dapr-enabled application that can reach a secret store component
 
 ## Secret Scoping Options
 
-Dapr secret store components support three scoping settings:
+Dapr provides secret-level access control through a **Configuration** resource (not the Component YAML). The Configuration resource supports three scoping settings under `spec.secrets.scopes`:
 
 - `allowedSecrets`: Whitelist - only these secrets are accessible (all others denied)
 - `deniedSecrets`: Blacklist - these secrets are blocked (all others allowed)
@@ -20,7 +20,7 @@ Dapr secret store components support three scoping settings:
 
 ## Namespace-Level Scoping with allowedSecrets
 
-Restrict the `payment-service` to only access its own secrets:
+Restrict the `payment-service` to only access its own secrets. First, scope the Component so only `payment-service` can use it:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -31,21 +31,34 @@ metadata:
 spec:
   type: secretstores.kubernetes
   version: v1
-  auth:
-    secretStore: mysecretstore
-  scopes:
-  - payment-service
-  allowedSecrets:
-  - payment-api-key
-  - payment-db-password
-  - stripe-webhook-secret
+scopes:
+- payment-service
 ```
 
-Now if `payment-service` attempts to read `email-smtp-password`, it receives a 403 Forbidden.
+Then, create a Configuration resource to restrict which secrets it can read:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: payment-service-config
+  namespace: payment-service-ns
+spec:
+  secrets:
+    scopes:
+      - storeName: mysecretstore
+        defaultAccess: deny
+        allowedSecrets:
+          - payment-api-key
+          - payment-db-password
+          - stripe-webhook-secret
+```
+
+Apply the Configuration to the Dapr sidecar using the `dapr.io/config` annotation on the application deployment. Now if `payment-service` attempts to read `email-smtp-password`, it receives a 403 Forbidden.
 
 ## Scoping via Component Scopes
 
-Use the `scopes` field to restrict which app IDs can use the component at all:
+Use the top-level `scopes` field to restrict which app IDs can use the component at all:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -63,26 +76,30 @@ spec:
     secretKeyRef:
       name: vault-token
       key: token
-  scopes:
-  - order-service
-  - inventory-service
+scopes:
+- order-service
+- inventory-service
 ```
 
 Only `order-service` and `inventory-service` can access `production-secrets`. All other apps will receive an error if they try to use this component.
 
 ## Combining defaultAccess with deniedSecrets
 
-Deny access to sensitive internal secrets while allowing all others:
+Deny access to sensitive internal secrets while allowing all others using a Configuration resource:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: appconfig
 spec:
-  type: secretstores.kubernetes
-  version: v1
-  metadata:
-  - name: defaultAccess
-    value: "allow"
-  - name: deniedSecrets
-    value: "admin-bootstrap-token,internal-root-ca"
+  secrets:
+    scopes:
+      - storeName: mysecretstore
+        defaultAccess: allow
+        deniedSecrets:
+          - admin-bootstrap-token
+          - internal-root-ca
 ```
 
 ## Testing Secret Scoping
@@ -115,11 +132,11 @@ metadata:
 spec:
   type: secretstores.kubernetes
   version: v1
-  # No allowedSecrets - devs can access any secret in the dev namespace
+  # No secret scoping Configuration applied - devs can access any secret in the dev namespace
 ```
 
 ```yaml
-# prod namespace - strict allowlists per service
+# prod namespace - strict component scoping per service
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
@@ -128,11 +145,25 @@ metadata:
 spec:
   type: secretstores.kubernetes
   version: v1
-  allowedSecrets:
-  - payment-db-password
-  - payment-api-key
-  scopes:
-  - payment-service
+scopes:
+- payment-service
+```
+
+```yaml
+# prod namespace - strict secret-level allowlists via Configuration
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: payment-service-config
+  namespace: prod
+spec:
+  secrets:
+    scopes:
+      - storeName: mysecretstore
+        defaultAccess: deny
+        allowedSecrets:
+          - payment-db-password
+          - payment-api-key
 ```
 
 ## Summary
