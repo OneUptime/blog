@@ -51,7 +51,8 @@ class StoredEvent:
 ## Event Store Implementation with Dapr
 
 ```python
-import dapr.clients as dapr
+from dapr.clients import DaprClient
+from dapr.clients.grpc._state import StateOptions, Concurrency
 import json
 from typing import List, Optional
 
@@ -61,7 +62,7 @@ class DaprEventStore:
 
     def append_events(self, aggregate_id: str, events: List[StoredEvent],
                       expected_version: int = -1):
-        with dapr.DaprClient() as client:
+        with DaprClient() as client:
             # Get current stream to check version
             stream_key = f"stream:{events[0].aggregate_type}:{aggregate_id}"
             current = client.get_state(self.store_name, stream_key)
@@ -98,8 +99,8 @@ class DaprEventStore:
                     "events": all_events
                 }),
                 etag=current.etag if current.etag else None,
-                options=dapr.StateOptions(
-                    concurrency=dapr.Concurrency.FirstWrite
+                options=StateOptions(
+                    concurrency=Concurrency.first_write
                 )
             )
 
@@ -107,7 +108,7 @@ class DaprEventStore:
 
     def load_events(self, aggregate_type: str, aggregate_id: str,
                     from_version: int = 0) -> List[dict]:
-        with dapr.DaprClient() as client:
+        with DaprClient() as client:
             stream_key = f"stream:{aggregate_type}:{aggregate_id}"
             result = client.get_state(self.store_name, stream_key)
 
@@ -136,10 +137,8 @@ spec:
     secretKeyRef:
       name: postgres-secret
       key: connectionString
-  - name: tableName
+  - name: tablePrefix
     value: "event_streams"
-  - name: schemaName
-    value: "events"
   - name: maxConns
     value: "20"
 ```
@@ -196,12 +195,13 @@ class OrderAggregate:
 
 ```python
 def publish_stored_events(events: List[StoredEvent]):
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         for event in events:
             client.publish_event(
                 pubsub_name="orders-pubsub",
                 topic_name=event.event_type,
-                data=json.dumps(event.to_dict())
+                data=json.dumps(event.to_dict()),
+                data_content_type='application/json'
             )
 ```
 
