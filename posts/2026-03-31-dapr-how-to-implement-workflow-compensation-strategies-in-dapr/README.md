@@ -210,7 +210,9 @@ builder.ConfigureServices(services =>
 
 var host = builder.Build();
 
-// Start the workflow via a background task
+// Start the host so the workflow engine begins processing
+await host.StartAsync();
+
 var client = host.Services.GetRequiredService<DaprWorkflowClient>();
 
 var orderId = Guid.NewGuid().ToString("N")[..8];
@@ -227,9 +229,9 @@ Console.WriteLine($"Workflow started: {orderId}");
 while (true)
 {
     var state = await client.GetWorkflowStateAsync(orderId, getInputsAndOutputs: true);
-    Console.WriteLine($"Status: {state.RuntimeStatus} | {state.SerializedCustomStatus}");
+    Console.WriteLine($"Status: {state?.RuntimeStatus} | {state?.ReadCustomStatusAs<string>()}");
     
-    if (state.IsWorkflowCompleted)
+    if (state?.IsWorkflowCompleted == true)
     {
         Console.WriteLine($"Result: {state.ReadOutputAs<string>()}");
         break;
@@ -237,7 +239,7 @@ while (true)
     await Task.Delay(500);
 }
 
-await host.RunAsync();
+await host.StopAsync();
 ```
 
 ## Running with the Dapr Sidecar
