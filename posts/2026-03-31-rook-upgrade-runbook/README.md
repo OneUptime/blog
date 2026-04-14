@@ -107,7 +107,7 @@ Ensure all daemons report the new version.
 
 ## Rollback Procedure
 
-If the upgrade causes issues, revert the Ceph image in the CephCluster spec and re-apply. Rook will roll back the daemon versions. Note that Ceph downgrades are not always safe — if internal data formats were upgraded during the new version's startup, reverting the image may cause issues. Test rollback procedures in a non-production environment first:
+If the upgrade causes issues, revert the Ceph image in the CephCluster spec and re-apply. Rook will roll back the daemon versions. Note that Ceph downgrades are not always safe - if internal data formats were upgraded during the new version's startup, reverting the image may cause issues. Test rollback procedures in a non-production environment first:
 
 ```bash
 kubectl -n rook-ceph patch cephcluster rook-ceph --type merge \

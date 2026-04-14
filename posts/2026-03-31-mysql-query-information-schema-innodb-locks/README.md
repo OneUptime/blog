@@ -10,7 +10,7 @@ Description: Learn how to query INFORMATION_SCHEMA.INNODB_LOCKS in MySQL 5.7 and
 
 ## Overview
 
-Lock visibility is critical for diagnosing deadlocks and blocking in MySQL. In MySQL 5.7 and earlier, `INFORMATION_SCHEMA.INNODB_LOCKS` showed locks involved in lock-wait situations — specifically, locks requested but not yet acquired and locks blocking another transaction. In MySQL 8.0, this view was replaced by `performance_schema.data_locks`, which shows all locks held by every transaction, not just those involved in contention.
+Lock visibility is critical for diagnosing deadlocks and blocking in MySQL. In MySQL 5.7 and earlier, `INFORMATION_SCHEMA.INNODB_LOCKS` showed locks involved in lock-wait situations - specifically, locks requested but not yet acquired and locks blocking another transaction. In MySQL 8.0, this view was replaced by `performance_schema.data_locks`, which shows all locks held by every transaction, not just those involved in contention.
 
 ## MySQL 5.7: INNODB_LOCKS
 

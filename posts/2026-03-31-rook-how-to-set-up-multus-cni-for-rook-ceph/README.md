@@ -139,7 +139,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Step 4 - Verify Client Access Configuration
 
-The Rook operator automatically manages the `rook-ceph-csi-config` ConfigMap with the correct monitor endpoints for the CSI driver. You do not need to manually edit this ConfigMap — any manual changes will be overwritten by the operator during reconciliation.
+The Rook operator automatically manages the `rook-ceph-csi-config` ConfigMap with the correct monitor endpoints for the CSI driver. You do not need to manually edit this ConfigMap - any manual changes will be overwritten by the operator during reconciliation.
 
 Verify that the operator has populated the CSI config with the Multus public network addresses:
 

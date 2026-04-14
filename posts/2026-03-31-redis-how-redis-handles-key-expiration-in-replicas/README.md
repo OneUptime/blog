@@ -45,7 +45,7 @@ redis-cli -h replica TTL mykey
 # Returns: -2 if the key does not exist, -1 if no expiry is set, or a positive number for remaining TTL
 ```
 
-Note: Since Redis 3.2, the replica uses its local clock to determine if a key has logically expired. For expired-but-not-yet-deleted keys, `TTL` returns `-2` (treating the key as non-existent) rather than reporting the remaining time. The `TTL` command only returns `-2`, `-1`, or a positive integer — it never returns arbitrary negative values.
+Note: Since Redis 3.2, the replica uses its local clock to determine if a key has logically expired. For expired-but-not-yet-deleted keys, `TTL` returns `-2` (treating the key as non-existent) rather than reporting the remaining time. The `TTL` command only returns `-2`, `-1`, or a positive integer - it never returns arbitrary negative values.
 
 ## Replica Expiration Logic Change in Redis 3.2
 

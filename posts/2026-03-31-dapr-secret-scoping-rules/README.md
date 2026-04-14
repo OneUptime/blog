@@ -31,7 +31,7 @@ scopes:
   - billing-worker
 ```
 
-Any service with an app ID not in the `scopes` list will not have the component loaded at all. The secret store will be invisible to that service — attempts to access it will fail as if the component does not exist.
+Any service with an app ID not in the `scopes` list will not have the component loaded at all. The secret store will be invisible to that service - attempts to access it will fail as if the component does not exist.
 
 ## Secret-Level Scoping with Allow and Deny Lists
 

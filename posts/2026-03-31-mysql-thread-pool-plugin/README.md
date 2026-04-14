@@ -67,7 +67,7 @@ thread_pool_size            = 16
 thread_pool_stall_limit     = 60
 ```
 
-Note: In MySQL Enterprise, loading the thread pool plugin automatically activates it — there is no `thread_handling` variable. The `thread_pool_stall_limit` value is in units of 10 milliseconds (so 60 = 600ms).
+Note: In MySQL Enterprise, loading the thread pool plugin automatically activates it - there is no `thread_handling` variable. The `thread_pool_stall_limit` value is in units of 10 milliseconds (so 60 = 600ms).
 
 ## Installation (Percona Server)
 

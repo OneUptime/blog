@@ -55,7 +55,7 @@ Then uninstall:
 dapr uninstall --all
 ```
 
-The `--all` flag removes the Dapr binaries, the Redis, Zipkin, Scheduler, and Placement containers, and the entire `~/.dapr/` directory (including your component files — hence the backup above).
+The `--all` flag removes the Dapr binaries, the Redis, Zipkin, Scheduler, and Placement containers, and the entire `~/.dapr/` directory (including your component files - hence the backup above).
 
 Verify cleanup:
 

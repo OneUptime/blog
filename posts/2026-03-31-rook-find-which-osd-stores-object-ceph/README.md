@@ -83,7 +83,7 @@ Each returns JSON with the host name, network address, and CRUSH location.
 SSH to the primary OSD's host. The OSD must be stopped before `ceph-objectstore-tool` can access the data directory:
 
 ```bash
-# Stop the OSD first (required — BlueStore locks the data directory)
+# Stop the OSD first (required - BlueStore locks the data directory)
 systemctl stop ceph-osd@4
 
 # List RADOS objects (BlueStore)

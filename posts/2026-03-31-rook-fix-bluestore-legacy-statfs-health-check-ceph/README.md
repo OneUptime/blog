@@ -81,7 +81,7 @@ ceph osd deep-scrub osd.0
 ceph osd deep-scrub osd.1
 ```
 
-Note: Deep scrub does not trigger the statfs format migration itself — it only recalculates stats within the current format. The migration must be done via OSD restart or `ceph-bluestore-tool repair`.
+Note: Deep scrub does not trigger the statfs format migration itself - it only recalculates stats within the current format. The migration must be done via OSD restart or `ceph-bluestore-tool repair`.
 
 ## Verifying the Fix
 

@@ -14,7 +14,7 @@ Dapr discovers pluggable components through Unix domain socket files. At startup
 
 ## Socket File Convention
 
-The socket filename determines the component name portion of the type. A socket at `/tmp/dapr-components-sockets/my-state-store.sock` provides the name `my-state-store`. Dapr uses gRPC reflection to discover which building block API the component implements (e.g., state store, pub/sub). The full type is the API prefix plus the socket name — for example, `state.my-state-store` if the component implements the state store proto service.
+The socket filename determines the component name portion of the type. A socket at `/tmp/dapr-components-sockets/my-state-store.sock` provides the name `my-state-store`. Dapr uses gRPC reflection to discover which building block API the component implements (e.g., state store, pub/sub). The full type is the API prefix plus the socket name - for example, `state.my-state-store` if the component implements the state store proto service.
 
 ## Local Development Registration
 
@@ -89,7 +89,7 @@ metadata:
     dapr.io/inject-pluggable-components: "true"
 ```
 
-The Deployment itself only needs the application container — the Dapr sidecar injector handles adding the component sidecar container and the shared socket volume:
+The Deployment itself only needs the application container - the Dapr sidecar injector handles adding the component sidecar container and the shared socket volume:
 
 ```yaml
 apiVersion: apps/v1

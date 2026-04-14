@@ -30,7 +30,7 @@ bind 127.0.0.1 192.168.1.10
 bind 0.0.0.0
 ```
 
-Note: The `bind` directive cannot be changed at runtime via `CONFIG SET` — it is an immutable parameter. You must edit `redis.conf` and restart Redis for bind changes to take effect.
+Note: The `bind` directive cannot be changed at runtime via `CONFIG SET` - it is an immutable parameter. You must edit `redis.conf` and restart Redis for bind changes to take effect.
 
 ## Configuring Redis for a Specific IPv4 Address
 

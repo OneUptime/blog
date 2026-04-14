@@ -71,7 +71,7 @@ aws s3api put-bucket-lifecycle-configuration \
   --endpoint-url http://your-rgw-host:7480
 ```
 
-Note: The `StorageClass` in the lifecycle rule must match the storage class name configured in Step 1 (here, `GLACIER`). RGW does not automatically map storage class names — the name is user-defined when creating the cloud-s3 tier.
+Note: The `StorageClass` in the lifecycle rule must match the storage class name configured in Step 1 (here, `GLACIER`). RGW does not automatically map storage class names - the name is user-defined when creating the cloud-s3 tier.
 
 ## Step 4 - Verify Transition Status
 
@@ -106,7 +106,7 @@ aws s3api list-objects-v2 \
 
 ## Accessing Transitioned Objects
 
-Transitioned objects cannot be read directly — a GET request returns a `403 InvalidObjectState` error. To access the data, you must first restore the object using the S3 RestoreObject API:
+Transitioned objects cannot be read directly - a GET request returns a `403 InvalidObjectState` error. To access the data, you must first restore the object using the S3 RestoreObject API:
 
 ```bash
 aws s3api restore-object \

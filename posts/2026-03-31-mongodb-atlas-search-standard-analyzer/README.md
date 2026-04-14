@@ -83,7 +83,7 @@ Tokens: ["MongoDB's", "Atlas", "Search", "is", "AMAZING"]
 After lowercase filter:
 Tokens: ["mongodb's", "atlas", "search", "is", "amazing"]
 
-Note: The standard tokenizer preserves original casing — lowercasing
+Note: The standard tokenizer preserves original casing - lowercasing
 happens in the next pipeline step. "MongoDB's" is kept as a single
 token (apostrophe handling varies by Lucene version).
 ```

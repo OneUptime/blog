@@ -110,4 +110,4 @@ redis-cli ZREVRANGE leaderboard:global 0 19 WITHSCORES | wc -l
 
 ## Summary
 
-Redis ZREVRANGE with start/end offsets implements O(log N + M) offset-based pagination. Score-based cursors with exclusive ranges (parenthesis prefix) enable infinite-scroll pagination, though entries with the same score as the cursor will be skipped — use offset-based pagination or a composite cursor (score + member ID) if tied scores are common. Always include total count from ZCARD for rendering page navigation UI.
+Redis ZREVRANGE with start/end offsets implements O(log N + M) offset-based pagination. Score-based cursors with exclusive ranges (parenthesis prefix) enable infinite-scroll pagination, though entries with the same score as the cursor will be skipped - use offset-based pagination or a composite cursor (score + member ID) if tied scores are common. Always include total count from ZCARD for rendering page navigation UI.

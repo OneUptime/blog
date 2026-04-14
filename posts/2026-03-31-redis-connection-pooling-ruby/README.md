@@ -8,7 +8,7 @@ Description: Learn how to use the connection_pool gem with redis-rb to safely sh
 
 ---
 
-The redis-rb client creates one connection per object. In redis-rb 5.x, each `Redis` instance is thread-safe — access to the underlying TCP connection is protected by a mutex. However, this means only one thread can execute a command at a time, making a single shared instance a performance bottleneck in multi-threaded applications (Puma, Sidekiq, concurrent workers). The `connection_pool` gem solves this by maintaining a pool of connections, allowing threads to execute Redis commands concurrently.
+The redis-rb client creates one connection per object. In redis-rb 5.x, each `Redis` instance is thread-safe - access to the underlying TCP connection is protected by a mutex. However, this means only one thread can execute a command at a time, making a single shared instance a performance bottleneck in multi-threaded applications (Puma, Sidekiq, concurrent workers). The `connection_pool` gem solves this by maintaining a pool of connections, allowing threads to execute Redis commands concurrently.
 
 ## Installation
 

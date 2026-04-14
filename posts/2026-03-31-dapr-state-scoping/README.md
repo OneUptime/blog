@@ -93,7 +93,7 @@ After deploying, you can confirm enforcement with a curl command from a pod that
 ```bash
 # From a pod with app-id: analytics-service (not in scope)
 curl -v http://localhost:3500/v1.0/state/orders-statestore/order-123
-# Expected: HTTP 400 — state store orders-statestore is not configured
+# Expected: HTTP 400 - state store orders-statestore is not configured
 ```
 
 And from an allowed pod:

@@ -47,7 +47,7 @@ SAVE MYSQL QUERY RULES TO DISK;
 
 ## Configuring Cache Size
 
-Set the memory threshold used by the cache purging thread. This is a soft limit — when usage exceeds this value, the purging thread becomes more aggressive about evicting entries:
+Set the memory threshold used by the cache purging thread. This is a soft limit - when usage exceeds this value, the purging thread becomes more aggressive about evicting entries:
 
 ```sql
 SET mysql-query_cache_size_MB = 256;

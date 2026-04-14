@@ -96,7 +96,7 @@ SRANDMEMBER pool -7
 7) "charlie"
 ```
 
-Duplicates appear because negative count samples with replacement — each pick is independent, so repeats are possible even when `|count|` is smaller than the set size.
+Duplicates appear because negative count samples with replacement - each pick is independent, so repeats are possible even when `|count|` is smaller than the set size.
 
 ### Non-Existent Key
 

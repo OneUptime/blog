@@ -94,7 +94,7 @@ SHOW GLOBAL STATUS LIKE 'Handler_read%';
 
 ## InnoDB Alternative: innodb_read_io_threads
 
-For InnoDB, configure I/O threads instead of `read_buffer_size`. Note that `innodb_read_io_threads` is not a dynamic variable — it requires a server restart to take effect.
+For InnoDB, configure I/O threads instead of `read_buffer_size`. Note that `innodb_read_io_threads` is not a dynamic variable - it requires a server restart to take effect.
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_read_io_threads';

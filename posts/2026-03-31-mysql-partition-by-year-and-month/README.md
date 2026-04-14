@@ -109,7 +109,7 @@ WHERE event_date >= '2025-03-01'
   AND event_date < '2025-04-01'\G
 ```
 
-The output should show only `p202503` in the `partitions` column. Use range conditions on the column itself rather than `YEAR()` and `MONTH()` functions in the WHERE clause — MySQL's optimizer cannot map function-based conditions back to the composite partition expression, so `WHERE YEAR(event_date) = 2025 AND MONTH(event_date) = 3` would scan all partitions instead of pruning.
+The output should show only `p202503` in the `partitions` column. Use range conditions on the column itself rather than `YEAR()` and `MONTH()` functions in the WHERE clause - MySQL's optimizer cannot map function-based conditions back to the composite partition expression, so `WHERE YEAR(event_date) = 2025 AND MONTH(event_date) = 3` would scan all partitions instead of pruning.
 
 ## Archive Old Months
 

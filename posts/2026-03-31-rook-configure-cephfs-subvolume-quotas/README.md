@@ -17,7 +17,7 @@ CephFS enforces quotas using extended attributes on directory inodes. Quota enfo
 - Existing data is not affected
 - Reads and directory listings continue to work
 
-Because enforcement is client-side, quotas are imprecise — writers may slightly exceed the limit before being stopped. Quotas apply to the bytes stored in the directory tree rooted at the subvolume path.
+Because enforcement is client-side, quotas are imprecise - writers may slightly exceed the limit before being stopped. Quotas apply to the bytes stored in the directory tree rooted at the subvolume path.
 
 ## Setting a Quota at Creation
 

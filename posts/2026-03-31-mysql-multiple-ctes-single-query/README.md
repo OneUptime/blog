@@ -144,7 +144,7 @@ FROM customers c
 JOIN order_stats os ON c.customer_id = os.customer_id;
 ```
 
-Note: When a CTE is referenced multiple times, MySQL materializes it into a temporary table once and shares the result across all references — it is not re-evaluated. For CTEs referenced only once, the optimizer may choose to merge the CTE into the outer query instead of materializing it. Use `EXPLAIN` to verify how the optimizer handles your CTEs.
+Note: When a CTE is referenced multiple times, MySQL materializes it into a temporary table once and shares the result across all references - it is not re-evaluated. For CTEs referenced only once, the optimizer may choose to merge the CTE into the outer query instead of materializing it. Use `EXPLAIN` to verify how the optimizer handles your CTEs.
 
 ## Summary
 

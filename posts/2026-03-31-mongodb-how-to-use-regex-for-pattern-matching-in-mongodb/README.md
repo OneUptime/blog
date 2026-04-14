@@ -144,7 +144,7 @@ Case-sensitive regex patterns anchored to the start of the string (`^pattern`) c
 await products.find({ name: /^Apple/ })
 
 // Case-insensitive regex generally CANNOT use indexes effectively,
-// even with an anchor — the prefix optimization does not apply
+// even with an anchor - the prefix optimization does not apply
 await products.find({ name: /^Apple/i })
 
 // These also CANNOT efficiently use an index (no anchor or end anchor)

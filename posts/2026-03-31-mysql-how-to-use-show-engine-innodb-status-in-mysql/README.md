@@ -113,7 +113,7 @@ Buffer pool hit rate 1000 / 1000, young-making rate 0 / 1000 not 0 / 1000
 Key metrics:
 - **Buffer pool hit rate**: should be close to 1000/1000 (= 100%)
 - **Modified db pages**: dirty pages waiting to be flushed
-- **Free buffers**: pages available for use — if this reaches 0, InnoDB must evict pages
+- **Free buffers**: pages available for use - if this reaches 0, InnoDB must evict pages
 
 ### LOG
 
@@ -130,7 +130,7 @@ Pages flushed up to          12345678901
 Last checkpoint at           12345678800
 ```
 
-The gap between `Log sequence number` and `Last checkpoint at` represents uncheckpointed redo log data — changes written to the redo log whose corresponding dirty pages have not yet been flushed to the tablespace files. A large gap means InnoDB has more recovery work to do if it crashes.
+The gap between `Log sequence number` and `Last checkpoint at` represents uncheckpointed redo log data - changes written to the redo log whose corresponding dirty pages have not yet been flushed to the tablespace files. A large gap means InnoDB has more recovery work to do if it crashes.
 
 ### ROW OPERATIONS
 

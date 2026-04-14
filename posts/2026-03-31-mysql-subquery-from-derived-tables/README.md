@@ -151,7 +151,7 @@ INNER JOIN employees e
 
 ## Materialization in MySQL 8
 
-MySQL 8 can handle derived tables in two ways. The optimizer first tries to merge a simple derived table directly into the outer query (`derived_merge` optimization, enabled by default). When merging is not possible — for example, when the derived table uses aggregation, `DISTINCT`, `LIMIT`, or a `UNION` — MySQL materializes it: executes the subquery once and stores the result in an internal temporary table. You can check which strategy was used:
+MySQL 8 can handle derived tables in two ways. The optimizer first tries to merge a simple derived table directly into the outer query (`derived_merge` optimization, enabled by default). When merging is not possible - for example, when the derived table uses aggregation, `DISTINCT`, `LIMIT`, or a `UNION` - MySQL materializes it: executes the subquery once and stores the result in an internal temporary table. You can check which strategy was used:
 
 ```sql
 EXPLAIN FORMAT=JSON
