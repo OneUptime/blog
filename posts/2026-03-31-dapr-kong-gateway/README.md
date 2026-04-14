@@ -31,8 +31,7 @@ Deploy Kong using Helm:
 helm repo add kong https://charts.konghq.com
 helm repo update
 
-helm install kong kong/ingress -n kong --create-namespace \
-  --set ingressController.installCRDs=false
+helm install kong kong/ingress -n kong --create-namespace
 ```
 
 ## Deploying a Dapr-Enabled Service
@@ -144,7 +143,7 @@ Send a request through Kong to the Dapr-enabled service:
 
 ```bash
 curl -H "X-API-Key: my-api-key" \
-  http://kong-proxy.kong.svc/orders/v1.0/invoke/order-service/method/list
+  http://kong-gateway-proxy.kong.svc/orders/v1.0/invoke/order-service/method/list
 ```
 
 Requests flow through Kong (authentication + rate limiting) and then to the Dapr sidecar, which forwards them to the application on port 8080.
