@@ -246,11 +246,9 @@ spring:
 
 server:
   port: 8080
-
-dapr:
-  http:
-    port: 3500
 ```
+
+The Dapr sidecar HTTP port is configured via the `--dapr-http-port` flag in the `dapr run` command or the `DAPR_HTTP_PORT` environment variable — not in `application.yaml`. The SDK defaults to port 3500.
 
 ## Run with Dapr
 
@@ -259,7 +257,7 @@ dapr run \
   --app-id order-service \
   --app-port 8080 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- java -jar target/order-service.jar
 ```
 
