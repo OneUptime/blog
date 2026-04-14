@@ -30,8 +30,6 @@ spec:
     value: "mqtt://factory-broker:1883"
   - name: topic
     value: "factory/+/telemetry"
-  - name: qos
-    value: "1"
   - name: retain
     value: "false"
 ```
@@ -124,8 +122,6 @@ spec:
   metadata:
   - name: brokers
     value: "kafka-broker:9092"
-  - name: topics
-    value: "machine-commands"
   - name: publishTopic
     value: "machine-commands"
 ```
