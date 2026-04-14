@@ -144,8 +144,13 @@ metadata:
   name: data-sync
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: data-sync
   template:
     metadata:
+      labels:
+        app: data-sync
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "data-sync"
