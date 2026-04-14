@@ -39,54 +39,45 @@ Start it:
 docker compose up -d consul
 ```
 
-## Configuring the Dapr Consul Component
+## Configuring Dapr for Consul Name Resolution
 
-Create a Dapr component for Consul name resolution:
+Consul name resolution is configured through a Dapr Configuration resource (not a Component resource). Create a configuration file (e.g., `consul-config.yaml`):
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.consul
-  version: v1
-  metadata:
-    - name: client
-      value: |
-        {
-          "address": "127.0.0.1:8500",
-          "scheme": "http",
-          "datacenter": "dc1"
-        }
-    - name: checks
-      value: |
-        [
-          {
-            "name": "Dapr Health Status",
-            "checkID": "daprHealth",
-            "interval": "15s",
-            "http": "http://localhost:3500/v1.0/healthz"
-          }
-        ]
-    - name: tags
-      value: |
-        ["dapr"]
-    - name: queryOptions
-      value: |
-        {
-          "useCache": true
-        }
+  nameResolution:
+    component: "consul"
+    configuration:
+      client:
+        address: "127.0.0.1:8500"
+        scheme: "http"
+        datacenter: "dc1"
+      selfRegister: true
+      checks:
+        - name: "Dapr Health Status"
+          checkID: "daprHealth:${APP_ID}"
+          interval: "15s"
+          http: "http://${HOST_ADDRESS}:${DAPR_HTTP_PORT}/v1.0/healthz"
+      tags:
+        - "dapr"
+      queryOptions:
+        useCache: true
 ```
+
+The `selfRegister: true` field is required for Dapr to register your service with Consul. The `${APP_ID}`, `${HOST_ADDRESS}`, and `${DAPR_HTTP_PORT}` placeholders are automatically resolved by Dapr at runtime.
 
 ## Starting Dapr with Consul
 
-Place the component file in `~/.dapr/components/` or point to the directory:
+The default configuration file location is `~/.dapr/config.yaml`. You can also specify a custom path with the `--config` flag:
 
 ```bash
 dapr run --app-id order-service \
   --app-port 8080 \
-  --components-path ./components \
+  --config ./consul-config.yaml \
   -- ./order-service
 ```
 
@@ -110,31 +101,36 @@ Dapr resolves `payment-service` by querying Consul's service catalog.
 
 ## ACL Token Authentication
 
-For secure Consul clusters with ACLs enabled:
+For secure Consul clusters with ACLs enabled, add a `token` field to the `client` configuration:
 
 ```yaml
-metadata:
-  - name: client
-    value: |
-      {
-        "address": "consul.example.com:8500",
-        "scheme": "https",
-        "token": "my-consul-acl-token"
-      }
+spec:
+  nameResolution:
+    component: "consul"
+    configuration:
+      client:
+        address: "consul.example.com:8500"
+        scheme: "https"
+        token: "my-consul-acl-token"
+      selfRegister: true
 ```
 
-Store the token as a Kubernetes secret and reference it:
+To avoid hardcoding the token, use an environment variable with Dapr's template substitution:
 
 ```yaml
-  - name: client
-    secretKeyRef:
-      name: consul-secret
-      key: acl-token
+      client:
+        address: "consul.example.com:8500"
+        scheme: "https"
+        token: "${CONSUL_ACL_TOKEN}"
 ```
+
+Set the `CONSUL_ACL_TOKEN` environment variable before running your Dapr application, sourcing it from a secrets manager or Kubernetes secret as appropriate.
 
 ## Health Checks and Deregistration
 
-Consul removes unhealthy services automatically. The health check configuration in the component ensures Dapr reports its health status. If the app restarts, Dapr re-registers with Consul on startup.
+The health check configuration in the Dapr configuration ensures Consul monitors your service's health status. If the app restarts, Dapr re-registers with Consul on startup.
+
+**Important:** Dapr's name resolution interface does not deregister services on shutdown. If a service stops, it remains registered in Consul until manually removed or until Consul's health checks mark it as critical. Plan accordingly for cleanup in production environments.
 
 To manually deregister a service:
 
@@ -144,4 +140,4 @@ curl -X PUT http://localhost:8500/v1/agent/service/deregister/order-service
 
 ## Summary
 
-Dapr's Consul name resolution component registers services with HashiCorp Consul and resolves app IDs through the service catalog. It is ideal for non-Kubernetes environments and hybrid deployments. Configure health checks to enable automatic deregistration of failed services, and use ACL tokens for secure Consul clusters.
+Dapr's Consul name resolution component registers services with HashiCorp Consul and resolves app IDs through the service catalog. It is ideal for non-Kubernetes environments and hybrid deployments. Configure health checks so Consul can monitor service health, and use ACL tokens for secure Consul clusters. Note that Dapr does not deregister services on shutdown, so plan for manual or external cleanup of stale service entries.
