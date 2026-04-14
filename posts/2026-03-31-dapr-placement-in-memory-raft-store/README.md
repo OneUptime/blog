@@ -10,7 +10,7 @@ Description: Learn how the Dapr placement service uses an in-memory Raft store f
 
 ## Overview
 
-The Dapr placement service maintains the actor placement table using a built-in Raft consensus algorithm. By default, the placement service stores its Raft log in memory, which is suitable for development but requires careful configuration for production to survive pod restarts.
+The Dapr placement service maintains the actor placement table using a built-in Raft consensus algorithm. In self-hosted and single-replica development mode, the placement service stores its Raft log in memory by default. In HA Kubernetes deployments, the Helm chart defaults to persistent storage via a PVC, but you can override this with `forceInMemoryLog: true` to use the in-memory store instead.
 
 ## Understanding the In-Memory Store
 
@@ -32,7 +32,6 @@ global:
 
 dapr_placement:
   ha: true
-  replicaCount: 3
   cluster:
     forceInMemoryLog: true
 ```
@@ -82,13 +81,13 @@ spec:
 
 ```bash
 # Query placement service Prometheus metrics
-curl http://dapr-placement-server-0.dapr-system:9090/metrics | grep placement
+curl http://dapr-placement-server-0.dapr-system:9090/ | grep placement
 ```
 
 Key metrics to watch:
-- `dapr_placement_actor_heartbeat_timestamp` - last actor heartbeat
-- `dapr_placement_runtimehosts_total` - number of registered hosts
-- `dapr_placement_actortypes_total` - number of registered actor types
+- `dapr_placement_runtimes_total` - total number of connected runtimes (sidecars)
+- `dapr_placement_actor_runtimes_total` - total number of actor-hosting runtimes
+- `dapr_placement_leader_status` - whether this instance is the Raft leader (1) or not (0)
 
 ## Summary
 
