@@ -8,7 +8,7 @@ Description: Learn how to configure Dapr for high availability on Kubernetes by 
 
 ---
 
-High availability (HA) in Dapr ensures that your microservices infrastructure remains operational even when individual nodes or pods fail. By default, Dapr runs a single replica of each control plane component, which creates a single point of failure. Enabling HA mode deploys multiple replicas and uses leader election to coordinate them.
+High availability (HA) in Dapr ensures that your microservices infrastructure remains operational even when individual nodes or pods fail. By default, Dapr runs a single replica of each control plane component, which creates a single point of failure. Enabling HA mode deploys multiple replicas and uses leader election or peer-based coordination depending on the component.
 
 ## Enabling HA Mode During Installation
 
@@ -124,4 +124,4 @@ kubectl uncordon node-1
 
 ## Summary
 
-Enabling Dapr HA mode deploys 3 replicas of each control plane component and uses leader election to prevent split-brain scenarios. Combining HA mode with pod disruption budgets, anti-affinity rules, and application-level resiliency policies provides a robust foundation for production Dapr deployments.
+Enabling Dapr HA mode deploys 3 replicas of each control plane component, using leader election (for the operator and placement service) or peer-based coordination (for the scheduler) to maintain consistency. Combining HA mode with pod disruption budgets, anti-affinity rules, and application-level resiliency policies provides a robust foundation for production Dapr deployments.
