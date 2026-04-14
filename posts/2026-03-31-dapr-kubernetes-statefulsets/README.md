@@ -72,7 +72,7 @@ spec:
   ports:
   - port: 3000
     name: app
-  - port: 3501
+  - port: 50002
     name: dapr-internal
 ```
 
