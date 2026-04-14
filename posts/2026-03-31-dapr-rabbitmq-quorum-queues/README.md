@@ -10,7 +10,7 @@ Description: Configure Dapr RabbitMQ pub/sub to use quorum queues for improved d
 
 ## Why Quorum Queues
 
-RabbitMQ quorum queues (introduced in RabbitMQ 3.8) use the Raft consensus algorithm to replicate messages across a configurable number of nodes. They provide stronger durability guarantees than classic mirrored queues, especially during network partitions. Dapr supports quorum queues via the `durable` and `queueType` metadata parameters.
+RabbitMQ quorum queues (introduced in RabbitMQ 3.8) use the Raft consensus algorithm to replicate messages across a configurable number of nodes. They provide stronger durability guarantees than classic mirrored queues, especially during network partitions. Dapr supports quorum queues via the `queueType` subscription metadata parameter, which can be set to `"quorum"` on individual subscriptions.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-    - name: host
+    - name: connectionString
       value: "amqp://rabbitmq:5672"
     - name: durable
       value: "true"
@@ -55,7 +55,7 @@ spec:
       value: "2"
     - name: prefetchCount
       value: "10"
-    - name: reconnectWait
+    - name: reconnectWaitSeconds
       value: "2"
     - name: concurrencyMode
       value: "parallel"
@@ -69,8 +69,6 @@ spec:
       value: "0"
     - name: exchangeKind
       value: "fanout"
-    - name: quorumQueueReplicaCount
-      value: "3"
 ```
 
 ## Creating Topics That Use Quorum Queues
@@ -93,6 +91,8 @@ with DaprClient() as client:
 
 ## Subscription with Dead Letter Handling
 
+To enable quorum queues, set `queueType` to `quorum` in the subscription metadata. The initial replica count is determined by RabbitMQ's server-side configuration (defaulting to the cluster size), not by Dapr:
+
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Subscription
@@ -103,6 +103,8 @@ spec:
   topic: critical-events
   route: /events
   deadLetterTopic: critical-events-dlq
+  metadata:
+    queueType: quorum
 ```
 
 ## Verifying Quorum Queue Creation
@@ -110,16 +112,16 @@ spec:
 ```bash
 # Check RabbitMQ management API
 kubectl exec -it rabbitmq-0 -- rabbitmqctl list_queues \
-  name type durable replicas leader
+  name type durable members leader
 
 # Expected output:
-# critical-events  quorum  true  3  rabbitmq-0@rabbitmq
+# critical-events  quorum  true  [rabbitmq-0@rabbitmq, rabbitmq-1@rabbitmq, rabbitmq-2@rabbitmq]  rabbitmq-0@rabbitmq
 ```
 
 ## Checking Replication Health
 
 ```bash
-kubectl exec -it rabbitmq-0 -- rabbitmqctl quorum_status critical-events
+kubectl exec -it rabbitmq-0 -- rabbitmq-queues quorum_status critical-events
 
 # Output shows Raft consensus state and leader:
 # Status: {ok, [{leader, rabbitmq-0}, {followers, [rabbitmq-1, rabbitmq-2]}]}
@@ -136,4 +138,4 @@ Higher prefetch values increase throughput but can lead to uneven load distribut
 
 ## Summary
 
-Configuring Dapr RabbitMQ pub/sub with quorum queues requires setting `durable: "true"`, `deletedWhenUnused: "false"`, and `quorumQueueReplicaCount` to match your RabbitMQ cluster size (typically 3 or 5). Quorum queues provide stronger consistency than classic mirrors by using Raft replication, preventing message loss during node failures. Enable `publisherConfirm: "true"` so Dapr awaits broker acknowledgment before confirming a publish, ensuring end-to-end durability.
+Configuring Dapr RabbitMQ pub/sub with quorum queues requires setting `durable: "true"` and `deletedWhenUnused: "false"` on the component, and `queueType: "quorum"` in the subscription metadata. The initial replica count is determined by RabbitMQ's server-side configuration, defaulting to the cluster size (typically 3 or 5). Quorum queues provide stronger consistency than classic mirrors by using Raft replication, preventing message loss during node failures. Enable `publisherConfirm: "true"` so Dapr awaits broker acknowledgment before confirming a publish, ensuring end-to-end durability.
