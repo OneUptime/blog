@@ -17,8 +17,9 @@ The Dapr Rust client wraps the Dapr gRPC API in a typed, async-friendly interfac
 ```toml
 # Cargo.toml
 [dependencies]
-dapr = "0.13"
+dapr = "0.17"
 tokio = { version = "1", features = ["full"] }
+prost-types = "0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ```
@@ -62,13 +63,21 @@ async fn state_demo(
     };
 
     // Save
-    client.save_state("statestore", "session-usr-123", &session).await?;
+    client.save_state(
+        "statestore",
+        "session-usr-123",
+        serde_json::to_vec(&session)?,
+        None,
+        None,
+        None,
+    ).await?;
     println!("Session saved");
 
     // Get
-    let retrieved: Option<Session> = client
+    let response = client
         .get_state("statestore", "session-usr-123", None)
         .await?;
+    let retrieved: Session = serde_json::from_slice(&response.data)?;
     println!("Session: {:?}", retrieved);
 
     // Delete
@@ -82,8 +91,6 @@ async fn state_demo(
 ## Publishing Events
 
 ```rust
-use std::collections::HashMap;
-
 async fn publish_demo(
     client: &mut Client<dapr::client::TonicClient>
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -114,9 +121,12 @@ async fn publish_demo(
 async fn invoke_demo(
     client: &mut Client<dapr::client::TonicClient>
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let data = serde_json::to_vec(&serde_json::json!({
-        "item": "widget"
-    }))?;
+    let data = prost_types::Any {
+        type_url: "".to_string(),
+        value: serde_json::to_vec(&serde_json::json!({
+            "item": "widget"
+        }))?,
+    };
 
     let response = client
         .invoke_service("inventory-service", "check-stock", Some(data))
@@ -135,7 +145,7 @@ async fn secrets_demo(
     client: &mut Client<dapr::client::TonicClient>
 ) -> Result<(), Box<dyn std::error::Error>> {
     let secret = client
-        .get_secret("localsecretstore", "db-password", None)
+        .get_secret("localsecretstore", "db-password")
         .await?;
 
     for (k, v) in &secret.data {
@@ -145,20 +155,24 @@ async fn secrets_demo(
 }
 ```
 
-## Bulk State Operations
+## Bulk State Save
 
 ```rust
+use dapr::client::SaveStateItem;
+
 async fn bulk_state_demo(
     client: &mut Client<dapr::client::TonicClient>
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let keys = vec!["key-1".to_string(), "key-2".to_string()];
-    let results = client
-        .get_bulk_state("statestore", keys, None)
+    let items = vec![
+        ("key-1", serde_json::to_vec(&serde_json::json!({"value": 1}))?),
+        ("key-2", serde_json::to_vec(&serde_json::json!({"value": 2}))?),
+    ];
+
+    client
+        .save_bulk_states("statestore", items)
         .await?;
 
-    for item in results.items {
-        println!("Key: {}, Data: {:?}", item.key, String::from_utf8(item.data));
-    }
+    println!("Bulk state saved");
     Ok(())
 }
 ```
