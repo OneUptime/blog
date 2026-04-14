@@ -80,11 +80,11 @@ spec:
     enabled: false
 ```
 
-Apply this configuration to all namespaces where Linkerd mTLS is active.
+Dapr mTLS is a global setting controlled by the Sentry certificate authority. Disable it cluster-wide by updating the system-level Dapr configuration or by setting `global.mtls.enabled=false` during Helm install/upgrade.
 
 ## Handle Port Conflicts
 
-Linkerd reserves ports 4140, 4141, and 4190. Dapr uses ports 3500 (HTTP) and 50001 (gRPC). Verify there are no conflicts:
+Linkerd reserves ports 4140 (outbound), 4143 (inbound), 4190 (control), and 4191 (admin). Dapr uses ports 3500 (HTTP) and 50001 (gRPC). Verify there are no conflicts:
 
 ```bash
 kubectl exec <pod> -c linkerd-proxy -- env | grep LINKERD
