@@ -19,8 +19,9 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "myapp"
   dapr.io/enable-profiling: "true"
-  dapr.io/profiling-port: "7777"
 ```
+
+The profiling endpoint defaults to port 7777. This port is not configurable via annotation — use the `--profile-port` flag on `daprd` if you need a different port.
 
 For local development with `dapr run`:
 
@@ -89,9 +90,8 @@ For always-on profiling in production, integrate Pyroscope with Dapr:
 docker run -p 4040:4040 grafana/pyroscope
 
 # Push profiles from the Dapr sidecar
-curl -X POST http://pyroscope:4040/ingest \
-  --data-binary @cpu.prof \
-  -H "Content-Type: application/octet-stream"
+curl -X POST "http://pyroscope:4040/ingest?name=dapr-sidecar&format=pprof" \
+  --data-binary @cpu.prof
 ```
 
 ## Interpreting Results
