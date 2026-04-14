@@ -105,10 +105,9 @@ def publish_order(order_data):
     payload = {"data": base64.b64encode(avro_bytes).decode()}
 
     requests.post(
-        f"{DAPR_URL}/v1.0/publish/kafka-pubsub/order-events",
+        f"{DAPR_URL}/v1.0/publish/kafka-pubsub/order-events?metadata.rawPayload=true",
         json=payload,
-        headers={"Content-Type": "application/json",
-                 "metadata.rawPayload": "true"}
+        headers={"Content-Type": "application/json"}
     )
 ```
 
