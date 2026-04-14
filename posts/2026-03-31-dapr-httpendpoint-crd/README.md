@@ -87,7 +87,7 @@ spec:
         timeout: 30s
         trip: consecutiveFailures >= 5
   targets:
-    httpEndpoints:
+    apps:
       payments-gateway:
         timeout: 10s
         retry: externalRetry
