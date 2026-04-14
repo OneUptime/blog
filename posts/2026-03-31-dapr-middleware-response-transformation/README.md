@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Middleware, Response Transformation, Microservice, HTTP
 
-Description: Learn how to use Dapr middleware components to transform HTTP responses in your microservices pipeline, including practical examples with custom transformations.
+Description: Learn how to use Dapr middleware components to transform HTTP requests and responses in your microservices pipeline, including practical examples with built-in and custom transformations.
 
 ---
 
 ## What Is Response Transformation Middleware in Dapr?
 
-Dapr middleware sits in the HTTP pipeline and can intercept both incoming requests and outgoing responses. Response transformation middleware is particularly useful for tasks like adding correlation headers, compressing payloads, converting formats, or injecting metadata without modifying application code.
+Dapr middleware sits in the HTTP pipeline and processes incoming requests before they reach your application. Most built-in middleware components operate on requests (e.g., adding headers, validating tokens), while custom WASM middleware can also manipulate responses. Middleware is useful for tasks like adding authorization headers, validating tokens, converting formats, or injecting metadata without modifying application code.
 
 Dapr middleware components are defined as components and referenced in a `Configuration` resource. Each middleware component is chained in the order defined.
 
-## Defining a Response Transformation Middleware Component
+## Defining an HTTP Middleware Component
 
-To transform responses, you create a custom middleware component. Dapr supports HTTP middleware via the middleware component type `middleware.http.*`. For custom logic, you can use the `middleware.http.wasm` component or build a custom middleware using Dapr's pluggable component SDK.
+To add middleware to the pipeline, you define a middleware component. Dapr supports HTTP middleware via the component type `middleware.http.*`. For custom logic, you can use the `middleware.http.wasm` component or build a custom middleware using Dapr's pluggable component SDK.
 
-Here is an example using the `uppercase` demo middleware for illustration:
+Here is an example using the `uppercase` demo middleware, which converts the request body to uppercase:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -63,9 +63,9 @@ annotations:
   dapr.io/config: "pipeline-config"
 ```
 
-## Using the OAuth2 Middleware for Token Enrichment
+## Using the OAuth2 Middleware for Request Token Enrichment
 
-A practical response transformation use case is injecting OAuth2 tokens or enriching headers. Here is a configuration for the `oauth2clientcredentials` middleware:
+A practical middleware use case is injecting OAuth2 tokens into outgoing requests. The `oauth2clientcredentials` middleware automatically obtains a client credentials token and attaches it to the request header before it reaches the upstream service. Here is the configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -110,7 +110,7 @@ spec:
 Compile your Go transform logic:
 
 ```bash
-tinygo build -o response-transform.wasm -scheduler=none \
+tinygo build -o response-transform.wasm -scheduler=none --no-debug \
   -target=wasi ./middleware/response_transform.go
 ```
 
@@ -130,4 +130,4 @@ dapr run --app-id myapp --log-level debug -- ./myapp
 
 ## Summary
 
-Dapr middleware enables response transformation without changing application code by chaining handlers in an HTTP pipeline. Use built-in components like OAuth2 for token injection, or deploy custom WASM modules for full body transformation. Apply the pipeline via a `Configuration` resource and reference it in your pod annotations.
+Dapr middleware enables request and response transformation without changing application code by chaining handlers in an HTTP pipeline. Built-in components like OAuth2 handle request enrichment (e.g., injecting authorization tokens), while custom WASM modules support full request and response body transformation. Apply the pipeline via a `Configuration` resource and reference it in your pod annotations.
