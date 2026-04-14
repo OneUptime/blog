@@ -58,7 +58,7 @@ Dapr will pull images and start containers via Podman:
 
 ```bash
 podman ps
-# NAMES: dapr_redis, dapr_zipkin
+# NAMES: dapr_redis, dapr_zipkin, dapr_placement
 ```
 
 ## Step 4: Run an Application
