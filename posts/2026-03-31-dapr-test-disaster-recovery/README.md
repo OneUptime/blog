@@ -43,8 +43,6 @@ spec:
     - production
     labelSelectors:
       app: redis-primary
-  scheduler:
-    cron: "@once"
 ```
 
 Monitor how Dapr services respond:
@@ -93,8 +91,6 @@ Automate a complete DR drill with pass/fail assertions:
 ```bash
 #!/bin/bash
 # dr-drill.sh
-set -e
-
 NAMESPACE="production"
 DR_CONTEXT="k8s-dr"
 PRIMARY_CONTEXT="k8s-primary"
