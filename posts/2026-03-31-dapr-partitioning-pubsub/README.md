@@ -53,7 +53,6 @@ package main
 import (
     "context"
     "encoding/json"
-    "fmt"
 
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -103,7 +102,6 @@ class CloudEvent(BaseModel):
     id: str
     source: str
     data: dict
-    partitionKey: str | None = None
 
 @app.post("/orders")
 async def handle_order(event: CloudEvent):
