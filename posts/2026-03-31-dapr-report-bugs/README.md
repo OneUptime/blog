@@ -37,13 +37,13 @@ Collect this information before writing the report:
 
 ```bash
 # Dapr CLI version
-dapr --version
+dapr version
 
 # Dapr runtime version (from sidecar logs)
 kubectl logs -l app=myapp -c daprd | grep "dapr runtime version"
 
 # Kubernetes version (if applicable)
-kubectl version --short
+kubectl version
 
 # Operating system
 uname -a  # Linux/macOS
@@ -120,7 +120,7 @@ EOF
 
 ## Bug Report Template
 
-```markdown
+````markdown
 ## Bug Description
 A clear and concise description of the bug.
 
@@ -155,7 +155,7 @@ Returns error: `connection refused`
 
 ## Additional Context
 Any other context about the problem.
-```text
+````
 
 ## Submit the Bug Report
 
@@ -177,8 +177,8 @@ After filing, watch for triage labels:
 - `wontfix` - not a bug or out of scope
 
 ```bash
-# Subscribe to updates on your issue
-gh api repos/dapr/dapr/issues/1234/subscriptions -X PUT
+# Check the status and updates on your issue
+gh issue view 1234 --repo dapr/dapr --comments
 ```
 
 ## Summary
