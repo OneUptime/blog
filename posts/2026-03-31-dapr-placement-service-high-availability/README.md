@@ -32,12 +32,10 @@ helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
   --create-namespace \
   --set global.ha.enabled=true \
-  --set dapr_placement.ha=true \
-  --set dapr_placement.replicaCount=3 \
   --reuse-values
 ```
 
-This enables the HA control-plane topology and sets `dapr-placement-server` to three replicas.
+This enables the HA control-plane topology and sets `dapr-placement-server` to three replicas automatically.
 
 ## Verify the HA Deployment
 
