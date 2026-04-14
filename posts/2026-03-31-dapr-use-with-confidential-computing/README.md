@@ -24,9 +24,9 @@ Without confidential computing, Dapr secrets and state are protected by software
 Confidential containers (CoCo) is a CNCF project that adds TEE support to Kubernetes pods. Install the CoCo operator:
 
 ```bash
-# Install confidential containers operator
-export RELEASE_VERSION="0.10.0"
-kubectl apply -f https://github.com/confidential-containers/operator/releases/download/v${RELEASE_VERSION}/install.yaml
+# Install confidential containers via Helm
+helm install coco oci://ghcr.io/confidential-containers/charts/confidential-containers \
+  --namespace coco-system --create-namespace
 
 # Verify RuntimeClass is created
 kubectl get runtimeclass
@@ -44,8 +44,13 @@ kind: Deployment
 metadata:
   name: payments-processor
 spec:
+  selector:
+    matchLabels:
+      app: payments-processor
   template:
     metadata:
+      labels:
+        app: payments-processor
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "payments-processor"
@@ -76,12 +81,13 @@ spec:
       value: "my-keyvault"
     - name: azureClientId
       value: "workload-identity-client-id"
-    # Azure Key Vault validates the attestation report before releasing secrets
+    # Azure Attestation (MAA) validates the TEE attestation report;
+    # Key Vault Secure Key Release then checks the attestation claims before releasing secrets
 ```
 
 ## Encrypting Dapr State in a TEE
 
-Use Dapr's state encryption with a key stored in a TEE-protected key management service:
+Use Dapr's state encryption with an encryption key retrieved from a TEE-protected secret store:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -94,10 +100,8 @@ spec:
   metadata:
     - name: redisHost
       value: "redis:6379"
-  encryption:
-    key:
-      name: state-encryption-key
-      secretRef:
+    - name: primaryEncryptionKey
+      secretKeyRef:
         name: secretstore    # backed by attested secret store
         key: state-key
 ```
