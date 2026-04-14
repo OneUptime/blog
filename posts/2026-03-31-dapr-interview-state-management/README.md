@@ -37,12 +37,10 @@ curl -X POST http://localhost:3500/v1.0/state/statestore/bulk \
 
 ```bash
 # Eventual consistency (default) - faster, reads may be stale
-curl http://localhost:3500/v1.0/state/statestore/order-123 \
-  -H "consistency: eventual"
+curl http://localhost:3500/v1.0/state/statestore/order-123?consistency=eventual
 
 # Strong consistency - slower, always reads latest
-curl http://localhost:3500/v1.0/state/statestore/order-123 \
-  -H "consistency: strong"
+curl http://localhost:3500/v1.0/state/statestore/order-123?consistency=strong
 ```
 
 **Interview explanation:** "Eventual consistency uses the fastest node in a replicated store. Strong consistency ensures the read reflects all previous writes but has higher latency. Most applications use eventual consistency and handle stale reads at the application layer."
