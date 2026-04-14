@@ -51,7 +51,7 @@ dapr-integration-test:
   before_script:
     - apt-get update && apt-get install -y wget curl python3 python3-pip
     - wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | bash
-    - dapr init --runtime-version $DAPR_VERSION
+    - dapr init --slim --runtime-version $DAPR_VERSION
     - pip3 install -r requirements.txt -r requirements-dev.txt
   script:
     - |
@@ -100,7 +100,9 @@ container-scan:
 
 manifest-scan:
   stage: scan
-  image: bridgecrew/checkov:latest
+  image:
+    name: bridgecrew/checkov:latest
+    entrypoint: [""]
   script:
     - checkov -d k8s/ --framework kubernetes --output cli
   allow_failure: false
