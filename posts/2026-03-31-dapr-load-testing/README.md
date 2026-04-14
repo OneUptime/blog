@@ -101,15 +101,17 @@ export default function () {
 hey -n 50000 -c 100 \
   -m POST \
   -H "Content-Type: application/json" \
-  -d '{"value": "test-data"}' \
-  "http://localhost:3500/v1.0/state/statestore" \
-  -output csv > state-write-results.csv
+  -d '[{"key": "load-test-key", "value": "test-data"}]' \
+  -o csv \
+  "http://localhost:3500/v1.0/state/statestore" > state-write-results.csv
 
 # Analyze results
 python3 -c "
 import csv, statistics
 with open('state-write-results.csv') as f:
-    times = [float(row[0])*1000 for row in csv.reader(f) if row]
+    reader = csv.reader(f)
+    next(reader)  # Skip header row
+    times = [float(row[0])*1000 for row in reader if row]
 print(f'P50: {statistics.median(times):.2f}ms')
 print(f'P99: {statistics.quantiles(times, n=100)[98]:.2f}ms')
 "
