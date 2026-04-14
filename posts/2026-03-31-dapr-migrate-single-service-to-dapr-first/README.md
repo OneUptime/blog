@@ -65,7 +65,7 @@ Verify the sidecar starts cleanly:
 
 ```bash
 kubectl get pods -n production -l app=order-processor
-# Should show 2/2 Ready (app container + dapr-proxy)
+# Should show 2/2 Ready (app container + daprd sidecar)
 
 kubectl logs -n production deploy/order-processor -c daprd
 # Should show no errors
@@ -112,14 +112,14 @@ locust -f locustfile.py --host=https://staging.api.example.com
 
 ## Step 4: Incremental Production Rollout
 
-Use a canary deployment to validate in production gradually:
+Use a rolling deployment to validate in production gradually:
 
 ```bash
-# Deploy Dapr-enabled version to 10% of traffic
+# Update the deployment image (performs a rolling update)
 kubectl set image deployment/order-processor \
   app=order-processor:dapr-enabled-v1.2.3
 
-# Monitor error rate
+# Monitor resource usage during rollout
 kubectl top pods -n production
 ```
 
