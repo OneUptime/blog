@@ -166,8 +166,7 @@ spec:
   targets:
     apps:
       order-processor-service:
-        inbound:
-          retry: orders-retry
+        retry: orders-retry
 ```
 
 This means Dapr retries up to 5 times with exponential backoff before sending to the dead letter topic.
