@@ -48,14 +48,14 @@ data:
       filename: /tmp/positions.yaml
 
     clients:
-      - url: http://loki.monitoring.svc:3100/loki/api/v1/push
+      - url: http://loki-stack.monitoring.svc:3100/loki/api/v1/push
 
     scrape_configs:
       - job_name: dapr-containers
         kubernetes_sd_configs:
           - role: pod
         pipeline_stages:
-          - docker: {}
+          - cri: {}
           - json:
               expressions:
                 level: level
@@ -105,12 +105,12 @@ sum by (app_id) (
 Configure Loki as a data source in Grafana:
 
 ```bash
-curl -X POST http://admin:admin@grafana.monitoring.svc:3000/api/datasources \
+curl -X POST http://admin:admin@loki-stack-grafana.monitoring.svc:3000/api/datasources \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Loki",
     "type": "loki",
-    "url": "http://loki.monitoring.svc:3100",
+    "url": "http://loki-stack.monitoring.svc:3100",
     "access": "proxy",
     "isDefault": false
   }'
@@ -140,9 +140,9 @@ Add a log panel to your Dapr Grafana dashboard:
 }
 ```
 
-## Correlating Logs with Metrics
+## Correlating Logs with Traces
 
-Add a derived field in the Loki data source to link log entries to Prometheus metrics:
+Add a derived field in the Loki data source to link log entries to traces in Grafana Tempo:
 
 ```json
 {
