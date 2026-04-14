@@ -22,7 +22,7 @@ from your_app.config import get_db_password
 @pytest.fixture
 def mock_dapr_client(monkeypatch):
     mock_client = MagicMock()
-    mock_client.secret.get = AsyncMock(return_value={"db-password": "test-password"})
+    mock_client.get_secret = AsyncMock(return_value={"db-password": "test-password"})
     monkeypatch.setattr("your_app.config.DaprClient", lambda: mock_client)
     return mock_client
 
@@ -30,7 +30,7 @@ def mock_dapr_client(monkeypatch):
 async def test_get_db_password_returns_secret(mock_dapr_client):
     password = await get_db_password()
     assert password == "test-password"
-    mock_dapr_client.secret.get.assert_called_once_with("mystore", "db-password")
+    mock_dapr_client.get_secret.assert_called_once_with("mystore", "db-password")
 ```
 
 For Node.js with Jest:
@@ -89,7 +89,7 @@ dapr run \
   --app-id test-service \
   --app-port 3001 \
   --dapr-http-port 3501 \
-  --components-path ./test/components \
+  --resources-path ./test/components \
   -- pytest tests/integration/
 ```
 
@@ -127,7 +127,7 @@ jobs:
       - name: Run integration tests
         run: |
           dapr run --app-id my-service \
-            --components-path ./test/components \
+            --resources-path ./test/components \
             -- go test ./... -v
 ```
 
