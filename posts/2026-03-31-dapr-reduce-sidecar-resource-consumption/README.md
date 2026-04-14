@@ -60,8 +60,8 @@ metadata:
 spec:
   type: state.mongodb
   version: v1
-  scopes:
-  - analytics-service   # Only analytics-service loads this component
+scopes:
+- analytics-service   # Only analytics-service loads this component
 ```
 
 Without scoping, every sidecar loads every component, consuming connection pool memory.
@@ -70,7 +70,7 @@ Without scoping, every sidecar loads every component, consuming connection pool 
 
 ```yaml
 annotations:
-  dapr.io/sidecar-env: "GOMEMLIMIT=80MiB,GOGC=40,GOMAXPROCS=1"
+  dapr.io/env: "GOMEMLIMIT=80MiB,GOGC=40,GOMAXPROCS=1"
 ```
 
 - `GOMEMLIMIT=80MiB`: Cap Go heap at 80MB
@@ -85,7 +85,7 @@ Dapr provides a distroless sidecar image with smaller footprint:
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --set global.tag=1.14.0 \
-  --set dapr_sidecar_injector.image.name=ghcr.io/dapr/daprd:1.14.0-distroless
+  --set dapr_sidecar_injector.sidecarImageName=ghcr.io/dapr/daprd:1.14.0-distroless
 ```
 
 ## Set Right-Sized Resource Requests
