@@ -17,6 +17,7 @@ Dapr emits structured logs from its sidecar, and your .NET application benefits 
 dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Sinks.Console
 dotnet add package Serilog.Sinks.Seq
+dotnet add package Serilog.Enrichers.Environment
 dotnet add package Dapr.AspNetCore
 ```
 
@@ -55,6 +56,7 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 
+app.UseCloudEvents();
 app.MapSubscribeHandler();
 app.MapControllers();
 app.Run();
@@ -79,7 +81,7 @@ public class OrderController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateOrder([FromBody] OrderRequest request)
     {
-        using var activity = System.Diagnostics.Activity.Current;
+        var activity = System.Diagnostics.Activity.Current;
 
         using (_logger.BeginScope(new Dictionary<string, object>
         {
@@ -112,17 +114,15 @@ public class OrderController : ControllerBase
 ```csharp
 [Topic("pubsub", "orders")]
 [HttpPost("orders")]
-public async Task<ActionResult> HandleOrder([FromBody] CloudEvent<OrderEvent> cloudEvent)
+public async Task<ActionResult> HandleOrder(OrderEvent orderEvent)
 {
     _logger.LogInformation(
-        "Received pub/sub event {EventId} of type {EventType} for order {OrderId}",
-        cloudEvent.Id,
-        cloudEvent.Type,
-        cloudEvent.Data.OrderId);
+        "Received pub/sub event for order {OrderId}",
+        orderEvent.OrderId);
 
-    await ProcessOrderAsync(cloudEvent.Data);
+    await ProcessOrderAsync(orderEvent);
 
-    _logger.LogInformation("Successfully processed order {OrderId}", cloudEvent.Data.OrderId);
+    _logger.LogInformation("Successfully processed order {OrderId}", orderEvent.OrderId);
     return Ok();
 }
 ```
