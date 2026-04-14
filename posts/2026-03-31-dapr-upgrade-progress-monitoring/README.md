@@ -32,7 +32,7 @@ kubectl rollout status deployment/dapr-operator -n dapr-system
 kubectl rollout status deployment/dapr-sentry -n dapr-system
 kubectl rollout status deployment/dapr-sidecar-injector -n dapr-system
 kubectl rollout status statefulset/dapr-placement-server -n dapr-system
-kubectl rollout status statefulset/dapr-scheduler -n dapr-system
+kubectl rollout status statefulset/dapr-scheduler-server -n dapr-system
 ```
 
 ## Verifying Control Plane Versions
@@ -91,7 +91,7 @@ Track upgrade-related metrics during the process:
 
 ```bash
 # Watch for error rate spikes during upgrade
-rate(dapr_http_server_request_count{status_code=~"5.."}[2m])
+rate(dapr_http_server_request_count{status=~"5.."}[2m])
 
 # Monitor sidecar restart count
 sum(kube_pod_container_status_restarts_total{container="daprd", namespace="production"})
