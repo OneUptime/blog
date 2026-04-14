@@ -14,23 +14,22 @@ Dapr decouples your application from network topology by providing a name resolu
 
 ## Name Resolution Components
 
-Dapr ships with three built-in name resolution components:
+Dapr ships with several built-in name resolution components:
 
 | Component | Use Case |
 |---|---|
-| `nr.mdns` | Local self-hosted development |
-| `nr.kubernetes` | Kubernetes production deployments |
-| `nr.consul` | HashiCorp Consul service mesh |
-| `nr.dns` | Custom DNS-based environments |
+| `mdns` | Local self-hosted development |
+| `kubernetes` | Kubernetes production deployments |
+| `consul` | HashiCorp Consul service mesh |
 
 ## Kubernetes Name Resolution (Default)
 
-In Kubernetes, Dapr uses the Kubernetes API to resolve app IDs to service endpoints. The Dapr operator registers each Dapr-annotated pod and the `dapr-placement` service coordinates discovery.
+In Kubernetes, Dapr resolves app IDs using the cluster's DNS provider. The Kubernetes name resolution component constructs DNS names based on the app ID and cluster domain, relying on standard Kubernetes DNS resolution.
 
 The default Kubernetes name resolution component is configured automatically when using the Dapr Kubernetes operator. Verify the active name resolution component:
 
 ```bash
-kubectl get configurations.dapr.io dapr-system -n dapr-system -o yaml | grep nameResolution
+kubectl get configurations.dapr.io daprsystem -n dapr-system -o yaml | grep nameResolution
 ```
 
 ## mDNS for Local Development
@@ -83,19 +82,19 @@ response = client.invoke_method(
 
 ## Custom Name Resolution Component
 
-For environments with custom service registries, implement a custom name resolver:
+For environments with custom service registries, configure a name resolver in the Configuration resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: custom-resolver
+  name: appconfig
 spec:
-  type: nameresolution.mdns
-  version: v1
-  metadata:
-  - name: instanceAddress
-    value: ""
+  nameResolution:
+    component: "consul"
+    version: "v1"
+    configuration:
+      selfRegister: true
 ```
 
 ## Verifying Service Discovery
