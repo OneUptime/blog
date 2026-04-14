@@ -112,10 +112,10 @@ Kratix runs the pipeline, writes the output manifests to a GitOps repository, an
 
 ## Installing Worker Cluster Dependencies
 
-Use the `workerClusterResources` section of the promise to pre-install the Dapr operator on every registered worker cluster:
+Use the `dependencies` section of the promise to pre-install the Dapr operator on every registered worker cluster:
 
 ```yaml
-  workerClusterResources:
+  dependencies:
     - apiVersion: helm.crossplane.io/v1beta1
       kind: Release
       metadata:
@@ -125,9 +125,9 @@ Use the `workerClusterResources` section of the promise to pre-install the Dapr 
           chart:
             name: dapr
             repository: https://dapr.github.io/helm-charts/
-            version: "1.13.0"
+            version: "1.17.4"
           namespace: dapr-system
-          createNamespace: true
+          skipCreateNamespace: false
 ```
 
 ## Testing the Promise End-to-End
