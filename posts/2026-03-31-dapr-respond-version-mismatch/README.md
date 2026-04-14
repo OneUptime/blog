@@ -105,7 +105,7 @@ Before upgrading, always check the migration guide:
 
 ```bash
 # Check what changed between versions
-open https://docs.dapr.io/operations/upgrading/
+open https://docs.dapr.io/operations/hosting/kubernetes/kubernetes-upgrade/
 ```
 
 Pay attention to component version changes - a state store component may need its `version` field updated.
