@@ -80,8 +80,8 @@ func checkInventory(ctx context.Context, productId string) (*InventoryResponse, 
     resp, err := client.InvokeMethodWithContent(ctx,
         "inventory-service",
         "check",
-        "application/grpc",
-        &dapr.DataContent{Data: data, ContentType: "application/grpc"},
+        "post",
+        &dapr.DataContent{Data: data, ContentType: "application/x-protobuf"},
     )
     if err != nil {
         return nil, err
@@ -98,7 +98,7 @@ func checkInventory(ctx context.Context, productId string) (*InventoryResponse, 
 mTLS is enabled by default in Kubernetes. Verify it is active:
 
 ```bash
-kubectl get configuration dapr-system -n dapr-system -o jsonpath='{.spec.mtls}'
+kubectl get configurations/daprsystem -n dapr-system -o jsonpath='{.spec.mtls}'
 ```
 
 For self-hosted environments, configure mTLS explicitly:
