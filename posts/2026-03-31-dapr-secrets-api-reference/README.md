@@ -37,13 +37,7 @@ Response:
 
 ## Getting a Specific Key from a Secret
 
-Some backends store multiple key-value pairs under one secret name. Retrieve a specific key:
-
-```bash
-curl "http://localhost:3500/v1.0/secrets/kubernetes/db-credentials?metadata.version_id=latest"
-```
-
-Or extract the key in your app:
+Some backends store multiple key-value pairs under one secret name. The API returns all key-value pairs for that secret, so extract the key you need in your app:
 
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
@@ -107,9 +101,9 @@ spec:
         key: token
 ```
 
-## Scoping Secret Access
+## Scoping Secret Store Access
 
-Restrict which applications can access which secrets:
+Restrict which applications can use a secret store component by adding a `scopes` field to the component YAML:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -128,6 +122,8 @@ scopes:
   - order-service
   - payment-service
 ```
+
+This limits the `vault` secret store to only the `order-service` and `payment-service` app IDs. To control access to individual secrets within a store, use a Dapr [Configuration](https://docs.dapr.io/operations/configuration/configuration-overview/) resource with `spec.secrets.scopes`.
 
 ## Using Secrets in Component Metadata
 
