@@ -78,7 +78,7 @@ func main() {
     order := Order{ID: "order-1", Total: 99.95}
     data, _ := json.Marshal(order)
 
-    err = client.SaveStateWithETag(ctx, "statestore", "order-1", data, nil, nil)
+    err = client.SaveState(ctx, "statestore", "order-1", data, nil)
     if err != nil {
         log.Fatalf("SaveState error: %v", err)
     }
