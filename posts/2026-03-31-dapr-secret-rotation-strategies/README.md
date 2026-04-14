@@ -12,9 +12,9 @@ Rotating secrets regularly limits the blast radius if credentials are compromise
 
 ## How Dapr Fetches Secrets
 
-Dapr sidecars cache secrets to reduce load on secret stores. When a secret is rotated, the sidecar needs to refresh its cache. The refresh interval and component reload behavior determine the effective rotation window.
+Dapr does not cache secrets in the sidecar. Each call to the Secrets API fetches the value directly from the backing secret store. When a secret is rotated, any application code that re-fetches the secret via the Dapr API will get the new value immediately. However, applications that read secrets only at startup need a restart to pick up rotated values.
 
-## Configure Secret Store with Refresh Interval
+## Configure Secret Store Component
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -63,6 +63,7 @@ Use a dual-write approach for zero-downtime rotation:
 #!/bin/bash
 SECRET_NAME="db-password"
 NEW_VALUE="rotated-$(openssl rand -hex 16)"
+OLD_VALUE=$(vault kv get -field=current secret/$SECRET_NAME)
 
 # Step 1: Write new secret alongside old one
 vault kv put secret/$SECRET_NAME \
@@ -138,8 +139,8 @@ spec:
       template:
         spec:
           serviceAccountName: secret-rotator
-          containers:
-          - name: rotator
+          initContainers:
+          - name: rotate-secret
             image: hashicorp/vault:latest
             command:
             - /bin/sh
@@ -147,7 +148,14 @@ spec:
             - |
               vault kv put secret/db-password \
                 value="$(openssl rand -hex 32)"
-              kubectl rollout restart deployment/api-service
+          containers:
+          - name: restart-deployment
+            image: bitnami/kubectl:latest
+            command:
+            - kubectl
+            - rollout
+            - restart
+            - deployment/api-service
           restartPolicy: OnFailure
 ```
 
