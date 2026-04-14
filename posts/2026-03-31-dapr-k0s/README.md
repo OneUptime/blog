@@ -86,8 +86,8 @@ spec:
     provider: calico
     calico:
       mode: vxlan
-  podCIDR: 10.244.0.0/16
-  serviceCIDR: 10.96.0.0/12
+    podCIDR: 10.244.0.0/16
+    serviceCIDR: 10.96.0.0/12
 ```
 
 Apply during installation:
