@@ -12,32 +12,36 @@ One of the most powerful features of the Dapr Configuration API is the ability t
 
 ## How Configuration Subscriptions Work
 
-Dapr uses SSE (Server-Sent Events) over HTTP to stream configuration change notifications to your application. Your service subscribes to one or more keys and receives events whenever those keys are updated in the backing store.
+Dapr supports subscribing to configuration changes through its SDKs using gRPC server streaming. Your service subscribes to one or more keys and receives events whenever those keys are updated in the backing store. The gRPC-based SDKs (Go, Node.js, Python) handle the streaming details for you, delivering updates via callbacks or handlers.
 
 ## Setting Up a Subscription via HTTP
 
-Open a subscription stream:
+Subscribe to configuration keys:
 
 ```bash
-curl -N "http://localhost:3500/v1.0-alpha1/configuration/appconfig/subscribe?key=feature-new-ui&key=log-level"
+curl "http://localhost:3500/v1.0/configuration/appconfig/subscribe?key=feature-new-ui&key=log-level"
 ```
 
-The response is a stream of JSON events:
+The response returns a subscription ID:
 
 ```json
-{"items":{"feature-new-ui":{"value":"true","version":"2","metadata":{}}}}
+{"id":"subscription-id-value"}
 ```
+
+Dapr then pushes configuration updates to your application by calling `POST /configuration/{storeName}/{key}` on your app's HTTP endpoint whenever a watched key changes.
 
 ## Subscribing in Node.js
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, CommunicationProtocolEnum } = require('@dapr/dapr');
 
-const client = new DaprClient();
+const client = new DaprClient({
+  communicationProtocol: CommunicationProtocolEnum.GRPC,
+});
 
 async function watchConfig() {
-  // Start subscription and get subscription ID
-  const subscriptionId = await client.configuration.subscribeWithKeys(
+  // Start subscription and get a stream object
+  const stream = await client.configuration.subscribeWithKeys(
     'appconfig',
     ['feature-new-ui', 'log-level', 'max-retries'],
     async (config) => {
@@ -55,43 +59,49 @@ async function watchConfig() {
     }
   );
 
-  console.log(`Subscribed with ID: ${subscriptionId}`);
-  return subscriptionId;
+  return stream;
 }
 
 // Unsubscribe when done
-async function stopWatching(subscriptionId) {
-  await client.configuration.unsubscribe('appconfig', subscriptionId);
+function stopWatching(stream) {
+  stream.stop();
 }
 ```
 
 ## Subscribing in Python
 
 ```python
-import asyncio
-import httpx
+from dapr.clients import DaprClient
+from dapr.clients.grpc._response import ConfigurationResponse
 
-async def watch_config():
-    config_state = {
-        "feature-new-ui": False,
-        "log-level": "info"
-    }
+config_state = {
+    "feature-new-ui": "false",
+    "log-level": "info"
+}
 
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream(
-            "GET",
-            "http://localhost:3500/v1.0-alpha1/configuration/appconfig/subscribe",
-            params={"key": ["feature-new-ui", "log-level"]}
-        ) as response:
-            async for line in response.aiter_lines():
-                if line.startswith("data:"):
-                    import json
-                    event = json.loads(line[5:])
-                    for key, item in event.get("items", {}).items():
-                        config_state[key] = item["value"]
-                        print(f"Config updated: {key} = {item['value']}")
+def handler(id: str, resp: ConfigurationResponse):
+    for key, item in resp.items.items():
+        config_state[key] = item.value
+        print(f"Config updated: {key} = {item.value}")
 
-asyncio.run(watch_config())
+with DaprClient() as client:
+    subscription_id = client.subscribe_configuration(
+        store_name='appconfig',
+        keys=['feature-new-ui', 'log-level'],
+        handler=handler
+    )
+    print(f"Subscribed with ID: {subscription_id}")
+
+    # Keep service running...
+    import time
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        client.unsubscribe_configuration(
+            store_name='appconfig',
+            id=subscription_id
+        )
 ```
 
 ## Reacting to Changes in a Long-Running Service
