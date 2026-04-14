@@ -14,13 +14,7 @@ The `dapr invoke` command lets you call any HTTP endpoint on a running Dapr appl
 
 ## Basic GET Request
 
-Invoke a GET endpoint on a running app:
-
-```bash
-dapr invoke --app-id order-service --method orders
-```
-
-The default HTTP method is POST. To use GET:
+The default HTTP method is POST. To make a GET request, use the `--verb` flag:
 
 ```bash
 dapr invoke --app-id order-service --method orders --verb GET
@@ -60,27 +54,13 @@ Where `order-payload.json` contains:
 }
 ```
 
-## Specifying Content Type
+## Content Type
 
-```bash
-dapr invoke --app-id order-service \
-            --method orders \
-            --verb POST \
-            --data '{"id": "123"}' \
-            --metadata '{"Content-Type": "application/json"}'
-```
+The `dapr invoke` command automatically sets the `Content-Type` header to `application/json` for all requests. There is no flag to override this. If you need a different content type, use `curl` to call the Dapr HTTP API directly.
 
-## Targeting Kubernetes Apps
+## Platform Support
 
-When working with Kubernetes deployments, specify the namespace:
-
-```bash
-dapr invoke --app-id order-service \
-            --method orders \
-            --verb GET \
-            --kubernetes \
-            --namespace production
-```
+The `dapr invoke` command is supported on self-hosted environments only. It is not available for Kubernetes deployments. To invoke services running in Kubernetes, use `kubectl port-forward` to access the Dapr sidecar, then call the Dapr HTTP API directly with `curl`.
 
 ## Testing Multiple Methods in a Script
 
