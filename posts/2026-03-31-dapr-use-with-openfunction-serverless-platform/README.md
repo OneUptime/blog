@@ -51,7 +51,6 @@ Create a simple Go function that processes orders from a Dapr pub/sub topic:
 package main
 
 import (
-    "context"
     "encoding/json"
     "fmt"
     ofctx "github.com/OpenFunction/functions-framework-go/context"
@@ -70,8 +69,8 @@ func ProcessOrder(ctx ofctx.Context, in []byte) (ofctx.Out, error) {
 
     fmt.Printf("Processing order: %s, amount: %.2f\n", order.OrderID, order.Amount)
 
-    // Send to output binding
-    ctx.Send(ofctx.To("processed-orders"), in)
+    // Send to output
+    ctx.Send("processed-orders", in)
     return ctx.ReturnOnSuccess()
 }
 ```
@@ -79,7 +78,7 @@ func ProcessOrder(ctx ofctx.Context, in []byte) (ofctx.Out, error) {
 ## Defining the Function Resource
 
 ```yaml
-apiVersion: core.openfunction.io/v1beta2
+apiVersion: core.openfunction.io/v1beta1
 kind: Function
 metadata:
   name: order-processor
@@ -109,15 +108,13 @@ spec:
       - name: processed-orders
         component: pubsub
         topic: processed-orders
-    bindings:
+    pubsub:
       pubsub:
-        type: bindings.kafka
+        type: pubsub.kafka
         version: v1
         metadata:
           - name: brokers
             value: "kafka:9092"
-          - name: topics
-            value: "orders"
 ```
 
 ## Dapr Component Integration
