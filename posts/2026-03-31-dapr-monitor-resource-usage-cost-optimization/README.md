@@ -54,8 +54,7 @@ sum by (app_id, namespace) (
 
 # Component operation rate - identifies expensive state/pubsub usage
 sum by (app_id, component, operation) (
-  rate(dapr_component_state_get_total[5m])
-  + rate(dapr_component_state_set_total[5m])
+  rate(dapr_component_state_count[5m])
 )
 
 # Sidecar CPU usage by app
@@ -81,7 +80,7 @@ Create a dashboard row for identifying waste:
       "title": "CPU Utilization (Actual vs Limit)",
       "targets": [
         {
-          "expr": "rate(container_cpu_usage_seconds_total{container='daprd'}[5m]) / container_spec_cpu_quota{container='daprd'} * 100",
+          "expr": "rate(container_cpu_usage_seconds_total{container='daprd'}[5m]) / (container_spec_cpu_quota{container='daprd'} / container_spec_cpu_period{container='daprd'}) * 100",
           "legendFormat": "{{pod}}"
         }
       ]
@@ -115,7 +114,7 @@ helm install kubecost kubecost/cost-analyzer \
 Query Dapr sidecar cost:
 
 ```bash
-curl "http://kubecost:9090/model/allocation?window=7d&aggregate=container&filter=container:daprd" \
+curl "http://kubecost:9090/model/allocation?window=7d&aggregate=container&filterContainers=daprd" \
   | python3 -m json.tool
 ```
 
@@ -149,7 +148,7 @@ Alert when sidecar costs exceed a threshold:
   expr: |
     sum(
       rate(container_cpu_usage_seconds_total{container="daprd"}[1h])
-    ) * 3600 * 24 * 30 * 0.05 > 100
+    ) * 24 * 30 * 0.05 > 100
   labels:
     severity: warning
   annotations:
