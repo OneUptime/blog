@@ -106,9 +106,9 @@ spec:
   type: secretstores.kubernetes
   version: v1
   metadata: []
-  scopes:
-    - order-service
-    - inventory-service
+scopes:
+  - order-service
+  - inventory-service
 ```
 
 Only services listed in `scopes` can access this secret store, preventing other microservices from reading database credentials they do not need.
