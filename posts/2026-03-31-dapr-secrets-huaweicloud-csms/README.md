@@ -15,12 +15,12 @@ HuaweiCloud Cloud Secret Management Service (CSMS) is the managed secret service
 Use the Huawei Cloud console or CLI to create secrets:
 
 ```bash
-# Using hcloud CLI
-hcloud kms create-secret \
-  --name "myapp/db-password" \
-  --kms-key-id "your-kms-key-id" \
-  --secret-string "supersecretpassword" \
-  --region cn-north-4
+# Using KooCLI (hcloud)
+hcloud KMS CreateSecret \
+  --name="myapp/db-password" \
+  --kms_key_id="your-kms-key-id" \
+  --secret_string="supersecretpassword" \
+  --cli-region="cn-north-4"
 ```
 
 Grant your service's IAM user or agency the CSMS read permissions:
@@ -32,9 +32,9 @@ Grant your service's IAM user or agency the CSMS read permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "kms:cmk:list",
-        "kms:cmk:get",
-        "kms:dek:decrypt"
+        "csms:secret:get",
+        "csms:secret:getVersion",
+        "kms:cmk:decryptDataKey"
       ],
       "Resource": "*"
     }
@@ -60,12 +60,10 @@ spec:
       secretKeyRef:
         name: huawei-credentials
         key: access-key
-    - name: secretKey
+    - name: secretAccessKey
       secretKeyRef:
         name: huawei-credentials
         key: secret-key
-    - name: projectID
-      value: "your-project-id"
 ```
 
 Create the Kubernetes secret holding HuaweiCloud credentials:
@@ -131,17 +129,22 @@ curl "http://localhost:3500/v1.0/secrets/huawei-csms/myapp%2Fdb-password?metadat
 Apply component scoping to limit which services can use this secret store:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: huawei-csms
+  namespace: production
 spec:
   type: secretstores.huaweicloud.csms
   version: v1
   metadata:
     - name: region
       value: "cn-north-4"
-  scopes:
-    - backend-api
-    - batch-processor
+scopes:
+  - backend-api
+  - batch-processor
 ```
 
 ## Summary
 
-Configuring Dapr with HuaweiCloud CSMS requires creating an IAM user with CSMS permissions, storing the access key in a Kubernetes secret, and defining a Dapr component with the region and project ID. Once configured, your services on Huawei Cloud can use the standard Dapr secrets API to retrieve secrets without writing any HuaweiCloud SDK code in their applications.
+Configuring Dapr with HuaweiCloud CSMS requires creating an IAM user with CSMS permissions, storing the access key in a Kubernetes secret, and defining a Dapr component with the region. Once configured, your services on Huawei Cloud can use the standard Dapr secrets API to retrieve secrets without writing any HuaweiCloud SDK code in their applications.
