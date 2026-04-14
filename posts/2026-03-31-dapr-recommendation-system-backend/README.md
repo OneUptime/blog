@@ -47,10 +47,14 @@ async def track_event(event: dict):
 
     with DaprClient() as client:
         # Publish for async profile updates
-        client.publish_event("pubsub", "user-interaction", event)
+        client.publish_event("pubsub", "user-interaction",
+                             json.dumps(event),
+                             data_content_type="application/json")
 
         # Store raw event for batch training
-        client.publish_event("pubsub", "raw-events", event)
+        client.publish_event("pubsub", "raw-events",
+                             json.dumps(event),
+                             data_content_type="application/json")
 
     return {"tracked": True}
 ```
@@ -129,14 +133,13 @@ package main
 import (
     "context"
     "encoding/json"
-    "sort"
 
     dapr "github.com/dapr/go-sdk/client"
-    daprd "github.com/dapr/go-sdk/service/http"
+    common "github.com/dapr/go-sdk/service/common"
 )
 
-func generateCandidates(ctx context.Context, in *daprd.InvocationEvent) (
-    *daprd.Content, error) {
+func generateCandidates(ctx context.Context, in *common.InvocationEvent) (
+    *common.Content, error) {
 
     var req struct {
         UserID string `json:"userId"`
@@ -180,7 +183,7 @@ func generateCandidates(ctx context.Context, in *daprd.InvocationEvent) (
         "userId":     req.UserID,
         "candidates": unique[:min(req.Count, len(unique))],
     })
-    return &daprd.Content{Data: data, ContentType: "application/json"}, nil
+    return &common.Content{Data: data, ContentType: "application/json"}, nil
 }
 ```
 
@@ -188,7 +191,7 @@ func generateCandidates(ctx context.Context, in *daprd.InvocationEvent) (
 
 ```javascript
 // recommendation-api.js
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 const express = require('express');
 
 const app = express();
@@ -199,7 +202,7 @@ app.get('/api/recommendations/:userId', async (req, res) => {
   const count = parseInt(req.query.count || '10');
 
   // Check cache first
-  const [cached] = await client.state.get('statestore', `recs-${userId}`);
+  const cached = await client.state.get('statestore', `recs-${userId}`);
 
   if (cached && !isCacheStale(cached)) {
     return res.json({ userId, recommendations: cached.items, cached: true });
@@ -207,12 +210,12 @@ app.get('/api/recommendations/:userId', async (req, res) => {
 
   // Generate fresh recommendations
   const candidates = await client.invoker.invoke(
-    'candidate-service', 'api/candidates', 'POST',
+    'candidate-service', 'api/candidates', HttpMethod.POST,
     { userId, count: count * 3 }  // over-generate for scoring
   );
 
   const scored = await client.invoker.invoke(
-    'scoring-service', 'api/score', 'POST',
+    'scoring-service', 'api/score', HttpMethod.POST,
     { userId, candidates: candidates.candidates }
   );
 
@@ -222,7 +225,7 @@ app.get('/api/recommendations/:userId', async (req, res) => {
   await client.state.save('statestore', [
     { key: `recs-${userId}`,
       value: { items: recommendations, generatedAt: Date.now() },
-      options: { metadata: { ttlInSeconds: '300' } } }
+      metadata: { ttlInSeconds: '300' } }
   ]);
 
   res.json({ userId, recommendations, cached: false });
