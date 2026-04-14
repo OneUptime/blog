@@ -44,27 +44,24 @@ const response = await axios.post(
 );
 ```
 
-## Passing Headers in the Go SDK
+## Passing Headers in Go
 
 ```go
-ctx := context.Background()
+data, _ := json.Marshal(map[string]interface{}{
+    "item": "widget",
+    "qty":  5,
+})
 
-// Use context with metadata
-md := metadata.Pairs(
-    "authorization", "Bearer " + token,
-    "x-request-id",  requestID,
+req, _ := http.NewRequest("POST",
+    "http://localhost:3500/v1.0/invoke/order-service/method/orders",
+    bytes.NewBuffer(data),
 )
-ctx = metadata.NewOutgoingContext(ctx, md)
+req.Header.Set("Content-Type", "application/json")
+req.Header.Set("Authorization", "Bearer "+token)
+req.Header.Set("X-Request-ID", requestID)
+req.Header.Set("X-Correlation-ID", correlationID)
 
-resp, err := client.InvokeMethodWithContent(ctx,
-    "order-service",
-    "orders",
-    "POST",
-    &dapr.DataContent{
-        ContentType: "application/json",
-        Data:        data,
-    },
-)
+resp, err := http.DefaultClient.Do(req)
 ```
 
 ## Reading Headers in the Target Service
@@ -91,21 +88,29 @@ Dapr also passes certain metadata headers automatically:
 | `traceparent` | W3C trace context header |
 | `tracestate` | W3C trace state |
 
-## Header Filtering with Middleware
+## Adding Headers with Middleware
 
-Use Dapr middleware to add or remove headers globally:
+Use Dapr middleware to automatically inject authorization headers into requests:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: uppercase-transformer
+  name: oauth2-token
 spec:
-  type: middleware.http.routerchecker
+  type: middleware.http.oauth2clientcredentials
   version: v1
   metadata:
-    - name: rule
-      value: "^/[a-z]+[/a-z]*$"
+    - name: clientId
+      value: "my-client-id"
+    - name: clientSecret
+      value: "my-client-secret"
+    - name: scopes
+      value: "read:orders"
+    - name: tokenURL
+      value: "https://auth.example.com/oauth2/token"
+    - name: headerName
+      value: "authorization"
 ```
 
 ## Summary
