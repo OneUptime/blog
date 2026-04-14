@@ -20,7 +20,7 @@ For AWS EKS:
 eksctl create nodegroup \
   --cluster my-cluster \
   --name spot-workers \
-  --node-type m5.large \
+  --instance-types m5.large,m5a.large,m4.large \
   --nodes-min 2 \
   --nodes-max 20 \
   --spot \
@@ -49,8 +49,13 @@ metadata:
   name: orders-api
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: orders-api
   template:
     metadata:
+      labels:
+        app: orders-api
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "orders-api"
@@ -121,7 +126,7 @@ Apply this patch during Dapr installation:
 
 ```bash
 helm upgrade dapr dapr/dapr -n dapr-system \
-  --set dapr_operator.nodeSelector."node\\.kubernetes\\.io/lifecycle"=on-demand
+  --set global.nodeSelector."node\\.kubernetes\\.io/lifecycle"=on-demand
 ```
 
 ## Configure Resiliency for Spot Disruptions
