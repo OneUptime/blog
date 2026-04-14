@@ -10,7 +10,7 @@ Description: Learn how Dapr implements service mesh capabilities like mTLS, trac
 
 ## Overview
 
-A service mesh provides service-to-service communication features like mutual TLS, tracing, load balancing, and retries. Dapr implements these capabilities at the application level through its sidecar, offering a service mesh alternative without requiring kernel-level proxies like Envoy.
+A service mesh provides service-to-service communication features like mutual TLS, tracing, load balancing, and retries. Dapr implements these capabilities at the application level through its sidecar, offering a service mesh alternative without requiring infrastructure-level sidecar proxies like Envoy.
 
 ## Dapr vs Traditional Service Mesh
 
@@ -102,15 +102,16 @@ For OpenTelemetry Collector:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: otel-collector
+  name: otel-tracing-config
 spec:
-  type: exporter.zipkin
-  version: v1
-  metadata:
-    - name: endpointAddress
-      value: "http://otel-collector.monitoring:9411/api/v2/spans"
+  tracing:
+    samplingRate: "1"
+    otel:
+      endpointAddress: "otel-collector.monitoring:4317"
+      isSecure: false
+      protocol: grpc
 ```
 
 ## Resiliency Policies (Retry, Timeout, Circuit Breaker)
