@@ -36,7 +36,7 @@ public class SessionActor : Actor, ISessionActor
         await RegisterTimerAsync(
             timerName: "session-refresh",
             callback: nameof(RefreshSessionCallback),
-            state: null,
+            callbackParams: null,
             dueTime: TimeSpan.FromSeconds(5),
             period: TimeSpan.FromSeconds(60)
         );
