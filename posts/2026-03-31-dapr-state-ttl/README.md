@@ -140,7 +140,7 @@ func main() {
 
     // Save state with TTL metadata
     meta := map[string]string{"ttlInSeconds": "7200"}
-    err = client.SaveStateWithETag(ctx, "statestore", "session:carol", data, "", meta)
+    err = client.SaveState(ctx, "statestore", "session:carol", data, meta)
     if err != nil {
         log.Fatal(err)
     }
@@ -178,14 +178,25 @@ console.log(state); // null if expired
 
 ## Reading TTL Remaining
 
-To check when an item expires, use the state metadata endpoint:
+Dapr's state GET API does not expose the remaining TTL of a state item. If your application needs to know when an item expires, store the expiration timestamp as part of the value itself:
 
 ```bash
-curl -H "metadata.rawPayload: true" \
-  http://localhost:3500/v1.0/state/statestore/session:alice
+curl -X POST http://localhost:3500/v1.0/state/statestore \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "key": "session:alice",
+    "value": {
+      "userId": "alice",
+      "token": "tok-abc123",
+      "expiresAt": "2026-03-31T11:00:00Z"
+    },
+    "metadata": {
+      "ttlInSeconds": "3600"
+    }
+  }]'
 ```
 
-Some state stores return TTL metadata in the response headers or in the value payload.
+Alternatively, query the backing store directly (e.g., Redis `TTL` command) to check remaining expiry.
 
 ## Configuring Default TTL at the Component Level
 
@@ -204,7 +215,7 @@ spec:
   metadata:
   - name: redisHost
     value: localhost:6379
-  - name: defaultTTLInSeconds
+  - name: ttlInSeconds
     value: "3600"
 ```
 
