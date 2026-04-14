@@ -49,8 +49,8 @@ You will receive an email notification for every new release.
 # Check current installed version
 dapr --version
 
-# List available Dapr runtime versions
-dapr init --runtime-version --help
+# List available Dapr runtime versions via GitHub API
+curl -s https://api.github.com/repos/dapr/dapr/releases | jq -r '.[].tag_name'
 
 # Install a specific version
 dapr init --runtime-version 1.13.0
