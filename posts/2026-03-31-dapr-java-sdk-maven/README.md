@@ -10,29 +10,11 @@ Description: Learn how to set up and configure the Dapr Java SDK in a Maven proj
 
 ## Introduction
 
-Maven is the most widely used build tool for Java projects. This guide walks through adding the Dapr Java SDK to a Maven project, managing versions with the BOM (Bill of Materials), and configuring plugins for a clean build.
-
-## Using the Dapr BOM
-
-The Dapr BOM manages consistent versions across all Dapr SDK modules:
-
-```xml
-<dependencyManagement>
-  <dependencies>
-    <dependency>
-      <groupId>io.dapr</groupId>
-      <artifactId>dapr-sdk-bom</artifactId>
-      <version>1.13.0</version>
-      <type>pom</type>
-      <scope>import</scope>
-    </dependency>
-  </dependencies>
-</dependencyManagement>
-```
+Maven is the most widely used build tool for Java projects. This guide walks through adding the Dapr Java SDK to a Maven project, managing dependency versions, and configuring plugins for a clean build.
 
 ## Adding Core Dependencies
 
-With the BOM in place, omit version numbers for Dapr modules:
+Add the Dapr SDK dependencies with explicit version numbers:
 
 ```xml
 <dependencies>
@@ -40,18 +22,21 @@ With the BOM in place, omit version numbers for Dapr modules:
   <dependency>
     <groupId>io.dapr</groupId>
     <artifactId>dapr-sdk</artifactId>
+    <version>1.13.0</version>
   </dependency>
 
   <!-- Spring Boot integration -->
   <dependency>
     <groupId>io.dapr</groupId>
     <artifactId>dapr-sdk-springboot</artifactId>
+    <version>1.13.0</version>
   </dependency>
 
   <!-- Workflow support -->
   <dependency>
     <groupId>io.dapr</groupId>
-    <artifactId>dapr-sdk-workflow</artifactId>
+    <artifactId>dapr-sdk-workflows</artifactId>
+    <version>0.13.0</version>
   </dependency>
 
   <!-- Spring Boot starter (includes auto-configuration) -->
@@ -133,9 +118,9 @@ dapr run \
 mvn test
 
 # Run integration tests (requires Dapr sidecar)
-mvn verify -Pfailsafe
+mvn verify
 ```
 
 ## Summary
 
-Setting up the Dapr Java SDK in Maven is straightforward when you use the Dapr BOM to manage dependency versions consistently. Pair it with the Spring Boot Maven plugin for packaging and the Dapr CLI for local development runs to get a smooth, repeatable build and deployment workflow.
+Setting up the Dapr Java SDK in Maven is straightforward when you manage dependency versions consistently across Dapr modules. Pair it with the Spring Boot Maven plugin for packaging and the Dapr CLI for local development runs to get a smooth, repeatable build and deployment workflow.
