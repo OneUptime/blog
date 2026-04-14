@@ -67,7 +67,7 @@ job "order-service" {
           "--app-port",          "8080",
           "--dapr-http-port",    "3500",
           "--dapr-grpc-port",    "50001",
-          "--components-path",   "/dapr/components",
+          "--resources-path",    "/dapr/components",
           "--config",            "/dapr/config/config.yaml",
           "--log-level",         "info",
         ]
@@ -140,7 +140,7 @@ spec:
       selfRegister: true
       queryOptions:
         useCache: true
-      daprPortMetaKey: dapr-port
+      daprPortMetaKey: DAPR_PORT
 ```
 
 ## Deploying the Nomad Job
