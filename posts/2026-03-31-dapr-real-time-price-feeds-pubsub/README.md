@@ -69,16 +69,12 @@ spec:
   metadata:
   - name: brokers
     value: kafka:9092
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
   - name: maxMessageBytes
     value: "65536"
-  - name: producerFetchMinBytes
+  - name: consumerFetchMin
     value: "1"
-  - name: consumerFetchMinBytes
-    value: "1"
-  - name: consumerFetchMaxWait
-    value: "10ms"
 ```
 
 ## Price Aggregation and OHLC Calculation
@@ -89,7 +85,7 @@ A subscriber computes OHLC (open, high, low, close) bars:
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 
 const ohlcWindows = new Map(); // symbol -> OHLC data
-const server = new DaprServer({ serverPort: 3001 });
+const server = new DaprServer({ serverPort: "3001" });
 const client = new DaprClient();
 
 server.pubsub.subscribe('pubsub', 'price-ticks', async (tick) => {
@@ -115,6 +111,8 @@ server.pubsub.subscribe('pubsub', 'price-ticks', async (tick) => {
     ohlcWindows.delete(symbol);
   }
 });
+
+await server.start();
 ```
 
 ## Cache Latest Prices with Dapr State
@@ -154,6 +152,8 @@ server.pubsub.subscribe('pubsub', 'price-ticks', async (tick) => {
     symbolRoom.forEach(ws => ws.send(message));
   }
 });
+
+await server.start();
 ```
 
 ## Summary
