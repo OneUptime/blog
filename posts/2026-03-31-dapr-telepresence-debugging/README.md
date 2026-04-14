@@ -26,7 +26,7 @@ Telepresence is a tool that creates a two-way network bridge between your local 
 brew install datawire/blackbird/telepresence
 
 # Linux
-curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence \
+curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 \
   -o /usr/local/bin/telepresence
 chmod +x /usr/local/bin/telepresence
 
@@ -66,14 +66,14 @@ Start the local Dapr sidecar alongside your intercepted service:
 
 ```bash
 # Use environment variables from the cluster
-source .env.cluster
+set -a; source .env.cluster; set +a
 
 # Start Dapr locally pointing to cluster services
 dapr run \
   --app-id order-service \
   --app-port 3001 \
   --dapr-http-port 3500 \
-  --components-path ./components/cluster \
+  --resources-path ./components/cluster \
   -- node src/index.js
 ```
 
@@ -106,9 +106,7 @@ With the service intercepted and running locally, attach your IDE debugger:
       "request": "attach",
       "name": "Attach to Dapr Service",
       "port": 9229,
-      "restart": true,
-      "localRoot": "${workspaceFolder}",
-      "remoteRoot": "/app"
+      "restart": true
     }
   ]
 }
@@ -120,6 +118,7 @@ Start the service with the debugger flag:
 dapr run \
   --app-id order-service \
   --app-port 3001 \
+  --resources-path ./components/cluster \
   -- node --inspect=0.0.0.0:9229 src/index.js
 ```
 
@@ -128,10 +127,10 @@ dapr run \
 From another terminal, invoke the locally running service through the cluster:
 
 ```bash
-# This goes through the Dapr sidecar in the cluster to your local service
+# Invoke the local service through the local Dapr sidecar
 curl http://localhost:3500/v1.0/invoke/order-service/method/orders/1001
 
-# Or trigger via pub/sub - publishes to cluster, your local service receives it
+# Publish to the cluster broker via the local Dapr sidecar; your local service receives it
 curl -X POST http://localhost:3500/v1.0/publish/pubsub/orders \
   -d '{"orderId": "test-001"}'
 ```
