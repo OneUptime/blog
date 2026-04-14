@@ -52,10 +52,6 @@ spec:
       value: "true"
     - name: pemPath
       value: ""
-    - name: maxConns
-      value: "20"
-    - name: connMaxLifetime
-      value: "30m"
 ```
 
 Store the connection string:
@@ -96,16 +92,18 @@ kubectl create secret generic mysql-secret \
 Dapr creates the following table in your database:
 
 ```sql
-CREATE TABLE dapr_state (
-  id          VARCHAR(255) NOT NULL,
-  value       JSON,
-  isbinary    TINYINT(1),
-  etag        VARCHAR(255),
-  expiredtime DATETIME DEFAULT NULL,
-  updatetime  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  INDEX idx_expiredtime (expiredtime)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS dapr_state (
+  id          VARCHAR(255) NOT NULL PRIMARY KEY,
+  value       JSON NOT NULL,
+  isbinary    BOOLEAN NOT NULL,
+  insertDate  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updateDate  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  eTag        VARCHAR(36) NOT NULL,
+  expiredate  TIMESTAMP NULL,
+  row_id      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  INDEX expiredate_idx (expiredate),
+  UNIQUE KEY row_id_uidx (row_id)
+);
 ```
 
 ## Basic State Operations
@@ -156,9 +154,9 @@ curl -X POST http://localhost:3500/v1.0/state/statestore/transaction \
 
 ```sql
 -- List all state entries
-SELECT id, JSON_PRETTY(value), updatetime
+SELECT id, JSON_PRETTY(value), updateDate
 FROM daprstate.dapr_state
-ORDER BY updatetime DESC
+ORDER BY updateDate DESC
 LIMIT 20;
 
 -- Find by JSON field
@@ -168,7 +166,7 @@ WHERE id LIKE 'session:%';
 
 -- Count expired entries
 SELECT COUNT(*) FROM daprstate.dapr_state
-WHERE expiredtime IS NOT NULL AND expiredtime < NOW();
+WHERE expiredate IS NOT NULL AND expiredate < NOW();
 ```
 
 ## Summary
