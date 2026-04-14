@@ -25,11 +25,11 @@ Dapr components are pluggable implementations of building blocks - state stores,
 
 ```bash
 # List existing components
-gh api repos/dapr/components-contrib/git/trees/master \
+gh api repos/dapr/components-contrib/git/trees/main \
   --jq '.tree[] | select(.type=="tree") | .path' | sort
 
 # Or browse GitHub
-# https://github.com/dapr/components-contrib/tree/master/state
+# https://github.com/dapr/components-contrib/tree/main/state
 ```
 
 ## Step 2: Open a Proposal Issue
@@ -77,6 +77,8 @@ Implement the component interface:
 package mynewdb
 
 import (
+    "context"
+
     "github.com/dapr/components-contrib/state"
     "github.com/dapr/kit/logger"
 )
@@ -111,6 +113,11 @@ func (m *MyNewDB) Delete(ctx context.Context, req *state.DeleteRequest) error {
     return nil
 }
 
+func (m *MyNewDB) Close() error {
+    // Clean up resources
+    return nil
+}
+
 func (m *MyNewDB) Features() []state.Feature {
     return []state.Feature{
         state.FeatureETag,
@@ -121,16 +128,22 @@ func (m *MyNewDB) Features() []state.Feature {
 
 ## Step 4: Register the Component
 
-```go
-// Register in the components registry file
-// state/registry.go (or equivalent registration file)
-import mynewdb "github.com/dapr/components-contrib/state/mynewdb"
+Component registration happens in the Dapr runtime repository (`dapr/dapr`), not in `components-contrib`. Add a registration file in `cmd/daprd/components/`:
 
-func (s *stateRegistry) Register(components ...state.Store) {
-    // Add your component
-    s.RegisterComponent(func(l logger.Logger) state.Store {
+```go
+// In the dapr/dapr repo: cmd/daprd/components/state_mynewdb.go
+package components
+
+import (
+    mynewdb "github.com/dapr/components-contrib/state/mynewdb"
+    "github.com/dapr/dapr/pkg/components/state"
+    "github.com/dapr/kit/logger"
+)
+
+func init() {
+    state.DefaultRegistry.RegisterComponent(func(l logger.Logger) state.Store {
         return mynewdb.NewMyNewDBStateStore(l)
-    }, "state.mynewdb")
+    }, "mynewdb")
 }
 ```
 
@@ -139,10 +152,9 @@ func (s *stateRegistry) Register(components ...state.Store) {
 ```bash
 # Run the built-in conformance test suite
 # Requires the component's infrastructure to be running
-go test ./tests/conformance/... \
-  -run TestStateConformance \
-  -component mynewdb \
-  -v
+go test -v -tags=conftests -count=1 \
+  ./tests/conformance \
+  -run="TestStateConformance/mynewdb"
 ```
 
 ## Step 6: Submit PR
