@@ -24,8 +24,8 @@ When a pod starts, Dapr logs each component it loads. Look for these messages:
 
 ```bash
 # Successful component loading
-kubectl logs deploy/order-service -c daprd | grep "component loaded"
-# level=info msg="component loaded" component=statestore type=state.redis version=v1
+kubectl logs deploy/order-service -c daprd | grep "loaded component"
+# level=info msg="loaded component statestore (state.redis/v1)"
 
 # Failed component loading
 kubectl logs deploy/order-service -c daprd | grep -i "failed\|error\|init"
@@ -110,7 +110,8 @@ kubectl get component statestore -o yaml
 For errors that occur after successful initialization:
 
 ```bash
-# Watch for component errors during operation
+# Watch for component errors during operation (requires JSON logging)
+# Enable JSON logs with the annotation: dapr.io/log-as-json: "true"
 kubectl logs -f deploy/order-service -c daprd | \
   jq -c 'select(.level == "error") | {time, msg, component, error}'
 ```
