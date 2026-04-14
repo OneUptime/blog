@@ -193,19 +193,7 @@ auth:
 
 ## Handle Secret Rotation
 
-AWS Secrets Manager supports automatic rotation. Dapr caches secrets for a configurable TTL:
-
-```yaml
-  metadata:
-  - name: region
-    value: "us-east-1"
-  - name: cacheSize
-    value: "100"
-  - name: cacheTTL
-    value: "300s"
-```
-
-For shorter TTL during rotation windows, reduce to 60s or 30s.
+AWS Secrets Manager supports automatic rotation. When a secret is rotated, the next call to the Dapr secrets API will retrieve the updated value from AWS Secrets Manager. Design your application to re-fetch secrets periodically rather than caching them indefinitely, so that rotated credentials are picked up promptly.
 
 ## Summary
 
