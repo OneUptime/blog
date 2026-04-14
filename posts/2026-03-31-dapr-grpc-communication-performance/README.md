@@ -38,7 +38,11 @@ annotations:
 Prevent idle connections from being dropped by load balancers with keepalive settings:
 
 ```go
-import "google.golang.org/grpc/keepalive"
+import (
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/keepalive"
+)
 
 kaParams := keepalive.ClientParameters{
     Time:                10 * time.Second,
@@ -46,10 +50,10 @@ kaParams := keepalive.ClientParameters{
     PermitWithoutStream: true,
 }
 
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "localhost:50001",
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
     grpc.WithKeepaliveParams(kaParams),
-    grpc.WithInsecure(),
 )
 ```
 
@@ -58,13 +62,17 @@ conn, err := grpc.Dial(
 Reduce network bandwidth for large payloads by enabling gzip compression:
 
 ```go
-import "google.golang.org/grpc/encoding/gzip"
+import (
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/encoding/gzip"
+)
 
 // Client side
-conn, _ := grpc.Dial(
+conn, _ := grpc.NewClient(
     "localhost:50001",
     grpc.WithDefaultCallOptions(grpc.UseCompressor(gzip.Name)),
-    grpc.WithInsecure(),
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
 
 // Server side - register gzip codec
@@ -73,31 +81,31 @@ _ = gzip.Name // importing registers the codec automatically
 
 ## Tune the Dapr gRPC Max Message Size
 
-For microservices exchanging large payloads, increase the gRPC message size limit via Dapr configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: grpcconfig
-spec:
-  httpPipeline:
-    handlers: []
-  grpcPipeline:
-    handlers:
-      - name: grpcmiddleware
-        type: middleware.grpc.ratelimit
-  api:
-    allowed:
-      - name: InvokeService
-        version: v1
-```
-
-Set environment variables for the sidecar:
+For microservices exchanging large payloads, increase the max request body size using the CLI flag:
 
 ```bash
-DAPR_GRPC_PORT=50001
-DAPR_MAX_REQUEST_BODY_SIZE=64  # MB
+dapr run \
+  --app-id orderservice \
+  --app-port 50051 \
+  --app-protocol grpc \
+  --max-body-size 64Mi \
+  -- ./orderservice
+```
+
+In Kubernetes, set the annotation:
+
+```yaml
+annotations:
+  dapr.io/max-body-size: "64Mi"
+```
+
+For your app's gRPC server, also increase the receive and send message limits:
+
+```go
+server := grpc.NewServer(
+    grpc.MaxRecvMsgSize(64 * 1024 * 1024), // 64 MB
+    grpc.MaxSendMsgSize(64 * 1024 * 1024), // 64 MB
+)
 ```
 
 ## Use Internal gRPC for Sidecar Communication
@@ -122,7 +130,7 @@ brew install grpcurl
 # Invoke Dapr service via gRPC
 grpcurl \
   -plaintext \
-  -d '{"name": "OrderService", "method": "GetOrder", "data": {"orderId": "123"}}' \
+  -d '{"id": "orderservice", "message": {"method": "GetOrder", "content_type": "application/json"}}' \
   localhost:50001 \
   dapr.proto.runtime.v1.Dapr/InvokeService
 ```
