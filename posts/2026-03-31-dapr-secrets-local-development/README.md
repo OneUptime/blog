@@ -81,7 +81,7 @@ dapr run \
   --app-id my-service \
   --app-port 3000 \
   --dapr-http-port 3500 \
-  --components-path ~/.dapr/components \
+  --resources-path ~/.dapr/components \
   -- node app.js
 ```
 
