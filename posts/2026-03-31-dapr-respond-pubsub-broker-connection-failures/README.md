@@ -61,8 +61,8 @@ spec:
     value: "kafka-broker.messaging.svc.cluster.local:9092"
   - name: consumerGroup
     value: "orders-consumer-group"
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
 ```
 
 ## Step 3 - Validate Network Connectivity
@@ -127,14 +127,15 @@ spec:
 For messages that fail after all retries, configure a dead letter topic:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-sub
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
+  routes:
+    default: /orders/process
   deadLetterTopic: orders-deadletter
 ```
 
