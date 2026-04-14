@@ -63,7 +63,7 @@ With `initialInterval: 500ms` and `multiplier: 2.0`:
 | 3 | 2s |
 | 4 | 4s |
 | 5 | 8s |
-| 6 | 16s (capped at maxInterval) |
+| 6 | 16s |
 
 With jitter applied by Dapr, actual delays vary randomly within a range around these values.
 
@@ -72,7 +72,7 @@ With jitter applied by Dapr, actual delays vary randomly within a range around t
 The resiliency policy applies automatically - your application code does not need to implement retry logic:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient();
 
@@ -82,8 +82,8 @@ async function processOrder(order) {
   const result = await client.invoker.invoke(
     'inventory-service',
     'reserve',
-    { orderId: order.id, items: order.items },
-    { method: 'POST' }
+    HttpMethod.POST,
+    { orderId: order.id, items: order.items }
   );
   return result;
 }
@@ -96,7 +96,6 @@ If you need client-side retry with jitter outside of Dapr's built-in resiliency:
 ```python
 import asyncio
 import random
-import math
 
 async def retry_with_exponential_backoff(
     func,
@@ -104,7 +103,6 @@ async def retry_with_exponential_backoff(
     base_delay: float = 0.5,
     max_delay: float = 30.0,
     multiplier: float = 2.0,
-    jitter_factor: float = 0.25,
 ):
     """
     Retry a function with exponential backoff and full jitter.
@@ -152,7 +150,7 @@ spec:
       protectiveCB:
         interval: 30s
         timeout: 60s
-        trip: consecutiveFailures(10)
+        trip: consecutiveFailures > 10
 
   targets:
     apps:
