@@ -137,9 +137,9 @@ spec:
   metadata:
   - name: vaultAddr
     value: "https://vault:8200"
-  scopes:
-  - order-service
-  - payment-service
+scopes:
+- order-service
+- payment-service
 ```
 
 ## Verifying Credential Loading
