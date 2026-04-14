@@ -35,8 +35,7 @@ Create `nlog.config` in your project root:
 
   <targets>
     <target xsi:type="Console" name="console"
-            layout="${longdate} ${level:uppercase=true} [${logger:shortName=true}]
-                   TraceId=${aspnet-TraceIdentifier} ${message} ${exception:format=tostring}" />
+            layout="${longdate} ${level:uppercase=true} [${logger:shortName=true}] TraceId=${aspnet-TraceIdentifier} ${message} ${exception:format=tostring}" />
 
     <target xsi:type="File" name="file"
             fileName="logs/dapr-${shortdate}.log"
@@ -130,10 +129,10 @@ public class InventoryController : ControllerBase
 }
 ```
 
-## NLog with Dapr MDC (Mapped Diagnostic Context)
+## NLog with Dapr MDLC (Mapped Diagnostics Logical Context)
 
 ```csharp
-// Middleware to add Dapr context to NLog MDC
+// Middleware to add Dapr context to NLog MDLC
 public class DaprContextMiddleware
 {
     private readonly RequestDelegate _next;
@@ -148,8 +147,8 @@ public class DaprContextMiddleware
         var appId = context.Request.Headers["dapr-app-id"].ToString();
         var traceParent = context.Request.Headers["traceparent"].ToString();
 
-        using (NLog.MappedDiagnosticsContext.SetScoped("DaprAppId", appId))
-        using (NLog.MappedDiagnosticsContext.SetScoped("TraceParent", traceParent))
+        using (NLog.MappedDiagnosticsLogicalContext.SetScoped("DaprAppId", appId))
+        using (NLog.MappedDiagnosticsLogicalContext.SetScoped("TraceParent", traceParent))
         {
             await _next(context);
         }
