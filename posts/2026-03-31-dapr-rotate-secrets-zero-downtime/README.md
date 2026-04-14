@@ -24,11 +24,11 @@ Use a versioned secret naming convention in your secret store. In HashiCorp Vaul
 
 ```bash
 # Write version 1
-vault kv put secret/db-credentials \
+vault kv put -mount=secret db-credentials \
   password="initial-password"
 
 # Write version 2 (rotation)
-vault kv put secret/db-credentials \
+vault kv put -mount=secret db-credentials \
   password="new-rotated-password"
 ```
 
@@ -79,11 +79,11 @@ db_secret = SecretCache("vault-store", "db-credentials", ttl_seconds=300)
 For database passwords, follow this rotation procedure:
 
 ```bash
-# 1. Add the new password alongside the old one in the DB
+# 1. Change the password in the DB
 psql -c "ALTER USER appuser PASSWORD 'new-password';"
 
 # 2. Update the secret in your backend store
-vault kv put secret/db-credentials password="new-password"
+vault kv put -mount=secret db-credentials password="new-password"
 
 # 3. Wait for TTL to expire (services pick up new password automatically)
 # 4. Remove old password from any allow-lists or legacy configs
