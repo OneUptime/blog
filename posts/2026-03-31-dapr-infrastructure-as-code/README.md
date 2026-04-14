@@ -33,6 +33,10 @@ terraform {
   }
 }
 
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_resource_group" "dapr_rg" {
   name     = "dapr-production-rg"
   location = "East US"
@@ -62,7 +66,7 @@ resource "azurerm_redis_cache" "dapr_redis" {
   capacity            = 2
   family              = "C"
   sku_name            = "Standard"
-  enable_non_ssl_port = false
+  non_ssl_port_enabled = false
   minimum_tls_version = "1.2"
 }
 ```
