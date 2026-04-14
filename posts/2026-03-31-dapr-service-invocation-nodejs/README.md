@@ -26,7 +26,7 @@ Create a client:
 const { DaprClient, HttpMethod } = require("@dapr/dapr");
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: process.env.DAPR_HTTP_PORT || "3500",
 });
 ```
@@ -39,7 +39,7 @@ Invoke a GET endpoint on the `inventory-service`:
 async function getInventory(productId) {
   const result = await client.invoker.invoke(
     "inventory-service",       // target app-id
-    `stock/${productId}`,      // method/path
+    `stock?productId=${productId}`, // method/path
     HttpMethod.GET
   );
   console.log("Inventory:", result);
@@ -83,19 +83,19 @@ const result = await client.invoker.invoke(
 On the `inventory-service`, register the invocable handler:
 
 ```javascript
-const { DaprServer } = require("@dapr/dapr");
+const { DaprServer, HttpMethod } = require("@dapr/dapr");
 
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3501" },
+  clientOptions: { daprHost: "127.0.0.1", daprPort: "3501" },
 });
 
-await server.invoker.listen("stock/:productId", async (data) => {
-  const productId = data.params?.productId;
+await server.invoker.listen("stock", async (data) => {
+  const productId = data.query?.productId;
   const stock = await db.getStock(productId);
   return { productId, available: stock };
-}, { method: "GET" });
+}, { method: HttpMethod.GET });
 
 await server.start();
 ```
@@ -118,7 +118,7 @@ Add a resiliency policy to retry failed invocations:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: ResiliencyPolicy
+kind: Resiliency
 metadata:
   name: order-resiliency
 spec:
@@ -131,8 +131,7 @@ spec:
   targets:
     apps:
       inventory-service:
-        outbound:
-          retry: invocation-retry
+        retry: invocation-retry
 ```
 
 ## Summary
