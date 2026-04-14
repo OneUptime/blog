@@ -104,8 +104,8 @@ spec:
     secretKeyRef:
       name: dapr/redis-password
       key: dapr/redis-password
-auth:
-  secretStore: tencent-ssm
+  auth:
+    secretStore: tencent-ssm
 ```
 
 ## Secret Rotation
@@ -118,13 +118,9 @@ tccli ssm PutSecretValue \
   --SecretName "dapr/db-password" \
   --VersionId "v2" \
   --SecretString '{"password": "new-super-secret"}'
-
-# Set default version
-tccli ssm UpdateVersionStage \
-  --SecretName "dapr/db-password" \
-  --VersionId "v2" \
-  --MoveToVersion "AWSCURRENT"
 ```
+
+Dapr retrieves the current version of the secret by default. After creating a new version with `PutSecretValue`, your applications will pick up the updated value on their next secret retrieval.
 
 ## Summary
 
