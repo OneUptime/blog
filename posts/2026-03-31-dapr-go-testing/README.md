@@ -14,7 +14,7 @@ Testing Dapr Go applications requires strategies at multiple levels: unit tests 
 
 ## Unit Testing with a Mocked Dapr Client
 
-The Dapr Go SDK ships a mock client package for unit tests:
+The Dapr Go SDK defines `client.Client` as an interface, so you can create your own mock with testify:
 
 ```go
 package service_test
@@ -24,18 +24,27 @@ import (
     "testing"
 
     "github.com/dapr/go-sdk/client"
-    dapr_mock "github.com/dapr/go-sdk/service/common/mock"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
 )
 
+// MockClient implements the subset of client.Client needed for tests.
+type MockClient struct {
+    mock.Mock
+}
+
+func (m *MockClient) SaveState(ctx context.Context, storeName, key string, data []byte, meta map[string]string, so ...client.StateOption) error {
+    args := m.Called(ctx, storeName, key, data, meta, so)
+    return args.Error(0)
+}
+
 func TestSaveOrder(t *testing.T) {
-    mockClient := new(dapr_mock.MockClient)
+    mockClient := new(MockClient)
 
     // Set up expectation
     mockClient.On("SaveState",
         mock.Anything, "statestore", "order:1",
-        mock.Anything, mock.Anything).Return(nil)
+        mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
     svc := &OrderService{dapr: mockClient}
     err := svc.SaveOrder(context.Background(), &Order{ID: "1", Product: "Widget"})
@@ -87,7 +96,7 @@ func TestMain(m *testing.M) {
     cmd := exec.Command("dapr", "run",
         "--app-id", "test-service",
         "--app-port", "8099",
-        "--components-path", "./test/components",
+        "--resources-path", "./test/components",
         "--", "sleep", "60")
     cmd.Start()
     time.Sleep(2 * time.Second) // wait for sidecar
@@ -127,8 +136,8 @@ func TestGetProduct(t *testing.T) {
 # .github/workflows/test.yml
 - name: Init Dapr
   run: |
-    dapr init --runtime-version 1.14
-    dapr --version
+    dapr init --runtime-version 1.14.0
+    dapr version
 
 - name: Run tests
   run: go test ./... -v -timeout 120s
