@@ -12,7 +12,7 @@ CockroachDB's distributed SQL engine pairs naturally with Dapr's state managemen
 
 ## CockroachDB as a Dapr State Store
 
-Dapr supports CockroachDB through the PostgreSQL state store component (CockroachDB is PostgreSQL-wire compatible). This gives you:
+Dapr supports CockroachDB through a dedicated state store component (`state.cockroachdb`). CockroachDB is PostgreSQL-wire compatible, so it shares much of the underlying implementation. This gives you:
 
 - Serializable ACID transactions
 - Multi-region active-active replication
@@ -71,15 +71,18 @@ USE statedb;
 
 -- Dapr creates this table automatically, but you can pre-create it
 CREATE TABLE IF NOT EXISTS dapr_state (
-    key         VARCHAR(500) NOT NULL PRIMARY KEY,
-    value       JSONB,
-    etag        UUID NOT NULL DEFAULT gen_random_uuid(),
-    metadata    JSONB,
-    expirytime  TIMESTAMPTZ
+    key         TEXT NOT NULL PRIMARY KEY,
+    value       JSONB NOT NULL,
+    isbinary    BOOLEAN NOT NULL,
+    etag        TEXT NOT NULL,
+    insertdate  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updatedate  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expiredate  TIMESTAMPTZ
 );
 
 -- Index for TTL cleanup
-CREATE INDEX IF NOT EXISTS idx_expirytime ON dapr_state (expirytime);
+CREATE INDEX IF NOT EXISTS idx_expiredate ON dapr_state (expiredate)
+    WHERE expiredate IS NOT NULL;
 SQL
 ```
 
@@ -119,7 +122,7 @@ def get_inventory(item_id: str) -> Tuple[Optional[dict], Optional[str]]:
     """Read inventory state and its ETag."""
     resp = requests.get(
         f"{DAPR_URL}/state/statestore/{item_id}",
-        headers={"consistency": "strong"}
+        params={"consistency": "strong"}
     )
     
     if resp.status_code == 200 and resp.text and resp.text != "null":
@@ -196,11 +199,11 @@ CockroachDB's serializable isolation means it automatically retries transactions
 # cockroachdb_tuning.py
 def get_inventory_with_strong_consistency(item_id: str):
     """Use strong consistency for CockroachDB to avoid reading stale replicas."""
-    # The 'strong' consistency header tells Dapr to use a linearizable read
+    # The 'strong' consistency query parameter tells Dapr to use a linearizable read
     resp = requests.get(
         f"{DAPR_URL}/state/statestore/{item_id}",
-        headers={
-            "dapr-consistency": "strong"  # Read from the leaseholder
+        params={
+            "consistency": "strong"  # Read from the leaseholder
         }
     )
     if resp.status_code == 200:
@@ -211,27 +214,25 @@ def get_inventory_with_strong_consistency(item_id: str):
 Monitor CockroachDB contention:
 
 ```sql
--- Check transaction contention in CockroachDB
+-- Check transaction contention in CockroachDB (v22.2+)
 SELECT
     database_name,
     schema_name,
     table_name,
     index_name,
-    contention_time,
-    num_contention_events
-FROM crdb_internal.cluster_contention_events
-ORDER BY contention_time DESC
+    contention_duration,
+    contending_pretty_key
+FROM crdb_internal.transaction_contention_events
+ORDER BY contention_duration DESC
 LIMIT 20;
 
 -- Check slow queries related to the state table
 SELECT
-    query,
-    avg_latency,
-    max_latency,
-    execution_count
+    fingerprint_id,
+    metadata ->> 'query' AS query_text,
+    statistics
 FROM crdb_internal.statement_statistics
-WHERE query LIKE '%dapr_state%'
-ORDER BY avg_latency DESC;
+WHERE metadata ->> 'query' LIKE '%dapr_state%';
 ```
 
 ## Load Testing Concurrency Control
