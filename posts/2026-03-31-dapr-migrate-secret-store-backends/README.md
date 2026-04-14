@@ -111,7 +111,11 @@ func fetchFromDapr(store, name string) (string, error) {
     resp, err := http.Get(
         fmt.Sprintf("http://localhost:3500/v1.0/secrets/%s/%s", store, name),
     )
-    if err != nil || resp.StatusCode != 200 {
+    if err != nil {
+        return "", fmt.Errorf("failed to get secret from %s", store)
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
         return "", fmt.Errorf("failed to get secret from %s", store)
     }
     var result map[string]string
@@ -125,9 +129,8 @@ func fetchFromDapr(store, name string) (string, error) {
 Update services one by one to use the new store. Monitor error rates after each service migration:
 
 ```bash
-# Update component reference in the application annotation or config
-kubectl patch deployment my-service -p \
-  '{"spec":{"template":{"metadata":{"annotations":{"dapr.io/config":"new-store-config"}}}}}'
+# Update the store name your application reads from via an environment variable
+kubectl set env deployment/my-service SECRET_STORE=new-secrets
 
 # Monitor for errors
 kubectl logs -f deployment/my-service -c daprd | grep -E "error|secret"
@@ -145,4 +148,4 @@ Revoke access credentials for the old backend in your IAM system.
 
 ## Summary
 
-Migrating Dapr secret store backends safely requires running both stores in parallel during the transition, syncing secrets to the new backend, optionally using dual-read patterns for zero-downtime cutover, and gradually migrating services one by one before decommissioning the old backend. The Dapr component abstraction makes the migration significantly smoother since application code does not need to change - only the component YAML.
+Migrating Dapr secret store backends safely requires running both stores in parallel during the transition, syncing secrets to the new backend, optionally using dual-read patterns for zero-downtime cutover, and gradually migrating services one by one before decommissioning the old backend. The Dapr component abstraction makes the migration significantly smoother since application code only needs to change the store name in API calls - no vendor SDK swaps or authentication rewiring is required.
