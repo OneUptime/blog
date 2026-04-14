@@ -67,10 +67,10 @@ spec:
     secretKeyRef:
       name: vault-token
       key: token
-  scopes:
-  - payment-service-dotnet
-  - fraud-service-go
-  # Python and Java services cannot access this component
+scopes:
+- payment-service-dotnet
+- fraud-service-go
+# Python and Java services cannot access this component
 ```
 
 ## Environment-Specific Component Overrides
@@ -119,8 +119,8 @@ metadata:
 spec:
   type: state.redis
   version: v1
-  scopes:
-  - order-service-node   # Still on old version
+scopes:
+- order-service-node   # Still on old version
 ---
 apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -132,8 +132,8 @@ spec:
   metadata:
   - name: redisHost
     value: redis-v2:6379
-  scopes:
-  - order-service-java   # Migrated to new instance
+scopes:
+- order-service-java   # Migrated to new instance
 ```
 
 Services reference the component by name in their code, so `statestore-v1` and `statestore-v2` are independent.
@@ -144,7 +144,7 @@ Check which components are loaded per service:
 
 ```bash
 # List all components in the production namespace
-dapr components -k -n production
+dapr components -k --namespace production
 
 # Check if a specific app loaded its components
 kubectl logs -l dapr.io/app-id=order-service-node \
