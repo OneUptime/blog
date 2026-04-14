@@ -18,8 +18,8 @@ Dapr exposes Prometheus metrics with `app_id` and `namespace` labels, making it 
 
 ```text
 dapr_http_server_request_count{app_id="orders-api", namespace="tenant-a", method="POST", path="/orders", status="200"}
-dapr_component_state_get_total{app_id="orders-api", namespace="tenant-a", component="statestore"}
-dapr_component_pubsub_publish_total{app_id="orders-api", namespace="tenant-a", topic="orders"}
+dapr_component_state_count{app_id="orders-api", namespace="tenant-a", component="statestore", operation="get"}
+dapr_component_pubsub_egress_count{app_id="orders-api", namespace="tenant-a", component="pubsub", topic="orders"}
 ```
 
 ## Querying Per-Tenant Request Rates
@@ -36,8 +36,7 @@ sum by (namespace) (
 ```text
 # State operations per tenant per component
 sum by (namespace, component, operation) (
-  rate(dapr_component_state_get_total[5m])
-  + rate(dapr_component_state_set_total[5m])
+  rate(dapr_component_state_count{operation=~"get|set"}[5m])
 )
 ```
 
