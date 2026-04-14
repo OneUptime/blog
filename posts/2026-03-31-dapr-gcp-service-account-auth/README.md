@@ -99,7 +99,7 @@ spec:
   metadata:
   - name: projectId
     value: "my-project"
-  - name: privateKeyId
+  - name: credentialsJson
     secretKeyRef:
       name: gcp-credentials
       key: credentials.json
