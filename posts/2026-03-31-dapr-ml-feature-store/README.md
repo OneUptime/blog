@@ -70,9 +70,11 @@ async def compute_user_features(event: dict):
         existing = json.loads(existing_state.data) if existing_state.data else {}
 
         # Get user's order history (from order service)
-        history = client.invoke_method(
-            "order-service", f"api/users/{user_id}/orders/summary", "GET"
+        resp = client.invoke_method(
+            "order-service", f"api/users/{user_id}/orders/summary",
+            http_verb="GET"
         )
+        history = json.loads(resp.data)
 
         # Compute fresh features
         features = UserFeatures(
@@ -116,7 +118,6 @@ package main
 import (
     "context"
     "encoding/json"
-    "net/http"
 
     dapr "github.com/dapr/go-sdk/client"
     daprd "github.com/dapr/go-sdk/service/http"
@@ -124,7 +125,7 @@ import (
 
 func main() {
     s := daprd.NewService(":8080")
-    s.AddServiceInvocationHandler("/features/user/{userId}", getUserFeatures)
+    s.AddServiceInvocationHandler("/features/user", getUserFeatures)
     s.AddServiceInvocationHandler("/features/batch", getBatchFeatures)
     s.Start()
 }
@@ -132,7 +133,11 @@ func main() {
 func getUserFeatures(ctx context.Context, in *daprd.InvocationEvent) (
     *daprd.Content, error) {
 
-    userID := extractUserID(in.TraceID) // Extract from path
+    var request struct {
+        UserID string `json:"userId"`
+    }
+    json.Unmarshal(in.Data, &request)
+    userID := request.UserID
 
     client, _ := dapr.NewClient()
     defer client.Close()
@@ -189,6 +194,8 @@ func getBatchFeatures(ctx context.Context, in *daprd.InvocationEvent) (
 ```csharp
 public class FeatureVersionActor : Actor, IFeatureVersionActor
 {
+    public FeatureVersionActor(ActorHost host) : base(host) { }
+
     public async Task RegisterFeatureVersionAsync(string featureGroup,
         FeatureSchema schema)
     {
