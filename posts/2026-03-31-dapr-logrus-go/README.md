@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Logrus, Go, Logging, Observability
 
-Description: Integrate Logrus structured logging with Dapr Go SDK services, propagating W3C trace headers and Dapr app context through all log entries.
+Description: Integrate Logrus structured logging with Dapr Go SDK services, adding Dapr app context and request metadata to all log entries.
 
 ---
 
@@ -52,12 +52,11 @@ func init() {
     Log.SetLevel(level)
 }
 
-// WithDaprContext creates a log entry with Dapr trace fields
-func WithDaprContext(traceParent, callerAppID, appID string) *logrus.Entry {
+// WithDaprContext creates a log entry with Dapr service context fields
+func WithDaprContext(appID, method string) *logrus.Entry {
     return Log.WithFields(logrus.Fields{
-        "traceParent":  traceParent,
-        "callerAppId":  callerAppID,
-        "service":      appID,
+        "service": appID,
+        "method":  method,
     })
 }
 ```
@@ -76,6 +75,7 @@ import (
     "os"
 
     dapr "github.com/dapr/go-sdk/client"
+    "github.com/dapr/go-sdk/service/common"
     daprd "github.com/dapr/go-sdk/service/http"
     "github.com/sirupsen/logrus"
     "myapp/logger"
@@ -85,7 +85,7 @@ func main() {
     s := daprd.NewService(":6001")
 
     s.AddServiceInvocationHandler("/api/orders", orderHandler)
-    s.AddTopicEventHandler(&daprd.Subscription{
+    s.AddTopicEventHandler(&common.Subscription{
         PubsubName: "pubsub",
         Topic:      "order-created",
         Route:      "/events/order-created",
@@ -98,11 +98,10 @@ func main() {
     }
 }
 
-func orderHandler(ctx context.Context, in *daprd.InvocationEvent) (out *daprd.Content, err error) {
+func orderHandler(ctx context.Context, in *common.InvocationEvent) (out *common.Content, err error) {
     log := logger.WithDaprContext(
-        in.TraceID,
-        in.ContentType,
         os.Getenv("APP_ID"),
+        in.Verb,
     )
 
     var order map[string]interface{}
@@ -128,12 +127,12 @@ func orderHandler(ctx context.Context, in *daprd.InvocationEvent) (out *daprd.Co
     }
 
     log.Info("Order saved successfully")
-    return &daprd.Content{ContentType: "application/json",
+    return &common.Content{ContentType: "application/json",
         Data: []byte(`{"status":"created"}`)}, nil
 }
 
-func orderEventHandler(ctx context.Context, e *daprd.TopicEvent) (retry bool, err error) {
-    log := logrus.WithFields(logrus.Fields{
+func orderEventHandler(ctx context.Context, e *common.TopicEvent) (retry bool, err error) {
+    log := logger.Log.WithFields(logrus.Fields{
         "eventId":   e.ID,
         "eventType": e.Type,
         "topic":     e.Topic,
@@ -181,4 +180,4 @@ func (h *DatadogHook) Fire(entry *logrus.Entry) error {
 
 ## Summary
 
-Logrus integrates with Dapr Go services through structured log entries that carry Dapr-specific context fields. By creating a `WithDaprContext` helper that pre-populates common fields like trace IDs and app identifiers, every log statement in your service automatically maintains correlation context. Use Logrus hooks to ship error logs to external platforms like Datadog or Splunk without changing application code.
+Logrus integrates with Dapr Go services through structured log entries that carry Dapr-specific context fields. By creating a `WithDaprContext` helper that pre-populates common fields like app identifiers and request metadata, every log statement in your service automatically maintains correlation context. Use Logrus hooks to ship error logs to external platforms like Datadog or Splunk without changing application code.
