@@ -34,31 +34,26 @@ import (
     "log"
 
     dapr "github.com/dapr-sandbox/components-go-sdk"
-    bindings "github.com/dapr-sandbox/components-go-sdk/bindings/v1"
-    proto "github.com/dapr/dapr/pkg/proto/components/v1"
+    "github.com/dapr/components-contrib/bindings"
 )
 
 type WebhookBinding struct {
     webhookURL string
 }
 
-func (b *WebhookBinding) Init(ctx context.Context, req *proto.BindingInitRequest) (*proto.BindingInitResponse, error) {
-    for _, m := range req.Metadata.Properties {
-        if m.Key == "webhookURL" {
-            b.webhookURL = m.Value
-        }
+func (b *WebhookBinding) Init(ctx context.Context, metadata bindings.Metadata) error {
+    if v, ok := metadata.Properties["webhookURL"]; ok {
+        b.webhookURL = v
     }
     log.Printf("Webhook binding initialized with URL: %s", b.webhookURL)
-    return &proto.BindingInitResponse{}, nil
+    return nil
 }
 
-func (b *WebhookBinding) ListOperations(ctx context.Context, req *proto.ListOperationsRequest) (*proto.ListOperationsResponse, error) {
-    return &proto.ListOperationsResponse{
-        Operations: []string{"send", "delete"},
-    }, nil
+func (b *WebhookBinding) Operations() []bindings.OperationKind {
+    return []bindings.OperationKind{"send", "delete"}
 }
 
-func (b *WebhookBinding) Invoke(ctx context.Context, req *proto.InvokeRequest) (*proto.InvokeResponse, error) {
+func (b *WebhookBinding) Invoke(ctx context.Context, req *bindings.InvokeRequest) (*bindings.InvokeResponse, error) {
     switch req.Operation {
     case "send":
         // Send to webhook
@@ -67,14 +62,14 @@ func (b *WebhookBinding) Invoke(ctx context.Context, req *proto.InvokeRequest) (
         }
         body, _ := json.Marshal(payload)
         log.Printf("Sending to webhook %s: %s", b.webhookURL, body)
-        return &proto.InvokeResponse{Data: []byte(`{"status": "sent"}`)}, nil
+        return &bindings.InvokeResponse{Data: []byte(`{"status": "sent"}`)}, nil
     default:
         return nil, fmt.Errorf("unsupported operation: %s", req.Operation)
     }
 }
 
-func (b *WebhookBinding) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
-    return &proto.PingResponse{}, nil
+func (b *WebhookBinding) Close() error {
+    return nil
 }
 ```
 
@@ -84,28 +79,43 @@ Input bindings deliver events to your application from external sources:
 
 ```go
 type WebhookInputBinding struct {
-    events chan *proto.ReadResponse
+    webhookURL string
 }
 
-func (b *WebhookInputBinding) Read(req *proto.ReadRequest, stream proto.InputBinding_ReadServer) error {
-    // Start an HTTP server to receive webhook events
-    go b.startHTTPServer(stream)
-
-    <-stream.Context().Done()
+func (b *WebhookInputBinding) Init(ctx context.Context, metadata bindings.Metadata) error {
+    if v, ok := metadata.Properties["webhookURL"]; ok {
+        b.webhookURL = v
+    }
     return nil
 }
 
-func (b *WebhookInputBinding) startHTTPServer(stream proto.InputBinding_ReadServer) {
+func (b *WebhookInputBinding) Read(ctx context.Context, handler bindings.Handler) error {
+    // Start an HTTP server to receive webhook events
+    go b.startHTTPServer(ctx, handler)
+
+    <-ctx.Done()
+    return nil
+}
+
+func (b *WebhookInputBinding) startHTTPServer(ctx context.Context, handler bindings.Handler) {
     // Accept incoming webhooks and forward to Dapr
     http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
         body, _ := io.ReadAll(r.Body)
-        stream.Send(&proto.ReadResponse{
+        _, err := handler(r.Context(), &bindings.ReadResponse{
             ContentType: "application/json",
             Data:        body,
         })
+        if err != nil {
+            w.WriteHeader(http.StatusInternalServerError)
+            return
+        }
         w.WriteHeader(http.StatusOK)
     })
     http.ListenAndServe(":9000", nil)
+}
+
+func (b *WebhookInputBinding) Close() error {
+    return nil
 }
 ```
 
@@ -118,9 +128,7 @@ func main() {
             return &WebhookBinding{}
         }),
         dapr.WithInputBinding(func() bindings.InputBinding {
-            return &WebhookInputBinding{
-                events: make(chan *proto.ReadResponse, 100),
-            }
+            return &WebhookInputBinding{}
         }),
     )
 
