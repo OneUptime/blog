@@ -68,7 +68,7 @@ Save and apply:
 
 ```bash
 # Self-hosted
-cp service-timeout-policy.yaml ~/.dapr/resiliency/
+cp service-timeout-policy.yaml ~/.dapr/components/
 
 # Kubernetes
 kubectl apply -f service-timeout-policy.yaml
@@ -95,7 +95,7 @@ spec:
         retry: withRetry
 ```
 
-In this configuration, each of the 3 retry attempts has a 3-second timeout. The maximum total time is approximately 12 seconds (3 attempts x 3s timeout + 2 x 1s delay).
+In this configuration, each attempt has a 3-second timeout. With `maxRetries: 3`, there are 4 total attempts (1 initial + 3 retries). The maximum total time is approximately 15 seconds (4 attempts x 3s timeout + 3 x 1s delay between retries).
 
 ## Setting Timeout on the Client Side
 
@@ -218,7 +218,9 @@ spec:
       default: 5s
   targets:
     apps:
-      all:
+      order-service:
+        timeout: default
+      payment-service:
         timeout: default
 ```
 
