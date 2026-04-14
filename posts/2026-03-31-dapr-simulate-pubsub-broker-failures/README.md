@@ -100,8 +100,8 @@ spec:
       value: "localhost:9093"  # Toxiproxy port
     - name: consumerGroup
       value: "orderservice-group"
-    - name: authRequired
-      value: "false"
+    - name: authType
+      value: "none"
 ```
 
 ## Verify Dead Letter Queue Behavior
