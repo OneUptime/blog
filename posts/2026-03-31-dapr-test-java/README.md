@@ -79,7 +79,7 @@ Use the Dapr Testcontainer to spin up a real sidecar in tests:
 ```xml
 <dependency>
   <groupId>io.dapr</groupId>
-  <artifactId>dapr-sdk-springboot</artifactId>
+  <artifactId>testcontainers-dapr</artifactId>
   <version>1.13.0</version>
   <scope>test</scope>
 </dependency>
