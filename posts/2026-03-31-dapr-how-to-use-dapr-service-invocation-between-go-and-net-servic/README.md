@@ -22,10 +22,8 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "log"
     "net/http"
-    "strconv"
     "strings"
 )
 
@@ -141,9 +139,9 @@ public class PricingClient
         );
     }
 
-    public async Task<UnitPrice> GetPriceAsync(string productId)
+    public async Task<ProductPrice> GetPriceAsync(string productId)
     {
-        return await _daprClient.InvokeMethodAsync<UnitPrice>(
+        return await _daprClient.InvokeMethodAsync<ProductPrice>(
             HttpMethod.Get,
             PricingAppId,
             $"prices/{productId}"
@@ -153,7 +151,7 @@ public class PricingClient
 
 public record PriceRequest(string ProductId, int Quantity, string Currency = "USD");
 public record PriceResponse(string ProductId, decimal UnitPrice, decimal TotalPrice, string Currency);
-public record UnitPrice(string ProductId, decimal UnitPrice);
+public record ProductPrice(string ProductId, decimal UnitPrice);
 ```
 
 Use the client in a controller:
