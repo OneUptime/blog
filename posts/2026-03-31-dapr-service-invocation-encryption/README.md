@@ -35,7 +35,7 @@ mtls:
 The `dapr-sentry` service acts as a certificate authority. Each sidecar gets a certificate with a SPIFFE ID format:
 
 ```yaml
-spiffe://cluster.local/ns/{namespace}/dapr-id/{app-id}
+spiffe://cluster.local/ns/{namespace}/{app-id}
 ```
 
 Certificates rotate automatically before expiry.
@@ -53,7 +53,7 @@ openssl req -x509 -newkey rsa:4096 -keyout root.key -out root.crt \
 kubectl create secret generic dapr-trust-bundle \
   --from-file=issuer.crt=issuer.crt \
   --from-file=issuer.key=issuer.key \
-  --from-file=root.crt=root.crt \
+  --from-file=ca.crt=root.crt \
   -n dapr-system
 ```
 
@@ -80,17 +80,21 @@ kubectl rollout restart deployment -n dapr-system
 ## Monitoring Certificate Expiry
 
 ```bash
-# Check certificate TTL on a running sidecar
-kubectl exec -it <pod-name> -c daprd -- cat /var/run/secrets/dapr.io/tls/tls.crt | \
-  openssl x509 -noout -dates
+# Check sentry certificate expiry from the trust bundle secret
+kubectl get secret dapr-trust-bundle -n dapr-system -o jsonpath='{.data.issuer\.crt}' | \
+  base64 -d | openssl x509 -noout -dates
 ```
 
 ## mTLS in Self-Hosted Mode
 
-mTLS is disabled by default in self-hosted mode but can be enabled:
+mTLS is disabled by default in self-hosted mode. To enable it, run the Sentry service and configure your Dapr runtime with a Configuration resource that has mTLS enabled:
 
 ```bash
-dapr init --enable-mtls
+# Run Sentry as the local certificate authority
+./sentry --issuer-credentials $HOME/.dapr/certs --trust-domain cluster.local
+
+# Then run your app with mTLS enabled via daprd
+daprd --app-id myapp --enable-mtls --sentry-address localhost:50001 --config=./config.yaml
 ```
 
 ## Summary
