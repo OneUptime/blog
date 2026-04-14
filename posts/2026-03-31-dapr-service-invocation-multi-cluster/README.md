@@ -43,14 +43,14 @@ If you use Istio or Linkerd for multi-cluster federation, Dapr works alongside t
 
 ```yaml
 # ServiceEntry in Istio to import remote service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cluster-b-orders
 spec:
   hosts:
     - order-service.cluster-b.svc.cluster.local
-  location: MESH_EXTERNAL
+  location: MESH_INTERNAL
   ports:
     - number: 80
       name: http
@@ -105,9 +105,11 @@ kubectl apply -f cluster-a-trust.yaml -n dapr-system --context cluster-b
 Always implement fallback logic for cross-cluster calls due to higher latency:
 
 ```javascript
+import { HttpMethod } from "@dapr/dapr";
+
 async function getRemoteOrder(id) {
   try {
-    return await daprClient.invoke('cluster-b-order-service', `orders/${id}`, 'GET');
+    return await daprClient.invoker.invoke('cluster-b-order-service', `orders/${id}`, HttpMethod.GET);
   } catch {
     return await localOrderCache.get(id);
   }
