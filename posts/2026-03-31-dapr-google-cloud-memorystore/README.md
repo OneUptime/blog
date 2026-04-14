@@ -22,7 +22,7 @@ gcloud redis instances create dapr-redis \
   --region=us-central1 \
   --redis-version=redis_7_0 \
   --enable-auth \
-  --transit-encryption-mode=SERVER_AUTHENTICATION \
+  --transit-encryption-mode=server-authentication \
   --tier=standard
 ```
 
@@ -31,7 +31,11 @@ Get the connection details:
 ```bash
 gcloud redis instances describe dapr-redis \
   --region=us-central1 \
-  --format="get(host,port,authString)"
+  --format="get(host,port)"
+
+# Get the AUTH string separately
+gcloud redis instances get-auth-string dapr-redis \
+  --region=us-central1
 ```
 
 ## Configuring Dapr State Store
@@ -56,16 +60,12 @@ spec:
       key: authString
   - name: enableTLS
     value: "true"
-  - name: failover
-    value: "true"
-  - name: sentinelMasterName
-    value: mymaster
 ```
 
 Store the AUTH string:
 
 ```bash
-AUTH_STRING=$(gcloud redis instances describe dapr-redis \
+AUTH_STRING=$(gcloud redis instances get-auth-string dapr-redis \
   --region=us-central1 --format="get(authString)")
 
 kubectl create secret generic memorystore-secret \
@@ -121,10 +121,7 @@ spec:
 Set up alerts for Redis memory usage:
 
 ```bash
-gcloud alpha monitoring policies create \
-  --policy-from-file=memorystore-alert.json
-
-# memorystore-alert.json content
+# Create memorystore-alert.json
 cat <<EOF > memorystore-alert.json
 {
   "displayName": "Memorystore High Memory",
@@ -138,6 +135,9 @@ cat <<EOF > memorystore-alert.json
   }]
 }
 EOF
+
+gcloud monitoring policies create \
+  --policy-from-file=memorystore-alert.json
 ```
 
 ## Summary
