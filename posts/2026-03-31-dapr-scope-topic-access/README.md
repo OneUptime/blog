@@ -36,7 +36,7 @@ spec:
   - name: redisHost
     value: redis-master:6379
   - name: publishingScopes
-    value: "order-service=orders,inventory-service=inventory-updates;payment-service=payments"
+    value: "order-service=orders;inventory-service=inventory-updates;payment-service=payments"
   - name: subscriptionScopes
     value: "order-processor=orders;payment-processor=payments;inventory-manager=inventory-updates"
   - name: allowedTopics
