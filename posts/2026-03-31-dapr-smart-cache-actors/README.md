@@ -15,10 +15,16 @@ A smart cache is more than a key-value store. Each entry is an actor that knows 
 ## Cache Actor Interface
 
 ```csharp
+public class SetCacheRequest
+{
+    public CacheValue Value { get; set; }
+    public int TtlSeconds { get; set; }
+}
+
 public interface ICacheEntryActor : IActor
 {
     Task<CacheValue> GetAsync();
-    Task SetAsync(CacheValue value, int ttlSeconds);
+    Task SetAsync(SetCacheRequest request);
     Task InvalidateAsync();
     Task<CacheStats> GetStatsAsync();
 }
@@ -53,19 +59,19 @@ public class CacheEntryActor : Actor, ICacheEntryActor, IRemindable
         return entry.Value.Data;
     }
 
-    public async Task SetAsync(CacheValue value, int ttlSeconds)
+    public async Task SetAsync(SetCacheRequest request)
     {
         var entry = new CacheEntry
         {
-            Data = value,
-            ExpiresAt = DateTime.UtcNow.AddSeconds(ttlSeconds),
+            Data = request.Value,
+            ExpiresAt = DateTime.UtcNow.AddSeconds(request.TtlSeconds),
             CachedAt = DateTime.UtcNow
         };
         await StateManager.SetStateAsync(ValueKey, entry);
 
         // Schedule eviction at TTL expiry
         await RegisterReminderAsync("evict", null,
-            TimeSpan.FromSeconds(ttlSeconds),
+            TimeSpan.FromSeconds(request.TtlSeconds),
             TimeSpan.FromMilliseconds(-1));  // one-shot
     }
 
