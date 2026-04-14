@@ -69,8 +69,8 @@ For ACL-enabled Consul, create the required token:
 
 ```bash
 consul acl token create \
-  --description "Dapr state store token" \
-  --policy-name global-management
+  -description "Dapr state store token" \
+  -policy-name global-management
 ```
 
 Store it as a Kubernetes secret:
