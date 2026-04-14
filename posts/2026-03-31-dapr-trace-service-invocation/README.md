@@ -45,7 +45,6 @@ spec:
 ```python
 from flask import Flask, request
 import requests
-import json
 
 app = Flask(__name__)
 DAPR_URL = "http://localhost:3500"
@@ -80,7 +79,7 @@ app = Flask(__name__)
 
 @app.route('/reserve', methods=['POST'])
 def reserve():
-    data = request.json.get('data', {})
+    data = request.json
     order_id = data['orderId']
 
     # Application processing time appears as span duration
@@ -108,13 +107,13 @@ Dapr service invocation spans include:
 
 ```bash
 # Find all calls to inventory-service
-curl "http://localhost:16686/api/v2/traces?service=order-service&tags=net.peer.name:inventory-service"
+curl "http://localhost:16686/api/traces?service=order-service&tags=net.peer.name:inventory-service"
 
 # Find slow invocations (>200ms)
-curl "http://localhost:16686/api/v2/traces?service=order-service&minDuration=200000"
+curl "http://localhost:16686/api/traces?service=order-service&minDuration=200000"
 
 # Find failed invocations
-curl "http://localhost:16686/api/v2/traces?service=order-service&tags=http.status_code:500"
+curl "http://localhost:16686/api/traces?service=order-service&tags=http.status_code:500"
 ```
 
 ## Analyzing Latency Breakdown
