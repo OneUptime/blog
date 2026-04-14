@@ -192,9 +192,10 @@ resources:
 - ../../base/components/pubsub/kafka-pubsub.yaml
 - ../../base/components/secrets/aws-secrets.yaml
 - ../../base/config/tracing.yaml
-- resiliency-patch.yaml
+- ../../base/config/resiliency.yaml
 patches:
 - path: statestore-patch.yaml
+- path: resiliency-patch.yaml
 ```
 
 ```yaml
@@ -257,7 +258,7 @@ ENV ?= development
 COMPONENTS_DIR = dapr/overlays/$(ENV)
 APP_ID ?= my-app
 
-.PHONY: components-validate components-apply components-dev components-prod
+.PHONY: components-validate components-apply components-dev components-diff components-list
 
 components-validate:
 	@echo "Validating components for environment: $(ENV)"
@@ -272,7 +273,7 @@ components-dev:
 	dapr run \
 		--app-id $(APP_ID) \
 		--app-port 5000 \
-		--components-path dapr/base/components \
+		--resources-path dapr/base/components \
 		--config dapr/base/config/tracing.yaml \
 		-- python src/app.py
 
@@ -324,6 +325,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install Kustomize
+      run: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        sudo mv kustomize /usr/local/bin/
+
     - name: Deploy to staging
       run: kustomize build dapr/overlays/staging | kubectl apply -f -
       env:
@@ -335,6 +341,11 @@ jobs:
     environment: production
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install Kustomize
+      run: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        sudo mv kustomize /usr/local/bin/
 
     - name: Deploy to production
       run: kustomize build dapr/overlays/production | kubectl apply -f -
