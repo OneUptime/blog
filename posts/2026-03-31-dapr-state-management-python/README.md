@@ -81,8 +81,6 @@ with DaprClient() as client:
 ## Getting Bulk State
 
 ```python
-from dapr.clients.grpc._request import BulkStateItem
-
 with DaprClient() as client:
     results = client.get_bulk_state(
         "statestore",
@@ -108,27 +106,23 @@ with DaprClient() as client:
 Perform atomic multi-operation transactions:
 
 ```python
-from dapr.clients.grpc._state import TransactionalStateOperation, OperationType, StateItem
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 with DaprClient() as client:
     operations = [
         TransactionalStateOperation(
-            operation_type=OperationType.upsert,
-            item=StateItem(
-                key="order:500",
-                value=json.dumps({"status": "pending", "items": 3})
-            )
+            operation_type=TransactionOperationType.upsert,
+            key="order:500",
+            data=json.dumps({"status": "pending", "items": 3}),
         ),
         TransactionalStateOperation(
-            operation_type=OperationType.upsert,
-            item=StateItem(
-                key="product:1",
-                value=json.dumps({"name": "Widget", "stock": 97})
-            )
+            operation_type=TransactionOperationType.upsert,
+            key="product:1",
+            data=json.dumps({"name": "Widget", "stock": 97}),
         ),
         TransactionalStateOperation(
-            operation_type=OperationType.delete,
-            item=StateItem(key="cart:user-42", value="")
+            operation_type=TransactionOperationType.delete,
+            key="cart:user-42",
         ),
     ]
     client.execute_state_transaction("statestore", operations)
@@ -138,6 +132,8 @@ with DaprClient() as client:
 ## Optimistic Concurrency with ETags
 
 ```python
+from dapr.clients.grpc._state import StateOptions, Concurrency
+
 with DaprClient() as client:
     # Get state with ETag
     result = client.get_state("statestore", "product:1")
@@ -150,7 +146,8 @@ with DaprClient() as client:
         "statestore",
         "product:1",
         json.dumps(product),
-        state_metadata={"etag": etag, "concurrency": "first-write"},
+        etag=etag,
+        options=StateOptions(concurrency=Concurrency.first_write),
     )
 ```
 
