@@ -29,7 +29,7 @@ spec:
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
-        dapr.io/sidecar-graceful-shutdown-seconds: "10"
+        dapr.io/graceful-shutdown-seconds: "10"
 ```
 
 This tells daprd to wait up to 10 seconds for in-flight requests to complete before shutting down.
@@ -43,7 +43,7 @@ spec:
   template:
     metadata:
       annotations:
-        dapr.io/sidecar-graceful-shutdown-seconds: "10"
+        dapr.io/graceful-shutdown-seconds: "10"
     spec:
       terminationGracePeriodSeconds: 20
 ```
@@ -90,7 +90,7 @@ containers:
           command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-This adds 5 seconds before the SIGTERM is sent, giving the app time to stop accepting new work before Dapr begins its own shutdown.
+This delays the SIGTERM to the application container by 5 seconds, giving the app time to stop accepting new work. Note that the Dapr sidecar receives its own SIGTERM independently and begins its shutdown in parallel.
 
 ## Summary
 
