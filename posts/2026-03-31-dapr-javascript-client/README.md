@@ -109,7 +109,7 @@ const config = await client.configuration.get("configstore", [
 console.log("Feature flag:", config.items["feature-flag"].value);
 
 // Subscribe to changes
-const { subscriptionId } = await client.configuration.subscribeWithKeys(
+const stream = await client.configuration.subscribeWithKeys(
   "configstore",
   ["feature-flag"],
   (config) => {
@@ -118,7 +118,7 @@ const { subscriptionId } = await client.configuration.subscribeWithKeys(
 );
 
 // Unsubscribe later
-await client.configuration.unsubscribe("configstore", subscriptionId);
+stream.stop();
 ```
 
 ## Distributed Lock
@@ -126,21 +126,19 @@ await client.configuration.unsubscribe("configstore", subscriptionId);
 Acquire and release a distributed lock:
 
 ```javascript
-const { LockStatus } = require("@dapr/dapr");
-
-const lockResponse = await client.lock.acquire(
+const lockResponse = await client.lock.lock(
   "lockstore",
   "my-resource",
   "owner-1",
   30
 );
 
-if (lockResponse.status === LockStatus.Success) {
+if (lockResponse.success) {
   try {
     // Critical section work
     console.log("Lock acquired, doing work...");
   } finally {
-    await client.lock.release("lockstore", "my-resource", "owner-1");
+    await client.lock.unlock("lockstore", "my-resource", "owner-1");
   }
 }
 ```
