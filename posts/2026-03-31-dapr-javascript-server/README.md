@@ -15,13 +15,13 @@ The `DaprServer` in the Dapr JavaScript SDK runs an HTTP or gRPC server that lis
 ## Setting Up the Server
 
 ```javascript
-const { DaprServer, CommunicationProtocolEnum } = require("@dapr/dapr");
+const { DaprServer, CommunicationProtocolEnum, HttpMethod } = require("@dapr/dapr");
 
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: process.env.APP_PORT || "3000",
   clientOptions: {
-    daprHost: "http://localhost",
+    daprHost: "127.0.0.1",
     daprPort: process.env.DAPR_HTTP_PORT || "3500",
   },
 });
@@ -52,7 +52,7 @@ await server.pubsub.subscribeWithOptions("pubsub", "orders", {
       { match: 'event.type == "cancelled"', path: "/orders/cancelled" },
     ],
   },
-  handler: async (data) => {
+  callback: async (data) => {
     console.log("Order event:", data);
   },
 });
@@ -67,13 +67,13 @@ await server.invoker.listen("getOrder", async (data) => {
   const orderId = data.body?.orderId;
   const order = await fetchOrder(orderId);
   return order;
-}, { method: "GET" });
+}, { method: HttpMethod.GET });
 
 await server.invoker.listen("createOrder", async (data) => {
   const order = data.body;
   const saved = await saveOrder(order);
   return { success: true, order: saved };
-}, { method: "POST" });
+}, { method: HttpMethod.POST });
 ```
 
 ## Handling Input Bindings
