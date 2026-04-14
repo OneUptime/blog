@@ -76,7 +76,7 @@ spec:
     value: "30s"
   - name: maxDeliver
     value: "5"
-  - name: backoff
+  - name: backOff
     value: "1s,5s,10s"
   - name: maxAckPending
     value: "1024"
@@ -87,7 +87,7 @@ Key configuration options:
 - `queueGroupName` - enables load-balanced message delivery across multiple instances
 - `ackWait` - time before unacknowledged messages are redelivered
 - `maxDeliver` - maximum delivery attempts before giving up
-- `backoff` - delivery retry intervals
+- `backOff` - delivery retry intervals
 
 ## NATS Authentication
 
@@ -100,17 +100,17 @@ spec:
   metadata:
   - name: natsURL
     value: "nats://nats.messaging.svc.cluster.local:4222"
-  - name: natsCredentialsFile
-    value: "/etc/nats/nats.creds"
-  - name: tlsClientCert
+  - name: jwt
+    value: "<your-jwt-token>"
+  - name: seedKey
+    value: "<your-seed-key>"
+  - name: tls_client_cert
     value: "/etc/nats/tls/client.crt"
-  - name: tlsClientKey
+  - name: tls_client_key
     value: "/etc/nats/tls/client.key"
-  - name: tlsCACert
-    value: "/etc/nats/tls/ca.crt"
 ```
 
-Mount credentials as a volume in your Kubernetes pod.
+Mount TLS certificates as a volume in your Kubernetes pod. Use `jwt` and `seedKey` for decentralized NATS authentication, or use `token` for token-based auth.
 
 ## Publisher Service
 
@@ -184,7 +184,7 @@ def subscribe():
             "topic": "orders",
             "route": "/process-order",
             "metadata": {
-                "deliveryPolicy": "all"
+                "deliverPolicy": "all"
             }
         }
     ])
@@ -202,7 +202,7 @@ def process_order():
     # Simulate processing
     if quantity > 100:
         logging.error(f"Order {order_id} quantity exceeds limit")
-        return jsonify({"status": "RETRY"}), 500
+        return jsonify({"status": "RETRY"}), 200
 
     return jsonify({"status": "SUCCESS"}), 200
 
@@ -230,7 +230,7 @@ nats stream add orders-stream \
 nats stream info orders-stream
 
 # View messages
-nats stream sub orders-stream --count 10
+nats stream view orders-stream
 
 # Check consumer status
 nats consumer info orders-stream dapr-consumer
@@ -264,4 +264,4 @@ spec:
 
 ## Summary
 
-NATS JetStream provides persistent, durable message delivery for Dapr pub/sub with configurable retention, consumer groups, and delivery policies. Key settings like `durableName`, `queueGroupName`, and `ackWait` control how messages are distributed and redelivered across service instances. The `backoff` parameter allows progressive retry delays, reducing load on struggling consumers while JetStream guarantees messages are not lost even if all consumers are temporarily offline.
+NATS JetStream provides persistent, durable message delivery for Dapr pub/sub with configurable retention, consumer groups, and delivery policies. Key settings like `durableName`, `queueGroupName`, and `ackWait` control how messages are distributed and redelivered across service instances. The `backOff` parameter allows progressive retry delays, reducing load on struggling consumers while JetStream guarantees messages are not lost even if all consumers are temporarily offline.
