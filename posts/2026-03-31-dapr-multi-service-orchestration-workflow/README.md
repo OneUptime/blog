@@ -19,7 +19,6 @@ Dapr Workflow is the orchestration engine. It calls services via Dapr Service In
 An e-commerce checkout involves five services: Catalog, Inventory, Pricing, Payment, and Fulfillment. The workflow coordinates them.
 
 ```csharp
-[DaprWorkflow]
 public class CheckoutOrchestrationWorkflow
     : Workflow<CheckoutInput, CheckoutResult>
 {
@@ -81,7 +80,6 @@ public class CheckoutOrchestrationWorkflow
 ## Activity Using Dapr Service Invocation
 
 ```csharp
-[DaprWorkflowActivity]
 public class ReserveInventoryActivity
     : WorkflowActivity<List<CartItem>, InventoryReservation>
 {
@@ -124,17 +122,20 @@ var payment = await context.CallActivityAsync<PaymentResult>(
 ## Querying Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/checkout-001/status
+curl http://localhost:3500/v1.0/workflows/dapr/checkout-001
 ```
 
 ```json
 {
   "instanceID": "checkout-001",
+  "workflowName": "CheckoutOrchestrationWorkflow",
+  "createdAt": "2026-03-31T10:00:00Z",
+  "lastUpdatedAt": "2026-03-31T10:00:30Z",
   "runtimeStatus": "COMPLETED",
-  "output": {
-    "status": "Completed",
-    "orderNumber": "ORD-20260331-001",
-    "total": 149.99
+  "properties": {
+    "dapr.workflow.custom_status": "",
+    "dapr.workflow.input": "{\"cartItems\":[...],\"paymentMethod\":\"card\"}",
+    "dapr.workflow.output": "{\"status\":\"Completed\",\"orderNumber\":\"ORD-20260331-001\",\"total\":149.99}"
   }
 }
 ```
