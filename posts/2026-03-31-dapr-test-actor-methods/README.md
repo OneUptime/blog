@@ -29,7 +29,12 @@ public class OrderActor : Actor, IOrderActor
 {
     private const string OrderKey = "order";
 
-    public OrderActor(ActorHost host) : base(host) { }
+    public OrderActor(ActorHost host, IActorStateManager stateManager = null)
+        : base(host)
+    {
+        if (stateManager != null)
+            StateManager = stateManager;
+    }
 
     public async Task<OrderState> GetOrderAsync()
     {
@@ -96,10 +101,9 @@ public class OrderActorTests
     {
         _mockStateManager = new Mock<IActorStateManager>();
 
-        var host = ActorHost.CreateForTest<OrderActor>(
-            new ActorTestOptions { StateManager = _mockStateManager.Object });
+        var host = ActorHost.CreateForTest<OrderActor>();
 
-        _actor = new OrderActor(host);
+        _actor = new OrderActor(host, _mockStateManager.Object);
     }
 
     [Fact]
@@ -179,4 +183,4 @@ public class OrderActorTests
 
 ## Summary
 
-Testing Dapr Actor methods requires only mocking `IActorStateManager` with `ActorHost.CreateForTest`. All actor business logic - state transitions, calculations, and validations - can be tested without a running Dapr runtime or state store. Use `ConditionalValue` to simulate both found and not-found state scenarios, and verify state save calls with Moq's `Verify`.
+Testing Dapr Actor methods requires mocking `IActorStateManager` and injecting it through the actor constructor, combined with `ActorHost.CreateForTest` to create a test host. All actor business logic - state transitions, calculations, and validations - can be tested without a running Dapr runtime or state store. Use `ConditionalValue` to simulate both found and not-found state scenarios, and verify state save calls with Moq's `Verify`.
