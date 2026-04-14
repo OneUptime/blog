@@ -35,7 +35,7 @@ if ($path === '/orders' && $method === 'POST') {
     $orderId  = $order['id'] ?? uniqid('ORD-');
 
     // Persist the order
-    $client->trySaveState('statestore', $orderId, $order);
+    $client->saveState('statestore', $orderId, $order);
 
     // Notify other services
     $client->publishEvent('pubsub', 'order-created', array_merge($order, [
@@ -51,18 +51,18 @@ if ($path === '/orders' && $method === 'POST') {
 if ($path === '/orders' && $method === 'GET') {
     parse_str($_SERVER['QUERY_STRING'] ?? '', $params);
     $orderId = $params['id'] ?? '';
-    $state   = $client->tryGetState('statestore', $orderId, 'array');
+    $state   = $client->getState('statestore', $orderId, 'array');
     header('Content-Type: application/json');
-    echo json_encode($state->value ?? ['error' => 'not found']);
+    echo json_encode($state ?? ['error' => 'not found']);
     exit;
 }
 
 // Service invocation - get order status
 if (preg_match('#^/orders/([^/]+)/status$#', $path, $m)) {
     $orderId = $m[1];
-    $state   = $client->tryGetState('statestore', $orderId, 'array');
+    $state   = $client->getState('statestore', $orderId, 'array');
     header('Content-Type: application/json');
-    echo json_encode(['order_id' => $orderId, 'status' => $state->value['status'] ?? 'unknown']);
+    echo json_encode(['order_id' => $orderId, 'status' => $state['status'] ?? 'unknown']);
     exit;
 }
 
