@@ -33,7 +33,7 @@ Note: Raft requires an odd number of replicas to maintain quorum (1, 3, 5...). 5
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_placement.replicaCount=3 \
+  --set dapr_placement.ha=true \
   --wait
 ```
 
@@ -52,27 +52,23 @@ helm upgrade dapr dapr/dapr \
 
 ## Tuning Actor Table Dissemination
 
-The placement service disseminates actor table updates to all connected sidecars. Reduce dissemination overhead by increasing the update batching interval:
+The placement service disseminates actor table updates to all connected sidecars. You can adjust the dissemination timeout via the Helm chart:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: appconfig
-spec:
-  features:
-    - name: ActorStateTTL
-      enabled: true
+```bash
+helm upgrade dapr dapr/dapr \
+  --namespace dapr-system \
+  --set dapr_placement.disseminateTimeout=10s \
+  --wait
 ```
 
 ## Reducing Sidecar Reconnections
 
-Frequent sidecar reconnections cause load spikes on the placement service. Reduce reconnection frequency by increasing the heartbeat timeout:
+Frequent sidecar reconnections cause load spikes on the placement service. Make the Kubernetes liveness probe more tolerant to reduce unnecessary sidecar restarts and reconnections:
 
 ```yaml
 annotations:
   dapr.io/sidecar-liveness-probe-period-seconds: "30"
-  dapr.io/sidecar-liveness-probe-failure-threshold: "5"
+  dapr.io/sidecar-liveness-probe-threshold: "5"
 ```
 
 ## Monitoring Placement Load
@@ -94,11 +90,11 @@ For very large clusters, consider separating actor types across different Dapr d
 ```yaml
 # Placement service for order actors
 annotations:
-  dapr.io/placement-host-address: "order-placement:50006"
+  dapr.io/placement-host-address: "order-placement:50005"
 
 # Placement service for user actors
 annotations:
-  dapr.io/placement-host-address: "user-placement:50006"
+  dapr.io/placement-host-address: "user-placement:50005"
 ```
 
 ## Summary
