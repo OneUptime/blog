@@ -32,14 +32,14 @@ type MockDaprClient struct {
     mock.Mock
 }
 
-func (m *MockDaprClient) SaveState(ctx context.Context, store, key string, value []byte, meta map[string]string) error {
-    args := m.Called(ctx, store, key, value, meta)
+func (m *MockDaprClient) SaveState(ctx context.Context, storeName, key string, data []byte, meta map[string]string, so ...dapr.StateOption) error {
+    args := m.Called(ctx, storeName, key, data, meta, so)
     return args.Error(0)
 }
 
 func TestSaveOrder(t *testing.T) {
     mockClient := new(MockDaprClient)
-    mockClient.On("SaveState", mock.Anything, "statestore", "order-123", mock.Anything, mock.Anything).Return(nil)
+    mockClient.On("SaveState", mock.Anything, "statestore", "order-123", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
     err := SaveOrder(mockClient, "order-123", map[string]interface{}{"product": "widget"})
     assert.NoError(t, err)
@@ -56,7 +56,7 @@ dapr run \
   --app-id order-service \
   --app-port 8080 \
   --dapr-http-port 3500 \
-  --components-path ./test/components \
+  --resources-path ./test/components \
   -- go run ./cmd/server
 ```
 
@@ -92,12 +92,11 @@ func TestCreateOrderIntegration(t *testing.T) {
 }
 ```
 
-## Using Dapr's Test Helper for Python
+## Unit Testing Dapr in Python with Mocks
 
-The Python SDK ships with a test helper that can spin up a mock Dapr server:
+You can unit test Dapr Python apps by mocking the `DaprClient` using standard `unittest.mock`:
 
 ```python
-import pytest
 from dapr.clients import DaprClient
 from unittest.mock import MagicMock, patch
 
