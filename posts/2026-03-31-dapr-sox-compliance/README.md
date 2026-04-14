@@ -100,7 +100,11 @@ func (s *FinancialService) UpdateLedgerEntry(ctx context.Context, entryID string
         After:     newEntry,
     }
     auditBytes, _ := json.Marshal(audit)
-    return client.InvokeOutputBinding(ctx, "sox-audit-binding", "create", auditBytes)
+    return client.InvokeOutputBinding(ctx, &dapr.InvokeBindingRequest{
+        Name:      "sox-audit-binding",
+        Operation: "create",
+        Data:      auditBytes,
+    })
 }
 ```
 
@@ -157,7 +161,7 @@ spec:
   metadata:
   - name: redisHost
     value: "redis-finance-replica:6379"
-  - name: readOnly
+  - name: enableTLS
     value: "true"
 scopes:
 - financial-reporting-readonly
@@ -179,7 +183,7 @@ spec:
   - name: sox.dapr
     rules:
     - alert: UnauthorizedComponentAccess
-      expr: increase(dapr_component_authorization_failure_total[5m]) > 0
+      expr: increase(dapr_runtime_acl_app_policy_action_blocked_total[5m]) > 0
       for: 0m
       labels:
         severity: critical
@@ -190,4 +194,4 @@ EOF
 
 ## Summary
 
-SOX compliance with Dapr centers on three pillars: immutable audit trails using append-only bindings to Kafka or object storage, strict role-based access enforced through Dapr component scopes and Kubernetes RBAC, and separation of duties between services that read vs. write financial data. Log every financial state change with before/after snapshots, retain audit logs for at least 7 years as required by SOX, and configure alerts for unauthorized access attempts to financial components.
+SOX compliance with Dapr centers on three pillars: immutable audit trails using append-only bindings to Kafka or object storage, strict role-based access enforced through Dapr component scopes and Kubernetes RBAC, and separation of duties between services that read vs. write financial data. Log every financial state change with before/after snapshots, retain audit logs for at least 7 years per SEC Rule 2-06 implementing SOX Section 802, and configure alerts for unauthorized access attempts to financial components.
