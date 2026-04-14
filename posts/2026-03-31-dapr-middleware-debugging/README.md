@@ -58,7 +58,7 @@ Dapr exposes a metadata endpoint that shows loaded components:
 curl http://localhost:3500/v1.0/metadata
 ```
 
-The response includes all registered components. If your middleware component is missing from this list, there is a loading error.
+The response includes all loaded components. If your middleware component is missing from this list, there is a loading error.
 
 Sample response showing components:
 
@@ -66,7 +66,7 @@ Sample response showing components:
 {
   "id": "myapp",
   "activeActorsCount": [],
-  "registeredComponents": [
+  "components": [
     {
       "name": "response-transformer",
       "type": "middleware.http.uppercase",
@@ -76,9 +76,9 @@ Sample response showing components:
 }
 ```
 
-## Use a Passthrough Middleware for Request Inspection
+## Use a Passthrough Middleware to Verify the Pipeline
 
-A useful debugging technique is to insert a logging middleware at the start of the pipeline to capture raw request and response data:
+A useful debugging technique is to insert a permissive middleware at the start of the pipeline to verify the pipeline is assembled correctly. The routerchecker middleware with a wildcard pattern lets all requests through while appearing in debug logs:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -89,7 +89,7 @@ spec:
   type: middleware.http.routerchecker
   version: v1
   metadata:
-    - name: allowedPattern
+    - name: rule
       value: ".*"
 ```
 
@@ -136,4 +136,4 @@ Expected output:
 
 ## Summary
 
-Debugging Dapr middleware starts with enabling debug logging and checking component load status via the metadata API. Use the `kubectl describe` commands to surface component errors, verify pipeline configuration annotations on pods, and validate WASM binaries when using custom transforms. Inserting a passthrough logging middleware helps inspect the raw request and response flow.
+Debugging Dapr middleware starts with enabling debug logging and checking component load status via the metadata API. Use the `kubectl describe` commands to surface component errors, verify pipeline configuration annotations on pods, and validate WASM binaries when using custom transforms. Inserting a permissive passthrough middleware like routerchecker helps verify that the pipeline is assembled and processing requests correctly.
