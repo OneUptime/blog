@@ -76,7 +76,7 @@ annotations:
 
 ## Creating a Datadog Log Pipeline
 
-In the Datadog UI, create a log pipeline to parse Dapr JSON logs:
+Datadog automatically parses JSON-formatted logs during preprocessing, so Dapr's JSON fields are available as attributes. Create a log pipeline to remap those attributes to Datadog's reserved fields:
 
 ```json
 {
@@ -86,27 +86,16 @@ In the Datadog UI, create a log pipeline to parse Dapr JSON logs:
   },
   "processors": [
     {
-      "type": "json-parser",
-      "name": "Parse Dapr JSON",
-      "is_enabled": true,
-      "source": "message",
-      "target": "parsed"
-    },
-    {
-      "type": "attribute-remapper",
+      "type": "status-remapper",
       "name": "Remap level to status",
       "is_enabled": true,
-      "sources": ["parsed.level"],
-      "target": "status",
-      "preserve_source": true
+      "sources": ["level"]
     },
     {
-      "type": "attribute-remapper",
+      "type": "service-remapper",
       "name": "Remap app_id to service",
       "is_enabled": true,
-      "sources": ["parsed.app_id"],
-      "target": "service",
-      "preserve_source": true
+      "sources": ["app_id"]
     }
   ]
 }
@@ -127,7 +116,7 @@ source:dapr "circuit breaker"
 source:dapr service:order-service status:error
 
 # Resiliency policy activations
-source:dapr "resiliency" @parsed.app_id:payment-service
+source:dapr "resiliency" @app_id:payment-service
 ```
 
 ## Setting Up Log-Based Monitors
