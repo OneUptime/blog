@@ -15,12 +15,12 @@ The Dapr sidecar exposes several health check endpoints that you can use for Kub
 | Endpoint | Purpose |
 |----------|---------|
 | `/v1.0/healthz` | Sidecar is running and healthy |
-| `/v1.0/healthz/outbound` | Sidecar can reach all components |
+| `/v1.0/healthz/outbound` | Sidecar and all components are initialized |
 | `/v1.0/metadata` | Full sidecar metadata including component status |
 
 ## Configuring Kubernetes Liveness Probe
 
-Add a liveness probe that checks the Dapr sidecar:
+Dapr's sidecar injector automatically adds liveness and readiness probes to the daprd sidecar container. You can customize the probe settings using Dapr annotations on your deployment:
 
 ```yaml
 apiVersion: apps/v1
@@ -29,36 +29,29 @@ metadata:
   name: my-app
 spec:
   template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "my-app"
+        dapr.io/sidecar-liveness-probe-delay-seconds: "10"
+        dapr.io/sidecar-liveness-probe-period-seconds: "10"
+        dapr.io/sidecar-liveness-probe-threshold: "3"
+        dapr.io/sidecar-readiness-probe-delay-seconds: "5"
+        dapr.io/sidecar-readiness-probe-period-seconds: "5"
+        dapr.io/sidecar-readiness-probe-threshold: "3"
     spec:
       containers:
         - name: app
-          livenessProbe:
-            httpGet:
-              path: /v1.0/healthz
-              port: 3500
-              scheme: HTTP
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            failureThreshold: 3
+          image: my-app:latest
 ```
 
-Note: Port 3500 is the default Dapr HTTP port on the sidecar.
+Note: Port 3500 is the default Dapr HTTP port on the sidecar. The injected probes target `/v1.0/healthz` on this port automatically.
 
 ## Configuring Readiness Probe with Outbound Check
 
-Use the outbound health endpoint for readiness - it verifies that all Dapr components are reachable:
+You can also check the outbound health endpoint directly from your application. The `/v1.0/healthz/outbound` endpoint verifies that all Dapr components are initialized and the HTTP port is available, without requiring the app channel to be established. This is useful for startup sequencing — your app can call Dapr APIs (like the secrets API) before the app channel is ready.
 
-```yaml
-readinessProbe:
-  httpGet:
-    path: /v1.0/healthz/outbound
-    port: 3500
-  initialDelaySeconds: 5
-  periodSeconds: 5
-  failureThreshold: 3
-```
-
-The outbound endpoint returns HTTP 200 only when all configured components (state stores, pub/sub, etc.) are accessible.
+The outbound endpoint returns HTTP 204 when the sidecar and all components are initialized, or HTTP 500 otherwise.
 
 ## Waiting for Dapr to Be Ready at App Startup
 
@@ -103,7 +96,7 @@ Get detailed component health status:
 curl http://localhost:3500/v1.0/metadata | python3 -m json.tool | grep -A 5 "components"
 ```
 
-Response includes each component's status:
+Response includes each registered component's details:
 
 ```json
 {
@@ -112,8 +105,7 @@ Response includes each component's status:
       "name": "statestore",
       "type": "state.redis",
       "version": "v1",
-      "capabilities": ["ETAG", "TRANSACTIONAL"],
-      "status": "OK"
+      "capabilities": ["ETAG", "TRANSACTIONAL"]
     }
   ]
 }
@@ -139,4 +131,4 @@ app.get('/health', async (req, res) => {
 
 ## Summary
 
-Dapr provides `/v1.0/healthz` for basic sidecar health and `/v1.0/healthz/outbound` for component connectivity checks. Use the outbound endpoint for Kubernetes readiness probes to prevent traffic from reaching pods before Dapr components are reachable. Implement startup sequencing in your application to wait for the sidecar before making Dapr API calls, preventing race conditions during pod initialization.
+Dapr provides `/v1.0/healthz` for basic sidecar health and `/v1.0/healthz/outbound` for component initialization checks. Both endpoints return HTTP 204 when healthy. Dapr's sidecar injector automatically configures liveness and readiness probes on the sidecar container, which you can customize via annotations. Implement startup sequencing in your application to wait for the sidecar before making Dapr API calls, preventing race conditions during pod initialization.
