@@ -73,7 +73,7 @@ func main() {
             LockOwner:  "worker-1",
             ResourceID: "payment-processor",
         })
-        if err != nil || unlockResp.Status != dapr.Success {
+        if err != nil || unlockResp.Status != "SUCCESS" {
             log.Printf("failed to release lock: %v", err)
         }
     }()
