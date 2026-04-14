@@ -36,10 +36,12 @@ spec:
     - ports:
         - port: 3500
         - port: 50001
+        - port: 50002
   egress:
     - ports:
         - port: 3500
         - port: 50001
+        - port: 50002
 ```
 
 ## Step 2: Allow Access to Dapr System Services
@@ -63,8 +65,8 @@ spec:
               kubernetes.io/metadata.name: dapr-system
       ports:
         - port: 50005
-        - port: 50006
-        - port: 9090
+        - port: 50001
+        - port: 6500
 ```
 
 ## Step 3: Restrict App-to-App Traffic
