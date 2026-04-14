@@ -14,15 +14,13 @@ Permanent errors represent failures that will not resolve with retries - invalid
 
 ## Detecting Permanent Errors in Subscribers
 
-Return a specific HTTP status to signal that a message should not be retried:
+Return a specific status in the response body to signal that a message should not be retried:
 
 ```python
 from flask import Flask, request, jsonify
 import json
 
 app = Flask(__name__)
-
-PERMANENT_ERROR_CODES = {400, 401, 403, 404, 422}
 
 @app.route("/dapr/subscribe", methods=["GET"])
 def subscribe():
@@ -41,15 +39,15 @@ def process_order():
 
     validation_error = validate_order(order)
     if validation_error:
-        # Return 404 to signal permanent failure - route to dead letter
-        return jsonify({"error": validation_error}), 404
+        # Return DROP status to signal permanent failure - route to dead letter
+        return jsonify({"status": "DROP"}), 200
 
     try:
         fulfill_order(order)
-        return "", 200
+        return jsonify({"status": "SUCCESS"}), 200
     except Exception as e:
-        # Return 500 for transient errors - Dapr will retry
-        return jsonify({"error": str(e)}), 500
+        # Return RETRY status for transient errors - Dapr will retry
+        return jsonify({"status": "RETRY"}), 200
 ```
 
 ## Routing Permanent Failures to Dead Letter Topics
@@ -57,7 +55,7 @@ def process_order():
 Configure the dead letter topic in your subscription:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-subscription
@@ -140,4 +138,4 @@ def publish_order(order: dict):
 
 ## Summary
 
-Permanent errors in Dapr applications should be surfaced immediately by returning non-retryable HTTP status codes and routing messages to dead letter topics. Separate dead letter subscribers handle investigation, alerting, and manual reprocessing workflows. Distinguishing permanent from transient failures early prevents retry storms and accelerates incident detection.
+Permanent errors in Dapr applications should be surfaced immediately by returning a `DROP` status and routing messages to dead letter topics. Separate dead letter subscribers handle investigation, alerting, and manual reprocessing workflows. Distinguishing permanent from transient failures early prevents retry storms and accelerates incident detection.
