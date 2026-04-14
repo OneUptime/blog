@@ -42,7 +42,7 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "checkout-service"
   dapr.io/config: "dapr-honeycomb-tracing"
-  dapr.io/sidecar-env-vars: "OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=YOUR_API_KEY,x-honeycomb-dataset=dapr-traces"
+  dapr.io/env: "OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=YOUR_API_KEY"
 ```
 
 ## Option 2 - Via OpenTelemetry Collector
@@ -139,14 +139,11 @@ CALCULATE P99(duration_ms)
 ## Verifying the Connection
 
 ```bash
-# Test the OTLP connection manually
-curl -X POST https://api.honeycomb.io/v1/traces \
+# Verify API key and connectivity
+curl https://api.honeycomb.io/1/auth \
   -H "x-honeycomb-team: YOUR_API_KEY" \
-  -H "x-honeycomb-dataset: dapr-traces" \
-  -H "Content-Type: application/json" \
-  -d '{}' \
-  -w "%{http_code}"
-# Expected: 200 or 204
+  -w "\n%{http_code}"
+# Expected: 200
 ```
 
 ## Summary
