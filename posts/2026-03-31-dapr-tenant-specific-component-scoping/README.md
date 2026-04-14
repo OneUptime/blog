@@ -37,7 +37,7 @@ Only apps with `dapr.io/app-id: "payments-api"` or `dapr.io/app-id: "audit-servi
 
 ## Scoping Pub/Sub Components
 
-Separate publish and subscribe access for pub/sub components using the `publishingScopes` and `subscriptionScopes` fields:
+Control which apps can publish or subscribe to specific topics using the `publishingScopes` and `subscriptionScopes` metadata entries on the pub/sub component:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -51,28 +51,19 @@ spec:
   metadata:
   - name: redisHost
     value: redis:6379
+  - name: publishingScopes
+    value: "orders-api=orders;billing-api=invoices,payments"
+  - name: subscriptionScopes
+    value: "fulfillment-api=orders;audit-service=orders,invoices,payments"
 ```
 
-Use an allowed topics list in the subscription to control which apps subscribe to which topics:
+The `publishingScopes` and `subscriptionScopes` values use a semicolon-separated format of `appID=topic1,topic2`. In the example above, `orders-api` can only publish to the `orders` topic, while `billing-api` can publish to `invoices` and `payments`. Similarly, `fulfillment-api` can only subscribe to `orders`, while `audit-service` can subscribe to all three topics.
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Subscription
-metadata:
-  name: orders-sub
-  namespace: tenant-a
-spec:
-  pubsubname: pubsub
-  topic: orders
-  routes:
-    default: /orders/process
-```
-
-Combine with app-level scoping using the component's `scopes` field to limit which apps can publish.
+Combine with the component-level `scopes` field to also restrict which apps can load the pub/sub component at all.
 
 ## Denying Components to Specific Apps
 
-You can explicitly deny access using a deny list pattern. If the `scopes` field is set and an app is NOT listed, it cannot use the component:
+The `scopes` field acts as an allowlist. If the `scopes` field is set and an app is NOT listed, it cannot use the component:
 
 ```yaml
 # Only orders-api and billing-api can use this component
@@ -94,7 +85,7 @@ import json, sys
 data = json.load(sys.stdin)
 for item in data['items']:
     name = item['metadata']['name']
-    scopes = item['spec'].get('scopes', ['ALL'])
+    scopes = item.get('scopes', ['ALL'])
     print(f'{name}: {scopes}')
 "
 ```
