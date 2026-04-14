@@ -44,7 +44,7 @@ spec:
 const { DaprClient } = require("@dapr/dapr");
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: "3500",
 });
 ```
@@ -85,8 +85,8 @@ const items = await client.state.getBulk("statestore", [
   "product:102",
 ]);
 
-items.forEach(({ key, data }) => {
-  console.log(`${key}: ${data.name} - $${data.price}`);
+items.forEach(({ key, value }) => {
+  console.log(`${key}: ${value.name} - $${value.price}`);
 });
 ```
 
@@ -120,17 +120,17 @@ await client.state.transaction("statestore", [
 
 ## ETags and Optimistic Concurrency
 
-Use ETags to prevent concurrent overwrites:
+Use ETags to prevent concurrent overwrites. Since `state.get()` does not return ETags, use `getBulk()` to retrieve the value along with its ETag:
 
 ```javascript
-const item = await client.state.get("statestore", "product:101");
+const [item] = await client.state.getBulk("statestore", ["product:101"]);
 const etag = item.etag;
 
 // Update only if etag matches
 await client.state.save("statestore", [
   {
     key: "product:101",
-    value: { ...item, stock: item.stock - 1 },
+    value: { ...item.value, stock: item.value.stock - 1 },
     etag,
     options: { concurrency: "first-write", consistency: "strong" },
   },
