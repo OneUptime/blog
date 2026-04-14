@@ -79,7 +79,6 @@ with DaprClient() as client:
 A common pattern is to load secrets once at startup and inject them into your application configuration:
 
 ```python
-import os
 from dapr.clients import DaprClient
 
 def load_config():
@@ -129,7 +128,7 @@ with DaprClient() as client:
 ## Running the App
 
 ```bash
-dapr run --app-id secrets-app --components-path ./components -- python app.py
+dapr run --app-id secrets-app --resources-path ./components -- python app.py
 ```
 
 ## Summary
