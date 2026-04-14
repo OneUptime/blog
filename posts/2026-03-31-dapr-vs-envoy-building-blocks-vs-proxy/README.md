@@ -14,7 +14,7 @@ Dapr and Envoy are often mentioned together in microservices conversations, but 
 
 Envoy is a high-performance L4/L7 proxy written in C++. It is the data plane component used by service meshes like Istio, Consul Connect, and AWS App Mesh. On its own, Envoy handles:
 
-- TCP and HTTP/2 proxying
+- TCP, HTTP/1.1, HTTP/2, and HTTP/3 (QUIC) proxying
 - Load balancing (round-robin, least request, ring hash)
 - Circuit breaking
 - Rate limiting
