@@ -12,19 +12,20 @@ Dapr SDKs handle serialization transparently in most cases, but understanding th
 
 ## Default Serialization Format
 
-By default, Dapr SDKs serialize data as JSON when sending to state stores, pub/sub, and service invocation. The HTTP API sends JSON bodies; the gRPC API uses Protobuf with a JSON-encoded `Any` type for payloads.
+By default, Dapr SDKs serialize data as JSON when sending to state stores, pub/sub, and service invocation. The HTTP API sends JSON bodies; the gRPC API wraps payloads as `bytes` fields within Protobuf messages, where the bytes typically contain JSON-encoded data.
 
 ### Python SDK Example
 
 ```python
+import json
 from dapr.clients import DaprClient
 
 with DaprClient() as client:
-    # This dict is serialized to JSON automatically
+    # The value must be a string or bytes — serialize to JSON first
     state_value = {"user_id": 123, "name": "Alice"}
-    client.save_state(store_name="statestore", key="user-123", value=state_value)
+    client.save_state(store_name="statestore", key="user-123", value=json.dumps(state_value))
 
-    # Retrieval deserializes from JSON
+    # Retrieval returns a StateResponse; call .json() to deserialize
     result = client.get_state(store_name="statestore", key="user-123")
     user = result.json()  # Returns the dict
     print(user["name"])   # Alice
@@ -99,10 +100,12 @@ The key is that Go uses `json:"user_id"` field tags to match the Python key name
 Dapr passes content type metadata for pub/sub messages. Set it explicitly:
 
 ```python
+import json
+
 client.publish_event(
     pubsub_name="pubsub",
     topic_name="orders",
-    data={"order_id": 42},
+    data=json.dumps({"order_id": 42}),
     data_content_type="application/json"
 )
 ```
