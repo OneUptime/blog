@@ -12,14 +12,14 @@ State store latency directly impacts application responsiveness. When Redis, Cas
 
 ## Dapr State Store Latency Metrics
 
-Dapr instruments all state operations with duration histograms:
+Dapr instruments all state operations with a single duration histogram that uses an `operation` label to distinguish operation types:
 
-- `dapr_state_get_duration_msec` - read operation latency histogram
-- `dapr_state_set_duration_msec` - write operation latency histogram
-- `dapr_state_delete_duration_msec` - delete operation latency histogram
-- `dapr_state_query_duration_msec` - query operation latency histogram
+- `dapr_component_state_latencies{operation="get"}` - read operation latency
+- `dapr_component_state_latencies{operation="set"}` - write operation latency
+- `dapr_component_state_latencies{operation="delete"}` - delete operation latency
+- `dapr_component_state_latencies{operation="query"}` - query operation latency
 
-All metrics include `storeName` and `success` labels for filtering.
+The metric also includes `app_id`, `component`, `namespace`, and `success` labels for filtering.
 
 ## Querying State Store Latency
 
@@ -28,20 +28,20 @@ Calculate p50, p95, and p99 latencies for state reads:
 ```promql
 # p99 read latency by store
 histogram_quantile(0.99,
-  sum(rate(dapr_state_get_duration_msec_bucket[5m]))
-  by (storeName, le)
+  sum(rate(dapr_component_state_latencies_bucket{operation="get"}[5m]))
+  by (component, le)
 )
 
 # p95 write latency
 histogram_quantile(0.95,
-  sum(rate(dapr_state_set_duration_msec_bucket[5m]))
-  by (storeName, le)
+  sum(rate(dapr_component_state_latencies_bucket{operation="set"}[5m]))
+  by (component, le)
 )
 
 # Average read latency
-rate(dapr_state_get_duration_msec_sum[5m])
+rate(dapr_component_state_latencies_sum{operation="get"}[5m])
 /
-rate(dapr_state_get_duration_msec_count[5m])
+rate(dapr_component_state_latencies_count{operation="get"}[5m])
 ```
 
 ## Setting Up Latency Alerting Rules
@@ -60,41 +60,41 @@ spec:
         - alert: DaprStateReadHighLatency
           expr: |
             histogram_quantile(0.99,
-              sum(rate(dapr_state_get_duration_msec_bucket[5m]))
-              by (storeName, le)
+              sum(rate(dapr_component_state_latencies_bucket{operation="get"}[5m]))
+              by (component, le)
             ) > 100
           for: 3m
           labels:
             severity: warning
           annotations:
             summary: "Dapr state store read p99 latency high"
-            description: "State store {{ $labels.storeName }} read p99 is {{ $value }}ms, exceeding 100ms SLO."
+            description: "State store {{ $labels.component }} read p99 is {{ $value }}ms, exceeding 100ms SLO."
 
         - alert: DaprStateWriteHighLatency
           expr: |
             histogram_quantile(0.99,
-              sum(rate(dapr_state_set_duration_msec_bucket[5m]))
-              by (storeName, le)
+              sum(rate(dapr_component_state_latencies_bucket{operation="set"}[5m]))
+              by (component, le)
             ) > 150
           for: 3m
           labels:
             severity: warning
           annotations:
             summary: "Dapr state store write p99 latency high"
-            description: "State store {{ $labels.storeName }} write p99 is {{ $value }}ms."
+            description: "State store {{ $labels.component }} write p99 is {{ $value }}ms."
 
         - alert: DaprStateStoreCriticalLatency
           expr: |
             histogram_quantile(0.99,
-              sum(rate(dapr_state_get_duration_msec_bucket[5m]))
-              by (storeName, le)
+              sum(rate(dapr_component_state_latencies_bucket{operation="get"}[5m]))
+              by (component, le)
             ) > 1000
           for: 1m
           labels:
             severity: critical
           annotations:
             summary: "Dapr state store critically slow"
-            description: "State store {{ $labels.storeName }} p99 read latency is {{ $value }}ms - backend may be down."
+            description: "State store {{ $labels.component }} p99 read latency is {{ $value }}ms - backend may be down."
 ```
 
 ## Redis-Specific State Store Monitoring
@@ -131,7 +131,7 @@ Alert on Redis latency directly:
 
 ```yaml
         - alert: RedisStateBackendHighLatency
-          expr: redis_commands_duration_seconds_total / redis_commands_total > 0.01
+          expr: rate(redis_commands_duration_seconds_total[5m]) / rate(redis_commands_total[5m]) > 0.01
           for: 5m
           labels:
             severity: warning
@@ -146,12 +146,12 @@ Use Grafana to create a correlation dashboard:
 ```promql
 # State store contribution to overall latency
 histogram_quantile(0.99,
-  sum(rate(dapr_state_get_duration_msec_bucket[5m]))
+  sum(rate(dapr_component_state_latencies_bucket{operation="get"}[5m]))
   by (le)
 )
 /
 histogram_quantile(0.99,
-  sum(rate(dapr_http_server_request_duration_msec_bucket[5m]))
+  sum(rate(dapr_http_server_latency_bucket[5m]))
   by (le)
 )
 ```
