@@ -13,7 +13,8 @@ Description: Learn how to handle message processing failures in Dapr pub/sub usi
 When a Dapr subscriber fails to process a message, the sidecar's behavior depends on the HTTP status code returned by the handler:
 
 - `200` or `204`: Message processed successfully, acknowledge and remove.
-- `404` or `500+`: Retry the message according to the resiliency policy.
+- `404`: Message is dropped (logged as error, not retried).
+- Other non-success status codes (e.g., `500`): Retry the message according to the resiliency policy.
 - `200` with body `{"status": "RETRY"}`: Explicit retry request.
 - `200` with body `{"status": "DROP"}`: Discard the message without retry.
 
@@ -152,11 +153,11 @@ app.post("/handlers/orders", (req, res) => {
 
 Use Dapr metrics to track message failures in Prometheus/Grafana:
 
-```bash
-# Query for message processing failure rate
-dapr_pubsub_incoming_messages_total{result="fail"}
-dapr_pubsub_incoming_messages_total{result="retry"}
-dapr_pubsub_incoming_messages_total{result="drop"}
+```promql
+# Query for message ingress count by status
+dapr_component_pubsub_ingress_count{status="success"}
+dapr_component_pubsub_ingress_count{status="drop"}
+dapr_component_pubsub_ingress_count{status="retry"}
 ```
 
 ## Summary
