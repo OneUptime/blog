@@ -83,11 +83,11 @@ aws sns subscribe \
   --notification-endpoint $QUEUE_ARN \
   --region $AWS_REGION
 
-# Allow SNS to publish to SQS
+# Allow SNS and EventBridge to publish to SQS
 aws sqs set-queue-attributes \
   --queue-url $QUEUE_URL \
   --attributes '{
-    "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"'"$QUEUE_ARN"'\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"'"$SNS_ARN"'\"}}}]}"
+    "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"'"$QUEUE_ARN"'\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"'"$SNS_ARN"'\"}}},{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"events.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"'"$QUEUE_ARN"'\"}]}"
   }'
 
 echo "SNS ARN: $SNS_ARN"
