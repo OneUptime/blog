@@ -8,34 +8,31 @@ Description: Learn how to use the Redis table engine in ClickHouse to read key-v
 
 ---
 
-The `Redis` table engine connects ClickHouse to a Redis key-value store and lets you query Redis data as a ClickHouse table. It maps Redis keys to the primary key column and Redis hash fields (or string values) to other columns. The engine is useful for enriching ClickHouse queries with real-time data stored in Redis, such as user sessions, feature flags, rate-limit counters, or real-time inventory levels.
+The `Redis` table engine connects ClickHouse to a Redis key-value store and lets you query Redis data as a ClickHouse table. It maps Redis keys to the primary key column and serializes all other columns into a single binary value stored as a Redis string. The engine is useful for enriching ClickHouse queries with real-time data stored in Redis, such as user sessions, feature flags, rate-limit counters, or real-time inventory levels.
 
 ## Prerequisites
 
-ClickHouse must be able to reach the Redis server on its port (default 6379). Ensure the Redis user (if ACLs are enabled) has `GET` and `HGETALL` permissions.
+ClickHouse must be able to reach the Redis server on its port (default 6379). Ensure the Redis user (if ACLs are enabled) has permissions for `MGET`, `MSET`, `SCAN`, and `DEL` commands.
 
 ## Creating a Redis Engine Table
 
-The Redis engine supports two storage modes:
-- **Simple mode**: each key maps to a single string value.
-- **Hash mode**: each key maps to a Redis hash (multiple fields).
+The first column is the primary key and becomes the Redis key. All other columns are serialized together into a single binary value stored as a Redis string (via `MSET`/`MGET`). This means the non-key column data is not individually accessible from Redis — it is a binary blob that only ClickHouse can decode.
 
 ```sql
--- Hash mode: key = user_id, fields = username, plan, country, last_seen
 CREATE TABLE redis_user_cache
 (
-    user_id   UInt64,    -- Redis key
-    username  String,    -- Redis hash field
-    plan      String,    -- Redis hash field
-    country   String,    -- Redis hash field
-    last_seen DateTime   -- Redis hash field
+    user_id   String,    -- Redis key (primary key)
+    username  String,    -- serialized into Redis value
+    plan      String,    -- serialized into Redis value
+    country   String,    -- serialized into Redis value
+    last_seen DateTime   -- serialized into Redis value
 )
 ENGINE = Redis(
     'redis-host:6379',
     0,                   -- Redis database number (0-15)
     'secret_password'    -- Redis AUTH password (empty string if no auth)
 )
-PRIMARY KEY user_id;
+PRIMARY KEY(user_id);
 ```
 
 ## Reading From Redis
@@ -43,7 +40,7 @@ PRIMARY KEY user_id;
 ```sql
 SELECT user_id, username, plan, country, last_seen
 FROM redis_user_cache
-WHERE user_id IN (1001, 1002, 1003);
+WHERE user_id IN ('1001', '1002', '1003');
 ```
 
 ```text
@@ -55,25 +52,25 @@ user_id  username  plan     country  last_seen
 
 ## Inserting Data Into Redis
 
-The Redis engine supports `INSERT`, which writes to Redis as hash keys.
+The Redis engine supports `INSERT`, which writes to Redis via `MSET`.
 
 ```sql
 INSERT INTO redis_user_cache VALUES
-    (2001, 'dave',   'pro',     'GB', '2024-06-15 11:00:00'),
-    (2002, 'eve',    'premium', 'AU', '2024-06-15 11:05:00'),
-    (2003, 'frank',  'free',    'CA', '2024-06-15 11:10:00');
+    ('2001', 'dave',   'pro',     'GB', '2024-06-15 11:00:00'),
+    ('2002', 'eve',    'premium', 'AU', '2024-06-15 11:05:00'),
+    ('2003', 'frank',  'free',    'CA', '2024-06-15 11:10:00');
 ```
 
-Each row becomes a Redis hash at key `2001`, `2002`, `2003` with fields `username`, `plan`, `country`, `last_seen`.
+Each row creates a Redis string key (`2001`, `2002`, `2003`) whose value is a binary blob containing the serialized non-key columns (`username`, `plan`, `country`, `last_seen`).
 
 ## Updating a Row
 
-Insert a row with the same primary key to overwrite the existing Redis hash fields.
+Insert a row with the same primary key to overwrite the existing Redis value.
 
 ```sql
 -- Dave upgraded to premium
 INSERT INTO redis_user_cache VALUES
-    (2001, 'dave', 'premium', 'GB', now());
+    ('2001', 'dave', 'premium', 'GB', now());
 ```
 
 ## Joining Redis Data With ClickHouse Analytics
@@ -90,7 +87,7 @@ SELECT
     uniq(e.user_id)  AS unique_users,
     sum(e.revenue)   AS revenue
 FROM daily_events AS e
-JOIN redis_user_cache AS r ON e.user_id = r.user_id
+JOIN redis_user_cache AS r ON toString(e.user_id) = r.user_id
 WHERE e.event_date = today()
 GROUP BY e.event_date, r.plan, r.country
 ORDER BY revenue DESC
@@ -103,12 +100,12 @@ LIMIT 10;
 CREATE TABLE redis_feature_flags
 (
     flag_name   String,    -- Redis key
-    enabled     UInt8,     -- Redis hash field
-    rollout_pct UInt8,     -- Redis hash field
-    updated_by  String     -- Redis hash field
+    enabled     UInt8,     -- serialized into Redis value
+    rollout_pct UInt8,     -- serialized into Redis value
+    updated_by  String     -- serialized into Redis value
 )
 ENGINE = Redis('redis-host:6379', 0, '')
-PRIMARY KEY flag_name;
+PRIMARY KEY(flag_name);
 
 -- Check which features are currently enabled
 SELECT flag_name, enabled, rollout_pct, updated_by
@@ -133,7 +130,7 @@ CREATE TABLE redis_rate_limits
     expires   DateTime  -- TTL timestamp
 )
 ENGINE = Redis('redis-host:6379', 1, 'secret')
-PRIMARY KEY key;
+PRIMARY KEY(key);
 
 -- Check if a user is close to their rate limit
 SELECT
@@ -159,7 +156,7 @@ CREATE TABLE redis_sessions
     is_valid    UInt8
 )
 ENGINE = Redis('redis-host:6379', 2, 'session_pass')
-PRIMARY KEY session_id;
+PRIMARY KEY(session_id);
 
 -- Find all active sessions for a user
 SELECT session_id, ip_address, created_at, expires_at
@@ -172,10 +169,11 @@ ORDER BY created_at DESC;
 
 ## Deleting Data From Redis
 
+The Redis engine uses the `ALTER TABLE ... DELETE` syntax to remove rows from Redis.
+
 ```sql
--- Delete expired sessions from Redis via ClickHouse
-DELETE FROM redis_sessions
-WHERE expires_at < now();
+-- Delete a specific session from Redis via ClickHouse
+ALTER TABLE redis_sessions DELETE WHERE session_id = 'abc123';
 ```
 
 ## Full Scan Limitations
@@ -189,23 +187,24 @@ SELECT count() FROM redis_user_cache WHERE plan = 'premium';
 -- Fast - direct key lookup
 SELECT *
 FROM redis_user_cache
-WHERE user_id IN (1001, 1002, 1003);
+WHERE user_id IN ('1001', '1002', '1003');
 ```
 
 ## Using Named Collections for Credentials
 
 ```xml
 <!-- config.d/named_collections.xml -->
-<yandex>
+<clickhouse>
   <named_collections>
     <redis_prod>
       <host>redis-host</host>
       <port>6379</port>
       <password>secret_password</password>
       <db_index>0</db_index>
+      <pool_size>16</pool_size>
     </redis_prod>
   </named_collections>
-</yandex>
+</clickhouse>
 ```
 
 ```sql
@@ -216,25 +215,7 @@ CREATE TABLE redis_cache
     plan     String
 )
 ENGINE = Redis(redis_prod)
-PRIMARY KEY user_id;
-```
-
-## Redis Cluster Support
-
-For Redis Cluster, specify any node in the cluster - ClickHouse follows redirects automatically.
-
-```sql
-CREATE TABLE redis_cluster_cache
-(
-    key   String,
-    value String
-)
-ENGINE = Redis(
-    'redis-cluster-node-01:6379',
-    0,
-    'auth_password'
-)
-PRIMARY KEY key;
+PRIMARY KEY(user_id);
 ```
 
 ## Limitations
@@ -247,4 +228,4 @@ PRIMARY KEY key;
 
 ## Summary
 
-The `Redis` engine provides a live bridge between Redis key-value data and ClickHouse analytics. Use it for low-latency lookups of sessions, feature flags, rate limits, and real-time reference data. For best performance, always access Redis through primary key lookups using `WHERE key = ...` or `IN (...)` rather than full scans. For analytical workloads requiring aggregation over large Redis keyspaces, replicate the data into a MergeTree table periodically.
+The `Redis` engine provides a live bridge between Redis key-value data and ClickHouse analytics. Non-key columns are serialized into a binary blob stored as a Redis string value, so the data is only readable through ClickHouse. Use it for low-latency lookups of sessions, feature flags, rate limits, and real-time reference data. For best performance, always access Redis through primary key lookups using `WHERE key = ...` or `IN (...)` rather than full scans. For analytical workloads requiring aggregation over large Redis keyspaces, replicate the data into a MergeTree table periodically.
