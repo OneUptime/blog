@@ -205,22 +205,29 @@ ORDER BY fill_rate_pct;
 ## Shipment Transit Time Analysis
 
 ```sql
+WITH shipment_times AS (
+    SELECT
+        carrier,
+        origin_id,
+        destination_id,
+        shipment_id,
+        minIf(occurred_at, event_type = 'picked_up')  AS picked_up_at,
+        minIf(occurred_at, event_type = 'delivered')   AS delivered_at,
+        countIf(event_type = 'exception')              AS exceptions,
+        countIf(event_type = 'created')                AS created_count
+    FROM shipment_events
+    WHERE occurred_at >= now() - INTERVAL 90 DAY
+    GROUP BY carrier, origin_id, destination_id, shipment_id
+)
 SELECT
     carrier,
     origin_id,
     destination_id,
     count()                                                           AS shipments,
-    avg(dateDiff('hour',
-        minIf(occurred_at, event_type = 'picked_up'),
-        minIf(occurred_at, event_type = 'delivered')
-    ))                                                                AS avg_transit_hours,
-    quantile(0.95)(dateDiff('hour',
-        minIf(occurred_at, event_type = 'picked_up'),
-        minIf(occurred_at, event_type = 'delivered')
-    ))                                                                AS p95_transit_hours,
-    countIf(event_type = 'exception') / countIf(event_type = 'created') * 100 AS exception_rate_pct
-FROM shipment_events
-WHERE occurred_at >= now() - INTERVAL 90 DAY
+    avg(dateDiff('hour', picked_up_at, delivered_at))                 AS avg_transit_hours,
+    quantile(0.95)(dateDiff('hour', picked_up_at, delivered_at))      AS p95_transit_hours,
+    sum(exceptions) / sum(created_count) * 100                        AS exception_rate_pct
+FROM shipment_times
 GROUP BY carrier, origin_id, destination_id
 ORDER BY avg_transit_hours DESC
 LIMIT 30;
