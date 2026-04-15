@@ -25,15 +25,13 @@ pip install opentelemetry-sdk \
 ```python
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.prometheus import PrometheusExporter
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from prometheus_client import start_http_server
 
 # Start Prometheus exporter on a dedicated port
 start_http_server(9091)
 
-exporter = PrometheusExporter()
-reader = PeriodicExportingMetricReader(exporter, export_interval_millis=5000)
+reader = PrometheusMetricReader()
 provider = MeterProvider(metric_readers=[reader])
 metrics.set_meter_provider(provider)
 
@@ -125,7 +123,6 @@ spec:
   # Application custom metrics
   - port: app-metrics
     path: /metrics
-    targetPort: 9091
 ```
 
 ```yaml
