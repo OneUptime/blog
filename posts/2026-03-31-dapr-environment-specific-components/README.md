@@ -103,7 +103,7 @@ kind: Kustomization
 
 namespace: production
 
-bases:
+resources:
 - ../../base
 
 patches:
@@ -213,9 +213,9 @@ spec:
   metadata:
   - name: vaultAddr
     value: "https://vault.internal.com"
-  scopes:
-  - payment-service  # Only payment-service can use this
-  - fraud-service
+scopes:
+- payment-service  # Only payment-service can use this
+- fraud-service
 ```
 
 ## Summary
