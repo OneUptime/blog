@@ -81,7 +81,7 @@ Edit `/etc/clickhouse-server/config.xml` or create `/etc/clickhouse-server/confi
 
 ```xml
 <clickhouse>
-  <tcp_ssl_port>9440</tcp_ssl_port>
+  <tcp_port_secure>9440</tcp_port_secure>
   <https_port>8443</https_port>
 
   <openSSL>
@@ -94,9 +94,9 @@ Edit `/etc/clickhouse-server/config.xml` or create `/etc/clickhouse-server/confi
       <!-- Require clients to present a certificate -->
       <verificationMode>strict</verificationMode>
       <loadDefaultCAFile>false</loadDefaultCAFile>
-      <!-- TLS 1.2+ only -->
+      <!-- Disable older protocols to enforce TLS 1.2+ -->
       <preferServerCiphers>true</preferServerCiphers>
-      <requireTLSv1_2>true</requireTLSv1_2>
+      <disableProtocols>sslv2,sslv3,tlsv1,tlsv1_1</disableProtocols>
     </server>
 
     <client>
@@ -188,8 +188,8 @@ A user can be granted access if they present any certificate in a list of allowe
 
 ```sql
 CREATE USER service_account
-    IDENTIFIED WITH ssl_certificate CN 'etl-service'
-    OR ssl_certificate CN 'etl-service-backup';
+    IDENTIFIED WITH ssl_certificate CN 'etl-service',
+    ssl_certificate CN 'etl-service-backup';
 ```
 
 ## Verifying Certificate Authentication in Logs
@@ -201,7 +201,7 @@ SELECT
     auth_type,
     event_time
 FROM system.session_log
-WHERE auth_type = 'SSL Certificate'
+WHERE auth_type = 'SSL_CERTIFICATE'
 ORDER BY event_time DESC
 LIMIT 20;
 ```
@@ -218,8 +218,8 @@ To rotate a client certificate without disrupting service:
 ```sql
 -- Temporarily allow both old and new cert CNs
 ALTER USER alice
-    IDENTIFIED WITH ssl_certificate CN 'alice-2024'
-    OR ssl_certificate CN 'alice-2025';
+    IDENTIFIED WITH ssl_certificate CN 'alice-2024',
+    ssl_certificate CN 'alice-2025';
 
 -- After cutover, remove old cert CN
 ALTER USER alice
