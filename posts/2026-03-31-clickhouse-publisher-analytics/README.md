@@ -101,7 +101,7 @@ Understand intraday revenue patterns for scheduling and forecasting:
 
 ```sql
 SELECT
-    toHour(event_time) AS hour_of_day,
+    hour_of_day,
     round(avg(daily_rev), 2) AS avg_hourly_revenue
 FROM (
     SELECT
