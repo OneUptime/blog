@@ -4,36 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CLI, Component, Configuration, Kubernetes
 
-Description: Learn how to use the dapr components command to list and inspect loaded Dapr components in self-hosted and Kubernetes environments.
+Description: Learn how to use the dapr components command to list and inspect loaded Dapr components in Kubernetes environments.
 
 ---
 
 ## Overview
 
-The `dapr components` command lists all Dapr components that are loaded and available for a running application. Components include state stores, pub/sub brokers, bindings, secret stores, and more. This command is essential for verifying that your component configurations are being picked up correctly.
-
-## Listing Components in Self-Hosted Mode
-
-```bash
-dapr components
-```
-
-Sample output:
-
-```text
-  NAME        TYPE              VERSION  SCOPES  CREATED
-  statestore  state.redis       v1               2026-03-31 10:00:00
-  pubsub      pubsub.redis      v1               2026-03-31 10:00:00
-  zipkin      exporters.zipkin  v1               2026-03-31 10:00:00
-```
+The `dapr components` command lists all Dapr components deployed in a Kubernetes cluster. Components include state stores, pub/sub brokers, bindings, secret stores, and more. This command is essential for verifying that your component configurations are being picked up correctly. Note that this command is supported only in Kubernetes mode and requires the `--kubernetes` (`-k`) flag.
 
 ## Listing Components in Kubernetes
-
-```bash
-dapr components --kubernetes
-```
-
-Or:
 
 ```bash
 dapr components -k
@@ -43,20 +22,21 @@ Sample output:
 
 ```text
   NAMESPACE  NAME        TYPE              VERSION  SCOPES  CREATED
-  default    statestore  state.redis       v1               2026-03-31
-  default    pubsub      pubsub.rabbitmq   v1       api-svc 2026-03-31
+  default    statestore  state.redis       v1               2026-03-31 10:00:00
+  default    pubsub      pubsub.redis      v1               2026-03-31 10:00:00
+  default    binding     bindings.cron     v1               2026-03-31 10:00:00
 ```
 
-## Listing Components in a Specific Namespace
+## Filtering Components by Namespace
 
 ```bash
-dapr components --kubernetes --namespace production
+dapr components -k --namespace production
 ```
 
 ## JSON Output for Scripting
 
 ```bash
-dapr components --kubernetes --output json
+dapr components -k --output json
 ```
 
 Sample JSON output:
@@ -93,7 +73,7 @@ If a component is not showing up, check:
 dapr run --app-id debug-app --resources-path ./components -- echo "checking"
 
 # Then list components
-dapr components
+dapr components -k
 ```
 
 ## Verifying Scoped Components
@@ -121,4 +101,4 @@ After applying, only `order-service` and `inventory-service` will see `private-s
 
 ## Summary
 
-`dapr components` gives you a quick view of all active components in your Dapr environment. Use it to confirm that state stores, pub/sub brokers, and bindings are loaded correctly before debugging application behavior. JSON output makes it easy to integrate this check into automated deployment pipelines.
+`dapr components -k` gives you a quick view of all active components in your Dapr Kubernetes environment. Use it to confirm that state stores, pub/sub brokers, and bindings are loaded correctly before debugging application behavior. JSON output makes it easy to integrate this check into automated deployment pipelines.
