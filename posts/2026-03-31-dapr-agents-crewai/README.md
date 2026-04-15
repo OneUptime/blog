@@ -22,10 +22,10 @@ pip install crewai dapr dapr-agents
 
 ```python
 from crewai import Agent, Task, Crew, Process
-from dapr import Client
+from dapr.clients import DaprClient
 import json
 
-dapr_client = Client()
+dapr_client = DaprClient()
 
 def save_crew_result(crew_id: str, result: str):
     """Saves crew execution results to Dapr state store."""
@@ -42,7 +42,7 @@ def load_crew_context(crew_id: str) -> str:
 ```python
 from crewai import Agent, Task, Crew
 from crewai.tools import tool as crewai_tool
-from dapr import Client
+from dapr.clients import DaprClient
 
 # Define agents with CrewAI's role-based syntax
 researcher = Agent(
@@ -65,7 +65,7 @@ writer = Agent(
 @crewai_tool("Search Knowledge Base")
 def search_knowledge_base(query: str) -> str:
     """Searches the internal knowledge base for relevant information."""
-    dapr_client = Client()
+    dapr_client = DaprClient()
     # In practice, query a vector store via Dapr state
     result = dapr_client.get_state("statestore", f"kb-{query.replace(' ', '-').lower()}")
     if result.data:
@@ -75,7 +75,7 @@ def search_knowledge_base(query: str) -> str:
 @crewai_tool("Save Research Finding")
 def save_finding(topic: str, finding: str) -> str:
     """Saves a research finding to the shared state store."""
-    dapr_client = Client()
+    dapr_client = DaprClient()
     dapr_client.save_state("statestore", f"finding-{topic}", finding)
     return f"Finding saved for topic: {topic}"
 
@@ -141,7 +141,7 @@ async def execute_crew(crew_id: str, topic: str):
     result = crew.kickoff(inputs={"topic": topic})
 
     # Save result to Dapr state store
-    save_crew_result(crew_id, result)
+    save_crew_result(crew_id, str(result))
 
     # Publish completion event
     dapr_client.publish_event(
