@@ -8,11 +8,11 @@ Description: Learn what ReplacingMergeTree is in ClickHouse, how it deduplicates
 
 ---
 
-`ReplacingMergeTree` is a MergeTree variant that removes duplicate rows with the same primary key during background merges. It is the standard approach for implementing upserts in ClickHouse, where the latest version of a record should replace earlier versions.
+`ReplacingMergeTree` is a MergeTree variant that removes duplicate rows with the same sorting key (`ORDER BY` columns) during background merges. It is the standard approach for implementing upserts in ClickHouse, where the latest version of a record should replace earlier versions.
 
 ## How ReplacingMergeTree Works
 
-When ClickHouse merges parts that contain rows with the same primary key, `ReplacingMergeTree` keeps only one row per key - either the one with the highest version value or the most recently inserted row.
+When ClickHouse merges parts that contain rows with the same sorting key, `ReplacingMergeTree` keeps only one row per key - either the one with the highest version value or the most recently inserted row.
 
 ```sql
 CREATE TABLE user_profiles (
@@ -26,7 +26,7 @@ ORDER BY user_id;
 
 The `updated` column is the version key. When two rows have the same `user_id`, the one with the higher `updated` value is kept.
 
-Without a version column, the last row inserted in the same batch is kept (non-deterministic across different parts).
+Without a version column, the last row from the most recently inserted part is kept.
 
 ## Inserting Updates
 
@@ -88,4 +88,4 @@ If this query returns rows, background merges have not yet deduplicated them.
 
 ## Summary
 
-`ReplacingMergeTree` provides eventual deduplication by keeping the highest-version row per primary key during merges. Use it for upsert-style workloads with a version or timestamp column. Always use the `FINAL` modifier or force a merge before querying when immediate consistency is required. It is not a substitute for transactional UPSERT semantics but is an efficient pattern for high-throughput dimension table updates.
+`ReplacingMergeTree` provides eventual deduplication by keeping the highest-version row per sorting key during merges. Use it for upsert-style workloads with a version or timestamp column. Always use the `FINAL` modifier or force a merge before querying when immediate consistency is required. It is not a substitute for transactional UPSERT semantics but is an efficient pattern for high-throughput dimension table updates.
