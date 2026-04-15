@@ -8,7 +8,7 @@ Description: Learn how roundAge() maps raw age values to standard demographic bu
 
 ---
 
-`roundAge()` is a convenience function in ClickHouse that maps a raw age value to a standard demographic bucket. It rounds down to the nearest value from a predefined set of age group boundaries: 0, 17, 18, 25, 35, 45, 55, and 65. These buckets correspond to commonly used demographic segments in advertising, marketing research, and product analytics. Using `roundAge()` saves you from writing a CASE expression with hardcoded boundaries every time you need age-group analysis.
+`roundAge()` is a convenience function in ClickHouse that maps a raw age value to a standard demographic bucket. It assigns each age to one of the predefined boundary values: 0, 17, 18, 25, 35, 45, and 55. These buckets correspond to commonly used demographic segments in advertising, marketing research, and product analytics. Using `roundAge()` saves you from writing a CASE expression with hardcoded boundaries every time you need age-group analysis.
 
 ## Function Signature
 
@@ -16,21 +16,20 @@ Description: Learn how roundAge() maps raw age values to standard demographic bu
 roundAge(age)
 ```
 
-Accepts any numeric type. Returns UInt8. The output is always one of the fixed boundary values: 0, 17, 18, 25, 35, 45, 55, or 65.
+Accepts any numeric type. Returns UInt8. The output is always one of the fixed boundary values: 0, 17, 18, 25, 35, 45, or 55.
 
 ## Bucket Mapping
 
 The function maps age values to the following boundaries:
 
 ```text
-age  0 - 16  -> 0   (children / under 17)
-age 17        -> 17  (pre-adult)
+age  0        -> 0   (infant / under 1)
+age  1 - 17  -> 17  (children / minors)
 age 18 - 24  -> 18  (young adults)
 age 25 - 34  -> 25  (adults)
 age 35 - 44  -> 35  (mid adults)
 age 45 - 54  -> 45  (mature adults)
-age 55 - 64  -> 55  (pre-senior)
-age 65+      -> 65  (senior)
+age 55+      -> 55  (seniors)
 ```
 
 ## Basic Usage
@@ -87,14 +86,13 @@ SELECT
     age,
     roundAge(age) AS age_bucket,
     CASE roundAge(age)
-        WHEN  0 THEN 'Under 17'
-        WHEN 17 THEN 'Age 17'
+        WHEN  0 THEN 'Under 1'
+        WHEN 17 THEN '1-17'
         WHEN 18 THEN '18-24'
         WHEN 25 THEN '25-34'
         WHEN 35 THEN '35-44'
         WHEN 45 THEN '45-54'
-        WHEN 55 THEN '55-64'
-        WHEN 65 THEN '65+'
+        WHEN 55 THEN '55+'
     END AS age_group
 FROM user_profiles
 ORDER BY age;
@@ -170,19 +168,18 @@ ORDER BY age_bucket;
 
 ## Comparing with roundDown()
 
-`roundAge()` is equivalent to calling `roundDown(age, [0, 17, 18, 25, 35, 45, 55, 65])`. Use `roundAge()` when the standard demographic buckets match your use case; use `roundDown()` with a custom array when you need different boundaries.
+`roundAge()` and `roundDown()` are related but not equivalent. `roundDown(age, [0, 17, 18, 25, 35, 45, 55])` rounds each age down to the largest boundary value that does not exceed the input, so ages 1–16 map to 0. In contrast, `roundAge()` maps ages 1–17 to 17. Use `roundAge()` when the standard demographic buckets match your use case; use `roundDown()` with a custom array when you need different boundaries.
 
 ```sql
 SELECT
     age,
-    roundAge(age)                                        AS roundage_result,
-    roundDown(age, [0, 17, 18, 25, 35, 45, 55, 65])     AS rounddown_equiv,
-    roundAge(age) = roundDown(age, [0, 17, 18, 25, 35, 45, 55, 65]) AS are_equal
+    roundAge(age)                                    AS roundage_result,
+    roundDown(age, [0, 17, 18, 25, 35, 45, 55])     AS rounddown_result
 FROM (
-    SELECT arrayJoin([10, 17, 20, 30, 40, 50, 60, 70]) AS age
+    SELECT arrayJoin([0, 10, 17, 18, 20, 30, 40, 50, 60, 70]) AS age
 );
 ```
 
 ## Summary
 
-`roundAge()` provides a concise way to assign raw age values to standard demographic buckets (0, 17, 18, 25, 35, 45, 55, 65) in ClickHouse, returning a UInt8. Use it directly in GROUP BY for demographic aggregation, in CASE expressions for readable group labels, and in cross-tabulations for marketing and product analytics. It is functionally equivalent to `roundDown(age, [0, 17, 18, 25, 35, 45, 55, 65])` but more readable when the standard demographic buckets match your reporting needs. For custom age groupings, use `roundDown()` with a tailored boundary array instead.
+`roundAge()` provides a concise way to assign raw age values to standard demographic buckets (0, 17, 18, 25, 35, 45, 55) in ClickHouse, returning a UInt8. Use it directly in GROUP BY for demographic aggregation, in CASE expressions for readable group labels, and in cross-tabulations for marketing and product analytics. Note that `roundAge()` is not identical to `roundDown()` with the same boundary array — the two differ for ages 1–16. For custom age groupings, use `roundDown()` with a tailored boundary array instead.
