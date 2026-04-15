@@ -65,6 +65,7 @@ Deploy the two service versions as separate Kubernetes deployments each with the
 # v2 deployment
 metadata:
   annotations:
+    dapr.io/enabled: "true"
     dapr.io/app-id: "order-service-v2"
     dapr.io/app-port: "8080"
 ```
