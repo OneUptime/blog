@@ -35,7 +35,7 @@ spec:
     - name: brokers
       value: "pkc-xxxxx.us-east-1.aws.confluent.cloud:9092"
     - name: authType
-      value: "sasl"
+      value: "password"
     - name: saslUsername
       value: "API_KEY"
     - name: saslPassword
@@ -43,7 +43,7 @@ spec:
         name: confluent-secret
         key: apiSecret
     - name: saslMechanism
-      value: "PLAIN"
+      value: "PLAINTEXT"
     - name: initialOffset
       value: "newest"
     - name: consumerGroup
@@ -74,6 +74,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -84,9 +85,12 @@ func publishOrder(orderID string, total float64) error {
     }
     defer client.Close()
 
-    data := map[string]interface{}{
+    data, err := json.Marshal(map[string]interface{}{
         "orderId": orderID,
         "total":   total,
+    })
+    if err != nil {
+        return err
     }
     return client.PublishEvent(context.Background(), "confluent-pubsub", "orders", data)
 }
@@ -133,14 +137,21 @@ To enforce Avro schemas, set the schema registry URL in your component:
 
 ## Dead Letter Topics
 
-Configure a dead-letter topic for failed messages:
+Configure a dead-letter topic in a declarative subscription for failed messages:
 
 ```yaml
-    - name: deadLetterTopic
-      value: "orders-dead-letter"
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: orders-subscription
+spec:
+  pubsubname: confluent-pubsub
+  topic: orders
+  route: /orders
+  deadLetterTopic: orders-dead-letter
 ```
 
-Dapr will automatically route messages that exhaust retries to this topic, allowing for separate reprocessing logic.
+Dapr will automatically route messages that exhaust retries to this topic, allowing for separate reprocessing logic. It is recommended to pair this with a retry resiliency policy so messages are retried before being sent to the dead letter topic.
 
 ## Summary
 
