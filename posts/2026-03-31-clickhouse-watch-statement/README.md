@@ -24,7 +24,7 @@ FROM analytics.events
 GROUP BY event_type;
 ```
 
-Live Views require the `allow_experimental_live_view = 1` setting (available since ClickHouse 21.x):
+Live Views require the `allow_experimental_live_view = 1` setting (available as an experimental feature since ClickHouse 19.14):
 
 ```sql
 SET allow_experimental_live_view = 1;
@@ -62,7 +62,7 @@ The connection closes automatically after 10 updates have been delivered. Withou
 To receive only notification events - without the full result payload - use WATCH EVENTS. This is useful when you want to trigger client-side logic on any change but do not need to transfer large result sets:
 
 ```sql
-WATCH EVENTS analytics.events_live;
+WATCH analytics.events_live EVENTS;
 ```
 
 Each notification contains the `_version` number. The client can then issue a regular SELECT when it needs the full data.
@@ -72,7 +72,7 @@ Each notification contains the `_version` number. The client can then issue a re
 ```bash
 clickhouse-client \
   --query "WATCH analytics.events_live" \
-  --setting allow_experimental_live_view=1
+  --allow_experimental_live_view=1
 ```
 
 Each time new data arrives in `analytics.events`, the Live View re-evaluates and the CLI prints the updated rows. Press Ctrl+C to cancel.
@@ -81,7 +81,7 @@ Each time new data arrives in `analytics.events`, the Live View re-evaluates and
 # Limit to 5 updates and exit
 clickhouse-client \
   --query "WATCH analytics.events_live LIMIT 5" \
-  --setting allow_experimental_live_view=1
+  --allow_experimental_live_view=1
 ```
 
 ## Cancelling a WATCH
