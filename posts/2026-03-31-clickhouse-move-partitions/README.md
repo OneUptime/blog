@@ -4,22 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, DDL, ALTER TABLE, Partition, Data Management
 
-Description: Learn how to move and replace partitions between ClickHouse tables using MOVE PARTITION TO TABLE and REPLACE PARTITION for fast, zero-copy data transfers.
+Description: Learn how to move and replace partitions between ClickHouse tables using MOVE PARTITION TO TABLE and REPLACE PARTITION for fast, atomic data transfers.
 
 ---
 
-ClickHouse can move entire partitions between tables using hard-link-based operations that avoid copying raw data. This makes partition moves much faster than `INSERT INTO ... SELECT` for large datasets. Two main commands handle this: `MOVE PARTITION TO TABLE` (moves and removes the source partition) and `REPLACE PARTITION FROM` (replaces the destination partition with the source, leaving the source intact). Both require compatible table schemas.
+ClickHouse can move entire partitions between tables using lightweight, metadata-level operations that avoid re-reading and re-writing raw data. This makes partition moves much faster than `INSERT INTO ... SELECT` for large datasets. Two main commands handle this: `MOVE PARTITION TO TABLE` (moves and removes the source partition) and `REPLACE PARTITION FROM` (replaces the destination partition with the source, leaving the source intact). Both require compatible table schemas.
 
 ## Schema Compatibility Requirements
 
 For partition operations between tables, both tables must have:
 
-- The same column names and types.
-- The same `ORDER BY` (sorting key).
+- The same table structure (column names and types).
 - The same `PARTITION BY` expression.
-- The same index granularity and storage policy (or the operation involves a physical data copy).
+- The same `ORDER BY` (sorting key) and `PRIMARY KEY`.
+- The same storage policy.
+- The destination table must include all indices and projections that exist in the source table.
 
-The destination table's engine must be in the MergeTree family.
+Both tables must use MergeTree family engines. For `MOVE PARTITION`, both tables must also be in the same engine family (both replicated or both non-replicated).
 
 ## MOVE PARTITION TO TABLE
 
@@ -154,4 +155,4 @@ Both tables must exist and have compatible schemas on all nodes before executing
 
 ## Summary
 
-`MOVE PARTITION TO TABLE` and `REPLACE PARTITION FROM` enable fast, atomic partition transfers between ClickHouse tables without copying raw data. Both require identical schemas and partition keys. Use `MOVE PARTITION` for archival pipelines where data should leave the source table, and `REPLACE PARTITION` for staging-to-production refresh patterns. Always verify partition IDs via `system.parts` before executing.
+`MOVE PARTITION TO TABLE` and `REPLACE PARTITION FROM` enable fast, atomic partition transfers between ClickHouse tables without re-reading and re-writing raw data. Both require identical table structures, partition keys, sorting keys, primary keys, and storage policies. Use `MOVE PARTITION` for archival pipelines where data should leave the source table, and `REPLACE PARTITION` for staging-to-production refresh patterns. Always verify partition IDs via `system.parts` before executing.
