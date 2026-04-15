@@ -27,7 +27,7 @@ When a user exhausts any limit within the interval, subsequent queries are rejec
 | Column | Type | Description |
 |--------|------|-------------|
 | `quota_name` | String | Quota name as defined in config |
-| `duration` | UInt64 | Interval duration in seconds |
+| `duration` | UInt32 | Interval duration in seconds |
 | `is_randomized_interval` | UInt8 | 1 if interval start is randomized per user |
 | `max_queries` | Nullable(UInt64) | Maximum queries per interval |
 | `max_query_selects` | Nullable(UInt64) | Maximum SELECT queries per interval |
@@ -135,7 +135,7 @@ WHERE quota_name = 'dashboard_quota';
 
 ```sql
 SELECT
-    q.quota_name,
+    q.name AS quota_name,
     ql.duration,
     ql.max_queries,
     ql.max_read_rows,
