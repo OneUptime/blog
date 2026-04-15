@@ -28,31 +28,45 @@ pip install langgraph langchain-openai dapr dapr-agents
 LangGraph supports custom checkpointers. Here is a Dapr-backed checkpointer:
 
 ```python
-from langgraph.checkpoint.base import BaseCheckpointSaver, Checkpoint
-from dapr import Client
-import json
+from langgraph.checkpoint.base import BaseCheckpointSaver, Checkpoint, CheckpointMetadata, CheckpointTuple
+from dapr.clients import DaprClient
 import pickle
 import base64
+from typing import Any, Iterator, Optional, Sequence
 
 class DaprCheckpointer(BaseCheckpointSaver):
     """LangGraph checkpointer backed by Dapr state store."""
 
     def __init__(self, store_name: str = "statestore"):
-        self.client = Client()
+        super().__init__()
         self.store_name = store_name
 
-    def get(self, config: dict) -> Checkpoint | None:
+    def get_tuple(self, config: dict) -> CheckpointTuple | None:
         thread_id = config["configurable"]["thread_id"]
-        state = self.client.get_state(self.store_name, f"langgraph-{thread_id}")
+        with DaprClient() as client:
+            state = client.get_state(self.store_name, f"langgraph-{thread_id}")
         if state.data:
-            return pickle.loads(base64.b64decode(state.data))
+            data = pickle.loads(base64.b64decode(state.data))
+            return CheckpointTuple(
+                config=config,
+                checkpoint=data["checkpoint"],
+                metadata=data.get("metadata", {}),
+            )
         return None
 
-    def put(self, config: dict, checkpoint: Checkpoint) -> dict:
+    def put(self, config: dict, checkpoint: Checkpoint, metadata: CheckpointMetadata, new_versions: dict) -> dict:
         thread_id = config["configurable"]["thread_id"]
-        serialized = base64.b64encode(pickle.dumps(checkpoint)).decode()
-        self.client.save_state(self.store_name, f"langgraph-{thread_id}", serialized)
+        data = {"checkpoint": checkpoint, "metadata": metadata}
+        serialized = base64.b64encode(pickle.dumps(data)).decode()
+        with DaprClient() as client:
+            client.save_state(self.store_name, f"langgraph-{thread_id}", serialized)
         return config
+
+    def put_writes(self, config: dict, writes: Sequence[tuple[str, Any]], task_id: str) -> None:
+        pass
+
+    def list(self, config: Optional[dict], *, filter: Optional[dict[str, Any]] = None, before: Optional[dict] = None, limit: Optional[int] = None) -> Iterator[CheckpointTuple]:
+        return iter([])
 ```
 
 ## Building a Research Agent Graph
