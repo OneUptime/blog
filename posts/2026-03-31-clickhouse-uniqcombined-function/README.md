@@ -44,7 +44,7 @@ WHERE event_date = today();
 
 ## uniqCombined() vs uniq()
 
-`uniq()` is the default approximate distinct-count function. `uniqCombined()` uses a larger internal sketch for better accuracy on higher-cardinality datasets:
+`uniq()` is the recommended approximate distinct-count function for most scenarios. `uniqCombined()` uses a larger internal sketch for better accuracy on higher-cardinality datasets:
 
 ```sql
 -- Compare accuracy of uniq vs uniqCombined
@@ -63,7 +63,7 @@ Typical error rates:
 
 ## uniqCombined64() for Very High Cardinality
 
-The 32-bit version of `uniqCombined()` uses 32-bit hashes, which can introduce hash collisions for datasets with billions of distinct values. `uniqCombined64()` uses 64-bit hashes to avoid this:
+`uniqCombined()` uses 32-bit hashes for non-String types and 64-bit hashes for String types, which can introduce hash collisions for non-String columns with billions of distinct values. `uniqCombined64()` uses 64-bit hashes for all data types to avoid this:
 
 ```sql
 -- For datasets with hundreds of millions of distinct values
@@ -72,7 +72,7 @@ FROM event_stream
 WHERE event_date >= today() - 30;
 ```
 
-Use `uniqCombined64()` when your distinct count is expected to exceed ~500 million unique values.
+Use `uniqCombined64()` when your distinct count on non-String columns could approach billions of unique values, as hash collisions in the 32-bit version become significant near UINT_MAX (~4.3 billion).
 
 ## Grouping Example
 
@@ -127,7 +127,7 @@ SELECT uniqExact(customer_id) AS paying_users FROM subscriptions;
 -- Use uniqCombined() when: general analytics, default choice
 SELECT uniqCombined(user_id) AS dau FROM events WHERE event_date = today();
 
--- Use uniqCombined64() when: very high cardinality (>500M distinct values)
+-- Use uniqCombined64() when: very high cardinality (billions of distinct values on non-String columns)
 SELECT uniqCombined64(raw_id) AS approx_events FROM huge_table;
 
 -- Use uniq() when: legacy code, marginal performance needed, accuracy less critical
