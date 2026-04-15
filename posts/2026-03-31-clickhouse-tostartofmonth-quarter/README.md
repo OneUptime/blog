@@ -93,7 +93,7 @@ ORDER BY cohort_month, activity_month;
 
 ## toStartOfQuarter() - First Day of the Quarter
 
-`toStartOfQuarter(dt)` returns a `Date` representing the first day of the fiscal quarter (Q1 = January 1, Q2 = April 1, Q3 = July 1, Q4 = October 1) that contains the input date.
+`toStartOfQuarter(dt)` returns a `Date` representing the first day of the calendar quarter (Q1 = January 1, Q2 = April 1, Q3 = July 1, Q4 = October 1) that contains the input date.
 
 ```sql
 SELECT
