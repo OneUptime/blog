@@ -61,8 +61,9 @@ class HelperAgent(Agent):
         return datetime.now().isoformat()
 
 if __name__ == "__main__":
+    import asyncio
     agent = HelperAgent()
-    agent.run("What time is it right now?")
+    asyncio.run(agent.run("What time is it right now?"))
 ```
 
 Run the agent with Dapr:
@@ -98,10 +99,10 @@ Reference in your agent code:
 
 ```python
 from dapr_agents import Agent
-from dapr_agents.llm import OpenAIChat
+from dapr_agents import OpenAIChatClient
 
 agent = HelperAgent(
-    llm=OpenAIChat(model="gpt-4o")
+    llm=OpenAIChatClient(model="gpt-4o")
 )
 ```
 
@@ -120,17 +121,21 @@ Dapr persists agent state between turns using Dapr's state store, enabling state
 ## Running a Multi-Turn Conversation
 
 ```python
+import asyncio
 from dapr_agents import Agent
 
-agent = HelperAgent()
+async def main():
+    agent = HelperAgent()
 
-# Turn 1
-response1 = agent.run("My name is Alice. Remember it.")
-print(response1)
+    # Turn 1
+    response1 = await agent.run("My name is Alice. Remember it.")
+    print(response1)
 
-# Turn 2 - agent remembers context
-response2 = agent.run("What is my name?")
-print(response2)  # "Your name is Alice."
+    # Turn 2 - agent remembers context
+    response2 = await agent.run("What is my name?")
+    print(response2)  # "Your name is Alice."
+
+asyncio.run(main())
 ```
 
 ## Listing Available Components
@@ -138,9 +143,6 @@ print(response2)  # "Your name is Alice."
 ```bash
 # Check Dapr state stores (used for agent memory)
 dapr components list
-
-# Check which LLM models are configured
-python -c "from dapr_agents import list_models; list_models()"
 ```
 
 ## Summary
