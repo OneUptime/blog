@@ -89,10 +89,10 @@ INSERT INTO logs SELECT log_time, lower(level), message FROM raw_logs;
 For prefix matching, `startsWith` is faster than `LIKE` with a prefix wildcard:
 
 ```sql
--- Slow: LIKE with suffix wildcard
+-- Works but less explicit: ClickHouse can optimize prefix LIKE
 SELECT * FROM urls WHERE path LIKE '/api/%';
 
--- Faster: startsWith
+-- Preferred: startsWith is explicit and always optimized
 SELECT * FROM urls WHERE startsWith(path, '/api/');
 ```
 
@@ -104,20 +104,26 @@ SELECT * FROM urls
 WHERE path >= '/api/' AND path < '/api0';
 ```
 
-## Token Bloom Filter for LIKE Searches
+## N-gram Bloom Filter for LIKE Searches
 
-For substring searches, use `tokenbf_v1` instead of `ngrambf_v1`:
+For arbitrary substring searches, use `ngrambf_v1` which splits text into character-level n-grams:
 
 ```sql
 CREATE TABLE search_index (
     doc_id UInt64,
     content String,
-    INDEX content_token_idx content TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4
+    INDEX content_ngram_idx content TYPE ngrambf_v1(4, 32768, 3, 0) GRANULARITY 4
 ) ENGINE = MergeTree()
 ORDER BY doc_id;
 
--- Token bloom filter can skip non-matching granules
+-- N-gram bloom filter can skip non-matching granules
 SELECT doc_id FROM search_index WHERE content LIKE '%clickhouse%';
+```
+
+For whole-word matching (where terms are separated by non-alphanumeric characters), use `tokenbf_v1` instead:
+
+```sql
+INDEX content_token_idx content TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4
 ```
 
 ## Comparing String Performance
