@@ -10,7 +10,7 @@ Description: Understand how ClickHouse tracks and limits memory usage per query 
 
 ## Memory Tracking Architecture
 
-ClickHouse tracks memory allocations through a custom allocator that intercepts `malloc`/`free` calls. Every allocation is attributed to a "memory tracker" - either a query-level tracker, a user-level tracker, or the global server-level tracker. This hierarchical tracking lets ClickHouse enforce per-query and per-user limits without relying on OS-level memory controls.
+ClickHouse tracks memory allocations through its internal `MemoryTracker` class. Every allocation is attributed to a memory tracker - either a query-level tracker, a user-level tracker, or the global server-level tracker. This hierarchical tracking lets ClickHouse enforce per-query and per-user limits without relying on OS-level memory controls.
 
 ## Per-Query Memory Limits
 
@@ -28,12 +28,12 @@ If the query exceeds the limit, ClickHouse throws:
 Memory limit (for query) exceeded: would use 4.30 GiB (attempt to allocate chunk of 1073741824 bytes), maximum: 4.00 GiB.
 ```
 
-## Server-Wide Memory Limit
+## Per-User and Server-Wide Memory Limits
 
-Set in `users.xml` or via SQL profile:
+Set a per-user limit in `users.xml` or via SQL:
 
 ```sql
-ALTER USER default SETTINGS max_memory_usage = 8589934592;  -- 8 GB per query
+ALTER USER default SETTINGS max_memory_usage = 8589934592;  -- 8 GB per query for the default user
 ```
 
 The server-level cap is controlled by:
@@ -69,8 +69,9 @@ When a GROUP BY or ORDER BY query exceeds its memory limit, ClickHouse can spill
 ```sql
 SET max_bytes_before_external_group_by = 2147483648;  -- 2 GB
 SET max_bytes_before_external_sort = 2147483648;       -- 2 GB
-SET tmp_path = '/var/lib/clickhouse/tmp/';
 ```
+
+The temporary directory for spill files is configured server-wide via `tmp_path` in `config.xml` (defaults to `/var/lib/clickhouse/tmp/`).
 
 With external aggregation, ClickHouse writes partial hash table buckets to disk and merges them in a second pass. This is slower but prevents OOM errors.
 
@@ -79,9 +80,11 @@ With external aggregation, ClickHouse writes partial hash table buckets to disk 
 ClickHouse maintains several in-memory caches:
 
 ```sql
--- See cache sizes
-SELECT name, total_size_bytes / 1024 / 1024 AS size_mb
-FROM system.caches;
+-- See cache-related metrics
+SELECT metric, value
+FROM system.metrics
+WHERE metric LIKE '%Cache%'
+ORDER BY value DESC;
 ```
 
 The uncompressed block cache (`uncompressed_cache_size`) caches decompressed column blocks. The mark cache (`mark_cache_size`) holds primary index marks. Both can be tuned in `config.xml`.
