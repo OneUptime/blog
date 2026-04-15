@@ -36,7 +36,7 @@ spec:
           "indexes": [
             {"key": "city", "type": "TEXT"},
             {"key": "age", "type": "NUMERIC"},
-            {"key": "active", "type": "TAG"}
+            {"key": "active", "type": "TEXT"}
           ]
         }
       ]
@@ -111,10 +111,12 @@ func main() {
 ```bash
 # First page
 curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
+  -H "Content-Type: application/json" \
   -d '{"filter": {"EQ": {"active": true}}, "page": {"limit": 20}}'
 
 # Subsequent pages using the token from previous response
 curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
+  -H "Content-Type: application/json" \
   -d '{"filter": {"EQ": {"active": true}}, "page": {"limit": 20, "token": "eyJsYXN0S2V5IjoiIn0="}}'
 ```
 
