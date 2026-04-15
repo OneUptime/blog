@@ -56,9 +56,9 @@ FROM system.zookeeper_connection;
 
 Fields to check:
 
-- `connected`: should be `1`
-- `session_uptime_elapsed_seconds`: should be growing
 - `is_expired`: should be `0`
+- `session_uptime_elapsed_seconds`: should be growing
+- `connected_time`: shows when the connection was established
 
 ## Step 4: Check for Expired Sessions in Keeper Logs
 
@@ -79,8 +79,8 @@ If all nodes show `Mode: follower` with no leader, Raft quorum is lost. This hap
 ## Step 6: Check Keeper Is Responding to Reads
 
 ```bash
-echo ls / | nc keeper1 9181
-# Should return: [clickhouse, zookeeper]
+clickhouse-keeper-client -h keeper1 -p 9181 -q "ls '/'"
+# Should return: clickhouse zookeeper
 ```
 
 ## Fix: Increase Session and Operation Timeouts
