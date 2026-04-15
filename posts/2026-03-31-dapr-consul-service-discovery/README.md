@@ -55,7 +55,7 @@ spec:
       client:
         address: "consul-server.consul.svc.cluster.local:8500"
       checks:
-        - id: "dapr-health"
+        - checkID: "dapr-health"
           name: "Dapr Health Check"
           http: "http://${HOST_ADDRESS}:${DAPR_HTTP_PORT}/v1.0/healthz"
           interval: "15s"
@@ -106,7 +106,7 @@ Consul deregisters unhealthy services automatically. The health check configured
 
 ```bash
 # Check health status of all service instances
-consul health checks service order-service
+curl http://127.0.0.1:8500/v1/health/checks/order-service | jq
 
 # Watch for service changes
 consul watch -type=service -service=order-service cat
