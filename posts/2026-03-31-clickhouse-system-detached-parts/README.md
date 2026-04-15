@@ -68,11 +68,11 @@ ORDER BY modification_time DESC;
 ```
 
 Common reason values:
-- `detach` - manually detached
+- `''` (empty string) - manually detached by user
 - `broken` - corruption detected
 - `unexpected` - found on disk but not in replica metadata
 - `noquorum` - part did not meet quorum requirements
-- `merge_not_in_part` - created during a merge but not needed
+- `merge-not-byte-identical` - merge result differs from expected part
 
 ## Reattaching a Detached Part
 
