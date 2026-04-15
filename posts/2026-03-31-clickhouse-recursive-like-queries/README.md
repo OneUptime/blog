@@ -10,7 +10,7 @@ Description: Learn how to build recursive-like queries in ClickHouse to traverse
 
 ## Recursive Queries in ClickHouse
 
-ClickHouse does not support recursive CTEs natively as of recent versions. However, you can simulate recursive behavior using self-joins, arrays, and dictionary-based lookups. This is useful for organizational hierarchies, category trees, and graph traversal.
+ClickHouse has supported recursive CTEs (`WITH RECURSIVE`) natively since version 24.4, using the new query analyzer (enabled by default since version 24.8). However, for large-scale hierarchies or performance-critical workloads, alternative patterns such as self-joins, arrays, and dictionary-based lookups often outperform recursive CTEs. These approaches are useful for organizational hierarchies, category trees, and graph traversal.
 
 ## Sample Hierarchy Data
 
@@ -62,7 +62,7 @@ CREATE DICTIONARY org_dict
     parent_id UInt32
 )
 PRIMARY KEY id
-SOURCE(CLICKHOUSE(TABLE 'org_chart'))
+SOURCE(CLICKHOUSE(QUERY 'SELECT id, coalesce(parent_id, 0) AS parent_id FROM org_chart'))
 LAYOUT(FLAT())
 LIFETIME(300);
 ```
@@ -99,7 +99,7 @@ INSERT INTO org_chart_paths VALUES
 (6, 'Developer', [1, 2, 4, 6]);
 ```
 
-Query all descendants of node 2:
+Query node 2 and all its descendants:
 
 ```sql
 SELECT id, name
@@ -120,4 +120,4 @@ FROM numbers(10);
 
 ## Summary
 
-ClickHouse handles recursive-like queries through self-joins for fixed-depth trees, dictionaries for parent lookups, and materialized path arrays for ancestor/descendant queries. For dynamic hierarchies, storing the path array at write time is the most performant pattern.
+While ClickHouse supports native recursive CTEs since version 24.4, alternative patterns often perform better at scale. Self-joins work well for fixed-depth trees, dictionaries enable fast parent lookups, and materialized path arrays handle ancestor/descendant queries efficiently. For dynamic hierarchies, storing the path array at write time is the most performant pattern.
