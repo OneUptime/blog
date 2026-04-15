@@ -14,21 +14,19 @@ GROUP BY is one of the most common operations in analytics workloads, and ClickH
 
 ClickHouse uses a hash table to aggregate rows. Each worker thread builds its own partial hash table, then the results are merged. If the hash table exceeds available memory, ClickHouse can spill to disk (with `max_bytes_before_external_group_by`) or fail with an out-of-memory error.
 
-## Order Your GROUP BY Keys by Cardinality
+## Align GROUP BY Keys with the Table's ORDER BY
 
-Put low-cardinality keys first. This reduces hash table size and improves cache locality:
+If your GROUP BY expression contains a prefix of the table's sorting key, ClickHouse can use an optimization called `optimize_aggregation_in_order` to aggregate data without building a full hash table. This reduces memory usage because ClickHouse processes one group at a time in sorted order:
 
 ```sql
--- Better: low cardinality first
-SELECT status, user_id, count()
+-- If the table is ORDER BY (status, user_id), this GROUP BY benefits
+-- from in-order aggregation because it uses a prefix of the sorting key
+SELECT status, count()
 FROM requests
-GROUP BY status, user_id;
-
--- Worse: high cardinality first
-SELECT user_id, status, count()
-FROM requests
-GROUP BY user_id, status;
+GROUP BY status;
 ```
+
+For general hash-based aggregation, the order of keys in the GROUP BY clause does not affect performance — the number of distinct key combinations is the same regardless of column order.
 
 ## Use group_by_overflow_mode
 
@@ -37,7 +35,7 @@ SET group_by_overflow_mode = 'any';
 SET max_rows_to_group_by = 10000000;
 ```
 
-With `any`, ClickHouse returns approximate results when the group count exceeds the limit instead of throwing an error, which is useful for dashboards where approximation is acceptable.
+With `any`, once the number of groups reaches the limit, ClickHouse continues aggregating for keys already in the hash table but silently discards any new keys. The results for returned groups are exact, but some groups will be missing entirely from the output. This is useful for dashboards where a partial result is acceptable.
 
 ## Enable External Aggregation for Large Datasets
 
