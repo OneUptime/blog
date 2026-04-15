@@ -68,7 +68,7 @@ Default component files are created at:
 
 ```powershell
 ls $env:USERPROFILE\.dapr\components\
-# pubsub.yaml  statestore.yaml  zipkin.yaml
+# pubsub.yaml  statestore.yaml
 ```
 
 ## Step 4: Install a Language SDK
