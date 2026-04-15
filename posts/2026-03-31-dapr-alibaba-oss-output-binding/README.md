@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Alibaba Cloud, OSS, Binding, Object Storage
 
-Description: Learn how to configure and use the Dapr Alibaba Cloud OSS output binding to upload, retrieve, and manage objects in Alibaba Cloud Object Storage Service from microservices.
+Description: Learn how to configure and use the Dapr Alibaba Cloud OSS output binding to upload objects to Alibaba Cloud Object Storage Service from microservices.
 
 ---
 
 ## What Is the Dapr Alibaba Cloud OSS Output Binding?
 
-Alibaba Cloud Object Storage Service (OSS) is a cloud storage service popular in China and Asia-Pacific. The Dapr Alibaba Cloud OSS output binding allows microservices to interact with OSS buckets for object upload, retrieval, deletion, and listing without managing the OSS SDK or authentication directly.
+Alibaba Cloud Object Storage Service (OSS) is a cloud storage service popular in China and Asia-Pacific. The Dapr Alibaba Cloud OSS output binding allows microservices to upload objects to OSS buckets without managing the OSS SDK or authentication directly.
 
 ## Setting Up an OSS Bucket
 
@@ -46,10 +46,10 @@ spec:
       secretKeyRef:
         name: alicloud-secrets
         key: accessKeyID
-    - name: accessKeySecret
+    - name: accessKey
       secretKeyRef:
         name: alicloud-secrets
-        key: accessKeySecret
+        key: accessKey
     - name: bucket
       value: "my-dapr-documents"
 ```
@@ -57,7 +57,7 @@ spec:
 ```bash
 kubectl create secret generic alicloud-secrets \
   --from-literal=accessKeyID=<your-access-key-id> \
-  --from-literal=accessKeySecret=<your-access-key-secret>
+  --from-literal=accessKey=<your-access-key-secret>
 ```
 
 ## Uploading Objects
@@ -90,86 +90,6 @@ const csvData = "date,product,quantity,revenue\n2026-03-31,Widget-A,120,5998.80\
 await uploadToOSS("exports/sales-20260331.csv", csvData, "text/csv");
 ```
 
-## Downloading Objects
-
-```javascript
-async function downloadFromOSS(objectKey) {
-  const result = await client.binding.send(
-    "oss-store",
-    "get",
-    null,
-    { key: objectKey }
-  );
-  return result;
-}
-
-const reportContent = await downloadFromOSS("reports/2026/03/31/daily-sales.json");
-const report = JSON.parse(reportContent);
-console.log("Total sales:", report.totalSales);
-```
-
-## Deleting Objects
-
-```javascript
-async function deleteFromOSS(objectKey) {
-  await client.binding.send(
-    "oss-store",
-    "delete",
-    null,
-    { key: objectKey }
-  );
-  console.log(`Deleted: ${objectKey}`);
-}
-
-await deleteFromOSS("temp/upload-draft-99.tmp");
-```
-
-## Listing Objects
-
-```javascript
-async function listOSSObjects(prefix) {
-  const result = await client.binding.send(
-    "oss-store",
-    "list",
-    null,
-    { prefix }
-  );
-  return result;
-}
-
-const todayFiles = await listOSSObjects("reports/2026/03/31/");
-console.log(`Found ${todayFiles.length} files for today`);
-```
-
-## Using STS Tokens for Temporary Access
-
-For client-side uploads, generate STS tokens instead of exposing your main access key:
-
-```bash
-# Via Alibaba Cloud CLI
-aliyun sts AssumeRole \
-  --RoleArn acs:ram::123456789:role/oss-upload-role \
-  --RoleSessionName dapr-upload-session
-```
-
-Configure a separate binding component using STS credentials:
-
-```yaml
-  metadata:
-    - name: accessKeyID
-      secretKeyRef:
-        name: sts-temp-credentials
-        key: accessKeyId
-    - name: accessKeySecret
-      secretKeyRef:
-        name: sts-temp-credentials
-        key: secretAccessKey
-    - name: stsToken
-      secretKeyRef:
-        name: sts-temp-credentials
-        key: securityToken
-```
-
 ## OSS Lifecycle Rules for Cost Management
 
 ```bash
@@ -192,4 +112,4 @@ ossutil set-acl oss://my-dapr-documents/public/ public-read --recursive
 
 ## Summary
 
-The Dapr Alibaba Cloud OSS output binding covers the full object storage lifecycle for Asia-Pacific deployments. Configure the binding with your OSS endpoint and RAM credentials via Dapr secret references, then use `create`, `get`, `delete`, and `list` operations to manage objects. For enhanced security, use STS tokens for temporary access and enable OSS lifecycle rules to automatically clean up old objects.
+The Dapr Alibaba Cloud OSS output binding provides a simple way to upload objects to OSS for Asia-Pacific deployments. Configure the binding with your OSS endpoint and RAM credentials via Dapr secret references, then use the `create` operation to upload objects. Enable OSS lifecycle rules to automatically clean up old objects and manage storage costs.
