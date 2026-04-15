@@ -20,7 +20,7 @@ ALTER TABLE events
   (SELECT user_id, event_type, count() GROUP BY user_id, event_type);
 ```
 
-Without explicit codec annotations the projection inherits the table-level codec. You can override this per column inside the projection definition when creating the table from scratch.
+Without explicit codec annotations the projection inherits the codecs defined on the parent table's columns. To control the codec used inside a projection, set it on the corresponding column in the parent table definition.
 
 ## Specifying Codecs Inside Projections
 
@@ -76,7 +76,7 @@ WHERE table = 'events' AND active;
 | Column type | Recommended codec |
 |---|---|
 | Monotonic timestamps | Delta + ZSTD |
-| Low-cardinality strings | LowCardinality + ZSTD |
+| Low-cardinality strings | Use LowCardinality type + ZSTD codec |
 | Counters / gauge floats | Gorilla + ZSTD |
 | UUIDs / random IDs | ZSTD(3) |
 
