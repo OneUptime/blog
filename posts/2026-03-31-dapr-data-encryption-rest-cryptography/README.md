@@ -16,7 +16,7 @@ The Dapr Cryptography API uses key stores to manage encryption keys. Supported k
 
 - Kubernetes Secrets
 - Azure Key Vault
-- HashiCorp Vault
+- JSON Web Key Sets (JWKS)
 - Local file (development only)
 
 Configure a key store component:
@@ -50,10 +50,18 @@ spec:
   metadata:
     - name: vaultName
       value: my-key-vault
+    - name: azureTenantId
+      secretKeyRef:
+        name: azure-credentials
+        key: tenantId
     - name: azureClientId
       secretKeyRef:
         name: azure-credentials
         key: clientId
+    - name: azureClientSecret
+      secretKeyRef:
+        name: azure-credentials
+        key: clientSecret
 ```
 
 ## Encrypting Data Before Storing
@@ -63,6 +71,7 @@ Encrypt sensitive fields before saving to the state store:
 ```python
 # crypto_state.py
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 import json
 import base64
 
@@ -77,22 +86,21 @@ def save_encrypted_state(key: str, sensitive_data: dict):
 
         encrypt_response = client.encrypt(
             data=plaintext,
-            options={
-                "componentName": CRYPTO_COMPONENT,
-                "keyName": KEY_NAME,
-                "algorithm": "A256GCM"
-            }
+            options=EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=KEY_NAME,
+                key_wrap_algorithm="AES",
+            ),
         )
 
         # Store the ciphertext (base64 encoded) in state
-        ciphertext_b64 = base64.b64encode(encrypt_response.data).decode()
+        ciphertext_b64 = base64.b64encode(encrypt_response.read()).decode()
         client.save_state(
             store_name=STATE_STORE,
             key=key,
             value=json.dumps({
                 "encrypted": True,
                 "ciphertext": ciphertext_b64,
-                "algorithm": "A256GCM"
             })
         )
 
@@ -110,14 +118,13 @@ def get_decrypted_state(key: str) -> dict:
         ciphertext = base64.b64decode(stored["ciphertext"])
         decrypt_response = client.decrypt(
             data=ciphertext,
-            options={
-                "componentName": CRYPTO_COMPONENT,
-                "keyName": KEY_NAME,
-                "algorithm": stored["algorithm"]
-            }
+            options=DecryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=KEY_NAME,
+            ),
         )
 
-        return json.loads(decrypt_response.data.decode('utf-8'))
+        return json.loads(decrypt_response.read().decode('utf-8'))
 ```
 
 ## Encrypting Specific Fields (Field-Level Encryption)
@@ -137,11 +144,14 @@ def save_customer(customer_id: str, customer: dict):
                 value_bytes = str(customer[field]).encode('utf-8')
                 encrypted = client.encrypt(
                     data=value_bytes,
-                    options={"componentName": CRYPTO_COMPONENT,
-                             "keyName": KEY_NAME, "algorithm": "A256GCM"}
+                    options=EncryptOptions(
+                        component_name=CRYPTO_COMPONENT,
+                        key_name=KEY_NAME,
+                        key_wrap_algorithm="AES",
+                    ),
                 )
                 encrypted_customer[field] = base64.b64encode(
-                    encrypted.data).decode()
+                    encrypted.read()).decode()
                 encrypted_customer[f"_enc_{field}"] = True
 
         client.save_state(STATE_STORE, f"customer:{customer_id}",
@@ -158,13 +168,16 @@ def publish_sensitive_event(topic: str, sensitive_data: dict):
         plaintext = json.dumps(sensitive_data).encode()
         encrypted = client.encrypt(
             data=plaintext,
-            options={"componentName": CRYPTO_COMPONENT,
-                     "keyName": KEY_NAME, "algorithm": "A256GCM"}
+            options=EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=KEY_NAME,
+                key_wrap_algorithm="AES",
+            ),
         )
 
         envelope = {
             "encrypted": True,
-            "payload": base64.b64encode(encrypted.data).decode()
+            "payload": base64.b64encode(encrypted.read()).decode()
         }
         client.publish_event("pubsub", topic, json.dumps(envelope))
 ```
