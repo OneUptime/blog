@@ -86,8 +86,8 @@ app.listen(3000);
 @app.route("/rethinkdb-feed", methods=["POST"])
 def handle_change():
     change = request.json
-    new_val = change.get("new_val", {})
-    old_val = change.get("old_val", {})
+    new_val = change.get("new_val") or {}
+    old_val = change.get("old_val") or {}
 
     # React only to status field changes
     if new_val.get("status") != old_val.get("status"):
@@ -129,7 +129,7 @@ app.post("/rethinkdb-feed", async (req, res) => {
 dapr run \
   --app-id change-feed-processor \
   --app-port 3000 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node app.js
 ```
 
