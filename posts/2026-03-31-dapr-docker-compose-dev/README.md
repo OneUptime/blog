@@ -26,6 +26,8 @@ my-dapr-app/
   components/
     statestore.yaml
     pubsub.yaml
+  config/
+    config.yaml
   services/
     order-service/
       Dockerfile
@@ -62,9 +64,9 @@ services:
     build: ./services/order-service
     ports:
     - "3001:3001"
+    - "3500:3500"
     depends_on:
     - redis
-    - order-service-dapr
     networks:
     - dapr-network
 
@@ -79,7 +81,7 @@ services:
     - "3001"
     - -dapr-http-port
     - "3500"
-    - -components-path
+    - -resources-path
     - /components
     - -config
     - /config/config.yaml
@@ -88,6 +90,7 @@ services:
     - ./config:/config
     depends_on:
     - redis
+    - order-service
     network_mode: "service:order-service"
 
   # Inventory Service
@@ -97,7 +100,6 @@ services:
     - "3002:3002"
     depends_on:
     - redis
-    - inventory-service-dapr
     networks:
     - dapr-network
 
@@ -112,10 +114,13 @@ services:
     - "3002"
     - -dapr-http-port
     - "3501"
-    - -components-path
+    - -resources-path
     - /components
     volumes:
     - ./components:/components
+    depends_on:
+    - redis
+    - inventory-service
     network_mode: "service:inventory-service"
 
 networks:
