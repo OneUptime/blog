@@ -15,23 +15,22 @@ Azure Service Bus sessions enable ordered, exclusive delivery of related message
 ## Enable Sessions on a Topic/Queue
 
 ```bash
-# Create a topic with sessions enabled
+# Create a topic (sessions are not a topic-level property)
 az servicebus topic create \
   --namespace-name mysbns \
   --resource-group my-rg \
-  --name orders \
-  --requires-session true
+  --name orders
 
-# Create a subscription
+# Create a session-enabled subscription
 az servicebus topic subscription create \
   --namespace-name mysbns \
   --resource-group my-rg \
   --topic-name orders \
   --name dapr-sub \
-  --requires-session true
+  --enable-session true
 ```
 
-Note: Sessions cannot be enabled on existing queues/topics - you must create them with `--requires-session true`.
+Note: Sessions cannot be enabled on existing queues/subscriptions - you must create them with `--enable-session true`.
 
 ## Dapr Component Configuration
 
@@ -49,10 +48,6 @@ spec:
       secretKeyRef:
         name: servicebus-secret
         key: connection-string
-    - name: sessionIdleTimeoutInSec
-      value: "60"
-    - name: maxConcurrentSessions
-      value: "8"
     - name: lockRenewalInSec
       value: "20"
     - name: maxRetriableErrorsPerSec
@@ -63,7 +58,7 @@ spec:
 
 ## Publishing with Session ID
 
-The `sessionId` must be set via metadata when publishing:
+The `SessionId` must be set via metadata when publishing:
 
 ```python
 from dapr.clients import DaprClient
@@ -77,7 +72,7 @@ def publish_order_event(order_id: str, event_type: str, data: dict):
             data=json.dumps({"type": event_type, **data}),
             data_content_type="application/json",
             publish_metadata={
-                "sessionId": order_id  # All events for the same order go to same session
+                "SessionId": order_id  # All events for the same order go to same session
             }
         )
 
@@ -100,19 +95,22 @@ spec:
   pubsubname: servicebus-pubsub
   topic: orders
   route: /orders
+  metadata:
+    requireSessions: "true"
+    sessionIdleTimeoutInSec: "60"
+    maxConcurrentSessions: "8"
 ```
 
 ```python
 from flask import Flask, request, jsonify
-import json
 
 app = Flask(__name__)
 
 @app.route('/orders', methods=['POST'])
 def handle_order():
     event = request.json
-    cloud_event_data = json.loads(event.get('data', '{}'))
-    session_id = event.get('metadata', {}).get('sessionId')
+    cloud_event_data = event.get('data', {})
+    session_id = event.get('metadata', {}).get('SessionId')
 
     print(f"Processing event for session {session_id}: {cloud_event_data['type']}")
     # Events arrive in order per session_id
@@ -121,11 +119,11 @@ def handle_order():
 
 ## Scaling Considerations
 
-Each Dapr instance holds sessions for its consumer. Set `maxConcurrentSessions` to control how many sessions a single sidecar processes in parallel:
+Each Dapr instance holds sessions for its consumer. Set `maxConcurrentSessions` in the subscription metadata to control how many sessions a single sidecar processes in parallel:
 
 ```yaml
-- name: maxConcurrentSessions
-  value: "16"
+metadata:
+  maxConcurrentSessions: "16"
 ```
 
 Scale the deployment horizontally - Service Bus distributes sessions across Dapr instances.
@@ -134,13 +132,20 @@ Scale the deployment horizontally - Service Bus distributes sessions across Dapr
 
 Long-running processors need lock renewal to avoid session timeout:
 
+Component-level (applies to all subscriptions):
+
 ```yaml
 - name: lockRenewalInSec
   value: "30"
-- name: sessionIdleTimeoutInSec
-  value: "120"
+```
+
+Subscription-level (in the Subscription metadata):
+
+```yaml
+metadata:
+  sessionIdleTimeoutInSec: "120"
 ```
 
 ## Summary
 
-Azure Service Bus sessions with Dapr pub/sub guarantee ordered delivery of all messages sharing the same `SessionId`. Enable sessions at queue/topic creation time (it cannot be changed later), set the `sessionId` publish metadata field to a logical grouping key (like order ID), and configure `maxConcurrentSessions` to control parallelism. Dapr automatically acquires, renews, and releases session locks on your behalf.
+Azure Service Bus sessions with Dapr pub/sub guarantee ordered delivery of all messages sharing the same `SessionId`. Enable sessions at queue/subscription creation time (it cannot be changed later), set the `SessionId` publish metadata field to a logical grouping key (like order ID), and configure `maxConcurrentSessions` in the subscription metadata to control parallelism. Dapr automatically acquires, renews, and releases session locks on your behalf.
