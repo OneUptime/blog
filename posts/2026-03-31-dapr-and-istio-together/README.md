@@ -26,11 +26,12 @@ Install Istio first, then Dapr:
 # Install Istio
 istioctl install --set profile=default
 
-# Enable sidecar injection for dapr-system namespace
+# Create the dapr-system namespace and enable Istio sidecar injection
+kubectl create namespace dapr-system
 kubectl label namespace dapr-system istio-injection=enabled
 
 # Install Dapr
-helm install dapr dapr/dapr -n dapr-system --create-namespace --wait
+helm install dapr dapr/dapr -n dapr-system --wait
 ```
 
 ## Disabling Duplicate mTLS
@@ -71,10 +72,14 @@ spec:
       number: 3500
       protocol: HTTP
       name: dapr-http
+    hosts:
+    - "./*"
   - port:
       number: 50001
       protocol: GRPC
       name: dapr-grpc
+    hosts:
+    - "./*"
 ```
 
 ## Avoiding Port Conflicts
