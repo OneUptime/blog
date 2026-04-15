@@ -29,10 +29,11 @@ SETTINGS
     kafka_group_name = 'clickhouse-consumers',
     kafka_format = 'JSONEachRow',
     kafka_max_block_size = 65536,
-    kafka_num_consumers = 4;
+    kafka_num_consumers = 4,
+    kafka_handle_error_mode = 'stream';
 ```
 
-The configuration is identical to a Kafka setup - just replace the broker addresses with your Redpanda broker addresses.
+The configuration is identical to a Kafka setup - just replace the broker addresses with your Redpanda broker addresses. The `kafka_handle_error_mode = 'stream'` setting makes the `_error` virtual column available, which we use later to filter out malformed messages.
 
 ## TLS Authentication with Redpanda
 
@@ -52,8 +53,18 @@ SETTINGS
     kafka_security_protocol = 'SASL_SSL',
     kafka_sasl_mechanism = 'SCRAM-SHA-256',
     kafka_sasl_username = 'clickhouse-user',
-    kafka_sasl_password = 'SecurePass!2026',
-    kafka_ssl_ca_location = '/etc/clickhouse-server/ssl/redpanda-ca.crt';
+    kafka_sasl_password = 'SecurePass!2026';
+```
+
+SSL certificate paths like `ssl.ca.location` are librdkafka properties that must be configured in the ClickHouse server XML config file rather than in the CREATE TABLE statement:
+
+```xml
+<!-- /etc/clickhouse-server/config.d/kafka.xml -->
+<clickhouse>
+    <kafka>
+        <ssl_ca_location>/etc/clickhouse-server/ssl/redpanda-ca.crt</ssl_ca_location>
+    </kafka>
+</clickhouse>
 ```
 
 ## Target Table and Materialized View
@@ -93,8 +104,8 @@ SETTINGS
     kafka_broker_list = 'redpanda-1:9092',
     kafka_topic_list = 'events-avro',
     kafka_group_name = 'clickhouse-avro-consumer',
-    kafka_format = 'Avro',
-    kafka_schema_registry_url = 'http://redpanda-schema-registry:8081';
+    kafka_format = 'AvroConfluent',
+    format_avro_schema_registry_url = 'http://redpanda-schema-registry:8081';
 ```
 
 ## Monitoring Consumer Group in Redpanda
