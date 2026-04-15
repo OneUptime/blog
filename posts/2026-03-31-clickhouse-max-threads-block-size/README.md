@@ -136,7 +136,7 @@ SETTINGS max_block_size = 262144, max_threads = 16;
 SELECT
     query_id,
     query,
-    peak_memory_usage,
+    memory_usage,
     read_rows,
     query_duration_ms
 FROM system.query_log
