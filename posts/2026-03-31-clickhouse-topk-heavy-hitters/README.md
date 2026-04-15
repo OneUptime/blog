@@ -10,7 +10,7 @@ Description: Learn how to use topK and topKWeighted in ClickHouse to efficiently
 
 ## What Are Heavy Hitters?
 
-Heavy hitters are items that appear disproportionately often in a dataset - the top URLs generating traffic, the most frequent error codes, or the most active users. Finding them exactly requires sorting all distinct values, which is expensive. ClickHouse's `topK` function uses the Space-Saving algorithm to find heavy hitters approximately with very low memory overhead.
+Heavy hitters are items that appear disproportionately often in a dataset - the top URLs generating traffic, the most frequent error codes, or the most active users. Finding them exactly requires sorting all distinct values, which is expensive. ClickHouse's `topK` function uses a variant of the Space-Saving algorithm (specifically, the Filtered Space-Saving algorithm) to find heavy hitters approximately with very low memory overhead.
 
 ## Basic topK Usage
 
@@ -93,11 +93,13 @@ WHERE hour >= now() - INTERVAL 24 HOUR;
 
 ## Accuracy and Guarantees
 
-The Space-Saving algorithm guarantees:
+The original Space-Saving algorithm provides these theoretical guarantees:
 - Any item with frequency greater than `total / (k + 1)` will appear in the result
 - Frequencies are overestimated by at most `total / (k + 1)`
 
-For a dataset of 1 million events with `topK(10)`, items with frequency above 90,909 will always be included, with at most 90,909 overcount.
+For a dataset of 1 million events with `topK(10)`, this means items with frequency above 90,909 (~1/11 of total) would be captured, with at most 90,909 overcount.
+
+Note that ClickHouse uses a Filtered Space-Saving variant, and the documentation states that the function does not provide guaranteed results — in certain situations, errors can occur and it may return frequent values that are not the actual most frequent values. In practice, it works well for identifying heavy hitters, but should not be relied upon for exact guarantees.
 
 ## Comparing topK vs Exact COUNT Group By
 
