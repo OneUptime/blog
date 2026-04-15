@@ -145,11 +145,10 @@ If `marks_scanned` is very high relative to `read_rows`, your primary key or ski
 Benchmark queries under load:
 
 ```bash
-echo "SELECT count() FROM events WHERE event_date = today()" | \
 clickhouse-benchmark \
   --concurrency 10 \
   --iterations 100 \
-  --query "$(cat)"
+  --query "SELECT count() FROM events WHERE event_date = today()"
 ```
 
 ## Summary
