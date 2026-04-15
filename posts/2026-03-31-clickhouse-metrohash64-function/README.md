@@ -53,11 +53,10 @@ Compare fingerprints of the same records at different pipeline stages to detect 
 SELECT
     a.record_id,
     metroHash64(a.raw_value)       AS raw_fingerprint,
-    metroHash64(b.processed_value) AS processed_fingerprint,
-    metroHash64(a.raw_value) != metroHash64(b.processed_value) AS changed
+    metroHash64(b.processed_value) AS processed_fingerprint
 FROM raw_stage AS a
 JOIN processed_stage AS b ON a.record_id = b.record_id
-WHERE changed = 1
+WHERE metroHash64(a.raw_value) != metroHash64(b.processed_value)
 LIMIT 20;
 ```
 
