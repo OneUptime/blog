@@ -91,10 +91,8 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
 
-    dapr "github.com/dapr/go-sdk/client"
     "github.com/dapr/go-sdk/actor"
     daprd "github.com/dapr/go-sdk/service/http"
 )
@@ -132,9 +130,9 @@ func (a *CounterActorImpl) GetCount(ctx context.Context) (int, error) {
 
 func main() {
     s := daprd.NewService(":3000")
-    s.RegisterActorImplFactory(actor.NewDefaultFactory(func() actor.Server {
+    s.RegisterActorImplFactory(func() actor.Server {
         return &CounterActorImpl{}
-    }))
+    })
     if err := s.Start(); err != nil {
         log.Fatalf("error starting actor service: %v", err)
     }
@@ -192,7 +190,7 @@ curl -X POST http://localhost:3500/v1.0/actors/CounterActor/user-42/method/incre
 To get the count:
 
 ```bash
-curl http://localhost:3500/v1.0/actors/CounterActor/user-42/method/getCount
+curl http://localhost:3500/v1.0/actors/CounterActor/user-42/method/GetCount
 ```
 
 ## Running Locally
