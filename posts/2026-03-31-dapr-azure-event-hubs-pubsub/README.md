@@ -136,7 +136,7 @@ spec:
 ```bash
 dapr run --app-id order-service \
   --app-port 6000 \
-  --components-path ./components \
+  --resources-path ./components \
   go run main.go
 ```
 
