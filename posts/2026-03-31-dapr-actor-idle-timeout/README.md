@@ -67,18 +67,17 @@ Dapr uses Go duration strings:
 ## Monitoring the Impact of Idle Timeout
 
 ```bash
-# Check how many actors are currently active
-curl http://localhost:9090/metrics | grep dapr_actor_active_actors
-
 # Track deactivation rate
-curl http://localhost:9090/metrics | grep dapr_actor_deactivations_total
+curl http://localhost:9090/metrics | grep dapr_runtime_actor_deactivated_total
+
+# Check pending actor calls
+curl http://localhost:9090/metrics | grep dapr_runtime_actor_pending_actor_calls
 ```
 
-Prometheus query to visualize memory pressure by actor type:
+Prometheus query to track actor deactivation rate over time:
 
 ```promql
-dapr_actor_active_actors{app_id="my-service"} * 10240
-# Approximate memory in KB assuming 10KB per actor instance
+rate(dapr_runtime_actor_deactivated_total{app_id="my-service"}[5m])
 ```
 
 ## Per-Actor-Type Idle Timeout
@@ -88,6 +87,7 @@ If you have multiple actor types with different timeout needs, configure them se
 ```go
 http.HandleFunc("/dapr/config", func(w http.ResponseWriter, r *http.Request) {
   config := map[string]interface{}{
+    "entities": []string{"UserSession", "DeviceTwin"},
     "entitiesConfig": []map[string]interface{}{
       {
         "entities":         []string{"UserSession"},
