@@ -41,7 +41,7 @@ CREATE TABLE http_requests_per_minute
     request_count UInt64,
     error_count UInt64,
     total_duration_ms UInt64,
-    max_duration_ms UInt32,
+    max_duration_ms SimpleAggregateFunction(max, UInt32),
     bytes_total UInt64,
     -- For quantile calculations, store AggregateFunction
     duration_quantile AggregateFunction(quantile(0.99), UInt32)
@@ -117,10 +117,10 @@ GROUP BY hour, service;
 
 ## Handling Late Data
 
-By default, materialized views only process data at insert time. For late-arriving events, insert them into the raw table - the MV will process them automatically. For already-aggregated per-minute entries, use the deduplication capabilities:
+By default, materialized views only process data at insert time. For late-arriving events, insert them into the raw table - the MV will process them automatically. Since SummingMergeTree merges rows with the same sorting key in the background, the late data will be correctly combined with existing per-minute entries. To force this merge immediately:
 
 ```sql
--- Force re-aggregation of a specific minute if needed
+-- Force merge of all parts so SummingMergeTree combines matching keys
 OPTIMIZE TABLE http_requests_per_minute FINAL;
 ```
 
