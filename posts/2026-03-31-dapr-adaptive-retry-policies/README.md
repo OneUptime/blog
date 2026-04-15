@@ -31,14 +31,13 @@ spec:
       adaptiveRetry:
         policy: exponential
         maxRetries: 5
-        initialInterval: 1s
         maxInterval: 30s
 
     circuitBreakers:
       protectiveCB:
         interval: 60s
         timeout: 120s
-        trip: errorRatio(0.3)
+        trip: consecutiveFailures > 3
 
   targets:
     apps:
@@ -50,7 +49,7 @@ spec:
 apiVersion: dapr.io/v1alpha1
 kind: Resiliency
 metadata:
-  name: production-resiliency
+  name: staging-resiliency
   namespace: staging
 spec:
   policies:
@@ -58,7 +57,6 @@ spec:
       adaptiveRetry:
         policy: exponential
         maxRetries: 10
-        initialInterval: 200ms
         maxInterval: 5s
 ```
 
@@ -67,7 +65,9 @@ spec:
 Track error rates in your application and adjust behavior:
 
 ```python
+import json
 import time
+import random
 import threading
 from collections import deque
 from dapr.clients import DaprClient
@@ -117,7 +117,7 @@ class AdaptiveRetryClient:
             # Low error rate - standard retries
             return {"max_retries": 5, "base_delay": 0.5, "max_delay": 20.0}
 
-    async def invoke(self, method: str, data: dict) -> dict:
+    def invoke(self, method: str, data: dict) -> dict:
         config = self._get_retry_config()
         max_retries = config["max_retries"]
         base_delay = config["base_delay"]
@@ -130,7 +130,8 @@ class AdaptiveRetryClient:
                     response = client.invoke_method(
                         app_id=self.app_id,
                         method_name=method,
-                        data=data,
+                        data=json.dumps(data),
+                        content_type="application/json",
                     )
                     self._record_outcome(success=True)
                     return response.json()
@@ -139,11 +140,9 @@ class AdaptiveRetryClient:
                 if attempt == max_retries:
                     raise
 
-                import asyncio
-                import random
                 delay = min(base_delay * (2 ** attempt), config["max_delay"])
                 delay *= random.uniform(0.75, 1.25)  # jitter
-                await asyncio.sleep(delay)
+                time.sleep(delay)
 ```
 
 ## Approach 3: Context-Aware Retry Policies
@@ -151,6 +150,8 @@ class AdaptiveRetryClient:
 Adjust retry behavior based on request context or business rules:
 
 ```javascript
+import { HttpMethod } from "@dapr/dapr";
+
 class ContextAwareRetryClient {
   constructor(daprClient) {
     this.client = daprClient;
@@ -161,7 +162,7 @@ class ContextAwareRetryClient {
 
     for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
       try {
-        const result = await this.client.invoker.invoke(appId, method, data, { method: 'POST' });
+        const result = await this.client.invoker.invoke(appId, method, HttpMethod.POST, data);
         return result;
       } catch (err) {
         if (attempt === config.maxRetries) throw err;
@@ -214,7 +215,7 @@ spec:
       adaptiveCB:
         interval: 30s
         timeout: 60s
-        trip: errorRatio(0.5)   # Dapr opens circuit at 50% errors
+        trip: consecutiveFailures > 5   # Dapr opens circuit after 5 consecutive failures
   targets:
     apps:
       target-service:
