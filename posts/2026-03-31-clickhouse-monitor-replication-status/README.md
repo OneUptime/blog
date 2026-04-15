@@ -30,7 +30,7 @@ ORDER BY absolute_delay DESC, queue_size DESC;
 ```
 
 Key columns to watch:
-- `absolute_delay` - seconds the replica is behind the leader
+- `absolute_delay` - seconds of replication lag the replica currently has
 - `queue_size` - number of replication tasks waiting to execute
 - `is_readonly` - indicates the replica is not accepting writes
 - `active_replicas` - should equal `total_replicas` in a healthy cluster
@@ -81,14 +81,14 @@ If you export ClickHouse metrics to Prometheus, track these metrics:
 ClickHouseMetrics_ReplicatedChecks
 ClickHouseMetrics_ReplicatedFetch
 ClickHouseMetrics_ReplicatedSend
-ClickHouseAsyncMetrics_ReplicaDelay
+ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay
 ```
 
 Create a Prometheus alert for replica delay:
 
 ```text
 - alert: ClickHouseReplicaLag
-  expr: ClickHouseAsyncMetrics_ReplicaDelay > 300
+  expr: ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay > 300
   for: 5m
   labels:
     severity: warning
@@ -135,4 +135,4 @@ Check the `zookeeper_exception` column for connection error details.
 
 ## Summary
 
-Monitor ClickHouse replication health using `system.replicas` for high-level lag metrics and `system.replication_queue` for task-level details. Watch for rising `absolute_delay`, stuck queue items with high retry counts, and read-only replicas. Set Prometheus alerts on `ReplicaDelay` to catch problems before they affect query consistency or data durability.
+Monitor ClickHouse replication health using `system.replicas` for high-level lag metrics and `system.replication_queue` for task-level details. Watch for rising `absolute_delay`, stuck queue items with high retry counts, and read-only replicas. Set Prometheus alerts on `ReplicasMaxAbsoluteDelay` to catch problems before they affect query consistency or data durability.
