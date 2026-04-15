@@ -8,7 +8,7 @@ Description: Learn how to measure feature adoption rates, time-to-first-use, and
 
 ---
 
-Feature adoption tracking answers "what percentage of eligible users have tried a new feature?" and "how quickly do users discover it after signup?". ClickHouse's window functions and cohort query patterns make adoption analysis straightforward even across large user bases.
+Feature adoption tracking answers "what percentage of eligible users have tried a new feature?" and "how quickly do users discover it after signup?". ClickHouse's aggregate functions and cohort query patterns make adoption analysis straightforward even across large user bases.
 
 ## Schema
 
