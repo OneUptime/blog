@@ -27,7 +27,7 @@ graph LR
 
 ## Default Value
 
-The default `uncompressed_cache_size` is `0` (disabled) in some versions and `1073741824` (1 GiB) in others. Check what is configured:
+The default `uncompressed_cache_size` is `0` (disabled) in some versions and `8589934592` (8 GiB) in others. Check what is configured:
 
 ```sql
 SELECT name, value
@@ -46,10 +46,10 @@ Add to `config.xml` or a config drop-in:
 </clickhouse>
 ```
 
-Reload config:
+Restart the server to apply the change:
 
-```sql
-SYSTEM RELOAD CONFIG;
+```bash
+sudo systemctl restart clickhouse-server
 ```
 
 ## Enabling Per-Query
