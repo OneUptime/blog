@@ -39,13 +39,13 @@ SELECT
     end_time,
     num_files,
     total_size,
-    exception
+    error
 FROM system.backups
 ORDER BY start_time DESC
 LIMIT 10;
 ```
 
-A status of `BACKUP_CREATED` with no exception indicates a valid backup.
+A status of `BACKUP_CREATED` with no error indicates a valid backup.
 
 ## Test 2: Isolated Restore Test
 
