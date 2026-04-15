@@ -43,7 +43,7 @@ builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Trace);
 
 ## DaprException: Component Not Found
 
-If a `DaprException` says a component is missing, verify the component file is in the path passed to `--components-path` and that the `metadata.name` matches what your code uses:
+If a `DaprException` says a component is missing, verify the component file is in the path passed to `--resources-path` and that the `metadata.name` matches what your code uses:
 
 ```yaml
 # components/statestore.yaml
