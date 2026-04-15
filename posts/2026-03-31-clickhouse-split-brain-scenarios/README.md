@@ -10,7 +10,7 @@ Description: Learn how to detect, prevent, and recover from split-brain scenario
 
 ## What Is a Split-Brain in ClickHouse?
 
-A split-brain occurs when a network partition causes replicas to diverge - both replicas believe they are the leader and accept writes independently. When connectivity is restored, conflicting data blocks exist on both nodes, and ClickHouse must reconcile them.
+A split-brain occurs when a network partition causes replicas to lose coordination with ClickHouse Keeper/ZooKeeper. Since ClickHouse uses multi-master replication (all replicas can accept writes), the real issue is that replicas can no longer synchronize their replication logs. When connectivity is restored, conflicting data parts may exist on different nodes, and ClickHouse must reconcile them.
 
 ## How ClickHouse Handles Divergence
 
@@ -49,7 +49,7 @@ Deploy ClickHouse Keeper with an odd number of nodes (3 or 5) so that a quorum i
 </keeper_server>
 ```
 
-### Set min_replicas_for_write
+### Set insert_quorum
 
 Require writes to succeed on multiple replicas before acknowledging:
 
@@ -85,7 +85,7 @@ If a replica has diverged and is stuck in read-only mode:
 # Step 1: Stop the affected ClickHouse node
 sudo systemctl stop clickhouse-server
 
-# Step 2: Drop the ZooKeeper path for the affected replica
+# Step 2: From a healthy replica, drop the ZooKeeper path for the affected replica
 clickhouse-client --query "
   SYSTEM DROP REPLICA 'replica-2' FROM TABLE events_local
 "
