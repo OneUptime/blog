@@ -13,7 +13,7 @@ Cloudflare Queues is a globally distributed message queue built on top of the Cl
 ## Prerequisites
 
 - Cloudflare account with a Queue created
-- Cloudflare API token with `com.cloudflare.edge.queue.update` permission
+- Cloudflare API token with **Queues Edit** permission
 - Account ID from your Cloudflare dashboard
 - Dapr sidecar running
 
@@ -37,13 +37,20 @@ spec:
     value: "YOUR_CLOUDFLARE_ACCOUNT_ID"
   - name: queueName
     value: "my-task-queue"
+  - name: workerName
+    value: "my-queue-worker"
+  - name: key
+    secretKeyRef:
+      name: cloudflare-secret
+      key: ed25519Key
 ```
 
 Create the secret:
 
 ```bash
 kubectl create secret generic cloudflare-secret \
-  --from-literal=apiToken=YOUR_CF_API_TOKEN
+  --from-literal=apiToken=YOUR_CF_API_TOKEN \
+  --from-literal=ed25519Key="$(cat path/to/ed25519-private.pem)"
 ```
 
 ## Publishing a Message
@@ -99,7 +106,7 @@ Once messages are in the queue, a Cloudflare Worker consumes them:
 
 ```javascript
 export default {
-  async queue(batch, env) {
+  async queue(batch, env, ctx) {
     for (const message of batch.messages) {
       const task = message.body;
       if (task.taskType === "send_email") {
