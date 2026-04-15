@@ -32,8 +32,6 @@ spec:
     value: "https://auth.example.com"
   - name: audience
     value: "api.myapp.com"
-  - name: requiredClaims
-    value: "sub,exp"
 ```
 
 Apply to a service configuration:
@@ -76,11 +74,11 @@ spec:
   - name: tokenURL
     value: "https://auth.example.com/oauth2/token"
   - name: scopes
-    value: "service.read service.write"
+    value: "service.read,service.write"
   - name: headerName
     value: "Authorization"
   - name: authStyle
-    value: "header"
+    value: "2"
 ```
 
 ## Custom API Key Middleware
@@ -92,6 +90,7 @@ Build a custom middleware component for API key validation:
 package main
 
 import (
+    "context"
     "net/http"
     "strings"
 
@@ -104,7 +103,7 @@ type APIKeyMiddleware struct {
     validKeys map[string]string // key -> client name
 }
 
-func (a *APIKeyMiddleware) GetHandler(metadata middleware.Metadata) (func(http.Handler) http.Handler, error) {
+func (a *APIKeyMiddleware) GetHandler(ctx context.Context, metadata middleware.Metadata) (func(http.Handler) http.Handler, error) {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             apiKey := r.Header.Get("X-API-Key")
@@ -146,8 +145,6 @@ spec:
       type: middleware.http.bearer
     - name: ratelimit
       type: middleware.http.ratelimit
-    - name: request-logger
-      type: middleware.http.uppercase
   tracing:
     samplingRate: "1"
     otel:
@@ -157,22 +154,31 @@ spec:
 
 ## Accessing Claims in Application Code
 
-After authentication middleware validates the JWT, access claims in your handler:
+After Dapr bearer middleware validates the JWT, decode the token payload in your handler to access claims:
 
 ```python
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+import base64
+import json
 
 app = FastAPI()
 
 @app.get("/api/profile")
 async def get_profile(request: Request):
-    # Dapr middleware injects validated claims as headers
-    user_id = request.headers.get("X-JWT-Sub")
-    email = request.headers.get("X-JWT-Email")
-    roles = request.headers.get("X-JWT-Roles", "").split(",")
+    # Dapr bearer middleware has already validated the JWT
+    # Decode the payload to access claims
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ")
+    payload = token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    claims = json.loads(base64.urlsafe_b64decode(payload))
+
+    user_id = claims.get("sub")
+    email = claims.get("email")
+    roles = claims.get("roles", [])
 
     if "admin" not in roles:
-        return {"error": "insufficient permissions"}, 403
+        raise HTTPException(status_code=403, detail="insufficient permissions")
 
     return {
         "userId": user_id,
@@ -189,14 +195,15 @@ JWT=$(curl -s -X POST "https://auth.example.com/oauth2/token" \
   -d "grant_type=client_credentials&client_id=test&client_secret=secret&scope=api.read" | \
   jq -r '.access_token')
 
+# Call through the Dapr sidecar so the middleware pipeline is applied
 curl -H "Authorization: Bearer $JWT" \
-  "http://my-service:8080/api/profile"
+  "http://localhost:3500/v1.0/invoke/my-service/method/api/profile"
 
 # Test with invalid JWT - should return 401
 curl -H "Authorization: Bearer invalid-token" \
-  "http://my-service:8080/api/profile"
+  "http://localhost:3500/v1.0/invoke/my-service/method/api/profile"
 ```
 
 ## Summary
 
-Dapr's middleware pipeline provides JWT bearer token validation, OAuth2 client credentials injection, and extensible custom middleware for API key authentication - all configured as Kubernetes custom resources without application code changes. Chain middleware handlers in order (authenticate first, then rate limit, then log) and apply configurations to specific services via the `dapr.io/config` annotation. Access validated identity information from middleware-injected headers in your application handlers to implement authorization logic.
+Dapr's middleware pipeline provides JWT bearer token validation, OAuth2 client credentials injection, and extensible custom middleware for API key authentication - all configured as Kubernetes custom resources without application code changes. Chain middleware handlers in order (authenticate first, then rate limit) and apply configurations to specific services via the `dapr.io/config` annotation. After Dapr validates the JWT, decode the token payload in your application handlers to extract claims and implement authorization logic.
