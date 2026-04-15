@@ -58,9 +58,9 @@ spec:
   metadata:
   - name: redisHost
     value: redis:6379
-  scopes:
-  - payment-service
-  - billing-service
+scopes:
+- payment-service
+- billing-service
 ```
 
 Only `payment-service` and `billing-service` can use this component. Other apps get an error if they try to access it.
@@ -84,13 +84,16 @@ spec:
     value: "dapr-group"
 ```
 
-To make a component available cluster-wide, the Dapr operator must be configured to watch all namespaces:
+Dapr sidecars only load components from their own namespace. To share this pub/sub with applications in other namespaces, deploy the same component definition in each namespace that needs access:
 
 ```bash
-helm upgrade dapr dapr/dapr \
-  --namespace dapr-system \
-  --set dapr_operator.watchInterval=30s
+# Deploy the pub/sub component in each namespace that needs it
+for ns in team-a team-b team-c; do
+  sed "s/namespace: infra/namespace: $ns/" infra/pubsub.yaml | kubectl apply -f -
+done
 ```
+
+Each namespace gets its own Component resource, but they all point to the same Kafka cluster.
 
 ## Verifying Component Scoping
 
