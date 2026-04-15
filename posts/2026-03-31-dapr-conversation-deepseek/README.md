@@ -33,7 +33,7 @@ spec:
         key: api-key
     - name: model
       value: "deepseek-chat"
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "10m"
 ```
 
@@ -72,13 +72,13 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/deepseek-conversatio
   -d '{
     "inputs": [
       {
-        "message": "Write a Python function to find the nth Fibonacci number using memoization",
+        "content": "Write a Python function to find the nth Fibonacci number using memoization",
         "role": "user"
       }
     ],
     "parameters": {
       "temperature": 0.3,
-      "max_tokens": 800
+      "maxTokens": 800
     }
   }'
 ```
@@ -93,13 +93,15 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/deepseek-conversatio
   -d '{
     "inputs": [
       {
-        "message": "A distributed system has 5 nodes. If the probability of any single node failing per hour is 0.01, what is the probability that at least 3 nodes are available after 2 hours?",
+        "content": "A distributed system has 5 nodes. If the probability of any single node failing per hour is 0.01, what is the probability that at least 3 nodes are available after 2 hours?",
         "role": "user"
       }
     ],
     "parameters": {
-      "model": "deepseek-reasoner",
       "temperature": 0.1
+    },
+    "metadata": {
+      "model": "deepseek-reasoner"
     }
   }'
 ```
@@ -115,13 +117,13 @@ def review_code_with_deepseek(code: str, language: str) -> str:
         "http://localhost:3500/v1.0-alpha1/conversation/deepseek-conversation/converse",
         json={
             "inputs": [{
-                "message": f"Review this {language} code for bugs, security issues, "
+                "content": f"Review this {language} code for bugs, security issues, "
                            f"and performance problems:\n\n```{language}\n{code}\n```",
                 "role": "user"
             }],
             "parameters": {
                 "temperature": 0.2,
-                "max_tokens": 1500
+                "maxTokens": 1500
             }
         }
     )
@@ -167,11 +169,11 @@ spec:
 # Compare outputs
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/deepseek-chat/converse \
   -H "Content-Type: application/json" \
-  -d '{"inputs": [{"message": "Solve: 2x + 5 = 13", "role": "user"}]}'
+  -d '{"inputs": [{"content": "Solve: 2x + 5 = 13", "role": "user"}]}'
 
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/deepseek-reasoner/converse \
   -H "Content-Type: application/json" \
-  -d '{"inputs": [{"message": "Solve: 2x + 5 = 13", "role": "user"}]}'
+  -d '{"inputs": [{"content": "Solve: 2x + 5 = 13", "role": "user"}]}'
 ```
 
 ## Summary
