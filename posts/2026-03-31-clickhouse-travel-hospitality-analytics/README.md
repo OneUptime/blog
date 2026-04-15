@@ -43,7 +43,8 @@ ORDER BY (hotel_id, check_in_date, room_type);
 ```sql
 -- Daily occupancy and RevPAR by hotel
 WITH hotel_capacity AS (
-    SELECT hotel_id, 200 AS total_rooms  -- replace with actual capacity lookup
+    SELECT DISTINCT hotel_id, 200 AS total_rooms  -- replace with actual capacity lookup
+    FROM hotel_bookings
 )
 SELECT
     b.hotel_id,
