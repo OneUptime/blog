@@ -12,7 +12,7 @@ For the `SAMPLE` clause to work on a ClickHouse query, the underlying MergeTree 
 
 ## How SAMPLE BY Works
 
-`SAMPLE BY` defines the column (or expression) used to assign each row to a hash shard. ClickHouse computes `sipHash64(sample_key) % (2^64)` and uses the result to divide rows into deterministic subsets. When you issue `SAMPLE 0.1`, ClickHouse reads the shard covering 10% of the hash range.
+`SAMPLE BY` defines the column (or expression) used to assign each row to a deterministic subset. The expression must evaluate to an unsigned integer, and ClickHouse uses its value to divide rows into ranges. When you issue `SAMPLE 0.1`, ClickHouse reads the portion covering 10% of the value range. For even sampling, the expression values should be uniformly distributed — which is why wrapping keys in a hash function like `intHash32` is recommended.
 
 ## Basic SAMPLE BY Definition
 
@@ -37,7 +37,7 @@ SAMPLE BY user_id;
 The `SAMPLE BY` column must be part of the `ORDER BY` (primary key). This ensures sorted storage enables efficient sampling:
 
 ```sql
--- Correct: user_id is first in ORDER BY
+-- Correct: user_id appears in ORDER BY
 ORDER BY (user_id, event_time)
 SAMPLE BY user_id
 
@@ -98,14 +98,20 @@ Both tables must use `user_id` as their `SAMPLE BY` for consistent co-sampling.
 
 ## Adding SAMPLE BY to Existing Tables
 
-You cannot add `SAMPLE BY` to an existing MergeTree table without recreating it. The safest approach is to create a new table and use `INSERT INTO ... SELECT`:
+You can add or modify `SAMPLE BY` on an existing MergeTree table using `ALTER TABLE`, as long as the new expression is contained in the primary key:
 
 ```sql
-CREATE TABLE page_views_new ... ENGINE = MergeTree ... SAMPLE BY user_id;
-INSERT INTO page_views_new SELECT * FROM page_views;
-RENAME TABLE page_views TO page_views_old, page_views_new TO page_views;
+ALTER TABLE page_views MODIFY SAMPLE BY user_id;
 ```
+
+To remove sampling:
+
+```sql
+ALTER TABLE page_views REMOVE SAMPLE BY;
+```
+
+These operations are lightweight metadata changes and work with all MergeTree family engines, including replicated tables.
 
 ## Summary
 
-Configuring `SAMPLE BY` during table creation is a one-time design decision that unlocks fast approximate queries on any MergeTree table. Choose a key that ensures natural cohesion (such as `user_id`) and wrap it in `intHash32` for even distribution. With `SAMPLE BY` in place, dashboards can use `SAMPLE 0.1` for 10x query speedups with ~1% statistical error.
+Configuring `SAMPLE BY` during table creation unlocks fast approximate queries on any MergeTree table. You can also add it later via `ALTER TABLE ... MODIFY SAMPLE BY`. Choose a key that ensures natural cohesion (such as `user_id`) and wrap it in `intHash32` for even distribution. With `SAMPLE BY` in place, dashboards can use `SAMPLE 0.1` for significant query speedups on large datasets.
