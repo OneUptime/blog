@@ -62,7 +62,7 @@ app.get('/api/events', async (req, res) => {
 Use the last row's sort key as a cursor to avoid deep offsets:
 
 ```javascript
-// GET /api/events?cursor=2026-03-31T12:00:00_999999&limit=100
+// GET /api/events/stream?cursor=2026-03-31T12:00:00_999999&limit=100
 app.get('/api/events/stream', async (req, res) => {
   const limit = Math.min(1000, parseInt(req.query.limit) || 100);
   const cursor = req.query.cursor; // format: "datetime_rowid"
