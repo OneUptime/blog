@@ -63,8 +63,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/external-api \
   -d '{
     "operation": "get",
     "metadata": {
-      "path": "/products/123",
-      "query": "fields=name,price"
+      "path": "/products/123?fields=name,price"
     }
   }'
 ```
@@ -299,11 +298,10 @@ http_binding(
 
 | Metadata Key | Description |
 |-------------|-------------|
-| `path` | URL path appended to base URL |
-| `query` | Query string parameters |
+| `path` | URL path appended to base URL (can include query parameters) |
 | `Authorization` | Authorization header |
 | `Content-Type` | Content-Type header |
-| Any header name | Set as HTTP header |
+| Any capitalized key | Any metadata field starting with a capital letter is sent as an HTTP header |
 
 ## Summary
 
