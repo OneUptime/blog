@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Ruby, Rails, Database, Analytics, ActiveRecord
 
-Description: Add ClickHouse to a Ruby on Rails application using the clickhouse-activerecord gem for ORM support and clickhouse-client for raw analytical queries.
+Description: Add ClickHouse to a Ruby on Rails application using the clickhouse-activerecord gem for ORM support and the ClickHouse HTTP API for raw analytical queries.
 
 ---
 
-Ruby on Rails applications can integrate ClickHouse either through an ActiveRecord adapter or through a raw HTTP client. The `clickhouse-activerecord` gem provides Rails-style model support with migrations, while the `clickhouse-client` gem gives direct query access for complex analytics. This guide covers both approaches with practical examples.
+Ruby on Rails applications can integrate ClickHouse either through an ActiveRecord adapter or through a raw HTTP client. The `clickhouse-activerecord` gem provides Rails-style model support with migrations, while the ClickHouse HTTP API accessed via `Net::HTTP` gives direct query access for complex analytics. This guide covers both approaches with practical examples.
 
 ## Gem Installation
 
@@ -17,7 +17,6 @@ Add to your Gemfile:
 ```ruby
 # Gemfile
 gem 'clickhouse-activerecord', '~> 1.0'
-gem 'faraday', '~> 2.0'        # HTTP adapter used by clickhouse-activerecord
 ```
 
 Then install:
@@ -37,25 +36,24 @@ default: &default
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 development:
-  <<: *default
-  database: myapp_development
-
-# ClickHouse connection (separate adapter block)
-clickhouse:
-  adapter: clickhouse
-  host: <%= ENV.fetch("CLICKHOUSE_HOST", "localhost") %>
-  port: <%= ENV.fetch("CLICKHOUSE_PORT", "8123") %>
-  database: <%= ENV.fetch("CLICKHOUSE_DATABASE", "analytics") %>
-  username: <%= ENV.fetch("CLICKHOUSE_USER", "default") %>
-  password: <%= ENV.fetch("CLICKHOUSE_PASSWORD", "") %>
-  ssl: <%= ENV.fetch("CLICKHOUSE_SSL", "false") == "true" %>
-  debug: false
-  pool: 10
+  primary:
+    <<: *default
+    database: myapp_development
+  clickhouse:
+    adapter: clickhouse
+    host: <%= ENV.fetch("CLICKHOUSE_HOST", "localhost") %>
+    port: <%= ENV.fetch("CLICKHOUSE_PORT", "8123") %>
+    database: <%= ENV.fetch("CLICKHOUSE_DATABASE", "analytics") %>
+    username: <%= ENV.fetch("CLICKHOUSE_USER", "default") %>
+    password: <%= ENV.fetch("CLICKHOUSE_PASSWORD", "") %>
+    ssl: <%= ENV.fetch("CLICKHOUSE_SSL", "false") == "true" %>
+    debug: false
+    pool: 10
 ```
 
 ## Database Router
 
-Rails uses a database router to direct model operations to the correct database:
+You can create a helper class to identify which models use ClickHouse, useful for conditional logic elsewhere in your application:
 
 ```ruby
 # config/initializers/clickhouse_router.rb
@@ -78,11 +76,11 @@ end
 Create a migration targeting the ClickHouse connection:
 
 ```bash
-rails generate migration CreateClickhouseEvents
+rails g clickhouse_migration CreateClickhouseEvents
 ```
 
 ```ruby
-# db/migrate/20260331000001_create_clickhouse_events.rb
+# db/migrate_clickhouse/20260331000001_create_clickhouse_events.rb
 
 class CreateClickhouseEvents < ActiveRecord::Migration[7.1]
   def up
@@ -112,7 +110,7 @@ end
 Run the migration against the ClickHouse database:
 
 ```bash
-rails db:migrate:clickhouse
+rake clickhouse:migrate
 ```
 
 ## ActiveRecord Model
@@ -241,12 +239,16 @@ class AnalyticsService
         count(DISTINCT user_id) AS retained
       FROM (
         SELECT
-          user_id,
-          toStartOfWeek(min(ts))                                           AS cohort_week,
-          dateDiff('week', toStartOfWeek(min(ts)), toStartOfWeek(ts))     AS week_number
-        FROM analytics.events
-        WHERE ts >= today() - 90
-        GROUP BY user_id, toStartOfWeek(ts)
+          e.user_id,
+          c.cohort_week,
+          dateDiff('week', c.cohort_week, toStartOfWeek(e.ts)) AS week_number
+        FROM analytics.events AS e
+        INNER JOIN (
+          SELECT user_id, toStartOfWeek(min(ts)) AS cohort_week
+          FROM analytics.events
+          GROUP BY user_id
+        ) AS c ON e.user_id = c.user_id
+        WHERE e.ts >= today() - 90
       )
       GROUP BY cohort_week, week_number
       ORDER BY cohort_week, week_number
@@ -262,7 +264,7 @@ class AnalyticsService
 
     result = @client.query(<<~SQL)
       SELECT
-        #{steps.map.with_index { |s, i| "countIf(step_#{i}) AS #{s.parameterize.underscore}" }.join(', ')}
+        #{steps.map.with_index { |s, i| "countIf(step_#{i}) AS #{s.underscore.parameterize(separator: '_')}" }.join(', ')}
       FROM (
         SELECT
           user_id,
@@ -346,13 +348,13 @@ end
 # config/routes.rb
 
 Rails.application.routes.draw do
-  namespace :analytics do
-    get :summary
-    get :timeseries
-    get :top_pages
-    get :retention
-    get :funnel
-    get :dau
+  scope '/analytics' do
+    get :summary,    to: 'analytics#summary'
+    get :timeseries, to: 'analytics#timeseries'
+    get :top_pages,  to: 'analytics#top_pages'
+    get :retention,  to: 'analytics#retention'
+    get :funnel,     to: 'analytics#funnel'
+    get :dau,        to: 'analytics#dau'
   end
 end
 ```
@@ -393,4 +395,4 @@ TrackEventJob.perform_later(
 
 ## Summary
 
-Ruby on Rails integrates with ClickHouse through `clickhouse-activerecord` for ORM-style access and a direct HTTP client for complex analytics. Define your ClickHouse models with `connects_to` pointing to the ClickHouse adapter, run migrations with `rails db:migrate:clickhouse`, and use scopes and class methods to encapsulate analytical queries. For production, dispatch event inserts through background jobs to keep your request cycle fast.
+Ruby on Rails integrates with ClickHouse through `clickhouse-activerecord` for ORM-style access and a direct HTTP client for complex analytics. Define your ClickHouse models with `connects_to` pointing to the ClickHouse adapter, run migrations with `rake clickhouse:migrate`, and use scopes and class methods to encapsulate analytical queries. For production, dispatch event inserts through background jobs to keep your request cycle fast.
