@@ -32,27 +32,27 @@ spec:
   metadata:
   - name: development
     value: "true"   # false for production APNs endpoint
-  - name: privateKey
+  - name: private-key
     secretKeyRef:
       name: apns-secret
-      key: privateKey
-  - name: keyID
+      key: private-key
+  - name: key-id
     secretKeyRef:
       name: apns-secret
-      key: keyID
-  - name: teamID
+      key: key-id
+  - name: team-id
     secretKeyRef:
       name: apns-secret
-      key: teamID
+      key: team-id
 ```
 
 ## Create the Kubernetes Secret
 
 ```bash
 kubectl create secret generic apns-secret \
-  --from-literal=keyID=ABCDE12345 \
-  --from-literal=teamID=TEAMID1234 \
-  --from-file=privateKey=./AuthKey_ABCDE12345.p8
+  --from-literal=key-id=ABCDE12345 \
+  --from-literal=team-id=TEAMID1234 \
+  --from-file=private-key=./AuthKey_ABCDE12345.p8
 ```
 
 ## Send a Simple Push Notification
