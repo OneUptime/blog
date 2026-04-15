@@ -23,7 +23,9 @@ sudo usermod -aG docker $USER
 newgrp docker
 
 # Fedora / RHEL
-sudo dnf install -y docker
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
 ```
@@ -78,14 +80,18 @@ npm install -g @dapr/dapr
 For Python:
 
 ```bash
-sudo apt install -y python3 python3-pip
-pip3 install dapr flask
+sudo apt install -y python3 python3-pip python3-venv
+python3 -m venv dapr-env
+source dapr-env/bin/activate
+pip install dapr flask
 ```
 
 For Go:
 
 ```bash
 sudo apt install -y golang-go
+mkdir myapp && cd myapp
+go mod init myapp
 go get github.com/dapr/go-sdk/client
 ```
 
