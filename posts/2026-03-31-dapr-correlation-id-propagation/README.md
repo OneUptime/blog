@@ -83,7 +83,7 @@ module.exports = { correlationMiddleware, getCorrelationContext };
 
 ```javascript
 // service-client.js
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 const { getCorrelationContext } = require('./correlation-middleware');
 
 const daprClient = new DaprClient();
@@ -96,7 +96,7 @@ async function invokeWithCorrelation(appId, method, data) {
   const result = await daprClient.invoker.invoke(
     appId,
     method,
-    'POST',
+    HttpMethod.POST,
     data,
     {
       headers: {
