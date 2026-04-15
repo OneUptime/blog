@@ -73,7 +73,7 @@ ORDER BY turnover_rate;
 
 ## Dead Stock Identification
 
-Find SKUs with no outbound movement in 90 days:
+Find SKUs with no movement in 90 days:
 
 ```sql
 SELECT
