@@ -17,8 +17,8 @@ ClickHouse provides two primary mechanisms for pre-computing query results: proj
 | Feature | Projection | Materialized View |
 |---|---|---|
 | Storage location | Inside base table parts | Separate table |
-| Update mechanism | Atomic with every INSERT | Triggered by INSERT (eventual) |
-| Consistency | Always consistent with base | May lag during high insert load |
+| Update mechanism | Atomic with every INSERT | Triggered synchronously by INSERT |
+| Consistency | Always consistent with base | Consistent for new inserts; pre-existing data not backfilled |
 | Joins across tables | Not supported | Supported |
 | Explicit query routing | Automatic (planner decides) | Must query MV table directly |
 | TTL/lifecycle | Inherited from base table | Independent TTL |
@@ -51,8 +51,8 @@ Materialized views shine when you need to join tables, apply complex transformat
 
 ```sql
 CREATE MATERIALIZED VIEW user_event_summary
-ENGINE = SummingMergeTree()
-ORDER BY (user_id, toStartOfDay(event_time))
+ENGINE = SummingMergeTree(events)
+ORDER BY (user_id, day)
 AS
 SELECT
     e.user_id,
