@@ -60,9 +60,14 @@ spec:
 
 ## Redis-Backed Caching for Distributed Deployments
 
-For multi-node gateway deployments, use Redis as the cache backend:
+For multi-node gateway deployments, use Redis as the cache backend. Note that the Redis strategy requires the `proxy-cache-advanced` plugin (Kong Enterprise), not the open-source `proxy-cache` plugin:
 
 ```yaml
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: response-cache
+plugin: proxy-cache-advanced
 config:
   strategy: redis
   redis:
