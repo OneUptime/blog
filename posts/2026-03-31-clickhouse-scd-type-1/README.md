@@ -69,8 +69,8 @@ SELECT
     argMax(plan_type, updated_at) AS plan_type,
     argMax(country, updated_at) AS country
 FROM dim_users
-GROUP BY user_id
-HAVING user_id = 42;
+WHERE user_id = 42
+GROUP BY user_id;
 ```
 
 ## Batch Updates via CDC
