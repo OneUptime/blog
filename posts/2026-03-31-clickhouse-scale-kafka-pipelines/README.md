@@ -19,7 +19,7 @@ SELECT
     count() AS total_rows,
     min(event_time) AS oldest,
     max(event_time) AS newest,
-    count() / 60.0 AS avg_rows_per_second
+    count() / 3600.0 AS avg_rows_per_second
 FROM events
 WHERE event_time >= now() - INTERVAL 1 HOUR;
 ```
@@ -46,7 +46,7 @@ ALTER TABLE kafka_events_raw MODIFY SETTING
 
 Restart the consumer after modifying:
 
-```bash
+```sql
 DETACH TABLE kafka_events_raw;
 ATTACH TABLE kafka_events_raw;
 ```
@@ -101,15 +101,15 @@ SELECT
 FROM kafka_events_raw;
 ```
 
-## Async Insert for Higher Throughput
+## Tuning Kafka Engine Batch Size
 
-Enable async inserts to reduce write amplification:
+The Kafka engine batches rows before writing through the materialized view. Tune the batch size to balance throughput and latency:
 
 ```sql
-SET async_insert = 1;
-SET wait_for_async_insert = 0;
-SET async_insert_max_data_size = 10485760;  -- 10 MB
-SET async_insert_busy_timeout_ms = 1000;
+ALTER TABLE kafka_events_raw MODIFY SETTING
+    kafka_max_block_size = 65536,         -- rows per batch (default 65536)
+    kafka_poll_timeout_ms = 5000,         -- max wait per poll cycle in ms
+    kafka_flush_interval_ms = 7500;       -- max time before flushing a batch in ms
 ```
 
 ## Throughput Benchmarking
