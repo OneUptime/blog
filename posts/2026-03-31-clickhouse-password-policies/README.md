@@ -27,14 +27,14 @@ CREATE USER mysql_app IDENTIFIED WITH double_sha1_password BY 'AppPass!2026';
 
 Never use the plaintext `password` method in production.
 
-## Configuring Password Complexity in users.xml
+## Storing Hashed Passwords in users.xml
 
 ```xml
 <users>
   <analyst1>
     <password_sha256_hex>
       <!-- Generate with: echo -n 'StrongPass!2026' | sha256sum -->
-      5e884898da28047151d0e56f8dc62927...
+      8348a239219f54fcb388bb212709db0b...
     </password_sha256_hex>
   </analyst1>
 </users>
@@ -112,7 +112,7 @@ When managing passwords via XML config files:
 echo -n 'StrongPass!2026' | sha256sum | awk '{print $1}'
 
 # Generate double SHA-1 (for MySQL compat)
-echo -n 'StrongPass!2026' | sha1sum | awk '{print $1}' | xxd -r -p | sha1sum
+echo -n 'StrongPass!2026' | sha1sum | awk '{print $1}' | xxd -r -p | sha1sum | awk '{print $1}'
 ```
 
 ## Regular Password Audit
