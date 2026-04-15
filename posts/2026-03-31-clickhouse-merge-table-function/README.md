@@ -23,15 +23,15 @@ FROM merge('default', '^events_202');
 ## Basic Syntax
 
 ```sql
-merge(db_name, tables_regexp)
+merge([db_name,] tables_regexp)
 ```
 
 | Parameter      | Description |
 |----------------|-------------|
-| `db_name`      | The database to search in |
+| `db_name`      | The database to search in (optional, defaults to `currentDatabase()`) |
 | `tables_regexp`| A regular expression matching the table names to include |
 
-All matched tables must have identical column names and types.
+The result schema is derived by taking the union of all columns from matched tables and coercing to common types.
 
 ## Common Use Case: Date-Partitioned Tables
 
@@ -87,7 +87,7 @@ FROM merge('default', '^events_20(25|26)$');
 
 ## Schema Requirements
 
-All tables matched by the regex must have the same column names and types. ClickHouse will error if schemas differ. Verify schemas before using `merge()`:
+The result schema is built from the union of columns across all matched tables, with types coerced to a common supertype. If a column exists in some tables but not others, rows from tables without it will contain default values. Verify schemas before using `merge()` to ensure columns align as expected:
 
 ```sql
 -- Check schemas of all events_ tables
@@ -172,10 +172,10 @@ ORDER BY date, event_count DESC;
 
 ## Performance Considerations
 
-- `merge()` performs a sequential scan of all matched tables. There is no cross-table index. Partitioning and primary key pruning work within each table independently.
+- `merge()` reads all matched tables with automatic parallelization. There is no cross-table index, but each table's own indexes are used when they exist. Partitioning and primary key pruning work within each table independently.
 - Use narrow `WHERE` clauses that align with each table's `ORDER BY` or `PARTITION BY` to limit per-table scans.
 - For very large table families (dozens of tables), consider consolidating into a single partitioned MergeTree table.
-- The `_table` column filter is evaluated after table selection, not before - all regex-matched tables are still opened.
+- Filtering on `_table` in a `WHERE` clause optimizes table selection - only tables whose name satisfies the filter condition are actually read.
 
 ## Regex Tips
 
@@ -201,4 +201,4 @@ The `merge()` table function is a convenient tool for working with table familie
 - Use the `_table` virtual column to identify row origins.
 - No DDL required - great for ad-hoc exploration of partitioned table schemes.
 - For permanent access patterns, use the Merge table engine instead.
-- All matched tables must have identical schemas.
+- The result schema is the union of columns from matched tables, with types coerced to common supertypes.
