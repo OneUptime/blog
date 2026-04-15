@@ -8,7 +8,7 @@ Description: Use TTL expressions combined with materialized views and manual par
 
 ---
 
-ClickHouse TTL natively moves data between storage volumes or recompresses it, but it does not directly move rows between tables. There are two practical patterns for table-to-table data movement triggered by age: materialized views with time filters, and manual partition operations scheduled by an external job.
+ClickHouse TTL natively moves data between storage volumes or recompresses it, but it does not directly move rows between tables. There are three practical patterns for table-to-table data movement triggered by age: scheduled partition moves, INSERT SELECT with DROP PARTITION, and materialized views with time filters.
 
 ## Pattern 1 - Scheduled Partition Move
 
