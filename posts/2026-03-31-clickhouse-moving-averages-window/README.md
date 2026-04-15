@@ -152,21 +152,27 @@ The denominator is the sum of weights (1 + 2 + 3 = 6). Adjust the weights and de
 
 ## Exponential Moving Average with exponentialMovingAverage()
 
-ClickHouse provides `exponentialMovingAverage(alpha)(value, timestamp)` as an aggregate function for EMA calculation. Note that this is an aggregate function, not a window function, so it works differently:
+ClickHouse provides `exponentialMovingAverage(x)(value, timeunit)` as a parametric aggregate function for EMA calculation. The parameter `x` is the half-life period (the time lag at which the exponential weights decay by one-half), and `timeunit` is a time interval index, not a raw timestamp. Use `intDiv` to convert timestamps to interval indices. The function can also be used as a window function with an `OVER` clause:
 
 ```sql
 SELECT
-    toStartOfDay(event_time) AS day,
-    AVG(metric_value)        AS daily_avg,
-    exponentialMovingAverage(0.3)(metric_value, toUnixTimestamp(event_time))
-        AS ema_alpha_0_3
-FROM metric_events
-WHERE metric_name = 'request_rate'
-GROUP BY day
+    day,
+    daily_avg,
+    exponentialMovingAverage(3)(daily_avg, day_index)
+        OVER (ORDER BY day ASC) AS ema_halflife_3
+FROM (
+    SELECT
+        toStartOfDay(event_time) AS day,
+        intDiv(toUnixTimestamp(toStartOfDay(event_time)), 86400) AS day_index,
+        AVG(metric_value) AS daily_avg
+    FROM metric_events
+    WHERE metric_name = 'request_rate'
+    GROUP BY day, day_index
+)
 ORDER BY day;
 ```
 
-The `alpha` parameter (0 to 1) controls how quickly the average responds to changes. Higher `alpha` values make the EMA more reactive to recent values; lower values produce a smoother, slower-moving average.
+The half-life parameter `x` controls the decay rate. A half-life of 3 means the weight assigned to a data point drops by half for every 3 time units of distance. Smaller half-life values make the EMA more reactive to recent values; larger values produce a smoother, slower-moving average.
 
 ## Comparing Simple MA and EMA
 
@@ -185,14 +191,20 @@ ORDER BY sale_date;
 ```
 
 ```sql
--- EMA requires GROUP BY, compute at daily granularity
+-- EMA as a window function over pre-aggregated daily data
 SELECT
-    toStartOfDay(sale_datetime)            AS sale_date,
-    SUM(revenue)                           AS daily_revenue,
-    ROUND(exponentialMovingAverage(0.2)(revenue, toUnixTimestamp(sale_datetime)), 2)
-                                           AS ema_alpha_0_2
-FROM sales_raw
-GROUP BY sale_date
+    sale_date,
+    daily_revenue,
+    ROUND(exponentialMovingAverage(3)(daily_revenue, day_index)
+        OVER (ORDER BY sale_date ASC), 2) AS ema_halflife_3
+FROM (
+    SELECT
+        toStartOfDay(sale_datetime) AS sale_date,
+        intDiv(toUnixTimestamp(toStartOfDay(sale_datetime)), 86400) AS day_index,
+        SUM(revenue) AS daily_revenue
+    FROM sales_raw
+    GROUP BY sale_date, day_index
+)
 ORDER BY sale_date;
 ```
 
