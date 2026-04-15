@@ -33,13 +33,13 @@ spec:
   version: v1
   metadata:
     - name: schedule
-      value: "0 2 * * *"
+      value: "0 0 2 * * *"
 ```
 
 Supported schedule formats:
 - `@every 30m` - every 30 minutes
-- `0 2 * * *` - 2:00 AM daily
-- `0 9 * * 1` - 9:00 AM every Monday
+- `0 0 2 * * *` - 2:00 AM daily
+- `0 0 9 * * 1` - 9:00 AM every Monday
 
 ## Querying Source Data
 
@@ -52,7 +52,7 @@ spec:
   type: bindings.postgresql
   version: v1
   metadata:
-    - name: url
+    - name: connectionString
       value: "postgres://user:pass@db-host:5432/analytics?sslmode=require"
 ```
 
