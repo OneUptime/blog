@@ -36,14 +36,14 @@ revenue column: [100, 200, 150]
 Analytical queries typically read a few columns from millions of rows.
 
 ```sql
--- This query only needs the revenue and region columns
+-- This query only needs the ts, region, and revenue columns
 SELECT region, sum(revenue)
 FROM sales
 WHERE ts >= '2024-01-01'
 GROUP BY region;
 ```
 
-With column storage, ClickHouse reads only the `region`, `revenue`, and `ts` columns from disk. It skips all other columns entirely. On a table with 50 columns, this can reduce I/O by 96%.
+With column storage, ClickHouse reads only the `region`, `revenue`, and `ts` columns from disk. It skips all other columns entirely. On a table with 50 columns, this can reduce I/O by 94%.
 
 ## Better Compression
 
@@ -57,12 +57,12 @@ After LZ4 compression:              60-90% size reduction typical
 
 ## Vectorized Execution
 
-ClickHouse processes data column by column in batches (vectors) of 8,192 rows. Modern CPUs can apply SIMD instructions to a column batch, processing 8-16 values per clock cycle.
+ClickHouse processes data column by column in batches (vectors) of up to 65,536 rows. Modern CPUs can apply SIMD instructions to a column batch, processing 8-16 values per clock cycle.
 
 ```text
-Batch of 8192 revenue values -> SIMD sum -> single CPU operation
+Batch of 65536 revenue values -> SIMD sum -> single CPU operation
 vs.
-8192 individual row lookups -> 8192 cache misses in row storage
+65536 individual row lookups -> 65536 cache misses in row storage
 ```
 
 ## When to Use ClickHouse vs. Row-Oriented Databases
