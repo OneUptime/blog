@@ -123,9 +123,9 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
-    - name: container
+    - name: containerName
       value: "documents"
     - name: azureClientId
       value: "<IDENTITY_CLIENT_ID>"
@@ -141,9 +141,9 @@ spec:
   type: bindings.azure.storagequeues
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
-    - name: queue
+    - name: queueName
       value: "task-queue"
     - name: azureClientId
       value: "<IDENTITY_CLIENT_ID>"
@@ -171,15 +171,19 @@ spec:
 
 ## Verifying Workload Identity
 
-Check that the identity is working from inside the pod:
+Check that the workload identity webhook has injected the required environment variables into the pod:
 
 ```bash
-kubectl exec -it order-service-pod -- \
-  curl -H "Metadata: true" \
-  "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/"
+kubectl exec -it order-service-pod -- env | grep AZURE_
 ```
 
-A successful response returns a JWT token with the managed identity claims.
+A successful configuration shows `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_FEDERATED_TOKEN_FILE`, and `AZURE_AUTHORITY_HOST`. You can also verify the projected service account token exists:
+
+```bash
+kubectl exec -it order-service-pod -- cat $AZURE_FEDERATED_TOKEN_FILE
+```
+
+This should output a signed JWT token that Dapr exchanges for an Azure AD access token via the federated credential.
 
 ## Summary
 
