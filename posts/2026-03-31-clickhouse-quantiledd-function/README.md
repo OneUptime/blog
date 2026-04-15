@@ -136,7 +136,7 @@ ORDER BY stat_hour DESC;
 SELECT
     quantileDD(0.01, 0.999)(response_time_ms)    AS p999_dd,
     quantileTDigest(0.999)(response_time_ms)     AS p999_tdigest,
-    quantileGK(0.001, 0.999)(response_time_ms)   AS p999_gk,
+    quantileGK(1000, 0.999)(response_time_ms)    AS p999_gk,
     quantileExact(0.999)(response_time_ms)       AS p999_exact
 FROM request_logs
 WHERE log_date = today();
