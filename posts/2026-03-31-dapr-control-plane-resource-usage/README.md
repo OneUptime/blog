@@ -122,7 +122,7 @@ groups:
       - alert: DaprControlPlaneHighCPU
         expr: >
           rate(container_cpu_usage_seconds_total{namespace="dapr-system"}[5m])
-          / container_spec_cpu_quota{namespace="dapr-system"} * 100000 > 80
+          / container_spec_cpu_quota{namespace="dapr-system"} * 100000 > 0.80
         for: 10m
         labels:
           severity: warning
