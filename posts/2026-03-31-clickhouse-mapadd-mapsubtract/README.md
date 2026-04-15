@@ -8,7 +8,7 @@ Description: Learn how mapAdd() and mapSubtract() merge Maps by summing or subtr
 
 ---
 
-`mapAdd()` and `mapSubtract()` are ClickHouse functions for combining two or more Maps by performing arithmetic on their values. When two maps share a key, `mapAdd()` sums the values while `mapSubtract()` computes the difference. Keys that exist in only one of the input maps are included in the result with their original value. These functions are especially useful for aggregating pre-aggregated metric maps, merging counters, or computing deltas between snapshot maps.
+`mapAdd()` and `mapSubtract()` are ClickHouse functions for combining two or more Maps by performing arithmetic on their values. When two maps share a key, `mapAdd()` sums the values while `mapSubtract()` computes the difference. For `mapAdd()`, keys present in only one map are included with their original value. For `mapSubtract()`, keys unique to the first map keep their value, while keys unique to later maps appear negated. These functions are especially useful for aggregating pre-aggregated metric maps, merging counters, or computing deltas between snapshot maps.
 
 ## Function Signatures
 
