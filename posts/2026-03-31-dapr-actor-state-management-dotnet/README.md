@@ -149,7 +149,7 @@ app.Run();
 | `SetStateAsync` | Set or overwrite a state value |
 | `GetStateAsync` | Retrieve state, throws if not found |
 | `GetOrAddStateAsync` | Get state or create with default |
-| `TryGetStateAsync` | Returns (found, value) tuple |
+| `TryGetStateAsync` | Returns `ConditionalValue<T>` with `HasValue` and `Value` properties |
 | `TryRemoveStateAsync` | Remove state if it exists |
 | `SaveStateAsync` | Flush pending state changes |
 
