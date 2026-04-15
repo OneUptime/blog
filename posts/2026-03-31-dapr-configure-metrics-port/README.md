@@ -74,7 +74,7 @@ rate(dapr_http_server_request_count{app_id="payment-service",status=~"5.."}[5m])
 
 # State store operation latency
 histogram_quantile(0.99,
-  rate(dapr_component_state_get_latencies_ms_bucket{app_id="payment-service"}[5m])
+  rate(dapr_component_state_latencies_bucket{app_id="payment-service"}[5m])
 )
 
 # Pub/sub message ingress rate
@@ -96,10 +96,8 @@ Enable metrics for the Dapr control plane components:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.metrics.enabled=true \
-  --set dapr_operator.metrics.port=8080 \
-  --set dapr_sentry.metrics.enabled=true \
-  --set dapr_placement.metrics.enabled=true
+  --set global.prometheus.enabled=true \
+  --set global.prometheus.port=9090
 ```
 
 Scrape control plane metrics:
@@ -109,17 +107,16 @@ scrape_configs:
   - job_name: 'dapr-control-plane'
     static_configs:
       - targets:
-        - dapr-operator.dapr-system:8080
-        - dapr-sentry.dapr-system:8080
+        - dapr-operator.dapr-system:9090
+        - dapr-sentry.dapr-system:9090
         - dapr-placement-server.dapr-system:9090
 ```
 
 ## Grafana Dashboard Setup
 
 ```bash
-# Import the official Dapr dashboard
-# Dashboard ID: 14234 for sidecar metrics
-# Dashboard ID: 14235 for control plane metrics
+# Import the official Dapr dashboards from the Dapr GitHub repo:
+# https://github.com/dapr/dapr/tree/master/grafana
 
 helm install grafana grafana/grafana \
   --namespace monitoring \
