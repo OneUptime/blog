@@ -67,7 +67,9 @@ gcloud iam service-accounts keys create gcp-binding-key.json \
 
 ```bash
 kubectl create secret generic gcp-binding-secret \
-  --from-file=gcp-key.json=./gcp-binding-key.json \
+  --from-literal=private_key_id="$(jq -r .private_key_id gcp-binding-key.json)" \
+  --from-literal=private_key="$(jq -r .private_key gcp-binding-key.json)" \
+  --from-literal=client_id="$(jq -r .client_id gcp-binding-key.json)" \
   --namespace default
 ```
 
