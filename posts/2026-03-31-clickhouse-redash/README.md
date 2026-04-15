@@ -58,9 +58,19 @@ services:
       - postgres
       - redis
 
-  worker:
+  scheduler:
     image: redash/redash:latest
     command: scheduler
+    environment:
+      REDASH_REDIS_URL: redis://redis:6379/0
+      REDASH_DATABASE_URL: postgresql://postgres:redash_pass@postgres/redash
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    image: redash/redash:latest
+    command: worker
     environment:
       REDASH_REDIS_URL: redis://redis:6379/0
       REDASH_DATABASE_URL: postgresql://postgres:redash_pass@postgres/redash
@@ -98,7 +108,7 @@ Redash -> Settings -> Data Sources -> New Data Source
 Type:     ClickHouse
 Name:     ClickHouse Analytics
 
-URL:      http://localhost:8123
+URL:      http://clickhouse:8123
 Database: analytics
 Username: redash_user
 Password: redash_password
