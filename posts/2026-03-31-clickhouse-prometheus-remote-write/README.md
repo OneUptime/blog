@@ -14,19 +14,16 @@ Prometheus local storage is limited to weeks of data. Long-term storage options 
 
 ## Setting Up the Remote Write Adapter
 
-Use `clickhouse-prometheus-adapter` or the native ClickHouse Prometheus remote write integration built into recent ClickHouse versions.
+Community adapters like [`prom2click`](https://github.com/mindis/prom2click) bridge Prometheus and ClickHouse. ClickHouse versions 24.8+ also include an experimental native Prometheus remote write integration via the TimeSeries table engine (requires `SET allow_experimental_time_series_table = 1`).
 
-For the `prometheus-community/prometheus-clickhouse-adapter`:
+For `prom2click`, build the binary and run it with:
 
 ```bash
-docker run -d \
-  --name prometheus-ch-adapter \
-  -p 9201:9201 \
-  -e CH_ENDPOINT="http://ch.internal:8123" \
-  -e CH_DATABASE="prometheus" \
-  -e CH_USERNAME="prom_writer" \
-  -e CH_PASSWORD="secret" \
-  prometheuscommunity/prometheus-clickhouse-adapter
+prom2click \
+  --ch.dsn="tcp://ch.internal:9000?database=prometheus&username=prom_writer&password=secret" \
+  --ch.db="prometheus" \
+  --ch.table="samples" \
+  --web.address=":9201"
 ```
 
 ## Prometheus Configuration
