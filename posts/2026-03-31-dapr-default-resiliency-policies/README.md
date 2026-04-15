@@ -10,31 +10,42 @@ Description: Learn how to define default resiliency policies in Dapr that apply 
 
 ## Overview
 
-Dapr Resiliency resources support a default target that acts as a catch-all, applying a policy to any service or component that does not have an explicit policy configured. This is a safety net that ensures baseline fault tolerance across your entire application without having to enumerate every service.
+Dapr provides built-in default retry policies for service invocations, actors, and component initialization. You can override these defaults and define custom resiliency policies for specific services and components using a `Resiliency` resource. This ensures baseline fault tolerance across your entire application without having to rely solely on built-in behavior.
 
 ## Defining Default Policies
 
-Use the special `default` key under `targets.apps` and `targets.components`:
+Override Dapr's built-in default retries using reserved `DaprBuiltIn*` keywords, and define reusable custom policies for your targets:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Resiliency
 metadata:
   name: global-resiliency
-  namespace: default
+scopes:
+  - app1
+  - app2
 spec:
   policies:
     timeouts:
       defaultTimeout: 10s
       strictTimeout: 3s
     retries:
-      defaultRetry:
+      DaprBuiltInServiceRetries:
         policy: exponential
-        initialInterval: 500ms
-        multiplier: 2.0
         maxInterval: 30s
         maxRetries: 5
-        randomizationFactor: 0.5
+      DaprBuiltInActorRetries:
+        policy: exponential
+        maxInterval: 30s
+        maxRetries: 5
+      DaprBuiltInInitializationRetries:
+        policy: exponential
+        maxInterval: 30s
+        maxRetries: 5
+      defaultRetry:
+        policy: exponential
+        maxInterval: 30s
+        maxRetries: 5
     circuitBreakers:
       defaultCB:
         maxRequests: 1
@@ -43,27 +54,27 @@ spec:
         trip: consecutiveFailures >= 5
   targets:
     apps:
-      default:
+      order-service:
         timeout: defaultTimeout
         retry: defaultRetry
         circuitBreaker: defaultCB
     components:
-      default:
+      statestore:
         outbound:
           timeout: defaultTimeout
           retry: defaultRetry
 ```
 
-With this configuration, every Dapr service invocation and every component operation that does not have a more specific policy will use these defaults.
+The `scopes` field lists the Dapr App IDs that can use this resiliency spec. The `DaprBuiltIn*` keywords override Dapr's built-in default retry behavior for service invocations, actors, and initialization. Custom policies like `defaultRetry` and `defaultCB` are applied to explicit targets.
 
 ## Overriding Defaults for Specific Services
 
-Specific targets override defaults. The most specific match wins:
+Apply different policies to specific services by adding them as targets with distinct policy references. Each target app is identified by its Dapr App ID:
 
 ```yaml
 targets:
   apps:
-    default:
+    order-service:
       timeout: defaultTimeout
       retry: defaultRetry
     payment-service:
@@ -72,19 +83,20 @@ targets:
       circuitBreaker: defaultCB
 ```
 
-Here `payment-service` uses a 3-second timeout instead of the 10-second default.
+Here `payment-service` uses a 3-second timeout instead of the 10-second timeout applied to `order-service`.
 
 ## Default Policies for Components
 
-Apply separate defaults to inbound (subscription delivery) and outbound (state/publish calls):
+Apply separate policies to inbound (subscription delivery) and outbound (state/publish calls) operations on specific components:
 
 ```yaml
 targets:
   components:
-    default:
+    statestore:
       outbound:
         timeout: defaultTimeout
         retry: defaultRetry
+    pubsub:
       inbound:
         timeout: defaultTimeout
         retry: defaultRetry
@@ -92,14 +104,14 @@ targets:
 
 ## Namespace-Wide Defaults
 
-A single `Resiliency` resource with defaults in a namespace provides a baseline for all services in that namespace. Deploy one per namespace:
+Use the `scopes` field on the `Resiliency` resource to control which Dapr App IDs inherit the policies. Deploy separate resiliency specs per namespace if needed:
 
 ```bash
-kubectl apply -f default-resiliency.yaml -n production
-kubectl apply -f default-resiliency.yaml -n staging
+kubectl apply -f resiliency-production.yaml -n production
+kubectl apply -f resiliency-staging.yaml -n staging
 ```
 
-Services with no specific resiliency configuration automatically inherit the namespace defaults.
+Each spec's `scopes` field determines which apps use its policies. Without `scopes`, the resiliency spec is available to all apps that load it.
 
 ## Verifying Default Policy Application
 
@@ -118,11 +130,11 @@ kubectl logs deployment/any-service -c daprd \
 
 ## Priority Order
 
-When multiple `Resiliency` resources exist, Dapr applies policies in this priority order:
-1. Exact match on the target app/component name in any `Resiliency` resource
-2. Default target in any `Resiliency` resource
-3. No policy (bare metal behavior)
+When multiple policies could apply, Dapr evaluates in this order:
+1. Explicit target match for the app/component in a `Resiliency` resource
+2. Built-in default retry policies (or their `DaprBuiltIn*` overrides)
+3. No policy (direct call without fault tolerance)
 
 ## Summary
 
-Default Resiliency policies provide a namespace-wide safety net by applying baseline timeout, retry, and circuit breaker settings to all services and components that lack explicit policies. This eliminates gaps in your resiliency coverage and ensures that even services added later automatically inherit sensible fault-tolerance behavior.
+Dapr's built-in default retry policies provide a safety net for service invocations and component operations. By overriding these with `DaprBuiltIn*` keywords and defining custom timeout, retry, and circuit breaker policies for specific targets, you ensure baseline fault tolerance across your application. Use the `scopes` field to control which services inherit these policies.
