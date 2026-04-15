@@ -72,7 +72,7 @@ sequenceDiagram
     participant Sidecar as daprd
     participant FS as ~/.dapr/components/
     participant Operator as Dapr Operator (K8s)
-    CLI->>Sidecar: Start daprd --components-path ...
+    CLI->>Sidecar: Start daprd --resources-path ...
     Sidecar->>FS: Read *.yaml files
     FS->>Sidecar: Component definitions
     Note over Sidecar: In Kubernetes mode
