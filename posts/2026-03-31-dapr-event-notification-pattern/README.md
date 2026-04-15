@@ -22,11 +22,12 @@ In the order service, publish a notification after creating an order:
 package main
 
 import (
+    "bytes"
     "context"
     "encoding/json"
-    "net/http"
-    "bytes"
     "fmt"
+    "net/http"
+    "time"
 )
 
 type OrderCreatedEvent struct {
@@ -107,30 +108,32 @@ Dapr pub/sub supports fan-out. Multiple services can subscribe to the same topic
 **Analytics service** subscribes to record order metrics.
 **Inventory service** subscribes to reserve stock.
 
-Each subscriber is registered with a unique consumer group ID, ensuring each receives every event:
+Dapr uses each application's `app-id` as an implicit consumer group, so applications with different app IDs each receive a copy of every event:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-events-fulfillment
 spec:
   pubsubname: pubsub
   topic: order-events
-  route: /fulfill
-  scopes:
-    - fulfillment-service
+  routes:
+    default: /fulfill
+scopes:
+  - fulfillment-service
 ---
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-events-email
 spec:
   pubsubname: pubsub
   topic: order-events
-  route: /send-confirmation
-  scopes:
-    - email-service
+  routes:
+    default: /send-confirmation
+scopes:
+  - email-service
 ```
 
 ## Filtering Events by Type
@@ -141,7 +144,7 @@ When multiple event types are published to the same topic, use CloudEvents filte
 spec:
   pubsubname: pubsub
   topic: order-events
-  route:
+  routes:
     rules:
       - match: event.type == "OrderCreated"
         path: /on-order-created
