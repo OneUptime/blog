@@ -32,13 +32,22 @@ CREATE SOURCE events_source
 FROM KAFKA CONNECTION kafka_conn (TOPIC 'events')
 FORMAT JSON;
 
+-- FORMAT JSON produces a single 'data' column of type jsonb;
+-- create a parsing view to extract typed columns.
+CREATE VIEW events AS
+SELECT
+    (data->>'event_time')::timestamptz AS event_time,
+    data->>'event_type' AS event_type,
+    data->>'user_id' AS user_id
+FROM events_source;
+
 CREATE MATERIALIZED VIEW hourly_event_counts AS
 SELECT
     date_trunc('hour', event_time) AS hour,
     event_type,
     count(*) AS event_count,
     count(DISTINCT user_id) AS unique_users
-FROM events_source
+FROM events
 GROUP BY 1, 2;
 ```
 
@@ -51,6 +60,7 @@ Export Materialize view updates to Kafka, which ClickHouse can consume:
 CREATE SINK hourly_counts_sink
 FROM hourly_event_counts
 INTO KAFKA CONNECTION kafka_conn (TOPIC 'hourly-counts')
+KEY (hour, event_type)
 FORMAT JSON
 ENVELOPE UPSERT;
 ```
