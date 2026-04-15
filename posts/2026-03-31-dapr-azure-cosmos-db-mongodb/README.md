@@ -60,7 +60,7 @@ kubectl create secret generic cosmos-mongodb-secret \
 Configure the collection with an appropriate partition key:
 
 ```bash
-# Create the database and collection with /id as partition key
+# Create the database and collection with _id as shard key
 az cosmosdb mongodb database create \
   --account-name my-cosmos \
   --resource-group my-rg \
@@ -110,7 +110,7 @@ const { DaprClient } = require('@dapr/dapr');
 const client = new DaprClient();
 
 // Write from East US pod
-await client.state.save('statestore', [{ key: 'global-key', value: JSON.stringify({ region: 'eastus', data: 'hello' }) }]);
+await client.state.save('statestore', [{ key: 'global-key', value: { region: 'eastus', data: 'hello' } }]);
 
 // Read from West Europe pod (should replicate within seconds)
 const state = await client.state.get('statestore', 'global-key');
@@ -129,7 +129,15 @@ az cosmosdb mongodb collection throughput show \
   --database-name daprdb \
   --name dapr_state
 
-# Enable autoscale
+# Migrate from manual to autoscale throughput
+az cosmosdb mongodb collection throughput migrate \
+  --account-name my-cosmos \
+  --resource-group my-rg \
+  --database-name daprdb \
+  --name dapr_state \
+  --throughput-type autoscale
+
+# Set autoscale max throughput
 az cosmosdb mongodb collection throughput update \
   --account-name my-cosmos \
   --resource-group my-rg \
