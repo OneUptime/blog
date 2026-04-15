@@ -63,7 +63,7 @@ spec:
   revisionHistoryLimit: 10
 ```
 
-Disable `selfHeal` for production to require explicit sync approval.
+Disable `selfHeal` for production so that manual changes made directly to the cluster are not automatically reverted. Note that with `automated` sync enabled, changes pushed to Git are still deployed automatically — remove the `automated` block entirely to require explicit sync approval for all changes.
 
 ## Pull Request Review Process
 
