@@ -12,7 +12,7 @@ A replay-safe pipeline processes the same data multiple times without creating d
 
 ## Strategy 1 - ReplacingMergeTree
 
-`ReplacingMergeTree` deduplicates rows with the same primary key, keeping the latest version:
+`ReplacingMergeTree` deduplicates rows with the same sorting key (`ORDER BY`), keeping the latest version:
 
 ```sql
 CREATE TABLE events (
@@ -42,7 +42,9 @@ ClickHouse tracks recent insert checksums and drops duplicate batches:
 
 ```sql
 SET insert_deduplicate = 1;
--- Default deduplication window is 100 blocks
+-- For ReplicatedMergeTree the default window is 10000 blocks.
+-- For non-replicated MergeTree tables the window defaults to 0 (disabled);
+-- set non_replicated_deduplication_window to enable it.
 ```
 
 If you retry the exact same `INSERT` query with the same data, ClickHouse skips the re-insert automatically within the deduplication window.
@@ -65,7 +67,7 @@ def ingest_batch(client, messages):
 
 ## Strategy 4 - Deduplication View
 
-Create a materialized view that counts distinct events per ID:
+Create a materialized view that tracks the latest event data per ID:
 
 ```sql
 CREATE MATERIALIZED VIEW events_deduped
