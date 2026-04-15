@@ -28,7 +28,7 @@ CREATE TABLE events
     event_type LowCardinality(String),
     page_url String
 )
-ENGINE = MergeTree
+ENGINE = MergeTree()
 PARTITION BY (tenant_id, toYYYYMM(event_time))
 ORDER BY (tenant_id, event_time);
 ```
@@ -57,7 +57,7 @@ function getTenantClient(tenantId) {
   if (!clientPool.has(tenantId)) {
     const { createClient } = require('@clickhouse/client');
     clientPool.set(tenantId, createClient({
-      host: process.env.CLICKHOUSE_HOST,
+      url: process.env.CLICKHOUSE_HOST,
       username: `tenant_${tenantId}`,
       password: process.env[`CLICKHOUSE_PASSWORD_TENANT_${tenantId}`],
       database: 'analytics',
@@ -122,7 +122,7 @@ async function queryForTenant(client, tenantId, query, params) {
     query_params: { ...params, tenant_id: tenantId },
     format: 'JSONEachRow',
     // Force tenant filter - NEVER trust user input for tenant_id
-    settings: {
+    clickhouse_settings: {
       additional_table_filters: { events: `tenant_id = ${parseInt(tenantId)}` },
     },
   });
