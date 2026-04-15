@@ -35,7 +35,7 @@ When a merge is scheduled, ClickHouse:
 
 1. Reads all source parts column by column
 2. Merges the sorted streams (parts are already sorted by ORDER BY key)
-3. Applies deduplication if using ReplacingMergeTree or CollapsingMergeTree
+3. Applies deduplication if using ReplacingMergeTree, or row collapsing if using CollapsingMergeTree
 4. Applies TTL deletions if configured
 5. Writes the new merged part to a temporary directory
 6. Atomically renames it to the final part name
@@ -61,23 +61,23 @@ GROUP BY partition
 ORDER BY part_count DESC;
 
 -- Check merge throughput
-SELECT event_time, value
+SELECT event_time, CurrentMetric_BackgroundMergesAndMutationsPoolTask
 FROM system.metric_log
-WHERE metric = 'BackgroundMergesAndMutationsPoolTask'
 ORDER BY event_time DESC
 LIMIT 20;
 ```
 
 ## Tuning Merge Settings
 
-```sql
--- Allow more concurrent merges
-ALTER TABLE events MODIFY SETTING
-    background_pool_size = 8;
+```xml
+<!-- Allow more concurrent merges (server-level setting in config.xml) -->
+<background_pool_size>8</background_pool_size>
+```
 
+```sql
 -- Increase max merge size to reduce part count faster
 ALTER TABLE events MODIFY SETTING
-    max_bytes_to_merge_at_max_space_in_pool = 161061273600; -- 150 GB
+    max_bytes_to_merge_at_max_space_in_pool = 214748364800; -- 200 GiB
 ```
 
 ## Too Many Parts Error
@@ -85,10 +85,10 @@ ALTER TABLE events MODIFY SETTING
 If inserts are faster than merges, ClickHouse will eventually raise:
 
 ```text
-Too many parts (300). Merges are processing significantly slower than inserts.
+Too many parts (3000). Merges are processing significantly slower than inserts.
 ```
 
-Fix this by batching inserts (at least 1 row per second per partition in practice), or increasing merge threads.
+Fix this by batching inserts (no more than one INSERT per second, with thousands of rows per batch), or increasing merge threads.
 
 ## Summary
 
