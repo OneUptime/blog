@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Date Function, Time Function, Query, Analytics
 
-Description: Learn how to use now(), today(), now64(), yesterday(), and tomorrow() in ClickHouse to filter recent data and compute elapsed time.
+Description: Learn how to use now(), today(), now64(), and yesterday() in ClickHouse to filter recent data and compute elapsed time.
 
 ---
 
 ClickHouse provides a set of built-in functions that return the current date and time at query execution. These functions are essential for filtering recent records, computing elapsed durations, and building time-aware dashboards without hardcoding timestamps into your queries.
 
-This post covers `now()`, `today()`, `now64()`, `yesterday()`, and `tomorrow()` - what each one returns, when to use it, and practical SQL examples for each.
+This post covers `now()`, `today()`, `now64()`, and `yesterday()` - what each one returns, when to use it, and practical SQL examples for each.
 
 ## now() - Current DateTime
 
@@ -111,15 +111,15 @@ WHERE start_time >= now64(6) - INTERVAL 5 MINUTE
 ORDER BY start_time DESC;
 ```
 
-## yesterday() and tomorrow()
+## yesterday() and Date Arithmetic
 
-`yesterday()` returns `today() - 1` and `tomorrow()` returns `today() + 1`. Both return `Date` values and are purely convenience shortcuts.
+`yesterday()` returns `today() - 1` as a `Date` value and is a convenience shortcut. ClickHouse does not have a built-in `tomorrow()` function, but you can use `today() + 1` to get tomorrow's date.
 
 ```sql
 SELECT
-    yesterday() AS yesterday,
-    today()     AS today,
-    tomorrow()  AS tomorrow;
+    yesterday()   AS yesterday,
+    today()       AS today,
+    today() + 1   AS tomorrow;
 ```
 
 ```text
@@ -174,7 +174,7 @@ ORDER BY hours_open DESC;
 
 ## Filtering for Data in a Specific Future Window
 
-`now()` and `tomorrow()` are equally useful for upcoming data:
+`now()` and date arithmetic are equally useful for upcoming data:
 
 ```sql
 -- Scheduled jobs running in the next 2 hours
@@ -186,4 +186,4 @@ ORDER BY scheduled_at;
 
 ## Summary
 
-`now()` and `today()` are the foundation of time-aware queries in ClickHouse. Use `now()` for sliding windows against `DateTime` columns, `today()` for calendar-day matching against `Date` columns, and `now64()` when you need millisecond or microsecond precision with `DateTime64` data. `yesterday()` and `tomorrow()` reduce verbosity in day-boundary comparisons. Together, these functions make it straightforward to filter recent data and compute elapsed durations without ever hardcoding a timestamp.
+`now()` and `today()` are the foundation of time-aware queries in ClickHouse. Use `now()` for sliding windows against `DateTime` columns, `today()` for calendar-day matching against `Date` columns, and `now64()` when you need millisecond or microsecond precision with `DateTime64` data. `yesterday()` and simple date arithmetic like `today() + 1` reduce verbosity in day-boundary comparisons. Together, these functions make it straightforward to filter recent data and compute elapsed durations without ever hardcoding a timestamp.
