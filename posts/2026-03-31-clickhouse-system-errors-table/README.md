@@ -19,7 +19,7 @@ When ClickHouse encounters errors - from network failures and bad queries to rep
 - `value` - total count of this error since server start
 - `last_error_time` - when this error last occurred
 - `last_error_message` - full message from the most recent occurrence
-- `last_error_stacktrace` - stack trace from the last occurrence
+- `last_error_trace` - stack trace from the last occurrence (array of memory addresses)
 - `remote` - whether the error was from a remote server
 
 ## Basic Error Overview
@@ -97,7 +97,7 @@ For debugging a specific error type:
 SELECT
     name,
     last_error_message,
-    last_error_stacktrace
+    arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), last_error_trace), '\n') AS stack_trace
 FROM system.errors
 WHERE name = 'MEMORY_LIMIT_EXCEEDED';
 ```
