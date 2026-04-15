@@ -25,7 +25,7 @@ sumMap((keys_array, values_array))
 Both return a tuple `(keys_array, summed_values_array)` where keys are sorted and deduplicated. When the input column is of type `Map(K, V)`, pass it directly.
 
 ```sql
--- Map column form (ClickHouse 21.8+)
+-- Map column form
 sumMap(map_column)
 ```
 
@@ -42,7 +42,7 @@ SELECT
 FROM request_stats
 WHERE request_date = today() - 1
 GROUP BY service_name;
--- Returns: (['200','404','500'], [total_200, total_404, total_500])
+-- Returns: ([200, 404, 500], [total_200, total_404, total_500])
 ```
 
 ## Accessing Keys and Values from the Result
@@ -82,7 +82,7 @@ GROUP BY event_date;
 
 ## sumMapFiltered - Restrict to Specific Keys
 
-`sumMapFiltered` takes the same arguments as `sumMap` but accepts a second parameter listing the only keys you care about. This avoids accumulating data for hundreds of keys when you only need a few.
+`sumMapFiltered` is a parametric aggregate function that takes the same arguments as `sumMap`. The filter — a constant array of keys you care about — is passed as the function parameter (in the first set of parentheses), while the key and value arrays remain the function arguments (in the second set). This avoids accumulating data for hundreds of keys when you only need a few.
 
 ```sql
 -- Only sum values for HTTP status codes 200 and 500
