@@ -130,7 +130,7 @@ ORDER BY timeout_count DESC;
 
 ## Timeout for INSERT Queries
 
-`max_execution_time` applies to all query types, including INSERTs. For long-running INSERT SELECT queries, set a generous timeout in the ETL profile:
+The ClickHouse documentation notes that most query complexity restrictions apply primarily to SELECT queries. However, `max_execution_time` is commonly used with INSERT SELECT operations as well. For long-running INSERT SELECT queries, set a generous timeout in the ETL profile:
 
 ```sql
 -- Long-running INSERT SELECT with explicit timeout
@@ -159,13 +159,13 @@ curl "http://localhost:8123/?query=SELECT+1&max_execution_time=10"
 
 ## Timeout vs. Connection Timeout
 
-There are two distinct timeouts to be aware of:
+There are three distinct timeouts to be aware of:
 
 | Setting | Controls |
 |---|---|
 | `max_execution_time` | Total wall-clock time the server spends executing the query |
-| `receive_timeout` | How long the client waits for a response from the server |
-| `send_timeout` | How long the server waits for the client to send the query |
+| `receive_timeout` | Socket-level timeout for receiving data from the network (default 300 seconds) |
+| `send_timeout` | Socket-level timeout for sending data to the network (default 300 seconds) |
 
 For queries with large result sets, `receive_timeout` on the client side may need to be higher than `max_execution_time` on the server, or the client will close the connection before the server can return results:
 
