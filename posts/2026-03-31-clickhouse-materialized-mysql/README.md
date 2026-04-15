@@ -10,6 +10,8 @@ Description: Learn how to replicate MySQL tables into ClickHouse in real time us
 
 ## Introduction
 
+> **Note:** The `MaterializedMySQL` database engine was removed from ClickHouse in version 25.1 (December 2024). This guide applies only to ClickHouse versions prior to 25.1. For current versions, consider alternatives such as the [MySQL table engine](https://clickhouse.com/docs/en/engines/table-engines/integrations/mysql), [mysql table function](https://clickhouse.com/docs/en/sql-reference/table-functions/mysql), or external CDC tools like Debezium.
+
 `MaterializedMySQL` is a ClickHouse database engine that replicates one or more MySQL databases into ClickHouse using MySQL binlog (binary log) replication. ClickHouse acts as a MySQL replica, consuming row-based change events and materializing them into `ReplacingMergeTree` tables. This enables low-latency analytics on operational MySQL data without a separate CDC pipeline.
 
 ## Architecture Overview
@@ -34,12 +36,17 @@ In `/etc/mysql/mysql.conf.d/mysqld.cnf` (or `my.cnf`):
 
 ```ini
 [mysqld]
-server-id          = 1
-log_bin            = /var/log/mysql/mysql-bin.log
-binlog_format      = ROW
-binlog_row_image   = FULL
-expire_logs_days   = 7
+server-id                    = 1
+log_bin                      = /var/log/mysql/mysql-bin.log
+binlog_format                = ROW
+binlog_row_image             = FULL
+binlog_expire_logs_seconds   = 604800
+default_authentication_plugin = mysql_native_password
+gtid_mode                    = ON
+enforce_gtid_consistency     = ON
 ```
+
+> **Note:** `default_authentication_plugin = mysql_native_password` is required for ClickHouse to authenticate with MySQL. GTID mode is also required for reliable replication. If you are using MySQL 5.7 or earlier, use `expire_logs_days = 7` instead of `binlog_expire_logs_seconds`.
 
 Restart MySQL:
 
@@ -51,7 +58,7 @@ sudo systemctl restart mysql
 
 ```sql
 CREATE USER 'ch_replica'@'%' IDENTIFIED BY 'replication_secret';
-GRANT REPLICATION SLAVE ON *.* TO 'ch_replica'@'%';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'ch_replica'@'%';
 GRANT SELECT ON source_db.* TO 'ch_replica'@'%';
 FLUSH PRIVILEGES;
 ```
@@ -104,8 +111,10 @@ SETTINGS materialized_mysql_tables_list = 'orders,customers,products';
 -- List replicated tables
 SHOW TABLES FROM mysql_replica;
 
--- View replication status (shows GTID position)
-SELECT * FROM system.materialized_mysql_databases;
+-- View replication status
+SELECT name, engine, metadata_path
+FROM system.databases
+WHERE engine = 'MaterializedMySQL';
 ```
 
 ## Querying Replicated Data
@@ -135,7 +144,7 @@ FROM mysql_replica.orders FINAL
 WHERE _sign = 1;
 ```
 
-In newer ClickHouse versions (22.8+), `FINAL` is applied automatically for MaterializedMySQL tables.
+By default, `MaterializedMySQL` automatically applies `FINAL` and `WHERE _sign = 1` when these virtual columns are not explicitly referenced in the query. The explicit `FINAL` and `_sign` filter shown above are only necessary if you want to override this behavior or make the intent clear.
 
 ## Schema Changes (DDL)
 
@@ -145,7 +154,6 @@ In newer ClickHouse versions (22.8+), `FINAL` is applied automatically for Mater
 |---|---|
 | ADD COLUMN | Yes |
 | DROP COLUMN | Yes |
-| RENAME COLUMN | Yes |
 | RENAME TABLE | Yes |
 | TRUNCATE TABLE | Yes |
 | DROP TABLE | Yes |
@@ -162,19 +170,11 @@ ClickHouse will replicate this schema change automatically.
 
 ## GTID-Based Replication
 
-ClickHouse prefers GTID-based replication for reliability. Enable GTIDs in MySQL:
+ClickHouse requires GTID-based replication for `MaterializedMySQL`. The GTID settings (`gtid_mode = ON` and `enforce_gtid_consistency = ON`) should be included in the MySQL configuration as shown in the prerequisites section above. ClickHouse will use GTIDs automatically when creating the `MaterializedMySQL` database.
 
-```ini
-[mysqld]
-gtid_mode              = ON
-enforce_gtid_consistency = ON
-```
+## Tuning Buffer Settings
 
-Then recreate the `MaterializedMySQL` database in ClickHouse; it will use GTIDs automatically.
-
-## Filtering Rows with WHERE (Skip Rows)
-
-Use `materialized_mysql_replication_table_do_not_read_from_cache` to skip rows during snapshot:
+You can configure the internal buffer sizes used during replication:
 
 ```sql
 CREATE DATABASE mysql_replica
@@ -187,7 +187,7 @@ ENGINE = MaterializedMySQL(
 SETTINGS
     materialized_mysql_tables_list = 'events',
     max_rows_in_buffer = 65536,
-    max_bytes_in_buffer = 1073741824;
+    max_bytes_in_buffer = 1048576;
 ```
 
 ## Handling Large Initial Snapshots
@@ -214,7 +214,7 @@ SETTINGS
 | Primary key required | All replicated tables must have a primary key |
 | binlog_format = ROW | Statement and mixed modes are not supported |
 | No multi-source replication | One MySQL source per ClickHouse database |
-| MySQL 5.6+ required | Older versions may lack required binlog features |
+| `mysql_native_password` auth required | ClickHouse does not support `caching_sha2_password` |
 | Column type mapping | Not all MySQL types map cleanly to ClickHouse |
 
 ## Common MySQL to ClickHouse Type Mapping
