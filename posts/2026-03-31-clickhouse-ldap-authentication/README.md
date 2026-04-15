@@ -107,28 +107,32 @@ Active Directory uses a different DN format (UPN or `sAMAccountName`):
 
 ## Mapping LDAP Groups to ClickHouse Roles
 
-ClickHouse can query LDAP for group membership and automatically assign matching ClickHouse roles. Configure `role_mappings` in the LDAP server block:
+ClickHouse can query LDAP for group membership and automatically assign matching ClickHouse roles. Role mapping is configured in the `user_directories` section of the ClickHouse config, not inside `ldap_servers`. Add this to `/etc/clickhouse-server/config.d/ldap.xml`:
 
 ```xml
-<corporate_ldap>
-  <host>ldap.corp.example.com</host>
-  <port>636</port>
-  <enable_tls>yes</enable_tls>
-  <bind_dn>uid={user_name},ou=people,dc=corp,dc=example,dc=com</bind_dn>
-
-  <role_mappings>
-    <mapping>
-      <!-- Base DN for group search -->
-      <base_dn>ou=groups,dc=corp,dc=example,dc=com</base_dn>
-      <!-- Search filter: find groups where the user is a member -->
-      <search_filter>(&amp;(objectClass=groupOfNames)(member={user_dn}))</search_filter>
-      <!-- Attribute holding the group name -->
-      <attribute>cn</attribute>
-      <!-- Prefix to strip from group names before matching ClickHouse roles -->
-      <prefix>clickhouse_</prefix>
-    </mapping>
-  </role_mappings>
-</corporate_ldap>
+<clickhouse>
+  <user_directories>
+    <ldap>
+      <!-- Reference the LDAP server defined in ldap_servers -->
+      <server>corporate_ldap</server>
+      <!-- Static roles assigned to every LDAP user -->
+      <roles>
+        <readonly />
+      </roles>
+      <role_mapping>
+        <!-- Base DN for group search -->
+        <base_dn>ou=groups,dc=corp,dc=example,dc=com</base_dn>
+        <scope>subtree</scope>
+        <!-- Search filter: find groups where the user is a member -->
+        <search_filter>(&amp;(objectClass=groupOfNames)(member={bind_dn}))</search_filter>
+        <!-- Attribute holding the group name -->
+        <attribute>cn</attribute>
+        <!-- Prefix to strip from group names before matching ClickHouse roles -->
+        <prefix>clickhouse_</prefix>
+      </role_mapping>
+    </ldap>
+  </user_directories>
+</clickhouse>
 ```
 
 With this configuration, if a user belongs to LDAP group `clickhouse_analytics`, ClickHouse assigns the `analytics` role to that user on login (the `clickhouse_` prefix is stripped).
@@ -143,27 +147,11 @@ CREATE ROLE admin;
 GRANT ALL ON *.* TO admin;
 ```
 
-## Creating a User with LDAP + Role Mapping
+## Allowing Any LDAP User to Authenticate
 
-```sql
-CREATE USER '{ldap_user}'
-    IDENTIFIED WITH ldap SERVER 'corporate_ldap'
-    HOST IP '::/0';
-```
+To allow any LDAP user to authenticate without pre-defining each user in `users.xml` or via `CREATE USER`, use the `user_directories` configuration shown in the role mapping section above. When a `<user_directories>/<ldap>` block is configured, ClickHouse automatically creates a user entry on first successful LDAP login and applies the mapped roles.
 
-The `{ldap_user}` is a placeholder name. ClickHouse creates a user entry on first successful login and applies mapped roles.
-
-To allow any LDAP user to authenticate (not just pre-defined ones), use the built-in `allow_ldap_server` option in `users.xml`:
-
-```xml
-<users>
-  <default>
-    <!-- existing default user config -->
-  </default>
-</users>
-```
-
-In newer ClickHouse versions, use `CREATE USER ... IDENTIFIED WITH ldap` combined with user directories (see the ClickHouse documentation on external authenticators).
+This means you do not need to create individual user accounts. Any user who can successfully bind to the configured LDAP server will be granted access with the roles defined in `<roles>` and any roles resolved through `<role_mapping>`.
 
 ## Verifying LDAP Authentication
 
