@@ -20,7 +20,7 @@ clickhouse-keeper-converter --version
 Check that your ZooKeeper version is compatible (3.4.x, 3.5.x, 3.6.x are all supported):
 
 ```bash
-echo "version" | nc zk1.internal 2181
+echo "srvr" | nc zk1.internal 2181
 ```
 
 Make sure you have enough disk space on the Keeper nodes to hold the converted snapshot. The converted data is roughly the same size as the original ZooKeeper data directory.
@@ -36,19 +36,16 @@ SELECT max(absolute_delay) FROM system.replicas;
 -- Wait until this is 0 or near 0
 ```
 
-Trigger a ZooKeeper snapshot on the leader node:
+Locate the ZooKeeper leader node, then find the most recent snapshot. ZooKeeper creates snapshots automatically based on its `snapCount` setting:
 
 ```bash
 # Find the ZooKeeper leader
 for h in zk1 zk2 zk3; do
     echo -n "${h}: "; echo "stat" | nc ${h}.internal 2181 | grep Mode
 done
-
-# On the ZooKeeper leader, trigger a snapshot
-echo "snap" | nc zk1.internal 2181
 ```
 
-Find the snapshot file on the ZooKeeper data directory:
+Find the most recent snapshot file in the ZooKeeper data directory on the leader:
 
 ```bash
 ls -lht /var/lib/zookeeper/version-2/snapshot.* | head -3
@@ -162,7 +159,6 @@ On all ClickHouse nodes, update the ZooKeeper config to point to Keeper. This ca
         </node>
         <session_timeout_ms>30000</session_timeout_ms>
         <operation_timeout_ms>10000</operation_timeout_ms>
-        <root>/clickhouse</root>
     </zookeeper>
 </clickhouse>
 ```
