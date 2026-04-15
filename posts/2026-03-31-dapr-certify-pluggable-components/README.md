@@ -30,27 +30,29 @@ cd components-contrib
 Register your pluggable component with the test framework by implementing the test interface:
 
 ```go
-// test/conformance/state_test.go
+// tests/conformance/state_test.go
 package conformance
 
 import (
     "testing"
 
     conf "github.com/dapr/components-contrib/tests/conformance"
-    "github.com/dapr/components-contrib/tests/conformance/state"
+    conf_state "github.com/dapr/components-contrib/tests/conformance/state"
     "github.com/myorg/dapr-custom-statestore/pkg"
 )
 
 func TestCustomStateStoreConformance(t *testing.T) {
-    config := conf.NewTestConfig(t.Name())
+    tc, err := conf.NewTestConfig("custom-statestore", []string{
+        "init", "set", "get", "delete", "bulkset", "bulkget",
+        "bulkdelete", "transaction", "etag",
+    }, nil)
+    if err != nil {
+        t.Fatalf("error creating test config: %v", err)
+    }
 
     store := pkg.NewCustomStateStore()
 
-    conf.ConformanceTests(t, config, store, state.GetTestRunner(
-        state.WithEtag(),
-        state.WithTransactional(),
-        state.WithQueryAPI(false),
-    ))
+    conf_state.ConformanceTests(t, tc.Properties, store, tc)
 }
 ```
 
@@ -97,7 +99,7 @@ Beyond the conformance suite, write stress tests for concurrency:
 ```go
 func TestConcurrentOperations(t *testing.T) {
     store := &MyCustomStore{}
-    store.Init(context.Background(), &proto.InitRequest{})
+    store.Init(context.Background(), state.Metadata{})
 
     var wg sync.WaitGroup
     errors := make(chan error, 100)
@@ -108,7 +110,7 @@ func TestConcurrentOperations(t *testing.T) {
         go func(id int) {
             defer wg.Done()
             key := fmt.Sprintf("key-%d", id)
-            _, err := store.Set(context.Background(), &proto.SetRequest{
+            err := store.Set(context.Background(), &state.SetRequest{
                 Key:   key,
                 Value: []byte(fmt.Sprintf(`{"id": %d}`, id)),
             })
