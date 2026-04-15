@@ -39,8 +39,8 @@ CREATE TABLE netflow_records
     dst_as           UInt32                         CODEC(LZ4),
     in_iface         UInt32                         CODEC(LZ4),
     out_iface        UInt32                         CODEC(LZ4),
-    bytes            UInt64                         CODEC(Delta(8), LZ4),
-    packets          UInt64                         CODEC(Delta(8), LZ4),
+    bytes            UInt64                         CODEC(Delta, LZ4),
+    packets          UInt64                         CODEC(Delta, LZ4),
     flow_start       DateTime                       CODEC(DoubleDelta, LZ4),
     flow_end         DateTime                       CODEC(DoubleDelta, LZ4),
     tcp_flags        UInt8                          CODEC(LZ4),
@@ -54,7 +54,7 @@ TTL flow_start + INTERVAL 90 DAY
 SETTINGS index_granularity = 8192;
 ```
 
-Using `IPv4` type instead of String saves 3 bytes per address and allows efficient CIDR filtering with `isIPAddressInRange`.
+Using `IPv4` type instead of String stores each address in just 4 bytes (versus 7–15 bytes for the string representation) and allows efficient CIDR filtering with `isIPAddressInRange`.
 
 ## Inserting Flow Records
 
@@ -118,8 +118,8 @@ SELECT
     sum(bytes) AS bytes_out
 FROM netflow_records
 WHERE flow_start >= now() - INTERVAL 1 HOUR
-  AND isIPAddressInRange(src_ip, '10.0.0.0/8')
-  AND NOT isIPAddressInRange(dst_ip, '10.0.0.0/8')
+  AND isIPAddressInRange(toString(src_ip), '10.0.0.0/8')
+  AND NOT isIPAddressInRange(toString(dst_ip), '10.0.0.0/8')
 GROUP BY src_ip, dst_ip
 ORDER BY bytes_out DESC
 LIMIT 20;
