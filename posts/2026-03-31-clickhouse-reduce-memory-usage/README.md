@@ -57,7 +57,7 @@ SET max_memory_usage = 10000000000;
 <profiles>
     <default>
         <max_memory_usage>10000000000</max_memory_usage>
-        <max_memory_usage_for_all_queries>50000000000</max_memory_usage_for_all_queries>
+        <max_memory_usage_for_user>50000000000</max_memory_usage_for_user>
     </default>
 </profiles>
 ```
@@ -155,12 +155,12 @@ SETTINGS optimize_aggregation_in_order = 1;
 Check whether in-order aggregation was used:
 
 ```sql
-EXPLAIN
+EXPLAIN PIPELINE
 SELECT event_date, service, count()
 FROM metrics_ordered_by_date_service
 GROUP BY event_date, service
 SETTINGS optimize_aggregation_in_order = 1;
--- Look for "GroupingKey" in the output to confirm in-order mode
+-- Look for "AggregatingInOrderTransform" in the output to confirm in-order mode
 ```
 
 ## Reduce Column Width
@@ -200,7 +200,7 @@ WHERE event_time >= today() - 7;
 
 ## Use SAMPLE to Reduce Memory for Approximate Queries
 
-For queries where approximate results are acceptable, sample a fraction of the data.
+For queries where approximate results are acceptable, sample a fraction of the data. Note that the table must have a `SAMPLE BY` expression defined in the table engine for SAMPLE to work.
 
 ```sql
 -- Process 10% of rows: uses 10x less memory and is 10x faster
