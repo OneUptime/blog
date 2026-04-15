@@ -129,4 +129,4 @@ curl http://clickhouse-host:8123/?query=SELECT+1
 
 ## Summary
 
-A reverse proxy in front of ClickHouse adds SSL termination, authentication, IP restrictions, and rate limiting without touching ClickHouse configuration. Bind ClickHouse to localhost and expose it only through the proxy. Use Nginx's `allow`/`deny` directives for network-level access control and `limit_req` for rate limiting.
+A reverse proxy in front of ClickHouse adds SSL termination, authentication, IP restrictions, and rate limiting with minimal changes to ClickHouse itself. Bind ClickHouse to localhost and expose it only through the proxy. Use Nginx's `allow`/`deny` directives for network-level access control and `limit_req` for rate limiting.
