@@ -49,8 +49,6 @@ spec:
     value: "0"
   - name: exclusive
     value: "false"
-  - name: maxConcurrency
-    value: "10"
 ```
 
 ## Send a Message (Output Binding)
