@@ -14,7 +14,7 @@ Retention measures what fraction of users who performed an action on day 0 retur
 
 ## Cohort Retention with retentionFunction
 
-The `retention` function takes an array of conditions and returns a bitmap of which conditions each user satisfied:
+The `retention` function takes a set of conditions and returns an array of which conditions each user satisfied:
 
 ```sql
 SELECT
@@ -22,7 +22,7 @@ SELECT
     sum(r[1]) AS week_0,
     sum(r[2]) AS week_1,
     sum(r[3]) AS week_2,
-    sum(r[4]) AS week_4
+    sum(r[4]) AS week_3
 FROM (
     SELECT
         toMonday(min_event) AS cohort_week,
@@ -61,7 +61,7 @@ SELECT
     c.cohort_day,
     count(DISTINCT c.user_id) AS cohort_size,
     countDistinctIf(a1.user_id, a1.active_day = c.cohort_day + 1) AS day1_retained,
-    countDistinctIf(a7.user_id, a7.active_day BETWEEN c.cohort_day + 7 AND c.cohort_day + 7) AS day7_retained,
+    countDistinctIf(a7.user_id, a7.active_day = c.cohort_day + 7) AS day7_retained,
     countDistinctIf(a30.user_id, a30.active_day = c.cohort_day + 30) AS day30_retained
 FROM cohorts c
 LEFT JOIN activity a1 ON c.user_id = a1.user_id
@@ -93,12 +93,22 @@ Compare retention across user acquisition channels:
 
 ```sql
 SELECT
-    acquisition_channel,
-    round(avg(day7_retained) / avg(cohort_size) * 100, 1) AS avg_day7_retention
-FROM retention_results
-JOIN users USING user_id
-GROUP BY acquisition_channel
-ORDER BY avg_day7_retention DESC;
+    u.acquisition_channel,
+    count(DISTINCT c.user_id) AS cohort_size,
+    round(countDistinctIf(a.user_id, a.active_day = c.cohort_day + 7)
+        / count(DISTINCT c.user_id) * 100, 1) AS day7_retention_pct
+FROM (
+    SELECT user_id, toDate(min(event_time)) AS cohort_day
+    FROM user_events GROUP BY user_id
+) c
+JOIN users u ON c.user_id = u.user_id
+LEFT JOIN (
+    SELECT DISTINCT user_id, toDate(event_time) AS active_day
+    FROM user_events
+) a ON c.user_id = a.user_id
+WHERE c.cohort_day >= today() - 90
+GROUP BY u.acquisition_channel
+ORDER BY day7_retention_pct DESC;
 ```
 
 ## Summary
