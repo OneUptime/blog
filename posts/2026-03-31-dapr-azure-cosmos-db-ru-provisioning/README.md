@@ -101,7 +101,7 @@ def estimate_ru_requirements(
 # Example: 500 RPS, 2KB items, 70% reads
 result = estimate_ru_requirements(500, 2.0, 0.7)
 print(result)
-# {"estimatedRUPerSecond": 2380, "recommendedProvisionedRU": 2500}
+# {"estimatedRUPerSecond": 2800, "recommendedProvisionedRU": 3400}
 ```
 
 ## Autoscale vs Manual Provisioning
@@ -134,7 +134,7 @@ spec:
     retries:
       cosmosRetry:
         policy: exponential
-        initialInterval: 200ms
+        duration: 200ms
         maxInterval: 10s
         maxRetries: 5
         matching:
