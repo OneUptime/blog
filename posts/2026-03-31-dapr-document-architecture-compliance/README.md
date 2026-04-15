@@ -31,6 +31,8 @@ for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
     if [ -n "$components" ]; then
         echo "### Namespace: $ns"
         echo ""
+        echo "| Name | Type | Scopes |"
+        echo "| --- | --- | --- |"
         kubectl get components -n "$ns" -o json | jq -r '
           .items[] |
           "| \(.metadata.name) | \(.spec.type) | \(.scopes // [] | join(", ")) |"
@@ -78,7 +80,7 @@ for comp in components:
 for sub in subscriptions:
     pubsub = sub["spec"]["pubsubname"]
     topic = sub["spec"]["topic"]
-    scopes = sub["spec"].get("scopes", [])
+    scopes = sub.get("scopes", [])
     for scope in scopes:
         print(f'  {pubsub}["{pubsub}\\ntopic: {topic}"] --> {scope}')
 print("```")
