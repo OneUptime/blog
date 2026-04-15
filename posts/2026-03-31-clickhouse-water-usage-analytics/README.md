@@ -55,7 +55,7 @@ SELECT
     avg(flow_lpm) AS avg_night_flow_lpm,
     countIf(flow_lpm > 2) AS high_flow_readings
 FROM water_readings
-WHERE toHour(reading_at) BETWEEN 0 AND 4
+WHERE toHour(reading_at) BETWEEN 0 AND 3
   AND reading_at >= today() - 14
 GROUP BY meter_id, customer_id, district
 HAVING avg_night_flow_lpm > 2
@@ -89,7 +89,7 @@ SELECT
     customer_id,
     district,
     use_type,
-    sum(max(reading_m3) - min(reading_m3)) AS total_m3_30d
+    max(reading_m3) - min(reading_m3) AS total_m3_30d
 FROM water_readings
 WHERE reading_at >= today() - 30
 GROUP BY customer_id, district, use_type
