@@ -153,12 +153,6 @@ FROM file('access.log', LineAsString)
 WHERE notEmpty(line);
 ```
 
-Or with a setting:
-
-```sql
-SET input_format_line_as_string_read_empty_lines = 0;
-```
-
 ## Counting Lines in a File
 
 A quick way to count lines without loading all data:
