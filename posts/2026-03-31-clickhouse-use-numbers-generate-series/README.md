@@ -99,7 +99,7 @@ SELECT sum(number) FROM numbers_mt(1000000000);
 SELECT
     today() - number AS date,
     toDayOfWeek(today() - number) AS dow,
-    formatDateTime(today() - number, '%A') AS day_name,
+    formatDateTime(today() - number, '%W') AS day_name,
     toMonth(today() - number) AS month,
     toYear(today() - number) AS year
 FROM numbers(365)
