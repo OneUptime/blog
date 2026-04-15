@@ -105,7 +105,7 @@ SELECT
     EVENT_TYPE,
     PAGE,
     AMOUNT,
-    REPLACE(REPLACE(TO_CHAR(PROPERTIES), CHR(13), ''), CHR(10), ' '),
+    REPLACE(REPLACE(DBMS_LOB.SUBSTR(PROPERTIES, 4000, 1), CHR(13), ''), CHR(10), ' '),
     TO_CHAR(CREATED_AT, 'YYYY-MM-DD HH24:MI:SS.FF6')
 FROM ANALYTICS.EVENTS;
 SPOOL OFF
@@ -130,15 +130,16 @@ expdp analytics/password@//oracle.host:1521/ORCLPDB1 \
 
 Then use Oracle's `sqlcl` or a JDBC-based tool to convert the dump to CSV.
 
-Alternatively, use a Python script with cx_Oracle:
+Alternatively, use a Python script with python-oracledb:
 
 ```python
 # oracle_export.py
-import cx_Oracle
+import oracledb
 import csv
 import sys
 
-conn   = cx_Oracle.connect("analytics/password@oracle.host:1521/ORCLPDB1")
+conn   = oracledb.connect(user="analytics", password="password",
+                         dsn="oracle.host:1521/ORCLPDB1")
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -170,7 +171,7 @@ conn.close()
 Install dependencies:
 
 ```bash
-pip install cx_Oracle
+pip install oracledb
 ```
 
 ## Step 3: Load into ClickHouse
@@ -192,7 +193,7 @@ docker run -d \
   --name clickhouse-jdbc-bridge \
   -p 9019:9019 \
   -v $(pwd)/datasources.json:/app/config/datasources.json \
-  clickhouse/clickhouse-jdbc-bridge:latest
+  clickhouse/jdbc-bridge:latest
 ```
 
 `datasources.json`:
@@ -203,8 +204,8 @@ docker run -d \
     "driverUrls": ["https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/23.3.0.23.09/ojdbc11-23.3.0.23.09.jar"],
     "driverClassName": "oracle.jdbc.OracleDriver",
     "jdbcUrl": "jdbc:oracle:thin:@oracle.host:1521/ORCLPDB1",
-    "username": "analytics",
-    "password": "password"
+    "dataSource.user": "analytics",
+    "dataSource.password": "password"
   }
 }
 ```
@@ -313,8 +314,11 @@ SELECT parseDateTimeBestEffort('2024-01-15 10:30:00');
 SELECT LISTAGG(event_type, ',') WITHIN GROUP (ORDER BY created_at)
 FROM events GROUP BY user_id;
 
--- ClickHouse
-SELECT arrayStringConcat(arraySort(groupArray(event_type)), ',')
+-- ClickHouse (sort by created_at to match Oracle's WITHIN GROUP ORDER BY)
+SELECT arrayStringConcat(
+    arrayMap(x -> x.2, arraySort(x -> x.1, groupArray(tuple(created_at, event_type)))),
+    ','
+)
 FROM events GROUP BY user_id;
 ```
 
@@ -340,4 +344,4 @@ FROM events;
 
 ## Summary
 
-Migrating analytical tables from Oracle to ClickHouse involves careful data type mapping (especially for Oracle's `NUMBER`, `DATE`, and `CLOB` types), exporting data via SQL*Plus or cx_Oracle Python scripts, loading into ClickHouse with `CSVWithNames` format, and rewriting Oracle-specific SQL functions. The JDBC bridge provides an optional live query path during migration. After cutover, Oracle license costs can be reduced by removing the tables that now live in ClickHouse.
+Migrating analytical tables from Oracle to ClickHouse involves careful data type mapping (especially for Oracle's `NUMBER`, `DATE`, and `CLOB` types), exporting data via SQL*Plus or python-oracledb scripts, loading into ClickHouse with `CSVWithNames` format, and rewriting Oracle-specific SQL functions. The JDBC bridge provides an optional live query path during migration. After cutover, Oracle license costs can be reduced by removing the tables that now live in ClickHouse.
