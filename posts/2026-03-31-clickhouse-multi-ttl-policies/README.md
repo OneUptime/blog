@@ -74,9 +74,9 @@ CREATE TABLE events (
 ) ENGINE = MergeTree()
 ORDER BY (event_type, timestamp)
 TTL
-    timestamp + INTERVAL 30 DAY WHERE event_type = 'debug',
-    timestamp + INTERVAL 365 DAY WHERE event_type IN ('purchase', 'signup'),
-    timestamp + INTERVAL 90 DAY;
+    timestamp + INTERVAL 30 DAY DELETE WHERE event_type = 'debug',
+    timestamp + INTERVAL 90 DAY DELETE WHERE event_type NOT IN ('purchase', 'signup'),
+    timestamp + INTERVAL 365 DAY DELETE;
 ```
 
 ## Monitoring TTL Execution
@@ -85,9 +85,11 @@ TTL
 SELECT
     database,
     table,
-    name,
-    query
-FROM system.ttl_merges
+    merge_reason,
+    part_name,
+    event_time
+FROM system.part_log
+WHERE merge_reason LIKE 'TTL%'
 ORDER BY event_time DESC
 LIMIT 20;
 ```
@@ -97,12 +99,12 @@ Check merge activity triggered by TTL:
 ```sql
 SELECT
     table,
-    reason,
+    merge_reason,
     count() AS merges
 FROM system.part_log
-WHERE reason = 'TTLDeleteMerge' OR reason = 'TTLRecompressMerge'
+WHERE (merge_reason = 'TTLDeleteMerge' OR merge_reason = 'TTLRecompressMerge')
   AND event_date = today()
-GROUP BY table, reason;
+GROUP BY table, merge_reason;
 ```
 
 ## Forcing TTL Evaluation
