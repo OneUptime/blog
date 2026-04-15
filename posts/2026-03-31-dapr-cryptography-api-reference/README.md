@@ -15,7 +15,8 @@ The Dapr Cryptography API lets applications encrypt, decrypt, sign, and verify d
 ## Supported Backends
 
 - Azure Key Vault
-- HashiCorp Vault (with Transit secrets engine)
+- JSON Web Key Sets (JWKS)
+- Kubernetes Secrets
 - Local file-based keys (development only)
 
 ## Component Definition
@@ -29,8 +30,8 @@ spec:
   type: crypto.azure.keyvault
   version: v1
   metadata:
-    - name: vaultUri
-      value: https://my-vault.vault.azure.net/
+    - name: vaultName
+      value: "my-vault"
     - name: azureClientId
       value: "your-client-id"
     - name: azureTenantId
@@ -61,7 +62,7 @@ func encryptData(plaintext []byte) ([]byte, error) {
         dapr.EncryptOptions{
             ComponentName:    "myvault",
             KeyName:          "my-encryption-key",
-            Algorithm:        "RSA-OAEP-256",
+            KeyWrapAlgorithm: "RSA-OAEP-256",
         },
     )
     if err != nil {
@@ -98,51 +99,50 @@ func decryptData(ciphertext []byte) ([]byte, error) {
 }
 ```
 
-## Signing Data (Python SDK)
+## Signing Data (Subtle Crypto HTTP API)
 
-```python
-from dapr.clients import DaprClient
+Sign and verify operations use the Dapr Subtle Crypto API (alpha). These are not yet wrapped in the Python SDK, but are accessible via the Dapr HTTP sidecar.
 
-with DaprClient() as client:
-    sign_response = client.sign(
-        data=b"important document content",
-        component_name="myvault",
-        key_name="my-signing-key",
-        algorithm="PS256"
-    )
-    signature = sign_response.signature
+```bash
+curl -X POST "http://localhost:3500/v1.0-alpha1/subtlecrypto/myvault/sign" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "algorithm": "PS256",
+    "keyName": "my-signing-key",
+    "digest": "<base64-encoded-digest>"
+  }'
 ```
 
-## Verifying a Signature
+The response contains the signature as a base64-encoded string.
 
-```python
-with DaprClient() as client:
-    verify_response = client.verify(
-        data=b"important document content",
-        signature=signature,
-        component_name="myvault",
-        key_name="my-signing-key",
-        algorithm="PS256"
-    )
-    if verify_response.success:
-        print("Signature is valid")
-    else:
-        print("Signature verification failed")
+## Verifying a Signature (Subtle Crypto HTTP API)
+
+```bash
+curl -X POST "http://localhost:3500/v1.0-alpha1/subtlecrypto/myvault/verify" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "algorithm": "PS256",
+    "keyName": "my-signing-key",
+    "digest": "<base64-encoded-digest>",
+    "signature": "<base64-encoded-signature>"
+  }'
 ```
+
+The response contains a `valid` boolean indicating whether the signature is correct.
 
 ## Supported Algorithms
 
 | Use Case | Algorithms |
 |---|---|
-| Asymmetric encryption | RSA-OAEP, RSA-OAEP-256 |
-| Symmetric encryption | AES-CBC, AES-GCM |
-| Signing | PS256, PS384, PS512, RS256, ES256 |
+| Key wrapping (asymmetric) | RSA-OAEP-256, A256KW |
+| Data encryption ciphers | AES-GCM (default), ChaCha20-Poly1305 |
+| Signing (Subtle Crypto API) | PS256, PS384, PS512, RS256, RS384, RS512, ES256, ES384, ES512 |
 
 ## Security Best Practices
 
 1. Never use the local file-based component in production
 2. Use separate keys for encryption and signing
-3. Enable key rotation in your vault and let Dapr handle re-encryption transparently
+3. Enable key rotation in your vault - Dapr can use rotated keys without an application restart, but existing data must be re-encrypted by the application
 4. Scope the crypto component to only the services that need it
 
 ## Summary
