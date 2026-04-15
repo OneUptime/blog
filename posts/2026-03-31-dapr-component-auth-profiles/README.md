@@ -125,9 +125,11 @@ kubectl create secret generic aws-credentials \
   --from-literal=secret-access-key=wJalrXUtnFEMI/K7MDENG \
   -n production
 
-# GCP service account
+# GCP service account (extract individual fields from the SA key JSON)
 kubectl create secret generic gcp-sa-secret \
-  --from-file=./sa-key.json \
+  --from-literal=private_key_id="$(jq -r .private_key_id sa-key.json)" \
+  --from-literal=private_key="$(jq -r .private_key sa-key.json)" \
+  --from-literal=client_email="$(jq -r .client_email sa-key.json)" \
   -n production
 ```
 
