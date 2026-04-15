@@ -67,26 +67,26 @@ Wait a few minutes and check if `absolute_delay` is decreasing and the queue is 
 If the replica has valid data but needs to fill gaps, force it to sync from the other replica:
 
 ```sql
--- Trigger a sync from the best available replica
+-- Wait until the replica processes current replication queue entries
 SYSTEM SYNC REPLICA database_name.table_name;
 
--- With a timeout (default is 300 seconds)
+-- Wait until the replication queue is completely empty
 SYSTEM SYNC REPLICA database_name.table_name STRICT;
 ```
 
-`STRICT` mode raises an error if the sync does not complete within the configured timeout. Use it in scripts where you need to know whether the sync succeeded.
+The base command waits for the replica to process entries from the replication log, up to `receive_timeout` seconds (default 300 seconds). `STRICT` mode goes further: it waits until the replication queue is completely empty. Note that `STRICT` may never return if new entries keep appearing in the queue.
 
-## Step 4: Force Recovery from ZooKeeper State
+## Step 4: Restore ZooKeeper Metadata from Local Data
 
-When the replica's local data diverges significantly from ZooKeeper's records, use `SYSTEM RESTORE REPLICA`:
+When ZooKeeper metadata for a replica is lost but the local data is still intact, use `SYSTEM RESTORE REPLICA`:
 
 ```sql
--- This removes all local parts not tracked in ZooKeeper
--- and schedules fetches for all missing parts
+-- Rebuilds ZooKeeper metadata from locally present data parts
+-- The table must be in read-only mode for this to work
 SYSTEM RESTORE REPLICA database_name.table_name;
 ```
 
-This command is safe: it does not delete parts that ZooKeeper says the replica should have. It only removes parts that exist locally but are not registered anywhere in ZooKeeper (orphaned parts from an interrupted write, for example).
+This command works only on read-only `ReplicatedMergeTree` tables. It scans locally present data parts and re-registers them in ZooKeeper, avoiding the need to re-download all data over the network. Parts that existed before the metadata loss are reattached rather than re-fetched from other replicas.
 
 ## Step 5: Drop and Recreate the Replica (Nuclear Option)
 
@@ -94,7 +94,7 @@ If the local data is corrupted beyond repair, drop the replica's ZooKeeper regis
 
 ```sql
 -- On the FAILED replica only
--- Step 1: Detach the table (keep it accessible but stop replication)
+-- Step 1: Detach the table (makes it inaccessible but preserves data on disk)
 DETACH TABLE database_name.table_name;
 
 -- Step 2: Delete local ZooKeeper replica node (run on a ZooKeeper client or ClickHouse Keeper client)
@@ -185,14 +185,14 @@ If a replica is truly lost and the missing data cannot be recovered, you have tw
 To accept the loss and re-sync:
 
 ```sql
--- Drop local data and ZooKeeper state, then re-initialize
--- This will re-sync from the healthy replica
+-- Run this on a HEALTHY replica, not on the failed one
+-- This removes the dead replica's metadata from ZooKeeper
 -- Data that was lost before the recovery cannot be restored this way
 
 SYSTEM DROP REPLICA 'ch2.internal' FROM TABLE database_name.table_name;
 ```
 
-Then restart ClickHouse on the recovered node. It will re-register and start syncing from the current state of the healthy replica.
+Then recreate the table on the recovered node with the same `CREATE TABLE` statement. ClickHouse will register a new replica in ZooKeeper and start syncing from the current state of the healthy replica.
 
 ## Verification Checklist
 
