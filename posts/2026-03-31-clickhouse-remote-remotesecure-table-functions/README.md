@@ -28,7 +28,8 @@ FROM remote('ch-server2.internal:9000', default.events, 'read_user', 'secret_pas
 ```sql
 remote(addresses_expr, db.table [, user [, password [, sharding_key]]])
 remote(addresses_expr, db, table [, user [, password [, sharding_key]]])
-remoteSecure(addresses_expr, db.table [, user [, password]])
+remoteSecure(addresses_expr, db.table [, user [, password [, sharding_key]]])
+remoteSecure(addresses_expr, db, table [, user [, password [, sharding_key]]])
 ```
 
 | Parameter        | Description |
