@@ -63,15 +63,15 @@ CREATE TABLE events (
 ORDER BY (user_id, ts);
 ```
 
-## Triple-Codec Chains
+## High-Compression Codec Chains
 
-You can chain three codecs, though practical benefit diminishes:
+You can use `DoubleDelta` with a high-compression general-purpose codec for maximum savings:
 
 ```sql
-ts DateTime CODEC(DoubleDelta, LZ4HC(9), ZSTD(1))
+ts DateTime CODEC(DoubleDelta, LZ4HC(9))
 ```
 
-`DoubleDelta` works well for slowly changing timestamps. `LZ4HC` is the high-compression variant of LZ4, followed by ZSTD for a second pass.
+`DoubleDelta` works well for slowly changing timestamps. `LZ4HC` is the high-compression variant of LZ4. Avoid chaining two general-purpose codecs (e.g., LZ4HC then ZSTD) as compressing already-compressed data yields negligible benefit with extra CPU cost.
 
 ## Verify Compression Effectiveness
 
