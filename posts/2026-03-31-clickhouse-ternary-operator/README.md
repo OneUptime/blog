@@ -22,7 +22,7 @@ FROM users
 
 ## Short-Circuit Behavior
 
-`if()` in ClickHouse does NOT short-circuit - both branches are evaluated regardless of the condition. If the false branch could throw an error (such as division by zero), guard it explicitly.
+By default, `if()` in ClickHouse does not short-circuit — both branches are evaluated regardless of the condition. You can enable short-circuit evaluation with the `short_circuit_function_evaluation` setting. When short-circuiting is disabled, guard expressions that could produce incorrect results in either branch.
 
 ```sql
 -- Safe division using if to avoid division by zero
@@ -78,15 +78,18 @@ FROM products
 
 ## Using if() in Aggregations
 
-The `if()` function inside aggregate functions is equivalent to `countIf`, `sumIf`, and `avgIf`, but the combinators are faster because they are optimized internally.
+The `if()` function inside aggregate functions is functionally equivalent to `countIf`, `sumIf`, and `avgIf`, but the `-If` combinators are the idiomatic approach and are generally preferred.
 
 ```sql
 -- Using combinators (preferred)
 SELECT
   sumIf(revenue, event_type = 'purchase') AS purchase_revenue,
   countIf(is_new_user) AS new_users
+FROM events
+```
 
--- Using if() inside aggregates (equivalent, slightly slower)
+```sql
+-- Using if() inside aggregates (equivalent but less idiomatic)
 SELECT
   sum(if(event_type = 'purchase', revenue, 0)) AS purchase_revenue,
   count(if(is_new_user, 1, NULL)) AS new_users
@@ -95,4 +98,4 @@ FROM events
 
 ## Summary
 
-ClickHouse's `if(condition, then, else)` function is the ternary operator equivalent. Use `multiIf` for multi-branch logic instead of deeply nested `if()` calls. Prefer aggregate combinators like `countIf` and `sumIf` over wrapping `if()` inside aggregates. Remember that `if()` evaluates both branches, so guard error-prone expressions explicitly.
+ClickHouse's `if(condition, then, else)` function is the ternary operator equivalent. Use `multiIf` for multi-branch logic instead of deeply nested `if()` calls. Prefer aggregate combinators like `countIf` and `sumIf` over wrapping `if()` inside aggregates. Remember that `if()` evaluates both branches by default (unless `short_circuit_function_evaluation` is enabled), so guard error-prone expressions explicitly.
