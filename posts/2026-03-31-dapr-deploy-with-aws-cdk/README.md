@@ -27,7 +27,7 @@ cdk bootstrap aws://ACCOUNT_ID/us-east-1
 ```bash
 mkdir dapr-cdk && cd dapr-cdk
 cdk init app --language typescript
-npm install @aws-cdk/aws-eks aws-cdk-lib constructs
+npm install aws-cdk-lib constructs
 ```
 
 ## EKS Cluster with Dapr
@@ -38,7 +38,6 @@ Create `lib/dapr-stack.ts`:
 import * as cdk from 'aws-cdk-lib';
 import * as eks from 'aws-cdk-lib/aws-eks';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export class DaprStack extends cdk.Stack {
