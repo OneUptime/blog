@@ -38,7 +38,7 @@ SAMPLE BY sample_key
 
 **Critical constraints:**
 
-1. The `SAMPLE BY` expression must be included in the `ORDER BY` clause.
+1. The `SAMPLE BY` expression must be included in the primary key (and consequently in the `ORDER BY` clause, since the primary key is always a prefix of the sorting key).
 2. The sample key must evaluate to an unsigned integer (use hash functions for non-integer columns).
 3. Common hash functions: `sipHash64()`, `cityHash64()`, `intHash32()`.
 
@@ -226,15 +226,15 @@ If the estimates are within a few percent of each other, your sample key is dist
 
 ## Performance Impact of SAMPLE BY on Storage
 
-`SAMPLE BY` requires that the hash of the sample key is part of the `ORDER BY`. This changes how data is physically sorted on disk. For some queries that filter only by time (not by user), this can reduce primary key efficiency slightly. Measure both before committing to `SAMPLE BY` in your schema.
+`SAMPLE BY` requires that the sample key expression is part of the primary key (and therefore the `ORDER BY`). This changes how data is physically sorted on disk. For some queries that filter only by time (not by user), this can reduce primary key efficiency slightly. Measure both before committing to `SAMPLE BY` in your schema.
 
 ## Summary
 
 The `SAMPLE BY` clause transforms ClickHouse into a high-speed approximate query engine. Key points:
 
-- Define `SAMPLE BY` at table creation time - it cannot be added later without recreating the table.
+- `SAMPLE BY` is typically defined at table creation time. It can be modified later with `ALTER TABLE ... MODIFY SAMPLE BY`, but the new expression must already be part of the primary key.
 - Use `sipHash64()` for consistent, uniform sampling of non-integer keys.
-- The sample key must appear in `ORDER BY`.
+- The sample key must appear in the primary key (and therefore in `ORDER BY`).
 - Consistent sampling across tables (same hash function, same key) enables accurate sampled joins.
 - Use `_sample_factor` for automatic scaling rather than hardcoding the sample fraction.
 - `SAMPLE BY` is ideal for dashboards, real-time monitoring, and exploratory analytics on huge datasets.
