@@ -17,7 +17,7 @@ Dapr workflows run as durable orchestrations backed by the actor subsystem. When
 The Dapr workflow HTTP API exposes the state of any workflow instance:
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/order-workflow/instances/wf-instance-123
+curl http://localhost:3500/v1.0/workflows/dapr/wf-instance-123
 ```
 
 Response:
@@ -94,14 +94,14 @@ If a workflow is stuck waiting for an external event or a slow activity, pause i
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/order-workflow/instances/wf-instance-123/pause
+  http://localhost:3500/v1.0/workflows/dapr/wf-instance-123/pause
 ```
 
 After investigating and resolving the underlying issue, resume it:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/order-workflow/instances/wf-instance-123/resume
+  http://localhost:3500/v1.0/workflows/dapr/wf-instance-123/resume
 ```
 
 ## Terminating and Purging Failed Workflows
@@ -110,15 +110,14 @@ Terminate a workflow that cannot recover:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/workflows/dapr/order-workflow/instances/wf-instance-123/terminate \
-  -d '{"recursive": true}'
+  http://localhost:3500/v1.0/workflows/dapr/wf-instance-123/terminate
 ```
 
 After termination, purge the workflow history to free storage:
 
 ```bash
-curl -X DELETE \
-  http://localhost:3500/v1.0/workflows/dapr/order-workflow/instances/wf-instance-123/purge
+curl -X POST \
+  http://localhost:3500/v1.0/workflows/dapr/wf-instance-123/purge
 ```
 
 ## Debugging Workflow State Persistence
@@ -126,9 +125,8 @@ curl -X DELETE \
 Dapr workflows persist state through the actor state store. If state is not saving correctly, check the state store:
 
 ```bash
-# Inspect the workflow state key in Redis
-redis-cli -h redis -p 6379 KEYS "order-service||wf-instance-123*"
-redis-cli -h redis -p 6379 GET "order-service||wf-instance-123"
+# Inspect the workflow state keys in Redis (internal actor keys use the app ID prefix)
+redis-cli -h redis -p 6379 KEYS "*order-service*wf-instance-123*"
 ```
 
 If state keys are missing after a workflow starts, verify the actor state store component has `actorStateStore: "true"` and check for storage connectivity errors in the sidecar logs.
