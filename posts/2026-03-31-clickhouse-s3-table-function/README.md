@@ -38,7 +38,7 @@ s3(url, [access_key_id, secret_access_key,] format, structure [, compression])
 | `secret_access_key`| AWS secret key |
 | `format`           | `CSV`, `TSV`, `JSONEachRow`, `Parquet`, `ORC`, `Arrow`, etc. |
 | `structure`        | Column definitions |
-| `compression`      | `gzip`, `zstd`, `lz4`, `bz2`, `auto` (default: `auto`) |
+| `compression`      | `gzip`, `zstd`, `brotli`, `xz`/`LZMA`, `none` (default: auto-detected from file extension) |
 
 ## Reading CSV Files from S3
 
@@ -225,18 +225,19 @@ SET max_threads = 16;
 -- Increase part upload size for exports (bytes)
 SET s3_min_upload_part_size = 67108864; -- 64 MB
 
--- Retry on transient S3 errors
-SET s3_max_connections = 100;
-SET s3_request_timeout_ms = 30000;
+-- Increase the number of upload threads
+SET s3_upload_part_size_multiply_factor = 2;
+SET s3_upload_part_size_multiply_parts_count_threshold = 500;
 ```
 
 ## Hive-Style Partitioning
 
-ClickHouse can read Hive-partitioned S3 layouts and expose partition keys as virtual columns:
+ClickHouse can read Hive-partitioned S3 layouts and expose partition keys as queryable columns derived from the path:
 
 ```sql
 SELECT
-    _partition_id,
+    year,
+    month,
     count(),
     sum(revenue)
 FROM s3(
@@ -246,7 +247,7 @@ FROM s3(
     'Parquet',
     'order_id UInt64, revenue Float64'
 )
-GROUP BY _partition_id;
+GROUP BY year, month;
 ```
 
 ## Summary
