@@ -49,8 +49,8 @@ USE dapr_state;
 -- Dapr creates the table, but verify it was created correctly
 DESCRIBE TABLE state;
 
--- Add TTL support (must be set per partition)
--- Dapr handles TTL via Cassandra's native TTL feature
+-- Note: Dapr's Cassandra state store does not support TTL via ttlInSeconds metadata.
+-- To use TTL, set it directly in CQL with INSERT ... USING TTL.
 ```
 
 ## Dapr Component Configuration
@@ -94,7 +94,7 @@ spec:
 Choose the consistency level based on your CAP requirements:
 
 ```yaml
-# Strongest consistency (read + write quorum = N+1 guarantees linearizability)
+# Strongest consistency (R + W > N guarantees strong consistency, not linearizability)
   - name: consistency
     value: "QUORUM"
 
@@ -107,29 +107,34 @@ Choose the consistency level based on your CAP requirements:
     value: "ONE"
 ```
 
-## Saving State with Cassandra TTL
+## Saving State
 
 ```go
 package main
 
 import (
     "context"
+    "encoding/json"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
-func cacheSessionData(sessionID string, sessionData interface{}) error {
+func saveSessionData(sessionID string, sessionData interface{}) error {
     client, _ := dapr.NewClient()
     defer client.Close()
 
     ctx := context.Background()
 
-    // State expires after 30 minutes
+    data, err := json.Marshal(sessionData)
+    if err != nil {
+        return err
+    }
+
+    // Note: Dapr's Cassandra state store does not support TTL via ttlInSeconds metadata.
     return client.SaveState(ctx, "cassandra-state",
         fmt.Sprintf("session:%s", sessionID),
-        sessionData,
-        map[string]string{
-            "ttlInSeconds": "1800",
-        },
+        data,
+        nil,
     )
 }
 ```
@@ -165,7 +170,7 @@ nodetool status
 nodetool tpstats
 
 # Check read/write latency
-nodetool cfstats dapr_state.state | grep -E "Read|Write"
+nodetool tablestats dapr_state.state | grep -E "Read|Write"
 
 # Monitor pending compactions
 nodetool compactionstats
@@ -173,4 +178,4 @@ nodetool compactionstats
 
 ## Summary
 
-Cassandra with Dapr state store is ideal for write-intensive workloads that require linear horizontal scalability and multi-datacenter replication. LOCAL_QUORUM consistency balances performance and reliability in multi-datacenter deployments. TimeWindowCompactionStrategy optimizes disk usage when state data has TTLs, automatically reclaiming space from expired entries without manual maintenance.
+Cassandra with Dapr state store is ideal for write-intensive workloads that require linear horizontal scalability and multi-datacenter replication. LOCAL_QUORUM consistency balances performance and reliability in multi-datacenter deployments. TimeWindowCompactionStrategy optimizes disk usage when state data has TTLs set natively in CQL, automatically reclaiming space from expired entries without manual maintenance. Note that Dapr's Cassandra state store does not support TTL via the `ttlInSeconds` metadata — use Cassandra's native `USING TTL` clause directly if you need expiring data.
