@@ -8,7 +8,7 @@ Description: Learn how to configure Dapr to use Azure App Configuration as a con
 
 ---
 
-Azure App Configuration is a managed service for centralized application settings and feature flags. For teams running on Azure, it is a natural fit as the Dapr configuration store backend because it integrates natively with Azure Active Directory, supports versioning, and provides a web UI for managing configuration values.
+Azure App Configuration is a managed service for centralized application settings and feature flags. For teams running on Azure, it is a natural fit as the Dapr configuration store backend because it integrates natively with Microsoft Entra ID, supports versioning, and provides a web UI for managing configuration values.
 
 ## Set Up Azure App Configuration
 
@@ -96,14 +96,14 @@ spec:
 
 ## Using Managed Identity Instead of Connection Strings
 
-For AKS with Managed Identity, use Azure AD authentication:
+For AKS with Managed Identity, use Microsoft Entra ID authentication:
 
 ```yaml
 spec:
   type: configuration.azure.appconfig
   version: v1
   metadata:
-    - name: endpoint
+    - name: host
       value: "https://myapp-config.azconfig.io"
     - name: azureClientId
       value: "your-managed-identity-client-id"
@@ -121,7 +121,7 @@ az role assignment create \
 ## Reading Configuration
 
 ```bash
-curl "http://localhost:3500/v1.0-alpha1/configuration/appconfig?key=myapp:max-retries"
+curl "http://localhost:3500/v1.0/configuration/appconfig?key=myapp:max-retries"
 ```
 
 In .NET:
@@ -144,4 +144,4 @@ var featureFlagEnabled = config.Items["myapp:feature-flag-new-ui"].Value == "tru
 
 ## Summary
 
-Azure App Configuration as a Dapr configuration backend is ideal for Azure deployments because it provides a managed service with a web UI, Azure AD integration, and label-based environment separation. Using Managed Identity eliminates the need to manage connection string secrets, and the Dapr component's `subscribePollInterval` setting controls how frequently configuration changes are polled.
+Azure App Configuration as a Dapr configuration backend is ideal for Azure deployments because it provides a managed service with a web UI, Microsoft Entra ID integration, and label-based environment separation. Using Managed Identity eliminates the need to manage connection string secrets, and the Dapr component's `subscribePollInterval` setting controls how frequently configuration changes are polled.
