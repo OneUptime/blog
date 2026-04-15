@@ -77,7 +77,7 @@ Add deprecation tracking to your upgrade process:
 ```bash
 #!/bin/bash
 # deprecation-check.sh - Run before each Dapr upgrade
-CURRENT=$(dapr version -k --output json | python3 -c "import sys,json; print(json.load(sys.stdin)['Runtime version'])")
+CURRENT=$(dapr version | grep "Runtime version" | awk '{print $NF}')
 TARGET=$1
 
 echo "Checking breaking changes from $CURRENT to $TARGET"
@@ -89,4 +89,4 @@ kubectl get components -A -o yaml | grep -i "deprecat" || echo "None found in cl
 
 ## Summary
 
-Dapr's deprecation policy provides at least 2 minor release cycles between announcement and removal for stable APIs. Breaking changes and deprecations are documented in each version's release notes and can be detected at runtime through Dapr sidecar log warnings. Building a pre-upgrade deprecation check into your deployment process prevents surprises when moving between minor versions.
+Dapr's deprecation policy provides at least 2 minor releases or 6 months (whichever is greater) between announcement and removal for stable APIs. Breaking changes and deprecations are documented in each version's release notes and can be detected at runtime through Dapr sidecar log warnings. Building a pre-upgrade deprecation check into your deployment process prevents surprises when moving between minor versions.
