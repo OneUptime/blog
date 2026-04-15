@@ -16,10 +16,10 @@ Dapr instruments all major operations with histogram metrics:
 
 | Metric | Operation |
 |--------|-----------|
-| `dapr_http_server_request_duration_msec` | Inbound HTTP requests to sidecar |
-| `dapr_service_invocation_req_sent_total` | Service-to-service calls |
-| `dapr_state_get_duration_msec` | State store read latency |
-| `dapr_pubsub_publish_duration_msec` | Pub/sub publish latency |
+| `dapr_http_server_latency` | Inbound HTTP requests to sidecar |
+| `dapr_runtime_service_invocation_res_recv_latency_ms` | Service-to-service call round trip |
+| `dapr_component_state_latencies` | State store operation latency |
+| `dapr_component_pubsub_egress_latencies` | Pub/sub publish latency |
 
 ## Creating Latency Alerting Rules
 
@@ -42,7 +42,7 @@ spec:
         - alert: DaprServiceInvocationHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(dapr_http_server_request_duration_msec_bucket[5m])
+              rate(dapr_http_server_latency_bucket[5m])
             ) > 500
           for: 3m
           labels:
@@ -54,19 +54,19 @@ spec:
         - alert: DaprStateStoreHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(dapr_state_get_duration_msec_bucket[5m])
+              rate(dapr_component_state_latencies_bucket[5m])
             ) > 200
           for: 2m
           labels:
             severity: warning
           annotations:
             summary: "Dapr state store read latency spike"
-            description: "State store {{ $labels.storeName }} p99 read latency is {{ $value }}ms."
+            description: "State store {{ $labels.component }} p99 read latency is {{ $value }}ms."
 
         - alert: DaprPubSubPublishHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(dapr_pubsub_publish_duration_msec_bucket[5m])
+              rate(dapr_component_pubsub_egress_latencies_bucket[5m])
             ) > 300
           for: 3m
           labels:
@@ -84,15 +84,15 @@ Pre-compute p99 values with recording rules to reduce query load:
         - record: dapr:service_invocation:p99_latency_5m
           expr: |
             histogram_quantile(0.99,
-              sum(rate(dapr_http_server_request_duration_msec_bucket[5m]))
+              sum(rate(dapr_http_server_latency_bucket[5m]))
               by (app_id, le)
             )
 
         - record: dapr:state:p99_get_latency_5m
           expr: |
             histogram_quantile(0.99,
-              sum(rate(dapr_state_get_duration_msec_bucket[5m]))
-              by (storeName, le)
+              sum(rate(dapr_component_state_latencies_bucket[5m]))
+              by (component, le)
             )
 ```
 
@@ -127,8 +127,8 @@ k6 run --vus 100 --duration 60s load-test.js
 Watch metrics in real-time with kubectl:
 
 ```bash
-kubectl port-forward svc/dapr-sidecar-injector 9090:9090 -n dapr-system
-curl -s http://localhost:9090/metrics | grep dapr_http_server_request_duration
+kubectl port-forward deploy/<app-name> 9090:9090 -n <app-namespace>
+curl -s http://localhost:9090/metrics | grep dapr_http_server_latency
 ```
 
 ## Summary
