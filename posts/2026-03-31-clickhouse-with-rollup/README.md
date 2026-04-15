@@ -8,7 +8,7 @@ Description: Generate hierarchical subtotals and grand totals in ClickHouse usin
 
 ---
 
-`WITH ROLLUP` is a ClickHouse extension to `GROUP BY` that automatically produces a hierarchy of subtotals. For a `GROUP BY a, b, c WITH ROLLUP` query, ClickHouse runs groupings at every level - `(a, b, c)`, `(a, b)`, `(a)`, and `()` (grand total) - and returns all results in a single pass. Subtotal rows use `NULL` in the columns that were collapsed, making it easy to spot which level of the hierarchy each row belongs to.
+`WITH ROLLUP` is a ClickHouse extension to `GROUP BY` that automatically produces a hierarchy of subtotals. For a `GROUP BY a, b, c WITH ROLLUP` query, ClickHouse runs groupings at every level - `(a, b, c)`, `(a, b)`, `(a)`, and `()` (grand total) - and returns all results in a single pass. By default, ClickHouse fills the collapsed columns with default values (`0` for numeric types, empty string for `String`). To get standard SQL behavior where subtotal rows use `NULL` instead, enable the `group_by_use_nulls` setting. The examples below use this setting so that `NULL` clearly marks which level of the hierarchy each row belongs to.
 
 ## Basic Syntax
 
@@ -24,6 +24,8 @@ GROUP BY col1, col2 WITH ROLLUP;
 ## Simple Two-Level Rollup
 
 ```sql
+SET group_by_use_nulls = 1;
+
 CREATE TABLE regional_sales
 (
     region   String,
@@ -136,4 +138,4 @@ ORDER BY department NULLS LAST, job_title NULLS LAST;
 
 ## Summary
 
-`WITH ROLLUP` generates a complete hierarchy of subtotals in a single query by progressively collapsing `GROUP BY` columns from right to left. Subtotal rows carry `NULL` in the collapsed columns, and the `GROUPING()` function lets you distinguish true `NULL` data values from rollup-generated `NULL`s. Use it for financial reports, sales hierarchies, and any analysis that needs subtotals at multiple levels of granularity without multiple queries.
+`WITH ROLLUP` generates a complete hierarchy of subtotals in a single query by progressively collapsing `GROUP BY` columns from right to left. By default, collapsed columns receive default values (`0`, empty string); enable `group_by_use_nulls = 1` to get `NULL` instead, which is the standard SQL behavior. The `GROUPING()` function lets you distinguish real data values from rollup-generated ones regardless of which mode you use. Use `WITH ROLLUP` for financial reports, sales hierarchies, and any analysis that needs subtotals at multiple levels of granularity without multiple queries.
