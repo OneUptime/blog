@@ -31,9 +31,9 @@ The result is an Array of Float32 values.
 ## Optimized for the 0-30000ms Range
 
 `quantileTiming()` uses a deterministic, fixed-resolution data structure with granularity:
-- 1ms steps for values 0 to 1024ms
+- 1ms steps for values 0 to 1023ms
 - 16ms steps for values 1024ms to 30000ms
-- Values outside this range are clamped
+- Values above 30000ms are clamped to 30000. Negative values produce undefined behavior.
 
 ```sql
 -- Values above 30000ms are clamped to 30000
