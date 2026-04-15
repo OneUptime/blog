@@ -18,8 +18,7 @@ Description: Learn how to use parseDateTime32BestEffort() in ClickHouse to auto-
 '2025-01-15 14:30:00'     (ISO 8601 datetime)
 '2025-01-15'              (ISO 8601 date)
 '2025-01-15T14:30:00Z'    (ISO 8601 with timezone)
-'15/01/2025'              (European date format)
-'01/15/2025'              (US date format)
+'15/01/2025'              (DD/MM/YYYY date format)
 '15-Jan-2025'             (mixed format)
 'January 15, 2025'        (long month name)
 '1705328200'              (Unix timestamp as string)
@@ -105,7 +104,7 @@ LIMIT 10000;
 -- toDateTime requires a specific format (YYYY-MM-DD HH:MM:SS)
 SELECT toDateTime('2025-01-15 14:30:00') AS strict_parse;
 -- parseDateTime32BestEffort handles more formats
-SELECT parseDateTime32BestEffort('Jan 15 2025 2:30pm') AS flexible_parse;
+SELECT parseDateTime32BestEffort('Jan 15 2025 14:30:00') AS flexible_parse;
 ```
 
 ## Using with Date Arithmetic After Parsing
