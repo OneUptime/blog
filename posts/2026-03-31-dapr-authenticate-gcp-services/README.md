@@ -65,9 +65,11 @@ For non-GKE environments, use a service account key JSON:
 gcloud iam service-accounts keys create key.json \
   --iam-account=dapr-sa@my-project.iam.gserviceaccount.com
 
-# Store as Kubernetes secret
-kubectl create secret generic gcp-key \
-  --from-file=key.json=./key.json
+# Store credentials as Kubernetes secret
+kubectl create secret generic gcp-credentials \
+  --from-literal=privateKeyId="$(jq -r '.private_key_id' key.json)" \
+  --from-literal=clientEmail="$(jq -r '.client_email' key.json)" \
+  --from-literal=privateKey="$(jq -r '.private_key' key.json)"
 ```
 
 Reference the key in the Dapr component:
@@ -81,12 +83,22 @@ spec:
   type: pubsub.gcp.pubsub
   version: v1
   metadata:
+  - name: type
+    value: "service_account"
   - name: projectId
     value: "my-project"
-  - name: credentialsJson
+  - name: privateKeyId
     secretKeyRef:
-      name: gcp-key
-      key: key.json
+      name: gcp-credentials
+      key: privateKeyId
+  - name: clientEmail
+    secretKeyRef:
+      name: gcp-credentials
+      key: clientEmail
+  - name: privateKey
+    secretKeyRef:
+      name: gcp-credentials
+      key: privateKey
 ```
 
 ## Method 3: Application Default Credentials
