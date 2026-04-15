@@ -10,7 +10,7 @@ Description: Configure Kafka consumer group settings in Dapr pub/sub components 
 
 ## Overview
 
-Dapr's Kafka pub/sub component wraps Confluent's Go Kafka client and exposes key consumer group settings as component metadata. Tuning these settings affects throughput, latency, and message ordering guarantees.
+Dapr's Kafka pub/sub component wraps the IBM Sarama Go Kafka client and exposes key consumer group settings as component metadata. Tuning these settings affects throughput, latency, and message ordering guarantees.
 
 ## Basic Kafka Pub/Sub Component
 
@@ -62,8 +62,6 @@ Multiple replicas of the same Dapr app automatically share the same consumer gro
     value: "10s"
   - name: heartbeatInterval
     value: "3s"
-  - name: rebalanceTimeout
-    value: "60s"
 ```
 
 These control how quickly Kafka detects a dead consumer and triggers rebalancing. Keep `heartbeatInterval` at 1/3 of `sessionTimeout`.
@@ -71,9 +69,9 @@ These control how quickly Kafka detects a dead consumer and triggers rebalancing
 ## Configuring Fetch Settings for Throughput
 
 ```yaml
-  - name: fetchMin
+  - name: consumerFetchMin
     value: "1"
-  - name: fetchDefault
+  - name: consumerFetchDefault
     value: "1048576"
   - name: channelBufferSize
     value: "512"
