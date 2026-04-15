@@ -37,7 +37,7 @@ The most common use case is using Unix timestamps (or sequential integers) as x 
 ```sql
 -- Fit a line to the past 7 days of disk usage
 SELECT
-    tupleElement(simpleLinearRegression(ts, used_gb), 1) AS bytes_per_second,
+    tupleElement(simpleLinearRegression(ts, used_gb), 1) AS gb_per_second,
     tupleElement(simpleLinearRegression(ts, used_gb), 2) AS intercept
 FROM (
     SELECT
