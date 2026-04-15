@@ -18,7 +18,7 @@ Dapr's AI building blocks provide a portable abstraction for interacting with la
 <dependency>
   <groupId>io.dapr</groupId>
   <artifactId>dapr-sdk</artifactId>
-  <version>1.13.0</version>
+  <version>1.15.0</version>
 </dependency>
 ```
 
@@ -33,7 +33,6 @@ metadata:
   name: openai-llm
 spec:
   type: conversation.openai
-  version: v1
   metadata:
     - name: key
       secretKeyRef:
@@ -45,24 +44,24 @@ spec:
 
 ## Sending a Conversation Request
 
-Use the `DaprClient` to send messages to an LLM:
+Use the `DaprPreviewClient` to send messages to an LLM:
 
 ```java
-import io.dapr.client.DaprClient;
 import io.dapr.client.DaprClientBuilder;
+import io.dapr.client.DaprPreviewClient;
 import io.dapr.client.domain.ConversationInput;
 import io.dapr.client.domain.ConversationRequest;
 import io.dapr.client.domain.ConversationResponse;
 import java.util.List;
 
-DaprClient client = new DaprClientBuilder().build();
+DaprPreviewClient client = new DaprClientBuilder().buildPreviewClient();
 
 ConversationInput input = new ConversationInput("Summarize the Dapr documentation in 3 bullet points.");
 
 ConversationRequest request = new ConversationRequest("openai-llm", List.of(input));
 
 ConversationResponse response = client.converse(request).block();
-response.getOutputs().forEach(output ->
+response.getConversationOutputs().forEach(output ->
     System.out.println("AI response: " + output.getResult())
 );
 ```
@@ -75,8 +74,7 @@ Maintain conversation history by providing a context ID:
 ConversationRequest contextRequest = new ConversationRequest("openai-llm", List.of(
     new ConversationInput("What is Dapr?")
 ))
-    .setContextId("user-session-42")
-    .setRememberHistory(true);
+    .setContextId("user-session-42");
 
 ConversationResponse first = client.converse(contextRequest).block();
 
@@ -84,11 +82,10 @@ ConversationResponse first = client.converse(contextRequest).block();
 ConversationRequest followUp = new ConversationRequest("openai-llm", List.of(
     new ConversationInput("How does it handle state?")
 ))
-    .setContextId("user-session-42")
-    .setRememberHistory(true);
+    .setContextId("user-session-42");
 
 ConversationResponse second = client.converse(followUp).block();
-System.out.println(second.getOutputs().get(0).getResult());
+System.out.println(second.getConversationOutputs().get(0).getResult());
 ```
 
 ## Integrating with a REST Controller
@@ -100,9 +97,9 @@ Expose AI capabilities through a Spring Boot endpoint:
 @RequestMapping("/ai")
 public class AiController {
 
-    private final DaprClient daprClient;
+    private final DaprPreviewClient daprClient;
 
-    public AiController(DaprClient daprClient) {
+    public AiController(DaprPreviewClient daprClient) {
         this.daprClient = daprClient;
     }
 
@@ -113,7 +110,7 @@ public class AiController {
             List.of(new ConversationInput(prompt))
         );
         ConversationResponse resp = daprClient.converse(req).block();
-        String result = resp.getOutputs().get(0).getResult();
+        String result = resp.getConversationOutputs().get(0).getResult();
         return ResponseEntity.ok(result);
     }
 }
@@ -129,15 +126,16 @@ kind: Component
 metadata:
   name: openai-llm
 spec:
-  type: conversation.azure.openai
-  version: v1
+  type: conversation.openai
   metadata:
-    - name: endpoint
-      value: "https://my-resource.openai.azure.com/"
-    - name: apiKey
+    - name: key
       secretKeyRef:
         name: azure-openai-secret
         key: api-key
+    - name: endpoint
+      value: "https://my-resource.openai.azure.com/"
+    - name: apiType
+      value: "azure"
     - name: model
       value: gpt-4o
 ```
