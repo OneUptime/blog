@@ -75,15 +75,18 @@ ORDER BY elapsed DESC;
 
 An empty result confirms no merges are active.
 
-Check whether merges are globally stopped:
+For replicated tables, you can check whether merges are enabled on each replica:
 
 ```sql
-SELECT *
-FROM system.merge_tree_settings
-WHERE name = 'merge_max_block_size';
+SELECT
+    database,
+    table,
+    is_leader,
+    can_perform_merges
+FROM system.replicas;
 ```
 
-A more direct way is to look at the server logs or query `system.replicas` for replicated tables.
+A `can_perform_merges` value of `0` indicates merges are stopped on that replica. For non-replicated tables, check the server logs or simply verify that `system.merges` remains empty after stopping merges.
 
 ## Checking Part Count Before and After
 
