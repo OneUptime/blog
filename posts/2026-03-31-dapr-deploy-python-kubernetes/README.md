@@ -135,7 +135,7 @@ def health_check():
     return {"status": "ok"}
 ```
 
-## Service and Ingress
+## Service
 
 ```yaml
 apiVersion: v1
