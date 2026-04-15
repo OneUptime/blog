@@ -21,7 +21,6 @@ The simplest approach - include the version in the URL path:
 package main
 
 import (
-    "encoding/json"
     "net/http"
     "github.com/gin-gonic/gin"
 )
@@ -196,7 +195,7 @@ Document and enforce version deprecation:
 // Deprecation warning middleware
 func deprecationWarning(version, sunsetDate string) gin.HandlerFunc {
     return func(c *gin.Context) {
-        c.Header("Deprecation", "true")
+        c.Header("Deprecation", "@0")
         c.Header("Sunset", sunsetDate)
         c.Header("Link", `</v2/users>; rel="successor-version"`)
         c.Next()
@@ -204,7 +203,7 @@ func deprecationWarning(version, sunsetDate string) gin.HandlerFunc {
 }
 
 // Apply to V1 routes
-v1.Use(deprecationWarning("v1", "2026-12-31"))
+v1.Use(deprecationWarning("v1", "Thu, 31 Dec 2026 23:59:59 GMT"))
 ```
 
 ## Summary
