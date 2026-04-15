@@ -58,17 +58,17 @@ kubectl exec -it deploy/order-service -c order-service -- \
 
 Expected output:
 ```json
-{
-  "subscriptions": [
-    {
-      "pubsubname": "orders-pubsub",
-      "topic": "OrderPlaced",
-      "routes": {
-        "default": "/orders/placed"
+[
+  {
+    "pubsubname": "orders-pubsub",
+    "topic": "OrderPlaced",
+    "rules": [
+      {
+        "path": "/orders/placed"
       }
-    }
-  ]
-}
+    ]
+  }
+]
 ```
 
 ## Test Subscription Endpoint Directly
@@ -151,22 +151,25 @@ curl -X POST http://localhost:3500/v1.0/publish/orders-pubsub/OrderPlaced \
 ## Trace a Failed Event
 
 ```python
-import dapr.clients as dapr
+import requests
 import json
 
 def debug_publish_and_trace(event_data: dict):
-    """Publish with explicit trace ID for debugging"""
-    with dapr.DaprClient() as client:
-        client.publish_event(
-            pubsub_name="orders-pubsub",
-            topic_name="OrderPlaced",
-            data=json.dumps(event_data),
-            publish_metadata={
-                "traceparent": "00-debugtraceid12345678901234567890-0000000000000001-01"
-            }
-        )
-        print(f"Published with trace ID: debugtraceid12345678901234567890")
-        print("Search for this trace in Jaeger/Zipkin to follow the event path")
+    """Publish with explicit traceparent header for debugging"""
+    trace_id = "abcd1234abcd1234abcd1234abcd1234"
+    traceparent = f"00-{trace_id}-0000000000000001-01"
+
+    response = requests.post(
+        "http://localhost:3500/v1.0/publish/orders-pubsub/OrderPlaced",
+        headers={
+            "Content-Type": "application/json",
+            "traceparent": traceparent
+        },
+        data=json.dumps(event_data)
+    )
+    print(f"Published with trace ID: {trace_id}")
+    print(f"Response: {response.status_code}")
+    print("Search for this trace in Jaeger/Zipkin to follow the event path")
 ```
 
 ## Common Issues Checklist
