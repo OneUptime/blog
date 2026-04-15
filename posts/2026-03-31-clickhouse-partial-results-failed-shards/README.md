@@ -56,7 +56,7 @@ WHERE cluster = 'production_cluster'
 ORDER BY shard_num, replica_num;
 ```
 
-If estimated_recovery_time > 0, that shard is considered unavailable.
+If estimated_recovery_time > 0, that replica has recently experienced errors and ClickHouse has not yet reset its error counter — treat it as potentially degraded.
 
 ## Querying with Shard Awareness
 
