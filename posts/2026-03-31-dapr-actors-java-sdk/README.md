@@ -29,7 +29,7 @@ Dapr virtual actors provide a stateful, single-threaded programming model for di
 
 ## Defining the Actor Interface
 
-Actor interfaces must extend `Actor` and annotate methods with `@ActorMethod`:
+Actor interfaces are plain Java interfaces annotated with `@ActorType`. You can optionally use `@ActorMethod` to customize the method name used for invocation:
 
 ```java
 import io.dapr.actors.ActorMethod;
@@ -53,6 +53,7 @@ public interface BankAccountActor {
 ## Implementing the Actor
 
 ```java
+import io.dapr.actors.ActorId;
 import io.dapr.actors.runtime.AbstractActor;
 import io.dapr.actors.runtime.ActorRuntimeContext;
 import reactor.core.publisher.Mono;
@@ -65,23 +66,27 @@ public class BankAccountActorImpl extends AbstractActor implements BankAccountAc
         super(runtimeContext, id);
     }
 
+    private Mono<Double> getCurrentBalance() {
+        return this.getActorStateManager().contains(BALANCE_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(BALANCE_KEY, Double.class)
+                : Mono.just(0.0));
+    }
+
     @Override
     public Mono<Double> deposit(Double amount) {
-        return this.getActorStateManager()
-            .getOrDefault(BALANCE_KEY, Double.class, 0.0)
+        return getCurrentBalance()
             .flatMap(balance -> {
                 double newBalance = balance + amount;
                 return this.getActorStateManager()
                     .set(BALANCE_KEY, newBalance)
-                    .then(this.getActorStateManager().save())
                     .thenReturn(newBalance);
             });
     }
 
     @Override
     public Mono<Boolean> withdraw(Double amount) {
-        return this.getActorStateManager()
-            .getOrDefault(BALANCE_KEY, Double.class, 0.0)
+        return getCurrentBalance()
             .flatMap(balance -> {
                 if (balance < amount) {
                     return Mono.just(false);
@@ -89,15 +94,13 @@ public class BankAccountActorImpl extends AbstractActor implements BankAccountAc
                 double newBalance = balance - amount;
                 return this.getActorStateManager()
                     .set(BALANCE_KEY, newBalance)
-                    .then(this.getActorStateManager().save())
                     .thenReturn(true);
             });
     }
 
     @Override
     public Mono<Double> getBalance() {
-        return this.getActorStateManager()
-            .getOrDefault(BALANCE_KEY, Double.class, 0.0);
+        return getCurrentBalance();
     }
 }
 ```
@@ -106,7 +109,6 @@ public class BankAccountActorImpl extends AbstractActor implements BankAccountAc
 
 ```java
 import io.dapr.actors.runtime.ActorRuntime;
-import io.dapr.springboot.DaprApplication;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -157,4 +159,4 @@ try (ActorClient actorClient = new ActorClient()) {
 
 ## Summary
 
-The Dapr Java SDK makes building virtual actors straightforward with Spring Boot integration. Define a reactive interface with `@ActorMethod`, implement it with `AbstractActor`, and register at startup. The actor proxy pattern gives clients a clean, type-safe API, while Dapr handles state persistence and placement behind the scenes.
+The Dapr Java SDK makes building virtual actors straightforward with Spring Boot integration. Define a reactive interface with `@ActorType`, implement it with `AbstractActor`, and register at startup. The actor proxy pattern gives clients a clean, type-safe API, while Dapr handles state persistence and placement behind the scenes.
