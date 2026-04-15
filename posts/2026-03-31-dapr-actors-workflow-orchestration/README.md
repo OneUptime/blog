@@ -48,8 +48,14 @@ type StepRecord struct {
   Error       string    `json:"error,omitempty"`
 }
 
+type StepCompletion struct {
+  StepName string `json:"stepName"`
+  Status   string `json:"status"`
+  Error    string `json:"error,omitempty"`
+}
+
 type OrderWorkflowActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *OrderWorkflowActor) Type() string { return "OrderWorkflow" }
@@ -136,14 +142,17 @@ curl -X POST http://localhost:3500/v1.0/actors/OrderWorkflow/wf-001/method/Compl
 
 ## Adding Timeout via Reminders
 
-```go
-func (a *OrderWorkflowActor) StartWorkflow(ctx context.Context, input map[string]interface{}) error {
-  // ... state setup ...
+Reminders are registered through the Dapr HTTP API. You can call this from your actor method or from an external service:
 
-  // Fail the workflow if not completed in 24 hours
-  return a.AddReminder("workflow-timeout", nil, 24*time.Hour, 0)
-}
+```bash
+curl -X POST http://localhost:3500/v1.0/actors/OrderWorkflow/wf-001/reminders/workflow-timeout \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dueTime": "24h"
+  }'
 ```
+
+Omitting the `period` field makes this a one-shot reminder that fires once after 24 hours.
 
 ## Summary
 
