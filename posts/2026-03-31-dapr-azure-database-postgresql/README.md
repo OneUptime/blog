@@ -42,7 +42,7 @@ Create the Kubernetes secret with the connection string:
 kubectl create secret generic azure-pg-secret \
   --from-literal=connectionString="host=my-server.postgres.database.azure.com \
     port=5432 \
-    user=dapr_user@my-server \
+    user=dapr_user \
     password=mypassword \
     dbname=mydb \
     sslmode=require"
@@ -55,7 +55,7 @@ Use Azure Managed Identity for passwordless authentication:
 ```bash
 # Assign the "PostgreSQL Flexible Server AD Admin" role to the managed identity
 az ad sp show --id $(az identity show -n aks-identity -g my-rg --query clientId -o tsv) \
-  --query objectId -o tsv
+  --query id -o tsv
 
 az postgres flexible-server ad-admin create \
   --server-name my-server \
@@ -84,7 +84,7 @@ az postgres flexible-server parameter set \
   --server-name my-server \
   --resource-group my-rg \
   --name pgbouncer.enabled \
-  --value on
+  --value true
 ```
 
 Use port 6432 for PgBouncer connections:
@@ -92,7 +92,7 @@ Use port 6432 for PgBouncer connections:
 ```yaml
 metadata:
 - name: connectionString
-  value: "host=my-server.postgres.database.azure.com port=6432 user=dapr_user@my-server password=mypassword dbname=mydb sslmode=require"
+  value: "host=my-server.postgres.database.azure.com port=6432 user=dapr_user password=mypassword dbname=mydb sslmode=require"
 ```
 
 ## Creating the Dapr State Table
@@ -101,14 +101,13 @@ Dapr automatically creates the state table, but you can pre-create it for custom
 
 ```sql
 CREATE TABLE dapr_state (
-  key TEXT NOT NULL,
+  key TEXT NOT NULL PRIMARY KEY,
   value JSONB NOT NULL,
-  etag TEXT NOT NULL,
-  expiration_time TIMESTAMP WITH TIME ZONE,
-  update_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (key)
+  isbinary BOOLEAN NOT NULL,
+  insertdate TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updatedate TIMESTAMP WITH TIME ZONE NULL,
+  expiredate TIMESTAMP WITH TIME ZONE
 );
-CREATE INDEX idx_dapr_state_expiration ON dapr_state (expiration_time);
 ```
 
 ## Verifying State Store Connectivity
