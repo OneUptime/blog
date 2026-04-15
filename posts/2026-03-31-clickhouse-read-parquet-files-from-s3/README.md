@@ -40,7 +40,7 @@ DESCRIBE TABLE s3(
 
 ## Filter Pushdown
 
-ClickHouse pushes WHERE clauses to the Parquet reader for column pruning:
+ClickHouse pushes WHERE conditions down to the Parquet reader to skip irrelevant row groups, and performs column pruning to read only the columns referenced in the query:
 
 ```sql
 SELECT
