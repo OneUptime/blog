@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Scheduled Export, Automation, Cron, Data Pipeline
 
-Description: Learn how to set up scheduled data exports from ClickHouse using cron jobs, ClickHouse Scheduled Jobs, and pipeline tools for automated reporting.
+Description: Learn how to set up scheduled data exports from ClickHouse using cron jobs, refreshable materialized views, and pipeline tools for automated reporting.
 
 ---
 
@@ -44,21 +44,20 @@ Register with cron:
 0 2 * * * /opt/scripts/export_events.sh >> /var/log/clickhouse-exports.log 2>&1
 ```
 
-## Option 2 - ClickHouse Scheduled Jobs
+## Option 2 - Refreshable Materialized Views
 
-ClickHouse 24.5+ supports `CREATE SCHEDULE`:
+ClickHouse supports refreshable materialized views that re-execute a query on a defined schedule:
 
 ```sql
-CREATE SCHEDULE daily_events_export
-    CRON '0 2 * * *'
+CREATE MATERIALIZED VIEW daily_events_export
+REFRESH EVERY 1 DAY OFFSET 2 HOUR
+ENGINE = S3('s3://my-bucket/events/latest/data.parquet', 'Parquet')
 AS
-    INSERT INTO FUNCTION s3(
-        'https://s3.amazonaws.com/my-bucket/events/{toDate(now()-1)}/data.parquet',
-        'Parquet'
-    )
-    SELECT * FROM events
-    WHERE toDate(ts) = today() - 1;
+SELECT * FROM events
+WHERE toDate(ts) = today() - 1;
 ```
+
+The view refreshes daily at 2:00 AM and writes yesterday's events to S3 in Parquet format. Each refresh atomically replaces the previous contents. For date-partitioned paths, use cron or Airflow to construct dynamic URLs.
 
 ## Option 3 - Materialized View with Background Refresh
 
@@ -69,7 +68,7 @@ CREATE TABLE events_daily_summary (
     date Date,
     event_type LowCardinality(String),
     event_count UInt64,
-    unique_users UInt32
+    unique_users AggregateFunction(uniq, UInt64)
 ) ENGINE = SummingMergeTree()
 ORDER BY (date, event_type);
 
@@ -78,7 +77,7 @@ AS SELECT
     toDate(ts) AS date,
     event_type,
     count() AS event_count,
-    uniq(user_id) AS unique_users
+    uniqState(user_id) AS unique_users
 FROM events
 GROUP BY date, event_type;
 ```
@@ -88,9 +87,9 @@ GROUP BY date, event_type;
 ```python
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from datetime import datetime, timedelta
+from datetime import datetime
 
-with DAG('clickhouse_export', schedule_interval='@daily', start_date=datetime(2026,1,1)) as dag:
+with DAG('clickhouse_export', schedule='@daily', start_date=datetime(2026,1,1)) as dag:
     export = BashOperator(
         task_id='export_to_s3',
         bash_command="""
@@ -104,4 +103,4 @@ with DAG('clickhouse_export', schedule_interval='@daily', start_date=datetime(20
 
 ## Summary
 
-Schedule ClickHouse exports via cron for simplicity, ClickHouse Scheduled Jobs for self-contained automation, or Airflow for orchestrated pipelines. Use materialized views with SummingMergeTree for continuously refreshed aggregated exports.
+Schedule ClickHouse exports via cron for simplicity, refreshable materialized views for built-in periodic refresh, or Airflow for orchestrated pipelines. Use standard materialized views with SummingMergeTree for continuously refreshed aggregated exports.
