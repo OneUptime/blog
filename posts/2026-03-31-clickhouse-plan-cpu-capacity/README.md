@@ -57,9 +57,11 @@ Insert path also consumes CPU for compression and part creation. Budget roughly 
 ## Setting CPU Limits
 
 ```xml
-<max_threads>16</max_threads>                 <!-- per-query thread limit -->
-<background_pool_size>8</background_pool_size> <!-- merge threads -->
+<max_threads>16</max_threads>                 <!-- per-query thread limit (profile setting) -->
 <background_move_pool_size>2</background_move_pool_size>
+<merge_tree>
+    <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
+</merge_tree>
 ```
 
 ## CPU Profiling a Slow Query
