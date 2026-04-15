@@ -56,7 +56,7 @@ app.post("/handlers/orders", async (req, res) => {
     {
       key: `processed:${eventId}`,
       value: { processedAt: new Date().toISOString() },
-      options: { ttlInSeconds: PROCESSED_KEY_TTL },
+      metadata: { ttlInSeconds: String(PROCESSED_KEY_TTL) },
     },
   ]);
 
@@ -112,15 +112,14 @@ Publishers should include a stable, unique ID in every message:
 
 ```javascript
 import { DaprClient } from "@dapr/dapr";
-import { v4 as uuidv4 } from "uuid";
 
 const client = new DaprClient();
 
 async function publishOrder(order) {
-  const messageId = `order-${order.orderId}-${Date.now()}`;
+  const messageId = `order-${order.orderId}`;
 
   await client.pubsub.publish("pubsub", "orders", order, {
-    metadata: { cloudevent_id: messageId },
+    metadata: { "cloudevent.id": messageId },
   });
 }
 ```
