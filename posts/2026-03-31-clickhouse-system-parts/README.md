@@ -58,8 +58,8 @@ SELECT
     sum(rows)                                        AS total_rows,
     formatReadableSize(sum(bytes_on_disk))           AS disk_size,
     formatReadableSize(sum(data_uncompressed_bytes)) AS uncompressed,
-    round(sum(data_compressed_bytes) /
-          nullIf(sum(data_uncompressed_bytes), 0), 3) AS compression_ratio
+    round(sum(data_uncompressed_bytes) /
+          nullIf(sum(data_compressed_bytes), 0), 2)   AS compression_ratio
 FROM system.parts
 WHERE active = 1
 GROUP BY database, table
@@ -101,9 +101,9 @@ HAVING parts > 50
 ORDER BY parts DESC;
 ```
 
-A partition with more than 50 active parts indicates that merges are lagging behind inserts. ClickHouse will eventually slow down writes with "Too many parts" errors at 300 parts.
+A partition with more than 50 active parts indicates that merges are lagging behind inserts. ClickHouse begins throttling inserts at 150 active parts per partition (the `parts_to_delay_insert` threshold) and rejects them entirely with a "Too many parts" error at 300 parts (`parts_to_throw_insert`).
 
-## Compression Ratio Per Column Group
+## Compression Ratio Per Partition
 
 ```sql
 SELECT
@@ -121,7 +121,7 @@ ORDER BY compression_ratio DESC;
 
 High compression ratios (> 5x) indicate well-sorted, low-cardinality columns. Ratios close to 1x suggest random or already-compressed data.
 
-## Find the Oldest and Newest Parts
+## Find the Oldest Parts
 
 ```sql
 SELECT
