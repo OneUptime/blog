@@ -51,7 +51,7 @@ Stores the sparse primary index. ClickHouse writes one index entry (a mark) ever
 
 ### data.bin
 
-The actual compressed column data. Each column has its own `.bin` file in the wide format (e.g., `user_id.bin`, `event_type.bin`).
+In compact parts, all column data is stored in a single `data.bin` file. In wide parts, each column has its own `.bin` file instead (e.g., `user_id.bin`, `event_type.bin`).
 
 ### data.mrk3
 
@@ -67,7 +67,7 @@ Contains the exact row count for the part - used to answer `SELECT count()` with
 
 ### checksums.txt
 
-SHA256 checksums for every file in the part, used to detect corruption.
+CityHash128 checksums for every file in the part, used to detect corruption.
 
 ### minmax_{column}.idx
 
@@ -96,7 +96,7 @@ GROUP BY partition
 ORDER BY parts DESC;
 ```
 
-If parts exceed a few hundred per partition, investigate your insert frequency or increase `merge_with_ttl_timeout`.
+If parts exceed a few hundred per partition, investigate your insert frequency or review merge-related settings such as `max_bytes_to_merge_at_max_space_in_pool` and `parts_to_delay_insert`.
 
 ## Summary
 
