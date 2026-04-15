@@ -21,7 +21,6 @@ package store
 
 import (
     "context"
-    "fmt"
     "time"
 
     proto "github.com/dapr/dapr/pkg/proto/components/v1"
@@ -88,10 +87,10 @@ Verify the socket file exists and is connectable:
 ls -la /tmp/dapr-components-sockets/
 
 # Test gRPC connectivity with grpc_cli
-grpc_cli ls /tmp/dapr-components-sockets/my-store.sock
+grpc_cli ls unix:/tmp/dapr-components-sockets/my-store.sock
 
 # Use grpcurl with a Unix socket
-grpcurl -unix /tmp/dapr-components-sockets/my-store.sock list
+grpcurl -plaintext -unix /tmp/dapr-components-sockets/my-store.sock list
 ```
 
 ## Dapr Sidecar Diagnostic Endpoints
