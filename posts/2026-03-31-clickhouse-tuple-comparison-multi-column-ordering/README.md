@@ -29,14 +29,14 @@ Standard OFFSET pagination degrades with large offsets. Tuple comparison enables
 -- First page
 SELECT event_id, timestamp, user_id
 FROM events
-ORDER BY timestamp DESC, event_id ASC
+ORDER BY timestamp DESC, event_id DESC
 LIMIT 20;
 
 -- Next page (using last row's values)
 SELECT event_id, timestamp, user_id
 FROM events
 WHERE (timestamp, event_id) < ('2026-01-01 12:30:00', 'evt-1000')
-ORDER BY timestamp DESC, event_id ASC
+ORDER BY timestamp DESC, event_id DESC
 LIMIT 20;
 ```
 
@@ -59,7 +59,7 @@ Equivalent without tuples (more verbose):
 SELECT *
 FROM orders
 WHERE
-    (year > 2025 OR (year = 2025 AND month > 10) OR (year = 2025 AND month = 11 AND day >= 1))
+    (year > 2025 OR (year = 2025 AND month > 11) OR (year = 2025 AND month = 11 AND day >= 1))
     AND
     (year < 2026 OR (year = 2026 AND month < 1) OR (year = 2026 AND month = 1 AND day <= 31));
 ```
