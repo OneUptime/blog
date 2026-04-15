@@ -10,7 +10,7 @@ Description: Use clickhouse-obfuscator to anonymize ClickHouse table dumps by re
 
 ## Introduction
 
-`clickhouse-obfuscator` is a tool that takes ClickHouse data dumps and replaces sensitive values with statistically similar but anonymized values. String columns are replaced with strings of the same length and character distribution. Numeric columns are replaced with values in a similar range. The result looks like real data but contains no actual PII, making it safe to share with the ClickHouse support team or use in test environments.
+`clickhouse-obfuscator` is a tool that takes ClickHouse data dumps and replaces sensitive values with statistically similar but anonymized values. String columns are replaced using a trained Markov model that preserves length distribution and character patterns. Numeric columns are permuted within the same order of magnitude. The result looks like real data but contains no actual PII, making it safe to share with the ClickHouse support team or use in test environments.
 
 ## How Obfuscation Works
 
@@ -54,8 +54,7 @@ clickhouse-client \
 clickhouse-obfuscator \
     --input-format Native \
     --output-format Native \
-    --seed 42 \
-    --table orders \
+    --seed 'my_secret_seed_value' \
     < /tmp/orders.native \
     > /tmp/orders_obfuscated.native
 ```
@@ -79,8 +78,7 @@ for table in orders customers events; do
     clickhouse-obfuscator \
         --input-format Native \
         --output-format Native \
-        --seed 12345 \
-        --table $table \
+        --seed 'my_secret_seed_value' \
         < /tmp/${table}.native \
         > /tmp/${table}_obfuscated.native
 
@@ -107,7 +105,7 @@ clickhouse-client \
 clickhouse-obfuscator \
     --input-format TSV \
     --output-format TSV \
-    --seed 42 \
+    --seed 'my_secret_seed_value' \
     --structure "order_id UInt64, customer_email String, amount Float64, order_date Date" \
     < /tmp/orders.tsv \
     > /tmp/orders_obfuscated.tsv
@@ -117,23 +115,21 @@ clickhouse-obfuscator \
 
 | Column Type | Obfuscation Behavior |
 |---|---|
-| `String` | Random string of same byte length, same character class |
-| `UInt*` / `Int*` | Random value in similar numeric range |
-| `Float*` | Random value with similar magnitude |
-| `Date` / `DateTime` | Random date in similar range |
-| `Enum` | Random valid enum value |
-| `LowCardinality(String)` | Random value from same set |
-| `FixedString(N)` | Random N-byte string |
-| `UUID` | Random UUID |
-| `IPv4` / `IPv6` | Random IP address |
+| `String` | Markov-model-generated string preserving length distribution and character patterns |
+| `UInt*` / `Int*` | Pseudorandom permutation within the same order of magnitude (log2 class); 0 and 1 are preserved |
+| `Float*` | Mantissa is permuted while sign and exponent (magnitude) are preserved |
+| `Date` | Passed through unchanged (not obfuscated) |
+| `DateTime` | Date part is preserved as-is; time-of-day component is permuted |
+| `FixedString(N)` | N-byte string with word characters (alphanumeric, underscore) preserved in their class |
+| `UUID` | Pseudorandom UUID preserving version and variant bits |
 
 ## Preserving Seed Consistency
 
-Use the same `--seed` value to produce the same obfuscated output from the same input. This ensures that if you share an obfuscated dump and a colleague re-runs obfuscation, they get the same results:
+Use the same `--seed` value to produce the same obfuscated output from the same input. The seed must be an arbitrary string of at least 10 bytes. This ensures that if you share an obfuscated dump and a colleague re-runs obfuscation, they get the same results:
 
 ```bash
 clickhouse-obfuscator \
-    --seed 999 \
+    --seed 'my_secret_seed_value' \
     --input-format Native \
     --output-format Native \
     < orders.native \
@@ -142,22 +138,30 @@ clickhouse-obfuscator \
 
 ## Obfuscating Specific Columns Only
 
-To keep some columns as-is (e.g., non-sensitive numeric IDs) while obfuscating others, export only the sensitive columns and obfuscate them:
+The obfuscator transforms all columns in its input — there is no flag to skip specific columns. To keep some columns unchanged, export and obfuscate only the sensitive columns, then join them back:
 
 ```bash
+# Export only sensitive columns
 clickhouse-client \
-    --query "
-        SELECT
-            order_id,          -- keep as-is
-            customer_email,    -- will be obfuscated
-            customer_phone     -- will be obfuscated
-        FROM orders
-        FORMAT Native
-    " | clickhouse-obfuscator \
-        --input-format Native \
-        --output-format Native \
-        --structure "order_id UInt64, customer_email String, customer_phone String" \
-        > /tmp/sensitive_columns_anon.native
+    --query "SELECT customer_email, customer_phone FROM orders FORMAT TSV" \
+    > /tmp/sensitive.tsv
+
+# Obfuscate the sensitive columns
+clickhouse-obfuscator \
+    --input-format TSV \
+    --output-format TSV \
+    --seed 'my_secret_seed_value' \
+    --structure "customer_email String, customer_phone String" \
+    < /tmp/sensitive.tsv \
+    > /tmp/sensitive_obfuscated.tsv
+
+# Export non-sensitive columns separately
+clickhouse-client \
+    --query "SELECT order_id FROM orders FORMAT TSV" \
+    > /tmp/nonsensitive.tsv
+
+# Combine using paste
+paste /tmp/nonsensitive.tsv /tmp/sensitive_obfuscated.tsv > /tmp/orders_combined.tsv
 ```
 
 ## Verifying Obfuscation
@@ -172,7 +176,7 @@ clickhouse-client \
 clickhouse-obfuscator \
     --input-format TSV \
     --output-format TSV \
-    --seed 42 \
+    --seed 'my_secret_seed_value' \
     --structure "customer_email String" \
     < /tmp/original_emails.txt \
     > /tmp/obfuscated_emails.txt
@@ -190,4 +194,4 @@ grep -f /tmp/original_emails.txt /tmp/obfuscated_emails.txt | wc -l
 
 ## Summary
 
-`clickhouse-obfuscator` takes ClickHouse data in Native or TSV format and produces an anonymized version where string values are replaced by random strings of the same length, numeric values are replaced by values of similar magnitude, and dates are shifted. The statistical shape of the data is preserved but all actual values are replaced. Use it to safely share data with support teams, create test datasets from production dumps, and comply with data minimization requirements.
+`clickhouse-obfuscator` takes ClickHouse data in Native or TSV format and produces an anonymized version where string values are replaced using a trained Markov model, numeric values are permuted within the same order of magnitude, and DateTime time-of-day components are permuted (note that Date values pass through unchanged). The statistical shape of the data is preserved but actual values are replaced. Use it to safely share data with support teams, create test datasets from production dumps, and comply with data minimization requirements.
