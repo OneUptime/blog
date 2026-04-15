@@ -111,10 +111,10 @@ spec:
     secretKeyRef:
       name: {{ .Values.redis.secretName }}
       key: password
-  scopes:
-  {{- range .Values.pubsub.scopes }}
-  - {{ . }}
-  {{- end }}
+scopes:
+{{- range .Values.pubsub.scopes }}
+- {{ . }}
+{{- end }}
 ```
 
 Deploy with Helm:
