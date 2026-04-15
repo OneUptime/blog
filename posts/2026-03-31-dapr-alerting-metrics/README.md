@@ -32,7 +32,7 @@ groups:
   - alert: DaprHighErrorRate
     expr: |
       sum by (app_id) (
-        rate(dapr_http_server_request_count{status_code!~"2.."}[5m])
+        rate(dapr_http_server_request_count{status!~"2.."}[5m])
       )
       /
       sum by (app_id) (
@@ -49,7 +49,7 @@ groups:
     expr: |
       histogram_quantile(0.99,
         sum by (le, app_id) (
-          rate(dapr_http_server_latency_ms_bucket[5m])
+          rate(dapr_http_server_latency_bucket[5m])
         )
       ) > 1000
     for: 5m
@@ -69,7 +69,7 @@ groups:
 
   - alert: DaprComponentUnhealthy
     expr: |
-      dapr_component_state_error_count > 0
+      rate(dapr_component_state_count{success="false"}[5m]) > 0
     for: 1m
     labels:
       severity: warning
@@ -99,7 +99,7 @@ spec:
     rules:
     - alert: DaprHighErrorRate
       expr: |
-        sum by (app_id) (rate(dapr_http_server_request_count{status_code!~"2.."}[5m]))
+        sum by (app_id) (rate(dapr_http_server_request_count{status!~"2.."}[5m]))
         / sum by (app_id) (rate(dapr_http_server_request_count[5m])) > 0.05
       for: 3m
       labels:
@@ -119,8 +119,8 @@ route:
   repeat_interval: 12h
   receiver: 'slack-dapr'
   routes:
-  - match:
-      severity: critical
+  - matchers:
+    - severity = critical
     receiver: 'pagerduty-dapr'
 
 receivers:
