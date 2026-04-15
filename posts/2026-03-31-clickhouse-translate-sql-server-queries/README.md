@@ -70,7 +70,7 @@ SELECT LEN(name), SUBSTRING(name, 1, 10), CHARINDEX('a', name)
 FROM users;
 
 -- ClickHouse
-SELECT length(name), substring(name, 1, 10), position(name, 'a')
+SELECT lengthUTF8(name), substring(name, 1, 10), position(name, 'a')
 FROM users;
 ```
 
@@ -104,10 +104,18 @@ SELECT ifNull(revenue, 0) FROM campaigns;
 
 ## CTEs
 
-Both support CTEs with `WITH`, so this translation is often copy-paste safe. Watch for recursive CTEs - ClickHouse supports them from v23.3 onward.
+Both support CTEs with `WITH`, so this translation is often copy-paste safe. Watch for recursive CTEs - ClickHouse supports them from v24.3 onward (requires the new query analyzer).
 
 ```sql
--- Works in both (non-recursive)
+-- SQL Server
+WITH monthly AS (
+  SELECT DATETRUNC(MONTH, event_time) AS month, COUNT(*) AS cnt
+  FROM events
+  GROUP BY DATETRUNC(MONTH, event_time)
+)
+SELECT month, cnt FROM monthly ORDER BY month;
+
+-- ClickHouse
 WITH monthly AS (
   SELECT toStartOfMonth(event_time) AS month, count() AS cnt
   FROM events
