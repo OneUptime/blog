@@ -23,14 +23,16 @@ Generate test keys for local development:
 ```bash
 mkdir -p ./keys/test
 
-# Generate a symmetric AES key in JWK format
-cat > ./keys/test/test-aes-key.json << 'EOF'
+# Generate a 256-bit AES key in JWK format
+AES_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode())')
+
+cat > ./keys/test/test-aes-key.json << EOF
 {
   "kty": "oct",
   "kid": "test-aes-key",
   "use": "enc",
   "alg": "A256KW",
-  "k": "$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b\"=\").decode())')"
+  "k": "$AES_KEY"
 }
 EOF
 ```
@@ -43,7 +45,7 @@ Or use a pre-generated test key (never use in production):
   "kid": "test-aes-key",
   "use": "enc",
   "alg": "A256KW",
-  "k": "GawgguFyGrWKav7AX4VKUg"
+  "k": "dGhpcy1pcy1hLTMyLWJ5dGUtdGVzdC1rZXktb2shIQ"
 }
 ```
 
@@ -69,27 +71,30 @@ Test your wrapper functions without Dapr by mocking the DaprClient:
 
 ```python
 # app/crypto_helpers.py
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 
 CRYPTO_COMPONENT = "test-crypto"
 
 def encrypt_field(value: str, key_name: str = "test-aes-key") -> bytes:
     with DaprClient() as d:
         return d.encrypt(
-            data=io.BytesIO(value.encode()),
-            options={
-                "componentName": CRYPTO_COMPONENT,
-                "keyName": key_name,
-                "keyWrapAlgorithm": "AES"
-            }
+            data=value.encode(),
+            options=EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=key_name,
+                key_wrap_algorithm="AES",
+            ),
         ).read()
 
 def decrypt_field(ciphertext: bytes, key_name: str = "test-aes-key") -> str:
     with DaprClient() as d:
         return d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={"componentName": CRYPTO_COMPONENT, "keyName": key_name}
+            data=ciphertext,
+            options=DecryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=key_name,
+            ),
         ).read().decode()
 ```
 
@@ -97,7 +102,13 @@ def decrypt_field(ciphertext: bytes, key_name: str = "test-aes-key") -> str:
 # tests/test_crypto_helpers.py
 import pytest
 from unittest.mock import MagicMock, patch
-import io
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
+
+class FakeResponse:
+    def __init__(self, data: bytes):
+        self._data = data
+    def read(self, size=-1):
+        return self._data
 
 @pytest.fixture
 def mock_dapr_client():
@@ -107,28 +118,29 @@ def mock_dapr_client():
         yield mock_instance
 
 def test_encrypt_field_returns_bytes(mock_dapr_client):
-    mock_dapr_client.encrypt.return_value = io.BytesIO(b"encrypted-data")
+    mock_dapr_client.encrypt.return_value = FakeResponse(b"encrypted-data")
     from app.crypto_helpers import encrypt_field
 
     result = encrypt_field("secret value")
 
     mock_dapr_client.encrypt.assert_called_once()
     call_kwargs = mock_dapr_client.encrypt.call_args
-    assert call_kwargs.kwargs["options"]["componentName"] == "test-crypto"
-    assert call_kwargs.kwargs["options"]["keyName"] == "test-aes-key"
+    opts = call_kwargs.kwargs["options"]
+    assert opts.component_name == "test-crypto"
+    assert opts.key_name == "test-aes-key"
     assert result == b"encrypted-data"
 
 def test_encrypt_uses_custom_key(mock_dapr_client):
-    mock_dapr_client.encrypt.return_value = io.BytesIO(b"enc")
+    mock_dapr_client.encrypt.return_value = FakeResponse(b"enc")
     from app.crypto_helpers import encrypt_field
 
     encrypt_field("value", key_name="payment-key")
 
     call_kwargs = mock_dapr_client.encrypt.call_args
-    assert call_kwargs.kwargs["options"]["keyName"] == "payment-key"
+    assert call_kwargs.kwargs["options"].key_name == "payment-key"
 
 def test_decrypt_field_returns_string(mock_dapr_client):
-    mock_dapr_client.decrypt.return_value = io.BytesIO(b"original value")
+    mock_dapr_client.decrypt.return_value = FakeResponse(b"original value")
     from app.crypto_helpers import decrypt_field
 
     result = decrypt_field(b"ciphertext")
@@ -165,12 +177,12 @@ def test_encrypt_decrypt_roundtrip():
     plaintext = b"sensitive test data 12345"
 
     # Encrypt
-    enc_resp = requests.post(
+    enc_resp = requests.put(
         "http://localhost:3510/v1.0-alpha1/crypto/test-crypto/encrypt",
         headers={
             "Content-Type": "application/octet-stream",
             "dapr-key-name": "test-aes-key",
-            "dapr-key-wrap-algorithm": "AES"
+            "dapr-key-wrap-algorithm": "A256KW"
         },
         data=plaintext
     )
@@ -179,7 +191,7 @@ def test_encrypt_decrypt_roundtrip():
     assert ciphertext != plaintext
 
     # Decrypt
-    dec_resp = requests.post(
+    dec_resp = requests.put(
         "http://localhost:3510/v1.0-alpha1/crypto/test-crypto/decrypt",
         headers={
             "Content-Type": "application/octet-stream",
@@ -195,11 +207,11 @@ def test_different_plaintexts_produce_different_ciphertexts():
     import requests
 
     def encrypt(data: bytes) -> bytes:
-        resp = requests.post(
+        resp = requests.put(
             "http://localhost:3510/v1.0-alpha1/crypto/test-crypto/encrypt",
             headers={"Content-Type": "application/octet-stream",
                      "dapr-key-name": "test-aes-key",
-                     "dapr-key-wrap-algorithm": "AES"},
+                     "dapr-key-wrap-algorithm": "A256KW"},
             data=data
         )
         return resp.content
