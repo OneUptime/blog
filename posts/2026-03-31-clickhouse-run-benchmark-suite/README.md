@@ -14,50 +14,26 @@ ClickBench is the official benchmark used by the ClickHouse team to compare perf
 
 ## Downloading the Dataset
 
-The dataset is available on S3 as a compressed file (~15 GB uncompressed):
+The dataset is available on S3 as a compressed file (~15 GB compressed, ~75 GB uncompressed):
 
 ```bash
 wget https://datasets.clickhouse.com/hits_compatible/hits.csv.gz
-```
-
-Or download the smaller sample for quick testing:
-
-```bash
-wget https://datasets.clickhouse.com/hits_compatible/hits_10m.csv.gz
-gunzip hits_10m.csv.gz
+gunzip hits.csv.gz
 ```
 
 ## Creating the Table
 
-```sql
-CREATE TABLE hits
-(
-    WatchID UInt64,
-    JavaEnable UInt8,
-    Title String,
-    GoodEvent Int16,
-    EventTime DateTime,
-    EventDate Date,
-    CounterID UInt32,
-    ClientIP UInt32,
-    RegionID UInt32,
-    UserID UInt64,
-    URL String,
-    Referer String,
-    SearchPhrase String,
-    EventTypeID UInt8
-    -- (full schema available at https://clickhouse.com/docs/getting-started/example-datasets/clickbench)
-)
-ENGINE = MergeTree()
-PARTITION BY toYYYYMM(EventDate)
-ORDER BY (CounterID, EventDate, intHash32(UserID))
-SAMPLE BY intHash32(UserID);
+The `hits` table has 105 columns. Download the official schema from the ClickBench repository:
+
+```bash
+wget https://raw.githubusercontent.com/ClickHouse/ClickBench/main/clickhouse/create.sql
+clickhouse-client < create.sql
 ```
 
 ## Loading the Data
 
 ```bash
-clickhouse-client --query "INSERT INTO hits FORMAT CSV" < hits_10m.csv
+clickhouse-client --query "INSERT INTO hits FORMAT CSV" < hits.csv
 ```
 
 ## Running ClickBench Queries
