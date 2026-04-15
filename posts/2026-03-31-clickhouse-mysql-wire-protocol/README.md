@@ -20,7 +20,7 @@ Add to `config.xml` or `config.d/mysql.xml`:
 <mysql_port>9004</mysql_port>
 ```
 
-Or via environment variable in Docker:
+Or run ClickHouse in Docker with the MySQL port exposed:
 
 ```bash
 docker run -d \
