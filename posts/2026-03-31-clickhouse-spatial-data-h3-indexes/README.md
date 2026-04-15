@@ -28,8 +28,8 @@ CREATE TABLE trips
     pickup_lat      Float64,
     dropoff_lon     Float64,
     dropoff_lat     Float64,
-    pickup_h3_r8    UInt64 DEFAULT geoToH3(pickup_lon, pickup_lat, 8),
-    dropoff_h3_r8   UInt64 DEFAULT geoToH3(dropoff_lon, dropoff_lat, 8),
+    pickup_h3_r8    UInt64 DEFAULT geoToH3(pickup_lat, pickup_lon, 8),
+    dropoff_h3_r8   UInt64 DEFAULT geoToH3(dropoff_lat, dropoff_lon, 8),
     fare            Decimal(10, 2),
     trip_time       DateTime
 )
@@ -62,7 +62,7 @@ Find all trips that started within 2 H3 rings of a given location:
 SELECT count() AS nearby_trips
 FROM trips
 WHERE pickup_h3_r8 IN (
-    SELECT arrayJoin(h3kRing(geoToH3(-73.9857, 40.7484, 8), 2))
+    SELECT arrayJoin(h3kRing(geoToH3(40.7484, -73.9857, 8), 2))
 );
 ```
 
@@ -86,10 +86,10 @@ LIMIT 20;
 
 | Resolution | Avg Cell Area | Avg Edge Length |
 |-----------|--------------|----------------|
-| 5 | ~252 km2 | ~8.5 km |
-| 7 | ~5.2 km2 | ~1.2 km |
-| 8 | ~0.74 km2 | ~461 m |
-| 9 | ~0.1 km2 | ~174 m |
+| 5 | ~252 km2 | ~9.9 km |
+| 7 | ~5.2 km2 | ~1.4 km |
+| 8 | ~0.74 km2 | ~531 m |
+| 9 | ~0.1 km2 | ~201 m |
 
 Choose resolution based on your analysis granularity. Resolution 8 or 9 works well for city-level event data.
 
