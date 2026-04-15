@@ -35,9 +35,9 @@ From inside the pod, test the sidecar API directly:
 ```bash
 kubectl exec -it order-service-abc123 -c order-service -- sh
 
-# Check sidecar health
-curl http://localhost:3500/v1.0/healthz
-# Expected: {"status": "pass"}
+# Check sidecar health (returns HTTP 204 when healthy)
+curl -o /dev/null -w "%{http_code}\n" -s http://localhost:3500/v1.0/healthz
+# Expected: 204
 
 # List registered components
 curl http://localhost:3500/v1.0/metadata | python3 -m json.tool
@@ -51,19 +51,21 @@ curl http://localhost:3500/v1.0/invoke/payment-service/method/health
 mTLS errors appear in sidecar logs as certificate validation failures:
 
 ```bash
-# Enable debug logging for mTLS diagnostics
-kubectl annotate pod order-service-abc123 dapr.io/log-level=debug
-
-# Look for mTLS errors
+# Look for mTLS errors in sidecar logs
 kubectl logs order-service-abc123 -c daprd | grep -E "(mtls|cert|tls|x509)"
 ```
+
+To enable debug-level logging for more detail, patch the deployment as shown in Step 6.
 
 Check certificate expiry:
 
 ```bash
-# Get the current workload certificate
-kubectl exec order-service-abc123 -c daprd -- \
-  openssl x509 -in /var/run/secrets/dapr.io/tls/tls.crt -noout -dates
+# Check Dapr root certificate expiry using the CLI
+dapr mtls expiry
+
+# Or export and inspect certificates directly
+dapr mtls export -o ./certs
+openssl x509 -in ./certs/ca.crt -noout -dates
 ```
 
 ## Step 4 - DNS Resolution Debugging
@@ -83,14 +85,14 @@ kubectl get svc -n payments payment-service
 
 ## Step 5 - Network Policy Conflicts
 
-Network policies may block Dapr sidecar ports (3500, 50001):
+Network policies may block Dapr ports (3500 HTTP API, 50001 gRPC API, 50002 internal gRPC for sidecar-to-sidecar):
 
 ```bash
 # List network policies in namespace
 kubectl get networkpolicies -n orders
 
-# Test connectivity on Dapr ports
-kubectl exec order-service-abc123 -- nc -zv payment-service.payments 50001
+# Test connectivity on Dapr internal gRPC port (sidecar-to-sidecar)
+kubectl exec order-service-abc123 -- nc -zv payment-service.payments 50002
 ```
 
 Allow Dapr ports explicitly:
@@ -109,10 +111,12 @@ spec:
   - ports:
     - port: 3500
     - port: 50001
+    - port: 50002
   egress:
   - ports:
     - port: 3500
     - port: 50001
+    - port: 50002
 ```
 
 ## Step 6 - Enable Full Debug Logging
