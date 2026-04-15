@@ -8,7 +8,7 @@ Description: Learn how to configure Single Sign-On (SSO) for ClickHouse Cloud us
 
 ---
 
-ClickHouse Cloud supports Single Sign-On (SSO) via SAML 2.0, allowing your organization to use an existing Identity Provider (IdP) such as Okta, Azure AD, or Google Workspace to authenticate users. This eliminates the need for separate ClickHouse credentials and centralizes access control.
+ClickHouse Cloud supports Single Sign-On (SSO) via SAML 2.0, allowing your organization to use an existing Identity Provider (IdP) such as Okta, Microsoft Entra ID, or Google Workspace to authenticate users. This eliminates the need for separate ClickHouse credentials and centralizes access control.
 
 ## Prerequisites
 
@@ -50,12 +50,12 @@ firstName -> user.firstName
 lastName  -> user.lastName
 ```
 
-### Azure AD Example
+### Microsoft Entra ID Example
 
-In Azure Active Directory, register an enterprise application:
+In Microsoft Entra ID (formerly Azure AD), register an enterprise application:
 
 1. Go to **Enterprise Applications** and click **New application**
-2. Select **Create your own application** and choose **Non-gallery**
+2. Select **Create your own application** and choose **Integrate any other application you don't find in the gallery**
 3. Under **Single sign-on**, select **SAML**
 4. Set the **Identifier (Entity ID)** and **Reply URL (ACS URL)** from ClickHouse
 
