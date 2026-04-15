@@ -112,7 +112,7 @@ metadata:
   name: statestore
   namespace: default
 spec:
-  type: state.dynamodb
+  type: state.aws.dynamodb
   version: v1
   metadata:
   - name: region
@@ -132,8 +132,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
