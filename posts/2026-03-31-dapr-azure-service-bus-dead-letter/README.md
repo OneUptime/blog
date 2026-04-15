@@ -14,7 +14,7 @@ Azure Service Bus automatically moves messages to a dead letter queue (DLQ) when
 
 ## How Dead Lettering Works with Dapr
 
-When Dapr receives a non-200 response from your application, it signals Service Bus to abandon the message. After the message is abandoned `maxDeliveryCount` times, Service Bus moves it to the `$deadletterqueue` subqueue. Dapr does not automatically create a DLQ consumer - you must set up a separate process to read and process dead-lettered messages.
+When Dapr receives a non-success response from your application, it signals Service Bus to abandon the message. Dapr's pub/sub subscriber API supports three response statuses: `SUCCESS` (message processed), `RETRY` (message should be retried), and `DROP` (message should be discarded without retrying). If your app returns any non-2xx HTTP status without an explicit status in the response body, Dapr treats it as a `RETRY`. After the message is abandoned `maxDeliveryCount` times, Service Bus moves it to the `$deadletterqueue` subqueue. Dapr does not automatically create a DLQ consumer - you must set up a separate process to read and process dead-lettered messages.
 
 ## Service Bus Configuration
 
@@ -25,7 +25,7 @@ az servicebus queue create \
   --namespace-name dapr-servicebus \
   --resource-group dapr-demo \
   --max-delivery-count 5 \
-  --dead-lettering-on-message-expiration true \
+  --enable-dead-lettering-on-message-expiration true \
   --lock-duration PT30S \
   --default-message-time-to-live PT1H
 
@@ -36,7 +36,7 @@ az servicebus topic subscription create \
   --namespace-name dapr-servicebus \
   --resource-group dapr-demo \
   --max-delivery-count 5 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 ```
 
 ## Dapr Component Configuration
@@ -65,9 +65,10 @@ spec:
 
 ## Application Error Handler
 
-When processing fails, return a non-2xx status to trigger Service Bus abandonment:
+When processing fails, use Dapr's response status codes to control retry behavior. Return a JSON body with `"status": "DROP"` to discard non-retriable messages, or `"status": "RETRY"` to retry:
 
 ```python
+import json
 from flask import Flask, request
 app = Flask(__name__)
 
@@ -77,13 +78,13 @@ def handle_order():
     data = event.get('data', {})
     try:
         result = process_order(data)
-        return '', 200
+        return json.dumps({"status": "SUCCESS"}), 200
     except ValidationError as e:
-        # Return 400 to dead-letter immediately (non-retriable)
-        return f"Validation error: {e}", 400
+        # DROP non-retriable messages to avoid wasting delivery attempts
+        return json.dumps({"status": "DROP"}), 200
     except TemporaryError as e:
-        # Return 500 to retry (retriable error)
-        return f"Temporary error: {e}", 500
+        # RETRY retriable errors (Service Bus will abandon and redeliver)
+        return json.dumps({"status": "RETRY"}), 500
 
 def process_order(data):
     if not data.get('orderId'):
@@ -136,7 +137,7 @@ az monitor metrics alert create \
   --name dlq-not-empty \
   --resource-group dapr-demo \
   --scopes "/subscriptions/.../namespaces/dapr-servicebus/queues/task-queue" \
-  --condition "avg DeadLetteredMessageCount > 0" \
+  --condition "avg DeadletteredMessages > 0" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --action myActionGroup
@@ -144,15 +145,26 @@ az monitor metrics alert create \
 
 ## Replaying Dead-Lettered Messages
 
-After fixing the bug, replay DLQ messages:
+After fixing the bug, replay DLQ messages. There is no built-in Azure CLI command for this — use Service Bus Explorer (available in the Azure Portal) or write a script with the Azure Service Bus SDK:
 
-```bash
-# Use Service Bus Explorer or custom script
-az servicebus message dead-letter resubmit \
-  --namespace-name dapr-servicebus \
-  --queue-name task-queue
+```python
+from azure.servicebus import ServiceBusClient
+
+conn_str = "your-connection-string"
+queue_name = "task-queue"
+
+with ServiceBusClient.from_connection_string(conn_str) as client:
+    # Receive from the dead letter queue
+    dlq_receiver = client.get_queue_receiver(queue_name, sub_queue="deadletter")
+    sender = client.get_queue_sender(queue_name)
+    with dlq_receiver, sender:
+        messages = dlq_receiver.receive_messages(max_message_count=10, max_wait_time=5)
+        for msg in messages:
+            # Resubmit to the original queue
+            sender.send_messages(msg)
+            dlq_receiver.complete_message(msg)
 ```
 
 ## Summary
 
-Azure Service Bus DLQs capture messages that Dapr consumers fail to process after the configured delivery count. Configure `maxDeliveryCount` based on your retry tolerance, subscribe to the `$deadletterqueue` suffix to process failed messages, and set up Azure Monitor alerts so your team is notified when messages start dead-lettering. Separate non-retriable errors (400) from retriable ones (500) to prevent flooding the DLQ with validation failures.
+Azure Service Bus DLQs capture messages that Dapr consumers fail to process after the configured delivery count. Configure `maxDeliveryCount` based on your retry tolerance, subscribe to the `$deadletterqueue` suffix to process failed messages, and set up Azure Monitor alerts so your team is notified when messages start dead-lettering. Use Dapr's `DROP` status for non-retriable errors and `RETRY` for transient failures to prevent wasting delivery attempts on validation failures.
