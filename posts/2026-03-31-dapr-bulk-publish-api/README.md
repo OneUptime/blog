@@ -14,11 +14,11 @@ Publishing messages one at a time in a loop creates per-request overhead: networ
 
 ## Bulk Publish via HTTP API
 
-Use the `/v1.0-alpha1/publish/bulk/{pubsubname}/{topic}` endpoint:
+Use the `/v1.0/publish/bulk/{pubsubname}/{topic}` endpoint:
 
 ```bash
 curl -s -X POST \
-  http://localhost:3500/v1.0-alpha1/publish/bulk/pubsub/orders \
+  http://localhost:3500/v1.0/publish/bulk/pubsub/orders \
   -H "Content-Type: application/json" \
   -d '[
     {
@@ -70,7 +70,7 @@ async function bulkPublishOrders(orders) {
   }));
 
   const response = await fetch(
-    "http://localhost:3500/v1.0-alpha1/publish/bulk/pubsub/orders",
+    "http://localhost:3500/v1.0/publish/bulk/pubsub/orders",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +103,7 @@ const client = new DaprClient();
 
 async function publishOrderBatch(orders) {
   const messages = orders.map((order) => ({
-    data: order,
+    event: order,
     contentType: "application/json",
   }));
 
@@ -137,7 +137,7 @@ Typical sweet spots are 50-200 messages per batch depending on message size and 
 
 ## Component Support
 
-Not all Dapr pub/sub components support bulk publish natively. When native bulk is not supported, Dapr falls back to individual publishes automatically. Check component documentation for native bulk support status - Kafka and Azure Service Bus have native support.
+Not all Dapr pub/sub components support bulk publish natively. When native bulk is not supported, Dapr falls back to individual publishes automatically. Check component documentation for native bulk support status - Kafka, Azure Service Bus, and Azure Event Hubs have native support.
 
 ## Summary
 
