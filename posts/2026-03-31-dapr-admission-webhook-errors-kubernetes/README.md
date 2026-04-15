@@ -84,19 +84,19 @@ kubectl get mutatingwebhookconfiguration dapr-sidecar-injector \
 
 ## Bypassing the Webhook for Debugging
 
-To test pod creation without sidecar injection temporarily, remove the Dapr annotation or add a webhook bypass label:
+To test pod creation without sidecar injection temporarily, remove the Dapr annotation or explicitly disable it:
 
 ```yaml
 metadata:
-  labels:
-    dapr.io/sidecar-injector-skip: "true"
+  annotations:
+    dapr.io/enabled: "false"
 ```
 
 Or set the webhook to `failurePolicy: Ignore` during troubleshooting (not for production):
 
 ```bash
 kubectl patch mutatingwebhookconfiguration dapr-sidecar-injector \
-  --type merge -p '{"webhooks":[{"name":"sidecar-injector.dapr.io","failurePolicy":"Ignore"}]}'
+  --type json -p '[{"op":"replace","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
 ```
 
 ## Summary
