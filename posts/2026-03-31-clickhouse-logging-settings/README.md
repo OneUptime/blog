@@ -45,17 +45,27 @@ Available levels from most to least verbose:
 trace -> debug -> information -> warning -> error -> fatal
 ```
 
-Use `information` in production. Switch to `debug` or `trace` temporarily for investigating issues:
+Use `information` in production. Switch to `debug` or `trace` temporarily for investigating issues.
 
-```bash
-# Change log level at runtime without restart
-clickhouse-client --query "SET log_level='debug'"
+To change the server log level at runtime, update the config file and reload:
+
+```xml
+<!-- /etc/clickhouse-server/config.d/logging.xml -->
+<clickhouse>
+    <logger>
+        <level>debug</level>
+    </logger>
+</clickhouse>
 ```
 
-Or via HTTP:
+```sql
+SYSTEM RELOAD CONFIG;
+```
 
-```bash
-curl -s "http://localhost:8123/?query=SET+log_level%3D'debug'"
+To receive server log messages in your client session without changing the server log files, use `send_logs_level`:
+
+```sql
+SET send_logs_level = 'debug';
 ```
 
 ## Structured Logging to JSON
@@ -180,10 +190,10 @@ Disable unused log tables to reduce overhead:
 ```xml
 <clickhouse>
     <!-- Disable query_thread_log if not needed -->
-    <query_thread_log remove="1"/>
+    <query_thread_log remove="remove"/>
 
     <!-- Disable trace_log if not profiling -->
-    <trace_log remove="1"/>
+    <trace_log remove="remove"/>
 </clickhouse>
 ```
 
