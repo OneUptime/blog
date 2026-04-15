@@ -39,9 +39,9 @@ spec:
       value: "redis-critical:6379"
     - name: maxRetries
       value: "3"
-  scopes:
-    - payment-service
-    - order-service
+scopes:
+  - payment-service
+  - order-service
 ---
 # Non-critical services - shared Redis
 apiVersion: dapr.io/v1alpha1
@@ -55,10 +55,10 @@ spec:
   metadata:
     - name: redisHost
       value: "redis-shared:6379"
-  scopes:
-    - notification-service
-    - analytics-service
-    - reporting-service
+scopes:
+  - notification-service
+  - analytics-service
+  - reporting-service
 ```
 
 ## Separate Pub/Sub Topics as Bulkheads
@@ -77,8 +77,8 @@ spec:
       value: "kafka-critical:9092"
     - name: consumerGroup
       value: "payment-group"
-  scopes:
-    - payment-service
+scopes:
+  - payment-service
 ---
 # Standard pub/sub for everything else
 apiVersion: dapr.io/v1alpha1
@@ -93,9 +93,9 @@ spec:
       value: "kafka-standard:9092"
     - name: consumerGroup
       value: "standard-group"
-  scopes:
-    - notification-service
-    - analytics-service
+scopes:
+  - notification-service
+  - analytics-service
 ```
 
 ## Concurrency Limiting via Kubernetes Resources
@@ -114,7 +114,7 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "payment-service"
         dapr.io/app-max-concurrency: "20"  # Bulkhead: max 20 concurrent requests
-        dapr.io/http-max-request-size: "4"  # Limit request body size (MB)
+        dapr.io/max-body-size: "4Mi"  # Limit request body size
 ```
 
 ## Application-Level Bulkhead with Worker Pools
@@ -124,7 +124,7 @@ package main
 
 import (
     "context"
-    "sync"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -178,8 +178,18 @@ kubectl create namespace batch
 ```
 
 ```yaml
-# Install Dapr in each namespace independently
-dapr.io/namespace: "critical"
+# Deploy Dapr components per namespace
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+  namespace: critical
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: "redis-critical:6379"
 ```
 
 ## Monitoring Bulkhead Effectiveness
