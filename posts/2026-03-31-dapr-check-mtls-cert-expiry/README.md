@@ -46,25 +46,26 @@ echo "Days remaining: $(( ( $(date -d "$EXPIRY" +%s) - $(date +%s) ) / 86400 ))"
 ## Checking Expiry with Dapr CLI
 
 ```bash
-# Check mTLS certificate status
-dapr mtls check -k
+# Check root certificate expiry
+dapr mtls expiry
 
 # Expected output:
-# Certificate for cluster local is valid until 2027-03-31 10:00:00 +0000 UTC
+# Root certificate expires in 364 days, 23 hours, 59 minutes, 0 seconds
+# Expiry date: 2027-03-31 10:00:00 +0000 UTC
 ```
 
 ## Checking Workload Certificate Expiry
 
-For workload certificates on a running sidecar:
+Workload certificates are held in sidecar memory and are not written to disk. They auto-renew at roughly 50% of their 24-hour TTL, so checking their expiry is rarely needed. You can verify the trust anchors mounted in the sidecar and check sidecar logs for certificate rotation:
 
 ```bash
-# Get the current certificate from the sidecar
+# Check trust anchors (root CA) mounted in the sidecar
 kubectl exec deploy/order-service -c daprd -- \
-  sh -c "cat /var/run/secrets/dapr.io/tls/tls.crt 2>/dev/null || echo 'cert not found at default path'"
+  cat /var/run/secrets/dapr.io/tls/ca.crt | \
+  openssl x509 -noout -enddate
 
-# Check via Dapr API
-kubectl exec deploy/order-service -c order-service -- \
-  curl -s http://localhost:3500/v1.0/metadata | jq '.extended'
+# Check sidecar logs for certificate rotation events
+kubectl logs deploy/order-service -c daprd | grep -i "cert"
 ```
 
 ## Prometheus Alert for Certificate Expiry
@@ -137,4 +138,4 @@ spec:
 
 ## Summary
 
-Dapr root CA and issuer certificates require manual renewal and do not auto-expire gracefully - they cause cluster-wide mTLS failures when they expire. Check expiry with `kubectl` and openssl or the `dapr mtls check` CLI command. Set up Prometheus alerts at 30-day and 7-day thresholds using the `dapr_sentry_issuercert_expiry_timestamp` metric. Consider a weekly CronJob to audit certificate health as part of your operational runbook.
+Dapr root CA and issuer certificates require manual renewal and do not auto-expire gracefully - they cause cluster-wide mTLS failures when they expire. Check expiry with `kubectl` and openssl or the `dapr mtls expiry` CLI command. Set up Prometheus alerts at 30-day and 7-day thresholds using the `dapr_sentry_issuercert_expiry_timestamp` metric. Consider a weekly CronJob to audit certificate health as part of your operational runbook.
