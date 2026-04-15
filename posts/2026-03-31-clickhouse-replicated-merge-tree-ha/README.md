@@ -66,7 +66,7 @@ ENGINE = ReplicatedMergeTree(path, replica)
 -- Replicated with aggregated data (used for materialized views)
 ENGINE = ReplicatedAggregatingMergeTree(path, replica)
 
--- Replicated with deduplication by primary key
+-- Replicated with row replacement by sorting key during merges
 ENGINE = ReplicatedReplacingMergeTree(path, replica)
 ENGINE = ReplicatedReplacingMergeTree(path, replica, version_column)
 
@@ -77,6 +77,9 @@ ENGINE = ReplicatedVersionedCollapsingMergeTree(path, replica, sign_column, vers
 -- Replicated with sum aggregation
 ENGINE = ReplicatedSummingMergeTree(path, replica)
 ENGINE = ReplicatedSummingMergeTree(path, replica, [columns_to_sum])
+
+-- Replicated with Graphite data rollup
+ENGINE = ReplicatedGraphiteMergeTree(path, replica, 'graphite_rollup_config')
 ```
 
 ## Configuring Replication Settings
@@ -95,7 +98,7 @@ Tune these settings in `config.d/merge_tree.xml` or per-table in the `SETTINGS` 
         <!-- How long to wait for other replicas to confirm a part -->
         <replication_queue_max_wait_ms>15000</replication_queue_max_wait_ms>
 
-        <!-- Maximum number of parts to download in parallel per table -->
+        <!-- Maximum network bandwidth for replication fetches in bytes per second (0 = unlimited) -->
         <max_replicated_fetches_network_bandwidth>0</max_replicated_fetches_network_bandwidth>
 
         <!-- Retry delay for replication operations -->
@@ -109,7 +112,7 @@ Tune these settings in `config.d/merge_tree.xml` or per-table in the `SETTINGS` 
 For stronger consistency guarantees, configure write and read quorums:
 
 ```sql
--- Require all replicas to confirm a write before returning success
+-- Require 2 replicas to confirm a write before returning success
 SET insert_quorum = 2;
 SET insert_quorum_timeout = 60000;  -- 60 seconds
 
