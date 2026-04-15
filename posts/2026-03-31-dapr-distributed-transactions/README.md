@@ -17,7 +17,7 @@ For operations within a single Dapr state store, use multi-key transactions:
 ```python
 # Atomic multi-key update within one state store
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import TransactionalStateOperation, TransactionOperationType
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 
 def transfer_funds(from_id: str, to_id: str, amount: float):
     with DaprClient() as client:
@@ -78,17 +78,17 @@ def handle_order_placed():
             product['stock'] -= order['quantity']
             client.save_state("statestore", f"product:{order['product_id']}",
                               json.dumps(product))
-            client.publish_event("pubsub", "stock-reserved", {
+            client.publish_event("pubsub", "stock-reserved", json.dumps({
                 'order_id': order['id'],
                 'product_id': order['product_id'],
                 'quantity': order['quantity']
-            })
+            }))
         else:
             # Compensation: notify that stock reservation failed
-            client.publish_event("pubsub", "stock-reservation-failed", {
+            client.publish_event("pubsub", "stock-reservation-failed", json.dumps({
                 'order_id': order['id'],
                 'reason': 'Insufficient stock'
-            })
+            }))
 
     return jsonify({'status': 'SUCCESS'})
 ```
@@ -98,11 +98,13 @@ def handle_order_placed():
 Dapr Workflow provides a centralized, durable orchestrator:
 
 ```python
-from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, ActivityContext
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext
 import dapr.ext.workflow as wf
 
-@wf.activity
-def reserve_inventory(ctx: ActivityContext, order: dict) -> dict:
+wfr = WorkflowRuntime()
+
+@wfr.activity
+def reserve_inventory(ctx: WorkflowActivityContext, order: dict) -> dict:
     with DaprClient() as client:
         result = client.invoke_method(
             app_id="inventory-service",
@@ -112,8 +114,8 @@ def reserve_inventory(ctx: ActivityContext, order: dict) -> dict:
         )
         return json.loads(result.data)
 
-@wf.activity
-def process_payment(ctx: ActivityContext, order: dict) -> dict:
+@wfr.activity
+def process_payment(ctx: WorkflowActivityContext, order: dict) -> dict:
     with DaprClient() as client:
         result = client.invoke_method(
             app_id="payment-service",
@@ -123,8 +125,8 @@ def process_payment(ctx: ActivityContext, order: dict) -> dict:
         )
         return json.loads(result.data)
 
-@wf.activity
-def release_inventory(ctx: ActivityContext, order: dict) -> None:
+@wfr.activity
+def release_inventory(ctx: WorkflowActivityContext, order: dict) -> None:
     with DaprClient() as client:
         client.invoke_method(
             app_id="inventory-service",
@@ -133,7 +135,7 @@ def release_inventory(ctx: ActivityContext, order: dict) -> None:
             data=json.dumps(order).encode()
         )
 
-@wf.workflow
+@wfr.workflow
 def order_transaction(ctx: DaprWorkflowContext, order: dict):
     reservation = yield ctx.call_activity(reserve_inventory, input=order)
 
@@ -153,14 +155,15 @@ def order_transaction(ctx: DaprWorkflowContext, order: dict):
 Start the workflow:
 
 ```python
+from dapr.ext.workflow import DaprWorkflowClient
+
 def place_order(order: dict):
-    with DaprClient() as client:
-        instance_id = client.start_workflow(
-            workflow_component="dapr",
-            workflow_name="order_transaction",
-            input=order
-        )
-        return instance_id
+    wf_client = DaprWorkflowClient()
+    instance_id = wf_client.schedule_new_workflow(
+        workflow=order_transaction,
+        input=order
+    )
+    return instance_id
 ```
 
 ## Monitoring Distributed Transactions
@@ -169,7 +172,7 @@ Track saga completion rates:
 
 ```bash
 # Check workflow status
-dapr workflow history --workflow-id <instance-id> --app-id order-service
+dapr workflow history <instance-id> --app-id order-service
 ```
 
 ## Summary
