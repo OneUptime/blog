@@ -71,7 +71,8 @@ dapr_sentry:
       keyPEM: ""
     root:
       certPEM: ""
-  config:
+global:
+  mtls:
     allowedClockSkew: 15m
     workloadCertTTL: 24h
 ```
@@ -79,7 +80,7 @@ dapr_sentry:
 When the secret already exists before Dapr is installed, Sentry picks it up automatically:
 
 ```bash
-helm install dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
   --create-namespace \
   --reuse-values
