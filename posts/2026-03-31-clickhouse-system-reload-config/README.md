@@ -130,7 +130,8 @@ ORDER BY shard_num, host_name;
 ```sql
 SYSTEM RELOAD CONFIG;
 
--- Verify the profile is live
+-- Verify the profile is live by applying it to the current session
+SET profile = 'analyst';
 SELECT name, value
 FROM system.settings
 WHERE name IN ('max_memory_usage', 'max_execution_time');
