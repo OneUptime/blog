@@ -26,8 +26,8 @@ reinterpretAsString(65) -> 'A'               (byte 0x41 = 65 = ASCII 'A')
 SELECT reinterpretAsString(65)         AS byte_as_str;
 -- Returns: 'A' (ASCII 65 = 'A')
 
-SELECT reinterpretAsString(toUInt32(0x48454C4C)) AS hello;
--- Interprets the 4 bytes 0x48, 0x45, 0x4C, 0x4C as ASCII: 'HELL'
+SELECT reinterpretAsString(toUInt32(0x4C4C4548)) AS hello;
+-- Little-endian bytes in memory: 0x48, 0x45, 0x4C, 0x4C → ASCII: 'HELL'
 
 -- Reinterpret a Float64 value as its raw bytes (String of 8 bytes)
 SELECT
