@@ -28,19 +28,20 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "my-service"
         dapr.io/enable-profiling: "true"
-        dapr.io/profile-port: "7777"
     spec:
       containers:
       - name: my-service
         image: my-service:latest
 ```
 
+The profile port defaults to 7777. There is no Kubernetes annotation to change the profile port - use the `--profile-port` flag on `daprd` if you need a different port.
+
 ## Changing the Profile Port
 
-If 7777 conflicts with another process:
+The profile port is not configurable via annotation. To use a different port, pass the `--profile-port` flag directly to `daprd`:
 
-```yaml
-dapr.io/profile-port: "7778"
+```bash
+daprd --profile-port 7778 --enable-profiling ...
 ```
 
 Never expose the profile port externally - restrict access to within the cluster or via port-forward only.
