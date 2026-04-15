@@ -14,7 +14,7 @@ Smart meters generate continuous streams of readings - voltage, current, active 
 
 ## Schema Design
 
-Use a `ReplacingMergeTree` partitioned by month and sorted by meter ID plus timestamp to enable fast range scans.
+Use a `MergeTree` partitioned by month and sorted by meter ID plus timestamp to enable fast range scans.
 
 ```sql
 CREATE TABLE smart_meter_readings
@@ -97,7 +97,7 @@ LIMIT 10;
 ```sql
 SELECT
     toDate(recorded_at)                          AS day,
-    sum(active_power_kw) / count() * 0.25        AS estimated_kwh
+    sum(active_power_kw) * 0.25                   AS estimated_kwh
 FROM smart_meter_readings
 WHERE recorded_at >= today() - INTERVAL 30 DAY
 GROUP BY day
@@ -113,20 +113,22 @@ CREATE TABLE smart_meter_hourly
 (
     meter_id    UInt64,
     hour        DateTime,
-    avg_kw      Float32,
-    max_kw      Float32,
-    kwh_delta   Float64
+    avg_kw      AggregateFunction(avg, Float32),
+    max_kw      AggregateFunction(max, Float32),
+    max_kwh     AggregateFunction(max, Float64),
+    min_kwh     AggregateFunction(min, Float64)
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (meter_id, hour);
 
 CREATE MATERIALIZED VIEW smart_meter_hourly_mv TO smart_meter_hourly AS
 SELECT
     meter_id,
     toStartOfHour(recorded_at) AS hour,
-    avg(active_power_kw)        AS avg_kw,
-    max(active_power_kw)        AS max_kw,
-    max(energy_kwh) - min(energy_kwh) AS kwh_delta
+    avgState(active_power_kw)   AS avg_kw,
+    maxState(active_power_kw)   AS max_kw,
+    maxState(energy_kwh)        AS max_kwh,
+    minState(energy_kwh)        AS min_kwh
 FROM smart_meter_readings
 GROUP BY meter_id, hour;
 ```
