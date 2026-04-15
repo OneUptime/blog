@@ -22,10 +22,10 @@ CREATE DICTIONARY country_codes_http (
 )
 PRIMARY KEY code
 SOURCE(HTTP(
-    URL 'https://example.com/api/countries.csv'
-    FORMAT 'CSV'
+    url 'https://example.com/api/countries.csv'
+    format 'CSVWithNames'
 ))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(3600);
 ```
 
@@ -53,14 +53,14 @@ CREATE DICTIONARY geo_data_dict (
 )
 PRIMARY KEY ip_prefix
 SOURCE(HTTP(
-    URL 'https://api.example.com/geo-data.tsv'
-    FORMAT 'TabSeparated'
-    HEADERS(
+    url 'https://api.example.com/geo-data.tsv'
+    format 'TabSeparated'
+    headers(
         header(name 'Authorization' value 'Bearer your-api-token'),
         header(name 'X-Client-ID' value 'clickhouse-prod')
     )
 ))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(MIN 3600 MAX 7200);
 ```
 
@@ -77,8 +77,8 @@ CREATE DICTIONARY feature_flags_dict (
 )
 PRIMARY KEY flag_id
 SOURCE(HTTP(
-    URL 'http://internal-config-service/feature-flags'
-    FORMAT 'TabSeparatedWithNames'
+    url 'http://internal-config-service/feature-flags'
+    format 'TabSeparatedWithNames'
 ))
 LAYOUT(FLAT())
 LIFETIME(MIN 60 MAX 120);
@@ -91,7 +91,7 @@ SELECT
     event_id,
     user_id,
     country_code,
-    dictGetString('country_codes_http', 'name', country_code) AS country_name
+    dictGetString('country_codes_http', 'name', tuple(country_code)) AS country_name
 FROM events
 WHERE event_time >= today()
 LIMIT 20;
