@@ -38,7 +38,7 @@ SELECT
     engine,
     total_rows,
     formatReadableSize(total_bytes)     AS total_size,
-    formatReadableSize(data_compressed_bytes)   AS compressed,
+    formatReadableSize(total_bytes_uncompressed) AS uncompressed,
     is_temporary,
     create_table_query
 FROM system.tables
@@ -96,7 +96,7 @@ SELECT
     sorting_key,
     primary_key,
     sampling_key,
-    ttl_field
+    engine_full
 FROM system.tables
 WHERE engine LIKE '%MergeTree%'
   AND database = 'mydb'
