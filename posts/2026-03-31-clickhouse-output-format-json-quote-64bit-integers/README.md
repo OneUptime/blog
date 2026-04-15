@@ -95,10 +95,10 @@ FORMAT JSONEachRow;
 ```
 
 ```json
-{"user_id":9007199254740993,"session_id":18446744073709552000}
+{"user_id":9007199254740993,"session_id":18446744073709551000}
 ```
 
-Note the last value is silently rounded when parsed by JavaScript.
+Note that when JavaScript parses this JSON, both values are silently rounded to the nearest representable double (e.g., `session_id` becomes `18446744073709552000`).
 
 ## When to Disable Quoting
 
