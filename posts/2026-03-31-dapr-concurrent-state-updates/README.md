@@ -51,10 +51,7 @@ class ConcurrentStateManager:
         for attempt in range(max_retries):
             with DaprClient() as client:
                 # Read current state with ETag
-                result = client.get_state(
-                    STORE, key,
-                    state_options=StateOptions(consistency=Consistency.strong)
-                )
+                result = client.get_state(STORE, key)
                 current = json.loads(result.data) if result.data else {}
 
                 # Apply transformation
@@ -111,7 +108,9 @@ For operations where retries are expensive or unacceptable, use Dapr Distributed
 
 ```python
 import contextlib
+import time
 from dapr.clients import DaprClient
+from dapr.clients.grpc._request import TransactionalStateOperation
 
 LOCK_STORE = "redislock"
 LOCK_TTL = 30  # seconds
@@ -149,14 +148,14 @@ def transfer_funds(from_id: str, to_id: str, amount: float):
             client.execute_state_transaction(
                 store_name=STORE,
                 operations=[
-                    {"operation": "upsert", "request": {
-                        "key": f"account:{from_id}",
-                        "value": json.dumps(from_acct)
-                    }},
-                    {"operation": "upsert", "request": {
-                        "key": f"account:{to_id}",
-                        "value": json.dumps(to_acct)
-                    }}
+                    TransactionalStateOperation(
+                        key=f"account:{from_id}",
+                        data=json.dumps(from_acct)
+                    ),
+                    TransactionalStateOperation(
+                        key=f"account:{to_id}",
+                        data=json.dumps(to_acct)
+                    ),
                 ]
             )
 ```
