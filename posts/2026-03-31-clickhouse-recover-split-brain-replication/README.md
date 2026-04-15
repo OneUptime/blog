@@ -51,7 +51,7 @@ Most split-brain scenarios start with a network partition or ZooKeeper instabili
 
 ```bash
 # Check ZooKeeper/Keeper health from each node
-clickhouse-keeper-client -h localhost -p 9181 -q "ruok"
+clickhouse-keeper-client -h localhost -p 9181 -q "flwc ruok"
 
 # Check ClickHouse can reach ZooKeeper
 clickhouse-client --query "SELECT * FROM system.zookeeper WHERE path = '/clickhouse'"
