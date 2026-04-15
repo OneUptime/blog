@@ -15,7 +15,7 @@ ClickHouse is a strongly typed database. When you ingest data from external sour
 Each function converts its argument to a signed integer of the corresponding bit width. The conversion follows these rules:
 
 - Floating-point numbers are truncated toward zero
-- Strings are parsed as numbers; invalid strings return 0 (or throw with the `OrZero`/`OrNull` variants)
+- Strings are parsed as numbers; invalid strings throw an exception (use the `OrZero` or `OrNull` variants for safe handling)
 - Values outside the target range overflow with wrap-around behavior
 
 The type ranges are:
@@ -174,7 +174,7 @@ SELECT
     toInt32(user_id)           AS user_id_int,     -- typical IDs
     toInt64(unix_timestamp_ms) AS ts_ms            -- large epoch values
 FROM (
-    SELECT 404 AS status_code, 99999 AS user_id, 1711900000000 AS unix_timestamp_ms
+    SELECT 201 AS status_code, 99999 AS user_id, 1711900000000 AS unix_timestamp_ms
 );
 ```
 
