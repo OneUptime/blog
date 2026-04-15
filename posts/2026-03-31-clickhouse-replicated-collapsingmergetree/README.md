@@ -14,12 +14,12 @@ Description: Learn how to use ReplicatedCollapsingMergeTree in ClickHouse to can
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/macros.xml -->
-<yandex>
+<clickhouse>
   <macros>
     <shard>01</shard>
     <replica>replica-01</replica>
   </macros>
-</yandex>
+</clickhouse>
 ```
 
 ## Creating a ReplicatedCollapsingMergeTree Table
