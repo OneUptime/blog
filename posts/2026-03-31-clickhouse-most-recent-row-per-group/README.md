@@ -57,13 +57,13 @@ WHERE rn = 1;
 ## Method 3 - Self-Join with MAX Subquery
 
 ```sql
-SELECT d.*
+SELECT d.device_id, d.updated_at, d.status, d.battery_level
 FROM device_status d
 JOIN (
-    SELECT device_id, max(updated_at) AS latest
+    SELECT device_id, max(updated_at) AS max_updated_at
     FROM device_status
     GROUP BY device_id
-) latest ON d.device_id = latest.device_id AND d.updated_at = latest.latest;
+) AS latest_ts ON d.device_id = latest_ts.device_id AND d.updated_at = latest_ts.max_updated_at;
 ```
 
 ## Method 4 - ReplacingMergeTree for Always-Current Data
@@ -120,7 +120,7 @@ Method      | 100M rows | Notes
 argMax      | 0.8s      | Best - single pass, no sort
 Row number  | 2.1s      | Sort overhead
 Self-join   | 3.4s      | Two scans + join
-FINAL       | 0.1s      | Pre-merged, fastest reads
+FINAL       | 1.0s      | Query-time dedup, fast after merge optimizations
 ```
 
 ## Summary
