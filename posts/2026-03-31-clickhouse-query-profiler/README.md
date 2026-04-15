@@ -14,11 +14,15 @@ ClickHouse includes a sampling profiler that captures stack traces at configurab
 
 ## Enabling the Profiler
 
-Configure in `config.xml`:
+Configure in `users.xml` inside a settings profile:
 
 ```xml
-<query_profiler_real_time_period_ns>1000000000</query_profiler_real_time_period_ns>
-<query_profiler_cpu_time_period_ns>1000000000</query_profiler_cpu_time_period_ns>
+<profiles>
+    <default>
+        <query_profiler_real_time_period_ns>1000000000</query_profiler_real_time_period_ns>
+        <query_profiler_cpu_time_period_ns>1000000000</query_profiler_cpu_time_period_ns>
+    </default>
+</profiles>
 ```
 
 Or enable per query:
