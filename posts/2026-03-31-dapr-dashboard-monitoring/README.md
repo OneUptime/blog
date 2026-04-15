@@ -65,6 +65,7 @@ Shows health status of Dapr control plane services:
 | dapr-sidecar-injector | Healthy |
 | dapr-placement | Healthy |
 | dapr-sentry | Healthy |
+| dapr-scheduler | Healthy |
 
 ## Accessing Dashboard Remotely
 
