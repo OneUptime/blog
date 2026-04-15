@@ -41,8 +41,8 @@ Dapr calls your application at specific lifecycle events:
 |---|---|---|
 | Activate | `POST /actors/{type}/{id}` | First invocation of an actor |
 | Deactivate | `DELETE /actors/{type}/{id}` | Actor idle timeout or explicit removal |
-| Timer fire | `PUT /actors/{type}/{id}/method/timerName` | Timer triggers |
-| Reminder fire | `PUT /actors/{type}/{id}/method/reminderName` | Reminder triggers |
+| Timer fire | `PUT /actors/{type}/{id}/method/timer/{timerName}` | Timer triggers |
+| Reminder fire | `PUT /actors/{type}/{id}/method/remind/{reminderName}` | Reminder triggers |
 
 ## Configuring Idle Timeout and Scan Interval
 
@@ -66,6 +66,8 @@ The actor idle timeout and scan interval are advertised by your application via 
 
 ### Go SDK
 
+> **Note:** The Dapr Go SDK does not currently provide overridable lifecycle hook methods like `OnActivate` / `OnDeactivate`. Initialization logic should be handled via lazy initialization in your actor methods.
+
 ```go
 package main
 
@@ -76,39 +78,23 @@ import (
 )
 
 type SessionActorImpl struct {
-    actor.ServerImplBase
-    sessionID string
+    actor.ServerImplBaseCtx
 }
 
 func (a *SessionActorImpl) Type() string { return "SessionActor" }
 
-// Called when the actor is first activated
-func (a *SessionActorImpl) OnActivate() error {
-    a.sessionID = a.ID()
-    log.Printf("SessionActor %s activated - loading state", a.sessionID)
-
-    // Initialize default state if this is the first activation
-    ctx := context.Background()
+// Business method with lazy initialization
+func (a *SessionActorImpl) RecordVisit(ctx context.Context) (int, error) {
+    // Initialize default state if this is the first call
     var initialized bool
     err := a.GetStateManager().Get(ctx, "initialized", &initialized)
     if err != nil || !initialized {
-        // First time - set up default state
+        log.Printf("SessionActor %s - initializing default state", a.ID())
         a.GetStateManager().Set(ctx, "initialized", true)
         a.GetStateManager().Set(ctx, "visitCount", 0)
         a.GetStateManager().Save(ctx)
     }
-    return nil
-}
 
-// Called when the actor is deactivated
-func (a *SessionActorImpl) OnDeactivate() error {
-    log.Printf("SessionActor %s deactivated - state persisted", a.sessionID)
-    // Cleanup in-memory resources (e.g., close connections)
-    return nil
-}
-
-// Business method
-func (a *SessionActorImpl) RecordVisit(ctx context.Context) (int, error) {
     var count int
     a.GetStateManager().Get(ctx, "visitCount", &count)
     count++
