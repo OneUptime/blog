@@ -27,6 +27,7 @@ package replay
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -107,7 +108,11 @@ type ReplayCheckpoint struct {
 func SaveCheckpoint(ctx context.Context, client dapr.Client, cp ReplayCheckpoint) error {
     key := fmt.Sprintf("replay-checkpoint|%s|%s|%s",
         cp.ProjectionID, cp.AggregateType, cp.AggregateID)
-    return client.SaveState(ctx, "statestore", key, cp, nil)
+    data, err := json.Marshal(cp)
+    if err != nil {
+        return fmt.Errorf("marshal checkpoint: %w", err)
+    }
+    return client.SaveState(ctx, "statestore", key, data, nil)
 }
 
 func LoadCheckpoint(ctx context.Context, client dapr.Client, projectionID, aggregateType, aggregateID string) (int64, error) {
@@ -117,7 +122,9 @@ func LoadCheckpoint(ctx context.Context, client dapr.Client, projectionID, aggre
         return 1, nil // start from beginning
     }
     var cp ReplayCheckpoint
-    json.Unmarshal(item.Value, &cp)
+    if err := json.Unmarshal(item.Value, &cp); err != nil {
+        return 0, fmt.Errorf("unmarshal checkpoint: %w", err)
+    }
     return cp.LastSequence + 1, nil
 }
 ```
