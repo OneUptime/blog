@@ -8,7 +8,7 @@ Description: Learn how to use ClickHouse's Native binary format for maximum thro
 
 ---
 
-The Native format is ClickHouse's internal binary serialization format. It is the fastest format for transferring data between ClickHouse instances or via the native TCP protocol because it requires no serialization/deserialization overhead - data is stored and transferred in exactly the columnar binary layout ClickHouse uses internally.
+The Native format is ClickHouse's internal binary serialization format. It is the fastest format for transferring data between ClickHouse instances or via the native TCP protocol because it requires minimal serialization/deserialization overhead - data is stored and transferred in a columnar binary layout close to what ClickHouse uses internally.
 
 ## When to Use Native Format
 
@@ -82,7 +82,7 @@ This pipes data directly between the two clusters with no intermediate file.
 
 ```bash
 clickhouse-local \
-    --query "SELECT count(), sum(value) FROM file('events_native.bin', Native, 'ts DateTime, value Float64')"
+    --query "SELECT count(), sum(value) FROM file('events_native.bin', Native)"
 ```
 
 ## Native Format with ClickHouse Client Libraries
@@ -103,7 +103,7 @@ Native files are binary and not human-readable, but you can inspect them with:
 
 ```bash
 clickhouse-local \
-    --query "SELECT * FROM file('data.bin', Native, 'id UInt64, name String') LIMIT 5"
+    --query "SELECT * FROM file('data.bin', Native) LIMIT 5"
 ```
 
 ## Summary
