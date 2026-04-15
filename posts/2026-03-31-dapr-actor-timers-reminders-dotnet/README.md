@@ -40,6 +40,7 @@ public interface ISessionActor : IActor
 Register a timer inside an actor method using `RegisterTimerAsync`. The callback must be a method on the actor class:
 
 ```csharp
+using System.Text;
 using Dapr.Actors.Runtime;
 
 [Actor(TypeName = "SessionActor")]
