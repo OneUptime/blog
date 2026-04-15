@@ -116,7 +116,7 @@ FROM user_events
 LEFT ARRAY JOIN tags AS tag;
 ```
 
-Rows with `tags = []` still appear with `tag = NULL`.
+Rows with `tags = []` still appear with `tag` set to the default value for the element type (e.g., `''` for `String`, `0` for integers, `NULL` for `Nullable` types).
 
 ## Using arrayJoin in Subqueries
 
