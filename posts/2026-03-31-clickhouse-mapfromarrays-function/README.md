@@ -90,12 +90,17 @@ Each row now contains a Map(String, Float64) keyed by SKU for that day, making i
 Build an in-query lookup by aggregating data into a map first, then joining it back.
 
 ```sql
-WITH sku_revenue_map AS (
+WITH sku_totals AS (
+    SELECT product_sku, round(sum(revenue), 2) AS total_rev
+    FROM daily_sales
+    GROUP BY product_sku
+),
+sku_revenue_map AS (
     SELECT mapFromArrays(
         groupArray(product_sku),
-        groupArray(round(sum(revenue), 2))
+        groupArray(total_rev)
     ) AS rev_map
-    FROM daily_sales
+    FROM sku_totals
 )
 SELECT
     d.product_sku,
