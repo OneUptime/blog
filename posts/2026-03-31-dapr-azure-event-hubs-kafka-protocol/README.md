@@ -29,7 +29,7 @@ az eventhubs eventhub create \
   --namespace-name myeventhubsns \
   --resource-group my-rg \
   --partition-count 4 \
-  --message-retention 1
+  --retention-time-in-hours 24
 
 # Get the connection string
 az eventhubs namespace authorization-rule keys list \
@@ -65,8 +65,8 @@ spec:
         key: connection-string
     - name: saslMechanism
       value: "PLAIN"
-    - name: tlsEnabled
-      value: "true"
+    - name: disableTls
+      value: "false"
     - name: consumerGroup
       value: "dapr-consumer-group"
     - name: initialOffset
@@ -102,40 +102,43 @@ with DaprClient() as client:
 ## Subscribing to Events
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-sub
 spec:
   pubsubname: eventhubs-pubsub
   topic: orders
-  route: /orders
+  routes:
+    default: /orders
 ```
 
-Create the consumer group in Event Hubs (Dapr does not auto-create it):
-
-```bash
-az eventhubs eventhub consumer-group create \
-  --eventhub-name orders \
-  --namespace-name myeventhubsns \
-  --resource-group my-rg \
-  --name dapr-consumer-group
-```
+When using the Kafka protocol surface, consumer groups are auto-created by the Kafka protocol layer. The `consumerGroup` value in the Dapr component configuration is used automatically — no manual creation is needed.
 
 ## Using Managed Identity
 
-Replace SASL/PLAIN with Managed Identity for pod-level authentication:
+The Dapr Kafka pub/sub component does not support Azure Managed Identity directly. To use Managed Identity with Azure Event Hubs, switch to the native Dapr Event Hubs component (`pubsub.azure.eventhubs`) instead:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
 metadata:
-  - name: authType
-    value: "azure"
-  - name: azureClientId
-    value: "YOUR_MANAGED_IDENTITY_CLIENT_ID"
+  name: eventhubs-pubsub
+  namespace: default
+spec:
+  type: pubsub.azure.eventhubs
+  version: v1
+  metadata:
+    - name: namespaceName
+      value: "myeventhubsns.servicebus.windows.net"
+    - name: consumerID
+      value: "dapr-consumer-group"
+    - name: azureClientId
+      value: "YOUR_MANAGED_IDENTITY_CLIENT_ID"
 ```
 
-Enable MSI on the pod and grant `Azure Event Hubs Data Owner` role.
+Enable Workload Identity on the pod and grant the `Azure Event Hubs Data Owner` role to the managed identity. Note that the native Event Hubs component uses AMQP, not Kafka, so consumer groups must be pre-created when using this component.
 
 ## Summary
 
-Connecting Dapr to Azure Event Hubs via the Kafka protocol requires using the Kafka pub/sub component with `saslMechanism: PLAIN`, the literal username `$ConnectionString`, and the Event Hubs connection string as the password. TLS must be enabled since Event Hubs only accepts encrypted connections. Consumer groups must be pre-created in Event Hubs before Dapr can subscribe. For production, prefer Managed Identity authentication to eliminate connection string secrets.
+Connecting Dapr to Azure Event Hubs via the Kafka protocol requires using the Kafka pub/sub component with `saslMechanism: PLAIN`, the literal username `$ConnectionString`, and the Event Hubs connection string as the password. TLS is enabled by default and must not be disabled since Event Hubs only accepts encrypted connections. When using the Kafka protocol surface, consumer groups are auto-created. For production with Managed Identity, use the native `pubsub.azure.eventhubs` component instead of the Kafka component.
