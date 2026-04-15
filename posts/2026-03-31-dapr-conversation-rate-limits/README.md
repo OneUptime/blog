@@ -111,14 +111,14 @@ def cached_conversation(component: str, inputs: list, ttl_seconds: int = 3600):
         json=[{
             "key": cache_key,
             "value": result,
-            "options": {"ttlInSeconds": ttl_seconds}
+            "metadata": {"ttlInSeconds": str(ttl_seconds)}
         }]
     )
 
     return result
 ```
 
-Note: Dapr Conversation also has a built-in `cacheTTL` metadata field that caches responses at the component level.
+Note: Dapr Conversation also has a built-in `responseCacheTTL` metadata field that caches responses at the component level.
 
 ## Strategy 3: Request Queue with Rate Limiting
 
@@ -155,7 +155,7 @@ async def rate_limited_conversation(component: str, prompt: str) -> str:
     while not rate_limiter.consume(1):
         await asyncio.sleep(0.1)
 
-    return call_conversation_api(component, [{"message": prompt, "role": "user"}])
+    return call_conversation_api(component, [{"content": prompt, "role": "user"}])
 ```
 
 ## Strategy 4: Multi-Provider Failover
