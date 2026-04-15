@@ -33,10 +33,9 @@ Apply the configuration:
 
 ```bash
 kubectl apply -f dapr-config.yaml
-
-# Reference this configuration in your deployment
-kubectl annotate pod my-pod dapr.io/config=dapr-config
 ```
+
+Reference this configuration in your deployment annotations (shown in the next section). The annotation must be set in the pod template before pod creation, as the Dapr sidecar injector reads annotations at injection time.
 
 ## Annotate Deployments to Use the Configuration
 
@@ -70,10 +69,8 @@ kubectl get pods -n dapr-system -l app=dapr-sentry
 kubectl get secret dapr-trust-bundle -n dapr-system -o jsonpath='{.data.issuer\.crt}' | \
   base64 -d | openssl x509 -text -noout
 
-# Verify sidecar received its certificate
-kubectl exec deployment/order-service -c daprd -- \
-  cat /var/run/secrets/dapr.io/tls/cert.pem | openssl x509 -text -noout | \
-  grep -E "Subject|Issuer|Not After"
+# Verify sidecar received its certificate (certs are held in-memory, check via logs)
+kubectl logs deployment/order-service -c daprd | grep -i "certificate signed successfully"
 ```
 
 ## Check mTLS Status with Dapr CLI
@@ -98,9 +95,8 @@ kubectl logs -n dapr-system -l app=dapr-sentry --tail=100
 # Check sidecar logs for handshake failures
 kubectl logs deployment/order-service -c daprd | grep -i "tls\|certificate\|handshake"
 
-# Verify Sentry is reachable from the sidecar
-kubectl exec deployment/order-service -c daprd -- \
-  curl -k https://dapr-sentry.dapr-system.svc.cluster.local:443/healthz
+# Verify Sentry pod is healthy
+kubectl get pods -n dapr-system -l app=dapr-sentry -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
 ```
 
 ## Disable mTLS for Specific Namespaces (Testing Only)
