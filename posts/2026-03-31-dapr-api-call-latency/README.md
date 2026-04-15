@@ -20,11 +20,11 @@ Dapr uses Prometheus histograms, which expose three metric types:
 
 Key latency metrics include:
 
-- `dapr_http_server_latency_ms` - HTTP server-side latency
-- `dapr_http_client_roundtrip_latency_ms` - HTTP client round-trip latency
-- `dapr_grpc_server_io_latency_ms` - gRPC server-side latency
-- `dapr_component_state_get_latencies_ms` - state store GET latency
-- `dapr_component_pubsub_ingress_latencies_ms` - pub/sub message processing latency
+- `dapr_http_server_latency` - HTTP server-side latency
+- `dapr_http_client_roundtrip_latency` - HTTP client round-trip latency
+- `dapr_grpc_io_server_server_latency` - gRPC server-side latency
+- `dapr_component_state_latencies` - state store latency (with `operation` label for get, set, delete, etc.)
+- `dapr_component_pubsub_ingress_latencies` - pub/sub message processing latency
 
 ## Calculating Latency Percentiles
 
@@ -34,20 +34,20 @@ Use `histogram_quantile` to compute P50, P95, and P99:
 # P99 HTTP server latency per app
 histogram_quantile(0.99,
   sum by (le, app_id) (
-    rate(dapr_http_server_latency_ms_bucket[5m])
+    rate(dapr_http_server_latency_bucket[5m])
   )
 )
 
 # P95 gRPC latency
 histogram_quantile(0.95,
   sum by (le, app_id) (
-    rate(dapr_grpc_server_io_latency_ms_bucket[5m])
+    rate(dapr_grpc_io_server_server_latency_bucket[5m])
   )
 )
 
 # Average latency
-sum by (app_id) (rate(dapr_http_server_latency_ms_sum[5m]))
-/ sum by (app_id) (rate(dapr_http_server_latency_ms_count[5m]))
+sum by (app_id) (rate(dapr_http_server_latency_sum[5m]))
+/ sum by (app_id) (rate(dapr_http_server_latency_count[5m]))
 ```
 
 ## Grafana Multi-Percentile Panel
@@ -56,13 +56,13 @@ Create a panel showing P50/P95/P99 on the same chart:
 
 ```text
 # Query A - P50
-histogram_quantile(0.50, sum by (le) (rate(dapr_http_server_latency_ms_bucket{app_id="$app_id"}[5m])))
+histogram_quantile(0.50, sum by (le) (rate(dapr_http_server_latency_bucket{app_id="$app_id"}[5m])))
 
 # Query B - P95
-histogram_quantile(0.95, sum by (le) (rate(dapr_http_server_latency_ms_bucket{app_id="$app_id"}[5m])))
+histogram_quantile(0.95, sum by (le) (rate(dapr_http_server_latency_bucket{app_id="$app_id"}[5m])))
 
 # Query C - P99
-histogram_quantile(0.99, sum by (le) (rate(dapr_http_server_latency_ms_bucket{app_id="$app_id"}[5m])))
+histogram_quantile(0.99, sum by (le) (rate(dapr_http_server_latency_bucket{app_id="$app_id"}[5m])))
 ```
 
 Set the unit to milliseconds and add thresholds at your SLO boundaries.
@@ -74,11 +74,11 @@ High latency often appears alongside errors. Combine the signals:
 ```text
 # Services with both high latency AND errors
 (
-  histogram_quantile(0.99, sum by (le, app_id) (rate(dapr_http_server_latency_ms_bucket[5m]))) > 500
+  histogram_quantile(0.99, sum by (le, app_id) (rate(dapr_http_server_latency_bucket[5m]))) > 500
 )
 and
 (
-  sum by (app_id) (rate(dapr_http_server_request_count{status_code!~"2.."}[5m])) > 0
+  sum by (app_id) (rate(dapr_http_server_request_count{status!~"2.."}[5m])) > 0
 )
 ```
 
@@ -92,7 +92,7 @@ groups:
     expr: |
       histogram_quantile(0.99,
         sum by (le, app_id) (
-          rate(dapr_http_server_latency_ms_bucket[5m])
+          rate(dapr_http_server_latency_bucket[5m])
         )
       ) > 500
     for: 5m
