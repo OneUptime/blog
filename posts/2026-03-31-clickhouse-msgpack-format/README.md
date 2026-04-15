@@ -14,7 +14,7 @@ Unlike Protobuf or Avro, MsgPack does not require a pre-defined schema. This mak
 
 ## Reading MsgPack Files
 
-ClickHouse reads a stream of MsgPack values (one map or array per row):
+ClickHouse reads a flat stream of MsgPack values where each column value is a separate MsgPack object. For a table with N columns, every N consecutive values form one row:
 
 ```sql
 SELECT *
@@ -68,17 +68,20 @@ clickhouse-client \
 
 ```python
 import msgpack
-import struct
 
 events = [
-    {"event_id": 1, "user_id": 100, "event_type": "login", "ts": 1704067200000},
-    {"event_id": 2, "user_id": 101, "event_type": "purchase", "ts": 1704067260000},
+    {"event_id": 1, "user_id": 100, "event_type": "login", "properties": "{}", "ts": 1704067200000},
+    {"event_id": 2, "user_id": 101, "event_type": "purchase", "properties": "{}", "ts": 1704067260000},
 ]
 
 with open("events.msgpack", "wb") as f:
     for event in events:
-        packed = msgpack.packb(event, use_bin_type=True)
-        f.write(packed)
+        # Write each column value as a separate MsgPack object
+        f.write(msgpack.packb(event["event_id"]))
+        f.write(msgpack.packb(event["user_id"]))
+        f.write(msgpack.packb(event["event_type"], use_bin_type=True))
+        f.write(msgpack.packb(event["properties"], use_bin_type=True))
+        f.write(msgpack.packb(event["ts"]))
 ```
 
 Load it in ClickHouse:
@@ -102,8 +105,15 @@ result = subprocess.run(
 
 unpacker = msgpack.Unpacker(raw=False)
 unpacker.feed(result.stdout)
-for row in unpacker:
-    print(row)
+
+# Each column value is a separate MsgPack object, so group them into rows
+num_columns = 5
+row = []
+for value in unpacker:
+    row.append(value)
+    if len(row) == num_columns:
+        print(row)
+        row = []
 ```
 
 ## Type Mapping
@@ -112,14 +122,14 @@ for row in unpacker:
 |-----------------|-------------|
 | Int8 to Int64   | Integer (signed) |
 | UInt8 to UInt64 | Integer (unsigned) |
-| Float32         | Float (4 bytes) |
-| Float64         | Float (8 bytes) |
-| String          | String (UTF-8) or Binary |
-| Bool            | Boolean |
+| Float32         | Float 32 |
+| Float64         | Float 64 |
+| String          | Binary (bin 8/16/32) |
+| Bool            | UInt8 (uint 8) |
 | Array(T)        | Array |
 | Map(K, V)       | Map |
-| Nullable(T)     | nil or T |
-| DateTime64      | Integer (Unix milliseconds) |
+| DateTime        | UInt32 (uint 32) |
+| DateTime64      | UInt64 (uint 64) |
 
 ## MsgPack vs JSON Benchmark
 
@@ -138,9 +148,14 @@ MsgPack is roughly 2x faster to parse than JSON and produces significantly small
 MsgPack naturally handles arrays:
 
 ```python
-# Python side
-data = [1, "alice", [10, 20, 30], {"browser": "chrome"}]
-packed = msgpack.packb(data)
+# Python side — write each column as a separate MsgPack value
+import msgpack
+
+with open("data.msgpack", "wb") as f:
+    f.write(msgpack.packb(1))                                            # id
+    f.write(msgpack.packb("alice", use_bin_type=True))                   # name
+    f.write(msgpack.packb([10, 20, 30]))                                 # scores
+    f.write(msgpack.packb('{"browser": "chrome"}', use_bin_type=True))   # meta
 ```
 
 ```sql
@@ -162,11 +177,11 @@ MsgPack is a row-based format. ClickHouse stores it internally in columns. For l
 ## Settings
 
 ```sql
--- Allow reading MsgPack with more than expected fields
+-- Specify the number of columns for automatic schema inference
 SET input_format_msgpack_number_of_columns = 5;
 
--- Skip unknown fields
-SET input_format_skip_unknown_fields = 1;
+-- Output strings using UTF-8 String type instead of Binary
+SET output_format_msgpack_uuid_representation = 'str';
 ```
 
 ## Conclusion
