@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Growth Rate, Analytics, Window Function, SQL
 
-Description: Calculate month-over-month growth rates in ClickHouse using window functions and LAG to compare current period metrics against the previous period.
+Description: Calculate month-over-month growth rates in ClickHouse using window functions and lag to compare current period metrics against the previous period.
 
 ---
 
@@ -28,8 +28,7 @@ with_prev AS (
     SELECT
         month,
         revenue,
-        lagInFrame(revenue) OVER (ORDER BY month ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
-            AS prev_revenue
+        lag(revenue) OVER (ORDER BY month) AS prev_revenue
     FROM monthly
 )
 SELECT
@@ -59,10 +58,10 @@ WITH monthly_users AS (
 SELECT
     month,
     users,
-    lagInFrame(users) OVER (ORDER BY month) AS prev_users,
-    round((users - lagInFrame(users) OVER (ORDER BY month))
+    lag(users) OVER (ORDER BY month) AS prev_users,
+    round((users - lag(users) OVER (ORDER BY month))
           * 100.0
-          / lagInFrame(users) OVER (ORDER BY month), 2)  AS mom_pct
+          / lag(users) OVER (ORDER BY month), 2)  AS mom_pct
 FROM monthly_users
 ORDER BY month;
 ```
@@ -82,9 +81,9 @@ WITH monthly AS (
 ),
 bounds AS (
     SELECT
-        min(revenue)    AS first_val,
-        max(revenue)    AS last_val,  -- assumes last month is the latest
-        count() - 1     AS periods
+        argMin(revenue, month)  AS first_val,
+        argMax(revenue, month)  AS last_val,
+        count() - 1             AS periods
     FROM monthly
     WHERE month >= today() - INTERVAL 12 MONTH
 )
@@ -107,13 +106,13 @@ WITH weekly AS (
 SELECT
     week,
     events,
-    lagInFrame(events) OVER (ORDER BY week) AS prev_week,
-    round((events - lagInFrame(events) OVER (ORDER BY week)) * 100.0
-          / lagInFrame(events) OVER (ORDER BY week), 2) AS wow_pct
+    lag(events) OVER (ORDER BY week) AS prev_week,
+    round((events - lag(events) OVER (ORDER BY week)) * 100.0
+          / lag(events) OVER (ORDER BY week), 2) AS wow_pct
 FROM weekly
 ORDER BY week;
 ```
 
 ## Summary
 
-ClickHouse window functions like `lagInFrame` make MoM growth calculations straightforward. Use CTEs to first aggregate into time buckets, then apply LAG in a second pass to compare adjacent periods. This pattern works for revenue, users, events, or any time-series metric.
+ClickHouse window functions like `lag` make MoM growth calculations straightforward. Use CTEs to first aggregate into time buckets, then apply `lag` in a second pass to compare adjacent periods. This pattern works for revenue, users, events, or any time-series metric.
