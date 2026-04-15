@@ -34,8 +34,8 @@ spec:
     - match: event.type == "com.example.payment.received"
       path: /handlers/payment-received
     default: /handlers/events-fallback
-scopes:
-- event-processor
+  scopes:
+  - event-processor
 ```
 
 ## Routing on Data Fields
