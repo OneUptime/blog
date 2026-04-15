@@ -99,14 +99,14 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS labels Array(String) DEFAULT [];
 Prevent too many mutations from running simultaneously:
 
 ```sql
--- In config.xml
+-- In config.xml or merge_tree settings
 -- <background_pool_size>16</background_pool_size>
--- <background_mutations_granularity>512</background_mutations_granularity>
+-- <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
 
 -- Check active background work
-SELECT pool_type, tasks_count, max_tasks_count
-FROM system.thread_pools
-WHERE pool_type = 'BackgroundMergesAndMutations';
+SELECT metric, value
+FROM system.metrics
+WHERE metric IN ('BackgroundMergesAndMutationsPoolTask', 'BackgroundMergesAndMutationsPoolSize');
 ```
 
 ## Summary
