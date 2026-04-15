@@ -30,7 +30,7 @@ npm install -g wrangler
 wrangler login
 
 # Create a KV namespace
-wrangler kv:namespace create "DAPR_STATE"
+wrangler kv namespace create "DAPR_STATE"
 ```
 
 Note the namespace ID from the output. You will need it for the component configuration.
@@ -71,6 +71,13 @@ spec:
       key: apiToken
   - name: kvNamespaceID
     value: "your-kv-namespace-id"
+  - name: workerName
+    value: "dapr-kv-worker"
+  - name: key
+    value: |
+      -----BEGIN PRIVATE KEY-----
+      your-ed25519-private-key-pem
+      -----END PRIVATE KEY-----
 ```
 
 Apply the component:
@@ -121,8 +128,8 @@ curl -X GET \
 
 Cloudflare Workers KV uses eventual consistency with global replication:
 
-- Writes are persisted within 1 second in the region where they occur
-- Global propagation typically takes 60 seconds
+- Writes are usually immediately visible at the location where they are made, but this is not guaranteed
+- Global propagation may take up to 60 seconds or more
 - Reads from the edge serve the locally cached value
 
 Use Workers KV for read-heavy, globally distributed state where eventual consistency is acceptable.
