@@ -81,7 +81,7 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "file-processor"
         dapr.io/app-port: "5001"
-        dapr.io/volume-mounts: "data-volume:/var/dapr/data"
+        dapr.io/volume-mounts-rw: "data-volume:/var/dapr/data"
     spec:
       containers:
       - name: file-processor
