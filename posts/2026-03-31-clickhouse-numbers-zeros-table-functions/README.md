@@ -110,7 +110,7 @@ ORDER BY d.day;
 When you need exactly N rows for a CROSS JOIN or an enumeration and the zero value is irrelevant:
 
 ```sql
--- Generate 100 combinations of segment and day
+-- Generate 90 combinations of segment and day
 SELECT
     segments.name AS segment,
     today() - days.n AS day
@@ -151,7 +151,7 @@ zeros_mt     zero       Large-scale parallel row generation
 ## Building a Histogram with zeros() + CROSS JOIN
 
 ```sql
--- 10 equal-width buckets across a score range 0-100
+-- 10 equal-width buckets across a score range 0-99
 SELECT
     b.bucket * 10     AS bucket_start,
     b.bucket * 10 + 9 AS bucket_end,
