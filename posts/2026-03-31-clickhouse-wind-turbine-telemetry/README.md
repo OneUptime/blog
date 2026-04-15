@@ -65,7 +65,7 @@ GROUP BY turbine_id, wind_bin
 ORDER BY turbine_id, wind_bin;
 ```
 
-## Turbine Availability (AEP)
+## Turbine Availability
 
 Availability = percentage of time the turbine is operational:
 
