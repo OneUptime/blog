@@ -10,7 +10,7 @@ Description: Build a shopping cart service using Dapr virtual actors to manage p
 
 ## Overview
 
-A shopping cart is a classic use case for the virtual actor pattern. Each user's cart maps to a dedicated actor instance, giving you automatic single-writer concurrency, built-in state persistence, and natural TTL management through actor idle timeout.
+A shopping cart is a classic use case for the virtual actor pattern. Each user's cart maps to a dedicated actor instance, giving you automatic single-writer concurrency, built-in state persistence, and automatic memory management through actor idle timeout.
 
 ## Defining the Cart Actor Interface
 
@@ -89,21 +89,23 @@ public async Task<IActionResult> AddItem(string userId, [FromBody] CartItem item
 }
 ```
 
-## Configuring Actor Idle Timeout for Cart Expiry
+## Configuring Actor Idle Timeout for Cart Deactivation
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: cart-config
-spec:
-  entities:
-  - type: CartActor
-    actorIdleTimeout: 30m   # deactivate after 30 minutes of inactivity
-    actorScanInterval: 10s
-    drainOngoingCallTimeout: 5s
-    drainRebalancedActors: true
+Actor runtime settings such as idle timeout are configured in application code through the Dapr .NET SDK, not in a Dapr Configuration CRD. The SDK exposes these settings to the Dapr sidecar automatically via the `/dapr/config` endpoint.
+
+```csharp
+// Program.cs
+builder.Services.AddActors(options =>
+{
+    options.ActorIdleTimeout = TimeSpan.FromMinutes(30);   // deactivate after 30 minutes of inactivity
+    options.ActorScanInterval = TimeSpan.FromSeconds(10);
+    options.DrainOngoingCallTimeout = TimeSpan.FromSeconds(5);
+    options.DrainRebalancedActors = true;
+    options.Actors.RegisterActor<CartActor>();
+});
 ```
+
+Note that actor idle timeout controls when the actor instance is deactivated from memory, but the persisted state remains in the state store. To implement true cart expiry (deleting stale cart data), use an actor reminder that clears the cart after a set period of inactivity.
 
 ## Deploying with a State Store
 
@@ -124,4 +126,4 @@ spec:
 
 ## Summary
 
-Dapr virtual actors provide a natural fit for per-user shopping cart state, offering automatic concurrency control, persistent state management, and idle timeout-based expiry. Each user maps to an actor ID, so there is no need for explicit locking or manual state cleanup. Combine this pattern with actor reminders to implement cart abandonment notifications without any additional scheduling infrastructure.
+Dapr virtual actors provide a natural fit for per-user shopping cart state, offering automatic concurrency control, persistent state management, and idle timeout-based deactivation. Each user maps to an actor ID, so there is no need for explicit locking or manual state cleanup. Combine this pattern with actor reminders to implement cart abandonment notifications or cart expiry without any additional scheduling infrastructure.
