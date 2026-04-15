@@ -16,14 +16,14 @@ ClickHouse MergeTree tables store data in immutable parts that are periodically 
 OPTIMIZE TABLE analytics.events;
 ```
 
-This asks ClickHouse to merge parts in the table. It is not guaranteed to merge everything into a single part - ClickHouse picks a merge candidate based on the same heuristics it uses for background merges. The statement returns after scheduling the merge, not after it completes.
+This asks ClickHouse to merge parts in the table. It is not guaranteed to merge everything into a single part - ClickHouse picks a merge candidate based on the same heuristics it uses for background merges. For non-replicated MergeTree tables, the statement is synchronous and blocks until the merge completes.
 
-### NOWAIT vs Default Behavior
+### Non-Blocking Mode for Replicated Tables
 
-By default, OPTIMIZE TABLE blocks until the merge is complete. To return immediately and let the merge happen in the background:
+For ReplicatedMergeTree tables, the `alter_sync` setting controls whether OPTIMIZE waits for the merge to finish. By default it waits on the initiator replica. To return immediately and let the merge happen in the background:
 
 ```sql
-OPTIMIZE TABLE analytics.events SETTINGS mutations_sync = 0;
+OPTIMIZE TABLE analytics.events SETTINGS alter_sync = 0;
 ```
 
 ## OPTIMIZE TABLE FINAL
@@ -37,7 +37,7 @@ OPTIMIZE TABLE analytics.events FINAL;
 This is the only way to guarantee:
 - ReplacingMergeTree deduplication has fully applied
 - AggregatingMergeTree pre-aggregation is complete
-- SummingMergeTree row collapsing is done
+- SummingMergeTree row summation is complete
 
 FINAL is expensive on large tables because it reads and rewrites all data. Use it sparingly - for example, after a bulk historical backfill when you need clean query results before the background merges catch up.
 
