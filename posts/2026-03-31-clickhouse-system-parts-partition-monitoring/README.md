@@ -69,7 +69,7 @@ HAVING active_parts > 100
 ORDER BY active_parts DESC;
 ```
 
-When `active_parts` exceeds ~300 in a partition, ClickHouse may throttle inserts. Investigate merge queues if this happens.
+When `active_parts` exceeds `parts_to_delay_insert` (default 150), ClickHouse begins throttling inserts. At `parts_to_throw_insert` (default 300), inserts are rejected entirely. Investigate merge queues if this happens.
 
 ## Checking Part Creation Timeline
 
