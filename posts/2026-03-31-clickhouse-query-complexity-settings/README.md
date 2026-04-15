@@ -17,9 +17,6 @@ ClickHouse provides a rich set of query complexity settings that act as guardrai
 ```sql
 -- Cancel query after 30 seconds
 SET max_execution_time = 30;
-
--- Timeout for network-bound parts of distributed queries
-SET max_distributed_query_wait_time = 10;
 ```
 
 ### Limiting Memory Usage
@@ -28,7 +25,7 @@ SET max_distributed_query_wait_time = 10;
 -- Limit a single query to 4 GB
 SET max_memory_usage = 4294967296;
 
--- Allow exceeding the limit temporarily before throwing
+-- Denominator for overcommit ratio; ClickHouse kills the most overcommitted query when memory is exceeded
 SET memory_overcommit_ratio_denominator = 1073741824;
 ```
 
