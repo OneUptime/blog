@@ -20,8 +20,8 @@ Calculate the absolute change from the previous day:
 SELECT
     day,
     revenue,
-    revenue - lag(revenue, 1) OVER (ORDER BY day) AS daily_change,
-    revenue - lag(revenue, 1) OVER (ORDER BY day) AS abs_delta
+    revenue - lagInFrame(revenue, 1) OVER (ORDER BY day) AS daily_change,
+    abs(revenue - lagInFrame(revenue, 1) OVER (ORDER BY day)) AS abs_delta
 FROM (
     SELECT toDate(event_time) AS day, sum(revenue) AS revenue
     FROM sales
@@ -45,7 +45,7 @@ FROM (
     SELECT
         day,
         revenue,
-        lag(revenue, 1, revenue) OVER (ORDER BY day) AS prev_revenue
+        lagInFrame(revenue, 1, revenue) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS prev_revenue
     FROM (
         SELECT toDate(event_time) AS day, sum(revenue) AS revenue
         FROM sales GROUP BY day ORDER BY day
@@ -63,10 +63,10 @@ Compare to the same day last week:
 SELECT
     day,
     revenue,
-    lag(revenue, 7) OVER (ORDER BY day) AS wow_baseline,
+    lagInFrame(revenue, 7) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS wow_baseline,
     round(
-        (revenue - lag(revenue, 7) OVER (ORDER BY day)) /
-        lag(revenue, 7) OVER (ORDER BY day) * 100, 2
+        (revenue - lagInFrame(revenue, 7) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)) /
+        lagInFrame(revenue, 7) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) * 100, 2
     ) AS wow_pct
 FROM (
     SELECT toDate(event_time) AS day, sum(revenue) AS revenue
@@ -83,15 +83,18 @@ Compare current month to the same month last year:
 
 ```sql
 SELECT
-    toYYYYMM(event_time) AS month,
-    sum(revenue) AS revenue,
-    lagInFrame(sum(revenue), 12) OVER (ORDER BY toYYYYMM(event_time)) AS yoy_baseline,
+    month,
+    revenue,
+    lagInFrame(revenue, 12) OVER (ORDER BY month ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS yoy_baseline,
     round(
-        (sum(revenue) - lagInFrame(sum(revenue), 12) OVER (ORDER BY toYYYYMM(event_time)))
-        / lagInFrame(sum(revenue), 12) OVER (ORDER BY toYYYYMM(event_time)) * 100, 2
+        (revenue - lagInFrame(revenue, 12) OVER (ORDER BY month ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING))
+        / lagInFrame(revenue, 12) OVER (ORDER BY month ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) * 100, 2
     ) AS yoy_pct
-FROM sales
-GROUP BY month
+FROM (
+    SELECT toYYYYMM(event_time) AS month, sum(revenue) AS revenue
+    FROM sales
+    GROUP BY month
+)
 ORDER BY month;
 ```
 
@@ -103,16 +106,21 @@ Find metrics that are accelerating or decelerating:
 SELECT
     day,
     revenue,
-    revenue - lag(revenue, 1) OVER (ORDER BY day) AS velocity,
-    (revenue - lag(revenue, 1) OVER (ORDER BY day)) -
-    lag(revenue - lag(revenue, 1) OVER (ORDER BY day), 1) OVER (ORDER BY day) AS acceleration
+    velocity,
+    velocity - lagInFrame(velocity, 1) OVER (ORDER BY day) AS acceleration
 FROM (
-    SELECT toDate(event_time) AS day, sum(revenue) AS revenue
-    FROM sales GROUP BY day
+    SELECT
+        day,
+        revenue,
+        revenue - lagInFrame(revenue, 1) OVER (ORDER BY day) AS velocity
+    FROM (
+        SELECT toDate(event_time) AS day, sum(revenue) AS revenue
+        FROM sales GROUP BY day
+    )
 )
 ORDER BY day;
 ```
 
 ## Summary
 
-ClickHouse calculates rate of change using `lag()` and `lagInFrame()` window functions, enabling daily, weekly, and year-over-year comparisons. Second-derivative calculations identify acceleration in growth trends. These patterns are the foundation of growth analytics dashboards.
+ClickHouse calculates rate of change using the `lagInFrame()` window function, enabling daily, weekly, and year-over-year comparisons. Second-derivative calculations identify acceleration in growth trends. These patterns are the foundation of growth analytics dashboards.
