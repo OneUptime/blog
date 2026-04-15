@@ -40,11 +40,11 @@ module.exports = async function (context, documents) {
   });
 
   for (const doc of documents) {
-    // Filter for state changes (not deletions)
+    // Skip documents without expected properties
     if (!doc._ts) continue;
 
     const stateKey = doc.id;
-    const stateValue = doc.data;
+    const stateValue = doc.value;
 
     // Publish change event via Dapr pub/sub
     await client.pubsub.publish('eventhubs-pubsub', 'state-changes', {
@@ -134,7 +134,7 @@ public class StateSyncProcessor
                 new StateChangeEvent
                 {
                     Key = item.Id,
-                    Value = item.Data,
+                    Value = item.Value,
                     ETag = item.ETag
                 });
         }
@@ -172,4 +172,4 @@ module.exports = async function (context, documents) {
 
 ## Summary
 
-Azure Cosmos DB Change Feed with Dapr enables reactive, event-driven architectures where state changes automatically trigger downstream workflows. The change feed provides a durable, ordered log of all mutations, making it ideal for CQRS read model synchronization and audit logging. The lease container tracks processing positions across multiple processor instances for scalable parallel processing.
+Azure Cosmos DB Change Feed with Dapr enables reactive, event-driven architectures where state changes automatically trigger downstream workflows. The change feed provides a durable, ordered log of all inserts and updates, making it ideal for CQRS read model synchronization and audit logging. The lease container tracks processing positions across multiple processor instances for scalable parallel processing.
