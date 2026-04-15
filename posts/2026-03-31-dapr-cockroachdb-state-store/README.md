@@ -38,7 +38,7 @@ cockroach sql --insecure --host=localhost:26257 -e "CREATE DATABASE daprstate;"
 
 ## Creating the CockroachDB State Store Component
 
-Dapr uses the PostgreSQL state store driver for CockroachDB since CockroachDB is PostgreSQL-compatible:
+Dapr provides a dedicated CockroachDB state store component (`state.cockroachdb`) that leverages CockroachDB's PostgreSQL-compatible wire protocol:
 
 ```yaml
 # components/cockroachdb-statestore.yaml
@@ -56,10 +56,10 @@ spec:
         key: connection-string
     - name: actorStateStore
       value: "true"
-    - name: cleanupInterval
-      value: "1h"
-    - name: tablePrefix
-      value: "dapr_"
+    - name: cleanupIntervalInSeconds
+      value: "3600"
+    - name: tableName
+      value: "dapr_state"
 ```
 
 Store the connection string:
