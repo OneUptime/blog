@@ -49,7 +49,8 @@ remote_write:
     queue_config:
       max_samples_per_send: 5000
       batch_send_deadline: 5s
-      max_retries: 3
+      min_backoff: 30ms
+      max_backoff: 5s
 ```
 
 ## Aggregation Rules for Long-Term Storage
@@ -110,7 +111,7 @@ ORDER BY ratio DESC;
 
 ## Cost Benefits
 
-ClickHouse's Gorilla codec achieves 3-4x compression on floating-point metrics compared to Prometheus TSDB format, reducing long-term storage costs significantly.
+ClickHouse's columnar storage format, combined with codecs like Gorilla and Delta plus secondary ZSTD compression, achieves 3-4x better compression on metrics data compared to Prometheus TSDB, reducing long-term storage costs significantly.
 
 ## Summary
 
