@@ -14,7 +14,7 @@ When ClickHouse MergeTree tables have TTL expressions defined, TTL-aware merges 
 
 ClickHouse schedules TTL merges separately from regular compaction merges. When a part contains rows past their TTL deadline, a merge is triggered to either:
 - Delete expired rows (`DELETE` TTL).
-- Move them to another disk or table (`TO DISK`, `TO TABLE` TTL).
+- Move them to another disk or volume (`TO DISK`, `TO VOLUME` TTL).
 
 `merge_with_ttl_timeout` sets the minimum seconds between TTL merge triggers per table.
 
@@ -66,7 +66,7 @@ Development / testing                 60 - 300 (very frequent)
 
 ## Using ttl_only_drop_parts for Efficient Deletion
 
-Combined with `ttl_only_drop_parts = 1`, TTL merges drop entire partitions rather than rewriting rows:
+Combined with `ttl_only_drop_parts = 1`, TTL merges drop entire parts rather than rewriting rows:
 
 ```sql
 CREATE TABLE events (
@@ -81,12 +81,12 @@ SETTINGS
     merge_with_ttl_timeout = 3600;
 ```
 
-With `ttl_only_drop_parts`, only a partition whose ALL rows are expired is dropped. Align TTL with partition key for this optimization to work.
+With `ttl_only_drop_parts`, only a part whose ALL rows are expired is dropped. Align TTL with partition key for this optimization to work.
 
 ## Checking TTL Merge Status
 
 ```sql
--- View tables with TTL defined and last TTL merge time
+-- View tables with TTL defined
 SELECT
     name,
     engine_full,
