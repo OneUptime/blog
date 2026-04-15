@@ -8,7 +8,7 @@ Description: Enable and configure ClickHouse query result cache to serve repeate
 
 ---
 
-ClickHouse 23.2+ includes a built-in query result cache that stores the complete results of SELECT queries. Repeated identical queries are served from cache without touching disk, making dashboard latency consistent.
+ClickHouse 23.1+ includes a built-in query result cache that stores the complete results of SELECT queries. Repeated identical queries are served from cache without touching disk, making dashboard latency consistent.
 
 ## Enable Query Result Cache
 
@@ -35,7 +35,9 @@ FROM user_events
 WHERE event_time >= now() - INTERVAL 30 DAY
 GROUP BY event_date
 ORDER BY event_date
-SETTINGS use_query_cache = true;
+SETTINGS
+  use_query_cache = true,
+  query_cache_nondeterministic_function_handling = 'save';
 ```
 
 ## Set Cache TTL
@@ -49,7 +51,8 @@ WHERE sale_date >= today() - 7
 GROUP BY region
 SETTINGS
   use_query_cache = true,
-  query_cache_ttl = 600;  -- Cache for 10 minutes
+  query_cache_ttl = 600,  -- Cache for 10 minutes
+  query_cache_nondeterministic_function_handling = 'save';
 ```
 
 ## Share Cache Results Across Users
@@ -118,7 +121,9 @@ ALTER USER dashboard_user SETTINGS PROFILE dashboard_profile;
 Avoid caching for:
 
 ```sql
--- Queries with nondeterministic functions won't benefit
+-- Queries with nondeterministic functions (now(), today(), rand()) are not cached by default.
+-- Use query_cache_nondeterministic_function_handling = 'save' to cache them, but
+-- be aware that cached results will contain stale values for those functions.
 SELECT user_id, now() FROM events;  -- now() changes every call
 
 -- Very infrequently repeated queries waste cache space
@@ -127,4 +132,4 @@ SELECT count() FROM events WHERE user_id = 42;
 
 ## Summary
 
-ClickHouse query result caching (23.2+) stores complete SELECT results and serves repeated queries instantly. Configure the cache size in `config.xml`, use `use_query_cache = true` per query or in a settings profile, set TTL with `query_cache_ttl`, and optionally share results across users for public datasets. Use `system.query_cache` to monitor cache utilization.
+ClickHouse query result caching (23.1+) stores complete SELECT results and serves repeated queries instantly. Configure the cache size in `config.xml`, use `use_query_cache = true` per query or in a settings profile, set TTL with `query_cache_ttl`, and optionally share results across users for public datasets. Use `system.query_cache` to monitor cache utilization.
