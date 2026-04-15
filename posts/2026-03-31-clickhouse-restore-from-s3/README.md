@@ -82,9 +82,8 @@ SETTINGS base_backup = S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket
 
 ```sql
 -- Start restore asynchronously
-RESTORE DATABASE my_database
-FROM S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket/clickhouse/backups/2026-03-31-full/my_database/')
-SETTINGS async = true;
+RESTORE ASYNC DATABASE my_database
+FROM S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket/clickhouse/backups/2026-03-31-full/my_database/');
 
 -- Monitor progress
 SELECT
@@ -93,13 +92,13 @@ SELECT
     name,
     start_time,
     num_files,
-    num_processed_files,
-    round(num_processed_files * 100.0 / nullIf(num_files, 0), 1) AS progress_pct,
+    files_read,
+    round(files_read * 100.0 / nullIf(num_files, 0), 1) AS progress_pct,
     formatReadableSize(total_size) AS total_size,
-    formatReadableSize(processed_size) AS processed_size,
+    formatReadableSize(bytes_read) AS bytes_read,
     error
 FROM system.backups
-WHERE status IN ('RESTORING', 'RESTORED', 'FAILED')
+WHERE status IN ('RESTORING', 'RESTORED', 'RESTORE_FAILED')
 ORDER BY start_time DESC
 LIMIT 5;
 ```
@@ -123,18 +122,15 @@ clickhouse-client --query "CREATE DATABASE IF NOT EXISTS my_database"
 
 # Step 5: Restore from the latest full backup
 clickhouse-client --query "
-RESTORE DATABASE my_database
-FROM S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket/clickhouse/backups/2026-03-24-full/my_database/')
-SETTINGS async = true;
+RESTORE ASYNC DATABASE my_database
+FROM S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket/clickhouse/backups/2026-03-24-full/my_database/');
 "
 
 # Step 6: Apply the latest incremental if available
 clickhouse-client --query "
-RESTORE DATABASE my_database
+RESTORE ASYNC DATABASE my_database
 FROM S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket/clickhouse/backups/2026-03-31-incr/my_database/')
-SETTINGS
-    async = true,
-    allow_non_empty_tables = true;
+SETTINGS allow_non_empty_tables = true;
 "
 ```
 
@@ -160,7 +156,7 @@ FROM S3('https://s3.us-east-1.amazonaws.com/${BUCKET}/clickhouse/backups/${BASE_
 "
 
 # Apply each incremental up to the target date
-for DATE in $(seq -f "%g" 0 $(($(date -d "$TARGET_DATE" +%s) - $(date -d "$BASE_DATE" +%s))) 86400 | \
+for DATE in $(seq 0 86400 $(($(date -d "$TARGET_DATE" +%s) - $(date -d "$BASE_DATE" +%s))) | \
              xargs -I{} date -d "$BASE_DATE + {} seconds" +%Y-%m-%d 2>/dev/null); do
     if [ "$DATE" = "$BASE_DATE" ]; then continue; fi
     echo "Applying incremental: ${DATE}"
