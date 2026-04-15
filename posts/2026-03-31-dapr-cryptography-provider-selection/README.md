@@ -75,8 +75,8 @@ spec:
   type: crypto.azure.keyvault
   version: v1
   metadata:
-  - name: vaultURI
-    value: "https://my-vault.vault.azure.net"
+  - name: vaultName
+    value: "my-vault"
   - name: azureClientId
     value: "<managed-identity-id>"
 ```
@@ -86,7 +86,7 @@ spec:
 - Automatic key rotation support
 - Full audit logging
 - Fine-grained access policies
-- Compliance certifications (FIPS 140-2 Level 3)
+- Compliance certifications (FIPS 140-2 Level 2; Level 3 with Managed HSM)
 - Managed by Azure SLA
 
 **Cons:**
@@ -103,9 +103,9 @@ spec:
   type: crypto.dapr.jwks
   version: v1
   metadata:
-  - name: jwksEndpoint
+  - name: jwks
     value: "https://your-jwks-server/.well-known/jwks.json"
-  - name: cacheTTL
+  - name: minRefreshInterval
     value: "1h"
 ```
 
