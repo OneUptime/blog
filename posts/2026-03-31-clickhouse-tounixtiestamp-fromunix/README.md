@@ -48,7 +48,7 @@ Starting from a known epoch value:
 SELECT
     fromUnixTimestamp(1743430427)            AS human_readable,
     toUnixTimestamp(fromUnixTimestamp(1743430427)) AS back_to_epoch;
--- human_readable: 2026-03-31 14:13:47
+-- human_readable: 2025-03-31 14:13:47
 ```
 
 ## Ingesting Epoch Data from External Systems
