@@ -12,13 +12,14 @@ Point-in-time recovery (PITR) in ClickHouse means restoring data to the state it
 
 ## Understanding the PITR Options in ClickHouse
 
-ClickHouse provides three PITR mechanisms:
+ClickHouse provides four PITR mechanisms:
 
 | Method | Granularity | Recovery time | Complexity |
 |---|---|---|---|
 | Incremental backup chain | Daily | Hours | Low |
 | Partition-level restore | Partition boundary | Minutes | Medium |
 | Frozen part copy | Part-level | Minutes | High |
+| Replication lag exploitation | Real-time | Minutes | Medium |
 
 ## Method 1: Restore from Incremental Backup Chain
 
@@ -127,10 +128,9 @@ clickhouse-client --query "ALTER TABLE my_database.events FREEZE WITH NAME 'pre-
 ls /var/lib/clickhouse/shadow/pre-migration-2026-03-31/
 ```
 
-```sql
--- List frozen snapshots
-SELECT *
-FROM system.freeze_snapshots;
+```bash
+# List frozen snapshots by checking the shadow directory
+ls /var/lib/clickhouse/shadow/
 ```
 
 If the migration goes wrong, restore from the freeze:
@@ -139,18 +139,23 @@ If the migration goes wrong, restore from the freeze:
 # Stop writes to the table
 clickhouse-client --query "SYSTEM STOP MERGES my_database.events"
 
-# Drop the damaged table (schema is preserved in system.create_table_query)
+# Drop the damaged table (schema can be retrieved from system.tables: create_table_query column)
 clickhouse-client --query "DROP TABLE my_database.events"
 
 # Re-create the table (get the DDL from backup or log)
 clickhouse-client --query "CREATE TABLE my_database.events (...) ENGINE = ReplicatedMergeTree(...) ORDER BY (...);"
 
-# Copy frozen parts back to the data directory
+# Copy frozen parts back to the detached directory
 sudo cp -r /var/lib/clickhouse/shadow/pre-migration-2026-03-31/data/my_database/events/* \
            /var/lib/clickhouse/data/my_database/events/detached/
 
-# Attach the parts
-clickhouse-client --query "ALTER TABLE my_database.events ATTACH PARTITION ID 'all';"
+# Fix ownership so ClickHouse can read the files
+sudo chown -R clickhouse:clickhouse /var/lib/clickhouse/data/my_database/events/detached/
+
+# Attach each part individually (there is no single command to attach all parts)
+for part in $(ls /var/lib/clickhouse/data/my_database/events/detached/); do
+    clickhouse-client --query "ALTER TABLE my_database.events ATTACH PART '${part}';"
+done
 
 # Resume merges
 clickhouse-client --query "SYSTEM START MERGES my_database.events"
@@ -179,14 +184,18 @@ SYSTEM STOP REPLICATION QUEUES;
 SELECT count(), max(event_time)
 FROM my_database.events
 WHERE event_time < '2026-03-27 14:32:00';
+```
 
--- Export the needed data
+```bash
+# Export the needed data
 clickhouse-client --query "
 SELECT *
 FROM my_database.events
 WHERE event_time < '2026-03-27 14:32:00' AND event_date = '2026-03-26'
 " > /tmp/recovered_events.tsv
+```
 
+```sql
 -- Resume replication when done
 SYSTEM START REPLICATION QUEUES;
 ```
