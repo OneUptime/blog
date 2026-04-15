@@ -20,10 +20,12 @@ Apache Pulsar --> Custom Consumer App --> ClickHouse HTTP/Native
 
 ## Option 1: Pulsar Kafka Compatibility Layer
 
-Pulsar supports the Kafka protocol natively. Enable it in your Pulsar configuration:
+Pulsar supports the Kafka protocol through the KoP (Kafka on Pulsar) protocol handler. KoP is not bundled with Pulsar and must be downloaded separately from the [KoP releases page](https://github.com/streamnative/kop/releases). Place the `.nar` file in a `protocols` directory, then enable it in your Pulsar configuration:
 
 ```bash
 # broker.conf
+messagingProtocols=kafka
+protocolHandlerDirectory=./protocols
 kafkaListeners=PLAINTEXT://0.0.0.0:9092
 kafkaAdvertisedListeners=PLAINTEXT://pulsar-host:9092
 ```
@@ -81,15 +83,17 @@ ch_client = clickhouse_driver.Client(host='localhost')
 buffer = []
 
 while True:
-    msg = consumer.receive(timeout_millis=1000)
-    if msg:
+    try:
+        msg = consumer.receive(timeout_millis=1000)
         data = json.loads(msg.data())
         buffer.append(data)
         consumer.acknowledge(msg)
+    except pulsar.Timeout:
+        pass
 
     if len(buffer) >= 1000:
         ch_client.execute(
-            'INSERT INTO events (event_time, event_type, user_id) VALUES',
+            'INSERT INTO events (event_time, event_type, user_id, payload) VALUES',
             buffer
         )
         buffer = []
@@ -97,7 +101,7 @@ while True:
 
 ## Topic Naming in Pulsar
 
-Pulsar topic names follow a three-part naming scheme: `persistent://tenant/namespace/topic`. When using the Kafka compatibility layer, use the full Pulsar topic name as the Kafka topic:
+Pulsar topic names follow a four-part naming scheme: `{persistent|non-persistent}://tenant/namespace/topic`. When using the Kafka compatibility layer, use the full Pulsar topic name as the Kafka topic:
 
 ```sql
 kafka_topic_list = 'persistent://public/default/events',
