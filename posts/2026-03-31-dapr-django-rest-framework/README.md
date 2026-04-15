@@ -21,6 +21,8 @@ pip install djangorestframework dapr
 Add DRF to your `settings.py`:
 
 ```python
+import os
+
 INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.auth',
