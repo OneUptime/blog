@@ -83,7 +83,7 @@ struct InsertEvent {
     ts:         u32,  // Unix timestamp
 }
 
-let mut insert = client.insert("events")?;
+let mut insert = client.insert("events").await?;
 
 insert.write(&InsertEvent {
     user_id: 42,
@@ -100,11 +100,11 @@ For large result sets, use a cursor to avoid loading everything into memory.
 
 ```rust
 let mut cursor = client
-    .query("SELECT event_name, cnt FROM events_daily")
+    .query("SELECT event_name, cnt, avg_ms FROM events_daily")
     .fetch::<EventRow>()?;
 
 while let Some(row) = cursor.next().await? {
-    println!("{}: {}", row.event_name, row.cnt);
+    println!("{}: {} events, {:.2} ms avg", row.event_name, row.cnt, row.avg_ms);
 }
 ```
 
@@ -113,8 +113,8 @@ while let Some(row) = cursor.next().await? {
 ```rust
 use clickhouse::error::Error;
 
-match client.query("SELECT 1").fetch_one::<(u8,)>().await {
-    Ok((v,)) => println!("Value: {}", v),
+match client.query("SELECT 1").fetch_one::<u8>().await {
+    Ok(v) => println!("Value: {}", v),
     Err(Error::Network(e)) => eprintln!("Network error: {}", e),
     Err(e) => eprintln!("Error: {}", e),
 }
