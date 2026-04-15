@@ -115,7 +115,7 @@ SELECT
     read_rows,
     result_rows,
     query_duration_ms,
-    ProfileEvents['HashJoinSteps'] AS hash_join_steps
+    ProfileEvents['SelectedMarks'] AS selected_marks
 FROM system.query_log
 WHERE query LIKE '%IN premium_users%'
   AND type = 'QueryFinish'
