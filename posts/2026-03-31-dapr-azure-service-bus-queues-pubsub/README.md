@@ -87,6 +87,7 @@ curl -X POST http://localhost:3500/v1.0/publish/servicebus-pubsub/task-queue \
 ## Processing Tasks in Java
 
 ```java
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
@@ -126,7 +127,7 @@ az monitor metrics alert create \
   --name dlq-alert \
   --resource-group dapr-demo \
   --scopes /subscriptions/.../dapr-servicebus \
-  --condition "avg DeadLetteredMessageCount > 10" \
+  --condition "avg DeadletteredMessages > 10" \
   --window-size 5m \
   --evaluation-frequency 1m
 ```
