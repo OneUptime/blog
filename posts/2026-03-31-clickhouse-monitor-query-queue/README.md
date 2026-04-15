@@ -32,7 +32,7 @@ SELECT
     (SELECT count() FROM system.processes)                         AS active_queries,
     (SELECT value FROM system.metrics WHERE metric = 'Query')      AS tracked_queries,
     (SELECT value FROM system.metrics WHERE metric = 'DelayedInserts') AS delayed_inserts,
-    (SELECT value FROM system.settings WHERE name = 'max_concurrent_queries') AS max_concurrent;
+    (SELECT value FROM system.server_settings WHERE name = 'max_concurrent_queries') AS max_concurrent;
 ```
 
 List all running queries with elapsed time:
@@ -142,16 +142,14 @@ Also check for queries waiting on semaphores or IO:
 SELECT
     query_id,
     thread_id,
-    query_id,
     thread_name,
-    os_user_time,
-    os_system_time,
-    os_wait_time,
-    os_wait_time / (os_user_time + os_system_time + 1) AS wait_ratio
+    ProfileEvents['OSCPUVirtualTimeMicroseconds'] AS cpu_time_us,
+    ProfileEvents['OSCPUWaitMicroseconds']        AS wait_time_us,
+    ProfileEvents['OSCPUWaitMicroseconds'] / (ProfileEvents['OSCPUVirtualTimeMicroseconds'] + 1) AS wait_ratio
 FROM system.query_thread_log
 WHERE
     event_time >= now() - INTERVAL 5 MINUTE
-    AND os_wait_time > os_user_time
+    AND ProfileEvents['OSCPUWaitMicroseconds'] > ProfileEvents['OSCPUVirtualTimeMicroseconds']
 ORDER BY wait_ratio DESC
 LIMIT 20;
 ```
@@ -188,10 +186,10 @@ sudo tee /etc/clickhouse-server/config.d/concurrency.xml > /dev/null <<'EOF'
     <!-- Maximum concurrent queries (default 100) -->
     <max_concurrent_queries>200</max_concurrent_queries>
 
-    <!-- Queue size when max_concurrent_queries is reached -->
+    <!-- Maximum concurrent queries per user -->
     <max_concurrent_queries_for_user>50</max_concurrent_queries_for_user>
 
-    <!-- Maximum wait time in the queue in milliseconds -->
+    <!-- Maximum number of queries waiting in queue when max_concurrent_queries is reached -->
     <max_waiting_queries>50</max_waiting_queries>
 
     <!-- Background pool sizes -->
