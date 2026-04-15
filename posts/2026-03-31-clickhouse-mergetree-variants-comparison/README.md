@@ -64,7 +64,7 @@ CREATE TABLE hourly_stats (
 ORDER BY (user_id, hour);
 ```
 
-Merges rows with the same key by summing numeric columns. Non-numeric columns use the first value seen.
+Merges rows with the same key by summing numeric columns. Non-numeric, non-key columns retain an arbitrary value from the merged rows.
 
 ## AggregatingMergeTree - Flexible Aggregation
 
