@@ -40,7 +40,19 @@ Use simple language suitable for intermediate developers.""",
 - Cleaner, more readable code
 - Better design patterns
 - Reduced complexity
-Show the refactored version with explanations."""
+Show the refactored version with explanations.""",
+
+    "generate": """You are an expert programmer. Generate clean, production-ready code:
+- Include error handling
+- Add docstrings/comments
+- Follow language best practices
+Return only the code with inline comments.""",
+
+    "test": """You are a testing expert. Generate comprehensive tests:
+- Cover happy path, edge cases, and error scenarios
+- Use clear test names describing the behavior
+- Include setup and teardown where needed
+Follow the specified testing framework conventions."""
 }
 
 @app.route('/api/code/review', methods=['POST'])
@@ -78,7 +90,7 @@ Requirements:
 - Follow {language} best practices
 Return only the code with inline comments."""
 
-    return call_code_llm(prompt, "review")
+    return call_code_llm(prompt, "generate")
 
 @app.route('/api/code/tests', methods=['POST'])
 def generate_tests():
@@ -94,14 +106,14 @@ Include edge cases, error scenarios, and happy path tests.
 {code}
 ```"""
 
-    return call_code_llm(prompt, "review")
+    return call_code_llm(prompt, "test")
 
 def call_code_llm(prompt: str, mode: str):
     system_prompt = SYSTEM_PROMPTS.get(mode, "")
     inputs = []
     if system_prompt:
-        inputs.append({"message": system_prompt, "role": "system"})
-    inputs.append({"message": prompt, "role": "user"})
+        inputs.append({"content": system_prompt, "role": "system"})
+    inputs.append({"content": prompt, "role": "user"})
 
     response = requests.post(
         f"{DAPR_URL}/v1.0-alpha1/conversation/{CODE_LLM}/converse",
