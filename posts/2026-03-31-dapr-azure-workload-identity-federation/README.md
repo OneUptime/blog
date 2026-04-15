@@ -64,7 +64,7 @@ az identity federated-credential create \
   --resource-group my-rg \
   --issuer "$OIDC_ISSUER" \
   --subject "system:serviceaccount:default:my-dapr-app" \
-  --audience "api://AzureADTokenExchange"
+  --audiences "api://AzureADTokenExchange"
 ```
 
 ## Assign Azure RBAC Roles
@@ -139,9 +139,13 @@ kind: Deployment
 metadata:
   name: my-dapr-app
 spec:
+  selector:
+    matchLabels:
+      app: my-dapr-app
   template:
     metadata:
       labels:
+        app: my-dapr-app
         azure.workload.identity/use: "true"
       annotations:
         dapr.io/enabled: "true"
