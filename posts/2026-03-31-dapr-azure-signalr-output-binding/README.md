@@ -48,8 +48,6 @@ spec:
         key: connectionString
     - name: hub
       value: "notifications"
-    - name: aadToken
-      value: ""
 ```
 
 ```bash
@@ -59,7 +57,7 @@ kubectl create secret generic signalr-secrets \
 
 ## Sending Messages to All Clients
 
-Use the `clientSentEvent` operation to broadcast to all connected clients:
+Use the `create` operation to broadcast to all connected clients:
 
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
@@ -67,8 +65,8 @@ const client = new DaprClient();
 
 async function broadcastSystemAlert(message, severity) {
   await client.binding.send("realtime-notifier", "create", {
-    target: "systemAlert",
-    arguments: [
+    Target: "systemAlert",
+    Arguments: [
       {
         message,
         severity,
@@ -91,11 +89,11 @@ async function notifyUser(userId, eventType, data) {
     "realtime-notifier",
     "create",
     {
-      target: eventType,
-      arguments: [data],
+      Target: eventType,
+      Arguments: [data],
     },
     {
-      userId,
+      user: userId,
     }
   );
 
@@ -119,8 +117,8 @@ async function notifyGroup(groupName, eventType, data) {
     "realtime-notifier",
     "create",
     {
-      target: eventType,
-      arguments: [data],
+      Target: eventType,
+      Arguments: [data],
     },
     {
       group: groupName,
