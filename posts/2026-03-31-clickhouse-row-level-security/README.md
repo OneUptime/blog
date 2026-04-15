@@ -21,7 +21,7 @@ Row policies are useful when:
 
 ## How Row Policies Work
 
-A row policy is defined with `CREATE ROW POLICY` and contains a `USING` clause that is an SQL expression evaluating to a boolean. ClickHouse appends this expression as an `AND` condition to the `WHERE` clause of every `SELECT`, `INSERT`, and `DELETE` that touches the table.
+A row policy is defined with `CREATE ROW POLICY` and contains a `USING` clause that is an SQL expression evaluating to a boolean. ClickHouse appends this expression as an `AND` condition to the `WHERE` clause of every `SELECT` query on that table, including subqueries and the `SELECT` part of `INSERT ... SELECT` statements.
 
 ## Example Table Setup
 
@@ -115,19 +115,9 @@ CREATE ROW POLICY us_region_policy
 GRANT us_reader TO tenant_101;
 ```
 
-## Restricting INSERT with Row Policies
+## Row Policies and INSERT ... SELECT
 
-Row policies also apply to `INSERT ... SELECT` operations:
-
-```sql
-CREATE ROW POLICY restrict_insert_101
-    ON multitenant.orders
-    FOR INSERT
-    USING tenant_id = 101
-    TO tenant_101;
-```
-
-This prevents `tenant_101` from inserting rows with any `tenant_id` other than 101 via `INSERT ... SELECT`.
+Row policies defined `FOR SELECT` also filter the `SELECT` part of `INSERT ... SELECT` operations. For example, if `tenant_101` has a row policy restricting them to `tenant_id = 101`, then an `INSERT ... SELECT` run by that user will only read rows matching the policy filter. Note that row policies do not restrict direct `INSERT VALUES` statements — they make sense only for users with readonly access.
 
 ## Default Restrictive Policy
 
@@ -216,7 +206,7 @@ CREATE ROW POLICY dynamic_tenant_policy
 
 - Row policies add a `WHERE` filter internally. They do not hide column names or schema.
 - The `default` user and users with `SHOW ROW POLICIES` privilege can inspect all policies.
-- Row policies apply to all query types including `SELECT`, `INSERT ... SELECT`, and subqueries.
+- Row policies apply to `SELECT` queries, including subqueries and the `SELECT` part of `INSERT ... SELECT` statements. They do not filter `DELETE` or direct `INSERT VALUES` operations.
 - Policies are enforced server-side and cannot be bypassed by the client.
 
 ## Summary
