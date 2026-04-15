@@ -45,7 +45,7 @@ rabbitmq_password          Password for authentication
 
 ## Setting Up the Materialized View Pipeline
 
-The RabbitMQ table is a source-only table - you cannot INSERT into it. Create a Materialized View to push consumed data into a MergeTree table:
+SELECT queries on a RabbitMQ table read each message only once, making them unsuitable for production use. Create a Materialized View to continuously consume and persist data into a MergeTree table:
 
 ```sql
 -- Target MergeTree table
