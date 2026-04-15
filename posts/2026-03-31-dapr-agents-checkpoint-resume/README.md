@@ -22,7 +22,7 @@ Use Dapr's actor model to build a stateful agent that checkpoints automatically:
 
 ```python
 from dapr.actor import Actor, ActorInterface, actormethod
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 from dataclasses import dataclass, asdict
 import json
 
@@ -46,7 +46,7 @@ class ResumableAgentInterface(ActorInterface):
 class ResumableAgent(Actor, ResumableAgentInterface):
     def __init__(self, ctx, actor_id):
         super().__init__(ctx, actor_id)
-        self.llm = OpenAIChat(model="gpt-4o")
+        self.llm = OpenAIChatClient(model="gpt-4o")
 
     async def _on_activate(self) -> None:
         # Load saved state on activation (or create fresh state)
@@ -64,13 +64,13 @@ class ResumableAgent(Actor, ResumableAgentInterface):
 
         for i, step in enumerate(steps[state["current_step"]:], state["current_step"]):
             # Run LLM step
-            result = self.llm.complete(step["prompt"])
+            result = self.llm.generate(step["prompt"])
 
             # Save checkpoint after each step
             state["completed_steps"].append({
                 "step": i,
                 "prompt": step["prompt"],
-                "result": result.text
+                "result": result.get_message().content
             })
             state["current_step"] = i + 1
             await self._state_manager.set_state("agent_state", state)
@@ -89,20 +89,24 @@ class ResumableAgent(Actor, ResumableAgentInterface):
 ```python
 # app.py
 import asyncio
+from datetime import timedelta
 from dapr.actor.runtime.runtime import ActorRuntime
 from dapr.actor.runtime.config import ActorRuntimeConfig, ActorTypeConfig
 
-ActorRuntime.set_actor_config(
-    ActorRuntimeConfig(
-        actor_idle_timeout="1h",
-        actor_scan_interval="30s",
-        actor_types=[
-            ActorTypeConfig(actor_type="ResumableAgent")
-        ]
+async def setup():
+    ActorRuntime.set_actor_config(
+        ActorRuntimeConfig(
+            actor_idle_timeout=timedelta(hours=1),
+            actor_scan_interval=timedelta(seconds=30),
+            actor_type_configs=[
+                ActorTypeConfig(actor_type="ResumableAgent")
+            ]
+        )
     )
-)
 
-ActorRuntime.register_actor(ResumableAgent)
+    await ActorRuntime.register_actor(ResumableAgent)
+
+asyncio.run(setup())
 
 # Keep the server running
 asyncio.get_event_loop().run_forever()
@@ -134,13 +138,13 @@ async def run_resumable_task():
 For agents that are not actors, use the Dapr state API directly:
 
 ```python
-from dapr import Client
+from dapr.clients import DaprClient
 import json
 
 class CheckpointableAgent:
     def __init__(self, task_id: str):
         self.task_id = task_id
-        self.client = Client()
+        self.client = DaprClient()
         self.state = self._load_checkpoint()
 
     def _load_checkpoint(self) -> dict:
