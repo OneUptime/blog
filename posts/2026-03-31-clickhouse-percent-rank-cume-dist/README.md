@@ -141,22 +141,24 @@ An employee at the 80th percentile within their department earns more than 80% o
 
 ## Building a Cumulative Distribution Function
 
-`CUME_DIST()` directly produces the CDF of a variable - the fraction of the population at or below each observed value. This is useful for visualizing metric distributions:
+`CUME_DIST()` directly produces the CDF when each row represents one observation. When you bucket data with `GROUP BY`, each row represents a bucket rather than an individual observation, so `CUME_DIST()` would give the fraction of buckets at or below a value — not the fraction of requests. Instead, use a cumulative sum of counts divided by the total:
 
 ```sql
 SELECT
     response_time_bucket,
-    COUNT()                                      AS request_count,
-    ROUND(CUME_DIST() OVER (
+    request_count,
+    ROUND(SUM(request_count) OVER (
         ORDER BY response_time_bucket ASC
-    ) * 100, 2)                                  AS cdf_pct
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) * 100.0 / SUM(request_count) OVER (), 2) AS cdf_pct
 FROM (
     SELECT
-        intDiv(response_time_ms, 10) * 10 AS response_time_bucket
+        intDiv(response_time_ms, 10) * 10 AS response_time_bucket,
+        COUNT()                            AS request_count
     FROM api_response_times
     WHERE request_date = today() - 1
+    GROUP BY response_time_bucket
 )
-GROUP BY response_time_bucket
 ORDER BY response_time_bucket;
 ```
 
