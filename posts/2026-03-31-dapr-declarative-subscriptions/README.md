@@ -22,7 +22,7 @@ Declarative subscriptions are preferred for production environments because they
 Create a `Subscription` CRD resource:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
@@ -30,7 +30,8 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /handlers/orders
+  routes:
+    default: /handlers/orders
 scopes:
 - order-processor
 ```
@@ -43,7 +44,7 @@ kubectl apply -f orders-subscription.yaml
 
 ## Multi-Route Declarative Subscription
 
-Use `dapr.io/v2alpha1` for subscriptions with routing rules:
+Use routing rules within the `routes` field for content-based routing:
 
 ```yaml
 apiVersion: dapr.io/v2alpha1
@@ -129,11 +130,13 @@ You can add metadata to declarative subscriptions for broker-specific behavior:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /handlers/orders
+  routes:
+    default: /handlers/orders
   metadata:
-    maxConcurrentHandlers: "10"
-    ackWaitTime: "30s"
+    rawPayload: "true"
 ```
+
+The `rawPayload` metadata option tells Dapr to deliver the raw event payload without CloudEvent envelope wrapping, which is useful when subscribing to events from external systems that do not use the CloudEvent format.
 
 ## Summary
 
