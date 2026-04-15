@@ -32,7 +32,7 @@ graph LR
 For the same hardware resources, ClickHouse consistently outperforms Snowflake on analytical query benchmarks, often by 5-50x on single-table aggregation queries.
 
 ```sql
--- Both: time-series aggregation over 1 billion rows
+-- ClickHouse: time-series aggregation over 1 billion rows
 SELECT
     toStartOfDay(event_time)  AS day,
     event_type,
@@ -43,6 +43,12 @@ WHERE event_time >= '2024-01-01'
   AND event_time  < '2025-01-01'
 GROUP BY day, event_type
 ORDER BY day, event_count DESC;
+
+-- Snowflake equivalent:
+-- SELECT DATE_TRUNC('DAY', event_time) AS day, event_type,
+--        COUNT(*) AS event_count, COUNT(DISTINCT user_id) AS unique_users
+-- FROM events WHERE event_time >= '2024-01-01' AND event_time < '2025-01-01'
+-- GROUP BY day, event_type ORDER BY day, event_count DESC;
 ```
 
 On a comparable XL cluster (Snowflake XL warehouse vs 4 ClickHouse nodes), ClickHouse typically returns this in 1-3 seconds. Snowflake returns it in 10-30 seconds.
@@ -51,7 +57,7 @@ Snowflake's performance is more consistent across diverse query patterns due to 
 
 ## Cost Structure
 
-Snowflake pricing is based on credit consumption per virtual warehouse size per hour, plus storage. An XL warehouse costs roughly $16/credit and consumes 16 credits/hour when active.
+Snowflake pricing is based on credit consumption per virtual warehouse size per hour, plus storage. An XL warehouse consumes 16 credits/hour when active, with each credit costing roughly $2-$4 depending on the edition.
 
 ```text
 Snowflake XL Warehouse (running 8 hours/day, 22 days/month):
