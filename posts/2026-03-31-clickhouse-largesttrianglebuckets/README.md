@@ -20,7 +20,7 @@ largestTriangleThreeBuckets(N)(x, y)
 - `x` - the x-axis column (typically a timestamp or sequential integer).
 - `y` - the y-axis column (the metric value).
 
-Returns `Array(Tuple(x, y))` - an array of N (x, y) pairs selected to best preserve the visual shape of the series.
+Returns `Array(Tuple(Float64, Float64))` - an array of N (x, y) pairs selected to best preserve the visual shape of the series.
 
 ## How LTTB Works
 
@@ -35,7 +35,7 @@ FROM numbers(100);
 
 ```text
 downsampled
-[(0,0),(24,0.9165),(49,-0.2752),(74,0.7087),(99,-0.5440)]
+[(0,0),(24,0.6755),(49,-0.9825),(74,0.8987),(99,-0.4575)]
 ```
 
 Five representative points from 100, chosen to maintain the sine wave shape.
@@ -141,7 +141,7 @@ ARRAY JOIN pts AS pt
 ORDER BY ts_unix;
 ```
 
-LTTB will always include the actual peak and trough of the series; uniform subsampling may skip them entirely if they fall between sampled intervals.
+LTTB is much more likely to include the actual peak and trough of the series because it maximizes triangle area in each bucket; uniform subsampling may skip them entirely if they fall between sampled intervals.
 
 ## Choosing N
 
