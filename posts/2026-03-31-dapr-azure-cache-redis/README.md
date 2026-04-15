@@ -69,7 +69,7 @@ spec:
     secretStore: azurekeyvault
 ```
 
-Enable the Managed Identity on your AKS node pool and assign the `Cache Contributor` role.
+Enable the Managed Identity on your AKS node pool and assign the `Data Owner` access policy for Redis data operations.
 
 ## Pub/Sub with Azure Cache for Redis
 
@@ -138,8 +138,6 @@ spec:
   metadata:
   - name: actorStateStore
     value: "true"
-  - name: actorStateStoreName
-    value: statestore
 ```
 
 ## Summary
