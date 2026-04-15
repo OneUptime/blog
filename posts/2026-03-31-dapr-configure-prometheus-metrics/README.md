@@ -86,7 +86,7 @@ Add a separate job for control plane metrics:
         - dapr-operator.dapr-system:9090
         - dapr-sentry.dapr-system:9090
         - dapr-placement-server.dapr-system:9090
-        - dapr-dashboard.dapr-system:8080
+        - dapr-sidecar-injector.dapr-system:9090
     metrics_path: /metrics
     relabel_configs:
       - source_labels: [__address__]
@@ -135,10 +135,10 @@ Navigate to `http://localhost:9090/targets` and look for the `dapr-sidecars` job
 rate(dapr_http_server_request_count[5m])
 
 # P99 latency per app
-histogram_quantile(0.99, rate(dapr_http_server_latency_ms_bucket[5m]))
+histogram_quantile(0.99, rate(dapr_http_server_latency_bucket[5m]))
 
 # Error rate
-rate(dapr_http_server_request_count{status_code!~"2.."}[5m])
+rate(dapr_http_server_request_count{status!~"2.."}[5m])
 ```
 
 ## Summary
