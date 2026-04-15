@@ -14,12 +14,12 @@ Description: Learn how to use ReplicatedSummingMergeTree in ClickHouse to automa
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/macros.xml -->
-<yandex>
+<clickhouse>
   <macros>
     <shard>01</shard>
     <replica>replica-01</replica>
   </macros>
-</yandex>
+</clickhouse>
 ```
 
 ## Creating a ReplicatedSummingMergeTree Table
@@ -44,7 +44,7 @@ PARTITION BY toYYYYMM(event_date)
 ORDER BY (event_date, country, product_id);
 ```
 
-All numeric columns are summed. Non-numeric columns in `ORDER BY` are kept as-is (they are dimension columns).
+All numeric columns outside the `ORDER BY` key are summed during merges. Columns in `ORDER BY` are dimension columns and are never summed, regardless of their type.
 
 ## Inserting Increments
 
