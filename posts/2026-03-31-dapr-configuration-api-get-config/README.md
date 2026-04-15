@@ -74,32 +74,25 @@ Use the Redis CLI to add configuration values:
 # Connect to Redis
 kubectl exec -it deployment/redis -- redis-cli
 
-# Add configuration items
-SET myapp||max-retries "3"
-SET myapp||timeout-seconds "30"
-SET myapp||log-level "info"
-SET myapp||feature-new-ui "false"
+# Add configuration items (value format: <value>||<version>)
+MSET max-retries "3||1" timeout-seconds "30||1" log-level "info||1" feature-new-ui "false||1"
 ```
 
-The key format is `<app-id>||<key-name>`.
+The key is a plain string. The value format is `<value>||<version>`, where the version is an integer used for change tracking.
 
 ## Retrieve Configuration via HTTP
 
 ```bash
 # Get a single key
-curl "http://localhost:3500/v1.0-alpha1/configuration/appconfig?key=max-retries"
+curl "http://localhost:3500/v1.0/configuration/appconfig?key=max-retries"
 ```
 
 Response:
 
 ```json
 {
-  "items": {
-    "max-retries": {
-      "value": "3",
-      "version": "",
-      "metadata": {}
-    }
+  "max-retries": {
+    "value": "3"
   }
 }
 ```
@@ -107,15 +100,19 @@ Response:
 Retrieve multiple keys at once:
 
 ```bash
-curl "http://localhost:3500/v1.0-alpha1/configuration/appconfig?key=max-retries&key=timeout-seconds&key=log-level"
+curl "http://localhost:3500/v1.0/configuration/appconfig?key=max-retries&key=timeout-seconds&key=log-level"
 ```
 
 ## Retrieve Configuration in Node.js
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, CommunicationProtocolEnum } = require('@dapr/dapr');
 
-const client = new DaprClient();
+const client = new DaprClient({
+  daprHost: '127.0.0.1',
+  daprPort: '3500',
+  communicationProtocol: CommunicationProtocolEnum.GRPC,
+});
 
 async function getAppConfig() {
   const config = await client.configuration.get(
@@ -130,8 +127,12 @@ async function getAppConfig() {
   };
 }
 
-const appConfig = await getAppConfig();
-console.log(`Max retries: ${appConfig.maxRetries}`);
+async function main() {
+  const appConfig = await getAppConfig();
+  console.log(`Max retries: ${appConfig.maxRetries}`);
+}
+
+main();
 ```
 
 ## Using Configuration in Your Application Logic
@@ -142,12 +143,11 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def get_config_cached():
-    # Cache the config for 60 seconds
     resp = httpx.get(
-        "http://localhost:3500/v1.0-alpha1/configuration/appconfig",
+        "http://localhost:3500/v1.0/configuration/appconfig",
         params={"key": ["max-retries", "timeout-seconds"]}
     )
-    return resp.json()["items"]
+    return resp.json()
 
 def get_max_retries() -> int:
     return int(get_config_cached()["max-retries"]["value"])
