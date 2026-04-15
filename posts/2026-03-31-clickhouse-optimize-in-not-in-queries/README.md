@@ -91,7 +91,7 @@ LEFT ANTI JOIN blocked_users AS b ON e.user_id = b.user_id;
 ```sql
 SET max_rows_in_set = 10000000;     -- max rows in IN hash set
 SET max_bytes_in_set = 500000000;   -- max bytes in IN hash set
-SET transform_null_in = 1;          -- treat NULL IN set correctly
+SET transform_null_in = 1;          -- enable NULL = NULL matching in IN clauses
 ```
 
 ## Summary
