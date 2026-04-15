@@ -50,12 +50,13 @@ Enable span logging in config.xml:
 
 ## Enabling Trace Context Propagation
 
-ClickHouse reads the W3C `traceparent` header from HTTP requests automatically. No additional configuration is needed. For native TCP connections, pass the trace context in query settings:
+ClickHouse reads the W3C `traceparent` header from HTTP requests automatically. No additional configuration is needed. For native TCP connections using `clickhouse-client`, pass the trace context via CLI flags:
 
-```sql
-SET opentelemetry_tracestate = 'vendorname=value';
-SET opentelemetry_traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
-SELECT count() FROM events;
+```bash
+clickhouse-client \
+  --opentelemetry-traceparent '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  --opentelemetry-tracestate 'vendorname=value' \
+  --query "SELECT count() FROM events"
 ```
 
 ## Sending Requests with Trace Context via HTTP
@@ -79,9 +80,11 @@ SELECT
     start_time_us,
     finish_time_us,
     (finish_time_us - start_time_us) / 1000 AS duration_ms,
-    attribute
+    attribute.names,
+    attribute.values
 FROM system.opentelemetry_span_log
-WHERE event_time >= now() - INTERVAL 1 HOUR
+WHERE finish_date >= today() - 1
+  AND start_time_us >= (toUnixTimestamp(now()) - 3600) * 1000000
 ORDER BY start_time_us DESC
 LIMIT 20;
 ```
@@ -94,20 +97,20 @@ Use a Vector or Fluent Bit pipeline to read from `system.opentelemetry_span_log`
 # vector.yaml - read ClickHouse spans and forward to OTLP
 sources:
   clickhouse_spans:
-    type: clickhouse
-    endpoint: "http://localhost:8123"
-    query: |
-      SELECT
-        trace_id,
-        span_id,
-        parent_span_id,
-        operation_name,
-        start_time_us,
-        finish_time_us,
-        attribute
-      FROM system.opentelemetry_span_log
-      WHERE event_time >= now() - INTERVAL 1 MINUTE
-      FORMAT JSONEachRow
+    type: exec
+    mode: scheduled
+    scheduled:
+      exec_interval_secs: 60
+    command:
+      - "clickhouse-client"
+      - "--query"
+      - >
+        SELECT trace_id, span_id, parent_span_id, operation_name,
+        start_time_us, finish_time_us, attribute.names, attribute.values
+        FROM system.opentelemetry_span_log
+        WHERE finish_date >= today() - 1
+        AND start_time_us >= (toUnixTimestamp(now()) - 60) * 1000000
+        FORMAT JSONEachRow
 
 sinks:
   otlp_collector:
@@ -119,12 +122,23 @@ sinks:
 
 ## opentelemetry_start_trace_probability
 
-You can configure ClickHouse to start new root spans for a percentage of queries even when no incoming trace context is present:
+You can configure ClickHouse to start new root spans for a percentage of queries even when no incoming trace context is present. This is a session/profile-level setting, not a server config parameter. Set it in a user profile:
 
 ```xml
+<!-- /etc/clickhouse-server/users.d/opentelemetry.xml -->
 <clickhouse>
-    <opentelemetry_start_trace_probability>0.01</opentelemetry_start_trace_probability>
+    <profiles>
+        <default>
+            <opentelemetry_start_trace_probability>0.01</opentelemetry_start_trace_probability>
+        </default>
+    </profiles>
 </clickhouse>
+```
+
+Or set it per session:
+
+```sql
+SET opentelemetry_start_trace_probability = 0.01;
 ```
 
 A value of `0.01` means 1% of queries get a new trace started. This is useful for sampling background query performance without instrumenting every client.
@@ -135,12 +149,14 @@ ClickHouse spans include attributes such as:
 
 | Attribute | Description |
 |---|---|
-| `db.system` | `clickhouse` |
 | `db.statement` | The SQL query text |
-| `db.user` | Authenticated user |
-| `net.peer.ip` | Client IP address |
+| `clickhouse.query_id` | The query ID |
+| `clickhouse.user` | Authenticated user |
 | `clickhouse.read_rows` | Rows read during query |
+| `clickhouse.read_bytes` | Bytes read during query |
 | `clickhouse.written_rows` | Rows written |
+| `clickhouse.written_bytes` | Bytes written |
+| `clickhouse.memory_usage` | Peak memory usage |
 
 ## Summary
 
