@@ -8,7 +8,7 @@ Description: Learn how parseDateTime() and parseDateTimeBestEffort() handle dive
 
 ---
 
-Real-world data arrives in dozens of date formats: ISO 8601, Unix timestamps, US-style `MM/DD/YYYY`, European `DD.MM.YYYY`, HTTP log dates, and more. ClickHouse provides two complementary functions for parsing these strings into `DateTime` values. `parseDateTime()` gives you full control by accepting an explicit strftime-style format pattern. `parseDateTimeBestEffort()` auto-detects the format, trading precision for convenience when ingesting data from heterogeneous sources.
+Real-world data arrives in dozens of date formats: ISO 8601, Unix timestamps, US-style `MM/DD/YYYY`, European `DD.MM.YYYY`, HTTP log dates, and more. ClickHouse provides two complementary functions for parsing these strings into `DateTime` values. `parseDateTime()` gives you full control by accepting an explicit MySQL-style format pattern. `parseDateTimeBestEffort()` auto-detects the format, trading precision for convenience when ingesting data from heterogeneous sources.
 
 ## Function Signatures
 
@@ -20,24 +20,27 @@ parseDateTimeOrNull(str, format)
 parseDateTimeOrNull(str, format, timezone)
 
 parseDateTimeOrZero(str, format)
+parseDateTimeOrZero(str, format, timezone)
 
 parseDateTimeBestEffort(str)
 parseDateTimeBestEffort(str, timezone)
 
 parseDateTimeBestEffortOrNull(str)
+parseDateTimeBestEffortOrNull(str, timezone)
 parseDateTimeBestEffortOrZero(str)
+parseDateTimeBestEffortOrZero(str, timezone)
 ```
 
 The `OrNull` variants return `NULL` on parse failure instead of throwing an exception. The `OrZero` variants return `1970-01-01 00:00:00`. Always prefer `OrNull` for untrusted input so bad rows can be filtered rather than causing query failures.
 
 ## parseDateTime with Explicit Format
 
-Use `parseDateTime` when you know the exact format of the incoming strings. The format uses the same strftime-style specifiers as `formatDateTime`.
+Use `parseDateTime` when you know the exact format of the incoming strings. The format uses MySQL-style specifiers, the same ones accepted by `formatDateTime`. Note that `%i` represents minutes and `%M` represents the full month name, which differs from the C/strftime convention.
 
 ```sql
 SELECT
-    parseDateTime('2026-03-31 14:23:47', '%Y-%m-%d %H:%M:%S') AS iso_datetime,
-    parseDateTime('31/03/2026 14:23',    '%d/%m/%Y %H:%M')    AS eu_datetime,
+    parseDateTime('2026-03-31 14:23:47', '%Y-%m-%d %H:%i:%S') AS iso_datetime,
+    parseDateTime('31/03/2026 14:23',    '%d/%m/%Y %H:%i')    AS eu_datetime,
     parseDateTime('03-31-2026',          '%m-%d-%Y')           AS us_date;
 ```
 
@@ -57,7 +60,7 @@ Web server and application logs use a variety of timestamp formats. The Apache C
 SELECT
     parseDateTime(
         '31/Mar/2026:14:23:47 +0000',
-        '%d/%b/%Y:%H:%M:%S %z'
+        '%d/%b/%Y:%H:%i:%S %z'
     ) AS apache_log_time;
 ```
 
@@ -67,7 +70,7 @@ For Nginx logs that omit the timezone offset, use the `timezone` argument instea
 SELECT
     parseDateTime(
         '2026/03/31 14:23:47',
-        '%Y/%m/%d %H:%M:%S',
+        '%Y/%m/%d %H:%i:%S',
         'UTC'
     ) AS nginx_log_time;
 ```
@@ -119,10 +122,10 @@ If the incoming strings represent local time in a known timezone, specify it as 
 
 ```sql
 SELECT
-    parseDateTime('2026-03-31 09:00:00', '%Y-%m-%d %H:%M:%S', 'America/New_York') AS ny_local,
-    parseDateTime('2026-03-31 09:00:00', '%Y-%m-%d %H:%M:%S', 'Europe/Berlin')    AS de_local;
--- ny_local stores 2026-03-31 13:00:00 UTC
--- de_local stores 2026-03-31 07:00:00 UTC (CET+1 in March, before DST switch)
+    parseDateTime('2026-03-31 09:00:00', '%Y-%m-%d %H:%i:%S', 'America/New_York') AS ny_local,
+    parseDateTime('2026-03-31 09:00:00', '%Y-%m-%d %H:%i:%S', 'Europe/Berlin')    AS de_local;
+-- ny_local stores 2026-03-31 13:00:00 UTC (EDT, UTC-4)
+-- de_local stores 2026-03-31 07:00:00 UTC (CEST, UTC+2 — DST began March 29)
 ```
 
 ## Choosing Between the Two Functions
