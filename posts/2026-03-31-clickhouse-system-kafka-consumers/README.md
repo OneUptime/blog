@@ -39,12 +39,14 @@ SETTINGS
 | `assignments.topic` | Array(String) | Assigned Kafka topics |
 | `assignments.partition_id` | Array(Int32) | Assigned partition numbers |
 | `assignments.current_offset` | Array(Int64) | Current committed offset per partition |
-| `assignments.offset_committed` | Array(Int64) | Last committed offset |
-| `assignments.offset_end` | Array(Int64) | Latest available offset (end of partition) |
-| `assignments.messages_in_flight` | Array(Int64) | Messages being processed |
-| `last_exception_time` | DateTime | Time of the most recent error |
-| `last_exception` | String | Most recent error message |
+| `assignments.intent_size` | Array(Nullable(Int64)) | Messages pushed but not yet committed |
+| `exceptions.time` | Array(DateTime) | Timestamps of the 10 most recent errors |
+| `exceptions.text` | Array(String) | Messages of the 10 most recent errors |
 | `num_messages_read` | UInt64 | Total messages read by this consumer |
+| `num_commits` | UInt64 | Total number of commits by this consumer |
+| `last_poll_time` | DateTime | Most recent polling timestamp |
+| `last_commit_time` | DateTime | Most recent commit timestamp |
+| `rdkafka_stat` | String | Internal librdkafka statistics as JSON |
 
 ## Viewing Active Consumers
 
@@ -54,30 +56,51 @@ SELECT
     table,
     consumer_id,
     length(assignments.topic)            AS assigned_partitions,
-    sum(assignments.current_offset)      AS total_current_offset,
+    arraySum(assignments.current_offset) AS total_current_offset,
     num_messages_read,
-    last_exception_time,
-    last_exception
+    exceptions.time[-1]                  AS last_exception_time,
+    exceptions.text[-1]                  AS last_exception
 FROM system.kafka_consumers
 WHERE table = 'events_kafka'
 ORDER BY consumer_id;
 ```
 
-## Calculating Consumer Lag Per Partition
+## Viewing Current Offsets Per Partition
+
+`system.kafka_consumers` exposes `current_offset` per partition but does not provide end-of-partition offsets directly. To view current offsets per partition:
 
 ```sql
 SELECT
     table,
     consumer_id,
-    arrayJoin(
-        arrayZip(
-            assignments.partition_id,
-            assignments.current_offset,
-            assignments.offset_end,
-            arrayMap((c, e) -> e - c, assignments.current_offset, assignments.offset_end)
-        )
-    ) AS (partition, current_offset, end_offset, lag)
+    t.1 AS partition,
+    t.2 AS current_offset
 FROM system.kafka_consumers
+ARRAY JOIN
+    arrayZip(
+        assignments.partition_id,
+        assignments.current_offset
+    ) AS t
+WHERE table = 'events_kafka'
+ORDER BY partition;
+```
+
+Per-partition consumer lag is available in the `rdkafka_stat` JSON column, which contains internal librdkafka statistics including `consumer_lag` for each partition:
+
+```sql
+SELECT
+    consumer_id,
+    JSONExtractInt(partition_stat, 'consumer_lag') AS lag,
+    JSONExtractInt(partition_stat, 'partition')    AS partition
+FROM system.kafka_consumers
+ARRAY JOIN
+    JSONExtractArrayRaw(
+        JSONExtractRaw(
+            JSONExtractRaw(rdkafka_stat, 'topics'),
+            'events'
+        ),
+        'partitions'
+    ) AS partition_stat
 WHERE table = 'events_kafka'
 ORDER BY lag DESC;
 ```
@@ -94,41 +117,37 @@ flowchart LR
     C --> F
     D --> G[Consumer 1: events_kafka]
     E --> G
-    F & G --> H[system.kafka_consumers: shows offset and lag]
+    F & G --> H[system.kafka_consumers: shows offsets and consumer state]
 ```
 
 ## Detecting Consumers with Errors
+
+Exceptions are stored as arrays (up to the 10 most recent). Use array indexing to access the latest exception:
 
 ```sql
 SELECT
     table,
     consumer_id,
-    last_exception_time,
-    last_exception
+    exceptions.time[-1]  AS last_exception_time,
+    exceptions.text[-1]  AS last_exception
 FROM system.kafka_consumers
-WHERE last_exception != ''
-  AND last_exception_time > now() - INTERVAL 1 HOUR
+WHERE length(exceptions.text) > 0
+  AND exceptions.time[-1] > now() - INTERVAL 1 HOUR
 ORDER BY last_exception_time DESC;
 ```
 
-## Total Lag Across All Consumers
+## Total Messages and Commits Across All Consumers
 
 ```sql
 SELECT
     table,
-    count()       AS consumer_count,
-    sum(
-        arraySum(
-            arrayMap((c, e) -> greatest(0, e - c),
-                assignments.current_offset,
-                assignments.offset_end
-            )
-        )
-    )             AS total_lag
+    count()                AS consumer_count,
+    sum(num_messages_read) AS total_messages_read,
+    sum(num_commits)       AS total_commits
 FROM system.kafka_consumers
 WHERE database = currentDatabase()
 GROUP BY table
-ORDER BY total_lag DESC;
+ORDER BY total_messages_read DESC;
 ```
 
 ## Messages Read per Consumer
@@ -157,39 +176,35 @@ ORDER BY consumer_id;
 
 For `kafka_num_consumers = 4` and 8 partitions, each consumer should have 2 partitions. If assignment is uneven, it may indicate a rebalance is in progress.
 
-## Monitoring Lag Over Time with a MaterializedView
+## Monitoring Consumer Activity Over Time
 
-Create a table to track lag snapshots:
+Create a table to track consumer activity snapshots:
 
 ```sql
-CREATE TABLE kafka_consumer_lag_history
+CREATE TABLE kafka_consumer_activity_history
 (
-    ts             DateTime DEFAULT now(),
-    table_name     String,
-    consumer_id    String,
-    total_lag      Int64
+    ts                DateTime DEFAULT now(),
+    table_name        String,
+    consumer_id       String,
+    num_messages_read UInt64,
+    num_commits       UInt64
 )
 ENGINE = MergeTree()
 ORDER BY (table_name, consumer_id, ts)
 TTL ts + INTERVAL 7 DAY;
 
--- Periodically insert lag snapshots via a scheduled query or external script
-INSERT INTO kafka_consumer_lag_history
+-- Periodically insert activity snapshots via a scheduled query or external script
+INSERT INTO kafka_consumer_activity_history
 SELECT
     now(),
     table,
     consumer_id,
-    sum(arraySum(
-        arrayMap((c, e) -> greatest(0, e - c),
-            assignments.current_offset,
-            assignments.offset_end
-        )
-    ))
+    num_messages_read,
+    num_commits
 FROM system.kafka_consumers
-WHERE database = currentDatabase()
-GROUP BY table, consumer_id;
+WHERE database = currentDatabase();
 ```
 
 ## Summary
 
-`system.kafka_consumers` is the primary tool for monitoring Kafka engine consumer health in ClickHouse. Use it to check partition assignments, calculate per-partition lag, detect consumers with errors, and verify balanced load distribution across consumer threads. Track lag over time by periodically snapshotting this view into a history table, enabling alerting when lag exceeds acceptable thresholds.
+`system.kafka_consumers` is the primary tool for monitoring Kafka engine consumer health in ClickHouse. Use it to check partition assignments, detect consumers with errors, view message throughput, and verify balanced load distribution across consumer threads. Per-partition consumer lag is available through the `rdkafka_stat` JSON column. Track consumer activity over time by periodically snapshotting this view into a history table, enabling alerting when throughput drops or errors accumulate.
