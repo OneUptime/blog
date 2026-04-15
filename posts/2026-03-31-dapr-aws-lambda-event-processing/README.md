@@ -24,14 +24,13 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: order-processor
-  annotations:
-    dapr.io/enabled: "true"
-    dapr.io/app-id: "order-processor"
-    dapr.io/app-port: "8080"
 spec:
   template:
     metadata:
       annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-processor"
+        dapr.io/app-port: "8080"
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "100"
     spec:
@@ -84,7 +83,6 @@ def handle_order():
 ```python
 # lambda_function.py
 import json
-import boto3
 
 def lambda_handler(event, context):
     order = event.get('data', {})
