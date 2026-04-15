@@ -41,7 +41,7 @@ CREATE FUNCTION is_high_value AS (ltv) -> ltv > 1000;
 -- Returns Float64
 CREATE FUNCTION annualize AS (monthly_rate) -> monthly_rate * 12;
 
--- Returns DateTime
+-- Returns Date
 CREATE FUNCTION next_monday AS (dt) ->
     toMonday(dt + INTERVAL 7 DAY);
 ```
