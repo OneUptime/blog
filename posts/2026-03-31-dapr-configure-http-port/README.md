@@ -14,7 +14,7 @@ Dapr's HTTP API (default port 3500) provides a RESTful interface for your applic
 
 ## Configuring the HTTP Port
 
-Set the HTTP port via pod annotations:
+Enable Dapr on your pod with annotations:
 
 ```yaml
 apiVersion: apps/v1
@@ -27,13 +27,14 @@ spec:
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "inventory-service"
-        dapr.io/http-port: "3500"
         dapr.io/app-port: "8080"
     spec:
       containers:
       - name: inventory-service
         image: inventory-service:latest
 ```
+
+In Kubernetes, the Dapr sidecar HTTP port defaults to 3500 and is not configurable via annotation. To use a custom HTTP port, configure it in self-hosted mode with the `--dapr-http-port` flag (see the local development section below).
 
 ## Using the HTTP API
 
@@ -61,11 +62,10 @@ curl http://localhost:3500/v1.0/invoke/checkout/method/placeOrder \
 
 ## Changing the HTTP Port
 
-When port 3500 conflicts with your existing services:
+When port 3500 conflicts with your existing services, use the `--dapr-http-port` flag in self-hosted mode:
 
-```yaml
-# Use port 3600 instead
-dapr.io/http-port: "3600"
+```bash
+dapr run --app-id inventory-service --dapr-http-port 3600 -- node server.js
 ```
 
 Update your application to use the new port:
@@ -86,7 +86,7 @@ async function getState(storeName, key) {
 For large payloads, configure the maximum body size:
 
 ```yaml
-dapr.io/http-max-request-size: "16"  # MB
+dapr.io/max-body-size: "16Mi"  # default is 4Mi
 ```
 
 ## HTTP Read Buffer Size
@@ -94,7 +94,7 @@ dapr.io/http-max-request-size: "16"  # MB
 Tune the HTTP read buffer for applications sending large headers:
 
 ```yaml
-dapr.io/http-read-buffer-size: "4"  # KB, default is 4
+dapr.io/read-buffer-size: "16Ki"  # default is 4Ki
 ```
 
 ## Health Check Endpoint
