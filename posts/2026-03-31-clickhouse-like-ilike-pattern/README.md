@@ -111,7 +111,7 @@ ORDER BY timestamp DESC
 LIMIT 50;
 ```
 
-Use `multiMatchAny()` when you have many patterns to test simultaneously - it is more efficient than chaining multiple `LIKE` conditions with `OR`.
+Use `multiSearchAny()` when you have many substring patterns to test simultaneously (e.g., replacing multiple `LIKE '%…%'` conditions with `OR`) - it is more efficient than chaining individual comparisons. For patterns that require regex (prefix, suffix, or character-class matching), use `multiMatchAny()` with equivalent regex patterns instead.
 
 ## Escaping Literal Percent and Underscore
 
