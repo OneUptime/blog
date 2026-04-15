@@ -246,13 +246,13 @@ SELECT count()
 FROM events
 SETTINGS prefer_localhost_replica = 1;
 
--- Set connection timeout for remote shards (milliseconds)
+-- Set connection timeout for remote shards (seconds)
 SELECT count()
 FROM events
 SETTINGS
-    connect_timeout = 5000,
-    receive_timeout = 30000,
-    send_timeout = 30000;
+    connect_timeout = 5,
+    receive_timeout = 30,
+    send_timeout = 30;
 ```
 
 ## Common Multi-Cluster Pattern
