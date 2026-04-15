@@ -1,49 +1,44 @@
-# How to Use quantileApprox() in ClickHouse
+# How to Use quantile() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, Quantile, Statistics
 
-Description: Learn how to use quantileApprox() in ClickHouse to compute fast approximate quantiles using reservoir sampling, with configurable sample size for accuracy control.
+Description: Learn how to use quantile() in ClickHouse to compute fast approximate quantiles using reservoir sampling, with a fixed reservoir size of 8192 for memory-bounded estimation.
 
 ---
 
-`quantileApprox(accuracy)(level)(value)` - actually `quantileApprox(level)(value)` in its simplest form - computes approximate quantiles using reservoir sampling. It maintains a random sample of the data and computes the quantile from that sample, making it memory-bounded and fast for interactive queries on very large tables. This is distinct from the GK and T-Digest algorithms: reservoir sampling is simple, predictable in memory, and well-suited for exploratory analysis.
+`quantile(level)(expr)` computes approximate quantiles using reservoir sampling with a reservoir size of up to 8192. It maintains a random sample of the data and computes the quantile from that sample, making it memory-bounded and fast for interactive queries on very large tables. The result is non-deterministic. This is distinct from the GK and T-Digest algorithms: reservoir sampling is simple, predictable in memory, and well-suited for exploratory analysis.
 
 ## Syntax
 
 ```sql
--- Basic usage: approximate quantile using default sample size
-SELECT quantileApprox(level)(value_column) FROM table_name;
+-- Basic usage: approximate quantile using reservoir sampling
+SELECT quantile(level)(expr) FROM table_name;
 
--- With explicit accuracy parameter (sample size)
-SELECT quantileApprox(accuracy, level)(value_column) FROM table_name;
-
--- level is a Float64 from 0 to 1
--- accuracy controls reservoir size (higher = more accurate but more memory)
+-- level is a Float64 from 0 to 1 (recommended range: 0.01 to 0.99, default: 0.5)
+-- The reservoir size is fixed at 8192 internally
 ```
 
 ## Basic Example
 
 ```sql
 -- Approximate p95 latency - fast and memory efficient
-SELECT quantileApprox(0.95)(response_time_ms) AS approx_p95_ms
+SELECT quantile(0.95)(response_time_ms) AS approx_p95_ms
 FROM request_logs
 WHERE log_date = today();
 ```
 
-## Accuracy Parameter
+## Reservoir Sampling Details
 
-The `accuracy` parameter controls the reservoir sample size. A value of 10000 means ClickHouse keeps at most 10000 samples before computing the quantile.
+The `quantile` function uses a fixed reservoir size of up to 8192 internally. There is no configurable accuracy parameter. If you need control over approximation accuracy, consider `quantileGK(accuracy, level)(expr)` which offers a strict error bound, or `quantileDD(relative_accuracy, level)(expr)` which uses the DDSketch algorithm.
 
 ```sql
--- Compare accuracy levels
+-- Compare approximate vs exact quantile
 SELECT
-    quantileApprox(100, 0.95)(response_time_ms)   AS p95_n100,
-    quantileApprox(1000, 0.95)(response_time_ms)  AS p95_n1000,
-    quantileApprox(10000, 0.95)(response_time_ms) AS p95_n10000,
-    quantileExact(0.95)(response_time_ms)         AS p95_exact,
-    count()                                       AS total_rows
+    quantile(0.95)(response_time_ms)      AS p95_approx,
+    quantileExact(0.95)(response_time_ms) AS p95_exact,
+    count()                               AS total_rows
 FROM request_logs
 WHERE log_date = today();
 ```
@@ -53,12 +48,12 @@ WHERE log_date = today();
 ```sql
 SELECT
     service_name,
-    quantileApprox(0.50)(response_time_ms) AS approx_p50,
-    quantileApprox(0.75)(response_time_ms) AS approx_p75,
-    quantileApprox(0.90)(response_time_ms) AS approx_p90,
-    quantileApprox(0.95)(response_time_ms) AS approx_p95,
-    quantileApprox(0.99)(response_time_ms) AS approx_p99,
-    count()                                AS total_requests
+    quantile(0.50)(response_time_ms) AS approx_p50,
+    quantile(0.75)(response_time_ms) AS approx_p75,
+    quantile(0.90)(response_time_ms) AS approx_p90,
+    quantile(0.95)(response_time_ms) AS approx_p95,
+    quantile(0.99)(response_time_ms) AS approx_p99,
+    count()                          AS total_requests
 FROM request_logs
 WHERE log_date >= today() - 7
 GROUP BY service_name
@@ -72,7 +67,7 @@ flowchart TD
     A[Need a quantile?] --> B{Exact result required?}
     B -->|Yes| C[quantileExact - exact, O N memory]
     B -->|No| D{Algorithm preference}
-    D --> E[quantileApprox - reservoir sampling, fixed memory cap]
+    D --> E[quantile - reservoir sampling, fixed memory cap]
     D --> F[quantileTDigest - better tail accuracy, mergeable states]
     D --> G[quantileGK - strict error bound guarantee]
     D --> H[quantileBFloat16 - fastest, uses bfloat16 compression]
@@ -85,8 +80,8 @@ flowchart TD
 SELECT
     toStartOfHour(timestamp) AS hour,
     service_name,
-    quantileApprox(0.95)(response_time_ms) AS p95_ms,
-    quantileApprox(0.99)(response_time_ms) AS p99_ms,
+    quantile(0.95)(response_time_ms) AS p95_ms,
+    quantile(0.99)(response_time_ms) AS p99_ms,
     count() AS request_count
 FROM request_logs
 WHERE timestamp >= now() - INTERVAL 48 HOUR
@@ -99,9 +94,9 @@ ORDER BY hour DESC;
 ```sql
 SELECT
     region,
-    quantileApprox(0.50)(response_time_ms) AS median_ms,
-    quantileApprox(0.95)(response_time_ms) AS p95_ms,
-    quantileApprox(0.99)(response_time_ms) AS p99_ms,
+    quantile(0.50)(response_time_ms) AS median_ms,
+    quantile(0.95)(response_time_ms) AS p95_ms,
+    quantile(0.99)(response_time_ms) AS p99_ms,
     count() AS requests
 FROM request_logs
 WHERE log_date >= today() - 14
@@ -116,8 +111,8 @@ CREATE TABLE hourly_approx_quantiles
 (
     stat_hour  DateTime,
     service    String,
-    p95_state  AggregateFunction(quantileApprox(0.95), Float64),
-    p99_state  AggregateFunction(quantileApprox(0.99), Float64)
+    p95_state  AggregateFunction(quantile(0.95), Float64),
+    p99_state  AggregateFunction(quantile(0.99), Float64)
 )
 ENGINE = AggregatingMergeTree()
 ORDER BY (stat_hour, service);
@@ -126,10 +121,10 @@ CREATE MATERIALIZED VIEW mv_hourly_approx_quantiles
 TO hourly_approx_quantiles
 AS
 SELECT
-    toStartOfHour(timestamp)                                   AS stat_hour,
-    service_name                                               AS service,
-    quantileApproxState(0.95)(toFloat64(response_time_ms))    AS p95_state,
-    quantileApproxState(0.99)(toFloat64(response_time_ms))    AS p99_state
+    toStartOfHour(timestamp)                              AS stat_hour,
+    service_name                                          AS service,
+    quantileState(0.95)(toFloat64(response_time_ms))     AS p95_state,
+    quantileState(0.99)(toFloat64(response_time_ms))     AS p99_state
 FROM request_logs
 GROUP BY stat_hour, service;
 
@@ -137,8 +132,8 @@ GROUP BY stat_hour, service;
 SELECT
     stat_hour,
     service,
-    quantileApproxMerge(0.95)(p95_state) AS p95_ms,
-    quantileApproxMerge(0.99)(p99_state) AS p99_ms
+    quantileMerge(0.95)(p95_state) AS p95_ms,
+    quantileMerge(0.99)(p99_state) AS p99_ms
 FROM hourly_approx_quantiles
 WHERE stat_hour >= now() - INTERVAL 24 HOUR
 GROUP BY stat_hour, service
@@ -148,11 +143,11 @@ ORDER BY stat_hour DESC;
 ## Error Estimation
 
 ```sql
--- Measure how far quantileApprox deviates from exact on a sample
+-- Measure how far quantile deviates from exact on a sample
 SELECT
-    quantileApprox(10000, 0.99)(response_time_ms)            AS approx_p99,
+    quantile(0.99)(response_time_ms)                         AS approx_p99,
     quantileExact(0.99)(response_time_ms)                    AS exact_p99,
-    abs(quantileApprox(10000, 0.99)(response_time_ms)
+    abs(quantile(0.99)(response_time_ms)
         - quantileExact(0.99)(response_time_ms))             AS abs_error_ms,
     count()                                                  AS n
 FROM request_logs
@@ -161,4 +156,4 @@ WHERE log_date = today();
 
 ## Summary
 
-`quantileApprox(accuracy, level)(value)` computes approximate quantiles using reservoir sampling, keeping at most `accuracy` samples in memory. It is memory-bounded and predictable, making it suitable for exploratory analysis and dashboard queries where a best-effort approximation is acceptable. For strict error guarantees, use `quantileGK`; for better tail accuracy, use `quantileTDigest`; for exact results regardless of memory, use `quantileExact`. All quantile functions in ClickHouse support the `-State` and `-Merge` suffix pattern for materialized view incremental aggregation.
+`quantile(level)(expr)` computes approximate quantiles using reservoir sampling with a fixed reservoir of up to 8192 samples. It is memory-bounded and predictable, making it suitable for exploratory analysis and dashboard queries where a best-effort approximation is acceptable. The result is non-deterministic. For strict error guarantees, use `quantileGK`; for better tail accuracy, use `quantileTDigest`; for exact results regardless of memory, use `quantileExact`. All quantile functions in ClickHouse support the `-State` and `-Merge` suffix pattern for materialized view incremental aggregation.
