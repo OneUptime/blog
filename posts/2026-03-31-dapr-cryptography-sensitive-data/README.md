@@ -36,8 +36,8 @@ spec:
   type: crypto.azure.keyvault
   version: v1
   metadata:
-  - name: vaultURI
-    value: "https://compliance-vault.vault.azure.net"
+  - name: vaultName
+    value: "compliance-vault"
   - name: azureClientId
     value: "<managed-identity-id>"
 ```
@@ -58,8 +58,8 @@ KEY_MAP = {
 GDPR requires the ability to delete all personal data for a user (right to erasure). Dapr Cryptography supports this through key deletion - if you use per-user encryption keys, deleting the key renders all their data permanently unreadable.
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
 def encrypt_pii(user_id: str, field: str, value: str) -> bytes:
     """Encrypt PII using a per-user key for GDPR erasure support."""
@@ -67,12 +67,12 @@ def encrypt_pii(user_id: str, field: str, value: str) -> bytes:
 
     with DaprClient() as d:
         encrypted = d.encrypt(
-            data=io.BytesIO(value.encode()),
-            options={
-                "componentName": "sensitive-crypto",
-                "keyName": key_name,
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=value.encode('utf-8'),
+            options=EncryptOptions(
+                component_name="sensitive-crypto",
+                key_name=key_name,
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         return encrypted.read()
 
@@ -109,12 +109,12 @@ def save_health_record(record: HealthRecord):
         })
 
         encrypted = d.encrypt(
-            data=io.BytesIO(record_json.encode()),
-            options={
-                "componentName": "sensitive-crypto",
-                "keyName": KEY_MAP["health"],
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=record_json.encode('utf-8'),
+            options=EncryptOptions(
+                component_name="sensitive-crypto",
+                key_name=KEY_MAP["health"],
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         encrypted_bytes = encrypted.read()
 
@@ -144,6 +144,7 @@ class SensitiveDataFilter(logging.Filter):
         for pattern, replacement in self.PATTERNS:
             message = pattern.sub(replacement, message)
         record.msg = message
+        record.args = None
         return True
 
 # Add filter to all handlers
