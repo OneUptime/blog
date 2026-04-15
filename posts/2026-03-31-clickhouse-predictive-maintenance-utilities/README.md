@@ -32,27 +32,30 @@ ORDER BY (asset_id, sensor_type, recorded_at);
 Flag sensors reading outside normal operating range:
 
 ```sql
-SELECT
-    asset_id,
-    asset_type,
-    sensor_type,
-    recorded_at,
-    value,
-    avg(value) OVER (
-        PARTITION BY asset_id, sensor_type
-        ORDER BY recorded_at
-        ROWS BETWEEN 2016 PRECEDING AND 1 PRECEDING  -- ~7 days at 5-min intervals
-    ) AS baseline_avg,
-    stddevPop(value) OVER (
-        PARTITION BY asset_id, sensor_type
-        ORDER BY recorded_at
-        ROWS BETWEEN 2016 PRECEDING AND 1 PRECEDING
-    ) AS baseline_std,
-    abs(value - baseline_avg) / nullIf(baseline_std, 0) AS z_score
-FROM asset_telemetry
-WHERE recorded_at >= now() - INTERVAL 24 HOUR
-  AND quality = 'good'
-HAVING z_score > 3
+SELECT *
+FROM (
+    SELECT
+        asset_id,
+        asset_type,
+        sensor_type,
+        recorded_at,
+        value,
+        avg(value) OVER (
+            PARTITION BY asset_id, sensor_type
+            ORDER BY recorded_at
+            ROWS BETWEEN 2016 PRECEDING AND 1 PRECEDING  -- ~7 days at 5-min intervals
+        ) AS baseline_avg,
+        stddevPop(value) OVER (
+            PARTITION BY asset_id, sensor_type
+            ORDER BY recorded_at
+            ROWS BETWEEN 2016 PRECEDING AND 1 PRECEDING
+        ) AS baseline_std,
+        abs(value - baseline_avg) / nullIf(baseline_std, 0) AS z_score
+    FROM asset_telemetry
+    WHERE recorded_at >= now() - INTERVAL 24 HOUR
+      AND quality = 'good'
+)
+WHERE z_score > 3
 ORDER BY z_score DESC;
 ```
 
@@ -129,11 +132,20 @@ SELECT
         count() > 5,  'This Month',
         'Monitor'
     ) AS recommended_action
-FROM asset_telemetry
-WHERE recorded_at >= today() - 7
-  AND quality = 'good'
-  AND abs(value - avg(value) OVER (PARTITION BY asset_id, sensor_type)) >
-      3 * stddevPop(value) OVER (PARTITION BY asset_id, sensor_type)
+FROM (
+    SELECT
+        asset_id,
+        asset_type,
+        sensor_type,
+        recorded_at,
+        value,
+        avg(value) OVER (PARTITION BY asset_id, sensor_type) AS sensor_avg,
+        stddevPop(value) OVER (PARTITION BY asset_id, sensor_type) AS sensor_std
+    FROM asset_telemetry
+    WHERE recorded_at >= today() - 7
+      AND quality = 'good'
+)
+WHERE abs(value - sensor_avg) > 3 * sensor_std
 GROUP BY asset_id, asset_type, sensor_type
 ORDER BY anomaly_count_7d DESC;
 ```
