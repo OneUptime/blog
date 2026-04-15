@@ -28,7 +28,6 @@ spec:
       standard-retry:
         policy: exponential
         maxRetries: 3
-        duration: 1s
         maxInterval: 10s
     circuitBreakers:
       default-cb:
@@ -109,7 +108,7 @@ app.post('/orders-dlq', (req, res) => {
 Handle Dapr service invocation errors with proper status code mapping:
 
 ```javascript
-const { DaprClient, HttpStatusCode } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 const client = new DaprClient();
 
 async function callInventoryService(itemId) {
@@ -117,14 +116,20 @@ async function callInventoryService(itemId) {
     const result = await client.invoker.invoke(
       'inventory-service',
       'items/' + itemId,
-      'GET'
+      HttpMethod.GET
     );
     return result;
   } catch (err) {
-    if (err.statusCode === 404) {
+    let parsed;
+    try {
+      parsed = JSON.parse(err.message);
+    } catch {
+      throw new InternalError('Unexpected error calling inventory service');
+    }
+    if (parsed.status === 404) {
       throw new NotFoundError(`Item ${itemId} not found`);
     }
-    if (err.statusCode === 503) {
+    if (parsed.status === 503) {
       throw new ServiceUnavailableError('Inventory service unavailable');
     }
     throw new InternalError('Unexpected error calling inventory service');
