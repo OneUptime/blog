@@ -8,18 +8,18 @@ Description: Learn how to use ReplicatedVersionedCollapsingMergeTree in ClickHou
 
 ---
 
-`ReplicatedVersionedCollapsingMergeTree` extends `VersionedCollapsingMergeTree` with ClickHouse replication. It uses two special columns - a `sign` column (`Int8`, values `+1` or `-1`) and a `version` column (any unsigned integer type) - to collapse paired rows regardless of insert order. During merges, pairs of rows with the same `ORDER BY` key, the same version, and opposite signs cancel each other. Unlike `CollapsingMergeTree`, cancellation rows can arrive before or after their counterpart in any order, making this engine safe for distributed or out-of-order write patterns.
+`ReplicatedVersionedCollapsingMergeTree` extends `VersionedCollapsingMergeTree` with ClickHouse replication. It uses two special columns - a `sign` column (`Int8`, values `+1` or `-1`) and a `version` column (`UInt*`, `Int*`, `Date`, `Date32`, `DateTime`, or `DateTime64`) - to collapse paired rows regardless of insert order. During merges, pairs of rows with the same `ORDER BY` key, the same version, and opposite signs cancel each other. Unlike `CollapsingMergeTree`, cancellation rows can arrive before or after their counterpart in any order, making this engine safe for distributed or out-of-order write patterns.
 
 ## Prerequisites: Macros Configuration
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/macros.xml -->
-<yandex>
+<clickhouse>
   <macros>
     <shard>01</shard>
     <replica>replica-01</replica>
   </macros>
-</yandex>
+</clickhouse>
 ```
 
 ## Creating a ReplicatedVersionedCollapsingMergeTree Table
