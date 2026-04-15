@@ -21,7 +21,7 @@ Initial setup:              1-2 engineer-days
 First service migration:    2-5 engineer-days
 Team learning:              1-2 days per engineer
 Documentation/runbooks:     1 day
-Total initial cost:         ~15-25 engineer-days for a team of 5
+Total initial cost:         ~9-18 engineer-days for a team of 5
 ```
 
 ### 2. Ongoing Resource Cost
