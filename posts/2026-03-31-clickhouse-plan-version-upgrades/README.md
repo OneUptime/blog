@@ -12,7 +12,7 @@ ClickHouse releases new versions rapidly - often several times per month. Planni
 
 ## Understanding ClickHouse Versioning
 
-ClickHouse uses a `YEAR.MONTH.PATCH` versioning scheme. For example, `24.3.5.46` means the March 2024 release, patch 5.46. Long-Term Support (LTS) releases get 1 year of bug fixes; non-LTS releases get only 3 months.
+ClickHouse uses a `YEAR.RELEASE.PATCH.BUILD` versioning scheme. For example, `24.3.5.46` means the third release of 2024, patch 5, build 46. Long-Term Support (LTS) releases get 1 year of bug fixes; non-LTS stable releases are supported for roughly the 3 most recent stable releases.
 
 ## Step 1: Check Current Version
 
