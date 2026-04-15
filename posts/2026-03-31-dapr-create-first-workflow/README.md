@@ -49,7 +49,7 @@ Compose activities into an orchestrated workflow:
 
 ```python
 # workflow.py
-from dapr.ext.workflow import DaprWorkflowContext, WorkflowStatus
+from dapr.ext.workflow import DaprWorkflowContext
 from activities import validate_order, charge_payment, fulfill_order
 
 def order_workflow(ctx: DaprWorkflowContext, order: dict):
@@ -72,7 +72,6 @@ def order_workflow(ctx: DaprWorkflowContext, order: dict):
 from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowClient
 from workflow import order_workflow
 from activities import validate_order, charge_payment, fulfill_order
-import time
 
 workflowRuntime = WorkflowRuntime()
 workflowRuntime.register_workflow(order_workflow)
@@ -80,7 +79,9 @@ workflowRuntime.register_activity(validate_order)
 workflowRuntime.register_activity(charge_payment)
 workflowRuntime.register_activity(fulfill_order)
 
-with workflowRuntime:
+workflowRuntime.start()
+
+try:
     client = DaprWorkflowClient()
 
     order = {"id": "ORD-001", "amount": 99.99, "item": "Widget"}
@@ -95,6 +96,8 @@ with workflowRuntime:
     state = client.wait_for_workflow_completion(instance_id, timeout_in_seconds=30)
     print(f"Workflow completed with status: {state.runtime_status}")
     print(f"Result: {state.serialized_output}")
+finally:
+    workflowRuntime.shutdown()
 ```
 
 ## Step 4: Run the Workflow
