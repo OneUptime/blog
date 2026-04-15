@@ -22,7 +22,7 @@ The producer stores the large payload and publishes only the reference:
 import httpx
 import uuid
 import json
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI
 from datetime import datetime
 
 app = FastAPI()
@@ -81,9 +81,13 @@ async def generate_report(report_data: dict):
 The consumer receives the lightweight message and redeems the claim check:
 
 ```python
+import httpx
+import json
 from fastapi import FastAPI, Request
 
 app = FastAPI()
+DAPR_HTTP_PORT = 3500
+BLOB_STORE = "azure-blob"
 
 async def retrieve_payload(claim_id: str) -> dict:
     """Retrieve stored payload using the claim check reference."""
@@ -137,13 +141,13 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: mystorageaccount
-  - name: storageAccessKey
+  - name: accountKey
     secretKeyRef:
       name: storageKey
       key: storageKey
-  - name: container
+  - name: containerName
     value: claim-checks
 ```
 
@@ -158,10 +162,18 @@ spec:
   type: bindings.aws.s3
   version: v1
   metadata:
+  - name: region
+    value: us-east-1
   - name: endpoint
     value: http://minio:9000
   - name: bucket
     value: claim-checks
+  - name: accessKey
+    value: minioadmin
+  - name: secretKey
+    value: minioadmin
+  - name: forcePathStyle
+    value: "true"
 ```
 
 ## Summary
