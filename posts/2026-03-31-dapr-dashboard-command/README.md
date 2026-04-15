@@ -38,7 +38,7 @@ Or:
 dapr dashboard -k
 ```
 
-This uses `kubectl port-forward` to tunnel the dashboard pod port to your local machine. The dashboard opens automatically on the default port.
+This sets up a Kubernetes port-forward connection to tunnel the dashboard pod port to your local machine. The dashboard opens automatically on the default port.
 
 ## Targeting a Specific Namespace
 
@@ -60,13 +60,13 @@ Access at `http://localhost:8080`.
 
 The dashboard provides several panels:
 
-**Applications tab** - shows all running Dapr apps, their IDs, ports, and loaded component counts.
+**Overview tab** - shows all running Dapr apps, their IDs, ports, and loaded component counts.
 
 **Components tab** - lists all loaded components with their type, version, and scopes.
 
-**Configuration tab** - displays active Configuration resources with tracing and middleware settings.
+**Configurations tab** - displays active Configuration resources with tracing and middleware settings.
 
-**Control Plane tab** - shows the health of Dapr system services (operator, sentry, placement, scheduler).
+**Control Plane tab** - shows the health of Dapr system services (operator, sentry, placement, sidecar-injector, scheduler-server, and dashboard).
 
 ## Accessing Detailed App Info
 
