@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Template, Data Engineering, Export
 
-Description: Learn how to use ClickHouse's Template format to produce custom text output with arbitrary delimiters, headers, footers, and per-row formatting using Jinja-like templates.
+Description: Learn how to use ClickHouse's Template format to produce custom text output with arbitrary delimiters, headers, footers, and per-row formatting using placeholder-based templates.
 
 ## What Is Template Format?
 
@@ -30,10 +30,10 @@ Row templates use `${column_name:escaping}` placeholders:
 |--------------|-------------|
 | `None` or `Raw` | No escaping |
 | `Escaped` | Backslash escaping (like TSV) |
-| `Quoted` | Double-quote escaping (like CSV) |
+| `Quoted` | Single-quote escaping (like Values format) |
 | `JSON` | JSON string escaping |
 | `XML` | XML entity escaping |
-| `CSV` | RFC 4180 CSV escaping |
+| `CSV` | CSV escaping (similar to ClickHouse CSV format) |
 
 ## Example 1: Custom SQL INSERT Statements
 
