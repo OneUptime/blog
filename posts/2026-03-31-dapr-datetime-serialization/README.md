@@ -18,7 +18,7 @@ The standard solution: always serialize DateTimes as ISO 8601 strings in UTC.
 Good: "2026-03-31T10:00:00Z"           (UTC, unambiguous)
 Good: "2026-03-31T10:00:00.000Z"       (with milliseconds)
 Avoid: "03/31/2026 10:00:00"           (locale-dependent)
-Avoid: 1743415200                       (Unix timestamp, less readable)
+Avoid: 1774951200                       (Unix timestamp, less readable)
 Avoid: "2026-03-31T10:00:00+05:30"     (ambiguous in some parsers)
 ```
 
@@ -85,7 +85,7 @@ type OrderEvent struct {
     FulfilledAt *time.Time `json:"fulfilledAt,omitempty"`
 }
 
-// Go's time.Time unmarshal handles ISO 8601 with timezone natively
+// Go's time.Time unmarshal handles RFC 3339 (a profile of ISO 8601) natively
 func ParseOrderEvent(data []byte) (*OrderEvent, error) {
     var event OrderEvent
     if err := json.Unmarshal(data, &event); err != nil {
@@ -103,13 +103,19 @@ func ParseOrderEvent(data []byte) (*OrderEvent, error) {
 // Always marshal as UTC RFC 3339
 func (o OrderEvent) MarshalJSON() ([]byte, error) {
     type Alias OrderEvent
-    return json.Marshal(struct {
+    a := struct {
         Alias
-        CreatedAt string `json:"createdAt"`
+        CreatedAt   string  `json:"createdAt"`
+        FulfilledAt *string `json:"fulfilledAt,omitempty"`
     }{
         Alias:     Alias(o),
         CreatedAt: o.CreatedAt.UTC().Format(time.RFC3339Nano),
-    })
+    }
+    if o.FulfilledAt != nil {
+        s := o.FulfilledAt.UTC().Format(time.RFC3339Nano)
+        a.FulfilledAt = &s
+    }
+    return json.Marshal(a)
 }
 ```
 
@@ -120,7 +126,6 @@ func (o OrderEvent) MarshalJSON() ([]byte, error) {
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Optional
-import json
 
 @dataclass
 class OrderEvent:
