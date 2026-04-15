@@ -14,7 +14,7 @@ Dapr loads component definitions (state stores, pub/sub brokers, bindings) from 
 
 ## Mounting a Local Components Directory
 
-The Dapr sidecar container reads components from `/components` by default. Mount your local `./components` directory using a bind mount:
+The Dapr sidecar container requires an explicit components path passed via `--components-path` (or the newer `--resources-path`). Mount your local `./components` directory using a bind mount and point the sidecar to it:
 
 ```bash
 docker run -d \
@@ -127,7 +127,7 @@ docker logs order-service-dapr | grep -i "component"
 You should see lines like:
 
 ```text
-time="2026-03-31T10:00:00Z" level=info msg="Component loaded" name=statestore type=state.redis/v1
+time="2026-03-31T10:00:00.000000000Z" level=info msg="Component loaded: statestore (state.redis/v1)" app_id=order-service instance=abc123 scope=dapr.runtime type=log ver=1.13.0
 ```
 
 If a component fails to load, the log shows the error with the component name and reason.
