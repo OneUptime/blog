@@ -77,6 +77,12 @@ ORDER BY z_score DESC;
 
 ```sql
 CREATE TABLE metrics_kafka
+(
+    host        String,
+    metric_name String,
+    value       Float64,
+    ts          DateTime
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'broker:9092',
