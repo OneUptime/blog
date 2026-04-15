@@ -10,23 +10,17 @@ Description: Learn how to configure the Dapr Dubbo output binding to invoke Apac
 
 ## Overview of the Dapr Dubbo Binding
 
-Apache Dubbo is a high-performance Java RPC framework widely used in enterprise Java microservices. The Dapr Dubbo output binding enables non-Java services to call Dubbo RPC endpoints through Dapr's uniform binding API, without writing Dubbo client code.
+Apache Dubbo is a high-performance Java RPC framework widely used in enterprise Java microservices. The Dapr Dubbo output binding enables non-Java services to call Dubbo RPC endpoints through Dapr's uniform binding API, without writing Dubbo client code. The binding connects directly to a Dubbo provider via hostname and port.
 
 ## Prerequisites
 
-You need a running Dubbo service registered with a ZooKeeper or Nacos registry. This example uses ZooKeeper.
+You need a running Dubbo service accessible via its provider hostname and port.
 
-## Start ZooKeeper and a Sample Dubbo Service
+## Start a Sample Dubbo Service
 
 ```bash
-# Start ZooKeeper
-docker run -d \
-  --name zookeeper \
-  -p 2181:2181 \
-  zookeeper:3.8
-
 # Deploy your Dubbo service (example Spring Boot app)
-# The service should register itself with ZooKeeper on startup
+# The service should be accessible on a known hostname and port (e.g., localhost:20880)
 ```
 
 ## Configure the Dubbo Output Binding Component
@@ -40,12 +34,14 @@ spec:
   type: bindings.dubbo
   version: v1
   metadata:
-  - name: registryAddress
-    value: zookeeper://localhost:2181
-  - name: registryMaxRetries
-    value: "3"
-  - name: timeout
-    value: "5000"
+  - name: providerHostname
+    value: "localhost"
+  - name: providerPort
+    value: "20880"
+  - name: interfaceName
+    value: "com.example.UserService"
+  - name: methodName
+    value: "getUserById"
   - name: version
     value: "1.0.0"
   - name: group
@@ -54,24 +50,24 @@ spec:
 
 ## Invoke a Dubbo Service Method
 
+The `interfaceName` and `methodName` can be set in the component YAML (as shown above) or overridden per request via metadata. The `data` field contains the raw payload passed to the Dubbo service method.
+
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/dubbo-service \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "create",
-    "data": {
-      "methodName": "getUserById",
-      "args": ["user-123"],
-      "argTypes": ["java.lang.String"]
-    },
+    "data": "user-123",
     "metadata": {
       "interfaceName": "com.example.UserService",
-      "version": "1.0.0"
+      "methodName": "getUserById"
     }
   }'
 ```
 
-## Invoke with Complex Parameters
+## Invoke a Different Method
+
+Override the `interfaceName` and `methodName` in per-request metadata to call a different service method without creating a new component:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/dubbo-service \
@@ -79,18 +75,13 @@ curl -X POST http://localhost:3500/v1.0/bindings/dubbo-service \
   -d '{
     "operation": "create",
     "data": {
-      "methodName": "createOrder",
-      "args": [
-        {
-          "customerId": "cust-456",
-          "productId": "prod-789",
-          "quantity": 3
-        }
-      ],
-      "argTypes": ["com.example.dto.OrderRequest"]
+      "customerId": "cust-456",
+      "productId": "prod-789",
+      "quantity": 3
     },
     "metadata": {
-      "interfaceName": "com.example.OrderService"
+      "interfaceName": "com.example.OrderService",
+      "methodName": "createOrder"
     }
   }'
 ```
@@ -100,18 +91,15 @@ curl -X POST http://localhost:3500/v1.0/bindings/dubbo-service \
 ```python
 import requests
 
-def call_dubbo_service(interface: str, method: str, args: list, arg_types: list):
+def call_dubbo_service(interface: str, method: str, data):
     response = requests.post(
         "http://localhost:3500/v1.0/bindings/dubbo-service",
         json={
             "operation": "create",
-            "data": {
-                "methodName": method,
-                "args": args,
-                "argTypes": arg_types,
-            },
+            "data": data,
             "metadata": {
                 "interfaceName": interface,
+                "methodName": method,
             },
         },
     )
@@ -122,38 +110,55 @@ def call_dubbo_service(interface: str, method: str, args: list, arg_types: list)
 user = call_dubbo_service(
     interface="com.example.UserService",
     method="getUserById",
-    args=["user-123"],
-    arg_types=["java.lang.String"],
+    data="user-123",
 )
 print("User:", user)
 ```
 
 ## Multiple Dubbo Services
 
-Define separate binding components for each Dubbo interface:
+Define separate binding components for each Dubbo provider:
 
 ```yaml
 # user-service-binding.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
 metadata:
   name: user-dubbo-service
 spec:
   type: bindings.dubbo
+  version: v1
   metadata:
-  - name: registryAddress
-    value: zookeeper://localhost:2181
+  - name: providerHostname
+    value: "user-service-host"
+  - name: providerPort
+    value: "20880"
+  - name: interfaceName
+    value: "com.example.UserService"
+  - name: methodName
+    value: "getUserById"
 ```
 
 ```yaml
 # order-service-binding.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
 metadata:
   name: order-dubbo-service
 spec:
   type: bindings.dubbo
+  version: v1
   metadata:
-  - name: registryAddress
-    value: zookeeper://localhost:2181
+  - name: providerHostname
+    value: "order-service-host"
+  - name: providerPort
+    value: "20880"
+  - name: interfaceName
+    value: "com.example.OrderService"
+  - name: methodName
+    value: "createOrder"
 ```
 
 ## Summary
 
-The Dapr Dubbo output binding enables polyglot services to call Apache Dubbo RPC endpoints without Dubbo client libraries. Configure the ZooKeeper or Nacos registry address in the component, then invoke Dubbo service methods by specifying the interface name, method name, arguments, and Java type signatures in the binding payload.
+The Dapr Dubbo output binding enables polyglot services to call Apache Dubbo RPC endpoints without Dubbo client libraries. Configure the provider hostname and port in the component, then invoke Dubbo service methods by specifying the interface name and method name in the component metadata or per-request metadata, with the raw payload passed in the data field.
