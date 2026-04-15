@@ -69,7 +69,7 @@ template {
 Create `/etc/vault-agent/templates/users.xml.tmpl`:
 
 ```text
-{{- with secret "secret/clickhouse/admin" -}}
+{{- with secret "secret/data/clickhouse/admin" -}}
 <clickhouse>
   <users>
     <admin>
@@ -86,7 +86,7 @@ Create `/etc/vault-agent/templates/users.xml.tmpl`:
 Create `/etc/vault-agent/templates/config-s3.xml.tmpl`:
 
 ```text
-{{- with secret "secret/clickhouse/s3" -}}
+{{- with secret "secret/data/clickhouse/s3" -}}
 <clickhouse>
   <storage_configuration>
     <disks>
