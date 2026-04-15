@@ -32,7 +32,6 @@ ALTER TABLE http_logs
 SELECT
     command,
     parts_to_do,
-    parts_done,
     latest_fail_reason,
     is_done
 FROM system.mutations
@@ -58,15 +57,22 @@ Observe how long it takes relative to part size, then extrapolate for the full r
 
 ClickHouse ensures that mutations maintain projection consistency. You never see a state where the base table is updated but a projection reflects old data - both are updated atomically within each part.
 
-## LightWeight DELETE and Projections
+## Lightweight DELETE and Projections
 
-Lightweight deletes use a different mechanism (a deletion mask) but still interact with projections:
+Lightweight deletes use a different mechanism (a deletion mask via the `_row_exists` column) but have an important limitation with projections: **by default, lightweight deletes on tables with projections will throw an error.** This is because materialized projection parts do not consult the `_row_exists` mask, so they would return stale data that includes deleted rows.
+
+Since ClickHouse v24.7, you can control this behavior with the `lightweight_mutation_projection_mode` setting:
+
+- `throw` (default) — raises an error, preventing the inconsistency
+- `drop` — drops the affected projection parts; the delete is fast but those parts lose projection optimization until the next merge rebuilds them
+- `rebuild` — rebuilds the affected projection parts to reflect the deletion; slower but preserves projection optimization
 
 ```sql
+SET lightweight_mutation_projection_mode = 'drop';
 DELETE FROM http_logs WHERE user_id = 'u-deleted-user';
 ```
 
-Lightweight deletes are faster than heavy mutations but projections may still reflect deleted rows until the next merge (since the data is marked, not physically removed). Force a merge if projection accuracy is critical:
+If you use `drop` mode and need projections to be fully rebuilt, force a merge:
 
 ```sql
 OPTIMIZE TABLE http_logs FINAL;
