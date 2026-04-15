@@ -122,9 +122,11 @@ DocumentDB does not support all MongoDB features. Relevant limitations for Dapr:
 
 ```bash
 # DocumentDB does not support:
-# - Transactions across multiple documents (retryWrites=false is required)
-# - Change streams in older versions
+# - Retryable writes (retryWrites=false is required in the connection string)
+# - Change streams in older versions (added in DocumentDB 4.0+)
 # - Some aggregation pipeline operators
+
+# DocumentDB 4.0+ does support multi-document transactions within a replica set.
 
 # Always set: retryWrites=false in the connection string
 ```
