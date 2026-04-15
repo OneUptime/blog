@@ -18,7 +18,7 @@ The `Variant` type may require an experimental flag in earlier ClickHouse versio
 SET allow_experimental_variant_type = 1;
 ```
 
-In ClickHouse 24.x and later, `Variant` is available without the experimental setting.
+In ClickHouse 25.3 and later, `Variant` is generally available without the experimental setting. For versions 24.x, you still need the flag.
 
 ## Declaring a Variant Column
 
