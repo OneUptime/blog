@@ -22,7 +22,7 @@ SYSTEM STOP MERGES;
 SYSTEM STOP FETCHES;
 
 -- Stop replication sends (stop sending parts to other replicas)
-SYSTEM STOP SENDS;
+SYSTEM STOP REPLICATED SENDS;
 
 -- Stop TTL processing
 SYSTEM STOP TTL MERGES;
@@ -30,8 +30,8 @@ SYSTEM STOP TTL MERGES;
 -- Stop moves between volumes (storage tiering)
 SYSTEM STOP MOVES;
 
--- Stop distributed sends
-SYSTEM STOP DISTRIBUTED SENDS;
+-- Stop distributed sends (requires table name)
+SYSTEM STOP DISTRIBUTED SENDS my_database.my_distributed_table;
 ```
 
 ## Stopping Operations for a Specific Table
@@ -55,7 +55,7 @@ Before running a large backup, pause writes and merges to get a clean state:
 SYSTEM STOP MERGES;
 SYSTEM STOP TTL MERGES;
 
--- Flush in-memory data to disk
+-- Sync OS filesystem cache to disk
 SYSTEM SYNC FILE CACHE;
 SYSTEM FLUSH LOGS;
 
@@ -97,21 +97,21 @@ FROM system.metrics
 WHERE metric IN (
     'BackgroundMergesAndMutationsPoolTask',
     'BackgroundFetchesPoolTask',
-    'BackgroundMovesPoolTask',
-    'BackgroundDistributedSendsPoolTask'
+    'BackgroundMovePoolTask',
+    'BackgroundDistributedSchedulePoolTask'
 );
 ```
 
 ## SYSTEM STOP vs. READ ONLY Mode
 
-SYSTEM STOP commands pause background operations but still accept queries and inserts. For full maintenance mode that blocks writes:
+SYSTEM STOP commands pause background operations but still accept queries and inserts. To effectively block inserts during maintenance, set `parts_to_throw_insert` to 1 so that the "too many parts" check rejects new inserts:
 
 ```sql
--- Set table to read-only during maintenance
-ALTER TABLE my_database.events MODIFY SETTING parts_to_throw_insert = 0;
+-- Block inserts by setting the parts threshold to 1
+ALTER TABLE my_database.events MODIFY SETTING parts_to_throw_insert = 1;
 
--- Restore after maintenance
-ALTER TABLE my_database.events MODIFY SETTING parts_to_throw_insert = 300;
+-- Restore after maintenance (default is 3000 since ClickHouse 23.6)
+ALTER TABLE my_database.events MODIFY SETTING parts_to_throw_insert = 3000;
 ```
 
 ## Restarting All Background Operations
@@ -122,9 +122,9 @@ After maintenance, restart everything at once:
 SYSTEM START MERGES;
 SYSTEM START TTL MERGES;
 SYSTEM START FETCHES;
-SYSTEM START SENDS;
+SYSTEM START REPLICATED SENDS;
 SYSTEM START MOVES;
-SYSTEM START DISTRIBUTED SENDS;
+SYSTEM START DISTRIBUTED SENDS my_database.my_distributed_table;
 ```
 
 ## Verifying Background Operations Resume
@@ -141,4 +141,4 @@ SELECT database, table, type, create_time FROM system.replication_queue LIMIT 5;
 
 ## Summary
 
-ClickHouse's SYSTEM STOP and START commands let you pause specific background operations without stopping the server, making them ideal for maintenance windows. Stop merges before large backups or schema changes, flush logs and file cache before snapshots, and always resume operations after maintenance is complete. Scope stops to specific tables when possible to minimize impact on other workloads.
+ClickHouse's SYSTEM STOP and START commands let you pause specific background operations without stopping the server, making them ideal for maintenance windows. Stop merges before large backups or schema changes, flush logs and sync the filesystem cache before snapshots, and always resume operations after maintenance is complete. Scope stops to specific tables when possible to minimize impact on other workloads.
