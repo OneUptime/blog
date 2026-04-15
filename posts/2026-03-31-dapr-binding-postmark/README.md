@@ -50,16 +50,16 @@ curl -X POST http://localhost:3500/v1.0/bindings/postmark-email \
     "operation": "create",
     "metadata": {
       "subject": "Your order has shipped",
-      "toEmail": "customer@example.com",
-      "fromEmail": "orders@mycompany.com"
+      "emailTo": "customer@example.com",
+      "emailFrom": "orders@mycompany.com"
     },
     "data": "<h1>Your order is on its way!</h1><p>Track your package at example.com/track/1001</p>"
   }'
 ```
 
-## Send Using a Template
+## Send an Email with CC and BCC
 
-Postmark supports server-side templates. Pass the template ID and model:
+The binding supports `emailCc` and `emailBcc` metadata fields:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/postmark-email \
@@ -67,16 +67,13 @@ curl -X POST http://localhost:3500/v1.0/bindings/postmark-email \
   -d '{
     "operation": "create",
     "metadata": {
-      "templateId": "12345678",
-      "toEmail": "user@example.com",
-      "fromEmail": "noreply@mycompany.com"
+      "subject": "Invoice #1001",
+      "emailTo": "customer@example.com",
+      "emailFrom": "billing@mycompany.com",
+      "emailCc": "accounting@mycompany.com",
+      "emailBcc": "records@mycompany.com"
     },
-    "data": {
-      "customer_name": "Alice",
-      "order_id": "ORD-1001",
-      "total_amount": "$49.99",
-      "support_email": "help@mycompany.com"
-    }
+    "data": "<h1>Invoice #1001</h1><p>Please find your invoice details below.</p>"
   }'
 ```
 
@@ -100,8 +97,8 @@ async function sendEmail(options: EmailOptions): Promise<void> {
         operation: "create",
         metadata: {
           subject: options.subject,
-          toEmail: options.to,
-          fromEmail: options.from ?? "noreply@mycompany.com",
+          emailTo: options.to,
+          emailFrom: options.from ?? "noreply@mycompany.com",
         },
         data: options.htmlBody,
       }),
@@ -132,8 +129,8 @@ curl -X POST http://localhost:3500/v1.0/bindings/postmark-email \
     "operation": "create",
     "metadata": {
       "subject": "Weekly Report",
-      "toEmail": "manager@example.com,team@example.com",
-      "fromEmail": "reports@mycompany.com"
+      "emailTo": "manager@example.com,team@example.com",
+      "emailFrom": "reports@mycompany.com"
     },
     "data": "<p>See attached weekly summary.</p>"
   }'
@@ -141,4 +138,4 @@ curl -X POST http://localhost:3500/v1.0/bindings/postmark-email \
 
 ## Summary
 
-The Dapr Postmark binding enables any microservice to send transactional emails through Postmark's API without writing HTTP client code. Configure your account and server tokens via Kubernetes secrets, then invoke the binding with recipient, subject, and HTML body or template ID. This keeps email logic consistent across all services in your platform.
+The Dapr Postmark binding enables any microservice to send transactional emails through Postmark's API without writing HTTP client code. Configure your account and server tokens via Kubernetes secrets, then invoke the binding with recipient, subject, and HTML body. This keeps email logic consistent across all services in your platform.
