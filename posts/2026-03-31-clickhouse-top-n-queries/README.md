@@ -30,7 +30,7 @@ LIMIT 10;
 
 ## topK Approximate Function
 
-For massive datasets where exact counts are too slow, `topK` uses the Space-Saving algorithm:
+For massive datasets where exact counts are too slow, `topK` uses the Filtered Space-Saving algorithm:
 
 ```sql
 SELECT topK(10)(page_path) AS top_pages
