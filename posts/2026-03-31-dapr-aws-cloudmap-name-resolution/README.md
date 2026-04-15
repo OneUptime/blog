@@ -12,9 +12,7 @@ Description: Learn how to configure Dapr to use AWS Cloud Map for service discov
 
 AWS Cloud Map is a managed service registry that allows you to register resources and query them by name. When running Dapr workloads on AWS (ECS, EKS, EC2), you can use Cloud Map as the name resolution backend so Dapr can discover and invoke services registered there.
 
-The Dapr `nameresolution.aws.snssqs` does not handle name resolution directly, but Dapr supports AWS Cloud Map via the `nameresolution.consul` component configured to point to an AWS Cloud Map proxy, or via a custom name resolution component.
-
-For AWS-native environments, the recommended approach uses AWS Cloud Map directly via the AWS SDK in a custom component, or uses the built-in approach with environment variable injection.
+Dapr includes a built-in name resolution component called `aws.cloudmap` that integrates directly with AWS Cloud Map. This is the recommended approach for AWS-native environments. Alternatively, you can use Cloud Map's private DNS namespace integration with CoreDNS on EKS to resolve services via standard DNS.
 
 ## Enabling AWS Cloud Map in Your Infrastructure
 
@@ -60,26 +58,26 @@ data:
     }
     dapr.local:53 {
         errors
-        forward . 169.254.20.10:53
+        forward . 169.254.169.253
+        cache 30
     }
 ```
 
 ## Configuring Dapr for Cloud Map-Backed DNS
 
-With Cloud Map integrated into your DNS, configure Dapr to use a `nameresolution.kubernetes`-style component pointing to your cluster domain:
+With Cloud Map integrated into your DNS, configure Dapr to use the `kubernetes` name resolution component pointing to your Cloud Map domain:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
-  namespace: default
+  name: appconfig
 spec:
-  type: nameresolution.kubernetes
-  version: v1
-  metadata:
-    - name: clusterDomain
-      value: "dapr.local"
+  nameResolution:
+    component: "kubernetes"
+    version: "v1"
+    configuration:
+      clusterDomain: "dapr.local"
 ```
 
 ## Registering Instances with Cloud Map
@@ -93,7 +91,7 @@ aws servicediscovery register-instance \
   --attributes AWS_INSTANCE_IPV4=10.0.1.42,AWS_INSTANCE_PORT=3500
 ```
 
-For ECS tasks, use the `serviceRegistries` field in the task definition:
+For ECS services, use the `serviceRegistries` field in the ECS service definition:
 
 ```json
 {
