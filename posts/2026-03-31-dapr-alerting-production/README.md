@@ -42,8 +42,8 @@ spec:
     rules:
     - alert: DaprHighErrorRate
       expr: |
-        rate(dapr_service_invocation_req_sent_total{status_code!~"2.."}[5m]) /
-        rate(dapr_service_invocation_req_sent_total[5m]) > 0.05
+        rate(dapr_http_server_request_count{status!~"2.."}[5m]) /
+        rate(dapr_http_server_request_count[5m]) > 0.05
       for: 5m
       labels:
         severity: warning
@@ -59,19 +59,19 @@ Alert when messages are not being consumed fast enough:
 ```yaml
   - name: dapr.pubsub
     rules:
-    - alert: DaprPubSubDeadLetter
+    - alert: DaprPubSubProcessingFailures
       expr: |
-        increase(dapr_pubsub_dead_letter_total[10m]) > 0
+        increase(dapr_component_pubsub_ingress_count{status!="success"}[10m]) > 0
       for: 2m
       labels:
         severity: warning
       annotations:
-        summary: "Dapr dead-letter messages detected"
-        description: "Topic {{ $labels.topic }} has dead-letter messages on {{ $labels.app_id }}."
+        summary: "Dapr pub/sub message processing failures detected"
+        description: "Topic {{ $labels.topic }} has message processing failures on {{ $labels.app_id }}."
 
     - alert: DaprPubSubDropped
       expr: |
-        rate(dapr_pubsub_incoming_messages_total{process_status="drop"}[5m]) > 0
+        rate(dapr_component_pubsub_ingress_count{status="drop"}[5m]) > 0
       for: 5m
       labels:
         severity: warning
@@ -100,21 +100,21 @@ route:
 receivers:
 - name: pagerduty-dapr
   pagerduty_configs:
-  - service_key: "<your-pagerduty-key>"
-    description: '{{ .GroupLabels.alertname }}: {{ .Annotations.summary }}'
+  - routing_key: "<your-pagerduty-key>"
+    description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
 
 - name: slack-dapr
   slack_configs:
   - api_url: "https://hooks.slack.com/services/xxx"
     channel: '#dapr-alerts'
-    text: '{{ .Annotations.description }}'
+    text: '{{ .CommonAnnotations.description }}'
 ```
 
 ## Latency Alerting
 
 High latency in service invocation often indicates resource pressure or network issues:
 
-```bash
+```yaml
 # Alert when p99 latency exceeds 500ms
 - alert: DaprHighLatency
   expr: |
@@ -142,4 +142,4 @@ amtool config routes test \
 
 ## Summary
 
-Production Dapr alerting should cover control plane availability, service invocation error rates, pub/sub dead-letter accumulation, and latency percentiles. Routing critical alerts to an on-call system and warnings to chat ensures the right team is notified at the right urgency level.
+Production Dapr alerting should cover control plane availability, service invocation error rates, pub/sub processing failures, and latency percentiles. Routing critical alerts to an on-call system and warnings to chat ensures the right team is notified at the right urgency level.
