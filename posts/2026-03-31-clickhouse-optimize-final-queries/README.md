@@ -12,7 +12,7 @@ The `FINAL` modifier in ClickHouse forces full deduplication at query time, merg
 
 ## Why FINAL Is Slow
 
-`FINAL` requires ClickHouse to read all data parts for a table (or partition) and merge them in memory to resolve duplicates. This is a sequential, single-threaded operation by default.
+`FINAL` requires ClickHouse to read all data parts for a table (or partition) and merge them in memory to resolve duplicates. In versions prior to 23.3, this was a single-threaded operation by default. Since ClickHouse 23.3, FINAL runs in parallel using all available CPU cores by default.
 
 ## Basic FINAL Usage
 
@@ -24,10 +24,10 @@ WHERE updated_at >= today() - 7;
 
 ## Enable Parallel FINAL
 
-ClickHouse 22.8+ supports parallel FINAL processing:
+ClickHouse 20.5+ supports parallel FINAL processing via the `max_final_threads` setting. Since ClickHouse 23.3, this defaults to the number of CPU cores. To explicitly control the thread count:
 
 ```sql
-SET max_threads_for_select_final = 4;
+SET max_final_threads = 4;
 
 SELECT * FROM user_profiles FINAL;
 ```
@@ -35,7 +35,7 @@ SELECT * FROM user_profiles FINAL;
 Or configure globally in `users.xml`:
 
 ```xml
-<max_threads_for_select_final>4</max_threads_for_select_final>
+<max_final_threads>4</max_final_threads>
 ```
 
 ## Using do_not_merge_across_partitions_select_final
