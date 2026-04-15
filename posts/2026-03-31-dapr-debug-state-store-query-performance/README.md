@@ -12,11 +12,11 @@ Slow state store operations can cascade into latency across your entire microser
 
 ## Measure State Operation Latency
 
-Dapr exposes Prometheus metrics for state operations. Check the `dapr_component_state_latency` metric:
+Dapr exposes Prometheus metrics for state operations. Check the `dapr_component_state_latencies` metric:
 
 ```bash
-kubectl port-forward svc/dapr-metrics 9090:9090 -n dapr-system &
-curl http://localhost:9090/metrics | grep dapr_component_state_latency
+kubectl port-forward <your-app-pod> 9090:9090 &
+curl http://localhost:9090/metrics | grep dapr_component_state_latencies
 ```
 
 High p99 latency on `get` or `set` operations points to the underlying store, not the Dapr sidecar itself.
@@ -104,8 +104,8 @@ Low `poolSize` causes queuing under concurrent load. Increase it based on your r
 Enable the Dapr profiling port to capture Go pprof data from the sidecar:
 
 ```bash
-kubectl port-forward <pod> 7778:7778
-curl http://localhost:7778/debug/pprof/profile?seconds=30 > profile.pprof
+kubectl port-forward <pod> 7777:7777
+curl http://localhost:7777/debug/pprof/profile?seconds=30 > profile.pprof
 go tool pprof -http=:8080 profile.pprof
 ```
 
