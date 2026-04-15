@@ -34,7 +34,7 @@ spec:
 For a saga pattern (e.g., order creation), log the trace ID at each step:
 
 ```python
-from flask import Flask, request, g
+from flask import Flask, request
 import requests
 import json
 
@@ -145,9 +145,9 @@ def process_payment(order_id, amount):
 
 ## Debugging State Operations
 
-Dapr traces include state store reads and writes. In the trace, look for spans like:
-- `DaprServiceInvocation` - HTTP calls between services
-- `DaprStateOperation` - Redis/Cosmos state reads/writes
+Dapr traces include state store reads and writes. In the trace, look for spans named with patterns like:
+- `CallLocal/<app-id>/<method>` - service-to-service invocations between Dapr sidecars
+- `/v1.0/state/<store-name>` - state store reads and writes via the Dapr HTTP API
 
 Slow state operations appear as long spans directly under the service span.
 
