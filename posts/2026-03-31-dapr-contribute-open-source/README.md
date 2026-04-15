@@ -29,7 +29,7 @@ github.com/dapr/java-sdk      # Java SDK
 ## Find a Good First Issue
 
 ```bash
-# Browse good-first-issue labels on GitHub
+# Browse "good first issue" labels on GitHub
 # https://github.com/dapr/dapr/issues?q=is%3Aopen+is%3Aissue+label%3A"good+first+issue"
 
 # Or use GitHub CLI
@@ -58,7 +58,7 @@ git remote -v
 
 ```bash
 # Prerequisites for dapr/dapr (Go-based)
-go version  # Requires Go 1.21+
+go version  # Check go.mod in the repo for the required Go version
 
 # Install dependencies
 make build
@@ -130,4 +130,4 @@ Before marking your PR ready for review:
 
 ## Summary
 
-Contributing to Dapr starts with finding a good-first-issue on GitHub, forking the relevant repository, setting up the Go or SDK development environment, and submitting a pull request with tests and DCO sign-off. The Dapr community uses GitHub Discussions and community calls to help first-time contributors get their changes merged.
+Contributing to Dapr starts with finding a "good first issue" on GitHub, forking the relevant repository, setting up the Go or SDK development environment, and submitting a pull request with tests and DCO sign-off. The Dapr community uses GitHub Discussions and community calls to help first-time contributors get their changes merged.
