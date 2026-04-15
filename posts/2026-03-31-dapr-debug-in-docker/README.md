@@ -54,7 +54,7 @@ services:
       "--app-port", "3000",
       "--app-channel-address", "order-service",
       "--log-level", "debug",
-      "--components-path", "/components"
+      "--resources-path", "/components"
     ]
 ```
 
