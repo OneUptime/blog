@@ -34,8 +34,6 @@ spec:
     value: "daprdb"
   - name: collection
     value: "statestore"
-  - name: partitionKey
-    value: "/partitionKey"
   - name: contentType
     value: "application/json"
 ```
@@ -79,7 +77,9 @@ async function saveUserSession(userId, sessionData) {
 }
 
 async function getUserSession(userId) {
-  const state = await client.state.get('cosmosdb-state', `user:${userId}`);
+  const state = await client.state.get('cosmosdb-state', `user:${userId}`, {
+    metadata: { partitionKey: userId }
+  });
   return state;
 }
 ```
@@ -114,7 +114,7 @@ Monitor partition distribution to detect hot partitions:
 # Use Azure Monitor to query partition metrics
 az monitor metrics list \
   --resource /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/mycosmosaccount \
-  --metric "NormalizedRUConsumption" \
+  --metrics "NormalizedRUConsumption" \
   --dimension "Region" \
   --interval PT1M
 ```
@@ -123,11 +123,13 @@ Use the Azure Portal's Insights tab to view per-partition RU consumption and ide
 
 ## Multi-Region State with Consistency Levels
 
-```yaml
-  - name: url
-    value: "https://myaccount.documents.azure.com:443/"
-  - name: consistencyLevel
-    value: "BoundedStaleness"
+Cosmos DB consistency levels (Strong, Bounded Staleness, Session, Consistent Prefix, Eventual) are configured on the Cosmos DB account itself, not through Dapr component metadata. Set the desired consistency level via the Azure Portal or CLI:
+
+```bash
+az cosmosdb update \
+  --name mycosmosaccount \
+  --resource-group myResourceGroup \
+  --default-consistency-level BoundedStaleness
 ```
 
 Configure multi-region writes:
