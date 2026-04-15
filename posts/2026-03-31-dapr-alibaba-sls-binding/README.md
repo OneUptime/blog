@@ -38,13 +38,9 @@ spec:
       key: accessKeySecret
   - name: Endpoint
     value: "cn-hangzhou.log.aliyuncs.com"
-  - name: Project
-    value: "my-log-project"
-  - name: LogStore
-    value: "app-logs"
-  - name: Topic
-    value: "service-events"
 ```
+
+The component only requires the authentication and endpoint configuration. The `project`, `logstore`, `topic`, and `source` fields are provided per request as invocation metadata.
 
 Store the secret securely using a Kubernetes secret:
 
@@ -66,6 +62,12 @@ curl -X POST http://localhost:3500/v1.0/bindings/alicloud-sls \
       "message": "Order processed successfully",
       "orderId": "ORD-12345",
       "userId": "USR-789"
+    },
+    "metadata": {
+      "project": "my-log-project",
+      "logstore": "app-logs",
+      "topic": "service-events",
+      "source": "order-service"
     },
     "operation": "create"
   }'
@@ -92,6 +94,12 @@ func sendLog(ctx context.Context, client dapr.Client, message string) error {
     Name:      "alicloud-sls",
     Operation: "create",
     Data:      mustMarshal(data),
+    Metadata: map[string]string{
+      "project":  "my-log-project",
+      "logstore": "app-logs",
+      "topic":    "service-events",
+      "source":   "order-service",
+    },
   }
 
   return client.InvokeOutputBinding(ctx, in)
@@ -100,17 +108,20 @@ func sendLog(ctx context.Context, client dapr.Client, message string) error {
 
 ## Structuring Log Topics
 
-SLS uses topics to categorize log entries within a logstore. You can override the topic per invocation using metadata:
+SLS uses topics to categorize log entries within a logstore. You can set a different topic per invocation to route logs into separate categories:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/alicloud-sls \
   -H "Content-Type: application/json" \
   -d '{
     "data": {"event": "payment_failed", "amount": 99.99},
-    "operation": "create",
     "metadata": {
-      "topic": "payment-errors"
-    }
+      "project": "my-log-project",
+      "logstore": "app-logs",
+      "topic": "payment-errors",
+      "source": "payment-service"
+    },
+    "operation": "create"
   }'
 ```
 
