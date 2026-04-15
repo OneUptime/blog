@@ -62,7 +62,7 @@ ClickHouse has no cold-start latency. Simple queries return in milliseconds. For
 SELECT
     product_category,
     sum(revenue)    AS total_revenue,
-    count()         AS order_count
+    count(*)        AS order_count
 FROM orders
 WHERE order_date >= '2025-01-01'
 GROUP BY product_category
