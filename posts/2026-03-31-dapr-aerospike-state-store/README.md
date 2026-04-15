@@ -28,7 +28,7 @@ docker run -d \
   -p 3000:3000 \
   -p 3001:3001 \
   -p 3002:3002 \
-  aerospike/aerospike-server:6.4.0
+  aerospike/aerospike-server
 ```
 
 Verify the server is running:
@@ -48,7 +48,7 @@ metadata:
   name: aerospike-statestore
   namespace: default
 spec:
-  type: state.aerospike
+  type: state.Aerospike
   version: v1
   metadata:
   - name: hosts
@@ -57,12 +57,6 @@ spec:
     value: "test"
   - name: set
     value: "dapr-state"
-  - name: username
-    value: ""
-  - name: password
-    secretKeyRef:
-      name: aerospike-secret
-      key: password
 ```
 
 For a multi-node cluster:
