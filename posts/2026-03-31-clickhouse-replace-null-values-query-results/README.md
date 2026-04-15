@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, NULL, ifNull, COALESCE, Query, SQL, Analytics
 
-Description: Learn how to replace NULL values in ClickHouse query results using ifNull, coalesce, COALESCE, and fillNull patterns for clean analytics output.
+Description: Learn how to replace NULL values in ClickHouse query results using ifNull, COALESCE, and multiIf patterns for clean analytics output.
 
 ---
 
-NULL values in ClickHouse appear whenever a `Nullable(T)` column contains no value, or when a JOIN finds no matching row. Replacing NULLs before they reach your application or dashboard is essential for clean aggregations and readable output. ClickHouse provides several functions for this: `ifNull`, `nullIf`, `coalesce`, and `COALESCE`.
+NULL values in ClickHouse appear whenever a `Nullable(T)` column contains no value, or when a JOIN finds no matching row. Replacing NULLs before they reach your application or dashboard is essential for clean aggregations and readable output. ClickHouse provides several functions for this: `ifNull`, `COALESCE`, and `multiIf`.
 
 ## ifNull: Replace a Single NULL
 
