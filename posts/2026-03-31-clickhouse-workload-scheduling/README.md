@@ -8,7 +8,7 @@ Description: Learn how to configure workload scheduling in ClickHouse to priorit
 
 ---
 
-Workload scheduling in ClickHouse (introduced in v24.1) lets you define named workloads with resource budgets and priorities, ensuring interactive queries stay fast even when batch jobs are running. This post walks through setting up a practical scheduling hierarchy.
+Workload scheduling in ClickHouse (IO scheduling introduced in v23.9, with SQL-based workload management added in v24.11) lets you define named workloads with resource budgets and priorities, ensuring interactive queries stay fast even when batch jobs are running. This post walks through setting up a practical scheduling hierarchy.
 
 ## What Is Workload Scheduling
 
@@ -23,15 +23,15 @@ Queries inherit the resource budget of their assigned workload.
 
 ```sql
 -- Root workload (the shared resource pool)
-CREATE WORKLOAD all SETTINGS max_io_bandwidth = 1073741824;  -- 1 GB/s
+CREATE WORKLOAD all SETTINGS max_speed = 1073741824;  -- 1 GB/s
 
 -- Interactive queries: high priority
-CREATE WORKLOAD interactive PARENT all SETTINGS
+CREATE WORKLOAD interactive IN all SETTINGS
     priority = 0,
     weight = 80;
 
 -- Batch jobs: lower priority
-CREATE WORKLOAD batch PARENT all SETTINGS
+CREATE WORKLOAD batch IN all SETTINGS
     priority = 10,
     weight = 20;
 ```
@@ -70,12 +70,12 @@ ALTER USER etl_pipeline SETTINGS PROFILE 'etl_profile';
 ## Adding Concurrency Limits to Workloads
 
 ```sql
-CREATE WORKLOAD interactive PARENT all SETTINGS
+CREATE WORKLOAD interactive IN all SETTINGS
     priority = 0,
     weight = 80,
     max_concurrent_queries = 30;
 
-CREATE WORKLOAD batch PARENT all SETTINGS
+CREATE WORKLOAD batch IN all SETTINGS
     priority = 10,
     weight = 20,
     max_concurrent_queries = 5;
@@ -87,9 +87,7 @@ CREATE WORKLOAD batch PARENT all SETTINGS
 SELECT
     name,
     parent,
-    priority,
-    weight,
-    max_concurrent_queries
+    create_query
 FROM system.workloads
 ORDER BY name;
 ```
@@ -114,16 +112,16 @@ ORDER BY queries DESC;
 For a typical analytics platform:
 
 ```sql
-CREATE WORKLOAD all SETTINGS max_io_bandwidth = 2147483648;  -- 2 GB/s
+CREATE WORKLOAD all SETTINGS max_speed = 2147483648;  -- 2 GB/s
 
 -- Dashboard users need sub-second response
-CREATE WORKLOAD dashboard PARENT all SETTINGS priority = 0, weight = 70, max_concurrent_queries = 50;
+CREATE WORKLOAD dashboard IN all SETTINGS priority = 0, weight = 70, max_concurrent_queries = 50;
 
 -- API queries need fast but less critical response
-CREATE WORKLOAD api PARENT all SETTINGS priority = 1, weight = 20, max_concurrent_queries = 100;
+CREATE WORKLOAD api IN all SETTINGS priority = 1, weight = 20, max_concurrent_queries = 100;
 
 -- Nightly ETL can run at lower priority
-CREATE WORKLOAD etl PARENT all SETTINGS priority = 5, weight = 10, max_concurrent_queries = 10;
+CREATE WORKLOAD etl IN all SETTINGS priority = 5, weight = 10, max_concurrent_queries = 10;
 ```
 
 ## Summary
