@@ -28,7 +28,7 @@ In RudderStack, add a ClickHouse destination:
 
 ```text
 Host: ch.internal
-Port: 8123
+Port: 9000
 Database: rudder
 User: rudder_writer
 Password: <secret>
@@ -43,21 +43,24 @@ RudderStack creates tables following its standard schema. For a `page` event:
 ```sql
 -- Auto-created by RudderStack
 CREATE TABLE rudder.pages (
-    anonymous_id  String,
-    user_id       String,
-    sent_at       DateTime,
-    received_at   DateTime,
-    original_timestamp DateTime,
-    channel       String,
-    context_page_url  String,
-    context_page_title String,
-    name          String,
-    context_ip    String,
-    context_user_agent String,
-    _timestamp    DateTime,
-    _sourceId     String
-) ENGINE = ReplacingMergeTree(_timestamp)
-ORDER BY (user_id, sent_at);
+    id                 Nullable(String),
+    anonymous_id       Nullable(String),
+    user_id            Nullable(String),
+    sent_at            Nullable(DateTime),
+    received_at        Nullable(DateTime),
+    original_timestamp Nullable(DateTime),
+    timestamp          Nullable(DateTime),
+    channel            Nullable(String),
+    context_page_url   Nullable(String),
+    context_page_title Nullable(String),
+    name               Nullable(String),
+    context_ip         Nullable(String),
+    context_user_agent Nullable(String),
+    context_source_id  Nullable(String),
+    uuid_ts            Nullable(DateTime)
+) ENGINE = ReplacingMergeTree
+PARTITION BY toDate(received_at)
+ORDER BY (received_at, id);
 ```
 
 ## Custom Track Events
@@ -105,7 +108,7 @@ LEFT JOIN purchases p ON p.user_id = s.user_id
 
 ## User Journey Analysis
 
-Reconstruct session paths using ClickHouse window functions:
+Reconstruct session paths using ClickHouse aggregate functions:
 
 ```sql
 SELECT
