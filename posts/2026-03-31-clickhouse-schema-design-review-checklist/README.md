@@ -14,7 +14,7 @@ Schema design is the single most important factor in ClickHouse query performanc
 
 ```text
 [ ] Numeric columns use the smallest type that fits:
-    - UInt8/Int8 (0-255), UInt16/Int16, UInt32/Int32, UInt64/Int64
+    - UInt8 (0-255) / Int8 (-128 to 127), UInt16/Int16, UInt32/Int32, UInt64/Int64
     - Float32 instead of Float64 when precision allows
     - Decimal(p, s) for financial values (not Float for money)
 [ ] String columns with low cardinality use LowCardinality(String)
