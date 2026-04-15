@@ -61,7 +61,7 @@ WHERE name IN (
     'max_memory_usage_for_user',
     'max_bytes_before_external_group_by',
     'max_bytes_before_external_sort',
-    'max_temporary_data_on_disk_size'
+    'max_temporary_data_on_disk_size_for_query'
 )
 ORDER BY name;
 ```
@@ -73,11 +73,12 @@ ORDER BY name;
 ```sql
 SELECT
     version,
-    name,
-    previous_default_value,
-    new_default_value,
-    reason
+    change.1 AS name,
+    change.2 AS previous_value,
+    change.3 AS new_value,
+    change.4 AS reason
 FROM system.settings_changes
+ARRAY JOIN changes AS change
 ORDER BY version DESC, name
 LIMIT 50;
 ```
@@ -87,11 +88,12 @@ LIMIT 50;
 ```sql
 SELECT
     version,
-    previous_default_value,
-    new_default_value,
-    reason
+    change.2 AS previous_value,
+    change.3 AS new_value,
+    change.4 AS reason
 FROM system.settings_changes
-WHERE name IN ('enable_analyzer', 'allow_experimental_analyzer')
+ARRAY JOIN changes AS change
+WHERE change.1 IN ('enable_analyzer', 'allow_experimental_analyzer')
 ORDER BY version;
 ```
 
