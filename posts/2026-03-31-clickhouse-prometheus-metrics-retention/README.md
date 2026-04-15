@@ -24,8 +24,8 @@ CREATE TABLE prometheus_metrics (
   value          Float64 CODEC(ZSTD(1)),
   date           Date DEFAULT toDate(timestamp)
 ) ENGINE = MergeTree()
-PARTITION BY (date, metric_name)
-ORDER BY (metric_name, labels, timestamp)
+PARTITION BY toYYYYMM(date)
+ORDER BY (metric_name, timestamp)
 TTL date + INTERVAL 2 YEAR
 SETTINGS index_granularity = 8192
 ```
@@ -70,7 +70,7 @@ For metrics older than 30 days, store 1-minute averages instead of raw data:
 CREATE MATERIALIZED VIEW prometheus_metrics_1m
 ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(ts_minute)
-ORDER BY (metric_name, labels, ts_minute)
+ORDER BY (metric_name, ts_minute)
 AS SELECT
   metric_name,
   labels,
