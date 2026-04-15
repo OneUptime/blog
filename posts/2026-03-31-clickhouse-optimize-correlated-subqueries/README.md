@@ -46,12 +46,22 @@ FROM (
 WHERE rn = 1;
 ```
 
-Or with `argMax`:
+Or with `max`:
 
 ```sql
 SELECT
     user_id,
-    argMax(event_time, event_time) AS latest_event
+    max(event_time) AS latest_event
+FROM events
+GROUP BY user_id;
+```
+
+For retrieving a different column at the latest row, use `argMax`:
+
+```sql
+SELECT
+    user_id,
+    argMax(event_type, event_time) AS latest_event_type
 FROM events
 GROUP BY user_id;
 ```
@@ -100,7 +110,7 @@ WHERE EXISTS (
 SELECT user_id, username
 FROM users
 WHERE user_id IN (
-    SELECT DISTINCT user_id
+    SELECT user_id
     FROM orders
     WHERE order_date >= '2026-01-01'
 );
@@ -135,7 +145,7 @@ WHERE EXISTS (
 );
 ```
 
-If the plan shows `CreatingSets` or `HashJoin`, ClickHouse has decorrelated it. If it shows a nested loop, you need to rewrite manually.
+If the plan shows `CreatingSets` or a join step like `HashJoin`, ClickHouse is using set-based or join-based execution. If the plan does not show a join-based strategy for a correlated subquery, you should rewrite it manually.
 
 ## Using ARRAY JOIN as an Alternative
 
@@ -158,4 +168,4 @@ WHERE has(actions, 'signup')
 
 ## Summary
 
-Correlated subqueries in ClickHouse should be rewritten as JOINs, window functions, or CTEs wherever possible to eliminate row-by-row execution. Use `argMax`, `ROW_NUMBER`, and pre-aggregated JOIN patterns for "latest/first per group" queries. Always verify your rewrite with EXPLAIN to confirm the plan has improved.
+Correlated subqueries in ClickHouse should be rewritten as JOINs, window functions, or CTEs wherever possible to eliminate row-by-row execution. Use `max`, `argMax`, `ROW_NUMBER`, and pre-aggregated JOIN patterns for "latest/first per group" queries. Always verify your rewrite with EXPLAIN to confirm the plan has improved.
