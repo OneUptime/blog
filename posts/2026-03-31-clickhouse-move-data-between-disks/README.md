@@ -165,7 +165,7 @@ Set `move_factor` in the policy to trigger automatic moves when disk fill crosse
 </two_tier>
 ```
 
-When only 10% of the `ssd` disk remains free, ClickHouse begins moving the oldest parts to `hdd`.
+When only 10% of the `ssd` disk remains free, ClickHouse begins moving the largest parts to `hdd`.
 
 ## Verifying Part Locations After a Move
 
@@ -198,14 +198,14 @@ GROUP BY disk_name;
 
 ## What Happens During a Move
 
-ClickHouse copies the part to the destination disk and hard-links metadata. Once the copy is confirmed, the original part is removed. The move is atomic from the query engine's perspective - queries always see either the old location or the new location, never an inconsistent state.
+ClickHouse copies the part to the destination disk. Once the copy is confirmed, the original part is removed. The move is atomic from the query engine's perspective - queries always see either the old location or the new location, never an inconsistent state.
 
 ## Moving Data to a New Policy
 
-If you need to migrate a table to an entirely new storage policy (for example, after replacing hardware), update the policy first, then explicitly move partitions:
+If you need to migrate a table to an entirely new storage policy (for example, after replacing hardware), update the policy first, then explicitly move partitions. The new policy must contain all disks and volumes from the old policy with the same names.
 
 ```sql
--- Update storage policy to include new disk
+-- Update storage policy (new policy must include all old disks/volumes)
 ALTER TABLE metrics
     MODIFY SETTING storage_policy = 'new_policy';
 
