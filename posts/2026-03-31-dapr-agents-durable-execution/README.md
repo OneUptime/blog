@@ -30,7 +30,7 @@ Define a workflow with multiple AI steps:
 
 ```python
 from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext
-from dapr_agents.llm import OpenAIChat
+from dapr_agents import OpenAIChatClient
 import dapr.ext.workflow as wf
 
 wfr = WorkflowRuntime()
@@ -69,22 +69,22 @@ def search_web_activity(ctx: WorkflowActivityContext, input: dict) -> str:
 @wfr.activity(name="analyze_content_activity")
 def analyze_content_activity(ctx: WorkflowActivityContext, input: dict) -> str:
     """Uses LLM to analyze content and extract key insights."""
-    llm = OpenAIChat(model="gpt-4o")
-    response = llm.complete(
+    llm = OpenAIChatClient(model="gpt-4o")
+    response = llm.generate(
         f"Analyze this content and extract key insights about {input['focus']}: "
         f"{input['content']}"
     )
-    return response.text
+    return response.get_message().content
 
 
 @wfr.activity(name="generate_report_activity")
 def generate_report_activity(ctx: WorkflowActivityContext, input: dict) -> str:
     """Generates a formatted report from the analysis."""
-    llm = OpenAIChat(model="gpt-4o")
-    response = llm.complete(
+    llm = OpenAIChatClient(model="gpt-4o")
+    response = llm.generate(
         f"Generate a {input['format']} report from: {input['analysis']}"
     )
-    return response.text
+    return response.get_message().content
 ```
 
 ## Starting a Durable Workflow
@@ -163,14 +163,14 @@ If the workflow app crashes during step 2, on restart Dapr replays the workflow 
 Prevent hung LLM calls with activity timeouts:
 
 ```python
+from datetime import timedelta
+
 analysis = yield ctx.call_activity(
     analyze_content_activity,
     input={"content": search_results},
-    retry_policy=wf.WorkflowActivityOptions(
-        retry_policy=wf.RetryPolicy(
-            max_number_of_attempts=3,
-            first_retry_interval=timedelta(seconds=5)
-        )
+    retry_policy=wf.RetryPolicy(
+        max_number_of_attempts=3,
+        first_retry_interval=timedelta(seconds=5)
     )
 )
 ```
