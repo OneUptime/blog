@@ -103,23 +103,6 @@ await client.binding.send("order-store", "create", {
 });
 ```
 
-## Using Conditional Writes
-
-For atomic conditional operations, you can pass DynamoDB expression metadata:
-
-```javascript
-await client.binding.send(
-  "order-store",
-  "create",
-  { orderId: "ORD-001", status: "SHIPPED", shippedAt: new Date().toISOString() },
-  {
-    "condition-expression": "attribute_exists(orderId) AND #s = :prev",
-    "expression-attribute-names": JSON.stringify({ "#s": "status" }),
-    "expression-attribute-values": JSON.stringify({ ":prev": "CONFIRMED" }),
-  }
-);
-```
-
 ## Testing Locally with LocalStack
 
 ```bash
@@ -165,8 +148,6 @@ async function saveOrderSafely(order) {
   } catch (err) {
     if (err.message.includes("ProvisionedThroughputExceededException")) {
       console.warn("DynamoDB throttled - will retry via Dapr resiliency");
-    } else if (err.message.includes("ConditionalCheckFailedException")) {
-      console.error("Conditional write failed - item already exists or state mismatch");
     }
     throw err;
   }
