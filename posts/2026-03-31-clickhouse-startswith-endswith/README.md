@@ -8,7 +8,7 @@ Description: Learn how to use startsWith() and endsWith() in ClickHouse to filte
 
 ---
 
-Prefix and suffix matching are among the most common string filtering operations in data pipelines. ClickHouse provides `startsWith(str, prefix)` and `endsWith(str, suffix)` as first-class functions that return `1` when the condition is met and `0` otherwise. They are readable alternatives to `LIKE 'prefix%'` or `LIKE '%suffix'` and can be combined with indexing strategies because ClickHouse can sometimes leverage bloom filter or token bloom filter skipping indexes on these predicates.
+Prefix and suffix matching are among the most common string filtering operations in data pipelines. ClickHouse provides `startsWith(str, prefix)` and `endsWith(str, suffix)` as first-class functions that return `1` when the condition is met and `0` otherwise. They are readable alternatives to `LIKE 'prefix%'` or `LIKE '%suffix'` and can be combined with indexing strategies. For example, `startsWith` can leverage bloom filter and token bloom filter (tokenbf_v1) skipping indexes, while `endsWith` can leverage token bloom filter and n-gram bloom filter (ngrambf_v1) skipping indexes.
 
 ## Function Signatures
 
