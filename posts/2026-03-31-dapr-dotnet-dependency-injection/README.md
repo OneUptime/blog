@@ -88,7 +88,7 @@ builder.Services.AddHostedService<OrderProcessor>();
 ```csharp
 using Dapr.Actors.Client;
 
-builder.Services.AddActorProxyFactory();
+builder.Services.AddActors(options => { });
 
 // In a controller or service
 public class CartController : ControllerBase
