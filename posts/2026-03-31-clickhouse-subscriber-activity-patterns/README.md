@@ -36,8 +36,8 @@ PARTITION BY toYYYYMM(activity_date);
 SELECT
     toYYYYMM(activity_date)           AS month,
     uniqExact(subscriber_id)          AS monthly_active,
-    countIf(data_mb > 0)              AS data_users,
-    countIf(voice_mins > 0)           AS voice_users
+    uniqExactIf(subscriber_id, data_mb > 0)   AS data_users,
+    uniqExactIf(subscriber_id, voice_mins > 0) AS voice_users
 FROM subscriber_activity
 WHERE activity_date >= toStartOfMonth(today() - INTERVAL 6 MONTH)
 GROUP BY month
@@ -98,7 +98,7 @@ GROUP BY weekday
 ORDER BY weekday;
 ```
 
-## Top Plan Revenue Contribution
+## Top Plans by Subscriber Count
 
 ```sql
 SELECT
@@ -113,29 +113,39 @@ ORDER BY subscribers DESC
 LIMIT 10;
 ```
 
-## Daily Activity Cohort Retention
+## Monthly Cohort Retention
 
 ```sql
 SELECT
-    first_month,
-    months_since_join,
-    round(100.0 * active_users / first_month_users, 1) AS retention_pct
+    a.first_month,
+    a.months_since_join,
+    round(100.0 * a.active_users / c.first_month_users, 1) AS retention_pct
 FROM (
     SELECT
-        toYYYYMM(first_activity) AS first_month,
-        dateDiff('month', first_activity, activity_date) AS months_since_join,
-        uniqExact(sub.subscriber_id) AS active_users,
-        any(first_month_count) AS first_month_users
-    FROM subscriber_activity sub
-    JOIN (
+        toYYYYMM(cohort.first_activity) AS first_month,
+        dateDiff('month', cohort.first_activity, sub.activity_date) AS months_since_join,
+        uniqExact(sub.subscriber_id) AS active_users
+    FROM subscriber_activity AS sub
+    INNER JOIN (
         SELECT subscriber_id, min(activity_date) AS first_activity
         FROM subscriber_activity
         GROUP BY subscriber_id
-    ) cohort USING (subscriber_id)
-    WHERE activity_date >= today() - 180
+    ) AS cohort USING (subscriber_id)
+    WHERE sub.activity_date >= today() - 180
     GROUP BY first_month, months_since_join
-)
-ORDER BY first_month, months_since_join;
+) AS a
+INNER JOIN (
+    SELECT
+        toYYYYMM(first_activity) AS first_month,
+        count() AS first_month_users
+    FROM (
+        SELECT subscriber_id, min(activity_date) AS first_activity
+        FROM subscriber_activity
+        GROUP BY subscriber_id
+    )
+    GROUP BY first_month
+) AS c USING (first_month)
+ORDER BY a.first_month, a.months_since_join;
 ```
 
 ## Summary
