@@ -118,6 +118,7 @@ runtime.register_activity(transform_record)
 runtime.register_activity(write_results)
 runtime.register_activity(notify_completion)
 runtime.register_activity(log_invalid_records)
+runtime.start()
 
 with DaprWorkflowClient() as client:
     instance_id = client.schedule_new_workflow(
