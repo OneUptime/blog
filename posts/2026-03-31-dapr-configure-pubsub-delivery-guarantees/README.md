@@ -54,6 +54,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
     }
 
     if err := processOrder(envelope.Data); err != nil {
+        processedIDs.Delete(envelope.ID) // Remove so retry can reprocess
         w.WriteHeader(500)
         json.NewEncoder(w).Encode(map[string]string{"status": "RETRY"})
         return
@@ -73,7 +74,7 @@ az servicebus topic create \
   --resource-group my-rg \
   --namespace-name my-ns \
   --name orders \
-  --requires-duplicate-detection true \
+  --enable-duplicate-detection true \
   --duplicate-detection-history-time-window PT10M
 ```
 
