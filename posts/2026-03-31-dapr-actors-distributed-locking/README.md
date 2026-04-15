@@ -38,7 +38,7 @@ type LockState struct {
 }
 
 type LockActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *LockActor) Type() string { return "Lock" }
