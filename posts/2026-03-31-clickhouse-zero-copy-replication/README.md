@@ -8,6 +8,8 @@ Description: Learn how ClickHouse's zero-copy replication eliminates redundant d
 
 ---
 
+> **Warning:** Zero-copy replication is an experimental feature and is not recommended for production use. It was disabled by default starting in ClickHouse 22.8. The ClickHouse team explicitly states this feature is not ready for production. Use it for testing and evaluation only.
+
 Traditional ClickHouse replication sends data over the network from one replica to another, doubling network bandwidth usage when adding a second replica. Zero-copy replication changes this model: instead of transferring data, replicas simply register a pointer to the same object storage file, so data is written once and read by all replicas directly from S3 or similar storage.
 
 ## How Zero-Copy Replication Works
@@ -26,7 +28,6 @@ Zero-copy is configured at the disk level in your storage configuration:
       <endpoint>https://s3.amazonaws.com/mybucket/clickhouse/</endpoint>
       <access_key_id>ACCESS_KEY</access_key_id>
       <secret_access_key>SECRET_KEY</secret_access_key>
-      <allow_s3_native_copy>true</allow_s3_native_copy>
     </s3_disk>
   </disks>
 </storage_configuration>
@@ -69,27 +70,27 @@ FROM system.replication_queue
 WHERE database = 'mydb';
 ```
 
-With zero-copy, `FETCH_PART` entries are replaced by lightweight `CLONE_PART_FROM_SHARD` or similar metadata-only operations.
+With zero-copy, `GET_PART` entries are still present in the queue, but they are fulfilled by registering metadata in ZooKeeper/Keeper rather than transferring data over the network.
 
 ## Monitoring Zero-Copy Activity
 
 ```sql
 SELECT event, value
 FROM system.events
-WHERE event LIKE '%ZeroCopy%';
+WHERE event LIKE '%S3%' OR event LIKE '%ZeroCopy%';
 ```
 
-Watch for `ZeroCopyReplicationLockWait` and `ZeroCopyReplicationLockAcquire` events to understand contention on the distributed lock that coordinates zero-copy operations.
+Watch for S3-related events such as `DiskS3GetObject` and `DiskS3CopyObject` to understand object storage activity. You can also monitor the `system.replication_queue` to observe how parts are being replicated across nodes.
 
 ## Distributed Lock Considerations
 
-Zero-copy replication uses a distributed lock in ClickHouse Keeper to prevent two nodes from deleting a shared part simultaneously. High lock contention can slow down merges. If you see excessive `ZeroCopyReplicationLockWait` values, consider tuning:
+Zero-copy replication uses a distributed lock in ClickHouse Keeper to prevent two nodes from deleting a shared part simultaneously. High lock contention can slow down merges. You can tune the minimum part size threshold at which the lock sleep mechanism activates:
 
 ```xml
 <merge_tree>
-  <zero_copy_merge_mutation_min_parts_size_sleep_before_send>
-    1048576
-  </zero_copy_merge_mutation_min_parts_size_sleep_before_send>
+  <zero_copy_merge_mutation_min_parts_size_sleep_before_lock>
+    1073741824
+  </zero_copy_merge_mutation_min_parts_size_sleep_before_lock>
 </merge_tree>
 ```
 
