@@ -19,7 +19,7 @@ graph LR
     C --> A
 ```
 
-ClickHouse connects to PostgreSQL using the libpq protocol, executes the query on the PostgreSQL side (pushing down the entire table scan), and streams the result back. Predicate pushdown applies for simple `WHERE` conditions.
+ClickHouse connects to PostgreSQL using the PostgreSQL wire protocol, sends a `SELECT` query to the PostgreSQL side, and streams the result back. Simple `WHERE` conditions (`=`, `!=`, `>`, `>=`, `<`, `<=`, `IN`) are pushed down to PostgreSQL. Joins, aggregations, sorting, and `LIMIT` are executed in ClickHouse after the remote query finishes.
 
 ## Syntax
 
