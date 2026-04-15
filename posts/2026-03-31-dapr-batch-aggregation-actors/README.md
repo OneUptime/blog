@@ -10,7 +10,7 @@ Description: Learn how to implement batch aggregation using Dapr actors to colle
 
 ## What Is Batch Aggregation?
 
-Batch aggregation collects many small operations and processes them together as a single unit. This reduces per-operation overhead - fewer database round trips, fewer API calls, better throughput. Dapr actor timers schedule the batch flush at regular intervals.
+Batch aggregation collects many small operations and processes them together as a single unit. This reduces per-operation overhead - fewer database round trips, fewer API calls, better throughput. Dapr actor reminders schedule the batch flush at regular intervals.
 
 ## Batch Aggregator Actor Interface
 
@@ -79,7 +79,7 @@ public class BatchAggregatorActor : Actor, IBatchAggregatorActor, IRemindable
         await database.BulkInsertAsync("events", items);
     }
 
-    public async Task ReceiveReminderAsync(string reminderName, ...)
+    public async Task ReceiveReminderAsync(string reminderName, byte[] state, TimeSpan dueTime, TimeSpan period)
     {
         if (reminderName == FlushReminder)
         {
@@ -142,4 +142,4 @@ process.on('SIGTERM', gracefulShutdown);
 
 ## Summary
 
-Dapr actor timers drive automatic batch flushing every N seconds while a size cap triggers immediate flushes for high-volume periods. Sharding the aggregator actors across multiple IDs distributes load, and a graceful shutdown hook ensures no events are lost when pods restart.
+Dapr actor reminders drive automatic batch flushing every N seconds while a size cap triggers immediate flushes for high-volume periods. Sharding the aggregator actors across multiple IDs distributes load, and a graceful shutdown hook ensures no events are lost when pods restart.
