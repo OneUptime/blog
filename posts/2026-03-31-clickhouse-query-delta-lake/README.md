@@ -108,7 +108,7 @@ Read the table at a specific version:
 ```sql
 SELECT count()
 FROM orders_delta
-SETTINGS delta_lake_version = 10;
+SETTINGS delta_lake_snapshot_version = 10;
 ```
 
 This is useful for debugging data quality issues or auditing historical states.
@@ -152,16 +152,16 @@ WHERE order_date >= '2024-01-01';
 
 ## Performance Tips
 
-- Use `PREWHERE` for conditions that filter heavily before reading full column data.
 - Ensure the Delta Lake table is partitioned by date or region for partition pruning.
 - Use `deltaLake()` function for exploratory queries; switch to the engine for production dashboards.
 - Run ClickHouse in the same cloud region as S3 to reduce latency.
+- Use `WHERE` clauses on partition columns to enable predicate pushdown and skip irrelevant files.
 
 ```sql
--- PREWHERE for efficient filtering
+-- Efficient filtering on a partition column
 SELECT order_id, total_amount
 FROM orders_delta
-PREWHERE order_date >= '2024-06-01';
+WHERE order_date >= '2024-06-01';
 ```
 
 ## Checking Read Statistics
