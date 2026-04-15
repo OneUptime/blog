@@ -42,7 +42,7 @@ volumes:
     driver: local
 ```
 
-Start and verify data persists after a restart:
+Start and verify data persists after removing and recreating the container:
 
 ```bash
 docker compose up -d
@@ -51,8 +51,9 @@ docker compose up -d
 docker exec -it clickhouse clickhouse-client --user admin --password secret \
   --query "CREATE TABLE test (id UInt32) ENGINE=MergeTree() ORDER BY id; INSERT INTO test VALUES (1),(2),(3);"
 
-# Restart and verify
-docker compose restart clickhouse
+# Remove and recreate the container (data volume is preserved)
+docker compose down
+docker compose up -d
 docker exec -it clickhouse clickhouse-client --user admin --password secret \
   --query "SELECT count() FROM test;"
 ```
