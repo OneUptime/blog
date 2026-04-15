@@ -62,6 +62,11 @@ The PostgreSQL engine supports views as well as tables:
 
 ```sql
 CREATE TABLE pg_revenue_summary
+(
+    region String,
+    total_revenue Decimal(18, 2),
+    order_count UInt64
+)
 ENGINE = PostgreSQL('pg-host:5432', 'myapp', 'revenue_summary_view', 'clickhouse_user', 'secret');
 
 SELECT * FROM pg_revenue_summary;
@@ -110,6 +115,12 @@ For PostgreSQL schemas other than `public`:
 
 ```sql
 CREATE TABLE pg_analytics_events
+(
+    event_id UInt64,
+    user_id UInt32,
+    event_type String,
+    event_time DateTime
+)
 ENGINE = PostgreSQL('pg-host:5432', 'myapp', 'events', 'clickhouse_user', 'secret', 'analytics');
 ```
 
