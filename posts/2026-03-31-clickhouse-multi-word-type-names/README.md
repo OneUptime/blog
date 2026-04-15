@@ -12,7 +12,7 @@ ClickHouse uses a rich type system where many types are parameterized with neste
 
 ## Parameterized Type Syntax
 
-ClickHouse types are written as constructors with parentheses. The type name is case-sensitive in most contexts.
+ClickHouse types are written as constructors with parentheses. Type names are case-insensitive, so `Nullable`, `nullable`, and `NULLABLE` are all valid.
 
 ```sql
 -- Nullable wraps any type to allow NULL values
@@ -52,23 +52,23 @@ There is no special quoting required for type names in DDL statements. The paren
 
 ## Using Multi-Word Types in CAST
 
-When casting with multi-word types, wrap the type name in a string literal:
+Parameterized types work directly in `CAST` expressions without any special quoting:
 
 ```sql
--- CAST with parameterized type requires string form
-SELECT CAST(42 AS 'Nullable(Int32)');
-SELECT CAST([1, 2, 3] AS 'Array(Int64)');
-SELECT CAST('hello' AS 'LowCardinality(String)');
+-- CAST with parameterized types
+SELECT CAST(42 AS Nullable(Int32));
+SELECT CAST([1, 2, 3] AS Array(Int64));
+SELECT CAST('hello' AS LowCardinality(String));
 
 -- toTypeName confirms the result
-SELECT toTypeName(CAST(42 AS 'Nullable(Int32)'));
+SELECT toTypeName(CAST(42 AS Nullable(Int32)));
 -- Result: Nullable(Int32)
 ```
 
-The inline `::` shorthand also accepts string-quoted types for parameterized forms:
+The inline `::` shorthand also works with parameterized types:
 
 ```sql
-SELECT 42::'Nullable(Int32)';
+SELECT 42::Nullable(Int32);
 ```
 
 ## Type Aliases
@@ -88,9 +88,9 @@ SELECT toTypeName(CAST(1.5 AS DOUBLE));
 SELECT toTypeName(CAST('hello' AS TEXT));
 -- Result: String
 
--- BOOLEAN is an alias for UInt8
+-- BOOLEAN is an alias for Bool (stored internally as UInt8)
 SELECT toTypeName(CAST(1 AS BOOLEAN));
--- Result: UInt8
+-- Result: Bool
 ```
 
 These aliases exist for SQL compatibility with MySQL and PostgreSQL syntax but map to native ClickHouse types internally.
@@ -124,10 +124,10 @@ Use `toTypeName()` to verify the exact canonical form of any type:
 SELECT toTypeName(materialize(NULL));
 -- Result: Nullable(Nothing)
 
-SELECT toTypeName(CAST(1 AS 'LowCardinality(String)'));
+SELECT toTypeName(CAST(1 AS LowCardinality(String)));
 -- Result: LowCardinality(String)
 
-SELECT toTypeName(CAST([] AS 'Array(Nullable(Int32))'));
+SELECT toTypeName(CAST([] AS Array(Nullable(Int32))));
 -- Result: Array(Nullable(Int32))
 ```
 
@@ -161,4 +161,4 @@ Decimal128(10)
 
 ## Summary
 
-ClickHouse type names use a parameterized constructor syntax where nested types are expressed with parentheses. In DDL statements, write types directly without quoting. In `CAST` expressions, wrap multi-word types in a string literal. Use `toTypeName()` to inspect the canonical form of any type at runtime, and rely on type aliases like `INT` or `DOUBLE` when SQL compatibility is needed.
+ClickHouse type names use a parameterized constructor syntax where nested types are expressed with parentheses. In both DDL statements and `CAST` expressions, write types directly without quoting. Use `toTypeName()` to inspect the canonical form of any type at runtime, and rely on type aliases like `INT` or `DOUBLE` when SQL compatibility is needed.
