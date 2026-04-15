@@ -33,7 +33,7 @@ spec:
         key: api-key
     - name: model
       value: "mistral-large-latest"
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "10m"
 ```
 
@@ -66,13 +66,13 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/mistral-conversation
   -d '{
     "inputs": [
       {
-        "message": "What are the SOLID principles in software engineering?",
+        "content": "What are the SOLID principles in software engineering?",
         "role": "user"
       }
     ],
     "parameters": {
       "temperature": 0.4,
-      "max_tokens": 600
+      "maxTokens": 600
     }
   }'
 ```
@@ -89,14 +89,16 @@ def generate_code(description: str, language: str) -> str:
         "http://localhost:3500/v1.0-alpha1/conversation/mistral-conversation/converse",
         json={
             "inputs": [{
-                "message": f"Write a {language} function that: {description}\n"
+                "content": f"Write a {language} function that: {description}\n"
                            "Include error handling and docstring.",
                 "role": "user"
             }],
+            "metadata": {
+                "model": "codestral-latest"
+            },
             "parameters": {
-                "model": "codestral-latest",
                 "temperature": 0.1,
-                "max_tokens": 1000
+                "maxTokens": 1000
             }
         }
     )
@@ -121,7 +123,7 @@ async function reviewCodeIteratively(initialCode) {
 
   // First pass: identify issues
   conversationHistory.push({
-    message: `Review this code and identify any issues:\n\n${initialCode}`,
+    content: `Review this code and identify any issues:\n\n${initialCode}`,
     role: 'user'
   });
 
@@ -134,13 +136,13 @@ async function reviewCodeIteratively(initialCode) {
   const reviewResult = data.outputs[0].result;
 
   conversationHistory.push({
-    message: reviewResult,
+    content: reviewResult,
     role: 'assistant'
   });
 
   // Second pass: request fixes
   conversationHistory.push({
-    message: 'Now rewrite the code with all the issues fixed.',
+    content: 'Now rewrite the code with all the issues fixed.',
     role: 'user'
   });
 
@@ -166,7 +168,7 @@ Mistral models support function calling. Pass tool definitions in parameters:
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/mistral-conversation/converse \
   -H "Content-Type: application/json" \
   -d '{
-    "inputs": [{"message": "What is the weather in Paris?", "role": "user"}],
+    "inputs": [{"content": "What is the weather in Paris?", "role": "user"}],
     "parameters": {
       "tools": [
         {
