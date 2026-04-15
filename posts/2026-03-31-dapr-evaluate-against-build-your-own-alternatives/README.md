@@ -12,20 +12,23 @@ When adopting microservices patterns, teams often debate whether to use Dapr or 
 
 ## What "Build Your Own" Actually Means
 
-A build-your-own approach requires implementing everything Dapr provides out of the box:
+A build-your-own approach requires implementing the key capabilities Dapr provides out of the box. Here are some of the most common ones:
 
 ```markdown
-Dapr Building Block | DIY Equivalent
+Dapr Capability     | DIY Equivalent
 --------------------|---------------
 Service invocation  | HTTP client + service discovery (Consul/CoreDNS)
 Pub/sub             | Kafka/RabbitMQ SDK + retry logic
 State management    | Redis/DynamoDB SDK per language
+Bindings            | Custom integration code per external system
 Resiliency          | Polly/.NET / resilience4j / custom middleware
 Secrets             | Vault SDK + rotation logic per service
 Observability       | OpenTelemetry instrumentation per SDK
 Actors              | Custom distributed coordination layer
 Workflows           | Temporal/Conductor integration
 ```
+
+Note that service invocation, pub/sub, state management, bindings, secrets, actors, and workflows are Dapr building blocks with dedicated APIs. Resiliency and observability are cross-cutting features built into the Dapr sidecar.
 
 ## Total Cost of Ownership Comparison
 
@@ -88,7 +91,7 @@ Compare p50, p95, p99 latencies to quantify the overhead for your use case.
 
 ## Decision Framework
 
-Score each factor from 1-5:
+Rate each factor for your situation:
 
 ```markdown
 Factor                        | Weight | Dapr Score | DIY Score
