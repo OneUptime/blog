@@ -19,8 +19,8 @@ CREATE DICTIONARY customer_dict (
     customer_id UInt64,
     name String DEFAULT '',
     email String DEFAULT '',
-    plan LowCardinality(String) DEFAULT 'free',
-    country LowCardinality(String) DEFAULT ''
+    plan String DEFAULT 'free',
+    country String DEFAULT ''
 )
 PRIMARY KEY customer_id
 SOURCE(POSTGRESQL(
@@ -81,7 +81,7 @@ SOURCE(POSTGRESQL(
     USER 'ch_reader'
     PASSWORD 'secret'
     DB 'catalog'
-    QUERY 'SELECT p.id, p.name, b.name AS brand, c.name AS category, p.base_price FROM products p JOIN brands b ON p.brand_id = b.id JOIN categories c ON p.category_id = c.id'
+    QUERY 'SELECT p.id AS product_id, p.name AS product_name, b.name AS brand, c.name AS category, p.base_price FROM products p JOIN brands b ON p.brand_id = b.id JOIN categories c ON p.category_id = c.id'
 ))
 LAYOUT(HASHED())
 LIFETIME(600);
