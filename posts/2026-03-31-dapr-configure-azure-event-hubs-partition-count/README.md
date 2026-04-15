@@ -96,9 +96,8 @@ spec:
 Use partition keys to ensure ordered processing for related events:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/eventhubs-pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/eventhubs-pubsub/orders?metadata.partitionKey=customer-123" \
   -H "Content-Type: application/json" \
-  -H "dapr-partition-key: customer-123" \
   -d '{"orderId": "456", "customerId": "123"}'
 ```
 
