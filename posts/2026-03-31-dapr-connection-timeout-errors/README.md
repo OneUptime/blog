@@ -72,20 +72,7 @@ spec:
 
 ## gRPC and HTTP Timeout Tuning
 
-For Dapr's internal gRPC communication, set timeout via the Dapr configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: myconfig
-spec:
-  api:
-    allowed:
-      - name: invoke
-        version: v1
-        protocol: http
-```
+For Dapr's internal gRPC and HTTP communication between sidecars, timeouts are controlled through Resiliency policies as shown in the previous section. There is no separate timeout field in the Dapr Configuration spec.
 
 When calling Dapr via HTTP from your app, set client-side timeouts:
 
@@ -105,7 +92,7 @@ Network policies may silently drop packets, causing timeouts rather than immedia
 kubectl get networkpolicy -n <namespace>
 ```
 
-Dapr uses ports 3500 (HTTP), 50001 (gRPC), and 3501 (internal). Ensure these are allowed between namespaces.
+Dapr uses ports 3500 (HTTP), 50001 (gRPC), and 50002 (internal gRPC). Ensure these are allowed between namespaces.
 
 ## Diagnosing with Dapr Dashboard
 
