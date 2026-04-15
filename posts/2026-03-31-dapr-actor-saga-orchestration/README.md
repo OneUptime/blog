@@ -75,10 +75,8 @@ type SagaStep struct {
 
 ```python
 # saga_actor.py
-import json
 import requests
 from dapr.actor import Actor, ActorInterface, actormethod
-from dapr.actor.runtime.context import ActorRuntimeContext
 from datetime import datetime, timezone
 
 class SagaOrchestratorInterface(ActorInterface):
@@ -203,32 +201,29 @@ class SagaOrchestratorActor(Actor, SagaOrchestratorInterface):
 
 ```python
 # main.py
-import asyncio
-from dapr.actor.runtime.runtime import ActorRuntime
-from dapr.actor.runtime.config import ActorRuntimeConfig
-from saga_actor import SagaOrchestratorActor
+from dapr.actor.proxy import ActorProxy
+from dapr.actor.id import ActorId
+from dapr.ext.fastapi import DaprActor
+from saga_actor import SagaOrchestratorActor, SagaOrchestratorInterface
 from fastapi import FastAPI
 import uvicorn
 
 app = FastAPI()
+actor = DaprActor(app)
 
 @app.on_event("startup")
 async def startup():
-    config = ActorRuntimeConfig()
-    ActorRuntime.set_actor_config(config)
-    ActorRuntime.register_actor(SagaOrchestratorActor)
+    await actor.register_actor(SagaOrchestratorActor)
 
 @app.post("/start-order")
 async def start_order(order: dict):
-    from dapr.clients import DaprClient
-    with DaprClient() as client:
-        resp = client.invoke_actor(
-            actor_type="SagaOrchestratorActor",
-            actor_id=order["orderId"],
-            method="StartSaga",
-            data=order
-        )
-        return resp.data
+    proxy = ActorProxy.create(
+        "SagaOrchestratorActor",
+        ActorId(order["orderId"]),
+        SagaOrchestratorInterface
+    )
+    result = await proxy.StartSaga(order)
+    return result
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5001)
