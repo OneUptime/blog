@@ -114,16 +114,24 @@ Detect sudden large spikes in daily outflows per account:
 ```sql
 SELECT
     account_id,
-    toDate(created_at) AS txn_date,
-    sumIf(amount, txn_type IN ('wire', 'transfer')) AS outflow,
-    avg(sumIf(amount, txn_type IN ('wire', 'transfer')))
-        OVER (PARTITION BY account_id ORDER BY txn_date ROWS BETWEEN 6 PRECEDING AND 1 PRECEDING)
-        AS avg_7d_outflow,
+    txn_date,
+    outflow,
+    avg_7d_outflow,
     outflow / avg_7d_outflow AS spike_ratio
-FROM transactions
-WHERE created_at >= today() - 60
-GROUP BY account_id, txn_date
-HAVING spike_ratio > 5
+FROM (
+    SELECT
+        account_id,
+        toDate(created_at) AS txn_date,
+        sumIf(amount, txn_type IN ('wire', 'transfer')) AS outflow,
+        avg(sumIf(amount, txn_type IN ('wire', 'transfer')))
+            OVER (PARTITION BY account_id ORDER BY txn_date ROWS BETWEEN 6 PRECEDING AND 1 PRECEDING)
+            AS avg_7d_outflow
+    FROM transactions
+    WHERE created_at >= today() - 60
+    GROUP BY account_id, txn_date
+)
+WHERE avg_7d_outflow > 0
+  AND outflow / avg_7d_outflow > 5
 ORDER BY spike_ratio DESC;
 ```
 
