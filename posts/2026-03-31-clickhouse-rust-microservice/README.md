@@ -130,4 +130,4 @@ Add `.route("/health", get(health))` to the router.
 
 ## Summary
 
-A Rust microservice using Axum and the `clickhouse` crate combines high performance with type safety. Share a single ClickHouse client through Axum's `State` extractor, derive `Row` and `Serialize` on result types, and use `TraceLayer` for request logging with zero runtime overhead.
+A Rust microservice using Axum and the `clickhouse` crate combines high performance with type safety. Share a single ClickHouse client through Axum's `State` extractor, derive `Row` and `Serialize` on result types, and use `TraceLayer` for request logging with minimal runtime overhead.
