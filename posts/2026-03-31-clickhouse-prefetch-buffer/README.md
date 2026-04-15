@@ -33,7 +33,7 @@ Without prefetch, the CPU waits for each disk read. With prefetch, disk reads ov
 | `local_filesystem_read_prefetch` | Query / Profile | false | Enable prefetch for local disk reads |
 | `remote_filesystem_read_prefetch` | Query / Profile | true | Enable prefetch for remote disks (S3, GCS) |
 | `filesystem_prefetch_step_bytes` | Query / Profile | 0 | Step size for prefetch advancement |
-| `filesystem_prefetch_max_memory_usage` | Query / Profile | 0 | Cap memory used by prefetch buffers |
+| `filesystem_prefetch_max_memory_usage` | Query / Profile | 1073741824 (1 GiB) | Cap memory used by prefetch buffers |
 
 ## Checking Current Settings
 
@@ -130,7 +130,7 @@ SELECT
     ProfileEvents['ReadBufferFromS3Microseconds'] AS s3_time_us
 FROM system.query_log
 WHERE type = 'QueryFinish'
-  AND tables LIKE '%events%'
+  AND arrayExists(x -> x LIKE '%events%', tables)
 ORDER BY event_time DESC
 LIMIT 5;
 ```
