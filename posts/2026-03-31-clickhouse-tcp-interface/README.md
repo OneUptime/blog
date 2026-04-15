@@ -8,7 +8,7 @@ Description: Learn how to configure the ClickHouse native TCP interface includin
 
 ---
 
-The native TCP interface is the primary high-performance protocol for ClickHouse clients. It is used by `clickhouse-client`, most official drivers (`clickhouse-driver` for Python, `clickhouse-go`, the Java JDBC driver), and for inter-node communication. Configuring it correctly ensures secure, low-latency client connectivity.
+The native TCP interface is the primary high-performance protocol for ClickHouse clients. It is used by `clickhouse-client`, most official drivers (`clickhouse-driver` for Python, `clickhouse-go`), and for inter-node communication. Note that the official Java JDBC driver uses the HTTP interface by default. Configuring it correctly ensures secure, low-latency client connectivity.
 
 ## TCP Port Configuration
 
@@ -25,20 +25,20 @@ The native TCP interface is the primary high-performance protocol for ClickHouse
 
 To disable the plain TCP port (force TLS only), remove the `<tcp_port>` element.
 
-## TCP Keep-Alive
+## Connection Keep-Alive
 
-Configure TCP keep-alive to detect dead connections:
+Configure the idle connection timeout:
 
 ```xml
 <clickhouse>
     <tcp_port>9000</tcp_port>
 
-    <!-- Enable keep-alive probes -->
+    <!-- Idle connection timeout -->
     <keep_alive_timeout>3</keep_alive_timeout>
 </clickhouse>
 ```
 
-`keep_alive_timeout` is in seconds. This sets how long the server waits before sending the first keep-alive probe on an idle connection.
+`keep_alive_timeout` is in seconds. This sets how long the server waits for incoming requests before closing an idle connection. Note that this setting primarily applies to the HTTP interface. For TCP-level keep-alive behavior, configure OS-level socket options.
 
 ## Connection Timeouts
 
@@ -50,8 +50,8 @@ Configure TCP keep-alive to detect dead connections:
     <!-- Maximum time to send a response to client -->
     <send_timeout>300</send_timeout>
 
-    <!-- TCP backlog queue size -->
-    <tcp_backlog_size>512</tcp_backlog_size>
+    <!-- Listen socket backlog queue size -->
+    <listen_backlog>4096</listen_backlog>
 </clickhouse>
 ```
 
@@ -122,12 +122,12 @@ SELECT
     interface,
     address,
     port,
-    connection_id,
+    query_id,
     user,
     client_hostname,
-    elapsed_sec
+    elapsed
 FROM system.processes
-WHERE interface = 'TCP';
+WHERE interface = 1;
 ```
 
 ```sql
