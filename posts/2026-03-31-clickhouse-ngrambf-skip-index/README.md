@@ -10,7 +10,7 @@ Description: Learn how to use the ngrambf_v1 skip index in ClickHouse to acceler
 
 ## What is ngrambf_v1
 
-`ngrambf_v1` is a skip index that stores a bloom filter of all n-grams (character sequences of length n) from string values in each granule. It helps ClickHouse skip granules that cannot contain a substring match, dramatically speeding up `LIKE` and `hasToken` queries.
+`ngrambf_v1` is a skip index that stores a bloom filter of all n-grams (character sequences of length n) from string values in each granule. It helps ClickHouse skip granules that cannot contain a substring match, dramatically speeding up `LIKE`, `notLike`, and `multiSearchAny` queries.
 
 ## Create a Table with ngrambf_v1
 
