@@ -85,7 +85,7 @@ WHERE region = 'East'
 ORDER BY sale_date;
 ```
 
-Because January 2nd and January 3rd share the same `amount` value (150), a RANGE frame that includes both will count them together. This illustrates the tie-handling behaviour that distinguishes RANGE from ROWS.
+Here the ORDER BY column is the integer representation of `sale_date`. Because the dates are consecutive with no gaps, `RANGE BETWEEN 2 PRECEDING AND CURRENT ROW` includes every row whose date integer is within 2 of the current row's — effectively producing the same 3-day window as the ROWS example above. The difference between ROWS and RANGE becomes visible when the ORDER BY column contains ties, as shown in the later section.
 
 ## UNBOUNDED PRECEDING: Cumulative Totals
 
