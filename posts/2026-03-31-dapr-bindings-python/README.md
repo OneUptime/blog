@@ -15,7 +15,7 @@ Dapr Bindings connect Python microservices to external systems without custom in
 ## Installation
 
 ```bash
-pip install dapr flask dapr-ext-flask
+pip install dapr flask flask-dapr
 ```
 
 ## Configuring a Cron Input Binding
@@ -97,13 +97,13 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
-    - name: storageAccessKey
+    - name: accountKey
       secretKeyRef:
         name: azure-secret
         key: storage-key
-    - name: container
+    - name: containerName
       value: "reports"
 ```
 
@@ -156,7 +156,7 @@ spec:
 dapr run \
   --app-id processor-service \
   --app-port 5000 \
-  --components-path ./dapr/components \
+  --resources-path ./dapr/components \
   -- python app.py
 ```
 
