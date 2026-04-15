@@ -35,7 +35,7 @@ class ShoppingCartActor extends AbstractActor {
     const { productId, name, price, quantity } = item;
 
     // Get existing cart items
-    const items = await this.stateManager.get('items') || [];
+    const items = await this.getStateManager().getOrAddState('items', []);
 
     const existing = items.find(i => i.productId === productId);
     if (existing) {
@@ -44,19 +44,19 @@ class ShoppingCartActor extends AbstractActor {
       items.push({ productId, name, price, quantity });
     }
 
-    await this.stateManager.set('items', items);
+    await this.getStateManager().setState('items', items);
     return { itemCount: items.length };
   }
 
   async removeItem(productId) {
-    const items = await this.stateManager.get('items') || [];
+    const items = await this.getStateManager().getOrAddState('items', []);
     const filtered = items.filter(i => i.productId !== productId);
-    await this.stateManager.set('items', filtered);
+    await this.getStateManager().setState('items', filtered);
     return { itemCount: filtered.length };
   }
 
   async getCart() {
-    const items = await this.stateManager.get('items') || [];
+    const items = await this.getStateManager().getOrAddState('items', []);
     const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
     return { items, total };
   }
@@ -67,7 +67,7 @@ class ShoppingCartActor extends AbstractActor {
       return { success: false, reason: 'Cart is empty' };
     }
     // Process checkout logic here
-    await this.stateManager.set('items', []);
+    await this.getStateManager().setState('items', []);
     return { success: true, total: cart.total };
   }
 }
@@ -93,7 +93,7 @@ const server = new DaprServer({
 
 async function start() {
   await server.actor.init();
-  server.actor.registerActor(ShoppingCartActor);
+  await server.actor.registerActor(ShoppingCartActor);
   await server.start();
   console.log('Actor service running on port 3000');
 }
@@ -139,7 +139,26 @@ main().catch(console.error);
 
 ## Actor Configuration
 
-Configure idle timeout and scan interval in the Dapr component:
+Configure idle timeout and scan interval via the `DaprServer` client options:
+
+```javascript
+const server = new DaprServer({
+  serverHost: '127.0.0.1',
+  serverPort: '3000',
+  communicationProtocol: CommunicationProtocolEnum.HTTP,
+  clientOptions: {
+    daprHost: '127.0.0.1',
+    daprPort: '3500',
+    actor: {
+      actorIdleTimeout: '60m',
+      actorScanInterval: '30s',
+      drainOngoingCallTimeout: '30s',
+    },
+  },
+});
+```
+
+To enable the Actor State TTL feature, add a Dapr Configuration resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -150,12 +169,8 @@ spec:
   features:
     - name: ActorStateTTL
       enabled: true
-  actors:
-    drainOngoingCallTimeout: 30s
-    idleTimeout: 60m
-    scanInterval: 30s
 ```
 
 ## Summary
 
-Building Dapr actors in JavaScript means extending `AbstractActor`, using `this.stateManager` for persistence, and hosting in a `DaprServer`. The proxy builder on the client side provides a type-aware interface for invoking actor methods. Dapr handles all the complexity of placement, activation, and state storage.
+Building Dapr actors in JavaScript means extending `AbstractActor`, using `this.getStateManager()` for persistence, and hosting in a `DaprServer`. The proxy builder on the client side provides a type-aware interface for invoking actor methods. Dapr handles all the complexity of placement, activation, and state storage.
