@@ -8,7 +8,7 @@ Description: Learn when to use inline lambda functions instead of UDFs in ClickH
 
 ---
 
-ClickHouse supports higher-order functions that accept inline lambda expressions. Before reaching for a UDF, consider whether a lambda passed to `arrayMap`, `arrayFilter`, or `arrayReduce` covers your use case - lambdas have no definition overhead and work directly on array columns.
+ClickHouse supports higher-order functions that accept inline lambda expressions. Before reaching for a UDF, consider whether a lambda passed to `arrayMap`, `arrayFilter`, or `arrayFold` covers your use case - lambdas have no definition overhead and work directly on array columns.
 
 ## What Are Lambda Functions in ClickHouse
 
@@ -40,9 +40,9 @@ WHERE length(arrayFilter(t -> t > 60, response_times)) > 0
 LIMIT 10;
 ```
 
-## arrayReduce with Lambda - Custom Accumulation
+## arrayFold - Custom Accumulation
 
-Use `arrayFold` (ClickHouse 23.2+) for custom reduction:
+Use `arrayFold` (ClickHouse 23.10+) for custom reduction with a lambda:
 
 ```sql
 SELECT arrayFold((acc, x) -> acc + x * x, [1, 2, 3, 4], toInt64(0)) AS sum_of_squares;
