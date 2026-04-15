@@ -27,7 +27,7 @@ ss -tlnp | grep 9004
 
 ## Authentication Requirements
 
-The MySQL protocol in ClickHouse requires `double_sha1_password` authentication. When creating or updating users:
+The MySQL protocol in ClickHouse supports `double_sha1_password` and `sha256_password` authentication. Using `double_sha1_password` is recommended for broadest client compatibility:
 
 ```sql
 CREATE USER mysql_user
@@ -36,7 +36,7 @@ CREATE USER mysql_user
 GRANT SELECT, INSERT ON my_database.* TO mysql_user;
 ```
 
-If you use SHA256 passwords (the default), MySQL clients cannot authenticate. This is a protocol limitation.
+Users created with `sha256_password` can also authenticate, but some older MySQL clients only support the `mysql_native_password` plugin and will fail to connect. If you use the default password type (`plaintext_password`), MySQL clients cannot authenticate through this interface.
 
 ## Connecting with the MySQL CLI
 
@@ -126,7 +126,7 @@ graph LR
 ```sql
 SELECT *
 FROM system.processes
-WHERE interface = 'MySQL';
+WHERE interface = 4;
 ```
 
 ## Security Considerations
