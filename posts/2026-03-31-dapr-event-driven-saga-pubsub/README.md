@@ -57,6 +57,22 @@ await server.pubsub.subscribe('saga-pubsub', 'order.created', async (event) => {
     });
   }
 });
+
+// Compensating transaction - release reservation if payment fails
+await server.pubsub.subscribe('saga-pubsub', 'payment.failed', async (event) => {
+  await releaseInventory(event.orderId);
+  await client.pubsub.publish('saga-pubsub', 'inventory.reservation.cancelled', {
+    orderId: event.orderId
+  });
+});
+
+// Compensating transaction - release reservation if shipment fails (after payment refund)
+await server.pubsub.subscribe('saga-pubsub', 'payment.refunded', async (event) => {
+  await releaseInventory(event.orderId);
+  await client.pubsub.publish('saga-pubsub', 'inventory.reservation.cancelled', {
+    orderId: event.orderId
+  });
+});
 ```
 
 ## Payment Service
