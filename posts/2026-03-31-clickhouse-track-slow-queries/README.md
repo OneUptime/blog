@@ -197,12 +197,11 @@ SET query_profiler_real_time_period_ns = 100000000;  -- 100ms real time
 SET query_profiler_cpu_time_period_ns  = 100000000;  -- 100ms CPU time
 
 SELECT
-    path,
     arrayStringConcat(arrayReverse(arrayMap(x -> demangle(addressToSymbol(x)), trace)), ' -> ') AS stack_trace,
     count()
 FROM system.trace_log
 WHERE query_id = 'your-slow-query-id'
-GROUP BY path, stack_trace
+GROUP BY trace
 ORDER BY count() DESC
 LIMIT 20;
 ```
@@ -218,7 +217,7 @@ SELECT
     thread_id,
     query_duration_ms,
     read_rows,
-    formatReadableSize(read_bytes) AS read_bytes,
+    formatReadableSize(read_bytes) AS read_bytes_readable,
     peak_memory_usage
 FROM system.query_thread_log
 WHERE
