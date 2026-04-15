@@ -46,13 +46,13 @@ Increase to `debug` for detailed troubleshooting (generates large log files):
 Each line has the format:
 
 ```text
-[timestamp] [pid] {query_id} <level> <component>: message
+[timestamp] [thread_id] {query_id} <level> <component>: message
 ```
 
 Example:
 
 ```text
-2026.03.31 10:00:01.234 [ 12345 ] {abc-123} <Information> executeQuery: SELECT count() FROM events
+2026.03.31 10:00:01.234567 [ 12345 ] {abc-123} <Information> executeQuery: SELECT count() FROM events
 ```
 
 ## Following Logs in Real Time
