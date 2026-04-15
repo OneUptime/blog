@@ -105,7 +105,7 @@ SETTINGS use_query_cache = 1, enable_writes_to_query_cache = 1,
 
 ```sql
 -- Clear the entire query result cache
-SYSTEM DROP QUERY CACHE;
+SYSTEM CLEAR QUERY CACHE;
 ```
 
 ## Use Cases
