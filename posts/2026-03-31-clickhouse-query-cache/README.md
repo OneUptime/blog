@@ -10,7 +10,7 @@ Description: Learn how to enable and configure the query_cache in ClickHouse to 
 
 ## Introduction
 
-ClickHouse 23.5 introduced a query result cache (`query_cache`) that stores the complete output of SELECT queries in memory. Subsequent identical queries are served from cache without touching the storage layer. This is especially useful for dashboards and reports that repeatedly run the same aggregation queries.
+ClickHouse 23.1 introduced a query result cache (`query_cache`) that stores the complete output of SELECT queries in memory. Subsequent identical queries are served from cache without touching the storage layer. This is especially useful for dashboards and reports that repeatedly run the same aggregation queries.
 
 ## How query_cache Works
 
@@ -60,7 +60,7 @@ Set the global cache size in `config.xml`:
     <max_size_in_bytes>1073741824</max_size_in_bytes>
     <max_entries>1024</max_entries>
     <max_entry_size_in_bytes>10485760</max_entry_size_in_bytes>
-    <max_entry_rows>30000000</max_entry_rows>
+    <max_entry_size_in_rows>30000000</max_entry_size_in_rows>
   </query_cache>
 </clickhouse>
 ```
@@ -117,7 +117,7 @@ ORDER BY expires_at DESC;
 ## Clearing the Cache
 
 ```sql
-SYSTEM DROP QUERY CACHE;
+SYSTEM CLEAR QUERY CACHE;
 ```
 
 ## Cache Key Rules
@@ -146,4 +146,4 @@ WHERE event IN ('QueryCacheHits', 'QueryCacheMisses');
 
 ## Summary
 
-The ClickHouse query cache stores full SELECT results in memory and serves them to subsequent identical queries without reading storage. Enable it globally in user profiles with `use_query_cache = true`, set a TTL and size limit in `config.xml`, and monitor hit rates via `system.metrics`. It delivers the biggest benefit for dashboards and BI tools that issue the same aggregation queries repeatedly within a short time window.
+The ClickHouse query cache stores full SELECT results in memory and serves them to subsequent identical queries without reading storage. Enable it globally in user profiles with `use_query_cache = true`, set a TTL and size limit in `config.xml`, and monitor hit rates via `system.events`. It delivers the biggest benefit for dashboards and BI tools that issue the same aggregation queries repeatedly within a short time window.
