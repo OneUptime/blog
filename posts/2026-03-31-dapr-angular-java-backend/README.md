@@ -33,6 +33,19 @@ Create a Spring Boot project with Dapr dependencies in `pom.xml`:
 </dependencies>
 ```
 
+Register the Dapr client as a Spring bean:
+
+```java
+@Configuration
+public class DaprConfig {
+
+    @Bean
+    public DaprClient daprClient() {
+        return new DaprClientBuilder().build();
+    }
+}
+```
+
 Create the inventory controller:
 
 ```java
@@ -79,7 +92,7 @@ public class InventoryController {
 Configure Dapr in `application.properties`:
 
 ```properties
-dapr.http.client.readTimeoutMilliseconds=5000
+dapr.http.client.readTimeoutSeconds=5
 server.port=8080
 ```
 
