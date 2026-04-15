@@ -118,8 +118,8 @@ ORDER BY day;
 ```sql
 SELECT
     q.query_norm,
-    count()                                          AS searches,
-    countIf(c.click_id != toUUID('00000000-0000-0000-0000-000000000000')) AS clicked_searches,
+    uniqExact(q.query_id)                            AS searches,
+    uniqExactIf(q.query_id, c.click_id != toUUID('00000000-0000-0000-0000-000000000000')) AS clicked_searches,
     round(100.0 * clicked_searches / searches, 2)    AS ctr_pct
 FROM search_queries q
 LEFT JOIN search_clicks c ON q.query_id = c.query_id
