@@ -12,7 +12,7 @@ Description: Configure Dapr across multiple Kubernetes clusters for cross-cluste
 
 Dapr does not have native multi-cluster federation, but you can achieve cross-cluster communication through:
 1. A shared pub/sub broker (Kafka, Redis Cluster, Azure Service Bus)
-2. mDNS or Consul name resolution for cross-cluster service invocation
+2. Consul name resolution for cross-cluster service discovery
 3. Service mesh integration (Istio, Linkerd) for cross-cluster routing
 
 ## Approach 1: Shared Pub/Sub Broker
@@ -40,6 +40,14 @@ spec:
     secretKeyRef:
       name: kafka-tls
       key: ca.crt
+  - name: clientCert
+    secretKeyRef:
+      name: kafka-tls
+      key: client.crt
+  - name: clientKey
+    secretKeyRef:
+      name: kafka-tls
+      key: client.key
 ```
 
 ```bash
@@ -105,7 +113,7 @@ If both clusters use Istio, configure cluster federation and let Dapr use Istio 
 
 ```bash
 # Install Istio multi-cluster (primary-remote model)
-istioctl install --set profile=primary \
+istioctl install --set profile=minimal \
   --set values.pilot.env.EXTERNAL_ISTIOD=true -y
 
 # Dapr sidecars use Istio service mesh for transparent cross-cluster routing
