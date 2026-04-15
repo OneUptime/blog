@@ -138,7 +138,7 @@ UNION ALL SELECT 'Balance (cents)', 'Int64', 'Can be negative (overdraft)';
 
 ## Negative Input Handling
 
-Passing a negative value to a `toUInt` function throws an exception in the standard variant. Use `OrNull` or `OrZero` to handle this safely.
+Passing a negative string to a `toUInt` function throws an exception in the standard variant (e.g., `toUInt32('-1')`). Note that passing a negative numeric value (e.g., `toUInt32(-1)`) does not throw — it wraps around using unsigned integer semantics. Use `OrNull` or `OrZero` to handle string parsing safely.
 
 ```sql
 -- A negative number is out of range for UInt
