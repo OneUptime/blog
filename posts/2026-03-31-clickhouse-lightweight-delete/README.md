@@ -57,8 +57,8 @@ OPTIMIZE TABLE orders FINAL;
 
 ## Limitations
 
-- Lightweight DELETE does not work on `ReplacingMergeTree` or `CollapsingMergeTree` with special semantics
-- DELETE with subqueries is not supported - use a direct predicate
+- Lightweight DELETE does not work on tables with projections by default (see the `lightweight_mutation_projection_mode` setting to change this)
+- Large volumes of lightweight deletes can negatively affect `SELECT` query performance
 - Very large deletes on high-cardinality columns can still put pressure on merges
 
 ## Monitoring Pending Deletes
