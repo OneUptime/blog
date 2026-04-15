@@ -10,7 +10,7 @@ Description: Learn how max_insert_block_size controls the size of blocks written
 
 ## Introduction
 
-When ClickHouse receives an INSERT, it splits the incoming data into blocks of `max_insert_block_size` rows. Each block is written as a separate part (before merging). Understanding and tuning this setting is critical for balancing insert throughput, part fragmentation, and memory usage during bulk loads.
+When ClickHouse processes an INSERT, it can split the incoming data into blocks of `max_insert_block_size` rows. This setting applies when the server forms the blocks — for example, during `INSERT ... SELECT` queries or when parsing row-based formats (CSV, JSONEachRow, etc.) received via the HTTP interface. Each block is written as a separate part (before merging). Understanding and tuning this setting is critical for balancing insert throughput, part fragmentation, and memory usage during bulk loads.
 
 ## INSERT Data Flow
 
