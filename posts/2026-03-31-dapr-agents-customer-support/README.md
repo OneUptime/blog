@@ -23,8 +23,7 @@ All agents communicate via Dapr pub/sub and share state through a common Dapr st
 
 ```python
 from dapr_agents import Agent, tool
-from dapr_agents.llm import OpenAIChat
-from dapr import Client
+from dapr.clients import DaprClient
 import json
 
 class TriageAgent(Agent):
@@ -38,7 +37,7 @@ class TriageAgent(Agent):
 
     def __init__(self):
         super().__init__()
-        self.dapr_client = Client()
+        self.dapr_client = DaprClient()
 
     @tool
     def classify_ticket(self, ticket_text: str, customer_tier: str) -> str:
@@ -108,8 +107,8 @@ class ResolutionAgent(Agent):
             response: The response message to send.
             resolved: Whether the issue has been resolved.
         """
-        from dapr import Client
-        client = Client()
+        from dapr.clients import DaprClient
+        client = DaprClient()
         client.save_state("statestore", f"ticket-{ticket_id}", json.dumps({
             "status": "resolved" if resolved else "pending-escalation",
             "response": response
@@ -124,8 +123,8 @@ class ResolutionAgent(Agent):
             ticket_id: The ticket to escalate.
             reason: Why escalation is needed.
         """
-        from dapr import Client
-        client = Client()
+        from dapr.clients import DaprClient
+        client = DaprClient()
         client.publish_event(
             pubsub_name="support-pubsub",
             topic_name="escalated-tickets",
@@ -153,10 +152,10 @@ spec:
 
 ```bash
 dapr run --app-id triage-agent --app-port 8080 \
-  --components-path ./components -- python triage_agent.py &
+  --resources-path ./components -- python triage_agent.py &
 
 dapr run --app-id resolution-agent --app-port 8081 \
-  --components-path ./components -- python resolution_agent.py &
+  --resources-path ./components -- python resolution_agent.py &
 ```
 
 ## Handling Incoming Tickets via HTTP
@@ -169,7 +168,7 @@ app = FastAPI()
 @app.post("/tickets")
 async def submit_ticket(ticket: dict):
     agent = TriageAgent()
-    result = agent.run(
+    result = await agent.run(
         f"Classify and route this ticket: {ticket['description']}. "
         f"Customer tier: {ticket.get('tier', 'free')}"
     )
