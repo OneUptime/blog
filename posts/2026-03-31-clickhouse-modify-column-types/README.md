@@ -72,7 +72,14 @@ Wrapping a type in `Nullable` allows NULL values at the cost of slightly more st
 ALTER TABLE events
     MODIFY COLUMN response_time_ms Nullable(UInt32);
 
--- Revert to non-nullable (NULL values are replaced with the default: 0)
+-- Revert to non-nullable
+-- IMPORTANT: Ensure no NULL values exist before removing Nullable,
+-- otherwise reading from the column may cause errors.
+-- Replace NULLs first:
+ALTER TABLE events
+    UPDATE response_time_ms = 0 WHERE response_time_ms IS NULL;
+
+-- Then remove Nullable once the mutation above completes:
 ALTER TABLE events
     MODIFY COLUMN response_time_ms UInt32;
 ```
