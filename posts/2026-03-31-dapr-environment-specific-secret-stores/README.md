@@ -40,8 +40,9 @@ spec:
     value: ":"
 ```
 
+secrets/dev-secrets.json (never commit to git):
+
 ```json
-// secrets/dev-secrets.json (never commit to git)
 {
   "database-password": "devpassword123",
   "api-key": "dev-api-key-replace-me",
@@ -117,7 +118,7 @@ spec:
     value: "https://vault.internal.company.com:8200"
   - name: skipVerify
     value: "false"
-  - name: tlsCaCert
+  - name: caCert
     secretKeyRef:
       name: vault-ca-cert
       key: ca.crt
@@ -208,9 +209,9 @@ spec:
     value: "https://vault.internal.company.com"
   - name: vaultKVPrefix
     value: "production/payment"
-  scopes:
-  - payment-service
-  - fraud-detection-service
+scopes:
+- payment-service
+- fraud-detection-service
 ```
 
 ## Summary
