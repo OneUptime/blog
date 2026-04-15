@@ -12,7 +12,7 @@ Description: Build a scalable data lake ingestion pipeline with Dapr using pub/s
 
 A data lake ingestion pipeline collects events from operational systems, enriches and validates them, batches for efficiency, and writes to object storage in analytics-friendly formats (Parquet, Delta Lake, JSON).
 
-```toml
+```text
 Services (Order, User, Product) --> [events] --> Collector
                                                       |
                                                [batch-ready] --> Validator
@@ -77,11 +77,11 @@ async def flush_batch(stream: str, batch: list):
             "createdAt": int(time.time() * 1000)
         }))
 
-        client.publish_event("pubsub", "batch-ready", {
+        client.publish_event("pubsub", "batch-ready", json.dumps({
             "batchId": batch_id,
             "stream": stream,
             "recordCount": len(batch)
-        })
+        }), data_content_type="application/json")
 ```
 
 ## Schema Validator Service
@@ -95,7 +95,7 @@ import (
     "encoding/json"
 
     dapr "github.com/dapr/go-sdk/client"
-    daprd "github.com/dapr/go-sdk/service/http"
+    "github.com/dapr/go-sdk/service/common"
 )
 
 type BatchReadyEvent struct {
@@ -104,7 +104,7 @@ type BatchReadyEvent struct {
     RecordCount int    `json:"recordCount"`
 }
 
-func handleBatchReady(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handleBatchReady(ctx context.Context, e *common.TopicEvent) (bool, error) {
     var event BatchReadyEvent
     json.Unmarshal(e.RawData, &event)
 
@@ -186,7 +186,7 @@ spec:
 # storage_writer.py
 from dapr.ext.fastapi import DaprApp
 from dapr.clients import DaprClient
-import json, time, base64
+import json, time
 from fastapi import FastAPI
 
 app = FastAPI()
