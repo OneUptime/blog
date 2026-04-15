@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CI/CD, Automation, GitHub Action, Upgrade
 
-Description: Learn how to automate Dapr version upgrades using GitHub Actions and ArgoCD, with automated compatibility testing and staged rollout to production.
+Description: Learn how to automate Dapr version upgrades using GitHub Actions, with automated compatibility testing and staged rollout to production.
 
 ---
 
@@ -28,7 +28,7 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Get latest Dapr version
       id: latest
       run: |
@@ -78,10 +78,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Configure kubectl
-      uses: azure/k8s-set-context@v3
+      uses: azure/k8s-set-context@v4
       with:
         kubeconfig: ${{ secrets.STAGING_KUBECONFIG }}
 
@@ -114,7 +114,7 @@ jobs:
         pytest tests/compat/ -v --junitxml=reports/staging-compat.xml
 
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: staging-compat-results
         path: reports/staging-compat.xml
@@ -139,12 +139,17 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Configure kubectl
-      uses: azure/k8s-set-context@v3
+      uses: azure/k8s-set-context@v4
       with:
         kubeconfig: ${{ secrets.PRODUCTION_KUBECONFIG }}
+
+    - name: Add Dapr Helm repo
+      run: |
+        helm repo add dapr https://dapr.github.io/helm-charts/
+        helm repo update
 
     - name: Upgrade Dapr in production
       run: |
