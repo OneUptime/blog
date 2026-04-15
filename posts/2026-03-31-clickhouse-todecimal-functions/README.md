@@ -142,10 +142,10 @@ LIMIT 10;
 
 ## Scale Mismatch in Arithmetic
 
-When performing arithmetic between Decimal values with different scales, ClickHouse automatically promotes to the larger scale.
+When performing arithmetic between Decimal values with different scales, ClickHouse adjusts the result scale based on the operation: for addition and subtraction, the result scale is the maximum of the two scales; for multiplication, the result scale is the sum of the two scales.
 
 ```sql
--- Multiplying Decimal64(2) by Decimal64(4) gives Decimal64(4)
+-- Multiplying Decimal64(2) by Decimal64(4) gives Decimal64(6) (scale = 2 + 4)
 SELECT
     toDecimal64('100.50', 2) * toDecimal64('0.0875', 4) AS product;
 ```
