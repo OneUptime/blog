@@ -43,7 +43,6 @@ package orderactor
 import "context"
 
 type OrderActorInterface interface {
-    // Methods must return (interface{}, error)
     Process(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error)
     GetStatus(ctx context.Context) (*StatusResponse, error)
     Cancel(ctx context.Context) error
@@ -78,11 +77,10 @@ import (
     "time"
 
     dapr "github.com/dapr/go-sdk/actor"
-    "github.com/dapr/go-sdk/actor/state"
 )
 
 type OrderActor struct {
-    dapr.ServerImplBase
+    dapr.ServerImplBaseCtx
 }
 
 func (a *OrderActor) Type() string {
@@ -109,13 +107,16 @@ func (a *OrderActor) Process(ctx context.Context, req *ProcessRequest) (*Process
 }
 
 func (a *OrderActor) GetStatus(ctx context.Context) (*StatusResponse, error) {
-    var status StatusResponse
-    exists, err := a.GetStateManager().Get(ctx, "status", &status)
+    exists, err := a.GetStateManager().Contains(ctx, "status")
     if err != nil {
         return nil, err
     }
     if !exists {
         return &StatusResponse{Status: "not_found"}, nil
+    }
+    var status StatusResponse
+    if err := a.GetStateManager().Get(ctx, "status", &status); err != nil {
+        return nil, err
     }
     return &status, nil
 }
@@ -134,18 +135,15 @@ package main
 import (
     "log"
 
-    dapr "github.com/dapr/go-sdk/actor/runtime"
-    daprd "github.com/dapr/go-sdk/service/grpc"
+    "github.com/dapr/go-sdk/actor"
+    daprd "github.com/dapr/go-sdk/service/http"
     orderactor "github.com/example/orderactor"
 )
 
 func main() {
-    s, err := daprd.NewService(":6001")
-    if err != nil {
-        log.Fatal(err)
-    }
+    s := daprd.NewService(":8080")
 
-    s.RegisterActorImplFactoryContext(func() dapr.Actor {
+    s.RegisterActorImplFactoryContext(func() actor.ServerContext {
         return &orderactor.OrderActor{}
     })
 
@@ -160,8 +158,7 @@ Start:
 ```bash
 dapr run \
   --app-id actor-host \
-  --app-port 6001 \
-  --app-protocol grpc \
+  --app-port 8080 \
   --dapr-http-port 3501 \
   -- go run server/main.go
 ```
@@ -181,6 +178,15 @@ import (
     orderactor "github.com/example/orderactor"
 )
 
+// Define a client stub with function fields matching the actor methods
+type OrderActorClientStub struct {
+    Process   func(ctx context.Context, req *orderactor.ProcessRequest) (*orderactor.ProcessResponse, error)
+    GetStatus func(ctx context.Context) (*orderactor.StatusResponse, error)
+}
+
+func (s *OrderActorClientStub) Type() string { return "OrderActor" }
+func (s *OrderActorClientStub) ID() string   { return "order-1" }
+
 func main() {
     client, err := dapr.NewClient()
     if err != nil {
@@ -190,25 +196,20 @@ func main() {
 
     ctx := context.Background()
 
-    // Build a proxy for actor type "OrderActor" with ID "order-1"
-    proxy, err := dapr.NewActorProxyWithClient(client, "OrderActor", "order-1",
-        new(orderactor.OrderActorInterface))
-    if err != nil {
-        log.Fatal(err)
-    }
+    // Wire up the stub — the SDK populates function fields via reflection
+    stub := new(OrderActorClientStub)
+    client.ImplActorClientStub(stub)
 
     // Call the Process method
     req := &orderactor.ProcessRequest{Items: []string{"sku-1", "sku-2"}, Amount: 149.99}
-    var resp orderactor.ProcessResponse
-    err = proxy.CallMethod(ctx, "Process", req, &resp)
+    resp, err := stub.Process(ctx, req)
     if err != nil {
         log.Fatal(err)
     }
     fmt.Printf("Process result: %+v\n", resp)
 
     // Call GetStatus
-    var status orderactor.StatusResponse
-    err = proxy.CallMethod(ctx, "GetStatus", nil, &status)
+    status, err := stub.GetStatus(ctx)
     if err != nil {
         log.Fatal(err)
     }
@@ -285,10 +286,10 @@ from order_actor import OrderActorInterface
 async def main():
     proxy = ActorProxy.create("OrderActor", ActorId("order-1"), OrderActorInterface)
 
-    result = await proxy.process({"items": ["sku-1"], "amount": 49.99})
+    result = await proxy.Process({"items": ["sku-1"], "amount": 49.99})
     print("Process:", result)
 
-    status = await proxy.get_status()
+    status = await proxy.GetStatus()
     print("Status:", status)
 ```
 
@@ -323,7 +324,7 @@ class OrderActor extends AbstractActor implements OrderActorInterface {
 import { DaprClient, ActorProxyBuilder, ActorId } from "@dapr/dapr";
 
 const client = new DaprClient();
-const builder = new ActorProxyBuilder<OrderActorInterface>("OrderActor", client);
+const builder = new ActorProxyBuilder<OrderActorInterface>(OrderActor, client);
 const actor = builder.build(new ActorId("order-1"));
 
 const result = await actor.process({ items: ["sku-1"], amount: 99.95 });
@@ -332,4 +333,4 @@ console.log("Result:", result);
 
 ## Summary
 
-Dapr actor method invocation via SDK uses a proxy pattern: you call methods on a typed proxy object and the SDK routes the call through the sidecar to the correct actor instance. The Go SDK uses `ActorProxy.CallMethod`, the Python SDK uses `ActorProxy.create` with an interface, and the TypeScript SDK uses `ActorProxyBuilder`. All SDKs handle serialization, placement resolution, and turn-based concurrency transparently.
+Dapr actor method invocation via SDK uses a proxy pattern: you call methods on a typed proxy object and the SDK routes the call through the sidecar to the correct actor instance. The Go SDK uses `ImplActorClientStub` to wire up typed function fields via reflection, the Python SDK uses `ActorProxy.create` with an interface, and the TypeScript SDK uses `ActorProxyBuilder`. All SDKs handle serialization, placement resolution, and turn-based concurrency transparently.
