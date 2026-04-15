@@ -100,8 +100,9 @@ async function loadServiceConfig(serviceName) {
   const prefixedKeys = keys.map(k => `config:${serviceName}:${k}`);
   const results = await client.state.getBulk('config-store', prefixedKeys);
 
+  const resultMap = new Map(results.map(r => [r.key, r.data]));
   return Object.fromEntries(
-    keys.map((k, i) => [k, results[prefixedKeys[i]]])
+    keys.map((k, i) => [k, resultMap.get(prefixedKeys[i])])
   );
 }
 ```
