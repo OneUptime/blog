@@ -10,7 +10,7 @@ Description: Validate data types before inserting into ClickHouse to prevent sil
 
 ## Why Validation Matters
 
-ClickHouse is permissive with type coercion. A string like "abc" inserted into a UInt32 column silently becomes 0. Dates outside the valid range wrap around. These silent failures corrupt your data without raising errors during insert.
+ClickHouse is permissive with type coercion. A string like "abc" inserted into a UInt32 column silently becomes 0. Dates outside the valid range get clamped to boundary values. These silent failures corrupt your data without raising errors during insert.
 
 ## Default ClickHouse Behavior
 
@@ -100,7 +100,7 @@ Send only validated rows to minimize coercion risk.
 ```sql
 SELECT
     count() AS total,
-    countIf(id = 0) AS zero_ids,
+    countIf(order_id = 0) AS zero_ids,
     countIf(amount < 0) AS negative_amounts
 FROM orders
 WHERE created_at >= today();
