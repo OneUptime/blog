@@ -19,7 +19,7 @@ FROM system.query_log
 WHERE type = 'QueryFinish' AND query_start_time > now() - INTERVAL 1 HOUR;
 
 -- Memory bound? Check peak memory
-SELECT max(peak_memory_usage) / 1e9 AS peak_gb
+SELECT max(memory_usage) / 1e9 AS peak_gb
 FROM system.query_log
 WHERE type = 'QueryFinish' AND query_start_time > now() - INTERVAL 1 HOUR;
 
