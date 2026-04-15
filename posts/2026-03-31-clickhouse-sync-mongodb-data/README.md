@@ -16,6 +16,7 @@ MongoDB Change Streams provide real-time CDC events. Write a Python consumer to 
 
 ```python
 from pymongo import MongoClient
+from datetime import datetime
 import clickhouse_driver
 import json
 
@@ -53,7 +54,14 @@ with db.orders.watch(full_document='updateLookup') as stream:
                 '_deleted': 0
             })
         elif op == 'delete':
-            buffer.append({'id': str(change['documentKey']['_id']), '_deleted': 1})
+            buffer.append({
+                'id': str(change['documentKey']['_id']),
+                'user_id': '',
+                'status': '',
+                'total': 0,
+                'created_at': datetime(1970, 1, 1),
+                '_deleted': 1
+            })
 
         if len(buffer) >= 500:
             ch.execute('INSERT INTO orders VALUES', buffer)
@@ -69,8 +77,8 @@ For production workloads, use Debezium as the CDC source:
   "name": "mongodb-connector",
   "config": {
     "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
-    "mongodb.hosts": "rs0/mongo-host:27017",
-    "mongodb.name": "myapp",
+    "mongodb.connection.string": "mongodb://mongo-host:27017/?replicaSet=rs0",
+    "topic.prefix": "myapp",
     "collection.include.list": "myapp.orders,myapp.customers",
     "snapshot.mode": "initial"
   }
