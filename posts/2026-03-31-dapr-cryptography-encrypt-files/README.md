@@ -65,7 +65,7 @@ func encryptFile(inputPath, outputPath, keyName string) error {
     encryptedStream, err := client.Encrypt(
         context.Background(),
         inputFile,
-        dapr.EncryptRequestOptions{
+        dapr.EncryptOptions{
             ComponentName:    "file-crypto",
             KeyName:          keyName,
             KeyWrapAlgorithm: "RSA-OAEP-256",
@@ -91,8 +91,8 @@ func encryptFile(inputPath, outputPath, keyName string) error {
 ## Encrypting a File with Python
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
 def encrypt_file(input_path: str, output_path: str, key_name: str):
     with open(input_path, "rb") as f:
@@ -100,12 +100,12 @@ def encrypt_file(input_path: str, output_path: str, key_name: str):
 
     with DaprClient() as d:
         encrypted_stream = d.encrypt(
-            data=io.BytesIO(plaintext),
-            options={
-                "componentName": "file-crypto",
-                "keyName": key_name,
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=plaintext,
+            options=EncryptOptions(
+                component_name="file-crypto",
+                key_name=key_name,
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         encrypted_bytes = encrypted_stream.read()
 
@@ -122,8 +122,8 @@ encrypt_file("report.pdf", "report.pdf.enc", "file-key")
 
 ```python
 import boto3
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
 def encrypt_and_upload(local_path: str, bucket: str, s3_key: str, key_name: str):
     with open(local_path, "rb") as f:
@@ -131,12 +131,12 @@ def encrypt_and_upload(local_path: str, bucket: str, s3_key: str, key_name: str)
 
     with DaprClient() as d:
         encrypted_stream = d.encrypt(
-            data=io.BytesIO(plaintext),
-            options={
-                "componentName": "file-crypto",
-                "keyName": key_name,
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=plaintext,
+            options=EncryptOptions(
+                component_name="file-crypto",
+                key_name=key_name,
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         encrypted_bytes = encrypted_stream.read()
 
@@ -154,7 +154,7 @@ def encrypt_and_upload(local_path: str, bucket: str, s3_key: str, key_name: str)
 
 ```bash
 # Encrypt a file using the HTTP API
-curl -X POST http://localhost:3500/v1.0-alpha1/crypto/file-crypto/encrypt \
+curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/file-crypto/encrypt \
   -H "Content-Type: application/octet-stream" \
   -H "dapr-key-name: file-key" \
   -H "dapr-key-wrap-algorithm: RSA-OAEP-256" \
@@ -178,7 +178,7 @@ func encryptLargeFile(inputPath, outputPath string) error {
     bufferedReader := bufio.NewReaderSize(inputFile, 64*1024) // 64KB chunks
 
     encryptedStream, err := client.Encrypt(context.Background(), bufferedReader,
-        dapr.EncryptRequestOptions{
+        dapr.EncryptOptions{
             ComponentName:    "file-crypto",
             KeyName:          "file-key",
             KeyWrapAlgorithm: "RSA-OAEP-256",
