@@ -8,7 +8,7 @@ Description: Learn how mapApply() transforms every key-value pair in a Map using
 
 ---
 
-`mapApply()` is a higher-order Map function in ClickHouse that applies a lambda to every key-value pair in a Map and returns a new Map with the transformed results. It is the map-equivalent of `arrayMap()` - instead of iterating over array elements, it iterates over map entries. This is particularly powerful for transforming all values in a map uniformly, computing derived values from both the key and the value, or normalizing map contents without expanding the data into rows.
+`mapApply()` is a higher-order Map function in ClickHouse that applies a lambda to every key-value pair in a Map and returns a new Map with the transformed results. It is the map-equivalent of `arrayMap()` - instead of iterating over array elements, it iterates over map entries. This is particularly powerful for transforming keys and values in a map, computing derived values from both the key and the value, or normalizing map contents without expanding the data into rows.
 
 ## Function Signature
 
@@ -16,14 +16,14 @@ Description: Learn how mapApply() transforms every key-value pair in a Map using
 mapApply(func, map)
 ```
 
-The `func` argument is a lambda of the form `(k, v) -> expression`. The lambda receives each key and value, and the return value becomes the new value for that key in the output map. The keys are preserved as-is; only values are transformed.
+The `func` argument is a lambda of the form `(k, v) -> (new_key, new_value)`. The lambda receives each key and value, and must return a 2-element tuple. The first element of the tuple becomes the key in the output map, and the second element becomes the value. This means `mapApply()` can transform both keys and values, though in practice the most common pattern is to pass the key through unchanged and only transform the value.
 
 ## Basic Usage
 
 Apply a simple lambda to double every value in a map.
 
 ```sql
-SELECT mapApply((k, v) -> v * 2, map('a', 10, 'b', 20, 'c', 30)) AS doubled;
+SELECT mapApply((k, v) -> (k, v * 2), map('a', 10, 'b', 20, 'c', 30)) AS doubled;
 ```
 
 The result is `{'a': 20, 'b': 40, 'c': 60}`.
@@ -31,7 +31,7 @@ The result is `{'a': 20, 'b': 40, 'c': 60}`.
 Transform string values to uppercase.
 
 ```sql
-SELECT mapApply((k, v) -> upper(v), map('status', 'active', 'tier', 'premium')) AS uppercased;
+SELECT mapApply((k, v) -> (k, upper(v)), map('status', 'active', 'tier', 'premium')) AS uppercased;
 ```
 
 ## Setting Up a Sample Table
@@ -62,7 +62,7 @@ Use `mapApply()` to round every value in the scores map to two decimal places, p
 ```sql
 SELECT
     user_id,
-    mapApply((k, v) -> round(v, 2), raw_scores) AS rounded_scores
+    mapApply((k, v) -> (k, round(v, 2)), raw_scores) AS rounded_scores
 FROM user_performance;
 ```
 
@@ -74,10 +74,10 @@ Apply a normalization lambda that divides each value by a fixed maximum to conve
 SELECT
     user_id,
     mapApply((k, v) ->
-        CASE
+        (k, CASE
             WHEN k = 'throughput' THEN v / 250.0
             ELSE v
-        END,
+        END),
         raw_scores
     ) AS normalized_scores
 FROM user_performance;
@@ -90,7 +90,7 @@ Convert all fractional values to percentage representations by multiplying by 10
 ```sql
 SELECT
     user_id,
-    mapApply((k, v) -> round(v * 100, 1), raw_scores) AS pct_scores
+    mapApply((k, v) -> (k, round(v * 100, 1)), raw_scores) AS pct_scores
 FROM user_performance
 WHERE period = '2024-Q1';
 ```
@@ -104,10 +104,10 @@ SELECT
     user_id,
     mapApply(
         (k, v) ->
-            CASE k
+            (k, CASE k
                 WHEN 'throughput' THEN round(v / 60.0, 2)   -- convert to per-minute rate
                 ELSE round(v, 3)
-            END,
+            END),
         raw_scores
     ) AS transformed_scores
 FROM user_performance;
@@ -120,7 +120,7 @@ Use `mapApply()` with `least()` to cap all map values at a defined ceiling, usef
 ```sql
 SELECT
     user_id,
-    mapApply((k, v) -> least(v, 1.0), raw_scores) AS capped_scores
+    mapApply((k, v) -> (k, least(v, 1.0)), raw_scores) AS capped_scores
 FROM user_performance;
 ```
 
@@ -133,7 +133,7 @@ SELECT
     user_id,
     mapFilter(
         (k, v) -> v >= 80.0,
-        mapApply((k, v) -> round(v * 100, 1), raw_scores)
+        mapApply((k, v) -> (k, round(v * 100, 1)), raw_scores)
     ) AS high_pct_scores
 FROM user_performance;
 ```
@@ -142,4 +142,4 @@ This converts all scores to percentages and then keeps only the dimensions where
 
 ## Summary
 
-`mapApply()` enables row-level transformation of every entry in a Map without expanding the data into individual rows. Use it to normalize values, apply format conversions, perform key-dependent transformations, or cap values at boundaries. Because it preserves the Map structure, the result can be stored back into a Map column or passed to other map functions like `mapFilter()`, `mapKeys()`, or `mapValues()` as part of a transformation pipeline. The lambda always receives `(key, value)` in that order, and only the returned expression becomes the new value - keys are never modified by `mapApply()`.
+`mapApply()` enables row-level transformation of every entry in a Map without expanding the data into individual rows. Use it to normalize values, apply format conversions, perform key-dependent transformations, or cap values at boundaries. Because it preserves the Map structure, the result can be stored back into a Map column or passed to other map functions like `mapFilter()`, `mapKeys()`, or `mapValues()` as part of a transformation pipeline. The lambda always receives `(key, value)` in that order and must return a 2-element tuple `(new_key, new_value)`. This means `mapApply()` can transform both keys and values, though the most common pattern is to pass the key through unchanged.
