@@ -156,7 +156,7 @@ Create per-environment variable files:
 
 ```hcl
 # prod.tfvars
-redis_host    = "redis-prod.internal:6379"
+redis_host    = "redis-prod.internal"
 kafka_brokers = "kafka-1.prod:9092,kafka-2.prod:9092"
 vault_address = "https://vault.prod.internal"
 ```
