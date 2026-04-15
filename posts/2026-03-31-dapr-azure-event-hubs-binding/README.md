@@ -26,7 +26,7 @@ az eventhubs eventhub create \
   --namespace-name my-eventhub-namespace \
   --resource-group my-rg \
   --partition-count 8 \
-  --message-retention 3
+  --retention-time 72
 ```
 
 ## Configuring the Event Hubs Binding Component
@@ -112,9 +112,9 @@ app.use(express.json());
 app.post("/telemetry-stream", async (req, res) => {
   const event = req.body;
 
-  const partitionId = req.headers["x-eventhubs-partition-id"];
-  const sequenceNumber = req.headers["x-eventhubs-sequence-number"];
-  const offset = req.headers["x-eventhubs-offset"];
+  const partitionId = req.headers["x-opt-partition-id"];
+  const sequenceNumber = req.headers["x-opt-sequence-number"];
+  const offset = req.headers["x-opt-offset"];
 
   console.log(`Event from partition ${partitionId}, seq #${sequenceNumber}`);
 
