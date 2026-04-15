@@ -22,7 +22,7 @@ ClickHouse supports encrypted backups using AES-128 or AES-256. Configure an enc
       <disk>backup_s3</disk>
       <path>/</path>
       <key>your-32-byte-hex-encryption-key-here</key>
-      <algorithm>AES_128_CTR</algorithm>
+      <algorithm>AES_256_CTR</algorithm>
     </backup_encrypted>
 
     <backup_s3>
@@ -39,8 +39,7 @@ ClickHouse supports encrypted backups using AES-128 or AES-256. Configure an enc
 
 ```sql
 BACKUP TABLE mydb.events
-TO Disk('backup_encrypted', 'events-backup-2026-03-31/')
-SETTINGS async = false;
+TO Disk('backup_encrypted', 'events-backup-2026-03-31/');
 ```
 
 The data is encrypted before being written to S3, so the bucket contents are unreadable without the key.
@@ -89,10 +88,9 @@ This ensures backups cannot be deleted within the retention window, protecting a
 After each backup, verify it can be restored:
 
 ```sql
--- List backup contents
+-- Restore to a test table for verification
 RESTORE TABLE mydb.events AS mydb.events_restore_test
-FROM Disk('backup_encrypted', 'events-backup-2026-03-31/')
-SETTINGS async = false;
+FROM Disk('backup_encrypted', 'events-backup-2026-03-31/');
 
 -- Verify row count matches
 SELECT
@@ -104,19 +102,25 @@ SELECT
 DROP TABLE mydb.events_restore_test;
 ```
 
-## Checksums in Backup Metadata
+## Checking Backup Metadata
 
-ClickHouse automatically stores checksums for each backup file. You can verify them:
+ClickHouse automatically verifies checksums during backup and restore operations. You can inspect backup metadata through the `system.backups` table:
 
 ```sql
 SELECT
-    file_name,
-    file_size,
-    checksum
+    id,
+    name,
+    status,
+    num_files,
+    total_size,
+    uncompressed_size,
+    compressed_size
 FROM system.backups
 WHERE name = 'events-backup-2026-03-31'
-ORDER BY file_name;
+ORDER BY start_time DESC;
 ```
+
+If the backup completed with status `BACKUP_CREATED`, the data passed integrity checks. A failed checksum verification during restore will produce an error, preventing silent corruption.
 
 ## Audit Trail for Backup Access
 
