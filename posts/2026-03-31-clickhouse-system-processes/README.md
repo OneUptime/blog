@@ -32,7 +32,7 @@ Key columns:
 | `peak_memory_usage` | Int64 | Peak memory used |
 | `is_cancelled` | UInt8 | 1 if a cancellation was requested |
 | `is_all_data_sent` | UInt8 | 1 if the result is fully sent to client |
-| `ProfileEvents` | Map | Detailed profiling counters |
+| `ProfileEvents` | Map(String, UInt64) | Detailed profiling counters |
 
 ## List All Running Queries
 
