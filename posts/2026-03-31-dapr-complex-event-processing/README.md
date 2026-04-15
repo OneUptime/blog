@@ -26,8 +26,7 @@ const FUNNEL_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
 async function handleFunnelEvent(eventType, userId, timestamp) {
   const stateKey = `funnel-${userId}`;
-  const raw = await client.state.get('statestore', stateKey);
-  const funnel = raw ? JSON.parse(raw) : { steps: [], startTime: timestamp };
+  const funnel = await client.state.get('statestore', stateKey) || { steps: [], startTime: timestamp };
 
   // Expire old funnel state
   if (timestamp - funnel.startTime > FUNNEL_WINDOW_MS) {
@@ -46,7 +45,7 @@ async function handleFunnelEvent(eventType, userId, timestamp) {
     funnel.steps = [];
   }
 
-  await client.state.save('statestore', [{ key: stateKey, value: JSON.stringify(funnel) }]);
+  await client.state.save('statestore', [{ key: stateKey, value: funnel }]);
 }
 ```
 
@@ -57,8 +56,7 @@ Alert when error count exceeds a threshold within a time window:
 ```javascript
 async function handleErrorEvent(serviceId, errorCode, timestamp) {
   const windowKey = `errors-${serviceId}-${Math.floor(timestamp / 60000)}`;
-  const raw = await client.state.get('statestore', windowKey);
-  const windowData = raw ? JSON.parse(raw) : { count: 0, errors: [] };
+  const windowData = await client.state.get('statestore', windowKey) || { count: 0, errors: [] };
 
   windowData.count += 1;
   windowData.errors.push({ errorCode, timestamp });
@@ -75,7 +73,7 @@ async function handleErrorEvent(serviceId, errorCode, timestamp) {
   // Set TTL so state expires after 2 minutes
   await client.state.save('statestore', [{
     key: windowKey,
-    value: JSON.stringify(windowData),
+    value: windowData,
     metadata: { ttlInSeconds: '120' }
   }]);
 }
@@ -86,7 +84,7 @@ async function handleErrorEvent(serviceId, errorCode, timestamp) {
 Route different event types to specific handlers:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: cep-subscription
@@ -111,7 +109,8 @@ Actors provide isolated, ordered execution ideal for per-entity CEP:
 ```javascript
 class UserFunnelActor {
   async trackEvent(eventType) {
-    const state = await this.stateManager.tryGetState('funnel') || { steps: [] };
+    const [exists, value] = await this.stateManager.tryGetState('funnel');
+    const state = exists ? value : { steps: [] };
     state.steps.push({ type: eventType, time: Date.now() });
     await this.stateManager.setState('funnel', state);
 
