@@ -78,7 +78,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
   -d '[{
     "key": "session-user-42",
     "value": {"userId": "user-42", "permissions": ["read", "write"], "ttl": 3600},
-    "options": {"ttlInSeconds": 3600}
+    "metadata": {"ttlInSeconds": "3600"}
   }]'
 
 # Get session state
@@ -113,7 +113,7 @@ async function syncFeatureFlags(flags) {
         key: `feature-flag-${flag.name}`,
         value: { enabled: flag.enabled, rolloutPercentage: flag.percentage }
     }));
-    await client.state.saveStateItems("statestore", items);
+    await client.state.save("statestore", items);
 }
 ```
 
@@ -127,7 +127,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
   -d '[{
     "key": "rate-limit-ip-1.2.3.4",
     "value": {"count": 1, "window": "1m"},
-    "options": {"ttlInSeconds": 60}
+    "metadata": {"ttlInSeconds": "60"}
   }]'
 ```
 
