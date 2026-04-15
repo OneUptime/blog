@@ -24,11 +24,11 @@ CREATE TABLE events
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(event_time)
-ORDER BY (user_id, event_time)
-SAMPLE BY user_id;
+ORDER BY (intHash32(user_id), event_time)
+SAMPLE BY intHash32(user_id);
 ```
 
-The `SAMPLE BY` column must be part of the `ORDER BY` key. A hash of `user_id` determines which rows belong to each sample shard.
+The `SAMPLE BY` expression must be part of the primary key (which defaults to `ORDER BY` when no explicit `PRIMARY KEY` is set). Using a hash function like `intHash32` ensures uniform distribution across the sample space, which is important for unbiased sampling when the column values are sequential or clustered.
 
 ## Running a Sampled Query
 
@@ -40,7 +40,7 @@ SELECT
     count() * 10 AS approx_count  -- scale up for 10% sample
 FROM events
 SAMPLE 0.1
-WHERE event_date = today()
+WHERE toDate(event_time) = today()
 GROUP BY event_name
 ORDER BY approx_count DESC;
 ```
