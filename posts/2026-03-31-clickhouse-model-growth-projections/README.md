@@ -17,8 +17,8 @@ Query daily row counts to build a trend:
 ```sql
 SELECT
     toDate(event_time) AS day,
-    sum(written_rows) AS rows_ingested,
-    formatReadableSize(sum(written_bytes)) AS bytes_ingested
+    sum(rows) AS rows_ingested,
+    formatReadableSize(sum(size_in_bytes)) AS bytes_ingested
 FROM system.part_log
 WHERE event_type = 'NewPart'
   AND event_time >= now() - INTERVAL 90 DAY
@@ -33,7 +33,7 @@ Export this to a spreadsheet or plotting tool and fit a linear or exponential tr
 ```text
 Current compressed size: 2 TB
 Growth rate (from trend): 50 GB/day
-Days until 80% of 10 TB capacity: (10,000 - 2,000) * 0.8 / 50 = 128 days
+Days until 80% of 10 TB capacity: (10,000 * 0.8 - 2,000) / 50 = 120 days
 ```
 
 Query current total size:
@@ -55,7 +55,7 @@ WITH daily_growth AS (
     FROM (
         SELECT
             toDate(event_time) AS day,
-            sum(written_bytes) AS daily_bytes
+            sum(size_in_bytes) AS daily_bytes
         FROM system.part_log
         WHERE event_type = 'NewPart'
           AND event_time >= now() - INTERVAL 30 DAY
