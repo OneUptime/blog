@@ -46,7 +46,7 @@ Key flags:
 |------|---------|-------------|
 | `--app-id` | required | Unique application identifier |
 | `--app-port` | (none) | Port your app listens on |
-| `--app-protocol` | http | Protocol the sidecar uses to call your app (http, grpc, https, grpcs) |
+| `--app-protocol` | http | Protocol the sidecar uses to call your app (http, grpc, https, grpcs, h2c) |
 | `--dapr-http-port` | 3500 | Dapr HTTP API port |
 | `--dapr-grpc-port` | 50001 | Dapr gRPC API port |
 | `--resources-path` | `~/.dapr/components` | Directory of component YAML files |
@@ -76,8 +76,7 @@ spec:
         dapr.io/app-id: "order-service"
         dapr.io/app-port: "3000"
         dapr.io/app-protocol: "http"
-        dapr.io/dapr-http-port: "3500"
-        dapr.io/dapr-grpc-port: "50001"
+        dapr.io/grpc-port: "50001"
         dapr.io/log-level: "info"
         dapr.io/enable-api-logging: "false"
         dapr.io/config: "tracing-config"
@@ -102,17 +101,15 @@ dapr.io/enabled: "true"                    # inject sidecar
 dapr.io/app-id: "my-service"               # unique app ID
 dapr.io/app-port: "8080"                   # port your app listens on
 dapr.io/app-protocol: "http"               # http | grpc | https | grpcs | h2c
-dapr.io/http-max-request-size: "4"         # max request body size in MB
+dapr.io/max-body-size: "4Mi"               # max request body size
 dapr.io/http-read-buffer-size: "4"         # HTTP read buffer in KB
 ```
 
 ### API Ports
 
 ```yaml
-dapr.io/dapr-http-port: "3500"
-dapr.io/dapr-grpc-port: "50001"
+dapr.io/grpc-port: "50001"
 dapr.io/metrics-port: "9090"
-dapr.io/profile-port: "7777"
 ```
 
 ### Health and Startup
@@ -123,7 +120,7 @@ dapr.io/app-health-probe-interval: "3"       # seconds between health checks
 dapr.io/app-health-probe-timeout: "500"      # milliseconds
 dapr.io/app-health-threshold: "3"            # consecutive failures before unhealthy
 dapr.io/wait-for-sidecar-before-app-start: "false"
-dapr.io/sidecar-listen-address: "0.0.0.0"
+dapr.io/sidecar-listen-addresses: "0.0.0.0"
 ```
 
 ### Resources
@@ -177,7 +174,7 @@ spec:
       endpointAddress: http://otel-collector:4317
       isSecure: false
       protocol: grpc
-  metric:
+  metrics:
     enabled: true
   logging:
     apiLogging:
@@ -210,7 +207,7 @@ The sidecar then forwards incoming service invocation calls over gRPC to your ap
 Check the loaded configuration from the sidecar metadata endpoint:
 
 ```bash
-curl http://localhost:3500/v1.0/metadata | jq '.runtimeMetadata'
+curl http://localhost:3500/v1.0/metadata | jq '.'
 ```
 
 On Kubernetes, inspect the injected sidecar container:
