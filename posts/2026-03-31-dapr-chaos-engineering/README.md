@@ -91,7 +91,7 @@ Observe Dapr metrics during stress:
 
 ```bash
 kubectl port-forward svc/prometheus 9090:9090 &
-# Query: dapr_http_server_request_duration_seconds_bucket{app_id="orderservice"}
+# Query: dapr_http_server_latency{app_id="orderservice"}
 ```
 
 ## Validate Resiliency Policy Fires During Chaos
