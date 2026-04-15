@@ -99,14 +99,11 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/bedrock-conversation
   -d '{
     "inputs": [
       {
-        "message": "Explain the difference between SQS and SNS in AWS",
+        "content": "Explain the difference between SQS and SNS in AWS",
         "role": "user"
       }
     ],
-    "parameters": {
-      "temperature": 0.5,
-      "max_tokens": 500
-    }
+    "temperature": 0.5
   }'
 ```
 
@@ -143,8 +140,8 @@ app.post('/api/analyze', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputs: [{ message: `Analyze sentiment: ${text}`, role: 'user' }],
-          parameters: { temperature: 0.2, max_tokens: 200 }
+          inputs: [{ content: `Analyze sentiment: ${text}`, role: 'user' }],
+          temperature: 0.2
         })
       }
     );
