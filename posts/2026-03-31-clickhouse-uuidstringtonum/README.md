@@ -12,16 +12,16 @@ UUIDs are 128-bit identifiers commonly used as primary keys and correlation IDs.
 
 ## How These Functions Work
 
-- `UUIDStringToNum(uuid_string)` - parses a standard UUID string (with or without hyphens) and returns a 16-byte `FixedString(16)` in big-endian byte order.
-- `UUIDNumToString(fixedstring16)` - takes a 16-byte binary UUID and formats it as the standard hyphenated lowercase UUID string.
+- `UUIDStringToNum(uuid_string[, variant = 1])` - parses a standard 36-character hyphenated UUID string and returns a 16-byte `FixedString(16)`. The optional `variant` parameter controls byte order: `1` (default) uses big-endian order per RFC 4122, `2` uses Microsoft mixed-endian order.
+- `UUIDNumToString(fixedstring16[, variant = 1])` - takes a 16-byte binary UUID and formats it as the standard hyphenated lowercase UUID string. The `variant` parameter must match the one used during conversion to binary.
 
 For comparison: a UUID stored as `String` uses 36 bytes; as `FixedString(16)` it uses exactly 16 bytes - a 56% reduction.
 
 ## Syntax
 
 ```sql
-UUIDStringToNum(uuid_string)
-UUIDNumToString(fixedstring16_value)
+UUIDStringToNum(uuid_string[, variant = 1])
+UUIDNumToString(fixedstring16_value[, variant = 1])
 ```
 
 ## Storage Size Comparison
