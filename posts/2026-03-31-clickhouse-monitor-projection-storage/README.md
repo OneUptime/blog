@@ -73,7 +73,6 @@ SELECT
     table,
     command,
     parts_to_do,
-    parts_done,
     is_done,
     latest_fail_reason
 FROM system.mutations
@@ -107,10 +106,10 @@ SELECT
     pp.table,
     pp.name,
     formatReadableSize(sum(pp.bytes_on_disk)) AS projection_size,
-    countIf(ql.used_projections != '') AS queries_using_projection
+    countIf(notEmpty(ql.projections)) AS queries_using_projection
 FROM system.projection_parts AS pp
 LEFT JOIN system.query_log AS ql
-    ON has(JSONExtractArrayRaw(ql.used_projections), pp.name)
+    ON has(ql.projections, pp.name)
     AND ql.event_date = today()
 WHERE pp.database = currentDatabase()
   AND pp.active = 1
