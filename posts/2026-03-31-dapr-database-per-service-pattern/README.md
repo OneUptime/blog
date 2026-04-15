@@ -155,7 +155,8 @@ kubectl exec -it order-service-pod -c daprd -- \
 # This should fail - order-service trying to access product-statestore
 kubectl exec -it order-service-pod -c daprd -- \
   curl -s "http://localhost:3500/v1.0/state/product-statestore/test-key"
-# Expected: 403 Forbidden
+# Expected: 400 Bad Request with ERR_STATE_STORE_NOT_FOUND
+# (the component is not loaded for this sidecar due to scoping)
 ```
 
 ## Summary
