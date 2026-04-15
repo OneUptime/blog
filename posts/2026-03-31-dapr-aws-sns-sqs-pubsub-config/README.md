@@ -28,15 +28,15 @@ aws sqs create-queue \
 aws sqs create-queue \
   --queue-name orders-processor \
   --attributes '{
-    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789:orders-dlq\",\"maxReceiveCount\":\"3\"}"
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:orders-dlq\",\"maxReceiveCount\":\"3\"}"
   }' \
   --region us-east-1
 
 # Subscribe SQS to SNS
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:orders \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:orders \
   --protocol sqs \
-  --notification-endpoint arn:aws:sqs:us-east-1:123456789:orders-processor
+  --notification-endpoint arn:aws:sqs:us-east-1:123456789012:orders-processor
 ```
 
 ## IAM Policy Configuration
@@ -87,7 +87,7 @@ metadata:
   name: sns-sqs-pubsub
   namespace: default
 spec:
-  type: pubsub.snssqs
+  type: pubsub.aws.snssqs
   version: v1
   metadata:
   - name: accessKey
@@ -104,18 +104,19 @@ spec:
     value: "orders-dlq"
   - name: messageVisibilityTimeout
     value: "30"
-  - name: messageRetryLimit
+  - name: messageReceiveLimit
     value: "3"
-  - name: sqsWaitTimeSeconds
+  - name: messageWaitTimeSeconds
     value: "20"
 ```
 
 ## Publishing Events
 
 ```python
-import dapr.clients as dapr
+import json
+from dapr.clients import DaprClient
 
-with dapr.DaprClient() as client:
+with DaprClient() as client:
     event_data = {
         "orderId": "ord-123",
         "items": ["item-a", "item-b"],
@@ -124,7 +125,8 @@ with dapr.DaprClient() as client:
     client.publish_event(
         pubsub_name='sns-sqs-pubsub',
         topic_name='orders',
-        data=event_data
+        data=json.dumps(event_data),
+        data_content_type='application/json'
     )
     print("Order published successfully")
 ```
@@ -140,7 +142,7 @@ metadata:
   name: sns-sqs-pubsub
   namespace: default
 spec:
-  type: pubsub.snssqs
+  type: pubsub.aws.snssqs
   version: v1
   metadata:
   - name: region
