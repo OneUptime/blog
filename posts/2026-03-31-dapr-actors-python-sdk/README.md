@@ -115,26 +115,17 @@ dapr run --app-id counter-service --app-port 8000 -- uvicorn main:app --port 800
 ## Invoking the Actor from a Client
 
 ```python
-from dapr.clients import DaprClient
-import json
+from dapr.actor import ActorProxy, ActorId
 
-with DaprClient() as client:
-    # Increment the counter for actor "user-123"
-    await client.invoke_actor(
-        actor_type="CounterActor",
-        actor_id="user-123",
-        method="increment",
-        data=json.dumps(5).encode("utf-8"),
-    )
+async def main():
+    # Create a proxy for actor "user-123"
+    proxy = ActorProxy.create("CounterActor", ActorId("user-123"), CounterActorInterface)
+
+    # Increment the counter
+    await proxy.invoke_method("increment", 5)
 
     # Get the current count
-    response = await client.invoke_actor(
-        actor_type="CounterActor",
-        actor_id="user-123",
-        method="get_count",
-        data=b"",
-    )
-    count = json.loads(response.data)
+    count = await proxy.invoke_method("get_count")
     print(f"Current count: {count}")
 ```
 
