@@ -40,7 +40,7 @@ annotations:
 
 ```yaml
 spec:
-  metric:
+  metrics:
     enabled: true
     http:
       increasedCardinality: false
@@ -52,7 +52,7 @@ spec:
 
 ## Configuring Middleware Pipelines
 
-Middleware chains run on inbound HTTP traffic. Reference component names in the `pipeline`:
+Middleware chains run on HTTP traffic. Reference component names in `httpPipeline` and `appHttpPipeline`:
 
 ```yaml
 spec:
@@ -70,17 +70,17 @@ spec:
 
 ## Restricting API Access
 
-Use `api` to block specific Dapr building-block APIs for an app:
+Use `api.allowed` to permit only specific Dapr building-block APIs for an app, blocking all others:
 
 ```yaml
 spec:
   api:
     allowed:
       - name: state
-        version: v1
+        version: v1.0
         protocol: http
       - name: invoke
-        version: v1
+        version: v1.0
         protocol: grpc
 ```
 
@@ -106,7 +106,7 @@ spec:
   features:
     - name: ActorStateTTL
       enabled: true
-    - name: SchedulerReminders
+    - name: HotReload
       enabled: true
 ```
 
