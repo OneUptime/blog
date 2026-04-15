@@ -147,6 +147,8 @@ def check_tiered_rate_limit(client_id: str) -> tuple:
 Return standard rate limit headers in responses:
 
 ```python
+from fastapi.responses import JSONResponse
+
 @app.middleware("http")
 async def rate_limit_with_headers(request: Request, call_next):
     client_id = get_client_id(request)
@@ -172,4 +174,4 @@ async def rate_limit_with_headers(request: Request, call_next):
 
 ## Summary
 
-Dapr rate limiting starts with the built-in `middleware.http.ratelimit` component for simple per-service limits. For distributed per-client rate limiting with tiered quotas, use a Dapr state store to implement a sliding window token bucket that tracks request counts per client ID. Return standard `X-RateLimit-*` and `Retry-After` headers to help clients implement appropriate backoff. Store tier information in the state store to enable dynamic quota management without service redeployment.
+Dapr rate limiting starts with the built-in `middleware.http.ratelimit` component for simple per-service limits. For distributed per-client rate limiting with tiered quotas, use a Dapr state store to implement a sliding window log that tracks request timestamps per client ID. Return standard `X-RateLimit-*` and `Retry-After` headers to help clients implement appropriate backoff. Store tier information in the state store to enable dynamic quota management without service redeployment.
