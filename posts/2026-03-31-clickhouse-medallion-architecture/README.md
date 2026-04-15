@@ -62,7 +62,7 @@ ORDER BY (user_id, event_time);
 CREATE MATERIALIZED VIEW bronze.events_to_silver TO silver.events AS
 SELECT
     parseDateTimeBestEffort(JSONExtractString(raw_data, 'timestamp')) AS event_time,
-    toUInt64OrZero(JSONExtractString(raw_data, 'user_id')) AS user_id,
+    JSONExtractUInt(raw_data, 'user_id') AS user_id,
     JSONExtractString(raw_data, 'event') AS event_type,
     JSONExtractString(raw_data, 'session_id') AS session_id,
     JSONExtract(raw_data, 'properties', 'Map(String,String)') AS properties
@@ -82,19 +82,19 @@ CREATE DATABASE gold;
 CREATE TABLE gold.daily_user_activity (
     activity_date  Date,
     user_id        UInt64,
-    sessions       UInt32,
-    events         UInt32,
-    distinct_types UInt32
-) ENGINE = SummingMergeTree()
+    sessions       AggregateFunction(uniq, String),
+    events         SimpleAggregateFunction(sum, UInt64),
+    distinct_types AggregateFunction(uniq, String)
+) ENGINE = AggregatingMergeTree()
 ORDER BY (activity_date, user_id);
 
 CREATE MATERIALIZED VIEW silver.events_to_gold TO gold.daily_user_activity AS
 SELECT
     toDate(event_time) AS activity_date,
     user_id,
-    countDistinct(session_id) AS sessions,
+    uniqState(session_id) AS sessions,
     count() AS events,
-    countDistinct(event_type) AS distinct_types
+    uniqState(event_type) AS distinct_types
 FROM silver.events
 GROUP BY activity_date, user_id;
 ```
@@ -107,7 +107,7 @@ Dashboards query the gold layer for fast, pre-aggregated results:
 SELECT
     activity_date,
     sum(events) AS total_events,
-    sum(sessions) AS total_sessions,
+    uniqMerge(sessions) AS total_sessions,
     count(DISTINCT user_id) AS dau
 FROM gold.daily_user_activity
 WHERE activity_date >= today() - 30
