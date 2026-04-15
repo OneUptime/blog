@@ -23,10 +23,18 @@ Add the dependency:
   <version>1.19.7</version>
   <scope>test</scope>
 </dependency>
+<dependency>
+  <groupId>org.testcontainers</groupId>
+  <artifactId>junit-jupiter</artifactId>
+  <version>1.19.7</version>
+  <scope>test</scope>
+</dependency>
 ```
 
 ```java
 import org.testcontainers.clickhouse.ClickHouseContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import org.junit.jupiter.api.*;
 
 @Testcontainers
