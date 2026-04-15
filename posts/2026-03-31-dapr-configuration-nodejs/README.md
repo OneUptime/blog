@@ -38,11 +38,12 @@ spec:
 ## Reading Configuration Values
 
 ```javascript
-const { DaprClient } = require("@dapr/dapr");
+const { DaprClient, CommunicationProtocolEnum } = require("@dapr/dapr");
 
 const client = new DaprClient({
-  daprHost: "http://localhost",
+  daprHost: "127.0.0.1",
   daprPort: "3500",
+  communicationProtocol: CommunicationProtocolEnum.GRPC,
 });
 
 async function loadConfig() {
@@ -68,10 +69,10 @@ Subscribe to live updates for specific keys:
 let appConfig = {};
 
 async function watchConfig() {
-  const { subscriptionId } = await client.configuration.subscribeWithKeys(
+  const stream = await client.configuration.subscribeWithKeys(
     "configstore",
     ["feature-new-ui", "max-requests-per-second"],
-    (update) => {
+    async (update) => {
       const items = update.items;
 
       if (items["feature-new-ui"]) {
@@ -86,16 +87,16 @@ async function watchConfig() {
     }
   );
 
-  console.log("Subscribed to config updates:", subscriptionId);
-  return subscriptionId;
+  console.log("Subscribed to config updates");
+  return stream;
 }
 ```
 
 ## Unsubscribing from Updates
 
 ```javascript
-async function stopWatching(subscriptionId) {
-  await client.configuration.unsubscribe("configstore", subscriptionId);
+function stopWatching(stream) {
+  stream.stop();
   console.log("Unsubscribed from config updates");
 }
 ```
@@ -133,7 +134,7 @@ async function main() {
   appConfig = await loadConfig();
 
   // Subscribe to changes
-  const subscriptionId = await watchConfig();
+  const stream = await watchConfig();
 
   // Start server
   app.listen(3000, () => {
@@ -141,8 +142,8 @@ async function main() {
   });
 
   // Clean up on exit
-  process.on("SIGTERM", async () => {
-    await stopWatching(subscriptionId);
+  process.on("SIGTERM", () => {
+    stopWatching(stream);
     process.exit(0);
   });
 }
