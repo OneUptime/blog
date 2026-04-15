@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, CTE, Recursive Query, Hierarchical Data, SQL Pattern
 
-Description: ClickHouse does not support recursive CTEs - learn alternative patterns using arrays, self-joins, and pre-computed hierarchies to query tree-structured data.
+Description: ClickHouse supports recursive CTEs since version 24.4, but pre-flattened hierarchies, array functions, and self-joins often perform better for analytical workloads - learn these alternative patterns to query tree-structured data efficiently.
 
 ---
 
-## Why ClickHouse Lacks Recursive CTEs
+## Why Alternative Patterns Still Matter
 
-ClickHouse is optimized for columnar OLAP analytics, not transactional row-by-row processing. Recursive CTEs require iterative row-level processing that conflicts with ClickHouse's batch-oriented execution model. Instead, ClickHouse provides array functions and flat-hierarchy patterns that achieve the same results more efficiently for analytical workloads.
+ClickHouse added support for recursive CTEs (`WITH RECURSIVE`) in version 24.4, enabled by default since version 24.8 via the new query analyzer. However, recursive CTEs involve iterative row-level processing that can be slower than ClickHouse's native columnar operations for large-scale analytical workloads. Pre-flattened hierarchies and array-based patterns leverage ClickHouse's strengths — columnar reads, vectorized execution, and batch processing — and are often the better choice for production OLAP queries on tree-structured data.
 
 ## Common Recursive CTE Use Case: Category Hierarchy
 
@@ -138,4 +138,4 @@ def get_all_descendants(conn, root_id):
 
 ## Summary
 
-ClickHouse does not support recursive CTEs. Use pre-flattened hierarchy tables with Array columns storing ancestor paths for efficient subtree queries. For shallow trees (under 4 levels), multi-level self-joins work well. For dynamic hierarchies, pre-compute and store the ancestor path in an Array column at write time so reads remain simple `has(path, ancestor_id)` lookups.
+While ClickHouse supports recursive CTEs since version 24.4, pre-flattened hierarchy tables with Array columns storing ancestor paths are often more performant for analytical workloads. For shallow trees (under 4 levels), multi-level self-joins work well. For dynamic hierarchies, pre-compute and store the ancestor path in an Array column at write time so reads remain simple `has(path, ancestor_id)` lookups.
