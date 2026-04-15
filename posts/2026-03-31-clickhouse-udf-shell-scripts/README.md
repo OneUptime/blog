@@ -19,7 +19,7 @@ Create the script:
 # /var/lib/clickhouse/user_scripts/urlencode.sh
 
 while IFS= read -r line; do
-    encoded=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$line', safe=''))")
+    encoded=$(printf '%s' "$line" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
     echo "$encoded"
 done
 ```
@@ -44,7 +44,7 @@ Register in XML (`/etc/clickhouse-server/user_defined/urlencode.xml`):
             <name>input</name>
         </argument>
         <format>TabSeparated</format>
-        <command>/var/lib/clickhouse/user_scripts/urlencode.sh</command>
+        <command>urlencode.sh</command>
     </function>
 </functions>
 ```
@@ -110,7 +110,7 @@ done
 ## Verifying Registration
 
 ```sql
-SELECT name, origin
+SELECT name, is_aggregate
 FROM system.functions
 WHERE name = 'urlEncode';
 ```
