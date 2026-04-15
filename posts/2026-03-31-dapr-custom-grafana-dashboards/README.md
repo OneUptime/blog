@@ -28,7 +28,7 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_ip]
         replacement: "${1}:9090"
         target_label: __address__
-    metrics_path: /metrics
+    metrics_path: /
 ```
 
 ## Dashboard Structure
@@ -53,7 +53,7 @@ sum(rate(dapr_http_server_request_count[5m])) by (app_id)
 
 ```bash
 # Percentage of 5xx responses
-sum(rate(dapr_http_server_request_count{status_code=~"5.."}[5m])) by (app_id)
+sum(rate(dapr_http_server_request_count{status=~"5.."}[5m])) by (app_id)
   /
 sum(rate(dapr_http_server_request_count[5m])) by (app_id)
 * 100
