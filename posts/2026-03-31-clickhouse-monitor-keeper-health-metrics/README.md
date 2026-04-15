@@ -39,8 +39,8 @@ zk_avg_latency          -- average request latency in ms (alert if > 50ms)
 zk_max_latency          -- max latency spike
 zk_outstanding_requests -- queued requests (alert if > 100)
 zk_open_file_descriptor_count
-leader_uptime           -- how long current leader has been stable
-followers               -- should be N-1 for an N-node cluster
+zk_followers            -- should be N-1 for an N-node cluster
+zk_synced_followers     -- followers in sync with leader
 ```
 
 ## Prometheus Metrics
@@ -53,26 +53,26 @@ Enable Prometheus in Keeper configuration:
   <port>9363</port>
   <metrics>true</metrics>
   <events>true</events>
+  <asynchronous_metrics>true</asynchronous_metrics>
 </prometheus>
 ```
 
 Key Prometheus metrics:
 
 ```text
-ClickHouseKeeperAvgLatency       -- average request latency
-ClickHouseKeeperMaxLatency       -- max latency
-ClickHouseKeeperOutstandingRequests -- request queue depth
-ClickHouseKeeperAliveConnections -- active client connections
-ClickHouseKeeperEpochsElapsed    -- number of leader elections (alert on increase)
+ClickHouseMetrics_KeeperOutstandingRequests -- request queue depth
+ClickHouseMetrics_KeeperAliveConnections    -- active client connections
 ```
+
+Latency metrics (`zk_avg_latency`, `zk_max_latency`) are available via the `mntr` four-letter command, not the Prometheus endpoint.
 
 ## Grafana Dashboard
 
 Create alerts on:
 
-- `ClickHouseKeeperAvgLatency > 100` for sustained periods
-- `ClickHouseKeeperOutstandingRequests > 50`
-- `ClickHouseKeeperEpochsElapsed` increasing rapidly (leader instability)
+- `zk_avg_latency > 100` (from `mntr`) for sustained periods
+- `ClickHouseMetrics_KeeperOutstandingRequests > 50`
+- `zk_followers` dropping below expected count (from `mntr`)
 
 ## Monitoring via ClickHouse System Tables
 
@@ -96,7 +96,7 @@ LIMIT 10;
 echo stat | nc keeper1 9181 | grep -E "^(Mode|Connections|Outstanding)"
 ```
 
-If the output shows `Mode: standalone` on more than one node, you have a split-brain situation requiring immediate investigation.
+If the output shows `Mode: leader` on more than one node, you have a split-brain situation requiring immediate investigation. If it shows `Mode: standalone`, the node is running in non-clustered mode and is not participating in any quorum, which indicates a configuration or connectivity problem.
 
 ## Health Check Script
 
