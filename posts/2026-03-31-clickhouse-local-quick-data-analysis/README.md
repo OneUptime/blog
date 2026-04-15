@@ -22,7 +22,7 @@ curl https://clickhouse.com/ | sh
 On macOS with Homebrew:
 
 ```bash
-brew install clickhouse
+brew install --cask clickhouse
 clickhouse local --version
 ```
 
@@ -46,10 +46,10 @@ clickhouse local \
 
 ## Interactive Mode
 
-Start an interactive SQL shell:
+Start an interactive SQL shell by running `clickhouse local` without a `--query` argument:
 
 ```bash
-clickhouse local --interactive
+clickhouse local
 ```
 
 Then:
