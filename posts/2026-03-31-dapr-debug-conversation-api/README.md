@@ -27,7 +27,7 @@ annotations:
 ## Common Error 1: Component Not Found
 
 ```json
-{"errorCode": "ERR_COMPONENT_NOT_FOUND", "message": "conversation component not found: openai-conversation"}
+{"errorCode": "ERR_CONVERSATION_NOT_FOUND", "message": "conversation component not found: openai-conversation"}
 ```
 
 Check the component is loaded:
@@ -38,19 +38,19 @@ ls ./components/
 cat ./components/openai-conversation.yaml
 
 # Kubernetes: check component is applied
-kubectl get component openai-conversation -n default
+kubectl get components.dapr.io openai-conversation -n default
 ```
 
 Verify the component type is correct:
 
 ```bash
-kubectl describe component openai-conversation | grep -i type
+kubectl describe components.dapr.io openai-conversation | grep -i type
 ```
 
 ## Common Error 2: Secret Resolution Failure
 
 ```json
-{"errorCode": "ERR_SECRET_STORE", "message": "failed to get secret: key not found"}
+{"errorCode": "ERR_SECRET_STORE_NOT_FOUND", "message": "failed to get secret: key not found"}
 ```
 
 Test secret access directly:
@@ -93,7 +93,7 @@ If this works but Dapr fails, the secret is not being resolved correctly. Check 
 ## Common Error 4: Invalid Request Format
 
 ```json
-{"errorCode": "ERR_MALFORMED_REQUEST", "message": "inputs field is required"}
+{"errorCode": "ERR_CONVERSATION_MISSING_INPUTS", "message": "inputs field is required"}
 ```
 
 Validate the request body format:
@@ -104,15 +104,16 @@ curl -v -X POST http://localhost:3500/v1.0-alpha1/conversation/openai-conversati
   -H "Content-Type: application/json" \
   -d '{
     "inputs": [
-      {"message": "Hello", "role": "user"}
+      {"content": "Hello", "role": "user"}
     ]
   }'
 ```
 
 Common mistakes:
 - Missing `inputs` array (not `messages` or `prompt`)
+- Using `message` instead of `content` on each input
 - Missing `role` field on each input
-- Invalid role value (must be `user`, `assistant`, or `system`)
+- Invalid role value (must be `user`, `assistant`, `system`, `tool`, or `developer`)
 
 ## Checking Component Health
 
@@ -150,7 +151,7 @@ spec:
 ```bash
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/test-conversation/converse \
   -H "Content-Type: application/json" \
-  -d '{"inputs": [{"message": "test", "role": "user"}]}'
+  -d '{"inputs": [{"content": "test", "role": "user"}]}'
 ```
 
 If the echo component works but the real component fails, the issue is in provider configuration.
