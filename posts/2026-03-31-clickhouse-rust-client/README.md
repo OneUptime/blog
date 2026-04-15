@@ -31,7 +31,7 @@ In `Cargo.toml`:
 
 ```toml
 [dependencies]
-clickhouse = { version = "0.12", features = ["uuid", "time"] }
+clickhouse = { version = "0.14", features = ["uuid", "time", "inserter"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -104,8 +104,6 @@ async fn get_events(client: &Client) -> clickhouse::error::Result<Vec<Event>> {
 ### Stream rows one by one
 
 ```rust
-use futures::StreamExt;
-
 async fn stream_events(client: &Client) -> clickhouse::error::Result<()> {
     let mut cursor = client
         .query("SELECT user_id, event, toUnixTimestamp(ts) AS ts FROM events")
@@ -146,11 +144,11 @@ let events = client
 
 ## Inserting Data
 
-Use an `Inserter` for bulk inserts. This batches rows and sends them efficiently:
+Use `insert()` to create and send a batch of rows:
 
 ```rust
 async fn insert_events(client: &Client) -> clickhouse::error::Result<()> {
-    let mut insert = client.insert::<EventInsert>("events")?;
+    let mut insert = client.insert::<EventInsert>("events").await?;
 
     insert.write(&EventInsert { user_id: 101, event: "page_view".into(), ts: 1705312800 }).await?;
     insert.write(&EventInsert { user_id: 102, event: "click".into(),     ts: 1705312860 }).await?;
@@ -169,7 +167,7 @@ use std::time::Duration;
 
 async fn bulk_insert(client: &Client, rows: Vec<EventInsert>) -> clickhouse::error::Result<()> {
     let mut inserter = client
-        .inserter::<EventInsert>("events")?
+        .inserter::<EventInsert>("events")
         .with_max_rows(100_000)
         .with_period(Some(Duration::from_secs(5)));
 
@@ -206,8 +204,8 @@ client
 ```rust
 let result = client
     .query("SELECT * FROM events")
-    .with_option("max_threads", "4")
-    .with_option("max_block_size", "65536")
+    .with_setting("max_threads", "4")
+    .with_setting("max_block_size", "65536")
     .fetch_all::<Event>()
     .await?;
 ```
@@ -254,7 +252,7 @@ async fn main() -> clickhouse::error::Result<()> {
     ).execute().await?;
 
     // Insert rows
-    let mut insert = client.insert::<PageView>("page_views")?;
+    let mut insert = client.insert::<PageView>("page_views").await?;
     insert.write(&PageView { user_id: 1, url: "/home".into(),    ts: 1705312800 }).await?;
     insert.write(&PageView { user_id: 2, url: "/pricing".into(), ts: 1705312860 }).await?;
     insert.end().await?;
