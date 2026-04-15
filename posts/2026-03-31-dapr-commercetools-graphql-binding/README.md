@@ -82,6 +82,7 @@ async function getProductById(productId) {
   `;
 
   const result = await client.binding.send("commercetools", "create", {
+    commercetoolsAPI: "GraphQLQuery",
     query,
     variables: { id: productId },
   });
@@ -114,6 +115,7 @@ async function createOrder(cartId, cartVersion) {
   `;
 
   const result = await client.binding.send("commercetools", "create", {
+    commercetoolsAPI: "GraphQLQuery",
     query: mutation,
     variables: { cartId, version: cartVersion },
   });
@@ -126,9 +128,9 @@ async function createOrder(cartId, cartVersion) {
 ## Updating Product Inventory
 
 ```javascript
-async function updateProductStock(productId, variantId, quantity) {
+async function updateProductStock(productId, quantity) {
   const mutation = `
-    mutation UpdateStock($id: String!, $version: Long!, $variantId: Int!, $qty: Long!) {
+    mutation UpdateStock($id: String!, $version: Long!, $qty: Json!) {
       updateProduct(
         id: $id
         version: $version
@@ -146,8 +148,9 @@ async function updateProductStock(productId, variantId, quantity) {
   `;
 
   return await client.binding.send("commercetools", "create", {
+    commercetoolsAPI: "GraphQLQuery",
     query: mutation,
-    variables: { id: productId, version: 1, variantId, qty: quantity },
+    variables: { id: productId, version: 1, qty: quantity },
   });
 }
 ```
