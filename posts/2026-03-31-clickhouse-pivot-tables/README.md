@@ -56,7 +56,7 @@ When pivot values are unknown at query time, aggregate to arrays and reshape in 
 ```sql
 -- Get all channel-revenue pairs as arrays
 SELECT
-    toStartOfMonth(order_time) AS month,
+    order_month AS month,
     groupArray(channel) AS channels,
     groupArray(revenue_total) AS revenues
 FROM (
@@ -72,7 +72,7 @@ GROUP BY month
 ORDER BY month;
 ```
 
-## Method 3: Using ARRAY JOIN for Unpivot Then Re-Pivot
+## Method 3: CTE with Conditional Aggregation for Re-Pivot
 
 ```sql
 -- Score matrix: users x categories
