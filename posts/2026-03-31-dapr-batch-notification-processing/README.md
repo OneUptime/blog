@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Notification, Batch Processing, Pub/Sub, Workflow
+Tags: Dapr, Notification, Batch Processing, Pub/Sub, State Management
 
-Description: Learn how to process large batches of notifications reliably using Dapr pub/sub for queuing and Workflow for ordered delivery.
+Description: Learn how to process large batches of notifications reliably using Dapr pub/sub for queuing and state store for progress tracking.
 
 ---
 
-Batch notification processing sends large volumes of push notifications, in-app alerts, or SMS messages to user segments. Dapr pub/sub handles the work queue while Dapr Workflow orchestrates the processing steps with retry, rate limiting, and progress tracking.
+Batch notification processing sends large volumes of push notifications, in-app alerts, or SMS messages to user segments. Dapr pub/sub handles the work queue with built-in retry for failed deliveries, while Dapr state store tracks per-user and per-campaign progress.
 
 ## Batch Notification Architecture
 
@@ -136,7 +136,7 @@ def track_notification_result(campaign_id: str, user_id: str, result: dict):
             state_metadata={"ttlInSeconds": "604800"}  # 7 days TTL
         )
 
-        # Atomic counter update
+        # Update campaign stats (not atomic; use etags for concurrency safety)
         result_key = f'campaign:{campaign_id}:stats'
         stats = json.loads(
             client.get_state('statestore', result_key).data or
