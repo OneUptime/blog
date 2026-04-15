@@ -70,20 +70,18 @@ dapr mtls renew-certificate -k \
   --issuer-public-certificate /path/to/new/issuer.crt
 ```
 
-For production, use an external CA like Hashicorp Vault:
+For production, use an external CA like Hashicorp Vault by providing your own certificates through the trust bundle secret:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: daprconfig
-spec:
-  mtls:
-    enabled: true
-    rootCA: |
-      -----BEGIN CERTIFICATE-----
-      ...
-      -----END CERTIFICATE-----
+```bash
+# Replace the trust bundle with your own CA certificates
+kubectl create secret generic dapr-trust-bundle -n dapr-system \
+  --from-file=ca.crt=/path/to/ca.crt \
+  --from-file=issuer.crt=/path/to/issuer.crt \
+  --from-file=issuer.key=/path/to/issuer.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Restart Sentry to pick up the new certificates
+kubectl rollout restart deploy/dapr-sentry -n dapr-system
 ```
 
 ## Verifying mTLS Encryption
@@ -94,11 +92,6 @@ Confirm traffic is encrypted by examining sidecar communication:
 # Check if plain HTTP between sidecars is rejected
 kubectl exec -it my-pod -c daprd -- \
   curl -v http://other-service-dapr-sidecar:3500/v1.0/invoke/other-service/method/health
-
-# Successful mTLS connection shows certificate exchange in verbose output
-kubectl exec -it my-pod -c daprd -- \
-  curl -v --cacert /var/run/secrets/dapr.io/tls/ca.crt \
-  https://dapr-sentry.dapr-system.svc.cluster.local:443/healthz
 ```
 
 Check Sentry logs to confirm certificate issuance:
@@ -138,22 +131,26 @@ spec:
 Track certificate expiry and connection errors:
 
 ```bash
-# Alert if certificate expires within 48 hours
+# Monitor certificate signing activity and check expiry regularly
 kubectl create -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: dapr-cert-expiry
+  name: dapr-cert-monitor
   namespace: monitoring
 spec:
   groups:
     - name: dapr.mtls
       rules:
-        - alert: DaprCertExpiringSoon
-          expr: dapr_sentry_cert_sign_request_received_total > 0
+        - alert: DaprSentryCertSignFailures
+          expr: rate(dapr_sentry_cert_sign_request_received_total[5m]) == 0
+          for: 10m
           annotations:
-            summary: "Check Dapr certificate expiry"
+            summary: "No certificate sign requests received by Sentry - check if Sentry is healthy"
 EOF
+
+# Separately monitor root certificate expiry using the CLI
+dapr mtls expiry -k
 ```
 
 ## Summary
