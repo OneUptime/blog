@@ -109,7 +109,7 @@ SELECT
     stddevSamp(response_time_ms) OVER (
         PARTITION BY endpoint
         ORDER BY timestamp
-        RANGE BETWEEN INTERVAL 1 HOUR PRECEDING AND CURRENT ROW
+        RANGE BETWEEN 3600 PRECEDING AND CURRENT ROW
     ) AS rolling_stddev_1h
 FROM request_logs
 WHERE log_date = today()
