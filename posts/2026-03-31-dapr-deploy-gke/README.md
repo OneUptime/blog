@@ -67,15 +67,22 @@ Verify the installation:
 kubectl get pods -n dapr-system
 ```
 
-Expected output:
+Expected output (HA mode runs 3 replicas of each control plane component):
 
 ```text
 NAME                                     READY   STATUS    RESTARTS
-dapr-dashboard-5d7b47f6-4xjks           1/1     Running   0
-dapr-operator-7d6b9d8b4-pqrst           1/1     Running   0
-dapr-placement-server-0                 1/1     Running   0
-dapr-sentry-6c9f7d8b4-mnopq             1/1     Running   0
-dapr-sidecar-injector-7f9b8d4c-uvwxy   1/1     Running   0
+dapr-operator-7d6b9d8b4-abcde           1/1     Running   0
+dapr-operator-7d6b9d8b4-fghij           1/1     Running   0
+dapr-operator-7d6b9d8b4-klmno           1/1     Running   0
+dapr-placement-server-0                  1/1     Running   0
+dapr-placement-server-1                  1/1     Running   0
+dapr-placement-server-2                  1/1     Running   0
+dapr-sentry-6c9f7d8b4-pqrst             1/1     Running   0
+dapr-sentry-6c9f7d8b4-uvwxy             1/1     Running   0
+dapr-sentry-6c9f7d8b4-zabcd             1/1     Running   0
+dapr-sidecar-injector-7f9b8d4c-efghi    1/1     Running   0
+dapr-sidecar-injector-7f9b8d4c-jklmn    1/1     Running   0
+dapr-sidecar-injector-7f9b8d4c-opqrs    1/1     Running   0
 ```
 
 ## Step 3: Configure mTLS
@@ -129,7 +136,16 @@ spec:
         - containerPort: 8080
 ```
 
-## Step 5: Enable Dapr Dashboard
+## Step 5: Install and Access the Dapr Dashboard
+
+The Dapr Dashboard is not included in the main `dapr/dapr` Helm chart. Install it separately:
+
+```bash
+helm install dapr-dashboard dapr/dapr-dashboard \
+  --namespace dapr-system
+```
+
+Then port-forward to access it:
 
 ```bash
 kubectl port-forward svc/dapr-dashboard -n dapr-system 8080:8080
