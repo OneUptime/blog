@@ -24,7 +24,7 @@ Before comparing options, define your requirements:
 
 | Cloud | Recommended Store | Dapr Component Type |
 |-------|------------------|---------------------|
-| AWS | AWS Secrets Manager | `secretstores.aws.secretsmanager` |
+| AWS | AWS Secrets Manager | `secretstores.aws.secretmanager` |
 | AWS | AWS SSM Parameter Store | `secretstores.aws.parameterstore` |
 | Azure | Azure Key Vault | `secretstores.azure.keyvault` |
 | GCP | GCP Secret Manager | `secretstores.gcp.secretmanager` |
@@ -84,10 +84,10 @@ spec:
 
 A rough monthly cost comparison for 10,000 secret reads per day:
 
-- **AWS Secrets Manager**: ~$0.30/month per secret + $0.05 per 10,000 API calls
+- **AWS Secrets Manager**: ~$0.40/month per secret + $0.05 per 10,000 API calls
 - **AWS SSM Parameter Store**: Free for standard parameters, $0.05/month for advanced
 - **Azure Key Vault**: $0.03 per 10,000 operations
-- **GCP Secret Manager**: $0.06 per 10,000 accesses
+- **GCP Secret Manager**: $0.03 per 10,000 access operations
 - **HashiCorp Vault (self-hosted)**: Infrastructure cost only
 - **OpenBao**: Infrastructure cost only (open source)
 
