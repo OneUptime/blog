@@ -49,8 +49,7 @@ CREATE TABLE revenue_daily
     order_count UInt64,
     gross_revenue Decimal(14, 2),
     discount_total Decimal(12, 2),
-    net_revenue Decimal(14, 2),
-    unique_customers UInt64
+    net_revenue Decimal(14, 2)
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(revenue_date)
@@ -68,8 +67,7 @@ SELECT
     countIf(status = 'completed') AS order_count,
     sumIf(gross_amount, status = 'completed') AS gross_revenue,
     sumIf(discount_amount, status = 'completed') AS discount_total,
-    sumIf(net_amount, status = 'completed') AS net_revenue,
-    uniqExact(customer_id) AS unique_customers
+    sumIf(net_amount, status = 'completed') AS net_revenue
 FROM orders
 GROUP BY revenue_date, region, country, channel, category;
 ```
@@ -102,7 +100,7 @@ WITH this_week AS (
 last_week AS (
     SELECT region, sum(net_revenue) AS revenue
     FROM revenue_daily
-    WHERE revenue_date BETWEEN today() - 14 AND today() - 7
+    WHERE revenue_date BETWEEN today() - 14 AND today() - 8
     GROUP BY region
 )
 SELECT
