@@ -83,6 +83,13 @@ curl -s "http://ch:8123/?query=SELECT+sku,sum(stock_on_hand)+FROM+current_stock_
 
 ```sql
 CREATE TABLE inventory_kafka
+(
+    warehouse_id UInt32,
+    sku          String,
+    qty_delta    Int32,
+    reason       String,
+    ts           DateTime
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'broker:9092',
