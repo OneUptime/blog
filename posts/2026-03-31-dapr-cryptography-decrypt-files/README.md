@@ -60,7 +60,7 @@ func decryptFile(encryptedPath, outputPath, keyName string) error {
     decryptedStream, err := client.Decrypt(
         context.Background(),
         encryptedFile,
-        dapr.DecryptRequestOptions{
+        dapr.DecryptOptions{
             ComponentName: "file-crypto",
             KeyName:       keyName,
         },
@@ -91,8 +91,8 @@ func main() {
 ## Decrypting a File with Python
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import DecryptOptions
 
 def decrypt_file(encrypted_path: str, output_path: str, key_name: str):
     with open(encrypted_path, "rb") as f:
@@ -100,11 +100,11 @@ def decrypt_file(encrypted_path: str, output_path: str, key_name: str):
 
     with DaprClient() as d:
         decrypted_stream = d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={
-                "componentName": "file-crypto",
-                "keyName": key_name
-            }
+            data=ciphertext,
+            options=DecryptOptions(
+                component_name="file-crypto",
+                key_name=key_name,
+            ),
         )
         plaintext = decrypted_stream.read()
 
@@ -121,8 +121,8 @@ decrypt_file("report.pdf.enc", "report.pdf", "file-key")
 
 ```python
 import boto3
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import DecryptOptions
 
 def download_and_decrypt(bucket: str, s3_key: str, output_path: str):
     s3 = boto3.client("s3")
@@ -134,11 +134,11 @@ def download_and_decrypt(bucket: str, s3_key: str, output_path: str):
 
     with DaprClient() as d:
         decrypted_stream = d.decrypt(
-            data=io.BytesIO(encrypted_bytes),
-            options={
-                "componentName": "file-crypto",
-                "keyName": key_name
-            }
+            data=encrypted_bytes,
+            options=DecryptOptions(
+                component_name="file-crypto",
+                key_name=key_name,
+            ),
         )
         plaintext = decrypted_stream.read()
 
@@ -152,7 +152,7 @@ def download_and_decrypt(bucket: str, s3_key: str, output_path: str):
 
 ```bash
 # Decrypt an encrypted file using the HTTP API
-curl -X POST http://localhost:3500/v1.0-alpha1/crypto/file-crypto/decrypt \
+curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/file-crypto/decrypt \
   -H "Content-Type: application/octet-stream" \
   -H "dapr-key-name: file-key" \
   --data-binary @report.pdf.enc \
@@ -172,7 +172,7 @@ func decryptLargeFile(encryptedPath, outputPath string) error {
     decryptedStream, err := client.Decrypt(
         context.Background(),
         encryptedFile,
-        dapr.DecryptRequestOptions{
+        dapr.DecryptOptions{
             ComponentName: "file-crypto",
             KeyName:       "file-key",
         },
@@ -196,6 +196,7 @@ func decryptLargeFile(encryptedPath, outputPath string) error {
 ```python
 from dapr.clients import DaprClient
 from dapr.clients.exceptions import DaprInternalError
+from dapr.clients.grpc._crypto import DecryptOptions
 
 def safe_decrypt_file(encrypted_path: str, key_name: str) -> bytes:
     try:
@@ -204,8 +205,11 @@ def safe_decrypt_file(encrypted_path: str, key_name: str) -> bytes:
 
         with DaprClient() as d:
             return d.decrypt(
-                data=io.BytesIO(ciphertext),
-                options={"componentName": "file-crypto", "keyName": key_name}
+                data=ciphertext,
+                options=DecryptOptions(
+                    component_name="file-crypto",
+                    key_name=key_name,
+                ),
             ).read()
 
     except DaprInternalError as e:
