@@ -12,27 +12,29 @@ Dapr actor runtime settings control how actors are hosted, deactivated, and bala
 
 ## Configuring Runtime Settings in Go
 
-The actor runtime configuration is returned from your service's `/dapr/config` endpoint. In Go, you configure it via the actor service options:
+In Go, you register actor factories with the Dapr HTTP service. The actor runtime settings (idle timeout, scan interval, etc.) are configured through the `/dapr/config` endpoint response that the Dapr sidecar fetches at startup:
 
 ```go
 package main
 
 import (
-  "github.com/dapr/go-sdk/actor/config"
-  "github.com/dapr/go-sdk/actor/runtime"
+  "log"
+  "net/http"
+
+  "github.com/dapr/go-sdk/actor"
   daprd "github.com/dapr/go-sdk/service/http"
 )
 
+func myActorFactory() actor.ServerContext {
+  return &MyActor{}
+}
+
 func main() {
   s := daprd.NewService(":8080")
-
-  runtime.GetActorRuntimeInstance().SetActorIdleTimeout(60 * time.Minute)
-  runtime.GetActorRuntimeInstance().SetActorScanInterval(30 * time.Second)
-  runtime.GetActorRuntimeInstance().SetDrainOngoingCallTimeout(10 * time.Second)
-  runtime.GetActorRuntimeInstance().SetDrainRebalancedActors(true)
-
-  runtime.GetActorRuntimeInstance().RegisterActor(&MyActor{})
-  s.Start()
+  s.RegisterActorImplFactoryContext(myActorFactory)
+  if err := s.Start(); err != nil && err != http.ErrServerClosed {
+    log.Fatalf("error starting service: %v", err)
+  }
 }
 ```
 
@@ -58,7 +60,7 @@ Dapr calls your app's `/dapr/config` to fetch actor configuration at startup:
 
 ### actorIdleTimeout
 
-How long an actor instance remains active without any method calls before being deactivated:
+How long an actor instance remains active without any method calls or reminder firings before being deactivated:
 
 ```yaml
 # Good for session actors that need fast reactivation
@@ -102,8 +104,13 @@ kind: Deployment
 metadata:
   name: actor-service
 spec:
+  selector:
+    matchLabels:
+      app: actor-service
   template:
     metadata:
+      labels:
+        app: actor-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "actor-service"
