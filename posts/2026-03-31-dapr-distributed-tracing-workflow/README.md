@@ -47,6 +47,7 @@ def order_fulfillment_workflow(ctx: wf.DaprWorkflowContext, order_input: dict):
         validate_order_activity, input=order_input
     )
     if not validation_result["valid"]:
+        current_span.set_attribute("workflow.status", "rejected")
         current_span.set_attribute("workflow.failed_at", "validation")
         return {"status": "rejected", "reason": validation_result["reason"]}
 
@@ -130,7 +131,7 @@ async def start_order_workflow(order_id: str, order_data: dict):
 # { resource.service.name = "order-workflow" && span.workflow.status = "rejected" }
 
 # Find slow payment activities
-# { span.name = "call-payment-gateway" && duration > 3s }
+# { name = "call-payment-gateway" && duration > 3s }
 ```
 
 ## Summary
