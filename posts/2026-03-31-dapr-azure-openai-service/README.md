@@ -33,7 +33,7 @@ spec:
   version: v1
   metadata:
   - name: url
-    value: "https://myopenai.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-01"
+    value: "https://myopenai.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-10-21"
 ```
 
 Invoke a completion:
@@ -47,7 +47,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/azure-openai \
     },
     "metadata": {
       "Content-Type": "application/json",
-      "api-key": "YOUR_API_KEY"
+      "Api-Key": "YOUR_API_KEY"
     },
     "operation": "post"
   }'
@@ -127,13 +127,28 @@ spec:
     value: "my-key-vault"
 ```
 
-Reference the secret in your binding component:
+Reference the secret in your binding component using `securityToken` and `securityTokenHeader`:
 
 ```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: azure-openai
+  namespace: default
+spec:
+  type: bindings.http
+  version: v1
+  metadata:
   - name: url
+    value: "https://myopenai.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-10-21"
+  - name: securityToken
     secretKeyRef:
       name: azure-openai-api-key
       key: apiKey
+  - name: securityTokenHeader
+    value: "api-key"
+  auth:
+    secretStore: azure-keyvault
 ```
 
 ## Summary
