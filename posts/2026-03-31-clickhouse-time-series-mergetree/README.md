@@ -136,7 +136,7 @@ CREATE TABLE host_metrics_1m
     host   LowCardinality(String),
     metric LowCardinality(String),
     minute DateTime,
-    avg_v  SimpleAggregateFunction(avg, Float64),
+    avg_v  AggregateFunction(avg, Float64),
     max_v  SimpleAggregateFunction(max, Float64),
     min_v  SimpleAggregateFunction(min, Float64),
     count  SimpleAggregateFunction(sum, UInt64)
@@ -153,7 +153,7 @@ SELECT
     host,
     metric,
     toStartOfMinute(ts) AS minute,
-    avg(value)    AS avg_v,
+    avgState(value) AS avg_v,
     max(value)    AS max_v,
     min(value)    AS min_v,
     count()       AS count
@@ -166,12 +166,13 @@ GROUP BY host, metric, minute;
 ```sql
 SELECT
     minute,
-    avg_v,
-    max_v
+    avgMerge(avg_v) AS avg_v,
+    max(max_v)      AS max_v
 FROM host_metrics_1m
 WHERE host   = 'web-01'
   AND metric = 'cpu_pct'
   AND minute >= now() - INTERVAL 7 DAY
+GROUP BY minute
 ORDER BY minute;
 ```
 
@@ -196,7 +197,7 @@ Drop a partition (fast, no row-by-row deletion):
 
 ```sql
 ALTER TABLE host_metrics
-    DROP PARTITION '202312';
+    DROP PARTITION '20231201';
 ```
 
 ## Compression Ratio Check
