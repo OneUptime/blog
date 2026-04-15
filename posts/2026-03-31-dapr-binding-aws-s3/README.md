@@ -72,8 +72,6 @@ spec:
     secretKeyRef:
       name: aws-credentials
       key: secretKey
-  - name: direction
-    value: "output"
 ```
 
 Create the Kubernetes secret:
@@ -192,7 +190,6 @@ curl -X POST http://localhost:3500/v1.0/bindings/s3-storage \
 import requests
 import os
 import base64
-import json
 
 DAPR_HTTP_PORT = os.environ.get("DAPR_HTTP_PORT", "3500")
 BINDING_NAME = "s3-storage"
@@ -322,9 +319,33 @@ func main() {
 
 ## Presigned URL Support
 
-```yaml
-  - name: forcePathStyle
-    value: "false"
+Generate a presigned URL for an existing object using the `presign` operation:
+
+```bash
+curl -X POST http://localhost:3500/v1.0/bindings/s3-storage \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "key": "hello.txt",
+      "presignTTL": "15m"
+    },
+    "operation": "presign"
+  }'
+```
+
+You can also get a presigned URL when uploading by adding `presignTTL` to the `create` operation metadata:
+
+```bash
+curl -X POST http://localhost:3500/v1.0/bindings/s3-storage \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": "Hello from Dapr!",
+    "metadata": {
+      "key": "hello.txt",
+      "presignTTL": "1h"
+    },
+    "operation": "create"
+  }'
 ```
 
 ## Using with S3-Compatible Storage (MinIO)
