@@ -79,22 +79,25 @@ The background merge pool controls how quickly ClickHouse consolidates small par
     <!-- Allow merges to use more CPU when the pool is busy -->
     <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
 
-    <!-- Maximum parts per partition before inserts are throttled -->
-    <!-- Default is 300; increase to accommodate write bursts -->
-    <parts_to_delay_insert>500</parts_to_delay_insert>
-    <parts_to_throw_insert>1000</parts_to_throw_insert>
+    <!-- MergeTree table-level defaults -->
+    <merge_tree>
+        <!-- Maximum parts per partition before inserts are throttled -->
+        <!-- Default is 150; increase to accommodate write bursts -->
+        <parts_to_delay_insert>500</parts_to_delay_insert>
+        <parts_to_throw_insert>1000</parts_to_throw_insert>
 
-    <!-- Delay in ms applied when too many parts exist (throttles new inserts) -->
-    <max_delay_to_insert>5</max_delay_to_insert>
+        <!-- Delay in seconds applied when too many parts exist (throttles new inserts) -->
+        <max_delay_to_insert>5</max_delay_to_insert>
+    </merge_tree>
 </clickhouse>
 ```
 
 ## Insert Settings for Maximum Throughput
 
 ```sql
--- Disable fsync per insert (rely on OS buffering + periodic sync)
--- Acceptable when data can be re-ingested from the source on failure
-SET fsync_metadata = 0;
+-- fsync after insert is disabled by default in MergeTree (fsync_after_insert = 0)
+-- If enabled on your table, disable for throughput (table-level setting):
+-- ALTER TABLE your_table MODIFY SETTING fsync_after_insert = 0;
 
 -- Insert deduplication window: set to 0 to disable (reduces overhead)
 -- Only disable if your pipeline handles deduplication externally
@@ -174,17 +177,18 @@ ORDER BY (event_time, service);
 
 ## Replication and Write Throughput
 
-On replicated setups, inserts are acknowledged after writing to a quorum of replicas. Tune these settings to balance durability and throughput.
+On replicated setups, inserts are written to the local replica and then replicated asynchronously by default (`insert_quorum = 0`). If your setup has enabled quorum writes for stronger consistency, you can relax these settings to improve throughput.
 
 ```sql
--- Wait for only 1 replica to confirm (faster but less durable)
-SET insert_quorum = 1;
+-- Disable quorum writes for maximum throughput (this is the default)
+-- Inserts are acknowledged after writing to the local replica only
+SET insert_quorum = 0;
 
--- Disable waiting for replica sync on insert (async replication)
--- Default: 0 (don't wait). Only change if you need strong consistency.
-SET insert_quorum_timeout = 0;
+-- Quorum timeout in ms (default: 600000 = 10 minutes)
+-- Only relevant when insert_quorum > 0
+SET insert_quorum_timeout = 600000;
 
--- Set replication consistency mode
+-- Don't wait for ALTER operations to sync across replicas
 SET replication_alter_partitions_sync = 0;
 ```
 
