@@ -17,7 +17,7 @@ Event filtering in Dapr allows subscribers to receive only the events they care 
 Route events based on their data content:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-routing
