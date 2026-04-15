@@ -86,8 +86,6 @@ spec:
   containerNames:
     - daprd
   duration: "30s"
-  scheduler:
-    cron: "@every 5m"
 ```
 
 ```bash
@@ -129,7 +127,7 @@ kubectl annotate networkchaos dapr-network-latency \
 
 # Resume the experiment
 kubectl annotate networkchaos dapr-network-latency \
-  experiment.chaos-mesh.org/pause- --overwrite
+  experiment.chaos-mesh.org/pause-
 
 # Delete the experiment to stop chaos
 kubectl delete networkchaos dapr-network-latency
