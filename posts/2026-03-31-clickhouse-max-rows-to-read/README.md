@@ -64,8 +64,8 @@ Apply a default limit for a user profile in `users.xml` or via SQL-based access 
 Or using SQL access control:
 
 ```sql
-ALTER PROFILE analyst SETTINGS max_rows_to_read = 5000000000;
-ALTER PROFILE dashboard SETTINGS max_rows_to_read = 100000000;
+ALTER SETTINGS PROFILE analyst SETTINGS max_rows_to_read = 5000000000;
+ALTER SETTINGS PROFILE dashboard SETTINGS max_rows_to_read = 100000000;
 ```
 
 ## Behavior: Rows Read vs Rows Processed
@@ -85,19 +85,19 @@ flowchart LR
     F --> G[Result]
 ```
 
-## read_overflow_mode
+## read_overflow_mode_leaf
 
-Control what happens when the limit is reached with `read_overflow_mode`:
+For distributed queries, `read_overflow_mode_leaf` controls what happens when `max_rows_to_read_leaf` is exceeded on a leaf node:
 
 ```sql
 -- Default: throw an error
-SET read_overflow_mode = 'throw';
+SET read_overflow_mode_leaf = 'throw';
 
 -- Return partial results instead of erroring
-SET read_overflow_mode = 'break';
+SET read_overflow_mode_leaf = 'break';
 ```
 
-With `break`, the query returns whatever rows have been accumulated so far when the limit is hit. This is useful for interactive dashboards that prefer approximate results over errors.
+With `break`, the query returns whatever rows have been accumulated so far on the leaf node when the limit is hit. This is useful for interactive dashboards that prefer approximate results over errors. Note that the non-leaf `max_rows_to_read` always throws an exception when exceeded.
 
 ## max_rows_to_read_leaf
 
@@ -138,4 +138,4 @@ LIMIT 20;
 
 ## Summary
 
-`max_rows_to_read` is a first-line defence against runaway queries on shared ClickHouse clusters. Set per-profile defaults in `users.xml` or SQL access control profiles. Use `read_overflow_mode = 'break'` for dashboards that prefer partial results over errors. Use `max_rows_to_read_leaf` for distributed query limits per shard. Monitor high-read queries in `system.query_log` to tune limits based on actual query patterns.
+`max_rows_to_read` is a first-line defence against runaway queries on shared ClickHouse clusters. Set per-profile defaults in `users.xml` or SQL access control profiles. Use `read_overflow_mode_leaf = 'break'` with `max_rows_to_read_leaf` for distributed dashboards that prefer partial results over errors. Monitor high-read queries in `system.query_log` to tune limits based on actual query patterns.
