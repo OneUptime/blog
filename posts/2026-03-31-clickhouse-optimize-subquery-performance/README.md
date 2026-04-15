@@ -50,12 +50,12 @@ SELECT * FROM distributed_events
 WHERE user_id GLOBAL IN (SELECT user_id FROM users WHERE premium = 1);
 ```
 
-## Pre-Computing Subquery Results
+## Organizing Complex Queries with CTEs
 
-For expensive subqueries that are used multiple times, use a CTE (WITH clause):
+CTEs (WITH clause) improve readability when queries involve multiple subqueries. Note that ClickHouse inlines CTEs by default, meaning each reference re-executes the subquery rather than caching the result:
 
 ```sql
--- Without CTE: expensive subquery may run multiple times
+-- Without CTE: harder to read with nested derived tables
 SELECT
     e.user_id,
     e.event_count,
@@ -64,7 +64,7 @@ FROM (SELECT user_id, count() AS event_count FROM events GROUP BY user_id) e
 JOIN (SELECT user_id, sum(value) AS basket_value FROM baskets GROUP BY user_id) b
 ON e.user_id = b.user_id;
 
--- With CTE: evaluated once
+-- With CTE: same execution behavior, but easier to read and maintain
 WITH
     event_counts AS (
         SELECT user_id, count() AS event_count
