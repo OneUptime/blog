@@ -78,7 +78,7 @@ FROM system.replicas
 WHERE table = 'events';
 ```
 
-Both replicas should appear with `is_leader = 1` on one node and `queue_size = 0` once sync completes.
+Each node should show its local replica with `is_leader = 1` (multiple replicas can be leaders simultaneously) and `queue_size = 0` once sync completes.
 
 ## Insert and Verify Data
 
