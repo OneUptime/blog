@@ -35,9 +35,9 @@ Store rate limit settings as config keys in Redis:
 
 ```bash
 redis-cli MSET \
-  "api-gateway||requests-per-second" "{\"value\":\"100\",\"version\":\"1\"}" \
-  "api-gateway||burst-limit" "{\"value\":\"200\",\"version\":\"1\"}" \
-  "api-gateway||window-seconds" "{\"value\":\"60\",\"version\":\"1\"}"
+  "requests-per-second" "100||1" \
+  "burst-limit" "200||1" \
+  "window-seconds" "60||1"
 ```
 
 ## Loading Limits at Service Start
@@ -54,7 +54,7 @@ with DaprClient() as client:
         store_name="ratelimitconfig",
         keys=["requests-per-second", "burst-limit", "window-seconds"]
     )
-    for key, item in result.items():
+    for key, item in result.items.items():
         limits[key] = int(item.value)
 
 print(f"Rate limits loaded: {limits}")
@@ -65,24 +65,27 @@ print(f"Rate limits loaded: {limits}")
 React to configuration changes at runtime using the subscribe API:
 
 ```python
-import asyncio
+import time
 from dapr.clients import DaprClient
+from dapr.clients.grpc._response import ConfigurationResponse
 
-async def watch_limits():
+def watch_limits():
     with DaprClient() as client:
-        async def on_update(response):
-            for key, item in response.items():
+        def on_update(id: str, resp: ConfigurationResponse):
+            for key, item in resp.items.items():
                 limits[key] = int(item.value)
                 print(f"Rate limit updated: {key} = {item.value}")
 
-        subscription = await client.subscribe_configuration(
+        subscription_id = client.subscribe_configuration(
             store_name="ratelimitconfig",
             keys=["requests-per-second", "burst-limit", "window-seconds"],
             handler=on_update
         )
-        await asyncio.sleep(float("inf"))
+        print(f"Subscribed with ID: {subscription_id}")
+        while True:
+            time.sleep(1)
 
-asyncio.run(watch_limits())
+watch_limits()
 ```
 
 ## Applying Dynamic Limits in a Rate Limiter
@@ -115,7 +118,7 @@ class DynamicRateLimiter:
 Adjust thresholds without touching code:
 
 ```bash
-redis-cli SET "api-gateway||requests-per-second" "{\"value\":\"150\",\"version\":\"2\"}"
+redis-cli SET "requests-per-second" "150||2"
 ```
 
 The subscription fires, `limits` updates in memory, and the `DynamicRateLimiter` picks up the new value on the next call.
@@ -126,8 +129,8 @@ Use different key prefixes for different services:
 
 ```bash
 redis-cli MSET \
-  "checkout-service||requests-per-second" "{\"value\":\"50\",\"version\":\"1\"}" \
-  "search-service||requests-per-second" "{\"value\":\"500\",\"version\":\"1\"}"
+  "checkout-requests-per-second" "50||1" \
+  "search-requests-per-second" "500||1"
 ```
 
 Each service reads only its own keys, giving you fine-grained control.
