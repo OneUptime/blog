@@ -38,21 +38,21 @@ spec:
     value: ./keys
 ```
 
-Generate a key for local use:
+Generate a key for local use with OpenSSL:
 
 ```bash
 mkdir keys
-# Generate a 256-bit AES key in JWK format
-dapr crypto generate-key --type aes --size 256 --output keys/mykey.json
+# Generate a 256-bit symmetric key
+openssl rand -out keys/mykey 32
 ```
 
 ## Encrypting Data via HTTP API
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/crypto/my-crypto-provider/encrypt \
+curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/my-crypto-provider/encrypt \
   -H "Content-Type: application/octet-stream" \
   -H "dapr-key-name: mykey" \
-  -H "dapr-key-wrap-algorithm: AES" \
+  -H "dapr-key-wrap-algorithm: A256KW" \
   --data-binary "Hello, secret world!" \
   -o encrypted.bin
 ```
@@ -60,7 +60,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/crypto/my-crypto-provider/encrypt
 ## Decrypting Data via HTTP API
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/crypto/my-crypto-provider/decrypt \
+curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/my-crypto-provider/decrypt \
   -H "Content-Type: application/octet-stream" \
   -H "dapr-key-name: mykey" \
   --data-binary @encrypted.bin
@@ -72,8 +72,11 @@ curl -X POST http://localhost:3500/v1.0-alpha1/crypto/my-crypto-provider/decrypt
 package main
 
 import (
+    "bytes"
     "context"
     "fmt"
+    "io"
+
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -84,10 +87,10 @@ func main() {
     plaintext := []byte("sensitive customer data")
 
     // Encrypt
-    encryptOpts := dapr.EncryptRequestOptions{
+    encryptOpts := dapr.EncryptOptions{
         ComponentName:    "my-crypto-provider",
         KeyName:          "mykey",
-        KeyWrapAlgorithm: "AES",
+        KeyWrapAlgorithm: "A256KW",
     }
     encrypted, err := client.Encrypt(context.Background(),
         bytes.NewReader(plaintext), encryptOpts)
@@ -99,7 +102,7 @@ func main() {
     fmt.Printf("Encrypted %d bytes\n", len(encryptedBytes))
 
     // Decrypt
-    decryptOpts := dapr.DecryptRequestOptions{
+    decryptOpts := dapr.DecryptOptions{
         ComponentName: "my-crypto-provider",
         KeyName:       "mykey",
     }
@@ -118,30 +121,30 @@ func main() {
 
 ```python
 from dapr.clients import DaprClient
-import io
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 
 with DaprClient() as d:
     plaintext = b"sensitive customer data"
 
     # Encrypt
     encrypted = d.encrypt(
-        data=io.BytesIO(plaintext),
-        options={
-            "componentName": "my-crypto-provider",
-            "keyName": "mykey",
-            "keyWrapAlgorithm": "AES"
-        }
+        data=plaintext,
+        options=EncryptOptions(
+            component_name="my-crypto-provider",
+            key_name="mykey",
+            key_wrap_algorithm="A256KW",
+        ),
     )
     encrypted_bytes = encrypted.read()
     print(f"Encrypted: {len(encrypted_bytes)} bytes")
 
     # Decrypt
     decrypted = d.decrypt(
-        data=io.BytesIO(encrypted_bytes),
-        options={
-            "componentName": "my-crypto-provider",
-            "keyName": "mykey"
-        }
+        data=encrypted_bytes,
+        options=DecryptOptions(
+            component_name="my-crypto-provider",
+            key_name="mykey",
+        ),
     )
     result = decrypted.read()
     print(f"Decrypted: {result.decode()}")
@@ -151,9 +154,8 @@ with DaprClient() as d:
 
 | Operation | Algorithms |
 |-----------|-----------|
-| Key wrap | AES, RSA-OAEP, RSA-OAEP-256 |
-| Data encryption | AES-GCM (256-bit) |
-| Signing | Ed25519, RS256, PS256 |
+| Key wrap | A256KW, A128CBC, A192CBC, RSA-OAEP-256 |
+| Data encryption | AES-GCM (256-bit), ChaCha20-Poly1305 |
 
 ## Summary
 
