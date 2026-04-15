@@ -10,7 +10,7 @@ Description: Learn how to integrate AI capabilities into your .NET applications 
 
 ## Overview
 
-Dapr's AI building block provides a unified API to interact with large language models (LLMs) and other AI services without coupling your application to a specific provider. The Dapr .NET SDK exposes this functionality through a clean, idiomatic interface that fits naturally into your existing .NET code.
+Dapr's Conversation building block provides a unified API to interact with large language models (LLMs) and other AI services without coupling your application to a specific provider. The Dapr .NET SDK exposes this functionality through a clean, idiomatic interface that fits naturally into your existing .NET code.
 
 ## Installing the Dapr .NET SDK
 
@@ -58,11 +58,19 @@ var app = builder.Build();
 
 app.MapPost("/ask", async (DaprConversationClient client, AskRequest req) =>
 {
-    var response = await client.ConverseAsync(
-        "openai-llm",
-        new[] { new ConversationInput(req.Prompt, ConversationRole.User) });
+    var inputs = new List<ConversationInput>
+    {
+        new(new IConversationMessage[] { new UserMessage(req.Prompt) })
+    };
 
-    return Results.Ok(new { Reply = response.Outputs.First().Result });
+    var options = new ConversationOptions
+    {
+        ConversationComponentName = "openai-llm"
+    };
+
+    var response = await client.ConverseAsync(inputs, options);
+
+    return Results.Ok(new { Reply = response.Outputs.First().Choices.First().Message.Content });
 });
 
 app.Run();
@@ -72,21 +80,7 @@ record AskRequest(string Prompt);
 
 ## Streaming Responses
 
-For longer responses, use the streaming overload to deliver tokens incrementally to the caller:
-
-```csharp
-app.MapGet("/stream", async (DaprConversationClient client, HttpContext ctx) =>
-{
-    ctx.Response.ContentType = "text/event-stream";
-    await foreach (var chunk in client.ConverseStreamAsync(
-        "openai-llm",
-        new[] { new ConversationInput("Write a short poem about Dapr", ConversationRole.User) }))
-    {
-        await ctx.Response.WriteAsync($"data: {chunk.Delta}\n\n");
-        await ctx.Response.Body.FlushAsync();
-    }
-});
-```
+The Dapr Conversation API does not currently support streaming responses. The `ConverseAsync` method returns the full response once the LLM has finished generating. If streaming becomes available in a future Dapr release, the SDK will be updated accordingly.
 
 ## Switching AI Providers at Runtime
 
@@ -98,11 +92,19 @@ kind: Component
 metadata:
   name: openai-llm
 spec:
-  type: conversation.azure.openai
+  type: conversation.openai
   version: v1
   metadata:
+    - name: key
+      secretKeyRef:
+        name: azure-openai-secret
+        key: api-key
+    - name: apiType
+      value: "azure"
     - name: endpoint
       value: "https://my-resource.openai.azure.com/"
+    - name: apiVersion
+      value: "2024-02-15-preview"
     - name: model
       value: "gpt-4o"
 ```
@@ -116,4 +118,4 @@ dapr run --app-id ai-demo --app-port 5000 --components-path ./components \
 
 ## Summary
 
-The Dapr AI building block lets .NET developers call LLMs through a single abstraction, making it simple to switch providers without modifying application code. By combining `Dapr.AI` with the standard `DaprConversationClient`, you get streaming and synchronous conversation APIs that integrate seamlessly with ASP.NET Core dependency injection.
+The Dapr Conversation building block lets .NET developers call LLMs through a single abstraction, making it simple to switch providers without modifying application code. By combining `Dapr.AI` with the standard `DaprConversationClient`, you get a synchronous conversation API that integrates seamlessly with ASP.NET Core dependency injection.
