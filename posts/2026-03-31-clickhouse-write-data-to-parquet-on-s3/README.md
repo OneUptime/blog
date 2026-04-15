@@ -62,10 +62,10 @@ WHERE event_time >= '2025-01-01';
 
 ## Compress Parquet Output
 
-ClickHouse writes Parquet with Snappy compression by default. Use Zstd for better compression ratios:
+ClickHouse writes Parquet with Zstd compression by default. To use a different codec, set the compression method:
 
 ```sql
-SET output_format_parquet_compression_method = 'zstd';
+SET output_format_parquet_compression_method = 'snappy';
 
 INSERT INTO FUNCTION s3(
     'https://s3.amazonaws.com/my-bucket/exports/events_2025.parquet',
@@ -88,15 +88,16 @@ Larger row groups compress better but require more memory.
 
 ## Write Multiple Files
 
-Force multiple output files for parallel writing:
+Split output into multiple files using `PARTITION BY`:
 
 ```sql
 INSERT INTO FUNCTION s3(
-    'https://s3.amazonaws.com/my-bucket/exports/events_*.parquet',
+    'https://s3.amazonaws.com/my-bucket/exports/events_{_partition_id}.parquet',
     'ACCESS_KEY',
     'SECRET_KEY',
     'Parquet'
 )
+PARTITION BY toString(toHour(event_time))
 SELECT * FROM events WHERE event_date = today();
 ```
 
