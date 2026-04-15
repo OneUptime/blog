@@ -8,7 +8,7 @@ Description: Stream messages from Google Cloud Pub/Sub into ClickHouse using a s
 
 ---
 
-Google Cloud Pub/Sub is a fully-managed messaging service. Streaming Pub/Sub data into ClickHouse requires a subscriber application, since ClickHouse does not natively support Pub/Sub. This guide covers two practical approaches.
+Google Cloud Pub/Sub is a fully-managed messaging service. Streaming Pub/Sub data into ClickHouse requires a subscriber application, since ClickHouse does not natively support Pub/Sub. This guide covers three practical approaches.
 
 ## Option 1: Python Subscriber with Batch Inserts
 
@@ -91,14 +91,27 @@ SELECT * FROM pubsub_events_queue;
 For high-scale GCP deployments, use a Dataflow pipeline to read from Pub/Sub and write to ClickHouse:
 
 ```python
+import json
 import apache_beam as beam
 from apache_beam.io.gcp.pubsub import ReadFromPubSub
+import requests
+
+class WriteToClickHouse(beam.DoFn):
+    def __init__(self, clickhouse_url):
+        self.clickhouse_url = clickhouse_url
+
+    def process(self, element):
+        row = f"{element['timestamp']}\t{element['type']}\t{element['user_id']}"
+        requests.post(
+            f"{self.clickhouse_url}/?query=INSERT+INTO+events+FORMAT+TabSeparated",
+            data=row
+        )
 
 with beam.Pipeline(runner='DataflowRunner') as p:
     (p
      | 'Read from Pub/Sub' >> ReadFromPubSub(subscription='projects/my-project/subscriptions/events-sub')
      | 'Parse JSON' >> beam.Map(json.loads)
-     | 'Write to ClickHouse' >> beam.io.WriteToText('http://clickhouse:8123/?query=INSERT...')
+     | 'Write to ClickHouse' >> beam.ParDo(WriteToClickHouse('http://clickhouse:8123'))
     )
 ```
 
