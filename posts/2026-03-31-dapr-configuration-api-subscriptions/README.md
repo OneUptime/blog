@@ -36,7 +36,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- Dapr v1.7 or later
+- Dapr v1.11 or later
 - Configuration store with subscriptions enabled (Redis with keyspace notifications)
 - See the Redis configuration setup guide for Redis keyspace notification setup
 
@@ -47,7 +47,7 @@ sequenceDiagram
 Open a streaming SSE connection:
 
 ```bash
-curl -N "http://localhost:3500/v1.0-alpha1/configuration/configstore/subscribe?key=feature-flags&key=app-config"
+curl -N "http://localhost:3500/v1.0/configuration/configstore/subscribe?key=feature-flags&key=app-config"
 ```
 
 The first message returns the subscription ID:
@@ -73,7 +73,7 @@ Subsequent messages contain updates:
 ### Unsubscribe
 
 ```bash
-curl "http://localhost:3500/v1.0-alpha1/configuration/configstore/sub-abc123/unsubscribe"
+curl "http://localhost:3500/v1.0/configuration/configstore/sub-abc123/unsubscribe"
 ```
 
 ## Node.js Subscription Example
@@ -94,7 +94,7 @@ class ConfigSubscriber {
 
   async subscribe(keys) {
     const keyParams = keys.map(k => `key=${k}`).join('&');
-    const url = `http://localhost:${DAPR_PORT}/v1.0-alpha1/configuration/${CONFIG_STORE}/subscribe?${keyParams}`;
+    const url = `http://localhost:${DAPR_PORT}/v1.0/configuration/${CONFIG_STORE}/subscribe?${keyParams}`;
 
     this.eventSource = new EventSource(url);
     let firstMessage = true;
@@ -135,7 +135,7 @@ class ConfigSubscriber {
   async unsubscribe() {
     if (this.subscriptionId) {
       await axios.get(
-        `http://localhost:${DAPR_PORT}/v1.0-alpha1/configuration/${CONFIG_STORE}/${this.subscriptionId}/unsubscribe`
+        `http://localhost:${DAPR_PORT}/v1.0/configuration/${CONFIG_STORE}/${this.subscriptionId}/unsubscribe`
       );
       this.eventSource.close();
       console.log('Unsubscribed');
@@ -183,33 +183,20 @@ func main() {
 
     // Subscribe to config keys
     keys := []string{"feature-flags", "app-config", "rate-limits"}
-    sub, err := client.SubscribeConfigurationItems(ctx, "configstore", keys, nil)
+
+    handler := func(id string, items map[string]*dapr.ConfigurationItem) {
+        fmt.Printf("Config update received (subscription: %s):\n", id)
+        for key, item := range items {
+            fmt.Printf("  %s = %s (version: %s)\n", key, item.Value, item.Version)
+        }
+    }
+
+    subscriptionID, err := client.SubscribeConfigurationItems(ctx, "configstore", keys, handler)
     if err != nil {
         log.Fatalf("Failed to subscribe: %v", err)
     }
 
-    fmt.Printf("Subscribed to config keys: %v\n", keys)
-
-    // Handle updates in background
-    go func() {
-        for {
-            select {
-            case update, ok := <-sub.DataChannel():
-                if !ok {
-                    return
-                }
-                fmt.Printf("Config update received:\n")
-                for key, item := range update {
-                    fmt.Printf("  %s = %s (version: %s)\n", key, item.Value, item.Version)
-                }
-            case err := <-sub.ErrorChannel():
-                log.Printf("Subscription error: %v", err)
-                return
-            case <-ctx.Done():
-                return
-            }
-        }
-    }()
+    fmt.Printf("Subscribed to config keys: %v (ID: %s)\n", keys, subscriptionID)
 
     // Wait for signal
     sigCh := make(chan os.Signal, 1)
@@ -217,7 +204,9 @@ func main() {
     <-sigCh
 
     fmt.Println("Unsubscribing and shutting down...")
-    sub.Unsubscribe()
+    if err := client.UnsubscribeConfigurationItems(ctx, "configstore", subscriptionID); err != nil {
+        log.Printf("Failed to unsubscribe: %v", err)
+    }
 }
 ```
 
@@ -227,7 +216,9 @@ func main() {
 import json
 import signal
 import sys
+import threading
 from dapr.clients import DaprClient
+from dapr.clients.grpc._response import ConfigurationResponse
 
 def on_config_update(key: str, value: dict):
     print(f"Config '{key}' updated: {value}")
@@ -237,28 +228,34 @@ def main():
         keys = ['feature-flags', 'app-config', 'rate-limits']
         config = {}
 
-        def handle_update(update):
-            for key, item in update.items():
+        def handler(id: str, resp: ConfigurationResponse):
+            for key, item in resp.items.items():
                 config[key] = json.loads(item.value)
                 on_config_update(key, config[key])
 
-        subscription = client.subscribe_configuration(
+        subscription_id = client.subscribe_configuration(
             store_name='configstore',
-            keys=keys
+            keys=keys,
+            handler=handler
         )
 
-        print(f"Subscribed to keys: {keys}")
+        print(f"Subscribed to keys: {keys} (ID: {subscription_id})")
+
+        shutdown_event = threading.Event()
 
         def shutdown(signum, frame):
             print("Unsubscribing...")
-            subscription.close()
+            client.unsubscribe_configuration(
+                store_name='configstore',
+                id=subscription_id
+            )
+            shutdown_event.set()
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, shutdown)
         signal.signal(signal.SIGINT, shutdown)
 
-        for update in subscription:
-            handle_update(update.items)
+        shutdown_event.wait()
 
 if __name__ == '__main__':
     main()
@@ -269,7 +266,7 @@ if __name__ == '__main__':
 Update a configuration value in Redis to test your subscription:
 
 ```bash
-redis-cli SET "feature-flags||version||2" '{"darkMode":true,"betaFeatures":true}'
+redis-cli SET feature-flags '{"darkMode":true,"betaFeatures":true}||2'
 ```
 
 Your subscribed application receives the update immediately.
