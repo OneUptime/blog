@@ -52,8 +52,14 @@ ORDER BY (order_id, event_time);
 ## Wiring Kafka to ClickHouse
 
 ```sql
-CREATE TABLE order_events_kafka
-ENGINE = Kafka
+CREATE TABLE order_events_kafka (
+    event_time     DateTime,
+    order_id       UUID,
+    user_id        UInt64,
+    status         LowCardinality(String),
+    amount_cents   UInt64,
+    currency       LowCardinality(String)
+) ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'orders',
@@ -88,9 +94,18 @@ LIMIT 50;
 
 ## Handling Event Schema Evolution
 
-Use `JSONExtract` to handle schema changes gracefully in the Kafka source:
+Use `JSONAsString` format with `JSONExtract` functions to handle schema changes gracefully. Define the Kafka table with a single `String` column so the raw JSON is preserved:
 
 ```sql
+CREATE TABLE order_events_kafka_raw (
+    raw String
+) ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'kafka:9092',
+    kafka_topic_list = 'orders',
+    kafka_group_name = 'ch_orders',
+    kafka_format = 'JSONAsString';
+
 CREATE MATERIALIZED VIEW order_events_mv TO order_events AS
 SELECT
     toDateTime(JSONExtractString(raw, 'event_time')) AS event_time,
@@ -99,7 +114,7 @@ SELECT
     JSONExtractString(raw, 'status') AS status,
     JSONExtractUInt(raw, 'amount_cents') AS amount_cents,
     JSONExtractString(raw, 'currency') AS currency
-FROM (SELECT * FROM order_events_kafka);
+FROM order_events_kafka_raw;
 ```
 
 ## Monitoring the Event Pipeline
@@ -107,9 +122,15 @@ FROM (SELECT * FROM order_events_kafka);
 Track consumer lag per topic to detect processing delays:
 
 ```sql
-SELECT topic, partition, offset, consumer_group
+SELECT
+    database,
+    table,
+    consumer_id,
+    assignments.topic,
+    assignments.partition_id,
+    assignments.current_offset
 FROM system.kafka_consumers
-ORDER BY topic, partition;
+ORDER BY database, table;
 ```
 
 Alert via OneUptime when consumer lag grows beyond an acceptable threshold.
