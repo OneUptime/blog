@@ -16,7 +16,7 @@ A data part is an immutable directory on disk created by each INSERT into a Merg
 
 ```text
 /var/lib/clickhouse/data/mydb/events/
-  20240101_1_1_0/        <- partition=202401, block 1 to 1, merge level 0
+  20240101_1_1_0/        <- partition=20240101, block 1 to 1, merge level 0
     id.bin
     ts.bin
     revenue.bin
