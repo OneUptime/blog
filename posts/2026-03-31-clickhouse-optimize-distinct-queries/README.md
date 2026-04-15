@@ -21,7 +21,7 @@ SELECT DISTINCT user_id FROM events WHERE event_time >= today() - 30;
 
 ## Use uniq Instead of COUNT(DISTINCT)
 
-`COUNT(DISTINCT col)` internally calls `uniqExact`, which is exact but slow. Use `uniq` for approximate counts (2% error, 10x faster):
+`COUNT(DISTINCT col)` internally calls `uniqExact` by default (configurable via the `count_distinct_implementation` setting), which is exact but slow. Use `uniq` for approximate counts (1-2% error, 10-100x faster):
 
 ```sql
 -- Exact but slow
@@ -30,8 +30,8 @@ SELECT count(DISTINCT user_id) FROM events;
 -- Approximate but very fast
 SELECT uniq(user_id) FROM events;
 
--- Tunable precision
-SELECT uniqCombined(user_id) FROM events;
+-- Tunable precision (HLL_precision parameter, range 12-20, default 17)
+SELECT uniqCombined(12)(user_id) FROM events;
 ```
 
 ## Use uniqExact Only When Precision is Required
@@ -43,16 +43,15 @@ GROUP BY date
 ORDER BY date;
 ```
 
-## Replace DISTINCT with GROUP BY
+## Replace DISTINCT with GROUP BY When Aggregating
 
-`GROUP BY` often outperforms `DISTINCT` because ClickHouse can optimize it better:
+When you need aggregations alongside deduplication, `GROUP BY` is the better choice because it combines both operations. Note that for simple deduplication without aggregation, `DISTINCT` can actually stream results and terminate early with `LIMIT`, so it is not always slower:
 
 ```sql
--- Slower
-SELECT DISTINCT user_id, country FROM users;
-
--- Faster equivalent
-SELECT user_id, country FROM users GROUP BY user_id, country;
+-- Use GROUP BY when you also need aggregations
+SELECT user_id, country, count() AS event_count
+FROM events
+GROUP BY user_id, country;
 ```
 
 ## Pre-aggregate Unique Counts with AggregatingMergeTree
@@ -88,7 +87,7 @@ If you only need to know whether duplicates exist or want a sample:
 SELECT DISTINCT user_id FROM events LIMIT 1000;
 ```
 
-ClickHouse can stop processing once 1000 distinct values are found.
+ClickHouse can stop processing once 1000 distinct values are found. Note that this early termination only works when `ORDER BY` is omitted. Adding `ORDER BY` forces ClickHouse to process all data first.
 
 ## Avoid DISTINCT on Wide Rows
 
@@ -103,4 +102,4 @@ Then join back if you need additional fields.
 
 ## Summary
 
-Optimizing DISTINCT queries in ClickHouse usually means replacing `COUNT(DISTINCT)` with `uniq`, rewriting `SELECT DISTINCT` as `GROUP BY`, and pre-aggregating cardinality metrics with `AggregatingMergeTree` materialized views. Reserve `uniqExact` only when you need bit-perfect counts and can tolerate the memory cost.
+Optimizing DISTINCT queries in ClickHouse usually means replacing `COUNT(DISTINCT)` with `uniq`, using `GROUP BY` when you need aggregations alongside deduplication, and pre-aggregating cardinality metrics with `AggregatingMergeTree` materialized views. Reserve `uniqExact` only when you need bit-perfect counts and can tolerate the memory cost.
