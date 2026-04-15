@@ -81,15 +81,21 @@ SELECT
     strategy,
     entry_at,
     pnl,
-    sum(pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) AS cumulative_pnl,
-    max(sum(pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at))
-        OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) AS running_peak,
-    sum(pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) -
-        max(sum(pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at))
-        OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) AS drawdown
-FROM bot_trades
-WHERE status = 'closed'
-  AND entry_at >= today() - 30
+    cumulative_pnl,
+    max(cumulative_pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) AS running_peak,
+    cumulative_pnl -
+        max(cumulative_pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) AS drawdown
+FROM (
+    SELECT
+        bot_id,
+        strategy,
+        entry_at,
+        pnl,
+        sum(pnl) OVER (PARTITION BY bot_id, strategy ORDER BY entry_at) AS cumulative_pnl
+    FROM bot_trades
+    WHERE status = 'closed'
+      AND entry_at >= today() - 30
+)
 ORDER BY bot_id, strategy, entry_at;
 ```
 
