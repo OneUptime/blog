@@ -97,9 +97,9 @@ spec:
 
 Dapr's placement service handles routing - clients always reach the correct pod for a given actor ID without extra configuration.
 
-## Configuring Actor Rebalancing
+## Configuring Scheduler-Based Actor Reminders
 
-Tune actor rebalancing behavior:
+Offload actor reminders to the Dapr Scheduler service for improved scalability:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -108,13 +108,13 @@ metadata:
   name: actor-config
 spec:
   features:
-    - name: SchedulerHostedActors
+    - name: SchedulerReminders
       enabled: true
 ```
 
 ## Load Testing Your Scaled Agents
 
-Use the Dapr CLI to send concurrent requests:
+Use `hey` to load test your agents via the Dapr sidecar:
 
 ```bash
 # Install hey (HTTP load testing)
@@ -137,7 +137,7 @@ Configure Prometheus metrics to observe scaling:
 kubectl get hpa -n ai-agents
 
 # Watch scaling events
-kubectl get events -n ai-agents --sort-by='.lastTimestamp' | grep -i scale
+kubectl get events -n ai-agents --sort-by='.metadata.creationTimestamp' | grep -i scale
 ```
 
 ## Setting Concurrency Limits per Pod
