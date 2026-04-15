@@ -39,9 +39,8 @@ Extract certificate issuance events from Sentry logs:
 
 ```python
 import subprocess
-import re
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def parse_sentry_audit_log():
     log_output = subprocess.check_output([
@@ -53,7 +52,7 @@ def parse_sentry_audit_log():
     for line in log_output.splitlines():
         if "cert sign" in line.lower() or "workload cert" in line.lower():
             events.append({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "raw": line
             })
     return events
@@ -80,16 +79,16 @@ Set up a Grafana table to show certificate request rates per service.
 Dapr uses SPIFFE IDs in workload certificates for identity. Extract and verify them:
 
 ```bash
-# Get certificate from a running sidecar and check SPIFFE ID
-kubectl exec -it <pod-name> -c daprd -- \
-  sh -c "cat /var/run/secrets/dapr.io/tls/tls.crt" | \
+# Connect to the daprd sidecar's internal gRPC port and extract the presented certificate
+kubectl port-forward <pod-name> 50001:50001 &
+echo | openssl s_client -connect localhost:50001 2>/dev/null | \
   openssl x509 -text -noout | grep -A 2 "Subject Alternative Name"
 ```
 
 Expected SPIFFE URI format:
 
 ```bash
-# URI:spiffe://cluster.local/ns/production/dapr/order-service
+# URI:spiffe://cluster.local/ns/production/order-service
 ```
 
 ## Alerting on Unexpected Certificate Requests
