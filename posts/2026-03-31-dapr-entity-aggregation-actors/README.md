@@ -29,11 +29,24 @@ export interface IOrderActor {
 ## Order Aggregate Actor Implementation (Python)
 
 ```python
-from dapr.actor import Actor
-from dapr.actor.runtime.context import ActorRuntimeContext
-import json
+from dapr.actor import Actor, ActorInterface, actormethod
 
-class OrderActor(Actor):
+
+class OrderActorInterface(ActorInterface):
+    @actormethod(name='add_item')
+    async def add_item(self, item: dict) -> None: ...
+
+    @actormethod(name='apply_discount')
+    async def apply_discount(self, code: str, percent: float) -> None: ...
+
+    @actormethod(name='confirm')
+    async def confirm(self) -> dict: ...
+
+    @actormethod(name='get_order')
+    async def get_order(self) -> dict: ...
+
+
+class OrderActor(Actor, OrderActorInterface):
     STATE_KEY = "order"
 
     async def _on_activate(self):
@@ -93,17 +106,22 @@ class OrderActor(Actor):
 ## Invoking the Aggregate from a Controller
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, ActorProxyBuilder, ActorId } = require('@dapr/dapr');
 const client = new DaprClient();
 
+class OrderActor {} // client-side stub matching the actor type name
+const builder = new ActorProxyBuilder(OrderActor, client);
+
 app.post('/orders/:orderId/items', async (req, res) => {
-  await client.actor.invoke('OrderActor', req.params.orderId, 'add_item', req.body);
-  const order = await client.actor.invoke('OrderActor', req.params.orderId, 'get_order');
+  const actor = builder.build(new ActorId(req.params.orderId));
+  await actor.add_item(req.body);
+  const order = await actor.get_order();
   res.json(order);
 });
 
 app.post('/orders/:orderId/confirm', async (req, res) => {
-  const confirmed = await client.actor.invoke('OrderActor', req.params.orderId, 'confirm');
+  const actor = builder.build(new ActorId(req.params.orderId));
+  const confirmed = await actor.confirm();
   res.json(confirmed);
 });
 ```
