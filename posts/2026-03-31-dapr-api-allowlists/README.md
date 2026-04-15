@@ -27,13 +27,13 @@ spec:
     allowed:
     - name: state
       version: v1
-      protocol: HTTP
+      protocol: http
     - name: state
       version: v1
-      protocol: gRPC
+      protocol: grpc
     - name: secrets
       version: v1
-      protocol: HTTP
+      protocol: http
 ```
 
 Apply this to your cluster:
@@ -51,7 +51,7 @@ annotations:
   dapr.io/config: "restricted-config"
 ```
 
-With this configuration, the `payment-service` sidecar only exposes `state` and `secrets` APIs. Attempts to call `pubsub` or `bindings` return `403 Forbidden`.
+With this configuration, the `payment-service` sidecar only exposes `state` and `secrets` APIs. Attempts to call `pubsub` or `bindings` return `404 Not Found` because those endpoints are not registered on the sidecar.
 
 ## Available API Names
 
@@ -68,8 +68,14 @@ The following API names can be used in allowlists:
 | metadata | Sidecar metadata |
 | configuration | Configuration API |
 | lock | Distributed lock |
+| unlock | Distributed unlock |
 | crypto | Cryptography |
+| subtlecrypto | Subtle cryptography |
 | workflows | Workflow API |
+| healthz | Health check |
+| shutdown | Sidecar shutdown |
+| jobs | Jobs API |
+| conversation | Conversation API |
 
 ## Verifying API Restrictions
 
@@ -81,11 +87,11 @@ curl -X GET http://localhost:3500/v1.0/state/my-store/key1 \
   -H "dapr-api-token: mytoken"
 
 # This should fail (publish is not in the allowlist)
-curl -X POST http://localhost:3500/v1.0/publish/my-topic/orders \
+curl -X POST http://localhost:3500/v1.0/publish/my-pubsub/orders \
   -H "Content-Type: application/json" \
   -H "dapr-api-token: mytoken" \
   -d '{"orderId": "123"}'
-# Expected: 403 Forbidden
+# Expected: 404 Not Found
 ```
 
 ## Combining Allowlists with API Token Authentication
@@ -98,7 +104,7 @@ spec:
     allowed:
     - name: state
       version: v1
-      protocol: HTTP
+      protocol: http
 ```
 
 ```bash
