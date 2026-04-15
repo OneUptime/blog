@@ -59,13 +59,13 @@ WHERE description ILIKE '%deprecated%';
 
 ## Verify Configuration File Compatibility
 
-New ClickHouse versions sometimes add required configuration keys or change XML structure. Use the dry-run validation flag:
+New ClickHouse versions sometimes add required configuration keys or change XML structure. Validate the XML syntax of your configuration file before upgrading:
 
 ```bash
-clickhouse-server --config=/etc/clickhouse-server/config.xml --check-config
+xmllint --noout /etc/clickhouse-server/config.xml
 ```
 
-This validates configuration syntax without starting the server.
+This checks that the configuration XML is well-formed. To further verify that ClickHouse can parse the configuration, start the server and check the logs for configuration-related errors.
 
 ## Check for Removed or Renamed Functions
 
@@ -137,7 +137,7 @@ docker run -d --name ch-new \
   clickhouse/clickhouse-server:24.3
 
 # Connect and run compatibility checks
-clickhouse-client --port 19000 --query "SELECT version(); SELECT count() FROM my_db.my_table;"
+clickhouse-client --port 19000 --multiquery --query "SELECT version(); SELECT count() FROM my_db.my_table;"
 ```
 
 ## Generating a Compatibility Report
@@ -158,4 +158,4 @@ SELECT 'deprecated_settings', toString(count()) FROM system.settings WHERE descr
 
 ## Summary
 
-Version compatibility checks before ClickHouse upgrades should cover deprecated settings, incompatible SQL changes, configuration file validity, and table engine compatibility. Use `--check-config` to validate configuration before starting, review the changelog for incompatible changes, and test on a Docker instance or staging environment before touching production.
+Version compatibility checks before ClickHouse upgrades should cover deprecated settings, incompatible SQL changes, configuration file validity, and table engine compatibility. Use `xmllint` to validate configuration syntax before starting, review the changelog for incompatible changes, and test on a Docker instance or staging environment before touching production.
