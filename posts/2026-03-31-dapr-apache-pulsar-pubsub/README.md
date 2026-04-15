@@ -70,10 +70,8 @@ spec:
     value: "false"
   - name: maxConcurrentHandlers
     value: "10"
-  - name: subscriptionType
+  - name: subscribeType
     value: "shared"
-  - name: partitionedTopic
-    value: "false"
 ```
 
 For TLS-secured clusters:
@@ -81,8 +79,6 @@ For TLS-secured clusters:
 ```yaml
   - name: enableTLS
     value: "true"
-  - name: tlsTrustCertsFilePath
-    value: "/certs/ca.crt"
 ```
 
 Apply the component:
