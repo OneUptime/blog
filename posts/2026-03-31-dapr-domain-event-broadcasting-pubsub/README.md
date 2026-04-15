@@ -44,8 +44,6 @@ spec:
   metadata:
     - name: brokers
       value: "kafka:9092"
-    - name: consumerGroup
-      value: "domain-event-consumers"
 ```
 
 ## Publishing Domain Events
