@@ -49,7 +49,7 @@ Enable `system.trace_log` in `config.xml`:
 | `event_time` | DateTime | When the sample was taken |
 | `query_id` | String | Query being profiled |
 | `thread_id` | UInt64 | Thread that was sampled |
-| `trace_type` | Enum | Real (wall clock), CPU, Memory, MemorySample, etc. |
+| `trace_type` | Enum8 | Real (wall clock), CPU, Memory, MemorySample, etc. |
 | `trace` | Array(UInt64) | Stack of instruction pointer addresses |
 | `size` | Int64 | For memory traces: allocation size |
 
@@ -89,10 +89,10 @@ Generate a collapsed stack format suitable for flamegraph tools:
 
 ```sql
 SELECT
-    count()  AS samples,
     arrayStringConcat(
         arrayReverse(arrayMap(x -> demangle(addressToSymbol(x)), trace)), ';'
-    ) AS stack
+    ) AS stack,
+    count()  AS samples
 FROM system.trace_log
 WHERE query_id  = 'your-query-id-here'
   AND trace_type = 'CPU'
