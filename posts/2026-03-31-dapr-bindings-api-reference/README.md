@@ -115,8 +115,8 @@ spec:
       value: orders
     - name: consumerGroup
       value: order-processor
-    - name: authRequired
-      value: "false"
+    - name: authType
+      value: "none"
 ```
 
 ## Invoking from Code (Node.js SDK)
