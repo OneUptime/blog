@@ -87,7 +87,7 @@ FROM system.zookeeper
 WHERE path = '/clickhouse/task_queue/ddl/query-XXXX';
 ```
 
-## Checking Block Numbers (Quorum)
+## Checking Insert Quorum Status
 
 ```sql
 SELECT name, value
@@ -104,4 +104,4 @@ WHERE path = '/clickhouse/tables/01/mydb/events/quorum';
 
 ## Summary
 
-`system.zookeeper` provides direct SQL access to ClickHouse's coordination metadata stored in ZooKeeper or ClickHouse Keeper. Use it to debug replication state, inspect log contents, check quorum metadata, and trace distributed DDL task execution without needing external ZooKeeper tooling.
+`system.zookeeper` provides direct SQL access to ClickHouse's coordination metadata stored in ZooKeeper or ClickHouse Keeper. Use it to debug replication state, inspect log contents, check insert quorum status, and trace distributed DDL task execution without needing external ZooKeeper tooling.
