@@ -57,7 +57,7 @@ time clickhouse-client \
 
 ## Using clickhouse-benchmark with Null
 
-`clickhouse-benchmark` uses `Null` format internally. You can also run custom scripts:
+`clickhouse-benchmark` measures query execution time and reports statistics. You can also add `FORMAT Null` to skip serialization overhead in your benchmark queries:
 
 ```bash
 clickhouse-benchmark \
@@ -84,12 +84,15 @@ ORDER BY hour, views DESC
 FORMAT Null;
 ```
 
-## INSERT INTO ... FORMAT Null
+## Discarding Inserts with the Null Table Engine
 
-You can also use `Null` as an input format for INSERT, which discards all input data:
+The `Null` format is output-only and cannot be used as an input format for INSERT. To discard all inserted data, use a table with the `Null` table engine instead:
 
 ```sql
-INSERT INTO discard_table FORMAT Null;
+CREATE TABLE discard_table (id UInt64, value String) ENGINE = Null;
+
+INSERT INTO discard_table VALUES (1, 'test');
+-- Data is accepted but not stored
 ```
 
 This is useful when testing the INSERT pipeline overhead without actually storing data.
@@ -118,11 +121,10 @@ LIMIT 10;
 EXPLAIN PIPELINE
 SELECT user_id, sum(revenue)
 FROM orders
-GROUP BY user_id
-FORMAT Null;
+GROUP BY user_id;
 ```
 
-This prints the execution pipeline without running the query.
+This prints the execution pipeline without running the query. Do not add `FORMAT Null` to the EXPLAIN statement itself, as it would suppress the EXPLAIN output.
 
 ## Null vs /dev/null Redirect
 
