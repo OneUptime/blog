@@ -35,7 +35,7 @@ ORDER BY metric;
 | `OpenFileForWrite` | Open file descriptors for writes |
 | `TCPConnection` | Active TCP connections |
 | `HTTPConnection` | Active HTTP connections |
-| `InterserverConnection` | Active inter-shard connections |
+| `InterserverConnection` | Active inter-replica connections |
 | `ZooKeeperRequest` | ZooKeeper requests in flight |
 | `ZooKeeperWatch` | Active ZooKeeper watches |
 | `DistributedSend` | Distributed INSERT sends in progress |
@@ -84,7 +84,7 @@ ORDER BY metric;
 flowchart TD
     A[ClickHouse Server State] --> B[system.metrics: real-time gauges]
     A --> C[system.events: cumulative counters since start]
-    A --> D[system.asynchronous_metrics: computed every 1s]
+    A --> D[system.asynchronous_metrics: computed every 60s by default]
     B --> E[Example: Query = 5 queries running RIGHT NOW]
     C --> F[Example: Query = 1200000 queries since server started]
     D --> G[Example: LoadAverage1 = 2.4 from /proc]
@@ -97,7 +97,7 @@ SELECT
     metric,
     formatReadableSize(value) AS current_value
 FROM system.metrics
-WHERE metric IN ('MemoryTracking', 'MemoryTrackingInBackgroundProcessingPool')
+WHERE metric IN ('MemoryTracking', 'MergesMutationsMemoryTracking')
 ORDER BY metric;
 ```
 
@@ -133,15 +133,15 @@ ORDER BY metric;
 ClickHouse exposes `system.metrics` via its built-in Prometheus endpoint on port 9363:
 
 ```bash
-curl http://localhost:9363/metrics | grep "clickhouse_metrics"
+curl http://localhost:9363/metrics | grep "ClickHouseMetrics"
 ```
 
 Example output:
 
 ```text
-# HELP clickhouse_metrics_Query Number of executing queries
-# TYPE clickhouse_metrics_Query gauge
-clickhouse_metrics_Query 3
+# HELP ClickHouseMetrics_Query Number of executing queries
+# TYPE ClickHouseMetrics_Query gauge
+ClickHouseMetrics_Query 3
 ```
 
 ## Alerting on Metric Thresholds
