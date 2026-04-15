@@ -44,7 +44,7 @@ Look for `Partitions: 1/N` to confirm pruning is active.
 
 ## Align ts with Primary Key
 
-Put `ts` as a leading primary key column for best range scan performance:
+Include `ts` early in the ORDER BY key so range scans can leverage the primary index:
 
 ```sql
 ORDER BY (project_id, ts)
