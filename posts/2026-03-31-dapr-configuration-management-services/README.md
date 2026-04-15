@@ -68,7 +68,7 @@ Enable your service to react to live config changes without restarting:
 
 ```javascript
 async function watchConfig() {
-  const subscriptionId = await client.configuration.subscribeWithKeys(
+  const stream = await client.configuration.subscribeWithKeys(
     'configstore',
     ['featureFlag', 'maxRetries'],
     (configUpdate) => {
@@ -76,7 +76,7 @@ async function watchConfig() {
       applyNewConfig(configUpdate.items);
     }
   );
-  return subscriptionId;
+  return stream;
 }
 ```
 
@@ -85,9 +85,7 @@ async function watchConfig() {
 Pre-populate your Redis config store with initial values:
 
 ```bash
-redis-cli SET "featureFlag||" '{"value":"true","version":"1","metadata":{}}'
-redis-cli SET "timeout||" '{"value":"30","version":"1","metadata":{}}'
-redis-cli SET "maxRetries||" '{"value":"3","version":"1","metadata":{}}'
+redis-cli MSET featureFlag "true||1" timeout "30||1" maxRetries "3||1"
 ```
 
 ## Environment-Specific Configuration
@@ -106,8 +104,8 @@ spec:
   metadata:
   - name: redisHost
     value: prod-redis:6379
-  - name: keyPrefix
-    value: "production:"
+  - name: redisDB
+    value: "1"
 ```
 
 ## Unsubscribing
@@ -116,7 +114,7 @@ Always clean up subscriptions when your service shuts down:
 
 ```javascript
 process.on('SIGTERM', async () => {
-  await client.configuration.unsubscribe('configstore', subscriptionId);
+  stream.stop();
   await client.stop();
 });
 ```
