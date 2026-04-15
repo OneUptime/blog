@@ -115,7 +115,7 @@ async def stream_metrics(websocket):
             GROUP BY second
             ORDER BY second
         ''')
-        await websocket.send(json.dumps(result.named_results()))
+        await websocket.send(json.dumps(list(result.named_results()), default=str))
         await asyncio.sleep(1)
 
 async def main():
