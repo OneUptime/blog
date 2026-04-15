@@ -118,16 +118,27 @@ GRANT INSERT ON raw_data.* TO etl_service;
 
 ## Step 4: Connect with Client Certificate
 
-Using `clickhouse-client`:
+Using `clickhouse-client`, first create a client config file at `~/.clickhouse-client/config.xml`:
+
+```xml
+<config>
+  <openSSL>
+    <client>
+      <caConfig>ca.crt</caConfig>
+      <certificateFile>client.crt</certificateFile>
+      <privateKeyFile>client.key</privateKeyFile>
+    </client>
+  </openSSL>
+</config>
+```
+
+Then connect:
 
 ```bash
 clickhouse-client \
     --host clickhouse.example.com \
     --port 9440 \
     --secure \
-    --ssl-ca-cert-file ca.crt \
-    --ssl-cert-file client.crt \
-    --ssl-key-file client.key \
     --user etl_service \
     --query "SELECT currentUser()"
 ```
@@ -176,13 +187,27 @@ To force all connections through TLS:
 
 ## Verifying mTLS is Working
 
+Try connecting without a client certificate to confirm the server rejects unauthenticated connections:
+
+```bash
+# This should fail with a certificate verification error
+clickhouse-client \
+    --host clickhouse.example.com \
+    --port 9440 \
+    --secure \
+    --user etl_service \
+    --query "SELECT 1"
+```
+
+Then verify that the authenticated client can connect and check recent queries:
+
 ```sql
--- Check whether the current connection is using TLS
+-- Check recent connections to confirm the authenticated user is connecting
 SELECT
-    interface,
-    is_initial_query,
     user,
-    client_hostname
+    client_hostname,
+    interface,
+    event_time
 FROM system.query_log
 WHERE type = 'QueryStart'
 ORDER BY event_time DESC
