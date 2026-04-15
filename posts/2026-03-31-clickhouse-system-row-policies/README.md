@@ -21,9 +21,9 @@ SELECT
     name,
     database,
     table,
-    restrictiveness,
-    roles,
-    condition_as_string
+    is_restrictive,
+    apply_to_list,
+    select_filter
 FROM system.row_policies
 ORDER BY database, table;
 ```
@@ -49,9 +49,9 @@ To review the filter conditions applied to specific tables:
 SELECT
     name,
     table,
-    condition_as_string,
-    roles,
-    restrictiveness
+    select_filter,
+    apply_to_list,
+    is_restrictive
 FROM system.row_policies
 WHERE database = 'production'
 ORDER BY table;
@@ -64,14 +64,14 @@ Policies can be applied to specific roles or to ALL users. To find permissive vs
 ```sql
 SELECT
     name,
-    restrictiveness,
-    roles,
-    condition_as_string
+    is_restrictive,
+    apply_to_list,
+    select_filter
 FROM system.row_policies
 WHERE table = 'orders';
 ```
 
-A `RESTRICTIVE` policy uses AND logic with other policies; a `PERMISSIVE` policy uses OR logic.
+When `is_restrictive` is 1, the policy is restrictive and uses AND logic with other policies. When `is_restrictive` is 0, the policy is permissive and uses OR logic.
 
 ## Modifying a Row Policy
 
@@ -87,7 +87,7 @@ ALTER ROW POLICY tenant_filter ON events
 Then verify the change:
 
 ```sql
-SELECT name, condition_as_string
+SELECT name, select_filter
 FROM system.row_policies
 WHERE name = 'tenant_filter';
 ```
@@ -110,12 +110,16 @@ WHERE name = 'tenant_filter';
 
 | Column | Description |
 |---|---|
-| `name` | Policy name |
+| `name` | Fully qualified policy name |
+| `short_name` | Short policy name |
 | `database` | Database where the policy applies |
 | `table` | Table where the policy applies |
-| `condition_as_string` | The filter expression as SQL |
-| `restrictiveness` | PERMISSIVE or RESTRICTIVE |
-| `roles` | Roles or users the policy applies to |
+| `id` | Row policy UUID |
+| `select_filter` | The filter expression used for SELECT queries |
+| `is_restrictive` | 0 for permissive, 1 for restrictive |
+| `apply_to_all` | 1 if the policy applies to all roles/users |
+| `apply_to_list` | Array of roles/users the policy applies to |
+| `apply_to_except` | Array of roles/users excluded from the policy |
 
 ## Combining Row Policies with Column Permissions
 
