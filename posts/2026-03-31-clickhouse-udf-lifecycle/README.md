@@ -54,9 +54,7 @@ ORDER BY name;
 
 ## Managing Executable UDFs
 
-Executable UDFs are defined in XML files. ClickHouse watches the `user_defined` directory and reloads definitions automatically when files change.
-
-Reload manually if needed:
+Executable UDFs are defined in XML files in the `user_defined` configuration directory. After adding or modifying these files, reload the definitions:
 
 ```sql
 SYSTEM RELOAD FUNCTIONS;
