@@ -55,8 +55,6 @@ spec:
         global:
           ha:
             enabled: true
-        dapr_dashboard:
-          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: dapr-system
