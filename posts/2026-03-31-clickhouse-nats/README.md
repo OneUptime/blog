@@ -122,8 +122,8 @@ SETTINGS
     nats_subjects               = 'events.>',
     nats_format                 = 'JSONEachRow',
     nats_num_consumers          = 2,
-    nats_stream_name            = 'analytics',
-    nats_durable               = 'clickhouse_consumer';
+    nats_stream                 = 'analytics',
+    nats_consumer               = 'clickhouse_consumer';
 ```
 
 ## Creating the Materialized View
@@ -260,4 +260,4 @@ LIMIT 20;
 
 ## Summary
 
-ClickHouse's NATS engine subscribes to subjects directly and feeds messages into analytical tables via materialized views. Use JetStream for durable, replayable streams and configure `nats_durable` to maintain consumer offsets across restarts. Queue groups let multiple ClickHouse instances share the load. Secure production deployments with TLS certificates and monitor consumer state through `system.nats_consumers`.
+ClickHouse's NATS engine subscribes to subjects directly and feeds messages into analytical tables via materialized views. Use JetStream for durable, replayable streams and configure `nats_consumer` to maintain consumer offsets across restarts. Queue groups let multiple ClickHouse instances share the load. Secure production deployments with TLS certificates and monitor consumer state through `system.nats_consumers`.
