@@ -227,7 +227,7 @@ FROM numbers_mt(100000000);
 SELECT
     number,
     leftPad(toString(number), 6, '0') AS padded_id
-FROM numbers(1, 6);
+FROM numbers(1, 5);
 ```
 
 ```text
@@ -247,7 +247,7 @@ SELECT
     number * 100              AS bucket_start,
     number * 100 + 99         AS bucket_end,
     countIf(score BETWEEN number * 100 AND number * 100 + 99) AS freq
-FROM numbers(0, 11)
+FROM numbers(10)
 CROSS JOIN (
     SELECT rand() % 1000 AS score FROM numbers(100000)
 ) AS data
