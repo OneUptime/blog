@@ -101,13 +101,13 @@ result = client.query(
 
 ## Idempotent Inserts
 
-ClickHouse MergeTree tables deduplicate inserts automatically. Mark operations as idempotent by using a fixed `insert_dedup_token`:
+ClickHouse ReplicatedMergeTree tables deduplicate inserts automatically based on block checksums. You can also provide an explicit `insert_deduplication_token` to control deduplication:
 
 ```python
 client.insert(
     "events",
     data=rows,
-    settings={"insert_dedup_token": "batch-2026-01-01-001"}
+    settings={"insert_deduplication_token": "batch-2026-01-01-001"}
 )
 ```
 
