@@ -42,7 +42,7 @@ FROM events;
 
 -- ClickHouse
 SELECT
-  toStartOfWeek(event_time) AS week,
+  toStartOfWeek(event_time, 1) AS week,
   addHours(event_time, 6) AS adjusted,
   dateDiff('second', start_time, end_time) AS duration_s
 FROM events;
