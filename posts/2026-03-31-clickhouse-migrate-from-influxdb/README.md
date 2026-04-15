@@ -98,7 +98,7 @@ gunzip -c /tmp/influx_export.gz | head -20
 ### InfluxDB 2.x - Export with CLI
 
 ```bash
-# Export a bucket to line protocol
+# Export a bucket to CSV
 influx query \
   --org my-org \
   --token my-token \
@@ -111,11 +111,11 @@ influx query \
 Or use the InfluxDB HTTP API:
 
 ```bash
-curl -G "http://localhost:8086/api/v2/query" \
+curl --request POST "http://localhost:8086/api/v2/query?org=my-org" \
   --header "Authorization: Token my-token" \
   --header "Accept: application/csv" \
-  --data-urlencode "org=my-org" \
-  --data-urlencode 'query=from(bucket:"metrics") |> range(start: -30d) |> filter(fn: (r) => r._measurement == "cpu")' \
+  --header "Content-Type: application/vnd.flux" \
+  --data 'from(bucket:"metrics") |> range(start: -30d) |> filter(fn: (r) => r._measurement == "cpu")' \
   > /tmp/cpu_export.csv
 ```
 
@@ -341,30 +341,43 @@ END;
 ```
 
 ```sql
--- ClickHouse: destination table
+-- ClickHouse: destination table using AggregatingMergeTree
+-- AggregateFunction columns store intermediate states that merge correctly
 CREATE TABLE cpu_metrics_5m
 (
     bucket    DateTime,
     host      LowCardinality(String),
-    mean_idle Float64,
-    max_user  Float64,
-    cnt       UInt64
+    mean_idle AggregateFunction(avg, Float64),
+    max_user  AggregateFunction(max, Float64),
+    cnt       AggregateFunction(count)
 )
-ENGINE = SummingMergeTree((mean_idle, max_user, cnt))
+ENGINE = AggregatingMergeTree()
 ORDER BY (host, bucket);
 
 -- ClickHouse: materialized view that feeds the downsampled table
+-- Use -State combinators to produce intermediate aggregate states
 CREATE MATERIALIZED VIEW cpu_metrics_5m_mv
 TO cpu_metrics_5m
 AS
 SELECT
     toStartOfFiveMinutes(ts) AS bucket,
     host,
-    avg(usage_idle) AS mean_idle,
-    max(usage_user) AS max_user,
-    count()         AS cnt
+    avgState(usage_idle) AS mean_idle,
+    maxState(usage_user) AS max_user,
+    countState()         AS cnt
 FROM cpu_metrics
 GROUP BY bucket, host;
+
+-- Query the downsampled table using -Merge combinators
+SELECT
+    bucket,
+    host,
+    avgMerge(mean_idle) AS mean_idle,
+    maxMerge(max_user)  AS max_user,
+    countMerge(cnt)     AS cnt
+FROM cpu_metrics_5m
+GROUP BY bucket, host
+ORDER BY bucket;
 ```
 
 ## Summary
