@@ -29,8 +29,23 @@ metadata:
   name: schema-validator
   namespace: default
 spec:
-  type: middleware.http.routeralias
+  type: middleware.http.opa
   version: v1
+  metadata:
+  - name: rego
+    value: |
+      package httpapi.authz
+      default allow = false
+      allow {
+        input.request.method == "POST"
+        count(input.request.body.customer_id) > 0
+        count(input.request.body.product_id) > 0
+        input.request.body.quantity > 0
+      }
+  - name: defaultStatus
+    value: "403"
+  - name: readBody
+    value: "true"
 ```
 
 For custom validation, implement middleware in your service:
