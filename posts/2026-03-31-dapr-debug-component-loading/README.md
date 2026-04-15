@@ -22,21 +22,24 @@ dapr run \
   --app-id order-service \
   --app-port 3000 \
   --log-level debug \
-  --components-path ./components \
+  --resources-path ./components \
   -- node src/index.js
 ```
 
-On Kubernetes, update the Dapr configuration to increase log verbosity:
+On Kubernetes, set the `dapr.io/log-level` annotation on your pod to increase log verbosity:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: dapr-config
+  name: order-service
 spec:
-  logging:
-    apiLogging:
-      enabled: true
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-service"
+        dapr.io/log-level: "debug"
 ```
 
 Typical successful component loading log:
@@ -80,8 +83,7 @@ error="error reading component file: yaml: line 5: did not find expected key"
 Validate your component YAML:
 
 ```bash
-dapr validate --components-path ./components
-# or use a YAML linter
+# Use a YAML linter to check syntax
 yamllint ./components/statestore.yaml
 ```
 
@@ -136,8 +138,8 @@ Output:
 
 ```json
 [
-  {"name": "statestore", "type": "state.redis", "version": "v1", "capabilities": ["ETAG", "TRANSACTIONAL", "TTL", "QUERY_API"]},
-  {"name": "pubsub", "type": "pubsub.redis", "version": "v1", "capabilities": ["SUBSCRIBE_WILDCARDS"]}
+  {"name": "statestore", "type": "state.redis", "version": "v1", "capabilities": ["ETAG", "TRANSACTIONAL", "TTL"]},
+  {"name": "pubsub", "type": "pubsub.redis", "version": "v1", "capabilities": []}
 ]
 ```
 
