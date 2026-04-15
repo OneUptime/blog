@@ -40,6 +40,7 @@ The `Map(K, V)` type stores key-value pairs per row, which is natural for sparse
 
 ```sql
 CREATE TABLE user_events (
+    event_id   UInt64,
     user_id    UInt64,
     event_type LowCardinality(String),
     ts         DateTime,
@@ -47,11 +48,11 @@ CREATE TABLE user_events (
 ) ENGINE = MergeTree()
 ORDER BY (user_id, ts);
 
-INSERT INTO user_events (user_id, event_type, ts, props) VALUES
-(1, 'page_view',  now(), {'url': '/home', 'referrer': 'google.com'}),
-(2, 'purchase',   now(), {'product_id': '42', 'amount': '29.99', 'coupon': 'SAVE10'}),
-(3, 'search',     now(), {'query': 'clickhouse docs', 'results': '12'}),
-(4, 'page_view',  now(), {'url': '/pricing'});
+INSERT INTO user_events (event_id, user_id, event_type, ts, props) VALUES
+(1, 1, 'page_view',  now(), {'url': '/home', 'referrer': 'google.com'}),
+(2, 2, 'purchase',   now(), {'product_id': '42', 'amount': '29.99', 'coupon': 'SAVE10'}),
+(3, 3, 'search',     now(), {'query': 'clickhouse docs', 'results': '12'}),
+(4, 4, 'page_view',  now(), {'url': '/pricing'});
 
 -- Access a specific key
 SELECT user_id, props['url'] AS page_url
@@ -172,7 +173,7 @@ INSERT INTO event_attributes VALUES
 -- Join with the main event table
 SELECT e.user_id, a.value AS coupon
 FROM user_events AS e
-JOIN event_attributes AS a ON e.rowNumberInAllBlocks() = a.event_id
+JOIN event_attributes AS a ON e.event_id = a.event_id
 WHERE a.key = 'coupon';
 ```
 
