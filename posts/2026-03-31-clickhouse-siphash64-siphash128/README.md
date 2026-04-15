@@ -8,7 +8,7 @@ Description: Learn how to use sipHash64() and sipHash128() in ClickHouse for key
 
 ---
 
-SipHash is a keyed hash function designed to be fast while providing protection against hash-flooding attacks. Unlike CityHash or xxHash, SipHash uses an internal key, making it harder for adversaries to craft inputs that collide. ClickHouse provides two variants: `sipHash64()` returns a 64-bit UInt64, and `sipHash128()` returns a 128-bit FixedString(16).
+SipHash is a keyed hash function designed to be fast while providing protection against hash-flooding attacks. Unlike CityHash or xxHash, SipHash uses an internal key, making it harder for adversaries to craft inputs that collide. ClickHouse provides two variants: `sipHash64()` returns a 64-bit UInt64, and `sipHash128()` returns a 128-bit UInt128.
 
 ## Basic Usage of sipHash64
 
@@ -28,7 +28,7 @@ LIMIT 10;
 
 ## Basic Usage of sipHash128
 
-`sipHash128()` returns a 128-bit hash as a FixedString(16). Use `hex()` to get a human-readable hexadecimal string.
+`sipHash128()` returns a 128-bit hash as a UInt128. Use `hex()` to get a human-readable hexadecimal string.
 
 ```sql
 -- Get a 128-bit hash as hex
