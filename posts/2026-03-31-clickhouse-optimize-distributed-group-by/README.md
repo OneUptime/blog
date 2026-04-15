@@ -25,43 +25,47 @@ When `user_id` is the sharding key, each shard owns all rows for a given `user_i
 
 ## Use distributed_group_by_no_merge
 
-When you know the aggregation is already complete on shards, instruct the initiator not to re-merge:
+When you know the aggregation is already complete on shards, instruct the initiator not to re-merge. This setting accepts three values:
+
+- `0` (default): Normal behavior — the initiator merges partial aggregation states from all shards.
+- `1`: The initiator does not merge aggregation states and simply proxies shard results. Note that `ORDER BY` and `LIMIT` are also not applied on the initiator.
+- `2`: Same as `1`, but the initiator still applies `ORDER BY` and `LIMIT`. This is usually the more practical choice.
 
 ```sql
-SET distributed_group_by_no_merge = 1;
+SET distributed_group_by_no_merge = 2;
 
 SELECT user_id, sum(revenue)
 FROM dist_orders
-GROUP BY user_id;
+GROUP BY user_id
+ORDER BY total DESC
+LIMIT 100;
 ```
 
 Use this only when sharding guarantees complete groups per shard, otherwise results will be incorrect.
 
 ## Two-Level Aggregation
 
-Enable two-level aggregation to reduce memory pressure during the merge phase:
+Two-level aggregation is enabled by default (threshold of 100,000 keys or 50 MB of aggregation state). You can lower the thresholds to trigger it sooner for queries that benefit from reduced peak memory during the merge phase:
 
 ```sql
-SET group_by_two_level_threshold = 50000;
-SET group_by_two_level_threshold_bytes = 20000000;
+SET group_by_two_level_threshold = 50000;       -- default: 100000
+SET group_by_two_level_threshold_bytes = 20000000; -- default: 50000000
 ```
 
 With two-level aggregation, shards partition their hash table into 256 buckets. The initiator merges one bucket at a time, keeping peak memory bounded.
 
-## Limit Data Transferred with HAVING Push-Down
+## Limit Data Transferred with HAVING
 
-Move HAVING filters into a subquery so shards discard low-volume groups early:
+Use a `HAVING` clause directly in the query so shards discard low-volume groups early:
 
 ```sql
-SELECT user_id, total
-FROM (
-    SELECT user_id, sum(revenue) AS total
-    FROM dist_orders
-    GROUP BY user_id
-) WHERE total > 1000;
+SELECT user_id, sum(revenue) AS total
+FROM dist_orders
+GROUP BY user_id
+HAVING total > 1000;
 ```
 
-ClickHouse pushes the HAVING predicate into the shard sub-query, meaning small groups never travel over the network.
+With `HAVING`, each shard filters out groups that do not meet the threshold before sending results to the initiator, reducing network traffic. Avoid wrapping the aggregation in a subquery with an outer `WHERE` for this purpose — predicate push-down through subqueries on Distributed tables is unreliable and may prevent aggregation from being pushed to shards.
 
 ## Monitor Aggregation Memory
 
@@ -79,4 +83,4 @@ LIMIT 5;
 
 ## Summary
 
-Optimize distributed GROUP BY by aligning the GROUP BY key with the sharding key, enabling two-level aggregation, and pushing HAVING filters into sub-queries. When sharding guarantees group completeness, `distributed_group_by_no_merge = 1` eliminates the initiator merge entirely for maximum throughput.
+Optimize distributed GROUP BY by aligning the GROUP BY key with the sharding key, tuning two-level aggregation thresholds, and using `HAVING` to filter groups on shards before they are sent to the initiator. When sharding guarantees group completeness, `distributed_group_by_no_merge = 2` eliminates the initiator merge while still applying `ORDER BY` and `LIMIT`.
