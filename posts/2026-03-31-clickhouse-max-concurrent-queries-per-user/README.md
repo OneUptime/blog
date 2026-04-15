@@ -12,34 +12,44 @@ In a multi-user ClickHouse cluster, a single user running many concurrent heavy 
 
 ## Setting max_concurrent_queries_for_user
 
-In `users.xml` or via SQL user management, set the maximum concurrent queries per user:
+In `users.xml`, define settings profiles with per-user concurrency limits, then assign them to users:
 
 ```xml
 <!-- users.xml -->
+<profiles>
+  <alice_profile>
+    <max_concurrent_queries_for_user>5</max_concurrent_queries_for_user>
+  </alice_profile>
+  <reporting_bot_profile>
+    <max_concurrent_queries_for_user>2</max_concurrent_queries_for_user>
+  </reporting_bot_profile>
+</profiles>
+
 <users>
   <alice>
-    <max_concurrent_queries_for_user>5</max_concurrent_queries_for_user>
+    <profile>alice_profile</profile>
   </alice>
   <reporting_bot>
-    <max_concurrent_queries_for_user>2</max_concurrent_queries_for_user>
+    <profile>reporting_bot_profile</profile>
   </reporting_bot>
 </users>
 ```
 
-Or apply it via a settings profile:
+Or apply it via SQL user management:
 
 ```sql
 CREATE SETTINGS PROFILE analyst_profile
   SETTINGS max_concurrent_queries_for_user = 5;
 
-ALTER USER alice SETTINGS PROFILE analyst_profile;
+ALTER USER alice ADD PROFILES 'analyst_profile';
 ```
 
 ## Global Fallback with max_concurrent_queries
 
-The global limit acts as an upper bound regardless of per-user settings:
+The global limit acts as an upper bound regardless of per-user settings. Set it in `config.xml`:
 
 ```xml
+<!-- config.xml -->
 <max_concurrent_queries>200</max_concurrent_queries>
 ```
 
@@ -71,11 +81,9 @@ The `MAX` keyword means the user cannot override this limit in their session.
 Assign roles with different concurrency allowances:
 
 ```sql
-CREATE ROLE heavy_analyst;
-ALTER ROLE heavy_analyst SETTINGS max_concurrent_queries_for_user = 10;
+CREATE ROLE heavy_analyst SETTINGS max_concurrent_queries_for_user = 10;
 
-CREATE ROLE light_reader;
-ALTER ROLE light_reader SETTINGS max_concurrent_queries_for_user = 2;
+CREATE ROLE light_reader SETTINGS max_concurrent_queries_for_user = 2;
 
 GRANT heavy_analyst TO data_science_team;
 GRANT light_reader  TO marketing_team;
@@ -86,7 +94,7 @@ GRANT light_reader  TO marketing_team;
 When a user exceeds their limit, ClickHouse throws:
 
 ```text
-Code: 201. DB::Exception: Too many simultaneous queries for user.
+Code: 202. DB::Exception: Too many simultaneous queries for user.
 ```
 
 Applications should implement retry logic with exponential backoff:
