@@ -85,8 +85,9 @@ func watchCBConfig(client dapr.Client) {
         "cb-failure-threshold",
         "cb-success-threshold",
         "cb-timeout-ms",
+        "cb-half-open-max-calls",
     }
-    sub, err := client.SubscribeConfigurationItems(
+    _, err := client.SubscribeConfigurationItems(
         context.Background(),
         "cbconfig",
         keys,
@@ -101,7 +102,7 @@ func watchCBConfig(client dapr.Client) {
     if err != nil {
         panic(err)
     }
-    defer sub.Close()
+    // To unsubscribe, cancel the context passed to SubscribeConfigurationItems.
 }
 ```
 
@@ -117,10 +118,11 @@ import "time"
 func reloadCircuitBreaker() *gobreaker.CircuitBreaker {
     failThreshold, _ := strconv.Atoi(cbConfig["cb-failure-threshold"])
     timeoutMs, _ := strconv.Atoi(cbConfig["cb-timeout-ms"])
+    halfOpenMax, _ := strconv.Atoi(cbConfig["cb-half-open-max-calls"])
 
     settings := gobreaker.Settings{
         Name:        "payment-service",
-        MaxRequests: uint32(failThreshold),
+        MaxRequests: uint32(halfOpenMax),
         Timeout:     time.Duration(timeoutMs) * time.Millisecond,
         ReadyToTrip: func(counts gobreaker.Counts) bool {
             return counts.ConsecutiveFailures >= uint32(failThreshold)
