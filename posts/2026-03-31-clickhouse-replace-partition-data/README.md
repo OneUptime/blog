@@ -58,7 +58,7 @@ The source and destination tables must have:
 - The same partition key expression.
 - Compatible MergeTree engine family (both must be MergeTree variants).
 
-They do not need the same `ORDER BY` key, though mismatched sort keys may reduce query performance in the replaced partition until a background merge re-sorts the data.
+The same `ORDER BY` key and primary key.
 
 ```sql
 -- Verify schemas match before replacing
@@ -93,7 +93,7 @@ WHERE event_time >= '2024-03-01' AND event_time < '2024-04-01';
 
 -- Swap partition atomically
 ALTER TABLE events
-    REPLACE PARTITION '2024-03-01'
+    REPLACE PARTITION 202403
     FROM events_staging;
 
 -- Confirm row counts
