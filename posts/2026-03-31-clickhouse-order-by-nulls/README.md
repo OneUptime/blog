@@ -37,18 +37,18 @@ ORDER BY event_date ASC, cnt DESC;
 
 ## NULLS FIRST and NULLS LAST
 
-By default, ClickHouse places NULLs at the beginning for ascending sorts and at the end for descending sorts. Use the explicit modifiers to override this behavior.
+By default, ClickHouse places NULLs at the end of sorted results (NULLS LAST) for both ascending and descending sorts. The sort order is: values, then NaN, then NULL. Use the explicit modifiers to override this behavior.
 
 ```sql
--- Default: NULLs appear first in ASC order
+-- Default: NULLs appear last in ASC order
 SELECT user_id, cancelled_at
 FROM orders
 ORDER BY cancelled_at ASC;
 
--- Explicit: NULLs at the end in ASC order
+-- Explicit: NULLs at the beginning in ASC order
 SELECT user_id, cancelled_at
 FROM orders
-ORDER BY cancelled_at ASC NULLS LAST;
+ORDER BY cancelled_at ASC NULLS FIRST;
 
 -- Explicit: NULLs at the beginning in DESC order
 SELECT user_id, cancelled_at
@@ -81,10 +81,10 @@ By default, ClickHouse sorts strings byte-by-byte (binary order). To sort using 
 SELECT name FROM products ORDER BY name ASC;
 
 -- Locale-aware sort using German collation
-SELECT name FROM products ORDER BY name COLLATE 'de' ASC;
+SELECT name FROM products ORDER BY name ASC COLLATE 'de';
 
 -- Case-insensitive sort
-SELECT name FROM products ORDER BY name COLLATE 'en' ASC;
+SELECT name FROM products ORDER BY name ASC COLLATE 'en';
 ```
 
 Available collations depend on the ICU library version bundled with ClickHouse. Use `system.collations` to list what is available.
@@ -154,7 +154,7 @@ LIMIT 1000;
 ## Practical Example
 
 ```sql
--- Find the 20 most recent high-value purchases per user
+-- Find the top 20 high-value purchases, ordered by user and recency,
 -- with NULLable refund_at placed last
 SELECT
     user_id,
