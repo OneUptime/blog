@@ -138,10 +138,13 @@ Check that the view is current with the source:
 SELECT count() FROM events WHERE event_time >= today() - 1;
 SELECT sum(event_count) FROM events_by_type_daily WHERE event_date >= today() - 1;
 
--- Check for view insertion errors
-SELECT name, last_exception
-FROM system.tables
-WHERE name LIKE '%_mv';
+-- Check for view insertion errors in the query log
+SELECT event_time, query, exception
+FROM system.query_log
+WHERE type = 'ExceptionWhileProcessing'
+  AND query LIKE '%events_by_type_daily%'
+ORDER BY event_time DESC
+LIMIT 10;
 ```
 
 ## Summary
