@@ -8,7 +8,7 @@ Description: Learn how to design and build a metrics aggregation system in Click
 
 ---
 
-ClickHouse is a natural fit for metrics storage. Its columnar layout, Delta and Gorilla codecs, and AggregatingMergeTree engine can store and aggregate billions of metric data points with sub-second query response times. This guide covers schema design, raw ingestion, rollup aggregation, and query patterns for a production metrics system.
+ClickHouse is a natural fit for metrics storage. Its columnar layout, DoubleDelta and Gorilla codecs, and AggregatingMergeTree engine can store and aggregate billions of metric data points with sub-second query response times. This guide covers schema design, raw ingestion, rollup aggregation, and query patterns for a production metrics system.
 
 ## Architecture
 
