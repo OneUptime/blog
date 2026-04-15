@@ -13,12 +13,11 @@ Retention analysis measures how many users who performed an action in a baseline
 ## Syntax
 
 ```sql
-retention(cond1, cond2, cond3, ...)(date_or_timestamp)
+retention(cond1, cond2, cond3, ...)
 ```
 
 - `cond1` - the baseline condition (e.g., active on day 0).
-- `cond2, cond3, ...` - the follow-up conditions (e.g., active on day 1, day 7, day 30).
-- `date_or_timestamp` - unused for ordering but required as the first argument in some signatures; in practice the conditions themselves encode the date logic.
+- `cond2, cond3, ...` - the follow-up conditions (e.g., active on day 1, day 7, day 30). Up to 32 conditions are supported.
 
 The function returns `Array(UInt8)`. Element `[1]` is always 1 if `cond1` was true. Element `[i]` is 1 if both `cond1` AND `cond_i` were true, meaning the user satisfied both the baseline and the i-th follow-up condition.
 
@@ -139,15 +138,25 @@ WITH user_cohorts AS (
     GROUP BY user_id
 )
 SELECT
-    c.cohort_date,
+    cohort_date,
     sum(r[1]) AS cohort_size,
     sum(r[2]) AS day1,
     sum(r[3]) AS day7
-FROM user_cohorts c
-JOIN daily_activity a USING (user_id)
--- use retention aggregated at user level in outer query
-GROUP BY c.cohort_date
-ORDER BY c.cohort_date;
+FROM (
+    SELECT
+        c.user_id,
+        c.cohort_date,
+        retention(
+            a.activity_date = c.cohort_date,
+            a.activity_date = c.cohort_date + 1,
+            a.activity_date = c.cohort_date + 7
+        ) AS r
+    FROM user_cohorts c
+    JOIN daily_activity a USING (user_id)
+    GROUP BY c.user_id, c.cohort_date
+)
+GROUP BY cohort_date
+ORDER BY cohort_date;
 ```
 
 ## Weekly Active User (WAU) Pattern
@@ -167,4 +176,4 @@ GROUP BY user_id;
 
 ## Summary
 
-`retention(cond1, cond2, ...)(date)` returns a per-user bitmask array where each element indicates whether the user satisfied both the baseline condition and that follow-up condition. Aggregate with `sum(r[i])` to get cohort counts and divide by `sum(r[1])` for retention percentages. The function is especially powerful in rolling cohort queries where you define the follow-up conditions relative to each user's first activity date.
+`retention(cond1, cond2, ...)` returns a per-user bitmask array where each element indicates whether the user satisfied both the baseline condition and that follow-up condition. Aggregate with `sum(r[i])` to get cohort counts and divide by `sum(r[1])` for retention percentages. The function is especially powerful in rolling cohort queries where you define the follow-up conditions relative to each user's first activity date.
