@@ -97,7 +97,7 @@ class OrchestratorAgent(Agent):
 Create a subscribing agent using the Dapr FastAPI extension:
 
 ```python
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 from dapr.ext.fastapi import DaprApp
 from dapr_agents import Agent
 import json
@@ -111,8 +111,8 @@ class AnalysisAgent(Agent):
 
 
 @dapr_app.subscribe(pubsub="agent-pubsub", topic="analysis-tasks")
-async def handle_analysis_task(event):
-    data = json.loads(event.Data())
+async def handle_analysis_task(event: dict = Body()):
+    data = event['data']
     agent = AnalysisAgent()
     result = agent.run(f"Analyze this data: {data['data']}")
 
