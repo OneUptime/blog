@@ -16,6 +16,7 @@ Description: Learn to use DaprClient in .NET for state management, service invoc
 
 ```bash
 dotnet add package Dapr.Client
+dotnet add package Dapr.AspNetCore  # Required for AddDaprClient() DI registration
 ```
 
 ## Creating DaprClient
@@ -68,6 +69,8 @@ public class ProductService
 ```
 
 ## Service Invocation
+
+> **Note:** The `InvokeMethodAsync` methods are marked `[Obsolete]` in the current Dapr .NET SDK. The recommended approach is to use `DaprClient.CreateInvokeHttpClient()` or a native gRPC client for service invocation. The examples below still compile and work, but will produce compiler warnings.
 
 ```csharp
 public class OrderService
