@@ -12,19 +12,15 @@ The MaterializedPostgreSQL database engine replicates an entire PostgreSQL datab
 
 ## PostgreSQL Setup
 
-Enable logical replication and create a replication user:
+Enable logical replication and create a replication user. ClickHouse creates the publication and replication slot automatically, so the user needs the appropriate privileges:
 
 ```sql
 -- postgresql.conf must have: wal_level = logical
 
--- Create replication slot and publication in PostgreSQL
-CREATE PUBLICATION clickhouse_pub FOR ALL TABLES;
-```
-
-```sql
--- Create replication user
+-- Create replication user with required privileges
 CREATE ROLE ch_user WITH REPLICATION LOGIN PASSWORD 'strongpassword';
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO ch_user;
+GRANT CREATE ON DATABASE production TO ch_user;  -- needed for CREATE PUBLICATION
 ```
 
 ## Creating the Database in ClickHouse
@@ -70,9 +66,9 @@ SELECT *
 FROM system.databases
 WHERE name = 'pg_replica';
 
--- Query the internal status table
-SELECT *
-FROM pg_replica._materialized_postgresql_tables_list;
+-- Check replication currency using the _version virtual column (equals WAL LSN)
+SELECT max(_version) AS latest_lsn
+FROM pg_replica.orders;
 ```
 
 ## Handling Deleted Rows
@@ -89,21 +85,24 @@ WHERE _sign = 1
 
 ## Adding Tables Dynamically
 
-You can add new tables to replication without recreating the database:
+You can add new tables to replication without recreating the database using `ATTACH TABLE`:
 
 ```sql
-ALTER DATABASE pg_replica MODIFY SETTING
-    materialized_postgresql_tables_list = 'orders,customers,products,invoices';
+ATTACH TABLE pg_replica.invoices;
+```
+
+To remove a table from replication:
+
+```sql
+DETACH TABLE pg_replica.invoices PERMANENTLY;
 ```
 
 ## Schema Change Limitations
 
-MaterializedPostgreSQL handles some DDL:
-- ADD COLUMN: Supported
-- DROP TABLE: Supported
-- CREATE TABLE: Supported (if included in publication)
+PostgreSQL logical replication does not replicate DDL. ClickHouse can detect some replication-breaking changes, but does not apply them automatically:
 
-Unsupported DDL (like RENAME COLUMN) requires manual intervention and a database recreation.
+- **Breaking changes** (ADD/DROP COLUMN, column type changes): Replication stops. You must manually detach and re-attach the affected table to trigger a re-snapshot.
+- **Non-breaking changes** (e.g., RENAME COLUMN): Replication continues, but the column name in ClickHouse will not update automatically.
 
 ## Summary
 
