@@ -12,7 +12,7 @@ Description: Learn how to use uniqCombined in ClickHouse for accurate approximat
 
 ## How uniqCombined Works
 
-- For cardinalities below ~70,000: stores values in an exact sorted array
+- For small cardinalities (up to a few thousand elements): uses exact counting via array and hash table
 - Above that threshold: switches to a HyperLogLog sketch
 - Uses 17-bit HLL precision by default (smaller error than `uniqHLL12`)
 
@@ -36,7 +36,7 @@ FROM events
 WHERE event_date >= today() - 7;
 ```
 
-Typical result: `uniqCombined` is within 0.5-1% of `uniqExact` and uses 3-4x less memory.
+Typical result: `uniqCombined` is within 0.5-1% of `uniqExact` and uses significantly less memory (up to ~80x at high cardinalities).
 
 ## Daily Active Users
 
@@ -50,17 +50,17 @@ GROUP BY event_date
 ORDER BY event_date;
 ```
 
-## High-Precision Variant - uniqCombined12
+## Lower-Precision Variant
 
-`uniqCombined12` uses 12-bit HLL (same as `uniqHLL12`) but still uses the adaptive small-set approach:
+`uniqCombined(12)` uses 12-bit HLL (same precision as `uniqHLL12`) but still uses the adaptive small-set approach:
 
 ```sql
-SELECT uniqCombined12(user_id) AS approx_dau
+SELECT uniqCombined(12)(user_id) AS approx_dau
 FROM events
 WHERE event_date = today();
 ```
 
-Use `uniqCombined` (17-bit) for higher accuracy or `uniqCombined12` to reduce memory at some accuracy cost.
+Use `uniqCombined` (17-bit) for higher accuracy or `uniqCombined(12)` to reduce memory at some accuracy cost.
 
 ## Pre-Aggregated States for Rollups
 
@@ -92,14 +92,14 @@ ORDER BY week;
 
 ## Memory Usage
 
-At 1 million distinct values, `uniqCombined` uses approximately 50 KB of state. `uniqExact` at the same cardinality requires ~8 MB (storing all 1M values as 64-bit integers). The memory savings make `uniqCombined` the default choice for large-cardinality GROUP BY queries.
+At 1 million distinct values, `uniqCombined` uses approximately 96 KB of state. `uniqExact` at the same cardinality requires ~8 MB (storing all 1M values as 64-bit integers). The memory savings make `uniqCombined` the default choice for large-cardinality GROUP BY queries.
 
 ## Accuracy vs Functions Comparison
 
 | Function | Relative Error | Memory at 1M cardinality |
 |----------|---------------|--------------------------|
 | `uniqExact` | 0% | ~8 MB |
-| `uniqCombined` | ~0.5% | ~50 KB |
+| `uniqCombined` | ~0.5% | ~96 KB |
 | `uniqHLL12` | ~1.6% | ~2.5 KB |
 | `uniq` | ~2% | ~4 KB |
 
@@ -112,4 +112,4 @@ At 1 million distinct values, `uniqCombined` uses approximately 50 KB of state. 
 
 ## Summary
 
-`uniqCombined` is the best general-purpose approximate count distinct function in ClickHouse, offering ~0.5% error with 100x less memory than `uniqExact`. Use it with `AggregateFunction` column types to build efficient pre-aggregated rollup tables that can serve daily, weekly, and monthly unique user queries by merging stored states.
+`uniqCombined` is the best general-purpose approximate count distinct function in ClickHouse, offering ~0.5% error with ~80x less memory than `uniqExact`. Use it with `AggregateFunction` column types to build efficient pre-aggregated rollup tables that can serve daily, weekly, and monthly unique user queries by merging stored states.
