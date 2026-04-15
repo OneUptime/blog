@@ -31,7 +31,7 @@ gantt
     Session D   :a4, 11:30, 30m
 ```
 
-In the timeline above, sessions A, B, and C overlap between 10:45 and 11:15, giving a peak of 3. Session D does not overlap with A, B, or C.
+In the timeline above, sessions A, B, and C overlap between 10:45 and 11:00, giving a peak of 3. Session D does not overlap with A, B, or C.
 
 ## Basic Usage
 
