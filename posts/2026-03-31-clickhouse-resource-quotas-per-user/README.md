@@ -18,7 +18,7 @@ ClickHouse quotas can limit:
 - Rows read
 - Bytes read
 - Result rows returned
-- Network bandwidth used
+- Bytes written
 
 ## Creating a Basic Quota
 
@@ -87,7 +87,7 @@ SELECT * FROM system.quotas_usage;
 
 ```sql
 SELECT
-    user,
+    quota_key,
     quota_name,
     duration,
     queries,
@@ -96,7 +96,7 @@ SELECT
     max_execution_time
 FROM system.quotas_usage
 WHERE queries >= max_queries * 0.8  -- warn at 80% usage
-ORDER BY user;
+ORDER BY quota_key;
 ```
 
 ## Dropping and Modifying Quotas
@@ -127,7 +127,7 @@ SETTINGS
     max_memory_usage = 10000000000,
     max_result_rows = 1000000;
 
-ALTER USER alice SETTINGS PROFILE 'analyst_settings';
+ALTER USER alice ADD PROFILES 'analyst_settings';
 ```
 
 Use both together: quotas for cumulative limits, settings profiles for per-query limits.
