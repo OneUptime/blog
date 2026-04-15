@@ -57,6 +57,7 @@ package main
 import (
     "context"
     "errors"
+    "fmt"
     "log"
     dapr "github.com/dapr/go-sdk/client"
 )
