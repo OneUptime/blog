@@ -64,29 +64,42 @@ Reload the configuration on all remaining nodes without a full restart:
 sudo systemctl reload clickhouse-server
 ```
 
-## Step 3 - Drop the Replica from ZooKeeper Metadata
+## Step 3 - Stop ClickHouse on the Departing Node
 
-ClickHouse stores replica metadata in ZooKeeper or Keeper. You need to explicitly drop the replica to clean up the stale metadata.
+Shut down the ClickHouse service on the node being removed. The `SYSTEM DROP REPLICA` command in the next step only works on inactive replicas, so the service must be stopped first.
+
+```bash
+sudo systemctl stop clickhouse-server
+sudo systemctl disable clickhouse-server
+```
+
+## Step 4 - Drop the Replica from ZooKeeper Metadata
+
+ClickHouse stores replica metadata in ZooKeeper or Keeper. You need to explicitly drop the replica to clean up the stale metadata. Run the following on any remaining active node.
+
+To drop the replica from all replicated tables at once:
 
 ```sql
--- Run this on any active ClickHouse node
+SYSTEM DROP REPLICA 'ch-node-02';
+```
+
+To drop from a specific table instead:
+
+```sql
 SYSTEM DROP REPLICA 'ch-node-02' FROM TABLE my_database.my_table;
 ```
 
-To drop from all tables at once, iterate through `system.replicas`:
+If you need to generate per-table commands, query `system.replicas`:
 
 ```sql
 SELECT
     'SYSTEM DROP REPLICA ''ch-node-02'' FROM TABLE ' || database || '.' || table || ';' AS drop_command
-FROM system.replicas
-WHERE replica_path LIKE '%ch-node-02%';
+FROM system.replicas;
 ```
 
-Run the generated commands on an active node.
+## Step 5 - Verify Removal
 
-## Step 4 - Verify Removal
-
-After dropping the replica metadata, confirm it no longer appears in the replica list:
+After dropping the replica metadata, confirm the replica count has decreased:
 
 ```sql
 SELECT
@@ -104,15 +117,6 @@ Also check ZooKeeper directly if needed:
 clickhouse-keeper-client -h localhost -p 9181 -q "ls /clickhouse/tables/my_database/my_table/replicas"
 ```
 
-## Step 5 - Decommission the Node
-
-Once metadata is clean, shut down the ClickHouse service on the removed node:
-
-```bash
-sudo systemctl stop clickhouse-server
-sudo systemctl disable clickhouse-server
-```
-
 ## Summary
 
-Removing a replica from a ClickHouse cluster involves four main steps: verifying replication is fully caught up, updating the cluster configuration, dropping the replica's ZooKeeper metadata using `SYSTEM DROP REPLICA`, and shutting down the node. Following this order prevents stale metadata from causing issues with the remaining replicas.
+Removing a replica from a ClickHouse cluster involves stopping inserts to the departing node, updating the cluster configuration on remaining nodes, shutting down the ClickHouse service on the departing node, and then dropping the replica's ZooKeeper metadata using `SYSTEM DROP REPLICA`. Stopping the service before dropping the metadata is important because `SYSTEM DROP REPLICA` only works on inactive replicas.
