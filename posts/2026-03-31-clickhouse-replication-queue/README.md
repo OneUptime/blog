@@ -31,8 +31,7 @@ SELECT
     last_attempt_time,
     num_postponed,
     postpone_reason,
-    fetch_started_time,
-    profile_counters
+    last_postpone_time
 FROM system.replication_queue
 ORDER BY create_time ASC;
 ```
@@ -45,8 +44,8 @@ MERGE_PARTS      -- merge multiple local parts into one
 MUTATE_PART      -- apply a mutation (ALTER UPDATE/DELETE) to a part
 DROP_RANGE       -- delete parts in a partition range (used by DROP PARTITION)
 ATTACH_PART      -- attach a detached part
-MOVE_PART        -- move a part to a different disk or volume
-DROP_PART        -- drop a specific part
+REPLACE_RANGE    -- drop a range of parts and replace with new ones
+ALTER_METADATA   -- apply alter modification to metadata and columns
 ```
 
 ## Reading the Queue Effectively
@@ -94,13 +93,16 @@ LIMIT 20;
 This means the source replica no longer has the part. It may have been merged into a larger part:
 
 ```sql
--- Check if the part exists on any replica
+-- Check replica status for the table
 SELECT
     database,
     table,
     replica_name,
-    active_parts_count,
-    total_parts_count
+    total_replicas,
+    active_replicas,
+    queue_size,
+    inserts_in_queue,
+    merges_in_queue
 FROM system.replicas
 WHERE table = 'your_table';
 
@@ -175,20 +177,17 @@ When a replica is catching up from a long outage, aggressive fetching can satura
 ```xml
 <clickhouse>
     <merge_tree>
-        <!-- Max parts to fetch simultaneously -->
+        <!-- Max network bandwidth for replicated fetches (bytes per second, 0 = unlimited) -->
         <max_replicated_fetches_network_bandwidth>104857600</max_replicated_fetches_network_bandwidth>
-
-        <!-- Max number of concurrent merges -->
-        <background_pool_size>16</background_pool_size>
     </merge_tree>
 </clickhouse>
 ```
 
-Or at the session level:
+Or limit the bandwidth at the table level:
 
 ```sql
--- Limit background fetch bandwidth (bytes per second, 0 = unlimited)
-SET max_replicated_fetches_network_bandwidth = 52428800;  -- 50 MB/s
+ALTER TABLE database.table
+    MODIFY SETTING max_replicated_fetches_network_bandwidth = 52428800;  -- 50 MB/s
 ```
 
 ### Pause and Resume Queue Processing
