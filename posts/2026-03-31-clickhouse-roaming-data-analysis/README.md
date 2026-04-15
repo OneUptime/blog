@@ -131,4 +131,4 @@ ORDER BY month;
 
 ## Summary
 
-ClickHouse provides telecom operators with a fast analytical engine for roaming data - from real-time fraud detection and settlement reconciliation to multi-month revenue trending. Partitioning by billing month, using `LowCardinality` for operator and country codes, and applying conditional aggregation makes these queries fast even over hundreds of millions of records.
+ClickHouse provides telecom operators with a fast analytical engine for roaming data - from real-time fraud detection and settlement reconciliation to multi-month revenue trending. Partitioning by billing month, using `LowCardinality` for operator and service type columns, and `FixedString` for country codes makes these queries fast even over hundreds of millions of records.
