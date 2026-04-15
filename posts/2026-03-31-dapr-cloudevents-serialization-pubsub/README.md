@@ -35,7 +35,7 @@ A CloudEvent envelope from Dapr looks like:
 
 ```csharp
 using Dapr.Client;
-using CloudNative.CloudEvents;
+using System.Text.Json;
 
 public class OrderEventPublisher
 {
@@ -67,14 +67,15 @@ public class OrderEventPublisher
 }
 
 // Subscriber - accessing the full CloudEvent envelope
+// Do not register app.UseCloudEvents() middleware if you need the full envelope
 [Topic("pubsub", "order-created")]
 [HttpPost("order-events")]
 public async Task<IActionResult> HandleOrderEvent(
-    [FromBody] CloudEvent<Order> cloudEvent)
+    [FromBody] JsonElement cloudEvent)
 {
-    var order = cloudEvent.Data;
-    var eventId = cloudEvent.Id;
-    var source = cloudEvent.Source;
+    var order = cloudEvent.GetProperty("data").Deserialize<Order>();
+    var eventId = cloudEvent.GetProperty("id").GetString();
+    var source = cloudEvent.GetProperty("source").GetString();
 
     _logger.LogInformation(
         "Received event {EventId} from {Source} for order {OrderId}",
@@ -95,7 +96,8 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: legacy-events
-  route: /events/legacy
+  routes:
+    default: /events/legacy
   metadata:
     rawPayload: "true"
 ```
