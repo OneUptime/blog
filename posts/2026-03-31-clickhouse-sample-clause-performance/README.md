@@ -14,7 +14,7 @@ ClickHouse `SAMPLE` is not random sampling. It uses a deterministic hash on the 
 
 ## Prerequisites: Setting Up the Sampling Key
 
-For `SAMPLE` to work, the table must define a `SAMPLE BY` clause in its DDL. The sampling key must be part of or come after the `ORDER BY` key.
+For `SAMPLE` to work, the table must define a `SAMPLE BY` clause in its DDL. The sampling expression must be included in the primary key (which defaults to the `ORDER BY` key), and should use a hash function to ensure uniform distribution across the value range.
 
 ```sql
 CREATE TABLE user_events
@@ -25,11 +25,11 @@ CREATE TABLE user_events
     event_time  DateTime
 )
 ENGINE = MergeTree()
-ORDER BY (user_id, event_time)
-SAMPLE BY user_id;
+ORDER BY (intHash32(user_id), event_time)
+SAMPLE BY intHash32(user_id);
 ```
 
-The `SAMPLE BY user_id` means that when you sample, ClickHouse selects whole users rather than individual rows, preserving per-user behavioral coherence in the sample.
+The `SAMPLE BY intHash32(user_id)` hashes `user_id` to produce uniformly distributed values for sample selection. Since all rows with the same `user_id` produce the same hash, sampling selects whole users rather than individual rows, preserving per-user behavioral coherence in the sample.
 
 ## Basic SAMPLE Usage
 
@@ -133,39 +133,36 @@ SAMPLE 0.1;
 Because ClickHouse sampling is deterministic and hash-based, the same user always lands in the same sample bucket. This makes it safe to join two sampled tables using the same sampling key and fraction.
 
 ```sql
--- Both tables sample the same 10% of users
--- The join produces correct per-user aggregations
+-- Both tables must define SAMPLE BY with a compatible expression (e.g., intHash32(user_id))
+-- The same 10% of users are selected from each table due to deterministic hashing
 SELECT
     e.user_id,
     count(e.event_type)  AS event_count,
     p.plan_name
 FROM user_events e SAMPLE 0.1
-JOIN user_profiles p ON e.user_id = p.user_id
+JOIN user_profiles p SAMPLE 0.1 ON e.user_id = p.user_id
 GROUP BY e.user_id, p.plan_name
 ORDER BY event_count DESC
 LIMIT 20;
 ```
 
-If the sampling keys differ between tables, do not rely on sample consistency across joins.
+If the sampling expressions differ between tables, do not rely on sample consistency across joins.
 
 ## Adaptive Sampling for Interactive Dashboards
 
-For dashboards that must respond within a time budget, start with a small sample and increase if the table is smaller than expected.
+For dashboards that must respond within a time budget, use a small sample fraction and let `_sample_factor` handle the scaling automatically:
 
 ```sql
--- Adaptive: use 1% sample if table has more than 100M rows, else full scan
+-- Fixed sample with automatic scaling via _sample_factor
 SELECT
     event_type,
-    if(
-        (SELECT count() FROM user_events) > 100000000,
-        count() * 100,
-        count()
-    ) AS estimated_count
-FROM user_events SAMPLE 0.01
+    count() * _sample_factor AS estimated_count
+FROM user_events
+SAMPLE 0.01
 GROUP BY event_type;
 ```
 
-Alternatively, let your application layer pass the sample fraction dynamically:
+To adapt the sample fraction based on table size, let your application layer pass the fraction dynamically:
 
 ```sql
 -- Application sets @sample_fraction = 0.01 for large tables, 1.0 for small ones
