@@ -46,7 +46,7 @@ PARTITION BY date
 ORDER BY (campaign_id, impression_id, event_time);
 ```
 
-## Daily Impression and Click Volume
+## Daily Impression Volume and Spend
 
 ```sql
 SELECT
