@@ -12,6 +12,14 @@ In ClickHouse, NULL values in join keys behave as in standard SQL: `NULL != NULL
 
 ## Setting Up Sample Tables
 
+All queries in this post assume the following setting is enabled:
+
+```sql
+SET join_use_nulls = 1;
+```
+
+By default, ClickHouse fills unmatched right-side columns in JOINs with the type's default value (0, empty string, etc.) instead of NULL. Setting `join_use_nulls = 1` makes ClickHouse return NULL for all unmatched columns, which matches standard SQL behavior and is required for patterns like `IS NULL` anti-joins and `ifNull` substitutions shown below.
+
 ```sql
 CREATE TABLE orders
 (
@@ -188,8 +196,8 @@ ORDER BY total_revenue DESC;
 ```text
 country  order_count  total_revenue
 Unknown  4            260.00
-US       1            50.00
 UK       1            75.50
+US       1            50.00
 ```
 
 ## Anti-Join: Users with No Orders
