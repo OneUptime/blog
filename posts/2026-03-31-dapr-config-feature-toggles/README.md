@@ -35,9 +35,9 @@ Populate Redis with feature flags in the expected format:
 
 ```bash
 redis-cli MSET \
-  "myapp||enable-new-checkout" "{\"value\":\"false\",\"version\":\"1\"}" \
-  "myapp||dark-mode" "{\"value\":\"true\",\"version\":\"1\"}" \
-  "myapp||beta-api" "{\"value\":\"false\",\"version\":\"1\"}"
+  "enable-new-checkout" "false||1" \
+  "dark-mode" "true||1" \
+  "beta-api" "false||1"
 ```
 
 ## Reading Feature Flags at Startup
@@ -99,10 +99,10 @@ app.post("/checkout", (req, res) => {
 Flip a feature flag by updating Redis directly or through a management service:
 
 ```bash
-redis-cli SET "myapp||enable-new-checkout" "{\"value\":\"true\",\"version\":\"2\"}"
+redis-cli SET "enable-new-checkout" "true||2"
 ```
 
-The subscription callback fires within milliseconds, updating `featureFlags` across all running instances sharing the same config store.
+The subscription callback fires promptly via Redis keyspace notifications, updating `featureFlags` across all running instances sharing the same config store.
 
 ## Organizing Flags with Namespaces
 
@@ -110,8 +110,8 @@ Use key prefixes to group flags by team or domain:
 
 ```bash
 redis-cli MSET \
-  "myapp||payments:new-processor" "{\"value\":\"false\",\"version\":\"1\"}" \
-  "myapp||ui:dark-mode" "{\"value\":\"true\",\"version\":\"1\"}"
+  "payments:new-processor" "false||1" \
+  "ui:dark-mode" "true||1"
 ```
 
 Query by prefix to load only relevant flags per service.
