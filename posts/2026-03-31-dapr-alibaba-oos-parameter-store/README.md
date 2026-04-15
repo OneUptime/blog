@@ -16,7 +16,7 @@ Alibaba Cloud Operation Orchestration Service (OOS) Parameter Store provides a s
 
 - Alibaba Cloud account with OOS enabled
 - Parameters created in OOS Parameter Store
-- RAM user with `AliyunOOSReadOnlyAccess` policy
+- RAM user with permissions for `oos:GetParameter` and `oos:GetSecretParameter` actions
 - Dapr installed
 
 ## Creating Parameters in OOS
@@ -29,11 +29,11 @@ aliyun oos CreateParameter \
   --Type="String" \
   --Description="Database host"
 
-# Create an encrypted parameter (SecureString)
-aliyun oos CreateParameter \
+# Create an encrypted parameter (Secret)
+aliyun oos CreateSecretParameter \
   --Name="/dapr/db-password" \
   --Value="super-secret-password" \
-  --Type="SecureString" \
+  --Type="Secret" \
   --Description="Database password"
 ```
 
@@ -49,14 +49,14 @@ spec:
   type: secretstores.alicloud.parameterstore
   version: v1
   metadata:
-  - name: accessKeyID
+  - name: accessKeyId
     secretKeyRef:
       name: alibaba-credentials
-      key: accessKeyID
-  - name: accessKey
+      key: accessKeyId
+  - name: accessKeySecret
     secretKeyRef:
       name: alibaba-credentials
-      key: accessKey
+      key: accessKeySecret
   - name: regionId
     value: "cn-hangzhou"
 ```
@@ -106,8 +106,8 @@ spec:
     secretKeyRef:
       name: /dapr/redis-password
       key: /dapr/redis-password
-auth:
-  secretStore: alicloud-oos
+  auth:
+    secretStore: alicloud-oos
 ```
 
 ## Access Control with Secret Scopes
