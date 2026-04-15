@@ -14,7 +14,7 @@ Dapr provides a set of building blocks - service invocation, state management, p
 
 A well-designed Dapr architecture separates concerns by assigning each building block a dedicated responsibility. Services do not communicate with infrastructure directly; they call the local sidecar at `localhost:3500`.
 
-```json
+```text
 [Order Service] --> Dapr sidecar --> [Inventory Service]
                          |
                     [Redis State]
