@@ -127,4 +127,4 @@ Note: `uniqExact` uses significantly more memory than `uniq`. Use `uniq` for das
 
 ## Summary
 
-Use AggregatingMergeTree with `uniqState` / `uniqMerge` to maintain unique visitor counts in ClickHouse materialized views. This pattern pre-computes mergeable approximate distinct states at insert time, allowing DAU, WAU, and MAU calculations to return in milliseconds. States are mergeable across dimensions, so one daily materialized view supports country, page, and device breakdowns without additional queries.
+Use AggregatingMergeTree with `uniqState` / `uniqMerge` to maintain unique visitor counts in ClickHouse materialized views. This pattern pre-computes mergeable approximate distinct states at insert time, allowing DAU, WAU, and MAU calculations to return in milliseconds. States are mergeable across dimensions, so one daily materialized view supports country and page breakdowns without additional queries.
