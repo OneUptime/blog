@@ -30,11 +30,11 @@ spec:
   type: crypto.dapr.jwks
   version: v1
   metadata:
-  - name: jwksEndpoint
+  - name: jwks
     value: "https://login.microsoftonline.com/{tenant-id}/discovery/v2.0/keys"
   - name: requestTimeout
     value: "10s"
-  - name: cacheTTL
+  - name: minRefreshInterval
     value: "1h"
 ```
 
@@ -51,7 +51,7 @@ spec:
   type: crypto.dapr.jwks
   version: v1
   metadata:
-  - name: localKeys
+  - name: jwks
     value: |
       {
         "keys": [
@@ -78,7 +78,7 @@ openssl rsa -in private.pem -pubout -out public.pem
 
 # Convert to JWK format using a tool like jwk-cli
 npm install -g node-jose-tools
-jose key-gen --type RSA --size 2048 --use sig --alg RS256 --kid my-key-2026 > keypair.json
+jose newkey --type RSA --size 2048 --use sig --alg RS256 --kid my-key-2026 > keypair.json
 ```
 
 ## Hosting Your Own JWKS Endpoint
@@ -101,23 +101,23 @@ if __name__ == "__main__":
     app.run(port=8080)
 ```
 
-## Signing Data with Dapr and JWKS
+## Encrypting Data with Dapr and JWKS
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
-def sign_payload(data: bytes, key_id: str = "my-signing-key-2026") -> bytes:
+def encrypt_payload(data: bytes, key_id: str = "my-signing-key-2026") -> bytes:
     with DaprClient() as d:
-        signed = d.encrypt(
-            data=io.BytesIO(data),
-            options={
-                "componentName": "jwks-local-crypto",
-                "keyName": key_id,
-                "keyWrapAlgorithm": "RS256"
-            }
+        encrypted = d.encrypt(
+            data=data,
+            options=EncryptOptions(
+                component_name="jwks-local-crypto",
+                key_name=key_id,
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
-        return signed.read()
+        return encrypted.read()
 ```
 
 ## Verifying with the Public JWKS Endpoint
@@ -139,7 +139,7 @@ def verify_token(token: str, jwks_url: str, audience: str) -> dict:
     if not key_data:
         raise ValueError(f"Key ID {kid} not found in JWKS")
 
-    public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key_data))
+    public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
     return jwt.decode(token, public_key, algorithms=["RS256"], audience=audience)
 ```
 
@@ -163,7 +163,7 @@ func verifyServiceToken(token []byte) ([]byte, error) {
     result, err := client.Decrypt(
         context.Background(),
         bytes.NewReader(token),
-        dapr.DecryptRequestOptions{
+        dapr.DecryptOptions{
             ComponentName: "jwks-crypto",
             KeyName:       "service-signing-key",
         },
