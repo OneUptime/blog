@@ -39,7 +39,7 @@ type CounterState struct {
 }
 
 type AggregatorActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *AggregatorActor) Type() string { return "Aggregator" }
@@ -128,7 +128,7 @@ func recordLatency(ctx context.Context, client dapr.Client, endpoint string, lat
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0/actors/Aggregator/GET%20%2Fapi%2Forders%3A%3A2026-03-31T14%3A00/method/GetStats"
+  "http://localhost:3500/v1.0/actors/Aggregator/%2Fapi%2Forders%3A%3A2026-03-31T14%3A00/method/GetStats"
 # {"count": 1250, "sum": 63750.5, "average": 51.0, "min": 12.3, "max": 890.4, "window": "2026-03-31T14:00"}
 ```
 
