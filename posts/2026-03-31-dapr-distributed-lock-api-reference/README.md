@@ -65,18 +65,18 @@ Response:
 
 ```json
 {
-  "status": "SUCCESS"
+  "status": 0
 }
 ```
 
 ## Lock Status Codes
 
-| Status | Description |
-|---|---|
-| SUCCESS | Lock released successfully |
-| LOCK_DOES_NOT_EXIST | Lock not found or already expired |
-| LOCK_BELONGS_TO_OTHERS | Lock held by a different owner |
-| INTERNAL_ERROR | Backend error |
+| Status Code | Name | Description |
+|---|---|---|
+| 0 | SUCCESS | Lock released successfully |
+| 1 | LOCK_DOES_NOT_EXIST | Lock not found or already expired |
+| 2 | LOCK_BELONGS_TO_OTHERS | Lock held by a different owner |
+| 3 | INTERNAL_ERROR | Backend error |
 
 ## Redis Lock Store Component
 
@@ -144,7 +144,7 @@ func processOrderExclusively(orderId string) error {
 
 ## Lock TTL Best Practices
 
-Always set an expiry time shorter than your operation's expected duration to prevent indefinite lock holding if your process crashes. Set it long enough to complete the operation under normal conditions:
+Always set an expiry time longer than your operation's expected duration to prevent the lock from expiring before the work completes. The TTL acts as a safety net: if your process crashes, the lock is automatically released after expiry instead of being held indefinitely:
 
 ```bash
 # Good: 30s expiry for an operation that takes 5s
