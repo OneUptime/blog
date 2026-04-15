@@ -20,38 +20,41 @@ Use Dapr Jobs when you need to schedule jobs dynamically at runtime or require j
 ## Schedule a Recurring Batch Job
 
 ```python
-from dapr.clients import DaprClient
-from dapr.clients.grpc._request import JobData
+from dapr.clients import DaprClient, Job
 import json
 
 with DaprClient() as client:
     # Schedule a daily report generation job
-    client.schedule_job(
+    job = Job(
         name="daily-report",
-        schedule="@daily",  # or "0 2 * * *" for 2 AM daily
+        schedule="@daily",  # or "0 0 2 * * *" for 2 AM daily (6-field cron with seconds)
         data=json.dumps({
             "reportType": "sales",
             "format": "csv",
             "recipients": ["reports@company.com"]
         }).encode()
     )
+    client.schedule_job_alpha1(job)
     print("Daily report job scheduled")
 ```
 
 ## Schedule a One-Time Future Job
 
 ```python
+from dapr.clients import DaprClient, Job
 from datetime import datetime, timedelta
+import json
 
 with DaprClient() as client:
     # Run once in 1 hour
     run_at = datetime.utcnow() + timedelta(hours=1)
 
-    client.schedule_job(
+    job = Job(
         name="end-of-promo-cleanup",
         due_time=run_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         data=json.dumps({"promoId": "SUMMER2026"}).encode()
     )
+    client.schedule_job_alpha1(job)
 ```
 
 ## Handle Job Execution
@@ -85,11 +88,11 @@ def handle_daily_report():
 ```python
 with DaprClient() as client:
     # Get a specific job
-    job = client.get_job("daily-report")
+    job = client.get_job_alpha1("daily-report")
     print(f"Next run: {job.schedule}")
 
     # Delete a job
-    client.delete_job("end-of-promo-cleanup")
+    client.delete_job_alpha1("end-of-promo-cleanup")
     print("One-time job removed")
 ```
 
@@ -118,25 +121,27 @@ spec:
 
 ## Error Handling and Retry Configuration
 
-Configure Dapr resiliency for job execution retries:
+The Dapr Jobs API has a built-in failure policy that you configure directly on the job. Use `ConstantFailurePolicy` to retry failed jobs with a fixed interval:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Resiliency
-metadata:
-  name: job-resiliency
-spec:
-  policies:
-    retries:
-      jobRetry:
-        policy: exponential
-        maxRetries: 3
-        maxInterval: 60s
-  targets:
-    apps:
-      batch-scheduler:
-        retry: jobRetry
+```python
+from dapr.clients import DaprClient, Job
+from dapr.clients.grpc._helpers import ConstantFailurePolicy
+import json
+
+with DaprClient() as client:
+    job = Job(
+        name="daily-report",
+        schedule="@daily",
+        data=json.dumps({"reportType": "sales"}).encode(),
+        failure_policy=ConstantFailurePolicy(
+            max_retries=3,
+            interval_seconds=60
+        )
+    )
+    client.schedule_job_alpha1(job)
 ```
+
+Alternatively, use `DropFailurePolicy` to fail immediately without retries if a job execution fails.
 
 ## Monitor Job Execution
 
