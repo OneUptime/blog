@@ -28,7 +28,7 @@ CREATE TABLE dim_users_scd2 (
     plan_type       LowCardinality(String),
     country         LowCardinality(String),
     valid_from      DateTime,
-    valid_to        DateTime DEFAULT toDateTime('9999-12-31 23:59:59'),
+    valid_to        DateTime DEFAULT toDateTime('2105-12-31 23:59:59'),
     is_current      UInt8 DEFAULT 1
 ) ENGINE = MergeTree()
 ORDER BY (user_id, valid_from);
@@ -39,12 +39,12 @@ ORDER BY (user_id, valid_from);
 ```sql
 INSERT INTO dim_users_scd2 VALUES
 (1001, 42, 'alice@example.com', 'Alice Smith', 'free', 'US',
- '2026-01-01 00:00:00', '9999-12-31 23:59:59', 1);
+ '2026-01-01 00:00:00', '2105-12-31 23:59:59', 1);
 ```
 
 ## Processing a Dimension Change
 
-When Alice upgrades from free to pro, expire the old row and insert a new one. Do this in a single transaction using ClickHouse's mutation + insert pattern:
+When Alice upgrades from free to pro, expire the old row and insert a new one:
 
 ```sql
 -- Step 1: Expire the current row
@@ -57,10 +57,10 @@ ALTER TABLE dim_users_scd2
 -- Step 2: Insert the new version
 INSERT INTO dim_users_scd2 VALUES
 (1002, 42, 'alice@example.com', 'Alice Smith', 'pro', 'US',
- '2026-03-31 10:00:00', '9999-12-31 23:59:59', 1);
+ '2026-03-31 10:00:00', '2105-12-31 23:59:59', 1);
 ```
 
-Note: ClickHouse `ALTER TABLE ... UPDATE` is an asynchronous mutation. For high-throughput pipelines, use a staging + swap approach instead.
+Note: ClickHouse `ALTER TABLE ... UPDATE` is an asynchronous mutation. The INSERT in Step 2 may execute before the mutation completes, creating a brief window where both rows have `is_current = 1`. You can check `system.mutations` to confirm completion before inserting. For high-throughput pipelines, use a staging + swap approach instead.
 
 ## Point-in-Time Query
 
@@ -97,8 +97,8 @@ Use dbt's `snapshot` feature with the ClickHouse adapter to automate SCD2 manage
 {% snapshot users_snapshot %}
 {{
     config(
-      target_database='analytics',
-      target_schema='snapshots',
+      database='analytics',
+      schema='snapshots',
       unique_key='user_id',
       strategy='timestamp',
       updated_at='updated_at',
