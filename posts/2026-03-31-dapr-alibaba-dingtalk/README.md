@@ -66,7 +66,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/dingtalk-webhook \
         "content": "Alert: Service order-service has high error rate!"
       }
     },
-    "operation": "post"
+    "operation": "create"
   }'
 ```
 
@@ -83,7 +83,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/dingtalk-webhook \
         "text": "## Deployment Complete\n- **Service**: order-service\n- **Version**: v2.1.0\n- **Status**: Success"
       }
     },
-    "operation": "post"
+    "operation": "create"
   }'
 ```
 
@@ -109,7 +109,7 @@ def on_alert(event):
 
     client.invoke_binding(
         binding_name="dingtalk-webhook",
-        operation="post",
+        operation="create",
         data=json.dumps(message)
     )
 ```
@@ -134,7 +134,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/dingtalk-webhook \
         ]
       }
     },
-    "operation": "post"
+    "operation": "create"
   }'
 ```
 
