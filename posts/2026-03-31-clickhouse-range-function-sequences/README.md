@@ -13,12 +13,12 @@ Generating a sequence of numbers - a range - is a foundational operation for con
 ## Function Signatures
 
 ```text
-range(end)                    -> Array(UInt)  -- [0, 1, 2, ..., end-1]
-range(start, end)             -> Array(UInt)  -- [start, ..., end-1]
-range(start, end, step)       -> Array(UInt)  -- [start, start+step, ..., < end]
+range(end)                    -> Array(T)  -- [0, 1, 2, ..., end-1]
+range(start, end)             -> Array(T)  -- [start, ..., end-1]
+range(start, end, step)       -> Array(T)  -- [start, start+step, ..., < end]
 ```
 
-All three forms return an array of unsigned integers. The upper bound `end` is exclusive. The `step` can be negative to generate a decreasing sequence.
+All three forms return an array of integers. The element type `T` is the least common supertype of the arguments — unsigned when all arguments are non-negative (e.g., `Array(UInt8)`), signed when any argument is negative (e.g., `Array(Int16)` for a negative step). The upper bound `end` is exclusive. The `step` can be negative to generate a decreasing sequence.
 
 ## Basic Usage
 
