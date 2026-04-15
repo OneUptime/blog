@@ -21,7 +21,7 @@ CREATE TABLE payments (
     customer_id    UInt64,
     amount         Decimal64(2),
     currency       LowCardinality(String),
-    status         LowCardinality(String),  -- authorized, settled, declined, refunded
+    status         LowCardinality(String),  -- authorized, settled, declined, refunded, chargeback
     payment_method LowCardinality(String),  -- card, wallet, bank_transfer
     gateway        LowCardinality(String),
     country        LowCardinality(String),
