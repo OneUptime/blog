@@ -16,16 +16,16 @@ Design a consistent schema for your A/B test parameters:
 
 ```bash
 # Experiment: new homepage layout
-redis-cli SET myapp||exp.homepage-layout.enabled "true"
-redis-cli SET myapp||exp.homepage-layout.variant-a-pct "50"
-redis-cli SET myapp||exp.homepage-layout.variant-b-pct "50"
+redis-cli SET myapp||exp.homepage-layout.enabled "true||1"
+redis-cli SET myapp||exp.homepage-layout.variant-a-pct "50||1"
+redis-cli SET myapp||exp.homepage-layout.variant-b-pct "50||1"
 
 # Experiment: checkout button color
-redis-cli SET myapp||exp.checkout-cta.enabled "true"
-redis-cli SET myapp||exp.checkout-cta.variant-a-pct "70"
-redis-cli SET myapp||exp.checkout-cta.variant-b-pct "30"
-redis-cli SET myapp||exp.checkout-cta.variant-a-value "green"
-redis-cli SET myapp||exp.checkout-cta.variant-b-value "orange"
+redis-cli SET myapp||exp.checkout-cta.enabled "true||1"
+redis-cli SET myapp||exp.checkout-cta.variant-a-pct "70||1"
+redis-cli SET myapp||exp.checkout-cta.variant-b-pct "30||1"
+redis-cli SET myapp||exp.checkout-cta.variant-a-value "green||1"
+redis-cli SET myapp||exp.checkout-cta.variant-b-value "orange||1"
 ```
 
 ## Experiment Assignment Logic
@@ -57,10 +57,10 @@ async def get_experiment_config(exp_name: str) -> ExperimentConfig:
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            "http://localhost:3500/v1.0-alpha1/configuration/appconfig",
+            "http://localhost:3500/v1.0/configuration/appconfig",
             params={"key": keys}
         )
-        items = resp.json().get("items", {})
+        items = resp.json()
 
     return ExperimentConfig(
         enabled=items.get(f"exp.{exp_name}.enabled", {}).get("value", "false") == "true",
@@ -138,9 +138,9 @@ Update configuration to end the experiment and roll out the winning variant:
 
 ```bash
 # Stop the experiment and serve variant B to everyone
-redis-cli SET myapp||exp.checkout-cta.enabled "false"
-redis-cli SET myapp||exp.checkout-cta.variant-a-pct "0"
-redis-cli SET myapp||exp.checkout-cta.variant-b-pct "100"
+redis-cli SET myapp||exp.checkout-cta.enabled "true||2"
+redis-cli SET myapp||exp.checkout-cta.variant-a-pct "0||2"
+redis-cli SET myapp||exp.checkout-cta.variant-b-pct "100||2"
 ```
 
 ## Summary
