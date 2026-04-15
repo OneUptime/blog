@@ -42,7 +42,7 @@ SETTINGS
     priority = 10;
 ```
 
-Higher `priority` values get more CPU scheduling priority.
+Lower `priority` values get more CPU scheduling priority (priority `1` runs before priority `10`).
 
 ## Approach 2 - Separate Insert and Query Paths
 
