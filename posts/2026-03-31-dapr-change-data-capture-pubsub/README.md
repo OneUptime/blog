@@ -40,7 +40,7 @@ spec:
 
 ## Outbox Pattern Publisher
 
-Use the transactional outbox to guarantee exactly-once publishing:
+Use the transactional outbox to guarantee at-least-once publishing:
 
 ```javascript
 const { DaprClient } = require('@dapr/dapr');
