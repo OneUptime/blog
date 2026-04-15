@@ -40,10 +40,10 @@ FROM remote('ch-node-01', default, events_local)
 WHERE toYYYYMM(event_time) = 202401;
 ```
 
-After verifying the data exists on multiple shards, delete the original partition from the source shard:
+After verifying the data exists on multiple shards, delete the original partition from the source shard only (run this directly on the source node, not with `ON CLUSTER`):
 
 ```sql
-ALTER TABLE events_local ON CLUSTER my_cluster
+ALTER TABLE events_local
 DROP PARTITION '202401';
 ```
 
@@ -103,8 +103,8 @@ Track balance as you move data:
 ```sql
 SELECT
     hostName() AS host,
-    toYYYYMM(min(event_time)) AS min_partition,
-    toYYYYMM(max(event_time)) AS max_partition,
+    min(partition) AS min_partition,
+    max(partition) AS max_partition,
     formatReadableSize(sum(bytes_on_disk)) AS size
 FROM clusterAllReplicas('my_cluster', system, parts)
 WHERE active AND table = 'events_local'
