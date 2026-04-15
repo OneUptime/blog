@@ -18,7 +18,7 @@ The `dapr/components-contrib` repository hosts all official Dapr components. Con
 git clone https://github.com/dapr/components-contrib.git
 cd components-contrib
 
-# Install Go 1.22+
+# Install Go 1.24+
 go version
 
 # Verify tests pass before making changes
@@ -44,6 +44,7 @@ package mystore
 import (
     "context"
     "fmt"
+    "reflect"
 
     "github.com/dapr/components-contrib/metadata"
     "github.com/dapr/components-contrib/state"
@@ -86,47 +87,80 @@ func (s *MyStore) Set(ctx context.Context, req *state.SetRequest) error {
     return s.client.Set(ctx, req.Key, req.Value, req.ETag)
 }
 
+func (s *MyStore) Features() []state.Feature {
+    return nil // List supported features such as state.FeatureETag, state.FeatureTransactional
+}
+
 func (s *MyStore) Delete(ctx context.Context, req *state.DeleteRequest) error {
     return s.client.Delete(ctx, req.Key)
+}
+
+func (s *MyStore) Close() error {
+    return s.client.Close()
+}
+```
+
+The `state.Store` interface also embeds `BulkStore`. For a default implementation that delegates bulk operations to individual calls, wrap your store with `state.NewDefaultBulkStore`:
+
+```go
+func NewMyStore(logger logger.Logger) state.Store {
+    s := &MyStore{logger: logger}
+    s.BulkStore = state.NewDefaultBulkStore(s)
+    return s
 }
 ```
 
 ## Registering the Component
 
-Add to the component registry in `state/registry.go`:
+Component registration happens in the `dapr/dapr` runtime repository, not in `components-contrib`. Add a new file in `cmd/daprd/components/` (e.g., `state_mystore.go`):
 
 ```go
-import mystore "github.com/dapr/components-contrib/state/mystore"
+//go:build allcomponents || stablecomponents
 
-func (s *stateStoreRegistry) DefaultComponents() []state.Store {
-    return []state.Store{
-        // ... existing components
-        mystore.NewMyStore,
-    }
+package components
+
+import (
+    mystore "github.com/dapr/components-contrib/state/mystore"
+    stateLoader "github.com/dapr/dapr/pkg/components/state"
+)
+
+func init() {
+    stateLoader.DefaultRegistry.RegisterComponent(mystore.NewMyStore, "mystore")
 }
 ```
 
 ## Writing Conformance Tests
 
-Add a conformance test configuration:
+Add your component to the conformance test configuration in `tests/config/state/tests.yml`:
 
-```json
-{
-  "componentName": "mystore",
-  "componentType": "state",
-  "operations": ["get", "set", "delete", "bulk", "etag", "ttl"],
-  "config": {
-    "url": "http://localhost:8080"
-  }
-}
+```yaml
+componentType: state
+components:
+  - component: mystore
+    operations: ["etag", "transaction", "first-write", "ttl"]
+    config:
+      badEtag: "9999999"
 ```
 
-Run the conformance suite:
+Then add a component YAML file (e.g., `tests/config/state/mystore/statestore.yaml`):
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.mystore
+  metadata:
+  - name: url
+    value: "http://localhost:8080"
+```
+
+Run the conformance suite (note the required `conftests` build tag):
 
 ```bash
-go test ./tests/conformance/... \
-  -run TestStateStoreConformance/mystore \
-  -v
+go test -v -tags=conftests -count=1 ./tests/conformance \
+  -run TestStateConformance
 ```
 
 ## PR Checklist
