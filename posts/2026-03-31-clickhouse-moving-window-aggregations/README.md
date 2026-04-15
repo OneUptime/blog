@@ -8,7 +8,7 @@ Description: Learn how to build moving window aggregations in ClickHouse using R
 
 ---
 
-Moving window aggregations smooth noisy time-series data and reveal trends by computing metrics over a sliding window of preceding rows. ClickHouse supports full SQL window frames.
+Moving window aggregations smooth noisy time-series data and reveal trends by computing metrics over a sliding window of preceding rows. ClickHouse supports `ROWS` and `RANGE` window frames.
 
 ## Rolling Average (Moving Mean)
 
