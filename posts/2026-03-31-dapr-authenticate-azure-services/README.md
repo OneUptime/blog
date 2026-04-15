@@ -73,8 +73,7 @@ spec:
     value: dapr-state
   - name: collection
     value: states
-  - name: azureClientId
-    value: ""  # Empty uses system-assigned identity
+  # Omit azureClientId to use system-assigned managed identity
 ```
 
 Grant the managed identity access to the Azure resource:
