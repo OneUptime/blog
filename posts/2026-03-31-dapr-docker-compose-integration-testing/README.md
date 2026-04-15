@@ -41,7 +41,7 @@ services:
 
   placement:
     image: daprio/placement:1.14.0
-    command: ["./placement", "-port", "50006", "-log-level", "error"]
+    command: ["./placement", "--port", "50006", "--log-level", "error"]
     ports:
       - "50006:50006"
 
@@ -60,17 +60,17 @@ services:
     image: daprio/daprd:1.14.0
     command:
       - "./daprd"
-      - "-app-id"
+      - "--app-id"
       - "test-app"
-      - "-app-port"
+      - "--app-port"
       - "3000"
-      - "-placement-host-address"
+      - "--placement-host-address"
       - "placement:50006"
-      - "-components-path"
+      - "--resources-path"
       - "/components"
-      - "-log-level"
+      - "--log-level"
       - "error"
-      - "-log-as-json"
+      - "--log-as-json"
     volumes:
       - ./components:/components
     network_mode: "service:app"
@@ -131,6 +131,12 @@ spec:
 
 set -e
 
+cleanup() {
+  echo "Cleaning up..."
+  docker-compose -f docker-compose.test.yaml down -v
+}
+trap cleanup EXIT
+
 echo "Starting test environment..."
 docker-compose -f docker-compose.test.yaml up -d --build
 
@@ -146,13 +152,6 @@ done
 
 echo "Running tests..."
 docker-compose -f docker-compose.test.yaml run test-runner
-
-EXIT_CODE=$?
-
-echo "Cleaning up..."
-docker-compose -f docker-compose.test.yaml down -v
-
-exit $EXIT_CODE
 ```
 
 ## CI Pipeline Integration
