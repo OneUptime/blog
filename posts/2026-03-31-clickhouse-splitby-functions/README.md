@@ -186,7 +186,7 @@ SELECT splitByChar(',', '') AS result;
 -- result: ['']
 ```
 
-If the separator itself is empty, `splitByString()` returns the input unchanged in a single-element array rather than splitting on every character. Use `splitByRegexp('.', str)` if you need per-character splitting.
+If the separator itself is empty, `splitByString()` splits the string into an array of individual characters. For example, `splitByString('', 'abc')` returns `['a', 'b', 'c']`.
 
 ## Summary
 
