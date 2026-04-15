@@ -76,7 +76,7 @@ FROM (
 
 ## Directional Tests
 
-Test whether the treatment group tends to have higher values than control:
+Test whether the control group tends to have higher values than treatment:
 
 ```sql
 SELECT
@@ -88,13 +88,13 @@ FROM (
 );
 ```
 
-Use `'less'` to test the opposite direction.
+Use `'less'` to test whether the control group tends to have lower values than treatment.
 
 ## Interpreting the Results
 
 | Value | Meaning |
 |---|---|
-| `u_statistic` | U statistic; large U means group 1 tends to have higher ranks |
+| `u_statistic` | U statistic; large U means the first sample (group 0) tends to have higher ranks |
 | `p_value < 0.05` | Significant difference between groups at 95% confidence |
 | `p_value >= 0.05` | No statistically significant difference detected |
 
