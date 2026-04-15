@@ -16,9 +16,11 @@ Add MinIO credentials in `config.xml`:
 
 ```xml
 <s3>
-    <endpoint-url>http://minio:9000/</endpoint-url>
-    <access_key_id>minioadmin</access_key_id>
-    <secret_access_key>minioadmin</secret_access_key>
+    <minio>
+        <endpoint>http://minio:9000/</endpoint>
+        <access_key_id>minioadmin</access_key_id>
+        <secret_access_key>minioadmin</secret_access_key>
+    </minio>
 </s3>
 ```
 
