@@ -34,9 +34,8 @@ services:
     volumes:
       - ./uptrace.yml:/etc/uptrace/uptrace.yml
     ports:
-      - "14317:14317"   # OTLP gRPC
-      - "14318:14318"   # OTLP HTTP
-      - "14320:14320"   # Uptrace UI
+      - "14317:4317"    # OTLP gRPC
+      - "14318:80"      # OTLP HTTP + Uptrace UI
     depends_on:
       - clickhouse
 
@@ -48,7 +47,10 @@ volumes:
 
 ```yaml
 ch:
-  dsn: http://default:@clickhouse:8123/uptrace
+  addr: clickhouse:9000
+  user: default
+  password: ""
+  database: uptrace
 
 projects:
   - id: 1
@@ -56,9 +58,10 @@ projects:
     token: project1_token
 
 listen:
-  grpc: :14317
-  http: :14318
-  ui: :14320
+  grpc:
+    addr: ':4317'
+  http:
+    addr: ':80'
 
 logging:
   level: INFO
@@ -71,7 +74,7 @@ exporters:
   otlp/uptrace:
     endpoint: http://uptrace:14317
     headers:
-      uptrace-dsn: http://project1_token@uptrace:14320/1
+      uptrace-dsn: http://project1_token@uptrace:14318/1
     tls:
       insecure: true
 
@@ -97,10 +100,10 @@ uptrace.spans_index
 uptrace.spans_data
 
 -- Log records
-uptrace.log_records_index
+uptrace.logs_index
 
 -- Metric data points
-uptrace.datapoints
+uptrace.metrics
 ```
 
 ## Querying Spans Directly in ClickHouse
