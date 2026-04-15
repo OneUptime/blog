@@ -93,7 +93,7 @@ kubectl get pod order-service-5f9d4c76d-8xp2k -o jsonpath='{.metadata.annotation
 Port-forward directly to the Dapr HTTP port for local testing:
 
 ```bash
-kubectl port-forward svc/order-service 8080:80 &
+kubectl port-forward deploy/order-service 3500:3500 &
 
 # Invoke via Dapr sidecar
 curl http://localhost:3500/v1.0/invoke/order-service/method/orders
