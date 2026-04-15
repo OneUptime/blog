@@ -138,8 +138,8 @@ spec:
 Crossplane continuously reconciles the desired state. If someone manually modifies the Dapr installation, Crossplane will detect drift and restore the declared configuration:
 
 ```bash
-# Force a reconciliation
-kubectl annotate release dapr crossplane.io/paused=false --overwrite
+# Trigger a reconciliation by updating an annotation
+kubectl annotate release dapr reconcile.crossplane.io/timestamp="$(date +%s)" --overwrite
 
 # Check reconciliation events
 kubectl get events --field-selector involvedObject.name=dapr
