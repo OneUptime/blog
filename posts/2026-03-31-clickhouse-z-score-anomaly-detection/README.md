@@ -82,10 +82,16 @@ ORDER BY abs(z_score) DESC;
 Z-score assumes a roughly normal distribution. For heavy-tailed or skewed data, consider modified Z-score using the median and MAD (median absolute deviation):
 
 ```sql
-SELECT
-    value,
-    abs(value - median(value) OVER ()) / nullIf(median(abs(value - median(value) OVER ())) OVER (), 0) * 0.6745 AS modified_z
-FROM metrics;
+WITH medians AS (
+    SELECT value, median(value) OVER () AS med
+    FROM metrics
+),
+deviations AS (
+    SELECT value, med, median(abs(value - med)) OVER () AS mad
+    FROM medians
+)
+SELECT value, 0.6745 * (value - med) / nullIf(mad, 0) AS modified_z
+FROM deviations;
 ```
 
 ## Summary
