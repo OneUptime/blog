@@ -26,6 +26,7 @@ package main
 
 import (
   "context"
+  "fmt"
   "time"
   "github.com/dapr/go-sdk/actor"
 )
@@ -36,10 +37,11 @@ type SessionData struct {
   Roles     []string  `json:"roles"`
   CreatedAt time.Time `json:"createdAt"`
   LastSeen  time.Time `json:"lastSeen"`
+  ExpiresAt time.Time `json:"expiresAt"`
 }
 
 type UserSessionActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *UserSessionActor) Type() string { return "UserSession" }
@@ -47,6 +49,7 @@ func (a *UserSessionActor) Type() string { return "UserSession" }
 func (a *UserSessionActor) CreateSession(ctx context.Context, req *SessionData) error {
   req.CreatedAt = time.Now().UTC()
   req.LastSeen = time.Now().UTC()
+  req.ExpiresAt = time.Now().UTC().Add(30 * time.Minute)
   return a.GetStateManager().Set(ctx, "session", req)
 }
 
@@ -54,6 +57,10 @@ func (a *UserSessionActor) GetSession(ctx context.Context) (*SessionData, error)
   var session SessionData
   if err := a.GetStateManager().Get(ctx, "session", &session); err != nil {
     return nil, fmt.Errorf("session not found")
+  }
+  if time.Now().UTC().After(session.ExpiresAt) {
+    a.GetStateManager().Remove(ctx, "session")
+    return nil, fmt.Errorf("session expired")
   }
   session.LastSeen = time.Now().UTC()
   a.GetStateManager().Set(ctx, "session", session)
@@ -116,7 +123,7 @@ Configure the actor idle timeout to match your session TTL:
 }
 ```
 
-When a session actor is idle for 30 minutes, Dapr deactivates it. Subsequent calls to that session return an error, which your middleware treats as an expired session.
+When a session actor is idle for 30 minutes, Dapr deactivates it from memory. Note that deactivation does not remove persisted state — if a subsequent call arrives, Dapr reactivates the actor and restores its state from the state store. Session expiry is enforced by the `ExpiresAt` timestamp check in `GetSession`, which returns an error and removes state when the session has expired. The idle timeout serves as a resource optimization, freeing memory for inactive sessions.
 
 ## Invalidating Sessions Explicitly
 
