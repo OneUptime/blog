@@ -10,7 +10,7 @@ Description: Learn how to configure the Dapr Redis distributed lock component, u
 
 ## Introduction
 
-Dapr's `lock.redis` component implements distributed locking using Redis's atomic `SET NX PX` command (set-if-not-exists with expiry). This leverages Redis's single-threaded command processing to guarantee at most one lock holder at a time. This guide covers the complete setup, configuration options, and production tuning for the Redis lock component.
+Dapr's `lock.redis` component implements distributed locking using Redis's atomic `SET NX EX` command (set-if-not-exists with expiry in seconds). This leverages Redis's single-threaded command processing to guarantee at most one lock holder at a time. This guide covers the complete setup, configuration options, and production tuning for the Redis lock component.
 
 ## How Redis Locking Works in Dapr
 
@@ -19,7 +19,7 @@ sequenceDiagram
     participant DaprSidecar as Dapr Sidecar
     participant Redis
 
-    DaprSidecar->>Redis: SET dapr||{appId}||{resourceId} {ownerId} NX PX {expiryMs}
+    DaprSidecar->>Redis: SET lock||{appId}||{resourceId} {ownerId} NX EX {expirySeconds}
     alt Key does not exist
         Redis-->>DaprSidecar: OK (lock acquired)
     else Key already exists
@@ -28,7 +28,7 @@ sequenceDiagram
 
     Note over DaprSidecar: On unlock:
     DaprSidecar->>Redis: Lua script: GET key, compare owner, DEL if match
-    Redis-->>DaprSidecar: 1 (deleted) or 0 (not owner)
+    Redis-->>DaprSidecar: 1 (deleted), -1 (not found), or -2 (not owner)
 ```
 
 Dapr uses a Lua script for atomic owner-verified unlock to prevent a scenario where one owner accidentally releases another owner's lock.
@@ -36,7 +36,7 @@ Dapr uses a Lua script for atomic owner-verified unlock to prevent a scenario wh
 ## Prerequisites
 
 - Redis 6.x or higher
-- Dapr v1.8 or later
+- Dapr v1.8 or later (lock API is alpha; uses the `v1.0-alpha1` API prefix)
 - Dapr initialized locally or on Kubernetes
 
 ## Step 1: Deploy Redis
@@ -173,16 +173,16 @@ Use the Dapr HTTP API to test manually:
 dapr run --app-id test-app --dapr-http-port 3500 --components-path ./components -- sleep 300 &
 
 # Acquire lock
-curl -X POST http://localhost:3500/v1.0/lock/redislock \
+curl -X POST http://localhost:3500/v1.0-alpha1/lock/redislock \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "test-resource", "lockOwner": "test-owner-1", "expiryInSeconds": 60}'
 
 # Verify in Redis
-redis-cli KEYS "dapr*"
-redis-cli TTL "dapr||test-app||test-resource"
+redis-cli KEYS "lock*"
+redis-cli TTL "lock||test-app||test-resource"
 
 # Release lock
-curl -X POST http://localhost:3500/v1.0/unlock/redislock \
+curl -X POST http://localhost:3500/v1.0-alpha1/unlock/redislock \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "test-resource", "lockOwner": "test-owner-1"}'
 ```
@@ -209,16 +209,16 @@ For production, use Redis with persistence and replication. Note that Redlock (t
 
 ```yaml
 # Redis key naming in Dapr lock component
-# dapr||{appId}||{resourceId}
+# lock||{appId}||{resourceId}
 # TTL is set per the expiryInSeconds parameter
 ```
 
 Monitor lock contention:
 
 ```bash
-redis-cli MONITOR | grep "dapr||"
+redis-cli MONITOR | grep "lock||"
 ```
 
 ## Summary
 
-The Dapr Redis lock component uses Redis's atomic `SET NX PX` command to implement distributed locking. Configure it with your Redis host, optional authentication, and timeout settings. For production, use Redis Sentinel for high availability. Test lock acquisition and release with the HTTP API before integrating into your application. Set `expiryInSeconds` conservatively to balance safety (auto-release on crash) with durability (enough time for the critical section to complete).
+The Dapr Redis lock component uses Redis's atomic `SET NX EX` command to implement distributed locking. Configure it with your Redis host, optional authentication, and timeout settings. For production, use Redis Sentinel for high availability. Test lock acquisition and release with the HTTP API before integrating into your application. Set `expiryInSeconds` conservatively to balance safety (auto-release on crash) with durability (enough time for the critical section to complete).
