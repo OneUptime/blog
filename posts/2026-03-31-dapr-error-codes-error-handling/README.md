@@ -32,13 +32,13 @@ For HTTP, Dapr returns a JSON error body:
 
 | Error Code | HTTP Status | Cause |
 |-----------|-------------|-------|
-| `ERR_STATE_STORE_NOT_FOUND` | 500 | State store component not configured |
+| `ERR_STATE_STORE_NOT_FOUND` | 400 | State store component not configured |
 | `ERR_STATE_GET` | 500 | State store read failure |
 | `ERR_STATE_SAVE` | 500 | State store write failure |
-| `ERR_PUBSUB_NOT_FOUND` | 500 | Pub/sub component not configured |
+| `ERR_PUBSUB_NOT_FOUND` | 404 | Pub/sub component not configured |
 | `ERR_PUBSUB_PUBLISH_MESSAGE` | 500 | Publish failed |
 | `ERR_INVOKE_OUTPUT_BINDING` | 500 | Output binding invocation failed |
-| `ERR_NO_INVOCATION_ALLOWED` | 403 | Access policy rejected invocation |
+| `ERR_DIRECT_INVOKE` | 403 | Access policy rejected invocation |
 | `ERR_APP_CHANNEL_NIL` | 500 | App channel not initialized |
 
 ## Handling Errors in Python
