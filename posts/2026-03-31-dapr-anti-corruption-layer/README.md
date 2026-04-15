@@ -27,8 +27,12 @@ package main
 import (
     "context"
     "encoding/json"
-    "net/http"
+    "fmt"
+    "net/url"
+    "strings"
     dapr "github.com/dapr/go-sdk/client"
+    "github.com/dapr/go-sdk/service/common"
+    daprd "github.com/dapr/go-sdk/service/http"
 )
 
 // New domain model (clean)
@@ -154,14 +158,18 @@ func main() {
     s := daprd.NewService(":8080")
 
     // New services call the ACL with clean domain model
-    s.AddServiceInvocationHandler("/customers/{id}", func(ctx nethttp.Context) {
-        id := ctx.PathValue("id")
-        customer, err := acl.GetCustomer(context.Background(), id)
+    s.AddServiceInvocationHandler("/customers", func(ctx context.Context, in *common.InvocationEvent) (*common.Content, error) {
+        params, _ := url.ParseQuery(in.QueryString)
+        customerID := params.Get("id")
+        customer, err := acl.GetCustomer(ctx, customerID)
         if err != nil {
-            ctx.ResponseWriter().WriteHeader(500)
-            return
+            return nil, err
         }
-        json.NewEncoder(ctx.ResponseWriter()).Encode(customer)
+        data, _ := json.Marshal(customer)
+        return &common.Content{
+            ContentType: "application/json",
+            Data:        data,
+        }, nil
     })
 
     s.Start()
