@@ -10,7 +10,7 @@ Description: Configure the Dapr Azure Blob Storage output binding to create, get
 
 ## Overview
 
-The Dapr Azure Blob Storage binding provides output operations to create, read, list, and delete blobs. This allows your microservices to store files, export data, or trigger downstream processing via Azure Event Grid blob events.
+The Dapr Azure Blob Storage binding provides output operations to create, get, list, and delete blobs. This allows your microservices to store files, export data, or trigger downstream processing via Azure Event Grid blob events.
 
 ```mermaid
 flowchart LR
@@ -77,17 +77,15 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: "daprblobs"
-  - name: storageAccessKey
+  - name: accountKey
     secretKeyRef:
       name: azure-blob-secret
       key: storageAccessKey
-  - name: container
+  - name: containerName
     value: "exports"
   - name: decodeBase64
-    value: "false"
-  - name: encodeBase64
     value: "false"
   - name: publicAccessLevel
     value: "none"
@@ -115,9 +113,9 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-  - name: storageAccount
+  - name: accountName
     value: "daprblobs"
-  - name: container
+  - name: containerName
     value: "exports"
   - name: azureClientId
     value: "YOUR_MANAGED_IDENTITY_CLIENT_ID"
@@ -176,7 +174,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/blob-storage \
   }"
 ```
 
-Set `encodeBase64: "true"` in the component metadata so Dapr knows to decode it.
+Set `decodeBase64: "true"` in the component metadata so Dapr decodes the base64-encoded data before writing it to blob storage.
 
 ## Getting a Blob
 
