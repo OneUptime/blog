@@ -67,7 +67,6 @@ def create_order():
 package main
 
 import (
-    "context"
     "encoding/json"
     "log"
     "net/http"
@@ -131,10 +130,10 @@ Clients can then report the `X-Trace-Id` value when filing bugs.
 
 ## Correlating with Metrics
 
-Add trace ID as a metric label for high-cardinality debugging:
+Track request durations with Prometheus and correlate with traces by timestamp:
 
 ```python
-from prometheus_client import Counter, Histogram
+from prometheus_client import Histogram
 
 request_duration = Histogram(
     'request_duration_seconds',
@@ -157,10 +156,10 @@ Then correlate by timestamp: find the trace ID from a slow span, look up applica
 
 ```bash
 # Find all traces for a specific order ID
-curl "http://localhost:16686/api/traces?service=order-service&tags=orderId:ORD-1001"
+curl "http://localhost:16686/api/traces?service=order-service&tag=orderId:ORD-1001"
 
 # Find traces with errors
-curl "http://localhost:16686/api/traces?service=order-service&tags=error:true"
+curl "http://localhost:16686/api/traces?service=order-service&tag=error:true"
 ```
 
 ## Summary
