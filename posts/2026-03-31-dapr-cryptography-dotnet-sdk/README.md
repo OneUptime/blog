@@ -61,19 +61,18 @@ public class CryptoService
     {
         var plaintextStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(plaintext));
 
-        var encryptedStream = await _dapr.EncryptAsync(
+        using var ms = new MemoryStream();
+        await foreach (var chunk in _dapr.EncryptAsync(
             ComponentName,
             plaintextStream,
-            keyName: "mykey",
-            algorithm: KeyWrapAlgorithm.Rsa,
-            options: new EncryptRequestOptions
+            "mykey",
+            new EncryptionOptions(KeyWrapAlgorithm.Rsa)
             {
-                DataEncryptionCipherAlgorithm = DataEncryptionCipher.AesGcm
-            }
-        );
-
-        using var ms = new MemoryStream();
-        await encryptedStream.CopyToAsync(ms);
+                EncryptionCipher = DataEncryptionCipher.AesGcm
+            }))
+        {
+            ms.Write(chunk.Span);
+        }
         return ms.ToArray();
     }
 }
@@ -86,14 +85,14 @@ public async Task<string> DecryptAsync(byte[] ciphertext)
 {
     var encryptedStream = new MemoryStream(ciphertext);
 
-    var decryptedStream = await _dapr.DecryptAsync(
+    using var ms = new MemoryStream();
+    await foreach (var chunk in _dapr.DecryptAsync(
         ComponentName,
         encryptedStream,
-        keyName: "mykey"
-    );
-
-    using var ms = new MemoryStream();
-    await decryptedStream.CopyToAsync(ms);
+        "mykey"))
+    {
+        ms.Write(chunk.Span);
+    }
     return System.Text.Encoding.UTF8.GetString(ms.ToArray());
 }
 ```
@@ -106,14 +105,14 @@ public async Task EncryptFileAsync(string inputPath, string outputPath)
     using var inputFile = File.OpenRead(inputPath);
     using var outputFile = File.Create(outputPath);
 
-    var encryptedStream = await _dapr.EncryptAsync(
+    await foreach (var chunk in _dapr.EncryptAsync(
         ComponentName,
         inputFile,
-        keyName: "mykey",
-        algorithm: KeyWrapAlgorithm.Rsa
-    );
-
-    await encryptedStream.CopyToAsync(outputFile);
+        "mykey",
+        new EncryptionOptions(KeyWrapAlgorithm.Rsa)))
+    {
+        outputFile.Write(chunk.Span);
+    }
     Console.WriteLine($"Encrypted: {inputPath} -> {outputPath}");
 }
 
@@ -122,13 +121,13 @@ public async Task DecryptFileAsync(string inputPath, string outputPath)
     using var inputFile = File.OpenRead(inputPath);
     using var outputFile = File.Create(outputPath);
 
-    var decryptedStream = await _dapr.DecryptAsync(
+    await foreach (var chunk in _dapr.DecryptAsync(
         ComponentName,
         inputFile,
-        keyName: "mykey"
-    );
-
-    await decryptedStream.CopyToAsync(outputFile);
+        "mykey"))
+    {
+        outputFile.Write(chunk.Span);
+    }
     Console.WriteLine($"Decrypted: {inputPath} -> {outputPath}");
 }
 ```
