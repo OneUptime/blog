@@ -118,7 +118,7 @@ For local development, place components in the default directory:
 Or specify a custom path:
 
 ```bash
-dapr run --components-path ./config/components -- node app.js
+dapr run --resources-path ./config/components -- node app.js
 ```
 
 ## Validate Component Loading
