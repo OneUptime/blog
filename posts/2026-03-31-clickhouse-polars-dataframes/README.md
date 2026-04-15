@@ -94,17 +94,14 @@ This lets Polars optimize the query plan before materializing results.
 For datasets too large to fit in memory, use ClickHouse's streaming + Polars chunked processing:
 
 ```python
-import pyarrow as pa
-
-reader = client.query_arrow_stream(
-    "SELECT * FROM events WHERE event_date = today()"
-)
-
 chunks = []
-for batch in reader:
-    chunk_df = pl.from_arrow(batch)
-    processed = chunk_df.filter(pl.col("value") > 100)
-    chunks.append(processed)
+with client.query_arrow_stream(
+    "SELECT * FROM events WHERE event_date = today()"
+) as stream:
+    for batch in stream:
+        chunk_df = pl.from_arrow(batch)
+        processed = chunk_df.filter(pl.col("value") > 100)
+        chunks.append(processed)
 
 final = pl.concat(chunks)
 ```
