@@ -147,9 +147,8 @@ func searchProducts(client dapr.Client, query, category string) ([]Product, erro
     }
 
     // Cache for 5 minutes
-    client.SaveState(ctx, "cache-store", cacheKey, data, &dapr.StateOptions{
-        Concurrency: dapr.StateConcurrencyLastWrite,
-    })
+    client.SaveState(ctx, "cache-store", cacheKey, data,
+        map[string]string{"ttlInSeconds": "300"})
 
     var products []Product
     json.Unmarshal(data, &products)
