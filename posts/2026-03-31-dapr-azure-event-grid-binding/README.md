@@ -100,12 +100,24 @@ spec:
   type: bindings.azure.eventgrid
   version: v1
   metadata:
-    - name: topicEndpoint
-      value: "https://my-topic.eastus-1.eventgrid.azure.net/api/events"
+    - name: azureTenantId
+      value: "<your-tenant-id>"
+    - name: azureSubscriptionId
+      value: "<your-subscription-id>"
+    - name: azureClientId
+      value: "<your-client-id>"
+    - name: azureClientSecret
+      secretKeyRef:
+        name: eventgrid-secrets
+        key: azureClientSecret
     - name: accessKey
       secretKeyRef:
         name: eventgrid-secrets
         key: accessKey
+    - name: topicEndpoint
+      value: "https://my-topic.eastus-1.eventgrid.azure.net/api/events"
+    - name: scope
+      value: "/subscriptions/<your-subscription-id>/resourceGroups/my-rg/providers/Microsoft.EventGrid/topics/my-app-events"
     - name: subscriberEndpoint
       value: "https://my-service.example.com/api/v1/bindings/event-receiver"
     - name: handshakePort
@@ -128,7 +140,7 @@ app.post("/event-receiver", async (req, res) => {
     // Respond to subscription validation challenge
     if (event.eventType === "Microsoft.EventGrid.SubscriptionValidationEvent") {
       return res.json({
-        validationResponse: event.data.validationCode,
+        ValidationResponse: event.data.validationCode,
       });
     }
 
