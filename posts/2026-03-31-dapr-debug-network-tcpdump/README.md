@@ -43,16 +43,16 @@ tcpdump -r dapr-capture.pcap -nn -A | grep -A 5 'HTTP'
 In Kubernetes, exec into the pod's network namespace and run tcpdump:
 
 ```bash
-# Install tcpdump in the container if not present
-kubectl exec -it order-service-7b4c8d9f6-xk2pq -c daprd -n default -- sh -c \
+# Install tcpdump in the app container (daprd uses a distroless image with no shell)
+kubectl exec -it order-service-7b4c8d9f6-xk2pq -c app -n default -- sh -c \
   "apt-get install -y tcpdump && tcpdump -nn -s 0 -w /tmp/dapr-capture.pcap port 3500 &"
 
 # Generate some traffic
 kubectl exec -it order-service-7b4c8d9f6-xk2pq -c app -n default -- \
   wget -qO- http://localhost:3500/v1.0/healthz
 
-# Copy the capture file
-kubectl cp default/order-service-7b4c8d9f6-xk2pq:/tmp/dapr-capture.pcap ./dapr-capture.pcap -c daprd
+# Copy the capture file (all containers share the network namespace)
+kubectl cp default/order-service-7b4c8d9f6-xk2pq:/tmp/dapr-capture.pcap ./dapr-capture.pcap -c app
 ```
 
 Open the file in Wireshark for analysis:
@@ -79,7 +79,7 @@ The `nicolaka/netshoot` image includes tcpdump, curl, nslookup, and other networ
 **Connection refused on port 3000 (sidecar cannot reach app):**
 
 ```bash
-tcpdump -r dapr-capture.pcap | grep "Connection refused"
+tcpdump -r dapr-capture.pcap 'dst port 3000' | grep "Flags \[R"
 ```
 
 The sidecar expects the app on `--app-port`. Verify the app is actually listening:
@@ -91,7 +91,7 @@ kubectl exec -it order-service-pod -- netstat -tlnp | grep 3000
 **Retransmissions (slow or unstable connections):**
 
 ```bash
-tcpdump -r dapr-capture.pcap | grep "Retransmission"
+tshark -r dapr-capture.pcap -Y "tcp.analysis.retransmission"
 ```
 
 High retransmission rates indicate network congestion or resource limits. Check pod resource requests and limits.
