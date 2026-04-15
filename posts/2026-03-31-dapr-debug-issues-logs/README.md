@@ -58,7 +58,7 @@ Common causes:
 
 ```bash
 # Check if the target app is registered with Dapr
-kubectl get pods -l dapr.io/app-id=inventory-service
+kubectl get pods -o custom-columns='NAME:.metadata.name,DAPR-APP-ID:.metadata.annotations.dapr\.io/app-id' | grep inventory-service
 
 # Check the app ID annotation
 kubectl get pod inventory-service-xxx -o jsonpath='{.metadata.annotations}'
@@ -77,7 +77,7 @@ kubectl logs deploy/consumer-service -c daprd | grep -i "topic\|sub"
 ```
 
 Expected successful subscription log:
-```toml
+```text
 level=info msg="app is subscribed to the following topics: [orders] through pubsub=pubsub"
 ```
 
@@ -108,8 +108,8 @@ Symptom: Pod starts without the daprd container.
 # Check injection annotation
 kubectl get pod order-service-xxx -o jsonpath='{.metadata.annotations.dapr\.io/enabled}'
 
-# Check operator logs
-kubectl logs -n dapr-system deploy/dapr-operator | tail -50 | grep -i "inject\|error"
+# Check sidecar injector logs
+kubectl logs -n dapr-system deploy/dapr-sidecar-injector | tail -50 | grep -i "inject\|error"
 ```
 
 ## Enabling Debug Logging Temporarily
