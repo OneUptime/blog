@@ -8,11 +8,11 @@ Description: Learn how to configure the max_memory_usage setting in ClickHouse t
 
 ---
 
-ClickHouse provides two levels of memory control: server-wide limits and per-query limits. The `max_memory_usage` setting at the query level caps how much RAM a single query can consume, protecting your cluster from runaway queries while allowing normal workloads to proceed.
+ClickHouse provides two levels of memory control: server-wide limits and per-query limits. The `max_server_memory_usage` setting controls total server memory, while the per-query `max_memory_usage` setting caps how much RAM a single query can consume, protecting your cluster from runaway queries while allowing normal workloads to proceed.
 
 ## Understanding Per-Query vs Server-Level Memory Limits
 
-The server-level `max_memory_usage` (in `config.xml`) sets the absolute ceiling for the entire ClickHouse process. The user-level `max_memory_usage` setting in query context controls how much memory a single query may use before ClickHouse throws a `Memory limit (for query) exceeded` error.
+The server-level `max_server_memory_usage` (in `config.xml`) sets the absolute ceiling for the entire ClickHouse process. The user-level `max_memory_usage` setting in query context controls how much memory a single query may use before ClickHouse throws a `Memory limit (for query) exceeded` error.
 
 These two settings work together. A query cannot exceed either limit.
 
