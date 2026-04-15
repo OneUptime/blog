@@ -99,7 +99,7 @@ SELECT
     count() * 100 AS estimated_count,
     sum(revenue) * 100 AS estimated_revenue
 FROM file('large.csv', CSVWithNames)
-SAMPLE 0.01
+WHERE rand() % 100 = 0
 GROUP BY category
 ORDER BY estimated_revenue DESC
 "
@@ -117,4 +117,4 @@ clickhouse local \
 
 ## Summary
 
-`clickhouse-local` handles large files via `--max_bytes_before_external_group_by` for disk spill, glob patterns for multi-file aggregation, and `--max_threads` for parallelism. Use `SAMPLE` for fast previews and `--progress` to monitor long-running scans.
+`clickhouse-local` handles large files via `--max_bytes_before_external_group_by` for disk spill, glob patterns for multi-file aggregation, and `--max_threads` for parallelism. Use random filtering with `rand()` for fast previews and `--progress` to monitor long-running scans.
