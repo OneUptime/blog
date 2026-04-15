@@ -161,7 +161,6 @@ Create a transformation script that converts the NDJSON export to ClickHouse's f
 # transform_and_load.py
 import json
 import subprocess
-from datetime import datetime
 
 def transform(doc: dict) -> dict:
     return {
@@ -208,26 +207,37 @@ if batch:
 print("Load complete")
 ```
 
-## Step 5: Use Elasticseach-to-ClickHouse Direct Load
+## Step 5: Direct Load via ClickHouse SQL
 
-Use `clickhouse-client` with the `elasticsearch()` table function:
+For smaller indexes, you can load data directly using the `url()` table function to query the Elasticsearch HTTP API. This approach is limited to the number of documents returned in a single search request (controlled by the `size` parameter). For full index migration with millions of documents, use the Python scroll-based approach from Steps 3 and 4.
 
 ```sql
--- Direct read from Elasticsearch HTTP API using url() table function
 INSERT INTO logs
 SELECT
-    parseDateTimeBestEffort(JSONExtractString(doc, '@timestamp')) AS ts,
-    JSONExtractString(doc, 'level')                               AS level,
-    JSONExtractString(doc, 'service')                             AS service,
-    JSONExtractString(doc, 'message')                             AS message,
-    JSONExtractString(doc, 'host')                                AS host,
-    JSONExtractUInt(doc, 'duration_ms')                           AS duration_ms,
-    JSONExtractUInt(doc, 'status_code')                           AS status_code,
-    JSONExtractUInt(doc, 'user_id')                               AS user_id
-FROM url(
-    'http://localhost:9200/logs/_search?size=10000&scroll=5m',
-    'JSONAsString',
-    'doc String'
+    parseDateTime64BestEffort(JSONExtractString(src, '@timestamp'), 3) AS ts,
+    JSONExtractString(src, 'level')       AS level,
+    JSONExtractString(src, 'service')     AS service,
+    JSONExtractString(src, 'message')     AS message,
+    JSONExtractString(src, 'host')        AS host,
+    JSONExtractUInt(src, 'duration_ms')   AS duration_ms,
+    JSONExtractUInt(src, 'status_code')   AS status_code,
+    JSONExtractUInt(src, 'user_id')       AS user_id
+FROM
+(
+    SELECT JSONExtractRaw(hit, '_source') AS src
+    FROM
+    (
+        SELECT arrayJoin(
+            JSONExtractArrayRaw(
+                JSONExtractRaw(response, 'hits', 'hits')
+            )
+        ) AS hit
+        FROM url(
+            'http://localhost:9200/logs/_search?size=10000',
+            'JSONAsString',
+            'response String'
+        )
+    )
 );
 ```
 
@@ -324,7 +334,7 @@ SELECT * FROM logs WHERE message LIKE 'Error connecting%' LIMIT 100;
 -- Substring search (slower but works)
 SELECT * FROM logs WHERE message LIKE '%OutOfMemoryError%' LIMIT 100;
 
--- Bloom filter index speeds up equality checks
+-- Token matching (matches whole words; add a tokenbf_v1 index on message to accelerate)
 SELECT * FROM logs WHERE hasToken(message, 'OutOfMemoryError') LIMIT 100;
 ```
 
