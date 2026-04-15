@@ -63,7 +63,7 @@ ORDER BY (host, ts);
 
 ## Workload Management
 
-Vertica has more mature workload management with resource pools, priority queuing, and wlm_query_params. ClickHouse provides user profiles and quotas but lacks the same depth:
+Vertica has more mature workload management with resource pools, query prioritization, and query budgeting. ClickHouse provides user profiles and quotas but lacks the same depth:
 
 ```sql
 -- ClickHouse: set query-level limits via user profiles
