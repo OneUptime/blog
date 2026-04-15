@@ -8,7 +8,7 @@ Description: Learn how to use unsigned integer types in ClickHouse - UInt8, UInt
 
 ---
 
-ClickHouse provides four unsigned integer types that cover a wide spectrum of use cases - from small flags and status codes to massive counters and identifiers. Choosing the right unsigned integer type reduces storage overhead and improves query performance. This post covers each type, its value range, when to use it, and how to work with it in practice.
+ClickHouse provides several unsigned integer types (UInt8, UInt16, UInt32, UInt64, UInt128, and UInt256). The four most commonly used - UInt8, UInt16, UInt32, and UInt64 - cover a wide spectrum of use cases, from small flags and status codes to massive counters and identifiers. Choosing the right unsigned integer type reduces storage overhead and improves query performance. This post covers each type, its value range, when to use it, and how to work with it in practice.
 
 ## Overview of Unsigned Integer Types
 
