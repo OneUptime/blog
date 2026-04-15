@@ -13,8 +13,11 @@ ClickHouse offers multiple join algorithms. Parallel Hash Join is an optimized v
 ## Join Algorithms in ClickHouse
 
 ClickHouse supports several join algorithms:
-- `hash` - classic single-threaded hash join (default)
+- `default` - auto-selects `direct` or `hash` based on join type and table engine
+- `auto` - tries `hash` first, falls back to `partial_merge` if memory is exceeded
+- `hash` - classic single-threaded hash join
 - `parallel_hash` - multi-threaded hash table construction
+- `partial_merge` - sort-merge with partial materialization of the right table
 - `grace_hash` - memory-safe hash join with partitioned spilling
 - `full_sorting_merge` - sort-merge join for ordered data
 - `direct` - O(1) lookup using dictionaries
@@ -54,7 +57,7 @@ Or configure it globally in `users.xml`:
 
 In standard hash join, one thread builds the entire hash table from the right-side table, then all threads probe it in parallel.
 
-In parallel hash join, the data is split into buckets (default: 16) and each thread builds its own hash table for its bucket simultaneously. This reduces the time to build the hash table proportionally to the number of threads.
+In parallel hash join, the data is split into buckets — one per thread, as determined by `max_threads` — and each thread builds its own hash table for its bucket simultaneously. This reduces the time to build the hash table proportionally to the number of threads.
 
 ## Controlling Parallelism
 
