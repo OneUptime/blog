@@ -8,7 +8,7 @@ Description: Learn how to use xxHash32() and xxHash64() in ClickHouse for extrem
 
 ---
 
-xxHash is one of the fastest non-cryptographic hash algorithms available. ClickHouse provides two variants: `xxHash32()` returns a UInt32 value, and `xxHash64()` returns a UInt64 value. Both accept a single string argument and are optimized for raw throughput. They are ideal for high-volume row hashing, consistent sampling, and partition assignment where speed is the primary concern.
+xxHash is one of the fastest non-cryptographic hash algorithms available. ClickHouse provides two variants: `xxHash32()` returns a UInt32 value, and `xxHash64()` returns a UInt64 value. Both accept one or more arguments of any data type and are optimized for raw throughput. They are ideal for high-volume row hashing, consistent sampling, and partition assignment where speed is the primary concern.
 
 ## Basic Usage
 
@@ -32,16 +32,16 @@ LIMIT 10;
 `xxHash64` is well suited for pipelines that need to hash millions of rows quickly. It outperforms MD5 and SHA functions by a large margin for non-cryptographic use cases.
 
 ```sql
--- Hash a composite key from multiple string columns
+-- Hash a composite key from multiple columns
 SELECT
     user_id,
     session_id,
-    xxHash64(concat(toString(user_id), '_', session_id, '_', toString(event_time))) AS row_fingerprint
+    xxHash64(user_id, session_id, event_time) AS row_fingerprint
 FROM user_events
 LIMIT 20;
 ```
 
-Note: `xxHash32` and `xxHash64` accept a single string argument. To hash multiple columns, concatenate them first using `concat()` or `toString()`.
+Note: `xxHash32` and `xxHash64` accept multiple arguments of any data type, so you can pass columns directly without concatenation.
 
 ## Consistent Sampling
 
@@ -140,4 +140,4 @@ In practice, `xxHash64` and `cityHash64` are both extremely fast and the differe
 
 ## Summary
 
-`xxHash32()` and `xxHash64()` are ClickHouse's fastest hash functions for single-string input. They accept a string argument, so multi-column hashing requires concatenation first. Use `xxHash64` for consistent sampling, fingerprinting, and change detection in high-throughput pipelines. Use `xxHash32` when a compact UInt32 output is preferred. Neither is suitable for cryptographic applications.
+`xxHash32()` and `xxHash64()` are among ClickHouse's fastest hash functions. They accept one or more arguments of any data type, so multi-column hashing can be done by passing columns directly. Use `xxHash64` for consistent sampling, fingerprinting, and change detection in high-throughput pipelines. Use `xxHash32` when a compact UInt32 output is preferred. Neither is suitable for cryptographic applications.
