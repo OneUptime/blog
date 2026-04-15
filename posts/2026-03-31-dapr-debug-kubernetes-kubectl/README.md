@@ -76,7 +76,7 @@ Check the health of Dapr system services:
 ```bash
 kubectl get pods -n dapr-system
 kubectl logs -n dapr-system -l app=dapr-operator
-kubectl logs -n dapr-system -l app=dapr-placement
+kubectl logs -n dapr-system -l app=dapr-placement-server
 kubectl logs -n dapr-system -l app=dapr-sentry
 ```
 
