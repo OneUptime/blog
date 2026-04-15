@@ -152,7 +152,7 @@ ENGINE = MergeTree()
 ORDER BY ts;
 ```
 
-PostgreSQL uses page-level compression (with `pg_lz`) or tablespace-level compression (PostgreSQL 14+), which is less effective for analytical columns.
+PostgreSQL uses TOAST compression (`pglz` by default, or LZ4 in PostgreSQL 14+) for individual large values exceeding ~2 KB, but has no native columnar or page-level compression, which makes it less effective for analytical columns.
 
 ## Replication and Scaling
 
