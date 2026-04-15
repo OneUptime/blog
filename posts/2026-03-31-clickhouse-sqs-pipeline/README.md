@@ -26,6 +26,7 @@ Consumer Service (Python/Go)
 ## Python Consumer Implementation
 
 ```python
+import os
 import boto3
 import json
 import clickhouse_connect
@@ -37,39 +38,41 @@ ch = clickhouse_connect.get_client(
     port=8443,
     secure=True,
     username='etl_service',
-    password='ServicePass!2026'
+    password=os.environ['CLICKHOUSE_PASSWORD']
 )
 
 QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789/events-queue'
 BATCH_SIZE = 10  # SQS max per receive
 
-def process_batch(messages: List[dict]) -> List[dict]:
+def process_batch(messages: List[dict]) -> List[list]:
     rows = []
     for msg in messages:
         try:
             body = json.loads(msg['Body'])
-            rows.append({
-                'event_time': body['timestamp'],
-                'user_id': int(body['user_id']),
-                'event_type': body['event_type'],
-                'payload': json.dumps(body.get('data', {}))
-            })
+            rows.append([
+                body['timestamp'],
+                int(body['user_id']),
+                body['event_type'],
+                json.dumps(body.get('data', {}))
+            ])
         except (KeyError, ValueError, json.JSONDecodeError):
             # Log malformed message, don't re-queue
             pass
     return rows
 
-def insert_to_clickhouse(rows: List[dict]):
+def insert_to_clickhouse(rows: List[list]):
     if not rows:
         return
     ch.insert('events', rows, column_names=['event_time', 'user_id', 'event_type', 'payload'])
 
 def delete_messages(messages: List[dict]):
-    entries = [
-        {'Id': str(i), 'ReceiptHandle': msg['ReceiptHandle']}
-        for i, msg in enumerate(messages)
-    ]
-    sqs.delete_message_batch(QueueUrl=QUEUE_URL, Entries=entries)
+    for i in range(0, len(messages), 10):
+        batch = messages[i:i + 10]
+        entries = [
+            {'Id': str(j), 'ReceiptHandle': msg['ReceiptHandle']}
+            for j, msg in enumerate(batch)
+        ]
+        sqs.delete_message_batch(QueueUrl=QUEUE_URL, Entries=entries)
 
 def run_consumer():
     while True:
