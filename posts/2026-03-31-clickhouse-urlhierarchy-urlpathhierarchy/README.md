@@ -8,7 +8,7 @@ Description: Learn how URLHierarchy() and URLPathHierarchy() generate arrays of 
 
 ---
 
-`URLHierarchy(url)` returns an `Array(String)` containing every prefix of the URL up to and including each path segment separator `/`. Each element ends with a `/`. The scheme, host, and each successive path depth are all represented as separate array entries.
+`URLHierarchy(url)` returns an `Array(String)` containing every prefix of the URL, truncated at the `/`, `?`, and `#` symbols. The scheme, host, and each successive path depth are all represented as separate array entries.
 
 `URLPathHierarchy(url)` is similar but starts from the first `/` of the path only, omitting the scheme and host portions. This is useful when you want path-level roll-ups without the domain.
 
@@ -32,7 +32,7 @@ url                                              full_hierarchy
 https://example.com/blog/2024/clickhouse-tips/  ['https://example.com/','https://example.com/blog/','https://example.com/blog/2024/','https://example.com/blog/2024/clickhouse-tips/']
 
 path_hierarchy
-['/','blog/','blog/2024/','blog/2024/clickhouse-tips/']
+['/blog/','/blog/2024/','/blog/2024/clickhouse-tips/']
 ```
 
 ## Aggregating Page Views at Every Level
@@ -61,13 +61,13 @@ LIMIT 30;
 ```sql
 -- Summarise traffic by top-level section using URLPathHierarchy
 SELECT
-    -- The second element of URLPathHierarchy is the top-level section
-    URLPathHierarchy(url)[2]  AS top_section,
+    -- The first element of URLPathHierarchy is the top-level section
+    URLPathHierarchy(url)[1]  AS top_section,
     count()                   AS hits,
     uniq(visitor_id)          AS unique_visitors
 FROM page_views
 WHERE event_date = yesterday()
-  AND length(URLPathHierarchy(url)) >= 2
+  AND length(URLPathHierarchy(url)) >= 1
 GROUP BY top_section
 ORDER BY hits DESC
 LIMIT 20;
@@ -105,7 +105,7 @@ SELECT lp.leaf
 FROM leaf_pages lp
 LEFT JOIN page_prefixes pp
     ON lp.leaf = pp.prefix
-WHERE pp.prefix = ''  -- no matching parent prefix entry
+WHERE pp.prefix IS NULL  -- no matching parent prefix entry
 LIMIT 30;
 ```
 
