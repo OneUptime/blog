@@ -141,7 +141,7 @@ CREATE TABLE events_binary (
 -- Insert by converting UUID string to bytes
 INSERT INTO events_binary (id, event_time, event_type)
 SELECT
-    UUIDStringToNum(generateUUIDv4()) AS id,
+    UUIDStringToNum(toString(generateUUIDv4())) AS id,
     now()                             AS event_time,
     'click'                           AS event_type;
 
