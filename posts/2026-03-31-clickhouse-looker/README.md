@@ -45,8 +45,16 @@ HOST ANY;
 -- Grant SELECT on the analytics database
 GRANT SELECT ON analytics.* TO looker_user;
 
--- Allow creating temporary tables for PDT support
-GRANT CREATE TEMPORARY TABLE ON *.* TO looker_user;
+-- Create the scratch database for Persistent Derived Tables (PDTs)
+-- Looker materializes PDTs as real tables in this database
+CREATE DATABASE IF NOT EXISTS analytics_looker_scratch;
+
+-- Grant permissions for PDT lifecycle (create, populate, query, drop)
+GRANT CREATE TABLE ON analytics_looker_scratch.* TO looker_user;
+GRANT INSERT ON analytics_looker_scratch.* TO looker_user;
+GRANT SELECT ON analytics_looker_scratch.* TO looker_user;
+GRANT DROP TABLE ON analytics_looker_scratch.* TO looker_user;
+GRANT ALTER ON analytics_looker_scratch.* TO looker_user;
 
 -- Grant access to system tables for introspection
 GRANT SELECT ON system.columns     TO looker_user;
@@ -71,7 +79,7 @@ Schema:      analytics
 SSL:         Enabled (recommended for production)
 
 Additional JDBC parameters:
-ssl=true&sslmode=verify-full
+ssl=true&sslmode=STRICT
 
 PDT (Persistent Derived Tables):
   PDT Connection Override: looker_user
@@ -145,6 +153,12 @@ view: orders {
     type: string
     map_layer_name: countries
     sql: ${TABLE}.country ;;
+  }
+
+  dimension: total_amount {
+    type: number
+    sql: ${TABLE}.total_amount ;;
+    value_format_name: usd
   }
 
   dimension: channel {
