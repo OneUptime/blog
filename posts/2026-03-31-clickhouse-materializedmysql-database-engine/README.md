@@ -28,13 +28,19 @@ Create a MySQL user with REPLICATION privileges:
 
 ```sql
 CREATE USER 'ch_repl'@'%' IDENTIFIED BY 'secret';
-GRANT REPLICATION SLAVE, REPLICATION CLIENT, SELECT ON *.* TO 'ch_repl'@'%';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT, RELOAD, SELECT ON *.* TO 'ch_repl'@'%';
 FLUSH PRIVILEGES;
 ```
 
 ## Creating the Database
 
-In ClickHouse, create a database with the MaterializedMySQL engine:
+MaterializedMySQL is an experimental engine. Enable it in ClickHouse before use:
+
+```sql
+SET allow_experimental_database_materialized_mysql = 1;
+```
+
+Then create a database with the MaterializedMySQL engine:
 
 ```sql
 CREATE DATABASE mysql_replica
