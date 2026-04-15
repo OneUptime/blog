@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Materialized View, Late Data, Stream Processing, Analytics
 
-Description: Learn strategies for handling late-arriving data in ClickHouse materialized views, including reprocessing, watermarks, and buffer window patterns.
+Description: Learn strategies for handling late-arriving data in ClickHouse materialized views, including reprocessing, buffer window patterns, and ReplacingMergeTree.
 
 ---
 
@@ -80,6 +80,13 @@ SELECT
 FROM raw_events
 WHERE event_time >= now() - INTERVAL 4 HOUR
 GROUP BY hour, event_type;
+```
+
+When querying, use `FINAL` to get deduplicated results, since ReplacingMergeTree only removes duplicate rows during background merges:
+
+```sql
+SELECT hour, event_type, cnt
+FROM events_hourly_replacing FINAL;
 ```
 
 ## Strategy 4: Dual-Write Pattern
