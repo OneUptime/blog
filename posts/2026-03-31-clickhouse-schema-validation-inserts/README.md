@@ -13,13 +13,13 @@ ClickHouse does not enforce application-level constraints like foreign keys or N
 ## Why Schema Validation Matters
 
 - ClickHouse accepts empty strings for String columns even when a value is expected
-- Numeric overflow is silently clamped
+- Numeric overflow is silently wrapped (not clamped) for integer types
 - Missing JSON keys result in default values, not errors
 
 ## Validation with Pydantic (Python)
 
 ```python
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional
 
@@ -31,14 +31,16 @@ class EventRow(BaseModel):
     page_url: str
     value: Optional[float] = None
 
-    @validator('event_type')
+    @field_validator('event_type')
+    @classmethod
     def valid_event_type(cls, v):
         allowed = {'click', 'view', 'purchase', 'signup'}
         if v not in allowed:
             raise ValueError(f'Invalid event_type: {v}')
         return v
 
-    @validator('user_id')
+    @field_validator('user_id')
+    @classmethod
     def positive_user_id(cls, v):
         if v <= 0:
             raise ValueError('user_id must be positive')
@@ -57,7 +59,7 @@ def validated_insert(raw_rows: list[dict]):
     valid, rejected = [], []
     for row in raw_rows:
         try:
-            valid.append(EventRow(**row).dict())
+            valid.append(EventRow(**row).model_dump())
         except Exception as e:
             rejected.append({'row': row, 'error': str(e)})
 
@@ -80,7 +82,7 @@ ClickHouse's `input_format_null_as_default` setting silently fills nulls. Disabl
 SET input_format_null_as_default = 0;
 ```
 
-## Using CHECK_QUERY Format Setting
+## Rejecting Unknown Fields on Insert
 
 Insert with `input_format_skip_unknown_fields = 0` to fail on unexpected columns:
 
