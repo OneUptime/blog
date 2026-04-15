@@ -90,9 +90,8 @@ Use projections when you want automatic query rewriting without managing a separ
 ```sql
 -- See projections defined on a table
 SELECT name, query
-FROM system.projection_parts
-WHERE table = 'events'
-LIMIT 5;
+FROM system.projections
+WHERE table = 'events';
 ```
 
 ## Summary
