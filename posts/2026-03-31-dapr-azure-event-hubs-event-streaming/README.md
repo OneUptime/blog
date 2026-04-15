@@ -113,14 +113,15 @@ async function publishOrder(order) {
 Subscribe to events using a declarative subscription:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-subscription
 spec:
   pubsubname: eventhubs-pubsub
   topic: orders
-  route: /orders/process
+  routes:
+    default: /orders/process
 ```
 
 Handle the event in your service:
