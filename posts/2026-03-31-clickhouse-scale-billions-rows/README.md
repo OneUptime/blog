@@ -64,7 +64,7 @@ FROM system.parts
 WHERE active = 1
   AND database = currentDatabase()
 GROUP BY table
-ORDER BY compressed DESC;
+ORDER BY sum(data_compressed_bytes) DESC;
 ```
 
 ## Skip Indexes for Low-Selectivity Columns
@@ -84,12 +84,27 @@ ALTER TABLE events MATERIALIZE INDEX idx_event_name;
 
 ## Sampling for Approximate Queries
 
-At billion scale, approximate queries can answer dashboard questions instantly:
+At billion scale, approximate queries can answer dashboard questions instantly.
+
+Using `SAMPLE` requires a `SAMPLE BY` expression in the table definition. The expression must use columns from the `ORDER BY` key:
+
+```sql
+-- Add SAMPLE BY to the table definition (must be part of ORDER BY)
+CREATE TABLE events_sampled
+(
+    -- ... same columns ...
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(ts)
+ORDER BY (tenant_id, event_name, ts, sipHash64(user_id))
+SAMPLE BY sipHash64(user_id)
+SETTINGS index_granularity = 8192;
+```
 
 ```sql
 -- Approximate unique users (sample 1%)
 SELECT uniqExact(user_id) * 100 AS approx_unique_users
-FROM events SAMPLE 0.01
+FROM events_sampled SAMPLE 0.01
 WHERE ts >= now() - INTERVAL 30 DAY;
 
 -- Or use built-in approximate functions
