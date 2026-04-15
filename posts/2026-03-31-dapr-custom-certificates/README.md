@@ -58,7 +58,7 @@ helm upgrade --install dapr dapr/dapr \
 
 ## Trusting Private CA for External Components
 
-When a state store or message broker uses a TLS certificate from a private CA, configure the component to trust it:
+When a state store or message broker uses mTLS, configure the component with client certificates for authentication:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -73,10 +73,6 @@ spec:
     value: "redis.internal.example.com:6379"
   - name: enableTLS
     value: "true"
-  - name: caCert
-    secretKeyRef:
-      name: internal-ca
-      key: ca.crt
   - name: clientCert
     secretKeyRef:
       name: redis-client-cert
@@ -86,6 +82,8 @@ spec:
       name: redis-client-cert
       key: tls.key
 ```
+
+Note: The available TLS metadata fields vary by component. The Redis state store supports `enableTLS`, `clientCert`, and `clientKey` but does not have a `caCert` field. To trust a private CA for Redis, mount the CA certificate into the sidecar container's trust store.
 
 ## Verifying Certificate Rotation
 
