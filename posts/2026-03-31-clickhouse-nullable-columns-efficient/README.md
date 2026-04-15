@@ -65,7 +65,7 @@ FROM events;
 
 ## Performance Impact: Benchmark Comparison
 
-Nullable columns are excluded from primary key and skip index optimization paths in several cases. Avoid them in ORDER BY keys.
+Nullable columns cannot be used in ORDER BY or PRIMARY KEY columns and are excluded from skip index optimization paths. ClickHouse will reject a table definition that includes a Nullable type in the sort key.
 
 ```sql
 -- Slower: Nullable column in filter
@@ -102,7 +102,7 @@ ENGINE = MergeTree()
 ORDER BY (sensor_id, read_time);
 
 -- Query: find sensors that never report humidity
-SELECT DISTINCT sensor_id
+SELECT sensor_id
 FROM sensor_readings
 GROUP BY sensor_id
 HAVING countIf(isNotNull(humidity)) = 0;
@@ -116,7 +116,7 @@ ClickHouse aggregate functions ignore NULL values, matching SQL standard behavio
 -- avg(), sum(), min(), max() all skip NULLs automatically
 SELECT
     avg(duration_ms)    AS avg_duration,   -- NULLs excluded from avg
-    sum(duration_ms)    AS total_duration, -- NULLs treated as 0 in sum
+    sum(duration_ms)    AS total_duration, -- NULLs excluded from sum
     count(duration_ms)  AS non_null_count, -- counts only non-NULL rows
     count()             AS all_rows
 FROM events;
@@ -132,7 +132,7 @@ ALTER TABLE events
     MATERIALIZED ifNull(region, 'unknown');
 
 -- Rebuild materialized values for existing rows
-ALTER TABLE events UPDATE region_safe = ifNull(region, 'unknown') WHERE 1;
+ALTER TABLE events MATERIALIZE COLUMN region_safe;
 
 -- Now query the materialized column, which is non-nullable and indexable
 SELECT count(), region_safe
@@ -151,10 +151,10 @@ SELECT event_id, tag
 FROM events
 ARRAY JOIN tags AS tag;
 
--- Use assumeNotNull() when you must work with Nullable arrays
+-- Use ifNull() to convert NULL arrays to empty arrays before ARRAY JOIN
 SELECT event_id, tag
 FROM events
-ARRAY JOIN assumeNotNull(nullable_tags) AS tag;
+ARRAY JOIN ifNull(nullable_tags, []) AS tag;
 ```
 
 ## Decision Flowchart
