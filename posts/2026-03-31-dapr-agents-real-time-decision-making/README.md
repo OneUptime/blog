@@ -59,15 +59,15 @@ def decide():
     # Make decision
     if reading > baseline["threshold"]:
         action = "alert"
-        _trigger_alert(client, sensor_id, reading)
+        _trigger_alert(sensor_id, reading)
     else:
         action = "normal"
 
     return jsonify({"status": "processed", "action": action}), 200
 
-def _trigger_alert(client, sensor_id, reading):
-    with DaprClient() as c:
-        c.publish_event(
+def _trigger_alert(sensor_id, reading):
+    with DaprClient() as client:
+        client.publish_event(
             pubsub_name="pubsub",
             topic_name="alerts",
             data=json.dumps({"sensor": sensor_id, "value": reading, "ts": time.time()})
@@ -114,8 +114,13 @@ metadata:
   name: decision-agent
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: decision-agent
   template:
     metadata:
+      labels:
+        app: decision-agent
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "decision-agent"
@@ -133,4 +138,4 @@ spec:
 
 ## Summary
 
-Dapr enables real-time decision agents by combining fast pub/sub event delivery with low-latency state reads and service invocation. By designing your agent as a stateless event handler enriched with Dapr building blocks, you can scale horizontally to handle high-velocity event streams with consistent sub-millisecond processing times.
+Dapr enables real-time decision agents by combining fast pub/sub event delivery with low-latency state reads and service invocation. By designing your agent as a stateless event handler enriched with Dapr building blocks, you can scale horizontally to handle high-velocity event streams with low-latency processing times.
