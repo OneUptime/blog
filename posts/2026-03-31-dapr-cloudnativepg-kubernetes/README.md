@@ -99,6 +99,7 @@ package main
 
 import (
     "context"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -148,7 +149,7 @@ CNPG manages automatic failover. Configure the Dapr component to use the read-wr
 dapr-pg-cluster-rw.default.svc.cluster.local:5432
 ```
 
-For read-heavy workloads, use the read-only endpoint (`-r`) for state reads.
+For read-heavy workloads, use the read-only endpoint (`-ro`) to route queries to replica instances only, or (`-r`) to route to any instance including the primary.
 
 ## Summary
 
