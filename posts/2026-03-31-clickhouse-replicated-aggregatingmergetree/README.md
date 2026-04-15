@@ -16,12 +16,12 @@ Replicated engines require a coordination service. The `{shard}` and `{replica}`
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/macros.xml on replica 1 -->
-<yandex>
+<clickhouse>
   <macros>
     <shard>01</shard>
     <replica>replica-01</replica>
   </macros>
-</yandex>
+</clickhouse>
 ```
 
 ## Creating a ReplicatedAggregatingMergeTree Table
@@ -135,9 +135,9 @@ WHERE table = 'hourly_user_stats';
 ```
 
 ```text
-database  table               replica_name  is_leader  absolute_delay  queue_size
-default   hourly_user_stats   replica-01    1          0               0
-default   hourly_user_stats   replica-02    0          0               0
+database  table               replica_name  replica_path                                           is_leader  is_readonly  absolute_delay  queue_size
+default   hourly_user_stats   replica-01    /clickhouse/tables/01/hourly_user_stats/replicas/...    1          0            0               0
+default   hourly_user_stats   replica-02    /clickhouse/tables/01/hourly_user_stats/replicas/...    0          0            0               0
 ```
 
 ## Forcing a Merge of Partial States
@@ -153,11 +153,12 @@ After `OPTIMIZE ... FINAL`, each unique `(event_hour, event_type, country)` comb
 
 ## Querying a Specific Replica
 
+To read from a specific replica, connect directly to that node and query the local replicated table. The `prefer_localhost_replica` setting only affects queries through a Distributed table.
+
 ```sql
--- Force query to execute on a specific replica (useful for testing)
+-- Connect to a specific node and query its local replicated table directly
 SELECT countMerge(event_count) AS total_events
-FROM hourly_user_stats
-SETTINGS prefer_localhost_replica = 1;
+FROM hourly_user_stats;
 ```
 
 ## Replication Lag Monitoring
@@ -203,7 +204,7 @@ ORDER BY events DESC;
 - Requires ZooKeeper or ClickHouse Keeper for coordination.
 - Inserts must use `*State` combinators - raw values cannot be inserted directly.
 - Reads must use `*Merge` combinators to finalize aggregates.
-- Schema changes (adding columns) must be applied to all replicas.
+- Schema changes (ALTER TABLE) are replicated through ZooKeeper/Keeper, but all replicas must be running to apply them consistently.
 
 ## Summary
 
