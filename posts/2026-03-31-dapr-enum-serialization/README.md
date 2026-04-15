@@ -10,7 +10,7 @@ Description: Handle enum serialization in Dapr across polyglot services using st
 
 ## Enum Serialization Challenges in Dapr
 
-Enums are a common source of deserialization failures in polyglot Dapr systems. The core problem: .NET serializes enums as integers by default (e.g., `2`), while Go expects string names (e.g., `"PROCESSING"`). A .NET service publishing `OrderStatus.Processing` as `2` will cause a Python or Go subscriber to fail with an unknown value.
+Enums are a common source of deserialization failures in polyglot Dapr systems. The core problem: .NET serializes enums as integers by default (e.g., `2`), while Go expects string names (e.g., `"PROCESSING"`). A .NET service publishing `OrderStatus.Processing` as `1` will cause a Python or Go subscriber to fail with an unknown value.
 
 **The fix**: Always serialize enums as strings across all services.
 
