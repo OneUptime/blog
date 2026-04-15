@@ -13,10 +13,10 @@ When debugging Dapr service behavior, you need visibility into exactly which API
 ## What API Logging Captures
 
 When enabled, Dapr API logging records:
-- HTTP method, URL, and status code for every sidecar API call
-- gRPC method names and status codes
-- Request timing information
-- Component name and operation type
+- HTTP method and route for every sidecar API call
+- gRPC method names
+- App ID and instance information
+- User agent details
 
 ## Enabling API Logging
 
@@ -81,17 +81,6 @@ dapr run \
   -- node server.js
 ```
 
-## Using with Dapr Dashboard
-
-The Dapr Dashboard also shows recent API calls. Access it:
-
-```bash
-dapr dashboard
-# Opens http://localhost:8080
-```
-
-Navigate to your app to see recent API call history.
-
 ## Disabling in Production
 
 API logging generates high log volume in production. Disable it after debugging:
@@ -122,4 +111,4 @@ kubectl logs deploy/order-service -c daprd | jq -c 'select(.path | test("subscri
 
 ## Summary
 
-Dapr API logging provides request-level visibility into every sidecar API call including HTTP method, path, status code, and duration. Enable it temporarily via the `dapr.io/enable-api-logging: "true"` annotation combined with `debug` log level when debugging issues. Disable it in production after investigation to avoid excessive log volume and storage costs.
+Dapr API logging provides request-level visibility into every sidecar API call including HTTP method and route. Enable it temporarily via the `dapr.io/enable-api-logging: "true"` annotation when debugging issues. Disable it in production after investigation to avoid excessive log volume and storage costs.
