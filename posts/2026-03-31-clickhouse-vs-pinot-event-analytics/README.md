@@ -36,8 +36,12 @@ Pinot's indexing model is one of its defining features. Tables can have multiple
   "tableIndexConfig": {
     "invertedIndexColumns": ["user_id", "event_type"],
     "rangeIndexColumns": ["occurred_at"],
-    "bloomFilterColumns": ["session_id"],
-    "sortedColumn": ["occurred_at"]
+    "bloomFilterConfigs": {
+      "session_id": {
+        "fpp": 0.01
+      }
+    },
+    "sortedColumn": "occurred_at"
   }
 }
 ```
@@ -118,7 +122,7 @@ Pinot supports similar queries through its SQL interface but is optimized for si
 
 ## Operational Complexity
 
-Pinot requires a Controller, Broker, Server, and Minion service, plus ZooKeeper and deep storage. Schema and table configurations are managed through REST APIs and are more rigid than ClickHouse's SQL-based DDL.
+Pinot requires a Controller, Broker, and Server service, plus ZooKeeper and deep storage. An optional Minion service can handle auxiliary tasks like segment merging and purging. Schema and table configurations are managed through REST APIs and are more rigid than ClickHouse's SQL-based DDL.
 
 ClickHouse has a much simpler operational model. Schema is managed with standard SQL DDL. The cluster can be as simple as a single server for moderate workloads.
 
