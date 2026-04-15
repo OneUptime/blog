@@ -25,13 +25,7 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region us-east-1
 
-# Enable DynamoDB Streams (required for Global Tables)
-aws dynamodb update-table \
-  --table-name dapr-state \
-  --stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES \
-  --region us-east-1
-
-# Add replicas to other regions
+# Add replicas to other regions (DynamoDB Streams are auto-enabled for Global Tables v2)
 aws dynamodb update-table \
   --table-name dapr-state \
   --replica-updates '[
@@ -110,7 +104,7 @@ aws iam create-policy \
 
 # Annotate the Kubernetes service account for IRSA
 kubectl annotate serviceaccount dapr \
-  eks.amazonaws.com/role-arn=arn:aws:iam::123456789:role/DaprDynamoDBRole \
+  eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/DaprDynamoDBRole \
   -n default
 ```
 
@@ -119,11 +113,12 @@ kubectl annotate serviceaccount dapr \
 Global Tables use last-writer-wins conflict resolution based on timestamps. Use Dapr ETags for application-level optimistic concurrency:
 
 ```python
-import dapr.clients as dapr
+from dapr.clients import DaprClient
+from dapr.clients.grpc._state import StateOptions, Concurrency
 import json
 
 def update_global_counter(counter_key: str, increment: int):
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         max_retries = 5
         for attempt in range(max_retries):
             # Get current value with ETag
@@ -142,8 +137,8 @@ def update_global_counter(counter_key: str, increment: int):
                     key=counter_key,
                     value=json.dumps(current),
                     etag=current_etag,
-                    options=dapr.StateOptions(
-                        concurrency=dapr.Concurrency.FirstWrite
+                    options=StateOptions(
+                        concurrency=Concurrency.first_write
                     )
                 )
                 return current["value"]
