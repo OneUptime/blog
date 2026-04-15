@@ -34,6 +34,9 @@ package main
 
 import (
   "context"
+  "encoding/json"
+  "fmt"
+
   dapr "github.com/dapr/go-sdk/client"
   "github.com/dapr/go-sdk/actor"
 )
@@ -45,7 +48,7 @@ type OrgState struct {
 }
 
 type OrgActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
   daprClient dapr.Client
 }
 
@@ -101,7 +104,7 @@ type DeptState struct {
 }
 
 type DepartmentActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *DepartmentActor) Type() string { return "Department" }
