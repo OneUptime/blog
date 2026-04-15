@@ -75,7 +75,7 @@ When you insert data into a `ReplicatedMergeTree` table:
 
 1. The receiving server writes the new data part to its local disk
 2. It registers the insert in ClickHouse Keeper (or ZooKeeper) as a replication log entry
-3. Other replicas detect the new log entry and pull the data part from the leader replica using HTTP
+3. Other replicas detect the new log entry and pull the data part from the source replica using HTTP
 4. Each replica writes the part to its own local disk and confirms completion in Keeper
 
 This is an **asynchronous pull-based** replication model. Replicas fetch data from each other rather than having a primary push to all replicas.
@@ -101,11 +101,10 @@ SELECT
     database,
     table,
     type,
-    is_done,
+    is_currently_executing,
     num_tries,
     last_exception
 FROM system.replication_queue
-WHERE is_done = 0
 ORDER BY create_time;
 ```
 
