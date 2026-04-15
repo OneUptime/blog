@@ -46,7 +46,7 @@ The index stores `(user_id, event_time)` tuples for rows 0, 8192, 16384, 24576, 
 
 ## Mark Files: Translating Index to Disk Position
 
-For each column, a `.mrk3` mark file stores the byte offset in the compressed `.bin` file for each granule. When the primary index identifies relevant granules, mark files tell ClickHouse exactly where to seek in each column file.
+For each column, a `.mrk2` mark file stores the block offset in the compressed `.bin` file and the granule offset within the uncompressed block for each granule. When the primary index identifies relevant granules, mark files tell ClickHouse exactly where to seek in each column file.
 
 ```text
 Query: WHERE user_id = 42 AND event_time >= '2026-03-01'
