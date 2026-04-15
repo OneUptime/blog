@@ -65,9 +65,9 @@ SETTINGS
 ## Assigning Profiles to Users
 
 ```sql
-ALTER USER alice SETTINGS PROFILE 'analyst_profile';
-ALTER USER dashboard_service SETTINGS PROFILE 'dashboard_profile';
-ALTER USER etl_pipeline SETTINGS PROFILE 'etl_profile';
+ALTER USER alice ADD PROFILES 'analyst_profile';
+ALTER USER dashboard_service ADD PROFILES 'dashboard_profile';
+ALTER USER etl_pipeline ADD PROFILES 'etl_profile';
 ```
 
 ## Assigning Profiles to Roles
@@ -78,8 +78,8 @@ Preferred approach for managing groups:
 CREATE ROLE analysts;
 CREATE ROLE dashboard_users;
 
-ALTER ROLE analysts SETTINGS PROFILE 'analyst_profile';
-ALTER ROLE dashboard_users SETTINGS PROFILE 'dashboard_profile';
+ALTER ROLE analysts ADD PROFILES 'analyst_profile';
+ALTER ROLE dashboard_users ADD PROFILES 'dashboard_profile';
 
 GRANT analysts TO alice, bob;
 GRANT dashboard_users TO grafana_service;
@@ -92,7 +92,7 @@ GRANT dashboard_users TO grafana_service;
 SELECT name, id FROM system.settings_profiles;
 
 -- View settings in a profile
-SELECT name, value, readonly
+SELECT setting_name, value, writability
 FROM system.settings_profile_elements
 WHERE profile_name = 'analyst_profile';
 ```
@@ -106,8 +106,7 @@ CREATE SETTINGS PROFILE base_profile
 SETTINGS max_execution_time = 60, max_memory_usage = 5000000000;
 
 CREATE SETTINGS PROFILE senior_analyst_profile
-INHERITS base_profile
-SETTINGS max_memory_usage = 30000000000;  -- Override just this setting
+SETTINGS INHERIT 'base_profile', max_memory_usage = 30000000000;  -- Override just this setting
 ```
 
 ## Readonly Setting to Prevent Overrides
