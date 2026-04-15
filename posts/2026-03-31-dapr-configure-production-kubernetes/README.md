@@ -35,6 +35,10 @@ global:
   ha:
     enabled: true
     replicaCount: 3
+  mtls:
+    enabled: true
+    workloadCertTTL: "24h"
+    allowedClockSkew: "15m"
 
 dapr_operator:
   replicaCount: 2
@@ -68,15 +72,6 @@ dapr_placement:
 
 dapr_sidecar_injector:
   replicaCount: 2
-
-dapr_dashboard:
-  enabled: true
-  replicaCount: 1
-
-mtls:
-  enabled: true
-  workloadCertTTL: "24h"
-  allowedClockSkew: "15m"
 ```
 
 ## Enabling Pod Disruption Budgets
