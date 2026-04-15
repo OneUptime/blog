@@ -167,7 +167,7 @@ kubectl create secret generic staging-secrets \
 
 ```yaml
 # external-secrets for staging
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: staging-dapr-secrets
