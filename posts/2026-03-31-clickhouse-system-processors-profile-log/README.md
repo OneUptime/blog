@@ -32,8 +32,8 @@ SET log_processors_profiles = 1;
 | Column | Type | Description |
 |--------|------|-------------|
 | `query_id` | String | Links to `system.query_log` |
-| `processor_id` | UInt64 | Unique ID of this processor instance |
-| `name` | String | Processor class name (e.g., `MergeTreeSelectProcessor`) |
+| `id` | UInt64 | ID of the processor |
+| `name` | LowCardinality(String) | Processor class name (e.g., `MergeTreeSelectProcessor`) |
 | `input_rows` | UInt64 | Rows consumed from inputs |
 | `input_bytes` | UInt64 | Bytes consumed from inputs |
 | `output_rows` | UInt64 | Rows produced to outputs |
