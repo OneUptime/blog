@@ -108,14 +108,14 @@ Track turn queuing pressure with Dapr metrics:
 
 ```promql
 # High pending call count suggests slow actor methods
-dapr_actor_pending_actor_calls{actor_type="Counter"}
+dapr_runtime_actor_pending_actor_calls{actor_type="Counter"}
 ```
 
 Alert if pending calls consistently exceed 10:
 
 ```yaml
 - alert: ActorTurnQueueDeep
-  expr: dapr_actor_pending_actor_calls{actor_type="Counter"} > 10
+  expr: dapr_runtime_actor_pending_actor_calls{actor_type="Counter"} > 10
   for: 2m
   annotations:
     summary: "Actor turn queue is backing up"
