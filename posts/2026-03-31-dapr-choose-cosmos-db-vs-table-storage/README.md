@@ -16,7 +16,7 @@ Both Azure Cosmos DB and Azure Table Storage can serve as Dapr state stores, and
 
 | Feature | Azure Cosmos DB | Azure Table Storage |
 |---------|----------------|---------------------|
-| Consistency | 5 tunable levels | Eventual |
+| Consistency | 5 tunable levels | Strong (single-region) |
 | Latency | Single-digit ms globally | Low, but variable |
 | Global distribution | Multi-region, multi-write | Geo-redundant (read-only replicas) |
 | Throughput model | RU/s (provisioned or serverless) | Pay-per-operation |
@@ -62,7 +62,7 @@ spec:
 Choose Table Storage when:
 - Your application has moderate, predictable throughput
 - Cost is a primary concern (Table Storage can be 10-20x cheaper)
-- Eventual consistency is acceptable for your state patterns
+- You don't need tunable consistency levels across multiple regions
 - You already have a storage account and want to avoid provisioning a new Cosmos DB
 
 Table Storage configuration for Dapr:
@@ -93,16 +93,16 @@ For a service processing 1M state reads and 500K writes per day:
 
 ```bash
 # Azure Table Storage cost estimate
-# Read: 1,000,000 * $0.00000036 = $0.36/day
+# Read: 1,000,000 * $0.000000036 = $0.036/day
 # Write: 500,000 * $0.000000036 = $0.018/day
 # Storage: 1GB * $0.045/month = $0.045/month
-# Total: ~$11.50/month
+# Total: ~$1.67/month
 
 # Azure Cosmos DB (serverless) cost estimate
 # 1M reads at 1 RU each: 1,000,000 RU * $0.000000250 = $0.25/day
 # 500K writes at 5 RU each: 2,500,000 RU * $0.000000250 = $0.625/day
 # Storage: 1GB * $0.25/month = $0.25/month
-# Total: ~$27.50/month
+# Total: ~$26.50/month
 ```
 
 ## Migrating Between the Two
@@ -117,4 +117,4 @@ If you start with Table Storage and need to upgrade to Cosmos DB:
 
 ## Summary
 
-Azure Table Storage is the cost-efficient choice for microservices with moderate, predictable throughput where eventual consistency is acceptable. Azure Cosmos DB is the right investment when you need guaranteed low latency globally, strong consistency, or multi-master replication. For most new projects on Azure, start with Table Storage and migrate to Cosmos DB when your scalability or consistency requirements demand it.
+Azure Table Storage is the cost-efficient choice for microservices with moderate, predictable throughput where strong single-region consistency is sufficient. Azure Cosmos DB is the right investment when you need guaranteed low latency globally, strong consistency, or multi-master replication. For most new projects on Azure, start with Table Storage and migrate to Cosmos DB when your scalability or consistency requirements demand it.
