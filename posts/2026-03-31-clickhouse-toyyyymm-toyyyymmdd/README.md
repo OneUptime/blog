@@ -112,7 +112,7 @@ ORDER BY device_id, metric;
 
 ## Compact Date Storage in Summary Tables
 
-For pre-aggregated summary tables, storing the date as a `UInt32` column using `toYYYYMM` or `toYYYYMMDD` saves space compared to a `Date` column while remaining sortable and human-readable.
+For pre-aggregated summary tables, storing the date as a `UInt32` column using `toYYYYMM` or `toYYYYMMDD` provides a sortable, human-readable key that doubles as a natural grouping dimension. Note that `UInt32` (4 bytes) uses more storage than a `Date` column (2 bytes), but the integer representation is convenient when the column serves as an aggregation key rather than a precise date.
 
 ```sql
 -- Populate a monthly summary table using toYYYYMM as the key column
