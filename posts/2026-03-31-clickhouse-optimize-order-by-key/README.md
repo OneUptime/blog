@@ -123,7 +123,7 @@ ORDER BY (domain, ts);
 
 ## Tradeoffs: More Key Columns vs Compression
 
-Every additional column in `ORDER BY` increases CPU time during data ingestion (more columns to sort) and may reduce compression for earlier columns (less clustering per-column):
+Every additional column in `ORDER BY` increases CPU time during data ingestion (more columns to sort) and may reduce compression for non-key columns (the tighter sort order constrains how values in non-key columns are arranged):
 
 ```sql
 -- Balanced: 3 columns cover common query patterns
@@ -170,7 +170,14 @@ The primary index covers `(service_id, ts)`, using less memory. Data is sorted b
 
 ## Altering ORDER BY on an Existing Table
 
-You cannot change `ORDER BY` on an existing MergeTree table without recreation. Plan carefully:
+You can add new columns to the end of the `ORDER BY` key using `ALTER TABLE`:
+
+```sql
+-- Add a column to the end of the existing sorting key
+ALTER TABLE events MODIFY ORDER BY (tenant_id, ts, user_id);
+```
+
+However, you cannot remove columns or reorder existing ones. For a fundamentally different key order, you need to recreate the table:
 
 ```sql
 -- Create a new table with the correct key
