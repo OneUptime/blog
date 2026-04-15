@@ -54,7 +54,7 @@ def test_get_daily_active_users():
 Use `testcontainers` to spin up a real ClickHouse instance per test session:
 
 ```bash
-pip install testcontainers[clickhouse] pytest
+pip install testcontainers[clickhouse] clickhouse-connect pytest
 ```
 
 ```python
@@ -87,8 +87,8 @@ def ch_client(clickhouse_container):
 ```python
 # test_integration.py
 def test_insert_and_query(ch_client):
-    ch_client.insert("events", [[1, None, "login"], [2, None, "click"]],
-                     column_names=["user_id", "event_time", "event_type"])
+    ch_client.insert("events", [[1, "login"], [2, "click"]],
+                     column_names=["user_id", "event_type"])
 
     result = ch_client.query("SELECT count() FROM events")
     assert result.first_row[0] == 2
@@ -104,7 +104,7 @@ def test_materialized_view(ch_client):
         ORDER BY event_type
         AS SELECT event_type, count() AS cnt FROM events GROUP BY event_type
     """)
-    ch_client.insert("events", [[3, None, "login"]], column_names=["user_id", "event_time", "event_type"])
+    ch_client.insert("events", [[3, "login"]], column_names=["user_id", "event_type"])
     ch_client.command("OPTIMIZE TABLE event_counts FINAL")
     result = ch_client.query("SELECT cnt FROM event_counts WHERE event_type = 'login'")
     assert result.first_row[0] >= 1
