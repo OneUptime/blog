@@ -112,7 +112,7 @@ SELECT
     event_type,
     payload,
     'user_events'               AS routing_key,
-    parseDateTimeBestEffort(ts) AS ts
+    parseDateTime64BestEffort(ts, 3) AS ts
 FROM rabbitmq_source;
 ```
 
