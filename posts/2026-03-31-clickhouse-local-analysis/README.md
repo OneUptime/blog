@@ -57,8 +57,8 @@ clickhouse-local \
 clickhouse-local \
     --query "
     SELECT
-        JSONExtractString(line, 'user_id') AS user_id,
-        JSONExtractString(line, 'event')   AS event
+        user_id,
+        event
     FROM file('/tmp/events.jsonl', JSONEachRow)
     LIMIT 10
     "
@@ -143,16 +143,7 @@ clickhouse-local \
 
 ```bash
 clickhouse-local \
-    --query "
-    SELECT
-        column_name,
-        type,
-        count()           AS non_null_count,
-        countIf(isNull(column)) AS null_count
-    FROM file('/tmp/data.csv', CSVWithNames)
-    ARRAY JOIN COLUMNS(*) AS column, _columns AS column_name
-    GROUP BY column_name, type
-    "
+    --query "DESCRIBE TABLE file('/tmp/data.csv', CSVWithNames)"
 ```
 
 Or use the built-in profiling approach:
@@ -186,7 +177,7 @@ clickhouse-local \
     GROUP BY month
     ORDER BY month
     " \
-    --max-memory-usage 4000000000
+    --max_memory_usage 4000000000
 ```
 
 ## Reading stdin
@@ -195,7 +186,8 @@ Pipe data directly:
 
 ```bash
 cat /tmp/data.csv | clickhouse-local \
-    --query "SELECT count() FROM stdin FORMAT CSV"
+    --input-format CSV \
+    --query "SELECT count() FROM table"
 ```
 
 ## Using clickhouse-local as a grep Alternative
