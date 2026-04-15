@@ -83,7 +83,7 @@ FROM system.asynchronous_metrics
 WHERE metric = 'MaxPartCountForPartition';
 ```
 
-`MaxPartCountForPartition` measures the highest number of active parts in any single partition across all tables. When this exceeds 300, ClickHouse starts throttling inserts. Alert if it consistently stays above 150.
+`MaxPartCountForPartition` measures the highest number of active parts in any single partition across all tables. Values above 300 indicate misconfiguration or overload. ClickHouse begins throttling inserts when the count exceeds `parts_to_delay_insert` (default: 1000) and rejects inserts entirely above `parts_to_throw_insert` (default: 3000). Alert if it consistently stays above 150.
 
 ## Refresh Interval
 
