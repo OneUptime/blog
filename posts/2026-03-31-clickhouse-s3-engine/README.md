@@ -28,7 +28,7 @@ ENGINE = S3(
     'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY',
     'CSV',
-    'gzip'      -- compression: auto, gzip, zstd, bz2, xz, or none
+    'gzip'      -- compression: none, gzip, br, xz, zstd (auto-detected if omitted)
 );
 ```
 
@@ -206,8 +206,7 @@ FROM s3_events_parquet
 SETTINGS
     max_threads                          = 16,
     max_download_threads                 = 16,
-    s3_max_connections                   = 100,
-    input_format_parquet_import_nested   = 1;
+    s3_max_connections                   = 100;
 ```
 
 ## Checking S3 File Metadata
