@@ -24,31 +24,30 @@ GROUP BY status_code;
 ```
 
 In the output, look for:
-- `ReadFromProjection` - the projection is being used
-- `Projection: <name>` - shows which projection was selected
+- `ReadFromMergeTree (projection_name)` - the projection name appears in parentheses, confirming it is being used
 - `Marks: N` - lower marks means fewer granules read
 
-If you see `ReadFromMergeTree` without a projection reference, the projection was not selected.
+If you see `ReadFromMergeTree` without a projection name in parentheses, the projection was not selected.
 
-## Method 2: EXPLAIN PIPELINE
+## Method 2: EXPLAIN with Projections
 
 ```sql
-EXPLAIN PIPELINE
+EXPLAIN projections = 1
 SELECT service, avg(response_time_ms)
 FROM http_logs
 GROUP BY service;
 ```
 
-A pipeline referencing projection parts confirms the projection is active.
+This output shows which projections were analyzed, the conditions evaluated, and the parts, marks, and rows statistics for each projection considered. If a projection is selected, it will appear in the plan with its filtering details.
 
-## Method 3: Query Log - used_projections Column
+## Method 3: Query Log - projections Column
 
 After running a query:
 
 ```sql
 SELECT
     query,
-    used_projections,
+    projections,
     read_rows,
     read_bytes
 FROM system.query_log
@@ -58,7 +57,7 @@ ORDER BY event_time DESC
 LIMIT 5;
 ```
 
-`used_projections` lists the projection names that contributed to the query result.
+`projections` lists the projection names that contributed to the query result.
 
 ## Method 4: Comparing Read Rows
 
@@ -87,7 +86,7 @@ If the normal query reads dramatically fewer rows, the projection is being used.
 Check materialization status:
 
 ```sql
-SELECT name, parts_to_do, is_done, latest_fail_reason
+SELECT mutation_id, parts_to_do, is_done, latest_fail_reason
 FROM system.mutations
 WHERE command LIKE '%MATERIALIZE PROJECTION%'
   AND table = 'http_logs';
@@ -106,4 +105,4 @@ Compare query duration and rows read with and without projections to quantify th
 
 ## Summary
 
-Verify projection usage with `EXPLAIN indexes = 1` before deploying to production, and confirm via `system.query_log.used_projections` after execution. If a projection is not being selected, audit the query shape against the projection definition - every column in SELECT and WHERE must be present, and GROUP BY structures must align for aggregate projections.
+Verify projection usage with `EXPLAIN indexes = 1` or `EXPLAIN projections = 1` before deploying to production, and confirm via `system.query_log.projections` after execution. If a projection is not being selected, audit the query shape against the projection definition - every column in SELECT and WHERE must be present, and GROUP BY structures must align for aggregate projections.
