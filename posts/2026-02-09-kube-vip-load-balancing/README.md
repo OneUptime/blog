@@ -27,6 +27,8 @@ Unlike MetalLB or other solutions, kube-vip can serve both control plane and ser
 
 For a highly available control plane, kube-vip provides a virtual IP that always points to a healthy control plane node. This allows worker nodes and external clients to use a single endpoint regardless of which control plane node is active.
 
+> **Prerequisites — read this first.** The steps below assume a *greenfield* cluster: nothing has been initialized yet. kube-vip must be present as a static pod on the first control plane node **before** you run `kubeadm init`, and on each additional control plane node **before** you run `kubeadm join --control-plane`. You cannot simply drop the manifest into a cluster that kubespray, RKE, or `kubeadm init` has already stood up — the existing control-plane components will still be bound to the original node IP on ports `6443`, `2379`, `2380`, `10257`, `10259`, and `10250`, and `kubeadm init` will fail the preflight checks. If you already have a running cluster, jump to the section **Adding kube-vip to an Existing Cluster** below.
+
 ### Generate the kube-vip Manifest
 
 Before cluster initialization, generate the static pod manifest:
@@ -85,6 +87,114 @@ kubeadm join $VIP:6443 \
 ```
 
 kube-vip uses leader election to determine which node holds the virtual IP at any time. If the active node fails, another takes over automatically.
+
+### Using containerd Instead of Docker
+
+If your hosts don't have Docker — for example on modern Ubuntu or on nodes where containerd is the only runtime — swap the `docker run` command with `ctr`:
+
+```bash
+sudo ctr image pull ghcr.io/kube-vip/kube-vip:$KVVERSION
+sudo ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:$KVVERSION vip \
+    /kube-vip manifest pod \
+    --interface $INTERFACE \
+    --address $VIP \
+    --controlplane \
+    --arp \
+    --leaderElection \
+    --services \
+  | sudo tee /etc/kubernetes/manifests/kube-vip.yaml
+```
+
+The manifest output is identical; only the way you invoke the kube-vip binary inside the container changes.
+
+## Adding kube-vip to an Existing Cluster
+
+If your cluster is already up — for example it was bootstrapped by **kubespray**, RKE2, k3s, or a previous `kubeadm init` — do **not** run `kubeadm init` again. Doing so will fail with errors like:
+
+```text
+[ERROR Port-6443]: Port 6443 is in use
+[ERROR Port-2379]: Port 2379 is in use
+[ERROR FileAvailable--etc-kubernetes-manifests-kube-apiserver.yaml]: ... already exists
+[ERROR DirAvailable--var-lib-etcd]: /var/lib/etcd is not empty
+```
+
+Those errors mean the cluster is already running and `kubeadm init` is refusing to overwrite it. You have two choices:
+
+### Option A (Recommended): Use Your Installer's Built-in kube-vip Support
+
+Most installers ship first-class kube-vip integration. Use it instead of reaching for `kubeadm` manually.
+
+- **kubespray** — set the following in your inventory group vars and re-run the playbook. Kubespray will generate the manifests, wire the control-plane endpoint to the VIP, and roll the change out cleanly across all control plane nodes:
+
+  ```yaml
+  # group_vars/k8s_cluster/k8s-cluster.yml
+  kube_vip_enabled: true
+  kube_vip_arp_enabled: true               # or kube_vip_bgp_enabled for BGP
+  kube_vip_controlplane_enabled: true
+  kube_vip_services_enabled: false         # enable later once CP is stable
+  kube_vip_interface: eth0
+  kube_vip_address: 192.168.1.100
+  loadbalancer_apiserver:
+    address: 192.168.1.100
+    port: 6443
+  ```
+
+  Then run `ansible-playbook -i inventory/mycluster/hosts.yaml cluster.yml`. Kubespray will handle the manifest placement and the `kube-apiserver` reconfiguration for you.
+
+- **RKE2 / k3s** — pass the VIP via `--tls-san` and deploy kube-vip as a static pod under `/var/lib/rancher/rke2/server/manifests/` (RKE2) or `/var/lib/rancher/k3s/server/manifests/` (k3s).
+
+### Option B: Place the Static Pod on Existing Nodes Manually
+
+You can add the kube-vip static pod to an already-initialized control plane without running `kubeadm init` again. kubelet will pick the manifest up on its own. This works, but it does **not** retroactively change the API server certificate SANs or the cluster's `controlPlaneEndpoint` — clients that use the VIP must trust a cert that includes it.
+
+1. On each control plane node, drop the manifest:
+
+    ```bash
+    # Generate as shown above, but DO NOT run kubeadm init afterwards
+    sudo cp kube-vip.yaml /etc/kubernetes/manifests/
+    ```
+
+2. Verify the pod comes up and the VIP is reachable:
+
+    ```bash
+    kubectl -n kube-system get pods | grep kube-vip
+    ping 192.168.1.100
+    ```
+
+3. Update the API server certificate SANs to include the VIP. On the first control plane node, edit the kubeadm config:
+
+    ```bash
+    sudo kubeadm init phase certs apiserver \
+      --apiserver-cert-extra-sans=192.168.1.100 \
+      --config /etc/kubernetes/kubeadm-config.yaml
+    ```
+
+    Then restart `kube-apiserver` (deleting the static pod forces kubelet to recreate it):
+
+    ```bash
+    sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+    sleep 20
+    sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+    ```
+
+4. Update `controlPlaneEndpoint` in the `kubeadm-config` ConfigMap so that nodes joining later use the VIP:
+
+    ```bash
+    kubectl -n kube-system edit configmap kubeadm-config
+    # set: clusterConfiguration.controlPlaneEndpoint: "192.168.1.100:6443"
+    ```
+
+### Option C (Destructive — Only If You Genuinely Want to Rebuild)
+
+If you truly want to start over on a node:
+
+```bash
+sudo kubeadm reset -f
+sudo rm -rf /etc/kubernetes/ /var/lib/etcd/ /var/lib/kubelet/
+sudo systemctl restart containerd
+```
+
+**Do this only if you understand that it destroys the node's cluster state**, and never on more than one control plane node at a time unless you have a tested backup of etcd. The `[ERROR Port-2379]` / `[ERROR Port-2380]` errors after `kubeadm reset` usually mean etcd is still running from systemd or from leftover pods — the `rm -rf /var/lib/etcd` step clears its data dir, but if etcd is running as a systemd unit (common with kubespray), stop it explicitly: `sudo systemctl stop etcd`.
 
 ## Service Load Balancing with ARP Mode
 
