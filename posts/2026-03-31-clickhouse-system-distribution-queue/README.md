@@ -21,13 +21,12 @@ SELECT
     database,
     table,
     data_path,
-    is_currently_sending,
-    num_tries,
+    is_blocked,
+    error_count,
     last_exception,
-    last_attempt_time,
-    next_attempt_time
+    last_exception_time
 FROM system.distribution_queue
-ORDER BY num_tries DESC;
+ORDER BY error_count DESC;
 ```
 
 ## Monitor Queue Depth
@@ -38,10 +37,9 @@ To check how many files are waiting to be sent to each shard:
 SELECT
     database,
     table,
-    count() AS pending_files,
-    sum(rows) AS pending_rows,
-    sum(bytes) AS pending_bytes,
-    formatReadableSize(sum(bytes)) AS pending_size
+    sum(data_files) AS pending_files,
+    sum(data_compressed_bytes) AS pending_bytes,
+    formatReadableSize(sum(data_compressed_bytes)) AS pending_size
 FROM system.distribution_queue
 GROUP BY database, table
 ORDER BY pending_files DESC;
@@ -56,27 +54,27 @@ SELECT
     database,
     table,
     data_path,
-    num_tries,
+    error_count,
     last_exception,
-    last_attempt_time
+    last_exception_time
 FROM system.distribution_queue
-WHERE num_tries > 3
+WHERE error_count > 3
   AND last_exception != ''
-ORDER BY num_tries DESC;
+ORDER BY error_count DESC;
 ```
 
-## Check Currently Sending Files
+## Check Blocked Deliveries
 
-To see which files are actively being transferred right now:
+To see which tables have their sending currently blocked:
 
 ```sql
 SELECT
     database,
     table,
     data_path,
-    num_tries
+    error_count
 FROM system.distribution_queue
-WHERE is_currently_sending = 1;
+WHERE is_blocked = 1;
 ```
 
 ## Monitor Queue Growth Over Time
@@ -112,27 +110,26 @@ WHERE table = 'distributed_events';
 
 ## Understanding Retry Logic
 
-ClickHouse retries failed shard deliveries with exponential backoff. The relevant columns are:
+ClickHouse retries failed shard deliveries automatically. The relevant columns are:
 
 | Column | Description |
 |---|---|
-| `num_tries` | Number of delivery attempts so far |
+| `error_count` | Number of errors that occurred during delivery |
 | `last_exception` | Last error message |
-| `last_attempt_time` | Timestamp of last delivery attempt |
-| `next_attempt_time` | When the next retry is scheduled |
+| `last_exception_time` | Timestamp of the last error |
 
 To cancel a stuck entry, you may need to manually remove the files from the data path on disk after identifying the shard target.
 
 ## Distributed Table Asynchronous Behavior
 
-The `distributed_directory_monitor_sleep_time_ms` server setting controls how often ClickHouse checks the queue. The `distributed_directory_monitor_batch_inserts` setting enables batching multiple files into a single delivery for efficiency.
+The `distributed_background_insert_sleep_time_ms` setting controls how often ClickHouse checks the queue. The `distributed_background_insert_batch` setting enables batching multiple files into a single delivery for efficiency.
 
 ```sql
 SELECT name, value
 FROM system.settings
 WHERE name IN (
-    'distributed_directory_monitor_sleep_time_ms',
-    'distributed_directory_monitor_batch_inserts'
+    'distributed_background_insert_sleep_time_ms',
+    'distributed_background_insert_batch'
 );
 ```
 
