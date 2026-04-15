@@ -73,7 +73,7 @@ SELECT
     count(DISTINCT user_id) AS dau
 FROM {{ ref('events') }}
 WHERE event_name != 'session_start'
-  AND toDate(event_time) >= dateadd(day, -90, today())
+  AND toDate(event_time) >= today() - INTERVAL 90 DAY
 GROUP BY date
 ORDER BY date
 ```
@@ -85,12 +85,17 @@ Install the ClickHouse data source plugin and create a funnel chart:
 ```sql
 SELECT
     event_name,
-    count(DISTINCT user_id) AS users,
-    count(DISTINCT user_id) / max(count(DISTINCT user_id)) OVER () * 100 AS pct
-FROM events
-WHERE event_time >= now() - INTERVAL 7 DAY
-  AND event_name IN ('signup_start', 'email_verified', 'onboarding_complete', 'first_purchase')
-GROUP BY event_name
+    users,
+    users / max(users) OVER () * 100 AS pct
+FROM (
+    SELECT
+        event_name,
+        count(DISTINCT user_id) AS users
+    FROM events
+    WHERE event_time >= now() - INTERVAL 7 DAY
+      AND event_name IN ('signup_start', 'email_verified', 'onboarding_complete', 'first_purchase')
+    GROUP BY event_name
+) AS funnel
 ORDER BY users DESC;
 ```
 
@@ -99,11 +104,9 @@ ORDER BY users DESC;
 Run ClickHouse as a StatefulSet with persistent volumes and expose it internally:
 
 ```bash
-helm repo add clickhouse https://charts.clickhouse.com
-helm install clickhouse clickhouse/clickhouse \
-  --set replicaCount=3 \
-  --set persistence.size=500Gi \
-  --namespace analytics
+helm repo add clickhouse-operator https://docs.altinity.com/clickhouse-operator/
+helm install clickhouse-operator clickhouse-operator/altinity-clickhouse-operator \
+  --namespace analytics --create-namespace
 ```
 
 ## Summary
