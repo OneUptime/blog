@@ -68,7 +68,7 @@ Without `SYSTEM FLUSH LOGS`, the last few entries may not yet appear in `system.
 
 ## Flushing a Specific Log Table
 
-If you only need one table flushed, ClickHouse 23.3+ supports targeted flushes:
+If you only need one table flushed, ClickHouse 25.4+ supports targeted flushes:
 
 ```sql
 SYSTEM FLUSH LOGS query_log;
@@ -108,7 +108,7 @@ SELECT
     query,
     query_duration_ms,
     read_rows,
-    peak_memory_usage
+    memory_usage
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND user = currentUser()
@@ -166,4 +166,4 @@ LIMIT 10;
 
 ## Summary
 
-`SYSTEM FLUSH LOGS` forces all buffered ClickHouse system log data to be written to disk immediately, covering tables like `query_log`, `trace_log`, `part_log`, and more. Use it before querying system tables when you need the most recent data - after benchmarks, migrations, or debugging sessions. On ClickHouse 23.3+, you can target a specific log table to avoid unnecessary I/O.
+`SYSTEM FLUSH LOGS` forces all buffered ClickHouse system log data to be written to disk immediately, covering tables like `query_log`, `trace_log`, `part_log`, and more. Use it before querying system tables when you need the most recent data - after benchmarks, migrations, or debugging sessions. On ClickHouse 25.4+, you can target a specific log table to avoid unnecessary I/O.
