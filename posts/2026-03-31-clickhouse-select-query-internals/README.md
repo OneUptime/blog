@@ -20,11 +20,11 @@ ClickHouse parses the SQL text into an Abstract Syntax Tree (AST). You can inspe
 EXPLAIN AST SELECT user_id, count() FROM events WHERE event_date = today() GROUP BY user_id;
 ```
 
-The parser validates syntax and resolves aliases. ClickHouse's SQL dialect supports many non-standard extensions like `FINAL`, `SAMPLE`, and `PREWHERE`.
+The parser validates syntax and builds the AST. ClickHouse's SQL dialect supports many non-standard extensions like `FINAL`, `SAMPLE`, and `PREWHERE`.
 
 ## Stage 2 - Query Analysis and Optimization
 
-The analyzer resolves table names, column references, and applies logical rewrites:
+The analyzer resolves table names, column references, aliases, and applies logical rewrites:
 
 - Constant folding (`1 + 1` becomes `2`)
 - Predicate pushdown into subqueries
@@ -32,7 +32,7 @@ The analyzer resolves table names, column references, and applies logical rewrit
 - PREWHERE optimization (moves cheap filter conditions to an earlier filtering pass)
 
 ```sql
-EXPLAIN SELECT user_id, count() FROM events WHERE event_date = today() GROUP BY user_id;
+EXPLAIN SYNTAX SELECT user_id, count() FROM events WHERE event_date = today() GROUP BY user_id;
 ```
 
 ## Stage 3 - Query Plan Creation
@@ -85,4 +85,4 @@ The final block is serialized into the requested output format (JSON, CSV, Nativ
 
 ## Summary
 
-A ClickHouse SELECT query flows through parsing, analysis, planning, pipeline construction, parallel data reading with index skipping, PREWHERE filtering, distributed aggregation, and result serialization. Using EXPLAIN at each stage reveals where time is spent and how to optimize.
+A ClickHouse SELECT query flows through parsing, analysis, planning, pipeline construction, parallel data reading with index skipping, PREWHERE filtering, parallel aggregation, and result serialization. Using EXPLAIN at each stage reveals where time is spent and how to optimize.
