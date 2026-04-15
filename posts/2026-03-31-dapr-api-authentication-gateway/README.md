@@ -116,7 +116,7 @@ data:
         proxy_method POST;
         proxy_pass http://auth-server.default.svc/oauth2/introspect;
         proxy_set_header Content-Type "application/x-www-form-urlencoded";
-        proxy_set_body "token=$http_authorization&token_hint=access_token";
+        proxy_set_body "token=$http_authorization&token_type_hint=access_token";
       }
     }
 ```
