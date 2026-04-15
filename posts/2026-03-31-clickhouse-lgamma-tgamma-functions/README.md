@@ -56,13 +56,11 @@ C(n,k)      = exp(lgamma(n+1) - lgamma(k+1) - lgamma(n-k+1))
 
 ```sql
 SELECT
-    n,
-    k,
-    round(exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1)), 0) AS binomial_coeff
+    pair.1 AS n,
+    pair.2 AS k,
+    round(exp(lgamma(pair.1 + 1) - lgamma(pair.2 + 1) - lgamma(pair.1 - pair.2 + 1)), 0) AS binomial_coeff
 FROM (
-    SELECT
-        arrayJoin([5, 5, 10, 10, 20]) AS n,
-        arrayJoin([2, 3,  3,  5,  5]) AS k
+    SELECT arrayJoin([(5, 2), (5, 3), (10, 3), (10, 5), (20, 5)]) AS pair
 )
 ORDER BY n, k;
 ```
@@ -89,7 +87,7 @@ FROM (
 
 ## Bayesian Beta-Binomial Update
 
-In Bayesian A/B testing, the Beta distribution models conversion probability. After observing `s` successes and `f` failures with Beta(alpha, beta) prior, the posterior is Beta(alpha+s, beta+f). The log marginal likelihood uses `lgamma()`.
+In Bayesian A/B testing, the Beta distribution models conversion probability. After observing `s` successes and `f` failures with Beta(alpha, beta) prior, the posterior is Beta(alpha+s, beta+f).
 
 ```sql
 CREATE TABLE ab_test_results
@@ -106,7 +104,7 @@ INSERT INTO ab_test_results VALUES
 ('treatment', 380, 9620);
 ```
 
-Compute the posterior mean and 95% credible interval approximation for each variant.
+Compute the posterior mean and posterior parameters for each variant.
 
 ```sql
 WITH
