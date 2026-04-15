@@ -19,7 +19,7 @@ ClickHouse is built for parallel execution. A single query can use all available
 - Parallel sorting.
 - Parallel processing of parts within a partition.
 
-Setting `max_threads = 0` (the default) tells ClickHouse to use all logical CPU cores.
+Setting `max_threads = 0` (the default) tells ClickHouse to automatically use the number of physical CPU cores available on the server.
 
 ## Checking the Current Value
 
@@ -29,7 +29,7 @@ SELECT value, changed
 FROM system.settings
 WHERE name = 'max_threads';
 
--- Check the actual core count on the server
+-- Show max_threads value in vertical format (0 indicates auto-detection of physical cores)
 SELECT value
 FROM system.settings
 WHERE name = 'max_threads'
@@ -174,12 +174,12 @@ A `parallelism_ratio` close to `max_threads` means the query is effectively usin
 
 A useful formula for multi-user servers: set `max_threads` to `total_cpu_cores / expected_concurrent_queries`. For a 32-core server with 8 typical concurrent users, set `max_threads = 4` in the shared profile.
 
-## Parallel Reading of Parts
+## Tuning Read Buffer Size
 
-ClickHouse can also read multiple parts in parallel independently of `max_threads`:
+When using multiple threads, each thread allocates its own read buffer. The `max_read_buffer_size` setting controls the size of the buffer used for each filesystem read operation:
 
 ```sql
--- Read parts in parallel with separate thread pool
+-- Increase per-thread read buffer size for better I/O throughput
 SELECT count()
 FROM events
 SETTINGS
@@ -192,9 +192,8 @@ SETTINGS
 When sending queries via the HTTP interface (Grafana, custom scripts):
 
 ```bash
-curl "http://localhost:8123/" \
-    --data-urlencode "query=SELECT count() FROM events" \
-    --data-urlencode "max_threads=4"
+curl "http://localhost:8123/?max_threads=4" \
+    --data-urlencode "query=SELECT count() FROM events"
 ```
 
 ## Effect on Memory Usage
