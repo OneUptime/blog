@@ -36,7 +36,7 @@ clickhouse local --query "
 SELECT *
 FROM s3(
     'https://my-bucket.s3.amazonaws.com/events/*.ndjson',
-    JSONEachRow
+    'JSONEachRow'
 )
 LIMIT 10
 "
@@ -73,7 +73,7 @@ SELECT
     toDate(event_time) AS day,
     count() AS events,
     sum(amount) AS revenue
-FROM file('local_events.parquet', Parquet)
+FROM file('local_events.parquet', 'Parquet')
 GROUP BY day
 ORDER BY day
 "
@@ -120,7 +120,7 @@ FROM s3('https://my-bucket.s3.amazonaws.com/large_dataset.parquet', 'KEY', 'SECR
 # Now process locally without S3 network latency
 clickhouse local --query "
 SELECT category, sum(revenue) AS total
-FROM file('/tmp/local_copy.parquet', Parquet)
+FROM file('/tmp/local_copy.parquet', 'Parquet')
 GROUP BY category
 ORDER BY total DESC
 "
