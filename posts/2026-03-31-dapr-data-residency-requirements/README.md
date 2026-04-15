@@ -107,7 +107,7 @@ spec:
 
 ## Validating Data Residency at Runtime
 
-Add a Dapr middleware component to validate that requests from EU services only access EU-designated components:
+Add application-level middleware to validate that requests from EU services only access EU-designated components:
 
 ```javascript
 // residency-validator.js - Express middleware
