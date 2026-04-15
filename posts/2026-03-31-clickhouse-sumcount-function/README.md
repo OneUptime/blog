@@ -93,7 +93,7 @@ server_id | total_latency | request_count | avg_latency
 
 ## Using sumCountMerge with AggregatingMergeTree
 
-The real power of `sumCount` emerges when combined with `AggregatingMergeTree` and the `-State` / `-Merge` combiners for pre-aggregated tables:
+The real power of `sumCount` emerges when combined with `AggregatingMergeTree` and the `-State` / `-Merge` combinators for pre-aggregated tables:
 
 ```sql
 CREATE TABLE latency_agg
@@ -133,15 +133,15 @@ Roll up hourly pre-aggregates into a daily average correctly:
 ```sql
 SELECT
     toDate(hour)                                          AS day,
-    sum(sumCountMerge(sc_state).1)                        AS total_latency,
-    sum(sumCountMerge(sc_state).2)                        AS total_requests,
+    sumCountMerge(sc_state).1                             AS total_latency,
+    sumCountMerge(sc_state).2                             AS total_requests,
     total_latency / total_requests                        AS daily_avg_latency
 FROM latency_agg
 GROUP BY day
 ORDER BY day;
 ```
 
-Because you are summing numerators and denominators separately before dividing, the result is always the true weighted average.
+Because `sumCountMerge` merges all partial states for each day into a single `(sum, count)` tuple before dividing, the result is always the true weighted average.
 
 ## Comparison: sumCount vs avg + count
 
