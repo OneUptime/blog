@@ -57,13 +57,14 @@ ORDER BY (__time, user_id, event_type, country);
 Druid uses a Kafka Indexing Service. ClickHouse uses the Kafka engine:
 
 ```sql
-CREATE TABLE events_kafka_src
-ENGINE = Kafka
+CREATE TABLE events_kafka_src (
+    raw String
+) ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'user_events',
     kafka_group_name = 'ch_events',
-    kafka_format = 'JSONEachRow';
+    kafka_format = 'JSONAsString';
 
 CREATE MATERIALIZED VIEW events_mv TO events AS
 SELECT
@@ -72,7 +73,7 @@ SELECT
     JSONExtractString(raw, 'event_type') AS event_type,
     JSONExtractString(raw, 'country') AS country,
     1 AS count,
-    toFloat64(JSONExtractString(raw, 'revenue')) AS revenue
+    JSONExtractFloat(raw, 'revenue') AS revenue
 FROM events_kafka_src;
 ```
 
