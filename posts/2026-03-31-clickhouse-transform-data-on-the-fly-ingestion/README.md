@@ -39,7 +39,7 @@ SELECT
     JSONExtractUInt(raw_json, 'user_id') AS user_id,
     lower(JSONExtractString(raw_json, 'type')) AS event_type,
     fromUnixTimestamp(JSONExtractUInt(raw_json, 'ts')) AS timestamp,
-    upper(JSONExtractString(raw_json, 'geo.country')) AS country
+    upper(JSONExtractString(raw_json, 'geo', 'country')) AS country
 FROM raw_events
 WHERE JSONExtractString(raw_json, 'event_id') != '';
 ```
@@ -116,9 +116,9 @@ curl -X POST 'http://localhost:8123/?query=INSERT+INTO+events+FORMAT+CSVWithName
 For JSON with nested fields:
 
 ```bash
-curl -X POST 'http://localhost:8123/' \
-    --data-binary "INSERT INTO events SELECT event_id, user_id, toDateTime(ts) FROM input('event_id String, user_id UInt64, ts UInt64') FORMAT JSONEachRow" \
-    < events.ndjson
+curl -X POST \
+    'http://localhost:8123/?query=INSERT+INTO+events+SELECT+event_id,+user_id,+toDateTime(ts)+FROM+input(%27event_id+String,+user_id+UInt64,+ts+UInt64%27)+FORMAT+JSONEachRow' \
+    --data-binary @events.ndjson
 ```
 
 ## Summary
