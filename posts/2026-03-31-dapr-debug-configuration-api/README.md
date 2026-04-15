@@ -65,7 +65,7 @@ If the configuration API returns empty items for a key you expect to exist:
 
 ```bash
 # Test the raw API call
-curl -v "http://localhost:3500/v1.0-alpha1/configuration/appconfig?key=my-key"
+curl -v "http://localhost:3500/v1.0/configuration/appconfig?key=my-key"
 ```
 
 Then check the actual key format in Redis:
@@ -74,23 +74,17 @@ Then check the actual key format in Redis:
 # List all keys in the config store
 redis-cli KEYS "*"
 
-# The correct format is: <app-id>||<key>
-# Example: myservice||my-key
-redis-cli KEYS "myservice||*"
+# Configuration store keys are stored as plain keys (no app-id prefix)
+# The value format is: <value>||<version>
+# Example key: my-key, value: my-value||1
+redis-cli GET "my-key"
 ```
 
-If keys exist but the API returns nothing, check the app ID matches:
+If the key exists in Redis but the API returns nothing, check that the value includes a version:
 
 ```bash
-# Check what app ID the sidecar is using
-kubectl logs deployment/my-service -c daprd | grep "app-id"
-```
-
-Ensure the key prefix in Redis matches the Dapr app ID:
-
-```bash
-# Set the key with the correct prefix
-redis-cli SET "my-service||my-key" "my-value"
+# Set the key with the correct value format (value||version)
+redis-cli SET "my-key" "my-value||1"
 ```
 
 ## Debugging Subscription Not Firing
@@ -99,7 +93,7 @@ If subscriptions are set up but callbacks are not firing when values change:
 
 ```bash
 # Manually trigger a keyspace event in Redis
-redis-cli SET "my-service||my-key" "new-value"
+redis-cli SET "my-key" "new-value||1"
 
 # Monitor keyspace notifications to confirm they're firing
 redis-cli SUBSCRIBE "__keyevent@0__:set"
@@ -146,7 +140,7 @@ Create a simple health check that verifies config retrieval works:
 #!/bin/bash
 # health-check-config.sh
 RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-  "http://localhost:3500/v1.0-alpha1/configuration/appconfig?key=health-check")
+  "http://localhost:3500/v1.0/configuration/appconfig?key=health-check")
 
 if [ "$RESPONSE" = "200" ]; then
   echo "Configuration API: OK"
@@ -158,4 +152,4 @@ fi
 
 ## Summary
 
-Debugging Dapr Configuration API issues starts with checking component initialization in sidecar logs, then verifying Redis keyspace notifications are enabled, checking that key names include the correct app ID prefix, and monitoring keyspace events to confirm subscriptions fire. Increasing the sidecar log level to debug provides the most visibility into what the configuration component is doing internally.
+Debugging Dapr Configuration API issues starts with checking component initialization in sidecar logs, then verifying Redis keyspace notifications are enabled, checking that key names and values use the correct format (including the `value||version` convention), and monitoring keyspace events to confirm subscriptions fire. Increasing the sidecar log level to debug provides the most visibility into what the configuration component is doing internally.
