@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Function, Text Search, Performance, SQL
 
-Description: Learn how multiSearchAny() and multiSearchFirstPosition() use the Aho-Corasick algorithm for fast multi-keyword filtering and first-match detection in ClickHouse.
+Description: Learn how multiSearchAny() and multiSearchFirstPosition() use the Volnitsky algorithm for fast multi-keyword filtering and first-match detection in ClickHouse.
 
 ---
 
-Searching for a single substring is easy with `position()`, but real-world workloads often require checking whether any one of dozens of keywords appears in a string. Doing this with a long chain of `OR position(...) > 0` conditions is both verbose and slower than necessary. ClickHouse provides the `multiSearch` family of functions, which uses the vectorized Aho-Corasick algorithm to scan for all needles in a single pass over the haystack.
+Searching for a single substring is easy with `position()`, but real-world workloads often require checking whether any one of dozens of keywords appears in a string. Doing this with a long chain of `OR position(...) > 0` conditions is both verbose and slower than necessary. ClickHouse provides the `multiSearch` family of functions, which uses an optimized multi-pattern matching algorithm (Multi-Volnitsky) to scan for all needles in a single pass over the haystack.
 
-## How the Aho-Corasick Algorithm Works
+## How the Volnitsky Algorithm Works
 
-The Aho-Corasick algorithm builds a finite-state machine from a set of patterns at query planning time. The machine then scans the input string exactly once, regardless of how many patterns you are searching for. This means searching for 100 keywords costs roughly the same as searching for 1. ClickHouse's implementation is SIMD-accelerated, making it suitable for filtering billions of rows.
+The Multi-Volnitsky algorithm builds a compact hash table of bigrams (two-byte fragments) from all the needle strings when the query begins executing. It then steps through the haystack with a stride based on the shortest needle length, checking each bigram against the hash table to quickly skip non-matching regions. This means searching for many keywords costs only modestly more than searching for one. ClickHouse's implementation is highly optimized for CPU cache locality, making it suitable for filtering billions of rows.
 
 ## multiSearchAny()
 
@@ -114,7 +114,7 @@ WHERE
 ```
 
 ```sql
--- Faster: single Aho-Corasick pass
+-- Faster: single multi-pattern pass
 SELECT count()
 FROM http_logs
 WHERE multiSearchAny(url, ['/admin', '/wp-login', '/phpmyadmin', '/.env', '/config']) = 1;
@@ -155,4 +155,4 @@ LIMIT 10;
 
 ## Summary
 
-`multiSearchAny()` and `multiSearchFirstPosition()` bring the power of the Aho-Corasick algorithm to ClickHouse SQL queries, allowing efficient multi-keyword searches in a single pass over each string. Use `multiSearchAny()` to filter rows by keyword presence, `multiSearchAnyCaseInsensitive()` to skip manual `lower()` calls, `multiSearchFirstPosition()` to locate the earliest match, and `multiSearchFirstIndex()` to identify which needle matched first. These functions are significantly faster than equivalent `OR position()` chains when you have more than a handful of needles.
+`multiSearchAny()` and `multiSearchFirstPosition()` bring the power of the Volnitsky multi-pattern matching algorithm to ClickHouse SQL queries, allowing efficient multi-keyword searches in a single pass over each string. Use `multiSearchAny()` to filter rows by keyword presence, `multiSearchAnyCaseInsensitive()` to skip manual `lower()` calls, `multiSearchFirstPosition()` to locate the earliest match, and `multiSearchFirstIndex()` to identify which needle matched first. These functions are significantly faster than equivalent `OR position()` chains when you have more than a handful of needles.
