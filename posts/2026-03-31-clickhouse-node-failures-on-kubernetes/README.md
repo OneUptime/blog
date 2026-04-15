@@ -102,7 +102,7 @@ FROM system.replicas
 WHERE active_replicas < total_replicas;
 ```
 
-A `queue_size` above zero means the recovered replica is catching up on missed data parts.
+A `queue_size` above zero means the replica has pending operations, which may include fetching missed data parts, merges, or other replication tasks.
 
 ## Forcing Replica Recovery
 
@@ -113,7 +113,7 @@ SYSTEM RESTART REPLICA events;
 SYSTEM SYNC REPLICA events;
 ```
 
-These commands force the replica to reconnect to Keeper and pull missing data parts.
+`RESTART REPLICA` reinitializes the replica's Keeper session and reconciles its state, while `SYNC REPLICA` waits for the replica to process all pending replication tasks and catch up on missing data.
 
 ## Summary
 
