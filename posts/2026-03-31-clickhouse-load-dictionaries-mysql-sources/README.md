@@ -44,7 +44,7 @@ CREATE DICTIONARY active_users_dict (
     user_id UInt64,
     email String DEFAULT '',
     plan String DEFAULT 'free',
-    country LowCardinality(String) DEFAULT ''
+    country String DEFAULT ''
 )
 PRIMARY KEY user_id
 SOURCE(MYSQL(
@@ -78,7 +78,7 @@ SOURCE(MYSQL(
     USER 'ch_reader'
     PASSWORD 'secret'
     DB 'crm'
-    QUERY 'SELECT c.id, CONCAT(c.first_name, " ", c.last_name) AS full_name, s.tier, r.name AS region FROM customers c JOIN subscriptions s ON c.id = s.customer_id JOIN regions r ON c.region_id = r.id'
+    QUERY 'SELECT c.id AS customer_id, CONCAT(c.first_name, " ", c.last_name) AS full_name, s.tier AS subscription_tier, r.name AS region FROM customers c JOIN subscriptions s ON c.id = s.customer_id JOIN regions r ON c.region_id = r.id'
 ))
 LAYOUT(HASHED())
 LIFETIME(MIN 300 MAX 600);
