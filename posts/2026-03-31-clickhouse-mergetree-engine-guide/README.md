@@ -162,7 +162,7 @@ ALTER TABLE events ADD INDEX idx_event event_type TYPE set(100) GRANULARITY 1;
 ALTER TABLE events ADD INDEX idx_url_ngram url TYPE ngrambf_v1(4, 1024, 2, 0) GRANULARITY 4;
 ```
 
-Materialie the index on existing data:
+Materialize the index on existing data:
 
 ```sql
 ALTER TABLE events MATERIALIZE INDEX idx_url;
