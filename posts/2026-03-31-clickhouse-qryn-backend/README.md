@@ -88,14 +88,14 @@ scrape_configs:
 
 ```yaml
 remote_write:
-  - url: http://qryn:3100/api/v1/write
+  - url: http://qryn:3100/api/v1/prom/remote/write
 ```
 
 ## Sending Traces via OpenTelemetry
 
 ```yaml
 exporters:
-  otlp:
+  otlphttp:
     endpoint: http://qryn:3100
     tls:
       insecure: true
@@ -113,10 +113,11 @@ Since qryn is Loki-compatible, standard LogQL works:
 
 ```sql
 SHOW TABLES FROM cloki;
--- logs_v2
--- metrics_v2
+-- samples_v3
 -- time_series
--- traces_v2
+-- time_series_gin
+-- settings
+-- ver
 ```
 
 ## Summary
