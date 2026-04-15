@@ -60,14 +60,14 @@ Because data lives in shared storage, ClickHouse Cloud can add compute nodes ins
 
 ```sql
 -- Check how many compute nodes are serving your service
-SELECT * FROM clusterAllReplicas(default, system.one);
+SELECT * FROM clusterAllReplicas('default', system.one);
 ```
 
 New nodes immediately have access to all existing data through the shared object storage layer, enabling instant horizontal scaling.
 
-## Zero-Copy Replication
+## Lightweight Node Scaling
 
-SharedMergeTree implements zero-copy replication: when a new node joins, it does not transfer any data parts. It only syncs metadata about which parts exist. This makes scaling from 2 to 10 nodes nearly instantaneous.
+SharedMergeTree uses asynchronous leaderless replication with shared storage: when a new node joins, it does not transfer any data parts. It only syncs metadata about which parts exist through ClickHouse Keeper. This makes scaling from 2 to 10 nodes nearly instantaneous.
 
 ## Performance Considerations
 
