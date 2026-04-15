@@ -79,8 +79,8 @@ spec:
       secretKeyRef:
         name: redis-credentials
         key: password
-auth:
-  secretStore: kubernetes
+  auth:
+    secretStore: kubernetes
 ```
 
 ## Kubernetes Deployment
@@ -173,4 +173,4 @@ kubectl logs <pod-name> -c daprd --tail=20
 
 ## Summary
 
-Deploying Dapr PHP applications to Kubernetes requires a PHP-capable container image, Dapr component manifests, and Deployment annotations for sidecar injection. Resource limits on the sidecar container prevent it from consuming too many cluster resources. Health and readiness probes ensure the PHP-FPM process is ready before Kubernetes routes traffic to the pod.
+Deploying Dapr PHP applications to Kubernetes requires a PHP-capable container image, Dapr component manifests, and Deployment annotations for sidecar injection. Resource requests on the sidecar container guarantee it a minimum share of cluster resources. Health and readiness probes ensure the PHP-FPM process is ready before Kubernetes routes traffic to the pod.
