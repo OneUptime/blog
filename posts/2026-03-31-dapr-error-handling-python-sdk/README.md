@@ -115,18 +115,16 @@ def handle_order():
 Set timeout on DaprClient operations:
 
 ```python
+import grpc
 from dapr.clients import DaprClient
-from dapr.conf import settings
 
-# Set global timeout (seconds)
-settings.DAPR_API_TOKEN = "your-token"
-
-with DaprClient(timeout=5) as client:
+with DaprClient() as client:
     try:
         result = client.invoke_method(
             app_id="slow-service",
             method_name="compute",
-            data=b"payload"
+            data=b"payload",
+            timeout=5
         )
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
@@ -138,6 +136,7 @@ with DaprClient(timeout=5) as client:
 ```python
 import logging
 import grpc
+from dapr.clients import DaprClient
 
 logger = logging.getLogger(__name__)
 
