@@ -12,7 +12,7 @@ ClickHouse supports rolling upgrades across patch and minor versions. Because re
 
 ## Understanding Version Compatibility
 
-ClickHouse uses a `major.minor.patch.build` version scheme (e.g., `24.3.5.46.1`):
+ClickHouse uses a calendar-based `year.month.patch.build` version scheme (e.g., `24.3.5.46`):
 
 - **Patch upgrades** (24.3.4 to 24.3.5): safe to roll across nodes while mixed
 - **Minor upgrades** (24.3 to 24.4): check the changelog for compatibility notes; usually safe
@@ -50,7 +50,7 @@ for line in content.split('\n'):
 -- Create a labeled pre-upgrade backup
 BACKUP ALL
 TO S3('https://s3.amazonaws.com/your-backup-bucket/clickhouse/pre-upgrade/24.6.1/')
-SETTINGS async = true;
+ASYNC;
 ```
 
 ### Run the Pre-Upgrade Checklist
@@ -87,8 +87,10 @@ FROM system.mutations
 WHERE is_done = 0
 ORDER BY create_time;
 
--- Wait for all mutations to finish
-SYSTEM WAIT MUTATIONS;
+-- Poll until all mutations are finished
+SELECT mutation_id, database, table, parts_to_do
+FROM system.mutations
+WHERE is_done = 0;
 ```
 
 ## Downloading the New Version
@@ -282,7 +284,7 @@ Check for deprecated settings in use:
 clickhouse-client --query "
 SELECT name, value, description
 FROM system.settings
-WHERE is_obsolete = 1 AND value != default
+WHERE is_obsolete = 1 AND changed = 1
 ORDER BY name;
 "
 ```
