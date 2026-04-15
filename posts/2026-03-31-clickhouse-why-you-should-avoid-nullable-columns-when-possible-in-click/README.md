@@ -13,7 +13,7 @@ Description: Understand why Nullable columns in ClickHouse hurt performance and 
 In ClickHouse, a `Nullable(T)` column can hold either a value of type `T` or `NULL`. Internally, ClickHouse stores Nullable columns as two separate files on disk:
 
 1. The actual data values
-2. A null map bitmap (one bit per row indicating NULL or not)
+2. A null map (one byte per row, stored as UInt8, indicating NULL or not)
 
 This seemingly small addition has significant performance implications.
 
@@ -56,13 +56,14 @@ SELECT count() FROM events WHERE nullable_score > 0;    -- slower (null check ov
 ### No Primary Key Use
 
 ```sql
--- This will fail - Nullable columns cannot be in ORDER BY / primary key
+-- This will fail by default - Nullable columns cannot be in ORDER BY / primary key
+-- unless the allow_nullable_key setting is enabled
 CREATE TABLE bad_design (
     event_time DateTime,
     user_id Nullable(UInt64)  -- problematic
 )
 ENGINE = MergeTree()
-ORDER BY (event_time, user_id);  -- ERROR
+ORDER BY (event_time, user_id);  -- ERROR (unless SET allow_nullable_key = 1)
 ```
 
 ## When NULL is Actually Needed
