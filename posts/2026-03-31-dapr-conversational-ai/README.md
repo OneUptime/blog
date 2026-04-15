@@ -49,14 +49,14 @@ class ConversationSession:
 
 ```python
 from fastapi import FastAPI
-from dapr import Client
+from dapr.clients import DaprClient
 from dapr_agents import Agent, tool
 from dapr_agents.llm import OpenAIChat
 from dapr_agents.memory import DaprStateMemory
 import json
 
 app = FastAPI()
-dapr_client = Client()
+dapr_client = DaprClient()
 
 class ConversationalAgent(Agent):
     name = "conversational-agent"
@@ -153,8 +153,6 @@ async def end_session(session_id: str):
 ## Session Expiry with Dapr State TTL
 
 ```python
-from dapr.clients.grpc._state import StateOptions, Consistency, Concurrency
-
 dapr_client.save_state(
     "statestore",
     f"session-{session_id}",
