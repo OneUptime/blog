@@ -41,7 +41,7 @@ Latency percentiles (ms): p50=28.1, p95=35.2, p99=42.8
 
 ## Loading the ClickBench Dataset
 
-ClickBench is the standard ClickHouse benchmark with 100GB of web analytics data and 43 queries:
+ClickBench is the standard ClickHouse benchmark with 100 million rows of web analytics data and 43 queries:
 
 ```bash
 wget https://datasets.clickhouse.com/hits_compatible/hits.csv.gz
@@ -55,7 +55,7 @@ zcat hits.csv.gz | clickhouse-client --query "INSERT INTO hits FORMAT CSV"
 Run the official ClickBench queries:
 
 ```bash
-wget https://raw.githubusercontent.com/ClickHouse/ClickBench/main/queries.sql
+wget https://raw.githubusercontent.com/ClickHouse/ClickBench/main/clickhouse/queries.sql
 clickhouse-benchmark --iterations=3 < queries.sql
 ```
 
@@ -71,7 +71,7 @@ clickhouse-benchmark --iterations=50 \
 # Modify setting, then re-run
 clickhouse-benchmark --iterations=50 \
   --query="SELECT count() FROM hits WHERE URL LIKE '%google%'" \
-  -- --max_threads=8
+  --max_threads=8
 ```
 
 ## Measuring Cold vs. Warm Cache
