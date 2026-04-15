@@ -36,7 +36,7 @@ In self-hosted mode:
 
 ```bash
 # Placement service runs on port 50005 by default
-dapr status -a actor-service
+dapr list
 ```
 
 In Kubernetes:
@@ -50,13 +50,14 @@ kubectl logs -n dapr-system dapr-placement-server-0
 
 ```bash
 # Query placement HTTP API for registered actor types
-curl http://localhost:9090/placement/state | jq .
+curl http://localhost:8080/placement/state | jq .
 ```
 
 Expected response:
 
 ```json
 {
+  "tableVersion": 1,
   "hostList": [
     {
       "name": "counter-service-pod-abc123",
@@ -109,10 +110,10 @@ Prometheus alert for placement connectivity:
 
 ```yaml
 - alert: DaprPlacementDisconnected
-  expr: dapr_placement_actorheartbeat_connected == 0
+  expr: dapr_placement_runtimes_total == 0
   for: 1m
   annotations:
-    summary: "App instance lost connection to placement service"
+    summary: "No actor runtimes registered with placement service"
 ```
 
 ## Rebalancing During Deployments
