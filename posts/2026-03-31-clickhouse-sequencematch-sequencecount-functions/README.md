@@ -8,7 +8,7 @@ Description: Detect ordered event patterns and count occurrences across user ses
 
 ---
 
-Behavioral analytics often comes down to one question: did a user perform a specific sequence of actions? ClickHouse answers this with `sequenceMatch()` and `sequenceCount()` - two aggregate functions that scan a time-ordered list of events per user and match them against a regular-expression-like pattern. Unlike `windowFunnel`, these functions give you full pattern matching power including negation and arbitrary gaps between steps.
+Behavioral analytics often comes down to one question: did a user perform a specific sequence of actions? ClickHouse answers this with `sequenceMatch()` and `sequenceCount()` - two aggregate functions that scan a time-ordered list of events per user and match them against a regular-expression-like pattern. Unlike `windowFunnel`, these functions give you full pattern matching power including time constraints and arbitrary gaps between steps.
 
 ## Syntax
 
@@ -18,7 +18,7 @@ sequenceCount('pattern')(timestamp, cond1, cond2, ...)
 ```
 
 - `pattern` - a string pattern using special tokens (see below).
-- `timestamp` - a `DateTime` or `UInt32` column used to order events within each group.
+- `timestamp` - a `Date`, `DateTime`, or any supported `UInt` column used to order events within each group.
 - `cond1, cond2, ...` - Boolean expressions mapped to `(?1)`, `(?2)`, ... in the pattern.
 
 `sequenceMatch` returns `UInt8` (1 if the pattern matched, 0 otherwise).
@@ -28,13 +28,13 @@ sequenceCount('pattern')(timestamp, cond1, cond2, ...)
 
 | Token | Meaning |
 |---|---|
-| `(?1)` | Event matching condition 1 |
-| `(?2)` | Event matching condition 2 |
+| `(?N)` | Event matching condition N (1 through 32) |
 | `(?t<N)` | Time gap less than N seconds between adjacent events |
 | `(?t>N)` | Time gap greater than N seconds |
-| `.*` | Any number of any events |
-| `.+` | One or more any events |
-| `(?!1)` | An event NOT matching condition 1 |
+| `(?t<=N)` | Time gap less than or equal to N seconds |
+| `(?t>=N)` | Time gap greater than or equal to N seconds |
+| `(?t==N)` | Time gap exactly equal to N seconds |
+| `.*` | Any number of any events (zero or more) |
 
 ## Setup
 
@@ -138,52 +138,9 @@ GROUP BY user_id;
 
 `(?t<600)` means the gap between the preceding and following events must be less than 600 seconds.
 
-## Negation: View Without Cart Add
-
-Detect users who viewed but never added to cart before purchasing:
-
-```sql
-SELECT
-    user_id,
-    sequenceMatch('(?1).*(?!2).*(?3)')(
-        ts,
-        event = 'view',
-        event = 'add_cart',
-        event = 'purchase'
-    ) AS skipped_cart
-FROM user_events
-GROUP BY user_id;
-```
-
 ## Aggregate Funnel Rates
 
-```sql
-SELECT
-    count()                                                                AS total_users,
-    countIf(sequenceMatch('(?1).*(?2)')(ts, event='view', event='add_cart') = 1)   AS viewed_then_carted,
-    countIf(sequenceMatch('(?1).*(?3)')(ts, event='view', event='purchase') = 1)   AS viewed_then_purchased
-FROM user_events
-GROUP BY user_id
--- wrap in an outer SELECT to aggregate across users
-```
-
-```sql
-SELECT
-    count()                                                                              AS users,
-    sum(sequenceMatch('(?1).*(?2)')(ts, event='view', event='add_cart'))                AS step1,
-    sum(sequenceMatch('(?1).*(?2).*(?3)')(ts, event='view', event='add_cart', event='purchase')) AS step2
-FROM (
-    SELECT
-        user_id,
-        groupArray(ts)    AS ts,
-        groupArray(event) AS event
-    FROM user_events
-    GROUP BY user_id
-)
--- Note: conditions reference columns, not array elements, in real queries
-```
-
-A cleaner pattern is to compute per-user flags first, then aggregate:
+Compute per-user flags first, then aggregate:
 
 ```sql
 SELECT
