@@ -175,22 +175,19 @@ def get_product_for_checkout(product_id: str, require_latest: bool = False):
 
 ## Dead Letter Handling for Failed Replications
 
+Dead letter topics are configured at the subscription level, not the pub/sub component level:
+
 ```yaml
-# components/pubsub-deadletter.yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
+# components/subscription.yaml
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
 metadata:
-  name: pubsub
+  name: catalog-product-subscription
 spec:
-  type: pubsub.kafka
-  version: v1
-  metadata:
-    - name: brokers
-      value: kafka:9092
-    - name: maxRetryCount
-      value: "3"
-    - name: deadLetterTopic
-      value: "replication-dead-letter"
+  pubsubname: pubsub
+  topic: catalog.product.updated
+  route: /events/catalog/product-updated
+  deadLetterTopic: replication-dead-letter
 ```
 
 ## Summary
