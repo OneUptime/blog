@@ -8,7 +8,7 @@ Description: Learn how to use ReplicatedReplacingMergeTree to replicate tables a
 
 ---
 
-ReplicatedReplacingMergeTree combines two features: cross-node replication (from ReplicatedMergeTree) and row-level deduplication by a version column (from ReplacingMergeTree). It is the right choice when you need a replicated table that stores only the latest version of each row identified by its primary key.
+ReplicatedReplacingMergeTree combines two features: cross-node replication (from ReplicatedMergeTree) and row-level deduplication by a version column (from ReplacingMergeTree). It is the right choice when you need a replicated table that stores only the latest version of each row identified by its sorting key (the `ORDER BY` columns).
 
 ## When to Use It
 
