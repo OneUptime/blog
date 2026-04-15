@@ -137,8 +137,8 @@ The MySQL engine supports `INSERT` statements that write back to the remote MySQ
 INSERT INTO mysql_orders VALUES
     (99001, 55001, 'pending', 149.99, now(), now());
 
--- Update via DELETE + INSERT (ClickHouse does not support UPDATE via MySQL engine)
--- Use MySQL directly for updates, or use the MySQL() table function
+-- ClickHouse does not support UPDATE or DELETE via the MySQL engine (only SELECT and INSERT)
+-- Use MySQL directly for updates and deletes
 ```
 
 ## Using the MySQL Table Function
