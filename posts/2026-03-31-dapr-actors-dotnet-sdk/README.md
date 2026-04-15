@@ -23,7 +23,6 @@ dotnet add package Dapr.Actors.AspNetCore
 
 ```csharp
 using Dapr.Actors;
-using Dapr.Actors.Runtime;
 
 public interface IOrderActor : IActor
 {
@@ -38,7 +37,7 @@ public interface IOrderActor : IActor
 
 ```csharp
 [Actor(TypeName = "OrderActor")]
-public class OrderActor : Actor, IOrderActor
+public class OrderActor : Actor, IOrderActor, IRemindable
 {
     public OrderActor(ActorHost host) : base(host) { }
 
