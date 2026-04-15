@@ -8,7 +8,7 @@ Description: Learn how pointInEllipses() tests whether a 2D point falls inside o
 
 ---
 
-`pointInEllipses(x, y, x0, y0, a, b, ...)` returns `1` if the point `(x, y)` lies inside any of the ellipses defined by the remaining arguments. Each ellipse is specified by four parameters: center `(x0, y0)`, semi-major axis `a`, and semi-minor axis `b`. The function accepts multiple ellipses in a single call - you can pass 4 + 4n arguments for n ellipses. It returns `UInt8` (0 or 1). The coordinate space is Euclidean, so for geographic use you must project coordinates to a planar system (such as a local equirectangular projection) or use small enough areas where the flat-Earth approximation is acceptable.
+`pointInEllipses(x, y, x0, y0, a, b, ...)` returns `1` if the point `(x, y)` lies inside any of the ellipses defined by the remaining arguments. Each ellipse is specified by four parameters: center `(x0, y0)`, semi-axis `a` (along x), and semi-axis `b` (along y). The function accepts multiple ellipses in a single call - the total number of arguments is 2 + 4n for n ellipses. It returns `UInt8` (0 or 1). The coordinate space is Euclidean, so for geographic use you must project coordinates to a planar system (such as a local equirectangular projection) or use small enough areas where the flat-Earth approximation is acceptable.
 
 ## Basic Usage
 
