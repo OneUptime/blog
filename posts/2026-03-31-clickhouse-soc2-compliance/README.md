@@ -38,7 +38,7 @@ GRANT ALL ON production_db.* TO dba;
 
 -- All users must authenticate with strong passwords
 CREATE USER alice
-IDENTIFIED WITH sha256_password BY 'ComplexPass123!'
+IDENTIFIED WITH bcrypt_password BY 'ComplexPass123!'
 HOST IP '10.0.0.0/24';
 
 GRANT readonly_analyst TO alice;
@@ -105,13 +105,37 @@ Enforce TLS for all connections:
 
 ## Password Policy (CC6)
 
-Enforce password complexity and expiry through user management procedures. Document these in your security runbooks as ClickHouse does not enforce password complexity natively - use SHA256 or bcrypt hashing at minimum:
+Enforce password complexity using ClickHouse's native `password_complexity` rules (available since v22.12). Add these to your `config.xml`:
+
+```text
+<password_complexity>
+    <rule>
+        <pattern>.{12}</pattern>
+        <message>be at least 12 characters long</message>
+    </rule>
+    <rule>
+        <pattern>\p{N}</pattern>
+        <message>contain at least 1 numeric character</message>
+    </rule>
+    <rule>
+        <pattern>\p{Lu}</pattern>
+        <message>contain at least 1 uppercase character</message>
+    </rule>
+    <rule>
+        <pattern>[^\p{L}\p{N}]</pattern>
+        <message>contain at least 1 special character</message>
+    </rule>
+</password_complexity>
+```
+
+Use `bcrypt_password` as the preferred authentication method for SOC 2. Avoid `double_sha1_password` as SHA-1 is cryptographically broken:
 
 ```sql
--- Verify password hashing method for all users
+-- Find users not using secure password hashing
 SELECT name, auth_type
 FROM system.users
-WHERE auth_type NOT IN ('sha256_password', 'double_sha1_password', 'bcrypt_password');
+WHERE NOT hasAll(auth_type, ['bcrypt_password'])
+  AND NOT hasAll(auth_type, ['sha256_password']);
 ```
 
 ## Session Controls (CC6)
@@ -151,11 +175,11 @@ ORDER BY role_name;
 Document and automate regular backups:
 
 ```sql
--- Create a backup (ClickHouse 22.4+)
-BACKUP DATABASE production_db TO S3('s3://backups/clickhouse/', 'key', 'secret');
+-- Create a backup (ClickHouse 22.7+)
+BACKUP DATABASE production_db TO S3('https://backups.s3.us-east-1.amazonaws.com/clickhouse/', 'key_id', 'secret');
 
 -- Verify backup integrity
-RESTORE DATABASE production_db FROM S3('s3://backups/clickhouse/', 'key', 'secret')
+RESTORE DATABASE production_db FROM S3('https://backups.s3.us-east-1.amazonaws.com/clickhouse/', 'key_id', 'secret')
 SETTINGS allow_non_empty_tables = false;
 ```
 
