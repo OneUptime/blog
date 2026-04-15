@@ -32,8 +32,8 @@ spec:
     secretKeyRef:
       name: <k8s-secret-name>
       key: <secret-key>
-scopes:                           # Optional: restrict by app ID
-- <app-id>
+  scopes:                         # Optional: restrict by app ID
+  - <app-id>
 ```
 
 ## State Store Component
@@ -119,7 +119,9 @@ spec:
   - name: vaultAddr
     value: "https://vault.internal:8200"
   - name: vaultToken
-    value: "s.xxxxxxxxx"
+    secretKeyRef:
+      name: vault-credentials
+      key: token
   - name: vaultKVPrefix
     value: "production"
 ```
