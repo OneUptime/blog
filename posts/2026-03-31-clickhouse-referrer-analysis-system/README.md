@@ -51,11 +51,11 @@ SELECT
     CASE
         WHEN referrer = '' OR referrer = 'direct'
             THEN 'Direct'
-        WHEN domain(referrer) IN ('google.com', 'bing.com', 'yahoo.com', 'duckduckgo.com')
+        WHEN domainWithoutWWW(referrer) IN ('google.com', 'bing.com', 'yahoo.com', 'duckduckgo.com')
             THEN 'Organic Search'
-        WHEN domain(referrer) IN ('twitter.com', 'x.com', 't.co', 'facebook.com', 'linkedin.com', 'reddit.com')
+        WHEN domainWithoutWWW(referrer) IN ('twitter.com', 'x.com', 't.co', 'facebook.com', 'linkedin.com', 'reddit.com')
             THEN 'Social'
-        WHEN domain(referrer) LIKE '%mail.%' OR domain(referrer) IN ('gmail.com', 'outlook.com')
+        WHEN domainWithoutWWW(referrer) LIKE '%mail.%' OR domainWithoutWWW(referrer) IN ('gmail.com', 'outlook.com')
             THEN 'Email'
         ELSE 'Referral'
     END AS channel,
@@ -71,14 +71,14 @@ ORDER BY sessions DESC;
 
 ```sql
 SELECT
-    domain(referrer)     AS source_domain,
-    uniq(visitor_id)     AS unique_visitors,
-    count()              AS referrals,
-    uniq(session_id)     AS sessions
+    domainWithoutWWW(referrer)     AS source_domain,
+    uniq(visitor_id)               AS unique_visitors,
+    count()                        AS referrals,
+    uniq(session_id)               AS sessions
 FROM pageviews
 WHERE ts >= today() - 30
   AND referrer != ''
-  AND domain(referrer) NOT IN ('yoursite.com', 'www.yoursite.com')
+  AND domainWithoutWWW(referrer) NOT IN ('yoursite.com')
 GROUP BY source_domain
 ORDER BY unique_visitors DESC
 LIMIT 20;
@@ -90,12 +90,12 @@ For search referrers, extract query parameters:
 
 ```sql
 SELECT
-    domain(referrer)                          AS search_engine,
+    domainWithoutWWW(referrer)                AS search_engine,
     extractURLParameter(referrer, 'q')        AS keyword,
     count()                                   AS visits
 FROM pageviews
 WHERE ts >= today() - 30
-  AND domain(referrer) IN ('google.com', 'bing.com', 'yahoo.com')
+  AND domainWithoutWWW(referrer) IN ('google.com', 'bing.com', 'yahoo.com')
   AND extractURLParameter(referrer, 'q') != ''
 GROUP BY search_engine, keyword
 ORDER BY visits DESC
@@ -109,7 +109,7 @@ SELECT
     toStartOfDay(ts)     AS day,
     CASE
         WHEN referrer = '' THEN 'Direct'
-        WHEN domain(referrer) IN ('google.com', 'bing.com') THEN 'Search'
+        WHEN domainWithoutWWW(referrer) IN ('google.com', 'bing.com') THEN 'Search'
         ELSE 'Other'
     END AS channel,
     uniq(visitor_id)     AS visitors
@@ -123,13 +123,14 @@ ORDER BY day, channel;
 
 ```sql
 SELECT
-    domain(referrer)     AS source,
-    url                  AS landing_page,
-    uniq(visitor_id)     AS visitors
+    domainWithoutWWW(referrer)     AS source,
+    url                            AS landing_page,
+    uniq(visitor_id)               AS visitors
 FROM (
     -- Get first page per session
     SELECT
         session_id,
+        any(visitor_id)      AS visitor_id,
         argMin(url, ts)      AS url,
         argMin(referrer, ts) AS referrer
     FROM pageviews
@@ -143,4 +144,4 @@ LIMIT 20;
 
 ## Summary
 
-ClickHouse's URL parsing functions (`domain`, `protocol`, `path`, `extractURLParameter`) make it easy to build a comprehensive referrer analysis system. By combining these functions with fast GROUP BY aggregations, you can answer key acquisition questions - which channels drive the most visitors, which search keywords convert, and which landing pages work best for each traffic source.
+ClickHouse's URL parsing functions (`domain`, `domainWithoutWWW`, `protocol`, `path`, `extractURLParameter`) make it easy to build a comprehensive referrer analysis system. By combining these functions with fast GROUP BY aggregations, you can answer key acquisition questions - which channels drive the most visitors, which search keywords convert, and which landing pages work best for each traffic source.
