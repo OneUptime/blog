@@ -26,7 +26,6 @@ redis-cli XGROUP CREATE events clickhouse-consumers $ MKSTREAM
 
 ```python
 import redis
-import json
 import clickhouse_connect
 from datetime import datetime
 
@@ -60,13 +59,13 @@ def consume_and_insert():
         message_ids = []
 
         for msg_id, fields in messages:
-            rows.append({
-                'event_time': datetime.fromtimestamp(int(msg_id.split('-')[0]) / 1000),
-                'user_id': int(fields.get('user_id', 0)),
-                'event_type': fields.get('event_type', ''),
-                'page_url': fields.get('page_url', ''),
-                'stream_id': msg_id
-            })
+            rows.append([
+                datetime.fromtimestamp(int(msg_id.split('-')[0]) / 1000),
+                int(fields.get('user_id', 0)),
+                fields.get('event_type', ''),
+                fields.get('page_url', ''),
+                msg_id
+            ])
             message_ids.append(msg_id)
 
         if rows:
@@ -135,7 +134,7 @@ r.xtrim(STREAM, maxlen=1000000, approximate=True)
 
 Add more consumers to the same group to process partitions in parallel:
 
-```bash
+```python
 # Worker 2 reads from the same stream
 CONSUMER = 'worker-2'
 ```
