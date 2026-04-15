@@ -8,7 +8,7 @@ Description: Learn how to use the StripeLog table engine in ClickHouse for small
 
 ---
 
-`StripeLog` is a ClickHouse Log-family engine that stores all column data interleaved into a single `data.bin` file (with an offsets file per column). Unlike `TinyLog`, StripeLog supports concurrent reads from multiple threads. It is suited for small tables up to a few hundred MB where you need multi-threaded read access but do not require partitioning or indexing.
+`StripeLog` is a ClickHouse Log-family engine that stores all column data interleaved into a single `data.bin` file, with a shared `index.mrk` marks file that records offsets for each column of each inserted data block. Unlike `TinyLog`, StripeLog supports concurrent reads from multiple threads. It is suited for small tables up to a few hundred MB where you need multi-threaded read access but do not require partitioning or indexing.
 
 ## Creating a StripeLog Table
 
@@ -44,11 +44,10 @@ ORDER BY actions DESC;
 ```text
 session_log/
   data.bin       -- all column data interleaved (striped)
-  __marks.mrk    -- offset marks for each column block
-  sizes.json     -- metadata
+  index.mrk      -- offset marks for each column of each data block
 ```
 
-All columns share one `data.bin` file. The marks file records where each column's data starts at each insert block boundary.
+All columns share one `data.bin` file. The `index.mrk` marks file records the offsets for each column of each inserted data block.
 
 ## Concurrent Read Support
 
@@ -57,7 +56,7 @@ StripeLog can serve multiple parallel SELECT queries simultaneously, unlike Tiny
 ```sql
 -- These can run concurrently on StripeLog
 SELECT count() FROM session_log WHERE user_id = 42;
-SELECT avg(duration) FROM session_log;
+SELECT count() FROM session_log WHERE action = 'login';
 ```
 
 ## Characteristics
