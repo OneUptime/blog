@@ -29,7 +29,7 @@ The `{type:String}` and `{since:DateTime}` placeholders are replaced server-side
 
 ```javascript
 const { createClient } = require('@clickhouse/client');
-const client = createClient({ host: 'http://localhost:8123' });
+const client = createClient({ url: 'http://localhost:8123' });
 
 // SAFE: using query_params
 async function getEvents(eventType, startDate, limit) {
@@ -86,10 +86,12 @@ def get_events(event_type: str, start_date: str, limit: int) -> list:
 rows, err := conn.Query(ctx,
     `SELECT event_time, user_id, page_url
      FROM events
-     WHERE event_type = ?
-       AND event_time >= ?
-     LIMIT ?`,
-    eventType, startDate, limit,
+     WHERE event_type = {event_type:String}
+       AND event_time >= {start_date:DateTime}
+     LIMIT {limit:UInt32}`,
+    clickhouse.Named("event_type", eventType),
+    clickhouse.Named("start_date", startDate),
+    clickhouse.Named("limit", limit),
 )
 ```
 
@@ -116,4 +118,4 @@ function buildSafeQuery(tableName, columns) {
 
 ## Summary
 
-ClickHouse query parameterization uses `{name:type}` syntax in queries with parameters passed separately via `query_params` (Node.js/Python) or `?` placeholders (Go). This prevents SQL injection by ensuring user-supplied values are never interpolated into the SQL string. For dynamic column and table names that cannot be parameterized, validate them against an explicit allowlist before including them in queries.
+ClickHouse query parameterization uses `{name:type}` syntax in queries with parameters passed separately via `query_params` (Node.js), `parameters` (Python), or `clickhouse.Named` (Go). This prevents SQL injection by ensuring user-supplied values are never interpolated into the SQL string. For dynamic column and table names that cannot be parameterized, validate them against an explicit allowlist before including them in queries.
