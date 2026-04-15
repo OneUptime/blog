@@ -28,7 +28,7 @@ spec:
       value: "redis:6379"
     - name: enableTLS
       value: "false"
-    - name: defaultTtlInSeconds
+    - name: ttlInSeconds
       value: "300"
 ```
 
@@ -83,7 +83,7 @@ async function warmCache(products) {
     metadata: { ttlInSeconds: '3600' }
   }));
 
-  await client.state.saveBulk('cache-store', items);
+  await client.state.save('cache-store', items);
 }
 ```
 
@@ -105,8 +105,10 @@ async function updateProductPrice(productId, newPrice) {
 For read-your-writes guarantees within a single session, use strong consistency:
 
 ```javascript
+const { StateConsistencyEnum } = require('@dapr/dapr');
+
 const cached = await client.state.get('cache-store', key, {
-  consistency: 'strong'
+  consistency: StateConsistencyEnum.CONSISTENCY_STRONG
 });
 ```
 
