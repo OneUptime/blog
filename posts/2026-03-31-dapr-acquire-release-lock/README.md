@@ -70,6 +70,8 @@ with DaprClient() as client:
 Always release the lock after completing the critical section:
 
 ```python
+from dapr.clients.grpc._response import UnlockResponseStatus
+
 with DaprClient() as client:
     result = client.unlock(
         store_name=STORE_NAME,
@@ -89,7 +91,6 @@ Combine acquire and release in a safe wrapper:
 ```python
 from contextlib import contextmanager
 from dapr.clients import DaprClient
-from dapr.proto.runtime.v1.dapr_pb2 import UnlockResponse
 
 @contextmanager
 def dapr_lock(client, store_name, resource_id, lock_owner, expiry=30):
