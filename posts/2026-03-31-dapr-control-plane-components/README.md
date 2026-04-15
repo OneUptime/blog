@@ -187,24 +187,13 @@ For production clusters, run each control plane component with at least 2 replic
 
 ```yaml
 # helm values for HA
-dapr_operator:
-  replicaCount: 2
-
-dapr_sentry:
-  replicaCount: 2
-
-dapr_sidecar_injector:
-  replicaCount: 2
+global:
+  ha:
+    enabled: true
+    replicaCount: 3
 
 dapr_placement:
-  replicaCount: 3      # odd number required for Raft
-  ha:
-    enabled: true
-
-dapr_scheduler:
-  replicaCount: 3      # odd number required for etcd Raft
-  ha:
-    enabled: true
+  ha: true              # enables Raft-based leader election
 ```
 
 ```bash
@@ -221,7 +210,7 @@ helm repo add dapr https://dapr.github.io/helm-charts/
 helm install dapr dapr/dapr --namespace dapr-system --create-namespace
 
 # Check installed version
-dapr version -k
+dapr status -k
 
 # Upgrade
 helm upgrade dapr dapr/dapr --namespace dapr-system --version 1.15.0
