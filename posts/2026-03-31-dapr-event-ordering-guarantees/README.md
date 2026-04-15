@@ -26,12 +26,12 @@ Event ordering guarantees ensure that consumers process events in the order they
 ## Kafka Partition Key for Per-Customer Ordering
 
 ```python
-import dapr.clients as dapr
+from dapr.clients import DaprClient
 import json
 
 def publish_order_event_ordered(order: dict):
     """Publish with partition key to ensure per-customer ordering"""
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         client.publish_event(
             pubsub_name="kafka-pubsub",
             topic_name="OrderEvents",
@@ -124,7 +124,7 @@ def handle_order_event():
 def process_order_event(data: dict):
     print(f"Processing event: {data.get('event')} for order {data.get('orderId')}")
 
-app.listen(8080)
+app.run(port=8080)
 ```
 
 ## Azure Service Bus FIFO with Sessions
@@ -169,4 +169,4 @@ kubectl logs -l app=order-processor | grep "Out-of-order event" | wc -l
 
 ## Summary
 
-Event ordering guarantees with Dapr depend on the message broker and your partition strategy. Using customer ID or aggregate ID as the partition key ensures that all events for a given entity are processed in order within a single partition. Sequence number validation in consumers provides an additional safety net to detect and handle ordering violations at the application level. For strict ordering requirements, Azure Service Bus sessions or Kafka with `max.poll.records=1` provide the strongest guarantees.
+Event ordering guarantees with Dapr depend on the message broker and your partition strategy. Using customer ID or aggregate ID as the partition key ensures that all events for a given entity are processed in order within a single partition. Sequence number validation in consumers provides an additional safety net to detect and handle ordering violations at the application level. For strict ordering requirements, Azure Service Bus sessions provide strong guarantees, and Kafka's per-partition FIFO ordering can be further reinforced by limiting consumer concurrency to one instance per partition.
