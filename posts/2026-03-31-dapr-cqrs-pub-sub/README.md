@@ -97,6 +97,9 @@ func handleProductEvent(ctx context.Context, e *common.TopicEvent) (bool, error)
             PriceLabel:  fmt.Sprintf("$%.2f", event["price"]),
         }
 
+        client, _ := dapr.NewClient()
+        defer client.Close()
+
         data, _ := json.Marshal(readModel)
         client.SaveState(ctx, "read-store", "product:"+readModel.ID, data, nil)
     }
@@ -154,14 +157,15 @@ spec:
 ## Subscription Configuration
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: product-events-sub
 spec:
   pubsubname: pubsub
   topic: product-events
-  route: /product-events
+  routes:
+    default: /product-events
   scopes:
     - event-handler
 ```
