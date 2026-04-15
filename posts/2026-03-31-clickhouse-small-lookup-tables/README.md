@@ -44,7 +44,7 @@ LIFETIME(MIN 300 MAX 600)
 LAYOUT(HASHED());
 ```
 
-## Querying with dictToAttr
+## Querying with dictGet
 
 Use dictionary lookup functions instead of JOINs:
 
@@ -66,16 +66,18 @@ Choose the right layout for your data size and access pattern:
 
 | Layout | Best For | Memory |
 |--------|----------|--------|
-| `FLAT` | Small (<500K rows), integer keys | High |
+| `FLAT` | Small (<500K rows), UInt64 keys only | High |
 | `HASHED` | Medium, string or integer keys | Medium |
 | `CACHE` | Large dicts, partial cache | Low |
 | `RANGE_HASHED` | Time-varying lookups | Medium |
 
-For a country code table with a few hundred rows, `FLAT` is fastest:
+For a small table with numeric IDs and a few hundred rows, `FLAT` is fastest:
 
 ```sql
 LAYOUT(FLAT());
 ```
+
+Since `FLAT` requires UInt64 keys, use `HASHED` for string-keyed dictionaries like country codes.
 
 ## Reloading Dictionaries
 
