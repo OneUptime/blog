@@ -14,7 +14,7 @@ When running replicated ClickHouse clusters, reads may be served by any replica.
 
 `select_sequential_consistency` is a query-level setting that forces reads to use the most recently quorum-confirmed data. It is designed to complement `insert_quorum` - together they provide a read-your-writes consistency model across replicated tables.
 
-When enabled, ClickHouse checks the replication queue and only reads parts that have been confirmed across the required number of replicas.
+When enabled, ClickHouse checks quorum metadata in ZooKeeper (or ClickHouse Keeper) and only reads parts that have been confirmed across the required number of replicas.
 
 ## Enabling select_sequential_consistency
 
@@ -34,10 +34,11 @@ ALTER PROFILE default SETTINGS select_sequential_consistency = 1;
 
 ## Using with insert_quorum
 
-The typical pattern is to pair both settings:
+The typical pattern is to pair both settings. Note that `select_sequential_consistency` does not work when `insert_quorum_parallel` is enabled, which is the default. You must disable it explicitly:
 
 ```sql
 SET insert_quorum = 2;
+SET insert_quorum_parallel = 0;
 SET select_sequential_consistency = 1;
 
 -- Write
@@ -54,7 +55,7 @@ Without `select_sequential_consistency`, the SELECT might hit a lagging replica 
 
 ## How It Works Internally
 
-ClickHouse tracks a `log_pointer` per replica. When `select_sequential_consistency = 1` is set, the query only proceeds if the replica's log pointer is at or ahead of the last quorum-confirmed insert. If the replica is behind, ClickHouse waits for it to catch up or returns an error.
+When `select_sequential_consistency = 1` is set, ClickHouse synchronously reads quorum metadata from ZooKeeper (or ClickHouse Keeper). Specifically, it checks the `quorum/last_part` and `quorum/status` paths to determine the last quorum-confirmed part. The query only proceeds if the local replica has the quorum-confirmed part. If the replica does not have it, ClickHouse immediately returns a `REPLICA_IS_NOT_IN_QUORUM` error suggesting you send the query to another replica.
 
 You can monitor replication lag using:
 
@@ -86,9 +87,8 @@ WHERE table = 'orders'
 ## Performance Considerations
 
 Enabling `select_sequential_consistency` adds overhead:
-- Reads may be delayed if a replica is behind
-- Queries can fail with a `REPLICA_IS_NOT_IN_QUORUM` error
-- Higher CPU and memory usage on ZooKeeper or ClickHouse Keeper for metadata checks
+- Queries will fail with a `REPLICA_IS_NOT_IN_QUORUM` error if the replica is behind, requiring a retry on another replica
+- Each SELECT requires a synchronous round-trip to ZooKeeper or ClickHouse Keeper for quorum metadata checks, increasing load on the coordination service
 
 Only use it when consistency is more important than latency.
 
