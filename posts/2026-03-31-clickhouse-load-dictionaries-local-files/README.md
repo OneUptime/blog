@@ -39,10 +39,10 @@ CREATE DICTIONARY country_codes_file (
 )
 PRIMARY KEY code
 SOURCE(FILE(
-    PATH '/var/lib/clickhouse/user_files/country_codes.csv'
-    FORMAT 'CSV'
+    path '/var/lib/clickhouse/user_files/country_codes.csv'
+    format 'CSV'
 ))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(3600);
 ```
 
@@ -52,8 +52,8 @@ If your CSV has a header row, use `CSVWithNames`:
 
 ```sql
 SOURCE(FILE(
-    PATH '/var/lib/clickhouse/user_files/status_codes.csv'
-    FORMAT 'CSVWithNames'
+    path '/var/lib/clickhouse/user_files/status_codes.csv'
+    format 'CSVWithNames'
 ))
 ```
 
@@ -72,14 +72,14 @@ SOURCE(FILE(
 
 ```sql
 CREATE DICTIONARY error_codes_dict (
-    code UInt32,
+    code UInt64,
     name String DEFAULT 'unknown_error',
     description String DEFAULT ''
 )
 PRIMARY KEY code
 SOURCE(FILE(
-    PATH '/var/lib/clickhouse/user_files/error_codes.tsv'
-    FORMAT 'TabSeparated'
+    path '/var/lib/clickhouse/user_files/error_codes.tsv'
+    format 'TabSeparated'
 ))
 LAYOUT(FLAT())
 LIFETIME(7200);
@@ -101,8 +101,8 @@ CREATE DICTIONARY categories_dict (
 )
 PRIMARY KEY id
 SOURCE(FILE(
-    PATH '/var/lib/clickhouse/user_files/categories.jsonl'
-    FORMAT 'JSONEachRow'
+    path '/var/lib/clickhouse/user_files/categories.jsonl'
+    format 'JSONEachRow'
 ))
 LAYOUT(HASHED())
 LIFETIME(3600);
