@@ -95,7 +95,7 @@ Controls what happens when no policy matches a caller:
 
 ### `trustDomain`
 
-The SPIFFE trust domain. For Kubernetes, this is typically `cluster.local`.
+The SPIFFE trust domain. Dapr defaults to `"public"` if not specified. Set this to match the trust domain configured in your Dapr Sentry service.
 
 ### `policies[].appId`
 
@@ -109,7 +109,8 @@ The Kubernetes namespace of the calling service. Prevents cross-namespace spoofi
 
 The operation path. Supports wildcards:
 - `/checkout` - exact match
-- `/api/*` - wildcard match for all paths under `/api/`
+- `/api/*` - single-segment wildcard, matches `/api/foo` but not `/api/foo/bar`
+- `/api/**` - multi-segment wildcard, matches all nested paths under `/api/`
 
 ### `policies[].operations[].httpVerb`
 
@@ -199,7 +200,7 @@ curl -X POST http://localhost:3500/v1.0/invoke/checkout-service/method/checkout 
 Expected response:
 
 ```json
-{"error":"ERR_ACCESS_CONTROL_NOT_ENOUGH_PERMISSIONS"}
+{"errorCode":"ERR_DIRECT_INVOKE","message":"access control policy has denied access to id: checkout-service operation: checkout verb: POST"}
 ```
 
 Check Dapr sidecar logs for access control decisions:
