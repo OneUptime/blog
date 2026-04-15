@@ -31,7 +31,6 @@ metadata:
 spec:
   metric:
     enabled: true
-    port: 9090
   tracing:
     samplingRate: "1"
     zipkin:
@@ -58,12 +57,12 @@ Dapr exposes these agent-relevant metrics:
 ```bash
 # Service invocation latency
 dapr_http_server_request_count
-dapr_http_server_latency_ms
+dapr_http_server_latency
 
 # Actor metrics (for actor-based agents)
-dapr_actor_active_actors
-dapr_actor_timer_fired_total
-dapr_actor_reminder_fired_total
+dapr_runtime_actor_pending_actor_calls
+dapr_runtime_actor_timers_fired_total
+dapr_runtime_actor_reminders_fired_total
 
 # Pub/sub metrics
 dapr_component_pubsub_ingress_count
@@ -137,11 +136,11 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: "true"
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
         target_label: __address__
-        regex: (.+)
-        replacement: $1
 ```
 
 ## Grafana Dashboard Queries
