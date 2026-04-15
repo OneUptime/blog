@@ -32,23 +32,29 @@ flowchart LR
 
 ## Prerequisites
 
-- ClickHouse 23.6+ (S3Queue is experimental in earlier versions)
+- ClickHouse 23.8+ (S3Queue is experimental in earlier versions)
 - An S3 bucket accessible from the ClickHouse server
 - IAM credentials or instance role with `s3:GetObject`, `s3:ListBucket` permissions
 
 ## Enable the Feature Flag
 
+On ClickHouse versions before 24.1, enable the experimental setting:
+
 ```sql
 SET allow_experimental_s3queue = 1;
 ```
 
-Or set it globally in `config.xml`:
+## Enable S3Queue Logging
+
+To enable the `system.s3queue_log` table for monitoring ingestion, add this to your `config.xml`:
 
 ```xml
 <clickhouse>
     <s3queue_enable_logging_to_s3queue_log>1</s3queue_enable_logging_to_s3queue_log>
 </clickhouse>
 ```
+
+Note: Logging to `system.s3queue_log` is disabled by default.
 
 ## Creating the Target Table
 
@@ -180,7 +186,7 @@ LIMIT 20;
 Check for errors:
 
 ```sql
-SELECT file_name, status, last_exception
+SELECT file_name, status, exception
 FROM system.s3queue_log
 WHERE status = 'Failed'
 ORDER BY processing_start_time DESC;
@@ -190,17 +196,16 @@ ORDER BY processing_start_time DESC;
 
 | Setting | Default | Description |
 |---|---|---|
-| `mode` | `unordered` | File processing order mode |
+| `mode` | required (no default since 24.6) | File processing order mode (`ordered` or `unordered`) |
 | `s3queue_max_processed_files_before_commit` | 100 | Flush after N files |
 | `s3queue_polling_min_timeout_ms` | 1000 | Min poll interval |
 | `s3queue_polling_max_timeout_ms` | 10000 | Max poll interval (backoff) |
-| `s3queue_max_rows_per_file` | 0 (unlimited) | Row limit per file |
-| `s3queue_cleanup_interval_min_ms` | 60000 | How often to clean tracking state |
-| `s3queue_buckets` | 1 | Number of parallel buckets for distributed processing |
+| `s3queue_cleanup_interval_min_ms` | 10000 | How often to clean tracking state |
+| `s3queue_buckets` | 0 | Number of parallel buckets for distributed processing |
 
 ## Distributed S3Queue (Multiple Replicas)
 
-When running on a ClickHouse cluster, use `s3queue_buckets` to partition work across nodes so each file is processed only once:
+When running on a ClickHouse cluster, use `s3queue_buckets` to partition work across replicas so each file is processed only once. The `buckets` setting is designed for `ordered` mode and requires a shared ZooKeeper/Keeper path for coordination:
 
 ```sql
 CREATE TABLE events_queue ON CLUSTER my_cluster (...)
@@ -209,8 +214,9 @@ ENGINE = S3Queue(
     'JSONEachRow'
 )
 SETTINGS
-    mode = 'unordered',
-    s3queue_buckets = 4;  -- one per shard/replica
+    mode = 'ordered',
+    keeper_path = '/s3queue/events_queue',
+    s3queue_buckets = 4;  -- at least the number of replicas
 ```
 
 ## Comparison with s3() Table Function
@@ -230,3 +236,4 @@ The `S3Queue` engine turns an S3 bucket into a continuous data source for ClickH
 - Monitor `system.s3queue_log` for file-level ingestion status and errors.
 - For distributed clusters, set `s3queue_buckets` equal to the number of nodes to distribute file processing.
 - Enable `allow_experimental_s3queue = 1` on ClickHouse versions before 24.1.
+- Enable `s3queue_enable_logging_to_s3queue_log` in your server config to use `system.s3queue_log` for monitoring.
