@@ -71,18 +71,17 @@ LIMIT 50;
 
 For best performance, ensure the MySQL side returns a small result set.
 
-## Read-Only vs Read-Write
+## Read-Write Support
 
-The MySQL engine supports INSERT, UPDATE, and DELETE:
+The MySQL engine supports SELECT and INSERT operations. You can insert data into MySQL from ClickHouse:
 
 ```sql
 -- Insert into MySQL from ClickHouse
 INSERT INTO mysql_customers (name, email, country)
 VALUES ('Jane Doe', 'jane@example.com', 'UK');
-
--- Update in MySQL
-ALTER TABLE mysql_customers UPDATE name = 'Jane Smith' WHERE id = 42;
 ```
+
+UPDATE and DELETE are not supported through the MySQL engine. To modify or delete rows, execute those statements directly on your MySQL server.
 
 ## Push Predicates to MySQL
 
