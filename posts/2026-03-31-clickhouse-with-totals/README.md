@@ -81,10 +81,10 @@ The four `totals_mode` values are:
 
 | Value | Totals computed from |
 |---|---|
-| `before_having` | All rows that passed WHERE |
-| `after_having_inclusive` | Rows that passed WHERE, using post-HAVING aggregate state |
-| `after_having_exclusive` | Only rows that passed HAVING |
-| `after_having_auto` (default) | Switches between inclusive and exclusive based on `totals_auto_threshold` |
+| `before_having` (default) | All rows that passed WHERE (HAVING is ignored for totals) |
+| `after_having_inclusive` | Only rows from groups that passed HAVING, plus any `max_rows_to_group_by` overflow rows |
+| `after_having_exclusive` | Only rows from groups that passed HAVING |
+| `after_having_auto` | Switches between inclusive and exclusive based on `totals_auto_threshold` |
 
 ```sql
 -- Totals include only countries that passed HAVING
