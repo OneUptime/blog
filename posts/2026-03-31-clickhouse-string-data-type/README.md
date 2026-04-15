@@ -136,7 +136,7 @@ WHERE path LIKE '/api/%'
 ## String Aggregation
 
 ```sql
--- Collect distinct paths per method
+-- Collect all paths per method
 SELECT
     method,
     groupArray(path) AS paths,
