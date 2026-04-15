@@ -33,7 +33,7 @@ SYSTEM RELOAD DICTIONARY my_remote_dictionary;
 
 ## SYSTEM DROP MARK CACHE
 
-The mark cache stores `.mrk` and `.mrk2` files (index marks) for MergeTree tables in memory. These marks allow ClickHouse to locate granules on disk without re-reading the index files.
+The mark cache stores `.mrk`, `.mrk2`, and `.mrk3` files (index marks) for MergeTree tables in memory. These marks allow ClickHouse to locate granules on disk without re-reading the index files.
 
 ```sql
 SYSTEM DROP MARK CACHE;
@@ -113,11 +113,11 @@ GROUP BY event_name
 ORDER BY events DESC;
 ```
 
-JIT compilation is controlled by the `compile_expressions` setting (default: `1`).
+JIT compilation is controlled by the `compile_expressions` setting (default: `0` in versions before 25.6, `1` since 25.6).
 
 ## SYSTEM DROP QUERY CACHE
 
-ClickHouse 23.5+ includes a query result cache. You can clear it with:
+ClickHouse 23.1+ includes a query result cache (production-ready since 23.5). You can clear it with:
 
 ```sql
 SYSTEM DROP QUERY CACHE;
