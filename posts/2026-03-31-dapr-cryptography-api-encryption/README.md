@@ -107,20 +107,13 @@ Encrypt a string value:
 ```bash
 curl -X PUT \
   "http://localhost:3500/v1.0-alpha1/crypto/myvault/encrypt" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "plaintext": "Hello, secret world!",
-    "keyName": "my-encryption-key",
-    "algorithm": "RSA-OAEP-256"
-  }'
+  -H "dapr-key-name: my-encryption-key" \
+  -H "dapr-key-wrap-algorithm: RSA-OAEP-256" \
+  --data-binary "Hello, secret world!" \
+  -o encrypted.out
 ```
 
-Response:
-
-```json
-{
-  "ciphertext": "base64encodedciphertext..."
-}
+The response body is the raw encrypted bytes (`application/octet-stream`). Use `-o` to save to a file.
 ```
 
 ### Via Go SDK
@@ -129,8 +122,10 @@ Response:
 package main
 
 import (
+    "bytes"
     "context"
     "fmt"
+    "io"
     "log"
 
     dapr "github.com/dapr/go-sdk/client"
@@ -147,35 +142,41 @@ func main() {
     plaintext := []byte("Hello, secret world!")
 
     // Encrypt
-    encryptResp, err := client.Encrypt(ctx, &dapr.EncryptRequest{
-        ComponentName: "myvault",
-        KeyName:       "my-encryption-key",
-        Algorithm:     "RSA-OAEP-256",
-        PlaintextReader: func() ([]byte, error) {
-            return plaintext, nil
+    encryptedReader, err := client.Encrypt(ctx,
+        bytes.NewReader(plaintext),
+        dapr.EncryptOptions{
+            ComponentName:    "myvault",
+            KeyName:          "my-encryption-key",
+            KeyWrapAlgorithm: "RSA-OAEP-256",
         },
-    })
+    )
     if err != nil {
         log.Fatalf("Encryption failed: %v", err)
     }
 
-    ciphertext := encryptResp.Ciphertext
+    ciphertext, err := io.ReadAll(encryptedReader)
+    if err != nil {
+        log.Fatalf("Failed to read encrypted data: %v", err)
+    }
     fmt.Printf("Encrypted (%d bytes)\n", len(ciphertext))
 
     // Decrypt
-    decryptResp, err := client.Decrypt(ctx, &dapr.DecryptRequest{
-        ComponentName: "myvault",
-        KeyName:       "my-encryption-key",
-        Algorithm:     "RSA-OAEP-256",
-        CiphertextReader: func() ([]byte, error) {
-            return ciphertext, nil
+    decryptedReader, err := client.Decrypt(ctx,
+        bytes.NewReader(ciphertext),
+        dapr.DecryptOptions{
+            ComponentName: "myvault",
+            KeyName:       "my-encryption-key",
         },
-    })
+    )
     if err != nil {
         log.Fatalf("Decryption failed: %v", err)
     }
 
-    fmt.Printf("Decrypted: %s\n", string(decryptResp.Plaintext))
+    decrypted, err := io.ReadAll(decryptedReader)
+    if err != nil {
+        log.Fatalf("Failed to read decrypted data: %v", err)
+    }
+    fmt.Printf("Decrypted: %s\n", string(decrypted))
 }
 ```
 
@@ -183,6 +184,7 @@ func main() {
 
 ```python
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 import base64
 
 with DaprClient() as client:
@@ -190,49 +192,68 @@ with DaprClient() as client:
 
     # Encrypt
     encrypt_response = client.encrypt(
-        component_name='myvault',
-        plaintext=plaintext,
-        key_name='my-encryption-key',
-        key_wrap_algorithm='RSA-OAEP-256'
+        data=plaintext,
+        options=EncryptOptions(
+            component_name='myvault',
+            key_name='my-encryption-key',
+            key_wrap_algorithm='RSA-OAEP-256',
+        ),
     )
-    ciphertext = encrypt_response.ciphertext
+    ciphertext = encrypt_response.read()
     print(f"Encrypted: {base64.b64encode(ciphertext).decode()}")
 
     # Decrypt
     decrypt_response = client.decrypt(
-        component_name='myvault',
-        ciphertext=ciphertext,
-        key_name='my-encryption-key',
-        key_wrap_algorithm='RSA-OAEP-256'
+        data=ciphertext,
+        options=DecryptOptions(
+            component_name='myvault',
+            key_name='my-encryption-key',
+        ),
     )
-    recovered = decrypt_response.plaintext
+    recovered = decrypt_response.read()
     print(f"Decrypted: {recovered.decode()}")
 ```
 
 ## Supported Algorithms
 
+**Key Wrap Algorithms** (used to wrap the data encryption key):
+
 | Algorithm | Type | Use Case |
 |---|---|---|
-| `RSA-OAEP` | Asymmetric | Encrypt small payloads with RSA public key |
-| `RSA-OAEP-256` | Asymmetric | RSA-OAEP with SHA-256 |
-| `A256GCM` | Symmetric (AES-GCM) | Encrypt data with AES 256-bit key |
-| `A128CBC-HS256` | Symmetric (AES-CBC + HMAC) | Symmetric encryption with integrity |
+| `RSA-OAEP-256` | Asymmetric | Wrap key using RSA-OAEP with SHA-256 |
+| `A256KW` | Symmetric | Wrap key using AES-256 Key Wrap |
+| `A128CBC` | Symmetric | Wrap key using AES-128-CBC |
+| `A192CBC` | Symmetric | Wrap key using AES-192-CBC |
+
+**Data Encryption Ciphers** (used to encrypt the actual data):
+
+| Cipher | Description |
+|---|---|
+| `aes-gcm` (default) | AES-GCM authenticated encryption |
+| `chacha20-poly1305` | ChaCha20-Poly1305 authenticated encryption |
 
 ## Stream Encryption for Large Data
 
-For large files or streams, use the streaming encrypt/decrypt API:
+The Go SDK's `Encrypt` and `Decrypt` methods already support streaming via `io.Reader`. For large files, pass a file reader directly:
 
 ```go
-// Go - streaming encrypt
-encryptOpts := &dapr.EncryptOptions{
-    ComponentName:     "myvault",
-    KeyName:          "my-encryption-key",
-    Algorithm:        "A256GCM",
-    DataEncryptionKey: "my-data-key",
+// Go - streaming encrypt from a file
+inputFile, _ := os.Open("largefile.dat")
+defer inputFile.Close()
+
+encryptedReader, err := client.Encrypt(ctx, inputFile, dapr.EncryptOptions{
+    ComponentName:       "myvault",
+    KeyName:             "my-encryption-key",
+    KeyWrapAlgorithm:    "RSA-OAEP-256",
+    DataEncryptionCipher: "aes-gcm",
+})
+if err != nil {
+    log.Fatal(err)
 }
 
-// Pass io.Reader and io.Writer for streaming
-err = client.EncryptStream(ctx, inputReader, outputWriter, encryptOpts)
+outputFile, _ := os.Create("largefile.dat.enc")
+defer outputFile.Close()
+io.Copy(outputFile, encryptedReader)
 ```
 
 ## Step 3: Decrypt Data
@@ -240,12 +261,9 @@ err = client.EncryptStream(ctx, inputReader, outputWriter, encryptOpts)
 ```bash
 curl -X PUT \
   "http://localhost:3500/v1.0-alpha1/crypto/myvault/decrypt" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "ciphertext": "base64encodedciphertext...",
-    "keyName": "my-encryption-key",
-    "algorithm": "RSA-OAEP-256"
-  }'
+  -H "dapr-key-name: my-encryption-key" \
+  --data-binary @encrypted.out \
+  -o decrypted.out
 ```
 
 ## Summary
