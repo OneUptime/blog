@@ -26,9 +26,7 @@ Each replica watches this log and pulls entries to execute. This means replicas 
 
 1. Client sends INSERT to any replica
 2. That replica writes the part locally and creates a log entry in ZooKeeper
-3. Other replicas see the new log entry and fetch the part either:
-   - From the replica that wrote it (direct part fetch over HTTP)
-   - By replaying the INSERT themselves if they have the data
+3. Other replicas see the new log entry and fetch the part from the replica that wrote it (direct part fetch over HTTP)
 
 ```sql
 -- Check replication lag
@@ -39,23 +37,23 @@ WHERE absolute_delay > 10;
 
 ## Part Fetching
 
-When a replica needs a part from another replica, it uses ClickHouse's part fetch protocol over HTTP:
+When a replica needs a part from another replica, it uses ClickHouse's interserver HTTP protocol:
 
 ```text
-GET /?action=sendPart&part=20240101_1_5_2&database=default&table=events
+POST /?endpoint=DataPartsExchange:/clickhouse/tables/01/events/replicas/r1&part=20240101_1_5_2&client_protocol_version=4&compress=false
 ```
 
 The response streams the compressed part files directly. The receiving replica writes them to a temporary directory and atomically renames on success.
 
 ## Merge Coordination
 
-To avoid duplicating merge work, only one replica executes a given merge. The replica assigns itself a merge log entry in ZooKeeper:
+Merges are coordinated so that all replicas merge the same set of parts. The leader replica is responsible for scheduling which parts should be merged and creates a log entry in ZooKeeper:
 
 ```text
 /clickhouse/tables/{shard}/{table}/log/log-0000000043 (type: MERGE_PARTS)
 ```
 
-Other replicas see this log entry and either wait for the merged part to be fetched, or execute the merge themselves if the source replica is slow.
+By default, each replica then independently executes the merge locally on its own copy of the parts. If `execute_merges_on_single_replica_time_threshold` is configured, only one replica executes the merge while others fetch the merged result.
 
 ## Quorum Inserts
 
