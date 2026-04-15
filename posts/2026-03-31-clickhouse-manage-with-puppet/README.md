@@ -92,7 +92,13 @@ class clickhouse (
 ) {
   contain clickhouse::repo
   contain clickhouse::install
+
+  class { 'clickhouse::config':
+    listen_host     => $listen_host,
+    max_connections => $max_connections,
+  }
   contain clickhouse::config
+
   contain clickhouse::service
 
   Class['clickhouse::repo']
