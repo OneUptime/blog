@@ -18,24 +18,25 @@ ClickHouse quotas limit how many queries, rows, or bytes a user or role can cons
 SELECT
     name,
     id,
+    storage,
     keys,
     durations,
-    max_queries,
-    max_errors,
-    max_result_rows,
-    max_read_rows,
-    max_execution_time
+    apply_to_all,
+    apply_to_list,
+    apply_to_except
 FROM system.quotas
 ORDER BY name;
 ```
 
 Key fields:
 - `name` - quota policy name
-- `keys` - what the quota is keyed on (`user_name`, `ip_address`, `client_key`, or `initial_query`)
+- `keys` - what the quota is keyed on (`user_name`, `ip_address`, `client_key`, etc.)
 - `durations` - time intervals (in seconds) for each limit tier
-- `max_queries` - queries allowed per interval
-- `max_read_rows` - rows allowed to be read per interval
-- `max_execution_time` - total execution time allowed per interval
+- `apply_to_all` - whether the quota applies to all users
+- `apply_to_list` - list of users or roles the quota is assigned to
+- `apply_to_except` - list of users or roles excluded from the quota
+
+The actual limit values (max queries, max read rows, etc.) are stored in `system.quota_limits`, not in `system.quotas`.
 
 ## Creating a Quota
 
@@ -63,14 +64,14 @@ SELECT
     max_read_rows,
     execution_time,
     max_execution_time,
-    quota_start_time,
-    quota_end_time
+    start_time,
+    end_time
 FROM system.quota_usage;
 ```
 
 ## Monitoring All Users' Quota Usage
 
-Admins can query `system.quota_limits` and `system.quotas_usage` for all users:
+Admins can query `system.quotas_usage` (note the 's') to see usage for all users, not just the current user:
 
 ```sql
 SELECT
@@ -82,7 +83,7 @@ SELECT
     max_read_rows,
     round(queries / max_queries * 100, 1)    AS query_pct_used,
     round(read_rows / max_read_rows * 100, 1) AS rows_pct_used
-FROM system.quota_limits
+FROM system.quotas_usage
 WHERE max_queries > 0
 ORDER BY query_pct_used DESC;
 ```
@@ -96,7 +97,7 @@ SELECT
     queries,
     max_queries,
     queries / max_queries AS fraction_used
-FROM system.quota_limits
+FROM system.quotas_usage
 WHERE max_queries > 0
   AND queries / max_queries > 0.8
 ORDER BY fraction_used DESC;
@@ -110,22 +111,24 @@ Quotas reset automatically at the end of each interval. To reset immediately for
 
 ```sql
 -- Apply quota to a user
-ALTER USER analyst DEFAULT QUOTA analyst_quota;
+ALTER QUOTA analyst_quota TO analyst;
 
 -- Apply quota to a role
-ALTER ROLE data_analyst SETTINGS PROFILE 'restricted';
+ALTER QUOTA analyst_quota TO data_analyst;
 ```
 
 ## Viewing Quota-to-User Mapping
 
 ```sql
-SELECT user_name, quota_name
-FROM system.user_directories
-INNER JOIN system.quotas ON true  -- join through grants
-LIMIT 10;
+SELECT
+    name AS quota_name,
+    apply_to_list,
+    apply_to_except,
+    apply_to_all
+FROM system.quotas;
 ```
 
-Check `SHOW CREATE USER analyst` for the active quota assignment.
+You can also check `SHOW CREATE QUOTA analyst_quota` or `SHOW CREATE USER analyst` to see quota assignments.
 
 ## Summary
 
