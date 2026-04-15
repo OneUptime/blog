@@ -43,9 +43,9 @@ spec:
   metadata:
   - name: nameServer
     value: localhost:9876
-  - name: groupName
+  - name: consumerGroup
     value: order-producer-group
-  - name: topic
+  - name: topics
     value: ORDERS
   - name: accessKey
     secretKeyRef:
@@ -55,8 +55,6 @@ spec:
     secretKeyRef:
       name: rocketmq-secret
       key: secretKey
-  - name: sendTimeOut
-    value: "3000"
   - name: retries
     value: "3"
 ```
@@ -88,8 +86,8 @@ curl -X POST http://localhost:3500/v1.0/bindings/rocketmq-binding \
     "operation": "create",
     "data": {"orderId": "order-1002", "status": "shipped"},
     "metadata": {
-      "tags": "ShippedOrder",
-      "keys": "order-1002"
+      "rocketmq-tag": "ShippedOrder",
+      "rocketmq-key": "order-1002"
     }
   }'
 ```
@@ -116,8 +114,8 @@ func publishOrder(msg Message) error {
         "operation": "create",
         "data":      msg,
         "metadata": map[string]string{
-            "tags": "NewOrder",
-            "keys": msg.OrderID,
+            "rocketmq-tag": "NewOrder",
+            "rocketmq-key": msg.OrderID,
         },
     }
     body, _ := json.Marshal(payload)
@@ -147,9 +145,9 @@ app.post("/rocketmq-binding", async (req, res) => {
 });
 ```
 
-## Ordered Messaging with Message Queuing
+## Message Filtering with Tags and Keys
 
-RocketMQ guarantees ordering within a single queue. Use the `shardingKey` metadata to route related messages to the same queue:
+RocketMQ supports server-side filtering using tags and message identification using keys. Use the `rocketmq-tag` and `rocketmq-key` metadata fields to set these on outbound messages:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/rocketmq-binding \
@@ -158,11 +156,12 @@ curl -X POST http://localhost:3500/v1.0/bindings/rocketmq-binding \
     "operation": "create",
     "data": {"orderId": "order-1003", "event": "payment"},
     "metadata": {
-      "shardingKey": "order-1003"
+      "rocketmq-tag": "PaymentEvent",
+      "rocketmq-key": "order-1003"
     }
   }'
 ```
 
 ## Summary
 
-The Dapr RocketMQ binding provides a standard interface for sending messages to Apache RocketMQ. Configure the name server address, producer group, and authentication in the component YAML, then use tags and sharding keys for filtering and ordered delivery. This enables polyglot services to integrate with RocketMQ infrastructure without RocketMQ client SDKs.
+The Dapr RocketMQ binding provides a standard interface for sending messages to Apache RocketMQ. Configure the name server address, consumer group, and authentication in the component YAML, then use tags and keys for filtering and message identification. This enables polyglot services to integrate with RocketMQ infrastructure without RocketMQ client SDKs.
