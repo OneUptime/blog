@@ -33,7 +33,6 @@ annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "order-service"
   dapr.io/app-port: "8080"
-  dapr.io/enable-metrics: "true"
   dapr.io/metrics-port: "9091"
 ```
 
@@ -48,10 +47,8 @@ metadata:
   name: custom-metrics-config
   namespace: default
 spec:
-  metric:
-    enabled: true
-    port: 9091
   metrics:
+    enabled: true
     rules:
       - name: dapr_http_server_request_count
         labels:
@@ -70,7 +67,6 @@ spec:
 For Node.js services, expose custom Prometheus metrics alongside Dapr:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
 const promClient = require('prom-client');
 const express = require('express');
 
@@ -97,7 +93,6 @@ metricsApp.listen(8081, () => console.log('App metrics on :8081'));
 
 // Use in business logic
 async function processOrder(order) {
-  const start = Date.now();
   try {
     await saveOrder(order);
     ordersProcessed.inc({ status: 'success', region: order.region });
