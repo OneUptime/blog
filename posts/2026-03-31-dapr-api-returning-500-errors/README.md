@@ -23,8 +23,8 @@ When Dapr returns a 500, it includes an error code and message:
 
 The error code identifies which building block failed. Common codes:
 
-- `ERR_STATE_GET` / `ERR_STATE_SET` - state store issues
-- `ERR_PUBLISH_MESSAGE` - pub/sub issues
+- `ERR_STATE_GET` / `ERR_STATE_SAVE` - state store issues
+- `ERR_PUBSUB_PUBLISH_MESSAGE` - pub/sub issues
 - `ERR_INVOKE_OUTPUT_BINDING` - binding issues
 - `ERR_DIRECT_INVOKE` - service invocation issues
 
