@@ -150,7 +150,7 @@ Use window functions when you need rank-based deduplication, ties handling, or w
 
 ## LIMIT BY with Aggregations
 
-LIMIT BY operates on individual rows, not aggregated results. If you need top groups by an aggregate, use ORDER BY on the aggregate result and a regular LIMIT.
+LIMIT BY operates on rows in the result set, including aggregated rows after GROUP BY. You can use it to pick the top N aggregated rows per group.
 
 ```sql
 -- Top 3 days by revenue per event_type
