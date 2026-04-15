@@ -34,7 +34,7 @@ Verify that your actor type is registered with the placement service:
 
 ```bash
 # Check placement service state
-curl http://localhost:9090/placement/state | jq .
+curl http://localhost:8080/placement/state | jq .
 ```
 
 Expected output includes your actor types:
@@ -134,7 +134,7 @@ spec:
       endpointAddress: "http://zipkin:9411/api/v2/spans"
 ```
 
-Actor invocations appear in Zipkin with the span tag `dapr.actor`.
+Actor invocations appear as spans in Zipkin, letting you trace the full call chain across services.
 
 ## Summary
 
