@@ -47,7 +47,7 @@ ENGINE = ReplicatedSummingMergeTree(
 )
 ```
 
-`unique_users` will then keep the value from the first row encountered rather than being summed.
+`unique_users` will then retain an arbitrary value from one of the existing rows rather than being summed.
 
 ## Inserting Data
 
