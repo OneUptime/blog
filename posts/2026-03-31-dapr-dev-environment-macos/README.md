@@ -99,7 +99,7 @@ For Go:
 
 ```bash
 brew install go
-go get github.com/dapr/go-sdk/client
+go get github.com/dapr/go-sdk
 ```
 
 ## Step 6: Create and Run Your First App
@@ -127,7 +127,7 @@ main().catch(console.error);
 Run it:
 
 ```bash
-dapr run --app-id hello-dapr node app.js
+dapr run --app-id hello-dapr -- node app.js
 ```
 
 ## Step 7: Open the Dapr Dashboard
