@@ -29,9 +29,11 @@ SETTINGS
 
 ## Changing Settings on an Existing Table
 
+Note that some settings like `index_granularity` are immutable after table creation because they define the physical data layout on disk. Only settings that do not affect existing part structure can be modified:
+
 ```sql
-ALTER TABLE events MODIFY SETTING index_granularity = 4096;
 ALTER TABLE events MODIFY SETTING min_bytes_for_wide_part = 5242880;
+ALTER TABLE events MODIFY SETTING parts_to_delay_insert = 500;
 ```
 
 ## Key Settings and Their Effects
@@ -79,7 +81,7 @@ Maximum number of active parts allowed across all partitions.
 SETTINGS max_parts_in_total = 100000
 ```
 
-If exceeded, inserts are throttled. Tune to prevent "Too many parts" errors on high-frequency insert workloads.
+If exceeded, inserts are rejected with a "Too many parts" error. Tune this limit for high-frequency insert workloads.
 
 ### parts_to_delay_insert / parts_to_throw_insert
 
@@ -98,12 +100,15 @@ When set to 1, TTL drops entire parts rather than rewriting them (more efficient
 SETTINGS ttl_only_drop_parts = 1
 ```
 
-### compression_codec
+### Column Compression with CODEC
+
+Compression is specified per-column using the `CODEC` clause, not as a table-level setting:
 
 ```sql
--- ZSTD at level 3 for good compression ratio with fast decompression
-CREATE TABLE logs (...) ENGINE = MergeTree ORDER BY ts
-SETTINGS compression_codec = 'ZSTD(3)';
+CREATE TABLE logs (
+    ts       DateTime CODEC(Delta, ZSTD(3)),
+    message  String CODEC(ZSTD(3))
+) ENGINE = MergeTree ORDER BY ts;
 ```
 
 ## Checking Current Table Settings
