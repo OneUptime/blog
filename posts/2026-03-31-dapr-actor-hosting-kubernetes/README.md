@@ -68,6 +68,7 @@ Expected output:
   NAME                   NAMESPACE    HEALTHY  STATUS   REPLICAS  VERSION
   dapr-operator          dapr-system  True     Running  1         1.x.x
   dapr-placement-server  dapr-system  True     Running  1         1.x.x
+  dapr-scheduler-server  dapr-system  True     Running  1         1.x.x
   dapr-sentry            dapr-system  True     Running  1         1.x.x
   dapr-sidecar-injector  dapr-system  True     Running  1         1.x.x
 ```
@@ -143,7 +144,28 @@ spec:
 
 ## Step 4: Configure Actor Settings (Optional)
 
-Create a Dapr `Configuration` resource to tune actor behavior:
+Actor runtime settings such as reentrancy, idle timeout, and reminder storage partitions are configured in your application code, not in a Kubernetes Configuration resource. Your app exposes these settings to the Dapr sidecar via the `/dapr/config` HTTP endpoint at startup.
+
+For example, in a Node.js app using the Dapr JS SDK:
+
+```javascript
+const { DaprServer } = require("@dapr/dapr");
+
+const server = new DaprServer({
+  actor: {
+    actorIdleTimeout: "1h",
+    actorScanInterval: "30s",
+    drainOngoingCallTimeout: "60s",
+    drainRebalancedActors: true,
+    reentrancy: {
+      enabled: false,
+    },
+    remindersStoragePartitions: 0,
+  },
+});
+```
+
+If you referenced a Dapr `Configuration` resource via the `dapr.io/config` annotation (as shown in Step 3), that resource is used for general sidecar settings like tracing, metrics, and mTLS — not for actor-specific configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -152,10 +174,10 @@ metadata:
   name: actorconfig
   namespace: default
 spec:
-  actor:
-    reentrancy:
-      enabled: false
-    remindersStoragePartitions: 0
+  tracing:
+    samplingRate: "1"
+  metrics:
+    enabled: true
 ```
 
 ```bash
@@ -197,7 +219,7 @@ kubectl logs deployment/actor-service -c daprd | grep -i actor
 
 You should see log lines like:
 
-```toml
+```text
 time="..." level=info msg="Actor runtime started. Actor idle timeout: 1h0m0s. Actor scan interval: 30s"
 time="..." level=info msg="Registered actor types: [CounterActor]"
 ```
