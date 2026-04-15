@@ -65,7 +65,7 @@ SHOW TABLES FROM mysql_live;
 
 ## Writing Data Back to MySQL
 
-Unlike PostgreSQL database engine, the MySQL database engine supports INSERT:
+The MySQL database engine supports INSERT:
 
 ```sql
 INSERT INTO mysql_live.audit_log VALUES
@@ -94,7 +94,7 @@ Non-pushable expressions result in a full table scan fetched to ClickHouse for l
 - No caching - results are not stored in ClickHouse
 - Performance is bounded by MySQL response time
 - Not suitable for high-frequency heavy analytics
-- For analytics, prefer MaterializedMySQL
+- RENAME, CREATE TABLE, and ALTER are not supported
 ```
 
 ## Handling MySQL Type Mappings
@@ -102,16 +102,16 @@ Non-pushable expressions result in a full table scan fetched to ClickHouse for l
 ClickHouse maps MySQL types automatically:
 
 ```text
-MySQL INT         -> Int32
-MySQL BIGINT      -> Int64
-MySQL VARCHAR     -> String
-MySQL DATETIME    -> DateTime
-MySQL DECIMAL     -> Decimal
-MySQL TINYINT(1)  -> UInt8
+MySQL INT              -> Int32
+MySQL BIGINT           -> Int64
+MySQL VARCHAR          -> String
+MySQL DATETIME         -> DateTime
+MySQL UNSIGNED TINYINT -> UInt8
+MySQL TINYINT          -> Int8
 ```
 
-Complex types like JSON may not map cleanly and require explicit casting.
+Most other MySQL types, including DECIMAL, TEXT, and JSON, are mapped to String. Cast explicitly if you need a specific ClickHouse type.
 
 ## Summary
 
-The MySQL database engine provides a lightweight way to run federated queries against MySQL from ClickHouse. It is best suited for occasional lookups, data exploration, and migration workflows. For production analytics on MySQL data with low latency and high throughput, use the MaterializedMySQL database engine to maintain a local ClickHouse replica instead.
+The MySQL database engine provides a lightweight way to run federated queries against MySQL from ClickHouse. It is best suited for occasional lookups, data exploration, and migration workflows. For production analytics on MySQL data with low latency and high throughput, consider replicating MySQL data into native ClickHouse tables instead.
