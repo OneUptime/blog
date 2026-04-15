@@ -53,7 +53,7 @@ spec:
       value: "llama3.2"
     - name: endpoint
       value: "http://localhost:11434"
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "10m"
 ```
 
@@ -67,7 +67,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/ollama-conversation/
   -d '{
     "inputs": [
       {
-        "message": "Explain how a binary search tree works",
+        "content": "Explain how a binary search tree works",
         "role": "user"
       }
     ]
@@ -158,12 +158,12 @@ def generate_unit_tests(code: str) -> str:
         "http://localhost:3500/v1.0-alpha1/conversation/ollama-conversation/converse",
         json={
             "inputs": [{
-                "message": f"Generate comprehensive unit tests for this code:\n\n{code}",
+                "content": f"Generate comprehensive unit tests for this code:\n\n{code}",
                 "role": "user"
             }],
-            "parameters": {
-                "model": "codellama",
-                "temperature": 0.2
+            "temperature": 0.2,
+            "metadata": {
+                "model": "codellama"
             }
         }
     )
