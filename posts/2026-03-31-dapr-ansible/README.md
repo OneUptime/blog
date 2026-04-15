@@ -17,13 +17,13 @@ Ansible is a widely used automation tool for configuring servers and deploying a
 - Ansible 2.12+ installed on the control node
 - Target hosts accessible via SSH
 - Kubernetes cluster already provisioned
-- `community.kubernetes` Ansible collection installed
+- `kubernetes.core` Ansible collection installed
 
 ## Installing Required Collections
 
 ```bash
 ansible-galaxy collection install \
-  community.kubernetes \
+  kubernetes.core \
   community.general \
   ansible.posix
 ```
@@ -60,7 +60,7 @@ ansible_python_interpreter=/usr/bin/python3
 
   - name: Install Dapr CLI
     ansible.builtin.command:
-      cmd: /tmp/dapr-install.sh -b /usr/local/bin {{ dapr_version }}
+      cmd: /tmp/dapr-install.sh {{ dapr_version }}
       creates: /usr/local/bin/dapr
 
   - name: Verify Dapr CLI installation
@@ -84,12 +84,12 @@ ansible_python_interpreter=/usr/bin/python3
 
   tasks:
   - name: Add Dapr Helm repository
-    community.kubernetes.helm_repository:
+    kubernetes.core.helm_repository:
       name: dapr
       repo_url: https://dapr.github.io/helm-charts/
 
   - name: Install Dapr via Helm
-    community.kubernetes.helm:
+    kubernetes.core.helm:
       name: dapr
       chart_ref: dapr/dapr
       chart_version: "1.13.0"
@@ -104,7 +104,7 @@ ansible_python_interpreter=/usr/bin/python3
       timeout: 5m0s
 
   - name: Wait for Dapr pods to be ready
-    community.kubernetes.k8s_info:
+    kubernetes.core.k8s_info:
       kind: Pod
       namespace: "{{ dapr_namespace }}"
       label_selectors:
@@ -127,7 +127,7 @@ ansible_python_interpreter=/usr/bin/python3
 
   tasks:
   - name: Create Redis secret
-    community.kubernetes.k8s:
+    kubernetes.core.k8s:
       state: present
       definition:
         apiVersion: v1
@@ -139,7 +139,7 @@ ansible_python_interpreter=/usr/bin/python3
           password: "{{ redis_password }}"
 
   - name: Deploy Dapr state store component
-    community.kubernetes.k8s:
+    kubernetes.core.k8s:
       state: present
       definition:
         apiVersion: dapr.io/v1alpha1
@@ -174,4 +174,4 @@ ansible-playbook -i inventory/hosts playbooks/deploy-components.yml --check
 
 ## Summary
 
-Ansible playbooks provide idempotent, version-controlled automation for Dapr deployments on Kubernetes. By combining the community.kubernetes collection with Ansible's templating and variable system, teams can standardize Dapr installations across multiple environments and integrate Dapr deployment into existing infrastructure automation workflows.
+Ansible playbooks provide idempotent, version-controlled automation for Dapr deployments on Kubernetes. By combining the kubernetes.core collection with Ansible's templating and variable system, teams can standardize Dapr installations across multiple environments and integrate Dapr deployment into existing infrastructure automation workflows.
