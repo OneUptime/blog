@@ -17,7 +17,7 @@ A circuit breaker monitors the failure rate of calls to a service and temporaril
 ```mermaid
 stateDiagram-v2
     [*] --> Closed
-    Closed --> Open : failures >= maxRequests threshold
+    Closed --> Open : trip expression evaluates to true
     Open --> HalfOpen : after timeout interval
     HalfOpen --> Closed : probe request succeeds
     HalfOpen --> Open : probe request fails
@@ -129,7 +129,7 @@ spec:
 
 ## Scoping Resiliency to Specific Apps
 
-Namespace the policy to only apply when a specific caller app makes calls:
+Scope the policy to only apply to a specific app using the `scopes` field:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -137,8 +137,8 @@ kind: Resiliency
 metadata:
   name: frontend-resiliency
   namespace: default
-  annotations:
-    dapr.io/app-id: "frontend-service"  # applies only when called from frontend-service
+scopes:
+  - frontend-service  # applies only to the frontend-service sidecar
 spec:
   policies:
     circuitBreakers:
@@ -222,9 +222,9 @@ if err != nil {
 from dapr.clients import DaprClient
 from grpc import RpcError, StatusCode
 
-async with DaprClient() as client:
+with DaprClient() as client:
     try:
-        resp = await client.invoke_method(
+        resp = client.invoke_method(
             app_id="order-service",
             method_name="createOrder",
             http_verb="POST",
@@ -240,10 +240,10 @@ async with DaprClient() as client:
 ## Self-Hosted Mode
 
 ```bash
-# Place resiliency.yaml in the components directory
+# Place resiliency.yaml in the resources directory
 dapr run \
   --app-id frontend-service \
-  --components-path ./components \
+  --resources-path ./resources \
   -- go run main.go
 ```
 
