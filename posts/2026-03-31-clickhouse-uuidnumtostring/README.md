@@ -105,6 +105,10 @@ If you want to migrate from `FixedString(16)` to the native `UUID` type:
 ALTER TABLE events_binary
     ADD COLUMN id_uuid UUID MATERIALIZED toUUID(UUIDNumToString(id));
 
+-- Backfill existing rows (MATERIALIZED only applies to new inserts)
+ALTER TABLE events_binary
+    MATERIALIZE COLUMN id_uuid;
+
 -- Verify
 SELECT
     UUIDNumToString(id) AS binary_as_string,
@@ -116,7 +120,7 @@ LIMIT 5;
 
 ## Using unhex() as an Alternative Input
 
-If the UUID bytes arrive as a hex string without hyphens, use `unhex()` to produce `FixedString(16)`.
+If the UUID bytes arrive as a hex string without hyphens, use `unhex()` to produce a 16-byte binary string suitable for `UUIDNumToString()`.
 
 ```sql
 -- Convert compact hex UUID (no hyphens) to string form
