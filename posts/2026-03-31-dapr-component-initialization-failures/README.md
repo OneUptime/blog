@@ -31,10 +31,10 @@ kubectl logs <pod-name> -c daprd -n <namespace> | grep -i "error\|fail\|componen
 List all components and their status:
 
 ```bash
-dapr components -k -n <namespace>
+dapr components -k --namespace <namespace>
 ```
 
-A component that failed to initialize will show as unhealthy and its API endpoint will return `503`.
+A component that failed to initialize will show as unhealthy and its API endpoint will return `500`.
 
 ## Common Issue: Wrong Secret Reference
 
@@ -96,7 +96,7 @@ scopes:
 
 ## Enabling Component Init Retries
 
-Configure retry behavior so Dapr retries failed component initialization:
+Dapr has a built-in initialization retry policy (`DaprBuiltInInitializationRetries`) that you can override in a Resiliency resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -106,15 +106,10 @@ metadata:
 spec:
   policies:
     retries:
-      DefaultComponentCodeRetry:
+      DaprBuiltInInitializationRetries:
         policy: constant
         duration: 5s
         maxRetries: 3
-  targets:
-    components:
-      statestore:
-        inbound:
-          retry: DefaultComponentCodeRetry
 ```
 
 ## Checking Component Version Compatibility
