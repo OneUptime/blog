@@ -42,9 +42,9 @@ ORDER BY (ts, id);
 
 This is useful for keeping summary data while purging large raw payloads to save disk space.
 
-## Partition-Level TTL
+## Table-Level TTL with Actions
 
-Moving or deleting entire partitions is faster than row-level TTL because ClickHouse operates on part directories rather than scanning individual rows.
+Table-level TTL supports multiple actions beyond DELETE, including moving data to different disks or volumes. When combined with time-aligned expressions, ClickHouse can efficiently manage data lifecycle across storage tiers.
 
 ```sql
 ALTER TABLE events
@@ -108,7 +108,9 @@ Or configure how frequently TTL is checked:
 
 ```xml
 <!-- config.xml -->
-<merge_with_ttl_timeout>86400</merge_with_ttl_timeout>
+<merge_tree>
+  <merge_with_ttl_timeout>86400</merge_with_ttl_timeout>
+</merge_tree>
 ```
 
 ## Checking TTL Configuration
@@ -121,4 +123,4 @@ WHERE database = 'analytics' AND engine_full LIKE '%TTL%';
 
 ## Summary
 
-ClickHouse TTL provides automatic data lifecycle management at the row, column, or partition level. Use row-level TTL for fine-grained expiry, column-level TTL to purge large fields while keeping row metadata, and partition-level TTL with `MOVE TO DISK` for cost-effective multi-tier storage. TTL runs during background merges and can be forced with `ALTER TABLE ... MATERIALIZE TTL`.
+ClickHouse TTL provides automatic data lifecycle management at the row, column, or table level. Use row-level TTL for fine-grained expiry, column-level TTL to purge large fields while keeping row metadata, and table-level TTL with `TO DISK` or `TO VOLUME` actions for cost-effective multi-tier storage. TTL runs during background merges and can be forced with `ALTER TABLE ... MATERIALIZE TTL`.
