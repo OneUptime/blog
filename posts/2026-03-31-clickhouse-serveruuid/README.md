@@ -8,7 +8,7 @@ Description: Learn how serverUUID() returns the persistent unique identifier of 
 
 ---
 
-`serverUUID()` returns the `UUID` value that uniquely identifies the running ClickHouse server instance. This UUID is generated once when the server first starts and persisted in the `uuid` file inside the server's data directory. It remains stable across restarts and is the same identifier used internally by ClickHouse for distributed query routing, replication, and system catalog entries. The function takes no arguments and always returns a `UUID`.
+`serverUUID()` returns the `UUID` value that uniquely identifies the running ClickHouse server instance. This UUID is generated once when the server first starts and persisted in the `uuid` file inside the server's data directory. It remains stable across restarts and is referenced internally by ClickHouse in several subsystems such as cluster discovery, DDL workers, and replicated database coordination. The function takes no arguments and always returns a `UUID`.
 
 ## Basic Usage
 
@@ -22,19 +22,15 @@ server_id
 a5d4c3b2-e1f0-4a7b-8c9d-0e1f2a3b4c5d
 ```
 
-## Viewing Server UUID in the System Tables
+## Identifying the Current Server
 
-The same UUID appears in `system.clusters` and other metadata tables.
+Use `serverUUID()` alongside `hostName()` to uniquely identify the current server in diagnostics.
 
 ```sql
--- Compare serverUUID() with what system.clusters reports
+-- Show the current server's UUID and hostname together
 SELECT
-    serverUUID()                    AS from_function,
-    (
-        SELECT host_name FROM system.clusters
-        WHERE is_local = 1
-        LIMIT 1
-    )                               AS local_host;
+    serverUUID()  AS server_uuid,
+    hostName()    AS host;
 ```
 
 ## Tagging Rows with the Originating Server
@@ -90,22 +86,20 @@ FROM distributed_events
 GROUP BY host, shard_uuid;
 ```
 
-## Checking Replication Consistency
+## Tagging Replication Diagnostics
 
-Each replica in a `ReplicatedMergeTree` has a distinct `serverUUID()`. You can use it to verify that a specific replica processed a given block.
+Each replica in a `ReplicatedMergeTree` cluster runs on a server with its own `serverUUID()`. You can include it in diagnostic queries to identify which server you are currently connected to.
 
 ```sql
--- Is this the primary replica?
+-- Show the current server UUID alongside replication status
 SELECT
-    serverUUID()                                    AS my_uuid,
-    (SELECT uuid FROM system.replicas
-     WHERE is_leader = 1 AND table = 'events'
-     LIMIT 1)                                       AS leader_uuid,
-    serverUUID() = (
-        SELECT uuid FROM system.replicas
-        WHERE is_leader = 1 AND table = 'events'
-        LIMIT 1
-    )                                               AS i_am_leader;
+    serverUUID()  AS my_server_uuid,
+    table,
+    is_leader,
+    total_replicas,
+    active_replicas
+FROM system.replicas
+WHERE table = 'events';
 ```
 
 ## System Table Reference
@@ -121,7 +115,7 @@ LIMIT 5;
 ```
 
 ```sql
--- See all servers in a cluster alongside their UUIDs
+-- See all servers in a cluster
 SELECT
     cluster,
     shard_num,
