@@ -74,34 +74,10 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
 curl http://localhost:3500/v1.0/state/statestore/session-abc123
 ```
 
-## Using State Transactions
-
-```bash
-curl -X POST http://localhost:3500/v1.0/state/statestore/transaction \
-  -H "Content-Type: application/json" \
-  -d '{
-    "operations": [
-      {
-        "operation": "upsert",
-        "request": {
-          "key": "inventory-widget",
-          "value": {"quantity": 95}
-        }
-      },
-      {
-        "operation": "upsert",
-        "request": {
-          "key": "order-1001",
-          "value": {"status": "confirmed", "items": ["widget"]}
-        }
-      }
-    ]
-  }'
-```
-
 ## ETag-Based Optimistic Concurrency
 
 ```python
+import json
 from dapr.clients import DaprClient
 from dapr.clients.grpc._state import StateOptions, Concurrency
 
@@ -109,14 +85,14 @@ with DaprClient() as client:
     # Get current state with ETag
     state = client.get_state("statestore", "inventory-widget")
     current_etag = state.etag
-    current_value = state.json()
+    current_value = json.loads(state.data)
 
     # Update with concurrency check
     new_value = {**current_value, "quantity": current_value["quantity"] - 1}
     client.save_state(
         store_name="statestore",
         key="inventory-widget",
-        value=str(new_value),
+        value=json.dumps(new_value),
         etag=current_etag,
         options=StateOptions(concurrency=Concurrency.first_write)
     )
@@ -124,4 +100,4 @@ with DaprClient() as client:
 
 ## Summary
 
-Dapr's Alibaba Cloud Tablestore state store integration provides a highly scalable, low-latency backend for microservice state on Alibaba Cloud. With support for transactions, bulk operations, and ETag-based optimistic concurrency, Tablestore is well-suited for high-throughput stateful microservices deployed in Chinese cloud regions.
+Dapr's Alibaba Cloud Tablestore state store integration provides a highly scalable, low-latency backend for microservice state on Alibaba Cloud. With support for bulk operations and ETag-based optimistic concurrency, Tablestore is well-suited for high-throughput stateful microservices deployed in Chinese cloud regions.
