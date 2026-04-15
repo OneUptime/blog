@@ -116,7 +116,7 @@ Inserts into a `Distributed` table go to one replica per shard when `internal_re
 ```sql
 -- This insert succeeds even with one replica down
 -- The healthy replica stores the data and the failed replica
--- fetches it from ZooKeeper when it recovers
+-- fetches missing data parts from other replicas when it recovers
 INSERT INTO events_distributed VALUES
     (now(), 1001, 'page_view', '{}');
 ```
@@ -216,11 +216,15 @@ SELECT
 FROM system.replicas;
 ```
 
-If `entries_behind` is very large and the replica is not making progress, trigger a full restore:
+If `entries_behind` is very large and the replica is not making progress, drop the local table and recreate it so it re-clones all data from the peer replica:
 
 ```sql
--- Force a complete resync from another replica
-SYSTEM RESTORE REPLICA database.table_name;
+-- Drop the local table on the stuck replica
+DROP TABLE database.table_name SYNC;
+
+-- Recreate it with the same DDL (it re-registers in ZooKeeper
+-- and fetches all data parts from the healthy replica)
+CREATE TABLE database.table_name ...  -- use the original CREATE TABLE statement
 ```
 
 ## Node Replacement (Permanent Failure)
