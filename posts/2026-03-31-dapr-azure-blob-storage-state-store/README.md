@@ -35,7 +35,7 @@ az storage account create \
 # Create container for Dapr state
 az storage container create \
   --name dapr-state \
-  --account-name baprstatestg001 \
+  --account-name daprstatestg001 \
   --auth-mode login
 ```
 
@@ -54,7 +54,7 @@ Create a Kubernetes secret with the storage connection string:
 
 ```bash
 kubectl create secret generic blob-secret \
-  --from-literal=connectionString="DefaultEndpointsProtocol=https;AccountName=daprstatestg001;..."
+  --from-literal=accountKey="<your-storage-account-key>"
 ```
 
 Create the Dapr state store component:
