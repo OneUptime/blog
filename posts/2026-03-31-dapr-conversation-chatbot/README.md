@@ -55,7 +55,7 @@ async function saveHistory(sessionId, history) {
     body: JSON.stringify([{
       key: `chat:${sessionId}`,
       value: history,
-      options: { ttlInSeconds: 3600 } // 1 hour session TTL
+      metadata: { ttlInSeconds: "3600" } // 1 hour session TTL
     }])
   });
 }
@@ -73,7 +73,7 @@ app.post('/api/chat', async (req, res) => {
     let history = await getHistory(sessionId);
 
     // Add user message
-    history.push({ message, role: 'user' });
+    history.push({ content: message, role: 'user' });
 
     // Trim history if too long
     if (history.length > MAX_HISTORY) {
@@ -88,7 +88,7 @@ app.post('/api/chat', async (req, res) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inputs: history,
-          parameters: { temperature: 0.7, max_tokens: 500 }
+          temperature: 0.7
         })
       }
     );
@@ -97,7 +97,7 @@ app.post('/api/chat', async (req, res) => {
     const assistantMessage = llmData.outputs[0].result;
 
     // Add assistant response to history
-    history.push({ message: assistantMessage, role: 'assistant' });
+    history.push({ content: assistantMessage, role: 'assistant' });
 
     // Save updated history
     await saveHistory(sessionId, history);
@@ -137,11 +137,11 @@ async function getConversationInputs(sessionId, userMessage, systemPrompt) {
   const inputs = [];
 
   if (history.length === 0 && systemPrompt) {
-    inputs.push({ message: systemPrompt, role: 'system' });
+    inputs.push({ content: systemPrompt, role: 'system' });
   }
 
   inputs.push(...history);
-  inputs.push({ message: userMessage, role: 'user' });
+  inputs.push({ content: userMessage, role: 'user' });
 
   return inputs;
 }
