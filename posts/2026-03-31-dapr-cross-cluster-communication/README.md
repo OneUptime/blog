@@ -28,8 +28,8 @@ spec:
   metadata:
   - name: brokers
     value: "kafka.shared-infra.example.com:9092"
-  - name: authRequired
-    value: "true"
+  - name: authType
+    value: "password"
   - name: saslUsername
     secretKeyRef:
       name: kafka-creds
@@ -121,7 +121,7 @@ spec:
 
 Correlate traces across clusters by propagating the W3C traceparent header:
 
-```bash
+```yaml
 # Zipkin federation - configure both clusters to report to the same collector
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
