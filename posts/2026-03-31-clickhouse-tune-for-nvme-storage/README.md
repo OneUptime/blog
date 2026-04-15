@@ -24,7 +24,7 @@ echo 'ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="no
 
 ## Increase NVMe Queue Depth
 
-NVMe supports up to 64K queues with 64K entries each. Raise the hardware queue depth:
+NVMe supports up to 64K queues with 64K entries each. Raise the block layer request queue depth to allow more I/O requests in flight:
 
 ```bash
 echo 1023 | sudo tee /sys/block/nvme0n1/queue/nr_requests
@@ -67,8 +67,19 @@ NVMe can handle many more concurrent operations than SATA SSDs:
 
 With NVMe, disk I/O is rarely the bottleneck during inserts. Increase threads to saturate CPU:
 
+```sql
+SET max_insert_threads = 16;
+```
+
+To make this the default for all queries, set it in a user profile in `users.xml`:
+
 ```xml
-<max_insert_threads>16</max_insert_threads>
+<!-- users.xml -->
+<profiles>
+    <default>
+        <max_insert_threads>16</max_insert_threads>
+    </default>
+</profiles>
 ```
 
 ## Use Multiple NVMe Disks with JBOD
