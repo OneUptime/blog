@@ -16,9 +16,9 @@ Funnel analysis answers a deceptively simple question: of all the users who star
 windowFunnel(window[, mode, ...])(timestamp, cond1, cond2, ...)
 ```
 
-- `window` - time window size in seconds. All steps must be completed within this duration.
-- `mode` (optional) - one or more of `'strict_order'`, `'strict_deduplication'`, `'strict_increase'`, `'strict_once'`.
-- `timestamp` - a `DateTime` or `UInt32` ordering column.
+- `window` - length of the sliding time window. The unit depends on the `timestamp` column type: seconds for `DateTime`, days for `Date`, or the same unit as the column for unsigned integer types. All steps must be completed within this duration from the first matched step.
+- `mode` (optional) - one or more of `'strict_order'`, `'strict_deduplication'`, `'strict_increase'`, `'strict_once'`, `'allow_reentry'`.
+- `timestamp` - a `Date`, `DateTime`, or unsigned integer (`UInt8`, `UInt16`, `UInt32`, `UInt64`) ordering column.
 - `cond1, cond2, ...` - Boolean conditions representing each funnel step, evaluated in order.
 
 The function returns a `UInt8` indicating the last step number reached (1 through N, or 0 if step 1 was never reached).
@@ -146,7 +146,7 @@ GROUP BY user_id;
 
 ### strict_deduplication
 
-If the same step condition fires twice in a row, the second occurrence does not advance the funnel. Useful when events can be duplicated due to retries or double-fires:
+If the same step condition fires consecutively, the repeating event interrupts further chain processing. Useful when events can be duplicated due to retries or double-fires:
 
 ```sql
 SELECT
