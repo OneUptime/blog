@@ -125,6 +125,8 @@ stages:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+
           - task: KubernetesManifest@1
             displayName: Deploy Dapr components
             inputs:
