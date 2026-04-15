@@ -101,7 +101,7 @@ ORDER BY ctr_pct DESC;
 
 ```sql
 SELECT
-    experiment_id,
+    i.experiment_id,
     count(DISTINCT i.impression_id)                                     AS impressions,
     countIf(e.interaction_type = 'click')                              AS clicks,
     countIf(e.interaction_type = 'purchase')                           AS purchases,
@@ -116,8 +116,8 @@ LEFT JOIN recommendation_interactions AS e
     ON i.impression_id = e.impression_id
 WHERE i.occurred_at >= now() - INTERVAL 14 DAY
   AND i.experiment_id IN ('control', 'treatment-v2')
-GROUP BY experiment_id
-ORDER BY experiment_id;
+GROUP BY i.experiment_id
+ORDER BY i.experiment_id;
 ```
 
 ## Position Bias Analysis
@@ -254,7 +254,7 @@ LIMIT 100;
 
 ```sql
 CREATE MATERIALIZED VIEW recommendation_daily_metrics_mv
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(day)
 ORDER BY (model_id, experiment_id, page_context, day)
 AS
@@ -263,10 +263,10 @@ SELECT
     i.experiment_id,
     i.page_context,
     toDate(i.occurred_at)                         AS day,
-    count(DISTINCT i.impression_id)               AS impressions,
-    countIf(e.interaction_type = 'click')         AS clicks,
-    countIf(e.interaction_type = 'purchase')      AS purchases,
-    sum(e.value_usd)                              AS revenue_usd
+    uniqState(i.impression_id)                    AS impressions,
+    sumIfState(toUInt64(1), e.interaction_type = 'click')  AS clicks,
+    sumIfState(toUInt64(1), e.interaction_type = 'purchase') AS purchases,
+    sumState(e.value_usd)                         AS revenue_usd
 FROM recommendation_impressions AS i
 LEFT JOIN recommendation_interactions AS e ON i.impression_id = e.impression_id
 GROUP BY i.model_id, i.experiment_id, i.page_context, day;
