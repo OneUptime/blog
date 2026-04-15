@@ -51,7 +51,6 @@ The `--app-channel-address` flag tells the sidecar to use `order-service` (the c
 Using Docker Compose is the recommended approach for multi-service Dapr apps in self-hosted mode. Define a shared network and let Compose handle DNS:
 
 ```yaml
-version: "3.9"
 networks:
   dapr-network:
     driver: bridge
@@ -74,7 +73,7 @@ services:
       - DAPR_HTTP_PORT=3500
 
   order-service-dapr:
-    image: daprio/daprd:1.13.0
+    image: daprio/daprd:1.17.4
     command: [
       "./daprd",
       "--app-id", "order-service",
