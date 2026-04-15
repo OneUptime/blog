@@ -51,6 +51,8 @@ GROUP BY event_date;
 Python test:
 
 ```python
+from datetime import date
+
 def test_daily_revenue_mv(ch_client):
     ch_client.command('TRUNCATE TABLE test_db.raw_events')
     ch_client.command('TRUNCATE TABLE test_db.daily_revenue')
@@ -69,8 +71,8 @@ def test_daily_revenue_mv(ch_client):
         ORDER BY event_date
     ''')
     rows = dict(result.result_rows)
-    assert rows['2025-06-01'] == 300.0
-    assert rows['2025-06-02'] == 50.0
+    assert rows[date(2025, 6, 1)] == 300.0
+    assert rows[date(2025, 6, 2)] == 50.0
 ```
 
 ## Testing Filter Logic in Views
@@ -96,7 +98,25 @@ def test_mv_filters_non_errors(ch_client):
 
 ## Testing PARTITION BY Behavior
 
-Verify that the view correctly assigns rows to expected partitions:
+Verify that the view correctly assigns rows to expected partitions. The target table must have an explicit `PARTITION BY` clause for this test to work:
+
+```sql
+CREATE TABLE test_db.daily_revenue_partitioned (
+  event_date Date,
+  total_revenue AggregateFunction(sum, Float64)
+) ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMM(event_date)
+ORDER BY event_date;
+
+CREATE MATERIALIZED VIEW test_db.mv_daily_revenue_partitioned
+TO test_db.daily_revenue_partitioned
+AS
+SELECT
+  event_date,
+  sumState(revenue) AS total_revenue
+FROM test_db.raw_events
+GROUP BY event_date;
+```
 
 ```python
 def test_mv_partition_assignment(ch_client):
@@ -107,7 +127,7 @@ def test_mv_partition_assignment(ch_client):
 
     result = ch_client.query('''
         SELECT partition, count() FROM system.parts
-        WHERE database = 'test_db' AND table = 'daily_revenue' AND active
+        WHERE database = 'test_db' AND table = 'daily_revenue_partitioned' AND active
         GROUP BY partition ORDER BY partition
     ''')
     partitions = [r[0] for r in result.result_rows]
