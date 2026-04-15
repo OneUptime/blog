@@ -23,7 +23,7 @@ my-app/
   components/
     statestore.yaml
     pubsub.yaml
-    zipkin.yaml
+    config.yaml
   docker-compose.yml
 ```
 
@@ -59,7 +59,7 @@ services:
       - "--app-id=order-service"
       - "--app-port=5001"
       - "--dapr-http-port=3500"
-      - "--components-path=/components"
+      - "--resources-path=/components"
       - "--config=/components/config.yaml"
     volumes:
       - "./components:/components"
@@ -84,7 +84,8 @@ services:
       - "--app-id=inventory-service"
       - "--app-port=5002"
       - "--dapr-http-port=3501"
-      - "--components-path=/components"
+      - "--resources-path=/components"
+      - "--config=/components/config.yaml"
     volumes:
       - "./components:/components"
     depends_on:
