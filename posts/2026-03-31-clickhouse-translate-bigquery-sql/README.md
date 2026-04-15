@@ -67,8 +67,9 @@ GROUP BY user_id;
 SELECT user_id, groupArray(product_id) AS products
 FROM orders
 GROUP BY user_id;
--- Note: ordering within groupArray requires arraySort post-aggregation
-SELECT user_id, arraySort(groupArray(product_id)) AS products
+-- Note: to replicate ORDER BY created_at, collect tuples and sort by the first element
+SELECT user_id,
+  arrayMap(x -> x.2, arraySort(x -> x.1, groupArray(tuple(created_at, product_id)))) AS products
 FROM orders
 GROUP BY user_id;
 ```
