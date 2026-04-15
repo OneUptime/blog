@@ -47,7 +47,7 @@ DESCRIBE system.query_log;
 | `databases` | Array(String) | Databases referenced |
 | `tables` | Array(String) | Tables referenced |
 | `is_initial_query` | UInt8 | 1 = sent by client, 0 = internal sub-query |
-| `ProfileEvents` | Map | Detailed profiling counters |
+| `ProfileEvents` | Map(String, UInt64) | Detailed profiling counters |
 
 ## Filter to Finished Queries Only
 
@@ -230,12 +230,7 @@ clickhouse-client --query "
 
 ## Control Retention
 
-```sql
--- query_log is a MergeTree table; set a TTL to auto-expire old rows
-ALTER TABLE system.query_log MODIFY TTL event_date + INTERVAL 30 DAY DELETE;
-```
-
-Or configure it in `config.xml`:
+Configure retention in `config.xml`:
 
 ```xml
 <query_log>
