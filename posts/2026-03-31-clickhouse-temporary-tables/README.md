@@ -18,10 +18,10 @@ CREATE TEMPORARY TABLE name
     column_name data_type [DEFAULT expression],
     ...
 )
-[ENGINE = Memory]
+[ENGINE = engine]
 ```
 
-The engine for temporary tables is always `Memory`. It may be specified explicitly, but it is also the default and the only supported engine for temporary tables in ClickHouse.
+The default engine for temporary tables is `Memory`. If no engine is specified, ClickHouse uses the Memory engine. Temporary tables support any table engine except Replicated and KeeperMap engines.
 
 ## Basic Example
 
@@ -132,10 +132,10 @@ WHERE is_temporary = 1;
 
 Temporary tables in ClickHouse have several important constraints:
 
-- Engine is always `Memory` - data is stored only in RAM.
+- The default engine is `Memory`, which stores data only in RAM. Other engines (except Replicated and KeeperMap) are also supported.
 - They are not replicated and do not persist across restarts.
 - They cannot be shared between sessions.
-- They do not support `PARTITION BY`, `TTL`, or secondary indexes.
+- When using the default Memory engine, `PARTITION BY`, `TTL`, and secondary indexes are not supported.
 - `SHOW TABLES` in another session will not list them.
 
 For datasets larger than available RAM, use a regular MergeTree table with a short TTL or a dedicated staging database instead.
