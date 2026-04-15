@@ -65,26 +65,32 @@ Compute a rolling P99 over the past hour for each 5-minute bucket:
 ```sql
 SELECT
     bucket,
-    quantileExact(0.99)(
-        arrayJoin(groupArray(latency_ms) OVER (
-            ORDER BY bucket
-            ROWS BETWEEN 11 PRECEDING AND CURRENT ROW
-        ))
-    ) AS rolling_p99
+    quantileExact(0.99)(arrayJoin(window_latencies)) AS rolling_p99
 FROM (
     SELECT
-        toStartOfFiveMinutes(event_time) AS bucket,
-        latency_ms
-    FROM requests
-    WHERE event_time >= now() - INTERVAL 2 HOUR
+        bucket,
+        arrayFlatten(groupArray(bucket_latencies) OVER (
+            ORDER BY bucket
+            ROWS BETWEEN 11 PRECEDING AND CURRENT ROW
+        )) AS window_latencies
+    FROM (
+        SELECT
+            toStartOfFiveMinutes(event_time) AS bucket,
+            groupArray(latency_ms) AS bucket_latencies
+        FROM requests
+        WHERE event_time >= now() - INTERVAL 2 HOUR
+        GROUP BY bucket
+    )
 )
 GROUP BY bucket
 ORDER BY bucket;
 ```
 
+The innermost query aggregates latency values into arrays per 5-minute bucket. The window function then collects those arrays over a sliding window of 12 buckets (one hour), and `arrayFlatten` merges them into a single array. The outer query expands each array with `arrayJoin` and computes the P99.
+
 ## Approximate vs. Exact Percentiles
 
-For large datasets use `quantile` (T-Digest approximation), for precise values use `quantileExact`:
+For large datasets use `quantile` (reservoir sampling approximation), for precise values use `quantileExact`:
 
 ```sql
 -- Approximate (faster, good for billions of rows)
