@@ -14,7 +14,7 @@ Dapr app health checks allow the sidecar to probe your application's health endp
 
 ## How App Health Checks Work
 
-When app health checks are enabled, the Dapr sidecar periodically calls a health endpoint on your application. If the endpoint returns a non-200 status or fails to respond within the threshold window, Dapr marks the app as unhealthy and stops forwarding incoming service invocations and pub/sub deliveries to it.
+When app health checks are enabled, the Dapr sidecar periodically calls a health endpoint on your application. If the endpoint returns a status code outside the 200-299 range or fails to respond within the threshold window, Dapr marks the app as unhealthy and stops forwarding incoming service invocations, unsubscribes from pub/sub topics, stops input bindings, and unregisters actor types.
 
 ## Configuring App Health Checks via Annotations
 
@@ -34,15 +34,15 @@ spec:
         dapr.io/app-port: "3000"
         dapr.io/enable-app-health-check: "true"
         dapr.io/app-health-check-path: "/healthz"
-        dapr.io/app-health-probe-interval: "10"
-        dapr.io/app-health-probe-timeout: "5"
+        dapr.io/app-health-probe-interval: "5"
+        dapr.io/app-health-probe-timeout: "500"
         dapr.io/app-health-threshold: "3"
 ```
 
 - `app-health-check-path`: The health endpoint path on your application (default: `/healthz`)
-- `app-health-probe-interval`: Seconds between health probes (default: 10)
-- `app-health-probe-timeout`: Seconds to wait for a health response before counting as failed
-- `app-health-threshold`: Number of consecutive failures before marking the app unhealthy
+- `app-health-probe-interval`: Seconds between health probes (default: 5)
+- `app-health-probe-timeout`: Milliseconds to wait for a health response before counting as failed (default: 500)
+- `app-health-threshold`: Number of consecutive failures before marking the app unhealthy (default: 3)
 
 ## Implementing the Health Endpoint
 
@@ -87,22 +87,18 @@ def health():
         return jsonify(status='unhealthy', error=str(e)), 503
 ```
 
-## Configuring via the App Health Check API
+## Configuring via CLI Flags
 
-You can also control health check configuration through the Dapr configuration resource:
+When running Dapr in self-hosted mode, you can enable and configure app health checks using CLI flags with `daprd`:
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: app-health-config
-  namespace: default
-spec:
-  appHealthCheck:
-    path: "/health"
-    intervalSeconds: 15
-    timeoutMilliseconds: 3000
-    threshold: 3
+```bash
+daprd --app-id order-service \
+  --app-port 3000 \
+  --enable-app-health-check \
+  --app-health-check-path /healthz \
+  --app-health-probe-interval 5 \
+  --app-health-probe-timeout 500 \
+  --app-health-threshold 3
 ```
 
 ## Observing Health Check Events
