@@ -110,8 +110,8 @@ DELETE WHERE user_id = 12345;
 -- Replace PII with anonymized values instead of deleting the row
 ALTER TABLE analytics_db.user_profiles
 UPDATE
-    email_encrypted = encrypt('aes-256-gcm', 'deleted@example.com', 'key', 'iv'),
-    phone_encrypted = encrypt('aes-256-gcm', '0000000000', 'key', 'iv')
+    email_encrypted = encrypt('aes-256-gcm', 'deleted@example.com', 'your_32_byte_encryption_key_here', 'your_16byte_iv__'),
+    phone_encrypted = encrypt('aes-256-gcm', '0000000000', 'your_32_byte_encryption_key_here', 'your_16byte_iv__')
 WHERE user_id = 12345;
 ```
 
@@ -141,7 +141,7 @@ SELECT
     client_hostname,
     query
 FROM system.query_log
-WHERE has(tables, 'user_profiles')
+WHERE has(tables, 'analytics_db.user_profiles')
   AND type = 'QueryFinish'
   AND query NOT LIKE '%system%'
 ORDER BY event_time DESC
