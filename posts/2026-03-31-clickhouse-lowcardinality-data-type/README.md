@@ -12,7 +12,7 @@ Description: Learn how LowCardinality(T) uses dictionary encoding to compress co
 
 ## What Is LowCardinality
 
-`LowCardinality(T)` wraps any data type `T`. ClickHouse builds a per-part dictionary of distinct values and replaces each value with a numeric index. The dictionary lookup is transparent to SQL - you write queries as if the column holds the original type.
+`LowCardinality(T)` wraps supported data types including `String`, `FixedString`, `Date`, `DateTime`, and numeric types. ClickHouse builds a per-part dictionary of distinct values and replaces each value with a numeric index. The dictionary lookup is transparent to SQL - you write queries as if the column holds the original type.
 
 ```sql
 CREATE TABLE web_requests (
