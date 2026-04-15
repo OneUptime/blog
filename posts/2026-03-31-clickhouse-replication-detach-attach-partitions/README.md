@@ -24,10 +24,10 @@ ALTER TABLE events DETACH PARTITION '202401';
 
 -- Verify the partition is detached
 SELECT
-    partition,
+    partition_id,
     name,
-    rows,
     bytes_on_disk,
+    disk,
     path
 FROM system.detached_parts
 WHERE table = 'events'
@@ -62,22 +62,17 @@ GROUP BY partition
 ORDER BY partition;
 ```
 
-In a replicated setup, `ATTACH PARTITION` on one replica does NOT automatically replicate the attached parts to other replicas. Each replica must have the parts in its own `detached` directory. This is the key difference from other DDL operations.
+In a replicated setup, `ATTACH PARTITION` is replicated. The initiator replica attaches the parts from its own `detached` directory, and non-initiator replicas will either use matching parts from their own `detached` directory (if present with correct checksums) or download the data from a replica that has it. You do not need to manually place parts on every replica.
 
 ## Safe Workflow: Restoring a Partition on All Replicas
 
-When you want to restore a partition from backup on a replicated table, place the files on each replica and attach from one:
+When you want to restore a partition from backup on a replicated table, place the files on one replica and attach from there. The other replicas will automatically download the data:
 
 ```bash
-# Step 1: Copy the backup parts to the detached directory on ALL replicas
+# Step 1: Copy the backup parts to the detached directory on one replica
 # The detached directory is typically:
 # /var/lib/clickhouse/data/{database}/{table}/detached/
 
-# On replica 1
-rsync -av /backup/events_202401/ \
-    /var/lib/clickhouse/data/mydb/events/detached/
-
-# On replica 2
 rsync -av /backup/events_202401/ \
     /var/lib/clickhouse/data/mydb/events/detached/
 ```
@@ -89,10 +84,8 @@ chown -R clickhouse:clickhouse \
 ```
 
 ```sql
--- Step 3: Run ATTACH on just one replica
--- The other replicas will detect the parts in their local detached
--- directory and attach them as well (because the replication log entry
--- tells them to look for this partition in detached)
+-- Step 3: Run ATTACH on the replica where you placed the files
+-- The other replicas will download the data automatically via replication
 ALTER TABLE mydb.events ATTACH PARTITION '202401';
 ```
 
@@ -102,7 +95,7 @@ ALTER TABLE mydb.events ATTACH PARTITION '202401';
 
 ```sql
 -- Copy partition from source table to destination table
--- Both tables must have the same structure and ORDER BY key
+-- Both tables must have the same structure, partition key, primary key, and ORDER BY key
 ALTER TABLE events_archive ATTACH PARTITION '202401'
 FROM events;
 
@@ -168,7 +161,7 @@ WHERE table = 'events'
 ORDER BY partition;
 ```
 
-In a replicated setup, `MOVE PARTITION` is replicated. All replicas move the partition to the equivalent disk or volume. The disk names must exist and match on all replicas.
+In a replicated setup, `MOVE PARTITION` is NOT replicated, because different replicas can have different storage policies. You need to run the command on each replica individually if you want all replicas to move the partition.
 
 ## DROP PARTITION
 
@@ -181,9 +174,6 @@ ALTER TABLE events DROP PARTITION '202301';
 -- Drop multiple partitions
 ALTER TABLE events DROP PARTITION '202302';
 ALTER TABLE events DROP PARTITION '202303';
-
--- Or use a partition expression
-ALTER TABLE events DROP PARTITION WHERE toYear(event_date) = 2023;
 ```
 
 ## Handling Detached Parts After a Failed Replication
