@@ -169,7 +169,7 @@ Identify whether certain 10-minute windows are consistently problematic across m
 
 ```sql
 SELECT
-    formatDateTime(bucket, '%H:%M')   AS time_of_day,
+    formatDateTime(bucket, '%H:%i')   AS time_of_day,
     count()                           AS occurrences,
     avg(error_rate_pct)               AS avg_error_rate
 FROM (
