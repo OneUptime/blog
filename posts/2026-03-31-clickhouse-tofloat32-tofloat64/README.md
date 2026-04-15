@@ -145,7 +145,7 @@ sensor_id  raw_value  reading  rounded
 
 ### Using toFloat in Calculations
 
-Convert integer counts to float before division to avoid integer division:
+ClickHouse's `/` operator already returns Float64 for integer operands, but explicit conversion is useful when you want to ensure a specific float type in the result or when combining with other operations:
 
 ```sql
 SELECT
