@@ -18,10 +18,13 @@ InfluxDB is optimized for high-frequency time-series data like metrics, IoT sens
 docker run -d \
   --name influxdb \
   -p 8086:8086 \
-  -e INFLUXDB_DB=metrics \
-  -e INFLUXDB_ADMIN_USER=admin \
-  -e INFLUXDB_ADMIN_PASSWORD=adminpass \
-  influxdb:1.8
+  -e DOCKER_INFLUXDB_INIT_MODE=setup \
+  -e DOCKER_INFLUXDB_INIT_USERNAME=admin \
+  -e DOCKER_INFLUXDB_INIT_PASSWORD=adminpass \
+  -e DOCKER_INFLUXDB_INIT_ORG=myorg \
+  -e DOCKER_INFLUXDB_INIT_BUCKET=metrics \
+  -e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-token \
+  influxdb:2
 ```
 
 ## Configure the InfluxDB Binding Component
@@ -47,22 +50,6 @@ spec:
     value: metrics
 ```
 
-For InfluxDB 1.x, use the legacy auth format:
-
-```yaml
-metadata:
-- name: url
-  value: http://localhost:8086
-- name: dbName
-  value: metrics
-- name: username
-  value: admin
-- name: password
-  secretKeyRef:
-    name: influxdb-secret
-    key: password
-```
-
 ## Write a Data Point
 
 ```bash
@@ -70,45 +57,80 @@ curl -X POST http://localhost:3500/v1.0/bindings/influxdb-metrics \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "create",
-    "data": "cpu_usage,host=server-01,region=us-east value=72.5 1711875600000000000"
+    "data": {
+      "measurement": "cpu_usage",
+      "tags": "host=server-01,region=us-east",
+      "values": "value=72.5"
+    }
   }'
 ```
 
-The data field follows InfluxDB Line Protocol: `measurement,tag=value field=value timestamp`.
+The `data` field is a JSON object with three keys: `measurement` (the metric name), `tags` (comma-separated tag key=value pairs), and `values` (comma-separated field key=value pairs).
 
 ## Write Multiple Data Points
+
+The binding writes one data point per request. To write multiple points, make separate calls:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/influxdb-metrics \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "create",
-    "data": "cpu,host=web-01 value=45.2\nmemory,host=web-01 used=2048,total=8192\ndisk,host=web-01,path=/ used_percent=68.4"
+    "data": {
+      "measurement": "cpu",
+      "tags": "host=web-01",
+      "values": "value=45.2"
+    }
+  }'
+
+curl -X POST http://localhost:3500/v1.0/bindings/influxdb-metrics \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "create",
+    "data": {
+      "measurement": "memory",
+      "tags": "host=web-01",
+      "values": "used=2048,total=8192"
+    }
+  }'
+
+curl -X POST http://localhost:3500/v1.0/bindings/influxdb-metrics \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "create",
+    "data": {
+      "measurement": "disk",
+      "tags": "host=web-01,path=/",
+      "values": "used_percent=68.4"
+    }
   }'
 ```
 
 ## Application Code for Writing Metrics
 
 ```python
-import time
 import requests
 
 class MetricsWriter:
     def __init__(self, dapr_port: int = 3500):
         self.url = f"http://localhost:{dapr_port}/v1.0/bindings/influxdb-metrics"
 
-    def write(self, measurement: str, fields: dict, tags: dict = None):
+    def write(self, measurement: str, values: dict, tags: dict = None):
         tags_str = ""
         if tags:
-            tags_str = "," + ",".join(f"{k}={v}" for k, v in tags.items())
+            tags_str = ",".join(f"{k}={v}" for k, v in tags.items())
 
-        fields_str = ",".join(f"{k}={v}" for k, v in fields.items())
-        timestamp_ns = int(time.time() * 1e9)
-        line = f"{measurement}{tags_str} {fields_str} {timestamp_ns}"
+        values_str = ",".join(f"{k}={v}" for k, v in values.items())
+
+        data = {
+            "measurement": measurement,
+            "tags": tags_str,
+            "values": values_str,
+        }
 
         requests.post(
             self.url,
-            json={"operation": "create", "data": line},
+            json={"operation": "create", "data": data},
         )
 
 metrics = MetricsWriter()
@@ -116,31 +138,36 @@ metrics = MetricsWriter()
 # Write application metrics
 metrics.write(
     measurement="request_duration",
-    fields={"duration_ms": 142, "status": 200},
+    values={"duration_ms": 142, "status": 200},
     tags={"service": "order-api", "endpoint": "/orders"},
 )
 ```
 
-## Writing Batches Efficiently
+## Writing Multiple Points in a Loop
 
 ```python
-def write_batch(measurements: list[str]):
-    line_protocol = "\n".join(measurements)
+def write_point(measurement: str, tags: str, values: str):
     requests.post(
         "http://localhost:3500/v1.0/bindings/influxdb-metrics",
-        json={"operation": "create", "data": line_protocol},
+        json={
+            "operation": "create",
+            "data": {
+                "measurement": measurement,
+                "tags": tags,
+                "values": values,
+            },
+        },
     )
 
-# Collect and flush in batches
-buffer = []
+# Write each sensor reading as a separate data point
 for reading in sensor_readings:
-    ts = int(reading.timestamp * 1e9)
-    buffer.append(f"temperature,sensor={reading.id} value={reading.temp} {ts}")
-    if len(buffer) >= 100:
-        write_batch(buffer)
-        buffer = []
+    write_point(
+        measurement="temperature",
+        tags=f"sensor={reading.id}",
+        values=f"value={reading.temp}",
+    )
 ```
 
 ## Summary
 
-The Dapr InfluxDB output binding enables any microservice to write time-series data using InfluxDB Line Protocol. Configure the URL, authentication, and bucket in the component YAML, then POST line-protocol data strings to the binding endpoint. Batch multiple points in a single call for efficient high-frequency writes.
+The Dapr InfluxDB output binding enables any microservice to write time-series data to InfluxDB. Configure the URL, token, org, and bucket in the component YAML, then POST JSON data objects with `measurement`, `tags`, and `values` fields to the binding endpoint.
