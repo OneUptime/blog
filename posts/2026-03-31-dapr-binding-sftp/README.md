@@ -23,6 +23,8 @@ spec:
   type: bindings.sftp
   version: v1
   metadata:
+  - name: rootPath
+    value: /data
   - name: address
     value: sftp.partner.com:22
   - name: username
@@ -41,6 +43,8 @@ spec:
 
 ```yaml
 metadata:
+- name: rootPath
+  value: /data
 - name: address
   value: sftp.partner.com:22
 - name: username
@@ -49,16 +53,16 @@ metadata:
   secretKeyRef:
     name: sftp-secret
     key: privateKey
-- name: privateKeyPassword
+- name: privateKeyPassphrase
   secretKeyRef:
     name: sftp-secret
-    key: privateKeyPassword
+    key: privateKeyPassphrase
 ```
 
 ```bash
 kubectl create secret generic sftp-secret \
   --from-file=privateKey=./id_rsa \
-  --from-literal=privateKeyPassword=my-key-passphrase
+  --from-literal=privateKeyPassphrase=my-key-passphrase
 ```
 
 ## Upload a File
@@ -95,7 +99,6 @@ def upload_file(local_path: str, remote_path: str):
             "data": encoded,
             "metadata": {
                 "fileName": remote_path,
-                "contentType": "application/octet-stream",
             },
         },
     )
@@ -146,4 +149,4 @@ app.post("/cron-binding", async (req, res) => {
 
 ## Summary
 
-The Dapr SFTP binding simplifies file transfer to remote servers by handling SSH authentication and connection management. Configure the server address and credentials in the component YAML, then use `create`, `get`, and `list` operations to upload, download, and enumerate files without writing SSH client code.
+The Dapr SFTP binding simplifies file transfer to remote servers by handling SSH authentication and connection management. Configure the server address and credentials in the component YAML, then use `create`, `get`, `list`, and `delete` operations to upload, download, enumerate, and remove files without writing SSH client code.
