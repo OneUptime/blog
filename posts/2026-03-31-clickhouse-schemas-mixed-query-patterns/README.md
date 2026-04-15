@@ -150,14 +150,13 @@ ORDER BY (sale_date, salesperson_id);
 
 ```sql
 SELECT
-    table,
-    projection_name,
+    projections AS projection_name,
     count() AS uses
 FROM system.query_log
-ARRAY JOIN projections AS projection_name
 WHERE type = 'QueryFinish'
   AND event_date >= today() - 7
-GROUP BY table, projection_name
+  AND projections != ''
+GROUP BY projection_name
 ORDER BY uses DESC;
 ```
 
