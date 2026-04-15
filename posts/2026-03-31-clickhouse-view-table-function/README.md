@@ -65,9 +65,9 @@ ORDER BY e.event_count DESC
 LIMIT 20;
 ```
 
-## Parameterized Views with view() and Parameters
+## Multi-Step Aggregation with view()
 
-ClickHouse also supports parameterized (live) views as named objects, but `view()` inline is useful for ad hoc composition:
+The `view()` function is useful for ad hoc multi-step aggregation, breaking complex queries into readable stages:
 
 ```sql
 -- Multi-step aggregation using view()
