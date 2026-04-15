@@ -24,18 +24,27 @@ CREATE TABLE IF NOT EXISTS dapr_configuration (
   PRIMARY KEY (key)
 );
 
--- Create the notification trigger
-CREATE OR REPLACE FUNCTION notify_config_change()
+-- Create the notification trigger for subscriptions
+CREATE OR REPLACE FUNCTION configuration_event()
 RETURNS TRIGGER AS $$
+DECLARE
+  data json;
+  notification json;
 BEGIN
-  PERFORM pg_notify('config_update', row_to_json(NEW)::text);
-  RETURN NEW;
+  IF (TG_OP = 'DELETE') THEN
+    data = row_to_json(OLD);
+  ELSE
+    data = row_to_json(NEW);
+  END IF;
+  notification = json_build_object('table', TG_TABLE_NAME, 'action', TG_OP, 'data', data);
+  PERFORM pg_notify('config', notification::text);
+  RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER config_change_trigger
-AFTER INSERT OR UPDATE ON dapr_configuration
-FOR EACH ROW EXECUTE FUNCTION notify_config_change();
+AFTER INSERT OR UPDATE OR DELETE ON dapr_configuration
+FOR EACH ROW EXECUTE FUNCTION configuration_event();
 ```
 
 ## Define the Dapr Component
@@ -58,7 +67,7 @@ spec:
       value: "dapr_configuration"
     - name: maxConns
       value: "5"
-    - name: connMaxIdleTime
+    - name: connectionMaxIdleTime
       value: "5m"
 ```
 
@@ -90,7 +99,7 @@ ON CONFLICT (key) DO UPDATE
 ## Reading Configuration
 
 ```bash
-curl "http://localhost:3500/v1.0-alpha1/configuration/appconfig-pg?key=max-retries"
+curl "http://localhost:3500/v1.0/configuration/appconfig-pg?key=max-retries"
 ```
 
 In Python:
@@ -102,10 +111,10 @@ async def get_config_values(keys: list[str]) -> dict:
     params = [("key", k) for k in keys]
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            "http://localhost:3500/v1.0-alpha1/configuration/appconfig-pg",
+            "http://localhost:3500/v1.0/configuration/appconfig-pg",
             params=params
         )
-        return {k: v["value"] for k, v in resp.json()["items"].items()}
+        return {k: v["value"] for k, v in resp.json().items()}
 
 config = await get_config_values(["max-retries", "timeout-ms", "debug-mode"])
 ```
