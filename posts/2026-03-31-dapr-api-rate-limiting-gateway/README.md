@@ -29,8 +29,9 @@ config:
   minute: 200
   hour: 5000
   policy: redis
-  redis_host: redis.default.svc.cluster.local
-  redis_port: 6379
+  redis:
+    host: redis.default.svc.cluster.local
+    port: 6379
   fault_tolerant: true
   hide_client_headers: false
 ```
@@ -71,7 +72,6 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "20"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/limit-connections: "10"
-    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
     nginx.ingress.kubernetes.io/limit-whitelist: "10.0.0.0/8"
 spec:
   ingressClassName: nginx
@@ -86,6 +86,18 @@ spec:
                 name: order-service
                 port:
                   number: 3500
+```
+
+By default, NGINX returns a 503 status code when the rate limit is exceeded. To return a 429 status code instead, configure it globally in the NGINX Ingress Controller ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  limit-req-status-code: "429"
 ```
 
 ## Implementing Rate Limiting in a Dapr Middleware Component
