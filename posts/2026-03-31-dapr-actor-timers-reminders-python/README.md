@@ -67,7 +67,7 @@ class SubscriptionActor(Actor, Remindable, SubscriptionActorInterface):
         # Not durable - clears on deactivation
         await self.register_timer(
             "usage-timer",
-            "track_usage",              # callback method name
+            self.track_usage,           # callback method
             None,                       # state passed to callback
             datetime.timedelta(seconds=10),    # initial delay
             datetime.timedelta(seconds=60),    # interval
