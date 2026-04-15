@@ -99,12 +99,6 @@ spec:
     secretKeyRef:
       name: aws-secret
       key: secretKey
-  - name: waitTimeSeconds
-    value: "20"
-  - name: visibilityTimeoutSeconds
-    value: "30"
-  - name: disableEntityManagement
-    value: "false"
 ```
 
 ## Output Binding Component
@@ -212,23 +206,6 @@ curl -X POST http://localhost:3500/v1.0/bindings/sqs-output \
   }'
 ```
 
-## Output Binding with Metadata (FIFO Queue)
-
-For SQS FIFO queues, pass the required deduplication and group IDs:
-
-```bash
-curl -X POST http://localhost:3500/v1.0/bindings/sqs-output \
-  -H "Content-Type: application/json" \
-  -d '{
-    "data": {"orderId": "fifo-001"},
-    "operation": "create",
-    "metadata": {
-      "MessageGroupId": "order-group-1",
-      "MessageDeduplicationId": "fifo-001-dedup"
-    }
-  }'
-```
-
 ## Running Locally
 
 ```bash
@@ -273,4 +250,4 @@ kubectl annotate serviceaccount sqs-processor \
 
 ## Summary
 
-The Dapr AWS SQS binding provides input (polling) and output (send) operations against SQS queues. Configure the component with the queue name, region, and IAM credentials or IRSA. Dapr polls the input queue using long polling (`waitTimeSeconds`) and delivers messages to the endpoint matching the component name. Use the output binding to send messages to any SQS queue with a simple HTTP POST to `/v1.0/bindings/{componentName}`.
+The Dapr AWS SQS binding provides input (polling) and output (send) operations against SQS queues. Configure the component with the queue name, region, and IAM credentials or IRSA. Dapr polls the input queue and delivers messages to the endpoint matching the component name. Use the output binding to send messages to any SQS queue with a simple HTTP POST to `/v1.0/bindings/{componentName}`.
