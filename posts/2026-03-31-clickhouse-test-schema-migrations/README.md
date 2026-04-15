@@ -107,7 +107,7 @@ def test_no_data_loss_on_type_change(ch_client):
         [42, 'test', '2025-06-01'],
     ], column_names=['user_id', 'event_type', 'event_date'])
 
-    # Apply migration that changes status from String to LowCardinality(String)
+    # Apply migration that changes event_type from String to LowCardinality(String)
     ch_client.command('''
         ALTER TABLE test_db.events
         MODIFY COLUMN event_type LowCardinality(String)
