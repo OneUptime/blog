@@ -57,19 +57,19 @@ SELECT
     order_id,
     currency,
     amount,
-    dictGetFloat64OrDefault(
+    dictGetOrDefault(
         'exchange_rates_dict',
         'rate',
         currency,
         toDate(order_date),
-        1.0
+        toFloat64(1.0)
     ) AS exchange_rate,
-    amount * dictGetFloat64OrDefault(
+    amount * dictGetOrDefault(
         'exchange_rates_dict',
         'rate',
         currency,
         toDate(order_date),
-        1.0
+        toFloat64(1.0)
     ) AS amount_usd
 FROM orders
 LIMIT 20;
@@ -105,11 +105,11 @@ SELECT
     order_id,
     product_id,
     order_time,
-    dictGetFloat64OrDefault(
+    dictGetOrDefault(
         'pricing_tiers_dict', 'price',
         product_id,
         order_time,
-        0.0
+        toFloat64(0.0)
     ) AS historical_price
 FROM orders
 WHERE order_time >= '2025-01-01';
