@@ -135,13 +135,13 @@ curl https://10.0.2.10:8443/  # No route from public internet
 
 ```sql
 SELECT
-    ip_address,
+    address,
     user,
     count() AS failed_attempts
 FROM system.query_log
 WHERE exception LIKE '%Authentication failed%'
     OR exception LIKE '%IP address%'
-GROUP BY ip_address, user
+GROUP BY address, user
 ORDER BY failed_attempts DESC
 LIMIT 20;
 ```
