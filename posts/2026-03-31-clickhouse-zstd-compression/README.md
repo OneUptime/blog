@@ -21,7 +21,7 @@ In ClickHouse, ZSTD can be applied at two levels:
 
 ## Setting ZSTD as the Table Default
 
-You can configure ZSTD as the default compression for an entire table using the `compression_codec` setting:
+You can configure ZSTD as the default compression for an entire table using the `default_compression_codec` setting:
 
 ```sql
 CREATE TABLE events
@@ -34,7 +34,7 @@ CREATE TABLE events
 )
 ENGINE = MergeTree()
 ORDER BY (created_at, event_id)
-SETTINGS compression_codec = 'ZSTD';
+SETTINGS default_compression_codec = 'ZSTD';
 ```
 
 All columns without an explicit codec annotation inherit this default.
@@ -60,8 +60,8 @@ The number inside `ZSTD(level)` controls the compression level:
 
 | Level | Description |
 |-------|-------------|
-| 1 | Fastest, lowest compression ratio |
-| 3 | Default when no level is specified |
+| 1 | Default when no level is specified |
+| 3 | Good balance of speed and compression |
 | 9 | High compression, slower writes |
 | 22 | Maximum compression (rarely needed) |
 
