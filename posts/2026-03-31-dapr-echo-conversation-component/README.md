@@ -41,7 +41,7 @@ No API keys, no secrets, no network connectivity required.
 dapr run \
   --app-id my-llm-app \
   --app-port 6001 \
-  --components-path ./components \
+  --resources-path ./components \
   -- node app.js
 
 # Test the echo component
@@ -49,7 +49,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/llm-provider/convers
   -H "Content-Type: application/json" \
   -d '{
     "inputs": [
-      {"message": "This is a test message", "role": "user"}
+      {"content": "This is a test message", "role": "user"}
     ]
   }'
 ```
@@ -107,7 +107,7 @@ Run tests:
 dapr run \
   --app-id test-app \
   --app-port 6001 \
-  --components-path ./components/test \
+  --resources-path ./components/test \
   -- npm test
 ```
 
@@ -148,7 +148,7 @@ jobs:
           dapr run \
             --app-id test-app \
             --app-port 6001 \
-            --components-path ./test-components \
+            --resources-path ./test-components \
             -- npm test
 ```
 
