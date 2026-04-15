@@ -78,7 +78,7 @@ WHERE toYYYYMM(event_time) = toYYYYMM(now())
 -- Slow: uniqExact requires all values in memory
 SELECT uniqExact(user_id) FROM events;
 
--- Fast: HyperLogLog approximation, 99% accurate
+-- Fast: adaptive sampling approximation, much lower memory usage
 SELECT uniq(user_id) FROM events;
 ```
 
