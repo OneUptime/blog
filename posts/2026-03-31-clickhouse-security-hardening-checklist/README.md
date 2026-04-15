@@ -64,7 +64,9 @@ ClickHouse deployments need explicit security configuration - the defaults are p
   <server>
     <certificateFile>/etc/ssl/clickhouse/server.crt</certificateFile>
     <privateKeyFile>/etc/ssl/clickhouse/server.key</privateKeyFile>
-    <requireTLSv1_2>true</requireTLSv1_2>
+    <loadDefaultCAFile>true</loadDefaultCAFile>
+    <disableProtocols>sslv2,sslv3,tlsv1,tlsv1_1</disableProtocols>
+    <preferServerCiphers>true</preferServerCiphers>
   </server>
 </openSSL>
 ```
