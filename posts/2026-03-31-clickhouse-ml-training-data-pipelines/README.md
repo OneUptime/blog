@@ -40,12 +40,12 @@ SELECT
     count() AS total_events,
     countIf(event_type = 'purchase') AS purchases,
     countIf(event_type = 'view') AS views,
-    countIf(event_type = 'purchase') / countIf(event_type = 'view') AS conversion_rate,
+    countIf(event_type = 'purchase') / greatest(countIf(event_type = 'view'), 1) AS conversion_rate,
     uniq(session_id) AS sessions,
     uniq(item_id) AS unique_items_interacted,
     max(timestamp) AS last_activity,
     dateDiff('day', min(timestamp), max(timestamp)) AS active_days,
-    avg(dateDiff('second', timestamp, neighbor(timestamp, 1))) AS avg_session_gap_sec
+    dateDiff('second', min(timestamp), max(timestamp)) / greatest(count() - 1, 1) AS avg_event_gap_sec
 FROM user_events
 WHERE timestamp BETWEEN '2024-01-01' AND '2024-12-31'
 GROUP BY user_id
@@ -130,7 +130,7 @@ GROUP BY user_id;
 ## Stratified Sampling for Balanced Datasets
 
 ```sql
--- 10% random sample, balanced by label
+-- Deterministic 10% random sample
 SELECT * FROM user_features
 WHERE (cityHash64(user_id) % 100) < 10
 ORDER BY rand()
