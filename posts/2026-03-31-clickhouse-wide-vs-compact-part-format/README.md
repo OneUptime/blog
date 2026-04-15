@@ -30,13 +30,14 @@ In wide format, each column has its own `.bin` and `.mrk3` file. This enables Cl
 ```text
 part_name/
   ts.bin           -- DateTime column
-  ts.mrk3
+  ts.mrk2
   user_id.bin      -- UInt64 column
-  user_id.mrk3
+  user_id.mrk2
   event.bin        -- String column
-  event.mrk3
+  event.mrk2
   primary.idx
   checksums.txt
+  columns.txt
 ```
 
 ## Format Selection Thresholds
@@ -48,10 +49,10 @@ Two settings control when a part uses wide format instead of compact:
 SETTINGS min_bytes_for_wide_part = 10485760  -- 10 MB default
 
 -- If part row count exceeds this, use wide format
-SETTINGS min_rows_for_wide_part = 0          -- 0 = disabled by default
+SETTINGS min_rows_for_wide_part = 0          -- 0 = always satisfied (row count is not a factor)
 ```
 
-When either threshold is exceeded, the part is written in wide format.
+When both thresholds are exceeded, the part is written in wide format. Since `min_rows_for_wide_part` defaults to 0, the row condition is always satisfied, so effectively only the byte threshold matters in the default configuration.
 
 ## Checking Current Format of Parts
 
