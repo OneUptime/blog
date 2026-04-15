@@ -38,19 +38,19 @@ var stateStore = builder.AddDaprStateStore("statestore");
 var pubSub = builder.AddDaprPubSub("pubsub");
 
 var orderService = builder.AddProject<Projects.OrderService>("order-service")
-    .WithDaprSidecar(options =>
+    .WithDaprSidecar(new DaprSidecarOptions
     {
-        options.AppId = "order-service";
-        options.AppPort = 5001;
+        AppId = "order-service",
+        AppPort = 5001
     })
     .WithReference(stateStore)
     .WithReference(pubSub);
 
 var inventoryService = builder.AddProject<Projects.InventoryService>("inventory-service")
-    .WithDaprSidecar(options =>
+    .WithDaprSidecar(new DaprSidecarOptions
     {
-        options.AppId = "inventory-service";
-        options.AppPort = 5002;
+        AppId = "inventory-service",
+        AppPort = 5002
     })
     .WithReference(pubSub);
 
@@ -88,7 +88,7 @@ Aspire automatically collects OpenTelemetry traces from both your application an
 
 ```bash
 dotnet run --project AppHost
-# Dashboard available at https://localhost:15888
+# Dashboard URL is printed in the console output
 ```
 
 You will see distributed traces that span service boundaries, including Dapr sidecar calls to state stores and pub/sub brokers.
@@ -99,7 +99,7 @@ Aspire can provision a Redis container and wire it to Dapr automatically:
 
 ```csharp
 var redis = builder.AddRedis("redis");
-var stateStore = builder.AddDaprStateStore("statestore", redis);
+var stateStore = builder.AddDaprStateStore("statestore").WithReference(redis);
 ```
 
 ## Summary
