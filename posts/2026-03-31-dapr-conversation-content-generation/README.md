@@ -67,7 +67,7 @@ app.post('/api/generate', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputs: [{ message: prompt, role: 'user' }],
+          inputs: [{ content: prompt, role: 'user' }],
           parameters: { temperature: 0.7, max_tokens: 600 }
         })
       }
@@ -109,7 +109,6 @@ Schedule bulk content generation as a Dapr Job:
 
 ```python
 import requests
-import json
 
 def generate_batch_descriptions(products: list) -> list:
     results = []
@@ -140,6 +139,7 @@ def generate_batch_descriptions(products: list) -> list:
 
 # Job handler
 from flask import Flask, request
+app = Flask(__name__)
 
 @app.route('/job/generate-product-descriptions', methods=['POST'])
 def handle_batch_generation_job():
@@ -157,7 +157,7 @@ def handle_batch_generation_job():
 Generate multiple variants using different providers or temperature settings:
 
 ```python
-async def generate_variants(prompt: str, count: int = 3) -> list:
+def generate_variants(prompt: str, count: int = 3) -> list:
     variants = []
     temperatures = [0.5, 0.7, 0.9]
 
@@ -165,7 +165,7 @@ async def generate_variants(prompt: str, count: int = 3) -> list:
         response = requests.post(
             f"http://localhost:3500/v1.0-alpha1/conversation/openai-conversation/converse",
             json={
-                "inputs": [{"message": prompt, "role": "user"}],
+                "inputs": [{"content": prompt, "role": "user"}],
                 "parameters": {
                     "temperature": temperatures[i % len(temperatures)],
                     "max_tokens": 200
