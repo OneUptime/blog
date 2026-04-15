@@ -18,7 +18,7 @@ Use a dedicated state store to track request outcomes per service:
 
 ```python
 from dapr.clients import DaprClient
-from flask import Flask, request
+from flask import Flask, jsonify, request
 import json
 from datetime import datetime
 
