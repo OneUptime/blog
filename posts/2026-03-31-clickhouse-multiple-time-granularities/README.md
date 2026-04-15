@@ -58,7 +58,7 @@ FROM metrics_raw GROUP BY service, ts_bucket;
 
 CREATE MATERIALIZED VIEW mv_to_1h TO metrics_1h AS
 SELECT service, toStartOfHour(ts_bucket) AS ts_bucket,
-    avg(avg_val) AS avg_val, min(min_val) AS min_val,
+    sum(avg_val * cnt) / sum(cnt) AS avg_val, min(min_val) AS min_val,
     max(max_val) AS max_val, sum(cnt) AS cnt
 FROM metrics_1m GROUP BY service, ts_bucket;
 ```
@@ -72,15 +72,15 @@ def query_metrics(service, start, end):
     duration_hours = (end - start).total_seconds() / 3600
 
     if duration_hours <= 2:
-        table, ts_col = "metrics_raw", "ts"
+        table, ts_col, val_col = "metrics_raw", "ts", "value"
     elif duration_hours <= 72:
-        table, ts_col = "metrics_1m", "ts_bucket"
+        table, ts_col, val_col = "metrics_1m", "ts_bucket", "avg_val"
     elif duration_hours <= 2160:  # 90 days
-        table, ts_col = "metrics_1h", "ts_bucket"
+        table, ts_col, val_col = "metrics_1h", "ts_bucket", "avg_val"
     else:
-        table, ts_col = "metrics_1d", "ts_bucket"
+        table, ts_col, val_col = "metrics_1d", "ts_bucket", "avg_val"
 
-    return f"SELECT {ts_col}, avg_val FROM {table} WHERE service = '{service}' AND {ts_col} BETWEEN '{start}' AND '{end}'"
+    return f"SELECT {ts_col}, {val_col} FROM {table} WHERE service = '{service}' AND {ts_col} BETWEEN '{start}' AND '{end}'"
 ```
 
 ## Merge Granularities at Query Time
@@ -88,7 +88,7 @@ def query_metrics(service, start, end):
 Combine multiple tiers in a single `UNION ALL` for edge cases spanning retention boundaries:
 
 ```sql
-SELECT ts AS bucket, avg_val FROM metrics_1h
+SELECT ts_bucket AS bucket, avg_val FROM metrics_1h
 WHERE service = 'api' AND ts_bucket BETWEEN '2026-01-01' AND '2026-03-01'
 UNION ALL
 SELECT ts_bucket AS bucket, avg_val FROM metrics_1d
