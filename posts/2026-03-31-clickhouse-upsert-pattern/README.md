@@ -12,7 +12,7 @@ ClickHouse does not support traditional `INSERT OR UPDATE` (UPSERT) syntax found
 
 ## Pattern 1 - ReplacingMergeTree
 
-The most common UPSERT pattern uses `ReplacingMergeTree`, which keeps the latest version of a row with the same primary key:
+The most common UPSERT pattern uses `ReplacingMergeTree`, which keeps the latest version of a row with the same sorting key (defined by `ORDER BY`):
 
 ```sql
 CREATE TABLE user_profiles (
@@ -77,16 +77,27 @@ INSERT INTO order_status VALUES
     (100, 'shipped', 1);
 ```
 
+Collapsing happens during background merges. To get correct results before a merge, use aggregation:
+
+```sql
+SELECT order_id, argMax(status, sign) AS status
+FROM order_status
+GROUP BY order_id
+HAVING sum(sign) > 0;
+```
+
 ## Pattern 3 - Using INSERT with Dedup
 
 For ClickHouse Keeper-backed replicated tables, enable `insert_deduplicate`:
 
 ```sql
 SET insert_deduplicate = 1;
-INSERT INTO events VALUES (1, 'click', now());
--- Re-inserting the same data is safe - it will be deduplicated
-INSERT INTO events VALUES (1, 'click', now());
+INSERT INTO events VALUES (1, 'click', '2024-01-15 10:30:00');
+-- Re-inserting the same block is safe - it will be deduplicated
+INSERT INTO events VALUES (1, 'click', '2024-01-15 10:30:00');
 ```
+
+Note that deduplication works at the block level — two INSERT blocks with identical data are deduplicated. If the data differs (e.g., different timestamps), they are treated as separate blocks.
 
 This prevents duplicate inserts but does not handle key-based replacement.
 
