@@ -15,17 +15,17 @@ String padding is a common need when formatting output for reports, aligning col
 The basic signatures for all four functions follow the same pattern.
 
 ```text
-leftPad(str, length, padStr)
-rightPad(str, length, padStr)
-leftPadUTF8(str, length, padStr)
-rightPadUTF8(str, length, padStr)
+leftPad(str, length[, padStr])
+rightPad(str, length[, padStr])
+leftPadUTF8(str, length[, padStr])
+rightPadUTF8(str, length[, padStr])
 ```
 
 - `str` - the input string to pad
 - `length` - the target total length of the result
-- `padStr` - the string to repeat when filling the padding
+- `padStr` - optional, the string to repeat when filling the padding (defaults to spaces if omitted)
 
-If `str` is already equal to or longer than `length`, it is returned unchanged (truncated to `length` characters).
+If `str` is already equal to or longer than `length`, it is truncated to `length`.
 
 ## Zero-Padding Numbers Stored as Strings
 
@@ -58,12 +58,15 @@ When exporting data to fixed-width text formats or terminal dashboards, right-pa
 
 ```sql
 SELECT
-    rightPad(status, 12, ' ') AS status_col,
-    leftPad(toString(count), 8, ' ')  AS count_col
+    rightPad(pair.1, 12, ' ') AS status_col,
+    leftPad(toString(pair.2), 8, ' ')  AS count_col
 FROM (
-    SELECT
-        arrayJoin(['OK', 'WARN', 'CRITICAL', 'UNKNOWN']) AS status,
-        arrayJoin([1024, 37, 5, 88])                     AS count
+    SELECT arrayJoin([
+        ('OK', 1024),
+        ('WARN', 37),
+        ('CRITICAL', 5),
+        ('UNKNOWN', 88)
+    ]) AS pair
 )
 ```
 
@@ -80,9 +83,9 @@ SELECT
 ```
 
 ```text
-left_decorated        | right_decorated
-----------------------+--------------------
--=-=-=-=-=REPORT      | REPORT-=-=-=-=-=-=-
+left_decorated         | right_decorated
+-----------------------+---------------------
+-=-=-=-=-=-=-=REPORT   | REPORT-=-=-=-=-=-=-=
 ```
 
 ## Unicode-Aware Padding with leftPadUTF8 and rightPadUTF8
