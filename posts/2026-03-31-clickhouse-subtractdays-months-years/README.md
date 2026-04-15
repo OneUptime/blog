@@ -24,7 +24,7 @@ subtractMinutes(dt, n)
 subtractSeconds(dt, n)
 ```
 
-All functions return the same type as the input. `n` must be a non-negative integer - to add time, use the corresponding `add*` function.
+All functions return the same type as the input. `n` is an integer; negative values reverse the direction (subtracting a negative value adds time), but for clarity prefer using the corresponding `add*` function instead.
 
 ## Basic Usage
 
@@ -85,9 +85,9 @@ Comparing revenue against the same calendar period one year ago accounts for sea
 ```sql
 SELECT
     date_trunc('month', order_date)                               AS month,
-    sumIf(amount, order_date >= subtractYears(today(), 0))        AS current_year,
-    sumIf(amount, order_date <  subtractYears(today(), 0)
-               AND order_date >= subtractYears(today(), 1))       AS prior_year
+    sumIf(amount, order_date >= subtractYears(today(), 1))        AS current_year,
+    sumIf(amount, order_date <  subtractYears(today(), 1)
+               AND order_date >= subtractYears(today(), 2))       AS prior_year
 FROM orders
 WHERE order_date >= subtractYears(today(), 2)
 GROUP BY month
@@ -134,16 +134,14 @@ ORDER BY cohort_month ASC;
 
 ## Rolling 28-Day Active User Count
 
-A rolling window that always covers the past 28 complete days is a standard mobile/SaaS metric.
+A window that covers the past 28 complete days is a standard mobile/SaaS metric. The `WHERE` clause uses `subtractDays` to restrict the query to this window.
 
 ```sql
 SELECT
     date_trunc('day', event_time)                    AS day,
-    uniqExact(user_id)                               AS dau,
-    uniqExactIf(user_id,
-        event_time >= subtractDays(event_time, 28))  AS mau_rolling_28d
+    uniqExact(user_id)                               AS dau
 FROM events
-WHERE event_time >= subtractDays(today(), 60)
+WHERE event_time >= subtractDays(today(), 28)
 GROUP BY day
 ORDER BY day ASC;
 ```
