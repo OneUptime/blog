@@ -20,12 +20,13 @@ Allow ClickHouse to spill aggregation data to disk when memory limits are reache
 
 ```sql
 SET max_bytes_before_external_group_by = 20000000000; -- 20GB
-SET group_by_overflow_mode = 'any';
 
 SELECT user_id, count()
 FROM large_events
 GROUP BY user_id;
 ```
+
+Note: `max_bytes_before_external_group_by` is all you need to enable spill-to-disk. The separate setting `group_by_overflow_mode` controls behavior when `max_rows_to_group_by` is exceeded, and is not related to external aggregation.
 
 ## Set Memory Limits
 
@@ -36,7 +37,7 @@ SET max_bytes_before_external_group_by = 8000000000; -- Spill after 8GB
 
 ## Use Two-Level Aggregation
 
-ClickHouse automatically switches to two-level aggregation (which reduces memory) when the hash table grows large. Tune the threshold:
+ClickHouse automatically switches to two-level aggregation when the hash table grows large. Two-level aggregation splits the hash table into 256 buckets, primarily improving parallelism during the merge phase. It also enables more efficient spill-to-disk when external aggregation is active. Tune the threshold:
 
 ```sql
 SET group_by_two_level_threshold = 100000;          -- Key count threshold
@@ -56,20 +57,20 @@ GROUP BY user_id
 ORDER BY user_id;
 ```
 
-This streams through groups without a hash table, using O(1) memory.
+This streams through groups without building a full hash table, significantly reducing memory usage compared to standard aggregation.
 
 ## Approximate Aggregation for High-Cardinality Keys
 
 For reporting where exact counts are not required:
 
 ```sql
--- Approximate distinct count (HyperLogLog)
+-- Approximate distinct count (uses far less memory than exact counting)
 SELECT uniq(user_id) AS approx_users FROM events;
 
--- Exact but more memory-efficient
+-- Exact distinct count (uses more memory, as it stores all unique values)
 SELECT uniqExact(user_id) AS exact_users FROM events;
 
--- Approximate quantiles
+-- Approximate quantiles (memory-efficient t-digest algorithm)
 SELECT quantileTDigest(0.99)(latency_ms) AS p99 FROM requests;
 ```
 
