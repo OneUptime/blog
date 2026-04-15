@@ -14,7 +14,7 @@ ClickHouse's `uniqTheta()` function implements the Apache DataSketches theta ske
 
 A theta sketch maintains a parameter theta (between 0 and 1) along with a set of retained hash values. When the sketch fills to its configured size k, theta is reduced and values above the threshold are discarded. The cardinality estimate is then: count_of_retained_values / theta.
 
-The key advantage over HyperLogLog is that two theta sketches built from overlapping datasets can be intersected or differenced to produce exact set-operation results on the estimated unique counts.
+The key advantage over HyperLogLog is that two theta sketches built from overlapping datasets can be intersected or differenced to produce approximate set-operation results on the estimated unique counts.
 
 ```sql
 -- Basic syntax
@@ -52,7 +52,7 @@ LIMIT 10;
 
 ## Memory and Accuracy
 
-The default sketch size k=4096 gives an error rate of approximately 0.78%. Larger k values improve accuracy at the cost of more memory.
+The default sketch size k=4096 gives a relative error of approximately 3.125% at 95% confidence. Larger k values improve accuracy at the cost of more memory.
 
 ```sql
 -- Compare uniqTheta with other approximate distinct functions
@@ -64,7 +64,7 @@ FROM events
 WHERE event_date = today();
 ```
 
-Each theta sketch state at default k occupies roughly the same order of memory as `uniqHLL12()`, but the sketch carries more information because it retains actual hash samples rather than register counts.
+Each theta sketch state at default k occupies approximately 41 KB, which is larger than `uniqHLL12()` (~2.5 KB), but the sketch carries more information because it retains actual hash samples rather than register counts, enabling set operations.
 
 ## Using -State and -Merge for Pre-Aggregation
 
@@ -102,9 +102,9 @@ GROUP BY event_date, country_code
 ORDER BY event_date DESC;
 ```
 
-## Set Operations with thetaSketchEstimate and thetaSketchIntersect
+## Set Operations with uniqThetaIntersect, uniqThetaUnion, and uniqThetaNot
 
-ClickHouse provides helper functions to perform set operations on theta sketch states. These enable counting users in the intersection or difference of two groups without storing or scanning the raw data twice.
+ClickHouse provides helper functions to perform set operations on theta sketch states: `uniqThetaUnion`, `uniqThetaIntersect`, and `uniqThetaNot`. These enable counting users in the intersection or difference of two groups without storing or scanning the raw data twice. Use `finalizeAggregation()` to convert the resulting sketch back into a numeric estimate.
 
 ```sql
 -- Build theta sketch states for two segments
@@ -123,9 +123,9 @@ WHERE event_type = 'ad_view'
 
 ```sql
 -- Estimate users who both viewed an ad AND made a purchase
--- using thetaSketchEstimate on the merged intersection state
-SELECT thetaSketchEstimate(
-    thetaSketchIntersect(buyers_sketch, ad_viewers_sketch)
+-- using finalizeAggregation on the intersection sketch
+SELECT finalizeAggregation(
+    uniqThetaIntersect(buyers_sketch, ad_viewers_sketch)
 ) AS ad_conversion_reach
 FROM (
     SELECT
@@ -157,12 +157,12 @@ WHERE event_date = today();
 
 | Function | Merge across shards | Set operations | Memory | Error |
 |---|---|---|---|---|
-| uniqExact | No (hash set merge) | No | O(n) | 0% |
-| uniqHLL12 | Yes | No | ~2.5 KB | ~0.8% |
-| uniqTheta | Yes | Yes (union/intersect/diff) | ~k * 8 bytes | ~0.78% |
+| uniqExact | Yes (hash set merge, O(n) transfer) | No | O(n) | 0% |
+| uniqHLL12 | Yes | No | ~2.5 KB | ~1.6% |
+| uniqTheta | Yes | Yes (union/intersect/diff) | ~41 KB (k=4096) | ~3.125% |
 
 Choose `uniqTheta()` when you need mergeable sketches that also support set operations for audience overlap or funnel analysis.
 
 ## Summary
 
-`uniqTheta()` brings Apache DataSketches theta sketch cardinality estimation to ClickHouse, offering approximately 0.78% error while uniquely enabling set operations (union, intersection, difference) on pre-aggregated sketch states. It integrates naturally with `AggregatingMergeTree` for incremental pre-aggregation and is the best choice when you need to answer questions like "how many users are in both segment A and segment B" without rescanning raw event data.
+`uniqTheta()` brings Apache DataSketches theta sketch cardinality estimation to ClickHouse, offering approximately 3.125% relative error (95% confidence) at the default k=4096 while uniquely enabling set operations (union, intersection, difference) on pre-aggregated sketch states. It integrates naturally with `AggregatingMergeTree` for incremental pre-aggregation and is the best choice when you need to answer questions like "how many users are in both segment A and segment B" without rescanning raw event data.
