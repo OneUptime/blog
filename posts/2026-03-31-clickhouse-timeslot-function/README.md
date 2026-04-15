@@ -69,7 +69,7 @@ With half-hour buckets, you can identify peak traffic periods across days by agg
 ```sql
 -- Find average events per 30-minute window across all days
 SELECT
-    formatDateTime(timeSlot(event_time), '%H:%M') AS time_of_day,
+    formatDateTime(slot, '%H:%M') AS time_of_day,
     avg(daily_events) AS avg_events
 FROM (
     SELECT
