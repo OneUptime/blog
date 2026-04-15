@@ -66,48 +66,34 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/huggingface-conversa
   -d '{
     "inputs": [
       {
-        "message": "Explain the difference between supervised and unsupervised machine learning",
+        "content": "Explain the difference between supervised and unsupervised machine learning",
         "role": "user"
       }
     ],
-    "parameters": {
-      "temperature": 0.6,
-      "max_tokens": 400
-    }
+    "temperature": 0.6
   }'
 ```
 
-## Using Different Models per Request
-
-Switch models at request time without changing the component:
+## Querying from Python
 
 ```python
 import requests
 
-def query_model(prompt: str, model: str = None) -> str:
-    params = {"temperature": 0.5, "max_tokens": 500}
-    if model:
-        params["model"] = model
-
+def query_model(prompt: str) -> str:
     response = requests.post(
         "http://localhost:3500/v1.0-alpha1/conversation/huggingface-conversation/converse",
         json={
-            "inputs": [{"message": prompt, "role": "user"}],
-            "parameters": params
+            "inputs": [{"content": prompt, "role": "user"}],
+            "temperature": 0.5
         }
     )
     response.raise_for_status()
     return response.json()['outputs'][0]['result']
 
-# Use default model
-result1 = query_model("What is gradient descent?")
-
-# Override with a larger model for complex tasks
-result2 = query_model(
-    "Analyze the time complexity of quicksort",
-    model="meta-llama/Meta-Llama-3-70B-Instruct"
-)
+result = query_model("What is gradient descent?")
 ```
+
+To use a different model, create a separate component YAML pointing to that model.
 
 ## Serverless vs Dedicated Inference
 
@@ -119,7 +105,7 @@ The Hugging Face Inference API offers two tiers:
 
 ```yaml
     - name: endpoint
-      value: "https://your-endpoint.huggingface.cloud"
+      value: "https://your-endpoint.endpoints.huggingface.cloud"
 ```
 
 ## Handling Cold Starts
@@ -136,7 +122,7 @@ async function queryWithRetry(prompt, maxRetries = 3) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            inputs: [{ message: prompt, role: 'user' }]
+            inputs: [{ content: prompt, role: 'user' }]
           })
         }
       );
