@@ -106,7 +106,7 @@ SELECT
 FROM matchmaking_events
 WHERE date >= today() - 7
 GROUP BY bracket
-ORDER BY skill_rating;
+ORDER BY min(skill_rating);
 ```
 
 ## Summary
