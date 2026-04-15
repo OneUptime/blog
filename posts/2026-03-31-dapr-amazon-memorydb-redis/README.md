@@ -36,8 +36,6 @@ spec:
     value: "true"
   - name: failover
     value: "false"
-  - name: useEntraID
-    value: "false"
 ```
 
 Create the secret:
@@ -70,7 +68,7 @@ spec:
   - name: enableTLS
     value: "true"
   - name: consumerID
-    value: "{uuid}"
+    value: "{podName}"
 ```
 
 ## TLS Configuration for MemoryDB
@@ -113,10 +111,10 @@ kubectl run redis-test --image=redis:7 --rm -it -- \
 Unlike standard Redis, MemoryDB persists data to a multi-AZ transaction log:
 
 ```bash
-# Monitor MemoryDB data durability in CloudWatch
+# Monitor MemoryDB cluster health in CloudWatch
 aws cloudwatch get-metric-statistics \
   --namespace AWS/MemoryDB \
-  --metric-name EngineCPUUtilization \
+  --metric-name DatabaseMemoryUsagePercentage \
   --dimensions Name=ClusterName,Value=my-memorydb \
   --start-time 2026-03-31T00:00:00Z \
   --end-time 2026-03-31T01:00:00Z \
