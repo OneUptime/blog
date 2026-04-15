@@ -124,8 +124,8 @@ clickhouse-client \
 certbot renews certificates automatically via a systemd timer or cron. After renewal, copy the updated files and reload ClickHouse:
 
 ```bash
-# /etc/letsencrypt/renewal-hooks/post/clickhouse.sh
 #!/bin/bash
+# /etc/letsencrypt/renewal-hooks/post/clickhouse.sh
 cp /etc/letsencrypt/live/clickhouse.example.com/fullchain.pem \
    /etc/clickhouse-server/certs/server.crt
 cp /etc/letsencrypt/live/clickhouse.example.com/privkey.pem \
