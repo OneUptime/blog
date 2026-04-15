@@ -8,7 +8,7 @@ Description: Implement blue-green deployments for Dapr-enabled microservices on 
 
 ---
 
-Blue-green deployments run two identical production environments simultaneously. Traffic is switched from the blue (current) to the green (new) version atomically. Dapr's service invocation and pub/sub work seamlessly with this pattern since routing is handled at the Kubernetes Service level.
+Blue-green deployments run two identical production environments simultaneously. Traffic is switched from the blue (current) to the green (new) version atomically. The Kubernetes Service selector switch controls external traffic (e.g., from an Ingress or LoadBalancer). However, Dapr service invocation uses its own name resolution (`{app-id}-dapr.{namespace}.svc.cluster.local`), so while both deployments are running with the same app ID, Dapr-to-Dapr calls are distributed across pods in both versions. The full Dapr traffic cutover happens when the old deployment is scaled down.
 
 ## Blue-Green Deployment Structure
 
@@ -135,7 +135,7 @@ kubectl get endpoints order-service
 
 ## Dapr App ID Considerations
 
-Both blue and green deployments use the same `dapr.io/app-id`. This is intentional - other services invoke `order-service` by app ID, and Dapr routes to whichever pods are currently behind the Kubernetes Service. Pub/Sub subscriptions also use the app ID, so both versions share the same subscriptions during the transition window.
+Both blue and green deployments use the same `dapr.io/app-id`. This means that while both deployments are running, Dapr service invocation distributes calls across pods in both versions. Dapr resolves app IDs through its own name resolution (via the `{app-id}-dapr` Kubernetes Service created by the Dapr operator), not through the user-defined Kubernetes Service. Pub/Sub subscriptions also use the app ID, so both versions share the same subscriptions during the transition window. The complete cutover of Dapr traffic happens when the old deployment is scaled down to zero.
 
 ## Cleanup
 
@@ -149,4 +149,4 @@ Keep the blue deployment around for a few days before deleting it, in case a del
 
 ## Summary
 
-Blue-green deployments work naturally with Dapr because routing is controlled at the Kubernetes Service level while Dapr uses the app ID abstraction. By running two deployments simultaneously and switching a single Service selector, teams achieve zero-downtime releases with instant rollback capability.
+Blue-green deployments can be combined with Dapr, but it is important to understand that the Kubernetes Service selector switch controls external traffic only. Dapr service invocation uses its own app-ID-based name resolution and routes to all running pods with the matching app ID. By running two deployments simultaneously, validating the new version, and then scaling down the old deployment, teams achieve zero-downtime releases with rollback capability.
