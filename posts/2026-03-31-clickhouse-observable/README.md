@@ -24,7 +24,7 @@ const clickhouseQuery = async (sql, format = "JSONEachRow") => {
   const url = new URL("https://clickhouse.example.com:8443/");
   url.searchParams.set("query", sql);
   url.searchParams.set("default_format", format);
-  url.searchParams.set("compress", "1");
+  url.searchParams.set("enable_http_compression", "1");
 
   const response = await fetch(url, {
     method: "POST",
