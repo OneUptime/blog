@@ -44,7 +44,7 @@ SELECT
     count() AS insert_count
 FROM system.query_log
 WHERE type = 'QueryFinish'
-  AND query LIKE 'INSERT INTO source_table%'
+  AND query_kind = 'Insert'
   AND event_time >= now() - INTERVAL 1 HOUR
 GROUP BY source_table;
 ```
@@ -86,15 +86,15 @@ FROM events_hourly;
 ```sql
 SELECT
     query_id,
-    peak_memory_usage,
-    formatReadableSize(peak_memory_usage) AS peak_memory,
+    memory_usage,
+    formatReadableSize(memory_usage) AS readable_memory,
     query_duration_ms,
     written_rows
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND written_rows > 0
   AND event_time >= now() - INTERVAL 1 HOUR
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
@@ -113,14 +113,18 @@ ORDER BY event_time DESC;
 
 ## Set Up Prometheus Monitoring
 
-ClickHouse exposes view-related metrics via the Prometheus endpoint:
+ClickHouse exposes metrics via the Prometheus endpoint. You can query materialized view insert activity from system tables and export them via Prometheus:
 
-```text
-ClickHouseMetrics_NumberOfMaterializedViews
-ClickHouseProfileEvents_MaterializedViewsMicroseconds
+```sql
+SELECT
+    event,
+    value
+FROM system.events
+WHERE event LIKE '%InsertedRows%'
+   OR event LIKE '%InsertQuery%';
 ```
 
-Query these from Grafana to visualize view processing time over time.
+Combine these with custom Grafana dashboards that track insert duration from `system.query_log` to visualize view processing time over time.
 
 ## Optimize Slow Views
 
