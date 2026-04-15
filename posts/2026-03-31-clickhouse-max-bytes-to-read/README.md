@@ -34,8 +34,8 @@ SETTINGS max_bytes_to_read = 53687091200;  -- 50 GB
 When exceeded:
 
 ```text
-Code: 159. DB::Exception: Limit for bytes to read exceeded:
-read 53687091201 bytes, maximum is 53687091200 bytes.
+Code: 307. DB::Exception: Limit for rows or bytes to read exceeded,
+max bytes: 50.00 GiB, current bytes: 50.00 GiB.
 ```
 
 ## Setting Defaults in User Profiles
@@ -126,8 +126,8 @@ SELECT
     query_id,
     user,
     read_rows,
-    formatReadableSize(read_bytes) AS read_bytes,
-    formatReadableSize(result_bytes) AS result_bytes,
+    formatReadableSize(read_bytes) AS readable_bytes,
+    formatReadableSize(result_bytes) AS readable_result_bytes,
     query_duration_ms,
     query
 FROM system.query_log
@@ -139,13 +139,13 @@ LIMIT 20;
 
 ## Typical Byte Limit Guidelines
 
-| Profile | max_bytes_to_read | Use case |
+| Limit | max_bytes_to_read | Use case |
 |---|---|---|
-| `0` | Unlimited | Internal ETL |
-| 500 GB | 536870912000 | Data engineers |
-| 100 GB | 107374182400 | Analytics team |
-| 10 GB | 10737418240 | Dashboard queries |
-| 1 GB | 1073741824 | API / low-latency endpoints |
+| Unlimited | `0` | Internal ETL |
+| 500 GB | `536870912000` | Data engineers |
+| 100 GB | `107374182400` | Analytics team |
+| 10 GB | `10737418240` | Dashboard queries |
+| 1 GB | `1073741824` | API / low-latency endpoints |
 
 ## Relationship to max_execution_time
 
