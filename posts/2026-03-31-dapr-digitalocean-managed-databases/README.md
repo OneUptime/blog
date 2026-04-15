@@ -18,7 +18,7 @@ DigitalOcean provides a CA certificate and connection string. Download the CA ce
 
 ```bash
 # Get the CA certificate from DigitalOcean dashboard or API
-doctl databases ca get my-pg-cluster --format PrivateKey > /tmp/do-ca.pem
+doctl databases get-ca my-pg-cluster --format Certificate --no-header > /tmp/do-ca.pem
 
 # Create a ConfigMap with the certificate
 kubectl create configmap do-pg-cert \
@@ -54,15 +54,18 @@ kubectl create secret generic do-pg-secret \
     user=doadmin \
     password=mypassword \
     dbname=defaultdb \
-    sslmode=require \
+    sslmode=verify-full \
     sslrootcert=/certs/ca.pem"
 ```
 
-Mount the certificate in your Dapr pod:
+Mount the certificate in the Dapr sidecar using the `dapr.io/volume-mounts` annotation:
 
 ```yaml
 spec:
   template:
+    metadata:
+      annotations:
+        dapr.io/volume-mounts: "do-pg-cert:/certs"
     spec:
       volumes:
       - name: do-pg-cert
@@ -70,9 +73,7 @@ spec:
           name: do-pg-cert
       containers:
       - name: my-service
-        volumeMounts:
-        - name: do-pg-cert
-          mountPath: /certs
+        image: myregistry/my-service:latest
 ```
 
 ## Configuring Dapr with DigitalOcean Managed Redis
