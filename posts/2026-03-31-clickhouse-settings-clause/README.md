@@ -8,11 +8,11 @@ Description: Override ClickHouse server settings at the query level using the SE
 
 ---
 
-ClickHouse exposes hundreds of server-level settings that control query execution - memory limits, thread counts, join strategies, and more. While defaults are set in `config.xml` or user profiles, you can override any of them for a single query using the `SETTINGS` clause. This lets you tune expensive queries without touching global configuration.
+ClickHouse exposes hundreds of server-level settings that control query execution - memory limits, thread counts, join strategies, and more. While defaults are set in `users.xml` or user profiles, you can override any of them for a single query using the `SETTINGS` clause. This lets you tune expensive queries without touching global configuration.
 
 ## Basic Syntax
 
-Place the `SETTINGS` clause at the very end of a `SELECT` statement, after all other clauses:
+Place the `SETTINGS` clause near the end of a `SELECT` statement, after `LIMIT` but before any `UNION`, `INTO OUTFILE`, or `FORMAT` clauses:
 
 ```sql
 SELECT
@@ -147,7 +147,7 @@ For distributed setups you can read from multiple replicas in parallel to accele
 SELECT count()
 FROM distributed_events
 SETTINGS
-    allow_experimental_parallel_reading_from_replicas = 1,
+    enable_parallel_replicas = 1,
     max_parallel_replicas = 3,
     parallel_replicas_for_non_replicated_merge_tree = 1;
 ```
