@@ -49,7 +49,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY src/ ./src/
 
 EXPOSE 3000
@@ -100,7 +100,7 @@ services:
   order-service-dapr:
     image: daprio/daprd:1.13.0
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3501/v1.0/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3500/v1.0/healthz"]
       interval: 15s
       timeout: 3s
       retries: 5
