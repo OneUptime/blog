@@ -14,23 +14,10 @@ Dapr Agents bring together AI-driven decision making and Dapr's workflow engine 
 
 ## Setting Up a Dapr Agent
 
-First, ensure your cluster has Dapr installed and the workflow API enabled.
+First, ensure your cluster has Dapr installed. The workflow engine is built-in to the Dapr sidecar, so no separate workflow component file is needed.
 
 ```bash
 dapr init --kubernetes
-kubectl apply -f dapr-workflow-component.yaml
-```
-
-Define a workflow component:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: workflowbackend
-spec:
-  type: workflow.dapr
-  version: v1
 ```
 
 ## Implementing the Agent Workflow
@@ -64,13 +51,13 @@ Start a workflow instance using the Dapr HTTP API:
 ```bash
 curl -X POST http://localhost:3500/v1.0/workflows/dapr/agent_workflow/start \
   -H "Content-Type: application/json" \
-  -d '{"input": {"task_id": "task-123", "risk_score": 30}}'
+  -d '{"task_id": "task-123", "risk_score": 30}'
 ```
 
 Check the status of a running workflow:
 
 ```bash
-curl http://localhost:3500/v1.0/workflows/dapr/agent_workflow/{instance_id}
+curl http://localhost:3500/v1.0/workflows/dapr/{instance_id}
 ```
 
 ## Combining Agents with Pub/Sub Triggers
@@ -78,17 +65,17 @@ curl http://localhost:3500/v1.0/workflows/dapr/agent_workflow/{instance_id}
 Agents can react to external events through Dapr pub/sub. Subscribe to a topic and start a workflow on each message:
 
 ```python
-from dapr.clients import DaprClient
+from flask import Flask, request, jsonify
+from dapr.ext.workflow import DaprWorkflowClient
 
 app = Flask(__name__)
 
 @app.route('/task-events', methods=['POST'])
 def handle_task():
     event = request.json
-    with DaprClient() as client:
-        client.start_workflow(
-            workflow_component="dapr",
-            workflow_name="agent_workflow",
+    with DaprWorkflowClient() as client:
+        client.schedule_new_workflow(
+            workflow=agent_workflow,
             input=event["data"]
         )
     return jsonify({"status": "started"}), 200
