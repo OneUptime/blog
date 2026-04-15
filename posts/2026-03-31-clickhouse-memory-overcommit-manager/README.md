@@ -12,7 +12,7 @@ ClickHouse's memory overcommit manager is a smarter alternative to hard per-quer
 
 ## How Overcommit Works
 
-Each query sets a "soft" memory limit. The overcommit manager tracks total server memory usage and maintains a ratio. As long as total memory usage is below the server's threshold, queries can exceed their soft limit up to a configurable multiplier. When the system approaches its hard limit, the overcommit manager picks the query consuming the most memory above its soft limit and cancels it with an exception.
+Each query sets a "soft" memory limit via `max_memory_usage`. The overcommit manager tracks total server memory usage and computes an overcommit ratio for each query (`allocated_bytes / memory_overcommit_ratio_denominator`). As long as total memory usage is below the server's threshold, queries can exceed their soft limit. When the system approaches its hard limit, the overcommit manager picks the query with the biggest overcommit ratio and cancels it with a `MEMORY_LIMIT_EXCEEDED` exception.
 
 ## Configuring Overcommit
 
@@ -24,7 +24,7 @@ Set the user-level soft limit and overcommit ratio in the user profile:
     <!-- Soft limit: 2 GB per query -->
     <max_memory_usage>2147483648</max_memory_usage>
 
-    <!-- Allow up to 2x overcommit when system has headroom -->
+    <!-- Denominator for overcommit ratio: allocated_bytes / denominator -->
     <memory_overcommit_ratio_denominator>1073741824</memory_overcommit_ratio_denominator>
 
     <!-- Same for user-level totals -->
@@ -46,14 +46,14 @@ This limits ClickHouse to 90% of available RAM before the overcommit manager sta
 You can also configure overcommit at the session or query level:
 
 ```sql
--- Enable global memory overcommit tracking
-SET global_memory_usage_overcommit_max_wait_microseconds = 200000;
+-- Max wait time before a query is killed under overcommit pressure
+SET memory_usage_overcommit_max_wait_microseconds = 200000;
 
 -- Set per-query overcommit denominator (in bytes)
 SET memory_overcommit_ratio_denominator = 1073741824;
 ```
 
-The `global_memory_usage_overcommit_max_wait_microseconds` setting controls how long a query waits for other queries to free memory before it proceeds despite overcommit conditions.
+The `memory_usage_overcommit_max_wait_microseconds` setting controls how long a query waits for other queries to free memory. If the timeout expires without enough memory being freed, the query is killed with a `MEMORY_LIMIT_EXCEEDED` exception.
 
 ## Monitoring Memory Overcommit Events
 
@@ -65,7 +65,6 @@ WHERE event LIKE '%MemoryOvercommit%';
 
 Key events:
 - `MemoryOvercommitWaitTimeMicroseconds` - total time queries waited due to overcommit pressure
-- `MemoryAllocatorPurge` - allocator releasing memory back to OS
 
 Check current memory usage across running queries:
 
@@ -102,10 +101,10 @@ Queries canceled by overcommit will show exceptions containing `Memory limit` or
 | Scenario | Recommendation |
 |---|---|
 | Shared analytics cluster | Overcommit with server-level hard cap |
-| Interactive dashboards | Hard limit with `break` overflow mode |
+| Interactive dashboards | Hard limit with conservative `max_memory_usage` |
 | Batch ETL jobs | Generous hard limit per job |
 | Multi-tenant SaaS | Quotas combined with overcommit |
 
 ## Summary
 
-The memory overcommit manager strikes a balance between resource utilization and stability. Queries can burst above their soft limit when memory is available, and the system gracefully cancels the most expensive query when pressure builds. Configure the `memory_overcommit_ratio_denominator` in user profiles, set a server-level RAM ratio cap, and monitor `MemoryOvercommitWaitTimeMicroseconds` to tune the balance for your workload.
+The memory overcommit manager strikes a balance between resource utilization and stability. Queries can burst above their soft limit when memory is available, and the system gracefully cancels the query with the biggest overcommit ratio when pressure builds. Configure the `memory_overcommit_ratio_denominator` in user profiles, set a server-level RAM ratio cap, and monitor `MemoryOvercommitWaitTimeMicroseconds` to tune the balance for your workload.
