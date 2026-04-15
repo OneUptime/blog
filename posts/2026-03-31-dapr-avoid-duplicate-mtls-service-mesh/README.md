@@ -32,7 +32,7 @@ kubectl get configuration -A -o yaml | grep -A5 "mtls"
 kubectl get peerauthentication -A
 
 # Check Linkerd mTLS
-linkerd edges deployment -n default
+linkerd viz edges deployment -n default
 ```
 
 If both show mTLS active, you have duplicate encryption.
@@ -103,10 +103,10 @@ After disabling Dapr mTLS, verify that service mesh mTLS is still active:
 
 ```bash
 # Istio
-istioctl authn tls-check <pod> -n <namespace>
+istioctl proxy-config secret <pod> -n <namespace>
 
 # Linkerd
-linkerd edges pod/<pod-name> -n <namespace>
+linkerd viz edges pod/<pod-name> -n <namespace>
 ```
 
 And confirm Dapr services still communicate correctly:
