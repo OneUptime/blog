@@ -75,8 +75,6 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
     steps:
     - uses: actions/checkout@v4
     - name: Log in to Docker Hub
