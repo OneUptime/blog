@@ -8,7 +8,7 @@ Description: Learn how mapPopulateSeries() fills missing integer keys in a Map s
 
 ---
 
-`mapPopulateSeries()` fills in missing integer keys in a Map to produce a contiguous sequence from the minimum key (or a specified start) up to a specified maximum, assigning zero to any inserted keys. This is essential when working with time series or sequence data stored as Maps, where gaps in the key space need to be filled to enable downstream aggregations, visualizations, or comparisons that assume complete coverage.
+`mapPopulateSeries()` fills in missing integer keys in a Map to produce a contiguous sequence from the minimum key present in the input up to the maximum key (or a specified maximum), assigning zero to any inserted keys. This is essential when working with time series or sequence data stored as Maps, where gaps in the key space need to be filled to enable downstream aggregations, visualizations, or comparisons that assume complete coverage.
 
 ## Function Signature
 
@@ -50,9 +50,9 @@ ENGINE = MergeTree
 ORDER BY (user_id, event_date);
 
 INSERT INTO hourly_event_maps VALUES
-(101, '2024-06-01', map(9, 5, 10, 12, 11, 8, 14, 3, 17, 9)),
-(102, '2024-06-01', map(8, 2, 12, 7, 13, 15, 18, 4, 22, 1)),
-(103, '2024-06-01', map(10, 20, 11, 18, 12, 25, 13, 22));
+(101, '2024-06-01', map(0, 2, 9, 5, 10, 12, 11, 8, 14, 3, 17, 9)),
+(102, '2024-06-01', map(0, 1, 8, 2, 12, 7, 13, 15, 18, 4, 22, 1)),
+(103, '2024-06-01', map(0, 3, 10, 20, 11, 18, 12, 25, 13, 22));
 ```
 
 ## Filling to 24 Hours for Complete Coverage
@@ -67,7 +67,7 @@ SELECT
 FROM hourly_event_maps;
 ```
 
-Now every row has exactly 24 entries, making per-hour comparisons and visualizations reliable.
+Because every row has at least key 0 (the minimum hour), the function fills from 0 through 23, producing exactly 24 entries per row and making per-hour comparisons and visualizations reliable.
 
 ## Computing Hour-by-Hour Totals Across Users
 
