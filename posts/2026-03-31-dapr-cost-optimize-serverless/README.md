@@ -131,6 +131,7 @@ spec:
     spec:
       template:
         spec:
+          restartPolicy: OnFailure
           containers:
             - name: kubectl
               image: bitnami/kubectl
