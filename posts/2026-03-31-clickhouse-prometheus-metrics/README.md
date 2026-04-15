@@ -35,7 +35,6 @@ Create `/etc/clickhouse-server/config.d/prometheus.xml`:
     <events>true</events>
     <asynchronous_metrics>true</asynchronous_metrics>
     <errors>true</errors>
-    <status_info>true</status_info>
   </prometheus>
 </clickhouse>
 ```
@@ -102,8 +101,8 @@ ClickHouseMetrics_Query
 # Query rate (queries per second)
 rate(ClickHouseEvents_Query[5m])
 
-# Slow query rate (queries taking > 1 second)
-rate(ClickHouseEvents_QueryTimeMicroseconds[5m]) / 1e6
+# Total SELECT query processing time in seconds per second
+rate(ClickHouseEvents_SelectQueryTimeMicroseconds[5m]) / 1e6
 ```
 
 ### Memory
@@ -116,7 +115,7 @@ ClickHouseAsyncMetrics_MemoryResident
 ClickHouseMetrics_MemoryTracking
 
 # Mark cache size
-ClickHouseAsyncMetrics_MarkCacheBytes
+ClickHouseMetrics_MarkCacheBytes
 ```
 
 ### Merges
@@ -125,17 +124,17 @@ ClickHouseAsyncMetrics_MarkCacheBytes
 # Number of active background merges
 ClickHouseMetrics_Merge
 
-# Parts count across all tables
-ClickHouseAsyncMetrics_NumberOfTables
+# Number of active data parts
+ClickHouseMetrics_PartsActive
 ```
 
 ### Replication
 
 ```promql
-# Replication queue depth
-ClickHouseMetrics_ReplicatedChecks
-
 # Replication queue size
+ClickHouseAsyncMetrics_ReplicasSumQueueSize
+
+# Maximum replication delay in seconds
 ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay
 ```
 
