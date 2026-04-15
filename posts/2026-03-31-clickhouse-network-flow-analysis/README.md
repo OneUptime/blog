@@ -59,7 +59,7 @@ LIMIT 20;
 
 ```sql
 SELECT
-    substring(CAST(src_ip AS String), 1, 7) AS subnet,
+    IPv4NumToString(bitAnd(CAST(src_ip AS UInt32), 0xFFFF0000)) AS subnet,
     sum(bytes) AS bytes_out,
     sum(packets) AS packets_out,
     countDistinct(dst_ip) AS unique_destinations
