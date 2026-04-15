@@ -23,8 +23,8 @@ You can run queries directly in the web UI or connect via the HTTP interface.
 ## Connecting via HTTP Interface
 
 ```bash
-curl "https://play.clickhouse.com/?user=play&password=clickhouse" \
-  --data "SELECT version()"
+curl "https://play.clickhouse.com/?user=play" \
+  --data-binary "SELECT version()"
 ```
 
 ## Connecting via clickhouse-client
@@ -33,9 +33,8 @@ curl "https://play.clickhouse.com/?user=play&password=clickhouse" \
 clickhouse-client \
   --host play.clickhouse.com \
   --secure \
-  --port 443 \
-  --user play \
-  --password clickhouse
+  --port 9440 \
+  --user play
 ```
 
 ## Available Sample Datasets
@@ -94,9 +93,9 @@ SELECT version();
 Test new syntax before upgrading your own cluster:
 
 ```sql
--- Test JSON type (experimental)
-SET allow_experimental_object_type = 1;
-SELECT json:$.user.id FROM test_json;
+-- Test JSON type (production-ready since 25.3)
+SELECT data.user.id
+FROM (SELECT '{"user":{"id":123}}'::JSON AS data);
 ```
 
 ## Limitations
