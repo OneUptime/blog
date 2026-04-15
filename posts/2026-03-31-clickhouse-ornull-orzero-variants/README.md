@@ -8,14 +8,15 @@ Description: Learn how to use OrNull and OrZero type conversion variants in Clic
 
 ---
 
-Every numeric type conversion function in ClickHouse comes in three variants. The base variant (e.g., `toInt32`) throws an exception on invalid input. The `OrZero` variant (e.g., `toInt32OrZero`) returns 0. The `OrNull` variant (e.g., `toInt32OrNull`) returns NULL. Choosing the right variant is critical when processing untrusted or user-supplied string data where format errors are expected.
+Every numeric type conversion function in ClickHouse comes with safe parsing variants. The base variant (e.g., `toInt32`) throws an exception on invalid input. The `OrZero` variant (e.g., `toInt32OrZero`) returns 0. The `OrNull` variant (e.g., `toInt32OrNull`) returns NULL. There is also an `OrDefault` variant (e.g., `toInt32OrDefault`) that returns a default value. This article focuses on `OrNull` and `OrZero`, which are the most commonly used when processing untrusted or user-supplied string data where format errors are expected.
 
 ## Overview of Variants
 
 ```text
-toInt32(x)        -> throws exception on invalid input
-toInt32OrZero(x)  -> returns 0 on invalid input
-toInt32OrNull(x)  -> returns NULL on invalid input
+toInt32(x)          -> throws exception on invalid input
+toInt32OrZero(x)    -> returns 0 on invalid input
+toInt32OrNull(x)    -> returns NULL on invalid input
+toInt32OrDefault(x) -> returns a default value on invalid input
 
 Same pattern for:
 toInt8, toInt16, toInt32, toInt64
