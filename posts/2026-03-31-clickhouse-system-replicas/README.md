@@ -8,7 +8,7 @@ Description: Learn how to query system.replicas to monitor replication lag, queu
 
 ---
 
-`system.replicas` provides a row for every `ReplicatedMergeTree` table on the local node. It shows the current replication queue depth, how many log entries are being applied, whether the replica is active, and how far behind it is relative to the leader. It is the primary tool for diagnosing replication issues and confirming that all replicas are in sync.
+`system.replicas` provides a row for every `ReplicatedMergeTree` table on the local node. It shows the current replication queue depth, how many log entries are being applied, whether the replica is active, and how far behind it is relative to the most advanced replica. It is the primary tool for diagnosing replication issues and confirming that all replicas are in sync.
 
 ## What system.replicas Contains
 
@@ -43,9 +43,9 @@ Key columns:
 | `log_max_index` | UInt64 | Max log index in ZooKeeper |
 | `log_pointer` | UInt64 | Last log index applied by this replica |
 | `last_queue_update` | DateTime | Last time the queue was refreshed |
-| `absolute_delay` | UInt64 | Seconds this replica is behind the leader |
-| `total_replicas` | UInt8 | Total replica count for this table |
-| `active_replicas` | UInt8 | Number of replicas currently active |
+| `absolute_delay` | UInt64 | Seconds this replica lags behind the most advanced replica |
+| `total_replicas` | UInt32 | Total replica count for this table |
+| `active_replicas` | UInt32 | Number of replicas currently active |
 | `last_queue_update_exception` | String | Last error from queue processing |
 | `zookeeper_exception` | String | Last ZooKeeper error |
 
@@ -135,7 +135,7 @@ FROM system.replicas
 ORDER BY database, table, is_leader DESC;
 ```
 
-In a healthy cluster with two replicas per shard, exactly one replica per table should have `is_leader = 1`. If both show `is_leader = 0`, the table has no leader and replication is paused.
+In ClickHouse, multiple replicas can be leaders at the same time, as each leader independently schedules background merges. If all replicas show `is_leader = 0`, the table has no leader and merge scheduling is stalled.
 
 ## Log Pointer Gap Analysis
 
@@ -198,8 +198,10 @@ SYSTEM SYNC REPLICA default.events;
 ```
 
 ```sql
--- Fetch a specific missing part from another replica
+-- Fetch a specific missing part from another replica (downloads to the detached/ directory)
 ALTER TABLE default.events FETCH PART '20240101_1_1_0' FROM '/clickhouse/tables/shard1/default/events';
+-- Then attach it:
+-- ALTER TABLE default.events ATTACH PART '20240101_1_1_0';
 ```
 
 ## Query All Replicas in a Cluster
@@ -224,7 +226,7 @@ This gives a unified view of replication health across every node in the cluster
 ## Common Pitfalls
 
 - `system.replicas` is local to the node you are querying. A replica that looks healthy locally may have a peer that is far behind. Always query all nodes or use `clusterAllReplicas()`.
-- `absolute_delay` is computed relative to the leader's last write. If the table has no recent writes, `absolute_delay` stays at 0 even if the replica is far behind in queue processing.
+- `absolute_delay` is computed relative to the most advanced replica, not specifically the leader. If the table has no recent writes, `absolute_delay` stays at 0 even if the replica is far behind in queue processing.
 - `is_readonly = 1` almost always means the ZooKeeper session was lost or the replica can no longer write to ZooKeeper. Restarting ClickHouse or the ZooKeeper client usually resolves it.
 - A large `parts_to_check` value means the replica is verifying part checksums in the background, which is normal after recovery but can cause elevated I/O.
 
