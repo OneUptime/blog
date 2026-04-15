@@ -73,7 +73,6 @@ SELECT
     command,
     create_time,
     is_done,
-    parts_to_do_count,
     parts_to_do
 FROM system.mutations
 WHERE table = 'user_events'
@@ -138,7 +137,7 @@ SHOW CREATE TABLE user_events;
 -- Look for `allow_experimental_lightweight_delete = 1` in SETTINGS
 ```
 
-Enable the setting if needed:
+Enable the setting if needed (only required on ClickHouse versions before 23.3, as it defaults to enabled from 23.3 onward):
 
 ```sql
 SET allow_experimental_lightweight_delete = 1;
