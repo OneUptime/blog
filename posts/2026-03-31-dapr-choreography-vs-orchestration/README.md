@@ -20,7 +20,7 @@ In choreography, services react to events without a central coordinator. Each se
 
 ```go
 // order-service: publishes event when order is placed
-func placeOrder(client dapr.Client, order Order) error {
+func placeOrder(ctx context.Context, client dapr.Client, order Order) error {
     // Save order
     data, _ := json.Marshal(order)
     client.SaveState(ctx, "statestore", "order:"+order.ID, data, nil)
