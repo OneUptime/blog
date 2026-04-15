@@ -10,7 +10,7 @@ Description: Learn how to handle AWS service throttling and rate limiting in Dap
 
 ## AWS Rate Limiting and Throttling
 
-AWS services enforce rate limits (quotas) on API calls. When exceeded, the service returns throttling errors like `ProvisionedThroughputExceededException` (DynamoDB), `ThrottlingException` (SQS, SNS), or `RequestLimitExceeded` (S3). Without retry logic, these transient errors cause binding failures that may result in data loss.
+AWS services enforce rate limits (quotas) on API calls. When exceeded, the service returns throttling errors like `ProvisionedThroughputExceededException` (DynamoDB), `ThrottlingException` (SQS, SNS), or `SlowDown` (S3). Without retry logic, these transient errors cause binding failures that may result in data loss.
 
 ## Dapr Resiliency: The Primary Defense
 
@@ -27,7 +27,7 @@ spec:
     retries:
       aws-throttle-retry:
         policy: exponential
-        initialInterval: 200ms
+        duration: 200ms
         maxInterval: 60s
         maxRetries: 10
         matching:
@@ -89,7 +89,7 @@ aws dynamodb update-table \
 
 ### SQS
 
-SQS supports up to 3,000 messages per second per queue (for standard queues). For higher throughput, use multiple queues or SNS fan-out:
+SQS standard queues support nearly unlimited throughput, but FIFO queues are limited to 300 messages per second (or 3,000 with batching). For high-volume scenarios, distribute load across multiple queues or use SNS fan-out:
 
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
@@ -182,6 +182,7 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator GreaterThanThreshold \
   --period 60 \
   --evaluation-periods 3 \
+  --statistic Sum \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
