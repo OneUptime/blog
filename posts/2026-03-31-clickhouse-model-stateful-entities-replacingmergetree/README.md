@@ -12,7 +12,7 @@ ClickHouse is primarily designed for append-only analytics, but many real-world 
 
 ## How ReplacingMergeTree Works
 
-`ReplacingMergeTree` deduplicates rows with the same primary key, keeping the row with the highest value in the specified version column. Deduplication happens asynchronously during merges, not immediately on insert.
+`ReplacingMergeTree` deduplicates rows with the same sorting key (`ORDER BY` columns), keeping the row with the highest value in the specified version column. Deduplication happens asynchronously during merges, not immediately on insert.
 
 ```sql
 CREATE TABLE user_profiles (
@@ -125,4 +125,4 @@ This works correctly even with duplicate rows.
 
 ## Summary
 
-`ReplacingMergeTree` enables mutable entity modeling in ClickHouse by keeping the latest version of each primary key. Use `FINAL` or `OPTIMIZE TABLE FINAL` to force deduplication, or use `argMax` as a query-time alternative. For counters and state changes with cancellation semantics, `CollapsingMergeTree` is the right tool.
+`ReplacingMergeTree` enables mutable entity modeling in ClickHouse by keeping the latest version of each sorting key. Use `FINAL` or `OPTIMIZE TABLE FINAL` to force deduplication, or use `argMax` as a query-time alternative. For counters and state changes with cancellation semantics, `CollapsingMergeTree` is the right tool.
