@@ -128,6 +128,8 @@ Orchestrate the pipeline steps durably:
 ```python
 from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext
 
+wfr = WorkflowRuntime()
+
 @wfr.workflow(name="data-analysis-pipeline")
 def run_pipeline(ctx: DaprWorkflowContext, input: dict):
     # Step 1: Ingest
@@ -173,12 +175,16 @@ spec:
 Handle the cron trigger:
 
 ```python
+from dapr.clients import DaprClient
+
 @app.route("/daily-analysis-trigger", methods=["POST"])
 def trigger_analysis():
-    client.start_workflow(
-        workflow_name="data-analysis-pipeline",
-        input={"data_source": "s3://my-bucket/daily-data.csv", "recipients": ["team@company.com"]}
-    )
+    with DaprClient() as d:
+        d.start_workflow(
+            workflow_component="dapr",
+            workflow_name="data-analysis-pipeline",
+            input={"data_source": "s3://my-bucket/daily-data.csv", "recipients": ["team@company.com"]}
+        )
     return "", 200
 ```
 
