@@ -54,19 +54,19 @@ spec:
     value: "kafka:9092"
   - name: consumerGroup
     value: "$(APP_ID)-consumer"
-  scopes:
-  - order-service
-  - inventory-service
-  - payment-service
-  - notification-service
-  - fulfillment-service
+scopes:
+- order-service
+- inventory-service
+- payment-service
+- notification-service
+- fulfillment-service
 ```
 
 Service-specific subscription routing:
 
 ```yaml
 # Notification service subscriptions
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: notification-subscriptions
@@ -110,7 +110,7 @@ async function publishOrderPlaced(order) {
 
   await client.pubsub.publish('orders-pubsub', 'OrderPlaced', event, {
     metadata: {
-      rawPayload: 'false',
+      rawPayload: 'true',
       partitionKey: order.customerId
     }
   });
@@ -155,7 +155,7 @@ Standardize event structure across all services:
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 @dataclass
@@ -175,7 +175,7 @@ class EventEnvelope:
             event_type=event_type,
             event_version="1.0",
             source_service=source,
-            occurred_at=datetime.utcnow().isoformat(),
+            occurred_at=datetime.now(timezone.utc).isoformat(),
             correlation_id=correlation_id or str(uuid.uuid4()),
             data=data
         )
