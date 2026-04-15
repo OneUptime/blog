@@ -125,7 +125,7 @@ spec:
     value: "https://vault.internal.company.com"
   - name: skipVerify
     value: "false"
-  - name: tlsCertFile
+  - name: caCert
     value: "/vault/tls/tls.crt"
   - name: vaultKVPrefix
     value: "production/dapr"
@@ -151,10 +151,9 @@ spec:
         dapr.io/sidecar-cpu-limit: "500m"
         dapr.io/sidecar-memory-request: "256Mi"
         dapr.io/sidecar-memory-limit: "512Mi"
-        dapr.io/enable-metrics: "true"
         dapr.io/metrics-port: "9090"
-        dapr.io/sidecar-liveness-probe-delay: "10"
-        dapr.io/sidecar-readiness-probe-delay: "10"
+        dapr.io/sidecar-liveness-probe-delay-seconds: "10"
+        dapr.io/sidecar-readiness-probe-delay-seconds: "10"
 ```
 
 ## Production Resiliency Policy
@@ -171,7 +170,7 @@ spec:
     retries:
       default-retry:
         policy: exponential
-        initialInterval: 500ms
+        duration: 500ms
         maxInterval: 30s
         maxRetries: 7
         matching:
