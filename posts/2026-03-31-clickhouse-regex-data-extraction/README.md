@@ -24,7 +24,7 @@ If the pattern does not match, the function returns an empty string.
 
 ## Extracting All Matches with extractAll
 
-`extractAll(haystack, pattern)` returns an array of all non-overlapping matches.
+`extractAll(haystack, pattern)` returns an array of all non-overlapping matches. When the pattern contains a capturing group, it returns the captured substrings rather than the full matches.
 
 ```sql
 SELECT extractAll(log_line, '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}') AS ip_addresses
