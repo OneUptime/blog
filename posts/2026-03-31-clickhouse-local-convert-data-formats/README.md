@@ -106,7 +106,7 @@ Key formats include:
 
 ```text
 CSV, CSVWithNames, TSV, TSVWithNames
-JSONEachRow, JSONArrayEachRow, JSONObjectEachRow
+JSONEachRow, JSONCompactEachRow, JSONObjectEachRow
 Parquet, ORC, Avro, Arrow
 Native, RowBinary
 ```
