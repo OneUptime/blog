@@ -123,7 +123,7 @@ SELECT * FROM kafka_orders;
 
 ## Field Mapping
 
-ClickHouse maps Protobuf fields to table columns by name (case-sensitive). If names differ, use the `protobuf_skip_fields_with_unsupported_types` or rename the fields in the schema.
+ClickHouse maps Protobuf fields to table columns by name (case-insensitive, and `_` and `.` are treated as equal). If names differ, rename the fields in the schema to match.
 
 Column-to-field type mapping:
 
@@ -173,13 +173,15 @@ ENGINE = MergeTree()
 ORDER BY customer_id;
 ```
 
-## Skipping Unknown Fields
+## Skipping Fields with Unsupported Types
 
-When reading data with fields not present in the table, enable:
+When using schema inference and the Protobuf schema contains fields with types that ClickHouse cannot map, enable this setting to skip them instead of throwing an error:
 
 ```sql
-SET input_format_protobuf_skip_fields_with_unsupported_types = 1;
+SET input_format_protobuf_skip_fields_with_unsupported_types_in_schema_inference = 1;
 ```
+
+Note: Protobuf fields that exist in the message but have no matching column in the table are automatically skipped during reads without any special setting.
 
 ## Schema Evolution
 
