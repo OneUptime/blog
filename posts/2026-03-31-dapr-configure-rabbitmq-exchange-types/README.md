@@ -24,13 +24,13 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: "amqp://guest:guest@rabbitmq:5672"
   - name: exchangeKind
     value: "topic"
   - name: durable
     value: "true"
-  - name: autoDelete
+  - name: deletedWhenUnused
     value: "false"
   - name: prefetchCount
     value: "10"
@@ -104,10 +104,8 @@ spec:
 Configure dead letter exchange for failed messages:
 
 ```yaml
-  - name: deadLetterExchangeName
-    value: "dlx"
-  - name: deadLetterRoutingKey
-    value: "dead"
+  - name: enableDeadLetter
+    value: "true"
   - name: maxLen
     value: "100000"
   - name: maxLenBytes
