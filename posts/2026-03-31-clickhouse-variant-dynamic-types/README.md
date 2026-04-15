@@ -15,6 +15,9 @@ ClickHouse introduced `Variant` and `Dynamic` types to handle semi-structured an
 `Variant(T1, T2, ...)` stores values of one of several specified types in a single column. Each value knows its type, and type-specific operations work correctly:
 
 ```sql
+-- Required when mixing similar numeric types (e.g. UInt64 and Float64) in one Variant
+SET allow_suspicious_variant_types = 1;
+
 CREATE TABLE events (
     event_time DateTime,
     event_type String,
