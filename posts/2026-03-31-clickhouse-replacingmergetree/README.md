@@ -15,11 +15,12 @@ ReplacingMergeTree is a ClickHouse table engine that automatically deduplicates 
 In standard MergeTree, inserting a row with the same key as an existing row creates a duplicate - both rows coexist. ReplacingMergeTree addresses this by collapsing duplicates during merges, keeping only one "winner" row per key.
 
 ```sql
-ENGINE = ReplacingMergeTree([version_column])
+ENGINE = ReplacingMergeTree([ver [, is_deleted]])
 ```
 
-- Without `version_column`: the last inserted row wins.
-- With `version_column`: the row with the highest version value wins. If values are equal, the last inserted wins.
+- Without `ver`: the last inserted row wins.
+- With `ver`: the row with the highest version value wins. If values are equal, the last inserted wins.
+- With `is_deleted` (since ClickHouse 23.2): rows where `is_deleted = 1` are physically removed during merges.
 
 ## Creating a ReplacingMergeTree Table
 
@@ -64,9 +65,9 @@ SELECT * FROM user_profiles FINAL WHERE user_id = 1;
 
 ```text
 -- Result with FINAL:
-┌─user_id─┬─username─┬─email─────────────┬─plan─┬─version─┐
-│       1 │ alice    │ alice@example.com │ pro  │       2 │
-└─────────┴──────────┴───────────────────┴──────┴─────────┘
+┌─user_id─┬─username─┬─email─────────────┬─plan─┬──────────updated_at─┬─version─┐
+│       1 │ alice    │ alice@example.com │ pro  │ 2026-03-01 00:00:00 │       2 │
+└─────────┴──────────┴───────────────────┴──────┴─────────────────────┴─────────┘
 ```
 
 ## Using Version Columns Effectively
@@ -96,9 +97,9 @@ SELECT
 FROM source_orders;
 ```
 
-## Handling Deletions: Soft Delete with is_deleted
+## Handling Deletions with is_deleted
 
-ReplacingMergeTree does not natively delete rows. Use a soft-delete flag:
+Since ClickHouse 23.2, ReplacingMergeTree supports a native `is_deleted` column parameter. Rows with `is_deleted = 1` are physically removed during background merges:
 
 ```sql
 CREATE TABLE products
@@ -109,13 +110,13 @@ CREATE TABLE products
     is_deleted   UInt8,   -- 0 = active, 1 = deleted
     version      UInt64
 )
-ENGINE = ReplacingMergeTree(version)
+ENGINE = ReplacingMergeTree(version, is_deleted)
 ORDER BY product_id;
 
 -- Mark as deleted (insert with higher version and is_deleted=1)
 INSERT INTO products VALUES (42, 'Old Product', 0.0, 1, 9999999999);
 
--- Query only active rows
+-- Query active rows (deleted rows are also removed during merges)
 SELECT * FROM products FINAL WHERE is_deleted = 0;
 ```
 
