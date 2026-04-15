@@ -4,61 +4,51 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, API Key, Authentication, Security, Middleware
 
-Description: Protect Dapr service invocation endpoints with API key authentication using the built-in middleware component and Kubernetes secrets.
+Description: Protect Dapr service invocation endpoints with API token authentication using Dapr's built-in token validation and Kubernetes secrets.
 
 ---
 
-## API Key Auth with Dapr Middleware
+## API Token Auth with Dapr
 
-Dapr's `middleware.http.apikey` component validates API keys on incoming requests. The key is stored in a Kubernetes Secret and referenced by the component, keeping it out of your code and manifests.
+Dapr includes built-in API token authentication that validates a shared token on incoming HTTP and gRPC requests to the Dapr sidecar. When enabled, every call to the Dapr API must include the token in the `dapr-api-token` header, or the request is rejected. The token is stored in a Kubernetes Secret and referenced via a deployment annotation, keeping it out of your code and manifests.
 
-## Creating the API Key Secret
+## Creating the API Token Secret
 
 ```bash
-# Generate a secure API key
-API_KEY=$(openssl rand -hex 32)
-echo "Generated key: $API_KEY"
+# Generate a secure API token
+API_TOKEN=$(openssl rand 16 | base64)
+echo "Generated token: $API_TOKEN"
 
 # Store in Kubernetes secret
-kubectl create secret generic api-key-secret \
-  --from-literal=key="$API_KEY" \
+kubectl create secret generic dapr-api-token \
+  --from-literal=token="$API_TOKEN" \
   -n default
 ```
 
-## API Key Middleware Component
+## Enabling API Token Authentication
+
+Add the `dapr.io/api-token-secret` annotation to your Deployment to enable token validation on the Dapr sidecar:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: api-key-validator
+  name: api-service
   namespace: default
 spec:
-  type: middleware.http.apikey
-  version: v1
-  metadata:
-  - name: headerName
-    value: "X-API-Key"
-  - name: apiKey
-    secretKeyRef:
-      name: api-key-secret
-      key: key
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "api-service"
+        dapr.io/api-token-secret: "dapr-api-token"
+    spec:
+      containers:
+      - name: api-service
+        image: api-service:latest
 ```
 
-## Applying to the HTTP Pipeline
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: secured-api-config
-  namespace: default
-spec:
-  httpPipeline:
-    handlers:
-    - name: api-key-validator
-      type: middleware.http.apikey
-```
+When this annotation is set, the Dapr sidecar reads the token from the referenced Kubernetes Secret and requires it on all incoming API requests.
 
 ## Multi-Key Validation (Custom Middleware)
 
@@ -124,23 +114,24 @@ stringData:
   "qrs345tuv678": "client-internal"
 ```
 
-## Testing API Key Auth
+## Testing API Token Auth
 
 ```bash
-# Without API key - rejected
+# Without API token - rejected
 curl http://localhost:3500/v1.0/invoke/api-service/method/data
 # 401 Unauthorized
 
-# With valid API key - accepted
-curl -H "X-API-Key: $API_KEY" \
+# With valid API token - accepted
+curl -H "dapr-api-token: $API_TOKEN" \
   http://localhost:3500/v1.0/invoke/api-service/method/data
 # 200 OK
 
-# Rotate API key without downtime (update secret, both old and new keys valid during rotation)
-kubectl patch secret api-key-secret \
-  -p '{"stringData":{"key":"new-key-value"}}'
+# Rotate API token (update secret, then restart sidecar to pick up the new token)
+kubectl patch secret dapr-api-token \
+  -p '{"stringData":{"token":"new-token-value"}}'
+kubectl rollout restart deployment/api-service -n default
 ```
 
 ## Summary
 
-Dapr's API key middleware provides a zero-code authentication layer for service invocation endpoints. Storing keys in Kubernetes Secrets separates credentials from configuration, and the sidecar handles all validation before requests reach your application. For multi-client scenarios, the Secrets API enables per-client key lookup with client identity forwarding.
+Dapr's built-in API token authentication provides a zero-code authentication layer for all Dapr API endpoints, including service invocation. Storing the token in a Kubernetes Secret separates credentials from configuration, and the sidecar validates the token before processing any request. For multi-client scenarios, the Secrets API enables per-client key lookup with client identity forwarding using custom application middleware.
