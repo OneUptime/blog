@@ -12,33 +12,29 @@ When Dapr sidecars consume excessive CPU or memory, Go's pprof profiling tool gi
 
 ## Enable the Dapr Profiling Port
 
-Annotate your pod to expose the profiling endpoint:
+Annotate your pod to expose the profiling endpoint on the default port (7777):
 
 ```yaml
 annotations:
   dapr.io/enable-profiling: "true"
-  dapr.io/profile-port: "7778"
 ```
 
-Or enable it via Helm when installing Dapr:
+Or enable it via the Dapr CLI when running locally:
 
 ```bash
-helm upgrade dapr dapr/dapr \
-  --set dapr_operator.logLevel=debug \
-  --set global.logLevel=debug \
-  -n dapr-system
+dapr run --enable-profiling --profile-port 7777 -- myapp
 ```
 
 ## Port-Forward to the Profiling Endpoint
 
 ```bash
-kubectl port-forward pod/<your-pod> 7778:7778 -n default
+kubectl port-forward pod/<your-pod> 7777:7777 -n default
 ```
 
 Verify the endpoint is available:
 
 ```bash
-curl http://localhost:7778/debug/pprof/
+curl http://localhost:7777/debug/pprof/
 ```
 
 ## Capture a CPU Profile
@@ -46,7 +42,7 @@ curl http://localhost:7778/debug/pprof/
 Record a 30-second CPU profile while running your load:
 
 ```bash
-curl "http://localhost:7778/debug/pprof/profile?seconds=30" > cpu.pprof
+curl "http://localhost:7777/debug/pprof/profile?seconds=30" > cpu.pprof
 ```
 
 Analyze the profile interactively:
@@ -60,7 +56,7 @@ Open `http://localhost:8080` to see flame graphs, top functions, and call graphs
 ## Capture a Memory (Heap) Profile
 
 ```bash
-curl http://localhost:7778/debug/pprof/heap > heap.pprof
+curl http://localhost:7777/debug/pprof/heap > heap.pprof
 go tool pprof -http=:8081 heap.pprof
 ```
 
@@ -71,7 +67,7 @@ Look for large allocations in `encoding/json` or gRPC serialization paths, which
 A goroutine leak causes memory growth over time. Check active goroutines:
 
 ```bash
-curl http://localhost:7778/debug/pprof/goroutine?debug=1
+curl http://localhost:7777/debug/pprof/goroutine?debug=1
 ```
 
 High goroutine counts in `dapr/pkg/messaging` or `dapr/pkg/channel` indicate pending requests or slow downstream services causing backpressure.
@@ -81,7 +77,7 @@ High goroutine counts in `dapr/pkg/messaging` or `dapr/pkg/channel` indicate pen
 If Dapr sidecar CPU usage is high but throughput is low, mutex contention may be the cause:
 
 ```bash
-curl http://localhost:7778/debug/pprof/mutex > mutex.pprof
+curl http://localhost:7777/debug/pprof/mutex > mutex.pprof
 go tool pprof -http=:8082 mutex.pprof
 ```
 
@@ -92,21 +88,27 @@ For production environments, integrate with Pyroscope for continuous profiling:
 ```yaml
 annotations:
   dapr.io/enable-profiling: "true"
-  pyroscope.io/scrape: "true"
-  pyroscope.io/port: "7778"
-  pyroscope.io/profile-types: "cpu,inuse_objects,alloc_objects"
+  profiles.grafana.com/cpu.scrape: "true"
+  profiles.grafana.com/cpu.port: "7777"
+  profiles.grafana.com/memory.scrape: "true"
+  profiles.grafana.com/memory.port: "7777"
+  profiles.grafana.com/goroutine.scrape: "true"
+  profiles.grafana.com/goroutine.port: "7777"
 ```
 
-Configure the Pyroscope scraper to pull from the Dapr profiling port:
+Configure a Grafana Alloy `pyroscope.scrape` component to pull from the Dapr profiling port:
 
-```yaml
-scrapeConfigs:
-  - job_name: dapr-sidecar
-    enabled_profiles:
-      - process_cpu
-      - memory
-    targets:
-      - <pod-ip>:7778
+```alloy
+pyroscope.scrape "dapr_sidecar" {
+  targets    = [{"__address__" = "<pod-ip>:7777"}]
+  forward_to = [pyroscope.write.default.receiver]
+
+  profiling_config {
+    profile.process_cpu { enabled = true }
+    profile.memory      { enabled = true }
+    profile.goroutine   { enabled = true }
+  }
+}
 ```
 
 ## Compare Before and After Optimization
