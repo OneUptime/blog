@@ -107,7 +107,7 @@ ORDER BY submission_id;
 
 ## Removing Custom Characters with trim()
 
-The full trim() syntax allows specifying characters to remove instead of just whitespace. Pass the characters as a string after the CHARACTERS keyword.
+The full trim() syntax allows specifying characters to remove instead of just whitespace. Place the character string directly after the LEADING, TRAILING, or BOTH keyword, followed by FROM.
 
 ```sql
 SELECT
