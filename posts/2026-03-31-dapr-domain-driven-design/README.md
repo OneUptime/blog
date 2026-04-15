@@ -136,6 +136,13 @@ public interface IOrderActor : IActor
 // Infrastructure/Actors/OrderActor.cs
 public class OrderActor : Actor, IOrderActor
 {
+    private readonly DaprClient _daprClient;
+
+    public OrderActor(ActorHost host, DaprClient daprClient) : base(host)
+    {
+        _daprClient = daprClient;
+    }
+
     public async Task ConfirmOrderAsync()
     {
         var order = await StateManager.GetStateAsync<Order>("order");
@@ -143,7 +150,7 @@ public class OrderActor : Actor, IOrderActor
         await StateManager.SetStateAsync("order", order);
 
         // Publish domain event
-        await DaprClient.PublishEventAsync("pubsub", "order-confirmed",
+        await _daprClient.PublishEventAsync("pubsub", "order-confirmed",
             new OrderConfirmedEvent(order.Id));
     }
 }
