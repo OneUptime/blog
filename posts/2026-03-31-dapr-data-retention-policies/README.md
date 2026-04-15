@@ -14,13 +14,14 @@ Data retention policies define how long data is kept before being deleted. Regul
 
 ## Setting TTL on State Store Entries
 
-Dapr supports per-entry TTL when saving state. Set a TTL of 90 days (7776000 seconds) for user session data:
+Dapr supports per-entry TTL when saving state. Set a TTL of 24 hours (86400 seconds) for user session data:
 
 ```go
 package main
 
 import (
     "context"
+    "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -34,14 +35,10 @@ func saveUserSession(userID string, sessionData []byte) error {
     // Retain session data for 24 hours
     ttlInSeconds := 86400
 
-    return client.SaveStateWithETag(context.Background(),
+    return client.SaveState(context.Background(),
         "statestore",
         "session:"+userID,
         sessionData,
-        nil,
-        &dapr.StateOptions{
-            Concurrency: dapr.StateConcurrencyLastWrite,
-        },
         map[string]string{
             "ttlInSeconds": fmt.Sprintf("%d", ttlInSeconds),
         },
@@ -80,7 +77,6 @@ spec:
 Different data types often have different retention requirements:
 
 ```python
-import os
 from dapr.clients import DaprClient
 
 RETENTION_TIERS = {
@@ -117,6 +113,10 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          annotations:
+            dapr.io/enabled: "true"
+            dapr.io/app-id: "retention-purge-job"
         spec:
           containers:
           - name: purge-job
@@ -128,9 +128,6 @@ spec:
               value: "365"
             - name: STATE_STORE
               value: "statestore"
-          annotations:
-            dapr.io/enabled: "true"
-            dapr.io/app-id: "retention-purge-job"
 ```
 
 ```bash
