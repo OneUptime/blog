@@ -137,11 +137,11 @@ raw_tag          | normalized_tag
 -----------------+---------------
 #performance     | performance
  [database]      | database
-#  cache  #      |   cache
+#  cache  #      | cache
 api              | api
 ```
 
-Note that only characters at the edges are removed. Interior characters matching the set are left untouched, which is why spaces inside `"  cache  "` remain after the `#` and outer spaces are stripped.
+Note that only characters at the edges are removed, but all characters in the specified set are stripped consecutively from each end until a character not in the set is encountered. This is why `#  cache  #` becomes `cache` — the `#` signs and spaces are all in the character set and are all removed from both ends.
 
 ## Practical Example - Cleaning User-Submitted Form Fields
 
