@@ -23,13 +23,11 @@ pip install dapr-agents openai
 Dapr Agents wraps the OpenAI client with additional resiliency features:
 
 ```python
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 
-llm = OpenAIChat(
+llm = OpenAIChatClient(
     model="gpt-4o",
     api_key="sk-your-key",  # or use env var OPENAI_API_KEY
-    temperature=0.7,
-    max_tokens=2048,
     timeout=30
 )
 ```
@@ -38,79 +36,79 @@ llm = OpenAIChat(
 
 ```python
 import os
-from dapr_agents import Agent, tool
-from dapr_agents.llm import OpenAIChat
+from dapr_agents import DurableAgent, tool
+from dapr_agents.llm import OpenAIChatClient
 
-class CodeReviewAgent(Agent):
-    name = "code-review-agent"
-    instructions = """You are an expert code reviewer. Analyze code for bugs,
+@tool
+def check_syntax(code: str, language: str) -> str:
+    """Checks code syntax for the specified programming language.
+
+    Args:
+        code: The source code to check.
+        language: Programming language (python, javascript, go, etc.)
+    """
+    # Integrate with language-specific linters
+    return f"Syntax check for {language}: No critical errors found."
+
+@tool
+def search_vulnerabilities(code: str) -> str:
+    """Scans code for known security vulnerabilities."""
+    # Integrate with security scanning tools
+    return "No known vulnerabilities detected."
+
+
+agent = DurableAgent(
+    name="code-review-agent",
+    instructions="""You are an expert code reviewer. Analyze code for bugs,
     security issues, performance problems, and style violations.
-    Provide actionable feedback."""
-
-    @tool
-    def check_syntax(self, code: str, language: str) -> str:
-        """Checks code syntax for the specified programming language.
-
-        Args:
-            code: The source code to check.
-            language: Programming language (python, javascript, go, etc.)
-        """
-        # Integrate with language-specific linters
-        return f"Syntax check for {language}: No critical errors found."
-
-    @tool
-    def search_vulnerabilities(self, code: str) -> str:
-        """Scans code for known security vulnerabilities."""
-        # Integrate with security scanning tools
-        return "No known vulnerabilities detected."
-
-
-agent = CodeReviewAgent(
-    llm=OpenAIChat(
+    Provide actionable feedback.""",
+    tools=[check_syntax, search_vulnerabilities],
+    llm=OpenAIChatClient(
         model="gpt-4o",
         api_key=os.environ["OPENAI_API_KEY"]
     )
 )
 
-result = agent.run("""
-Review this Python function:
-
-def get_user(user_id):
-    query = f"SELECT * FROM users WHERE id = {user_id}"
-    return db.execute(query)
-""")
-
-print(result)
+agent.start()
 ```
 
 ## Using GPT-4o with Vision
 
-For agents that process images:
+GPT-4o supports vision through the standard OpenAI message format. When using the LLM client directly, pass image content as part of the message:
 
 ```python
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 
-llm = OpenAIChat(model="gpt-4o")
+llm = OpenAIChatClient(model="gpt-4o")
 
-agent = ImageAnalysisAgent(llm=llm)
-result = agent.run("Analyze this screenshot", images=["screenshot.png"])
+response = llm.generate(
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Analyze this screenshot"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/screenshot.png"}}
+            ]
+        }
+    ]
+)
 ```
 
 ## Streaming Responses
 
-For long-running responses, enable streaming:
+For long-running responses, enable streaming at the LLM client level:
 
 ```python
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 
-llm = OpenAIChat(
-    model="gpt-4o",
+llm = OpenAIChatClient(model="gpt-4o")
+
+response = llm.generate(
+    messages=[{"role": "user", "content": "Explain quantum computing in detail"}],
     stream=True
 )
 
-agent = MyAgent(llm=llm)
-
-for chunk in agent.stream("Explain quantum computing in detail"):
+for chunk in response:
     print(chunk, end="", flush=True)
 ```
 
@@ -135,15 +133,15 @@ spec:
 Retrieve in your agent:
 
 ```python
-from dapr import Client
+from dapr.clients import DaprClient
 
-dapr_client = Client()
+dapr_client = DaprClient()
 secret = dapr_client.get_secret(
     store_name="secretstore",
     key="openai-api-key"
 )
 
-llm = OpenAIChat(
+llm = OpenAIChatClient(
     model="gpt-4o",
     api_key=secret.secret["openai-api-key"]
 )
@@ -170,4 +168,4 @@ spec:
 
 ## Summary
 
-Dapr Agents integrates with OpenAI through the `OpenAIChat` LLM client, supporting GPT-4o, vision, and streaming. Store API keys in Dapr secret stores for security, and use Dapr resiliency policies to handle rate limits with exponential backoff. The combination provides production-grade durability for OpenAI-powered agents.
+Dapr Agents integrates with OpenAI through the `OpenAIChatClient` LLM client, supporting GPT-4o, vision, and streaming. Store API keys in Dapr secret stores for security, and use Dapr resiliency policies to handle rate limits with exponential backoff. The combination provides production-grade durability for OpenAI-powered agents.
