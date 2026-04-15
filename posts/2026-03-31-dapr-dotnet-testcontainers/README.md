@@ -16,7 +16,6 @@ Integration testing Dapr applications requires a running Dapr sidecar alongside 
 
 ```bash
 dotnet add package Testcontainers
-dotnet add package Testcontainers.Dapr
 dotnet add package Microsoft.AspNetCore.Mvc.Testing
 dotnet add package xunit
 ```
@@ -26,28 +25,39 @@ dotnet add package xunit
 Create a fixture that starts a Dapr sidecar container alongside your ASP.NET Core test server:
 
 ```csharp
-using Testcontainers.Dapr;
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 public class DaprFixture : IAsyncLifetime
 {
-    private DaprContainer _daprContainer = null!;
+    private IContainer _daprContainer = null!;
     public HttpClient Client { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
-        _daprContainer = new DaprBuilder()
-            .WithAppId("order-service")
-            .WithAppPort(5001)
-            .WithComponentsPath("./components")
+        _daprContainer = new ContainerBuilder()
+            .WithImage("daprio/daprd:latest")
+            .WithCommand("./daprd",
+                "--app-id", "order-service",
+                "--app-port", "5001",
+                "--dapr-http-port", "3500",
+                "--dapr-grpc-port", "50001",
+                "--components-path", "/components")
+            .WithPortBinding(3500, true)
+            .WithPortBinding(50001, true)
+            .WithResourceMapping("./components", "/components")
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(3500))
             .Build();
 
         await _daprContainer.StartAsync();
 
+        var daprHttpPort = _daprContainer.GetMappedPublicPort(3500);
+
         var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(host =>
             {
-                host.UseSetting("DAPR_HTTP_PORT", _daprContainer.DaprHttpPort.ToString());
+                host.UseSetting("DAPR_HTTP_PORT", daprHttpPort.ToString());
             });
 
         Client = factory.CreateClient();
@@ -88,7 +98,7 @@ public class OrderServiceTests : IClassFixture<DaprFixture>
         var order = new { Id = "ord-2", Product = "Gadget", Quantity = 1 };
         await _client.PostAsJsonAsync("/orders", order);
 
-        var result = await _client.GetFromJsonAsync<dynamic>("/orders/ord-2");
+        var result = await _client.GetFromJsonAsync<JsonNode>("/orders/ord-2");
         Assert.NotNull(result);
     }
 }
