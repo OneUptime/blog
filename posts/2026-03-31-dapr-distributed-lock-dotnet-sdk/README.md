@@ -159,9 +159,15 @@ public async Task LeaderOnlyTask()
 
     if (lockResult.Success)
     {
-        Console.WriteLine($"{leaderId} is leader - running scheduled task");
-        await RunLeaderTask();
-        await _dapr.Unlock("lockstore", "leader-election", leaderId);
+        try
+        {
+            Console.WriteLine($"{leaderId} is leader - running scheduled task");
+            await RunLeaderTask();
+        }
+        finally
+        {
+            await _dapr.Unlock("lockstore", "leader-election", leaderId);
+        }
     }
 }
 ```
