@@ -71,6 +71,9 @@ spec:
     matchLabels:
       name: image-prepuller
   template:
+    metadata:
+      labels:
+        name: image-prepuller
     spec:
       initContainers:
         - name: prepull-dapr
@@ -81,7 +84,7 @@ spec:
           command: ["sh", "-c", "echo prepulled"]
       containers:
         - name: pause
-          image: gcr.io/google_containers/pause
+          image: registry.k8s.io/pause:3.10
 ```
 
 ## Resiliency Policy for Cold Start Callers
@@ -103,7 +106,7 @@ spec:
         duration: 500ms   # First retry after 500ms
         matching:
           httpStatusCodes: "503,502"
-          gRPCStatusCodes: "UNAVAILABLE"
+          gRPCStatusCodes: "14"
 
     timeouts:
       coldStartTimeout: 35s
@@ -160,11 +163,11 @@ containers:
 ```bash
 # Monitor pod startup time
 kubectl get events --field-selector reason=Started \
-  --sort-by='.lastTimestamp' | tail -20
+  --sort-by='.metadata.creationTimestamp' | tail -20
 
 # Measure request latency including cold start via Prometheus
 histogram_quantile(0.99,
-  rate(dapr_http_server_request_latency_ms_bucket{app_id="serverless-api"}[5m])
+  rate(dapr_http_server_latency_bucket{app_id="serverless-api"}[5m])
 )
 ```
 
