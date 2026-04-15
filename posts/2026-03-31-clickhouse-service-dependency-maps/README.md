@@ -91,8 +91,8 @@ SELECT
     caller_service,
     callee_service,
     countIf(duration_ms < 10) AS lt_10ms,
-    countIf(duration_ms BETWEEN 10 AND 100) AS ms_10_100,
-    countIf(duration_ms BETWEEN 100 AND 500) AS ms_100_500,
+    countIf(duration_ms >= 10 AND duration_ms < 100) AS ms_10_100,
+    countIf(duration_ms >= 100 AND duration_ms <= 500) AS ms_100_500,
     countIf(duration_ms > 500) AS gt_500ms
 FROM service_call_edges
 WHERE call_time >= now() - INTERVAL 1 HOUR
