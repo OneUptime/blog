@@ -42,6 +42,11 @@ ClickHouse's disk abstraction supports S3-compatible, GCS, and Azure Blob Storag
                 <primary><disk>aws_s3</disk></primary>
             </volumes>
         </multi_cloud>
+        <gcs_policy>
+            <volumes>
+                <primary><disk>gcs</disk></primary>
+            </volumes>
+        </gcs_policy>
     </policies>
 </storage_configuration>
 ```
@@ -49,7 +54,7 @@ ClickHouse's disk abstraction supports S3-compatible, GCS, and Azure Blob Storag
 ## Assigning Tables to Specific Clouds
 
 ```sql
--- EU data stays on GCS (eu-west-1 bucket)
+-- EU data stays on GCS (europe-west1 bucket)
 CREATE TABLE events_eu
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(ts)
