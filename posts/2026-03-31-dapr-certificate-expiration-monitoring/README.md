@@ -19,12 +19,14 @@ Both can cause mTLS failures if they expire without being renewed.
 
 ## Monitoring Workload Certificate Expiry
 
-Workload certificates are normally rotated automatically by the Dapr sidecar. However, if Sentry is unavailable during renewal, certificates can expire. Check expiry on running sidecars:
+Workload certificates are normally rotated automatically by the Dapr sidecar. However, if Sentry is unavailable during renewal, certificates can expire. Workload certificates are held in memory by the daprd process (obtained from Sentry via gRPC), so they cannot be inspected from the filesystem. Monitor workload certificate health by ensuring Sentry is available:
 
 ```bash
-# Check certificate expiry for a specific pod
-kubectl exec -it <pod-name> -c daprd -- \
-  sh -c "openssl x509 -enddate -noout -in /var/run/secrets/dapr.io/tls/tls.crt"
+# Verify Sentry is running and available to issue/renew workload certs
+kubectl get pods -n dapr-system -l app=dapr-sentry
+
+# Check root certificate expiry using the Dapr CLI
+dapr mtls expiry
 ```
 
 ## Checking Root CA Expiry
@@ -112,17 +114,28 @@ fi
 ## Rotating an Expiring CA
 
 ```bash
-# Generate new CA
+# Generate new root CA
 openssl genrsa -out new-ca.key 4096
-openssl req -new -x509 -days 3650 -key new-ca.key -out new-ca.crt -subj "/CN=Dapr Root CA"
+openssl req -new -x509 -days 3650 -key new-ca.key -out new-ca.crt -subj "/O=dapr.io/CN=cluster.local"
 
-# Update the secret
+# Generate new issuer cert signed by the new CA
+openssl genrsa -out new-issuer.key 2048
+openssl req -new -key new-issuer.key -out new-issuer.csr -subj "/O=dapr.io/CN=cluster.local"
+openssl x509 -req -in new-issuer.csr -CA new-ca.crt -CAkey new-ca.key \
+  -CAcreateserial -out new-issuer.crt -days 3650
+
+# Update the trust bundle secret with all three components
 kubectl create secret generic dapr-trust-bundle \
   --from-file=ca.crt=new-ca.crt \
+  --from-file=issuer.crt=new-issuer.crt \
+  --from-file=issuer.key=new-issuer.key \
   -n dapr-system --dry-run=client -o yaml | kubectl apply -f -
 
 # Restart Sentry to pick up new CA
 kubectl rollout restart deployment/dapr-sentry -n dapr-system
+
+# Rolling restart application deployments to refresh sidecar workload certs
+kubectl rollout restart deployment -n <app-namespace>
 ```
 
 ## Summary
