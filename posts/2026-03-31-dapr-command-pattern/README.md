@@ -124,13 +124,10 @@ For commands that do not need an immediate response, use pub/sub:
 ```typescript
 async function dispatchCommand(command: Command) {
   await fetch(
-    `http://localhost:${DAPR_HTTP_PORT}/v1.0/publish/pubsub/commands`,
+    `http://localhost:${DAPR_HTTP_PORT}/v1.0/publish/pubsub/commands?metadata.cloudevent.type=${command.commandType}`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'dapr-pubsub-eventtype': command.commandType
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(command)
     }
   );
