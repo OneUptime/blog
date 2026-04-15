@@ -25,8 +25,8 @@ Description: Learn how to use system.parts in ClickHouse to analyze data part st
 | `data_uncompressed_bytes` | UInt64 | Logical uncompressed size |
 | `marks` | UInt64 | Number of granules (marks) |
 | `level` | UInt32 | Merge level (0 = fresh insert, higher = more merges) |
-| `min_time` | DateTime | Minimum value of the first DateTime ORDER BY column |
-| `max_time` | DateTime | Maximum value of the first DateTime ORDER BY column |
+| `min_time` | DateTime | Minimum value of the date/time key in the partition expression |
+| `max_time` | DateTime | Maximum value of the date/time key in the partition expression |
 | `disk_name` | String | Which disk this part lives on |
 | `path` | String | Filesystem path |
 | `modification_time` | DateTime | When the part directory was last modified |
@@ -63,7 +63,7 @@ A level of 0 means the part was just inserted. A level of 3 means it has been me
 
 ## Diagnosing Too Many Parts
 
-ClickHouse warns "Too many parts" when a partition has more than `parts_to_throw_insert` parts (default: 300). Find problematic partitions:
+ClickHouse warns "Too many parts" when a partition has more than `parts_to_throw_insert` parts (default: 3000). Find problematic partitions:
 
 ```sql
 SELECT
