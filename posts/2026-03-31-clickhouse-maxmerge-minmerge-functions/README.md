@@ -164,12 +164,17 @@ When building tiered rollup tables, use `maxMergeState()` and `minMergeState()` 
 -- maxMergeState combines partial states into a new partial state
 -- maxMerge produces the final scalar result
 
--- These two are equivalent:
--- Option A: scan raw data
-SELECT maxMerge(maxState(latency)) FROM raw_table GROUP BY service;
+-- These two produce equivalent results:
+-- Option A: scan raw data directly
+SELECT max(latency) FROM raw_table GROUP BY service;
 
 -- Option B: use pre-aggregated hourly state
-SELECT maxMerge(maxMergeState(max_latency)) FROM hourly_table GROUP BY service;
+SELECT maxMerge(max_latency) FROM hourly_table GROUP BY service;
+
+-- Option C: roll up hourly states into a daily state, then merge
+SELECT maxMerge(max_latency) FROM daily_table GROUP BY service;
+-- where daily_table was populated with:
+-- INSERT INTO daily_table SELECT ..., maxMergeState(max_latency) ... FROM hourly_table GROUP BY ...;
 ```
 
 ## Summary
