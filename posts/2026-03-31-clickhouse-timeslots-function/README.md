@@ -8,7 +8,7 @@ Description: Learn how timeSlots() generates an array of DateTime values coverin
 
 ---
 
-`timeSlots(start, duration, slot_size)` returns an `Array(DateTime)` containing all slot boundaries that fall within the interval `[start, start + duration]`. The `slot_size` parameter specifies the interval length in seconds. For example, `timeSlots(start, 7200, 1800)` for a 2-hour event with 30-minute slots returns up to 5 DateTime values covering the event's duration. This function is designed for use with `ARRAY JOIN`, transforming one row per event into multiple rows - one per covered time slot - making it easy to compute coverage metrics, overlapping session counts, and availability reports.
+`timeSlots(start, duration, slot_size)` returns an `Array(DateTime)` of slot-aligned time points covering the interval from `start` through `start + duration`. The first element is rounded down to the nearest `slot_size` boundary, and slots continue up to and including the boundary at or before `start + duration`. The `slot_size` parameter specifies the interval length in seconds. For example, `timeSlots(start, 7200, 1800)` for a 2-hour event with 30-minute slots returns up to 5 DateTime values covering the event's duration. This function is designed for use with `ARRAY JOIN`, transforming one row per event into multiple rows - one per covered time slot - making it easy to compute coverage metrics, overlapping session counts, and availability reports.
 
 ## Basic Usage
 
@@ -23,10 +23,10 @@ SELECT
 
 ```text
 session_start           duration_seconds  slot_size_seconds  slots
-2024-06-15 14:00:00     5400              1800               ['2024-06-15 14:00:00','2024-06-15 14:30:00','2024-06-15 15:00:00']
+2024-06-15 14:00:00     5400              1800               ['2024-06-15 14:00:00','2024-06-15 14:30:00','2024-06-15 15:00:00','2024-06-15 15:30:00']
 ```
 
-Three 30-minute slots are generated: 14:00, 14:30, and 15:00, covering the 90-minute window.
+Four 30-minute slots are generated: 14:00, 14:30, 15:00, and 15:30, covering the 90-minute window.
 
 ## Exploding Sessions Into Per-Slot Rows With ARRAY JOIN
 
@@ -121,7 +121,7 @@ ORDER BY hour_bucket;
 `timeSlots` (plural) and `timeSlot` (singular) solve different problems.
 
 ```sql
--- timeSlot (singular): rounds a single DateTime to the nearest 30-min boundary
+-- timeSlot (singular): rounds down a single DateTime to the nearest 30-min boundary
 SELECT timeSlot(now()) AS current_slot;
 
 -- timeSlots (plural): generates an ARRAY of slots covering a duration
