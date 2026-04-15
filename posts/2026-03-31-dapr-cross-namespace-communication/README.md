@@ -82,7 +82,7 @@ spec:
   nameResolution:
     component: "kubernetes"
     configuration:
-      template: "{{.ID}}-dapr.{{.Namespace}}.svc.cluster.local:50001"
+      template: "{{.ID}}-dapr.{{.Namespace}}.svc.cluster.local:{{.Port}}"
 ```
 
 ## Namespaced Component Sharing
@@ -101,15 +101,22 @@ spec:
   metadata:
   - name: redisHost
     value: "redis-master.shared-infra:6379"
-  scopes:
-  - orders-service
-  - inventory-service
-  - notification-service
+scopes:
+- orders-service
+- inventory-service
+- notification-service
 ```
 
 ## Network Policy for Cross-Namespace Traffic
 
-Allow Dapr sidecar ports across namespaces:
+Allow Dapr sidecar ports across namespaces. First, label the source namespaces that run Dapr-enabled workloads:
+
+```bash
+kubectl label namespace identity dapr-enabled=true
+kubectl label namespace orders dapr-enabled=true
+```
+
+Then create the NetworkPolicy:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -118,14 +125,12 @@ metadata:
   name: allow-dapr-cross-namespace
   namespace: orders
 spec:
-  podSelector:
-    matchLabels:
-      dapr.io/enabled: "true"
+  podSelector: {}
   ingress:
   - from:
     - namespaceSelector:
         matchLabels:
-          dapr.io/enabled: "true"
+          dapr-enabled: "true"
     ports:
     - protocol: TCP
       port: 50001
