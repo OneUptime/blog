@@ -87,7 +87,9 @@ Look for `Projection: by_user_id` and reduced `Marks` count compared to the base
 ## Limitations
 
 - Data is stored twice (base + projection), increasing write amplification and storage
-- Projections do not support column defaults or expressions that reference other tables
+- ALIAS columns cannot be used in a projection's ORDER BY clause (use MATERIALIZED columns or inline expressions instead)
+- Projections cannot reference other tables - they only operate on the parent table's columns
+- Projections are not supported in SELECT statements with the FINAL modifier
 - Projections are only supported for MergeTree family engines
 
 ## Checking Materialization Completeness
