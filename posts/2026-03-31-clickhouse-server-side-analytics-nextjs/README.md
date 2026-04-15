@@ -46,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
 
   const data = await rs.json();
-  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
   res.json(data);
 }
 ```
@@ -109,8 +109,13 @@ Never expose these to the client bundle - only use them in server-side files.
 ```tsx
 // app/analytics/error.tsx
 'use client';
-export default function Error({ error }: { error: Error }) {
-  return <p>Failed to load analytics: {error.message}</p>;
+export default function Error({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <div>
+      <p>Failed to load analytics: {error.message}</p>
+      <button onClick={reset}>Try again</button>
+    </div>
+  );
 }
 ```
 
