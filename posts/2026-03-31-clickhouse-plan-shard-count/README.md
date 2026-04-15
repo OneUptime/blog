@@ -23,8 +23,9 @@ Add shards when:
 Total compressed data: 20 TB
 Per-node usable storage: 4 TB
 Replication factor: 2
-Storage per shard: 4 TB * 2 = 8 TB logical
+Logical capacity per shard: 4 TB (each replica stores the same data)
 Shards needed: ceil(20 / 4) = 5 shards
+Total nodes: 5 shards × 2 replicas = 10 nodes
 ```
 
 Allow for growth: add 2 more shards proactively = 7 shards.
