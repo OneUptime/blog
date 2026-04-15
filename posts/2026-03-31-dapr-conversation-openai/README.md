@@ -35,7 +35,7 @@ spec:
         key: api-key
     - name: model
       value: "gpt-4o"
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "10m"
 ```
 
@@ -82,7 +82,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai-conversation/
   -d '{
     "inputs": [
       {
-        "message": "Explain the CAP theorem in simple terms",
+        "content": "Explain the CAP theorem in simple terms",
         "role": "user"
       }
     ],
@@ -125,13 +125,11 @@ func main() {
     }
     defer client.Close()
 
-    input := &dapr.ConversationInput{
-        Message: "Summarize the benefits of microservices architecture",
-        Role:    dapr.ConversationRoleUser,
+    input := dapr.ConversationInput{
+        Content: "Summarize the benefits of microservices architecture",
     }
 
-    request := dapr.NewConversationRequest("openai-conversation", []dapr.ConversationInput{*input}).
-        WithParameters(map[string]any{"temperature": 0.5, "max_tokens": 500})
+    request := dapr.NewConversationRequest("openai-conversation", []dapr.ConversationInput{input})
 
     resp, err := client.ConverseAlpha1(context.Background(), request)
     if err != nil {
@@ -152,9 +150,11 @@ Override the model at request time:
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai-conversation/converse \
   -H "Content-Type: application/json" \
   -d '{
-    "inputs": [{"message": "Write a haiku about Kubernetes", "role": "user"}],
+    "inputs": [{"content": "Write a haiku about Kubernetes", "role": "user"}],
+    "metadata": {
+      "model": "gpt-4o-mini"
+    },
     "parameters": {
-      "model": "gpt-4o-mini",
       "temperature": 1.0
     }
   }'
@@ -162,10 +162,10 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai-conversation/
 
 ## Enabling Response Caching
 
-The `cacheTTL` metadata caches identical prompts for the specified duration, reducing API costs:
+The `responseCacheTTL` metadata caches identical prompts for the specified duration, reducing API costs:
 
 ```yaml
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "30m"
 ```
 
