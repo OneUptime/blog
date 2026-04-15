@@ -8,7 +8,7 @@ Description: Learn how to use skewSamp() and skewPop() in ClickHouse to measure 
 
 ---
 
-Skewness quantifies the asymmetry of a distribution around its mean. A perfectly symmetric distribution has zero skewness. Positive skewness indicates a long right tail (most values are low, but a few extreme high values pull the mean up), while negative skewness indicates a long left tail. ClickHouse provides `skewSamp(x)` for sample skewness (Bessel's correction for bias) and `skewPop(x)` for population skewness.
+Skewness quantifies the asymmetry of a distribution around its mean. A perfectly symmetric distribution has zero skewness. Positive skewness indicates a long right tail (most values are low, but a few extreme high values pull the mean up), while negative skewness indicates a long left tail. ClickHouse provides `skewSamp(x)` for sample skewness (with bias correction for finite samples) and `skewPop(x)` for population skewness.
 
 ## Syntax
 
