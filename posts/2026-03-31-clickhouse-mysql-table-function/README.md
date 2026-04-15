@@ -148,7 +148,8 @@ ClickHouse automatically maps MySQL types to ClickHouse types:
 | `VARCHAR`, `TEXT` | `String` |
 | `DATETIME` | `DateTime` |
 | `DATE` | `Date` |
-| `TINYINT(1)` | `UInt8` (treated as boolean) |
+| `TINYINT` | `Int8` |
+| `UNSIGNED TINYINT` | `UInt8` |
 
 ## Filtering and Predicate Pushdown
 
@@ -215,11 +216,13 @@ LIMIT 1;
 The MySQL user needs only the permissions appropriate to the operation:
 
 ```sql
--- On MySQL: grant read access
-GRANT SELECT ON ecommerce.* TO 'ch_reader'@'%' IDENTIFIED BY 'pass';
+-- On MySQL: create user and grant read access
+CREATE USER IF NOT EXISTS 'ch_reader'@'%' IDENTIFIED BY 'pass';
+GRANT SELECT ON ecommerce.* TO 'ch_reader'@'%';
 
 -- For writes
-GRANT SELECT, INSERT ON reporting.* TO 'ch_writer'@'%' IDENTIFIED BY 'write_pass';
+CREATE USER IF NOT EXISTS 'ch_writer'@'%' IDENTIFIED BY 'write_pass';
+GRANT SELECT, INSERT ON reporting.* TO 'ch_writer'@'%';
 ```
 
 ## Summary
