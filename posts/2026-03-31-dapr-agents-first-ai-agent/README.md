@@ -50,53 +50,55 @@ Create the main agent file:
 
 ```python
 # main.py
-import os
-from dapr_agents import Agent, tool
-from dapr_agents.llm import OpenAIChat
+from dapr_agents import DurableAgent, tool
+from dapr_agents.agents.llm import OpenAIChatClient
+from dapr_agents.workflow.runners import AgentRunner
 
-class WeatherAgent(Agent):
-    name = "weather-agent"
-    instructions = """You are a weather assistant. Use the available tools
-    to answer questions about weather. Always provide helpful context."""
 
-    @tool
-    def get_weather(self, city: str) -> str:
-        """Retrieves current weather for a city.
+@tool
+def get_weather(city: str) -> str:
+    """Retrieves current weather for a city.
 
-        Args:
-            city: The name of the city to get weather for.
-        """
-        # In a real agent, call a weather API here
-        weather_data = {
-            "London": "15C, cloudy with light rain",
-            "New York": "22C, sunny",
-            "Tokyo": "18C, partly cloudy",
-        }
-        return weather_data.get(city, f"Weather data for {city} is unavailable.")
+    Args:
+        city: The name of the city to get weather for.
+    """
+    # In a real agent, call a weather API here
+    weather_data = {
+        "London": "15C, cloudy with light rain",
+        "New York": "22C, sunny",
+        "Tokyo": "18C, partly cloudy",
+    }
+    return weather_data.get(city, f"Weather data for {city} is unavailable.")
 
-    @tool
-    def get_forecast(self, city: str, days: int = 3) -> str:
-        """Returns a multi-day weather forecast.
 
-        Args:
-            city: The name of the city.
-            days: Number of days to forecast (1-7).
-        """
-        return f"{days}-day forecast for {city}: Mild temperatures with occasional showers."
+@tool
+def get_forecast(city: str, days: int = 3) -> str:
+    """Returns a multi-day weather forecast.
+
+    Args:
+        city: The name of the city.
+        days: Number of days to forecast (1-7).
+    """
+    return f"{days}-day forecast for {city}: Mild temperatures with occasional showers."
 
 
 if __name__ == "__main__":
-    llm = OpenAIChat(
-        model="gpt-4o",
-        api_key=os.environ["OPENAI_API_KEY"]
+    llm = OpenAIChatClient(model="gpt-4o")
+
+    agent = DurableAgent(
+        name="weather-agent",
+        role="Weather Assistant",
+        goal="Answer questions about weather using available tools",
+        instructions=[
+            "Use the available tools to answer questions about weather.",
+            "Always provide helpful context.",
+        ],
+        tools=[get_weather, get_forecast],
+        llm=llm,
     )
 
-    agent = WeatherAgent(llm=llm)
-
-    print("Weather Agent ready. Type your question:")
-    question = input("> ")
-    response = agent.run(question)
-    print(f"\nAgent: {response}")
+    runner = AgentRunner()
+    runner.serve(agent, port=8001)
 ```
 
 ## Run the Agent with Dapr
@@ -105,21 +107,24 @@ if __name__ == "__main__":
 export OPENAI_API_KEY="sk-your-key-here"
 
 dapr run --app-id weather-agent \
-  --app-port 8080 \
+  --app-port 8001 \
   --dapr-http-port 3500 \
   --components-path ./components \
   -- python main.py
 ```
 
-Expected interaction:
+Once the agent is running, invoke it via HTTP:
 
-```yaml
-Weather Agent ready. Type your question:
-> What is the weather in London and should I bring an umbrella?
+```bash
+curl -X POST http://localhost:8001/agent/run \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the weather in London and should I bring an umbrella?"}'
+```
 
-Agent: The current weather in London is 15C with cloudy skies and light rain.
-Yes, you should definitely bring an umbrella! The conditions suggest ongoing
-rain, and the 3-day forecast also predicts occasional showers.
+The POST returns a workflow ID. Query the result with:
+
+```bash
+curl http://localhost:8001/agent/instances/{WORKFLOW_ID}
 ```
 
 ## Adding Agent Memory
@@ -127,16 +132,24 @@ rain, and the 3-day forecast also predicts occasional showers.
 To make the agent remember previous messages:
 
 ```python
-from dapr_agents import Agent, ConversationHistory
-from dapr_agents.memory import DaprStateMemory
+from dapr_agents import DurableAgent
+from dapr_agents.agents.configs import AgentMemoryConfig
+from dapr_agents.memory import ConversationDaprStateMemory
 
-class WeatherAgent(Agent):
-    name = "weather-agent"
-    instructions = "You are a weather assistant."
-    memory = DaprStateMemory(
-        store_name="statestore",
-        max_history=20
-    )
+agent = DurableAgent(
+    name="weather-agent",
+    role="Weather Assistant",
+    goal="Answer questions about weather",
+    instructions=["You are a weather assistant."],
+    tools=[get_weather, get_forecast],
+    llm=llm,
+    memory=AgentMemoryConfig(
+        store=ConversationDaprStateMemory(
+            store_name="statestore",
+            session_id="weather-session",
+        )
+    ),
+)
 ```
 
 ## Handling Errors Gracefully
@@ -145,7 +158,7 @@ Add error handling for tool failures:
 
 ```python
 @tool
-def get_weather(self, city: str) -> str:
+def get_weather(city: str) -> str:
     """Retrieves weather for a city."""
     try:
         response = requests.get(
@@ -160,23 +173,14 @@ def get_weather(self, city: str) -> str:
 
 ## Running as a Service
 
-To run the agent as a persistent HTTP service:
-
-```python
-from dapr_agents import AgentService
-
-service = AgentService(agent=WeatherAgent())
-service.start(port=8080)
-```
-
-Then invoke it via HTTP:
+The agent is already served as an HTTP service via `AgentRunner`. You can also invoke it through the Dapr sidecar for service-to-service communication:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/invoke/weather-agent/method/run \
+curl -X POST http://localhost:3500/v1.0/invoke/weather-agent/method/agent/run \
   -H "Content-Type: application/json" \
   -d '{"message": "What is the weather in Tokyo?"}'
 ```
 
 ## Summary
 
-Building a Dapr Agent involves defining a class extending `Agent`, decorating tool methods with `@tool`, and running with `dapr run`. Dapr manages state persistence automatically using the configured state store. Add `DaprStateMemory` for multi-turn conversation history, and wrap tools in try/except blocks for production reliability.
+Building a Dapr Agent involves defining tool functions with `@tool`, creating a `DurableAgent` with your tools and LLM client, and serving it with `AgentRunner` under `dapr run`. Dapr manages state persistence automatically using the configured state store. Add `ConversationDaprStateMemory` via `AgentMemoryConfig` for multi-turn conversation history, and wrap tools in try/except blocks for production reliability.
