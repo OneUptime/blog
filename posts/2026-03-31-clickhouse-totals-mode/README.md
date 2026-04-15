@@ -14,10 +14,10 @@ ClickHouse supports `WITH TOTALS` in GROUP BY queries to compute an extra summar
 
 `totals_mode` applies when you use `GROUP BY ... WITH TOTALS`. It determines how the totals row is derived from the data. It has four values:
 
-- `before_having` - totals are computed from all rows before HAVING is applied
-- `after_having_inclusive` - totals include rows that were excluded by HAVING
-- `after_having_exclusive` - totals include only rows that passed HAVING (default)
-- `after_having_auto` - ClickHouse chooses based on `totals_auto_threshold`
+- `before_having` - totals are computed from all rows before HAVING is applied (default)
+- `after_having_inclusive` - totals are computed from rows that passed HAVING, plus any rows that overflowed `max_rows_to_group_by`
+- `after_having_exclusive` - totals include only rows that passed HAVING
+- `after_having_auto` - ClickHouse chooses between inclusive and exclusive based on `totals_auto_threshold`
 
 ## Basic WITH TOTALS Query
 
@@ -55,7 +55,7 @@ With `before_having`, the totals row reflects ALL countries including those filt
 | Mode | Totals Row Represents |
 |------|----------------------|
 | `before_having` | All data, ignore HAVING |
-| `after_having_inclusive` | All filtered-in groups plus some excluded groups |
+| `after_having_inclusive` | Groups passing HAVING, plus `max_rows_to_group_by` overflow rows |
 | `after_having_exclusive` | Only groups shown in result |
 | `after_having_auto` | Automatic based on threshold |
 
@@ -75,7 +75,7 @@ SETTINGS totals_mode = 'after_having_exclusive';
 
 ## Using totals_auto_threshold
 
-When `totals_mode = 'after_having_auto'`, ClickHouse compares the ratio of filtered rows to total rows. If more than `totals_auto_threshold` (default 0.5) of the groups were filtered out, it falls back to `before_having`; otherwise uses `after_having_exclusive`.
+When `totals_mode = 'after_having_auto'`, ClickHouse compares the number of rows that passed HAVING to the total number of rows. If the fraction of rows passing HAVING exceeds `totals_auto_threshold` (default 0.5), it behaves like `after_having_inclusive`; otherwise it behaves like `after_having_exclusive`.
 
 ```sql
 SET totals_mode             = 'after_having_auto';
