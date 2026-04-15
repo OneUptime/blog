@@ -98,17 +98,18 @@ Check if two process variables are correlated - useful for root cause:
 
 ```sql
 SELECT
-    corr(
-        avgIf(value, tag_name = 'reactor_temp'),
-        avgIf(value, tag_name = 'product_viscosity')
-    ) AS temp_viscosity_correlation,
-    toStartOfHour(recorded_at) AS hour
-FROM process_variables
-WHERE unit_id = 'REACTOR_1'
-  AND recorded_at >= today() - 30
-  AND tag_name IN ('reactor_temp', 'product_viscosity')
-GROUP BY hour
-ORDER BY hour;
+    corr(avg_temp, avg_viscosity) AS temp_viscosity_correlation
+FROM (
+    SELECT
+        toStartOfHour(recorded_at) AS hour,
+        avgIf(value, tag_name = 'reactor_temp') AS avg_temp,
+        avgIf(value, tag_name = 'product_viscosity') AS avg_viscosity
+    FROM process_variables
+    WHERE unit_id = 'REACTOR_1'
+      AND recorded_at >= today() - 30
+      AND tag_name IN ('reactor_temp', 'product_viscosity')
+    GROUP BY hour
+)
 ```
 
 ## Golden Batch Analysis
