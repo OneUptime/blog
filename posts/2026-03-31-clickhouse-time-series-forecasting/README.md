@@ -14,7 +14,7 @@ Moving forecasting logic closer to the data reduces pipeline complexity. ClickHo
 
 ## Linear Trend Extrapolation
 
-Use `simpleLinearRegression` to fit a trend line and extrapolate forward:
+Use `simpleLinearRegression` to fit a trend line and extrapolate forward. The function returns a `(slope, intercept)` tuple:
 
 ```sql
 WITH trend AS (
@@ -22,7 +22,7 @@ WITH trend AS (
         simpleLinearRegression(
             toUnixTimestamp(day),
             revenue
-        ) AS (slope, intercept)
+        ) AS params
     FROM (
         SELECT toDate(event_time) AS day, sum(revenue) AS revenue
         FROM sales
@@ -32,7 +32,7 @@ WITH trend AS (
 )
 SELECT
     today() + INTERVAL number DAY AS forecast_day,
-    round(slope * toUnixTimestamp(today() + INTERVAL number DAY) + intercept, 2) AS forecast_revenue
+    round(params.1 * toUnixTimestamp(today() + INTERVAL number DAY) + params.2, 2) AS forecast_revenue
 FROM trend, numbers(30);
 ```
 
@@ -62,7 +62,7 @@ Identify weekly patterns to improve forecasts:
 
 ```sql
 SELECT
-    toDayOfWeek(event_time) AS day_of_week,
+    day_of_week,
     avg(daily_revenue) AS avg_revenue,
     stddevPop(daily_revenue) AS stddev
 FROM (
