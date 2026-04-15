@@ -19,7 +19,7 @@ By default Dapr uses port 3500 for HTTP, 50001 for gRPC, and 9090 for metrics. W
 | 3500 | Dapr HTTP API |
 | 50001 | Dapr gRPC API |
 | 9090 | Prometheus metrics |
-| 50005 | Dapr internal gRPC (Kubernetes only) |
+| 50002 | Dapr internal gRPC (Kubernetes only) |
 
 ## Step 1: Configure Ports via CLI Flags
 
@@ -48,12 +48,12 @@ curl http://localhost:9091/metrics | grep dapr_http
 When using a Dapr SDK, specify the custom sidecar port:
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, CommunicationProtocolEnum } = require('@dapr/dapr');
 
 const client = new DaprClient({
   daprHost: '127.0.0.1',
   daprPort: '3510',        // custom HTTP port
-  communicationProtocol: 'HTTP',
+  communicationProtocol: CommunicationProtocolEnum.HTTP,
 });
 
 await client.state.save('statestore', [{ key: 'k', value: 'v' }]);
