@@ -41,31 +41,35 @@ const crypto = require('crypto');
 const { createClient } = require('@clickhouse/client');
 
 const app = express();
-const client = createClient({ host: 'http://clickhouse:8123' });
+const client = createClient({ url: 'http://clickhouse:8123' });
 
 app.use(express.raw({ type: 'application/json' }));
 
 const buffer = [];
 let flushTimer;
 
+async function flushBuffer() {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+    const rows = buffer.splice(0);
+    if (rows.length > 0) {
+        await client.insert({ table: 'webhook_events', values: rows, format: 'JSONEachRow' });
+    }
+}
+
 function scheduleFlush() {
     if (!flushTimer) {
-        flushTimer = setTimeout(async () => {
-            flushTimer = null;
-            const rows = buffer.splice(0);
-            if (rows.length > 0) {
-                await client.insert({ table: 'webhook_events', values: rows, format: 'JSONEachRow' });
-            }
-        }, 2000);
+        flushTimer = setTimeout(flushBuffer, 2000);
     }
 }
 
 app.post('/webhook/:source', (req, res) => {
-    const sig = req.headers['x-signature'];
+    const sig = req.headers['x-signature'] || '';
     const expected = crypto.createHmac('sha256', process.env.WEBHOOK_SECRET)
         .update(req.body).digest('hex');
 
-    if (sig !== expected) {
+    if (sig.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
         return res.status(401).send('Invalid signature');
     }
 
@@ -77,7 +81,7 @@ app.post('/webhook/:source', (req, res) => {
         idempotency_key: payload.id || crypto.randomUUID()
     });
 
-    if (buffer.length >= 500) scheduleFlush();
+    if (buffer.length >= 500) flushBuffer();
     else scheduleFlush();
 
     res.status(202).send('Accepted');
