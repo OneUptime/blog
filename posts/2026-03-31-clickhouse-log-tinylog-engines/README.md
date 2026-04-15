@@ -53,7 +53,7 @@ row_id  source_file           raw_line              imported_at
 
 ### Concurrent INSERT Limitation
 
-TinyLog serializes all writes. Two simultaneous `INSERT` statements will queue, not fail. Reads during an insert return only previously committed data.
+TinyLog serializes all writes. Two simultaneous `INSERT` statements will queue, not fail. Reads are blocked while an insert is in progress and will wait for the write to complete before returning results.
 
 ## Log Engine
 
@@ -213,7 +213,7 @@ ls /var/lib/clickhouse/data/default/error_archive/
 ## Limitations
 
 - No primary key or index - all reads are full scans.
-- No data compression by default (unlike MergeTree).
+- Data is compressed (like MergeTree), but lacks advanced MergeTree features such as configurable granularity and secondary indices.
 - No partitioning, no replication, no mutations.
 - Not suitable for production OLAP workloads.
 - Concurrent reads are fine; concurrent writes serialize.
