@@ -22,7 +22,7 @@ pip install aiven-client
 
 avn service get my-pg \
   --project my-project \
-  --format json | jq '.connection_info.pg[0]'
+  --json | jq '.connection_info.pg[0]'
 ```
 
 Configure the Dapr PostgreSQL state store:
@@ -49,7 +49,7 @@ Create the secret with the Aiven service URI:
 
 ```bash
 # Get the service URI from Aiven console or CLI
-SERVICE_URI=$(avn service get my-pg --project my-project --format json | jq -r '.service_uri')
+SERVICE_URI=$(avn service get my-pg --project my-project --json | jq -r '.service_uri')
 
 kubectl create secret generic aiven-pg-secret \
   --from-literal=connectionString="$SERVICE_URI"
@@ -82,7 +82,7 @@ spec:
 ```
 
 ```bash
-REDIS_PASSWORD=$(avn service get my-redis --project my-project --format json | jq -r '.connection_info.redis_password[0]')
+REDIS_PASSWORD=$(avn service get my-redis --project my-project --json | jq -r '.connection_info.redis_password[0]')
 kubectl create secret generic aiven-redis-secret \
   --from-literal=password="$REDIS_PASSWORD"
 ```
@@ -103,10 +103,8 @@ spec:
   metadata:
   - name: brokers
     value: my-kafka.a.aivencloud.com:19092
-  - name: authRequired
-    value: "true"
   - name: authType
-    value: "certificate"
+    value: "mtls"
   - name: caCert
     secretKeyRef:
       name: aiven-kafka-certs
