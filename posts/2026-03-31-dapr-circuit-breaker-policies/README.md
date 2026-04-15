@@ -58,8 +58,8 @@ The `trip` field accepts expressions evaluated against counters:
 # Open after 5 consecutive failures
 trip: consecutiveFailures >= 5
 
-# Open after 50% error rate (custom expressions may vary by version)
-trip: consecutiveFailures >= 3
+# Open after 3 consecutive failures (more aggressive)
+trip: consecutiveFailures > 3
 ```
 
 ## Applying Circuit Breakers to Targets
@@ -112,7 +112,7 @@ Dapr exposes Prometheus metrics for circuit breaker state. Scrape the sidecar me
 curl http://localhost:9090/metrics | grep dapr_resiliency
 ```
 
-Look for `dapr_resiliency_count` metrics with `policyType=circuitbreaker` labels.
+Look for `dapr_resiliency_count` metrics with `policy=circuitbreaker` labels.
 
 ## Summary
 
