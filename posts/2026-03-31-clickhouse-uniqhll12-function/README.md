@@ -8,7 +8,7 @@ Description: Learn how to use uniqHLL12() in ClickHouse for approximate distinct
 
 ---
 
-Counting distinct values at scale is one of the most resource-intensive operations in analytical databases. ClickHouse offers `uniqHLL12()` as a fixed-precision HyperLogLog implementation that uses exactly 2^12 (4096) registers to estimate cardinality. This gives a predictable memory footprint and a typical error rate of around 0.8%, making it a reliable choice for high-cardinality approximate counting in production workloads.
+Counting distinct values at scale is one of the most resource-intensive operations in analytical databases. ClickHouse offers `uniqHLL12()` as a fixed-precision HyperLogLog implementation that uses exactly 2^12 (4096) registers to estimate cardinality. This gives a predictable memory footprint and a typical error rate of around 1.6%, making it a reliable choice for high-cardinality approximate counting in production workloads.
 
 ## What Is uniqHLL12()
 
@@ -137,8 +137,8 @@ WHERE event_date = today();
 | Function | Algorithm | Memory | Typical Error |
 |---|---|---|---|
 | uniqExact | Hash set | O(n) | 0% |
-| uniq | Adaptive HLL | Variable | ~2.2% |
-| uniqHLL12 | HLL 2^12 | ~2.5 KB | ~0.8% |
+| uniq | Adaptive sampling | Variable | ~2.2% |
+| uniqHLL12 | HLL 2^12 | ~2.5 KB | ~1.6% |
 | uniqCombined | Adaptive hybrid | Variable | ~0.5% |
 
 Use `uniqHLL12()` when you need a stable memory footprint and consistent accuracy across large distributed aggregations.
@@ -159,4 +159,4 @@ ORDER BY event_date;
 
 ## Summary
 
-`uniqHLL12()` provides approximate distinct counting with a fixed 2^12 HyperLogLog register layout, offering roughly 0.8% error at a constant ~2.5 KB per aggregation state. It is well-suited for high-cardinality counting in materialized views, dashboards, and distributed query pipelines where consistent memory usage matters more than exact results. For scenarios requiring higher accuracy, consider `uniqCombined()`, and for exact counts on smaller datasets, use `uniqExact()`.
+`uniqHLL12()` provides approximate distinct counting with a fixed 2^12 HyperLogLog register layout, offering roughly 1.6% error at a constant ~2.5 KB per aggregation state. It is well-suited for high-cardinality counting in materialized views, dashboards, and distributed query pipelines where consistent memory usage matters more than exact results. For scenarios requiring higher accuracy, consider `uniqCombined()`, and for exact counts on smaller datasets, use `uniqExact()`.
