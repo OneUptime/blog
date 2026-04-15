@@ -28,7 +28,7 @@ async function delayedMessageWorkflow(ctx, input) {
   console.log(`Scheduling message for delivery in ${delaySeconds}s`);
 
   // Create a timer - the workflow suspends here
-  const fireAt = new Date(Date.now() + delaySeconds * 1000);
+  const fireAt = new Date(ctx.getCurrentUtcDateTime().getTime() + delaySeconds * 1000);
   await ctx.createTimer(fireAt);
 
   // Deliver the message after the timer fires
@@ -91,7 +91,6 @@ class DelayQueueActor(Actor, Remindable):
             "deliver-message",
             str(delay_seconds).encode(),
             datetime.timedelta(seconds=delay_seconds),
-            datetime.timedelta(seconds=0),  # fire once only
         )
         print(f"Message scheduled for delivery in {delay_seconds}s")
 
@@ -117,10 +116,8 @@ You can also trigger delayed delivery using Dapr's scheduled workflow API:
 curl -X POST http://localhost:3500/v1.0/workflows/dapr/DelayedWorkflow/start \
   -H "Content-Type: application/json" \
   -d '{
-    "input": {
-      "message": {"userId": "user-1", "type": "reminder"},
-      "delaySeconds": 3600
-    }
+    "message": {"userId": "user-1", "type": "reminder"},
+    "delaySeconds": 3600
   }'
 ```
 
