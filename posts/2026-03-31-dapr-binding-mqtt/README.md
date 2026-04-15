@@ -37,13 +37,11 @@ spec:
     value: mqtt://localhost:1883
   - name: topic
     value: sensors/temperature
-  - name: qos
-    value: "1"
   - name: retain
     value: "false"
   - name: cleanSession
     value: "true"
-  - name: clientID
+  - name: consumerID
     value: dapr-iot-client
 ```
 
@@ -98,9 +96,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/mqtt-binding \
       "deviceId": "sensor-42"
     },
     "metadata": {
-      "topic": "devices/sensor-42/commands",
-      "retain": "false",
-      "qos": "1"
+      "topic": "devices/sensor-42/commands"
     }
   }'
 ```
@@ -129,14 +125,21 @@ metadata:
 metadata:
 - name: url
   value: mqtts://broker.iot.example.com:8883
-- name: caPath
-  value: /certs/ca.pem
-- name: certPath
-  value: /certs/client-cert.pem
-- name: keyPath
-  value: /certs/client-key.pem
-- name: insecureSkipVerify
-  value: "false"
+- name: caCert
+  value: |
+    -----BEGIN CERTIFICATE-----
+    <CA certificate PEM content>
+    -----END CERTIFICATE-----
+- name: clientCert
+  value: |
+    -----BEGIN CERTIFICATE-----
+    <client certificate PEM content>
+    -----END CERTIFICATE-----
+- name: clientKey
+  value: |
+    -----BEGIN RSA PRIVATE KEY-----
+    <client private key PEM content>
+    -----END RSA PRIVATE KEY-----
 ```
 
 ## Processing Pipeline Example
@@ -157,4 +160,4 @@ def handle_telemetry():
 
 ## Summary
 
-The Dapr MQTT3 binding enables microservices to receive IoT telemetry as input triggers and send device commands as output operations. Configure the broker URL, topic, and QoS level in the component YAML. Wildcard topics allow subscribing to entire device fleets without changing application code.
+The Dapr MQTT3 binding enables microservices to receive IoT telemetry as input triggers and send device commands as output operations. Configure the broker URL and topic in the component YAML. Wildcard topics allow subscribing to entire device fleets without changing application code.
