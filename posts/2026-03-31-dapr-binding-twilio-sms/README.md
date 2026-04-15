@@ -67,8 +67,6 @@ spec:
     value: "+15551234567"
   - name: toNumber
     value: "+15559876543"
-  - name: timeout
-    value: "30"
 ```
 
 The `toNumber` can also be set per-request in the metadata at runtime, overriding the component default.
