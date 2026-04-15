@@ -17,7 +17,7 @@ Disable the plain HTTP port and enable HTTPS only:
 ```xml
 <clickhouse>
   <!-- Disable plain HTTP -->
-  <http_port remove="true"></http_port>
+  <http_port remove="remove"></http_port>
 
   <!-- Enable HTTPS -->
   <https_port>8443</https_port>
@@ -27,7 +27,7 @@ Disable the plain HTTP port and enable HTTPS only:
       <certificateFile>/etc/clickhouse-server/ssl/server.crt</certificateFile>
       <privateKeyFile>/etc/clickhouse-server/ssl/server.key</privateKeyFile>
       <verificationMode>relaxed</verificationMode>
-      <requireTLSv1_2>true</requireTLSv1_2>
+      <disableProtocols>sslv2,sslv3,tlsv1,tlsv1_1</disableProtocols>
     </server>
   </openSSL>
 </clickhouse>
@@ -96,6 +96,7 @@ Disable HTTP handlers you don't need:
     <methods>POST</methods>
     <handler>
       <type>predefined_query_handler</type>
+      <query>SELECT 1</query>
     </handler>
   </rule>
   <!-- Disable the ping handler if not needed for load balancers -->
@@ -131,7 +132,7 @@ SELECT
     count() AS requests,
     countIf(exception != '') AS errors
 FROM system.query_log
-WHERE interface = 'HTTP'
+WHERE interface = 2  -- 2 = HTTP
     AND event_date = today()
 GROUP BY http_user_agent, user
 ORDER BY requests DESC
