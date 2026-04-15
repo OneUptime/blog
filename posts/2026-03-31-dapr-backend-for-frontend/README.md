@@ -144,7 +144,10 @@ func (bff *WebBFF) handleDashboard(w http.ResponseWriter, r *http.Request) {
     var response WebDashboardResponse
     json.Unmarshal(results["user"], &response.User)
     json.Unmarshal(results["orders"], &response.RecentOrders)
+    json.Unmarshal(results["promotions"], &response.Promotions)
+    json.Unmarshal(results["analytics"], &response.Analytics)
     json.Unmarshal(results["recommendations"], &response.Recommendations)
+    json.Unmarshal(results["notifications"], &response.Notifications)
     json.NewEncoder(w).Encode(response)
 }
 ```
