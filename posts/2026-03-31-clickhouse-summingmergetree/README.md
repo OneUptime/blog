@@ -175,14 +175,14 @@ GROUP BY endpoint;
 
 ## Nested Columns in SummingMergeTree
 
-SummingMergeTree has special support for `Nested` type columns - it sums each sub-column:
+SummingMergeTree has special support for `Nested` type columns whose name ends with `Map`. The first sub-column acts as a key, and the remaining numeric sub-columns are summed per matching key during merges:
 
 ```sql
 CREATE TABLE region_metrics
 (
     date   Date,
     region LowCardinality(String),
-    metrics Nested
+    metricsMap Nested
     (
         key   String,
         value Float64
