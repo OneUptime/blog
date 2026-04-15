@@ -58,14 +58,14 @@ SELECT * EXCEPT (raw_json) REPLACE (toFloat64(score) AS score) FROM events;
 
 ## REPLACE with COLUMNS
 
-Apply a replacement to all matched columns at once using `COLUMNS`:
+You can use `REPLACE` with `COLUMNS` to replace specific matched columns:
 
 ```sql
-SELECT COLUMNS('ts_.*') REPLACE (toUnixTimestamp(col) AS col)
+SELECT COLUMNS('ts_.*') REPLACE (toUnixTimestamp(ts_created) AS ts_created)
 FROM event_log;
 ```
 
-Note: using `REPLACE` with `COLUMNS` applies the same expression to all matched columns - most useful when the transformation is uniform.
+Note: each replacement in the `REPLACE` clause must reference a specific column name that matches the `COLUMNS` pattern. To apply the same transformation to all matched columns uniformly, use the `APPLY` modifier instead: `SELECT COLUMNS('ts_.*') APPLY(x -> toUnixTimestamp(x)) FROM event_log`.
 
 ## Practical Use Case: Timestamp Normalization
 
