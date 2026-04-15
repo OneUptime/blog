@@ -12,7 +12,7 @@ Amazon Kinesis Data Streams is a real-time streaming service on AWS. Getting dat
 
 ## Option 1: Kinesis Firehose to S3 to ClickHouse
 
-The simplest path is to use Kinesis Data Firehose to write data to S3, then read it into ClickHouse using the S3 table function:
+The simplest path is to use Amazon Data Firehose to write data to S3, then read it into ClickHouse using the S3 table function:
 
 ```sql
 -- Read latest Parquet files from S3
@@ -42,7 +42,6 @@ FROM s3(
 Deploy a Lambda function triggered by Kinesis to forward records to ClickHouse:
 
 ```python
-import boto3
 import base64
 import json
 import urllib.request
@@ -77,15 +76,15 @@ class EventsProcessor(kcl.RecordProcessorBase):
         self.ch = clickhouse_driver.Client(host='localhost')
         self.buffer = []
 
-    def process_records(self, records, checkpointer):
-        for record in records:
-            data = json.loads(record['data'].decode())
+    def process_records(self, process_records_input):
+        for record in process_records_input.records:
+            data = json.loads(record.binary_data.decode())
             self.buffer.append(data)
 
         if len(self.buffer) >= 500:
             self.ch.execute('INSERT INTO events VALUES', self.buffer)
             self.buffer = []
-            checkpointer.checkpoint()
+            process_records_input.checkpointer.checkpoint()
 ```
 
 ## Kinesis to Kafka via MSK
