@@ -23,7 +23,7 @@ kubectl get pods -n dapr-system | grep placement
 View placement service logs:
 
 ```bash
-kubectl logs -n dapr-system -l app=dapr-placement --tail=100
+kubectl logs -n dapr-system -l app=dapr-placement-server --tail=100
 ```
 
 Look for messages like:
@@ -34,7 +34,7 @@ Look for messages like:
 If the placement service is not running, no actor calls will succeed. Reinstall Dapr or restart the placement pod:
 
 ```bash
-kubectl rollout restart deployment/dapr-placement-server -n dapr-system
+kubectl rollout restart statefulset/dapr-placement-server -n dapr-system
 ```
 
 ## Checking Actor Host Registration
@@ -102,10 +102,12 @@ def dapr_config():
     }
 ```
 
-Test this endpoint is accessible from the sidecar:
+Test this endpoint by port-forwarding to the app and calling it locally (the daprd container uses a distroless image with no shell utilities):
 
 ```bash
-kubectl exec -it order-service-pod -c daprd -- wget -qO- http://localhost:3000/dapr/config
+kubectl port-forward order-service-pod 3000:3000
+
+curl -s http://localhost:3000/dapr/config
 ```
 
 ## Diagnosing Actor Activation Failures
