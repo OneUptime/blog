@@ -75,6 +75,7 @@ Model parent-child relationships:
 ```bash
 # User's orders
 curl -X POST http://localhost:3500/v1.0/state/statestore \
+  -H "Content-Type: application/json" \
   -d '[
     {"key": "user:usr-42:order:ord-101", "value": {"item": "laptop"}},
     {"key": "user:usr-42:order:ord-102", "value": {"item": "mouse"}},
@@ -93,6 +94,7 @@ Append a version for immutable history:
 ```bash
 # Keep history of config changes
 curl -X POST http://localhost:3500/v1.0/state/statestore \
+  -H "Content-Type: application/json" \
   -d '[
     {"key": "config:feature-flags:v1", "value": {"darkMode": false}},
     {"key": "config:feature-flags:v2", "value": {"darkMode": true}},
@@ -111,6 +113,7 @@ metrics:{metric}:{yyyymmdd}
 ```bash
 # Daily page view counts
 curl -X POST http://localhost:3500/v1.0/state/statestore \
+  -H "Content-Type: application/json" \
   -d '[
     {"key": "metrics:pageviews:20260101", "value": {"count": 5420}},
     {"key": "metrics:pageviews:20260102", "value": {"count": 6130}}
@@ -193,8 +196,8 @@ Most state stores have key length limits:
 | Store | Max Key Length |
 |-------|--------------|
 | Redis | 512 MB (practically unlimited) |
-| Cosmos DB | 255 characters |
-| DynamoDB | 1024 bytes |
+| Cosmos DB | 1,023 bytes |
+| DynamoDB | 2,048 bytes |
 | PostgreSQL | Unlimited (text type) |
 
 Keep keys short and readable. UUIDs are 36 characters; consider using ULID (26 chars) or short IDs for high-volume keys.
