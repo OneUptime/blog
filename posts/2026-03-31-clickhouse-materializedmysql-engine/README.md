@@ -8,6 +8,8 @@ Description: Learn how to use the MaterializedMySQL database engine to replicate
 
 ---
 
+> **Note:** The MaterializedMySQL database engine was removed from ClickHouse in version 24.12 (December 2024). It was always experimental and never left that status. This guide applies only to ClickHouse versions prior to 24.12. For current versions, consider using alternative CDC approaches such as ClickHouse's MaterializedPostgreSQL engine (if migrating to PostgreSQL) or external tools like Debezium with Kafka for MySQL-to-ClickHouse replication.
+
 MaterializedMySQL is a ClickHouse database engine that replicates an entire MySQL database into ClickHouse using MySQL's binary log (binlog). All tables in the MySQL database are mirrored as ReplacingMergeTree tables in ClickHouse, enabling fast analytics on your operational MySQL data without impacting the MySQL server.
 
 ## Prerequisites
@@ -17,11 +19,14 @@ Enable binlog on MySQL:
 ```ini
 # my.cnf
 [mysqld]
-server-id         = 1
-log_bin           = /var/log/mysql/mysql-bin.log
-binlog_format     = ROW
-binlog_row_image  = FULL
-expire_logs_days  = 7
+server-id                  = 1
+log_bin                    = /var/log/mysql/mysql-bin.log
+binlog_format              = ROW
+binlog_row_image           = FULL
+default_authentication_plugin = mysql_native_password
+gtid_mode                  = ON
+enforce_gtid_consistency   = ON
+expire_logs_days           = 7
 ```
 
 Create a MySQL user with REPLICATION privileges:
@@ -34,7 +39,13 @@ FLUSH PRIVILEGES;
 
 ## Creating the Database
 
-In ClickHouse, create a database with the MaterializedMySQL engine:
+First, enable the experimental engine (required in all versions that supported it):
+
+```sql
+SET allow_experimental_database_materialized_mysql = 1;
+```
+
+Then create a database with the MaterializedMySQL engine:
 
 ```sql
 CREATE DATABASE mysql_replica
