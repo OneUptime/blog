@@ -28,7 +28,7 @@ This is particularly effective when:
 ## Basic PREWHERE Usage
 
 ```sql
--- Without PREWHERE: reads all columns (user_id, page_url, referrer, session_data) for all rows
+-- Without PREWHERE: reads user_id and page_url for all rows in matching granules
 SELECT user_id, page_url
 FROM page_views
 WHERE user_id = 12345;
@@ -98,7 +98,7 @@ You can combine both `PREWHERE` and `WHERE` in one query. `PREWHERE` is applied 
 
 ```sql
 -- Two-stage filtering:
--- Stage 1: PREWHERE reads only 'partition_date' (4 bytes) and 'error_code' (2 bytes)
+-- Stage 1: PREWHERE reads only 'error_code' (2 bytes)
 -- Stage 2: WHERE reads remaining columns only for rows that passed stage 1
 SELECT
     user_id,
@@ -181,7 +181,7 @@ A successful `PREWHERE` optimization shows `read_rows` and `read_bytes` that are
 ## PREWHERE Limitations
 
 - `PREWHERE` cannot reference columns computed by aliases defined in `SELECT`. Use the raw column names.
-- `PREWHERE` expressions cannot use non-deterministic functions (functions that return different values for the same row on repeated calls).
+- The automatic `optimize_move_to_prewhere` heuristic will not move non-deterministic functions from `WHERE` to `PREWHERE`. You can still use them in explicit `PREWHERE`, but results may be unpredictable.
 - If the `PREWHERE` column is part of the primary key, the sparse index already skips granules - `PREWHERE` adds little benefit for these columns.
 - `PREWHERE` is evaluated per-granule, not per-partition. Partition pruning still happens first.
 - Aggregate functions are not valid in `PREWHERE`.
