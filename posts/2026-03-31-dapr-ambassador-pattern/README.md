@@ -71,6 +71,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -110,22 +111,7 @@ func (svc *OrderService) PlaceOrder(orderID, customerID string, amount float64) 
 
 ## Protocol Translation
 
-The ambassador translates HTTP to gRPC for services that require it:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: grpc-proxy
-spec:
-  type: middleware.http.grpc
-  version: v1
-  metadata:
-    - name: serverStream
-      value: "false"
-```
-
-For gRPC-only backend services, configure the target app:
+Dapr automatically translates between HTTP and gRPC when invoking services. If a caller uses HTTP but the target app speaks gRPC, the Dapr sidecar handles the translation. Configure the target app with these annotations:
 
 ```yaml
 annotations:
@@ -139,12 +125,12 @@ Dapr's ambassador maintains a connection pool to backend services. Name resoluti
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.kubernetes
-  version: v1
+  nameResolution:
+    component: "kubernetes"
 ```
 
 Dapr uses Kubernetes DNS-based service discovery and distributes requests across healthy pod instances automatically.
@@ -160,7 +146,7 @@ kubectl logs -l app=order-service -c daprd --tail=50
 Check circuit breaker state via metrics:
 
 ```bash
-kubectl port-forward svc/dapr-metrics 9090:9090
+kubectl port-forward deploy/order-service 9090:9090
 # Query: dapr_resiliency_count{app_id="order-service"}
 ```
 
