@@ -28,10 +28,10 @@ Dapr supports over 20 pub/sub brokers through a unified API. Because Dapr abstra
 | Kafka | Very high | Per partition | Days/weeks | Confluent Cloud, MSK |
 | RabbitMQ | High | Per queue | Until consumed | CloudAMQP |
 | Redis Streams | Medium | Per stream | Configurable | Redis Cloud, ElastiCache |
-| Azure Service Bus | Medium | Per session | Up to 7 days | Fully managed |
+| Azure Service Bus | Medium | Per session | Up to 14 days (Basic) / unlimited (Standard+) | Fully managed |
 | Azure Event Hubs | Very high | Per partition | Up to 90 days | Fully managed |
 | AWS SNS/SQS | High | Per FIFO queue | Up to 14 days | Fully managed |
-| GCP Pub/Sub | Very high | Best effort | Up to 7 days | Fully managed |
+| GCP Pub/Sub | Very high | Per ordering key | Up to 31 days | Fully managed |
 | In-Memory | N/A | FIFO | None | N/A |
 
 ## When to Choose Kafka
@@ -64,7 +64,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-    - name: host
+    - name: connectionString
       value: "amqp://rabbitmq:5672"
     - name: durable
       value: "true"
@@ -93,12 +93,12 @@ For cloud-native applications, managed services eliminate operational burden:
 ```yaml
 # Azure Service Bus - great for enterprise workflows with DLQ and sessions
 spec:
-  type: pubsub.azure.servicebus.queues
+  type: pubsub.azure.servicebus.topics
   version: v1
 
 # AWS SNS/SQS - native AWS integration with IAM and FIFO support
 spec:
-  type: pubsub.snssqs
+  type: pubsub.aws.snssqs
   version: v1
 
 # GCP Pub/Sub - excellent for GCP-native workloads
