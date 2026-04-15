@@ -58,7 +58,7 @@ import (
 )
 
 type CounterActorImpl struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *CounterActorImpl) Type() string {
@@ -88,14 +88,16 @@ func (a *CounterActorImpl) GetCount(ctx context.Context) (*CountResponse, error)
 package main
 
 import (
-  "github.com/dapr/go-sdk/actor/runtime"
+  "github.com/dapr/go-sdk/actor"
   daprd "github.com/dapr/go-sdk/service/http"
 )
 
 func main() {
   s := daprd.NewService(":8080")
 
-  runtime.GetActorRuntimeInstance().RegisterActor(&CounterActorImpl{})
+  s.RegisterActorImplFactoryContext(func() actor.ServerContext {
+    return &CounterActorImpl{}
+  })
 
   if err := s.Start(); err != nil {
     panic(err)
@@ -129,7 +131,7 @@ spec:
 dapr run --app-id counter-service \
   --app-port 8080 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   -- go run .
 ```
 
