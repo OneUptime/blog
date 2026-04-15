@@ -49,7 +49,7 @@ Tableau Desktop:
   Password: tableau_password
 
   Advanced:
-    Additional URL parameters: ?compress=1&socket_timeout=300000
+    Additional URL parameters: ?compress=true&socket_timeout=300000
 
   Test Connection -> Connect
 ```
@@ -223,7 +223,7 @@ tabcmd login \
 tabcmd publish \
   "ClickHouse Analytics.twbx" \
   --project "Analytics" \
-  --db-user tableau_user \
+  --db-username tableau_user \
   --db-password tableau_password \
   --save-db-password
 ```
