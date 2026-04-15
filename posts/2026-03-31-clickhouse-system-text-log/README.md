@@ -24,7 +24,7 @@ Configure in `config.xml`:
 </text_log>
 ```
 
-Setting `<level>warning</level>` captures only Warning, Error, and Fatal messages. Use `<level>trace</level>` for full verbosity (generates very high write volume on busy servers).
+Setting `<level>warning</level>` captures only Warning, Error, Critical, and Fatal messages. Use `<level>trace</level>` for full verbosity (generates very high write volume on busy servers).
 
 ## Key Columns
 
