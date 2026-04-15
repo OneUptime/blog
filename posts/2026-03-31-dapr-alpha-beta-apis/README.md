@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, API, Alpha, Beta, Feature Flag
+Tags: Dapr, API, Alpha, Beta, Preview Feature
 
 Description: Learn how to enable and use Dapr alpha and beta APIs, understand their stability guarantees, and safely test preview features in your applications.
 
@@ -37,6 +37,10 @@ Alpha APIs typically include a version label in their path:
 
 ```go
 import (
+    "bytes"
+    "context"
+    "io"
+
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -44,18 +48,21 @@ func main() {
     client, _ := dapr.NewClient()
     defer client.Close()
 
-    // Crypto API (beta)
-    encrypted, _ := client.Encrypt(ctx, &dapr.EncryptRequestOptions{
+    // Crypto API (alpha)
+    plaintext := bytes.NewReader([]byte("secret payload"))
+    encrypted, _ := client.Encrypt(context.Background(), plaintext, dapr.EncryptOptions{
         ComponentName: "vault",
-        PlaintextData: []byte("secret payload"),
         KeyName:       "my-rsa-key",
+        Algorithm:     "RSA",
     })
+    result, _ := io.ReadAll(encrypted)
+    _ = result
 }
 ```
 
-## Discovering Available Feature Flags
+## Discovering Available Preview Features
 
-Check the runtime metadata to see which features are supported:
+Check the runtime metadata to see which preview features are supported:
 
 ```bash
 curl http://localhost:3500/v1.0/metadata | jq '.enabledFeatures'
