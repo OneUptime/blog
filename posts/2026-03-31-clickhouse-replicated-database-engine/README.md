@@ -89,26 +89,29 @@ All nodes apply the change in order using the ZooKeeper coordination log.
 
 ## Monitoring DDL Replication
 
+The Replicated database engine stores its DDL log in ZooKeeper. You can inspect the log entries directly:
+
 ```sql
--- Check for pending DDL tasks
-SELECT *
-FROM system.distributed_ddl_queue
-WHERE database = 'replicated_db'
-ORDER BY entry_time DESC
+-- Check DDL log entries for the Replicated database
+SELECT name, value, czxid
+FROM system.zookeeper
+WHERE path = '/clickhouse/databases/replicated_db/log'
+ORDER BY name DESC
 LIMIT 20;
+```
+
+You can also verify that all replicas are caught up on DDL changes:
+
+```sql
+-- Check each replica's log pointer position
+SELECT name, value
+FROM system.zookeeper
+WHERE path = '/clickhouse/databases/replicated_db/replicas';
 ```
 
 ## Handling Node Failures During DDL
 
-If a node is down when a DDL runs, the Replicated database engine will retry applying the DDL when the node reconnects. You can configure timeout behavior:
-
-```xml
-<!-- config.xml -->
-<distributed_ddl>
-    <task_max_lifetime>604800</task_max_lifetime>
-    <cleanup_delay_period>60</cleanup_delay_period>
-</distributed_ddl>
-```
+If a node is down when a DDL runs, the Replicated database engine will automatically retry applying the DDL when the node reconnects. The engine replays missed entries from the ZooKeeper DDL log, so no manual intervention is needed. As long as the ZooKeeper ensemble is healthy and the DDL log entries have not been cleaned up, the recovering node will catch up to the current schema state.
 
 ## Summary
 
