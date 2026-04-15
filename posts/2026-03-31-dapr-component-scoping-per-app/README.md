@@ -172,9 +172,8 @@ Each namespace in Kubernetes has its own Dapr components. Use different namespac
 kubectl create namespace team-a
 kubectl create namespace team-b
 
-# Label for Dapr sidecar injection
-kubectl label namespace team-a dapr.io/enabled=true
-kubectl label namespace team-b dapr.io/enabled=true
+# Dapr sidecar injection is enabled via pod annotations:
+# dapr.io/enabled: "true" and dapr.io/app-id: "<app-name>"
 
 # Deploy components in the appropriate namespace
 kubectl apply -f team-a-statestore.yaml -n team-a
@@ -214,8 +213,8 @@ Expected response:
 
 ```json
 {
-  "errorCode": "ERR_COMPONENT_NOT_FOUND",
-  "message": "component payment-statestore not found"
+  "errorCode": "ERR_STATE_STORE_NOT_FOUND",
+  "message": "state store payment-statestore is not found"
 }
 ```
 
