@@ -14,12 +14,12 @@ Description: Learn how to use ReplicatedReplacingMergeTree in ClickHouse to dedu
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/macros.xml -->
-<yandex>
+<clickhouse>
   <macros>
     <shard>01</shard>
     <replica>replica-01</replica>
   </macros>
-</yandex>
+</clickhouse>
 ```
 
 ## Creating a ReplicatedReplacingMergeTree Table
