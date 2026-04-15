@@ -26,7 +26,7 @@ This works even when the backup contains the entire database - ClickHouse extrac
 Restore to a new table name to avoid overwriting the existing table:
 
 ```sql
-RESTORE TABLE my_database.events AS my_database.events_recovered
+RESTORE TABLE my_database.events_recovered AS my_database.events
 FROM Disk('backups', 'my_database_backup_2026-03-31/');
 ```
 
@@ -52,7 +52,7 @@ RESTORE TABLE my_database.events
 FROM Disk('backups', 'my_database_backup_2026-03-31/');
 
 -- Option 2: Restore to temp name and swap
-RESTORE TABLE my_database.events AS my_database.events_new
+RESTORE TABLE my_database.events_new AS my_database.events
 FROM Disk('backups', 'my_database_backup_2026-03-31/');
 
 -- Validate, then swap
@@ -74,11 +74,10 @@ FROM Disk('backups', 'my_database_backup_2026-03-31/');
 For large tables, run the restore asynchronously and monitor it:
 
 ```sql
-RESTORE TABLE my_database.events AS my_database.events_restored
-FROM Disk('backups', 'my_database_backup_2026-03-31/')
-SETTINGS async = true;
+RESTORE ASYNC TABLE my_database.events_restored AS my_database.events
+FROM Disk('backups', 'my_database_backup_2026-03-31/');
 
-SELECT id, status, start_time, end_time, total_size, exception
+SELECT id, status, start_time, end_time, total_size, error
 FROM system.backups
 WHERE status IN ('RESTORING', 'RESTORED', 'RESTORE_FAILED')
 ORDER BY start_time DESC
