@@ -63,12 +63,29 @@ kubectl create secret generic redis-credentials \
 
 ## Environment Variable Metadata
 
-For local development, use environment variable substitution:
+For local development, use the `secretstores.local.env` secret store to read values from environment variables:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: local-envvar-store
+spec:
+  type: secretstores.local.env
+  version: v1
+  metadata: []
+```
+
+Then reference environment variables via `secretKeyRef` in your component:
 
 ```yaml
 metadata:
   - name: connectionString
-    value: "host=localhost user=postgres password=${POSTGRES_PASSWORD}"
+    secretKeyRef:
+      name: POSTGRES_CONNECTION_STRING
+      key: POSTGRES_CONNECTION_STRING
+auth:
+  secretStore: local-envvar-store
 ```
 
 ## Metadata for Pub/Sub Components
