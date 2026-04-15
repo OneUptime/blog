@@ -1,34 +1,34 @@
-# How to Use ClickHouse R Client (RClickHouse)
+# How to Use ClickHouse R Client (RClickhouse)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, R, RClickHouse, DBI, Data Analysis
+Tags: ClickHouse, R, RClickhouse, DBI, Data Analysis
 
-Description: Learn how to connect to ClickHouse from R using RClickHouse and DBI to run queries, fetch data frames, and insert results from data analysis.
+Description: Learn how to connect to ClickHouse from R using RClickhouse and DBI to run queries, fetch data frames, and insert results from data analysis.
 
 ---
 
-`RClickHouse` provides a DBI-compliant interface to ClickHouse for R users. This lets data scientists query ClickHouse directly from R, pull results into data frames, and push computed data back - all without leaving the R ecosystem.
+`RClickhouse` provides a DBI-compliant interface to ClickHouse for R users. This lets data scientists query ClickHouse directly from R, pull results into data frames, and push computed data back - all without leaving the R ecosystem.
 
 ## Installation
 
 ```r
-install.packages("RClickHouse")
+install.packages("RClickhouse")
 # or from GitHub for the latest version:
-# devtools::install_github("IMSMWU/RClickHouse")
+# devtools::install_github("IMSMWU/RClickhouse")
 ```
 
 ## Connecting with DBI
 
 ```r
 library(DBI)
-library(RClickHouse)
+library(RClickhouse)
 
 con <- dbConnect(
-  RClickHouse::clickhouse(),
+  RClickhouse::clickhouse(),
   host     = "localhost",
-  port     = 8123,
-  db       = "default",
+  port     = 9000,
+  dbname   = "default",
   user     = "default",
   password = "",
   compression = "lz4"
@@ -115,4 +115,4 @@ dbDisconnect(con)
 
 ## Summary
 
-`RClickHouse` gives R users a DBI-compliant path to ClickHouse. Use `dbGetQuery` for small result sets, `dbFetch` for chunked streaming, and `dbWriteTable` to push data frames back. The `dbplyr` integration lets you write familiar dplyr pipelines that translate to optimized ClickHouse SQL.
+`RClickhouse` gives R users a DBI-compliant path to ClickHouse. Use `dbGetQuery` for small result sets, `dbFetch` for chunked streaming, and `dbWriteTable` to push data frames back. The `dbplyr` integration lets you write familiar dplyr pipelines that translate to optimized ClickHouse SQL.
