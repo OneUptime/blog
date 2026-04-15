@@ -32,9 +32,9 @@ spec:
     secretKeyRef:
       name: redis-payment-secret
       key: password
-  scopes:
-  - payment-service
-  - payment-worker
+scopes:
+- payment-service
+- payment-worker
 ```
 
 Only pods with `dapr.io/app-id` set to `payment-service` or `payment-worker` can use this component.
@@ -54,33 +54,35 @@ spec:
   metadata:
   - name: brokers
     value: "kafka:9092"
-  scopes:
-  - order-service
-  - inventory-service
-  - notification-service
+scopes:
+- order-service
+- inventory-service
+- notification-service
 ```
 
 ## Topic-Level Access Control
 
-In addition to component scoping, use Dapr's pub/sub topic allowlists for finer control:
+In addition to component scoping, use Dapr's pub/sub topic access control metadata for finer control. The `publishingScopes`, `subscriptionScopes`, and `allowedTopics` fields are set as metadata on the pub/sub component itself:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Configuration
+kind: Component
 metadata:
-  name: order-service-config
+  name: orders-pubsub
 spec:
-  pubsub:
-    subscribeToPublishTopics:
-      - pubsubName: pubsub
-        topics:
-        - orders.created
-        - orders.cancelled
-    # This service can only publish to these topics
-    publishToTopics:
-      - pubsubName: pubsub
-        topics:
-        - orders.processed
+  type: pubsub.kafka
+  version: v1
+  metadata:
+  - name: brokers
+    value: "kafka:9092"
+  - name: subscriptionScopes
+    value: "order-service=orders.created,orders.cancelled"
+  - name: publishingScopes
+    value: "order-service=orders.processed"
+  - name: allowedTopics
+    value: "orders.created,orders.cancelled,orders.processed"
+scopes:
+- order-service
 ```
 
 ## Verifying Scoping is Enforced
@@ -90,7 +92,7 @@ Try accessing a scoped component from an unauthorized service:
 ```bash
 # From a service NOT in the scope list
 curl http://localhost:3500/v1.0/state/payment-statestore/mykey
-# Returns: 403 Forbidden or component not found error
+# Returns: component not found error (the component is not loaded for unauthorized services)
 ```
 
 Check sidecar logs for the unauthorized access attempt:
@@ -109,15 +111,15 @@ kind: Component
 metadata:
   name: sendgrid-email
 spec:
-  type: bindings.sendgrid
+  type: bindings.twilio.sendgrid
   version: v1
   metadata:
   - name: apiKey
     secretKeyRef:
       name: sendgrid-secret
       key: apiKey
-  scopes:
-  - notification-service   # Only notification-service can send emails
+scopes:
+- notification-service   # Only notification-service can send emails
 ```
 
 ## Environment-Based Scoping Strategy
@@ -131,8 +133,8 @@ scopes: [payment-service, payment-processor, payment-reconciler]
 # Orders domain: only order services
 scopes: [order-service, order-worker, order-api]
 
-# Shared infrastructure: all services
-scopes: []   # Empty = all services can access
+# Shared infrastructure: all services (omit the scopes field entirely)
+# When scopes is not specified, all services can access the component
 ```
 
 ## Summary
