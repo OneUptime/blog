@@ -19,7 +19,7 @@ Without optimization, ClickHouse reads all matching rows, sorts them, then retur
 When the ORDER BY in your query matches the table's ORDER BY key, ClickHouse can use a sorted stream and find top-N without a full sort:
 
 ```sql
--- Table ordered by (event_time DESC, user_id)
+-- Table ordered by (event_time, user_id)
 CREATE TABLE events (
     event_time DateTime,
     user_id UInt64,
@@ -27,7 +27,7 @@ CREATE TABLE events (
 ) ENGINE = MergeTree()
 ORDER BY (event_time, user_id);
 
--- Efficient: ORDER BY matches primary key direction
+-- Efficient: ClickHouse can read in reverse order when ORDER BY is opposite to the key
 SELECT event_time, user_id, event_type
 FROM events
 ORDER BY event_time DESC
@@ -36,7 +36,7 @@ LIMIT 100;
 
 ## Using LIMIT BY for Per-Group Top-N
 
-`LIMIT BY` returns top N rows per group without a full sort:
+`LIMIT BY` returns top N rows per group efficiently:
 
 ```sql
 -- Top 5 events per user by event_time
@@ -74,7 +74,7 @@ For approximate results (very fast), use the `topK` aggregate function:
 -- Approximate top 10 most common event types
 SELECT topK(10)(event_type)
 FROM events
-WHERE event_date = today();
+WHERE toDate(event_time) = today();
 
 -- Returns array: ['purchase', 'view', 'click', ...]
 ```
@@ -106,7 +106,7 @@ CREATE TABLE top_pages_hourly (
     page_url String,
     view_count UInt64
 ) ENGINE = SummingMergeTree(view_count)
-ORDER BY (event_hour, view_count DESC, page_url);
+ORDER BY (event_hour, page_url);
 
 -- Fast top-10 pages for current hour
 SELECT page_url, sum(view_count) AS views
