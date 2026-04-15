@@ -39,7 +39,7 @@ spec:
     - name: forcePathStyle
       value: "false"
     - name: decodeBase64
-      value: "false"
+      value: "true"
     - name: encodeBase64
       value: "false"
 ```
@@ -53,10 +53,11 @@ const { DaprClient } = require("@dapr/dapr");
 const client = new DaprClient();
 
 async function uploadDocument(key, content, contentType = "application/json") {
+  const base64Data = Buffer.from(content).toString("base64");
   await client.binding.send(
     "document-store",
     "create",
-    content,
+    base64Data,
     {
       key,
       contentType,
@@ -99,7 +100,6 @@ async function uploadPDF(key, filePath) {
     {
       key,
       contentType: "application/pdf",
-      encodeBase64: "true",
     }
   );
 }
@@ -168,8 +168,8 @@ async function listDocuments(prefix) {
   const result = await client.binding.send(
     "document-store",
     "list",
-    null,
-    { prefix }
+    JSON.stringify({ prefix }),
+    {}
   );
   return result;
 }
