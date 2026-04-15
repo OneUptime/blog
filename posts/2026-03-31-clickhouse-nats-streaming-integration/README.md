@@ -16,7 +16,7 @@ NATS is a lightweight, high-performance messaging system. NATS JetStream adds pe
 NATS JetStream --> Subscriber App --> ClickHouse HTTP API
 ```
 
-Since ClickHouse does not have a native NATS engine, you need a consumer application.
+ClickHouse has a native NATS table engine (since v22.8), but for JetStream workloads that need batching, backpressure control, or message transformation before insertion, an external consumer application gives you more flexibility.
 
 ## Create the ClickHouse Target Table
 
@@ -41,7 +41,6 @@ package main
 import (
     "bytes"
     "encoding/json"
-    "fmt"
     "net/http"
     "time"
 
