@@ -19,7 +19,7 @@ CREATE TABLE api_requests
     account_id    UInt64,
     api_key_id    UInt64,
     endpoint      LowCardinality(String),
-    method        LowCardinality(FixedString(6)),
+    method        LowCardinality(FixedString(7)),
     status_code   UInt16,
     duration_ms   UInt32,
     rate_limited  UInt8,  -- 1 if 429 was returned
