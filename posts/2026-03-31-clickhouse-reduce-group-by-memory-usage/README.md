@@ -58,15 +58,16 @@ Control what happens when GROUP BY exceeds memory limits:
 SET max_memory_usage = 10000000000;  -- 10 GB
 SET group_by_overflow_mode = 'throw';
 
--- Spill to disk (ClickHouse 23.2+)
-SET group_by_overflow_mode = 'any';  -- drops extra groups
+-- Drop extra groups beyond the limit instead of throwing
+SET max_rows_to_group_by = 1000000;
+SET group_by_overflow_mode = 'any';
 ```
 
 Enable external aggregation to spill to disk:
 
 ```sql
-SET max_bytes_before_external_group_by = 5000000000;  -- spill when > 5 GB
-SET group_by_overflow_mode = 'any';
+-- Spill aggregation state to disk when memory exceeds 5 GB
+SET max_bytes_before_external_group_by = 5000000000;
 ```
 
 ## Two-Level Aggregation
@@ -132,8 +133,9 @@ SELECT count() FROM events GROUP BY url;
 -- Group by a hash of the URL instead
 SELECT count(), URLHash(url) AS url_hash FROM events GROUP BY url_hash;
 
--- Or use LowCardinality for repeated values
-SELECT count() FROM events GROUP BY toLowCardinality(country);
+-- Or define columns as LowCardinality in the table schema for repeated values
+-- ALTER TABLE events MODIFY COLUMN country LowCardinality(String);
+SELECT count() FROM events GROUP BY country;
 ```
 
 ## Parallel Aggregation Settings
