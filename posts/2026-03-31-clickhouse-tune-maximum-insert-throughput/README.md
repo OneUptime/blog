@@ -25,8 +25,12 @@ curl -X POST "http://localhost:8123/?query=INSERT+INTO+events+FORMAT+JSONEachRow
 By default, ClickHouse uses a limited number of threads for inserts. You can increase parallelism:
 
 ```xml
-<!-- config.xml -->
-<max_insert_threads>8</max_insert_threads>
+<!-- users.xml -->
+<profiles>
+    <default>
+        <max_insert_threads>8</max_insert_threads>
+    </default>
+</profiles>
 ```
 
 Or at query level:
@@ -49,12 +53,13 @@ ALTER TABLE events MODIFY SETTING
     parts_to_throw_insert = 600;
 ```
 
-## Configure the Write-Ahead Buffer
+## Configure Insert Block Size
 
-Increase the maximum size of in-memory buffers for inserts:
+Control how many rows or bytes are buffered in memory before writing a new data part:
 
-```xml
-<max_bytes_before_external_sort>10000000000</max_bytes_before_external_sort>
+```sql
+SET min_insert_block_size_rows = 1048576;
+SET min_insert_block_size_bytes = 268435456;
 ```
 
 ## Use Buffer Engine for Spiky Workloads
@@ -66,7 +71,7 @@ CREATE TABLE events_buffer AS events
 ENGINE = Buffer(currentDatabase(), events, 16, 10, 100, 10000, 1000000, 10000000, 1000000000);
 ```
 
-Parameters: `num_layers, min_time, max_time, min_rows, max_rows, min_bytes, max_bytes`.
+Parameters: `database, table, num_layers, min_time, max_time, min_rows, max_rows, min_bytes, max_bytes`.
 
 ## Enable Async Inserts
 
@@ -93,8 +98,8 @@ Track insert throughput with system tables:
 ```sql
 SELECT
     event_time,
-    written_rows,
-    written_bytes
+    rows,
+    size_in_bytes
 FROM system.part_log
 WHERE event_type = 'NewPart'
 ORDER BY event_time DESC
