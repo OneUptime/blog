@@ -24,7 +24,7 @@ The `visitParam*` functions are exact aliases:
 | `visitParamExtractRaw` | `simpleJSONExtractRaw` |
 | `visitParamExtractString` | `simpleJSONExtractString` |
 
-All limitations of `simpleJSON*` apply: flat JSON only, single field lookup, no nested path support.
+All limitations of `simpleJSON*` apply: no nested path navigation, single field lookup by first occurrence at any depth.
 
 ## Syntax
 
