@@ -38,7 +38,7 @@ SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'raw-events',
     kafka_group_name = 'clickhouse-etl',
-    kafka_format = 'RawBLOB',
+    kafka_format = 'JSONAsString',
     kafka_num_consumers = 4;
 ```
 
@@ -92,28 +92,33 @@ SELECT
     toUInt32(JSONExtractInt(raw_data, 'uid')) AS user_id,
     upper(JSONExtractString(raw_data, 'country')) AS country,
     toDecimal64(JSONExtractFloat(raw_data, 'revenue'), 4) AS revenue,
-    coalesce(JSONExtractString(raw_data, 'app_version'), 'unknown') AS app_version
+    coalesce(nullIf(JSONExtractString(raw_data, 'app_version'), ''), 'unknown') AS app_version
 FROM raw_events_queue
 WHERE JSONExtractString(raw_data, 'type') != '';
 ```
 
 ## Dead Letter Queue for Failed Records
 
-Route malformed records to a separate error table:
+Route malformed records to a separate error table. Add `kafka_handle_error_mode = 'stream'` to the Kafka table so that failed rows expose `_error` and `_raw_message` virtual columns instead of stopping consumption:
 
 ```sql
+ALTER TABLE raw_events_queue
+MODIFY SETTING kafka_handle_error_mode = 'stream';
+
 CREATE TABLE etl_errors (
     ingested_at DateTime DEFAULT now(),
-    raw_data String,
+    raw_message String,
     error String
 ) ENGINE = MergeTree()
 ORDER BY ingested_at;
 
--- Insert errors separately
-INSERT INTO etl_errors (raw_data, error)
-SELECT raw_data, 'Invalid event_time'
+CREATE MATERIALIZED VIEW etl_errors_mv TO etl_errors AS
+SELECT
+    now() AS ingested_at,
+    _raw_message AS raw_message,
+    _error AS error
 FROM raw_events_queue
-WHERE toDateTime(JSONExtractString(raw_data, 'ts')) = 0;
+WHERE _error != '';
 ```
 
 ## Monitor Pipeline Health
