@@ -87,7 +87,7 @@ SELECT event, value AS snapshot2
 FROM system.events
 WHERE event IN ('SelectQuery', 'InsertQuery', 'FailedQuery');
 
--- Delta = snapshot2 - snapshot1 / 60 = per-second rate
+-- Delta = (snapshot2 - snapshot1) / 60 = per-second rate
 ```
 
 ## Event Counter Model
@@ -134,8 +134,7 @@ SELECT
 FROM system.events
 WHERE event IN (
     'ReadBufferFromFileDescriptorReadBytes',
-    'WriteBufferFromFileDescriptorWriteBytes',
-    'DiskReadElapsedMicroseconds'
+    'WriteBufferFromFileDescriptorWriteBytes'
 )
 ORDER BY event;
 ```
@@ -145,7 +144,7 @@ ORDER BY event;
 ClickHouse exposes `system.events` via its built-in Prometheus endpoint:
 
 ```bash
-curl http://localhost:9363/metrics | grep "clickhouse_events"
+curl http://localhost:9363/metrics | grep "ClickHouseProfileEvents"
 ```
 
 Or read directly via SQL for custom scrapers:
