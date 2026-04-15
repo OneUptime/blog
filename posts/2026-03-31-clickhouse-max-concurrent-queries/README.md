@@ -21,7 +21,7 @@ Set this in the server configuration:
 </clickhouse>
 ```
 
-The default is `100`. Incoming queries that exceed this limit receive an error:
+The default is `1000` (changed from `100` in ClickHouse 23.11). Incoming queries that exceed this limit receive an error:
 
 ```text
 Too many simultaneous queries. Maximum: 100
@@ -67,7 +67,7 @@ flowchart TD
 
 ## max_waiting_queries
 
-In ClickHouse 24.3+, queries can be queued rather than immediately rejected. Set `max_waiting_queries` to allow a queue:
+In ClickHouse 24.2+, queries can be queued rather than immediately rejected. Set `max_waiting_queries` to allow a queue:
 
 ```xml
 <clickhouse>
@@ -112,9 +112,8 @@ ORDER BY elapsed DESC;
 -- Historical concurrent query count
 SELECT
     toStartOfMinute(event_time) AS minute,
-    max(value) AS max_concurrent
+    max(CurrentMetric_Query) AS max_concurrent
 FROM system.metric_log
-WHERE metric = 'Query'
 GROUP BY minute
 ORDER BY minute DESC
 LIMIT 60;
@@ -142,7 +141,7 @@ In this case, `max_concurrent_queries` around 20-30 is reasonable, allowing I/O 
 
 ## Handling Rejected Queries in Applications
 
-When ClickHouse rejects a query due to concurrency limits, it returns HTTP 503. Implement retry with backoff in your application:
+When ClickHouse rejects a query due to concurrency limits, it returns an HTTP error (typically 500). Implement retry with backoff in your application:
 
 ```python
 import time
@@ -164,4 +163,4 @@ def query_with_retry(client, sql, max_retries=5):
 
 ## Summary
 
-Set `max_concurrent_queries` based on available CPU and memory, not just connection count. Use separate limits for inserts and selects to protect analytical workloads. In ClickHouse 24.3+ use `max_waiting_queries` to queue bursts instead of rejecting them. Monitor `system.processes` and `system.metric_log` to validate your settings under real load.
+Set `max_concurrent_queries` based on available CPU and memory, not just connection count. Use separate limits for inserts and selects to protect analytical workloads. In ClickHouse 24.2+ use `max_waiting_queries` to queue bursts instead of rejecting them. Monitor `system.processes` and `system.metric_log` to validate your settings under real load.
