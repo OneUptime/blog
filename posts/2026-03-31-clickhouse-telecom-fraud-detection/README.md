@@ -94,18 +94,21 @@ LIMIT 20;
 ## Account Takeover - Sudden Usage Spike
 
 ```sql
-SELECT
-    subscriber_id,
-    toDate(activity_date) AS day,
-    data_mb,
-    avg(data_mb) OVER (
-        PARTITION BY subscriber_id
-        ORDER BY activity_date
-        ROWS BETWEEN 14 PRECEDING AND 1 PRECEDING
-    ) AS rolling_avg_mb
-FROM subscriber_activity
-WHERE activity_date >= today() - 3
-HAVING data_mb > rolling_avg_mb * 10   -- 10x normal usage
+SELECT *
+FROM (
+    SELECT
+        subscriber_id,
+        toDate(activity_date) AS day,
+        data_mb,
+        avg(data_mb) OVER (
+            PARTITION BY subscriber_id
+            ORDER BY activity_date
+            ROWS BETWEEN 14 PRECEDING AND 1 PRECEDING
+        ) AS rolling_avg_mb
+    FROM subscriber_activity
+    WHERE activity_date >= today() - 3
+)
+WHERE data_mb > rolling_avg_mb * 10   -- 10x normal usage
 ORDER BY data_mb DESC
 LIMIT 50;
 ```
