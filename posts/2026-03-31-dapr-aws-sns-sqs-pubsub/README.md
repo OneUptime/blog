@@ -99,7 +99,7 @@ Annotate the Kubernetes service account:
 
 ```bash
 kubectl annotate serviceaccount order-service \
-  eks.amazonaws.com/role-arn=arn:aws:iam::123456789:role/dapr-pubsub-role
+  eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/dapr-pubsub-role
 ```
 
 ## Publishing Messages
