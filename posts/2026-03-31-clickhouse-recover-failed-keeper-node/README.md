@@ -89,8 +89,10 @@ The recovered node should show `Mode: follower` once it has rejoined.
 Check from the leader that all three nodes are part of the quorum:
 
 ```bash
-clickhouse-keeper-client -h keeper-01 -p 9181 -q "mntr" | grep "zk_quorum_size"
-# Should show: zk_quorum_size 3
+clickhouse-keeper-client -h keeper-01 -p 9181 -q "mntr" | grep -E "zk_followers|zk_synced_followers"
+# Should show:
+# zk_followers	2
+# zk_synced_followers	2
 ```
 
 ## Step 5 - Verify ClickHouse Server Connectivity
