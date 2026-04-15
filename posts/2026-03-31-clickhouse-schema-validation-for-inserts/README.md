@@ -41,7 +41,7 @@ Reject unknown fields instead of ignoring them:
 SET input_format_skip_unknown_fields = 0;
 ```
 
-Fail on JSON type mismatches:
+Fail on JSON type mismatches (applies to JSON formats that include metadata such as JSON, JSONCompact, and JSONColumnsWithMetadata, not JSONEachRow):
 
 ```sql
 SET input_format_json_validate_types_from_metadata = 1;
@@ -58,8 +58,6 @@ SET input_format_null_as_default = 0;
 Validate before sending to ClickHouse using a schema definition in your application:
 
 ```python
-import json
-
 REQUIRED_FIELDS = {"txn_id", "amount", "currency", "status", "created_at"}
 VALID_CURRENCIES = {"USD", "EUR", "GBP", "JPY"}
 
@@ -113,4 +111,4 @@ Track how many inserts fail due to constraint violations over time by logging er
 
 ## Summary
 
-Implement schema validation for ClickHouse inserts using table CHECK constraints for business rules, input format settings to reject unknown fields and type mismatches, application-layer validation before sending data, and a dead letter queue for rejected rows. Layer all three together for maximum protection against bad data entering your analytical store.
+Implement schema validation for ClickHouse inserts using table CHECK constraints for business rules, input format settings to reject unknown fields and type mismatches, application-layer validation before sending data, and a dead letter queue for rejected rows. Layer all four together for maximum protection against bad data entering your analytical store.
