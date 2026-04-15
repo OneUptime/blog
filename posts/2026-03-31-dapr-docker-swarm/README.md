@@ -42,11 +42,11 @@ CMD ["/start.sh"]
 ```bash
 #!/bin/bash
 # start.sh
-daprd \
+/root/.dapr/bin/daprd \
   --app-id "${APP_ID}" \
   --app-port "${APP_PORT}" \
   --dapr-http-port 3500 \
-  --components-path /root/.dapr/components \
+  --resources-path /root/.dapr/components \
   &
 
 exec /app
