@@ -12,7 +12,7 @@ Optimized Row Columnar (ORC) is a columnar file format developed for the Apache 
 
 ORC features:
 - Built-in lightweight indexes (min/max, bloom filters per stripe)
-- Efficient compression with Zlib, Snappy, or LZ4
+- Efficient compression with Zlib, Snappy, LZ4, or ZSTD
 - Strong support for complex types (lists, maps, structs)
 - ACID semantics for transactional Hive tables
 
@@ -98,20 +98,20 @@ LIMIT 20;
 ## Type Mapping
 
 | ClickHouse Type | ORC Type |
-|-----------------|----------|
-| Int8 / UInt8    | BYTE |
-| Int16 / UInt16  | SHORT |
-| Int32 / UInt32  | INT |
-| Int64 / UInt64  | LONG |
-| Float32         | FLOAT |
-| Float64         | DOUBLE |
-| String          | STRING |
-| Date            | DATE |
-| DateTime        | TIMESTAMP |
-| Array(T)        | LIST |
-| Map(K, V)       | MAP |
-| Tuple           | STRUCT |
-| Nullable(T)     | optional |
+|-----------------|-----------|
+| Int8 / UInt8    | Tinyint |
+| Int16 / UInt16  | Smallint |
+| Int32 / UInt32  | Int |
+| Int64 / UInt64  | Bigint |
+| Float32         | Float |
+| Float64         | Double |
+| Decimal         | Decimal |
+| String          | String |
+| Date32          | Date |
+| DateTime64      | Timestamp |
+| Array(T)        | List |
+| Map(K, V)       | Map |
+| Tuple           | Struct |
 
 ## Compression Codec
 
@@ -125,7 +125,7 @@ INTO OUTFILE 'sales_compressed.orc'
 FORMAT ORC;
 ```
 
-Available methods: `none`, `zlib`, `snappy`, `lz4`.
+Available methods: `none`, `zlib`, `snappy`, `lz4`, `zstd`.
 
 ## Row Index Stride
 
@@ -161,7 +161,7 @@ FROM file('sales_with_tags.orc', ORC)
 WHERE tag = 'clearance';
 ```
 
-Enable nested type import if the ORC file contains struct arrays:
+Enable nested type import if the ORC file contains struct arrays (note: this setting is deprecated in newer ClickHouse versions):
 
 ```sql
 SET input_format_orc_import_nested = 1;
