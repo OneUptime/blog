@@ -32,10 +32,18 @@ SET status = 'shipped', updated_at = now()
 WHERE order_id = 12345;
 ```
 
-Enable it if required:
+Enable it with the experimental setting:
 
 ```sql
-SET apply_mutations_on_fly = 1;
+SET allow_experimental_lightweight_update = 1;
+```
+
+The table must also have block tracking columns enabled:
+
+```sql
+ALTER TABLE orders MODIFY SETTING
+    enable_block_number_column = 1,
+    enable_block_offset_column = 1;
 ```
 
 ## Batch UPDATE Example
@@ -51,7 +59,7 @@ Batch updates on filtered sets are more efficient than row-by-row operations.
 
 ## Checking Mutation Progress
 
-Since updates still create mutations internally, you can monitor them:
+Traditional `ALTER TABLE ... UPDATE` mutations can be monitored through the system table:
 
 ```sql
 SELECT
@@ -95,4 +103,4 @@ WHERE event_date = today() AND event_type = 'click';
 
 ## Summary
 
-Lightweight UPDATE in ClickHouse brings standard SQL DML syntax while still using mutations under the hood. For high-frequency state changes, consider append-based design with `ReplacingMergeTree`. For occasional corrections or bulk updates, the `UPDATE` statement is the cleanest approach.
+Lightweight UPDATE in ClickHouse brings standard SQL DML syntax using patch parts rather than full mutation rewrites. For high-frequency state changes, consider append-based design with `ReplacingMergeTree`. For occasional corrections or bulk updates, the `UPDATE` statement is the cleanest approach.
