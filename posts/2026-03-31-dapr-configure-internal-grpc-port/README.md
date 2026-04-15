@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, gRPC, Port, Sidecar, Configuration
 
-Description: Configure the Dapr internal gRPC port used for sidecar-to-sidecar and sidecar-to-control-plane communication in Kubernetes deployments.
+Description: Configure the Dapr internal gRPC port used for sidecar-to-sidecar communication in Kubernetes deployments.
 
 ---
 
 ## What Is the Dapr Internal gRPC Port?
 
-Dapr uses two distinct gRPC ports. The public gRPC API port (50001) is used by your application to call the Dapr sidecar. The internal gRPC port (50002) is used for sidecar-to-sidecar communication - when one Dapr sidecar needs to invoke a method on another microservice's sidecar - and for sidecar-to-control-plane communication with the Dapr operator and sentry.
+Dapr uses two distinct gRPC ports. The public gRPC API port (50001) is used by your application to call the Dapr sidecar. The internal gRPC port (50002) is used for sidecar-to-sidecar communication - when one Dapr sidecar needs to invoke a method on another microservice's sidecar, such as during service invocation and actor placement.
 
 ## Configuring the Internal gRPC Port
 
@@ -121,9 +121,9 @@ kubectl exec POD_NAME -c daprd -- ss -tlnp | grep 50002
 # Check Dapr placement table (actor service discovery)
 kubectl logs -n dapr-system -l app=dapr-placement-server --tail=100 | grep "added"
 
-# Trace internal gRPC connections
-kubectl exec POD_NAME -c daprd -- \
-  daprd --log-level debug 2>&1 | grep "internal"
+# View daprd logs filtered for internal gRPC activity
+# To enable debug logging, set the annotation dapr.io/log-level: "debug" and redeploy
+kubectl logs POD_NAME -c daprd | grep "internal"
 ```
 
 ## Summary
