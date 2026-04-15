@@ -94,12 +94,14 @@ After changing the type, verify the view SELECT still produces compatible output
 Column renames require dropping and recreating views that reference the old name:
 
 ```sql
--- First rename in both source and target
+-- First drop the view so renames don't break incoming inserts
+DROP VIEW mv_events_hourly;
+
+-- Rename in both source and target
 ALTER TABLE raw_events RENAME COLUMN old_name TO new_name;
 ALTER TABLE events_hourly RENAME COLUMN old_agg TO new_agg;
 
 -- Recreate the view referencing new names
-DROP VIEW mv_events_hourly;
 CREATE MATERIALIZED VIEW mv_events_hourly TO events_hourly AS SELECT ...;
 ```
 
