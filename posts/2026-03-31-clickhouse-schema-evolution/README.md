@@ -78,7 +78,7 @@ But note that Nullable columns have overhead - consider using an empty string se
 
 ## Schema Changes Across a Distributed Cluster
 
-Use ON CLUSTER to apply DDL to all nodes atomically:
+Use ON CLUSTER to apply DDL across all nodes in the cluster:
 
 ```sql
 ALTER TABLE http_logs ON CLUSTER production_cluster
@@ -111,4 +111,4 @@ ALTER TABLE http_logs DROP COLUMN old_user_id;
 
 ## Summary
 
-ClickHouse schema evolution is flexible for additive changes - adding columns and changing defaults are instant metadata operations. Type changes and column drops that require rewrites should be planned for low-traffic windows and monitored via system.mutations. Use ON CLUSTER for coordinated multi-node changes and document schema history with column comments.
+ClickHouse schema evolution is flexible for additive changes - adding columns, changing defaults, and dropping columns are instant metadata operations. Type changes that trigger mutations should be planned for low-traffic windows and monitored via system.mutations. Use ON CLUSTER for coordinated multi-node changes and document schema history with column comments.
