@@ -45,7 +45,7 @@ CREATE TABLE snowplow.events (
     session_id       String,
     page_url         String,
     page_title       String,
-    referr_urlhost   String,
+    refr_urlhost     String,
     geo_country      LowCardinality(String),
     geo_city         String,
     br_name          LowCardinality(String),
@@ -65,8 +65,27 @@ TTL toDate(collector_tstamp) + INTERVAL 180 DAY DELETE;
 Configure Snowplow to emit enriched events to Kafka, then consume with ClickHouse:
 
 ```sql
-CREATE TABLE snowplow.events_kafka
-ENGINE = Kafka
+CREATE TABLE snowplow.events_kafka (
+    event_id         UUID,
+    collector_tstamp DateTime64(3),
+    dvce_created_tstamp DateTime64(3),
+    event            LowCardinality(String),
+    app_id           LowCardinality(String),
+    platform         LowCardinality(String),
+    user_id          String,
+    domain_userid    String,
+    network_userid   String,
+    session_id       String,
+    page_url         String,
+    page_title       String,
+    refr_urlhost     String,
+    geo_country      LowCardinality(String),
+    geo_city         String,
+    br_name          LowCardinality(String),
+    os_name          LowCardinality(String),
+    unstruct_event   String,
+    contexts         String
+) ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'snowplow_enriched_good',
@@ -86,11 +105,11 @@ Extract fields from the custom event JSON:
 SELECT
     collector_tstamp,
     user_id,
-    JSONExtractString(unstruct_event, 'data', 'productId') AS product_id,
-    JSONExtractFloat(unstruct_event, 'data', 'price') AS price
+    JSONExtractString(unstruct_event, 'data', 'data', 'productId') AS product_id,
+    JSONExtractFloat(unstruct_event, 'data', 'data', 'price') AS price
 FROM snowplow.events
 WHERE event = 'unstruct'
-  AND JSONExtractString(unstruct_event, 'schema') LIKE '%product_view%'
+  AND JSONExtractString(unstruct_event, 'data', 'schema') LIKE '%product_view%'
   AND collector_tstamp >= now() - INTERVAL 1 HOUR
 ORDER BY collector_tstamp DESC
 LIMIT 100;
@@ -98,7 +117,7 @@ LIMIT 100;
 
 ## Session Analysis
 
-Reconstruct user sessions using ClickHouse session window functions:
+Reconstruct user sessions using ClickHouse aggregation:
 
 ```sql
 SELECT
