@@ -91,11 +91,13 @@ FROM s3(
 );
 ```
 
-To make extra columns an error (useful for catching schema drift early):
+To make extra columns an error instead (useful for catching schema drift early):
 
 ```sql
-SET input_format_parquet_skip_columns_with_unsupported_types_in_schema_inference = 0;
+SET input_format_skip_unknown_fields = 0; -- default: 0
 ```
+
+With the default value of 0, ClickHouse may raise an error when the source contains columns not present in the target table. For Parquet files, extra columns are typically not read since ClickHouse matches columns by name, but setting this explicitly ensures consistent behavior across formats.
 
 ## Type Coercion
 
@@ -104,18 +106,13 @@ ClickHouse can automatically cast compatible types when loading Parquet:
 | Parquet Type | ClickHouse Column | Behavior |
 |-------------|-------------------|----------|
 | INT32 | UInt64 | Cast (if non-negative) |
-| INT64 | UInt32 | Cast (truncation possible) |
+| INT64 | UInt32 | Cast (error if value exceeds UInt32 range) |
 | FLOAT | Float64 | Widening cast |
 | DOUBLE | Float32 | Narrowing cast (precision loss) |
 | BYTE_ARRAY (UTF8) | UInt32 | Parsing - may fail |
 | INT32 | String | Convert to decimal string |
 
-Enable type coercion:
-
-```sql
-SET input_format_parquet_enable_row_group_prefetch = 1;
-SET input_format_max_rows_to_read_for_schema_inference = 1000;
-```
+ClickHouse performs type coercion automatically when the target table column type differs from the Parquet column type but the types are compatible. No special setting is needed to enable this behavior.
 
 For explicit type casting in the SELECT:
 
