@@ -45,7 +45,7 @@ echo "# Dapr Backup Manifest" > "$BACKUP_DIR/MANIFEST.md"
 echo "Backup date: $(date -u)" >> "$BACKUP_DIR/MANIFEST.md"
 echo "" >> "$BACKUP_DIR/MANIFEST.md"
 for f in "$BACKUP_DIR"/*.yaml; do
-  count=$(grep -c "^kind:" "$f" 2>/dev/null || echo 0)
+  count=$(grep -c "^- apiVersion:" "$f" 2>/dev/null || echo 0)
   echo "- $(basename $f): $count resources" >> "$BACKUP_DIR/MANIFEST.md"
 done
 
@@ -75,7 +75,7 @@ spec:
           serviceAccountName: dapr-backup-sa
           containers:
           - name: backup
-            image: bitnami/kubectl:latest
+            image: bitnami/kubectl:latest  # Also needs AWS CLI; use a custom image with both tools installed
             command:
             - /bin/bash
             - -c
@@ -100,9 +100,9 @@ spec:
 The most reliable backup is keeping all Dapr configuration in Git:
 
 ```bash
-# Sync current cluster state back to Git (for drift detection)
 #!/bin/bash
 # sync-dapr-to-git.sh
+# Sync current cluster state back to Git (for drift detection)
 
 REPO_DIR="$HOME/infrastructure"
 cd "$REPO_DIR"
@@ -137,13 +137,13 @@ sha256sum -c checksums.sha256
 
 echo "Validating YAML syntax..."
 for f in *.yaml; do
-  python3 -c "import yaml; yaml.safe_load_all(open('$f').read())" && \
+  python3 -c "import yaml; list(yaml.safe_load_all(open('$f').read()))" && \
     echo "  $f: OK" || echo "  $f: INVALID YAML"
 done
 
 echo "Resource counts:"
 for f in *.yaml; do
-  count=$(grep -c "^kind:" "$f" 2>/dev/null || echo 0)
+  count=$(grep -c "^- apiVersion:" "$f" 2>/dev/null || echo 0)
   echo "  $f: $count resources"
 done
 ```
