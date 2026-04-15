@@ -50,7 +50,7 @@ When you insert rows into a MergeTree table, ClickHouse does not write them into
 
 ```text
 /var/lib/clickhouse/data/mydb/sensor_readings/
-  all_1_1_0/          <- data part
+  202401_1_1_0/       <- data part (partition 202401)
     sensor_id.bin     <- compressed column data
     recorded_at.bin
     temperature.bin
@@ -58,11 +58,11 @@ When you insert rows into a MergeTree table, ClickHouse does not write them into
     pressure.bin
     primary.idx       <- sparse primary index
     minmax_recorded_at.idx  <- min/max index for partition pruning
-  all_2_2_0/          <- another data part from a second INSERT
-  all_1_2_1/          <- merged part combining all_1_1_0 and all_2_2_0
+  202401_2_2_0/       <- another data part from a second INSERT
+  202401_1_2_1/       <- merged part combining 202401_1_1_0 and 202401_2_2_0
 ```
 
-The naming convention `all_<min_block>_<max_block>_<merge_level>` encodes the range of data blocks and how many times this part has been merged.
+The naming convention `<partition_id>_<min_block>_<max_block>_<merge_level>` encodes the partition, the range of data blocks, and how many times this part has been merged. When there is no `PARTITION BY` clause, the partition ID defaults to `all`.
 
 ## The Sorting Key and Why It Matters
 
