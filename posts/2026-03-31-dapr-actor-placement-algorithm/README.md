@@ -23,14 +23,15 @@ When an actor is invoked:
 
 ## Actor ID Hashing
 
-The hash input is the combination of actor type and actor ID. This means:
+Each actor type has its own separate consistent hash ring. When placing an actor, only the actor ID is hashed against the ring for that actor type. This means:
 - The same actor type with different IDs may be placed on different instances
-- Related actors can be co-located by using a common prefix in their IDs
-- Actor type distribution across the ring is determined by the virtual node positions of each instance
+- Actors of the same type can be co-located by using a common prefix in their IDs
+- Each actor type's ring is independent, so the same ID on different actor types may land on different instances
 
 ```go
-// Simplified hash placement logic
-hash := fnv1a(actorType + "/" + actorId)
+// Simplified hash placement logic (per actor type ring)
+ring := hashTables[actorType]
+hash := blake2b(actorId)
 position := hash % ringSize
 instance := ring.FindOwner(position)
 ```
@@ -46,7 +47,7 @@ With 3 application replicas and 100 virtual nodes per instance, the ring has 300
 When a new application instance starts:
 1. Its Dapr sidecar registers with the placement service
 2. The placement service assigns virtual node positions to the new instance
-3. A new actor table is generated and disseminated to all sidecars
+3. A new placement table is generated and disseminated to all sidecars
 4. Actors previously owned by other instances that now hash to the new instance are deactivated
 5. On next invocation, those actors are re-activated on the new host
 
@@ -54,21 +55,21 @@ When a new application instance starts:
 
 When an application instance shuts down:
 1. Its sidecar deregisters from the placement service
-2. The actor table is updated to remove the leaving instance
+2. The placement table is updated to remove the leaving instance
 3. Actors owned by the leaving instance are redistributed to remaining instances
 4. The new owners re-activate actors on their next invocation
 
 ## Actor Co-location
 
-To keep related actors on the same instance, use a consistent ID prefix:
+Since each actor type has its own independent hash ring, co-location via ID prefix only works for actors of the same type. For example, actors of type `OrderActor` with similar IDs may land on the same instance:
 
 ```go
-// These IDs tend to hash to the same ring segment
-orderActorID := "cust-456-order-789"
-paymentActorID := "cust-456-payment-012"
+// These IDs of the same actor type tend to hash to the same ring segment
+orderActorID1 := "cust-456-order-789"
+orderActorID2 := "cust-456-order-012"
 ```
 
-This is probabilistic, not guaranteed.
+This is probabilistic, not guaranteed. Cross-type co-location (e.g., an `OrderActor` and a `PaymentActor`) cannot be achieved through ID prefixes because each type uses a separate hash ring.
 
 ## Observing Placement in Action
 
@@ -81,7 +82,7 @@ kubectl logs my-app -c daprd | grep -E "actor.*activat|actor.*deactivat|placemen
 Check which actors are currently active on an instance:
 
 ```bash
-curl http://localhost:3500/v1.0/metadata | jq '.activeActorsCount'
+curl http://localhost:3500/v1.0/metadata | jq '.actors'
 ```
 
 ## Handling Rebalancing
