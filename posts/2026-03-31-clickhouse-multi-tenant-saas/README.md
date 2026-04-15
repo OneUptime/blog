@@ -38,7 +38,7 @@ CREATE TABLE events
     ts          DateTime64(3)                  CODEC(DoubleDelta, LZ4)
 )
 ENGINE = MergeTree()
-PARTITION BY (tenant_id, toYYYYMM(ts))
+PARTITION BY tenant_id
 ORDER BY (tenant_id, ts)
 TTL toDateTime(ts) + INTERVAL 1 YEAR
 SETTINGS index_granularity = 8192;
@@ -140,7 +140,7 @@ Because data is partitioned by `tenant_id`, deletion is a fast partition drop, n
 ```sql
 -- Drop all data for tenant 42
 ALTER TABLE events
-    DROP PARTITION ID 'tenant_42';
+    DROP PARTITION 42;
 ```
 
 For non-partition-aligned deletion, use a mutation (slower):
@@ -156,7 +156,7 @@ Prefer the partition approach for large-scale deletions.
 
 ```sql
 SELECT
-    tenant_id,
+    partition                                        AS tenant_id,
     formatReadableSize(sum(data_compressed_bytes))   AS compressed,
     formatReadableSize(sum(data_uncompressed_bytes)) AS uncompressed,
     sum(rows)                                        AS total_rows
@@ -165,7 +165,7 @@ WHERE active = 1
   AND table = 'events'
   AND database = 'analytics'
 GROUP BY tenant_id
-ORDER BY compressed DESC;
+ORDER BY sum(data_compressed_bytes) DESC;
 ```
 
 This data feeds tenant billing dashboards -- each tenant is billed proportional to their compressed storage consumption.
