@@ -61,12 +61,20 @@ SELECT
     operator_id,
     event_type,
     count() AS events_completed,
-    avg(dateDiff('second',
-        lagInFrame(event_at) OVER (PARTITION BY operator_id ORDER BY event_at),
-        event_at)) AS avg_seconds_per_event
-FROM fulfillment_events
-WHERE event_at >= today() - 7
-  AND event_type IN ('picked', 'packed')
+    avg(seconds_since_prev) AS avg_seconds_per_event
+FROM (
+    SELECT
+        operator_id,
+        event_type,
+        dateDiff('second',
+            lagInFrame(event_at) OVER (PARTITION BY operator_id ORDER BY event_at),
+            event_at) AS seconds_since_prev,
+        row_number() OVER (PARTITION BY operator_id ORDER BY event_at) AS rn
+    FROM fulfillment_events
+    WHERE event_at >= today() - 7
+      AND event_type IN ('picked', 'packed')
+)
+WHERE rn > 1
 GROUP BY operator_id, event_type
 ORDER BY events_completed DESC;
 ```
@@ -103,9 +111,9 @@ Identify orders that have been allocated but not shipped after 12 hours:
 SELECT
     f.order_id,
     f.warehouse_id,
-    min(f.event_at) AS last_event,
+    max(f.event_at) AS last_event,
     argMax(f.event_type, f.event_at) AS current_status,
-    dateDiff('hour', min(f.event_at), now()) AS hours_in_status
+    dateDiff('hour', max(f.event_at), now()) AS hours_in_status
 FROM fulfillment_events f
 WHERE f.event_at >= today() - 2
 GROUP BY f.order_id, f.warehouse_id
