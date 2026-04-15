@@ -106,7 +106,7 @@ Response:
 }
 ```
 
-Retrieve a single key from the secret:
+Retrieve the secret from a specific namespace by passing `metadata.namespace` as a query parameter:
 
 ```bash
 curl "http://localhost:3500/v1.0/secrets/kubernetes-secrets/db-credentials?metadata.namespace=default"
