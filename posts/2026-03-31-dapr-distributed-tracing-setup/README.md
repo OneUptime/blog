@@ -10,14 +10,14 @@ Description: Enable distributed tracing in Dapr to gain end-to-end visibility in
 
 ## Overview
 
-Distributed tracing tracks requests as they flow through multiple microservices, correlating spans into a single trace. Dapr generates trace data automatically for service invocations, pub/sub messages, and state operations, injecting trace context headers so you can follow a request from entry point to all downstream services without adding instrumentation code to your application.
+Distributed tracing tracks requests as they flow through multiple microservices, correlating spans into a single trace. Dapr generates trace data automatically for service invocations and pub/sub messages, injecting trace context headers so you can follow a request from entry point to all downstream services without adding instrumentation code to your application.
 
 ## How Dapr Generates Traces
 
 Dapr's sidecar automatically:
 - Creates a root span for incoming requests
 - Propagates W3C Trace Context headers to downstream services
-- Records spans for all Dapr API calls (service invocation, pub/sub, state)
+- Records spans for Dapr API calls (service invocation, pub/sub)
 - Exports trace data to configured backends via OpenTelemetry
 
 ## Enabling Tracing with Configuration
@@ -107,7 +107,7 @@ spec:
   tracing:
     samplingRate: "1"
     otel:
-      endpointAddress: "http://otel-collector.monitoring.svc.cluster.local:4317"
+      endpointAddress: "otel-collector.monitoring.svc.cluster.local:4317"
       isSecure: false
       protocol: grpc
 ```
