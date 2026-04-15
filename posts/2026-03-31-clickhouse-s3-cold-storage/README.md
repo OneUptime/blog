@@ -89,19 +89,26 @@ Data on local SSD for 30 days, then migrates to S3 automatically.
 
 ## Optimizing S3 Read Performance
 
-Configure S3 read-through caching to reduce latency on repeated accesses:
+Configure a local read-through cache to reduce latency on repeated accesses. Define a separate `cache` disk that wraps the S3 disk:
 
 ```xml
-<s3_cold>
-    <type>s3</type>
-    <endpoint>...</endpoint>
-    <cache_enabled>true</cache_enabled>
-    <cache_path>/data/s3_cache/</cache_path>
-    <cache_size>107374182400</cache_size>
-</s3_cold>
+<disks>
+    <s3_cold>
+        <type>s3</type>
+        <endpoint>https://s3.us-east-1.amazonaws.com/my-bucket/cold/</endpoint>
+        <access_key_id>ACCESS_KEY_ID</access_key_id>
+        <secret_access_key>SECRET_ACCESS_KEY</secret_access_key>
+    </s3_cold>
+    <s3_cache>
+        <type>cache</type>
+        <disk>s3_cold</disk>
+        <path>/data/s3_cache/</path>
+        <max_size>107374182400</max_size>
+    </s3_cache>
+</disks>
 ```
 
-This creates a 100GB local disk cache for recently accessed S3 objects.
+This creates a 100GB local disk cache for recently accessed S3 objects. Use `s3_cache` instead of `s3_cold` in your storage policy's cold volume to enable caching.
 
 ## Checking S3 Data Placement
 
