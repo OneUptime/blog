@@ -76,10 +76,10 @@ client.insert_df("events", df)
 ```python
 query = "SELECT * FROM large_events WHERE ts >= '2026-01-01'"
 
-with client.query_rows_stream(query) as stream:
+with client.query_df_stream(query) as stream:
     chunks = []
-    for block in stream:
-        chunks.append(pd.DataFrame(block))
+    for df_block in stream:
+        chunks.append(df_block)
     df = pd.concat(chunks, ignore_index=True)
 ```
 
@@ -93,7 +93,7 @@ Float64        -> float64
 String         -> object
 DateTime       -> datetime64[ns]
 Date           -> datetime64[ns]
-Nullable(T)    -> nullable dtypes (with pd.NA)
+Nullable(T)    -> nullable dtypes (with pd.NA, when use_extended_dtypes=True)
 ```
 
 ## Transforming and Writing Back
