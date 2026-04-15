@@ -116,7 +116,7 @@ Estimate how many units of a recalled lot have already been dispensed.
 ```sql
 SELECT
     countIf(event_type = 'dispense')     AS dispensed_units,
-    countIf(event_type IN ('ship', 'receive', 'commission')) - countIf(event_type IN ('dispense', 'destroy')) AS recoverable_units
+    countIf(event_type = 'commission') - countIf(event_type IN ('dispense', 'destroy')) AS recoverable_units
 FROM pharma_serialization
 WHERE lot_number = 'LOT-RECALLED-001';
 ```
