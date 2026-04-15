@@ -54,7 +54,8 @@ DaprClient client = new DaprClientBuilder().build();
 
 Map<String, ConfigurationItem> config = client.getConfiguration(
     "configstore",
-    List.of("feature-flag-new-ui", "max-retry-count")
+    List.of("feature-flag-new-ui", "max-retry-count"),
+    Map.of()
 ).block();
 
 String featureFlag = config.get("feature-flag-new-ui").getValue();
@@ -74,7 +75,8 @@ import reactor.core.publisher.Flux;
 
 Flux<SubscribeConfigurationResponse> subscription = client.subscribeConfiguration(
     "configstore",
-    List.of("feature-flag-new-ui", "max-retry-count")
+    List.of("feature-flag-new-ui", "max-retry-count"),
+    Map.of()
 );
 
 // Process updates
@@ -116,7 +118,7 @@ public class FeatureFlagService {
 
     private void loadInitialConfig() {
         Map<String, ConfigurationItem> cfg = daprClient
-            .getConfiguration("configstore", List.of("feature-flag-new-ui"))
+            .getConfiguration("configstore", List.of("feature-flag-new-ui"), Map.of())
             .block();
         newUiEnabled = Boolean.parseBoolean(
             cfg.get("feature-flag-new-ui").getValue()
@@ -125,7 +127,7 @@ public class FeatureFlagService {
 
     private void subscribeToChanges() {
         daprClient.subscribeConfiguration("configstore",
-            List.of("feature-flag-new-ui")
+            List.of("feature-flag-new-ui"), Map.of()
         ).subscribe(resp -> {
             ConfigurationItem item = resp.getItems().get("feature-flag-new-ui");
             if (item != null) {
