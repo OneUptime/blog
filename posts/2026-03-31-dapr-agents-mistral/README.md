@@ -10,30 +10,46 @@ Description: Learn how to configure Dapr Agents with Mistral AI models for effic
 
 ## Why Mistral with Dapr Agents?
 
-Mistral AI offers a range of models from the efficient Mistral 7B to the powerful Mistral Large, with strong performance in multilingual tasks and code generation. When cost efficiency matters, Mistral models provide excellent performance-per-dollar. Paired with Dapr's operational infrastructure, you get reliable agent execution without overpaying for inference.
+Mistral AI offers a range of models from the efficient Mistral Small to the powerful Mistral Large, with strong performance in multilingual tasks and code generation. When cost efficiency matters, Mistral models provide excellent performance-per-dollar. Paired with Dapr's operational infrastructure, you get reliable agent execution without overpaying for inference.
 
 ## Installation
 
 ```bash
-pip install dapr-agents mistralai
+pip install dapr-agents
+```
+
+Mistral is accessed through the Dapr Conversation API, so no separate Mistral client library is needed. The Dapr sidecar handles communication with the Mistral API.
+
+## Configuring the Dapr Conversation Component for Mistral
+
+Create a Dapr component YAML file to configure the Mistral backend:
+
+```yaml
+# components/llm-mistral.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: llm-mistral
+spec:
+  type: conversation.mistral
+  version: v1
+  metadata:
+    - name: key
+      value: "your-mistral-api-key"  # or use a Dapr secret store reference
+    - name: model
+      value: "mistral-large-latest"
 ```
 
 ## Configuring the Mistral LLM Client
 
 ```python
-from dapr_agents.llm import MistralChat
+from dapr_agents.llm import DaprChatClient
 
-llm = MistralChat(
-    model="mistral-large-latest",
-    api_key="your-mistral-api-key",  # or MISTRAL_API_KEY env var
-    temperature=0.3,
-    max_tokens=4096
-)
+llm = DaprChatClient(component_name="llm-mistral")
 ```
 
-Available models:
+Available models (set in the component YAML):
 - `mistral-small-latest` - Fast and efficient
-- `mistral-medium-latest` - Balanced performance
 - `mistral-large-latest` - Most capable
 
 ## Building a Code Generation Agent
@@ -41,54 +57,50 @@ Available models:
 Mistral excels at code tasks. Here is a code generation agent:
 
 ```python
-import os
-from dapr_agents import Agent, tool
-from dapr_agents.llm import MistralChat
+from dapr_agents import DurableAgent, tool
+from dapr_agents.llm import DaprChatClient
 
-class CodeGenAgent(Agent):
-    name = "codegen-agent"
-    instructions = """You are an expert software engineer specializing in
-    Python and Go. Generate clean, well-documented, production-ready code.
-    Always include error handling and tests."""
+@tool
+def create_file(filename: str, content: str) -> str:
+    """Creates a new code file with the specified content.
 
-    @tool
-    def create_file(self, filename: str, content: str) -> str:
-        """Creates a new code file with the specified content.
+    Args:
+        filename: The name of the file to create.
+        content: The code content to write.
+    """
+    with open(filename, "w") as f:
+        f.write(content)
+    return f"Created {filename} ({len(content)} bytes)"
 
-        Args:
-            filename: The name of the file to create.
-            content: The code content to write.
-        """
-        with open(filename, "w") as f:
-            f.write(content)
-        return f"Created {filename} ({len(content)} bytes)"
+@tool
+def run_tests(test_file: str) -> str:
+    """Runs Python unit tests in a test file.
 
-    @tool
-    def run_tests(self, test_file: str) -> str:
-        """Runs Python unit tests in a test file.
-
-        Args:
-            test_file: Path to the test file to run.
-        """
-        import subprocess
-        result = subprocess.run(
-            ["python", "-m", "pytest", test_file, "-v"],
-            capture_output=True, text=True, timeout=60
-        )
-        return result.stdout if result.returncode == 0 else result.stderr
+    Args:
+        test_file: Path to the test file to run.
+    """
+    import subprocess
+    result = subprocess.run(
+        ["python", "-m", "pytest", test_file, "-v"],
+        capture_output=True, text=True, timeout=60
+    )
+    return result.stdout if result.returncode == 0 else result.stderr
 
 
-llm = MistralChat(
-    model="mistral-large-latest",
-    api_key=os.environ["MISTRAL_API_KEY"]
+llm = DaprChatClient(component_name="llm-mistral")
+
+agent = DurableAgent(
+    name="codegen-agent",
+    instructions=[
+        "You are an expert software engineer specializing in Python and Go.",
+        "Generate clean, well-documented, production-ready code.",
+        "Always include error handling and tests."
+    ],
+    tools=[create_file, run_tests],
+    llm=llm,
 )
 
-agent = CodeGenAgent(llm=llm)
-result = agent.run(
-    "Create a Python function that calculates the Fibonacci sequence "
-    "using memoization, with unit tests."
-)
-print(result)
+agent.start()
 ```
 
 ## Multilingual Agent with Mistral
@@ -96,34 +108,51 @@ print(result)
 Mistral handles European languages particularly well:
 
 ```python
-class MultilingualSupportAgent(Agent):
-    name = "support-agent"
-    instructions = """You are a multilingual customer support agent.
-    Detect the user's language and respond in the same language.
-    Support French, Spanish, German, Italian, and English."""
+from dapr_agents import DurableAgent, tool
+from dapr_agents.llm import DaprChatClient
 
-    @tool
-    def detect_language(self, text: str) -> str:
-        """Detects the language of the input text."""
-        # Use a language detection library
-        from langdetect import detect
-        return detect(text)
+@tool
+def detect_language(text: str) -> str:
+    """Detects the language of the input text.
 
-    @tool
-    def translate_response(self, text: str, target_lang: str) -> str:
-        """Translates a response to the target language."""
-        # Integrate translation API
-        return f"[Translated to {target_lang}]: {text}"
+    Args:
+        text: The text to detect the language of.
+    """
+    from langdetect import detect
+    return detect(text)
+
+@tool
+def translate_response(text: str, target_lang: str) -> str:
+    """Translates a response to the target language.
+
+    Args:
+        text: The text to translate.
+        target_lang: The target language code.
+    """
+    # Integrate translation API
+    return f"[Translated to {target_lang}]: {text}"
+
+
+agent = DurableAgent(
+    name="support-agent",
+    instructions=[
+        "You are a multilingual customer support agent.",
+        "Detect the user's language and respond in the same language.",
+        "Support French, Spanish, German, Italian, and English."
+    ],
+    tools=[detect_language, translate_response],
+    llm=DaprChatClient(component_name="llm-mistral"),
+)
 ```
 
-## Using Mistral Le Chat / Self-Hosted
+## Using Self-Hosted Mistral
 
-For self-hosted Mistral (via vLLM or Ollama):
+For self-hosted Mistral (via vLLM or Ollama), use the OpenAI-compatible client since these servers expose an OpenAI-compatible API:
 
 ```python
-from dapr_agents.llm import MistralChat
+from dapr_agents.llm import OpenAIChatClient
 
-llm = MistralChat(
+llm = OpenAIChatClient(
     model="mistral-7b-instruct",
     base_url="http://your-vllm-server:8000/v1",
     api_key="not-needed"
@@ -132,41 +161,55 @@ llm = MistralChat(
 
 ## Function Calling with Mistral
 
-Mistral's function calling is compatible with the OpenAI tool format:
+Mistral supports function calling, which works with Dapr Agents' `@tool` decorator:
 
 ```python
-from dapr_agents import Agent, tool
-from dapr_agents.llm import MistralChat
+from dapr_agents import DurableAgent, tool
+from dapr_agents.llm import DaprChatClient
 
-class CalculatorAgent(Agent):
-    name = "calculator-agent"
+@tool
+def add(a: float, b: float) -> float:
+    """Adds two numbers together.
 
-    @tool
-    def add(self, a: float, b: float) -> float:
-        """Adds two numbers together."""
-        return a + b
+    Args:
+        a: First number.
+        b: Second number.
+    """
+    return a + b
 
-    @tool
-    def multiply(self, a: float, b: float) -> float:
-        """Multiplies two numbers together."""
-        return a * b
+@tool
+def multiply(a: float, b: float) -> float:
+    """Multiplies two numbers together.
 
-llm = MistralChat(model="mistral-large-latest")
-agent = CalculatorAgent(llm=llm)
-result = agent.run("What is 15.5 multiplied by 3 and then added to 42?")
+    Args:
+        a: First number.
+        b: Second number.
+    """
+    return a * b
+
+llm = DaprChatClient(component_name="llm-mistral")
+
+agent = DurableAgent(
+    name="calculator-agent",
+    instructions=["You are a helpful calculator."],
+    tools=[add, multiply],
+    llm=llm,
+)
+
+agent.start()
 ```
 
 ## Running with Dapr
 
 ```bash
-export MISTRAL_API_KEY="your-key"
-
 dapr run --app-id codegen-agent \
   --app-port 8080 \
   --components-path ./components \
   -- python agent.py
 ```
 
+Set your Mistral API key in the component YAML or use a Dapr secret store reference.
+
 ## Summary
 
-Dapr Agents integrates with Mistral AI through the `MistralChat` LLM client. Mistral Large is ideal for complex code generation and reasoning, while Mistral Small offers cost-effective inference for simpler tasks. Mistral's multilingual capabilities make it a strong choice for global applications, and its OpenAI-compatible function calling works seamlessly with Dapr Agents' `@tool` decorator.
+Dapr Agents integrates with Mistral AI through the `DaprChatClient` and the Dapr Conversation API. Configure a `conversation.mistral` component to connect to Mistral's API. Mistral Large is ideal for complex code generation and reasoning, while Mistral Small offers cost-effective inference for simpler tasks. Mistral's multilingual capabilities make it a strong choice for global applications, and its function calling works seamlessly with Dapr Agents' `@tool` decorator. For self-hosted Mistral via vLLM or Ollama, use `OpenAIChatClient` with the server's OpenAI-compatible endpoint.
