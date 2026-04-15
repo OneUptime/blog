@@ -12,8 +12,8 @@ Description: Learn how to use clickhouse-obfuscator to anonymize production data
 
 ## What clickhouse-obfuscator Does
 
-- Replaces string values with random strings of the same length and charset
-- Transforms numbers while preserving rough distributions
+- Generates new string values using a trained Markov model that preserves statistical properties
+- Transforms numbers using pseudorandom permutations within the same magnitude range
 - Keeps data types, nullability, and structure identical
 - Produces deterministic output for the same seed
 
@@ -63,43 +63,49 @@ Or use `SHOW CREATE TABLE` and extract column definitions.
 For simpler workflows:
 
 ```bash
+# Export to a file first (clickhouse-obfuscator requires seekable input)
 clickhouse-client --query "SELECT * FROM events LIMIT 100000 FORMAT TSV" \
-  | clickhouse-obfuscator \
-      --seed "seed123" \
-      --input-format TSV \
-      --output-format TSV \
-      --structure "ts DateTime, user_id String, event String" \
-  > events_masked.tsv
+  > events_raw.tsv
+
+clickhouse-obfuscator \
+  --seed "seed123" \
+  --input-format TSV \
+  --output-format TSV \
+  --structure "ts DateTime, user_id String, event String" \
+  < events_raw.tsv > events_masked.tsv
 ```
 
 ## What Gets Obfuscated
 
-- Strings: replaced character-by-character with random characters preserving length
-- Numbers: shifted by a pseudo-random delta preserving rough magnitude
-- Dates: shifted by a random offset
-- IP addresses: randomized per-octet
-- UUIDs: fully randomized
+- Strings: new values generated using a trained Markov model that preserves statistical character patterns
+- Numbers: permuted using a Feistel network within the same log2 magnitude bucket (0 and 1 are always preserved)
+- DateTime: the date component is preserved, while the time-of-day component is transformed
+- UUIDs: randomized while preserving UUID version and variant bits
 
 ## What Is NOT Changed
 
 - Schema and column names
 - NULL distribution
 - Row count
-- Sorting order (useful for testing ORDER BY performance)
+- Date values (Date columns are left unchanged)
+- Continuity of time values and floating-point values
 
 ## Practical Use Case: Bug Reproduction
 
 When a query performs poorly in production, obfuscate a sample and share with the team:
 
 ```bash
+# Export to a file first (clickhouse-obfuscator requires seekable input)
 clickhouse-client --query \
   "SELECT * FROM slow_table WHERE ts > now() - INTERVAL 1 DAY FORMAT Native" \
-  | clickhouse-obfuscator \
-      --seed "repro-seed" \
-      --input-format Native \
-      --output-format Native \
-      --structure "$(clickhouse-client -q 'DESCRIBE TABLE slow_table' | awk '{print $1" "$2}' | tr '\n' ',')" \
-  > repro_data.native
+  > slow_table_raw.native
+
+clickhouse-obfuscator \
+  --seed "repro-seed" \
+  --input-format Native \
+  --output-format Native \
+  --structure "$(clickhouse-client -q 'DESCRIBE TABLE slow_table' | awk '{print $1" "$2}' | tr '\n' ',')" \
+  < slow_table_raw.native > repro_data.native
 ```
 
 ## Summary
