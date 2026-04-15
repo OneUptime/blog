@@ -91,7 +91,7 @@ Verify events are actually being produced in the source system:
 
 ```bash
 # For RabbitMQ
-kubectl exec -it rabbitmq-0 -- rabbitmq-admin list_queues
+kubectl exec -it rabbitmq-0 -- rabbitmqctl list_queues
 
 # For Kafka
 kubectl exec -it kafka-0 -- kafka-consumer-groups.sh \
