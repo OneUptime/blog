@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Kubernetes, Polyglot, Deployment, Helm
+Tags: Dapr, Kubernetes, Polyglot, Deployment
 
-Description: Deploy a polyglot Dapr microservices system on Kubernetes with Node.js, Python, Go, and Java services using Helm charts and shared component definitions.
+Description: Deploy a polyglot Dapr microservices system on Kubernetes with Node.js, Python, Go, and Java services using shared component definitions.
 
 ---
 
@@ -140,6 +140,8 @@ spec:
       app: notification-service
   template:
     metadata:
+      labels:
+        app: notification-service
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "notification-service"
