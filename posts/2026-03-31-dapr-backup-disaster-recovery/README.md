@@ -135,7 +135,7 @@ spec:
   version: v1
   metadata:
   - name: redisHost
-    value: "redis-primary.us-east-1:6379"
+    value: "redis-sentinel.us-east-1:26379"
   - name: failover
     value: "true"
   - name: sentinelMasterName
