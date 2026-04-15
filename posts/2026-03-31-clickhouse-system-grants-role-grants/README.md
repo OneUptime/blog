@@ -69,9 +69,10 @@ ORDER BY user_name, access_type;
 
 ## system.role_grants
 
-`system.role_grants` shows which roles have been assigned to users. Key columns:
+`system.role_grants` shows which roles have been assigned to users or to other roles. Key columns:
 
-- `user_name` - user who received the role
+- `user_name` - user who received the role (NULL if granted to a role)
+- `role_name` - role that received the role (NULL if granted to a user)
 - `granted_role_name` - role assigned
 - `granted_role_is_default` - whether the role is active by default on login
 - `with_admin_option` - whether the user can grant this role to others
