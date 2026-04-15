@@ -104,7 +104,7 @@ SELECT
     read_bytes
 FROM system.query_log
 WHERE type = 'QueryFinish'
-  AND tables LIKE '%events%'
+  AND has(tables, 'mydb.events')
   AND query LIKE '%user_id%'
 ORDER BY event_time DESC
 LIMIT 10;
