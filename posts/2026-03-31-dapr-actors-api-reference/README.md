@@ -121,21 +121,20 @@ app.put("/actors/CartActor/:actorId/method/ExpireCart", async (req, res) => {
 
 ## Actor Configuration
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: actor-config
-spec:
-  entities:
-    - actorIdleTimeout: 1h
-      actorScanInterval: 30s
-      drainOngoingCallTimeout: 30s
-      drainRebalancedActors: true
-      entityName: CartActor
-      reentrancy:
-        enabled: true
-        maxStackDepth: 32
+Your app must expose a `GET /dapr/config` endpoint that returns the actor configuration:
+
+```json
+{
+  "entities": ["CartActor"],
+  "actorIdleTimeout": "1h",
+  "actorScanInterval": "30s",
+  "drainOngoingCallTimeout": "30s",
+  "drainRebalancedActors": true,
+  "reentrancy": {
+    "enabled": true,
+    "maxStackDepth": 32
+  }
+}
 ```
 
 ## Summary
