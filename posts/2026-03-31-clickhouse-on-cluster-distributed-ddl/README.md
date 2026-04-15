@@ -160,23 +160,26 @@ ORDER BY query_create_time DESC;
 
 ## Handling Failures
 
-By default, `ON CLUSTER` waits for all nodes but continues if some fail. The DDL is still queued for the failed nodes and will execute when they come back online.
+By default, `ON CLUSTER` waits up to `distributed_ddl_task_timeout` (default 180 seconds) for all nodes to complete. If any node fails or the timeout is exceeded, an exception is thrown. The DDL task remains in ZooKeeper, so offline nodes will execute it when they come back online.
 
-To require all nodes to succeed:
+To increase the wait time for large clusters or slow operations:
 
 ```sql
--- Set a timeout for waiting (default is task_max_lifetime)
+-- Increase the timeout (default is 180 seconds)
 SET distributed_ddl_task_timeout = 300;  -- 300 seconds
 
--- If any node fails within the timeout, the whole statement returns an error
+-- If any node fails within the timeout, the statement throws an error
 CREATE TABLE events ON CLUSTER production_cluster ...;
 ```
 
-To ignore failures on specific nodes (useful during rolling upgrades):
+To run DDL asynchronously (useful during rolling upgrades):
 
 ```sql
--- Continue even if some nodes fail or are unreachable
-SET distributed_ddl_task_timeout = 0;  -- No timeout, fire and forget
+-- Async mode: return immediately without waiting for nodes
+SET distributed_ddl_task_timeout = 0;
+
+-- The DDL is queued in ZooKeeper and nodes execute it in the background
+CREATE TABLE events ON CLUSTER production_cluster ...;
 ```
 
 ## Using ON CLUSTER with IF NOT EXISTS and IF EXISTS
@@ -197,11 +200,11 @@ ALTER TABLE events ON CLUSTER production_cluster
 -- Rename a table on all nodes
 RENAME TABLE events TO events_v2 ON CLUSTER production_cluster;
 
--- Swap two tables atomically on all nodes (ClickHouse 22.6+)
+-- Swap two tables atomically on all nodes (requires Atomic database engine)
 EXCHANGE TABLES events AND events_v2 ON CLUSTER production_cluster;
 ```
 
-`EXCHANGE TABLES` is useful for zero-downtime schema changes: build the new table in parallel, then swap it with the old one atomically.
+`EXCHANGE TABLES` is useful for zero-downtime schema changes: build the new table in parallel, then swap it with the old one atomically. This statement requires the Atomic database engine (the default since ClickHouse 21.12).
 
 ## Best Practices
 
