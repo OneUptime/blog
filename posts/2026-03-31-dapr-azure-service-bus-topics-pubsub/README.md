@@ -116,14 +116,15 @@ Both services use the same topic name but Dapr creates separate Service Bus subs
 ## Declarative Subscriptions
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-events-inventory
 spec:
   pubsubname: servicebus-topics-pubsub
   topic: order-events
-  route: /order-events
+  routes:
+    default: /order-events
 ```
 
 ## Message Filtering with SQL Rules
