@@ -12,21 +12,19 @@ ClickHouse's bitmap support is built on the Roaring Bitmap format, a compressed 
 
 ## Why Roaring Bitmaps?
 
-```sql
--- Size comparison: raw UInt64 array vs Roaring Bitmap for 1 million sequential IDs
-SELECT
-    -- Array size: 1,000,000 * 8 bytes = 8 MB
-    length(range(1, 1000001)) * 8 AS raw_array_bytes,
+Storing 1 million UInt64 IDs as a raw array costs 8 MB (1 000 000 × 8 bytes). A Roaring Bitmap with run-length containers compresses the same sequential range to just a handful of bytes internally. You can build and query it instantly:
 
-    -- Bitmap size: run-length encoded, typically a few hundred bytes for dense sequential sets
-    length(bitmapSerialize(
+```sql
+-- Build a bitmap from 1 million sequential IDs and count its elements
+SELECT
+    bitmapCardinality(
         bitmapBuild(CAST(range(1, 1000001), 'Array(UInt32)'))
-    )) AS bitmap_bytes;
+    ) AS bitmap_count;
 ```
 
 ```text
-raw_array_bytes  bitmap_bytes
-8000000          28
+bitmap_count
+1000000
 ```
 
 ## Storage Architecture
@@ -111,33 +109,19 @@ SELECT
     bitmapOrCardinality(bm_seg1, bm_seg2)  AS union_count;
 ```
 
-## Serialization and Deserialization
+## Building and Inspecting Bitmaps
 
-ClickHouse can serialize bitmaps to `String` for external storage or transport, and deserialize them back.
-
-```sql
--- Serialize a bitmap to a binary string
-SELECT
-    bitmapSerialize(
-        bitmapBuild(CAST([1, 2, 3, 100, 200, 300], 'Array(UInt32)'))
-    ) AS serialized_bitmap;
-```
+You can build a bitmap from an explicit array and convert it back to inspect its contents.
 
 ```sql
--- Deserialize and inspect
-SELECT
-    bitmapToArray(
-        bitmapDeserialize(serialized_bitmap)
-    ) AS restored_ids
-FROM (
-    SELECT bitmapSerialize(
-        bitmapBuild(CAST([1, 2, 3, 100, 200, 300], 'Array(UInt32)'))
-    ) AS serialized_bitmap
-);
+-- Build a bitmap from an array and convert back to verify contents
+SELECT bitmapToArray(
+    bitmapBuild(CAST([1, 2, 3, 100, 200, 300], 'Array(UInt32)'))
+) AS bitmap_elements;
 ```
 
 ```text
-restored_ids
+bitmap_elements
 [1, 2, 3, 100, 200, 300]
 ```
 
@@ -204,13 +188,13 @@ SELECT
 ## Memory and Performance Guidelines
 
 ```sql
--- Check approximate bitmap sizes in bytes via serialization length
+-- Check bitmap cardinalities per segment to monitor bitmap sizes
 SELECT
     segment_id,
-    count()                                               AS bitmap_rows,
-    avg(length(bitmapSerialize(user_bitmap)))             AS avg_bitmap_bytes,
-    max(length(bitmapSerialize(user_bitmap)))             AS max_bitmap_bytes,
-    sum(length(bitmapSerialize(user_bitmap)))             AS total_bitmap_bytes
+    count()                                  AS bitmap_rows,
+    avg(bitmapCardinality(user_bitmap))      AS avg_bitmap_cardinality,
+    max(bitmapCardinality(user_bitmap))      AS max_bitmap_cardinality,
+    sum(bitmapCardinality(user_bitmap))      AS total_elements
 FROM user_segment_bitmaps
 GROUP BY segment_id
 ORDER BY segment_id;
