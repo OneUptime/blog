@@ -50,6 +50,8 @@ spec:
       value: "orders"
     - name: consumerGroup
       value: "order-processor"
+    - name: authType
+      value: "none"
 ```
 
 ## Receiving Input Binding Triggers
@@ -62,7 +64,7 @@ const { DaprServer } = require("@dapr/dapr");
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3001",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3501" },
+  clientOptions: { daprHost: "127.0.0.1", daprPort: "3501" },
 });
 
 // Handle cron trigger
@@ -91,13 +93,13 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
-    - name: storageAccessKey
+    - name: accountKey
       secretKeyRef:
         name: azure-secret
         key: storage-key
-    - name: container
+    - name: containerName
       value: "reports"
 ```
 
@@ -108,7 +110,7 @@ Use `DaprClient` to invoke output bindings:
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
 
-const client = new DaprClient({ daprHost: "http://localhost", daprPort: "3500" });
+const client = new DaprClient({ daprHost: "127.0.0.1", daprPort: "3500" });
 
 // Write a file to Azure Blob Storage
 await client.binding.send("azure-blob", "create", "Report content here", {
@@ -135,6 +137,8 @@ spec:
       value: "processed-orders"
     - name: publishTopic
       value: "processed-orders"
+    - name: authType
+      value: "none"
 ```
 
 ```javascript
