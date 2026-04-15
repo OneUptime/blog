@@ -87,7 +87,9 @@ To test a 3-node cluster locally:
     node.vm.box      = "ubuntu/jammy64"
     node.vm.hostname = "ch#{i}.local"
     node.vm.network "private_network", ip: "192.168.56.1#{i}"
-    node.vm.provider "virtualbox" { |vb| vb.memory = "2048" }
+    node.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+    end
     node.vm.provision "shell", path: "scripts/install_clickhouse.sh"
   end
 end
