@@ -98,9 +98,9 @@ Define multiple binding components and invoke them independently:
 ```typescript
 async function processOrder(order: Order) {
   // Save to database
-  await invokeBinding("postgres-db", "exec", {
+  await invokeBinding("postgres-db", "exec", undefined, {
     sql: "INSERT INTO orders (id, status) VALUES ($1, $2)",
-    params: [order.id, "created"],
+    params: JSON.stringify([order.id, "created"]),
   });
 
   // Notify via SMS
