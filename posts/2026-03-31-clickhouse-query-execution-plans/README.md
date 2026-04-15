@@ -15,7 +15,7 @@ A query execution plan is the sequence of operations ClickHouse will perform to 
 A ClickHouse query plan is a tree of steps. Each step takes input from child steps and produces output for its parent. The tree is read from bottom to top: data enters at the leaves (reads from storage) and flows up through filters, aggregations, sorts, and projections until it reaches the output.
 
 ```sql
-EXPLAIN
+EXPLAIN indexes = 1
 SELECT
     service,
     count()     AS events,
@@ -109,7 +109,7 @@ Sorting is one of the most memory-intensive steps. ClickHouse sorts in memory wh
 Limit (preliminary LIMIT)
 ```
 
-ClickHouse pushes LIMIT early in the pipeline where possible. If you see `preliminary LIMIT`, ClickHouse applied the limit before the final sort, reducing the data that must be sorted.
+ClickHouse pushes LIMIT early in the pipeline where possible. If you see `preliminary LIMIT`, ClickHouse applied the limit before the final projection. When a `Limit` step appears directly above `Sorting` in the plan, ClickHouse passes the limit to the sorting step, enabling a partial sort (top-N) algorithm that only tracks the needed rows instead of fully sorting all data.
 
 ## Reading Index Usage in Detail
 
@@ -149,7 +149,7 @@ The plan shows two index passes:
 1. The primary key reduces 9216 granules to 42.
 2. The `idx_value_minmax` skipping index further reduces 42 granules to 18.
 
-The `value > 100` condition is handled by the minmax index. Any granule where the maximum value across all rows is less than 100 is skipped entirely.
+The `value > 100` condition is handled by the minmax index. Any group of granules where the maximum value across all rows is 100 or less is skipped entirely, since no row in that group can satisfy `value > 100`.
 
 ## Reading a Pipeline Plan
 
