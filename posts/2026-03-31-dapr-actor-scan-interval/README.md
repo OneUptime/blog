@@ -71,17 +71,14 @@ Track whether actors are being collected at the expected rate:
 # After setting actorIdleTimeout="5m" and actorScanInterval="30s",
 # actors should start deactivating around 5 minutes after their last call
 
-curl http://localhost:9090/metrics | grep dapr_actor_deactivations_total
+curl http://localhost:9090/metrics | grep dapr_runtime_actor_deactivated_total
 ```
 
 Prometheus alert for actors not being collected:
 
 ```promql
 # Alert if no deactivations have happened in the last hour
-# (only relevant if you have long-idle workloads)
-increase(dapr_actor_deactivations_total[1h]) == 0
-  and
-dapr_actor_active_actors > 100
+increase(dapr_runtime_actor_deactivated_total[1h]) == 0
 ```
 
 ## Dynamic Tuning Considerations
