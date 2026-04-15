@@ -14,10 +14,9 @@ Dapr's virtual actor model creates actor instances on demand and destroys them w
 
 Dapr periodically scans all active actors on each host to find ones that have exceeded their idle timeout. When an actor is marked for collection:
 
-1. The `OnDeactivate` callback is invoked on the actor instance.
+1. The Dapr sidecar sends a deactivation call (HTTP DELETE) to the application, triggering any deactivation handler (e.g., `OnDeactivateAsync` in .NET).
 2. Any pending state saves are completed.
-3. The actor instance is removed from in-memory state.
-4. The placement service is updated to reflect that the actor is no longer active on this host.
+3. The actor instance is removed from in-memory state on the host.
 
 The persistent state in the state store is NOT deleted on deactivation - only the in-memory actor instance is removed.
 
@@ -63,17 +62,20 @@ IoT device twins (devices connect infrequently):
 }
 ```
 
-## Implementing OnDeactivate for Clean Shutdown
+## Implementing a Deactivation Handler for Clean Shutdown
+
+When the Dapr sidecar deactivates an actor, it sends an HTTP DELETE request to the application. In the .NET SDK, this maps to the `OnDeactivateAsync` virtual method. In Go, you handle this by implementing the deactivation route. Here is an example using the Go SDK's state manager:
 
 ```go
-func (a *SessionActor) OnDeactivate() error {
+// DeactivateHandler is called when the Dapr sidecar sends a DELETE for this actor.
+func (a *SessionActor) DeactivateHandler(ctx context.Context) error {
   log.Printf("Deactivating session actor %s", a.ID())
 
   // Flush any buffered writes before deactivation
   var session SessionData
-  if err := a.GetStateManager().Get(context.Background(), "session", &session); err == nil {
+  if err := a.GetStateManager().Get(ctx, "session", &session); err == nil {
     session.LastSeen = time.Now().UTC()
-    a.GetStateManager().Set(context.Background(), "session", session)
+    a.GetStateManager().Set(ctx, "session", session)
   }
 
   return nil
@@ -86,14 +88,14 @@ Track deactivation rate via Prometheus:
 
 ```promql
 # Deactivations per minute
-sum(rate(dapr_actor_deactivations_total[1m])) by (actor_type)
+sum(rate(dapr_runtime_actor_deactivated_total[1m])) by (actor_type)
 ```
 
 If deactivation rate is zero over a long period while actor count keeps growing, your idle timeout may be too high:
 
 ```bash
-# Check active actor count
-curl http://localhost:9090/metrics | grep dapr_actor_active_actors
+# Check actor metrics (activations, deactivations, pending calls)
+curl http://localhost:9090/metrics | grep dapr_runtime_actor
 ```
 
 ## State Store Cleanup
@@ -101,11 +103,11 @@ curl http://localhost:9090/metrics | grep dapr_actor_active_actors
 Deactivated actors leave their state in the state store. For truly ephemeral actors, clean up state explicitly during deactivation:
 
 ```go
-func (a *EphemeralActor) OnDeactivate() error {
+func (a *EphemeralActor) DeactivateHandler(ctx context.Context) error {
   // Remove all state keys
   sm := a.GetStateManager()
-  sm.Remove(context.Background(), "data")
-  sm.Remove(context.Background(), "metadata")
+  sm.Remove(ctx, "data")
+  sm.Remove(ctx, "metadata")
   return nil
 }
 ```
@@ -119,4 +121,4 @@ func (a *EphemeralActor) OnDeactivate() error {
 
 ## Summary
 
-Dapr's actor garbage collection uses idle timeout and periodic scanning to reclaim in-memory resources from inactive actors. Tuning these parameters to match your workload's access patterns balances memory efficiency against reactivation overhead. Implementing a clean `OnDeactivate` hook ensures state is saved correctly and ephemeral data is removed before the actor instance is destroyed.
+Dapr's actor garbage collection uses idle timeout and periodic scanning to reclaim in-memory resources from inactive actors. Tuning these parameters to match your workload's access patterns balances memory efficiency against reactivation overhead. Implementing a clean deactivation handler ensures state is saved correctly and ephemeral data is removed before the actor instance is destroyed.
