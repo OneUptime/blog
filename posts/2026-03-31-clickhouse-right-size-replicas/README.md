@@ -23,18 +23,18 @@ Replicas in ClickHouse serve two purposes: fault tolerance and read parallelism.
 
 ClickHouse's distributed engine uses `load_balancing` to spread reads across replicas. With 3 replicas, read QPS capacity roughly triples:
 
-```xml
-<!-- In config.xml -->
-<load_balancing>random</load_balancing>
+```sql
+SET load_balancing = 'random';
 ```
 
-Verify read distribution:
+Verify replicas are active and caught up:
 
 ```sql
 SELECT
-    replica_path,
-    total_reads,
-    read_time_ms
+    replica_name,
+    is_leader,
+    queue_size,
+    absolute_delay
 FROM system.replicas
 WHERE table = 'events';
 ```
@@ -79,7 +79,7 @@ required_replicas = max(3, 3) = 3
 
 ```sql
 -- Check which replica is least active
-SELECT replica_path, is_leader, total_reads
+SELECT replica_path, is_leader, queue_size
 FROM system.replicas WHERE table = 'events';
 
 -- Detach the excess replica (run on that node)
