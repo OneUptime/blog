@@ -46,7 +46,7 @@ WHERE database = 'default'
   AND name = 'events';
 ```
 
-A column that appears in `ORDER BY`, `PRIMARY KEY`, or `PARTITION BY` cannot be renamed directly - you must recreate the table.
+A column that appears in `ORDER BY` or `PRIMARY KEY` cannot be renamed directly - the statement will fail with SQL Error [524]. You must recreate the table to change those column names.
 
 ### Materialized Columns
 
@@ -118,14 +118,13 @@ CREATE TABLE page_views
 ENGINE = MergeTree
 ORDER BY (usr, evt_ts);
 
--- Rename all columns to readable names in one statement
+-- Rename non-key columns to readable names in one statement
+-- Note: usr and evt_ts are in the ORDER BY key and cannot be renamed
 ALTER TABLE page_views
     RENAME COLUMN pgvw_id TO view_id,
-    RENAME COLUMN usr     TO user_id,
     RENAME COLUMN pg      TO page_path,
     RENAME COLUMN ref     TO referrer,
-    RENAME COLUMN dur_ms  TO duration_ms,
-    RENAME COLUMN evt_ts  TO viewed_at;
+    RENAME COLUMN dur_ms  TO duration_ms;
 
 -- Verify the updated schema
 DESCRIBE TABLE page_views;
@@ -137,11 +136,11 @@ Apply the rename across all shards and replicas in one command:
 
 ```sql
 ALTER TABLE page_views ON CLUSTER '{cluster}'
-    RENAME COLUMN evt_ts TO viewed_at;
+    RENAME COLUMN pg TO page_path;
 ```
 
 As with other DDL operations, omitting `ON CLUSTER` applies the change only on the receiving node. Queries routed to other nodes will continue to use the old column name and may behave inconsistently.
 
 ## Summary
 
-`ALTER TABLE RENAME COLUMN` is a fast, metadata-only operation in ClickHouse. Before renaming, verify the column is not used in ordering/partition keys, materialized expressions, or materialized view queries - none of these references are updated automatically. In cluster deployments, always include `ON CLUSTER` to ensure consistent naming across all nodes.
+`ALTER TABLE RENAME COLUMN` is a fast, metadata-only operation in ClickHouse. Before renaming, verify the column is not used in ordering/primary keys (which block the rename), materialized expressions, or materialized view queries - materialized expressions and views are not updated automatically. In cluster deployments, always include `ON CLUSTER` to ensure consistent naming across all nodes.
