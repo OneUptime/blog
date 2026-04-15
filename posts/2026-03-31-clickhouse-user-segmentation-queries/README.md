@@ -94,15 +94,17 @@ ORDER BY engagement_score DESC;
 Use bitmaps for fast set operations across large user bases:
 
 ```sql
--- Build segments as bitmaps
+-- Build segments as bitmaps and find their intersection
 SELECT
-    bitmapAnd(
-        bitmapBuild(groupArray(user_id)) -- users who visited pricing
-        ,
-        bitmapBuild(groupArray(user_id)) -- users who did not convert
-    )
-FROM user_events
-WHERE event_type = 'pricing_view';
+    bitmapToArray(
+        bitmapAnd(pricing_bitmap, signup_bitmap)
+    ) AS users_in_both_segments
+FROM (
+    SELECT
+        bitmapBuild(groupArrayIf(toUInt32(user_id), event_type = 'pricing_view')) AS pricing_bitmap,
+        bitmapBuild(groupArrayIf(toUInt32(user_id), event_type = 'signup')) AS signup_bitmap
+    FROM user_events
+);
 ```
 
 ## Segment Size Comparison
