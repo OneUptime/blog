@@ -28,7 +28,7 @@ The placement service must be reachable for actor routing to work:
 
 ```bash
 kubectl get pods -n dapr-system | grep placement
-kubectl logs -l app=dapr-placement -n dapr-system --tail=50
+kubectl logs -l app=dapr-placement-server -n dapr-system --tail=50
 ```
 
 If the placement service is unhealthy, actors cannot be activated anywhere:
@@ -84,7 +84,7 @@ Ensure your application correctly declares its actor types:
 
 ```python
 from dapr.actor import Actor, ActorRuntime
-from dapr.actor.runtime.config import ActorRuntimeConfig
+from dapr.actor.runtime.config import ActorRuntimeConfig, ActorTypeConfig
 
 config = ActorRuntimeConfig()
 config.update_actor_type_configs([
@@ -96,7 +96,7 @@ ActorRuntime.set_actor_config(config)
 For Go:
 
 ```go
-server.RegisterActorImplFactory(func() runtime.Actor {
+s.RegisterActorImplFactoryContext(func() actor.ServerContext {
     return &MyActor{}
 })
 ```
