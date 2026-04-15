@@ -93,7 +93,7 @@ dapr.io/grpc-port: "50051"
 
 Update the application to use the custom port:
 
-```bash
+```yaml
 # Set via environment variable
 env:
   - name: DAPR_GRPC_PORT
