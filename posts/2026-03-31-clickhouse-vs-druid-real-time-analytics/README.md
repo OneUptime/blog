@@ -22,7 +22,7 @@ graph LR
 
 ## Architecture
 
-**Druid** splits its architecture into several specialized services: Overlord, Coordinator, Broker, Historical, and MiddleManager. Real-time data lands in MiddleManager nodes and is eventually handed off to Historical nodes as immutable segments. Metadata is stored in a relational database (typically PostgreSQL), and coordination uses ZooKeeper or the native coordinator.
+**Druid** splits its architecture into several specialized services: Overlord, Coordinator, Broker, Historical, and MiddleManager. Real-time data lands in MiddleManager nodes and is eventually handed off to Historical nodes as immutable segments. Metadata is stored in a relational database (typically MySQL or PostgreSQL), and coordination uses ZooKeeper (though recent versions have reduced ZooKeeper dependency with HTTP-based coordination).
 
 **ClickHouse** has a simpler operational footprint. Data is written to MergeTree parts and merged in the background. Replication uses ClickHouse Keeper (or ZooKeeper). There is no strict separation between ingestion nodes and query nodes by default, though dedicated roles can be configured.
 
