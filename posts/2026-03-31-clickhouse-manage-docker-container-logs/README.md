@@ -18,7 +18,6 @@ By default, ClickHouse writes logs to `/var/log/clickhouse-server/`:
 |------|---------|
 | `clickhouse-server.log` | Main server log |
 | `clickhouse-server.err.log` | Stderr output |
-| `clickhouse-server-text.log` | Human-readable structured log |
 
 ## Viewing Logs with Docker
 
@@ -51,7 +50,7 @@ Control verbosity via configuration override. Create `config/logging.xml`:
 </clickhouse>
 ```
 
-Log levels from most to least verbose: `trace`, `debug`, `information`, `warning`, `error`.
+Log levels from most to least verbose: `trace`, `debug`, `information`, `notice`, `warning`, `error`, `critical`, `fatal`.
 
 Mount the config in your Compose file:
 
@@ -107,7 +106,7 @@ services:
       driver: loki
       options:
         loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-labels: "job=clickhouse,env=production"
+        loki-external-labels: "job=clickhouse,env=production"
 ```
 
 ## Querying Logs from Inside ClickHouse
