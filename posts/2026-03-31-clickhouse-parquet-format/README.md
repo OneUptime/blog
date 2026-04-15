@@ -108,7 +108,7 @@ INTO OUTFILE 'events_zstd.parquet'
 FORMAT Parquet;
 ```
 
-Available codecs: `snappy` (default), `gzip`, `zstd`, `lz4`, `brotli`, `none`.
+Available codecs: `zstd` (default), `snappy`, `gzip`, `lz4`, `brotli`, `none`.
 
 ## Type Mapping
 
@@ -121,7 +121,7 @@ Available codecs: `snappy` (default), `gzip`, `zstd`, `lz4`, `brotli`, `none`.
 | Float64         | DOUBLE |
 | String          | BYTE_ARRAY (UTF8) |
 | Date            | INT32 (DATE) |
-| DateTime        | INT64 (TIMESTAMP_MICROS) |
+| DateTime        | INT64 (TIMESTAMP_MILLIS) |
 | Array(T)        | LIST |
 | Nullable(T)     | optional field |
 
@@ -137,11 +137,7 @@ FROM file('events.parquet', Parquet)
 WHERE notEmpty(properties['browser']);
 ```
 
-If the Parquet file contains a repeated group (list of structs), enable the setting:
-
-```sql
-SET input_format_parquet_import_nested = 1;
-```
+ClickHouse automatically handles nested Parquet structures including repeated groups (lists of structs) without any special settings.
 
 ## Performance Tips
 
