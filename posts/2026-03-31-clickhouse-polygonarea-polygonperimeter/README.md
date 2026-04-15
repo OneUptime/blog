@@ -1,14 +1,14 @@
-# How to Use polygonArea() and polygonPerimeter() in ClickHouse
+# How to Use polygonAreaCartesian() and polygonPerimeterCartesian() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Geospatial, polygonArea, polygonPerimeter, Polygon, Spatial Measurement
+Tags: ClickHouse, Geospatial, polygonAreaCartesian, polygonPerimeterCartesian, Polygon, Spatial Measurement
 
-Description: Learn how to compute the area and perimeter of polygons in ClickHouse using polygonArea() and polygonPerimeter() for spatial measurement and zone analysis.
+Description: Learn how to compute the area and perimeter of polygons in ClickHouse using polygonAreaCartesian() and polygonPerimeterCartesian() for spatial measurement and zone analysis.
 
 ---
 
-ClickHouse provides `polygonArea()` and `polygonPerimeter()` for computing the area and perimeter of polygon geometries represented as arrays of coordinate rings. These functions use planar (Euclidean) geometry, so units depend on the coordinate system you use.
+ClickHouse provides `polygonAreaCartesian()` and `polygonPerimeterCartesian()` for computing the area and perimeter of polygon geometries represented as arrays of coordinate rings. These functions use planar (Euclidean) geometry, so units depend on the coordinate system you use. ClickHouse also offers `polygonAreaSpherical()` and `polygonPerimeterSpherical()` for spherical (geographic) calculations.
 
 ## Basic Syntax
 
@@ -16,8 +16,8 @@ Both functions accept a polygon in `Array(Array(Tuple(Float64, Float64)))` forma
 
 ```sql
 SELECT
-    polygonArea([[(0.0, 0.0), (4.0, 0.0), (4.0, 3.0), (0.0, 3.0), (0.0, 0.0)]])   AS area,
-    polygonPerimeter([[(0.0, 0.0), (4.0, 0.0), (4.0, 3.0), (0.0, 3.0), (0.0, 0.0)]]) AS perimeter;
+    polygonAreaCartesian([[(0.0, 0.0), (4.0, 0.0), (4.0, 3.0), (0.0, 3.0), (0.0, 0.0)]])   AS area,
+    polygonPerimeterCartesian([[(0.0, 0.0), (4.0, 0.0), (4.0, 3.0), (0.0, 3.0), (0.0, 0.0)]]) AS perimeter;
 ```
 
 ```text
@@ -30,19 +30,19 @@ The 4x3 rectangle has area 12 and perimeter 14, as expected.
 
 ## Working with Geographic Coordinates
 
-When using longitude/latitude in degrees, `polygonArea()` returns a value in squared degrees. For an approximate conversion to square kilometers near the equator, multiply by roughly 12,321 (111 km/degree squared):
+When using longitude/latitude in degrees, `polygonAreaCartesian()` returns a value in squared degrees. For an approximate conversion to square kilometers near the equator, multiply by roughly 12,321 (111 km/degree squared):
 
 ```sql
 SELECT
     zone_id,
     zone_name,
-    polygonArea(polygon)                      AS area_sq_deg,
-    round(polygonArea(polygon) * 12321.0, 2) AS area_sq_km_approx
+    polygonAreaCartesian(polygon)                      AS area_sq_deg,
+    round(polygonAreaCartesian(polygon) * 12321.0, 2) AS area_sq_km_approx
 FROM delivery_zones
 ORDER BY area_sq_km_approx DESC;
 ```
 
-For accurate spherical area, project coordinates to a metric system first or use H3 cell counts as a proxy.
+For more accurate spherical area calculations with geographic coordinates, use `polygonAreaSpherical()` instead, or project coordinates to a metric system first.
 
 ## Computing Perimeter for Service Zone Analysis
 
@@ -50,7 +50,7 @@ For accurate spherical area, project coordinates to a metric system first or use
 SELECT
     zone_id,
     zone_name,
-    round(polygonPerimeter(polygon) * 111.0, 2) AS perimeter_km_approx
+    round(polygonPerimeterCartesian(polygon) * 111.0, 2) AS perimeter_km_approx
 FROM delivery_zones
 ORDER BY perimeter_km_approx DESC;
 ```
@@ -63,10 +63,10 @@ The isoperimetric ratio (area / perimeter^2) measures how compact a shape is - a
 SELECT
     zone_id,
     zone_name,
-    polygonArea(polygon)        AS area,
-    polygonPerimeter(polygon)   AS perimeter,
+    polygonAreaCartesian(polygon)        AS area,
+    polygonPerimeterCartesian(polygon)   AS perimeter,
     round(
-        polygonArea(polygon) / (polygonPerimeter(polygon) * polygonPerimeter(polygon)),
+        polygonAreaCartesian(polygon) / (polygonPerimeterCartesian(polygon) * polygonPerimeterCartesian(polygon)),
         4
     ) AS compactness_ratio
 FROM delivery_zones
@@ -79,7 +79,7 @@ Both functions correctly account for holes (inner rings). A donut shape subtract
 
 ```sql
 SELECT
-    polygonArea([
+    polygonAreaCartesian([
         [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)],
         [(3.0, 3.0), (7.0, 3.0), (7.0, 7.0), (3.0, 7.0), (3.0, 3.0)]
     ]) AS donut_area;
@@ -96,12 +96,12 @@ The outer 10x10 square (area 100) minus the inner 4x4 square (area 16) gives 84.
 ## Finding Zones Larger Than a Threshold
 
 ```sql
-SELECT zone_id, zone_name, polygonArea(polygon) AS area
+SELECT zone_id, zone_name, polygonAreaCartesian(polygon) AS area
 FROM service_zones
-WHERE polygonArea(polygon) > 0.01
+WHERE polygonAreaCartesian(polygon) > 0.01
 ORDER BY area DESC;
 ```
 
 ## Summary
 
-`polygonArea()` computes the enclosed area of a polygon and correctly handles holes in multi-ring polygons. `polygonPerimeter()` returns the total boundary length. Both use planar geometry so apply a degree-to-kilometer conversion factor when working with geographic coordinates. These functions are useful for ranking zones by size, filtering by minimum coverage area, and computing compactness metrics.
+`polygonAreaCartesian()` computes the enclosed area of a polygon using planar geometry and correctly handles holes in multi-ring polygons. `polygonPerimeterCartesian()` returns the total boundary length. For geographic (longitude/latitude) coordinates, use the spherical variants `polygonAreaSpherical()` and `polygonPerimeterSpherical()`, or apply a degree-to-kilometer conversion factor with the Cartesian functions as an approximation. These functions are useful for ranking zones by size, filtering by minimum coverage area, and computing compactness metrics.
