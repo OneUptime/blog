@@ -75,8 +75,8 @@ spec:
     value: "sensor-processor-group"
   - name: initialOffset
     value: "newest"
-  - name: authRequired
-    value: "false"
+  - name: authType
+    value: "none"
   - name: direction
     value: "input"
 ```
