@@ -27,6 +27,7 @@ import (
     "context"
     "fmt"
     "log"
+    "time"
 
     "github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -39,10 +40,10 @@ func main() {
             Username: "default",
             Password: "",
         },
-        DialTimeout:     10,
+        DialTimeout:     10 * time.Second,
         MaxOpenConns:    10,
         MaxIdleConns:    5,
-        ConnMaxLifetime: 3600,
+        ConnMaxLifetime: time.Hour,
     })
     if err != nil {
         log.Fatal(err)
