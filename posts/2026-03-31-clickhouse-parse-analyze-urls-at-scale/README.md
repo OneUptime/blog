@@ -98,7 +98,8 @@ SELECT
     countState()                                     AS views,
     uniqState(visitor_id)                            AS unique_visitors,
     avgState(load_time_ms)                           AS avg_load_ms
-FROM page_views;
+FROM page_views
+GROUP BY log_date, url_path, utm_source, utm_campaign;
 ```
 
 ## Efficient Top-N Queries with URL Functions
