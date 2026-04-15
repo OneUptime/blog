@@ -77,14 +77,14 @@ SELECT * FROM logs   WHERE message LIKE '%err%';
 SELECT * FROM events WHERE event_type ILIKE 'CLICK%';
 ```
 
-Note: Leading wildcards (`%value`) prevent index usage and trigger full scans. Prefer suffix patterns (`value%`) when possible.
+Note: Leading wildcards (`%value`) prevent index usage and trigger full scans. Prefer prefix patterns (`value%`) when possible.
 
 ## PREWHERE vs WHERE
 
 `PREWHERE` is a ClickHouse-specific optimization that filters rows before reading all requested columns from disk. It is especially effective when the filter column is small (e.g., a numeric flag or date) and the table is wide.
 
 ```sql
--- PREWHERE reads only status column first, then fetches other columns
+-- PREWHERE reads only event_type column first, then fetches other columns
 SELECT
     event_id,
     user_id,
