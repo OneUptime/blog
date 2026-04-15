@@ -13,7 +13,7 @@ ClickHouse's `Npy` format outputs a single column as a NumPy `.npy` binary file.
 ## What the Npy Format Supports
 
 - Single-column SELECT queries only.
-- Supported column types: `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Int8`, `Int16`, `Int32`, `Int64`, `Float32`, `Float64`.
+- Supported column types: `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Int8`, `Int16`, `Int32`, `Int64`, `Float32`, `Float64`, `String`, `FixedString`.
 - The output is a valid NumPy `.npy` file with the appropriate dtype header.
 
 ```mermaid
@@ -130,6 +130,8 @@ curl -s \
 | `Int16` | `int16` |
 | `Int32` | `int32` |
 | `Int64` | `int64` |
+| `String` | `S` or `U` |
+| `FixedString` | `S` |
 
 ## Performance Comparison
 
