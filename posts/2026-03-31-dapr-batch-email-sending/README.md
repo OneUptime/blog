@@ -78,7 +78,7 @@ def batch_email_workflow(ctx: DaprWorkflowContext, campaign: dict):
 
         # Wait between batches to respect rate limits
         if i + batch_size < total:
-            yield ctx.create_timer(timedelta(seconds=1))
+            yield ctx.create_timer(ctx.current_utc_datetime + timedelta(seconds=1))
 
     # Send summary notification
     yield ctx.call_activity(send_summary, input={
@@ -96,7 +96,6 @@ def batch_email_workflow(ctx: DaprWorkflowContext, campaign: dict):
 ```python
 def send_single_email(ctx: WorkflowActivityContext, params: dict) -> dict:
     from dapr.clients import DaprClient
-    import json
 
     recipient = params['recipient']
     campaign = params['campaign']
@@ -108,12 +107,12 @@ def send_single_email(ctx: WorkflowActivityContext, params: dict) -> dict:
             client.invoke_binding(
                 binding_name='smtp-sender',
                 operation='create',
-                data=json.dumps({
-                    "from": campaign['fromAddress'],
-                    "to": recipient['email'],
-                    "subject": campaign['subject'],
-                    "html": email_body
-                })
+                data=email_body,
+                binding_metadata={
+                    "emailFrom": campaign['fromAddress'],
+                    "emailTo": recipient['email'],
+                    "subject": campaign['subject']
+                }
             )
 
         # Track delivery
