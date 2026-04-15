@@ -40,14 +40,18 @@ This is useful for dashboards, alerting thresholds, and regression tests where y
 
 ## Choosing a Good Determinator
 
-The determinator should be a column with high cardinality and uniform distribution. Good choices include:
-- Primary keys or UUIDs
-- Session or request identifiers
-- User IDs with a large number of distinct values
+The determinator should be a column with high cardinality and uniform distribution. The determinator must be a `UInt64` value (or another integer type). Good choices include:
+- Integer primary keys or auto-increment IDs
+- Hash of string or UUID columns using `cityHash64()` or `sipHash64()`
+- User IDs or request IDs stored as integers
 
 ```sql
--- Good: high cardinality UUID
-SELECT quantileDeterministic(0.99)(duration_ms, request_uuid) AS p99
+-- Good: high cardinality integer column
+SELECT quantileDeterministic(0.99)(duration_ms, request_id) AS p99
+FROM traces;
+
+-- Good: hash a UUID column to produce a UInt64 determinator
+SELECT quantileDeterministic(0.99)(duration_ms, cityHash64(request_uuid)) AS p99
 FROM traces;
 
 -- Less ideal: low cardinality (only a few values)
