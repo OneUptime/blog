@@ -82,7 +82,7 @@ FROM system.processes
 FORMAT Vertical;
 ```
 
-## Combining with SETTINGS
+## Querying System Replicas
 
 ```sql
 SELECT *
