@@ -63,8 +63,6 @@ import (
     "encoding/json"
     "net/http"
     "time"
-
-    "github.com/dapr/dapr/pkg/middleware"
 )
 
 type AuditEvent struct {
@@ -106,8 +104,11 @@ metadata:
   name: audit-middleware
   namespace: production
 spec:
-  type: middleware.http.uppercase
+  type: middleware.http.wasm
   version: v1
+  metadata:
+    - name: url
+      value: "file:///opt/dapr/middleware/audit.wasm"
 ```
 
 ## Shipping Audit Logs with Fluentd
@@ -123,7 +124,7 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /var/log/containers/*_dapr-system_*.log
+      path /var/log/containers/*_production_daprd-*.log
       tag dapr.audit
       <parse>
         @type json
