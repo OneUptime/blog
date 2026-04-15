@@ -24,7 +24,8 @@ CREATE DICTIONARY ip_to_country (
 )
 PRIMARY KEY ip_range_start
 SOURCE(CLICKHOUSE(TABLE 'ip_ranges' DATABASE 'geoip'))
-LAYOUT(RANGE_HASHED(RANGE_LOWER 'ip_range_start' RANGE_UPPER 'ip_range_end'))
+LAYOUT(RANGE_HASHED())
+RANGE(MIN ip_range_start MAX ip_range_end)
 LIFETIME(MIN 3600 MAX 7200);
 ```
 
@@ -38,7 +39,7 @@ The layout determines the in-memory data structure.
 LAYOUT(FLAT())
 ```
 
-**HASHED** - Hash map for any key type. Good for most dimension tables.
+**HASHED** - Hash map for single UInt64 key. Good for most dimension tables.
 
 ```sql
 LAYOUT(HASHED())
