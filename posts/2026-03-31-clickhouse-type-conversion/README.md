@@ -55,11 +55,11 @@ SELECT toDateTime('2024-01-15 10:30:00');
 SELECT toDateTime64('2024-01-15 10:30:00.123', 3);
 ```
 
-When the input cannot be converted, ClickHouse returns the default value for the target type (0 for numbers, empty string for strings) rather than raising an error:
+When the input cannot be converted, the base `toType()` functions throw an exception. Use the `OrNull` and `OrZero` variants for safe fallback behavior:
 
 ```sql
 SELECT toInt32('not_a_number');
--- Result: 0 (default, no error)
+-- Exception: Cannot parse string 'not_a_number' as Int32
 
 SELECT toInt32OrNull('not_a_number');
 -- Result: NULL
@@ -68,7 +68,7 @@ SELECT toInt32OrZero('not_a_number');
 -- Result: 0
 ```
 
-The `OrNull` and `OrZero` variants give you explicit control over the fallback behavior.
+The `OrNull` variant returns NULL on failure, while `OrZero` returns the default value for the target type (0 for numbers).
 
 ## Using accurateCast
 
@@ -124,7 +124,7 @@ ClickHouse performs implicit coercion in certain contexts, such as arithmetic be
 
 ```sql
 SELECT toTypeName(toInt8(1) + toInt32(2));
--- Result: Int32
+-- Result: Int64
 
 SELECT toTypeName(toFloat32(1.0) + toFloat64(2.0));
 -- Result: Float64
