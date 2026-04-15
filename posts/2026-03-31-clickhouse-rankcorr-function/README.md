@@ -152,7 +152,9 @@ ORDER BY price_rank_corr DESC;
 | 0.3 to 0.5 | Weak positive monotonic relationship |
 | -0.3 to 0.3 | Little or no monotonic relationship |
 | -0.5 to -0.3 | Weak negative monotonic relationship |
-| -1.0 to -0.7 | Strong negative monotonic relationship |
+| -0.7 to -0.5 | Moderate negative monotonic relationship |
+| -0.9 to -0.7 | Strong negative monotonic relationship |
+| -1.0 to -0.9 | Very strong negative monotonic relationship |
 
 ## Summary
 
