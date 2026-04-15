@@ -12,11 +12,11 @@ In a shared ClickHouse environment, not all queries are equal. Dashboard queries
 
 ## Priority Setting
 
-The simplest priority mechanism is the `priority` query setting. Lower values are executed first when the server is under load:
+The simplest priority mechanism is the `priority` query setting. Lower values mean higher priority, with 1 being the highest. A value of 0 (the default) disables priority scheduling:
 
 ```sql
--- High-priority interactive query (priority 0 is highest)
-SET priority = 0;
+-- High-priority interactive query (priority 1 is highest)
+SET priority = 1;
 SELECT count() FROM events WHERE user_id = 12345;
 
 -- Low-priority batch job
@@ -28,7 +28,7 @@ Set default priorities via user settings:
 
 ```sql
 CREATE SETTINGS PROFILE interactive_profile
-SETTINGS priority = 0;
+SETTINGS priority = 1;
 
 CREATE SETTINGS PROFILE batch_profile
 SETTINGS priority = 10;
@@ -49,16 +49,16 @@ SET os_thread_priority = 19;  -- Very low (background)
 
 ## Workload Scheduling for Priority Queues
 
-Workloads provide the most powerful priority model (ClickHouse v24.1+):
+Workloads provide the most powerful priority model (ClickHouse v24.11+):
 
 ```sql
 CREATE WORKLOAD all;
 
-CREATE WORKLOAD interactive PARENT all SETTINGS
+CREATE WORKLOAD interactive IN all SETTINGS
     priority = 0,
     weight = 90;
 
-CREATE WORKLOAD background PARENT all SETTINGS
+CREATE WORKLOAD background IN all SETTINGS
     priority = 100,
     weight = 10;
 ```
@@ -86,7 +86,7 @@ Override priority for specific queries without changing user profiles:
 -- Critical ad-hoc query needs priority boost
 SELECT sum(revenue) FROM orders
 WHERE order_date >= today() - 1
-SETTINGS priority = 0;
+SETTINGS priority = 1;
 
 -- Exploratory query should not disrupt others
 SELECT * FROM large_table LIMIT 1000
@@ -130,4 +130,4 @@ KILL QUERY WHERE query_id = 'abc123';
 
 ## Summary
 
-ClickHouse query prioritization works at multiple levels: the `priority` setting for OS-level thread scheduling, workload scheduling for bandwidth-based priority, and per-query `max_threads` to limit resource usage. Apply priority settings via user profiles to automatically tier workloads, and combine with workload scheduling for production multi-tenant environments.
+ClickHouse query prioritization works at multiple levels: the `priority` setting for ClickHouse-internal query scheduling, `os_thread_priority` for OS-level thread scheduling, workload scheduling for resource-based priority, and per-query `max_threads` to limit resource usage. Apply priority settings via user profiles to automatically tier workloads, and combine with workload scheduling for production multi-tenant environments.
