@@ -91,15 +91,17 @@ func TestInsertAndQuery(t *testing.T) {
 For unit tests that run fast without Docker, define a small interface and mock it.
 
 ```go
+import "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
 type Querier interface {
-    QueryRow(ctx context.Context, query string, args ...interface{}) clickhouse.Row
+    QueryRow(ctx context.Context, query string, args ...any) driver.Row
 }
 
 type MockQuerier struct {
-    RowResult clickhouse.Row
+    RowResult driver.Row
 }
 
-func (m *MockQuerier) QueryRow(_ context.Context, _ string, _ ...interface{}) clickhouse.Row {
+func (m *MockQuerier) QueryRow(_ context.Context, _ string, _ ...any) driver.Row {
     return m.RowResult
 }
 ```
