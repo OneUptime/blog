@@ -69,7 +69,7 @@ SELECT
     count() AS failed_inserts,
     any(exception) AS example_error
 FROM system.query_log
-WHERE type = 'ExceptionBeforeStart' OR type = 'ExceptionWhileProcessing'
+WHERE (type = 'ExceptionBeforeStart' OR type = 'ExceptionWhileProcessing')
   AND query_kind = 'Insert'
   AND query_start_time >= now() - INTERVAL 1 HOUR
 GROUP BY minute
@@ -92,10 +92,10 @@ ClickHouseMetrics_BackgroundBufferFlushSchedulePoolTask -- buffer flush queue
 Set up Prometheus alerts:
 
 ```text
--- Alert on insert rate drop (>50% below baseline for 5 minutes)
+# Alert on insert rate drop (>50% below baseline for 5 minutes)
 rate(ClickHouseProfileEvents_InsertedRows[5m]) < 0.5 * avg_over_time(rate(ClickHouseProfileEvents_InsertedRows[5m])[1h:5m])
 
--- Alert on insert failures
+# Alert on insert failures
 increase(ClickHouseProfileEvents_FailedInsertQueries[5m]) > 0
 ```
 
