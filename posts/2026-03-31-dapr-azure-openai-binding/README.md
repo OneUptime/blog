@@ -73,7 +73,7 @@ kubectl create secret generic openai-secrets \
 
 ## Chat Completion
 
-Use the `completion` operation to generate chat responses:
+Use the `chat-completion` operation to generate chat responses:
 
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
@@ -91,7 +91,7 @@ async function chatWithAI(userMessage, conversationHistory = []) {
 
   const result = await client.binding.send(
     "ai-assistant",
-    "completion",
+    "chat-completion",
     null,
     {
       deploymentID: "gpt-4-deployment",
@@ -101,7 +101,7 @@ async function chatWithAI(userMessage, conversationHistory = []) {
     }
   );
 
-  return result.message.content;
+  return result[0].message.content;
 }
 
 const response = await chatWithAI("Where is my order ORD-001?");
@@ -137,14 +137,14 @@ console.log("AI:", reply);
 async function generateEmbedding(text) {
   const result = await client.binding.send(
     "ai-assistant",
-    "embedding",
+    "get-embedding",
     null,
     {
       deploymentID: "text-embedding-deployment",
-      text,
+      message: text,
     }
   );
-  return result.embedding; // 1536-dimensional vector
+  return result; // 1536-dimensional float array
 }
 
 async function findSimilarProducts(query, productDescriptions) {
@@ -177,7 +177,7 @@ function cosineSimilarity(a, b) {
 ```javascript
 async function safeCompletion(messages) {
   try {
-    return await client.binding.send("ai-assistant", "completion", null, {
+    return await client.binding.send("ai-assistant", "chat-completion", null, {
       deploymentID: "gpt-4-deployment",
       messages: JSON.stringify(messages),
     });
@@ -192,4 +192,4 @@ async function safeCompletion(messages) {
 
 ## Summary
 
-The Dapr Azure OpenAI binding integrates GPT and embedding models into any microservice with a simple binding call. Use the `completion` operation for chat generation and `embedding` for semantic search. Centralizing model configuration in a Dapr component enables teams to swap models, adjust parameters, and rotate API keys without redeploying application code.
+The Dapr Azure OpenAI binding integrates GPT and embedding models into any microservice with a simple binding call. Use the `chat-completion` operation for chat generation and `get-embedding` for semantic search. Centralizing model configuration in a Dapr component enables teams to swap models, adjust parameters, and rotate API keys without redeploying application code.
