@@ -76,10 +76,9 @@ This eliminates the buffering and forwarding overhead of the Distributed engine.
 
 ```sql
 SELECT
-    database,
-    table,
     metric,
-    value
+    value,
+    description
 FROM system.metrics
 WHERE metric LIKE 'DistributedFilesTo%';
 ```
