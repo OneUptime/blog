@@ -95,18 +95,16 @@ LIMIT 20;
 -- Check for errors
 SELECT *
 FROM system.replicas
-WHERE last_exception != ''
+WHERE last_queue_update_exception != ''
   AND table = 'events';
 ```
 
 ## Handling Replica Recovery
 
-If a replica falls behind, ClickHouse will catch it up automatically when it reconnects. For severely lagged replicas, you can force a full resync:
+If a replica falls behind, ClickHouse will catch it up automatically when it reconnects. You can wait for a replica to finish catching up:
 
-```bash
-clickhouse-client --query "
-    SYSTEM RESTORE REPLICA events ON CLUSTER my_cluster
-"
+```sql
+SYSTEM SYNC REPLICA events;
 ```
 
 ## Deduplication
@@ -114,8 +112,11 @@ clickhouse-client --query "
 ReplicatedMergeTree provides idempotent inserts using block checksums. If you retry an insert with the same block, ClickHouse deduplicates it automatically:
 
 ```sql
--- Set deduplication window (default 100 blocks)
+-- Deduplication is enabled by default; you can toggle it per-insert:
 SET insert_deduplicate = 1;
+
+-- The deduplication window (default 100 blocks) is a table-level setting:
+-- replicated_deduplication_window = 100
 ```
 
 ## Summary
