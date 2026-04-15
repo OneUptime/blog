@@ -56,7 +56,6 @@ class ABACPolicyEngine:
         return [
             ExpenseApprovalPolicy(),
             DocumentReadPolicy(),
-            AdminOverridePolicy(),
         ]
 
 
@@ -93,13 +92,15 @@ class DocumentReadPolicy:
 ```python
 from fastapi import FastAPI, Request, HTTPException
 from abac import ABACPolicyEngine, PolicyContext, Effect
-from datetime import datetime
+from functools import wraps
+from datetime import datetime, timezone
 
 app = FastAPI()
 engine = ABACPolicyEngine()
 
 def abac_check(action: str, resource_loader):
     def decorator(func):
+        @wraps(func)
         async def wrapper(request: Request, *args, **kwargs):
             subject = {
                 "sub": request.headers.get("X-JWT-Sub"),
@@ -112,7 +113,7 @@ def abac_check(action: str, resource_loader):
                 subject=subject,
                 resource=resource,
                 action=action,
-                environment={"time": datetime.utcnow().isoformat(), "ip": request.client.host}
+                environment={"time": datetime.now(timezone.utc).isoformat(), "ip": request.client.host}
             )
             if engine.evaluate(ctx) == Effect.DENY:
                 raise HTTPException(403, "Access denied by ABAC policy")
