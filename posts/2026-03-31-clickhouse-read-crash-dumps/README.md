@@ -29,10 +29,12 @@ grep -A 50 "Received signal\|Terminate\|std::terminate\|Signal" /var/log/clickho
 Look for lines like:
 
 ```text
-Signal 11. Received 1 times. More likely there is a bug in ClickHouse.
-Stack trace (use flamegraph.pl or addr2line):
-0x0000000005c3a1f0
-0x0000000005c3a3f0
+########## Short fault info ############
+(version 24.3.1.1 (official build), build id: abc123) (from thread 12345) (no query) Received signal 11
+Signal description: Segmentation fault
+Stack trace:
+0. 0x0000000005c3a1f0
+1. 0x0000000005c3a3f0
 ...
 ```
 
@@ -86,10 +88,12 @@ ClickHouse logs raw addresses. Decode them with `addr2line`:
 addr2line -e /usr/bin/clickhouse-server -f -C 0x0000000005c3a1f0
 ```
 
-Or use the `clickhouse-symbolizer` tool bundled with ClickHouse:
+If ClickHouse was built with debug symbols (or the `clickhouse-common-static-dbg` package is installed), stack traces in the log are automatically symbolized. You can also decode addresses using the built-in SQL functions:
 
-```bash
-cat crash_trace.txt | clickhouse-symbolizer
+```sql
+SELECT arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), thread_id), '\n')
+FROM system.stack_trace
+WHERE query_id = 'your-query-id';
 ```
 
 ## Reading Sanitizer Reports
@@ -119,4 +123,4 @@ journalctl -k | grep -i "oom\|clickhouse" | tail -20
 
 ## Summary
 
-Read ClickHouse crash dumps by first checking the server log for signal information and stack traces, then enabling core dumps via ulimit or systemd configuration. Use GDB with debug symbols to inspect core files, `addr2line` or `clickhouse-symbolizer` to decode addresses, and `dmesg` to detect OOM kills that leave no crash log.
+Read ClickHouse crash dumps by first checking the server log for signal information and stack traces, then enabling core dumps via ulimit or systemd configuration. Use GDB with debug symbols to inspect core files, `addr2line` to decode addresses, and `dmesg` to detect OOM kills that leave no crash log.
