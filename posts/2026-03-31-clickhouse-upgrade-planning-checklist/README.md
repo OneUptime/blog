@@ -27,10 +27,9 @@ Upgrading ClickHouse requires careful planning to avoid downtime, data incompati
 -- Record current version before upgrading
 SELECT version();
 
--- Check client library compatibility
-SELECT name, version
-FROM system.contributors
-LIMIT 5;
+-- Check server uptime and database count before upgrade
+SELECT uptime() AS uptime_seconds, count() AS database_count
+FROM system.databases;
 ```
 
 ```text
@@ -100,7 +99,7 @@ SELECT hostName(), version()
 FROM clusterAllReplicas('production', system.one);
 
 -- Verify replication is healthy on all nodes
-SELECT host_name, table, absolute_delay
+SELECT hostName(), table, absolute_delay
 FROM clusterAllReplicas('production', system.replicas)
 WHERE absolute_delay > 60;
 
