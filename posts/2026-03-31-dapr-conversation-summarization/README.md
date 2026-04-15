@@ -49,8 +49,9 @@ def summarize():
     response = requests.post(
         f"{DAPR_URL}/v1.0-alpha1/conversation/{CONVERSATION_COMPONENT}/converse",
         json={
-            "inputs": [{"message": prompt, "role": "user"}],
-            "parameters": {"temperature": 0.3, "max_tokens": 600}
+            "inputs": [{"content": prompt, "role": "user"}],
+            "temperature": 0.3,
+            "parameters": {"max_tokens": "600"}
         }
     )
     response.raise_for_status()
@@ -78,7 +79,7 @@ def get_from_cache(key: str):
 def save_to_cache(key: str, value: str, ttl_seconds: int):
     requests.post(
         f"{DAPR_URL}/v1.0/state/{STATE_STORE}",
-        json=[{"key": key, "value": value, "options": {"ttlInSeconds": ttl_seconds}}]
+        json=[{"key": key, "value": value, "metadata": {"ttlInSeconds": str(ttl_seconds)}}]
     )
 
 if __name__ == '__main__':
@@ -129,8 +130,9 @@ def call_llm_summarize(text: str, style: str) -> str:
     response = requests.post(
         f"{DAPR_URL}/v1.0-alpha1/conversation/{CONVERSATION_COMPONENT}/converse",
         json={
-            "inputs": [{"message": build_summary_prompt(text, style), "role": "user"}],
-            "parameters": {"temperature": 0.2, "max_tokens": 500}
+            "inputs": [{"content": build_summary_prompt(text, style), "role": "user"}],
+            "temperature": 0.2,
+            "parameters": {"max_tokens": "500"}
         }
     )
     return response.json()['outputs'][0]['result']
