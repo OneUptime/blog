@@ -27,7 +27,7 @@ Part logging is enabled by default. To verify or configure it in `config.xml`:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `event_type` | Enum | NewPart, MergeParts, DownloadPart, RemovePart, MutatePart, MovePart |
+| `event_type` | Enum | NewPart, MergeParts, MergePartsStart, DownloadPart, RemovePart, MutatePart, MutatePartStart, MovePart |
 | `event_time` | DateTime | When the event occurred |
 | `database` | String | Database name |
 | `table` | String | Table name |
@@ -131,13 +131,14 @@ SELECT
     countIf(event_type = 'NewPart')    AS insert_parts,
     countIf(event_type = 'MergeParts') AS merges,
     countIf(event_type = 'RemovePart') AS removed_parts,
-    formatReadableSize(sumIf(size_in_bytes, event_type = 'MergeParts')) AS merged_bytes,
+    sumIf(size_in_bytes, event_type = 'MergeParts') AS merged_bytes_raw,
+    formatReadableSize(merged_bytes_raw) AS merged_bytes,
     round(avg(duration_ms), 0)         AS avg_merge_ms
 FROM system.part_log
 WHERE event_date >= today() - 7
   AND database = currentDatabase()
 GROUP BY table
-ORDER BY merged_bytes DESC;
+ORDER BY merged_bytes_raw DESC;
 ```
 
 ## Mutation Tracking
