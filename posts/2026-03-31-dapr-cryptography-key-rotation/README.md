@@ -10,16 +10,16 @@ Description: Learn how to implement cryptographic key rotation with Dapr Cryptog
 
 ## Why Key Rotation Matters
 
-Key rotation limits the exposure window if a key is compromised and is required by compliance frameworks like PCI-DSS, HIPAA, and SOC 2. Rotating keys with Dapr Cryptography is straightforward because Dapr's ciphertext format includes the key ID, allowing old and new keys to coexist during the rotation period.
+Key rotation limits the exposure window if a key is compromised and is required or recommended by compliance frameworks like PCI-DSS, HIPAA, and SOC 2. Rotating keys with Dapr Cryptography is straightforward because Dapr's ciphertext format can include the key name, allowing old and new keys to coexist during the rotation period.
 
 ## How Dapr Handles Key Rotation
 
 When you encrypt data with Dapr, the ciphertext includes:
-- The key ID (kid) used for encryption
-- The encrypted data encryption key (DEK)
-- The AES-256-GCM ciphertext
+- The key name used for encryption (optionally embedded in the header)
+- The wrapped file key (encrypted symmetric key)
+- The encrypted data (AES-256-GCM by default, or ChaCha20-Poly1305)
 
-When decrypting, Dapr reads the key ID from the ciphertext and fetches the corresponding key from the provider. This means data encrypted with old keys can still be decrypted after you add new keys, enabling gradual re-encryption.
+When decrypting, Dapr reads the key name from the ciphertext header (if present) and fetches the corresponding key from the provider. You can also explicitly pass the key name in the decrypt call. This means data encrypted with old keys can still be decrypted after you add new keys, enabling gradual re-encryption.
 
 ## Key Rotation Strategy
 
@@ -55,9 +55,9 @@ cp keys/data-key.json keys/data-key-v2.json
 ## Phase 2: Update Application to Use New Key
 
 ```python
-import io
 import os
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 
 # Environment variable controls which key to use for new encryptions
 CURRENT_KEY_NAME = os.environ.get("CRYPTO_KEY_NAME", "data-key-v2")
@@ -65,12 +65,12 @@ CURRENT_KEY_NAME = os.environ.get("CRYPTO_KEY_NAME", "data-key-v2")
 def encrypt_data(plaintext: bytes) -> bytes:
     with DaprClient() as d:
         encrypted = d.encrypt(
-            data=io.BytesIO(plaintext),
-            options={
-                "componentName": "my-crypto",
-                "keyName": CURRENT_KEY_NAME,  # New key for new data
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=plaintext,
+            options=EncryptOptions(
+                component_name="my-crypto",
+                key_name=CURRENT_KEY_NAME,  # New key for new data
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         return encrypted.read()
 
@@ -78,11 +78,11 @@ def decrypt_data(ciphertext: bytes, key_name: str) -> bytes:
     # key_name is stored alongside the ciphertext in the database
     with DaprClient() as d:
         decrypted = d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={
-                "componentName": "my-crypto",
-                "keyName": key_name  # Use the key that was used to encrypt
-            }
+            data=ciphertext,
+            options=DecryptOptions(
+                component_name="my-crypto",
+                key_name=key_name,  # Use the key that was used to encrypt
+            ),
         )
         return decrypted.read()
 ```
@@ -105,8 +105,8 @@ SELECT encrypted_value, key_version FROM sensitive_data WHERE id = 1;
 ## Phase 3: Re-encryption Script
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 
 NEW_KEY = "data-key-v2"
 OLD_KEY = "data-key-v1"
@@ -129,18 +129,21 @@ def rotate_records_batch(batch_size: int = 100):
             for record in records:
                 # Decrypt with old key
                 plaintext = d.decrypt(
-                    data=io.BytesIO(record["encrypted_value"]),
-                    options={"componentName": "my-crypto", "keyName": OLD_KEY}
+                    data=record["encrypted_value"],
+                    options=DecryptOptions(
+                        component_name="my-crypto",
+                        key_name=OLD_KEY,
+                    ),
                 ).read()
 
                 # Re-encrypt with new key
                 new_ciphertext = d.encrypt(
-                    data=io.BytesIO(plaintext),
-                    options={
-                        "componentName": "my-crypto",
-                        "keyName": NEW_KEY,
-                        "keyWrapAlgorithm": "RSA-OAEP-256"
-                    }
+                    data=plaintext,
+                    options=EncryptOptions(
+                        component_name="my-crypto",
+                        key_name=NEW_KEY,
+                        key_wrap_algorithm="RSA-OAEP-256",
+                    ),
                 ).read()
 
                 # Update database
@@ -172,8 +175,8 @@ az keyvault key set-attributes \
 ## Automated Rotation with Dapr Jobs
 
 ```python
-# Schedule monthly key rotation check
-# dapr-jobs component triggers this at the start of each month
+# Schedule monthly key rotation check using the Dapr Jobs API (alpha)
+# The Dapr Scheduler service triggers this handler on the configured schedule
 @app.route("/job/key-rotation-check", methods=["POST"])
 def monthly_key_rotation():
     records_needing_rotation = db.count(
