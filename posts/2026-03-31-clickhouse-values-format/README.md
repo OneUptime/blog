@@ -80,15 +80,15 @@ INSERT INTO events FORMAT Values
 (2, 'click', now() - INTERVAL 1 HOUR, 43);
 ```
 
-ClickHouse evaluates the expressions server-side. This is different from most other formats which accept only literal values.
+ClickHouse evaluates the expressions server-side. This is different from most other formats which accept only literal values. Note that expression evaluation in Values format uses a slower code path, so it is not recommended for high-volume inserts.
 
 ## Settings
 
 ```sql
--- Allow expressions in Values input
+-- Enable full SQL parser for expressions in Values input (enabled by default)
 SET input_format_values_interpret_expressions = 1;
 
--- Use template for better performance
+-- Enable template deduction for repeated expressions to improve performance (enabled by default)
 SET input_format_values_deduce_templates_of_expressions = 1;
 ```
 
@@ -101,7 +101,7 @@ CSV          Yes              No               Both
 JSONEachRow  Yes              No               Both
 ```
 
-Values format is the only format natively compatible with SQL INSERT syntax.
+Values format is the primary format natively compatible with SQL INSERT syntax. ClickHouse also offers the SQLInsert output format for generating complete INSERT statements.
 
 ## Limitations
 
@@ -111,13 +111,15 @@ Values format is the only format natively compatible with SQL INSERT syntax.
 
 ## Compatibility with Other Databases
 
-Values format is compatible with MySQL and PostgreSQL INSERT syntax, making it useful for:
+Values format produces output similar to MySQL and PostgreSQL INSERT syntax, making it useful for:
 - Migrating small datasets from other databases to ClickHouse
 - Generating test data scripts
 - Creating reproducible SQL fixtures for integration tests
 
+By default, ClickHouse escapes single quotes with a backslash (`\'`). For PostgreSQL compatibility, set `output_format_values_escape_quote_with_quote = 1` to use SQL-standard quote escaping (`''`).
+
 ```sql
--- This output can be run directly in MySQL or PostgreSQL
+-- This output can often be used in MySQL or PostgreSQL with simple data types
 SELECT id, name, toUnixTimestamp(ts)
 FROM events
 LIMIT 10
