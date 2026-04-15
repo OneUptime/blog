@@ -65,7 +65,7 @@ dapr run \
   --app-id order-service \
   --app-port 8080 \
   --config ./dns-config.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python order_service.py
 ```
 
