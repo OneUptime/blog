@@ -115,7 +115,7 @@ FROM system.part_log
 WHERE event_type = 'RemovePart'
     AND event_time >= now() - INTERVAL 30 DAY
 GROUP BY day, database, table
-ORDER BY day, bytes_expired DESC;
+ORDER BY day, sum(size_in_bytes) DESC;
 ```
 
 ## Compression Ratio Trend
