@@ -60,7 +60,7 @@ spec:
     - alert: DaprHighErrorRate
       expr: |
         (
-          sum(rate(dapr_http_server_request_count{status_code=~"5.."}[5m])) by (app_id)
+          sum(rate(dapr_http_server_request_count{status=~"5.."}[5m])) by (app_id)
           /
           sum(rate(dapr_http_server_request_count[5m])) by (app_id)
         ) > 0.05
@@ -89,7 +89,7 @@ spec:
     # Alert when pub/sub delivery fails
     - alert: DaprPubSubDeliveryFailures
       expr: |
-        sum(rate(dapr_component_pubsub_ingress_count{success="false"}[5m])) by (app_id, topic) > 0.1
+        sum(rate(dapr_component_pubsub_ingress_count{process_status="drop"}[5m])) by (app_id, topic) > 0.1
       for: 5m
       labels:
         severity: warning
