@@ -14,20 +14,19 @@ Dapr components (state stores, pub/sub brokers, secret stores, bindings) connect
 
 ## Checking Component Status via API
 
-The Dapr metadata endpoint reports the health status of each configured component:
+The Dapr metadata endpoint lists all configured components. A component that fails to initialize will not appear in this list:
 
 ```bash
-# Query component status
+# Query component metadata
 curl http://localhost:3500/v1.0/metadata | python3 -m json.tool
 
-# Check specifically for unhealthy components
+# List all initialized components
 curl -s http://localhost:3500/v1.0/metadata | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for c in data.get('components', []):
-    status = c.get('status', 'UNKNOWN')
-    print(f\"{c['name']} ({c['type']}): {status}\")
+    print(f\"{c['name']} ({c['type']}): initialized\")
 "
 ```
 
@@ -51,15 +50,15 @@ rate(dapr_component_state_count{success="true"}[5m])
 /
 rate(dapr_component_state_count[5m])
 
-# Pub/sub availability
-rate(dapr_component_pubsub_publish_count{success="true"}[5m])
+# Pub/sub availability (egress/publish success rate)
+rate(dapr_component_pubsub_egress_count{success="true"}[5m])
 /
-rate(dapr_component_pubsub_publish_count[5m])
+rate(dapr_component_pubsub_egress_count[5m])
 
-# Binding availability
-rate(dapr_component_binding_count{success="true"}[5m])
+# Output binding availability
+rate(dapr_component_output_binding_count{success="true"}[5m])
 /
-rate(dapr_component_binding_count[5m])
+rate(dapr_component_output_binding_count[5m])
 ```
 
 ## Alerting on Component Degradation
@@ -81,7 +80,7 @@ groups:
 
       - alert: DaprPubSubDegraded
         expr: >
-          rate(dapr_component_pubsub_publish_count{success="false"}[3m]) > 1
+          rate(dapr_component_pubsub_egress_count{success="false"}[3m]) > 1
         for: 3m
         labels:
           severity: critical
@@ -100,23 +99,34 @@ import logging
 logger = logging.getLogger(__name__)
 
 def check_component_availability():
-    components = {
-        "statestore": "state/statestore/health",
-        "pubsub": "metadata",  # Use metadata as proxy
-    }
+    """Check overall component health via the outbound health endpoint
+    and verify individual components are initialized via metadata."""
+    try:
+        # Binary healthy/unhealthy check for all components
+        health = requests.get(
+            "http://localhost:3500/v1.0/healthz/outbound",
+            timeout=2
+        )
+        all_healthy = health.status_code == 204
+        logger.info(f"Outbound health: {'OK' if all_healthy else 'DEGRADED'}")
+        record_metric("dapr_outbound_healthy", all_healthy)
+    except Exception as e:
+        logger.info("Outbound health: UNREACHABLE")
+        record_metric("dapr_outbound_healthy", False)
 
-    for name, path in components.items():
-        try:
-            response = requests.get(
-                f"http://localhost:3500/v1.0/{path}",
-                timeout=2
-            )
-            status = "OK" if response.ok else "DEGRADED"
-        except Exception as e:
-            status = "UNREACHABLE"
-
-        logger.info(f"Component {name}: {status}")
-        record_metric(f"dapr_component_{name}_available", status == "OK")
+    try:
+        # Check which components are initialized via metadata
+        metadata = requests.get(
+            "http://localhost:3500/v1.0/metadata",
+            timeout=2
+        ).json()
+        initialized = {c["name"] for c in metadata.get("components", [])}
+        for name in ["statestore", "pubsub"]:
+            status = "OK" if name in initialized else "MISSING"
+            logger.info(f"Component {name}: {status}")
+            record_metric(f"dapr_component_{name}_available", name in initialized)
+    except Exception as e:
+        logger.info("Metadata endpoint: UNREACHABLE")
 ```
 
 ## Summary
