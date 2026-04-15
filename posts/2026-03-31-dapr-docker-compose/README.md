@@ -21,7 +21,7 @@ flowchart TD
         AppB[payment-service\nport 3001] <-->|localhost:3500| SidecarB[dapr-payment-service\nport 3500]
         SidecarA --> Redis
         SidecarB --> Redis
-        SidecarA <-->|gRPC mTLS| SidecarB
+        SidecarA <-->|gRPC| SidecarB
         SidecarA --> Placement
         SidecarB --> Placement
     end
@@ -34,7 +34,8 @@ my-app/
   components/
     statestore.yaml
     pubsub.yaml
-  config.yaml
+  config/
+    config.yaml
   docker-compose.yaml
   order-service/
     Dockerfile
@@ -81,7 +82,7 @@ spec:
 ```
 
 ```yaml
-# config.yaml
+# config/config.yaml
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
@@ -253,16 +254,7 @@ docker compose down -v   # also remove volumes
 
 ## Health Check for Dapr Sidecar
 
-Add a depends_on condition to ensure the sidecar is healthy before the app starts consuming it:
-
-```yaml
-order-service:
-  depends_on:
-    dapr-order-service:
-      condition: service_started
-```
-
-Or poll the sidecar health endpoint in your app startup:
+Because the sidecar uses `network_mode: "service:order-service"`, the app container must start first (to create the network namespace). You cannot add a `depends_on` from the app to the sidecar without creating a circular dependency. Instead, poll the sidecar health endpoint in your app startup:
 
 ```python
 import time
