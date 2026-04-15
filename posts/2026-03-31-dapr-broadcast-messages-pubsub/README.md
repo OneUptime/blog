@@ -38,7 +38,6 @@ The `consumerID` set to `{appID}` ensures each app gets its own consumer group, 
 
 ```python
 import requests
-import json
 
 def broadcast_config_update(config: dict):
     url = "http://localhost:3500/v1.0/publish/pubsub/config-updates"
@@ -69,7 +68,8 @@ def subscribe():
 @app.route('/config-updates', methods=['POST'])
 def handle_config():
     event = request.json
-    feature_flags = event.get('featureFlags', {})
+    data = event.get('data', {})
+    feature_flags = data.get('featureFlags', {})
     print(f"UI Service: Reloading feature flags - {feature_flags}")
     # Apply new feature flags to the UI service
     return jsonify({"status": "SUCCESS"})
@@ -93,7 +93,8 @@ def subscribe():
 @app.route('/config-updates', methods=['POST'])
 def handle_config():
     event = request.json
-    version = event.get('version')
+    data = event.get('data', {})
+    version = data.get('version')
     print(f"Cache Service: Invalidating cache for version {version}")
     # Flush caches to pick up new configuration
     return jsonify({"status": "SUCCESS"})
