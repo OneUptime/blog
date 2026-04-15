@@ -22,15 +22,15 @@ FROM hourly_stats
 WHERE toDate(ts) >= today() - 30;
 ```
 
-The result is a tuple `(intercept, slope)`. A slope of 0.5 means that for each additional request, response time increases by 0.5 ms.
+The result is a tuple `(slope, intercept)`. A slope of 0.5 means that for each additional request, response time increases by 0.5 ms.
 
 ## Extracting Coefficients
 
 ```sql
 WITH simpleLinearRegression(request_count, response_time_ms) AS reg
 SELECT
-    reg.1 AS intercept,
-    reg.2 AS slope
+    reg.1 AS slope,
+    reg.2 AS intercept
 FROM hourly_stats
 WHERE toDate(ts) >= today() - 30;
 ```
@@ -46,7 +46,7 @@ WITH
 SELECT
     request_count,
     response_time_ms AS actual,
-    reg.1 + reg.2 * request_count AS predicted
+    reg.2 + reg.1 * request_count AS predicted
 FROM hourly_stats
 WHERE toDate(ts) = today()
 LIMIT 20;
@@ -76,9 +76,9 @@ ClickHouse does not have a built-in R-squared function, but you can compute it:
 ```sql
 WITH
     (SELECT simpleLinearRegression(x, y) FROM regression_data) AS reg,
-    avg(y) AS mean_y
+    (SELECT avg(y) FROM regression_data) AS mean_y
 SELECT
-    1 - sum(pow(y - (reg.1 + reg.2 * x), 2)) / sum(pow(y - mean_y, 2)) AS r_squared
+    1 - sum(pow(y - (reg.2 + reg.1 * x), 2)) / sum(pow(y - mean_y, 2)) AS r_squared
 FROM regression_data;
 ```
 
@@ -94,7 +94,7 @@ WITH reg AS (
 )
 SELECT
     now() + INTERVAL 1 HOUR AS forecast_time,
-    reg.coeffs.1 + reg.coeffs.2 * toUnixTimestamp(now() + INTERVAL 1 HOUR) AS predicted_requests
+    reg.coeffs.2 + reg.coeffs.1 * toUnixTimestamp(now() + INTERVAL 1 HOUR) AS predicted_requests
 FROM reg;
 ```
 
