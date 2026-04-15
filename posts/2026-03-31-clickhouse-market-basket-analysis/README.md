@@ -88,7 +88,39 @@ ORDER BY lift DESC;
 
 ## Filtering High-Lift Pairs
 
-Rules with lift greater than 1 indicate positive association:
+Rules with lift greater than 1 indicate positive association. Save the previous query's results as a view to make filtering easier:
+
+```sql
+CREATE VIEW basket_rules AS
+WITH
+    total AS (SELECT uniq(order_id) AS n FROM order_items),
+    item_support AS (
+        SELECT product_id, uniq(order_id) AS cnt
+        FROM order_items GROUP BY product_id
+    ),
+    pairs AS (
+        SELECT
+            a.product_id AS item_a,
+            b.product_id AS item_b,
+            uniq(a.order_id) AS pair_cnt
+        FROM order_items a
+        JOIN order_items b ON a.order_id = b.order_id AND a.product_id < b.product_id
+        GROUP BY item_a, item_b
+        HAVING pair_cnt >= 50
+    )
+SELECT
+    p.item_a,
+    p.item_b,
+    p.pair_cnt,
+    round(p.pair_cnt / sa.cnt, 4) AS confidence_a_to_b,
+    round(p.pair_cnt / sb.cnt, 4) AS confidence_b_to_a,
+    round((p.pair_cnt / (SELECT n FROM total)) / ((sa.cnt / (SELECT n FROM total)) * (sb.cnt / (SELECT n FROM total))), 4) AS lift
+FROM pairs p
+JOIN item_support sa ON p.item_a = sa.product_id
+JOIN item_support sb ON p.item_b = sb.product_id;
+```
+
+Then filter for strong associations:
 
 ```sql
 SELECT item_a, item_b, lift
