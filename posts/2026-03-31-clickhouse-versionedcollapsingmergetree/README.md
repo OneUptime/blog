@@ -14,7 +14,7 @@ VersionedCollapsingMergeTree is a ClickHouse table engine that solves the proble
 
 In ClickHouse, data is immutable once written. To "update" a record, you insert a cancellation row (sign = -1) for the old state and a new row (sign = 1) for the new state. But if rows arrive out of order (the new state arrives before the cancellation), a simple `CollapsingMergeTree` fails.
 
-`VersionedCollapsingMergeTree` handles out-of-order updates correctly: it pairs rows by `(primary_key, version)` - matching each positive row with its negative counterpart regardless of insertion order.
+`VersionedCollapsingMergeTree` handles out-of-order updates correctly: it pairs rows by `(sorting_key, version)` - matching each positive row with its negative counterpart regardless of insertion order.
 
 ## Basic Syntax
 
@@ -220,7 +220,7 @@ ORDER BY sign;
 ```
 
 A healthy table has few or no `sign=-1` rows after merges. If `-1` rows persist, either:
-- The corresponding `+1` cancel has not been inserted.
+- The corresponding `+1` state row has not been inserted.
 - Merges are lagging - check `system.merges`.
 
 ## VersionedCollapsingMergeTree vs CollapsingMergeTree
