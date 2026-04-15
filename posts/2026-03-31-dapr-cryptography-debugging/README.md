@@ -158,7 +158,6 @@ print('use:', data.get('use'))
 
 ```python
 import base64
-import sys
 
 # Check ciphertext is intact
 ciphertext_b64 = "..."  # from your database
@@ -180,7 +179,7 @@ except Exception as e:
 
 ```python
 # Correct: match algorithm to key type
-# AES key -> keyWrapAlgorithm: "AES"
+# AES key -> keyWrapAlgorithm: "A256KW"
 # RSA key -> keyWrapAlgorithm: "RSA-OAEP-256"
 options = {
     "componentName": "my-crypto",
@@ -196,7 +195,7 @@ options = {
 ENCRYPTED=$(curl -s -X POST http://localhost:3500/v1.0-alpha1/crypto/my-crypto/encrypt \
   -H "Content-Type: application/octet-stream" \
   -H "dapr-key-name: my-key" \
-  -H "dapr-key-wrap-algorithm: AES" \
+  -H "dapr-key-wrap-algorithm: A256KW" \
   --data-binary "healthcheck" | base64)
 
 echo $ENCRYPTED | base64 -d | curl -s -X POST \
