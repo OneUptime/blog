@@ -104,18 +104,18 @@ roleRef:
 ## Encrypting Data
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
 def encrypt_field(value: str) -> bytes:
     with DaprClient() as d:
         encrypted = d.encrypt(
-            data=io.BytesIO(value.encode()),
-            options={
-                "componentName": "k8s-crypto",
-                "keyName": "crypto-keys/app-key-v1",
-                "keyWrapAlgorithm": "AES"
-            }
+            data=value.encode(),
+            options=EncryptOptions(
+                component_name="k8s-crypto",
+                key_name="crypto-keys/app-key-v1",
+                key_wrap_algorithm="AES",
+            ),
         )
         return encrypted.read()
 
@@ -128,14 +128,16 @@ db.execute("UPDATE users SET ssn_encrypted = %s WHERE id = %s",
 ## Decrypting Data
 
 ```python
+from dapr.clients.grpc._crypto import DecryptOptions
+
 def decrypt_field(ciphertext: bytes) -> str:
     with DaprClient() as d:
         decrypted = d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={
-                "componentName": "k8s-crypto",
-                "keyName": "crypto-keys/app-key-v1"
-            }
+            data=ciphertext,
+            options=DecryptOptions(
+                component_name="k8s-crypto",
+                key_name="crypto-keys/app-key-v1",
+            ),
         )
         return decrypted.read().decode()
 
@@ -154,7 +156,7 @@ func encryptWithK8sSecret(data []byte) ([]byte, error) {
     stream, err := client.Encrypt(
         context.Background(),
         bytes.NewReader(data),
-        dapr.EncryptRequestOptions{
+        dapr.EncryptOptions{
             ComponentName:    "k8s-crypto",
             KeyName:          "crypto-keys/app-key-v1",
             KeyWrapAlgorithm: "AES",
@@ -180,8 +182,17 @@ kubectl create secret generic tenant-keys \
 
 ```python
 # Use tenant-specific key
-key_name = f"tenant-keys/{tenant_id}-key"
-encrypted = encrypt_field(value, key_name)
+def encrypt_for_tenant(value: str, tenant_id: str) -> bytes:
+    with DaprClient() as d:
+        encrypted = d.encrypt(
+            data=value.encode(),
+            options=EncryptOptions(
+                component_name="k8s-crypto",
+                key_name=f"tenant-keys/{tenant_id}-key",
+                key_wrap_algorithm="AES",
+            ),
+        )
+        return encrypted.read()
 ```
 
 ## Limitations vs. Azure Key Vault
