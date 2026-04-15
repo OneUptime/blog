@@ -119,16 +119,16 @@ WHERE flag_type = 'blocked' AND is_active = 1;
 
 ## Checking Set Contents
 
-The `Set` engine does not support `SELECT *` in the usual sense - you read from the underlying in-memory structure via a trick: create a view or use a Numbers table.
+The `Set` engine does not support `SELECT` queries at all - you cannot read data back from a Set table directly. To verify which values are in the set, keep a parallel copy in a regular MergeTree table, or check against a known value using `IN`.
 
 ```sql
--- Count how many values are in the set
-SELECT count() FROM blocked_users;
+-- Check whether a specific value exists in the set
+SELECT (101) IN (SELECT user_id FROM blocked_users) AS is_blocked;
 ```
 
 ```text
-count()
-5
+is_blocked
+1
 ```
 
 ## Combining Multiple Set Tables
@@ -151,15 +151,15 @@ WHERE event_date = today();
 
 ## Persistence Across Restarts
 
-The `Set` engine writes its contents to a `data.bin` file in the table directory. On server restart, the file is loaded back into RAM automatically.
+The `Set` engine writes its contents to numbered `.bin` files in the table directory. On server restart, these files are loaded back into RAM automatically.
 
 ```bash
-# Confirm the persistence file exists
+# Confirm the persistence files exist
 ls /var/lib/clickhouse/data/default/blocked_users/
 ```
 
 ```text
-data.bin
+1.bin
 ```
 
 ## Performance Comparison
