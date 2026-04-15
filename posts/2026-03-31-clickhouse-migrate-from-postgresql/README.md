@@ -83,7 +83,7 @@ ORDER BY (event_type, user_id, created_at);
 Differences from PostgreSQL:
 - No `PRIMARY KEY` enforcement or uniqueness constraints
 - Replace `JSONB` with `String` and use `JSONExtractString/Int/Float` functions
-- No secondary indexes - the `ORDER BY` sort key serves as the primary access path
+- No B-tree indexes - the `ORDER BY` sort key serves as the primary access path (ClickHouse supports data skipping indexes like `minmax` and `bloom_filter` but these are not equivalent to PostgreSQL secondary indexes)
 - `LowCardinality(String)` for low-cardinality columns is more efficient than PostgreSQL enums
 
 ## Step 1: Export from PostgreSQL Using COPY
@@ -157,7 +157,7 @@ SELECT
     session_id,
     event_type,
     page,
-    amount::Float64,
+    amount,
     created_at
 FROM postgresql(
     'postgres.host:5432',
@@ -180,7 +180,7 @@ ENGINE = PostgreSQL(
 );
 ```
 
-This gives ClickHouse read access to all PostgreSQL tables in the `analytics` schema.
+This gives ClickHouse read access to all PostgreSQL tables in the `analytics` database.
 
 ## Step 5: Enable CDC with MaterializedPostgreSQL
 
@@ -245,8 +245,7 @@ For frequently accessed JSON keys, extract them into dedicated columns:
 ALTER TABLE events ADD COLUMN referrer String DEFAULT '';
 ALTER TABLE events ADD COLUMN device   LowCardinality(String) DEFAULT '';
 
-UPDATE events
-SET
+ALTER TABLE events UPDATE
     referrer = JSONExtractString(properties, 'referrer'),
     device   = JSONExtractString(properties, 'device')
 WHERE properties != '{}';
