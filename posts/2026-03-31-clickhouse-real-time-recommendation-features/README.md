@@ -82,6 +82,13 @@ Use a Kafka table engine to stream events directly into `user_events` with no ET
 
 ```sql
 CREATE TABLE user_events_kafka
+(
+    user_id    UInt64,
+    item_id    UInt64,
+    event_type LowCardinality(String),
+    score      Float32,
+    ts         DateTime
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'broker:9092',
