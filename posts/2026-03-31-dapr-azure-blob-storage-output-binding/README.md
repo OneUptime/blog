@@ -26,17 +26,15 @@ spec:
   type: bindings.azure.blobstorage
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
-    - name: storageAccessKey
+    - name: accountKey
       secretKeyRef:
         name: azure-storage-secret
-        key: storageAccessKey
-    - name: container
+        key: accountKey
+    - name: containerName
       value: "documents"
     - name: decodeBase64
-      value: "false"
-    - name: encodeBase64
       value: "false"
     - name: publicAccessLevel
       value: "none"
@@ -46,7 +44,7 @@ Create the Kubernetes secret:
 
 ```bash
 kubectl create secret generic azure-storage-secret \
-  --from-literal=storageAccessKey=<your-storage-account-key>
+  --from-literal=accountKey=<your-storage-account-key>
 ```
 
 ## Uploading a Blob
@@ -65,7 +63,7 @@ async function uploadDocument(blobName, content, contentType = "application/json
     {
       blobName,
       contentType,
-      "Content-Disposition": `attachment; filename="${blobName}"`,
+      contentDisposition: `attachment; filename="${blobName}"`,
     }
   );
   console.log(`Uploaded: ${blobName}`);
@@ -161,13 +159,13 @@ For fine-grained access control, use a Shared Access Signature:
 
 ```yaml
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
     - name: sasToken
       secretKeyRef:
         name: azure-storage-secret
         key: sasToken
-    - name: container
+    - name: containerName
       value: "documents"
 ```
 
@@ -194,11 +192,11 @@ docker run -d \
 
 ```yaml
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "devstoreaccount1"
-    - name: storageAccessKey
+    - name: accountKey
       value: "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
-    - name: container
+    - name: containerName
       value: "documents"
     - name: endpoint
       value: "http://127.0.0.1:10000/devstoreaccount1"
