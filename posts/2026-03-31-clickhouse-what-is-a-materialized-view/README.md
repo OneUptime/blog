@@ -60,7 +60,7 @@ This query is fast because it reads from the pre-aggregated target table, not th
 
 ## The TO Clause vs. Implicit Inner Table
 
-Without the `TO hourly_revenue` clause, ClickHouse creates a hidden `.inner.hourly_revenue_mv` table. Prefer the explicit `TO` clause so you can:
+Without the `TO hourly_revenue` clause, ClickHouse creates a hidden inner table (named `.inner_id.<UUID>` in current versions). Prefer the explicit `TO` clause so you can:
 - Drop the view without losing data
 - Add custom TTL or partitioning to the target table
 - Query the target table directly
