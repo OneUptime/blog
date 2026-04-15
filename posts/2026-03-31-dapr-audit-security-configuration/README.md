@@ -31,7 +31,7 @@ kubectl get configurations --all-namespaces -o json | \
 dapr mtls -k
 
 # Verify certificate expiry
-dapr mtls expiry -k
+dapr mtls expiry
 ```
 
 ## Audit Component Security
@@ -50,7 +50,7 @@ kubectl get components --all-namespaces -o json | jq '
     name: .metadata.name,
     namespace: .metadata.namespace,
     type: .spec.type,
-    scopes: .spec.scopes,
+    scopes: .scopes,
     usesSecretRef: ([.spec.metadata[]?.secretKeyRef] | any)
   }'
 ```
@@ -68,9 +68,10 @@ kubectl get configurations --all-namespaces -o json | jq '
   }'
 
 # Identify services with no access control configuration
-kubectl get deployments --all-namespaces \
-  -l "dapr.io/enabled=true" \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} {.metadata.annotations.dapr\.io/config}{"\n"}{end}'
+kubectl get deployments --all-namespaces -o json | jq -r '
+  .items[] |
+  select(.spec.template.metadata.annotations["dapr.io/enabled"] == "true") |
+  "\(.metadata.namespace)/\(.metadata.name) \(.spec.template.metadata.annotations["dapr.io/config"] // "NONE")"'
 ```
 
 ## Audit Sidecar Injection Coverage
@@ -100,7 +101,7 @@ dapr mtls -k 2>/dev/null || echo "ERROR: Could not retrieve mTLS status"
 
 echo ""
 echo "--- Certificate Expiry ---"
-dapr mtls expiry -k 2>/dev/null || echo "ERROR: Could not check certificate expiry"
+dapr mtls expiry 2>/dev/null || echo "ERROR: Could not check certificate expiry"
 
 echo ""
 echo "--- Components with Plaintext Credentials (FAIL if any) ---"
@@ -117,7 +118,7 @@ echo "--- Component Scoping Coverage ---"
 kubectl get components --all-namespaces -o json | jq '
   .items[] | {
     name: .metadata.name,
-    scoped: (.spec.scopes != null and (.spec.scopes | length) > 0)
+    scoped: (.scopes != null and (.scopes | length) > 0)
   }'
 ```
 
