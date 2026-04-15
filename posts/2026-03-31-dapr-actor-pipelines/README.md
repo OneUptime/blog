@@ -26,16 +26,15 @@ Each stage actor:
 ## Stage 1: Enrichment Actor
 
 ```javascript
-class EnrichmentActor {
-  constructor(host) {
-    this.stateManager = host.stateManager;
-    this.client = new (require('@dapr/dapr').DaprClient)();
-  }
+const { AbstractActor, ActorProxyBuilder, ActorId, DaprClient, HttpMethod } = require('@dapr/dapr');
 
+class EnrichmentActor extends AbstractActor {
   async process(payload) {
+    const client = new DaprClient();
+
     // Enrich with user details
-    const user = await this.client.invokeMethod(
-      'user-service', 'users/' + payload.userId, 'GET'
+    const user = await client.invoker.invoke(
+      'user-service', 'users/' + payload.userId, HttpMethod.GET
     );
 
     const enriched = {
@@ -46,8 +45,9 @@ class EnrichmentActor {
     };
 
     // Pass to validation stage
-    const nextActorId = `validate:${payload.eventId}`;
-    await this.client.actor.invoke('ValidationActor', nextActorId, 'process', enriched);
+    const builder = new ActorProxyBuilder('ValidationActor', client);
+    const proxy = builder.build(new ActorId(`validate:${payload.eventId}`));
+    await proxy.process(enriched);
     return { success: true };
   }
 }
@@ -56,12 +56,11 @@ class EnrichmentActor {
 ## Stage 2: Validation Actor
 
 ```javascript
-class ValidationActor {
-  constructor(host) {
-    this.client = new (require('@dapr/dapr').DaprClient)();
-  }
+const { AbstractActor, ActorProxyBuilder, ActorId, DaprClient } = require('@dapr/dapr');
 
+class ValidationActor extends AbstractActor {
   async process(payload) {
+    const client = new DaprClient();
     const errors = [];
 
     if (!payload.userId) errors.push('Missing userId');
@@ -69,7 +68,7 @@ class ValidationActor {
     if (!payload.userEmail) errors.push('Enrichment failed - no email');
 
     if (errors.length > 0) {
-      await this.client.pubsub.publish('events-pubsub', 'pipeline.validation-failed', {
+      await client.pubsub.publish('events-pubsub', 'pipeline.validation-failed', {
         eventId: payload.eventId,
         errors
       });
@@ -77,8 +76,9 @@ class ValidationActor {
     }
 
     // Pass to transform stage
-    const nextActorId = `transform:${payload.eventId}`;
-    await this.client.actor.invoke('TransformActor', nextActorId, 'process', payload);
+    const builder = new ActorProxyBuilder('TransformActor', client);
+    const proxy = builder.build(new ActorId(`transform:${payload.eventId}`));
+    await proxy.process(payload);
     return { success: true };
   }
 }
@@ -87,11 +87,9 @@ class ValidationActor {
 ## Stage 3: Transform Actor
 
 ```javascript
-class TransformActor {
-  constructor(host) {
-    this.client = new (require('@dapr/dapr').DaprClient)();
-  }
+const { AbstractActor, ActorProxyBuilder, ActorId, DaprClient } = require('@dapr/dapr');
 
+class TransformActor extends AbstractActor {
   async process(payload) {
     const transformed = {
       event_id: payload.eventId,
@@ -104,8 +102,10 @@ class TransformActor {
     };
 
     // Pass to storage stage
-    const nextActorId = `store:${payload.eventId}`;
-    await this.client.actor.invoke('StorageActor', nextActorId, 'process', transformed);
+    const client = new DaprClient();
+    const builder = new ActorProxyBuilder('StorageActor', client);
+    const proxy = builder.build(new ActorId(`store:${payload.eventId}`));
+    await proxy.process(transformed);
     return { success: true };
   }
 }
@@ -114,7 +114,9 @@ class TransformActor {
 ## Stage 4: Storage Actor
 
 ```javascript
-class StorageActor {
+const { AbstractActor } = require('@dapr/dapr');
+
+class StorageActor extends AbstractActor {
   async process(payload) {
     await db.query(
       `INSERT INTO events (event_id, event_type, user_id, user_email, user_plan, occurred_at, processed_at)
@@ -130,12 +132,13 @@ class StorageActor {
 ## Starting the Pipeline
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, ActorProxyBuilder, ActorId } = require('@dapr/dapr');
 const client = new DaprClient();
 
 async function submitToPipeline(event) {
-  const actorId = `enrich:${event.eventId}`;
-  await client.actor.invoke('EnrichmentActor', actorId, 'process', event);
+  const builder = new ActorProxyBuilder('EnrichmentActor', client);
+  const proxy = builder.build(new ActorId(`enrich:${event.eventId}`));
+  await proxy.process(event);
 }
 ```
 
