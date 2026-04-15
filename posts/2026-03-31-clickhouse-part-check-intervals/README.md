@@ -14,23 +14,21 @@ ClickHouse periodically checks the integrity of data parts on disk. Each part is
 
 ## Relevant Settings
 
+These are MergeTree table-level settings, configured in the `<merge_tree>` section of the server config:
+
 ```xml
 <!-- config.xml -->
-<check_delay_period>5</check_delay_period>
-<cleanup_delay_period>30</cleanup_delay_period>
-<merge_selecting_sleep_ms>5000</merge_selecting_sleep_ms>
+<merge_tree>
+    <cleanup_delay_period>30</cleanup_delay_period>
+    <merge_selecting_sleep_ms>5000</merge_selecting_sleep_ms>
+</merge_tree>
 ```
 
-In newer versions, you can configure via `MergeTree` settings:
-
-```sql
-ALTER TABLE my_table MODIFY SETTING
-    check_sample_column_probability = 0.1;
-```
+Note: The `check_delay_period` MergeTree setting existed in older versions but is now obsolete and has no effect in current ClickHouse releases.
 
 ## Part Check Queue
 
-For replicated tables, parts are checked and reconciled via the replication log:
+For replicated tables, corrupt or missing parts are re-fetched from other replicas. You can monitor pending fetch operations in the replication queue:
 
 ```sql
 SELECT
@@ -40,7 +38,7 @@ SELECT
     required_quorum,
     source_replica
 FROM system.replication_queue
-WHERE type = 'CHECK_PART'
+WHERE type = 'GET_PART'
 ORDER BY create_time DESC
 LIMIT 20;
 ```
@@ -62,9 +60,9 @@ CHECK TABLE my_table PARTITION '2026-03';
 The output shows each part and whether it passed or failed:
 
 ```text
-part_name            | is_ok | message
-20260101_1_1000_5    | 1     |
-20260101_1001_2000_5 | 0     | Checksum mismatch
+part_path                | is_passed | message
+20260101_1_1000_5        | 1         |
+20260101_1001_2000_5     | 0         | Checksum mismatch
 ```
 
 ## Handling Failed Parts
@@ -83,25 +81,11 @@ ALTER TABLE my_table DETACH PART '20260101_1001_2000_5';
 SYSTEM SYNC REPLICA my_table;
 ```
 
-## Configuring Check Frequency
+## Part Check Behavior
 
-The check delay controls how often ClickHouse scans for parts needing verification:
+In current ClickHouse versions, the part check thread for replicated tables runs automatically and cannot be tuned via a single delay setting (the older `check_delay_period` setting is obsolete). ClickHouse checks parts when inconsistencies are detected during queries or replication, and automatically re-fetches corrupt parts from other replicas.
 
-```xml
-<check_delay_period>30</check_delay_period>
-```
-
-On high-write clusters with many parts, increase this to reduce background IO:
-
-```xml
-<check_delay_period>120</check_delay_period>
-```
-
-On clusters with a history of disk issues, keep it low for faster detection:
-
-```xml
-<check_delay_period>5</check_delay_period>
-```
+For non-replicated tables, use `CHECK TABLE` (shown above) on a schedule to verify integrity, and restore from backups if corruption is found.
 
 ## Monitoring Part Health
 
@@ -111,13 +95,24 @@ Track recently checked parts and errors:
 SELECT
     table,
     count() AS parts,
-    countIf(is_currently_merging) AS merging,
-    countIf(bytes_on_disk > 0) AS healthy
+    sum(bytes_on_disk) AS total_bytes,
+    countIf(rows > 0) AS non_empty_parts
 FROM system.parts
 WHERE active AND database = 'default'
 GROUP BY table;
 ```
 
+To see parts currently being merged, query `system.merges`:
+
+```sql
+SELECT
+    table,
+    partition_id,
+    progress,
+    num_parts
+FROM system.merges;
+```
+
 ## Summary
 
-Configure ClickHouse part check intervals by balancing check frequency against background IO load. On replicated clusters, rely on automatic part re-fetching to recover from corruption. Use `CHECK TABLE` to manually verify specific tables or partitions, and monitor `system.replication_queue` for pending check operations.
+ClickHouse automatically verifies part integrity and, on replicated tables, re-fetches corrupt parts from other replicas. Use `CHECK TABLE` to manually verify specific tables or partitions, and monitor `system.replication_queue` for pending fetch operations. For non-replicated tables, schedule periodic `CHECK TABLE` runs and maintain backups for recovery.
