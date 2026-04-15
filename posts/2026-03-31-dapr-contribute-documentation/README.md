@@ -19,7 +19,7 @@ Dapr documentation lives at `github.com/dapr/docs` and is built with Hugo. The s
 - Adding new how-to guides
 - Improving concept explanations
 - Updating outdated version references
-- Adding translations (via `dapr/docs-kr`, `dapr/docs-zh`, etc.)
+- Adding translations (via community translation repos such as `dapr-cn/docs` for Chinese)
 
 ## Fork and Set Up
 
@@ -115,20 +115,20 @@ Dapr docs use Hugo shortcodes for reusable snippets:
 {{< tabs "Self-Hosted" "Kubernetes" >}}
 
 {{% codetab %}}
-```bash
+\```bash
 dapr run --app-id myapp -- node app.js
-```
+\```
 {{% /codetab %}}
 
 {{% codetab %}}
-```yaml
+\```yaml
 annotations:
   dapr.io/enabled: "true"
-```
+\```
 {{% /codetab %}}
 
 {{< /tabs >}}
-```bash
+```
 
 ## Submit Your Documentation PR
 
