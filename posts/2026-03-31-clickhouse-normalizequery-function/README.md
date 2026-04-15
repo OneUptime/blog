@@ -20,7 +20,7 @@ normalizedQueryHash(query_string)   -- returns UInt64: hash of normalized query
 `normalizeQuery` replaces:
 - Numeric literals with `?`
 - String literals with `?`
-- Arrays of literals with `[?]`
+- Arrays of literals with `[?..]`
 
 The function is purely a string transformation. It does not parse the query for validity.
 
@@ -50,7 +50,7 @@ SELECT * FROM orders WHERE id = 1                        | SELECT * FROM orders 
 SELECT * FROM orders WHERE id = 999                      | SELECT * FROM orders WHERE id = ?
 SELECT * FROM users WHERE email = 'alice@example.com'    | SELECT * FROM users WHERE email = ?
 SELECT * FROM users WHERE email = 'bob@example.com'      | SELECT * FROM users WHERE email = ?
-SELECT id FROM events WHERE ts > ? AND status = ?        | SELECT id FROM events WHERE ts > ? AND status = ?
+SELECT id FROM events WHERE ts > 1711900800 AND status = 'active' | SELECT id FROM events WHERE ts > ? AND status = ?
 ```
 
 ## Grouping Query Patterns from system.query_log
