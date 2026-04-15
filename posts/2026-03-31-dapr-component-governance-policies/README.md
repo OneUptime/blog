@@ -60,9 +60,7 @@ spec:
     match:
       resources:
         kinds:
-        - Component
-        apiGroups:
-        - dapr.io
+        - dapr.io/v1alpha1/Component
     validate:
       message: "Dapr components must define scopes to limit access."
       pattern:
@@ -71,9 +69,7 @@ spec:
     match:
       resources:
         kinds:
-        - Component
-        apiGroups:
-        - dapr.io
+        - dapr.io/v1alpha1/Component
     validate:
       message: "Components must have a cost-center label."
       pattern:
@@ -104,12 +100,20 @@ spec:
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: daprcomponentsscoperequired
+  name: daprcomponentscoperequired
 spec:
   crd:
     spec:
       names:
         kind: DaprComponentScopeRequired
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            requiredLabels:
+              type: array
+              items:
+                type: string
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -118,6 +122,12 @@ spec:
         input.review.object.kind == "Component"
         not input.review.object.scopes
         msg := "Dapr component must define scopes"
+      }
+      violation[{"msg": msg}] {
+        input.review.object.kind == "Component"
+        required := input.parameters.requiredLabels[_]
+        not input.review.object.metadata.labels[required]
+        msg := sprintf("Missing required label: %s", [required])
       }
 ```
 
