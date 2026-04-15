@@ -95,18 +95,21 @@ Purchase events should have 100% product coverage; page view events 0%.
 Query the log table for recent drops:
 
 ```sql
-SELECT
-    table_name,
-    column_name,
-    check_date,
-    completeness_pct,
-    lagInFrame(completeness_pct) OVER (
-        PARTITION BY table_name, column_name
-        ORDER BY check_date
-    ) AS prev_completeness
-FROM data_completeness_log
-WHERE check_date >= today() - 7
-HAVING completeness_pct < prev_completeness - 5  -- dropped by 5+ pct points
+SELECT *
+FROM (
+    SELECT
+        table_name,
+        column_name,
+        check_date,
+        completeness_pct,
+        lagInFrame(completeness_pct) OVER (
+            PARTITION BY table_name, column_name
+            ORDER BY check_date
+        ) AS prev_completeness
+    FROM data_completeness_log
+    WHERE check_date >= today() - 7
+)
+WHERE completeness_pct < prev_completeness - 5  -- dropped by 5+ pct points
 ORDER BY check_date DESC;
 ```
 
