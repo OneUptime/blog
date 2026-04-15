@@ -56,7 +56,7 @@ func (b *SelectBuilder) Limit(n int) *SelectBuilder {
     return b
 }
 
-func (b *SelectBuilder) Build() (string, []interface{}) {
+func (b *SelectBuilder) buildBase() string {
     cols := "*"
     if len(b.columns) > 0 {
         cols = strings.Join(b.columns, ", ")
@@ -67,6 +67,12 @@ func (b *SelectBuilder) Build() (string, []interface{}) {
     if len(b.conditions) > 0 {
         query += " WHERE " + strings.Join(b.conditions, " AND ")
     }
+
+    return query
+}
+
+func (b *SelectBuilder) Build() (string, []interface{}) {
+    query := b.buildBase()
 
     if b.orderBy != "" {
         query += " ORDER BY " + b.orderBy
@@ -119,14 +125,20 @@ func (b *AggregateBuilder) Having(cond string) *AggregateBuilder {
 }
 
 func (b *AggregateBuilder) Build() (string, []interface{}) {
-    sql, params := b.SelectBuilder.Build()
+    query := b.SelectBuilder.buildBase()
     if len(b.groupByCols) > 0 {
-        sql += " GROUP BY " + strings.Join(b.groupByCols, ", ")
+        query += " GROUP BY " + strings.Join(b.groupByCols, ", ")
     }
     if b.havingClause != "" {
-        sql += " HAVING " + b.havingClause
+        query += " HAVING " + b.havingClause
     }
-    return sql, params
+    if b.orderBy != "" {
+        query += " ORDER BY " + b.orderBy
+    }
+    if b.limit > 0 {
+        query += fmt.Sprintf(" LIMIT %d", b.limit)
+    }
+    return query, b.params
 }
 ```
 
