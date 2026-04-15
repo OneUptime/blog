@@ -14,7 +14,7 @@ Azure Cosmos DB is Microsoft's globally distributed, multi-model database servic
 
 ## Prerequisites
 
-- An Azure subscription with a Cosmos DB account (SQL API)
+- An Azure subscription with a Cosmos DB account (API for NoSQL)
 - Dapr CLI and runtime installed
 - Azure CLI for setup
 
