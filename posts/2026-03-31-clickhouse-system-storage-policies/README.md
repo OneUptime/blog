@@ -19,7 +19,7 @@ flowchart TD
     A --> D[Volume 3: cold]
     B --> E[Disk: ssd]
     C --> F[Disk: hdd]
-    D --> G[Disk: s3_cold]
+    D --> G[Disk: s3_archive]
     B --> H[move_factor: 0.1 - move when 10% free remains]
     C --> I[move_factor: 0.2]
 ```
