@@ -34,7 +34,7 @@ For Linkerd:
 
 ```bash
 linkerd viz edges deploy
-# Look for "secured" in the TLS column
+# Look for a checkmark in the SECURED column
 ```
 
 ## Disable Dapr mTLS via Configuration
@@ -71,7 +71,6 @@ To disable mTLS for all services in a namespace, apply the configuration at the 
 
 ```bash
 helm upgrade dapr dapr/dapr \
-  --set dapr_sentry.enabled=true \
   --set global.mtls.enabled=false \
   -n dapr-system
 ```
