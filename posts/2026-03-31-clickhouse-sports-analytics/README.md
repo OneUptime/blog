@@ -68,16 +68,23 @@ LIMIT 20;
 SELECT
     team_id,
     game_id,
-    sum(value) AS total_score,
-    avg(sum(value)) OVER (
+    total_score,
+    avg(total_score) OVER (
         PARTITION BY team_id
         ORDER BY game_id
         ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
     ) AS rolling_5_game_avg
-FROM game_events
-WHERE event_type = 'score'
-  AND season = 2025
-GROUP BY team_id, game_id
+FROM
+(
+    SELECT
+        team_id,
+        game_id,
+        sum(value) AS total_score
+    FROM game_events
+    WHERE event_type = 'score'
+      AND season = 2025
+    GROUP BY team_id, game_id
+)
 ORDER BY team_id, game_id;
 ```
 
