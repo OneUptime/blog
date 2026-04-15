@@ -53,8 +53,8 @@ spec:
   type: crypto.azure.keyvault
   version: v1
   metadata:
-  - name: vaultURI
-    value: "https://my-app-keyvault.vault.azure.net"
+  - name: vaultName
+    value: "my-app-keyvault"
   # Using Managed Identity (recommended in AKS)
   - name: azureClientId
     value: "<managed-identity-client-id>"
@@ -71,8 +71,8 @@ spec:
   type: crypto.azure.keyvault
   version: v1
   metadata:
-  - name: vaultURI
-    value: "https://my-app-keyvault.vault.azure.net"
+  - name: vaultName
+    value: "my-app-keyvault"
   - name: azureTenantId
     value: "<tenant-id>"
   - name: azureClientId
@@ -86,18 +86,19 @@ spec:
 ## Encrypting Data with Azure Key Vault Key
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions
 
 def encrypt_sensitive_data(data: bytes, key_name: str = "my-encryption-key") -> bytes:
     with DaprClient() as d:
+        options = EncryptOptions(
+            component_name="azurekeyvault-crypto",
+            key_name=key_name,
+            key_wrap_algorithm="RSA-OAEP-256",
+        )
         encrypted = d.encrypt(
-            data=io.BytesIO(data),
-            options={
-                "componentName": "azurekeyvault-crypto",
-                "keyName": key_name,
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=data,
+            options=options,
         )
         return encrypted.read()
 
@@ -109,21 +110,24 @@ encrypted_ssn = encrypt_sensitive_data(customer_ssn)
 ## Decrypting with Azure Key Vault
 
 ```python
+from dapr.clients.grpc._crypto import DecryptOptions
+
 def decrypt_sensitive_data(ciphertext: bytes, key_name: str = "my-encryption-key") -> bytes:
     with DaprClient() as d:
+        options = DecryptOptions(
+            component_name="azurekeyvault-crypto",
+            key_name=key_name,
+        )
         decrypted = d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={
-                "componentName": "azurekeyvault-crypto",
-                "keyName": key_name
-            }
+            data=ciphertext,
+            options=options,
         )
         return decrypted.read()
 
 plaintext_ssn = decrypt_sensitive_data(encrypted_ssn).decode()
 ```
 
-## AKS Pod Identity Setup
+## AKS Workload Identity Setup
 
 For seamless integration in AKS, use Workload Identity:
 
@@ -145,13 +149,26 @@ spec:
 ```
 
 ```bash
-# Create service account with workload identity binding
-az aks pod-identity add \
+# Create a user-assigned managed identity
+az identity create --name my-app-mi --resource-group myRG
+
+# Get the OIDC issuer URL for your AKS cluster
+export AKS_OIDC_ISSUER=$(az aks show -n myAKS -g myRG --query "oidcIssuerProfile.issuerUrl" -o tsv)
+
+# Create a federated credential linking the Kubernetes service account
+az identity federated-credential create \
+  --name my-app-federated-cred \
+  --identity-name my-app-mi \
   --resource-group myRG \
-  --cluster-name myAKS \
-  --namespace default \
-  --name my-app-identity \
-  --identity-resource-id /subscriptions/.../resourceGroups/myRG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-app-mi
+  --issuer "${AKS_OIDC_ISSUER}" \
+  --subject "system:serviceaccount:default:my-app-sa" \
+  --audience api://AzureADTokenExchange
+
+# Create and annotate the Kubernetes service account
+kubectl create serviceaccount my-app-sa --namespace default
+kubectl annotate serviceaccount my-app-sa \
+  azure.workload.identity/client-id="<managed-identity-client-id>" \
+  --namespace default
 ```
 
 ## Verifying Key Vault Access
@@ -159,7 +176,7 @@ az aks pod-identity add \
 ```bash
 # Test that the Dapr sidecar can reach Key Vault
 kubectl exec -it <pod> -c daprd -- \
-  curl -X POST http://localhost:3500/v1.0-alpha1/crypto/azurekeyvault-crypto/encrypt \
+  curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/azurekeyvault-crypto/encrypt \
   -H "Content-Type: application/octet-stream" \
   -H "dapr-key-name: my-encryption-key" \
   -H "dapr-key-wrap-algorithm: RSA-OAEP-256" \
