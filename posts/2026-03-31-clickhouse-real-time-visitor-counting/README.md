@@ -18,14 +18,14 @@ Exact unique counting requires storing all visitor IDs in memory or on disk. At 
 -- Exact count - accurate but memory intensive
 SELECT uniqExact(visitor_id) AS exact_visitors FROM pageviews WHERE ts >= today();
 
--- Approximate count - 99%+ accuracy, much faster
+-- Approximate count - high accuracy, much faster
 SELECT uniq(visitor_id) AS approx_visitors FROM pageviews WHERE ts >= today();
 
 -- HyperLogLog with configurable precision
 SELECT uniqHLL12(visitor_id) AS hll_visitors FROM pageviews WHERE ts >= today();
 ```
 
-For most analytics use cases, `uniq` (which uses a 65536-bucket HyperLogLog) is accurate enough and much faster.
+For most analytics use cases, `uniq` (which uses an adaptive sampling algorithm with a working set of up to 65536 hash values) is accurate enough and much faster.
 
 ## Real-Time Materialized View
 
@@ -37,7 +37,7 @@ CREATE TABLE visitor_counts_hourly (
     country      LowCardinality(String),
     page         String,
     visitors     AggregateFunction(uniq, String),
-    pageviews    UInt64
+    pageviews    SimpleAggregateFunction(sum, UInt64)
 ) ENGINE = AggregatingMergeTree
 ORDER BY (hour, country, page);
 
@@ -87,33 +87,38 @@ Count unique visitors across rolling windows:
 ```sql
 SELECT
     toStartOfMinute(ts)     AS minute,
-    uniq(visitor_id)        AS visitors_in_minute,
-    uniqExactIf(visitor_id, ts >= now() - INTERVAL 1 HOUR) AS visitors_last_hour
+    uniq(visitor_id)        AS visitors_in_minute
 FROM pageviews
 WHERE ts >= now() - INTERVAL 1 HOUR
-GROUP BY minute
+GROUP BY minute WITH TOTALS
 ORDER BY minute;
 ```
+
+The `WITH TOTALS` modifier adds an extra row with the overall unique visitor count across the entire hour.
 
 ## Tracking New vs Returning Visitors
 
 ```sql
-SELECT
-    toDate(first_seen)                                AS cohort_date,
-    uniq(visitor_id)                                  AS new_visitors,
-    uniqIf(visitor_id, first_seen < today() - 1)      AS returning_visitors
-FROM (
+WITH visitor_first_seen AS (
     SELECT
         visitor_id,
-        min(ts) AS first_seen
+        toDate(min(ts)) AS first_seen
     FROM pageviews
     WHERE ts >= today() - 30
     GROUP BY visitor_id
 )
-GROUP BY cohort_date
-ORDER BY cohort_date;
+SELECT
+    toDate(p.ts)                                              AS visit_date,
+    uniq(p.visitor_id)                                        AS total_visitors,
+    uniqIf(p.visitor_id, vfs.first_seen = toDate(p.ts))      AS new_visitors,
+    uniqIf(p.visitor_id, vfs.first_seen < toDate(p.ts))      AS returning_visitors
+FROM pageviews AS p
+INNER JOIN visitor_first_seen AS vfs ON p.visitor_id = vfs.visitor_id
+WHERE p.ts >= today() - 30
+GROUP BY visit_date
+ORDER BY visit_date;
 ```
 
 ## Summary
 
-ClickHouse's HyperLogLog-based `uniq` function makes real-time unique visitor counting both fast and memory-efficient. Combined with `AggregatingMergeTree` materialized views, you can serve live visitor counts with millisecond latency regardless of data volume. For truly real-time counters, combine materialized view pre-aggregation with lightweight queries against recent raw data.
+ClickHouse's `uniq` function makes real-time unique visitor counting both fast and memory-efficient. Combined with `AggregatingMergeTree` materialized views, you can serve live visitor counts with millisecond latency regardless of data volume. For truly real-time counters, combine materialized view pre-aggregation with lightweight queries against recent raw data.
