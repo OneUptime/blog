@@ -63,6 +63,7 @@ This means both the legacy client and Dapr point to the same backend initially -
 Introduce Dapr without removing the existing code:
 
 ```python
+import json
 import os
 from dapr.clients import DaprClient
 
@@ -80,7 +81,7 @@ def get_user(user_id: str) -> dict:
 def save_user(user_id: str, user: dict):
     if DAPR_ENABLED:
         with DaprClient() as d:
-            d.save_state('usercache', f'user-{user_id}', user)
+            d.save_state('usercache', f'user-{user_id}', json.dumps(user))
     else:
         redis_client.set(f'user:{user_id}', json.dumps(user))
 ```
