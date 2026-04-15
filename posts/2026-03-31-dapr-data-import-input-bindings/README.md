@@ -20,9 +20,9 @@ External Source -> Dapr Sidecar (Input Binding) -> POST /binding-name -> Your Se
 
 Your service responds with 200 to acknowledge, or non-2xx to trigger retry.
 
-## S3 Trigger for File Imports
+## SQS Trigger for S3 File Imports
 
-Configure an S3 binding to trigger on new file uploads:
+The S3 binding (`bindings.aws.s3`) is output-only and does not support input triggers. To react to new S3 file uploads, configure S3 event notifications to send to an SQS queue, then use a Dapr SQS input binding to receive those events:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -30,18 +30,18 @@ kind: Component
 metadata:
   name: s3-import
 spec:
-  type: bindings.aws.s3
+  type: bindings.aws.sqs
   version: v1
   metadata:
-  - name: bucket
-    value: incoming-imports
+  - name: queueNameOrUrl
+    value: s3-import-notifications
   - name: region
     value: us-east-1
   - name: direction
     value: input
 ```
 
-Handle S3 file import events:
+Handle S3 file import events delivered via SQS:
 
 ```python
 from flask import Flask, request
@@ -49,14 +49,18 @@ from dapr.clients import DaprClient
 import boto3
 import csv
 import io
+import json
 
 app = Flask(__name__)
 
 @app.route('/s3-import', methods=['POST'])
 def handle_s3_import():
     event = request.json
-    bucket = event['metadata']['bucket']
-    key = event['metadata']['key']
+    # Parse S3 event notification from SQS message
+    s3_event = json.loads(event['data'])
+    s3_record = s3_event['Records'][0]['s3']
+    bucket = s3_record['bucket']['name']
+    key = s3_record['object']['key']
 
     # Download and process the file
     s3 = boto3.client('s3')
@@ -73,7 +77,6 @@ def parse_import_file(content: str, filename: str) -> list:
         reader = csv.DictReader(io.StringIO(content))
         return list(reader)
     elif filename.endswith('.json'):
-        import json
         return json.loads(content)
     else:
         raise ValueError(f"Unsupported format: {filename}")
@@ -118,22 +121,7 @@ def handle_kafka_import():
 
 ## HTTP Webhook Import
 
-Accept webhook callbacks from external partners:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: webhook-import
-spec:
-  type: bindings.http
-  version: v1
-  metadata:
-  - name: url
-    value: http://localhost:5000/webhook-import
-  - name: direction
-    value: input
-```
+Accept webhook callbacks from external partners. The HTTP binding (`bindings.http`) is output-only, so webhooks are received directly by your application's HTTP server without a Dapr binding component:
 
 ```python
 @app.route('/webhook-import', methods=['POST'])
@@ -164,7 +152,7 @@ spec:
   version: v1
   metadata:
   - name: schedule
-    value: "0 * * * *"  # Every hour
+    value: "@every 1h"  # Every hour
 ```
 
 ```python
@@ -210,4 +198,4 @@ def import_records(records: list):
 
 ## Summary
 
-Dapr input bindings eliminate polling loops by pushing data arrival events directly to your service endpoint. Configure S3, Kafka, HTTP webhook, or cron bindings to trigger your import handler automatically. Your handler focuses on parsing and loading logic while Dapr handles source connectivity and retry on failure. Track import progress in Dapr state for operational visibility.
+Dapr input bindings eliminate polling loops by pushing data arrival events directly to your service endpoint. Configure SQS, Kafka, or cron bindings to trigger your import handler automatically. Your handler focuses on parsing and loading logic while Dapr handles source connectivity and retry on failure. Track import progress in Dapr state for operational visibility.
