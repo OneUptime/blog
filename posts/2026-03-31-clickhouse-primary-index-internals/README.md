@@ -36,16 +36,16 @@ SELECT count() FROM events
 WHERE user_id = 42 AND event_time >= '2024-01-01';
 ```
 
-ClickHouse performs a binary search over `primary.idx` to find the range of granules that could contain `user_id = 42`. It skips all granules outside that range without reading `data.bin`.
+ClickHouse performs a binary search over `primary.idx` to find the range of granules that could contain `user_id = 42`. It skips all granules outside that range without reading the column data files.
 
 ## Mark Files Link Index to Data
 
-The `primary.idx` tells ClickHouse which granule to read. The `.mrk3` (mark file) maps each granule number to a byte offset in `data.bin`:
+The `primary.idx` tells ClickHouse which granule to read. The `.mrk2` mark file (used with the default adaptive granularity) maps each granule number to an offset in the corresponding column data file (e.g., `user_id.bin`):
 
 ```text
-granule 0  -> offset 0 in data.bin
-granule 1  -> offset 4096 in data.bin
-granule 2  -> offset 9210 in data.bin
+granule 0  -> offset 0 in user_id.bin
+granule 1  -> offset 4096 in user_id.bin
+granule 2  -> offset 9210 in user_id.bin
 ```
 
 ClickHouse can jump directly to the right offset using `pread`, avoiding sequential scans.
