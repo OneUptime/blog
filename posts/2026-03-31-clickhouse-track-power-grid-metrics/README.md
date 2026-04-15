@@ -94,7 +94,7 @@ SELECT
     node_id,
     countIf(status = 1)                           AS online_intervals,
     count()                                       AS total_intervals,
-    round(countIf(status = 1) / count() * 100, 2) AS availability_pct
+    round(countIf(status = 1) * 100.0 / count(), 2) AS availability_pct
 FROM grid_metrics
 WHERE recorded_at >= today() - INTERVAL 30 DAY
 GROUP BY node_id
@@ -109,9 +109,9 @@ CREATE TABLE grid_hourly_summary
 (
     node_id        UInt32,
     hour           DateTime,
-    avg_freq_hz    Float32,
-    avg_load_mw    Float32,
-    min_voltage_kv Float32
+    avg_freq_hz    AggregateFunction(avg, Float32),
+    avg_load_mw    AggregateFunction(avg, Float32),
+    min_voltage_kv AggregateFunction(min, Float32)
 )
 ENGINE = AggregatingMergeTree()
 ORDER BY (node_id, hour);
@@ -120,9 +120,9 @@ CREATE MATERIALIZED VIEW grid_hourly_mv TO grid_hourly_summary AS
 SELECT
     node_id,
     toStartOfHour(recorded_at)   AS hour,
-    avg(frequency_hz)             AS avg_freq_hz,
-    avg(load_mw)                  AS avg_load_mw,
-    min(voltage_kv)               AS min_voltage_kv
+    avgState(frequency_hz)        AS avg_freq_hz,
+    avgState(load_mw)             AS avg_load_mw,
+    minState(voltage_kv)          AS min_voltage_kv
 FROM grid_metrics
 GROUP BY node_id, hour;
 ```
