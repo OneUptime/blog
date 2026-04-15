@@ -15,7 +15,7 @@ The Dapr Actor model lets you build stateful, concurrent applications by modelin
 ## Installation
 
 ```bash
-pip install dapr dapr-ext-grpc flask
+pip install dapr dapr-ext-fastapi uvicorn
 ```
 
 ## Defining an Actor Interface
@@ -90,11 +90,11 @@ class CartActor(Actor, CartActorInterface):
 
 ```python
 # main.py
-import asyncio
+from fastapi import FastAPI
+from dapr.ext.fastapi import DaprActor
 from dapr.actor.runtime.runtime import ActorRuntime
 from dapr.actor.runtime.config import ActorRuntimeConfig, ActorTypeConfig
 from datetime import timedelta
-from dapr.ext.grpc import App
 
 from cart_actor import CartActor
 
@@ -110,13 +110,18 @@ config.update_actor_type_configs([
 
 ActorRuntime.set_actor_config(config)
 
-app = App()
+app = FastAPI()
+actor = DaprActor(app)
 
-async def register_actors():
-    await ActorRuntime.register_actor(CartActor)
+@app.on_event("startup")
+async def startup():
+    await actor.register_actor(CartActor)
+```
 
-asyncio.run(register_actors())
-app.run(50051)
+Run the actor service with:
+
+```bash
+dapr run --app-id cart-actor --app-port 8000 -- uvicorn main:app --port 8000
 ```
 
 ## Calling an Actor
