@@ -152,7 +152,7 @@ spec:
   type: bindings.aws.sqs
   version: v1
   metadata:
-    - name: queueName
+    - name: queueNameOrUrl
       value: "order-processing"
     - name: region
       value: "us-east-1"
