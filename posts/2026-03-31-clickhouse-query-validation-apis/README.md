@@ -10,7 +10,7 @@ Description: Validate and sanitize user-supplied ClickHouse queries in API layer
 
 ## Why Query Validation Matters
 
-APIs that accept user-supplied SQL queries (like embedded analytics or query builders) need validation to prevent destructive operations (DROP, DELETE, TRUNCATE), enforce complexity limits, and ensure only allowed tables are accessed. ClickHouse's `EXPLAIN` and `FORMAT` features help validate queries before execution.
+APIs that accept user-supplied SQL queries (like embedded analytics or query builders) need validation to prevent destructive operations (DROP, DELETE, TRUNCATE), enforce complexity limits, and ensure only allowed tables are accessed. ClickHouse's `EXPLAIN` feature helps validate queries before execution.
 
 ## Basic Validation Middleware
 
@@ -21,8 +21,6 @@ const FORBIDDEN_KEYWORDS = [
   'DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE',
   'INSERT', 'UPDATE', 'SYSTEM', 'KILL', 'ATTACH', 'DETACH'
 ];
-
-const ALLOWED_TABLES = new Set(['events', 'sessions', 'users', 'orders', 'products']);
 
 function validateQuery(query) {
   const errors = [];
