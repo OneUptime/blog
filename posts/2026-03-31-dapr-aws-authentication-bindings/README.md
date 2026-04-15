@@ -81,10 +81,10 @@ Leave `accessKey` and `secretKey` empty and rely on standard AWS environment var
 
 Dapr will fall through to the AWS SDK credential chain:
 1. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` environment variables
-2. `~/.aws/credentials` file
-3. EC2 instance metadata service (IMDS)
-4. ECS task role
-5. EKS IRSA (IAM Roles for Service Accounts)
+2. `~/.aws/credentials` and `~/.aws/config` files
+3. Web Identity Token credentials (EKS IRSA)
+4. ECS container credentials (task role)
+5. EC2 instance metadata service (IMDS)
 
 ## Method 4: IAM Role for EC2 Instance Profile
 
