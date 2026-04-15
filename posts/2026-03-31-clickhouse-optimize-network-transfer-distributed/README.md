@@ -56,18 +56,18 @@ WHERE toYYYYMM(event_time) = 202501
 GROUP BY user_id;
 ```
 
-## Use PREWHERE Instead of WHERE
+## Leverage PREWHERE Optimization
 
-PREWHERE reads only the filter column first, skipping rows before loading the rest:
+PREWHERE reads only the filter column first, skipping rows before loading the rest. It is supported on MergeTree family tables, not on Distributed tables directly. However, ClickHouse automatically moves eligible WHERE conditions to PREWHERE on each shard's local MergeTree table when `optimize_move_to_prewhere` is enabled (the default):
 
 ```sql
 SELECT user_id, value
 FROM dist_events
-PREWHERE event_type = 'purchase'
-WHERE event_date = today();
+WHERE event_type = 'purchase'
+  AND event_date = today();
 ```
 
-This reduces bytes read per shard, which directly reduces bytes sent over the network.
+ClickHouse pushes this query to each shard, where the local MergeTree table automatically applies PREWHERE optimization. This reduces bytes read per shard, which directly reduces bytes sent over the network.
 
 ## Monitor Network Metrics
 
