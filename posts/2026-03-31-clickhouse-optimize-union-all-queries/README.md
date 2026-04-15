@@ -75,7 +75,7 @@ Control parallelism for UNION ALL branches:
 ```sql
 -- Each branch can use multiple threads
 SET max_threads = 8;
-SET union_default_mode = 'ALL';  -- Default behavior
+SET union_default_mode = 'ALL';  -- Makes bare UNION behave as UNION ALL (default is '' which requires explicit ALL or DISTINCT)
 
 -- Check that branches run in parallel
 EXPLAIN PIPELINE
