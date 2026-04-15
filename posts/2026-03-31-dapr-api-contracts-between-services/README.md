@@ -61,6 +61,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OrderItem"
+    OrderItem:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: string
+        quantity:
+          type: integer
     Order:
       type: object
       properties:
@@ -114,8 +122,8 @@ Pact verifies that service interactions match the agreed contract:
 
 ```javascript
 // payment-service/tests/order-service.pact.spec.js
-const { Pact } = require('@pact-foundation/pact');
-const { DaprClient, HttpMethod } = require('@dapr/dapr');
+const { Pact, Matchers } = require('@pact-foundation/pact');
+const axios = require('axios');
 
 const provider = new Pact({
   consumer: 'payment-service',
@@ -125,6 +133,7 @@ const provider = new Pact({
 
 describe('Order Service Contract', () => {
   beforeAll(() => provider.setup());
+  afterEach(() => provider.verify());
   afterAll(() => provider.finalize());
 
   it('creates an order', async () => {
@@ -142,21 +151,20 @@ describe('Order Service Contract', () => {
       willRespondWith: {
         status: 201,
         body: {
-          orderId: expect.stringMatching(/^ord-/),
+          orderId: Matchers.term({ generate: 'ord-12345', matcher: '^ord-' }),
           status: 'pending'
         }
       }
     });
 
-    const client = new DaprClient({ daprHost: 'localhost', daprPort: '3500' });
-    const result = await client.invoker.invoke(
-      'order-service',
-      'v1/orders',
-      HttpMethod.POST,
-      { customerId: 'cust-123', items: [{ productId: 'prod-1', quantity: 2 }] }
-    );
+    // Use a direct HTTP client instead of DaprClient because the Dapr SDK
+    // routes requests through the sidecar, which is not running in this test.
+    const response = await axios.post('http://localhost:1234/v1/orders', {
+      customerId: 'cust-123',
+      items: [{ productId: 'prod-1', quantity: 2 }]
+    });
 
-    expect(result.orderId).toMatch(/^ord-/);
+    expect(response.data.orderId).toMatch(/^ord-/);
   });
 });
 ```
