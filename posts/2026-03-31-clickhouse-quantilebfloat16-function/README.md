@@ -8,7 +8,7 @@ Description: Learn how quantileBFloat16() uses bfloat16 number compression in Cl
 
 ---
 
-ClickHouse's `quantileBFloat16()` function computes approximate quantiles by compressing input values into the bfloat16 (Brain Float 16) format. Each bfloat16 value uses only 2 bytes and retains the 8-bit exponent of float32, giving it a wide dynamic range with reduced precision. The function stores up to 65,536 unique bfloat16 values and sorts them to find the quantile position, making it very fast while using a predictable fixed amount of memory.
+ClickHouse's `quantileBFloat16()` function computes approximate quantiles by compressing input values into the bfloat16 (Brain Float 16) format. Each bfloat16 value uses only 2 bytes and retains the 8-bit exponent of float32, giving it a wide dynamic range with reduced precision. The function tracks distinct bfloat16 values in a sparse hash map (at most 65,536 possible) and sorts them to find the quantile position, making it very fast while using a bounded amount of memory.
 
 ## Basic Syntax
 
@@ -26,7 +26,7 @@ SELECT quantilesBFloat16(0.5, 0.75, 0.9, 0.95, 0.99)(latency_ms) AS percentiles
 FROM requests;
 ```
 
-The result is an Array of Float32 values.
+The result is an Array of Float64 values.
 
 ## How BFloat16 Compression Works
 
@@ -46,7 +46,7 @@ Because the exponent is preserved, `quantileBFloat16()` handles values from very
 
 ## Memory Characteristics
 
-The internal state stores at most 65,536 bfloat16 values (128 KB), regardless of how many rows are processed.
+Since bfloat16 has only 16 bits, there are at most 65,536 distinct representable values. The internal state uses a sparse hash map that tracks only the distinct bfloat16 values actually observed, so memory usage is data-dependent but always bounded.
 
 ```sql
 -- Safe to use on very large tables
@@ -56,14 +56,14 @@ SELECT
 FROM billion_row_table;
 ```
 
-For comparison, `quantileExact()` would require memory proportional to the number of rows, while `quantileBFloat16()` stays bounded at 128 KB.
+For comparison, `quantileExact()` would require memory proportional to the number of rows, while `quantileBFloat16()` stays bounded by the number of distinct bfloat16 values (typically far fewer than 65,536 in practice).
 
 ## Accuracy Characteristics
 
-The relative error introduced by bfloat16 compression is roughly 1% due to the 7-bit mantissa. This means:
+The relative error introduced by bfloat16 compression is no more than approximately 0.39% due to the 7-bit mantissa (the rounding error is at most half the precision step). This means:
 
 ```sql
--- For a true value of 1000ms, bfloat16 result may be 990-1010ms
+-- For a true value of 1000ms, bfloat16 result may be around 996-1004ms
 SELECT
     quantile(0.99)(latency_ms)          AS approx_p99,
     quantileBFloat16(0.99)(latency_ms)  AS bfloat16_p99
@@ -71,7 +71,7 @@ FROM requests
 WHERE event_date = today();
 ```
 
-For most observability and monitoring workloads, a 1% relative error is well within acceptable bounds.
+For most observability and monitoring workloads, a ~0.39% relative error is well within acceptable bounds.
 
 ## Comparing Quantile Functions
 
@@ -105,4 +105,4 @@ ORDER BY p99 DESC;
 
 ## Summary
 
-`quantileBFloat16()` offers a fast, memory-bounded approximate quantile using bfloat16 compression to store up to 65,536 unique values in 128 KB. It handles the full float range (unlike `quantileTiming()`), introduces only around 1% relative error, and performs well on very large datasets. It is a good choice when you need more resolution than t-digest's centroids provide, without the full memory cost of `quantileExact()`.
+`quantileBFloat16()` offers a fast, memory-bounded approximate quantile using bfloat16 compression to track up to 65,536 distinct values. It handles the full float range (unlike `quantileTiming()`), introduces no more than approximately 0.39% relative error, and performs well on very large datasets. It is a good choice when you need more resolution than t-digest's centroids provide, without the full memory cost of `quantileExact()`.
