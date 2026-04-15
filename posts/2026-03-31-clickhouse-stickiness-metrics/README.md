@@ -45,11 +45,11 @@ L-days measures how many days in the past 28 days each user was active:
 ```sql
 SELECT
     user_id,
-    uniq(toDate(event_time)) AS active_days_last_28,
+    uniqExact(toDate(event_time)) AS active_days_last_28,
     CASE
-        WHEN uniq(toDate(event_time)) >= 21 THEN 'l21_plus'
-        WHEN uniq(toDate(event_time)) >= 14 THEN 'l14_to_20'
-        WHEN uniq(toDate(event_time)) >= 7 THEN 'l7_to_13'
+        WHEN active_days_last_28 >= 21 THEN 'l21_plus'
+        WHEN active_days_last_28 >= 14 THEN 'l14_to_20'
+        WHEN active_days_last_28 >= 7 THEN 'l7_to_13'
         ELSE 'l1_to_6'
     END AS l_bucket
 FROM user_events
@@ -63,13 +63,13 @@ Track how your L-day distribution changes month over month:
 
 ```sql
 SELECT
-    toYYYYMM(event_time) AS month,
+    toYYYYMM(month_start) AS month,
     l_bucket,
     count() AS users
 FROM (
     SELECT
         user_id,
-        toStartOfMonth(event_time) AS event_time,
+        toStartOfMonth(event_time) AS month_start,
         CASE
             WHEN uniqExact(toDate(event_time)) >= 21 THEN 'l21_plus'
             WHEN uniqExact(toDate(event_time)) >= 14 THEN 'l14'
@@ -121,8 +121,7 @@ FROM (
     SELECT
         toDate(event_time) AS day,
         uniq(user_id) / (SELECT uniq(user_id) FROM user_events
-            WHERE event_time >= toDate(event_time) - 29
-              AND event_time < toDate(event_time) + 1) * 100 AS stickiness_pct
+            WHERE toDate(event_time) BETWEEN day - 29 AND day) * 100 AS stickiness_pct
     FROM user_events
     WHERE event_time >= today() - 90
     GROUP BY day
