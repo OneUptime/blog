@@ -173,12 +173,12 @@ def place_order_with_outbox(order_id: str, customer_id: str, items: list):
             TransactionalStateOperation(
                 key=f"order:{order_id}",
                 data=json.dumps({"status": "placed", "customerId": customer_id}),
-                operation_type=OperationType.upsert
+                operation_type=TransactionOperationType.upsert
             ),
             TransactionalStateOperation(
                 key=f"outbox:{order_id}",
                 data=json.dumps({"topic": "OrderPlaced", "orderId": order_id}),
-                operation_type=OperationType.upsert
+                operation_type=TransactionOperationType.upsert
             )
         ]
         client.execute_state_transaction("statestore", operations)
