@@ -57,7 +57,7 @@ To bind only to a specific interface (e.g. a private network interface):
 | 9009 | HTTP | Interserver replication |
 | 9010 | HTTPS | Interserver replication TLS |
 | 3306 | TCP | MySQL-compatible protocol |
-| 5432 | TCP | PostgreSQL-compatible protocol |
+| 9005 | TCP | PostgreSQL-compatible protocol |
 | 9100 | gRPC | gRPC interface |
 
 ## Configuring Port Numbers
@@ -70,7 +70,7 @@ To bind only to a specific interface (e.g. a private network interface):
     <tcp_port_secure>9440</tcp_port_secure>
     <interserver_http_port>9009</interserver_http_port>
     <mysql_port>3306</mysql_port>
-    <postgresql_port>5432</postgresql_port>
+    <postgresql_port>9005</postgresql_port>
     <grpc_port>9100</grpc_port>
 </clickhouse>
 ```
@@ -97,7 +97,7 @@ graph LR
 </clickhouse>
 ```
 
-ClickHouse resolves the hostname at startup. Using a DNS name instead of an IP gives you flexibility to change the IP without restarting ClickHouse.
+ClickHouse resolves the hostname at startup and binds to the resolved IP address. If the DNS record later changes, the listening socket does not automatically rebind — you must restart ClickHouse for the new IP to take effect.
 
 ## listen_try Setting
 
@@ -121,18 +121,9 @@ After restarting ClickHouse, confirm the ports are open:
 ss -tlnp | grep clickhouse
 ```
 
-Or from inside ClickHouse:
-
-```sql
-SELECT interface, port, protocol
-FROM system.metrics
-WHERE metric LIKE '%Listen%';
-```
-
-Actually, the more reliable check is:
+Or filter for specific ports:
 
 ```bash
-clickhouse-client --query "SELECT * FROM system.build_options WHERE name = 'VERSION_FULL'"
 ss -tlnp | grep -E '8123|9000|9009'
 ```
 
