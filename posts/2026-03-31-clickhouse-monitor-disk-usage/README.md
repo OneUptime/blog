@@ -186,9 +186,9 @@ SELECT
     database,
     name,
     engine,
-    ttl_expression
+    create_table_query
 FROM system.tables
-WHERE ttl_expression != ''
+WHERE create_table_query LIKE '%TTL%'
 ORDER BY database, name;
 ```
 
@@ -228,9 +228,9 @@ ALTER TABLE logs.access_log DROP PARTITION '202312';
 If using the clickhouse-exporter, these are the key disk metrics to alert on:
 
 ```text
-# Free space in bytes on each named disk
-ClickHouseAsyncMetrics_DiskFree_default
-ClickHouseAsyncMetrics_DiskFree_cold
+# Available space in bytes on each named disk
+ClickHouseAsyncMetrics_DiskAvailable_default
+ClickHouseAsyncMetrics_DiskAvailable_cold
 
 # Used space in bytes on each named disk
 ClickHouseAsyncMetrics_DiskUsed_default
@@ -242,7 +242,7 @@ Example PromQL alert for disk at 90% capacity:
 ```text
 (
   ClickHouseAsyncMetrics_DiskUsed_default
-  / (ClickHouseAsyncMetrics_DiskUsed_default + ClickHouseAsyncMetrics_DiskFree_default)
+  / (ClickHouseAsyncMetrics_DiskUsed_default + ClickHouseAsyncMetrics_DiskAvailable_default)
 ) > 0.90
 ```
 
