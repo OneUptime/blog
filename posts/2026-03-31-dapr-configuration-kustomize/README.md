@@ -91,6 +91,8 @@ spec:
   metadata:
     - name: redisHost
       value: redis-dev.dev.svc.cluster.local:6379
+    - name: actorStateStore
+      value: "true"
 ```
 
 `overlays/dev/kustomization.yaml`:
@@ -119,6 +121,8 @@ spec:
     - name: redisHost
       value: redis-prod.prod.svc.cluster.local:6379
     - name: enableTLS
+      value: "true"
+    - name: actorStateStore
       value: "true"
 ```
 
@@ -191,4 +195,4 @@ spec:
 
 ## Summary
 
-Kustomize overlays are an ideal fit for Dapr configuration management, providing environment-specific overrides without duplication. The strategic merge patch approach lets you update just the fields that differ per environment - like Redis hostnames or tracing rates - while sharing the bulk of your component definitions across all environments in a GitOps-friendly structure.
+Kustomize overlays are an ideal fit for Dapr configuration management, providing environment-specific overrides without duplication. Note that Kustomize uses JSON Merge Patch semantics for CRDs like Dapr Components, which means array fields (such as `spec.metadata`) are replaced entirely rather than merged. Each overlay patch must include all desired metadata entries, not just the ones being changed. Scalar and object fields - like tracing configuration - are merged as expected, so you can share the bulk of your component definitions across all environments in a GitOps-friendly structure.
