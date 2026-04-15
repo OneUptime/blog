@@ -98,7 +98,7 @@ FROM (
 | `p_value < 0.05` | Significant difference at 95% confidence |
 | `ci_low`, `ci_high` | 95% confidence interval for the mean difference |
 
-A negative t-statistic means group 0 has a higher mean than group 1. A positive value means group 1 is higher.
+A negative t-statistic means group 0 has a lower mean than group 1. A positive value means group 0 is higher.
 
 ## Checking Whether Variances Are Equal
 
