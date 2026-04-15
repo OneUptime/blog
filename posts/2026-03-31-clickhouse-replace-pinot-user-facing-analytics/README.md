@@ -55,8 +55,16 @@ ALTER TABLE user_events
 ## Real-Time Ingestion
 
 ```sql
-CREATE TABLE user_events_kafka
-ENGINE = Kafka
+CREATE TABLE user_events_kafka (
+    event_time     DateTime,
+    user_id        UInt64,
+    session_id     String,
+    event_type     String,
+    page           String,
+    device_type    String,
+    country        String,
+    duration_ms    UInt32
+) ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'user_events',
