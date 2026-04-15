@@ -64,7 +64,7 @@ Schema evolution with `ALTER TABLE ... ON CLUSTER`:
 ALTER TABLE metrics_local ON CLUSTER production
 ADD COLUMN region LowCardinality(String) DEFAULT '';
 
--- Rename a column (ClickHouse 22.x+)
+-- Rename a column (ClickHouse 20.4+)
 ALTER TABLE metrics_local ON CLUSTER production
 RENAME COLUMN region TO datacenter;
 ```
