@@ -43,13 +43,13 @@ SigNoz creates these core tables:
 
 ```sql
 -- Distributed trace spans
-signoz_traces.signoz_index_v2
+signoz_traces.distributed_signoz_index_v3
 
 -- Log entries
-signoz_logs.logs
+signoz_logs.distributed_logs_v2
 
 -- Time-series metrics
-signoz_metrics.samples_v4
+signoz_metrics.distributed_samples_v4
 ```
 
 ## Tuning ClickHouse for SigNoz
@@ -58,15 +58,19 @@ Increase the ClickHouse memory limit for large deployments:
 
 ```xml
 <clickhouse>
-  <max_memory_usage>32000000000</max_memory_usage>
-  <max_bytes_before_external_group_by>20000000000</max_bytes_before_external_group_by>
+  <profiles>
+    <default>
+      <max_memory_usage>32000000000</max_memory_usage>
+      <max_bytes_before_external_group_by>20000000000</max_bytes_before_external_group_by>
+    </default>
+  </profiles>
 </clickhouse>
 ```
 
 Set appropriate TTL for trace data retention:
 
 ```sql
-ALTER TABLE signoz_traces.signoz_index_v2
+ALTER TABLE signoz_traces.distributed_signoz_index_v3
 MODIFY TTL toDateTime(timestamp) + INTERVAL 30 DAY
 ```
 
@@ -101,12 +105,12 @@ AND timestamp >= toDateTime('2025-01-01 00:00:00')
 
 ## Scaling ClickHouse for High Ingest
 
-For high trace/log volumes, configure ClickHouse with more shards and distributed tables. SigNoz supports ClickHouse clusters via its `cluster.yaml` configuration in the Helm chart.
+For high trace/log volumes, configure ClickHouse with more shards and distributed tables. SigNoz supports ClickHouse clusters via Helm value overrides.
 
 ```bash
 helm install signoz signoz/signoz \
-  --set clickhouse.replicaCount=3 \
-  --set clickhouse.shards=2
+  --set clickhouse.layout.replicasCount=3 \
+  --set clickhouse.layout.shardsCount=2
 ```
 
 ## Summary
