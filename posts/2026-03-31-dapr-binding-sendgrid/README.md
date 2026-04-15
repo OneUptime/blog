@@ -40,8 +40,6 @@ spec:
     secretKeyRef:
       name: sendgrid-secret
       key: apiKey
-  - name: direction
-    value: "output"
 ```
 
 Create the Kubernetes secret:
@@ -104,7 +102,7 @@ DAPR_HTTP_PORT = os.environ.get("DAPR_HTTP_PORT", "3500")
 
 def send_email(to_email, to_name, subject, html_body,
                from_email="noreply@myapp.com", from_name="My App",
-               cc=None, bcc=None, reply_to=None):
+               cc=None, bcc=None):
     """Send an email via Dapr SendGrid binding."""
 
     metadata = {
@@ -119,8 +117,6 @@ def send_email(to_email, to_name, subject, html_body,
         metadata["emailCc"] = cc
     if bcc:
         metadata["emailBcc"] = bcc
-    if reply_to:
-        metadata["emailReplyTo"] = reply_to
 
     payload = {
         "operation": "create",
@@ -157,8 +153,7 @@ send_email(
     <p>Your order ORD-001 for $99.99 has been confirmed.</p>
     <p>Expected delivery: April 3, 2026</p>
     """,
-    cc="support@myapp.com",
-    reply_to="orders@myapp.com"
+    cc="support@myapp.com"
 )
 
 # Password reset email
@@ -276,7 +271,6 @@ func main() {
 | `subject` | Yes | Email subject |
 | `emailCc` | No | CC email address |
 | `emailBcc` | No | BCC email address |
-| `emailReplyTo` | No | Reply-To email address |
 
 ## Dynamic Templates
 
@@ -289,15 +283,14 @@ payload = {
         "emailFrom": "noreply@myapp.com",
         "emailTo": "alice@example.com",
         "subject": "Order Confirmed",
-        "dynamicTemplateId": "d-xxx"
-    },
-    "data": json.dumps({
-        "dynamic_template_data": {
+        "dynamicTemplateId": "d-xxx",
+        "dynamicTemplateData": json.dumps({
             "firstName": "Alice",
             "orderId": "ORD-001",
             "amount": "99.99"
-        }
-    })
+        })
+    },
+    "data": ""
 }
 ```
 
