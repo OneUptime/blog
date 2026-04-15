@@ -24,8 +24,8 @@ The Dapr Configuration API with Redis supports all three requirements out of the
 Rate limits often need adjustment without a full deployment. Store them in Dapr config:
 
 ```bash
-redis-cli SET myapp||rate-limit-rps "500"
-redis-cli SET myapp||rate-limit-burst "1000"
+redis-cli SET rate-limit-rps "500||1"
+redis-cli SET rate-limit-burst "1000||1"
 ```
 
 In the application, watch for changes:
@@ -58,34 +58,31 @@ Change log verbosity without redeployment - especially useful during incidents:
 
 ```python
 import logging
-import httpx
+from dapr.clients import DaprClient
 
 logger = logging.getLogger(__name__)
-current_log_level = logging.INFO
 
-async def watch_log_level():
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream(
-            "GET",
-            "http://localhost:3500/v1.0-alpha1/configuration/appconfig/subscribe",
-            params={"key": "log-level"}
-        ) as response:
-            async for line in response.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                import json
-                event = json.loads(line[5:])
-                new_level = event["items"].get("log-level", {}).get("value")
-                if new_level:
-                    level = getattr(logging, new_level.upper(), logging.INFO)
-                    logging.getLogger().setLevel(level)
-                    logger.info(f"Log level changed to {new_level}")
+def watch_log_level():
+    with DaprClient() as client:
+        def handler(id, resp):
+            item = resp.items.get("log-level")
+            if item:
+                new_level = item.value
+                level = getattr(logging, new_level.upper(), logging.INFO)
+                logging.getLogger().setLevel(level)
+                logger.info(f"Log level changed to {new_level}")
+
+        client.subscribe_configuration(
+            store_name="appconfig",
+            keys=["log-level"],
+            handler=handler,
+        )
 ```
 
 Trigger the change:
 
 ```bash
-redis-cli SET myapp||log-level "debug"
+redis-cli SET log-level "debug||1"
 # All running instances pick up the new level within seconds
 ```
 
@@ -127,8 +124,8 @@ For risky configuration changes, use a canary value that applies only to a subse
 
 ```bash
 # Apply to 10% of instances - combine with your deployment rollout
-redis-cli SET myapp||experimental-cache-size "2048"
-redis-cli SET myapp||experimental-rollout-percent "10"
+redis-cli SET experimental-cache-size "2048||1"
+redis-cli SET experimental-rollout-percent "10||1"
 ```
 
 ```python
