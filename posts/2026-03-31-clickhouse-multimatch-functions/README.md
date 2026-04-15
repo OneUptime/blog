@@ -24,7 +24,7 @@ multiMatchAnyIndex(haystack, [pattern1, pattern2, ...])
 
 `multiMatchAnyIndex` returns the index (1-based) of the first matching pattern, or `0` if none match.
 
-All three functions use Hyperscan RE2-compatible syntax. The pattern list must be an array literal or a constant expression - it cannot reference a column.
+All three functions use Hyperscan, which supports a subset of PCRE syntax. The pattern list is typically a constant array literal for best performance with Hyperscan optimization.
 
 ## multiMatchAny() - At Least One Match
 
@@ -190,11 +190,11 @@ ORDER BY flagged_events DESC;
 
 ## Hyperscan Requirements and Limitations
 
-Hyperscan is available in official ClickHouse builds for x86-64 platforms. On ARM or in builds without Hyperscan, ClickHouse falls back to evaluating each pattern independently with RE2, which is slower but produces identical results.
+Hyperscan (via the Vectorscan fork) is available in official ClickHouse builds for both x86-64 and ARM (aarch64) platforms. Builds compiled without Vectorscan do not fall back to another regex engine — the `multiMatch` functions are simply not available and will return a `NOT_IMPLEMENTED` error.
 
-The pattern array must be a constant at query planning time - you cannot supply patterns from a column. If your patterns change per row, use `match()` or `replaceRegexpAll()` instead.
+For best performance, supply the pattern array as a constant expression at query planning time. This allows Hyperscan to compile all patterns into a single database once rather than per-row.
 
-Hyperscan supports most RE2-compatible syntax, but some features like backreferences and lookaheads are not available. Stick to character classes, quantifiers, alternation (`|`), and anchors (`^`, `$`) for reliable cross-platform behavior.
+Hyperscan supports a subset of PCRE syntax, but some features like backreferences and lookaheads are not available. Stick to character classes, quantifiers, alternation (`|`), and anchors (`^`, `$`) for reliable behavior.
 
 ## Performance Comparison
 
