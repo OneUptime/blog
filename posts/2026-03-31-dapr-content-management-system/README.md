@@ -92,7 +92,7 @@ func (svc *CMSService) GetBySlug(ctx context.Context, slug string) (*Content, er
     json.Unmarshal(item.Value, &content)
 
     // Cache for 5 minutes
-    svc.daprClient.SaveState(ctx, "cache-store", "cache:slug:"+slug, item.Value, nil)
+    svc.daprClient.SaveState(ctx, "cache-store", "cache:slug:"+slug, item.Value, map[string]string{"ttlInSeconds": "300"})
 
     return &content, nil
 }
