@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, TopK, Top-N, Frequency
 
-Description: Learn how to use topK() and topKWeighted() in ClickHouse to find the most frequent or highest-weight values using the Space-Saving heavy hitters algorithm.
+Description: Learn how to use topK() and topKWeighted() in ClickHouse to find the most frequent or highest-weight values using the Filtered Space-Saving algorithm.
 
 ---
 
-Finding the top N most frequent values in a large dataset is a common analytical need - top error codes, most-visited pages, highest-traffic endpoints. ClickHouse provides `topK(N)` and `topKWeighted(N)` as approximate aggregate functions built on the Space-Saving heavy hitters algorithm. They return results in constant memory regardless of input size, making them practical for streaming and batch analytics over billions of rows.
+Finding the top N most frequent values in a large dataset is a common analytical need - top error codes, most-visited pages, highest-traffic endpoints. ClickHouse provides `topK(N)` and `topKWeighted(N)` as approximate aggregate functions built on the Filtered Space-Saving algorithm. They return results in constant memory regardless of input size, making them practical for streaming and batch analytics over billions of rows.
 
 ## How topK() Works
 
-`topK(N)` returns an array of the N most frequently occurring values in a column. It uses the Space-Saving algorithm, which maintains a summary of at most N candidate items with their estimated counts. Values not in the summary may be undercounted, so results are approximate, but in practice the top items are identified reliably.
+`topK(N)` returns an array of approximately the N most frequently occurring values in a column. It uses the Filtered Space-Saving algorithm, which maintains a summary of at most N candidate items with their estimated counts. Values not in the summary may be undercounted, so results are approximate, but in practice the top items are identified reliably.
 
 ```sql
 -- Return the 5 most frequent values in a column
@@ -106,7 +106,7 @@ GROUP BY service_name;
 
 ```sql
 -- Top 5 users driving the most CPU time in queries
-SELECT topKWeighted(5)(user_name, query_duration_ms) AS cpu_heavy_users
+SELECT topKWeighted(5)(user, query_duration_ms) AS cpu_heavy_users
 FROM system.query_log
 WHERE event_date = today()
   AND type = 'QueryFinish';
@@ -117,14 +117,14 @@ WHERE event_date = today()
 Both functions accept an optional second parameter for the internal summary size (load factor). A larger summary improves accuracy at the cost of more memory.
 
 ```sql
--- topK with custom load factor (default is 3 * N)
+-- topK with custom load factor (default is 3)
 -- topK(N, load_factor)(column)
 SELECT topK(10, 100)(page_path) AS accurate_top_pages
 FROM page_views
 WHERE event_date = today();
 ```
 
-The default load factor of `3 * N` is adequate for most use cases. Increase it if results look inaccurate on highly skewed distributions.
+The default load factor is `3`, giving a summary size of `3 * N` items. This is adequate for most use cases. Increase the load factor if results look inaccurate on highly skewed distributions.
 
 ## Combining topK with Other Aggregates
 
@@ -184,4 +184,4 @@ GROUP BY error_date, service;
 
 ## Summary
 
-`topK(N)` and `topKWeighted(N)` provide memory-efficient heavy hitters detection using the Space-Saving algorithm. `topK()` finds the most frequently occurring values by count, while `topKWeighted()` ranks values by a numeric weight such as revenue or bytes transferred. Both functions are approximate but reliable for identifying dominant items in high-cardinality datasets, and they integrate cleanly into GROUP BY queries, materialized views, and subquery filters.
+`topK(N)` and `topKWeighted(N)` provide memory-efficient approximate heavy hitters detection using the Filtered Space-Saving algorithm. `topK()` finds the most frequently occurring values by count, while `topKWeighted()` ranks values by a numeric weight such as revenue or bytes transferred. Both functions are approximate but reliable for identifying dominant items in high-cardinality datasets, and they integrate cleanly into GROUP BY queries, materialized views, and subquery filters.
