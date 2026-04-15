@@ -126,7 +126,7 @@ az storage entity query \
   --table-name DaprState \
   --account-name daprstatestg \
   --auth-mode login \
-  --select RowKey,Value
+  --select RowKey Value
 ```
 
 ## Summary
