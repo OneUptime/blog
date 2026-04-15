@@ -35,7 +35,7 @@ docker push myregistry/order-service:1.0.0
 
 ```bash
 # Install Dapr CLI
-wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
+wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 
 # Initialize Dapr on your cluster
 dapr init -k
