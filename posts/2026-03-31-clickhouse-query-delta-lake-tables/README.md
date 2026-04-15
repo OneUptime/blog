@@ -69,12 +69,14 @@ LIMIT 10;
 
 ## Querying Azure Data Lake Storage
 
-For Delta Lake on Azure ADLS:
+For Delta Lake on Azure, use the `deltaLakeAzure` table function, which takes the storage account URL, container name, and blob path as separate arguments:
 
 ```sql
 SELECT *
-FROM deltaLake(
-    'https://myaccount.dfs.core.windows.net/container/delta-tables/events/',
+FROM deltaLakeAzure(
+    'https://myaccount.blob.core.windows.net',
+    'container',
+    'delta-tables/events/',
     'ACCOUNT_NAME',
     'ACCOUNT_KEY'
 )
