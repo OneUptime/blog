@@ -8,7 +8,7 @@ Description: Learn how to use ClickHouse's new JSON data type for dot-notation p
 
 ---
 
-ClickHouse 22.6 introduced a native `JSON` data type designed to replace the earlier `Object('json')` experimental type. The new `JSON` type stores semi-structured data with automatic path inference, typed subcolumns, and efficient columnar compression. Each unique JSON path becomes a separate subcolumn stored independently, giving you the schema flexibility of JSON with performance close to fully typed columns.
+ClickHouse 24.8 introduced a native `JSON` data type designed to replace the earlier `Object('json')` experimental type. The new `JSON` type stores semi-structured data with automatic path inference, typed subcolumns, and efficient columnar compression. Each unique JSON path becomes a separate subcolumn stored independently, giving you the schema flexibility of JSON with performance close to fully typed columns.
 
 ## Enabling the JSON Type
 
@@ -93,7 +93,7 @@ Each subcolumn is stored and compressed independently, so querying `data.user_id
 Filters on JSON subfields use standard SQL operators:
 
 ```sql
--- Filter by a string subfield
+-- Filter by a boolean subfield
 SELECT id, data.user_id, data.ip
 FROM events
 WHERE data.success = true;
@@ -170,4 +170,4 @@ The `JSON` type stores subcolumns separately, avoiding repeated JSON parsing. Fo
 
 ## Summary
 
-The new `JSON` type in ClickHouse 22.6+ stores semi-structured data as typed subcolumns indexed by path, allowing dot-notation access, NULL for missing fields, and efficient columnar storage per path. It combines the schema flexibility of JSON with the query performance of structured columns, making it the preferred choice over `String` + `JSONExtract` for semi-structured workloads on modern ClickHouse versions.
+The new `JSON` type in ClickHouse 24.8+ stores semi-structured data as typed subcolumns indexed by path, allowing dot-notation access, NULL for missing fields, and efficient columnar storage per path. It combines the schema flexibility of JSON with the query performance of structured columns, making it the preferred choice over `String` + `JSONExtract` for semi-structured workloads on modern ClickHouse versions.
