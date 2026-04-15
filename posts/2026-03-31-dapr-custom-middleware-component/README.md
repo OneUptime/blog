@@ -20,6 +20,7 @@ A Dapr middleware component implements the `middleware.Middleware` interface:
 package custommiddleware
 
 import (
+    "context"
     "net/http"
 
     "github.com/dapr/components-contrib/middleware"
