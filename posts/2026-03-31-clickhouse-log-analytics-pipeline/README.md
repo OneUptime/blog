@@ -47,7 +47,7 @@ SETTINGS index_granularity = 8192;
 
 Key decisions:
 - `DateTime64(3)` for millisecond precision with DoubleDelta compression
-- `LowCardinality(String)` for repeated fields like service and level (10-20x compression)
+- `LowCardinality(String)` for repeated fields like service and level (typically 2-5x compression from dictionary encoding alone)
 - `ZSTD(3)` for the message body (best ratio for text)
 - Partition by day to enable fast partition drops for TTL
 - Sort by `(service, level, ts)` to serve the most common filter patterns
@@ -204,7 +204,7 @@ The table already has a 90-day TTL. Adjust per service:
 
 ```sql
 ALTER TABLE logs
-    MODIFY TTL toDateTime(ts) + INTERVAL 30 DAY
+    MODIFY TTL toDateTime(ts) + INTERVAL 30 DAY DELETE
     WHERE service = 'debug-service';
 ```
 
@@ -229,7 +229,7 @@ WHERE ts >= now() - INTERVAL 5 MINUTE;
 SELECT
     service,
     max(ts) AS latest_event,
-    now() - max(ts) AS lag_seconds
+    dateDiff('second', max(ts), now()) AS lag_seconds
 FROM logs
 GROUP BY service
 ORDER BY lag_seconds DESC;
