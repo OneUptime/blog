@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Similarity, ngramDistance, Fuzzy Search, Text Analytics
 
-Description: Learn how to implement string similarity matching in ClickHouse using ngramDistance, editDistance, and soundex for fuzzy search and deduplication.
+Description: Learn how to implement string similarity matching in ClickHouse using ngramDistance, editDistance, and ngramSearch for fuzzy search and deduplication.
 
 ---
 
@@ -14,7 +14,7 @@ Exact string matching with `=` or `LIKE` misses typos, abbreviations, and format
 
 ## ngramDistance
 
-`ngramDistance` computes a normalized edit distance based on character n-grams. Values range from 0 (identical) to 1 (completely different):
+`ngramDistance` computes a normalized distance based on the symmetric difference of 4-character n-gram multisets. Values range from 0 (identical) to 1 (completely different):
 
 ```sql
 SELECT
@@ -90,12 +90,12 @@ SELECT
     b.id AS id_b,
     a.email AS email_a,
     b.email AS email_b,
-    ngramDistance(a.email, b.email) AS similarity
+    ngramDistance(a.email, b.email) AS dist
 FROM contacts a
 JOIN contacts b ON a.id < b.id
     AND a.domain = b.domain
 WHERE ngramDistance(a.email, b.email) < 0.15
-ORDER BY similarity;
+ORDER BY dist;
 ```
 
 ## Fuzzy Log Pattern Matching
