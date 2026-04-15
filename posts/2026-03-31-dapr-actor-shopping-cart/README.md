@@ -91,16 +91,14 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "fmt"
-    "strings"
     "time"
 
     dapr "github.com/dapr/go-sdk/actor"
 )
 
 type CartActor struct {
-    dapr.ServerImplBase
+    dapr.ServerImplBaseCtx
 }
 
 func (c *CartActor) Type() string {
@@ -290,8 +288,7 @@ Expose the actor as a REST API:
 package main
 
 import (
-    "encoding/json"
-    "fmt"
+    "context"
     "io"
     "net/http"
     "strings"
@@ -313,29 +310,28 @@ func cartHandler(w http.ResponseWriter, r *http.Request) {
 
     switch r.Method {
     case http.MethodGet:
-        invokeActor(w, client, userID, "GetCart", nil)
+        invokeActor(r.Context(), w, client, userID, "GetCart", nil)
     case http.MethodPost:
         body, _ := io.ReadAll(r.Body)
-        invokeActor(w, client, userID, "AddItem", body)
+        invokeActor(r.Context(), w, client, userID, "AddItem", body)
     case http.MethodDelete:
-        invokeActor(w, client, userID, "ClearCart", nil)
+        invokeActor(r.Context(), w, client, userID, "ClearCart", nil)
     }
 }
 
-func invokeActor(w http.ResponseWriter, client dapr.Client, actorID, method string, data []byte) {
-    resp, err := client.InvokeActorMethod(
-        r.Context(),
-        "CartActor",
-        actorID,
-        method,
-        data,
-    )
+func invokeActor(ctx context.Context, w http.ResponseWriter, client dapr.Client, actorID, method string, data []byte) {
+    resp, err := client.InvokeActor(ctx, &dapr.InvokeActorRequest{
+        ActorType: "CartActor",
+        ActorID:   actorID,
+        Method:    method,
+        Data:      data,
+    })
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
     w.Header().Set("Content-Type", "application/json")
-    w.Write(resp)
+    w.Write(resp.Data)
 }
 ```
 
@@ -355,7 +351,8 @@ curl -X POST \
   -d '{"productId":"prod-002","productName":"USB Hub","quantity":2,"unitPrice":24.99}'
 
 # Get cart
-curl http://localhost:3500/v1.0/actors/CartActor/user-123/method/GetCart
+curl -X POST \
+  http://localhost:3500/v1.0/actors/CartActor/user-123/method/GetCart
 
 # Apply coupon
 curl -X POST \
