@@ -76,72 +76,94 @@ package main
 import (
     "context"
     "encoding/json"
+    "fmt"
+
+    dapr "github.com/dapr/go-sdk/client"
     "github.com/dapr/go-sdk/actor"
 )
 
 type SubscriptionActorImpl struct {
-    actor.ServerImplBase
+    actor.ServerImplBaseCtx
+    daprClient dapr.Client
 }
 
 func (a *SubscriptionActorImpl) Type() string { return "SubscriptionActor" }
 
 // Register reminder on activation
-func (a *SubscriptionActorImpl) OnActivate() error {
+func (a *SubscriptionActorImpl) Activate(ctx context.Context) error {
     data, _ := json.Marshal(map[string]string{
         "planId": "pro",
         "userId": "user-42",
     })
-    return a.RegisterActorReminder("renewalAlert", data, "72h", "24h")
+    return a.daprClient.RegisterActorReminder(ctx, &dapr.RegisterActorReminderRequest{
+        ActorType: "SubscriptionActor",
+        ActorID:   a.ID(),
+        Name:      "renewalAlert",
+        DueTime:   "72h",
+        Period:    "24h",
+        Data:      data,
+    })
 }
 
-// Reminder callback - Dapr calls the method matching the reminder name
-func (a *SubscriptionActorImpl) RenewalAlert(ctx context.Context, data []byte) error {
-    var payload map[string]string
-    json.Unmarshal(data, &payload)
-    planId := payload["planId"]
-    userId := payload["userId"]
-    // Send renewal notification logic
-    _ = planId
-    _ = userId
-    return nil
+// Reminder callback - Dapr calls ReminderCall for all reminders
+func (a *SubscriptionActorImpl) ReminderCall(reminderName string, state []byte, dueTime string, period string) {
+    if reminderName == "renewalAlert" {
+        var payload map[string]string
+        json.Unmarshal(state, &payload)
+        planId := payload["planId"]
+        userId := payload["userId"]
+        // Send renewal notification logic
+        fmt.Printf("Renewal reminder for user %s, plan %s\n", userId, planId)
+    }
 }
 ```
 
 ### Via Python SDK
 
 ```python
-from dapr.actor import Actor, ActorInterface, actormethod
+import json
+from datetime import timedelta
+from typing import Optional
+
+from dapr.actor import Actor, Remindable, ActorInterface, actormethod
 
 class SubscriptionActorInterface(ActorInterface):
-    @actormethod(name="renewalAlert")
-    async def renewal_alert(self, data: dict) -> None: ...
+    @actormethod(name="ReceiveReminder")
+    async def receive_reminder(self, name: str, state: bytes,
+                               due_time: timedelta, period: timedelta,
+                               ttl: Optional[timedelta] = None) -> None: ...
 
-class SubscriptionActor(Actor, SubscriptionActorInterface):
+class SubscriptionActor(Actor, SubscriptionActorInterface, Remindable):
     async def _on_activate(self) -> None:
+        state_bytes = json.dumps({"planId": "pro", "userId": "user-42"}).encode("utf-8")
         await self.register_reminder(
-            reminder_name="renewalAlert",
-            state={"planId": "pro", "userId": "user-42"},
-            due_time="72h",
-            period="24h"
+            name="renewalAlert",
+            state=state_bytes,
+            due_time=timedelta(hours=72),
+            period=timedelta(hours=24)
         )
 
-    async def renewal_alert(self, data: dict) -> None:
-        plan_id = data.get("planId")
-        user_id = data.get("userId")
-        print(f"Sending renewal notice to user {user_id} for plan {plan_id}")
+    async def receive_reminder(self, name: str, state: bytes,
+                               due_time: timedelta, period: timedelta,
+                               ttl: Optional[timedelta] = None) -> None:
+        if name == "renewalAlert":
+            payload = json.loads(state)
+            plan_id = payload.get("planId")
+            user_id = payload.get("userId")
+            print(f"Sending renewal notice to user {user_id} for plan {plan_id}")
 ```
 
 ## Handling Reminder Callbacks (HTTP, No SDK)
 
-When using a raw HTTP server, Dapr calls the reminder as a PUT to your actor method endpoint:
+When using a raw HTTP server, Dapr calls the reminder as a PUT to your actor's `remind` endpoint:
 
 ```javascript
 // Node.js Express
-app.put('/actors/SubscriptionActor/:actorId/method/renewalAlert', (req, res) => {
-  const { actorId } = req.params;
+app.put('/actors/SubscriptionActor/:actorId/method/remind/:reminderName', (req, res) => {
+  const { actorId, reminderName } = req.params;
   const reminderBody = req.body; // Contains data, dueTime, period
   const { data } = reminderBody;
-  console.log(`Reminder fired for actor ${actorId}`, data);
+  console.log(`Reminder '${reminderName}' fired for actor ${actorId}`, data);
   res.sendStatus(200);
 });
 ```
@@ -169,7 +191,7 @@ curl -X DELETE \
   http://localhost:3500/v1.0/actors/SubscriptionActor/sub-001/reminders/renewalAlert
 ```
 
-Reminders can also be deleted from within the actor code using the SDK's `UnregisterReminder` or `delete_reminder` methods.
+Reminders can also be deleted from within the actor code using the SDK's `UnregisterActorReminder` (Go) or `unregister_reminder` (Python) methods.
 
 ## One-Shot Reminders
 
