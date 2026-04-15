@@ -40,7 +40,7 @@ class Product(BaseModel):
 @app.put("/products/{product_id}")
 async def update_product(product_id: str, product: Product):
     # Save to database
-    await db.products.update(product_id, product.dict())
+    await db.products.update(product_id, product.model_dump())
 
     # Publish invalidation event
     async with httpx.AsyncClient() as client:
@@ -61,9 +61,11 @@ async def update_product(product_id: str, product: Product):
 Any service that caches products subscribes to the `cache-invalidation` topic and deletes the relevant entry:
 
 ```python
+import httpx
 from fastapi import FastAPI, Request
 
 app = FastAPI()
+DAPR_HTTP_PORT = 3500
 
 @app.get("/dapr/subscribe")
 def subscribe():
@@ -136,4 +138,4 @@ Cache delete operations are naturally idempotent - deleting an already-absent ke
 
 ## Summary
 
-Dapr pub/sub provides a clean mechanism for cross-service cache invalidation. The data-owning service publishes an event on every update, and any service that caches that data subscribes and invalidates its local state. Because Dapr handles delivery, retries, and deduplication, the invalidation logic in each subscriber stays simple and does not need to handle network failures itself.
+Dapr pub/sub provides a clean mechanism for cross-service cache invalidation. The data-owning service publishes an event on every update, and any service that caches that data subscribes and invalidates its local state. Because Dapr handles delivery and retries with at-least-once semantics, the invalidation logic in each subscriber stays simple. Since cache deletes are idempotent, duplicate deliveries are harmless.
