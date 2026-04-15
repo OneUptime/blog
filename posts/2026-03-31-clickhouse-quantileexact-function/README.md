@@ -8,7 +8,7 @@ Description: Learn how to compute exact percentiles with quantileExact() in Clic
 
 ---
 
-ClickHouse provides several quantile functions for percentile calculations. While `quantile()` uses sampling for speed, `quantileExact()` computes the true percentile by sorting all values - giving you precise results at the cost of higher memory usage. This post covers the syntax, variants, and tradeoffs.
+ClickHouse provides several quantile functions for percentile calculations. While `quantile()` uses sampling for speed, `quantileExact()` computes the true percentile by loading all values into memory and partially sorting them - giving you precise results at the cost of higher memory usage. This post covers the syntax, variants, and tradeoffs.
 
 ## Basic Syntax
 
@@ -32,7 +32,7 @@ The return value is an array containing the requested percentiles in order.
 
 ## Exact vs Approximate Percentile
 
-`quantile()` uses reservoir sampling and returns an approximate result. `quantileExact()` loads all values and sorts them to find the exact rank.
+`quantile()` uses reservoir sampling and returns an approximate result. `quantileExact()` loads all values and partially sorts them to find the exact rank.
 
 ```sql
 -- Approximate (fast, low memory)
@@ -114,4 +114,4 @@ ORDER BY p99 DESC;
 
 ## Summary
 
-`quantileExact()` delivers precise percentile values by sorting all input data, making it ideal for SLA reporting, compliance use cases, and smaller datasets where accuracy outweighs performance concerns. For large-scale approximate workloads, prefer `quantile()` or `quantileTDigest()`. Use `quantileExactWeighted()` when your data carries a weight column representing pre-aggregated counts.
+`quantileExact()` delivers precise percentile values by loading all input data into memory and partially sorting it, making it ideal for SLA reporting, compliance use cases, and smaller datasets where accuracy outweighs performance concerns. For large-scale approximate workloads, prefer `quantile()` or `quantileTDigest()`. Use `quantileExactWeighted()` when your data carries a weight column representing pre-aggregated counts.
