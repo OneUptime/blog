@@ -128,13 +128,20 @@ SELECT
     portfolio_id,
     price_date,
     portfolio_value,
-    portfolio_value / lag(portfolio_value) OVER (PARTITION BY portfolio_id ORDER BY price_date) - 1 AS daily_return,
-    stddevPop(portfolio_value / lag(portfolio_value) OVER (PARTITION BY portfolio_id ORDER BY price_date) - 1)
+    daily_return,
+    stddevPop(daily_return)
         OVER (PARTITION BY portfolio_id ORDER BY price_date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) AS rolling_30d_vol
 FROM (
-    SELECT portfolio_id, price_date, sum(shares * price) AS portfolio_value
-    FROM holdings JOIN prices USING instrument
-    GROUP BY portfolio_id, price_date
+    SELECT
+        portfolio_id,
+        price_date,
+        portfolio_value,
+        portfolio_value / lag(portfolio_value) OVER (PARTITION BY portfolio_id ORDER BY price_date) - 1 AS daily_return
+    FROM (
+        SELECT portfolio_id, price_date, sum(shares * price) AS portfolio_value
+        FROM holdings JOIN prices USING instrument
+        GROUP BY portfolio_id, price_date
+    )
 )
 ORDER BY portfolio_id, price_date;
 ```
