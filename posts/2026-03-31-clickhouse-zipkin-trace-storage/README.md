@@ -53,7 +53,9 @@ service:
       exporters: [clickhouse]
 ```
 
-## ClickHouse Table Schema (Auto-Created by Exporter)
+## ClickHouse Table Schema (Simplified)
+
+The exporter auto-creates a more detailed schema with additional columns (SpanKind, ResourceAttributes, ScopeName, StatusMessage, Events, Links) and data-skipping indexes. Below is the core subset:
 
 ```sql
 CREATE TABLE otel.otel_traces (
@@ -63,12 +65,12 @@ CREATE TABLE otel.otel_traces (
   ParentSpanId        String CODEC(ZSTD(1)),
   SpanName            LowCardinality(String) CODEC(ZSTD(1)),
   ServiceName         LowCardinality(String) CODEC(ZSTD(1)),
-  Duration            Int64 CODEC(ZSTD(1)),
+  Duration            UInt64 CODEC(ZSTD(1)),
   StatusCode          LowCardinality(String) CODEC(ZSTD(1)),
   SpanAttributes      Map(LowCardinality(String), String) CODEC(ZSTD(1))
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SpanName, toUnixTimestamp(Timestamp))
+ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
 TTL toDate(Timestamp) + INTERVAL 30 DAY
 ```
 
