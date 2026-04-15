@@ -8,7 +8,7 @@ Description: Learn the difference between primary keys and sorting keys in Click
 
 ---
 
-In ClickHouse MergeTree tables, the `ORDER BY` clause defines the **sorting key** - the physical row order on disk. The `PRIMARY KEY` clause defines the **primary index** - a sparse index built over a prefix of the sorting key. These two concepts are independent, and understanding their relationship lets you optimize both storage ordering and index precision.
+In ClickHouse MergeTree tables, the `ORDER BY` clause defines the **sorting key** - the physical row order on disk. The `PRIMARY KEY` clause defines the **primary index** - a sparse index built over a prefix of the sorting key. These two concepts are distinct but related, and understanding their relationship lets you optimize both storage ordering and index precision.
 
 ## Default Behavior: PRIMARY KEY = ORDER BY
 
@@ -41,14 +41,14 @@ PRIMARY KEY (ts, user_id);
 
 Here:
 - Data is physically sorted by `(ts, user_id, session_id)` - enabling efficient lookups on any prefix.
-- The sparse index covers only `(ts, user_id)` - fewer index marks, less memory, faster index scans.
+- The sparse index covers only `(ts, user_id)` - smaller index entries per mark, less memory, faster index scans.
 
 ## Why Use a Shorter Primary Key?
 
 The primary index (sparse index) stores one mark per `index_granularity` rows. A shorter key means:
 - Smaller index size in memory.
 - Faster mark selection for time-range and user-range queries.
-- The full sorting key still enables granule-level skipping via the longer ORDER BY.
+- The full sorting key still provides data locality for columns beyond the primary key, improving read efficiency for filters on those columns.
 
 ## Practical Example: Time-Series with User and Session
 
