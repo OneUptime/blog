@@ -8,23 +8,23 @@ Description: Learn how to set up and use the clickhouse-monitoring dashboard to 
 
 ---
 
-The `clickhouse-monitoring` project by Mikhail Shiryaev provides a ready-made Grafana dashboard for ClickHouse, covering queries in flight, replication status, disk usage, and CPU/memory metrics. Getting it running takes under 30 minutes.
+The `clickhouse-monitoring` project by Duyet Le provides a ready-made Next.js-based monitoring dashboard for ClickHouse, covering queries in flight, replication status, disk usage, and more. Getting it running takes under 30 minutes. You can also pair it with Grafana for richer alerting and custom panels.
 
 ## Installing clickhouse-monitoring
 
 Clone the repository and start the stack with Docker Compose:
 
 ```bash
-git clone https://github.com/Altinity/clickhouse-monitoring.git
+git clone https://github.com/duyet/clickhouse-monitoring.git
 cd clickhouse-monitoring
 docker-compose up -d
 ```
 
-This starts Grafana, a ClickHouse datasource plugin, and the dashboard definitions. Access the UI at `http://localhost:3000`.
+This starts the Next.js monitoring dashboard and its dependencies. Access the UI at `http://localhost:3000`.
 
-## Configuring the ClickHouse Data Source in Grafana
+## Configuring ClickHouse as a Grafana Data Source
 
-Add ClickHouse as a data source from the Grafana UI or via provisioning:
+For additional monitoring with Grafana, add ClickHouse as a data source from the Grafana UI or via provisioning:
 
 ```yaml
 apiVersion: 1
