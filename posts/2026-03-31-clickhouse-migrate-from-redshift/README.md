@@ -249,8 +249,8 @@ SELECT uniq(user_id) FROM events;
 SELECT LISTAGG(event_type, ',') WITHIN GROUP (ORDER BY created_at)
 FROM events GROUP BY user_id;
 
--- ClickHouse: arrayStringConcat with arraySort + groupArray
-SELECT arrayStringConcat(arraySort(groupArray(event_type)), ',')
+-- ClickHouse: arrayStringConcat with groupArray (ordered)
+SELECT arrayStringConcat(groupArray(event_type ORDER BY created_at), ',')
 FROM events GROUP BY user_id;
 ```
 
