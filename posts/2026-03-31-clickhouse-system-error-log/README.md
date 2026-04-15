@@ -129,7 +129,7 @@ ORDER BY total DESC;
 |------|-----------|---------------|
 | 241 | `MEMORY_LIMIT_EXCEEDED` | Query or server memory limit hit |
 | 159 | `TIMEOUT_EXCEEDED` | Query exceeded max execution time |
-| 396 | `LIMIT_EXCEEDED` | Result exceeded max_result_rows/bytes |
+| 290 | `LIMIT_EXCEEDED` | Result exceeded max_result_rows/bytes |
 | 60  | `UNKNOWN_TABLE` | Query references nonexistent table |
 | 164 | `READONLY` | Write attempted on read-only replica |
 | 285 | `TOO_FEW_LIVE_REPLICAS` | Replication quorum not met |
