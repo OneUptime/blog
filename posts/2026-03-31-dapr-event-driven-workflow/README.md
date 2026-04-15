@@ -17,7 +17,6 @@ Dapr Workflow supports this through `WaitForExternalEventAsync`, which suspends 
 ## Building an Approval Workflow
 
 ```csharp
-[DaprWorkflow]
 public class ExpenseApprovalWorkflow : Workflow<ExpenseRequest, ApprovalResult>
 {
     public override async Task<ApprovalResult> RunAsync(
@@ -72,11 +71,10 @@ From the approver's API endpoint, raise the event against the running workflow i
 public async Task<IActionResult> Approve(
     string instanceId, [FromBody] ApprovalDecision decision)
 {
-    await _daprClient.RaiseWorkflowEventAsync(
+    await _workflowClient.RaiseEventAsync(
         instanceId: instanceId,
-        workflowComponent: "dapr",
         eventName: "ManagerDecision",
-        eventData: new ApprovalEvent
+        eventPayload: new ApprovalEvent
         {
             Approved = decision.Approved,
             Comment  = decision.Comment,
@@ -118,9 +116,8 @@ public async Task<IActionResult> StartApproval([FromBody] ExpenseRequest request
 {
     var instanceId = $"expense-{request.ExpenseId}";
 
-    await _daprClient.StartWorkflowAsync(
-        workflowComponent: "dapr",
-        workflowName: nameof(ExpenseApprovalWorkflow),
+    await _workflowClient.ScheduleNewWorkflowAsync(
+        name: nameof(ExpenseApprovalWorkflow),
         instanceId: instanceId,
         input: request);
 
@@ -130,4 +127,4 @@ public async Task<IActionResult> StartApproval([FromBody] ExpenseRequest request
 
 ## Summary
 
-Dapr Workflow's `WaitForExternalEventAsync` makes building event-driven processes straightforward by suspending execution durably until an external event arrives. Timeouts allow escalation paths when no event arrives in time. Events are raised via the Dapr management API, and workflows can wait for multiple competing events using `Task.WhenAny` for complex approval flows.
+Dapr Workflow's `WaitForExternalEventAsync` makes building event-driven processes straightforward by suspending execution durably until an external event arrives. Timeouts allow escalation paths when no event arrives in time. Events are raised via `DaprWorkflowClient`, and workflows can wait for multiple competing events using `Task.WhenAny` for complex approval flows.
