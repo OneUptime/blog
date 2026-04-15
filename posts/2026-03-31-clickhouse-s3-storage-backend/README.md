@@ -10,7 +10,7 @@ Description: Configure Amazon S3 as a ClickHouse storage backend to store data p
 
 ## Introduction
 
-ClickHouse can store data parts directly on Amazon S3 (or any S3-compatible endpoint like MinIO). This offloads capacity from local disks, dramatically reduces per-GB storage costs, and works seamlessly with the MergeTree engine family. ClickHouse reads Parquet-like data part files from S3 on demand and caches hot data locally.
+ClickHouse can store data parts directly on Amazon S3 (or any S3-compatible endpoint like MinIO). This offloads capacity from local disks, dramatically reduces per-GB storage costs, and works seamlessly with the MergeTree engine family. ClickHouse reads native MergeTree data part files from S3 on demand and caches hot data locally.
 
 ## Architecture
 
@@ -74,9 +74,6 @@ Create `/etc/clickhouse-server/config.d/s3_storage.xml`:
         <secret_access_key>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</secret_access_key>
         <region>us-east-1</region>
         <send_metadata>true</send_metadata>
-        <use_path_style_url>false</use_path_style_url>
-        <!-- Optional: tune upload chunk size (default 16MB) -->
-        <upload_part_size_multiply_factor>2</upload_part_size_multiply_factor>
       </s3>
 
       <!-- Add a local SSD cache in front of S3 -->
@@ -164,11 +161,19 @@ s3_cache    48      14.32 GiB
 ## Monitoring S3 Request Metrics
 
 ```sql
+-- Current gauges (active connections, threads, etc.)
 SELECT
     metric,
     value
 FROM system.metrics
-WHERE metric LIKE 'S3%';
+WHERE metric LIKE '%S3%';
+
+-- Cumulative counters (requests, bytes, errors, etc.)
+SELECT
+    event,
+    value
+FROM system.events
+WHERE event LIKE '%S3%';
 ```
 
 ## Summary
