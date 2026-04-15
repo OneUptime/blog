@@ -30,8 +30,8 @@ FROM page_views;
 
 `uniq()` uses an internal approximation algorithm to estimate distinct counts. The key properties are:
 
-- Memory usage: approximately 2.5 KB of state per aggregation group, regardless of cardinality
-- Error rate: typically within 2.2% of the true count
+- Memory usage: uses a small, bounded amount of state per aggregation group, regardless of cardinality
+- Error rate: typically within a few percent of the true count
 - Mergeability: the aggregate state can be merged across shards
 
 ```sql
@@ -90,7 +90,7 @@ SELECT
     count()           AS total_events,
     uniq(user_id)     AS unique_users,
     uniq(session_id)  AS unique_sessions,
-    uniq(user_id) / uniq(session_id) AS avg_sessions_per_user
+    uniq(session_id) / uniq(user_id) AS avg_sessions_per_user
 FROM marketing_events
 WHERE event_date >= today() - 7
 GROUP BY campaign_id
