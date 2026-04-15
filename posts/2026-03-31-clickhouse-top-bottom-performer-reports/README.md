@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Top Performer, Ranking, Window Function, Analytics
 
-Description: Learn how to build top and bottom performer reports in ClickHouse using rank, dense_rank, and topK aggregate functions for leaderboard analysis.
+Description: Learn how to build top and bottom performer reports in ClickHouse using rank, percent_rank, and topK aggregate functions for leaderboard analysis.
 
 ---
 
@@ -76,12 +76,12 @@ ORDER BY total_revenue ASC
 LIMIT 10;
 ```
 
-## Using topK for Approximate Top N
+## Using topK for Most Frequent Values
 
-`topK` is faster than full sort for very large datasets:
+`topK` returns the approximately most frequent values in a column, not the top values by a metric. It is useful for finding which products appear most often in sales records:
 
 ```sql
-SELECT topK(10)(product_name) AS top_products
+SELECT topK(10)(product_name) AS most_frequent_products
 FROM product_sales;
 ```
 
@@ -148,4 +148,4 @@ ORDER BY t.rnk;
 
 ## Summary
 
-ClickHouse top/bottom reports use `ORDER BY ... LIMIT` for simple cases, window `rank()` for per-group rankings, `percent_rank()` for relative positioning, and `topK` for approximate fast leaderboards. Combine with period CTEs to show rank movement over time.
+ClickHouse top/bottom reports use `ORDER BY ... LIMIT` for simple cases, window `rank()` for per-group rankings, `percent_rank()` for relative positioning, and `topK` for approximate most-frequent-value queries. Combine with period CTEs to show rank movement over time.
