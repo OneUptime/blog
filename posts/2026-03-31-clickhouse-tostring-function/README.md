@@ -148,13 +148,13 @@ SELECT formatDateTime(toDateTime('2025-01-15 14:30:00'), '%d/%m/%Y') AS custom_f
 ```sql
 -- Combine toString with toTypeName for debugging
 SELECT
-    column_name,
+    name,
     toString(default_expression) AS default_str,
     type
 FROM system.columns
 WHERE table = 'orders'
   AND database = currentDatabase()
-ORDER BY column_name;
+ORDER BY name;
 ```
 
 ## Summary
