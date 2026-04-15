@@ -263,7 +263,7 @@ Which entities are missing which features?
 WITH entity_feature_matrix AS (
     SELECT
         entity_id,
-        groupArray(feature_name) AS present_features
+        groupUniqArray(feature_name) AS present_features
     FROM feature_values
     WHERE entity_type = 'user'
       AND event_time >= now() - INTERVAL 7 DAY
@@ -282,7 +282,7 @@ LIMIT 50;
 
 ## TTL for Historical Feature Values
 
-Feature values older than 2 years are rarely needed for training but can be moved to cold storage:
+Old feature values can be moved to cold storage after a year and deleted after three years:
 
 ```sql
 ALTER TABLE feature_values
