@@ -8,7 +8,7 @@ Description: Learn how to change column compression codecs in ClickHouse using A
 
 ---
 
-ClickHouse stores column data in compressed binary format. By default it uses LZ4, but you can assign per-column codecs to optimize for storage size, read speed, or write throughput. Changing a codec on an existing column requires `ALTER TABLE MODIFY COLUMN` followed by `MATERIALIZE COLUMN` to apply the new codec to existing data parts.
+ClickHouse stores column data in compressed binary format. By default it uses LZ4, but you can assign per-column codecs to optimize for storage size, read speed, or write throughput. Changing a codec on an existing column requires `ALTER TABLE MODIFY COLUMN` followed by `OPTIMIZE TABLE ... FINAL` to apply the new codec to existing data parts.
 
 ## Available Codec Types
 
@@ -60,28 +60,26 @@ ALTER TABLE logs
 
 The `MODIFY COLUMN` statement changes the codec metadata immediately, but existing data parts retain the old codec until they are rewritten.
 
-## Applying Codecs to Existing Data with MATERIALIZE COLUMN
+## Applying Codecs to Existing Data
 
-To recompress existing data parts with the new codec, run `MATERIALIZE COLUMN`:
+The `MODIFY COLUMN` statement updates codec metadata, but existing data parts keep the old codec until they are rewritten. Background merges will gradually apply the new codec, but to force an immediate rewrite, use `OPTIMIZE TABLE ... FINAL`:
 
 ```sql
-ALTER TABLE metrics
-    MATERIALIZE COLUMN value;
+OPTIMIZE TABLE metrics FINAL;
 ```
 
-This schedules an asynchronous mutation that rewrites all existing parts using the new codec. Track progress in `system.mutations`:
+This forces ClickHouse to merge all parts, rewriting them with the current codec settings. Note that `OPTIMIZE TABLE ... FINAL` can be resource-intensive on large tables since it rewrites all data parts.
+
+You can track merge progress in `system.merges`:
 
 ```sql
 SELECT
-    mutation_id,
-    command,
-    is_done,
-    parts_to_do,
-    latest_fail_reason
-FROM system.mutations
-WHERE table = 'metrics'
-ORDER BY create_time DESC
-LIMIT 5;
+    table,
+    progress,
+    num_parts,
+    result_part_name
+FROM system.merges
+WHERE table = 'metrics';
 ```
 
 ## Codec Recommendations by Data Type
@@ -124,7 +122,7 @@ ALTER TABLE logs
 
 ## Defining Codecs at Table Creation
 
-It is best to set codecs at table creation time to avoid needing a MATERIALIZE COLUMN run later:
+It is best to set codecs at table creation time to avoid needing an `OPTIMIZE TABLE ... FINAL` run later:
 
 ```sql
 CREATE TABLE metrics (
@@ -138,7 +136,7 @@ ORDER BY (server_id, event_time);
 
 ## Checking Compression Ratio
 
-After materializing a new codec, compare disk usage:
+After applying a new codec, compare disk usage:
 
 ```sql
 SELECT
@@ -154,4 +152,4 @@ ORDER BY compressed_bytes DESC;
 
 ## Summary
 
-ClickHouse allows per-column compression codecs that can be changed with `ALTER TABLE MODIFY COLUMN ... CODEC(...)`. The codec metadata change is immediate, but existing data parts must be rewritten using `MATERIALIZE COLUMN` to gain the new compression. Choose codecs based on data characteristics: `DoubleDelta` for timestamps, `Delta` for counters, `Gorilla` or `FPC` for floating-point time series, and `ZSTD` for high-cardinality strings.
+ClickHouse allows per-column compression codecs that can be changed with `ALTER TABLE MODIFY COLUMN ... CODEC(...)`. The codec metadata change is immediate, but existing data parts must be rewritten using `OPTIMIZE TABLE ... FINAL` to gain the new compression. Choose codecs based on data characteristics: `DoubleDelta` for timestamps, `Delta` for counters, `Gorilla` or `FPC` for floating-point time series, and `ZSTD` for high-cardinality strings.
