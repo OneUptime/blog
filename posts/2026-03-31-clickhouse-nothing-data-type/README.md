@@ -8,16 +8,16 @@ Description: Understand ClickHouse's Nothing type, which always holds NULL, its 
 
 ---
 
-ClickHouse includes a special `Nothing` data type that represents the absence of a value - it can only ever hold `NULL`. At first glance this may seem useless, but `Nothing` plays a specific role as a bottom type in the type system. It appears in contexts where ClickHouse needs a type that is always null, particularly when inferring types in higher-order functions or constructing arrays that contain only null literals.
+ClickHouse includes a special `Nothing` data type that represents the absence of a value. A bare `NULL` literal has the type `Nullable(Nothing)`, where `Nothing` is the inner type indicating no concrete value domain exists. At first glance this may seem useless, but `Nothing` plays a specific role as a bottom type in the type system. It appears in contexts where ClickHouse needs a type placeholder, particularly when inferring types in empty arrays, higher-order functions, or constructing arrays that contain only null literals.
 
 ## What is the Nothing Data Type
 
-The `Nothing` type has no valid non-null values. A column or expression of type `Nothing` is always `NULL`. It serves as the type of `NULL` literals when no other type can be inferred from context. You will rarely declare a `Nothing` column directly - instead you encounter it through type inference.
+The `Nothing` type has no valid non-null values. It serves as the base type of `NULL` literals - a bare `NULL` has the type `Nullable(Nothing)`, where `Nothing` is the inner type indicating no concrete value domain. You will rarely declare a `Nothing` column directly - instead you encounter it through type inference.
 
 ```sql
--- The type of a bare NULL literal is Nothing
+-- The type of a bare NULL literal is Nullable(Nothing)
 SELECT toTypeName(NULL);
--- Result: Nothing
+-- Result: Nullable(Nothing)
 ```
 
 ## Nullable(Nothing)
@@ -36,14 +36,14 @@ Understanding this distinction matters when you use `NULL` in array constructors
 
 ## Nothing in Array Contexts
 
-When you create an array containing only `NULL` values, ClickHouse infers the element type as `Nothing`:
+When you create an array containing only `NULL` values, ClickHouse infers the element type as `Nullable(Nothing)`:
 
 ```sql
--- Array of only NULLs has element type Nothing
+-- Array of only NULLs has element type Nullable(Nothing)
 SELECT
     [NULL, NULL, NULL]               AS null_array,
     toTypeName([NULL, NULL, NULL])   AS array_type;
--- Result type: Array(Nothing)
+-- Result type: Array(Nullable(Nothing))
 ```
 
 When you mix `NULL` with typed values, ClickHouse promotes `Nothing` to the appropriate `Nullable` type:
@@ -52,7 +52,7 @@ When you mix `NULL` with typed values, ClickHouse promotes `Nothing` to the appr
 SELECT
     [NULL, 1, 2]                   AS mixed_array,
     toTypeName([NULL, 1, 2])       AS mixed_type;
--- Result type: Array(Nullable(Int32))
+-- Result type: Array(Nullable(UInt8))
 ```
 
 ## Nothing in Higher-Order Functions
@@ -69,19 +69,21 @@ SELECT
 ```sql
 -- arrayFilter returning an empty typed array
 SELECT
-    arrayFilter(x -> x > 0, [])                      AS empty_filtered,
-    toTypeName(arrayFilter(x -> x > 0, emptyArrayInt32())) AS filtered_type;
+    arrayFilter(x -> x > 0, emptyArrayInt32())              AS empty_filtered,
+    toTypeName(arrayFilter(x -> x > 0, emptyArrayInt32()))  AS filtered_type;
 ```
 
-## Using emptyArrayNothing
+## Empty Arrays and the Nothing Type
 
-ClickHouse provides `emptyArrayNothing()` as a helper to produce an empty array with element type `Nothing`. This is useful as a neutral identity when combining arrays across branches that may not share a known type yet.
+An empty array literal `[]` has the element type `Nothing`, since ClickHouse has no values from which to infer a concrete type. This is distinct from the typed empty array helpers like `emptyArrayInt32()`.
 
 ```sql
 SELECT
-    emptyArrayNothing()                         AS empty_nothing,
-    toTypeName(emptyArrayNothing())             AS its_type,
-    hasColumnInTable('system.tables', 'name')  AS sanity_check;
+    []                      AS empty_nothing,
+    toTypeName([])          AS its_type,
+    emptyArrayInt32()       AS empty_int,
+    toTypeName(emptyArrayInt32()) AS int_type;
+-- [] has type Array(Nothing), emptyArrayInt32() has type Array(Int32)
 ```
 
 ## Type Inference and Nothing in UNION ALL
@@ -92,7 +94,7 @@ SELECT
 SELECT NULL AS value, toTypeName(NULL) AS t
 UNION ALL
 SELECT 42   AS value, toTypeName(42)   AS t;
--- The NULL column becomes Nullable(Int32) after type unification
+-- The NULL column becomes Nullable(UInt8) after type unification, since 42 fits in UInt8
 ```
 
 ## Practical Example - Conditional Arrays
