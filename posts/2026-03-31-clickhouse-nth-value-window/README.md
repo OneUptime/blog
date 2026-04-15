@@ -103,7 +103,7 @@ ORDER BY category, revenue DESC;
 
 ## Using NTH_VALUE() to Build a Pivot-Like Structure
 
-When you need to spread ranked values into named columns without a full PIVOT, `NTH_VALUE()` provides a compact alternative. This flattens a top-5 list into columns per region:
+When you need to spread ranked values into named columns without a full PIVOT, `NTH_VALUE()` provides a compact alternative. This flattens the top-3 stores and their revenues into columns per region:
 
 ```sql
 SELECT DISTINCT
