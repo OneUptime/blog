@@ -20,7 +20,7 @@ Reentrancy is useful for:
 
 ## How Reentrancy Works
 
-Without reentrancy, a call from actor A to actor B that loops back to A would deadlock because A is already processing a request. With reentrancy enabled, Dapr tracks a `reentrancy-id` header through the call chain. If A's sidecar receives a call with the same reentrancy ID that A initiated, it allows the call to proceed instead of queuing it.
+Without reentrancy, a call from actor A to actor B that loops back to A would deadlock because A is already processing a request. With reentrancy enabled, Dapr tracks a `Dapr-Reentrancy-Id` header through the call chain. If A's sidecar receives a call with the same reentrancy ID that A initiated, it allows the call to proceed instead of queuing it.
 
 ```mermaid
 sequenceDiagram
@@ -31,12 +31,12 @@ sequenceDiagram
     participant DaprB as Dapr Sidecar B
 
     Client->>ActorA: Invoke methodX
-    ActorA->>DaprA: Invoke Actor B (sets reentrancy-id: abc123)
-    DaprA->>DaprB: Forward call (reentrancy-id: abc123)
+    ActorA->>DaprA: Invoke Actor B (sets Dapr-Reentrancy-Id: abc123)
+    DaprA->>DaprB: Forward call (Dapr-Reentrancy-Id: abc123)
     DaprB->>ActorB: Invoke methodY
-    ActorB->>DaprB: Call back Actor A (reentrancy-id: abc123)
-    DaprB->>DaprA: Forward (reentrancy-id: abc123)
-    Note over DaprA: Same reentrancy-id - allow re-entry
+    ActorB->>DaprB: Call back Actor A (Dapr-Reentrancy-Id: abc123)
+    DaprB->>DaprA: Forward (Dapr-Reentrancy-Id: abc123)
+    Note over DaprA: Same Dapr-Reentrancy-Id - allow re-entry
     DaprA->>ActorA: Invoke methodZ (reentrant)
     ActorA-->>DaprA: Result
     DaprA-->>DaprB: Result
@@ -68,9 +68,6 @@ metadata:
   name: actorconfig
   namespace: default
 spec:
-  features:
-  - name: Actor.Reentrancy
-    enabled: true
   actor:
     reentrancy:
       enabled: true
@@ -154,16 +151,15 @@ func (a *OrchestratorActorImpl) Type() string { return "OrchestratorActor" }
 // Calls WorkerActor, which calls back into OrchestratorActor
 func (a *OrchestratorActorImpl) StartWorkflow(ctx context.Context) (string, error) {
     // This call goes to WorkerActor
-    var result string
-    err := a.daprClient.InvokeActorMethod(ctx,
-        &dapr.InvokeActorRequest{
-            ActorType: "WorkerActor",
-            ActorID:   "worker-01",
-            Method:    "doWork",
-        },
-        &result,
-    )
-    return result, err
+    resp, err := a.daprClient.InvokeActor(ctx, &dapr.InvokeActorRequest{
+        ActorType: "WorkerActor",
+        ActorID:   "worker-01",
+        Method:    "doWork",
+    })
+    if err != nil {
+        return "", err
+    }
+    return string(resp.Data), nil
 }
 
 // This is called back by WorkerActor (reentrant)
@@ -175,8 +171,11 @@ func (a *OrchestratorActorImpl) GetConfig(ctx context.Context) (map[string]strin
 ### Python SDK
 
 ```python
-from dapr.actor import Actor, ActorInterface, actormethod
-from dapr.clients import DaprClient
+from dapr.actor import Actor, ActorInterface, ActorProxy, ActorId, actormethod
+
+class WorkerActorInterface(ActorInterface):
+    @actormethod(name="doWork")
+    async def do_work(self) -> str: ...
 
 class OrchestratorActorInterface(ActorInterface):
     @actormethod(name="startWorkflow")
@@ -188,14 +187,13 @@ class OrchestratorActorInterface(ActorInterface):
 class OrchestratorActor(Actor, OrchestratorActorInterface):
     async def start_workflow(self) -> str:
         # WorkerActor will call back getConfig on this actor
-        async with DaprClient() as client:
-            result = await client.invoke_actor(
-                actor_type="WorkerActor",
-                actor_id="worker-01",
-                method="doWork",
-                data=b'{}'
-            )
-        return result.data.decode()
+        proxy = ActorProxy.create(
+            'WorkerActor',
+            ActorId('worker-01'),
+            WorkerActorInterface
+        )
+        result = await proxy.do_work()
+        return result
 
     async def get_config(self) -> dict:
         # This is the reentrant callback from WorkerActor
