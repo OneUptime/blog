@@ -87,8 +87,8 @@ resource "helm_release" "dapr" {
   }
 
   set {
-    name  = "dapr_placement.replicaCount"
-    value = "3"
+    name  = "global.ha.enabled"
+    value = "true"
   }
 
   set {
@@ -102,16 +102,27 @@ resource "helm_release" "dapr" {
 
 ## Adding Dapr Dashboard
 
+The Dapr dashboard chart is not published to the main Dapr Helm repository. To install it via Terraform, use the chart directly from the GitHub repository:
+
+```bash
+# Clone the dashboard repo and reference the chart locally
+git clone https://github.com/dapr/dashboard.git dapr-dashboard-repo
+```
+
 ```hcl
 resource "helm_release" "dapr_dashboard" {
-  name       = "dapr-dashboard"
-  repository = "https://dapr.github.io/helm-charts/"
-  chart      = "dapr-dashboard"
-  namespace  = kubernetes_namespace.dapr_system.metadata[0].name
-  version    = "0.14.0"
+  name      = "dapr-dashboard"
+  chart     = "./dapr-dashboard-repo/chart/dapr-dashboard"
+  namespace = kubernetes_namespace.dapr_system.metadata[0].name
 
   depends_on = [helm_release.dapr]
 }
+```
+
+Alternatively, install the dashboard using the Dapr CLI:
+
+```bash
+dapr dashboard -k -n dapr-system
 ```
 
 ## Variables for Multi-Environment Deployments
