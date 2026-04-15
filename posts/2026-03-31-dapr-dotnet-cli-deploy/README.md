@@ -33,7 +33,7 @@ dapr run \
   --app-port 5001 \
   --dapr-http-port 3500 \
   --dapr-grpc-port 50001 \
-  --components-path ./components \
+  --resources-path ./components \
   -- dotnet run --project ./OrderService --urls http://localhost:5001
 ```
 
@@ -48,13 +48,15 @@ apps:
     appDirPath: ./OrderService
     appPort: 5001
     command: ["dotnet", "run", "--urls", "http://localhost:5001"]
-    componentsPath: ./components
+    resourcesPaths:
+      - ./components
 
   - appID: inventory-service
     appDirPath: ./InventoryService
     appPort: 5002
     command: ["dotnet", "run", "--urls", "http://localhost:5002"]
-    componentsPath: ./components
+    resourcesPaths:
+      - ./components
 ```
 
 Start all services with:
@@ -68,9 +70,6 @@ dapr run -f dapr.yaml
 ```bash
 # List all running Dapr apps
 dapr list
-
-# View logs for a specific app
-dapr logs --app-id order-service
 
 # View Dapr dashboard in browser
 dapr dashboard
