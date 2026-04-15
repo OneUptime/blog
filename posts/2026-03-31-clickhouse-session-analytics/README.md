@@ -58,8 +58,8 @@ SELECT
     dateDiff('second', min(event_time), max(event_time)) AS session_duration_s,
     count() AS page_views,
     countIf(event_type = 'purchase') AS purchases,
-    any(page_url) AS landing_page,
-    anyLast(page_url) AS exit_page
+    argMin(page_url, event_time) AS landing_page,
+    argMax(page_url, event_time) AS exit_page
 FROM sessions
 GROUP BY user_id, session_id
 ORDER BY session_start DESC;
