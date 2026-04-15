@@ -21,7 +21,7 @@ Placeholders use `${column_name:escaping}` syntax.
 ## Supported Escaping Options
 
 ```text
-${column_name:none}     - No escaping
+${column_name:None}     - No escaping
 ${column_name:CSV}      - CSV escaping
 ${column_name:JSON}     - JSON string escaping
 ${column_name:XML}      - XML entity escaping
@@ -80,7 +80,7 @@ SETTINGS
 Create a custom JSON template (`json_row.txt`):
 
 ```text
-{"event_id": ${event_id:JSON}, "type": "${event_type:JSON}", "timestamp": "${ts:JSON}"}
+{"event_id": ${event_id:JSON}, "type": ${event_type:JSON}, "timestamp": ${ts:JSON}}
 ```
 
 Result template (`json_result.txt`):
