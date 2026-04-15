@@ -43,12 +43,12 @@ Including `tenant_id` first in the `ORDER BY` ensures the primary index is parti
 ClickHouse supports row policies to enforce tenant isolation at the database level:
 
 ```sql
-CREATE ROW POLICY tenant_policy ON events
-USING tenant_id = {current_tenant_id:UInt32}
-TO tenant_role;
+CREATE ROW POLICY tenant_42_policy ON events
+USING tenant_id = 42
+TO tenant_42_role;
 ```
 
-Assign each tenant's service account to `tenant_role` and pass `current_tenant_id` as a query parameter.
+Create a separate row policy per tenant, mapping each tenant's service account to the appropriate role. You can also use `currentUser()` or `dictGet()` lookups in the `USING` clause to dynamically resolve the tenant.
 
 ## Per-Tenant TTL
 
@@ -56,7 +56,7 @@ You can set different data retention policies per tenant using TTL expressions:
 
 ```sql
 ALTER TABLE events
-MODIFY TTL event_time + INTERVAL 90 DAY
+MODIFY TTL event_time + INTERVAL 90 DAY DELETE
     WHERE tenant_id = 42;
 ```
 
@@ -68,7 +68,7 @@ Partitioning by `(tenant_id, toYYYYMM(event_time))` allows efficient `DROP PARTI
 
 ```sql
 ALTER TABLE events
-DROP PARTITION (42, 202501);
+DROP PARTITION tuple(42, 202501);
 ```
 
 This is far faster than `DELETE FROM events WHERE tenant_id = 42`.
@@ -93,4 +93,4 @@ Use this for joins or to enrich dashboards with tenant context.
 
 ## Summary
 
-Designing a multi-tenant schema in ClickHouse centers on including `tenant_id` in the partition key and sort order. This enables efficient per-tenant queries, row-level security policies, independent TTL rules, and instant tenant removal via partition drops. A shared table approach scales well for hundreds of tenants without per-tenant cluster complexity.
+Designing a multi-tenant schema in ClickHouse centers on including `tenant_id` in the partition key and sort order. This enables efficient per-tenant queries, row-level security policies, independent TTL rules, and instant tenant removal via partition drops. A shared table approach scales well without per-tenant cluster complexity. Note that if you include `tenant_id` in the partition key, keep the total number of tenants small (under ~50) to stay within ClickHouse's recommended partition count limits. For larger tenant counts, partition by time only and rely on the primary index for per-tenant filtering.
