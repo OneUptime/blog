@@ -35,7 +35,7 @@ ClickHouse logs follow this format:
 2026.03.31 12:00:01.123456 [ 1234 ] {query-id} <Information> executeQuery: ...
 ```
 
-Components: timestamp, thread ID (brackets), query trace ID (braces), log level, component, and message.
+Components: timestamp, thread ID (brackets), query ID (braces), log level, component, and message.
 
 ## Shipping Logs with Fluent Bit
 
@@ -119,7 +119,7 @@ sum by (level) (rate({job="clickhouse"} |= "Exception" [1m]))
 
 ## Correlating Logs with Query IDs
 
-Every ClickHouse query gets a unique trace ID. Use it to correlate log lines with `system.query_log` entries:
+Every ClickHouse query gets a unique query ID. Use it to correlate log lines with `system.query_log` entries:
 
 ```sql
 SELECT *
