@@ -85,7 +85,7 @@ SETTINGS index_granularity = 8192;
 
 Key differences:
 - No `AUTO_INCREMENT PRIMARY KEY` - ClickHouse does not enforce unique constraints
-- No secondary indexes - rely on the `ORDER BY` sort key for fast lookups
+- No B-tree secondary indexes - rely on the `ORDER BY` sort key and optional data skipping indexes for fast lookups
 - `ENUM` becomes `LowCardinality(String)` for flexibility
 - `PARTITION BY` replaces manual table partitioning
 
@@ -202,16 +202,16 @@ ENGINE = MySQL(
 );
 ```
 
-This creates a live mirror of all MySQL tables. You can then create materialized views that automatically copy new rows from MySQL into ClickHouse:
+This creates a virtual mapping of all MySQL tables, proxying queries to MySQL in real time. You can then run periodic batch inserts to copy new rows from MySQL into ClickHouse:
 
 ```sql
-CREATE MATERIALIZED VIEW events_mv
-TO events
-AS
+INSERT INTO events
 SELECT id, user_id, session_id, event_type, page, amount, created_at
 FROM mysql_replica.events
 WHERE created_at > (SELECT max(created_at) FROM events);
 ```
+
+Note: The MySQL database engine is a proxy, not a local replica. Materialized views will not auto-trigger on new MySQL inserts. Run the above query on a schedule (e.g., via cron) for incremental syncs.
 
 For production continuous replication, use ClickHouse's `MaterializedMySQL` engine, which consumes the MySQL binary log:
 
@@ -228,12 +228,14 @@ SETTINGS
     max_wait_time_when_mysql_unavailable = 10000;
 ```
 
-This requires MySQL `binlog_format = ROW` and `binlog_row_image = FULL`.
+This requires MySQL GTID-based replication with `binlog_format = ROW` and `binlog_row_image = FULL`.
 
 Enable on MySQL:
 
 ```text
 [mysqld]
+gtid_mode                = ON
+enforce_gtid_consistency = ON
 binlog_format            = ROW
 binlog_row_image         = FULL
 log_bin                  = mysql-bin
@@ -259,7 +261,7 @@ Sum comparison:
 SELECT SUM(amount), COUNT(DISTINCT user_id) FROM events;
 
 -- ClickHouse
-SELECT sum(amount), uniq(user_id) FROM events;
+SELECT sum(amount), uniqExact(user_id) FROM events;
 ```
 
 Row-level spot check:
