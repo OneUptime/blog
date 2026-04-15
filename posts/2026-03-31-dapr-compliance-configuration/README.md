@@ -48,14 +48,14 @@ spec:
       namespace: "production"
       operations:
       - name: /payments/*
-        httpVerbiage: POST
+        httpVerb: POST
         action: allow
     - appId: audit-service
       defaultAction: allow
       namespace: "production"
       operations:
       - name: /payments/history
-        httpVerbiage: GET
+        httpVerb: GET
         action: allow
 ```
 
