@@ -12,21 +12,21 @@ Locality-Sensitive Hashing (LSH) enables approximate nearest-neighbor search by 
 
 ## Using ngramMinHash
 
-`ngramMinHash(str, ngram_size, minhash_size)` computes a MinHash signature for a string:
+`ngramMinHash(string[, ngramsize, hashnum])` computes a MinHash signature for a string. The `ngramsize` parameter (default 3) sets the n-gram length, and `hashnum` (default 6, max 25) controls how many min/max hashes are used:
 
 ```sql
 SELECT
     doc_id,
-    ngramMinHash(content, 4, 128) AS minhash
+    ngramMinHash(content, 4, 6) AS minhash
 FROM documents
 LIMIT 5;
 ```
 
-The result is a `FixedString` encoding multiple hash bands.
+The result is a `Tuple(UInt64, UInt64)` containing the minimum and maximum hash values.
 
 ## Computing Similarity Between Documents
 
-`ngramMinHashArgMin` and `ngramMinHashArgMax` return the string with the minimum or maximum hash, enabling band-based comparisons:
+Use `ngramSimHash` with `bitHammingDistance` to score pairwise document similarity:
 
 ```sql
 SELECT
