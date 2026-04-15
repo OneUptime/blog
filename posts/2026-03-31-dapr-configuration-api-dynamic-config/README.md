@@ -22,12 +22,12 @@ Common use cases:
 
 ```mermaid
 flowchart LR
-    App[Application] -->|GET /v1.0/configuration/{store}/{key}| Sidecar[Dapr Sidecar]
+    App[Application] -->|"GET /v1.0/configuration/{store}?key={key}"| Sidecar[Dapr Sidecar]
     Sidecar -->|Read key| ConfigStore[(Configuration Store)]
     ConfigStore -->|Value| Sidecar
     Sidecar -->|Return| App
 
-    App -->|Subscribe /v1.0-alpha1/configuration/{store}/{key}/subscribe| Sidecar2[Dapr Sidecar]
+    App -->|"Subscribe /v1.0/configuration/{store}/subscribe?key={key}"| Sidecar2[Dapr Sidecar]
     Sidecar2 -->|Watch for changes| ConfigStore2[(Configuration Store)]
     ConfigStore2 -->|Update| Sidecar2
     Sidecar2 -->|SSE/gRPC stream| App
@@ -35,7 +35,7 @@ flowchart LR
 
 ## Prerequisites
 
-- Dapr v1.7 or later (Configuration API is alpha as of Dapr 1.12)
+- Dapr v1.11 or later (Configuration API became stable in Dapr 1.11)
 - A configuration store component configured (Redis is most common)
 - Dapr initialized locally or on Kubernetes
 
@@ -70,12 +70,10 @@ kubectl apply -f configstore.yaml
 Set initial configuration values in Redis:
 
 ```bash
-redis-cli SET "feature-flags||version||1" '{"enabled": true, "rollout": 0.5}'
-redis-cli SET "rate-limits||version||1" '{"requestsPerSecond": 100}'
-redis-cli SET "app-settings||version||1" '{"maintenanceMode": false, "logLevel": "info"}'
+redis-cli MSET feature-flags '{"enabled": true, "rollout": 0.5}||1' rate-limits '{"requestsPerSecond": 100}||1' app-settings '{"maintenanceMode": false, "logLevel": "info"}||1'
 ```
 
-The key format for Dapr Redis configuration is: `{keyName}||version||{version}`.
+The value format for Dapr Redis configuration is: `{value}||{version}`. The key name is stored as-is.
 
 ## Step 3: Read Configuration via HTTP API
 
@@ -167,7 +165,7 @@ with DaprClient() as client:
 ### Via HTTP API (SSE - Server-Sent Events)
 
 ```bash
-curl -N "http://localhost:3500/v1.0-alpha1/configuration/configstore/subscribe?key=feature-flags"
+curl -N "http://localhost:3500/v1.0/configuration/configstore/subscribe?key=feature-flags"
 ```
 
 The response is a streaming SSE connection that sends updates when the value changes.
@@ -178,21 +176,19 @@ The response is a streaming SSE connection that sends updates when the value cha
 func watchConfig(client dapr.Client) {
     ctx := context.Background()
 
-    sub, err := client.SubscribeConfigurationItems(ctx, "configstore",
-        []string{"feature-flags", "app-settings"}, nil)
+    handler := func(id string, items map[string]*dapr.ConfigurationItem) {
+        fmt.Printf("Config update (subscription %s): %+v\n", id, items)
+    }
+
+    subscriptionID, err := client.SubscribeConfigurationItems(ctx, "configstore",
+        []string{"feature-flags", "app-settings"}, handler)
     if err != nil {
         log.Fatal(err)
     }
 
-    for {
-        select {
-        case update := <-sub.DataChannel():
-            fmt.Printf("Config update: %+v\n", update)
-        case err := <-sub.ErrorChannel():
-            fmt.Printf("Config subscription error: %v\n", err)
-            return
-        }
-    }
+    fmt.Printf("Subscribed with ID: %s\n", subscriptionID)
+    // Block to keep the subscription alive
+    select {}
 }
 ```
 
@@ -201,14 +197,18 @@ func watchConfig(client dapr.Client) {
 ```python
 from dapr.clients import DaprClient
 
+def config_handler(id: str, resp):
+    for key, item in resp.items.items():
+        print(f"Config changed (subscription {id}): {key} = {item.value}")
+
 def watch_config():
     with DaprClient() as client:
-        subscription = client.subscribe_configuration(
+        subscription_id = client.subscribe_configuration(
             store_name='configstore',
-            keys=['feature-flags', 'app-settings']
+            keys=['feature-flags', 'app-settings'],
+            handler=config_handler
         )
-        for update in subscription:
-            print(f"Config changed: {update}")
+        print(f"Subscribed with ID: {subscription_id}")
 ```
 
 ## Updating Configuration
@@ -216,7 +216,7 @@ def watch_config():
 Update a value in Redis to trigger subscriptions:
 
 ```bash
-redis-cli SET "feature-flags||version||2" '{"enabled": false, "rollout": 0}'
+redis-cli SET feature-flags '{"enabled": false, "rollout": 0}||2'
 ```
 
 Subscribers will receive the updated value automatically.
@@ -227,7 +227,7 @@ Subscribers will receive the updated value automatically.
 
 ```bash
 # Get subscription ID from subscribe response, then:
-curl -X GET "http://localhost:3500/v1.0-alpha1/configuration/configstore/abc123/unsubscribe"
+curl -X GET "http://localhost:3500/v1.0/configuration/configstore/abc123/unsubscribe"
 ```
 
 ## Summary
