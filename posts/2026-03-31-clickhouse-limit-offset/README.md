@@ -54,7 +54,7 @@ Note the argument order is reversed: `LIMIT offset, count` vs `LIMIT count OFFSE
 LIMIT applies independently at each query level, so you can use it in subqueries.
 
 ```sql
--- Get the 5 most recent events per type using a subquery
+-- Get buy events from the 100 most recent events
 SELECT *
 FROM (
     SELECT *
@@ -139,7 +139,6 @@ SELECT
     sum(value)  AS revenue,
     count()     AS cnt
 FROM events
-WHERE event_type = 'buy'
 GROUP BY event_type
 ORDER BY revenue DESC
 LIMIT 5;
