@@ -226,7 +226,7 @@ LATERAL FLATTEN(input => PARSE_JSON(e.properties):tags) f;
 -- ClickHouse: arrayJoin with JSONExtractArrayRaw
 SELECT
     user_id,
-    JSONExtractString(tag, '$') AS tag_value
+    JSONExtract(tag, 'String') AS tag_value
 FROM events
 ARRAY JOIN JSONExtractArrayRaw(properties, 'tags') AS tag;
 ```
@@ -311,7 +311,7 @@ FROM events;
 SELECT
     JSONExtractString(properties, 'device')                     AS device,
     JSONExtractFloat(properties, 'amount')                      AS amount,
-    JSONExtractString(JSONExtractArrayRaw(properties, 'tags')[1], '$') AS first_tag
+    JSONExtract(JSONExtractArrayRaw(properties, 'tags')[1], 'String') AS first_tag
 FROM events;
 ```
 
@@ -353,10 +353,10 @@ CREATE TABLE daily_event_stats
 (
     event_date   Date,
     event_type   LowCardinality(String),
-    total        UInt64,
-    unique_users UInt64
+    total        SimpleAggregateFunction(sum, UInt64),
+    unique_users AggregateFunction(uniq, Int64)
 )
-ENGINE = SummingMergeTree((total, unique_users))
+ENGINE = AggregatingMergeTree()
 ORDER BY (event_date, event_type);
 
 -- Materialized view
