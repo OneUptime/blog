@@ -10,28 +10,30 @@ Description: Learn how to use the dapr annotate command to inject Dapr sidecar a
 
 ## Overview
 
-The `dapr annotate` command adds Dapr annotations to Kubernetes Deployment, StatefulSet, or Pod manifest files. Instead of manually writing `dapr.io/enabled: "true"` and related annotations, `dapr annotate` lets you inject them from the command line, which is useful in CI/CD pipelines and GitOps workflows.
+The `dapr annotate` command adds Dapr annotations to Kubernetes manifest files including Deployments, StatefulSets, Pods, ReplicaSets, DaemonSets, CronJobs, Jobs, and Lists. Instead of manually writing `dapr.io/enabled: "true"` and related annotations, `dapr annotate` lets you inject them from the command line, which is useful in CI/CD pipelines and GitOps workflows.
+
+> **Note:** The `-k` (or `--kubernetes`) flag is required for all `dapr annotate` commands. The command writes the annotated manifest to stdout rather than modifying files in place.
 
 ## Basic Usage
 
-Annotate a Kubernetes Deployment manifest in place:
+Annotate a Kubernetes Deployment manifest and print the result to stdout:
 
 ```bash
-dapr annotate deployment.yaml
+dapr annotate -k deployment.yaml
 ```
 
-This adds the minimal required annotations:
+This adds the minimal required annotations. When no `--app-id` is provided, Dapr auto-generates one using the format `<namespace>-<kind>-<name>`:
 
 ```yaml
 annotations:
   dapr.io/enabled: "true"
-  dapr.io/app-id: ""
+  dapr.io/app-id: "default-deployment-order-service"
 ```
 
 ## Setting the App ID
 
 ```bash
-dapr annotate deployment.yaml \
+dapr annotate -k deployment.yaml \
               --app-id order-service
 ```
 
@@ -40,7 +42,7 @@ This adds `dapr.io/app-id: "order-service"` to the deployment.
 ## Specifying App Port and Protocol
 
 ```bash
-dapr annotate deployment.yaml \
+dapr annotate -k deployment.yaml \
               --app-id order-service \
               --app-port 8080 \
               --app-protocol http
@@ -59,7 +61,7 @@ annotations:
 ## Attaching a Dapr Configuration
 
 ```bash
-dapr annotate deployment.yaml \
+dapr annotate -k deployment.yaml \
               --app-id order-service \
               --config production-config
 ```
@@ -67,20 +69,20 @@ dapr annotate deployment.yaml \
 ## Setting CPU and Memory Limits
 
 ```bash
-dapr annotate deployment.yaml \
+dapr annotate -k deployment.yaml \
               --app-id order-service \
-              --sidecar-cpu-request "100m" \
-              --sidecar-cpu-limit "300m" \
-              --sidecar-memory-request "64Mi" \
-              --sidecar-memory-limit "256Mi"
+              --cpu-request "100m" \
+              --cpu-limit "300m" \
+              --memory-request "64Mi" \
+              --memory-limit "256Mi"
 ```
 
 ## Enabling API Logging
 
 ```bash
-dapr annotate deployment.yaml \
+dapr annotate -k deployment.yaml \
               --app-id order-service \
-              --enable-api-logging true
+              --enable-api-logging
 ```
 
 ## Using in a CI/CD Pipeline
@@ -92,14 +94,12 @@ Inject annotations during the build step before applying to Kubernetes:
 APP_ID="order-service"
 APP_PORT="8080"
 
-# Annotate the manifest
-dapr annotate ./k8s/deployment.yaml \
+# Annotate the manifest and apply to cluster
+dapr annotate -k ./k8s/deployment.yaml \
               --app-id $APP_ID \
               --app-port $APP_PORT \
-              --config production-config
-
-# Apply to cluster
-kubectl apply -f ./k8s/deployment.yaml
+              --config production-config | \
+  kubectl apply -f -
 ```
 
 ## Reading from stdin
@@ -108,7 +108,7 @@ Pipe a manifest through `dapr annotate`:
 
 ```bash
 kubectl get deployment order-service -o yaml | \
-  dapr annotate - --app-id order-service | \
+  dapr annotate -k - --app-id order-service | \
   kubectl apply -f -
 ```
 
