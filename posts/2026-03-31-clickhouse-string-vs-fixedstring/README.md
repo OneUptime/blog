@@ -49,10 +49,10 @@ ORDER BY id;
 
 | Type | Storage per value | Notes |
 |---|---|---|
-| `String` | 1 byte (length) + N bytes (data) | Variable, minimum 1 byte overhead |
+| `String` | varint (length) + N bytes (data) | 1 byte overhead for strings up to 127 bytes, grows for longer strings |
 | `FixedString(N)` | exactly N bytes | Fixed, no length prefix overhead |
 
-For short, fixed-length strings, `FixedString` eliminates the per-value overhead. For a column of 2-character country codes stored as `String`, each value costs 3 bytes (1 length + 2 chars). As `FixedString(2)`, it costs 2 bytes - a 33% saving before compression.
+For short, fixed-length strings, `FixedString` eliminates the per-value overhead. For a column of 2-character country codes stored as `String`, each value costs 3 bytes (1-byte varint length + 2 chars). As `FixedString(2)`, it costs 2 bytes - a 33% saving before compression.
 
 ```sql
 -- Compare actual storage sizes
@@ -127,7 +127,7 @@ ORDER BY log_time;
 
 -- Store IPs in binary form for efficient storage
 INSERT INTO access_log VALUES
-    (now(), IPv4StringToNum('192.168.1.1')::FixedString(4), toFixedString('\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xc0\xa8\x01\x01', 16));
+    (now(), reinterpretAsFixedString(IPv4StringToNum('192.168.1.1')), unhex('00000000000000000000FFFFC0A80101')::FixedString(16));
 ```
 
 ## When String is the Better Choice
