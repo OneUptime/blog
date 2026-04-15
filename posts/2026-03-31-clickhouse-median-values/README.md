@@ -29,10 +29,10 @@ WHERE event_time >= today() - 1;
 Three options with different accuracy-performance tradeoffs:
 
 ```sql
--- median: approximate (T-Digest), fast for large datasets
+-- median: approximate (reservoir sampling), fast for large datasets
 SELECT median(latency_ms) FROM requests;
 
--- quantile(0.5): same T-Digest approximation
+-- quantile(0.5): same reservoir sampling approximation
 SELECT quantile(0.5)(latency_ms) FROM requests;
 
 -- quantileExact(0.5): exact, requires sorting all values
