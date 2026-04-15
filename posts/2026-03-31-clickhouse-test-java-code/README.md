@@ -19,13 +19,13 @@ Separate tests into two layers:
 ```xml
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>testcontainers</artifactId>
+    <artifactId>clickhouse</artifactId>
     <version>1.19.8</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>clickhouse</artifactId>
+    <artifactId>junit-jupiter</artifactId>
     <version>1.19.8</version>
     <scope>test</scope>
 </dependency>
@@ -35,7 +35,7 @@ Separate tests into two layers:
 
 ```java
 import org.junit.jupiter.api.*;
-import org.testcontainers.containers.ClickHouseContainer;
+import org.testcontainers.clickhouse.ClickHouseContainer;
 import java.sql.*;
 
 @Testcontainers
