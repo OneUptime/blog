@@ -102,7 +102,7 @@ services:
       "--app-id", "order-service",
       "--app-port", "3000",
       "--app-channel-address", "order-service",
-      "--components-path", "/components"
+      "--resources-path", "/components"
     ]
     secrets:
       - dapr_secrets_file
@@ -111,7 +111,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--requirepass_file", "/run/secrets/redis_password"]
+    command: sh -c "redis-server --requirepass $$(cat /run/secrets/redis_password)"
     secrets:
       - redis_password
 ```
