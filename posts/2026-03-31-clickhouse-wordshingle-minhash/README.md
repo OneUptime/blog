@@ -29,7 +29,7 @@ LIMIT 5;
 
 The parameters are:
 ```text
-wordShingleMinHash(str, shingleSize, hashesCount)
+wordShingleMinHash(string[, shinglesize, hashnum])
 ```
 
 ## Basic Similarity Detection
