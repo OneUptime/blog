@@ -111,9 +111,9 @@ SELECT
     today() AS today,
     toLastDayOfMonth(today()) AS month_end,
     dateDiff('day', today(), toLastDayOfMonth(today())) AS days_remaining,
-    toDay(today()) AS day_of_month,
-    toDay(toLastDayOfMonth(today())) AS days_in_month,
-    round(toDay(today()) * 100.0 / toDay(toLastDayOfMonth(today())), 1) AS pct_of_month_elapsed;
+    toDayOfMonth(today()) AS day_of_month,
+    toDayOfMonth(toLastDayOfMonth(today())) AS days_in_month,
+    round(toDayOfMonth(today()) * 100.0 / toDayOfMonth(toLastDayOfMonth(today())), 1) AS pct_of_month_elapsed;
 ```
 
 ## Month-End Closing Snapshot
