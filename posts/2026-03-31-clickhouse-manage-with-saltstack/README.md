@@ -28,13 +28,10 @@ clickhouse:
 ```yaml
 clickhouse-repo:
   pkgrepo.managed:
-    - name: clickhouse
-    - humanname: ClickHouse LTS
-    - baseurl: https://packages.clickhouse.com/deb
-    - dist: lts
-    - comps: main
+    - name: deb https://packages.clickhouse.com/deb lts main
+    - file: /etc/apt/sources.list.d/clickhouse.list
     - key_url: https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key
-    - refresh_db: true
+    - refresh: true
 ```
 
 ## Package Install State (salt/clickhouse/install.sls)
@@ -101,14 +98,14 @@ base:
 ## Applying States
 
 ```bash
-# Apply to all clickhouse minions
-salt 'clickhouse_*' state.apply clickhouse
+# Apply highstate to all clickhouse minions
+salt 'clickhouse_*' state.apply
 
 # Apply to a single minion
-salt 'ch01' state.apply clickhouse
+salt 'clickhouse_01' state.apply
 
 # Dry run
-salt 'ch01' state.apply clickhouse test=True
+salt 'clickhouse_01' state.apply test=True
 ```
 
 ## Summary
