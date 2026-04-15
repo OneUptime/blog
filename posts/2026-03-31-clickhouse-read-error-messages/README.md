@@ -44,10 +44,10 @@ Code: 60. DB::Exception: Table default.events does not exist.
 
 Fix: Check the database and table name with `SHOW TABLES`.
 
-### Code 70 - TOO_LARGE_SIZE_COMPRESSED
+### Code 39 - TOO_LARGE_SIZE_COMPRESSED
 
 ```text
-Code: 70. DB::Exception: Too large size of compressed data.
+Code: 39. DB::Exception: Too large size of compressed data.
 ```
 
 Fix: Reduce batch size for INSERT operations.
