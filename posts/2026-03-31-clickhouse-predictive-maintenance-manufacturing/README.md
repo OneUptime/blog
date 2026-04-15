@@ -30,25 +30,28 @@ ORDER BY (equipment_id, sensor_tag, recorded_at);
 Compute rolling mean and standard deviation to flag outliers:
 
 ```sql
-SELECT
-    equipment_id,
-    sensor_tag,
-    recorded_at,
-    value,
-    avg(value) OVER (
-        PARTITION BY equipment_id, sensor_tag
-        ORDER BY recorded_at
-        ROWS BETWEEN 287 PRECEDING AND CURRENT ROW  -- 24h at 5-min intervals
-    ) AS rolling_24h_mean,
-    stddevPop(value) OVER (
-        PARTITION BY equipment_id, sensor_tag
-        ORDER BY recorded_at
-        ROWS BETWEEN 287 PRECEDING AND CURRENT ROW
-    ) AS rolling_24h_std,
-    abs(value - rolling_24h_mean) / nullIf(rolling_24h_std, 0) AS z_score
-FROM equipment_sensors
-WHERE recorded_at >= now() - INTERVAL 2 HOUR
-HAVING z_score > 3
+SELECT *
+FROM (
+    SELECT
+        equipment_id,
+        sensor_tag,
+        recorded_at,
+        value,
+        avg(value) OVER (
+            PARTITION BY equipment_id, sensor_tag
+            ORDER BY recorded_at
+            ROWS BETWEEN 287 PRECEDING AND CURRENT ROW  -- 24h at 5-min intervals
+        ) AS rolling_24h_mean,
+        stddevPop(value) OVER (
+            PARTITION BY equipment_id, sensor_tag
+            ORDER BY recorded_at
+            ROWS BETWEEN 287 PRECEDING AND CURRENT ROW
+        ) AS rolling_24h_std,
+        abs(value - rolling_24h_mean) / nullIf(rolling_24h_std, 0) AS z_score
+    FROM equipment_sensors
+    WHERE recorded_at >= now() - INTERVAL 2 HOUR
+)
+WHERE z_score > 3
 ORDER BY z_score DESC;
 ```
 
