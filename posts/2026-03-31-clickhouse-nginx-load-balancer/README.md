@@ -78,11 +78,12 @@ location / {
 }
 ```
 
-Alternatively, inject credentials at the proxy level:
+Alternatively, inject credentials at the proxy level using a Base64-encoded `Authorization` header:
 
 ```nginx
 location / {
-    proxy_pass http://clickhouse_user:secret@clickhouse_nodes;
+    proxy_pass http://clickhouse_nodes;
+    proxy_set_header Authorization "Basic Y2xpY2tob3VzZV91c2VyOnNlY3JldA==";
 }
 ```
 
@@ -123,4 +124,4 @@ Each request should return different hostnames if the upstream is distributing c
 
 ## Summary
 
-Nginx works well as a ClickHouse HTTP load balancer using the `upstream` block with `least_conn` or `round_robin`. Use `max_fails` and `fail_timeout` for passive health checking, and enable SSL termination to secure client connections. Increase `proxy_read_timeout` to handle long-running analytical queries that can take minutes to complete.
+Nginx works well as a ClickHouse HTTP load balancer using the `upstream` block with `least_conn` or the default round-robin method. Use `max_fails` and `fail_timeout` for passive health checking, and enable SSL termination to secure client connections. Increase `proxy_read_timeout` to handle long-running analytical queries that can take minutes to complete.
