@@ -8,7 +8,7 @@ Description: Learn how to configure ClickHouse listen addresses, TCP/HTTP ports,
 
 ---
 
-By default ClickHouse listens on all network interfaces and exposes several ports. In production you usually want to restrict which interfaces ClickHouse binds to, change the default port numbers to avoid conflicts, and disable endpoints that are not used. This guide covers all the relevant network configuration options.
+By default ClickHouse listens on localhost and exposes several ports. In production you usually want to control which interfaces ClickHouse binds to, change the default port numbers to avoid conflicts, and disable endpoints that are not used. This guide covers all the relevant network configuration options.
 
 ## Default Port Assignments
 
@@ -26,7 +26,7 @@ ClickHouse uses the following ports out of the box:
 
 ## Changing the Listen Address
 
-By default ClickHouse binds to `::` (all IPv4 and IPv6 interfaces). To restrict it to a specific address, set `<listen_host>` in `/etc/clickhouse-server/config.xml`:
+By default ClickHouse binds to localhost on both IPv4 and IPv6. To listen on all interfaces or restrict to a specific address, set `<listen_host>` in `/etc/clickhouse-server/config.xml`. Use `::` to accept connections from everywhere on both IPv4 and IPv6:
 
 ```xml
 <clickhouse>
@@ -93,7 +93,7 @@ To enable TLS for the HTTP interface:
 <clickhouse>
     <https_port>8443</https_port>
 
-    <openssl>
+    <openSSL>
         <server>
             <certificateFile>/etc/clickhouse-server/ssl/server.crt</certificateFile>
             <privateKeyFile>/etc/clickhouse-server/ssl/server.key</privateKeyFile>
@@ -104,7 +104,7 @@ To enable TLS for the HTTP interface:
             <disableProtocols>sslv2,sslv3</disableProtocols>
             <preferServerCiphers>true</preferServerCiphers>
         </server>
-    </openssl>
+    </openSSL>
 </clickhouse>
 ```
 
@@ -151,7 +151,7 @@ If this is not set, ClickHouse tries to determine the hostname automatically, wh
 
 This controls how long idle HTTP connections remain open. Increasing it can reduce connection overhead for clients that send many small queries in sequence.
 
-## Per-Interface HTTP Compression
+## Customizing HTTP OPTIONS Response Headers
 
 ```xml
 <clickhouse>
