@@ -39,6 +39,12 @@ Spring Boot applications frequently need analytical capabilities alongside their
         <version>0.6.3</version>
     </dependency>
 
+    <!-- Spring Boot Actuator (required for health check) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
     <!-- Lombok for boilerplate reduction -->
     <dependency>
         <groupId>org.projectlombok</groupId>
