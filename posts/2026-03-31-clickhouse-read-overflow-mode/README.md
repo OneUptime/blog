@@ -35,7 +35,7 @@ SETTINGS
     read_overflow_mode  = 'throw';
 ```
 
-With `throw`, if more than 10M rows need to be read, the query fails with `Limit for number of rows to read exceeded`.
+With `throw`, if more than 10M rows need to be read, the query fails with an error like `Limit for rows (controlled by 'max_rows_to_read' setting) exceeded`.
 
 ## Using break Mode for Approximate Results
 
