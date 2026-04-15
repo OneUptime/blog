@@ -77,7 +77,7 @@ Traces show exact timing, which hop failed, and HTTP status codes.
 # Check sidecar health
 curl http://localhost:3500/v1.0/healthz
 
-# Check app health via sidecar
+# Check sidecar outbound readiness (components initialized, ready for outbound calls)
 curl http://localhost:3500/v1.0/healthz/outbound
 ```
 
