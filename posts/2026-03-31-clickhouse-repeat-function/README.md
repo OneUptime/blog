@@ -85,7 +85,7 @@ Date: 2026-03-31
 
 ## Left-Padding Strings
 
-ClickHouse does not have a built-in `lpad()` function, but you can implement it using `repeat()` and `substring()`.
+ClickHouse has a built-in `leftPad()` function (aliased as `lpad()`) since version 21.8, but you can also implement left-padding manually using `repeat()` and `substring()`.
 
 ```sql
 -- Left-pad a number string with zeros to width 8
@@ -172,7 +172,7 @@ FROM source_table
 LIMIT 10;
 ```
 
-Note: ClickHouse does have `rpad()` and `lpad()` as of version 22.8, which simplify padding. The `repeat()`-based approach remains useful in older versions or when the padding character itself is a repeated pattern rather than a single character.
+Note: ClickHouse has had `rightPad()` (aliased as `rpad()`) and `leftPad()` (aliased as `lpad()`) since version 21.8, which simplify padding. The `repeat()`-based approach remains useful in older versions or when the padding character itself is a repeated pattern rather than a single character.
 
 ## Summary
 
