@@ -109,8 +109,8 @@ kubectl get component statestore -o jsonpath='{.spec.metadata[?(@.name=="keyPref
 # Verify your app ID
 dapr list -k | grep myapp
 
-# Try reading with the full prefixed key
-curl http://localhost:3500/v1.0/state/statestore/myapp%7C%7Corder-001
+# Read through the API using just the key (Dapr adds the prefix automatically)
+curl http://localhost:3500/v1.0/state/statestore/order-001
 ```
 
 ## Step 6: Diagnose ETag Conflicts
@@ -173,11 +173,11 @@ curl http://localhost:3500/v1.0/metadata | jq '.components'
 kubectl port-forward deployment/myapp 9090:9090
 
 # Check error rates
-curl -s http://localhost:9090/metrics | grep dapr_component_state_operations_total
+curl -s http://localhost:9090/metrics | grep dapr_component_state_count
 
 # Look for error labels
 curl -s http://localhost:9090/metrics | \
-  grep 'dapr_component_state_operations_total{.*status="error"'
+  grep 'dapr_component_state_count{.*status="error"'
 ```
 
 ## Debugging Checklist
