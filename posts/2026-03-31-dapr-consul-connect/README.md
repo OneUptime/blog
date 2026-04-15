@@ -17,7 +17,6 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm install consul hashicorp/consul \
   --set global.name=consul \
   --set connectInject.enabled=true \
-  --set controller.enabled=true \
   -n consul --create-namespace
 ```
 
@@ -41,20 +40,20 @@ Dapr can use Consul as its name resolution component for service discovery:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: consul-name-resolution
-  namespace: default
+  name: appconfig
 spec:
-  type: nameresolution.consul
-  version: v1
-  metadata:
-  - name: selfRegister
-    value: "true"
-  - name: client
-    value: '{"Address": "consul-server.consul.svc.cluster.local:8500"}'
-  - name: advancedRegistration
-    value: '{"Tags": ["dapr"], "EnableTagOverride": false}'
+  nameResolution:
+    component: "consul"
+    configuration:
+      selfRegister: true
+      client:
+        address: "consul-server.consul.svc.cluster.local:8500"
+      advancedRegistration:
+        tags:
+          - "dapr"
+        enableTagOverride: false
 ```
 
 ## Inject Both Sidecars
