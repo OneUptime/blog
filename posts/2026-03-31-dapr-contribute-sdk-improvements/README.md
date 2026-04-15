@@ -64,7 +64,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install development dependencies
-pip install -e ".[dev]"
+pip install -r dev-requirements.txt && pip install -e .
 
 # Run tests
 python -m pytest tests/
@@ -78,8 +78,8 @@ mypy dapr/
 Suppose `bulk_get_state` is missing. Add it to the client:
 
 ```python
-# dapr/clients/grpc/_client.py
-async def bulk_get_state(
+# dapr/clients/grpc/client.py
+def bulk_get_state(
     self,
     store_name: str,
     keys: List[str],
@@ -91,23 +91,22 @@ async def bulk_get_state(
         keys=keys,
         parallelism=10,
     )
-    response = await self._stub.GetBulkState(req, metadata=metadata)
+    response, call = self._stub.GetBulkState.with_call(req, metadata=metadata)
     return BulkStatesResponse(items=response.items)
 ```
 
 Write the test:
 
 ```python
-# tests/test_client.py
-@pytest.mark.asyncio
-async def test_bulk_get_state():
-    async with DaprClient() as client:
+# tests/test_bulk_get_state.py
+def test_bulk_get_state():
+    with DaprClient() as client:
         # Save multiple states first
-        await client.save_state("statestore", "key1", "value1")
-        await client.save_state("statestore", "key2", "value2")
+        client.save_state("statestore", "key1", "value1")
+        client.save_state("statestore", "key2", "value2")
 
         # Bulk get
-        response = await client.bulk_get_state("statestore", ["key1", "key2"])
+        response = client.bulk_get_state("statestore", ["key1", "key2"])
 
         assert len(response.items) == 2
         assert any(item.key == "key1" for item in response.items)
@@ -122,12 +121,12 @@ git commit -s -m "feat(client): add bulk_get_state method"
 
 gh pr create \
   --repo dapr/python-sdk \
-  --title "feat(client): add bulk_get_state async method" \
+  --title "feat(client): add bulk_get_state method" \
   --body "Adds missing bulk_get_state API coverage. Fixes #456.
 
 ## Changes
 - Added bulk_get_state() to DaprClient
-- Added corresponding async tests
+- Added corresponding tests
 
 ## Testing
 - Unit tests pass: pytest tests/
