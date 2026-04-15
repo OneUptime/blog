@@ -70,11 +70,11 @@ ENGINE = MergeTree()
 PARTITION BY toYYYYMM(ts)
 ORDER BY (ts, user_id)
 TTL
-    ts + INTERVAL 1 DAY WHERE is_test = 1,       -- delete test events after 1 day
-    ts + INTERVAL 365 DAY;                         -- delete all events after 1 year
+    ts + INTERVAL 1 DAY DELETE WHERE is_test = 1,  -- delete test events after 1 day
+    ts + INTERVAL 365 DAY DELETE;                   -- delete all events after 1 year
 ```
 
-ClickHouse applies the first matching rule per row.
+ClickHouse evaluates all applicable DELETE rules and removes a row when any matching rule's TTL expression has expired.
 
 ## Column-Level TTL: Nullify Old Column Values
 
@@ -203,7 +203,7 @@ OPTIMIZE TABLE access_logs PARTITION '202501' FINAL;
 ## Controlling TTL Merge Frequency
 
 ```sql
--- How often TTL merges are triggered (seconds, default: 1 day)
+-- How often TTL merges are triggered (seconds, default: 14400 = 4 hours)
 ALTER TABLE access_logs
 MODIFY SETTING merge_with_ttl_timeout = 3600;  -- check every hour
 ```
