@@ -120,8 +120,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/smtp \
     "operation": "create",
     "metadata": {
       "emailTo": "customer@example.com",
-      "subject": "Order Confirmation - ORD-001",
-      "contentType": "text/html"
+      "subject": "Order Confirmation - ORD-001"
     }
   }'
 ```
@@ -139,14 +138,12 @@ app = Flask(__name__)
 DAPR_HTTP_PORT = 3500
 BINDING_NAME = "smtp"
 
-def send_email(to: str, subject: str, body: str, html: bool = False):
+def send_email(to: str, subject: str, body: str):
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/bindings/{BINDING_NAME}"
     metadata = {
         "emailTo": to,
         "subject": subject,
     }
-    if html:
-        metadata["contentType"] = "text/html"
 
     payload = {
         "data": body,
@@ -179,7 +176,7 @@ def send_order_confirmation(order_id: str, customer_email: str, items: list, tot
     </body>
     </html>
     """
-    send_email(customer_email, f"Order Confirmed - {order_id}", body, html=True)
+    send_email(customer_email, f"Order Confirmed - {order_id}", body)
 
 def send_alert_email(subject: str, message: str):
     """Send operational alert to admin."""
@@ -210,7 +207,7 @@ def send_password_reset():
       <p>If you did not request this, please ignore this email.</p>
     </body></html>
     """
-    send_email(email, "Password Reset Request", body, html=True)
+    send_email(email, "Password Reset Request", body)
     return jsonify({"status": "reset_email_sent"})
 
 if __name__ == '__main__':
@@ -227,7 +224,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/smtp \
     "operation": "create",
     "metadata": {
       "emailTo": "manager@example.com",
-      "emailCC": "analyst@example.com,director@example.com",
+      "emailCC": "analyst@example.com;director@example.com",
       "subject": "March 2026 Monthly Report"
     }
   }'
@@ -261,4 +258,4 @@ Visit `http://localhost:8025` to view captured emails.
 
 ## Summary
 
-The Dapr SMTP binding sends emails through any SMTP server without requiring an SMTP client library in your application. Configure the host, port, and credentials in the component YAML, then POST to `/v1.0/bindings/smtp` with the email body and per-request metadata overrides for `emailTo`, `subject`, and `contentType`. Use MailHog for local development and configure TLS for production SMTP servers.
+The Dapr SMTP binding sends emails through any SMTP server without requiring an SMTP client library in your application. Configure the host, port, and credentials in the component YAML, then POST to `/v1.0/bindings/smtp` with the email body and per-request metadata overrides for `emailTo`, `subject`, `emailCC`, and `emailBCC`. The binding always sends the body as `text/html`. Use MailHog for local development and configure TLS for production SMTP servers.
