@@ -41,7 +41,7 @@ spec:
       llm-retry-policy:
         policy: exponential
         duration: 5s
-        maxDuration: 120s
+        maxInterval: 120s
         maxRetries: 5
         matching:
           httpStatusCodes: "429,500,502,503,504"
@@ -91,12 +91,13 @@ kubectl apply -f ai-agent-resiliency.yaml
 In addition to Dapr's automatic retries, add application-level retry logic for tool calls:
 
 ```python
-from dapr_agents import Agent, tool
+from dapr_agents import DurableAgent, OpenAIChatClient, tool
+import httpx
 import time
 import functools
 
 def with_retry(max_retries: int = 3, delay: float = 1.0, backoff: float = 2.0):
-    """Decorator to add retry logic to tool methods."""
+    """Decorator to add retry logic to tool functions."""
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -114,56 +115,64 @@ def with_retry(max_retries: int = 3, delay: float = 1.0, backoff: float = 2.0):
     return decorator
 
 
-class ResilientAgent(Agent):
-    name = "resilient-agent"
-    instructions = "You handle tasks with robust error recovery."
+@tool
+@with_retry(max_retries=3, delay=2.0, backoff=2.0)
+def call_external_api(endpoint: str) -> str:
+    """Calls an external API endpoint with automatic retry.
 
-    @tool
-    @with_retry(max_retries=3, delay=2.0, backoff=2.0)
-    def call_external_api(self, endpoint: str) -> str:
-        """Calls an external API endpoint with automatic retry.
+    Args:
+        endpoint: The API endpoint URL to call.
+    """
+    response = httpx.get(endpoint, timeout=10)
+    response.raise_for_status()
+    return response.text[:500]
 
-        Args:
-            endpoint: The API endpoint URL to call.
-        """
-        import httpx
-        response = httpx.get(endpoint, timeout=10)
-        response.raise_for_status()
-        return response.text[:500]
 
-    @tool
-    def call_with_fallback(self, primary_endpoint: str, fallback_endpoint: str) -> str:
-        """Calls primary endpoint with automatic fallback on failure.
+@tool
+def call_with_fallback(primary_endpoint: str, fallback_endpoint: str) -> str:
+    """Calls primary endpoint with automatic fallback on failure.
 
-        Args:
-            primary_endpoint: The preferred API endpoint.
-            fallback_endpoint: The fallback endpoint if primary fails.
-        """
-        import httpx
-        for endpoint in [primary_endpoint, fallback_endpoint]:
-            try:
-                response = httpx.get(endpoint, timeout=10)
-                response.raise_for_status()
-                return f"Response from {endpoint}: {response.text[:200]}"
-            except Exception:
-                continue
-        return "Both endpoints unavailable. Using cached data."
-```
+    Args:
+        primary_endpoint: The preferred API endpoint.
+        fallback_endpoint: The fallback endpoint if primary fails.
+    """
+    for endpoint in [primary_endpoint, fallback_endpoint]:
+        try:
+            response = httpx.get(endpoint, timeout=10)
+            response.raise_for_status()
+            return f"Response from {endpoint}: {response.text[:200]}"
+        except Exception:
+            continue
+    return "Both endpoints unavailable. Using cached data."
 
-## Configuring LLM Retries in Dapr Agents
 
-The Dapr Agents SDK supports LLM retry configuration:
-
-```python
-from dapr_agents.llm import OpenAIChat
-
-llm = OpenAIChat(
-    model="gpt-4o",
-    max_retries=5,
-    timeout=60,
-    retry_on_status=[429, 500, 502, 503]
+agent = DurableAgent(
+    name="resilient-agent",
+    role="Resilient Assistant",
+    goal="Handle tasks with robust error recovery.",
+    instructions=[
+        "Respond clearly and helpfully.",
+        "Use tools when appropriate to fetch external data.",
+    ],
+    llm=OpenAIChatClient(model="gpt-4o"),
+    tools=[call_external_api, call_with_fallback],
 )
 ```
+
+## Configuring the LLM Client in Dapr Agents
+
+The Dapr Agents SDK provides `OpenAIChatClient` for LLM configuration. LLM-level retries are handled by the Dapr resiliency policy rather than client-side parameters:
+
+```python
+from dapr_agents import OpenAIChatClient
+
+llm = OpenAIChatClient(
+    model="gpt-4o",
+    timeout=60
+)
+```
+
+With the `Resiliency` resource applied above, Dapr automatically retries failed LLM calls matching the configured HTTP status codes (429, 500, 502, 503, 504) without any additional client-side retry configuration.
 
 ## Handling Circuit Breaker State
 
@@ -174,27 +183,40 @@ Monitor circuit breaker state via the Dapr metrics API:
 curl http://localhost:9090/metrics | grep circuit_breaker
 ```
 
-Add logging when circuit breakers trip:
+Add a helper to fall back to cached state when circuit breakers trip:
 
 ```python
-class ResilientAgent(Agent):
-    name = "resilient-agent"
+from dapr.clients import DaprClient
 
-    def run(self, message: str) -> str:
-        try:
-            return super().run(message)
-        except Exception as e:
-            if "circuit" in str(e).lower():
-                # Circuit breaker is open - return cached response
-                return self._get_cached_response(message)
-            raise
-
-    def _get_cached_response(self, message: str) -> str:
-        from dapr import Client
-        cached = Client().get_state("statestore", f"cache-{hash(message)}")
+def get_cached_response(message: str) -> str:
+    """Retrieve a cached response from Dapr state store."""
+    with DaprClient() as client:
+        cached = client.get_state("statestore", f"cache-{hash(message)}")
         if cached.data:
             return f"[CACHED] {cached.data.decode()}"
-        return "Service temporarily unavailable. Please try again in a moment."
+    return "Service temporarily unavailable. Please try again in a moment."
+
+
+@tool
+def resilient_query(message: str) -> str:
+    """Queries the LLM with circuit breaker fallback.
+
+    Args:
+        message: The user message to process.
+    """
+    try:
+        import httpx
+        response = httpx.post(
+            "http://localhost:3500/v1.0/invoke/openai-proxy/method/chat",
+            json={"message": message},
+            timeout=60
+        )
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        if "circuit" in str(e).lower():
+            return get_cached_response(message)
+        raise
 ```
 
 ## Testing Resiliency Policies
@@ -202,10 +224,9 @@ class ResilientAgent(Agent):
 Use `dapr run` with chaos injection to test resiliency:
 
 ```bash
-# Introduce artificial delays via Dapr's fault injection
+# Run the agent with resiliency policies loaded from the resources directory
 dapr run --app-id resilient-agent \
-  --config ./resiliency-config.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python agent.py
 ```
 
