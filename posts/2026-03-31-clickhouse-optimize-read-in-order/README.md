@@ -117,16 +117,18 @@ LIMIT 100
 SETTINGS optimize_read_in_order = 1;
 ```
 
-Look for `MergingSorted` in the pipeline output. With `optimize_read_in_order` active you will see a `ReadInOrder` or `FinishSorting` step rather than a full `Sort` step. The key indicator is the absence of a `PartialSortingTransform` on the full dataset.
+Look for `MergeTreeInOrder` in the pipeline output. With `optimize_read_in_order` active you will see `MergeTreeInOrder` (instead of `MergeTreeThread`) feeding into `MergingSortedTransform`, with no `PartialSortingTransform` or `MergeSortingTransform` steps. When the optimization is not active, the pipeline shows `MergeTreeThread` followed by `PartialSortingTransform` and `MergeSortingTransform` to perform the full sort.
 
 ```sql
--- Alternative: check with EXPLAIN SYNTAX
-EXPLAIN SYNTAX
+-- Alternative: check with EXPLAIN PLAN
+EXPLAIN PLAN
 SELECT user_id, event_time
 FROM events
 ORDER BY user_id, event_time
 LIMIT 100;
 ```
+
+In the `EXPLAIN PLAN` output, look for `ReadType: InOrder` which confirms that ClickHouse is reading data in the table's sort order.
 
 ## Interaction with LIMIT
 
@@ -156,7 +158,7 @@ ORDER BY user_id, event_time;
 SELECT
     user_id,
     count() AS total_events,
-    sum(revenue) AS total_revenue
+    max(event_time) AS last_event_time
 FROM events
 WHERE event_date >= today() - 30
 GROUP BY user_id
