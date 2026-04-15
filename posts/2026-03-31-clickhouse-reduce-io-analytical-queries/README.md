@@ -29,8 +29,7 @@ Pre-aggregate to reduce IO at query time:
 ```sql
 ALTER TABLE events ADD PROJECTION proj_hourly_counts (
     SELECT project_id, toStartOfHour(ts) AS hour, count()
-    FROM events
-    GROUP BY project_id, hour
+    GROUP BY project_id, toStartOfHour(ts)
 );
 ```
 
