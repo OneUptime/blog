@@ -38,7 +38,7 @@ This is useful in deployment scripts and teardown routines where you want idempo
 
 ## TRUNCATE TABLE ON CLUSTER
 
-In a replicated or distributed ClickHouse cluster, TRUNCATE TABLE only affects the local replica by default. To propagate the truncation to all nodes in a named cluster, add the ON CLUSTER clause:
+In a distributed ClickHouse cluster, you may need to truncate a table across all nodes. For ReplicatedMergeTree tables, truncating on one replica is automatically propagated to other replicas through the replication log. For non-replicated engines or Distributed tables, add the ON CLUSTER clause to execute the truncation on every node:
 
 ```sql
 TRUNCATE TABLE analytics.events ON CLUSTER '{cluster}';
@@ -50,7 +50,11 @@ Replace `'{cluster}'` with the actual cluster name defined in your `config.xml`,
 TRUNCATE TABLE analytics.events ON CLUSTER my_cluster;
 ```
 
-ClickHouse will execute the DDL on every shard and replica in the cluster. For ReplicatedMergeTree tables, truncating on one replica is replicated to the other replicas automatically, so ON CLUSTER is only needed for Distributed or non-replicated setups.
+ClickHouse will execute the DDL on every shard and replica in the cluster. Since ReplicatedMergeTree tables replicate truncation automatically, ON CLUSTER is primarily needed for Distributed or non-replicated engine setups. By default, truncation on replicated tables happens asynchronously — add the `SYNC` keyword to wait for all replicas to complete the operation:
+
+```sql
+TRUNCATE TABLE analytics.events SYNC;
+```
 
 ## Truncating a Specific Partition
 
