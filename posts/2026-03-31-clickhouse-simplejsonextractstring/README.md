@@ -8,7 +8,7 @@ Description: Learn how simpleJSONExtractString() offers a fast, heuristic-based 
 
 ---
 
-`simpleJSONExtractString` is a lightweight JSON string extractor that uses a heuristic parser instead of a full JSON parser. It is faster than `JSONExtractString` because it does not validate the full JSON structure, but it only works reliably on flat, well-formed JSON objects with simple string values. If your payloads are known to be well-structured and you need to extract high-volume string fields with minimal overhead, `simpleJSONExtractString` is a useful alternative.
+`simpleJSONExtractString` is a lightweight JSON string extractor that uses a simplified parser instead of a full JSON parser. It is faster than `JSONExtractString` because it does not validate the full JSON structure, but it makes strict assumptions about the input: field names must be constants, the JSON should be canonically encoded, and there should be no whitespace outside of string literals. It searches for matching field names at any nesting level indiscriminately, returning the first match. If your payloads are known to be well-structured and you need to extract high-volume string fields with minimal overhead, `simpleJSONExtractString` is a useful alternative.
 
 ## Basic Usage
 
@@ -99,9 +99,9 @@ LIMIT 10;
 
 `simpleJSONExtractString` is not suitable for:
 
-- Nested objects (it does not support path traversal)
-- JSON where string values contain escaped characters like `\n` or `\"`
-- Heterogeneous or loosely structured payloads
+- Targeted nested extraction (it cannot traverse a specific path like `JSONExtractString(json, 'user', 'name')`; it finds the first occurrence of a key at any depth)
+- JSON with whitespace outside of string literals (e.g., pretty-printed JSON)
+- Surrogate pairs for characters outside the Basic Multilingual Plane (`\uXXXX\uYYYY` format is converted to CESU-8 instead of UTF-8)
 
 ```sql
 -- For nested paths, always use the full JSONExtractString
@@ -112,4 +112,4 @@ LIMIT 5;
 
 ## Summary
 
-`simpleJSONExtractString` is a fast heuristic extractor for flat, well-formed JSON string fields. It matches the return behavior of `JSONExtractString` for simple inputs but avoids full JSON parsing overhead. Reserve it for high-throughput pipelines where payloads are known to be simple. Use `JSONExtractString` for anything that involves nested paths, special characters in values, or complex JSON structures where correctness matters more than speed.
+`simpleJSONExtractString` is a fast, simplified extractor for well-formed JSON string fields. It matches the return behavior of `JSONExtractString` for simple inputs but avoids full JSON parsing overhead. It does unescape standard JSON escape sequences and searches for keys at any nesting depth, but it cannot target a specific path and always returns the first match. Reserve it for high-throughput pipelines where payloads are known to be well-structured. Use `JSONExtractString` for anything that involves targeted nested paths or complex JSON structures where correctness matters more than speed.
