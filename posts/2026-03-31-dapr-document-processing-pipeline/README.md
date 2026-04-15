@@ -83,10 +83,10 @@ import (
     "log"
 
     dapr "github.com/dapr/go-sdk/client"
-    daprd "github.com/dapr/go-sdk/service/http"
+    "github.com/dapr/go-sdk/service/common"
 )
 
-func handleDocUploaded(ctx context.Context, e *daprd.TopicEvent) (bool, error) {
+func handleDocUploaded(ctx context.Context, e *common.TopicEvent) (bool, error) {
     var event map[string]interface{}
     json.Unmarshal(e.RawData, &event)
 
@@ -176,7 +176,8 @@ public class DocumentJobActor : Actor, IDocumentJobActor
 {
     public async Task UpdateStageAsync(string stage, bool success, string? errorMessage = null)
     {
-        var job = await StateManager.GetOrAddStateAsync("job", new DocumentJob());
+        var result = await StateManager.TryGetStateAsync<DocumentJob>("job");
+        var job = result.HasValue ? result.Value : new DocumentJob();
         job.Stages[stage] = new StageResult { Success = success, CompletedAt = DateTime.UtcNow };
 
         if (!success)
