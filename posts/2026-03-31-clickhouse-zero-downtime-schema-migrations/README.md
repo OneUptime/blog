@@ -40,10 +40,10 @@ ALTER TABLE events MODIFY COLUMN value Float64;
 
 ## Column Rename Pattern (No Native Support)
 
-ClickHouse does not support `RENAME COLUMN` directly in older versions (added in 21.4+):
+ClickHouse does not support `RENAME COLUMN` directly in older versions (added in 20.4+):
 
 ```sql
--- 21.4+ only
+-- 20.4+ only
 ALTER TABLE events RENAME COLUMN old_field TO new_field;
 
 -- For older versions - add + migrate + drop
@@ -68,7 +68,7 @@ Follow the expand-contract pattern for breaking changes:
 ALTER TABLE events ADD COLUMN user_uuid UUID DEFAULT generateUUIDv4();
 
 -- Step 2: Backfill
-ALTER TABLE events UPDATE user_uuid = toUUID(user_id) WHERE user_uuid = '00000000-0000-0000-0000-000000000000';
+ALTER TABLE events UPDATE user_uuid = toUUID(user_id) WHERE 1;
 
 -- Step 3: Application switches to user_uuid
 -- Step 4: Drop old column (after verification)
