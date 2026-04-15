@@ -17,10 +17,9 @@ PostgreSQL must have logical replication enabled:
 ```sql
 -- In postgresql.conf
 -- wal_level = logical
-
--- On the PostgreSQL side:
-SELECT pg_create_logical_replication_slot('clickhouse_slot', 'pgoutput');
 ```
+
+ClickHouse creates and manages its own replication slot automatically, so you do not need to create one manually.
 
 The ClickHouse user connecting to PostgreSQL needs REPLICATION privileges:
 
@@ -32,15 +31,30 @@ GRANT SELECT ON TABLE orders TO clickhouse_repl;
 
 ## Creating the Table
 
+This engine is experimental, so you must enable it first:
+
 ```sql
-CREATE TABLE orders_replica
+SET allow_experimental_materialized_postgresql_table = 1;
+```
+
+Then create the table with column definitions and a primary key:
+
+```sql
+CREATE TABLE orders_replica (
+    order_id UInt64,
+    customer_id UInt64,
+    status String,
+    total_amount Float64,
+    created_at DateTime
+)
 ENGINE = MaterializedPostgreSQL(
     'host:5432',
     'mydb',
     'orders',
     'clickhouse_repl',
     'secret'
-);
+)
+PRIMARY KEY order_id;
 ```
 
 ClickHouse will perform an initial snapshot of the `orders` table and then stream ongoing changes.
@@ -61,14 +75,15 @@ LIMIT 100;
 
 ## Checking Replication Status
 
-Monitor the replication state through system tables:
+Each row in the replicated table has a hidden `_version` column that corresponds to the LSN (Log Sequence Number) position in the PostgreSQL WAL. You can use it to gauge how current the replica is:
 
 ```sql
 SELECT
-    name,
-    value
-FROM system.settings
-WHERE name LIKE '%postgresql%';
+    order_id,
+    _version
+FROM orders_replica
+ORDER BY _version DESC
+LIMIT 5;
 ```
 
 For more detail, check the ClickHouse logs for messages from the MaterializedPostgreSQL background thread.
