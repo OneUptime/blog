@@ -124,7 +124,7 @@ QUALIFY seq = 1 OR seq = total_events;
 
 ## QUALIFY vs. Subquery - Performance Note
 
-Both approaches should produce similar query plans because ClickHouse pushes the filter down in either case. The `QUALIFY` form is preferred for readability - it keeps the filtering logic adjacent to the window function definition rather than buried in an outer wrapper:
+Both approaches produce the same result. The `QUALIFY` form is preferred for readability - it keeps the filtering logic adjacent to the window function definition rather than buried in an outer wrapper:
 
 ```sql
 -- Equivalent subquery - harder to read and maintain
@@ -141,4 +141,4 @@ WHERE rn = 1 OR rn = total;
 
 ## Summary
 
-`QUALIFY` is the ClickHouse clause for filtering on window function results without a wrapping subquery. It is evaluated after all window functions complete, making it the correct layer for row-number deduplication, top-N-per-group selection, and percentile filtering. Any expression valid in a `WHERE` clause is also valid in `QUALIFY`, and you can reference window function results by alias or inline expression.
+`QUALIFY` is the ClickHouse clause for filtering on window function results without a wrapping subquery. It is evaluated after all window functions complete, making it the correct layer for row-number deduplication, top-N-per-group selection, and percentile filtering. The query must contain at least one window function for `QUALIFY` to be used - if there are no window functions, use `WHERE` instead. You can reference window function results by alias or inline expression.
