@@ -21,12 +21,12 @@ SELECT
     total_replicas,
     active_replicas,
     absolute_delay AS lag_seconds,
-    relative_delay AS relative_lag_seconds
+    queue_size
 FROM clusterAllReplicas('my_cluster', system.replicas)
 ORDER BY lag_seconds DESC;
 ```
 
-`absolute_delay` is the number of seconds behind the most up-to-date replica. `relative_delay` is the delay relative to the other replicas, excluding replicas that are themselves behind.
+`absolute_delay` is the number of seconds behind the most up-to-date replica. `queue_size` shows the number of operations waiting to be replicated, which helps gauge how far behind a replica is.
 
 ## Replication Queue Depth
 
@@ -52,14 +52,14 @@ SELECT
     hostName() AS node,
     database,
     table,
-    last_exception,
-    last_exception_time
+    last_queue_update_exception,
+    zookeeper_exception
 FROM clusterAllReplicas('my_cluster', system.replicas)
-WHERE last_exception != ''
-ORDER BY last_exception_time DESC;
+WHERE last_queue_update_exception != '' OR zookeeper_exception != ''
+ORDER BY database, table;
 ```
 
-Any non-empty `last_exception` warrants immediate investigation.
+Any non-empty `last_queue_update_exception` or `zookeeper_exception` warrants immediate investigation.
 
 ## Replication Throughput
 
@@ -89,7 +89,7 @@ FROM system.metrics
 WHERE metric IN (
     'ZooKeeperRequest',
     'ZooKeeperWatch',
-    'ZooKeeperWaitMicroseconds'
+    'ZooKeeperSession'
 );
 ```
 
@@ -133,13 +133,13 @@ If a replica falls behind, you can trigger a manual catch-up:
 SYSTEM SYNC REPLICA db.my_table;
 ```
 
-For stuck replication queues, inspect and remove problem entries:
+For stuck replication queues, inspect entries and restart the replica state:
 
 ```sql
 SELECT * FROM system.replication_queue WHERE is_currently_executing = 0 LIMIT 10;
 
--- Remove a specific stuck entry
-ALTER TABLE db.my_table DROP REPLICA 'stuck_replica_name';
+-- Restart the replica to reset the replication state and retry stuck entries
+SYSTEM RESTART REPLICA db.my_table;
 ```
 
 ## Summary
