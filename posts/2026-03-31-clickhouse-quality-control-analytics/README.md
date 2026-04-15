@@ -74,18 +74,25 @@ ORDER BY defect_rate_pct DESC;
 Identify the 20% of defect types causing 80% of failures:
 
 ```sql
+WITH defect_stats AS (
+    SELECT
+        defect_code,
+        count() AS defect_count,
+        sum(count()) OVER () AS total_defects,
+        round(count() / sum(count()) OVER () * 100, 2) AS defect_pct
+    FROM quality_inspections
+    WHERE pass_fail = 'fail'
+      AND defect_code IS NOT NULL
+      AND inspected_at >= today() - 30
+    GROUP BY defect_code
+)
 SELECT
     defect_code,
-    count() AS defect_count,
-    sum(count()) OVER () AS total_defects,
-    round(count() / sum(count()) OVER () * 100, 2) AS defect_pct,
-    sum(round(count() / sum(count()) OVER () * 100, 2))
-        OVER (ORDER BY count() DESC) AS cumulative_pct
-FROM quality_inspections
-WHERE pass_fail = 'fail'
-  AND defect_code IS NOT NULL
-  AND inspected_at >= today() - 30
-GROUP BY defect_code
+    defect_count,
+    total_defects,
+    defect_pct,
+    sum(defect_pct) OVER (ORDER BY defect_count DESC) AS cumulative_pct
+FROM defect_stats
 ORDER BY defect_count DESC;
 ```
 
