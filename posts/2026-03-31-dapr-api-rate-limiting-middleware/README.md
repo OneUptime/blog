@@ -85,7 +85,7 @@ spec:
 
 ## Custom Rate Limiting with Middleware Proxy
 
-For per-user rate limiting, use the `middleware.http.routerchecker` or a custom middleware approach:
+For per-user rate limiting, Dapr's built-in rate limiter only supports per-IP limits. You can implement custom logic in your application:
 
 ```python
 from flask import Flask, request, jsonify, abort
@@ -128,8 +128,8 @@ for i in $(seq 1 200); do
   echo "Request $i: HTTP $STATUS"
 done
 
-# Check Dapr sidecar metrics for rate limit hits
-curl http://localhost:9090/metrics | grep "dapr_middleware_ratelimit"
+# Check Dapr sidecar metrics for HTTP request counts
+curl http://localhost:9090/metrics | grep "dapr_http_server_request_count"
 ```
 
 ## Summary
