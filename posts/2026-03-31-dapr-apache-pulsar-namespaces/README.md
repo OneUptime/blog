@@ -56,8 +56,10 @@ spec:
       value: "pulsar://pulsar-broker:6650"
     - name: consumerID
       value: "dapr-consumer"
+    - name: tenant
+      value: "mycompany"
     - name: namespace
-      value: "mycompany/orders"
+      value: "orders"
     - name: persistent
       value: "true"
     - name: disableBatching
@@ -86,7 +88,7 @@ Create the secret:
 
 ```bash
 # Generate JWT token for the Dapr service account
-bin/pulsar-tokens create --secret-key my-secret-key \
+bin/pulsar tokens create --secret-key my-secret-key \
   --subject dapr-service > dapr-token.txt
 
 kubectl create secret generic pulsar-secret \
@@ -99,15 +101,11 @@ kubectl create secret generic pulsar-secret \
 metadata:
   - name: host
     value: "pulsar+ssl://pulsar-broker:6651"
-  - name: tlsTrustCertsFilePath
-    value: "/etc/ssl/certs/pulsar-ca.crt"
-  - name: tlsAllowInsecureConnection
-    value: "false"
-  - name: tlsValidateHostname
+  - name: enableTLS
     value: "true"
 ```
 
-Mount the CA cert via a ConfigMap volume.
+Using the `pulsar+ssl://` scheme in the host URL enables TLS. The `enableTLS` field can also be set explicitly. The Dapr sidecar uses the system trust store for CA certificates, so mount any custom CA certs into the container's system trust store via a ConfigMap volume.
 
 ## Publishing to a Namespaced Topic
 
@@ -143,4 +141,4 @@ curl -X POST \
 
 ## Summary
 
-Configuring Apache Pulsar namespaces for Dapr requires creating the tenant and namespace in Pulsar first, then setting the `namespace` metadata field in the Dapr component to `{tenant}/{namespace}`. Namespace-level retention, TTL, and persistence policies apply to all Dapr topics in that namespace automatically. Use JWT tokens for authentication in production, storing the token in a Kubernetes secret referenced by the component.
+Configuring Apache Pulsar namespaces for Dapr requires creating the tenant and namespace in Pulsar first, then setting the `tenant` and `namespace` metadata fields in the Dapr component. Namespace-level retention, TTL, and persistence policies apply to all Dapr topics in that namespace automatically. Use JWT tokens for authentication in production, storing the token in a Kubernetes secret referenced by the component.
