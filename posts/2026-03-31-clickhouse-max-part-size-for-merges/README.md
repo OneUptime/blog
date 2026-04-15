@@ -10,11 +10,11 @@ Description: Configure max_bytes_to_merge_at_max_space_in_pool and related setti
 
 ## What Is Max Part Size for Merges?
 
-ClickHouse merges small data parts into larger ones in the background. The setting `max_bytes_to_merge_at_max_space_in_pool` controls the maximum uncompressed size of a part that ClickHouse will create during a merge. Parts larger than this threshold are left as-is.
+ClickHouse merges small data parts into larger ones in the background. The setting `max_bytes_to_merge_at_max_space_in_pool` controls the maximum total size (in bytes) of a part that ClickHouse will create during a background merge. Parts larger than this threshold are left as-is.
 
 ## The Default and Why It May Need Changing
 
-The default value is about 150 GB uncompressed. For most tables this is fine, but for:
+The default value is about 150 GB. For most tables this is fine, but for:
 - Tables with aggressive TTL policies (large parts expire slowly)
 - Tables with very high insert rates
 - Clusters with limited disk space
