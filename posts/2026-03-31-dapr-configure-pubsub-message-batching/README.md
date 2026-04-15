@@ -17,7 +17,7 @@ Dapr supports bulk publish (send many messages in one API call) and bulk subscri
 Send multiple messages in a single request:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-alpha1/publish/bulk/kafka-pubsub/orders \
+curl -X POST http://localhost:3500/v1.0/publish/bulk/kafka-pubsub/orders \
   -H "Content-Type: application/json" \
   -d '[
     {
@@ -44,8 +44,7 @@ The response includes per-entry status so you can handle partial failures:
 {
   "failedEntries": [
     {"entryId": "entry2", "error": "too large"}
-  ],
-  "invalidEntries": []
+  ]
 }
 ```
 
@@ -57,27 +56,32 @@ package main
 import (
     dapr "github.com/dapr/go-sdk/client"
     "context"
+    "encoding/json"
     "fmt"
 )
 
 func publishBatch(client dapr.Client, orders []Order) error {
-    entries := make([]*dapr.BulkPublishEventEntry, len(orders))
+    events := make([]interface{}, len(orders))
     for i, order := range orders {
-        entries[i] = &dapr.BulkPublishEventEntry{
+        data, err := json.Marshal(order)
+        if err != nil {
+            return err
+        }
+        events[i] = &dapr.PublishEventsEvent{
             EntryID:     fmt.Sprintf("entry-%d", i),
-            Event:       order,
+            Data:        data,
             ContentType: "application/json",
         }
     }
 
-    result, err := client.BulkPublishEvents(
-        context.Background(), "kafka-pubsub", "orders", entries,
+    result, err := client.PublishEvents(
+        context.Background(), "kafka-pubsub", "orders", events,
     )
     if err != nil {
         return err
     }
-    if len(result.FailedEntries) > 0 {
-        fmt.Printf("Failed entries: %d\n", len(result.FailedEntries))
+    if len(result.FailedEvents) > 0 {
+        fmt.Printf("Failed events: %d\n", len(result.FailedEvents))
     }
     return nil
 }
