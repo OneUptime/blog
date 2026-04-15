@@ -63,7 +63,7 @@ A profile is a named collection of settings that apply to all queries run by a u
 
 | Setting | Purpose |
 |---|---|
-| `readonly` | 0 = full access, 1 = no writes or DDL, 2 = no settings changes either |
+| `readonly` | 0 = full access, 1 = read-only (no writes, DDL, or settings changes), 2 = read-only but allows changing settings |
 | `max_memory_usage` | Max RAM per query in bytes |
 | `max_execution_time` | Max query duration in seconds |
 | `max_result_rows` | Truncate or fail if SELECT returns more rows |
@@ -73,7 +73,22 @@ A profile is a named collection of settings that apply to all queries run by a u
 
 ### Inheriting from Another Profile
 
-ClickHouse does not have built-in profile inheritance, but you can achieve a similar effect by defining settings in the default profile and overriding specific values in specialized profiles. Since profiles are merged per-user, users can have an explicit profile that overrides the default.
+ClickHouse supports built-in profile inheritance using the `<inherit>` tag. A profile can inherit all settings from another profile and then override specific values:
+
+```xml
+<profiles>
+    <base>
+        <max_memory_usage>10737418240</max_memory_usage>
+        <max_execution_time>60</max_execution_time>
+    </base>
+
+    <engineer>
+        <inherit>base</inherit>
+        <!-- Override only what differs -->
+        <max_execution_time>600</max_execution_time>
+    </engineer>
+</profiles>
+```
 
 ## Quotas
 
@@ -176,7 +191,7 @@ Quotas track cumulative resource usage over a rolling or fixed time window and r
         </dashboard_user>
 
         <data_engineer>
-            <password_sha256_hex>b3a8e0e1f9ab1bfe3a36f231f676f78bb28a2d0b</password_sha256_hex>
+            <password_sha256_hex>b3a8e0e1f9ab1bfe3a36f231f676f78bb28a2d0bf4c8fa9a3e6d5c7b2a1908d7</password_sha256_hex>
             <networks>
                 <ip>10.0.1.0/24</ip>
             </networks>
@@ -185,7 +200,7 @@ Quotas track cumulative resource usage over a rolling or fixed time window and r
         </data_engineer>
 
         <etl_pipeline>
-            <password_sha256_hex>c7a3b2d9e8f1a4e5d6c7b8a9f0e1d2c3b4a5d6e7</password_sha256_hex>
+            <password_sha256_hex>c7a3b2d9e8f1a4e5d6c7b8a9f0e1d2c3b4a5d6e7f8a9b0c1d2e3f4a5b6c7d8</password_sha256_hex>
             <networks>
                 <ip>10.0.2.100</ip>
                 <ip>10.0.2.101</ip>
@@ -208,7 +223,7 @@ echo -n "my_secure_password" | sha256sum | awk '{print $1}'
 Or use ClickHouse itself:
 
 ```sql
-SELECT SHA256('my_secure_password');
+SELECT lower(hex(SHA256('my_secure_password')));
 ```
 
 ## Using SQL-Driven Access Control (ClickHouse 20.4+)
@@ -216,7 +231,7 @@ SELECT SHA256('my_secure_password');
 Modern ClickHouse supports managing users, roles, and quotas via SQL instead of config files:
 
 ```sql
--- Create a profile-equivalent row policy
+-- Create a settings profile
 CREATE SETTINGS PROFILE IF NOT EXISTS readonly_profile
 SETTINGS
     readonly = 1,
@@ -244,10 +259,10 @@ GRANT SELECT ON analytics.* TO grafana_user;
 ## Monitoring Quota Usage
 
 ```sql
--- Current quota consumption per user
+-- Current quota consumption
 SELECT
-    user_name,
     quota_name,
+    quota_key,
     start_time,
     end_time,
     duration,
