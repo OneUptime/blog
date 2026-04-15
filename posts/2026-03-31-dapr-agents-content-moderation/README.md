@@ -24,7 +24,7 @@ Dapr Agents provide the orchestration layer with durable state and pub/sub for r
 ```python
 import re
 from dapr_agents import Agent, tool
-from dapr import Client
+from dapr.clients import DaprClient
 import json
 
 class PreScreeningAgent(Agent):
@@ -70,7 +70,7 @@ class PreScreeningAgent(Agent):
 
 ```python
 from dapr_agents import Agent, tool
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 
 class ContentClassificationAgent(Agent):
     name = "classification-agent"
@@ -100,18 +100,18 @@ class ContentClassificationAgent(Agent):
             verdict: Final verdict (approve, flag, remove).
             scores: JSON string with category scores.
         """
-        from dapr import Client
+        from dapr.clients import DaprClient
         import json
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         decision = {
             "content_id": content_id,
             "verdict": verdict,
             "scores": json.loads(scores),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "model": "gpt-4o-moderation"
         }
-        Client().save_state("statestore", f"mod-{content_id}", json.dumps(decision))
+        DaprClient().save_state("statestore", f"mod-{content_id}", json.dumps(decision))
         return f"Decision saved for {content_id}: {verdict}"
 
     @tool
@@ -122,8 +122,9 @@ class ContentClassificationAgent(Agent):
             content_id: The content identifier to escalate.
             reason: Why human review is needed.
         """
-        from dapr import Client
-        Client().publish_event(
+        from dapr.clients import DaprClient
+        import json
+        DaprClient().publish_event(
             pubsub_name="mod-pubsub",
             topic_name="human-review-queue",
             data=json.dumps({"content_id": content_id, "reason": reason})
@@ -135,7 +136,7 @@ class ContentClassificationAgent(Agent):
 
 ```python
 from fastapi import FastAPI, BackgroundTasks
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 
 app = FastAPI()
 
@@ -148,8 +149,8 @@ async def moderate_content(
     content = payload["content"]
 
     # Run pre-screening synchronously (fast)
-    prescreening_agent = PreScreeningAgent(llm=OpenAIChat(model="gpt-4o-mini"))
-    screen_result = prescreening_agent.run(
+    prescreening_agent = PreScreeningAgent(llm=OpenAIChatClient(model="gpt-4o-mini"))
+    screen_result = await prescreening_agent.run(
         f"Screen this content (ID: {content_id}): {content[:500]}"
     )
 
@@ -161,8 +162,8 @@ async def moderate_content(
     return {"content_id": content_id, "verdict": "pending", "stage": "ai-review"}
 
 async def deep_classify(content_id: str, content: str):
-    agent = ContentClassificationAgent(llm=OpenAIChat(model="gpt-4o"))
-    agent.run(f"Classify content ID {content_id}: {content}")
+    agent = ContentClassificationAgent(llm=OpenAIChatClient(model="gpt-4o"))
+    await agent.run(f"Classify content ID {content_id}: {content}")
 ```
 
 ## Running the Moderation System
