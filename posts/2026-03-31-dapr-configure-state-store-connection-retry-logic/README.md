@@ -27,7 +27,6 @@ spec:
         policy: exponential
         maxInterval: 10s
         maxRetries: 5
-        duration: 1s
     timeouts:
       stateTimeout: 3s
     circuitBreakers:
@@ -101,7 +100,7 @@ curl http://localhost:9090/metrics | grep dapr_resiliency
 Example Prometheus query to track retry rates:
 
 ```bash
-rate(dapr_resiliency_retries_total{app_id="my-app", name="stateRetry"}[5m])
+rate(dapr_resiliency_activations_total{app_id="my-app", name="stateRetry"}[5m])
 ```
 
 ## Circuit Breaker Behavior
@@ -111,7 +110,7 @@ When `consecutiveFailures >= 3`, the circuit opens and requests fail fast for 30
 ```yaml
 # Example Grafana alert rule
 - alert: DaprStateCircuitOpen
-  expr: dapr_resiliency_cb_state{app_id="my-app"} == 2
+  expr: dapr_resiliency_cb_state{app_id="my-app", status="open"} == 1
   for: 1m
   labels:
     severity: warning
