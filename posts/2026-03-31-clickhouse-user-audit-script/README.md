@@ -86,7 +86,7 @@ SELECT
 FROM system.users u
 LEFT JOIN system.query_log q ON q.user = u.name AND q.type = 'QueryFinish'
 GROUP BY u.name
-HAVING last_query < now() - INTERVAL 30 DAY OR last_query IS NULL
+HAVING last_query < now() - INTERVAL 30 DAY
 ORDER BY days_inactive DESC
 FORMAT PrettyCompactMonoBlock
 "
@@ -125,7 +125,7 @@ FORMAT PrettyCompactMonoBlock
 
 ```bash
 # Weekly audit every Monday at 6 AM
-echo "0 6 * * 1 /opt/scripts/clickhouse-user-audit.sh > /var/log/ch-user-audit.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "0 6 * * 1 /opt/scripts/clickhouse-user-audit.sh > /var/log/ch-user-audit.log 2>&1") | crontab -
 ```
 
 ## Summary
