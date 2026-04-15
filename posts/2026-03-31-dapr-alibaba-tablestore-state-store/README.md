@@ -24,22 +24,12 @@ Create a TableStore instance from the Alibaba Cloud console or CLI:
 
 ```bash
 # Create a TableStore instance via CLI
-aliyun tablestore CreateInstance \
+aliyun ots InsertInstance \
   --InstanceName dapr-state-instance \
-  --RegionId cn-hangzhou \
-  --NetworkType NORMAL
+  --RegionId cn-hangzhou
 ```
 
-Create a table for Dapr state:
-
-```bash
-aliyun tablestore CreateTable \
-  --InstanceName dapr-state-instance \
-  --RegionId cn-hangzhou \
-  --TableMeta '{"TableName":"DaprState","SchemaEntry":[{"Name":"key","Type":"STRING"}]}' \
-  --TableOptions '{"MaxVersions":1,"TTL":-1}' \
-  --ReservedThroughput '{"CapacityUnit":{"ReadCapacityUnit":0,"WriteCapacityUnit":0}}'
-```
+Create a table for Dapr state using the Alibaba Cloud console or the TableStore SDK, as table creation is a data-plane operation not available through the `aliyun` CLI. The table must have a primary key column named `key` of type `STRING`, with `MaxVersions` set to `1`.
 
 ## Configuring the Dapr Component
 
