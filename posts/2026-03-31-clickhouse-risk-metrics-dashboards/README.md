@@ -52,15 +52,18 @@ ORDER BY total_exposure DESC;
 Flag over-concentration relative to total portfolio:
 
 ```sql
-SELECT
-    counterparty,
-    sum(market_value) AS exposure,
-    sum(sum(market_value)) OVER () AS total_portfolio,
-    round(sum(market_value) / sum(sum(market_value)) OVER () * 100, 2) AS concentration_pct
-FROM positions FINAL
-WHERE as_of_date = today()
-GROUP BY counterparty
-HAVING concentration_pct > 5
+SELECT *
+FROM (
+    SELECT
+        counterparty,
+        sum(market_value) AS exposure,
+        sum(sum(market_value)) OVER () AS total_portfolio,
+        round(sum(market_value) / sum(sum(market_value)) OVER () * 100, 2) AS concentration_pct
+    FROM positions FINAL
+    WHERE as_of_date = today()
+    GROUP BY counterparty
+)
+WHERE concentration_pct > 5
 ORDER BY concentration_pct DESC;
 ```
 
