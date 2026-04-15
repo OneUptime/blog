@@ -94,29 +94,46 @@ ALTER TABLE events
 
 ## Aggregating Old Data Instead of Deleting
 
-Replace high-resolution old data with summaries:
+Replace high-resolution old data with summaries using a materialized view to continuously aggregate into a summary table, then use TTL to delete the detailed source data:
 
 ```sql
--- Keep 1-minute granularity for 7 days, then aggregate to hourly
-CREATE TABLE events_hourly AS events
-ENGINE = AggregatingMergeTree()
-ORDER BY (event_type, toStartOfHour(created_at));
+-- Create a destination table for hourly aggregates
+CREATE TABLE events_hourly (
+    event_type String,
+    hour DateTime,
+    total_events UInt64
+) ENGINE = SummingMergeTree()
+ORDER BY (event_type, hour);
 
--- TTL on source table moves to aggregated form
+-- Materialized view to continuously aggregate into events_hourly
+CREATE MATERIALIZED VIEW events_to_hourly_mv TO events_hourly
+AS SELECT
+    event_type,
+    toStartOfHour(created_at) AS hour,
+    count() AS total_events
+FROM events
+GROUP BY event_type, hour;
+
+-- Delete detailed data after 7 days (aggregates already exist in events_hourly)
 ALTER TABLE events
-    MODIFY TTL created_at + INTERVAL 7 DAY TO TABLE events_hourly;
+    MODIFY TTL created_at + INTERVAL 7 DAY DELETE;
 ```
 
 ## Viewing Current TTL Settings
 
 ```sql
 SELECT
-    table,
-    ttl_info.columns AS column_ttls,
-    ttl_info.table AS table_ttl
+    name,
+    create_table_query
 FROM system.tables
 WHERE database = 'default'
-  AND table = 'events';
+  AND name = 'events';
+```
+
+The `create_table_query` column contains the full table definition including all TTL rules. Alternatively, use:
+
+```sql
+SHOW CREATE TABLE events;
 ```
 
 ## Checking TTL Execution
@@ -126,12 +143,12 @@ SELECT
     database,
     table,
     partition,
-    min_ttl_delete,
-    max_ttl_delete
+    delete_ttl_info_min,
+    delete_ttl_info_max
 FROM system.parts
 WHERE active = 1
   AND table = 'events'
-ORDER BY min_ttl_delete
+ORDER BY delete_ttl_info_min
 LIMIT 10;
 ```
 
