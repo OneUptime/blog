@@ -47,13 +47,9 @@ sudo sysctl -p
 
 ## ClickHouse Server Configuration
 
-ClickHouse respects the OS defaults but you can also set socket options explicitly:
+ClickHouse does not expose server-level XML settings for TCP keep-alive timing on accepted connections. The server does not set `SO_KEEPALIVE` on inbound TCP sockets by default, so OS-level sysctl configuration is the primary method for enabling keep-alive on the server side.
 
-```xml
-<tcp_port>9000</tcp_port>
-```
-
-ClickHouse does not expose direct XML settings for TCP keep-alive timing, so OS-level configuration is the primary method.
+ClickHouse does have a user-level `tcp_keep_alive_timeout` setting (default 290 seconds) that applies to outbound native TCP connections, such as those made by `clickhouse-client` or inter-server distributed queries.
 
 ## Client-Side Settings (Python clickhouse-driver)
 
@@ -66,10 +62,15 @@ client = Client(
     connect_timeout=10,
     send_receive_timeout=600,
     sync_request_timeout=5,
-    settings={
-        'tcp_keep_alive': True,
-    }
+    tcp_keepalive=True,
 )
+```
+
+The `tcp_keepalive` parameter enables `SO_KEEPALIVE` on the socket using OS defaults. You can also pass a tuple for fine-grained control:
+
+```python
+# (idle_time_sec, interval_sec, probes)
+client = Client('clickhouse-host', tcp_keepalive=(60, 10, 6))
 ```
 
 ## Client-Side Settings (Go)
