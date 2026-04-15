@@ -28,11 +28,11 @@ spec:
     secretKeyRef:
       name: servicebus-secret
       key: connectionString
-  - name: enableSessions
+  - name: requireSessions
     value: "true"
   - name: maxActiveMessages
     value: "1000"
-  - name: lockRenewalInSeconds
+  - name: lockRenewalInSec
     value: "20"
   - name: timeoutInSec
     value: "60"
@@ -65,17 +65,15 @@ az servicebus topic subscription create \
 
 ## Publishing Messages with Session IDs
 
-Pass the session ID as a metadata header:
+Pass the session ID as a metadata query parameter:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/publish/servicebus-pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/servicebus-pubsub/orders?metadata.SessionId=customer-456" \
   -H "Content-Type: application/json" \
-  -H "dapr-session-id: customer-456" \
   -d '{"step": "payment", "orderId": "789", "customerId": "456"}'
 
-curl -X POST http://localhost:3500/v1.0/publish/servicebus-pubsub/orders \
+curl -X POST "http://localhost:3500/v1.0/publish/servicebus-pubsub/orders?metadata.SessionId=customer-456" \
   -H "Content-Type: application/json" \
-  -H "dapr-session-id: customer-456" \
   -d '{"step": "fulfillment", "orderId": "789", "customerId": "456"}'
 ```
 
@@ -98,7 +96,7 @@ func publishOrderStep(client dapr.Client, customerID, step string, data interfac
         "orders",
         data,
         dapr.PublishEventWithMetadata(map[string]string{
-            "sessionId": customerID,
+            "SessionId": customerID,
         }),
     )
 }
@@ -114,7 +112,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
     }
     json.NewDecoder(r.Body).Decode(&envelope)
 
-    sessionID := envelope.Metadata["sessionId"]
+    sessionID := envelope.Metadata["SessionId"]
     fmt.Printf("Processing step %s for session %s\n",
         envelope.Data.Step, sessionID)
 
@@ -129,7 +127,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
 For long-running session processing, configure lock renewal:
 
 ```yaml
-  - name: lockRenewalInSeconds
+  - name: lockRenewalInSec
     value: "20"
   - name: timeoutInSec
     value: "300"
@@ -137,4 +135,4 @@ For long-running session processing, configure lock renewal:
 
 ## Summary
 
-Azure Service Bus sessions in Dapr guarantee ordered, grouped message delivery for related messages sharing a session ID. Enable sessions on both the Dapr component and the Service Bus subscription, publish with the `dapr-session-id` header, and configure lock renewal for long-running message handlers. Sessions are ideal for workflow state machines and ordered event streams.
+Azure Service Bus sessions in Dapr guarantee ordered, grouped message delivery for related messages sharing a session ID. Enable sessions on both the Dapr component and the Service Bus subscription, publish with the `metadata.SessionId` query parameter, and configure lock renewal for long-running message handlers. Sessions are ideal for workflow state machines and ordered event streams.
