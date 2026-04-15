@@ -23,7 +23,7 @@ metadata:
   name: <component-name>
   namespace: <kubernetes-namespace>     # Kubernetes only
 spec:
-  type: <component-type>/<provider>
+  type: <component-type>.<provider>
   version: v1
   metadata:
     - name: <setting-name>
@@ -79,7 +79,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-    - name: host
+    - name: connectionString
       value: amqp://rabbitmq.default.svc.cluster.local:5672
     - name: durable
       value: "true"
@@ -157,7 +157,12 @@ Run a quick validation by checking if the component loads:
 
 ```bash
 dapr run --app-id test-app --resources-path ./components -- echo "checking"
-dapr components
+```
+
+On Kubernetes, list loaded components with:
+
+```bash
+dapr components -k
 ```
 
 ## Summary
