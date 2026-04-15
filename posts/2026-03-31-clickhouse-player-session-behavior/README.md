@@ -20,7 +20,7 @@ CREATE TABLE player_sessions (
     player_id       UInt64,
     game_id         UInt32,
     started_at      DateTime,
-    ended_at        DateTime,
+    ended_at        Nullable(DateTime),
     duration_secs   UInt32,
     platform        LowCardinality(String),
     region          LowCardinality(String),
