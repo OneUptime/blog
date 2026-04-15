@@ -49,8 +49,8 @@ az containerapp create \
 
 ## Step 3: Define the App with Bicep
 
-```yaml
-# containerapp.bicep
+```bicep
+// containerapp.bicep
 resource ordersApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: 'orders-service'
   location: location
@@ -127,8 +127,13 @@ az containerapp show \
   --resource-group rg-dapr-demo \
   --query properties.configuration.dapr
 
-# Invoke via Dapr
-curl https://orders-service.eastus.azurecontainerapps.io/v1.0/metadata
+# Get the app FQDN and test the endpoint
+FQDN=$(az containerapp show \
+  --name orders-service \
+  --resource-group rg-dapr-demo \
+  --query properties.configuration.ingress.fqdn -o tsv)
+
+curl https://$FQDN/
 ```
 
 ## Summary
