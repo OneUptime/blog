@@ -12,7 +12,7 @@ NULL handling in ClickHouse follows SQL semantics but comes with important perfo
 
 ## How Nullable Works in ClickHouse
 
-In ClickHouse, only columns explicitly declared as `Nullable(T)` can hold NULL values. Non-nullable columns always have a value - there is no implicit nullability. A `Nullable(T)` column is stored as two separate arrays: one for the actual values and one as a null bitmask (1 bit per row indicating whether the value is null).
+In ClickHouse, only columns explicitly declared as `Nullable(T)` can hold NULL values. Non-nullable columns always have a value - there is no implicit nullability. A `Nullable(T)` column is stored as two separate arrays: one for the actual values and one as a null mask (a UInt8 value per row indicating whether the value is null).
 
 ```sql
 -- Non-nullable column: always has a value
@@ -42,7 +42,7 @@ ORDER BY event_id;
 
 `Nullable(T)` adds overhead in several ways:
 
-1. **Storage**: An extra null bitmask is stored (1 byte per 8 rows of overhead).
+1. **Storage**: An extra null mask is stored (1 byte per row of overhead, before compression).
 2. **CPU**: Every operation on a Nullable column must check the null bitmask, disabling some SIMD optimizations.
 3. **Sorting keys**: `Nullable` columns cannot be used in `ORDER BY` keys or primary keys.
 4. **Aggregations**: Aggregate functions skip NULLs (which is correct SQL behavior but requires null checks per row).
@@ -71,7 +71,7 @@ FROM events_nullable;
 Use `isNull`/`isNotNull` rather than `= NULL` or `!= NULL` - SQL NULL comparisons with `=` always return NULL (never true or false):
 
 ```sql
--- WRONG: these always return 0 (unknown/null), never filter anything
+-- WRONG: these return NULL (not true or false), so no rows pass the filter
 SELECT * FROM events_nullable WHERE user_id = NULL;
 SELECT * FROM events_nullable WHERE user_id != NULL;
 
