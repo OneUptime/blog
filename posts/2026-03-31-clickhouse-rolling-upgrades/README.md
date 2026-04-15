@@ -17,7 +17,7 @@ Before starting a rolling upgrade:
 ```bash
 # Verify all nodes are healthy and replication is caught up
 clickhouse-client --query "
-SELECT host_name, is_readonly, inserts_in_queue, merges_in_queue
+SELECT hostName(), is_readonly, inserts_in_queue, merges_in_queue
 FROM clusterAllReplicas('production', system.replicas)
 WHERE inserts_in_queue > 0 OR merges_in_queue > 0
 "
