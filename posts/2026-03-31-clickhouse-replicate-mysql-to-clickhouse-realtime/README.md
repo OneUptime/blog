@@ -14,14 +14,15 @@ The `MaterializedMySQL` database engine replicates MySQL databases into ClickHou
 
 Enable binlog replication on your MySQL server:
 
-```sql
--- my.cnf
+```ini
 [mysqld]
 server-id = 1
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_format = ROW
 binlog_row_image = FULL
-expire_logs_days = 7
+gtid_mode = ON
+enforce_gtid_consistency = ON
+binlog_expire_logs_seconds = 604800
 ```
 
 Create a MySQL user with replication privileges:
@@ -97,7 +98,7 @@ FROM system.materialized_mysql_databases;
 Check MySQL lag:
 
 ```sql
-SHOW SLAVE STATUS\G
+SHOW REPLICA STATUS\G
 ```
 
 ## Filter Tables
@@ -107,7 +108,7 @@ Replicate only specific tables:
 ```sql
 CREATE DATABASE mysql_replica
 ENGINE = MaterializedMySQL('mysql-host:3306', 'myapp_db', 'clickhouse', 'secret')
-SETTINGS include_tables = 'orders,customers,products';
+SETTINGS materialized_mysql_tables_list = 'orders,customers,products';
 ```
 
 ## Handle Schema Changes
