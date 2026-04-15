@@ -70,7 +70,7 @@ SELECT
     elapsed,
     rows_read,
     rows_written,
-    source_part_count,
+    num_parts,
     result_part_name
 FROM system.merges
 ORDER BY elapsed DESC;
