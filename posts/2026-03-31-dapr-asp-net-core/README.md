@@ -14,11 +14,10 @@ Dapr integrates cleanly with ASP.NET Core through a set of middleware extensions
 
 ## Setup
 
-Install the required packages:
+Install the required package:
 
 ```bash
 dotnet add package Dapr.AspNetCore
-dotnet add package Dapr.Client
 ```
 
 Register Dapr in `Program.cs`:
@@ -26,7 +25,6 @@ Register Dapr in `Program.cs`:
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers().AddDapr();
-builder.Services.AddDaprClient();
 
 var app = builder.Build();
 app.UseCloudEvents();
@@ -107,10 +105,10 @@ app.MapPost("/events", [Topic("pubsub", "inventory")] async (
 ## Running the Application
 
 ```bash
-dapr run --app-id order-api --app-port 5001 --components-path ./components \
+dapr run --app-id order-api --app-port 5001 --resources-path ./components \
   -- dotnet run --urls http://localhost:5001
 ```
 
 ## Summary
 
-Integrating Dapr with ASP.NET Core requires only a few lines of setup in `Program.cs`. The `AddDapr()` extension wires up controllers for CloudEvents, while `MapSubscribeHandler()` exposes the subscription endpoint that the Dapr sidecar queries at startup. This approach keeps your controller code clean while gaining full access to all Dapr building blocks through the injected `DaprClient`.
+Integrating Dapr with ASP.NET Core requires only a few lines of setup in `Program.cs`. The `AddDapr()` extension registers Dapr integration for controllers and the `DaprClient` in dependency injection, `UseCloudEvents()` middleware handles CloudEvents unwrapping, and `MapSubscribeHandler()` exposes the subscription endpoint that the Dapr sidecar queries at startup. This approach keeps your controller code clean while gaining full access to all Dapr building blocks through the injected `DaprClient`.
