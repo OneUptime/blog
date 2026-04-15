@@ -51,8 +51,8 @@ export async function queryRows<T>(
 ```typescript
 interface TopEvent {
   event_name: string;
-  cnt: string;      // ClickHouse returns numbers as strings in JSON
-  avg_ms: string;
+  cnt: string;      // UInt64 is quoted as a string in JSON by default
+  avg_ms: number;   // Float64 is returned as a JSON number
 }
 ```
 
