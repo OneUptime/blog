@@ -20,7 +20,7 @@ This guide covers Active-Passive with async cross-DC replication.
 
 ## Keeper Placement
 
-For cross-DC quorum, spread Keeper nodes across datacenters. A 3-node Keeper with 2 nodes in DC1 and 1 in DC2 tolerates one DC1 node failure but not DC2 failure. For true DC-level fault tolerance, use 5 nodes (3 in DC1, 2 in DC2 - or 3+3 with a tiebreaker):
+For cross-DC quorum, spread Keeper nodes across datacenters. A 3-node Keeper with 2 nodes in DC1 and 1 in DC2 tolerates any single node failure (including losing DC2), but not a full DC1 outage. For true DC-level fault tolerance where either DC can fail, place nodes in three locations (e.g., 2 in DC1, 2 in DC2, 1 in DC3) or use 7 nodes (3 in DC1, 3 in DC2, 1 tiebreaker in a third location). A 5-node setup with 3 in DC1 and 2 in DC2 only survives DC2 loss, not DC1 loss:
 
 ```xml
 <raft_configuration>
@@ -75,7 +75,7 @@ Alert when `queue_size > 10000` or `last_queue_update` is more than 5 minutes ol
 ## Network Considerations
 
 - Open TCP 9000 (native protocol) and 9009 (inter-server replication) between DCs
-- Use compressed traffic: `<compression>1</compression>` in replica config
+- Enable compressed inter-server traffic with `<interserver_http_compression>true</interserver_http_compression>` in the server config
 - Set `max_network_bandwidth_for_replication` to prevent replication from saturating the DC link
 
 ```xml
@@ -90,8 +90,8 @@ If DC1 goes down, promote DC2 replicas to accept writes:
 # On DC2 node, verify replica is up to date
 clickhouse-client --query "SELECT * FROM system.replicas WHERE is_readonly = 1"
 
-# If readonly due to Keeper quorum loss, use allow_deprecated_error_prone_window_functions
-# or reconfigure Keeper with DC2 nodes only
+# If readonly due to Keeper quorum loss, reconfigure Keeper
+# with a new ensemble that has quorum among the surviving DC2 nodes
 ```
 
 ## Summary
