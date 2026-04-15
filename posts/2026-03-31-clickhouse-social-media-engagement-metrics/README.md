@@ -226,8 +226,8 @@ SELECT
     countIf(event_type = 'like')       AS likes,
     countIf(event_type = 'share')      AS shares,
     countIf(event_type = 'comment')    AS comments,
-    round(countIf(event_type = 'click')   / countIf(event_type = 'impression') * 100, 2) AS ctr_pct,
-    round(countIf(event_type = 'like')    / countIf(event_type = 'click')      * 100, 2) AS like_rate_pct
+    round(countIf(event_type = 'click')   / nullIf(countIf(event_type = 'impression'), 0) * 100, 2) AS ctr_pct,
+    round(countIf(event_type = 'like')    / nullIf(countIf(event_type = 'click'), 0)      * 100, 2) AS like_rate_pct
 FROM social_engagement_events
 WHERE occurred_at >= now() - INTERVAL 30 DAY
 GROUP BY platform;
