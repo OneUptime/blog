@@ -232,8 +232,7 @@ SELECT
 FROM metrics
 WHERE ts > now() - INTERVAL 24 HOUR
 GROUP BY hour, host
-ORDER BY hour, host
-WITH FILL STEP toIntervalHour(1);
+ORDER BY hour WITH FILL STEP toIntervalHour(1), host;
 ```
 
 ```sql
@@ -268,7 +267,7 @@ GROUP BY host;
 -- ClickHouse: histogram function
 SELECT
     host,
-    arrayReduce('histogram', groupArray(cpu_usage)) AS cpu_histogram
+    histogram(10)(cpu_usage) AS cpu_histogram
 FROM metrics
 WHERE ts > now() - INTERVAL 1 HOUR
 GROUP BY host;
@@ -298,12 +297,12 @@ CREATE TABLE metrics_hourly
 (
     hour      DateTime,
     host      LowCardinality(String),
-    avg_cpu   Float64,
-    max_cpu   Float64,
-    avg_mem   Float64,
-    cnt       UInt64
+    avg_cpu   AggregateFunction(avg, Float64),
+    max_cpu   AggregateFunction(max, Float64),
+    avg_mem   AggregateFunction(avg, Float64),
+    cnt       AggregateFunction(count)
 )
-ENGINE = SummingMergeTree((avg_cpu, max_cpu, avg_mem, cnt))
+ENGINE = AggregatingMergeTree()
 ORDER BY (host, hour);
 
 -- Materialized view
@@ -313,10 +312,10 @@ AS
 SELECT
     toStartOfHour(ts) AS hour,
     host,
-    avg(cpu_usage)    AS avg_cpu,
-    max(cpu_usage)    AS max_cpu,
-    avg(mem_usage)    AS avg_mem,
-    count()           AS cnt
+    avgState(cpu_usage)    AS avg_cpu,
+    maxState(cpu_usage)    AS max_cpu,
+    avgState(mem_usage)    AS avg_mem,
+    countState()           AS cnt
 FROM metrics
 GROUP BY hour, host;
 ```
