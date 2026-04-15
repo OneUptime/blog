@@ -102,7 +102,7 @@ JOIN acquisition_sources AS r ON l.source_id = r.source_id
 SETTINGS join_algorithm = 'partial_merge';
 ```
 
-Look for `MergeJoin` in the pipeline output to confirm partial merge was selected.
+Look for `PartialMergeJoin` in the output to confirm partial merge was selected.
 
 ## Comparing Join Algorithms
 
@@ -129,7 +129,7 @@ SELECT
     query
 FROM system.query_log
 WHERE type = 'QueryFinish'
-  AND has(tables, 'customers')
+  AND has(tables, 'default.customers')
 ORDER BY event_time DESC
 LIMIT 10;
 ```
