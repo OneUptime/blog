@@ -22,8 +22,6 @@ npm install @dapr/dapr
 
 ```typescript
 // ICartActor.ts
-import { ActorId } from "@dapr/dapr";
-
 export interface ICartActor {
   addItem(item: CartItem): Promise<void>;
   removeItem(itemId: string): Promise<void>;
@@ -87,7 +85,7 @@ import { CartActor } from "./CartActor";
 const server = new DaprServer({
   serverHost: "127.0.0.1",
   serverPort: "3000",
-  clientOptions: { daprHost: "http://localhost", daprPort: "3500" },
+  clientOptions: { daprHost: "127.0.0.1", daprPort: "3500" },
 });
 
 await server.actor.init();
@@ -104,7 +102,7 @@ import { ActorProxyBuilder, ActorId, DaprClient } from "@dapr/dapr";
 import { ICartActor } from "./ICartActor";
 import { CartActor } from "./CartActor";
 
-const client = new DaprClient({ daprHost: "http://localhost", daprPort: "3500" });
+const client = new DaprClient({ daprHost: "127.0.0.1", daprPort: "3500" });
 
 const builder = new ActorProxyBuilder<ICartActor>(CartActor, client);
 const cart = builder.build(new ActorId("user-42"));
