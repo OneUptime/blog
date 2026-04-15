@@ -71,7 +71,7 @@ kubectl logs deploy/order-service -c daprd | grep -i "mtls\|tls\|cert"
 Expected output:
 ```text
 level=info msg="mTLS enabled" config=appconfig
-level=info msg="fetching credentials from sentry" url=dapr-sentry.dapr-system.svc.cluster.local:443
+level=info msg="fetching credentials from sentry" url=dapr-sentry.dapr-system.svc.cluster.local:50001
 level=info msg="certificate renewed" expiry="2026-04-01T10:00:00Z"
 ```
 
