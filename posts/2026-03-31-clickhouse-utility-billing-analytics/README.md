@@ -100,16 +100,24 @@ SELECT
     customer_id,
     account_number,
     bill_period_end,
-    consumption_kwh AS current_consumption,
-    avg(consumption_kwh) OVER (
-        PARTITION BY customer_id
-        ORDER BY bill_period_end
-        ROWS BETWEEN 12 PRECEDING AND 1 PRECEDING
-    ) AS avg_12_month,
+    current_consumption,
+    avg_12_month,
     current_consumption / nullIf(avg_12_month, 0) AS consumption_ratio
-FROM utility_bills
-WHERE bill_period_end >= today() - 90
-HAVING consumption_ratio > 3
+FROM (
+    SELECT
+        customer_id,
+        account_number,
+        bill_period_end,
+        consumption_kwh AS current_consumption,
+        avg(consumption_kwh) OVER (
+            PARTITION BY customer_id
+            ORDER BY bill_period_end
+            ROWS BETWEEN 12 PRECEDING AND 1 PRECEDING
+        ) AS avg_12_month
+    FROM utility_bills
+    WHERE bill_period_end >= today() - 90
+)
+WHERE current_consumption / nullIf(avg_12_month, 0) > 3
 ORDER BY consumption_ratio DESC
 LIMIT 100;
 ```
@@ -131,4 +139,4 @@ ORDER BY overdue_balance DESC;
 
 ## Summary
 
-ClickHouse makes utility billing analytics straightforward - revenue by tariff, tiered consumption distribution, collection rates, and anomaly detection are all computed with fast SQL aggregations. ReplacingMergeTree or partitioning by billing period keeps historical analyses efficient across millions of customer accounts.
+ClickHouse makes utility billing analytics straightforward - revenue by tariff, tiered consumption distribution, collection rates, and anomaly detection are all computed with fast SQL aggregations. MergeTree with partitioning by billing period keeps historical analyses efficient across millions of customer accounts.
