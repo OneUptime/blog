@@ -133,7 +133,9 @@ The Dapr component will automatically use the instance profile credentials.
 
 ```bash
 # Test component connectivity
-curl -X GET http://localhost:3500/v1.0/bindings/s3-binding
+curl -X POST http://localhost:3500/v1.0/bindings/s3-binding \
+  -H "Content-Type: application/json" \
+  -d '{"operation": "list"}'
 
 # Check sidecar logs for AWS auth errors
 kubectl logs <pod-name> -c daprd | grep -i "aws\|credentials\|iam\|assumed"
