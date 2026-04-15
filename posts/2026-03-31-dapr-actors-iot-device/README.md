@@ -40,7 +40,7 @@ type DeviceTwinState struct {
 }
 
 type DeviceTwinActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *DeviceTwinActor) Type() string { return "DeviceTwin" }
@@ -115,14 +115,30 @@ curl -X POST http://localhost:3500/v1.0/actors/DeviceTwin/device-001/method/SetD
 
 ## Offline Detection with Reminders
 
+Register a connectivity-check reminder for a device using the Dapr client:
+
 ```go
-func (a *DeviceTwinActor) OnActivate() error {
-  // Check for offline status every 5 minutes
-  return a.AddReminder("connectivity-check", nil, 5*time.Minute, 5*time.Minute)
+daprClient, err := dapr.NewClient()
+if err != nil {
+  log.Fatal(err)
 }
 
-func (a *DeviceTwinActor) ReminderCall(ctx context.Context, name string, data []byte) error {
-  if name == "connectivity-check" {
+err = daprClient.RegisterActorReminder(ctx, &dapr.RegisterActorReminderRequest{
+  ActorType: "DeviceTwin",
+  ActorID:   "device-001",
+  Name:      "connectivity-check",
+  DueTime:   "5m",
+  Period:    "5m",
+})
+```
+
+Then handle the reminder callback in the actor by implementing the `ReminderCallee` interface:
+
+```go
+func (a *DeviceTwinActor) ReminderCall(reminderName string, state []byte,
+    dueTime string, period string) {
+  if reminderName == "connectivity-check" {
+    ctx := context.Background()
     var twin DeviceTwinState
     a.GetStateManager().Get(ctx, "twin", &twin)
     if time.Since(twin.LastSeen) > 10*time.Minute {
@@ -131,7 +147,6 @@ func (a *DeviceTwinActor) ReminderCall(ctx context.Context, name string, data []
       alertOfflineDevice(twin.DeviceID)
     }
   }
-  return nil
 }
 ```
 
