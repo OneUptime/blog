@@ -37,8 +37,8 @@ spec:
         key: apiKey
     - name: model
       value: gpt-4
-    - name: cachingEnabled
-      value: "true"
+    - name: cacheTTL
+      value: "10m"
 ```
 
 ## Component Definition: Anthropic
@@ -57,7 +57,7 @@ spec:
         name: anthropic-secret
         key: apiKey
     - name: model
-      value: claude-3-5-sonnet-20241022
+      value: claude-sonnet-4-20250514
 ```
 
 ## Sending a Conversation Request
@@ -70,14 +70,11 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai/converse \
   -d '{
     "inputs": [
       {
-        "message": "Summarize this customer complaint in one sentence: The order arrived damaged and customer service was unhelpful.",
+        "content": "Summarize this customer complaint in one sentence: The order arrived damaged and customer service was unhelpful.",
         "role": "user"
       }
     ],
-    "parameters": {
-      "temperature": 0.3,
-      "maxTokens": 100
-    }
+    "temperature": 0.3
   }'
 ```
 
@@ -103,9 +100,9 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai/converse \
   -H "Content-Type: application/json" \
   -d '{
     "inputs": [
-      {"message": "My name is Alice.", "role": "user"},
-      {"message": "Hello Alice! How can I help you today?", "role": "assistant"},
-      {"message": "What did I just tell you my name was?", "role": "user"}
+      {"content": "My name is Alice.", "role": "user"},
+      {"content": "Hello Alice! How can I help you today?", "role": "assistant"},
+      {"content": "What did I just tell you my name was?", "role": "user"}
     ]
   }'
 ```
@@ -114,7 +111,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai/converse \
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._request import ConversationInput
+from dapr.clients.grpc.conversation import ConversationInput
 
 with DaprClient() as client:
     inputs = [
@@ -136,26 +133,31 @@ with DaprClient() as client:
 
 ## Enabling PII Scrubbing
 
-The Dapr Conversation API can automatically remove personally identifiable information before sending to the LLM:
+The Dapr Conversation API can automatically remove personally identifiable information before sending to the LLM. PII scrubbing is enabled per-request using the `scrubPII` field:
 
-```yaml
-metadata:
-  - name: cachingEnabled
-    value: "true"
-  - name: piiScrubbingEnabled
-    value: "true"
+```bash
+curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai/converse \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": [
+      {
+        "content": "My email is alice@example.com and my SSN is 123-45-6789.",
+        "role": "user",
+        "scrubPII": true
+      }
+    ],
+    "scrubPII": true
+  }'
 ```
 
 ## Conversation Caching
 
-Enable response caching to reduce API costs for repeated identical queries:
+Enable response caching to reduce API costs for repeated identical queries by setting the `cacheTTL` metadata field on the component:
 
 ```yaml
 metadata:
-  - name: cachingEnabled
-    value: "true"
-  - name: cacheSize
-    value: "1000"
+  - name: cacheTTL
+    value: "10m"
 ```
 
 ## Summary
