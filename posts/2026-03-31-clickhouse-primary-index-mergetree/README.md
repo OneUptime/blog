@@ -120,15 +120,15 @@ Here the index covers `(domain, ts)`, but data is sorted by `(domain, ts, status
 
 Column order in `ORDER BY` matters critically:
 
-- Put the highest-cardinality column that you frequently filter on first
-- Put the next most-filtered column second
+- Put columns you filter on most frequently first
+- Among frequently filtered columns, order by ascending cardinality (lowest cardinality first) for best granule skipping and compression
 - Columns rarely used as filters go last
 
 Example for a multi-tenant SaaS application:
 
 ```sql
--- tenant_id has high cardinality (thousands of tenants)
--- ts narrows down to a time window within a tenant
+-- tenant_id has lower cardinality than ts (thousands of tenants vs millions of timestamps)
+-- Ascending cardinality order: tenant_id first, then ts
 CREATE TABLE tenant_events
 (
     tenant_id  UInt32,
@@ -172,4 +172,4 @@ For such queries, add a skip index (set or minmax) on `status`, or add `status` 
 
 ## Summary
 
-ClickHouse's sparse primary index is the engine of its query performance. Design your `ORDER BY` key around your most frequent query filters, with highest-cardinality first. Use `EXPLAIN indexes = 1` to verify that queries skip most granules. Keep the index small by using `PRIMARY KEY` for a subset of the `ORDER BY` columns when needed.
+ClickHouse's sparse primary index is the engine of its query performance. Design your `ORDER BY` key around your most frequent query filters, ordering by ascending cardinality (lowest cardinality first). Use `EXPLAIN indexes = 1` to verify that queries skip most granules. Keep the index small by using `PRIMARY KEY` for a subset of the `ORDER BY` columns when needed.
