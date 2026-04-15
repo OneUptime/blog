@@ -8,11 +8,11 @@ Description: Learn how toRelativeYearNum() and toRelativeMonthNum() return epoch
 
 ---
 
-ClickHouse provides a family of `toRelative*Num` functions that convert a date or datetime into an integer counting the number of elapsed units since the Unix epoch (January 1, 1970). `toRelativeYearNum()` returns the count of years since 1970, and `toRelativeMonthNum()` returns the count of months. These compact integer representations make it straightforward to compute period offsets, align cohorts, and perform relative period arithmetic without dealing with complex date subtraction logic.
+ClickHouse provides a family of `toRelative*Num` functions that convert a date or datetime into monotonically increasing integers suitable for period arithmetic. `toRelativeYearNum()` returns the calendar year number (e.g., 2024), and `toRelativeMonthNum()` returns a continuous month number computed as `year * 12 + month`. These compact integer representations make it straightforward to compute period offsets, align cohorts, and perform relative period arithmetic without dealing with complex date subtraction logic.
 
 ## Understanding the Epoch-Relative Model
 
-Every date maps to a single integer based on how many complete years or months have passed since 1970-01-01. This makes period comparisons as simple as integer subtraction.
+Every date maps to a single integer: `toRelativeYearNum` returns the calendar year, and `toRelativeMonthNum` computes `year * 12 + month`. Because these values increase monotonically, period comparisons become simple integer subtraction.
 
 ```sql
 -- See the raw values for a few sample dates
@@ -27,10 +27,10 @@ SELECT
 
 ```text
 d1          year_num_1970   d2          year_num_2024   d3          month_num_2024
-1970-01-01  0               2024-01-15  54              2024-01-15  649
+1970-01-01  1970            2024-01-15  2024            2024-01-15  24289
 ```
 
-The year 2024 is 54 years after 1970. January 2024 is 649 months after January 1970 (54 * 12 + 1).
+The year number for 2024 is simply 2024. The month number 24289 equals 2024 × 12 + 1 (January). Subtracting two month numbers gives the elapsed months between dates: 24289 − 23641 = 648 months between January 1970 and January 2024.
 
 ## Computing Year-Over-Year Offsets
 
@@ -113,14 +113,14 @@ ORDER BY r.month_num;
 
 ## Converting Back to a Readable Date
 
-The integer offsets are compact but not human-readable. You can convert them back with `toDate` by doing arithmetic from the epoch, or by using `toStartOfMonth` on a reconstructed date.
+The integer values are compact but not human-readable. You can convert a relative month number back to a date by computing its offset from the epoch's month number and adding that many months to 1970-01-01.
 
 ```sql
 -- Convert a relative month number back to the first day of that month
 SELECT
     toRelativeMonthNum(today()) AS current_month_num,
-    -- Add the offset as months to 1970-01-01 to recover the date
-    toDate('1970-01-01') + toIntervalMonth(current_month_num) AS first_day_of_month;
+    -- Subtract the epoch's month number, then add that many months to 1970-01-01
+    toDate('1970-01-01') + toIntervalMonth(current_month_num - toRelativeMonthNum(toDate('1970-01-01'))) AS first_day_of_month;
 ```
 
 ## Practical Example: Weekly Active Users by Cohort Year
@@ -142,4 +142,4 @@ ORDER BY signup_year_num, weeks_since_signup;
 
 ## Summary
 
-`toRelativeYearNum()` and `toRelativeMonthNum()` reduce date values to compact integers measuring distance from the Unix epoch. This makes period-over-period comparisons, cohort assignment, and rolling window filters expressible as integer arithmetic. The pattern is especially powerful for cohort retention matrices, where subtracting the cohort month number from the activity month number directly gives the retention period index.
+`toRelativeYearNum()` and `toRelativeMonthNum()` reduce date values to compact, monotonically increasing integers suitable for arithmetic. This makes period-over-period comparisons, cohort assignment, and rolling window filters expressible as integer subtraction. The pattern is especially powerful for cohort retention matrices, where subtracting the cohort month number from the activity month number directly gives the retention period index.
