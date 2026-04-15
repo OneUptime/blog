@@ -47,26 +47,26 @@ spec:
 Start with only required components:
 
 ```bash
-daprd \
+dapr run \
   --app-id edge-sensor \
   --app-port 8080 \
-  --components-path ./components \
-  --log-level error \   # Minimal logging
-  --enable-metrics false \
+  --resources-path ./components \
+  --log-level error \
+  --enable-metrics=false \
   -- python sensor_app.py
 ```
 
-## Reduce Binary Size with Feature Flags
+## Reduce Binary Size
 
-Build a custom daprd binary with only needed features:
+Build a custom daprd binary with a smaller footprint:
 
 ```bash
 # Clone the Dapr repository
 git clone https://github.com/dapr/dapr.git
 cd dapr
 
-# Build with minimal features
-go build -tags "!allcomponents" \
+# Build with reduced binary size (strip debug info and symbols)
+go build \
   -ldflags "-s -w" \
   -o daprd-slim \
   ./cmd/daprd
@@ -133,8 +133,7 @@ For ARM edge devices (Raspberry Pi, NVIDIA Jetson):
 # Set GOMAXPROCS to match physical cores
 export GOMAXPROCS=4
 
-# Use ARM-optimized Go settings
-export GOARCH=arm64
+# Tune Go runtime for constrained memory
 export GOMEMLIMIT=128MiB
 export GOGC=30   # Aggressive GC for low memory
 ```
