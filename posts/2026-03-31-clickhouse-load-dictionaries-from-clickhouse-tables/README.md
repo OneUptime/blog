@@ -88,8 +88,8 @@ LIFETIME(300);
 ```sql
 SELECT
     toDate(sale_time) AS day,
-    dictGetString('product_dim_dict', 'category', product_id) AS category,
-    dictGetString('product_dim_dict', 'brand', product_id) AS brand,
+    dictGet('product_dim_dict', 'category', product_id) AS category,
+    dictGet('product_dim_dict', 'brand', product_id) AS brand,
     sum(quantity) AS units_sold,
     sum(revenue) AS total_revenue
 FROM sales_facts
@@ -125,7 +125,7 @@ LAYOUT(FLAT())
 SELECT
     sale_id,
     product_id,
-    dictGetStringOrDefault('product_dim_dict', 'category', product_id, 'Uncategorized') AS category
+    dictGetOrDefault('product_dim_dict', 'category', product_id, 'Uncategorized') AS category
 FROM sales_facts
 LIMIT 100;
 ```
