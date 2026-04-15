@@ -12,7 +12,7 @@ ClickHouse's primary key is a sparse index built from the ORDER BY key. Understa
 
 ## How the Primary Key Works
 
-ClickHouse stores data sorted by the ORDER BY key and maintains a sparse index with one entry per 8192 rows (default `index_granularity`). Each entry marks the minimum value for that granule.
+ClickHouse stores data sorted by the ORDER BY key and maintains a sparse index with one entry per 8192 rows (default `index_granularity`). Each entry stores the primary key column values of the first row in that granule.
 
 ```sql
 CREATE TABLE events (
