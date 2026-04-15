@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, NULL Handling, Comparison, Query Pattern, Analytics
 
-Description: Learn how to write NULL-safe comparisons in ClickHouse using isNull(), isNotNull(), equals(), and the NULL-safe equality operator to avoid silent NULL-related logic errors.
+Description: Learn how to write NULL-safe comparisons in ClickHouse using isNull(), isNotNull(), isNotDistinctFrom(), and the NULL-safe equality operator to avoid silent NULL-related logic errors.
 
 ---
 
-In standard SQL and ClickHouse, any comparison involving NULL returns NULL (not true or false): `NULL = NULL` is NULL, `NULL != 5` is NULL, and `NULL IN (1, 2, NULL)` is NULL. This means standard equality operators silently drop NULL rows from WHERE clauses and JOIN conditions. ClickHouse provides several functions and operators to write NULL-safe comparisons: `isNull(x)`, `isNotNull(x)`, `equals(a, b)` (alias: `a = b` in a non-strict context), and the NULL-safe equality function `(a <=> b)` via `equals` semantics. Understanding these tools is essential for correct filtering of nullable columns.
+In standard SQL and ClickHouse, any comparison involving NULL returns NULL (not true or false): `NULL = NULL` is NULL, `NULL != 5` is NULL, and `NULL IN (1, 2, NULL)` is NULL. This means standard equality operators silently drop NULL rows from WHERE clauses and JOIN conditions. ClickHouse provides several functions and operators to write NULL-safe comparisons: `isNull(x)`, `isNotNull(x)`, and the NULL-safe equality function `isNotDistinctFrom(a, b)` (or the `<=>` operator). Understanding these tools is essential for correct filtering of nullable columns.
 
 ## Setup: Table with Nullable Columns
 
@@ -130,16 +130,16 @@ NULL  1     NULL             0
 1     NULL  NULL             0
 ```
 
-## Using nullSafeEquals() (ClickHouse-specific)
+## Using isNotDistinctFrom() (ClickHouse-specific)
 
-ClickHouse provides `nullSafeEquals(a, b)` (and `a <=> b` in MySQL-compatible mode) for NULL-safe equality in a single function:
+ClickHouse provides `isNotDistinctFrom(a, b)` (and the `<=>` operator, since v25.10) for NULL-safe equality in a single function:
 
 ```sql
 SELECT
     product_id,
     category,
-    nullSafeEquals(category, 'Electronics') AS is_electronics,
-    nullSafeEquals(category, NULL)           AS is_null_category
+    isNotDistinctFrom(category, 'Electronics') AS is_electronics,
+    isNotDistinctFrom(category, NULL)           AS is_null_category
 FROM products
 ORDER BY product_id;
 ```
@@ -160,7 +160,7 @@ product_id  category     is_electronics  is_null_category
 -- Find products that are NOT in Electronics (including those with NULL category)
 SELECT product_id, name, category
 FROM products
-WHERE NOT nullSafeEquals(category, 'Electronics');
+WHERE NOT isNotDistinctFrom(category, 'Electronics');
 ```
 
 ```text
@@ -256,15 +256,15 @@ ORDER BY null_column_count DESC, product_id;
 ```
 
 ```text
-product_id  name     null_column_count
-5           Monitor  1
-2           Notebook 1
-4           Pen      1
-6           Stapler  1
-1           Laptop   0
-3           Headphones 0
+product_id  name        null_column_count
+4           Pen         2
+6           Stapler     2
+2           Notebook    1
+5           Monitor     1
+1           Laptop      0
+3           Headphones  0
 ```
 
 ## Summary
 
-Standard equality operators treat NULL as unknown and return NULL rather than true or false, silently excluding NULL rows from filters and joins. Use `isNull(x)` / `isNotNull(x)` (or `x IS NULL` / `x IS NOT NULL`) for explicit NULL checks. Use `nullSafeEquals(a, b)` (or `a <=> b`) for NULL-safe equality where `NULL = NULL` evaluates to `1`. In `GROUP BY`, use `ifNull` to merge NULL into a named bucket. Combine `isNull` with `multiIf` and `ifNull` to build fully NULL-aware conditional logic without silent data loss.
+Standard equality operators treat NULL as unknown and return NULL rather than true or false, silently excluding NULL rows from filters and joins. Use `isNull(x)` / `isNotNull(x)` (or `x IS NULL` / `x IS NOT NULL`) for explicit NULL checks. Use `isNotDistinctFrom(a, b)` (or `a <=> b`) for NULL-safe equality where `NULL = NULL` evaluates to `1`. In `GROUP BY`, use `ifNull` to merge NULL into a named bucket. Combine `isNull` with `multiIf` and `ifNull` to build fully NULL-aware conditional logic without silent data loss.
