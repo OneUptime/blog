@@ -16,15 +16,15 @@ Dapr's name resolution component determines how your services discover each othe
 
 ### Kubernetes - Use Kubernetes DNS
 
-For any workload running in Kubernetes, use the default `nameresolution.kubernetes` component. It requires no extra infrastructure, integrates with Kubernetes service discovery natively, and supports cross-namespace resolution.
+For any workload running in Kubernetes, use the default `kubernetes` name resolution component. It requires no extra infrastructure, integrates with Kubernetes service discovery natively, and supports cross-namespace resolution.
 
 ```yaml
 spec:
-  type: nameresolution.kubernetes
-  version: v1
-  metadata:
-    - name: clusterDomain
-      value: "cluster.local"
+  nameResolution:
+    component: "kubernetes"
+    version: "v1"
+    configuration:
+      clusterDomain: "cluster.local"
 ```
 
 ### Local Development - Use mDNS
@@ -42,11 +42,11 @@ When services run in Docker containers that share a volume but multicast is not 
 
 ```yaml
 spec:
-  type: nameresolution.sqlite
-  version: v1
-  metadata:
-    - name: connectionString
-      value: "/shared/dapr-ns.db"
+  nameResolution:
+    component: "sqlite"
+    version: "v1"
+    configuration:
+      connectionString: "/shared/dapr-ns.db"
 ```
 
 ### Multi-Cloud, Hybrid, or Bare Metal - Use Consul
@@ -55,28 +55,27 @@ For environments spanning multiple hosts, clouds, or on-premise infrastructure w
 
 ```yaml
 spec:
-  type: nameresolution.consul
-  version: v1
-  metadata:
-    - name: client
-      value: |
-        {
-          "address": "consul.internal:8500",
-          "datacenter": "dc1"
-        }
+  nameResolution:
+    component: "consul"
+    version: "v1"
+    configuration:
+      client:
+        address: "consul.internal:8500"
+      queryOptions:
+        datacenter: "dc1"
 ```
 
 ### Predictable Hostname Patterns - Use NameFormat
 
-When your DNS already assigns hostnames based on service names (such as `{service}.prod.internal`), use NameFormat to avoid a separate registry:
+When your DNS already assigns hostnames based on service names (such as `service-myapp.prod.internal`), use NameFormat to avoid a separate registry:
 
 ```yaml
 spec:
-  type: nameresolution.nameformat
-  version: v1
-  metadata:
-    - name: nameFormat
-      value: "{{"{{"}} .ID {{"}}"}}.prod.internal"
+  nameResolution:
+    component: "nameformat"
+    version: "v1"
+    configuration:
+      format: "service-{appid}.prod.internal"
 ```
 
 ## Quick Comparison Matrix
@@ -88,7 +87,7 @@ spec:
 | Docker Compose | `sqlite` | Shared volume |
 | Multi-host / hybrid | `consul` | Consul cluster |
 | Custom DNS patterns | `nameformat` | DNS entries |
-| AWS with Cloud Map | `kubernetes` + CoreDNS | Cloud Map |
+| AWS with Cloud Map | `cloudmap` | Cloud Map |
 
 ## Evaluating Trade-offs
 
