@@ -52,12 +52,12 @@ spec:
 
 ## Loading Components at Runtime
 
-When running with `dapr run`, specify the components path:
+When running with `dapr run`, specify the resources path:
 
 ```bash
 dapr run \
   --app-id myapp \
-  --components-path ./components \
+  --resources-path ./components \
   -- python app.py
 ```
 
