@@ -54,14 +54,14 @@ Set different values per environment:
 
 ```bash
 # Production values
-redis-cli -h redis.production SET myapp||log-level "warn"
-redis-cli -h redis.production SET myapp||max-connections "200"
-redis-cli -h redis.production SET myapp||cache-ttl "3600"
+redis-cli -h redis.production SET log-level "warn"
+redis-cli -h redis.production SET max-connections "200"
+redis-cli -h redis.production SET cache-ttl "3600"
 
 # Staging values
-redis-cli -h redis.staging SET myapp||log-level "debug"
-redis-cli -h redis.staging SET myapp||max-connections "20"
-redis-cli -h redis.staging SET myapp||cache-ttl "60"
+redis-cli -h redis.staging SET log-level "debug"
+redis-cli -h redis.staging SET max-connections "20"
+redis-cli -h redis.staging SET cache-ttl "60"
 ```
 
 ## Strategy 2: Shared Store with Environment Prefixes
@@ -70,19 +70,19 @@ For simpler setups, use a single Redis instance with environment-prefixed keys:
 
 ```bash
 # Production
-redis-cli SET prod||myapp.log-level "warn"
-redis-cli SET prod||myapp.max-connections "200"
+redis-cli SET prod.log-level "warn"
+redis-cli SET prod.max-connections "200"
 
 # Staging
-redis-cli SET staging||myapp.log-level "debug"
-redis-cli SET staging||myapp.max-connections "20"
+redis-cli SET staging.log-level "debug"
+redis-cli SET staging.max-connections "20"
 
 # Development
-redis-cli SET dev||myapp.log-level "debug"
-redis-cli SET dev||myapp.max-connections "5"
+redis-cli SET dev.log-level "debug"
+redis-cli SET dev.max-connections "5"
 ```
 
-Configure the component with an environment-specific key prefix using an environment variable:
+Configure the component to point at the shared Redis instance. The environment prefix is handled in application code, not in the component definition:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -95,8 +95,6 @@ spec:
   metadata:
     - name: redisHost
       value: "redis:6379"
-    - name: keyPrefix
-      value: "prod"
 ```
 
 ## Loading Environment Config at Startup
@@ -125,22 +123,24 @@ func Load(ctx context.Context) (*AppConfig, error) {
     }
     defer client.Close()
 
-    env := os.Getenv("APP_ENV") // "production", "staging", "development"
-    _ = env // used for logging/monitoring; component handles the prefix
+    // For Strategy 1 (separate stores), use keys directly: "log-level"
+    // For Strategy 2 (shared store), prefix keys with the environment
+    env := os.Getenv("APP_ENV") // "prod", "staging", "dev"
+    prefix := env + "."
 
     items, err := client.GetConfigurationItems(ctx, "appconfig", []string{
-        "myapp.log-level",
-        "myapp.max-connections",
-        "myapp.cache-ttl",
+        prefix + "log-level",
+        prefix + "max-connections",
+        prefix + "cache-ttl",
     })
     if err != nil {
         return nil, err
     }
 
     cfg := &AppConfig{
-        LogLevel:       getStr(items, "myapp.log-level", "info"),
-        MaxConnections: getInt(items, "myapp.max-connections", 10),
-        CacheTTL:       getInt(items, "myapp.cache-ttl", 300),
+        LogLevel:       getStr(items, prefix+"log-level", "info"),
+        MaxConnections: getInt(items, prefix+"max-connections", 10),
+        CacheTTL:       getInt(items, prefix+"cache-ttl", 300),
     }
     return cfg, nil
 }
@@ -152,12 +152,12 @@ func Load(ctx context.Context) (*AppConfig, error) {
 #!/bin/bash
 # promote-config.sh - copy staging config to production
 
-KEYS=("myapp.log-level" "myapp.max-connections" "myapp.cache-ttl")
+KEYS=("log-level" "max-connections" "cache-ttl")
 
 for key in "${KEYS[@]}"; do
-  VALUE=$(redis-cli -h redis.staging GET "myapp||${key}")
+  VALUE=$(redis-cli -h redis.staging GET "${key}")
   echo "Promoting ${key}=${VALUE} to production"
-  redis-cli -h redis.production SET "myapp||${key}" "${VALUE}"
+  redis-cli -h redis.production SET "${key}" "${VALUE}"
 done
 ```
 
