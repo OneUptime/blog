@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Docker Desktop, macOS, Window, Local Development, Setup
+Tags: ClickHouse, Docker Desktop, macOS, Windows, Local Development, Setup
 
 Description: A beginner-friendly guide to running ClickHouse on Docker Desktop for macOS and Windows, with tips for resource allocation and GUI client access.
 
@@ -86,9 +86,9 @@ DBeaver supports ClickHouse natively. After installing DBeaver:
 4. Enter username `admin` and password `admin123`
 5. Click **Test Connection** and then **Finish**
 
-## Using the Docker Desktop Dev Environments Feature
+## Using Docker Compose
 
-Docker Desktop Dev Environments allow you to define a full dev stack in a `compose.yaml` and share it with your team via Git. Create a `.docker/compose.yaml`:
+You can define a reusable ClickHouse setup with Docker Compose and share it with your team via Git. Create a `compose.yaml` in your project root:
 
 ```yaml
 services:
@@ -103,7 +103,13 @@ volumes:
   clickhouse_data:
 ```
 
-Teammates can clone the repo and open the Dev Environment directly in Docker Desktop.
+Start the service with:
+
+```bash
+docker compose up -d
+```
+
+Teammates can clone the repo and run the same command to get an identical ClickHouse environment.
 
 ## Stopping and Removing
 
