@@ -40,10 +40,10 @@ Redshift catches up on complex multi-table joins with well-distributed data, esp
 
 ## Cost Model
 
-Redshift charges per node-hour (provisioned) or per query (Serverless). A typical 2-node dc2.large cluster runs around $0.48/hour. ClickHouse Cloud uses compute/storage separation and charges per query compute unit. Self-hosted ClickHouse on EC2 can be significantly cheaper than managed Redshift for the same performance level.
+Redshift charges per node-hour (provisioned) or per query (Serverless). A typical 2-node dc2.large cluster runs around $0.50/hour. ClickHouse Cloud uses compute/storage separation and charges per query compute unit. Self-hosted ClickHouse on EC2 can be significantly cheaper than managed Redshift for the same performance level.
 
 ```text
-Redshift dc2.large 2-node:   ~$350/month (on-demand)
+Redshift dc2.large 2-node:   ~$360/month (on-demand)
 ClickHouse Cloud equivalent: ~$100-200/month (depending on usage)
 Self-hosted ClickHouse:      EC2 instance cost only
 ```
