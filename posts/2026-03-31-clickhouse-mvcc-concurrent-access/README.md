@@ -10,7 +10,7 @@ Description: Explains how ClickHouse handles concurrent reads and writes without
 
 ## ClickHouse Is Not Traditional MVCC
 
-PostgreSQL and MySQL implement Multi-Version Concurrency Control (MVCC) with row-level version chains that allow readers and writers to access different versions simultaneously. ClickHouse does not use MVCC in the traditional sense. Instead, it achieves read-write isolation through immutable data parts.
+PostgreSQL and MySQL implement Multi-Version Concurrency Control (MVCC) with row-level version chains that allow readers and writers to access different versions simultaneously. ClickHouse does not use row-level MVCC. Instead, it achieves snapshot isolation through an MVCC variant based on immutable, versioned data parts.
 
 ## Immutable Parts: The Concurrency Model
 
@@ -53,16 +53,16 @@ Active parts are visible to queries. Inactive parts (being replaced by a merge) 
 ## Limitations vs True MVCC
 
 ClickHouse does not support:
-- **Row-level transactions** - each INSERT is atomic, but multi-statement transactions affecting the same rows are not supported in the traditional sense
-- **Read-your-writes consistency** - an insert is visible immediately, but replicated writes may lag
-- **Snapshot isolation for long transactions** - there is no "transaction start" snapshot in standard MergeTree
+- **Row-level transactions** - each INSERT is atomic, but multi-statement transactions are only available as an experimental feature (requires `allow_experimental_transactions` and ClickHouse Keeper)
+- **Read-your-writes consistency across replicas** - an insert is visible immediately on the local node, but replicated writes may lag
+- **Cross-statement snapshot isolation** - each SELECT runs against a consistent snapshot of parts taken at query start, but there is no implicit snapshot spanning multiple statements outside of experimental transactions
 
 ## INSERT Atomicity
 
-Each `INSERT` statement is atomic at the part level. Either the part is written successfully and becomes visible, or it is rolled back entirely.
+Each `INSERT` statement is atomic at the part level. Either the part is written successfully and becomes visible, or it is rolled back entirely. Note that if an INSERT spans multiple partitions, each partition's part is written atomically on its own, but the INSERT as a whole is not atomic across partitions. Similarly, large inserts that exceed `max_insert_block_size` may be split into multiple blocks, with atomicity guaranteed per block.
 
 ```sql
--- This insert is atomic: all rows land in one part or none do
+-- This insert is atomic when it targets a single partition and fits in one block
 INSERT INTO events (event_id, user_id, event_time)
 SELECT number, number % 1000, now()
 FROM numbers(100000);
@@ -90,4 +90,4 @@ SELECT count() FROM events WHERE event_time = today();
 
 ## Summary
 
-ClickHouse achieves concurrent access through immutable data parts rather than traditional MVCC. Reads and writes never block each other because each INSERT creates a new part that is immediately visible. Background merges operate on parts independently of active queries. This model provides atomic inserts and strong read-write isolation but does not support multi-statement transactions or snapshot isolation across long-running reads.
+ClickHouse achieves concurrent access through an MVCC variant based on immutable, versioned data parts. Reads and writes never block each other because each INSERT creates a new part, and each SELECT operates on a consistent snapshot of parts taken at query start. Background merges operate on parts independently of active queries. This model provides atomic inserts and strong read-write isolation, with experimental support for multi-statement transactions available via ClickHouse Keeper.
