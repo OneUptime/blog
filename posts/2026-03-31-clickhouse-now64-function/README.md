@@ -29,7 +29,7 @@ second_precision        millisecond_default             milliseconds            
 2024-06-15 14:32:07     2024-06-15 14:32:07.412         2024-06-15 14:32:07.412         2024-06-15 14:32:07.412831          2024-06-15 14:32:07.412831000
 ```
 
-Note that actual nanosecond precision depends on the OS clock resolution. Most modern Linux systems provide microsecond resolution.
+Note that actual nanosecond precision depends on the OS clock source. Most modern Linux distributions with high-resolution timer support provide nanosecond-level clock resolution.
 
 ## Storing Sub-Second Timestamps
 
