@@ -24,7 +24,7 @@ brew install pulumi
 mkdir dapr-pulumi && cd dapr-pulumi
 pulumi new kubernetes-typescript
 
-# Install Dapr Helm chart package
+# Install Kubernetes provider (if not already included by the template)
 npm install @pulumi/kubernetes
 ```
 
