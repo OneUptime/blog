@@ -38,12 +38,12 @@ Repeat this component manifest for `namespace: staging` and `namespace: developm
 
 ```bash
 # Development
-redis-cli -h redis-dev.internal SET "api-gateway||maxConnections" "10"
-redis-cli -h redis-dev.internal SET "api-gateway||logLevel" "debug"
+redis-cli -h redis-dev.internal SET "maxConnections" "10"
+redis-cli -h redis-dev.internal SET "logLevel" "debug"
 
 # Production
-redis-cli -h redis-prod.internal SET "api-gateway||maxConnections" "500"
-redis-cli -h redis-prod.internal SET "api-gateway||logLevel" "warn"
+redis-cli -h redis-prod.internal SET "maxConnections" "500"
+redis-cli -h redis-prod.internal SET "logLevel" "warn"
 ```
 
 ## Reading Config at Startup
@@ -83,8 +83,10 @@ func main() {
 
 ```go
 func watchConfig(client dapr.Client) {
-    ctx := context.Background()
-    sub, err := client.SubscribeConfigurationItems(ctx, "app-config",
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    _, err := client.SubscribeConfigurationItems(ctx, "app-config",
         []string{"maxConnections", "logLevel"}, func(id string, items map[string]*dapr.ConfigurationItem) {
             for key, item := range items {
                 fmt.Printf("Config changed: %s = %s\n", key, item.Value)
@@ -94,8 +96,7 @@ func watchConfig(client dapr.Client) {
     if err != nil {
         log.Fatal(err)
     }
-    defer client.UnsubscribeConfigurationItems(ctx, "app-config", sub)
-    // Block forever
+    // Block forever; cancel ctx to unsubscribe
     select {}
 }
 ```
@@ -115,7 +116,6 @@ spec:
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "api-gateway"
-        dapr.io/config: "tracing-config"
 ```
 
 Because the Dapr Configuration component is scoped to `namespace: production`, the same app-id deployed in `namespace: staging` automatically picks up the staging Redis store. No code change required.
