@@ -39,7 +39,7 @@ WHERE request_date = today() - 1;
 
 ## Multiple Quantiles in One Query
 
-You can call `quantile()` multiple times with different levels in the same SELECT, but ClickHouse must perform a separate aggregation pass for each call. For multiple levels on the same column, use `quantiles()` instead (covered in the companion post). The single-level form is best when you only need one percentile.
+You can call `quantile()` multiple times with different levels in the same SELECT. When multiple calls share the same argument column, ClickHouse optimizes them into a single aggregation pass. For multiple levels on the same column, use `quantiles()` instead (covered in the companion post) for a more readable and idiomatic approach. The single-level form is best when you only need one percentile.
 
 ```sql
 SELECT
@@ -55,7 +55,7 @@ ORDER BY p99 DESC
 LIMIT 20;
 ```
 
-Note: When multiple `quantile()` calls share the same argument column in a query, ClickHouse is smart enough to compute them in a single pass. However, using `quantiles()` with an array of levels is the idiomatic and more readable approach for that case.
+Note: Although ClickHouse optimizes multiple `quantile()` calls on the same column into a single pass, using `quantiles()` with multiple levels is the idiomatic and more readable approach for that case.
 
 ## Supported Data Types
 
