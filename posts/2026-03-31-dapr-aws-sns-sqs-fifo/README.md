@@ -10,7 +10,7 @@ Description: Configure Dapr AWS SNS/SQS pub/sub with FIFO queues and topics to e
 
 ## Overview
 
-AWS SQS FIFO queues guarantee ordered delivery within a message group and support exactly-once processing via deduplication IDs. When used with SNS FIFO topics, all messages published to a group are delivered to subscribers in order. Dapr's SNS/SQS component supports FIFO via the `fifo` metadata flag.
+AWS SQS FIFO queues guarantee ordered delivery within a message group and support exactly-once processing via deduplication. When used with SNS FIFO topics, messages are delivered to subscribers in order within their group. Dapr's SNS/SQS component supports FIFO via the `fifo` metadata flag and the `fifoMessageGroupID` field, which sets the message group ID at the component level.
 
 ## Create FIFO SNS Topic and SQS Queue
 
@@ -20,18 +20,18 @@ FIFO resources must have names ending in `.fifo`:
 # Create FIFO SNS topic
 aws sns create-topic \
   --name orders.fifo \
-  --attributes FifoTopic=true,ContentBasedDeduplication=false
+  --attributes ContentBasedDeduplication=true
 
 # Create FIFO SQS queue
 aws sqs create-queue \
   --queue-name orders-dapr.fifo \
-  --attributes FifoQueue=true,ContentBasedDeduplication=false,VisibilityTimeout=30
+  --attributes FifoQueue=true,ContentBasedDeduplication=true,VisibilityTimeout=30
 
 # Subscribe SQS to SNS
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:orders.fifo \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:orders.fifo \
   --protocol sqs \
-  --notification-endpoint arn:aws:sqs:us-east-1:123456789:orders-dapr.fifo
+  --notification-endpoint arn:aws:sqs:us-east-1:123456789012:orders-dapr.fifo
 ```
 
 ## Dapr Component Configuration
@@ -58,8 +58,8 @@ spec:
       value: "us-east-1"
     - name: fifo
       value: "true"
-    - name: fifoMessageGroupField
-      value: "orderGroupId"
+    - name: fifoMessageGroupID
+      value: "orders"
     - name: messageVisibilityTimeout
       value: "30"
     - name: messageRetryLimit
@@ -70,9 +70,9 @@ spec:
       value: "orders-dlq.fifo"
 ```
 
-## Publishing with Message Group ID
+## Publishing Messages
 
-Message group ID determines ordering scope - all messages in the same group are ordered:
+The message group ID is set at the component level via `fifoMessageGroupID`. All messages published through this component share the same ordering scope. Deduplication is handled automatically via content-based deduplication enabled on the SNS topic and SQS queue:
 
 ```python
 from dapr.clients import DaprClient
@@ -85,10 +85,6 @@ def publish_order_event(order_id: str, event: dict):
             topic_name="orders",
             data=json.dumps(event),
             data_content_type="application/json",
-            publish_metadata={
-                "orderGroupId": order_id,  # matches fifoMessageGroupField
-                "MessageDeduplicationId": f"{order_id}-{event['type']}-{event['timestamp']}"
-            }
         )
 
 publish_order_event("order-123", {
@@ -110,10 +106,10 @@ Grant SNS permission to send to the FIFO SQS queue:
       "Effect": "Allow",
       "Principal": {"Service": "sns.amazonaws.com"},
       "Action": "sqs:SendMessage",
-      "Resource": "arn:aws:sqs:us-east-1:123456789:orders-dapr.fifo",
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:orders-dapr.fifo",
       "Condition": {
         "ArnEquals": {
-          "aws:SourceArn": "arn:aws:sns:us-east-1:123456789:orders.fifo"
+          "aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:orders.fifo"
         }
       }
     }
@@ -136,8 +132,8 @@ Grant SNS permission to send to the FIFO SQS queue:
         "sns:Subscribe", "sns:GetTopicAttributes"
       ],
       "Resource": [
-        "arn:aws:sqs:us-east-1:123456789:orders-dapr.fifo",
-        "arn:aws:sns:us-east-1:123456789:orders.fifo"
+        "arn:aws:sqs:us-east-1:123456789012:orders-dapr.fifo",
+        "arn:aws:sns:us-east-1:123456789012:orders.fifo"
       ]
     }
   ]
@@ -146,4 +142,4 @@ Grant SNS permission to send to the FIFO SQS queue:
 
 ## Summary
 
-Configuring Dapr SNS/SQS with FIFO queues requires setting `fifo: "true"` in the component, creating SNS and SQS resources with `.fifo` name suffixes, and specifying a `fifoMessageGroupField` that maps to a metadata field set at publish time. Messages within the same group ID are delivered in order to a single consumer. Use `MessageDeduplicationId` to prevent duplicate processing during retries.
+Configuring Dapr SNS/SQS with FIFO queues requires setting `fifo: "true"` in the component, creating SNS and SQS resources with `.fifo` name suffixes, and setting `fifoMessageGroupID` to define the ordering scope. All messages published through the component share the same message group and are delivered in order. Enable `ContentBasedDeduplication` on the SNS topic and SQS queue to prevent duplicate processing.
