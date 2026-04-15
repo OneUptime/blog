@@ -85,7 +85,7 @@ ORDER BY name;
 ```sql
 SELECT name, engine
 FROM system.databases
-WHERE (comment = '' OR comment IS NULL)
+WHERE comment = ''
   AND name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
 ORDER BY name;
 ```
@@ -134,8 +134,8 @@ ORDER BY sum(t.total_bytes) DESC;
 
 ```sql
 -- Add a descriptive comment to a database
-ALTER DATABASE analytics COMMENT 'Production analytics data warehouse';
-ALTER DATABASE staging   COMMENT 'Staging environment for testing';
+ALTER DATABASE analytics MODIFY COMMENT 'Production analytics data warehouse';
+ALTER DATABASE staging   MODIFY COMMENT 'Staging environment for testing';
 
 -- Verify
 SELECT name, comment FROM system.databases ORDER BY name;
