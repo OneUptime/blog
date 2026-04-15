@@ -64,7 +64,6 @@ This starts the sidecar and keeps it alive with a dummy Node.js process.
         "PORT": "3001",
         "NODE_ENV": "development"
       },
-      "runtimeArgs": ["--inspect"],
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
     }
@@ -134,7 +133,7 @@ Press `F5` while the app is running. VS Code attaches to port 9229.
       "env": {
         "DAPR_HTTP_PORT": "3500",
         "DAPR_GRPC_PORT": "50001",
-        "FLASK_ENV": "development"
+        "FLASK_DEBUG": "1"
       },
       "justMyCode": true
     }
