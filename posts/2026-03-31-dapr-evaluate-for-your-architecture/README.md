@@ -56,7 +56,7 @@ spec:
     value: localhost:6379
 EOF
 
-dapr run --app-id poc --components-path . -- python test.py
+dapr run --app-id poc --resources-path . -- python test.py
 ```
 
 Measure: time to implement, developer experience, debugging ease.
@@ -66,7 +66,7 @@ Measure: time to implement, developer experience, debugging ease.
 Dapr adds operational complexity. Assess your team's ability to manage:
 
 - Dapr sidecar resource overhead (typically 50-100m CPU, 100-200Mi memory per pod)
-- Certificate rotation (Dapr handles this automatically)
+- Certificate rotation (Dapr generates initial certificates automatically, but root certificate rotation requires manual renewal)
 - Component upgrades
 - Debugging distributed traces through Dapr sidecars
 
