@@ -8,9 +8,13 @@ Description: Configure the Dapr Twitter input binding to stream real-time tweets
 
 ---
 
+## Deprecation Notice
+
+The Dapr Twitter binding (`bindings.twitter`) was deprecated in Dapr v1.10 and removed in Dapr v1.11. It relies on the Twitter v1.1 API, which has been largely replaced by the v2 API. New Twitter/X developer accounts cannot access v1.1 endpoints. This guide is preserved for reference but is not usable with current versions of Dapr.
+
 ## Overview
 
-The Dapr Twitter binding is an input-only binding that connects to the Twitter v1.1 streaming API to deliver tweets matching a search query to your application. Each matching tweet triggers a POST request to your app endpoint.
+The Dapr Twitter binding connects to the Twitter v1.1 streaming API and supports both input and output operations. The input binding delivers tweets matching a search query to your application — each matching tweet triggers a POST request to your app endpoint. The output binding supports a `get` operation for searching tweets.
 
 ```mermaid
 flowchart LR
@@ -75,8 +79,6 @@ spec:
       key: accessSecret
   - name: query
     value: "dapr OR #daprdevs"
-  - name: lang
-    value: "en"
 ```
 
 Apply:
@@ -231,4 +233,4 @@ Each component delivers to the endpoint matching its `name` field (`/twitter-bra
 
 ## Summary
 
-The Dapr Twitter input binding connects to the Twitter v1.1 filtered stream and delivers matching tweets to your application endpoint. Configure the component with OAuth 1.0a credentials and a search query. The tweet payload follows the standard Twitter v1.1 object format. Use this binding to build real-time social listening, sentiment analysis, or brand monitoring pipelines without the Twitter client SDK.
+The Dapr Twitter binding connects to the Twitter v1.1 filtered stream and delivers matching tweets to your application endpoint. Configure the component with OAuth 1.0a credentials and a search query. The tweet payload follows the standard Twitter v1.1 object format. Note that this binding was deprecated in Dapr v1.10 and removed in Dapr v1.11 due to the Twitter v1.1 API being superseded by v2.
