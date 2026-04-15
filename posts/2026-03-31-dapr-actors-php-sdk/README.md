@@ -29,8 +29,22 @@ namespace App\Actors;
 interface CounterInterface extends \Dapr\Actors\IActor {
     public function increment(): int;
     public function decrement(): int;
-    public function getCount(): int;
+    public function get_count(): int;
     public function reset(): void;
+}
+```
+
+## Defining the Actor State
+
+```php
+<?php
+// src/Actors/CounterState.php
+namespace App\Actors;
+
+use Dapr\Actors\ActorState;
+
+class CounterState extends ActorState {
+    public int $count = 0;
 }
 ```
 
@@ -46,34 +60,30 @@ use Dapr\Actors\Attributes\DaprType;
 
 #[DaprType('Counter')]
 class Counter extends Actor implements CounterInterface {
-    private int $count = 0;
 
-    public function onActivate(): void {
-        // Load state on activation
-        $saved = $this->stateManager->tryGet('count', 0);
-        $this->count = $saved;
-        echo "Counter {$this->id->id} activated with count={$this->count}\n";
+    public function __construct(string $id, private CounterState $state) {
+        parent::__construct($id);
+    }
+
+    public function on_activation(): void {
+        echo "Counter {$this->get_id()} activated with count={$this->state->count}\n";
     }
 
     public function increment(): int {
-        $this->count++;
-        $this->stateManager->set('count', $this->count);
-        return $this->count;
+        return $this->state->count += 1;
     }
 
     public function decrement(): int {
-        $this->count = max(0, $this->count - 1);
-        $this->stateManager->set('count', $this->count);
-        return $this->count;
+        $this->state->count = max(0, $this->state->count - 1);
+        return $this->state->count;
     }
 
-    public function getCount(): int {
-        return $this->count;
+    public function get_count(): int {
+        return $this->state->count;
     }
 
     public function reset(): void {
-        $this->count = 0;
-        $this->stateManager->set('count', 0);
+        $this->state->count = 0;
     }
 }
 ```
@@ -84,9 +94,13 @@ class Counter extends Actor implements CounterInterface {
 <?php
 // src/app.php
 use Dapr\App;
+use App\Actors\Counter;
 
-$app = App::create();
-$app->register_actor(Counter::class);
+$app = App::create(
+    configure: fn(\DI\ContainerBuilder $builder) => $builder->addDefinitions([
+        'dapr.actors' => [Counter::class],
+    ])
+);
 $app->start();
 ```
 
@@ -96,30 +110,33 @@ $app->start();
 <?php
 // Inside the Counter actor class
 
+use Dapr\Actors\Timer;
+use Dapr\Actors\Reminder;
+
 public function startTimer(): void {
-    $this->registerTimer(
+    $this->create_timer(new Timer(
         name: 'log-timer',
-        callback: 'logCount',
         due_time: new \DateInterval('PT5S'),
-        period: new \DateInterval('PT30S')
-    );
+        period: new \DateInterval('PT30S'),
+        callback: 'logCount'
+    ));
 }
 
 public function logCount(): void {
-    echo "Timer fired - current count: {$this->count}\n";
+    echo "Timer fired - current count: {$this->state->count}\n";
 }
 
 public function startReminder(): void {
-    $this->registerReminder(
+    $this->create_reminder(new Reminder(
         name: 'daily-reset',
-        data: null,
         due_time: new \DateInterval('P1D'),
+        data: null,
         period: new \DateInterval('P1D')
-    );
+    ));
 }
 
-public function receiveReminder(string $reminderName, mixed $data): void {
-    if ($reminderName === 'daily-reset') {
+public function remind(string $name, Reminder $data): void {
+    if ($name === 'daily-reset') {
         $this->reset();
         echo "Counter reset by daily reminder\n";
     }
@@ -133,12 +150,16 @@ public function receiveReminder(string $reminderName, mixed $data): void {
 use Dapr\Actors\ActorProxy;
 use App\Actors\CounterInterface;
 
-$proxy = ActorProxy::create(CounterInterface::class, 'counter-1');
-$value = $proxy->increment();
-echo "New count: {$value}\n";
+// ActorProxy is retrieved from the DI container
+$app = \Dapr\App::create();
+$app->run(function(ActorProxy $actorProxy) {
+    $counter = $actorProxy->get(CounterInterface::class, 'counter-1');
+    $value = $counter->increment();
+    echo "New count: {$value}\n";
 
-$current = $proxy->getCount();
-echo "Current count: {$current}\n";
+    $current = $counter->get_count();
+    echo "Current count: {$current}\n";
+});
 ```
 
 ## Running the Actor App
