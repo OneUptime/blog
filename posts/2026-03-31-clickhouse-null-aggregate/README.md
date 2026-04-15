@@ -87,7 +87,7 @@ FROM sales;
 
 ```text
 min_revenue  max_revenue  min_region  max_region
-150.0        800.0        North       West
+150.0        800.0        East        West
 ```
 
 ## countIf for Conditional Counting
@@ -118,7 +118,7 @@ FROM sales;
 
 ```text
 north_revenue  south_avg_revenue  large_unit_orders
-800.0          800.0              2
+800.0          800.0              3
 ```
 
 ## groupBy with NULL Keys
@@ -139,9 +139,9 @@ ORDER BY total_revenue DESC NULLS LAST;
 region  orders  total_revenue
 South   2       800.0
 North   2       800.0
+NULL    2       600.0
 East    1       200.0
 West    1       NULL
-NULL    2       600.0
 ```
 
 The `NULL` region group contains sales 6 and 8. Sale 7 falls in the West group but has NULL revenue.
@@ -175,13 +175,13 @@ West          1       0.0
 SELECT
     uniq(rep_id)      AS distinct_reps,        -- excludes NULL
     uniq(region)      AS distinct_regions,     -- excludes NULL
-    groupArray(rep_id) AS rep_ids_with_nulls    -- groupArray includes NULLs
+    groupArray(rep_id) AS rep_ids_array         -- groupArray also skips NULLs
 FROM sales;
 ```
 
 ```text
-distinct_reps  distinct_regions  rep_ids_with_nulls
-3              4                 [10,10,11,11,NULL,12,12,NULL]
+distinct_reps  distinct_regions  rep_ids_array
+3              4                 [10,10,11,11,12,12]
 ```
 
 ## Handling NULLs in Percentile Functions
