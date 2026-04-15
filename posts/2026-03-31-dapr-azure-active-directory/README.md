@@ -102,8 +102,8 @@ spec:
   metadata:
     - name: namespaceName
       value: "my-servicebus.servicebus.windows.net"
-    - name: azureClientId
-      value: ""  # Empty = use pod's managed identity
+    # Omit azureClientId to use system-assigned managed identity
+    # Set azureClientId to the client ID for user-assigned managed identity
 ```
 
 ## Verifying Authentication
