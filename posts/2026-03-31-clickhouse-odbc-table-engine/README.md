@@ -44,7 +44,7 @@ CREATE TABLE pg_customers (
 
 The arguments are:
 1. Connection string (DSN-based or driver string).
-2. Schema name.
+2. External database or schema name (e.g., `public` for PostgreSQL).
 3. Table name in the remote database.
 
 ## Querying via the ODBC Table
@@ -73,10 +73,10 @@ GROUP BY e.event_type, c.plan;
 
 ## Filtering and Pushdown
 
-WHERE clauses on the ODBC table are pushed down to the remote database:
+Simple WHERE clauses on the ODBC table may be pushed down to the remote database, similar to how other integration engines like MySQL and PostgreSQL handle predicate pushdown:
 
 ```sql
--- PostgreSQL handles the filter; ClickHouse receives only matching rows
+-- The filter may be pushed down so that only matching rows are returned
 SELECT name, email
 FROM pg_customers
 WHERE plan = 'enterprise' AND country = 'US';
@@ -102,7 +102,7 @@ CREATE TABLE mysql_products (
     name        String,
     price       Float64,
     category_id UInt16
-) ENGINE = ODBC('DSN=mysql_prod;', '', 'products');
+) ENGINE = ODBC('DSN=mysql_prod;', 'mydb', 'products');
 ```
 
 ## Using ODBC Table for Data Migration
