@@ -26,8 +26,8 @@ Use `Delta` encoding followed by LZ4 or ZSTD. Delta stores the difference betwee
 
 ```sql
 CREATE TABLE metrics (
-    ts     DateTime CODEC(Delta(4), LZ4),
-    seq_id UInt64   CODEC(Delta(8), LZ4),
+    ts     DateTime CODEC(Delta, LZ4),
+    seq_id UInt64   CODEC(Delta, LZ4),
     ...
 ) ENGINE = MergeTree() ORDER BY ts;
 ```
@@ -59,7 +59,7 @@ ALTER TABLE events MODIFY COLUMN status LowCardinality(String) CODEC(LZ4);
 
 ### Boolean and Small Integers
 
-`T64` encodes integer columns by removing leading zero bits, great for sparse UInt64 columns:
+`T64` encodes integer columns by cropping unused high bits based on the min/max value range in each data block, great for columns where values cluster in a narrow range:
 
 ```sql
 ALTER TABLE events MODIFY COLUMN flags UInt64 CODEC(T64, LZ4);
@@ -102,8 +102,8 @@ ORDER BY data_uncompressed_bytes DESC
 ```text
 Data Pattern              Recommended Chain
 -------------------       -----------------
-Timestamps                Delta(4), LZ4
-Counter/monotonic int     Delta(8), LZ4
+Timestamps                Delta, LZ4
+Counter/monotonic int     Delta, LZ4
 Float sensor readings     Gorilla, LZ4
 Categorical strings       LZ4 or ZSTD(3)
 Long text (logs)          ZSTD(6) or ZSTD(9)
