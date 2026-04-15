@@ -70,7 +70,7 @@ Sorting buffer        | Sort buffer for ORDER BY operations
 Read buffer           | Column data decompression buffers
 Dictionary            | Full dictionary contents in RAM
 Mark cache            | Mark file cache (default 5GB)
-Uncompressed cache    | Decompressed block cache (default 0)
+Uncompressed cache    | Decompressed block cache (default 8GB, use_uncompressed_cache off)
 ```
 
 ## Diagnosing Memory Issues
@@ -109,7 +109,7 @@ SET max_threads = 4;
 -- Enable heap profiling (writes heap profile to /tmp)
 SYSTEM JEMALLOC ENABLE PROFILE;
 -- Run queries...
-SYSTEM JEMALLOC DUMP PROFILE;
+SYSTEM JEMALLOC FLUSH PROFILE;
 SYSTEM JEMALLOC DISABLE PROFILE;
 ```
 
