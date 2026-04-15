@@ -121,12 +121,17 @@ jobs:
     - name: Configure kubectl
       uses: azure/setup-kubectl@v3
 
+    - name: Azure login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
     - name: Set AKS context
       uses: azure/aks-set-context@v3
       with:
         resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
         cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        subscription: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     - name: Deploy Dapr components
       run: |
@@ -158,7 +163,7 @@ jobs:
 # Install kubeconform and dapr schemas
 pip install pyyaml
 
-cat validate_components.py << 'EOF'
+cat > validate_components.py << 'EOF'
 import yaml
 import sys
 import os
