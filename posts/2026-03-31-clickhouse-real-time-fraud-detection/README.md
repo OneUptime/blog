@@ -262,7 +262,7 @@ ORDER BY known_fraud_count DESC, unique_accounts DESC;
 
 ## Retroactive Fraud Labeling
 
-When the fraud team confirms a transaction as fraud, update the label using a lightweight delete plus insert pattern:
+When the fraud team confirms a transaction as fraud, update the label using a mutation:
 
 ```sql
 -- Insert a corrected row (ClickHouse is append-only, use CollapsingMergeTree for updates)
@@ -288,7 +288,7 @@ ORDER BY transaction_id;
 
 ## Conclusion
 
-ClickHouse is a powerful analytical layer in a fraud detection system. Velocity counters via materialized views give you sub-millisecond lookup of recent activity. Window function queries detect behavioral patterns like impossible-speed travel or device reuse across accounts. Rule-based scoring queries combine multiple signals into actionable fraud scores that a decision engine can act on in real time.
+ClickHouse is a powerful analytical layer in a fraud detection system. Velocity counters via materialized views give you sub-millisecond lookup of recent activity. Self-join and aggregation queries detect behavioral patterns like impossible-speed travel or device reuse across accounts. Rule-based scoring queries combine multiple signals into actionable fraud scores that a decision engine can act on in real time.
 
 **Related Reading:**
 
