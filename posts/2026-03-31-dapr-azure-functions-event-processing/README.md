@@ -18,7 +18,7 @@ The Dapr Extension for Azure Functions bridges the two systems.
 
 ```bash
 # Install the Dapr extension for Azure Functions
-func extensions install --package Microsoft.Azure.WebJobs.Extensions.Dapr --version 1.x
+dotnet add package Microsoft.Azure.WebJobs.Extensions.Dapr --prerelease
 ```
 
 Or add to `extensions.csproj`:
@@ -36,22 +36,26 @@ Or add to `extensions.csproj`:
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Dapr;
 using Microsoft.Extensions.Logging;
+using CloudNative.CloudEvents;
+using Newtonsoft.Json;
 
 public static class OrderProcessor
 {
     [FunctionName("ProcessOrder")]
     public static void Run(
-        [DaprTopicTrigger("pubsub", Topic = "orders")] DaprTopicMessage<Order> order,
-        [DaprState("statestore", Key = "{data.orderId}")] out Order processedOrder,
+        [DaprTopicTrigger("pubsub", Topic = "orders")] CloudEvent cloudEvent,
+        [DaprState("statestore", Key = "{data.orderId}")] out string processedOrder,
         ILogger log)
     {
-        log.LogInformation($"Processing order {order.Data.OrderId}");
+        var order = JsonConvert.DeserializeObject<Order>(cloudEvent.Data.ToString());
+
+        log.LogInformation($"Processing order {order.OrderId}");
 
         // Process the order
-        order.Data.Status = "processed";
-        processedOrder = order.Data;
+        order.Status = "processed";
+        processedOrder = JsonConvert.SerializeObject(order);
 
-        log.LogInformation($"Order {order.Data.OrderId} processed");
+        log.LogInformation($"Order {order.OrderId} processed");
     }
 }
 
@@ -116,7 +120,7 @@ public static void Notify(
   "IsEncrypted": false,
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet",
     "DAPR_HTTP_PORT": "3501"
   }
 }
@@ -142,7 +146,7 @@ az containerapp create \
   --resource-group my-rg \
   --environment my-env \
   --image myorg/order-processor:latest \
-  --dapr-enabled \
+  --enable-dapr \
   --dapr-app-id order-processor \
   --dapr-app-port 7071
 ```
