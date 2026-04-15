@@ -138,7 +138,7 @@ In ETL pipelines, use SHA256 to checksum batches and detect corruption between s
 SELECT
     batch_id,
     count()                                         AS row_count,
-    hex(SHA256(groupArray(hex(SHA256(row_data)))[1])) AS batch_checksum
+    hex(SHA256(arrayStringConcat(groupArray(hex(SHA256(row_data))), ''))) AS batch_checksum
 FROM ingest_batch
 GROUP BY batch_id
 ORDER BY batch_id;
