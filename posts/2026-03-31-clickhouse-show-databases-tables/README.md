@@ -39,12 +39,13 @@ analytics
 
 The `LIKE` pattern uses SQL wildcard syntax: `%` matches any sequence of characters and `_` matches exactly one character.
 
-### Filter Databases with WHERE
+### Filter Databases with a Query
 
-For more expressive filtering, use `WHERE`:
+`SHOW DATABASES` does not support a `WHERE` clause. For more expressive filtering, query `system.databases` directly:
 
 ```sql
-SHOW DATABASES WHERE name NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema');
+SELECT name FROM system.databases
+WHERE name NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema');
 ```
 
 ```text
@@ -102,10 +103,14 @@ event_aggregates
 event_schema_log
 ```
 
-### Filter Tables with WHERE
+### Filter Tables with a Query
+
+`SHOW TABLES` does not support a `WHERE` clause. For more expressive filtering, query `system.tables` directly:
 
 ```sql
-SHOW TABLES FROM analytics WHERE name LIKE 'session%' OR name LIKE 'funnel%';
+SELECT name FROM system.tables
+WHERE database = 'analytics'
+  AND (name LIKE 'session%' OR name LIKE 'funnel%');
 ```
 
 ```text
@@ -115,22 +120,22 @@ funnel_steps
 
 ## SHOW FULL TABLES
 
-`SHOW FULL TABLES` adds a `table_type` column to the output, distinguishing regular tables from views:
+`SHOW FULL TABLES` adds an `engine` column to the output so you can see each table's storage engine:
 
 ```sql
 SHOW FULL TABLES FROM analytics;
 ```
 
 ```text
-name             | table_type
-conversions      | BASE TABLE
-daily_revenue    | VIEW
-funnel_steps     | BASE TABLE
-pageviews        | BASE TABLE
-sessions         | BASE TABLE
+name             | engine
+conversions      | MergeTree
+daily_revenue    | View
+funnel_steps     | MergeTree
+pageviews        | MergeTree
+sessions         | MergeTree
 ```
 
-This is useful when a database mixes tables and views and you need to quickly identify which objects are views before running DDL that might only apply to physical tables.
+This is useful when a database mixes different engine types and you need to quickly identify views (engine `View`) or distinguish MergeTree tables from other engines before running DDL that might only apply to specific engine types.
 
 ## SHOW DICTIONARIES
 
@@ -149,7 +154,7 @@ product_categories
 
 ### Count Tables by Database
 
-Combine SHOW with a subquery against `system.tables` for quick counts:
+Use `system.tables` for quick counts:
 
 ```sql
 SELECT database, count() AS table_count
@@ -204,4 +209,4 @@ Use `SHOW DATABASES` and `SHOW TABLES` for fast interactive exploration. Use `sy
 
 ## Summary
 
-`SHOW DATABASES` and `SHOW TABLES` provide a fast way to list and filter ClickHouse databases and tables using SQL LIKE patterns or WHERE clauses. `SHOW FULL TABLES` adds a `table_type` column to distinguish views from physical tables. For richer metadata - such as engine type, size, or row count - query `system.tables` and `system.databases` directly, which expose all the same names plus dozens of additional columns.
+`SHOW DATABASES` and `SHOW TABLES` provide a fast way to list and filter ClickHouse databases and tables using SQL LIKE patterns. `SHOW FULL TABLES` adds an `engine` column so you can see each table's storage engine at a glance. For more expressive filtering with `WHERE` clauses, or for richer metadata such as size or row count, query `system.tables` and `system.databases` directly, which expose all the same names plus dozens of additional columns.
