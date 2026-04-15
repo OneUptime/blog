@@ -89,11 +89,14 @@ SETTINGS materialized_postgresql_tables_list = 'public.orders,public.customers';
 -- List replicated tables
 SHOW TABLES FROM pg_replica;
 
--- Check for replication errors
-SELECT * FROM system.replication_queue WHERE database = 'pg_replica';
+-- Check database engine status
+SELECT name, engine FROM system.databases WHERE name = 'pg_replica';
 
--- View current replication lag (approximate)
-SELECT * FROM system.materialized_postgresql_tables;
+-- Check for errors in the server log (requires system.text_log to be enabled)
+SELECT event_time, message
+FROM system.text_log
+WHERE logger_name LIKE '%PostgreSQL%' AND level = 'Error'
+ORDER BY event_time DESC LIMIT 10;
 ```
 
 ## Querying Replicated Data
@@ -158,10 +161,10 @@ SETTINGS materialized_postgresql_tables_list = 'billing.invoices,shipping.packag
 |---|---|
 | Primary key required | Every replicated table must have a primary key |
 | No DDL for DROP/RENAME | DROP TABLE and column renames are not replicated |
-| TRUNCATE not replicated | TRUNCATE is not captured via logical replication |
+| TRUNCATE not replicated | PostgreSQL sends TRUNCATE via WAL but the engine ignores it |
 | Array types | Complex array types may require manual mapping |
 | Partitioned tables | Each partition is replicated as a separate table |
-| PostgreSQL version | Requires PostgreSQL 10+ with wal_level = logical |
+| PostgreSQL version | Requires PostgreSQL 11+ with wal_level = logical |
 
 ## Stopping and Restarting Replication
 
@@ -182,13 +185,13 @@ To restart replication from scratch, drop and recreate the database in ClickHous
 
 ## Monitoring Replication Lag
 
+Replication errors are logged by the MaterializedPostgreSQL engine. If `system.text_log` is enabled, you can query it:
+
 ```sql
-SELECT
-    database,
-    table,
-    last_exception,
-    last_exception_time
-FROM system.materialized_postgresql_tables;
+SELECT event_time, logger_name, level, message
+FROM system.text_log
+WHERE logger_name LIKE '%PostgreSQL%'
+ORDER BY event_time DESC LIMIT 20;
 ```
 
 On PostgreSQL, check WAL lag:
@@ -208,4 +211,4 @@ WHERE slot_name LIKE '%clickhouse%';
 - Use `materialized_postgresql_tables_list` to limit which tables are replicated.
 - Replicated tables use `ReplacingMergeTree`; use `FINAL` if you need strong deduplication guarantees.
 - All replicated tables must have a primary key.
-- Monitor replication health via `system.materialized_postgresql_tables` and PostgreSQL's `pg_replication_slots`.
+- Monitor replication health via `system.text_log` and PostgreSQL's `pg_replication_slots`.
