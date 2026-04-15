@@ -18,17 +18,17 @@ Experimental APIs are decorated with the `[Experimental]` attribute and a diagno
 
 ```csharp
 // Example from Dapr SDK source
-[Experimental("DAPR001")]
-public class DaprWorkflowClient
+[Experimental("DAPR_CONVERSATION")]
+public class DaprConversationClient
 {
-    // Workflow API - experimental until stabilized
+    // Conversation API - experimental until stabilized
 }
 ```
 
 When you use an experimental API without opting in, the compiler emits a warning:
 
 ```text
-warning DAPR001: 'DaprWorkflowClient' is for evaluation purposes only
+warning DAPR_CONVERSATION: 'DaprConversationClient' is for evaluation purposes only
 and is subject to change or removal in future updates.
 ```
 
@@ -38,16 +38,16 @@ Suppress the warning project-wide by adding the diagnostic ID to your `.csproj`:
 
 ```xml
 <PropertyGroup>
-  <NoWarn>DAPR001</NoWarn>
+  <NoWarn>DAPR_CONVERSATION</NoWarn>
 </PropertyGroup>
 ```
 
 Or suppress it at the call site to make the opt-in explicit and searchable:
 
 ```csharp
-#pragma warning disable DAPR001
-using var workflowClient = new DaprWorkflowClient(daprClient);
-#pragma warning restore DAPR001
+#pragma warning disable DAPR_CONVERSATION
+builder.Services.AddDaprConversationClient();
+#pragma warning restore DAPR_CONVERSATION
 ```
 
 ## Using the Dapr Conversation (AI) Experimental API
@@ -59,10 +59,10 @@ using Dapr.AI.Conversation.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// This call produces DAPR0001 until you suppress it
-#pragma warning disable DAPR0001
+// This call produces DAPR_CONVERSATION until you suppress it
+#pragma warning disable DAPR_CONVERSATION
 builder.Services.AddDaprConversationClient();
-#pragma warning restore DAPR0001
+#pragma warning restore DAPR_CONVERSATION
 ```
 
 ## Tracking Experimental Features in Your Team
@@ -74,8 +74,8 @@ Create a central file documenting each experimental opt-in to help your team man
 // Opt-ins to Dapr experimental APIs
 // Review before each Dapr SDK major upgrade
 
-// DAPR001 - DaprWorkflowClient (added 2026-01-15)
-// DAPR0001 - DaprConversationClient (added 2026-03-01)
+// DAPR_CONVERSATION - DaprConversationClient (added 2026-03-01)
+// DAPR_CRYPTOGRAPHY - DaprClient cryptography APIs (added 2026-01-15)
 ```
 
 ## Checking Stability Before Upgrading
