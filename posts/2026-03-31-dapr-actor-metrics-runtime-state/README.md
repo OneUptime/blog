@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Actor, Metric, Monitoring, Prometheus
 
-Description: Monitor Dapr virtual actor runtime state, active actor counts, method call rates, and timer metrics using Prometheus and the Dapr metadata API.
+Description: Monitor Dapr virtual actor runtime state, pending actor calls, timer and reminder counts, and deactivation metrics using Prometheus and the Dapr metadata API.
 
 ---
 
 ## Overview
 
-Dapr emits Prometheus metrics for actor runtime operations including active actor counts, method invocation rates, reminders, timers, and state operation counts. You can also query the Dapr metadata API to inspect which actors are currently active on a sidecar.
+Dapr emits Prometheus metrics for actor runtime operations including pending actor calls, reminders, timers, deactivation counts, and rebalance operations. You can also query the Dapr metadata API to inspect which actors are currently active on a sidecar.
 
 ## Actor Metrics Architecture
 
@@ -22,7 +22,7 @@ graph LR
     Grafana["Grafana"]
 
     ActorApp -->|actor calls| Sidecar
-    Sidecar -->|scrape /metrics| Prometheus
+    Prometheus -->|scrape /metrics| Sidecar
     Prometheus -->|query| Grafana
 ```
 
@@ -36,7 +36,6 @@ dapr run \
   --app-id actor-host \
   --app-port 6001 \
   --app-protocol grpc \
-  --enable-metrics \
   --metrics-port 9090 \
   -- go run main.go
 ```
@@ -58,63 +57,76 @@ metadata:
 
 ## Step 2: Key Actor Prometheus Metrics
 
-### Active Actor Count
+### Pending Actor Calls
 
 ```promql
-# Number of active actors by type
-dapr_actor_active_actors{app_id="order-actor-host", actor_type="OrderActor"}
+# Number of pending actor calls by type
+dapr_runtime_actor_pending_actor_calls{app_id="order-actor-host", actor_type="OrderActor"}
 ```
 
-### Actor Method Invocation Rate
+### Actor Deactivation and Rebalance Rate
 
 ```promql
-# Rate of actor method calls per second
-rate(dapr_actor_method_total{app_id="order-actor-host"}[1m])
+# Rate of actor deactivations per second
+rate(dapr_runtime_actor_deactivated_total{app_id="order-actor-host"}[1m])
 
-# Latency histogram (P99)
-histogram_quantile(0.99,
-  rate(dapr_actor_method_duration_milliseconds_bucket{app_id="order-actor-host"}[5m])
-)
+# Rate of actor rebalance operations
+rate(dapr_runtime_actor_rebalanced_total{app_id="order-actor-host"}[1m])
 ```
 
-### Actor Method Errors
+### Actor Operation Failures
 
 ```promql
-# Error rate for actor method calls
-rate(dapr_actor_method_total{app_id="order-actor-host", success="false"}[1m])
+# Failed actor deactivation rate
+rate(dapr_runtime_actor_deactivated_failed_total{app_id="order-actor-host"}[1m])
+
+# Failed reminder fire rate
+rate(dapr_runtime_actor_reminders_fired_total{app_id="order-actor-host", success="false"}[1m])
+
+# Failed timer fire rate
+rate(dapr_runtime_actor_timers_fired_total{app_id="order-actor-host", success="false"}[1m])
 ```
 
 ### Actor Timer and Reminder Metrics
 
 ```promql
-# Active reminders
-dapr_actor_reminders_total{app_id="order-actor-host", actor_type="OrderActor"}
+# Active reminders (gauge)
+dapr_runtime_actor_reminders{app_id="order-actor-host", actor_type="OrderActor"}
+
+# Active timers (gauge)
+dapr_runtime_actor_timers{app_id="order-actor-host", actor_type="OrderActor"}
 
 # Timer fired rate
-rate(dapr_actor_timers_total{app_id="order-actor-host"}[1m])
+rate(dapr_runtime_actor_timers_fired_total{app_id="order-actor-host"}[1m])
 
 # Reminder fired rate
-rate(dapr_actor_reminder_total{app_id="order-actor-host"}[1m])
+rate(dapr_runtime_actor_reminders_fired_total{app_id="order-actor-host"}[1m])
 ```
 
-### Actor State Operations
+### Actor Status Report Operations
 
 ```promql
-# State save rate
-rate(dapr_actor_state_transaction_commit_total{app_id="order-actor-host"}[1m])
+# Status report rate
+rate(dapr_runtime_actor_status_report_total{app_id="order-actor-host"}[1m])
+
+# Status report failure rate
+rate(dapr_runtime_actor_status_report_fail_total{app_id="order-actor-host"}[1m])
 ```
 
 ## Step 3: Full Metrics Reference
 
 | Metric | Type | Description |
 |---|---|---|
-| `dapr_actor_active_actors` | Gauge | Number of currently active actors |
-| `dapr_actor_method_total` | Counter | Total actor method invocations |
-| `dapr_actor_method_duration_milliseconds` | Histogram | Actor method call latency |
-| `dapr_actor_timers_total` | Counter | Timer fire count |
-| `dapr_actor_reminders_total` | Counter | Active reminder count |
-| `dapr_actor_reminder_total` | Counter | Reminder fire count |
-| `dapr_actor_state_transaction_commit_total` | Counter | State transaction commits |
+| `dapr_runtime_actor_pending_actor_calls` | Gauge | Pending actor calls |
+| `dapr_runtime_actor_timers` | Gauge | Active timer count |
+| `dapr_runtime_actor_reminders` | Gauge | Active reminder count |
+| `dapr_runtime_actor_timers_fired_total` | Counter | Timer fire count |
+| `dapr_runtime_actor_reminders_fired_total` | Counter | Reminder fire count |
+| `dapr_runtime_actor_deactivated_total` | Counter | Actor deactivation count |
+| `dapr_runtime_actor_deactivated_failed_total` | Counter | Failed actor deactivation count |
+| `dapr_runtime_actor_rebalanced_total` | Counter | Actor rebalance count |
+| `dapr_runtime_actor_status_report_total` | Counter | Status report operation count |
+| `dapr_runtime_actor_status_report_fail_total` | Counter | Failed status report count |
 
 ## Step 4: Query Dapr Metadata API for Active Actors
 
@@ -162,26 +174,25 @@ Create panels for actor monitoring:
 ```yaml
 # Example Grafana panel JSON snippet
 panels:
-  - title: "Active Actors by Type"
+  - title: "Pending Actor Calls by Type"
     type: stat
     targets:
-      - expr: "sum by (actor_type) (dapr_actor_active_actors)"
+      - expr: "sum by (actor_type) (dapr_runtime_actor_pending_actor_calls)"
         legendFormat: "{{actor_type}}"
 
-  - title: "Actor Method Rate (req/s)"
+  - title: "Actor Deactivation Rate"
     type: graph
     targets:
-      - expr: "sum(rate(dapr_actor_method_total[1m])) by (actor_type, method)"
-        legendFormat: "{{actor_type}}.{{method}}"
+      - expr: "sum(rate(dapr_runtime_actor_deactivated_total[1m])) by (actor_type)"
+        legendFormat: "{{actor_type}}"
 
-  - title: "Actor Method P99 Latency (ms)"
+  - title: "Reminder and Timer Fire Rate"
     type: graph
     targets:
-      - expr: |
-          histogram_quantile(0.99,
-            sum(rate(dapr_actor_method_duration_milliseconds_bucket[5m])) by (le, actor_type)
-          )
-        legendFormat: "P99 {{actor_type}}"
+      - expr: "sum(rate(dapr_runtime_actor_reminders_fired_total[1m])) by (actor_type)"
+        legendFormat: "reminders {{actor_type}}"
+      - expr: "sum(rate(dapr_runtime_actor_timers_fired_total[1m])) by (actor_type)"
+        legendFormat: "timers {{actor_type}}"
 ```
 
 ## Step 6: Prometheus Scrape Configuration
@@ -196,11 +207,11 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: "true"
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: ${1}:9090
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
       - source_labels: [__meta_kubernetes_pod_label_app]
         target_label: app
 ```
@@ -212,28 +223,27 @@ scrape_configs:
 groups:
   - name: dapr-actor-alerts
     rules:
-      - alert: HighActorErrorRate
+      - alert: HighActorDeactivationFailureRate
         expr: |
-          rate(dapr_actor_method_total{success="false"}[5m]) > 0.1
+          rate(dapr_runtime_actor_deactivated_failed_total[5m]) > 0.1
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "Dapr actor method error rate is high"
-          description: "Actor {{ $labels.actor_type }} error rate > 10% for 2 minutes"
+          summary: "Dapr actor deactivation failure rate is high"
+          description: "Actor {{ $labels.actor_type }} deactivation failure rate > 0.1/s for 2 minutes"
 
-      - alert: ActorMethodLatencyHigh
+      - alert: HighReminderFireFailureRate
         expr: |
-          histogram_quantile(0.99,
-            rate(dapr_actor_method_duration_milliseconds_bucket[5m])
-          ) > 1000
+          rate(dapr_runtime_actor_reminders_fired_total{success="false"}[5m]) > 0.1
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Actor method P99 latency > 1000ms"
+          summary: "Actor reminder fire failure rate is high"
+          description: "Actor {{ $labels.actor_type }} reminder failures > 0.1/s for 5 minutes"
 ```
 
 ## Summary
 
-Dapr actor metrics are exposed on the sidecar's `/metrics` endpoint (port `9090` by default) and include active actor counts, method invocation rates, latency histograms, and timer/reminder fires. The `/v1.0/metadata` API provides a real-time view of active actor types and counts. Use Prometheus to scrape these metrics, Grafana to visualise them, and alerting rules to detect error rate spikes or latency regressions.
+Dapr actor metrics are exposed on the sidecar's `/metrics` endpoint (port `9090` by default) and include pending actor calls, timer and reminder gauges, fire counts, deactivation rates, and rebalance operations. The `/v1.0/metadata` API provides a real-time view of active actor types and counts. Use Prometheus to scrape these metrics, Grafana to visualise them, and alerting rules to detect failure rate spikes.
