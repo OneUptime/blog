@@ -92,7 +92,7 @@ LIMIT 10;
 - No support for concurrent writes - only one INSERT can run at a time.
 - No support for concurrent reads - single-threaded only.
 - No index - every SELECT does a full scan.
-- No support for ALTER TABLE modifications.
+- No support for mutations (ALTER UPDATE / ALTER DELETE).
 - Inefficient for tables over a few thousand rows.
 
 ## Comparing TinyLog to Log and StripeLog
