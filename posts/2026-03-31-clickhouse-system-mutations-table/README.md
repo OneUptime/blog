@@ -12,7 +12,7 @@ In ClickHouse, `ALTER TABLE ... UPDATE` and `ALTER TABLE ... DELETE` statements 
 
 ## What is system.mutations?
 
-`system.mutations` is a system table that stores all mutations submitted to MergeTree tables - both running and completed. Unlike `system.merges`, this table retains historical mutation records until they are cleared.
+`system.mutations` is a system table that stores all mutations submitted to MergeTree tables - both running and completed. Unlike `system.merges`, this table retains finished mutation records based on the `finished_mutations_to_keep` storage engine parameter. Older entries are automatically deleted.
 
 Key columns:
 - `mutation_id` - unique identifier (e.g., `mutation_1.txt`)
