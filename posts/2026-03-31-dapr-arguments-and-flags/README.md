@@ -18,13 +18,13 @@ The Dapr sidecar (daprd) accepts a rich set of command-line flags that control i
 |---|---|---|
 | `--app-id` | `dapr.io/app-id` | Unique application identifier |
 | `--app-port` | `dapr.io/app-port` | Port your app listens on |
-| `--app-protocol` | `dapr.io/app-protocol` | `http` or `grpc` |
+| `--app-protocol` | `dapr.io/app-protocol` | `http`, `https`, `grpc`, `grpcs`, or `h2c` |
 | `--dapr-http-port` | N/A | Sidecar HTTP API port |
-| `--dapr-grpc-port` | N/A | Sidecar gRPC API port |
-| `--components-path` | N/A | Directory for component YAMLs |
+| `--dapr-grpc-port` | `dapr.io/grpc-port` | Sidecar gRPC API port |
+| `--resources-path` | N/A | Directory for component YAMLs |
 | `--config` | `dapr.io/config` | Configuration file or resource |
 | `--log-level` | `dapr.io/log-level` | Log verbosity |
-| `--enable-metrics` | `dapr.io/enable-metrics` | Enable Prometheus metrics |
+| `--enable-metrics` | N/A | Enable Prometheus metrics |
 
 ## Running daprd Directly
 
@@ -37,7 +37,7 @@ daprd \
   --app-protocol http \
   --dapr-http-port 3500 \
   --dapr-grpc-port 50001 \
-  --components-path ./components \
+  --resources-path ./components \
   --config ./config.yaml \
   --log-level debug \
   --enable-metrics true \
@@ -54,7 +54,7 @@ dapr run \
   --app-port 8080 \
   --app-protocol http \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   --config ./config.yaml \
   --log-level debug \
   -- python app.py
@@ -62,7 +62,7 @@ dapr run \
 
 ## Passing Extra Arguments in Kubernetes
 
-Use the `dapr.io/sidecar-container-args` annotation to pass additional flags:
+Use Dapr annotations on your pod spec to configure the sidecar:
 
 ```yaml
 annotations:
@@ -71,13 +71,12 @@ annotations:
   dapr.io/app-port: "8080"
 ```
 
-For flags not exposed as annotations, create a custom daprd configuration via the Helm chart:
+For flags not exposed as annotations, customize the Dapr deployment via the Helm chart:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.watchInterval=30s \
-  --set dapr_sentry.tokenAudience=dapr.io
+  --set dapr_operator.watchInterval=30s
 ```
 
 ## Component Path Configuration
@@ -86,7 +85,7 @@ In self-hosted mode, specify where Dapr looks for component files:
 
 ```bash
 dapr run --app-id myservice \
-  --components-path /etc/dapr/components \
+  --resources-path /etc/dapr/components \
   --app-port 8080 \
   -- ./myservice
 ```
