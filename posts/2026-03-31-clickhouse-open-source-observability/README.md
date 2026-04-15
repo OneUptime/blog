@@ -86,7 +86,7 @@ exporters:
     logs_table_name: otel_logs
     metrics_table_name: otel_metrics
     traces_table_name: otel_traces
-    ttl: 30
+    ttl: 720h
 
 service:
   pipelines:
