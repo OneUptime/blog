@@ -19,8 +19,8 @@ SELECT
     name,
     path,
     type,
-    formatReadableSize(free_space)    AS free_space,
-    formatReadableSize(total_space)   AS total_space,
+    formatReadableSize(free_space)    AS free,
+    formatReadableSize(total_space)   AS total,
     formatReadableSize(keep_free_space) AS keep_free,
     round((1 - free_space / total_space) * 100, 1) AS used_pct
 FROM system.disks
