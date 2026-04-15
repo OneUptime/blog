@@ -42,9 +42,8 @@ def process_order_event():
         # Permanent failure - don't retry, route to DLQ
         log_deserialization_error(envelope, str(e))
         return jsonify({
-            "status": "DROP",
-            "error": f"Deserialization failed: {e}"
-        }), 404  # 404 triggers dead letter routing
+            "status": "DROP"
+        }), 200  # DROP status routes message to dead letter topic
 
     try:
         handle_order(event)
@@ -58,14 +57,15 @@ def process_order_event():
 Configure a dead letter topic in the subscription:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: order-subscription
 spec:
   pubsubname: platform-pubsub
   topic: order-events
-  route: /order-events
+  routes:
+    default: /order-events
   deadLetterTopic: order-events-dlq
 ```
 
@@ -152,4 +152,4 @@ def log_deserialization_error(envelope: dict, error: str):
 
 ## Summary
 
-Deserialization errors in Dapr pub/sub subscribers should be treated as permanent failures - return a non-retryable status code to route messages to a dead letter topic. Using Pydantic or similar validation libraries catches schema mismatches before they reach business logic. Adding schema version fields to published messages enables backward-compatible evolution and prevents deserialization errors when producers and consumers deploy at different times.
+Deserialization errors in Dapr pub/sub subscribers should be treated as permanent failures - return an HTTP 200 with a `DROP` status to route messages to a dead letter topic. Using Pydantic or similar validation libraries catches schema mismatches before they reach business logic. Adding schema version fields to published messages enables backward-compatible evolution and prevents deserialization errors when producers and consumers deploy at different times.
