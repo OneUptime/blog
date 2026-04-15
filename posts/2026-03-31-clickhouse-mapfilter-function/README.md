@@ -135,7 +135,7 @@ SELECT
     host,
     mapFilter(
         (k, v) -> v BETWEEN 0.0 AND 100.0,
-        mapApply((k, v) -> round(v, 1), metrics)
+        mapApply((k, v) -> (k, round(v, 1)), metrics)
     ) AS valid_pct_metrics
 FROM host_metrics;
 ```
