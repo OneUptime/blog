@@ -8,16 +8,15 @@ Description: Learn how to extract numeric values from simple JSON strings in Cli
 
 ---
 
-ClickHouse provides two families of JSON extraction functions: the full `JSONExtract*` family (which supports nested paths and full JSON spec) and the `simpleJSON*` family (which uses a lightweight parser optimized for simple, flat JSON objects). `simpleJSONExtractInt()` and `simpleJSONExtractFloat()` are the numeric variants of the latter.
+ClickHouse provides two families of JSON extraction functions: the full `JSONExtract*` family (which supports nested paths and full JSON spec) and the `simpleJSON*` family (which uses a lightweight parser optimized for fast extraction from JSON strings). `simpleJSONExtractInt()` and `simpleJSONExtractFloat()` are the numeric variants of the latter.
 
 ## How simpleJSON Functions Work
 
 The `simpleJSON*` functions use a simplified parser that is faster than the full JSON parser but has limitations:
 
-- Supports only flat (non-nested) key lookups
-- The key must be a direct field of the top-level object
-- Does not support array indexing
-- Whitespace handling is lenient but the structure must be simple
+- Fields are searched by name on any nesting level, and the first occurrence is used
+- Does not support JSON path expressions or array indexing
+- The parser makes strong assumptions about JSON structure to maximize speed
 
 These functions are best for high-throughput log processing where JSON structure is simple and performance matters.
 
