@@ -14,21 +14,20 @@ Dapr uses a consistent hash ring to distribute actor instances across registered
 
 ## Viewing the Current Placement Table
 
-The Dapr Placement service exposes an HTTP API to view the current placement table:
+The Dapr Placement service exposes an HTTP API to view the current placement table. This endpoint is disabled by default and must be enabled by setting `DAPR_PLACEMENT_METADATA_ENABLED=true` on the placement service (or via Helm with `dapr_placement.metadataEnabled=true`):
 
 ```bash
-# Port-forward to the placement service
-kubectl port-forward -n dapr-system svc/dapr-placement-server 50005:50005
+# Port-forward to the placement service health/API port
+kubectl port-forward -n dapr-system svc/dapr-placement-server 8080:8080
 
-# Query the placement table via the Dapr CLI
-dapr mtls export -o ./certs
+# Query the placement table
+curl http://localhost:8080/placement/state
 ```
 
-You can also query each sidecar's actor configuration endpoint:
+You can also query each sidecar's metadata endpoint to see registered actor types and active actor counts:
 
 ```bash
-# Replace <app-port> with your app's port
-curl http://localhost:3500/v1.0/actors/<actorType>/<actorId>
+curl http://localhost:3500/v1.0/metadata
 ```
 
 ## Scraping Actor Metrics with Prometheus
@@ -54,11 +53,11 @@ spec:
 Key metrics to watch:
 
 ```bash
-# Number of active actors per host
-dapr_actor_active_actors{app_id="order-service", actor_type="OrderActor"}
+# Pending actor calls per host (waiting to acquire the per-actor lock)
+dapr_runtime_actor_pending_actor_calls{app_id="order-service"}
 
-# Actor invocations per second per host
-rate(dapr_actor_method_invoked_total[1m])
+# Actor rebalance events per second
+rate(dapr_runtime_actor_rebalanced_total[1m])
 ```
 
 ## Creating a Grafana Dashboard
@@ -66,15 +65,15 @@ rate(dapr_actor_method_invoked_total[1m])
 Use a PromQL query to visualize actor distribution across pods:
 
 ```bash
-# Actors per pod
-sum by (pod) (dapr_actor_active_actors{namespace="production"})
+# Pending actor calls per pod
+sum by (pod) (dapr_runtime_actor_pending_actor_calls{namespace="production"})
 ```
 
 Set up a bar chart in Grafana with the above query to quickly spot nodes that have significantly more actors than others.
 
 ## Detecting Imbalances Programmatically
 
-Use the Dapr management API from your ops tooling:
+Use the Dapr metadata API from your ops tooling to query active actor counts per sidecar:
 
 ```python
 import requests
@@ -83,9 +82,10 @@ def get_actor_counts():
     pods = get_pods_in_namespace("production")
     counts = {}
     for pod in pods:
-        url = f"http://{pod.ip}:9090/metrics"
-        metrics = requests.get(url).text
-        counts[pod.name] = parse_actor_metric(metrics, "dapr_actor_active_actors")
+        url = f"http://{pod.ip}:3500/v1.0/metadata"
+        metadata = requests.get(url).json()
+        active = metadata.get("actorRuntime", {}).get("activeActors", [])
+        counts[pod.name] = sum(a["count"] for a in active)
     return counts
 
 def check_distribution(counts):
