@@ -8,7 +8,7 @@ Description: Learn how pointInPolygon() tests whether a geographic point falls i
 
 ---
 
-`pointInPolygon((x, y), [(x1, y1), (x2, y2), ...])` returns `1` if the 2D point `(x, y)` is inside the polygon defined by the array of vertices and `0` otherwise. The polygon is automatically closed - you do not need to repeat the first vertex at the end. The function uses the ray-casting algorithm and handles convex, concave, and self-intersecting polygons. It also accepts holes (inner rings) as additional array arguments. Coordinates are Euclidean; for geographic use, pass longitude as x and latitude as y.
+`pointInPolygon((x, y), [(x1, y1), (x2, y2), ...])` returns `1` if the 2D point `(x, y)` is inside the polygon defined by the array of vertices and `0` otherwise. The polygon is automatically closed - you do not need to repeat the first vertex at the end. The function handles convex and concave polygons. Avoid self-intersecting polygons as results become unreliable. If the point is on the polygon boundary, the function may return either `0` or `1`. It also accepts holes (inner rings) as additional array arguments. Coordinates are Euclidean; for geographic use, pass longitude as x and latitude as y.
 
 ## Basic Usage
 
