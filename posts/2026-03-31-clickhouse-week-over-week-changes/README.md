@@ -12,7 +12,7 @@ Week-over-week (WoW) comparisons reveal growth trends by comparing a metric in t
 
 ## Using Window Functions
 
-The `lagInFrame` window function lets you access the value from a previous row within a defined partition.
+The `lagInFrame` window function lets you access the value from a previous row within the window frame.
 
 ```sql
 SELECT
