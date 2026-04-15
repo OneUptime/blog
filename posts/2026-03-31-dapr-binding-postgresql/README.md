@@ -107,7 +107,7 @@ spec:
 ```bash
 kubectl create secret generic postgres-secret \
   --from-literal=password=daprpassword \
-  --from-literal=url="host=postgres user=dapr password=daprpassword dbname=ordersdb port=5432 sslmode=disable" \
+  --from-literal=connectionString="host=postgres user=dapr password=daprpassword dbname=ordersdb port=5432 sslmode=disable" \
   --namespace default
 
 kubectl apply -f postgres.yaml
@@ -126,10 +126,10 @@ spec:
   type: bindings.postgresql
   version: v1
   metadata:
-  - name: url
+  - name: connectionString
     secretKeyRef:
       name: postgres-secret
-      key: url
+      key: connectionString
   - name: maxConns
     value: "10"
   - name: connectionMaxIdleTime
@@ -149,9 +149,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/postgres \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "exec",
-    "data": {
+    "metadata": {
       "sql": "INSERT INTO orders (order_id, customer_id, item, quantity, total) VALUES ($1, $2, $3, $4, $5)",
-      "params": ["ORD-PG-001", "CUST-200", "keyboard", 2, 149.98]
+      "params": "[\"ORD-PG-001\", \"CUST-200\", \"keyboard\", 2, 149.98]"
     }
   }'
 ```
@@ -160,7 +160,11 @@ Response:
 
 ```json
 {
-  "rowsAffected": 1
+  "metadata": {
+    "operation": "exec",
+    "rows-affected": "1",
+    "sql": "INSERT INTO orders (order_id, customer_id, item, quantity, total) VALUES ($1, $2, $3, $4, $5)"
+  }
 }
 ```
 
@@ -171,9 +175,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/postgres \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "query",
-    "data": {
+    "metadata": {
       "sql": "SELECT order_id, item, quantity, total, status FROM orders WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 10",
-      "params": ["CUST-200"]
+      "params": "[\"CUST-200\"]"
     }
   }'
 ```
@@ -181,15 +185,13 @@ curl -X POST http://localhost:3500/v1.0/bindings/postgres \
 Response:
 
 ```json
-[
-  {
-    "order_id": "ORD-PG-001",
-    "item": "keyboard",
-    "quantity": 2,
-    "total": "149.98",
-    "status": "pending"
-  }
-]
+{
+  "metadata": {
+    "operation": "query",
+    "sql": "SELECT order_id, item, quantity, total, status FROM orders WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 10"
+  },
+  "data": "[[\"ORD-PG-001\",\"keyboard\",2,\"149.98\",\"pending\"]]"
+}
 ```
 
 ## Update Status
@@ -199,9 +201,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/postgres \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "exec",
-    "data": {
+    "metadata": {
       "sql": "UPDATE orders SET status = $1, updated_at = NOW() WHERE order_id = $2",
-      "params": ["shipped", "ORD-PG-001"]
+      "params": "[\"shipped\", \"ORD-PG-001\"]"
     }
   }'
 ```
@@ -222,19 +224,20 @@ def pg_exec(sql: str, params: list = None) -> dict:
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/bindings/{BINDING_NAME}"
     response = requests.post(url, json={
         "operation": "exec",
-        "data": {"sql": sql, "params": params or []}
+        "metadata": {"sql": sql, "params": json.dumps(params or [])}
     })
     response.raise_for_status()
-    return response.json()
+    return response.json().get("metadata", {})
 
 def pg_query(sql: str, params: list = None) -> list:
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/bindings/{BINDING_NAME}"
     response = requests.post(url, json={
         "operation": "query",
-        "data": {"sql": sql, "params": params or []}
+        "metadata": {"sql": sql, "params": json.dumps(params or [])}
     })
     response.raise_for_status()
-    return response.json()
+    result = response.json()
+    return json.loads(result.get("data", "[]"))
 
 @app.route('/orders', methods=['POST'])
 def create_order():
@@ -272,7 +275,7 @@ def delete_order(order_id):
         "DELETE FROM orders WHERE order_id = $1",
         [order_id]
     )
-    return jsonify({"deleted": result.get('rowsAffected', 0)})
+    return jsonify({"deleted": int(result.get('rows-affected', '0'))})
 
 @app.route('/orders/stats', methods=['GET'])
 def order_stats():
@@ -304,4 +307,4 @@ dapr run \
 
 ## Summary
 
-The Dapr PostgreSQL binding supports `exec` for writes and `query` for reads using `$1`-style positional parameters. Configure the component with a PostgreSQL connection URL and optional connection pool settings. The query response returns rows as a JSON array of objects with column names as keys. Use this binding to perform database operations from microservices without managing PostgreSQL drivers or connection pools in application code.
+The Dapr PostgreSQL binding supports `exec` for writes and `query` for reads using `$1`-style positional parameters. Pass `sql` and `params` in the request `metadata` object, with `params` as a JSON-encoded string. Configure the component with a `connectionString` and optional connection pool settings. The `exec` response includes `rows-affected` in a `metadata` object, and the `query` response returns rows in a `data` field as a JSON-encoded array of arrays. Use this binding to perform database operations from microservices without managing PostgreSQL drivers or connection pools in application code.
