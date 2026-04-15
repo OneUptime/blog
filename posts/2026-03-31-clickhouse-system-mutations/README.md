@@ -169,11 +169,10 @@ WITH
         SELECT
             database,
             table,
-            mutation_id,
             count() AS total_parts
-        FROM system.mutations
-        ARRAY JOIN parts_to_do_names
-        GROUP BY database, table, mutation_id
+        FROM system.parts
+        WHERE active
+        GROUP BY database, table
     )
 SELECT
     m.database,
@@ -189,8 +188,7 @@ SELECT
     ) AS estimated_sec_remaining
 FROM m
 JOIN total ON m.database = total.database
-         AND m.table = total.table
-         AND m.mutation_id = total.mutation_id;
+         AND m.table = total.table;
 ```
 
 ## Shell Script: Watch Mutation Progress
@@ -256,7 +254,7 @@ If `total_parts_to_rewrite` is large, consider:
 ## Common Pitfalls
 
 - Mutations do not block SELECT queries. Reads return data from both the old parts (not yet mutated) and new parts (already mutated) simultaneously, which can cause temporary inconsistency during a large mutation.
-- Completed mutations are retained in `system.mutations` indefinitely until the server is restarted or the history is cleared. Filter with `is_done = 0` for operational queries.
+- Completed mutations are retained in `system.mutations` based on the `finished_mutations_to_keep` MergeTree engine setting. Older entries are automatically deleted. Filter with `is_done = 0` for operational queries.
 - Cancelling a mutation with `KILL MUTATION` leaves partially mutated parts. Parts that were already rewritten remain rewritten; parts that were not yet processed are skipped. The table remains consistent but the mutation command is not fully applied.
 - On replicated tables, `parts_to_do` reflects only the local replica. Other replicas process the same mutation independently.
 
