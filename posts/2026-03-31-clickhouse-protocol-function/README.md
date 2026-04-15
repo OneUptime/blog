@@ -8,7 +8,7 @@ Description: Learn how the protocol() function extracts the scheme from a URL st
 
 ---
 
-The `protocol()` function in ClickHouse extracts the scheme portion of a URL - everything before the `://` separator. It returns a `String` value such as `https`, `http`, `ftp`, or `ws`. If the URL has no recognisable scheme, the function returns an empty string. Because `protocol()` operates on raw strings without full URL parsing, it is very fast and works well in high-throughput log analysis pipelines.
+The `protocol()` function in ClickHouse extracts the scheme portion of a URL - the part before `://` for hierarchical URLs like `https://` or before `:` for schemes like `mailto:`. It returns a `String` value such as `https`, `http`, `ftp`, or `ws`. If the URL has no recognisable scheme, the function returns an empty string. Because `protocol()` operates on raw strings without full URL parsing, it is very fast and works well in high-throughput log analysis pipelines.
 
 ## Basic Usage
 
