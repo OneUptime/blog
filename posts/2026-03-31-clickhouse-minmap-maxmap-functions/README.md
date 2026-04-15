@@ -172,4 +172,4 @@ ORDER BY (service_name, event_date);
 
 ## Summary
 
-`minMap()` and `maxMap()` provide per-key extreme-value aggregation over sparse key-value data in ClickHouse without requiring a fixed schema or separate aggregation per key. They work with array pairs and native Map columns, return sorted and deduplicated key arrays, and compose naturally with `ARRAY JOIN` for row-level output. Use them alongside `sumMap()` in the same query to compute count, min, and max in a single pass over the data.
+`minMap()` and `maxMap()` provide per-key extreme-value aggregation over sparse key-value data in ClickHouse without requiring a fixed schema or separate aggregation per key. They work with array pairs and native Map columns, return sorted and deduplicated key arrays, and compose naturally with `ARRAY JOIN` for row-level output. Use them alongside `sumMap()` in the same query to compute sum, min, and max in a single pass over the data.
