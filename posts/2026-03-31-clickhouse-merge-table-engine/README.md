@@ -17,7 +17,7 @@ A common ClickHouse pattern is to store data in monthly or yearly tables - for e
 ## Creating a Merge Table
 
 ```sql
-CREATE TABLE events_all
+CREATE TABLE events_all (event_date Date, user_id UInt64, event_name String)
 ENGINE = Merge(currentDatabase(), '^events_\\d{4}$');
 ```
 
@@ -83,7 +83,7 @@ CREATE TABLE events_2024 (event_date Date, user_id UInt64, event_name String)
 CREATE TABLE events_2025 (event_date Date, user_id UInt64, event_name String)
     ENGINE = MergeTree ORDER BY event_date;
 
-CREATE TABLE events_all ENGINE = Merge(currentDatabase(), '^events_\\d{4}$');
+CREATE TABLE events_all AS events_2024 ENGINE = Merge(currentDatabase(), '^events_\\d{4}$');
 ```
 
 ## Summary
