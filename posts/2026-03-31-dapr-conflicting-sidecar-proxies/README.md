@@ -29,7 +29,7 @@ Dapr default ports:
 - 3500: HTTP API
 - 50001: gRPC API
 - 9090: Metrics
-- 7778: Profiling
+- 7777: Profiling
 
 Istio Envoy default ports:
 - 15000: Admin
@@ -58,21 +58,25 @@ This prevents Envoy from intercepting Dapr-to-Dapr internal traffic while still 
 
 ## Fix Startup Ordering Issues
 
-Use `postStart` hooks or init containers to ensure correct initialization order:
-
-```yaml
-spec:
-  initContainers:
-  - name: wait-for-mesh
-    image: busybox
-    command: ['sh', '-c', 'until nc -z localhost 15001; do sleep 1; done']
-```
-
-Alternatively, configure Dapr's wait-for-sidecar behavior:
+Configure Istio to hold application containers until the proxy is ready:
 
 ```yaml
 annotations:
-  dapr.io/sidecar-listen-addresses: "0.0.0.0"
+  proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+```
+
+This ensures Envoy is fully initialized before your application and Dapr sidecar start receiving traffic.
+
+Alternatively, use a `postStart` lifecycle hook on the application container to wait for the mesh proxy:
+
+```yaml
+spec:
+  containers:
+  - name: app
+    lifecycle:
+      postStart:
+        exec:
+          command: ['sh', '-c', 'until nc -z localhost 15001; do sleep 1; done']
 ```
 
 ## Resolve iptables Conflicts
@@ -83,14 +87,15 @@ If both proxies modify iptables rules, check for rule conflicts:
 kubectl exec <pod> -c istio-proxy -- iptables -t nat -L
 ```
 
-For Istio, configure `ISTIO_META_INTERCEPTION_MODE` to `NONE` for the Dapr sidecar specifically:
+For targeted control, use port exclusion annotations to prevent iptables conflicts on Dapr's ports:
 
 ```yaml
 annotations:
-  sidecar.istio.io/interceptionMode: "NONE"
+  traffic.sidecar.istio.io/excludeInboundPorts: "3500,50001"
+  traffic.sidecar.istio.io/excludeOutboundPorts: "3500,50001"
 ```
 
-This disables Envoy's iptables interception for Dapr's traffic paths.
+This ensures Istio's iptables rules do not intercept traffic on Dapr's API ports, avoiding routing conflicts between the two sidecars.
 
 ## Handle Health Check Conflicts
 
@@ -100,7 +105,7 @@ Service mesh probes and Dapr health checks can conflict. Configure separate heal
 annotations:
   dapr.io/app-health-check-path: "/health"
   dapr.io/app-health-probe-interval: "30"
-  dapr.io/app-health-probe-timeout: "5"
+  dapr.io/app-health-probe-timeout: "500"
 ```
 
 And tell Istio to exclude the health check port from interception:
@@ -117,7 +122,7 @@ annotations:
 kubectl get pod <pod-name> -o jsonpath='{.status.containerStatuses[*].ready}'
 
 # Verify Dapr sidecar health
-kubectl exec <pod> -c daprd -- wget -qO- http://localhost:3500/v1.0/healthz
+kubectl exec <pod> -- curl -s http://localhost:3500/v1.0/healthz
 
 # Verify mesh proxy health
 kubectl exec <pod> -c istio-proxy -- pilot-agent request GET healthz/ready
