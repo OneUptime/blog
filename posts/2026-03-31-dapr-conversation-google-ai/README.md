@@ -33,7 +33,7 @@ spec:
         key: api-key
     - name: model
       value: "gemini-2.0-flash"
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "10m"
 ```
 
@@ -52,8 +52,8 @@ export GOOGLE_AI_API_KEY=AIzaSy-your-google-api-key
 
 ```text
 gemini-2.0-flash         # Fast, efficient, best for most tasks
-gemini-2.0-flash-thinking # Enhanced reasoning capabilities
-gemini-1.5-pro           # Long context window (1M tokens)
+gemini-2.5-flash         # Enhanced reasoning with thinking capabilities
+gemini-1.5-pro           # Long context window (2M tokens)
 gemini-1.5-flash         # Fast and cost-effective
 ```
 
@@ -65,20 +65,17 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/google-ai-conversati
   -d '{
     "inputs": [
       {
-        "message": "What are the main differences between REST and gRPC for microservice communication?",
+        "content": "What are the main differences between REST and gRPC for microservice communication?",
         "role": "user"
       }
     ],
-    "parameters": {
-      "temperature": 0.5,
-      "max_tokens": 600
-    }
+    "temperature": 0.5
   }'
 ```
 
 ## Using Gemini 1.5 Pro for Long Context
 
-Gemini 1.5 Pro supports up to 1 million tokens, making it suitable for analyzing large codebases:
+Gemini 1.5 Pro supports up to 2 million tokens, making it suitable for analyzing large codebases:
 
 ```python
 import requests
@@ -88,17 +85,14 @@ def analyze_large_document(document_content: str) -> str:
         "http://localhost:3500/v1.0-alpha1/conversation/google-ai-conversation/converse",
         json={
             "inputs": [{
-                "message": (
+                "content": (
                     "Analyze the following document and provide a structured summary "
                     "with key findings, action items, and risks:\n\n"
                     + document_content
                 ),
                 "role": "user"
             }],
-            "parameters": {
-                "model": "gemini-1.5-pro",
-                "temperature": 0.3
-            }
+            "temperature": 0.3
         }
     )
     response.raise_for_status()
@@ -122,13 +116,10 @@ app.post('/api/translate', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         inputs: [{
-          message: `Translate the following text to ${targetLanguage}:\n\n${text}`,
+          content: `Translate the following text to ${targetLanguage}:\n\n${text}`,
           role: 'user'
         }],
-        parameters: {
-          temperature: 0.1,
-          max_tokens: 1000
-        }
+        temperature: 0.1
       })
     }
   );
@@ -140,28 +131,9 @@ app.post('/api/translate', async (req, res) => {
 app.listen(6001);
 ```
 
-## Using Vertex AI vs Google AI
+## Google AI vs Vertex AI
 
-For enterprise use on Google Cloud, use Vertex AI instead:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: vertexai-conversation
-spec:
-  type: conversation.vertexai
-  version: v1
-  metadata:
-    - name: project
-      value: "my-gcp-project"
-    - name: region
-      value: "us-central1"
-    - name: model
-      value: "gemini-2.0-flash"
-```
-
-Vertex AI uses Application Default Credentials (ADC) - no API key needed on GKE with Workload Identity.
+Google AI (via AI Studio) is what the `conversation.googleai` component uses. For enterprise use on Google Cloud, Vertex AI is a separate service with additional features like VPC-SC support and enterprise SLAs. As of Dapr 1.14, there is no dedicated `conversation.vertexai` component — use the `conversation.googleai` component with your Google AI API key for Dapr Conversation workloads.
 
 ## Summary
 
