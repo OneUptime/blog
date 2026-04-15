@@ -84,8 +84,6 @@ Create `/etc/clickhouse-server/config.d/nfs_storage.xml`:
       </local>
       <nfs_cold>
         <path>/mnt/nfs/clickhouse/</path>
-        <!-- Disable direct I/O - NFS does not support O_DIRECT reliably -->
-        <use_direct_io>false</use_direct_io>
       </nfs_cold>
     </disks>
 
@@ -106,7 +104,11 @@ Create `/etc/clickhouse-server/config.d/nfs_storage.xml`:
 </clickhouse>
 ```
 
-Setting `use_direct_io` to `false` is important. NFS does not reliably support the `O_DIRECT` flag and attempting to use it can cause write failures.
+NFS does not reliably support the `O_DIRECT` flag and attempting to use it can cause write failures. ClickHouse controls direct I/O through the MergeTree table setting `min_bytes_to_use_direct_io`, which defaults to `0` (disabled). If your server overrides this setting globally to a non-zero value, explicitly disable it for tables stored on NFS:
+
+```sql
+ALTER TABLE archive_events MODIFY SETTING min_bytes_to_use_direct_io = 0;
+```
 
 ## Creating a Table on NFS
 
@@ -166,12 +168,21 @@ To reduce performance impact on queries reading from NFS:
 ```xml
 <nfs_cold>
   <path>/mnt/nfs/clickhouse/</path>
-  <use_direct_io>false</use_direct_io>
-  <!-- Enable local caching for recently accessed parts -->
-  <cache_enabled>true</cache_enabled>
-  <cache_path>/var/lib/clickhouse/disks/nfs_cache/</cache_path>
-  <cache_size>5368709120</cache_size>
 </nfs_cold>
+<nfs_cold_cache>
+  <type>cache</type>
+  <disk>nfs_cold</disk>
+  <path>/var/lib/clickhouse/disks/nfs_cache/</path>
+  <max_size>5368709120</max_size>
+</nfs_cold_cache>
+```
+
+Then reference `nfs_cold_cache` instead of `nfs_cold` in the cold volume to enable caching:
+
+```xml
+<cold>
+  <disk>nfs_cold_cache</disk>
+</cold>
 ```
 
 ```bash
@@ -213,4 +224,4 @@ Restrict large merges to local disk and use NFS only for cold reads:
 
 ## Summary
 
-NFS can serve as a low-cost cold storage tier in ClickHouse by mounting the share on the host and declaring it as a disk in `storage_configuration`. Always set `use_direct_io` to false, use `hard` mount options for reliability, and keep NFS restricted to cold volumes or archival workloads. For production hot storage, prefer local SSD or NVMe disks.
+NFS can serve as a low-cost cold storage tier in ClickHouse by mounting the share on the host and declaring it as a disk in `storage_configuration`. Ensure `min_bytes_to_use_direct_io` remains at its default of `0` to prevent O_DIRECT on NFS, use `hard` mount options for reliability, and keep NFS restricted to cold volumes or archival workloads. For production hot storage, prefer local SSD or NVMe disks.
