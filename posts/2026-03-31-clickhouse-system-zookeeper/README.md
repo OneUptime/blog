@@ -18,7 +18,7 @@ Description: Learn how to use system.zookeeper in ClickHouse to browse ZooKeeper
 
 ```sql
 -- List children at the ClickHouse root
-SELECT name, path, value, children
+SELECT name, path, value, numChildren
 FROM system.zookeeper
 WHERE path = '/clickhouse';
 ```
@@ -40,6 +40,7 @@ WHERE path = '/clickhouse';
 | `cversion` | Int32 | Children version |
 | `aversion` | Int32 | ACL version |
 | `ephemeralOwner` | Int64 | Session ID if ephemeral node, 0 otherwise |
+| `pzxid` | Int64 | Transaction ID of last child modification |
 
 ## Exploring the ZooKeeper Tree
 
