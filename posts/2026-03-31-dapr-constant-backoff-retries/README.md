@@ -118,7 +118,7 @@ targets:
       retry: fixedIntervalRetry
 ```
 
-With this configuration, each attempt waits 3 seconds before timing out. Up to 4 retries are attempted with 500ms between each, for a maximum total time of approximately 14 seconds.
+With this configuration, each attempt waits 3 seconds before timing out. Up to 4 retries are attempted with 500ms between each, for a maximum total time of approximately 17 seconds (5 attempts × 3s timeout + 4 × 500ms delay).
 
 ## Summary
 
