@@ -50,8 +50,6 @@ spec:
       key: password
   - name: enableTLS
     value: "true"
-  - name: concurrency
-    value: "last-write"
 ```
 
 For standard Redis, use region-prefixed keys to avoid conflicts:
@@ -66,7 +64,7 @@ import (
     dapr "github.com/dapr/go-sdk/client"
 )
 
-const REGION = os.Getenv("CLUSTER_REGION") // "us-east" or "eu-west"
+var REGION = os.Getenv("CLUSTER_REGION") // "us-east" or "eu-west"
 
 // Generate region-aware state key to avoid conflicts
 func regionalKey(key string) string {
@@ -105,7 +103,6 @@ Each region uses a distinct consumer group so each receives all events independe
 Add idempotency checks at the application level:
 
 ```python
-import hashlib
 from dapr.clients import DaprClient
 
 def process_order(order_id: str, event_data: dict):
@@ -166,9 +163,9 @@ Track consistency metrics across regions:
 ```bash
 # Compare state counts between regions
 US_EAST_COUNT=$(kubectl exec -n production deployment/monitoring -- \
-  curl -s "http://us-east-redis:6379" -- redis-cli DBSIZE)
+  redis-cli -h us-east-redis DBSIZE)
 EU_WEST_COUNT=$(kubectl exec -n production deployment/monitoring -- \
-  curl -s "http://eu-west-redis:6379" -- redis-cli DBSIZE)
+  redis-cli -h eu-west-redis DBSIZE)
 
 echo "US-East state entries: $US_EAST_COUNT"
 echo "EU-West state entries: $EU_WEST_COUNT"
