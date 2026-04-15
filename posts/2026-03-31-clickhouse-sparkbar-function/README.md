@@ -13,15 +13,15 @@ ClickHouse's `sparkBar()` function lets you produce a compact, ASCII-style bar c
 ## Syntax
 
 ```sql
-sparkBar(width, min, max)(value, height)
+sparkBar(buckets[, min_x, max_x])(x, y)
 ```
 
-- `width` - number of characters (buckets) in the output string.
-- `min` / `max` - the expected value range; values outside this range are clamped.
-- `value` - the x-axis position (often a timestamp or sequential integer).
-- `height` - the y-axis magnitude to visualize.
+- `buckets` - number of segments (characters) in the output string. Must be between 2 and 1024.
+- `min_x` / `max_x` (optional) - the expected range for x-axis values; values outside this range are ignored. If omitted, the function uses the observed minimum and maximum of `x`.
+- `x` - the position along the horizontal axis (often a timestamp or sequential integer).
+- `y` - the magnitude to visualize.
 
-The function is an aggregate: it groups incoming `(value, height)` pairs into `width` buckets and fills each bucket with a Unicode block character proportional to the maximum height seen in that bucket.
+The function is an aggregate: it groups incoming `(x, y)` pairs into `buckets` segments and fills each segment with a Unicode block character proportional to the maximum `y` seen in that bucket.
 
 ## Basic Example
 
@@ -33,7 +33,7 @@ FROM numbers(10);
 ```text
 bar
 ----------
-▁▂▃▄▅▆▇█▉█
+▁▂▃▃▄▅▅▆▇█
 ```
 
 ## Visualizing Time-Series Data
@@ -61,7 +61,7 @@ FROM numbers(24);
 ```sql
 SELECT
     toDate(ts)                                    AS day,
-    sparkBar(24, 0, 500)(toHour(ts), duration)    AS latency_sparkline
+    sparkBar(24, 0, 23)(toHour(ts), duration)      AS latency_sparkline
 FROM requests
 GROUP BY day
 ORDER BY day;
@@ -77,16 +77,16 @@ Each character position corresponds to one hour of the day, and taller bars repr
 
 ## Controlling Width and Range
 
-Choosing good `min`/`max` values is important. Values below `min` map to an empty bucket; values above `max` are clamped to the tallest bar:
+The `min_x`/`max_x` parameters set the x-axis window. Values outside this range are ignored, which lets you zoom in on a subset of the data. Adjusting `buckets` controls the resolution:
 
 ```sql
--- Narrow range highlights micro-differences
-SELECT sparkBar(20, 100, 200)(toHour(ts), duration) AS bar
+-- Zoom into business hours (8-20), one bucket per hour
+SELECT sparkBar(12, 8, 20)(toHour(ts), duration) AS bar
 FROM requests
 GROUP BY toDate(ts);
 
--- Wide range with 5 characters - quick overview
-SELECT sparkBar(5, 0, 1000)(toHour(ts), duration) AS bar
+-- Full day condensed into 5 buckets for a quick overview
+SELECT sparkBar(5, 0, 23)(toHour(ts), duration) AS bar
 FROM requests
 GROUP BY toDate(ts);
 ```
@@ -96,8 +96,8 @@ GROUP BY toDate(ts);
 ```sql
 SELECT
     toDate(ts)                                        AS day,
-    sparkBar(12, 0, 500)(toHour(ts), duration)        AS latency,
-    sparkBar(12, 0, 100)(toHour(ts), status = 200)    AS success_rate
+    sparkBar(12, 0, 23)(toHour(ts), duration)           AS latency,
+    sparkBar(12, 0, 23)(toHour(ts), status = 200)     AS success_rate
 FROM requests
 GROUP BY day
 ORDER BY day;
@@ -112,7 +112,7 @@ SELECT
     toDate(ts)                                      AS day,
     count()                                         AS total_requests,
     round(avg(duration), 1)                         AS avg_ms,
-    sparkBar(24, 0, 500)(toHour(ts), duration)      AS hourly_latency
+    sparkBar(24, 0, 23)(toHour(ts), duration)        AS hourly_latency
 FROM requests
 GROUP BY day
 ORDER BY day;
@@ -120,4 +120,4 @@ ORDER BY day;
 
 ## Summary
 
-`sparkBar(width, min, max)(value, height)` renders an inline ASCII bar chart directly in query output, making time-series and distribution data immediately readable in any SQL terminal. Choose `width` to match the number of x-axis buckets you need and set `min`/`max` to the expected value range to get the best contrast. Pair it with standard aggregates like `avg()` or `count()` in the same `SELECT` for quick at-a-glance dashboards.
+`sparkBar(buckets[, min_x, max_x])(x, y)` renders an inline ASCII bar chart directly in query output, making time-series and distribution data immediately readable in any SQL terminal. Choose `buckets` to match the number of x-axis segments you need and set `min_x`/`max_x` to the expected x-axis range (or omit them to auto-detect). Pair it with standard aggregates like `avg()` or `count()` in the same `SELECT` for quick at-a-glance dashboards.
