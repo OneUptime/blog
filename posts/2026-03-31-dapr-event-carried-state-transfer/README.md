@@ -22,6 +22,7 @@ In the customer service, embed the complete customer entity in the event:
 from fastapi import FastAPI
 from pydantic import BaseModel
 import httpx
+import uuid
 from datetime import datetime, timezone
 
 app = FastAPI()
@@ -65,8 +66,10 @@ The order service subscribes and maintains its own local copy of customer data:
 
 ```python
 from fastapi import FastAPI, Request
+import httpx
 
 app = FastAPI()
+DAPR_HTTP_PORT = 3500
 
 @app.get("/dapr/subscribe")
 def subscribe():
