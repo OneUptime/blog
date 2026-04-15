@@ -43,7 +43,7 @@ spec:
 ```
 
 The `mode` parameter controls consumption:
-- `basic` - uses GetRecords polling
+- `shared` - uses the Kinesis Client Library (KCL) with shared throughput and DynamoDB-based checkpointing
 - `extended` - uses Enhanced Fan-Out with dedicated throughput per consumer
 
 ## Creating the Kinesis Stream
@@ -98,11 +98,7 @@ app.use(express.json());
 app.post("/event-stream", async (req, res) => {
   const record = req.body;
 
-  console.log("Received Kinesis record:", {
-    sequenceNumber: req.headers["x-kinesis-sequence-number"],
-    shardId: req.headers["x-kinesis-shard-id"],
-    partitionKey: req.headers["x-kinesis-partition-key"],
-  });
+  console.log("Received Kinesis record:", record);
 
   try {
     await routeEvent(record);
