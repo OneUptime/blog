@@ -40,13 +40,13 @@ public interface SubscriptionActor {
     @ActorMethod(name = "subscribe")
     Mono<Void> subscribe(String plan);
 
-    @ActorMethod(name = "cancelSubscription")
+    @ActorMethod(name = "cancelSubscription", returns = Boolean.class)
     Mono<Boolean> cancelSubscription();
 
-    @ActorMethod(name = "getStatus")
+    @ActorMethod(name = "getStatus", returns = SubscriptionStatus.class)
     Mono<SubscriptionStatus> getStatus();
 
-    @ActorMethod(name = "renewSubscription")
+    @ActorMethod(name = "renewSubscription", returns = String.class)
     Mono<String> renewSubscription(int months);
 }
 ```
@@ -54,6 +54,7 @@ public interface SubscriptionActor {
 ## Implementing State Operations
 
 ```java
+import io.dapr.actors.ActorId;
 import io.dapr.actors.runtime.AbstractActor;
 import io.dapr.actors.runtime.ActorRuntimeContext;
 import reactor.core.publisher.Mono;
@@ -80,8 +81,10 @@ public class SubscriptionActorImpl extends AbstractActor implements Subscription
 
     @Override
     public Mono<Boolean> cancelSubscription() {
-        return this.getActorStateManager()
-            .getOrDefault(STATUS_KEY, String.class, "inactive")
+        return this.getActorStateManager().contains(STATUS_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(STATUS_KEY, String.class)
+                : Mono.just("inactive"))
             .flatMap(status -> {
                 if ("cancelled".equals(status)) {
                     return Mono.just(false);
@@ -94,17 +97,28 @@ public class SubscriptionActorImpl extends AbstractActor implements Subscription
 
     @Override
     public Mono<SubscriptionStatus> getStatus() {
-        return Mono.zip(
-            this.getActorStateManager().getOrDefault(STATUS_KEY, String.class, "inactive"),
-            this.getActorStateManager().getOrDefault(PLAN_KEY, String.class, "none"),
-            this.getActorStateManager().getOrDefault(EXPIRY_KEY, String.class, "N/A")
-        ).map(tuple -> new SubscriptionStatus(tuple.getT1(), tuple.getT2(), tuple.getT3()));
+        Mono<String> statusMono = this.getActorStateManager().contains(STATUS_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(STATUS_KEY, String.class)
+                : Mono.just("inactive"));
+        Mono<String> planMono = this.getActorStateManager().contains(PLAN_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(PLAN_KEY, String.class)
+                : Mono.just("none"));
+        Mono<String> expiryMono = this.getActorStateManager().contains(EXPIRY_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(EXPIRY_KEY, String.class)
+                : Mono.just("N/A"));
+        return Mono.zip(statusMono, planMono, expiryMono)
+            .map(tuple -> new SubscriptionStatus(tuple.getT1(), tuple.getT2(), tuple.getT3()));
     }
 
     @Override
     public Mono<String> renewSubscription(int months) {
-        return this.getActorStateManager()
-            .getOrDefault(EXPIRY_KEY, String.class, LocalDate.now().toString())
+        return this.getActorStateManager().contains(EXPIRY_KEY)
+            .flatMap(exists -> exists
+                ? this.getActorStateManager().get(EXPIRY_KEY, String.class)
+                : Mono.just(LocalDate.now().toString()))
             .flatMap(currentExpiry -> {
                 LocalDate base = LocalDate.now().isAfter(LocalDate.parse(currentExpiry))
                     ? LocalDate.now()
@@ -119,17 +133,16 @@ public class SubscriptionActorImpl extends AbstractActor implements Subscription
 }
 ```
 
-## Safe State Reading with tryGet
+## Safe State Reading with contains
 
-Use `tryGet` when state may not exist yet to avoid exceptions:
+Use `contains` to check whether state exists before reading, to avoid exceptions:
 
 ```java
 public Mono<Integer> getUsageCount() {
-    return this.getActorStateManager()
-        .tryGet("usageCount", Integer.class)
-        .flatMap(optionalValue ->
-            optionalValue.map(Mono::just).orElse(Mono.just(0))
-        );
+    return this.getActorStateManager().contains("usageCount")
+        .flatMap(exists -> exists
+            ? this.getActorStateManager().get("usageCount", Integer.class)
+            : Mono.just(0));
 }
 ```
 
@@ -157,4 +170,4 @@ System.out.println("Status: " + status.getStatus() + ", expires: " + status.getE
 
 ## Summary
 
-Dapr actor state management in Java uses reactive `Mono`-based operations on the `ActorStateManager`. Use `set` and `save` for mutations, `getOrDefault` for safe reads with fallbacks, and `tryGet` when state may not exist. Chain operations with Project Reactor to keep state changes atomic and readable.
+Dapr actor state management in Java uses reactive `Mono`-based operations on the `ActorStateManager`. Use `set` and `save` for mutations, `contains` with `get` for safe reads with fallbacks, and `remove` to delete state keys. Chain operations with Project Reactor to keep state changes atomic and readable.
