@@ -10,7 +10,7 @@ Description: Strategies for working with wide tables of 1000+ columns in ClickHo
 
 ## The Wide Table Problem
 
-ClickHouse is a column store, so it reads only the columns you query. This means wide tables are more manageable than in row-oriented databases - but there are still limits. ClickHouse supports up to ~10,000 columns per table, but performance degrades with very wide schemas due to metadata overhead and merge costs.
+ClickHouse is a column store, so it reads only the columns you query. This means wide tables are more manageable than in row-oriented databases - but there are still limits. ClickHouse officially recommends a maximum of ~1,000 columns per table, and performance degrades with very wide schemas due to metadata overhead and merge costs.
 
 ## When You Need Wide Tables
 
@@ -97,13 +97,15 @@ WHERE user_id = 42;
 
 ## Merge Performance with Wide Tables
 
-Wide tables slow down merges because each column is a separate file on disk. Tune merge settings:
+Wide tables slow down merges because each column is a separate file on disk (in Wide part format). Tune merge settings to reduce memory pressure during merges:
 
 ```sql
 ALTER TABLE user_features MODIFY SETTING
-    merge_max_block_size = 8192,
-    max_bytes_to_merge_at_max_space_in_pool = 161061273600;
+    merge_max_block_size = 4096,
+    max_bytes_to_merge_at_max_space_in_pool = 53687091200;
 ```
+
+This reduces `merge_max_block_size` from the default of 8192 to 4096 to lower per-merge memory usage (each block spans all columns), and reduces `max_bytes_to_merge_at_max_space_in_pool` from the default of ~150 GiB to 50 GiB to limit the size of individual merge operations.
 
 ## Summary
 
