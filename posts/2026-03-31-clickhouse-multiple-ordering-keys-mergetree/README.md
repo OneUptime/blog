@@ -25,9 +25,9 @@ ORDER BY (ts, user_id);
 
 Rows are sorted first by `ts`, then by `user_id` within the same timestamp. Queries filtering on `ts` or `(ts, user_id)` are efficient.
 
-## Column Order Matters: High Cardinality First
+## Column Order Matters: Most-Queried First
 
-Put the most-queried and highest-cardinality column first:
+Put the most-queried column first. Among equally queried columns, prefer lower cardinality first for better compression and index granularity:
 
 ```sql
 -- Good: ts is the most common filter; user_id is second
@@ -106,14 +106,17 @@ Look for `PrimaryKey` condition usage in the output. If the primary key covers y
 
 ## Changing ORDER BY
 
-You cannot change ORDER BY on an existing table directly. You must recreate:
+You can add new columns to the end of an existing ORDER BY using `ALTER TABLE`:
 
 ```sql
-CREATE TABLE events_v2 AS events;
-ALTER TABLE events_v2 MODIFY ORDER BY (ts, user_id, event);  -- only allowed for new tables
+-- Add event to the end of the existing (ts, user_id) key
+ALTER TABLE events MODIFY ORDER BY (ts, user_id, event);
+```
 
--- Or: create fresh and reinsert
-CREATE TABLE events_v2 (...) ENGINE = MergeTree ORDER BY (ts, user_id, event);
+The new key must contain all original columns in the same order. You cannot remove columns or reorder them. If you need a completely different key order, recreate the table:
+
+```sql
+CREATE TABLE events_v2 (...) ENGINE = MergeTree ORDER BY (user_id, ts, event);
 INSERT INTO events_v2 SELECT * FROM events;
 ```
 
