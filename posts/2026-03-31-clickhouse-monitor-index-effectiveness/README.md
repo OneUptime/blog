@@ -62,8 +62,9 @@ LIMIT 10;
 SELECT
     query,
     ProfileEvents['SelectedMarks'] AS marks_read,
-    ProfileEvents['SkippedMarks'] AS marks_skipped,
-    round(ProfileEvents['SkippedMarks'] / (ProfileEvents['SelectedMarks'] + ProfileEvents['SkippedMarks']) * 100, 1) AS skip_pct
+    ProfileEvents['SelectedMarksTotal'] AS marks_total,
+    round((ProfileEvents['SelectedMarksTotal'] - ProfileEvents['SelectedMarks'])
+      / ProfileEvents['SelectedMarksTotal'] * 100, 1) AS skip_pct
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND query LIKE '%events%'
@@ -93,7 +94,9 @@ WHERE database = 'default';
 ```sql
 SELECT
     query,
-    ProfileEvents['MergeTreeDataSelectorsSkippedGranules'] AS skipped_by_skip_index
+    ProfileEvents['SelectedMarksTotal'] AS total_marks,
+    ProfileEvents['SelectedMarks'] AS marks_after_primary,
+    ProfileEvents['SelectedMarksTotal'] - ProfileEvents['SelectedMarks'] AS skipped_marks
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND has(tables, 'default.logs')
@@ -108,7 +111,8 @@ SELECT
     part_name,
     marks,
     primary_key_bytes_in_memory,
-    secondary_indices_size
+    secondary_indices_compressed_bytes,
+    secondary_indices_uncompressed_bytes
 FROM system.parts
 WHERE table = 'events' AND active = 1
 ORDER BY marks DESC
@@ -135,4 +139,4 @@ A very high `read_to_result_ratio` indicates full or near-full table scans.
 
 ## Summary
 
-Monitor ClickHouse index effectiveness using `EXPLAIN indexes = 1` for individual queries, `system.query_log` ProfileEvents for aggregate statistics, and `system.parts` for index memory footprint. Track `SkippedMarks` and `SelectedMarks` to measure how well your indexes skip irrelevant data.
+Monitor ClickHouse index effectiveness using `EXPLAIN indexes = 1` for individual queries, `system.query_log` ProfileEvents for aggregate statistics, and `system.parts` for index memory footprint. Track `SelectedMarksTotal` and `SelectedMarks` to measure how well your indexes skip irrelevant data.
