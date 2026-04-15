@@ -12,12 +12,12 @@ ClickHouse parallel replicas allow a single query to be parallelized across mult
 
 ## How Parallel Replicas Work
 
-In standard ClickHouse, a query on a replicated table reads from a single replica. With parallel replicas enabled, ClickHouse splits the data granules across multiple replicas and merges results, reducing query time linearly with the number of replicas used.
+In standard ClickHouse, a query on a replicated table reads from a single replica. With parallel replicas enabled, ClickHouse splits the data granules across multiple replicas and merges results, which can significantly reduce query time as more replicas are used.
 
 ## Enabling Parallel Replicas
 
 ```sql
-SET allow_experimental_parallel_reading_from_replicas = 1;
+SET enable_parallel_replicas = 1;
 SET max_parallel_replicas = 3;
 SET parallel_replicas_for_non_replicated_merge_tree = 0;
 ```
@@ -29,7 +29,7 @@ SELECT count(), avg(value)
 FROM large_metrics
 WHERE ts >= now() - INTERVAL 1 HOUR
 SETTINGS
-    allow_experimental_parallel_reading_from_replicas = 1,
+    enable_parallel_replicas = 1,
     max_parallel_replicas = 3;
 ```
 
@@ -63,7 +63,7 @@ Parallel replicas require ClickHouse Keeper or ZooKeeper and a cluster definitio
 ```sql
 SELECT count() FROM large_table
 SETTINGS
-    allow_experimental_parallel_reading_from_replicas = 1,
+    enable_parallel_replicas = 1,
     max_parallel_replicas = 3,
     cluster_for_parallel_replicas = 'analytics_cluster';
 ```
@@ -73,7 +73,7 @@ SETTINGS
 ```sql
 EXPLAIN PIPELINE
 SELECT count() FROM large_metrics
-SETTINGS allow_experimental_parallel_reading_from_replicas = 1, max_parallel_replicas = 2;
+SETTINGS enable_parallel_replicas = 1, max_parallel_replicas = 2;
 ```
 
 Look for multiple `MergeTreeThread` or `RemoteSource` stages in the output.
@@ -94,10 +94,10 @@ LIMIT 5;
 
 ## Limitations
 
-- Feature is experimental - test thoroughly before production use
-- Requires all replicas to be online and in sync
 - Not all query types benefit equally (range scans benefit most)
 - Adds coordination overhead for very short queries
+- Not supported with the FINAL clause or when using projections
+- Requires the `enable_analyzer` setting to be enabled
 
 ## Summary
 
