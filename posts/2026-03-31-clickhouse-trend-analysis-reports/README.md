@@ -48,18 +48,22 @@ ORDER BY day;
 
 ## Exponential Moving Average (EMA)
 
-ClickHouse does not have a native EMA function, but you can approximate it with weighted averages over a window:
+ClickHouse provides `exponentialMovingAverage` as an aggregate function. You can also approximate EMA with exponential decay weights using a self-join:
 
 ```sql
 SELECT
-    day,
-    value,
-    -- Approximate EMA using exponential weights
-    sum(value * exp(-0.1 * (rowNumber() OVER (ORDER BY day DESC) - 1))) OVER (ORDER BY day)
-    / sum(exp(-0.1 * (rowNumber() OVER (ORDER BY day DESC) - 1))) OVER (ORDER BY day) AS ema_approx
-FROM daily_metrics
-WHERE metric_name = 'active_users'
-ORDER BY day;
+    a.day,
+    a.value,
+    -- Approximate EMA using exponential decay weights over a 10-day window
+    sum(b.value * exp(-0.1 * (a.day - b.day)))
+        / sum(exp(-0.1 * (a.day - b.day))) AS ema_approx
+FROM daily_metrics a
+JOIN daily_metrics b
+    ON b.metric_name = a.metric_name
+    AND b.day BETWEEN a.day - 10 AND a.day
+WHERE a.metric_name = 'active_users'
+GROUP BY a.day, a.value
+ORDER BY a.day;
 ```
 
 ## Linear Regression Slope
@@ -69,9 +73,15 @@ Quantify the trend direction and rate per day:
 ```sql
 SELECT
     metric_name,
-    simpleLinearRegression(toUnixTimestamp(day), value) AS (slope, intercept)
-FROM daily_metrics
-GROUP BY metric_name;
+    reg.1 AS slope_per_day,
+    reg.2 AS intercept
+FROM (
+    SELECT
+        metric_name,
+        simpleLinearRegression(toUInt32(day), value) AS reg
+    FROM daily_metrics
+    GROUP BY metric_name
+);
 ```
 
 Positive slope means growth; negative means decline.
