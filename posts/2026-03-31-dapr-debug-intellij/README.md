@@ -14,7 +14,7 @@ IntelliJ IDEA runs your application directly from the IDE. To use Dapr with it, 
 
 ```mermaid
 flowchart TD
-    Step1[Start Dapr sidecar\nwithout app\ndapr run --app-port 8080 -- sleep inf] --> Step2[Start Spring Boot app\nfrom IntelliJ with\nDAPR_HTTP_PORT=3500]
+    Step1[Start Dapr sidecar\nwithout app\ndapr run --app-port 8080 -- sleep infinity] --> Step2[Start Spring Boot app\nfrom IntelliJ with\nDAPR_HTTP_PORT=3500]
     Step2 --> Step3[Sidecar connects to app\non port 8080]
     Step3 --> Step4[Set breakpoints in IntelliJ\nand send requests to trigger them]
 ```
