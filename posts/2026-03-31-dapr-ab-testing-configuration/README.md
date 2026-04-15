@@ -102,6 +102,8 @@ def render_checkout(user_id: str) -> dict:
 ## Recording Experiment Events
 
 ```python
+from datetime import datetime, timezone
+
 def record_conversion(user_id: str, experiment: str, variant: str, event: str):
     requests.post(
         f"http://localhost:{DAPR_PORT}/v1.0/publish/analytics-pubsub/experiment-events",
@@ -110,7 +112,7 @@ def record_conversion(user_id: str, experiment: str, variant: str, event: str):
             "experiment": experiment,
             "variant": variant,
             "event": event,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     )
 ```
