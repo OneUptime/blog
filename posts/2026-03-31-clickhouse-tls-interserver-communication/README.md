@@ -43,6 +43,9 @@ Enable the secure interserver port and configure TLS:
 <!-- Secure interserver port (replaces 9009) -->
 <interserver_https_port>9010</interserver_https_port>
 
+<!-- Secure native TCP port for distributed queries -->
+<tcp_port_secure>9440</tcp_port_secure>
+
 <!-- Remove or comment out the plaintext interserver port -->
 <!-- <interserver_http_port>9009</interserver_http_port> -->
 
@@ -50,14 +53,14 @@ Enable the secure interserver port and configure TLS:
   <server>
     <certificateFile>/etc/clickhouse-server/interserver.crt</certificateFile>
     <privateKeyFile>/etc/clickhouse-server/interserver.key</privateKeyFile>
-    <caConfig>/etc/clickhouse-server/clickhouse-ca.crt</caConfig>
+    <caConfig>/etc/ssl/certs/clickhouse-ca.crt</caConfig>
     <verificationMode>relaxed</verificationMode>
     <loadDefaultCAFile>false</loadDefaultCAFile>
     <cacheSessions>true</cacheSessions>
     <disableProtocols>sslv2,sslv3</disableProtocols>
   </server>
   <client>
-    <caConfig>/etc/clickhouse-server/clickhouse-ca.crt</caConfig>
+    <caConfig>/etc/ssl/certs/clickhouse-ca.crt</caConfig>
     <verificationMode>relaxed</verificationMode>
   </client>
 </openSSL>
@@ -65,7 +68,7 @@ Enable the secure interserver port and configure TLS:
 
 ## Updating Remote Server Definitions
 
-In your `remote_servers` configuration, update each shard/replica to use the HTTPS port:
+In your `remote_servers` configuration, update each shard/replica to use the secure native TCP port for distributed queries:
 
 ```text
 <remote_servers>
