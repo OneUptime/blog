@@ -60,17 +60,13 @@ kafka-consumer-groups.sh \
 
 ## Partition-Based Reprocessing
 
-If late data lands in the wrong partition, use an insert-and-drop approach. Insert corrected data, then drop the stale partition:
+If late data lands in the wrong partition, use a drop-and-replace approach. First prepare corrected data in a staging table with the same structure, then swap the partition:
 
 ```sql
--- Insert corrected batch
-INSERT INTO user_events SELECT * FROM user_events_staging
-WHERE event_time BETWEEN '2026-03-01' AND '2026-03-31';
-
--- Drop old partition
+-- Drop the stale partition
 ALTER TABLE user_events DROP PARTITION '202603';
 
--- Re-insert the corrected partition
+-- Move the corrected partition from staging
 ALTER TABLE user_events ATTACH PARTITION '202603'
 FROM user_events_staging;
 ```
