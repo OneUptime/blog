@@ -20,10 +20,10 @@ stochasticLinearRegression(
     l2_regularization,
     mini_batch_size,
     gradient_descent_strategy
-)(feature1, feature2, ..., target)
+)(target, feature1, feature2, ...)
 ```
 
-Common strategies for `gradient_descent_strategy` are `'SGD'`, `'Momentum'`, and `'Nesterov'`. The result is an opaque model state stored as `AggregateFunction(stochasticLinearRegression(...), ...)`.
+Common strategies for `gradient_descent_strategy` are `'Adam'` (default), `'SGD'`, `'Momentum'`, and `'Nesterov'`. The result is an opaque model state stored as `AggregateFunction(stochasticLinearRegression(...), ...)`.
 
 ## Setting Up a Model Table
 
@@ -35,8 +35,8 @@ CREATE TABLE latency_model
     service     String,
     weights     AggregateFunction(
                     stochasticLinearRegression(0.01, 0.001, 64, 'SGD'),
-                    Float64, Float64, Float64,  -- features
-                    Float64                     -- target
+                    Float64,                     -- target
+                    Float64, Float64, Float64    -- features
                 )
 )
 ENGINE = AggregatingMergeTree()
@@ -54,10 +54,10 @@ SELECT
     toDate(timestamp)   AS model_date,
     service_name        AS service,
     stochasticLinearRegressionState(0.01, 0.001, 64, 'SGD')(
+        toFloat64(response_time_ms),        -- target variable (must be first)
         toFloat64(cpu_percent),
         toFloat64(memory_percent),
-        toFloat64(concurrent_requests),
-        toFloat64(response_time_ms)         -- target variable
+        toFloat64(concurrent_requests)
     ) AS weights
 FROM request_logs
 JOIN host_metrics USING (host_name)
@@ -76,10 +76,10 @@ SELECT
     toDate(timestamp)   AS model_date,
     service_name        AS service,
     stochasticLinearRegressionState(0.01, 0.001, 64, 'Momentum')(
+        toFloat64(response_time_ms),        -- target variable (must be first)
         toFloat64(cpu_percent),
         toFloat64(memory_percent),
-        toFloat64(concurrent_requests),
-        toFloat64(response_time_ms)
+        toFloat64(concurrent_requests)
     ) AS weights
 FROM request_logs
 JOIN host_metrics USING (host_name)
@@ -108,7 +108,7 @@ JOIN host_metrics AS h USING (host_name)
 JOIN (
     SELECT
         service,
-        stochasticLinearRegressionMerge(0.01, 0.001, 64, 'SGD')(weights)
+        stochasticLinearRegressionMergeState(weights)
             AS weights_merged
     FROM latency_model
     WHERE model_date = today() - 1
@@ -125,9 +125,9 @@ LIMIT 1000;
 -- Run each as a separate query and compare residuals
 SELECT
     stochasticLinearRegressionState(0.001, 0.0001, 32, 'SGD')(
+        toFloat64(response_time_ms),        -- target variable (must be first)
         toFloat64(cpu_percent),
-        toFloat64(concurrent_requests),
-        toFloat64(response_time_ms)
+        toFloat64(concurrent_requests)
     ) AS model_lr_0001
 FROM request_logs
 JOIN host_metrics USING (host_name)
@@ -139,7 +139,7 @@ Key parameters:
 - `learning_rate` (0.001 - 0.1): larger values converge faster but may oscillate.
 - `l2_regularization` (0 - 0.01): prevents overfitting on sparse features.
 - `mini_batch_size` (16 - 512): larger batches are more stable, smaller batches update more frequently.
-- `gradient_descent_strategy`: `'SGD'` is simplest; `'Momentum'` and `'Nesterov'` converge faster.
+- `gradient_descent_strategy`: `'Adam'` is the default; `'SGD'` is simplest; `'Momentum'` and `'Nesterov'` converge faster.
 
 ## Evaluating Model Quality
 
@@ -166,7 +166,7 @@ FROM (
     JOIN (
         SELECT
             service,
-            stochasticLinearRegressionMerge(0.01, 0.001, 64, 'SGD')(weights)
+            stochasticLinearRegressionMergeState(weights)
                 AS weights_merged
         FROM latency_model
         WHERE model_date = today() - 2
