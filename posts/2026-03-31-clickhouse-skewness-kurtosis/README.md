@@ -45,7 +45,7 @@ FROM api_metrics
 WHERE service = 'checkout';
 ```
 
-A kurtosis of 3 corresponds to a normal distribution (using the excess kurtosis form, this would be 0). High values indicate heavy tails - a warning sign for outliers.
+ClickHouse returns Pearson's kurtosis, where a value of 3 corresponds to a normal distribution. To get excess kurtosis (where 0 is normal), subtract 3 from the result. Values higher than 3 indicate heavy tails - a warning sign for outliers.
 
 ## Combining with Other Statistics
 
@@ -88,10 +88,10 @@ Skewness:
   -1.0 to -0.5 or 0.5 to 1.0 => moderately skewed
   < -1.0 or > 1.0 => highly skewed
 
-Kurtosis (excess):
-  ~0  => normal-like tails
-  > 1 => heavy tails (leptokurtic)
-  < -1 => light tails (platykurtic)
+Kurtosis (Pearson's, as returned by ClickHouse):
+  ~3  => normal-like tails (mesokurtic)
+  > 4 => heavy tails (leptokurtic)
+  < 2 => light tails (platykurtic)
 ```
 
 ## Summary
