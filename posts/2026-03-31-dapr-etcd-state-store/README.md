@@ -51,14 +51,10 @@ metadata:
   namespace: default
 spec:
   type: state.etcd
-  version: v1
+  version: v2
   metadata:
   - name: endpoints
     value: "localhost:2379"
-  - name: dialTimeout
-    value: "5s"
-  - name: operationTimeout
-    value: "10s"
   - name: keyPrefixPath
     value: "dapr"
 ```
@@ -102,7 +98,7 @@ curl -X POST http://localhost:3500/v1.0/state/etcd-statestore \
 curl http://localhost:3500/v1.0/state/etcd-statestore/config-feature-flag
 ```
 
-Or using the Go SDK:
+Or using JavaScript:
 
 ```javascript
 // Using Dapr HTTP client approach
