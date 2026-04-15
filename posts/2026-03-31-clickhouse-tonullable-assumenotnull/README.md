@@ -8,7 +8,7 @@ Description: Learn how toNullable() lifts a non-nullable value into a Nullable t
 
 ---
 
-`toNullable(value)` wraps a non-nullable value in a `Nullable(T)` type without changing the underlying data. `assumeNotNull(nullable_value)` does the opposite: it strips the `Nullable(T)` wrapper and returns the underlying `T` type, asserting to the query planner that the value is not NULL. If the value is actually NULL, `assumeNotNull` returns the default value for the type (0 for numbers, empty string for strings, etc.). These functions are used to bridge between nullable and non-nullable type contexts.
+`toNullable(value)` wraps a non-nullable value in a `Nullable(T)` type without changing the underlying data. `assumeNotNull(nullable_value)` does the opposite: it strips the `Nullable(T)` wrapper and returns the underlying `T` type, asserting to the query planner that the value is not NULL. If the value is actually NULL, the result of `assumeNotNull` is arbitrary according to the official documentation (in practice it often returns the default value for the type, but this is not guaranteed). These functions are used to bridge between nullable and non-nullable type contexts.
 
 ## toNullable() - Lifting a Value into Nullable Type
 
@@ -58,7 +58,7 @@ INSERT INTO nullable_scores VALUES
 ```
 
 ```sql
--- assumeNotNull strips Nullable wrapper; NULL becomes 0.0 (default for Float64)
+-- assumeNotNull strips Nullable wrapper; NULL produces an arbitrary result (often 0.0 in practice)
 SELECT
     user_id,
     score,
@@ -78,7 +78,7 @@ user_id  score  non_nullable_score  type_before       type_after
 5        8.8    8.8                 Nullable(Float64)  Float64
 ```
 
-The NULL rows return `0.0` because that is the default `Float64` value. Only use `assumeNotNull` when you have verified (or can guarantee) that the column has no NULLs.
+The NULL rows show `0.0` here, but the official documentation states that `assumeNotNull` on a NULL value produces an arbitrary result — the output is not guaranteed to be the type default. Only use `assumeNotNull` when you have verified (or can guarantee) that the column has no NULLs.
 
 ## Practical Use of assumeNotNull: Enabling Array Functions
 
@@ -176,20 +176,19 @@ Nullable(UInt8)  UInt8    UInt8
 
 ## When toNullable is Needed
 
-```sql
--- Comparing a non-nullable column with a Nullable value requires promotion
--- This fails:
--- SELECT * FROM t WHERE non_nullable_col = nullable_col
+ClickHouse automatically handles comparisons between nullable and non-nullable columns, so `toNullable` is not required for basic comparisons. It is primarily needed for type-consistent `UNION ALL` branches (shown above) and for explicit type alignment when passing values to functions that require `Nullable(T)` input.
 
--- This works: promote the non-nullable side
+```sql
+-- ClickHouse handles this comparison automatically (no toNullable needed)
+-- Rows where score IS NULL produce NULL from the comparison, which is treated as false in WHERE
 SELECT
     user_id,
     score
 FROM nullable_scores
-WHERE toNullable(toFloat64(user_id)) != score
+WHERE toFloat64(user_id) != score
 ORDER BY user_id;
 ```
 
 ## Summary
 
-`toNullable(value)` promotes any non-nullable value to its `Nullable(T)` equivalent without changing the data, useful for type-consistent `UNION ALL` branches and comparisons with nullable columns. `assumeNotNull(value)` removes the `Nullable(T)` wrapper and returns the raw `T`, with NULL becoming the type default. Only call `assumeNotNull` when you have verified there are no NULLs, or after replacing NULLs with `ifNull`. Together these functions let you move values cleanly between nullable and non-nullable contexts, which is often necessary when bridging raw ingestion tables with strict analytics schemas.
+`toNullable(value)` promotes any non-nullable value to its `Nullable(T)` equivalent without changing the data, useful for type-consistent `UNION ALL` branches and explicit type alignment. `assumeNotNull(value)` removes the `Nullable(T)` wrapper and returns the raw `T`, but if the value is actually NULL the result is arbitrary (undefined behavior per the documentation). Only call `assumeNotNull` when you have verified there are no NULLs, or after replacing NULLs with `ifNull`. Together these functions let you move values cleanly between nullable and non-nullable contexts, which is often necessary when bridging raw ingestion tables with strict analytics schemas.
