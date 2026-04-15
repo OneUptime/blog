@@ -162,9 +162,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/mysql \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "exec",
-    "data": {
+    "metadata": {
       "sql": "INSERT INTO orders (order_id, customer_id, item, quantity, total) VALUES (?, ?, ?, ?, ?)",
-      "params": ["ORD-001", "CUST-100", "laptop", 1, 999.99]
+      "params": "[\"ORD-001\", \"CUST-100\", \"laptop\", 1, 999.99]"
     }
   }'
 ```
@@ -173,8 +173,14 @@ Response:
 
 ```json
 {
-  "lastInsertId": 1,
-  "rowsAffected": 1
+  "metadata": {
+    "operation": "exec",
+    "duration": "320us",
+    "start-time": "2026-03-31T10:00:00Z",
+    "end-time": "2026-03-31T10:00:00Z",
+    "rows-affected": "1",
+    "sql": "INSERT INTO orders (order_id, customer_id, item, quantity, total) VALUES (?, ?, ?, ?, ?)"
+  }
 }
 ```
 
@@ -185,9 +191,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/mysql \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "query",
-    "data": {
+    "metadata": {
       "sql": "SELECT order_id, item, total, status FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 10",
-      "params": ["CUST-100"]
+      "params": "[\"CUST-100\"]"
     }
   }'
 ```
@@ -196,7 +202,7 @@ Response:
 
 ```json
 [
-  ["ORD-001", "laptop", "999.99", "pending"]
+  {"order_id": "ORD-001", "item": "laptop", "total": "999.99", "status": "pending"}
 ]
 ```
 
@@ -207,9 +213,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/mysql \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "exec",
-    "data": {
+    "metadata": {
       "sql": "UPDATE orders SET status = ? WHERE order_id = ?",
-      "params": ["shipped", "ORD-001"]
+      "params": "[\"shipped\", \"ORD-001\"]"
     }
   }'
 ```
@@ -230,7 +236,7 @@ def mysql_query(sql: str, params: list = None) -> list:
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/bindings/{BINDING_NAME}"
     payload = {
         "operation": "query",
-        "data": {"sql": sql, "params": params or []}
+        "metadata": {"sql": sql, "params": json.dumps(params or [])}
     }
     response = requests.post(url, json=payload)
     response.raise_for_status()
@@ -240,7 +246,7 @@ def mysql_exec(sql: str, params: list = None) -> dict:
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/bindings/{BINDING_NAME}"
     payload = {
         "operation": "exec",
-        "data": {"sql": sql, "params": params or []}
+        "metadata": {"sql": sql, "params": json.dumps(params or [])}
     }
     response = requests.post(url, json=payload)
     response.raise_for_status()
@@ -253,7 +259,8 @@ def create_order():
         "INSERT INTO orders (order_id, customer_id, item, quantity, total) VALUES (?, ?, ?, ?, ?)",
         [data['orderId'], data['customerId'], data['item'], data['quantity'], data['total']]
     )
-    return jsonify({"orderId": data['orderId'], "inserted": result.get('rowsAffected', 0)})
+    rows_affected = int(result.get('metadata', {}).get('rows-affected', 0))
+    return jsonify({"orderId": data['orderId'], "inserted": rows_affected})
 
 @app.route('/orders/<customer_id>', methods=['GET'])
 def get_customer_orders(customer_id):
@@ -262,7 +269,7 @@ def get_customer_orders(customer_id):
         [customer_id]
     )
     orders = [
-        {"orderId": r[0], "item": r[1], "quantity": r[2], "total": float(r[3]), "status": r[4], "createdAt": str(r[5])}
+        {"orderId": r["order_id"], "item": r["item"], "quantity": r["quantity"], "total": float(r["total"]), "status": r["status"], "createdAt": str(r["created_at"])}
         for r in rows
     ]
     return jsonify(orders)
@@ -274,7 +281,8 @@ def update_order_status(order_id):
         "UPDATE orders SET status = ? WHERE order_id = ?",
         [data['status'], order_id]
     )
-    return jsonify({"updated": result.get('rowsAffected', 0)})
+    rows_affected = int(result.get('metadata', {}).get('rows-affected', 0))
+    return jsonify({"updated": rows_affected})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)
@@ -282,4 +290,4 @@ if __name__ == '__main__':
 
 ## Summary
 
-The Dapr MySQL binding uses `exec` for INSERT/UPDATE/DELETE and `query` for SELECT operations with parameterized SQL to prevent injection. Configure the binding with a MySQL DSN URL stored in a Kubernetes secret. The response for `query` returns rows as a 2D JSON array, and `exec` returns `lastInsertId` and `rowsAffected`. This binding removes the MySQL driver and connection pool management from your application code.
+The Dapr MySQL binding uses `exec` for INSERT/UPDATE/DELETE and `query` for SELECT operations with parameterized SQL to prevent injection. Configure the binding with a MySQL DSN URL stored in a Kubernetes secret. The response for `query` returns rows as an array of JSON objects keyed by column name, and `exec` returns metadata including `rows-affected`. SQL and params are passed via the request `metadata` field, with params as a JSON-encoded string. This binding removes the MySQL driver and connection pool management from your application code.
