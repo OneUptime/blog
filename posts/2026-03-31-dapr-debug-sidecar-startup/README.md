@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix Dapr sidecar startup failures by anal
 
 ## How Dapr Sidecar Injection Works on Kubernetes
 
-Dapr uses a Kubernetes mutating admission webhook to inject the `daprd` sidecar container into pods at creation time. The Dapr operator runs in the `dapr-system` namespace and patches pod specs when it sees the `dapr.io/enabled: "true"` annotation. If injection fails, the pod starts without a sidecar and Dapr features are unavailable.
+Dapr uses a Kubernetes mutating admission webhook to inject the `daprd` sidecar container into pods at creation time. The Dapr sidecar injector (`dapr-sidecar-injector`) runs in the `dapr-system` namespace and patches pod specs when it sees the `dapr.io/enabled: "true"` annotation. If injection fails, the pod starts without a sidecar and Dapr features are unavailable.
 
 ## Verifying Sidecar Injection
 
@@ -50,15 +50,15 @@ spec:
         dapr.io/app-port: "3000"
 ```
 
-## Checking the Dapr Operator Logs
+## Checking the Dapr Sidecar Injector Logs
 
-If annotations are correct but injection still fails, check the Dapr operator:
+If annotations are correct but injection still fails, check the Dapr sidecar injector:
 
 ```bash
-kubectl logs -n dapr-system -l app=dapr-operator --tail=50
+kubectl logs -n dapr-system -l app=dapr-sidecar-injector --tail=50
 ```
 
-Common operator errors:
+Common injector errors:
 - `Error patching pod` - RBAC issue or admission webhook misconfiguration
 - `Failed to get certificate` - Dapr sentry is not running or TLS cert expired
 - `connection refused` - Kubernetes API server connectivity issue
@@ -104,39 +104,9 @@ kubectl get pods -n dapr-system | grep placement
 kubectl logs -n dapr-system -l app=dapr-placement
 ```
 
-## Init Container Issues
-
-Some Dapr configurations use an init container for certificate injection. Check init container status:
-
-```bash
-kubectl get pod order-service-pod -o jsonpath='{.status.initContainerStatuses}' | jq
-```
-
-If the init container is stuck:
-
-```bash
-kubectl logs order-service-pod -c dapr-init -n default
-```
-
 ## Adjusting Resource Limits for the Sidecar
 
-If the sidecar is OOMKilled, increase its resource limits in the Dapr configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: dapr-config
-spec:
-  sidecarResourceRequests:
-    cpu: "0.5"
-    memory: "256Mi"
-  sidecarResourceLimits:
-    cpu: "1"
-    memory: "512Mi"
-```
-
-Or set per-pod via annotations:
+If the sidecar is OOMKilled, increase its resource limits via per-pod annotations:
 
 ```yaml
 annotations:
@@ -148,4 +118,4 @@ annotations:
 
 ## Summary
 
-Debugging Dapr sidecar startup failures follows a structured path: verify injection happened by checking containers, confirm annotations are correct, review Dapr operator logs for injection errors, and inspect the sidecar's own logs (including previous crash logs) for runtime failures. The most common issues are missing annotations, app containers not listening on the configured port, and insufficient resource limits causing OOMKill events.
+Debugging Dapr sidecar startup failures follows a structured path: verify injection happened by checking containers, confirm annotations are correct, review Dapr sidecar injector logs for injection errors, and inspect the sidecar's own logs (including previous crash logs) for runtime failures. The most common issues are missing annotations, app containers not listening on the configured port, and insufficient resource limits causing OOMKill events.
