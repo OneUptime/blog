@@ -10,9 +10,9 @@ Description: Learn how to configure a Dapr circuit breaker that uses request tim
 
 ## Timeout-Based Circuit Breaking
 
-Slow services are as harmful as failing ones - a slow dependency ties up threads and can cascade into broader system slowdowns. Dapr's resiliency policies support both explicit timeout policies and circuit breakers that react to slow or failed requests within a rolling time window.
+Slow services are as harmful as failing ones - a slow dependency ties up threads and can cascade into broader system slowdowns. Dapr's resiliency policies support both explicit timeout policies and circuit breakers that react to slow or failed requests within a configurable time window.
 
-The `trip` condition can use `errorRatio` (failure percentage) combined with a rolling `interval` window to capture both outright failures and timeout-induced errors.
+The `trip` condition can use `consecutiveFailures` or `totalFailures` combined with a cyclic `interval` period to capture both outright failures and timeout-induced errors.
 
 ## Timeout Policy Configuration
 
@@ -31,12 +31,12 @@ spec:
       strictTimeout: 2s
 
     circuitBreakers:
-      # Open when >50% of requests in the last 10 seconds fail or timeout
+      # Open when more than 3 consecutive requests fail or timeout
       timeoutTriggerCB:
         maxRequests: 2          # Test requests in half-open state
-        interval: 10s           # Rolling window for failure calculation
+        interval: 10s           # Cyclic period to clear internal counts
         timeout: 20s            # Duration circuit stays open
-        trip: errorRatio(0.5)   # Trip when 50% failure rate in window
+        trip: consecutiveFailures > 3   # Trip after 3 consecutive failures
 
     retries:
       fastRetry:
@@ -57,7 +57,7 @@ spec:
 
 ## How Timeouts Contribute to Circuit Breaking
 
-When a request exceeds the `timeout` policy duration, Dapr cancels it and counts it as an error. These timeout-induced errors feed into the circuit breaker's failure tracking. If enough requests time out within the rolling `interval` window, the `errorRatio` threshold is breached and the circuit opens.
+When a request exceeds the `timeout` policy duration, Dapr cancels it and counts it as an error. These timeout-induced errors feed into the circuit breaker's failure tracking. If enough requests time out within a single `interval` cycle, the `consecutiveFailures` threshold is breached and the circuit opens. Note that the `interval` is a cyclic period — when it elapses, all internal counts are reset to zero.
 
 ## Application Code with Timeout Handling
 
@@ -73,13 +73,13 @@ import (
 )
 
 func fetchAnalytics(ctx context.Context, client dapr.Client, params AnalyticsParams) (*AnalyticsResult, error) {
-    content, err := dapr.NewDataWithRawData(marshalParams(params), "application/json")
-    if err != nil {
-        return nil, err
+    content := &dapr.DataContent{
+        Data:        marshalParams(params),
+        ContentType: "application/json",
     }
 
     // Dapr applies the 2s timeout and circuit breaker automatically
-    resp, err := client.InvokeMethod(ctx, "analytics-service", "compute", "POST", content)
+    resp, err := client.InvokeMethodWithContent(ctx, "analytics-service", "compute", "POST", content)
     if err != nil {
         // Distinguish between timeout and circuit open
         errMsg := err.Error()
@@ -94,7 +94,7 @@ func fetchAnalytics(ctx context.Context, client dapr.Client, params AnalyticsPar
         return nil, err
     }
 
-    return unmarshalResult(resp.Data), nil
+    return unmarshalResult(resp), nil
 }
 
 func fetchAnalyticsWithFallback(ctx context.Context, client dapr.Client, params AnalyticsParams) *AnalyticsResult {
@@ -122,11 +122,11 @@ spec:
       shortOpCB:
         interval: 30s
         timeout: 60s
-        trip: errorRatio(0.6)
+        trip: consecutiveFailures > 5
       longOpCB:
         interval: 60s
         timeout: 120s
-        trip: errorRatio(0.3)   # Lower threshold for long ops
+        trip: consecutiveFailures > 3   # Lower threshold for long ops
 
   targets:
     apps:
@@ -151,12 +151,12 @@ kubectl logs -l app=my-service -c daprd | grep -i "circuit"
 
 ```promql
 # Query: ratio of circuit breaker open states over time
-rate(dapr_resiliency_cb_state{state="open"}[5m])
+rate(dapr_resiliency_cb_state{status="open"}[5m])
 
 # Alert when circuit stays open for more than 1 minute
-dapr_resiliency_cb_state{state="open"} == 1
+dapr_resiliency_cb_state{status="open"} == 1
 ```
 
 ## Summary
 
-Dapr's timeout-triggered circuit breaker combines a `timeout` policy (which fails slow requests) with a circuit breaker using `errorRatio` and a rolling `interval` window. When timed-out requests push the failure rate above the threshold, the circuit opens and prevents further slow requests from impacting callers. This pattern is essential for protecting services from slow dependencies that do not fail outright but consume excessive resources.
+Dapr's timeout-triggered circuit breaker combines a `timeout` policy (which fails slow requests) with a circuit breaker using `consecutiveFailures` and a cyclic `interval` period. When timed-out requests push the failure count above the threshold, the circuit opens and prevents further slow requests from impacting callers. This pattern is essential for protecting services from slow dependencies that do not fail outright but consume excessive resources.
