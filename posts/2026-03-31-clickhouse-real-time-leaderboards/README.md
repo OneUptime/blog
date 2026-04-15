@@ -35,7 +35,7 @@ CREATE TABLE user_scores_agg (
     game_id UInt32,
     user_id UInt64,
     total_score AggregateFunction(sum, Int32),
-    event_count AggregateFunction(count, UInt64)
+    event_count AggregateFunction(count)
 ) ENGINE = AggregatingMergeTree
 ORDER BY (game_id, user_id);
 
