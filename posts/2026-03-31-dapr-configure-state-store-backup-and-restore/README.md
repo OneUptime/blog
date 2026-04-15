@@ -51,7 +51,7 @@ dbfilename dump.rdb
 
 ## Triggering a Manual Backup
 
-Use `redis-cli` to force a synchronous save:
+Use `redis-cli` to force a background save:
 
 ```bash
 kubectl exec -it redis-master-0 -- redis-cli BGSAVE
