@@ -103,10 +103,11 @@ When both are set, ClickHouse uses whichever is smaller.
 
 ## Memory Overcommit Behavior
 
-By default, when a query exceeds `max_memory_usage` ClickHouse raises an exception immediately. You can change this behavior with `memory_overcommit_ratio_denominator`:
+By default, when a query exceeds `max_memory_usage` ClickHouse raises an exception immediately. You can change this behavior with the experimental memory overcommit settings. When `memory_overcommit_ratio_denominator` is set to a non-zero value, ClickHouse allows queries to temporarily exceed their memory limits. If total memory pressure causes the server to hit its global limit, ClickHouse computes an overcommit ratio for each query (allocated bytes divided by the denominator) and kills the query with the highest ratio first, rather than failing immediately:
 
 ```sql
--- Allow up to 10% memory overcommit before failing
+-- Enable experimental memory overcommit: under memory pressure,
+-- this query's overcommit ratio is computed as allocated / 1073741824
 SELECT *
 FROM large_table
 SETTINGS
@@ -114,7 +115,7 @@ SETTINGS
     memory_overcommit_ratio_denominator = 1073741824;
 ```
 
-A simpler approach for spill-to-disk scenarios is to configure `max_bytes_before_external_group_by` and `max_bytes_before_external_sort`, which let ClickHouse use disk when in-memory limits are exceeded rather than failing the query.
+Note that this feature is experimental. A simpler approach for handling large queries is to configure `max_bytes_before_external_group_by` and `max_bytes_before_external_sort`, which let ClickHouse spill to disk when in-memory limits are exceeded rather than failing the query.
 
 ## Spill to Disk for GROUP BY
 
@@ -166,7 +167,7 @@ ORDER BY memory_usage DESC;
 SELECT
     query_id,
     user,
-    formatReadableSize(memory_usage) AS peak_memory,
+    formatReadableSize(memory_usage) AS memory_used,
     event_time,
     left(query, 100) AS query_snippet
 FROM system.query_log
@@ -184,8 +185,7 @@ SELECT
 FROM system.metrics
 WHERE metric IN (
     'MemoryTracking',
-    'MemoryTrackingInBackgroundProcessingPool',
-    'MemoryTrackingInBackgroundMoveProcessingPool'
+    'MergesMutationsMemoryTracking'
 );
 ```
 
