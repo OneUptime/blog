@@ -40,6 +40,8 @@ jobs:
     services:
       redis:
         image: redis:7-alpine
+        ports:
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 3s
@@ -63,10 +65,10 @@ jobs:
             -v ${{ github.workspace }}/tests/components:/components \
             daprio/daprd:1.14.0 \
             ./daprd \
-            -app-id ci-test-app \
-            -dapr-http-port 3500 \
-            -components-path /components \
-            -log-level error
+            --app-id ci-test-app \
+            --dapr-http-port 3500 \
+            --components-path /components \
+            --log-level error
 
       - name: Start application
         run: |
@@ -134,13 +136,24 @@ steps:
 
 ## Caching Dapr Images
 
-Speed up the pipeline by caching the Dapr Docker images:
+Speed up the pipeline by caching the Dapr Docker image between runs:
 
 ```yaml
-- name: Cache Dapr images
+- name: Cache Dapr image
+  uses: actions/cache@v4
+  with:
+    path: /tmp/dapr-image
+    key: dapr-image-1.14.0
+
+- name: Load or pull Dapr image
   run: |
-    docker pull daprio/daprd:1.14.0 || true
-    docker tag daprio/daprd:1.14.0 daprd:cached
+    if [ -f /tmp/dapr-image/daprd.tar ]; then
+      docker load -i /tmp/dapr-image/daprd.tar
+    else
+      docker pull daprio/daprd:1.14.0
+      mkdir -p /tmp/dapr-image
+      docker save daprio/daprd:1.14.0 -o /tmp/dapr-image/daprd.tar
+    fi
 ```
 
 ## Reporting Test Results
@@ -153,8 +166,8 @@ Use a test reporting action for better visibility:
   if: always()
   with:
     name: Integration Tests
-    path: test-results.xml
-    reporter: go-test
+    path: test-results.json
+    reporter: golang-json
 ```
 
 ## Summary
