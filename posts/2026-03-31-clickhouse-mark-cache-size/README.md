@@ -32,7 +32,7 @@ Every granule in a MergeTree part has one mark per column. For a table with 100 
 
 ```sql
 SELECT name, value, description
-FROM system.settings
+FROM system.server_settings
 WHERE name = 'mark_cache_size';
 ```
 
@@ -103,7 +103,7 @@ FROM system.parts
 WHERE database = 'mydb'
   AND active = 1
 GROUP BY table
-ORDER BY marks_size DESC;
+ORDER BY sum(marks_bytes) DESC;
 ```
 
 As a rule of thumb:
