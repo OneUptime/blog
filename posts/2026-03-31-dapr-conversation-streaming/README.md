@@ -8,7 +8,9 @@ Description: Learn how to use streaming responses with the Dapr Conversation API
 
 ---
 
-Streaming LLM responses dramatically improves perceived performance - users see text appearing in real time rather than waiting for the complete response. Dapr Conversation supports streaming mode for compatible providers, enabling token-by-token output delivery.
+> **Note:** As of Dapr v1.15, the Conversation API is in alpha and does not natively support streaming responses. The streaming patterns shown below are speculative and based on how streaming could be implemented using standard HTTP streaming techniques on top of the Conversation API. The Dapr Conversation API currently returns complete responses in a single request/response cycle.
+
+Streaming LLM responses dramatically improves perceived performance - users see text appearing in real time rather than waiting for the complete response. While the Dapr Conversation API does not yet natively support streaming, you can implement streaming patterns by combining the API with Server-Sent Events and client-side techniques.
 
 ## Understanding Streaming Mode
 
@@ -17,7 +19,7 @@ With streaming: tokens appear as they are generated (first token in under 1 seco
 
 ## Enabling Streaming in the Component
 
-Set the `stream` metadata in the component:
+Configure the component:
 
 ```yaml
 # components/openai-streaming.yaml
@@ -35,20 +37,18 @@ spec:
         key: api-key
     - name: model
       value: "gpt-4o"
-    - name: stream
-      value: "true"
+    - name: cacheTTL
+      value: "10m"
 ```
 
-Or enable streaming per-request in the parameters:
+Example request using the Conversation API:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/openai-streaming/converse \
   -H "Content-Type: application/json" \
   -d '{
-    "inputs": [{"message": "Write a 500-word essay on microservices", "role": "user"}],
-    "parameters": {
-      "stream": true
-    }
+    "inputs": [{"content": "Write a 500-word essay on microservices", "role": "user"}],
+    "temperature": 0.7
   }'
 ```
 
@@ -79,8 +79,8 @@ app.post('/api/stream-chat', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputs: [{ message, role: 'user' }],
-          parameters: { stream: true }
+          inputs: [{ content: message, role: 'user' }],
+          temperature: 0.7
         })
       }
     );
@@ -171,8 +171,8 @@ def stream_conversation(component: str, message: str):
     with requests.post(
         f"http://localhost:3500/v1.0-alpha1/conversation/{component}/converse",
         json={
-            "inputs": [{"message": message, "role": "user"}],
-            "parameters": {"stream": True}
+            "inputs": [{"content": message, "role": "user"}],
+            "temperature": 0.7
         },
         stream=True
     ) as response:
@@ -189,19 +189,21 @@ stream_conversation("openai-streaming", "Explain async/await in JavaScript")
 print()  # newline after completion
 ```
 
-## Provider Streaming Support
+## Supported Conversation Providers
 
-Not all providers support streaming equally:
+The following providers are officially supported by the Dapr Conversation API (as of v1.15, all in alpha):
 
 ```yaml
-OpenAI:      Full streaming support
-Anthropic:   Full streaming support
-Ollama:      Full streaming support (local)
-AWS Bedrock: Streaming via InvokeModelWithResponseStream
-Google AI:   Streaming supported
-DeepSeek:    Streaming supported
+OpenAI:      Supported (conversation.openai)
+Anthropic:   Supported (conversation.anthropic)
+AWS Bedrock: Supported (conversation.aws.bedrock)
+DeepSeek:    Supported (conversation.deepseek)
+Mistral:     Supported (conversation.mistral)
+Hugging Face: Supported (conversation.huggingface)
 ```
+
+Note: Native streaming support is not yet available in the Dapr Conversation API for any provider. The underlying LLM providers support streaming in their native APIs, but Dapr does not currently expose this capability.
 
 ## Summary
 
-Dapr Conversation streaming support enables responsive user interfaces for LLM-powered applications. Enable streaming via the component `stream` metadata or per-request parameter, then proxy the stream to clients via Server-Sent Events for real-time token delivery in web applications.
+While the Dapr Conversation API does not yet natively support streaming, you can build responsive user interfaces by combining the Conversation API with Server-Sent Events patterns. The code examples above demonstrate how to proxy responses to clients for real-time delivery in web applications. Watch for future Dapr releases that may add native streaming support to the Conversation building block.
