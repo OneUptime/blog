@@ -24,8 +24,7 @@ async function aggregateClickEvent(userId, productId, timestamp) {
   const windowMinute = Math.floor(timestamp / 60000);
   const aggKey = `clicks-${windowMinute}`;
 
-  const raw = await client.state.get('statestore', aggKey);
-  const agg = raw ? JSON.parse(raw) : {
+  const agg = await client.state.get('statestore', aggKey) || {
     windowStart: windowMinute * 60000,
     windowEnd: (windowMinute + 1) * 60000,
     events: [],
@@ -37,7 +36,7 @@ async function aggregateClickEvent(userId, productId, timestamp) {
 
   await client.state.save('statestore', [{
     key: aggKey,
-    value: JSON.stringify(agg),
+    value: agg,
     metadata: { ttlInSeconds: '120' }
   }]);
 
@@ -46,10 +45,8 @@ async function aggregateClickEvent(userId, productId, timestamp) {
 
 async function flushAggregation(windowMinute) {
   const aggKey = `clicks-${windowMinute}`;
-  const raw = await client.state.get('statestore', aggKey);
-  if (!raw) return;
-
-  const agg = JSON.parse(raw);
+  const agg = await client.state.get('statestore', aggKey);
+  if (!agg) return;
 
   // Publish the aggregated summary
   await client.pubsub.publish('pubsub', 'click-summaries', {
@@ -71,8 +68,7 @@ Aggregate into batches of a fixed size:
 ```javascript
 async function aggregateOrderItem(orderId, item) {
   const batchKey = `order-batch-${orderId}`;
-  const raw = await client.state.get('statestore', batchKey);
-  const batch = raw ? JSON.parse(raw) : { orderId, items: [], total: 0 };
+  const batch = await client.state.get('statestore', batchKey) || { orderId, items: [], total: 0 };
 
   batch.items.push(item);
   batch.total += item.price * item.quantity;
@@ -83,7 +79,7 @@ async function aggregateOrderItem(orderId, item) {
     await client.state.delete('statestore', batchKey);
     console.log(`Flushed order batch for ${orderId}: ${batch.items.length} items`);
   } else {
-    await client.state.save('statestore', [{ key: batchKey, value: JSON.stringify(batch) }]);
+    await client.state.save('statestore', [{ key: batchKey, value: batch }]);
   }
 }
 ```
