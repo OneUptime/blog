@@ -93,7 +93,7 @@ histogram_quantile(0.99,
 
 ## Alerting on SLO Violations
 
-Define Grafana alerts for common SLO targets:
+Define Prometheus alerting rules for common SLO targets:
 
 ```yaml
 groups:
