@@ -19,23 +19,21 @@ Enable span logging in `config.xml`:
     <database>system</database>
     <table>opentelemetry_span_log</table>
     <flush_interval_milliseconds>7500</flush_interval_milliseconds>
-    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    <ttl>finish_date + INTERVAL 7 DAY DELETE</ttl>
 </opentelemetry_span_log>
 ```
 
-Optionally configure the sampling rate (0.0 to 1.0):
+Optionally configure the probability of starting a new trace for queries without an incoming trace context (0.0 to 1.0) via the `opentelemetry_start_trace_probability` setting:
 
-```xml
-<opentelemetry_trace_processors>
-    <sampling_ratio>0.1</sampling_ratio>
-</opentelemetry_trace_processors>
+```sql
+SET opentelemetry_start_trace_probability = 0.1;
 ```
 
 ## Key Columns
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `trace_id` | FixedString(16) | 128-bit trace ID (hex-encoded) |
+| `trace_id` | UUID | 128-bit trace ID |
 | `span_id` | UInt64 | 64-bit span ID |
 | `parent_span_id` | UInt64 | Parent span ID (0 for root spans) |
 | `operation_name` | String | Name of the operation (e.g., `query`) |
@@ -59,7 +57,7 @@ Or via query settings:
 
 ```sql
 SELECT count() FROM events
-SETTINGS opentelemetry_start_new_trace = 1;
+SETTINGS opentelemetry_start_trace_probability = 1;
 ```
 
 ## Viewing Recent Spans
@@ -89,7 +87,7 @@ SELECT
     operation_name,
     (finish_time_us - start_time_us) / 1000 AS duration_ms
 FROM system.opentelemetry_span_log
-WHERE trace_id = unhex('4bf92f3577b34da6a3ce929d0e0e4736')
+WHERE trace_id = toUUID('4bf92f35-77b3-4da6-a3ce-929d0e0e4736')
 ORDER BY start_time_us;
 ```
 
