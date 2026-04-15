@@ -63,10 +63,10 @@ WHERE arrayExists(x -> x > 100, purchase_amounts);
 
 ## Efficient Array Aggregation
 
-Use array aggregate functions instead of ARRAY JOIN + GROUP BY:
+To count array elements across rows, expand with `arrayJoin` in a subquery and aggregate:
 
 ```sql
--- Slow: explode then aggregate
+-- Standard approach: expand in subquery then aggregate
 SELECT tag, count() AS events
 FROM (
     SELECT arrayJoin(tags) AS tag
@@ -74,28 +74,9 @@ FROM (
 )
 GROUP BY tag
 ORDER BY events DESC;
-
--- Fast: aggregate arrays directly
-SELECT
-    arrayJoin(arrayDistinct(groupArray(tag_item))) AS tag,
-    count() AS events
-FROM (
-    SELECT arrayJoin(tags) AS tag_item FROM events
-)
-GROUP BY tag
-ORDER BY events DESC;
 ```
 
-Or use `arrayFlatten` with grouped arrays:
-
-```sql
--- Collect and flatten all tags
-SELECT
-    arrayJoin(arrayFlatten(groupArray(tags))) AS tag,
-    count() AS cnt
-FROM events
-GROUP BY tag;
-```
+Avoid nesting `arrayJoin` inside aggregate functions like `groupArray` in a single query level, as this forces all array elements into memory before re-expanding them. For frequent aggregations, pre-compute results with materialized views (see the next section).
 
 ## ARRAY JOIN Performance
 
@@ -152,7 +133,7 @@ SELECT
     ProfileEvents['FunctionExecute'] AS function_calls,
     memory_usage
 FROM system.query_log
-WHERE query LIKE '%arrayJoin%' OR query LIKE '%has(%'
+WHERE (query LIKE '%arrayJoin%' OR query LIKE '%has(%')
   AND type = 'QueryFinish'
 ORDER BY event_time DESC
 LIMIT 10;
