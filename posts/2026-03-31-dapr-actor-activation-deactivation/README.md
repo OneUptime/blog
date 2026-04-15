@@ -29,7 +29,7 @@ import (
 )
 
 type DeviceActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
   deviceID    string
   initialized bool
 }
@@ -77,9 +77,9 @@ class DeviceActor(Actor):
     async def _on_activate(self):
         print(f"Actor {self.id.id} activated")
         # Initialize in-memory cache from state store
-        config = await self._state_manager.try_get_state("config")
-        if config.has_value:
-            self._config = config.value
+        has_value, val = await self._state_manager.try_get_state("config")
+        if has_value:
+            self._config = val
         else:
             self._config = {}
 
