@@ -39,6 +39,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -54,7 +55,6 @@ func cacheProduct(ctx context.Context, client dapr.Client, product Product) erro
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import StateItem
 
 def cache_product(product_id: str, product: dict, ttl_seconds: int = 300):
     with DaprClient() as client:
@@ -95,7 +95,7 @@ def cache_entity(entity_type: str, entity_id: str, data: dict):
 Some state stores return the remaining TTL when you read a state entry. Check with the metadata query:
 
 ```bash
-curl "http://localhost:3500/v1.0/state/statestore/product:123?metadata.consistencyLevel=strong"
+curl "http://localhost:3500/v1.0/state/statestore/product:123?consistency=strong"
 ```
 
 The response headers include `metadata.ttlExpireTime` with the absolute expiry timestamp in RFC3339 format.
