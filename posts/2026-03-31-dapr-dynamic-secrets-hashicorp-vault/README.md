@@ -59,8 +59,6 @@ spec:
     value: "database"
   - name: vaultKVPrefix
     value: "creds"
-  - name: vaultVersionedKV
-    value: "false"
 ```
 
 ## Reading Dynamic Credentials via Dapr
@@ -88,7 +86,7 @@ class DynamicDBConnection:
             # Dapr fetches dynamic creds from Vault's database/creds/{role}
             secret = client.get_secret(
                 store_name=self.store_name,
-                key=f"app-role",
+                key=self.role_name,
             )
             username = secret.secret["username"]
             password = secret.secret["password"]
@@ -160,9 +158,8 @@ Dynamic secrets have a lease that must be renewed before expiry for long-running
 # Renew a lease via Vault API
 curl -X POST \
   -H "X-Vault-Token: $VAULT_TOKEN" \
-  -d '{"increment": "1h"}' \
-  https://vault.example.com:8200/v1/sys/leases/renew \
-  -d '{"lease_id": "database/creds/app-role/abc123"}'
+  -d '{"lease_id": "database/creds/app-role/abc123", "increment": 3600}' \
+  https://vault.example.com:8200/v1/sys/leases/renew
 ```
 
 ## Summary
