@@ -29,10 +29,8 @@ spec:
       value: "tcp://mqtt-broker:1883"
     - name: topic
       value: "sensors/+/telemetry"
-    - name: clientID
+    - name: consumerID
       value: "dapr-ingestion-service"
-    - name: qos
-      value: "1"
     - name: retain
       value: "false"
     - name: cleanSession
@@ -134,8 +132,6 @@ spec:
       secretKeyRef:
         name: aws-secrets
         key: secretKey
-    - name: waitTimeSeconds
-      value: "20"
 ```
 
 ## Aggregating Readings Before Storage
