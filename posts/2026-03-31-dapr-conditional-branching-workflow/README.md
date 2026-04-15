@@ -19,7 +19,6 @@ Dapr Workflow is just C# (or Python/Java) code, so branching uses ordinary `if` 
 Consider a loan approval process with three possible outcomes: instant approval, manual review, or instant rejection based on credit score.
 
 ```csharp
-[DaprWorkflow]
 public class LoanApprovalWorkflow : Workflow<LoanRequest, LoanDecision>
 {
     public override async Task<LoanDecision> RunAsync(
