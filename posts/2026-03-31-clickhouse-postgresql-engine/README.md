@@ -8,7 +8,7 @@ Description: Learn how to use the PostgreSQL table engine in ClickHouse to query
 
 ---
 
-The `PostgreSQL` table engine creates a ClickHouse table that proxies reads and writes to a remote PostgreSQL database. ClickHouse pushes compatible `WHERE` clauses and `LIMIT` clauses down to PostgreSQL, and streams results back. This enables federated analytics that combine PostgreSQL transactional data with ClickHouse analytical data without a separate ETL pipeline. For performance-critical workloads, you can also use it as an ETL source to pull data into local MergeTree tables.
+The `PostgreSQL` table engine creates a ClickHouse table that proxies reads and writes to a remote PostgreSQL database. ClickHouse pushes simple `WHERE` clauses (using `=`, `!=`, `>`, `>=`, `<`, `<=`, and `IN` operators) down to PostgreSQL, and streams results back. This enables federated analytics that combine PostgreSQL transactional data with ClickHouse analytical data without a separate ETL pipeline. For performance-critical workloads, you can also use it as an ETL source to pull data into local MergeTree tables.
 
 ## Creating a PostgreSQL Engine Table
 
@@ -73,7 +73,7 @@ ORDER BY created_at DESC
 LIMIT 100;
 ```
 
-ClickHouse translates the query into a PostgreSQL-compatible statement and pushes the `WHERE` and `LIMIT` down for execution on the PostgreSQL server.
+ClickHouse translates compatible `WHERE` predicates into a PostgreSQL-compatible statement and pushes them down for execution on the PostgreSQL server. Note that `LIMIT`, `ORDER BY`, joins, and aggregations are executed on the ClickHouse side after results are returned from PostgreSQL.
 
 ## Federated JOIN: PostgreSQL + ClickHouse
 
@@ -143,7 +143,7 @@ INSERT INTO pg_orders VALUES
     (88001, 22001, 'pending', 299.99, now(), now());
 ```
 
-ClickHouse translates this into a PostgreSQL `INSERT` statement. Note that `UPDATE` is not supported via the engine - use the `postgresql()` table function with a direct query for mutations.
+ClickHouse translates this into a PostgreSQL `INSERT` statement. Note that `UPDATE` and `DELETE` are not supported through either the engine or the table function — only `SELECT` and `INSERT` operations are available. For mutations, execute them directly on the PostgreSQL server.
 
 ## Using the postgresql() Table Function
 
@@ -168,15 +168,15 @@ LIMIT 10;
 
 ## Handling PostgreSQL Arrays and JSONB
 
-PostgreSQL `ARRAY` and `JSONB` columns are read as `String` in ClickHouse. Use JSON extraction functions to parse them.
+PostgreSQL `ARRAY` columns are automatically mapped to ClickHouse `Array` types. PostgreSQL `JSONB` and `JSON` columns are read as `String` in ClickHouse. Use JSON extraction functions to parse JSONB data.
 
 ```sql
 CREATE TABLE pg_products
 (
     product_id  UInt64,
     name        String,
-    tags        String,   -- PostgreSQL: TEXT[] or JSONB, arrives as String
-    attributes  String    -- PostgreSQL: JSONB
+    tags        Array(String),   -- PostgreSQL: TEXT[], mapped to Array(String)
+    attributes  String           -- PostgreSQL: JSONB, arrives as String
 )
 ENGINE = PostgreSQL('pg-host:5432', 'catalog', 'products', 'reader', 'pass');
 
@@ -184,12 +184,15 @@ ENGINE = PostgreSQL('pg-host:5432', 'catalog', 'products', 'reader', 'pass');
 SELECT
     product_id,
     name,
+    tags,
     JSONExtractString(attributes, 'color')  AS color,
     JSONExtractFloat(attributes, 'weight')  AS weight_kg
 FROM pg_products
 WHERE JSONExtractString(attributes, 'category') = 'electronics'
 LIMIT 20;
 ```
+
+Note that PostgreSQL arrays must have a consistent number of dimensions across all rows in the same column, and `Nullable(Array(...))` is not supported.
 
 ## Type Mapping Reference
 
@@ -198,27 +201,37 @@ PostgreSQL Type      ClickHouse Type
 INT2 / SMALLINT      Int16
 INT4 / INTEGER       Int32
 INT8 / BIGINT        Int64
-FLOAT4               Float32
-FLOAT8               Float64
+SERIAL               UInt32
+BIGSERIAL            UInt64
+FLOAT4 / REAL        Float32
+FLOAT8 / DOUBLE      Float64
 NUMERIC/DECIMAL      Decimal(P, S)
 BOOLEAN              UInt8
 VARCHAR / TEXT       String
-DATE                 Date
-TIMESTAMP            DateTime
-TIMESTAMPTZ          DateTime (UTC)
+DATE                 Date32
+TIMESTAMP            DateTime64(6)
+TIMESTAMPTZ          DateTime64(6)
 UUID                 UUID
 JSONB / JSON         String
-ARRAY                String (serialized)
+ARRAY                Array(T)
 ```
 
 ## Connection Pooling Settings
 
+Connection pool settings for PostgreSQL are configured at the ClickHouse server level, not as engine-level `SETTINGS` in the `CREATE TABLE` statement. You can set them in a session or in the server configuration:
+
 ```sql
+-- Server-level settings for PostgreSQL connections
+SET postgresql_connection_pool_size = 16;
+SET postgresql_connection_pool_wait_timeout = 5000;  -- milliseconds
+SET postgresql_connection_pool_auto_close_connection = 0;
+
+-- Then create the table normally
 CREATE TABLE pg_events
 (
     event_id   UInt64,
     event_type String,
-    event_time DateTime
+    event_time DateTime64(6)
 )
 ENGINE = PostgreSQL(
     'pg-host:5432',
@@ -226,11 +239,7 @@ ENGINE = PostgreSQL(
     'events',
     'ch_reader',
     'secret'
-)
-SETTINGS
-    connection_pool_size    = 16,
-    connect_timeout         = 10,
-    read_write_timeout      = 300;
+);
 ```
 
 ## Limitations
