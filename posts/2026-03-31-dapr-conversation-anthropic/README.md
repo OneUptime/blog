@@ -33,7 +33,7 @@ spec:
         key: api-key
     - name: model
       value: "claude-3-5-sonnet-20241022"
-    - name: cacheTTL
+    - name: responseCacheTTL
       value: "10m"
 ```
 
@@ -65,7 +65,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/anthropic-conversati
   -d '{
     "inputs": [
       {
-        "message": "Review this Go function for potential issues and suggest improvements",
+        "content": "Review this Go function for potential issues and suggest improvements",
         "role": "user"
       }
     ],
@@ -86,15 +86,15 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/anthropic-conversati
   -d '{
     "inputs": [
       {
-        "message": "I am building a distributed cache system",
+        "content": "I am building a distributed cache system",
         "role": "user"
       },
       {
-        "message": "Great! What consistency model are you targeting - eventual or strong consistency?",
+        "content": "Great! What consistency model are you targeting - eventual or strong consistency?",
         "role": "assistant"
       },
       {
-        "message": "I need strong consistency. What are my options?",
+        "content": "I need strong consistency. What are my options?",
         "role": "user"
       }
     ]
@@ -153,7 +153,7 @@ Override the model per request:
 curl -X POST http://localhost:3500/v1.0-alpha1/conversation/anthropic-conversation/converse \
   -H "Content-Type: application/json" \
   -d '{
-    "inputs": [{"message": "Hello", "role": "user"}],
+    "inputs": [{"content": "Hello", "role": "user"}],
     "parameters": {"model": "claude-3-haiku-20240307"}
   }'
 ```
