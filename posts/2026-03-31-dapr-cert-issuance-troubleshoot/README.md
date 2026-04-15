@@ -38,12 +38,12 @@ Common error messages and their causes:
 
 ## Verifying Sentry Is Reachable
 
-The sidecar connects to Sentry on port 50001:
+The sidecar connects to Sentry via the Kubernetes Service on port 443 (which routes to container port 50001):
 
 ```bash
 # Test from within an app pod
 kubectl exec -it <pod-name> -c daprd -- \
-  sh -c "nc -zv dapr-sentry.dapr-system.svc.cluster.local 50001 && echo CONNECTED"
+  sh -c "nc -zv dapr-sentry.dapr-system.svc.cluster.local 443 && echo CONNECTED"
 ```
 
 Check network policies that may block this connection:
@@ -59,10 +59,10 @@ If certificates are issued but not trusted, there may be a stale trust bundle:
 
 ```bash
 # Check the current trust bundle
-kubectl get configmap dapr-trust-bundle -n dapr-system -o yaml
+kubectl get secret dapr-trust-bundle -n dapr-system -o yaml
 
 # Check when Sentry last updated it
-kubectl describe configmap dapr-trust-bundle -n dapr-system | grep "Last Applied"
+kubectl describe secret dapr-trust-bundle -n dapr-system | grep "Last Applied"
 ```
 
 Force a trust bundle refresh by restarting Sentry:
@@ -93,20 +93,32 @@ If skew exceeds 15 minutes, increase the allowed clock skew or fix NTP on affect
 If the Sentry CA certificate has expired, you must rotate it:
 
 ```bash
-# Generate new CA
+# Export existing CA to inspect it
 dapr mtls export -o ./certs
 
 # Verify expiry
 openssl x509 -in ./certs/ca.crt -enddate -noout
 
-# Reissue if expired
+# Recommended: use the Dapr CLI to renew certificates automatically
+dapr mtls renew-certificate -k --valid-until 365 --restart
+
+# Alternative: manual rotation
+# Generate new root CA
 openssl genrsa -out ca.key 4096
 openssl req -new -x509 -days 3650 -key ca.key -out ca.crt \
   -subj "/CN=Dapr Root CA"
 
-# Update the secret
+# Generate issuer certificate and key
+openssl genrsa -out issuer.key 4096
+openssl req -new -key issuer.key -out issuer.csr -subj "/CN=Dapr Issuer"
+openssl x509 -req -in issuer.csr -CA ca.crt -CAkey ca.key \
+  -CAcreateserial -out issuer.crt -days 3650
+
+# Update the secret (must include ca.crt, issuer.crt, and issuer.key)
 kubectl create secret generic dapr-trust-bundle \
   --from-file=ca.crt=./ca.crt \
+  --from-file=issuer.crt=./issuer.crt \
+  --from-file=issuer.key=./issuer.key \
   -n dapr-system --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl rollout restart deployment/dapr-sentry -n dapr-system
@@ -114,4 +126,4 @@ kubectl rollout restart deployment/dapr-sentry -n dapr-system
 
 ## Summary
 
-Troubleshoot Dapr certificate issuance by checking sidecar logs for specific error messages, verifying Sentry connectivity on port 50001, inspecting the trust bundle for staleness, and checking for clock skew between nodes. Most issuance failures are caused by network policies blocking port 50001 or expired CA certificates that need rotation.
+Troubleshoot Dapr certificate issuance by checking sidecar logs for specific error messages, verifying Sentry connectivity on port 443, inspecting the trust bundle for staleness, and checking for clock skew between nodes. Most issuance failures are caused by network policies blocking Sentry service access or expired CA certificates that need rotation.
