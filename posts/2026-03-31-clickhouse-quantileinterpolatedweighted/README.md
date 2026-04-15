@@ -8,7 +8,7 @@ Description: Learn how quantileInterpolatedWeighted() computes weighted quantile
 
 ---
 
-ClickHouse's `quantileInterpolatedWeighted()` function computes weighted quantiles using linear interpolation between neighboring data points. Unlike functions that return one of the observed values, this function can return a value that falls between two data points, producing a smoother and often more statistically accurate result. It is especially useful when working with pre-aggregated tables where each row carries a weight representing a count of observations.
+ClickHouse's `quantileInterpolatedWeighted()` function computes weighted quantiles using linear interpolation between neighboring data points. Unlike functions that return one of the observed values, this function can return a value that falls between two data points, producing a smoother result. It is especially useful when working with pre-aggregated tables where each row carries a weight representing a count of observations.
 
 ## Basic Syntax
 
@@ -39,15 +39,13 @@ SELECT quantileInterpolatedWeighted(0.95)(response_ms, weight) AS p95_interpolat
 FROM sampled_responses;
 ```
 
-This contrasts with `quantileExactWeighted()`, which returns the closest observed value:
+This contrasts with `quantileExactWeighted()`, which always returns one of the observed values:
 
 ```sql
--- Exact weighted: returns an observed value
-SELECT quantileExactWeighted(0.95)(response_ms, weight) AS p95_exact
-
--- Interpolated weighted: may return value between observations
-SELECT quantileInterpolatedWeighted(0.95)(response_ms, weight) AS p95_interpolated
-
+-- Compare exact weighted vs interpolated weighted
+SELECT
+    quantileExactWeighted(0.95)(response_ms, weight)        AS p95_exact,
+    quantileInterpolatedWeighted(0.95)(response_ms, weight) AS p95_interpolated
 FROM sampled_responses;
 ```
 
@@ -116,4 +114,4 @@ The array elements correspond to the quantile levels in the order specified.
 
 ## Summary
 
-`quantileInterpolatedWeighted()` is the right choice when computing percentiles from pre-aggregated data where each row has a weight column and you want smooth, interpolated results rather than discrete observed values. It is more statistically accurate than `quantileExactWeighted()` at quantile boundaries and is well-suited for histogram-based latency tables and weighted metric stores in ClickHouse.
+`quantileInterpolatedWeighted()` is the right choice when computing percentiles from pre-aggregated data where each row has a weight column and you want interpolated results rather than discrete observed values. Note that the weight column must use an unsigned integer type (`UInt8`, `UInt16`, `UInt32`, or `UInt64`). For higher interpolation accuracy, consider the newer `quantileExactWeightedInterpolated()` function, which ClickHouse recommends as a more precise alternative. Both functions are well-suited for histogram-based latency tables and weighted metric stores in ClickHouse.
