@@ -279,8 +279,13 @@ metadata:
   name: scheduled-worker
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: scheduled-worker
   template:
     metadata:
+      labels:
+        app: scheduled-worker
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "scheduled-worker"
