@@ -8,11 +8,11 @@ Description: Understand how prepared statements work in ClickHouse, including cl
 
 ---
 
-ClickHouse does not implement server-side prepared statements in the traditional RDBMS sense, but client libraries provide equivalent functionality through parameter binding and query plan reuse. Understanding this distinction helps you write safe and efficient code.
+ClickHouse does not implement server-side prepared statements in the traditional RDBMS sense, but it supports server-side parameterized queries via the `{name:Type}` syntax, and client libraries provide additional parameter binding mechanisms. Understanding this distinction helps you write safe and efficient code.
 
 ## Server-Side vs Client-Side Preparation
 
-Traditional databases (PostgreSQL, MySQL) parse and plan queries server-side on `PREPARE`. ClickHouse performs parameterization on the client side - the driver substitutes typed values before sending the query, preventing injection.
+Traditional databases (PostgreSQL, MySQL) parse and plan queries server-side on `PREPARE`, caching the query plan for reuse. ClickHouse does not cache query plans, but it does support server-side parameterized queries using the `{name:Type}` placeholder syntax. Parameters are passed separately from the query text and substituted by the server, preventing SQL injection. Some client drivers also offer client-side parameter substitution (e.g., `%(name)s` in clickhouse-driver) where the driver escapes and inlines values before sending the query.
 
 ## Python with clickhouse-driver
 
@@ -20,12 +20,6 @@ Traditional databases (PostgreSQL, MySQL) parse and plan queries server-side on 
 from clickhouse_driver import Client
 
 client = Client('localhost')
-
-# Define once, execute many times
-query = """
-    INSERT INTO events (ts, user_id, event_type)
-    VALUES
-"""
 
 rows = [
     {'ts': '2026-01-01 00:00:00', 'user_id': 'u1', 'event_type': 'click'},
