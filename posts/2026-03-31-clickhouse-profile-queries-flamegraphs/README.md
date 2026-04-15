@@ -21,6 +21,7 @@ SET query_profiler_cpu_time_period_ns = 1000000;  -- sample every 1ms
 SET query_profiler_real_time_period_ns = 1000000;
 SET log_queries = 1;
 SET log_query_threads = 1;
+SET allow_introspection_functions = 1;  -- required for demangle() and addressToSymbol()
 ```
 
 ## Running a Query to Profile
@@ -80,21 +81,25 @@ Then generate the flamegraph:
 # Install flamegraph tools
 git clone https://github.com/brendangregg/FlameGraph.git
 
-# Generate
+# Generate (convert tab-separated output to space-separated for flamegraph.pl)
 cat /tmp/stacks.txt | \
-    awk '{for(i=1;i<NF;i++) printf $i";"; print $NF}' | \
+    tr '\t' ' ' | \
     ./FlameGraph/flamegraph.pl > /tmp/query_flame.svg
 
 # Open in browser
 open /tmp/query_flame.svg
 ```
 
-## Using the ClickHouse Web Interface
+## Using clickhouse-flamegraph
 
-The Play UI at `http://localhost:8123/play` shows flamegraphs for queries directly. Enable via:
+For a more streamlined workflow, the community tool [`clickhouse-flamegraph`](https://github.com/Slach/clickhouse-flamegraph) can generate flamegraphs directly from `system.trace_log` without manual SQL exports:
 
-```sql
-SET enable_opentelemetry_telemetry_injection = 1;
+```bash
+# Install
+go install github.com/Slach/clickhouse-flamegraph@latest
+
+# Generate flamegraph for the most recent query
+clickhouse-flamegraph --query-id='your-query-id'
 ```
 
 ## Analyzing Common Flamegraph Patterns
