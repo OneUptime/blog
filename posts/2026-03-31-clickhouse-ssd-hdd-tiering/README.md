@@ -25,11 +25,9 @@ Add both disk types to `config.d/storage.xml`:
     <storage_configuration>
         <disks>
             <ssd>
-                <type>local</type>
                 <path>/data/ssd/clickhouse/</path>
             </ssd>
             <hdd>
-                <type>local</type>
                 <path>/data/hdd/clickhouse/</path>
             </hdd>
         </disks>
