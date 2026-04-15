@@ -88,7 +88,7 @@ Guarantee event delivery even if the service crashes after saving state but befo
 
 ```python
 import dapr.clients as dapr
-from dapr.clients.grpc._state import TransactionalStateOperation, TransactionOperationType
+from dapr.clients.grpc._request import TransactionalStateOperation, TransactionOperationType
 import json
 import threading
 import time
