@@ -87,7 +87,7 @@ Acquire a lock:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/lock/redislock \
+  http://localhost:3500/v1.0-alpha1/lock/redislock \
   -H "Content-Type: application/json" \
   -d '{
     "resourceId": "invoice-processor",
@@ -112,7 +112,7 @@ Release the lock:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0/unlock/redislock \
+  http://localhost:3500/v1.0-alpha1/unlock/redislock \
   -H "Content-Type: application/json" \
   -d '{
     "resourceId": "invoice-processor",
