@@ -33,9 +33,6 @@ global:
     enabled: true
     replicaCount: 3
 
-  # Set log level for all components
-  logLevel: info
-
   # Set log format
   logAsJson: true
 
@@ -46,7 +43,7 @@ global:
     allowedClockSkew: "15m"
 
   # Registry for Dapr images (override for air-gapped installs)
-  registry: docker.io/daprio
+  registry: ghcr.io/dapr
   tag: "1.13.0"
 ```
 
@@ -99,10 +96,12 @@ dapr_sidecar_injector:
       cpu: "300m"
       memory: "256Mi"
 
-dapr_dashboard:
-  enabled: true
-  replicaCount: 1
-  logLevel: info
+```
+
+The Dapr Dashboard is installed as a separate Helm chart (`dapr/dapr-dashboard`), not as part of the main `dapr/dapr` chart:
+
+```bash
+helm install dapr-dashboard dapr/dapr-dashboard --namespace dapr-system
 ```
 
 ## Installing with Custom Values
@@ -126,14 +125,15 @@ helm install dapr dapr/dapr \
 ## Upgrading with New Values
 
 ```bash
-# Upgrade preserving existing values + adding new ones
+# Upgrade with your values file
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
   --version 1.14.0 \
   -f values.yaml \
-  --reuse-values \
   --wait
 ```
+
+**Note:** Avoid using `--reuse-values` during upgrades. It merges previously-used values with the new chart but does not pick up new default values introduced in the newer version, which can cause unexpected behavior. Instead, maintain your own values file and pass it explicitly with `-f`.
 
 ## Viewing Deployed Values
 
@@ -147,4 +147,4 @@ helm get values dapr -n dapr-system --all
 
 ## Summary
 
-Managing Dapr through Helm values files provides version-controlled, reproducible deployments. Store your values.yaml in a GitOps repository and use `helm upgrade --reuse-values` to preserve existing settings when upgrading the Dapr version. The `global.ha.enabled=true` value is the single most important production setting.
+Managing Dapr through Helm values files provides version-controlled, reproducible deployments. Store your values.yaml in a GitOps repository and pass it explicitly with `helm upgrade -f values.yaml` when upgrading the Dapr version. The `global.ha.enabled=true` value is the single most important production setting.
