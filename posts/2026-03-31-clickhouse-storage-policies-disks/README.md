@@ -82,10 +82,8 @@ After defining disks, create policies that group disks into volumes:
                 <volumes>
                     <hot>
                         <disk>hot_nvme</disk>
-                        <!-- Move data off this volume when less than 20 GiB remains -->
+                        <!-- Parts larger than 10 GiB are placed on the next volume -->
                         <max_data_part_size_bytes>10737418240</max_data_part_size_bytes>
-                        <!-- Reserve 20 GiB free space on this volume -->
-                        <reserved_space>21474836480</reserved_space>
                     </hot>
                     <warm>
                         <disk>warm_hdd</disk>
@@ -95,7 +93,7 @@ After defining disks, create policies that group disks into volumes:
                         <disk>cold_s3</disk>
                     </cold>
                 </volumes>
-                <!-- Move parts to next volume when current volume exceeds this ratio -->
+                <!-- Move parts to next volume when free space falls below this ratio (10%) -->
                 <move_factor>0.1</move_factor>
             </tiered>
 
