@@ -84,11 +84,15 @@ spec:
           transforms:
             - type: string
               string:
+                type: Format
                 fmt: "redis-conn-%s"
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.host
+          toFieldPath: status.redisHost
 
     - name: dapr-component
       base:
-        apiVersion: kubernetes.crossplane.io/v1alpha1
+        apiVersion: kubernetes.crossplane.io/v1alpha2
         kind: Object
         spec:
           forProvider:
@@ -108,9 +112,13 @@ spec:
       patches:
         - fromFieldPath: spec.namespace
           toFieldPath: spec.forProvider.manifest.metadata.namespace
-        - fromFieldPath: status.atProvider.host
-          toFieldPath: >
-            spec.forProvider.manifest.spec.metadata[0].value
+        - fromFieldPath: status.redisHost
+          toFieldPath: spec.forProvider.manifest.spec.metadata[0].value
+          transforms:
+            - type: string
+              string:
+                type: Format
+                fmt: "%s:6379"
           policy:
             fromFieldPath: Optional
 ```
