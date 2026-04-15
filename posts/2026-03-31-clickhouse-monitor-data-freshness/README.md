@@ -87,7 +87,7 @@ Create a Grafana alert: trigger when `clickhouse_data_lag_seconds > 300` (5 minu
 
 ## Detecting Pipeline Gaps
 
-Spot gaps in time-series data with a window function:
+Spot gaps in time-series data using `WITH FILL` to surface minutes with no events:
 
 ```sql
 SELECT
@@ -96,11 +96,13 @@ SELECT
 FROM events
 WHERE event_time >= now() - INTERVAL 2 HOUR
 GROUP BY minute
-ORDER BY minute
-HAVING events = 0;
+ORDER BY minute WITH FILL
+    FROM toStartOfMinute(now() - INTERVAL 2 HOUR)
+    TO toStartOfMinute(now())
+    STEP INTERVAL 1 MINUTE;
 ```
 
-Minutes with zero events may indicate a pipeline failure.
+Rows where `events` is 0 indicate minutes with no data, which may signal a pipeline failure.
 
 ## Automated Freshness Check
 
