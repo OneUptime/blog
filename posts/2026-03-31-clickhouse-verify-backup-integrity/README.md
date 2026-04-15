@@ -12,24 +12,30 @@ A backup that cannot be restored is not a backup. Verifying backup integrity is 
 
 ## Checking the Backup Manifest
 
-Every ClickHouse native backup writes a `.backup` manifest file to the destination. This JSON file lists all files, their checksums, and metadata:
+Every ClickHouse native backup writes a `.backup` manifest file to the destination. This XML file lists all files, their checksums, and metadata:
 
 ```bash
 # Download and inspect the manifest
 aws s3 cp \
   s3://your-backup-bucket/clickhouse/backups/2026-03-31-full/.backup \
-  /tmp/backup-manifest.json
+  /tmp/backup-manifest.xml
 
 # View manifest structure
 python3 -c "
-import json
-with open('/tmp/backup-manifest.json') as f:
-    manifest = json.load(f)
+import xml.etree.ElementTree as ET
 
-print('Version:', manifest.get('version'))
-print('Timestamp:', manifest.get('timestamp'))
-print('Databases:', list(manifest.get('databases', {}).keys()))
-print('Total files:', sum(len(db.get('files', [])) for db in manifest.get('databases', {}).values()))
+tree = ET.parse('/tmp/backup-manifest.xml')
+root = tree.getroot()
+
+print('Version:', root.findtext('version'))
+print('Timestamp:', root.findtext('timestamp'))
+print('UUID:', root.findtext('uuid'))
+
+files = root.findall('contents/file')
+print('Total files:', len(files))
+
+for f in files[:10]:
+    print(f'  {f.findtext(\"name\")}: {f.findtext(\"size\")} bytes')
 "
 ```
 
@@ -38,15 +44,15 @@ Check the number of files matches what is actually in S3:
 ```bash
 # Count manifest entries
 python3 -c "
-import json
-with open('/tmp/backup-manifest.json') as f:
-    m = json.load(f)
-total = 0
-for db_name, db in m.get('databases', {}).items():
-    for tbl_name, tbl in db.get('tables', {}).items():
-        total += len(tbl.get('files', []))
-        print(f'{db_name}.{tbl_name}: {len(tbl.get(\"files\", []))} files')
-print(f'Total: {total} files')
+import xml.etree.ElementTree as ET
+
+tree = ET.parse('/tmp/backup-manifest.xml')
+root = tree.getroot()
+
+files = root.findall('contents/file')
+for f in files:
+    print(f'{f.findtext(\"name\")}: {f.findtext(\"size\")} bytes')
+print(f'Total: {len(files)} files')
 "
 
 # Count actual S3 objects
@@ -65,46 +71,49 @@ set -euo pipefail
 
 BACKUP_PATH="s3://your-backup-bucket/clickhouse/backups/2026-03-31-full"
 WORK_DIR="/tmp/backup-verify"
-ERRORS=0
 
 mkdir -p "$WORK_DIR"
 trap "rm -rf $WORK_DIR" EXIT
 
 # Download manifest
-aws s3 cp "${BACKUP_PATH}/.backup" "${WORK_DIR}/manifest.json"
+aws s3 cp "${BACKUP_PATH}/.backup" "${WORK_DIR}/manifest.xml"
 
-echo "Verifying checksums from manifest..."
+echo "Verifying file sizes from manifest..."
 
-# Extract file checksums from manifest and verify
+# Extract file sizes from manifest and verify against S3
 python3 <<'PYEOF'
-import json, subprocess, sys, hashlib, boto3, io
+import xml.etree.ElementTree as ET
+import sys, boto3
 
-with open('/tmp/backup-verify/manifest.json') as f:
-    manifest = json.load(f)
+tree = ET.parse('/tmp/backup-verify/manifest.xml')
+root = tree.getroot()
 
 s3 = boto3.client('s3')
 bucket = 'your-backup-bucket'
 prefix = 'clickhouse/backups/2026-03-31-full'
 errors = 0
+checked = 0
 
-for db_name, db in manifest.get('databases', {}).items():
-    for tbl_name, tbl in db.get('tables', {}).items():
-        for file_info in tbl.get('files', [])[:5]:  # Check first 5 files per table
-            key = f"{prefix}/{db_name}/{tbl_name}/{file_info['name']}"
-            try:
-                obj = s3.get_object(Bucket=bucket, Key=key)
-                data = obj['Body'].read()
-                actual_size = len(data)
-                expected_size = file_info.get('size', 0)
-                if actual_size != expected_size:
-                    print(f"SIZE MISMATCH {key}: expected {expected_size}, got {actual_size}")
-                    errors += 1
-                else:
-                    print(f"OK {db_name}.{tbl_name}/{file_info['name']} ({actual_size} bytes)")
-            except Exception as e:
-                print(f"ERROR reading {key}: {e}")
-                errors += 1
+for file_elem in root.findall('contents/file'):
+    name = file_elem.findtext('name')
+    expected_size = int(file_elem.findtext('size', '0'))
+    key = f"{prefix}/{name}"
+    if checked >= 50:  # Check first 50 files
+        break
+    try:
+        obj = s3.head_object(Bucket=bucket, Key=key)
+        actual_size = obj['ContentLength']
+        if actual_size != expected_size:
+            print(f"SIZE MISMATCH {key}: expected {expected_size}, got {actual_size}")
+            errors += 1
+        else:
+            print(f"OK {name} ({actual_size} bytes)")
+        checked += 1
+    except Exception as e:
+        print(f"ERROR reading {key}: {e}")
+        errors += 1
 
+print(f"\nChecked {checked} files, {errors} errors")
 sys.exit(1 if errors > 0 else 0)
 PYEOF
 ```
@@ -212,7 +221,7 @@ After a test restore, use ClickHouse's built-in checksum verification:
 CHECK TABLE my_database_verified.events;
 
 -- For large tables, check partition by partition
-ALTER TABLE my_database_verified.events CHECK PARTITION '202403';
+CHECK TABLE my_database_verified.events PARTITION '202403';
 
 -- Check all tables in a database
 SELECT
@@ -246,14 +255,16 @@ Add the verification job to crontab, running on a different day than the full ba
 
 ## Verifying clickhouse-backup Backups
 
-If using the `clickhouse-backup` tool, it has a built-in verify command:
+If using the `clickhouse-backup` tool, you can list backups and perform a schema-only restore as a verification step:
 
 ```bash
-# Verify a specific backup
-clickhouse-backup verify 2026-03-31-full
-
-# List backups with size and file counts
+# List backups with size and status
+clickhouse-backup list local
 clickhouse-backup list remote
+
+# Download and restore schema only as a verification step
+clickhouse-backup download 2026-03-31-full
+clickhouse-backup restore --schema 2026-03-31-full
 ```
 
 ## Summary
