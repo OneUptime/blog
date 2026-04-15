@@ -28,7 +28,7 @@ Enable it in `config.xml`:
 
 ## Key Columns
 
-`system.metric_log` has a column per metric. There are hundreds of columns, one for each entry in `system.metrics` and `system.asynchronous_metrics`. Common ones:
+`system.metric_log` has a column per metric. There are hundreds of columns, one for each entry in `system.metrics` and `system.events`. Common ones:
 
 | Column | Description |
 |--------|-------------|
@@ -39,7 +39,7 @@ Enable it in `config.xml`:
 | `CurrentMetric_OpenFileForRead` | Open file descriptors for reads |
 | `CurrentMetric_ReplicatedChecks` | Replication consistency checks running |
 | `ProfileEvent_Query` | Cumulative queries since server start |
-| `ProfileEvent_MergedRows` | Rows merged since server start |
+| `ProfileEvent_InsertedRows` | Rows inserted since server start |
 
 ## Listing Available Metric Columns
 
