@@ -19,7 +19,7 @@ Pod:
   - Container: app           (your application)
   - Container: daprd         (Dapr sidecar, injected automatically)
   - Container: my-component  (your pluggable component)
-  - Volume: dapr-unix-domain-socket (emptyDir, shared by daprd and my-component)
+  - Volume: dapr-components-unix-domain-socket (emptyDir, shared by daprd and my-component)
 ```
 
 ## Deployment Manifest
@@ -42,27 +42,11 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "order-service"
         dapr.io/app-port: "8080"
-        dapr.io/unix-domain-socket-path: "/tmp/dapr-components"
+        dapr.io/pluggable-components-sockets-folder: "/tmp/dapr-components-sockets"
     spec:
       volumes:
-        - name: dapr-unix-socket
+        - name: dapr-components-unix-domain-socket
           emptyDir: {}
-
-      initContainers:
-        # Wait for component socket to be ready
-        - name: wait-for-component
-          image: busybox
-          command:
-            - sh
-            - -c
-            - |
-              until [ -S /tmp/dapr-components/custom-statestore.sock ]; do
-                echo "Waiting for component socket...";
-                sleep 1;
-              done
-          volumeMounts:
-            - name: dapr-unix-socket
-              mountPath: /tmp/dapr-components
 
       containers:
         - name: order-service
@@ -73,11 +57,11 @@ spec:
         - name: custom-statestore
           image: myorg/dapr-custom-statestore:1.0.0
           env:
-            - name: DAPR_COMPONENT_SOCKET_FOLDER
-              value: /tmp/dapr-components
+            - name: DAPR_COMPONENT_SOCKETS_FOLDER
+              value: /tmp/dapr-components-sockets
           volumeMounts:
-            - name: dapr-unix-socket
-              mountPath: /tmp/dapr-components
+            - name: dapr-components-unix-domain-socket
+              mountPath: /tmp/dapr-components-sockets
 ```
 
 ## Component Manifest
@@ -140,7 +124,7 @@ containers:
         command:
           - sh
           - -c
-          - test -S /tmp/dapr-components/custom-statestore.sock
+          - test -S /tmp/dapr-components-sockets/custom-statestore.sock
       initialDelaySeconds: 5
       periodSeconds: 10
     readinessProbe:
@@ -148,7 +132,7 @@ containers:
         command:
           - sh
           - -c
-          - test -S /tmp/dapr-components/custom-statestore.sock
+          - test -S /tmp/dapr-components-sockets/custom-statestore.sock
       initialDelaySeconds: 3
       periodSeconds: 5
 ```
@@ -160,7 +144,7 @@ containers:
 kubectl get pods -l app=order-service
 
 # Verify socket is shared
-kubectl exec order-service-POD -c daprd -- ls /tmp/dapr-components/
+kubectl exec order-service-POD -c daprd -- ls /tmp/dapr-components-sockets/
 
 # Test state store via app pod
 kubectl exec order-service-POD -c order-service -- \
@@ -171,4 +155,4 @@ kubectl exec order-service-POD -c order-service -- \
 
 ## Summary
 
-Deploying Dapr pluggable components on Kubernetes requires an emptyDir volume for Unix socket sharing, careful container ordering via init containers, and Dapr's unix-domain-socket-path annotation. Once in place, the pluggable component integrates transparently into the Dapr building block API, with no changes needed in application code.
+Deploying Dapr pluggable components on Kubernetes requires an emptyDir volume for Unix socket sharing and Dapr's pluggable-components-sockets-folder annotation. Once in place, the pluggable component integrates transparently into the Dapr building block API, with no changes needed in application code.
