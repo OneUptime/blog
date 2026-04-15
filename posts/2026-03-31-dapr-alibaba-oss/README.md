@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Alibaba, OSS, Storage, Binding
 
-Description: Use Dapr's Alibaba Cloud OSS output binding to upload, download, and manage objects in Alibaba Cloud Object Storage from microservices.
+Description: Use Dapr's Alibaba Cloud OSS output binding to upload objects to Alibaba Cloud Object Storage from microservices.
 
 ---
 
 ## Overview
 
-Alibaba Cloud Object Storage Service (OSS) is a scalable cloud storage service commonly used in Asia-Pacific deployments. Dapr provides an OSS binding that abstracts object operations, enabling microservices to interact with OSS through Dapr's consistent binding API.
+Alibaba Cloud Object Storage Service (OSS) is a scalable cloud storage service commonly used in Asia-Pacific deployments. Dapr provides an OSS output binding that enables microservices to upload objects to OSS through Dapr's consistent binding API. The binding currently supports the `create` operation for uploading objects.
 
 ## Prerequisites
 
@@ -25,8 +25,8 @@ From the Alibaba Cloud Console or CLI:
 
 ```bash
 # Using ossutil CLI
-ossutil mb oss://my-dapr-bucket --region=cn-hangzhou
-ossutil set-acl oss://my-dapr-bucket private
+ossutil mb oss://my-dapr-bucket -e oss-cn-hangzhou.aliyuncs.com
+ossutil set-acl oss://my-dapr-bucket private -b
 ```
 
 ## Configuring the Dapr Binding Component
@@ -71,8 +71,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/alibaba-oss \
   -d '{
     "data": "SGVsbG8gV29ybGQ=",
     "metadata": {
-      "key": "uploads/hello.txt",
-      "contentType": "text/plain"
+      "key": "uploads/hello.txt"
     },
     "operation": "create"
   }'
@@ -89,47 +88,13 @@ func uploadDocument(ctx context.Context, client dapr.Client, key string, content
         Operation: "create",
         Data:      content,
         Metadata: map[string]string{
-            "key":         key,
-            "contentType": "application/json",
+            "key": key,
         },
     })
     return err
 }
 ```
 
-## Downloading Objects
-
-```bash
-curl -X POST http://localhost:3500/v1.0/bindings/alibaba-oss \
-  -H "Content-Type: application/json" \
-  -d '{
-    "metadata": {"key": "uploads/hello.txt"},
-    "operation": "get"
-  }'
-```
-
-## Deleting Objects
-
-```bash
-curl -X POST http://localhost:3500/v1.0/bindings/alibaba-oss \
-  -H "Content-Type: application/json" \
-  -d '{
-    "metadata": {"key": "uploads/old-file.txt"},
-    "operation": "delete"
-  }'
-```
-
-## Listing Objects
-
-```bash
-curl -X POST http://localhost:3500/v1.0/bindings/alibaba-oss \
-  -H "Content-Type: application/json" \
-  -d '{
-    "metadata": {"prefix": "uploads/"},
-    "operation": "list"
-  }'
-```
-
 ## Summary
 
-Dapr's Alibaba Cloud OSS binding provides a clean abstraction for object storage operations on Alibaba Cloud. By routing OSS interactions through the Dapr binding API, microservices remain portable and can be migrated between storage providers without code changes.
+Dapr's Alibaba Cloud OSS binding provides a clean abstraction for uploading objects to Alibaba Cloud. By routing OSS interactions through the Dapr binding API, microservices remain portable and can be migrated between storage providers without code changes. Note that the OSS binding currently only supports the `create` operation for uploading objects; for downloading, deleting, or listing objects, you will need to use the Alibaba Cloud OSS SDK directly.
