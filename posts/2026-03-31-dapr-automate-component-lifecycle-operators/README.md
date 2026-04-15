@@ -77,8 +77,8 @@ func buildStateStoreComponent(tenant *myplatformv1.Tenant) *daprv1.Component {
         Spec: daprv1.ComponentSpec{
             Type:    "state.redis",
             Version: "v1",
-            Metadata: []daprv1.MetadataItem{
-                {Name: "redisHost", Value: daprv1.DynamicValue{JSON: apiextensionsv1.JSON{Raw: []byte(`"` + tenant.Spec.StateBackend.Host + `"`)}}},
+            Metadata: []common.NameValuePair{
+                {Name: "redisHost", Value: common.DynamicValue{JSON: apiextensionsv1.JSON{Raw: []byte(`"` + tenant.Spec.StateBackend.Host + `"`)}}},
             },
         },
     }
