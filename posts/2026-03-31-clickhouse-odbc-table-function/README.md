@@ -45,9 +45,8 @@ Driver      = /usr/lib/x86_64-linux-gnu/odbc/psqlodbcw.so
 ## Basic Syntax
 
 ```sql
-odbc('DSN=dsn_name', 'query')
-odbc('DSN=dsn_name', 'database', 'table')
-odbc('DSN=dsn_name', 'schema', 'table')
+odbc('DSN=dsn_name', 'database_or_schema', 'table')
+odbc('DSN=dsn_name', 'table')
 ```
 
 ## Query a Remote Table via ODBC
@@ -55,7 +54,8 @@ odbc('DSN=dsn_name', 'schema', 'table')
 ```sql
 -- Fetch rows from a PostgreSQL table through ODBC
 SELECT id, name, email
-FROM odbc('DSN=pg_prod', 'SELECT id, name, email FROM customers WHERE active = 1')
+FROM odbc('DSN=pg_prod', 'public', 'customers')
+WHERE active = 1
 LIMIT 50;
 ```
 
@@ -76,10 +76,7 @@ SELECT
     e.event_type,
     c.name AS customer_name
 FROM events AS e
-INNER JOIN (
-    SELECT id, name
-    FROM odbc('DSN=pg_prod', 'SELECT id, name FROM customers')
-) AS c ON e.user_id = c.id
+INNER JOIN odbc('DSN=pg_prod', 'public', 'customers') AS c ON e.user_id = c.id
 WHERE e.event_time >= today() - 7
 ORDER BY e.event_time DESC;
 ```
@@ -89,7 +86,8 @@ ORDER BY e.event_time DESC;
 ```sql
 INSERT INTO ch_orders (order_id, customer_id, amount, created_at)
 SELECT order_id, customer_id, amount, created_at
-FROM odbc('DSN=pg_prod', 'SELECT order_id, customer_id, amount, created_at FROM orders WHERE created_at > ''2026-01-01''');
+FROM odbc('DSN=pg_prod', 'public', 'orders')
+WHERE created_at > '2026-01-01';
 ```
 
 ## Type Mapping Considerations
@@ -124,7 +122,7 @@ chmod 600 /etc/odbc.ini
 
 ```sql
 -- Simple connectivity test
-SELECT count() FROM odbc('DSN=pg_prod', 'SELECT 1 AS n');
+SELECT count() FROM odbc('DSN=pg_prod', 'public', 'customers');
 ```
 
 ## Summary
