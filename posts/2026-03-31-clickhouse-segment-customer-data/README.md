@@ -17,13 +17,31 @@ Segment collects events and routes them to destinations. Using ClickHouse as a d
 - Custom retention policies and data ownership
 - Unlimited query flexibility beyond Segment's built-in analytics
 
-## Setting Up the Segment ClickHouse Destination
+## Routing Segment Data to ClickHouse
 
-Segment supports ClickHouse via its Warehouse destination category. Configure it in Segment:
+Segment does not natively support ClickHouse as a warehouse destination. To route Segment event data into ClickHouse, use one of these approaches:
 
-1. Go to Destinations and add a Warehouse
-2. Select ClickHouse
-3. Enter connection details:
+- **Segment Webhook Destination**: Configure a webhook destination in Segment that sends events to a service you control, which then inserts them into ClickHouse.
+- **Third-party connector**: Use a tool like Airbyte, Fivetran, or Vector to sync data from a Segment-supported warehouse (e.g., PostgreSQL or S3) into ClickHouse.
+
+For the webhook approach:
+
+1. Go to Destinations and add a **Webhook** destination
+2. Point it at your ingestion service endpoint (e.g., `https://ingest.yourcompany.com/segment`)
+3. Your service receives JSON payloads and inserts them into ClickHouse
+
+Set up the ClickHouse side with a database and write user:
+
+```sql
+CREATE DATABASE IF NOT EXISTS segment;
+
+CREATE USER segment_writer
+    IDENTIFIED WITH sha256_password BY 'strong_password';
+
+GRANT CREATE TABLE, INSERT, SELECT ON segment.* TO segment_writer;
+```
+
+Your ingestion service connects to ClickHouse using:
 
 ```text
 Host: ch.internal
@@ -34,22 +52,12 @@ Password: <secret>
 SSL: true
 ```
 
-Grant appropriate permissions:
-
-```sql
-CREATE USER segment_writer
-    IDENTIFIED WITH sha256_password BY 'strong_password'
-    HOST IP '52.25.130.38', '52.25.153.220';  -- Segment IPs
-
-GRANT CREATE TABLE, INSERT, SELECT ON segment.* TO segment_writer;
-```
-
 ## Segment Schema in ClickHouse
 
-Segment creates tables per event type with a consistent schema:
+Segment uses a convention of one table per event type with standard fields. Replicate this schema in ClickHouse by creating tables that mirror Segment's structure:
 
 ```sql
--- segment.order_completed (auto-created)
+-- segment.order_completed
 -- Contains standard Segment fields + your track properties
 SELECT
     id,
@@ -107,17 +115,18 @@ LIMIT 20;
 
 ## Replay and Backfill
 
-Segment supports replaying historical data to new destinations. When you add ClickHouse as a destination, replay your full event history:
+Segment supports replaying historical data to destinations, but this feature is limited to Business Tier plans and requires contacting Segment support. Since ClickHouse is not a native Segment destination, replay would target your webhook endpoint or an intermediate warehouse. You can also backfill ClickHouse by exporting historical data from a Segment-connected warehouse:
 
 ```bash
-# In Segment: Destinations > ClickHouse > Replay History
-# Select date range and source
-# Segment re-sends all events to ClickHouse
+# Option 1: Export from a Segment-connected warehouse (e.g., PostgreSQL)
+# and bulk-insert into ClickHouse using clickhouse-client
+clickhouse-client --host ch.internal --port 9440 --secure \
+    --query "INSERT INTO segment.order_completed FORMAT CSVWithNames" < exported_events.csv
 ```
 
 ## Handling Schema Evolution
 
-Segment events evolve as your product changes. ClickHouse handles new properties by adding columns via the Segment connector's schema evolution feature. You can also add columns manually:
+Segment events evolve as your product changes. When new properties appear in Segment events, you need to add corresponding columns to your ClickHouse tables. You can do this manually:
 
 ```sql
 ALTER TABLE segment.order_completed
