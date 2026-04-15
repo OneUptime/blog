@@ -49,7 +49,7 @@ public class DeviceTwinActor : Actor, IDeviceTwinActor
         if (telemetry.Temperature > 85)
         {
             await RegisterReminderAsync("high-temp-alert", null,
-                TimeSpan.FromSeconds(0), TimeSpan.FromMinutes(-1));
+                TimeSpan.FromSeconds(0), TimeSpan.FromMilliseconds(-1));
         }
     }
 
@@ -116,7 +116,7 @@ app.get('/devices/:deviceId/state', async (req, res) => {
 ## Detecting Offline Devices
 
 ```csharp
-public async Task ReceiveReminderAsync(string reminderName, ...)
+public async Task ReceiveReminderAsync(string reminderName, byte[] state, TimeSpan dueTime, TimeSpan period)
 {
     if (reminderName == "offline-check")
     {
