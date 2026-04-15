@@ -48,25 +48,9 @@ ORDER BY file_id;
 
 ## Inserting a Binary File
 
-Insert a binary file via the HTTP interface:
+Since `RawBLOB` works with a single column, the recommended approach is a two-step insert using a staging table. First, upload the raw bytes, then move the data into your main table with metadata.
 
-```bash
-# Read the binary data and insert it
-curl -X POST \
-  'http://localhost:8123/?query=INSERT+INTO+file_store+(file_id,file_name,mime_type,content)+VALUES+(1,%27logo.png%27,%27image/png%27,' \
-  --data-binary @logo.png
-```
-
-A cleaner approach using a two-step insert:
-
-```bash
-# Step 1: Upload the raw blob to a staging table
-curl -X POST \
-  'http://localhost:8123/?query=INSERT+INTO+blob_staging+FORMAT+RawBLOB' \
-  --data-binary @logo.png
-```
-
-With a staging table:
+Upload the file to a staging table:
 
 ```sql
 CREATE TABLE blob_staging
@@ -76,7 +60,13 @@ CREATE TABLE blob_staging
 ENGINE = Memory;
 ```
 
-Then move it to the main table with metadata:
+```bash
+curl -X POST \
+  'http://localhost:8123/?query=INSERT+INTO+blob_staging+FORMAT+RawBLOB' \
+  --data-binary @logo.png
+```
+
+Then move the data to the main table with metadata:
 
 ```sql
 INSERT INTO file_store (file_id, file_name, mime_type, content)
@@ -131,7 +121,7 @@ The MD5 values must match.
 
 ## Size Limitations
 
-`String` columns in ClickHouse can hold up to 1 GB by default per value. For very large files:
+`String` columns in ClickHouse have no formal size limit — they can hold strings of arbitrary length. However, practical limits are governed by available memory and settings like `max_memory_usage`. For very large files:
 
 ```sql
 -- Check the size of stored blobs
@@ -180,10 +170,18 @@ ORDER BY (app_name, version);
 ```
 
 ```bash
-# Store a config file
+# Store a config file using the staging table approach
 curl -X POST \
-  'http://localhost:8123/?query=INSERT+INTO+config_versions+(app_name,version,config,created_by)+VALUES+(%27myapp%27,1,' \
+  'http://localhost:8123/?query=INSERT+INTO+blob_staging+FORMAT+RawBLOB' \
   --data-binary @config.yaml
+```
+
+```sql
+INSERT INTO config_versions (app_name, version, config, created_by)
+SELECT 'myapp', 1, content, 'admin'
+FROM blob_staging;
+
+TRUNCATE TABLE blob_staging;
 ```
 
 ## Conclusion
