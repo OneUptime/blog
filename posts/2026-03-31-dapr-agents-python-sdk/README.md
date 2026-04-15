@@ -12,38 +12,39 @@ Description: A comprehensive guide to the Dapr Agents Python SDK covering instal
 
 The Dapr Agents Python SDK (`dapr-agents`) is the official Python library for building AI agents on Dapr. It provides:
 
-- `Agent` base class with built-in tool calling loop
+- `DurableAgent` class with built-in tool calling loop
 - `@tool` decorator for defining callable functions
-- LLM client wrappers (OpenAI, Anthropic, Mistral, Bedrock, Ollama)
+- LLM client wrappers (OpenAI, HuggingFace Hub, NVIDIA, and vendor-neutral via Dapr Conversation API)
 - Memory backends backed by Dapr state stores
 - Messaging helpers for Dapr pub/sub
-- `AgentService` for running agents as HTTP services
+- `AgentRunner` for running agents as HTTP services
 
 ## Installation
 
 ```bash
 pip install dapr-agents
 
-# With specific LLM provider support
-pip install dapr-agents[openai]       # OpenAI
-pip install dapr-agents[anthropic]    # Anthropic
-pip install dapr-agents[mistral]      # Mistral
-pip install dapr-agents[all]          # All providers
+# With vector store support (ChromaDB, sentence-transformers)
+pip install dapr-agents[vectorstore]
 ```
+
+OpenAI and HuggingFace Hub clients are included in the base installation. To use other LLM providers such as Anthropic, Mistral, or AWS Bedrock, configure them through the Dapr Conversation API component.
 
 ## Core Agent Class
 
-Every agent extends the `Agent` base class:
+Create an agent by instantiating `DurableAgent`:
 
 ```python
-from dapr_agents import Agent
-from dapr_agents.llm import OpenAIChat
+from dapr_agents import DurableAgent
+from dapr_agents.llm import OpenAIChatClient
 
-class MyAgent(Agent):
-    name = "my-agent"                    # Dapr app ID
-    description = "What this agent does" # Optional
-    instructions = "System prompt here"  # LLM system message
-    max_iterations = 10                   # Tool call loop limit
+agent = DurableAgent(
+    name="my-agent",                             # Dapr app ID
+    role="What this agent does",                  # Agent role description
+    goal="Accomplish specific tasks",             # Agent goal
+    instructions=["System prompt here"],          # LLM system instructions (list of strings)
+    llm=OpenAIChatClient(model="gpt-4o"),
+)
 ```
 
 ## Defining Tools with @tool
@@ -51,77 +52,80 @@ class MyAgent(Agent):
 The `@tool` decorator exposes Python functions as LLM-callable tools:
 
 ```python
-from dapr_agents import Agent, tool
+from dapr_agents import tool
 
-class UtilityAgent(Agent):
-    name = "utility-agent"
-    instructions = "You help with utility tasks."
+@tool
+def fetch_url(url: str) -> str:
+    """Fetches the content of a URL.
 
-    @tool
-    def fetch_url(self, url: str) -> str:
-        """Fetches the content of a URL.
+    Args:
+        url: The URL to fetch.
+    """
+    import httpx
+    response = httpx.get(url, timeout=10)
+    return response.text[:2000]
 
-        Args:
-            url: The URL to fetch.
-        """
-        import httpx
-        response = httpx.get(url, timeout=10)
-        return response.text[:2000]
+@tool
+def write_file(path: str, content: str) -> str:
+    """Writes content to a file.
 
-    @tool
-    def write_file(self, path: str, content: str) -> str:
-        """Writes content to a file.
+    Args:
+        path: File path to write to.
+        content: Content to write.
+    """
+    with open(path, "w") as f:
+        f.write(content)
+    return f"Written {len(content)} bytes to {path}"
 
-        Args:
-            path: File path to write to.
-            content: Content to write.
-        """
-        with open(path, "w") as f:
-            f.write(content)
-        return f"Written {len(content)} bytes to {path}"
+@tool
+def run_shell_command(command: str) -> str:
+    """Runs a shell command and returns output. Use with caution.
 
-    @tool
-    def run_shell_command(self, command: str) -> str:
-        """Runs a shell command and returns output. Use with caution.
+    Args:
+        command: The shell command to execute.
+    """
+    import subprocess
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, timeout=30
+    )
+    return result.stdout if result.returncode == 0 else result.stderr
+```
 
-        Args:
-            command: The shell command to execute.
-        """
-        import subprocess
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=30
-        )
-        return result.stdout if result.returncode == 0 else result.stderr
+Pass tools to the agent at construction time:
+
+```python
+agent = DurableAgent(
+    name="utility-agent",
+    instructions=["You help with utility tasks."],
+    llm=OpenAIChatClient(model="gpt-4o"),
+    tools=[fetch_url, write_file, run_shell_command],
+)
 ```
 
 ## LLM Client Options
 
 ```python
 from dapr_agents.llm import (
-    OpenAIChat,
-    AnthropicChat,
-    MistralChat,
-    AWSBedrockChat,
-    HuggingFaceChat,
+    OpenAIChatClient,
+    HFHubChatClient,
+    DaprChatClient,
+    NVIDIAChatClient,
 )
 
 # OpenAI
-openai_llm = OpenAIChat(model="gpt-4o", temperature=0.7)
+openai_llm = OpenAIChatClient(model="gpt-4o", temperature=0.7)
 
-# Anthropic
-claude_llm = AnthropicChat(model="claude-3-5-sonnet-20241022")
+# HuggingFace Hub
+hf_llm = HFHubChatClient(model="meta-llama/Llama-3-8b-chat-hf")
 
-# Mistral
-mistral_llm = MistralChat(model="mistral-large-latest")
+# NVIDIA
+nvidia_llm = NVIDIAChatClient(model="meta/llama-3.1-70b-instruct")
 
-# AWS Bedrock
-bedrock_llm = AWSBedrockChat(
-    model="anthropic.claude-3-5-sonnet-20241022-v2:0",
-    region_name="us-east-1"
-)
+# Dapr Conversation API (vendor-neutral, supports Anthropic, Mistral, Bedrock, etc.)
+dapr_llm = DaprChatClient(component_name="llm-anthropic")
 
-# Ollama (local)
-ollama_llm = OpenAIChat(
+# Ollama (local, via OpenAI-compatible API)
+ollama_llm = OpenAIChatClient(
     model="llama3.2",
     base_url="http://localhost:11434/v1",
     api_key="ollama"
@@ -132,39 +136,50 @@ ollama_llm = OpenAIChat(
 
 ```python
 from dapr_agents.memory import (
-    InMemoryMemory,       # In-process only, lost on restart
-    DaprStateMemory,      # Persistent, Dapr state store backed
+    ConversationListMemory,        # In-process only, lost on restart
+    ConversationDaprStateMemory,   # Persistent, Dapr state store backed
 )
 
-class StatefulAgent(Agent):
-    name = "stateful-agent"
-    instructions = "You remember user preferences."
-    memory = DaprStateMemory(
-        store_name="statestore",
-        session_id="user-123",   # Unique per user/session
-        max_history=50
-    )
+# In-memory conversation history
+list_memory = ConversationListMemory()
+
+# Persistent memory using a Dapr state store
+state_memory = ConversationDaprStateMemory(store_name="statestore")
+```
+
+Configure memory on the agent:
+
+```python
+agent = DurableAgent(
+    name="stateful-agent",
+    instructions=["You remember user preferences."],
+    llm=OpenAIChatClient(model="gpt-4o"),
+    memory=state_memory,
+)
 ```
 
 ## Running as an HTTP Service
 
 ```python
-from dapr_agents import AgentService
+from dapr_agents import AgentRunner, DurableAgent
+from dapr_agents.llm import OpenAIChatClient
 
-service = AgentService(
-    agent=MyAgent(llm=openai_llm),
-    port=8080,
-    health_path="/health"
+agent = DurableAgent(
+    name="my-agent",
+    instructions=["Do something useful."],
+    llm=OpenAIChatClient(model="gpt-4o"),
 )
 
+runner = AgentRunner()
+
 if __name__ == "__main__":
-    service.start()
+    runner.serve(agent, port=8001)
 ```
 
-Invoke via HTTP:
+Invoke via HTTP through the Dapr sidecar:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/invoke/my-agent/method/run \
+curl -X POST http://localhost:3500/v1.0/invoke/my-agent/method/agent/run \
   -H "Content-Type: application/json" \
   -d '{"message": "Do something useful"}'
 ```
@@ -173,10 +188,17 @@ curl -X POST http://localhost:3500/v1.0/invoke/my-agent/method/run \
 
 ```python
 import asyncio
+from dapr_agents import AgentRunner, DurableAgent
+from dapr_agents.llm import OpenAIChatClient
 
 async def main():
-    agent = MyAgent(llm=openai_llm)
-    result = await agent.run_async("Perform this task asynchronously")
+    agent = DurableAgent(
+        name="my-agent",
+        instructions=["Perform tasks."],
+        llm=OpenAIChatClient(model="gpt-4o"),
+    )
+    runner = AgentRunner()
+    result = await runner.run(agent, payload={"message": "Perform this task asynchronously"})
     print(result)
 
 asyncio.run(main())
@@ -184,4 +206,4 @@ asyncio.run(main())
 
 ## Summary
 
-The Dapr Agents Python SDK provides the `Agent` base class, `@tool` decorator, multiple LLM client options, and `DaprStateMemory` for persistent conversation history. Run agents as HTTP services with `AgentService`, or invoke them programmatically with `agent.run()` or `agent.run_async()`. The SDK integrates with all Dapr components for state, pub/sub, and secrets.
+The Dapr Agents Python SDK provides the `DurableAgent` class, `@tool` decorator, multiple LLM client options, and `ConversationDaprStateMemory` for persistent conversation history. Run agents as HTTP services with `AgentRunner`, or invoke them programmatically. The SDK integrates with all Dapr components for state, pub/sub, and secrets.
