@@ -53,21 +53,21 @@ def process_pending_orders():
     print(f"Processing {len(orders)} pending orders")
 ```
 
-## AWS S3 Event Trigger
+## AWS SQS Event Trigger
 
-Trigger processing when files land in an S3 bucket:
+Trigger processing when messages arrive in an SQS queue:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: s3-trigger
+  name: sqs-trigger
 spec:
-  type: bindings.aws.s3
+  type: bindings.aws.sqs
   version: v1
   metadata:
-    - name: bucket
-      value: "my-uploads-bucket"
+    - name: queueURL
+      value: "https://sqs.us-east-1.amazonaws.com/123456789/my-queue"
     - name: region
       value: "us-east-1"
     - name: direction
@@ -85,17 +85,14 @@ spec:
 Handler:
 
 ```go
-// Go - handle S3 upload trigger
-func (h *Handler) HandleS3Event(w http.ResponseWriter, r *http.Request) {
-    var event struct {
-        FileName string `json:"fileName"`
-        Bucket   string `json:"bucket"`
-    }
-    json.NewDecoder(r.Body).Decode(&event)
+// Go - handle SQS message trigger
+func (h *Handler) HandleSQSEvent(w http.ResponseWriter, r *http.Request) {
+    body, _ := io.ReadAll(r.Body)
+    defer r.Body.Close()
 
-    log.Printf("New file uploaded: %s/%s", event.Bucket, event.FileName)
-    // Process the uploaded file
-    h.processFile(event.Bucket, event.FileName)
+    log.Printf("Received SQS message: %s", string(body))
+    // Process the message
+    h.processMessage(body)
 
     w.WriteHeader(http.StatusOK)
 }
@@ -122,8 +119,6 @@ spec:
       value: "input"
     - name: prefetchCount
       value: "10"
-    - name: requeueInFailure
-      value: "true"
 ```
 
 ## Kubernetes Event Trigger
@@ -145,21 +140,25 @@ spec:
       value: "10"
 ```
 
-## HTTP Webhook Trigger
+## Kafka Event Trigger
 
-Receive external webhooks as binding events:
+Consume events from a Kafka topic as a serverless trigger:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: github-webhook
+  name: kafka-trigger
 spec:
-  type: bindings.http
+  type: bindings.kafka
   version: v1
   metadata:
-    - name: url
-      value: "https://api.github.com/repos/myorg/myrepo"
+    - name: topics
+      value: "events"
+    - name: brokers
+      value: "kafka:9092"
+    - name: consumerGroup
+      value: "my-app-group"
     - name: direction
       value: "input"
 ```
@@ -170,9 +169,9 @@ spec:
 | Trigger Type    | Dapr Binding Type      | Use Case                    |
 |-----------------|------------------------|-----------------------------|
 | Cron/Schedule   | bindings.cron          | Batch jobs, cleanup tasks   |
-| Storage Upload  | bindings.aws.s3        | File processing pipelines   |
+| Cloud Queue     | bindings.aws.sqs       | Cloud event processing      |
 | Message Queue   | bindings.rabbitmq      | Work queue consumers        |
-| HTTP Webhook    | bindings.http          | External event integration  |
+| Kafka Events    | bindings.kafka         | Event stream processing     |
 | Kubernetes      | bindings.kubernetes    | Cluster event reactions     |
 ```
 
