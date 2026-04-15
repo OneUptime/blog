@@ -53,7 +53,8 @@ GROUP BY event_type, country;
 ## Choose the Right Join Algorithm
 
 ```sql
-SET join_algorithm = 'hash';         -- default, good for small right tables
+SET join_algorithm = 'hash';           -- good for small right tables
+SET join_algorithm = 'parallel_hash';  -- default since v24.11, parallelized hash join
 SET join_algorithm = 'partial_merge'; -- lower memory, good for sorted data
 SET join_algorithm = 'grace_hash';   -- spills to disk, for large joins
 ```
@@ -92,10 +93,12 @@ GROUP BY e.event_type, u.country;
 
 ## Avoid Non-Equi Joins
 
-Range joins and inequality conditions force ClickHouse to do nested-loop evaluation. Restructure queries to use equi-joins where possible. If a range join is unavoidable, use the `direct` join algorithm:
+Range joins and inequality conditions force ClickHouse to do nested-loop evaluation. Restructure queries to use equi-joins where possible. For time-range conditions, consider using `ASOF JOIN` which efficiently matches on the closest value:
 
 ```sql
-SET join_algorithm = 'direct';
+SELECT e.event_id, p.price
+FROM events AS e
+ASOF LEFT JOIN prices AS p ON e.product_id = p.product_id AND e.event_time >= p.valid_from;
 ```
 
 ## Summary
