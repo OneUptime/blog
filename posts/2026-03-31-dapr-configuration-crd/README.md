@@ -37,7 +37,7 @@ spec:
   tracing:
     samplingRate: "0.1"
     otel:
-      endpointAddress: "http://otel-collector:4317"
+      endpointAddress: "otel-collector:4317"
       isSecure: false
       protocol: grpc
 ```
@@ -129,14 +129,14 @@ Control which metrics are emitted:
 
 ```yaml
 spec:
-  metric:
+  metrics:
     enabled: true
     rules:
-    - selector:
-        prefixes:
-        - dapr_http_server
-        - dapr_component_state
-        - dapr_grpc_io_server
+    - name: dapr_http_server_request_count
+      labels:
+      - name: method
+        regex:
+          "orders/.*": "orders/{id}"
 ```
 
 ## Viewing Active Configuration
@@ -145,8 +145,8 @@ spec:
 # List configurations
 kubectl get configuration -n default
 
-# View the merged effective configuration for a pod
-curl http://localhost:3500/v1.0/metadata | python3 -m json.tool | grep -A 5 "config"
+# View runtime metadata including enabled features and active configuration name
+curl http://localhost:3500/v1.0/metadata | python3 -m json.tool
 ```
 
 ## Summary
