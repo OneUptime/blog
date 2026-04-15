@@ -23,8 +23,8 @@ Together, Linkerd handles the network layer while Dapr handles the application l
 Install Linkerd first, then Dapr:
 
 ```bash
-# Install Linkerd CLI
-curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh
+# Install Linkerd CLI (edge release)
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install-edge | sh
 
 # Install Linkerd control plane
 linkerd install --crds | kubectl apply -f -
@@ -63,7 +63,7 @@ annotations:
 
 ## Disabling Dapr's mTLS
 
-Since Linkerd handles mTLS for all pod-to-pod traffic, disable Dapr's built-in mTLS to avoid conflicts:
+Since Linkerd handles mTLS for all pod-to-pod traffic, disable Dapr's built-in mTLS to avoid redundant double encryption:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -83,12 +83,12 @@ annotations:
 
 ## Handling Port Exclusions
 
-Linkerd should not intercept Dapr's internal health check and metrics ports. Annotate your pods:
+Linkerd should not intercept localhost-only traffic between your application container and the Dapr sidecar, or the metrics scraping port. However, Dapr's internal gRPC port (50002), used for sidecar-to-sidecar communication across the network, must remain proxied by Linkerd so it receives mTLS encryption. Annotate your pods:
 
 ```yaml
 annotations:
-  config.linkerd.io/skip-inbound-ports: "3500,50001,50002,9090"
-  config.linkerd.io/skip-outbound-ports: "3500,50001,50002"
+  config.linkerd.io/skip-inbound-ports: "3500,50001,9090"
+  config.linkerd.io/skip-outbound-ports: "3500,50001"
 ```
 
 ## Viewing Linkerd Metrics for Dapr Traffic
@@ -105,22 +105,29 @@ In the dashboard, you will see success rates and latency for all Dapr-mediated s
 
 ## Traffic Splitting with Linkerd
 
-Use Linkerd's TrafficSplit for canary releases of Dapr-enabled services:
+Use Linkerd's HTTPRoute for canary releases of Dapr-enabled services:
 
 ```yaml
-apiVersion: split.smi-spec.io/v1alpha1
-kind: TrafficSplit
+apiVersion: policy.linkerd.io/v1beta3
+kind: HTTPRoute
 metadata:
   name: order-service-split
 spec:
-  service: order-service
-  backends:
-  - service: order-service-v1
-    weight: 90
-  - service: order-service-v2
-    weight: 10
+  parentRefs:
+  - name: order-service
+    kind: Service
+    group: core
+    port: 8080
+  rules:
+  - backendRefs:
+    - name: order-service-v1
+      port: 8080
+      weight: 90
+    - name: order-service-v2
+      port: 8080
+      weight: 10
 ```
 
 ## Summary
 
-Dapr and Linkerd work well together with two key configuration steps: disable Dapr's built-in mTLS to let Linkerd handle encryption, and exclude Dapr's internal ports from Linkerd's proxy interception. Linkerd's lightweight proxy adds virtually no overhead while providing automatic mTLS and golden metrics for all Dapr-mediated service calls.
+Dapr and Linkerd work well together with two key configuration steps: disable Dapr's built-in mTLS to let Linkerd handle encryption, and exclude Dapr's localhost-only sidecar ports from Linkerd's proxy interception while keeping network-facing ports proxied. Linkerd's lightweight proxy adds virtually no overhead while providing automatic mTLS and golden metrics for all Dapr-mediated service calls.
