@@ -8,11 +8,11 @@ Description: Learn how to use the T64 codec in ClickHouse, which transposes 64-r
 
 ---
 
-T64 is a bit-transposition codec available in ClickHouse for integer and datetime columns. It works by grouping 64 rows into a block, transposing the bit matrix (rows become columns and vice versa), and then discarding common leading bits that are identical across all 64 rows. The result is a compact representation where only the distinctive bits are stored, improving compression for columns where values share many high-order bits.
+T64 is a bit-transposition codec available in ClickHouse for integer and datetime columns. It works by grouping 64 values into a block, placing them into a 64x64 bit matrix, transposing it, and then cropping unused high bits based on the min/max range of values in the block. The result is a compact representation where only the bits needed to distinguish values within the block are stored, improving compression for columns where values cluster in a narrow range.
 
 ## How T64 Works
 
-Consider 64 UInt32 values that all fall in the range [1000000, 1000100]. Every value shares the same top 12 bits. T64 identifies these shared bits, removes them, and stores only the lower bits that differ. The subsequent LZ4 or ZSTD pass then compresses the reduced-entropy output.
+Consider 64 UInt32 values that all fall in the range [1000000, 1000100]. T64 computes the min and max of the block, determines the number of bits needed to represent the range via XOR, and stores only those lower bits after transposition. The upper bits are recorded in a small header for restoration during decompression. The subsequent LZ4 or ZSTD pass then compresses the reduced-entropy output further.
 
 T64 is particularly effective for:
 
@@ -22,12 +22,14 @@ T64 is particularly effective for:
 
 ## Supported Types
 
-T64 supports all integer types and their DateTime variants:
+T64 supports all integer types, their DateTime variants, and several related types:
 
 - `Int8`, `Int16`, `Int32`, `Int64`
 - `UInt8`, `UInt16`, `UInt32`, `UInt64`
 - `DateTime`, `DateTime64`
-- `Date`
+- `Date`, `Date32`
+- `Enum8`, `Enum16`
+- `Decimal32`, `Decimal64`
 
 It does not support `Float32`, `Float64`, or `String`.
 
@@ -38,7 +40,7 @@ CODEC(T64, LZ4)
 CODEC(T64, ZSTD(3))
 ```
 
-T64 is a transform and must be paired with a compressor.
+T64 is a specialized compression codec and can be used standalone, but it is recommended to pair it with a general-purpose compressor like LZ4 or ZSTD for best results.
 
 ## Basic Example
 
