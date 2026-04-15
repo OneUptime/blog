@@ -51,7 +51,7 @@ FROM (
 str       | ascii_upper | utf8_upper | ascii_lower | utf8_lower
 ----------+-------------+------------+-------------+-----------
 hello     | HELLO       | HELLO      | hello       | hello
-café      | CAFé        | CAFÉ       | cafÉ        | café
+café      | CAFé        | CAFÉ       | café        | café
 münchen   | MüNCHEN     | MÜNCHEN    | münchen     | münchen
 привет    | привет      | ПРИВЕТ     | привет      | привет
 istanbul  | ISTANBUL    | ISTANBUL   | istanbul    | istanbul
@@ -132,7 +132,7 @@ ORDER BY product_id;
 
 All three "wireless" products are returned regardless of how the name was originally stored.
 
-## Normalizing Columns on Ingest with a Materialized View
+## Normalizing Columns on Ingest with a Materialized Column
 
 If you always query a column in lowercase, store it that way using a materialized column or normalize it on insert.
 
