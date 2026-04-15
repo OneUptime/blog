@@ -21,10 +21,10 @@ dapr configurations --kubernetes
 Sample output:
 
 ```text
-  NAMESPACE  NAME             TRACING-ENABLED  MTLS-ENABLED  AGE
-  default    dapr-config      true             true          2h
-  default    debug-config     false            true          1h
-  staging    staging-config   true             true          30m
+  NAMESPACE  NAME             TRACING-ENABLED  METRICS-ENABLED  AGE  CREATED
+  default    dapr-config      true             true             2h   2026-03-31 10:00.00
+  default    debug-config     false            true             1h   2026-03-31 11:00.00
+  staging    staging-config   true             true             30m  2026-03-31 11:30.00
 ```
 
 ## Listing in a Specific Namespace
@@ -53,7 +53,7 @@ Sample JSON output:
           "endpointAddress": "http://zipkin:9411/api/v2/spans"
         }
       },
-      "metric": {
+      "metrics": {
         "enabled": true
       }
     }
@@ -78,11 +78,14 @@ spec:
       endpointAddress: "http://otel-collector:4317"
       protocol: grpc
       isSecure: false
-  metric:
+  metrics:
     enabled: true
     rules:
-      - labels:
-          - name: app_id
+      - name: dapr_runtime_service_invocation_req_sent_total
+        labels:
+          - name: method
+            regex:
+              "orders/": "orders/.+"
   features:
     - name: ActorStateTTL
       enabled: true
