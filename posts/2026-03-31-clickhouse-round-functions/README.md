@@ -13,7 +13,7 @@ ClickHouse provides several rounding functions for different use cases. `round()
 ## Function Signatures
 
 ```text
-round(x [, N])    -- round x to N decimal places, half-away-from-zero rounding
+round(x [, N])    -- round x to N decimal places, banker's rounding for Float types
 roundToExp2(x)    -- round x down to the nearest power of 2
 ```
 
@@ -21,7 +21,7 @@ The `N` parameter in `round()` defaults to 0. Positive values round to decimal p
 
 ## Basic round() Usage
 
-Observe standard rounding behavior including the half-away-from-zero rule for tie-breaking.
+Observe standard rounding behavior. ClickHouse uses banker's rounding (round half to even) for Float types and round half away from zero for Decimal and integer types.
 
 ```sql
 SELECT
@@ -32,7 +32,7 @@ SELECT
     round(-3.5)    AS neg_round;
 ```
 
-`round(3.5)` returns 4 and `round(-3.5)` returns -4 because ties round away from zero.
+`round(3.5)` returns 4 and `round(-3.5)` returns -4 because ClickHouse uses banker's rounding for Float types, rounding to the nearest even number. Note that `round(2.5)` returns 2 (not 3) under this rule.
 
 ## Basic roundToExp2() Usage
 
@@ -166,7 +166,7 @@ Apply `round()` to aggregate results for cleaner reporting output.
 ```sql
 SELECT
     endpoint,
-    round(avg(latency_ms), 1)    AS p50_approx,
+    round(avg(latency_ms), 1)    AS avg_latency,
     round(quantile(0.95)(latency_ms), 1) AS p95,
     round(max(latency_ms), 0)    AS max_latency
 FROM api_latencies
@@ -175,4 +175,4 @@ GROUP BY endpoint;
 
 ## Summary
 
-`round()` is the standard function for rounding to a specified number of decimal places, using half-away-from-zero tie-breaking. Use it for currency formatting, metric display, and any case where the nearest value at a given precision is needed. `roundToExp2()` provides logarithmic bucketing by snapping values down to the nearest power of 2, making it ideal for latency histograms, file size classification, and memory representations where exponentially spaced intervals are more meaningful than linear ones.
+`round()` is the standard function for rounding to a specified number of decimal places. For Float types it uses banker's rounding (round half to even), while Decimal and integer types use round half away from zero. Use it for currency formatting, metric display, and any case where the nearest value at a given precision is needed. `roundToExp2()` provides logarithmic bucketing by snapping values down to the nearest power of 2, making it ideal for latency histograms, file size classification, and memory representations where exponentially spaced intervals are more meaningful than linear ones.
