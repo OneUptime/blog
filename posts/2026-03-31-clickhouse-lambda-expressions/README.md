@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Lambda, Higher-Order Function, Array, SQL
 
-Description: Learn how to write lambda expressions in ClickHouse to use with higher-order array functions like arrayMap, arrayFilter, and arrayReduce.
+Description: Learn how to write lambda expressions in ClickHouse to use with higher-order array functions like arrayMap, arrayFilter, and arrayFold.
 
 ---
 
@@ -92,4 +92,4 @@ FROM purchase_events
 
 ## Summary
 
-ClickHouse lambda expressions use `x -> expr` syntax and work with higher-order array functions including `arrayMap`, `arrayFilter`, `arrayCount`, `arrayFirst`, and `arrayFold`. Lambdas cannot reference table columns directly inside expressions passed to higher-order functions - use subquery or pre-computed array columns instead. They are a powerful tool for transforming and filtering array-typed data without joins.
+ClickHouse lambda expressions use `x -> expr` syntax and work with higher-order array functions including `arrayMap`, `arrayFilter`, `arrayCount`, `arrayFirst`, and `arrayFold`. Lambdas can reference table columns directly inside the expression in addition to the formal parameters. They are a powerful tool for transforming and filtering array-typed data without joins.
