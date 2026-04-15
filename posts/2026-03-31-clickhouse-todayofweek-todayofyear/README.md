@@ -19,11 +19,11 @@ This post explains the return values and mode options for both functions and sho
 The two most common modes are:
 
 ```text
-Mode 1 (default): Monday = 1, ..., Sunday = 7
-Mode 3:           Monday = 0, ..., Sunday = 6
+Mode 0 (default): Monday = 1, ..., Sunday = 7
+Mode 1:           Monday = 0, ..., Sunday = 6
 ```
 
-When called with no mode argument, mode 1 is used:
+When called with no mode argument, mode 0 is used:
 
 ```sql
 SELECT
