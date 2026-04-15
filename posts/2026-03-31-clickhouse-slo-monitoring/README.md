@@ -45,7 +45,7 @@ GROUP BY service_name, slo_name;
 ## Error Budget Remaining
 
 ```sql
-WITH slo_target AS 0.999,
+WITH 0.999 AS slo_target,
 window_events AS (
     SELECT
         service_name,
@@ -143,4 +143,4 @@ WHERE burn_rate_1h > 14.4;
 
 ## Summary
 
-ClickHouse provides the query primitives needed for comprehensive SLO monitoring: compliance percentages, error budget calculations, multi-window burn rates, and daily reliability trends. The burn rate threshold of 14.4x is the Google SRE standard for a 1-hour fast burn alert that would exhaust a 30-day error budget in 2 hours. This approach replaces dedicated SLO tools for teams already using ClickHouse for telemetry.
+ClickHouse provides the query primitives needed for comprehensive SLO monitoring: compliance percentages, error budget calculations, multi-window burn rates, and daily reliability trends. The burn rate threshold of 14.4x is the Google SRE standard for a 1-hour fast burn alert that detects when approximately 2% of a 30-day error budget has been consumed in one hour. This approach replaces dedicated SLO tools for teams already using ClickHouse for telemetry.
