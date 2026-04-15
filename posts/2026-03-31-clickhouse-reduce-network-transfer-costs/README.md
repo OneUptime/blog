@@ -18,7 +18,8 @@ When applications fetch large result sets over HTTP, enable response compression
 
 ```bash
 # Enable gzip compression on the client request
-curl -sS "http://localhost:8123/?compress=1" \
+curl -sS "http://localhost:8123/?enable_http_compression=1" \
+  -H "Accept-Encoding: gzip" --compressed \
   --data-binary "SELECT * FROM events LIMIT 100000 FORMAT JSONCompact"
 ```
 
@@ -29,7 +30,7 @@ import clickhouse_connect
 
 client = clickhouse_connect.get_client(
     host='localhost',
-    compress=True,  # enables lz4 compression on responses
+    compress=True,  # enables compression (zstd for responses, lz4 for inserts)
 )
 
 result = client.query("SELECT user_id, count() FROM events GROUP BY user_id")
@@ -85,15 +86,15 @@ LIMIT 10;
 
 When exporting or importing large datasets between regions, use native ClickHouse binary format:
 
-```sql
--- Export as Native format (most compact)
+```bash
+# Export as Native format (efficient for ClickHouse-to-ClickHouse transfers)
 clickhouse-client --query "SELECT * FROM events" --format Native > events.native
 
--- Re-import on destination
+# Re-import on destination
 clickhouse-client --query "INSERT INTO events FORMAT Native" < events.native
 ```
 
-Native format is 2-3x smaller than CSV and 30% smaller than Parquet for typical event data.
+Native format avoids serialization overhead and is roughly 1.5-2x smaller than CSV. For maximum compression, Parquet with its built-in encoding may produce similar or smaller files, but Native format requires the least processing on both the sending and receiving ClickHouse servers.
 
 ## Co-locate Compute and Storage
 
