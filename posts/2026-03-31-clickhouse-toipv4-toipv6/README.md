@@ -13,7 +13,7 @@ ClickHouse has native `IPv4` and `IPv6` data types that provide type safety and 
 ## How These Functions Work
 
 - `toIPv4(str)` - converts a dotted-decimal string to the `IPv4` type (stored as `UInt32` internally). Throws on invalid input.
-- `toIPv6(str)` - converts a colon-separated IPv6 string to the `IPv6` type (stored as `FixedString(16)` internally). Throws on invalid input.
+- `toIPv6(str)` - converts a colon-separated IPv6 string to the `IPv6` type (stored as `UInt128` internally). Returns an empty value for invalid input.
 - `toIPv4OrNull(str)` / `toIPv6OrNull(str)` - safe variants that return `NULL` for invalid input.
 - `toIPv4OrDefault(str)` / `toIPv6OrDefault(str)` - return `0.0.0.0` or `::` for invalid input.
 
@@ -33,7 +33,7 @@ graph LR
     A["'192.168.1.1'"] --> B[toIPv4]
     B --> C["IPv4 type\n(UInt32 internally)\nDisplays as '192.168.1.1'"]
     D["'2001:db8::1'"] --> E[toIPv6]
-    E --> F["IPv6 type\n(FixedString(16) internally)\nDisplays as '2001:db8::1'"]
+    E --> F["IPv6 type\n(UInt128 internally)\nDisplays as '2001:db8::1'"]
 ```
 
 ## Examples
@@ -138,4 +138,4 @@ src_ip      dst_ip         connections  total_bytes
 
 ## Summary
 
-`toIPv4()` and `toIPv6()` convert strings to the native `IPv4` and `IPv6` column types in ClickHouse, providing type safety, proper display formatting, and numeric comparison behavior. Use these types in table schemas instead of `String` or raw `UInt32`/`FixedString(16)` when working with IP address data, and always use the `OrNull` variants when converting untrusted input strings.
+`toIPv4()` and `toIPv6()` convert strings to the native `IPv4` and `IPv6` column types in ClickHouse, providing type safety, proper display formatting, and numeric comparison behavior. Use these types in table schemas instead of `String` or raw `UInt32`/`UInt128` when working with IP address data, and always use the `OrNull` variants when converting untrusted input strings.
