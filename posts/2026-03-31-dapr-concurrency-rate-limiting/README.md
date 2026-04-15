@@ -14,7 +14,7 @@ Dapr provides built-in controls for limiting how many concurrent requests and ho
 
 ## App Max Concurrency
 
-The `--app-max-concurrency` flag limits the number of simultaneous requests forwarded to your application. When this limit is reached, Dapr queues or rejects additional requests.
+The `--app-max-concurrency` flag limits the number of simultaneous requests forwarded to your application. When this limit is reached, Dapr queues additional requests until a slot becomes available.
 
 Set it via the Dapr CLI:
 
@@ -106,11 +106,11 @@ hey -n 500 -c 100 http://localhost:3500/v1.0/invoke/myservice/method/process 2>&
 
 ## Monitoring Rate Limit Events
 
-Dapr exposes Prometheus metrics for rate limiting. Check the `dapr_http_server_request_count` metric with the `status_code=429` label to see how often limits are triggered:
+Dapr exposes Prometheus metrics for rate limiting. Check the `dapr_http_server_request_count` metric with the `status=429` label to see how often limits are triggered:
 
 ```bash
-kubectl port-forward svc/dapr-metrics 9090:9090 -n dapr-system
-# Then query: dapr_http_server_request_count{status_code="429"}
+kubectl port-forward <your-app-pod> 9090:9090
+# Then query: dapr_http_server_request_count{status="429"}
 ```
 
 ## Summary
