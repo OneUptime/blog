@@ -66,10 +66,10 @@ spec:
       value: "1048576"
     - name: channelBufferSize
       value: "256"     # Internal channel buffer for async processing
-    - name: fetchMin
+    - name: consumerFetchMin
       value: "1"       # Fetch at least 1 byte (reduce wait)
-    - name: fetchMax
-      value: "10485760" # Max fetch 10MB per request
+    - name: consumerFetchDefault
+      value: "1048576"  # Default fetch 1MB per request
 ```
 
 ## PostgreSQL Binding Connection Pool
@@ -92,14 +92,14 @@ spec:
 Track connection pool metrics via Prometheus:
 
 ```bash
-# Redis pool hit rate (higher is better)
-rate(dapr_component_state_get_total{app_id="my-service",success="true"}[5m])
+# Redis state operation success rate (higher is better)
+rate(dapr_component_state_count{app_id="my-service",operation="get",status="success"}[5m])
 /
-rate(dapr_component_state_get_total{app_id="my-service"}[5m])
+rate(dapr_component_state_count{app_id="my-service",operation="get"}[5m])
 
 # Component operation latency (pool exhaustion shows as high latency)
 histogram_quantile(0.99,
-  rate(dapr_component_state_get_latencies_ms_bucket{app_id="my-service"}[5m])
+  rate(dapr_component_state_latencies_bucket{app_id="my-service"}[5m])
 )
 ```
 
@@ -118,22 +118,13 @@ pool_size = (500 * 0.020) + 5 = 15 connections
 
 ## gRPC Connection Pooling
 
-Dapr's internal gRPC connections also support pooling configuration. Set connection concurrency limits:
-
-```yaml
-# In Dapr Helm values
-dapr_operator:
-  extraArgs:
-    - "--max-api-level=10"
-```
-
-For client-side gRPC connection pooling in your application:
+For client-side gRPC connection tuning in your application, configure window sizes to allow higher concurrency on a single connection:
 
 ```go
-// Go - create a connection pool to Dapr gRPC
+// Go - connect to Dapr gRPC with tuned window sizes
 import "google.golang.org/grpc"
 
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "localhost:50001",
     grpc.WithTransportCredentials(insecure.NewCredentials()),
     grpc.WithInitialWindowSize(1<<20),
