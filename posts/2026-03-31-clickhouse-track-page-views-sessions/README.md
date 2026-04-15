@@ -126,7 +126,7 @@ FROM session_stats FINAL
 WHERE date >= today() - 7;
 ```
 
-## Entry and Exit Pages
+## Entry Pages
 
 ```sql
 SELECT
