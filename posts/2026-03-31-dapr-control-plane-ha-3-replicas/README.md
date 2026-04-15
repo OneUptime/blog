@@ -20,11 +20,11 @@ helm upgrade --install dapr dapr/dapr \
   --create-namespace \
   --set global.ha.enabled=true \
   --set dapr_operator.replicaCount=3 \
-  --set dapr_placement.replicaCount=3 \
   --set dapr_sentry.replicaCount=3 \
-  --set dapr_scheduler.replicaCount=3 \
   --wait
 ```
+
+When `global.ha.enabled=true` is set, the placement and scheduler services (both StatefulSets) automatically run with 3 replicas. The operator and sentry replica counts can be set explicitly as shown above.
 
 ## Custom Helm Values File
 
@@ -38,15 +38,11 @@ global:
 dapr_operator:
   replicaCount: 3
 
-dapr_placement:
-  replicaCount: 3
-
 dapr_sentry:
   replicaCount: 3
-
-dapr_scheduler:
-  replicaCount: 3
 ```
+
+The placement and scheduler services do not accept a `replicaCount` value. They are StatefulSets whose replica count is automatically set to 3 when `global.ha.enabled` is `true`.
 
 Apply with:
 
@@ -65,7 +61,7 @@ Check all control plane replicas are running:
 kubectl get deployments -n dapr-system
 ```
 
-For the placement service (which uses a StatefulSet):
+For the placement and scheduler services (which use StatefulSets):
 
 ```bash
 kubectl get statefulset -n dapr-system
@@ -77,7 +73,7 @@ Verify leader election is working by checking logs:
 kubectl logs -n dapr-system -l app=dapr-operator --tail=20
 ```
 
-Look for messages like `became leader` in the operator logs.
+Look for messages like `successfully acquired lease` in the operator logs.
 
 ## Resource Requests for 3 Replicas
 
