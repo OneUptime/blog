@@ -178,7 +178,8 @@ kubectl apply -f kubernetes/production/resiliency.yaml -n production
 ```
 
 ```yaml
-# Reference the correct resiliency policy in app config
+# Note: Resiliency became stable in Dapr v1.10 and no longer requires a feature flag.
+# The following Configuration is only needed for Dapr v1.7 through v1.9:
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
@@ -196,12 +197,12 @@ spec:
 # Inject failures to test circuit breaker in staging
 # Use chaos engineering tool or manual endpoint failure
 
-# Check circuit breaker state via Dapr metrics
+# Check circuit breaker state via Dapr dashboard
 kubectl port-forward svc/dapr-dashboard 8080:8080 -n dapr-system
-# Access http://localhost:8080 -> Resiliency tab
+# Access http://localhost:8080 to view components and configurations
 
 # View resiliency metrics via Prometheus
-curl http://localhost:9090/api/v1/query?query=dapr_resiliency_count_total
+curl http://localhost:9090/api/v1/query?query=dapr_resiliency_count
 ```
 
 ## Summary
