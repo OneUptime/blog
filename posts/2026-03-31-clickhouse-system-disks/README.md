@@ -158,7 +158,7 @@ JOIN system.disks d ON p.disk_name = d.name
 WHERE p.active = 1
   AND p.database = currentDatabase()
 GROUP BY p.disk_name, d.type
-ORDER BY data_size DESC;
+ORDER BY sum(p.data_compressed_bytes) DESC;
 ```
 
 ## Summary
