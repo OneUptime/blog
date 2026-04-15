@@ -19,8 +19,8 @@ The default workload certificate TTL is 24 hours with a 15-minute clock skew all
 Check current settings:
 
 ```bash
-kubectl get configmap dapr-trust-bundle -n dapr-system -o yaml
-kubectl get configuration default -n dapr-system -o yaml 2>/dev/null || true
+kubectl get secret dapr-trust-bundle -n dapr-system -o yaml
+kubectl get configuration daprsystem -n dapr-system -o yaml 2>/dev/null || true
 ```
 
 ## Configuring Rotation via Dapr Configuration
@@ -31,7 +31,7 @@ Create or update the Dapr Configuration resource:
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
-  name: default
+  name: daprsystem
   namespace: dapr-system
 spec:
   mtls:
@@ -51,8 +51,8 @@ kubectl apply -f dapr-config.yaml
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_sentry.config.workloadCertTTL=12h \
-  --set dapr_sentry.config.allowedClockSkew=15m \
+  --set global.mtls.workloadCertTTL=12h \
+  --set global.mtls.allowedClockSkew=15m \
   --reuse-values
 ```
 
@@ -78,8 +78,8 @@ kubectl logs <pod-name> -c daprd | grep -i "cert\|renew\|rotation" | tail -20
 Expected log entries during rotation:
 
 ```bash
-time="2026-03-31T10:00:00Z" level=info msg="Renewing workload cert" app_id=my-service
-time="2026-03-31T10:00:01Z" level=info msg="Workload cert renewed successfully" app_id=my-service
+time="2026-03-31T10:00:00Z" level=info msg="Renewing workload identity" app_id=my-service
+time="2026-03-31T10:00:01Z" level=info msg="Successfully renewed workload identity" app_id=my-service
 ```
 
 ## Monitoring Certificate Expiry
@@ -88,7 +88,7 @@ Use Prometheus to alert on approaching certificate expiry:
 
 ```yaml
 - alert: DaprCertExpiresIn2Hours
-  expr: dapr_sentry_cert_expiry_timestamp - time() < 7200
+  expr: dapr_sentry_issuercert_expiry_timestamp - time() < 7200
   for: 5m
   labels:
     severity: warning
