@@ -12,12 +12,12 @@ ClickHouse exposes rich telemetry through its HTTP metrics endpoint and system t
 
 ## Prometheus Metrics
 
-ClickHouse exposes Prometheus metrics at `/metrics` on port 8001 by default. Enable it in `config.xml`:
+ClickHouse exposes Prometheus metrics at `/metrics` on port 9363 by default. Enable it in `config.xml`:
 
 ```xml
 <prometheus>
   <endpoint>/metrics</endpoint>
-  <port>8001</port>
+  <port>9363</port>
   <metrics>true</metrics>
   <events>true</events>
   <asynchronous_metrics>true</asynchronous_metrics>
@@ -34,10 +34,10 @@ ClickHouse exposes Prometheus metrics at `/metrics` on port 8001 by default. Ena
 
 ```text
 [ ] ClickHouseMetrics_Query - active queries count
-[ ] ClickHouseMetrics_MergesMutationsMemoryUsage - merge memory pressure
-[ ] ClickHouseProfileEvents_SlowReadFromFs - slow disk reads
-[ ] ClickHouseAsyncMetrics_ReplicaDelay - replication lag
-[ ] ClickHouseAsyncMetrics_DiskFree_data - disk space remaining
+[ ] ClickHouseMetrics_MergesMutationsMemoryTracking - merge memory pressure
+[ ] ClickHouseProfileEvents_SlowRead - slow disk reads
+[ ] ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay - replication lag
+[ ] ClickHouseAsyncMetrics_DiskAvailable_data - disk space remaining
 [ ] ClickHouseMetrics_BackgroundMergesAndMutationsPoolSize - merge queue depth
 ```
 
@@ -59,7 +59,7 @@ groups:
   - name: clickhouse
     rules:
       - alert: ClickHouseHighDiskUsage
-        expr: (1 - ClickHouseAsyncMetrics_DiskFree_data / ClickHouseAsyncMetrics_DiskTotal_data) > 0.8
+        expr: (1 - ClickHouseAsyncMetrics_DiskAvailable_data / ClickHouseAsyncMetrics_DiskTotal_data) > 0.8
         for: 5m
         labels:
           severity: warning
@@ -67,7 +67,7 @@ groups:
           summary: "ClickHouse disk usage above 80%"
 
       - alert: ClickHouseReplicationLag
-        expr: ClickHouseAsyncMetrics_ReplicaDelay > 300
+        expr: ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay > 300
         for: 2m
         labels:
           severity: critical
@@ -75,7 +75,7 @@ groups:
           summary: "ClickHouse replication lag > 5 minutes"
 
       - alert: ClickHouseHighMemoryUsage
-        expr: ClickHouseAsyncMetrics_MemoryResident / ClickHouseAsyncMetrics_MemoryPhysicalPages > 0.85
+        expr: ClickHouseAsyncMetrics_MemoryResident / ClickHouseAsyncMetrics_OSMemoryTotal > 0.85
         for: 5m
         labels:
           severity: warning
