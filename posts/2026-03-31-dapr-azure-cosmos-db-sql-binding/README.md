@@ -63,7 +63,7 @@ spec:
 
 ## Creating a Document
 
-The Cosmos DB binding uses the `create` operation to upsert a document:
+The Cosmos DB binding uses the `create` operation to insert a new document into the container. If a document with the same `id` and partition key already exists, a 409 Conflict error is returned:
 
 ```javascript
 const { DaprClient } = require("@dapr/dapr");
@@ -79,7 +79,6 @@ async function saveOrder(order) {
     shippingAddress: order.shippingAddress,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    _partitionKey: order.customerId,
   });
 
   console.log(`Order ${order.orderId} saved to Cosmos DB`);
@@ -176,4 +175,4 @@ async function safeSaveOrder(order) {
 
 ## Summary
 
-The Dapr Azure Cosmos DB SQL output binding provides a straightforward `create` operation for upserting JSON documents into a Cosmos DB container. Combined with Cosmos DB's flexible schema, TTL support, and global distribution, this binding is well suited for storing orders, events, sessions, and any other JSON data that benefits from low-latency reads and automatic scaling.
+The Dapr Azure Cosmos DB SQL output binding provides a straightforward `create` operation for inserting JSON documents into a Cosmos DB container. Combined with Cosmos DB's flexible schema, TTL support, and global distribution, this binding is well suited for storing orders, events, sessions, and any other JSON data that benefits from low-latency reads and automatic scaling.
