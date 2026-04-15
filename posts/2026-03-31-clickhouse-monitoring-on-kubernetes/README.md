@@ -74,9 +74,9 @@ ClickHouse exposes hundreds of metrics. The most important ones to monitor are:
 ```text
 ClickHouseMetrics_Query              - currently running queries
 ClickHouseMetrics_MemoryTracking     - memory currently in use
-ClickHouseProfileEvents_QueryTime    - cumulative query time
-ClickHouseAsyncMetrics_ReplicaDelay  - replication lag in seconds
-ClickHouseMetrics_BackgroundMerges   - active merge operations
+ClickHouseProfileEvents_SelectQueryTimeMicroseconds - cumulative select query time
+ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay     - replication lag in seconds
+ClickHouseMetrics_Merge              - active merge operations
 ```
 
 Query them directly for quick checks:
@@ -84,13 +84,13 @@ Query them directly for quick checks:
 ```sql
 SELECT metric, value
 FROM system.metrics
-WHERE metric IN ('Query', 'MemoryTracking', 'BackgroundMerges')
+WHERE metric IN ('Query', 'MemoryTracking', 'Merge')
 ORDER BY metric;
 ```
 
 ## Grafana Dashboard Setup
 
-Import the official ClickHouse Grafana dashboard (ID 14192) or create custom panels. A useful PromQL expression for query rate:
+Import the popular ClickHouse community Grafana dashboard (ID 14192) or create custom panels. A useful PromQL expression for query rate:
 
 ```text
 rate(ClickHouseProfileEvents_Query[5m])
@@ -123,7 +123,7 @@ spec:
           annotations:
             summary: "ClickHouse memory usage above 14GB"
         - alert: ClickHouseReplicaDelay
-          expr: ClickHouseAsyncMetrics_ReplicaDelay > 300
+          expr: ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay > 300
           for: 2m
           labels:
             severity: critical
