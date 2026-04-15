@@ -95,23 +95,24 @@ GROUP BY event_hour, event_type;
 
 ## Live Counter Query Pattern
 
-For truly real-time counters (last few minutes), combine the materialized view with a union of the raw table:
+When you need finer time granularity than the daily counter provides, combine pre-aggregated historical counts with a raw scan for the current day. Exclude today from the materialized view query to avoid double counting, since ClickHouse materialized views populate synchronously on insert:
 
 ```sql
 SELECT event_type, sum(cnt) AS total
 FROM (
-    -- From pre-aggregated view (fast, covers historical data)
+    -- From pre-aggregated view (fast, covers completed days)
     SELECT event_type, sum(count) AS cnt
     FROM event_counts
-    WHERE event_date >= today()
+    WHERE event_date >= today() - 30
+      AND event_date < today()
     GROUP BY event_type
 
     UNION ALL
 
-    -- Direct from raw (covers last 5 minutes not yet in MV)
+    -- Direct from raw (covers today with full granularity)
     SELECT event_type, count() AS cnt
     FROM events
-    WHERE event_time >= now() - INTERVAL 5 MINUTE
+    WHERE event_time >= toStartOfDay(now())
     GROUP BY event_type
 )
 GROUP BY event_type;
