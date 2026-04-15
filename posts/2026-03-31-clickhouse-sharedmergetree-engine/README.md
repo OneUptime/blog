@@ -73,7 +73,7 @@ One key advantage is that you can add or remove compute nodes without moving dat
 
 ## Mutations and Lightweight Deletes
 
-SharedMergeTree supports lightweight deletes introduced in ClickHouse 23.3:
+SharedMergeTree supports lightweight deletes, available since ClickHouse 22.8 and generally available since 23.3:
 
 ```sql
 -- Mark rows for deletion
@@ -91,10 +91,13 @@ WHERE table = 'events'
 ClickHouse Cloud creates engine variants based on your CREATE TABLE engine choice:
 
 ```text
-MergeTree              -> SharedMergeTree
-ReplacingMergeTree     -> SharedReplacingMergeTree
-SummingMergeTree       -> SharedSummingMergeTree
-AggregatingMergeTree   -> SharedAggregatingMergeTree
+MergeTree                      -> SharedMergeTree
+ReplacingMergeTree             -> SharedReplacingMergeTree
+SummingMergeTree               -> SharedSummingMergeTree
+AggregatingMergeTree           -> SharedAggregatingMergeTree
+CollapsingMergeTree            -> SharedCollapsingMergeTree
+VersionedCollapsingMergeTree   -> SharedVersionedCollapsingMergeTree
+GraphiteMergeTree              -> SharedGraphiteMergeTree
 ```
 
 You can use the specialized engines as you would on self-hosted, but the underlying storage and coordination are handled via SharedMergeTree infrastructure.
