@@ -18,10 +18,10 @@ ClickHouse provides several EXPLAIN modes:
 -- Parse tree (AST)
 EXPLAIN AST SELECT count() FROM events WHERE date = today();
 
--- Optimized query plan
-EXPLAIN SELECT count() FROM events WHERE date = today();
+-- Query text after AST-level optimizations
+EXPLAIN SYNTAX SELECT count() FROM events WHERE date = today();
 
--- Detailed execution plan
+-- Query execution plan (EXPLAIN without a keyword defaults to PLAN)
 EXPLAIN PLAN SELECT count() FROM events WHERE date = today();
 
 -- Processor pipeline
@@ -54,31 +54,42 @@ Expression ((Projection + Before ORDER BY))
         Expression (Before GROUP BY)
           Filter (WHERE)
             ReadFromMergeTree (analytics.events)
-            ReadType: Range
+            ReadType: Default
             Parts: 12
             Granules: 348
 ```
 
 Key things to look for:
 
-- `ReadFromMergeTree` - table scan
+- `ReadFromMergeTree` - table scan from a MergeTree-family table
 - `Parts` - number of data parts being read (fewer is better)
 - `Granules` - number of 8192-row blocks being read (fewer is better)
-- `ReadType: Range` - using primary key for range scan (good)
-- `ReadType: All` - full table scan (bad - check your ORDER BY key)
+- `ReadType: Default` - standard parallel read
+- `ReadType: InOrder` - reading data in primary key order (used with ORDER BY matching the primary key)
+- `ReadType: InReverseOrder` - reading data in reverse primary key order
 
 ## Identifying Full Table Scans
 
-A full scan shows `ReadType: All`:
+Use `EXPLAIN PLAN indexes=1` to see how many parts and granules survive index filtering:
+
+```sql
+EXPLAIN PLAN indexes=1
+SELECT count() FROM analytics.events WHERE user_id = 12345;
+```
 
 ```text
 ReadFromMergeTree (analytics.events)
-ReadType: All
-Parts: 892
-Granules: 45231
+ReadType: Default
+Parts: 892/892
+Granules: 45231/45231
+PrimaryKey
+  Keys: user_id
+  Condition: true
+  Parts: 892/892
+  Granules: 45231/45231
 ```
 
-This means the WHERE clause is not using the primary key. Check if your filter column is in the table's `ORDER BY` definition.
+When the "after" count equals the "before" count (e.g., `Parts: 892/892`), no pruning happened — the query reads all data. This means the WHERE clause is not effectively using the primary key. Check if your filter column is in the table's `ORDER BY` definition.
 
 ## Reading Filter Pushdown
 
@@ -106,12 +117,12 @@ ExpressionTransform
   (Filter)
   FilterTransform
     (ReadFromMergeTree)
-    MergeTreeInOrder 0 -> 1
-    MergeTreeInOrder 0 -> 1
-    MergeTreeInOrder 0 -> 1
+    MergeTreeThread 0 -> 1
+    MergeTreeThread 0 -> 1
+    MergeTreeThread 0 -> 1
 ```
 
-The number of parallel `MergeTreeInOrder` processors shows parallelism. If you see only 1, consider `max_threads` settings.
+The number of parallel `MergeTreeThread` processors shows parallelism. If you see only 1, consider `max_threads` settings. You may also see `MergeTreeInOrder` processors when the query reads data in primary key order.
 
 ## EXPLAIN ESTIMATE
 
@@ -135,8 +146,8 @@ Use this to estimate scan cost before running the actual query.
 When you see these patterns, investigate:
 
 ```text
--- Full scan: add or fix ORDER BY key
-ReadType: All, Parts: 1000+
+-- Full scan (Parts after = Parts before in indexes=1): add or fix ORDER BY key
+Parts: 1000/1000, Granules: 50000/50000
 
 -- Missing join optimization: rewrite as subquery or use IN
 HashJoin with large right table
