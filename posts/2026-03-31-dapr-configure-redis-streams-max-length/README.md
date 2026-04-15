@@ -10,7 +10,7 @@ Description: Configure Redis Streams max length and trimming strategies in the D
 
 ## Overview
 
-Dapr uses Redis Streams as a pub/sub transport. Without max length limits, streams grow unboundedly and consume all available Redis memory. This guide covers `maxLenApprox`, exact trimming, and consumer group configuration.
+Dapr uses Redis Streams as a pub/sub transport. Without max length limits, streams grow unboundedly and consume all available Redis memory. This guide covers `maxLenApprox`, time-based trimming with `streamTTL`, and consumer group configuration.
 
 ## Configuring Redis Streams Pub/Sub
 
@@ -51,12 +51,14 @@ spec:
 XADD mystream MAXLEN ~ 10000 * field value
 ```
 
-For exact trimming (slower but precise), set `maxLen` instead:
+For time-based trimming, use `streamTTL` instead, which evicts entries older than the specified duration:
 
 ```yaml
-  - name: maxLen
-    value: "10000"
+  - name: streamTTL
+    value: "30m"
 ```
+
+Note: `maxLenApprox` and `streamTTL` cannot be used together.
 
 ## Monitoring Stream Length
 
@@ -127,4 +129,4 @@ Messages not acknowledged within `processingTimeout` are redelivered after `rede
 
 ## Summary
 
-Configure `maxLenApprox` in Dapr's Redis Streams pub/sub component to prevent unbounded stream growth. Use approximate trimming for high-throughput topics and exact trimming when precise retention is required. Monitor stream length and pending consumer entries to detect backlogs before they impact downstream services.
+Configure `maxLenApprox` in Dapr's Redis Streams pub/sub component to prevent unbounded stream growth. Use approximate length-based trimming for high-throughput topics and time-based trimming with `streamTTL` when duration-based retention is required. Monitor stream length and pending consumer entries to detect backlogs before they impact downstream services.
