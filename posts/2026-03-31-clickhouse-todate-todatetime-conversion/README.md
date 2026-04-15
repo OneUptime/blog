@@ -41,7 +41,7 @@ Strings in other formats require `toDateOrNull` with explicit parsing or `parseD
 
 ```sql
 SELECT
-    toDateOrNull('31/03/2026')    AS us_format,   -- NULL (unsupported)
+    toDateOrNull('31/03/2026')    AS eu_format,   -- NULL (unsupported)
     toDateOrZero('not-a-date')    AS bad_input;    -- 1970-01-01
 ```
 
@@ -62,8 +62,8 @@ Many external systems - log aggregators, Kafka producers, JavaScript clients - s
 
 ```sql
 SELECT
-    toDateTime(1743430427)         AS from_epoch,
-    toDate(1743430427)             AS date_only;
+    toDateTime(1774966427)         AS from_epoch,
+    toDate(1774966427)             AS date_only;
 -- Result: 2026-03-31 14:13:47 | 2026-03-31
 ```
 
@@ -71,7 +71,7 @@ For millisecond-precision timestamps, use `toDateTime64` with scale 3:
 
 ```sql
 SELECT
-    toDateTime64(1743430427000, 3) AS from_millis;
+    toDateTime64(1774966427000, 3) AS from_millis;
 -- Result: 2026-03-31 14:13:47.000
 ```
 
