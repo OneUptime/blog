@@ -22,7 +22,7 @@ system.metrics   -- real-time metric gauges
 
 ## Checking Active Part Count per Table
 
-A healthy table should have well under 1000 active parts per partition.
+A healthy table should have well under 150 active parts per partition. ClickHouse starts delaying inserts at 150 parts per partition (`parts_to_delay_insert`) and rejects them entirely at 300 (`parts_to_throw_insert`).
 
 ```sql
 SELECT
@@ -95,8 +95,8 @@ SELECT metric, value
 FROM system.metrics
 WHERE metric IN (
     'BackgroundMergesAndMutationsPoolTask',
-    'BackgroundPoolTask',
-    'ActiveAsyncWriterThreads'
+    'BackgroundMovePoolTask',
+    'BackgroundFetchesPoolTask'
 );
 ```
 
@@ -134,8 +134,8 @@ FROM (
     WHERE active = 1
     GROUP BY table, partition
 )
-WHERE max_parts_per_partition > 300
-GROUP BY table;
+GROUP BY table
+HAVING max_parts_per_partition > 300;
 ```
 
 ## Triggering Manual Merges
@@ -143,7 +143,7 @@ GROUP BY table;
 If background merges are too slow, you can trigger a manual merge for a specific partition:
 
 ```sql
-OPTIMIZE TABLE events PARTITION '202603';
+OPTIMIZE TABLE events PARTITION 202603;
 ```
 
 In production, use sparingly - manual OPTIMIZE competes with background merges and can block inserts.
