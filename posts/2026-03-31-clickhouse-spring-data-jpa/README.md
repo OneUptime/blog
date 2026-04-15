@@ -23,6 +23,7 @@ Spring Data JPA was designed for OLTP databases, but ClickHouse's JDBC driver is
     <groupId>com.clickhouse</groupId>
     <artifactId>clickhouse-jdbc</artifactId>
     <version>0.6.0</version>
+    <classifier>all</classifier>
 </dependency>
 ```
 
