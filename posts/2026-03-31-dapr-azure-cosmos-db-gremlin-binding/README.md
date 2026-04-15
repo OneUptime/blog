@@ -46,7 +46,7 @@ metadata:
   name: social-graph
   namespace: default
 spec:
-  type: bindings.azure.cosmosdb.gremlin
+  type: bindings.azure.cosmosdb.gremlinapi
   version: v1
   metadata:
     - name: url
@@ -76,9 +76,8 @@ async function addUser(userId, name, email) {
   await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.addV('user')
+      gremlin: `g.addV('user')
         .property('id', '${userId}')
         .property('userId', '${userId}')
         .property('name', '${name}')
@@ -93,9 +92,8 @@ async function addFriendship(userId1, userId2) {
   await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${userId1}').addE('friends').to(g.V('${userId2}'))
+      gremlin: `g.V('${userId1}').addE('friends').to(g.V('${userId2}'))
                .property('since', '${new Date().toISOString()}')`,
     }
   );
@@ -109,9 +107,8 @@ async function getFriends(userId) {
   const result = await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${userId}').out('friends').valueMap('id', 'name', 'email')`,
+      gremlin: `g.V('${userId}').out('friends').valueMap('id', 'name', 'email')`,
     }
   );
   return result;
@@ -121,9 +118,8 @@ async function getFriendsOfFriends(userId) {
   const result = await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${userId}').out('friends').out('friends')
+      gremlin: `g.V('${userId}').out('friends').out('friends')
                .where(__.not(__.in('friends').hasId('${userId}')))
                .dedup()
                .valueMap('id', 'name')
@@ -141,9 +137,8 @@ async function areFriends(userId1, userId2) {
   const result = await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${userId1}').out('friends').hasId('${userId2}').count()`,
+      gremlin: `g.V('${userId1}').out('friends').hasId('${userId2}').count()`,
     }
   );
   return result[0] > 0;
@@ -153,9 +148,8 @@ async function shortestPath(fromUserId, toUserId) {
   const result = await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${fromUserId}').repeat(out('friends').simplePath())
+      gremlin: `g.V('${fromUserId}').repeat(out('friends').simplePath())
                .until(hasId('${toUserId}'))
                .path()
                .by('name')
@@ -173,9 +167,8 @@ async function removeFriendship(userId1, userId2) {
   await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${userId1}').outE('friends').where(__.inV().hasId('${userId2}')).drop()`,
+      gremlin: `g.V('${userId1}').outE('friends').where(__.inV().hasId('${userId2}')).drop()`,
     }
   );
 }
@@ -184,9 +177,8 @@ async function deleteUser(userId) {
   await client.binding.send(
     "social-graph",
     "query",
-    null,
     {
-      query: `g.V('${userId}').drop()`,
+      gremlin: `g.V('${userId}').drop()`,
     }
   );
 }
