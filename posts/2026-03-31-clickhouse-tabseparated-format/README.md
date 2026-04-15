@@ -26,7 +26,7 @@ This format is ideal for:
 | `TabSeparatedWithNamesAndTypes` | First row names, second row types |
 | `TabSeparatedRawWithNames` | Raw TSV with header row |
 | `TSV` | Alias for TabSeparated |
-| `TSVV` | Alias for TabSeparatedWithNamesAndTypes |
+| `TSVWithNamesAndTypes` | Alias for TabSeparatedWithNamesAndTypes |
 
 ## Reading a TSV File
 
