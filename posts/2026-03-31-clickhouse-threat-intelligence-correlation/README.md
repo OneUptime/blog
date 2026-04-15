@@ -65,7 +65,7 @@ SELECT
     t.source AS intel_source,
     e.event_time
 FROM internal_events e
-JOIN threat_intel_iocs t FINAL
+JOIN threat_intel_iocs FINAL AS t
     ON CAST(e.source_ip AS String) = t.ioc_value
     AND t.ioc_type = 'ip'
 WHERE e.event_time >= now() - INTERVAL 24 HOUR
@@ -85,7 +85,7 @@ SELECT
     t.confidence,
     count() AS hit_count
 FROM internal_events e
-JOIN threat_intel_iocs t FINAL
+JOIN threat_intel_iocs FINAL AS t
     ON e.domain = t.ioc_value
     AND t.ioc_type = 'domain'
 WHERE e.event_time >= now() - INTERVAL 24 HOUR
@@ -106,7 +106,7 @@ SELECT
     min(e.event_time) AS first_hit,
     max(e.event_time) AS last_hit
 FROM internal_events e
-JOIN threat_intel_iocs t FINAL
+JOIN threat_intel_iocs FINAL AS t
     ON CAST(e.source_ip AS String) = t.ioc_value
     AND t.ioc_type = 'ip'
 WHERE e.event_time >= now() - INTERVAL 7 DAY
