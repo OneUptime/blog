@@ -58,14 +58,6 @@ spec:
       key: accessKey
   - name: Endpoint
     value: "cn-hangzhou.log.aliyuncs.com"
-  - name: Project
-    value: "dapr-logs"
-  - name: LogStore
-    value: "app-events"
-  - name: Topic
-    value: "order-service"
-  - name: Source
-    value: "kubernetes"
 ```
 
 ## Writing Log Entries
@@ -79,6 +71,12 @@ curl -X POST http://localhost:3500/v1.0/bindings/alibaba-sls \
       "userId": "user-42",
       "action": "order_created",
       "amount": 99.99
+    },
+    "metadata": {
+      "project": "dapr-logs",
+      "logstore": "app-events",
+      "topic": "order-service",
+      "source": "kubernetes"
     },
     "operation": "create"
   }'
@@ -102,7 +100,14 @@ public class OrderService {
             "service", "order-service"
         );
 
-        client.invokeBinding("alibaba-sls", "create", logData).block();
+        Map<String, String> metadata = Map.of(
+            "project", "dapr-logs",
+            "logstore", "app-events",
+            "topic", "order-service",
+            "source", "kubernetes"
+        );
+
+        client.invokeBinding("alibaba-sls", "create", logData, metadata).block();
     }
 }
 ```
@@ -118,6 +123,13 @@ const { DaprClient } = require("@dapr/dapr");
 const app = express();
 const daprClient = new DaprClient();
 
+const slsMetadata = {
+    project: "dapr-logs",
+    logstore: "app-events",
+    topic: "audit-service",
+    source: "kubernetes"
+};
+
 app.use(async (req, res, next) => {
     const start = Date.now();
     res.on("finish", async () => {
@@ -127,7 +139,7 @@ app.use(async (req, res, next) => {
             statusCode: res.statusCode,
             duration: Date.now() - start,
             appId: process.env.APP_ID
-        });
+        }, slsMetadata);
     });
     next();
 });
