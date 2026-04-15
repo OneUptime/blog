@@ -28,7 +28,7 @@ Every service publishes structured error events to a shared topic:
 ```python
 from dapr.clients import DaprClient
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def publish_error_event(service_id: str, error_type: str, message: str, context: dict):
     with DaprClient() as client:
@@ -37,7 +37,7 @@ def publish_error_event(service_id: str, error_type: str, message: str, context:
             "errorType": error_type,
             "message": message,
             "context": context,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "severity": classify_severity(error_type)
         }
         client.publish_event(
@@ -60,11 +60,19 @@ def classify_severity(error_type: str) -> str:
 A dedicated escalation service subscribes to error events and maintains failure counters in state store:
 
 ```python
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from dapr.clients import DaprClient
 import json
 
 app = Flask(__name__)
+
+@app.route("/dapr/subscribe", methods=["GET"])
+def subscribe():
+    subscriptions = [
+        {"pubsubname": "platform-pubsub", "topic": "service-errors", "route": "/service-errors"},
+        {"pubsubname": "platform-pubsub", "topic": "service-recovered", "route": "/service-recovered"},
+    ]
+    return json.dumps(subscriptions), 200, {"Content-Type": "application/json"}
 
 @app.route("/service-errors", methods=["POST"])
 def handle_error_event():
