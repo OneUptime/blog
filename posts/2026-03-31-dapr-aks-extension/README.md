@@ -54,9 +54,7 @@ az k8s-extension create \
   --configuration-settings \
     global.ha.enabled=true \
     dapr_operator.replicaCount=2 \
-    dapr_sentry.replicaCount=2 \
-    dapr_placement.replicaCount=3 \
-    dapr_dashboard.enabled=true
+    dapr_sentry.replicaCount=2
 ```
 
 ## Verify the Installation
@@ -72,9 +70,13 @@ az k8s-extension list \
 # Check Dapr pods
 kubectl get pods -n dapr-system
 
-# Check Dapr version
-kubectl get configuration/daprsystem -n dapr-system \
-  -o jsonpath='{.status.daprVersion}'
+# Check Dapr version via AKS extension
+az k8s-extension show \
+  --resource-group my-rg \
+  --cluster-name my-aks-cluster \
+  --cluster-type managedClusters \
+  --name dapr \
+  --query version
 ```
 
 ## Update the Extension
