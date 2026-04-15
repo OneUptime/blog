@@ -170,7 +170,7 @@ LIMIT 10;
 
 ## Using the mongodb() Table Function
 
-For one-off queries:
+For one-off queries, use the `mongodb()` table function. Unlike the engine, the table function requires a `structure` parameter that defines column names and types.
 
 ```sql
 SELECT
@@ -182,7 +182,8 @@ FROM mongodb(
     'ecommerce',
     'users',
     'ch_reader',
-    'secret'
+    'secret',
+    '_id String, username String, email String, plan String, country String, created_at DateTime, is_active UInt8'
 )
 WHERE plan = 'free'
   AND is_active = 0
@@ -191,7 +192,7 @@ LIMIT 100;
 
 ## Replica Set Connection
 
-Connect to a MongoDB replica set by specifying the replica set URI.
+Connect to a MongoDB replica set by specifying the replica set URI. When using the URI format, include the credentials and database in the URI itself. The engine takes only two parameters: the URI and the collection name.
 
 ```sql
 CREATE TABLE mongo_orders_rs
@@ -203,11 +204,8 @@ CREATE TABLE mongo_orders_rs
     created_at  DateTime
 )
 ENGINE = MongoDB(
-    'mongodb://mongo-rs-01:27017,mongo-rs-02:27017,mongo-rs-03:27017/?replicaSet=myReplSet',
-    'orders_db',
-    'orders',
-    'reader',
-    'secret'
+    'mongodb://reader:secret@mongo-rs-01:27017,mongo-rs-02:27017,mongo-rs-03:27017/orders_db?replicaSet=myReplSet',
+    'orders'
 );
 ```
 
@@ -239,7 +237,7 @@ Int64               Int64
 Double              Float64
 Boolean             UInt8
 Date                DateTime
-Array               String (JSON-serialized)
+Array               Array or String (JSON-serialized)
 Document/Object     String (JSON-serialized)
 Null                Nullable(T)
 ```
