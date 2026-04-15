@@ -55,8 +55,7 @@ SELECT
     last_exception,
     last_attempt_time,
     num_postponed,
-    postpone_reason,
-    fetch_started_time
+    postpone_reason
 FROM system.replication_queue
 ORDER BY create_time ASC
 LIMIT 50;
@@ -121,36 +120,36 @@ GROUP BY database, table
 ORDER BY total DESC;
 ```
 
-## Using system.metric_log for Historical Trends
+## Using system.asynchronous_metric_log for Historical Trends
 
-If you have `metric_log` enabled, you can query historical replication metrics:
+If you have `asynchronous_metric_log` enabled, you can query historical replication metrics. Check if the table exists:
 
 ```sql
--- Check if metric_log is enabled
-SELECT name, value FROM system.settings WHERE name = 'log_queries';
+-- Check if asynchronous_metric_log is enabled
+SELECT count() FROM system.tables WHERE database = 'system' AND name = 'asynchronous_metric_log';
 
--- Enable metric_log in config.d/metric_log.xml
+-- Enable asynchronous_metric_log in config.d/asynchronous_metric_log.xml
 ```
 
 ```xml
 <clickhouse>
-    <metric_log>
+    <asynchronous_metric_log>
         <database>system</database>
-        <table>metric_log</table>
-        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
-        <collect_interval_milliseconds>1000</collect_interval_milliseconds>
-    </metric_log>
+        <table>asynchronous_metric_log</table>
+        <flush_interval_milliseconds>7000</flush_interval_milliseconds>
+    </asynchronous_metric_log>
 </clickhouse>
 ```
 
 ```sql
--- Query historical replication queue depth
+-- Query historical replication delay and queue depth
 SELECT
     toStartOfMinute(event_time) AS minute,
-    avg(ReplicasMaxAbsoluteDelay) AS avg_max_delay,
-    avg(ReplicasSumQueueSize)     AS avg_queue_size
-FROM system.metric_log
+    avgIf(value, metric = 'ReplicasMaxAbsoluteDelay') AS avg_max_delay,
+    avgIf(value, metric = 'ReplicasSumQueueSize')     AS avg_queue_size
+FROM system.asynchronous_metric_log
 WHERE event_time > now() - INTERVAL 1 DAY
+  AND metric IN ('ReplicasMaxAbsoluteDelay', 'ReplicasSumQueueSize')
 GROUP BY minute
 ORDER BY minute;
 ```
@@ -161,10 +160,10 @@ ClickHouse exposes a Prometheus metrics endpoint. Scrape it and alert on these m
 
 ```text
 # Replication queue size (number of pending tasks)
-ClickHouseMetrics_ReplicasMaxQueueSize
+ClickHouseAsyncMetrics_ReplicasMaxQueueSize
 
 # Maximum absolute delay across all replicated tables on this node
-ClickHouseMetrics_ReplicasMaxAbsoluteDelay
+ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay
 
 # Number of replicas in read-only mode (ZooKeeper disconnected)
 ClickHouseMetrics_ReadonlyReplica
@@ -218,28 +217,23 @@ SELECT
     database,
     table,
     queue_size,
-    absolute_delay,
-    -- rough estimate: parts per second being fetched
-    ProfileEvents['ReplicatedPartFetches'] AS parts_fetched_total
+    absolute_delay
 FROM system.replicas
 WHERE table = 'events';
 ```
 
-You can also check the current fetch speed in bytes:
+You can also check the cumulative replication event counters since server start:
 
 ```sql
 SELECT
-    event_time,
-    name,
+    event AS name,
     value
 FROM system.events
-WHERE name IN (
+WHERE event IN (
     'ReplicatedPartFetches',
     'ReplicatedPartFetchesOfMerged',
     'ReplicatedDataLoss'
-)
-ORDER BY event_time DESC
-LIMIT 10;
+);
 ```
 
 The `ReplicatedDataLoss` counter should always be 0. If it is not, a part was lost and cannot be recovered from other replicas. Investigate immediately.
