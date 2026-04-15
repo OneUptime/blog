@@ -66,17 +66,17 @@ ALTER TABLE events MOVE PART 'all_0_100_5' TO DISK 'sata_ssd';
 
 ## Checking Move Progress
 
-Monitor ongoing moves:
+Monitor ongoing moves using the `system.moves` table:
 
 ```sql
 SELECT
+    database,
     table,
-    partition_id,
+    part_name,
+    target_disk_name,
     elapsed,
-    progress,
-    result_part_name
-FROM system.merges
-WHERE merge_type = 'MOVE_PART'
+    formatReadableSize(part_size) AS size
+FROM system.moves
 ORDER BY elapsed DESC;
 ```
 
@@ -88,6 +88,8 @@ To move all future data for a table to a different policy:
 -- Change storage policy (does not move existing data)
 ALTER TABLE events MODIFY SETTING storage_policy = 'cold_only';
 ```
+
+The new policy must include all disks and volumes from the previous policy (with the same names). You can add new disks or volumes, but you cannot remove existing ones.
 
 This affects only new parts. Existing parts stay on their current disks until manually moved or until TTL rules trigger.
 
@@ -115,16 +117,20 @@ For server-to-server migration, combine FREEZE and rsync:
 # On source server: freeze the table
 clickhouse-client --query "ALTER TABLE events FREEZE WITH NAME 'migration_2026'"
 
-# Copy frozen data to new server
-rsync -av /var/lib/clickhouse/shadow/migration_2026/ new-server:/var/lib/clickhouse/shadow/migration_2026/
+# Copy frozen data to new server's detached directory
+# The table must already exist on the new server with the same structure
+rsync -av /var/lib/clickhouse/shadow/migration_2026/store/<shard>/<table>/ \
+    new-server:/var/lib/clickhouse/data/<database>/events/detached/
 
-# On new server: attach parts
-clickhouse-client --query "ALTER TABLE events ATTACH PARTITION ALL"
+# On new server: attach each partition
+clickhouse-client --query "ALTER TABLE events ATTACH PARTITION '202601'"
 
 # Cleanup freeze on source
 clickhouse-client --query "ALTER TABLE events UNFREEZE WITH NAME 'migration_2026'"
 ```
 
+Note: The frozen data must be copied into the target table's `detached/` directory, not the `shadow/` directory, before running `ATTACH`. You need to attach each partition individually.
+
 ## Summary
 
-ClickHouse provides `ALTER TABLE MOVE PARTITION` and `ALTER TABLE MOVE PART` for moving data between disks and volumes. Use partition-level moves for bulk migrations, part-level moves for surgical rebalancing, and monitor progress via `system.merges`. Changing `storage_policy` affects only future writes - use explicit MOVE commands to relocate existing data.
+ClickHouse provides `ALTER TABLE MOVE PARTITION` and `ALTER TABLE MOVE PART` for moving data between disks and volumes. Use partition-level moves for bulk migrations, part-level moves for surgical rebalancing, and monitor progress via `system.moves`. Changing `storage_policy` affects only future writes - use explicit MOVE commands to relocate existing data.
