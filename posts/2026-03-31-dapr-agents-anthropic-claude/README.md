@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Agent, Anthropic, Claude, LLM
 
-Description: Learn how to configure Dapr Agents to use Anthropic's Claude models, including tool use, extended thinking, and secure API key management.
+Description: Learn how to configure Dapr Agents to use Anthropic's Claude models, including tool use and secure API key management.
 
 ---
 
@@ -15,97 +15,114 @@ Anthropic's Claude models offer strong reasoning, long context windows, and reli
 ## Installation
 
 ```bash
-pip install dapr-agents anthropic
+pip install dapr-agents
 ```
 
 ## Configuring the Anthropic LLM Client
 
-```python
-from dapr_agents.llm import AnthropicChat
+Dapr Agents integrates with Anthropic Claude through the Dapr Conversation API. First, create a Dapr component configuration:
 
-llm = AnthropicChat(
-    model="claude-3-5-sonnet-20241022",
-    api_key="sk-ant-your-key",  # or ANTHROPIC_API_KEY env var
-    max_tokens=4096,
-    temperature=0.5
-)
+```yaml
+# components/llm-anthropic.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: llm-anthropic
+spec:
+  type: conversation.anthropic
+  version: v1
+  metadata:
+    - name: key
+      value: "<ANTHROPIC_API_KEY>"  # or use a Dapr secret store
+    - name: model
+      value: "claude-sonnet-4-20250514"
+```
+
+Then initialize the client in Python:
+
+```python
+from dapr_agents.llm import DaprChatClient
+
+llm = DaprChatClient(component_name="llm-anthropic")
 ```
 
 ## Building an Analysis Agent with Claude
 
 ```python
-import os
-from dapr_agents import Agent, tool
-from dapr_agents.llm import AnthropicChat
+from dapr_agents import DurableAgent, AgentRunner, tool
+from dapr_agents.llm import DaprChatClient
 
-class AnalysisAgent(Agent):
-    name = "analysis-agent"
-    instructions = """You are a data analysis expert. Use available tools
-    to analyze data, identify trends, and provide clear insights.
-    Always explain your reasoning step by step."""
+@tool
+def load_csv(filepath: str) -> str:
+    """Loads and parses a CSV file for analysis.
 
-    @tool
-    def load_csv(self, filepath: str) -> str:
-        """Loads and parses a CSV file for analysis.
+    Args:
+        filepath: Path to the CSV file to load.
+    """
+    import csv
+    rows = []
+    with open(filepath) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    return f"Loaded {len(rows)} rows with columns: {list(rows[0].keys()) if rows else []}"
 
-        Args:
-            filepath: Path to the CSV file to load.
-        """
-        import csv
-        rows = []
-        with open(filepath) as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-        return f"Loaded {len(rows)} rows with columns: {list(rows[0].keys()) if rows else []}"
+@tool
+def calculate_statistics(column: str, data: str) -> str:
+    """Calculates basic statistics for a numeric column.
 
-    @tool
-    def calculate_statistics(self, column: str, data: str) -> str:
-        """Calculates basic statistics for a numeric column.
-
-        Args:
-            column: Name of the column to analyze.
-            data: JSON string of data values.
-        """
-        import json
-        import statistics
-        values = [float(v) for v in json.loads(data) if v]
-        return (
-            f"Column '{column}': "
-            f"mean={statistics.mean(values):.2f}, "
-            f"median={statistics.median(values):.2f}, "
-            f"stdev={statistics.stdev(values):.2f}"
-        )
+    Args:
+        column: Name of the column to analyze.
+        data: JSON string of data values.
+    """
+    import json
+    import statistics
+    values = [float(v) for v in json.loads(data) if v]
+    return (
+        f"Column '{column}': "
+        f"mean={statistics.mean(values):.2f}, "
+        f"median={statistics.median(values):.2f}, "
+        f"stdev={statistics.stdev(values):.2f}"
+    )
 
 
-llm = AnthropicChat(
-    model="claude-3-5-sonnet-20241022",
-    api_key=os.environ["ANTHROPIC_API_KEY"]
+llm = DaprChatClient(component_name="llm-anthropic")
+
+agent = DurableAgent(
+    name="analysis-agent",
+    role="Data Analysis Expert",
+    instructions=[
+        "Use available tools to analyze data, identify trends, and provide clear insights.",
+        "Always explain your reasoning step by step."
+    ],
+    tools=[load_csv, calculate_statistics],
+    llm=llm
 )
 
-agent = AnalysisAgent(llm=llm)
-result = agent.run("Analyze the sales data in sales_q1.csv and identify the top performing products.")
-print(result)
+runner = AgentRunner()
+runner.serve(agent, port=8080)
 ```
 
 ## Using Claude's Extended Thinking
 
-Claude 3.7 Sonnet supports extended thinking mode for complex reasoning:
+Claude models support extended thinking mode for complex reasoning. This is a provider-specific feature accessed through the Anthropic API directly:
 
 ```python
-from dapr_agents.llm import AnthropicChat
+import anthropic
 
-llm = AnthropicChat(
-    model="claude-3-7-sonnet-20250219",
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=16000,
     thinking={
         "type": "enabled",
         "budget_tokens": 10000
     },
-    max_tokens=16000
+    messages=[{"role": "user", "content": "Solve this multi-step logistics optimization problem..."}]
 )
-
-agent = ComplexReasoningAgent(llm=llm)
-result = agent.run("Solve this multi-step logistics optimization problem...")
 ```
+
+Extended thinking is not directly configurable through Dapr's Conversation API abstraction. For agents requiring this feature, use the `anthropic` Python SDK (`pip install anthropic`) alongside Dapr for state management and coordination.
 
 ## Handling Claude's Long Context Window
 
@@ -113,7 +130,7 @@ Claude supports up to 200,000 token context windows. For document analysis agent
 
 ```python
 @tool
-def analyze_document(self, document_path: str) -> str:
+def analyze_document(document_path: str) -> str:
     """Analyzes a long document using Claude's extended context window."""
     with open(document_path) as f:
         content = f.read()
@@ -121,13 +138,21 @@ def analyze_document(self, document_path: str) -> str:
     return f"Document length: {len(content)} chars - ready for analysis"
 ```
 
-Configure the LLM with a high token limit:
+Configure the model in your Dapr component:
 
-```python
-llm = AnthropicChat(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=8192
-)
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: llm-anthropic
+spec:
+  type: conversation.anthropic
+  version: v1
+  metadata:
+    - name: key
+      value: "<ANTHROPIC_API_KEY>"
+    - name: model
+      value: "claude-sonnet-4-20250514"
 ```
 
 ## Storing Anthropic API Keys in Dapr
@@ -153,29 +178,46 @@ spec:
 }
 ```
 
+Reference the secret in your Anthropic conversation component:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: llm-anthropic
+spec:
+  type: conversation.anthropic
+  version: v1
+  metadata:
+    - name: key
+      secretKeyRef:
+        name: anthropic-api-key
+        key: anthropic-api-key
+    - name: model
+      value: "claude-sonnet-4-20250514"
+auth:
+  secretStore: secretstore
+```
+
+You can also retrieve secrets programmatically using the Dapr Python SDK:
+
 ```python
-from dapr import Client
+from dapr.clients import DaprClient
 
-client = Client()
-secret = client.get_secret("secretstore", "anthropic-api-key")
-
-llm = AnthropicChat(
-    model="claude-3-5-sonnet-20241022",
-    api_key=secret.secret["anthropic-api-key"]
-)
+with DaprClient() as client:
+    secret = client.get_secret(store_name="secretstore", key="anthropic-api-key")
+    api_key = secret.secret["anthropic-api-key"]
 ```
 
 ## Running with Dapr
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-your-key"
-
 dapr run --app-id analysis-agent \
   --app-port 8080 \
-  --components-path ./components \
+  --resources-path ./components \
   -- python agent.py
 ```
 
 ## Summary
 
-Dapr Agents supports Anthropic Claude through the `AnthropicChat` LLM client. Use Claude 3.5 Sonnet for tool-heavy agent tasks and Claude 3.7 Sonnet with extended thinking for complex multi-step reasoning. Leverage Claude's 200K token context window for document analysis agents, and secure API keys using Dapr secret stores.
+Dapr Agents supports Anthropic Claude through the Dapr Conversation API and the `DaprChatClient`. Configure Claude as a conversation component in your Dapr setup, then build agents using `DurableAgent` with standalone `@tool` functions. Leverage Claude's 200K token context window for document analysis agents, and secure API keys using Dapr secret stores.
