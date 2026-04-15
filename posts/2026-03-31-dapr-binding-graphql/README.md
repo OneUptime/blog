@@ -47,11 +47,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/graphql-api \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "query",
-    "data": {
+    "metadata": {
       "query": "query GetUser($id: ID!) { user(id: $id) { id name email } }",
-      "variables": {
-        "id": "user-123"
-      }
+      "variable:id": "user-123"
     }
   }'
 ```
@@ -63,15 +61,9 @@ curl -X POST http://localhost:3500/v1.0/bindings/graphql-api \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "mutation",
-    "data": {
+    "metadata": {
       "query": "mutation CreateOrder($input: OrderInput!) { createOrder(input: $input) { id status } }",
-      "variables": {
-        "input": {
-          "productId": "prod-456",
-          "quantity": 2,
-          "customerId": "cust-789"
-        }
-      }
+      "variable:input": "{\"productId\": \"prod-456\", \"quantity\": 2, \"customerId\": \"cust-789\"}"
     }
   }'
 ```
@@ -81,7 +73,7 @@ curl -X POST http://localhost:3500/v1.0/bindings/graphql-api \
 ```typescript
 interface GraphQLRequest {
   query: string;
-  variables?: Record<string, unknown>;
+  variables?: Record<string, string>;
 }
 
 interface GraphQLResponse<T> {
@@ -90,6 +82,16 @@ interface GraphQLResponse<T> {
 }
 
 async function executeGraphQL<T>(request: GraphQLRequest): Promise<T> {
+  const metadata: Record<string, string> = {
+    query: request.query,
+  };
+
+  if (request.variables) {
+    for (const [key, value] of Object.entries(request.variables)) {
+      metadata[`variable:${key}`] = value;
+    }
+  }
+
   const response = await fetch(
     "http://localhost:3500/v1.0/bindings/graphql-api",
     {
@@ -97,7 +99,7 @@ async function executeGraphQL<T>(request: GraphQLRequest): Promise<T> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         operation: "query",
-        data: request,
+        metadata,
       }),
     }
   );
@@ -138,9 +140,14 @@ GraphQL returns HTTP 200 even for operation errors. Check the `errors` field:
 import requests
 
 def query_graphql(query: str, variables: dict = None):
+    metadata = {"query": query}
+    if variables:
+        for key, value in variables.items():
+            metadata[f"variable:{key}"] = str(value)
+
     response = requests.post(
         "http://localhost:3500/v1.0/bindings/graphql-api",
-        json={"operation": "query", "data": {"query": query, "variables": variables or {}}},
+        json={"operation": "query", "metadata": metadata},
     )
     result = response.json()
     if "errors" in result:
@@ -150,4 +157,4 @@ def query_graphql(query: str, variables: dict = None):
 
 ## Summary
 
-The Dapr GraphQL output binding provides a clean API for executing queries and mutations against any GraphQL endpoint. Configure the endpoint URL and authentication headers in the component YAML, then invoke it with the operation type and query string from any service in your platform.
+The Dapr GraphQL output binding provides a clean API for executing queries and mutations against any GraphQL endpoint. Configure the endpoint URL and authentication headers in the component YAML, then invoke it with the operation type and pass the query and variables in the `metadata` field from any service in your platform.
