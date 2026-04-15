@@ -41,7 +41,7 @@ spec:
       key: secret-key
 ```
 
-SMTP email with attachment:
+SMTP email export:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -64,6 +64,8 @@ spec:
     secretKeyRef:
       name: smtp-secrets
       key: password
+  - name: emailFrom
+    value: exports@company.com
 ```
 
 ## Export Data to S3
@@ -115,26 +117,16 @@ def export_events_to_kafka(events: list):
 ## Send Report via Email Binding
 
 ```python
-def email_export_report(recipients: list, csv_path: str):
-    with open(csv_path, 'rb') as f:
-        csv_data = f.read()
-
-    import base64
-
+def email_export_report(recipients: list, report_body: str):
     with DaprClient() as client:
         client.invoke_binding(
             binding_name='email-export',
             operation='create',
-            data=json.dumps({
-                "toAddresses": recipients,
-                "subject": "Data Export - 2026-03-31",
-                "body": "Please find the attached data export.",
-                "attachments": [{
-                    "name": "export.csv",
-                    "contentType": "text/csv",
-                    "base64Content": base64.b64encode(csv_data).decode()
-                }]
-            })
+            data=report_body,
+            binding_metadata={
+                "emailTo": ";".join(recipients),
+                "subject": "Data Export - 2026-03-31"
+            }
         )
 ```
 
