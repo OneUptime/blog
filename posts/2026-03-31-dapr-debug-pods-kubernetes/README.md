@@ -73,15 +73,19 @@ curl http://localhost:3500/v1.0/metadata | jq '.subscriptions'
 curl http://localhost:3500/v1.0/state/statestore/my-key
 ```
 
-## Execute Commands in the Sidecar Container
+## Check Network Connectivity from the Application Container
+
+The daprd sidecar uses a distroless base image with no shell or networking tools. Run diagnostics from the application container instead:
 
 ```bash
-# Check network connectivity from inside the sidecar
-kubectl exec -it $POD -c daprd -- /bin/sh
+# Exec into the application container
+kubectl exec -it $POD -c myapp -- /bin/sh
 
 # Inside the container:
-# wget -O- http://redis-master:6379
-# nslookup dapr-api.dapr-system.svc.cluster.local
+# Check if the sidecar HTTP port is reachable
+# wget -O- http://localhost:3500/v1.0/healthz
+# Verify DNS resolution for a Dapr control plane service
+# nslookup dapr-sentry.dapr-system.svc.cluster.local
 ```
 
 ## Use the Dapr Dashboard
