@@ -27,14 +27,14 @@ FROM http_requests;
 
 ## median() vs medianExact()
 
-`median()` uses reservoir sampling and may return a slightly different result each run. `medianExact()` sorts all values and returns the true median.
+`median()` uses reservoir sampling and may return a slightly different result each run. `medianExact()` partially sorts all values and returns the true median.
 
 ```sql
 -- Approximate median (fast, uses sampling)
 SELECT median(latency_ms) AS approx_median
 FROM traces;
 
--- Exact median (sorts all values, accurate)
+-- Exact median (partially sorts all values, accurate)
 SELECT medianExact(latency_ms) AS exact_median
 FROM traces;
 ```
@@ -128,4 +128,4 @@ As a rule of thumb, use `medianExact()` for filtered queries over bounded datase
 
 ## Summary
 
-`median()` in ClickHouse is a convenient alias for `quantile(0.5)` that returns a fast approximate result using reservoir sampling. When accuracy is required, `medianExact()` provides the true median by sorting all values. For large datasets where accuracy and memory efficiency both matter, `medianTDigest()` offers a good balance. Use weighted variants (`medianExactWeighted()`) when working with pre-aggregated tables that include a count or weight column.
+`median()` in ClickHouse is a convenient alias for `quantile(0.5)` that returns a fast approximate result using reservoir sampling. When accuracy is required, `medianExact()` provides the true median by partially sorting all values. For large datasets where accuracy and memory efficiency both matter, `medianTDigest()` offers a good balance. Use weighted variants (`medianExactWeighted()`) when working with pre-aggregated tables that include a count or weight column.
