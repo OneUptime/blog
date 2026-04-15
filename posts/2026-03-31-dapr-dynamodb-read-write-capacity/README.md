@@ -120,7 +120,7 @@ def calculate_dynamodb_capacity(
 # Example: 200 writes/sec, 500 reads/sec, 2KB items
 cap = calculate_dynamodb_capacity(200, 500, 2.0)
 print(cap)
-# {"recommendedWCU": 520, "recommendedRCU": 326, "monthlyProvisionedCost": 279.55}
+# {"recommendedWCU": 520, "recommendedRCU": 650, "monthlyProvisionedCost": 308.42}
 ```
 
 ## Handling ProvisionedThroughputExceededException
