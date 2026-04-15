@@ -44,8 +44,7 @@ SETTINGS
     rabbitmq_format = 'JSONEachRow',
     rabbitmq_username = 'admin',
     rabbitmq_password = 'secret',
-    rabbitmq_num_consumers = 4,
-    rabbitmq_queue_size_limit = 50000;
+    rabbitmq_num_consumers = 4;
 ```
 
 ## Create Materialized View
@@ -91,6 +90,7 @@ ALTER TABLE events_rabbitmq_queue MODIFY SETTING rabbitmq_num_consumers = 8;
 ClickHouse acknowledges messages only after they are successfully written to the MergeTree table. If the insert fails, messages are re-queued. Enable persistent delivery mode in your publisher:
 
 ```python
+import json
 import pika
 
 connection = pika.BlockingConnection(pika.URLParameters('amqp://admin:secret@rabbitmq-host/'))
@@ -106,7 +106,7 @@ channel.basic_publish(
 ## Monitor Consumer Status
 
 ```sql
-SELECT * FROM system.rabbitmq_consumers;
+SELECT * FROM system.metrics WHERE metric LIKE '%RabbitMQ%';
 ```
 
 ## Summary
