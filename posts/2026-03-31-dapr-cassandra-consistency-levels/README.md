@@ -87,11 +87,8 @@ WITH replication = {
 } AND durable_writes = true;
 
 CREATE TABLE IF NOT EXISTS daprstate.state (
-    key         TEXT,
-    value       BLOB,
-    etag        TEXT,
-    expirytime  TIMESTAMP,
-    updatetime  TIMESTAMP,
+    key    TEXT,
+    value  BLOB,
     PRIMARY KEY (key)
 ) WITH default_time_to_live = 0
 AND compaction = {'class': 'LeveledCompactionStrategy'};
