@@ -31,20 +31,20 @@ The `clickhouse-exporter` reads from `system.metrics`, `system.events`, and `sys
 
 ```bash
 # Download the latest release
-wget https://github.com/Altinity/clickhouse-exporter/releases/latest/download/clickhouse-exporter-linux-amd64.tar.gz
+wget https://github.com/ClickHouse/clickhouse_exporter/releases/latest/download/clickhouse_exporter-linux-amd64.tar.gz
 
 # Extract
-tar -xzf clickhouse-exporter-linux-amd64.tar.gz
-sudo mv clickhouse-exporter /usr/local/bin/
+tar -xzf clickhouse_exporter-linux-amd64.tar.gz
+sudo mv clickhouse_exporter /usr/local/bin/
 
 # Verify installation
-clickhouse-exporter --version
+clickhouse_exporter --version
 ```
 
 Create a systemd service for the exporter:
 
 ```bash
-sudo tee /etc/systemd/system/clickhouse-exporter.service > /dev/null <<'EOF'
+sudo tee /etc/systemd/system/clickhouse_exporter.service > /dev/null <<'EOF'
 [Unit]
 Description=ClickHouse Prometheus Exporter
 After=network.target clickhouse-server.service
@@ -52,10 +52,10 @@ After=network.target clickhouse-server.service
 [Service]
 User=clickhouse
 EnvironmentFile=/etc/clickhouse-exporter/env
-ExecStart=/usr/local/bin/clickhouse-exporter \
-  --scrape_uri=http://localhost:8123/ \
-  --telemetry.address=:9116 \
-  --telemetry.endpoint=/metrics
+ExecStart=/usr/local/bin/clickhouse_exporter \
+  -scrape_uri=http://localhost:8123/ \
+  -telemetry.address=:9116 \
+  -telemetry.endpoint=/metrics
 Restart=on-failure
 RestartSec=5
 
@@ -86,8 +86,8 @@ Start the exporter:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable clickhouse-exporter
-sudo systemctl start clickhouse-exporter
+sudo systemctl enable clickhouse_exporter
+sudo systemctl start clickhouse_exporter
 
 # Verify metrics are exposed
 curl -s http://localhost:9116/metrics | head -30
@@ -173,10 +173,11 @@ ORDER BY metric;
 Install Grafana and add Prometheus as a data source:
 
 ```bash
-# Add Grafana repository
-sudo apt-get install -y software-properties-common
-sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
-wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+# Add Grafana GPG key and repository
+sudo apt-get install -y apt-transport-https software-properties-common wget
+sudo mkdir -p /etc/apt/keyrings
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
 # Install
 sudo apt-get update
@@ -242,14 +243,18 @@ ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay
 Import the official ClickHouse Grafana dashboard (ID 14192) as a starting point:
 
 ```bash
+# Fetch the dashboard JSON from grafana.com
+DASHBOARD_JSON=$(curl -s https://grafana.com/api/dashboards/14192/revisions/latest/download)
+
+# Import it into Grafana
 curl -X POST http://admin:admin@localhost:3000/api/dashboards/import \
   -H 'Content-Type: application/json' \
-  -d '{
-    "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}],
-    "folderId": 0,
-    "overwrite": true,
-    "path": "https://grafana.com/api/dashboards/14192/revisions/latest/download"
-  }'
+  -d "{
+    \"dashboard\": $DASHBOARD_JSON,
+    \"inputs\": [{\"name\": \"DS_PROMETHEUS\", \"type\": \"datasource\", \"pluginId\": \"prometheus\", \"value\": \"Prometheus\"}],
+    \"folderId\": 0,
+    \"overwrite\": true
+  }"
 ```
 
 ## Verifying the Full Pipeline
