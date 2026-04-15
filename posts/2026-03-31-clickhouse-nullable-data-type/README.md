@@ -119,7 +119,7 @@ ORDER BY event_id;
 Most aggregate functions ignore `NULL` values, following SQL standard behavior.
 
 ```sql
--- count() counts non-NULL values; countIf handles NULL implicitly
+-- count(expr) counts non-NULL values; count() counts all rows
 SELECT
     count(phone)       AS users_with_phone,
     count()            AS total_users,
