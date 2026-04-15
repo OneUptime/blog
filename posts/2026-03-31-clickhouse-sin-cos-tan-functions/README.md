@@ -58,7 +58,7 @@ FROM points;
 
 ## Calculating Bearing Between Two Points
 
-For simplified flat-earth bearing calculations you can combine `atan2`, `sin`, and `cos`:
+For great-circle bearing calculations you can combine `atan2`, `sin`, and `cos`:
 
 ```sql
 SELECT
@@ -95,4 +95,4 @@ ALTER TABLE sensor_readings
 
 ## Summary
 
-`sin()`, `cos()`, and `tan()` in ClickHouse follow standard mathematical conventions with angles in radians. They are useful for signal processing, waveform generation, 2D rotation, and simplified geospatial bearing calculations. Pair them with `radians()` and `degrees()` for smooth conversion, and with `asin()`, `acos()`, `atan2()` when you need the inverse operations.
+`sin()`, `cos()`, and `tan()` in ClickHouse follow standard mathematical conventions with angles in radians. They are useful for signal processing, waveform generation, 2D rotation, and geospatial bearing calculations. Pair them with `radians()` and `degrees()` for smooth conversion, and with `asin()`, `acos()`, `atan2()` when you need the inverse operations.
