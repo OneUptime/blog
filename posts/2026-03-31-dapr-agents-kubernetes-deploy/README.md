@@ -159,7 +159,7 @@ metadata:
 spec:
   tracing:
     samplingRate: "0.1"
-  metric:
+  metrics:
     enabled: true
 ```
 
