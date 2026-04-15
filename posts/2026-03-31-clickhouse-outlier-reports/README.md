@@ -90,11 +90,11 @@ mad_val AS (
 SELECT
     t.txn_id,
     t.amount,
-    abs(t.amount - m.med) / nullIf(d.mad, 0) AS modified_z_score
+    0.6745 * abs(t.amount - m.med) / nullIf(d.mad, 0) AS modified_z_score
 FROM transactions t
 CROSS JOIN median_val m
 CROSS JOIN mad_val d
-WHERE abs(t.amount - m.med) / nullIf(d.mad, 0) > 3.5
+WHERE 0.6745 * abs(t.amount - m.med) / nullIf(d.mad, 0) > 3.5
 ORDER BY modified_z_score DESC
 LIMIT 100;
 ```
