@@ -21,8 +21,6 @@ The native protocol is a custom binary format offering:
 - Used by `clickhouse-client` CLI and native drivers
 
 ```python
-import clickhouse_connect
-
 # Native protocol via clickhouse-driver
 from clickhouse_driver import Client
 
@@ -74,7 +72,7 @@ import clickhouse_connect
 client = clickhouse_connect.get_client(
     host="localhost",
     port=8123,
-    compress=True  # enables LZ4 compression over HTTP
+    compress=True  # enables compression over HTTP (LZ4 for inserts, zstd for query responses)
 )
 ```
 
