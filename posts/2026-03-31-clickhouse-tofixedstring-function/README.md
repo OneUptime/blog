@@ -106,14 +106,15 @@ LIMIT 10;
 
 ## Converting Back to String
 
-Use `toString()` to convert a `FixedString` back to a `String`. Note that the trailing null bytes will be included in the output.
+Use `toString()` to convert a `FixedString` back to a `String`. The trailing null bytes are automatically stripped during conversion.
 
 ```sql
--- Converting FixedString back to String includes null padding
+-- Converting FixedString back to String strips null padding
 SELECT
     toFixedString('hi', 5)                AS fixed,
     toString(toFixedString('hi', 5))      AS back_to_str,
-    trimRight(toString(toFixedString('hi', 5))) AS trimmed;
+    length(toFixedString('hi', 5))        AS fixed_len,    -- returns 5
+    length(toString(toFixedString('hi', 5))) AS str_len;   -- returns 2
 ```
 
 ## UUID Storage as FixedString
