@@ -29,7 +29,7 @@ spec:
     actorScanInterval: "30s"
     drainOngoingCallTimeout: "60s"
     drainRebalancedActors: true
-    reentrancyConfig:
+    reentrancy:
       enabled: false
 ```
 
@@ -68,15 +68,14 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The `preStop` hook adds a brief delay before Kubernetes sends SIGTERM, giving Dapr time to stop routing new requests to this pod.
+The `preStop` hook adds a brief delay before Kubernetes sends SIGTERM, allowing time for the pod's endpoint removal to propagate through kube-proxy so that new requests are no longer routed to this pod.
 
-## Implementing Actor Deactivation Cleanup
+## Implementing Actor State Persistence on Deactivation
 
 ```go
 package main
 
 import (
-    "context"
     "fmt"
     "github.com/dapr/go-sdk/actor"
 )
@@ -90,16 +89,12 @@ func (a *OrderActor) Type() string {
     return "OrderActor"
 }
 
-// Called before actor is deactivated/migrated
-func (a *OrderActor) OnDeactivate() error {
-    fmt.Printf("Actor %s deactivating - saving state\n", a.orderID)
-    // Save any in-memory state to the state store
-    return a.saveCheckpoint()
-}
-
-func (a *OrderActor) saveCheckpoint() error {
-    // Persist any critical in-memory state
-    return nil
+// SaveState is called when the actor is deactivated or migrated.
+// Override it to persist any critical in-memory state before deactivation.
+func (a *OrderActor) SaveState() error {
+    fmt.Printf("Actor %s saving state before deactivation\n", a.orderID)
+    // Persist any critical in-memory state via the state manager here
+    return a.ServerImplBaseCtx.SaveState()
 }
 ```
 
@@ -120,11 +115,10 @@ kubectl logs -f deploy/order-actor-service -c daprd | grep -i "drain\|deactivat"
 
 ```bash
 # Prometheus query for actor rebalancing events
-dapr_placement_actor_rebalanced_total
+dapr_runtime_actor_rebalanced_total
 
-# Actor activation/deactivation counts
-dapr_actor_activated_total
-dapr_actor_deactivated_total
+# Actor deactivation count
+dapr_runtime_actor_deactivated_total
 ```
 
 ## Tuning Drain Timeout
@@ -140,4 +134,4 @@ For actor operations exceeding 60 seconds, consider breaking them into workflow 
 
 ## Summary
 
-Configure `drainOngoingCallTimeout` and `drainRebalancedActors: true` in the Dapr actor configuration to ensure graceful actor migration during deployments. Set Kubernetes `terminationGracePeriodSeconds` to exceed the drain timeout, add a `preStop` hook for smooth request draining, and implement `OnDeactivate` to persist any in-memory state before migration.
+Configure `drainOngoingCallTimeout` and `drainRebalancedActors: true` in the Dapr actor configuration to ensure graceful actor migration during deployments. Set Kubernetes `terminationGracePeriodSeconds` to exceed the drain timeout, add a `preStop` hook for smooth request draining, and override `SaveState` to persist any in-memory state before migration.
