@@ -284,9 +284,9 @@ OPTIMIZE TABLE orders PARTITION '202603' FINAL;
 
 -- Check deduplication ratio
 SELECT
-    count()           AS total_rows,
-    count(DISTINCT order_id) AS unique_orders,
-    total_rows - unique_orders AS duplicates
+    count()                          AS total_rows,
+    count(DISTINCT order_id)         AS unique_orders,
+    count() - count(DISTINCT order_id) AS duplicates
 FROM orders;
 ```
 
