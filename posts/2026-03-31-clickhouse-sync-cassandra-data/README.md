@@ -22,10 +22,10 @@ cdc_raw_directory: /var/lib/cassandra/cdc_raw
 Enable CDC on a specific table:
 
 ```sql
-ALTER TABLE myapp.events WITH cdc = {'enabled': 'true'};
+ALTER TABLE myapp.events WITH cdc = true;
 ```
 
-Write a consumer that reads CDC mutation logs and inserts into ClickHouse:
+Write a consumer that polls Cassandra using token-based pagination and inserts into ClickHouse:
 
 ```python
 import cassandra.cluster
@@ -52,7 +52,6 @@ Use Debezium's Cassandra connector for CDC-based streaming:
 {
   "name": "cassandra-connector",
   "config": {
-    "connector.class": "io.debezium.connector.cassandra.CassandraConnector",
     "cassandra.config": "/etc/cassandra/cassandra.yaml",
     "cassandra.hosts": "cassandra-host",
     "cassandra.port": "9042",
