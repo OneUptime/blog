@@ -8,7 +8,7 @@ Description: Learn how PREWHERE in ClickHouse filters data at the granule level 
 
 ---
 
-`PREWHERE` is a ClickHouse-specific optimization clause that sits between the storage layer and the `WHERE` clause. It applies a filter before reading all the requested columns, discarding data granules that cannot match early. This reduces the volume of data read from disk when the filter column is cheap to read and highly selective. For queries against large MergeTree tables with low-selectivity filters on compact columns, `PREWHERE` can dramatically reduce I/O and query time.
+`PREWHERE` is a ClickHouse-specific optimization clause that sits between the storage layer and the `WHERE` clause. It applies a filter before reading all the requested columns, discarding data granules that cannot match early. This reduces the volume of data read from disk when the filter column is cheap to read and highly selective. For queries against large MergeTree tables with highly selective filters on compact columns, `PREWHERE` can dramatically reduce I/O and query time.
 
 ## PREWHERE vs WHERE
 
@@ -85,7 +85,7 @@ SELECT
     duration_ms,
     error_message
 FROM sessions
-PREWHERE status = 'error'          -- cheap UInt8 column, applied first
+PREWHERE status = 'error'          -- cheap Enum8 column, applied first
 WHERE duration_ms > 5000           -- applied after PREWHERE discards granules
   AND toDate(started_at) >= today() - 7;
 ```
@@ -94,22 +94,18 @@ WHERE duration_ms > 5000           -- applied after PREWHERE discards granules
 
 Not all conditions can be placed in `PREWHERE`:
 
+- `PREWHERE` is only supported by MergeTree family tables (MergeTree, ReplacingMergeTree, SummingMergeTree, etc.).
+- `ALIAS` columns cannot be used in `PREWHERE`.
+- Columns used in `PREWHERE` can safely appear in the `SELECT` list — ClickHouse retains the column data for rows that pass the filter.
+
 ```sql
--- Columns used in PREWHERE must not be in the SELECT list
--- unless they also appear in WHERE or are re-read
--- Avoid: using a column ONLY in PREWHERE and then SELECTing it
--- (it may return incorrect values as the column is not fully read)
-
--- Safe pattern: repeat the column in WHERE if you need it in SELECT
+-- Works correctly: status in both PREWHERE and SELECT
 SELECT status, user_id
 FROM events
-PREWHERE status = 'error'
-WHERE status = 'error';   -- ensures status is fully read for SELECT
+PREWHERE status = 'error';
 
--- Or just use WHERE alone if you need the column in the output
-SELECT status, user_id
-FROM events
-WHERE status = 'error';
+-- This will NOT work: PREWHERE on a non-MergeTree table
+-- SELECT * FROM my_memory_table PREWHERE id = 1;  -- error
 ```
 
 ## When PREWHERE Provides the Most Benefit
