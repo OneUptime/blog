@@ -56,7 +56,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
 
     if err := processOrder(event); err != nil {
         // Tell Dapr to retry
-        w.WriteHeader(500)
+        w.WriteHeader(200)
         json.NewEncoder(w).Encode(map[string]string{"status": "RETRY"})
         return
     }
@@ -137,8 +137,8 @@ spec:
 ## Monitoring Retry Metrics
 
 ```bash
-# Prometheus query for retry rates
-rate(dapr_component_pubsub_ingress_retry_total{app_id="order-service"}[5m])
+# Prometheus query for failed delivery rates (triggers retries)
+rate(dapr_component_pubsub_ingress_count{app_id="order-service",success="false"}[5m])
 
 # Dead letter queue depth (Kafka)
 kubectl exec -it kafka-0 -- kafka-consumer-groups.sh \
