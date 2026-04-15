@@ -32,10 +32,10 @@ This gives the best query performance but requires schema changes when new field
 
 ## Strategy 2 - Use the JSON Data Type
 
-ClickHouse 23.x+ introduced the experimental `JSON` data type (enabled via `allow_experimental_object_type`).
+ClickHouse 24.8+ introduced the new experimental `JSON` data type (enabled via `allow_experimental_json_type`). It became production-ready in version 25.3.
 
 ```sql
-SET allow_experimental_object_type = 1;
+SET allow_experimental_json_type = 1;
 
 CREATE TABLE raw_events (
     id        UUID,
