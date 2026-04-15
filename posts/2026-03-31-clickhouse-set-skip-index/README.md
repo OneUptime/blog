@@ -20,7 +20,7 @@ Block 1: set = {'error', 'warn'}
 Block 2: set = {'info'}
 ```
 
-A query `WHERE level = 'error'` skips block 2 entirely, because 'error' is not in its set.
+A query `WHERE level = 'error'` skips blocks 0 and 2, because 'error' is not in their sets. Only block 1 needs to be read.
 
 If a block contains more distinct values than the configured limit N, the set overflows and the entire block is marked "may match anything". The index stops being useful for that block.
 
@@ -53,13 +53,9 @@ The N in `set(N)` must be at least as large as the maximum number of distinct va
 - `set(100)` appropriate for columns with up to 100 distinct values per block
 
 ```sql
--- Check how many distinct values typically appear in a granule
-SELECT
-    level,
-    count() AS cnt
-FROM application_logs
-GROUP BY level
-ORDER BY cnt DESC;
+-- Check the overall number of distinct values for the column
+SELECT countDistinct(level) AS distinct_values
+FROM application_logs;
 ```
 
 ## Queries That Benefit from Set Index
