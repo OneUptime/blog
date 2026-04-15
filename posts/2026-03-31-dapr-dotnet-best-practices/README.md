@@ -58,7 +58,7 @@ try
 {
     await dapr.SaveStateAsync(DaprComponents.StateStore, id, order);
 }
-catch (DaprException ex) when (ex.StatusCode == StatusCode.Unavailable)
+catch (DaprException ex) when (ex.InnerException is RpcException rpcEx && rpcEx.StatusCode == StatusCode.Unavailable)
 {
     // Transient - log and rethrow for Polly to retry
     logger.LogWarning(ex, "State store unavailable");
