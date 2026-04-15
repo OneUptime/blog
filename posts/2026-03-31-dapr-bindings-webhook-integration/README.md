@@ -29,8 +29,6 @@ spec:
       value: "https://hooks.slack.com/services/T00000/B00000/XXXXXXXX"
     - name: MTLSRootCA
       value: ""
-    - name: allowedOrigins
-      value: "*"
 ```
 
 Send a message to the webhook:
@@ -77,9 +75,9 @@ await Promise.all([
 ]);
 ```
 
-## Receiving Webhooks with Input Bindings
+## Receiving Webhooks via HTTP Endpoints
 
-Dapr input bindings act as webhook receivers. Use the HTTP binding configured as an input handler to expose an endpoint that external systems can POST to:
+Your Dapr application can receive webhooks by exposing HTTP endpoints directly. Note that the `bindings.http` component is output-only and cannot act as an input binding. To receive webhooks, define a route handler for the webhook path:
 
 ```javascript
 const express = require("express");
@@ -133,7 +131,6 @@ spec:
     retries:
       webhook-retry:
         policy: exponential
-        initialInterval: 1s
         maxInterval: 60s
         maxRetries: 3
     timeouts:
