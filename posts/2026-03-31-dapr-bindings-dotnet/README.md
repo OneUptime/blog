@@ -145,7 +145,7 @@ public async Task PublishToKafka(OrderEvent order)
 ## Using InvokeBindingAsync with Generics
 
 ```csharp
-// Typed request and response
+// Typed request (single generic parameter, no typed response)
 var request = new TwilioMessage
 {
     To = "+15551234567",
