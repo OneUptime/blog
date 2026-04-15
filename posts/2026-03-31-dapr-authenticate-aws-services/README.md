@@ -26,7 +26,7 @@ kind: Component
 metadata:
   name: statestore
 spec:
-  type: state.dynamodb
+  type: state.aws.dynamodb
   version: v1
   metadata:
   - name: region
@@ -53,7 +53,7 @@ kind: Component
 metadata:
   name: statestore
 spec:
-  type: state.dynamodb
+  type: state.aws.dynamodb
   version: v1
   metadata:
   - name: region
@@ -98,8 +98,8 @@ kubectl annotate serviceaccount dapr-app \
   eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/dapr-state-role
 ```
 
-```yaml
-# trust-policy.json
+```json
+// trust-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [{
