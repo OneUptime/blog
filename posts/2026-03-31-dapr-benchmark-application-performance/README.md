@@ -31,8 +31,13 @@ metadata:
   namespace: dapr-bench
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: bench-target
   template:
     metadata:
+      labels:
+        app: bench-target
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: "bench-target"
@@ -41,7 +46,7 @@ spec:
       containers:
       - name: bench-target
         image: hashicorp/http-echo:latest
-        args: ["-text=ok"]
+        args: ["-listen=:8080", "-text=ok"]
         ports:
         - containerPort: 8080
 ```
