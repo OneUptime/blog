@@ -75,7 +75,7 @@ async def get_user(user_id: str):
     summary="Create a new user")
 async def create_user(request: CreateUserRequest):
     """Create a new user account. Returns the created user with generated ID."""
-    return User(id="new-id", **request.dict())
+    return User(id="new-id", **request.model_dump())
 ```
 
 ## Serving OpenAPI Spec via Dapr Endpoint
@@ -205,10 +205,10 @@ data:
     pip install openapi-spec-validator
     python -c "
     import json
-    from openapi_spec_validator import validate_spec
+    from openapi_spec_validator import validate
     from openapi_spec_validator.readers import read_from_filename
     spec, *_ = read_from_filename('openapi.json')
-    validate_spec(spec)
+    validate(spec)
     print('OpenAPI spec is valid')
     "
 ```
