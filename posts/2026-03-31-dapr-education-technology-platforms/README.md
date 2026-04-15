@@ -115,7 +115,7 @@ spec:
   version: v1
   metadata:
   - name: schedule
-    value: "0 9 * * *"
+    value: "0 0 9 * * *"
 ```
 
 ```python
