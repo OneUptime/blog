@@ -156,9 +156,15 @@ Use `exp()` to compute softmax-style scores, normalizing raw scores into a proba
 
 ```sql
 WITH scores AS (
-    SELECT
-        arrayJoin(['class_A', 'class_B', 'class_C']) AS class_label,
-        arrayJoin([2.0, 1.0, 0.5])                   AS raw_score
+    SELECT class_label, raw_score
+    FROM (
+        SELECT
+            ['class_A', 'class_B', 'class_C'] AS labels,
+            [2.0, 1.0, 0.5]                   AS raw_scores
+    )
+    ARRAY JOIN
+        labels AS class_label,
+        raw_scores AS raw_score
 ),
 exp_scores AS (
     SELECT class_label, exp(raw_score) AS exp_s
