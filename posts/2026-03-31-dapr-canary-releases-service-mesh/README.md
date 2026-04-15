@@ -75,7 +75,7 @@ spec:
 ## Route 20% to Canary
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory
@@ -95,7 +95,7 @@ spec:
 ```
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory
