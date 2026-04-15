@@ -97,7 +97,7 @@ ALTER TABLE events ON CLUSTER '{cluster}'
 ADD COLUMN new_field String DEFAULT '';
 ```
 
-This propagates the change to all shards and replicas atomically.
+This propagates the change to all shards and replicas. The query is eventually executed on each host, even if some nodes are temporarily unavailable.
 
 ## Summary
 
