@@ -64,9 +64,8 @@ Define and implement an actor:
 
 ```python
 # order_actor.py
-from dapr.actor import Actor, Remindable
+from dapr.actor import Actor
 from dapr.actor.runtime.context import ActorRuntimeContext
-import json
 
 class OrderActorInterface:
     """Actor interface (abstract base)"""
@@ -173,7 +172,6 @@ package main
 
 import (
     "context"
-    "encoding/json"
 
     dapr "github.com/dapr/go-sdk/actor"
 )
@@ -190,7 +188,7 @@ type Item struct {
 }
 
 type OrderActor struct {
-    dapr.ServerImplBase
+    dapr.ServerImplBaseCtx
 }
 
 func (a *OrderActor) Type() string {
@@ -214,21 +212,21 @@ func (a *OrderActor) PlaceOrder(ctx context.Context, req *PlaceOrderRequest) (*P
 
 Actor state is stored in the configured state store with a key format of:
 
-```json
-{app-id}||{actor-type}-{actor-id}-{state-key}
+```text
+{app-id}||{actor-type}||{actor-id}||{state-key}
 ```
 
 For example:
 
 ```text
-order-service||OrderActor-order-42-order_state
+order-service||OrderActor||order-42||order_state
 ```
 
 You can inspect actor state directly in Redis:
 
 ```bash
 redis-cli keys "order-service||OrderActor*"
-redis-cli get "order-service||OrderActor-order-42-order_state"
+redis-cli get "order-service||OrderActor||order-42||order_state"
 ```
 
 ## Actor Reminders
@@ -236,10 +234,11 @@ redis-cli get "order-service||OrderActor-order-42-order_state"
 Actors support reminders that persist across actor deactivation:
 
 ```python
+from datetime import timedelta
 from dapr.actor import Remindable
 
 class OrderActor(Actor, Remindable, OrderActorInterface):
-    async def register_reminder(self):
+    async def setup_followup_reminder(self):
         await self.register_reminder(
             "followup",
             b"reminder-data",
