@@ -96,38 +96,38 @@ LIMIT 20;
 ClickHouse exposes disk metrics to Prometheus:
 
 ```text
-ClickHouseDiskAvailable_default  -- bytes free on default disk
-ClickHouseDiskTotal_default      -- total disk capacity
+ClickHouseAsyncMetrics_DiskAvailable_default  -- bytes free on default disk
+ClickHouseAsyncMetrics_DiskTotal_default      -- total disk capacity
 ```
 
 Grafana alert rule:
 
 ```text
-(ClickHouseDiskTotal - ClickHouseDiskAvailable) / ClickHouseDiskTotal > 0.80
+(ClickHouseAsyncMetrics_DiskTotal_default - ClickHouseAsyncMetrics_DiskAvailable_default) / ClickHouseAsyncMetrics_DiskTotal_default > 0.80
 ```
 
 ## Project Time Until Disk Full
 
 ```sql
-WITH
-    now() AS t_now,
-    today() - 7 AS t_start
 SELECT
-    database,
-    table,
-    formatReadableSize(current_size) AS current_size,
-    formatReadableSize(weekly_growth) AS weekly_growth,
-    round(current_size / (weekly_growth / 7), 0) AS days_until_full
+    h.database,
+    h.table,
+    formatReadableSize(h.current_size) AS current_size,
+    formatReadableSize(h.weekly_growth) AS weekly_growth,
+    round(d.free_space / (h.weekly_growth / 7), 0) AS days_until_full
 FROM (
     SELECT
         database, table,
         max(bytes_on_disk) AS current_size,
         max(bytes_on_disk) - min(bytes_on_disk) AS weekly_growth
     FROM disk_usage_history
-    WHERE recorded_at >= t_start
+    WHERE recorded_at >= today() - 7
     GROUP BY database, table
-)
-WHERE weekly_growth > 0
+) AS h
+CROSS JOIN (
+    SELECT free_space FROM system.disks WHERE name = 'default'
+) AS d
+WHERE h.weekly_growth > 0
 ORDER BY days_until_full ASC;
 ```
 
