@@ -79,7 +79,7 @@ cat data.csv | clickhouse local \
 journalctl -u myapp --since "1 hour ago" --output=json | clickhouse local \
   --query "
   SELECT
-      toStartOfMinute(parseDateTimeBestEffort(REALTIME_TIMESTAMP)) AS minute,
+      toStartOfMinute(toDateTime(toUInt64(__REALTIME_TIMESTAMP) / 1000000)) AS minute,
       count() AS log_lines,
       countIf(PRIORITY = '3') AS errors
   FROM table
