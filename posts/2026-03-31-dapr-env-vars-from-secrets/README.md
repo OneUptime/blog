@@ -77,32 +77,39 @@ if __name__ == "__main__":
     run_app()
 ```
 
-## Method 3: Init Container Pattern
+## Method 3: Startup Script Pattern
 
-Use an init container to fetch secrets and write them to a shared volume:
-
-```yaml
-initContainers:
-- name: secret-loader
-  image: dapr/dapr:latest
-  command: ["/bin/sh", "-c"]
-  args:
-  - |
-    curl http://localhost:3500/v1.0/secrets/vault/db-credentials \
-      -o /secrets/db.json
-  volumeMounts:
-  - name: secrets
-    mountPath: /secrets
-```
-
-Then read in the main container:
+The Dapr sidecar runs as a regular container, so it is not available during init container execution. Instead, use a startup wrapper script in the main container that waits for the sidecar and fetches secrets before starting the application:
 
 ```python
 import json
+import os
+import time
+import urllib.request
 
-with open("/secrets/db.json") as f:
-    db_creds = json.load(f)
-db_password = db_creds["password"]
+def wait_for_dapr(timeout=30):
+    """Wait for the Dapr sidecar to be ready."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            urllib.request.urlopen("http://localhost:3500/v1.0/healthz")
+            return
+        except Exception:
+            time.sleep(1)
+    raise RuntimeError("Dapr sidecar did not become ready")
+
+def load_secrets():
+    wait_for_dapr()
+    with urllib.request.urlopen(
+        "http://localhost:3500/v1.0/secrets/vault/db-credentials"
+    ) as resp:
+        db_creds = json.loads(resp.read())
+    os.environ["DB_PASSWORD"] = db_creds["password"]
+
+if __name__ == "__main__":
+    load_secrets()
+    # Now start the application
+    run_app()
 ```
 
 ## Restricting Secret Access via Scoping
@@ -134,4 +141,4 @@ kubectl logs -l app=payment-service -c daprd | grep "secret"
 
 ## Summary
 
-Dapr provides multiple approaches for getting secrets into environment variables: Kubernetes native injection for static values, the Dapr secret API for dynamic retrieval at runtime, and init containers for pre-startup loading. Combine with Configuration-level scoping to enforce least-privilege access and audit which services are accessing which secrets.
+Dapr provides multiple approaches for getting secrets into environment variables: Kubernetes native injection for static values, the Dapr secret API for dynamic retrieval at runtime, and startup scripts for pre-startup loading. Combine with Configuration-level scoping to enforce least-privilege access and audit which services are accessing which secrets.
