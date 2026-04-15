@@ -348,6 +348,10 @@ streamlit run app.py \
 FROM python:3.12-slim
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -363,7 +367,7 @@ ENTRYPOINT ["streamlit", "run", "app.py", \
   "--server.headless=true"]
 ```
 
-```yaml
+```text
 # requirements.txt contents
 streamlit>=1.32.0
 clickhouse-connect>=0.7.0
