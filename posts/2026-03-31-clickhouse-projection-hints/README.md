@@ -24,7 +24,6 @@ ADD PROJECTION proj_user_daily (
         toDate(ts) AS date,
         count() AS event_count,
         sum(value) AS total_value
-    FROM events
     GROUP BY user_id, date
 );
 
@@ -48,12 +47,12 @@ ALTER TABLE events MATERIALIZE PROJECTION proj_by_event_type;
 ## Query That Uses the Projection
 
 ```sql
--- This query now reads from proj_user_daily instead of scanning all rows
-SELECT user_id, sum(event_count)
+-- ClickHouse transparently uses proj_user_daily instead of scanning all rows
+SELECT user_id, count() AS event_count
 FROM events
-WHERE date >= today() - 30
+WHERE toDate(ts) >= today() - 30
 GROUP BY user_id
-ORDER BY sum(event_count) DESC
+ORDER BY event_count DESC
 LIMIT 100;
 ```
 
@@ -73,7 +72,7 @@ Look for the projection name in the output.
 
 ```sql
 SELECT
-    table, name, is_materialized
+    table, name, type, sorting_key, query
 FROM system.projections
 WHERE table = 'events';
 ```
