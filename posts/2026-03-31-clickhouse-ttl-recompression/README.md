@@ -28,7 +28,7 @@ TTL
     timestamp + INTERVAL 30 DAY RECOMPRESS CODEC(ZSTD(9));
 ```
 
-After 7 days, data is recompressed with ZSTD level 1 (fast but better ratio than LZ4). After 30 days, it is further recompressed with ZSTD level 9 (maximum compression).
+After 7 days, data is recompressed with ZSTD level 1 (fast but better ratio than LZ4). After 30 days, it is further recompressed with ZSTD level 9 (high compression).
 
 ## RECOMPRESS Combined with Volume Move
 
@@ -37,12 +37,14 @@ Move and recompress in the same TTL rule:
 ```sql
 ALTER TABLE http_logs
 MODIFY TTL
-    timestamp + INTERVAL 30 DAY RECOMPRESS CODEC(ZSTD(3)) TO VOLUME 'cold',
-    timestamp + INTERVAL 90 DAY RECOMPRESS CODEC(ZSTD(22)) TO VOLUME 'archive',
+    timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
+    timestamp + INTERVAL 31 DAY RECOMPRESS CODEC(ZSTD(3)),
+    timestamp + INTERVAL 90 DAY TO VOLUME 'archive',
+    timestamp + INTERVAL 91 DAY RECOMPRESS CODEC(ZSTD(22)),
     timestamp + INTERVAL 365 DAY DELETE;
 ```
 
-ZSTD level 22 (ultra) provides near-maximum compression for archival data queried only occasionally.
+RECOMPRESS and TO VOLUME are separate TTL actions and cannot be combined in a single rule. Use staggered intervals to apply both. ZSTD level 22 provides maximum compression for archival data queried only occasionally.
 
 ## Checking Current Codec per Part
 
@@ -51,7 +53,7 @@ SELECT
     name,
     formatReadableSize(bytes_on_disk) AS size,
     formatReadableSize(data_compressed_bytes) AS compressed,
-    compression_codec
+    default_compression_codec
 FROM system.parts
 WHERE table = 'http_logs' AND active = 1
 ORDER BY min_time;
@@ -78,14 +80,14 @@ OPTIMIZE TABLE http_logs PARTITION '202301' FINAL;
 ```sql
 SELECT
     table,
-    reason,
+    merge_reason,
     count()           AS merge_count,
     sum(rows)         AS rows_merged,
     sum(bytes_on_disk) AS bytes_before
 FROM system.part_log
-WHERE reason = 'TTLRecompressMerge'
+WHERE merge_reason = 'TTLRecompressMerge'
   AND event_date >= today() - 7
-GROUP BY table, reason;
+GROUP BY table, merge_reason;
 ```
 
 ## Estimating Compression Savings
@@ -104,7 +106,7 @@ GROUP BY month
 ORDER BY month;
 ```
 
-Higher ratios on older months indicate successful recompression.
+Lower ratios on older months indicate successful recompression.
 
 ## Summary
 
