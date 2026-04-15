@@ -131,7 +131,7 @@ TTL ts + INTERVAL 90 DAY;
 
 ## Step 3: Export Druid Data
 
-Export via Druid SQL to NDJSON:
+Export via Druid SQL to CSV:
 
 ```bash
 curl -X POST "http://druid-broker:8082/druid/v2/sql" \
@@ -199,17 +199,17 @@ SELECT event_type, APPROX_COUNT_DISTINCT(user_id) AS unique_users
 FROM events
 GROUP BY event_type;
 
--- ClickHouse: uniq (also HLL-based approximation)
+-- ClickHouse: uniq (adaptive sampling approximation)
 SELECT event_type, uniq(user_id) AS unique_users
 FROM events
 GROUP BY event_type;
 ```
 
 ```sql
--- Druid: DS_QUANTILES_SKETCH + QUANTILE
+-- Druid: APPROX_QUANTILE_DS (uses DataSketches)
 SELECT
     event_type,
-    QUANTILE(DS_QUANTILES_SKETCH(duration_ms), 0.99) AS p99
+    APPROX_QUANTILE_DS(duration_ms, 0.99) AS p99
 FROM events
 GROUP BY event_type;
 
