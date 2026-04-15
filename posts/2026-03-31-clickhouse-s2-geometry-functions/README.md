@@ -57,31 +57,35 @@ WHERE has(s2GetNeighbors(geoToS2(37.6156, 55.7522)), geoToS2(longitude, latitude
 
 ## Building a Bounding Rectangle
 
-`s2RectAdd(rect, s2_id)` incrementally expands an S2 latitude/longitude rectangle to contain a given cell. Start with `s2RectUnion()` to build bounding boxes over groups of points:
+`s2RectAdd(s2PointLow, s2PointHigh, s2Point)` incrementally expands an S2 latitude/longitude rectangle to contain a given cell. It takes three UInt64 arguments — the low and high points of the existing rectangle and the new point to include — and returns a tuple `(s2PointLow, s2PointHigh)`:
 
 ```sql
-SELECT
-    zone_id,
-    s2RectUnion(geoToS2(longitude, latitude)) AS bounding_rect
-FROM delivery_zones
-GROUP BY zone_id;
+SELECT s2RectAdd(
+    4573898034058387968,       -- existing rect low
+    4573898034058387968,       -- existing rect high
+    geoToS2(37.6156, 55.7522) -- point to add
+) AS expanded_rect;
+```
+
+`s2RectUnion(s2Rect1PointLow, s2Rect1PointHigh, s2Rect2PointLow, s2Rect2PointHigh)` computes the smallest rectangle containing two input rectangles:
+
+```sql
+SELECT s2RectUnion(
+    4573898034058387968, 4574438030741498880,  -- rect 1 (low, high)
+    4836318965958897664, 4836339599498100736   -- rect 2 (low, high)
+) AS union_rect;
 ```
 
 ## Checking Cell Containment
 
-`s2RectContains(rect, s2_id)` checks whether a bounding rectangle contains a given S2 cell:
+`s2RectContains(s2PointLow, s2PointHigh, s2Point)` checks whether a bounding rectangle contains a given S2 cell. It takes three UInt64 arguments — the low and high points of the rectangle and the point to test:
 
 ```sql
-SELECT
-    event_id,
-    s2RectContains(zone_bounding_rect, geoToS2(longitude, latitude)) AS in_zone
-FROM events
-CROSS JOIN (
-    SELECT s2RectUnion(geoToS2(longitude, latitude)) AS zone_bounding_rect
-    FROM zone_points
-    WHERE zone_id = 1
-) AS zone
-LIMIT 10;
+SELECT s2RectContains(
+    4573898034058387968,       -- rect low
+    4836339599498100736,       -- rect high
+    geoToS2(37.6156, 55.7522) -- point to check
+) AS is_contained;
 ```
 
 ## Indexing with S2
@@ -106,7 +110,7 @@ ORDER BY (s2_id, event_time);
 |---------|----|----|
 | Cell shape | Hexagonal | Quadrilateral |
 | Neighbour count | 6 | 4 |
-| Hierarchy levels | 16 | 30 |
+| Hierarchy levels | 16 | 31 |
 | ClickHouse support | Full | Core functions |
 
 ## Summary
