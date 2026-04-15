@@ -46,13 +46,13 @@ spec:
   type: bindings.azure.storagequeues
   version: v1
   metadata:
-    - name: storageAccount
+    - name: accountName
       value: "mystorageaccount"
-    - name: storageAccessKey
+    - name: accountKey
       secretKeyRef:
         name: azure-storage-secret
-        key: storageAccessKey
-    - name: queue
+        key: accountKey
+    - name: queueName
       value: "task-queue"
     - name: ttlInSeconds
       value: "86400"
@@ -66,7 +66,7 @@ spec:
 
 ```bash
 kubectl create secret generic azure-storage-secret \
-  --from-literal=storageAccessKey=<your-storage-account-key>
+  --from-literal=accountKey=<your-storage-account-key>
 ```
 
 ## Sending Messages to the Queue
