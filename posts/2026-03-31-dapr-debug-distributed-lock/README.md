@@ -22,17 +22,19 @@ Distributed lock bugs are notoriously hard to diagnose. Symptoms include service
 
 ## Inspecting Lock State in Redis
 
+Dapr stores locks as Redis strings. The default key format is `lock||<appID>||<resourceID>`, where the lock owner is stored as the value (not part of the key).
+
 View all current locks held in the lock store:
 
 ```bash
 # List all lock keys
-redis-cli KEYS "lockstore||*"
+redis-cli KEYS "lock||*"
 
 # Check TTL on a specific lock
-redis-cli TTL "lockstore||my-resource||worker-1"
+redis-cli TTL "lock||myapp||my-resource"
 
-# View the lock value
-redis-cli GET "lockstore||my-resource||worker-1"
+# View the lock owner
+redis-cli GET "lock||myapp||my-resource"
 ```
 
 ## Manually Releasing a Stale Lock
@@ -40,7 +42,7 @@ redis-cli GET "lockstore||my-resource||worker-1"
 If a lock is stuck and the owner is gone, delete it manually:
 
 ```bash
-redis-cli DEL "lockstore||my-resource||crashed-worker"
+redis-cli DEL "lock||myapp||my-resource"
 ```
 
 Use this only when the owning process is confirmed dead. Do not delete locks that are actively held.
@@ -84,7 +86,7 @@ Write a health check that reports current lock count:
 
 ```bash
 # Count active locks in Redis for a store
-redis-cli KEYS "lockstore||*" | wc -l
+redis-cli KEYS "lock||*" | wc -l
 ```
 
 Alert if this count grows monotonically - it indicates locks are not being released.
@@ -100,7 +102,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/lock/lockstore \
   -d '{"resourceId":"debug-resource","lockOwner":"debug-test","expiryInSeconds":60}'
 
 # Verify in Redis
-redis-cli TTL "lockstore||debug-resource||debug-test"
+redis-cli TTL "lock||myapp||debug-resource"
 
 # Release
 curl -X POST http://localhost:3500/v1.0-alpha1/unlock/lockstore \
@@ -117,7 +119,7 @@ unlockResp, err := client.UnlockAlpha1(ctx, "lockstore", &dapr.UnlockRequest{
     LockOwner:  owner,
     ResourceID: resourceID,
 })
-if err != nil || unlockResp.Status != dapr.UnlockSuccess {
+if err != nil || unlockResp.Status != "SUCCESS" {
     log.Printf("Unlock failed: status=%v err=%v owner=%s resource=%s",
         unlockResp.Status, err, owner, resourceID)
 }
