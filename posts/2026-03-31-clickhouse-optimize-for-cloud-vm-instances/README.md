@@ -116,7 +116,7 @@ SELECT
     metric,
     value
 FROM system.asynchronous_metrics
-WHERE metric IN ('MemoryResident', 'DiskReadBytes', 'DiskWriteBytes')
+WHERE metric IN ('MemoryResident', 'BlockReadBytes', 'BlockWriteBytes')
 ORDER BY metric;
 ```
 
