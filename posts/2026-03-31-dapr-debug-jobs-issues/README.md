@@ -37,10 +37,7 @@ curl -v -X POST http://localhost:3500/v1.0-alpha1/jobs/test-job \
   -H "Content-Type: application/json" \
   -d '{
     "schedule": "@every 1m",
-    "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
-      "value": "test"
-    }
+    "data": "{\"value\":\"test\"}"
   }'
 ```
 
@@ -48,7 +45,7 @@ Common error responses:
 
 ```json
 // Scheduler not available
-{"errorCode": "ERR_JOB_SCHEDULER_NOT_FOUND", "message": "scheduler not found"}
+{"errorCode": "DAPR_SCHEDULER_SCHEDULE_JOB", "message": "failed to schedule job"}
 
 // Invalid schedule expression
 {"errorCode": "ERR_MALFORMED_REQUEST", "message": "invalid schedule format"}
@@ -82,7 +79,7 @@ Verify your handler endpoint is reachable. Dapr calls `POST /job/{job-name}` on 
 # Manually test your handler endpoint
 curl -X POST http://localhost:6001/job/test-job \
   -H "Content-Type: application/json" \
-  -d '{"data": {"@type": "type.googleapis.com/google.protobuf.StringValue", "value": "test"}}'
+  -d '{"data": "{\"value\":\"test\"}"}'
 ```
 
 ## Debugging: Handler Returning Non-200 Status
