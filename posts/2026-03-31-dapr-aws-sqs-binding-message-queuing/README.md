@@ -38,28 +38,30 @@ spec:
       secretKeyRef:
         name: aws-secrets
         key: secretKey
-    - name: waitTimeSeconds
-      value: "20"
-    - name: visibilityTimeoutSeconds
-      value: "60"
-    - name: messageRetentionPeriod
-      value: "86400"
-    - name: deadLetterQueueName
-      value: "order-processing-dlq"
-    - name: maxReceiveCount
-      value: "3"
+    - name: direction
+      value: "input, output"
 ```
 
+Queue-level settings such as long polling (`ReceiveMessageWaitTimeSeconds`), visibility timeout, message retention period, and dead letter queue redrive policies are not configured through Dapr metadata. These must be set directly on the SQS queue using the AWS CLI or console, as shown in the next section.
+
 ### FIFO Queue Configuration
+
+For FIFO queues, the queue name must end with the `.fifo` suffix. FIFO-specific settings like deduplication and message grouping are configured on the SQS queue itself, not through Dapr component metadata.
 
 ```yaml
   metadata:
     - name: queueName
       value: "payment-events.fifo"
-    - name: fifo
-      value: "true"
-    - name: messageGroupField
-      value: "orderId"
+    - name: region
+      value: "us-east-1"
+    - name: accessKey
+      secretKeyRef:
+        name: aws-secrets
+        key: accessKey
+    - name: secretKey
+      secretKeyRef:
+        name: aws-secrets
+        key: secretKey
 ```
 
 ## Creating the Queue
@@ -83,6 +85,11 @@ DLQ_ARN=$(aws sqs get-queue-attributes \
 aws sqs set-queue-attributes \
   --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/order-processing \
   --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
+
+# Enable long polling (20 seconds) and set visibility timeout
+aws sqs set-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/order-processing \
+  --attributes '{"ReceiveMessageWaitTimeSeconds":"20","VisibilityTimeout":"60"}'
 ```
 
 ## Producing Messages to SQS
@@ -122,7 +129,6 @@ app.use(express.json());
 
 app.post("/order-queue", async (req, res) => {
   const order = req.body;
-  const receiptHandle = req.headers["x-aws-sqs-receipt-handle"];
 
   console.log(`Processing order ${order.orderId}`);
 
@@ -138,28 +144,19 @@ app.post("/order-queue", async (req, res) => {
     // Return 200 to acknowledge - Dapr deletes the message
     res.status(200).send("OK");
   } catch (err) {
-    if (isTransientError(err)) {
-      // Return 5xx to leave message visible for retry
-      console.error("Transient error, message will retry:", err.message);
-      res.status(500).send(err.message);
-    } else {
-      // Permanent failure - ack the message so it goes to DLQ after maxReceiveCount
-      console.error("Permanent error:", err.message);
-      res.status(200).send("OK"); // Let DLQ handle it after max retries
-    }
+    // Return 500 to leave message visible for retry
+    // After maxReceiveCount failures, SQS moves the message to the DLQ
+    console.error("Error processing order, will retry:", err.message);
+    res.status(500).send(err.message);
   }
 });
-
-function isTransientError(err) {
-  return err.message.includes("TIMEOUT") || err.message.includes("CONNECTION");
-}
 
 app.listen(3000);
 ```
 
 ## Long Polling Configuration
 
-Long polling reduces empty responses and costs. The `waitTimeSeconds: "20"` setting enables maximum long polling - SQS waits up to 20 seconds for a message before returning an empty response.
+Long polling reduces empty responses and costs. Configure long polling directly on your SQS queue by setting the `ReceiveMessageWaitTimeSeconds` attribute to up to 20 seconds. SQS will wait that long for a message before returning an empty response. This is set at the AWS queue level, not through Dapr metadata.
 
 ## Monitoring Queue Depth
 
