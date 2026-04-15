@@ -33,9 +33,9 @@ sequenceDiagram
     Actor->>DaprSidecar: POST /actors/{type}/{id}/timers/{name}
     DaprSidecar->>TimerStore: Register timer
     Note over DaprSidecar: Wait for dueTime
-    DaprSidecar->>Actor: PUT /actors/{type}/{id}/method/callback
+    DaprSidecar->>Actor: PUT /actors/{type}/{id}/method/timer/{name}
     Note over DaprSidecar: Wait for period
-    DaprSidecar->>Actor: PUT /actors/{type}/{id}/method/callback
+    DaprSidecar->>Actor: PUT /actors/{type}/{id}/method/timer/{name}
     Actor->>DaprSidecar: DELETE /actors/{type}/{id}/timers/{name}
     DaprSidecar->>TimerStore: Remove timer
 ```
@@ -65,7 +65,7 @@ curl -X POST \
 ```
 
 Parameters:
-- `dueTime` - delay before first fire (ISO 8601 duration or Go duration string)
+- `dueTime` - delay before first fire (ISO 8601 duration, Go duration string, or RFC3339 date-time)
 - `period` - interval between subsequent fires
 - `callback` - actor method name to invoke
 - `data` - optional JSON payload passed to the callback
@@ -79,26 +79,33 @@ package main
 import (
     "context"
     "encoding/json"
-    "time"
+    dapr "github.com/dapr/go-sdk/client"
     "github.com/dapr/go-sdk/actor"
 )
 
 type MonitorActorImpl struct {
-    actor.ServerImplBase
+    actor.ServerImplBaseCtx
 }
 
 func (a *MonitorActorImpl) Type() string { return "MonitorActor" }
 
 // Called when actor activates - register timer
-func (a *MonitorActorImpl) OnActivate() error {
+func (a *MonitorActorImpl) OnActivate(ctx context.Context) error {
+    client, err := dapr.NewClient()
+    if err != nil {
+        return err
+    }
+    defer client.Close()
     timerData, _ := json.Marshal(map[string]int{"threshold": 90})
-    return a.RegisterActorTimer(
-        "heartbeat",
-        "checkStatus",
-        timerData,
-        5*time.Second,  // dueTime
-        10*time.Second, // period
-    )
+    return client.RegisterActorTimer(ctx, &dapr.RegisterActorTimerRequest{
+        ActorType: "MonitorActor",
+        ActorID:   a.ID(),
+        Name:      "heartbeat",
+        DueTime:   "5s",
+        Period:    "10s",
+        Data:      timerData,
+        CallBack:  "checkStatus",
+    })
 }
 
 // Timer callback method
@@ -116,7 +123,7 @@ func (a *MonitorActorImpl) CheckStatus(ctx context.Context, data []byte) error {
 
 ```python
 from dapr.actor import Actor, ActorInterface, actormethod
-import asyncio
+from datetime import timedelta
 
 class MonitorActorInterface(ActorInterface):
     @actormethod(name="checkStatus")
@@ -126,10 +133,10 @@ class MonitorActor(Actor, MonitorActorInterface):
     async def _on_activate(self) -> None:
         await self.register_timer(
             "heartbeat",
-            "checkStatus",
+            self.check_status,
             {"threshold": 90},
-            due_time="5s",
-            period="10s"
+            due_time=timedelta(seconds=5),
+            period=timedelta(seconds=10)
         )
 
     async def check_status(self, data: dict) -> None:
@@ -140,14 +147,14 @@ class MonitorActor(Actor, MonitorActorInterface):
 
 ## Handling the Timer Callback in Your App
 
-When using the HTTP API (no SDK), your app receives the timer callback as a PUT request:
+When using the HTTP API (no SDK), your app receives the timer callback as a PUT request to `/actors/{actorType}/{actorId}/method/timer/{timerName}`:
 
 ```javascript
 // Node.js Express example
-app.put('/actors/MonitorActor/:actorId/method/checkStatus', (req, res) => {
-  const { actorId } = req.params;
-  const data = req.body; // { threshold: 90 }
-  console.log(`Timer fired for actor ${actorId}:`, data);
+app.put('/actors/MonitorActor/:actorId/method/timer/:timerName', (req, res) => {
+  const { actorId, timerName } = req.params;
+  const data = req.body;
+  console.log(`Timer ${timerName} fired for actor ${actorId}:`, data);
   // Perform your logic here
   res.sendStatus(200);
 });
