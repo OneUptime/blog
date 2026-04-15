@@ -33,7 +33,7 @@ When you insert data, ClickHouse writes a new part directory containing one bina
 
 ```text
 /var/lib/clickhouse/data/analytics/events/
-  20240101_1_1_0/
+  202401_1_1_0/
     id.bin          -- compressed id column data
     ts.bin          -- compressed ts column data
     user_id.bin     -- compressed user_id column data
