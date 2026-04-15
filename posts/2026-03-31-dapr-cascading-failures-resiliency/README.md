@@ -88,7 +88,7 @@ async function processPayment(orderId, amount) {
       'payment-service', 'charge', HttpMethod.POST, { orderId, amount }
     );
   } catch (err) {
-    if (isCiricuitOpenError(err)) {
+    if (isCircuitOpenError(err)) {
       // Queue for async processing when payment recovers
       await daprClient.pubsub.publish('orders-pubsub', 'pending-payments', {
         orderId, amount, reason: 'payment_service_unavailable'
