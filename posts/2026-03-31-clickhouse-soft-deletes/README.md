@@ -90,7 +90,7 @@ Even with soft deletes, you may want to physically remove very old deleted recor
 
 ```sql
 ALTER TABLE users
-    MODIFY TTL updated_at + INTERVAL 1 YEAR
+    MODIFY TTL updated_at + INTERVAL 1 YEAR DELETE
     WHERE is_deleted = 1;
 ```
 
@@ -98,7 +98,7 @@ This physically removes rows where is_deleted = 1 and updated_at is older than 1
 
 ## Performance Consideration
 
-FINAL forces synchronous deduplication and can be slow on large tables. For high-throughput reads, consider a materialized view that pre-filters active records:
+FINAL forces synchronous deduplication and can be slow on large tables. For high-throughput reads, consider a materialized view that receives all row versions and lets ReplacingMergeTree handle deduplication in the background:
 
 ```sql
 CREATE MATERIALIZED VIEW active_users_mv
@@ -106,7 +106,14 @@ ENGINE = ReplacingMergeTree(version)
 ORDER BY user_id
 AS
 SELECT *
-FROM users
+FROM users;
+```
+
+Queries against this materialized view still filter on is_deleted, but background merges reduce the need for FINAL:
+
+```sql
+SELECT user_id, name, email
+FROM active_users_mv
 WHERE is_deleted = 0;
 ```
 
