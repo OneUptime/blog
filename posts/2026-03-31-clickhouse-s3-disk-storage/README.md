@@ -23,13 +23,15 @@ ClickHouse can use S3-compatible object storage as a disk type, allowing you to 
                 <access_key_id>AKIAIOSFODNN7EXAMPLE</access_key_id>
                 <secret_access_key>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</secret_access_key>
                 <region>us-east-1</region>
-
-                <!-- Cache for S3 data locally to speed up reads -->
                 <metadata_path>/var/lib/clickhouse/disks/s3_cold/</metadata_path>
-                <cache_enabled>true</cache_enabled>
-                <cache_path>/var/lib/clickhouse/disks/s3_cold_cache/</cache_path>
-                <cache_max_size>10737418240</cache_max_size>
             </s3_cold>
+            <!-- Local cache wrapping s3_cold to speed up reads -->
+            <s3_cold_cache>
+                <type>cache</type>
+                <disk>s3_cold</disk>
+                <path>/var/lib/clickhouse/disks/s3_cold_cache/</path>
+                <max_size>10Gi</max_size>
+            </s3_cold_cache>
         </disks>
     </storage_configuration>
 </clickhouse>
@@ -90,10 +92,13 @@ For Google Cloud Storage:
                 <endpoint>https://s3.us-east-1.amazonaws.com/my-bucket/data/</endpoint>
                 <use_environment_credentials>true</use_environment_credentials>
                 <metadata_path>/var/lib/clickhouse/disks/s3/</metadata_path>
-                <cache_enabled>true</cache_enabled>
-                <cache_path>/var/lib/clickhouse/disks/s3_cache/</cache_path>
-                <cache_max_size>21474836480</cache_max_size>
             </s3_cold>
+            <s3_cold_cache>
+                <type>cache</type>
+                <disk>s3_cold</disk>
+                <path>/var/lib/clickhouse/disks/s3_cache/</path>
+                <max_size>20Gi</max_size>
+            </s3_cold_cache>
         </disks>
 
         <policies>
@@ -103,7 +108,7 @@ For Google Cloud Storage:
                         <disk>local_nvme</disk>
                     </hot>
                     <cold>
-                        <disk>s3_cold</disk>
+                        <disk>s3_cold_cache</disk>
                     </cold>
                 </volumes>
                 <move_factor>0.1</move_factor>
@@ -150,15 +155,15 @@ graph LR
     <type>s3</type>
     <endpoint>https://s3.us-east-1.amazonaws.com/my-bucket/data/</endpoint>
 
-    <!-- Number of parallel upload threads -->
+    <!-- Maximum size for a single-part (non-multipart) upload -->
     <max_single_part_upload_size>33554432</max_single_part_upload_size>
     <max_single_read_retries>4</max_single_read_retries>
 
-    <!-- Multipart upload threshold -->
+    <!-- Multipart upload part sizing -->
     <min_upload_part_size>16777216</min_upload_part_size>
-    <max_upload_part_size>67108864</max_upload_part_size>
+    <upload_part_size_multiply_factor>2</upload_part_size_multiply_factor>
 
-    <!-- Connection pool size -->
+    <!-- Thread pool for S3 operations -->
     <thread_pool_size>16</thread_pool_size>
 </s3_cold>
 ```
@@ -190,4 +195,4 @@ GROUP BY table, disk_name;
 
 ## Summary
 
-Configure an S3 disk by setting `type` to `s3` and providing your bucket endpoint and credentials in `storage_configuration`. Enable local caching with `cache_enabled` to reduce S3 read latency for warm data. Use IAM roles or environment credentials in cloud deployments instead of static keys. Combine the S3 disk with a local NVMe disk in a tiered policy and use TTL rules to automate cold data movement.
+Configure an S3 disk by setting `type` to `s3` and providing your bucket endpoint and credentials in `storage_configuration`. Add a separate `cache` disk wrapping the S3 disk to reduce read latency for warm data. Use IAM roles or environment credentials in cloud deployments instead of static keys. Combine the S3 disk with a local NVMe disk in a tiered policy and use TTL rules to automate cold data movement.
