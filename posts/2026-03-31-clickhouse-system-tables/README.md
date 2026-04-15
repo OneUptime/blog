@@ -25,8 +25,8 @@ Description: Learn how to use system.tables in ClickHouse to inspect table metad
 | `sampling_key` | String | SAMPLE BY expression |
 | `total_rows` | Nullable(UInt64) | Approximate total row count |
 | `total_bytes` | Nullable(UInt64) | On-disk compressed bytes |
-| `lifetime_rows` | Nullable(UInt64) | Total rows ever written |
-| `lifetime_bytes` | Nullable(UInt64) | Total bytes ever written |
+| `lifetime_rows` | Nullable(UInt64) | Total rows inserted since server start (Buffer tables only) |
+| `lifetime_bytes` | Nullable(UInt64) | Total bytes inserted since server start (Buffer tables only) |
 | `metadata_modification_time` | DateTime | Last schema change time |
 | `has_own_data` | UInt8 | 1 = stores data, 0 = view or external engine |
 | `comment` | String | Table comment |
@@ -145,7 +145,7 @@ ORDER BY database, name;
 SELECT database, name, engine
 FROM system.tables
 WHERE has_own_data = 1
-  AND (comment = '' OR comment IS NULL)
+  AND comment = ''
   AND database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
 ORDER BY database, name;
 ```
