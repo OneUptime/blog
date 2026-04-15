@@ -39,7 +39,7 @@ ClickHouse accepts the PostgreSQL wire protocol handshake and responds with comp
 
 ## Authentication
 
-The PostgreSQL interface uses the same users as the rest of ClickHouse. No special password type is needed (unlike the MySQL interface which requires `double_sha1_password`). SHA256 passwords work fine.
+The PostgreSQL interface uses the same users as the rest of ClickHouse. No special password type is needed (unlike the MySQL interface which requires `double_sha1_password`). Note that the PostgreSQL wire protocol currently only supports plain-text password transmission, so you should use TLS to protect credentials in transit.
 
 ```sql
 CREATE USER pg_user IDENTIFIED BY 'mypassword';
@@ -126,12 +126,11 @@ PostgreSQL-specific features like transactions, sequences, and stored procedures
 
 ## System Catalog Compatibility
 
-ClickHouse maps some PostgreSQL system catalog queries to ClickHouse equivalents:
+ClickHouse provides partial mapping of some `pg_catalog` tables so that basic PostgreSQL client introspection can work. However, psql meta-commands like `\dt` and `\d` rely on PostgreSQL-specific system catalog queries and are generally not supported. Standard SQL queries against ClickHouse system tables work normally through the PostgreSQL interface:
 
 ```sql
--- Via psql - these work
-\dt          -- lists tables
-\d my_table  -- describes table columns
+-- Query ClickHouse system tables via psql
+SELECT name, engine FROM system.tables WHERE database = 'default';
 ```
 
 ## Known Limitations
@@ -158,8 +157,10 @@ ufw allow from 10.0.0.0/8 to any port 9005 proto tcp
 ```sql
 SELECT *
 FROM system.processes
-WHERE interface = 'PostgreSQL';
+WHERE interface = 5;
 ```
+
+The `interface` column in `system.processes` uses numeric values. The value `5` corresponds to PostgreSQL connections.
 
 ## Summary
 
