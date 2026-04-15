@@ -92,7 +92,7 @@ TTL
 SETTINGS storage_policy = 'tiered';
 ```
 
-TTL clauses are evaluated in order. The first matching clause wins for a given part.
+TTL clauses are applied progressively as data ages. Each clause takes effect when its time condition is met, so data is first moved to cold storage and later deleted when the deletion threshold is reached.
 
 ## Adding TTL to an Existing Table
 
