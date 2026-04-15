@@ -95,18 +95,15 @@ spec:
         duration: 200ms
         maxRetries: 3
     timeouts:
-      short-timeout:
-        duration: 2s
+      short-timeout: 2s
   targets:
     apps:
       user-service:
-        outbound:
-          retry: fast-retry
-          timeout: short-timeout
+        retry: fast-retry
+        timeout: short-timeout
       order-service:
-        outbound:
-          retry: fast-retry
-          timeout: short-timeout
+        retry: fast-retry
+        timeout: short-timeout
 ```
 
 Apply this manifest in your Kubernetes namespace or place it in your Dapr components folder for self-hosted mode.
@@ -127,10 +124,10 @@ async function getCachedDashboard(userId) {
 
 async function cacheDashboard(userId, data) {
   const stateUrl = `http://localhost:${DAPR_HTTP_PORT}/v1.0/state/redis-statestore`;
-  await axios.post(stateUrl, [{ key: `${userId}-dashboard`, value: data, ttlInSeconds: 60 }]);
+  await axios.post(stateUrl, [{ key: `${userId}-dashboard`, value: data, metadata: { ttlInSeconds: "60" } }]);
 }
 ```
 
 ## Summary
 
-API Composition with Dapr lets you build clean aggregator services without coupling to specific transport protocols or service discovery mechanisms. Dapr handles mTLS, retries, and distributed tracing for every downstream call, so the composer only needs to focus on combining the data. Pairing composition with Dapr state management adds caching with minimal extra code.
+API Composition with Dapr lets you build clean aggregator services without coupling to specific transport protocols or service discovery mechanisms. Dapr provides automatic mTLS encryption and trace context propagation for every downstream call, and supports configurable retry policies through resiliency specs, so the composer only needs to focus on combining the data. Pairing composition with Dapr state management adds caching with minimal extra code.
