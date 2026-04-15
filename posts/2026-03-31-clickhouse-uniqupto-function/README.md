@@ -71,7 +71,7 @@ workspace_id | user_count | over_limit
 2            | 6          | 1
 ```
 
-Workspace 2 has 10 actual users, but `uniqUpTo(5)` returns 6 (= N+1), and `over_limit = 1` correctly flags it.
+Workspace 2 has 7 actual users, but `uniqUpTo(5)` returns 6 (= N+1), and `over_limit = 1` correctly flags it.
 
 ## Comparing uniqUpTo vs uniq vs uniqExact
 
