@@ -10,7 +10,7 @@ Description: Learn how to integrate Dapr state management and bindings with Azur
 
 ## Overview
 
-Dapr provides a consistent API for state management and service bindings, making it straightforward to integrate with Azure SQL Database. By using Dapr's state store or output binding components, your microservices can interact with Azure SQL without tight coupling to the database driver.
+Dapr provides a consistent API for state management, making it straightforward to integrate with Azure SQL Database. By using Dapr's state store component, your microservices can interact with Azure SQL without tight coupling to the database driver.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Dapr provides a consistent API for state management and service bindings, making
 
 ## Configuring the Azure SQL State Store
 
-Dapr supports Azure SQL as a state store via the `azure-sql` component. Create a component YAML file:
+Dapr supports Azure SQL as a state store via the `sqlserver` component. Create a component YAML file:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -29,11 +29,11 @@ metadata:
   name: statestore
   namespace: default
 spec:
-  type: state.azure.sql
+  type: state.sqlserver
   version: v1
   metadata:
   - name: connectionString
-    value: "sqlserver://myserver.database.windows.net:1433?database=mydb&user=myuser&password=mypassword&encrypt=true"
+    value: "Server=myserver.database.windows.net;Database=mydb;User Id=myuser;Password=mypassword;Encrypt=true;"
   - name: tableName
     value: "dapr_state"
   - name: schema
@@ -77,36 +77,6 @@ func saveOrderState(ctx context.Context, client dapr.Client) error {
 }
 ```
 
-## Configuring the Output Binding
-
-For executing custom SQL queries, use the SQL Server output binding:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: azure-sql-binding
-  namespace: default
-spec:
-  type: bindings.azure.sql
-  version: v1
-  metadata:
-  - name: connectionString
-    value: "sqlserver://myserver.database.windows.net:1433?database=mydb&user=myuser&password=mypassword&encrypt=true"
-```
-
-Invoke the binding to run an INSERT:
-
-```bash
-curl -X POST http://localhost:3500/v1.0/bindings/azure-sql-binding \
-  -H "Content-Type: application/json" \
-  -d '{
-    "data": {"product": "gadget", "price": 19.99},
-    "metadata": {"sql": "INSERT INTO products (name, price) VALUES (@product, @price)"},
-    "operation": "exec"
-  }'
-```
-
 ## Using Managed Identity
 
 For production deployments on Azure Kubernetes Service, use Managed Identity instead of a password:
@@ -114,11 +84,15 @@ For production deployments on Azure Kubernetes Service, use Managed Identity ins
 ```yaml
   metadata:
   - name: connectionString
-    value: "sqlserver://myserver.database.windows.net:1433?database=mydb&azureClientId=<managed-identity-client-id>"
+    value: "Server=myserver.database.windows.net;Database=mydb;"
+  - name: useAzureAD
+    value: "true"
+  - name: azureClientId
+    value: "<managed-identity-client-id>"
 ```
 
-Enable the pod identity on AKS and ensure the managed identity has the `db_datareader` and `db_datawriter` roles on the database.
+Enable workload identity on AKS and ensure the managed identity has the `db_datareader` and `db_datawriter` roles on the database. The `azureClientId` field is only needed for user-assigned managed identities; omit it when using a system-assigned identity.
 
 ## Summary
 
-Dapr integrates with Azure SQL Database through both the state store and output binding components, allowing microservices to persist and query data without hard-coding database drivers. Using Managed Identity for authentication removes credential management overhead and follows Azure security best practices.
+Dapr integrates with Azure SQL Database through the state store component, allowing microservices to persist and query data without hard-coding database drivers. Using Managed Identity for authentication removes credential management overhead and follows Azure security best practices.
