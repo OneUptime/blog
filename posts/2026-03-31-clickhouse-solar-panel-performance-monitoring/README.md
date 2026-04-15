@@ -10,7 +10,7 @@ Description: Use ClickHouse to store and analyze solar panel telemetry, calculat
 
 ## Why ClickHouse for Solar Monitoring
 
-A utility-scale solar farm with 10,000 panels reporting every minute generates over 14 billion rows per year. ClickHouse handles this with compressed columnar storage and fast aggregations, making it possible to identify underperforming strings, calculate performance ratios, and correlate output with irradiance - all in real time.
+A utility-scale solar farm with 10,000 panels reporting every minute generates over 5 billion rows per year. ClickHouse handles this with compressed columnar storage and fast aggregations, making it possible to identify underperforming strings, calculate performance ratios, and correlate output with irradiance - all in real time.
 
 ## Schema Design
 
@@ -117,10 +117,10 @@ CREATE TABLE solar_string_daily
 (
     string_id   UInt16,
     day         Date,
-    kwh         Float64,
-    avg_pr      Float32
+    kwh         SimpleAggregateFunction(sum, Float64),
+    avg_pr      AggregateFunction(avg, Float32)
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (string_id, day);
 
 CREATE MATERIALIZED VIEW solar_string_daily_mv TO solar_string_daily AS
@@ -128,9 +128,22 @@ SELECT
     string_id,
     toDate(recorded_at) AS day,
     sum(ac_power_w) / 1000 AS kwh,
-    avg(efficiency_pct)    AS avg_pr
+    avgState(efficiency_pct)    AS avg_pr
 FROM solar_telemetry
 GROUP BY string_id, day;
+```
+
+To query the materialized view, use `avgMerge` to finalize the average:
+
+```sql
+SELECT
+    string_id,
+    day,
+    kwh,
+    round(avgMerge(avg_pr), 2) AS avg_pr
+FROM solar_string_daily
+GROUP BY string_id, day, kwh
+ORDER BY string_id, day;
 ```
 
 ## Summary
