@@ -22,7 +22,6 @@ The `merge_tree` section in `config.xml` (or a file in `config.d/`) applies defa
     <parts_to_throw_insert>300</parts_to_throw_insert>
     <max_delay_to_insert>1</max_delay_to_insert>
     <merge_max_block_size>8192</merge_max_block_size>
-    <max_part_loading_threads>auto</max_part_loading_threads>
   </merge_tree>
 </clickhouse>
 ```
@@ -33,7 +32,7 @@ The `merge_tree` section in `config.xml` (or a file in `config.d/`) applies defa
 
 **Merge behavior:** `merge_max_block_size` controls how many rows are processed at once during merges. The default of 8192 is appropriate for most workloads.
 
-**Broken parts:** `max_suspicious_broken_parts` sets the threshold at which ClickHouse stops automatically detaching broken parts and raises an alert instead, preventing silent data loss.
+**Broken parts:** `max_suspicious_broken_parts` sets the threshold at which ClickHouse denies automatic deletion of broken parts in a single partition, preventing silent data loss.
 
 ## Setting Storage Policy Globally
 
@@ -73,12 +72,10 @@ FROM system.merge_tree_settings
 WHERE changed = 1;
 ```
 
-You can also check per-table settings:
+You can also check per-table settings by inspecting the table definition:
 
 ```sql
-SELECT database, table, name, value
-FROM system.replicas
-LIMIT 10;
+SHOW CREATE TABLE your_database.your_table;
 ```
 
 ## Using config.d for Isolated Changes
