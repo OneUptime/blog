@@ -204,7 +204,7 @@ dim_countries        512 B        3
 
 ## Refreshing Data on a Schedule
 
-ClickHouse does not have a built-in scheduler, but you can truncate and reload a Memory table from application code or a cron job.
+You can truncate and reload a Memory table manually from application code or a cron job.
 
 ```sql
 -- Step 1: clear stale cache
@@ -212,6 +212,18 @@ TRUNCATE TABLE recent_events_cache;
 
 -- Step 2: reload fresh data
 INSERT INTO recent_events_cache
+SELECT event_id, event_type, user_id, event_time, properties
+FROM events
+WHERE event_time >= now() - INTERVAL 1 HOUR;
+```
+
+Alternatively, use a refreshable materialized view to let ClickHouse handle the schedule natively. The view automatically replaces its contents on each refresh cycle.
+
+```sql
+CREATE MATERIALIZED VIEW recent_events_cache_mv
+REFRESH EVERY 1 HOUR
+ENGINE = Memory
+AS
 SELECT event_id, event_type, user_id, event_time, properties
 FROM events
 WHERE event_time >= now() - INTERVAL 1 HOUR;
