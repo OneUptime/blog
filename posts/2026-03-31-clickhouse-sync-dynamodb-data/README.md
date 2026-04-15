@@ -72,8 +72,7 @@ Use AWS Glue to export DynamoDB tables to S3, then load into ClickHouse:
 # Glue job
 datasource = glueContext.create_dynamic_frame.from_catalog(
     database="dynamodb_tables",
-    table_name="orders",
-    additional_options={"dynamodb.output.tableName": "orders"}
+    table_name="orders"
 )
 
 datasource.toDF().write.parquet("s3://my-bucket/exports/orders/")
@@ -108,8 +107,15 @@ DynamoDB Streams include delete events. Mark deleted records in ClickHouse:
 
 ```python
 elif record['eventName'] == 'REMOVE':
+    old_item = boto3.dynamodb.types.TypeDeserializer().deserialize(
+        {'M': record['dynamodb']['OldImage']}
+    )
     rows.append({
-        'order_id': record['dynamodb']['Keys']['order_id']['S'],
+        'order_id': old_item.get('order_id', ''),
+        'user_id': int(old_item.get('user_id', 0)),
+        'status': old_item.get('status', ''),
+        'total': float(old_item.get('total', 0)),
+        'created_at': old_item.get('created_at', ''),
         '_deleted': 1
     })
 ```
