@@ -64,8 +64,6 @@ spec:
       value: "dapr-eventhubs-checkpoints"
     - name: consumerID
       value: "dapr-order-processor"
-    - name: initialOffsetPolicy
-      value: "latest"
 ```
 
 ## Storage Account Key Secret
@@ -75,18 +73,11 @@ kubectl create secret generic storage-secret \
   --from-literal=accountKey="your-storage-account-key"
 ```
 
-## Understanding initialOffsetPolicy
+## Default Start Position
 
-- `latest` (default): Start consuming from new messages only, skipping historical events
-- `earliest`: Replay all events from the beginning of the retention period
+When a Dapr sidecar starts and no checkpoint exists for a partition, the Azure Event Hubs SDK defaults to reading from the latest position, meaning only new events are consumed. Existing checkpoints always take priority—the consumer resumes from the last checkpointed offset.
 
-Change to `earliest` when recovering after an outage to reprocess missed events:
-
-```yaml
-metadata:
-  - name: initialOffsetPolicy
-    value: "earliest"
-```
+To reprocess events from the beginning, delete the existing checkpoint blobs (see "Resetting Checkpoints" below) and restart the Dapr sidecar.
 
 ## Verifying Checkpoints
 
@@ -101,20 +92,20 @@ az storage blob list \
 ```
 
 Checkpoint blob names follow the pattern:
-`{namespace}/{eventhub}/{consumerGroup}/{partitionId}`
+`{fully-qualified-namespace}/{eventhub}/{consumerGroup}/checkpoint/{partitionId}`
 
 ## Checkpoint Blob Contents
 
 ```bash
-az storage blob download \
+az storage blob metadata show \
   --container-name dapr-eventhubs-checkpoints \
-  --name "dapr-eventhubs/orders/dapr-order-processor/0" \
+  --name "dapr-eventhubs.servicebus.windows.net/orders/dapr-order-processor/checkpoint/0" \
   --account-name daprcheckpoints \
-  --file checkpoint.json
-
-cat checkpoint.json
-# {"Offset":"12345","SequenceNumber":100,"PartitionID":"0","ConsumerGroupName":"dapr-order-processor"}
+  -o json
+# {"offset":"12345","sequencenumber":"100"}
 ```
+
+Checkpoint data is stored as blob metadata properties, not as blob content.
 
 ## Resetting Checkpoints
 
@@ -124,7 +115,7 @@ To force a consumer to reprocess from the beginning, delete the checkpoint blobs
 az storage blob delete-batch \
   --source dapr-eventhubs-checkpoints \
   --account-name daprcheckpoints \
-  --pattern "dapr-eventhubs/orders/dapr-order-processor/*"
+  --pattern "dapr-eventhubs.servicebus.windows.net/orders/dapr-order-processor/*"
 ```
 
 Then restart the Dapr pods to trigger fresh checkpoint creation.
@@ -143,4 +134,4 @@ metadata:
 
 ## Summary
 
-Dapr's Event Hubs checkpointing stores consumer offsets in Azure Blob Storage, enabling reliable restarts without reprocessing events. Configure the storage account name, container, and consumer group name in the component metadata. Use `initialOffsetPolicy: earliest` to replay events after an outage, and use Managed Identity instead of storage account keys in production.
+Dapr's Event Hubs checkpointing stores consumer offsets in Azure Blob Storage, enabling reliable restarts without reprocessing events. Configure the storage account name, container, and consumer group name in the component metadata. To replay events after an outage, delete the checkpoint blobs and restart the Dapr sidecar. Use Managed Identity instead of storage account keys in production.
