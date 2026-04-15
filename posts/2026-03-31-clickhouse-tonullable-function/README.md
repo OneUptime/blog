@@ -24,13 +24,11 @@ SELECT
 
 ## Resolving UNION ALL Type Mismatches
 
-The most common reason to use `toNullable()` is a `UNION ALL` between a table that has nullable columns and one that has non-nullable columns. ClickHouse requires compatible types across all branches of a `UNION ALL`.
+One reason to use `toNullable()` is a `UNION ALL` between a table that has nullable columns and one that has non-nullable columns. ClickHouse automatically promotes non-nullable columns to `Nullable(T)` in `UNION ALL` when the base types are compatible, so `toNullable()` is not strictly required. However, using it makes the type conversion explicit and can improve readability.
 
 ```sql
--- This fails if archive_orders.amount is non-nullable
--- but recent_orders.amount is Nullable(Float64)
-
--- Fix: wrap the non-nullable column with toNullable()
+-- ClickHouse auto-promotes amount to Nullable(Float64) in the result,
+-- but toNullable() makes the intent explicit
 SELECT
     order_id,
     amount,
@@ -41,7 +39,7 @@ UNION ALL
 
 SELECT
     order_id,
-    toNullable(amount) AS amount,  -- convert to match Nullable(Float64)
+    toNullable(amount) AS amount,  -- explicitly convert to Nullable(Float64)
     'archive' AS source
 FROM archive_orders
 
@@ -51,11 +49,12 @@ LIMIT 20;
 
 ## Combining Nullable and Non-Nullable in Expressions
 
-Some expressions require all inputs to be the same nullable type. Use `toNullable()` to align them.
+ClickHouse generally auto-promotes non-nullable types to nullable when needed in expressions. However, `toNullable()` can make the type alignment explicit.
 
 ```sql
 -- Suppose col_a is String (non-nullable) and col_b is Nullable(String)
--- coalesce requires compatible types
+-- toNullable makes the type conversion explicit, though ClickHouse
+-- would auto-promote col_a in this context
 SELECT
     coalesce(toNullable(col_a), col_b) AS combined
 FROM my_table
@@ -90,10 +89,10 @@ SELECT
 
 ## Type Alignment for Array Functions
 
-Some array functions that return nullable outputs require nullable inputs. Use `toNullable()` to prepare inputs.
+You can use `toNullable()` inside array lambdas to produce an `Array(Nullable(T))` when you need nullable elements — for example, when combining arrays that mix nullable and non-nullable element types.
 
 ```sql
--- Convert array elements to nullable for functions that require it
+-- Convert array elements to nullable
 SELECT
     arrayMap(x -> toNullable(x), [1, 2, 3]) AS nullable_array;
 ```
@@ -136,4 +135,4 @@ Declare columns as `Nullable(T)` in the schema when values are genuinely optiona
 
 ## Summary
 
-`toNullable(x)` wraps a non-nullable type in `Nullable(T)`, enabling type-compatible operations with nullable columns. Its most common use is fixing `UNION ALL` type mismatches between queries where one source has nullable columns and another has non-nullable columns. It is the complement of `assumeNotNull()` - use `toNullable()` to widen a type (making it accept NULL), and `assumeNotNull()` to narrow it (asserting no NULLs exist).
+`toNullable(x)` wraps a non-nullable type in `Nullable(T)`, making the type conversion explicit when working with nullable columns. While ClickHouse often auto-promotes non-nullable types to nullable where needed (e.g., in `UNION ALL` and expressions), `toNullable()` is useful for clarity and in edge cases where explicit conversion is required. It is the complement of `assumeNotNull()` - use `toNullable()` to widen a type (making it accept NULL), and `assumeNotNull()` to narrow it (asserting no NULLs exist).
