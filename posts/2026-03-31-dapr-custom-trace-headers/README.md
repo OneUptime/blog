@@ -103,7 +103,7 @@ def publish_with_metadata(topic, data, user_id, request_id):
     )
 ```
 
-Note: For pub/sub, custom headers are included in the CloudEvent metadata, not the message body.
+Note: For pub/sub, custom HTTP headers like `x-user-id` are not automatically forwarded to subscribers. Only trace context headers (`traceparent`, `tracestate`) are propagated via the CloudEvent envelope. To pass custom metadata through pub/sub, include it in the message body.
 
 ## Using OpenTelemetry Baggage API
 
@@ -160,7 +160,7 @@ Baggage is end-to-end and not validated by default. In production:
 - Validate and sanitize baggage values at ingress
 - Do not put sensitive data in baggage headers
 - Consider encrypting sensitive correlation values
-- Limit baggage size (W3C spec recommends under 8192 bytes)
+- Limit baggage size (W3C spec requires platforms to propagate at least 8192 bytes)
 
 ## Summary
 
