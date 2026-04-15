@@ -136,7 +136,7 @@ SELECT
 FROM (
     SELECT
         user_id,
-        windowFunnel(86400)(
+        windowFunnel(86400000)(
             ts,
             event_name = 'page_view',
             event_name = 'add_to_cart',
@@ -213,10 +213,10 @@ CREATE TABLE user_daily_activity
 (
     user_id    UInt64,
     day        Date,
-    events     UInt32,
-    sessions   UInt32
+    events     SimpleAggregateFunction(sum, UInt64),
+    sessions   AggregateFunction(uniqExact, UInt64)
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (user_id, day);
 
 CREATE MATERIALIZED VIEW user_daily_activity_mv
@@ -224,10 +224,22 @@ TO user_daily_activity
 AS
 SELECT
     user_id,
-    toDate(ts)            AS day,
-    count()               AS events,
-    uniqExact(session_id) AS sessions
+    toDate(ts)                 AS day,
+    count()                    AS events,
+    uniqExactState(session_id) AS sessions
 FROM events
+GROUP BY user_id, day;
+```
+
+To query the aggregated data, use the corresponding merge combinators:
+
+```sql
+SELECT
+    user_id,
+    day,
+    sum(events)              AS total_events,
+    uniqExactMerge(sessions) AS unique_sessions
+FROM user_daily_activity
 GROUP BY user_id, day;
 ```
 
