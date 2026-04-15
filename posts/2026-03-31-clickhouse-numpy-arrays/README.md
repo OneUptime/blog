@@ -64,7 +64,7 @@ print(f"Memory - mean: {mem.mean():.2f}%, max: {mem.max():.2f}%")
 correlation = np.corrcoef(cpu, mem)[0, 1]
 print(f"CPU-Memory correlation: {correlation:.3f}")
 
-# Rolling average (manual with stride tricks)
+# Rolling average (manual with convolution)
 window = 60
 rolling_avg = np.convolve(cpu, np.ones(window) / window, mode="valid")
 ```
