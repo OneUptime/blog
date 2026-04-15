@@ -8,13 +8,13 @@ Description: Learn how to create and use the tokenbf_v1 skip index in ClickHouse
 
 ---
 
-`tokenbf_v1` is a token-based Bloom filter skip index in ClickHouse. It splits string values into tokens (whitespace-separated words or punctuation-delimited terms) and stores a Bloom filter per granule. Queries using `LIKE`, `hasToken`, or `in` can skip granules that do not contain the searched token.
+`tokenbf_v1` is a token-based Bloom filter skip index in ClickHouse. It splits string values into tokens by treating any non-alphanumeric character as a delimiter, and stores a Bloom filter per granule. Queries using `LIKE`, `hasToken`, or `in` can skip granules that do not contain the searched token.
 
 ## When to Use tokenbf_v1
 
 Use `tokenbf_v1` when:
 - Searching for whole words or tokens in log lines, messages, or URLs
-- Queries use `hasToken()`, `hasTokenCaseInsensitive()`, `LIKE '%word%'`, or `multiSearchAny()`
+- Queries use `hasToken()`, `hasTokenCaseInsensitive()`, `LIKE '%word%'`, or `match()`
 - Column values are natural-language text or structured identifiers with separators
 
 For substring searches that do not align with token boundaries, prefer `ngrambf_v1` instead.
@@ -34,7 +34,7 @@ ORDER BY (log_time);
 Parameters:
 - `65536` - Bloom filter size in bytes per granule
 - `3` - number of hash functions
-- `0` - random seed (0 = use default)
+- `0` - seed for the hash functions
 
 ## Adding to an Existing Table
 
@@ -59,7 +59,7 @@ WHERE hasToken(message, 'OutOfMemory')
 ## Querying with LIKE
 
 ```sql
--- Also benefits from tokenbf_v1 when the pattern starts with a full token
+-- Also benefits from tokenbf_v1 when the pattern contains whole tokens
 SELECT count() FROM logs WHERE message LIKE '%connection refused%'
 ```
 
