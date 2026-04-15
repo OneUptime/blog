@@ -27,9 +27,6 @@ metadata:
   name: actorconfig
   namespace: default
 spec:
-  features:
-    - name: ActorReentrancy
-      enabled: true
   actor:
     reentrancy:
       enabled: true
@@ -51,7 +48,7 @@ Your application must return the reentrancy configuration from the actor runtime
 from dapr.actor.runtime.config import ActorRuntimeConfig, ActorReentrancyConfig
 
 config = ActorRuntimeConfig(
-    reentrancy=ActorReentrancyConfig(enabled=True, max_stack_depth=32)
+    reentrancy=ActorReentrancyConfig(enabled=True, maxStackDepth=32)
 )
 ```
 
@@ -84,9 +81,11 @@ kubectl logs -l app=actor-service -c daprd | grep -i "reentrant\|reentrancy"
 class ActorA extends AbstractActor {
   async processOrder(orderId) {
     // Call Actor B - B will call back to this actor
-    const result = await this.getActorProxyFactory()
-      .createActorProxy("ActorB", "b-1")
-      .invokeMethod("validate", { orderId, callbackActor: this.id });
+    const client = this.getDaprClient();
+    const result = await client.actor.invoke("ActorB", "b-1", "validate", {
+      orderId,
+      callbackActor: this.getActorId(),
+    });
     return result;
   }
 
