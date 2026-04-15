@@ -76,7 +76,7 @@ const pubSub = new k8s.apiextensions.CustomResource("dapr-pubsub", {
     namespace: "default",
   },
   spec: {
-    type: "pubsub.snssqs",
+    type: "pubsub.aws.snssqs",
     version: "v1",
     metadata: [
       { name: "region", value: aws.config.region! },
@@ -126,7 +126,7 @@ const appConfig = new k8s.apiextensions.CustomResource("app-config", {
         endpointAddress: "http://zipkin.monitoring:9411/api/v2/spans",
       },
     },
-    metric: {
+    metrics: {
       enabled: true,
     },
   },
