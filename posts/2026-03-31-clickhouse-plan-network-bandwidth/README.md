@@ -53,8 +53,9 @@ Plan backup windows to avoid peak hours. Throttle backup uploads:
 
 ```bash
 clickhouse-backup create my_backup
-# Use aws s3 cp with --bandwidth-limit to throttle
-aws s3 cp parts/ s3://bucket/ --recursive --bandwidth-limit 50MB/s
+# Throttle upload bandwidth via AWS CLI S3 max_bandwidth config
+aws configure set default.s3.max_bandwidth 50MB/s
+aws s3 cp parts/ s3://bucket/ --recursive
 ```
 
 ## Network Interface Sizing
