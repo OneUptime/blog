@@ -109,10 +109,10 @@ ORDER BY id;
 
 CREATE MATERIALIZED VIEW orders_cdc_mv TO orders AS
 SELECT
-    toUInt64(JSONExtractInt(after, 'id')) AS id,
-    JSONExtractString(after, 'status') AS status,
-    toDecimal64(JSONExtractFloat(after, 'total_amount'), 4) AS total_amount,
-    toDateTime(JSONExtractInt(after, 'created_at') / 1000) AS created_at,
+    toUInt64(JSONExtractInt(if(op = 'd', before, after), 'id')) AS id,
+    JSONExtractString(if(op = 'd', before, after), 'status') AS status,
+    toDecimal64(JSONExtractFloat(if(op = 'd', before, after), 'total_amount'), 4) AS total_amount,
+    toDateTime(JSONExtractInt(if(op = 'd', before, after), 'created_at') / 1000) AS created_at,
     if(op = 'd', 1, 0) AS _deleted
 FROM orders_cdc_queue
 WHERE op IN ('c', 'u', 'd');
@@ -123,7 +123,7 @@ WHERE op IN ('c', 'u', 'd');
 For `MaterializedPostgreSQL`:
 
 ```sql
-SELECT * FROM system.materialized_postgresql_databases;
+SELECT * FROM system.materialized_postgresql_tables;
 ```
 
 For Debezium:
