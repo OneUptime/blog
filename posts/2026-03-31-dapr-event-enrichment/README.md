@@ -17,30 +17,29 @@ Event enrichment adds contextual data to raw events before they reach downstream
 Subscribe to raw events, enrich with user data, and republish:
 
 ```javascript
-const { DaprServer, DaprClient } = require('@dapr/dapr');
+const { DaprServer, DaprClient, HttpMethod } = require('@dapr/dapr');
 const server = new DaprServer();
 const client = new DaprClient();
 
 await server.pubsub.subscribe('pubsub', 'raw-orders', async (rawOrder) => {
   // Fetch user profile from state store
-  const userProfile = await client.state.get('statestore', `user-${rawOrder.userId}`);
-  const user = userProfile ? JSON.parse(userProfile) : null;
+  const user = await client.state.get('statestore', `user-${rawOrder.userId}`);
 
   // Fetch product details via service invocation
   const product = await client.invoker.invoke(
     'catalog-service',
     `products/${rawOrder.productId}`,
-    'GET'
+    HttpMethod.GET
   );
 
   // Enrich the event
   const enrichedOrder = {
     ...rawOrder,
-    user: {
-      name: user?.name,
-      email: user?.email,
-      tier: user?.tier || 'standard'
-    },
+    user: user ? {
+      name: user.name,
+      email: user.email,
+      tier: user.tier || 'standard'
+    } : null,
     product: {
       name: product.name,
       category: product.category,
@@ -66,16 +65,16 @@ async function getEnrichedProductData(productId) {
   // Check cache first
   const cached = await client.state.get('statestore', cacheKey);
   if (cached) {
-    return JSON.parse(cached);
+    return cached;
   }
 
   // Fetch from catalog service
-  const product = await client.invoker.invoke('catalog-service', `products/${productId}`, 'GET');
+  const product = await client.invoker.invoke('catalog-service', `products/${productId}`, HttpMethod.GET);
 
   // Cache for 5 minutes
   await client.state.save('statestore', [{
     key: cacheKey,
-    value: JSON.stringify(product),
+    value: product,
     metadata: { ttlInSeconds: '300' }
   }]);
 
@@ -90,10 +89,10 @@ Build a pipeline that enriches an event with data from multiple sources:
 ```javascript
 async function enrichOrderEvent(rawOrder) {
   const [user, product, inventory, shipping] = await Promise.all([
-    client.invoker.invoke('user-service', `users/${rawOrder.userId}`, 'GET'),
-    client.invoker.invoke('catalog-service', `products/${rawOrder.productId}`, 'GET'),
-    client.invoker.invoke('inventory-service', `stock/${rawOrder.productId}`, 'GET'),
-    client.invoker.invoke('shipping-service', `rates/${rawOrder.destination}`, 'GET')
+    client.invoker.invoke('user-service', `users/${rawOrder.userId}`, HttpMethod.GET),
+    client.invoker.invoke('catalog-service', `products/${rawOrder.productId}`, HttpMethod.GET),
+    client.invoker.invoke('inventory-service', `stock/${rawOrder.productId}`, HttpMethod.GET),
+    client.invoker.invoke('shipping-service', `rates/${rawOrder.destination}`, HttpMethod.GET)
   ]);
 
   return {
@@ -116,7 +115,7 @@ async function safeEnrich(rawOrder) {
   const enriched = { ...rawOrder };
 
   try {
-    const user = await client.invoker.invoke('user-service', `users/${rawOrder.userId}`, 'GET');
+    const user = await client.invoker.invoke('user-service', `users/${rawOrder.userId}`, HttpMethod.GET);
     enriched.userTier = user.tier;
   } catch (err) {
     console.warn(`Failed to enrich user data for ${rawOrder.userId}:`, err.message);
