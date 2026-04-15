@@ -120,7 +120,7 @@ spec:
 Declares a pub/sub topic subscription declaratively:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-sub
@@ -128,7 +128,8 @@ metadata:
 spec:
   pubsubname: pubsub
   topic: orders
-  route: /orders/process
+  routes:
+    default: /orders/process
 ```
 
 ## HTTPEndpoint CRD
