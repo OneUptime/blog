@@ -34,9 +34,8 @@ SELECT
     max(order_date) AS last_order_date,
     if(max(order_date) < today() - 90, 'at_risk', 'active') AS churn_segment
 FROM user_order_summary
-WHERE order_count >= 2
 GROUP BY user_id, email
-HAVING lifetime_value_usd > 500;
+HAVING order_count >= 2 AND lifetime_value_usd > 500;
 ```
 
 ## Exporting to CSV for Upload
