@@ -91,7 +91,7 @@ LIMIT 10;
 
 ## Web Vitals Thresholds
 
-Classify requests by Core Web Vitals TTFB thresholds (Google).
+Classify requests by Web Vitals TTFB thresholds (Google).
 
 ```sql
 SELECT
