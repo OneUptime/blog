@@ -107,14 +107,14 @@ SELECT
     countIf(payload.status_code >= 500)          AS server_error_count
 FROM application_logs
 WHERE log_time >= now() - INTERVAL 1 HOUR
-  AND isNotNull(payload.status_code)
+  AND payload.status_code != 0
 GROUP BY service
 ORDER BY avg_duration_ms DESC;
 ```
 
 ## Handling Missing Paths
 
-When a path does not exist in a particular row's JSON, the value is the default for the inferred type (usually `0` for numbers or `''` for strings). Use `isNotNull` or `nullIf` to distinguish missing from zero:
+When a path does not exist in a particular row's JSON, the value is the default for the inferred type (usually `0` for numbers or `''` for strings). Since sub-columns are non-Nullable, `isNotNull` will always return true. Use `nullIf` to distinguish missing from zero:
 
 ```sql
 SELECT
@@ -149,7 +149,7 @@ INSERT INTO application_logs FORMAT JSONEachRow
 
 ## Migration to the New JSON Type
 
-ClickHouse 24.x introduced a new `JSON` type that replaces `Object('json')` with better performance, stronger type inference, and production-ready guarantees. Migration involves recreating the table:
+ClickHouse 24.x introduced a new `JSON` type that replaces `Object('json')` with better performance and stronger type inference. It was experimental in 24.x and became production-ready in version 25.3. Migration involves recreating the table:
 
 ```sql
 -- New JSON type (ClickHouse 24.x+)
@@ -175,4 +175,4 @@ The new `JSON` type supports explicit path type hints, better handling of type c
 
 ## Summary
 
-ClickHouse's `Object('json')` type enables semi-structured JSON storage with columnar efficiency by extracting each JSON path into a sub-column at write time. It supports dot-notation path access in queries and works with standard aggregate functions, but carries limitations around type conflicts, experimental status, and schema evolution. For new deployments on ClickHouse 24.x or later, prefer the newer `JSON` type which addresses most of these shortcomings.
+ClickHouse's `Object('json')` type enables semi-structured JSON storage with columnar efficiency by extracting each JSON path into a sub-column at write time. It supports dot-notation path access in queries and works with standard aggregate functions, but carries limitations around type conflicts, experimental status, and schema evolution. For new deployments on ClickHouse 25.3 or later, prefer the newer `JSON` type which addresses most of these shortcomings.
