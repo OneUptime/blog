@@ -141,7 +141,7 @@ ORDER BY day DESC, severity;
 
 ```sql
 CREATE MATERIALIZED VIEW siem_hourly_summary
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (source_system, event_type, severity, hour)
 AS
 SELECT
@@ -149,10 +149,25 @@ SELECT
     event_type,
     severity,
     toStartOfHour(event_time) AS hour,
-    count() AS events,
-    countDistinct(source_ip) AS unique_ips
+    countState() AS events,
+    uniqState(source_ip) AS unique_ips
 FROM security_events
 GROUP BY source_system, event_type, severity, hour;
+```
+
+To query the aggregated view, use the corresponding `-Merge` combinators:
+
+```sql
+SELECT
+    source_system,
+    event_type,
+    severity,
+    hour,
+    countMerge(events) AS events,
+    uniqMerge(unique_ips) AS unique_ips
+FROM siem_hourly_summary
+GROUP BY source_system, event_type, severity, hour
+ORDER BY hour DESC;
 ```
 
 ## Summary
