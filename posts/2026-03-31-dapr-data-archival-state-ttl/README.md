@@ -26,9 +26,7 @@ def save_session_with_ttl(session_id: str, data: dict, ttl_seconds: int = 3600):
             store_name="statestore",
             key=f"session:{session_id}",
             value=json.dumps(data),
-            options=StateOptions(
-                metadata={"ttlInSeconds": str(ttl_seconds)}
-            )
+            state_metadata={"ttlInSeconds": str(ttl_seconds)}
         )
 ```
 
@@ -77,11 +75,12 @@ def save_with_tier(key: str, data: dict, tier: str = 'hot'):
 Use Dapr Workflow to run scheduled archival jobs:
 
 ```python
-from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, ActivityContext
-import dapr.ext.workflow as wf
+from dapr.ext.workflow import WorkflowRuntime, DaprWorkflowContext, WorkflowActivityContext
 
-@wf.activity
-def fetch_expiring_records(ctx: ActivityContext, input: dict) -> list:
+wfr = WorkflowRuntime()
+
+@wfr.activity
+def fetch_expiring_records(ctx: WorkflowActivityContext, input: dict) -> list:
     """Get records approaching TTL expiry"""
     with DaprClient() as client:
         archive_pending = json.loads(
@@ -90,8 +89,8 @@ def fetch_expiring_records(ctx: ActivityContext, input: dict) -> list:
         now = datetime.utcnow().isoformat()
         return [r for r in archive_pending if r['archive_at'] <= now]
 
-@wf.activity
-def archive_to_cold_storage(ctx: ActivityContext, records: list) -> dict:
+@wfr.activity
+def archive_to_cold_storage(ctx: WorkflowActivityContext, records: list) -> dict:
     """Move records to object storage via Dapr output binding"""
     with DaprClient() as client:
         for record in records:
@@ -109,7 +108,7 @@ def archive_to_cold_storage(ctx: ActivityContext, records: list) -> dict:
             )
     return {"archived": len(records)}
 
-@wf.workflow
+@wfr.workflow
 def archival_workflow(ctx: DaprWorkflowContext, _: None):
     expiring = yield ctx.call_activity(fetch_expiring_records, input={})
     if expiring:
@@ -155,7 +154,7 @@ Track archival metrics with Prometheus:
 
 ```bash
 # Monitor archive workflow execution
-dapr workflow history --workflow-id archival-workflow-id --app-id archival-service
+dapr workflow get archival-workflow-id --app-id archival-service
 ```
 
 ## Summary
