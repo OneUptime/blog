@@ -76,10 +76,10 @@ public async Task Run([EventHubTrigger("telemetry", Connection = "EventHubConnec
     });
 
     var values = string.Join(",", rows);
-    var query = $"INSERT INTO telemetry VALUES {values}";
+    var query = "INSERT INTO telemetry VALUES";
 
     using var client = new HttpClient();
-    await client.PostAsync($"http://clickhouse:8123/?query={Uri.EscapeDataString(query)}", null);
+    await client.PostAsync($"http://clickhouse:8123/?query={Uri.EscapeDataString(query)}", new StringContent(values));
 }
 ```
 
@@ -97,7 +97,7 @@ az eventhubs eventhub consumer-group create \
 
 ## Monitor Consumer Lag
 
-Check Event Hub consumer lag:
+View consumer group details:
 
 ```bash
 az eventhubs eventhub consumer-group show \
@@ -106,6 +106,8 @@ az eventhubs eventhub consumer-group show \
   --eventhub-name telemetry \
   --name clickhouse-consumer
 ```
+
+Note: This command shows consumer group metadata, not lag. To monitor consumer lag, use Azure Monitor metrics or the ClickHouse system table below.
 
 Check ClickHouse Kafka engine status:
 
