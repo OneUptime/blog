@@ -64,7 +64,7 @@ FROM support_tickets;
 
 ## UNION DISTINCT
 
-`UNION DISTINCT` (or just `UNION`) removes duplicate rows from the combined result. It is equivalent to wrapping `UNION ALL` in a `SELECT DISTINCT`.
+`UNION DISTINCT` removes duplicate rows from the combined result. It is equivalent to wrapping `UNION ALL` in a `SELECT DISTINCT`. Note that bare `UNION` (without `ALL` or `DISTINCT`) depends on the `union_default_mode` setting, so always specify the mode explicitly.
 
 ```sql
 -- Return unique user_ids that appear in either table
@@ -80,11 +80,13 @@ Because UNION DISTINCT performs deduplication, it is slower than UNION ALL. Only
 You can chain more than two SELECT statements.
 
 ```sql
-SELECT 'click'  AS source, count() AS cnt FROM click_events
-UNION ALL
-SELECT 'view'   AS source, count() AS cnt FROM view_events
-UNION ALL
-SELECT 'purchase' AS source, count() AS cnt FROM purchase_events
+SELECT * FROM (
+    SELECT 'click'    AS source, count() AS cnt FROM click_events
+    UNION ALL
+    SELECT 'view'     AS source, count() AS cnt FROM view_events
+    UNION ALL
+    SELECT 'purchase' AS source, count() AS cnt FROM purchase_events
+)
 ORDER BY cnt DESC;
 ```
 
@@ -111,53 +113,58 @@ GROUP BY channel;
 
 ```sql
 -- Compare event counts between this week and last week
-SELECT
-    'this_week'  AS period,
-    event_type,
-    count()      AS cnt
-FROM events
-WHERE created_at >= today() - 7
-GROUP BY event_type
+SELECT * FROM (
+    SELECT
+        'this_week'  AS period,
+        event_type,
+        count()      AS cnt
+    FROM events
+    WHERE created_at >= today() - 7
+    GROUP BY event_type
 
-UNION ALL
+    UNION ALL
 
-SELECT
-    'last_week'  AS period,
-    event_type,
-    count()      AS cnt
-FROM events
-WHERE created_at >= today() - 14
-  AND created_at <  today() - 7
-GROUP BY event_type
-
+    SELECT
+        'last_week'  AS period,
+        event_type,
+        count()      AS cnt
+    FROM events
+    WHERE created_at >= today() - 14
+      AND created_at <  today() - 7
+    GROUP BY event_type
+)
 ORDER BY event_type, period;
 ```
 
 ## Adding ORDER BY and LIMIT to UNION Queries
 
-`ORDER BY` and `LIMIT` at the outer level apply to the combined result. To sort within individual parts, use subqueries.
+In ClickHouse, `ORDER BY` and `LIMIT` after a UNION chain are applied to the last individual query, not to the combined result. To sort or limit the full combined result, wrap the entire UNION in a subquery.
 
 ```sql
 -- Sort the full combined result
-SELECT event_id, user_id, created_at FROM events_march
-UNION ALL
-SELECT event_id, user_id, created_at FROM events_april
+SELECT * FROM (
+    SELECT event_id, user_id, created_at FROM events_march
+    UNION ALL
+    SELECT event_id, user_id, created_at FROM events_april
+)
 ORDER BY created_at DESC
 LIMIT 100;
 ```
 
 ```sql
--- LIMIT each branch separately using subqueries
+-- LIMIT each branch separately, then sort the combined result
 SELECT * FROM (
-    SELECT event_id, user_id, created_at FROM events_march ORDER BY created_at DESC LIMIT 50
-)
-UNION ALL
-SELECT * FROM (
-    SELECT event_id, user_id, created_at FROM events_april ORDER BY created_at DESC LIMIT 50
+    SELECT * FROM (
+        SELECT event_id, user_id, created_at FROM events_march ORDER BY created_at DESC LIMIT 50
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT event_id, user_id, created_at FROM events_april ORDER BY created_at DESC LIMIT 50
+    )
 )
 ORDER BY created_at DESC;
 ```
 
 ## Summary
 
-`UNION ALL` is the preferred way to merge result sets in ClickHouse because it avoids the deduplication cost of `UNION DISTINCT`. Always ensure the column count and types match across all branches, using explicit casts when necessary. Use UNION ALL inside CTEs or subqueries to compose more complex multi-source queries, and apply ORDER BY and LIMIT at the outermost level to control the final result.
+`UNION ALL` is the preferred way to merge result sets in ClickHouse because it avoids the deduplication cost of `UNION DISTINCT`. Always ensure the column count and types match across all branches, using explicit casts when necessary. Use UNION ALL inside CTEs or subqueries to compose more complex multi-source queries. To apply ORDER BY and LIMIT to the combined result, wrap the entire UNION in a subquery, because ClickHouse applies these clauses to the last individual query rather than the full result.
