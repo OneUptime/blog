@@ -80,8 +80,8 @@ curl http://localhost:3500/v1.0/configuration/configstore/sub-abc-12345/unsubscr
 ```python
 from dapr.clients import DaprClient
 
-def handle_config_update(update):
-    for key, item in update.items():
+def handle_config_update(id, update):
+    for key, item in update.items.items():
         print(f"Config updated: {key} = {item.value}")
 
 with DaprClient() as client:
@@ -124,7 +124,7 @@ spec:
 Update config values directly in Redis to trigger subscriber notifications:
 
 ```bash
-redis-cli SET "feature-checkout-v2" "false"
+redis-cli MSET "feature-checkout-v2" "false||1"
 ```
 
 All subscribed applications receive the update within milliseconds.
@@ -132,8 +132,10 @@ All subscribed applications receive the update within milliseconds.
 ## Using Config for Feature Flags
 
 ```javascript
-const { DaprClient } = require("@dapr/dapr");
-const client = new DaprClient();
+const { DaprClient, CommunicationProtocolEnum } = require("@dapr/dapr");
+const client = new DaprClient({
+  communicationProtocol: CommunicationProtocolEnum.GRPC,
+});
 
 async function isFeatureEnabled(featureName) {
   const config = await client.configuration.get("configstore", [featureName]);
