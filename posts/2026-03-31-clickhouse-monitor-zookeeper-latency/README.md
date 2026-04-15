@@ -43,7 +43,9 @@ ORDER BY event;
 Key events to watch:
 - `ZooKeeperTransactions` - total number of ZooKeeper operations
 - `ZooKeeperWatchResponse` - watch notifications received
-- `ZooKeeperExceptions` - errors communicating with ZooKeeper
+- `ZooKeeperUserExceptions` - data-related errors communicating with ZooKeeper
+- `ZooKeeperHardwareExceptions` - network-related errors communicating with ZooKeeper
+- `ZooKeeperOtherExceptions` - other ZooKeeper exceptions
 
 ## Querying the ZooKeeper Log Table
 
@@ -53,9 +55,7 @@ ClickHouse Keeper logs operations to `system.zookeeper_log` (if enabled):
 SELECT
     toStartOfMinute(event_time) AS minute,
     count() AS operations,
-    countIf(error != 'ZOK') AS errors,
-    avg(elapsed_microseconds) AS avg_latency_us,
-    max(elapsed_microseconds) AS max_latency_us
+    countIf(error != 'ZOK') AS errors
 FROM system.zookeeper_log
 WHERE event_time >= now() - INTERVAL 1 HOUR
 GROUP BY minute
@@ -73,7 +73,7 @@ WHERE metric LIKE '%ZooKeeper%' OR metric LIKE '%Keeper%'
 ORDER BY metric;
 ```
 
-Look for `ZooKeeperReadLatencyUs` and `ZooKeeperWriteLatencyUs` - values above a few milliseconds indicate problems.
+This will show metrics like `ZooKeeperClientLastZXIDSeen` and various Keeper-related metrics if you are running ClickHouse Keeper. Filter results for metrics relevant to your setup.
 
 ## Detecting Replication Lag Caused by ZooKeeper
 
@@ -100,19 +100,24 @@ Add alerting rules to detect ZooKeeper problems early:
 groups:
   - name: clickhouse_zookeeper
     rules:
-      - alert: ClickHouseZooKeeperHighLatency
-        expr: ClickHouseAsyncMetrics_ZooKeeperReadLatencyUs > 50000
+      - alert: ClickHouseZooKeeperExceptions
+        expr: >
+          increase(ClickHouseProfileEvents_ZooKeeperUserExceptions_total[5m])
+          + increase(ClickHouseProfileEvents_ZooKeeperHardwareExceptions_total[5m])
+          + increase(ClickHouseProfileEvents_ZooKeeperOtherExceptions_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZooKeeper exceptions increasing"
+
+      - alert: ClickHouseReplicationQueueGrowing
+        expr: ClickHouseMetrics_ReplicasMaxInsertsInQueue > 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "ZooKeeper read latency above 50ms"
-
-      - alert: ClickHouseZooKeeperExceptions
-        expr: increase(ClickHouseProfileEvents_ZooKeeperExceptions_total[5m]) > 10
-        for: 2m
-        labels:
-          severity: critical
+          summary: "Replication insert queue growing, possible ZooKeeper issues"
 ```
 
 ## ZooKeeper Server-Side Monitoring
