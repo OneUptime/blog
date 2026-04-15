@@ -12,9 +12,8 @@ The Altinity ClickHouse Operator is the most widely adopted Kubernetes operator 
 
 ## Prerequisites
 
-- A running Kubernetes cluster (1.19+)
+- A running Kubernetes cluster (1.25+)
 - `kubectl` configured to access the cluster
-- Helm 3 installed
 
 ## Installing the Altinity Operator
 
