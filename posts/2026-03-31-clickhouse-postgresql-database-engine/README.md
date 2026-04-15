@@ -103,7 +103,7 @@ WHERE created_at >= '2024-01-01';
 
 ## Limitations
 
-- Read-only by default; INSERT is not supported for the database engine
+- Supports SELECT and INSERT; INSERT runs as a `COPY ... FROM STDIN` on the PostgreSQL side with auto-commit
 - No caching - every query hits PostgreSQL
 - Performance is limited by PostgreSQL response time and network latency
 - Not suitable for high-QPS analytical queries
