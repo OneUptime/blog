@@ -84,10 +84,6 @@ spec:
       value: "QUORUM"
     - name: protoVersion
       value: "4"
-    - name: reconnectionPolicy
-      value: "constant"
-    - name: maxReconnectionAttempts
-      value: "3"
 ```
 
 Store credentials:
@@ -119,8 +115,6 @@ For DataStax Astra (managed Cassandra-as-a-Service):
       secretKeyRef:
         name: astra-secret
         key: application-token
-    - name: enableTLS
-      value: "true"
     - name: keyspace
       value: "your_keyspace"
 ```
@@ -164,7 +158,7 @@ docker exec -it cassandra cqlsh
 
 -- List state table
 USE daprstate;
-SELECT key, updatetime FROM dapr_state LIMIT 20;
+SELECT key, value FROM dapr_state LIMIT 20;
 
 -- Get specific state
 SELECT key, value FROM dapr_state WHERE key = 'sensor:device-001:latest';
