@@ -74,12 +74,13 @@ SELECT
     user,
     count() AS queries,
     formatReadableSize(avg(memory_usage)) AS avg_memory,
-    formatReadableSize(max(memory_usage)) AS peak_memory
+    formatReadableSize(max(memory_usage)) AS peak_memory,
+    max(memory_usage) AS peak_memory_bytes
 FROM system.query_log
 WHERE type = 'QueryFinish'
     AND event_date = today()
 GROUP BY user
-ORDER BY peak_memory DESC;
+ORDER BY peak_memory_bytes DESC;
 ```
 
 ## Currently Running Queries
