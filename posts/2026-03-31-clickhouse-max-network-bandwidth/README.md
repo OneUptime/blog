@@ -22,21 +22,26 @@ SET max_network_bandwidth_for_user = 209715200;  -- 200 MB/s for the user total
 SET max_network_bandwidth_for_all_users = 524288000;  -- 500 MB/s server-wide
 ```
 
-These settings apply to outbound result transfer, not inbound INSERT data.
+These settings throttle the speed of data exchange over the network in bytes per second for query execution.
 
 ## Setting Defaults in users.xml
 
-Apply limits to a specific user:
+Apply limits to a specific user by creating a settings profile and assigning it:
 
 ```xml
+<profiles>
+  <export_profile>
+    <max_network_bandwidth>52428800</max_network_bandwidth>
+    <max_network_bandwidth_for_user>104857600</max_network_bandwidth_for_user>
+  </export_profile>
+</profiles>
+
 <users>
   <export_user>
     <password>secret</password>
-    <profile>default</profile>
+    <profile>export_profile</profile>
     <networks><ip>::/0</ip></networks>
     <quota>default</quota>
-    <max_network_bandwidth>52428800</max_network_bandwidth>
-    <max_network_bandwidth_for_user>104857600</max_network_bandwidth_for_user>
   </export_user>
 </users>
 ```
