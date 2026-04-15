@@ -15,7 +15,7 @@ Loading millions of rows via array inserts buffers everything in Node.js memory 
 ## Installation
 
 ```bash
-npm install @clickhouse/client stream
+npm install @clickhouse/client
 ```
 
 ## Streaming from a Readable Stream
@@ -68,16 +68,28 @@ await client.insert({
 
 ```javascript
 import { Kafka } from 'kafkajs';
+import { Readable } from 'stream';
 
 const kafka = new Kafka({ clientId: 'ch-inserter', brokers: ['localhost:9092'] });
 const consumer = kafka.consumer({ groupId: 'clickhouse-sink' });
 await consumer.subscribe({ topic: 'events', fromBeginning: false });
 
-async function* kafkaMessages() {
-  for await (const { message } of consumer.run({ eachMessage: async function*() {} })) {
-    yield JSON.parse(message.value.toString());
-  }
-}
+const stream = new Readable({ objectMode: true, read() {} });
+
+await consumer.run({
+  eachMessage: async ({ message }) => {
+    stream.push(JSON.parse(message.value.toString()));
+  },
+});
+
+// When done consuming, signal end of stream:
+// stream.push(null);
+
+await client.insert({
+  table: 'events',
+  values: stream,
+  format: 'JSONEachRow',
+});
 ```
 
 For Kafka, consider batching messages into arrays and flushing every 5,000 rows to avoid too many small inserts.
@@ -108,4 +120,4 @@ await client.insert({
 
 ## Summary
 
-ClickHouse's Node.js client supports streaming inserts natively. Pass any async generator or Readable stream as the `values` option. This approach handles datasets of any size without exhausting Node.js heap memory, and backpressure is managed automatically by the stream API.
+ClickHouse's Node.js client supports streaming inserts natively. Pass any `Readable` stream as the `values` option — use `Readable.from()` to convert sync or async generators into a stream. This approach handles datasets of any size without exhausting Node.js heap memory, and backpressure is managed automatically by the stream API when using `Readable.from()` with generators.
