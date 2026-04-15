@@ -77,15 +77,15 @@ SELECT
 FROM geo_events
 ```
 
-## Returning Tuples from Functions
+## Combining Aggregates into Tuples
 
-Several ClickHouse functions return tuples. `minMax` returns a `(min, max)` tuple.
+You can combine multiple aggregate results into a single tuple using the shorthand syntax.
 
 ```sql
 SELECT
-  minMax(score) AS score_range,
-  minMax(score).1 AS min_score,
-  minMax(score).2 AS max_score
+  (min(score), max(score)) AS score_range,
+  min(score) AS min_score,
+  max(score) AS max_score
 FROM test_results
 ```
 
