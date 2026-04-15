@@ -26,17 +26,19 @@ A malicious value like `' OR 1=1 --` would return all rows.
 Using the ClickHouse HTTP interface, pass parameters via query string:
 
 ```bash
-curl "http://localhost:8123/?query=SELECT+*+FROM+events+WHERE+user_id={user_id:String}&user_id=abc123"
+curl "http://localhost:8123/?query=SELECT+*+FROM+events+WHERE+user_id={user_id:String}&param_user_id=abc123"
 ```
 
-Parameters are declared with `{name:Type}` syntax inside the query.
+Parameters are declared with `{name:Type}` syntax inside the query. In the URL query string, parameter values are passed with the `param_` prefix (e.g., `param_user_id=abc123`).
 
 ## Supported Parameter Types
 
 ```text
 String, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64,
-Float32, Float64, Date, DateTime, UUID
+Float32, Float64, Date, DateTime, UUID, Array(...), Map(...), Tuple(...), Identifier
 ```
+
+Most standard ClickHouse data types are supported as parameter types, including complex types like `Array(String)` and `Map(String, UInt64)`. The `Identifier` type is a special type for parameterizing database, table, or column names.
 
 ## Python Client Example
 
@@ -58,15 +60,19 @@ result = client.execute(
 ```go
 conn, _ := clickhouse.Open(&clickhouse.Options{Addr: []string{"localhost:9000"}})
 
-rows, _ := conn.Query(ctx,
-    "SELECT event FROM events WHERE user_id = ? AND ts > ?",
-    "abc123", time.Now().Add(-24*time.Hour),
+chCtx := clickhouse.Context(ctx, clickhouse.WithParameters(clickhouse.Parameters{
+    "user_id": "abc123",
+    "ts":      time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04:05"),
+}))
+
+rows, _ := conn.Query(chCtx,
+    "SELECT event FROM events WHERE user_id = {user_id:String} AND ts > {ts:DateTime}",
 )
 ```
 
 ## Named Parameters in SQL Queries
 
-For the native protocol, use positional `?` or named `%(name)s` depending on the client library:
+For the HTTP interface and native protocol, use `{name:Type}` syntax for server-side parameterized queries. Client libraries may also offer their own binding syntax (e.g., `%(name)s` in Python's clickhouse-driver):
 
 ```sql
 SELECT
@@ -82,7 +88,7 @@ ORDER BY hour;
 
 ## Benefits for Query Cache
 
-Parameterized queries allow ClickHouse to reuse cached query plans since the query text stays constant. This reduces parse overhead for high-frequency queries.
+ClickHouse's query cache stores query results keyed by the query's abstract syntax tree (AST). When parameterized queries are used, queries with different parameter values produce different ASTs and are cached separately. However, parameterized queries keep the query structure consistent, which makes cache behavior more predictable and avoids polluting the cache with syntactically different but logically equivalent queries that arise from string concatenation.
 
 ## Summary
 
