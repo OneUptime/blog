@@ -100,15 +100,14 @@ import (
     "context"
     "testing"
 
-    "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/modules/clickhouse"
 )
 
 func TestClickHouseQuery(t *testing.T) {
     ctx := context.Background()
 
-    container, err := clickhouse.RunContainer(ctx,
-        testcontainers.WithImage("clickhouse/clickhouse-server:24.3"),
+    container, err := clickhouse.Run(ctx,
+        "clickhouse/clickhouse-server:24.3",
     )
     if err != nil {
         t.Fatal(err)
