@@ -21,6 +21,12 @@ SET query_profiler_cpu_time_period_ns  = 10000000;  -- 10ms CPU sampling
 
 Run your query, then query `system.trace_log`.
 
+To resolve stack trace addresses to human-readable function names, enable introspection functions (disabled by default):
+
+```sql
+SET allow_introspection_functions = 1;
+```
+
 ## Schema Overview
 
 ```sql
