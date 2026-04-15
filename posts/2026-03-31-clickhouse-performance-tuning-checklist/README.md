@@ -18,7 +18,7 @@ ClickHouse is fast by default, but systematic tuning across schema design, syste
 [ ] Using DateTime instead of DateTime64 when millisecond precision is not needed
 [ ] Using UInt32 instead of UInt64 for IDs that fit in 32 bits
 [ ] Partitioning by month (toYYYYMM) or day (toYYYYMMDD) for time-series data
-[ ] Adding skip indexes for high-selectivity filters on non-primary-key columns
+[ ] Adding skip indexes for filters on non-primary-key columns where matching values are rare and clustered in few granules
 ```
 
 ```sql
@@ -38,9 +38,20 @@ SELECT 'country', uniqExact(country) FROM events;
 <clickhouse>
   <!-- Set to 80% of total RAM -->
   <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+</clickhouse>
+```
 
-  <!-- Per-query memory limit -->
-  <max_memory_usage>20000000000</max_memory_usage>
+Per-query memory limits are session-level settings configured in `users.xml` or `users.d/`:
+
+```xml
+<!-- /etc/clickhouse-server/users.d/memory.xml -->
+<clickhouse>
+  <profiles>
+    <default>
+      <!-- Per-query memory limit -->
+      <max_memory_usage>20000000000</max_memory_usage>
+    </default>
+  </profiles>
 </clickhouse>
 ```
 
@@ -54,10 +65,15 @@ SELECT 'country', uniqExact(country) FROM events;
 ```
 
 ```sql
--- Check current thread settings
+-- Check current thread settings (session-level)
 SELECT name, value
 FROM system.settings
-WHERE name IN ('max_threads', 'max_insert_threads', 'background_pool_size');
+WHERE name IN ('max_threads', 'max_insert_threads');
+
+-- Check background pool size (server-level)
+SELECT name, value
+FROM system.server_settings
+WHERE name = 'background_pool_size';
 ```
 
 ## Disk and I/O
