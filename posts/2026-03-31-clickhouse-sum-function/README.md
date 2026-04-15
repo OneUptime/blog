@@ -8,7 +8,7 @@ Description: Learn how to use sum(), sumIf(), sumWithOverflow(), and Decimal-saf
 
 ---
 
-`sum()` is one of the core aggregate functions in ClickHouse. It totals numeric column values across rows, and comes with powerful variants - `sumIf()` for conditional sums, `sumWithOverflow()` for overflow-safe arithmetic, and full support for `Decimal` types when precision matters. This post covers everything you need to use `sum()` effectively.
+`sum()` is one of the core aggregate functions in ClickHouse. It totals numeric column values across rows, and comes with powerful variants - `sumIf()` for conditional sums, `sumWithOverflow()` for same-type wrapping arithmetic, and full support for `Decimal` types when precision matters. This post covers everything you need to use `sum()` effectively.
 
 ## Basic sum()
 
@@ -72,12 +72,14 @@ ORDER BY last_7d_revenue DESC;
 
 ## Overflow Handling
 
-ClickHouse integer types have fixed bit widths. Summing large `UInt64` or `Int64` values can overflow without warning when using the standard `sum()`.
+ClickHouse integer types have fixed bit widths. Standard `sum()` automatically promotes the result type to help prevent overflow. For `UInt32` inputs, the result is `UInt64`. For `Int32`, it becomes `Int64`. This handles most real-world cases without overflow.
 
 ```sql
--- This can silently overflow for very large accumulated values
+-- Safe: result is promoted to UInt64 automatically
 SELECT sum(quantity) FROM sales;
 ```
+
+However, summing `UInt64` or `Int64` values can still overflow because there is no wider native integer type to promote to.
 
 ### sumWithOverflow()
 
@@ -86,13 +88,6 @@ SELECT sum(quantity) FROM sales;
 ```sql
 -- Sum stays in UInt32 - wraps on overflow
 SELECT sumWithOverflow(quantity) FROM sales;
-```
-
-For safety with large values, standard `sum()` automatically promotes the result type. For `UInt32` inputs, the result is `UInt64`. For `Int32`, it becomes `Int64`. This handles most real-world cases without overflow.
-
-```sql
--- Safe: result is promoted to UInt64 automatically
-SELECT sum(quantity) FROM sales;
 ```
 
 If you need to sum values that could exceed `UInt64`, cast to a wider type first:
