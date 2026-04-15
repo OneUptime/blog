@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Projection, Secondary Index, MergeTree, Query Optimization
 
-Description: Learn how to use ClickHouse projections as secondary indexes to accelerate queries that filter on non-primary-key columns without data duplication overhead.
+Description: Learn how to use ClickHouse projections as secondary indexes to accelerate queries that filter on non-primary-key columns.
 
 ---
 
@@ -74,9 +74,9 @@ ALTER TABLE events MATERIALIZE PROJECTION proj_daily_agg;
 Now this query uses the pre-aggregated projection:
 
 ```sql
-SELECT event_type, sum(total)
+SELECT event_type, sum(value)
 FROM events
-WHERE day >= '2026-01-01'
+WHERE toDate(ts) >= '2026-01-01'
 GROUP BY event_type;
 ```
 
