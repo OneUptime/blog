@@ -54,7 +54,7 @@ type ResourceState struct {
 }
 
 type ResourceActor struct {
-    actor.ServerImplBase
+    actor.ServerImplBaseCtx
 }
 
 func (a *ResourceActor) Type() string {
@@ -99,10 +99,15 @@ func (a *ResourceActor) Hold(ctx context.Context, req *HoldRequest) (*Booking, e
     a.GetStateManager().Set(ctx, "state", state)
 
     // Register timer to release hold if not confirmed
-    a.GetStateManager().RegisterActorTimer(ctx, &actor.TimerConfig{
-        CallbackFunc: "ReleaseExpiredHolds",
-        DueTime:      11 * time.Minute,
-        Period:       0, // One-shot
+    reqData, _ := json.Marshal(map[string]string{})
+    daprClient.RegisterActorTimer(ctx, &dapr.RegisterActorTimerRequest{
+        ActorType: "Resource",
+        ActorID:   a.ID(),
+        Name:      "releaseHold-" + booking.BookingID,
+        DueTime:   "11m",
+        Period:    "",
+        Callback:  "ReleaseExpiredHolds",
+        Data:      reqData,
     })
 
     return &booking, nil
@@ -163,14 +168,15 @@ func handleHoldBooking(w http.ResponseWriter, r *http.Request) {
     json.NewDecoder(r.Body).Decode(&req)
     req.BookingID = uuid.New().String()
 
-    var booking Booking
-    err := daprClient.InvokeActorMethod(
+    reqData, _ := json.Marshal(req)
+    resp, err := daprClient.InvokeActor(
         r.Context(),
-        "Resource",
-        req.StartTime.Format("2006-01-02")+"-"+r.PathValue("resourceId"),
-        "Hold",
-        req,
-        &booking,
+        &dapr.InvokeActorRequest{
+            ActorType: "Resource",
+            ActorID:   req.StartTime.Format("2006-01-02") + "-" + r.PathValue("resourceId"),
+            Method:    "Hold",
+            Data:      reqData,
+        },
     )
     if err != nil {
         http.Error(w, err.Error(), http.StatusConflict)
@@ -178,7 +184,7 @@ func handleHoldBooking(w http.ResponseWriter, r *http.Request) {
     }
 
     w.WriteHeader(http.StatusCreated)
-    json.NewEncoder(w).Encode(booking)
+    w.Write(resp.Data)
 }
 ```
 
