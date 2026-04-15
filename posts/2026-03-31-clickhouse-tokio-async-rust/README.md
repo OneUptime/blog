@@ -30,11 +30,11 @@ Use `tokio::join!` to fire multiple queries in parallel.
 use clickhouse::Client;
 
 async fn parallel_queries(client: &Client) {
-    let q1 = client.query("SELECT count() FROM events").fetch_one::<(u64,)>();
-    let q2 = client.query("SELECT count() FROM errors").fetch_one::<(u64,)>();
+    let q1 = client.query("SELECT count() FROM events").fetch_one::<u64>();
+    let q2 = client.query("SELECT count() FROM errors").fetch_one::<u64>();
 
     let (events, errors) = tokio::join!(q1, q2);
-    println!("Events: {}, Errors: {}", events.unwrap().0, errors.unwrap().0);
+    println!("Events: {}, Errors: {}", events.unwrap(), errors.unwrap());
 }
 ```
 
@@ -51,14 +51,14 @@ async fn multi_tenant_queries(client: Client, tenant_ids: Vec<u64>) {
         set.spawn(async move {
             c.query("SELECT count() FROM events WHERE tenant_id = ?")
                 .bind(tenant)
-                .fetch_one::<(u64,)>()
+                .fetch_one::<u64>()
                 .await
         });
     }
 
     while let Some(result) = set.join_next().await {
         match result {
-            Ok(Ok((cnt,))) => println!("Count: {}", cnt),
+            Ok(Ok(cnt)) => println!("Count: {}", cnt),
             _ => eprintln!("Query failed"),
         }
     }
@@ -114,7 +114,7 @@ use tokio::time::{timeout, Duration};
 
 let result = timeout(
     Duration::from_secs(5),
-    client.query("SELECT slowQuery()").fetch_one::<(u64,)>()
+    client.query("SELECT slowQuery()").fetch_one::<u64>()
 ).await;
 
 match result {
