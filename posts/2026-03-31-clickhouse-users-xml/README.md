@@ -44,13 +44,13 @@ Generate the hash:
 
 ```bash
 echo -n 'MySecretPassword' | sha256sum | tr -d ' -'
-# 7c4a8d09ca3762af61e59520943dc26494f8941b
+# c152246c91ef62f553d2109b68698b19f7dd83328374abc489920bf2e2e23510
 ```
 
 ```xml
 <users>
   <analyst>
-    <password_sha256_hex>7c4a8d09ca3762af61e59520943dc26494f8941b</password_sha256_hex>
+    <password_sha256_hex>c152246c91ef62f553d2109b68698b19f7dd83328374abc489920bf2e2e23510</password_sha256_hex>
     <networks>
       <ip>10.0.0.0/8</ip>
       <ip>172.16.0.0/12</ip>
@@ -92,10 +92,10 @@ echo -n 'MySecretPassword' | sha256sum | tr -d ' -'
     </networks>
     <profile>readonly</profile>
     <quota>default</quota>
-    <databases>
+    <allow_databases>
       <!-- Restrict to specific databases -->
       <database>analytics</database>
-    </databases>
+    </allow_databases>
   </readonly_user>
 </users>
 ```
@@ -194,7 +194,7 @@ kill -HUP $(pgrep clickhouse-server)
 SELECT name, storage
 FROM system.users;
 
-SELECT name, profile_name, quota_name
+SELECT name, type, params, precedence
 FROM system.user_directories;
 ```
 
