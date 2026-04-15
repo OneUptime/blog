@@ -55,7 +55,7 @@ GROUP BY tenant_id, event_date
 SETTINGS optimize_aggregation_in_order = 1;
 ```
 
-Look for `AggregatingTransform` with `sorted` indicated in the output.
+Look for `AggregatingInOrderTransform` in the output, which indicates the in-order aggregation path is being used instead of the standard `AggregatingTransform`.
 
 ## Memory Usage Comparison
 
