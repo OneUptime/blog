@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Actor, Rate Limiting, Token Bucket, Sliding Window
+Tags: Dapr, Actor, Rate Limiting, Token Bucket
 
-Description: Implement distributed per-key rate limiting using Dapr actors with token bucket and sliding window algorithms, without external Redis Lua scripts.
+Description: Implement distributed per-key rate limiting using Dapr actors with the token bucket algorithm, without external Redis Lua scripts.
 
 ---
 
@@ -25,7 +25,6 @@ package main
 
 import (
   "context"
-  "fmt"
   "time"
   "github.com/dapr/go-sdk/actor"
 )
@@ -146,4 +145,4 @@ curl -X POST http://localhost:3500/v1.0/actors/RateLimiter/api-key-001/method/Al
 
 ## Summary
 
-Dapr actors provide an elegant distributed rate limiting solution where each API key or user maps to an independent actor instance. The token bucket algorithm combined with turn-based concurrency ensures accurate rate limiting without Redis Lua scripts or distributed locking. Actor idle timeout naturally cleans up state for inactive keys, preventing unbounded state growth.
+Dapr actors provide an elegant distributed rate limiting solution where each API key or user maps to an independent actor instance. The token bucket algorithm combined with turn-based concurrency ensures accurate rate limiting without Redis Lua scripts or distributed locking. Actor idle timeout automatically deactivates inactive actor instances from memory, freeing resources while preserving their persisted state in the state store for future requests.
