@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Serialization, SDK, Custom, State Management
 
-Description: Implement custom serialization in Dapr SDKs for .NET, Go, Python, and Node.js to handle special types, encryption, compression, and non-standard formats.
+Description: Implement custom serialization in Dapr SDKs for .NET, Go, and Python to handle special types, encryption, compression, and non-standard formats.
 
 ---
 
@@ -72,8 +72,9 @@ import (
     "fmt"
     "io"
 
-    dapr "github.com/dapr/go-sdk/client"
     "context"
+
+    dapr "github.com/dapr/go-sdk/client"
 )
 
 type EncryptedStateClient struct {
@@ -135,8 +136,14 @@ func (c *EncryptedStateClient) encrypt(plaintext []byte) ([]byte, error) {
 }
 
 func (c *EncryptedStateClient) decrypt(data []byte) ([]byte, error) {
-    block, _ := aes.NewCipher(c.key)
-    gcm, _ := cipher.NewGCM(block)
+    block, err := aes.NewCipher(c.key)
+    if err != nil {
+        return nil, err
+    }
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
     nonceSize := gcm.NonceSize()
     if len(data) < nonceSize {
         return nil, fmt.Errorf("ciphertext too short")
