@@ -77,6 +77,18 @@ attach_partition() {
     echo "Attaching partition ${PARTITION}..."
     run_query "ALTER TABLE ${TARGET_DB}.${TARGET_TABLE} ATTACH PARTITION '${PARTITION}'"
 }
+
+# --- Command dispatcher ---
+ACTION="${3:-list}"
+shift 3 2>/dev/null || true
+
+case "$ACTION" in
+    list)    list_partitions ;;
+    drop)    drop_old_partitions "$1" ;;
+    detach)  detach_partition "$1" ;;
+    attach)  attach_partition "$1" ;;
+    *)       echo "Usage: $0 <database> <table> {list|drop|detach|attach} [arg]"; exit 1 ;;
+esac
 ```
 
 ## Moving Partitions to Cold Storage
