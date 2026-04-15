@@ -8,7 +8,7 @@ Description: Learn how roundBankers() applies banker's rounding in ClickHouse to
 
 ---
 
-`roundBankers()` implements banker's rounding (also called round-half-to-even or statistician's rounding). When a value falls exactly halfway between two representable values, it rounds to the nearest even number rather than always rounding up. This eliminates the systematic upward bias introduced by standard rounding (which always rounds 0.5 up) when applied repeatedly over large datasets. In financial applications where aggregated rounding errors matter, `roundBankers()` is the preferred choice over `round()`.
+`roundBankers()` implements banker's rounding (also called round-half-to-even or statistician's rounding). When a value falls exactly halfway between two representable values, it rounds to the nearest even number rather than always rounding up. In ClickHouse, `round()` behavior depends on the input type: for `Float*` inputs it already uses banker's rounding, but for `Decimal*` and integer inputs it rounds away from zero (always rounding 0.5 up in magnitude). `roundBankers()` guarantees round-half-to-even behavior regardless of the input type. This eliminates the systematic bias introduced by round-away-from-zero rounding when applied repeatedly over large datasets. In financial applications where `Decimal` types are typical and aggregated rounding errors matter, `roundBankers()` is the preferred choice over `round()`.
 
 ## Function Signature
 
@@ -20,7 +20,7 @@ Rounds `x` to `N` decimal places using banker's rounding. `N` defaults to 0. Pos
 
 ## Key Difference from round()
 
-The critical difference is behavior on exact halfway values. When the digit being rounded is exactly 5 with nothing after it, `roundBankers()` rounds to the nearest even digit.
+The critical difference is behavior on exact halfway values with `Decimal` or integer inputs. When the digit being rounded is exactly 5 with nothing after it, `round()` rounds away from zero while `roundBankers()` rounds to the nearest even digit. (For `Float*` inputs, `round()` already uses banker's rounding, so the two functions behave identically.)
 
 ```sql
 SELECT
@@ -28,11 +28,11 @@ SELECT
     round(number, 0)        AS standard_round,
     roundBankers(number, 0) AS bankers_round
 FROM (
-    SELECT arrayJoin([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5]) AS number
+    SELECT toDecimal64(arrayJoin([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5]), 1) AS number
 );
 ```
 
-Standard `round()` always rounds 0.5, 1.5, 2.5... upward: 1, 2, 3, 4, 5, 6, 7, 8. Banker's rounding produces: 0, 2, 2, 4, 4, 6, 6, 8 (rounds to even). Over many values, these differences cancel each other out.
+With Decimal input, `round()` rounds away from zero: 1, 2, 3, 4, 5, 6, 7, 8. Banker's rounding produces: 0, 2, 2, 4, 4, 6, 6, 8 (rounds to even). Over many values, these differences cancel each other out.
 
 ## Demonstrating Bias Reduction
 
@@ -40,7 +40,7 @@ Show that standard rounding introduces cumulative upward bias while banker's rou
 
 ```sql
 WITH values AS (
-    SELECT arrayJoin([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]) AS v
+    SELECT toDecimal64(arrayJoin([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]), 1) AS v
 )
 SELECT
     sum(v)                           AS true_sum,
@@ -62,9 +62,9 @@ CREATE TABLE financial_line_items
 (
     invoice_id  UInt64,
     item_name   String,
-    unit_price  Float64,
+    unit_price  Decimal64(3),
     quantity    UInt32,
-    tax_rate    Float64
+    tax_rate    Decimal64(2)
 )
 ENGINE = MergeTree
 ORDER BY (invoice_id, item_name);
@@ -120,7 +120,7 @@ SELECT
     roundBankers(value, -1)  AS nearest_ten_bankers,
     round(value, -1)         AS nearest_ten_standard
 FROM (
-    SELECT arrayJoin([15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0]) AS value
+    SELECT arrayJoin([15, 25, 35, 45, 55, 65, 75, 85]) AS value
 );
 ```
 
@@ -128,4 +128,4 @@ For values ending in exactly 5 (at the ten-rounding level), banker's rounding wi
 
 ## Summary
 
-`roundBankers()` applies round-half-to-even logic that eliminates the systematic upward bias introduced by standard rounding when accumulated over many values. Use it in financial calculations, accounting aggregations, and any analytical domain where the sum of rounded values should closely approximate the sum of exact values. The difference from `round()` only manifests for exact halfway values (exactly 0.5 at the precision being rounded), so for most data the two functions produce identical results. However, for datasets with many half-cent or other exact midpoint values, `roundBankers()` produces more accurate aggregate totals.
+`roundBankers()` applies round-half-to-even logic consistently across all data types, eliminating the systematic bias introduced by `round()` on `Decimal` and integer types when accumulated over many values. Use it in financial calculations, accounting aggregations, and any analytical domain where the sum of rounded values should closely approximate the sum of exact values. The difference from `round()` only manifests for exact halfway values on `Decimal` and integer inputs (for `Float*` inputs, `round()` already uses banker's rounding). For datasets with many half-cent or other exact midpoint values stored as `Decimal`, `roundBankers()` produces more accurate aggregate totals.
