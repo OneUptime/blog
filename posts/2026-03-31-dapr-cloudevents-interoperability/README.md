@@ -114,7 +114,7 @@ spec:
   topic: external-orders
   route: /external/orders
   metadata:
-    rawPayload: "true"
+    isRawPayload: "true"
 ```
 
 Handle the raw CloudEvents envelope directly:
