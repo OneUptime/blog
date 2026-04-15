@@ -59,10 +59,10 @@ az containerapp dapr enable \
 ## Step 4: Enable Dapr API Logging
 
 ```bash
-az containerapp update \
+az containerapp dapr enable \
   --name inventory-service \
   --resource-group rg-dapr-demo \
-  --dapr-enable-api-logging true \
+  --dapr-enable-api-logging \
   --dapr-log-level debug
 ```
 
