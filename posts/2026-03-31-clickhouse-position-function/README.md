@@ -88,10 +88,10 @@ SELECT
 ```text
 byte_position | char_position
 --------------|-------------
-13            | 8
+14            | 8
 ```
 
-The Cyrillic characters each occupy 2 bytes, so the byte offset is 13, but the character offset is 8. Use `positionUTF8()` whenever you need to slice or display characters correctly after finding a match.
+The Cyrillic characters each occupy 2 bytes in UTF-8 (6 × 2 = 12 bytes), plus 1 byte for the space, so the byte offset of `мир` is 14, but the character offset is 8. Use `positionUTF8()` whenever you need to slice or display characters correctly after finding a match.
 
 ## Extracting Substrings After a Delimiter
 
