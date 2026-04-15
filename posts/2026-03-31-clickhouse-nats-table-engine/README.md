@@ -20,7 +20,7 @@ CREATE TABLE events_nats (
     value      Float64
 ) ENGINE = NATS
 SETTINGS
-    nats_url      = 'nats://nats-host:4222',
+    nats_url      = 'nats-host:4222',
     nats_subjects = 'events.>',
     nats_format   = 'JSONEachRow';
 ```
@@ -29,15 +29,18 @@ SETTINGS
 
 ```text
 Setting              Description
-nats_url             NATS server URL (nats://host:port or tls://host:port)
+nats_url             NATS server URL (host:port)
 nats_subjects        Comma-separated subjects or wildcards (e.g., events.>, orders.*)
 nats_format          Message format: JSONEachRow, CSV, Avro, Protobuf, etc.
 nats_schema          Schema file path (required for Protobuf/Avro)
 nats_num_consumers   Number of parallel consumer coroutines
 nats_queue_group     NATS queue group name for load-balanced consumption
+nats_stream          NATS JetStream stream name (required for JetStream)
+nats_consumer_name   Durable pull consumer name (required for JetStream)
 nats_username        Username for NATS auth
 nats_password        Password for NATS auth
 nats_token           Token for NATS auth
+nats_credential_file Path to NATS credentials file for auth
 nats_secure          Enable TLS (1 = yes)
 ```
 
@@ -70,7 +73,7 @@ When running multiple ClickHouse replicas, use a NATS queue group so each messag
 CREATE TABLE events_nats (...)
 ENGINE = NATS
 SETTINGS
-    nats_url         = 'nats://nats-host:4222',
+    nats_url         = 'nats-host:4222',
     nats_subjects    = 'events.>',
     nats_format      = 'JSONEachRow',
     nats_queue_group = 'clickhouse_consumers';
@@ -82,7 +85,7 @@ SETTINGS
 CREATE TABLE secure_events_nats (...)
 ENGINE = NATS
 SETTINGS
-    nats_url    = 'tls://nats-host:4222',
+    nats_url    = 'nats-host:4222',
     nats_secure = 1,
     nats_token  = 'my_nats_token',
     nats_subjects = 'secure.events',
@@ -91,7 +94,7 @@ SETTINGS
 
 ## NATS JetStream
 
-The NATS table engine also supports JetStream (persistent NATS messaging) for at-least-once delivery. Configure JetStream consumers for durability:
+The NATS table engine also supports JetStream (persistent NATS messaging) for at-least-once delivery. To use JetStream, you must first create a stream and a durable pull consumer in NATS, then reference them using the `nats_stream` and `nats_consumer_name` settings:
 
 ```sql
 CREATE TABLE js_events (
@@ -99,10 +102,11 @@ CREATE TABLE js_events (
     data  String
 ) ENGINE = NATS
 SETTINGS
-    nats_url        = 'nats://nats-host:4222',
-    nats_subjects   = 'events.*',
-    nats_format     = 'JSONEachRow',
-    nats_queue_group = 'ch_js_group';
+    nats_url           = 'nats-host:4222',
+    nats_subjects      = 'events.*',
+    nats_format        = 'JSONEachRow',
+    nats_stream        = 'my_stream',
+    nats_consumer_name = 'my_consumer';
 ```
 
 ## Monitoring the Pipeline
