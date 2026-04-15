@@ -52,7 +52,7 @@ Initialize multi-region configuration:
 
 ```sql
 -- Add regions to the cluster
-ALTER DATABASE dapr_state PRIMARY REGION "us-east1";
+ALTER DATABASE dapr_state SET PRIMARY REGION "us-east1";
 ALTER DATABASE dapr_state ADD REGION "eu-west1";
 ALTER DATABASE dapr_state ADD REGION "ap-southeast1";
 ```
@@ -75,10 +75,8 @@ spec:
     secretKeyRef:
       name: cockroach-secret
       key: connectionString
-  - name: tableName
-    value: "dapr_state"
-  - name: schemaName
-    value: "public"
+  - name: tablePrefix
+    value: "dapr_"
   - name: maxConns
     value: "20"
   - name: cleanupInterval
@@ -97,14 +95,14 @@ kubectl create secret generic cockroach-secret \
 Pin state data to specific regions for compliance and latency:
 
 ```sql
--- Create region-specific state tables
-ALTER TABLE public.dapr_state
-  SET LOCALITY REGIONAL BY ROW;
-
--- Add crdb_region column for row pinning
+-- Add region column for row pinning
 ALTER TABLE public.dapr_state
   ADD COLUMN IF NOT EXISTS region crdb_internal_region
   NOT NULL DEFAULT gateway_region();
+
+-- Set locality using the custom region column
+ALTER TABLE public.dapr_state
+  SET LOCALITY REGIONAL BY ROW AS region;
 
 -- Create index for regional reads
 CREATE INDEX ON public.dapr_state (region, key);
@@ -136,10 +134,10 @@ Monitor cluster health:
 
 ```bash
 # Check node status
-cockroach node status --insecure --host=cockroachdb-public:26257
+cockroach node status --host=cockroachdb-public:26257 --certs-dir=/certs
 
-# Monitor replication lag
-SELECT * FROM crdb_internal.cluster_replication_status;
+# Check database regions
+cockroach sql --host=cockroachdb-public:26257 --certs-dir=/certs -e "SHOW REGIONS FROM DATABASE dapr_state;"
 ```
 
 ## Summary
