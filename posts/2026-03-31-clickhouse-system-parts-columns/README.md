@@ -20,9 +20,9 @@ While `system.parts` gives you aggregate storage info per part, `system.parts_co
 SELECT
     database,
     table,
-    part_name,
-    column_name,
-    column_type,
+    name AS part_name,
+    column,
+    type,
     rows,
     column_data_compressed_bytes,
     column_data_uncompressed_bytes,
@@ -40,8 +40,8 @@ To identify which columns use the most disk space across all active parts of a t
 
 ```sql
 SELECT
-    column_name,
-    column_type,
+    column,
+    type,
     sum(column_data_compressed_bytes) AS total_compressed,
     sum(column_data_uncompressed_bytes) AS total_uncompressed,
     round(sum(column_data_uncompressed_bytes) / sum(column_data_compressed_bytes), 2) AS avg_compression_ratio,
@@ -49,7 +49,7 @@ SELECT
 FROM system.parts_columns
 WHERE table = 'events'
   AND active = 1
-GROUP BY column_name, column_type
+GROUP BY column, type
 ORDER BY total_compressed DESC;
 ```
 
@@ -59,13 +59,13 @@ String columns and high-cardinality columns often compress poorly. This query he
 
 ```sql
 SELECT
-    column_name,
-    column_type,
+    column,
+    type,
     round(avg(column_data_uncompressed_bytes / column_data_compressed_bytes), 2) AS avg_compression_ratio
 FROM system.parts_columns
 WHERE database = 'production'
   AND active = 1
-GROUP BY column_name, column_type
+GROUP BY column, type
 HAVING avg_compression_ratio < 1.5
 ORDER BY avg_compression_ratio ASC;
 ```
@@ -77,24 +77,24 @@ If your table is partitioned, you can compare how column sizes vary per partitio
 ```sql
 SELECT
     partition,
-    column_name,
+    column,
     formatReadableSize(sum(column_data_compressed_bytes)) AS compressed
 FROM system.parts_columns
 WHERE table = 'logs'
   AND active = 1
-  AND column_name IN ('message', 'level', 'service')
-GROUP BY partition, column_name
+  AND column IN ('message', 'level', 'service')
+GROUP BY partition, column
 ORDER BY partition DESC, compressed DESC;
 ```
 
 ## Find Parts With Poorly Compressed Columns
 
-Large uncompressed-to-compressed ratios below 1.0 can indicate data types that don't compress well:
+Uncompressed-to-compressed ratios below 1.0 indicate cases where compression actually increased the data size:
 
 ```sql
 SELECT
-    part_name,
-    column_name,
+    name AS part_name,
+    column,
     column_data_compressed_bytes,
     column_data_uncompressed_bytes
 FROM system.parts_columns
