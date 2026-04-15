@@ -55,7 +55,7 @@ kubectl logs -l app=dapr-scheduler-server -n dapr-system > scheduler.log 2>/dev/
 
 ```bash
 # Dapr version
-dapr version -k > version.txt
+dapr version > version.txt
 
 # All components
 kubectl get components -A -o yaml > components.yaml
@@ -107,7 +107,7 @@ kubectl logs "$POD" -c daprd -n "$NS" > "$DIR/daprd.log"
 kubectl describe pod "$POD" -n "$NS" > "$DIR/pod.txt"
 kubectl get components -A -o yaml > "$DIR/components.yaml"
 kubectl get events -n "$NS" > "$DIR/events.txt"
-dapr version -k > "$DIR/version.txt"
+dapr version > "$DIR/version.txt"
 
 tar czf "${DIR}.tar.gz" "$DIR"
 echo "Diagnostic bundle: ${DIR}.tar.gz"
