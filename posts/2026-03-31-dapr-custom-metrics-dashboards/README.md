@@ -29,7 +29,7 @@ Use stat panels for at-a-glance health:
 sum(rate(dapr_http_server_request_count[5m]))
 
 # Overall error rate
-sum(rate(dapr_http_server_request_count{status_code!~"2.."}[5m]))
+sum(rate(dapr_http_server_request_count{status!~"2.."}[5m]))
 / sum(rate(dapr_http_server_request_count[5m]))
 
 # Number of active services
@@ -39,8 +39,8 @@ count(
   ) > 0
 )
 
-# Total active actors
-sum(dapr_actor_active_actors)
+# Total pending actor calls
+sum(dapr_runtime_actor_pending_actor_calls)
 ```
 
 ## Row 2 - Service Health Heatmap
@@ -49,7 +49,7 @@ Create a table panel showing all services with color-coded health:
 
 ```text
 # Color: green = low error rate, red = high error rate
-sum by (app_id) (rate(dapr_http_server_request_count{status_code!~"2.."}[5m]))
+sum by (app_id) (rate(dapr_http_server_request_count{status!~"2.."}[5m]))
 / sum by (app_id) (rate(dapr_http_server_request_count[5m]))
 ```
 
@@ -62,7 +62,7 @@ Show a heatmap of request latency across all services:
 ```text
 # Heatmap data source query
 sum by (le) (
-  rate(dapr_http_server_latency_ms_bucket{app_id=~"$app_id"}[5m])
+  rate(dapr_http_server_latency_bucket{app_id=~"$app_id"}[5m])
 )
 ```
 
@@ -75,13 +75,12 @@ State store and pub/sub error rates in a single table:
 ```text
 # State store errors
 sum by (component) (
-  rate(dapr_component_state_get_failed_total[5m])
-  + rate(dapr_component_state_set_failed_total[5m])
+  rate(dapr_component_state_count{status="fail"}[5m])
 )
 
-# Pub/sub drops
+# Pub/sub failures
 sum by (component, topic) (
-  rate(dapr_component_pubsub_drop_count[5m])
+  rate(dapr_component_pubsub_ingress_count{status!="success"}[5m])
 )
 ```
 
