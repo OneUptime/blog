@@ -30,7 +30,7 @@ Use cases where BigQuery retains advantages:
 |---------|------------|
 | INT64 | Int64 |
 | FLOAT64 | Float64 |
-| NUMERIC | Decimal(29, 9) |
+| NUMERIC | Decimal(38, 9) |
 | BIGNUMERIC | Decimal(76, 38) |
 | BOOL | Bool |
 | STRING | String |
@@ -101,7 +101,7 @@ CREATE TABLE events
     session_id  String,
     event_type  LowCardinality(String),
     page        String,
-    amount      Decimal(29, 9)           DEFAULT 0,
+    amount      Decimal(38, 9)           DEFAULT 0,
     properties  String                   DEFAULT '{}',
     created_at  DateTime64(6)
 )
@@ -148,9 +148,9 @@ SELECT
     properties,
     created_at
 FROM gcs(
-    'gs://my-export-bucket/events/events_*.csv',
-    'YOUR_GCS_ACCESS_KEY',
-    'YOUR_GCS_SECRET',
+    'https://storage.googleapis.com/my-export-bucket/events/events_*.csv',
+    'YOUR_HMAC_KEY',
+    'YOUR_HMAC_SECRET',
     'CSVWithNames'
 );
 ```
@@ -161,9 +161,9 @@ Or from GCS Parquet files:
 INSERT INTO events
 SELECT *
 FROM gcs(
-    'gs://my-export-bucket/events/events_*.parquet',
-    'YOUR_GCS_ACCESS_KEY',
-    'YOUR_GCS_SECRET',
+    'https://storage.googleapis.com/my-export-bucket/events/events_*.parquet',
+    'YOUR_HMAC_KEY',
+    'YOUR_HMAC_SECRET',
     'Parquet'
 );
 ```
@@ -200,8 +200,8 @@ SELECT uniq(user_id) FROM events;
 -- BigQuery: STRING_AGG
 SELECT STRING_AGG(event_type, ',' ORDER BY created_at) FROM events GROUP BY user_id;
 
--- ClickHouse: arrayStringConcat(arraySort(groupArray(...)))
-SELECT arrayStringConcat(arraySort(groupArray(event_type)), ',')
+-- ClickHouse: groupArray with ORDER BY (v22.8+)
+SELECT arrayStringConcat(groupArray(event_type ORDER BY created_at), ',')
 FROM events
 GROUP BY user_id;
 ```
