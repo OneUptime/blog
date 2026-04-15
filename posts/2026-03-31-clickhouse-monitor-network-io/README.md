@@ -21,7 +21,7 @@ WHERE metric LIKE '%Network%' OR metric LIKE '%Send%' OR metric LIKE '%Receive%'
 ORDER BY metric;
 ```
 
-Common metrics to watch include `NetworkSend`, `NetworkReceive`, `InterserverConnections`, and `HTTPConnections`.
+Common metrics to watch include `NetworkSend`, `NetworkReceive`, `InterserverConnection`, and `HTTPConnection`.
 
 ## Querying Cumulative Network Stats from system.events
 
@@ -84,12 +84,11 @@ Also check the replication queue for pending transfers:
 SELECT
     database,
     table,
-    count() AS pending_parts,
-    sum(data_compressed_bytes) AS bytes_to_transfer
+    count() AS pending_parts
 FROM system.replication_queue
-WHERE type = 'FETCH_PARTS'
+WHERE type = 'GET_PART'
 GROUP BY database, table
-ORDER BY bytes_to_transfer DESC;
+ORDER BY pending_parts DESC;
 ```
 
 ## Using Prometheus and Grafana
@@ -109,8 +108,8 @@ Enable ClickHouse's Prometheus endpoint in `config.xml`:
 Key Prometheus metrics for network IO:
 - `ClickHouseMetrics_NetworkSend`
 - `ClickHouseMetrics_NetworkReceive`
-- `ClickHouseProfileEvents_NetworkSendBytes_total`
-- `ClickHouseProfileEvents_NetworkReceiveBytes_total`
+- `ClickHouseProfileEvents_NetworkSendBytes`
+- `ClickHouseProfileEvents_NetworkReceiveBytes`
 
 ## OS-Level Network Monitoring
 
