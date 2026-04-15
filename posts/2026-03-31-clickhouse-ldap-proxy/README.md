@@ -28,7 +28,7 @@ Add the LDAP server definition to `config.xml` or a separate file in `config.d/`
         <port>636</port>
         <enable_tls>yes</enable_tls>
         <tls_minimum_protocol_version>tls1.2</tls_minimum_protocol_version>
-        <tls_verify_certificate>yes</tls_verify_certificate>
+        <tls_require_cert>demand</tls_require_cert>
         <tls_ca_cert_file>/etc/ssl/certs/ca-certificates.crt</tls_ca_cert_file>
         <bind_dn>uid={user_name},ou=people,dc=corp,dc=example,dc=com</bind_dn>
         <verification_cooldown>300</verification_cooldown>
@@ -48,32 +48,33 @@ In `users.xml` or `users.d/`:
         </ldap>
         <profile>analyst_profile</profile>
         <quota>analyst_quota</quota>
-        <databases>
-            <analytics>
-                <allow_ddl>false</allow_ddl>
-            </analytics>
-        </databases>
+        <networks>
+            <ip>::/0</ip>
+        </networks>
     </analyst_user>
 </users>
 ```
 
 ## LDAP Group-Based Role Mapping
 
-Map LDAP groups to ClickHouse roles:
+Role mapping is configured in the `<user_directories>` section, not per-user. ClickHouse searches the LDAP directory for group membership and maps matching groups to ClickHouse roles:
 
 ```xml
-<users>
-    <ldap_user>
-        <ldap>
-            <server>corp_ldap</server>
-            <roles>
-                <ldap_dn_regex>cn=clickhouse-admins,ou=groups,dc=corp,dc=example,dc=com</ldap_dn_regex>
-                <role_name>admin_role</role_name>
-            </roles>
-        </ldap>
-    </ldap_user>
-</users>
+<user_directories>
+    <ldap>
+        <server>corp_ldap</server>
+        <role_mapping>
+            <base_dn>ou=groups,dc=corp,dc=example,dc=com</base_dn>
+            <scope>subtree</scope>
+            <search_filter>(&amp;(objectClass=groupOfNames)(member={bind_dn}))</search_filter>
+            <attribute>cn</attribute>
+            <prefix>clickhouse_</prefix>
+        </role_mapping>
+    </ldap>
+</user_directories>
 ```
+
+With this configuration, an LDAP group named `clickhouse_admin_role` would map to the ClickHouse role `admin_role` (the prefix is stripped).
 
 ## Testing LDAP Authentication
 
@@ -94,7 +95,7 @@ For on-demand user creation (users that exist in LDAP but not yet in ClickHouse 
     <ldap>
         <server>corp_ldap</server>
         <roles>
-            <role_name>analyst_role</role_name>
+            <analyst_role />
         </roles>
     </ldap>
 </user_directories>
