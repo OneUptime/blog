@@ -48,7 +48,7 @@ ORDER BY hour, table;
 
 ## Detecting Tables Approaching the Limit
 
-ClickHouse throws a "Too many parts" error by default when a partition has more than 300 active parts (configurable via `max_parts_in_total`). Alert before you hit that limit:
+ClickHouse throttles inserts when a partition exceeds `parts_to_delay_insert` (default 1000) active parts, and throws a "Too many parts" error at `parts_to_throw_insert` (default 3000). A separate setting `max_parts_in_total` (default 100000) limits total parts across all partitions. Alert well before you hit these limits:
 
 ```sql
 SELECT
