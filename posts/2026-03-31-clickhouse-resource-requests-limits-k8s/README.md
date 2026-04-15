@@ -137,12 +137,24 @@ ClickHouse has its own memory management separate from container limits. Configu
 ```xml
 <!-- /etc/clickhouse-server/config.d/memory.xml -->
 <clickhouse>
-    <!-- Use ~80% of container limit -->
+    <!-- Use ~85% of container memory limit -->
     <max_server_memory_usage_to_ram_ratio>0.85</max_server_memory_usage_to_ram_ratio>
-    <!-- Per-query limit -->
-    <max_memory_usage>10000000000</max_memory_usage>
-    <!-- Per-user limit -->
-    <max_memory_usage_for_user>30000000000</max_memory_usage_for_user>
+</clickhouse>
+```
+
+Per-query and per-user memory limits are session-level settings. Configure them in the user profiles, not in the server config:
+
+```xml
+<!-- /etc/clickhouse-server/users.d/memory.xml -->
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- Per-query limit -->
+            <max_memory_usage>10000000000</max_memory_usage>
+            <!-- Per-user limit -->
+            <max_memory_usage_for_user>30000000000</max_memory_usage_for_user>
+        </default>
+    </profiles>
 </clickhouse>
 ```
 
