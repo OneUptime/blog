@@ -16,12 +16,12 @@ Static rate limits baked into middleware config require a redeployment to change
 
 ```bash
 # Set per-route limits (requests per second)
-redis-cli SET "rate-limits||/api/v1/search" "100"
-redis-cli SET "rate-limits||/api/v1/upload" "10"
-redis-cli SET "rate-limits||/api/v1/reports" "20"
+redis-cli SET "/api/v1/search" "100"
+redis-cli SET "/api/v1/upload" "10"
+redis-cli SET "/api/v1/reports" "20"
 
 # Set per-tenant overrides
-redis-cli SET "rate-limits||tenant:enterprise-a:/api/v1/search" "1000"
+redis-cli SET "tenant:enterprise-a:/api/v1/search" "1000"
 ```
 
 ## Dapr Configuration Component
@@ -42,11 +42,13 @@ spec:
 ## Rate Limiting Middleware in Node.js
 
 ```javascript
-const { DaprClient } = require("@dapr/dapr");
+const { DaprClient, CommunicationProtocolEnum } = require("@dapr/dapr");
 const rateCounters = new Map();
 const configCache = new Map();
 
-const daprClient = new DaprClient();
+const daprClient = new DaprClient({
+  communicationProtocol: CommunicationProtocolEnum.GRPC,
+});
 
 async function loadRateLimits() {
   const items = await daprClient.configuration.get("rate-limits", [
@@ -125,7 +127,7 @@ main();
 
 ```bash
 # Tighten the search limit without restarting the service
-redis-cli SET "rate-limits||/api/v1/search" "5"
+redis-cli SET "/api/v1/search" "5"
 
 # Verify it takes effect immediately
 for i in $(seq 1 10); do
