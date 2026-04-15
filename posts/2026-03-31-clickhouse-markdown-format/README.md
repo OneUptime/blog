@@ -30,7 +30,7 @@ Sample output:
 
 ```text
 | database | tables | total_rows |
-|----------|--------|------------|
+|-:|-:|-:|
 | analytics | 12 | 4823910 |
 | raw_events | 5 | 19203041 |
 | staging | 3 | 88210 |
@@ -41,12 +41,12 @@ Sample output:
 Paste the output directly into any Markdown renderer:
 
 | database | tables | total_rows |
-|----------|--------|------------|
+|-:|-:|-:|
 | analytics | 12 | 4823910 |
 | raw_events | 5 | 19203041 |
 | staging | 3 | 88210 |
 
-The separator row with dashes and pipes is generated automatically by ClickHouse.
+The separator row with dashes, pipes, and right-alignment colons is generated automatically by ClickHouse.
 
 ## Using FORMAT Markdown from the CLI
 
@@ -72,7 +72,7 @@ curl -s "http://localhost:8123/?query=SELECT+name,total_rows+FROM+system.tables+
 ## Limitations to Know
 
 - Markdown is an output-only format. You cannot use it for INSERT or as an input source.
-- Column widths are not padded for alignment; alignment is left to the Markdown renderer.
+- Column widths are not padded to equal widths. ClickHouse specifies right-alignment for all columns via `:` in the separator row.
 - NULL values are rendered as the string `\N`.
 - Floating-point columns are rendered with ClickHouse's default precision.
 
