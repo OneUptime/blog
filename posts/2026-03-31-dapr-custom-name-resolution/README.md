@@ -4,127 +4,113 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Name Resolution, Custom Component, Plugin, Service Discovery
 
-Description: Learn how to build and register a custom name resolution component in Dapr using the pluggable component SDK for specialized service discovery needs.
+Description: Learn how to build and register a custom name resolution component in Dapr using the components-contrib Resolver interface for specialized service discovery needs.
 
 ---
 
 ## When to Build a Custom Name Resolution Component
 
-Dapr ships with built-in name resolution components for Kubernetes DNS, mDNS, Consul, SQLite, and NameFormat. However, you may need a custom implementation for:
+Dapr ships with built-in name resolution components for Kubernetes DNS, mDNS, Consul, SQLite, AWS CloudMap, and NameFormat. However, you may need a custom implementation for:
 
 - Integration with proprietary service registries
 - Custom load balancing or affinity logic
 - Special routing based on metadata or request context
 - A registry not supported by built-in components (e.g., Zookeeper, etcd)
 
-Dapr supports pluggable components via gRPC, allowing you to implement custom name resolution in any language.
+Custom name resolution components are built by implementing the `Resolver` interface from `components-contrib` and compiling them into a custom Dapr runtime build.
 
 ## Implementing a Custom Name Resolution Component
 
-Define the gRPC service by implementing the Dapr pluggable component interface. Using Go:
+Implement the `Resolver` interface from `github.com/dapr/components-contrib/nameresolution`. Using Go:
 
 ```go
-package main
+package resolver
 
 import (
     "context"
-    "net"
+    "fmt"
 
-    proto "github.com/dapr/dapr/pkg/proto/components/v1"
-    "google.golang.org/grpc"
+    "github.com/dapr/components-contrib/nameresolution"
+    "github.com/dapr/kit/logger"
 )
 
 type MyNameResolver struct {
-    proto.UnimplementedNameResolutionServer
+    logger   logger.Logger
     registry map[string]string
 }
 
-func (r *MyNameResolver) InitWithMetadata(
-    ctx context.Context,
-    req *proto.InitRequest,
-) (*proto.Empty, error) {
+func NewMyNameResolver(logger logger.Logger) nameresolution.Resolver {
+    return &MyNameResolver{logger: logger}
+}
+
+func (r *MyNameResolver) Init(ctx context.Context, metadata nameresolution.Metadata) error {
     r.registry = map[string]string{
         "order-service":   "10.0.1.10:50001",
         "payment-service": "10.0.1.11:50001",
     }
-    return &proto.Empty{}, nil
+    return nil
 }
 
-func (r *MyNameResolver) ResolveID(
-    ctx context.Context,
-    req *proto.ResolveRequest,
-) (*proto.ResolveResponse, error) {
-    addr, ok := r.registry[req.Id]
+func (r *MyNameResolver) ResolveID(ctx context.Context, req nameresolution.ResolveRequest) (string, error) {
+    addr, ok := r.registry[req.ID]
     if !ok {
-        return nil, fmt.Errorf("app ID %s not found", req.Id)
+        return "", fmt.Errorf("app ID %s not found", req.ID)
     }
-    return &proto.ResolveResponse{Address: addr}, nil
+    return addr, nil
 }
 
-func main() {
-    listener, _ := net.Listen("unix", "/tmp/dapr-my-resolver.sock")
-    server := grpc.NewServer()
-    proto.RegisterNameResolutionServer(server, &MyNameResolver{})
-    server.Serve(listener)
+func (r *MyNameResolver) Close() error {
+    return nil
 }
 ```
 
-Build the binary:
+Register your component in a custom Dapr runtime build by adding it to the name resolution registry in a fork of the `dapr/dapr` repository.
 
-```bash
-go build -o my-resolver ./cmd/resolver
-```
+## Configuring the Custom Component
 
-## Registering the Custom Component
-
-Create the component YAML pointing to the socket file:
+Name resolution components are configured via a Dapr `Configuration` resource, not a `Component` resource:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Component
+kind: Configuration
 metadata:
-  name: nameresolution
+  name: appconfig
 spec:
-  type: nameresolution.my-resolver
-  version: v1
-  metadata:
-    - name: registryEndpoint
-      value: "etcd://etcd.internal:2379"
+  nameResolution:
+    component: "my-resolver"
+    version: v1
+    configuration:
+      registryEndpoint: "etcd://etcd.internal:2379"
 ```
-
-Place the socket file in the Dapr components Unix socket directory (default `/tmp/dapr-components-sockets/`).
 
 ## Running the Custom Resolver with Dapr
 
-Start the custom resolver binary before starting Dapr:
+After building a custom `daprd` binary with your resolver registered, run your application with the custom configuration:
 
 ```bash
-./my-resolver &
-
 dapr run --app-id myapp \
-  --components-path ./components \
+  --config ./appconfig.yaml \
   -- ./myapp
 ```
 
-Dapr detects the socket file and loads the custom component at startup.
+Dapr loads the name resolution component specified in the configuration at startup.
 
 ## Packaging in Kubernetes
 
-In Kubernetes, run the custom resolver as a sidecar container alongside the Dapr sidecar:
+In Kubernetes, deploy your custom `daprd` image that includes the resolver. Use annotations to reference the configuration:
 
 ```yaml
 spec:
   containers:
     - name: app
       image: myapp:latest
-    - name: my-resolver
-      image: myrepo/my-resolver:latest
-      volumeMounts:
-        - name: dapr-sockets
-          mountPath: /tmp/dapr-components-sockets
-  volumes:
-    - name: dapr-sockets
-      emptyDir: {}
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "myapp"
+        dapr.io/config: "appconfig"
+        dapr.io/sidecar-image: "myrepo/daprd-custom:latest"
 ```
 
 ## Testing the Custom Resolver
@@ -139,9 +125,9 @@ Check that the address returned by your resolver is the one being connected to:
 
 ```bash
 dapr run --app-id myapp --log-level debug \
-  --components-path ./components -- ./myapp 2>&1 | grep -i resolve
+  --config ./appconfig.yaml -- ./myapp 2>&1 | grep -i resolve
 ```
 
 ## Summary
 
-Custom Dapr name resolution components are implemented as gRPC services using the pluggable component interface. Expose the resolver via a Unix socket, register it with a component YAML, and run it as a sidecar in Kubernetes. This approach enables integration with any service registry while preserving Dapr's standard service invocation API.
+Custom Dapr name resolution components are implemented by fulfilling the `Resolver` interface from `components-contrib`. Register the resolver in a custom Dapr runtime build, configure it with a `Configuration` resource, and deploy a custom `daprd` image in Kubernetes. This approach enables integration with any service registry while preserving Dapr's standard service invocation API.
