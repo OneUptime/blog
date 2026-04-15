@@ -37,10 +37,9 @@ flowchart TB
 ```
 
 When a client invokes an actor:
-1. The client's Dapr sidecar queries the Placement Service for the actor's host
-2. The Placement Service returns the consistent hash table mapping
-3. The sidecar forwards the call to the correct pod's Dapr sidecar
-4. That sidecar activates the actor (if needed) and executes the method
+1. The client's Dapr sidecar looks up the actor's host in its locally cached placement table
+2. The sidecar forwards the call to the correct pod's Dapr sidecar
+3. That sidecar activates the actor (if needed) and executes the method
 
 ## Consistent Hashing
 
@@ -91,17 +90,19 @@ Using Helm:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_placement.replicaCount=3 \
-  --set dapr_placement.raft.logStorePath=/var/log/dapr/raft.db
+  --set global.ha.enabled=true \
+  --set dapr_placement.cluster.logStorePath=/var/log/dapr/raft
 ```
 
 Or update the Helm values file:
 
 ```yaml
+global:
+  ha:
+    enabled: true
 dapr_placement:
-  replicaCount: 3
-  raft:
-    logStorePath: "/var/log/dapr/raft.db"
+  cluster:
+    logStorePath: "/var/log/dapr/raft"
   resources:
     requests:
       cpu: "100m"
@@ -164,19 +165,19 @@ curl http://localhost:8080/healthz
 ```
 
 Key metrics to monitor:
-- `dapr_placement_actor_count_total` - total registered actor types
-- `dapr_placement_host_count` - number of actor hosts registered
-- `dapr_placement_rebalance_count` - number of rebalancing events
+- `dapr_placement_actorruntimes_total` - total number of actor runtimes reported
+- `dapr_placement_runtimes_total` - total number of hosts reported
+- `dapr_placement_leader_status` - Raft leader status of the placement service
 
 ## Actor Distribution Example
 
 With 3 pods and 1000 actor instances:
 
 ```mermaid
-bar
-    title Actor Distribution Across Pods
-    x-axis [Pod 1, Pod 2, Pod 3]
-    y-axis "Number of Actors"
+xychart-beta
+    title "Actor Distribution Across Pods"
+    x-axis ["Pod 1", "Pod 2", "Pod 3"]
+    y-axis "Number of Actors" 0 --> 400
     bar [333, 334, 333]
 ```
 
