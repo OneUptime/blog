@@ -40,12 +40,12 @@ curl http://localhost:11434/api/tags
 
 ## Configuring Dapr Agents with Ollama
 
-Ollama exposes an OpenAI-compatible API. Use the `OpenAIChat` client pointing to the local Ollama server:
+Ollama exposes an OpenAI-compatible API. Use the `OpenAIChatClient` pointing to the local Ollama server:
 
 ```python
-from dapr_agents.llm import OpenAIChat
+from dapr_agents.llm import OpenAIChatClient
 
-llm = OpenAIChat(
+llm = OpenAIChatClient(
     model="llama3.2",
     base_url="http://localhost:11434/v1",
     api_key="ollama"  # Required but not used by Ollama
@@ -55,55 +55,67 @@ llm = OpenAIChat(
 ## Building a Local-First Agent
 
 ```python
-from dapr_agents import Agent, tool
-from dapr_agents.llm import OpenAIChat
+from dapr_agents import DurableAgent, AgentRunner, tool
+from dapr_agents.llm import OpenAIChatClient
 
-class PrivateDocumentAgent(Agent):
-    name = "private-doc-agent"
-    instructions = """You analyze sensitive documents locally. Never send
-    data to external services. Provide concise summaries and extract
-    key information from documents."""
+@tool
+def read_document(filepath: str) -> str:
+    """Reads and returns the content of a document file.
 
-    @tool
-    def read_document(self, filepath: str) -> str:
-        """Reads and returns the content of a document file.
+    Args:
+        filepath: Path to the document file.
+    """
+    with open(filepath) as f:
+        content = f.read()
+    return content[:4000]  # Limit for context window
 
-        Args:
-            filepath: Path to the document file.
-        """
-        with open(filepath) as f:
-            content = f.read()
-        return content[:4000]  # Limit for context window
+@tool
+def extract_entities(text: str) -> str:
+    """Extracts named entities (people, organizations, dates) from text.
 
-    @tool
-    def extract_entities(self, text: str) -> str:
-        """Extracts named entities (people, organizations, dates) from text."""
-        import re
-        dates = re.findall(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', text)
-        return f"Found {len(dates)} dates in document"
+    Args:
+        text: The text to extract entities from.
+    """
+    import re
+    dates = re.findall(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', text)
+    return f"Found {len(dates)} dates in document"
 
-    @tool
-    def save_summary(self, filename: str, summary: str) -> str:
-        """Saves an analysis summary to a file.
+@tool
+def save_summary(filename: str, summary: str) -> str:
+    """Saves an analysis summary to a file.
 
-        Args:
-            filename: Output filename for the summary.
-            summary: The summary text to save.
-        """
-        with open(filename, "w") as f:
-            f.write(summary)
-        return f"Summary saved to {filename}"
+    Args:
+        filename: Output filename for the summary.
+        summary: The summary text to save.
+    """
+    with open(filename, "w") as f:
+        f.write(summary)
+    return f"Summary saved to {filename}"
 
 
-llm = OpenAIChat(
+llm = OpenAIChatClient(
     model="llama3.2",
     base_url="http://localhost:11434/v1",
     api_key="ollama"
 )
 
-agent = PrivateDocumentAgent(llm=llm)
-result = agent.run("Analyze the contract at /docs/contract.pdf and extract key dates and parties.")
-print(result)
+agent = DurableAgent(
+    name="private-doc-agent",
+    role="Private document analyzer",
+    goal="Analyze sensitive documents locally without sending data to external services",
+    instructions=[
+        "You analyze sensitive documents locally.",
+        "Never send data to external services.",
+        "Provide concise summaries and extract key information from documents."
+    ],
+    llm=llm,
+    tools=[read_document, extract_entities, save_summary],
+)
+
+runner = AgentRunner()
+
+if __name__ == "__main__":
+    runner.serve(agent, port=8080)
 ```
 
 ## Running Ollama in Docker
@@ -159,7 +171,7 @@ ollama pull mistral
 # Then start the agent
 dapr run --app-id private-doc-agent \
   --app-port 8080 \
-  --components-path ./components \
+  --resources-path ./components \
   -- python agent.py
 ```
 
@@ -179,4 +191,4 @@ ollama create llama3.2-8k -f Modelfile
 
 ## Summary
 
-Dapr Agents works with Ollama through Ollama's OpenAI-compatible API, enabling fully local AI agent deployments. Use `OpenAIChat` with `base_url` pointing to the local Ollama server. Choose models based on your hardware - Phi-3 and Llama 3.2 3B for low-resource environments, Llama 3.1 70B for maximum capability. Deploy Ollama in Docker with GPU support for production workloads.
+Dapr Agents works with Ollama through Ollama's OpenAI-compatible API, enabling fully local AI agent deployments. Use `OpenAIChatClient` with `base_url` pointing to the local Ollama server. Choose models based on your hardware - Phi-3 and Llama 3.2 3B for low-resource environments, Llama 3.1 70B for maximum capability. Deploy Ollama in Docker with GPU support for production workloads.
