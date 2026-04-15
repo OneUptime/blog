@@ -19,7 +19,7 @@ Snowflake's virtual warehouse model separates compute from storage and handles c
 NUMBER(p,s)          -> Decimal(p,s)
 FLOAT                -> Float64
 VARCHAR              -> String
-BOOLEAN              -> UInt8
+BOOLEAN              -> Bool
 TIMESTAMP_NTZ        -> DateTime64(9)
 DATE                 -> Date
 VARIANT              -> JSON  (or String for raw storage)
@@ -84,7 +84,7 @@ SELECT if(is_premium = 1, 'premium', 'free') AS tier FROM users;
 
 ## QUALIFY Clause
 
-Snowflake supports `QUALIFY` to filter window function results inline. ClickHouse requires a subquery.
+Snowflake supports `QUALIFY` to filter window function results inline. ClickHouse also supports `QUALIFY`, so this is a direct translation.
 
 ```sql
 -- Snowflake
@@ -93,12 +93,11 @@ SELECT user_id, event_time,
 FROM events
 QUALIFY rn = 1;
 
--- ClickHouse
-SELECT user_id, event_time FROM (
-  SELECT user_id, event_time,
-    row_number() OVER (PARTITION BY user_id ORDER BY event_time DESC) AS rn
-  FROM events
-) WHERE rn = 1;
+-- ClickHouse (identical)
+SELECT user_id, event_time,
+  row_number() OVER (PARTITION BY user_id ORDER BY event_time DESC) AS rn
+FROM events
+QUALIFY rn = 1;
 ```
 
 ## Semi-Structured JSON
@@ -116,4 +115,4 @@ FROM raw_events;
 
 ## Summary
 
-Translating Snowflake to ClickHouse requires replacing `DATE_TRUNC` with ClickHouse's `toStartOf*` family, swapping `LATERAL FLATTEN` with `arrayJoin`, converting `IFF` to `if`, rewriting `QUALIFY` as subqueries, and using `JSONExtract*` functions in place of Snowflake's colon-based variant access. Type names and `LIMIT` syntax are the easiest parts of the migration.
+Translating Snowflake to ClickHouse requires replacing `DATE_TRUNC` with ClickHouse's `toStartOf*` family, swapping `LATERAL FLATTEN` with `arrayJoin`, converting `IFF` to `if`, and using `JSONExtract*` functions in place of Snowflake's colon-based variant access. `QUALIFY`, `LIMIT`, and type names are the easiest parts of the migration since they translate directly.
