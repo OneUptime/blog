@@ -26,13 +26,13 @@ Make it permanent in `/etc/rc.local` or via a systemd service.
 Adjust the kernel memory overcommit behavior and swappiness:
 
 ```bash
-# Disable swap (preferred for ClickHouse)
+# Minimize swap usage (preferred for ClickHouse)
 sudo sysctl -w vm.swappiness=1
 
 # Allow memory overcommit for large allocations
 sudo sysctl -w vm.overcommit_memory=1
 
-# Reduce dirty page flush frequency
+# Flush dirty pages more frequently in smaller batches
 sudo sysctl -w vm.dirty_ratio=10
 sudo sysctl -w vm.dirty_background_ratio=5
 ```
@@ -48,7 +48,7 @@ vm.dirty_background_ratio=5
 
 ## Set the I/O Scheduler
 
-For NVMe drives, use `none` or `mq-deadline`. For spinning disks, use `deadline` or `cfq`:
+For NVMe drives, use `none` or `mq-deadline`. For spinning disks, use `mq-deadline` or `bfq`:
 
 ```bash
 # Check current scheduler
@@ -58,7 +58,7 @@ cat /sys/block/nvme0n1/queue/scheduler
 echo none | sudo tee /sys/block/nvme0n1/queue/scheduler
 
 # Set for HDD
-echo deadline | sudo tee /sys/block/sda/queue/scheduler
+echo mq-deadline | sudo tee /sys/block/sda/queue/scheduler
 ```
 
 ## Increase File Descriptor Limits
