@@ -122,12 +122,8 @@ If you previously computed sample variances and want to use them as population e
 
 ```sql
 WITH
-    varPop(revenue) AS var_control,
-    (
-        SELECT varPop(revenue)
-        FROM ab_experiment
-        WHERE variant = 1
-    ) AS var_treatment
+    (SELECT varPop(revenue) FROM ab_experiment WHERE variant = 0) AS var_control,
+    (SELECT varPop(revenue) FROM ab_experiment WHERE variant = 1) AS var_treatment
 SELECT
     result.1 AS z_statistic,
     result.2 AS p_value
@@ -138,7 +134,6 @@ FROM (
         0.95
     )(revenue, variant) AS result
     FROM ab_experiment
-    WHERE variant = 0
 );
 ```
 
