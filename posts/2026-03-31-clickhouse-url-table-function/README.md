@@ -27,15 +27,15 @@ LIMIT 5;
 ## Basic Syntax
 
 ```sql
-url(url, format, structure [, headers])
+url(URL [, format] [, structure] [, headers])
 ```
 
 | Parameter   | Description |
 |-------------|-------------|
 | `url`       | The HTTP or HTTPS URL to fetch from |
-| `format`    | Any ClickHouse input format: `CSV`, `TSV`, `JSONEachRow`, `Parquet`, etc. |
-| `structure` | Column definitions as `'col type, ...'` |
-| `headers`   | Optional map of HTTP headers (ClickHouse 23.4+) |
+| `format`    | Any ClickHouse input format: `CSV`, `TSV`, `JSONEachRow`, `Parquet`, etc. (optional) |
+| `structure` | Column definitions as `'col type, ...'` (optional) |
+| `headers`   | Optional map of HTTP headers |
 
 ## Reading a Public CSV Dataset
 
@@ -200,7 +200,7 @@ SET http_receive_timeout    = 120;
 -- Allow redirects (default is 0)
 SET max_http_get_redirects = 5;
 
--- Limit bandwidth usage
+-- Set the read buffer size (bytes)
 SET max_read_buffer_size = 10485760; -- 10 MB
 ```
 
