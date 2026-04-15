@@ -70,6 +70,8 @@ https://mail.gov.in           mail.gov.in           in    gov
 https://store.amazon.co.jp    store.amazon.co.jp    jp    amazon
 ```
 
+Note that `gov.in` is not recognised by ClickHouse as a compound TLD. The built-in list only treats `co`, `com`, `net`, and `org` as insignificant second-level domains. Here `gov` is returned because it is the second-level domain and falls outside that list. To handle additional compound TLDs like `gov.in`, use `firstSignificantSubdomainCustom()` with a custom TLD list.
+
 ## Grouping Web Traffic by TLD
 
 ```sql
