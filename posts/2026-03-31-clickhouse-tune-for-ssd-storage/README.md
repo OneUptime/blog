@@ -41,7 +41,7 @@ If you have a UPS or battery-backed write cache, you can disable sync-on-write f
 
 ```xml
 <!-- config.xml -->
-<fsync_metadata>true</fsync_metadata>
+<fsync_metadata>false</fsync_metadata>
 ```
 
 Keep `fsync_metadata` enabled unless you accept data loss risk on power failure.
