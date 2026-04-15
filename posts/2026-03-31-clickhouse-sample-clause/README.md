@@ -12,7 +12,7 @@ The `SAMPLE` clause in ClickHouse lets you run queries against a representative 
 
 ## Enabling Sampling - SAMPLE BY in Table Definition
 
-For `SAMPLE` to work, the table must be defined with a `SAMPLE BY` clause in its `CREATE TABLE` statement. The sample column must be part of the `PRIMARY KEY`.
+For `SAMPLE` to work, the table must be defined with a `SAMPLE BY` clause in its `CREATE TABLE` statement. The sampling expression must be contained in the `PRIMARY KEY` and must evaluate to an unsigned integer. Use a hash function like `intHash32` to ensure uniform distribution across the sample space.
 
 ```sql
 CREATE TABLE user_events
@@ -24,8 +24,8 @@ CREATE TABLE user_events
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(event_time)
-ORDER BY (user_id, event_time)
-SAMPLE BY user_id;  -- sampling key; must be in ORDER BY
+ORDER BY (intHash32(user_id), event_time)
+SAMPLE BY intHash32(user_id);  -- sampling key; must be in ORDER BY
 ```
 
 ## SAMPLE with a Fraction
