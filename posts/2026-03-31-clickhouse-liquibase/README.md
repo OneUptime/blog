@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Liquibase, Schema Migration, DevOps, Database
 
-Description: Learn how to set up Liquibase for ClickHouse schema management using XML or SQL changelogs with the official ClickHouse Liquibase extension.
+Description: Learn how to set up Liquibase for ClickHouse schema management using XML or SQL changelogs with a community ClickHouse Liquibase extension.
 
 ---
 
@@ -23,11 +23,7 @@ export PATH=$PATH:/opt/liquibase
 
 ## Installing the ClickHouse Extension
 
-```bash
-liquibase init extension --extension-name liquibase-clickhouse
-```
-
-Or download manually:
+Download the extension JAR into Liquibase's `lib` directory:
 
 ```bash
 wget https://github.com/MEDIARITHMICS/liquibase-clickhouse/releases/latest/download/liquibase-clickhouse.jar \
@@ -49,8 +45,9 @@ classpath=lib/clickhouse-jdbc-all.jar
 
 ## Writing XML Changelogs
 
+Create a file named `changelog.xml`:
+
 ```xml
-<!-- changelog.xml -->
 <?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
     xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
@@ -102,11 +99,11 @@ liquibase status
 
 ```bash
 # Roll back last N changes
-liquibase rollback-count 1
+liquibase rollback-count --count=1
 
 # Roll back to a tag
-liquibase tag v1.0
-liquibase rollback v1.0
+liquibase tag --tag=v1.0
+liquibase rollback --tag=v1.0
 ```
 
 ## Generating a Diff
