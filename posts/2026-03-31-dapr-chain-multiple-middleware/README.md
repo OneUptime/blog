@@ -14,7 +14,7 @@ Dapr middleware components are applied in the order they are listed in the `http
 
 ## Pipeline Execution Order
 
-```toml
+```text
 Client Request
      |
      v
@@ -92,6 +92,8 @@ spec:
   type: middleware.http.opa
   version: v1
   metadata:
+    - name: includedHeaders
+      value: "x-role"
     - name: rego
       value: |
         package http.authz
@@ -131,7 +133,7 @@ dapr run \
   --app-id secure-api \
   --app-port 8080 \
   --config ./config/full-pipeline.yaml \
-  --components-path ./components \
+  --resources-path ./components \
   -- python api.py
 ```
 
