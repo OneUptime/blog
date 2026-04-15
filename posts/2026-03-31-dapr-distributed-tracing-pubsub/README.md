@@ -24,7 +24,7 @@ spec:
   tracing:
     samplingRate: "1"
     otel:
-      endpointAddress: "http://tempo.monitoring.svc.cluster.local:4318/v1/traces"
+      endpointAddress: "tempo.monitoring.svc.cluster.local:4318"
       isSecure: false
       protocol: http
 ```
