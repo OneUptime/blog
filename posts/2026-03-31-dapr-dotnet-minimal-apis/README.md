@@ -103,7 +103,7 @@ app.MapGet("/config", async (DaprClient dapr) =>
 ## Running the Service
 
 ```bash
-dapr run --app-id cart-service --app-port 5050 --components-path ./components \
+dapr run --app-id cart-service --app-port 5050 --resources-path ./components \
   -- dotnet run --urls http://localhost:5050
 ```
 
