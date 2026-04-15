@@ -22,7 +22,7 @@ CREATE TABLE device_telemetry (
     ward            LowCardinality(String),
     recorded_at     DateTime64(3),
     metric_name     LowCardinality(String),
-    metric_value    Float64,
+    metric_value    Nullable(Float64),
     unit            LowCardinality(String),
     is_alarm        UInt8,
     alarm_type      LowCardinality(String)
