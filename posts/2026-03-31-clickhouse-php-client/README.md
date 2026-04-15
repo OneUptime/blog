@@ -59,8 +59,8 @@ $statement = $db->select(
 
 ```php
 $db->insert('events', [
-    ['id' => 1, 'event_date' => '2024-01-01', 'event_type' => 'pageview'],
-    ['id' => 2, 'event_date' => '2024-01-02', 'event_type' => 'click'],
+    [1, '2024-01-01', 'pageview'],
+    [2, '2024-01-02', 'click'],
 ], ['id', 'event_date', 'event_type']);
 ```
 
@@ -94,8 +94,6 @@ $db->write('
 Send multiple queries in parallel using async mode:
 
 ```php
-$db->enableQueryConditions();
-
 $queries = [
     $db->selectAsync('SELECT count() FROM events WHERE event_type = :t', ['t' => 'pageview']),
     $db->selectAsync('SELECT count() FROM events WHERE event_type = :t', ['t' => 'click']),
