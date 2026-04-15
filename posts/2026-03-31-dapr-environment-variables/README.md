@@ -12,16 +12,30 @@ Description: Learn how to configure Dapr sidecar behavior using environment vari
 
 Dapr's sidecar (daprd) behavior can be controlled through environment variables and CLI flags. Understanding which variables affect the sidecar helps you tune logging, component discovery, and API behavior across different deployment environments.
 
-## Core Sidecar Environment Variables
+## Core Dapr Environment Variables
 
-The following environment variables are automatically set by the Dapr operator when injecting the sidecar:
+Dapr sets environment variables in different containers depending on the deployment mode.
+
+**Injected into application containers on Kubernetes:**
 
 | Variable | Purpose | Example |
 |---|---|---|
 | `DAPR_HTTP_PORT` | Sidecar HTTP port | `3500` |
 | `DAPR_GRPC_PORT` | Sidecar gRPC port | `50001` |
-| `APP_ID` | Application identifier | `my-service` |
+
+**Injected into the sidecar (daprd) container on Kubernetes:**
+
+| Variable | Purpose | Example |
+|---|---|---|
 | `NAMESPACE` | Kubernetes namespace | `default` |
+
+**Set by `dapr run` in self-hosted mode:**
+
+| Variable | Purpose | Example |
+|---|---|---|
+| `APP_ID` | Application identifier | `my-service` |
+| `DAPR_HTTP_PORT` | Sidecar HTTP port | `3500` |
+| `DAPR_GRPC_PORT` | Sidecar gRPC port | `50001` |
 
 Access them in your application:
 
@@ -29,9 +43,8 @@ Access them in your application:
 import os
 
 dapr_http_port = os.getenv("DAPR_HTTP_PORT", "3500")
-app_id = os.getenv("APP_ID", "local-app")
 dapr_base_url = f"http://localhost:{dapr_http_port}/v1.0"
-print(f"Connecting to Dapr at {dapr_base_url} as {app_id}")
+print(f"Connecting to Dapr at {dapr_base_url}")
 ```
 
 ## Setting Custom Environment Variables via Annotations
@@ -42,7 +55,7 @@ Inject environment variables into the Dapr sidecar container:
 annotations:
   dapr.io/enabled: "true"
   dapr.io/app-id: "myservice"
-  dapr.io/sidecar-env: "LOG_LEVEL=debug,OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317"
+  dapr.io/env: "LOG_LEVEL=debug,OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317"
 ```
 
 ## Configuring Logging Level
@@ -55,12 +68,14 @@ annotations:
   dapr.io/log-as-json: "true"
 ```
 
-Or via environment variable in the Helm chart:
+Or via the Helm chart on a per-component basis:
 
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set global.logLevel=info
+  --set dapr_operator.logLevel=info \
+  --set dapr_placement.logLevel=info \
+  --set dapr_sidecar_injector.logLevel=info
 ```
 
 ## App-Level Environment Variables
@@ -115,4 +130,4 @@ kubectl exec -it <pod-name> -c daprd -- env | grep -E "DAPR|APP_|NAMESPACE"
 
 ## Summary
 
-Dapr automatically injects key environment variables like `DAPR_HTTP_PORT` and `APP_ID` into application containers. Use the `dapr.io/sidecar-env` annotation to pass custom variables to the sidecar, and use standard Kubernetes ConfigMaps and Secrets for application-level configuration to maintain clean separation between app config and Dapr tuning.
+On Kubernetes, Dapr automatically injects `DAPR_HTTP_PORT` and `DAPR_GRPC_PORT` into application containers. In self-hosted mode, `dapr run` also sets `APP_ID`. Use the `dapr.io/env` annotation to pass custom variables to the sidecar, and use standard Kubernetes ConfigMaps and Secrets for application-level configuration to maintain clean separation between app config and Dapr tuning.
