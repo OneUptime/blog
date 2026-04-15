@@ -15,7 +15,7 @@ Traditional ETL scripts break silently. A network error at step 7 of 10 means re
 ## Basic ETL Workflow
 
 ```csharp
-[DaprWorkflow]
+[Workflow]
 public class SalesEtlWorkflow : Workflow<EtlInput, EtlResult>
 {
     public override async Task<EtlResult> RunAsync(
@@ -65,7 +65,7 @@ public class SalesEtlWorkflow : Workflow<EtlInput, EtlResult>
 When processing large datasets, fan out across chunks using `Task.WhenAll`:
 
 ```csharp
-[DaprWorkflow]
+[Workflow]
 public class BatchProcessingWorkflow : Workflow<BatchInput, BatchResult>
 {
     public override async Task<BatchResult> RunAsync(
@@ -101,7 +101,7 @@ public class BatchProcessingWorkflow : Workflow<BatchInput, BatchResult>
 ## Activity Implementations
 
 ```csharp
-[DaprWorkflowActivity]
+[WorkflowActivity]
 public class ExtractFromSourceActivity : WorkflowActivity<ExtractParams, RawSalesData>
 {
     private readonly IDbConnection _db;
@@ -123,7 +123,7 @@ public class ExtractFromSourceActivity : WorkflowActivity<ExtractParams, RawSale
 ## Connecting to Dapr Output Binding for the Load Step
 
 ```csharp
-[DaprWorkflowActivity]
+[WorkflowActivity]
 public class LoadToWarehouseActivity : WorkflowActivity<TransformedData, LoadResult>
 {
     private readonly DaprClient _daprClient;
