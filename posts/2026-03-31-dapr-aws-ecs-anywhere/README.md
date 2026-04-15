@@ -16,7 +16,7 @@ Register your on-premises server as an ECS Anywhere external instance:
 
 ```bash
 # Download and run the ECS Anywhere install script on the server
-curl -o install.sh https://amazon-ecs-agent.s3.amazonaws.com/ecs-anywhere-install.sh
+curl -o install.sh https://amazon-ecs-agent.s3.amazonaws.com/ecs-anywhere-install-latest.sh
 
 # Run with your cluster name and activation credentials
 sudo bash install.sh \
@@ -58,7 +58,7 @@ Define an ECS task with both the application and Dapr sidecar containers:
     },
     {
       "name": "daprd",
-      "image": "daprio/daprd:1.14.0",
+      "image": "daprio/daprd:1.17.4",
       "essential": false,
       "command": [
         "./daprd",
@@ -66,7 +66,7 @@ Define an ECS task with both the application and Dapr sidecar containers:
         "--app-port", "8080",
         "--dapr-http-port", "3500",
         "--dapr-grpc-port", "50001",
-        "--components-path", "/dapr/components",
+        "--resources-path", "/dapr/components",
         "--log-level", "info"
       ],
       "portMappings": [
