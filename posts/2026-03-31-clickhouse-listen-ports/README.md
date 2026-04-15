@@ -10,7 +10,7 @@ Description: Configure ClickHouse server listen addresses and ports for HTTP, HT
 
 ## Introduction
 
-ClickHouse listens on multiple ports for different interfaces. By default it binds to all addresses (`::`) which exposes it to any network interface. Production deployments should bind to specific interfaces and disable unused ports. This guide covers all configurable ports and how to restrict them.
+ClickHouse listens on multiple ports for different interfaces. By default it binds to localhost only (`127.0.0.1` / `::1`), so a fresh install is not exposed to the network. Production deployments that need remote access must set `<listen_host>` explicitly and should bind to specific internal interfaces rather than all addresses. This guide covers all configurable ports and how to restrict them.
 
 ## Default Ports
 
@@ -24,7 +24,7 @@ ClickHouse listens on multiple ports for different interfaces. By default it bin
 | 9005 | PostgreSQL compatibility | PostgreSQL wire protocol |
 | 9009 | Interserver HTTP | Replication between nodes |
 | 9010 | Interserver HTTPS | Encrypted replication |
-| 2181 | ClickHouse Keeper | ZooKeeper-compatible protocol |
+| 9181 | ClickHouse Keeper | ZooKeeper-compatible protocol |
 
 ## Checking Active Ports
 
@@ -34,10 +34,10 @@ ss -tlnp | grep clickhouse
 # Or via ClickHouse system tables
 clickhouse-client -q "
 SELECT
-    interface,
-    bind_address
-FROM system.settings
-WHERE name LIKE '%port%' OR name LIKE '%address%'
+    name,
+    value
+FROM system.server_settings
+WHERE name LIKE '%port%' OR name LIKE '%listen%'
 "
 ```
 
