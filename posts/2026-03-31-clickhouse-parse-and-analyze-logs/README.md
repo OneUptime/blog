@@ -19,7 +19,7 @@ Parse standard nginx combined log format with regex:
 ```sql
 SELECT
     extract(log_line, '(\\d+\\.\\d+\\.\\d+\\.\\d+)') AS ip,
-    extract(log_line, '"([A-Z]+) ([^ ]+)') AS method_path,
+    extract(log_line, '"([A-Z]+ [^ ]+)') AS method_path,
     toInt32OrNull(extract(log_line, '" (\\d{3}) ')) AS status_code,
     toInt64OrNull(extract(log_line, '\\d{3} (\\d+)')) AS response_bytes
 FROM access_logs
