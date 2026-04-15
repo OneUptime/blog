@@ -63,20 +63,20 @@ WHERE ts BETWEEN '2026-01-01' AND '2026-01-31';
 ## PREWHERE Limitations
 
 - Only applies to MergeTree family tables
-- Cannot use PREWHERE with non-deterministic functions
-- Cannot use PREWHERE if the column is needed in multiple passes
-- Arrays and ALIAS columns cannot be in PREWHERE
+- The automatic `optimize_move_to_prewhere` will not move conditions containing non-deterministic functions (e.g., `rand()`) to PREWHERE
+- ALIAS columns (computed, not stored on disk) are skipped by the automatic PREWHERE optimizer since they require evaluation at query time
+- When using `FINAL`, both `optimize_move_to_prewhere` and `optimize_move_to_prewhere_if_final` must be enabled, and results may be incorrect for PREWHERE on columns not in the ORDER BY
 
 ## Checking PREWHERE Usage in EXPLAIN
 
 ```sql
-EXPLAIN PIPELINE
+EXPLAIN SYNTAX
 SELECT count()
 FROM events
 WHERE country = 'US' AND status = 'active';
 ```
 
-Look for `FilterTransform` stages to see where PREWHERE is applied.
+The output will show the rewritten query with eligible conditions moved to a `PREWHERE` clause, confirming the optimization was applied.
 
 ## Combining PREWHERE and WHERE
 
