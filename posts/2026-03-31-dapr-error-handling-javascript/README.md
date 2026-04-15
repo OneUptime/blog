@@ -114,7 +114,7 @@ Define server-side retry and circuit-breaker policies:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: ResiliencyPolicy
+kind: Resiliency
 metadata:
   name: order-resiliency
 spec:
