@@ -137,7 +137,7 @@ while true; do
             formatReadableSize(total_size_bytes_compressed) AS size
         FROM system.merges
         WHERE progress > 0
-        ORDER BY size DESC
+        ORDER BY total_size_bytes_compressed DESC
         FORMAT PrettyCompactNoEscapes
     "
     sleep 5
@@ -162,26 +162,21 @@ HAVING active_parts > 300
 ORDER BY active_parts DESC;
 ```
 
-ClickHouse issues the warning "Too many parts" when a table exceeds 300 active parts. Seeing high part counts alongside zero active merges suggests merge threads are stalled.
+ClickHouse throws the "Too many parts" error when a partition exceeds `parts_to_throw_insert` active parts (default 300 before ClickHouse 23.6, 3000 since 23.6). Seeing high part counts alongside zero active merges suggests merge threads are stalled.
 
 ## Tune the Number of Merge Threads
 
 ```sql
 -- View current background merge thread count
 SELECT name, value
-FROM system.settings
+FROM system.server_settings
 WHERE name IN (
     'background_pool_size',
     'background_merges_mutations_concurrency_ratio'
 );
 ```
 
-```sql
--- Increase merge threads for a session (takes effect immediately)
-SET background_pool_size = 16;
-```
-
-For persistent changes, edit `config.xml`:
+These are server-level settings and cannot be changed with `SET` at the session level. To change them, edit `config.xml`:
 
 ```xml
 <background_pool_size>16</background_pool_size>
