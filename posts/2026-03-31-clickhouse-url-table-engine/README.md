@@ -77,7 +77,7 @@ ENGINE = URL(
 
 ## Supported Formats
 
-The URL engine supports all ClickHouse input/output formats that work on streams, including:
+The URL engine supports many ClickHouse input/output formats, including:
 
 ```text
 CSV
@@ -97,7 +97,7 @@ INSERT INTO local_table
 SELECT * FROM url_table;
 ```
 
-You can also schedule this with a cron job or a ClickHouse Scheduled task to keep local data fresh.
+You can also schedule this with a cron job or a ClickHouse refreshable materialized view to keep local data fresh.
 
 ## Credentials and Authentication
 
@@ -107,7 +107,7 @@ If the remote endpoint requires Basic Auth, embed credentials in the URL:
 ENGINE = URL('https://user:password@api.example.com/data.json', JSONEachRow);
 ```
 
-Avoid hardcoding credentials in production. Use ClickHouse named collections or environment variables where possible.
+Avoid hardcoding credentials in production. Use environment variables or a secrets manager where possible.
 
 ## Summary
 
