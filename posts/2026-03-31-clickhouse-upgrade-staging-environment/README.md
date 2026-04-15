@@ -45,8 +45,8 @@ CREATE TABLE staging.events AS production.events;
 -- Insert a sample from the backup
 INSERT INTO staging.events
 SELECT * FROM production.events
-WHERE event_date >= today() - 30
-SAMPLE 0.1;  -- 10% sample
+SAMPLE 0.1  -- 10% sample
+WHERE event_date >= today() - 30;
 ```
 
 ## Running the Compatibility Test Suite
@@ -87,7 +87,7 @@ echo "All tests passed"
 
 ```bash
 # Test config validity with new version
-docker exec clickhouse-staging clickhouse-server --config=/etc/clickhouse-server/config.xml --check-config
+docker exec clickhouse-staging clickhouse-extract-from-config --config-file /etc/clickhouse-server/config.xml --key path
 ```
 
 Review settings that changed defaults:
@@ -117,7 +117,7 @@ Compare query performance between old and new versions:
 
 ```sql
 -- On production (old version)
-SELECT count(), avg(duration_ms)
+SELECT count(), avg(query_duration_ms)
 FROM system.query_log
 WHERE query_start_time >= today() - 7
   AND type = 'QueryFinish'
