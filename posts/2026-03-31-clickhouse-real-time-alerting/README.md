@@ -109,8 +109,8 @@ JOIN (
     SELECT * FROM alert_definitions FINAL WHERE enabled = true
 ) d ON m.metric_name = d.metric_name
 WHERE
-    (d.condition = 'gt' AND m.value > d.threshold)
-    OR (d.condition = 'lt' AND m.value < d.threshold)
+    ((d.condition = 'gt' AND m.value > d.threshold)
+    OR (d.condition = 'lt' AND m.value < d.threshold))
     AND NOT EXISTS (
         -- No alert fired in the last 10 minutes (deduplication)
         SELECT 1 FROM alert_events
