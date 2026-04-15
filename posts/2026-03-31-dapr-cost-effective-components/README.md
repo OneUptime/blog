@@ -44,8 +44,6 @@ spec:
       key: password
   - name: enableTLS
     value: "true"
-  - name: ttlInSeconds
-    value: "3600"
 ```
 
 ## Comparing Pub/Sub Component Costs
@@ -141,10 +139,10 @@ Use Dapr metrics to identify underused components and rightsize:
 
 ```bash
 # Query state store operation rates
-curl "http://prometheus:9090/api/v1/query?query=rate(dapr_state_get_total[5m])"
+curl "http://prometheus:9090/api/v1/query?query=rate(dapr_component_state_get_total[5m])"
 
 # Find components with low utilization
-curl "http://prometheus:9090/api/v1/query?query=dapr_component_operation_count"
+curl "http://prometheus:9090/api/v1/query?query=dapr_component_state_count"
 ```
 
 ## Summary
