@@ -28,7 +28,7 @@ metadata:
   name: statestore
   namespace: default
 spec:
-  type: state.dynamodb
+  type: state.aws.dynamodb
   version: v1
   metadata:
   - name: region
@@ -55,7 +55,7 @@ kind: Component
 metadata:
   name: statestore
 spec:
-  type: state.dynamodb
+  type: state.aws.dynamodb
   version: v1
   metadata:
   - name: region
