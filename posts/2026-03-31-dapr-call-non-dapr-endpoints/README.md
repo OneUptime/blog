@@ -51,6 +51,8 @@ Dapr routes the call to `https://api.payment-provider.com/v2/charge` with the au
 ## Using the Go SDK
 
 ```go
+import dapr "github.com/dapr/go-sdk/client"
+
 client, _ := dapr.NewClient()
 defer client.Close()
 
@@ -78,14 +80,20 @@ spec:
   targets:
     httpEndpoints:
       payment-gateway:
-        retryPolicy: retryThrice
-        circuitBreakerPolicy: openOnErrors
+        retry: retryThrice
+        circuitBreaker: openOnErrors
   policies:
     retries:
       retryThrice:
         policy: constant
         maxRetries: 3
         duration: 2s
+    circuitBreakers:
+      openOnErrors:
+        maxRequests: 1
+        interval: 60s
+        timeout: 30s
+        trip: consecutiveFailures > 3
 ```
 
 ## When to Use This Approach
