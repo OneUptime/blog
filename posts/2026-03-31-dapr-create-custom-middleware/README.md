@@ -10,15 +10,16 @@ Description: Learn how to build and register a custom Dapr HTTP middleware compo
 
 ## Introduction
 
-Dapr middleware components are Go plugins that implement the `middleware.Middleware` interface. You can create custom middleware to add capabilities like custom authentication, request enrichment, response caching, or audit logging that are not available in the built-in middleware catalog.
+Dapr middleware components implement the `Middleware` interface from the `components-contrib` package. You can create custom middleware to add capabilities like custom authentication, request enrichment, response caching, or audit logging that are not available in the built-in middleware catalog.
 
 ## Middleware Interface
 
-A Dapr HTTP middleware must implement:
+A Dapr HTTP middleware must implement the `Middleware` interface from `github.com/dapr/components-contrib/middleware`:
 
 ```go
-// The middleware handler function type
-type MiddlewareFunc func(next http.Handler) http.Handler
+type Middleware interface {
+    GetHandler(ctx context.Context, metadata Metadata) (func(next http.Handler) http.Handler, error)
+}
 ```
 
 ## Project Structure
@@ -48,7 +49,7 @@ type AuditLog struct {
     Method     string    `json:"method"`
     Path       string    `json:"path"`
     StatusCode int       `json:"status_code"`
-    Duration   string    `json:"duration_ms"`
+    Duration   string    `json:"duration"`
     Timestamp  time.Time `json:"timestamp"`
 }
 
@@ -88,32 +89,36 @@ func AuditMiddleware(next http.Handler) http.Handler {
 
 ## Registering the Middleware with Dapr Runtime
 
-To use a custom middleware, you need to build a custom Dapr runtime. Create a component registration:
+To use a custom middleware, you need to implement the `Middleware` interface from `components-contrib` and build a custom Dapr sidecar binary. First, create a component that wraps your middleware:
 
 ```go
-// main.go
+// component.go
 package main
 
 import (
     "context"
-    "github.com/dapr/dapr/cmd/daprd/main_windows"
+    "net/http"
+
+    contrib_middleware "github.com/dapr/components-contrib/middleware"
     "github.com/dapr/kit/logger"
-    mh "github.com/dapr/dapr/pkg/middleware/http"
     "my-module/middleware"
 )
 
-func main() {
-    registry := mh.NewRegistry()
-    registry.RegisterComponent(func(log logger.Logger) mh.Middleware {
-        return mh.MiddlewareFunc(func(next http.Handler) http.Handler {
-            return middleware.AuditMiddleware(next)
-        })
-    }, "audit-logger", "v1")
+// AuditComponent implements the Dapr middleware.Middleware interface
+type AuditComponent struct {
+    logger logger.Logger
+}
 
-    // Start the Dapr runtime with the custom registry
-    daprd.Start(context.Background(), registry)
+func NewAuditComponent(log logger.Logger) contrib_middleware.Middleware {
+    return &AuditComponent{logger: log}
+}
+
+func (a *AuditComponent) GetHandler(ctx context.Context, metadata contrib_middleware.Metadata) (func(next http.Handler) http.Handler, error) {
+    return middleware.AuditMiddleware, nil
 }
 ```
+
+To integrate this into the Dapr runtime, you need to fork the `dapr/dapr` repository and register `NewAuditComponent` in the middleware loader within `cmd/daprd`. Then rebuild the `daprd` binary with your component included. See the [Dapr middleware development guide](https://docs.dapr.io/developing-applications/develop-components/develop-middleware/) for current registration details.
 
 ## Simpler Approach - Sidecar HTTP Proxy Pattern
 
