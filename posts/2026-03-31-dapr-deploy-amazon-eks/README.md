@@ -60,7 +60,6 @@ helm install dapr dapr/dapr \
 kubectl get pods -n dapr-system
 
 # Expected output:
-# dapr-dashboard-xxx         1/1   Running
 # dapr-operator-xxx          1/1   Running
 # dapr-placement-server-xxx  1/1   Running
 # dapr-sentry-xxx            1/1   Running
@@ -119,7 +118,7 @@ spec:
     spec:
       containers:
       - name: hello-dapr
-        image: ghcr.io/dapr/samples/hello-world:latest
+        image: ghcr.io/dapr/samples/hello-k8s-node:latest
         ports:
         - containerPort: 8080
         env:
@@ -161,6 +160,9 @@ spec:
 ## Enable Dapr Dashboard
 
 ```bash
+# Install the Dapr dashboard (not included in the default Dapr Helm chart since v1.11)
+helm install dapr-dashboard dapr/dapr-dashboard --namespace dapr-system
+
 # Port-forward to access the Dapr dashboard
 kubectl port-forward svc/dapr-dashboard 8080:8080 -n dapr-system
 
