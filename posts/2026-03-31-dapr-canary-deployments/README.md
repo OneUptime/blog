@@ -95,7 +95,7 @@ spec:
 Compare error rates between stable and canary using deployment labels:
 
 ```bash
-# Watch error rate by deployment track
+# Watch resource usage by deployment track
 kubectl top pods -l app=order-service --sort-by=cpu
 
 # Query Prometheus for per-version error rates
@@ -129,11 +129,12 @@ spec:
       analysis:
         templates:
         - templateName: error-rate-check
-      canaryMetadata:
-        annotations:
-          dapr.io/enabled: "true"
-          dapr.io/app-id: "order-service"
   template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-service"
+        dapr.io/app-port: "8080"
     spec:
       containers:
       - name: order-service
@@ -156,7 +157,7 @@ kubectl delete deployment order-service-canary
 
 ## Canary for Pub/Sub Consumers
 
-For canary testing pub/sub consumers, use feature flags inside the application rather than traffic splitting, since messages are delivered to all consumers with the same app ID. Deploy a separate app ID for testing:
+For canary testing pub/sub consumers, ingress-based traffic splitting does not apply since messages are pushed by the broker, not routed through HTTP. With the same app ID, Dapr uses the competing consumers pattern where each message is delivered to only one instance. To test a canary consumer independently, deploy a separate app ID:
 
 ```yaml
 dapr.io/app-id: "order-processor-canary"
