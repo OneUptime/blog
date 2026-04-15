@@ -45,6 +45,8 @@ This avoids hardcoding the scaling factor.
 
 ## Approximate COUNT DISTINCT
 
+This pattern works well when the `SAMPLE BY` key is based on the same column being counted (e.g., `SAMPLE BY intHash32(user_id)`), because each unique value is deterministically either fully included or excluded from the sample:
+
 ```sql
 SELECT
     toDate(event_time) AS day,
@@ -55,6 +57,8 @@ WHERE event_time >= today() - 30
 GROUP BY day
 ORDER BY day;
 ```
+
+If the `SAMPLE BY` key is not based on `user_id`, consider using `uniq(user_id)` on the full dataset instead - it is already an approximation and is fast without sampling.
 
 ## Approximate Average - No Scaling Needed
 
@@ -118,7 +122,7 @@ quantile()      -- no scaling (distribution-based)
 
 ## Combining Sampling with Materialized Views
 
-For even faster repeated queries, pre-aggregate at 10% and query the materialized view:
+The `SAMPLE` clause is a query-time feature and cannot be used in a materialized view's inner SELECT, since materialized views process INSERT blocks rather than querying the full table. To pre-aggregate a subset of incoming data, use a hash-based filter in the `WHERE` clause:
 
 ```sql
 CREATE MATERIALIZED VIEW approx_daily_stats
@@ -130,9 +134,11 @@ SELECT
     event_name,
     count() AS sampled_count
 FROM events
-SAMPLE 0.1
+WHERE cityHash64(event_id) % 10 = 0  -- deterministic ~10% of rows
 GROUP BY event_date, event_name;
 ```
+
+When querying, multiply `sampled_count` by 10 to estimate totals.
 
 ## Summary
 
