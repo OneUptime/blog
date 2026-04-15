@@ -50,11 +50,12 @@ Configure these in your `keeper_config.xml` under `<coordination_settings>`:
     <election_timeout_lower_bound_ms>1000</election_timeout_lower_bound_ms>
     <election_timeout_upper_bound_ms>2000</election_timeout_upper_bound_ms>
 
-    <!-- Maximum in-flight operations in Raft pipeline -->
+    <!-- Max size of batch of requests sent to Raft -->
     <max_requests_batch_size>100</max_requests_batch_size>
 
-    <!-- Deadline for reading from a follower -->
+    <!-- Default client operation timeout -->
     <operation_timeout_ms>10000</operation_timeout_ms>
+    <!-- Default client session timeout -->
     <session_timeout_ms>30000</session_timeout_ms>
 
     <!-- Log level for Raft internals (trace, debug, information, warning) -->
