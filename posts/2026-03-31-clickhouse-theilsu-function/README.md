@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, theilsU, Uncertainty Coefficient, Statistics
 
-Description: Learn how to use theilsU() in ClickHouse to measure the asymmetric predictive power of one categorical variable over another, ranging from 0 to 1.
+Description: Learn how to use theilsU() in ClickHouse to measure the asymmetric association between categorical variables, returning values from -1 to 1.
 
 ---
 
@@ -21,8 +21,9 @@ U(x -> y) = (H(y) - H(y|x)) / H(y)
 Where `H(y)` is the entropy of `y` and `H(y|x)` is the conditional entropy of `y` given `x`. This is the fraction of uncertainty in `y` that is explained by knowing `x`.
 
 Key properties:
-- **0** - knowing `x` gives no information about `y`
-- **1** - knowing `x` completely determines `y`
+- **0** - no association between `x` and `y`
+- **+1** - perfect positive association (complete agreement)
+- **-1** - perfect negative association (complete inversion)
 - **Asymmetric** - `theilsU(x, y)` does not equal `theilsU(y, x)` in general
 
 ## Syntax
@@ -31,7 +32,7 @@ Key properties:
 theilsU(x, y)
 ```
 
-Returns a `Float64` in [0, 1] representing how much knowing `x` reduces uncertainty about `y`.
+Returns a `Float64` in [-1, 1] representing the association between `x` and `y`, where 0 indicates no association, +1 indicates perfect positive association, and -1 indicates perfect negative association.
 
 ## Creating Sample Data
 
@@ -110,7 +111,7 @@ FROM support_tickets
 ORDER BY predictive_power DESC;
 ```
 
-The feature with higher Theil's U is a stronger predictor of the target.
+The feature with a higher absolute Theil's U value is a stronger predictor of the target.
 
 ## Churn Prediction Feature Ranking
 
@@ -134,13 +135,18 @@ ORDER BY theilsU_value DESC;
 
 | Range | Interpretation |
 |---|---|
-| 0.0 | No predictive relationship |
-| 0.0 - 0.15 | Very weak predictive power |
-| 0.15 - 0.30 | Weak predictive power |
-| 0.30 - 0.60 | Moderate predictive power |
-| 0.60 - 0.85 | Strong predictive power |
-| 0.85 - 1.0 | Very strong predictive power |
-| 1.0 | Perfect prediction |
+| -1.0 | Perfect negative association (complete inversion) |
+| -0.85 to -1.0 | Very strong negative association |
+| -0.60 to -0.85 | Strong negative association |
+| -0.30 to -0.60 | Moderate negative association |
+| -0.15 to -0.30 | Weak negative association |
+| 0.0 | No association |
+| 0.0 to 0.15 | Very weak positive association |
+| 0.15 to 0.30 | Weak positive association |
+| 0.30 to 0.60 | Moderate positive association |
+| 0.60 to 0.85 | Strong positive association |
+| 0.85 to 1.0 | Very strong positive association |
+| 1.0 | Perfect positive association (complete agreement) |
 
 ## Comparing Theil's U with Cramer's V
 
@@ -156,4 +162,4 @@ Cramer's V gives a symmetric overview; Theil's U reveals the direction of the pr
 
 ## Summary
 
-`theilsU()` in ClickHouse computes the uncertainty coefficient, an asymmetric measure of how much knowing one categorical variable reduces uncertainty about another. It ranges from 0 (no predictive power) to 1 (perfect prediction) and is based on information entropy. Use it to rank categorical features by their predictive power, compare directional relationships, and perform feature selection for classification models directly in SQL.
+`theilsU()` in ClickHouse computes the uncertainty coefficient, an asymmetric measure of association between two categorical variables. It returns values from -1 (perfect negative association) through 0 (no association) to +1 (perfect positive association) and is based on information entropy. Use it to rank categorical features by their association strength, compare directional relationships, and perform feature selection for classification models directly in SQL.
