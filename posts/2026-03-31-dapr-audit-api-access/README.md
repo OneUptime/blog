@@ -118,7 +118,7 @@ groups:
   rules:
   - alert: DaprAPIAuthFailures
     expr: |
-      increase(dapr_http_server_response_count{status_code="401"}[5m]) > 10
+      increase(dapr_http_server_response_count{status="401"}[5m]) > 10
     for: 1m
     labels:
       severity: warning
