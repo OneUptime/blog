@@ -14,86 +14,104 @@ Prometheus's local TSDB retains data for a configurable window (default 15 days)
 
 ## Adapter Options
 
-The most popular adapters are:
+The most common approaches are:
 
-- **Promhouse** - early open-source adapter
-- **clickhouse_exporter with remote write** - Percona's stack
-- **Promxy + ClickHouse** - federation-aware
-- **Grafana Metricstank** (partial support)
-- **DoubleCloud Prometheus-ClickHouse adapter** (recommended for new deployments)
+- **ClickHouse native Prometheus support** - built-in remote write/read handlers, no external adapter needed (recommended)
+- **PromHouse** - early open-source adapter by Percona Labs (experimental)
+- **prom2click** - community remote storage adapter
 
-## Installing the DoubleCloud Adapter
+## Configuring ClickHouse Native Prometheus Support
 
-```bash
-docker run -d \
-  --name prometheus-clickhouse \
-  -p 9201:9201 \
-  -e CLICKHOUSE_URL=http://clickhouse:8123 \
-  -e CLICKHOUSE_DATABASE=metrics \
-  doublecloud/prometheus-remote-storage-clickhouse:latest
+Since ClickHouse 24.8, Prometheus remote write and read protocols are supported natively. Add the following to your ClickHouse server configuration (e.g., `config.d/prometheus.xml`):
+
+```xml
+<clickhouse>
+    <prometheus>
+        <port>9363</port>
+        <handlers>
+            <write_handler>
+                <url>/write</url>
+                <handler>
+                    <type>remote_write</type>
+                    <table>metrics.prometheus</table>
+                </handler>
+            </write_handler>
+            <read_handler>
+                <url>/read</url>
+                <handler>
+                    <type>remote_read</type>
+                    <table>metrics.prometheus</table>
+                </handler>
+            </read_handler>
+        </handlers>
+    </prometheus>
+</clickhouse>
 ```
 
 ## ClickHouse Schema
 
-The adapter creates a table similar to:
+Create the target database and a `TimeSeries` table, which automatically generates the required internal tables for data, tags, and metric metadata:
 
 ```sql
-CREATE TABLE metrics.samples (
-  date        Date DEFAULT toDate(timestamp),
-  name        LowCardinality(String),
-  tags        Array(String),
-  val         Float64,
-  timestamp   DateTime64(3)
-) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(date)
-ORDER BY (name, tags, timestamp)
-TTL date + INTERVAL 1 YEAR
+SET allow_experimental_time_series_table = 1;
+
+CREATE DATABASE IF NOT EXISTS metrics;
+
+CREATE TABLE metrics.prometheus ENGINE = TimeSeries;
 ```
+
+The `TimeSeries` engine creates three internal sub-tables:
+
+- A **data** table (MergeTree) storing `id`, `timestamp`, and `value`
+- A **tags** table (AggregatingMergeTree) storing `metric_name` and label key-value pairs
+- A **metrics** table (ReplacingMergeTree) storing metric family metadata
 
 ## Prometheus remote_write Configuration
 
 ```yaml
 remote_write:
-  - url: http://prometheus-clickhouse:9201/write
+  - url: http://clickhouse:9363/write
     queue_config:
       max_samples_per_send: 10000
       capacity: 100000
       max_shards: 10
 
 remote_read:
-  - url: http://prometheus-clickhouse:9201/read
+  - url: http://clickhouse:9363/read
     read_recent: true
 ```
 
 ## Querying Long-Term Data in Grafana
 
-Point a Grafana Prometheus data source at the adapter's `/read` endpoint. Long-range queries work transparently.
+Point a Grafana Prometheus data source at the ClickHouse `/read` endpoint. Long-range queries work transparently.
 
 ```text
-Datasource URL: http://prometheus-clickhouse:9201
+Datasource URL: http://clickhouse:9363
 ```
 
-For direct ClickHouse queries, add a ClickHouse Grafana plugin data source to build custom dashboards:
+For direct ClickHouse queries, add a ClickHouse Grafana plugin data source to build custom dashboards against the internal data and tags tables:
 
 ```sql
 SELECT
-  toStartOfHour(timestamp) AS time,
-  avg(val) AS cpu_avg
-FROM metrics.samples
-WHERE name = 'node_cpu_seconds_total'
-  AND timestamp BETWEEN {from:DateTime} AND {to:DateTime}
+  toStartOfHour(d.timestamp) AS time,
+  avg(d.value) AS cpu_avg
+FROM metrics.`.inner_id.data.prometheus` AS d
+JOIN metrics.`.inner_id.tags.prometheus` AS t ON d.id = t.id
+WHERE t.metric_name = 'node_cpu_seconds_total'
+  AND d.timestamp BETWEEN $__fromTime AND $__toTime
 GROUP BY time
 ORDER BY time
 ```
 
 ## Retention Tuning
 
-Adjust the TTL clause to match your retention policy:
+Adjust the TTL on the internal data table to match your retention policy:
 
 ```sql
-ALTER TABLE metrics.samples MODIFY TTL date + INTERVAL 2 YEAR
+ALTER TABLE metrics.`.inner_id.data.prometheus`
+  MODIFY TTL timestamp + INTERVAL 2 YEAR
 ```
 
 ## Summary
 
-ClickHouse stores Prometheus metrics via a remote write adapter, providing compressed multi-year retention at a fraction of the cost of dedicated TSDB solutions. Use an adapter like DoubleCloud's Prometheus-ClickHouse bridge, configure Prometheus `remote_write` and `remote_read` endpoints, and leverage ClickHouse's native TTL for automated data expiry.
+ClickHouse stores Prometheus metrics via its native remote write/read protocol support, providing compressed multi-year retention at a fraction of the cost of dedicated TSDB solutions. Configure the ClickHouse Prometheus handlers, point Prometheus `remote_write` and `remote_read` at the ClickHouse endpoint, and leverage ClickHouse's native TTL for automated data expiry.
