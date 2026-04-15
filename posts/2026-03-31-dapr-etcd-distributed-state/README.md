@@ -48,14 +48,10 @@ metadata:
   namespace: default
 spec:
   type: state.etcd
-  version: v1
+  version: v2
   metadata:
   - name: endpoints
     value: "etcd-0.etcd-headless:2379,etcd-1.etcd-headless:2379,etcd-2.etcd-headless:2379"
-  - name: dialTimeout
-    value: "5s"
-  - name: operationTimeout
-    value: "10s"
   - name: tlsEnable
     value: "true"
   - name: ca
@@ -70,7 +66,7 @@ spec:
     secretKeyRef:
       name: etcd-tls
       key: tls.key
-  - name: keyPrefix
+  - name: keyPrefixPath
     value: "dapr-state/"
 ```
 
@@ -83,6 +79,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     dapr "github.com/dapr/go-sdk/client"
 )
@@ -109,7 +106,7 @@ func tryBecomeLeader(instanceID string) (bool, error) {
     data, _ := json.Marshal(state)
 
     err := client.SaveState(ctx, "etcd-state", "leader",
-        data,
+        data, nil,
         dapr.WithConcurrency(dapr.StateConcurrencyFirstWrite),
         dapr.WithConsistency(dapr.StateConsistencyStrong),
     )
@@ -140,10 +137,10 @@ kubectl exec -it etcd-0 -- etcdctl watch /dapr-state/config \
 Organize state with meaningful key prefixes:
 
 ```python
-import dapr.clients as dapr
+from dapr.clients import DaprClient
 
 def save_service_config(service_name: str, config: dict):
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         # Keys are stored as: dapr-state/config/order-service
         client.save_state(
             store_name="etcd-state",
@@ -152,7 +149,7 @@ def save_service_config(service_name: str, config: dict):
         )
 
 def get_service_config(service_name: str):
-    with dapr.DaprClient() as client:
+    with DaprClient() as client:
         response = client.get_state(
             store_name="etcd-state",
             key=f"config/{service_name}"
@@ -162,4 +159,4 @@ def get_service_config(service_name: str):
 
 ## Summary
 
-etcd as a Dapr state store provides strongly consistent, Raft-backed key-value storage suitable for distributed coordination, leader election, and configuration state. The `keyPrefix` setting organizes all Dapr state under a dedicated path, preventing conflicts with Kubernetes cluster state when using a shared etcd instance. etcd is best suited for small amounts of highly consistent state rather than high-volume application data.
+etcd as a Dapr state store provides strongly consistent, Raft-backed key-value storage suitable for distributed coordination, leader election, and configuration state. The `keyPrefixPath` setting organizes all Dapr state under a dedicated path, preventing conflicts with Kubernetes cluster state when using a shared etcd instance. etcd is best suited for small amounts of highly consistent state rather than high-volume application data.
