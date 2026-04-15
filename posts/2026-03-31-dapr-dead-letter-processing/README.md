@@ -17,7 +17,7 @@ A dead letter queue (DLQ) captures messages that cannot be delivered after exhau
 Add a `deadLetterTopic` to your subscription definition:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: payment-subscription
@@ -25,13 +25,14 @@ metadata:
 spec:
   pubsubname: payments-pubsub
   topic: payment-events
-  route: /process-payment
+  routes:
+    default: /process-payment
   deadLetterTopic: payment-dlq
   bulkSubscribe:
     enabled: false
 ```
 
-Messages land in `payment-dlq` when the subscriber returns a non-retryable error or exhausts retry attempts.
+Messages land in `payment-dlq` when delivery fails and all retry attempts configured in the resiliency policy are exhausted.
 
 ## Processing Dead Letter Messages
 
@@ -50,7 +51,9 @@ def subscribe():
         {
             "pubsubname": "payments-pubsub",
             "topic": "payment-dlq",
-            "route": "/handle-dlq"
+            "routes": {
+                "default": "/handle-dlq"
+            }
         }
     ])
 
