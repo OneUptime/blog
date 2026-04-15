@@ -37,9 +37,9 @@ spec:
 
 ```bash
 redis-cli MSET \
-  "cb-config||payment-service:consecutiveFailures" "5" \
-  "cb-config||payment-service:timeout" "30" \
-  "cb-config||payment-service:maxRequests" "1"
+  "payment-service:consecutiveFailures" "5||" \
+  "payment-service:timeout" "30||" \
+  "payment-service:maxRequests" "1||"
 ```
 
 ## Configuration Component
@@ -145,12 +145,12 @@ func (d *DynamicCB) Execute(fn func() (interface{}, error)) (interface{}, error)
 
 ```bash
 # During maintenance: be more tolerant of failures
-redis-cli SET "cb-config||payment-service:consecutiveFailures" "20"
-redis-cli SET "cb-config||payment-service:timeout" "60"
+redis-cli SET "payment-service:consecutiveFailures" "20||"
+redis-cli SET "payment-service:timeout" "60||"
 
 # After maintenance: restore strict thresholds
-redis-cli SET "cb-config||payment-service:consecutiveFailures" "5"
-redis-cli SET "cb-config||payment-service:timeout" "30"
+redis-cli SET "payment-service:consecutiveFailures" "5||"
+redis-cli SET "payment-service:timeout" "30||"
 ```
 
 ## Summary
