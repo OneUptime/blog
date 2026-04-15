@@ -28,6 +28,8 @@ spec:
       value: "kafka:9092"
     - name: consumerGroup
       value: "data-sync-consumers"
+    - name: authType
+      value: "none"
 ```
 
 ## Publisher: Product Catalog Service
@@ -71,6 +73,7 @@ await server.pubsub.subscribe('sync-pubsub', 'product.synced', async (event) => 
        name = EXCLUDED.name,
        price = EXCLUDED.price,
        stock = EXCLUDED.stock,
+       category_id = EXCLUDED.category_id,
        updated_at = EXCLUDED.updated_at,
        version = EXCLUDED.version
      WHERE products_replica.version < EXCLUDED.version`,
