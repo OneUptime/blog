@@ -31,7 +31,7 @@ ORDER BY cpu_virtual_us DESC
 LIMIT 20;
 ```
 
-The `OSCPUVirtualTimeMicroseconds` field gives CPU time consumed by the query thread. This is the primary metric for identifying CPU-heavy queries.
+The `OSCPUVirtualTimeMicroseconds` field gives total CPU time consumed across all query threads. This is the primary metric for identifying CPU-heavy queries.
 
 ## Calculating CPU Efficiency
 
@@ -53,7 +53,7 @@ ORDER BY cpu_us DESC
 LIMIT 20;
 ```
 
-A `cpu_efficiency` value above 1.0 means the query used multiple CPU cores in parallel - good for analytical queries. Values near 0 suggest the query spent most time waiting on IO.
+Both `OSCPUVirtualTimeMicroseconds` and `RealTimeMicroseconds` are sums across all query threads, so `cpu_efficiency` ranges from 0 to 1. Values close to 1.0 mean threads were CPU-bound. Values near 0 mean threads spent most time waiting on IO or scheduling. To measure actual parallelism, compare `OSCPUVirtualTimeMicroseconds` to `query_duration_ms * 1000` instead - a ratio above 1.0 there indicates multiple cores were used concurrently.
 
 ## Monitoring CPU Usage for Running Queries
 
