@@ -35,7 +35,7 @@ The `max_rows_to_group_by` setting is only meaningful when combined with `group_
 
 - `throw` - raises an exception (safe default for production)
 - `break` - stops processing and returns partial aggregation results
-- `any` - keeps only the first value encountered for keys beyond the limit (approximate results)
+- `any` - continues aggregation for keys already in the set but stops adding new keys beyond the limit (approximate results)
 
 ```sql
 -- Return approximate top results when cardinality is too high
