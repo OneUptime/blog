@@ -51,7 +51,7 @@ ORDER BY (user_id, event_time);
 6. replica-2 applies the part locally
 ```
 
-The fetch URL is visible in `system.replicas`.
+The source replica for each fetch is visible in `system.replication_queue`.
 
 ## Monitoring Replication
 
@@ -82,11 +82,11 @@ LIMIT 20;
 
 ## Merges Are Coordinated, Not Duplicated
 
-When a background merge needs to run, only one replica executes it - the leader. Other replicas either:
-- Download the merged part from the leader
-- Execute the merge themselves if the download takes too long
+When a background merge needs to run, the leader replica schedules it by writing a merge entry to the replication log in Keeper. Each replica then independently either:
+- Executes the merge locally from its own source parts
+- Downloads the already-merged part from another replica that completed the merge first
 
-This prevents redundant merge work across replicas.
+This coordination prevents conflicting merge decisions across replicas.
 
 ```sql
 -- See which replica is the leader
@@ -109,7 +109,7 @@ SYSTEM SYNC REPLICA events;
 
 ## ClickHouse Keeper vs ZooKeeper
 
-ClickHouse 22.4+ ships its own `ClickHouse Keeper` implementation which is the recommended coordinator:
+ClickHouse 21.8+ ships its own `ClickHouse Keeper` implementation which is the recommended coordinator:
 - Embeds in ClickHouse processes (no separate ZooKeeper cluster needed)
 - Compatible with ZooKeeper client protocol
 - Written in C++, tuned for ClickHouse access patterns
