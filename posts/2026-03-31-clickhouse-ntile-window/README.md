@@ -8,7 +8,7 @@ Description: Learn how NTILE(n) divides rows into equal buckets in ClickHouse, w
 
 ---
 
-`NTILE(n)` is a window function that divides an ordered set of rows into `n` roughly equal groups (called tiles or buckets) and assigns each row a bucket number from 1 to `n`. It is the simplest way to compute quartiles, quintiles, deciles, or any equal-width bucketing directly in SQL without needing pre-computed percentile thresholds. ClickHouse supports `NTILE()` as part of its window function suite.
+`NTILE(n)` is a window function that divides an ordered set of rows into `n` roughly equal groups (called tiles or buckets) and assigns each row a bucket number from 1 to `n`. It is the simplest way to compute quartiles, quintiles, deciles, or any equal-count bucketing directly in SQL without needing pre-computed percentile thresholds. ClickHouse supports `NTILE()` as part of its window function suite.
 
 ## Syntax
 
@@ -16,10 +16,11 @@ Description: Learn how NTILE(n) divides rows into equal buckets in ClickHouse, w
 NTILE(n) OVER (
     [PARTITION BY partition_expr [, ...]]
     ORDER BY sort_expr [ASC | DESC] [, ...]
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
 )
 ```
 
-`n` must be a positive integer literal or expression. The rows within each partition are sorted by `ORDER BY` and then distributed as evenly as possible across `n` buckets. When the number of rows is not evenly divisible by `n`, the first buckets receive one extra row.
+`n` must be a positive integer literal or expression. The rows within each partition are sorted by `ORDER BY` and then distributed as evenly as possible across `n` buckets. When the number of rows is not evenly divisible by `n`, the first buckets receive one extra row. ClickHouse requires the explicit frame `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` for `NTILE()`.
 
 ## How Bucket Assignment Works
 
@@ -50,7 +51,7 @@ Quartiles divide a dataset into four equal groups. `NTILE(4)` computes them dire
 SELECT
     customer_id,
     total_purchases,
-    NTILE(4) OVER (ORDER BY total_purchases ASC) AS quartile
+    NTILE(4) OVER (ORDER BY total_purchases ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS quartile
 FROM customer_summary
 ORDER BY total_purchases;
 ```
@@ -69,7 +70,7 @@ FROM (
     SELECT
         customer_id,
         total_purchases,
-        NTILE(4) OVER (ORDER BY total_purchases ASC) AS quartile
+        NTILE(4) OVER (ORDER BY total_purchases ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS quartile
     FROM customer_summary
 )
 GROUP BY quartile
@@ -85,7 +86,7 @@ SELECT
     product_id,
     product_name,
     views_30d,
-    NTILE(10) OVER (ORDER BY views_30d DESC) AS decile
+    NTILE(10) OVER (ORDER BY views_30d DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS decile
 FROM product_metrics
 WHERE date = today()
 ORDER BY decile, views_30d DESC;
@@ -105,6 +106,7 @@ SELECT
     NTILE(5) OVER (
         PARTITION BY department
         ORDER BY performance_score DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
     ) AS performance_quintile
 FROM employee_reviews
 WHERE review_year = 2025
@@ -122,14 +124,14 @@ Each department is bucketed independently - a score that lands in quintile 1 in 
 SELECT
     user_id,
     session_duration_seconds,
-    NTILE(4) OVER (ORDER BY session_duration_seconds ASC) AS count_quartile
+    NTILE(4) OVER (ORDER BY session_duration_seconds ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS count_quartile
 FROM user_sessions
 WHERE session_date = today() - 1
 ORDER BY session_duration_seconds;
 ```
 
 ```sql
--- Threshold-based: equal value range per bucket
+-- Threshold-based: buckets defined by percentile value boundaries
 SELECT
     user_id,
     session_duration_seconds,
@@ -163,15 +165,18 @@ SELECT
     NTILE(5) OVER (
         PARTITION BY region
         ORDER BY monthly_revenue ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
     ) AS revenue_quintile,
     CASE
         WHEN NTILE(5) OVER (
             PARTITION BY region
             ORDER BY monthly_revenue ASC
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
         ) = 5 THEN 'Top 20%'
         WHEN NTILE(5) OVER (
             PARTITION BY region
             ORDER BY monthly_revenue ASC
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
         ) = 1 THEN 'Bottom 20%'
         ELSE 'Middle 60%'
     END AS performance_tier
@@ -188,7 +193,7 @@ A non-analytics use case: evenly distributing rows across N worker threads or sh
 SELECT
     task_id,
     payload,
-    NTILE(8) OVER (ORDER BY task_id ASC) AS worker_bucket
+    NTILE(8) OVER (ORDER BY task_id ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS worker_bucket
 FROM pending_tasks
 WHERE status = 'queued'
 ORDER BY worker_bucket, task_id;
