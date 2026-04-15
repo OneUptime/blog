@@ -22,8 +22,8 @@ SELECT
     signal,
     thread_id,
     query_id,
-    terminate_reason,
-    stack_trace
+    signal_description,
+    arrayStringConcat(trace_full, '\n') AS stack_trace
 FROM system.crash_log
 ORDER BY event_time DESC
 LIMIT 10;
@@ -39,8 +39,9 @@ LIMIT 10;
 | `signal` | Int32 | POSIX signal number (11=SIGSEGV, 6=SIGABRT) |
 | `thread_id` | UInt64 | OS thread ID that crashed |
 | `query_id` | String | Query being executed when crash occurred |
-| `terminate_reason` | String | Reason from the terminate handler |
-| `stack_trace` | String | Raw stack trace as text |
+| `signal_description` | String | Human-readable description of the signal |
+| `trace` | Array(UInt64) | Raw stack trace as array of addresses |
+| `trace_full` | Array(String) | Symbolized stack trace as array of frames |
 | `version` | String | ClickHouse version string |
 | `revision` | UInt32 | ClickHouse revision number |
 | `build_id` | String | Build identifier for debuginfo matching |
@@ -75,7 +76,7 @@ SELECT
     event_time,
     signal,
     query_id,
-    stack_trace
+    arrayStringConcat(trace_full, '\n') AS stack_trace
 FROM system.crash_log
 WHERE event_date = today()
 ORDER BY event_time DESC
@@ -159,4 +160,4 @@ sudo systemctl status clickhouse-server
 
 ## Summary
 
-`system.crash_log` records fatal crashes including signal number, stack trace, query ID, and ClickHouse version. Query it immediately after an unexpected server restart to determine what crashed and which query was involved. Pair it with `system.query_log` to identify problematic query patterns, and include the `version`, `revision`, and `stack_trace` when filing ClickHouse bug reports.
+`system.crash_log` records fatal crashes including signal number, stack trace, query ID, and ClickHouse version. Query it immediately after an unexpected server restart to determine what crashed and which query was involved. Pair it with `system.query_log` to identify problematic query patterns, and include the `version`, `revision`, and `trace_full` when filing ClickHouse bug reports.
