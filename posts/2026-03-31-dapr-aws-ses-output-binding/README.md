@@ -76,7 +76,7 @@ async function sendOrderConfirmation(order) {
       emailTo: order.customerEmail,
       emailFrom: "orders@example.com",
       subject: `Order Confirmation - ${order.id}`,
-      emailCC: "orders-log@example.com",
+      emailCc: "orders-log@example.com",
     }
   );
 
@@ -113,7 +113,7 @@ The Support Team`,
 
 ## Sending Emails to Multiple Recipients
 
-SES supports multiple recipients via comma-separated addresses:
+SES supports multiple recipients via semicolon-separated addresses:
 
 ```javascript
 async function sendTeamAlert(alertMessage, teamEmails) {
@@ -122,7 +122,7 @@ async function sendTeamAlert(alertMessage, teamEmails) {
     "create",
     alertMessage,
     {
-      emailTo: teamEmails.join(","),
+      emailTo: teamEmails.join(";"),
       subject: "System Alert: Immediate Attention Required",
     }
   );
@@ -175,11 +175,14 @@ await client.binding.send(
 
 ## Error Handling and Sandbox Mode
 
-In SES sandbox mode, you can only send to verified email addresses. Request production access when ready:
+In SES sandbox mode, you can only send to verified email addresses. To move out of the sandbox, submit a production access request through the AWS Console under **SES > Account dashboard > Request production access**, or use the CLI:
 
 ```bash
-aws sesv2 put-account-sending-attributes \
-  --sending-enabled \
+aws sesv2 put-account-details \
+  --production-access-enabled \
+  --mail-type TRANSACTIONAL \
+  --use-case-description "Sending transactional emails from microservices" \
+  --website-url "https://example.com" \
   --region us-east-1
 ```
 
