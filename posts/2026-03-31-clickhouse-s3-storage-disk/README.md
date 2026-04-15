@@ -16,7 +16,7 @@ ClickHouse stores data parts as files. When an S3 disk is configured, ClickHouse
 
 ## Prerequisites
 
-- A ClickHouse server at version 21.6 or later
+- A ClickHouse server at version 22.3 or later (S3 disk became production-ready in 22.3)
 - An S3 bucket with the ClickHouse server having read/write access
 - Network connectivity from the ClickHouse host to the S3 endpoint
 
@@ -38,13 +38,17 @@ Create `/etc/clickhouse-server/config.d/s3_storage.xml`:
         <access_key_id>AKIAIOSFODNN7EXAMPLE</access_key_id>
         <secret_access_key>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</secret_access_key>
         <region>us-east-1</region>
-        <!-- Cache metadata locally to avoid repeated HEAD requests -->
+        <!-- Store S3 metadata locally -->
         <metadata_path>/var/lib/clickhouse/disks/s3_cold/</metadata_path>
-        <!-- Cache data blocks locally (optional) -->
-        <cache_enabled>true</cache_enabled>
-        <cache_path>/var/lib/clickhouse/disks/s3_cold_cache/</cache_path>
-        <cache_size>10737418240</cache_size>
       </s3_cold>
+
+      <!-- Local cache wrapping the S3 disk (recommended, requires 22.8+) -->
+      <s3_cold_cache>
+        <type>cache</type>
+        <disk>s3_cold</disk>
+        <path>/var/lib/clickhouse/disks/s3_cold_cache/</path>
+        <max_size>10Gi</max_size>
+      </s3_cold_cache>
     </disks>
 
     <policies>
@@ -54,7 +58,7 @@ Create `/etc/clickhouse-server/config.d/s3_storage.xml`:
             <disk>local</disk>
           </hot>
           <cold>
-            <disk>s3_cold</disk>
+            <disk>s3_cold_cache</disk>
           </cold>
         </volumes>
         <move_factor>0.2</move_factor>
@@ -64,7 +68,7 @@ Create `/etc/clickhouse-server/config.d/s3_storage.xml`:
 </clickhouse>
 ```
 
-For IAM role-based access (recommended for EC2-hosted ClickHouse), omit `access_key_id` and `secret_access_key` and ClickHouse will use the instance metadata service.
+For IAM role-based access (recommended for EC2-hosted ClickHouse), omit `access_key_id` and `secret_access_key` and add `<use_environment_credentials>true</use_environment_credentials>` to the disk definition. ClickHouse will then use the instance metadata service or environment variables for authentication.
 
 ## Using S3-Compatible Storage (MinIO)
 
@@ -138,17 +142,21 @@ S3 reads are slower than local disk. Tune the following parameters to reduce lat
 <s3_cold>
   <type>s3</type>
   <endpoint>https://s3.us-east-1.amazonaws.com/my-bucket/data/</endpoint>
-  <!-- Number of parallel S3 upload threads per insert -->
+  <!-- Files above this size use multipart upload (default ~32 MiB) -->
   <max_single_part_upload_size>33554432</max_single_part_upload_size>
-  <!-- Increase for higher throughput on large reads -->
-  <max_connections>100</max_connections>
-  <!-- Retry on transient S3 errors -->
-  <s3_max_redirects>10</s3_max_redirects>
-  <cache_enabled>true</cache_enabled>
-  <cache_path>/var/lib/clickhouse/disks/s3_cache/</cache_path>
-  <!-- 20 GiB local read cache -->
-  <cache_size>21474836480</cache_size>
+  <!-- Retry S3 requests on failure -->
+  <retry_attempts>10</retry_attempts>
+  <!-- Timeout for S3 requests in milliseconds -->
+  <request_timeout_ms>30000</request_timeout_ms>
 </s3_cold>
+
+<!-- 20 GiB local read cache wrapping the S3 disk -->
+<s3_cold_cache>
+  <type>cache</type>
+  <disk>s3_cold</disk>
+  <path>/var/lib/clickhouse/disks/s3_cache/</path>
+  <max_size>20Gi</max_size>
+</s3_cold_cache>
 ```
 
 ## Storing Credentials Securely
