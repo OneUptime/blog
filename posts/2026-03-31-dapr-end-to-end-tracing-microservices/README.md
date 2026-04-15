@@ -14,7 +14,7 @@ End-to-end tracing covers the full journey of a request from the user-facing API
 
 ## Architecture
 
-```json
+```text
 [Client] --> [Nginx Ingress] --> [API Gateway (Dapr)] --> [Order Service (Dapr)]
                                                                |
                                                     --> [Payment Service (Dapr)]
@@ -103,8 +103,8 @@ processors:
         - k8s.deployment.name
 
 exporters:
-  jaeger:
-    endpoint: jaeger.monitoring.svc.cluster.local:14250
+  otlp/jaeger:
+    endpoint: jaeger.monitoring.svc.cluster.local:4317
     tls:
       insecure: true
 
@@ -113,7 +113,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [k8sattributes, resource, batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 ## Step 4: API Gateway - Root Span Creation
@@ -187,7 +187,7 @@ curl -X POST https://api.example.com/api/orders \
   -H "Content-Type: application/json" \
   -d '{"userId": "user-1", "total": 99.99, "items": [{"id": "item-1"}]}'
 
-# Extract X-Trace-Id from response header
+# Extract trace ID from the traceparent response header
 # Search Jaeger: http://localhost:16686
 ```
 
