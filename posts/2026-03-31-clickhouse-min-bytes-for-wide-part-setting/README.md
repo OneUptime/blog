@@ -8,7 +8,7 @@ Description: Learn how to configure the min_bytes_for_wide_part setting in Click
 
 ---
 
-`min_bytes_for_wide_part` is a MergeTree table-level setting that controls the minimum compressed byte size at which a data part switches from compact format (single combined file) to wide format (one file per column). Tuning this threshold has a direct impact on query I/O efficiency and file descriptor usage.
+`min_bytes_for_wide_part` is a MergeTree table-level setting that controls the minimum byte size at which a data part switches from compact format (single combined file) to wide format (one file per column). Tuning this threshold has a direct impact on query I/O efficiency and file descriptor usage.
 
 ## Default Value
 
