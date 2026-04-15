@@ -8,7 +8,7 @@ Description: Learn how to model hierarchical data in ClickHouse using dictionary
 
 ---
 
-Hierarchical data (org charts, product categories, geographic regions, file systems) presents a challenge in columnar databases. ClickHouse offers dictionary-based hierarchies, materialized path strings, and closure tables as alternatives to recursive CTEs.
+Hierarchical data (org charts, product categories, geographic regions, file systems) presents a challenge in columnar databases. While ClickHouse supports recursive CTEs since version 24.3, dictionary-based hierarchies, materialized path strings, and closure tables often provide better performance for hierarchical queries at scale.
 
 ## Approach 1: Dictionary Hierarchy (Built-in ClickHouse Feature)
 
@@ -33,10 +33,10 @@ INSERT INTO category_table VALUES
 CREATE DICTIONARY category_hierarchy (
     id UInt64,
     name String,
-    parent_id UInt64
+    parent_id UInt64 HIERARCHICAL
 ) PRIMARY KEY id
 SOURCE(CLICKHOUSE(TABLE 'category_table'))
-LAYOUT(HIERARCHY())
+LAYOUT(FLAT())
 LIFETIME(3600);
 ```
 
@@ -128,4 +128,4 @@ ORDER BY (root_category_name, parent_category_name, product_id);
 
 ## Summary
 
-ClickHouse does not support recursive CTEs, but hierarchical data can be modeled effectively with dictionary hierarchies (best for filtering), materialized path strings (best for range queries), and closure tables (best for flexible traversal). For analytics, pre-flatten the hierarchy into fact tables to avoid traversal at query time entirely.
+Although ClickHouse now supports recursive CTEs (since version 24.3), hierarchical data is often modeled more efficiently with dictionary hierarchies (best for filtering), materialized path strings (best for range queries), and closure tables (best for flexible traversal). For analytics, pre-flatten the hierarchy into fact tables to avoid traversal at query time entirely.
