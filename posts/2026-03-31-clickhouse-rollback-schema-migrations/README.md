@@ -40,7 +40,7 @@ ALTER TABLE events DROP COLUMN IF EXISTS session_id;
 ALTER TABLE events DROP COLUMN IF EXISTS session_id;
 ```
 
-This is immediate for columns with defaults - ClickHouse only removes the column metadata and stops reading the column from new parts.
+This is fast because ClickHouse uses columnar storage - it deletes the entire column files from disk, which completes almost instantly.
 
 ## Rolling Back an ADD INDEX
 
@@ -67,7 +67,7 @@ If you issued an ALTER UPDATE or DELETE and want to stop it:
 SELECT mutation_id, command, is_done FROM system.mutations WHERE table = 'events';
 
 -- Kill it
-KILL MUTATION WHERE mutation_id = 'mutation_123';
+KILL MUTATION WHERE database = 'default' AND table = 'events' AND mutation_id = 'mutation_3.txt';
 ```
 
 ## Recovery from Failed ADD PROJECTION
@@ -94,7 +94,7 @@ ALTER TABLE events DROP COLUMN legacy_field;
 
 ```bash
 migrate -path ./migrations \
-  -database "clickhouse://localhost:9000/analytics" \
+  -database "clickhouse://localhost:9000?database=analytics" \
   down 1
 ```
 
