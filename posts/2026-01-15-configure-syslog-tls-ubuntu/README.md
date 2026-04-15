@@ -103,7 +103,7 @@ sudo openssl req -x509 -new -nodes \
     -subj "/C=US/ST=California/L=San Francisco/O=YourCompany/OU=Infrastructure/CN=Syslog CA"
 
 # Verify the CA certificate was created correctly
-openssl x509 -in /etc/ssl/syslog/ca/ca.crt -text -noout | head -20
+sudo openssl x509 -in /etc/ssl/syslog/ca/ca.crt -text -noout | head -20
 ```
 
 ### Generating the Server Certificate
@@ -164,10 +164,10 @@ sudo openssl x509 -req \
     -extfile /etc/ssl/syslog/server/server.ext
 
 # Verify the certificate chain
-openssl verify -CAfile /etc/ssl/syslog/ca/ca.crt /etc/ssl/syslog/server/server.crt
+sudo openssl verify -CAfile /etc/ssl/syslog/ca/ca.crt /etc/ssl/syslog/server/server.crt
 
 # Check certificate details including SANs
-openssl x509 -in /etc/ssl/syslog/server/server.crt -text -noout | grep -A1 "Subject Alternative Name"
+sudo openssl x509 -in /etc/ssl/syslog/server/server.crt -text -noout | grep -A1 "Subject Alternative Name"
 ```
 
 ### Setting Proper File Ownership
