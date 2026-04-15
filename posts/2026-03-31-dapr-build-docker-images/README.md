@@ -21,7 +21,7 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY src/ ./src/
 
@@ -64,8 +64,8 @@ dapr run \
   --app-port 3000 \
   --dapr-http-port 3500 \
   --components-path ./components \
-  -- docker run \
-    -p 3000:3000 \
+  -- docker run --rm \
+    --network host \
     -e DAPR_HTTP_PORT=3500 \
     order-service:1.0.0
 ```
