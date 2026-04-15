@@ -31,10 +31,6 @@ CLICKHOUSE_TIMEOUT=30
 
 ## Configuration File
 
-```bash
-php artisan vendor:publish --provider="App\Providers\ClickHouseServiceProvider"
-```
-
 Create the config file manually:
 
 ```php
@@ -217,12 +213,17 @@ class AnalyticsRepository
                 count(DISTINCT user_id) AS retained
              FROM (
                  SELECT
-                     user_id,
-                     toStartOfWeek(min(ts))                                        AS cohort_week,
-                     dateDiff(\'week\', toStartOfWeek(min(ts)), toStartOfWeek(ts)) AS week_number
-                 FROM analytics.events
-                 WHERE ts >= today() - 90
-                 GROUP BY user_id, toStartOfWeek(ts)
+                     a.user_id,
+                     c.cohort_week,
+                     dateDiff(\'week\', c.cohort_week, toStartOfWeek(a.ts)) AS week_number
+                 FROM analytics.events AS a
+                 INNER JOIN (
+                     SELECT user_id, toStartOfWeek(min(ts)) AS cohort_week
+                     FROM analytics.events
+                     WHERE ts >= today() - 90
+                     GROUP BY user_id
+                 ) AS c ON a.user_id = c.user_id
+                 WHERE a.ts >= today() - 90
              )
              GROUP BY cohort_week, week_number
              ORDER BY cohort_week, week_number'
