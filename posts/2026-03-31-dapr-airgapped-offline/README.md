@@ -117,6 +117,7 @@ DAPR_VERSION=1.14.0
 # Load images
 docker load -i dapr-runtime.tar
 docker load -i daprd.tar
+docker load -i dapr-dashboard.tar
 docker load -i redis.tar
 docker load -i zipkin.tar
 
@@ -127,8 +128,14 @@ docker push ${PRIVATE_REGISTRY}/daprio/dapr:${DAPR_VERSION}
 docker tag daprio/daprd:${DAPR_VERSION} ${PRIVATE_REGISTRY}/daprio/daprd:${DAPR_VERSION}
 docker push ${PRIVATE_REGISTRY}/daprio/daprd:${DAPR_VERSION}
 
+docker tag daprio/dapr-dashboard:latest ${PRIVATE_REGISTRY}/daprio/dapr-dashboard:latest
+docker push ${PRIVATE_REGISTRY}/daprio/dapr-dashboard:latest
+
 docker tag redis:7-alpine ${PRIVATE_REGISTRY}/redis:7-alpine
 docker push ${PRIVATE_REGISTRY}/redis:7-alpine
+
+docker tag openzipkin/zipkin:latest ${PRIVATE_REGISTRY}/openzipkin/zipkin:latest
+docker push ${PRIVATE_REGISTRY}/openzipkin/zipkin:latest
 ```
 
 ## Step 4 - Install Dapr CLI
