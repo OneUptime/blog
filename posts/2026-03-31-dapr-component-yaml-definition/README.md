@@ -18,8 +18,8 @@ kind: Component                      # always Component
 metadata:
   name: <component-name>             # name used in API calls
   namespace: default                 # K8s namespace (omit in self-hosted)
-  annotations:                       # optional labels/annotations
-    dapr.io/component-requires-restart: "false"
+  annotations:                       # optional annotations
+    example.com/team: "platform"
 spec:
   type: <building-block>.<provider>  # e.g. state.redis, pubsub.kafka
   version: v1                        # component implementation version
@@ -115,7 +115,7 @@ spec:
     secretKeyRef:
       name: pg-secret
       key: conn
-  - name: tableName
+  - name: tablePrefix
     value: dapr_state
   - name: cleanupInterval
     value: "10m"
@@ -166,7 +166,7 @@ spec:
   - name: consumerGroup
     value: my-consumer-group
   - name: authType
-    value: certificate
+    value: mtls
   - name: caCert
     secretKeyRef:
       name: kafka-certs
@@ -200,7 +200,7 @@ spec:
       key: connection-string
   - name: maxConcurrentHandlers
     value: "10"
-  - name: prefetchCount
+  - name: maxActiveMessages
     value: "20"
 auth:
   secretStore: kubernetes
@@ -248,8 +248,6 @@ spec:
     secretKeyRef:
       name: aws-secret
       key: secret-key
-  - name: direction
-    value: output
 auth:
   secretStore: kubernetes
 ```
