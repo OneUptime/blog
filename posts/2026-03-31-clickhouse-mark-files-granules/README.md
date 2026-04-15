@@ -24,10 +24,10 @@ SHOW CREATE TABLE events;
 
 ## What Are Mark Files
 
-For each column in a MergeTree part, ClickHouse writes a mark file (`.mrk` or `.mrk3`). The mark file is an array of entries, one per granule. Each entry contains:
+For each column in a MergeTree part, ClickHouse writes a mark file (`.mrk`, `.mrk2`, or `.mrk3`). The mark file is an array of entries, one per granule. Each entry contains:
 
 1. The byte offset in the compressed `.bin` file where the granule's block starts
-2. The row offset within the uncompressed block where the granule starts
+2. The byte offset within the uncompressed block where the granule starts
 
 ```text
 Column file: events/all_1_1_0/event_time.bin (compressed)
@@ -58,7 +58,7 @@ Column read: seek to offset_1000, decompress, filter rows
 
 ## Adaptive Granularity
 
-Since ClickHouse 19.14, adaptive index granularity adjusts granule sizes so each granule uses approximately `index_granularity_bytes` (default 10MB uncompressed) rather than a fixed row count. This prevents granules from being too large for wide-row tables.
+Since ClickHouse 19.11, adaptive index granularity adjusts granule sizes so each granule uses approximately `index_granularity_bytes` (default 10MB uncompressed) rather than a fixed row count. This prevents granules from being too large for wide-row tables.
 
 ```sql
 CREATE TABLE events (
@@ -94,7 +94,7 @@ Format  | Description
 --------|------------------------------------
 .mrk    | Fixed 16-byte entries (non-adaptive)
 .mrk2   | Variable entries for adaptive granularity
-.mrk3   | Compressed mark files (ClickHouse 22.8+)
+.mrk3   | Mark files for compact parts (ClickHouse 22.9+)
 ```
 
 `.mrk3` compresses the mark data, reducing disk usage for tables with many columns.
