@@ -87,7 +87,7 @@ FROM (
         countDistinctIf(s.player_id, dateDiff('day', p.install_date, s.date) = d.days_since_install) AS retained_players
     FROM player_first_session AS p
     CROSS JOIN (SELECT number AS days_since_install FROM numbers(31)) AS d
-    LEFT JOIN player_sessions AS s ON p.player_id = s.player_id
+    LEFT JOIN player_sessions AS s ON p.player_id = s.player_id AND p.game_id = s.game_id
     WHERE p.install_date >= today() - 90 AND p.install_date <= today() - 30
     GROUP BY d.days_since_install
 )
@@ -98,18 +98,19 @@ ORDER BY days_since_install;
 
 ```sql
 SELECT
-    platform,
+    install_session.platform AS platform,
     install_date,
     count(DISTINCT p.player_id) AS cohort_size,
     round(countDistinctIf(s.player_id, dateDiff('day', p.install_date, s.date) = 7) /
           count(DISTINCT p.player_id) * 100, 2) AS d7_retention
 FROM player_first_session AS p
 JOIN player_sessions AS install_session ON p.player_id = install_session.player_id
+  AND p.game_id = install_session.game_id
   AND install_session.date = p.install_date
-LEFT JOIN player_sessions AS s ON p.player_id = s.player_id
+LEFT JOIN player_sessions AS s ON p.player_id = s.player_id AND p.game_id = s.game_id
 WHERE p.install_date >= today() - 60
-GROUP BY platform, install_date
-ORDER BY platform, install_date;
+GROUP BY install_session.platform, install_date
+ORDER BY install_session.platform, install_date;
 ```
 
 ## Summary
