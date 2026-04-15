@@ -102,7 +102,8 @@ func (w *ConfigWatcher) safeApply(key, value string) {
 Not all configuration changes are safe to apply immediately. Apply validation before acting on new values:
 
 ```python
-from typing import Callable, Dict, Any
+import logging
+from typing import Callable, Dict
 
 class ConfigChangeHandler:
     def __init__(self):
@@ -121,7 +122,6 @@ class ConfigChangeHandler:
             return
 
         if validator and not validator(new_value):
-            import logging
             logging.error(f"Invalid config value for {key}: {new_value!r}, ignoring")
             return
 
@@ -137,7 +137,6 @@ def validate_log_level(val: str) -> bool:
     return val.lower() in ("debug", "info", "warning", "error", "critical")
 
 def apply_log_level(val: str):
-    import logging
     logging.getLogger().setLevel(val.upper())
 
 handler.register("log-level", validate_log_level, apply_log_level)
