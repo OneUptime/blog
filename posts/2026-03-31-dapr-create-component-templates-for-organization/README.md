@@ -28,8 +28,8 @@ spec:
       secretKeyRef:
         name: redis-secret
         key: password
-  scopes:
-    - payments-processor
+scopes:
+  - payments-processor
 ```
 
 Templates codify the correct pattern once and eliminate the wrong one.
@@ -69,10 +69,10 @@ spec:
         key: password
     - name: enableTLS
       value: "{{ .Values.redis.tls }}"
-  {{- if .Values.scopes }}
-  scopes:
-    {{- toYaml .Values.scopes | nindent 4 }}
-  {{- end }}
+{{- if .Values.scopes }}
+scopes:
+  {{- toYaml .Values.scopes | nindent 2 }}
+{{- end }}
 ```
 
 `values.yaml`:
@@ -134,8 +134,8 @@ spec:
   metadata:
     - name: redisHost
       value: "redis-payments:6379"
-  scopes:
-    - payments-processor
+scopes:
+  - payments-processor
 ```
 
 Apply the overlay:
