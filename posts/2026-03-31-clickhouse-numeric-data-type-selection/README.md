@@ -56,7 +56,7 @@ SELECT toFloat64(0.1) + toFloat64(0.2) = toFloat64(0.3);
 
 ## Decimal Types
 
-| Type | Bytes | Max Digits | Max Precision | Use Case |
+| Type | Bytes | Max Digits | Scale Range (S) | Use Case |
 |---|---|---|---|---|
 | `Decimal32(S)` | 4 | 9 | 0-9 | Small monetary amounts |
 | `Decimal64(S)` | 8 | 18 | 0-18 | Standard financial values |
@@ -176,11 +176,14 @@ ORDER BY uncompressed_gb DESC;
 
 ## Overflow Behavior
 
-ClickHouse integer arithmetic wraps on overflow without error. Validate your type selection covers expected values:
+ClickHouse promotes result types for sub-32-bit arithmetic (e.g. `UInt8 + UInt8` produces `UInt16`), so small-type additions do not wrap in isolation. However, overflow wraps silently when storing into a narrower column or casting back, and for 64-bit types where no further promotion occurs. Validate your type selection covers expected values:
 
 ```sql
--- UInt8 overflow wraps silently
-SELECT toUInt8(255) + 1;  -- Result: 0 (wraps)
+-- ClickHouse promotes small integer arithmetic results
+SELECT toUInt8(255) + 1;  -- Result: 256 (promoted to UInt16)
+
+-- Wrapping occurs when casting back to a smaller type
+SELECT toUInt8(256);  -- Result: 0 (wraps)
 
 -- Use larger types or add guards
 SELECT if(value > 254, NULL, toUInt8(value)) AS safe_uint8
