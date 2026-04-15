@@ -85,7 +85,7 @@ flowchart LR
 
 ## Handling Missing and Extra Keys
 
-ClickHouse is tolerant of missing keys - it fills them with the column default. Extra keys that have no matching column are silently ignored. This makes TSKV convenient for evolving schemas.
+ClickHouse is tolerant of missing keys - it fills them with the column default. Extra keys that have no matching column are skipped when the setting `input_format_skip_unknown_fields` is enabled (set to `1`). By default, unknown keys cause an error. This makes TSKV convenient for evolving schemas when that setting is turned on.
 
 ```sql
 -- Table has 4 columns; input only provides 3 keys; latency_ms defaults to 0
@@ -101,7 +101,7 @@ INSERT INTO app_events FORMAT TSKV;
 | `\\n` | Newline character |
 | `\\0` | Null byte |
 | `\\\\` | Backslash |
-| `\\=` | Literal `=` in value |
+| `\\=` | Literal `=` in key name |
 
 ## Using TSKV with the HTTP Interface
 
