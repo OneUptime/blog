@@ -50,8 +50,7 @@ SELECT metric, value, description
 FROM system.metrics
 WHERE metric IN (
     'MemoryTracking',
-    'MergesMutationsMemoryUsage',
-    'DictionaryMemoryUsage',
+    'MergesMutationsMemoryTracking',
     'MarkCacheBytes',
     'UncompressedCacheBytes',
     'CompiledExpressionCacheBytes'
@@ -191,7 +190,7 @@ sudo tee /etc/clickhouse-server/config.d/memory-limits.xml > /dev/null <<'EOF'
     <!-- Mark cache size (default 5GB) -->
     <mark_cache_size>5368709120</mark_cache_size>
 
-    <!-- Uncompressed data cache size (default 8GB) -->
+    <!-- Uncompressed data cache size (default 0, disabled) -->
     <uncompressed_cache_size>8589934592</uncompressed_cache_size>
 </clickhouse>
 EOF
