@@ -59,7 +59,7 @@ Measure how far users scroll down each page:
 SELECT
     toUInt8(y_pct / 10) * 10 AS scroll_depth_bucket,
     count() AS reach_count,
-    round(count() / max(count()) OVER () * 100, 2) AS pct_of_max_reach
+    round(count() * 100.0 / max(count()) OVER (), 2) AS pct_of_max_reach
 FROM scroll_events
 WHERE page_path = '/blog/post-123'
   AND event_time >= today() - 7
@@ -76,10 +76,10 @@ SELECT
     element_id,
     count() AS clicks,
     uniq(user_id) AS unique_clickers,
-    round(uniq(user_id) / (
+    round(uniq(user_id) * 100.0 / (
         SELECT uniq(user_id) FROM click_events
         WHERE page_path = '/pricing' AND event_time >= today() - 7
-    ) * 100, 2) AS ctr_pct
+    ), 2) AS ctr_pct
 FROM click_events
 WHERE page_path = '/pricing'
   AND event_time >= today() - 7
