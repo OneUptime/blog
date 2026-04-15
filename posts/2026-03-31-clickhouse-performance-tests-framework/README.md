@@ -12,10 +12,10 @@ The ClickHouse project ships a built-in performance testing framework located in
 
 ## Overview of the Framework
 
-The performance tests framework consists of XML test definition files and a Python runner (`perf.py`). Each test file defines:
-- Preconditions (tables to create, data to load)
+The performance tests framework consists of XML test definition files and a Python runner (`scripts/perf.py`). Each test file defines:
+- Table creation and data loading queries
 - Queries to benchmark
-- Stop conditions (iterations, time limit)
+- Optional settings and substitutions for parameterized tests
 
 ## Running a Single Performance Test
 
@@ -25,12 +25,12 @@ git clone --depth=1 https://github.com/ClickHouse/ClickHouse.git
 cd ClickHouse
 
 # Install dependencies
-pip3 install -r tests/performance/requirements.txt
+pip3 install clickhouse_driver scipy
 
-# Run a specific test
-python3 tests/performance/perf.py \
+# Run a specific test (test file is a positional argument)
+python3 tests/performance/scripts/perf.py \
   --host localhost --port 9000 \
-  --test tests/performance/hits.xml
+  tests/performance/hits.xml
 ```
 
 ## Writing a Custom Test File
@@ -39,65 +39,50 @@ Create an XML file defining your benchmark:
 
 ```xml
 <test>
-    <name>my_events_benchmark</name>
-    <preconditions>
-        <create_query>
-            CREATE TABLE IF NOT EXISTS perf_events (
-                event_time DateTime,
-                event_type LowCardinality(String),
-                user_id UInt32
-            ) ENGINE = MergeTree()
-            ORDER BY (event_type, event_time)
-        </create_query>
-        <fill_query>
-            INSERT INTO perf_events
-            SELECT now() - rand() % 86400, toString(rand() % 5), rand() % 100000
-            FROM numbers(5000000)
-        </fill_query>
-    </preconditions>
+    <create_query>
+        CREATE TABLE IF NOT EXISTS perf_events (
+            event_time DateTime,
+            event_type LowCardinality(String),
+            user_id UInt32
+        ) ENGINE = MergeTree()
+        ORDER BY (event_type, event_time)
+    </create_query>
+    <fill_query>
+        INSERT INTO perf_events
+        SELECT now() - rand() % 86400, toString(rand() % 5), rand() % 100000
+        FROM numbers(5000000)
+    </fill_query>
 
-    <query>SELECT count() FROM perf_events WHERE event_type = 'page_view'</query>
+    <query>SELECT count() FROM perf_events WHERE event_type = '3'</query>
     <query>SELECT uniq(user_id) FROM perf_events WHERE event_time >= today()</query>
     <query>SELECT event_type, count() FROM perf_events GROUP BY event_type</query>
 
-    <stop_conditions>
-        <all_of>
-            <iterations>50</iterations>
-            <min_time_not_changing_for_ms>10000</min_time_not_changing_for_ms>
-        </all_of>
-    </stop_conditions>
+    <drop_query>DROP TABLE IF EXISTS perf_events</drop_query>
 </test>
 ```
 
+The `<create_query>`, `<fill_query>`, `<query>`, and `<drop_query>` tags are all direct children of `<test>`. The runner controls iteration count via its `--runs` command-line flag.
+
 ## Comparing Two ClickHouse Versions
 
-The framework supports side-by-side comparison:
+The framework supports side-by-side comparison by specifying multiple hosts and ports as space-separated values:
 
 ```bash
-python3 tests/performance/perf.py \
-  --host localhost:9000 \
-  --host new-server:9000 \
-  --test tests/performance/my_test.xml \
-  --output json > results.json
+python3 tests/performance/scripts/perf.py \
+  --host localhost new-server \
+  --port 9000 9000 \
+  tests/performance/my_test.xml
 ```
 
-Then analyze:
-
-```bash
-python3 tests/performance/report.py results.json
-```
+The runner executes each query against both servers and outputs a TSV comparison of query times directly to stdout.
 
 ## Interpreting Results
 
-The framework reports:
-- Median, 5th, and 95th percentile query times
-- Speedup ratio between two servers
-- Whether performance degraded beyond a threshold
+When comparing two servers, the framework outputs TSV-formatted results including:
+- Query run times for each server
+- Statistical comparison between the two servers
 
-```text
-Query 1: 12.3 ms -> 9.8 ms (1.25x speedup)
-Query 2: 45.1 ms -> 47.3 ms (0.95x, regression!)
-```
+You can redirect the output and further analyze the results using standard tools or the `system.query_log` table.
 
 ## Using Query Log for Regression Analysis
 
@@ -121,9 +106,12 @@ Run performance tests in your CI pipeline to catch regressions before deploying 
 
 ```bash
 #!/bin/bash
-python3 perf.py --host staging:9000 --test my_test.xml --output json > staging.json
-python3 perf.py --host production:9000 --test my_test.xml --output json > prod.json
-python3 report.py --threshold 1.1 staging.json prod.json
+# Compare staging (new version) against production (current version)
+python3 tests/performance/scripts/perf.py \
+  --host staging production \
+  --port 9000 9000 \
+  --runs 10 \
+  tests/performance/my_test.xml > results.tsv
 ```
 
 ## Summary
