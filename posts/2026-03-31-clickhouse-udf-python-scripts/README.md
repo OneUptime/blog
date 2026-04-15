@@ -35,7 +35,7 @@ for line in sys.stdin:
     sys.stdout.flush()
 ```
 
-Define the UDF in XML (`/etc/clickhouse-server/user_defined/normalize_phone.xml`):
+Define the UDF in XML (`/etc/clickhouse-server/normalize_phone_function.xml`):
 
 ```text
 <functions>
@@ -48,7 +48,7 @@ Define the UDF in XML (`/etc/clickhouse-server/user_defined/normalize_phone.xml`
             <name>phone</name>
         </argument>
         <format>TabSeparated</format>
-        <command>python3 /var/lib/clickhouse/user_scripts/normalize_phone.py</command>
+        <command>normalize_phone.py</command>
     </function>
 </functions>
 ```
@@ -70,7 +70,7 @@ For expensive initialization (loading a model), use `executable_pool` to keep th
 ```text
 <type>executable_pool</type>
 <pool_size>4</pool_size>
-<command>python3 /var/lib/clickhouse/user_scripts/classifier.py</command>
+<command>classifier.py</command>
 ```
 
 The script must handle multiple batches in a loop:
