@@ -41,7 +41,7 @@ WHERE startsWith(url, 'https://example.com')
 
 ## Use match() for Regex
 
-For regex matching, `match()` is optimized for RE2 patterns:
+For regex matching, `match()` uses the RE2 regular expression library:
 
 ```sql
 SELECT count() FROM events WHERE match(url, '^https://example\\.com/product/\\d+');
@@ -67,7 +67,7 @@ WHERE positionCaseInsensitive(message, 'timeout') > 0
 
 ## Token Bloom Filter for Full-Text Search
 
-Create a token-based index for substring searches:
+Create a token-based index for token searches (tokens are alphanumeric sequences separated by non-alphanumeric characters):
 
 ```sql
 ALTER TABLE logs
@@ -76,7 +76,7 @@ ADD INDEX idx_msg_token (message) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4;
 ALTER TABLE logs MATERIALIZE INDEX idx_msg_token;
 ```
 
-Then queries using `hasToken()` or `multiSearchAny()` can use the index:
+Then queries using `hasToken()` can use the index:
 
 ```sql
 SELECT * FROM logs WHERE hasToken(message, 'timeout');
@@ -94,10 +94,10 @@ WHERE status_code = 404
 
 ## Fixed-Length Strings with FixedString
 
-For UUIDs or hashes stored as strings, use `FixedString`:
+For hashes or fixed-width identifiers stored as strings, use `FixedString`:
 
 ```sql
--- More efficient for fixed-width data
+-- More efficient for fixed-width data like SHA256 binary hashes
 trace_id FixedString(32)
 ```
 
