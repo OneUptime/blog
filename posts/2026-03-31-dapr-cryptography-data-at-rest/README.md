@@ -32,8 +32,8 @@ spec:
   type: crypto.azure.keyvault
   version: v1
   metadata:
-  - name: vaultURI
-    value: "https://my-vault.vault.azure.net"
+  - name: vaultName
+    value: "my-vault"
   - name: azureClientId
     value: "<managed-identity-client-id>"
 ```
@@ -41,9 +41,9 @@ spec:
 ## Encryption Helper
 
 ```python
-import io
 import base64
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import EncryptOptions, DecryptOptions
 
 CRYPTO_COMPONENT = "data-crypto"
 DATA_KEY = "app-data-encryption-key"
@@ -55,12 +55,12 @@ def encrypt_field(value: str) -> str:
 
     with DaprClient() as d:
         encrypted = d.encrypt(
-            data=io.BytesIO(value.encode("utf-8")),
-            options={
-                "componentName": CRYPTO_COMPONENT,
-                "keyName": DATA_KEY,
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=value.encode("utf-8"),
+            options=EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=DATA_KEY,
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         return base64.b64encode(encrypted.read()).decode("ascii")
 
@@ -72,11 +72,11 @@ def decrypt_field(ciphertext_b64: str) -> str:
     ciphertext = base64.b64decode(ciphertext_b64)
     with DaprClient() as d:
         decrypted = d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={
-                "componentName": CRYPTO_COMPONENT,
-                "keyName": DATA_KEY
-            }
+            data=ciphertext,
+            options=DecryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=DATA_KEY,
+            ),
         )
         return decrypted.read().decode("utf-8")
 ```
@@ -144,12 +144,12 @@ CREATE INDEX idx_customers_email ON customers(email);
 def save_document(file_bytes: bytes, user_id: str, filename: str) -> str:
     with DaprClient() as d:
         encrypted = d.encrypt(
-            data=io.BytesIO(file_bytes),
-            options={
-                "componentName": CRYPTO_COMPONENT,
-                "keyName": DATA_KEY,
-                "keyWrapAlgorithm": "RSA-OAEP-256"
-            }
+            data=file_bytes,
+            options=EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=DATA_KEY,
+                key_wrap_algorithm="RSA-OAEP-256",
+            ),
         )
         encrypted_bytes = encrypted.read()
 
@@ -173,16 +173,19 @@ def save_customer_bulk(customers: list):
     with DaprClient() as d:
         rows = []
         for customer in customers:
+            encrypt_opts = EncryptOptions(
+                component_name=CRYPTO_COMPONENT,
+                key_name=DATA_KEY,
+                key_wrap_algorithm="RSA-OAEP-256",
+            )
             rows.append((
                 customer.id,
                 customer.email,
                 # Encrypt each field - consider caching the client connection
-                d.encrypt(io.BytesIO(customer.name.encode()),
-                    options={"componentName": CRYPTO_COMPONENT, "keyName": DATA_KEY,
-                             "keyWrapAlgorithm": "RSA-OAEP-256"}).read(),
-                d.encrypt(io.BytesIO(customer.ssn.encode()),
-                    options={"componentName": CRYPTO_COMPONENT, "keyName": DATA_KEY,
-                             "keyWrapAlgorithm": "RSA-OAEP-256"}).read()
+                d.encrypt(data=customer.name.encode(),
+                    options=encrypt_opts).read(),
+                d.encrypt(data=customer.ssn.encode(),
+                    options=encrypt_opts).read()
             ))
         db.executemany("INSERT INTO customers VALUES (%s,%s,%s,%s)", rows)
 ```
