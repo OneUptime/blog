@@ -95,7 +95,7 @@ dapr run \
   --app-id order-service \
   --app-port 8080 \
   --dapr-http-port 3500 \
-  --components-path ./components \
+  --resources-path ./components \
   --log-level debug \
   -- python main.py
 
@@ -103,14 +103,14 @@ dapr run \
 dapr run \
   --app-id order-service \
   --app-port 8080 \
-  --components-path ./components \
+  --resources-path ./components \
   -- dotnet watch run
 
 # Run Node.js service with nodemon
 dapr run \
   --app-id notification-service \
   --app-port 3001 \
-  --components-path ./components \
+  --resources-path ./components \
   -- npx nodemon app.js
 ```
 
@@ -157,18 +157,26 @@ dapr stop -f dapr.yaml
 # Zipkin is started by dapr init
 # Access at http://localhost:9411
 
-# Apply development tracing configuration
-cat > components/tracing.yaml << 'EOF'
+# Create a Dapr configuration file for tracing
+cat > config.yaml << 'EOF'
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
-  name: tracing
+  name: daprConfig
 spec:
   tracing:
     samplingRate: "1"
     zipkin:
       endpointAddress: "http://localhost:9411/api/v2/spans"
 EOF
+
+# Reference the configuration when running a service
+dapr run \
+  --app-id order-service \
+  --app-port 8080 \
+  --resources-path ./components \
+  --config ./config.yaml \
+  -- python main.py
 ```
 
 ## Summary
