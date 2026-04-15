@@ -66,19 +66,27 @@ WITH daily AS (
         sum(cost_usd) AS daily_cost
     FROM infra_costs
     GROUP BY usage_date, service
+),
+enriched AS (
+    SELECT
+        service,
+        usage_date,
+        daily_cost,
+        avg(daily_cost) OVER (
+            PARTITION BY service
+            ORDER BY usage_date
+            ROWS BETWEEN 7 PRECEDING AND 1 PRECEDING
+        ) AS rolling_avg
+    FROM daily
 )
 SELECT
     service,
     usage_date,
     daily_cost,
-    avg(daily_cost) OVER (
-        PARTITION BY service
-        ORDER BY usage_date
-        ROWS BETWEEN 7 PRECEDING AND 1 PRECEDING
-    ) AS rolling_avg,
+    rolling_avg,
     daily_cost / (rolling_avg + 0.01) AS spike_ratio
-FROM daily
-WHERE spike_ratio > 2
+FROM enriched
+WHERE daily_cost / (rolling_avg + 0.01) > 2
 ORDER BY spike_ratio DESC
 LIMIT 20;
 ```
