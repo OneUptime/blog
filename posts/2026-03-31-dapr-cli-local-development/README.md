@@ -89,11 +89,11 @@ dapr invoke --app-id myapp --method saveState --verb POST \
 # List running apps
 dapr list
 
-# Inspect app metadata
-dapr metadata --app-id myapp
+# Inspect app metadata (via HTTP API)
+curl http://localhost:3500/v1.0/metadata
 
-# View runtime logs
-dapr logs --app-id myapp
+# Open the Dapr dashboard
+dapr dashboard
 ```
 
 ## Running with a Config File
