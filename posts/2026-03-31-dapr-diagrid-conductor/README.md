@@ -10,11 +10,11 @@ Description: Use Diagrid Conductor to manage, monitor, and operate Dapr deployme
 
 ## Overview
 
-Diagrid Conductor is a managed Dapr control plane from the creators of Dapr at Diagrid. It provides a centralized dashboard, fleet management, component configuration, and operational tools for Dapr deployments running across one or more Kubernetes clusters.
+Diagrid Conductor is a managed Dapr operations platform from the creators of Dapr at Diagrid. It provides automated Dapr installation and upgrades, zero-downtime mTLS certificate rotation, observability with 150+ metrics, best-practice advisories, and multi-cluster management for Dapr deployments running across one or more Kubernetes clusters.
 
 ## Prerequisites
 
-- Diagrid account (sign up at diagrid.dev)
+- Diagrid account (sign up at diagrid.ws/conductor-trial)
 - `diagrid` CLI installed
 - One or more Kubernetes clusters
 - Dapr installed or installable on target clusters
@@ -23,7 +23,8 @@ Diagrid Conductor is a managed Dapr control plane from the creators of Dapr at D
 
 ```bash
 # macOS/Linux
-curl -o- https://downloads.diagrid.io/install.sh | bash
+curl -o- https://downloads.diagrid.io/cli/install.sh | bash
+sudo mv ./diagrid /usr/local/bin
 
 # Verify installation
 diagrid version
@@ -35,101 +36,119 @@ diagrid version
 # Login to Diagrid
 diagrid login
 
-# Create a project
-diagrid project create my-platform
-
 # Connect a Kubernetes cluster
-diagrid cluster connect my-cluster \
-  --project my-platform \
-  --kubeconfig ~/.kube/config
+diagrid clusters connect --name my-cluster
 ```
 
 Conductor installs a lightweight agent in the cluster:
 
 ```bash
 # Verify the agent is running
-kubectl get pods -n diagrid-system
+kubectl get pods -n diagrid-cloud
 ```
 
-## Deploying Dapr Apps via Conductor
+## Deploying Dapr Apps with Conductor
 
-Define applications using Conductor's CRDs:
+Conductor automatically discovers Dapr-enabled applications running in connected clusters. Deploy your application with standard Dapr annotations:
 
 ```yaml
-apiVersion: core.diagrid.io/v1
-kind: AppID
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: order-service
   namespace: default
 spec:
-  appPort: 8080
-  config:
-    logLevel: info
-    tracing:
-      samplingRate: "1"
-  scopes:
-  - pubsub:orders
-  - statestore:order-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "order-service"
+        dapr.io/app-port: "8080"
+        dapr.io/log-level: "info"
+    spec:
+      containers:
+      - name: order-service
+        image: my-registry/order-service:latest
+        ports:
+        - containerPort: 8080
 ```
 
-Apply and monitor via CLI:
+Apply via kubectl and monitor in the Conductor console:
 
 ```bash
-diagrid appid apply -f order-service.yaml
-diagrid appid list
-diagrid appid get order-service
+kubectl apply -f order-service.yaml
+
+# Open the Conductor web console to view discovered apps
+diagrid web
 ```
 
-## Managing Components via Conductor
+## Managing Components with Conductor
 
-Create Dapr components centrally:
+Dapr components are managed using standard Kubernetes Dapr component YAMLs. Conductor monitors and provides visibility into these components across clusters:
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+  namespace: default
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+  - name: redisHost
+    value: "redis:6379"
+  - name: redisPassword
+    value: "secret"
+```
 
 ```bash
-# Create a Redis state store via CLI
-diagrid component create statestore \
-  --type state.redis \
-  --version v1 \
-  --metadata "redisHost=redis:6379" \
-  --metadata "redisPassword=secret"
+# Apply the component via kubectl
+kubectl apply -f statestore.yaml
 
-# List all components across clusters
-diagrid component list
+# View components and their status in the Conductor console
+diagrid web
 ```
 
 ## Monitoring with Conductor Dashboard
 
-View real-time metrics in the Conductor UI:
+View real-time metrics in the Conductor web console:
 
 ```bash
-# Open the Conductor dashboard
-diagrid dashboard open
-
-# Or view metrics from CLI
-diagrid metrics get order-service \
-  --metric dapr_http_server_request_count \
-  --window 1h
+# Open the Conductor web console
+diagrid web
 ```
+
+Conductor provides over 150 built-in metrics, an Apps Graph for visualizing service dependencies, and Grafana integration for custom dashboards. Metrics such as `dapr_http_server_request_count` can be explored through the console or via the Grafana integration.
 
 ## Conductor API for Automation
 
-Integrate Conductor into CI/CD pipelines:
+Integrate Conductor into CI/CD pipelines using API keys and the CLI:
 
 ```bash
-# Get Conductor API token
-export DIAGRID_API_TOKEN=$(diagrid auth token)
+# Generate an API key for CI/CD use
+diagrid apikey create --name ci-pipeline
 
-# Deploy component via API
-curl -X POST https://api.diagrid.io/v1/projects/my-platform/components \
-  -H "Authorization: Bearer ${DIAGRID_API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "pubsub",
-    "type": "pubsub.redis",
-    "version": "v1",
-    "metadata": {"redisHost": "redis:6379"}
-  }'
+# Print an access token for API calls
+diagrid auth print-access-token
+```
+
+You can also manage clusters programmatically using the Diagrid CLI in non-interactive mode:
+
+```bash
+# Connect a cluster in a CI/CD pipeline
+diagrid clusters connect --name staging-cluster
+
+# Run diagnostics on a connected cluster
+diagrid diagnose --name staging-cluster
 ```
 
 ## Summary
 
-Diagrid Conductor simplifies Dapr fleet management with centralized component configuration, real-time monitoring, and multi-cluster support. By moving Dapr operational concerns into Conductor, teams spend less time managing Dapr infrastructure and more time building business logic with Dapr's building blocks.
+Diagrid Conductor simplifies Dapr fleet management with automated Dapr installation and upgrades, zero-downtime mTLS certificate rotation, real-time monitoring, and multi-cluster observability. By moving Dapr operational concerns into Conductor, teams spend less time managing Dapr infrastructure and more time building business logic with Dapr's building blocks.
