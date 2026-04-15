@@ -110,44 +110,61 @@ LIMIT 100;
 Stickiness measures how often monthly users return each day.
 
 ```sql
-SELECT
-    mau_month,
-    avg_dau,
-    mau,
-    round(avg_dau * 100.0 / mau, 1) AS stickiness_pct
-FROM (
+WITH daily AS (
+    SELECT
+        toDate(event_time) AS day,
+        toStartOfMonth(event_time) AS mau_month,
+        countDistinct(user_id) AS dau
+    FROM user_events
+    GROUP BY day, mau_month
+),
+monthly AS (
     SELECT
         toStartOfMonth(event_time) AS mau_month,
-        countDistinct(user_id) AS mau,
-        avg(dau) AS avg_dau
-    FROM (
-        SELECT toDate(event_time) AS day,
-               toStartOfMonth(event_time) AS mau_month,
-               countDistinct(user_id) AS dau
-        FROM user_events
-        GROUP BY day, mau_month
-    )
+        countDistinct(user_id) AS mau
+    FROM user_events
     GROUP BY mau_month
 )
-ORDER BY mau_month;
+SELECT
+    m.mau_month,
+    round(avg(d.dau), 1) AS avg_dau,
+    m.mau,
+    round(avg(d.dau) * 100.0 / m.mau, 1) AS stickiness_pct
+FROM daily d
+JOIN monthly m ON d.mau_month = m.mau_month
+GROUP BY m.mau_month, m.mau
+ORDER BY m.mau_month;
 ```
 
 ## Materialized View for Daily Engagement
 
 ```sql
 CREATE MATERIALIZED VIEW daily_engagement_mv
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (day, feature)
 AS
 SELECT
     toDate(event_time) AS day,
     feature,
-    countDistinct(user_id) AS unique_users,
-    count() AS events
+    uniqState(user_id) AS unique_users,
+    countState() AS events
 FROM user_events
 GROUP BY day, feature;
 ```
 
+To query the materialized view, use the corresponding `-Merge` combinators:
+
+```sql
+SELECT
+    day,
+    feature,
+    uniqMerge(unique_users) AS unique_users,
+    countMerge(events) AS events
+FROM daily_engagement_mv
+GROUP BY day, feature
+ORDER BY day, unique_users DESC;
+```
+
 ## Summary
 
-ClickHouse makes engagement analytics fast by combining `countDistinct` for unique user counts, window functions for session analysis, and materialized views for pre-aggregated metrics. Tracking DAU, session depth, feature adoption, and stickiness together gives a complete picture of how users engage with your product over time.
+ClickHouse makes engagement analytics fast by combining `countDistinct` for unique user counts, aggregate functions with `GROUP BY` for session analysis, and materialized views for pre-aggregated metrics. Tracking DAU, session depth, feature adoption, and stickiness together gives a complete picture of how users engage with your product over time.
