@@ -213,16 +213,16 @@ ClickHouse exposes Prometheus-compatible metrics on the HTTP port. Enable the en
 Then scrape with:
 
 ```bash
-curl -s http://localhost:9363/metrics | grep -E "^ClickHouse(Metric|Event)_Query"
+curl -s http://localhost:9363/metrics | grep -E "^ClickHouse(Metrics|ProfileEvents)_Query"
 ```
 
 Example output:
 
 ```text
-ClickHouseMetric_Query 3
-ClickHouseEvent_Query 18245
-ClickHouseEvent_FailedQuery 12
-ClickHouseEvent_SelectQuery 17890
+ClickHouseMetrics_Query 3
+ClickHouseProfileEvents_Query 18245
+ClickHouseProfileEvents_FailedQuery 12
+ClickHouseProfileEvents_SelectQuery 17890
 ```
 
 Add a Prometheus scrape config:
