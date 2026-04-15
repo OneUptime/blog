@@ -56,8 +56,11 @@ TTL event_time + INTERVAL 48 HOUR DELETE;
 Use ClickHouse's built-in Kafka engine to consume events directly:
 
 ```sql
-CREATE TABLE events_kafka_queue
-ENGINE = Kafka
+CREATE TABLE events_kafka_queue (
+    event_time  DateTime,
+    user_id     UInt64,
+    event_type  String
+) ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'user_events',
@@ -93,7 +96,7 @@ The batch layer covers data up to the previous day. The speed layer covers the l
 
 ## When the Batch Job Catches Up
 
-Once the batch job runs and covers data already in the speed layer, ClickHouse's `ReplacingMergeTree` deduplicates the overlap via the `FINAL` keyword:
+Once the batch job runs and covers data already in the speed layer, the `WHERE` clause in the serving view automatically excludes real-time rows that the batch layer now covers. If the batch job inserts updated aggregates for the same `(event_date, user_id, event_type)` key, `ReplacingMergeTree` deduplicates within `events_batch` itself. Use the `FINAL` keyword to get deduplicated results at query time:
 
 ```sql
 SELECT * FROM events_batch FINAL WHERE event_date = today() - 1;
