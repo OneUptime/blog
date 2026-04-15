@@ -64,10 +64,8 @@ spec:
   metadata:
   - name: brokers
     value: kafka-broker:9092
-  - name: ackWaitTime
-    value: 1s
-  - name: maxRetryTime
-    value: 0s
+  - name: consumeRetryEnabled
+    value: "false"
   - name: authType
     value: none
 ```
@@ -84,7 +82,7 @@ spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-  - name: host
+  - name: connectionString
     value: amqp://rabbitmq:5672
   - name: autoAck
     value: "true"
@@ -98,6 +96,7 @@ Since there are no retries, handlers should be fast and acknowledge quickly:
 
 ```javascript
 const express = require("express");
+const app = express();
 app.use(express.json());
 
 app.post("/handlers/metrics", (req, res) => {
