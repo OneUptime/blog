@@ -167,7 +167,7 @@ async function loadInBatches(data, batchSize = 1000) {
 dapr run \
   --app-id etl-pipeline \
   --app-port 3000 \
-  --components-path ./components \
+  --resources-path ./components \
   node app.js
 ```
 
