@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Cryptography, Decryption, Security, AES, Key Management
 
-Description: Learn how to decrypt data using the Dapr Cryptography building block, with examples in Go, Python, and the HTTP API using AES-GCM and RSA key wrapping.
+Description: Learn how to decrypt data using the Dapr Cryptography building block, with examples in Go, Python, JavaScript, and the HTTP API.
 
 ---
 
@@ -39,13 +39,14 @@ spec:
 ## HTTP API Decryption
 
 ```bash
-# Decrypt base64-encoded ciphertext
-curl -X POST http://localhost:3500/v1.0-alpha1/crypto/my-crypto/decrypt \
+# Decrypt ciphertext
+curl -X PUT http://localhost:3500/v1.0-alpha1/crypto/my-crypto/decrypt \
   -H "Content-Type: application/octet-stream" \
-  -H "dapr-key-name: customer-data-key" \
   --data-binary @ciphertext.bin \
   -o plaintext.txt
 ```
+
+The key name does not need to be specified for decryption because Dapr embeds the key reference in the ciphertext header by default. If the data was encrypted with `omitDecryptionKeyName` set to true, add the header `-H "dapr-key-name: customer-data-key"`.
 
 ## Go SDK Decryption
 
@@ -67,9 +68,11 @@ func decryptData(ciphertext []byte) ([]byte, error) {
     }
     defer client.Close()
 
-    decryptOpts := dapr.DecryptRequestOptions{
+    decryptOpts := dapr.DecryptOptions{
+        // ComponentName is required
         ComponentName: "my-crypto",
-        KeyName:       "customer-data-key",
+        // KeyName is optional: Dapr reads it from the ciphertext header by default.
+        // Only set KeyName if encryption used OmitDecryptionKeyName: true.
     }
 
     decryptedStream, err := client.Decrypt(
@@ -100,17 +103,16 @@ func main() {
 ## Python SDK Decryption
 
 ```python
-import io
 from dapr.clients import DaprClient
+from dapr.clients.grpc._crypto import DecryptOptions
 
-def decrypt_field(ciphertext: bytes, key_name: str) -> bytes:
+def decrypt_field(ciphertext: bytes) -> bytes:
     with DaprClient() as d:
         decrypted_stream = d.decrypt(
-            data=io.BytesIO(ciphertext),
-            options={
-                "componentName": "my-crypto",
-                "keyName": key_name
-            }
+            data=ciphertext,
+            options=DecryptOptions(
+                component_name="my-crypto",
+            )
         )
         return decrypted_stream.read()
 
@@ -119,8 +121,8 @@ def get_customer_record(customer_id: str) -> dict:
     row = db.query("SELECT * FROM customers WHERE id = %s", customer_id)
     return {
         "id": row["id"],
-        "name": decrypt_field(row["name_encrypted"], "pii-key").decode(),
-        "ssn": decrypt_field(row["ssn_encrypted"], "pii-key").decode(),
+        "name": decrypt_field(row["name_encrypted"]).decode(),
+        "ssn": decrypt_field(row["ssn_encrypted"]).decode(),
         "email": row["email"]  # not encrypted
     }
 ```
@@ -138,7 +140,6 @@ async function decryptData(ciphertext) {
 
     const decryptedStream = await client.crypto.decrypt(stream, {
         componentName: "my-crypto",
-        keyName: "customer-data-key"
     });
 
     const chunks = [];
@@ -179,8 +180,8 @@ def decrypt_records_batch(records: list) -> list:
         decrypted = []
         for record in records:
             plain = d.decrypt(
-                data=io.BytesIO(record["ciphertext"]),
-                options={"componentName": "my-crypto", "keyName": "data-key"}
+                data=record["ciphertext"],
+                options=DecryptOptions(component_name="my-crypto"),
             ).read()
             record["plaintext"] = plain.decode()
             decrypted.append(record)
