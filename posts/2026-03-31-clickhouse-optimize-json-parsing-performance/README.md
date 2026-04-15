@@ -49,19 +49,19 @@ SELECT
     JSONExtractUInt(payload, 'user_id'),
     JSONExtractString(payload, 'event_type'),
     JSONExtractString(payload, 'country'),
-    JSONExtractFloat(payload, 'amount')
+    toDecimal64(JSONExtractString(payload, 'amount'), 2)
 FROM events_json;
 ```
 
 ## Strategy 2: Use Typed Extract Functions
 
-Always use the typed variant of JSONExtract:
+Prefer the typed variant of JSONExtract for clarity and type safety:
 
 ```sql
--- Slow: generic extract + implicit cast
+-- Generic extract with type string
 SELECT JSONExtract(payload, 'amount', 'Float64') FROM events;
 
--- Fast: typed function
+-- Typed function (clearer intent, avoids type-string parsing)
 SELECT JSONExtractFloat(payload, 'amount') FROM events;
 ```
 
@@ -98,9 +98,9 @@ FROM (
 );
 ```
 
-## Strategy 4: Use JSON Type (ClickHouse 24+)
+## Strategy 4: Use JSON Type (ClickHouse 25.3+)
 
-ClickHouse 24+ introduces a native `JSON` type with columnar storage:
+ClickHouse introduced an experimental `JSON` type in version 24.8, which became production-ready in version 25.3. This native type provides columnar storage for JSON data:
 
 ```sql
 CREATE TABLE events_native (
@@ -152,4 +152,4 @@ LIMIT 10;
 
 ## Summary
 
-Optimize JSON parsing in ClickHouse by pre-extracting fields at insert time, using typed extract functions, extracting multiple fields in a single parse pass, leveraging materialized columns for frequent extractions, and migrating to the native JSON type in ClickHouse 24+ for columnar JSON storage. Runtime JSON parsing should be a last resort for truly dynamic schemas.
+Optimize JSON parsing in ClickHouse by pre-extracting fields at insert time, using typed extract functions, extracting multiple fields in a single parse pass, leveraging materialized columns for frequent extractions, and migrating to the native JSON type in ClickHouse 25.3+ for columnar JSON storage. Runtime JSON parsing should be a last resort for truly dynamic schemas.
