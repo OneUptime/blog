@@ -2,696 +2,238 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connector, Sum Connector, Metrics Aggregation, Data Pipeline
+Tags: OpenTelemetry, Collector, Connector, Sum Connector, Metrics, Attribute Aggregation
 
-Description: Learn how to use the Sum connector in OpenTelemetry Collector to aggregate metrics from multiple pipelines and create unified views of your telemetry data.
+Description: Learn how to use the Sum connector in the OpenTelemetry Collector to sum numeric attribute values from spans, span events, data points, and logs into output metrics.
 
-The Sum connector in the OpenTelemetry Collector provides a powerful mechanism for aggregating metrics from multiple sources or pipelines into combined metrics. This connector is essential when you need to merge metric streams, create rollup metrics across different services, or consolidate telemetry data from distributed collection points.
+The Sum connector in the OpenTelemetry Collector sums numeric values found inside telemetry attributes and emits them as a metric time series. It bridges pipeline types: it consumes spans, span events, metric data points, or logs, and produces metrics. It is not a cross-pipeline "totaliser" that merges multiple metric streams — its job is to read a numeric attribute off each telemetry item, add those values up, and expose the running total as a metric.
 
-## Understanding the Sum Connector
+## What the Sum Connector Actually Does
 
-The Sum connector takes metric data from multiple input pipelines and aggregates them by summing values for metrics with matching names and dimensions. Unlike the Round Robin connector that distributes data, or the Signal to Metrics connector that transforms signals, the Sum connector performs mathematical aggregation across metric streams.
+Given a source pipeline (traces, metrics, or logs), the connector looks at every span, data point, or log record passing through it, reads a single named attribute, converts the value to a float, and adds it to a metric of your choosing. Values that cannot be parsed as numbers are dropped silently. Optional attribute grouping lets you split the total into separate data points keyed by other attributes (for example, one datapoint per `payment.processor`).
 
-This aggregation happens within the Collector itself, before metrics are exported to backends. The result is a unified metric stream that represents the combined state of your monitored systems, reducing cardinality and providing clearer insights into aggregate behavior.
+Supported pipeline pairings are fixed by the connector:
 
-## Key Use Cases
+| Input pipeline | Output pipeline |
+| --- | --- |
+| traces | metrics |
+| metrics | metrics |
+| logs | metrics |
 
-The Sum connector excels in several scenarios:
+## Configuration Shape
 
-**Multi-Instance Aggregation**: When running multiple instances of an application, aggregate their individual metrics into fleet-wide metrics that show total throughput, combined error counts, or aggregate resource usage.
-
-**Cross-Service Totals**: Combine metrics from different microservices to create organization-level or team-level aggregates, useful for capacity planning and cost allocation.
-
-**Geo-Distributed Aggregation**: Aggregate metrics from different regions or data centers to see global totals while maintaining regional metrics for detailed analysis.
-
-**Cost Optimization**: Reduce the number of unique metric series sent to your backend by aggregating similar metrics, lowering storage costs and improving query performance.
-
-## Basic Configuration Structure
-
-The Sum connector follows the standard OpenTelemetry Collector connector pattern:
+The configuration is nested: `sum` → telemetry type → output metric name → settings.
 
 ```yaml
 connectors:
-  # Define the Sum connector
   sum:
-    # Specify which metrics to aggregate
-    metrics:
-      # Metrics matching these patterns will be summed
-      - name: http.server.request.count
-      - name: http.server.error.count
+    # Pick one or more of: spans, spanevents, datapoints, logs
+    <telemetry-type>:
+      <output-metric-name>:
+        source_attribute: <attribute-to-sum>
+        conditions:
+          - <OTTL condition>
+        attributes:
+          - key: <attribute-to-group-by>
+            default_value: <fallback>
+```
+
+The three required pieces are the telemetry type, the output metric name, and `source_attribute`. Everything under `conditions` and `attributes` is optional.
+
+Note that to sum values from **metrics**, you use `datapoints:` (not `metrics:`). To sum values from **traces**, use `spans:` or `spanevents:`.
+
+## Basic Example: Summing a Span Attribute
+
+This configuration sums the numeric value of `attribute.with.numerical.value` on every incoming span and emits a metric named `my.example.metric.name`.
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+connectors:
+  sum:
+    spans:
+      my.example.metric.name:
+        source_attribute: attribute.with.numerical.value
+
+exporters:
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
 
 service:
   pipelines:
-    # Multiple input pipelines
-    metrics/service-a:
-      receivers: [prometheus/service-a]
+    traces:
+      receivers: [otlp]
       exporters: [sum]
 
-    metrics/service-b:
-      receivers: [prometheus/service-b]
-      exporters: [sum]
-
-    metrics/service-c:
-      receivers: [prometheus/service-c]
-      exporters: [sum]
-
-    # Output pipeline receives aggregated metrics
-    metrics/aggregated:
+    metrics/sum:
       receivers: [sum]
       exporters: [prometheusremotewrite]
 ```
 
-In this configuration, metrics from three services are collected separately and then aggregated by the Sum connector before export to the backend.
+The traces pipeline feeds spans to the connector; the metrics pipeline receives the resulting metric and exports it.
 
-## Pipeline Flow Architecture
-
-Understanding the data flow helps clarify how aggregation works:
+## Pipeline Flow
 
 ```mermaid
-graph TB
-    A[Service A Metrics] --> D[Sum Connector]
-    B[Service B Metrics] --> D
-    C[Service C Metrics] --> D
-    D --> E[Aggregation Engine]
-    E --> F[Combined Metrics]
-    F --> G[Metrics Backend]
+graph LR
+    A[Traces / Logs / Metrics] --> B[Sum Connector]
+    B -- reads source_attribute --> C[Converts to float]
+    C -- groups by attributes --> D[Output metric datapoints]
+    D --> E[Metrics Exporter]
 ```
 
-The connector receives metrics from multiple pipelines, aggregates matching metrics, and outputs a single unified stream.
+## Summing Values from Logs
 
-## Aggregating Metrics from Multiple Services
-
-Here's a practical example aggregating HTTP metrics from multiple microservices:
+A common use is turning numeric fields in logs into metrics. Here, the connector reads `total.payment` off each log record and emits a `checkout.total` metric, split by `payment.processor`:
 
 ```yaml
 receivers:
-  # Separate receivers for each service
-  otlp/frontend:
+  otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
 
-  otlp/api:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4318
-
-  otlp/backend:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4319
-
-processors:
-  # Add identifying attributes before aggregation
-  resource/frontend:
-    attributes:
-      - key: service.tier
-        value: "frontend"
-        action: insert
-
-  resource/api:
-    attributes:
-      - key: service.tier
-        value: "api"
-        action: insert
-
-  resource/backend:
-    attributes:
-      - key: service.tier
-        value: "backend"
-        action: insert
-
 connectors:
-  sum/tier-aggregation:
-    # Configure which metrics to aggregate
-    metrics:
-      - name: http.server.request.count
-        description: Total HTTP requests across tier
-      - name: http.server.request.duration
-        description: HTTP request duration
-      - name: http.server.error.count
-        description: Total HTTP errors across tier
-
-    # Define aggregation behavior
-    aggregation:
-      # Sum metrics with matching dimensions
-      group_by:
-        - service.tier
-        - http.method
-        - http.status_code
-
-exporters:
-  prometheusremotewrite:
-    endpoint: http://prometheus:9090/api/v1/write
-
-service:
-  pipelines:
-    # Individual service pipelines
-    metrics/frontend:
-      receivers: [otlp/frontend]
-      processors: [resource/frontend]
-      exporters: [sum/tier-aggregation]
-
-    metrics/api:
-      receivers: [otlp/api]
-      processors: [resource/api]
-      exporters: [sum/tier-aggregation]
-
-    metrics/backend:
-      receivers: [otlp/backend]
-      processors: [resource/backend]
-      exporters: [sum/tier-aggregation]
-
-    # Aggregated output
-    metrics/aggregated:
-      receivers: [sum/tier-aggregation]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
-```
-
-This configuration collects metrics from three service tiers and aggregates them by tier, method, and status code, creating fleet-wide visibility while preserving important dimensions.
-
-## Dimension-Based Aggregation
-
-The Sum connector aggregates metrics based on their dimensions. Understanding how dimensions affect aggregation is critical:
-
-```yaml
-connectors:
-  sum/dimension-example:
-    metrics:
-      - name: request.count
-
-    # Metrics are summed when these dimensions match
-    aggregation:
-      group_by:
-        - service.name
-        - environment
-        - region
-        # Any other dimensions are dropped during aggregation
-```
-
-If you have these metrics:
-
-```text
-request.count{service.name="api", environment="prod", region="us-east", instance="i-123"} = 100
-request.count{service.name="api", environment="prod", region="us-east", instance="i-456"} = 150
-```
-
-The Sum connector produces:
-
-```text
-request.count{service.name="api", environment="prod", region="us-east"} = 250
-```
-
-The instance dimension is dropped because it's not in the group_by list, and the values are summed.
-
-## Aggregating Metrics Across Regions
-
-A common use case is aggregating metrics from geographically distributed collectors:
-
-```yaml
-receivers:
-  otlp/us-east:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-  otlp/us-west:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4318
-
-  otlp/eu-west:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4319
-
-processors:
-  # Tag metrics with region information
-  attributes/us-east:
-    actions:
-      - key: region
-        value: "us-east-1"
-        action: upsert
-
-  attributes/us-west:
-    actions:
-      - key: region
-        value: "us-west-2"
-        action: upsert
-
-  attributes/eu-west:
-    actions:
-      - key: region
-        value: "eu-west-1"
-        action: upsert
-
-connectors:
-  # Aggregate regional metrics
-  sum/regional:
-    metrics:
-      - name: service.request.count
-      - name: service.cpu.usage
-      - name: service.memory.usage
-      - name: service.disk.io
-
-    aggregation:
-      group_by:
-        - service.name
-        - region
-
-  # Further aggregate to global totals
-  sum/global:
-    metrics:
-      - name: service.request.count
-      - name: service.cpu.usage
-      - name: service.memory.usage
-      - name: service.disk.io
-
-    aggregation:
-      group_by:
-        - service.name
-        # Region dimension removed for global totals
-
-exporters:
-  prometheusremotewrite/regional:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Scope: regional
-
-  prometheusremotewrite/global:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Scope: global
-
-service:
-  pipelines:
-    # Regional collection pipelines
-    metrics/us-east:
-      receivers: [otlp/us-east]
-      processors: [attributes/us-east]
-      exporters: [sum/regional]
-
-    metrics/us-west:
-      receivers: [otlp/us-west]
-      processors: [attributes/us-west]
-      exporters: [sum/regional]
-
-    metrics/eu-west:
-      receivers: [otlp/eu-west]
-      processors: [attributes/eu-west]
-      exporters: [sum/regional]
-
-    # Regional aggregation
-    metrics/regional-aggregated:
-      receivers: [sum/regional]
-      exporters: [prometheusremotewrite/regional, sum/global]
-
-    # Global aggregation
-    metrics/global-aggregated:
-      receivers: [sum/global]
-      processors: [batch]
-      exporters: [prometheusremotewrite/global]
-```
-
-This multi-tier aggregation creates both regional and global views of your metrics, supporting both detailed analysis and high-level dashboards.
-
-## Handling Different Metric Types
-
-The Sum connector handles different metric types appropriately:
-
-**Counters and Sums**: Values are added together, which is the natural behavior for cumulative metrics.
-
-**Gauges**: The last reported value is used. Summing gauges usually doesn't make sense, so consider carefully whether to aggregate gauge metrics.
-
-**Histograms**: Bucket counts are summed, and count/sum fields are aggregated, preserving the distribution characteristics.
-
-```yaml
-connectors:
-  sum/typed-metrics:
-    metrics:
-      # Counters - sum naturally
-      - name: http.server.request.count
-        type: sum
-        aggregation_temporality: cumulative
-
-      # Gauges - use last value
-      - name: system.memory.usage
-        type: gauge
-
-      # Histograms - sum buckets
-      - name: http.server.duration
-        type: histogram
-        aggregation:
-          histogram_aggregation: explicit_bucket_histogram
-
-    aggregation:
-      group_by:
-        - service.name
-```
-
-## Selective Aggregation with Filtering
-
-You can selectively aggregate metrics based on attribute values:
-
-```yaml
-processors:
-  # Filter for production metrics only
-  filter/production:
-    metrics:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: deployment.environment
-            value: "production"
-
-  # Filter for critical services
-  filter/critical:
-    metrics:
-      include:
-        match_type: regexp
-        resource_attributes:
-          - key: service.name
-            value: "(payment|auth|checkout).*"
-
-connectors:
-  sum/filtered:
-    metrics:
-      - name: critical.service.errors
-      - name: critical.service.latency
-
-    aggregation:
-      group_by:
-        - service.category
-
-exporters:
-  prometheusremotewrite:
-    endpoint: http://prometheus:9090/api/v1/write
-
-service:
-  pipelines:
-    metrics/input:
-      receivers: [otlp]
-      processors: [filter/production, filter/critical]
-      exporters: [sum/filtered]
-
-    metrics/critical-aggregate:
-      receivers: [sum/filtered]
-      exporters: [prometheusremotewrite]
-```
-
-This ensures only relevant metrics are aggregated, reducing processing overhead and metric volume.
-
-## Preserving Original Metrics Alongside Aggregates
-
-Sometimes you want both the original per-instance metrics and the aggregated totals:
-
-```yaml
-connectors:
-  sum/aggregates:
-    metrics:
-      - name: application.request.count
-      - name: application.error.count
-
-    aggregation:
-      group_by:
-        - service.name
-        - environment
-
-exporters:
-  prometheusremotewrite/detailed:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Detail-Level: instance
-
-  prometheusremotewrite/aggregated:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Detail-Level: service
-
-service:
-  pipelines:
-    metrics/input:
-      receivers: [otlp]
-      # Export to both aggregator and detailed storage
-      exporters: [sum/aggregates, prometheusremotewrite/detailed]
-
-    metrics/aggregated:
-      receivers: [sum/aggregates]
-      exporters: [prometheusremotewrite/aggregated]
-```
-
-This configuration maintains granular instance-level metrics while also creating service-level aggregates.
-
-## Temporal Aggregation Behavior
-
-The Sum connector aggregates metrics as they arrive. Understanding the temporal behavior is important:
-
-```yaml
-connectors:
-  sum/temporal:
-    # Configure aggregation timing
-    aggregation:
-      # How often to emit aggregated metrics
-      interval: 60s
-
-      # Maximum time to wait for metrics before aggregating
-      timeout: 30s
-
-    metrics:
-      - name: throughput.bytes
-      - name: request.count
-```
-
-If metrics from different sources arrive at different times, the connector waits up to the timeout period before emitting aggregated values. This ensures metrics are properly aligned temporally.
-
-## Real-World Example: Multi-Cluster Kubernetes Monitoring
-
-Here's a complete example aggregating metrics from multiple Kubernetes clusters:
-
-```yaml
-receivers:
-  # Receivers for each Kubernetes cluster
-  prometheus/k8s-prod-us:
-    config:
-      scrape_configs:
-        - job_name: 'kubernetes-pods'
-          kubernetes_sd_configs:
-            - role: pod
-              kubeconfig_file: /etc/k8s/prod-us-kubeconfig
-
-  prometheus/k8s-prod-eu:
-    config:
-      scrape_configs:
-        - job_name: 'kubernetes-pods'
-          kubernetes_sd_configs:
-            - role: pod
-              kubeconfig_file: /etc/k8s/prod-eu-kubeconfig
-
-  prometheus/k8s-staging:
-    config:
-      scrape_configs:
-        - job_name: 'kubernetes-pods'
-          kubernetes_sd_configs:
-            - role: pod
-              kubeconfig_file: /etc/k8s/staging-kubeconfig
-
-processors:
-  # Add cluster identifiers
-  resource/prod-us:
-    attributes:
-      - key: cluster
-        value: "prod-us"
-        action: insert
-      - key: environment
-        value: "production"
-        action: insert
-
-  resource/prod-eu:
-    attributes:
-      - key: cluster
-        value: "prod-eu"
-        action: insert
-      - key: environment
-        value: "production"
-        action: insert
-
-  resource/staging:
-    attributes:
-      - key: cluster
-        value: "staging"
-        action: insert
-      - key: environment
-        value: "staging"
-        action: insert
-
-  batch:
-    timeout: 10s
-    send_batch_size: 1024
-
-connectors:
-  # Aggregate by cluster
-  sum/by-cluster:
-    metrics:
-      - name: container_cpu_usage_seconds_total
-      - name: container_memory_working_set_bytes
-      - name: container_network_receive_bytes_total
-      - name: container_network_transmit_bytes_total
-
-    aggregation:
-      group_by:
-        - cluster
-        - namespace
-        - pod
-
-  # Aggregate to environment level
-  sum/by-environment:
-    metrics:
-      - name: container_cpu_usage_seconds_total
-      - name: container_memory_working_set_bytes
-      - name: container_network_receive_bytes_total
-      - name: container_network_transmit_bytes_total
-
-    aggregation:
-      group_by:
-        - environment
-        - namespace
-
-  # Global aggregates
-  sum/global:
-    metrics:
-      - name: container_cpu_usage_seconds_total
-      - name: container_memory_working_set_bytes
-      - name: container_network_receive_bytes_total
-      - name: container_network_transmit_bytes_total
-
-    aggregation:
-      group_by:
-        - namespace
-
-exporters:
-  prometheusremotewrite/cluster:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Scope: cluster
-
-  prometheusremotewrite/environment:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Scope: environment
-
-  prometheusremotewrite/global:
-    endpoint: http://prometheus:9090/api/v1/write
-    headers:
-      X-Scope: global
-
-service:
-  pipelines:
-    # Cluster collection pipelines
-    metrics/prod-us:
-      receivers: [prometheus/k8s-prod-us]
-      processors: [resource/prod-us]
-      exporters: [sum/by-cluster]
-
-    metrics/prod-eu:
-      receivers: [prometheus/k8s-prod-eu]
-      processors: [resource/prod-eu]
-      exporters: [sum/by-cluster]
-
-    metrics/staging:
-      receivers: [prometheus/k8s-staging]
-      processors: [resource/staging]
-      exporters: [sum/by-cluster]
-
-    # Cluster-level aggregation
-    metrics/cluster-aggregated:
-      receivers: [sum/by-cluster]
-      processors: [batch]
-      exporters: [prometheusremotewrite/cluster, sum/by-environment]
-
-    # Environment-level aggregation
-    metrics/environment-aggregated:
-      receivers: [sum/by-environment]
-      processors: [batch]
-      exporters: [prometheusremotewrite/environment, sum/global]
-
-    # Global aggregation
-    metrics/global-aggregated:
-      receivers: [sum/global]
-      processors: [batch]
-      exporters: [prometheusremotewrite/global]
-```
-
-This configuration creates a three-tier aggregation hierarchy: cluster-level, environment-level, and global metrics, enabling both detailed troubleshooting and high-level capacity planning.
-
-## Performance Considerations
-
-The Sum connector maintains state for aggregation, which has memory implications:
-
-**Memory Usage**: The connector stores partial aggregations in memory. More unique dimension combinations mean higher memory usage.
-
-**Aggregation Interval**: Shorter intervals reduce memory but increase processing frequency.
-
-**Cardinality Control**: Limit the dimensions in group_by to control the number of unique aggregated metrics.
-
-```yaml
-processors:
-  # Reduce cardinality before aggregation
-  transform/reduce-cardinality:
-    metric_statements:
-      - context: datapoint
-        statements:
-          # Remove high-cardinality dimensions
-          - delete_key(attributes, "instance_id")
-          - delete_key(attributes, "pod_name")
-          - delete_key(attributes, "container_id")
-
-service:
-  pipelines:
-    metrics/input:
-      receivers: [otlp]
-      processors: [transform/reduce-cardinality]
-      exporters: [sum/aggregates]
-```
-
-## Monitoring Aggregation Health
-
-Monitor the Sum connector's operation to ensure correct behavior:
-
-```yaml
-service:
-  telemetry:
+  sum:
     logs:
-      level: info
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
+      checkout.total:
+        source_attribute: total.payment
+        conditions:
+          - attributes["total.payment"] != "NULL"
+        attributes:
+          - key: payment.processor
+            default_value: unspecified_processor
+
+exporters:
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [sum]
+
+    metrics/sum:
+      receivers: [sum]
+      exporters: [prometheusremotewrite]
 ```
 
-Key internal metrics to watch:
+Each distinct value of `payment.processor` becomes its own datapoint on the `checkout.total` time series. Log records missing that attribute fall into an `unspecified_processor` bucket.
 
-- `otelcol_connector_sum_metrics_processed`: Number of metrics processed
-- `otelcol_connector_sum_metrics_emitted`: Number of aggregated metrics emitted
-- `otelcol_connector_sum_aggregation_groups`: Number of unique aggregation groups
+### Parsing JSON Log Bodies First
 
-If `aggregation_groups` grows unbounded, you have a cardinality problem and need to adjust your group_by configuration.
+If the numeric value lives inside a JSON body rather than an attribute, use the transform processor to lift it into attributes before the connector sees it:
 
-## Troubleshooting Common Issues
+```yaml
+processors:
+  transform/logs:
+    log_statements:
+      - context: log
+        statements:
+          - merge_maps(attributes, ParseJSON(body), "upsert")
 
-**Unexpected Metric Values**: Verify that all input pipelines are sending metrics with consistent dimensions. Inconsistent dimension names prevent proper aggregation.
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [transform/logs]
+      exporters: [sum]
+```
 
-**Memory Growth**: Check cardinality by monitoring aggregation groups. Reduce dimensions in group_by or filter metrics before aggregation.
+## Summing Values from Metric Data Points
 
-**Missing Metrics**: Ensure metric names match exactly in the connector configuration. The Sum connector only aggregates explicitly configured metrics.
+To sum a numeric attribute across existing metric data points, use `datapoints:`:
 
-**Timing Issues**: If metrics from different sources arrive at very different times, increase the timeout to ensure they're aggregated together.
+```yaml
+connectors:
+  sum:
+    datapoints:
+      request.bytes.total:
+        source_attribute: http.request.body.size
+        attributes:
+          - key: http.route
+          - key: http.method
+```
+
+This reads `http.request.body.size` off every data point flowing through the connector and emits `request.bytes.total`, with one series per `(http.route, http.method)` pair.
+
+## Required Settings
+
+- **Telemetry type** — one of `spans`, `spanevents`, `datapoints`, or `logs`. Use `datapoints` for metric inputs and `spans` / `spanevents` for trace inputs.
+- **Output metric name** — the name of the metric the connector will emit.
+- **`source_attribute`** — the attribute whose numeric value is summed. Values are coerced to float; non-numeric strings are dropped.
+
+## Optional Settings
+
+- **`conditions`** — a list of [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/LANGUAGE.md) expressions. Conditions are ORed: if any one matches, the item's value is included in the sum. Use this to filter out items you don't want counted.
+- **`attributes`** — a list of attributes to group by. Each unique combination of values produces its own data point on the output metric.
+  - `key` (required) — attribute name to read off the input item.
+  - `default_value` (optional) — string, int, or float fallback when the attribute is missing.
+
+## Multiple Output Metrics From One Connector
+
+One connector instance can define several output metrics, even across telemetry types:
+
+```yaml
+connectors:
+  sum:
+    logs:
+      checkout.total:
+        source_attribute: total.payment
+        attributes:
+          - key: payment.processor
+      refund.total:
+        source_attribute: refund.amount
+        conditions:
+          - attributes["event.name"] == "refund_processed"
+    spans:
+      db.rows.affected.total:
+        source_attribute: db.rows_affected
+        attributes:
+          - key: db.system
+          - key: db.operation
+```
+
+Both pipelines (logs and traces) feed the same `sum` connector, and the resulting metrics are emitted on its metrics output.
+
+## Verifying What the Connector Emits
+
+Pair the connector with the `debug` exporter while you are wiring things up:
+
+```yaml
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics/sum:
+      receivers: [sum]
+      exporters: [debug, prometheusremotewrite]
+```
+
+You will see each summed datapoint printed with its attribute set, which makes it obvious when `source_attribute` is misspelled or when values are silently being dropped because they aren't numeric.
+
+## Troubleshooting
+
+**No metric appears.** Check that the output pipeline (`metrics/sum` in the examples) has the `sum` connector listed as its receiver, and that the input pipeline lists `sum` as an exporter. Both halves are required.
+
+**Metric exists but is always zero or missing data points.** The `source_attribute` is probably not present on the items reaching the connector, or its value is a non-numeric string. Non-numeric values are dropped, not coerced to zero. Use the `debug` exporter on the input pipeline to confirm the attribute is actually there.
+
+**Too many time series.** Every unique combination of values under `attributes:` becomes a separate series. Remove high-cardinality keys (request IDs, user IDs, instance IDs) from that list, or filter them out upstream with the `transform` processor.
+
+**Conditions don't filter as expected.** Remember that `conditions` are ORed, not ANDed. If you need AND semantics, combine predicates inside a single OTTL expression with `and`.
 
 ## Related Resources
-
-For more information about OpenTelemetry connectors and metrics processing:
 
 - [How to Use Connectors to Link Traces and Metrics Pipelines](https://oneuptime.com/blog/post/2026-02-06-connectors-link-traces-metrics-pipelines-opentelemetry/view)
 - [How to Configure the Round Robin Connector in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-round-robin-connector-opentelemetry-collector/view)
 - [How to Configure the Signal to Metrics Connector in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-signal-to-metrics-connector-opentelemetry-collector/view)
+- [Sum connector source on GitHub](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/connector/sumconnector)
 
-The Sum connector provides powerful aggregation capabilities that reduce metric cardinality, create meaningful rollups, and provide multiple views of your telemetry data at different granularities.
+The Sum connector is a focused tool: it turns a numeric attribute on your telemetry into a metric time series, optionally split by other attributes. Keep the configuration shape (`<telemetry-type>` → `<metric-name>` → `source_attribute`) in mind and it is straightforward to wire up.
