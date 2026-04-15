@@ -8,6 +8,8 @@ Description: Learn when and how to use the Lazy database engine in ClickHouse fo
 
 ---
 
+**Note:** The Lazy database engine was removed from ClickHouse in version 25.1 (January 2026). It has been replaced by the `lazy_load_tables` setting available on the Atomic database engine (e.g., `CREATE DATABASE my_db ENGINE = Atomic SETTINGS lazy_load_tables = 1`). The information below applies to older ClickHouse versions only.
+
 The Lazy database engine is a specialized ClickHouse database engine designed for scenarios where you have many small tables that are rarely queried. Instead of keeping table metadata and data structures loaded in memory at all times, Lazy unloads tables from RAM after a configurable period of inactivity and reloads them on demand. This is particularly useful for multi-tenant setups or archival databases.
 
 ## When to Use Lazy
@@ -24,10 +26,10 @@ Note: Lazy only supports Log-family engines (Log, TinyLog, StripeLog). It does N
 
 ```sql
 CREATE DATABASE archive_logs
-ENGINE = Lazy(expiration_time_seconds = 3600);
+ENGINE = Lazy(3600);
 ```
 
-The `expiration_time_seconds` parameter (required) defines how long a table stays in memory after its last access. After 3600 seconds (1 hour) of inactivity, the table is unloaded from RAM.
+The parameter (required) defines the expiration time in seconds — how long a table stays in memory after its last access. After 3600 seconds (1 hour) of inactivity, the table is unloaded from RAM.
 
 ## Creating Tables Inside a Lazy Database
 
