@@ -12,7 +12,7 @@ The Set and Join table engines in ClickHouse are special-purpose in-memory engin
 
 ## The Set Table Engine
 
-The Set engine stores a set of unique values in memory. It is designed for use in the right-hand side of `IN` expressions. Once populated, you can use the table in `WHERE col IN (SELECT col FROM set_table)` clauses with near-zero lookup cost.
+The Set engine stores a set of unique values in memory. It is designed for use in the right-hand side of `IN` expressions. Once populated, you can use the table in `WHERE col IN set_table` clauses with near-zero lookup cost. Note that you cannot `SELECT` from a Set table directly - it can only be used on the right side of `IN`.
 
 ```sql
 CREATE TABLE allowed_user_ids
@@ -71,7 +71,7 @@ The first argument to `Join(strictness, type, keys)` defines the join behavior:
 Like Set, the Join engine persists its hash table to disk but loads it into memory on startup. Key limitations:
 
 - The engine is not suitable as a general analytics table
-- You cannot use `ALTER TABLE ... UPDATE` or `DELETE` - you must truncate and reload
+- You cannot use `ALTER TABLE ... UPDATE` - use `ALTER TABLE ... DELETE` for row removal, or truncate and reload for bulk changes
 - Memory usage can be large for wide tables with many rows
 
 ```sql
@@ -85,7 +85,7 @@ INSERT INTO user_profiles SELECT user_id, username, country FROM source_table;
 | Feature | Set | Join |
 |---|---|---|
 | Use case | IN expressions | JOIN operations |
-| Key type | Single column | One or more columns |
+| Key type | One or more columns | One or more columns |
 | Returns | Boolean membership | Row data |
 | Memory | Low (just keys) | Higher (keys + values) |
 
