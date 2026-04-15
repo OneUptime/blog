@@ -14,10 +14,11 @@ The Dapr Dashboard provides a web UI to view components, configurations, applica
 
 ## Default Dashboard Installation
 
-The Dapr Dashboard is installed as part of the Dapr Helm chart:
+Since Dapr 1.11, the Dapr Dashboard is installed via its own Helm chart, separate from the core Dapr runtime:
 
 ```bash
-helm install dapr dapr/dapr --namespace dapr-system
+helm repo add dapr https://dapr.github.io/helm-charts/
+helm install dapr-dashboard dapr/dapr-dashboard --namespace dapr-system
 ```
 
 By default, the dashboard is only reachable via `kubectl port-forward`:
@@ -95,8 +96,8 @@ spec:
 The Dapr Dashboard service account needs read access to Dapr resources. Scope its permissions:
 
 ```bash
-kubectl get clusterrolebinding -n dapr-system | grep dashboard
-kubectl describe clusterrole dapr-dashboard -n dapr-system
+kubectl get clusterrolebinding | grep dashboard
+kubectl describe clusterrole dapr-dashboard
 ```
 
 If the dashboard ClusterRole is too permissive, replace it with a narrower Role scoped to specific namespaces:
@@ -118,12 +119,10 @@ rules:
 
 ## Disabling the Dashboard in Production
 
-If your team does not need the web UI, disable dashboard installation entirely:
+If your team does not need the web UI, simply do not install the `dapr-dashboard` Helm chart. If it is already installed, remove it:
 
 ```bash
-helm install dapr dapr/dapr \
-  --namespace dapr-system \
-  --set dapr_dashboard.enabled=false
+helm uninstall dapr-dashboard --namespace dapr-system
 ```
 
 ## Summary
