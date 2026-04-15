@@ -107,7 +107,7 @@ SELECT dotProduct((1, 2, 3), (4, 5, 6)) AS result;
 Several ClickHouse aggregate and analysis functions return tuples, making it important to understand element access.
 
 ```sql
--- minMaxIf returns a Tuple(min, max)
+-- minMax returns a Tuple(min, max)
 SELECT
     sensor_id,
     minMax(range_vals.1) AS reading_min_max
