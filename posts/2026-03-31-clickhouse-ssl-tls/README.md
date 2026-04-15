@@ -163,15 +163,27 @@ mTLS requires every client to present a certificate signed by a trusted CA. This
 </clickhouse>
 ```
 
-Connecting with a client certificate:
+Connecting with a client certificate requires configuring the client's OpenSSL settings. Create or edit the client config file at `/etc/clickhouse-client/config.xml`:
+
+```xml
+<config>
+    <openSSL>
+        <client>
+            <certificateFile>/path/to/client.crt</certificateFile>
+            <privateKeyFile>/path/to/client.key</privateKeyFile>
+            <caConfig>/path/to/ca.crt</caConfig>
+        </client>
+    </openSSL>
+</config>
+```
+
+Then connect normally with TLS enabled:
 
 ```bash
 clickhouse-client \
     --host clickhouse.internal \
     --port 9440 \
     --secure \
-    --certificate /path/to/client.crt \
-    --privatekey /path/to/client.key \
     --query "SELECT 1"
 ```
 
