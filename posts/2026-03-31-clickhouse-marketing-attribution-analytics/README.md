@@ -50,25 +50,28 @@ ORDER BY (user_id, conversion_time);
 ```sql
 -- Last channel touched before conversion
 SELECT
-    t.channel,
-    t.campaign,
+    channel,
+    campaign,
     count() AS conversions,
-    sum(c.revenue) AS attributed_revenue
-FROM conversions AS c
-JOIN (
+    sum(revenue) AS attributed_revenue
+FROM (
     SELECT
-        user_id,
-        channel,
-        campaign,
-        event_time,
-        row_number() OVER (PARTITION BY user_id ORDER BY event_time DESC) AS rn
-    FROM marketing_touchpoints
-    WHERE event_time >= today() - 90
-) AS t ON c.user_id = t.user_id
-    AND t.event_time <= c.conversion_time
-    AND t.rn = 1
-WHERE c.conversion_time >= today() - 90
-GROUP BY t.channel, t.campaign
+        t.channel,
+        t.campaign,
+        c.revenue,
+        row_number() OVER (
+            PARTITION BY c.user_id, c.conversion_time
+            ORDER BY t.event_time DESC
+        ) AS rn
+    FROM conversions AS c
+    JOIN marketing_touchpoints AS t
+        ON c.user_id = t.user_id
+        AND t.event_time <= c.conversion_time
+    WHERE c.conversion_time >= today() - 90
+      AND t.event_time >= today() - 90
+)
+WHERE rn = 1
+GROUP BY channel, campaign
 ORDER BY attributed_revenue DESC;
 ```
 
