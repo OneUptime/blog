@@ -21,9 +21,9 @@ ClickHouse has two distinct concurrency knobs you need to understand: the number
 </clickhouse>
 ```
 
-The default is `1024`. Each idle connection holds a small amount of memory (a few KB). Raise this if you see `Too many simultaneous connections` errors in the ClickHouse log.
+The default is `4096`. Each idle connection holds a small amount of memory (a few KB). Raise this if you see `Too many simultaneous connections` errors in the ClickHouse log.
 
-Check current connections:
+Check currently running queries:
 
 ```sql
 SELECT count() FROM system.processes;
@@ -116,19 +116,16 @@ SELECT metric, value
 FROM system.metrics
 WHERE metric IN (
     'GlobalThread',
-    'GlobalThreadActive',
-    'LocalThread',
-    'LocalThreadActive'
+    'GlobalThreadActive'
 );
 ```
 
 ```sql
--- Historical thread exhaustion events
+-- Historical thread usage over time
 SELECT
     toStartOfMinute(event_time) AS minute,
-    sum(value) AS thread_count
+    avg(CurrentMetric_GlobalThread) AS thread_count
 FROM system.metric_log
-WHERE metric = 'GlobalThread'
 GROUP BY minute
 ORDER BY minute DESC
 LIMIT 30;
@@ -140,12 +137,14 @@ If you are using a connection pool (e.g. from Python's `clickhouse-driver` or `c
 
 ```python
 from clickhouse_connect import get_client
+from urllib3 import PoolManager
+
+pool = PoolManager(num_pools=10, maxsize=50)  # per application instance
 
 client = get_client(
     host="clickhouse.internal",
     port=8123,
-    pool_size=50,       # per application instance
-    max_retries=3,
+    pool_mgr=pool,
 )
 ```
 
