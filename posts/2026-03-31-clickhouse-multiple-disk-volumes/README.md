@@ -75,14 +75,14 @@ graph TD
                 <volumes>
                     <hot>
                         <disk>nvme</disk>
-                        <!-- Move to next volume when disk is 90% full -->
+                        <!-- Parts larger than 1GB are written to the next volume -->
                         <max_data_part_size_bytes>1073741824</max_data_part_size_bytes>
                     </hot>
                     <warm>
                         <disk>hdd</disk>
                     </warm>
                 </volumes>
-                <!-- Move to next volume when this fraction of space is used -->
+                <!-- Move parts to next volume when available free space ratio drops below this factor -->
                 <move_factor>0.1</move_factor>
             </hot_to_warm>
         </policies>
@@ -138,7 +138,7 @@ Spread data across multiple disks in a single volume for combined capacity:
 </volumes>
 ```
 
-Parts are distributed across disks using the `least_used` strategy by default.
+Parts are distributed across disks using the `round_robin` strategy by default.
 
 ## Viewing Disk Usage
 
