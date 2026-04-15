@@ -15,12 +15,7 @@ The ClickHouse ODBC driver allows any application that supports the Open Databas
 ### Linux (Debian/Ubuntu)
 
 ```bash
-# Add the ClickHouse repository
-sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
-curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
-    sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
-
-# Install unixODBC and the ClickHouse ODBC driver
+# Install unixODBC
 sudo apt-get install -y unixodbc unixodbc-dev
 
 # Download the ClickHouse ODBC driver
@@ -53,14 +48,14 @@ Edit `/etc/odbcinst.ini` (system-wide) or `~/.odbcinst.ini` (user-specific):
 ```text
 [ClickHouse ODBC Driver (ANSI)]
 Description = ClickHouse ODBC Driver (ANSI)
-Driver      = /usr/local/lib/libclickhouseodbca.so
-Setup       = /usr/local/lib/libclickhouseodbca.so
+Driver      = /usr/local/lib/libclickhouseodbc.so
+Setup       = /usr/local/lib/libclickhouseodbc.so
 UsageCount  = 1
 
 [ClickHouse ODBC Driver (Unicode)]
 Description = ClickHouse ODBC Driver (Unicode)
-Driver      = /usr/local/lib/libclickhouseodbc.so
-Setup       = /usr/local/lib/libclickhouseodbc.so
+Driver      = /usr/local/lib/libclickhouseodbcw.so
+Setup       = /usr/local/lib/libclickhouseodbcw.so
 UsageCount  = 1
 ```
 
@@ -328,7 +323,7 @@ SSLMode=disable;
 - The ODBC driver uses the HTTP interface (port 8123), not the native protocol port (9000). Firewall rules must allow port 8123.
 - On Linux, the `unixODBC` library and headers must be present before compiling the driver or any ODBC-dependent application.
 - ClickHouse does not support ODBC transactions. Applications that call `SQLEndTran` will receive success return codes but no actual commit or rollback occurs.
-- The ANSI driver (`libclickhouseodbca.so`) handles ASCII data. Use the Unicode driver (`libclickhouseodbc.so`) for UTF-8 data including non-ASCII characters in strings.
+- The ANSI driver (`libclickhouseodbc.so`) handles ASCII data. Use the Unicode driver (`libclickhouseodbcw.so`) for UTF-8 data including non-ASCII characters in strings.
 
 ## Summary
 
