@@ -20,7 +20,7 @@ stochasticLogisticRegression(
     l2_regularization,
     mini_batch_size,
     gradient_descent_strategy
-)(feature1, feature2, ..., label)
+)(label, feature1, feature2, ...)
 ```
 
 The result is an opaque model state compatible with `AggregatingMergeTree` and `evalMLMethod()`.
@@ -35,8 +35,8 @@ CREATE TABLE failure_classifier
     service     String,
     weights     AggregateFunction(
                     stochasticLogisticRegression(0.01, 0.001, 64, 'SGD'),
-                    Float64, Float64, Float64,  -- features
-                    UInt8                       -- label (0 or 1)
+                    UInt8,                      -- label (0 or 1)
+                    Float64, Float64, Float64   -- features
                 )
 )
 ENGINE = AggregatingMergeTree()
@@ -54,10 +54,10 @@ SELECT
     toDate(timestamp)   AS model_date,
     service_name        AS service,
     stochasticLogisticRegressionState(0.01, 0.001, 64, 'SGD')(
+        toUInt8(status_code >= 500),    -- label: 1 = failure, 0 = success
         toFloat64(cpu_percent),
         toFloat64(concurrent_requests),
-        toFloat64(response_time_ms),
-        toUInt8(status_code >= 500)     -- label: 1 = failure, 0 = success
+        toFloat64(response_time_ms)
     ) AS weights
 FROM request_logs
 JOIN host_metrics USING (host_name)
@@ -73,10 +73,10 @@ SELECT
     toDate(timestamp)   AS model_date,
     service_name        AS service,
     stochasticLogisticRegressionState(0.01, 0.001, 64, 'Momentum')(
+        toUInt8(status_code >= 500),
         toFloat64(cpu_percent),
         toFloat64(concurrent_requests),
-        toFloat64(response_time_ms),
-        toUInt8(status_code >= 500)
+        toFloat64(response_time_ms)
     ) AS weights
 FROM request_logs
 JOIN host_metrics USING (host_name)
@@ -219,10 +219,10 @@ SELECT
     toDate(timestamp)  AS model_date,
     service_name       AS service,
     stochasticLogisticRegressionState(0.005, 0.0001, 128, 'Nesterov')(
+        toUInt8(status_code >= 500),
         toFloat64(cpu_percent),
         toFloat64(concurrent_requests),
-        toFloat64(response_time_ms),
-        toUInt8(status_code >= 500)
+        toFloat64(response_time_ms)
     ) AS weights
 FROM request_logs
 JOIN host_metrics USING (host_name)
