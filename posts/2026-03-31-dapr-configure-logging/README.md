@@ -18,7 +18,6 @@ The Dapr sidecar accepts logging configuration via command-line flags and Kubern
 |--------|-----------|---------|
 | Log level | `dapr.io/log-level` | `info` |
 | JSON format | `dapr.io/log-as-json` | `false` |
-| Max concurrency | - | unlimited |
 
 ## Setting Log Level via Annotation
 
@@ -37,7 +36,7 @@ spec:
         dapr.io/log-as-json: "true"
 ```
 
-Valid log levels from most to least verbose: `debug`, `info`, `warn`, `error`, `fatal`.
+Valid log levels from most to least verbose: `debug`, `info`, `warn`, `error`.
 
 ## Enabling JSON Structured Logging
 
@@ -52,8 +51,8 @@ metadata:
 With JSON enabled, each log line is a JSON object:
 
 ```json
-{"time":"2026-03-31T10:00:00.000Z","level":"info","msg":"starting Dapr Runtime","ver":"1.13.0","os":"linux","arch":"amd64"}
-{"time":"2026-03-31T10:00:01.000Z","level":"info","msg":"component loaded","component":"statestore","type":"state.redis"}
+{"time":"2026-03-31T10:00:00.000Z","level":"info","type":"log","msg":"starting Dapr Runtime","ver":"1.13.0","scope":"dapr.runtime","instance":"order-service"}
+{"time":"2026-03-31T10:00:01.000Z","level":"info","type":"log","msg":"component loaded. name: statestore, type: state.redis","ver":"1.13.0","scope":"dapr.runtime","instance":"order-service"}
 ```
 
 ## Global Default via Helm
@@ -64,7 +63,9 @@ Set logging defaults for all Dapr sidecars at installation time:
 helm install dapr dapr/dapr \
   --namespace dapr-system \
   --set global.logAsJson=true \
-  --set global.logLevel=info
+  --set dapr_sidecar_injector.logLevel=info \
+  --set dapr_operator.logLevel=info \
+  --set dapr_placement.logLevel=info
 ```
 
 Or update an existing installation:
@@ -78,15 +79,25 @@ helm upgrade dapr dapr/dapr \
 
 ## Configuring Log Output in Self-Hosted Mode
 
-When running Dapr outside Kubernetes, pass flags directly:
+When running Dapr outside Kubernetes, pass the log level flag directly:
 
 ```bash
 dapr run \
   --app-id order-service \
   --app-port 8080 \
   --log-level info \
-  --log-as-json \
   -- node app.js
+```
+
+To enable JSON logging in self-hosted mode, run `daprd` directly instead of using `dapr run`:
+
+```bash
+daprd \
+  --app-id order-service \
+  --app-port 8080 \
+  --log-level info \
+  --log-as-json \
+  --app-protocol http
 ```
 
 ## Viewing Sidecar Logs
