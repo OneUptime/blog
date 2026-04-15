@@ -10,7 +10,7 @@ Description: Learn how to process JSON and NDJSON files with clickhouse-local us
 
 ## JSON Processing with clickhouse-local
 
-`clickhouse-local` supports multiple JSON formats natively: `JSONEachRow` (newline-delimited JSON), `JSON` (JSON array), and `JSONObjectEachRow`. This makes it powerful for processing API dumps, log files, and event streams.
+`clickhouse-local` supports multiple JSON formats natively: `JSONEachRow` (newline-delimited JSON), `JSONCompactEachRow` (compact row arrays), and `JSONObjectEachRow` (keyed object rows). This makes it powerful for processing API dumps, log files, and event streams.
 
 ## Reading NDJSON Files
 
@@ -69,12 +69,8 @@ LIMIT 10
 clickhouse local --query "
 SELECT
     user_id,
-    tag
-FROM (
-    SELECT user_id, JSONExtractArrayRaw(raw, 'tags') AS tags_array
-    FROM file('users.ndjson', JSONEachRow)
-),
-LATERAL (SELECT arrayJoin(tags_array) AS tag)
+    arrayJoin(JSONExtractArrayRaw(raw, 'tags')) AS tag
+FROM file('users.ndjson', JSONEachRow)
 LIMIT 20
 "
 ```
@@ -89,12 +85,12 @@ clickhouse local \
 
 ## Processing JSON Array Files
 
-For files that contain a top-level JSON array:
+For files that contain a top-level JSON array, `JSONEachRow` handles them automatically:
 
 ```bash
 clickhouse local --query "
 SELECT count(), avg(price)
-FROM file('products.json', JSONArrayEachRow)
+FROM file('products.json', JSONEachRow)
 WHERE category = 'Electronics'
 "
 ```
@@ -116,4 +112,4 @@ ORDER BY hour
 
 ## Summary
 
-`clickhouse-local` processes JSON and NDJSON files via `JSONEachRow`, `JSONArrayEachRow`, and `JSONObjectEachRow` formats. Nested fields can be extracted with `JSONExtractString`, `JSONExtractInt`, and related functions, enabling rich analytics on raw JSON without any import step.
+`clickhouse-local` processes JSON and NDJSON files via `JSONEachRow`, `JSONCompactEachRow`, and `JSONObjectEachRow` formats. Nested fields can be extracted with `JSONExtractString`, `JSONExtractInt`, and related functions, enabling rich analytics on raw JSON without any import step.
