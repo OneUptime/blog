@@ -104,8 +104,8 @@ FROM (
             sequence_num
         FROM player_actions
         WHERE date = today()
-          AND sequence_num IN (
-              SELECT sequence_num - 1
+          AND (player_id, session_id, sequence_num) IN (
+              SELECT player_id, session_id, sequence_num - 1
               FROM player_actions
               WHERE action_type = 'death' AND date = today()
           )
