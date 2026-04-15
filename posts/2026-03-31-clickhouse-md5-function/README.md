@@ -20,7 +20,7 @@ SELECT MD5('hello world');
 SELECT hex(MD5('hello world')) AS md5_hex;
 ```
 
-The output of `hex(MD5(...))` is the same 32-character lowercase hexadecimal string you would get from command-line tools like `md5sum`.
+The output of `hex(MD5(...))` is a 32-character uppercase hexadecimal string. Most command-line tools like `md5sum` produce lowercase hex, so use `lower(hex(MD5(...)))` if you need a case-matched comparison.
 
 ## Data Fingerprinting
 
@@ -42,11 +42,12 @@ Many older systems use MD5 checksums for data integrity. When ingesting data fro
 
 ```sql
 -- Verify file checksums against expected values
+-- Use lower() because most external tools store checksums in lowercase
 SELECT
     file_name,
     expected_md5,
-    hex(MD5(file_content)) AS computed_md5,
-    expected_md5 = hex(MD5(file_content)) AS checksum_valid
+    lower(hex(MD5(file_content))) AS computed_md5,
+    expected_md5 = lower(hex(MD5(file_content))) AS checksum_valid
 FROM file_uploads
 LIMIT 20;
 ```
