@@ -15,9 +15,9 @@ Error rate alerting is fundamental to site reliability engineering. Dapr's Prome
 Dapr tracks success and failure counts for each operation type:
 
 - `dapr_http_server_request_count` - HTTP request counts with status codes
-- `dapr_service_invocation_req_sent_total` - Service invocation by status
-- `dapr_state_get_total` / `dapr_state_set_total` - State store ops with success labels
-- `dapr_pubsub_publish_count` - Pub/sub publish attempts with success label
+- `dapr_runtime_service_invocation_req_sent_total` - Service invocation by status
+- `dapr_component_state_count` - State store ops with `operation` and `success` labels
+- `dapr_component_pubsub_egress_count` - Pub/sub publish attempts with success label
 
 ## Core Error Rate Alerting Rules
 
@@ -50,22 +50,22 @@ spec:
 
         - alert: DaprStateStoreWriteErrorRate
           expr: |
-            rate(dapr_state_set_total{success="false"}[5m])
+            rate(dapr_component_state_count{operation="set",success="false"}[5m])
             /
-            rate(dapr_state_set_total[5m])
+            rate(dapr_component_state_count{operation="set"}[5m])
             > 0.01
           for: 3m
           labels:
             severity: warning
           annotations:
             summary: "Dapr state store write errors elevated"
-            description: "State store {{ $labels.storeName }} write error rate: {{ $value | humanizePercentage }}."
+            description: "State store {{ $labels.component }} write error rate: {{ $value | humanizePercentage }}."
 
         - alert: DaprPubSubDeliveryErrorRate
           expr: |
-            rate(dapr_pubsub_publish_count{success="false"}[5m])
+            rate(dapr_component_pubsub_egress_count{success="false"}[5m])
             /
-            rate(dapr_pubsub_publish_count[5m])
+            rate(dapr_component_pubsub_egress_count[5m])
             > 0.02
           for: 2m
           labels:
@@ -106,28 +106,18 @@ Multi-window burn rate alerts catch both fast and slow error rate degradation:
             page: "true"
           annotations:
             summary: "Dapr fast burn rate - SLO budget exhausting rapidly"
-            description: "App {{ $labels.app_id }} is burning SLO error budget 14x faster than normal."
+            description: "App {{ $labels.app_id }} is burning SLO error budget 14.4x faster than normal."
 ```
 
 ## Testing Error Rate Alerts
 
-Inject errors by temporarily returning HTTP 500 from a service:
+Generate 5xx errors by invoking a non-existent Dapr app through the sidecar:
 
 ```bash
-# Apply a fault injection config via Dapr resiliency
-kubectl apply -f - <<EOF
-apiVersion: dapr.io/v1alpha1
-kind: Resiliency
-metadata:
-  name: test-fault
-spec:
-  policies:
-    circuitBreakers:
-      simpleCB:
-        maxRequests: 1
-        timeout: 10s
-        trip: consecutiveFailures > 1
-EOF
+# Send requests to a non-existent app to generate 500 errors in Dapr metrics
+for i in $(seq 1 100); do
+  curl -s -o /dev/null http://localhost:3500/v1.0/invoke/nonexistent-app/method/test
+done
 ```
 
 Query error rates directly in Prometheus:
