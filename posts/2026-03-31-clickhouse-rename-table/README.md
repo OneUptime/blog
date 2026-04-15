@@ -37,7 +37,7 @@ The target database must already exist. No data files are relocated - only the t
 
 ## Renaming Multiple Tables in One Statement
 
-ClickHouse allows a comma-separated list of renames in a single RENAME TABLE. All renames are applied atomically:
+ClickHouse allows a comma-separated list of renames in a single RENAME TABLE:
 
 ```sql
 RENAME TABLE
@@ -45,11 +45,11 @@ RENAME TABLE
     analytics.events_v2 TO analytics.events;
 ```
 
-This is equivalent to swapping the active table and an archive in one step. Because the entire list is atomic, there is no window where a query would fail to find either table.
+Note that multi-table renames in one statement are **not atomic**. The operation may be partially executed, and other sessions may briefly see a state where one rename has completed but the other has not. If you need a truly atomic swap of two tables, use the EXCHANGE TABLES statement instead (covered below).
 
 ## Atomic Swap Pattern
 
-A common pattern is the "cut-over" or atomic swap: you build a new version of a table under a temporary name, then swap it into production without any downtime.
+A common pattern is the "cut-over" swap: you build a new version of a table under a temporary name, then swap it into production.
 
 ```sql
 -- Step 1: build fresh data in a shadow table
@@ -58,16 +58,22 @@ CREATE TABLE analytics.events_new AS analytics.events;
 INSERT INTO analytics.events_new
 SELECT * FROM raw.events_raw;
 
--- Step 2: rename old table to a backup name, new table to production name
+-- Step 2: atomically swap the old and new tables
+EXCHANGE TABLES analytics.events AND analytics.events_new;
+
+-- Step 3: drop the old data once satisfied
+DROP TABLE IF EXISTS analytics.events_new;
+```
+
+EXCHANGE TABLES swaps two existing tables in a single atomic operation, so there is no window where a query would fail to find the production table. Note that EXCHANGE TABLES requires the Atomic database engine (the default since ClickHouse 20.5).
+
+If you are not using the Atomic database engine, you can approximate the swap with a multi-table RENAME, but be aware that this is not atomic and other sessions may briefly encounter a missing table:
+
+```sql
 RENAME TABLE
     analytics.events     TO analytics.events_backup,
     analytics.events_new TO analytics.events;
-
--- Step 3: drop the backup once satisfied
-DROP TABLE IF EXISTS analytics.events_backup;
 ```
-
-For a true single-statement atomic swap where you also want to preserve the old data under its original name, consider EXCHANGE TABLES (covered in a separate post), which swaps two existing tables in one operation.
 
 ## ON CLUSTER
 
@@ -92,4 +98,4 @@ EXISTS TABLE analytics.user_events; -- 1
 
 ## Summary
 
-RENAME TABLE in ClickHouse is a purely metadata operation that completes instantly regardless of table size. Multi-table renames in a single statement are atomic, making them ideal for zero-downtime cut-overs. Use a cross-database rename to move a table between schemas without touching data on disk.
+RENAME TABLE in ClickHouse is a metadata operation that completes instantly regardless of table size. Multi-table renames in a single statement are convenient but not atomic — for truly atomic swaps, use EXCHANGE TABLES. Use a cross-database rename to move a table between schemas without touching data on disk.
