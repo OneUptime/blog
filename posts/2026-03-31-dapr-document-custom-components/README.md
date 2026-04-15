@@ -63,24 +63,49 @@ The component supports the following authentication methods:
 
 ## Generating Metadata Documentation from Code
 
-Use Go struct tags to auto-generate metadata docs:
+Dapr components use Go structs with `mapstructure` tags for runtime metadata parsing:
 
 ```go
 type MyStoreMetadata struct {
-    ConnectionString  string `mapstructure:"connectionString" mdonly:"false" mdesc:"PostgreSQL connection string"`
-    CompressionEnabled bool  `mapstructure:"compressionEnabled" mdonly:"false" mdesc:"Enable LZ4 value compression. Default: false"`
-    MaxConnections    int    `mapstructure:"maxConnections" mdonly:"false" mdesc:"Connection pool size. Default: 5"`
-    TTLInSeconds      int    `mapstructure:"ttlInSeconds" mdonly:"false" mdesc:"Default TTL seconds. 0 = no expiry"`
+    ConnectionString   string `mapstructure:"connectionString"`
+    CompressionEnabled bool   `mapstructure:"compressionEnabled"`
+    MaxConnections     int    `mapstructure:"maxConnections"`
+    TTLInSeconds       int    `mapstructure:"ttlInSeconds"`
 }
 ```
 
-Generate the metadata table:
+To generate documentation, create a `metadata.yaml` file alongside your component. This is the standard approach used by all official Dapr components in the `components-contrib` repository:
 
-```bash
-# Using the Dapr metadata documentation generator
-go run github.com/dapr/components-contrib/tools/generate-docs \
-  --component state.mystore \
-  --output ./docs/state/mystore.md
+```yaml
+schemaVersion: v1
+type: state
+name: mystore
+version: v1
+status: alpha
+metadata:
+  - name: connectionString
+    required: true
+    description: PostgreSQL connection string
+    example: "host=localhost port=5432 user=dapr password=secret dbname=appstate"
+    type: string
+  - name: compressionEnabled
+    required: false
+    description: Enable LZ4 compression for stored values
+    default: "false"
+    example: "true"
+    type: bool
+  - name: maxConnections
+    required: false
+    description: Connection pool size
+    default: "5"
+    example: "10"
+    type: number
+  - name: ttlInSeconds
+    required: false
+    description: Default TTL for keys in seconds. 0 means no expiry.
+    default: "0"
+    example: "3600"
+    type: number
 ```
 
 ## API Endpoint Documentation
@@ -125,4 +150,4 @@ Always include a troubleshooting table:
 
 ## Summary
 
-Documenting custom Dapr components to the same standard as official components reduces onboarding time and support requests. A well-structured README with a metadata spec table, authentication options, and a troubleshooting guide makes the component self-service. Auto-generating metadata documentation from Go struct tags keeps docs synchronized with implementation and reduces the chance of documentation drift.
+Documenting custom Dapr components to the same standard as official components reduces onboarding time and support requests. A well-structured README with a metadata spec table, authentication options, and a troubleshooting guide makes the component self-service. Maintaining a `metadata.yaml` file alongside your component keeps docs synchronized with the official Dapr component documentation pipeline and reduces the chance of documentation drift.
