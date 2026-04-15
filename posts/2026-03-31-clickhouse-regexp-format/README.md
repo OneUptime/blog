@@ -12,7 +12,7 @@ The `Regexp` format in ClickHouse lets you ingest unstructured or semi-structure
 
 ## How the Regexp Format Works
 
-When you specify `FORMAT Regexp`, ClickHouse applies your regular expression to each line of input. Each named capture group `(?P<name>...)` is matched to a column by name.
+When you specify `FORMAT Regexp`, ClickHouse applies your regular expression to each line of input. Each captured group is matched to a column by position: the first group maps to the first column, the second group to the second column, and so on. You can use named capture groups `(?P<name>...)` for readability, but ClickHouse maps them by order, not by name.
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ This is helpful when log files contain header lines or blank lines intermixed wi
 
 ## Using Escaping Rules
 
-The `format_regexp_escaping_rule` setting controls how captured values are decoded. Options include `Raw`, `CSV`, `JSON`, `Escaped`, `Quoted`, and `XML`.
+The `format_regexp_escaping_rule` setting controls how captured values are decoded. Options include `Raw`, `CSV`, `JSON`, `Escaped`, and `Quoted`.
 
 ```sql
 SET format_regexp_escaping_rule = 'Escaped';
@@ -142,4 +142,4 @@ SELECT match(
 
 ## Summary
 
-The `Regexp` format is a flexible tool for ingesting text that does not fit standard delimiters. Key takeaways are: set `format_regexp` with named capture groups matching column names, use `format_regexp_skip_unmatched` to tolerate imperfect input, and validate your pattern with `match()` before committing to bulk loads.
+The `Regexp` format is a flexible tool for ingesting text that does not fit standard delimiters. Key takeaways are: set `format_regexp` with capture groups ordered to match your column definitions, use `format_regexp_skip_unmatched` to tolerate imperfect input, and validate your pattern with `match()` before committing to bulk loads.
