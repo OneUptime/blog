@@ -22,7 +22,7 @@ RowBinary serializes each column value in its binary representation:
 - `UInt8/16/32/64`: little-endian unsigned integers
 - `Int8/16/32/64`: little-endian signed integers
 - `Float32/64`: IEEE 754 little-endian
-- `String`: varint length followed by UTF-8 bytes
+- `String`: varint length followed by raw bytes
 - `DateTime`: UInt32 Unix timestamp
 
 ## Exporting with RowBinary
@@ -85,12 +85,14 @@ def read_varint(buf):
 def read_row(buf):
     # UInt64
     row_id = struct.unpack('<Q', buf.read(8))[0]
+    # DateTime (UInt32)
+    ts = struct.unpack('<I', buf.read(4))[0]
     # String
     length = read_varint(buf)
     event_type = buf.read(length).decode('utf-8')
     # Float64
     value = struct.unpack('<d', buf.read(8))[0]
-    return row_id, event_type, value
+    return row_id, ts, event_type, value
 
 with open('events.rowbin', 'rb') as f:
     buf = io.BufferedReader(f)
