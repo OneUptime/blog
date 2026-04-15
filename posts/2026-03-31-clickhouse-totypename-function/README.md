@@ -20,7 +20,7 @@ SELECT toTypeName(3.14)       AS float_type;     -- 'Float64'
 SELECT toTypeName('hello')    AS str_type;       -- 'String'
 SELECT toTypeName(today())    AS date_type;      -- 'Date'
 SELECT toTypeName(now())      AS datetime_type;  -- 'DateTime'
-SELECT toTypeName(NULL)       AS null_type;      -- 'Null'
+SELECT toTypeName(NULL)       AS null_type;      -- 'Nullable(Nothing)'
 ```
 
 ## Inspecting Column Types at Query Time
