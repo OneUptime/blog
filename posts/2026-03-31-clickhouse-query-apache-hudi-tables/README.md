@@ -39,19 +39,16 @@ SELECT
     count() AS event_count,
     uniq(user_id) AS unique_users
 FROM events_hudi
-WHERE toDate(_hoodie_commit_time) >= '2025-01-01'
+WHERE toDate(parseDateTimeBestEffort(_hoodie_commit_time)) >= '2025-01-01'
 GROUP BY event_type
 ORDER BY event_count DESC;
 ```
 
 ## Hudi Table Types
 
-ClickHouse supports both Hudi table types:
+ClickHouse supports **Copy-on-Write (CoW)** Hudi tables, where data is rewritten in full on every update. CoW tables provide full read support for snapshot queries.
 
-- **Copy-on-Write (CoW)** - Full read support, data is rewritten on every update
-- **Merge-on-Read (MoR)** - ClickHouse reads the latest compacted snapshot
-
-For MoR tables, ensure compaction has run recently for ClickHouse to see the latest data:
+**Merge-on-Read (MoR)** tables are not fully supported. ClickHouse can only read the base (compacted) Parquet files from MoR tables, but it does not merge the delta log files. To read MoR data reliably, ensure compaction has run recently so the latest data is in the base files:
 
 ```bash
 # Run Hudi compaction
@@ -103,7 +100,7 @@ ORDER BY (event_type, event_time);
 
 INSERT INTO events_local
 SELECT
-    toDateTime(_hoodie_commit_time) AS event_time,
+    parseDateTimeBestEffort(_hoodie_commit_time) AS event_time,
     event_type,
     user_id
 FROM hudi('s3://my-bucket/hudi-tables/events/', 'ACCESS_KEY', 'SECRET_KEY');
@@ -111,4 +108,4 @@ FROM hudi('s3://my-bucket/hudi-tables/events/', 'ACCESS_KEY', 'SECRET_KEY');
 
 ## Summary
 
-ClickHouse supports Apache Hudi tables via the `Hudi` engine and table function. Copy-on-Write Hudi tables are fully supported for snapshot reads. For heavy analytical workloads, import Hudi data into native MergeTree tables to avoid the overhead of reading from S3 on every query.
+ClickHouse supports Apache Hudi tables via the `Hudi` engine and table function. Copy-on-Write Hudi tables are fully supported for snapshot reads. Merge-on-Read tables are only partially supported (base files only, without delta log merging). For heavy analytical workloads, import Hudi data into native MergeTree tables to avoid the overhead of reading from S3 on every query.
