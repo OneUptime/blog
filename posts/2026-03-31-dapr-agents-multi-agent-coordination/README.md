@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Agent, Multi-Agent, Coordination, Pub/Sub
 
-Description: Learn how to coordinate multiple Dapr Agents using pub/sub messaging and Dapr's actor model for building scalable multi-agent AI systems.
+Description: Learn how to coordinate multiple Dapr Agents using pub/sub messaging and workflow orchestration for building scalable multi-agent AI systems.
 
 ---
 
@@ -12,20 +12,21 @@ Description: Learn how to coordinate multiple Dapr Agents using pub/sub messagin
 
 Multi-agent systems break complex tasks into specialized agents that collaborate by exchanging messages. In Dapr Agents, coordination happens through:
 
-- **Pub/Sub messaging** - agents publish and subscribe to topics
-- **Service invocation** - agents call each other directly
-- **Shared state** - agents read and write to a common state store
+- **Orchestrator agents** - a coordinator agent uses an LLM to plan and delegate tasks to specialist agents
+- **Pub/Sub messaging** - agents communicate through Dapr pub/sub topics
+- **Shared registry** - agents discover each other and can invoke one another as tools
+- **Workflow composition** - agents are chained together in Dapr Workflows using `call_agent`
 
 This architecture enables parallel processing, specialization, and fault isolation between agents.
 
 ## Architecture Overview
 
-A typical multi-agent pipeline has a coordinator agent that routes tasks to specialist agents:
+A typical multi-agent pipeline has an orchestrator agent that routes tasks to specialist agents:
 
 ```text
 User Request
      |
-Coordinator Agent
+Orchestrator Agent
     /         \
 Research      Writer
 Agent         Agent
@@ -35,97 +36,142 @@ Agent         Agent
 
 ## Defining Specialist Agents
 
-Create each specialist agent as its own Dapr-enabled service:
+Create each specialist agent as its own Dapr-enabled service. In the Dapr Agents SDK, agents are instantiated with constructor parameters rather than subclassed, and tools are standalone functions decorated with `@tool`:
 
 ```python
 # research_agent.py
-from dapr_agents import Agent, tool
-from dapr_agents.messaging import DaprPubSubMessenger
+from dapr_agents import DurableAgent, tool, AgentRunner
+from dapr_agents.agents.configs import AgentPubSubConfig, AgentStateConfig, AgentRegistryConfig
+from dapr_agents.llm import OpenAIChatClient
 
-class ResearchAgent(Agent):
-    name = "research-agent"
-    instructions = "You research topics and return structured findings."
-    messenger = DaprPubSubMessenger(
+@tool
+def search_web(query: str) -> str:
+    """Search the web for information on a topic."""
+    # Call search API here
+    return f"Search results for: {query}"
+
+research_agent = DurableAgent(
+    name="research-agent",
+    role="Research Assistant",
+    instructions=["You research topics and return structured findings."],
+    tools=[search_web],
+    llm=OpenAIChatClient(model="gpt-4o"),
+    pubsub=AgentPubSubConfig(
         pubsub_name="pubsub",
-        topic="research-results"
-    )
+        agent_topic="research-tasks",
+        broadcast_topic="agents.broadcast"
+    ),
+    state=AgentStateConfig(store_name="agent-statestore"),
+    registry=AgentRegistryConfig(
+        store_name="agent-statestore",
+        team_name="content-pipeline"
+    ),
+)
 
-    @tool
-    def search_web(self, query: str) -> str:
-        """Search the web for information on a topic."""
-        # Call search API here
-        return f"Search results for: {query}"
-
-    async def handle_task(self, task: dict):
-        result = self.run(task["query"])
-        await self.messenger.publish({
-            "task_id": task["id"],
-            "result": result
-        })
+runner = AgentRunner()
+runner.serve(research_agent, port=8081)
 ```
 
 ```python
 # writer_agent.py
-from dapr_agents import Agent, tool
+from dapr_agents import DurableAgent, tool, AgentRunner
+from dapr_agents.agents.configs import AgentPubSubConfig, AgentStateConfig, AgentRegistryConfig
+from dapr_agents.llm import OpenAIChatClient
 
-class WriterAgent(Agent):
-    name = "writer-agent"
-    instructions = "You write clear, engaging content based on research findings."
+@tool
+def format_content(content: str, style: str = "blog") -> str:
+    """Formats content into the specified style."""
+    return f"Formatted as {style}: {content}"
 
-    @tool
-    def format_content(self, content: str, format: str = "blog") -> str:
-        """Formats content into the specified format."""
-        return f"Formatted as {format}: {content}"
+writer_agent = DurableAgent(
+    name="writer-agent",
+    role="Content Writer",
+    instructions=["You write clear, engaging content based on research findings."],
+    tools=[format_content],
+    llm=OpenAIChatClient(model="gpt-4o"),
+    pubsub=AgentPubSubConfig(
+        pubsub_name="pubsub",
+        agent_topic="writing-tasks",
+        broadcast_topic="agents.broadcast"
+    ),
+    state=AgentStateConfig(store_name="agent-statestore"),
+    registry=AgentRegistryConfig(
+        store_name="agent-statestore",
+        team_name="content-pipeline"
+    ),
+)
+
+runner = AgentRunner()
+runner.serve(writer_agent, port=8082)
 ```
 
-## Coordinator Agent with Task Routing
+## Orchestrator Agent with Task Routing
+
+The orchestrator agent uses `OrchestrationMode.AGENT` to let the LLM plan which specialist agents to invoke. Because all agents share the same registry with `team_name="content-pipeline"`, the orchestrator automatically discovers them:
 
 ```python
 # coordinator_agent.py
-from dapr_agents import Agent, tool
-from dapr import Client
+from dapr_agents import DurableAgent, AgentRunner
+from dapr_agents.agents.configs import (
+    AgentPubSubConfig, AgentStateConfig,
+    AgentRegistryConfig, AgentExecutionConfig, OrchestrationMode
+)
+from dapr_agents.llm import OpenAIChatClient
 
-class CoordinatorAgent(Agent):
-    name = "coordinator-agent"
-    instructions = """You coordinate research and writing tasks.
-    Break user requests into research and writing subtasks."""
+orchestrator = DurableAgent(
+    name="coordinator-agent",
+    role="Task Coordinator",
+    instructions=[
+        "You coordinate research and writing tasks.",
+        "Break user requests into research and writing subtasks."
+    ],
+    llm=OpenAIChatClient(model="gpt-4o"),
+    pubsub=AgentPubSubConfig(
+        pubsub_name="pubsub",
+        agent_topic="coordinator-tasks",
+        broadcast_topic="agents.broadcast"
+    ),
+    state=AgentStateConfig(store_name="agent-statestore"),
+    registry=AgentRegistryConfig(
+        store_name="agent-statestore",
+        team_name="content-pipeline"
+    ),
+    execution=AgentExecutionConfig(
+        max_iterations=5,
+        orchestration_mode=OrchestrationMode.AGENT,
+    ),
+)
 
-    def __init__(self):
-        super().__init__()
-        self.dapr_client = Client()
-
-    @tool
-    def delegate_research(self, query: str, task_id: str) -> str:
-        """Delegates a research task to the research agent."""
-        self.dapr_client.publish_event(
-            pubsub_name="pubsub",
-            topic_name="research-tasks",
-            data={"id": task_id, "query": query}
-        )
-        return f"Research task {task_id} delegated"
-
-    @tool
-    def delegate_writing(self, content: str, task_id: str) -> str:
-        """Delegates a writing task to the writer agent."""
-        self.dapr_client.publish_event(
-            pubsub_name="pubsub",
-            topic_name="writing-tasks",
-            data={"id": task_id, "content": content}
-        )
-        return f"Writing task {task_id} delegated"
+runner = AgentRunner()
+runner.serve(orchestrator, port=8080)
 ```
 
-## Pub/Sub Component Configuration
+## Dapr Component Configuration
 
-Define the pub/sub component all agents share:
+Define the pub/sub and state store components all agents share:
 
 ```yaml
+# components/pubsub.yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
   name: pubsub
 spec:
   type: pubsub.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: "localhost:6379"
+```
+
+```yaml
+# components/statestore.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: agent-statestore
+spec:
+  type: state.redis
   version: v1
   metadata:
     - name: redisHost
@@ -150,20 +196,27 @@ dapr run --app-id writer-agent --app-port 8082 \
   --components-path ./components -- python writer_agent.py
 ```
 
-## Subscribing to Task Topics
+## Alternative: Workflow Composition with call_agent
 
-Each agent subscribes to its task topic:
+Instead of an orchestrator agent, you can explicitly chain agents in a Dapr Workflow using `call_agent`:
 
 ```python
-from dapr.ext.grpc import App
+import dapr.ext.workflow as wf
+from dapr_agents import call_agent
 
-app = App()
-
-@app.subscribe(pubsub_name="pubsub", topic="research-tasks")
-def handle_research_task(event) -> None:
-    data = json.loads(event.Data())
-    agent = ResearchAgent()
-    agent.handle_task(data)
+@wf.workflow(name="content_pipeline")
+def content_pipeline(ctx: wf.DaprWorkflowContext, request: dict) -> str:
+    research = yield call_agent(
+        ctx, "research-agent",
+        input={"task": request["query"]},
+        app_id="research-agent"
+    )
+    content = yield call_agent(
+        ctx, "writer-agent",
+        input={"task": research["content"]},
+        app_id="writer-agent"
+    )
+    return content["content"]
 ```
 
 ## Monitoring Agent Coordination
@@ -184,4 +237,4 @@ spec:
 
 ## Summary
 
-Dapr Agents supports multi-agent coordination through pub/sub messaging, service invocation, and shared state stores. Define specialist agents as separate Dapr services, use a coordinator to route tasks via pub/sub topics, and monitor coordination with Dapr's built-in tracing. This pattern enables scalable, fault-tolerant AI pipelines where agents can be scaled and replaced independently.
+Dapr Agents supports multi-agent coordination through orchestrator agents, pub/sub messaging, shared registries, and workflow composition. Define specialist agents as separate Dapr services using `DurableAgent`, use an orchestrator with `OrchestrationMode.AGENT` to let the LLM route tasks automatically, and monitor coordination with Dapr's built-in tracing. This pattern enables scalable, fault-tolerant AI pipelines where agents can be scaled and replaced independently.
