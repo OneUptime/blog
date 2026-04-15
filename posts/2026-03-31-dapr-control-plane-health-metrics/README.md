@@ -17,7 +17,7 @@ The Dapr control plane consists of several components: dapr-operator, dapr-sentr
 | dapr-operator | Manages Dapr components | 9090 |
 | dapr-sentry | Issues mTLS certificates | 9090 |
 | dapr-placement | Coordinates actor placement | 9090 |
-| dapr-dashboard | Web UI | 8080 |
+| dapr-dashboard | Web UI | None |
 
 ## Scraping Control Plane Metrics
 
@@ -31,7 +31,7 @@ scrape_configs:
         - dapr-operator.dapr-system:9090
         - dapr-sentry.dapr-system:9090
         - dapr-placement-server.dapr-system:9090
-    metrics_path: /metrics
+    metrics_path: /
     relabel_configs:
       - source_labels: [__address__]
         regex: "([^.]+)\\..*"
@@ -44,11 +44,11 @@ scrape_configs:
 Check operator health:
 
 ```text
-# Operator reconciliation errors
-rate(dapr_operator_reconcile_errors_total[5m])
+# Operator service creation events
+rate(dapr_operator_service_created_total[5m])
 
-# Components loaded
-dapr_operator_components_loaded
+# Operator service update events
+rate(dapr_operator_service_updated_total[5m])
 ```
 
 Monitor sentry certificate issuance:
@@ -58,10 +58,7 @@ Monitor sentry certificate issuance:
 rate(dapr_sentry_cert_sign_request_received_total[5m])
 
 # Certificate issuance failures
-rate(dapr_sentry_cert_sign_failed_total[5m])
-
-# Certificate issuance latency
-histogram_quantile(0.99, rate(dapr_sentry_cert_sign_duration_seconds_bucket[5m]))
+rate(dapr_sentry_cert_sign_failure_total[5m])
 ```
 
 Track placement health:
@@ -70,8 +67,8 @@ Track placement health:
 # Active placement streams (connected runtimes)
 dapr_placement_runtimes_total
 
-# Placement table dissemination time
-dapr_placement_actor_heartbeat_timestamp
+# Actor runtimes registered
+dapr_placement_actor_runtimes_total
 ```
 
 ## Health Check Endpoints
@@ -80,16 +77,16 @@ Beyond metrics, check the health endpoints directly:
 
 ```bash
 # Check operator health
-kubectl exec -n dapr-system deploy/dapr-operator -- \
-  wget -qO- http://localhost:8080/healthz
+kubectl port-forward -n dapr-system deploy/dapr-operator 8080:8080 &
+curl -s http://localhost:8080/healthz && kill %1
 
 # Check sentry health
-kubectl exec -n dapr-system deploy/dapr-sentry -- \
-  wget -qO- http://localhost:8080/healthz
+kubectl port-forward -n dapr-system deploy/dapr-sentry 8080:8080 &
+curl -s http://localhost:8080/healthz && kill %1
 
 # Check placement health
-kubectl exec -n dapr-system deploy/dapr-placement-server -- \
-  wget -qO- http://localhost:8080/healthz
+kubectl port-forward -n dapr-system deploy/dapr-placement-server 8080:8080 &
+curl -s http://localhost:8080/healthz && kill %1
 ```
 
 ## Control Plane Alert Rules
@@ -107,7 +104,7 @@ groups:
       summary: "Dapr operator is down"
 
   - alert: DaprSentryCertFailures
-    expr: rate(dapr_sentry_cert_sign_failed_total[5m]) > 0
+    expr: rate(dapr_sentry_cert_sign_failure_total[5m]) > 0
     for: 1m
     labels:
       severity: warning
