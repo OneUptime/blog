@@ -235,7 +235,7 @@ WHERE database = 'default'
 ## Common Pitfalls
 
 - `data_compressed_bytes` and `data_uncompressed_bytes` are zero for tables that do not use the MergeTree family (e.g., `Memory`, `Log`, `View`).
-- `is_in_primary_key` reflects the explicit `PRIMARY KEY` clause. In MergeTree tables where no `PRIMARY KEY` is specified, the primary key is derived from the first N columns of `ORDER BY`, and `is_in_sorting_key` is more reliable.
+- When no explicit `PRIMARY KEY` is specified, the primary key defaults to the full `ORDER BY` key, so `is_in_primary_key` and `is_in_sorting_key` are equivalent. When `PRIMARY KEY` is explicitly set to a prefix of `ORDER BY`, `is_in_primary_key` only covers the prefix columns, while `is_in_sorting_key` covers all `ORDER BY` columns.
 - Virtual columns (like `_part`, `_partition_id`) do not appear in `system.columns` because they are not stored on disk.
 
 ## Summary
