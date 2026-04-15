@@ -102,9 +102,10 @@ ORDER BY known_flag_name;
 
 ## Aggregating Value Totals per Key
 
-Combine `arrayJoin()` with the key-value arrays to pivot the map structure into rows, then aggregate. This pattern lets you compute per-key statistics across all users.
+To compute per-key statistics across all users, you need to expand each map into rows while keeping keys and values aligned. A common mistake is using two separate `arrayJoin()` calls in the same SELECT, which produces a Cartesian product instead of paired rows:
 
 ```sql
+-- INCORRECT: produces a Cartesian product of keys × values
 SELECT
     flag_name,
     sum(flag_value)    AS enabled_count,
@@ -120,7 +121,7 @@ GROUP BY flag_name
 ORDER BY enabled_count DESC;
 ```
 
-Note: when using `arrayJoin` on both keys and values in the same query level, use `arrayMap` with index or restructure with `zip` to keep keys and values aligned. The safer approach is shown below.
+The correct approach is to use `ARRAY JOIN` with `arrayZip()` to keep keys and values paired:
 
 ```sql
 SELECT
