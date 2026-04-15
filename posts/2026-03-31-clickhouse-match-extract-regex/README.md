@@ -47,7 +47,7 @@ LIMIT 10;
 extract(haystack, pattern)
 ```
 
-Returns a `String` containing the content of the first capture group `(...)` in the first match of `pattern`. If there is no match, or if the pattern has no capture group, an empty string is returned.
+Returns a `String` containing the content of the first capture group `(...)` in the first match of `pattern`. If there is no match, an empty string is returned. If the pattern has no capture group, the entire matched substring is returned instead.
 
 ```sql
 -- Extract the HTTP status code from a combined log format line
