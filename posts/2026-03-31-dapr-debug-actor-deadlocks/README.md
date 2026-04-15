@@ -37,7 +37,7 @@ metadata:
   name: actorconfig
 spec:
   actor:
-    reentrancyConfig:
+    reentrancy:
       enabled: true
       maxStackDepth: 32
 ```
