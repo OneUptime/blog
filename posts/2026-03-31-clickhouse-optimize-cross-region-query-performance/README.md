@@ -19,7 +19,7 @@ SELECT
     query_duration_ms,
     read_rows,
     read_bytes,
-    network_receive_bytes
+    ProfileEvents['NetworkReceiveBytes'] AS network_receive_bytes
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND query_duration_ms > 1000
