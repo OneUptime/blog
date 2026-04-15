@@ -15,7 +15,7 @@ ClickHouse dictionaries are in-memory key-value structures loaded from external 
 `system.dictionaries` contains one row per dictionary defined in ClickHouse (both XML-configured and SQL-defined). Key columns:
 
 - `database`, `name` - dictionary identity
-- `status` - load status: `NOT_LOADED`, `LOADING`, `LOADED`, `FAILED`, `LOADED_AND_RELOADING`, `FAILED_AND_RELOADING`
+- `status` - load status: `NOT_LOADED`, `LOADED`, `FAILED`, `LOADING`, `LOADED_AND_RELOADING`, `FAILED_AND_RELOADING`, `NOT_EXIST`
 - `origin` - configuration file or SQL
 - `type` - dictionary structure type (Flat, Hashed, RangeHashed, etc.)
 - `source` - source description
