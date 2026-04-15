@@ -95,7 +95,7 @@ FROM (
     SELECT
         day,
         revenue,
-        initializeAggregation('exponentialMovingAverage(0.2)', revenue) AS state
+        initializeAggregation('exponentialMovingAverage(0.2)', revenue, toUInt32(day)) AS state
     FROM (
         SELECT toDate(event_time) AS day, sum(revenue) AS revenue
         FROM sales GROUP BY day ORDER BY day
@@ -114,10 +114,13 @@ SELECT
     avg(prev_revenue) OVER w AS sma_previous
 FROM (
     SELECT
-        toDate(event_time) AS day,
-        sum(revenue) AS revenue,
-        sum(lagInFrame(revenue, 365, 0) OVER (ORDER BY day)) AS prev_revenue
-    FROM sales GROUP BY day
+        day,
+        revenue,
+        lagInFrame(revenue, 365, 0) OVER (ORDER BY day) AS prev_revenue
+    FROM (
+        SELECT toDate(event_time) AS day, sum(revenue) AS revenue
+        FROM sales GROUP BY day
+    )
 )
 WINDOW w AS (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
 ORDER BY day;
