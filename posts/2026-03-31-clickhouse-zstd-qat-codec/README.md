@@ -8,6 +8,8 @@ Description: Learn how to use the ZSTD_QAT codec in ClickHouse to offload ZSTD c
 
 ---
 
+> **Note:** The `ZSTD_QAT` codec was removed from ClickHouse in version 26.1 (December 2025) due to licensing incompatibility of the underlying libraries. It is marked as "Obsolete" in the official documentation and is not supported in ClickHouse Cloud. The information below applies only to ClickHouse versions prior to 26.1.
+
 The `ZSTD_QAT` codec in ClickHouse offloads ZSTD compression to Intel QuickAssist Technology (QAT) hardware accelerators. On servers equipped with Intel QAT (available on certain Xeon Scalable processors and add-in cards), ZSTD_QAT delegates compression work to dedicated silicon rather than general-purpose CPU cores, reducing compression-related CPU utilization while maintaining ZSTD compression ratios.
 
 This codec is relevant for high-ingest workloads where compression CPU overhead is measurable and server hardware includes QAT capability.
@@ -27,8 +29,8 @@ flowchart TD
 Requirements:
 - Intel QAT hardware (built-in on Xeon SP or PCIe add-in card)
 - Intel QAT driver (`qat_service`) installed and running
-- ClickHouse built with QAT support (check `system.build_options`)
-- `libisal` and Intel QAT Engine libraries
+- ClickHouse built with QAT support (check `system.build_options`) and the `enable_zstd_qat_codec` setting enabled
+- Intel QATlib and Intel QAT ZSTD Plugin libraries
 
 Verify ClickHouse was built with QAT support:
 
@@ -73,7 +75,7 @@ CREATE TABLE events_zstd
 (
     event_id   UInt64  CODEC(ZSTD(1)),
     payload    String  CODEC(ZSTD(1)),
-    ts         DateTime CODEC(Delta(4), LZ4)
+    ts         DateTime CODEC(Delta, LZ4)
 )
 ENGINE = MergeTree()
 ORDER BY (event_id, ts);
@@ -82,7 +84,7 @@ CREATE TABLE events_zstd_qat
 (
     event_id   UInt64  CODEC(ZSTD_QAT(1)),
     payload    String  CODEC(ZSTD_QAT(1)),
-    ts         DateTime CODEC(Delta(4), LZ4)
+    ts         DateTime CODEC(Delta, LZ4)
 )
 ENGINE = MergeTree()
 ORDER BY (event_id, ts);
@@ -146,7 +148,7 @@ CREATE TABLE access_logs
     path        String                 CODEC(ZSTD_QAT(1)),
     user_agent  String                 CODEC(ZSTD_QAT(1)),
     referrer    String                 CODEC(ZSTD_QAT(1)),
-    bytes_sent  UInt32                 CODEC(Delta(4), LZ4),
+    bytes_sent  UInt32                 CODEC(Delta, LZ4),
     ts          DateTime               CODEC(DoubleDelta, LZ4)
 )
 ENGINE = MergeTree()
@@ -159,7 +161,7 @@ String columns with variable-length content benefit most from ZSTD. Assigning ZS
 
 ## Graceful Fallback Behavior
 
-If QAT hardware is not present or the driver is not running, ClickHouse silently falls back to software ZSTD. This means you can deploy the same table DDL across heterogeneous hardware and it will work everywhere, with QAT acceleration where available:
+If QAT hardware is not present or the driver is not running, ClickHouse falls back to software ZSTD for compression. However, note that ZSTD_QAT uses a different internal byte identifier than standard ZSTD, so data compressed with ZSTD_QAT on one node may not be decompressible on nodes without QAT support. Keep this in mind when deploying across heterogeneous hardware:
 
 ```sql
 -- This DDL works on all nodes; QAT-enabled nodes get hardware acceleration
