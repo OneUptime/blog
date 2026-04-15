@@ -66,7 +66,7 @@ Replace the Elasticsearch output in your log shipper. For Fluent Bit:
     Port        8123
     URI         /?query=INSERT%20INTO%20logs%20FORMAT%20JSONEachRow
     Format      json_lines
-    header      X-ClickHouse-User api_writer
+    Header      X-ClickHouse-User api_writer
     Retry_Limit 3
 ```
 
