@@ -21,7 +21,7 @@ kubectl apply -f https://deploy.kubemq.io/init
 # Deploy KubeMQ cluster
 kubectl apply -f - <<EOF
 apiVersion: core.k8s.kubemq.io/v1alpha1
-kind: KubeMQCluster
+kind: KubemqCluster
 metadata:
   name: kubemq-cluster
   namespace: kubemq
@@ -102,7 +102,7 @@ app.listen(3000);
 
 ## Publishing to KubeMQ Events Channel
 
-For pub/sub use cases, target an events channel:
+For pub/sub use cases, use the Dapr KubeMQ pub/sub component instead of the binding:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -110,15 +110,15 @@ kind: Component
 metadata:
   name: kubemq-events
 spec:
-  type: bindings.kubemq
+  type: pubsub.kubemq
   version: v1
   metadata:
   - name: address
     value: kubemq-cluster-grpc.kubemq.svc.cluster.local:50000
   - name: channel
     value: order.events
-  - name: kind
-    value: "kubemq-events"  # vs kubemq-queue
+  - name: isStore
+    value: "false"  # true for EventsStore (persisted), false for Events (in-memory)
 ```
 
 ## Application Code for Queue Operations
