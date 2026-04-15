@@ -82,8 +82,8 @@ For large tables, use a staged migration instead of modifying in place:
 -- 1. Add new column
 ALTER TABLE events ADD COLUMN timestamp_ns DateTime64(9) DEFAULT toDateTime64(timestamp, 9);
 
--- 2. Populate in batches
-ALTER TABLE events UPDATE timestamp_ns = toDateTime64(timestamp, 9) WHERE timestamp_ns = 0;
+-- 2. Materialize the column in existing parts
+ALTER TABLE events MATERIALIZE COLUMN timestamp_ns;
 
 -- 3. After validation, drop old column
 ALTER TABLE events DROP COLUMN timestamp;
