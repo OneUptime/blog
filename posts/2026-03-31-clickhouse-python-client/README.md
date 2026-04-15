@@ -8,7 +8,7 @@ Description: Learn how to connect to ClickHouse from Python using clickhouse-dri
 
 ---
 
-`clickhouse-driver` is a mature Python client for ClickHouse that uses the native binary protocol. It provides a simple, synchronous API for executing queries, inserting data, and streaming large result sets. For async workloads, `aiochclient` and `asynch` build on top of the same protocol. This guide focuses on `clickhouse-driver` as the most widely used option.
+`clickhouse-driver` is a mature Python client for ClickHouse that uses the native binary protocol. It provides a simple, synchronous API for executing queries, inserting data, and streaming large result sets. For async workloads, `asynch` uses the same native protocol, while `aiochclient` provides an async client over the HTTP interface. This guide focuses on `clickhouse-driver` as the most widely used option.
 
 ## Installation
 
@@ -25,7 +25,7 @@ pip install clickhouse-driver[lz4]
 For all optional dependencies:
 
 ```bash
-pip install clickhouse-driver[numpy,pandas,lz4,zstd,cityhash]
+pip install clickhouse-driver[numpy,lz4,zstd]
 ```
 
 ## Basic Connection
@@ -40,7 +40,7 @@ client = Client(
     user='default',
     password='',
     settings={'max_execution_time': 60},
-    compress=True,
+    compression=True,
 )
 
 result = client.execute('SELECT version()')
@@ -59,11 +59,9 @@ client = Client(
     connect_timeout=10,
     send_receive_timeout=300,
     sync_request_timeout=5,
-    compress=True,
-    compression_level=3,
+    compression=True,
     client_name='my-app',
     verify=True,
-    ssl_context=None,
     settings={
         'max_execution_time': 300,
         'max_memory_usage': 10 * 1024 ** 3,
@@ -310,7 +308,7 @@ client.execute(
 - `clickhouse-driver` uses blocking I/O. Use `asynch` or `aiochclient` for async applications built with `asyncio`.
 - Pass Python `datetime` objects with timezone information (`tzinfo=timezone.utc`) when inserting into `DateTime64` columns with a timezone. Naive datetimes are treated as local time, which may differ from UTC.
 - For `Nullable` columns, pass Python `None`. Do not pass empty strings for nullable numeric columns.
-- The `compress=True` option enables LZ4 compression on the wire, which significantly reduces bandwidth but requires the `lz4` package.
+- The `compression=True` option enables LZ4 compression on the wire, which significantly reduces bandwidth but requires the `lz4` package.
 
 ## Summary
 
