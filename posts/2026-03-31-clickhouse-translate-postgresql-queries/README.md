@@ -30,26 +30,28 @@ WITH monthly AS (
     FROM sales
     GROUP BY month
 )
-SELECT month, total, total - lagInFrame(total) OVER (ORDER BY month) AS delta
+SELECT month, total, total - lag(total) OVER (ORDER BY month) AS delta
 FROM monthly;
 ```
 
 ## Window Functions
 
-ClickHouse uses `lagInFrame` and `leadInFrame` instead of `lag` and `lead`:
+ClickHouse supports standard `lag` and `lead` window functions:
 
 ```sql
 -- PostgreSQL
 SELECT id, value, lag(value, 1) OVER (ORDER BY ts) AS prev_value FROM metrics;
 
 -- ClickHouse
-SELECT id, value, lagInFrame(value, 1) OVER (ORDER BY ts) AS prev_value FROM metrics;
+SELECT id, value, lag(value, 1) OVER (ORDER BY ts) AS prev_value FROM metrics;
 ```
+
+ClickHouse also provides `lagInFrame` and `leadInFrame` which operate within the window frame rather than the full partition. Use standard `lag`/`lead` for direct PostgreSQL translation.
 
 ## Array Operations
 
 ```sql
--- PostgreSQL (JSONB array)
+-- PostgreSQL (Array column)
 SELECT * FROM events WHERE tags @> ARRAY['analytics'];
 
 -- ClickHouse (Array column)
@@ -72,7 +74,7 @@ FROM events;
 -- ClickHouse (JSON stored as String)
 SELECT
     JSONExtractString(data, 'user_id'),
-    JSONExtractString(JSONExtractString(data, 'metadata'), 'source')
+    JSONExtractString(data, 'metadata', 'source')
 FROM events;
 ```
 
@@ -90,7 +92,10 @@ CREATE TABLE users (id UInt64, name String, updated_at DateTime)
 ENGINE = ReplacingMergeTree(updated_at) ORDER BY id;
 
 INSERT INTO users VALUES (1, 'Alice', now());
--- Query: SELECT DISTINCT ON (id) id, name FROM users ORDER BY id, updated_at DESC;
+-- Query with FINAL to deduplicate:
+-- SELECT id, name FROM users FINAL;
+-- Or use argMax:
+-- SELECT id, argMax(name, updated_at) AS name FROM users GROUP BY id;
 ```
 
 ## Key Incompatibilities
@@ -104,4 +109,4 @@ INSERT INTO users VALUES (1, 'Alice', now());
 
 ## Summary
 
-Most PostgreSQL SELECT queries translate to ClickHouse with date function substitutions and `lagInFrame` for window lag functions. Array and JSON handling use ClickHouse-specific functions. Mutations require a different design pattern using ReplacingMergeTree or AggregatingMergeTree.
+Most PostgreSQL SELECT queries translate to ClickHouse with date function substitutions and equivalent window functions. Array and JSON handling use ClickHouse-specific functions. Mutations require a different design pattern using ReplacingMergeTree or AggregatingMergeTree.
