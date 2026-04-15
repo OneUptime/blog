@@ -17,25 +17,20 @@ Description: Learn how to use system.user_processes in ClickHouse to view per-us
 | `user` | String | ClickHouse username |
 | `memory_usage` | Int64 | Total memory used by all running queries for this user |
 | `peak_memory_usage` | Int64 | Peak memory across all queries for this user |
-| `query_count` | UInt32 | Number of currently running queries |
-| `initial_query_count` | UInt32 | Number of user-initiated queries (excludes sub-queries) |
-| `read_rows` | UInt64 | Total rows read so far |
-| `read_bytes` | UInt64 | Total bytes read so far |
-| `written_rows` | UInt64 | Total rows written so far |
-| `written_bytes` | UInt64 | Total bytes written so far |
-| `total_elapsed` | Float64 | Cumulative wall time of running queries in seconds |
+| `ProfileEvents` | Map(LowCardinality(String), UInt64) | Aggregated profile events across all running queries for this user |
+
+The `ProfileEvents` map contains keys such as `SelectQuery`, `InsertQuery`, `SelectedRows`, `SelectedBytes`, `InsertedRows`, and `InsertedBytes`, which you can extract individually in queries.
 
 ## Viewing Active Resource Usage by User
 
 ```sql
 SELECT
     user,
-    query_count,
     formatReadableSize(memory_usage)      AS memory,
     formatReadableSize(peak_memory_usage) AS peak_memory,
-    read_rows,
-    formatReadableSize(read_bytes)        AS bytes_read,
-    round(total_elapsed, 2)               AS elapsed_s
+    ProfileEvents['SelectQuery']          AS select_queries,
+    ProfileEvents['SelectedRows']         AS selected_rows,
+    formatReadableSize(ProfileEvents['SelectedBytes']) AS selected_bytes
 FROM system.user_processes
 ORDER BY memory_usage DESC;
 ```
@@ -44,13 +39,13 @@ ORDER BY memory_usage DESC;
 
 ```mermaid
 flowchart TD
-    A[Running Queries] --> B[User: analytics_svc - 3 queries]
-    A --> C[User: dashboard_bot - 8 queries]
-    A --> D[User: etl_pipeline - 1 query]
+    A[Running Queries] --> B[User: analytics_svc]
+    A --> C[User: dashboard_bot]
+    A --> D[User: etl_pipeline]
     B --> E[system.user_processes row: user=analytics_svc]
     C --> F[system.user_processes row: user=dashboard_bot]
     D --> G[system.user_processes row: user=etl_pipeline]
-    E & F & G --> H[Aggregated: memory, rows, bytes per user]
+    E & F & G --> H[Aggregated: memory_usage, peak_memory_usage, ProfileEvents per user]
 ```
 
 ## Finding the Highest Memory Consumer
@@ -58,9 +53,8 @@ flowchart TD
 ```sql
 SELECT
     user,
-    query_count,
-    formatReadableSize(memory_usage)  AS memory,
-    initial_query_count
+    formatReadableSize(memory_usage)      AS memory,
+    formatReadableSize(peak_memory_usage) AS peak_memory
 FROM system.user_processes
 ORDER BY memory_usage DESC
 LIMIT 5;
@@ -68,14 +62,17 @@ LIMIT 5;
 
 ## Users with Many Concurrent Queries
 
+Since `system.user_processes` does not include a query count column, use `system.processes` grouped by user to find users with many concurrent queries:
+
 ```sql
 SELECT
     user,
-    query_count,
-    initial_query_count,
-    round(total_elapsed / query_count, 2) AS avg_elapsed_s
-FROM system.user_processes
-WHERE query_count > 5
+    count()        AS query_count,
+    sum(elapsed)   AS total_elapsed_s,
+    round(avg(elapsed), 2) AS avg_elapsed_s
+FROM system.processes
+GROUP BY user
+HAVING query_count > 5
 ORDER BY query_count DESC;
 ```
 
@@ -85,7 +82,7 @@ After identifying a heavy user in `system.user_processes`, drill into `system.pr
 
 ```sql
 -- Step 1: Identify the user
-SELECT user, memory_usage, query_count
+SELECT user, formatReadableSize(memory_usage) AS memory, formatReadableSize(peak_memory_usage) AS peak_memory
 FROM system.user_processes
 ORDER BY memory_usage DESC
 LIMIT 3;
