@@ -75,18 +75,30 @@ Feed transactions from Kafka to keep the view current:
 ```bash
 # example Kafka producer config
 kafka-console-producer \
-  --broker-list broker:9092 \
+  --bootstrap-server broker:9092 \
   --topic transactions
 ```
 
 ```sql
 CREATE TABLE transactions_kafka
+(
+    tx_id       UUID,
+    user_id     UInt64,
+    amount      Decimal(18, 4),
+    merchant_id UInt32,
+    country     LowCardinality(String),
+    status      LowCardinality(String),
+    ts          DateTime
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'broker:9092',
     kafka_topic_list  = 'transactions',
     kafka_group_name  = 'ch-fraud',
     kafka_format      = 'JSONEachRow';
+
+CREATE MATERIALIZED VIEW transactions_kafka_mv TO transactions AS
+SELECT * FROM transactions_kafka;
 ```
 
 ## Threshold Alerting
