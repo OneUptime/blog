@@ -75,7 +75,7 @@ FORMAT PrettyCompactMonoBlock
 chmod +x clickhouse-table-size-report.sh
 
 # Add to crontab for daily reports
-echo "0 8 * * * /opt/scripts/clickhouse-table-size-report.sh >> /var/log/ch-size-report.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "0 8 * * * /opt/scripts/clickhouse-table-size-report.sh >> /var/log/ch-size-report.log 2>&1") | crontab -
 ```
 
 ## Adding Email Alerts for Growth
@@ -102,13 +102,13 @@ fi
 run_query "
 SELECT
     table,
-    column,
+    name AS column,
     formatReadableSize(sum(data_compressed_bytes)) AS compressed,
     formatReadableSize(sum(data_uncompressed_bytes)) AS uncompressed,
     round(sum(data_uncompressed_bytes)/sum(data_compressed_bytes), 2) AS ratio
 FROM system.columns
 WHERE database = 'default'
-GROUP BY table, column
+GROUP BY table, name
 ORDER BY sum(data_compressed_bytes) DESC
 LIMIT 20
 FORMAT PrettyCompactMonoBlock
