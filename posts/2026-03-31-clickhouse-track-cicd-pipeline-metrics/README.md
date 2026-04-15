@@ -97,21 +97,21 @@ How long between a failed build and the next successful one?
 ```sql
 SELECT
     repo,
-    avg(dateDiff('minute', fail_ts, recover_ts)) AS avg_mttr_min
+    avg(recovery_min) AS avg_mttr_min
 FROM (
     SELECT
-        repo,
-        ts_start AS fail_ts,
-        min(ts_start) OVER (
-            PARTITION BY repo
-            ORDER BY ts_start
-            ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-        ) AS recover_ts,
-        status
-    FROM pipeline_runs
-    WHERE ts_start >= now() - INTERVAL 30 DAY
+        f.repo,
+        f.ts_start AS fail_ts,
+        min(dateDiff('minute', f.ts_start, s.ts_start)) AS recovery_min
+    FROM pipeline_runs AS f
+    INNER JOIN pipeline_runs AS s
+        ON f.repo = s.repo
+        AND s.ts_start > f.ts_start
+        AND s.status = 'success'
+    WHERE f.ts_start >= now() - INTERVAL 30 DAY
+      AND f.status = 'failure'
+    GROUP BY f.repo, f.ts_start
 )
-WHERE status = 'failure'
 GROUP BY repo
 ORDER BY avg_mttr_min DESC;
 ```
