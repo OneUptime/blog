@@ -44,7 +44,7 @@ webhooks:
     operations: ["CREATE"]
     resources: ["pods"]
   failurePolicy: Ignore
-  timeoutSeconds: 25
+  timeoutSeconds: 10
 ```
 
 ## Changing the Failure Policy
