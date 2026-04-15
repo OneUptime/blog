@@ -28,7 +28,7 @@ spec:
     value: "kafka:9092"
   - name: consumerGroup
     value: "order-service"
-  - name: compressionCodec
+  - name: compression
     value: "snappy"
   - name: maxMessageBytes
     value: "1048576"
@@ -124,4 +124,4 @@ kubectl exec -it kafka-0 -- du -sh /var/lib/kafka/data/orders-0/
 
 ## Summary
 
-Enable Kafka producer compression in Dapr's Kafka pub/sub component using `compressionCodec: snappy` or `zstd` for a good balance of compression ratio and CPU overhead. For non-Kafka backends, implement application-level gzip compression with base64 encoding. Measure compression ratios using broker metrics to validate bandwidth savings in production.
+Enable Kafka producer compression in Dapr's Kafka pub/sub component using `compression: snappy` or `zstd` for a good balance of compression ratio and CPU overhead. For non-Kafka backends, implement application-level gzip compression with base64 encoding. Measure compression ratios using broker metrics to validate bandwidth savings in production.
