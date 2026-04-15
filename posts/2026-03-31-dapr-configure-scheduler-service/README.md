@@ -22,9 +22,7 @@ helm repo update
 
 helm install dapr dapr/dapr \
   --namespace dapr-system \
-  --create-namespace \
-  --set dapr_scheduler.enabled=true \
-  --set dapr_scheduler.replicaCount=3
+  --create-namespace
 ```
 
 ## Configuring Scheduler via Helm
@@ -32,11 +30,10 @@ helm install dapr dapr/dapr \
 Customize Scheduler settings using Helm values:
 
 ```yaml
+global:
+  tag: "1.14.0"
+
 dapr_scheduler:
-  enabled: true
-  replicaCount: 3
-  image:
-    tag: "1.14.0"
   resources:
     requests:
       cpu: 100m
@@ -44,10 +41,8 @@ dapr_scheduler:
     limits:
       cpu: 500m
       memory: 512Mi
-  extraArgs:
-    - --etcd-data-dir=/data/dapr-scheduler
-    - --etcd-initial-cluster-token=dapr-scheduler-cluster
-    - --initial-cluster=dapr-scheduler-0=http://dapr-scheduler-0:2380
+  cluster:
+    etcdDataDirPath: /data/dapr-scheduler
 ```
 
 Apply changes:
@@ -62,10 +57,10 @@ helm upgrade dapr dapr/dapr \
 ## Verifying Scheduler is Running
 
 ```bash
-kubectl get pods -n dapr-system -l app=dapr-scheduler
+kubectl get pods -n dapr-system -l app=dapr-scheduler-server
 
 # Check scheduler logs
-kubectl logs -n dapr-system -l app=dapr-scheduler --tail=50
+kubectl logs -n dapr-system -l app=dapr-scheduler-server --tail=50
 ```
 
 ## Scheduling a Job via the API
@@ -78,7 +73,6 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/my-daily-report \
   -d '{
     "schedule": "@every 24h",
     "data": {
-      "@type": "type.googleapis.com/google.protobuf.StringValue",
       "value": "generate-report"
     }
   }'
