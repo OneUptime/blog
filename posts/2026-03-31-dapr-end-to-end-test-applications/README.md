@@ -133,8 +133,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install dependencies
+      run: npm install
+
     - name: Install Dapr CLI
-      run: wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
+      run: wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
 
     - name: Initialize Dapr
       run: dapr init
