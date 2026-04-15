@@ -29,7 +29,6 @@ spec:
     retries:
       binding-retry-policy:
         policy: exponential
-        initialInterval: 500ms
         maxInterval: 30s
         maxRetries: 5
 
@@ -55,8 +54,8 @@ spec:
 ## Handling Input Binding Errors
 
 For input bindings, return an appropriate HTTP status code from your handler:
-- `200 OK` - job processed successfully
-- `404 Not Found` or `5xx` - Dapr will retry delivery based on the binding's configured retry behavior
+- `200 OK` - message processed successfully
+- Any non-`200` response (e.g., `500`, `400`, `404`) - Dapr will retry delivery based on the binding's configured retry behavior
 
 ```javascript
 const express = require("express");
@@ -126,20 +125,20 @@ For input bindings you also configure resiliency on the inbound path:
 
 ## Dead Letter Queues
 
-Some bindings support dead letter queue configuration natively. For example, with AWS SQS:
+Some Dapr components support dead letter queue configuration natively. For example, with the AWS SNS/SQS pub/sub component:
 
 ```yaml
 spec:
-  type: bindings.aws.sqs
+  type: pubsub.snssqs
   version: v1
   metadata:
-    - name: queueName
-      value: "orders"
-    - name: deadLetterQueueName
+    - name: sqsDeadLettersQueueName
       value: "orders-dlq"
-    - name: maxReceiveCount
+    - name: messageReceiveLimit
       value: "3"
 ```
+
+Note: The `bindings.aws.sqs` binding component does not support DLQ configuration directly in its metadata. To use dead letter queues with SQS bindings, configure the DLQ on the SQS queue itself via AWS, or use the SNS/SQS pub/sub component which has native DLQ support.
 
 ## Monitoring Failures
 
@@ -150,9 +149,9 @@ curl http://localhost:9090/metrics | grep dapr_component_
 ```
 
 Key metrics to watch:
-- `dapr_component_output_binding_success_total`
-- `dapr_component_output_binding_failure_total`
-- `dapr_component_input_binding_success_total`
+- `dapr_component_output_binding_count` - number of output binding operations invoked
+- `dapr_component_output_binding_latencies` - latency of output binding responses
+- `dapr_component_input_binding_count` - number of incoming input binding events
 
 ## Summary
 
