@@ -121,7 +121,7 @@ ORDER BY user_id, session_id;
 
 ## Using windowFunnel for Conversion Tracking
 
-For funnel analysis within sessions, combine sessionization with `windowFunnel`:
+ClickHouse also provides the `windowFunnel` aggregate function for tracking how far users progress through a sequence of events within a specified time window:
 
 ```sql
 SELECT
