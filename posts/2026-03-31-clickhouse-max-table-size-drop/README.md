@@ -15,7 +15,7 @@ ClickHouse has a built-in safety mechanism that prevents accidental `DROP TABLE`
 When you run `DROP TABLE` or `TRUNCATE TABLE`, ClickHouse checks the table's total on-disk size against `max_table_size_to_drop`. If the table exceeds the threshold, ClickHouse refuses the command with an error.
 
 ```text
-Code: 62. DB::Exception: Table clickhouse_db.large_events has size 250.00 GiB which is greater than
+Code: 359. DB::Exception: Table clickhouse_db.large_events has size 250.00 GiB which is greater than
 max_table_size_to_drop=50.00 GiB. Use flag file 'force_drop_table' or increase max_table_size_to_drop.
 ```
 
@@ -63,16 +63,16 @@ To disable the protection entirely (not recommended for production):
 
 ## Overriding for a Single Drop Operation
 
-When you need to drop a table that exceeds the limit, create a flag file in the ClickHouse server's data directory and then run the DROP within 5 minutes:
+When you need to drop a table that exceeds the limit, create a flag file in the ClickHouse server's data directory and then run the DROP command:
 
 ```bash
 # Create the flag file
 sudo touch /var/lib/clickhouse/flags/force_drop_table
 
-# Now run the drop in clickhouse-client (within 5 minutes)
+# Now run the drop in clickhouse-client
 clickhouse-client --query "DROP TABLE my_database.large_events"
 
-# The flag file is automatically removed after the operation
+# The flag file is automatically removed after a successful drop
 ```
 
 For dropping a specific partition:
@@ -86,11 +86,15 @@ clickhouse-client --query "ALTER TABLE my_database.events DROP PARTITION '202401
 
 ```mermaid
 flowchart TD
-    A[DROP TABLE or DROP PARTITION] --> B{Table size > max_table_size_to_drop?}
-    B -- No --> C[Execute DROP]
+    A[DROP TABLE / TRUNCATE TABLE] --> B{Table size > max_table_size_to_drop?}
+    B -- No --> C[Execute operation]
     B -- Yes --> D{force_drop_table flag exists?}
-    D -- Yes --> E[Execute DROP and remove flag]
+    D -- Yes --> E[Execute operation and remove flag]
     D -- No --> F[Reject with error message]
+
+    G[DROP PARTITION] --> H{Partition size > max_partition_size_to_drop?}
+    H -- No --> C
+    H -- Yes --> D
 ```
 
 ## Checking Table Sizes
@@ -149,4 +153,4 @@ LIMIT 10;
 
 ## Summary
 
-`max_table_size_to_drop` and `max_partition_size_to_drop` protect against accidental deletion of large datasets. The defaults are 50 GB each. Raise the threshold in config.xml if your operational procedures require dropping larger tables regularly. For one-off drops that exceed the limit, create the `force_drop_table` flag file in `/var/lib/clickhouse/flags/` and run the DROP within 5 minutes. Set the threshold to 0 only in non-production environments.
+`max_table_size_to_drop` and `max_partition_size_to_drop` protect against accidental deletion of large datasets. The defaults are 50 GB each. Raise the threshold in config.xml if your operational procedures require dropping larger tables regularly. For one-off drops that exceed the limit, create the `force_drop_table` flag file in `/var/lib/clickhouse/flags/` and then run the DROP command. Set the threshold to 0 only in non-production environments.
