@@ -27,7 +27,7 @@ Rollback becomes difficult or impossible when:
 Check the data format version before deciding to roll back:
 
 ```sql
--- Check the minimum compatible ClickHouse version for existing parts
+-- Review active parts distribution across tables
 SELECT
     database,
     table,
@@ -38,12 +38,13 @@ WHERE active = 1
 GROUP BY database, table
 ORDER BY database, table;
 
--- Check the data format of recent parts
+-- Check recently modified parts and their storage type
 SELECT
     database,
     table,
     modification_time,
-    data_version
+    part_type,
+    rows_count
 FROM system.parts
 WHERE active = 1
 ORDER BY modification_time DESC
@@ -164,9 +165,9 @@ echo "Current version on ${NODE}: ${CURRENT}"
 ssh "$NODE" "sudo systemctl stop clickhouse-server"
 
 # 3. Install the previous version packages
-ssh "$NODE" "sudo dpkg -i /opt/clickhouse-packages/clickhouse-common-static-${PREVIOUS_VERSION}.deb"
-ssh "$NODE" "sudo dpkg -i /opt/clickhouse-packages/clickhouse-server-${PREVIOUS_VERSION}.deb"
-ssh "$NODE" "sudo dpkg -i /opt/clickhouse-packages/clickhouse-client-${PREVIOUS_VERSION}.deb"
+ssh "$NODE" "sudo dpkg -i /opt/clickhouse-packages/clickhouse-common-static_${PREVIOUS_VERSION}*.deb"
+ssh "$NODE" "sudo dpkg -i /opt/clickhouse-packages/clickhouse-server_${PREVIOUS_VERSION}*.deb"
+ssh "$NODE" "sudo dpkg -i /opt/clickhouse-packages/clickhouse-client_${PREVIOUS_VERSION}*.deb"
 
 # 4. Restore the previous configuration if it changed
 # ssh "$NODE" "sudo cp /etc/clickhouse-server.backup/config.xml /etc/clickhouse-server/config.xml"
@@ -242,14 +243,13 @@ If the rollback itself fails (e.g., the package installation fails or the server
 ```bash
 # Emergency: restore entire database from pre-upgrade backup
 clickhouse-client --query "
-RESTORE ALL
-FROM S3('https://s3.amazonaws.com/your-backup-bucket/clickhouse/pre-upgrade/24.6.1/')
-SETTINGS async = true;
+RESTORE ASYNC ALL
+FROM S3('https://s3.amazonaws.com/your-backup-bucket/clickhouse/pre-upgrade/24.6.1/');
 "
 
 # Monitor restore progress
 clickhouse-client --query "
-SELECT id, status, num_files, num_processed_files, formatReadableSize(total_size) AS size
+SELECT id, status, num_files, files_read, formatReadableSize(total_size) AS size
 FROM system.backups
 WHERE status = 'RESTORING'
 ORDER BY start_time DESC
