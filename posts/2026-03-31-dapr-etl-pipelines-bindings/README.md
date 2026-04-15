@@ -55,7 +55,7 @@ spec:
   type: bindings.postgresql
   version: v1
   metadata:
-  - name: url
+  - name: connectionString
     secretKeyRef:
       name: db-secrets
       key: postgres-url
@@ -100,14 +100,14 @@ def handle_extract():
             binding_name='target-postgres',
             operation='exec',
             binding_metadata={
-                "sql": "INSERT INTO events (id, type, payload, created_at) VALUES ($1, $2, $3, $4)"
-            },
-            data=json.dumps([
-                transformed['id'],
-                transformed['type'],
-                json.dumps(transformed['payload']),
-                transformed['createdAt']
-            ])
+                "sql": "INSERT INTO events (id, type, payload, created_at) VALUES ($1, $2, $3, $4)",
+                "params": json.dumps([
+                    transformed['id'],
+                    transformed['type'],
+                    json.dumps(transformed['payload']),
+                    transformed['createdAt']
+                ])
+            }
         )
 
     return '', 200
@@ -140,17 +140,24 @@ with DaprClient() as client:
     client.invoke_binding('target-postgres', 'exec', sql_data)
 
     # Secondary: Redis cache for recent events
-    client.invoke_binding('target-redis', 'set', {
-        "key": f"event:{transformed['id']}",
-        "value": json.dumps(transformed),
-        "ttlInSeconds": "86400"
-    })
+    client.invoke_binding(
+        binding_name='target-redis',
+        operation='create',
+        data=json.dumps(transformed),
+        binding_metadata={
+            "key": f"event:{transformed['id']}"
+        }
+    )
 
     # Audit: S3 archive
-    client.invoke_binding('target-s3', 'create', {
-        "key": f"events/{transformed['createdAt'][:10]}/{transformed['id']}.json",
-        "body": json.dumps(transformed)
-    })
+    client.invoke_binding(
+        binding_name='target-s3',
+        operation='create',
+        data=json.dumps(transformed),
+        binding_metadata={
+            "key": f"events/{transformed['createdAt'][:10]}/{transformed['id']}.json"
+        }
+    )
 ```
 
 ## Add Data Quality Checks
