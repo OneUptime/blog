@@ -22,7 +22,7 @@ redis-cli CONFIG SET notify-keyspace-events "KEA"
 The flags mean:
 - `K` - Keyspace events
 - `E` - Keyevent events
-- `A` - Alias for all commands (including set, del, expire)
+- `A` - Alias for `g$lshztdxe` (covers generic, string, list, set, hash, sorted set, stream, expired, and evicted events)
 
 For persistent Redis configuration:
 
@@ -93,34 +93,31 @@ spec:
         key: password
     - name: enableTLS
       value: "false"
-    - name: maxRetries
+    - name: redisMaxRetries
       value: "3"
 ```
 
 ## Populating Configuration Keys
 
-The key format for the Dapr Redis configuration store is `<app-id>||<key>`:
+Configuration keys are stored as plain keys in Redis. The value format is `<value>||<version>`, where the version is an integer used for tracking changes:
 
 ```bash
-# Set configuration values
-redis-cli SET "payment-service||max-retry-count" "3"
-redis-cli SET "payment-service||payment-timeout-ms" "5000"
-redis-cli SET "payment-service||fraud-check-enabled" "true"
-redis-cli SET "payment-service||currency-precision" "2"
+# Set configuration values (format: key "value||version")
+redis-cli MSET max-retry-count "3||1" payment-timeout-ms "5000||1" fraud-check-enabled "true||1" currency-precision "2||1"
 ```
 
-For configuration that applies to all services, omit the app-id prefix:
+You can also set keys individually:
 
 ```bash
-redis-cli SET "global||log-level" "info"
-redis-cli SET "global||tracing-enabled" "true"
+redis-cli SET log-level "info||1"
+redis-cli SET tracing-enabled "true||1"
 ```
 
 ## Reading Configuration
 
 ```bash
 # HTTP API
-curl "http://localhost:3500/v1.0-alpha1/configuration/appconfig?key=max-retry-count"
+curl "http://localhost:3500/v1.0/configuration/appconfig?key=max-retry-count"
 ```
 
 ```javascript
@@ -147,7 +144,7 @@ Check that the Redis configuration store is healthy:
 redis-cli CONFIG GET notify-keyspace-events
 
 # Check key count
-redis-cli KEYS "*||*" | wc -l
+redis-cli DBSIZE
 
 # Monitor configuration changes in real time
 redis-cli SUBSCRIBE "__keyevent@0__:set"
@@ -155,4 +152,4 @@ redis-cli SUBSCRIBE "__keyevent@0__:set"
 
 ## Summary
 
-Using Redis as a Dapr configuration store requires enabling keyspace notifications (`KEA`) for subscription support, defining a Dapr component pointing to your Redis instance, and storing configuration keys in the `<app-id>||<key>` format. Once configured, your services get fast configuration reads and real-time push notifications whenever values change.
+Using Redis as a Dapr configuration store requires enabling keyspace notifications (`KEA`) for subscription support, defining a Dapr component pointing to your Redis instance, and storing configuration values in the `<value>||<version>` format. Once configured, your services get fast configuration reads and real-time push notifications whenever values change.
