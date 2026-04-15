@@ -52,7 +52,7 @@ Sample output (abbreviated):
       (Aggregating) x 8          <- 8 parallel threads
         (Expression)
           (Filter)
-            (MergeTree) x 8      <- reads from 8 parts in parallel
+            (ReadFromMergeTree) x 8  <- reads from 8 parts in parallel
 ```
 
 ## Parallelism in Pipelines
@@ -70,7 +70,7 @@ For queries on distributed tables, each shard runs its local pipeline in paralle
 
 ## Pipeline for Aggregation
 
-Aggregation in ClickHouse uses a two-level approach:
+Aggregation in ClickHouse uses a two-phase approach:
 
 1. **Thread-local aggregation**: Each thread builds its own hash table (partial aggregates)
 2. **Merge phase**: `MergingAggregated` processor combines partial hash tables into final results
