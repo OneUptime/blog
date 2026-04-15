@@ -237,12 +237,15 @@ Changing a column type that requires data rewrite should be done in steps:
 -- Step 1: Add the new wider column
 ALTER TABLE events
     ADD COLUMN IF NOT EXISTS user_id_v2 UInt64 DEFAULT toUInt64(user_id);
+
+-- Step 2: Materialize the column on existing data parts (runs as a background mutation)
+ALTER TABLE events MATERIALIZE COLUMN user_id_v2;
 ```
 
 ```sql
 -- V013__widen_user_id_step2.sql
--- Step 2: After waiting for the materialized column to populate, drop the old one
--- Only run this after verifying user_id_v2 is fully populated
+-- Only run after verifying the MATERIALIZE COLUMN mutation is complete
+-- (check: SELECT count() FROM system.mutations WHERE table = 'events' AND is_done = 0)
 ALTER TABLE events
     DROP COLUMN IF EXISTS user_id;
 
@@ -318,10 +321,13 @@ jobs:
   migrate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install ClickHouse client
         run: |
+          curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
+          sudo apt-get update
           sudo apt-get install -y clickhouse-client
 
       - name: Run dry-run migration
@@ -332,7 +338,7 @@ jobs:
           CLICKHOUSE_DATABASE: production
           MIGRATIONS_DIR: ./migrations
           DRY_RUN: "true"
-        run: /usr/local/bin/clickhouse-migrate.sh
+        run: chmod +x ./clickhouse-migrate.sh && ./clickhouse-migrate.sh
 
       - name: Apply migrations
         env:
@@ -341,7 +347,7 @@ jobs:
           CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
           CLICKHOUSE_DATABASE: production
           MIGRATIONS_DIR: ./migrations
-        run: /usr/local/bin/clickhouse-migrate.sh
+        run: ./clickhouse-migrate.sh
 ```
 
 ## Viewing Migration History
