@@ -10,23 +10,39 @@ Description: Enable and use Dapr component hot reload in self-hosted mode to upd
 
 ## Overview
 
-Dapr component hot reload allows you to modify component YAML files and have Dapr pick up the changes without restarting the sidecar or your application. This feature is available from Dapr v1.12+ and is especially useful during development.
+Dapr component hot reload allows you to modify component YAML files and have Dapr pick up the changes without restarting the sidecar or your application. This feature is available as a preview feature from Dapr v1.13+ and is especially useful during development.
+
+Note: Hot reload does not apply to Actor State Store or Workflow Backend components — those still require a sidecar restart.
 
 ## Prerequisites
 
-- Dapr v1.12+ CLI and runtime
+- Dapr v1.13+ CLI and runtime
 - Self-hosted mode initialized
 
 ## Step 1: Enable Hot Reload
 
-Hot reload is enabled via the `--enable-hot-reload` flag on `dapr run`:
+Hot reload is enabled via the `HotReload` feature gate in a Dapr Configuration file. Create a configuration YAML:
+
+```yaml
+# hotreload-config.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: hotreloadconfig
+spec:
+  features:
+    - name: HotReload
+      enabled: true
+```
+
+Then pass it to `dapr run` using the `--config` flag:
 
 ```bash
 dapr run \
   --app-id myapp \
   --app-port 8080 \
-  --enable-hot-reload \
-  node app.js
+  --config ./hotreload-config.yaml \
+  -- node app.js
 ```
 
 ## Step 2: Default Components Directory
@@ -38,8 +54,8 @@ dapr run \
   --app-id myapp \
   --app-port 8080 \
   --resources-path ./components \
-  --enable-hot-reload \
-  node app.js
+  --config ./hotreload-config.yaml \
+  -- node app.js
 ```
 
 ## Step 3: Modify a Component at Runtime
@@ -74,7 +90,7 @@ Watch the Dapr logs - you should see:
 
 ```bash
 # Output from dapr run
-INFO  component updated: statestore (state.redis/v1)
+INFO  Component updated: statestore (state.redis/v1)
 ```
 
 ## Step 4: Add a New Component at Runtime
@@ -98,7 +114,7 @@ spec:
 Dapr detects the new file and loads the component:
 
 ```bash
-INFO  component loaded: newpubsub (pubsub.redis/v1)
+INFO  Component loaded: newpubsub (pubsub.redis/v1)
 ```
 
 ## Step 5: Remove a Component
@@ -112,7 +128,7 @@ rm ~/.dapr/components/newpubsub.yaml
 Dapr logs:
 
 ```bash
-INFO  component removed: newpubsub (pubsub.redis/v1)
+INFO  Component removed: newpubsub (pubsub.redis/v1)
 ```
 
 ## Step 6: Verify the Active Components
@@ -123,4 +139,4 @@ curl http://localhost:3500/v1.0/metadata | python3 -m json.tool | grep -A2 compo
 
 ## Summary
 
-Dapr component hot reload eliminates the need to restart sidecars when modifying component configurations. By launching apps with `--enable-hot-reload`, changes to YAML files in the components directory are detected and applied automatically. This significantly speeds up iteration during development by allowing real-time component reconfiguration.
+Dapr component hot reload eliminates the need to restart sidecars when modifying component configurations. By enabling the `HotReload` feature gate in a Dapr Configuration file and passing it via `--config`, changes to YAML files in the components directory are detected and applied automatically. This significantly speeds up iteration during development by allowing real-time component reconfiguration.
