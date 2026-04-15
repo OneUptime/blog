@@ -10,7 +10,7 @@ Description: Configure the Dapr Operator on Kubernetes to manage component CRD r
 
 ## What Is the Dapr Operator?
 
-The Dapr Operator is a Kubernetes controller that watches Dapr component CRDs (Components, Configurations, Resiliency, Subscriptions) and distributes their configuration to running Dapr sidecars. It is a critical piece of the Dapr control plane.
+The Dapr Operator is a Kubernetes controller that watches Dapr component CRDs (Components, Configurations, Resiliency, Subscriptions, HTTPEndpoints) and distributes their configuration to running Dapr sidecars. It is a critical piece of the Dapr control plane.
 
 ## Viewing Current Operator Configuration
 
@@ -29,12 +29,15 @@ kubectl describe deployment dapr-operator -n dapr-system
 
 ```yaml
 # dapr-operator-values.yaml
+global:
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations: []
 dapr_operator:
   replicaCount: 2
   logLevel: info
-  watchdogEnabled: true
-  watchdogInterval: 500ms
-  watchdogMaxRestartsPerMin: 3
+  watchInterval: 10s
+  maxPodRestartsPerMinute: 20
   resources:
     requests:
       cpu: "100m"
@@ -42,10 +45,6 @@ dapr_operator:
     limits:
       cpu: "500m"
       memory: "512Mi"
-  nodeSelector:
-    kubernetes.io/os: linux
-  tolerations: []
-  affinity: {}
 ```
 
 ```bash
@@ -56,15 +55,14 @@ helm upgrade dapr dapr/dapr \
 
 ## Understanding the Watchdog Feature
 
-The Dapr Operator watchdog monitors running Dapr sidecars and can restart those that become unresponsive:
+The Dapr Operator includes a watchdog that periodically polls all pods in the cluster and checks whether pods annotated with `dapr.io/enabled=true` have a Dapr sidecar injected. If a pod is missing its sidecar, the watchdog deletes the pod so Kubernetes recreates it with proper sidecar injection:
 
 ```bash
-# Enable the watchdog in the operator
+# Configure the watchdog in the operator
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_operator.watchdogEnabled=true \
-  --set dapr_operator.watchdogInterval=500ms \
-  --set dapr_operator.watchdogMaxRestartsPerMin=3
+  --set dapr_operator.watchInterval=10s \
+  --set dapr_operator.maxPodRestartsPerMinute=20
 ```
 
 ## Checking Component Reconciliation
@@ -76,8 +74,8 @@ kubectl get components.dapr.io -A
 # Verify a component was picked up by the operator
 kubectl describe component statestore -n default
 
-# Watch for component update events
-kubectl get events -n default --field-selector reason=ComponentUpdated
+# Watch for recent events related to Dapr components
+kubectl get events -n default --sort-by='.lastTimestamp'
 ```
 
 ## Configuring Operator RBAC
@@ -103,4 +101,4 @@ kubectl rollout status deployment/dapr-operator -n dapr-system
 
 ## Summary
 
-The Dapr Operator manages CRD reconciliation and keeps sidecar configurations synchronized with the cluster state. Configure it via Helm values to set replica count for HA, resource limits, and enable the watchdog feature. Monitoring operator logs helps diagnose issues where component changes are not propagating to running sidecars.
+The Dapr Operator manages CRD reconciliation and keeps sidecar configurations synchronized with the cluster state. Configure it via Helm values to set replica count for HA, resource limits, and tune the watchdog feature. Monitoring operator logs helps diagnose issues where component changes are not propagating to running sidecars.
