@@ -61,6 +61,7 @@ dapr:
     app_id: "{team}-{service}"   # e.g., payments-processor
     component: "{type}-{env}"    # e.g., statestore-prod
   required_annotations:
+    - dapr.io/enabled
     - dapr.io/app-id
     - dapr.io/config
     - dapr.io/log-level
