@@ -14,7 +14,7 @@ Dapr pub/sub provides at-least-once delivery, meaning the same message may be de
 
 ## CloudEvents Message ID Deduplication
 
-Dapr wraps messages in CloudEvents envelopes with a unique `id` field. Use this for deduplication:
+Dapr wraps messages in CloudEvents envelopes with a unique `id` field. However, the Dapr JS SDK unwraps the envelope before passing data to your callback. Include a unique event ID in the message payload for deduplication:
 
 ```javascript
 const { DaprServer, DaprClient } = require('@dapr/dapr');
@@ -23,8 +23,8 @@ const client = new DaprClient();
 
 const DEDUP_TTL_SECONDS = 3600; // Track seen IDs for 1 hour
 
-await server.pubsub.subscribe('pubsub', 'orders', async (data, metadata) => {
-  const eventId = metadata.id || data.eventId;
+await server.pubsub.subscribe('pubsub', 'orders', async (data) => {
+  const eventId = data.eventId;
 
   if (!eventId) {
     console.warn('Event missing ID - processing without deduplication');
@@ -38,7 +38,7 @@ await server.pubsub.subscribe('pubsub', 'orders', async (data, metadata) => {
   const existing = await client.state.get('statestore', dedupKey);
   if (existing) {
     console.log(`Duplicate event ${eventId} - skipping`);
-    return { status: 'DROP' };
+    return 'DROP';
   }
 
   // Mark as processing
@@ -90,29 +90,34 @@ app.post('/orders', async (req, res) => {
 });
 ```
 
-## Atomic Check-and-Set with ETags
+## Atomic Deduplication with Concurrency Control
 
-Use Dapr state ETags for optimistic locking during deduplication:
+Use Dapr state concurrency options for optimistic locking during deduplication:
 
 ```javascript
 async function atomicDedup(eventId) {
   const dedupKey = `dedup-${eventId}`;
 
+  // Check if already processed
+  const existing = await client.state.get('statestore', dedupKey);
+  if (existing) {
+    return false; // Already processed
+  }
+
   try {
-    const { data, etag } = await client.state.getWithETag('statestore', dedupKey);
-
-    if (data) {
-      return false; // Already processed
-    }
-
-    // Save with ETag check - fails if another instance saved first
-    await client.state.saveWithETag('statestore', [{ key: dedupKey, value: 'processed' }], etag);
+    // Save with first-write-wins - fails if another instance saved first
+    await client.state.save('statestore', [{
+      key: dedupKey,
+      value: 'processed',
+      options: {
+        concurrency: 'first-write',
+        consistency: 'strong'
+      }
+    }]);
     return true;
   } catch (err) {
-    if (err.message.includes('etag mismatch')) {
-      return false; // Race condition - another instance processed it
-    }
-    throw err;
+    // Race condition - another instance processed it first
+    return false;
   }
 }
 ```
@@ -136,4 +141,4 @@ async function trackDuplicateRate(isDuplicate) {
 
 ## Summary
 
-Effective event deduplication in Dapr requires storing processed event IDs in a state store with appropriate TTLs. Use CloudEvents `id` fields as the deduplication key when available, fall back to business keys for events without reliable IDs, and consider ETag-based optimistic locking for high-concurrency scenarios. Set deduplication window TTLs based on your maximum expected message redelivery delay plus a safety margin.
+Effective event deduplication in Dapr requires storing processed event IDs in a state store with appropriate TTLs. Use CloudEvents `id` fields as the deduplication key when available, fall back to business keys for events without reliable IDs, and consider first-write-wins concurrency control for high-concurrency scenarios. Set deduplication window TTLs based on your maximum expected message redelivery delay plus a safety margin.
