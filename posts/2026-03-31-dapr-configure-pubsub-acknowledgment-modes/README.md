@@ -26,7 +26,7 @@ func handleMessage(w http.ResponseWriter, r *http.Request) {
 
 // Failed processing - message requeued for retry
 func handleMessageWithRetry(w http.ResponseWriter, r *http.Request) {
-    w.WriteHeader(500)
+    w.WriteHeader(200)
     json.NewEncoder(w).Encode(map[string]string{"status": "RETRY"})
 }
 
@@ -53,12 +53,8 @@ spec:
   metadata:
   - name: host
     value: "amqp://guest:guest@rabbitmq:5672"
-  - name: ackWaitTime
-    value: "60s"
   - name: requeueInFailure
     value: "true"
-  - name: deleteOnError
-    value: "false"
   - name: concurrencyMode
     value: "parallel"
 ```
@@ -122,7 +118,7 @@ func handleOrder(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]string{"status": "SUCCESS"})
     default:
         // Queue full, ask for retry
-        w.WriteHeader(500)
+        w.WriteHeader(200)
         json.NewEncoder(w).Encode(map[string]string{"status": "RETRY"})
     }
 }
@@ -149,4 +145,4 @@ kafka-consumer-groups.sh --bootstrap-server kafka:9092 \
 
 ## Summary
 
-Dapr uses HTTP response codes for acknowledgment: 200/SUCCESS acknowledges, 500/RETRY requeues, and 200/DROP discards. For RabbitMQ, configure `ackWaitTime` and `requeueInFailure`. For Kafka, Dapr commits offsets post-acknowledgment. Use `concurrencyMode: single` for ordered processing and monitor unacknowledged message counts as a key reliability metric.
+Dapr uses HTTP response statuses for acknowledgment: 200/SUCCESS acknowledges, 200/RETRY requeues, and 200/DROP discards. For RabbitMQ, configure `requeueInFailure`. For Kafka, Dapr commits offsets post-acknowledgment. Use `concurrencyMode: single` for ordered processing and monitor unacknowledged message counts as a key reliability metric.
