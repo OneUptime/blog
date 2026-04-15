@@ -44,7 +44,7 @@ ORDER BY ts DESC
 LIMIT 50;
 ```
 
-ClickHouse reads only the relevant partition and the sparse index aligns with `actor_id`, so this returns in single-digit milliseconds.
+The sparse primary index on `(actor_id, ts)` lets ClickHouse skip irrelevant granules efficiently, so this returns in single-digit milliseconds even across all partitions.
 
 ## Follower Feed (Social Graph)
 
