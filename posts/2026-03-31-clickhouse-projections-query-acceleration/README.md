@@ -151,20 +151,20 @@ If the main table is shown without a projection reference, the projection was no
 -- This query uses the aggregate projection
 SELECT
     domain,
-    sum(total_bytes) AS bytes,
-    sum(request_count) AS requests
+    sum(bytes) AS total_bytes,
+    count() AS request_count
 FROM http_logs_with_agg
 WHERE toDate(ts) = today()
 GROUP BY domain
-ORDER BY bytes DESC
+ORDER BY total_bytes DESC
 LIMIT 20;
 ```
 
-The aggregate projection pre-computed daily summaries, so ClickHouse reads vastly fewer rows.
+ClickHouse recognizes that this query matches the aggregate projection's structure and reads from the pre-computed summaries instead of scanning all rows.
 
 ## Forcing a Specific Projection
 
-For testing or debugging, force ClickHouse to use a specific projection:
+For testing or debugging, force ClickHouse to use a projection. If no applicable projection exists, the query will return an error:
 
 ```sql
 SELECT count()
