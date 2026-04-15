@@ -23,11 +23,11 @@ CREATE TABLE patient_metrics_agg (
     recorded_month      Date,
     encounter_count     UInt32,
     readmission_count   UInt16,
-    avg_los_days        Float32,   -- length of stay
+    total_los_days      Float32,   -- total length of stay days
     total_cost_cents    UInt64,
     preventable_admits  UInt16
 ) ENGINE = SummingMergeTree()
-ORDER BY (facility_id, department, icd10_code, recorded_month)
+ORDER BY (facility_id, department, icd10_code, age_bucket, gender, recorded_month)
 PARTITION BY toYear(recorded_month);
 ```
 
@@ -66,7 +66,7 @@ ORDER BY readmission_rate_pct DESC;
 SELECT
     recorded_month,
     department,
-    round(sum(avg_los_days * encounter_count) / sum(encounter_count), 2) AS weighted_avg_los
+    round(sum(total_los_days) / sum(encounter_count), 2) AS weighted_avg_los
 FROM patient_metrics_agg
 WHERE recorded_month >= today() - 365
 GROUP BY recorded_month, department
@@ -106,7 +106,7 @@ SELECT
     facility_id,
     sum(encounter_count)     AS encounters,
     round(100.0 * sum(readmission_count) / sum(encounter_count), 2) AS readmit_pct,
-    round(sum(avg_los_days * encounter_count) / sum(encounter_count), 2) AS avg_los,
+    round(sum(total_los_days) / sum(encounter_count), 2) AS avg_los,
     round(sum(total_cost_cents) / sum(encounter_count) / 100, 2) AS cost_per_encounter
 FROM patient_metrics_agg
 WHERE recorded_month >= today() - 365
