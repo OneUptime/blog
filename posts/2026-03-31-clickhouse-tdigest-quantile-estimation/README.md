@@ -51,16 +51,18 @@ SELECT quantileTDigestWeighted(0.99)(response_time_ms, sample_weight)
 FROM sampled_logs;
 ```
 
-## Configuring Compression
+## Compression and Accuracy
 
-The compression parameter controls the accuracy-memory trade-off. Higher values yield better accuracy at the cost of more memory:
+The `quantileTDigest` function in ClickHouse uses fixed internal parameters for compression (including a default error bound of approximately 1%) and does not expose a compression parameter in SQL. You cannot tune the accuracy of `quantileTDigest` at query time.
+
+If you need configurable accuracy, use `quantileDD` instead, which accepts a relative accuracy parameter:
 
 ```sql
-SELECT quantileTDigest(100)(0.99)(response_time_ms)
+SELECT quantileDD(0.01, 0.99)(response_time_ms)
 FROM http_logs;
 ```
 
-The default compression is 100. For tail quantiles above P99.9, consider increasing it to 200 or 500.
+The first argument (`0.01`) controls the relative error bound — lower values yield higher accuracy at the cost of more memory.
 
 ## Using t-digest in Materialized Views
 
@@ -93,7 +95,7 @@ ORDER BY hour;
 
 ## Accuracy Characteristics
 
-t-digest guarantees that relative error for quantiles near 0 or 1 is proportional to `1/compression`. For P99, a compression of 100 yields approximately 1% relative error. This means a true P99 of 500ms will be estimated as 495-505ms.
+The t-digest algorithm provides higher accuracy near the tails (quantiles close to 0 or 1) than in the middle of the distribution. ClickHouse's implementation uses an internal error bound of approximately 1%. This means a true P99 of 500ms will be estimated as approximately 495-505ms.
 
 ## When to Choose t-digest
 
