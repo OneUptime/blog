@@ -44,9 +44,7 @@ spec:
 Add some configuration keys to Redis:
 
 ```bash
-redis-cli SET myapp||feature_flag "true"
-redis-cli SET myapp||max_retries "5"
-redis-cli SET myapp||log_level "debug"
+redis-cli MSET feature_flag "true||1" max_retries "5||1" log_level "debug||1"
 ```
 
 ## Reading Configuration
@@ -73,7 +71,7 @@ Use `subscribe_configuration` to receive updates as they happen:
 import threading
 from dapr.clients import DaprClient
 
-def on_config_update(response):
+def on_config_update(id: str, response):
     for key, item in response.items.items():
         print(f"Config changed - {key}: {item.value}")
 
@@ -126,7 +124,7 @@ if cfg.get("feature_flag") == "true":
 ## Running the App
 
 ```bash
-dapr run --app-id config-app --components-path ./components -- python config_app.py
+dapr run --app-id config-app --resources-path ./components -- python config_app.py
 ```
 
 ## Summary
