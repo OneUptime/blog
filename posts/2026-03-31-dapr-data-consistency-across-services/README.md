@@ -17,28 +17,36 @@ Dapr supports two consistency levels for state operations:
 - **Strong consistency**: Reads always return the latest written value (slower)
 - **Eventual consistency**: Reads may return slightly stale data (faster)
 
-Choose consistency level per operation:
+Choose consistency level per write operation:
 
 ```python
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import StateOptions, StateConcurrency, StateConsistency
+from dapr.clients.grpc._state import StateOptions, Concurrency, Consistency
 
 with DaprClient() as client:
-    # Strong consistency read
+    # Read state (read consistency is configured at the state store component level)
     result = client.get_state(
         store_name="statestore",
+        key="account-123"
+    )
+
+    # Save with strong consistency
+    client.save_state(
+        store_name="statestore",
         key="account-123",
-        state_options=StateOptions(
-            consistency=StateConsistency.STRONG
+        value='{"balance": 100}',
+        options=StateOptions(
+            consistency=Consistency.strong
         )
     )
 
-    # Eventual consistency read (faster, may be stale)
-    result = client.get_state(
+    # Save with eventual consistency (faster)
+    client.save_state(
         store_name="statestore",
         key="product-456",
-        state_options=StateOptions(
-            consistency=StateConsistency.EVENTUAL
+        value='{"stock": 50}',
+        options=StateOptions(
+            consistency=Consistency.eventual
         )
     )
 ```
@@ -67,7 +75,7 @@ def transfer_balance(from_account: str, to_account: str, amount: float):
                 value=json.dumps(from_account_data),
                 etag=from_etag,  # Will fail if ETag changed
                 options=StateOptions(
-                    concurrency=StateConcurrency.FIRST_WRITE
+                    concurrency=Concurrency.first_write
                 )
             )
         except Exception:
@@ -101,39 +109,45 @@ def run_order_saga(order_id: str, order: dict):
         try:
             # Step 1: Reserve inventory
             result = client.invoke_method("inventory-service",
-                f"inventory/reserve", "POST",
+                "inventory/reserve",
                 data=json.dumps({'product_id': order['product_id'],
-                                 'quantity': order['quantity']}).encode())
+                                 'quantity': order['quantity']}).encode(),
+                http_verb="POST")
             saga['state'] = SagaState.INVENTORY_RESERVED.value
             client.save_state("statestore", f"saga:{order_id}", json.dumps(saga))
 
             # Step 2: Process payment
             result = client.invoke_method("payment-service",
-                "payments/charge", "POST",
+                "payments/charge",
                 data=json.dumps({'amount': order['total'],
-                                 'customer_id': order['customer_id']}).encode())
+                                 'customer_id': order['customer_id']}).encode(),
+                http_verb="POST")
             saga['state'] = SagaState.PAYMENT_PROCESSED.value
             client.save_state("statestore", f"saga:{order_id}", json.dumps(saga))
 
             # Saga complete
             saga['state'] = SagaState.COMPLETED.value
             client.save_state("statestore", f"saga:{order_id}", json.dumps(saga))
-            client.publish_event("pubsub", "order-completed", order)
+            client.publish_event("pubsub", "order-completed", json.dumps(order))
 
         except Exception as e:
             # Compensate
+            last_completed = saga['state']
             saga['state'] = SagaState.COMPENSATING.value
             client.save_state("statestore", f"saga:{order_id}", json.dumps(saga))
 
-            if saga['state'] >= SagaState.INVENTORY_RESERVED.value:
+            if last_completed in (SagaState.INVENTORY_RESERVED.value,
+                                  SagaState.PAYMENT_PROCESSED.value):
                 client.invoke_method("inventory-service",
-                    f"inventory/release", "POST",
+                    "inventory/release",
                     data=json.dumps({'product_id': order['product_id'],
-                                     'quantity': order['quantity']}).encode())
+                                     'quantity': order['quantity']}).encode(),
+                    http_verb="POST")
 
             saga['state'] = SagaState.FAILED.value
             client.save_state("statestore", f"saga:{order_id}", json.dumps(saga))
-            client.publish_event("pubsub", "order-failed", {'order_id': order_id, 'reason': str(e)})
+            client.publish_event("pubsub", "order-failed",
+                json.dumps({'order_id': order_id, 'reason': str(e)}))
 ```
 
 ## Using Dapr Workflow for Saga Orchestration
