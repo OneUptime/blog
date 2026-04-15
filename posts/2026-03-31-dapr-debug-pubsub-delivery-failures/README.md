@@ -30,14 +30,14 @@ level=error msg="error publishing message: connection refused" component=kafka
 
 ## Verify Pub/Sub Component Health
 
-Check the component status via the Dapr management API:
+Check the loaded components via the Dapr metadata API on the sidecar:
 
 ```bash
-kubectl port-forward svc/dapr-api 3500:80 -n dapr-system &
+kubectl port-forward <app-pod> 3500:3500 &
 curl http://localhost:3500/v1.0/metadata | jq '.components'
 ```
 
-A healthy component returns `"status": "healthy"`. If a component is unhealthy, check credentials and broker availability.
+This returns each component's name, type, version, and capabilities. If your pub/sub component is missing from the list, it failed to initialize — check the sidecar logs for credential or connectivity errors.
 
 ## Test the Subscription Endpoint
 
@@ -111,7 +111,7 @@ app.post('/orders', (req, res) => {
 });
 ```
 
-Returning 404 causes Dapr to drop the message without retry. Returning 500 triggers retry with backoff.
+Returning 404 causes Dapr to drop the message without retry. Returning 500 triggers a retry. To control retry backoff behavior, configure a Dapr resiliency policy.
 
 ## Use Zipkin Tracing
 
