@@ -8,7 +8,7 @@ Description: Learn how to store podcast download events in ClickHouse and query 
 
 ---
 
-Podcast platforms need accurate download counts that reconcile IAB standards - deduplicating requests from the same IP within a rolling window. ClickHouse handles this deduplication efficiently at query time using approximate distinct counts, making it an excellent backend for podcast analytics.
+Podcast platforms need accurate download counts that reconcile IAB standards - deduplicating requests from the same IP within a rolling window. ClickHouse handles this deduplication efficiently at query time using hash-based distinct counts, making it an excellent backend for podcast analytics.
 
 ## Schema
 
@@ -32,7 +32,7 @@ ORDER BY (show_id, episode_id, ts);
 
 ## IAB-Compliant Unique Download Count
 
-Deduplicate the same IP within a 24-hour window per episode:
+Deduplicate the same IP within the same calendar day per episode:
 
 ```sql
 SELECT
@@ -116,4 +116,4 @@ ORDER BY day_of_week;
 
 ## Summary
 
-ClickHouse is well-suited to podcast download analytics, supporting IAB-compliant deduplication via hash-based distinct counts, time-series listener growth queries, and completion rate analysis. Partition by day for efficient range scans and use approximate distinct functions for large-scale listener counts where exact precision is not required.
+ClickHouse is well-suited to podcast download analytics, supporting IAB-compliant deduplication via hash-based distinct counts, time-series listener growth queries, and completion rate analysis. Partition by day for efficient range scans. For large-scale listener counts where exact precision is not required, consider replacing `uniqExact` with `uniq` for better performance at the cost of a small approximation error.
