@@ -31,7 +31,7 @@ SELECT
 FROM (
     SELECT arrayJoin([
         '$9.99',
-        'C:\Users\alice',
+        'C:\\Users\\alice',
         'example.com',
         '100% complete',
         '(high priority)',
@@ -49,7 +49,7 @@ C:\Users\alice    | C:\\Users\\alice
 example.com       | example\.com
 100% complete     | 100% complete
 (high priority)   | \(high priority\)
-a+b=c             | a\+b\=c
+a+b=c             | a\+b=c
 [ERROR]           | \[ERROR\]
 ```
 
@@ -90,7 +90,7 @@ The `^` anchor is added outside the escaped portion because you intentionally wa
 To find messages containing an exact phrase as a whole word (not as a substring), wrap the escaped pattern with `\b` word boundary anchors.
 
 ```sql
-WITH concat('\b', regexpQuoteMeta('null'), '\b') AS word_pattern
+WITH concat('\\b', regexpQuoteMeta('null'), '\\b') AS word_pattern
 SELECT event_time, message
 FROM application_logs
 WHERE match(message, word_pattern)
@@ -126,7 +126,7 @@ This safely checks each log message against every entry in a blocklist, even if 
 File system paths on Windows contain backslashes which are also the regex escape character. `regexpQuoteMeta` handles them correctly.
 
 ```sql
-WITH regexpQuoteMeta('C:\Program Files\MyApp\config.ini') AS safe_path
+WITH regexpQuoteMeta('C:\\Program Files\\MyApp\\config.ini') AS safe_path
 SELECT file_path, event_time
 FROM file_access_events
 WHERE match(file_path, safe_path)
@@ -141,7 +141,7 @@ You can use `regexpQuoteMeta` to build the literal portion of an `extractAll` pa
 ```sql
 SELECT
     log_line,
-    extractAll(log_line, concat('(', regexpQuoteMeta('ERR:'), '[^\s]+)')) AS error_tokens
+    extractAll(log_line, concat('(', regexpQuoteMeta('ERR:'), '[^\\s]+)')) AS error_tokens
 FROM application_logs
 WHERE event_date = today()
 LIMIT 50
