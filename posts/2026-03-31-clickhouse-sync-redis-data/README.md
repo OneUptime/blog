@@ -87,9 +87,9 @@ while True:
         stream, messages = entries[0]
         rows = [
             {
-                'event_time': datetime.fromtimestamp(float(m[1][b'timestamp'])),
-                'event_type': m[1][b'event_type'].decode(),
-                'user_id': int(m[1][b'user_id'])
+                'event_time': datetime.fromtimestamp(float(m['timestamp'])),
+                'event_type': m['event_type'],
+                'user_id': int(m['user_id'])
             }
             for _, m in messages
         ]
