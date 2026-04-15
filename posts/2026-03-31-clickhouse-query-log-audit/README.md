@@ -26,13 +26,13 @@ Key columns in `system.query_log`:
 | `query_id` | String | Unique query identifier |
 | `user` | String | ClickHouse username |
 | `client_hostname` | String | Client host that sent the query |
-| `client_address` | IPv6 | Client IP address |
+| `address` | IPv6 | IP address used to make the query |
 | `databases` | Array(String) | Databases accessed |
 | `tables` | Array(String) | Tables accessed |
 | `read_rows` | UInt64 | Rows read from storage |
 | `read_bytes` | UInt64 | Bytes read from storage |
 | `written_rows` | UInt64 | Rows written (for INSERT) |
-| `peak_memory_usage` | UInt64 | Peak RAM used |
+| `memory_usage` | UInt64 | Memory consumed by the query |
 | `exception_code` | Int32 | Error code (0 if success) |
 | `exception` | String | Error message |
 
@@ -63,14 +63,14 @@ In `config.xml`:
 ```sql
 SELECT
     user,
-    client_address,
+    address,
     count()            AS query_count,
     sum(read_bytes)    AS bytes_read,
     max(query_duration_ms) AS max_duration_ms
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_time >= now() - INTERVAL 1 HOUR
-GROUP BY user, client_address
+GROUP BY user, address
 ORDER BY query_count DESC;
 ```
 
@@ -98,7 +98,7 @@ SELECT
     query_duration_ms,
     read_rows,
     read_bytes,
-    peak_memory_usage,
+    memory_usage,
     query
 FROM system.query_log
 WHERE type = 'QueryFinish'
@@ -145,7 +145,7 @@ LIMIT 20;
 SELECT
     event_time,
     user,
-    client_address,
+    address,
     query
 FROM system.query_log
 WHERE type = 'QueryFinish'
@@ -166,7 +166,7 @@ ORDER BY event_time DESC;
 SELECT
     event_time,
     user,
-    client_address,
+    address,
     arrayJoin(tables) AS target_table,
     written_rows,
     written_bytes
