@@ -116,24 +116,24 @@ For local development (with Dapr CLI):
 
 ## Step 3: Seed Configuration Values
 
-Dapr Redis configuration keys use the format: `{keyName}||version||{versionNumber}`.
+Dapr Redis configuration stores the version inside the value, separated by `||`. The key is a plain name, and the value format is `{value}||{version}`.
 
 ```bash
 # Connect to Redis
 redis-cli -h localhost -p 6379
 
 # Seed configuration values
-SET "app-config||version||1" '{"logLevel":"info","maxConnections":100,"enableMetrics":true}'
-SET "feature-flags||version||1" '{"darkMode":false,"newDashboard":true,"betaFeatures":false}'
-SET "rate-limits||version||1" '{"requestsPerSecond":1000,"burstSize":50}'
-SET "db-pool-settings||version||1" '{"maxPoolSize":20,"connectionTimeout":30,"idleTimeout":600}'
+SET "app-config" '{"logLevel":"info","maxConnections":100,"enableMetrics":true}||1'
+SET "feature-flags" '{"darkMode":false,"newDashboard":true,"betaFeatures":false}||1'
+SET "rate-limits" '{"requestsPerSecond":1000,"burstSize":50}||1'
+SET "db-pool-settings" '{"maxPoolSize":20,"connectionTimeout":30,"idleTimeout":600}||1'
 ```
 
 Verify:
 
 ```bash
-redis-cli KEYS "*||version||*"
-redis-cli GET "app-config||version||1"
+redis-cli KEYS "*"
+redis-cli GET "app-config"
 ```
 
 ## Step 4: Read Config via HTTP API
@@ -191,7 +191,7 @@ let cachedConfig = {};
 async function loadConfig() {
   const response = await axios.get(
     `http://localhost:${DAPR_PORT}/v1.0/configuration/${CONFIG_STORE}`,
-    { params: { key: ['app-config', 'feature-flags', 'rate-limits'] } }
+    { params: { key: ['app-config', 'feature-flags', 'rate-limits'] }, paramsSerializer: { indexes: null } }
   );
   const items = response.data.items;
   for (const [key, item] of Object.entries(items)) {
@@ -203,8 +203,8 @@ async function loadConfig() {
 // Subscribe to changes
 async function subscribeToConfig() {
   const response = await axios.get(
-    `http://localhost:${DAPR_PORT}/v1.0-alpha1/configuration/${CONFIG_STORE}/subscribe`,
-    { params: { key: ['app-config', 'feature-flags'] }, responseType: 'stream' }
+    `http://localhost:${DAPR_PORT}/v1.0/configuration/${CONFIG_STORE}/subscribe`,
+    { params: { key: ['app-config', 'feature-flags'] }, paramsSerializer: { indexes: null }, responseType: 'stream' }
   );
   response.data.on('data', (chunk) => {
     const update = JSON.parse(chunk.toString());
@@ -229,11 +229,11 @@ app.listen(3000, async () => {
 To update a configuration value, write a new version to Redis:
 
 ```bash
-redis-cli SET "feature-flags||version||2" '{"darkMode":true,"newDashboard":true,"betaFeatures":true}'
+redis-cli SET "feature-flags" '{"darkMode":true,"newDashboard":true,"betaFeatures":true}||2'
 ```
 
 Subscribed applications receive the update immediately via the keyspace notification.
 
 ## Summary
 
-Setting up Dapr Configuration with Redis requires enabling keyspace notifications on your Redis instance, creating a `configuration.redis` Dapr component, and seeding values using the `{key}||version||{number}` key format. Applications read config via `GET /v1.0/configuration/{store}` and subscribe to real-time updates. Update values by writing new versions to Redis - subscribed applications receive changes without restarts.
+Setting up Dapr Configuration with Redis requires enabling keyspace notifications on your Redis instance, creating a `configuration.redis` Dapr component, and seeding values using plain key names with the version appended to the value (`{value}||{version}`). Applications read config via `GET /v1.0/configuration/{store}` and subscribe to real-time updates. Update values by writing new versions to Redis - subscribed applications receive changes without restarts.
