@@ -55,14 +55,14 @@ graph TD
 ```sql
 CREATE QUOTA analyst_quota
     FOR INTERVAL 1 HOUR
-        MAX QUERIES = 500,
-        MAX ERRORS = 50,
-        MAX READ ROWS = 5000000000,
-        MAX READ BYTES = 107374182400,
-        MAX EXECUTION TIME = 1800
+        MAX queries = 500,
+            errors = 50,
+            read_rows = 5000000000,
+            read_bytes = 107374182400,
+            execution_time = 1800
     FOR INTERVAL 1 DAY
-        MAX QUERIES = 5000,
-        MAX READ ROWS = 50000000000
+        MAX queries = 5000,
+            read_rows = 50000000000
     TO analyst_role;
 ```
 
@@ -139,7 +139,7 @@ Quotas can be scoped per user or per key (e.g., per client IP):
 ```xml
 <quotas>
   <per_ip>
-    <keyed_by_ip>true</keyed_by_ip>
+    <keyed_by_ip />
     <interval>
       <duration>3600</duration>
       <queries>200</queries>
@@ -150,9 +150,9 @@ Quotas can be scoped per user or per key (e.g., per client IP):
 
 ```sql
 CREATE QUOTA per_ip_quota
-    KEYED BY client_address
+    KEYED BY ip_address
     FOR INTERVAL 1 HOUR
-        MAX QUERIES = 200
+        MAX queries = 200
     TO ALL;
 ```
 
@@ -180,11 +180,11 @@ FROM system.quotas;
 
 ```sql
 SELECT
-    quota_name,
+    name AS quota_name,
     apply_to_all,
     apply_to_list,
     apply_to_except
-FROM system.quota_limits;
+FROM system.quotas;
 ```
 
 ## Practical Alert: Quota Usage Over 80%
