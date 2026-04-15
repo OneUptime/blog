@@ -22,7 +22,7 @@ ClickHouse replication is managed at the table level using `ReplicatedMergeTree`
 - `queue_size` - number of pending replication tasks
 - `inserts_in_queue` - pending insert replication tasks
 - `merges_in_queue` - pending merge replication tasks
-- `absolute_delay` - seconds this replica lags behind the leader
+- `absolute_delay` - how far behind in seconds the current replica is
 - `total_replicas`, `active_replicas` - replica count in the shard
 
 ## Basic Health Check
@@ -88,7 +88,7 @@ FROM system.replicas
 WHERE is_leader = 1;
 ```
 
-Only one replica per shard is the leader at any time. The leader coordinates which merges to perform.
+One or more replicas per shard can be leaders at the same time. Leaders are responsible for scheduling background merges.
 
 ## Checking ZooKeeper Path
 
