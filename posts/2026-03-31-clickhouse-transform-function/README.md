@@ -130,24 +130,24 @@ SELECT
         WHEN 'S' THEN 'shipped'
         WHEN 'D' THEN 'delivered'
         ELSE 'unknown'
-    END AS status_a
+    END AS status_label
+FROM orders
+LIMIT 5;
 
 -- transform version (concise)
-FROM orders;
-
 SELECT
     order_id,
     transform(status_code,
         ['P', 'C', 'S', 'D'],
         ['pending', 'confirmed', 'shipped', 'delivered'],
-        'unknown') AS status_b
+        'unknown') AS status_label
 FROM orders
 LIMIT 5;
 ```
 
-## Dynamic Mapping with Arrays from Subqueries
+## Dynamic Mapping with Arrays from WITH Clauses
 
-`transform` can be used with arrays built dynamically, though the from/to arrays must be literal array expressions or array columns.
+`transform` can be used with arrays defined in `WITH` clauses, as long as they resolve to constant expressions.
 
 ```sql
 -- Map sensor IDs to location names using predefined arrays
@@ -182,4 +182,4 @@ LIMIT 20;
 
 ## Summary
 
-`transform()` provides inline value mapping in ClickHouse - it is the function equivalent of a small lookup table. It is more concise than equivalent `CASE WHEN` expressions for straightforward code-to-label mappings. The `from_array` and `to_array` must be the same length, and the default value is required. Use it for status code translation, country/category mapping, code normalization, and converting numeric codes to human-readable labels.
+`transform()` provides inline value mapping in ClickHouse - it is the function equivalent of a small lookup table. It is more concise than equivalent `CASE WHEN` expressions for straightforward code-to-label mappings. The `from_array` and `to_array` must be the same length. A 4-argument form includes a default value for unmatched inputs, while a 3-argument form returns the original value when no match is found. Use it for status code translation, country/category mapping, code normalization, and converting numeric codes to human-readable labels.
