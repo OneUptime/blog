@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Binding, Redis, Cache, Output
 
-Description: Configure the Dapr Redis output binding to execute Redis commands from microservices for cache operations, distributed counters, and list management without the Redis client library.
+Description: Configure the Dapr Redis output binding to execute Redis commands from microservices for cache operations and distributed counters without the Redis client library.
 
 ---
 
 ## Overview
 
-The Dapr Redis binding is an output-only binding that supports a rich set of Redis commands including `get`, `set`, `delete`, `mget`, `mset`, `incr`, `expire`, and many more. This allows your services to interact with Redis as a cache, counter, or data structure store without embedding a Redis SDK.
+The Dapr Redis binding is an output-only binding that supports `create`, `get`, `delete`, and `increment` operations. This allows your services to interact with Redis as a cache or counter without embedding a Redis SDK.
 
 ```mermaid
 flowchart LR
@@ -80,26 +80,19 @@ kubectl apply -f binding-redis.yaml
 
 | Operation | Redis Command | Description |
 |-----------|--------------|-------------|
-| `get` | GET | Get a string value |
-| `set` | SET | Set a string value |
+| `create` | SET | Set a key-value pair (supports TTL via metadata) |
+| `get` | GET | Get a value by key |
 | `delete` | DEL | Delete a key |
-| `mget` | MGET | Get multiple keys |
-| `mset` | MSET | Set multiple keys |
-| `incr` | INCR | Increment a counter |
-| `expire` | EXPIRE | Set key expiry |
-| `hget` | HGET | Get hash field |
-| `hset` | HSET | Set hash field |
-| `llen` | LLEN | List length |
-| `lpush` | LPUSH | Push to list head |
+| `increment` | INCR | Increment a counter (supports TTL via metadata) |
 
-## SET and GET Operations
+## Create and Get Operations
 
 ```bash
-# Set a cache entry
+# Set a cache entry with TTL
 curl -X POST http://localhost:3500/v1.0/bindings/redis \
   -H "Content-Type: application/json" \
   -d '{
-    "operation": "set",
+    "operation": "create",
     "data": "order-abc-status",
     "metadata": {
       "key": "order:abc:status",
@@ -121,39 +114,14 @@ curl -X POST http://localhost:3500/v1.0/bindings/redis \
 ## Increment a Counter
 
 ```bash
-# Increment a rate limit counter
+# Increment a rate limit counter with TTL
 curl -X POST http://localhost:3500/v1.0/bindings/redis \
   -H "Content-Type: application/json" \
   -d '{
-    "operation": "incr",
+    "operation": "increment",
     "metadata": {
-      "key": "ratelimit:user:alice"
-    }
-  }'
-```
-
-## MSET and MGET
-
-```bash
-# Set multiple keys at once
-curl -X POST http://localhost:3500/v1.0/bindings/redis \
-  -H "Content-Type: application/json" \
-  -d '{
-    "operation": "mset",
-    "data": [
-      {"key": "config:timeout", "value": "30"},
-      {"key": "config:retries", "value": "3"},
-      {"key": "config:env", "value": "production"}
-    ]
-  }'
-
-# Get multiple keys
-curl -X POST http://localhost:3500/v1.0/bindings/redis \
-  -H "Content-Type: application/json" \
-  -d '{
-    "operation": "mget",
-    "metadata": {
-      "keys": "config:timeout,config:retries,config:env"
+      "key": "ratelimit:user:alice",
+      "ttlInSeconds": "60"
     }
   }'
 ```
@@ -164,7 +132,6 @@ curl -X POST http://localhost:3500/v1.0/bindings/redis \
 # cache_service.py
 import json
 import requests
-from functools import wraps
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -184,7 +151,7 @@ def redis_exec(operation: str, data=None, metadata: dict = None):
     return response.json() if response.text else None
 
 def cache_set(key: str, value: str, ttl_seconds: int = 300):
-    redis_exec("set", value, {"key": key, "ttlInSeconds": str(ttl_seconds)})
+    redis_exec("create", value, {"key": key, "ttlInSeconds": str(ttl_seconds)})
 
 def cache_get(key: str) -> str | None:
     result = redis_exec("get", metadata={"key": key})
@@ -193,8 +160,11 @@ def cache_get(key: str) -> str | None:
 def cache_delete(key: str):
     redis_exec("delete", metadata={"key": key})
 
-def cache_incr(key: str) -> int:
-    result = redis_exec("incr", metadata={"key": key})
+def cache_incr(key: str, ttl_seconds: int = None) -> int:
+    metadata = {"key": key}
+    if ttl_seconds:
+        metadata["ttlInSeconds"] = str(ttl_seconds)
+    result = redis_exec("increment", metadata=metadata)
     return int(result.get("data", 0)) if result else 0
 
 @app.route('/product/<product_id>', methods=['GET'])
@@ -217,11 +187,8 @@ def get_product(product_id):
 @app.route('/rate-check/<user_id>', methods=['POST'])
 def rate_check(user_id):
     key = f"ratelimit:{user_id}"
-    count = cache_incr(key)
-
-    if count == 1:
-        # Set TTL on first increment (1-minute window)
-        redis_exec("expire", metadata={"key": key, "ttlInSeconds": "60"})
+    # TTL is applied on each increment call via metadata
+    count = cache_incr(key, ttl_seconds=60)
 
     if count > 10:
         return jsonify({"allowed": False, "count": count}), 429
@@ -245,4 +212,4 @@ dapr run \
 
 ## Summary
 
-The Dapr Redis binding exposes Redis commands as output binding operations. Use `set`/`get`/`delete` for cache management, `incr` and `expire` for rate limiting, and `mset`/`mget` for bulk operations. Configure the binding with the Redis host and password, and send commands via a simple POST to `/v1.0/bindings/redis`. This approach keeps the Redis client library out of your application code and centralizes connection configuration.
+The Dapr Redis binding exposes Redis commands as output binding operations. Use `create`/`get`/`delete` for cache management and `increment` for counters. Both `create` and `increment` support TTL via `ttlInSeconds` metadata. Configure the binding with the Redis host and password, and send commands via a simple POST to `/v1.0/bindings/redis`. This approach keeps the Redis client library out of your application code and centralizes connection configuration.
