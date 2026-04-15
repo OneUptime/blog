@@ -30,7 +30,7 @@ spec:
         maxRequests: 1          # How many requests allowed in half-open state
         interval: 0s            # Statistical window (0 = no rolling window)
         timeout: 30s            # How long circuit stays open before going half-open
-        trip: consecutiveFailures(5)   # Trip after 5 consecutive failures
+        trip: consecutiveFailures >= 5  # Trip after 5 consecutive failures
 
   targets:
     apps:
@@ -56,7 +56,7 @@ spec:
 ## Calling a Service with Circuit Breaker Protection
 
 ```javascript
-const { DaprClient } = require('@dapr/dapr');
+const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
 const client = new DaprClient();
 
@@ -65,8 +65,8 @@ async function chargePayment(orderId, amount) {
     const response = await client.invoker.invoke(
       'payment-service',
       'charge',
-      { orderId, amount },
-      { method: 'POST' }
+      HttpMethod.POST,
+      { orderId, amount }
     );
     return { success: true, transactionId: response.transactionId };
   } catch (err) {
@@ -82,7 +82,7 @@ async function chargePayment(orderId, amount) {
 
 ## Combining with Retry Policy
 
-Configure retry and circuit breaker together - retries happen before the circuit breaker counts failures:
+Configure retry and circuit breaker together - each retry attempt is individually tracked by the circuit breaker:
 
 ```yaml
 spec:
@@ -97,7 +97,7 @@ spec:
       consecutiveFailureCB:
         maxRequests: 1
         timeout: 30s
-        trip: consecutiveFailures(5)
+        trip: consecutiveFailures >= 5
 
   targets:
     apps:
@@ -106,7 +106,7 @@ spec:
         circuitBreaker: consecutiveFailureCB
 ```
 
-With this configuration, each invocation retries 3 times before being counted as a failure. Five such failures (15 total attempts) trip the circuit open.
+With this configuration, each failed request attempt (including retries) increments the circuit breaker's consecutive failure count. A single failing invocation with 3 retries produces 4 consecutive failures. The circuit trips once 5 consecutive failed attempts accumulate.
 
 ## Pub/Sub Circuit Breaker
 
@@ -124,7 +124,6 @@ spec:
 ## Python Example: Handling Circuit Breaker State
 
 ```python
-import grpc
 from dapr.clients import DaprClient
 from dapr.clients.exceptions import DaprGrpcError
 
@@ -160,4 +159,4 @@ dapr_resiliency_cb_state{app_id="orders-service",name="consecutiveFailureCB",sta
 
 ## Summary
 
-Dapr's consecutive failure circuit breaker uses the `trip: consecutiveFailures(N)` condition in a Resiliency policy. After N consecutive failures, the circuit opens and requests fail immediately for the configured `timeout` duration. The `maxRequests` parameter controls how many test requests are allowed through in the half-open state. Combine with a retry policy so transient errors are retried before contributing to the consecutive failure count.
+Dapr's consecutive failure circuit breaker uses the `trip: consecutiveFailures >= N` condition in a Resiliency policy. After N consecutive failures, the circuit opens and requests fail immediately for the configured `timeout` duration. The `maxRequests` parameter controls how many test requests are allowed through in the half-open state. Combine with a retry policy so transient errors are retried, keeping in mind that each individual attempt (including retries) counts toward the consecutive failure threshold.
