@@ -26,7 +26,7 @@ try {
 } catch (DaprException e) {
     System.err.println("Error code: " + e.getErrorCode());
     System.err.println("Message: " + e.getMessage());
-    System.err.println("gRPC status: " + e.getStatusCode());
+    System.err.println("HTTP status code: " + e.getHttpStatusCode());
 }
 ```
 
@@ -94,7 +94,7 @@ Return a default value when the Dapr call fails:
 
 ```java
 public String getConfigWithFallback(String key) {
-    return daprClient.getConfiguration("configstore", List.of(key))
+    return daprClient.getConfiguration("configstore", key)
         .map(items -> items.get(key).getValue())
         .onErrorReturn("default-value")
         .block();
@@ -107,7 +107,7 @@ Define retry and circuit-breaker policies in Dapr configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: ResiliencyPolicy
+kind: Resiliency
 metadata:
   name: my-resiliency
 spec:
