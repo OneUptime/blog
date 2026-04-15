@@ -59,7 +59,7 @@ SELECT count() FROM logs WHERE hasToken(log_line, 'Exception');
 
 ## Anchor Regex to the Left When Possible
 
-Left-anchored regex (`^prefix`) is faster than unanchored because ClickHouse can skip granules where the minimum value does not match the prefix:
+Left-anchored regex (`^prefix`) is faster than unanchored because the regex engine only needs to test at the start of each string value instead of at every position:
 
 ```sql
 -- Faster: left-anchored
@@ -69,14 +69,16 @@ SELECT count() FROM logs WHERE match(log_line, '^ERROR');
 SELECT count() FROM logs WHERE match(log_line, 'ERROR');
 ```
 
-## Use multiMatchAny for Multiple Patterns
+## Use multiSearchAny for Multiple Patterns
 
-Instead of multiple LIKE conditions with OR, use `multiMatchAny` which applies Aho-Corasick matching in a single pass:
+Instead of multiple LIKE conditions with OR, use `multiSearchAny` which matches multiple substrings in a single pass:
 
 ```sql
 SELECT count() FROM logs
-WHERE multiMatchAny(log_line, ['NullPointerException', 'OutOfMemoryError', 'StackOverflow']);
+WHERE multiSearchAny(log_line, ['NullPointerException', 'OutOfMemoryError', 'StackOverflow']);
 ```
+
+Use `multiMatchAny` instead if you need regex patterns rather than literal substrings.
 
 ## Avoid LIKE on High-Cardinality Extracted Columns
 
@@ -85,7 +87,7 @@ If you frequently search for a structured field embedded in a string, extract it
 ```sql
 -- Extract at write time
 ALTER TABLE logs ADD COLUMN error_class String
-    MATERIALIZED extract(log_line, 'Exception: (\\w+)');
+    MATERIALIZED extract(log_line, '(\\w+Exception)');
 
 -- Then index and query the extracted column
 ALTER TABLE logs ADD INDEX idx_error_class (error_class) TYPE bloom_filter GRANULARITY 1;
@@ -94,4 +96,4 @@ SELECT count() FROM logs WHERE error_class = 'NullPointerException';
 
 ## Summary
 
-Optimizing LIKE and regex queries in ClickHouse requires adding `tokenbf_v1` or `ngrambf_v1` skip indexes on text columns, using `hasToken()` for word-boundary matches, and `multiMatchAny()` for multi-pattern searches. For structured data embedded in strings, extract fields at ingest time and index the extracted column directly.
+Optimizing LIKE and regex queries in ClickHouse requires adding `tokenbf_v1` or `ngrambf_v1` skip indexes on text columns, using `hasToken()` for word-boundary matches, and `multiSearchAny()` for multi-pattern substring searches. For structured data embedded in strings, extract fields at ingest time and index the extracted column directly.
