@@ -19,18 +19,23 @@ Find the most common next event after viewing a product page:
 ```sql
 SELECT
     next_event,
-    count() AS occurrences,
-    round(count() / sum(count()) OVER () * 100, 2) AS pct
+    occurrences,
+    round(occurrences / sum(occurrences) OVER () * 100, 2) AS pct
 FROM (
     SELECT
-        event_type,
-        lead(event_type) OVER (PARTITION BY user_id ORDER BY event_time) AS next_event
-    FROM user_events
-    WHERE event_time >= today() - 7
+        next_event,
+        count() AS occurrences
+    FROM (
+        SELECT
+            event_type,
+            lead(event_type) OVER (PARTITION BY user_id ORDER BY event_time) AS next_event
+        FROM user_events
+        WHERE event_time >= today() - 7
+    )
+    WHERE event_type = 'product_view'
+      AND next_event IS NOT NULL
+    GROUP BY next_event
 )
-WHERE event_type = 'product_view'
-  AND next_event IS NOT NULL
-GROUP BY next_event
 ORDER BY occurrences DESC
 LIMIT 10;
 ```
