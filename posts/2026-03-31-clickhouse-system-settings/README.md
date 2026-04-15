@@ -79,7 +79,6 @@ SELECT name, value, description
 FROM system.settings
 WHERE name IN (
     'max_memory_usage',
-    'max_memory_usage_for_all_queries',
     'max_bytes_before_external_group_by',
     'max_bytes_before_external_sort',
     'max_threads',
@@ -106,7 +105,7 @@ WHERE name IN (
     'insert_quorum',
     'insert_quorum_timeout',
     'insert_quorum_parallel',
-    'read_from_replicas',
+    'replication_alter_partitions_sync',
     'prefer_localhost_replica'
 )
 ORDER BY name;
@@ -122,7 +121,6 @@ SELECT
 FROM system.settings
 WHERE name IN (
     'max_memory_usage',
-    'max_memory_usage_for_all_queries',
     'max_bytes_before_external_group_by',
     'max_bytes_before_external_sort'
 )
@@ -176,7 +174,7 @@ WHERE readonly = 1
 ORDER BY name;
 ```
 
-Readonly settings cannot be changed with `SET` at the session level. They must be changed in configuration files and require a server restart or reload.
+A `readonly` value of 1 means the current user's profile or constraints prevent changing this setting with `SET`. An administrator can adjust these constraints in the user profile configuration without requiring a server restart.
 
 ## Deprecated Settings
 
@@ -235,10 +233,8 @@ ALTER TABLE default.events
         merge_with_ttl_timeout = 3600,
         max_parts_in_total = 100000;
 
--- Verify
-SELECT name, value
-FROM system.merge_tree_settings
-WHERE name IN ('merge_with_ttl_timeout', 'max_parts_in_total');
+-- Verify the per-table settings
+SHOW CREATE TABLE default.events;
 ```
 
 ## Common Pitfalls
