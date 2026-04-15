@@ -22,7 +22,7 @@ npm install @clickhouse/client
 import { createClient } from '@clickhouse/client';
 
 const client = createClient({
-  host: 'http://127.0.0.1:8123',
+  url: 'http://127.0.0.1:8123',
   database: 'default',
   username: 'default',
   password: '',
@@ -160,16 +160,16 @@ ClickHouse query parameters use `{name: Type}` syntax inside the SQL string and 
 ## Stream Large Query Results
 
 ```typescript
-import { pipeline } from 'node:stream/promises';
 import { createWriteStream } from 'node:fs';
 
-const result = await client.query({
-  query: 'SELECT event_id, user_id, event_name, created_at FROM events',
-  format: 'JSONEachRow',
+const { stream } = await client.exec({
+  query: 'SELECT event_id, user_id, event_name, created_at FROM events FORMAT JSONEachRow',
 });
 
-// Stream results to a file
-await pipeline(result.stream(), createWriteStream('/tmp/events.jsonl'));
+// Stream raw bytes to a file
+const writeStream = createWriteStream('/tmp/events.jsonl');
+stream.pipe(writeStream);
+await new Promise((resolve) => writeStream.on('finish', resolve));
 console.log('Streamed to file');
 ```
 
@@ -196,7 +196,6 @@ console.log(`Processed ${count} rows`);
 
 ```typescript
 import { createReadStream } from 'node:fs';
-import { Transform } from 'node:stream';
 
 // Insert from a JSONL file without loading it all into memory
 await client.insert({
@@ -250,7 +249,7 @@ const result = await client.query({
 });
 
 // Each row is an array
-const rows = await result.json<[number, string, string][]>();
+const rows = await result.json<[number, string, string]>();
 rows.forEach(([userId, eventName, createdAt]) => {
   console.log(userId, eventName, createdAt);
 });
@@ -290,7 +289,7 @@ import express from 'express';
 import { createClient } from '@clickhouse/client';
 
 const app = express();
-const ch  = createClient({ host: 'http://localhost:8123' });
+const ch  = createClient({ url: 'http://localhost:8123' });
 
 app.get('/stats', async (req, res) => {
   try {
