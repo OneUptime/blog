@@ -110,28 +110,26 @@ await sendDirect('reporting', { type: 'report', period: '2026-Q1' });
 
 ```javascript
 const { DaprServer } = require('@dapr/dapr');
-const express = require('express');
 
 const server = new DaprServer({ serverPort: '3000' });
 
-server.pubsub.subscribeWithOptions('notifications-pubsub', 'notifications', {
-  route: {
-    rules: [
-      { match: 'event.data.destination == "billing"', path: '/notify/billing' },
-      { match: 'event.data.destination == "fulfillment"', path: '/notify/fulfillment' },
-    ],
-    default: '/notify/unrouted',
-  },
+// Subscribe with routing rules
+await server.pubsub.subscribe('notifications-pubsub', 'notifications', {
+  default: '/notify/unrouted',
+  rules: [
+    { match: 'event.data.destination == "billing"', path: '/notify/billing' },
+    { match: 'event.data.destination == "fulfillment"', path: '/notify/fulfillment' },
+  ],
 });
 
-// Handle billing messages
-server.pubsub.subscribe('notifications-pubsub', 'notify/billing', async (data) => {
+// Handle billing messages via route
+server.pubsub.subscribeToRoute('notifications-pubsub', 'notifications', 'notify/billing', async (data) => {
   console.log('Billing notification:', data);
   await billingService.processNotification(data);
 });
 
-// Handle fulfillment messages
-server.pubsub.subscribe('notifications-pubsub', 'notify/fulfillment', async (data) => {
+// Handle fulfillment messages via route
+server.pubsub.subscribeToRoute('notifications-pubsub', 'notifications', 'notify/fulfillment', async (data) => {
   console.log('Fulfillment notification:', data);
   await fulfillmentService.processNotification(data);
 });
