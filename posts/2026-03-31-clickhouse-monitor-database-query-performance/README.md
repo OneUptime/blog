@@ -47,7 +47,7 @@ You can also control logging per query or per user.
 ALTER USER analyst SETTINGS log_queries = 1;
 
 -- Set minimum query duration to log (avoid logging trivial queries)
-ALTER USER analyst SETTINGS log_queries_min_duration_ms = 100;
+ALTER USER analyst SETTINGS log_queries_min_query_duration_ms = 100;
 ```
 
 ## Exploring system.query_log
@@ -136,7 +136,8 @@ SELECT
     avg(query_duration_ms)                           AS avg_duration_ms,
     quantile(0.99)(query_duration_ms)                AS p99_duration_ms
 FROM system.query_log
-WHERE query_start_time >= now() - INTERVAL 6 HOUR
+WHERE type != 'QueryStart'
+  AND query_start_time >= now() - INTERVAL 6 HOUR
 GROUP BY period
 ORDER BY period;
 ```
@@ -155,7 +156,7 @@ FROM system.query_log
 WHERE type = 'QueryFinish'
   AND query_start_time >= now() - INTERVAL 24 HOUR
 GROUP BY user, normalized_query_hash
-ORDER BY peak_memory DESC
+ORDER BY max(memory_usage) DESC
 LIMIT 20;
 
 -- Queries reading the most data
@@ -209,7 +210,8 @@ SELECT
     formatReadableSize(sum(read_bytes))              AS total_data_read,
     formatReadableSize(max(memory_usage))            AS peak_memory
 FROM system.query_log
-WHERE query_start_time >= now() - INTERVAL 1 HOUR;
+WHERE type != 'QueryStart'
+  AND query_start_time >= now() - INTERVAL 1 HOUR;
 ```
 
 ```mermaid
