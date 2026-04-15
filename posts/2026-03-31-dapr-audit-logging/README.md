@@ -12,23 +12,9 @@ Description: Learn how to implement comprehensive audit logging in Dapr applicat
 
 Operational logs help debug issues. Audit logs prove that specific actions were taken by specific actors at specific times. Audit logs must be tamper-evident, retained for defined periods, and queryable for compliance reviews. Dapr provides several mechanisms to implement audit logging without burdening individual services.
 
-## Using Dapr Middleware for Centralized Audit Capture
+## Using Dapr Configuration for Centralized Audit Capture
 
-Configure an HTTP middleware pipeline that captures all API operations:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: audit-middleware
-  namespace: production
-spec:
-  type: middleware.http.routeralias
-  version: v1
-  metadata: []
-```
-
-Apply the middleware pipeline in the configuration:
+Enable API logging and distributed tracing in a Dapr Configuration resource to capture all sidecar API operations as audit records:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -37,10 +23,6 @@ metadata:
   name: audit-pipeline-config
   namespace: production
 spec:
-  httpPipeline:
-    handlers:
-    - name: audit-logger
-      type: middleware.http.uppercase
   tracing:
     samplingRate: "1"
     otel:
@@ -63,10 +45,8 @@ package main
 import (
     "context"
     "encoding/json"
-    "net/http"
     "time"
 
-    "github.com/gin-gonic/gin"
     dapr "github.com/dapr/go-sdk/client"
 )
 
@@ -93,9 +73,11 @@ func auditAction(client dapr.Client, event AuditEvent) error {
 
     return client.InvokeOutputBinding(
         context.Background(),
-        "audit-log-binding",
-        "create",
-        data,
+        &dapr.InvokeBindingRequest{
+            Name:      "audit-log-binding",
+            Operation: "create",
+            Data:      data,
+        },
     )
 }
 ```
@@ -148,8 +130,8 @@ spec:
   pubsubname: pubsub
   topic: audit-events
   route: /siem/ingest
-  scopes:
-  - siem-connector
+scopes:
+- siem-connector
 ```
 
 ```python
@@ -161,12 +143,12 @@ import httpx
 app = FastAPI()
 dapr_app = DaprApp(app)
 
-@dapr_app.subscribe(pubsub_name="pubsub", topic="audit-events")
-async def forward_to_siem(event):
+@dapr_app.subscribe(pubsub="pubsub", topic="audit-events")
+async def forward_to_siem(event: dict):
     async with httpx.AsyncClient() as client:
         await client.post(
             "https://siem.internal/api/events",
-            json=event.data(),
+            json=event["data"],
             headers={"Authorization": f"Bearer {SIEM_TOKEN}"}
         )
     return {"status": "SUCCESS"}
