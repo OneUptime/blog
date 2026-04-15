@@ -65,16 +65,16 @@ The `OFFSET 1 HOUR` means the refresh runs 1 hour after midnight UTC each day.
 ```sql
 SELECT
     database,
-    name,
-    refresh_status,
+    view,
+    status,
     last_refresh_time,
     next_refresh_time,
-    last_refresh_result
+    exception
 FROM system.view_refreshes
 ORDER BY next_refresh_time;
 ```
 
-The `last_refresh_result` column shows `Finished` on success or the error message on failure.
+The `status` column shows the current refresh state, and the `exception` column contains the error message if the last refresh failed.
 
 ## Manually Triggering a Refresh
 
@@ -109,10 +109,10 @@ ClickHouse waits for `daily_sales_summary` to finish refreshing before starting 
 
 ```sql
 -- Stop scheduled refreshes without dropping the view
-ALTER TABLE daily_sales_summary MODIFY REFRESH SUSPEND;
+SYSTEM STOP VIEW daily_sales_summary;
 
 -- Resume the schedule
-ALTER TABLE daily_sales_summary MODIFY REFRESH RESUME;
+SYSTEM START VIEW daily_sales_summary;
 ```
 
 ## Summary
