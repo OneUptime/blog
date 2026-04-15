@@ -12,7 +12,7 @@ Description: Understand how ClickHouse processes queries column by column using 
 
 Traditional databases process one row at a time through an iterator (Volcano) model. Each function call retrieves a single row, introducing high per-row overhead from virtual function dispatch and branch prediction misses.
 
-ClickHouse processes data in columnar blocks - vectors of 8192+ values at a time. This enables SIMD (Single Instruction Multiple Data) CPU instructions to operate on 8, 16, or 32 values simultaneously using 256-bit or 512-bit AVX/AVX-512 registers.
+ClickHouse processes data in columnar blocks - vectors of up to 65,536 values at a time (the default `max_block_size`). This enables SIMD (Single Instruction Multiple Data) CPU instructions to operate on 8, 16, or 32 values simultaneously using 256-bit or 512-bit AVX/AVX-512 registers.
 
 ## Blocks - The Unit of Processing
 
