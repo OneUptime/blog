@@ -97,24 +97,18 @@ func processPayment(ctx context.Context, payment Payment) error {
 }
 ```
 
-## Adding Custom Attributes in the Dapr Config (Span Headers)
+## Propagating Custom Context via Dapr Service Invocation Headers
 
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: span-enrichment-config
-spec:
-  tracing:
-    samplingRate: "1"
-    otel:
-      endpointAddress: "http://otel-collector:4318/v1/traces"
-  # Forward request headers as span attributes
-  httpPipeline:
-    handlers:
-    - name: span-enricher
-      type: middleware.http.spanenricher
+Dapr does not include a built-in middleware for automatically forwarding HTTP headers as span attributes. Instead, pass custom metadata as headers when invoking Dapr services, then read them in your application code to set span attributes:
+
+```bash
+# Pass custom headers when invoking a Dapr service
+curl -H "X-Tenant-Id: acme" \
+     -H "X-Feature-Variant: checkout-v2" \
+     http://localhost:3500/v1.0/invoke/order-service/method/process
 ```
+
+In the receiving service, extract these headers from the incoming request and add them as span attributes using the OpenTelemetry SDK, as shown in the Python and Go examples above.
 
 ## Querying Custom Attributes in Jaeger
 
