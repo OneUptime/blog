@@ -51,7 +51,7 @@ kubectl create secret generic alibaba-tablestore-secret \
 
 ## Writing a Row via HTTP
 
-The binding expects `data` containing the row fields and a `primaryKeys` field identifying the row:
+The binding expects `data` containing all column values (including primary keys) and a `primaryKeys` metadata field listing the primary key column names:
 
 ```bash
 curl -X POST http://localhost:3500/v1.0/bindings/tablestore-binding \
@@ -59,12 +59,14 @@ curl -X POST http://localhost:3500/v1.0/bindings/tablestore-binding \
   -d '{
     "operation": "create",
     "data": {
+      "deviceId": "sensor-001",
+      "timestamp": 1711900800,
       "temperature": 23.5,
       "humidity": 65,
       "location": "rack-A1"
     },
     "metadata": {
-      "primaryKeys": "deviceId=sensor-001,timestamp=1711900800"
+      "primaryKeys": "deviceId,timestamp"
     }
   }'
 ```
@@ -72,18 +74,18 @@ curl -X POST http://localhost:3500/v1.0/bindings/tablestore-binding \
 ## Writing from Python
 
 ```python
-import json
 import requests
 
 def write_sensor_reading(device_id: str, temperature: float, ts: int):
     payload = {
         "operation": "create",
         "data": {
-            "temperature": temperature,
             "deviceId": device_id,
+            "timestamp": ts,
+            "temperature": temperature,
         },
         "metadata": {
-            "primaryKeys": f"deviceId={device_id},timestamp={ts}"
+            "primaryKeys": "deviceId,timestamp"
         }
     }
     resp = requests.post(
@@ -102,8 +104,12 @@ curl -X POST http://localhost:3500/v1.0/bindings/tablestore-binding \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "delete",
+    "data": {
+      "deviceId": "sensor-001",
+      "timestamp": 1711900800
+    },
     "metadata": {
-      "primaryKeys": "deviceId=sensor-001,timestamp=1711900800"
+      "primaryKeys": "deviceId,timestamp"
     }
   }'
 ```
