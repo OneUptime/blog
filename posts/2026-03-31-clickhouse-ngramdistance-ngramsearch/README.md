@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Function, Fuzzy Matching, Search, SQL
 
-Description: Learn how ngramDistance() measures string similarity using n-gram overlap and how ngramSearch() finds the closest match in an array, for fuzzy search and typo detection.
+Description: Learn how ngramDistance() measures string similarity using n-gram overlap and how ngramSearch() performs non-symmetric fuzzy matching, for fuzzy search and typo detection.
 
 ---
 
-Exact string matching breaks down the moment data contains typos, alternate spellings, or minor variations. ClickHouse's n-gram based similarity functions provide a practical alternative. `ngramDistance()` computes a normalized distance between two strings based on shared 4-character n-grams, where `0` means the strings are identical and `1` means they share no n-grams at all. `ngramSearch()` extends this to find the most similar string in an array. Case-insensitive variants `ngramDistanceCaseInsensitive()` and `ngramSearchCaseInsensitive()` are also available.
+Exact string matching breaks down the moment data contains typos, alternate spellings, or minor variations. ClickHouse's n-gram based similarity functions provide a practical alternative. `ngramDistance()` computes a normalized distance between two strings based on shared 4-character n-grams, where `0` means the strings are identical and `1` means they share no n-grams at all. `ngramSearch()` performs a non-symmetric comparison that checks how well the needle's n-grams appear in the haystack, returning a `Float32` score between `0` and `1`. Case-insensitive variants `ngramDistanceCaseInsensitive()` and `ngramSearchCaseInsensitive()` are also available.
 
 ## Function Signatures
 
@@ -20,11 +20,11 @@ ngramDistanceCaseInsensitive(str1, str2)
 Returns a `Float32` in the range `[0, 1]`. Lower values mean higher similarity.
 
 ```text
-ngramSearch(str, arr)
-ngramSearchCaseInsensitive(str, arr)
+ngramSearch(haystack, needle)
+ngramSearchCaseInsensitive(haystack, needle)
 ```
 
-Returns the element of `arr` that is closest to `str` by n-gram distance.
+Returns a `Float32` in the range `[0, 1]`. Unlike `ngramDistance`, this is a non-symmetric comparison — it measures how well the needle's n-grams are represented in the haystack.
 
 ## Understanding the Distance Value
 
@@ -80,27 +80,21 @@ Setting a threshold of `0.2` surfaces string pairs that are likely duplicates or
 
 ## Typo Correction - Finding the Intended Search Term
 
-Given a user's search query that may contain a typo, find the closest known term from a dictionary.
+Given a user's search query that may contain a typo, find the closest known term from a dictionary. Since `ngramDistance` compares two strings, use `arraySort` to rank an array of candidate terms by distance and pick the closest one.
 
 ```sql
 SELECT
     user_query,
-    ngramSearch(user_query, ['monitoring', 'alerting', 'dashboard', 'incident', 'oncall', 'metrics']) AS closest_term,
-    ngramDistance(user_query, ngramSearch(user_query, ['monitoring', 'alerting', 'dashboard', 'incident', 'oncall', 'metrics'])) AS distance
+    arraySort(x -> ngramDistance(user_query, x), terms)[1] AS closest_term,
+    ngramDistance(user_query, arraySort(x -> ngramDistance(user_query, x), terms)[1]) AS distance
 FROM (
-    SELECT arrayJoin(['monitroing', 'alreting', 'dashbord', 'incidnt', 'metrcs']) AS user_query
+    SELECT
+        arrayJoin(['monitroing', 'alreting', 'dashbord', 'incidnt', 'metrcs']) AS user_query,
+        ['monitoring', 'alerting', 'dashboard', 'incident', 'oncall', 'metrics'] AS terms
 )
 ```
 
-```text
-user_query   | closest_term | distance
--------------+--------------+-----------
-monitroing   | monitoring   | 0.333...
-alreting     | alerting     | 0.4
-dashbord     | dashboard    | 0.333...
-incidnt      | incident     | 0.5
-metrcs       | metrics      | 0.4
-```
+The `arraySort` lambda sorts the candidate terms by their n-gram distance to `user_query`, and `[1]` picks the closest match.
 
 ## Filtering by Similarity Threshold
 
@@ -149,17 +143,17 @@ ORDER BY distance
 LIMIT 50
 ```
 
-## Combining ngramSearch with Array of Canonical Values
+## Snapping Free Text to Canonical Values
 
-Normalize free-text entries by snapping them to the closest canonical value in a reference list.
+Normalize free-text entries by snapping them to the closest canonical value in a reference list. Use `arraySort` with `ngramDistanceCaseInsensitive` to rank the candidates and pick the best match.
 
 ```sql
 SELECT
     raw_category,
-    ngramSearchCaseInsensitive(
-        raw_category,
+    arraySort(
+        x -> ngramDistanceCaseInsensitive(raw_category, x),
         ['Infrastructure', 'Application', 'Database', 'Network', 'Security']
-    ) AS canonical_category
+    )[1] AS canonical_category
 FROM incident_reports
 WHERE event_date = today()
 LIMIT 50
@@ -167,4 +161,4 @@ LIMIT 50
 
 ## Summary
 
-`ngramDistance()` computes a normalized `Float32` similarity score between two strings using shared 4-character n-grams, with `0` indicating identical strings and `1` indicating no overlap. `ngramSearch()` finds the closest matching string from an array. Case-insensitive variants are available for both. These functions are practical tools for fuzzy deduplication, typo correction, approximate search ranking, and snapping free-text fields to canonical values - all within a single SQL query in ClickHouse.
+`ngramDistance()` computes a normalized `Float32` similarity score between two strings using shared 4-character n-grams, with `0` indicating identical strings and `1` indicating no overlap. `ngramSearch()` performs a non-symmetric comparison checking how well the needle's n-grams appear in the haystack. Case-insensitive variants are available for both. Combined with array functions like `arraySort`, these functions are practical tools for fuzzy deduplication, typo correction, approximate search ranking, and snapping free-text fields to canonical values - all within a single SQL query in ClickHouse.
