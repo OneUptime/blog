@@ -16,33 +16,34 @@ A single UTF-8 character can occupy 1 to 4 bytes. When `left()` slices on byte b
 
 ```sql
 -- "Привет" is 6 Cyrillic characters, each 2 bytes (12 bytes total)
+-- Taking 3 bytes cuts through the second Cyrillic character
 SELECT
-    left('Привет', 3)     AS byte_slice,   -- stops mid-character
+    left('Привет', 3)     AS byte_slice,   -- 3 bytes: cuts mid-character
     leftUTF8('Привет', 3) AS char_slice;   -- correctly returns first 3 characters
 ```
 
 ```text
 byte_slice | char_slice
 -----------|----------
-При        | При
+П�         | При
 ```
 
-In this case `left('Привет', 3)` happens to land on a character boundary because each Cyrillic character is exactly 2 bytes and we took 3 bytes. But requesting a non-multiple of 2 would produce invalid output.
+`byte_slice` contains 3 raw bytes — the complete 2-byte character П plus the leading byte of р — producing an invalid UTF-8 sequence that displays as a replacement character.
 
 ```sql
--- Taking 4 bytes cuts through the third Cyrillic character
+-- Taking 5 bytes cuts through the third Cyrillic character
 SELECT
-    left('Привет', 4)     AS broken_slice,
+    left('Привет', 5)     AS broken_slice,
     leftUTF8('Привет', 3) AS correct_3_chars;
 ```
 
 ```text
 broken_slice | correct_3_chars
 -------------|----------------
-При?         | При
+Пр�          | При
 ```
 
-`broken_slice` ends with a partial byte sequence that many display tools render as a replacement character.
+`broken_slice` contains 5 bytes — two complete Cyrillic characters Пр (4 bytes) plus the leading byte of и — ending with a partial byte sequence that displays as a replacement character.
 
 ## Basic Usage of leftUTF8() and rightUTF8()
 
@@ -126,7 +127,7 @@ LIMIT 10;
 SELECT
     count()
 FROM products
-WHERE rightUTF8(product_code, 2) NOT IN (['US', 'EU', 'JP', 'CN']);
+WHERE rightUTF8(product_code, 2) NOT IN ('US', 'EU', 'JP', 'CN');
 ```
 
 ## Comparing left() vs leftUTF8() Performance
