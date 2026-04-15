@@ -76,7 +76,7 @@ The result is a tuple of two arrays: the key array and the summed value array.
 
 ## Flattening the Map Output
 
-`sumMapMerge` returns a `Tuple(Array(K), Array(V))`. Use `arrayZip` to pair keys with values, then `arrayJoin` to produce one row per key.
+`sumMapMerge` returns a `Tuple(Array(K), Array(V))`. Use `ARRAY JOIN` on the key and value arrays to produce one row per key.
 
 ```sql
 SELECT
@@ -109,8 +109,8 @@ SELECT region, sumMapState(event_types, counts) AS partial
 FROM raw_events_local
 GROUP BY region
 
--- On coordinator, ClickHouse automatically uses sumMapMerge
--- when querying a Distributed table backed by AggregatingMergeTree.
+-- On the coordinator, you query the Distributed table with sumMapMerge.
+-- ClickHouse handles shipping partial states from shards automatically.
 SELECT region, sumMapMerge(event_sums) FROM daily_event_counts_distributed
 GROUP BY region;
 ```
