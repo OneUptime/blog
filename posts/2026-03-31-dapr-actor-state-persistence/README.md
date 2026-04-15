@@ -62,7 +62,6 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "github.com/dapr/go-sdk/actor"
 )
 
@@ -110,8 +109,7 @@ func (a *OrderActorImpl) DeleteOrder(ctx context.Context) error {
 
 ```python
 from dapr.actor import Actor, ActorInterface, actormethod
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import dataclass
 
 @dataclass
 class OrderState:
