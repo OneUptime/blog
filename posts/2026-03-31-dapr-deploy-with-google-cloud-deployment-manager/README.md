@@ -10,7 +10,7 @@ Description: Deploy Dapr on Google Kubernetes Engine using Google Cloud Deployme
 
 ## Google Cloud Deployment Manager for Dapr
 
-Google Cloud Deployment Manager is GCP's native infrastructure-as-code service, allowing you to describe resources in YAML, JSON, or Python Jinja2 templates. When deploying Dapr on GKE, Deployment Manager can provision the cluster and post-deploy scripts can handle the Dapr installation.
+Google Cloud Deployment Manager is GCP's native infrastructure-as-code service, allowing you to describe resources in YAML configurations with Python or Jinja2 templates. When deploying Dapr on GKE, Deployment Manager can provision the cluster and post-deploy scripts can handle the Dapr installation.
 
 ## Prerequisites
 
@@ -123,7 +123,9 @@ Add a post-cluster startup script to the Deployment Manager template:
 
 ```python
 startup_script = """#!/bin/bash
-apt-get install -y kubectl helm
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 helm repo add dapr https://dapr.github.io/helm-charts/
 helm install dapr dapr/dapr --namespace dapr-system --create-namespace --version 1.13.0
 """
