@@ -21,7 +21,7 @@ CREATE TABLE location_events
     user_id     UInt64,
     longitude   Float64,
     latitude    Float64,
-    h3_index    UInt64          DEFAULT geoToH3(longitude, latitude, 8),
+    h3_index    UInt64          DEFAULT geoToH3(latitude, longitude, 8),
     event_time  DateTime        DEFAULT now(),
     event_type  LowCardinality(String)
 )
@@ -55,8 +55,8 @@ SELECT
     count() AS visits_in_zone
 FROM location_events
 WHERE pointInPolygon(
-    (latitude, longitude),
-    [(55.75, 37.60), (55.75, 37.63), (55.72, 37.63), (55.72, 37.60), (55.75, 37.60)]
+    (longitude, latitude),
+    [(37.60, 55.75), (37.63, 55.75), (37.63, 55.72), (37.60, 55.72), (37.60, 55.75)]
 )
 GROUP BY user_id
 ORDER BY visits_in_zone DESC
@@ -71,11 +71,11 @@ H3 indexes enable O(1) cell lookup instead of full-table distance scans:
 SELECT count() AS nearby_events
 FROM location_events
 WHERE h3_index IN (
-    SELECT arrayJoin(h3kRing(geoToH3(37.6156, 55.7522, 8), 2))
+    SELECT arrayJoin(h3kRing(geoToH3(55.7522, 37.6156, 8), 2))
 );
 ```
 
-The resolution-8 hexagons are roughly 460 meters across, so a 2-ring search covers approximately 1.4 km.
+The resolution-8 hexagons have an average edge length of roughly 531 meters, so a 2-ring search covers approximately a 1.8 km radius.
 
 ## Heatmap Generation
 
