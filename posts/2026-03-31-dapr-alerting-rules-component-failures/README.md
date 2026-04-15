@@ -12,11 +12,11 @@ Dapr components are the building blocks of your microservices: state stores, pub
 
 ## Understanding Dapr Component Metrics
 
-Dapr exposes component health through the `dapr_component_loaded` gauge and operation-level histograms. Key metrics to watch:
+Dapr exposes component health through runtime counters and operation-level counters. Key metrics to watch:
 
-- `dapr_component_loaded` - set to 0 when a component fails to load
-- `dapr_state_get_total`, `dapr_state_set_total` - request counts by status
-- `dapr_pubsub_publish_count` - pub/sub publish attempts
+- `dapr_runtime_component_init_fail_total` - counts component initialization failures
+- `dapr_component_state_count` - state store operation counts with `operation` and `success` labels
+- `dapr_component_pubsub_egress_count` - pub/sub publish attempts
 
 Enable Prometheus scraping in your Dapr configuration:
 
@@ -27,7 +27,7 @@ metadata:
   name: daprconfig
   namespace: default
 spec:
-  metric:
+  metrics:
     enabled: true
     port: 9090
 ```
@@ -50,28 +50,28 @@ spec:
     - name: dapr.component.failures
       interval: 30s
       rules:
-        - alert: DaprComponentNotLoaded
-          expr: dapr_component_loaded == 0
+        - alert: DaprComponentInitFailure
+          expr: increase(dapr_runtime_component_init_fail_total[5m]) > 0
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "Dapr component failed to load"
-            description: "Component {{ $labels.name }} of type {{ $labels.type }} in namespace {{ $labels.namespace }} failed to load."
+            summary: "Dapr component failed to initialize"
+            description: "Component {{ $labels.component }} in app {{ $labels.app_id }} failed to initialize."
 
         - alert: DaprStateStoreErrors
           expr: |
-            rate(dapr_state_get_total{success="false"}[5m]) > 0.05
+            rate(dapr_component_state_count{success="false"}[5m]) > 0.05
           for: 2m
           labels:
             severity: warning
           annotations:
             summary: "Dapr state store error rate elevated"
-            description: "State store {{ $labels.storeName }} has >5% error rate over last 5 minutes."
+            description: "State store {{ $labels.component }} has >5% error rate over last 5 minutes."
 
         - alert: DaprPubSubPublishFailures
           expr: |
-            rate(dapr_pubsub_publish_count{success="false"}[5m]) > 0.1
+            rate(dapr_component_pubsub_egress_count{success="false"}[5m]) > 0.1
           for: 2m
           labels:
             severity: warning
@@ -87,23 +87,23 @@ Input and output bindings need separate monitoring. Add rules for binding operat
 ```yaml
         - alert: DaprBindingTriggerError
           expr: |
-            rate(dapr_binding_trigger_count{success="false"}[5m]) > 0.05
+            rate(dapr_component_input_binding_count{success="false"}[5m]) > 0.05
           for: 3m
           labels:
             severity: warning
           annotations:
             summary: "Dapr input binding trigger failures"
-            description: "Input binding {{ $labels.name }} triggering errors at elevated rate."
+            description: "Input binding {{ $labels.component }} triggering errors at elevated rate."
 
         - alert: DaprOutputBindingError
           expr: |
-            rate(dapr_binding_send_count{success="false"}[5m]) > 0.05
+            rate(dapr_component_output_binding_count{success="false"}[5m]) > 0.05
           for: 3m
           labels:
             severity: warning
           annotations:
             summary: "Dapr output binding send failures"
-            description: "Output binding {{ $labels.name }} sending errors at elevated rate."
+            description: "Output binding {{ $labels.component }} sending errors at elevated rate."
 ```
 
 ## Testing Your Alerting Rules
