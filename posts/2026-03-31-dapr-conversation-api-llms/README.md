@@ -10,7 +10,7 @@ Description: Learn how to use Dapr's Conversation API to integrate Large Languag
 
 ## Introduction
 
-Dapr's Conversation API (alpha in Dapr 1.14+) provides a building block for integrating Large Language Models (LLMs) into microservices applications. It abstracts provider-specific APIs behind a uniform interface, so your application code remains portable across OpenAI, Azure OpenAI, Hugging Face, and other supported providers.
+Dapr's Conversation API (alpha in Dapr 1.15+) provides a building block for integrating Large Language Models (LLMs) into microservices applications. It abstracts provider-specific APIs behind a uniform interface, so your application code remains portable across OpenAI, Azure OpenAI, Hugging Face, and other supported providers.
 
 Use cases:
 - AI-powered chatbots and assistants
@@ -39,7 +39,7 @@ flowchart LR
 
 ## Prerequisites
 
-- Dapr v1.14 or later
+- Dapr v1.15 or later
 - An LLM provider API key (OpenAI, Azure OpenAI, etc.)
 - Dapr initialized locally or on Kubernetes
 
@@ -94,6 +94,8 @@ spec:
     value: "https://my-resource.openai.azure.com/"
   - name: model
     value: "gpt-4"
+  - name: apiType
+    value: "azure"
   - name: apiVersion
     value: "2024-02-01"
 ```
@@ -177,7 +179,7 @@ func main() {
         },
     }
 
-    response, err := client.InvokeConversationAlpha1(ctx, request)
+    response, err := client.ConverseAlpha1(ctx, request)
     if err != nil {
         log.Fatalf("Conversation failed: %v", err)
     }
