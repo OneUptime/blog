@@ -83,7 +83,6 @@ Each ClickHouse type is encoded as follows in RowBinary:
 
 ```python
 import struct
-import sys
 
 def write_string(buf, s):
     encoded = s.encode('utf-8')
