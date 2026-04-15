@@ -57,7 +57,7 @@ For interoperability with systems that expect base64 (such as HTTP APIs or JSON 
 ```sql
 -- Encode binary payload as base64
 SELECT base64Encode('binary\x00data\xff');
--- Result: YmluYXJ5AHVhdGH/
+-- Result: YmluYXJ5AGRhdGH/
 
 -- Decode base64 back to raw bytes
 SELECT base64Decode('SGVsbG8gV29ybGQ=');
