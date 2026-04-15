@@ -58,7 +58,7 @@ SELECT
 FROM large_events_table;
 ```
 
-The internal state size for `quantileTDigest()` is bounded by its compression parameter (default 100 centroids), not by the number of rows processed. This makes it safe to use on large datasets without OOM risk.
+The internal state size for `quantileTDigest()` grows as `log(n)` where `n` is the number of values processed, making it far more memory-efficient than storing all values. This makes it safe to use on large datasets without OOM risk.
 
 ## Using quantileTDigestWeighted()
 
