@@ -65,7 +65,7 @@ SELECT
 FROM system.columns
 WHERE database = 'mydb'
   AND (compression_codec IS NULL OR compression_codec = '')
-  AND table NOT IN (SELECT name FROM system.tables WHERE engine = 'View')
+  AND table NOT IN (SELECT name FROM system.tables WHERE engine = 'View' AND database = 'mydb')
 ORDER BY table, position;
 ```
 
