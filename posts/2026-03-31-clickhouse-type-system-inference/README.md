@@ -34,7 +34,7 @@ SELECT toTypeName('hello');
 -- Result: String
 
 SELECT toTypeName(true);
--- Result: UInt8  (Boolean literals are UInt8)
+-- Result: Bool  (Boolean literal, internally stored as UInt8)
 
 SELECT toTypeName(NULL);
 -- Result: Nullable(Nothing)
@@ -47,9 +47,9 @@ This narrowest-type inference minimizes storage during query processing and inte
 When two values of different types are combined in an arithmetic expression, ClickHouse promotes to the common supertype - the smallest type that can represent both operands without loss:
 
 ```sql
--- Mixing Int8 and Int32 promotes to Int32
+-- Mixing Int8 and Int32 promotes to Int64 (next bigger type after Int32)
 SELECT toTypeName(toInt8(1) + toInt32(2));
--- Result: Int32
+-- Result: Int64
 
 -- Mixing UInt32 and Int32: signed wins, result is Int64
 SELECT toTypeName(toUInt32(1) + toInt32(2));
@@ -65,8 +65,8 @@ SELECT toTypeName(toInt32(1) + 1.5);
 ```
 
 The general promotion hierarchy is:
-- Integers: wider type wins
-- Signed vs unsigned of same width: result is wider signed type
+- Integers: result is the next bigger type after the wider operand to prevent overflow
+- Signed vs unsigned of same width: result is the next wider signed type
 - Integer + Float: result is Float
 - Float32 + Float64: result is Float64
 
@@ -76,7 +76,7 @@ When any operand is `Nullable`, the result of an expression is also `Nullable`:
 
 ```sql
 SELECT toTypeName(toNullable(1) + 1);
--- Result: Nullable(UInt8)
+-- Result: Nullable(UInt16)
 
 SELECT toTypeName(toNullable('x') || 'y');
 -- Result: Nullable(String)
@@ -152,7 +152,7 @@ SELECT toTypeName([1, 2, 3]);
 -- Result: Array(UInt8)
 
 SELECT toTypeName([1, 2, -1]);
--- Result: Array(Int8)  (negative value forces signed)
+-- Result: Array(Int16)  (common supertype of UInt8 and Int8 is Int16)
 
 SELECT toTypeName([1, 2.5, 3]);
 -- Result: Array(Float64)  (float forces float promotion)
