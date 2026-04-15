@@ -66,9 +66,6 @@ Edit `/etc/clickhouse-server/config.xml` or drop files in `/etc/clickhouse-serve
     <!-- Uncompressed block cache for hot data -->
     <uncompressed_cache_size>8589934592</uncompressed_cache_size>  <!-- 8 GB -->
 
-    <!-- Increase read-ahead for sequential scans -->
-    <read_backoff_min_throughput>0</read_backoff_min_throughput>
-
     <!-- Background merge threads (for write throughput too) -->
     <background_pool_size>16</background_pool_size>
     <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
@@ -95,10 +92,10 @@ SET parallel_replicas_for_non_replicated_merge_tree = 1;
 -- Increase pipeline parallelism
 SET max_streams_to_max_threads_ratio = 1;
 
--- Enable query result caching (ClickHouse 23.5+)
+-- Enable query result caching (production-ready since ClickHouse 23.5)
 SET use_query_cache = 1;
 SET query_cache_ttl = 30;  -- cache results for 30 seconds
-SET query_cache_max_size_in_bytes = 1073741824;  -- 1 GB cache size
+SET query_cache_max_size_in_bytes = 1073741824;  -- 1 GB per-user cache quota
 
 -- Reduce coordinator overhead for simple aggregate queries
 SET aggregation_in_order_max_block_bytes = 50000000;
@@ -119,11 +116,12 @@ WHERE event_time >= today() - 7
 GROUP BY date, service
 SETTINGS use_query_cache = 1, query_cache_ttl = 60;
 
--- Check cache hit rate
+-- Check cache usage per query
 SELECT
     event_time,
-    query_cache_hits,
-    query_cache_misses
+    query_cache_usage,
+    ProfileEvents['QueryCacheHits'] AS cache_hits,
+    ProfileEvents['QueryCacheMisses'] AS cache_misses
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_time >= now() - INTERVAL 1 HOUR
