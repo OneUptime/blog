@@ -110,8 +110,8 @@ For most production setups, use simple RAID 1 or JBOD per node, and rely on Clic
 # Check RAID array status
 mdadm --detail /dev/md0
 
-# Watch for degraded arrays
-cat /proc/mdstat | grep -E "degraded|rebuilding"
+# Watch for degraded or rebuilding arrays
+mdadm --detail /dev/md0 | grep -i "state"
 
 # Set up email alerts for RAID failures
 echo "MAILADDR admin@example.com" >> /etc/mdadm/mdadm.conf
