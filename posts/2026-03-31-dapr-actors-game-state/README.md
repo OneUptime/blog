@@ -27,6 +27,7 @@ package main
 
 import (
   "context"
+  "fmt"
   "time"
   "github.com/dapr/go-sdk/actor"
 )
@@ -40,7 +41,7 @@ type GameRoomState struct {
 }
 
 type GameRoomActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *GameRoomActor) Type() string { return "GameRoom" }
@@ -106,7 +107,7 @@ type PlayerStats struct {
 }
 
 type PlayerActor struct {
-  actor.ServerImplBase
+  actor.ServerImplBaseCtx
 }
 
 func (a *PlayerActor) Type() string { return "Player" }
@@ -140,16 +141,26 @@ curl -X POST http://localhost:3500/v1.0/actors/GameRoom/room-42/method/UpdateSco
 ## Using Reminders for Game Timeouts
 
 ```go
-func (a *GameRoomActor) OnActivate() error {
-  // Set a reminder to end the game after 10 minutes
-  return a.AddReminder("game-timeout", nil, 10*time.Minute, 0)
+// RegisterTimeout registers a game timeout reminder using the Dapr client.
+func (a *GameRoomActor) RegisterTimeout(ctx context.Context) error {
+  client, err := dapr.NewClient()
+  if err != nil {
+    return err
+  }
+  defer client.Close()
+  return client.RegisterActorReminder(ctx, &dapr.RegisterActorReminderRequest{
+    ActorType: "GameRoom",
+    ActorID:   a.ID(),
+    Name:      "game-timeout",
+    DueTime:   "10m",
+  })
 }
 
-func (a *GameRoomActor) ReminderCall(ctx context.Context, name string, data []byte) error {
-  if name == "game-timeout" {
-    return a.EndGame(ctx)
+// ReminderCall implements actor.ReminderCallee to handle reminder callbacks.
+func (a *GameRoomActor) ReminderCall(reminderName string, state []byte, dueTime string, period string) {
+  if reminderName == "game-timeout" {
+    a.EndGame(context.Background())
   }
-  return nil
 }
 ```
 
