@@ -48,7 +48,13 @@ kind: Deployment
 metadata:
   name: myservice
 spec:
+  selector:
+    matchLabels:
+      app: myservice
   template:
+    metadata:
+      labels:
+        app: myservice
     spec:
       containers:
       - name: myservice
@@ -57,7 +63,7 @@ spec:
         - containerPort: 8080
 
       - name: pgbouncer
-        image: pgbouncer/pgbouncer:1.22.0
+        image: edoburu/pgbouncer:1.22.0-p0
         env:
         - name: DB_HOST
           value: "postgres.default.svc.cluster.local"
@@ -114,10 +120,13 @@ spec:
     matchLabels:
       app: pgbouncer
   template:
+    metadata:
+      labels:
+        app: pgbouncer
     spec:
       containers:
       - name: pgbouncer
-        image: pgbouncer/pgbouncer:1.22.0
+        image: edoburu/pgbouncer:1.22.0-p0
         env:
         - name: MAX_CLIENT_CONN
           value: "1000"
