@@ -14,12 +14,13 @@ ClickHouse is powerful but not infinitely scalable under concurrent heavy querie
 
 ## Layer 1: API-Level Rate Limiting with Redis
 
-Use a sliding window counter in Redis at the Express middleware level:
+Use a fixed window counter in Redis at the Express middleware level:
 
 ```javascript
 // middleware/rateLimiter.js
 const redis = require('redis');
 const client = redis.createClient({ url: process.env.REDIS_URL });
+client.connect(); // connect once at startup
 
 async function rateLimitMiddleware(req, res, next) {
   const apiKey = req.headers['x-api-key'] || req.ip;
@@ -27,7 +28,6 @@ async function rateLimitMiddleware(req, res, next) {
   const LIMIT = 30; // 30 requests per minute
 
   try {
-    await client.connect();
     const requests = await client.incr(windowKey);
     if (requests === 1) {
       await client.expire(windowKey, 120); // expire after 2 minutes
@@ -67,8 +67,8 @@ CREATE QUOTA api_user_quota
 ```sql
 -- Check quota usage
 SELECT
-    user,
     quota_name,
+    quota_key,
     queries,
     max_queries,
     read_rows,
@@ -130,4 +130,4 @@ async function tieredRateLimit(req, res, next) {
 
 ## Summary
 
-Rate limiting for ClickHouse APIs should be implemented at two layers: the API layer (Redis-based sliding window per API key) and the database layer (ClickHouse user quotas and per-user settings). The API layer handles normal rate limiting with client-friendly error messages, while the database layer acts as a safety net to prevent runaway queries from overwhelming the cluster.
+Rate limiting for ClickHouse APIs should be implemented at two layers: the API layer (Redis-based fixed window per API key) and the database layer (ClickHouse user quotas and per-user settings). The API layer handles normal rate limiting with client-friendly error messages, while the database layer acts as a safety net to prevent runaway queries from overwhelming the cluster.
