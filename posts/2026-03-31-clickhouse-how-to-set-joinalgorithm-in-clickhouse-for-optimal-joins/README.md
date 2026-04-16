@@ -16,17 +16,18 @@ ClickHouse supports multiple join algorithms, each with different performance ch
 
 ```sql
 SELECT getSetting('join_algorithm') AS default_algorithm
--- 'default' (which selects hash join by default)
+-- 'direct,parallel_hash,hash' on recent versions (tried in that order)
 ```
 
 Available values:
-- `hash` - in-memory hash join (default for small-to-medium right tables)
-- `partial_merge` - external merge join (for right tables that exceed memory)
-- `prefer_partial_merge` - hash if fits in memory, else partial_merge
-- `parallel_hash` - parallelized hash join (faster for large joins with sufficient RAM)
-- `full_sorting_merge` - requires both sides sorted on join key
-- `grace_hash` - Grace Hash join (spills to disk gracefully)
-- `auto` - automatically selects based on table size
+- `hash` - in-memory hash join (uploads the right side into RAM)
+- `parallel_hash` - variant of hash that builds several hashtables concurrently
+- `partial_merge` - sort-merge variant where only the right table is fully sorted
+- `prefer_partial_merge` - tries `partial_merge` first, otherwise uses `hash` (deprecated, same as `partial_merge,hash`)
+- `full_sorting_merge` - sort-merge with full sorting of both joined tables
+- `grace_hash` - Grace Hash join (spills buckets to disk to stay within memory limits)
+- `direct` - nested-loop-style lookup into the right table (Dictionary, EmbeddedRocksDB, MergeTree)
+- `auto` - starts with hash join and switches on the fly if the memory limit is violated
 
 ## Hash Join - Default
 
@@ -97,17 +98,17 @@ SETTINGS join_algorithm = 'full_sorting_merge';
 
 ## Auto Selection
 
-`auto` lets ClickHouse choose based on the estimated size of the right table:
+`auto` lets ClickHouse pick the algorithm at runtime based on memory pressure:
 
 ```sql
 SET join_algorithm = 'auto';
 ```
 
-ClickHouse starts with hash join and switches to grace_hash if the right table exceeds `max_bytes_in_join`.
+ClickHouse starts with hash join and switches on the fly to partial merge join if the memory limit (for example `max_bytes_in_join`) is violated.
 
 ## Prefer Partial Merge
 
-A common production setting that uses hash join when the right table fits in memory, otherwise falls back to partial merge:
+`prefer_partial_merge` always tries `partial_merge` first and falls back to `hash` when partial merge is not supported for the query. It is equivalent to `partial_merge,hash` and is marked deprecated in current ClickHouse releases:
 
 ```sql
 SET join_algorithm = 'prefer_partial_merge';
