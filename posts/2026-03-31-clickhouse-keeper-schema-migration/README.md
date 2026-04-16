@@ -36,15 +36,15 @@ Monitor in-flight and recent DDL operations:
 ```sql
 SELECT *
 FROM system.distributed_ddl_queue
-ORDER BY entry_time DESC
+ORDER BY query_create_time DESC
 LIMIT 20;
 ```
 
 Fields of interest:
-- `status`: `Active`, `Finished`, or `Failed`
-- `exception_code`: non-zero indicates an error
-- `num_hosts_total` vs `num_hosts_finished`: shows which nodes are still pending
-- `entry_time`: when the task was queued
+- `status`: one of `Inactive`, `Active`, `Finished`, `Removing`, or `Unknown`
+- `exception_code`: non-zero indicates an error (failures show `status = 'Finished'` with a non-zero `exception_code`)
+- `host` and `port`: the replica that executed this row of the task (the table has one row per host per query)
+- `query_create_time`: when the task was queued
 - `initiator_host`: which node initiated the migration
 
 ## Running a Safe Schema Migration
@@ -81,15 +81,15 @@ The `ON CLUSTER` clause sends the DDL task to Keeper, which distributes it to al
 SELECT
     cluster,
     query,
+    host,
+    port,
     status,
-    num_hosts_total,
-    num_hosts_finished,
-    num_hosts_active,
-    exception_code
+    exception_code,
+    exception_text
 FROM system.distributed_ddl_queue
 WHERE query LIKE '%ADD COLUMN%region%'
-ORDER BY entry_time DESC
-LIMIT 5;
+ORDER BY query_create_time DESC
+LIMIT 20;
 ```
 
 ### Step 4: Verify on All Nodes
@@ -103,7 +103,7 @@ WHERE table = 'events'
 
 ## Handling a Stuck DDL
 
-If `num_hosts_finished < num_hosts_total` and the task is not progressing, check the lagging replica:
+If some hosts still show `status = 'Active'` (or no row at all) for a task while others are `Finished`, and progress has stalled, check the lagging replica:
 
 ```sql
 -- On the lagging replica node
@@ -129,16 +129,16 @@ SYSTEM SYNC REPLICA events;
 
 ```sql
 -- Find the task identifier
-SELECT entry, query, status
+SELECT entry, query, host, status
 FROM system.distributed_ddl_queue
 WHERE status = 'Active'
-ORDER BY entry_time;
+ORDER BY query_create_time;
 
 -- Remove the task from Keeper directly (use keeper-client)
 ```
 
 ```bash
-clickhouse-keeper-client --host keeper-node-1 --port 2181
+clickhouse-keeper-client --host keeper-node-1 --port 9181
 ```
 
 Inside the client:
@@ -152,18 +152,18 @@ Only remove stuck tasks after confirming the DDL has been manually applied on al
 
 ## Setting DDL Task Timeout
 
-By default, ClickHouse waits indefinitely for all replicas to confirm DDL. Set a timeout:
+By default, ClickHouse waits up to `distributed_ddl_task_timeout` seconds (180 by default) for all replicas to confirm the DDL. Increase or decrease it per session as needed:
 
 ```sql
 SET distributed_ddl_task_timeout = 300; -- 300 seconds
 ```
 
-After the timeout, the operation returns an error to the client, but the DDL task remains in Keeper and will be executed when offline nodes come back online.
+A value of `0` returns immediately without waiting, and a negative value waits indefinitely. After the timeout the client receives an error, but the DDL task remains in Keeper and will be executed by offline nodes when they come back online.
 
 ## Viewing DDL History in Keeper
 
 ```bash
-clickhouse-keeper-client --host keeper-node-1 --port 2181
+clickhouse-keeper-client --host keeper-node-1 --port 9181
 ```
 
 ```text
