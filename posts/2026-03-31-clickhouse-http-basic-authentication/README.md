@@ -74,7 +74,7 @@ Test that unauthenticated requests are rejected:
 curl -v 'http://localhost:8123/?query=SELECT+1'
 ```
 
-This should return `HTTP 401 Unauthorized` if default_user has a password set.
+This should return `HTTP 403 Forbidden` if the `default` user has a password set.
 
 ## Securing the Default User
 
@@ -122,12 +122,12 @@ curl -u http_user:StrongPassword123! \
 - Use SHA256 password hashing instead of plaintext
 - Create dedicated users per application - avoid sharing credentials
 - Restrict users to specific databases and tables with GRANT statements
-- Monitor the `system.query_log` table for failed authentication attempts
+- Monitor the `system.session_log` table for failed authentication attempts
 
 ```sql
-SELECT user, exception, event_time
-FROM system.query_log
-WHERE exception LIKE '%Authentication failed%'
+SELECT user, failure_reason, event_time
+FROM system.session_log
+WHERE type = 'LoginFailure'
 ORDER BY event_time DESC
 LIMIT 20;
 ```
