@@ -92,18 +92,18 @@ WHERE metric LIKE '%Mutation%';
 <background_schedule_pool_size>16</background_schedule_pool_size>
 ```
 
-Or at runtime:
+After editing the config, apply the change (note that only increases take effect at runtime — lowering the pool requires a server restart):
 
 ```sql
-ALTER SYSTEM SET background_pool_size = 16;
+SYSTEM RELOAD CONFIG;
 ```
 
 ### Fix 4 - Use Lightweight Deletes Instead of Mutations
 
-For delete operations, ClickHouse 22.8+ supports lightweight deletes that avoid the full mutation rewrite:
+For delete operations, ClickHouse 22.8+ supports lightweight deletes that avoid the full mutation rewrite. Lightweight DELETE became generally available in 23.3 and is enabled by default; on 22.8–23.2 you need to enable the experimental flag first:
 
 ```sql
--- Enable lightweight deletes
+-- Only required on ClickHouse 22.8 – 23.2
 SET allow_experimental_lightweight_delete = 1;
 
 -- Delete rows without a full mutation
@@ -129,7 +129,9 @@ WHERE status = 'old' AND event_date = '2024-01-02';
 
 ## Preventing Mutations from Being Killed
 
-### Set Mutation Execution Timeouts
+### Keep Nondeterministic Functions Consistent Across Replicas
+
+Mutations that use functions like `now()` can diverge between replicas and cause retries or aborts. Enabling `mutations_execute_nondeterministic_on_initiator` evaluates these functions on the initiator and replaces them with literals, keeping replicas in sync:
 
 ```xml
 <!-- users.xml -->
