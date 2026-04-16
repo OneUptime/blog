@@ -118,12 +118,12 @@ echo 'clickhouse soft core 0' >> /etc/security/limits.conf
 ## 8. Enable Audit Logging
 
 ```xml
-<access_log>
+<session_log>
   <database>system</database>
-  <table>access_log</table>
-</access_log>
+  <table>session_log</table>
+</session_log>
 ```
 
 ## Summary
 
-Hardening ClickHouse for production involves disabling the default user, enabling TLS on all ports, binding to internal interfaces only, configuring firewalls, setting resource limits, and enabling comprehensive logging. Work through this checklist systematically and run regular security audits using the `system.query_log` and `system.access_log` tables to detect anomalous activity.
+Hardening ClickHouse for production involves disabling the default user, enabling TLS on all ports, binding to internal interfaces only, configuring firewalls, setting resource limits, and enabling comprehensive logging. Work through this checklist systematically and run regular security audits using the `system.query_log` and `system.session_log` tables to detect anomalous activity.
