@@ -53,12 +53,12 @@ FROM scores;
 `NTH_VALUE()` operates within the window frame. Without specifying `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`, the default frame may not include all rows:
 
 ```sql
--- Without frame spec: default frame is ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
--- This means NTH_VALUE(score, 3) may return NULL for early rows
+-- Without frame spec: default frame is RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+-- This means NTH_VALUE(score, 3) may return the column default (0 for UInt32) for early rows
 SELECT
     player,
     score,
-    -- May return NULL for first two rows (n-th row not yet in frame)
+    -- Returns 0 for early rows when the 3rd row is not yet in the frame (non-nullable column)
     NTH_VALUE(score, 3) OVER (PARTITION BY player ORDER BY score DESC) AS third_best_cumulative
 FROM scores;
 
