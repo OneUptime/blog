@@ -148,9 +148,10 @@ WATCH error_rate_live;
 -- - Complex subqueries in some cases
 
 -- Monitor active live views
-SELECT *
-FROM system.live_views
-WHERE database = currentDatabase();
+SELECT database, name, engine
+FROM system.tables
+WHERE engine = 'LiveView'
+  AND database = currentDatabase();
 
 -- Drop a live view
 DROP VIEW IF EXISTS sensor_summary;
