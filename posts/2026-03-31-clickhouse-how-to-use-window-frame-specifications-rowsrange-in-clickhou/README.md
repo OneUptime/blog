@@ -41,7 +41,7 @@ RANGE BETWEEN 3 PRECEDING AND CURRENT ROW  -- values within 3 units of current v
 -- UNBOUNDED FOLLOWING: last row of partition
 
 -- Common frame patterns:
-ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW   -- running total (default with ORDER BY)
+ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW   -- running total
 ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING  -- whole partition
 ROWS BETWEEN 6 PRECEDING AND CURRENT ROW           -- 7-day window
 ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING           -- centered window
