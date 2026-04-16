@@ -24,8 +24,8 @@ CREATE TABLE location_events (
     -- Precomputed spatial indexes
     geohash6     String  MATERIALIZED geohashEncode(longitude, latitude, 6),
     geohash8     String  MATERIALIZED geohashEncode(longitude, latitude, 8),
-    h3_r7        UInt64  MATERIALIZED geoToH3(longitude, latitude, 7),
-    h3_r9        UInt64  MATERIALIZED geoToH3(longitude, latitude, 9),
+    h3_r7        UInt64  MATERIALIZED geoToH3(latitude, longitude, 7),
+    h3_r9        UInt64  MATERIALIZED geoToH3(latitude, longitude, 9),
     -- Skip index for UUID point lookups
     INDEX idx_user_id user_id TYPE bloom_filter(0.01) GRANULARITY 4
 ) ENGINE = MergeTree
@@ -103,8 +103,8 @@ ORDER BY events DESC;
 -- Build a heatmap at H3 resolution 9 for the last 24 hours
 SELECT
     h3_r9                         AS h3_cell,
-    h3ToGeo(h3_r9).1             AS center_lon,
-    h3ToGeo(h3_r9).2             AS center_lat,
+    h3ToGeo(h3_r9).1             AS center_lat,
+    h3ToGeo(h3_r9).2             AS center_lon,
     count()                       AS events,
     uniq(user_id)                 AS unique_users,
     countIf(event_type = 'purchase') AS purchases
@@ -139,7 +139,7 @@ Aggregate at multiple resolutions in a single pass using materialized H3 columns
 
 ```sql
 -- Summarize traffic at city, district, and neighborhood levels
-SELECT 'city (r5)'         AS level, geoToH3(longitude, latitude, 5) AS cell, count() AS events FROM location_events WHERE event_time >= today() - 7 GROUP BY cell
+SELECT 'city (r5)'         AS level, geoToH3(latitude, longitude, 5) AS cell, count() AS events FROM location_events WHERE event_time >= today() - 7 GROUP BY cell
 UNION ALL
 SELECT 'district (r7)',   h3_r7, count() FROM location_events WHERE event_time >= today() - 7 GROUP BY h3_r7
 UNION ALL
@@ -150,6 +150,7 @@ SELECT 'neighborhood (r9)', h3_r9, count() FROM location_events WHERE event_time
 
 ```sql
 -- For each user, find the most common origin-destination H3 pair
+-- by pairing each checkout event with the user's next checkout event.
 SELECT
     user_id,
     origin_cell,
@@ -158,13 +159,18 @@ SELECT
 FROM (
     SELECT
         user_id,
-        h3_r7                          AS origin_cell,
-        neighbor(h3_r7, 1)             AS dest_cell
+        h3_r7 AS origin_cell,
+        leadInFrame(h3_r7, 1, 0) OVER (
+            PARTITION BY user_id
+            ORDER BY event_time
+            ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+        ) AS dest_cell
     FROM location_events
     WHERE event_type = 'checkout'
       AND event_time >= today() - 30
 )
 WHERE dest_cell != 0
+  AND origin_cell != dest_cell
 GROUP BY user_id, origin_cell, dest_cell
 ORDER BY trip_count DESC
 LIMIT 20;
@@ -202,9 +208,9 @@ ORDER BY uncovered DESC;
 ```sql
 -- Combine IP geolocation with H3 spatial indexing for web traffic analysis
 SELECT
-    geoToH3(g.longitude, g.latitude, 5)  AS region_cell,
-    h3ToGeo(geoToH3(g.longitude, g.latitude, 5)).1 AS region_lon,
-    h3ToGeo(geoToH3(g.longitude, g.latitude, 5)).2 AS region_lat,
+    geoToH3(g.latitude, g.longitude, 5)  AS region_cell,
+    h3ToGeo(geoToH3(g.latitude, g.longitude, 5)).1 AS region_lat,
+    h3ToGeo(geoToH3(g.latitude, g.longitude, 5)).2 AS region_lon,
     g.country_code,
     count()                              AS sessions,
     uniq(w.session_id)                   AS unique_sessions
@@ -213,7 +219,7 @@ LEFT JOIN geoip_ranges g
     ON toUInt32(toIPv4OrZero(w.client_ip)) BETWEEN g.ip_start AND g.ip_end
 WHERE w.session_date >= today() - 7
   AND g.longitude IS NOT NULL
-GROUP BY region_cell, region_lon, region_lat, g.country_code
+GROUP BY region_cell, region_lat, region_lon, g.country_code
 ORDER BY sessions DESC
 LIMIT 50;
 ```
@@ -231,7 +237,7 @@ WHERE name = 'location_events';
 -- Check partition pruning is working
 EXPLAIN SELECT count() FROM location_events
 WHERE event_time >= today() - 7
-  AND h3_r7 = geoToH3(-73.9857, 40.7484, 7);
+  AND h3_r7 = geoToH3(40.7484, -73.9857, 7);
 
 -- Monitor granule reads for a spatial query
 SELECT
