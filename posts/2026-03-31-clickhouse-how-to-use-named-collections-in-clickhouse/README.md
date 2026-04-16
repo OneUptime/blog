@@ -10,7 +10,7 @@ Description: Learn how to use ClickHouse Named Collections to store and reuse co
 
 ## What are Named Collections?
 
-Named Collections, introduced in ClickHouse 22.4, are named sets of key-value parameters stored server-side. They allow you to reference external data source credentials (S3, PostgreSQL, MySQL, etc.) by name instead of embedding credentials directly in SQL queries or table definitions.
+Named Collections, introduced in ClickHouse 21.11 (with SQL DDL support added in 22.12), are named sets of key-value parameters stored server-side. They allow you to reference external data source credentials (S3, PostgreSQL, MySQL, etc.) by name instead of embedding credentials directly in SQL queries or table definitions.
 
 Benefits:
 - Credentials are not visible in query logs
@@ -142,10 +142,10 @@ DROP NAMED COLLECTION s3_backup;
 
 ```sql
 -- Grant a user access to use a specific named collection
-GRANT NAMED COLLECTION s3_prod TO analyst_user;
+GRANT NAMED COLLECTION ON s3_prod TO analyst_user;
 
 -- Grant access to all named collections
-GRANT NAMED COLLECTION * TO etl_service;
+GRANT NAMED COLLECTION ON * TO etl_service;
 ```
 
 ## Summary
