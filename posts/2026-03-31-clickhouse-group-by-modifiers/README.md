@@ -53,7 +53,7 @@ ORDER BY event_date;
 
 ## WITH TOTALS
 
-`WITH TOTALS` appends an extra row to the result containing the grand total computed over all rows before grouping. The totals row uses the identity value for each aggregate (0 for sum, infinity for min, etc.).
+`WITH TOTALS` appends an extra row to the result containing the grand aggregate values computed across all rows. In that row, the GROUP BY key columns are filled with default values (0 for numbers, empty string for strings), while the aggregate columns contain the totals.
 
 ```sql
 SELECT
@@ -86,9 +86,11 @@ ORDER BY yr, mo, event_type;
 
 This produces rows for:
 - Each (yr, mo, event_type) combination
-- Each (yr, mo) subtotal - event_type is NULL
-- Each (yr) subtotal - mo and event_type are NULL
-- Grand total - all three are NULL
+- Each (yr, mo) subtotal - event_type filled with its default value (empty string)
+- Each (yr) subtotal - mo and event_type filled with default values
+- Grand total - all three filled with default values
+
+By default, rolled-up key columns contain default values (0 for numbers, empty string for strings). Set `group_by_use_nulls = 1` if you want ClickHouse to use NULL in those positions instead.
 
 ### Using grouping() to Detect Subtotal Rows
 
@@ -125,9 +127,9 @@ ORDER BY event_type, event_date;
 
 This produces rows for:
 - Each (event_type, event_date) combination
-- Each event_type with event_date = NULL
-- Each event_date with event_type = NULL
-- Grand total with both NULL
+- Each event_type with event_date filled with its default value
+- Each event_date with event_type filled with its default value
+- Grand total with both filled with default values
 
 ## GROUPING SETS
 
