@@ -53,8 +53,8 @@ On replicated clusters, a table may exist in ZooKeeper but not be attached on a 
 ```sql
 -- Check table status on all replicas
 SELECT
-    host_name,
-    host_port,
+    database,
+    table,
     replica_name,
     is_leader,
     is_readonly
@@ -82,8 +82,8 @@ ClickHouse can detach tables without dropping them. Detached tables remain on di
 
 ```sql
 -- List detached tables
-SELECT database, table, partition_id, reason
-FROM system.detached_parts
+SELECT database, table, metadata_path, is_permanently
+FROM system.detached_tables
 WHERE table = 'events';
 
 -- Re-attach the table if it was detached
@@ -162,4 +162,4 @@ ORDER BY event_time DESC;
 
 ## Summary
 
-The `Code: 60 Table doesn't exist` error in ClickHouse is almost always caused by a missing database prefix, a detached or dropped table, or a replication gap on distributed nodes. Use `system.tables`, `system.replicas`, and `system.detached_parts` to diagnose the root cause, and re-attach or recreate the table as needed. Always use fully qualified table names in production code to avoid silent routing to the wrong database.
+The `Code: 60 Table doesn't exist` error in ClickHouse is almost always caused by a missing database prefix, a detached or dropped table, or a replication gap on distributed nodes. Use `system.tables`, `system.replicas`, and `system.detached_tables` to diagnose the root cause, and re-attach or recreate the table as needed. Always use fully qualified table names in production code to avoid silent routing to the wrong database.
