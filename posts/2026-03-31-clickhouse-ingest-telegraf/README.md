@@ -14,15 +14,15 @@ Telegraf collects metrics from hundreds of sources and can forward them to Click
 
 ```sql
 CREATE TABLE telegraf_metrics (
-    ts DateTime,
+    timestamp DateTime,
     name LowCardinality(String),
     host LowCardinality(String),
     tags String,     -- JSON map
     fields String    -- JSON map
 ) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(ts)
-ORDER BY (name, host, ts)
-TTL ts + INTERVAL 30 DAY;
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (name, host, timestamp)
+TTL timestamp + INTERVAL 30 DAY;
 ```
 
 ## Telegraf Configuration
@@ -44,10 +44,10 @@ TTL ts + INTERVAL 30 DAY;
   method = "POST"
   data_format = "json"
   json_timestamp_units = "1s"
-  json_timestamp_key = "ts"
-  headers = {"X-ClickHouse-User" = "default", "X-ClickHouse-Key" = "${CLICKHOUSE_PASSWORD}"}
   [outputs.http.headers]
-    Content-Type = "application/x-ndjson"
+    Content-Type = "application/json"
+    X-ClickHouse-User = "default"
+    X-ClickHouse-Key = "${CLICKHOUSE_PASSWORD}"
 ```
 
 ## Flat Metric Schema
@@ -56,12 +56,12 @@ For a flat schema that maps one metric per row:
 
 ```sql
 CREATE TABLE metrics_flat (
-    ts DateTime,
+    timestamp DateTime,
     metric_name LowCardinality(String),
     host LowCardinality(String),
     value Float64
 ) ENGINE = MergeTree()
-ORDER BY (metric_name, host, ts);
+ORDER BY (metric_name, host, timestamp);
 ```
 
 Configure Telegraf to use the `influx` serializer and a custom mapping processor.
@@ -69,7 +69,7 @@ Configure Telegraf to use the `influx` serializer and a custom mapping processor
 ## Verifying Data
 
 ```sql
-SELECT name, host, count() AS points, max(ts) AS latest
+SELECT name, host, count() AS points, max(timestamp) AS latest
 FROM telegraf_metrics
 GROUP BY name, host
 ORDER BY latest DESC
@@ -80,12 +80,12 @@ LIMIT 10;
 
 ```sql
 SELECT
-    ts,
+    timestamp,
     JSONExtractFloat(fields, 'usage_idle') AS idle,
     100 - JSONExtractFloat(fields, 'usage_idle') AS usage
 FROM telegraf_metrics
 WHERE name = 'cpu' AND host = 'web01'
-ORDER BY ts DESC
+ORDER BY timestamp DESC
 LIMIT 60;
 ```
 
