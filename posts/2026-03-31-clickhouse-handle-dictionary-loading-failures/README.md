@@ -33,7 +33,8 @@ Status values:
 - `LOADING` - currently loading
 - `LOADED` - successfully loaded
 - `FAILED` - last load attempt failed
-- `FAILED_AND_RELOAD_ON_QUERY` - failed, will retry on next dictGet call
+- `LOADED_AND_RELOADING` - loaded successfully and currently being reloaded
+- `FAILED_AND_RELOADING` - load failed and currently being reloaded
 
 ## Graceful Fallback with dictGetOrDefault
 
@@ -103,19 +104,13 @@ HTTP timeout:
 
 ## Prevent Startup Failures
 
-By default, ClickHouse loads all dictionaries at startup. A slow or unavailable source can delay startup. Use `lazy_load` to defer loading:
-
-```sql
--- In dictionary XML config or SQL:
-LIFETIME(MIN 0 MAX 3600)
--- Dictionary loads on first use, not at startup
-```
-
-Or configure in `config.xml`:
+A slow or unavailable dictionary source can delay server startup if dictionaries are loaded eagerly. Lazy loading defers loading until the dictionary is first used. In recent ClickHouse versions this is the default (`dictionaries_lazy_load` defaults to `true`), but on older versions or if it has been disabled, make sure it is enabled in `config.xml`:
 
 ```text
 <dictionaries_lazy_load>true</dictionaries_lazy_load>
 ```
+
+Note that `LIFETIME(MIN 0 MAX 3600)` controls how often a loaded dictionary is refreshed, not whether it is loaded lazily — lazy loading is controlled by the server setting above.
 
 ## Test Dictionary Before Deploying
 
