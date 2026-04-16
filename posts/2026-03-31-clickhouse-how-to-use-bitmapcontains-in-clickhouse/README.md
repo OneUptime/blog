@@ -22,7 +22,7 @@ SELECT bitmapContains(bitmapBuild([1, 2, 3, 4, 5]), toUInt32(9)) AS found
 -- 0
 ```
 
-Note: the value argument must be explicitly typed as `UInt32` or `UInt64`.
+Note: the value argument can be any of `(U)Int8/16/32/64`. Explicit casting (e.g., `toUInt32(...)` or `toUInt64(...)`) is recommended to make the type match the bitmap's element type and avoid ambiguous conversions.
 
 ## Filtering with bitmapContains
 
