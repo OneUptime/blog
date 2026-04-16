@@ -16,12 +16,12 @@ clickhouse-keeper-client \
     --host keeper1.internal \
     --port 2181
 
-# Connect with a specific timeout
+# Connect with a specific timeout (values are in seconds)
 clickhouse-keeper-client \
     --host keeper1.internal \
     --port 2181 \
-    --connection-timeout-ms 5000 \
-    --session-timeout-ms 30000
+    --connection-timeout 5 \
+    --session-timeout 30
 
 # Run a single command and exit (useful for scripts)
 clickhouse-keeper-client \
@@ -35,16 +35,19 @@ clickhouse-keeper-client \
 Inside the client, these commands let you navigate the tree:
 
 ```text
-ls [path]           -- list children of a node
-get [path]          -- get the value and metadata of a node
-set [path] [value]  -- set the value of a node
+ls [path]              -- list children of a node
+cd [path]              -- change current path
+get [path]             -- get the value of a node
+get_stat [path]        -- show metadata for a node (ctime, mtime, version, etc)
+set [path] [value]     -- set the value of a node
 create [path] [value]  -- create a new node
-delete [path]       -- delete a node (must have no children)
-deleteall [path]    -- delete a node and all its children
-exists [path]       -- check if a node exists (returns 0 or 1)
-stat [path]         -- show metadata for a node (ctime, mtime, version, etc)
-sync [path]         -- sync the node from leader (forces latest data)
-help                -- list all available commands
+touch [path]           -- create a new empty node
+rm [path]              -- remove a node (must have no children)
+rmr [path]             -- recursively remove a node and all its children
+exists [path]          -- check if a node exists (returns 0 or 1)
+sync [path]            -- sync the node from leader (forces latest data)
+flwc [command]         -- run a four-letter-word command
+help                   -- list all available commands
 ```
 
 ## Exploring the Replication Tree
@@ -110,6 +113,8 @@ queue
 
 > get /clickhouse/tables/01/events/replicas/ch1.internal/is_active
 1
+
+> get_stat /clickhouse/tables/01/events/replicas/ch1.internal/is_active
 cZxid = 0x1234
 mZxid = 0x1234
 ctime = 2026-03-31 10:00:00
@@ -183,7 +188,7 @@ ch2.internal
 When a replica is permanently decommissioned, remove its Keeper nodes to keep the tree clean:
 
 ```text
-> deleteall /clickhouse/tables/01/events/replicas/old-ch-server.internal
+> rmr /clickhouse/tables/01/events/replicas/old-ch-server.internal
 ```
 
 Or use the SQL command from ClickHouse (safer, handles the cleanup properly):
@@ -226,15 +231,20 @@ If `ch2.internal:9000` is not in the `finished` list, that host has not yet exec
 
 ## Running Diagnostic Queries in the Client
 
+You can run four-letter-word commands from inside the client using `flwc`, and you can take a snapshot via the `csnp` four-letter word:
+
 ```text
-> snapshot
-Snapshot created successfully
+> flwc ruok
+imok
+
+> flwc csnp
+100
 
 > help
 Available commands:
   ls [path]         List children of the given node
   cd [path]         Change current path
-  get [path]        Get value and stats of the given node
+  get [path]        Get value of the given node
   ...
 ```
 
@@ -250,7 +260,7 @@ echo "ruok" | nc keeper1.internal 2181
 # Server statistics
 echo "stat" | nc keeper1.internal 2181
 
-# Detailed monitoring stats (same as zk_metrics in ZooKeeper)
+# Detailed monitoring stats (key/value pairs prefixed with zk_)
 echo "mntr" | nc keeper1.internal 2181 | grep -E "zk_avg|zk_max|zk_out"
 
 # List connected clients
@@ -259,11 +269,14 @@ echo "cons" | nc keeper1.internal 2181
 # Server configuration
 echo "conf" | nc keeper1.internal 2181
 
-# Is this node the leader?
-echo "lead" | nc keeper1.internal 2181
+# Server stats — includes the Mode line (leader, follower, or standalone)
+echo "srvr" | nc keeper1.internal 2181 | grep -i mode
 
 # Dump all ephemeral nodes (shows all active sessions)
 echo "dump" | nc keeper1.internal 2181
+
+# Raft log info (zxid, last committed, snapshot indexes)
+echo "lgif" | nc keeper1.internal 2181
 ```
 
 ## Troubleshooting Common Issues
@@ -288,7 +301,7 @@ clickhouse-keeper-client --host keeper1.internal --port 2181 \
 
 # Remove the stale replica entry
 clickhouse-keeper-client --host keeper1.internal --port 2181 \
-    --query "deleteall /clickhouse/tables/01/events/replicas/stale-host.internal"
+    --query "rmr /clickhouse/tables/01/events/replicas/stale-host.internal"
 ```
 
 **Issue: Keeper not accepting the connection**
