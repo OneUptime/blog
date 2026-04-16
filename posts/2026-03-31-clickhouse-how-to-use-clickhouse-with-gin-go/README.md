@@ -28,7 +28,6 @@ package db
 
 import (
     "context"
-    "crypto/tls"
     "fmt"
 
     "github.com/ClickHouse/clickhouse-go/v2"
@@ -42,9 +41,6 @@ func NewClickHouseConn() (driver.Conn, error) {
             Database: "default",
             Username: "default",
             Password: "",
-        },
-        TLS: &tls.Config{
-            InsecureSkipVerify: true,
         },
         Settings: clickhouse.Settings{
             "max_execution_time": 60,
