@@ -17,16 +17,17 @@ flowchart LR
     A[ClickHouse Server] -- TLS Port 9281 --> B[Keeper Node 1]
     A -- TLS Port 9281 --> C[Keeper Node 2]
     A -- TLS Port 9281 --> D[Keeper Node 3]
-    B -- Raft TLS Port 9444 --> C
-    B -- Raft TLS Port 9444 --> D
-    C -- Raft TLS Port 9444 --> D
+    B -- Raft Port 9234 TLS --> C
+    B -- Raft Port 9234 TLS --> D
+    C -- Raft Port 9234 TLS --> D
 ```
 
-Default port assignments:
-- 2181 = plain Keeper client port
-- 9281 = TLS Keeper client port
-- 9234 = plain Raft internal port
-- 9444 = TLS Raft internal port
+Port reference used in this guide:
+- 2181 = plain Keeper client port (`tcp_port`, documented default)
+- 9281 = TLS Keeper client port (`tcp_port_secure`, no documented default — `9281` is a convention)
+- 9234 = Raft internal port (used in official examples; TLS reuses the same port — there is no separate TLS Raft port)
+
+TLS for the Raft channel is enabled once for the whole quorum via `<secure>true</secure>` inside `<raft_configuration>`; the same `<port>` is reused.
 
 ## Generating Certificates
 
@@ -68,25 +69,26 @@ Create or update the Keeper configuration:
     <keeper_server>
         <tcp_port_secure>9281</tcp_port_secure>
         <raft_configuration>
+            <secure>true</secure>
             <server>
                 <id>1</id>
                 <hostname>keeper-node-1</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
             <server>
                 <id>2</id>
                 <hostname>keeper-node-2</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
             <server>
                 <id>3</id>
                 <hostname>keeper-node-3</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
         </raft_configuration>
     </keeper_server>
 
-    <openssl>
+    <openSSL>
         <server>
             <certificateFile>/etc/clickhouse-keeper/ssl/keeper.crt</certificateFile>
             <privateKeyFile>/etc/clickhouse-keeper/ssl/keeper.key</privateKeyFile>
@@ -104,11 +106,11 @@ Create or update the Keeper configuration:
             <loadDefaultCAFile>false</loadDefaultCAFile>
             <cacheSessions>true</cacheSessions>
         </client>
-    </openssl>
+    </openSSL>
 </clickhouse>
 ```
 
-The `<client>` section configures TLS for Raft peer connections. The `<server>` section configures TLS for incoming client connections.
+`<secure>true</secure>` inside `<raft_configuration>` enables TLS on the Raft inter-node channel (using the same `<port>`). The `<openSSL><server>` block provides the certificate/key Keeper presents to incoming connections (both clients and Raft peers); the `<openSSL><client>` block is used when Keeper or ClickHouse server acts as a TLS client (for example, when ClickHouse server connects to Keeper).
 
 ## Disable Plain Text Port (Production)
 
@@ -149,13 +151,13 @@ On each ClickHouse server, update the zookeeper connection to use the TLS port:
         </node>
     </zookeeper>
 
-    <openssl>
+    <openSSL>
         <client>
             <caConfig>/etc/clickhouse-server/ssl/ca.crt</caConfig>
             <verificationMode>relaxed</verificationMode>
             <loadDefaultCAFile>false</loadDefaultCAFile>
         </client>
-    </openssl>
+    </openSSL>
 </clickhouse>
 ```
 
@@ -180,10 +182,10 @@ A successful TLS handshake will show the certificate chain and `Verify return co
 clickhouse-keeper-client \
     --host keeper-node-1 \
     --port 9281 \
-    --secure 1 \
-    --client-certificate-file /etc/clickhouse-keeper/ssl/keeper.crt \
-    --client-certificate-private-key-file /etc/clickhouse-keeper/ssl/keeper.key \
-    --CA-file /etc/clickhouse-keeper/ssl/ca.crt
+    --secure \
+    --tls-cert-file /etc/clickhouse-keeper/ssl/keeper.crt \
+    --tls-key-file /etc/clickhouse-keeper/ssl/keeper.key \
+    --tls-ca-file /etc/clickhouse-keeper/ssl/ca.crt
 ```
 
 Run a health check inside the client:
@@ -205,12 +207,13 @@ To rotate certificates without downtime:
 ## Verifying TLS from System Tables
 
 ```sql
--- Check Keeper connection status from ClickHouse server
-SELECT * FROM system.zookeeper_connection;
+-- Inspect the active Keeper connection from a ClickHouse server
+SELECT host, port, connected_time, session_uptime_elapsed_seconds
+FROM system.zookeeper_connection;
 ```
 
-A `secured` column value of 1 confirms the connection is using TLS.
+`system.zookeeper_connection` does not currently expose a TLS-status column, so confirm TLS by checking that the `port` column matches your configured `tcp_port_secure` (e.g. `9281`) and by tailing the ClickHouse server log for `secure://` Keeper endpoints during startup.
 
 ## Summary
 
-Configuring ClickHouse Keeper with TLS requires generating CA and node certificates, adding OpenSSL configuration blocks to both Keeper and ClickHouse server configs, and pointing the zookeeper connection to the TLS port (9281) with `<secure>1</secure>`. Once TLS is confirmed working, disable the plain port. Use `openssl s_client` for connectivity testing and `clickhouse-keeper-client --secure 1` for admin operations.
+Configuring ClickHouse Keeper with TLS requires generating CA and node certificates, adding `<openSSL>` configuration blocks to both Keeper and ClickHouse server configs, and pointing the zookeeper connection to the TLS port (e.g. `9281`) with `<secure>1</secure>`. Enable Raft inter-node TLS with `<secure>true</secure>` inside `<raft_configuration>`. Once TLS is confirmed working, disable the plain port. Use `openssl s_client` for connectivity testing and `clickhouse-keeper-client --secure` for admin operations.
