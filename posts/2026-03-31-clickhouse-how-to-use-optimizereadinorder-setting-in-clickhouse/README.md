@@ -30,7 +30,7 @@ With `optimize_read_in_order` enabled and the table sorted by `(user_id, event_t
 EXPLAIN SELECT user_id, event_time FROM events ORDER BY user_id, event_time LIMIT 100
 ```
 
-Look for `ReadInOrder` in the EXPLAIN output to confirm the optimization is active.
+Look for a `ReadFromMergeTree` step with `Read type: InOrder` in the EXPLAIN output to confirm the optimization is active.
 
 ## Enabling and Disabling
 
