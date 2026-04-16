@@ -28,6 +28,7 @@ import clickhouse_connect
 import pandas as pd
 
 app = dash.Dash(__name__)
+server = app.server
 
 client = clickhouse_connect.get_client(
     host='localhost',
