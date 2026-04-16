@@ -8,7 +8,7 @@ Description: Learn how intDiv() performs integer division and intDivOrZero() han
 
 ---
 
-`intDiv()` performs integer (floor) division, discarding any fractional part and returning only the integer quotient. `intDivOrZero()` behaves identically except it returns 0 instead of raising an exception when the divisor is zero. These functions are preferable to regular division followed by `toInt64()` casting because they maintain integer arithmetic throughout and make the intent explicit. They are commonly used for bucketing continuous values, computing page offsets, assigning items to groups in round-robin fashion, and anywhere exact integer quotients are needed.
+`intDiv()` performs integer division with truncation toward zero, discarding any fractional part and returning only the integer quotient. `intDivOrZero()` behaves identically except it returns 0 instead of raising an exception when the divisor is zero. These functions are preferable to regular division followed by `toInt64()` casting because they maintain integer arithmetic throughout and make the intent explicit. They are commonly used for bucketing continuous values, computing page offsets, assigning items to groups in round-robin fashion, and anywhere exact integer quotients are needed.
 
 ## Function Signatures
 
@@ -17,7 +17,7 @@ intDiv(a, b)       -- integer division; throws on division by zero
 intDivOrZero(a, b) -- integer division; returns 0 when b = 0
 ```
 
-Both return the same type as the input. The result is truncated toward zero (not floored), so `intDiv(-7, 2)` returns -3, not -4.
+The result has the same width as the dividend (the first argument). The result is truncated toward zero (not floored), so `intDiv(-7, 2)` returns -3, not -4.
 
 ## Basic Usage
 
