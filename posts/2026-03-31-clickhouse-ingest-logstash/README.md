@@ -51,17 +51,13 @@ output {
     url => "http://clickhouse:8123/?query=INSERT+INTO+logs+FORMAT+JSONEachRow"
     http_method => "post"
     content_type => "application/json"
-    format => "json_batch"
+    format => "json"
     http_compression => true
-    batch_size => 1000
-    batch_timeout => 5
 
     headers => {
       "X-ClickHouse-User" => "default"
       "X-ClickHouse-Key" => "${CLICKHOUSE_PASSWORD}"
     }
-
-    codec => json_lines
   }
 }
 ```
@@ -82,12 +78,13 @@ filter {
 
 ## Testing the Pipeline
 
+Start Logstash with the config:
+
 ```bash
-echo '{"message":"test","level":"info","service":"api"}' | \
-  logstash -f /etc/logstash/conf.d/clickhouse.conf
+bin/logstash -f /etc/logstash/conf.d/clickhouse.conf
 ```
 
-Then verify in ClickHouse:
+Then ship a test event from a Beats producer (e.g. Filebeat) pointed at port 5044 and verify in ClickHouse:
 
 ```sql
 SELECT service, level, count()
@@ -98,10 +95,10 @@ GROUP BY service, level;
 
 ## Performance Tips
 
-- Set `batch_size => 5000` and `batch_timeout => 10` for higher throughput
-- Enable `async_insert=1` in the ClickHouse URL parameter to reduce part creation
+- Enable `async_insert=1` (and `wait_for_async_insert=0`) in the ClickHouse URL to let the server buffer inserts and reduce part creation
+- Raise `pipeline.workers` in `logstash.yml` to parallelise HTTP requests, since the `http` output sends one event per request with `format => json`
 - Use a Buffer table to absorb bursts
 
 ## Summary
 
-Logstash forwards events to ClickHouse via the HTTP output plugin targeting the ClickHouse HTTP interface. Use `format => json_batch` and batch settings to reduce request overhead. Rename Logstash's `@timestamp` to match the ClickHouse column name before sending.
+Logstash forwards events to ClickHouse via the HTTP output plugin targeting the ClickHouse HTTP interface. Pair `format => json` with ClickHouse's `async_insert=1` URL parameter to get server-side batching. Rename Logstash's `@timestamp` to match the ClickHouse column name before sending.
