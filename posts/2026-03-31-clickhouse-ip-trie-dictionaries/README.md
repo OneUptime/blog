@@ -52,7 +52,7 @@ LIFETIME(MIN 600 MAX 1200);
 
 ## Querying the IP Trie Dictionary
 
-Use `dictGetOrDefault` to look up a client IP address:
+Use `dictGet` to look up a client IP address:
 
 ```sql
 SELECT
