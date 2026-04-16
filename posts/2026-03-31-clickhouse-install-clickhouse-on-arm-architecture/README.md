@@ -39,13 +39,17 @@ The repository automatically serves the `arm64` variant when run on an AArch64 h
 For environments without package managers, download the ARM64 binary directly:
 
 ```bash
-ARCH=aarch64
-VERSION=24.3.3.102
-curl -fsSL "https://github.com/ClickHouse/ClickHouse/releases/download/v${VERSION}-lts/clickhouse-linux-${ARCH}" \
+curl -fsSL "https://builds.clickhouse.com/master/aarch64/clickhouse" \
   -o clickhouse
 chmod +x clickhouse
 sudo mv clickhouse /usr/local/bin/
 clickhouse --version
+```
+
+Alternatively, use the official install script, which auto-detects the architecture (including the `aarch64v80compat` build for older ARMv8.0 cores):
+
+```bash
+curl https://clickhouse.com/ | sh
 ```
 
 ## Docker on ARM
