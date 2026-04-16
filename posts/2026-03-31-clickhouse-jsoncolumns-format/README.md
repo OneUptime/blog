@@ -104,7 +104,12 @@ Output:
     "event_type": ["click", "view"],
     "user_id": [101, 202]
   },
-  "rows": 2
+  "rows": 2,
+  "statistics": {
+    "elapsed": 0.000272376,
+    "rows_read": 2,
+    "bytes_read": 24
+  }
 }
 ```
 
