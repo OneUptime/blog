@@ -17,9 +17,6 @@ Distributed queries in ClickHouse fan out to multiple shards and replicas. When 
 Always check the full error with the remote exception details:
 
 ```sql
--- Enable detailed error messages
-SET send_progress_in_http_headers = 1;
-
 -- Run the failing query and capture the output
 -- Check system.query_log for the full exception
 SELECT
