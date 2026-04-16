@@ -62,7 +62,7 @@ spark = SparkSession.builder \
 df = spark.read \
     .format("clickhouse") \
     .option("host", "localhost") \
-    .option("port", "8123") \
+    .option("http_port", "8123") \
     .option("user", "default") \
     .option("password", "") \
     .option("database", "default") \
@@ -77,13 +77,15 @@ df.show(10)
 
 ```python
 # Read with a filter pushed down to ClickHouse
+# The native connector automatically pushes supported filters
+# from the DataFrame API down to ClickHouse.
 df = spark.read \
     .format("clickhouse") \
     .option("host", "localhost") \
     .option("database", "default") \
     .option("table", "events") \
-    .option("query", "SELECT * FROM events WHERE event_date >= '2026-01-01'") \
-    .load()
+    .load() \
+    .filter("event_date >= '2026-01-01'")
 ```
 
 ## Using Catalog SQL
@@ -112,7 +114,7 @@ result.show()
 result_df.write \
     .format("clickhouse") \
     .option("host", "localhost") \
-    .option("port", "8123") \
+    .option("http_port", "8123") \
     .option("user", "default") \
     .option("password", "") \
     .option("database", "default") \
@@ -156,13 +158,20 @@ enriched_df.write \
 
 ## Performance Tuning
 
+For parallelized reads of large tables, use the Spark JDBC data source
+with the ClickHouse JDBC driver. The JDBC reader supports the standard
+`numPartitions`, `partitionColumn`, `lowerBound`, and `upperBound`
+options to split a read across multiple Spark tasks.
+
 ```python
-# Increase parallelism for large reads
+# Increase parallelism for large reads via the Spark JDBC data source
 df = spark.read \
-    .format("clickhouse") \
-    .option("host", "localhost") \
-    .option("database", "default") \
-    .option("table", "large_events") \
+    .format("jdbc") \
+    .option("url", "jdbc:clickhouse://localhost:8123/default") \
+    .option("driver", "com.clickhouse.jdbc.ClickHouseDriver") \
+    .option("dbtable", "large_events") \
+    .option("user", "default") \
+    .option("password", "") \
     .option("numPartitions", "20") \
     .option("partitionColumn", "user_id") \
     .option("lowerBound", "1") \
