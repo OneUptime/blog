@@ -45,7 +45,7 @@ Type:     ClickHouse
 Name:     ClickHouse Production
 
 Server address: clickhouse.example.com
-Server port:    9000 (native) or 443 (HTTPS)
+Server port:    9000 (native) or 8443 (HTTPS)
 Protocol:       Native  (recommended) or HTTP
 
 Username: grafana_user
