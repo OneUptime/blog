@@ -68,7 +68,7 @@ clickhouse-client --query "INSERT INTO events FORMAT CSVWithNames" < events_with
 
 ## TabSeparated (TSV)
 
-`TabSeparated` is the default format for `clickhouse-client` interactive output and a fast format for bulk loads.
+`TabSeparated` is the default format for `clickhouse-client` in batch mode (and for the HTTP interface), and a fast format for bulk loads.
 
 ```bash
 clickhouse-client --query "INSERT INTO events FORMAT TabSeparated" < events.tsv
@@ -115,7 +115,7 @@ curl -X POST 'http://localhost:8123/' \
 {\"event_id\":10,\"event_name\":\"api_hit\",\"created_at\":\"2026-03-31 12:00:00\"}"
 
 # Format as a URL parameter
-curl -X POST 'http://localhost:8123/?input_format_json_read_booleans_as_numbers=1' \
+curl -X POST 'http://localhost:8123/?input_format_json_read_bools_as_numbers=1' \
      --data-binary $'INSERT INTO events FORMAT JSONEachRow\n{"event_id":11,"event_name":"test","created_at":"2026-03-31 12:01:00"}'
 ```
 
