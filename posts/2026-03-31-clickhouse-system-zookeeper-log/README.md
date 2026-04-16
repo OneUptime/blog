@@ -28,7 +28,7 @@ Configure in `config.xml`:
 | Column | Type | Description |
 |--------|------|-------------|
 | `event_date` | Date | Date of the request |
-| `event_time` | DateTime | Timestamp of the request |
+| `event_time` | DateTime64(6) | Timestamp of the request |
 | `thread_id` | UInt64 | Thread that made the request |
 | `query_id` | String | Associated query ID (if applicable) |
 | `address` | IPv6 | ZooKeeper server address |
@@ -36,18 +36,19 @@ Configure in `config.xml`:
 | `session_id` | Int64 | ZooKeeper session ID |
 | `xid` | Int32 | Transaction ID within the session |
 | `has_watch` | UInt8 | 1 if a watch was set |
-| `op_num` | Int32 | ZooKeeper operation number |
+| `op_num` | Enum | ZooKeeper operation type (Get, Create, Set, Remove, etc.) |
 | `path` | String | ZooKeeper node path |
 | `data` | String | Data sent or received |
 | `is_ephemeral` | UInt8 | 1 if creating an ephemeral node |
 | `is_sequential` | UInt8 | 1 if creating a sequential node |
-| `error` | Nullable(Int32) | ZooKeeper error code (NULL = success) |
+| `error` | Nullable(Enum) | ZooKeeper error code (NULL = success) |
 | `watch_type` | Nullable(Enum) | Type of watch event |
 | `watch_state` | Nullable(Enum) | State of watch event |
 | `path_created` | String | Path actually created (for sequential nodes) |
-| `stat` | various | ZooKeeper stat fields |
+| `stat_czxid`, `stat_mzxid`, `stat_pzxid` | Int64 | ZooKeeper stat zxids |
+| `stat_version`, `stat_cversion`, `stat_dataLength`, `stat_numChildren` | Int32 | ZooKeeper stat counters |
 | `duration_microseconds` | UInt64 | Round-trip time in microseconds |
-| `type` | Enum | Request or Response |
+| `type` | Enum | Request, Response, or Finalize (connection lost before response) |
 
 ## Viewing Recent ZooKeeper Activity
 
@@ -110,15 +111,17 @@ GROUP BY error
 ORDER BY occurrences DESC;
 ```
 
-Common ZooKeeper error codes:
+Common ZooKeeper error values (the `error` column is an Enum that returns these names):
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| -4 | ConnectionLoss |
-| -110 | NodeExists |
-| -101 | NoNode |
-| -111 | NotEmpty |
+| Name | Code | Meaning |
+|------|------|---------|
+| `ZOK` | 0 | Success |
+| `ZCONNECTIONLOSS` | -4 | Connection to ZooKeeper lost |
+| `ZNONODE` | -101 | Node does not exist |
+| `ZNODEEXISTS` | -110 | Node already exists |
+| `ZNOTEMPTY` | -111 | Node has children, cannot delete |
+| `ZSESSIONEXPIRED` | -112 | Session has expired |
+| `ZOPERATIONTIMEOUT` | -7 | Operation timed out |
 
 ## Top Paths by Request Volume
 
