@@ -15,7 +15,6 @@ A traditional cron job fires and forgets. If the process crashes mid-run, no ret
 ## Defining the Workflow
 
 ```csharp
-[DaprWorkflow]
 public class DailyReportWorkflow : Workflow<ReportInput, ReportResult>
 {
     public override async Task<ReportResult> RunAsync(
@@ -52,46 +51,38 @@ public class DailyReportWorkflow : Workflow<ReportInput, ReportResult>
 
 ## Registering a Scheduled Job
 
-Use the Dapr Jobs API to schedule workflow execution. The job fires an HTTP callback to your service endpoint.
-
-```yaml
-# jobs/daily-report.yaml
-apiVersion: dapr.io/v1alpha1
-kind: Job
-metadata:
-  name: daily-report-job
-spec:
-  schedule: "0 6 * * *"   # every day at 06:00 UTC
-  repeats: 0               # 0 = repeat forever
-  data:
-    "@type": "type.googleapis.com/google.protobuf.StringValue"
-    value: '{"reportType":"daily"}'
-```
-
-Apply it:
+Use the Dapr Jobs API (currently in alpha) to schedule workflow execution. The sidecar fires an HTTP callback to your service when the job triggers. Schedule a job by POSTing to the sidecar's Jobs endpoint:
 
 ```bash
-dapr job create --job-file jobs/daily-report.yaml
+curl -X POST http://localhost:3500/v1.0-alpha1/jobs/daily-report-job \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schedule": "0 0 6 * * *",
+    "data": {
+      "@type": "type.googleapis.com/google.protobuf.StringValue",
+      "value": "{\"reportType\":\"daily\"}"
+    }
+  }'
 ```
+
+Dapr's schedule uses a six-field cron format (`second minute hour day month weekday`), so `0 0 6 * * *` means every day at 06:00. You can also use shortcuts like `@daily`, `@hourly`, or `@every 1h30m`. Omit `repeats` to run forever, or set a positive integer to cap the number of triggers.
 
 ## Handling the Job Trigger Endpoint
 
 ```csharp
-[HttpPost("/jobs/daily-report")]
+[HttpPost("/job/daily-report-job")]
 public async Task<IActionResult> TriggerDailyReport([FromBody] JobPayload payload)
 {
     var instanceId = $"daily-report-{DateTime.UtcNow:yyyyMMdd}";
 
     // Check if already running (idempotency guard)
-    var existing = await _daprClient.GetWorkflowAsync(
-        instanceId, "dapr", nameof(DailyReportWorkflow));
+    var existing = await _workflowClient.GetWorkflowStateAsync(instanceId);
 
-    if (existing?.RuntimeStatus is "Running" or "Pending")
+    if (existing?.IsWorkflowRunning ?? false)
         return Conflict(new { message = "Report already in progress" });
 
-    await _daprClient.StartWorkflowAsync(
-        workflowComponent: "dapr",
-        workflowName: nameof(DailyReportWorkflow),
+    await _workflowClient.ScheduleNewWorkflowAsync(
+        name: nameof(DailyReportWorkflow),
         instanceId: instanceId,
         input: new ReportInput { Date = DateTime.UtcNow.Date });
 
@@ -99,25 +90,40 @@ public async Task<IActionResult> TriggerDailyReport([FromBody] JobPayload payloa
 }
 ```
 
+Dapr delivers job triggers to your app at `POST /job/<jobName>`, so the route name must match the job you registered.
+
 ## Scheduling a One-Time Future Job
 
-For one-time scheduled tasks, use a due-time instead of a schedule:
+For one-time scheduled tasks, use `dueTime` (RFC3339 timestamp or Go duration) instead of `schedule`:
 
 ```bash
-dapr job create \
-  --name end-of-quarter-close \
-  --due-time "2026-03-31T23:59:00Z" \
-  --data '{"period":"Q1-2026"}'
+curl -X POST http://localhost:3500/v1.0-alpha1/jobs/end-of-quarter-close \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dueTime": "2026-03-31T23:59:00Z",
+    "data": {
+      "@type": "type.googleapis.com/google.protobuf.StringValue",
+      "value": "{\"period\":\"Q1-2026\"}"
+    }
+  }'
 ```
 
-## Listing and Deleting Jobs
+## Inspecting and Deleting Jobs
+
+The sidecar exposes GET and DELETE on the same path:
 
 ```bash
-# List all jobs
-dapr job list
+# Get a job's definition
+curl http://localhost:3500/v1.0-alpha1/jobs/daily-report-job
 
 # Delete a job
-dapr job delete --name daily-report-job
+curl -X DELETE http://localhost:3500/v1.0-alpha1/jobs/daily-report-job
+```
+
+To list jobs persisted in the scheduler service, use the Dapr CLI:
+
+```bash
+dapr scheduler list
 ```
 
 ## Summary
