@@ -75,7 +75,7 @@ LIMIT 10;
 SELECT count() FROM access_log
 WHERE session_id IN ('abc123', 'def456', 'ghi789');
 
--- LIKE prefix search also works on strings
+-- Equality check on a string column
 SELECT * FROM access_log
 WHERE url = '/api/v1/login';
 ```
