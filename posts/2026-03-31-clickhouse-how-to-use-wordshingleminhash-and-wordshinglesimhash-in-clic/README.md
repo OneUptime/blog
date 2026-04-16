@@ -24,14 +24,16 @@ MinHash and SimHash operate on these shingle sets to produce compact signatures 
 SELECT wordShingleMinHash('the quick brown fox jumps over the lazy dog', 3, 1) AS minhash
 ```
 
-Signature: `wordShingleMinHash(text, shingle_size, hash_count)` returns a tuple of UInt64 values.
+Signature: `wordShingleMinHash(text, shingle_size, hash_count)` returns a `Tuple(UInt64, UInt64)` — the minimum and maximum hash values. The `hash_count` parameter controls how many min/max hashes are computed internally before being aggregated into the two returned values.
 
-For near-duplicate detection, compare hashes from two texts:
+For near-duplicate detection, compare hashes from two texts with `tupleHammingDistance`:
 
 ```sql
 SELECT
-    wordShingleMinHash('ClickHouse is a fast analytical database', 3, 1) AS hash1,
-    wordShingleMinHash('ClickHouse is a fast analytical database system', 3, 1) AS hash2
+    tupleHammingDistance(
+        wordShingleMinHash('ClickHouse is a fast analytical database', 3, 1),
+        wordShingleMinHash('ClickHouse is a fast analytical database system', 3, 1)
+    ) AS dist
 ```
 
 ## wordShingleSimHash()
@@ -114,19 +116,21 @@ WHERE dist <= 6
 ORDER BY dist
 ```
 
-## MinHash Jaccard Similarity
+## MinHash Similarity with tupleHammingDistance
 
-For a more formal Jaccard similarity estimate using MinHash:
+For approximate similarity using MinHash, compare the returned tuples with `tupleHammingDistance`:
 
 ```sql
 SELECT
-    wordShingleMinHash(text1, 3, 20) AS sig1,
-    wordShingleMinHash(text2, 3, 20) AS sig2
+    tupleHammingDistance(
+        wordShingleMinHash(text1, 3, 6),
+        wordShingleMinHash(text2, 3, 6)
+    ) AS dist
 FROM text_pairs
 ```
 
-MinHash with 20 hash functions gives a reasonable Jaccard estimate by counting matching hash values across the tuple components.
+Since `wordShingleMinHash` returns a `Tuple(UInt64, UInt64)` (aggregated min and max hashes), `tupleHammingDistance` returns a value between 0 and 2 — 0 means both min and max hashes match. Increasing `hash_count` (up to 25) increases the number of hashes considered when selecting these aggregated min/max values.
 
 ## Summary
 
-`wordShingleSimHash()` produces a compact SimHash for fast approximate similarity using bit Hamming distance, while `wordShingleMinHash()` produces MinHash signatures useful for Jaccard similarity estimation. Both functions support UTF-8 and case-insensitive variants. Use materialized columns to precompute hashes and enable efficient near-duplicate detection at query time.
+`wordShingleSimHash()` produces a compact `UInt64` SimHash for fast approximate similarity using `bitHammingDistance`, while `wordShingleMinHash()` produces a `Tuple(UInt64, UInt64)` MinHash signature compared via `tupleHammingDistance`. Both functions support UTF-8 and case-insensitive variants. Use materialized columns to precompute hashes and enable efficient near-duplicate detection at query time.
