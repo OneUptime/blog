@@ -28,7 +28,7 @@ ClickHouse has several distinct timeout parameters. Knowing which one fired help
 | `receive_timeout` | Reading server response | 300s |
 | `send_timeout` | Sending data to server | 300s |
 | `max_execution_time` | Total query execution | 0 (unlimited) |
-| `distributed_connection_timeout` | Shard connection | 1s |
+| `connect_timeout_with_failover_ms` | Shard connection (with failover) | 1000ms |
 
 ```sql
 -- Check current session timeout values
@@ -91,7 +91,7 @@ In a multi-shard setup, one slow shard causes the coordinator to time out. Check
 -- Inspect distributed table settings
 SELECT
     host_name,
-    host_port,
+    port,
     errors_count,
     estimated_recovery_time
 FROM system.clusters
@@ -101,8 +101,8 @@ WHERE cluster = 'my_cluster';
 Tune distributed-specific timeouts:
 
 ```sql
-SET distributed_connection_timeout = 5;
 SET connect_timeout_with_failover_ms = 3000;
+SET connect_timeout_with_failover_secure_ms = 3000;
 ```
 
 ### Network Bottlenecks
