@@ -54,11 +54,11 @@ Check profile settings:
 
 ```sql
 SELECT
-    profile,
-    name,
+    profile_name,
+    setting_name,
     value
 FROM system.settings_profile_elements
-WHERE name = 'readonly';
+WHERE setting_name = 'readonly';
 ```
 
 ## Fix 1 - Update the User Profile in users.xml
@@ -77,12 +77,11 @@ If the user's profile has `readonly` set, update it:
 </clickhouse>
 ```
 
-Reload the configuration:
+ClickHouse watches its configuration files and reloads them automatically. To force a reload immediately, run:
 
-```bash
-sudo systemctl reload clickhouse-server
-# Or send SIGHUP:
-sudo kill -HUP $(pidof clickhouse-server)
+```sql
+SYSTEM RELOAD CONFIG;
+SYSTEM RELOAD USERS;
 ```
 
 ## Fix 2 - Use SQL to Alter the Profile
@@ -95,7 +94,7 @@ SHOW CREATE SETTINGS PROFILE my_profile;
 
 -- Alter the profile to remove readonly restriction
 ALTER SETTINGS PROFILE my_profile
-SETTINGS readonly = 0;
+MODIFY SETTINGS readonly = 0;
 ```
 
 ## Fix 3 - Fix HTTP Connection Readonly Parameter
@@ -124,30 +123,25 @@ client = clickhouse_connect.get_client(
 )
 ```
 
-## Fix 4 - Fix Read Replica Connections
+## Fix 4 - Fix Read-Only Replicas
 
-If connecting to a replica that only allows reads:
+ClickHouse replication is multi-leader, so any healthy replica can accept writes. However, if a replica loses its ZooKeeper/Keeper connection it goes into a read-only state and will reject writes. Check replication status:
 
 ```sql
--- Check if this server is a replica
-SELECT is_leader FROM system.replicas LIMIT 1;
-
--- Check replication status
 SELECT
     database,
     table,
-    is_leader,
     is_readonly,
     total_replicas,
     active_replicas
 FROM system.replicas;
 ```
 
-Connect to the primary/leader shard for write operations. In your config:
+If `is_readonly = 1`, inspect the cause (ZooKeeper/Keeper connectivity, session expiration) and route writes to a healthy replica. In your application:
 
 ```yaml
 # Application connection config
-write_host: clickhouse-primary.example.com
+write_host: clickhouse-writable.example.com
 read_host: clickhouse-replica.example.com
 ```
 
@@ -196,4 +190,4 @@ DROP TABLE test_write;
 
 ## Summary
 
-"Cannot execute query in readonly mode" in ClickHouse is controlled by the `readonly` session setting, which can be set at the user profile level, via HTTP parameters, or inherited from a replica configuration. Fix it by setting `readonly = 0` in the user profile XML or via SQL `ALTER SETTINGS PROFILE`, checking HTTP connection parameters, and ensuring you are connecting to a primary node for write operations.
+"Cannot execute query in readonly mode" in ClickHouse is controlled by the `readonly` session setting, which can be set at the user profile level or via HTTP parameters. Fix it by setting `readonly = 0` in the user profile XML or via SQL `ALTER SETTINGS PROFILE`, checking HTTP connection parameters, and routing writes to a replica that is not in a read-only state.
