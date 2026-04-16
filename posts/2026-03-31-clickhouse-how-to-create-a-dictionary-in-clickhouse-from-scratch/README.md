@@ -57,7 +57,7 @@ LIFETIME(MIN 60 MAX 3600);
 The layout controls how the dictionary is stored in memory:
 
 ```sql
--- FLAT: array-based, fastest, only for small integer keys (< 500k)
+-- FLAT: array-based, fastest, only for UInt64 keys (default max key value 500k)
 LAYOUT(FLAT())
 
 -- HASHED: hash table, good for string/integer keys up to millions
