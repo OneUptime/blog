@@ -17,7 +17,7 @@ Using GX with ClickHouse adds a formal quality gate to your analytical pipeline.
 ## Installing Great Expectations with ClickHouse
 
 ```bash
-pip install great-expectations clickhouse-sqlalchemy
+pip install 'great-expectations<1.0' clickhouse-sqlalchemy
 ```
 
 ## Creating a ClickHouse Datasource
@@ -55,28 +55,28 @@ Create an expectation suite for the orders table:
 ```text
 suite = context.add_expectation_suite("orders_suite")
 
-batch = context.get_batch(
+validator = context.get_validator(
     batch_request=asset.build_batch_request(),
     expectation_suite_name="orders_suite"
 )
 
 # Row count expectation
-batch.expect_table_row_count_to_be_between(min_value=1000, max_value=10000000)
+validator.expect_table_row_count_to_be_between(min_value=1000, max_value=10000000)
 
 # Column completeness
-batch.expect_column_values_to_not_be_null("order_id")
-batch.expect_column_values_to_not_be_null("user_id")
+validator.expect_column_values_to_not_be_null("order_id")
+validator.expect_column_values_to_not_be_null("user_id")
 
 # Value ranges
-batch.expect_column_values_to_be_between("total_cents", min_value=0, max_value=100000000)
+validator.expect_column_values_to_be_between("total_cents", min_value=0, max_value=100000000)
 
 # Allowed values
-batch.expect_column_values_to_be_in_set("status", ["pending","completed","cancelled","refunded"])
+validator.expect_column_values_to_be_in_set("status", ["pending","completed","cancelled","refunded"])
 
 # Uniqueness
-batch.expect_column_values_to_be_unique("order_id")
+validator.expect_column_values_to_be_unique("order_id")
 
-context.save_expectation_suite(suite)
+validator.save_expectation_suite(discard_failed_expectations=False)
 ```
 
 ## Running Validations
@@ -109,7 +109,7 @@ SELECT count() FROM orders WHERE created_at > now()
 -- Expected result: 0
 ```
 
-In GX, use `expect_column_pair_values_to_be_in_set` or a custom query expectation class.
+In GX, wire this up via `expect_column_max_to_be_between` (with `max_value=datetime.utcnow()`) or register a custom query expectation class that runs the SQL above.
 
 ## Generating Data Docs
 
