@@ -48,6 +48,19 @@ Define rollup rules in `config.xml` or a separate `.xml` file in `config.d/`:
     <value_column_name>Value</value_column_name>
     <version_column_name>Timestamp</version_column_name>
 
+    <pattern>
+        <regexp>^servers\..+\.cpu\.</regexp>
+        <function>max</function>
+        <retention>
+            <age>0</age>
+            <precision>10</precision>    <!-- 10-second resolution for CPU metrics -->
+        </retention>
+        <retention>
+            <age>3600</age>
+            <precision>60</precision>    <!-- 1-minute resolution after 1 hour -->
+        </retention>
+    </pattern>
+
     <default>
         <function>avg</function>
         <retention>
@@ -63,19 +76,6 @@ Define rollup rules in `config.xml` or a separate `.xml` file in `config.d/`:
             <precision>86400</precision> <!-- 1-day resolution after 30 days -->
         </retention>
     </default>
-
-    <pattern>
-        <regexp>^servers\..+\.cpu\.</regexp>
-        <function>max</function>
-        <retention>
-            <age>0</age>
-            <precision>10</precision>    <!-- 10-second resolution for CPU metrics -->
-        </retention>
-        <retention>
-            <age>3600</age>
-            <precision>60</precision>    <!-- 1-minute resolution after 1 hour -->
-        </retention>
-    </pattern>
 </graphite_rollup>
 ```
 
@@ -122,7 +122,7 @@ ORDER BY Path
 ## How Rollup Works
 
 During background merges, ClickHouse applies the rollup rules:
-- Rows for the same `Path` and same time bucket (per `precision`) are aggregated using the configured function (`avg`, `max`, `min`, `sum`)
+- Rows for the same `Path` and same time bucket (per `precision`) are aggregated using the configured function (`avg`, `max`, `min`, `any`)
 - Older data is stored at coarser time resolutions
 - This reduces storage while preserving trend data
 
@@ -136,13 +136,13 @@ clickhouse-client --query "OPTIMIZE TABLE graphite_data FINAL"
 
 ```sql
 SELECT * FROM system.graphite_retentions
-ORDER BY Tables, regexp, age
+ORDER BY config_name, regexp, age
 ```
 
 ## Using with Graphite Carbon
 
-GraphiteMergeTree integrates directly with Graphite's Carbon daemon. Configure Carbon to forward metrics to ClickHouse via the `clickhouse-carbon` relay or ClickHouse's native Graphite input.
+GraphiteMergeTree integrates with Graphite's Carbon ecosystem via the `carbon-clickhouse` relay (which receives Graphite line/pickle/protobuf metrics and writes them to ClickHouse). For the read path, `graphite-clickhouse` serves as a graphite-web compatible backend that queries the GraphiteMergeTree table.
 
 ## Summary
 
-`GraphiteMergeTree` stores Graphite metrics with automatic time-based downsampling controlled by rollup configuration rules. It maps metric names to paths, applies aggregation functions (avg, max, min) during background merges, and progressively reduces resolution for older data. It is the canonical ClickHouse engine for replacing Graphite/Whisper storage at analytical scale.
+`GraphiteMergeTree` stores Graphite metrics with automatic time-based downsampling controlled by rollup configuration rules. It maps metric names to paths, applies aggregation functions (avg, max, min, any) during background merges, and progressively reduces resolution for older data. It is the canonical ClickHouse engine for replacing Graphite/Whisper storage at analytical scale.
