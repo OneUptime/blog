@@ -36,7 +36,7 @@ Connect with the client:
 clickhouse client
 ```
 
-The default configuration listens on localhost with no password. Data is stored in `~/.clickhouse` or the current directory depending on how you start the server.
+The default configuration listens on localhost with no password. When you run `clickhouse server` directly, data is stored under the current working directory (in a `data/` subdirectory) unless you pass a custom config with `--config-file`.
 
 ## Option 2: Install via Binary
 
@@ -131,13 +131,14 @@ print(result.first_row)
 
 ## Resetting the Development Instance
 
-To start fresh, stop the server and remove the data directory:
+To start fresh with the Docker setup, stop and remove the container along with its data volume:
 
 ```bash
-brew services stop clickhouse
+docker rm -f clickhouse-dev
 rm -rf ~/clickhouse-data
-brew services start clickhouse
 ```
+
+Then re-run the `docker run` command from Option 3 to start a clean instance.
 
 ## Summary
 
