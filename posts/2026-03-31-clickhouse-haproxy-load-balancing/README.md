@@ -60,7 +60,7 @@ You can use ACLs to route writes to a specific node:
 ```text
 frontend clickhouse_http
     bind *:8123
-    acl is_insert path_beg -i /?query=INSERT
+    acl is_insert url_beg -i /?query=INSERT
     use_backend clickhouse_primary if is_insert
     default_backend clickhouse_replicas
 
