@@ -48,7 +48,7 @@ ping -c 5 clickhouse-node2.internal
 SELECT
     cluster,
     host_name,
-    host_port,
+    port,
     errors_count,
     estimated_recovery_time
 FROM system.clusters
@@ -138,10 +138,15 @@ resolvectl flush-caches
 If ZooKeeper stores the wrong hostname for a replica:
 
 ```sql
--- Check what hostname ZooKeeper knows for each replica
-SELECT replica_name, host_name
+-- Find the ZooKeeper path for each replica of the table
+SELECT database, table, replica_name, replica_path
 FROM system.replicas
 WHERE table = 'events';
+
+-- Then inspect the host value registered in ZooKeeper for a specific replica
+SELECT name, value
+FROM system.zookeeper
+WHERE path = '/clickhouse/tables/{shard}/events/replicas/{replica}';
 ```
 
 Update the configuration and restart the node to re-register with the correct hostname.
