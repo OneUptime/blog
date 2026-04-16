@@ -132,13 +132,13 @@ kubectl get svc -n clickhouse
 Port-forward for local access:
 
 ```bash
-kubectl port-forward -n clickhouse svc/my-clickhouse 8123:8123
+kubectl port-forward -n clickhouse svc/my-clickhouse 8123:8123 9000:9000
 ```
 
 Connect with clickhouse-client:
 
 ```bash
-docker run --rm -it clickhouse/clickhouse-client:24.3 \
+docker run --rm -it --network host clickhouse/clickhouse-client:24.3 \
   --host localhost --port 9000 \
   --user admin --password strongpassword \
   --query "SELECT version();"
