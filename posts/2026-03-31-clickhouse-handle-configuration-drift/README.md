@@ -12,7 +12,7 @@ Configuration drift occurs when individual ClickHouse nodes have different setti
 
 ## Detecting Drift
 
-Compare settings across nodes:
+Compare settings across nodes. Query/session settings live in `system.settings`, while server-level settings from `config.xml` live in `system.server_settings`:
 
 ```sql
 -- Run on each node and compare output
@@ -20,17 +20,23 @@ SELECT name, value
 FROM system.settings
 WHERE name IN (
     'max_memory_usage',
-    'max_threads',
+    'max_threads'
+)
+ORDER BY name;
+
+SELECT name, value
+FROM system.server_settings
+WHERE name IN (
     'background_pool_size',
     'max_server_memory_usage_to_ram_ratio'
 )
 ORDER BY name;
 ```
 
-For cluster-level comparison, use the `remote()` function:
+For cluster-level comparison, use the `clusterAllReplicas()` function with `hostName()` to identify each node:
 
 ```sql
-SELECT host, name, value
+SELECT hostName() AS host, name, value
 FROM clusterAllReplicas('prod', system.settings)
 WHERE name = 'max_memory_usage'
 ORDER BY host;
@@ -84,7 +90,7 @@ Schedule a daily job that queries `clusterAllReplicas` for critical settings and
 
 ```sql
 SELECT
-    host,
+    hostName() AS host,
     name,
     value
 FROM clusterAllReplicas('prod', system.settings)
