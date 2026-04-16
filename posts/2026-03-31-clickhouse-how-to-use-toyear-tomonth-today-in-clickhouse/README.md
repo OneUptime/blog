@@ -1,10 +1,10 @@
-# How to Use toYear(), toMonth(), toDay() in ClickHouse
+# How to Use toYear(), toMonth(), toDayOfMonth() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Date Function, toYear, toMonth, toDay, Time Series
+Tags: ClickHouse, Date Function, toYear, toMonth, toDayOfMonth, Time Series
 
-Description: Learn how to use toYear(), toMonth(), and toDay() functions in ClickHouse to extract date components for grouping, filtering, and time-based analytics.
+Description: Learn how to use toYear(), toMonth(), and toDayOfMonth() functions in ClickHouse to extract date components for grouping, filtering, and time-based analytics.
 
 ---
 
@@ -16,14 +16,14 @@ ClickHouse provides a comprehensive set of functions for extracting individual c
 |----------|---------|---------------|--------|
 | `toYear(dt)` | Year as UInt16 | `2024-03-15` | `2024` |
 | `toMonth(dt)` | Month (1-12) as UInt8 | `2024-03-15` | `3` |
-| `toDay(dt)` / `toDayOfMonth(dt)` | Day of month (1-31) | `2024-03-15` | `15` |
+| `toDayOfMonth(dt)` (alias `DAY`) | Day of month (1-31) as UInt8 | `2024-03-15` | `15` |
 | `toDayOfWeek(dt)` | Day of week (1=Mon..7=Sun) | `2024-03-15` | `5` (Friday) |
 | `toDayOfYear(dt)` | Day of year (1-366) | `2024-03-15` | `75` |
 | `toHour(dt)` | Hour (0-23) | `2024-03-15 14:30:00` | `14` |
 | `toMinute(dt)` | Minute (0-59) | `2024-03-15 14:30:00` | `30` |
 | `toSecond(dt)` | Second (0-59) | `2024-03-15 14:30:00` | `0` |
 | `toQuarter(dt)` | Quarter (1-4) | `2024-03-15` | `1` |
-| `toWeek(dt)` | Week number (0-53) | `2024-03-15` | `11` |
+| `toWeek(dt[, mode])` | Week number (0-53, mode 0 default) | `2024-03-15` | `10` |
 
 ## Basic Usage
 
@@ -33,7 +33,7 @@ SELECT
     today() AS current_date,
     toYear(today()) AS year,
     toMonth(today()) AS month,
-    toDay(today()) AS day_of_month,
+    toDayOfMonth(today()) AS day_of_month,
     toDayOfWeek(today()) AS day_of_week,
     toQuarter(today()) AS quarter;
 
@@ -189,4 +189,4 @@ ORDER BY hour_of_day;
 
 ## Summary
 
-ClickHouse's date component functions - `toYear()`, `toMonth()`, `toDay()`, `toDayOfWeek()`, `toHour()`, and others - extract individual parts from Date and DateTime values. They are essential for time-series grouping (GROUP BY year, month, hour), seasonality analysis, business-hours filtering, and creating human-readable date labels. Use them in combination with aggregate functions to build period comparisons, traffic patterns, and SLA reports.
+ClickHouse's date component functions - `toYear()`, `toMonth()`, `toDayOfMonth()`, `toDayOfWeek()`, `toHour()`, and others - extract individual parts from Date and DateTime values. They are essential for time-series grouping (GROUP BY year, month, hour), seasonality analysis, business-hours filtering, and creating human-readable date labels. Use them in combination with aggregate functions to build period comparisons, traffic patterns, and SLA reports.
