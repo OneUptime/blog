@@ -170,16 +170,20 @@ SELECT sum(age) FROM user_profiles;
 ## Converting Between Nullable and Non-Nullable
 
 ```sql
--- Cast Nullable to non-Nullable (replaces NULL with default)
-SELECT CAST(email, 'String') FROM user_profiles;  -- NULL becomes ''
+-- Replace NULL with a value before stripping the Nullable wrapper.
+-- CAST alone does NOT turn NULL into '' - you must handle NULLs explicitly.
+SELECT CAST(ifNull(email, ''), 'String') FROM user_profiles;
 
 -- Or use toNullable to add Nullable wrapper to non-Nullable
 SELECT toNullable(created_at) FROM user_profiles;
 
--- Remove Nullable wrapper in schema
+-- Remove Nullable wrapper in schema. First backfill NULLs to a real value,
+-- then change the column type.
+ALTER TABLE user_profiles
+    UPDATE email = '' WHERE email IS NULL;
+
 ALTER TABLE user_profiles
     MODIFY COLUMN email String DEFAULT '';
--- This will replace existing NULLs with empty string
 ```
 
 ## Summary
