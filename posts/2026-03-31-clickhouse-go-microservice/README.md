@@ -88,7 +88,10 @@ func (r *EventRepository) GetDailyActiveUsers(ctx context.Context, date string) 
     var count uint64
     row := r.conn.QueryRow(ctx,
         "SELECT uniq(user_id) FROM events WHERE toDate(event_time) = ?", date)
-    return count, row.Scan(&count)
+    if err := row.Scan(&count); err != nil {
+        return 0, err
+    }
+    return count, nil
 }
 
 func (r *EventRepository) InsertEvents(ctx context.Context, events []Event) error {
