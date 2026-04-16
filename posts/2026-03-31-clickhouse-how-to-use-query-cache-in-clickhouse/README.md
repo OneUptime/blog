@@ -10,7 +10,7 @@ Description: Configure and use ClickHouse's built-in query cache to speed up rep
 
 ## What Is the ClickHouse Query Cache?
 
-Introduced in ClickHouse 22.7, the query cache stores the result of a SELECT query in memory. Subsequent identical queries are served directly from the cache, bypassing query execution entirely.
+Introduced in ClickHouse 23.1, the query cache stores the result of a SELECT query in memory. Subsequent identical queries are served directly from the cache, bypassing query execution entirely.
 
 ```sql
 -- First execution: computes the result and stores in cache
@@ -89,7 +89,7 @@ SETTINGS
 ```sql
 -- Passive mode (default): read from cache but don't write new results
 SET use_query_cache = 1;
-SET query_cache_store_results_of_queries_with_nondeterministic_functions = 0;
+SET query_cache_nondeterministic_function_handling = 'throw';
 
 -- Active mode: explicitly write to cache
 SELECT count() FROM events
@@ -127,7 +127,7 @@ By default, queries with `now()`, `today()`, `rand()` are not cached. Override t
 SELECT count() FROM events WHERE date = today()
 SETTINGS
     use_query_cache = 1,
-    query_cache_store_results_of_queries_with_nondeterministic_functions = 1,
+    query_cache_nondeterministic_function_handling = 'save',
     query_cache_ttl = 60;
 ```
 
@@ -140,16 +140,16 @@ SELECT
     result_size,
     stale,
     shared,
-    hits
+    expires_at
 FROM system.query_cache
-ORDER BY hits DESC;
+ORDER BY expires_at DESC;
 ```
 
 ## Invalidating the Cache
 
 ```sql
--- Drop a specific cache entry by query hash
-SYSTEM DROP QUERY CACHE 'SELECT count() FROM events WHERE date = today()';
+-- Drop cache entries associated with a specific tag
+SYSTEM DROP QUERY CACHE TAG 'dashboard';
 
 -- Drop all cache entries
 SYSTEM DROP QUERY CACHE;
@@ -170,7 +170,7 @@ ORDER BY hour
 SETTINGS
     use_query_cache = 1,
     query_cache_ttl = 300,
-    query_cache_store_results_of_queries_with_nondeterministic_functions = 1;
+    query_cache_nondeterministic_function_handling = 'save';
 ```
 
 ## When Not to Use the Query Cache
@@ -182,4 +182,4 @@ SETTINGS
 
 ## Summary
 
-ClickHouse's query cache (available since 22.7) stores SELECT results in memory and serves identical subsequent queries without re-execution. Enable it with `use_query_cache = 1`, set a TTL with `query_cache_ttl`, and inspect the cache via `system.query_cache`. It is most effective for dashboard queries, reporting aggregates, and any repeated read-heavy workload where data freshness requirements allow a small staleness window.
+ClickHouse's query cache (available since 23.1) stores SELECT results in memory and serves identical subsequent queries without re-execution. Enable it with `use_query_cache = 1`, set a TTL with `query_cache_ttl`, and inspect the cache via `system.query_cache`. It is most effective for dashboard queries, reporting aggregates, and any repeated read-heavy workload where data freshness requirements allow a small staleness window.
