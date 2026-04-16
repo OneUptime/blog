@@ -110,7 +110,7 @@ SELECT
     last_successful_update_time,
     loading_duration
 FROM system.dictionaries
-WHERE layout = 'hashed';
+WHERE type = 'Hashed';
 ```
 
 ## Manual Reload
@@ -121,10 +121,10 @@ SYSTEM RELOAD DICTIONARY user_segments_dict;
 
 ## Sharded Hashed for Large Dictionaries
 
-For very large dictionaries, use `sharded_hashed` to distribute across threads:
+For very large dictionaries, use the `SHARDS` parameter of `HASHED` (or `SPARSE_HASHED`) to distribute across multiple hash tables for parallel loading:
 
 ```sql
-LAYOUT(SHARDED_HASHED())
+LAYOUT(HASHED(SHARDS 16))
 ```
 
 ## Summary
