@@ -104,9 +104,9 @@ INSERT INTO order_states VALUES
 The key advantage over `CollapsingMergeTree`: sign=-1 rows for future versions can arrive before the sign=+1 rows (due to distributed system race conditions), and the engine handles them correctly because version ordering resolves conflicts:
 
 ```sql
--- Version 2 cancellation arrives before version 1 state in distributed scenario
+-- Version 1 cancellation arrives before version 1 state in distributed scenario
 INSERT INTO order_states VALUES
-(1003, 'processing', 200.0, now(), -1, 2);  -- arrives first
+(1003, 'pending', 200.0, now(), -1, 1);  -- arrives first
 
 INSERT INTO order_states VALUES
 (1003, 'pending', 200.0, now(), 1, 1),      -- original state
