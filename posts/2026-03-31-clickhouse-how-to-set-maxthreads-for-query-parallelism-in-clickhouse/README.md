@@ -60,7 +60,7 @@ For permanent per-user or per-role defaults:
 CREATE SETTINGS PROFILE analyst_profile
     SETTINGS max_threads = 8;
 
-ALTER USER analyst SETTINGS PROFILE analyst_profile;
+ALTER USER analyst SETTINGS PROFILE 'analyst_profile';
 ```
 
 ## Impact on Performance
@@ -121,7 +121,7 @@ SETTINGS max_final_threads = 8;
 ```sql
 SELECT metric, value
 FROM system.metrics
-WHERE metric IN ('QueryThread', 'Query', 'ThreadsInOvercommit')
+WHERE metric IN ('QueryThread', 'Query', 'ThreadsInOvercommitTracker')
 ```
 
 ## Summary
