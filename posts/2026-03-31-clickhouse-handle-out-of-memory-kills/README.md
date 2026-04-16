@@ -31,12 +31,12 @@ Find the heaviest recent queries:
 SELECT
     query_id,
     user,
-    toDateTime(query_start_time) AS started,
-    peak_memory_usage / 1e9 AS peak_gb,
+    query_start_time AS started,
+    memory_usage / 1e9 AS memory_gb,
     query
 FROM system.query_log
 WHERE type = 'QueryFinish'
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
@@ -47,7 +47,7 @@ LIMIT 10;
 SET max_memory_usage = 10000000000;  -- 10 GB per query
 
 -- For a specific user (profile)
-ALTER USER analyst SETTINGS max_memory_usage = 5000000000;
+ALTER USER analyst ADD SETTINGS max_memory_usage = 5000000000;
 ```
 
 Or set globally in `users.xml`:
@@ -84,7 +84,7 @@ SELECT user_id, count() FROM events GROUP BY user_id;
 
 ## Preventing Future OOM Events
 
-Enable memory overcommit alerts:
+Enable memory allocation sampling into `system.trace_log` so you can later identify memory-heavy code paths:
 
 ```xml
 <total_memory_tracker_sample_probability>0.01</total_memory_tracker_sample_probability>
