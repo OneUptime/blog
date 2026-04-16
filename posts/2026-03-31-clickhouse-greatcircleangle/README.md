@@ -20,7 +20,7 @@ SELECT
 
 ```text
 angle_degrees
-49.9
+50.09
 ```
 
 ## Relationship to greatCircleDistance()
@@ -41,7 +41,7 @@ SELECT
 
 ```text
 angle_deg  distance_m    derived_distance_m
-49.9       5570224.98    5570224.9
+50.09      5570224.98    5570224.9
 ```
 
 ## Comparing Angular Distances Without Unit Conversion
@@ -141,14 +141,14 @@ LIMIT 20;
 -- Angular separation between two stars (RA/Dec in degrees)
 SELECT
     greatCircleAngle(
-        83.8221, 5.3911,   -- Betelgeuse (RA, Dec)
-        78.6345, 5.4084    -- Bellatrix  (RA, Dec)
+        88.7929, 7.4071,   -- Betelgeuse (RA, Dec)
+        81.2828, 6.3497    -- Bellatrix  (RA, Dec)
     ) AS separation_deg;
 ```
 
 ```text
 separation_deg
-4.97
+7.53
 ```
 
 ## Summary
