@@ -41,10 +41,10 @@ FROM (
 
 ```text
 union_length
-4500
+3900
 ```
 
-The result is 4500 seconds = 75 minutes. The first two intervals overlap from 10:15 to 10:30 (15 minutes of overlap), so their union spans 10:00 to 10:45 (45 minutes). The third interval adds 20 minutes with no overlap, giving 65 minutes total. Wait - let me recalculate: 10:00-10:45 is 45 min, 11:00-11:20 is 20 min, total 65 min = 3900 seconds. ClickHouse handles this correctly.
+The first two intervals overlap from 10:15 to 10:30 (15 minutes of overlap), so their union spans 10:00 to 10:45 (45 minutes). The third interval adds 20 minutes with no overlap, giving 65 minutes total = 3900 seconds.
 
 ## Setting Up a Session Analytics Table
 
@@ -93,7 +93,7 @@ ORDER BY user_id;
 
 ```text
 user_id  active_seconds  active_minutes  window_count
-1        5400            90              3
+1        4800            80              3
 2        5400            90              3
 3        4200            70              3
 ```
@@ -118,12 +118,12 @@ ORDER BY user_id;
 
 ```text
 user_id  naive_minutes  correct_minutes
-1        110            80
+1        90             80
 2        120            90
 3        70             70
 ```
 
-User 1's naive sum overcounts by 30 minutes (the overlap between a1 and a2). User 2 overcounts by 30 minutes due to cascading overlaps. User 3 has no overlaps so both methods agree.
+User 1's naive sum overcounts by 10 minutes (the overlap between a1 and a2 is 09:20-09:30). User 2 overcounts by 30 minutes due to cascading overlaps. User 3 has no overlaps so both methods agree.
 
 ## Video Streaming: Watched Duration
 
