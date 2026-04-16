@@ -10,19 +10,19 @@ Description: Resolve ClickHouse 'Maximum distributed connections reached' errors
 
 ## Understanding the Error
 
-When ClickHouse's distributed query engine exhausts its connection pool to remote shards, queries fail with:
+When ClickHouse's distributed query engine exhausts its connection pool to remote shards, queries fail with errors such as:
 
 ```text
-DB::Exception: Too many connections to replica. Maximum connections: 1024. (TOO_MANY_SIMULTANEOUS_QUERIES)
+DB::Exception: All connection tries failed. (ALL_CONNECTION_TRIES_FAILED)
 ```
 
-or:
+or, when per-server concurrency limits are hit:
 
 ```text
-DB::Exception: Maximum distributed connections reached. (NETWORK_ERROR)
+DB::Exception: Too many simultaneous queries. (TOO_MANY_SIMULTANEOUS_QUERIES)
 ```
 
-This happens under heavy concurrent distributed query load when the connection pool to remote shards fills up.
+This happens under heavy concurrent distributed query load when the connection pool to remote shards fills up or when remote shards reject new queries.
 
 ## Checking the Current Connection Pool Status
 
@@ -45,13 +45,22 @@ ORDER BY elapsed DESC;
 
 ## Fix 1 - Increase the Distributed Connection Pool Size
 
-In `/etc/clickhouse-server/config.xml`:
+`distributed_connections_pool_size` is a user/profile setting. Raise it in `users.xml`:
 
 ```xml
-<!-- Maximum number of connections in distributed query connection pool -->
-<distributed_connections_pool_size>1024</distributed_connections_pool_size>
+<!-- users.xml -->
+<profiles>
+  <default>
+    <!-- Max simultaneous connections with remote servers for distributed processing -->
+    <distributed_connections_pool_size>1024</distributed_connections_pool_size>
+  </default>
+</profiles>
+```
 
-<!-- Connections per endpoint -->
+You can also raise the server-wide connection cap in `config.xml`:
+
+```xml
+<!-- /etc/clickhouse-server/config.xml -->
 <max_connections>4096</max_connections>
 ```
 
@@ -70,36 +79,40 @@ Limit how many distributed queries can run simultaneously per user:
 <profiles>
   <analysts>
     <max_concurrent_queries_for_user>20</max_concurrent_queries_for_user>
-    <max_concurrent_select_queries_for_user>15</max_concurrent_select_queries_for_user>
   </analysts>
 </profiles>
 ```
 
-Server-wide:
+Server-wide limits in `config.xml`:
 
 ```xml
 <!-- config.xml -->
 <max_concurrent_queries>100</max_concurrent_queries>
+<max_concurrent_select_queries>80</max_concurrent_select_queries>
+<max_concurrent_insert_queries>20</max_concurrent_insert_queries>
 ```
 
-## Fix 3 - Enable Connection Pooling with Compression
+## Fix 3 - Enable Compression for Inter-Shard Traffic
 
-Reduce the number of required connections by enabling compression, which lets fewer connections carry more data:
+Reduce the network pressure on each connection by enabling compression between shards:
 
 ```xml
 <!-- config.xml -->
 <compression>
   <case>
+    <min_part_size>10000000000</min_part_size>
+    <min_part_size_ratio>0.01</min_part_size_ratio>
     <method>lz4</method>
   </case>
 </compression>
 ```
 
-## Fix 4 - Use Connection Reuse (Keep-Alive)
+## Fix 4 - Use HTTP Keep-Alive for Clients
 
-Ensure ClickHouse reuses TCP connections between distributed queries:
+If clients talk to ClickHouse over HTTP, keep-alive lets them reuse TCP sockets instead of opening a new one per request. This reduces the churn of incoming connections counted against `max_connections` (note: it does not affect the native inter-shard pool used by `Distributed` tables):
 
 ```xml
+<!-- config.xml -->
 <keep_alive_timeout>10</keep_alive_timeout>
 ```
 
@@ -109,7 +122,7 @@ Instead of failing, queue excess queries:
 
 ```xml
 <!-- config.xml -->
-<concurrent_threads_soft_limit>0</concurrent_threads_soft_limit>
+<concurrent_threads_soft_limit_num>0</concurrent_threads_soft_limit_num>
 <!-- Enable query queue -->
 <max_waiting_queries>100</max_waiting_queries>
 ```
@@ -120,7 +133,7 @@ Instead of failing, queue excess queries:
 -- Find which shards are receiving the most connections
 SELECT
     host_name,
-    host_port,
+    port,
     errors_count,
     estimated_recovery_time
 FROM system.clusters
