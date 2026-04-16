@@ -1,16 +1,16 @@
-# How to Use toNullable() and toNotNullable() in ClickHouse
+# How to Use toNullable() and assumeNotNull() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Nullable, toNullable, toNotNullable, Type System, SQL
+Tags: ClickHouse, Nullable, toNullable, assumeNotNull, Type System, SQL
 
-Description: Learn how to use toNullable() and toNotNullable() in ClickHouse to convert between Nullable and non-Nullable column types for type compatibility and performance.
+Description: Learn how to use toNullable() and assumeNotNull() in ClickHouse to convert between Nullable and non-Nullable column types for type compatibility and performance.
 
 ---
 
 ## Overview
 
-ClickHouse distinguishes between nullable and non-nullable types at the type system level. `toNullable(value)` wraps any scalar value in a `Nullable(T)` type, while `toNotNullable(value)` strips the `Nullable` wrapper. These functions enable type compatibility in JOINs, UNION operations, and conditional expressions.
+ClickHouse distinguishes between nullable and non-nullable types at the type system level. `toNullable(value)` wraps any scalar value in a `Nullable(T)` type, while `assumeNotNull(value)` strips the `Nullable` wrapper. These functions enable type compatibility in JOINs, UNION operations, and conditional expressions.
 
 ## toNullable() - Adding Nullable Wrapper
 
@@ -51,15 +51,15 @@ UNION ALL
 SELECT user_id, name, NULL            AS age FROM guest_users
 ```
 
-## toNotNullable() - Removing Nullable Wrapper
+## assumeNotNull() - Removing Nullable Wrapper
 
-`toNotNullable()` is identical to `assumeNotNull()` - it strips the `Nullable` wrapper:
+`assumeNotNull()` strips the `Nullable` wrapper, returning the inner non-Nullable value:
 
 ```sql
 SELECT
     toNullable(100)                        AS nullable_val,
-    toNotNullable(toNullable(100))         AS stripped_val,
-    toTypeName(toNotNullable(toNullable(100))) AS stripped_type
+    assumeNotNull(toNullable(100))         AS stripped_val,
+    toTypeName(assumeNotNull(toNullable(100))) AS stripped_type
 ```
 
 Output:
@@ -69,13 +69,13 @@ nullable_val | stripped_val | stripped_type
 100          | 100          | UInt8
 ```
 
-## Using toNotNullable for Performance
+## Using assumeNotNull for Performance
 
 Nullable columns incur overhead for NULL tracking. Strip the wrapper in queries where NULLs are impossible:
 
 ```sql
 SELECT
-    sum(toNotNullable(required_field)) AS total
+    sum(assumeNotNull(required_field)) AS total
 FROM table_with_guaranteed_values
 WHERE isNotNull(required_field)
 ```
@@ -123,10 +123,10 @@ SELECT
 -- Nullable(UInt8)
 ```
 
-Use `toNotNullable` on the result if you know both branches are non-null:
+Use `assumeNotNull` on the result if you know both branches are non-null:
 
 ```sql
-SELECT toNotNullable(if(flag, val1, val2)) AS result
+SELECT assumeNotNull(if(flag, val1, val2)) AS result
 FROM table_where_neither_is_null
 ```
 
@@ -146,4 +146,4 @@ Then apply `toNullable()` to the non-nullable side or `ifNull(col, default)` to 
 
 ## Summary
 
-`toNullable()` wraps a non-nullable value in the `Nullable(T)` type, and `toNotNullable()` (equivalent to `assumeNotNull()`) removes the wrapper. Use them to align types in UNION ALL operations, resolve type mismatches in conditional expressions, and optimize performance by stripping Nullable overhead when NULLs are guaranteed absent.
+`toNullable()` wraps a non-nullable value in the `Nullable(T)` type, and `assumeNotNull()` removes the wrapper. Use them to align types in UNION ALL operations, resolve type mismatches in conditional expressions, and optimize performance by stripping Nullable overhead when NULLs are guaranteed absent.
