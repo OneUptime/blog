@@ -196,7 +196,7 @@ GROUP BY day, event_type, country;
 
 ```sql
 -- Raw table query: reads millions of rows
-SELECT date, count() FROM raw_events
+SELECT toDate(event_time) AS date, count() FROM raw_events
 WHERE toYYYYMM(event_time) = 202401
 GROUP BY date;
 
