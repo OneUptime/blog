@@ -45,7 +45,7 @@ ORDER BY (ts, user_id)
 SETTINGS index_granularity = 8192;  -- default
 ```
 
-You can use any power of 2 from 1 to 8192, but standard values are 1024, 4096, 8192.
+`index_granularity` accepts any positive integer. Common choices are powers of 2 such as 1024, 4096, 8192, and 16384, but the value is not restricted to powers of 2 or capped at 8192.
 
 ## How ClickHouse Uses Granules
 
