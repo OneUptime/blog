@@ -61,18 +61,17 @@ FROM user_actions
 GROUP BY user_id;
 ```
 
-The `N` elements selected are the first `N` encountered during processing - not necessarily the first `N` by time. To get the most recent `N`, sort before aggregating using a subquery:
+The `N` elements selected are the first `N` encountered during processing - not necessarily the first `N` by time. ClickHouse does not guarantee that an inner `ORDER BY` is preserved through an outer `GROUP BY` (especially with parallel or distributed aggregation), so the reliable way to get the most recent `N` is to collect tuples and sort the resulting array:
 
 ```sql
--- Get the 3 most recent actions per user
+-- Get the 3 most recent actions per user (reliable tuple-based approach)
 SELECT
     user_id,
-    groupArray(3)(action) AS recent_actions
-FROM (
-    SELECT user_id, action, action_time
-    FROM user_actions
-    ORDER BY user_id, action_time DESC
-)
+    arrayMap(
+        x -> x.2,
+        arraySlice(arrayReverseSort(groupArray((action_time, action))), 1, 3)
+    ) AS recent_actions
+FROM user_actions
 GROUP BY user_id;
 ```
 
