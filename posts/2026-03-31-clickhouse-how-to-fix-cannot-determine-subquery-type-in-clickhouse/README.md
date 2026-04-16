@@ -13,7 +13,7 @@ Description: Understand why ClickHouse throws 'Cannot determine subquery type' a
 When ClickHouse encounters a subquery it cannot categorize as either a scalar, set, or table subquery, it raises:
 
 ```text
-Code: 63. DB::Exception: Cannot determine subquery type.
+DB::Exception: Cannot determine subquery type.
 ```
 
 This usually happens when a subquery returns an ambiguous result structure - for example, a subquery that ClickHouse cannot prove returns a single column or single row at parse time.
