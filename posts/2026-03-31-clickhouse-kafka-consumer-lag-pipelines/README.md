@@ -14,17 +14,19 @@ Kafka consumer lag in a ClickHouse pipeline means the consumer is falling behind
 
 ```sql
 SELECT
-    topic,
-    partition,
-    offset_fetched,
-    offset_committed,
-    offset_fetched - offset_committed AS lag,
-    consumer_group
-FROM system.kafka_consumers
-ORDER BY lag DESC;
+    database,
+    table,
+    consumer_id,
+    assignments.topic AS topics,
+    assignments.partition_id AS partitions,
+    assignments.current_offset AS current_offsets,
+    last_poll_time,
+    num_messages_read,
+    num_commits
+FROM system.kafka_consumers;
 ```
 
-This shows real-time lag per partition. Alert when lag exceeds your acceptable threshold.
+This shows the partitions assigned to each consumer and the last committed offset per partition. `system.kafka_consumers` does not expose the broker's high watermark, so true lag (high watermark - current offset) must be computed by comparing these offsets against the values reported by `kafka-consumer-groups.sh` below. Alert when the gap exceeds your acceptable threshold.
 
 ## Monitoring Lag from the Kafka Side
 
