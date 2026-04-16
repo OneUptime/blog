@@ -40,7 +40,7 @@ CREATE TABLE access_log (
 ORDER BY (ts, request_id);
 ```
 
-The optional number in `Delta(N)` specifies byte width: 1, 2, 4, or 8. Default is 1. Use `Delta(8)` for 64-bit integers.
+The optional number in `Delta(N)` specifies byte width: 1, 2, 4, or 8. The default is `sizeof(type)`, so for a `UInt64` column `Delta` alone is equivalent to `Delta(8)`.
 
 ## Measuring Compression Improvement
 
