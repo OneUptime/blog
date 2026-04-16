@@ -55,7 +55,7 @@ clickhouse-keeper-converter \
 
 ```bash
 ls -lh /var/lib/clickhouse/coordination/snapshots/
-# snapshot.* files should appear
+# snapshot_*.bin files should appear
 ```
 
 ## Configuring ClickHouse Keeper
