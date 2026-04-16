@@ -14,24 +14,21 @@ Collecting a sorted list of the top N values within each group is a common repor
 
 ```sql
 groupArraySorted(N)(value)
--- or with explicit sort order:
-groupArraySorted(N)(value, comparator)
 ```
 
 - `N` - maximum number of elements to keep.
 - `value` - the expression to collect.
-- `comparator` (optional) - `'asc'` (default) or `'desc'`.
 
-Returns `Array(T)` containing up to N elements in ascending order (or descending if specified).
+Returns `Array(T)` containing up to N elements of `value` in ascending order. `groupArraySorted` itself only produces ascending results; to get the N largest values, negate the input and the output (for numeric types) or wrap a `groupArraySorted` result with `arrayReverse` after collecting the negated values.
 
 ## Basic Example
 
 ```sql
-SELECT groupArraySorted(3)(number) AS top3
+SELECT groupArraySorted(3)(number) AS bottom3
 FROM numbers(10);
 -- Returns [0, 1, 2]
 
-SELECT groupArraySorted(3)('desc')(number) AS top3_desc
+SELECT arrayMap(x -> -x, groupArraySorted(3)(-toInt64(number))) AS top3_desc
 FROM numbers(10);
 -- Returns [9, 8, 7]
 ```
@@ -61,7 +58,7 @@ INSERT INTO api_requests VALUES
 ```sql
 SELECT
     endpoint,
-    groupArraySorted(3)('desc')(latency_ms) AS top3_latencies
+    arrayMap(x -> -x, groupArraySorted(3)(-toInt64(latency_ms))) AS top3_latencies
 FROM api_requests
 GROUP BY endpoint
 ORDER BY endpoint;
@@ -74,9 +71,9 @@ endpoint      | top3_latencies
 /api/users    | [450, 300, 120]
 ```
 
-## Collecting Recent Events Per User
+## Collecting Earliest Events Per User
 
-Use `groupArraySorted` with a timestamp to get the most recent N events per user:
+Use `groupArraySorted` with a timestamp to get the earliest N events per user:
 
 ```sql
 CREATE TABLE user_activity
@@ -100,29 +97,28 @@ INSERT INTO user_activity VALUES
 ```sql
 SELECT
     user_id,
-    groupArraySorted(3)('desc')(ts)    AS recent_timestamps,
-    groupArraySorted(3)('desc')(action, ts) AS recent_actions
+    groupArraySorted(3)(ts) AS earliest_timestamps
 FROM user_activity
 GROUP BY user_id
 ORDER BY user_id;
 ```
 
-When sorting by a secondary column (e.g., sort by `ts` to determine which `action` values to keep), pass a tuple:
+When you want to sort by one column but collect another (e.g., sort by `ts` to decide which `action` values to keep), pass a tuple with the sort key first and project out the other field:
 
 ```sql
 SELECT
     user_id,
-    arrayMap(t -> t.2, groupArraySorted(3)('desc')((ts, action))) AS recent_actions
+    arrayMap(t -> t.2, groupArraySorted(3)((ts, action))) AS earliest_actions
 FROM user_activity
 GROUP BY user_id
 ORDER BY user_id;
 ```
 
 ```text
-user_id | recent_actions
+user_id | earliest_actions
 --------|-----------------
-1       | ['logout','purchase','view']
-2       | ['view','login']
+1       | ['login','view','purchase']
+2       | ['login','view']
 ```
 
 ## Performance: groupArraySorted vs ORDER BY + LIMIT
@@ -133,14 +129,14 @@ For large groups, `groupArraySorted(N)` is significantly faster because it maint
 -- Slower: sorts all rows then slices
 SELECT
     endpoint,
-    arraySlice(arraySort('x -> -x', groupArray(latency_ms)), 1, 3) AS top3
+    arraySlice(arraySort(x -> -x, groupArray(latency_ms)), 1, 3) AS top3
 FROM api_requests
 GROUP BY endpoint;
 
 -- Faster: heap-based, keeps only top N
 SELECT
     endpoint,
-    groupArraySorted(3)('desc')(latency_ms) AS top3
+    arrayMap(x -> -x, groupArraySorted(3)(-toInt64(latency_ms))) AS top3
 FROM api_requests
 GROUP BY endpoint;
 ```
@@ -157,7 +153,7 @@ SELECT
 FROM (
     SELECT
         endpoint,
-        groupArraySorted(5)('desc')(latency_ms) AS top5
+        arrayMap(x -> -x, groupArraySorted(5)(-toInt64(latency_ms))) AS top5
     FROM api_requests
     GROUP BY endpoint
 )
@@ -167,4 +163,4 @@ ORDER BY endpoint, rank;
 
 ## Summary
 
-`groupArraySorted(N)(value)` collects the top N values per group in sorted order using an internal heap, making it faster than collecting all values with `groupArray` and then sorting. Pass `'desc'` as the comparator to get the largest N values, or use tuple expressions to sort by one column while collecting another. It is the idiomatic ClickHouse approach to per-group top-N reporting.
+`groupArraySorted(N)(value)` collects the smallest N values per group in ascending order using an internal heap, making it faster than collecting all values with `groupArray` and then sorting. To retrieve the largest N values, negate the input (and the result) on numeric types, and use tuple expressions when you need to sort by one column while collecting another. It is the idiomatic ClickHouse approach to per-group top-N reporting.
