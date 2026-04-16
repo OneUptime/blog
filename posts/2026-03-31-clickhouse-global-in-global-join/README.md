@@ -46,7 +46,7 @@ GLOBAL JOIN dist_vip_users AS v ON e.user_id = v.user_id
 GROUP BY e.user_id, v.tier;
 ```
 
-The initiator fetches all rows from `dist_vip_users` once and sends them as a hash table to every shard. Each shard probes the hash table locally.
+The initiator fetches all rows from `dist_vip_users` once and sends them as a temporary table to every shard. Each shard builds its own hash table from the temporary data and probes it locally.
 
 ## Memory Considerations
 
@@ -74,7 +74,7 @@ WHERE user_id GLOBAL IN (SELECT user_id FROM dist_vip_users)
 GROUP BY user_id;
 ```
 
-Look for `CreatingSet` and `ReadFromStorage (Global)` in the EXPLAIN output, confirming the set is built once on the initiator.
+Look for `CreatingSets` (with a `CreatingSet` child) and `ReadFromRemote` in the EXPLAIN output, confirming the set is built once on the initiator and then used by the distributed main query.
 
 ## When to Use GLOBAL vs Regular
 
