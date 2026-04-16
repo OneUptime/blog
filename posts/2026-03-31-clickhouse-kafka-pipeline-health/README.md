@@ -17,19 +17,20 @@ SELECT
     database,
     table,
     consumer_id,
-    assignment AS partitions,
-    messages_processed,
-    rows_written,
-    bytes_written,
-    last_commit_timestamp,
-    now() - last_commit_timestamp AS seconds_since_commit,
-    exceptions_while_parsing
+    assignments.topic,
+    assignments.partition_id,
+    assignments.current_offset,
+    num_messages_read,
+    last_commit_time,
+    now() - last_commit_time AS seconds_since_commit,
+    length(exceptions.text) AS recent_exception_count,
+    exceptions.text
 FROM system.kafka_consumers;
 ```
 
 Alert on:
 - `seconds_since_commit > 60`: Consumer is not committing, likely stuck
-- `exceptions_while_parsing > 0`: Schema or format errors occurring
+- `recent_exception_count > 0`: Schema or format errors occurring (inspect `exceptions.text` for details)
 
 ## Insert Throughput Panel
 
@@ -135,7 +136,7 @@ Consumer lag > 60 seconds: WARNING
 Consumer lag > 300 seconds: CRITICAL
 Dead letter rate > 1% of total: WARNING
 Dead letter rate > 5% of total: CRITICAL
-exceptions_while_parsing increasing: WARNING
+recent_exception_count increasing: WARNING
 ```
 
 ## Summary
