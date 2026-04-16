@@ -145,7 +145,7 @@ WHERE event_date >= cutoff_date
 
 ## Recursive CTEs
 
-ClickHouse supports recursive CTEs (added in 23.x):
+ClickHouse supports recursive CTEs (added in 24.3):
 
 ```sql
 -- Recursive CTE example: generate number sequence
