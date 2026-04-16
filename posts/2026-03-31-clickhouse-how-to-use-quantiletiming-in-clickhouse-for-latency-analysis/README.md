@@ -94,7 +94,7 @@ GROUP BY service;
 
 ## Handling Outliers
 
-Values above ~30 seconds are clamped in some ClickHouse versions. For very high latency data, fall back to `quantile()` or pre-filter:
+Values above 30,000 ms (30 seconds) are always clamped to 30,000 by `quantileTiming()`. For very high latency data, fall back to `quantile()` or pre-filter:
 
 ```sql
 SELECT quantileTiming(0.99)(
