@@ -120,8 +120,7 @@ GROUP BY ALL;
 `GROUP BY ALL` does not work well in every situation. Watch out for:
 
 ```sql
--- Ambiguous case: column used both inside and outside an aggregate
--- This will raise an error or produce unexpected results
+-- Edge case: column used both inside and outside an aggregate
 SELECT
     status,
     max(status),     -- aggregate over status
@@ -129,7 +128,8 @@ SELECT
 FROM events
 GROUP BY ALL;
 -- ClickHouse sees 'status' as non-aggregate and includes it in the key,
--- but max(status) still aggregates over it - this is valid here.
+-- and max(status) aggregates over it - valid, though max(status) is
+-- redundant because 'status' is constant within each group.
 
 -- Subquery with GROUP BY ALL
 SELECT
