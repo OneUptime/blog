@@ -58,7 +58,7 @@ SELECT
     client_hostname,
     query_kind,
     tables,
-    rows_read,
+    read_rows,
     query
 FROM system.query_log
 WHERE has(tables, 'health_db.patient_records')
@@ -127,7 +127,7 @@ Set session timeouts to enforce HIPAA automatic logoff requirements:
 
 ```sql
 CREATE SETTINGS PROFILE hipaa_session
-SETTINGS max_execution_time = 1800;  -- 30 minute max query time
+SETTINGS idle_connection_timeout = 1800;  -- close idle connections after 30 minutes
 
 ALTER USER clinical_user SETTINGS PROFILE hipaa_session;
 ```
@@ -139,9 +139,10 @@ Maintain encrypted backups:
 ```sql
 BACKUP DATABASE health_db
 TO S3('s3://hipaa-backups/clickhouse/', 'aws_key', 'aws_secret')
-SETTINGS compression_method = 'lz4',
-         password = 'BackupEncryptionKey!';
+SETTINGS compression_method = 'lz4';
 ```
+
+Enable S3 server-side encryption (SSE-KMS or SSE-S3) on the destination bucket to encrypt backup objects at rest. For password-protected backups, write to a ZIP archive on a file disk instead of S3.
 
 ## Business Associate Agreement
 
