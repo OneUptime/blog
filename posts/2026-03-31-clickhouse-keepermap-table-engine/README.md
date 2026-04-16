@@ -35,7 +35,7 @@ The path argument (`/clickhouse/feature_flags`) is the ZNode path in Keeper wher
 
 ## Basic Operations
 
-KeeperMap supports INSERT, SELECT, and DELETE but not UPDATE. To change a value, you delete and re-insert:
+KeeperMap supports INSERT, SELECT, DELETE, and UPDATE (via `ALTER TABLE ... UPDATE`). INSERT on an existing primary key overwrites the existing value by default, giving upsert semantics (set `keeper_map_strict_mode=1` to make duplicate keys raise an exception instead):
 
 ```sql
 -- Insert feature flags
@@ -50,9 +50,11 @@ SELECT flag_name, enabled FROM feature_flags;
 -- Check a specific flag
 SELECT enabled FROM feature_flags WHERE flag_name = 'dark_mode';
 
--- Disable a flag
-DELETE FROM feature_flags WHERE flag_name = 'dark_mode';
+-- Disable a flag (INSERT overwrites the existing row)
 INSERT INTO feature_flags (flag_name, enabled) VALUES ('dark_mode', 0);
+
+-- Or update in place
+ALTER TABLE feature_flags UPDATE enabled = 0 WHERE flag_name = 'dark_mode';
 ```
 
 ## Use Cases
@@ -85,8 +87,8 @@ KeeperMap has important constraints to be aware of:
 
 - Low throughput - Keeper is not designed for high-write workloads. Keep writes under a few hundred per second.
 - Small data only - Store configuration, flags, or small lookup tables. Do not store millions of rows.
-- No aggregations - Complex analytics queries are not supported; KeeperMap is read/write only.
-- Primary key required - Every table must have a PRIMARY KEY defined.
+- Inefficient for analytics - aggregations and non-key filters work, but any query that is not an equality/IN lookup on the primary key falls back to a full scan of all keys.
+- Primary key required - Every table must have a PRIMARY KEY defined (exactly one column, serialized as the ZNode name).
 
 ```sql
 -- This will be very slow and is not recommended
