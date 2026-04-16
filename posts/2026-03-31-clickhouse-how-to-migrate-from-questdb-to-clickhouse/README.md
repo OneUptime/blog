@@ -30,15 +30,15 @@ curl -G "http://localhost:9000/exp" \
 For large tables, page through results:
 
 ```bash
-LIMIT=100000
+PAGE=100000
 OFFSET=0
 while true; do
-  COUNT=$(curl -s -G "http://localhost:9000/exp" \
-    --data-urlencode "query=SELECT * FROM sensor_readings LIMIT ${LIMIT} OFFSET ${OFFSET}" \
-    -o "chunk_${OFFSET}.csv" \
-    --write-out "%{http_code}")
-  OFFSET=$((OFFSET + LIMIT))
-  [ "$(wc -l < chunk_$((OFFSET - LIMIT)).csv)" -lt "$LIMIT" ] && break
+  UPPER=$((OFFSET + PAGE))
+  curl -s -G "http://localhost:9000/exp" \
+    --data-urlencode "query=SELECT * FROM sensor_readings LIMIT ${OFFSET}, ${UPPER}" \
+    -o "chunk_${OFFSET}.csv"
+  [ "$(wc -l < chunk_${OFFSET}.csv)" -lt "$PAGE" ] && break
+  OFFSET=$UPPER
 done
 ```
 
@@ -127,7 +127,8 @@ framing.method = "newline_delimited"
 type = "clickhouse"
 inputs = ["influx"]
 endpoint = "http://localhost:8123"
-table = "metrics.sensor_readings"
+database = "metrics"
+table = "sensor_readings"
 ```
 
 ## Summary
