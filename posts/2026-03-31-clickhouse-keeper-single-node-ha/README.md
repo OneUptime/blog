@@ -173,7 +173,7 @@ One advantage of using embedded Keeper with `ReplicatedMergeTree` from the start
 When you add a second server:
 
 1. Deploy a 3-node external Keeper cluster
-2. Migrate the Keeper data using `clickhouse-keeper-converter` (or start fresh if you can afford to reload data)
+2. Migrate the Keeper data by copying the snapshot and log files from the embedded Keeper into the new cluster's leader (or start fresh if you can afford to reload data)
 3. Update `zookeeper.xml` on all ClickHouse nodes to point to the external Keeper cluster
 4. Add the second ClickHouse server to `cluster.xml`
 5. Create the same tables on the new server - they will automatically sync data from the first server
