@@ -71,6 +71,7 @@ Query the materialized view:
 SELECT user_id, item_id, sumMerge(total_weight) AS w
 FROM user_item_weights_mv
 WHERE user_id = 42
+GROUP BY user_id, item_id
 ORDER BY w DESC
 LIMIT 20;
 ```
@@ -94,9 +95,10 @@ WITH
         GROUP BY item_id
     )
 SELECT
-    sumIf(a.w * b.w, a.item_id = b.item_id) /
+    sum(a.w * b.w) /
         (sqrt(sum(a.w * a.w)) * sqrt(sum(b.w * b.w))) AS cosine_sim
-FROM user_a AS a, user_b AS b;
+FROM user_a AS a
+FULL OUTER JOIN user_b AS b USING (item_id);
 ```
 
 ## Top-N Candidate Generation
@@ -124,9 +126,13 @@ Export aggregated vectors to feed a ranking model:
 ```sql
 SELECT
     user_id,
-    groupArray(item_id)  AS items,
-    groupArray(sumMerge(total_weight)) AS weights
-FROM user_item_weights_mv
+    groupArray(item_id) AS items,
+    groupArray(w)       AS weights
+FROM (
+    SELECT user_id, item_id, sumMerge(total_weight) AS w
+    FROM user_item_weights_mv
+    GROUP BY user_id, item_id
+)
 GROUP BY user_id
 INTO OUTFILE '/tmp/user_vectors.jsonl'
 FORMAT JSONEachRow;
