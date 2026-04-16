@@ -21,15 +21,15 @@ In `config.xml` or a config drop-in file, set the gRPC port:
 Restart ClickHouse after the change. Verify it is listening:
 
 ```bash
-clickhouse-client --query "SELECT interface, port FROM system.server_ports WHERE interface = 'grpc'"
+clickhouse-client --query "SELECT name, value FROM system.server_settings WHERE name = 'grpc_port'"
 ```
 
 ## Protobuf Schema
 
-ClickHouse ships the proto file at:
+The proto file is maintained in the ClickHouse source tree and can be downloaded from GitHub:
 
-```text
-/usr/share/clickhouse/grpc_protos/clickhouse_grpc.proto
+```bash
+curl -O https://raw.githubusercontent.com/ClickHouse/ClickHouse/master/src/Server/grpc_protos/clickhouse_grpc.proto
 ```
 
 Key types:
@@ -41,7 +41,7 @@ Key types:
 ```bash
 pip install grpcio grpcio-tools
 python -m grpc_tools.protoc \
-  -I /usr/share/clickhouse/grpc_protos \
+  -I . \
   --python_out=. \
   --grpc_python_out=. \
   clickhouse_grpc.proto
