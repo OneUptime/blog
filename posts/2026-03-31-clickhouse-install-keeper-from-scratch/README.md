@@ -89,19 +89,19 @@ sudo systemctl status clickhouse-keeper
 
 ## Verify the Cluster is Running
 
-Use the built-in client to check status:
+Send the four-letter-word (4lw) commands directly to the TCP port using `nc`:
 
 ```bash
-clickhouse-keeper-client -h localhost -p 9181 -q "ruok"
+echo ruok | nc localhost 9181
 # Expected output: imok
 
-clickhouse-keeper-client -h localhost -p 9181 -q "mntr"
+echo mntr | nc localhost 9181
 ```
 
 Check that leader election completed:
 
 ```bash
-clickhouse-keeper-client -h localhost -p 9181 -q "stat" | grep "Mode"
+echo stat | nc localhost 9181 | grep "Mode"
 # Should show: Mode: leader (on one node) and Mode: follower (on others)
 ```
 
