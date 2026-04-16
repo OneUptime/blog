@@ -33,8 +33,8 @@ If the server only has 16 GiB available for this query and the aggregation state
 | Mode | Behavior |
 |---|---|
 | `throw` | Raise an exception and cancel the query (default) |
-| `break` | Stop adding new groups; aggregate only the groups already seen |
-| `any` | Same as `break`, but return approximate results for remaining rows |
+| `break` | Stop executing the query and return the partial result, as if the source data ran out |
+| `any` | Continue aggregation for keys already in the set, but do not add new keys to the set |
 
 ## throw Mode (Default)
 
@@ -55,7 +55,7 @@ Use `throw` when correctness is non-negotiable and you want failed queries to be
 ## break Mode
 
 ```sql
--- Stop adding new groups after 5 million; aggregate remaining rows into existing groups
+-- Stop executing the query once 5 million unique groups have been created
 SELECT
     user_country,
     device_type,
@@ -67,14 +67,14 @@ SETTINGS
     group_by_overflow_mode = 'break';
 ```
 
-With `break`, ClickHouse stops creating new group keys once the limit is reached. Rows whose keys were already seen continue to accumulate into their existing groups. Rows with entirely new keys are dropped.
+With `break`, ClickHouse stops executing the query as soon as the limit is reached and returns the partial result, as if the source data had run out. No further rows are scanned.
 
-The result is **partially correct**: groups that appeared early in the scan are complete, groups that only appeared after the limit are missing entirely.
+The result is **partial**: groups captured before the break are returned with the row counts seen up to that point, and groups whose keys only appear later in the scan are missing entirely. Because the scan halts early, even existing groups may be missing contributions from the unread portion of the data.
 
 ## any Mode
 
 ```sql
--- Approximate: remaining rows assigned to any existing group (cheapest fallback)
+-- Keep scanning after the limit, but only aggregate into keys already in the set
 SELECT
     product_category,
     count() AS orders,
@@ -86,7 +86,7 @@ SETTINGS
     group_by_overflow_mode = 'any';
 ```
 
-`any` behaves like `break` but is intended for cases where you explicitly want approximate results and accept that some counts may be inflated by rows that should have gone into missing groups.
+With `any`, ClickHouse continues scanning the full dataset after the limit is reached, but only accumulates rows whose keys are already in the set; rows with new keys are ignored. Existing groups therefore see all of their matching rows, while groups whose keys appear only after the limit is hit are missing entirely. The approximation is in the *set of groups returned*, not in the per-group counts for those groups that made it in.
 
 ## Setting Limits That Trigger Overflow Mode
 
@@ -167,20 +167,23 @@ SETTINGS
 ## Detecting Overflow at Runtime
 
 ```sql
--- Check query log for queries that hit row limits
+-- Check query log for queries that hit *_overflow_mode = 'break' or 'any'
 SELECT
     query_id,
     user,
     query_duration_ms,
-    ProfileEvents['GroupByOverflowModeBreak'] AS overflow_breaks,
+    ProfileEvents['OverflowBreak'] AS overflow_breaks,
+    ProfileEvents['OverflowAny'] AS overflow_any,
     left(query, 100) AS query_snippet
 FROM system.query_log
 WHERE type = 'QueryFinish'
-  AND ProfileEvents['GroupByOverflowModeBreak'] > 0
+  AND (ProfileEvents['OverflowBreak'] > 0 OR ProfileEvents['OverflowAny'] > 0)
   AND event_date = today()
 ORDER BY event_time DESC
 LIMIT 20;
 ```
+
+`OverflowBreak` is a generic counter for any `*_overflow_mode = 'break'` (including `read_overflow_mode`, `group_by_overflow_mode`, etc.), and `OverflowAny` specifically counts approximate GROUP BY runs where rows were dropped due to `group_by_overflow_mode = 'any'`.
 
 ## Practical Decision Guide
 
