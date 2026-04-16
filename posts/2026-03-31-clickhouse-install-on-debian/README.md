@@ -8,7 +8,7 @@ Description: Install and configure ClickHouse on Debian Linux using the official
 
 ---
 
-Installing ClickHouse on Debian is straightforward using Altinity's official APT repository. This guide covers installation, initial configuration, and OS-level tuning for Debian 11 (Bullseye) and Debian 12 (Bookworm).
+Installing ClickHouse on Debian is straightforward using ClickHouse's official APT repository. This guide covers installation, initial configuration, and OS-level tuning for Debian 11 (Bullseye) and Debian 12 (Bookworm).
 
 ## Adding the ClickHouse APT Repository
 
@@ -16,20 +16,14 @@ Installing ClickHouse on Debian is straightforward using Altinity's official APT
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
 
 # Install the keyring
-curl -fsSL 'https://packages.clickhouse.com/deb/archive/keyring.gpg' | \
-  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-archive-keyring.gpg
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
+  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
 
 # Add the stable repository
-echo "deb [signed-by=/usr/share/keyrings/clickhouse-archive-keyring.gpg] \
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] \
   https://packages.clickhouse.com/deb stable main" | \
   sudo tee /etc/apt/sources.list.d/clickhouse.list
-```
-
-Alternatively, use the single-file sources format:
-
-```bash
-curl -fsSL 'https://packages.clickhouse.com/deb/archive/apt/stable.sources' | \
-  sudo tee /etc/apt/sources.list.d/clickhouse.sources
 ```
 
 ## Installing ClickHouse
