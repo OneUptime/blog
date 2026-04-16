@@ -83,24 +83,24 @@ sudo systemctl start clickhouse-keeper
 Check each node's role:
 
 ```bash
-clickhouse-keeper-client -h localhost -p 9181 -q "stat" | grep Mode
+echo stat | nc localhost 9181 | grep Mode
 ```
 
 One node should report `Mode: leader` and the others `Mode: follower`.
 
 ## Verify Cluster Health
 
-Use the four-letter commands:
+Use the four-letter commands (sent via `nc` or `telnet` on the client port):
 
 ```bash
 # Check all nodes are alive
 for host in keeper-01 keeper-02 keeper-03; do
     echo -n "$host: "
-    clickhouse-keeper-client -h $host -p 9181 -q "ruok"
+    echo ruok | nc $host 9181
 done
 
 # Get detailed metrics
-clickhouse-keeper-client -h localhost -p 9181 -q "mntr"
+echo mntr | nc localhost 9181
 ```
 
 Key metrics from `mntr`:
@@ -122,7 +122,7 @@ Stop one node and verify the cluster continues:
 sudo systemctl stop clickhouse-keeper  # on keeper-02
 
 # Verify remaining nodes still have quorum
-clickhouse-keeper-client -h keeper-01 -p 9181 -q "ruok"
+echo ruok | nc keeper-01 9181
 # Should return: imok
 
 # Verify ClickHouse server still works
