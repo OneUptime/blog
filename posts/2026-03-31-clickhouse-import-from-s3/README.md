@@ -209,10 +209,10 @@ FROM s3(
 WHERE _path LIKE '%year=2025%month=01%';
 ```
 
-Or use the `HIVE_PARTITIONING` setting for automatic partition column extraction:
+Or enable the `use_hive_partitioning` setting for automatic partition column extraction:
 
 ```sql
-SET hive_text_delimiter = '/';
+SET use_hive_partitioning = 1;
 
 SELECT year, month, count()
 FROM s3(
