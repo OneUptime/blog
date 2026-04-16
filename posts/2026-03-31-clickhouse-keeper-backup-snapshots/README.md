@@ -80,8 +80,8 @@ For a cleaner backup, trigger a fresh snapshot before copying. This minimizes th
 ```bash
 #!/bin/bash
 
-# Trigger a snapshot
-echo "snap" | nc keeper1.internal 2181
+# Trigger a snapshot (csnp is the ClickHouse Keeper 4lw for scheduling a snapshot)
+echo "csnp" | nc keeper1.internal 2181
 
 # Wait for the snapshot to complete
 sleep 5
@@ -132,9 +132,9 @@ clickhouse-keeper-client \
     --host keeper1.internal \
     --port 2181
 
-# Inside the client, trigger a snapshot
-> snapshot
-# Output: Snapshot created successfully
+# Inside the client, send the csnp four-letter word to schedule a snapshot
+> flwc csnp
+# Output: the last committed log index of the scheduled snapshot
 
 # Then back up the file that was just created
 ```
