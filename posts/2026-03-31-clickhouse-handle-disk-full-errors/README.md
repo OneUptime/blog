@@ -82,10 +82,10 @@ find /var/log/clickhouse-server/ -name "*.gz" -mtime +7 -delete
 truncate -s 0 /var/log/clickhouse-server/clickhouse-server.log
 ```
 
-Drop detached parts that are not needed:
+Drop detached parts that are not needed (the `allow_drop_detached` setting must be enabled):
 
 ```sql
-ALTER TABLE my_database.events DROP DETACHED PARTITION ID 'all';
+ALTER TABLE my_database.events DROP DETACHED PARTITION ID 'all' SETTINGS allow_drop_detached = 1;
 ```
 
 ## Step 4: Delete Old Data Partitions
@@ -122,7 +122,7 @@ SELECT
     name,
     round((total_space - free_space) / total_space * 100, 1) AS used_pct
 FROM system.disks
-WHERE used_pct > 80;
+WHERE (total_space - free_space) / total_space * 100 > 80;
 ```
 
 Configure TTL policies to automatically expire old data:
