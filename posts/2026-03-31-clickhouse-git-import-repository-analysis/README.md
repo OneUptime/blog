@@ -8,7 +8,7 @@ Description: Learn how to use clickhouse-git-import to load Git repository histo
 
 ---
 
-`clickhouse-git-import` parses a Git repository and imports its commit history, file changes, and blame data into ClickHouse tables. This enables SQL-based analysis of code evolution, contributor activity, and repository health.
+`clickhouse-git-import` parses a Git repository and emits TSV files describing its commit history, file changes, and per-line blame data. You then create three ClickHouse tables and load the TSVs with `clickhouse-client`, enabling SQL-based analysis of code evolution, contributor activity, and repository health.
 
 ## Installation
 
@@ -21,33 +21,38 @@ which clickhouse-git-import
 
 ## Basic Import
 
-Navigate to a Git repository and run the import:
+Navigate to a Git repository and run the tool. It writes three TSV files (`commits.tsv`, `file_changes.tsv`, `line_changes.tsv`) into the current directory:
 
 ```bash
 cd /path/to/your/repo
 
 clickhouse-git-import \
-  --host localhost \
-  --port 9000 \
-  --database git_analytics \
-  --skip-paths ".vendor,.git,node_modules"
+  --skip-paths 'generated|vendor|node_modules'
 ```
 
-The tool creates and populates several tables automatically.
+`--skip-paths` takes a re2 regex (not a comma-separated list).
 
-## Tables Created
+## Tables and Loading the Data
 
-```sql
--- See what was created
-SHOW TABLES FROM git_analytics;
+The tool does not connect to ClickHouse. You create the tables yourself — the exact DDL is printed by `clickhouse-git-import --help` — and then load the TSV files with `clickhouse-client`:
+
+```bash
+clickhouse-client --query "CREATE DATABASE IF NOT EXISTS git_analytics"
+
+# Create tables using the DDL from `clickhouse-git-import --help`
+# (commits, file_changes, line_changes)
+
+clickhouse-client --database git_analytics --query "INSERT INTO commits FORMAT TSV"       < commits.tsv
+clickhouse-client --database git_analytics --query "INSERT INTO file_changes FORMAT TSV"  < file_changes.tsv
+clickhouse-client --database git_analytics --query "INSERT INTO line_changes FORMAT TSV"  < line_changes.tsv
 ```
 
-Key tables include:
+The three tables are:
 
 ```text
-commits         - one row per commit (hash, author, date, message)
-file_changes    - per-file changes per commit (additions, deletions)
-line_changes    - per-line blame data (author, sign, line content)
+commits         - one row per commit (hash, author, time, message, lines_added, lines_deleted, ...)
+file_changes    - per-file changes per commit (path, author, time, lines_added, lines_deleted, ...)
+line_changes    - per-line data with blame (sign, line_number_new, line, prev_author, ...)
 ```
 
 ## Example Queries
@@ -57,7 +62,7 @@ line_changes    - per-line blame data (author, sign, line content)
 ```sql
 SELECT
     author,
-    count() AS commits,
+    uniqExact(commit_hash) AS commits,
     sum(lines_added) AS added,
     sum(lines_deleted) AS deleted
 FROM git_analytics.file_changes
@@ -110,10 +115,15 @@ Import multiple repositories into the same database with different table prefixe
 
 ## Re-importing After New Commits
 
-The import is a full snapshot. For incremental updates, re-run the import periodically (it truncates and reimports):
+Each run is a full snapshot — the tool has no incremental mode. To refresh the data, truncate the tables, re-run the import to regenerate the TSVs, and reload them:
 
 ```bash
-clickhouse-git-import --host localhost --port 9000 --database git_analytics
+clickhouse-client --database git_analytics --query "TRUNCATE TABLE commits"
+clickhouse-client --database git_analytics --query "TRUNCATE TABLE file_changes"
+clickhouse-client --database git_analytics --query "TRUNCATE TABLE line_changes"
+
+clickhouse-git-import
+# then re-run the INSERT ... FORMAT TSV commands above
 ```
 
 ## Summary
