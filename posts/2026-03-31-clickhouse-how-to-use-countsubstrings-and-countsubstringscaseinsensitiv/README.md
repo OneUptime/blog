@@ -174,7 +174,7 @@ SELECT
     countSubstrings(body, '{{') AS placeholder_count,
     countSubstringsCaseInsensitive(body, '{{name}}') AS name_placeholders,
     countSubstringsCaseInsensitive(body, '{{company}}') AS company_placeholders,
-    countSubstrings(body, chr(10)) + 1 AS line_count,  -- count newlines
+    countSubstrings(body, char(10)) + 1 AS line_count,  -- count newlines
     length(body) AS body_length
 FROM email_templates
 ORDER BY placeholder_count DESC;
