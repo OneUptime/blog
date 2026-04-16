@@ -109,7 +109,7 @@ FROM numbers(100);
 
 ## Deduplication-Safe Inserts with generateUUIDv4()
 
-When using `ReplicatedMergeTree`, ClickHouse uses the UUID column for block deduplication if it is part of the sort key. However, `generateUUIDv4()` produces a new value on each attempt, so for idempotent retries you should generate the UUID in the application and pass it explicitly.
+When using `ReplicatedMergeTree`, ClickHouse deduplicates inserts by hashing the content of each inserted block. Because `generateUUIDv4()` produces a new value on each attempt, retried inserts yield different block hashes and will not be deduplicated, so for idempotent retries you should generate the UUID in the application and pass it explicitly.
 
 ```sql
 -- Good: application generates UUID once and retries with the same value
