@@ -14,7 +14,7 @@ When ingesting large datasets from external sources like CSV files or Kafka topi
 
 `input_format_allow_errors_ratio` is a session-level setting that defines the maximum allowed ratio (0.0 to 1.0) of rows with parse errors during an `INSERT` from a file or external source. If the fraction of bad rows exceeds this threshold, ClickHouse aborts the import with an error. By default it is `0`, meaning any parse error causes an immediate abort.
 
-It works together with `input_format_allow_errors_num`, which sets an absolute count limit. Both conditions are evaluated independently - the import aborts when either is exceeded.
+It works together with `input_format_allow_errors_num`, which sets an absolute count limit. ClickHouse aborts the import only when **both** limits are exceeded at the same time - if either one is still under its threshold, the bad row is skipped and parsing continues.
 
 ## Basic Usage
 
@@ -29,7 +29,7 @@ SETTINGS
     input_format_allow_errors_num  = 100;
 ```
 
-This allows up to 5% of rows to fail parsing, or up to 100 bad rows absolute - whichever limit is hit first triggers an abort.
+This allows bad rows to be skipped until **both** thresholds are exceeded - the failure count must rise above 100 *and* the failure ratio must rise above 5% before the import aborts. In practice the higher of the two thresholds becomes the effective limit.
 
 You can also set it for a session:
 
@@ -51,7 +51,7 @@ SETTINGS
     input_format_allow_errors_num   = 50;
 ```
 
-If the file has 10,000 rows, the import aborts if more than 200 rows (2%) or 50 rows fail - whichever comes first.
+If the file has 10,000 rows, the import aborts only when failures exceed 50 rows *and* exceed 2% of rows read so far. With 10,000 rows the 2% bound (200 rows) is the higher threshold, so it dominates - the import effectively tolerates up to 200 bad rows.
 
 ## Checking Errors After Import
 
