@@ -18,9 +18,10 @@ Download the ClickHouse Kafka Connect connector:
 # Using Confluent Hub
 confluent-hub install clickhouse/clickhouse-kafka-connect:latest
 
-# Or download manually
-curl -L https://github.com/ClickHouse/clickhouse-kafka-connect/releases/latest/download/clickhouse-kafka-connect.jar \
-  -o /usr/share/kafka/plugins/clickhouse-kafka-connect.jar
+# Or download the release zip manually from
+# https://github.com/ClickHouse/clickhouse-kafka-connect/releases
+# then extract it into your Kafka Connect plugin path
+unzip clickhouse-kafka-connect-*.zip -d /usr/share/kafka/plugins/
 ```
 
 ## Create the Target Table
@@ -54,7 +55,6 @@ Create a connector configuration file:
     "username": "default",
     "password": "secret",
     "database": "analytics",
-    "schemas.enable": "false",
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "value.converter.schemas.enable": "false",
@@ -87,23 +87,23 @@ The connector maps Kafka message fields to ClickHouse columns by name. Ensure yo
 
 ## Enable Exactly-Once Semantics
 
-The connector supports exactly-once delivery when Kafka transactions are enabled:
+The connector supports exactly-once delivery by leveraging ClickHouse block deduplication and an internal offset state machine:
 
 ```json
 {
-  "exactly.once.support": "required",
-  "transaction.boundary": "poll"
+  "exactlyOnce": "true"
 }
 ```
 
 ## Tune Batch Size
 
-Control how many records are flushed per batch:
+Batch size is inherited from the underlying Kafka consumer. Use `consumer.override.max.poll.records` to control how many records are pulled per poll, and the connector's internal buffer settings to coalesce polls into larger inserts (note: buffering is not supported with `exactlyOnce=true`):
 
 ```json
 {
-  "batch.size": "50000",
-  "flush.timeout.ms": "10000"
+  "consumer.override.max.poll.records": "50000",
+  "bufferCount": "50000",
+  "bufferFlushTime": "10000"
 }
 ```
 
