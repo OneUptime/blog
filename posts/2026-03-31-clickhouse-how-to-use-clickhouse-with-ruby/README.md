@@ -35,6 +35,7 @@ bundle install
 ```ruby
 require 'faraday'
 require 'json'
+require 'base64'
 
 class ClickHouseClient
   BASE_URL = 'http://localhost:8123'.freeze
@@ -48,9 +49,13 @@ class ClickHouseClient
     @password = password
   end
 
+  def auth_header
+    "Basic #{Base64.strict_encode64("#{@user}:#{@password}")}"
+  end
+
   def query(sql)
     response = @conn.get('/', { query: "#{sql} FORMAT JSONEachRow" }) do |req|
-      req.headers['Authorization'] = Faraday::Connection.basic_auth(@user, @password)
+      req.headers['Authorization'] = auth_header
     end
 
     raise "ClickHouse error: #{response.body}" unless response.status == 200
@@ -64,6 +69,7 @@ class ClickHouseClient
       req.url '/', { query: "INSERT INTO #{table} FORMAT JSONEachRow" }
       req.body = body
       req.headers['Content-Type'] = 'application/octet-stream'
+      req.headers['Authorization'] = auth_header
     end
 
     raise "ClickHouse insert error: #{response.body}" unless response.status == 200
@@ -114,7 +120,7 @@ end
 # db/migrate/20240115000000_create_events_clickhouse.rb
 class CreateEventsClickhouse < ActiveRecord::Migration[7.0]
   def up
-    create_table :events, id: false, options: 'ENGINE = MergeTree() PARTITION BY toYYYYMM(event_date) ORDER BY (event_date, user_id)' do |t|
+    create_table :events, id: false, options: 'MergeTree() PARTITION BY toYYYYMM(event_date) ORDER BY (event_date, user_id)' do |t|
       t.date :event_date, null: false
       t.datetime :event_time, null: false
       t.bigint :user_id, null: false
@@ -201,17 +207,6 @@ Event.connection.execute(<<~SQL)
   FROM legacy_events
   WHERE migrated = 0
 SQL
-```
-
-## Connection Configuration
-
-```ruby
-# config/initializers/clickhouse.rb
-ClickhouseActiverecord::Config.setup do |config|
-  config.logger = Rails.logger
-  config.database_timezone = :utc
-  config.app_timezone = :local
-end
 ```
 
 ## Summary
