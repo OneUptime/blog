@@ -64,7 +64,7 @@ SETTINGS storage_policy = 'jbod_policy';
 
 ## Understanding Part Distribution
 
-ClickHouse fills disks sequentially when using the default `volume_fill_factor`:
+ClickHouse distributes new parts across disks in a volume using round-robin by default. Switch to `least_used` so each new part is written to the disk with the most free space:
 
 ```xml
 <policies>
@@ -74,18 +74,17 @@ ClickHouse fills disks sequentially when using the default `volume_fill_factor`:
                 <disk>disk1</disk>
                 <disk>disk2</disk>
                 <disk>disk3</disk>
-                <!-- Fill each disk to 80% before moving to next -->
-                <volume_fill_factor>0.8</volume_fill_factor>
+                <load_balancing>least_used</load_balancing>
             </data>
         </volumes>
     </jbod_policy>
 </policies>
 ```
 
-Or prefer least-used disk:
+Use `max_data_part_size_bytes` to cap the size of a part on this volume — larger merged parts will be written to the next volume:
 
 ```xml
-<prefer_not_to_merge_across_volumes>true</prefer_not_to_merge_across_volumes>
+<max_data_part_size_bytes>1073741824</max_data_part_size_bytes>
 ```
 
 ## Tiered Storage - Hot and Cold Volumes
