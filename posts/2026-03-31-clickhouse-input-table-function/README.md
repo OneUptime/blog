@@ -188,9 +188,10 @@ FORMAT TSV;
 
 ## Important Constraints
 
-- `input()` can only appear once in the `FROM` clause of a `SELECT` inside an `INSERT INTO` statement. It cannot be used in a standalone `SELECT` query.
-- You cannot join `input()` with another table in the same query. All transformation logic must happen within the `SELECT` expressions.
-- The `FORMAT` clause is mandatory and must follow the `FROM input(...)` clause.
+- `input()` can only be used inside an `INSERT SELECT` query, and it can appear only once. It cannot be used in a standalone `SELECT` query.
+- The incoming data stream is read only once and is not buffered, so it cannot be rescanned within the same query.
+- Aside from those restrictions, `input()` otherwise behaves like an ordinary table function.
+- The `FORMAT` clause is mandatory and must be specified at the end of the query.
 
 ## Summary
 
