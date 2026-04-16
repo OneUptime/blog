@@ -26,11 +26,13 @@ Cloud (read replica + S3 tiering)
 Run three Keeper nodes: two on-premise, one in the cloud. This gives quorum even if the cloud node is unreachable.
 
 ```xml
-<raft_configuration>
-    <server><id>1</id><hostname>keeper-onprem-01</hostname><port>9234</port></server>
-    <server><id>2</id><hostname>keeper-onprem-02</hostname><port>9234</port></server>
-    <server><id>3</id><hostname>keeper-cloud-01</hostname><port>9234</port></server>
-</raft_configuration>
+<keeper_server>
+    <raft_configuration>
+        <server><id>1</id><hostname>keeper-onprem-01</hostname><port>9234</port></server>
+        <server><id>2</id><hostname>keeper-onprem-02</hostname><port>9234</port></server>
+        <server><id>3</id><hostname>keeper-cloud-01</hostname><port>9234</port></server>
+    </raft_configuration>
+</keeper_server>
 ```
 
 ## S3 Storage Policy for Cloud Tiering
