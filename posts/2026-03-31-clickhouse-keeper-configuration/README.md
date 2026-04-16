@@ -46,7 +46,7 @@ Create the config file for a 3-node Keeper ensemble. Place this file on each Kee
         <snapshot_storage_path>/var/lib/clickhouse-keeper/snapshots</snapshot_storage_path>
 
         <coordination_settings>
-            <!-- Raft heartbeat interval in milliseconds -->
+            <!-- Timeout for a single client operation in milliseconds -->
             <operation_timeout_ms>10000</operation_timeout_ms>
             <min_session_timeout_ms>10000</min_session_timeout_ms>
             <session_timeout_ms>30000</session_timeout_ms>
@@ -84,17 +84,17 @@ Create the config file for a 3-node Keeper ensemble. Place this file on each Kee
             <server>
                 <id>1</id>
                 <hostname>keeper1.internal</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
             <server>
                 <id>2</id>
                 <hostname>keeper2.internal</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
             <server>
                 <id>3</id>
                 <hostname>keeper3.internal</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
         </raft_configuration>
     </keeper_server>
@@ -137,8 +137,8 @@ echo "ruok" | nc keeper1.internal 2181
 # Get server configuration
 echo "conf" | nc keeper1.internal 2181
 
-# Get leader information
-echo "lead" | nc keeper1.internal 2181
+# Get leader information (zk_server_state field shows leader/follower)
+echo "mntr" | nc keeper1.internal 2181
 ```
 
 ## Configuring ClickHouse to Use Keeper
@@ -192,7 +192,7 @@ For development or single-node setups, run Keeper embedded in the ClickHouse ser
             <server>
                 <id>1</id>
                 <hostname>localhost</hostname>
-                <port>9444</port>
+                <port>9234</port>
             </server>
         </raft_configuration>
     </keeper_server>
@@ -221,17 +221,19 @@ FROM system.zookeeper
 WHERE path = '/clickhouse'
 ORDER BY name;
 
--- Check if Keeper is the leader or follower
-SELECT *
-FROM system.keeper_map_data_loss_candidate;
+-- Inspect recent Keeper requests/responses from this server's perspective
+SELECT type, event_time, address, port, session_id, xid, has_watch, op_num, path
+FROM system.zookeeper_log
+ORDER BY event_time DESC
+LIMIT 20;
 ```
 
 ## Port Reference
 
 ```text
 2181  -- ZooKeeper-compatible client port (what ClickHouse connects to)
-9444  -- Raft inter-server port (Keeper nodes communicate on this)
-9181  -- Optional alternative client port (used in embedded mode to avoid ZooKeeper port conflict)
+9234  -- Raft inter-server port (Keeper nodes communicate on this)
+9181  -- ClickHouse Keeper's native default client port (used in embedded mode here to avoid the ZooKeeper port)
 ```
 
-Always open both ports in your firewall: 2181 for ClickHouse clients and 9444 for Keeper-to-Keeper Raft communication.
+Always open both ports in your firewall: 2181 for ClickHouse clients and 9234 for Keeper-to-Keeper Raft communication.
