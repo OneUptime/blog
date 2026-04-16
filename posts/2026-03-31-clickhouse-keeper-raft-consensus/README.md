@@ -21,7 +21,7 @@ All client writes go to the leader. The leader appends the operation to its log,
 - With 3 nodes, 2 must acknowledge (can tolerate 1 failure)
 - With 5 nodes, 3 must acknowledge (can tolerate 2 failures)
 
-Reads can be served by any node when `auto_forwarding` is enabled, but reads from followers may be slightly behind the leader.
+Reads can be served by any connected node (followers serve reads independently of the leader), but reads from followers may be slightly behind the leader.
 
 ## Raft Configuration Parameters
 
@@ -98,9 +98,9 @@ Split brain occurs when the network partitions the cluster and two groups each t
 Check cluster connectivity:
 
 ```bash
-# From each Keeper node, verify it can reach the others on port 9444
+# From each Keeper node, verify it can reach the others on the Raft port (default 9234)
 for peer in keeper1 keeper2 keeper3; do
-    nc -zv ${peer}.internal 9444 && echo "OK" || echo "UNREACHABLE"
+    nc -zv ${peer}.internal 9234 && echo "OK" || echo "UNREACHABLE"
 done
 ```
 
@@ -154,7 +154,7 @@ When a ClickHouse client connects to a follower node and tries to write, the fol
 </coordination_settings>
 ```
 
-With `auto_forwarding` enabled, it does not matter which Keeper node your ClickHouse clients connect to. Without it, writes to followers return an error and the client must retry against the leader.
+With `auto_forwarding` enabled, write requests sent to a follower are transparently forwarded to the leader, so it does not matter which Keeper node your ClickHouse clients connect to. Without it, writes to followers return an error and the client must retry against the leader.
 
 ## Observing Commit Latency
 
