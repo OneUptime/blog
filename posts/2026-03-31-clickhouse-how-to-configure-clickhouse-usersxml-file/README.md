@@ -10,7 +10,7 @@ Description: Learn how to configure the ClickHouse users.xml file to define user
 
 ## Overview
 
-The `users.xml` file in ClickHouse (located at `/etc/clickhouse-server/users.xml`) defines users, their authentication, settings profiles, and quotas. It is the primary mechanism for access control when not using SQL-driven access control. Starting with ClickHouse 20.5, you can split this configuration into files under `users.d/`.
+The `users.xml` file in ClickHouse (located at `/etc/clickhouse-server/users.xml`) defines users, their authentication, settings profiles, and quotas. It is the primary mechanism for access control when not using SQL-driven access control. You can also split this configuration into files under `users.d/`.
 
 ## File Structure
 
@@ -46,11 +46,6 @@ The `users.xml` file in ClickHouse (located at `/etc/clickhouse-server/users.xml
             </networks>
             <profile>readonly</profile>
             <quota>default</quota>
-            <databases>
-                <analytics>
-                    <!-- Access only this database -->
-                </analytics>
-            </databases>
         </analyst>
     </users>
 </clickhouse>
