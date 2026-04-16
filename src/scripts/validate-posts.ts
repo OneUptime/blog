@@ -14,17 +14,21 @@ const BLOGS_JSON = 'Blogs.json';
 const POSTS_DIR = 'posts';
 const VALIDATION_JSON = 'validation.json';
 const VALIDATION_SUMMARY_MD = 'validation-summary.md';
-const USAGE_LIMIT_SLEEP_MS = 30 * 60 * 1000;
+const USAGE_LIMIT_SLEEP_MS = 60 * 60 * 1000;
 
 function isUsageLimitOutput(text: string): boolean {
   const t = text.toLowerCase();
   return (
+    t.includes("you've hit your limit") ||
+    t.includes('youve hit your limit') ||
+    t.includes('hit your limit') ||
     t.includes('usage limit reached') ||
     t.includes('claude ai usage limit') ||
     t.includes('claude usage limit') ||
     t.includes('5-hour limit') ||
     t.includes('weekly limit') ||
     t.includes('quota exceeded') ||
+    /\bresets?\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b/.test(t) ||
     /api error:\s*rate limit/.test(t) ||
     /rate[- ]limit(ed| reached| exceeded)/.test(t)
   );
@@ -196,12 +200,13 @@ async function main(): Promise<void> {
       pauseUntilTs = waitUntil;
       pauseAnnounced = false;
     }
+    const sleepMinutes = Math.round(USAGE_LIMIT_SLEEP_MS / 60000);
     if (!pauseAnnounced) {
       pauseAnnounced = true;
       const resumeAt = new Date(pauseUntilTs).toLocaleTimeString();
-      console.log(`\n[USAGE LIMIT] ${blogPost}: Claude hit a usage/rate limit. Sleeping 30 minutes; resuming at ${resumeAt}.`);
+      console.log(`\n[USAGE LIMIT] ${blogPost}: Claude hit a usage/rate limit. Sleeping ${sleepMinutes} minutes; resuming at ${resumeAt}.`);
     } else {
-      console.log(`\n[USAGE LIMIT] ${blogPost}: will retry after the shared 30-minute pause.`);
+      console.log(`\n[USAGE LIMIT] ${blogPost}: will retry after the shared ${sleepMinutes}-minute pause.`);
     }
   }
 
