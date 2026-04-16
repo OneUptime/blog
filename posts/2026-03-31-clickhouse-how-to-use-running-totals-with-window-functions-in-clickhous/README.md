@@ -39,17 +39,17 @@ ORDER BY sale_date;
 
 ## Simplified Running Total Syntax
 
-ClickHouse allows a shorthand for the standard running total frame:
+When `ORDER BY` is specified without an explicit frame, ClickHouse uses the SQL-standard default of `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`. This produces the same result as the explicit `ROWS` frame when the `ORDER BY` values are unique, but differs for ties: with `RANGE`, all rows sharing the same `ORDER BY` value receive the same running total.
 
 ```sql
--- These are equivalent:
+-- Equivalent when sale_date is unique per row:
 SELECT
     sale_date,
     revenue,
-    -- Full explicit frame specification
+    -- Full explicit ROWS frame
     sum(revenue) OVER (ORDER BY sale_date
         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cum_rev_1,
-    -- Shorthand (default frame when ORDER BY is present)
+    -- Default frame (RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
     sum(revenue) OVER (ORDER BY sale_date) AS cum_rev_2
 FROM daily_sales;
 ```
