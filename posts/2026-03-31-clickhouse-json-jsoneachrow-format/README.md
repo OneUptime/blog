@@ -36,7 +36,7 @@ Output:
 }
 ```
 
-This is useful for API responses, dashboards, and debugging. It is an output-only format - you cannot INSERT data in JSON format.
+This is useful for API responses, dashboards, and debugging. While modern ClickHouse versions do support INSERT with FORMAT JSON, JSONEachRow is typically preferred for ingestion because it is streaming-friendly.
 
 ## JSONEachRow Format (NDJSON)
 
@@ -84,7 +84,7 @@ INSERT INTO my_table FORMAT JSONEachRow;
 
 ## Nested Objects
 
-JSONEachRow can handle nested objects by flattening them with dot notation:
+One simple approach is to store nested objects as a String column containing the serialized JSON. For richer handling (including dot-notation into Nested columns), enable `input_format_import_nested_json = 1`:
 
 ```sql
 CREATE TABLE events (
