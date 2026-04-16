@@ -14,7 +14,7 @@ A dual-stack server accepts connections over both IPv4 and IPv6. Modern cloud en
 
 ## Default Listening Behavior
 
-By default, ClickHouse listens on `0.0.0.0` (all IPv4 interfaces) for both HTTP (8123) and native TCP (9000). To add IPv6 support, you configure additional listen addresses.
+By default, ClickHouse listens on `127.0.0.1` and `::1` (localhost only) for both HTTP (8123) and native TCP (9000). To accept connections from other hosts on both protocols, you configure additional listen addresses.
 
 ## Configuring Dual-Stack Listeners
 
@@ -99,7 +99,7 @@ INSERT INTO access_log VALUES (now(), toIPv6('2001:db8::1'), 'POST /api');
 ```sql
 SELECT client_ip, count()
 FROM access_log
-WHERE isIPv4String(toString(client_ip)) = 0  -- IPv6 only
+WHERE client_ip NOT BETWEEN toIPv6('::ffff:0.0.0.0') AND toIPv6('::ffff:255.255.255.255')  -- Pure IPv6 only (exclude IPv4-mapped)
 GROUP BY client_ip
 ORDER BY count() DESC
 LIMIT 10;
