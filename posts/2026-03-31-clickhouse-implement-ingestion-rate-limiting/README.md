@@ -108,11 +108,10 @@ Check current insert queue depth and merge performance:
 
 ```sql
 SELECT
-    is_currently_executing,
     query_kind,
     count()
 FROM system.processes
-GROUP BY is_currently_executing, query_kind;
+GROUP BY query_kind;
 
 SELECT
     database,
