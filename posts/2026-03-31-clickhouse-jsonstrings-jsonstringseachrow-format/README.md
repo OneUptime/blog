@@ -57,18 +57,18 @@ Output:
 }
 ```
 
-## JSONStringsEachRowWithNames
+## JSONCompactStringsEachRowWithNames
 
-Adds a column name header row:
+Adds a column name header row (only the compact variant supports `WithNames`):
 
 ```text
-{"id":"id","name":"name","value":"value"}
-{"id":"1","name":"Alice","value":"3.14"}
-{"id":"2","name":"Bob","value":"2.71"}
+["id", "name", "value"]
+["1", "Alice", "3.14"]
+["2", "Bob", "2.71"]
 ```
 
 ```sql
-SELECT id, name, value FROM users FORMAT JSONStringsEachRowWithNames;
+SELECT id, name, value FROM users FORMAT JSONCompactStringsEachRowWithNames;
 ```
 
 ## Importing with String Values
