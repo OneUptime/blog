@@ -26,7 +26,7 @@ A common pattern is to dual-write to both: Cassandra for operational lookups, Cl
 
 ## Step 1 - Export Data from Cassandra
 
-Use `cassandra-unloader` or `COPY TO`:
+Use `dsbulk` (DataStax Bulk Loader) or `COPY TO`:
 
 ```bash
 cqlsh -e "COPY analytics.events (event_id, user_id, event_type, created_at) \
