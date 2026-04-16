@@ -13,13 +13,13 @@ Description: Fix 'Duplicate column name' errors in ClickHouse by aliasing column
 ClickHouse raises a "Duplicate column name" error when a query produces a result set with two or more columns sharing the same name:
 
 ```text
-Code: 44. DB::Exception: Duplicate column name 'user_id' in CREATE TABLE.
+Code: 15. DB::Exception: Duplicate column name 'user_id' in CREATE TABLE.
 ```
 
 Or during a query:
 
 ```text
-Code: 44. DB::Exception: Duplicate column name 'id'.
+Code: 15. DB::Exception: Duplicate column name 'id'.
 ```
 
 This is stricter than some other databases that silently allow duplicate column names in result sets.
