@@ -73,7 +73,7 @@ SELECT sumMap(counters) AS aggregated_counters
 FROM metric_samples;
 ```
 
-This returns a tuple of (keys_array, values_array).
+When applied to a `Map` column via the `-Map` combinator, this returns a `Map` type with aggregated values per key.
 
 ## Combining -Map with Grouping
 
@@ -105,7 +105,7 @@ SELECT service, sumMap(metrics) FROM service_metrics GROUP BY service;
 
 ```text
 service | sumMap(metrics)
-api     | (['requests','errors'],[220,8])
+api     | {'requests':220,'errors':8}
 ```
 
 ## Chaining Combinators
