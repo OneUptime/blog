@@ -26,7 +26,7 @@ Use the CrateDB HTTP endpoint or `crash` CLI to export:
 
 ```bash
 crash --hosts localhost:4200 \
-  --command "COPY analytics.page_views TO DIRECTORY '/tmp/page_views/' WITH (format='json')"
+  --command "COPY analytics.page_views TO DIRECTORY '/tmp/page_views/' WITH (format='json_object')"
 ```
 
 Or use the COPY TO statement directly:
@@ -34,7 +34,7 @@ Or use the COPY TO statement directly:
 ```sql
 COPY analytics.page_views
 TO DIRECTORY '/tmp/exports/'
-WITH (format = 'json', compression = 'gzip');
+WITH (format = 'json_object', compression = 'gzip');
 ```
 
 ## Step 2 - Create the ClickHouse Table
