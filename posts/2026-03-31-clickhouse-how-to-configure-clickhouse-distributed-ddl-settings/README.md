@@ -21,7 +21,7 @@ ClickHouse's distributed DDL allows you to run `CREATE`, `ALTER`, `DROP`, and ot
         <!-- ZooKeeper/Keeper path for DDL task queue -->
         <path>/clickhouse/task_queue/ddl</path>
 
-        <!-- How long to wait for all cluster nodes to complete DDL (seconds) -->
+        <!-- TTL for DDL task entries in the queue; older tasks are deleted (seconds) -->
         <task_max_lifetime>604800</task_max_lifetime>  <!-- 7 days -->
 
         <!-- Maximum number of DDL tasks to keep in the queue -->
@@ -71,10 +71,10 @@ SELECT
     cluster,
     query,
     initiator_host,
-    create_time,
-    finish_time
+    query_create_time,
+    query_finish_time
 FROM system.distributed_ddl_queue
-ORDER BY create_time DESC
+ORDER BY query_create_time DESC
 LIMIT 20
 ```
 
@@ -84,7 +84,7 @@ Check for failed tasks:
 SELECT *
 FROM system.distributed_ddl_queue
 WHERE status = 'Active'
-  AND create_time < now() - INTERVAL 1 HOUR
+  AND query_create_time < now() - INTERVAL 1 HOUR
 ```
 
 ## DDL Wait Timeout
@@ -107,10 +107,10 @@ When a node is temporarily down, the DDL task remains in the queue. When the nod
 Check what tasks a node is catching up on:
 
 ```sql
-SELECT entry, query, status, create_time
+SELECT entry, query, status, query_create_time
 FROM system.distributed_ddl_queue
 WHERE status IN ('Active', 'Failed')
-ORDER BY create_time
+ORDER BY query_create_time
 ```
 
 ## Retry Failed Tasks
@@ -122,13 +122,25 @@ ALTER TABLE events_local ON CLUSTER my_cluster
     ADD COLUMN IF NOT EXISTS new_col String DEFAULT '';
 ```
 
-## Disabling Distributed DDL for a Session
+## Disabling Distributed DDL for a Cluster
 
-If you want to run DDL on the local node only without cluster-wide propagation:
+To run DDL only on the local node, simply omit the `ON CLUSTER` clause — DDL executes locally by default:
 
 ```sql
-SET allow_distributed_ddl = 0;
 CREATE TABLE local_only_table (...) ENGINE = MergeTree() ORDER BY id;
+```
+
+If you want to prevent `ON CLUSTER` queries from being executed against a specific cluster entirely, set `<allow_distributed_ddl_queries>false</allow_distributed_ddl_queries>` inside that cluster's definition in `<remote_servers>`:
+
+```xml
+<remote_servers>
+    <my_cluster>
+        <allow_distributed_ddl_queries>false</allow_distributed_ddl_queries>
+        <shard>
+            <!-- replicas... -->
+        </shard>
+    </my_cluster>
+</remote_servers>
 ```
 
 ## ZooKeeper Path Structure
