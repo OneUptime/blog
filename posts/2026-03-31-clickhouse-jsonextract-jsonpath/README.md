@@ -8,11 +8,11 @@ Description: Learn how to use JSONExtractString and related functions with JSONP
 
 ---
 
-ClickHouse's `JSONExtract*` family supports a path syntax beyond simple key names. You can navigate arrays by numeric index and combine key and index steps to reach deeply nested values. Array indices are zero-based integers passed as additional arguments alongside string key names. This guide shows how to use this path syntax to access indexed array elements, combine keys with array positions, and extract from complex nested structures.
+ClickHouse's `JSONExtract*` family supports a path syntax beyond simple key names. You can navigate arrays by numeric index and combine key and index steps to reach deeply nested values. Array indices are 1-based integers passed as additional arguments alongside string key names (negative integers count from the end). This guide shows how to use this path syntax to access indexed array elements, combine keys with array positions, and extract from complex nested structures.
 
 ## Accessing an Array Element by Index
 
-Pass an integer as a path argument to select an element by its zero-based position.
+Pass an integer as a path argument to select an element by its 1-based position.
 
 ```sql
 -- Get the first and second elements of a JSON array
