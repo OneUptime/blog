@@ -63,7 +63,7 @@ SELECT
 FROM events_raw;
 ```
 
-The `toValidUTF8` function replaces invalid byte sequences with `?` (U+FFFD).
+The `toValidUTF8` function replaces invalid byte sequences with `�` (U+FFFD).
 
 ### Option 3: Strip Invalid Bytes
 
@@ -98,7 +98,7 @@ When working with JSON sources that have byte-level issues:
 INSERT INTO events
 FORMAT JSONEachRow
 SETTINGS
-    input_format_json_ignore_unknown_keys = 1,
+    input_format_skip_unknown_fields = 1,
     input_format_allow_errors_num = 50;
 ```
 
