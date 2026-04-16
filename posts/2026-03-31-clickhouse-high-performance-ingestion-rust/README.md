@@ -22,7 +22,7 @@ A well-tuned Rust ingestion pipeline can achieve millions of rows per second int
 clickhouse = "0.11"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
-tokio-util = { version = "0.7", features = ["codec"] }
+async-channel = "2"
 ```
 
 ## Row Definition
