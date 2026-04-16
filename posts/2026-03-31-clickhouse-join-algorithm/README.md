@@ -19,10 +19,10 @@ graph TD
     A[join_algorithm] --> B[hash\nDefault: build hash table from right side]
     A --> C[parallel_hash\nParallel hash table build]
     A --> D[partial_merge\nSorted merge with streaming]
-    A --> E[merge\nFull sort-merge join]
+    A --> E[full_sorting_merge\nSort both sides then merge]
     A --> F[grace_hash\nSpill to disk when hash table is large]
     A --> G[auto\nClickHouse picks based on data size]
-    A --> H[full_sorting_merge\nSort both sides then merge]
+    A --> H[direct\nDictionary or key-value lookup]
 ```
 
 ## Join Algorithm Comparison
@@ -32,7 +32,7 @@ graph TD
 | `hash` | High (right side fits RAM) | Fast | Right side small, left side large |
 | `parallel_hash` | High | Very fast | Large right side, many CPU cores |
 | `partial_merge` | Low | Medium | Right side too large for RAM |
-| `merge` | Low | Medium | Both sides sorted by join key |
+| `full_sorting_merge` | Low | Medium | Both sides benefit from external sort |
 | `grace_hash` | Medium (spills to disk) | Fast | Right side slightly larger than RAM |
 | `auto` | Adaptive | Adaptive | Default safe choice |
 
@@ -104,7 +104,7 @@ SETTINGS join_algorithm = 'partial_merge';
 
 ## auto Mode
 
-With `join_algorithm = 'auto'`, ClickHouse starts with a hash join and switches to `grace_hash` if the hash table exceeds `max_bytes_in_join`:
+With `join_algorithm = 'auto'`, ClickHouse starts with a hash join and switches on the fly to `partial_merge` if the hash table exceeds `max_bytes_in_join`:
 
 ```sql
 SELECT o.order_id, c.name
@@ -157,4 +157,4 @@ LIMIT 5;
 
 ## Summary
 
-The `join_algorithm` setting lets you choose between hash join, parallel hash, grace hash, partial merge, merge, and auto modes in ClickHouse. Hash join is fastest when the right-side table fits in memory. Use `grace_hash` when the right side is too large for RAM (it spills to disk). Use `partial_merge` for the lowest memory footprint. The `auto` mode is a safe default that switches algorithms based on actual data size during execution.
+The `join_algorithm` setting lets you choose between hash join, parallel hash, grace hash, partial merge, full sorting merge, and auto modes in ClickHouse. Hash join is fastest when the right-side table fits in memory. Use `grace_hash` when the right side is too large for RAM (it spills to disk). Use `partial_merge` for the lowest memory footprint. The `auto` mode is a safe default that switches algorithms based on actual data size during execution.
