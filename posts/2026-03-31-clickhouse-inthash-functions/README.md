@@ -8,7 +8,7 @@ Description: Learn how to use intHash32() and intHash64() in ClickHouse for fast
 
 ---
 
-`intHash32()` and `intHash64()` are ClickHouse hash functions specifically designed for integer inputs. They use a mixing algorithm optimized for hash table operations. `intHash32(n)` accepts a UInt64 and returns a UInt32. `intHash64(n)` accepts a UInt64 and returns a UInt64. Because they operate on integers natively (without string conversion), they are faster than string-based hash functions when hashing integer columns.
+`intHash32()` and `intHash64()` are ClickHouse hash functions specifically designed for integer inputs. They use a mixing algorithm optimized for hash table operations. `intHash32(n)` accepts any integer type and returns a UInt32. `intHash64(n)` accepts any integer type and returns a UInt64. Because they operate on integers natively (without string conversion), they are faster than string-based hash functions when hashing integer columns.
 
 ## Basic Usage
 
