@@ -15,14 +15,13 @@ ClickHouse ships with a built-in gRPC server (port 9100 by default) that exposes
 In `/etc/clickhouse-server/config.xml` or a custom override file:
 
 ```xml
+<grpc_port>9100</grpc_port>
 <grpc>
     <enable_ssl>false</enable_ssl>
-    <port>9100</port>
-    <receive_timeout_ms>10000</receive_timeout_ms>
-    <send_timeout_ms>10000</send_timeout_ms>
     <max_receive_message_size>-1</max_receive_message_size>
     <max_send_message_size>-1</max_send_message_size>
     <compression>deflate</compression>
+    <compression_level>medium</compression_level>
 </grpc>
 ```
 
@@ -65,7 +64,7 @@ request = pb2.QueryInfo(
     user_name="default",
     password="",
     output_format="TabSeparated",
-    settings=[pb2.ClickHouseSetting(name="max_threads", value="4")],
+    settings={"max_threads": "4"},
 )
 
 response = stub.ExecuteQuery(request)
@@ -134,9 +133,9 @@ func main() {
 ## Enable TLS for the gRPC Interface
 
 ```xml
+<grpc_port>9100</grpc_port>
 <grpc>
     <enable_ssl>true</enable_ssl>
-    <port>9100</port>
     <ssl_cert_file>/etc/clickhouse-server/server.crt</ssl_cert_file>
     <ssl_key_file>/etc/clickhouse-server/server.key</ssl_key_file>
     <ssl_ca_cert_file>/etc/clickhouse-server/ca.crt</ssl_ca_cert_file>
