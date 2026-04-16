@@ -32,10 +32,15 @@ Open your Ubuntu WSL terminal:
 ```bash
 sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
 
-curl -fsSL 'https://packages.clickhouse.com/deb/pool/main/c/clickhouse/clickhouse-common-static_24.3.3.102_amd64.deb' -o /tmp/ch.deb
+# Import the ClickHouse GPG key
+GNUPGHOME=$(mktemp -d)
+sudo GNUPGHOME="$GNUPGHOME" gpg --no-default-keyring --keyring /usr/share/keyrings/clickhouse-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 8919F6BD2B48D754
+sudo rm -rf "$GNUPGHOME"
+sudo chmod +r /usr/share/keyrings/clickhouse-keyring.gpg
 
-# Or use the repository
-echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" \
+# Add the ClickHouse repository
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" \
   | sudo tee /etc/apt/sources.list.d/clickhouse.list
 sudo apt-get update
 sudo apt-get install -y clickhouse-server clickhouse-client
@@ -65,13 +70,14 @@ sudo systemctl enable clickhouse-server
 
 ## Connect from Windows
 
-ClickHouse binds to localhost inside WSL2. To connect from Windows tools (DBeaver, Tabix), expose the port:
+ClickHouse binds to localhost inside WSL2. WSL2's automatic localhost forwarding lets Windows apps reach WSL2 services on `localhost` when the service binds to `0.0.0.0`. If you need to expose the port to other machines on your LAN, use `netsh portproxy` with the WSL2 IP:
 
 ```powershell
-netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=8123 connectaddress=localhost connectport=8123
+$wslIp = (wsl hostname -I).Trim().Split(' ')[0]
+netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=8123 connectaddress=$wslIp connectport=8123
 ```
 
-Or access from Windows using the WSL2 IP:
+Or access from Windows using the WSL2 IP directly:
 
 ```powershell
 wsl hostname -I
