@@ -70,7 +70,7 @@ SET async_insert = 1;
 
 -- Max buffer size before flush (bytes)
 -- Flush when buffer reaches this size
-SET async_insert_max_data_size = 1000000;  -- 1MB default
+SET async_insert_max_data_size = 1000000;  -- default is 10 MiB (10485760)
 
 -- Max time to wait before flush (ms)
 -- Flush after this many ms even if buffer not full
@@ -98,9 +98,11 @@ SETTINGS async_insert = 1, wait_for_async_insert = 0;
 INSERT INTO events VALUES (now(), 1, 'click')
 SETTINGS async_insert = 1, wait_for_async_insert = 1;
 
--- The difference: with wait_for_async_insert=0, if ClickHouse
--- crashes before flush, data is lost. With =1, you get confirmation
--- that data is in the buffer and will be persisted.
+-- The difference: with wait_for_async_insert=0, the INSERT returns
+-- as soon as data is added to the in-memory buffer; if ClickHouse
+-- crashes before flush, data is lost. With =1, the client waits
+-- until the buffer is actually flushed to the table, so you get
+-- a durability guarantee equivalent to a synchronous INSERT.
 ```
 
 ## Application Code Examples
@@ -174,12 +176,14 @@ LIMIT 20;
 ## Deduplication with Async Inserts
 
 ```sql
--- Enable deduplication to avoid duplicate rows from retries
+-- Enable deduplication to avoid duplicate rows from retries.
+-- Only applies to Replicated* table engines (e.g. ReplicatedMergeTree);
+-- regular MergeTree does not deduplicate inserts.
 SET async_insert_deduplicate = 1;
 
--- ClickHouse uses the insert hash to deduplicate
--- Same data inserted multiple times within the flush window
--- will only appear once in the table
+-- ClickHouse hashes the inserted block and stores recent hashes in
+-- ZooKeeper/Keeper. The same block inserted multiple times within the
+-- deduplication window will only be written to the table once.
 ```
 
 ## When to Use Async Inserts vs Client-Side Batching
