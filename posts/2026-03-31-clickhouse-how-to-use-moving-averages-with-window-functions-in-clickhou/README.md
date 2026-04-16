@@ -104,12 +104,12 @@ A WMA gives more weight to recent values:
 SELECT
     metric_date,
     value,
-    -- Manually compute weighted average
+    -- Manually compute weighted average (ClickHouse uses lagInFrame, not lag)
     round((
-        1 * lag(value, 4, 0) OVER (ORDER BY metric_date) +
-        2 * lag(value, 3, 0) OVER (ORDER BY metric_date) +
-        3 * lag(value, 2, 0) OVER (ORDER BY metric_date) +
-        4 * lag(value, 1, 0) OVER (ORDER BY metric_date) +
+        1 * lagInFrame(value, 4, 0) OVER (ORDER BY metric_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) +
+        2 * lagInFrame(value, 3, 0) OVER (ORDER BY metric_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) +
+        3 * lagInFrame(value, 2, 0) OVER (ORDER BY metric_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) +
+        4 * lagInFrame(value, 1, 0) OVER (ORDER BY metric_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) +
         5 * value
     ) / 15, 2) AS wma_5d  -- 1+2+3+4+5 = 15
 FROM daily_metrics
@@ -146,15 +146,22 @@ CREATE TABLE revenue_events (
 ORDER BY event_ts;
 
 -- Hourly data with smoothed trend
+-- ClickHouse does not allow window functions over aggregates in the same query,
+-- so aggregate first in a subquery, then apply the window function outside.
 SELECT
-    toStartOfHour(event_ts) AS hour,
-    sum(revenue) AS hourly_revenue,
-    avg(sum(revenue)) OVER (
-        ORDER BY toStartOfHour(event_ts)
+    hour,
+    hourly_revenue,
+    avg(hourly_revenue) OVER (
+        ORDER BY hour
         ROWS BETWEEN 23 PRECEDING AND CURRENT ROW
     ) AS sma_24h
-FROM revenue_events
-GROUP BY hour
+FROM (
+    SELECT
+        toStartOfHour(event_ts) AS hour,
+        sum(revenue) AS hourly_revenue
+    FROM revenue_events
+    GROUP BY hour
+)
 ORDER BY hour;
 ```
 
