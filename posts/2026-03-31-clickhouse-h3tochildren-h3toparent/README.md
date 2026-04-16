@@ -31,7 +31,7 @@ A common pattern is to produce a resolution-independent heatmap by rolling up to
 
 ```sql
 SELECT
-    h3ToParent(geoToH3(longitude, latitude, 9), 6) AS region,
+    h3ToParent(geoToH3(latitude, longitude, 9), 6) AS region,
     count() AS event_count,
     avg(value) AS avg_value
 FROM sensor_data
@@ -45,7 +45,7 @@ LIMIT 20;
 `h3ToChildren(index, resolution)` returns an array of all child cells at the given finer resolution:
 
 ```sql
-SELECT h3ToChildren(geoToH3(37.6156, 55.7522, 5), 7) AS children;
+SELECT h3ToChildren(geoToH3(55.7522, 37.6156, 5), 7) AS children;
 ```
 
 Each resolution-5 cell contains about 49 resolution-7 children. The count grows by roughly 7x per resolution step.
@@ -57,7 +57,7 @@ If you have a set of coarse regions and want to check which fine-grained events 
 ```sql
 SELECT count() AS events_in_region
 FROM events
-WHERE geoToH3(longitude, latitude, 8) IN (
+WHERE geoToH3(latitude, longitude, 8) IN (
     SELECT arrayJoin(h3ToChildren(region_h3_index, 8))
     FROM campaign_regions
     WHERE campaign_id = 42
@@ -71,7 +71,7 @@ By combining `h3ToParent()` with `GROUP BY`, you can generate heatmap data for m
 ```sql
 SELECT
     resolution,
-    h3ToParent(geoToH3(longitude, latitude, 9), resolution) AS cell,
+    h3ToParent(geoToH3(latitude, longitude, 9), resolution) AS cell,
     count() AS hits
 FROM page_views
 CROSS JOIN (SELECT number + 4 AS resolution FROM numbers(5)) AS resolutions
