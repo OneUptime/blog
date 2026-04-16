@@ -29,7 +29,7 @@ PARTITION BY toYYYYMM(event_time)
 ORDER BY (user_id, event_id);
 ```
 
-The deduplication window is controlled by `replicated_deduplication_window` (default: 100 blocks).
+The deduplication window is controlled by `replicated_deduplication_window` (default: 10000 blocks) and `replicated_deduplication_window_seconds` (default: one hour).
 
 ## Using insert_deduplication_token
 
