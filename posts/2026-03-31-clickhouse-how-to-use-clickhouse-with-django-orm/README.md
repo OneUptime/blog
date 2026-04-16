@@ -30,7 +30,7 @@ DATABASES = {
         'ENGINE': 'clickhouse_backend.backend',
         'NAME': 'default',
         'HOST': 'localhost',
-        'PORT': 8123,
+        'PORT': 9000,
         'USER': 'default',
         'PASSWORD': '',
     }
@@ -40,20 +40,21 @@ DATABASES = {
 ## Defining a ClickHouse Model
 
 ```python
-from django.db import models
-from clickhouse_backend import models as ch_models
+from clickhouse_backend import models
 
-class PageView(ch_models.ClickhouseModel):
-    page = models.CharField(max_length=500)
-    user_id = models.CharField(max_length=100)
-    created_at = models.DateTimeField()
-    duration_ms = models.IntegerField(default=0)
+class PageView(models.ClickhouseModel):
+    page = models.StringField(default='')
+    user_id = models.StringField(default='')
+    created_at = models.DateTime64Field()
+    duration_ms = models.UInt32Field(default=0)
 
     class Meta:
-        engine = ch_models.MergeTree()
-        order_by = ('created_at', 'page')
-        using = 'clickhouse'
+        engine = models.MergeTree(
+            order_by=('created_at', 'page'),
+        )
 ```
+
+Fields must be imported from `clickhouse_backend.models`, not `django.db.models`, because they map to ClickHouse-native data types. Storage-level ordering is a parameter of the `MergeTree` engine itself rather than a separate Meta attribute.
 
 ## Running Migrations
 
@@ -114,7 +115,7 @@ with connections['clickhouse'].cursor() as cursor:
         SELECT
             toDate(created_at) AS day,
             uniq(user_id) AS unique_users
-        FROM default_pageview
+        FROM myapp_pageview
         GROUP BY day
         ORDER BY day DESC
         LIMIT 30
