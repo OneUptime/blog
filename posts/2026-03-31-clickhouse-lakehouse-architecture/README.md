@@ -67,7 +67,7 @@ SETTINGS storage_policy = 'hot_cold';
 Load from bronze:
 
 ```sql
-INSERT INTO silver_events
+INSERT INTO silver_events (event_time, event_type, user_id, country, revenue)
 SELECT
     toDateTime(event_time) AS event_time,
     lower(event_type) AS event_type,
@@ -89,8 +89,8 @@ CREATE TABLE gold_daily_revenue (
     country LowCardinality(String),
     total_revenue Decimal(18, 4),
     total_events UInt64,
-    unique_users UInt32
-) ENGINE = SummingMergeTree((total_revenue, total_events, unique_users))
+    unique_users AggregateFunction(uniq, UInt32)
+) ENGINE = AggregatingMergeTree()
 ORDER BY (event_date, event_type, country);
 
 -- Refresh gold layer daily
@@ -101,9 +101,23 @@ SELECT
     country,
     sum(revenue) AS total_revenue,
     count() AS total_events,
-    uniq(user_id) AS unique_users
+    uniqState(user_id) AS unique_users
 FROM silver_events
 WHERE event_date = yesterday()
+GROUP BY event_date, event_type, country;
+```
+
+Query the gold table with `uniqMerge` to combine partial states:
+
+```sql
+SELECT
+    event_date,
+    event_type,
+    country,
+    sum(total_revenue) AS total_revenue,
+    sum(total_events) AS total_events,
+    uniqMerge(unique_users) AS unique_users
+FROM gold_daily_revenue
 GROUP BY event_date, event_type, country;
 ```
 
