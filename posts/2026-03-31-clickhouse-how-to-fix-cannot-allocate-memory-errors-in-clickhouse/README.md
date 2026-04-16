@@ -38,7 +38,7 @@ SELECT
     metric,
     value / 1073741824 AS value_gb
 FROM system.metrics
-WHERE metric IN ('MemoryTracking', 'MemoryTrackingForMerges');
+WHERE metric IN ('MemoryTracking', 'MergesMutationsMemoryTracking');
 
 -- Memory per query
 SELECT
