@@ -43,7 +43,7 @@ spec:
 
 ## Tuning Memory Limits
 
-ClickHouse has its own internal memory limit settings that should align with your Kubernetes limits. Set `max_memory_usage` in your ClickHouse config to roughly 80% of the container memory limit:
+ClickHouse has its own internal memory limit settings that should align with your Kubernetes limits. Set `max_memory_usage` in your ClickHouse config to roughly 75% of the container memory limit:
 
 ```xml
 <clickhouse>
