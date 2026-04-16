@@ -43,13 +43,11 @@ INSERT INTO events FORMAT JSONEachRow
 {"event_id":"e2","event_type":"click","timestamp":"2026-01-01 00:01:00","user_id":2,"properties":{"color":"red","platform":"web","experiment":"ab-test-1"}}
 ```
 
-## Strategy 2: Use the JSON Data Type (Experimental)
+## Strategy 2: Use the JSON Data Type
 
-For fully dynamic schemas, the Object('json') type accepts arbitrary nested JSON:
+For fully dynamic schemas, the `JSON` type (production-ready since ClickHouse 25.3) accepts arbitrary nested JSON:
 
 ```sql
-SET allow_experimental_object_type = 1;
-
 CREATE TABLE raw_events (
     id String,
     payload JSON
