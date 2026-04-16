@@ -59,7 +59,8 @@ ls -lh /var/lib/clickhouse/data/default/events/detached/
 
 ```sql
 -- Remove all detached parts for a table
-ALTER TABLE events DROP DETACHED PARTITION ID 'all';
+SET allow_drop_detached = 1;
+ALTER TABLE events DROP DETACHED PARTITION ALL;
 ```
 
 3. Manually force a merge to compact small parts (reduces overhead):
