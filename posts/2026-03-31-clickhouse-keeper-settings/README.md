@@ -89,7 +89,7 @@ After configuring Keeper, update the `zookeeper` section in `config.xml` to poin
 
 ```sql
 SELECT *
-FROM system.keeper_connection_stats;
+FROM system.zookeeper_connection;
 ```
 
 ```sql
@@ -121,4 +121,4 @@ Ensure the `log_storage_path` and `snapshot_storage_path` directories have suffi
 
 ## Summary
 
-ClickHouse Keeper provides a purpose-built coordination layer for ClickHouse replication without the operational overhead of a separate ZooKeeper cluster. Configure it with a unique `server_id` per node, appropriate timeout values, and proper Raft membership, then monitor it through `system.keeper_connection_stats` and the built-in four-letter word protocol.
+ClickHouse Keeper provides a purpose-built coordination layer for ClickHouse replication without the operational overhead of a separate ZooKeeper cluster. Configure it with a unique `server_id` per node, appropriate timeout values, and proper Raft membership, then monitor it through `system.zookeeper_connection` and the built-in four-letter word protocol.
