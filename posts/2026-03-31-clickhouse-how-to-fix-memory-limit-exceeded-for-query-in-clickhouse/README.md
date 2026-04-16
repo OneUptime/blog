@@ -43,13 +43,12 @@ SELECT
     query_id,
     user,
     formatReadableSize(memory_usage) AS mem_used,
-    formatReadableSize(peak_memory_usage) AS peak_mem,
     query_duration_ms,
     left(query, 200) AS query_preview
 FROM system.query_log
 WHERE event_time > now() - INTERVAL 24 HOUR
   AND type = 'QueryFinish'
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
