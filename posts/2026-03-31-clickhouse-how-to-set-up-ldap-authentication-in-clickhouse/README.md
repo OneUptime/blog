@@ -138,8 +138,6 @@ For Active Directory where a service account is needed to search:
     <ad_server>
         <host>ad.company.com</host>
         <port>389</port>
-        <auth_dn_prefix>COMPANY\</auth_dn_prefix>
-        <auth_dn_suffix></auth_dn_suffix>
         <bind_dn>{user_name}@company.com</bind_dn>
         <user_dn_detection>
             <base_dn>dc=company,dc=com</base_dn>
@@ -171,7 +169,7 @@ SELECT
     event_time,
     user,
     client_hostname,
-    message
+    failure_reason
 FROM system.session_log
 WHERE type = 'LoginFailure'
   AND event_date = today()
