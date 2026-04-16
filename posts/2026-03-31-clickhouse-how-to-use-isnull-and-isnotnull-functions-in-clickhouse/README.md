@@ -32,8 +32,8 @@ null_check | not_null_check | not_null_null | not_null_string
 ## Why = NULL Does Not Work
 
 ```sql
--- This always returns 0, even for NULL values
-SELECT NULL = NULL AS always_false
+-- This returns NULL (not a boolean), so it never matches in WHERE clauses
+SELECT NULL = NULL AS always_null
 
 -- Correct approach
 SELECT isNull(NULL) AS correct_null_check
@@ -160,4 +160,4 @@ SELECT toTypeName(email) FROM user_profiles LIMIT 1
 
 ## Summary
 
-`isNull()` and `isNotNull()` are the correct functions for testing NULL values in ClickHouse Nullable columns. Standard `= NULL` comparisons always return 0 and must be avoided. Use `isNull` in WHERE clauses, `countIf` for completeness reporting, and combine with `ifNull()` to substitute default values for NULL entries.
+`isNull()` and `isNotNull()` are the correct functions for testing NULL values in ClickHouse Nullable columns. Standard `= NULL` comparisons always return `NULL` (which never evaluates as true in WHERE clauses) and must be avoided. Use `isNull` in WHERE clauses, `countIf` for completeness reporting, and combine with `ifNull()` to substitute default values for NULL entries.
