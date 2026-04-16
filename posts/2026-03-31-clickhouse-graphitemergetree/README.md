@@ -118,11 +118,11 @@ ENGINE = GraphiteMergeTree('graphite_rollup_example')
 PARTITION BY toYYYYMM(toDateTime(Time))
 ORDER BY (Path, Time);
 
--- Insert 10-second resolution metrics for the last few hours
+-- Insert 10-second resolution metrics for the last three hours
 INSERT INTO graphite_metrics
 SELECT
     concat('server.cpu.', ['user','system','iowait'][((number % 3) + 1)]) AS Path,
-    toUnixTimestamp(now() - (3600 - number * 10))                          AS Time,
+    toUnixTimestamp(now() - number * 10)                                   AS Time,
     rand() % 100                                                            AS Value,
     toUnixTimestamp(now())                                                  AS Timestamp
 FROM numbers(360 * 3);
@@ -176,7 +176,7 @@ server.cpu.user 42.5 1711900800
 server.cpu.system 12.3 1711900800
 ```
 
-Use the `carbonClickHouseReceiver` or a custom Kafka consumer to route these into your `graphite_metrics` table.
+Use [`carbon-clickhouse`](https://github.com/go-graphite/carbon-clickhouse) or a custom Kafka consumer to route these into your `graphite_metrics` table.
 
 ## Multi-Tag Support with Tagged Metrics
 
