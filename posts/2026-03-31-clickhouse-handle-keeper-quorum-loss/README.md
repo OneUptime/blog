@@ -25,22 +25,25 @@ SELECT * FROM system.zookeeper WHERE path = '/';
 
 If this returns an error like `Coordination::Exception`, Keeper is not responding.
 
-Check Keeper status directly:
+Check Keeper status directly using the four-letter-word (4LW) admin commands on the client port (default 9181):
 
 ```bash
-clickhouse-keeper-client --host keeper-01 -q "stat" 2>&1 | head -20
+echo stat | nc keeper-01 9181 | head -20
 ```
 
-Look for `Mode: leader` or `Mode: follower`. If all nodes show `Mode: read-only` or fail to respond, quorum is lost.
+Look for `Mode: leader` or `Mode: follower`. If all nodes fail to respond or report `isro: ro` (via `echo isro | nc <host> 9181`) with no leader elected, quorum is lost.
 
 ## Identify Failed Nodes
 
 ```bash
 for HOST in keeper-01 keeper-02 keeper-03; do
     echo -n "$HOST: "
-    clickhouse-keeper-client --host $HOST -q "ruok" 2>&1 || echo "UNREACHABLE"
+    echo ruok | nc -w 2 $HOST 9181 || echo "UNREACHABLE"
+    echo
 done
 ```
+
+A healthy node replies `imok`.
 
 ## Restore a Single Failed Node
 
@@ -55,7 +58,7 @@ systemctl restart clickhouse-server
 Monitor it rejoining the ensemble:
 
 ```bash
-clickhouse-keeper-client --host keeper-01 -q "stat" | grep "Mode"
+echo stat | nc keeper-01 9181 | grep "Mode"
 ```
 
 ## Restore from Keeper Snapshot (Data Loss Scenario)
@@ -91,7 +94,7 @@ WHERE table = 'events';
 
 - Always run an odd number of Keeper nodes: 3 or 5.
 - Spread Keeper nodes across availability zones.
-- Monitor with [OneUptime](https://oneuptime.com) - alert when fewer than 2 Keeper nodes respond to `ruok`.
+- Monitor with [OneUptime](https://oneuptime.com) - alert when fewer than a majority of Keeper nodes respond to `ruok` with `imok`.
 
 ## Summary
 
