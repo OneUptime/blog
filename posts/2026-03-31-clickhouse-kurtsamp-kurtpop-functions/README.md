@@ -8,35 +8,35 @@ Description: Learn how to use kurtSamp() and kurtPop() in ClickHouse to measure 
 
 ---
 
-Kurtosis measures the "tailedness" of a distribution - how much probability mass is in the tails compared to a normal distribution. ClickHouse computes excess kurtosis (Fisher's definition), where a normal distribution has excess kurtosis of 0. Positive excess kurtosis (leptokurtic) means heavier tails than normal; negative excess kurtosis (platykurtic) means lighter tails. `kurtSamp(x)` applies bias correction for sample data; `kurtPop(x)` assumes the complete population.
+Kurtosis measures the "tailedness" of a distribution - how much probability mass is in the tails compared to a normal distribution. ClickHouse returns the standard (Pearson) kurtosis, defined as the fourth central moment divided by the variance squared. For a normal distribution this value is 3. Values above 3 (leptokurtic) mean heavier tails than normal; values below 3 (platykurtic) mean lighter tails. `kurtSamp(x)` applies bias correction for sample data; `kurtPop(x)` assumes the complete population.
 
 ## Syntax
 
 ```sql
--- Sample excess kurtosis (bias-corrected, for sample data)
+-- Sample kurtosis (bias-corrected, for sample data)
 SELECT kurtSamp(value_column) FROM table_name;
 
--- Population excess kurtosis (for complete population)
+-- Population kurtosis (for complete population)
 SELECT kurtPop(value_column) FROM table_name;
 ```
 
-Both return Float64 representing excess kurtosis (normal distribution = 0).
+Both return Float64 representing the Pearson kurtosis (normal distribution ≈ 3). To obtain excess kurtosis (Fisher's definition) subtract 3 from the result.
 
 ## Interpreting Kurtosis Values
 
-| Excess Kurtosis | Distribution Type | Implication |
-|-----------------|-------------------|-------------|
-| 0 | Mesokurtic (normal) | Normal tail weight |
-| > 0 | Leptokurtic | Heavier tails, more outliers than normal |
-| < 0 | Platykurtic | Lighter tails, fewer extreme values |
-| > 3 | Very heavy tails | Significant outlier activity |
+| Kurtosis | Distribution Type | Implication |
+|----------|-------------------|-------------|
+| ≈ 3 | Mesokurtic (normal) | Normal tail weight |
+| > 3 | Leptokurtic | Heavier tails, more outliers than normal |
+| < 3 | Platykurtic | Lighter tails, fewer extreme values |
+| > 6 | Very heavy tails | Significant outlier activity |
 
 ## Basic Example
 
 ```sql
 -- Measure tail weight of response time distribution
 SELECT
-    kurtSamp(response_time_ms)   AS excess_kurtosis,
+    kurtSamp(response_time_ms)   AS kurtosis,
     skewSamp(response_time_ms)   AS skewness,
     avg(response_time_ms)        AS mean_ms,
     stddevSamp(response_time_ms) AS std_dev_ms,
@@ -45,7 +45,7 @@ FROM request_logs
 WHERE log_date = today();
 ```
 
-A high positive kurtosis confirms that while most requests may be fast, there are significantly more extreme slow outliers than a normal distribution would predict.
+A kurtosis value well above 3 confirms that while most requests may be fast, there are significantly more extreme slow outliers than a normal distribution would predict.
 
 ## Per-Service Kurtosis Analysis
 
@@ -53,7 +53,7 @@ A high positive kurtosis confirms that while most requests may be fast, there ar
 -- Which services have the heaviest-tailed latency distributions?
 SELECT
     service_name,
-    round(kurtSamp(response_time_ms), 2)   AS excess_kurtosis,
+    round(kurtSamp(response_time_ms), 2)   AS kurtosis,
     round(skewSamp(response_time_ms), 2)   AS skewness,
     round(avg(response_time_ms), 1)        AS mean_ms,
     round(stddevSamp(response_time_ms), 1) AS std_dev_ms,
@@ -62,7 +62,7 @@ FROM request_logs
 WHERE log_date >= today() - 7
 GROUP BY service_name
 HAVING n > 1000
-ORDER BY excess_kurtosis DESC;
+ORDER BY kurtosis DESC;
 ```
 
 ## Kurtosis Trend Over Time
@@ -71,7 +71,7 @@ ORDER BY excess_kurtosis DESC;
 -- Track whether tail behavior is worsening after a deployment
 SELECT
     toStartOfHour(timestamp)                 AS hour,
-    round(kurtSamp(response_time_ms), 2)    AS excess_kurtosis,
+    round(kurtSamp(response_time_ms), 2)    AS kurtosis,
     round(avg(response_time_ms), 1)         AS mean_ms,
     count()                                 AS request_count
 FROM request_logs
@@ -89,9 +89,9 @@ graph TD
     A --> D[3rd moment: skewness - asymmetry]
     A --> E[4th moment: kurtosis - tail weight]
     E --> F[kurtSamp or kurtPop in ClickHouse]
-    E --> G[Excess kurtosis = 0 for normal distribution]
-    E --> H[Positive = heavier tails than normal]
-    E --> I[Negative = lighter tails than normal]
+    E --> G[Pearson kurtosis ≈ 3 for normal distribution]
+    E --> H[Above 3 = heavier tails than normal]
+    E --> I[Below 3 = lighter tails than normal]
 ```
 
 ## Comparing Before and After a Deployment
@@ -100,7 +100,7 @@ graph TD
 -- Did a deployment change tail behavior?
 SELECT
     if(timestamp < '2026-03-31 14:00:00', 'before', 'after') AS period,
-    round(kurtSamp(response_time_ms), 2)   AS excess_kurtosis,
+    round(kurtSamp(response_time_ms), 2)   AS kurtosis,
     round(skewSamp(response_time_ms), 2)   AS skewness,
     round(avg(response_time_ms), 1)        AS mean_ms,
     round(stddevSamp(response_time_ms), 1) AS std_dev,
@@ -134,10 +134,10 @@ For N > 1000, `kurtSamp` and `kurtPop` converge to near-identical values.
 ## Heavy-Tail Alerting
 
 ```sql
--- Alert if excess kurtosis exceeds threshold (heavy tails = outlier activity)
+-- Alert if kurtosis exceeds threshold (heavy tails = outlier activity)
 SELECT
     service_name,
-    round(kurtSamp(response_time_ms), 2)  AS excess_kurtosis,
+    round(kurtSamp(response_time_ms), 2)  AS kurtosis,
     round(avg(response_time_ms), 1)       AS mean_ms,
     count()                               AS n,
     if(kurtSamp(response_time_ms) > 10, 'HEAVY_TAIL_ALERT', 'normal') AS tail_status
@@ -145,9 +145,9 @@ FROM request_logs
 WHERE log_date = today()
 GROUP BY service_name
 HAVING n > 500
-ORDER BY excess_kurtosis DESC;
+ORDER BY kurtosis DESC;
 ```
 
 ## Summary
 
-`kurtSamp(x)` and `kurtPop(x)` compute the excess kurtosis (Fisher's definition) of a numeric distribution. A value near 0 means normal tail weight; positive values indicate heavier tails with more extreme outliers than a normal distribution (leptokurtic); negative values indicate lighter tails. `kurtSamp` uses bias correction for sample data; `kurtPop` assumes the complete population. Use kurtosis alongside skewness, mean, and standard deviation to characterize distribution shape, detect heavy-tailed behavior in latency metrics, and monitor for worsening outlier activity after deployments.
+`kurtSamp(x)` and `kurtPop(x)` compute the Pearson kurtosis of a numeric distribution (fourth central moment divided by variance squared). A value near 3 means normal tail weight; values above 3 indicate heavier tails with more extreme outliers than a normal distribution (leptokurtic); values below 3 indicate lighter tails (platykurtic). Subtract 3 to obtain excess kurtosis (Fisher's definition). `kurtSamp` uses bias correction for sample data; `kurtPop` assumes the complete population. Use kurtosis alongside skewness, mean, and standard deviation to characterize distribution shape, detect heavy-tailed behavior in latency metrics, and monitor for worsening outlier activity after deployments.
