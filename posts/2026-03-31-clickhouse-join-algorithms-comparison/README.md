@@ -20,7 +20,7 @@ Algorithm      | Memory Model            | Good For                        | Lim
 hash           | Full right-table in RAM | Small-to-medium right tables    | OOM on large right tables
 parallel_hash  | Partitioned hash maps   | Multi-core, medium right tables | Still requires RAM
 partial_merge  | Sorted chunks, spill    | Large right tables              | Slower than hash
-grace_hash     | Partitioned, can spill  | Large right tables, low memory  | Requires sorted input
+grace_hash     | Partitioned, can spill  | Large right tables, low memory  | Slower than hash for small data
 auto           | Adaptive                | General purpose                 | Unpredictable in some cases
 ```
 
