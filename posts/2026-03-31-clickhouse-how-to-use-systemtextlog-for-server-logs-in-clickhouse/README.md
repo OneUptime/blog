@@ -43,7 +43,8 @@ DESCRIBE system.text_log;
 Key columns:
 
 - `event_date` - date of the log entry
-- `event_time` - timestamp with microseconds
+- `event_time` - timestamp of the log entry (second precision)
+- `event_time_microseconds` - timestamp with microsecond precision
 - `level` - log level: `Fatal`, `Critical`, `Error`, `Warning`, `Notice`, `Information`, `Debug`, `Trace`
 - `query_id` - associated query ID if applicable
 - `logger_name` - name of the component that emitted the log
