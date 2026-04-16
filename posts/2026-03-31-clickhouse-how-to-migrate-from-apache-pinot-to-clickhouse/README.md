@@ -27,8 +27,8 @@ Use Pinot's query API to export data segment by segment:
 ```bash
 curl -X POST https://pinot-broker:8099/query/sql \
   -H 'Content-Type: application/json' \
-  -d '{"sql": "SELECT * FROM pageViews LIMIT 1000000 OPTION(timeoutMs=60000)"}' \
-  | jq -c '.resultTable.rows[] | {cols: .}' > pinot_export.jsonl
+  -d '{"sql": "SELECT tsMillis, page, userId, views FROM pageViews LIMIT 1000000 OPTION(timeoutMs=60000)"}' \
+  | jq -c '.resultTable.rows[] | {tsMillis: .[0], page: .[1], userId: .[2], views: .[3]}' > pinot_export.jsonl
 ```
 
 For large tables, export in time-based chunks:
@@ -37,7 +37,7 @@ For large tables, export in time-based chunks:
 for MONTH in 2024-01 2024-02 2024-03; do
   curl -X POST https://pinot-broker:8099/query/sql \
     -H 'Content-Type: application/json' \
-    -d "{\"sql\": \"SELECT * FROM pageViews WHERE datetrunc('MONTH', tsMillis) = '${MONTH}'\"}" \
+    -d "{\"sql\": \"SELECT * FROM pageViews WHERE ToDateTime(tsMillis, 'yyyy-MM') = '${MONTH}'\"}" \
     >> pinot_export_${MONTH}.jsonl
 done
 ```
