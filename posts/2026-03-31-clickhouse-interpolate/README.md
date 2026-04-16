@@ -55,7 +55,7 @@ ORDER BY ts WITH FILL
     FROM toDateTime('2025-01-01 00:00:00')
     TO   toDateTime('2025-01-01 06:00:00')
     STEP INTERVAL 1 HOUR
-INTERPOLATE (cpu_pct);
+INTERPOLATE (host, cpu_pct);
 ```
 
 ```text
