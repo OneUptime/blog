@@ -8,22 +8,25 @@ Description: Learn how to use the LEAD() window function in ClickHouse to access
 
 ---
 
-## What Is LEAD()
+## What Is leadInFrame()
 
-`LEAD(expr, offset, default)` is a window function that returns the value of `expr` from a row that is `offset` rows **after** the current row. It is the forward-looking counterpart to `LAG()`.
+`leadInFrame(expr, offset, default)` is ClickHouse's window function that returns the value of `expr` from a row that is `offset` rows **after** the current row within the ordered frame. It is the forward-looking counterpart to `lagInFrame()`. ClickHouse does not implement the standard SQL `LEAD()` function directly — use `leadInFrame()` instead.
 
 ```sql
-LEAD(expr [, offset [, default]]) OVER (
+leadInFrame(expr [, offset [, default]]) OVER (
     [PARTITION BY partition_column]
     ORDER BY sort_column
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
 )
 ```
 
 - `expr`: the column or expression to look ahead at
 - `offset`: how many rows to look forward (default: 1)
-- `default`: value returned for the last rows where no next row exists (default: NULL)
+- `default`: value returned when the target row falls outside the window frame (uses the column type's default when omitted)
 
-## Basic LEAD() Example
+Important: unlike standard SQL `LEAD`, `leadInFrame` respects the window frame. The default frame when `ORDER BY` is specified is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, which excludes future rows. To get classic LEAD behavior, explicitly add `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`.
+
+## Basic leadInFrame() Example
 
 ```sql
 CREATE TABLE events (
@@ -39,7 +42,11 @@ SELECT
     user_id,
     ts,
     page AS current_page,
-    LEAD(page, 1) OVER (PARTITION BY user_id ORDER BY ts) AS next_page
+    leadInFrame(page, 1) OVER (
+        PARTITION BY user_id
+        ORDER BY ts
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS next_page
 FROM events
 WHERE event_type = 'pageview'
 ORDER BY user_id, ts;
@@ -53,27 +60,36 @@ SELECT
     user_id,
     session_id,
     ts AS session_start,
-    LEAD(ts, 1) OVER (PARTITION BY user_id ORDER BY ts) AS next_event_ts,
+    leadInFrame(ts, 1) OVER w AS next_event_ts,
     dateDiff('second',
         ts,
-        LEAD(ts, 1) OVER (PARTITION BY user_id ORDER BY ts)
+        leadInFrame(ts, 1) OVER w
     ) AS seconds_until_next_event
 FROM user_events
+WINDOW w AS (
+    PARTITION BY user_id
+    ORDER BY ts
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+)
 ORDER BY user_id, ts;
 
--- Last event in each session: LEAD returns NULL (no next event)
+-- Last event in each session: leadInFrame returns the default (0 for DateTime) when no next event exists
 SELECT user_id, ts AS session_end_ts
 FROM (
     SELECT
         user_id,
         ts,
-        LEAD(ts, 1) OVER (PARTITION BY user_id ORDER BY ts) AS next_ts
+        leadInFrame(ts, 1, toDateTime(0)) OVER (
+            PARTITION BY user_id
+            ORDER BY ts
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS next_ts
     FROM user_events
 )
-WHERE next_ts IS NULL;
+WHERE next_ts = toDateTime(0);
 ```
 
-## Page Flow Analysis with LEAD()
+## Page Flow Analysis with leadInFrame()
 
 ```sql
 -- Which pages lead to conversions?
@@ -86,32 +102,40 @@ SELECT
 FROM (
     SELECT
         page AS current_page,
-        LEAD(page, 1) OVER (PARTITION BY session_id ORDER BY ts) AS next_page
+        leadInFrame(page, 1, '') OVER (
+            PARTITION BY session_id
+            ORDER BY ts
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS next_page
     FROM pageviews
 )
-WHERE next_page IS NOT NULL
+WHERE next_page != ''
 GROUP BY current_page, next_page
 ORDER BY led_to_checkout DESC
 LIMIT 20;
 ```
 
-## LEAD() with Multiple Offsets
+## leadInFrame() with Multiple Offsets
 
 ```sql
 -- Look ahead multiple steps
 SELECT
     date,
     value,
-    LEAD(value, 1) OVER (ORDER BY date) AS next_1d,
-    LEAD(value, 7) OVER (ORDER BY date) AS next_7d,
-    LEAD(value, 30) OVER (ORDER BY date) AS next_30d,
+    leadInFrame(value, 1) OVER w AS next_1d,
+    leadInFrame(value, 7) OVER w AS next_7d,
+    leadInFrame(value, 30) OVER w AS next_30d,
     -- Future change calculation
-    round(LEAD(value, 7) OVER (ORDER BY date) - value, 2) AS change_in_7d
+    round(leadInFrame(value, 7) OVER w - value, 2) AS change_in_7d
 FROM time_series
+WINDOW w AS (
+    ORDER BY date
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+)
 ORDER BY date;
 ```
 
-## Detecting Intervals with LEAD()
+## Detecting Intervals with leadInFrame()
 
 ```sql
 CREATE TABLE maintenance_windows (
@@ -125,13 +149,21 @@ ORDER BY (server_id, start_ts);
 SELECT
     server_id,
     end_ts,
-    LEAD(start_ts, 1) OVER (PARTITION BY server_id ORDER BY start_ts) AS next_start,
-    dateDiff('hour',
+    next_start,
+    dateDiff('hour', end_ts, next_start) AS hours_until_next_maintenance
+FROM (
+    SELECT
+        server_id,
+        start_ts,
         end_ts,
-        LEAD(start_ts, 1) OVER (PARTITION BY server_id ORDER BY start_ts)
-    ) AS hours_until_next_maintenance
-FROM maintenance_windows
-WHERE LEAD(start_ts, 1) OVER (PARTITION BY server_id ORDER BY start_ts) IS NOT NULL
+        leadInFrame(start_ts, 1, toDateTime(0)) OVER (
+            PARTITION BY server_id
+            ORDER BY start_ts
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS next_start
+    FROM maintenance_windows
+)
+WHERE next_start != toDateTime(0)
 ORDER BY server_id, start_ts;
 ```
 
@@ -150,38 +182,59 @@ ORDER BY (product_id, month);
 SELECT
     month,
     product_id,
-    revenue AS current_revenue,
-    forecast AS this_month_forecast,
-    LEAD(revenue, 1) OVER (PARTITION BY product_id ORDER BY month) AS actual_next_month,
+    current_revenue,
+    this_month_forecast,
+    actual_next_month,
     -- Accuracy: how close was this month's forecast to actual next month?
-    round(abs(forecast - LEAD(revenue, 1) OVER (PARTITION BY product_id ORDER BY month)) /
-        nullIf(LEAD(revenue, 1) OVER (PARTITION BY product_id ORDER BY month), 0) * 100,
+    round(abs(this_month_forecast - actual_next_month) /
+        nullIf(actual_next_month, 0) * 100,
         1) AS forecast_error_pct
-FROM monthly_sales
-WHERE LEAD(revenue, 1) OVER (PARTITION BY product_id ORDER BY month) IS NOT NULL
+FROM (
+    SELECT
+        month,
+        product_id,
+        revenue AS current_revenue,
+        forecast AS this_month_forecast,
+        leadInFrame(revenue, 1, CAST(0 AS Float64)) OVER (
+            PARTITION BY product_id
+            ORDER BY month
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS actual_next_month,
+        leadInFrame(month, 1, toDate(0)) OVER (
+            PARTITION BY product_id
+            ORDER BY month
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS next_month
+    FROM monthly_sales
+)
+WHERE next_month != toDate(0)
 ORDER BY product_id, month;
 ```
 
-## LEAD() vs LAG() Summary
+## leadInFrame() vs lagInFrame() Summary
 
 | Function | Direction | Use Case |
 |----------|-----------|---------|
-| `LAG()` | Look back | Period-over-period comparison, change from past |
-| `LEAD()` | Look forward | Next step prediction, duration until next event |
+| `lagInFrame()` | Look back | Period-over-period comparison, change from past |
+| `leadInFrame()` | Look forward | Next step prediction, duration until next event |
 
 ```sql
 -- Often used together for delta calculations
 SELECT
     date,
     revenue,
-    LAG(revenue, 1, 0) OVER (ORDER BY date) AS yesterday,
-    LEAD(revenue, 1, 0) OVER (ORDER BY date) AS tomorrow,
-    revenue - LAG(revenue, 1, 0) OVER (ORDER BY date) AS change_from_yesterday,
-    LEAD(revenue, 1, 0) OVER (ORDER BY date) - revenue AS expected_change_tomorrow
+    lagInFrame(revenue, 1, 0) OVER w AS yesterday,
+    leadInFrame(revenue, 1, 0) OVER w AS tomorrow,
+    revenue - lagInFrame(revenue, 1, 0) OVER w AS change_from_yesterday,
+    leadInFrame(revenue, 1, 0) OVER w - revenue AS expected_change_tomorrow
 FROM daily_revenue
+WINDOW w AS (
+    ORDER BY date
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+)
 ORDER BY date;
 ```
 
 ## Summary
 
-`LEAD()` in ClickHouse accesses values from subsequent rows within an ordered window, making it ideal for session duration calculations, page flow analysis, and future period comparisons. The default value parameter handles the last rows where no next value exists. Use `LEAD()` with `PARTITION BY` to analyze sequences within groups (sessions, users, products), and combine it with `LAG()` when you need both backward and forward context in the same query.
+`leadInFrame()` in ClickHouse accesses values from subsequent rows within an ordered window, making it ideal for session duration calculations, page flow analysis, and future period comparisons. ClickHouse does not implement the standard SQL `LEAD()` function, so use `leadInFrame()` and remember that it respects the window frame — add `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` to look at rows beyond the current one. The optional default value handles the last rows where no next value exists. Use `leadInFrame()` with `PARTITION BY` to analyze sequences within groups (sessions, users, products), and combine it with `lagInFrame()` when you need both backward and forward context in the same query.
