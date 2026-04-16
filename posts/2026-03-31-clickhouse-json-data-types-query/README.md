@@ -108,7 +108,7 @@ WHERE id = 1;
 
 ## Using the Object('json') Type (Semi-Structured)
 
-The `Object('json')` type stores JSON as a semi-structured column and exposes subfields as typed subcolumns. It was the predecessor to the new `JSON` type and is available in ClickHouse 21.12+.
+The `Object('json')` type stores JSON as a semi-structured column and exposes subfields as typed subcolumns. It was the predecessor to the new `JSON` type and is available in ClickHouse 22.3+.
 
 ```sql
 CREATE TABLE semi_structured_events (
@@ -128,7 +128,7 @@ Note: `Object('json')` requires `allow_experimental_object_type = 1` and is bein
 
 ## Using the New JSON Type
 
-ClickHouse 22.6+ introduced a native `JSON` type that provides dot-notation access, automatic type inference per path, and better compression than `Object('json')`:
+ClickHouse 24.8+ introduced a redesigned native `JSON` type (production-ready in 25.3) that provides dot-notation access, automatic type inference per path, and better compression than `Object('json')`:
 
 ```sql
 SET allow_experimental_json_type = 1;
@@ -160,7 +160,7 @@ Each accessed path becomes a typed subcolumn stored efficiently. Paths not prese
 | String + JSONExtract | Highest | Lowest | Exploratory, unpredictable JSON |
 | simpleJSON | High | High | Flat, high-volume JSON |
 | Object('json') | High | Medium | Legacy semi-structured |
-| JSON type | High | High | Modern semi-structured (22.6+) |
+| JSON type | High | High | Modern semi-structured (24.8+, GA in 25.3) |
 
 ## Summary
 
