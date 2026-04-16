@@ -18,7 +18,7 @@ ClickHouse's `reinterpretAs*()` functions reinterpret the binary representation 
 
 ```sql
 SELECT reinterpretAsString(toUInt64(255)) AS binary_str
--- '\xff\x00\x00\x00\x00\x00\x00\x00' (little-endian)
+-- '\xff' (little-endian; trailing null bytes are dropped)
 ```
 
 ```sql
@@ -61,12 +61,12 @@ SELECT reinterpretAsUUID(str)
 
 ## Practical Use Case - Hashing UUIDs to UInt64
 
-Reinterpreting UUID bytes as two UInt64 values for compact storage or comparison:
+Reinterpreting UUID bytes as two UInt64 values for compact storage or comparison. Use `UUIDStringToNum()` to get the 16-byte binary form of the UUID, then substring and reinterpret:
 
 ```sql
 SELECT
     toUUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8') AS uuid,
-    reinterpretAsUInt64(substring(toFixedString(toString(toUUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')), 36), 1, 8)) AS first_8_bytes
+    reinterpretAsUInt64(substring(UUIDStringToNum('6ba7b810-9dad-11d1-80b4-00c04fd430c8'), 1, 8)) AS first_8_bytes
 ```
 
 ## Using reinterpretAsUUID
@@ -106,7 +106,7 @@ Use `CAST` for type conversions where you need the correct numeric or string val
 
 ## Warning - Endianness
 
-ClickHouse uses little-endian byte order for reinterpretation. When interoperating with systems that use big-endian (network byte order), you may need to `reverseUTF8` or use `byteSwap()` to adjust.
+ClickHouse uses little-endian byte order for reinterpretation of numeric types. When interoperating with systems that use big-endian (network byte order), you may need to `reverse()` the raw bytes or use `byteSwap()` to adjust.
 
 ```sql
 SELECT byteSwap(reinterpretAsUInt64(some_binary_field)) AS big_endian_val
