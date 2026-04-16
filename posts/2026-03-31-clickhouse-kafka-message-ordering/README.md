@@ -72,12 +72,12 @@ GROUP BY user_id;
 
 ## Handling Out-of-Order Events with CollapsingMergeTree
 
-For delta-based updates (like inventory changes):
+For state-replacement workloads where you cancel an old row and write a new one (like inventory levels):
 
 ```sql
-CREATE TABLE inventory_changes (
+CREATE TABLE inventory_state (
     product_id UInt64,
-    change_amount Int32,
+    quantity Int32,
     event_time DateTime,
     sign Int8  -- 1 for new state, -1 to cancel previous state
 ) ENGINE = CollapsingMergeTree(sign)
@@ -111,7 +111,7 @@ FROM (
         event_time,
         lagInFrame(event_time) OVER (PARTITION BY kafka_partition ORDER BY kafka_offset) AS lag_time
     FROM events
-    WHERE event_date = today()
+    WHERE toDate(event_time) = today()
 );
 ```
 
