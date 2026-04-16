@@ -107,7 +107,7 @@ CREATE TABLE web_requests (
     hour UInt8 MATERIALIZED toHour(ts),
     date Date MATERIALIZED toDate(ts),
     is_error UInt8 MATERIALIZED (status_code >= 400) ? 1 : 0,
-    path String MATERIALIZED extract(url, '^[^?#]+')
+    path String MATERIALIZED extract(url, '^([^?#]+)')
 ) ENGINE = MergeTree()
 PARTITION BY date
 ORDER BY (ts, url);
