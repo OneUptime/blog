@@ -83,10 +83,10 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Use Magic Commands with ipython-sql
+## Use Magic Commands with JupySQL
 
 ```bash
-pip install ipython-sql sqlalchemy clickhouse-sqlalchemy
+pip install jupysql sqlalchemy clickhouse-sqlalchemy
 ```
 
 ```python
