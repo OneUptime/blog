@@ -10,7 +10,7 @@ Description: Learn how to concatenate strings in ClickHouse using the concat() f
 
 ## String Concatenation in ClickHouse
 
-ClickHouse provides two main ways to concatenate strings:
+ClickHouse provides three main ways to concatenate strings:
 
 1. `concat(s1, s2, ...)` function - concatenates any number of strings
 2. `||` operator - binary concatenation operator
@@ -107,8 +107,8 @@ SELECT concat('hello', NULL, 'world');  -- returns NULL
 SELECT concat(first_name, ' ', ifNull(middle_name, ''), last_name)
 FROM users;
 
--- Or use concatWithSeparator which skips NULLs in some versions
--- but most safely: filter NULLs explicitly
+-- Note: concatWithSeparator also propagates NULL (unlike MySQL's CONCAT_WS)
+-- so handle NULLs explicitly
 SELECT
     user_id,
     concat(
