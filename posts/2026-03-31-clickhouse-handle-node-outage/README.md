@@ -82,7 +82,7 @@ ORDER BY absolute_delay DESC;
 SELECT count() FROM events;  -- run on each node
 
 -- Check for part differences
-SELECT name, checksums_sha512
+SELECT name, hash_of_all_files
 FROM system.parts
 WHERE table = 'events' AND active
 ORDER BY name;
