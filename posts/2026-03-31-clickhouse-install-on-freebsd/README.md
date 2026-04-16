@@ -28,8 +28,9 @@ Availability may vary by FreeBSD version. Check the current ports tree for the l
 ## Option 2: Build from Ports
 
 ```bash
-# Update ports tree
-portsnap fetch update
+# Fetch the ports tree via git (portsnap was removed from the base system in FreeBSD 14)
+pkg install -y git
+git clone https://git.FreeBSD.org/ports.git /usr/ports
 
 # Build and install ClickHouse
 cd /usr/ports/databases/clickhouse
@@ -47,8 +48,8 @@ If native ports are unavailable or outdated, use the Linux compatibility layer t
 kldload linux64
 sysrc linux_enable="YES"
 
-# Install Linux base packages
-pkg install linux_base-c7
+# Install Linux base packages (Rocky Linux 9 — the current default; linux_base-c7 is deprecated)
+pkg install linux_base-rl9
 
 # Download Linux ClickHouse binary
 fetch https://builds.clickhouse.com/master/amd64/clickhouse
