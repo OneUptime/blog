@@ -19,11 +19,11 @@ A common scenario is comparing conversion rates between two groups. ClickHouse p
 ```sql
 SELECT proportionsZTest(
     countIf(converted = 1 AND group = 'control'),
-    countIf(group = 'control'),
     countIf(converted = 1 AND group = 'treatment'),
+    countIf(group = 'control'),
     countIf(group = 'treatment'),
     0.95,
-    'two-sided'
+    'unpooled'
 ) AS z_test_result
 FROM experiment_events
 WHERE experiment_id = 'exp_42';
@@ -37,10 +37,10 @@ The function returns a tuple with the z-score, p-value, and confidence interval 
 WITH test AS (
     SELECT proportionsZTest(
         countIf(converted AND group = 'control'),
-        countIf(group = 'control'),
         countIf(converted AND group = 'treatment'),
+        countIf(group = 'control'),
         countIf(group = 'treatment'),
-        0.95, 'two-sided'
+        0.95, 'unpooled'
     ) AS result
     FROM ab_events
 )
@@ -103,4 +103,4 @@ Small samples produce unreliable p-values regardless of the function used.
 
 ## Summary
 
-ClickHouse supports `proportionsZTest`, `studentTTest`, and `welchTTest` as native aggregate functions. These let you perform hypothesis testing at scale without moving data out of the database. Always check sample sizes, choose the right test for your data type, and interpret p-values alongside confidence intervals for reliable conclusions.
+ClickHouse supports `proportionsZTest` as a scalar function and `studentTTest` and `welchTTest` as native aggregate functions. These let you perform hypothesis testing at scale without moving data out of the database. Always check sample sizes, choose the right test for your data type, and interpret p-values alongside confidence intervals for reliable conclusions.
