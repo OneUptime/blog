@@ -8,7 +8,7 @@ Description: Use Benthos (Redpanda Connect) to build stream processing pipelines
 
 ---
 
-Benthos (now known as Redpanda Connect) is a high-performance stream processing tool configured entirely in YAML. Its built-in ClickHouse output plugin makes it simple to build pipelines from Kafka, HTTP, files, or databases directly into ClickHouse.
+Benthos (now known as Redpanda Connect) is a high-performance stream processing tool configured entirely in YAML. Its built-in `sql_insert` output with the ClickHouse driver makes it simple to build pipelines from Kafka, HTTP, files, or databases directly into ClickHouse.
 
 ## Installing Benthos
 
@@ -16,8 +16,8 @@ Benthos (now known as Redpanda Connect) is a high-performance stream processing 
 # Using the official installer
 curl -Lsf https://sh.benthos.dev | bash
 
-# Or via Docker
-docker pull jeffail/benthos
+# Or via Docker (Redpanda Connect image)
+docker pull docker.redpanda.com/redpandadata/connect
 ```
 
 ## Basic Pipeline: HTTP to ClickHouse
@@ -38,7 +38,8 @@ pipeline:
         root.processed_at = now()
 
 output:
-  clickhouse:
+  sql_insert:
+    driver: clickhouse
     dsn: "clickhouse://default:@localhost:9000/default"
     table: events
     columns:
@@ -47,6 +48,14 @@ output:
       - event_type
       - created_at
       - processed_at
+    args_mapping: |
+      root = [
+        this.event_id,
+        this.user_id,
+        this.event_type,
+        this.created_at,
+        this.processed_at
+      ]
     init_statement: |
       CREATE TABLE IF NOT EXISTS default.events (
         event_id String,
@@ -87,9 +96,22 @@ pipeline:
         root.ingested_at = now()
 
 output:
-  clickhouse:
+  sql_insert:
+    driver: clickhouse
     dsn: "clickhouse://default:@localhost:9000/default"
     table: user_events
+    columns:
+      - event_id
+      - user_id
+      - event_type
+      - ingested_at
+    args_mapping: |
+      root = [
+        this.event_id,
+        this.user_id,
+        this.event_type,
+        this.ingested_at
+      ]
     batching:
       count: 500
       period: 3s
@@ -119,13 +141,17 @@ output:
   broker:
     pattern: fan_out
     outputs:
-      - clickhouse:
+      - sql_insert:
+          driver: clickhouse
           dsn: "clickhouse://default:@localhost:9000/default"
           table: events
+          columns: [event_id, user_id, event_type, created_at]
+          args_mapping: |
+            root = [this.event_id, this.user_id, this.event_type, this.created_at]
       - stdout:
           codec: lines
 ```
 
 ## Summary
 
-Benthos provides a declarative, YAML-based approach to building data pipelines into ClickHouse. Its native ClickHouse output plugin handles batching, retries, and schema initialization. Combined with Bloblang for transformations and support for dozens of input sources, Benthos is an efficient way to stream data into ClickHouse.
+Benthos provides a declarative, YAML-based approach to building data pipelines into ClickHouse. Its `sql_insert` output with the ClickHouse driver handles batching, retries, and schema initialization. Combined with Bloblang for transformations and support for dozens of input sources, Benthos is an efficient way to stream data into ClickHouse.
