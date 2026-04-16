@@ -21,8 +21,8 @@ Kafka       | Yes  | Yes   | Yes       | Consume/produce Kafka topics
 S3          | Yes  | Yes   | No        | Query S3/GCS files directly
 MySQL       | Yes  | Yes   | No        | Direct MySQL query proxy
 PostgreSQL  | Yes  | Yes   | No        | Direct PostgreSQL query proxy
-JDBC        | Yes  | No    | No        | Any JDBC-compatible database
-MongoDB     | Yes  | Yes   | No        | Query MongoDB collections
+JDBC        | Yes  | Yes   | No        | Any JDBC-compatible database
+MongoDB     | Yes  | No    | No        | Read-only MongoDB collections
 Redis       | Yes  | Yes   | No        | Read/write Redis keys
 HDFS        | Yes  | Yes   | No        | Read/write HDFS files
 URL         | Yes  | Yes   | No        | HTTP endpoints
