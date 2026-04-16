@@ -112,11 +112,14 @@ kafka-configs.sh --bootstrap-server kafka:9092 \
 
 ```sql
 SELECT
-    topic,
-    partition,
-    offset_committed,
-    offset_fetched,
-    consumer_group
+    database,
+    table,
+    consumer_id,
+    assignments.topic,
+    assignments.partition_id,
+    assignments.current_offset,
+    num_messages_read,
+    last_poll_time
 FROM system.kafka_consumers;
 ```
 
