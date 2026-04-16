@@ -118,10 +118,11 @@ SELECT
     round(hypot(hypot(dx, dy), dz), 4) AS distance_3d
 FROM (
     SELECT
-        arrayJoin([1.0, 2.0, 3.0]) AS dx,
-        arrayJoin([4.0, 5.0, 6.0]) AS dy,
-        arrayJoin([8.0, 3.0, 7.0]) AS dz
-);
+        [1.0, 2.0, 3.0] AS dxs,
+        [4.0, 5.0, 6.0] AS dys,
+        [8.0, 3.0, 7.0] AS dzs
+)
+ARRAY JOIN dxs AS dx, dys AS dy, dzs AS dz;
 ```
 
 ## Vector Magnitude
