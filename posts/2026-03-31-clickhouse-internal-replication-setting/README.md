@@ -68,10 +68,10 @@ With `internal_replication = true`, inserts to the Distributed table go to one r
 ```sql
 INSERT INTO events VALUES (now(), 1001);
 
--- Check which replica received the insert directly
-SELECT replica_name, total_marks, data_uncompressed_bytes
-FROM system.replicas
-WHERE table = 'events_local';
+-- Check rows on each replica to see where data landed
+SELECT hostName() AS host, count() AS rows
+FROM clusterAllReplicas('my_cluster', default.events_local)
+GROUP BY host;
 ```
 
 Both replicas should eventually have the same data once replication catches up.
