@@ -108,7 +108,7 @@ SETTINGS
     read_overflow_mode = 'break';
 ```
 
-Valid overflow modes are `throw` (default), `break`, and `any`.
+Valid values for `read_overflow_mode` are `throw` (default) and `break`. The `any` mode exists but is only meaningful for `group_by_overflow_mode`.
 
 ## Fix 4 - Improve Partition Pruning
 
@@ -116,16 +116,24 @@ Ensure your WHERE clause uses the partition key so ClickHouse skips irrelevant d
 
 ```sql
 -- Table partitioned by toYYYYMM(timestamp)
--- This query benefits from partition pruning:
+-- Both queries benefit from partition pruning because
+-- toYYYYMM is a monotonic function, so ClickHouse can
+-- translate a timestamp range into a partition range:
 SELECT count()
 FROM events
 WHERE toYYYYMM(timestamp) = 202401;
 
--- This does NOT benefit from partition pruning:
 SELECT count()
 FROM events
-WHERE timestamp >= '2024-01-01';
--- Use the partition key directly instead
+WHERE timestamp >= '2024-01-01'
+  AND timestamp <  '2024-02-01';
+
+-- What does NOT prune partitions: a predicate on a column
+-- that is not part of the partition key, or wrapping the
+-- partition column in a non-monotonic function.
+SELECT count()
+FROM events
+WHERE user_id = 42;
 ```
 
 ## Fix 5 - Use Sampling for Approximate Results
