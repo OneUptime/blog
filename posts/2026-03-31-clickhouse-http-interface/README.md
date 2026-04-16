@@ -193,7 +193,8 @@ curl 'http://localhost:8123/?query_id=my-etl-job-001' \
   --data-binary 'SELECT count() FROM events'
 
 # Cancel by query_id (from another terminal)
-curl 'http://localhost:8123/?kill_query=1&query_id=my-etl-job-001'
+curl 'http://localhost:8123/' \
+  --data-binary "KILL QUERY WHERE query_id='my-etl-job-001'"
 ```
 
 ## DDL Over HTTP
