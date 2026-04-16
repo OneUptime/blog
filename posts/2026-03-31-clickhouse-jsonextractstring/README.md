@@ -16,7 +16,7 @@ ClickHouse stores JSON as plain `String` columns in many real-world schemas. The
 
 Path arguments can be:
 - String literals for object keys: `'key'`
-- Integer literals for array indices (0-based): `0`, `1`, `2`
+- Integer literals for array indices (1-based, with negative integers counting from the end): `1`, `2`, `-1`
 
 ## Syntax
 
@@ -65,7 +65,7 @@ Use an integer index to access array elements:
 
 ```sql
 SELECT JSONExtractString('{"tags": ["analytics", "clickhouse", "sql"]}',
-    'tags', 1) AS second_tag;
+    'tags', 2) AS second_tag;
 ```
 
 ```text
