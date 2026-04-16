@@ -25,7 +25,7 @@ curl -L "https://github.com/Altinity/clickhouse-backup/releases/download/${RELEA
     -o clickhouse-backup.tar.gz
 
 tar -xzf clickhouse-backup.tar.gz
-mv clickhouse-backup /usr/local/bin/
+mv build/linux/amd64/clickhouse-backup /usr/local/bin/
 chmod +x /usr/local/bin/clickhouse-backup
 ```
 
