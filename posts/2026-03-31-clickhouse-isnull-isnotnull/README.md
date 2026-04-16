@@ -86,7 +86,7 @@ FROM users;
 
 ## Using isNull in Conditional Expressions
 
-`isNull()` is useful inside `if()` and `multiIf()` where the SQL `IS NULL` syntax is not available.
+`isNull()` is useful inside `if()` and `multiIf()` as a function-form alternative to the `IS NULL` operator.
 
 ```sql
 -- Use isNull inside if()
@@ -126,14 +126,14 @@ LIMIT 20;
 
 ## Aggregate Functions and NULL
 
-Most aggregate functions in ClickHouse ignore NULL values automatically. Use `isNull` to count NULLs explicitly.
+Most aggregate functions in ClickHouse ignore NULL values automatically. Note that `count()` with no argument counts all rows (including NULLs), while `count(col)` counts only non-NULL values of `col`. Use `countIf(isNull(...))` to count NULLs explicitly.
 
 ```sql
--- count() ignores NULLs; use countIf(isNull()) to count them
+-- count() counts all rows; count(value) counts non-NULL values
 SELECT
-    count()                 AS non_null_count,
-    countIf(isNull(value))  AS null_count,
-    count() + countIf(isNull(value)) AS total_rows
+    count()                 AS total_rows,
+    count(value)            AS non_null_count,
+    countIf(isNull(value))  AS null_count
 FROM my_table;
 ```
 
