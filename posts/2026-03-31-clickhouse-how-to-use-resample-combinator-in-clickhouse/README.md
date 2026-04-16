@@ -82,7 +82,7 @@ Since `-Resample` returns an array, combine with `arrayMap` and `arrayEnumerate`
 -- Label each bucket with its range
 SELECT
     arrayMap(
-        (bucket_idx) -> toString(bucket_idx * 100) || '-' || toString((bucket_idx + 1) * 100) || 'ms',
+        (bucket_idx) -> toString((bucket_idx - 1) * 100) || '-' || toString(bucket_idx * 100) || 'ms',
         arrayEnumerate(counts)
     ) AS bucket_labels,
     counts
@@ -140,9 +140,9 @@ GROUP BY endpoint;
 ## -Resample with Date Key
 
 ```sql
--- Daily active users over a month using date keys
+-- Daily active users (distinct users per day) over a month using date keys
 SELECT
-    countResample(
+    uniqResample(
         toUInt32(toDate('2024-01-01')),  -- start date as UInt32
         toUInt32(toDate('2024-02-01')),  -- end date
         1                                 -- 1 day intervals
