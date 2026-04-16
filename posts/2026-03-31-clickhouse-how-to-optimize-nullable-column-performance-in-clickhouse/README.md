@@ -10,14 +10,14 @@ Description: Learn how to minimize the performance impact of Nullable columns in
 
 ## Why Nullable Columns Have Overhead
 
-In ClickHouse, a `Nullable(T)` column stores two separate arrays for each column:
+In ClickHouse, a `Nullable(T)` column stores two separate files for each column:
 1. The actual values stored as type `T`
-2. A null bitmap (one bit per row) indicating which values are NULL
+2. A null map (one byte per row) indicating which values are NULL
 
-This means every read must process both arrays, leading to:
+This means every read must process both files, leading to:
 - Higher memory usage
 - Slower GROUP BY and aggregations
-- Inability to use `LowCardinality` optimization for grouping
+- Additional overhead when combined with `LowCardinality` (use `LowCardinality(Nullable(T))`, not `Nullable(LowCardinality(T))`)
 - Reduced compression efficiency
 
 ## Checking Which Columns Are Nullable
@@ -72,14 +72,12 @@ If a column has been defined as `Nullable` but rarely has NULL values:
 SELECT countIf(email IS NULL) AS nulls, count() AS total
 FROM customers;
 
--- If nulls are acceptable to fill with default value:
-ALTER TABLE customers
-    MODIFY COLUMN email String DEFAULT '';
-
--- Or if NULLs should become empty string
+-- Important: converting Nullable to Non-Nullable will cause read errors
+-- if any NULL values remain. Always replace NULLs first:
 ALTER TABLE customers
     UPDATE email = '' WHERE email IS NULL;
 
+-- Wait for the mutation to complete, then modify the column type:
 ALTER TABLE customers
     MODIFY COLUMN email String DEFAULT '';
 ```
