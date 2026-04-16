@@ -101,7 +101,6 @@ async fn main() -> clickhouse::error::Result<()> {
 
 ```rust
 use clickhouse::Client;
-use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> clickhouse::error::Result<()> {
@@ -111,7 +110,7 @@ async fn main() -> clickhouse::error::Result<()> {
         .query("SELECT user_id, event_type FROM user_events LIMIT 1000000")
         .fetch::<UserEvent>()?;
 
-    while let Some(row) = cursor.next().await.transpose()? {
+    while let Some(row) = cursor.next().await? {
         println!("{}: {}", row.user_id, row.event_type);
     }
 
