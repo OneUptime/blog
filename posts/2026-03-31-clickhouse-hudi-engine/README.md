@@ -26,7 +26,7 @@ graph LR
 ## Prerequisites
 
 - ClickHouse 23.3 or later
-- Apache Hudi table written with Copy-on-Write (CoW) format (MoR support is read-only in ClickHouse)
+- Apache Hudi table written with Copy-on-Write (CoW) format (the ClickHouse Hudi engine is read-only and supports CoW tables)
 - S3 bucket with appropriate IAM permissions
 
 ## Creating a Hudi Table in ClickHouse
@@ -63,7 +63,7 @@ Then reference it in DDL:
 ```sql
 CREATE TABLE hudi_events
 ENGINE = Hudi(
-    named_collection = lake_s3,
+    lake_s3,
     url = 's3://my-data-lake/hudi/events/'
 );
 ```
@@ -89,14 +89,14 @@ DESCRIBE TABLE hudi_events;
 
 ## Copy-on-Write vs Merge-on-Read
 
-ClickHouse can query both CoW and MoR Hudi tables, but with different behavior:
+The ClickHouse Hudi engine is designed to read Copy-on-Write (CoW) Hudi tables:
 
 | Table Type | ClickHouse behavior |
 |---|---|
 | Copy-on-Write (CoW) | Reads base Parquet files directly; always consistent |
-| Merge-on-Read (MoR) | Reads base files only; log files (delta) are not merged |
+| Merge-on-Read (MoR) | Not supported by the Hudi engine; compact to a CoW snapshot first |
 
-For MoR tables with recent upserts, consider compacting the Hudi table in Spark before querying from ClickHouse to see the latest data.
+For MoR-only pipelines, consider compacting the Hudi table in Spark so that the latest data is available as base Parquet files before querying from ClickHouse.
 
 ## Joining Hudi Tables with ClickHouse Native Tables
 
@@ -145,4 +145,4 @@ WHERE event_date = '2024-06-15';
 
 ## Summary
 
-The Hudi table engine in ClickHouse provides a zero-copy path to query Apache Hudi tables stored on S3. ClickHouse reads the `.hoodie/` metadata to identify live Parquet files and serves SQL queries directly. Copy-on-Write tables are fully consistent, while Merge-on-Read tables reflect only the last compacted snapshot. This integration lets you run fast analytical queries on your Hudi lakehouse without additional ETL.
+The Hudi table engine in ClickHouse provides a zero-copy path to query Apache Hudi tables stored on S3. ClickHouse reads the `.hoodie/` metadata to identify live Parquet files and serves SQL queries directly. The engine is read-only and targets Copy-on-Write tables; for MoR pipelines, compact to a CoW snapshot first. This integration lets you run fast analytical queries on your Hudi lakehouse without additional ETL.
