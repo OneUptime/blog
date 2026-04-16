@@ -15,6 +15,7 @@ IP geolocation enrichment maps raw IP addresses to location metadata - country, 
 ```sql
 -- IPv4 geolocation range table (MaxMind CSV format)
 CREATE TABLE geoip_ranges (
+    network_id   UInt64,   -- unique id per range (used as dictionary PRIMARY KEY)
     ip_start     UInt32,   -- first IP in range as integer
     ip_end       UInt32,   -- last IP in range as integer
     country_code LowCardinality(String),
@@ -97,12 +98,13 @@ ORDER BY l.event_time DESC
 LIMIT 20;
 ```
 
-## Creating a Flat Dictionary for Fast Lookups
+## Creating a Range Dictionary for Fast Lookups
 
-For high-throughput enrichment, load the range table into a ClickHouse dictionary. Range dictionaries support efficient BETWEEN-style lookups.
+For high-throughput enrichment, load the range table into a ClickHouse dictionary. The `RANGE_HASHED` layout supports efficient range-based lookups by a single point key that falls between `MIN` and `MAX` range columns.
 
 ```sql
 CREATE DICTIONARY geoip_dict (
+    network_id   UInt64,
     ip_start     UInt32,
     ip_end       UInt32,
     country_code String,
@@ -113,16 +115,17 @@ CREATE DICTIONARY geoip_dict (
     asn          UInt32,
     as_name      String
 )
-PRIMARY KEY ip_start, ip_end
+PRIMARY KEY network_id
 SOURCE(CLICKHOUSE(
     TABLE 'geoip_ranges'
     DB 'default'
 ))
-LAYOUT(IP_TRIE())
+LAYOUT(RANGE_HASHED())
+RANGE(MIN ip_start MAX ip_end)
 LIFETIME(MIN 3600 MAX 7200);
 ```
 
-Note: for IP range dictionaries with BETWEEN semantics, `IP_TRIE` or a custom flat dictionary with `dictGetOrDefault` is the most common approach.
+Note: `RANGE_HASHED` requires a non-range `PRIMARY KEY` plus a `RANGE(MIN ... MAX ...)` clause. If you prefer to key lookups by CIDR strings instead of UInt32 bounds, use the `IP_TRIE` layout with a single `String` CIDR primary key.
 
 ## Top Countries by Request Volume
 
@@ -198,7 +201,7 @@ GROUP BY lat_bucket, lon_bucket
 ORDER BY requests DESC;
 ```
 
-## Refreshing GeoIP Data with ALTER TABLE
+## Refreshing GeoIP Data with EXCHANGE TABLES
 
 MaxMind releases updates twice a week. Use a staging table and atomic rename to refresh without downtime.
 
