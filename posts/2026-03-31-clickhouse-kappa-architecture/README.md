@@ -31,12 +31,17 @@ CREATE TABLE raw_events (
     user_id     UInt64,
     event_type  LowCardinality(String),
     payload     String
-) ENGINE = ReplacingMergeTree(event_id)
+) ENGINE = ReplacingMergeTree()
 PARTITION BY toYYYYMM(event_time)
-ORDER BY (user_id, event_time);
+ORDER BY (user_id, event_time, event_id);
 
 -- Kafka source table
-CREATE TABLE raw_events_kafka
+CREATE TABLE raw_events_kafka (
+    event_time  DateTime,
+    user_id     UInt64,
+    event_type  String,
+    payload     String
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
