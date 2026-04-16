@@ -17,24 +17,26 @@ Vertica is a commercial columnar data warehouse with high licensing costs. Click
 | Projection | Materialized View / AggregatingMergeTree |
 | Sort key | ORDER BY |
 | Segmentation clause | Sharding key |
-| Approximate functions | approximate_count_distinct | uniq() |
+| APPROXIMATE_COUNT_DISTINCT | uniq() |
 | Date/time functions | similar but different names |
 
 ## Step 1 - Export Data from Vertica
 
-Use `vsql` or the Vertica COPY TO command:
+Use `vsql` to write query results to a CSV file on the client:
 
 ```bash
 vsql -h vertica-host -U dbadmin -w password analytics \
-  -c "\\COPY (SELECT * FROM page_views) TO '/tmp/page_views.csv' DELIMITER ',' ENCLOSED BY '\"' NULL ''"
+  -F ',' -At -o /tmp/page_views.csv \
+  -c "SELECT * FROM page_views"
 ```
 
-Or export directly to S3:
+Or export directly to object storage with `EXPORT TO PARQUET`. The `OVER (PARTITION BY ...)` clause accepts column references but not expressions, so compute partition columns in the SELECT:
 
 ```sql
 EXPORT TO PARQUET(directory='s3://bucket/exports/page_views/')
-OVER (PARTITION BY YEAR(created_at), MONTH(created_at))
-AS SELECT * FROM analytics.page_views;
+OVER (PARTITION BY year, month)
+AS SELECT YEAR(created_at) AS year, MONTH(created_at) AS month, p.*
+FROM analytics.page_views p;
 ```
 
 ## Step 2 - Map Vertica Types to ClickHouse
