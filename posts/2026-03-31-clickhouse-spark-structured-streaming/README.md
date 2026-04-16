@@ -178,12 +178,11 @@ def write_to_clickhouse(batch_df, batch_id):
     batch_with_id.write \
         .format("clickhouse") \
         .mode("append") \
-        .option("clickhouse.host", "localhost") \
-        .option("clickhouse.port", "8123") \
-        .option("clickhouse.database", "default") \
-        .option("clickhouse.user", "default") \
-        .option("clickhouse.password", "password") \
-        .option("clickhouse.write.batchSize", "10000") \
+        .option("host", "localhost") \
+        .option("http_port", "8123") \
+        .option("database", "default") \
+        .option("user", "default") \
+        .option("password", "password") \
         .save("spark_streaming_events")
 
     print(f"Batch {batch_id}: wrote {batch_df.count()} rows")
@@ -205,8 +204,6 @@ query.awaitTermination()
 If the native connector is not available, use JDBC directly.
 
 ```python
-import jaydebeapi
-
 CLICKHOUSE_JDBC_URL = "jdbc:ch://localhost:8123/default"
 CLICKHOUSE_DRIVER   = "com.clickhouse.jdbc.ClickHouseDriver"
 
@@ -263,14 +260,12 @@ Submit the streaming job with the necessary configuration.
 spark-submit \
   --master spark://spark-master:7077 \
   --deploy-mode cluster \
-  --num-executors 4 \
-  --executor-cores 2 \
+  --total-executor-cores 8 \
   --executor-memory 4g \
   --driver-memory 2g \
   --packages \
     com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.8.0,\
     org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
-  --conf spark.streaming.stopGracefullyOnShutdown=true \
   --conf spark.sql.streaming.checkpointLocation=/shared/checkpoints \
   clickhouse_streaming_job.py
 ```

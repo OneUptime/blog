@@ -99,7 +99,7 @@ An alternative row-count-based threshold:
 ALTER TABLE events MODIFY SETTING min_rows_for_wide_part = 1000000;
 ```
 
-Parts exceeding either `min_bytes_for_wide_part` OR `min_rows_for_wide_part` will use wide format.
+Parts must exceed both `min_bytes_for_wide_part` and `min_rows_for_wide_part` to use wide format. If either threshold is not met, the part remains compact. A threshold of 0 disables that check (it is always considered satisfied).
 
 ## Resetting to Default
 

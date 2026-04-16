@@ -26,14 +26,16 @@ SELECT count() FROM events;
 
 ## Case Sensitivity of Function Names
 
-Function names in ClickHouse are case-sensitive. `sum` works; `SUM` does not in most contexts.
+ClickHouse treats function names as case-sensitive by default, but many common functions (aggregates like `sum`, `count`, `avg`, `min`, `max`, and type conversion functions) are explicitly registered as case-insensitive. For these functions, both `sum` and `SUM` work. However, ClickHouse-specific functions such as `arrayJoin`, `toStartOfMonth`, or `multiIf` are case-sensitive and must be written in the exact case documented.
 
 ```sql
--- Works
+-- Both work (common aggregates are case-insensitive)
 SELECT sum(amount), avg(price) FROM orders;
-
--- Fails
 SELECT SUM(amount), AVG(price) FROM orders;
+
+-- Case-sensitive: ClickHouse-specific functions
+SELECT toStartOfMonth(event_time) FROM events;   -- Works
+SELECT tostartofmonth(event_time) FROM events;    -- Fails
 ```
 
 ## Array Literals
@@ -108,4 +110,4 @@ WHERE amount > 1000;
 
 ## Summary
 
-ClickHouse SQL diverges from standard SQL in function name case sensitivity, array literal syntax, the `FINAL` modifier, `PREWHERE` optimization, native `SAMPLE` clauses, and lambda support in array functions. Most ANSI SELECT, JOIN, GROUP BY, and window function syntax works as expected. The biggest pitfall for newcomers is case-sensitive function names and forgetting `FINAL` when reading from deduplication table engines.
+ClickHouse SQL diverges from standard SQL in function name case sensitivity, array literal syntax, the `FINAL` modifier, `PREWHERE` optimization, native `SAMPLE` clauses, and lambda support in array functions. Most ANSI SELECT, JOIN, GROUP BY, and window function syntax works as expected. The biggest pitfall for newcomers is case sensitivity on ClickHouse-specific function names (common aggregates like `sum` and `avg` are case-insensitive, but functions like `toStartOfMonth` are not) and forgetting `FINAL` when reading from deduplication table engines.

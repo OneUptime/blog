@@ -28,7 +28,7 @@ CREATE TABLE metric_buckets
     service LowCardinality(String),
     value_sum Float64,
     value_count UInt64,
-    value_max Float64
+    value_max SimpleAggregateFunction(max, Float64)
 )
 ENGINE = SummingMergeTree
 PARTITION BY toDate(bucket_time)

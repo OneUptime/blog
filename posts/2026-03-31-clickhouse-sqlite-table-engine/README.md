@@ -94,7 +94,7 @@ SELECT count() FROM ch_users;
 SQLite Type     ClickHouse Type
 INTEGER         Int32
 TEXT            String
-REAL            Float64
+REAL            Float32
 BLOB            String
 NULL            Nullable(String) / NULL
 ```
