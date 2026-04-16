@@ -51,11 +51,11 @@ Keeper batches multiple operations into a single Raft log entry when they arrive
     <!-- Maximum number of operations to batch together -->
     <max_requests_batch_size>100</max_requests_batch_size>
 
-    <!-- Wait this many milliseconds to accumulate a batch before committing -->
-    <!-- Higher value = better throughput, higher latency -->
+    <!-- Maximum total size in bytes for a single batch -->
+    <!-- Whichever limit (count or bytes) is reached first triggers the batch -->
     <max_requests_batch_bytes_size>102400</max_requests_batch_bytes_size>
 
-    <!-- Max bytes in a single batch -->
+    <!-- Maximum number of pending requests in the queue -->
     <max_request_queue_size>100000</max_request_queue_size>
 </coordination_settings>
 ```
@@ -93,17 +93,26 @@ The tradeoff: larger `snapshot_distance` means more log to replay on restart. Si
 
 The biggest lever for reducing Keeper load is to reduce how many Keeper operations ClickHouse generates. Most Keeper operations come from creating new data parts.
 
-Reduce the number of parts ClickHouse creates by increasing the minimum insert size:
+Reduce the number of parts ClickHouse creates by increasing the minimum insert size. The block size settings are part of the `default` user profile, while `max_bytes_to_merge_at_max_space_in_pool` is a MergeTree-level setting:
+
+```xml
+<!-- /etc/clickhouse-server/users.d/insert_block_size.xml -->
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- Squash smaller blocks together before forming a part -->
+            <min_insert_block_size_rows>1000000</min_insert_block_size_rows>
+            <min_insert_block_size_bytes>268435456</min_insert_block_size_bytes>
+        </default>
+    </profiles>
+</clickhouse>
+```
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/merge_tree.xml -->
 <clickhouse>
     <merge_tree>
-        <!-- Do not create a new part for inserts smaller than this -->
-        <min_insert_block_size_rows>1000000</min_insert_block_size_rows>
-        <min_insert_block_size_bytes>268435456</min_insert_block_size_bytes>
-
-        <!-- Merge small parts aggressively to reduce total part count -->
+        <!-- Allow large merges to reduce total part count -->
         <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
     </merge_tree>
 </clickhouse>
@@ -210,7 +219,7 @@ sysctl -p
 Before production load, benchmark your Keeper setup:
 
 ```bash
-# Use the built-in benchmark tool
+# Use the built-in client to exercise basic operations
 clickhouse-keeper-client \
     --host keeper1.internal \
     --port 2181
