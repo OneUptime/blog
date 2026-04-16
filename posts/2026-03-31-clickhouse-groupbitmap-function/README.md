@@ -8,13 +8,16 @@ Description: Learn how to build and operate on Roaring Bitmaps in ClickHouse usi
 
 ---
 
-`groupBitmap()` is a ClickHouse aggregate function that builds a Roaring Bitmap from a column of unsigned integers. Roaring Bitmaps are compressed bitsets that support extremely fast cardinality counts and set operations (AND, OR, XOR, ANDNOT). When you need to count distinct users, compute cohort overlaps, or perform funnel analysis over hundreds of millions of IDs, `groupBitmap()` with bitmap operations is often 10-100x faster than `COUNT(DISTINCT ...)` or set-based subqueries.
+`groupBitmap()` is a ClickHouse aggregate function that computes the number of distinct unsigned integers in a column by building a Roaring Bitmap internally and returning its cardinality as a `UInt64`. Its `-State` combinator variant, `groupBitmapState()`, returns the bitmap itself so you can feed it to other bitmap functions. Roaring Bitmaps are compressed bitsets that support extremely fast cardinality counts and set operations (AND, OR, XOR, ANDNOT). When you need to count distinct users, compute cohort overlaps, or perform funnel analysis over hundreds of millions of IDs, `groupBitmap()` with bitmap operations is often 10-100x faster than `COUNT(DISTINCT ...)` or set-based subqueries.
 
 ## Syntax and Storage Type
 
 ```sql
--- Aggregate into a bitmap at query time
-SELECT groupBitmap(user_id) AS bm FROM events;
+-- Count distinct user IDs at query time (returns a UInt64)
+SELECT groupBitmap(user_id) AS distinct_users FROM events;
+
+-- Get the bitmap itself using the -State combinator
+SELECT groupBitmapState(user_id) AS bm FROM events;
 
 -- Store a pre-aggregated bitmap in a table
 CREATE TABLE user_cohorts
@@ -35,13 +38,13 @@ The storage type `AggregateFunction(groupBitmap, UInt32)` holds the serialized b
 -- Count distinct users without a pre-aggregated table
 SELECT
     event_type,
-    bitmapCardinality(groupBitmap(user_id)) AS distinct_users
+    groupBitmap(user_id) AS distinct_users
 FROM events
 WHERE event_date >= today() - 30
 GROUP BY event_type;
 ```
 
-`bitmapCardinality()` returns the number of bits set in the bitmap, equivalent to `COUNT(DISTINCT user_id)` but often faster for large groups.
+`groupBitmap()` returns the number of bits set in the bitmap it builds internally, equivalent to `COUNT(DISTINCT user_id)` but often faster for large groups. If you already have a bitmap value, `bitmapCardinality()` gives you the same count from it.
 
 ## Pre-aggregating Bitmaps with AggregatingMergeTree
 
@@ -85,12 +88,14 @@ ORDER BY event_date, product_id;
 
 ClickHouse provides scalar functions to combine bitmaps and compute set-based metrics.
 
+Because bitmap functions like `bitmapAnd`, `bitmapOr`, and `bitmapAndnot` operate on bitmap values (not counts), use `groupBitmapState()` in subqueries that feed them.
+
 ```sql
 -- Users who did event A AND event B (intersection / retention)
 SELECT bitmapCardinality(
     bitmapAnd(
-        (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'signup'),
-        (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'purchase')
+        (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'signup'),
+        (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'purchase')
     )
 ) AS signed_up_and_purchased;
 ```
@@ -99,8 +104,8 @@ SELECT bitmapCardinality(
 -- Users who did event A OR event B (union / reach)
 SELECT bitmapCardinality(
     bitmapOr(
-        (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'ios_open'),
-        (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'web_open')
+        (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'ios_open'),
+        (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'web_open')
     )
 ) AS total_reach;
 ```
@@ -109,8 +114,8 @@ SELECT bitmapCardinality(
 -- Users in A but NOT in B (churn or non-converters)
 SELECT bitmapCardinality(
     bitmapAndnot(
-        (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'trial_start'),
-        (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'subscription')
+        (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'trial_start'),
+        (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'subscription')
     )
 ) AS trials_that_did_not_convert;
 ```
@@ -149,7 +154,7 @@ When you need to inspect individual IDs in a bitmap, use `bitmapToArray`.
 
 ```sql
 SELECT bitmapToArray(
-    (SELECT groupBitmap(user_id) FROM events WHERE event_type = 'vip_signup')
+    (SELECT groupBitmapState(user_id) FROM events WHERE event_type = 'vip_signup')
 ) AS vip_user_ids;
 ```
 
