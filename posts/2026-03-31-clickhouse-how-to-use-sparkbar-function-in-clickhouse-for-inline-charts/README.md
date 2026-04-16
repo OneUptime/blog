@@ -10,63 +10,65 @@ Description: Learn how to use the sparkBar() function in ClickHouse to generate 
 
 ## Overview
 
-`sparkBar()` is a ClickHouse function that renders a simple bar chart as a Unicode string directly in query output. It is useful for quickly visualizing distributions, histograms, and time-series in a terminal or log output without external tools.
+`sparkbar()` is a ClickHouse aggregate function that renders a bar chart as a Unicode string directly in query output. It is useful for quickly visualizing distributions, histograms, and time-series in a terminal or log output without external tools.
 
 ## Basic Syntax
 
 ```sql
-SELECT sparkBar(width, min, max)(value)
+SELECT sparkbar(buckets[, min_x, max_x])(x, y)
 FROM table;
 ```
 
-- `width`: number of characters in the output string
-- `min`: minimum value of the range
-- `max`: maximum value of the range
-- `value`: the column to visualize
+- `buckets`: number of segments in the output string
+- `min_x`, `max_x`: optional range of x values
+- `x`: the field used to bucket rows into segments
+- `y`: the field whose sum within each bucket determines bar height
+
+Because `sparkbar` is an aggregate function, it consumes all rows in its group and returns a single string representing the chart. `sparkBar` is accepted as an alias.
 
 ## Simple Histogram Example
 
 Show a distribution of response times bucketed by 100ms:
 
 ```sql
-SELECT
-    intDiv(response_ms, 100) * 100 AS bucket,
-    count()                        AS cnt,
-    sparkBar(20, 0, max(count()) OVER ())(count()) AS bar
-FROM api_requests
-GROUP BY bucket
-ORDER BY bucket;
+SELECT sparkbar(5, 0, 400)(bucket, cnt)
+FROM (
+    SELECT intDiv(response_ms, 100) * 100 AS bucket,
+           count()                        AS cnt
+    FROM api_requests
+    WHERE response_ms <= 400
+    GROUP BY bucket
+);
 ```
 
 ```text
-bucket | cnt  | bar
-0      | 1523 | ████████████████████
-100    | 892  | ████████████
-200    | 445  | ██████
-300    | 201  | ███
-400    | 87   | █
+█▇▅▃▁
 ```
+
+Each segment corresponds to a 100ms bucket; heights reflect how many requests fell into each bucket.
 
 ## Daily Active Users Chart
 
 ```sql
-SELECT
-    event_date,
-    uniq(user_id) AS dau,
-    sparkBar(30, 0, max(uniq(user_id)) OVER ())(uniq(user_id)) AS chart
-FROM page_views
-WHERE event_date >= today() - 14
-GROUP BY event_date
-ORDER BY event_date;
+SELECT sparkbar(14, today() - 14, today())(event_date, dau)
+FROM (
+    SELECT event_date,
+           uniq(user_id) AS dau
+    FROM page_views
+    WHERE event_date >= today() - 14
+    GROUP BY event_date
+);
 ```
 
 ## Per-Endpoint Request Rate
 
+Render a 60-segment sparkline of request counts per minute, one row per endpoint:
+
 ```sql
 SELECT
     endpoint,
-    count()                       AS requests,
-    sparkBar(25, 0, max(count()) OVER ())(count()) AS bar
+    count()                                            AS requests,
+    sparkbar(60)(toStartOfMinute(event_time), 1)       AS pattern
 FROM http_access_log
 WHERE event_time >= now() - INTERVAL 1 HOUR
 GROUP BY endpoint
@@ -77,50 +79,47 @@ LIMIT 10;
 ## Visualizing Error Rate by Hour
 
 ```sql
-SELECT
-    toHour(event_time)                          AS hour,
-    countIf(status_code >= 500) / count() * 100 AS error_pct,
-    sparkBar(20, 0, 100)(
-        countIf(status_code >= 500) / count() * 100
-    ) AS error_bar
-FROM http_access_log
-WHERE event_date = today()
-GROUP BY hour
-ORDER BY hour;
+SELECT sparkbar(24, 0, 23)(hour, error_pct)
+FROM (
+    SELECT
+        toHour(event_time)                            AS hour,
+        countIf(status_code >= 500) / count() * 100.0 AS error_pct
+    FROM http_access_log
+    WHERE event_date = today()
+    GROUP BY hour
+);
 ```
 
 ## Multi-Column Spark Bars
 
 ```sql
 SELECT
-    toDate(ts) AS date,
-    sparkBar(15, 0, 1000)(count())                              AS total_bar,
-    sparkBar(15, 0, 100)(countIf(status >= 500))               AS error_bar,
-    count()                                                     AS total,
-    countIf(status >= 500)                                      AS errors
-FROM requests
-GROUP BY date
-ORDER BY date DESC
+    endpoint,
+    sparkbar(15)(toStartOfMinute(event_time), 1)                       AS request_bar,
+    sparkbar(15)(toStartOfMinute(event_time), if(status >= 500, 1, 0)) AS error_bar,
+    count()                                                            AS total,
+    countIf(status >= 500)                                             AS errors
+FROM http_access_log
+WHERE event_time >= now() - INTERVAL 1 HOUR
+GROUP BY endpoint
+ORDER BY total DESC
 LIMIT 7;
 ```
 
 ## Notes on Usage
 
-- The output uses Unicode block characters: `█▇▆▅▄▃▂▁ `.
+- The output uses Unicode block characters: `▁▂▃▄▅▆▇█` (plus a space for empty buckets).
 - Works well in ClickHouse CLI, `clickhouse-client`, and log pipelines.
-- The `max() OVER ()` window function trick dynamically scales the bar relative to the largest value.
-- It is a display function only and does not affect query performance significantly.
+- Bars are auto-scaled relative to the largest summed `y` value across buckets.
+- `sparkbar` is an aggregate function, so it appears alongside `GROUP BY` or in a subquery.
 
 ```sql
--- Fixed max value approach
+-- Fixed x-range keeps the bucketing consistent across runs
 SELECT
-    day,
-    sparkBar(20, 0, 10000)(event_count) AS bar,
-    event_count
-FROM daily_stats
-ORDER BY day;
+    sparkbar(20, toDate('2025-01-01'), toDate('2025-12-31'))(event_date, event_count) AS bar
+FROM daily_stats;
 ```
 
 ## Summary
 
-`sparkBar()` lets you render inline Unicode bar charts directly inside ClickHouse query results. It is ideal for quick terminal dashboards, anomaly spotting, and data exploration without external visualization tools. Combine it with window functions to auto-scale bars relative to the dataset maximum.
+`sparkbar()` lets you render inline Unicode bar charts directly inside ClickHouse query results. It is ideal for quick terminal dashboards, anomaly spotting, and data exploration without external visualization tools. Combine it with `GROUP BY` or subqueries to generate a chart per category.
