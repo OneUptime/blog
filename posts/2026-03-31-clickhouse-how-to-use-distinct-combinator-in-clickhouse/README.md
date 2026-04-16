@@ -149,8 +149,8 @@ FROM events;
 
 -- This is equivalent to:
 SELECT
-    uniqIf(user_id, country = 'US') AS us_unique_users,
-    uniqIf(user_id, country = 'UK') AS uk_unique_users
+    uniqExactIf(user_id, country = 'US') AS us_unique_users,
+    uniqExactIf(user_id, country = 'UK') AS uk_unique_users
 FROM events;
 ```
 
