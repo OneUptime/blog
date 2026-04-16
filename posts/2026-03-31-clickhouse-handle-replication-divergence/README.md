@@ -25,14 +25,15 @@ Check for part checksum mismatches:
 SELECT
     name,
     rows,
-    checksums_sha512,
+    hash_of_all_files,
+    hash_of_uncompressed_files,
     active
 FROM system.parts
 WHERE table = 'events' AND active
 ORDER BY name;
 ```
 
-Compare the output from each replica. Mismatched `checksums_sha512` values indicate divergence.
+Compare the output from each replica. Mismatched `hash_of_all_files` or `hash_of_uncompressed_files` values indicate divergence.
 
 ## Identify the Root Cause
 
@@ -53,22 +54,33 @@ Common causes:
 
 ## Resolving Part-Level Divergence
 
-For a single bad part, detach it on the diverged replica and allow re-fetch:
+For a single bad part, move it aside on the diverged replica so it will be re-fetched from a healthy replica. Note that `ALTER TABLE ... DETACH PART` is a replicated operation and would detach the part on every replica, so it cannot be used here. Use a filesystem-level move on the affected replica only:
 
 ```bash
 # Identify the bad part name from the comparison above
 PART_NAME="20240101_1_1_0"
 TABLE="events"
+DB="default"
 ```
 
 ```sql
--- On the diverged replica
-ALTER TABLE events DETACH PART '20240101_1_1_0';
-
--- The ReplicatedMergeTree will re-fetch from the healthy replica
+-- On the diverged replica, stop fetches so the part directory is quiescent
+SYSTEM STOP FETCHES default.events;
 ```
 
-Monitor the queue:
+```bash
+# On the diverged replica's host, move the bad part into the detached directory
+mv /var/lib/clickhouse/data/${DB}/${TABLE}/${PART_NAME} \
+   /var/lib/clickhouse/data/${DB}/${TABLE}/detached/${PART_NAME}
+```
+
+```sql
+-- Resume fetches and force the replica to reconcile with Keeper
+SYSTEM START FETCHES default.events;
+SYSTEM RESTART REPLICA default.events;
+```
+
+The replica sees the part as missing, queues a `GET_PART` task, and fetches a healthy copy from a peer. Monitor the queue:
 
 ```sql
 SELECT * FROM system.replication_queue WHERE table = 'events';
