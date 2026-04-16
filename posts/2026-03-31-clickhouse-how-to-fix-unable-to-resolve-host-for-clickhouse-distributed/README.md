@@ -89,10 +89,10 @@ telnet clickhouse-shard2.internal 9000
 </clickhouse>
 ```
 
-After editing, reload the config:
+ClickHouse automatically reloads config files in `config.d`. To trigger a reload manually:
 
 ```bash
-sudo kill -HUP $(pidof clickhouse-server)
+clickhouse-client --query "SYSTEM RELOAD CONFIG"
 ```
 
 ## Fix 2 - Use IP Addresses Instead of Hostnames
@@ -173,7 +173,7 @@ In Kubernetes, use the full service DNS name:
 <port>9000</port>
 ```
 
-## Fix 6 - Enable hostname_no_alias to Avoid Reverse DNS Issues
+## Fix 6 - Set interserver_http_host to Avoid Reverse DNS Issues
 
 In some environments, ClickHouse uses a reverse DNS lookup for the local hostname. Disable this if it causes issues:
 
