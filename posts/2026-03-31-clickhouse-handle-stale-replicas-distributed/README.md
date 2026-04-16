@@ -59,7 +59,7 @@ ORDER BY absolute_delay DESC;
 
 `absolute_delay` is in seconds. A value above your threshold means queries may be routed away from this replica.
 
-## Forcing Consistency with allow_experimental_parallel_reading_from_replicas
+## Forcing Consistency with select_sequential_consistency
 
 For reads that must reflect the latest committed data, ensure you connect to the leader or use `select_sequential_consistency`:
 
@@ -67,18 +67,20 @@ For reads that must reflect the latest committed data, ensure you connect to the
 SET select_sequential_consistency = 1;
 ```
 
-This forces the replica to wait until it has processed all mutations and inserts that the quorum has acknowledged, at the cost of higher latency.
+This restricts the SELECT to replicas that contain data from all previous INSERTs written with `insert_quorum`, at the cost of higher latency. It only has an effect when writes use `insert_quorum`; it does not cover `ALTER` mutations.
 
 ## Monitoring Replica Health in Prometheus
 
-ClickHouse exposes replica lag via its built-in Prometheus endpoint:
+ClickHouse exposes the maximum replica lag (across all replicated tables on the server) via its built-in Prometheus endpoint:
 
 ```text
 GET /metrics
-ClickHouseAsyncMetrics_ReplicaDelay{database="default",table="events"} 12
+ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay 12
 ```
 
-Set alerts when `ReplicaDelay` exceeds your SLA threshold.
+These built-in async metrics are global aggregates without per-table labels. For per-table visibility, scrape `system.replicas` directly (for example via a custom exporter query).
+
+Set alerts when `ReplicasMaxAbsoluteDelay` exceeds your SLA threshold.
 
 ## Summary
 
