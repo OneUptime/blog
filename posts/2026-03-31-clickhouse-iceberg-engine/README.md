@@ -59,10 +59,7 @@ ClickHouse reads the `metadata/` directory to locate the current snapshot and ma
 
 ```sql
 CREATE TABLE iceberg_sales
-ENGINE = Iceberg(
-    named_collection = s3_lake,
-    url = 's3://my-data-lake/iceberg/sales/'
-);
+ENGINE = Iceberg(s3_lake, filename = 'iceberg/sales/');
 ```
 
 ## Querying the Table
@@ -96,7 +93,7 @@ Or by timestamp:
 ```sql
 SELECT count()
 FROM iceberg_sales
-SETTINGS iceberg_snapshot_timestamp_ms = 1704067200000;
+SETTINGS iceberg_timestamp_ms = 1704067200000;
 ```
 
 ## Inspecting Table Metadata
@@ -117,18 +114,20 @@ region       String
 
 ## GCS-Backed Iceberg Table
 
+The `Iceberg` engine is an alias for `IcebergS3`, so GCS is accessed via its S3-compatible endpoint using an HMAC key pair:
+
 ```sql
 CREATE TABLE iceberg_sales_gcs
 ENGINE = Iceberg(
-    'gs://my-lake-bucket/iceberg/sales/',
-    'service-account@project.iam.gserviceaccount.com',
-    '<HMAC_KEY>'
+    'https://storage.googleapis.com/my-lake-bucket/iceberg/sales/',
+    '<HMAC_ACCESS_KEY>',
+    '<HMAC_SECRET>'
 );
 ```
 
 ## Partition Pruning
 
-Iceberg stores partition statistics in manifest files. ClickHouse uses these to skip partitions that do not match the WHERE clause:
+Iceberg stores partition statistics in manifest files. ClickHouse uses these to skip partitions that do not match the WHERE clause. Enable it with `use_iceberg_partition_pruning = 1`:
 
 ```sql
 -- If table is partitioned by region and sale_date,
@@ -136,7 +135,8 @@ Iceberg stores partition statistics in manifest files. ClickHouse uses these to 
 SELECT sum(revenue)
 FROM iceberg_sales
 WHERE region = 'us-east'
-  AND sale_date = '2024-06-01';
+  AND sale_date = '2024-06-01'
+SETTINGS use_iceberg_partition_pruning = 1;
 ```
 
 ## Performance Tips
