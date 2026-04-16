@@ -42,17 +42,18 @@ echo mntr | nc keeper1 9181 | grep -E "(leader|election|epoch)"
 Key metrics:
 
 ```text
-leader_uptime           -- seconds since last leader election
 zk_server_state         -- leader/follower/standalone
+zk_synced_followers     -- only exposed by the leader; followers in sync
 ```
 
-Via Prometheus:
+Via Prometheus (Keeper exposes async metrics with the `ClickHouseAsyncMetrics_` prefix):
 
 ```text
-ClickHouseKeeperEpochsElapsed  -- increments on each election
+ClickHouseAsyncMetrics_KeeperLastLogTerm  -- Raft term; increments on each election
+ClickHouseAsyncMetrics_KeeperIsLeader     -- 1 on the leader, 0 on followers
 ```
 
-Alert if this counter increases more than once per hour - frequent elections indicate instability.
+Alert if `KeeperLastLogTerm` increases more than once per hour - frequent elections indicate instability.
 
 ## Tune Election Timeout
 
@@ -116,4 +117,4 @@ WHERE table = 'events';
 
 ## Summary
 
-Keeper leader elections are automatic and self-healing. Tune heartbeat and election timeouts to match your network latency. Monitor `ClickHouseKeeperEpochsElapsed` in Prometheus and alert on frequent elections. Investigate CPU and network health when elections occur more often than once per hour.
+Keeper leader elections are automatic and self-healing. Tune heartbeat and election timeouts to match your network latency. Monitor `ClickHouseAsyncMetrics_KeeperLastLogTerm` in Prometheus and alert on frequent elections. Investigate CPU and network health when elections occur more often than once per hour.
