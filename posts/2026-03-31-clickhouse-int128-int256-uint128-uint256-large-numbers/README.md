@@ -21,7 +21,7 @@ Each type doubles the bit width and therefore the representable range:
 | `Int128` | 128 | -1.7 x 10^38 | 1.7 x 10^38 |
 | `UInt128` | 128 | 0 | 3.4 x 10^38 |
 | `Int256` | 256 | -5.8 x 10^76 | 5.8 x 10^76 |
-| `UInt256` | 256 | 0 | 1.2 x 10^77 |
+| `UInt256` | 256 | 0 | 1.16 x 10^77 |
 
 ```sql
 SELECT
@@ -38,7 +38,7 @@ CREATE TABLE blockchain_transactions
 (
     block_number    UInt64,
     tx_hash         UInt256,    -- 256-bit transaction hash as integer
-    from_address    UInt160,    -- Ethereum address (use UInt256 for compatibility)
+    from_address    UInt256,    -- Ethereum addresses are 160-bit; ClickHouse has no UInt160, so store in UInt256
     to_address      UInt256,
     value_wei       UInt256,    -- Wei amounts can exceed UInt64
     gas_used        UInt64,
@@ -139,7 +139,7 @@ Ethereum addresses are 160-bit and transaction hashes are 256-bit. `UInt256` is 
 SELECT
     hex(tx_hash)               AS tx_hash_hex,
     length(hex(tx_hash))       AS hex_length,
-    bitAnd(tx_hash, toUInt256('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')) AS address_bits
+    bitAnd(tx_hash, toUInt256('1461501637330902918203684832716283019655932542975')) AS address_bits
 FROM blockchain_transactions
 LIMIT 5;
 ```
