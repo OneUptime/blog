@@ -106,7 +106,7 @@ List<String> insertRows = List.of(
 
 String values = String.join(",", insertRows);
 
-try (ClickHouseResponse response = client.read(server)
+try (ClickHouseResponse response = client.write(server)
         .query("INSERT INTO events (event_id, user_id, event_name, created_at, amount) VALUES " + values)
         .executeAndWait()) {
     System.out.println("Rows inserted");
@@ -122,22 +122,20 @@ import com.clickhouse.client.*;
 import com.clickhouse.data.*;
 import com.clickhouse.data.format.BinaryStreamUtils;
 
-import java.io.OutputStream;
-import java.util.UUID;
-
-ClickHouseConfig config = new ClickHouseConfig();
+import java.time.LocalDateTime;
+import java.util.TimeZone;
 
 try (ClickHouseClient client = ClickHouseClient.newInstance(ClickHouseProtocol.HTTP);
-     ClickHouseResponse response = client.read(server)
-         .write()
-         .format(ClickHouseFormat.RowBinaryWithNamesAndTypes)
+     ClickHouseResponse response = client.write(server)
+         .format(ClickHouseFormat.RowBinary)
          .query("INSERT INTO events (user_id, event_name, created_at)")
          .data(stream -> {
+             TimeZone utc = TimeZone.getTimeZone("UTC");
              for (int i = 0; i < 10000; i++) {
                  BinaryStreamUtils.writeUInt64(stream, (long) (i % 1000));
                  BinaryStreamUtils.writeString(stream, "page_view");
                  BinaryStreamUtils.writeDateTime64(stream,
-                     System.currentTimeMillis(), 3);
+                     LocalDateTime.now(), 3, utc);
              }
          })
          .executeAndWait()) {
