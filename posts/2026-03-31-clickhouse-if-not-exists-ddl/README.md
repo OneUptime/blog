@@ -73,7 +73,7 @@ CREATE DICTIONARY IF NOT EXISTS ip_to_country
     country     String
 )
 PRIMARY KEY ip_prefix
-SOURCE(FILE(path '/var/lib/clickhouse/user_files/ip_country.tsv' format TabSeparated))
+SOURCE(FILE(path '/var/lib/clickhouse/user_files/ip_country.tsv' format 'TabSeparated'))
 LAYOUT(HASHED())
 LIFETIME(MIN 3600 MAX 86400);
 ```
@@ -110,7 +110,7 @@ CREATE OR REPLACE FUNCTION classify_event AS (type) ->
     );
 ```
 
-Note: `OR REPLACE` is NOT available for tables. Use `IF NOT EXISTS` for tables to avoid accidental drops.
+Note: `OR REPLACE TABLE` is supported for the `Atomic` and `Replicated` database engines (the defaults), but it atomically replaces the table and discards existing data. Prefer `IF NOT EXISTS` for tables to avoid accidental data loss.
 
 ## Idempotent Migration Script Example
 
