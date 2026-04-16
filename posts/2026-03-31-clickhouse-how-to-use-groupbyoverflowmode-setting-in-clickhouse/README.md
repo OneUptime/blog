@@ -10,7 +10,7 @@ Description: Learn how to configure group_by_overflow_mode in ClickHouse to cont
 
 ## What Is group_by_overflow_mode
 
-When a `GROUP BY` query in ClickHouse exceeds the memory limit set by `max_bytes_before_external_group_by` or `max_rows_to_group_by`, ClickHouse needs to decide what to do. The `group_by_overflow_mode` setting controls that behavior.
+When a `GROUP BY` query in ClickHouse exceeds the unique-key limit set by `max_rows_to_group_by`, ClickHouse needs to decide what to do. The `group_by_overflow_mode` setting controls that behavior.
 
 There are three possible values:
 
@@ -159,7 +159,7 @@ LIMIT 10;
 
 ## Combining with max_bytes_before_external_group_by
 
-For large GROUP BY operations, combine overflow mode with external aggregation:
+`max_bytes_before_external_group_by` is a separate, independent mechanism from `group_by_overflow_mode`: when RAM usage crosses that threshold, ClickHouse switches to external (disk-based) aggregation instead of failing. It does not trigger the overflow mode. You can still set both on the same query to cover both memory pressure and unique-key cardinality:
 
 ```sql
 SELECT
@@ -169,11 +169,12 @@ FROM user_events
 GROUP BY user_id
 SETTINGS
     max_bytes_before_external_group_by = 10000000000,
+    max_rows_to_group_by = 50000000,
     group_by_overflow_mode = 'throw';
 ```
 
-This spills to disk before throwing rather than failing immediately on memory pressure.
+Here ClickHouse spills to disk if memory grows past 10 GB, and throws if the distinct-key count exceeds 50M.
 
 ## Summary
 
-The `group_by_overflow_mode` setting gives you fine-grained control over what happens when a GROUP BY query hits memory or row limits. Use `throw` for strict correctness, `break` for partial exploration, and `any` for approximate aggregations over a bounded set of keys. Always pair this setting with `max_rows_to_group_by` or `max_bytes_before_external_group_by` to trigger it.
+The `group_by_overflow_mode` setting gives you fine-grained control over what happens when a GROUP BY query exceeds `max_rows_to_group_by`. Use `throw` for strict correctness, `break` for partial exploration, and `any` for approximate aggregations over a bounded set of keys. Always pair this setting with `max_rows_to_group_by` to trigger it.
