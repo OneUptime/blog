@@ -60,14 +60,14 @@ SELECT
     database,
     table,
     data_path,
-    task_count,
-    failed_count,
-    error
+    data_files,
+    error_count,
+    last_exception
 FROM system.distribution_queue
-ORDER BY failed_count DESC;
+ORDER BY error_count DESC;
 ```
 
-A growing `task_count` with increasing `failed_count` means shards are unreachable and data is accumulating in the spool.
+A growing `data_files` with increasing `error_count` means shards are unreachable and data is accumulating in the spool.
 
 ## Controlling the Spool Size
 
@@ -97,7 +97,7 @@ ORDER BY event_time DESC
 LIMIT 10;
 ```
 
-For high-throughput workloads, async inserts with batch monitoring provide better performance while async mode provides similar reliability with proper monitoring.
+For high-throughput workloads, async inserts with batch monitoring provide better performance, while sync mode provides stronger delivery guarantees at the cost of higher per-insert latency.
 
 ## Setting in Configuration
 
