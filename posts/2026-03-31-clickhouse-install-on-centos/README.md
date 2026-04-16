@@ -63,14 +63,12 @@ getenforce
 sudo setenforce 0
 
 # Option 2: Create proper SELinux policy (recommended for production)
-sudo setsebool -P httpd_can_network_connect 1
 
-# Allow ClickHouse to use ports 8123 and 9000
+# Allow ClickHouse to use port 8123 (port 9000 is already in http_port_t by default)
 sudo semanage port -a -t http_port_t -p tcp 8123
-sudo semanage port -a -t http_port_t -p tcp 9000
 
 # Fix context on data directory
-sudo semanage fcontext -a -t var_t "/var/lib/clickhouse(/.*)?"
+sudo semanage fcontext -a -t var_lib_t "/var/lib/clickhouse(/.*)?"
 sudo restorecon -Rv /var/lib/clickhouse
 ```
 
@@ -85,7 +83,7 @@ sudo firewall-cmd --reload
 For production, use rich rules to restrict to specific source IPs:
 
 ```bash
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" port protocol="tcp" port="8123" accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" port port="8123" protocol="tcp" accept'
 ```
 
 ## Post-Install OS Tuning
