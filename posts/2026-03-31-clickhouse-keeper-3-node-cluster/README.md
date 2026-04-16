@@ -49,7 +49,7 @@ nc -zv keeper3.internal 2181 && echo "OK"
 # Install the ClickHouse package (includes clickhouse-keeper)
 apt-get install -y apt-transport-https ca-certificates dirmngr
 GNUPGHOME=$(mktemp -d)
-gpg --no-default-keyring \
+GNUPGHOME="$GNUPGHOME" gpg --no-default-keyring \
     --keyring /usr/share/keyrings/clickhouse-keyring.gpg \
     --keyserver hkp://keyserver.ubuntu.com:80 \
     --recv-keys 8919F6BD2B48D754
