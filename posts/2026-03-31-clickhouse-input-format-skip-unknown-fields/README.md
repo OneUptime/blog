@@ -14,7 +14,7 @@ When your source data contains more columns than your target ClickHouse table, i
 
 `input_format_skip_unknown_fields` is a boolean setting (default: `0`) that controls behavior when input data contains fields not present in the target table schema. When enabled (`1`), extra fields are ignored and the insert proceeds with only the matching columns.
 
-This is especially useful with formats like JSON, JSONEachRow, CSV with headers, and Parquet, where the source may evolve independently of your table schema.
+This is especially useful with formats like JSONEachRow, BSONEachRow, TSKV, and the `WithNames` / `WithNamesAndTypes` variants of CSV and TSV, where the source may evolve independently of your table schema. (Schema-driven formats such as Parquet, Avro, and Protobuf use their own dedicated skip settings.)
 
 ## Enabling the Setting
 
@@ -73,9 +73,12 @@ When an upstream service adds new fields to its JSON output, you can ingest from
 -- Future-proofed ingestion that won't break when new fields appear
 INSERT INTO user_events
 SELECT event_id, created_at, user_id, event_type
-FROM kafka_table
+FROM file('events.jsonl', JSONEachRow,
+    'event_id UInt64, created_at DateTime, user_id UInt32, event_type String')
 SETTINGS input_format_skip_unknown_fields = 1;
 ```
+
+Note: for the Kafka table engine, parsing happens inside the Kafka consumer, so a `SETTINGS` clause on a downstream `INSERT … SELECT FROM kafka_table` does not propagate. Apply the setting in the user profile (e.g. `users.xml`) or in the Kafka engine's `kafka_*` settings instead.
 
 ## Caveats
 
