@@ -16,7 +16,7 @@ Most message queues and streaming systems offer at-least-once delivery by defaul
 
 ## Strategy 1: ReplacingMergeTree
 
-`ReplacingMergeTree` keeps only the latest version of a row with a given primary key. It deduplicates asynchronously during merges.
+`ReplacingMergeTree` keeps only the latest version of a row with a given sorting key (the `ORDER BY` columns). It deduplicates asynchronously during merges.
 
 ```sql
 CREATE TABLE events (
@@ -45,7 +45,7 @@ SELECT * FROM events FINAL WHERE event_id = 'evt-001';
 
 ## Strategy 2: Idempotent Inserts with insert_deduplication_token
 
-ClickHouse supports native insert deduplication. If you insert the same block with the same checksum within `replicated_deduplication_window` inserts, it is deduplicated automatically.
+ClickHouse supports native insert deduplication. For `ReplicatedMergeTree` tables, if you insert the same block with the same checksum within `replicated_deduplication_window` inserts, it is deduplicated automatically. For non-replicated `MergeTree` tables, this behavior is disabled by default and controlled by the `non_replicated_deduplication_window` table setting (defaults to `0`).
 
 You can also set an explicit deduplication token:
 
@@ -56,9 +56,9 @@ VALUES ('evt-002', 43, 'view', '{}', now(), 1);
 
 Re-inserting with the same token is a no-op.
 
-## Strategy 3: Using a Staging Table with AggregatingMergeTree
+## Strategy 3: Using a Staging Table with a Materialized View
 
-For streaming pipelines, use a two-table pattern:
+For streaming pipelines, use a two-table pattern where a `ReplacingMergeTree` destination collapses duplicates on merge:
 
 ```sql
 -- Staging table receives all inserts
@@ -69,16 +69,23 @@ CREATE TABLE events_raw (
 ) ENGINE = MergeTree()
 ORDER BY (event_id, created_at);
 
--- Final table deduplicates
+-- Destination table deduplicates by event_id
+CREATE TABLE events_deduped (
+    event_id String,
+    payload String,
+    created_at DateTime
+) ENGINE = ReplacingMergeTree(created_at)
+ORDER BY event_id;
+
+-- Materialized view routes rows from staging to the deduped table
 CREATE MATERIALIZED VIEW events_deduped_mv
 TO events_deduped
 AS
 SELECT
     event_id,
-    any(payload) AS payload,
-    min(created_at) AS created_at
-FROM events_raw
-GROUP BY event_id;
+    payload,
+    created_at
+FROM events_raw;
 ```
 
 ## Strategy 4: Block-Level Deduplication with ReplicatedMergeTree
@@ -94,11 +101,10 @@ CREATE TABLE events ON CLUSTER my_cluster (
 ORDER BY event_id;
 ```
 
-Set the deduplication window:
+`replicated_deduplication_window` is a MergeTree table-level setting (not a session-level setting). Configure it when creating the table, via `ALTER TABLE`, or in the `<merge_tree>` section of `config.xml`:
 
-```bash
-# In config.xml or via SQL
-SET replicated_deduplication_window = 100;
+```sql
+ALTER TABLE events MODIFY SETTING replicated_deduplication_window = 100;
 ```
 
 ## Choosing the Right Strategy
