@@ -65,10 +65,11 @@ REVOKE SELECT ON default.customers FROM analysts;
 Row policies filter which rows a user can see:
 
 ```sql
--- Create a row policy that limits non-admins to see only their own records
+-- Create a row policy that limits non-admins to see only records that
+-- belong to them (assuming the `name` column matches the ClickHouse user name)
 CREATE ROW POLICY customer_self_access ON default.customers
     FOR SELECT
-    USING customer_id = currentUserID()
+    USING name = currentUser()
     TO non_admin_users;
 
 -- Admins see all rows
@@ -78,26 +79,26 @@ CREATE ROW POLICY admin_full_access ON default.customers
     TO admin_role;
 ```
 
-## Method 4 - Column Masking Rules (ClickHouse 22.4+)
+## Method 4 - Query Log Masking Rules
 
-ClickHouse supports native column masking via `CREATE TABLE` or `ALTER TABLE`:
+ClickHouse supports regex-based masking of query logs and server logs so sensitive literals (SSNs, card numbers, tokens) are not persisted even when queries reference them. Configure in `/etc/clickhouse-server/config.xml`:
 
-```sql
-CREATE TABLE customers (
-    customer_id UInt64,
-    name        String,
-    email       String COMMENT 'PII',
-    phone       String COMMENT 'PII',
-    ssn         String
-) ENGINE = MergeTree()
-ORDER BY customer_id;
-
--- Add masking via ALTER (requires Enterprise or specific build)
-ALTER TABLE customers
-    MODIFY COLUMN email String DEFAULT maskFields('email', customer_id);
+```xml
+<query_masking_rules>
+    <rule>
+        <name>hide SSN</name>
+        <regexp>\b\d{3}-\d{2}-\d{4}\b</regexp>
+        <replace>XXX-XX-XXXX</replace>
+    </rule>
+    <rule>
+        <name>hide credit card</name>
+        <regexp>\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b</regexp>
+        <replace>XXXX-XXXX-XXXX-XXXX</replace>
+    </rule>
+</query_masking_rules>
 ```
 
-Note: Native masking rules are part of ClickHouse Enterprise. For the open-source version, use views.
+Matched patterns are rewritten before entries are written to `system.query_log`, the server log files, and the process list. This protects against accidental PII exposure in log-based audits, but it does not affect the data returned by actual queries — use views or row policies for that.
 
 ## Practical Example - GDPR-Compliant Query Layer
 
@@ -125,13 +126,13 @@ SELECT
     -- Mask email: show only first 2 chars of local part
     concat(
         substring(email, 1, 2),
-        replicate('*', length(splitByChar('@', email)[1]) - 2),
+        repeat('*', length(splitByChar('@', email)[1]) - 2),
         '@',
         splitByChar('@', email)[2]
     ) AS email_masked,
 
     -- Mask phone: show only last 4 digits
-    concat(replicate('*', length(phone) - 4), substring(phone, -4)) AS phone_masked,
+    concat(repeat('*', length(phone) - 4), substring(phone, -4)) AS phone_masked,
 
     -- Mask SSN: always show ***-**-XXXX
     concat('***-**-', substring(ssn, -4)) AS ssn_masked
