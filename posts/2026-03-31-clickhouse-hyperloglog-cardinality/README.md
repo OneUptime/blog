@@ -12,7 +12,7 @@ Counting distinct values exactly with `uniqExact` requires storing every unique 
 
 ## What Is HyperLogLog
 
-HyperLogLog uses hashing and bit counting to estimate the number of distinct elements in a dataset. It uses a fixed amount of memory (12 bits of precision in ClickHouse's implementation) regardless of input size, with a typical error rate of about 1.6%.
+HyperLogLog uses hashing and bit counting to estimate the number of distinct elements in a dataset. It uses a fixed amount of memory (a precision parameter of 12, meaning 2^12 = 4096 5-bit registers in ClickHouse's implementation) regardless of input size, with a typical error rate of about 1.6%.
 
 ## Basic Usage
 
