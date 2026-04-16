@@ -77,8 +77,8 @@ SELECT toDateTime64(1710489600.123, 3);
 -- From Unix milliseconds
 SELECT toDateTime64(1710489600123 / 1000.0, 3);
 
--- Or directly:
-SELECT toDateTime64(1710489600123, 3, 'UTC');  -- from millisecond epoch
+-- Or use fromUnixTimestamp64Milli for millisecond epoch
+SELECT fromUnixTimestamp64Milli(1710489600123);  -- DateTime64(3) from millisecond epoch
 ```
 
 ## Safe Conversion Functions (OrNull, OrZero)
