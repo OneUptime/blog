@@ -32,9 +32,15 @@ ALTER TABLE user_events
     CLEAR COLUMN email IN PARTITION '202401',
     CLEAR COLUMN email IN PARTITION '202402';
 
--- Clear in all partitions
+-- For tables without a partition key (PARTITION BY tuple()),
+-- the single implicit partition has ID 'all':
 ALTER TABLE user_events
     CLEAR COLUMN email IN PARTITION ID 'all';
+
+-- To clear a column across ALL partitions of a partitioned table,
+-- iterate through the partitions or use an UPDATE mutation:
+ALTER TABLE user_events
+    UPDATE email = '' WHERE 1 = 1;
 ```
 
 After `CLEAR COLUMN`, the column still exists but contains default values (`0`, `''`, `1970-01-01`, etc.) for all rows in that partition.
