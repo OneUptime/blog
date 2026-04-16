@@ -114,6 +114,13 @@ ClickHouse supports real-time ingestion patterns that DuckDB cannot:
 ```sql
 -- Kafka Engine for streaming ingestion
 CREATE TABLE analytics.page_views_kafka
+(
+    event_id    UUID,
+    user_id     String,
+    page        String,
+    duration_ms UInt32,
+    created_at  DateTime
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
