@@ -76,10 +76,10 @@ ClickHouseProfileEvents_MergedUncompressedBytes
 
 # Replication
 ClickHouseMetrics_ReplicatedChecks
-ClickHouseMetrics_ReplicaMaxRelativeDelay
+ClickHouseAsyncMetrics_ReplicasMaxRelativeDelay
 
 # Parts
-ClickHouseMetrics_LeaderReplica
+ClickHouseMetrics_PartsActive
 ClickHouseAsyncMetrics_NumberOfTables
 ```
 
@@ -127,7 +127,7 @@ ClickHouseMetrics_BackgroundMergesAndMutationsPoolTask
 ### Replication Lag
 
 ```text
-ClickHouseAsyncMetrics_ReplicaMaxRelativeDelay
+ClickHouseAsyncMetrics_ReplicasMaxRelativeDelay
 ```
 
 ## Using system.metrics for SQL-Based Monitoring
@@ -173,7 +173,7 @@ groups:
           summary: "ClickHouse memory usage above 50GB on {{ $labels.instance }}"
 
       - alert: ClickHouseReplicationLag
-        expr: ClickHouseAsyncMetrics_ReplicaMaxRelativeDelay > 300
+        expr: ClickHouseAsyncMetrics_ReplicasMaxRelativeDelay > 300
         for: 2m
         labels:
           severity: critical
