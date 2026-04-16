@@ -58,7 +58,7 @@ SELECT arrayJoin(geohashesInBox(
 This is the primary pattern: enumerate cells covering a radius, then filter the event table by those cells.
 
 ```sql
--- Events within ~1.5 degrees of a point (using geohash-5 cells ~5x5 km)
+-- Events within a bounding box around San Francisco (using geohash-6 cells ~1.2 x 0.6 km)
 WITH geohashesInBox(
     -122.52, 37.68,
     -122.35, 37.87,
