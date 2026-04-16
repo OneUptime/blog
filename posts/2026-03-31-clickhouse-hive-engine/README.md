@@ -20,7 +20,7 @@ The Hive engine requires:
 ## Creating a Hive Engine Table
 
 ```sql
--- Syntax: Hive('metastore_host:port', 'hive_database', 'hive_table')
+-- Syntax: Hive('thrift://metastore_host:port', 'hive_database', 'hive_table')
 CREATE TABLE hive_orders
 (
     order_id     UInt64,
@@ -31,7 +31,7 @@ CREATE TABLE hive_orders
     country      String
 )
 ENGINE = Hive(
-    'hive-metastore:9083',
+    'thrift://hive-metastore:9083',
     'ecommerce',
     'orders'
 );
@@ -94,7 +94,7 @@ CREATE TABLE hive_page_views
     country     String
 )
 ENGINE = Hive(
-    'hive-metastore:9083',
+    'thrift://hive-metastore:9083',
     'analytics',
     'page_views'       -- Hive table stored as Parquet on HDFS
 );
@@ -193,7 +193,7 @@ CREATE TABLE hive_user_sessions
     bounce      UInt8
 )
 ENGINE = Hive(
-    'hive-metastore:9083',
+    'thrift://hive-metastore:9083',
     'analytics',
     'user_sessions'   -- ORC-backed Hive table
 );
@@ -228,7 +228,7 @@ CREATE TABLE hive_orders
     total_amount Float64,  -- matches DOUBLE in Hive
     order_date   Date      -- matches DATE in Hive
 )
-ENGINE = Hive('hive-metastore:9083', 'ecommerce', 'orders');
+ENGINE = Hive('thrift://hive-metastore:9083', 'ecommerce', 'orders');
 ```
 
 ## Type Mapping Reference
