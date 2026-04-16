@@ -136,12 +136,12 @@ This lets you evaluate the effect of different window sizes on noise reduction b
 
 ## Data Type Considerations
 
-`groupArrayMovingAvg` always returns an array of `Float64` values regardless of the input type. If you need a specific precision, cast the result elements using `arrayMap`.
+`groupArrayMovingAvg` returns an array of the same size and type as the input data. For integer inputs, the function uses rounding toward zero and truncates decimal places not representable in the resulting data type, so averaging integers often yields a lossy result. To preserve fractional precision, cast the input to a floating-point type before aggregation, and optionally apply `arrayMap` to control rounding.
 
 ```sql
 SELECT
     sensor_id,
-    arrayMap(x -> round(x, 2), groupArrayMovingAvg(7)(reading)) AS smoothed
+    arrayMap(x -> round(x, 2), groupArrayMovingAvg(7)(toFloat64(reading))) AS smoothed
 FROM (
     SELECT sensor_id, event_date, avg(reading) AS reading
     FROM sensor_data
