@@ -123,9 +123,8 @@ SELECT * FROM system.replication_queue
 WHERE table = 'events' AND last_exception != ''
 LIMIT 5;
 
--- Remove a specific stuck entry (use with caution)
-ALTER TABLE analytics.events
-DROP REPLICA 'stale-replica-name';
+-- Remove a dead/stale replica's metadata from ZooKeeper (use with caution)
+SYSTEM DROP REPLICA 'stale-replica-name' FROM TABLE analytics.events;
 ```
 
 ### Fix 4 - Full Replica Recovery
@@ -138,11 +137,17 @@ systemctl stop clickhouse-server
 
 # Remove the table data directory
 rm -rf /var/lib/clickhouse/data/analytics/events/
+```
 
-# Remove ZooKeeper replica metadata (adjust path to your setup)
-clickhouse-zookeeper-cleanup --path /clickhouse/tables/shard1/events/replicas/lagging-node
+From another healthy replica, remove the lagging replica's metadata from ZooKeeper/Keeper:
 
-# Restart - ClickHouse will re-initialize and fetch parts from other replicas
+```sql
+SYSTEM DROP REPLICA 'lagging-node' FROM TABLE analytics.events;
+```
+
+Then restart ClickHouse on the previously lagging node so it re-initializes and fetches parts from healthy replicas:
+
+```bash
 systemctl start clickhouse-server
 ```
 
