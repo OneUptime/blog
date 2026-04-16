@@ -92,7 +92,7 @@ SELECT
     query_id,
     user,
     query_duration_ms / 1000 AS duration_sec,
-    peak_memory_usage / 1e9 AS peak_gb,
+    memory_usage / 1e9 AS peak_gb,
     exception
 FROM system.query_log
 WHERE type = 'ExceptionWhileProcessing'
