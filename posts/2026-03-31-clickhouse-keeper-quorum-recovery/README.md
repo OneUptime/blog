@@ -47,7 +47,7 @@ From ClickHouse:
 ```sql
 SELECT *
 FROM system.zookeeper_connection;
--- connected_status = 'Connected' if Keeper is reachable
+-- A row with is_expired = 0 indicates Keeper is reachable
 ```
 
 ## Step 2: Attempt Normal Node Recovery
@@ -69,7 +69,7 @@ If the node starts successfully and has a consistent snapshot, it will replay it
 
 ## Step 3: Force Single-Node Recovery Mode
 
-If 2 of 3 nodes are permanently lost (disk failure, destroyed VMs), and you have only 1 surviving node, use Keeper's force recovery mode:
+If 2 of 3 nodes are permanently lost (disk failure, destroyed VMs), and you have only 1 surviving node, use Keeper's force recovery mode. Recovery mode is not an XML configuration option — it is activated either via the `rcvr` four-letter-word command or by starting the binary with the `--force-recovery` flag.
 
 Stop the surviving Keeper:
 
@@ -77,14 +77,13 @@ Stop the surviving Keeper:
 sudo systemctl stop clickhouse-keeper
 ```
 
-Edit the Keeper configuration to declare it the only remaining node and enable force recovery:
+Edit the Keeper configuration to declare it the only remaining node:
 
 ```xml
 <!-- /etc/clickhouse-keeper/config.d/recovery.xml -->
 <clickhouse>
     <keeper_server>
         <server_id>1</server_id>
-        <force_recover>true</force_recover>
         <raft_configuration>
             <!-- Only list the surviving node -->
             <server>
@@ -97,34 +96,38 @@ Edit the Keeper configuration to declare it the only remaining node and enable f
 </clickhouse>
 ```
 
-Start the surviving Keeper:
+Start the surviving Keeper in recovery mode. The cleanest option is the `--force-recovery` flag:
+
+```bash
+sudo -u clickhouse clickhouse-keeper --config /etc/clickhouse-keeper/keeper_config.xml --force-recovery
+```
+
+Alternatively, start the service normally and send the `rcvr` four-letter-word command to switch it into recovery mode:
 
 ```bash
 sudo systemctl start clickhouse-keeper
+echo "rcvr" | nc keeper-node-1 2181
 ```
 
-The node will force itself to leader with a one-node quorum, making the cluster writable again. Verify:
+The node will refuse client requests until quorum is established. With only itself listed in `raft_configuration`, a one-node quorum is immediately reached and the cluster becomes writable. Verify:
 
 ```bash
 echo "ruok" | nc keeper-node-1 2181
 # Expected: imok
 
-echo "stat" | nc keeper-node-1 2181
-# Should show: Mode: leader
+echo "mntr" | nc keeper-node-1 2181
+# Should show: zk_server_state leader
 ```
 
-## Step 4: Remove force_recover After Recovery
+## Step 4: Return to Normal Operation After Recovery
 
-Once the node is stable, remove `force_recover` from configuration and restart:
-
-```xml
-<!-- Remove this line from recovery.xml -->
-<!-- <force_recover>true</force_recover> -->
-```
+Once quorum is restored and the node is serving clients, return it to normal operation. If you started it with `--force-recovery`, stop it and start it again through systemd without the flag:
 
 ```bash
 sudo systemctl restart clickhouse-keeper
 ```
+
+If you used the `rcvr` command, no restart is required — the node exits recovery mode automatically once quorum is achieved.
 
 ## Step 5: Restore Lost Nodes from Snapshots
 
@@ -219,4 +222,4 @@ A 5-node cluster tolerates 2 simultaneous failures vs 1 for a 3-node cluster.
 
 ## Summary
 
-Recovering ClickHouse Keeper from quorum loss involves first attempting to restart crashed nodes normally. If nodes are permanently lost, use `force_recover: true` on the surviving node to bootstrap a single-node cluster, then add replacement nodes one at a time after restoring their snapshot directories. Always remove `force_recover` from configuration after the cluster stabilizes. Run 5-node Keeper clusters in production to tolerate 2 simultaneous node failures.
+Recovering ClickHouse Keeper from quorum loss involves first attempting to restart crashed nodes normally. If nodes are permanently lost, start the surviving node with the `--force-recovery` flag (or send the `rcvr` four-letter-word command) to bootstrap a single-node cluster, then add replacement nodes one at a time after restoring their snapshot directories. Restart the recovered leader through systemd without the recovery flag once the cluster stabilizes. Run 5-node Keeper clusters in production to tolerate 2 simultaneous node failures.
