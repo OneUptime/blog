@@ -117,7 +117,7 @@ SETTINGS
     kafka_broker_list  = 'kafka-broker-01:9092',
     kafka_topic_list   = 'app-logs',
     kafka_group_name   = 'ch-logs-consumer',
-    kafka_format       = 'RawBLOB';
+    kafka_format       = 'JSONAsString';
 
 CREATE TABLE app_logs
 (
@@ -150,10 +150,7 @@ FROM kafka_raw_logs;
 CREATE TABLE kafka_multi_topic
 (
     event_time DateTime,
-    payload    String,
-    _topic     String,
-    _partition UInt64,
-    _offset    UInt64
+    payload    String
 )
 ENGINE = Kafka
 SETTINGS
@@ -163,7 +160,7 @@ SETTINGS
     kafka_format       = 'JSONEachRow';
 ```
 
-The virtual columns `_topic`, `_partition`, and `_offset` expose Kafka metadata.
+The virtual columns `_topic`, `_partition`, and `_offset` expose Kafka metadata. They are automatically provided by the Kafka engine and should not be declared in the `CREATE TABLE` statement; reference them directly in queries or materialized views, for example `SELECT _topic, _partition, _offset, event_time, payload FROM kafka_multi_topic`.
 
 ## Monitoring Consumer Lag
 
@@ -173,15 +170,18 @@ SELECT
     database,
     table,
     consumer_id,
-    assignments.topic       AS topic,
+    assignments.topic        AS topic,
     assignments.partition_id AS partition,
     assignments.current_offset AS current_offset,
-    assignments.high_watermark AS high_watermark,
-    assignments.high_watermark - assignments.current_offset AS lag
+    num_messages_read,
+    last_poll_time,
+    last_commit_time
 FROM system.kafka_consumers
 ARRAY JOIN assignments
 WHERE database = 'default' AND table = 'kafka_raw_events';
 ```
+
+`system.kafka_consumers` does not expose a broker-side high watermark directly; to compute lag, query the broker high watermark with the Kafka CLI (for example `kafka-consumer-groups.sh --describe`) or parse the `rdkafka_stat` column, which contains librdkafka statistics including per-partition high watermark offsets.
 
 ## Resetting Consumer Offsets
 
@@ -215,15 +215,17 @@ CREATE TABLE kafka_parse_errors
 ENGINE = MergeTree
 ORDER BY received_at;
 
--- Use a conditional MV that writes errors to the DLQ
+-- Use a conditional MV that writes errors to the DLQ.
+-- This consumes from the raw-string Kafka table (kafka_raw_logs) defined earlier
+-- and routes messages that are missing a required field into the DLQ.
 CREATE MATERIALIZED VIEW mv_kafka_errors
 TO kafka_parse_errors
 AS
 SELECT
     raw_message,
-    'parse_error' AS error_msg
-FROM kafka_raw_events
-WHERE JSONExtractString(raw_message, 'user_id') = '';
+    'missing_required_field' AS error_msg
+FROM kafka_raw_logs
+WHERE JSONExtractString(raw_message, 'service') = '';
 ```
 
 ## Summary
