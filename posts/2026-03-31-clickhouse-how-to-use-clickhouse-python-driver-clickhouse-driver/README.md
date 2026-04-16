@@ -140,9 +140,9 @@ from clickhouse_driver import Client
 client = Client(host='localhost')
 
 # Use execute_iter for streaming large results
-with client.execute_iter('SELECT * FROM large_table LIMIT 1000000') as result:
-    for row in result:
-        process_row(row)  # Process one row at a time
+rows = client.execute_iter('SELECT * FROM large_table LIMIT 1000000')
+for row in rows:
+    process_row(row)  # Process one row at a time
 ```
 
 ## Working with Settings
