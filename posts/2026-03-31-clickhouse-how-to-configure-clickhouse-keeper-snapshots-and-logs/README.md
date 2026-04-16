@@ -30,7 +30,7 @@ Together, they allow Keeper to recover quickly after restart and replicas to cat
     <coordination_settings>
         <operation_timeout_ms>10000</operation_timeout_ms>
         <session_timeout_ms>30000</session_timeout_ms>
-        <leader_heartbeat_ms>500</leader_heartbeat_ms>
+        <heart_beat_interval_ms>500</heart_beat_interval_ms>
         <dead_session_check_period_ms>500</dead_session_check_period_ms>
         <raft_logs_level>warning</raft_logs_level>
     </coordination_settings>
@@ -65,9 +65,6 @@ Control how often snapshots are taken:
         <!-- Take a snapshot every 100,000 log entries -->
         <snapshot_distance>100000</snapshot_distance>
 
-        <!-- Minimum number of snapshots to retain -->
-        <min_session_timeout_ms>10000</min_session_timeout_ms>
-
         <!-- Max snapshots to keep on disk -->
         <snapshots_to_keep>3</snapshots_to_keep>
     </coordination_settings>
@@ -82,8 +79,8 @@ Control how often snapshots are taken:
         <!-- Reserve at least this many log entries after snapshotting -->
         <reserved_log_items>1000000</reserved_log_items>
 
-        <!-- Maximum number of uncommitted log entries before forcing a snapshot -->
-        <max_log_file_size>50000</max_log_file_size>
+        <!-- Number of log records before rotating to a new log file -->
+        <rotate_log_storage_interval>100000</rotate_log_storage_interval>
     </coordination_settings>
 </keeper_server>
 ```
@@ -113,11 +110,11 @@ echo "ruok" | nc localhost 9181
 Or query via ClickHouse SQL:
 
 ```sql
--- Check current leader
+-- List the top-level Keeper paths
 SELECT * FROM system.zookeeper WHERE path = '/';
 
--- Check Keeper metadata
-SELECT * FROM system.keeper_map_table_names;
+-- Inspect Keeper connection details
+SELECT * FROM system.zookeeper_connection;
 ```
 
 ## Listing Snapshots and Logs
@@ -133,7 +130,7 @@ ls -lh /var/lib/clickhouse/coordination/log/
 ## Manually Triggering a Snapshot
 
 ```bash
-echo "snapshot" | nc localhost 9181
+echo "csnp" | nc localhost 9181
 ```
 
 This is useful before a planned maintenance window.
