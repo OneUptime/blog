@@ -172,7 +172,7 @@ WHERE engine = 'MaterializedView'
   AND database = currentDatabase();
 
 -- See the underlying structure
-SHOW CREATE MATERIALIZED VIEW page_views_hourly_mv;
+SHOW CREATE TABLE page_views_hourly_mv;
 
 -- Drop a materialized view (does NOT drop the target table)
 DROP VIEW page_views_hourly_mv;
