@@ -101,7 +101,7 @@ SELECT
 
 ```text
 sha256_hex
-2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824  -- example only
+C19B2EAFAD4D1E196357279660C6E8F36307FCE2C3C56BD3E47052FCF54F7780
 ```
 
 ```sql
@@ -185,6 +185,7 @@ user_id  hex_key
 3        00000003
 4        00000004
 5        00000005
+6        00000006
 ```
 
 ## unhex() for Decoding Stored Hex Values
@@ -209,22 +210,22 @@ FROM (
 
 ```sql
 SELECT
-    hex('abc')         AS uppercase_hex,
-    lower(hex('abc'))  AS lowercase_hex;
+    hex('Hello')         AS uppercase_hex,
+    lower(hex('Hello'))  AS lowercase_hex;
 ```
 
 ```text
 uppercase_hex  lowercase_hex
-616263         616263
+48656C6C6F     48656c6c6f
 ```
 
 `unhex()` accepts both uppercase and lowercase hex digits.
 
 ```sql
 SELECT
-    unhex('616263') AS from_lower,
-    unhex('616263') AS from_upper;
--- Both return 'abc'
+    unhex('48656c6c6f') AS from_lower,
+    unhex('48656C6C6F') AS from_upper;
+-- Both return 'Hello'
 ```
 
 ## Summary
