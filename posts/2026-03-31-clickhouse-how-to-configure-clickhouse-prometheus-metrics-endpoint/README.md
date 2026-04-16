@@ -51,9 +51,9 @@ ClickHouseMetrics_Query 2
 # HELP ClickHouseMetrics_Merge Number of executing background merges
 # TYPE ClickHouseMetrics_Merge gauge
 ClickHouseMetrics_Merge 1
-# HELP ClickHouseEvents_Query Number of queries to be interpreted and potentially executed
-# TYPE ClickHouseEvents_Query counter
-ClickHouseEvents_Query 14523
+# HELP ClickHouseProfileEvents_Query Number of queries to be interpreted and potentially executed
+# TYPE ClickHouseProfileEvents_Query counter
+ClickHouseProfileEvents_Query 14523
 ```
 
 ## Metric Categories
@@ -67,9 +67,9 @@ The endpoint exposes three categories of metrics:
 - `ClickHouseMetrics_MemoryTracking` - allocated memory
 
 **Events** (`events: true`) - cumulative counters:
-- `ClickHouseEvents_Query` - total queries executed
-- `ClickHouseEvents_InsertedRows` - total rows inserted
-- `ClickHouseEvents_ReadCompressedBytes` - bytes read
+- `ClickHouseProfileEvents_Query` - total queries executed
+- `ClickHouseProfileEvents_InsertedRows` - total rows inserted
+- `ClickHouseProfileEvents_ReadCompressedBytes` - bytes read
 
 **Asynchronous Metrics** (`asynchronous_metrics: true`) - system-level metrics updated periodically:
 - `ClickHouseAsyncMetrics_MemoryResident` - RSS memory
@@ -94,18 +94,21 @@ scrape_configs:
 
 ## Securing the Endpoint
 
-To restrict access, use ClickHouse's built-in HTTP handler authentication or place a reverse proxy (nginx/HAProxy) in front of port 9363:
+To restrict access, use ClickHouse's built-in HTTP handler authentication or place a reverse proxy (nginx/HAProxy) in front of port 9363. To bind the endpoint to a specific interface, use the server-level `<listen_host>` setting (the `<prometheus>` section itself does not accept an address sub-element):
 
 ```xml
-<prometheus>
-    <endpoint>/metrics</endpoint>
-    <port>9363</port>
-    <metrics>true</metrics>
-    <events>true</events>
-    <asynchronous_metrics>true</asynchronous_metrics>
-    <!-- Bind to localhost only for security -->
-    <address>127.0.0.1</address>
-</prometheus>
+<clickhouse>
+    <!-- Bind all HTTP listeners (including the Prometheus endpoint) to localhost -->
+    <listen_host>127.0.0.1</listen_host>
+
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+</clickhouse>
 ```
 
 ## Key Metrics to Alert On
@@ -128,7 +131,7 @@ groups:
           severity: critical
 
       - alert: ClickHouseQueryFailureRate
-        expr: rate(ClickHouseEvents_FailedQuery[5m]) > 0.1
+        expr: rate(ClickHouseProfileEvents_FailedQuery[5m]) > 0.1
         for: 5m
         labels:
           severity: warning
@@ -136,8 +139,8 @@ groups:
 
 ## Grafana Dashboard
 
-Import the official ClickHouse Grafana dashboard (ID 14268) from grafana.com after configuring your Prometheus data source. It provides pre-built panels for query rates, memory usage, merge activity, and replication lag.
+Import the community ClickHouse Grafana dashboard (ID 14192) from grafana.com after configuring your Prometheus data source. It provides pre-built panels for query rates, memory usage, merge activity, and replication lag.
 
 ## Summary
 
-ClickHouse's built-in Prometheus endpoint on port 9363 exposes metrics, events, and asynchronous system metrics without any external exporter. Enable it via the `<prometheus>` configuration section, scrape it with standard Prometheus configuration, and alert on key signals like part counts, memory usage, and query failure rates using the `ClickHouseMetrics_*`, `ClickHouseEvents_*`, and `ClickHouseAsyncMetrics_*` metric families.
+ClickHouse's built-in Prometheus endpoint on port 9363 exposes metrics, events, and asynchronous system metrics without any external exporter. Enable it via the `<prometheus>` configuration section, scrape it with standard Prometheus configuration, and alert on key signals like part counts, memory usage, and query failure rates using the `ClickHouseMetrics_*`, `ClickHouseProfileEvents_*`, and `ClickHouseAsyncMetrics_*` metric families.
