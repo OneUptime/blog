@@ -14,7 +14,7 @@ ClickHouse provides native geo data types for storing geometric shapes and coord
 
 | Type | Underlying Type | Description |
 |------|----------------|-------------|
-| `Point` | `Tuple(Float64, Float64)` | A single coordinate (longitude, latitude) |
+| `Point` | `Tuple(Float64, Float64)` | A pair of Float64 coordinates (order is up to you) |
 | `Ring` | `Array(Point)` | A closed polygon ring |
 | `Polygon` | `Array(Ring)` | A polygon with optional holes |
 | `MultiPolygon` | `Array(Polygon)` | Multiple polygons |
@@ -35,7 +35,7 @@ ORDER BY id;
 
 ## Working with Point
 
-A `Point` stores a (longitude, latitude) pair:
+ClickHouse's `Point` is just a `Tuple(Float64, Float64)` — the axis order is a convention you choose. This post stores coordinates as `(latitude, longitude)`. Note that ClickHouse geo functions like `greatCircleDistance` expect `(longitude, latitude)` ordering, so we pass the tuple elements in the right order at call time:
 
 ```sql
 -- Insert points
@@ -180,8 +180,9 @@ SELECT pointInPolygon((10.0, 10.0), [[(0,0),(20,0),(20,20),(0,20),(0,0)]]);
 -- greatCircleAngle: angle in degrees between two points
 SELECT greatCircleAngle(-73.9857, 40.7484, -0.1276, 51.5074);
 
--- wkt: Well-Known Text representation (ClickHouse 22.x+)
--- Some versions support reading WKT format for geo data
+-- readWKTPoint / readWKTRing / readWKTPolygon / readWKTMultiPolygon:
+-- Parse Well-Known Text (WKT) strings into geo types
+SELECT readWKTPoint('POINT(-73.9857 40.7484)');
 ```
 
 ## Practical Example: Store Locator
