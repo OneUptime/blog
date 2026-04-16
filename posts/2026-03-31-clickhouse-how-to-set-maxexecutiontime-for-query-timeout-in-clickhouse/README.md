@@ -105,7 +105,7 @@ SELECT
     exception,
     query
 FROM system.query_log
-WHERE type = 'ExceptionBeforeStart' OR type = 'ExceptionWhileProcessing'
+WHERE (type = 'ExceptionBeforeStart' OR type = 'ExceptionWhileProcessing')
   AND exception LIKE '%Timeout%'
 ORDER BY event_time DESC
 LIMIT 20
