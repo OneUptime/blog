@@ -229,8 +229,8 @@ SETTINGS
     kafka_broker_list               = 'localhost:9092',
     kafka_topic_list                = 'user_events_avro',
     kafka_group_name                = 'ch_avro_group',
-    kafka_format                    = 'Avro',
-    kafka_schema_registry_url       = 'http://localhost:8081',
+    kafka_format                    = 'AvroConfluent',
+    format_avro_schema_registry_url = 'http://localhost:8081',
     kafka_num_consumers             = 2;
 ```
 
@@ -262,7 +262,8 @@ SETTINGS
     kafka_num_consumers         = 8,
     kafka_max_block_size        = 131072,
     kafka_poll_timeout_ms       = 500,
-    kafka_flush_interval_ms     = 7500;
+    kafka_flush_interval_ms     = 7500,
+    kafka_handle_error_mode     = 'stream';
 ```
 
 ## Monitoring Consumer Lag
@@ -275,12 +276,13 @@ SELECT
     database,
     table,
     consumer_id,
-    assignments.topic[1]     AS topic,
-    assignments.partition_id AS partitions,
+    assignments.topic          AS topics,
+    assignments.partition_id   AS partitions,
     assignments.current_offset AS current_offsets,
-    assignments.committed_offset AS committed_offsets
+    num_messages_read,
+    last_poll_time,
+    last_commit_time
 FROM system.kafka_consumers
-ARRAY JOIN assignments
 WHERE database = 'default';
 ```
 
@@ -308,14 +310,15 @@ ENGINE = MergeTree()
 ORDER BY received_at
 TTL received_at + INTERVAL 7 DAY;
 
--- Route bad messages via a second materialized view using a conditional
+-- The source Kafka table must be created with kafka_handle_error_mode = 'stream'
+-- for the _raw_message and _error virtual columns to be populated on parse failures.
 CREATE MATERIALIZED VIEW mv_kafka_dlq TO kafka_dlq AS
 SELECT
     _raw_message AS raw_message,
-    'parse_error' AS error,
-    now()         AS received_at
+    _error       AS error,
+    now()        AS received_at
 FROM kafka_user_events
-WHERE toUUIDOrNull(event_id) IS NULL;
+WHERE length(_error) > 0;
 ```
 
 ## Summary
