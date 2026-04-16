@@ -8,7 +8,7 @@ Description: Learn how geoDistance() computes the accurate WGS-84 ellipsoidal di
 
 ---
 
-`geoDistance(lon1, lat1, lon2, lat2)` computes the geodesic distance in meters between two geographic coordinates on the WGS-84 ellipsoid, the same reference ellipsoid used by GPS. Unlike `greatCircleDistance()`, which assumes a perfect sphere, `geoDistance()` accounts for Earth's polar flattening, giving errors below 0.5 mm over any distance. It accepts `Float64` arguments in degrees in `(lon, lat)` order and returns a `Float64` in meters. Use it when accuracy matters more than raw throughput, particularly for long-haul distances or precision-sensitive applications.
+`geoDistance(lon1, lat1, lon2, lat2)` computes the distance in meters between two geographic coordinates on the WGS-84 ellipsoid, the same reference ellipsoid used by GPS. Unlike `greatCircleDistance()`, which assumes a perfect sphere, `geoDistance()` accounts for Earth's polar flattening by using a planar approximation on the tangent plane at the midpoint of the two coordinates, giving a more precise approximation of the Earth geoid. It accepts `Float64` arguments in degrees in `(lon, lat)` order and returns a `Float64` in meters. Use it when accuracy matters, particularly for precision-sensitive applications.
 
 ## Basic Usage
 
@@ -145,10 +145,10 @@ SELECT count() FROM (
     FROM large_poi_table
     WHERE geoDistance(longitude, latitude, -73.9857, 40.7484) < 50000
 );
--- geoDistance is slightly slower than greatCircleDistance due to ellipsoid math
--- but the difference is typically <20% for pure compute
+-- Per ClickHouse documentation, geoDistance has the same performance
+-- as greatCircleDistance with no performance drawback
 ```
 
 ## Summary
 
-`geoDistance(lon1, lat1, lon2, lat2)` calculates the geodesic distance on the WGS-84 ellipsoid in meters, giving sub-millimeter accuracy versus the sphere approximation used by `greatCircleDistance()`. For distances under ~500 km the practical difference is under 30 meters and often immaterial. For intercontinental routes, logistics planning, or precision-sensitive applications, prefer `geoDistance()`. For high-throughput proximity filters where speed matters more than the last few hundred meters of accuracy, `greatCircleDistance()` is acceptable.
+`geoDistance(lon1, lat1, lon2, lat2)` calculates the distance on the WGS-84 ellipsoid in meters, providing a more precise approximation of the Earth geoid than the sphere used by `greatCircleDistance()`. For distances under ~500 km the practical difference is typically under 30 meters and often immaterial. Per the ClickHouse documentation, `geoDistance()` has the same performance as `greatCircleDistance()`, so it is generally the recommended choice for real-world Earth distance calculations.
