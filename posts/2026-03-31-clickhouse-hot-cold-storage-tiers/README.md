@@ -14,7 +14,7 @@ Analytical databases accumulate data continuously. Recent data is queried freque
 
 A hot tier is typically a fast local disk - SSD or NVMe - used for recent, frequently queried data. A cold tier is slower, cheaper storage such as large HDDs or object storage (S3, GCS) used for archival data.
 
-ClickHouse uses storage policies to express this intent. When a part ages beyond a threshold defined in the policy, ClickHouse's background merge thread moves it to the next volume in the policy.
+ClickHouse uses storage policies to express this intent. When a part ages beyond a threshold defined in the policy, ClickHouse's background moves thread pool migrates it to the next volume in the policy.
 
 ## Configuration
 
@@ -37,7 +37,7 @@ Create `/etc/clickhouse-server/config.d/tiered_storage.xml`:
         <volumes>
           <hot>
             <disk>hot_disk</disk>
-            <!-- Move parts to cold when hot volume is 90% full -->
+            <!-- Parts larger than 5 GiB are written to the next volume -->
             <max_data_part_size_bytes>5368709120</max_data_part_size_bytes>
           </hot>
           <cold>
