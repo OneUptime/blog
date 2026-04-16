@@ -66,8 +66,7 @@ Before merge happens, both +1 and -1 rows exist. Use `sum(sign)` to get correct 
 -- Correct way to count active sessions
 SELECT
     status,
-    count() * sign AS session_count,
-    sum(sign) AS net_count
+    sum(sign) AS session_count
 FROM user_sessions
 GROUP BY status
 HAVING sum(sign) > 0;
@@ -125,7 +124,7 @@ SELECT
     cart_id,
     item_id,
     sum(quantity * sign) AS quantity,
-    sum(price * sign) AS total_price
+    sum(quantity * price * sign) AS total_price
 FROM shopping_cart
 WHERE user_id = 1001
 GROUP BY cart_id, item_id
