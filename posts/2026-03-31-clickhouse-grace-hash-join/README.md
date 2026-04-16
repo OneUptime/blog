@@ -93,8 +93,8 @@ LIMIT 5;
 SETTINGS join_algorithm = 'auto';
 ```
 
-With `auto`, ClickHouse starts with hash join and falls back to grace hash join if the right-side table exceeds the memory limit.
+With `auto`, ClickHouse starts with hash join and falls back to partial merge join if the memory limit is violated. To get the memory-safe behavior of grace hash join, set `join_algorithm = 'grace_hash'` explicitly (or include it in a comma-separated list such as `'hash,grace_hash'`).
 
 ## Summary
 
-Grace Hash Join enables ClickHouse to safely join tables that exceed available memory by partitioning data into manageable buckets and spilling to disk when necessary. Use it when your right-side join table is too large for standard hash join, or set `join_algorithm = 'auto'` to let ClickHouse choose automatically.
+Grace Hash Join enables ClickHouse to safely join tables that exceed available memory by partitioning data into manageable buckets and spilling to disk when necessary. Use it when your right-side join table is too large for standard hash join by setting `join_algorithm = 'grace_hash'` explicitly.
