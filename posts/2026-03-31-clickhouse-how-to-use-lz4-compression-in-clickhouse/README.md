@@ -130,13 +130,10 @@ Typical trade-offs:
 ## Using LZ4 for HTTP Network Compression
 
 ```bash
-# Enable LZ4 compression for HTTP transfers
-curl -X POST http://localhost:8123/ \
+# Send an LZ4-compressed INSERT payload over HTTP
+curl -sS --data-binary @data.lz4 \
     -H "Content-Encoding: lz4" \
-    -H "Accept-Encoding: lz4" \
-    --data-binary @data.lz4 \
-    --get \
-    --data-urlencode "query=INSERT INTO events FORMAT JSONEachRow"
+    "http://localhost:8123/?query=INSERT%20INTO%20events%20FORMAT%20JSONEachRow"
 ```
 
 ## Summary
