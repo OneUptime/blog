@@ -37,7 +37,7 @@ ORDER BY (country, event_time);
 ClickHouse has native H3 functions for hexagonal grid indexing:
 
 ```sql
--- Pre-aggregate by H3 resolution 7 (~5km cells) and day
+-- Pre-aggregate by H3 resolution 7 (~1.4km edge, ~5 km² cells) and day
 CREATE TABLE geo_daily_counts
 (
     event_date Date,
@@ -56,7 +56,7 @@ TO geo_daily_counts
 AS
 SELECT
     toDate(event_time) AS event_date,
-    geoToH3(longitude, latitude, 7) AS h3_cell,
+    geoToH3(latitude, longitude, 7) AS h3_cell,
     event_type,
     count() AS event_count,
     uniqExact(user_id) AS unique_users,
@@ -85,11 +85,12 @@ LIMIT 1000;
 ## Convert H3 to Lat/Lon for Map Rendering
 
 ```sql
--- Get cell center coordinates for map rendering
+-- Get cell center coordinates for map rendering.
+-- h3ToGeo returns a (lat, lon) tuple.
 SELECT
     h3_cell,
-    h3GetLat(h3_cell) AS cell_lat,
-    h3GetLon(h3_cell) AS cell_lon,
+    h3ToGeo(h3_cell).1 AS cell_lat,
+    h3ToGeo(h3_cell).2 AS cell_lon,
     sum(event_count) AS events
 FROM geo_daily_counts
 WHERE event_date = today() - 1
@@ -129,9 +130,9 @@ GROUP BY month, country;
 For interactive maps that support zoom levels, create materialized views at multiple H3 resolutions:
 
 ```sql
--- Resolution 4 (~500km): world overview
--- Resolution 7 (~5km): city level
--- Resolution 10 (~100m): neighborhood level
+-- Resolution 4 (~25km edge): regional overview
+-- Resolution 7 (~1.4km edge): city level
+-- Resolution 10 (~75m edge): neighborhood level
 
 -- Each resolution gets its own MV target table
 -- At query time, pick the appropriate table based on zoom level
