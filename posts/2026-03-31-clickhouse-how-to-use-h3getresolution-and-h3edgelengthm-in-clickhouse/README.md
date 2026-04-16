@@ -16,14 +16,14 @@ ClickHouse has built-in support for the H3 hierarchical geospatial indexing syst
 
 H3 divides the earth into hexagonal cells at 16 resolution levels (0 to 15). Lower resolutions cover larger areas; higher resolutions are more precise.
 
-| Resolution | Approximate Cell Diameter |
-|------------|--------------------------|
-| 0          | ~1,107 km                |
-| 3          | ~59 km                   |
-| 6          | ~3.7 km                  |
-| 9          | ~174 m                   |
-| 12         | ~9 m                     |
-| 15         | ~0.5 m                   |
+| Resolution | Approximate Edge Length |
+|------------|-------------------------|
+| 0          | ~1,107 km               |
+| 3          | ~59 km                  |
+| 6          | ~3.2 km                 |
+| 9          | ~174 m                  |
+| 12         | ~9 m                    |
+| 15         | ~0.5 m                  |
 
 ## h3GetResolution()
 
@@ -139,7 +139,7 @@ Use edge length to determine the appropriate resolution for a spatial query:
 ```sql
 -- Want ~1 km radius: use resolution 8 (edge ~460m, so ~2 rings covers 1km)
 SELECT
-    h3KRing(geoToH3(37.7749, -122.4194, 8), 2) AS nearby_cells
+    h3kRing(geoToH3(37.7749, -122.4194, 8), 2) AS nearby_cells
 ```
 
 ## Summary
