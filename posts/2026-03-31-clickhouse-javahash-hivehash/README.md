@@ -26,7 +26,7 @@ Note: `javaHash()` returns an Int32 (signed 32-bit integer), matching the return
 
 ## hiveHash() - Apache Hive Compatibility
 
-`hiveHash(str)` computes the same value as Apache Hive's `hash()` function. Hive's hash is similar to Java's `hashCode()` but with a difference for negative values - it takes the absolute value.
+`hiveHash(str)` computes the same value as Apache Hive's `hash()` function (for Hive versions before 3.0). It is defined as `javaHash` with the sign bit zeroed out (i.e. `javaHash(str) & 0x7FFFFFFF`), so the result is always a non-negative Int32.
 
 ```sql
 -- Compute a Hive-compatible hash
@@ -102,7 +102,7 @@ FROM partitioned_data
 LIMIT 10;
 ```
 
-## Integer Overload of javaHash
+## javaHashUTF16LE for UTF-16 Strings
 
 ClickHouse also provides `javaHashUTF16LE(str)` for strings encoded as UTF-16 LE, matching Java's `String.hashCode()` on platforms that use UTF-16 internally.
 
