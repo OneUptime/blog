@@ -8,7 +8,7 @@ Description: Learn how ClickHouse stores IPv4 and IPv6 addresses as compact inte
 
 ---
 
-ClickHouse provides dedicated `IPv4` and `IPv6` data types for storing IP addresses efficiently. `IPv4` uses 4 bytes (stored as UInt32) and `IPv6` uses 16 bytes (stored as FixedString(16)). Compared to storing IPs as plain strings, these types consume less space, allow faster comparisons, and come with built-in functions for CIDR lookups, subnet checks, and string conversion.
+ClickHouse provides dedicated `IPv4` and `IPv6` data types for storing IP addresses efficiently. `IPv4` uses 4 bytes (stored as UInt32) and `IPv6` uses 16 bytes (stored as UInt128 big-endian). Compared to storing IPs as plain strings, these types consume less space, allow faster comparisons, and come with built-in functions for CIDR lookups, subnet checks, and string conversion.
 
 ## Defining IPv4 and IPv6 Columns
 
