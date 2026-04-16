@@ -10,13 +10,14 @@ Description: Learn how to use the format() function in ClickHouse for template-b
 
 ## What Is the format() Function
 
-`format(template, arg1, arg2, ...)` in ClickHouse formats a string using a template with `{}` placeholders, similar to Python's `str.format()`. It supports positional arguments and mixed types.
+`format(template, arg1, arg2, ...)` in ClickHouse formats a string using a template with `{}` placeholders, similar to a simplified Python `str.format()`. Placeholders can be empty `{}` (auto-numbered) or numbered `{0}`, `{1}` for explicit positions. Format specifiers (e.g. `{:.2f}`) are NOT supported — only digits are allowed inside the braces. Use `{{` and `}}` to emit literal braces. The template must be a constant string.
 
 ```sql
 -- Basic syntax
 SELECT format('Hello, {}!', 'World');          -- 'Hello, World!'
 SELECT format('{} + {} = {}', 1, 2, 3);         -- '1 + 2 = 3'
-SELECT format('Price: ${:.2f}', 9.99);          -- some versions
+SELECT format('{1} {0} {1}', 'World', 'Hello'); -- 'Hello World Hello'
+SELECT format('{{literal braces}}');            -- '{literal braces}'
 ```
 
 ## Basic Usage
@@ -169,6 +170,8 @@ FROM orders;
 
 ## Practical Example: Report Generation
 
+ClickHouse's `format()` does not support width or precision specifiers, so use helpers like `round()` for numeric precision and `leftPad()` / `rightPad()` for column alignment.
+
 ```sql
 -- Generate text-based report lines
 SELECT
@@ -176,11 +179,11 @@ SELECT
     total_revenue,
     order_count,
     avg_order_value,
-    format('{:20} | {:>10} | {:>8} orders | {:>8} avg',
-        category,
-        format('${:.0f}', total_revenue),
-        toString(order_count),
-        format('${:.2f}', avg_order_value)
+    format('{} | {} | {} orders | {} avg',
+        rightPad(category, 20, ' '),
+        leftPad(concat('$', toString(round(total_revenue, 0))), 10, ' '),
+        leftPad(toString(order_count), 8, ' '),
+        leftPad(concat('$', toString(round(avg_order_value, 2))), 8, ' ')
     ) AS report_line
 FROM (
     SELECT
