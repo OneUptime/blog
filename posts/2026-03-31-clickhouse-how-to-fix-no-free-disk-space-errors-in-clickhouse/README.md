@@ -180,7 +180,7 @@ SELECT
     event_time,
     metric,
     value
-FROM system.metric_log
+FROM system.asynchronous_metric_log
 WHERE metric = 'DiskAvailable_default'
 ORDER BY event_time DESC
 LIMIT 50;
