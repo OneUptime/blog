@@ -8,7 +8,7 @@ Description: Learn how greatCircleDistance() calculates the shortest spherical d
 
 ---
 
-`greatCircleDistance(lon1, lat1, lon2, lat2)` computes the arc length in meters between two points on the surface of the Earth modeled as a sphere with radius 6,371,000 m. It uses the Haversine formula internally. All arguments are `Float32` or `Float64` in degrees (longitude, latitude order). The result is a `Float64` in meters. It is fast enough for use in WHERE clauses on large tables and is the most common distance function in ClickHouse for proximity filtering.
+`greatCircleDistance(lon1, lat1, lon2, lat2)` computes the arc length in meters between two points on the surface of the Earth modeled as a sphere (using the WGS84 authalic radius, ~6,371,007 m). Internally it uses a flat-ellipsoid tangent-plane approximation for nearby points and the Haversine formula for distant ones. All arguments are `Float64` in degrees (longitude, latitude order), with longitude in `[-180°, 180°]` and latitude in `[-90°, 90°]`. The result is in meters (`Float32` by default; `Float64` when arguments are `Float64` and the `geo_distance_returns_float64_on_float64_arguments` setting is enabled). It is fast enough for use in WHERE clauses on large tables and is the most common distance function in ClickHouse for proximity filtering.
 
 ## Basic Usage
 
