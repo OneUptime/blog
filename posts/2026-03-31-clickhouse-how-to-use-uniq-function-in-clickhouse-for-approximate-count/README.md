@@ -46,14 +46,16 @@ WHERE endpoint = '/checkout';
 
 Note: `uniqExact()` uses more memory and is slower than `uniq()`.
 
-## uniqHLL12() - Higher Accuracy
+## uniqHLL12() - HyperLogLog Variant
 
-`uniqHLL12()` uses 12 precision bits in HyperLogLog, offering better accuracy than `uniq()`:
+`uniqHLL12()` uses HyperLogLog with 2^12 cells and a state size of about 2.5 KB:
 
 ```sql
 SELECT uniqHLL12(user_id) AS approx_users
 FROM page_views;
 ```
+
+Note: ClickHouse does not recommend this function in most cases — `uniq` or `uniqCombined` typically deliver better accuracy. `uniqHLL12()` error is up to ~10% for small cardinalities (<10K distinct values) and grows again for very large sets (>100M).
 
 ## uniqCombined() - Best Default
 
