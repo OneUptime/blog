@@ -91,16 +91,16 @@ WHERE o.order_id IS NULL
 SETTINGS join_use_nulls = 1;
 ```
 
-## Column Type Requirements
+## Column Type Conversion
 
-When `join_use_nulls = 1`, the right-hand table columns must be `Nullable` or the query will fail if they aren't already nullable:
+When `join_use_nulls = 1`, ClickHouse automatically converts the result column types of the joined side to `Nullable` so that unmatched rows can hold `NULL`. The source table columns do **not** need to be declared `Nullable` — the conversion happens in the query result:
 
 ```sql
--- Create table with Nullable columns to support join_use_nulls = 1
+-- Source columns can be non-Nullable; result columns become Nullable at query time
 CREATE TABLE orders (
     order_id    UInt64,
     user_id     UInt64,
-    amount      Nullable(Float64),
+    amount      Float64,
     created_at  DateTime
 ) ENGINE = MergeTree()
 ORDER BY order_id;
