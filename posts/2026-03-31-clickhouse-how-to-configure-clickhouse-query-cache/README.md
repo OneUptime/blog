@@ -10,7 +10,7 @@ Description: Learn how to configure ClickHouse's query cache to store and reuse 
 
 ## Overview
 
-The ClickHouse query cache (introduced in version 22.4) stores the full result sets of SELECT queries. When an identical query is executed again, ClickHouse returns the cached result without executing the query. This is especially valuable for dashboard queries, report endpoints, and monitoring systems that repeatedly execute the same queries.
+The ClickHouse query cache (introduced in version 23.1) stores the full result sets of SELECT queries. When an identical query is executed again, ClickHouse returns the cached result without executing the query. This is especially valuable for dashboard queries, report endpoints, and monitoring systems that repeatedly execute the same queries.
 
 ## Enabling the Query Cache
 
@@ -23,7 +23,7 @@ The query cache is enabled globally in `config.xml`:
         <max_size_in_bytes>1073741824</max_size_in_bytes>    <!-- 1 GiB total -->
         <max_entries>1024</max_entries>                       <!-- max cached queries -->
         <max_entry_size_in_bytes>1048576</max_entry_size_in_bytes>  <!-- 1 MiB max per result -->
-        <max_entry_rows_in_rows>30000000</max_entry_rows_in_rows>   <!-- 30M rows max per result -->
+        <max_entry_size_in_rows>30000000</max_entry_size_in_rows>   <!-- 30M rows max per result -->
     </query_cache>
 </clickhouse>
 ```
@@ -85,11 +85,11 @@ This is useful for shared dashboards where many users run identical queries.
 
 ## Bypassing the Cache
 
-Force re-execution even if a cached result exists:
+Force re-execution even if a cached result exists by disabling reads from the cache while still writing the fresh result back:
 
 ```sql
 SELECT count() FROM events
-SETTINGS use_query_cache = 1, query_cache_nondeterministic_function_handling = 'save';
+SETTINGS use_query_cache = 1, enable_reads_from_query_cache = 0;
 
 -- Or completely bypass:
 SELECT count() FROM events SETTINGS use_query_cache = 0;
@@ -119,10 +119,16 @@ WHERE event IN ('QueryCacheHits', 'QueryCacheMisses')
 SYSTEM DROP QUERY CACHE;
 ```
 
-Or drop a specific query's cache entry:
+Or drop cache entries that were written with a specific tag. Tag queries when caching:
 
 ```sql
-SYSTEM DROP QUERY CACHE WHERE query LIKE '%my_table%';
+SELECT count() FROM events SETTINGS use_query_cache = 1, query_cache_tag = 'events_dashboard';
+```
+
+Then drop just those entries:
+
+```sql
+SYSTEM DROP QUERY CACHE TAG 'events_dashboard';
 ```
 
 ## Best Practices
