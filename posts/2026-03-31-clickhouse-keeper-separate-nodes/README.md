@@ -65,7 +65,7 @@ The `clickhouse-keeper` package installs the standalone Keeper binary without th
 ## Keeper Configuration: Node 1
 
 ```xml
-<!-- /etc/clickhouse-keeper/config.xml on keeper-1 -->
+<!-- /etc/clickhouse-keeper/keeper_config.xml on keeper-1 -->
 <clickhouse>
     <logger>
         <level>information</level>
@@ -117,7 +117,7 @@ Repeat this file on keeper-2 and keeper-3, changing only `<server_id>` to 2 and 
 ## Keeper Configuration: Node 2
 
 ```xml
-<!-- /etc/clickhouse-keeper/config.xml on keeper-2 -->
+<!-- /etc/clickhouse-keeper/keeper_config.xml on keeper-2 -->
 <clickhouse>
     <!-- Same as keeper-1 with this change: -->
     <keeper_server>
@@ -201,7 +201,7 @@ sudo systemctl restart clickhouse-server
 ```sql
 SELECT *
 FROM system.zookeeper_connection;
--- connected_status should be 'Connected'
+-- is_expired should be 0 (session is alive)
 -- keeper_api_version should be non-zero
 ```
 
@@ -216,17 +216,22 @@ LIMIT 5;
 ## Monitoring Keeper from ClickHouse
 
 ```sql
-SELECT
-    metric,
-    value
-FROM system.keeper_metrics;
+SELECT metric, value
+FROM system.metrics
+WHERE metric LIKE 'Keeper%';
+```
+
+The `mntr` four-letter word returns Keeper-internal counters not exposed via SQL:
+
+```bash
+echo "mntr" | nc keeper-1 2181
 ```
 
 Key metrics to watch:
-- `znode_count`: number of znodes; large values indicate replication metadata accumulation
-- `session_count`: active ClickHouse sessions to Keeper
-- `commit_latency_ms`: Raft commit latency; should be under 50 ms
-- `latency`: end-to-end operation latency
+- `zk_znode_count`: number of znodes; large values indicate replication metadata accumulation
+- `zk_num_alive_connections`: active sessions to Keeper
+- `zk_avg_latency` / `zk_max_latency`: end-to-end request latency in ms
+- `KeeperOutstandingRequests` (from `system.metrics`): requests queued in Keeper
 
 ## Firewall Rules
 
