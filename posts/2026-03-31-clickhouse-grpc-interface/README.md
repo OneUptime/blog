@@ -45,10 +45,13 @@ ss -tlnp | grep 9100
         <!-- Require client certificate -->
         <ssl_require_client_auth>false</ssl_require_client_auth>
 
-        <!-- Compression: none, deflate, gzip, stream_zlib -->
-        <compression>deflate</compression>
+        <!-- Compression: none, deflate, gzip, stream_gzip -->
+        <transport_compression_type>deflate</transport_compression_type>
 
-        <!-- Log grpc queries to system.query_log -->
+        <!-- Compression level: 0..3 -->
+        <transport_compression_level>0</transport_compression_level>
+
+        <!-- Enable very detailed logs -->
         <verbose_logs>false</verbose_logs>
 
         <!-- Maximum message size in bytes -->
@@ -91,10 +94,10 @@ ClickHouse exposes its gRPC service defined in `clickhouse_grpc.proto`. The key 
 
 ```text
 service ClickHouse {
-    rpc ExecuteQuery(QueryInfo) returns (stream Result);
-    rpc ExecuteQueryWithStreamInput(stream QueryInfo) returns (stream Result);
+    rpc ExecuteQuery(QueryInfo) returns (Result);
+    rpc ExecuteQueryWithStreamInput(stream QueryInfo) returns (Result);
     rpc ExecuteQueryWithStreamOutput(QueryInfo) returns (stream Result);
-    rpc ExecuteBatchQuery(stream QueryInfo) returns (stream Result);
+    rpc ExecuteQueryWithStreamIO(stream QueryInfo) returns (stream Result);
 }
 ```
 
@@ -131,8 +134,8 @@ request = clickhouse_grpc_pb2.QueryInfo(
     output_format="JSONEachRow",
 )
 
-for result in stub.ExecuteQuery(request):
-    print(result.output.decode("utf-8"))
+result = stub.ExecuteQuery(request)
+print(result.output.decode("utf-8"))
 ```
 
 ## Compression Options
@@ -142,7 +145,7 @@ for result in stub.ExecuteQuery(request):
 | `none` | No compression | Low-latency LAN |
 | `deflate` | zlib deflate | General use |
 | `gzip` | gzip | Compatibility |
-| `stream_zlib` | Streaming zlib | Large streaming results |
+| `stream_gzip` | Streaming gzip | Large streaming results |
 
 ## Limitations
 
