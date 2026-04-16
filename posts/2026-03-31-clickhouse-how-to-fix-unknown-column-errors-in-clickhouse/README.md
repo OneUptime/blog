@@ -144,15 +144,18 @@ SELECT user_id, user_segment FROM analytics.events LIMIT 5;
 ## Checking Column Availability Across Replicas
 
 ```sql
--- Verify column exists on all replicas
+-- Verify the column exists on every replica by querying system.columns
+-- across the cluster (replace 'default' with your cluster name).
 SELECT
-    host_name,
-    host_port,
-    replica_name,
-    columns
-FROM system.replicas
-WHERE table = 'events'
-  AND database = 'analytics';
+    hostName() AS host,
+    database,
+    table,
+    name,
+    type
+FROM clusterAllReplicas('default', system.columns)
+WHERE database = 'analytics'
+  AND table = 'events'
+ORDER BY host, name;
 ```
 
 ## Summary
