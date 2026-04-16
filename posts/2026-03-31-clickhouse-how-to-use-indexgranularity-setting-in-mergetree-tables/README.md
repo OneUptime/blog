@@ -100,7 +100,7 @@ Inspect index marks in a table part:
 ```sql
 SELECT
     table,
-    part_name,
+    name,
     marks,
     rows,
     round(rows / marks) AS rows_per_mark
@@ -117,7 +117,7 @@ The primary index is loaded entirely into RAM. A smaller `index_granularity` mea
 index_size_bytes ~= (total_rows / index_granularity) * key_bytes_per_mark
 ```
 
-For a 1-billion-row table with `index_granularity = 8192` and an 8-byte key, the index is approximately 1 GB.
+For a 1-billion-row table with `index_granularity = 8192` and an 8-byte key, the index is approximately 1 MB (~122,000 marks × 8 bytes).
 
 ## Guidelines
 
