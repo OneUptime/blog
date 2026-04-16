@@ -27,7 +27,7 @@ LIMIT 10;
 
 ## Short-Circuit Evaluation
 
-Because `if()` is short-circuit, you can safely put potentially-erroring expressions in either branch without worrying about the branch that won't be executed.
+Because `if()` is short-circuit (controlled by the `short_circuit_function_evaluation` setting, which defaults to `enable`), you can safely put potentially-erroring expressions in either branch without worrying about the branch that won't be executed. Short-circuit kicks in for eligible functions — in particular, functions that can throw (like division, `dictGet`, or `toInt32`) and heavy functions.
 
 ```sql
 -- Short-circuit prevents division by zero when denominator is 0
