@@ -57,7 +57,7 @@ spec:
 
 ## Configuring Kafka for Partition Assignment
 
-Use the `consumerID` metadata to pin each StatefulSet pod to specific partitions. With the `{podName}` placeholder, each replica gets a unique consumer group:
+Use a shared `consumerID` so all StatefulSet pods join the same Kafka consumer group. Kafka's group coordinator then distributes the topic's partitions across the pods:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
@@ -72,14 +72,14 @@ spec:
   - name: brokers
     value: kafka-broker:9092
   - name: consumerID
-    value: order-processor-{podName}
+    value: order-processor
   - name: initialOffset
     value: oldest
   - name: authType
     value: none
 ```
 
-With 3 replicas named `order-processor-0`, `order-processor-1`, and `order-processor-2`, each gets its own consumer group and Kafka assigns partitions accordingly.
+With 3 replicas named `order-processor-0`, `order-processor-1`, and `order-processor-2` all using the consumer ID `order-processor`, Kafka treats them as one consumer group and assigns the topic's partitions across them - for example, with 6 partitions each pod would receive 2.
 
 ## Implementing the Subscriber
 
@@ -124,7 +124,7 @@ kubectl scale statefulset order-processor --replicas=5 -n production
 kubectl scale statefulset order-processor --replicas=2 -n production
 ```
 
-After scaling, Kafka rebalances partition assignments across the new set of consumer groups.
+After scaling, Kafka rebalances partition assignments across the new set of pods within the consumer group.
 
 ## Headless Service for StatefulSet Discovery
 
@@ -152,10 +152,10 @@ Check per-pod Kafka consumer lag to identify bottlenecks:
 ```bash
 kafka-consumer-groups.sh \
   --bootstrap-server kafka-broker:9092 \
-  --group order-processor-order-processor-0 \
+  --group order-processor \
   --describe
 ```
 
 ## Summary
 
-Using StatefulSets with Dapr pub/sub gives each subscriber pod a stable identity, enabling Kafka partition pinning via the `{podName}` consumer ID template. This pattern supports ordered processing, predictable partition assignment, and graceful scaling without rebalancing storms - making it the right choice for high-throughput, order-sensitive event consumers.
+Using StatefulSets with Dapr pub/sub gives each subscriber pod a stable identity, which is valuable when consumers need to maintain local state or coordinate based on ordinal index. All pods share a single Kafka consumer group via the `consumerID` metadata, and Kafka's group coordinator distributes partitions across them - making this pattern a good fit for high-throughput, order-sensitive event consumers backed by stable per-pod state.
