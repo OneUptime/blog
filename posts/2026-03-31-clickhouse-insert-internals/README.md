@@ -35,7 +35,7 @@ ClickHouse performs:
 {partition_id}_{min_block}_{max_block}_{level}
 ```
 
-A fresh INSERT always has `level = 0`. Block numbers are monotonically increasing per table.
+A fresh INSERT always has `level = 0`. Block numbers are monotonically increasing per partition.
 
 ## Async Inserts
 
@@ -52,7 +52,7 @@ With async inserts, ClickHouse buffers rows in memory per table per user and flu
 
 ## Deduplication
 
-ClickHouse can deduplicate identical INSERT blocks using a block checksum log:
+ClickHouse can deduplicate identical INSERT blocks for `Replicated*` MergeTree tables using a block checksum log stored in Keeper:
 
 ```sql
 SET insert_deduplicate = 1;
@@ -64,7 +64,7 @@ If the same block (same data, same checksum) is inserted twice, the second is si
 
 ```sql
 -- See recent inserts and their part sizes
-SELECT event_time, table, part_name, rows, bytes_compressed_on_disk
+SELECT event_time, table, part_name, rows, size_in_bytes
 FROM system.part_log
 WHERE event_type = 'NewPart'
 ORDER BY event_time DESC
