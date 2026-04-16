@@ -16,10 +16,10 @@ When a shard is unreachable, ClickHouse writes insert data to a local spool dire
 
 ```bash
 ls /var/lib/clickhouse/data/default/distributed_events/
-# shard1/  shard2/  shard3/
+# shard1_replica1/  shard2_replica1/  shard3_replica1/
 ```
 
-Each subdirectory corresponds to a shard. Failed sends accumulate here until the shard recovers.
+Each subdirectory corresponds to a shard/replica target. Failed sends accumulate here until the shard recovers.
 
 ## Monitoring the Distribution Queue
 
@@ -29,18 +29,19 @@ Check the current state of pending inserts:
 SELECT
     database,
     table,
-    host_name,
-    host_port,
     data_path,
-    task_count,
-    failed_count,
-    error
+    is_blocked,
+    error_count,
+    data_files,
+    data_compressed_bytes,
+    broken_data_files,
+    last_exception
 FROM system.distribution_queue
-WHERE failed_count > 0
-ORDER BY failed_count DESC;
+WHERE error_count > 0
+ORDER BY error_count DESC;
 ```
 
-A rising `failed_count` with non-empty `error` means a shard is consistently unreachable.
+A rising `error_count` with non-empty `last_exception` means a shard is consistently unreachable.
 
 ## Checking Error Logs
 
@@ -62,28 +63,30 @@ LIMIT 20;
 Tune how aggressively ClickHouse retries failed shard sends in `config.xml`:
 
 ```xml
-<distributed_directory_monitor_sleep_time_ms>500</distributed_directory_monitor_sleep_time_ms>
-<distributed_directory_monitor_max_sleep_time_ms>30000</distributed_directory_monitor_max_sleep_time_ms>
+<distributed_background_insert_sleep_time_ms>500</distributed_background_insert_sleep_time_ms>
+<distributed_background_insert_max_sleep_time_ms>30000</distributed_background_insert_max_sleep_time_ms>
 ```
 
-The retry interval starts at `sleep_time_ms` and doubles up to `max_sleep_time_ms` with each failure.
+The retry interval starts at `sleep_time_ms` and doubles up to `max_sleep_time_ms` with each failure. (The older `distributed_directory_monitor_*` names still work as aliases but have been renamed in recent versions.)
 
 ## Setting Insert Error Handling Mode
 
-Control what happens when a shard is unreachable during a synchronous insert:
+Control what happens when a shard is unreachable. For synchronous inserts, use `distributed_foreground_insert` (formerly `insert_distributed_sync`) to push data straight to shards and fail fast:
 
 ```sql
--- Throw an error if any shard is unavailable
-SET insert_distributed_one_random_shard = 0;
+-- Insert synchronously; fail if any target shard is unreachable
+SET distributed_foreground_insert = 1;
 
--- Skip unavailable shards and insert to available ones only
-SET distributed_push_down_limit = 1;
+-- During distributed SELECTs, silently skip unavailable shards
+SET skip_unavailable_shards = 1;
 ```
 
-For async inserts, configure the `fsync_directories` option to ensure spool data survives a node restart:
+For async inserts, enable the `fsync_directories` table engine setting to ensure spool data survives a node restart. This is configured per-table in the Distributed engine's `SETTINGS` clause:
 
-```xml
-<fsync_directories>1</fsync_directories>
+```sql
+CREATE TABLE distributed_events AS local_events
+ENGINE = Distributed(my_cluster, default, local_events, rand())
+SETTINGS fsync_directories = 1, fsync_after_insert = 1;
 ```
 
 ## Manually Flushing the Spool
@@ -103,7 +106,7 @@ If spool files are corrupted or you decide to discard them:
 ```bash
 # On the inserting node
 sudo systemctl stop clickhouse-server
-sudo rm /var/lib/clickhouse/data/default/distributed_events/shard1/*.bin
+sudo rm /var/lib/clickhouse/data/default/distributed_events/shard1_replica1/*.bin
 sudo systemctl start clickhouse-server
 ```
 
@@ -111,10 +114,14 @@ Only do this if you are certain the data can be re-inserted from a source system
 
 ## Preventing Spool Overflow
 
-Set a maximum spool size to prevent disk exhaustion:
+Bound the async-insert queue with the Distributed engine's `bytes_to_throw_insert` and `bytes_to_delay_insert` settings so inserts are delayed or rejected before disk fills:
 
-```xml
-<max_distributed_connections>1024</max_distributed_connections>
+```sql
+CREATE TABLE distributed_events AS local_events
+ENGINE = Distributed(my_cluster, default, local_events, rand())
+SETTINGS
+    bytes_to_delay_insert = 1073741824,   -- 1 GiB: start delaying inserts
+    bytes_to_throw_insert = 10737418240;  -- 10 GiB: reject inserts
 ```
 
 Alert when spool files grow too large:
@@ -123,10 +130,10 @@ Alert when spool files grow too large:
 SELECT
     database,
     table,
-    host_name,
-    task_count
+    data_files,
+    data_compressed_bytes
 FROM system.distribution_queue
-WHERE task_count > 10000;
+WHERE data_files > 10000;
 ```
 
 ## Summary
