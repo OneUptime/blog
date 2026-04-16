@@ -27,7 +27,6 @@ ENGINE = MergeTree()
 ORDER BY (id, event_time)
 SETTINGS
     merge_with_ttl_timeout = 86400,
-    write_final_mark = 1,
     storage_policy = 'hot_cold';
 ```
 
@@ -57,7 +56,7 @@ Smaller values improve point lookup performance but increase index size. For tim
 
 ## min_rows_for_wide_part / min_bytes_for_wide_part
 
-Parts smaller than this threshold are stored in Compact format (one file per part) rather than Wide format (one file per column). Wide format is better for large analytical queries.
+Parts smaller than this threshold are stored in Compact format (a single data file for all columns) rather than Wide format (one file per column). Wide format is better for large analytical queries.
 
 ```sql
 SETTINGS
@@ -86,12 +85,12 @@ If you hit this limit, review your insert frequency and batching strategy.
 ## Parts Per Partition Limit
 
 ```sql
-SETTINGS parts_to_delay_insert = 150,
-         parts_to_throw_insert = 300;
+SETTINGS parts_to_delay_insert = 1000,
+         parts_to_throw_insert = 3000;
 ```
 
-- `parts_to_delay_insert`: starts slowing inserts when parts per partition exceed this
-- `parts_to_throw_insert`: throws an error when parts per partition exceed this
+- `parts_to_delay_insert`: starts slowing inserts when parts per partition exceed this (default 1000)
+- `parts_to_throw_insert`: throws an error when parts per partition exceed this (default 3000)
 
 ## TTL Settings
 
@@ -151,8 +150,8 @@ SETTINGS
     index_granularity             = 8192,
     min_rows_for_wide_part        = 10000,
     min_bytes_for_wide_part       = 10485760,
-    parts_to_delay_insert         = 150,
-    parts_to_throw_insert         = 300,
+    parts_to_delay_insert         = 1000,
+    parts_to_throw_insert         = 3000,
     max_parts_in_total            = 100000,
     ttl_only_drop_parts           = 1,
     merge_with_ttl_timeout        = 86400;
