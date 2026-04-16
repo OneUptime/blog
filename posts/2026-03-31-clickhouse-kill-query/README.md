@@ -51,10 +51,10 @@ Sample response:
 
 ```text
 kill_status | query_id                             | user    | query
-SENT        | a1b2c3d4-0000-0000-0000-000000000001 | analyst | SELECT region...
+waiting     | a1b2c3d4-0000-0000-0000-000000000001 | analyst | SELECT region...
 ```
 
-A `kill_status` of `SENT` means the signal was delivered. The query will stop as soon as ClickHouse reaches the next cancellation checkpoint in its execution.
+A `kill_status` of `waiting` means the cancel signal has been sent and ClickHouse is waiting for the query to stop at the next cancellation checkpoint in its execution. Once the query actually stops, the status becomes `finished`.
 
 ## SYNC vs ASYNC Kill
 
@@ -104,9 +104,9 @@ KILL QUERY WHERE elapsed > 60 TEST;
 ```
 
 ```text
-kill_status | query_id                             | user    | query
-WOULD KILL  | a1b2c3d4-0000-0000-0000-000000000001 | analyst | SELECT ...
-WOULD KILL  | b9c0d1e2-0000-0000-0000-000000000002 | etl     | INSERT ...
+kill_status    | query_id                             | user    | query
+unknown_status | a1b2c3d4-0000-0000-0000-000000000001 | analyst | SELECT ...
+unknown_status | b9c0d1e2-0000-0000-0000-000000000002 | etl     | INSERT ...
 ```
 
 `TEST` is invaluable when writing a broad WHERE clause - always preview first to avoid accidentally killing production ETL jobs.
@@ -141,9 +141,11 @@ fi
 
 | Status | Meaning |
 |--------|---------|
-| `SENT` | Kill signal sent, query will stop at next checkpoint |
-| `KILLED` | Query was already stopped by the time KILL ran |
-| `CANT_KILL_SYSTEM` | Cannot kill system processes |
+| `finished` | Query has finished (either terminated successfully or was no longer running by the time KILL ran) |
+| `waiting` | Cancel signal has been sent, waiting for the query to stop at its next checkpoint |
+| `pending` | Query has not started executing yet (not initialized) |
+| `cant_cancel` | Cancel signal cannot be sent for this query |
+| `unknown_status` | Returned when `TEST` mode is used (no signal is actually sent) |
 
 ## Summary
 
