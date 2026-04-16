@@ -94,7 +94,7 @@ SELECT * FROM feature_flags WHERE flag_name = 'new_feature';
 
 ```sql
 -- View all KeeperMap paths
-SELECT path, data_length
+SELECT name, path, dataLength
 FROM system.zookeeper
 WHERE path = '/clickhouse/feature_flags';
 ```
