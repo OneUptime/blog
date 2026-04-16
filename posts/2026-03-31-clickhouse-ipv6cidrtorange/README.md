@@ -8,7 +8,7 @@ Description: Learn how IPv6CIDRToRange() returns the first and last address of a
 
 ---
 
-`IPv6CIDRToRange(ip, prefix_length)` takes an IPv6 address (as `IPv6` or `FixedString(16)`) and a prefix length (0-128) and returns a `Tuple(IPv6, IPv6)` containing the first and last address of the corresponding CIDR prefix. This is the IPv6 equivalent of `IPv4CIDRToRange()` and works identically in structure, enabling subnet membership tests, prefix matching, and CIDR-based lookup tables for IPv6 traffic.
+`IPv6CIDRToRange(ip, prefix_length)` takes an IPv6 address (as `IPv6` or `String`) and a prefix length (`UInt8`, 0-128) and returns a `Tuple(IPv6, IPv6)` containing the first and last address of the corresponding CIDR prefix. This is the IPv6 equivalent of `IPv4CIDRToRange()` and works identically in structure, enabling subnet membership tests, prefix matching, and CIDR-based lookup tables for IPv6 traffic.
 
 ## Basic Usage
 
@@ -130,16 +130,12 @@ LIMIT 30;
 ```sql
 -- How many unique /48 prefixes appear in traffic (ISP-level granularity)?
 SELECT
-    IPv6NumToString(
-        IPv6StringToNum(client_ip)
-        -- zero out the last 80 bits to get the /48 prefix
-    )                                        AS prefix_48,
-    IPv6CIDRToRange(toIPv6(client_ip), 48).1 AS first_in_48,
+    IPv6CIDRToRange(toIPv6(client_ip), 48).1 AS prefix_48,
     count()                                  AS requests,
     uniq(client_ip)                          AS unique_addresses
 FROM ipv6_access_logs
 WHERE toDate(ts) = yesterday()
-GROUP BY prefix_48, first_in_48
+GROUP BY prefix_48
 ORDER BY requests DESC
 LIMIT 20;
 ```
