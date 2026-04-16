@@ -42,7 +42,7 @@ ORDER BY order_count DESC;
 
 ## RIGHT JOIN
 
-A `RIGHT JOIN` returns all rows from the right table plus matching rows from the left table. ClickHouse supports this but recommends rewriting as a `LEFT JOIN` with swapped tables for better performance, since the left table drives the hash table build in the default hash join algorithm.
+A `RIGHT JOIN` returns all rows from the right table plus matching rows from the left table. ClickHouse supports this, though it is often rewritten as a `LEFT JOIN` with swapped tables. In the default hash join algorithm, the right table drives the hash table build regardless of join direction, so put the smaller table on the right when possible.
 
 ```sql
 SELECT
@@ -51,7 +51,7 @@ SELECT
 FROM orders AS o
 RIGHT JOIN users AS u ON o.user_id = u.user_id;
 
--- Equivalent and often faster as:
+-- Equivalent rewrite as a LEFT JOIN with swapped tables:
 SELECT
     o.order_id,
     u.name AS customer_name
