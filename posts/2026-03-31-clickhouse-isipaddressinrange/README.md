@@ -8,7 +8,7 @@ Description: Learn how isIPAddressInRange() checks whether an IPv4 or IPv6 addre
 
 ---
 
-`isIPAddressInRange(address, prefix)` returns `1` when the string `address` falls within the CIDR `prefix`, and `0` otherwise. Both arguments are strings. The function handles IPv4 and IPv6 transparently - you do not need to convert to a native type first. It is null-safe: if either argument is NULL the result is `0`. This makes it ideal for network-aware filtering directly inside SQL without writing bitwise arithmetic by hand.
+`isIPAddressInRange(address, prefix)` returns `1` when the string `address` falls within the CIDR `prefix`, and `0` otherwise. Both arguments are strings. The function handles IPv4 and IPv6 transparently - you do not need to convert to a native type first. If the IP version of the address and the CIDR don't match (e.g. an IPv6 address against an IPv4 CIDR), the result is `0`. This makes it ideal for network-aware filtering directly inside SQL without writing bitwise arithmetic by hand.
 
 ## Basic Usage
 
@@ -148,15 +148,16 @@ INSERT INTO tor_exit_ranges VALUES
     ('185.220.101.0/24'),
     ('104.244.72.0/21');
 
-SELECT
+-- ClickHouse does not support correlated subqueries (the inner query
+-- cannot reference outer columns), so use an INNER JOIN with the
+-- function in the ON clause to match each request against any CIDR.
+SELECT DISTINCT
     l.event_time,
     l.client_ip,
     l.request_path
 FROM access_logs l
-WHERE exists(
-    SELECT 1 FROM tor_exit_ranges t
-    WHERE isIPAddressInRange(l.client_ip, t.cidr)
-)
+INNER JOIN tor_exit_ranges t
+    ON isIPAddressInRange(l.client_ip, t.cidr)
 ORDER BY l.event_time DESC
 LIMIT 20;
 ```
