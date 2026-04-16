@@ -62,7 +62,7 @@ Consider a scenario where users can have multiple roles, each with a bitmask of 
 CREATE TABLE role_permissions (
     user_id UInt32,
     role    String,
-    perms   UInt64
+    perms   UInt8
 ) ENGINE = MergeTree()
 ORDER BY user_id;
 
