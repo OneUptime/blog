@@ -45,7 +45,7 @@ Key columns:
 - `event_time` - when the sample was taken
 - `query_id` - the query being profiled
 - `thread_id` - OS thread ID
-- `trace_type` - `Real`, `CPU`, `Memory`, `MemorySample`, `MemoryPeak`
+- `trace_type` - `Real`, `CPU`, `Memory`, `MemorySample`, `MemoryPeak`, `ProfileEvent`
 - `trace` - array of memory addresses representing the call stack
 - `size` - memory size (for memory trace types)
 
