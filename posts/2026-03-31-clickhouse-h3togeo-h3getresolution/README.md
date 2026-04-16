@@ -24,7 +24,7 @@ graph LR
     A[H3 Resolution] --> B[0 - global cells ~1000km]
     A --> C[5 - city districts ~252km2]
     A --> D[9 - city blocks ~0.1km2]
-    A --> E[12 - building level ~0.3m2]
+    A --> E[12 - building level ~300m2]
     A --> F[15 - 1m2 precision]
 ```
 
@@ -41,14 +41,14 @@ h3GetResolution(h3_index)
 
 ```sql
 SELECT
-    h3ToGeo(644325524701716479) AS cell_center,
-    tupleElement(h3ToGeo(644325524701716479), 1) AS lat,
-    tupleElement(h3ToGeo(644325524701716479), 2) AS lon;
+    h3ToGeo(617733151020810239) AS cell_center,
+    tupleElement(h3ToGeo(617733151020810239), 1) AS lat,
+    tupleElement(h3ToGeo(617733151020810239), 2) AS lon;
 ```
 
 ```text
 cell_center                   lat              lon
-(40.689167,  -74.044444)      40.689167        -74.044444
+(40.712378,  -74.005643)      40.712378        -74.005643
 ```
 
 ### Getting the Resolution of an H3 Index
@@ -58,15 +58,15 @@ SELECT
     h3_index,
     h3GetResolution(h3_index) AS resolution
 FROM (
-    SELECT 644325524701716479 AS h3_index UNION ALL
-    SELECT 617733204307009535 AS h3_index
+    SELECT 617733151020810239 AS h3_index UNION ALL
+    SELECT 599718752904282111 AS h3_index
 );
 ```
 
 ```text
 h3_index             resolution
-644325524701716479   9
-617733204307009535   5
+617733151020810239   9
+599718752904282111   5
 ```
 
 ### Converting H3 Index to Geo Using geoToH3 Inverse
@@ -75,21 +75,21 @@ To work with H3 indexes in ClickHouse you typically generate them with `geoToH3(
 
 ```sql
 SELECT
-    geoToH3(lon, lat, 9)   AS h3_index,
-    h3GetResolution(geoToH3(lon, lat, 9)) AS res,
-    tupleElement(h3ToGeo(geoToH3(lon, lat, 9)), 1) AS cell_lat,
-    tupleElement(h3ToGeo(geoToH3(lon, lat, 9)), 2) AS cell_lon
+    geoToH3(lat, lon, 9)   AS h3_index,
+    h3GetResolution(geoToH3(lat, lon, 9)) AS res,
+    tupleElement(h3ToGeo(geoToH3(lat, lon, 9)), 1) AS cell_lat,
+    tupleElement(h3ToGeo(geoToH3(lat, lon, 9)), 2) AS cell_lon
 FROM (
-    SELECT -74.0060 AS lon, 40.7128 AS lat  -- New York
+    SELECT 40.7128 AS lat, -74.0060 AS lon  -- New York
     UNION ALL
-    SELECT -87.6298 AS lon, 41.8781 AS lat  -- Chicago
+    SELECT 41.8781 AS lat, -87.6298 AS lon  -- Chicago
 );
 ```
 
 ```text
-h3_index             res  cell_lat    cell_lon
-8a2a100d2937fff      9    40.71...    -74.00...
-8a2a5901b22ffff      9    41.87...    -87.62...
+h3_index               res  cell_lat    cell_lon
+617733151020810239     9    40.71...    -74.00...
+617668575952371711     9    41.87...    -87.62...
 ```
 
 ### Complete Working Example
@@ -107,11 +107,11 @@ CREATE TABLE delivery_events
 ORDER BY delivery_id;
 
 INSERT INTO delivery_events VALUES
-    (1, geoToH3(-74.0060, 40.7128, 9), 'delivered', 101),
-    (2, geoToH3(-74.0060, 40.7128, 9), 'delivered', 102),
-    (3, geoToH3(-73.9857, 40.7484, 9), 'failed',    101),
-    (4, geoToH3(-73.9857, 40.7484, 9), 'delivered', 103),
-    (5, geoToH3(-73.9442, 40.6782, 9), 'delivered', 104);
+    (1, geoToH3(40.7128, -74.0060, 9), 'delivered', 101),
+    (2, geoToH3(40.7128, -74.0060, 9), 'delivered', 102),
+    (3, geoToH3(40.7484, -73.9857, 9), 'failed',    101),
+    (4, geoToH3(40.7484, -73.9857, 9), 'delivered', 103),
+    (5, geoToH3(40.6782, -73.9442, 9), 'delivered', 104);
 
 SELECT
     h3_cell,
@@ -126,10 +126,10 @@ ORDER BY total_deliveries DESC;
 ```
 
 ```text
-h3_cell               resolution  center_lat   center_lon   total  successful
-8a2a100d2937fff       9           40.712...    -74.005...   2      2
-8a2a100820b7fff       9           40.748...    -73.986...   2      1
-8a2a1008522ffff       9           40.678...    -73.944...   1      1
+h3_cell                resolution  center_lat   center_lon   total  successful
+617733151020810239     9           40.712...    -74.005...   2      2
+617733123812622335     9           40.749...    -73.985...   2      1
+617733123959160831     9           40.677...    -73.944...   1      1
 ```
 
 ## Summary
