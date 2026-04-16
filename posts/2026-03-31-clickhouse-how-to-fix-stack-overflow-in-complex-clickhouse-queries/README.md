@@ -13,7 +13,7 @@ Description: Learn how to diagnose and fix stack overflow errors in ClickHouse c
 A stack overflow in ClickHouse occurs when query evaluation exhausts the thread's call stack. The error looks like:
 
 ```text
-DB::Exception: Stack overflow. (TOO_DEEP_RECURSION)
+DB::Exception: Stack size too large. Stack address: 0x..., frame address: 0x..., stack size: ..., maximum stack size: ... (TOO_DEEP_RECURSION)
 ```
 
 Unlike typical stack overflows in application code, this one is triggered inside ClickHouse's query processing pipeline, usually by:
@@ -62,15 +62,25 @@ SELECT
 FROM my_table;
 ```
 
-## Fix 1 - Increase Stack Size for ClickHouse Threads
+## Fix 1 - Adjust Recursion-Related Query Limits
 
-In `/etc/clickhouse-server/config.xml`, increase the thread stack size:
+ClickHouse does not expose the OS thread stack size through `config.xml`; that is controlled by the OS/ulimit. What you can tune are the per-query limits that govern how deep the parser and AST can recurse before ClickHouse raises `TOO_DEEP_RECURSION`. Lowering these is often the right call to fail fast on pathological queries; raising them can provide headroom for legitimately complex ones.
+
+```sql
+-- Session-level overrides (defaults: max_parser_depth=1000, max_ast_depth=1000)
+SET max_parser_depth = 2000;
+SET max_ast_depth = 2000;
+```
+
+You can also set these as defaults in `users.xml` under a profile:
 
 ```xml
-<max_thread_pool_size>100</max_thread_pool_size>
-<thread_pool_queue_size>10000</thread_pool_queue_size>
-<!-- Increase stack size per thread (in bytes) -->
-<thread_stack_size>8388608</thread_stack_size>
+<profiles>
+    <default>
+        <max_parser_depth>2000</max_parser_depth>
+        <max_ast_depth>2000</max_ast_depth>
+    </default>
+</profiles>
 ```
 
 ## Fix 2 - Break UNION ALL Into Batches
@@ -142,11 +152,11 @@ SELECT
     exception,
     query
 FROM system.query_log
-WHERE exception_code = 307 -- TOO_DEEP_RECURSION
+WHERE exception_code = 306 -- TOO_DEEP_RECURSION
   AND event_time > now() - INTERVAL 7 DAY
 ORDER BY event_time DESC;
 ```
 
 ## Summary
 
-Stack overflow errors in ClickHouse arise from deeply recursive query structures that exhaust thread stack space during planning or execution. The best fixes are structural: replace massive UNION ALL chains with Distributed tables, rewrite recursive CTEs using window functions, and break nested lambda chains into CTE steps. Increasing `thread_stack_size` in `config.xml` provides short-term relief but does not address the underlying query complexity.
+Stack overflow errors in ClickHouse arise from deeply recursive query structures that exhaust thread stack space during planning or execution. The best fixes are structural: replace massive UNION ALL chains with Distributed tables, rewrite recursive CTEs using window functions, and break nested lambda chains into CTE steps. Tuning `max_parser_depth` and `max_ast_depth` can provide short-term relief but does not address the underlying query complexity.
