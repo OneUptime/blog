@@ -19,7 +19,7 @@ composer require smi2/phpclickhouse
 Or use the Laravel-specific wrapper:
 
 ```bash
-composer require glprlabs/laravel-clickhouse
+composer require bavix/laravel-clickhouse
 ```
 
 ## Configuring the Connection
