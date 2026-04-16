@@ -53,7 +53,7 @@ SELECT
 ```text
 zero_hex | ten_hex | ff_hex | ffff_hex
 ---------+---------+--------+---------
-0        | A       | FF     | FFFF
+00       | 0A      | FF     | FFFF
 ```
 
 ### String to Hex
@@ -93,7 +93,7 @@ hello   | 436C69636B486F757365
 
 ### Integer to Binary
 
-`bin()` converts an integer to a string of `0` and `1` digits. The output length varies with the value.
+`bin()` converts an integer to a string of `0` and `1` digits. ClickHouse always prints eight digits per byte (omitting leading zero bytes), so the output length is a multiple of 8.
 
 ```sql
 SELECT
@@ -104,9 +104,9 @@ SELECT
 ```
 
 ```text
-zero_bin | one_bin | five_bin | ff_bin
----------+---------+----------+----------
-0        | 1       | 101      | 11111111
+zero_bin | one_bin  | five_bin | ff_bin
+---------+----------+----------+----------
+00000000 | 00000001 | 00000101 | 11111111
 ```
 
 ### String to Binary
@@ -209,7 +209,7 @@ Function | Input         | Output format     | Output for value 65
 ---------+---------------+-------------------+--------------------
 hex()    | Int/String    | Uppercase hex     | 41
 unhex()  | Hex string    | Binary String     | A
-bin()    | Int/String    | Binary digits     | 1000001
+bin()    | Int/String    | Binary digits     | 01000001
 unbin()  | Binary string | Binary String     | A
 ```
 
