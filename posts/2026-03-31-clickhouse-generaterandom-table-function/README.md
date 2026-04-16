@@ -22,7 +22,7 @@ LIMIT 5;
 
 ```text
 ┌─────────id─┬─name────────────────┬────────────────score─┐
-│ 2823761841 │ iqXGmabKzjRLxm      │   0.4923812347961426 │
+│ 2823761841 │ iqXGmabKzj          │   0.4923812347961426 │
 │ 3172894563 │ wVpQRts             │   0.8734219834289103 │
 │  891234567 │ HkLmNoPqRs          │  -1.2938471029384756 │
 │ 1049283746 │ TuVwXyZaB           │   2.1847392847391023 │
@@ -176,7 +176,7 @@ SELECT 'v2',            count() FROM logs_v2;
 
 ## Generating Date Ranges
 
-For time-series tests, combine `generateRandom()` with `number()` for controlled timestamps:
+For time-series tests, use the `numbers()` table function for controlled timestamps:
 
 ```sql
 SELECT
@@ -194,7 +194,7 @@ ORDER BY ts;
 ```sql
 SELECT
     user_id,
-    -- Map random UInt8 (0-255) to a small set of event types
+    -- Map a random UInt32 to a small set of event types
     ['click', 'view', 'purchase', 'signup'][1 + (rand() % 4)] AS event_type,
     -- Simulate timestamps within the last 30 days
     now() - toIntervalSecond(rand() % (30 * 86400)) AS ts,
