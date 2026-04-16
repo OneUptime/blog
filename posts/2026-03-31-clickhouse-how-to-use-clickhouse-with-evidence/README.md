@@ -21,29 +21,28 @@ npm run dev
 
 ## Connecting to ClickHouse
 
-Evidence supports ClickHouse natively. Add the connection in `evidence.plugins.yaml`:
-
-```text
-plugins:
-  datasources:
-    - name: clickhouse
-      package: "@evidence-dev/clickhouse"
-```
-
-Then configure `sources/clickhouse/connection.yaml`:
-
-```text
-host: localhost
-port: 8123
-database: default
-username: default
-password: ""
-```
-
-Install the plugin:
+Evidence supports ClickHouse via the community plugin `evidence-connector-clickhouse`. Install it:
 
 ```bash
-npm install @evidence-dev/clickhouse
+npm install evidence-connector-clickhouse
+```
+
+Register it in `evidence.plugins.yaml`:
+
+```text
+datasources:
+  evidence-connector-clickhouse: {}
+```
+
+Start the dev server and open `http://localhost:3000/settings` to add a source using the plugin, or write `sources/clickhouse/connection.yaml` directly:
+
+```text
+name: clickhouse
+type: evidence-connector-clickhouse
+options:
+  url: http://localhost:8123
+  username: default
+  password: ""
 ```
 
 ## Writing a Report in Markdown
@@ -92,9 +91,9 @@ ORDER BY day
 
 ## Using Query Parameters
 
-Evidence supports URL-based query parameters for filtering:
+Evidence supports URL-based query parameters on templated pages (e.g. `pages/[date]/index.md`). Reference them in SQL with `${params.name}`:
 
-```text
+````text
 ```sql filtered_events
 SELECT
     event_type,
@@ -103,7 +102,7 @@ FROM default.events
 WHERE toDate(created_at) = '${params.date}'
 GROUP BY event_type
 ```
-```bash
+````
 
 ## Building and Deploying
 
