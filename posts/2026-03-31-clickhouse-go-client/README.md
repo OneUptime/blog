@@ -25,6 +25,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -40,10 +41,10 @@ func main() {
 		Settings: clickhouse.Settings{
 			"max_execution_time": 60,
 		},
-		DialTimeout:      10,
+		DialTimeout:      10 * time.Second,
 		MaxOpenConns:     10,
 		MaxIdleConns:     5,
-		ConnMaxLifetime:  3600,
+		ConnMaxLifetime:  time.Hour,
 		Compression: &clickhouse.Compression{
 			Method: clickhouse.CompressionLZ4,
 		},
@@ -253,9 +254,12 @@ func openSQL() *sql.DB {
 ClickHouse supports asynchronous inserts where the server buffers small inserts and flushes them in batches:
 
 ```go
-err = conn.Exec(ctx,
+asyncCtx := clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+	"async_insert":          1,
+	"wait_for_async_insert": 0,
+}))
+err = conn.Exec(asyncCtx,
 	"INSERT INTO events VALUES (?, ?, ?, ?, ?)",
-	clickhouse.Settings{"async_insert": 1, "wait_for_async_insert": 0},
 	uuid.New(), uint64(1), "click", time.Now(), map[string]string{},
 )
 ```
