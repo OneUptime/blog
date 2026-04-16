@@ -81,13 +81,13 @@ When you know the exact format, use `parseDateTime`:
 
 ```sql
 -- Custom format: DD/MM/YYYY HH:MM:SS
-SELECT parseDateTime('15/01/2024 10:30:00', '%d/%m/%Y %H:%M:%S') AS ts;
+SELECT parseDateTime('15/01/2024 10:30:00', '%d/%m/%Y %H:%i:%s') AS ts;
 
 -- US format: MM-DD-YYYY
 SELECT parseDateTime('01-15-2024', '%m-%d-%Y') AS ts;
 
 -- RFC 2822 email format
-SELECT parseDateTime('01 Jan 2024 10:30:00', '%d %b %Y %H:%M:%S') AS ts;
+SELECT parseDateTime('01 Jan 2024 10:30:00', '%d %b %Y %H:%i:%s') AS ts;
 ```
 
 ## Fix 3 - Fix Timezone Issues
@@ -158,18 +158,18 @@ SETTINGS
 ## Common Format Reference
 
 ```sql
--- Format specifiers for parseDateTime:
+-- Format specifiers for parseDateTime (MySQL syntax):
 -- %Y - four-digit year
 -- %m - month (01-12)
 -- %d - day (01-31)
 -- %H - hour 24h (00-23)
--- %M - minute (00-59)
--- %S - second (00-59)
+-- %i - minute (00-59)
+-- %s - second (00-59)
 -- %e - day without leading zero (1-31)
 -- %b - abbreviated month name (Jan, Feb, ...)
--- %B - full month name (January, ...)
+-- %M - full month name (January, ...)
 
-SELECT formatDateTime(now(), '%d %b %Y %H:%M:%S') AS formatted;
+SELECT formatDateTime(now(), '%d %b %Y %H:%i:%s') AS formatted;
 ```
 
 ## Summary
