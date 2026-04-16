@@ -12,7 +12,7 @@ ClickHouse Keeper uses a Raft consensus log to record every operation. Over time
 
 Keeper creates a snapshot every `snapshot_distance` log entries. A snapshot is a complete serialization of the Keeper state tree at a point in time. After a snapshot is created, all log entries before that snapshot are no longer needed and can be deleted. On restart, Keeper loads the most recent snapshot and replays only the log entries after it.
 
-If `snapshot_distance` is too large, the log grows very large and restarts are slow. If it is too small, Keeper creates snapshots frequently, which uses CPU and I/O. The default of 1,000,000 entries is a good starting point.
+If `snapshot_distance` is too large, the log grows very large and restarts are slow. If it is too small, Keeper creates snapshots frequently, which uses CPU and I/O. The default is 100,000 entries, and 1,000,000 is a common starting point for busy clusters.
 
 ## Key Configuration Parameters
 
@@ -31,7 +31,7 @@ If `snapshot_distance` is too large, the log grows very large and restarts are s
             <!-- This allows lagging Raft followers to catch up without a full snapshot -->
             <reserved_log_items>1000000</reserved_log_items>
 
-            <!-- Rotate log storage every N snapshots -->
+            <!-- How many log records to store in a single changelog file -->
             <rotate_log_storage_interval>100000</rotate_log_storage_interval>
 
             <!-- Compress snapshots using ZSTD -->
@@ -163,15 +163,15 @@ clickhouse-keeper-client \
     --host keeper1.internal \
     --port 2181
 
-# Inside the client, issue a snapshot command
-> snapshot
-Snapshot created successfully
+# Inside the client, issue the csnp four-letter-word command via flwc
+> flwc csnp
+# Returns the last committed log index of the scheduled snapshot
 ```
 
-Or use the four-letter word command:
+Or use the four-letter word command directly:
 
 ```bash
-echo "snap" | nc keeper1.internal 2181
+echo "csnp" | nc keeper1.internal 2181
 ```
 
 ## Configuring Log-Level Rotation
