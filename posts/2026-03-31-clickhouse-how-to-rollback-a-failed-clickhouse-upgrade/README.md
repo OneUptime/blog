@@ -137,9 +137,10 @@ WHERE is_readonly = 1 OR active_replicas < total_replicas;
 SELECT
     database,
     table,
-    last_exception
+    last_queue_update_exception,
+    zookeeper_exception
 FROM system.replicas
-WHERE last_exception != '';
+WHERE last_queue_update_exception != '' OR zookeeper_exception != '';
 
 -- Verify part counts are healthy
 SELECT
