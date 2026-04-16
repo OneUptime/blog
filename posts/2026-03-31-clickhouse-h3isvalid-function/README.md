@@ -83,8 +83,8 @@ Calling `h3GetResolution()` on an invalid index returns undefined behavior, so a
 SELECT
     latitude,
     longitude,
-    geoToH3(longitude, latitude, 7) AS h3_index,
-    h3IsValid(geoToH3(longitude, latitude, 7)) AS valid
+    geoToH3(latitude, longitude, 7) AS h3_index,
+    h3IsValid(geoToH3(latitude, longitude, 7)) AS valid
 FROM raw_locations
 WHERE latitude BETWEEN -90 AND 90
   AND longitude BETWEEN -180 AND 180
