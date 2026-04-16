@@ -84,13 +84,13 @@ echo "UUID=$UUID /var/lib/clickhouse xfs defaults,noatime 0 2" | \
 
 ```bash
 # File descriptor limits
-cat > /etc/security/limits.d/clickhouse.conf << 'EOF'
+sudo tee /etc/security/limits.d/clickhouse.conf << 'EOF'
 clickhouse soft nofile 262144
 clickhouse hard nofile 262144
 EOF
 
 # Disable transparent huge pages
-cat > /etc/systemd/system/disable-thp.service << 'EOF'
+sudo tee /etc/systemd/system/disable-thp.service << 'EOF'
 [Unit]
 Description=Disable Transparent Huge Pages
 After=sysinit.target local-fs.target
@@ -102,6 +102,7 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
+sudo systemctl daemon-reload
 sudo systemctl enable --now disable-thp
 ```
 
