@@ -85,7 +85,7 @@ SELECT * FROM file('/data/events.csv', 'CSVWithNames');
 ### Fix 3 - Handle NULL and Missing Values
 
 ```sql
--- Allow empty strings to become NULL
+-- Treat empty CSV fields as column default values, and fill in defaults for omitted columns
 SET input_format_csv_empty_as_default = 1;
 SET input_format_defaults_for_omitted_fields = 1;
 
