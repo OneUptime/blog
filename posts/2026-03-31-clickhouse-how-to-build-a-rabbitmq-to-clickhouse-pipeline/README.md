@@ -54,6 +54,7 @@ ENGINE = RabbitMQ
 SETTINGS
     rabbitmq_host_port = 'rabbitmq.internal:5672',
     rabbitmq_exchange_name = 'analytics_events',
+    rabbitmq_exchange_type = 'topic',
     rabbitmq_format = 'JSONEachRow',
     rabbitmq_queue_base = 'clickhouse_events',
     rabbitmq_routing_key_list = 'events.purchase,events.click,events.view',
@@ -137,14 +138,11 @@ SELECT * FROM analytics.events WHERE user_id = 1001 ORDER BY event_time DESC LIM
 ## Monitoring the Pipeline
 
 ```sql
--- Check RabbitMQ consumer status
-SELECT
-    database,
-    table,
-    name,
-    value
-FROM system.kafka_consumers  -- use system.rabbitmq_consumers if available
-WHERE table = 'events_rabbitmq_source';
+-- Check RabbitMQ-related metrics (ClickHouse has no dedicated
+-- system.rabbitmq_consumers table; use system.metrics / system.events)
+SELECT metric, value
+FROM system.metrics
+WHERE metric LIKE '%RabbitMQ%';
 
 -- Monitor ingestion rate
 SELECT
@@ -159,8 +157,10 @@ ORDER BY minute;
 ## Handling Message Failures
 
 ```sql
--- Messages that fail to parse go to a dead-letter exchange
--- Configure error handling in the engine settings:
+-- Skip messages that fail to parse (up to N per block) instead of
+-- halting the consumer. For actual dead-letter routing, configure it
+-- on the RabbitMQ queue via rabbitmq_queue_settings_list
+-- (e.g. 'x-dead-letter-exchange=my-dlx').
 ALTER TABLE analytics.events_rabbitmq_source MODIFY SETTING
     rabbitmq_skip_broken_messages = 100;
 ```
