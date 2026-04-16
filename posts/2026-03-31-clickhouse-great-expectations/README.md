@@ -44,8 +44,11 @@ datasource = context.sources.add_sql(
 Expectations describe what valid data looks like. Here are common ones for a ClickHouse events table:
 
 ```python
-batch = datasource.add_table_asset("events").get_batch_request()
-validator = context.get_validator(batch_request=batch)
+batch = datasource.add_table_asset(name="events", table_name="events").build_batch_request()
+validator = context.get_validator(
+    batch_request=batch,
+    create_expectation_suite_with_name="events.warning"
+)
 
 # Column must exist and not be null
 validator.expect_column_to_exist("event_type")
