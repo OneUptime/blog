@@ -33,9 +33,9 @@ SELECT user_id, name, email FROM users FINAL ORDER BY user_id;
 
 `FINAL` can be expensive because it:
 
-- Forces a single-threaded merge of all parts
-- Reads all data and deduplicates in memory
-- Skips parallel query execution on multi-core machines
+- Applies merge logic across all relevant parts at query time
+- Reads more data and deduplicates in memory
+- May reduce effective parallelism compared to non-FINAL queries unless parallel FINAL settings are tuned
 
 Check the impact:
 
