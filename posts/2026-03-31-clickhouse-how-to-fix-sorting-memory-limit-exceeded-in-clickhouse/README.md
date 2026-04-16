@@ -25,13 +25,13 @@ Sorting is memory-intensive because ClickHouse must hold all rows being sorted i
 SELECT
     query_id,
     user,
-    formatReadableSize(peak_memory_usage) AS peak_mem,
+    formatReadableSize(memory_usage) AS peak_mem,
     query_duration_ms,
     left(query, 300) AS query_preview
 FROM system.query_log
-WHERE exception LIKE '%Sort%memory%'
+WHERE exception LIKE '%MEMORY_LIMIT_EXCEEDED%'
   AND event_time > now() - INTERVAL 24 HOUR
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
@@ -149,12 +149,11 @@ SELECT metric, value
 FROM system.metrics
 WHERE metric LIKE '%Sort%';
 
--- Monitor in metric_log
+-- Monitor memory tracking over time in metric_log
 SELECT
     event_time,
-    value
+    CurrentMetric_MemoryTracking AS memory_tracking
 FROM system.metric_log
-WHERE metric = 'MemoryTracking'
 ORDER BY event_time DESC
 LIMIT 100;
 ```
