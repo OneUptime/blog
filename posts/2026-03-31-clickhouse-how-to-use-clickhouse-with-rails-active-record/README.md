@@ -76,15 +76,20 @@ end
 Run it against the ClickHouse connection:
 
 ```bash
-rails db:migrate DATABASE=clickhouse
+rails db:migrate:clickhouse
 ```
 
 ## Defining the Model
 
+Create an abstract base class that connects to ClickHouse, then inherit concrete models from it:
+
 ```ruby
-class PageView < ApplicationRecord
+class ClickhouseRecord < ApplicationRecord
   self.abstract_class = true
   connects_to database: { writing: :clickhouse, reading: :clickhouse }
+end
+
+class PageView < ClickhouseRecord
 end
 ```
 
