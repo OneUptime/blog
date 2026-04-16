@@ -91,7 +91,7 @@ Or via S3:
 ```sql
 INSERT INTO logs.application_logs
 SELECT
-    parseDateTime64BestEffort(`@timestamp`) AS timestamp,
+    parseDateTimeBestEffort(`@timestamp`) AS timestamp,
     level,
     service,
     message,
@@ -133,14 +133,14 @@ LIMIT 100;
 
 Replace Logstash/Beats with Vector or Fluent Bit for direct ClickHouse ingestion:
 
-```text
-[SINK]
-Name clickhouse
-type clickhouse
-host localhost
-port 8123
-database logs
-table application_logs
+```toml
+[sinks.clickhouse]
+type = "clickhouse"
+inputs = ["my_source_id"]
+endpoint = "http://localhost:8123"
+database = "logs"
+table = "application_logs"
+compression = "gzip"
 ```
 
 ## Summary
