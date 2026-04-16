@@ -24,7 +24,7 @@ CREATE TABLE edges (
 
 ## Breadth-First Traversal with Recursive CTE
 
-ClickHouse supports recursive CTEs (as of version 23.9+):
+ClickHouse supports recursive CTEs (as of version 24.4+):
 
 ```sql
 WITH RECURSIVE traversal AS (
