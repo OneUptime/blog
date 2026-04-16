@@ -52,7 +52,7 @@ initContainers:
       - sh
       - -c
       - |
-        until nc -z clickhouse-keeper 2181; do
+        until nc -z clickhouse-keeper 9181; do
           echo "Waiting for ClickHouse Keeper..."
           sleep 2
         done
@@ -123,7 +123,7 @@ initContainers:
     command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
   - name: wait-for-keeper
     image: busybox:1.36
-    command: ["sh", "-c", "until nc -z clickhouse-keeper 2181; do sleep 2; done"]
+    command: ["sh", "-c", "until nc -z clickhouse-keeper 9181; do sleep 2; done"]
   - name: fix-permissions
     image: busybox:1.36
     command: ["sh", "-c", "chown -R 101:101 /var/lib/clickhouse"]
