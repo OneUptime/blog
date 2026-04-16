@@ -114,16 +114,30 @@ In `users.xml`:
 
 ## Step 6 - Connect with Client Certificate
 
+`clickhouse-client` does not expose direct CLI flags for client certificate files; the paths are supplied through the client's config file (e.g. `~/.clickhouse-client/config.xml` or a path passed with `--config-file`):
+
+```xml
+<config>
+    <openSSL>
+        <client>
+            <caConfig>ca-cert.pem</caConfig>
+            <certificateFile>client-cert.pem</certificateFile>
+            <privateKeyFile>client-key.pem</privateKeyFile>
+            <verificationMode>strict</verificationMode>
+            <loadDefaultCAFile>false</loadDefaultCAFile>
+        </client>
+    </openSSL>
+</config>
+```
+
+Then connect using `--secure`:
+
 ```bash
-# clickhouse-client with certificate
 clickhouse-client \
     --host clickhouse-server \
     --port 9440 \
     --secure \
     --user my_app \
-    --ssl-ca-cert-file ca-cert.pem \
-    --ssl-cert-file client-cert.pem \
-    --ssl-key-file client-key.pem \
     --query "SELECT currentUser()"
 ```
 
@@ -155,7 +169,7 @@ import { createClient } from '@clickhouse/client';
 import { readFileSync } from 'fs';
 
 const client = createClient({
-  host: 'https://clickhouse-server:8443',
+  url: 'https://clickhouse-server:8443',
   username: 'my_app',
   tls: {
     ca_cert: readFileSync('ca-cert.pem'),
