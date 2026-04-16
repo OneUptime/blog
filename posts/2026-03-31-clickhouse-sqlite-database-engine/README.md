@@ -89,11 +89,10 @@ ORDER BY events DESC;
 SQLite has a flexible type system. ClickHouse maps SQLite types as follows:
 
 ```text
-SQLite INTEGER  -> Int64
-SQLite REAL     -> Float64
+SQLite INTEGER  -> Int32
+SQLite REAL     -> Float32
 SQLite TEXT     -> String
 SQLite BLOB     -> String
-SQLite NULL     -> Nullable(String)
 ```
 
 Use CAST or conversion functions if you need more specific types:
