@@ -19,12 +19,12 @@ The global limit on simultaneously executing queries:
 <max_concurrent_queries>100</max_concurrent_queries>
 ```
 
-Or set per-user in a profile:
+Or limit per-user via `max_concurrent_queries_for_user` in a profile:
 
 ```xml
 <profiles>
   <analytics_team>
-    <max_concurrent_queries>10</max_concurrent_queries>
+    <max_concurrent_queries_for_user>10</max_concurrent_queries_for_user>
   </analytics_team>
 </profiles>
 ```
@@ -43,10 +43,10 @@ With this set, ClickHouse accepts up to `max_concurrent_queries + max_waiting_qu
 
 ## Waiting Timeout
 
-Queued queries that wait too long are automatically rejected:
+`queue_max_wait_ms` controls how long a client waits for a free slot when `max_concurrent_queries` is exceeded before the query is rejected (default 5000 ms):
 
 ```sql
-SET max_execution_time = 30; -- reject if queued + executing exceeds 30 seconds
+SET queue_max_wait_ms = 30000; -- wait up to 30 seconds for a slot
 ```
 
 ## Monitoring the Queue
@@ -61,7 +61,7 @@ FROM system.processes
 ORDER BY elapsed DESC;
 ```
 
-`system.processes` shows both executing and queued queries. Queued queries have zero `read_rows` and low `memory_usage`.
+`system.processes` shows currently executing queries. To observe queueing pressure, track the `Query` metric in `system.metrics` (executing count) alongside `system.events` for rejected or preempted queries.
 
 ## Queue Depth Metric
 
