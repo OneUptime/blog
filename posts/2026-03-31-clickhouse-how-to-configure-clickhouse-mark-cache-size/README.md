@@ -49,27 +49,17 @@ sudo systemctl restart clickhouse-server
 
 ## Monitoring Mark Cache Usage
 
-Check current cache usage from system metrics:
-
-```sql
-SELECT
-    metric,
-    value
-FROM system.metrics
-WHERE metric IN ('MarkCacheBytes', 'MarkCacheFiles')
-```
-
-Check hit/miss rates from asynchronous metrics:
+Check current cache usage (size in bytes and number of files) from asynchronous metrics:
 
 ```sql
 SELECT
     metric,
     value
 FROM system.asynchronous_metrics
-WHERE metric LIKE '%MarkCache%'
+WHERE metric IN ('MarkCacheBytes', 'MarkCacheFiles')
 ```
 
-Or from events (cumulative counters):
+Check hit/miss counts (cumulative since server start) from events:
 
 ```sql
 SELECT
