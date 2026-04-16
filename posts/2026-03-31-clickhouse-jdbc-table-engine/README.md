@@ -12,13 +12,15 @@ The JDBC table engine in ClickHouse creates a permanent named table that proxies
 
 ## Prerequisites
 
-The JDBC table engine requires the ClickHouse JDBC Bridge running as a separate process:
+The JDBC table engine requires the ClickHouse JDBC Bridge running as a separate process. By default it listens on port 9019:
 
 ```bash
-java -jar clickhouse-jdbc-bridge.jar --listen-host 0.0.0.0 --listen-port 9019
+java -jar clickhouse-jdbc-bridge-<version>-shaded.jar
 ```
 
-Configure your data source in the bridge's `datasources.json`:
+Bridge server settings (listen host/port, threads, etc.) are configured via `config/httpd.json` and `config/vertx.json` rather than command-line flags.
+
+Configure your data source as a JSON file under `config/datasources/`, for example `config/datasources/pg_prod.json`:
 
 ```text
 {
