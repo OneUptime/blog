@@ -27,7 +27,10 @@ After adding, existing rows need a back-fill to populate the new columns.
 
 ```sql
 -- Back-fill materialized columns for existing data
-OPTIMIZE TABLE events FINAL;
+ALTER TABLE events MATERIALIZE COLUMN user_id;
+ALTER TABLE events MATERIALIZE COLUMN duration_ms;
+ALTER TABLE events MATERIALIZE COLUMN status_code;
+ALTER TABLE events MATERIALIZE COLUMN country;
 ```
 
 ## Option 2: INSERT SELECT Migration
