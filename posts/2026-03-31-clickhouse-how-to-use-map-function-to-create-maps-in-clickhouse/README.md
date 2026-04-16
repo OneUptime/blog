@@ -23,7 +23,7 @@ The arguments alternate between keys and values. All keys must have the same typ
 
 ## Accessing Map Values
 
-Use bracket notation or `mapContains()` to access map values:
+Use bracket notation to access map values:
 
 ```sql
 SELECT
