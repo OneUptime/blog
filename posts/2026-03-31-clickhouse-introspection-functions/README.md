@@ -194,13 +194,16 @@ FROM system.stack_trace
 WHERE length(blocking_frames) > 0;
 ```
 
-## traceStack Function
+## Capturing the Current Thread Stack
 
-Generate a stack trace of the current execution context within a query:
+To capture the stack of the currently executing thread, join `system.stack_trace` against the thread id returned by the `tid()` introspection function:
 
 ```sql
 -- Capture a stack trace at query execution time
-SELECT traceStack() AS current_stack;
+SELECT
+    arrayMap(x -> demangle(addressToSymbol(x)), trace) AS current_stack
+FROM system.stack_trace
+WHERE thread_id = tid();
 ```
 
 ## Analyzing Memory Allocations
@@ -221,15 +224,14 @@ ORDER BY alloc_samples DESC
 LIMIT 20;
 ```
 
-## Using tcmalloc Introspection
+## Using Allocator Introspection
 
-ClickHouse uses tcmalloc (or jemalloc on some builds). Check allocator stats:
+ClickHouse uses jemalloc by default. Check allocator stats:
 
 ```sql
 SELECT metric, value
 FROM system.asynchronous_metrics
-WHERE metric LIKE '%tcmalloc%'
-   OR metric LIKE '%jemalloc%'
+WHERE metric LIKE '%jemalloc%'
 ORDER BY metric;
 ```
 
