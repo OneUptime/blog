@@ -58,20 +58,20 @@ SELECT histogram(10)(amount) AS buckets
 FROM orders;
 ```
 
-## Unpacking Buckets with arrayJoin
+## Unpacking Buckets with ARRAY JOIN
 
-`arrayJoin` turns each tuple in the array into a separate row, making the histogram easy to read and filter:
+`ARRAY JOIN` turns each tuple in the array into a separate row, making the histogram easy to read and filter. Alias the element and access the tuple fields by position with `.1`, `.2`, `.3`:
 
 ```sql
 SELECT
-    round(lower, 2)  AS bucket_start,
-    round(upper, 2)  AS bucket_end,
-    round(height)    AS count
+    round(bucket.1, 2) AS bucket_start,
+    round(bucket.2, 2) AS bucket_end,
+    round(bucket.3)    AS count
 FROM (
     SELECT histogram(10)(amount) AS h
     FROM orders
 )
-ARRAY JOIN h AS (lower, upper, height)
+ARRAY JOIN h AS bucket
 ORDER BY bucket_start;
 ```
 
@@ -86,22 +86,12 @@ bucket_start | bucket_end | count
 
 ## Rendering an ASCII Bar with sparkBar
 
-Combine `histogram` with `sparkBar` for a fully in-SQL visual distribution:
+Combine `histogram` with `sparkBar` for a fully in-SQL visual distribution. `sparkBar(buckets)(x, y)` expects one row per x-bucket with `y` as the frequency, so we pair a row from `numbers(20)` with the corresponding bucket height:
 
 ```sql
-WITH
-    histogram(20)(amount) AS h,
-    arrayMap(t -> t.3, h) AS heights,
-    arrayMax(heights)     AS max_h
-SELECT
-    sparkBar(20, 0, toUInt64(max_h))(
-        toUInt64(arrayElement(heights, number + 1)),
-        toUInt64(arrayElement(heights, number + 1))
-    ) AS distribution
-FROM (
-    SELECT histogram(20)(amount) AS h FROM orders
-),
-numbers(20);
+WITH (SELECT histogram(20)(amount) FROM orders) AS h
+SELECT sparkBar(20)(number + 1, toUInt64(round(h[number + 1].3))) AS distribution
+FROM numbers(20);
 ```
 
 ## Filtering and Comparing Groups
@@ -121,7 +111,7 @@ This returns one histogram array per day, useful for detecting shifts in order-v
 
 - `lower` and `upper` define the bucket interval `[lower, upper)`.
 - `height` is an approximation; for small datasets the values are exact, but for large datasets they reflect the streaming histogram algorithm's estimate.
-- The adaptive algorithm concentrates buckets where the data is densest, so bucket widths vary - unlike `bar()` which uses fixed-width bins.
+- The adaptive algorithm concentrates buckets where the data is densest, so bucket widths vary - unlike manual fixed-width bucketing (e.g. `floor((x - min_x) / bucket_width)` with `GROUP BY`).
 
 ## Summary
 
