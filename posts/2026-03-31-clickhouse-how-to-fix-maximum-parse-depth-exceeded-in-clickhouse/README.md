@@ -13,7 +13,7 @@ Description: Fix the ClickHouse 'Maximum parse depth exceeded' error by understa
 ClickHouse raises this error when it tries to parse a query whose abstract syntax tree (AST) exceeds the allowed nesting depth:
 
 ```text
-DB::Exception: Maximum parse depth (2000) exceeded. Consider refactoring the query. (TOO_DEEP_RECURSION)
+DB::Exception: Maximum parse depth (1000) exceeded. Consider rising max_parser_depth parameter. (TOO_DEEP_RECURSION)
 ```
 
 This most commonly happens with:
@@ -42,7 +42,7 @@ Auto-generated queries from BI tools often produce hundreds of nesting levels.
 
 ## Fix 1 - Increase the Parse Depth Limit
 
-The default max parse depth is 2000. You can increase it at the session or server level:
+The default max parse depth is 1000. You can increase it at the session or server level:
 
 ```sql
 -- Temporarily raise the limit for this session
