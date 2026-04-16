@@ -31,6 +31,7 @@ integration-tests:
     - name: clickhouse/clickhouse-server:24.3
       alias: clickhouse
   before_script:
+    - apt-get update -q && apt-get install -y --no-install-recommends wget
     - pip install -q -r requirements.txt
     - |
       echo "Waiting for ClickHouse..."
@@ -57,6 +58,7 @@ integration-tests:
 .integration-base:
   stage: test
   before_script:
+    - apt-get update -q && apt-get install -y --no-install-recommends wget
     - pip install -q -r requirements.txt
     - until wget -qO- http://clickhouse:8123/ping; do sleep 2; done
   script:
@@ -80,12 +82,12 @@ test-clickhouse-24-8:
 ```yaml
 schema-validation:
   stage: test
+  image: clickhouse/clickhouse-server:24.3
   services:
     - name: clickhouse/clickhouse-server:24.3
       alias: clickhouse
   before_script:
-    - apt-get update -q && apt-get install -y clickhouse-client
-    - until wget -qO- http://clickhouse:8123/ping; do sleep 2; done
+    - until clickhouse-client --host clickhouse --query "SELECT 1" >/dev/null 2>&1; do sleep 2; done
   script:
     - |
       for f in $(ls migrations/*.sql | sort); do
