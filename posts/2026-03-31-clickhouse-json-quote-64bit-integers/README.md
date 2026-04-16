@@ -95,8 +95,8 @@ The setting applies to these ClickHouse types:
 |------|----------|
 | `UInt64` | Yes |
 | `Int64` | Yes |
-| `UInt128`, `UInt256` | Yes (always quoted regardless) |
-| `Int128`, `Int256` | Yes (always quoted regardless) |
+| `UInt128`, `UInt256` | Yes |
+| `Int128`, `Int256` | Yes |
 | `UInt8` to `UInt32` | No - safe in JavaScript |
 | `Int8` to `Int32` | No - safe in JavaScript |
 
