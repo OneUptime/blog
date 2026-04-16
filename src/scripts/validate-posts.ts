@@ -14,6 +14,21 @@ const BLOGS_JSON = 'Blogs.json';
 const POSTS_DIR = 'posts';
 const VALIDATION_JSON = 'validation.json';
 const VALIDATION_SUMMARY_MD = 'validation-summary.md';
+const USAGE_LIMIT_SLEEP_MS = 30 * 60 * 1000;
+
+function isUsageLimitOutput(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    t.includes('usage limit reached') ||
+    t.includes('claude ai usage limit') ||
+    t.includes('claude usage limit') ||
+    t.includes('5-hour limit') ||
+    t.includes('weekly limit') ||
+    t.includes('quota exceeded') ||
+    /api error:\s*rate limit/.test(t) ||
+    /rate[- ]limit(ed| reached| exceeded)/.test(t)
+  );
+}
 
 function getPrompt(postSlug: string, postContent: string, title: string, tags: string[]): string {
   return `You are a technical reviewer for a software engineering blog. Your job is to review a blog post for technical accuracy and correctness, then create a validation.json file.
@@ -163,6 +178,33 @@ async function main(): Promise<void> {
     return commitLock;
   }
 
+  // Shared across workers: when the Claude CLI reports a usage/rate limit,
+  // we pause all workers until this timestamp before any of them tries again.
+  let pauseUntilTs = 0;
+  let pauseAnnounced = false;
+
+  async function waitForPause(): Promise<void> {
+    while (Date.now() < pauseUntilTs) {
+      const remaining = pauseUntilTs - Date.now();
+      await new Promise((r) => setTimeout(r, Math.min(remaining, 60_000)));
+    }
+  }
+
+  function triggerUsageLimitPause(blogPost: string): void {
+    const waitUntil = Date.now() + USAGE_LIMIT_SLEEP_MS;
+    if (waitUntil > pauseUntilTs) {
+      pauseUntilTs = waitUntil;
+      pauseAnnounced = false;
+    }
+    if (!pauseAnnounced) {
+      pauseAnnounced = true;
+      const resumeAt = new Date(pauseUntilTs).toLocaleTimeString();
+      console.log(`\n[USAGE LIMIT] ${blogPost}: Claude hit a usage/rate limit. Sleeping 30 minutes; resuming at ${resumeAt}.`);
+    } else {
+      console.log(`\n[USAGE LIMIT] ${blogPost}: will retry after the shared 30-minute pause.`);
+    }
+  }
+
   function updateProgress(): void {
     const percent = Math.round((completed / total) * 100);
     const barWidth = 30;
@@ -171,16 +213,16 @@ async function main(): Promise<void> {
     process.stdout.write(`\r${bar} ${percent}% (${completed}/${total})`);
   }
 
-  function validatePost(blog: BlogEntry): Promise<void> {
+  type AttemptResult = 'done' | 'usage-limit';
+
+  function runValidationAttempt(blog: BlogEntry): Promise<AttemptResult> {
     return new Promise((resolve) => {
       const postDir = path.join(POSTS_DIR, blog.post);
       const readmePath = path.join(postDir, 'README.md');
 
       if (!fs.existsSync(readmePath)) {
         console.log(`\n[SKIP] ${blog.post}: README.md not found`);
-        completed++;
-        updateProgress();
-        resolve();
+        resolve('done');
         return;
       }
 
@@ -218,6 +260,20 @@ async function main(): Promise<void> {
       child.on('close', (code) => {
         clearTimeout(timeout);
 
+        const validationPath = path.join(postDir, VALIDATION_JSON);
+        const validationWritten = fs.existsSync(validationPath);
+
+        // If Claude exited without writing validation.json and the output looks
+        // like a usage/rate limit, signal a retry so the shared pause kicks in.
+        if (
+          engine === 'claude' &&
+          !validationWritten &&
+          isUsageLimitOutput(stdoutData + '\n' + stderrData)
+        ) {
+          resolve('usage-limit');
+          return;
+        }
+
         if (code !== 0) {
           console.log(`\n[FAIL] ${blog.post}: ${cmd} exited with code ${code}`);
           if (stderrData.trim()) {
@@ -228,8 +284,7 @@ async function main(): Promise<void> {
           }
         }
 
-        const validationPath = path.join(postDir, VALIDATION_JSON);
-        if (fs.existsSync(validationPath)) {
+        if (validationWritten) {
           withCommitLock(() => {
             const addResult = spawnSync('git', ['add', postDir], { cwd: process.cwd() });
             if (addResult.status !== 0) {
@@ -242,28 +297,36 @@ async function main(): Promise<void> {
               console.log(`\n[GIT ERROR] ${blog.post}: git commit failed (code ${commitResult.status})`);
             }
           }).then(() => {
-            completed++;
-            updateProgress();
-            resolve();
+            resolve('done');
           });
         } else {
           if (code === 0) {
             console.log(`\n[FAIL] ${blog.post}: ${cmd} succeeded but validation.json was not created`);
           }
-          completed++;
-          updateProgress();
-          resolve();
+          resolve('done');
         }
       });
 
       child.on('error', (err) => {
         clearTimeout(timeout);
         console.log(`\n[ERROR] ${blog.post}: ${err.message}`);
-        completed++;
-        updateProgress();
-        resolve();
+        resolve('done');
       });
     });
+  }
+
+  async function validatePost(blog: BlogEntry): Promise<void> {
+    while (true) {
+      await waitForPause();
+      const result = await runValidationAttempt(blog);
+      if (result === 'usage-limit') {
+        triggerUsageLimitPause(blog.post);
+        continue;
+      }
+      break;
+    }
+    completed++;
+    updateProgress();
   }
 
   updateProgress();
