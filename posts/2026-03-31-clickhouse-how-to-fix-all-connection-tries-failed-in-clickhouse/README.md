@@ -99,10 +99,10 @@ If a shard address changed (e.g., after a migration), update `config.xml`:
 </remote_servers>
 ```
 
-Reload the config without restart:
+Reload the config without restart. ClickHouse automatically picks up config file changes (polled every `config_reload_interval_ms`, default 2000ms), or you can trigger a reload explicitly:
 
-```bash
-kill -HUP $(pidof clickhouse-server)
+```sql
+SYSTEM RELOAD CONFIG;
 ```
 
 ### Fix 3 - Allow Partial Distributed Query Execution
@@ -151,12 +151,12 @@ iptables -A INPUT -p tcp --dport 9000 -s clickhouse-coordinator.internal -j ACCE
 -- Track connection failures over time
 SELECT
     toStartOfHour(event_time) AS hour,
-    host_name,
+    hostname,
     count() AS errors
 FROM system.query_log
 WHERE exception LIKE '%connection%failed%'
   AND event_time > now() - INTERVAL 24 HOUR
-GROUP BY hour, host_name
+GROUP BY hour, hostname
 ORDER BY hour, errors DESC;
 ```
 
