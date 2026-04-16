@@ -91,7 +91,7 @@ FROM (
         state,
         dateDiff('second', ts, lead(ts) OVER (PARTITION BY equipment_id ORDER BY ts)) AS run_duration
     FROM machine_states
-    WHERE ts >= (SELECT * FROM shift_start) AND ts < (SELECT * FROM shift_end)
+    WHERE ts >= (SELECT * FROM shift_start) AND ts <= (SELECT * FROM shift_end)
       AND equipment_id = 1
 )
 GROUP BY equipment_id;
@@ -109,16 +109,21 @@ WITH
             7.5 * 3600 AS planned_production_time_sec,  -- 7.5h planned
             3.0 AS ideal_cycle_time_sec  -- 3 seconds per unit
     ),
-    run_time AS (
+    state_durations AS (
         SELECT
             equipment_id,
-            sum(if(state = 'running',
-                dateDiff('second', ts, lead(ts) OVER (PARTITION BY equipment_id ORDER BY ts)),
-                0)) AS actual_run_sec
+            state,
+            dateDiff('second', ts, lead(ts) OVER (PARTITION BY equipment_id ORDER BY ts)) AS duration_sec
         FROM machine_states
         JOIN shift_params USING (equipment_id)
         WHERE ts >= shift_params.shift_start
-          AND ts < shift_params.shift_end
+          AND ts <= shift_params.shift_end
+    ),
+    run_time AS (
+        SELECT
+            equipment_id,
+            sum(if(state = 'running', duration_sec, 0)) AS actual_run_sec
+        FROM state_durations
         GROUP BY equipment_id
     ),
     production AS (
