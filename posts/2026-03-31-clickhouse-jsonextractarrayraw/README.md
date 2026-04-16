@@ -113,4 +113,4 @@ WHERE arrayAll(
 
 ## Summary
 
-`JSONExtractArrayRaw` returns an `Array(String)` of raw JSON fragments from a JSON array field. Use `arrayJoin` to flatten the array into rows for per-element queries, and then apply other `JSONExtract*` functions on each element to parse specific fields. It handles heterogeneous and object-valued arrays that typed alternatives like `JSONExtractArrayOfStrings` cannot, making it a versatile building block for JSON array processing in ClickHouse.
+`JSONExtractArrayRaw` returns an `Array(String)` of raw JSON fragments from a JSON array field. Use `arrayJoin` to flatten the array into rows for per-element queries, and then apply other `JSONExtract*` functions on each element to parse specific fields. It handles heterogeneous and object-valued arrays that typed alternatives like `JSONExtract(json, 'Array(String)')` cannot, making it a versatile building block for JSON array processing in ClickHouse.
