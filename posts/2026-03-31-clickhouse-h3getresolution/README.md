@@ -10,15 +10,17 @@ Description: Learn how h3GetResolution() extracts the resolution level from an H
 
 `h3GetResolution(index)` returns the resolution level (an integer from 0 to 15) encoded in a given H3 index. This is useful when you receive H3 indexes from external systems at unknown or mixed resolutions, need to validate that stored indexes match an expected resolution, or want to route rows to different aggregation pipelines based on their resolution. The function accepts a `UInt64` H3 index and returns a `UInt8`.
 
+Note: ClickHouse v25.5 changed `geoToH3()` argument order from `(lon, lat)` to `(lat, lon)`, and v25.1 changed `h3ToGeo()` return order from `(lon, lat)` to `(lat, lon)`. The examples below use the current `(lat, lon)` convention. Legacy behavior can be restored per query via `geotoh3_argument_order = 'lon_lat'` and `h3togeo_lon_lat_result_order = 1`.
+
 ## Basic Usage
 
 ```sql
 -- Encode at different resolutions and verify with h3GetResolution
 SELECT
-    geoToH3(-122.4194, 37.7749, 5) AS h3_r5,
-    geoToH3(-122.4194, 37.7749, 9) AS h3_r9,
-    h3GetResolution(geoToH3(-122.4194, 37.7749, 5)) AS res_5,
-    h3GetResolution(geoToH3(-122.4194, 37.7749, 9)) AS res_9;
+    geoToH3(37.7749, -122.4194, 5) AS h3_r5,
+    geoToH3(37.7749, -122.4194, 9) AS h3_r9,
+    h3GetResolution(geoToH3(37.7749, -122.4194, 5)) AS res_5,
+    h3GetResolution(geoToH3(37.7749, -122.4194, 9)) AS res_9;
 ```
 
 ```text
@@ -94,7 +96,7 @@ When generating H3 indexes dynamically, confirm the resolution is what you expec
 -- Sanity check: geoToH3 at resolution 9 should always return resolution 9
 SELECT
     count()                                          AS total,
-    countIf(h3GetResolution(geoToH3(lon, lat, 9)) != 9) AS mismatches
+    countIf(h3GetResolution(geoToH3(lat, lon, 9)) != 9) AS mismatches
 FROM (
     SELECT
         longitude AS lon,
@@ -110,8 +112,8 @@ FROM (
 -- Keep only fine-grained indexes (resolution 8 or higher)
 SELECT
     h3_index,
-    h3ToGeo(h3_index).1 AS lon,
-    h3ToGeo(h3_index).2 AS lat
+    h3ToGeo(h3_index).1 AS lat,
+    h3ToGeo(h3_index).2 AS lon
 FROM external_h3_feed
 WHERE h3GetResolution(h3_index) >= 8
 ORDER BY h3_index
