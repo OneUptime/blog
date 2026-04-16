@@ -150,15 +150,18 @@ WHERE table = 'events_regular' AND is_done = 0;
 ## Settings That Affect LowCardinality
 
 ```sql
--- Allow LowCardinality in IN operations (enabled by default)
+-- Allow LowCardinality with fixed-size types of 8 bytes or less
+-- (numeric types, small FixedString). Disabled by default (0)
+-- because using LowCardinality for small fixed values is usually inefficient.
 SET allow_suspicious_low_cardinality_types = 1;
 
 -- Max dictionary size (default 8192)
--- Values beyond this fall back to regular string storage
+-- When a dictionary overflows, a new one is created for subsequent values.
 SET low_cardinality_max_dictionary_size = 8192;
 
--- Use LowCardinality for implicit type promotion
-SET low_cardinality_use_single_dictionary_for_part = 0;
+-- Force a single dictionary per data part instead of creating new ones
+-- when the size limit is exceeded. Default 0.
+SET low_cardinality_use_single_dictionary_for_part = 1;
 ```
 
 ## Common Pitfalls
