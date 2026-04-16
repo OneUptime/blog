@@ -38,10 +38,10 @@ Increasing the timeout reduces connection churn for clients that send queries ev
 Limit how many requests can be served over a single keep-alive connection:
 
 ```xml
-<keep_alive_timeout>30</keep_alive_timeout>
+<max_keep_alive_requests>10000</max_keep_alive_requests>
 ```
 
-ClickHouse does not expose a separate `max_keep_alive_requests` setting, but clients typically implement their own limit.
+ClickHouse exposes `max_keep_alive_requests` as a server-level setting that caps the number of requests served over a single keep-alive connection before the server closes it. After the limit is reached, the client must open a new TCP connection.
 
 ## Client-Side Configuration (Python)
 
@@ -80,16 +80,18 @@ Setting `IdleConnTimeout` to less than ClickHouse's `keep_alive_timeout` prevent
 
 ## Checking Active Connections
 
-Monitor current HTTP connections in the ClickHouse system tables:
+Monitor recent HTTP requests in the ClickHouse system tables:
 
 ```sql
 SELECT
     http_method,
-    http_uri,
+    http_user_agent,
     count() AS request_count
-FROM system.opentelemetry_span_log
-WHERE finish_time >= now() - INTERVAL 5 MINUTE
-GROUP BY http_method, http_uri
+FROM system.query_log
+WHERE event_time >= now() - INTERVAL 5 MINUTE
+  AND type = 'QueryFinish'
+  AND http_method > 0
+GROUP BY http_method, http_user_agent
 ORDER BY request_count DESC
 LIMIT 10;
 ```
