@@ -15,7 +15,7 @@ ClickHouse's H3 library exposes the full Uber H3 API, including neighbour traver
 `h3kRing(index, k)` returns an array of all H3 cells within `k` grid steps (rings) of the given cell, including the cell itself.
 
 ```sql
-SELECT h3kRing(geoToH3(37.6156, 55.7522, 7), 1) AS neighbors;
+SELECT h3kRing(geoToH3(55.7522, 37.6156, 7), 1) AS neighbors;
 ```
 
 ```text
@@ -36,7 +36,7 @@ SELECT
     h3_index
 FROM pois
 WHERE h3_index IN (
-    SELECT arrayJoin(h3kRing(geoToH3(37.6156, 55.7522, 7), 2))
+    SELECT arrayJoin(h3kRing(geoToH3(55.7522, 37.6156, 7), 2))
 );
 ```
 
@@ -46,11 +46,11 @@ You can use `h3Distance()` combined with `h3kRing()` to segment results by ring 
 
 ```sql
 SELECT
-    h3Distance(geoToH3(37.6156, 55.7522, 7), h3_index) AS ring,
+    h3Distance(geoToH3(55.7522, 37.6156, 7), h3_index) AS ring,
     count() AS event_count
 FROM events
 WHERE h3_index IN (
-    SELECT arrayJoin(h3kRing(geoToH3(37.6156, 55.7522, 7), 3))
+    SELECT arrayJoin(h3kRing(geoToH3(55.7522, 37.6156, 7), 3))
 )
 GROUP BY ring
 ORDER BY ring;
@@ -74,7 +74,7 @@ Base cells are useful for coarse spatial partitioning - grouping data by base ce
 
 ```sql
 SELECT
-    h3GetBaseCell(geoToH3(longitude, latitude, 5)) AS region,
+    h3GetBaseCell(geoToH3(latitude, longitude, 5)) AS region,
     count() AS visits
 FROM web_events
 GROUP BY region
@@ -89,7 +89,7 @@ A real-world pattern is to find all base cells represented in a ring around a po
 ```sql
 SELECT DISTINCT h3GetBaseCell(neighbor) AS base_cell
 FROM (
-    SELECT arrayJoin(h3kRing(geoToH3(37.6156, 55.7522, 4), 5)) AS neighbor
+    SELECT arrayJoin(h3kRing(geoToH3(55.7522, 37.6156, 4), 5)) AS neighbor
 );
 ```
 
