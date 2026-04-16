@@ -131,12 +131,13 @@ ALTER TABLE analytics.events ATTACH PART '20240115_1_5_2'
 
 ### Enable Checksums for All Parts
 
-Checksums are enabled by default in MergeTree. Verify:
+Checksums are always written for MergeTree parts (see the `checksums.txt` file in each part directory). Verify that parts have computed hashes:
 
 ```sql
-SELECT name, value
-FROM system.merge_tree_settings
-WHERE name = 'checksum_on_read';
+SELECT name, hash_of_all_files, hash_of_uncompressed_files
+FROM system.parts
+WHERE table = 'events' AND active
+LIMIT 5;
 ```
 
 ### Monitor Disk Health
