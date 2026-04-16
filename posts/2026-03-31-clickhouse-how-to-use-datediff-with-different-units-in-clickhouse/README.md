@@ -36,7 +36,7 @@ Output:
 
 ```text
 seconds_diff | minutes_diff | hours_diff | days_diff | months_diff | years_diff
-330          | 45           | 18         | 165       | 5           | 4
+330          | 45           | 18         | 166       | 5           | 4
 ```
 
 ## Calculating Session Duration
