@@ -72,9 +72,9 @@ INSERT INTO file_ingestion_state VALUES
     ('log-pipeline', '/data/logs/2026-01-01.log', 0, 1000000, 'completed', now());
 
 -- Skip already-completed files
-SELECT file_path
-FROM directory('/data/logs/', '*.log')
-WHERE file_path NOT IN (
+SELECT DISTINCT _path AS file_path
+FROM file('/data/logs/*.log', 'LineAsString')
+WHERE _path NOT IN (
     SELECT file_path FROM file_ingestion_state FINAL
     WHERE pipeline_name = 'log-pipeline' AND status = 'completed'
 );
