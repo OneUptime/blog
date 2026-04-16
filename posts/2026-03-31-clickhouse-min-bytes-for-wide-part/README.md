@@ -34,7 +34,7 @@ SETTINGS
     min_rows_for_wide_part  = 0;         -- 0 = disabled by default
 ```
 
-- If a new part's compressed size is below `min_bytes_for_wide_part`, it is stored in compact format.
+- If a new part's uncompressed size is below `min_bytes_for_wide_part`, it is stored in compact format.
 - If it is at or above the threshold, it is stored in wide format.
 - `min_rows_for_wide_part` provides the same control based on row count instead of bytes.
 
@@ -161,7 +161,7 @@ SETTINGS
 
 When ClickHouse merges compact parts into a larger merged part, it re-evaluates the format:
 
-- If the merged part size exceeds `min_bytes_for_wide_part`, it is written as wide.
+- If the merged part's uncompressed size exceeds `min_bytes_for_wide_part`, it is written as wide.
 - This means data naturally transitions from compact to wide as it ages and merges.
 
 ```text
