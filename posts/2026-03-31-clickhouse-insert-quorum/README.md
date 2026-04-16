@@ -44,11 +44,12 @@ If fewer than 2 replicas acknowledge within 30 seconds, the insert is rolled bac
 
 ## insert_quorum_parallel
 
-By default, after a quorum insert, subsequent queries on any replica return the inserted data (via `select_sequential_consistency`). The `insert_quorum_parallel` setting (default: `1`) allows multiple quorum inserts to proceed in parallel without waiting for each other to complete. Set it to `0` for strict serialized quorum inserts:
+The `insert_quorum_parallel` setting (default: `1`) allows multiple quorum inserts to proceed in parallel without waiting for each other to complete. While enabled (the default), `select_sequential_consistency` does not work, because parallel quorum inserts may land on different sets of replicas. To guarantee that subsequent `SELECT` queries see data from all prior quorum `INSERT`s, disable parallel quorum and enable sequential consistency on reads:
 
 ```sql
-SET insert_quorum          = 2;
-SET insert_quorum_parallel = 0;
+SET insert_quorum             = 2;
+SET insert_quorum_parallel    = 0;
+SET select_sequential_consistency = 1;
 ```
 
 ## Monitoring Quorum Replication
