@@ -18,7 +18,7 @@ Mutations are background operations in ClickHouse that modify existing data in M
 
 ## What Are Lightweight Deletes
 
-Lightweight deletes (introduced in ClickHouse 22.8) mark rows as deleted using a hidden bitmask without immediately rewriting data parts. The deletion is logically immediate but physically deferred until the next merge.
+Lightweight deletes (introduced in ClickHouse 22.8 as experimental, GA since 23.3) mark rows as deleted using a hidden bitmask without immediately rewriting data parts. The deletion is logically immediate but physically deferred until the next merge.
 
 ## Syntax Comparison
 
@@ -50,17 +50,22 @@ LIMIT 10;
 -- Lightweight DELETE (standard SQL syntax)
 DELETE FROM events WHERE user_id = 1001;
 
--- Check if lightweight deletes are enabled
-SHOW CREATE TABLE events;  -- Look for allow_experimental_lightweight_delete
+-- Optionally delete within a specific partition
+DELETE FROM events IN PARTITION '2026-03' WHERE user_id = 1001;
 ```
 
-Enable lightweight deletes:
+Lightweight deletes are enabled by default since ClickHouse 23.3. On older versions (22.8–23.2), you must enable the session-level setting first:
 
 ```sql
+-- Only needed on ClickHouse versions before 23.3
 SET allow_experimental_lightweight_delete = 1;
+```
 
--- Or set at table level
-ALTER TABLE events MODIFY SETTING allow_experimental_lightweight_delete = 1;
+Control synchronous vs. asynchronous behaviour with `lightweight_deletes_sync`:
+
+```sql
+-- Wait for the mask update to finish before returning (default: 2)
+SET lightweight_deletes_sync = 2;
 ```
 
 ## How They Work Under the Hood
@@ -145,7 +150,6 @@ WHERE NOT _row_exists;  -- Internal column
 ALTER TABLE user_events DELETE WHERE user_id = 12345;
 
 -- Using lightweight delete (logically removes but physically deferred)
-SET allow_experimental_lightweight_delete = 1;
 DELETE FROM user_events WHERE user_id = 12345;
 ```
 
