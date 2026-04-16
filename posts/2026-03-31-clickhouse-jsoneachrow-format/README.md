@@ -100,13 +100,13 @@ FORMAT JSONEachRow;
 
 ## Handling Missing Fields
 
-By default, missing fields in the JSON cause an error. Enable defaults for missing keys:
+By default, missing fields in the JSON are filled with the column's default value (or the type's zero value when no DEFAULT is defined). This is controlled by:
 
 ```sql
-SET input_format_defaults_for_omitted_fields = 1;
+SET input_format_defaults_for_omitted_fields = 1; -- default
 ```
 
-With this setting, any column not present in the JSON object uses the column's default value.
+Set it to `0` to skip evaluation of DEFAULT expressions for omitted fields (the type's zero value is still used).
 
 ## Extra Fields
 
@@ -118,20 +118,13 @@ SET input_format_skip_unknown_fields = 1; -- default for JSONEachRow
 
 ## Nested JSON Objects
 
-ClickHouse can flatten nested JSON objects automatically. Given input:
+Given input:
 
 ```text
 {"id":1,"user":{"name":"alice","age":30},"score":9.5}
 ```
 
-Enable the setting:
-
-```sql
-SET input_format_json_read_objects_as_strings = 0;
-SET input_format_flatten_nested = 1;
-```
-
-Or map the nested object as a `String` and parse it later:
+A common approach is to read the nested object into a `String` column and parse it on read. By default, `input_format_json_read_objects_as_strings = 1` lets JSONEachRow load JSON objects into `String` columns as their raw JSON text:
 
 ```sql
 CREATE TABLE events_raw (id UInt64, user String, score Float32)
@@ -166,8 +159,8 @@ Each progress line looks like:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `input_format_skip_unknown_fields` | 1 | Ignore extra JSON keys |
-| `input_format_defaults_for_omitted_fields` | 0 | Use column defaults for missing keys |
-| `output_format_json_quote_64bit_integers` | 1 | Wrap UInt64 in quotes |
+| `input_format_defaults_for_omitted_fields` | 1 | Use column defaults for missing keys |
+| `output_format_json_quote_64bit_integers` | 0 | Wrap 64-bit integers in quotes |
 | `output_format_json_escape_forward_slashes` | 1 | Escape `/` in strings |
 
 ## Performance Tips
