@@ -22,7 +22,7 @@ yarn add @clickhouse/client
 import { createClient } from '@clickhouse/client';
 
 const client = createClient({
-  host: 'http://localhost:8123',
+  url: 'http://localhost:8123',
   username: 'default',
   password: '',
   database: 'default',
@@ -36,7 +36,7 @@ import { createClient } from '@clickhouse/client';
 import { readFileSync } from 'fs';
 
 const client = createClient({
-  host: 'https://your-clickhouse-host:8443',
+  url: 'https://your-clickhouse-host:8443',
   username: 'default',
   password: 'your_password',
   tls: {
@@ -50,7 +50,7 @@ const client = createClient({
 ```javascript
 import { createClient } from '@clickhouse/client';
 
-const client = createClient({ host: 'http://localhost:8123' });
+const client = createClient({ url: 'http://localhost:8123' });
 
 async function queryData() {
   const resultSet = await client.query({
@@ -91,7 +91,7 @@ const rows = await resultSet.json();
 ```javascript
 import { createClient } from '@clickhouse/client';
 
-const client = createClient({ host: 'http://localhost:8123' });
+const client = createClient({ url: 'http://localhost:8123' });
 
 async function insertData() {
   await client.insert({
@@ -117,7 +117,7 @@ import { createClient } from '@clickhouse/client';
 import { pipeline } from 'stream/promises';
 import { createWriteStream } from 'fs';
 
-const client = createClient({ host: 'http://localhost:8123' });
+const client = createClient({ url: 'http://localhost:8123' });
 
 async function streamToFile() {
   const resultSet = await client.query({
@@ -165,7 +165,7 @@ const rows = await resultSet.json();
 import { createClient } from '@clickhouse/client';
 import { Readable } from 'stream';
 
-const client = createClient({ host: 'http://localhost:8123' });
+const client = createClient({ url: 'http://localhost:8123' });
 
 async function insertStream() {
   const stream = new Readable({ objectMode: true, read() {} });
@@ -196,7 +196,7 @@ await client.close();
 ```javascript
 import { createClient, ClickHouseError } from '@clickhouse/client';
 
-const client = createClient({ host: 'http://localhost:8123' });
+const client = createClient({ url: 'http://localhost:8123' });
 
 try {
   const result = await client.query({
