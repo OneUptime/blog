@@ -91,12 +91,12 @@ curl -u default:secret \
 
 ## Compression
 
-Enable HTTP compression to reduce bandwidth for large result sets:
+Enable HTTP compression to reduce bandwidth for large result sets. You must set `enable_http_compression=1` in the URL parameters in addition to the `Accept-Encoding` header:
 
 ```bash
 curl -u default:secret \
   -H "Accept-Encoding: gzip" \
-  "http://localhost:8123/?query=SELECT+*+FROM+large_table+FORMAT+CSV" \
+  "http://localhost:8123/?enable_http_compression=1&query=SELECT+*+FROM+large_table+FORMAT+CSV" \
   --output result.csv.gz
 ```
 
