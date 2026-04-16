@@ -102,9 +102,9 @@ WHERE date = today();
 
 ## Important Constraints
 
-- All input arrays must have the same length across rows in the group.
-- If arrays differ in length, the result is undefined or truncated.
-- Supported on most numeric aggregate functions: `sum`, `avg`, `min`, `max`, `count`.
+- Arrays of equal length across rows produce predictable per-position aggregates.
+- If arrays differ in length, the result has the length of the longest input array, with missing positions in shorter arrays skipped during aggregation.
+- Works with any aggregate function, not just numeric ones — common examples include `sum`, `avg`, `min`, `max`, `count`, `uniq`, and `groupArray`.
 
 ```sql
 -- Ensure consistent array length before using ForEach
