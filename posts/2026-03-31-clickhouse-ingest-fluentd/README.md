@@ -56,34 +56,32 @@ TTL ts + INTERVAL 60 DAY;
   table app_logs
   username default
   password "#{ENV['CLICKHOUSE_PASSWORD']}"
+  columns ts,level,service,message,host
 
   flush_interval 5s
   buffer_chunk_limit 8m
   buffer_queue_limit 32
   retry_wait 5s
   retry_limit 5
-
-  <format>
-    @type json
-  </format>
 </match>
 ```
 
 ## Using Fluent Bit Instead
 
-Fluent Bit is lighter and has a native ClickHouse output:
+Fluent Bit is lighter and can write to ClickHouse's HTTP interface via the built-in `http` output:
 
 ```ini
 [OUTPUT]
-    Name          clickhouse
-    Match         *
-    host          clickhouse
-    port          8123
-    database      default
-    table         app_logs
-    format        json_stream
-    http_user     default
-    http_passwd   ${CLICKHOUSE_PASSWORD}
+    Name             http
+    Match            *
+    host             clickhouse
+    port             8123
+    URI              /?query=INSERT%20INTO%20app_logs%20FORMAT%20JSONEachRow
+    format           json_lines
+    json_date_key    ts
+    json_date_format iso8601
+    http_user        default
+    http_passwd      ${CLICKHOUSE_PASSWORD}
 ```
 
 ## Testing the Pipeline
@@ -93,7 +91,10 @@ Send a test event:
 ```bash
 echo '{"ts":"2026-03-31T10:00:00Z","level":"info","service":"api","message":"request received"}' \
   | docker run --rm -i fluent/fluent-bit \
-    -i stdin -o clickhouse -p host=clickhouse -p table=app_logs
+    /fluent-bit/bin/fluent-bit -i stdin -o http \
+      -p host=clickhouse -p port=8123 \
+      -p uri='/?query=INSERT%20INTO%20app_logs%20FORMAT%20JSONEachRow' \
+      -p format=json_lines
 ```
 
 Verify in ClickHouse:
@@ -104,4 +105,4 @@ SELECT service, count() FROM app_logs GROUP BY service;
 
 ## Summary
 
-Fluentd ingests logs into ClickHouse via `fluent-plugin-clickhouse`. Configure chunk buffering and retries to handle back-pressure. For lightweight deployments, Fluent Bit offers a native ClickHouse output with lower memory overhead.
+Fluentd ingests logs into ClickHouse via `fluent-plugin-clickhouse`, mapping record keys to columns via the `columns` parameter. Configure chunk buffering and retries to handle back-pressure. For lightweight deployments, Fluent Bit can write to ClickHouse's HTTP interface using the built-in `http` output.
