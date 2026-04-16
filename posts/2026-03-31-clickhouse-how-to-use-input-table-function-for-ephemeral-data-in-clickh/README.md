@@ -130,10 +130,10 @@ FORMAT JSONEachRow;
 ## Example 6 - Using input() with Python
 
 ```python
-import clickhouse_connect
+from clickhouse_driver import Client
 import csv
 
-client = clickhouse_connect.get_client(host='localhost')
+client = Client(host='localhost')
 
 # Read CSV rows
 with open('data.csv') as f:
@@ -141,15 +141,14 @@ with open('data.csv') as f:
     rows = [(r['ts'], r['uid'], r['event']) for r in reader]
 
 # Insert with type conversion via input()
-client.query("""
+client.execute("""
     INSERT INTO events
     SELECT
         parseDateTimeBestEffort(ts) AS event_time,
         toUInt64(uid) AS user_id,
         lower(event) AS event_type
     FROM input('ts String, uid String, event String')
-    FORMAT Values
-""", data=rows)
+""", rows)
 ```
 
 ## Supported Formats with input()
