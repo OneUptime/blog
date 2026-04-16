@@ -82,7 +82,7 @@ CREATE DICTIONARY user_dict
     created_at DateTime
 )
 PRIMARY KEY user_id
-SOURCE(CLICKHOUSE(TABLE users DATABASE 'analytics'))
+SOURCE(CLICKHOUSE(TABLE users DB 'analytics'))
 LAYOUT(HASHED())
 LIFETIME(300);  -- refresh every 5 minutes
 
@@ -109,7 +109,7 @@ CREATE DICTIONARY status_dict
     status_name String
 )
 PRIMARY KEY status_id
-SOURCE(CLICKHOUSE(TABLE status_codes DATABASE 'analytics'))
+SOURCE(CLICKHOUSE(TABLE status_codes DB 'analytics'))
 LAYOUT(FLAT())
 LIFETIME(MIN 300 MAX 600);
 ```
