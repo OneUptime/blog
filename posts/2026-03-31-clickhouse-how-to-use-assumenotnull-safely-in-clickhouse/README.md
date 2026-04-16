@@ -64,17 +64,6 @@ SELECT countIf(isNull(price)) AS null_prices FROM orders
 SELECT avg(assumeNotNull(price)) AS avg_price FROM orders
 ```
 
-## Using with toNotNullable
-
-`toNotNullable()` is a stricter alias for `assumeNotNull()`:
-
-```sql
-SELECT toNotNullable(toNullable(100)) AS non_null_val
--- 100 as UInt8 (not Nullable(UInt8))
-```
-
-Both functions are equivalent.
-
 ## Materialized Column Pattern
 
 Use `assumeNotNull` in computed or materialized columns after verifying data quality:
