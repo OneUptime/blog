@@ -24,7 +24,7 @@ graph LR
     B -->|part-5| D
 ```
 
-ClickHouse picks the disk with the most free space for each new part write. This is not strict round-robin -- it is free-space-weighted to avoid filling any single disk.
+By default, ClickHouse picks disks in round-robin order: each new part goes to the next disk in the volume. You can switch to a free-space-aware strategy by setting `<load_balancing>least_used</load_balancing>` on the volume, which picks the disk with the most available space for each new part.
 
 ## Preparing Mount Points
 
