@@ -15,14 +15,14 @@ The `jdbc()` table function in ClickHouse allows you to execute SQL queries agai
 The `jdbc()` function requires the ClickHouse JDBC Bridge to be running as a separate Java process. Install it from the official ClickHouse repository.
 
 ```bash
-# Download JDBC Bridge JAR
-wget https://github.com/ClickHouse/clickhouse-jdbc-bridge/releases/latest/download/clickhouse-jdbc-bridge.jar
+# Download JDBC Bridge JAR (latest release at the time of writing)
+wget https://github.com/ClickHouse/clickhouse-jdbc-bridge/releases/download/v2.1.0/clickhouse-jdbc-bridge-2.1.0-shaded.jar
 
 # Start the bridge (default port 9019)
-java -jar clickhouse-jdbc-bridge.jar --listen-host 0.0.0.0
+java -jar clickhouse-jdbc-bridge-2.1.0-shaded.jar
 ```
 
-Configure the data source in the bridge's `datasources.json`:
+Configure the data source by dropping a JSON file (for example `pg_prod.json`) into the bridge's `config/datasources/` directory:
 
 ```text
 {
@@ -97,11 +97,11 @@ FROM jdbc('pg_prod', 'SELECT id, name, email, created_at FROM customers');
 
 ## Checking Available JDBC Sources
 
-The bridge exposes a special `__sources` query:
+The bridge exposes a special `show datasources` query:
 
 ```sql
 SELECT *
-FROM jdbc('', '__sources');
+FROM jdbc('', 'show datasources');
 ```
 
 ## Performance Considerations
