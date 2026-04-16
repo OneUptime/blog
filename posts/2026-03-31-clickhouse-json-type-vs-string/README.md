@@ -8,7 +8,7 @@ Description: Learn the differences between ClickHouse's native JSON data type an
 
 ---
 
-ClickHouse offers two primary ways to work with JSON data. The first is storing JSON as a `String` column and using `JSONExtract*` functions at query time. The second is using the native `JSON` data type (available in ClickHouse 22.6 and later), which parses JSON at insert time, stores sub-columns in a columnar format, and allows field access without `JSONExtract` syntax. Each approach has different trade-offs for schema flexibility, query performance, storage, and maturity.
+ClickHouse offers two primary ways to work with JSON data. The first is storing JSON as a `String` column and using `JSONExtract*` functions at query time. The second is using the native `JSON` data type (introduced in ClickHouse 24.8 and marked production-ready in 25.3), which parses JSON at insert time, stores sub-columns in a columnar format, and allows field access without `JSONExtract` syntax. Each approach has different trade-offs for schema flexibility, query performance, storage, and maturity.
 
 ## String Column with JSONExtract
 
@@ -137,7 +137,7 @@ Use `String` with `JSONExtract` when:
 Use the native `JSON` type when:
 - The JSON schema is dynamic or has many distinct keys
 - You want automatic sub-column storage and compression without managing materialized columns
-- You are running ClickHouse 22.6 or later and can accept an experimental feature
+- You are running ClickHouse 25.3 or later (where the `JSON` type is production-ready), or an earlier 24.8+ version and can accept a beta/experimental feature
 
 ## Summary
 
