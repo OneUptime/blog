@@ -8,7 +8,7 @@ Description: Learn how to use golang-migrate to manage ClickHouse schema migrati
 
 ---
 
-`golang-migrate` is a popular database migration tool that supports ClickHouse via its HTTP driver. It applies versioned SQL migration files in order, tracking the current schema version in ClickHouse itself.
+`golang-migrate` is a popular database migration tool that supports ClickHouse via its native driver. It applies versioned SQL migration files in order, tracking the current schema version in ClickHouse itself.
 
 ## Installation
 
