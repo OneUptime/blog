@@ -30,7 +30,7 @@ STORED AS PARQUET
 SELECT * FROM analytics.page_views;
 ```
 
-Or use `hive` CLI to export to CSV:
+Or use `hive` CLI to export to TSV:
 
 ```bash
 hive -e "SELECT * FROM analytics.page_views" > /tmp/page_views.tsv
