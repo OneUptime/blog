@@ -16,7 +16,7 @@ Description: Learn how to connect to ClickHouse from Java using the clickhouse-j
 <dependency>
     <groupId>com.clickhouse</groupId>
     <artifactId>clickhouse-jdbc</artifactId>
-    <version>0.6.5</version>
+    <version>0.9.8</version>
     <classifier>all</classifier>
 </dependency>
 ```
@@ -24,7 +24,7 @@ Description: Learn how to connect to ClickHouse from Java using the clickhouse-j
 ### Gradle
 
 ```groovy
-implementation 'com.clickhouse:clickhouse-jdbc:0.6.5:all'
+implementation 'com.clickhouse:clickhouse-jdbc:0.9.8:all'
 ```
 
 ## Connecting via JDBC
@@ -110,8 +110,6 @@ String insertSql = "INSERT INTO user_events (user_id, event_type, ts) VALUES (?,
 try (Connection conn = DriverManager.getConnection(url, user, password);
      PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
 
-    conn.setAutoCommit(false);
-
     for (int i = 0; i < 10000; i++) {
         pstmt.setLong(1, i);
         pstmt.setString(2, "login");
@@ -124,7 +122,6 @@ try (Connection conn = DriverManager.getConnection(url, user, password);
         }
     }
     pstmt.executeBatch();
-    conn.commit();
     System.out.println("Insert complete");
 }
 ```
@@ -166,9 +163,10 @@ Connection conn = DriverManager.getConnection(url, "default", "password");
 ## Passing Query Settings via JDBC
 
 ```java
-// Append settings to the JDBC URL
+// Append settings to the JDBC URL using the clickhouse_setting_ prefix
 String url = "jdbc:ch://localhost:8123/default?" +
-             "max_execution_time=60&max_memory_usage=10000000000";
+             "clickhouse_setting_max_execution_time=60" +
+             "&clickhouse_setting_max_memory_usage=10000000000";
 ```
 
 Or use connection properties:
@@ -177,7 +175,7 @@ Or use connection properties:
 java.util.Properties props = new java.util.Properties();
 props.setProperty("user", "default");
 props.setProperty("password", "");
-props.setProperty("custom_http_params", "max_execution_time=60");
+props.setProperty("clickhouse_setting_max_execution_time", "60");
 
 Connection conn = DriverManager.getConnection(
     "jdbc:ch://localhost:8123/default", props
