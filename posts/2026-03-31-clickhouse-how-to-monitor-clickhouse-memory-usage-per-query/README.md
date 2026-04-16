@@ -33,16 +33,17 @@ SELECT
     query_id,
     user,
     toStartOfMinute(event_time) AS minute,
-    formatReadableSize(memory_usage) AS memory_used,
-    formatReadableSize(peak_memory_usage) AS peak_memory,
+    formatReadableSize(memory_usage) AS peak_memory,
     query_duration_ms,
     substring(query, 1, 200) AS query_snippet
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_date >= today() - 1
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 20;
 ```
+
+Note: in `system.query_log`, the `memory_usage` column records the peak memory consumption for the query (there is no separate `peak_memory_usage` column in this table).
 
 ## Setting max_memory_usage Per Query
 
@@ -63,7 +64,7 @@ SETTINGS max_memory_usage = 5000000000;  -- 5 GB limit
 <profiles>
   <default>
     <max_memory_usage>10000000000</max_memory_usage>
-    <max_memory_usage_for_all_queries>50000000000</max_memory_usage_for_all_queries>
+    <max_memory_usage_for_user>50000000000</max_memory_usage_for_user>
   </default>
   <analyst>
     <max_memory_usage>50000000000</max_memory_usage>
@@ -103,14 +104,14 @@ SETTINGS
 SELECT
     user,
     count() AS query_count,
-    formatReadableSize(avg(peak_memory_usage)) AS avg_peak_memory,
-    formatReadableSize(max(peak_memory_usage)) AS max_peak_memory,
-    formatReadableSize(sum(peak_memory_usage)) AS total_peak_memory
+    formatReadableSize(avg(memory_usage)) AS avg_peak_memory,
+    formatReadableSize(max(memory_usage)) AS max_peak_memory,
+    formatReadableSize(sum(memory_usage)) AS total_peak_memory
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_date >= today() - 7
 GROUP BY user
-ORDER BY max_peak_memory DESC;
+ORDER BY max(memory_usage) DESC;
 ```
 
 ## Identifying Memory-Heavy Query Patterns
@@ -119,14 +120,14 @@ ORDER BY max_peak_memory DESC;
 SELECT
     arrayStringConcat(tables, ', ') AS tables_used,
     count() AS query_count,
-    formatReadableSize(avg(peak_memory_usage)) AS avg_peak_memory,
-    formatReadableSize(max(peak_memory_usage)) AS max_peak_memory
+    formatReadableSize(avg(memory_usage)) AS avg_peak_memory,
+    formatReadableSize(max(memory_usage)) AS max_peak_memory
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_date = today()
-  AND peak_memory_usage > 1000000000  -- Over 1 GB
+  AND memory_usage > 1000000000  -- Over 1 GB
 GROUP BY tables_used
-ORDER BY max_peak_memory DESC
+ORDER BY max(memory_usage) DESC
 LIMIT 20;
 ```
 
