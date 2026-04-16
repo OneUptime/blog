@@ -165,7 +165,7 @@ column_name.mrk2:
 
 ## Granules and Compression
 
-Compression is applied per granule. Each granule is compressed independently with LZ4, ZSTD, or another codec. This has an important implication: smaller granules compress less efficiently because the compressor has less data to work with per block.
+Compression is applied per compression block, not per granule. A compression block — controlled by `min_compress_block_size` (default 64KB) and `max_compress_block_size` (default 1MB) — typically contains multiple granules, and ClickHouse decompresses the whole block into memory when it needs to read any granule inside it. Compression block size is independent of `index_granularity`, so shrinking granules does not by itself reduce the compression ratio; if you want a better ratio, increase the compression block size settings instead.
 
 Check actual compression ratios:
 
