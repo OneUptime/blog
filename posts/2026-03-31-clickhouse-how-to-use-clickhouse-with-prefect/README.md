@@ -86,17 +86,11 @@ prefect deployment run clickhouse-etl-pipeline/default
 ## Deploying with a Schedule
 
 ```python
-from prefect.deployments import Deployment
-from prefect.server.schemas.schedules import CronSchedule
-
-deployment = Deployment.build_from_flow(
-    flow=etl_pipeline,
-    name="nightly-clickhouse-etl",
-    schedule=CronSchedule(cron="0 3 * * *", timezone="UTC")
-)
-
 if __name__ == "__main__":
-    deployment.apply()
+    etl_pipeline.serve(
+        name="nightly-clickhouse-etl",
+        cron="0 3 * * *"
+    )
 ```
 
 ## Using Prefect Blocks for Credentials
