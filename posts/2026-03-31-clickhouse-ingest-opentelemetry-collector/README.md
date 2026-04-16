@@ -45,7 +45,17 @@ exporters:
     create_schema: true
     logs_table_name: otel_logs
     traces_table_name: otel_traces
-    metrics_table_name: otel_metrics
+    metrics_tables:
+      gauge:
+        name: otel_metrics_gauge
+      sum:
+        name: otel_metrics_sum
+      summary:
+        name: otel_metrics_summary
+      histogram:
+        name: otel_metrics_histogram
+      exponential_histogram:
+        name: otel_metrics_exp_histogram
     compress: lz4
 
 service:
