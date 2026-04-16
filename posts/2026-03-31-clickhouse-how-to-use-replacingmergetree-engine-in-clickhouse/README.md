@@ -74,7 +74,7 @@ After this, reading without `FINAL` will show deduplicated rows.
 
 ## Version Column Behavior
 
-Without a version column, `ReplacingMergeTree()` keeps an arbitrary row among duplicates (typically the last inserted):
+Without a version column, `ReplacingMergeTree()` keeps the most recently inserted row among duplicates participating in a merge:
 
 ```sql
 -- No version column: arbitrary winner
@@ -135,7 +135,7 @@ ORDER BY order_id;
 
 ## Limitations
 
-- Deduplication only happens within the same partition. If the same primary key appears in two different partitions, `FINAL` still deduplicates across partitions, but `OPTIMIZE TABLE` merges only within a partition.
+- Physical merges (background and `OPTIMIZE TABLE`) only occur within a single partition, so duplicates of the same sorting key that land in different partitions are never permanently collapsed. `SELECT ... FINAL` does reconcile duplicates across partitions at query time by default, but this is expensive; the `do_not_merge_across_partitions_select_final` setting disables it. Best practice is to choose a partition key such that the same sorting key never appears in more than one partition.
 - Reading with `FINAL` adds latency - optimize for read-heavy workloads by triggering regular `OPTIMIZE TABLE` operations.
 - Not suitable for high-frequency per-row updates at very high throughput. Consider ClickHouse's CollapsingMergeTree or an external upsert buffer.
 
