@@ -60,7 +60,7 @@ def raw_events(clickhouse: ClickHouseResource) -> pd.DataFrame:
     """)
     return pd.DataFrame(result.result_rows, columns=result.column_names)
 
-@asset(deps=[raw_events])
+@asset
 def daily_event_summary(clickhouse: ClickHouseResource, raw_events: pd.DataFrame):
     client = clickhouse.get_client()
     summary = raw_events.groupby('event_type').size().reset_index(name='count')
