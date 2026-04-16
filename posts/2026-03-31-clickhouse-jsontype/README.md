@@ -8,7 +8,7 @@ Description: Learn how JSONType() identifies the JSON type of a field in ClickHo
 
 ---
 
-`JSONType` returns a `String` describing the JSON type of a value at a given path within a JSON string. The possible return values are `String`, `Int64`, `UInt64`, `Float64`, `Bool`, `Array`, `Object`, `Null`, and an empty string when the key does not exist. This function is useful for inspecting the actual type before extracting, auditing mixed-type fields, and debugging payloads that do not conform to an expected schema.
+`JSONType` returns an `Enum8` describing the JSON type of a value at a given path within a JSON string. The possible return values are `String`, `Int64`, `UInt64`, `Double`, `Bool`, `Array`, `Object`, and `Null`. Note that `Null` is also returned when the key does not exist, so `JSONType` alone cannot distinguish a missing key from an explicit JSON `null` — pair it with `JSONHas` for that. This function is useful for inspecting the actual type before extracting, auditing mixed-type fields, and debugging payloads that do not conform to an expected schema.
 
 ## Basic Usage
 
@@ -34,7 +34,7 @@ SELECT
     event_id,
     JSONType(payload, 'amount')                                           AS amount_type,
     if(
-        JSONType(payload, 'amount') IN ('Int64', 'UInt64', 'Float64'),
+        JSONType(payload, 'amount') IN ('Int64', 'UInt64', 'Double'),
         JSONExtractFloat(payload, 'amount'),
         0.0
     ) AS safe_amount
@@ -58,15 +58,17 @@ This reveals whether a field is ever `Null`, sometimes a `String` and sometimes 
 
 ## Detecting Missing vs Null
 
-An empty string means the key was absent; `'Null'` means the key exists with a JSON `null` value.
+`JSONType` returns `'Null'` for both an absent key and a key set to JSON `null`, so it cannot tell them apart on its own. Combine it with `JSONHas` to distinguish the two cases.
 
 ```sql
 -- Distinguish missing keys from explicit null values
 SELECT
     event_id,
+    JSONHas(payload, 'cancelled_at')  AS has_key,
     JSONType(payload, 'cancelled_at') AS cancelled_at_type
 FROM events
-WHERE JSONType(payload, 'cancelled_at') IN ('', 'Null')
+WHERE NOT JSONHas(payload, 'cancelled_at')
+   OR JSONType(payload, 'cancelled_at') = 'Null'
 LIMIT 10;
 ```
 
@@ -98,15 +100,15 @@ LIMIT 10;
 ```sql
 -- Summarize the types of every top-level key across all payloads
 SELECT
-    kv.1                           AS field_name,
-    JSONType(payload, kv.1)        AS field_type,
-    count()                        AS occurrences
+    field_name,
+    JSONType(payload, field_name) AS field_type,
+    count()                       AS occurrences
 FROM events
-ARRAY JOIN JSONExtractKeysAndValues(payload, String) AS kv
+ARRAY JOIN JSONExtractKeys(payload) AS field_name
 GROUP BY field_name, field_type
 ORDER BY field_name, occurrences DESC;
 ```
 
 ## Summary
 
-`JSONType` exposes the runtime JSON type of a field, returning one of `String`, `Int64`, `UInt64`, `Float64`, `Bool`, `Array`, `Object`, `Null`, or an empty string for absent keys. Use it to audit columns for unexpected type variance, guard extraction logic with type checks, and distinguish JSON `null` from a missing field. It is especially helpful when ingesting data from external systems that do not enforce a strict schema.
+`JSONType` exposes the runtime JSON type of a field, returning one of `String`, `Int64`, `UInt64`, `Double`, `Bool`, `Array`, `Object`, or `Null`. Note that `Null` is also returned when the key is absent, so combine it with `JSONHas` to distinguish a missing key from an explicit JSON `null`. Use it to audit columns for unexpected type variance and guard extraction logic with type checks. It is especially helpful when ingesting data from external systems that do not enforce a strict schema.
