@@ -8,9 +8,9 @@ Description: Learn how to use the hypothesis skip index in ClickHouse to prune g
 
 ---
 
-The `hypothesis` skip index (also referred to in ClickHouse documentation as the `hypothesis` or inverted index type depending on the version) is a secondary index type in ClickHouse that stores per-granule boolean results for a given condition expression. When a query's `WHERE` clause matches the stored expression, ClickHouse uses the precomputed per-granule truth values to skip granules where the expression is known to be false.
+The `hypothesis` skip index is a secondary index type in ClickHouse that stores per-granule boolean results for a given condition expression. When a query's `WHERE` clause matches the stored expression, ClickHouse uses the precomputed per-granule truth values to skip granules where the expression is known to be false.
 
-> Note: In recent ClickHouse versions (23.x+), the full-text inverted index uses the `full_text` type. The `hypothesis` type described here refers to the experimental condition-based skip index. Check your ClickHouse version's documentation for the exact type name supported.
+> Note: The `hypothesis` index is an experimental, condition-based skip index and is distinct from the full-text/inverted text index (which is a separate feature for tokenized string search). Check your ClickHouse version's documentation for availability and any required experimental flags.
 
 ## How hypothesis Works
 
