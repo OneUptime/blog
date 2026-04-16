@@ -38,19 +38,33 @@ sources:
     address: "0.0.0.0:8125"
 
 transforms:
-  statsd_to_json:
-    type: remap
+  statsd_to_log:
+    type: metric_to_log
     inputs: ["statsd_in"]
+  shape_for_clickhouse:
+    type: remap
+    inputs: ["statsd_to_log"]
     source: |
       .received_at = now()
       .metric_name = .name
-      .metric_type = string!(.kind)
-      .value = float!(.value)
+      if exists(.counter.value) {
+        .metric_type = "counter"
+        .value = .counter.value
+      } else if exists(.gauge.value) {
+        .metric_type = "gauge"
+        .value = .gauge.value
+      } else if exists(.distribution) {
+        .metric_type = "distribution"
+        .value = 0.0
+      } else if exists(.set) {
+        .metric_type = "set"
+        .value = 0.0
+      }
 
 sinks:
   clickhouse_out:
     type: clickhouse
-    inputs: ["statsd_to_json"]
+    inputs: ["shape_for_clickhouse"]
     endpoint: "http://clickhouse:8123"
     database: default
     table: statsd_metrics
@@ -63,20 +77,22 @@ sinks:
       timeout_secs: 5
 ```
 
+The `metric_to_log` transform is required because Vector's StatsD source emits metric events, but the ClickHouse sink only accepts log events.
+
 ## Custom Node.js StatsD to ClickHouse Forwarder
 
 ```javascript
 const dgram = require('dgram');
 const { createClient } = require('@clickhouse/client');
 
-const client = createClient({ host: 'http://clickhouse:8123' });
+const client = createClient({ url: 'http://clickhouse:8123' });
 const sock = dgram.createSocket('udp4');
 
 const buffer = [];
 sock.on('message', (msg) => {
-    const [nameType, valueStr, sampleRate] = msg.toString().split('|');
-    const [name, rawType] = nameType.split(':');
-    buffer.push({ metric_name: name, metric_type: rawType, value: parseFloat(valueStr) });
+    const [nameValue, metricType] = msg.toString().split('|');
+    const [name, valueStr] = nameValue.split(':');
+    buffer.push({ metric_name: name, metric_type: metricType, value: parseFloat(valueStr) });
     if (buffer.length >= 500) flush();
 });
 
