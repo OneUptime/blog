@@ -56,7 +56,7 @@ SELECT
     table,
     toStartOfMinute(event_time) AS minute,
     countIf(event_type = 'MergeParts') AS merges_finished,
-    sum(merged_bytes) AS bytes_merged
+    sum(size_in_bytes) AS bytes_merged
 FROM system.part_log
 WHERE event_date >= today() - 1
   AND event_type = 'MergeParts'
@@ -72,10 +72,7 @@ SELECT
     metric,
     value
 FROM system.metrics
-WHERE metric IN (
-    'BackgroundMergesAndMutationsPoolTask',
-    'BackgroundPoolTask'
-);
+WHERE metric = 'BackgroundMergesAndMutationsPoolTask';
 ```
 
 ## Detecting Merge Bottlenecks
@@ -104,13 +101,13 @@ SELECT
     table,
     count() AS merge_count,
     avg(duration_ms) AS avg_duration_ms,
-    formatReadableSize(avg(merged_bytes)) AS avg_merge_size,
-    formatReadableSize(sum(merged_bytes)) AS total_merged
+    formatReadableSize(avg(size_in_bytes)) AS avg_merge_size,
+    formatReadableSize(sum(size_in_bytes)) AS total_merged
 FROM system.part_log
 WHERE event_type = 'MergeParts'
   AND event_date >= today() - 1
 GROUP BY database, table
-ORDER BY total_merged DESC;
+ORDER BY sum(size_in_bytes) DESC;
 ```
 
 ## Checking for Failed Merges
@@ -139,10 +136,10 @@ Increase merge parallelism in `config.xml`:
 <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
 ```
 
-Or set at runtime:
+After editing the config, apply the change without a full restart (increases take effect; decreases still require a restart):
 
 ```sql
-SYSTEM SET background_pool_size = 16;
+SYSTEM RELOAD CONFIG;
 ```
 
 ## Forcing a Manual Merge
@@ -151,8 +148,8 @@ SYSTEM SET background_pool_size = 16;
 -- Merge all parts in a table
 OPTIMIZE TABLE my_table FINAL;
 
--- Merge a specific partition
-OPTIMIZE TABLE my_table PARTITION '202603' FINAL;
+-- Merge a specific partition by ID
+OPTIMIZE TABLE my_table PARTITION ID '202603' FINAL;
 ```
 
 ## Prometheus Metric for Merges
