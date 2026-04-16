@@ -19,6 +19,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
 
     dapr "github.com/dapr/go-sdk/client"
@@ -29,9 +30,13 @@ func bulkSaveStates(client dapr.Client, items []CartItem) error {
 
     stateItems := make([]*dapr.SetStateItem, len(items))
     for i, item := range items {
+        data, err := json.Marshal(item)
+        if err != nil {
+            return err
+        }
         stateItems[i] = &dapr.SetStateItem{
             Key:   fmt.Sprintf("cart-%s", item.UserID),
-            Value: item,
+            Value: data,
             Options: &dapr.StateOptions{
                 Concurrency: dapr.StateConcurrencyLastWrite,
                 Consistency: dapr.StateConsistencyEventual,
@@ -122,20 +127,24 @@ async def get_state(key: str) -> dict:
 ```go
 // High throughput writes - use eventual consistency
 func saveEventualState(client dapr.Client, key string, value interface{}) error {
-    return client.SaveStateWithETag(context.Background(), "statestore", key, value,
-        nil, &dapr.StateOptions{
-            Concurrency: dapr.StateConcurrencyLastWrite,
-            Consistency: dapr.StateConsistencyEventual,
-        })
+    data, err := json.Marshal(value)
+    if err != nil {
+        return err
+    }
+    return client.SaveStateWithETag(context.Background(), "statestore", key, data, "", nil,
+        dapr.WithConcurrency(dapr.StateConcurrencyLastWrite),
+        dapr.WithConsistency(dapr.StateConsistencyEventual))
 }
 
 // Critical data - use strong consistency
-func saveStrongState(client dapr.Client, key string, value interface{}) error {
-    return client.SaveStateWithETag(context.Background(), "statestore", key, value,
-        nil, &dapr.StateOptions{
-            Concurrency: dapr.StateConcurrencyFirstWrite,
-            Consistency: dapr.StateConsistencyStrong,
-        })
+func saveStrongState(client dapr.Client, key string, value interface{}, etag string) error {
+    data, err := json.Marshal(value)
+    if err != nil {
+        return err
+    }
+    return client.SaveStateWithETag(context.Background(), "statestore", key, data, etag, nil,
+        dapr.WithConcurrency(dapr.StateConcurrencyFirstWrite),
+        dapr.WithConsistency(dapr.StateConsistencyStrong))
 }
 ```
 
