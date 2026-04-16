@@ -200,8 +200,8 @@ SELECT * FROM t WHERE string_col = '42';
 -- Issue 2: DateTime vs DateTime64 mismatch
 -- DateTime has second precision, DateTime64 has subsecond
 SELECT toTypeName(now());          -- DateTime (seconds)
-SELECT toTypeName(now64());        -- DateTime64(9) (nanoseconds)
-SELECT now() = now64();            -- type mismatch - use CAST
+SELECT toTypeName(now64());        -- DateTime64(3) (milliseconds by default)
+SELECT now() = now64();            -- works via implicit cast, but rarely equal due to precision
 
 -- Issue 3: Integer overflow
 SELECT toUInt8(256);   -- wraps to 0, no error
