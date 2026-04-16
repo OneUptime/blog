@@ -19,7 +19,8 @@ ClickHouse provides statically-linked binaries that work on Alpine's musl libc:
 apk add --no-cache curl bash gcompat libgcc libstdc++
 
 # Download ClickHouse binary
-curl -fsSL https://clickhouse.com/ | CLICKHOUSE_ARCH=amd64 sh
+# The install script auto-detects musl libc and downloads the appropriate musl build
+curl -fsSL https://clickhouse.com/ | sh
 mv clickhouse /usr/local/bin/
 chmod +x /usr/local/bin/clickhouse
 ```
