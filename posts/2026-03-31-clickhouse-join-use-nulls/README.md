@@ -109,10 +109,10 @@ To enable for all queries from a specific user profile, add it to `users.xml`:
 </profiles>
 ```
 
-Or via SQL for ClickHouse 22.4+:
+Or via SQL:
 
 ```sql
-ALTER USER analytics_user SETTINGS join_use_nulls = 1;
+ALTER USER analytics_user MODIFY SETTINGS join_use_nulls = 1;
 ```
 
 ## Filtering Unmatched Rows
@@ -141,7 +141,7 @@ WHERE o.user_id = 0;
 
 ## FULL OUTER JOIN with join_use_nulls
 
-`FULL JOIN` always produces `NULL` for unmatched sides, but only when `join_use_nulls = 1` does this behave predictably for `IS NULL` checks:
+`join_use_nulls` also controls `FULL JOIN`: with the default (`0`), unmatched cells on either side are filled with type defaults, and only when `join_use_nulls = 1` are they filled with `NULL` (with both sides' columns wrapped in `Nullable`), so `IS NULL` checks work as expected:
 
 ```sql
 SET join_use_nulls = 1;
