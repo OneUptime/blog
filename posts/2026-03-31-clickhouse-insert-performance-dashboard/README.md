@@ -60,7 +60,7 @@ HAVING active_parts > 100
 ORDER BY active_parts DESC;
 ```
 
-Tables approaching 3000 parts will experience insert delays as ClickHouse throttles writes to allow merges to catch up.
+Tables approaching the `parts_to_delay_insert` threshold (default 1000 active parts per partition) will experience insert throttling as ClickHouse slows writes to allow merges to catch up. Hitting `parts_to_throw_insert` (default 3000) causes inserts to be rejected with "Too many parts".
 
 ## Merge Throughput vs Insert Rate
 
@@ -97,20 +97,32 @@ WHERE type = 'QueryFinish'
 
 ## Buffer Table Fill Rate
 
-If using Buffer tables as an insert buffer:
+If using Buffer tables as an insert buffer, list them and inspect their in-memory rows and bytes via `system.tables`:
 
 ```sql
 SELECT
     database,
     name AS buffer_table,
     total_bytes,
-    total_rows,
-    min_time,
-    max_time,
-    flush_count,
-    flush_bytes
-FROM system.buffers
+    total_rows
+FROM system.tables
+WHERE engine = 'Buffer'
 ORDER BY total_bytes DESC;
+```
+
+Combine with Buffer-engine flush counters to track throughput and errors:
+
+```sql
+SELECT event, value
+FROM system.events
+WHERE event IN (
+    'StorageBufferFlush',
+    'StorageBufferErrorOnFlush',
+    'StorageBufferPassedAllMinThresholds',
+    'StorageBufferPassedTimeMaxThreshold',
+    'StorageBufferPassedRowsMaxThreshold',
+    'StorageBufferPassedBytesMaxThreshold'
+);
 ```
 
 ## Async Insert Queue
