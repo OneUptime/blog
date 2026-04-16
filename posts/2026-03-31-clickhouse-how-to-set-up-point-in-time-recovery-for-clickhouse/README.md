@@ -40,7 +40,7 @@ Schedule hourly incremental backups:
 
 ```bash
 # Crontab entry for hourly incremental backups
-0 * * * * /usr/local/bin/clickhouse-backup create-remote \
+0 * * * * /usr/local/bin/clickhouse-backup create_remote \
     --diff-from-remote $(clickhouse-backup list remote | tail -1 | awk '{print $1}') \
     hourly_$(date +\%Y\%m\%d_\%H\%M) >> /var/log/ch-backup.log 2>&1
 ```
@@ -120,7 +120,7 @@ SELECT
     table,
     type,
     create_time,
-    entry
+    new_part_name
 FROM system.replication_queue
 WHERE type = 'GET_PART'
 ORDER BY create_time DESC
