@@ -82,7 +82,6 @@ inputs = ["app_logs"]
 source = '''
   . = parse_json!(string!(.message))
   .timestamp = parse_timestamp!(.timestamp, format: "%+")
-  .date = to_date!(.timestamp)
 '''
 
 [sinks.clickhouse]
@@ -91,9 +90,9 @@ inputs = ["parse_logs"]
 endpoint = "http://clickhouse:8123"
 database = "default"
 table = "logs"
+format = "json_each_row"
 batch.max_bytes = 10485760
 batch.timeout_secs = 5
-encoding.codec = "json"
 ```
 
 ### Inserting Logs via HTTP API
