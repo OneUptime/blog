@@ -52,7 +52,7 @@ dst host 2001:db8::1
 host 2001:db8::1 and host 2001:db8::2
 
 # Capture from a /64 prefix (subnet)
-ip6[8:8] == 20:01:0d:b8:00:00:00:00 && ip6[16:8] != 00:00:00:00:00:00:00:01
+net 2001:db8::/64
 ```
 
 ## ICMPv6 Capture Filters
