@@ -39,7 +39,7 @@ https://www.example.com/page?ref=1   www.example.com           example          
 https://news.bbc.co.uk/article/123   news.bbc.co.uk            bbc               bbc.co.uk
 https://mail.google.com.au/inbox     mail.google.com.au        google            google.com.au
 https://deep.nested.sub.openai.com/  deep.nested.sub.openai.com  openai          openai.com
-https://192.168.1.1/admin
+https://192.168.1.1/admin            192.168.1.1
 https://example.com                  example.com               example           example.com
 ```
 
