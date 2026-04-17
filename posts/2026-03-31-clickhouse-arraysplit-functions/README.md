@@ -17,25 +17,29 @@ arraySplit(func, arr1 [, arr2, ...])        -> Array(Array(T))
 arrayReverseSplit(func, arr1 [, arr2, ...]) -> Array(Array(T))
 ```
 
-The lambda `func` receives the current element and returns 1 to start a new sub-array **before** the current element, or 0 to include the current element in the current sub-array. The element where the lambda returns 1 becomes the **first element of the new sub-array** - it is not discarded.
+The lambda `func` receives the element at the current index from each input array and returns 1 to start a new sub-array **before** the current element, or 0 to include the current element in the current sub-array. The element where the lambda returns 1 becomes the **first element of the new sub-array** - it is not discarded. The first element of the source array never triggers a split (for `arrayReverseSplit`, the last element never triggers).
 
 ## Basic Usage
 
 ```sql
 -- Split at every even number (start new chunk before each even number)
 SELECT arraySplit(x -> (x % 2 = 0), [1, 3, 2, 4, 5, 7, 6]) AS chunks;
--- x=1: 0 (no split), x=3: 0 (no split), x=2: 1 (split!), x=4: 1 (split!), ...
--- Result: [[1,3],[2],[4],[5,7],[6]]
+-- x=1: first element (no split), x=3: 0, x=2: 1 (split!), x=4: 1 (split!),
+-- x=5: 0, x=7: 0, x=6: 1 (split!)
+-- Result: [[1,3],[2],[4,5,7],[6]]
 
--- Split at every position where value decreases
+-- Split at every position where value decreases (start new ascending run).
+-- arrayDifference returns adjacent differences; split when diff < 0.
 SELECT arraySplit(
-    (cur, prev) -> (cur < prev),
-    [1, 3, 5, 2, 4, 6, 1, 3]
+    (v, diff) -> (diff < 0),
+    [1, 3, 5, 2, 4, 6, 1, 3],
+    arrayDifference([1, 3, 5, 2, 4, 6, 1, 3])
 ) AS runs;
+-- arrayDifference: [0, 2, 2, -3, 2, 2, -5, 2]
 -- Result: [[1,3,5],[2,4,6],[1,3]]  (each ascending run is one sub-array)
 ```
 
-Note: the two-argument lambda receives `(current, previous)` element for context-aware splitting.
+Note: when multiple arrays are passed, the lambda receives one element from each array at the **same index** - it does not receive the current and previous element of a single array. To compare against the previous element, pass a helper array (such as `arrayDifference(arr)`) as an additional argument.
 
 ## Sessionizing an Event Stream
 
@@ -60,12 +64,14 @@ INSERT INTO user_clickstreams VALUES
      [1700010000, 1700010300, 1700014000], -- two sessions
      ['blog', 'post', 'home']);
 
--- Split timestamps into sessions (new session if gap > 1800 seconds = 30 min)
+-- Split timestamps into sessions (new session if gap > 1800 seconds = 30 min).
+-- arrayDifference produces the gap between consecutive timestamps (first = 0).
 SELECT
     user_id,
     arraySplit(
-        (cur, prev) -> (cur - prev > 1800),
-        event_times
+        (t, gap) -> (gap > 1800),
+        event_times,
+        arrayDifference(event_times)
     ) AS sessions
 FROM user_clickstreams;
 -- user 1: [[1700000000,1700000060,1700000120],[1700003700,1700003760,1700003840]]
@@ -75,34 +81,37 @@ FROM user_clickstreams;
 SELECT
     user_id,
     length(arraySplit(
-        (cur, prev) -> (cur - prev > 1800),
-        event_times
+        (t, gap) -> (gap > 1800),
+        event_times,
+        arrayDifference(event_times)
     )) AS num_sessions
 FROM user_clickstreams;
 ```
 
 ## Splitting Pages Into Sessions Simultaneously
 
-Use parallel arrays in the lambda to split the page array at the same positions as the time array:
+Use the page array as the source and pass the time-derived gap as a condition array so pages split at the same positions as the times:
 
 ```sql
--- Split both timestamps and pages using the time-based session boundary
+-- Split both timestamps and pages using the time-based session boundary.
+-- The output always splits the FIRST (source) array; additional arrays only
+-- provide values to the lambda.
 SELECT
     user_id,
     arraySplit(
-        (t_cur, t_prev) -> (t_cur - t_prev > 1800),
-        event_times,    -- drive the split condition
-        event_times     -- also split the times (redundant here, shown for pattern)
+        (t, gap) -> (gap > 1800),
+        event_times,
+        arrayDifference(event_times)
     ) AS session_times,
     arraySplit(
-        (t_cur, t_prev) -> (t_cur - t_prev > 1800),
-        event_times,
-        event_pages
+        (page, gap) -> (gap > 1800),
+        event_pages,
+        arrayDifference(event_times)
     ) AS session_pages
 FROM user_clickstreams;
 ```
 
-Note: in `arraySplit(func, arr1, arr2)`, the lambda receives elements from all arrays, but the output is the split of the last array argument.
+Note: in `arraySplit(func, arr1, arr2, ...)`, the lambda receives one element from each array at the same index. The output is the split of the **first** (source) array - the additional arrays only contribute values to the lambda.
 
 ## Chunking Arrays into Fixed-Size Blocks
 
@@ -133,21 +142,20 @@ SELECT arraySplit(
 
 ## arrayReverseSplit - Splitting from Right to Left
 
-`arrayReverseSplit` applies the same logic but scans from the end of the array. A split starts a new sub-array to the **right** of the split position. This is useful when you want to identify the last N items before a condition:
+`arrayReverseSplit` applies the same idea but the split happens to the **right** of the triggering element (that element becomes the last in its sub-array). The last element of the source array never triggers a split. This is useful when you want to close a sub-array immediately after a boundary event rather than opening a new one before it:
 
 ```sql
--- Split from right: new chunk starts right of each increasing value
-SELECT arrayReverseSplit(
-    (cur, prev) -> (cur > prev),
-    [1, 3, 5, 2, 4, 6]
-) AS reverse_chunks;
--- Result: [[1,3,5],[2,4],[6]]
--- Right-to-left: 6 > 4 -> split, 4 > 2 -> split, no more splits
+-- Close the current chunk AFTER each even number
+SELECT arrayReverseSplit(x -> (x % 2 = 0), [1, 3, 2, 4, 5, 7, 6]) AS reverse_chunks;
+-- Triggers (x%2=0) at values 2, 4, 6; the last element (6) never triggers.
+-- Splits land to the right of 2 and 4: [1,3,2] | [4] | [5,7,6]
+-- Result: [[1,3,2],[4],[5,7,6]]
 
 -- Count elements in the last session (most recent)
 WITH arraySplit(
-    (cur, prev) -> (cur - prev > 1800),
-    event_times
+    (t, gap) -> (gap > 1800),
+    event_times,
+    arrayDifference(event_times)
 ) AS sessions
 SELECT
     user_id,
@@ -161,8 +169,9 @@ After splitting into sessions, apply `arrayReduce` or `arrayMap` to each session
 
 ```sql
 WITH arraySplit(
-    (cur, prev) -> (cur - prev > 1800),
-    event_times
+    (t, gap) -> (gap > 1800),
+    event_times,
+    arrayDifference(event_times)
 ) AS sessions
 SELECT
     user_id,
@@ -179,4 +188,4 @@ FROM user_clickstreams;
 
 ## Summary
 
-`arraySplit` and `arrayReverseSplit` divide arrays into sub-arrays at positions where a lambda returns 1, returning `Array(Array(T))`. The split element begins the new sub-array rather than being discarded. These functions are the primary tool for sessionizing event streams by time gaps, chunking arrays into fixed-size blocks, and segmenting ordered sequences by any condition. After splitting, per-session metrics can be computed by mapping `arrayReduce`, `length`, or other functions over the resulting array of sub-arrays.
+`arraySplit` and `arrayReverseSplit` divide arrays into sub-arrays at positions where a lambda returns 1, returning `Array(Array(T))`. The triggering element is not discarded: with `arraySplit` it becomes the first element of the new sub-array, and with `arrayReverseSplit` it becomes the last element of its sub-array. The lambda receives one element from each passed array at the same index, so comparisons against the previous element are done by pairing the source array with a helper like `arrayDifference`. These functions are the primary tool for sessionizing event streams by time gaps, chunking arrays into fixed-size blocks, and segmenting ordered sequences by any condition. After splitting, per-session metrics can be computed by mapping `arrayReduce`, `length`, or other functions over the resulting array of sub-arrays.
