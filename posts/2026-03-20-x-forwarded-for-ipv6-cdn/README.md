@@ -18,10 +18,10 @@ IPv6 addresses in XFF headers do NOT use brackets:
 X-Forwarded-For: 203.0.113.10, 10.0.0.1
 
 # IPv6 client:
-X-Forwarded-For: 2001:db8::client, 2001:db8::proxy1, 10.0.0.2
+X-Forwarded-For: 2001:db8::1, 2001:db8::2, 10.0.0.2
 
 # Mixed chain:
-X-Forwarded-For: 2001:db8::client, 203.0.113.proxy, 10.0.0.cdn
+X-Forwarded-For: 2001:db8::1, 203.0.113.20, 10.0.0.3
 ```
 
 The first IP is the original client (leftmost), subsequent IPs are proxies.
@@ -32,20 +32,20 @@ The first IP is the original client (leftmost), subsequent IPs are proxies.
 
 ```bash
 # Cloudflare automatically adds CF-Connecting-IP header
-# CF-Connecting-IP: 2001:db8::client    (always the real client IP)
+# CF-Connecting-IP: 2001:db8::1    (always the real client IP)
 
 # XFF header from Cloudflare:
-# X-Forwarded-For: 2001:db8::client
+# X-Forwarded-For: 2001:db8::1
 ```
 
 ### AWS ALB
 
 ```text
 # ALB appends client IPv6 to XFF:
-# X-Forwarded-For: 2001:db8::client
+# X-Forwarded-For: 2001:db8::1
 
 # If behind another proxy:
-# X-Forwarded-For: 2001:db8::client, downstream-proxy
+# X-Forwarded-For: 2001:db8::1, 2001:db8::2
 ```
 
 ### nginx at CDN Edge
@@ -84,10 +84,10 @@ def get_real_client_ip(x_forwarded_for: str, trusted_proxies: list) -> str:
     return ips[0] if ips else None
 
 # Example usage
-xff = "2001:db8::client, 2001:db8::cdn, 10.0.0.1"
-trusted = ["2001:db8::cdn/128", "10.0.0.0/8"]
+xff = "2001:db8::1, 2001:db8::100, 10.0.0.1"
+trusted = ["2001:db8::100/128", "10.0.0.0/8"]
 client_ip = get_real_client_ip(xff, trusted)
-print(f"Real client: {client_ip}")  # 2001:db8::client
+print(f"Real client: {client_ip}")  # 2001:db8::1
 ```
 
 ### Node.js
@@ -130,7 +130,7 @@ ALLOWED_HOSTS = ['*']
 
 # Custom middleware for IPv6 real IP
 TRUSTED_PROXIES = [
-    '2001:db8:cdn::/48',   # CDN IPv6 range
+    '2001:db8:abcd::/48',   # CDN IPv6 range
     '10.0.0.0/8',           # Internal IPv4
 ]
 ```
@@ -157,9 +157,9 @@ Clients can forge XFF headers:
 
 ```bash
 # Malicious client spoofing IPv6 address
-curl -H "X-Forwarded-For: 2001:db8::admin" https://example.com/
+curl -H "X-Forwarded-For: 2001:db8::dead" https://example.com/
 
-# Without proper validation, your app sees "admin" IPv6 as the client
+# Without proper validation, your app sees the forged IPv6 as the client
 ```
 
 Defense:
