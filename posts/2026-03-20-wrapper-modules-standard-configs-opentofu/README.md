@@ -24,15 +24,30 @@ terraform {
   }
 }
 
-variable "bucket_name"  { type = string }
-variable "environment"  { type = string }
-variable "purpose"      { type = string }
-variable "extra_tags"   { type = map(string); default = {} }
+variable "bucket_name" { type = string }
+variable "environment" { type = string }
+variable "purpose"     { type = string }
+
+variable "extra_tags" {
+  type    = map(string)
+  default = {}
+}
 
 # These are overridable but have opinionated defaults
-variable "versioning_enabled"    { type = bool; default = true }
-variable "enable_notifications"  { type = bool; default = false }
-variable "lifecycle_transition_days" { type = number; default = 90 }
+variable "versioning_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "enable_notifications" {
+  type    = bool
+  default = false
+}
+
+variable "lifecycle_transition_days" {
+  type    = number
+  default = 90
+}
 
 locals {
   standard_tags = merge({
@@ -74,7 +89,7 @@ module "s3_bucket" {
       id      = "standard-lifecycle"
       enabled = true
       transition = [
-        { days = var.lifecycle_transition_days; storage_class = "STANDARD_IA" }
+        { days = var.lifecycle_transition_days, storage_class = "STANDARD_IA" }
       ]
     }
   ]
@@ -90,12 +105,20 @@ output "bucket_arn" { value = module.s3_bucket.s3_bucket_arn }
 
 ```hcl
 # modules/org-eks-cluster/main.tf
-variable "cluster_name"  { type = string }
-variable "environment"   { type = string }
-variable "vpc_id"        { type = string }
-variable "subnet_ids"    { type = list(string) }
-variable "cluster_version" { type = string; default = "1.29" }
-variable "node_groups"   { type = any; default = {} }
+variable "cluster_name" { type = string }
+variable "environment"  { type = string }
+variable "vpc_id"       { type = string }
+variable "subnet_ids"   { type = list(string) }
+
+variable "cluster_version" {
+  type    = string
+  default = "1.29"
+}
+
+variable "node_groups" {
+  type    = any
+  default = {}
+}
 
 locals {
   # Org-standard node group that gets merged with user-defined ones
