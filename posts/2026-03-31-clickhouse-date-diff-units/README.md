@@ -27,7 +27,7 @@ SELECT
 
 ```text
 diff_seconds  diff_minutes  diff_hours  diff_days  diff_weeks  diff_months  diff_quarters  diff_years
-14259000      237650        3960        166        23          5            1              0
+14387400      239790        3996        166        23          5            1              0
 ```
 
 ## Computing Response Times in Seconds
