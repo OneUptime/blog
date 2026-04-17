@@ -34,7 +34,7 @@ gcloud compute instances create clickhouse-prod \
   --scopes=storage-rw
 ```
 
-The `--scopes=storage-rw` flag allows the VM to write backups to GCS without service account keys.
+The `--scopes=storage-rw` flag grants the VM read/write access to Cloud Storage via its attached service account, which is useful for tools like `gsutil` that use ADC.
 
 ## Installing ClickHouse
 
@@ -44,8 +44,11 @@ gcloud compute ssh clickhouse-prod --zone=us-central1-a
 
 # Install ClickHouse on Debian
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
-curl -fsSL 'https://packages.clickhouse.com/deb/archive/apt/stable.sources' | \
-  sudo tee /etc/apt/sources.list.d/clickhouse.sources
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
+  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" | \
+  sudo tee /etc/apt/sources.list.d/clickhouse.list
 sudo apt-get update
 sudo apt-get install -y clickhouse-server clickhouse-client
 ```
@@ -89,15 +92,14 @@ echo '* hard nofile 262144' | sudo tee -a /etc/security/limits.conf
 
 ## Backup to Google Cloud Storage
 
-Use ClickHouse's built-in GCS backup support:
+ClickHouse backs up to GCS via the S3-compatible endpoint. Create an HMAC key for a service account in the Cloud Console, then run:
 
 ```sql
 BACKUP DATABASE mydb
-TO GCS('https://storage.googleapis.com/my-backups/clickhouse/', '')
-SETTINGS gcs_truncate_on_insert = 1;
+TO S3('https://storage.googleapis.com/my-backups/clickhouse/backup-2026-03-31/', 'GOOG_HMAC_KEY_ID', 'GOOG_HMAC_SECRET');
 ```
 
-The VM's service account handles authentication automatically when you attach the right IAM role (`roles/storage.objectAdmin`).
+Use a unique path (e.g., a UUID or timestamp) for each backup to avoid `BACKUP_ALREADY_EXISTS` errors. The service account tied to the HMAC key needs `roles/storage.objectAdmin` on the bucket.
 
 ## Summary
 
