@@ -107,16 +107,16 @@ FROM sensor_logs;
 
 ## Combining Forward-Fill and Backward-Fill
 
-To handle leading gaps (no prior value for forward-fill) and trailing gaps (no next value for backward-fill), chain both operations. Apply backward-fill first so leading gaps get values, then forward-fill for any remaining interior gaps:
+To handle leading gaps (no prior value for forward-fill) and trailing gaps (no next value for backward-fill), chain both operations. Apply forward-fill first to carry values into interior and trailing gaps, then backward-fill to handle any remaining leading gaps:
 
 ```sql
--- Two-pass fill: backward-fill first to handle leading gaps,
--- then forward-fill to handle any trailing gaps
+-- Two-pass fill: forward-fill first to handle interior/trailing gaps,
+-- then backward-fill to handle any leading gaps
 SELECT
     sensor_id,
-    arrayFill(
+    arrayReverseFill(
         x -> (x != 0.0),
-        arrayReverseFill(
+        arrayFill(
             x -> (x != 0.0),
             hourly_readings
         )
@@ -155,4 +155,4 @@ SELECT arrayFill(
 
 ## Summary
 
-`arrayFill` propagates values left-to-right, replacing positions where the lambda returns 0 with the most recent value where the lambda returned 1 (forward-fill). `arrayReverseFill` does the same from right to left (backward-fill). Together they implement the two standard missing value imputation strategies for ordered sequences: carry-forward and carry-backward. For arrays with leading gaps, chain `arrayReverseFill` inside `arrayFill` for a complete two-pass fill.
+`arrayFill` propagates values left-to-right, replacing positions where the lambda returns 0 with the most recent value where the lambda returned 1 (forward-fill). `arrayReverseFill` does the same from right to left (backward-fill). Together they implement the two standard missing value imputation strategies for ordered sequences: carry-forward and carry-backward. For arrays with leading gaps, chain `arrayFill` inside `arrayReverseFill` for a complete two-pass fill.
