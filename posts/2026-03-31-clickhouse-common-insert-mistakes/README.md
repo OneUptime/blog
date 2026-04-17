@@ -68,12 +68,13 @@ Large uncompressed HTTP payloads waste network bandwidth and memory.
 
 ```bash
 # Wrong: uncompressed
-curl -X POST 'http://localhost:8123/' --data-binary "INSERT INTO events FORMAT CSV" < data.csv
+curl -X POST 'http://localhost:8123/?query=INSERT%20INTO%20events%20FORMAT%20CSV' \
+  --data-binary @data.csv
 
 # Correct: gzip compressed
-gzip -c data.csv | curl -X POST 'http://localhost:8123/' \
+gzip -c data.csv | curl -X POST 'http://localhost:8123/?query=INSERT%20INTO%20events%20FORMAT%20CSV' \
   -H 'Content-Encoding: gzip' \
-  --data-binary "INSERT INTO events FORMAT CSV"
+  --data-binary @-
 ```
 
 ## Mistake 6: Ignoring insert_quorum in Replicated Setups
