@@ -37,7 +37,7 @@ ORDER BY (vehicle_id, recorded_at);
 SELECT
     vehicle_id,
     toDate(recorded_at) AS day,
-    sumIf(1, engine_on = 1) * 10 / 60.0 AS engine_hours,  -- 10s ping interval
+    sumIf(1, engine_on = 1) * 10 / 3600.0 AS engine_hours,  -- 10s ping interval
     max(odometer_km) - min(odometer_km) AS km_driven
 FROM fleet_telemetry
 WHERE recorded_at >= today() - 30
