@@ -45,7 +45,8 @@ Tuples are fixed-length, potentially heterogeneous structures. Cast from a strin
 
 ```sql
 -- Build a typed tuple from a string representation
-SELECT CAST('(1, hello, 3.14)' AS Tuple(UInt32, String, Float64)) AS typed_tuple;
+-- Note: string elements must be quoted and there must be no spaces after commas
+SELECT CAST('(1,\'hello\',3.14)' AS Tuple(UInt32, String, Float64)) AS typed_tuple;
 
 -- Access tuple elements
 SELECT
