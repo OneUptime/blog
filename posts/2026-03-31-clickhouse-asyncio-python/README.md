@@ -26,10 +26,10 @@ The `asynch` library implements the native ClickHouse protocol with full asyncio
 
 ```python
 import asyncio
-import asynch
+from asynch import Connection
 
 async def get_event_count():
-    async with asynch.connect(
+    async with Connection(
         host="localhost", port=9000,
         user="default", password=""
     ) as conn:
@@ -44,23 +44,24 @@ print(f"Event count: {count}")
 
 ## Running Multiple Queries Concurrently
 
-This is where async shines - run independent queries in parallel:
+This is where async shines - run independent queries in parallel. A single ClickHouse connection uses one TCP socket and can only handle one query at a time, so we use a `Pool` and acquire a separate connection per task:
 
 ```python
 import asyncio
-import asynch
+from asynch import Pool
 
-async def query_one(conn, sql):
-    async with conn.cursor() as cursor:
-        await cursor.execute(sql)
-        return await cursor.fetchall()
+async def query_one(pool, sql):
+    async with pool.connection() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(sql)
+            return await cursor.fetchall()
 
 async def run_dashboard_queries():
-    async with asynch.connect(host="localhost") as conn:
+    async with Pool(minsize=1, maxsize=3, host="localhost") as pool:
         results = await asyncio.gather(
-            query_one(conn, "SELECT count() FROM events WHERE event_date = today()"),
-            query_one(conn, "SELECT count(DISTINCT user_id) FROM events WHERE event_date = today()"),
-            query_one(conn, "SELECT event_type, count() FROM events GROUP BY event_type LIMIT 5"),
+            query_one(pool, "SELECT count() FROM events WHERE event_date = today()"),
+            query_one(pool, "SELECT count(DISTINCT user_id) FROM events WHERE event_date = today()"),
+            query_one(pool, "SELECT event_type, count() FROM events GROUP BY event_type LIMIT 5"),
         )
     return results
 
@@ -73,11 +74,11 @@ For high-throughput async inserts, maintain a pool of connections:
 
 ```python
 import asyncio
-import asynch
+from asynch import Connection
 from asyncio import Queue
 
 async def insert_worker(queue: Queue, host: str):
-    async with asynch.connect(host=host) as conn:
+    async with Connection(host=host) as conn:
         while True:
             batch = await queue.get()
             if batch is None:
@@ -89,18 +90,18 @@ async def insert_worker(queue: Queue, host: str):
                 )
             queue.task_done()
 
-async def producer(queue: Queue):
+async def producer(queue: Queue, num_workers: int):
     for i in range(100):
         batch = [(j, "click") for j in range(1000)]
         await queue.put(batch)
-    await queue.put(None)  # signal done
+    for _ in range(num_workers):
+        await queue.put(None)  # signal each worker to stop
 
 async def main():
+    num_workers = 4
     queue = Queue(maxsize=10)
-    await asyncio.gather(
-        producer(queue),
-        insert_worker(queue, "localhost")
-    )
+    workers = [insert_worker(queue, "localhost") for _ in range(num_workers)]
+    await asyncio.gather(producer(queue, num_workers), *workers)
 
 asyncio.run(main())
 ```
@@ -110,11 +111,14 @@ asyncio.run(main())
 Prevent overwhelming ClickHouse with too many concurrent connections:
 
 ```python
+import asyncio
+from asynch import Connection
+
 sem = asyncio.Semaphore(10)
 
 async def limited_query(sql):
     async with sem:
-        async with asynch.connect(host="localhost") as conn:
+        async with Connection(host="localhost") as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(sql)
                 return await cursor.fetchall()
