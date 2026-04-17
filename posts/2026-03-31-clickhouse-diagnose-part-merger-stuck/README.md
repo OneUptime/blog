@@ -38,7 +38,6 @@ A `progress` value stuck at the same number for many minutes indicates a stuck m
 SELECT metric, value
 FROM system.metrics
 WHERE metric IN (
-    'BackgroundPoolTask',
     'BackgroundMergesAndMutationsPoolTask',
     'BackgroundMergesAndMutationsPoolSize'
 );
@@ -103,10 +102,14 @@ Free up disk space by dropping old partitions:
 ALTER TABLE events DROP PARTITION '2025-01';
 ```
 
-Increase the merge pool to unblock saturation:
+Increase the merge pool to unblock saturation. `background_pool_size` is a server-level setting, so edit `config.xml` and reload the configuration (only increases take effect at runtime; decreases require a server restart):
+
+```xml
+<background_pool_size>32</background_pool_size>
+```
 
 ```sql
-SYSTEM SET background_pool_size = 32;
+SYSTEM RELOAD CONFIG;
 ```
 
 Trigger a manual optimize to force merging:
