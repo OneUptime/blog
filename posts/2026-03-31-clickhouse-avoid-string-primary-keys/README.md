@@ -35,7 +35,7 @@ Index entries for UUIDs stored as String take ~36 bytes each. For UInt128, 16 by
 String comparison is lexicographic, not numeric. This can produce unexpected sort orders and makes range queries on string-encoded IDs unreliable.
 
 ```sql
--- String comparison: '9' > '10' > '100' (lexicographic)
+-- String comparison: '9' > '100' > '10' (lexicographic)
 -- This ORDER BY does NOT sort numerically
 ORDER BY string_id;
 ```
