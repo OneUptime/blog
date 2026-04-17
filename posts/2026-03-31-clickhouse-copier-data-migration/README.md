@@ -8,7 +8,7 @@ Description: A practical guide to using clickhouse-copier for migrating data bet
 
 ---
 
-`clickhouse-copier` is a utility bundled with ClickHouse for copying data between clusters or within a cluster. It handles resharding, schema changes, and large-scale migrations without requiring downtime on the source.
+`clickhouse-copier` is a utility for copying data between ClickHouse clusters or within a cluster. It handles resharding, schema changes, and large-scale migrations without requiring downtime on the source. Note: `clickhouse-copier` is no longer actively maintained and has been moved to a separate repository (`ClickHouse/copier`); it is no longer bundled with recent ClickHouse server packages but remains usable via its final release.
 
 ## When to Use clickhouse-copier
 
@@ -19,22 +19,25 @@ Description: A practical guide to using clickhouse-copier for migrating data bet
 
 ## Installation
 
-`clickhouse-copier` ships with the ClickHouse server package:
+On older ClickHouse versions, `clickhouse-copier` shipped with the server package:
 
 ```bash
 which clickhouse-copier
 # /usr/bin/clickhouse-copier
 ```
 
+On recent versions, obtain the binary from the separate [ClickHouse/copier](https://github.com/ClickHouse/copier) repository.
+
 ## ZooKeeper Requirement
 
 clickhouse-copier uses ZooKeeper (or ClickHouse Keeper) to coordinate tasks and track progress:
 
 ```bash
-# Ensure ZooKeeper is accessible
-clickhouse-copier --zookeeper-config /etc/clickhouse-server/config.xml \
+# Ensure ZooKeeper / Keeper is accessible. The --config flag points to a
+# keeper.xml file containing the <zookeeper> connection settings.
+clickhouse-copier \
   --task-path /clickhouse/copier/task1 \
-  --config copier.xml \
+  --config keeper.xml \
   --task-file task.xml \
   --base-dir /var/lib/clickhouse/copier
 ```
@@ -94,7 +97,7 @@ Create `task.xml` describing source, destination, and mapping:
 ```bash
 clickhouse-copier \
   --daemon \
-  --config /etc/clickhouse-server/config.xml \
+  --config keeper.xml \
   --task-path /clickhouse/copier/task1 \
   --task-file task.xml \
   --base-dir /var/lib/clickhouse/copier/task1
@@ -120,4 +123,4 @@ clickhouse-copier is idempotent - re-running after a failure resumes from where 
 
 ## Summary
 
-`clickhouse-copier` is the standard tool for large-scale ClickHouse data migrations and resharding. Its ZooKeeper-based coordination ensures fault-tolerant, resumable copies between clusters of any size.
+`clickhouse-copier` has historically been the standard tool for large-scale ClickHouse data migrations and resharding. Its ZooKeeper-based coordination ensures fault-tolerant, resumable copies between clusters of any size. Because the tool is no longer actively maintained, for new projects also consider alternatives such as `INSERT ... SELECT` via the `remoteSecure()` / `remote()` table functions or using `clickhouse-client` piping between clusters.
