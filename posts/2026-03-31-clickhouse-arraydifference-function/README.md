@@ -68,8 +68,8 @@ SELECT
     arrayFilter(d -> abs(d) > 2.0, arrayDifference(readings)) AS large_deltas
 FROM temperature_logs
 WHERE length(arrayFilter(d -> abs(d) > 2.0, arrayDifference(readings))) > 0;
--- sensor 1: [1.7, 2.6] - had two intervals with delta > 2
--- sensor 3: [2.5, 5.1, ...] - volatile readings
+-- sensor 1: [2.6] - one interval with |delta| > 2
+-- sensor 3: [2.5, 4.5, 5.1, -4.3, -4.5] - volatile readings
 ```
 
 ## Computing Increments from Cumulative Counters
@@ -143,7 +143,7 @@ WHERE sensor_id = 1;
 
 ## Detecting Flat Periods
 
-Consecutive zeros in the difference array indicate a flat period where the value did not change. Use `arrayCompact` on the difference array to identify runs of zeros:
+Consecutive zeros in the difference array indicate a flat period where the value did not change. Use `arrayFilter` on the difference array to isolate the zero deltas:
 
 ```sql
 -- Find whether the sensor had any flat periods (delta = 0)
