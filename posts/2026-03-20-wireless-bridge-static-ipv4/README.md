@@ -79,19 +79,21 @@ network:
   ethernets:
     eth0:
       dhcp4: false
-    wifis:
-      wlan0:
-        dhcp4: false
-        access-points:
-          "MyNetwork":
-            password: "mypassword"
+  wifis:
+    wlan0:
+      dhcp4: false
+      access-points:
+        "MyNetwork":
+          password: "mypassword"
   bridges:
     br0:
       interfaces: [eth0, wlan0]
       dhcp4: false
       addresses:
         - 192.168.1.50/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
         addresses: [8.8.8.8, 8.8.4.4]
 ```
