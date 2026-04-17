@@ -12,7 +12,7 @@ When working with array columns in ClickHouse, you often need to ask two differe
 
 ## arrayExists() - Any Element Matches
 
-`arrayExists(func, arr)` returns `1` if the lambda returns a non-zero value for at least one element in the array. It short-circuits as soon as a match is found.
+`arrayExists(func, arr)` returns `1` if the lambda returns a non-zero value for at least one element in the array.
 
 ```sql
 -- Does the array contain any negative number?
@@ -86,7 +86,7 @@ WHERE arrayExists(f -> f = 'dark_mode', feature_flags);
 SELECT user_id
 FROM user_profiles
 WHERE arrayAll(
-    f -> has(['verified_email', 'completed_profile', 'accepted_terms'], f),
+    f -> has(feature_flags, f),
     ['verified_email', 'completed_profile', 'accepted_terms']
 );
 ```
@@ -150,4 +150,4 @@ SELECT arrayAll([1, 1, 1, 1]) AS all_flags_set;
 
 ## Summary
 
-`arrayExists()` and `arrayAll()` are the array equivalents of `any()` and `all()` predicates found in functional languages. They produce a scalar boolean result by evaluating a lambda against every element in an array, making them ideal for `WHERE` clause filtering, data quality assertions, and derived flag columns. Because they short-circuit, they are also efficient on large arrays when the answer is determined early.
+`arrayExists()` and `arrayAll()` are the array equivalents of `any()` and `all()` predicates found in functional languages. They produce a scalar boolean result by evaluating a lambda against every element in an array, making them ideal for `WHERE` clause filtering, data quality assertions, and derived flag columns.
