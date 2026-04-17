@@ -19,17 +19,20 @@ Flyway is a widely-used Java-based schema migration tool. With the ClickHouse JD
 ## Installing Flyway CLI
 
 ```bash
-wget -qO- https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/10.0.0/flyway-commandline-10.0.0-linux-x64.tar.gz | tar -xz
-export PATH=$PATH:flyway-10.0.0
+wget -qO- https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/10.22.0/flyway-commandline-10.22.0-linux-x64.tar.gz | tar -xz
+export PATH=$PATH:flyway-10.22.0
 ```
 
-## Adding the ClickHouse JDBC Driver
+## Adding the ClickHouse JDBC Driver and Flyway Plugin
 
-Download the JDBC driver and place it in Flyway's `drivers` directory:
+ClickHouse support is not bundled with the Flyway CLI, so you must add both the ClickHouse JDBC driver and the `flyway-database-clickhouse` plugin to Flyway's `drivers` directory:
 
 ```bash
-wget https://github.com/ClickHouse/clickhouse-java/releases/latest/download/clickhouse-jdbc-all.jar \
-  -O flyway-10.0.0/drivers/clickhouse-jdbc-all.jar
+wget https://github.com/ClickHouse/clickhouse-java/releases/download/v0.9.8/clickhouse-jdbc-0.9.8-all.jar \
+  -O flyway-10.22.0/drivers/clickhouse-jdbc-0.9.8-all.jar
+
+wget https://repo1.maven.org/maven2/org/flywaydb/flyway-database-clickhouse/10.22.0/flyway-database-clickhouse-10.22.0.jar \
+  -O flyway-10.22.0/drivers/flyway-database-clickhouse-10.22.0.jar
 ```
 
 ## Flyway Configuration
@@ -118,6 +121,19 @@ Output:
       <location>filesystem:src/main/resources/db/migration</location>
     </locations>
   </configuration>
+  <dependencies>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-clickhouse</artifactId>
+      <version>10.22.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.clickhouse</groupId>
+      <artifactId>clickhouse-jdbc</artifactId>
+      <version>0.9.8</version>
+      <classifier>all</classifier>
+    </dependency>
+  </dependencies>
 </plugin>
 ```
 
