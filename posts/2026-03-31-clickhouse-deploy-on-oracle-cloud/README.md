@@ -12,13 +12,13 @@ Oracle Cloud Infrastructure (OCI) offers competitive pricing and the Always Free
 
 ## Choosing a VM Shape
 
-OCI flexible shapes let you customize vCPU and memory independently:
+OCI flexible shapes let you customize OCPU and memory independently:
 
-- **VM.Standard.E4.Flex** - AMD EPYC, up to 64 vCPU and 1024 GB RAM
+- **VM.Standard.E4.Flex** - AMD EPYC, up to 64 OCPU and 1024 GB RAM
 - **VM.Standard.A1.Flex** - ARM-based Ampere, great price/performance
 - **VM.Standard3.Flex** - Intel Ice Lake
 
-A reasonable production starting point is `VM.Standard.E4.Flex` with 16 vCPU and 128 GB RAM.
+A reasonable production starting point is `VM.Standard.E4.Flex` with 16 OCPU and 128 GB RAM.
 
 ## Creating the Instance
 
@@ -98,7 +98,7 @@ Generate S3-compatible credentials from OCI IAM under Customer Secret Keys.
 
 ## Free Tier Usage
 
-OCI's Always Free tier includes 2 AMD VMs with 1 vCPU and 1 GB each, or up to 4 Arm instances with 24 GB total. While not suitable for production ClickHouse, this is ideal for learning and development.
+OCI's Always Free tier includes 2 AMD VMs (VM.Standard.E2.1.Micro) with 1/8 OCPU and 1 GB memory each, or up to 4 Ampere A1 Arm instances with 4 OCPUs and 24 GB memory total. While not suitable for production ClickHouse, this is ideal for learning and development.
 
 ## Summary
 
