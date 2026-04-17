@@ -27,7 +27,7 @@ dim_city - dim_region - dim_customer
 Break down a flat dimension into normalized sub-dimensions:
 
 ```sql
--- Hierarchy: brand -> category -> sub_category
+-- Hierarchy: product -> (brand, category)
 CREATE TABLE dim_brand (
     brand_id UInt32,
     brand_name String,
@@ -53,7 +53,7 @@ ORDER BY product_id;
 ```
 
 ```sql
--- Geographic hierarchy: city -> state -> country
+-- Geographic hierarchy: customer -> city -> country
 CREATE TABLE dim_country (
     country_id UInt16,
     country_name String,
@@ -137,7 +137,7 @@ Another approach - use dictionaries that lookup into other dictionaries:
 SELECT
     dictGet('product_dict', 'category_id', product_id) AS category_id,
     dictGet('category_dict', 'department',
-        toUInt16(dictGet('product_dict', 'category_id', product_id))
+        toUInt64(dictGet('product_dict', 'category_id', product_id))
     ) AS department,
     sum(revenue)
 FROM fact_sales
