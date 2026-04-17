@@ -35,15 +35,16 @@ FROM system.metrics
 WHERE metric IN (
     'ReadonlyReplica',
     'BackgroundMergesAndMutationsPoolTask',
-    'BackgroundPoolTask'
+    'BackgroundFetchesPoolTask',
+    'BackgroundMovePoolTask'
 );
 
--- Disk read/write rates
+-- Disk read/write rates (host-level, per block device)
 SELECT
-    name,
+    metric,
     value
 FROM system.asynchronous_metrics
-WHERE name LIKE '%DiskRead%' OR name LIKE '%DiskWrite%';
+WHERE metric LIKE 'BlockRead%' OR metric LIKE 'BlockWrite%';
 ```
 
 ## Identify IO-Heavy Queries
@@ -82,10 +83,10 @@ ORDER BY elapsed DESC;
 ## Reduce IO with Projection and Partition Pruning
 
 ```sql
--- Ensure queries use partition pruning (check with EXPLAIN)
-EXPLAIN SELECT count() FROM events WHERE event_date = today();
+-- Ensure queries use partition pruning (check with EXPLAIN indexes = 1)
+EXPLAIN indexes = 1 SELECT count() FROM events WHERE event_date = today();
 
--- Look for "VirtualRow" or "MinMax" index usage in output
+-- Look for "Partition" / "MinMax" index usage in output, with Parts and Granules filtered counts
 ```
 
 Add a partition by clause if missing:
