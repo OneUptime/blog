@@ -84,14 +84,15 @@ This is useful for manual cold migration outside of TTL or storage policy rules.
 
 ## Moving Files
 
+`move` operates within a single disk. To relocate data between disks, use `copy` followed by `remove`.
+
 ```bash
 clickhouse-disks \
     --config-file /etc/clickhouse-server/config.xml \
+    --disk default \
     move \
-    --disk-from default \
-    --disk-to s3_cold \
     /store/abc/def/events/20240101_1_1_0/ \
-    /store/abc/def/events/20240101_1_1_0/
+    /store/abc/def/events_archive/20240101_1_1_0/
 ```
 
 ## Removing Files
@@ -125,22 +126,22 @@ clickhouse-disks \
 
 ## Interactive Shell Mode
 
-`clickhouse-disks` supports an interactive REPL for browsing multiple disks in one session:
+`clickhouse-disks` supports an interactive REPL for browsing multiple disks in one session. Running the tool without `--query` launches it in interactive mode:
 
 ```bash
 clickhouse-disks \
     --config-file /etc/clickhouse-server/config.xml \
-    --disk default \
-    --interactive
+    --disk default
 ```
 
-Inside the shell:
+Inside the shell you can use commands such as `list`, `cd`, `switch-disk`, `copy`, `move`, `remove`, `read`, `write`, and `mkdir`:
 
 ```text
-> ls /
-> cd store/abc/def/events/
-> ls
-> copy 20240101_1_1_0/ --disk-to s3_cold --path-to 20240101_1_1_0/
+> list /
+> cd /store/abc/def/events/
+> list
+> copy --disk-to s3_cold 20240101_1_1_0/ 20240101_1_1_0/
+> switch-disk s3_cold
 > quit
 ```
 
