@@ -53,17 +53,27 @@ const clickhouseSg = new aws.ec2.SecurityGroup("clickhouse-sg", {
 ```typescript
 const userData = `#!/bin/bash
 apt-get update
-apt-get install -y apt-transport-https ca-certificates curl
-curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | apt-key add -
-echo "deb https://packages.clickhouse.com/deb lts main" > /etc/apt/sources.list.d/clickhouse.list
+apt-get install -y apt-transport-https ca-certificates curl gnupg
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb lts main" > /etc/apt/sources.list.d/clickhouse.list
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y clickhouse-server clickhouse-client
 systemctl enable --now clickhouse-server`;
 
+// Look up the latest Ubuntu 22.04 LTS AMI from Canonical for the current region.
+const ubuntuAmi = aws.ec2.getAmiOutput({
+  mostRecent: true,
+  owners: ["099720109477"], // Canonical
+  filters: [
+    { name: "name", values: ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"] },
+    { name: "virtualization-type", values: ["hvm"] },
+  ],
+});
+
 const nodeCount = 3;
 const instances = Array.from({ length: nodeCount }, (_, i) =>
   new aws.ec2.Instance(`clickhouse-${i}`, {
-    ami: "ami-0c55b159cbfafe1f0", // Ubuntu 22.04 LTS
+    ami: ubuntuAmi.id,
     instanceType: "m6i.2xlarge",
     vpcSecurityGroupIds: [clickhouseSg.id],
     userData: userData,
