@@ -82,7 +82,7 @@ For dashboard queries, maintain pre-aggregated projections:
 ```sql
 CREATE MATERIALIZED VIEW daily_revenue_mv
 ENGINE = SummingMergeTree()
-ORDER BY (toDate(created_at))
+ORDER BY (day, status)
 AS
 SELECT
     toDate(created_at) AS day,
