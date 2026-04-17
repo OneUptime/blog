@@ -12,7 +12,7 @@ Description: Learn how to use the clickhouse-disks utility to inspect, copy, and
 
 ## Installation
 
-Ships with ClickHouse 22.4 and later:
+Ships with ClickHouse 22.7 and later:
 
 ```bash
 which clickhouse-disks
@@ -22,7 +22,7 @@ which clickhouse-disks
 ## Listing Configured Disks
 
 ```bash
-clickhouse-disks --config /etc/clickhouse-server/config.xml list-disks
+clickhouse-disks --config-file /etc/clickhouse-server/config.xml --query "list-disks"
 ```
 
 Sample output:
@@ -35,9 +35,9 @@ s3cold: s3, path: s3://my-bucket/clickhouse/
 ## Listing Files on a Disk
 
 ```bash
-clickhouse-disks --config /etc/clickhouse-server/config.xml \
+clickhouse-disks --config-file /etc/clickhouse-server/config.xml \
   --disk default \
-  list /data/analytics/events/
+  --query "list /data/analytics/events/"
 ```
 
 ## Copying Data Between Disks
@@ -45,20 +45,16 @@ clickhouse-disks --config /etc/clickhouse-server/config.xml \
 Move a table partition from local to S3:
 
 ```bash
-clickhouse-disks --config /etc/clickhouse-server/config.xml \
-  copy \
-  --disk-from default \
-  --disk-to s3cold \
-  /data/analytics/events/202601_1_1_0/ \
-  /data/analytics/events/202601_1_1_0/
+clickhouse-disks --config-file /etc/clickhouse-server/config.xml \
+  --query "copy --disk-from default --disk-to s3cold /data/analytics/events/202601_1_1_0/ /data/analytics/events/202601_1_1_0/"
 ```
 
 ## Removing Files from a Disk
 
 ```bash
-clickhouse-disks --config /etc/clickhouse-server/config.xml \
+clickhouse-disks --config-file /etc/clickhouse-server/config.xml \
   --disk s3cold \
-  remove /data/analytics/events/old_partition/
+  --query "remove /data/analytics/events/old_partition/"
 ```
 
 ## Interactive Mode
@@ -66,7 +62,7 @@ clickhouse-disks --config /etc/clickhouse-server/config.xml \
 Launch an interactive shell for disk operations:
 
 ```bash
-clickhouse-disks --config /etc/clickhouse-server/config.xml \
+clickhouse-disks --config-file /etc/clickhouse-server/config.xml \
   --disk default
 ```
 
@@ -78,13 +74,11 @@ When automated TTL moves are not suitable, manually migrate old partitions:
 
 ```bash
 # List partitions older than 6 months
-clickhouse-disks --disk default list /data/analytics/events/ | grep "^2025"
+clickhouse-disks --disk default --query "list /data/analytics/events/" | grep "^2025"
 
 # Copy each to cold storage
 clickhouse-disks \
-  copy --disk-from default --disk-to s3cold \
-  /data/analytics/events/202506_1_100_5/ \
-  /data/analytics/events/202506_1_100_5/
+  --query "copy --disk-from default --disk-to s3cold /data/analytics/events/202506_1_100_5/ /data/analytics/events/202506_1_100_5/"
 ```
 
 ## Checking Disk Usage
