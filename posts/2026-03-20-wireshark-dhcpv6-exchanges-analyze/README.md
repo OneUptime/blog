@@ -35,8 +35,8 @@ dhcpv6.msgtype == 1
 # Show Solicit and Reply exchanges
 dhcpv6.msgtype == 1 || dhcpv6.msgtype == 7
 
-# Show only messages from a specific DUID (client identifier)
-dhcpv6.duidllt contains "aa:bb:cc"
+# Show only messages from a specific DUID-LLT link-layer address
+dhcpv6.duidllt.link_layer_addr contains aa:bb:cc
 
 # Show DHCPv6 on specific ports (546=client, 547=server)
 udp.port == 546 || udp.port == 547
@@ -71,7 +71,8 @@ dhcpv6.msgtype == 1
 
 # If you see Solicits but no Advertise, the server is not responding
 # Check: Is the server reachable? Is ff02::1:2 multicast working?
-icmpv6.type == 135 && icmpv6.nd.ns.target_address == ff02::1:2
+# Show all traffic destined to the DHCPv6 multicast group
+ipv6.dst == ff02::1:2
 ```
 
 ### Address Already in Use (Decline)
