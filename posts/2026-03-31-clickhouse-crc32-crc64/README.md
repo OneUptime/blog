@@ -25,7 +25,7 @@ SELECT
 ```text
 hello_checksum | different_checksum | empty_checksum
 ---------------|--------------------|--------------
-222957957      | 1498229210         | 0
+222957957      | 62177901           | 0
 ```
 
 A single character difference produces a completely different checksum. The empty string returns `0`.
