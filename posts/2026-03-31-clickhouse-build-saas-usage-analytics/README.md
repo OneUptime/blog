@@ -222,6 +222,17 @@ ORDER BY month;
 
 ```sql
 -- Accounts showing churn warning signs
+WITH account_stats AS (
+    SELECT
+        account_id,
+        max(occurred_at)                            AS last_active_at,
+        count()                                     AS events_last_30d,
+        countIf(occurred_at >= today() - 7)         AS events_last_7d,
+        uniqIf(user_id, occurred_at >= today() - 7) AS active_users_last_7d
+    FROM product_events
+    WHERE occurred_at >= today() - 30
+    GROUP BY account_id
+)
 SELECT
     a.account_id,
     a.name,
@@ -232,29 +243,11 @@ SELECT
     act.events_last_30d,
     act.active_users_last_7d,
     -- Warning flags
-    (dateDiff('day', act.last_active_at, today()) > 7)      AS no_activity_warning,
-    (act.events_last_30d < avg_events * 0.5)                AS usage_drop_warning,
-    (act.active_users_last_7d < a.seat_count * 0.3)         AS low_adoption_warning
+    (dateDiff('day', act.last_active_at, today()) > 7)               AS no_activity_warning,
+    (act.events_last_7d < act.events_last_30d / 30.0 * 7 * 0.5)      AS usage_drop_warning,
+    (act.active_users_last_7d < a.seat_count * 0.3)                  AS low_adoption_warning
 FROM accounts a FINAL
-JOIN (
-    SELECT
-        account_id,
-        max(occurred_at)                            AS last_active_at,
-        count()                                     AS events_last_30d,
-        uniqIf(user_id, occurred_at >= today() - 7) AS active_users_last_7d,
-        avg(daily_events)                           AS avg_events
-    FROM (
-        SELECT
-            account_id,
-            toDate(occurred_at)                     AS day,
-            uniq(user_id)                           AS active_users,
-            count()                                 AS daily_events
-        FROM product_events
-        WHERE occurred_at >= today() - 30
-        GROUP BY account_id, day
-    )
-    GROUP BY account_id
-) act ON a.account_id = act.account_id
+JOIN account_stats act ON a.account_id = act.account_id
 WHERE a.is_churned = 0
   AND a.mrr_usd > 0
   AND (
