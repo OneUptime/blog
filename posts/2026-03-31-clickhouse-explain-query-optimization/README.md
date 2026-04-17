@@ -12,15 +12,17 @@ Description: Learn how to use ClickHouse EXPLAIN statements to inspect query pla
 
 ## EXPLAIN Variants
 
-ClickHouse provides five `EXPLAIN` modes:
+ClickHouse supports several `EXPLAIN` types along with settings that change their output:
 
-| Mode | Shows |
+| Variant | Shows |
 |---|---|
-| `EXPLAIN` | Logical query plan (QueryPlan steps) |
+| `EXPLAIN` (alias for `EXPLAIN PLAN`) | Logical query plan (QueryPlan steps) |
 | `EXPLAIN AST` | Abstract syntax tree |
-| `EXPLAIN SYNTAX` | Normalized and optimized SQL |
+| `EXPLAIN SYNTAX` | Query text after syntax-level optimizations |
+| `EXPLAIN QUERY TREE` | Query tree produced by the analyzer |
 | `EXPLAIN PIPELINE` | Physical execution pipeline with operators |
-| `EXPLAIN indexes = 1` | Index usage within the query plan |
+| `EXPLAIN ESTIMATE` | Estimated rows, marks, and parts to read |
+| `EXPLAIN indexes = 1` | Setting on `EXPLAIN PLAN` that adds index usage details |
 
 ## EXPLAIN - Logical Query Plan
 
@@ -49,19 +51,12 @@ Expression ((Projection + Before ORDER BY))
         Expression (Before GROUP BY)
           Filter (WHERE)
             ReadFromMergeTree (user_events)
-            Indexes:
-              PrimaryKey
-                Keys:
-                  event_time
-                Condition: and((event_time in (-Inf, 1712000000]), (event_time in [1711395200, +Inf)))
-                Parts: 12/48
-                Granules: 156/3840
 ```
 
 **Key things to look for:**
-- `Parts: 12/48` - ClickHouse reads 12 of 48 parts. Good partition pruning.
-- `Granules: 156/3840` - reads 156 of 3840 granules. Good primary key pruning.
-- If you see `Parts: 48/48` or `Granules: 3840/3840`, the filter is not benefiting from the index.
+- `ReadFromMergeTree` is the leaf step that actually reads data. Its inputs are filtered upward by `Filter`, then aggregated, sorted, and projected.
+- `Aggregating` handles the `GROUP BY`, and `Sorting` handles the `ORDER BY`. Both are memory-sensitive.
+- The default `EXPLAIN` does not include index statistics. To see how many parts and granules are actually read, use `EXPLAIN indexes = 1`.
 
 ## EXPLAIN indexes = 1
 
