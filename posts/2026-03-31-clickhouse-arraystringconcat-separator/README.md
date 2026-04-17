@@ -28,7 +28,7 @@ SELECT arrayStringConcat(['apple', 'banana', 'cherry'], ', ') AS csv;
 
 -- Join with no separator (concatenate directly)
 SELECT arrayStringConcat(['Hello', ' ', 'World']) AS greeting;
--- Result: 'Hello  World'  (no extra separator, spaces are part of the elements)
+-- Result: 'Hello World'  (no extra separator, the space is the middle element)
 
 -- Join with empty separator
 SELECT arrayStringConcat(['a', 'b', 'c'], '') AS no_sep;
