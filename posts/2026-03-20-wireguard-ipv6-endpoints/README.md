@@ -20,7 +20,7 @@ In WireGuard, the `Endpoint` directive specifies where to reach a peer. For IPv6
 [Interface]
 # Server's tunnel IPv6 address
 
-Address = fd00:wg::/64
+Address = fd00::1/64
 Address = 10.0.0.1/24
 
 # Listen port
@@ -40,7 +40,7 @@ PreDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -
 [Peer]
 # Client public key
 PublicKey = <client-public-key>
-AllowedIPs = fd00:wg::2/128, 10.0.0.2/32
+AllowedIPs = fd00::2/128, 10.0.0.2/32
 ```
 
 ## Client Configuration with IPv6 Endpoint
@@ -50,7 +50,7 @@ AllowedIPs = fd00:wg::2/128, 10.0.0.2/32
 
 [Interface]
 # Client's tunnel IPv6 address
-Address = fd00:wg::2/64
+Address = fd00::2/64
 Address = 10.0.0.2/24
 
 PrivateKey = <client-private-key>
@@ -62,7 +62,7 @@ DNS = 2001:4860:4860::8888
 PublicKey = <server-public-key>
 
 # Connect to server using its IPv6 address
-Endpoint = [2001:db8::wireguard-server]:51820
+Endpoint = [2001:db8::1]:51820
 
 # Route all traffic through VPN
 AllowedIPs = 0.0.0.0/0, ::/0
@@ -134,7 +134,7 @@ sudo ip6tables -A FORWARD -o wg0 -j ACCEPT
 sudo wg show wg0
 
 # Test ping over IPv6 tunnel
-ping6 fd00:wg::1   # Ping server's tunnel IPv6 address
+ping6 fd00::1   # Ping server's tunnel IPv6 address
 
 # Verify traffic is encrypted
 sudo tcpdump -i eth0 -n 'udp port 51820'
@@ -150,7 +150,7 @@ ip -6 route show
 sudo ss -6 -ulnp | grep 51820
 
 # Test UDP reachability to server's IPv6 endpoint
-nc -6 -u 2001:db8::wireguard-server 51820
+nc -6 -u 2001:db8::1 51820
 ```
 
 WireGuard's clean configuration model makes IPv6 endpoint support straightforward - just use bracket notation for IPv6 addresses in the Endpoint directive.
