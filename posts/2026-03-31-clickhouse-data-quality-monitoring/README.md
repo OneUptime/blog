@@ -72,6 +72,7 @@ FROM events;
 Compare today's row count to the 7-day average:
 
 ```sql
+INSERT INTO data_quality_results
 WITH
     today_count AS (
         SELECT count() AS cnt FROM events WHERE toDate(event_time) = today()
@@ -80,11 +81,10 @@ WITH
         SELECT avg(cnt) AS avg_cnt FROM (
             SELECT toDate(event_time) AS d, count() AS cnt
             FROM events
-            WHERE event_time BETWEEN today() - 7 AND today() - 1
+            WHERE event_time >= today() - 7 AND event_time < today()
             GROUP BY d
         )
     )
-INSERT INTO data_quality_results
 SELECT
     now(), 'events', 'volume_ratio',
     today_count.cnt / avg_count.avg_cnt,
