@@ -54,14 +54,15 @@ ORDER BY total_spend DESC;
 ```sql
 SELECT
     date,
-    impressions,
-    clicks,
-    spend,
-    round(clicks / impressions * 100, 4) AS ctr,
-    round(spend / impressions * 1000, 4) AS cpm
+    sum(impressions) AS impressions,
+    sum(clicks) AS clicks,
+    sum(spend) AS spend,
+    round(sum(clicks) / sum(impressions) * 100, 4) AS ctr,
+    round(sum(spend) / sum(impressions) * 1000, 4) AS cpm
 FROM campaign_daily_stats
 WHERE campaign_id = 42
   AND date >= today() - 30
+GROUP BY date
 ORDER BY date;
 ```
 
