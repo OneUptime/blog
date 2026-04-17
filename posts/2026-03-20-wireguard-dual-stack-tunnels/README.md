@@ -17,7 +17,7 @@ A WireGuard dual-stack tunnel assigns both IPv4 and IPv6 addresses to the tunnel
 # Assign both IPv4 and IPv6 tunnel addresses
 
 Address = 10.0.0.1/24
-Address = fd00:wg::/64
+Address = fd00:abcd::1/64
 
 ListenPort = 51820
 PrivateKey = <server-private-key>
@@ -26,16 +26,16 @@ PrivateKey = <server-private-key>
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT
 PostUp = iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 PostUp = ip6tables -A FORWARD -i wg0 -j ACCEPT
-PostUp = ip6tables -t nat -A POSTROUTING -s fd00:wg::/64 -o eth0 -j MASQUERADE
+PostUp = ip6tables -t nat -A POSTROUTING -s fd00:abcd::/64 -o eth0 -j MASQUERADE
 PreDown = iptables -D FORWARD -i wg0 -j ACCEPT
 PreDown = iptables -t nat -D POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 PreDown = ip6tables -D FORWARD -i wg0 -j ACCEPT
-PreDown = ip6tables -t nat -D POSTROUTING -s fd00:wg::/64 -o eth0 -j MASQUERADE
+PreDown = ip6tables -t nat -D POSTROUTING -s fd00:abcd::/64 -o eth0 -j MASQUERADE
 
 [Peer]
 PublicKey = <client-public-key>
 # Allow both IPv4 and IPv6 from this client
-AllowedIPs = 10.0.0.2/32, fd00:wg::2/128
+AllowedIPs = 10.0.0.2/32, fd00:abcd::2/128
 ```
 
 ## Dual-Stack Client Configuration
@@ -46,7 +46,7 @@ AllowedIPs = 10.0.0.2/32, fd00:wg::2/128
 [Interface]
 # Tunnel addresses for both families
 Address = 10.0.0.2/24
-Address = fd00:wg::2/64
+Address = fd00:abcd::2/64
 
 PrivateKey = <client-private-key>
 
@@ -83,7 +83,7 @@ ping -c 3 8.8.8.8
 curl -4 https://ifconfig.co
 
 # Test IPv6 connectivity
-ping6 -c 3 2001:4860:4860::8888
+ping -6 -c 3 2001:4860:4860::8888
 curl -6 https://ifconfig.co
 ```
 
@@ -100,10 +100,10 @@ Endpoint = vpn.example.com:51820
 AllowedIPs = 10.0.0.0/8
 
 # Internal IPv6
-AllowedIPs = fd00:internal::/48
+AllowedIPs = fd00:abcd::/48
 
 # Separate by comma
-AllowedIPs = 10.0.0.0/8, fd00:internal::/48
+AllowedIPs = 10.0.0.0/8, fd00:abcd::/48
 ```
 
 ## WireGuard with IPv6-Only Server
@@ -120,7 +120,7 @@ PrivateKey = <client-private-key>
 [Peer]
 PublicKey = <server-public-key>
 # Connect using server's IPv6 address
-Endpoint = [2001:db8::vpn-server]:51820
+Endpoint = [2001:db8::1]:51820
 # Route IPv4 default through IPv6 tunnel
 AllowedIPs = 0.0.0.0/0
 ```
@@ -138,7 +138,7 @@ sudo wg show wg0
 #
 # peer: <client-key>
 #   endpoint: [client-ipv6]:port (or ipv4:port)
-#   allowed ips: 10.0.0.2/32, fd00:wg::2/128
+#   allowed ips: 10.0.0.2/32, fd00:abcd::2/128
 #   latest handshake: 30 seconds ago
 #   transfer: 1.44 MiB received, 872 KiB sent
 
