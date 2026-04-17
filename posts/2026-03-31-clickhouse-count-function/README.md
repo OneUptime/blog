@@ -64,7 +64,7 @@ FROM orders;
 
 ## count(DISTINCT col) - Counting Unique Values
 
-`count(DISTINCT col)` returns the number of unique non-NULL values in a column. It is equivalent to `uniq()` but uses an exact algorithm.
+`count(DISTINCT col)` returns the number of unique non-NULL values in a column. By default, it is equivalent to `uniqExact()`, which uses an exact algorithm (controlled by the `count_distinct_implementation` setting).
 
 ```sql
 -- Count distinct users who placed orders
