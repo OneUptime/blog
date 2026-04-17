@@ -49,16 +49,18 @@ OPTIONS (
 );
 ```
 
-## Using GCS with a Service Account
+## Configuring GCS Credentials in config.xml
 
-Configure a service account JSON key in `config.xml`:
+The `gcs` table function is an alias of `s3` and authenticates with HMAC keys via the GCS XML API. Configure per-endpoint credentials in `config.xml` under the `<s3>` section so you do not have to pass keys on every call:
 
 ```xml
-<gcs>
-  <endpoint>https://storage.googleapis.com/my-bucket/</endpoint>
-  <access_key_id>HMAC_ACCESS_KEY</access_key_id>
-  <secret_access_key>HMAC_SECRET</secret_access_key>
-</gcs>
+<s3>
+  <gcs_endpoint>
+    <endpoint>https://storage.googleapis.com/my-bucket/</endpoint>
+    <access_key_id>HMAC_ACCESS_KEY</access_key_id>
+    <secret_access_key>HMAC_SECRET</secret_access_key>
+  </gcs_endpoint>
+</s3>
 ```
 
 ## Exporting JSON Lines to GCS
