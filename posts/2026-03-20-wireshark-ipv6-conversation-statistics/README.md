@@ -47,9 +47,9 @@ tshark -r capture.pcap -q -z conv,ipv6
 # List top IPv6 endpoints by bytes
 tshark -r capture.pcap -q -z endpoints,ipv6
 
-# Sort by total bytes (column 4 is bytes)
+# Sort by total bytes (column 3 is bytes)
 tshark -r capture.pcap -q -z endpoints,ipv6 | \
-  sort -k4 -rn | head -20
+  sort -k3 -rn | head -20
 ```
 
 ## IPv6 Conversations with Display Filter
@@ -61,7 +61,7 @@ tshark -r capture.pcap -q -z conv,ipv6 \
 
 # Conversations for a specific subnet
 tshark -r capture.pcap -q -z conv,ipv6 \
-  -Y "ipv6.addr == 2001:db8:clients::/64"
+  -Y "ipv6.addr == 2001:db8:1::/64"
 ```
 
 ## Identify Top IPv6 Talkers (Most Bytes)
@@ -98,13 +98,16 @@ tshark -r capture.pcap -Y "ipv6" \
 
 ```bash
 # Find IPv6 conversations with very high packet counts (potential scan/attack)
+# Column layout: $1 src, $2 "<->", $3 dst, $4-5 <- frames/bytes,
+# $6-7 -> frames/bytes, $8 total frames, $9 total bytes,
+# $10 rel start, $11 duration
 tshark -r capture.pcap -q -z conv,ipv6 | \
-  awk 'NR>5 {if ($3 > 10000) print $0}' | \
-  sort -k3 -rn | head -10
+  awk 'NR>5 {if ($8 > 10000) print $0}' | \
+  sort -k8 -rn | head -10
 
 # Find short-duration, high-packet-count conversations (port scans)
 tshark -r capture.pcap -q -z conv,ipv6 | \
-  awk 'NR>5 {if ($3 > 1000 && $7 < 10) print $0}'
+  awk 'NR>5 {if ($8 > 1000 && $11 < 10) print $0}'
 ```
 
 ## Export Conversation Data
