@@ -15,9 +15,13 @@ ZeroTier is a software-defined networking platform that creates virtual Layer 2 
 
 curl -s https://install.zerotier.com | sudo bash
 
-# Debian/Ubuntu
-curl https://raw.githubusercontent.com/zerotier/ZeroTierOne/master/doc/contact%40zerotier.com.gpg \
+# Debian/Ubuntu (manual repo setup)
+curl -s https://raw.githubusercontent.com/zerotier/ZeroTierOne/master/doc/contact%40zerotier.com.gpg \
   | gpg --dearmor | sudo tee /usr/share/keyrings/zerotierone-archive-keyring.gpg >/dev/null
+RELEASE=$(lsb_release -cs)
+echo "deb [signed-by=/usr/share/keyrings/zerotierone-archive-keyring.gpg] http://download.zerotier.com/debian/${RELEASE} ${RELEASE} main" \
+  | sudo tee /etc/apt/sources.list.d/zerotier.list
+sudo apt-get update
 sudo apt-get install zerotier-one
 
 # Join a network
@@ -69,8 +73,9 @@ sudo zerotier-cli listnetworks
 # Get peer details
 sudo zerotier-cli peers
 
-# Check routes
-sudo zerotier-cli listroutes
+# Check routes (routes are included in listnetworks output;
+# use system routing tools for the active kernel routes)
+ip -6 route show
 ```
 
 ## Verifying IPv6 on ZeroTier Interface
@@ -91,8 +96,8 @@ ip -6 route show
 Via the web UI or API, add managed routes to direct IPv6 traffic:
 
 ```bash
-# Via ZeroTier API
-curl -X POST https://my.zerotier.com/api/v1/network/<nwid> \
+# Via ZeroTier Central API
+curl -X POST https://api.zerotier.com/api/v1/network/<nwid> \
   -H "Authorization: token <your-api-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -128,7 +133,7 @@ sudo ip6tables -t nat -A POSTROUTING -s fd56:3434:5555::/48 -o eth0 -j MASQUERAD
 
 | Feature | ZeroTier | Tailscale |
 |---|---|---|
-| IPv6 addressing | RFC 4193 or public | fd7a:115c::/48 |
+| IPv6 addressing | RFC 4193 or public | fd7a:115c:a1e0::/48 |
 | 6PLANE mode | Yes | No |
 | Central management | my.zerotier.com | login.tailscale.com |
 | Self-hosted controller | Yes (ZeroTierOne) | Yes (headscale) |
