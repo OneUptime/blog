@@ -23,7 +23,7 @@ By default, ClickHouse uses port 9009 for interserver HTTP communication:
 
 - **ReplicatedMergeTree replication**: Nodes exchange data parts when syncing replicas
 - **Distributed table reads**: Nodes forward query fragments to remote shards
-- **Fetch commands**: Manual data part fetches with SYSTEM FETCH PARTITION
+- **Fetch commands**: Manual data part fetches with `ALTER TABLE ... FETCH PARTITION`
 
 ## Configuring the Port
 
@@ -123,7 +123,7 @@ Check for fetch errors:
 ```sql
 SELECT *
 FROM system.replication_queue
-WHERE type = 'FETCH_PARTS'
+WHERE type = 'GET_PART'
   AND num_tries > 3
 ORDER BY create_time DESC;
 ```
@@ -133,9 +133,9 @@ ORDER BY create_time DESC;
 If replication is stalled, verify interserver connectivity:
 
 ```bash
-# From node 2, test node 1's interserver port
-curl http://10.0.1.10:9009/
-# Should return: OK
+# From node 2, test node 1's interserver port is reachable
+nc -zv 10.0.1.10 9009
+# Should report: succeeded / open
 ```
 
 ## Summary
