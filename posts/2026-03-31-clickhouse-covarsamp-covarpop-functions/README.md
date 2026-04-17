@@ -122,13 +122,12 @@ Compare this result with `corr(cpu_percent, response_time_ms)` - they should be 
 ```sql
 -- Track rolling covariance between latency and CPU over time
 SELECT
-    toStartOfHour(timestamp) AS hour,
-    service_name,
+    toStartOfHour(metric_time) AS hour,
+    host_name,
     covarSamp(response_time_ms, cpu_percent) AS hourly_covariance
 FROM host_metrics
-JOIN request_logs USING (host_name, toStartOfMinute(timestamp))
-WHERE host_metrics.metric_time >= now() - INTERVAL 24 HOUR
-GROUP BY hour, service_name
+WHERE metric_time >= now() - INTERVAL 24 HOUR
+GROUP BY hour, host_name
 ORDER BY hour DESC;
 ```
 
