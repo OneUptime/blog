@@ -29,12 +29,12 @@ SELECT toStartOfHour(event_time);
 Snowflake uses virtual warehouses (compute clusters) that you size upfront. ClickHouse Cloud uses shared compute that scales automatically. Self-hosted ClickHouse uses fixed server resources.
 
 ```sql
--- Snowflake: set warehouse size per session
-USE WAREHOUSE LARGE;
+-- Snowflake: switch to a named warehouse for the session
+USE WAREHOUSE ANALYTICS_LARGE;
 
--- ClickHouse: control resources per query
-SELECT /*+ MAX_THREADS(16) */ count() FROM events;
--- Or set globally
+-- ClickHouse: control resources per query using SETTINGS
+SELECT count() FROM events SETTINGS max_threads = 16;
+-- Or set at the session level
 SET max_threads = 16;
 ```
 
@@ -51,7 +51,7 @@ FROM events;
 SELECT JSONExtractString(properties, 'page') AS page
 FROM events;
 
--- Or use the JSON type (ClickHouse 22.6+)
+-- Or use the JSON type (production-ready in ClickHouse 24.8+)
 SELECT properties.page AS page
 FROM events;
 ```
