@@ -8,7 +8,7 @@ Description: Learn how to use the FPC codec in ClickHouse to compress double-pre
 
 ---
 
-The FPC codec in ClickHouse implements the FPC (Floating Point Compression) algorithm designed by Martin Burtscher and Paruj Ratanaworabhan. It predicts each floating-point value from prior values using two hardware-friendly predictors and encodes only the difference from the prediction. FPC performs well on smooth, correlated double-precision series and offers an alternative to Gorilla for Float64 columns.
+The FPC codec in ClickHouse implements the FPC (Floating Point Compression) algorithm designed by Martin Burtscher and Paruj Ratanaworabhan. It predicts each floating-point value from prior values using two hardware-friendly predictors and encodes only the difference from the prediction. FPC performs well on smooth, correlated floating-point series and offers an alternative to Gorilla for Float32 and Float64 columns.
 
 Unlike Gorilla which is XOR-based, FPC uses FCM (Finite Context Method) and DFCM (Differential FCM) predictors. It is particularly strong on scientific and financial float sequences where values follow a consistent numerical pattern.
 
@@ -32,13 +32,15 @@ FPC maintains two hash tables of predictions. For each value, it XORs the best p
 ```sql
 CODEC(FPC)
 CODEC(FPC(level))
+CODEC(FPC(level, float_size))
 CODEC(FPC, LZ4)
 CODEC(FPC, ZSTD(3))
 ```
 
-FPC operates only on `Float64` (double-precision) columns. It does not support `Float32`. The optional level parameter controls hash table sizes; higher levels use more memory for better compression:
+FPC applies to `Float32` and `Float64` columns. The optional `level` parameter controls the predictor hash table size (`2^level * float_size` bytes); higher levels use more memory for better compression. The optional `float_size` parameter (4 or 8) sets the value width and defaults to `sizeof(type)` when the column is `Float32` or `Float64`:
 
 - Level 1 to 28 (default is 12)
+- float_size 4 or 8 (default matches the column type)
 
 ## Basic Usage
 
@@ -135,20 +137,22 @@ ORDER BY (run_id, step);
 
 For molecular dynamics or physics simulations, position and velocity series are highly correlated across steps, making FPC an excellent fit.
 
-## FPC Limitation: Float64 Only
+## Mixed Float Widths
 
-FPC does not compress `Float32`. For Float32 columns, use Gorilla instead:
+FPC works with both `Float32` and `Float64` columns. The codec detects the column width automatically, so no extra parameter is needed:
 
 ```sql
 CREATE TABLE mixed_floats
 (
     id       UInt32,
-    double_v Float64 CODEC(FPC),   -- FPC supported
-    float_v  Float32 CODEC(Gorilla, LZ4) -- use Gorilla for Float32
+    double_v Float64 CODEC(FPC),
+    float_v  Float32 CODEC(FPC)
 )
 ENGINE = MergeTree()
 ORDER BY id;
 ```
+
+Note that on 32-bit values FPC throughput and ratio characteristics may differ from Gorilla; benchmark against your real data when choosing between the two.
 
 ## Adding FPC to an Existing Column
 
@@ -174,10 +178,10 @@ WHERE table = 'financial_ticks'
 |---|---|
 | Float64 financial price series | FPC |
 | Float64 physics simulation outputs | FPC |
-| Float32 sensor readings | Gorilla |
+| Float32 sensor readings | FPC or Gorilla (benchmark) |
 | Float64 smooth sensor metrics | Either (benchmark) |
 | Random or uncorrelated floats | ZSTD alone |
 
 ## Summary
 
-FPC is a Float64-specific transform codec that uses FCM and DFCM predictors to compress correlated double-precision sequences. It is an alternative to Gorilla for Float64 columns, with particular strength on structured numerical series like financial prices and scientific simulation outputs. Use level 12 as the default, benchmark against Gorilla with your real data, and chain with LZ4 or ZSTD for additional compression if needed.
+FPC is a transform codec that uses FCM and DFCM predictors to compress correlated `Float32` and `Float64` sequences. It is an alternative to Gorilla for floating-point columns, with particular strength on structured numerical series like financial prices and scientific simulation outputs. Use level 12 as the default, benchmark against Gorilla with your real data, and chain with LZ4 or ZSTD for additional compression if needed.
