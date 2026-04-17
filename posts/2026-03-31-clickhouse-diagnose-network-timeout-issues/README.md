@@ -50,7 +50,7 @@ Check TCP connectivity:
 
 ```bash
 nc -zv shard2.internal 9000
-nc -zv shard2.internal 9009  # HTTP port
+nc -zv shard2.internal 9009  # interserver HTTP port (replication)
 ```
 
 ## Step 3 - Check Shard Load
@@ -82,7 +82,6 @@ WHERE name IN (
     'receive_timeout',
     'send_timeout',
     'connect_timeout_with_failover_ms',
-    'distributed_send_timeout',
     'tcp_keep_alive_timeout'
 );
 ```
