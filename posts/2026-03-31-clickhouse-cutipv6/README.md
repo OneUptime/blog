@@ -22,7 +22,7 @@ For pure IPv6 addresses, only the first argument matters for most use cases. A v
 cutIPv6(fixed_string_16, ipv6_bytes_to_zero, ipv4_bytes_to_zero)
 ```
 
-The input must be a `FixedString(16)` (the output of `IPv6StringToNum()`). The result is also a `FixedString(16)` that you typically wrap with `IPv6NumToString()` for display.
+The input must be a `FixedString(16)` (the output of `IPv6StringToNum()`) or an `IPv6` column. The result is a `String` containing the IPv6 address in text format, so no further conversion is needed for display.
 
 ## Prefix Truncation
 
@@ -41,9 +41,7 @@ graph LR
 Zero out the last 8 bytes (64 bits) to get the network prefix:
 
 ```sql
-SELECT IPv6NumToString(
-    cutIPv6(IPv6StringToNum('2001:db8:cafe:1234:abcd:ef01:2345:6789'), 8, 0)
-) AS prefix_64;
+SELECT cutIPv6(IPv6StringToNum('2001:db8:cafe:1234:abcd:ef01:2345:6789'), 8, 0) AS prefix_64;
 ```
 
 ```text
@@ -56,9 +54,7 @@ prefix_64
 Zero out the last 10 bytes (80 bits):
 
 ```sql
-SELECT IPv6NumToString(
-    cutIPv6(IPv6StringToNum('2001:db8:cafe:1234:abcd:ef01:2345:6789'), 10, 0)
-) AS prefix_48;
+SELECT cutIPv6(IPv6StringToNum('2001:db8:cafe:1234:abcd:ef01:2345:6789'), 10, 0) AS prefix_48;
 ```
 
 ```text
@@ -70,7 +66,7 @@ prefix_48
 
 ```sql
 SELECT
-    IPv6NumToString(cutIPv6(IPv6StringToNum(ip), 10, 0)) AS subnet_48,
+    cutIPv6(IPv6StringToNum(ip), 10, 0) AS subnet_48,
     count() AS requests
 FROM (
     SELECT '2001:db8:cafe::1'     AS ip UNION ALL
@@ -112,9 +108,9 @@ INSERT INTO ipv6_traffic VALUES
     (6, IPv6StringToNum('2001:db8:3::1'),   256);
 
 SELECT
-    IPv6NumToString(cutIPv6(client_ip, 12, 0)) AS slash32_prefix,
-    count()                                    AS connections,
-    sum(bytes)                                 AS total_bytes
+    cutIPv6(client_ip, 12, 0) AS slash32_prefix,
+    count()                   AS connections,
+    sum(bytes)                AS total_bytes
 FROM ipv6_traffic
 GROUP BY slash32_prefix
 ORDER BY total_bytes DESC;
@@ -128,4 +124,4 @@ slash32_prefix  connections  total_bytes
 
 ## Summary
 
-`cutIPv6()` zeroes out the rightmost bytes of an IPv6 address binary to produce a network prefix, enabling subnet-level grouping and IP anonymization in ClickHouse. The second argument specifies how many bytes from the right of the IPv6 portion to zero; common values are `8` for /64, `10` for /48, and `12` for /32 prefixes. Always wrap the output with `IPv6NumToString()` for human-readable display.
+`cutIPv6()` zeroes out the rightmost bytes of an IPv6 address binary to produce a network prefix, enabling subnet-level grouping and IP anonymization in ClickHouse. The second argument specifies how many bytes from the right of the IPv6 portion to zero; common values are `8` for /64, `10` for /48, and `12` for /32 prefixes. The function returns a `String` in IPv6 text format, so the output is ready for display without additional conversion.
