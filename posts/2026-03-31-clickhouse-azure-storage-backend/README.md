@@ -61,8 +61,7 @@ Create `/etc/clickhouse-server/config.d/azure_storage.xml`:
         <account_name>myclickhousestorage</account_name>
         <account_key>BASE64ENCODEDACCOUNTKEY==</account_key>
         <metadata_path>/var/lib/clickhouse/disks/azure_cold/</metadata_path>
-        <send_metadata>true</send_metadata>
-        <max_single_part_upload_size>104857600</max_single_part_upload_size>
+        <s3_max_single_part_upload_size>104857600</s3_max_single_part_upload_size>
       </azure_cold>
 
       <azure_cache>
