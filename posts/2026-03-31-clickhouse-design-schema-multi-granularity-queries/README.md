@@ -59,7 +59,8 @@ CREATE TABLE metrics_1h (
     max_value SimpleAggregateFunction(max, Float64),
     count_value SimpleAggregateFunction(sum, UInt64)
 ) ENGINE = AggregatingMergeTree()
-ORDER BY (service, metric, hour);
+ORDER BY (service, metric, hour)
+TTL hour + INTERVAL 5 YEAR;
 ```
 
 ## Materialized Views to Fill Each Tier
