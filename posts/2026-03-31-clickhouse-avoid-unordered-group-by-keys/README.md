@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, GROUP BY, Query Optimization, Performance, Aggregation
 
-Description: Explains how aligning GROUP BY keys with the table's ORDER BY reduces memory usage and enables the group_by_use_nulls and two-level aggregation optimizations.
+Description: Explains how aligning GROUP BY keys with the table's ORDER BY reduces memory usage and enables ClickHouse's in-order (streaming) aggregation optimization.
 
 ---
 
@@ -45,10 +45,11 @@ The second query must read all rows and build a hash table keyed on `event_type`
 EXPLAIN PIPELINE
 SELECT user_id, sum(amount)
 FROM events
-GROUP BY user_id;
+GROUP BY user_id
+SETTINGS optimize_aggregation_in_order = 1;
 ```
 
-Look for `AggregatingTransform` vs `MergingAggregatedBuckets`. The former is a streaming merge; the latter indicates a two-level hash aggregation.
+Look for `AggregatingInOrderTransform` (followed by `FinishAggregatingInOrderTransform`) vs the plain `AggregatingTransform`. The former indicates the streaming, in-order aggregation enabled when GROUP BY matches an ORDER BY prefix; the latter is the standard hash-based aggregation.
 
 ## Setting max_bytes_before_external_group_by
 
