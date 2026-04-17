@@ -28,12 +28,16 @@ A query `WHERE domain = 'bbb.com'` uses the sparse index to find the first and l
 ```sql
 -- Check the granule configuration for a table
 SELECT
-    table,
-    index_granularity,
-    index_granularity_bytes
+    name,
+    create_table_query
 FROM system.tables
-WHERE table = 'http_logs'
+WHERE name = 'http_logs'
   AND database = currentDatabase();
+
+-- Global MergeTree defaults for granularity settings
+SELECT name, value
+FROM system.merge_tree_settings
+WHERE name IN ('index_granularity', 'index_granularity_bytes');
 ```
 
 ## Why "Sparse"
@@ -182,8 +186,8 @@ CREATE TABLE http_logs_adaptive
 )
 ENGINE = MergeTree()
 ORDER BY (domain, ts)
-SETTINGS index_granularity_bytes = 8192,  -- target bytes per granule
-         index_granularity = 8192;         -- max rows per granule
+SETTINGS index_granularity_bytes = 10485760,  -- target bytes per granule (default 10 MiB)
+         index_granularity = 8192;             -- max rows per granule (default)
 ```
 
 With adaptive granularity, wide rows get smaller granules (more precise index) and narrow rows get larger granules (smaller index file).
