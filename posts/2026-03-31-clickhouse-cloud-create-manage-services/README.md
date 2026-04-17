@@ -15,24 +15,26 @@ ClickHouse Cloud is the managed service offering that handles infrastructure, re
 1. Log in to [clickhouse.cloud](https://clickhouse.cloud)
 2. Click "New Service"
 3. Choose a cloud provider (AWS, GCP, or Azure) and region
-4. Select a tier: Development, Production, or Dedicated
+4. Select a tier: Basic, Scale, or Enterprise
 5. Name your service and click "Create Service"
 
-Development services auto-pause after inactivity to save costs. Production services run continuously.
+Services with idle scaling enabled will auto-pause after a period of inactivity to save costs. Services without idle scaling run continuously.
 
 ## Creating a Service via the API
 
+The ClickHouse Cloud API authenticates with HTTP Basic Auth using your API key ID and secret:
+
 ```bash
 curl -X POST https://api.clickhouse.cloud/v1/organizations/{orgId}/services \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
+  --user "$KEY_ID:$KEY_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "analytics-prod",
     "provider": "aws",
     "region": "us-east-1",
-    "tier": "production",
-    "minTotalMemoryGb": 24,
-    "maxTotalMemoryGb": 96
+    "minReplicaMemoryGb": 24,
+    "maxReplicaMemoryGb": 96,
+    "numReplicas": 3
   }'
 ```
 
@@ -40,22 +42,24 @@ curl -X POST https://api.clickhouse.cloud/v1/organizations/{orgId}/services \
 
 ```bash
 curl https://api.clickhouse.cloud/v1/organizations/{orgId}/services \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY"
+  --user "$KEY_ID:$KEY_SECRET"
 ```
 
 ## Pausing and Resuming a Service
 
-Development services can be paused to stop billing for compute:
+Services can be stopped to halt billing for compute:
 
 ```bash
-# Pause
+# Stop
 curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/state \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
+  --user "$KEY_ID:$KEY_SECRET" \
+  -H "Content-Type: application/json" \
   -d '{"command": "stop"}'
 
-# Resume
+# Start
 curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/state \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
+  --user "$KEY_ID:$KEY_SECRET" \
+  -H "Content-Type: application/json" \
   -d '{"command": "start"}'
 ```
 
@@ -66,7 +70,7 @@ After creation, retrieve connection details from the console or API:
 ```bash
 clickhouse client \
   --host your-service.clickhouse.cloud \
-  --port 8443 \
+  --port 9440 \
   --user default \
   --password "$PASSWORD" \
   --secure
@@ -76,7 +80,7 @@ clickhouse client \
 
 ```bash
 curl -X DELETE https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY"
+  --user "$KEY_ID:$KEY_SECRET"
 ```
 
 Deleting a service also removes all associated data unless you have exported a backup.
@@ -85,10 +89,10 @@ Deleting a service also removes all associated data unless you have exported a b
 
 ```bash
 curl https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
-  | jq '.service.state'
+  --user "$KEY_ID:$KEY_SECRET" \
+  | jq '.result.state'
 ```
 
 ## Summary
 
-ClickHouse Cloud services are created and managed through the web console or REST API. Use Development tier for non-production workloads to benefit from auto-pause, and Production tier for always-on analytics. Automate service management with the API to integrate into your infrastructure pipelines.
+ClickHouse Cloud services are created and managed through the web console or REST API. Use the Basic tier for development and small fixed-size workloads, the Scale tier for most production workloads, and the Enterprise tier for advanced security, compliance, and custom hardware needs. Automate service management with the API to integrate into your infrastructure pipelines.
