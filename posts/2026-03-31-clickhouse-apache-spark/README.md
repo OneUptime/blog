@@ -53,7 +53,7 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder \
     .appName("ClickHouse ETL") \
     .config("spark.sql.catalog.clickhouse",
-            "xenon.clickhouse.ClickHouseCatalog") \
+            "com.clickhouse.spark.ClickHouseCatalog") \
     .config("spark.sql.catalog.clickhouse.host", "localhost") \
     .config("spark.sql.catalog.clickhouse.protocol", "http") \
     .config("spark.sql.catalog.clickhouse.http_port", "8123") \
@@ -218,7 +218,7 @@ transformed.write \
     .option("password", "etl_secret") \
     .option("database", "analytics") \
     .option("table", "events") \
-    .option("clickhouse.write.batch_size", "500000") \
+    .option("spark.clickhouse.write.batchSize", "500000") \
     .mode("append") \
     .save()
 
@@ -298,14 +298,14 @@ df.write \
     .option("http_port", "8123") \
     .option("database", "default") \
     .option("table", "events") \
-    .option("clickhouse.write.batch_size", "1000000")   \  # rows per HTTP request
-    .option("clickhouse.write.max_retry", "3")           \  # retries on failure
-    .option("clickhouse.write.retry_interval", "5000")   \  # ms between retries
+    .option("spark.clickhouse.write.batchSize", "1000000") \
+    .option("spark.clickhouse.write.maxRetry", "3") \
+    .option("spark.clickhouse.write.retryInterval", "5s") \
     .mode("append") \
     .save()
 ```
 
-Increase `batch_size` to reduce the number of HTTP requests for large writes. Each Spark partition sends its data in batches to a single ClickHouse node.
+`batchSize` controls rows per HTTP request, `maxRetry` sets retries on failure, and `retryInterval` is a duration string (e.g. `"5s"`). Increase `batchSize` to reduce the number of HTTP requests for large writes. Each Spark partition sends its data in batches to a single ClickHouse node.
 
 ## Common Pitfalls
 
