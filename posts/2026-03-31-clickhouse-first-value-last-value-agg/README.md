@@ -8,7 +8,7 @@ Description: Learn how first_value() and last_value() retrieve the first and las
 
 ---
 
-When analyzing time-ordered data you frequently need the value at the start or end of a group: the opening price of a stock, the first URL in a user session, the last status before a deadline. ClickHouse provides `first_value()` and `last_value()` as both aggregate functions (for `GROUP BY` queries) and window functions (for `OVER` clauses). In the aggregate form they return the first or last value in the order rows happen to be stored, so you almost always pair them with `anyIf` or use them inside a window function with an explicit `ORDER BY`. This post covers both usages with realistic examples.
+When analyzing time-ordered data you frequently need the value at the start or end of a group: the opening price of a stock, the first URL in a user session, the last status before a deadline. ClickHouse provides `first_value()` and `last_value()` as both aggregate functions (for `GROUP BY` queries) and window functions (for `OVER` clauses). In the aggregate form they return the first or last value in the order rows happen to be stored, so you almost always pair them with `argMin`/`argMax` or use them inside a window function with an explicit `ORDER BY`. This post covers both usages with realistic examples.
 
 ## Syntax
 
