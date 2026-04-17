@@ -91,7 +91,7 @@ GROUP BY session_id
 LIMIT 10;
 ```
 
-Note: to guarantee per-group order by a timestamp, use `groupArraySorted` from ClickHouse community forks, or pre-sort in a subquery combined with the fact that `groupArray` processes rows in the order they arrive.
+Note: to guarantee per-group order by a timestamp, use `groupArraySorted(N)(x)` (available in mainline ClickHouse since 24.2) to get the first N items in ascending order, or pre-sort in a subquery and rely on the narrow exception that `groupArray` may preserve order when the subquery result is small enough.
 
 ## Formatting SQL or Configuration Snippets
 
@@ -173,7 +173,7 @@ LIMIT 10;
 
 ## Handling Non-String Array Elements
 
-`arrayStringConcat()` requires an `Array(String)` input. If your array contains numbers or other types, cast them first with `arrayMap()` and `toString()`:
+`arrayStringConcat()` accepts `Array(T)` for any element type and stringifies elements automatically in modern ClickHouse (22.3+), so `arrayStringConcat([1, 2, 3], ',')` returns `'1,2,3'` directly. `arrayMap()` with `toString()` is still useful when you want to control the formatting of each element (for example, to round or pad values) before joining:
 
 ```sql
 -- Join an array of UInt64 IDs into a comma-separated string
@@ -216,4 +216,4 @@ LIMIT 20;
 
 ## Summary
 
-`arrayStringConcat(arr, sep)` joins the elements of an `Array(String)` into a single string with `sep` between each pair. It is the companion function to `groupArray()` and `groupUniqArray()`, which collect column values into arrays within an aggregation. Use `arraySort()` on the array before calling `arrayStringConcat()` to control element order, and `arrayMap()` with `toString()` to convert non-string element types. The function also works directly on array-typed columns without any aggregation.
+`arrayStringConcat(arr, sep)` joins the elements of an `Array(T)` into a single string with `sep` between each pair, stringifying non-string elements automatically. The separator defaults to an empty string when omitted. It is the companion function to `groupArray()` and `groupUniqArray()`, which collect column values into arrays within an aggregation. Use `arraySort()` on the array before calling `arrayStringConcat()` to control element order, and `arrayMap()` with `toString()` when you want custom formatting of each element before joining. The function also works directly on array-typed columns without any aggregation.
