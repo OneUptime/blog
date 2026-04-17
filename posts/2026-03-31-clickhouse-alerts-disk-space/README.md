@@ -26,7 +26,7 @@ FROM system.disks
 ORDER BY used_pct DESC;
 ```
 
-## Setting Up Alerting with ClickHouse Keeper Watchers
+## Setting Up a Disk Space Snapshot Table
 
 Create a dedicated alert table to record disk health snapshots:
 
@@ -53,13 +53,13 @@ SELECT
     free_space,
     total_space,
     round((1 - free_space / total_space) * 100, 2) AS used_pct,
-    CASE
-        WHEN free_space < 5368709120 THEN 'critical'
-        WHEN free_space < 21474836480 THEN 'warning'
-        ELSE 'ok'
-    END AS severity
+    multiIf(
+        free_space < 5368709120, 'critical',
+        free_space < 21474836480, 'warning',
+        'ok'
+    ) AS severity
 FROM system.disks
-WHERE severity != 'ok'
+WHERE free_space < 21474836480
 "
 ```
 
@@ -70,8 +70,8 @@ Schedule this with cron every 5 minutes.
 If you expose ClickHouse metrics via the Prometheus endpoint, disk metrics are available at:
 
 ```text
-ClickHouseDiskAvailable_<disk_name>
-ClickHouseDiskTotal_<disk_name>
+ClickHouseAsyncMetrics_DiskAvailable_<disk_name>
+ClickHouseAsyncMetrics_DiskTotal_<disk_name>
 ```
 
 Create a Prometheus alerting rule:
@@ -82,8 +82,8 @@ groups:
     rules:
       - alert: ClickHouseDiskSpaceWarning
         expr: |
-          (ClickHouseDiskTotal_default - ClickHouseDiskAvailable_default)
-          / ClickHouseDiskTotal_default > 0.80
+          (ClickHouseAsyncMetrics_DiskTotal_default - ClickHouseAsyncMetrics_DiskAvailable_default)
+          / ClickHouseAsyncMetrics_DiskTotal_default > 0.80
         for: 5m
         labels:
           severity: warning
@@ -91,7 +91,7 @@ groups:
           summary: "ClickHouse disk usage above 80% on {{ $labels.instance }}"
 
       - alert: ClickHouseDiskSpaceCritical
-        expr: ClickHouseDiskAvailable_default < 10737418240
+        expr: ClickHouseAsyncMetrics_DiskAvailable_default < 10737418240
         for: 2m
         labels:
           severity: critical
