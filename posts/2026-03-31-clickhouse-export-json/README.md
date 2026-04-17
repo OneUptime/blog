@@ -56,13 +56,12 @@ clickhouse-client \
 
 ## Exporting with Specific Column Types
 
-Use `JSONEachRowWithProgress` to track export progress for large queries:
+Use `JSONEachRowWithProgress` to track export progress for large queries. Progress events are emitted inline with row data in the output stream as `{"progress":{...}}` objects alongside `{"row":{...}}` objects:
 
 ```bash
 clickhouse-client \
   --query "SELECT * FROM large_table" \
   --format JSONEachRowWithProgress \
-  2>progress.log \
   > large_table.ndjson
 ```
 
@@ -82,14 +81,17 @@ WHERE ts >= today() - 7;
 ## Python Export Script
 
 ```python
+import json
 from clickhouse_driver import Client
 
 client = Client('clickhouse')
 
+rows_gen = client.execute_iter('SELECT * FROM events', with_column_types=True)
+columns = [name for name, _ in next(rows_gen)]
+
 with open('events.ndjson', 'w') as f:
-    for row in client.execute_iter('SELECT * FROM events'):
-        import json
-        f.write(json.dumps(row) + '\n')
+    for row in rows_gen:
+        f.write(json.dumps(dict(zip(columns, row)), default=str) + '\n')
 ```
 
 ## Summary
