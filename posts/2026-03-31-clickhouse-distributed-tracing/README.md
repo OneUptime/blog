@@ -14,21 +14,23 @@ Distributed tracing in the context of ClickHouse has two distinct meanings: trac
 
 ### How ClickHouse Propagates query_id
 
-Every query in ClickHouse has a `query_id`. When a `Distributed` table fans out sub-queries to remote shards, it propagates the `initial_query_id` so you can correlate the top-level query with all its remote executions:
+Every query in ClickHouse has a `query_id`. When a `Distributed` table fans out sub-queries to remote shards, it propagates the `initial_query_id` so you can correlate the top-level query with all its remote executions. Pass a custom `query_id` via the HTTP interface or `clickhouse-client` so it's easy to find later:
+
+```bash
+# Via HTTP interface
+curl "http://localhost:8123/?query_id=my-trace-abc123" \
+  --data-urlencode "query=SELECT count(), uniq(user_id) FROM distributed_events WHERE event_date = today()"
+
+# Via clickhouse-client
+clickhouse-client --query_id='my-trace-abc123' \
+  --query "SELECT count(), uniq(user_id) FROM distributed_events WHERE event_date = today()"
+```
+
+After the query completes, find all sub-queries on all shards:
 
 ```sql
--- Set a custom query_id for easy correlation
-SET query_id = 'my-trace-abc123';
-
 SELECT
-    count(),
-    uniq(user_id)
-FROM distributed_events
-WHERE event_date = today();
-
--- After the query completes, find all sub-queries on all shards
-SELECT
-    host_name,
+    hostName()                     AS host,
     query_id,
     initial_query_id,
     is_initial_query,
@@ -72,22 +74,19 @@ sudo systemctl restart clickhouse-server
 Pass OpenTelemetry headers to make ClickHouse participate in an existing trace:
 
 ```bash
-# Use curl to send a query with OpenTelemetry trace context
+# Use curl to send a query with a W3C trace context header
 TRACE_ID="4bf92f3577b34da6a3ce929d0e0e4736"
 SPAN_ID="00f067aa0ba902b7"
-PARENT_SPAN_ID="00f067aa0ba902b7"
 
 curl -s "http://localhost:8123/" \
-  -H "X-OpenTelemetry-Traceparent: 00-${TRACE_ID}-${SPAN_ID}-01" \
+  -H "traceparent: 00-${TRACE_ID}-${SPAN_ID}-01" \
   --data-urlencode "query=SELECT count() FROM system.tables"
 ```
 
-Or set tracing parameters at the query level:
+The same context can be supplied to `clickhouse-client` with the `--opentelemetry-traceparent` and `--opentelemetry-tracestate` flags. If no parent context is supplied, you can let ClickHouse start a brand new trace by raising the sampling probability for the session:
 
 ```sql
-SET opentelemetry_start_new_trace = 1;
-SET opentelemetry_trace_id = '4bf92f3577b34da6a3ce929d0e0e4736';
-SET opentelemetry_span_id  = '00f067aa0ba902b7';
+SET opentelemetry_start_trace_probability = 1;
 
 SELECT count(), uniq(user_id) FROM events WHERE event_date = today();
 ```
@@ -95,7 +94,7 @@ SELECT count(), uniq(user_id) FROM events WHERE event_date = today();
 ### Querying opentelemetry_span_log
 
 ```sql
--- Find all spans for a specific trace
+-- Find all spans for a specific trace (trace_id is stored as UUID)
 SELECT
     trace_id,
     span_id,
@@ -106,7 +105,7 @@ SELECT
     (finish_time_us - start_time_us) / 1000 AS duration_ms,
     attribute
 FROM system.opentelemetry_span_log
-WHERE trace_id = '4bf92f3577b34da6a3ce929d0e0e4736'
+WHERE trace_id = toUUID('4bf92f35-77b3-4da6-a3ce-929d0e0e4736')
 ORDER BY start_time_us;
 
 -- Find slow spans across all traces
