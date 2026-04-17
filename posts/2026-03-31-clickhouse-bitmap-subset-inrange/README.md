@@ -45,7 +45,7 @@ ORDER BY name;
 ```sql
 INSERT INTO range_demo
 SELECT 'all_users', groupBitmapState(toUInt64(number)) AS user_bitmap
-FROM numbers(1, 10001);  -- user IDs 1-10000
+FROM numbers(1, 10000);  -- user IDs 1-10000
 ```
 
 ```sql
