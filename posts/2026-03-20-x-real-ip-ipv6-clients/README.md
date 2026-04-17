@@ -44,7 +44,7 @@ When Nginx is behind another load balancer that sets X-Real-IP:
 
 set_real_ip_from 10.0.0.0/8;
 set_real_ip_from fd00::/8;
-set_real_ip_from 2001:db8:lb::/48;
+set_real_ip_from 2001:db8:1::/48;
 
 # Use X-Real-IP as the real client IP source
 real_ip_header X-Real-IP;
@@ -97,7 +97,7 @@ backend app
     RemoteIPHeader X-Real-IP
     RemoteIPTrustedProxy 10.0.0.0/8
     RemoteIPTrustedProxy fd00::/8
-    RemoteIPTrustedProxy 2001:db8:lb::/48
+    RemoteIPTrustedProxy 2001:db8:1::/48
 </IfModule>
 
 # Virtual host setting X-Real-IP to pass downstream
@@ -109,7 +109,7 @@ backend app
         ProxyPassReverse http://backend:8080/
 
         # RequestHeader sets X-Real-IP to client address
-        RequestHeader set X-Real-IP "%{REMOTE_ADDR}e"
+        RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
     </Location>
 </VirtualHost>
 ```
@@ -126,7 +126,7 @@ from flask import request
 TRUSTED_PROXIES_CIDR = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("fd00::/8"),
-    ipaddress.ip_network("2001:db8:lb::/48"),
+    ipaddress.ip_network("2001:db8:1::/48"),
 ]
 
 def is_trusted_proxy(ip_str: str) -> bool:
