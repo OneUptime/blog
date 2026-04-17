@@ -19,7 +19,7 @@ terraform {
   required_providers {
     clickhouse = {
       source  = "ClickHouse/clickhouse"
-      version = "~> 1.0"
+      version = "~> 3.0"
     }
   }
 }
@@ -41,13 +41,12 @@ Store credentials in environment variables or a secrets manager - never hardcode
 
 ```hcl
 resource "clickhouse_service" "analytics" {
-  name        = "analytics-prod"
+  name           = "analytics-prod"
   cloud_provider = "aws"
-  region      = "us-east-1"
-  tier        = "production"
+  region         = "us-east-1"
 
-  min_total_memory_gb = 24
-  max_total_memory_gb = 96
+  min_replica_memory_gb = 12
+  max_replica_memory_gb = 120
 
   ip_access = [
     {
@@ -58,29 +57,30 @@ resource "clickhouse_service" "analytics" {
 }
 
 output "service_host" {
-  value     = clickhouse_service.analytics.endpoints[0].host
+  value     = clickhouse_service.analytics.endpoints.https.host
   sensitive = true
 }
 ```
 
 ## Managing Users
 
+Database user management lives in the companion `ClickHouse/clickhousedbops` provider - declare it alongside the cloud provider and create users with `clickhousedbops_user`:
+
 ```hcl
-resource "clickhouse_service_user" "analyst" {
-  service_id = clickhouse_service.analytics.id
-  name       = "analyst"
-  password   = var.analyst_password
+resource "clickhousedbops_user" "analyst" {
+  name                 = "analyst"
+  password_sha256_hash = sha256(var.analyst_password)
 }
 ```
 
 ## Configuring Private Endpoints
 
 ```hcl
-resource "clickhouse_service_private_endpoint_registration" "vpc" {
-  cloud_provider = "aws"
-  region         = "us-east-1"
-  id             = aws_vpc_endpoint.clickhouse.id
-  description    = "Production VPC endpoint"
+resource "clickhouse_private_endpoint_registration" "vpc" {
+  cloud_provider      = "aws"
+  region              = "us-east-1"
+  private_endpoint_id = aws_vpc_endpoint.clickhouse.id
+  description         = "Production VPC endpoint"
 }
 ```
 
