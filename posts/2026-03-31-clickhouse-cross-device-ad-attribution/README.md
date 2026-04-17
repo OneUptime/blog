@@ -67,10 +67,9 @@ SELECT
     sum(c.revenue) AS attributed_revenue
 FROM conversions AS c
 JOIN identity_graph AS ig_c ON c.device_id = ig_c.device_id
+JOIN identity_graph AS ig_tp ON ig_c.canonical_user_id = ig_tp.canonical_user_id
 JOIN device_touchpoints AS tp
-    ON ig_c.canonical_user_id = (
-        SELECT canonical_user_id FROM identity_graph WHERE device_id = tp.device_id LIMIT 1
-    )
+    ON tp.device_id = ig_tp.device_id
     AND tp.event_time BETWEEN c.convert_time - INTERVAL 7 DAY AND c.convert_time
 GROUP BY tp.campaign_id, tp.channel
 ORDER BY attributed_revenue DESC;
@@ -91,10 +90,9 @@ FROM (
         argMin(dt.device_type, dt.event_time) AS first_device,
         c.device_type AS convert_device
     FROM conversions AS c
-    JOIN identity_graph AS ig ON c.device_id = ig.device_id
-    JOIN device_touchpoints AS dt ON ig.canonical_user_id = (
-        SELECT canonical_user_id FROM identity_graph WHERE device_id = dt.device_id LIMIT 1
-    )
+    JOIN identity_graph AS ig_c ON c.device_id = ig_c.device_id
+    JOIN identity_graph AS ig_dt ON ig_c.canonical_user_id = ig_dt.canonical_user_id
+    JOIN device_touchpoints AS dt ON dt.device_id = ig_dt.device_id
     WHERE dt.event_time <= c.convert_time
     GROUP BY c.order_id, c.device_type
 )
