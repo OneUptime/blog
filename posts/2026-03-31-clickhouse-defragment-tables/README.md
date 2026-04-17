@@ -70,8 +70,11 @@ For large tables, optimize one partition at a time to limit resource usage:
 -- Optimize a specific month
 OPTIMIZE TABLE events PARTITION '2026-03';
 
--- Optimize multiple partitions
-OPTIMIZE TABLE events PARTITION ('2026-01', '2026-02', '2026-03');
+-- Optimize multiple partitions (OPTIMIZE takes one partition per statement,
+-- so issue them separately)
+OPTIMIZE TABLE events PARTITION '2026-01';
+OPTIMIZE TABLE events PARTITION '2026-02';
+OPTIMIZE TABLE events PARTITION '2026-03';
 ```
 
 ## Monitoring Merge Progress
