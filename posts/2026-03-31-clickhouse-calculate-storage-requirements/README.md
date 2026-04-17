@@ -75,7 +75,7 @@ SELECT
 FROM system.parts
 WHERE table = 'events' AND active
 GROUP BY partition
-ORDER BY partition_size DESC
+ORDER BY sum(bytes_on_disk) DESC
 LIMIT 5;
 ```
 
