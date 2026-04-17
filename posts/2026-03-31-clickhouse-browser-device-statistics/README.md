@@ -70,7 +70,7 @@ LIMIT 15;
 SELECT
     device_type,
     uniq(visitor_id)     AS visitors,
-    count()              AS sessions,
+    uniq(session_id)     AS sessions,
     avg(screen_width)    AS avg_screen_width
 FROM pageviews
 WHERE ts >= today() - 30
