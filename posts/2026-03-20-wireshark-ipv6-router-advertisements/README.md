@@ -25,7 +25,7 @@ icmpv6.type == 133 || icmpv6.type == 134
 icmpv6.type == 134 && ipv6.src == fe80::1
 
 # Show RAs advertising a specific prefix
-icmpv6.type == 134 && icmpv6.nd.ra.flag.m == 1
+icmpv6.type == 134 && icmpv6.opt.prefix == 2001:db8:1::
 ```
 
 ## RA Flag Analysis
@@ -84,7 +84,7 @@ icmpv6.type == 134
 icmpv6.type == 133
 
 # Verify the prefix A-flag is set (SLAAC-enabled)
-icmpv6.type == 134 && icmpv6.nd.ra.pref_info.flag.a == 1
+icmpv6.type == 134 && icmpv6.opt.prefix.flag.a == 1
 ```
 
 ### Rogue Router Advertisement Detection
