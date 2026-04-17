@@ -37,17 +37,18 @@ Rather than querying raw event tables every time, pre-aggregate with a materiali
 ```sql
 CREATE MATERIALIZED VIEW campaign_minute_stats
 ENGINE = SummingMergeTree()
-ORDER BY (minute, campaign_id, placement)
+ORDER BY (minute, campaign_id, placement, device_type)
 AS
 SELECT
     toStartOfMinute(event_time) AS minute,
     campaign_id,
     placement,
-    count() AS impressions,
+    device_type,
+    countIf(event_type = 'impression') AS impressions,
     countIf(event_type = 'click') AS clicks,
     sumIf(cost, event_type = 'impression') AS spend
 FROM ad_events
-GROUP BY minute, campaign_id, placement;
+GROUP BY minute, campaign_id, placement, device_type;
 ```
 
 ## CTR Trend Over the Last 24 Hours
