@@ -95,11 +95,11 @@ High `errors_count` on a specific node points to connectivity or authentication 
 
 ## Step 6: Test Inter-Node Authentication
 
-Cluster peers authenticate using the `interserver_http_credentials` settings:
+Cluster peers authenticate using the `interserver_http_credentials` settings (HTTP Basic Auth):
 
 ```bash
-curl -H "X-ClickHouse-User: default" \
-     "http://ch-node-2:9009/?query=SELECT+1"
+curl -u 'interserver_user:interserver_password' \
+     "http://ch-node-2:9009/"
 ```
 
 A 401 response means interserver credentials are mismatched.
