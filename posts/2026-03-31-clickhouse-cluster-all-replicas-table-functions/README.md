@@ -18,11 +18,11 @@ ClickHouse's `cluster()` and `clusterAllReplicas()` table functions let you quer
 
 ```sql
 SELECT
-    shard_num,
+    _shard_num,
     count() AS row_count
 FROM cluster('my_cluster', 'analytics', 'events')
-GROUP BY shard_num
-ORDER BY shard_num;
+GROUP BY _shard_num
+ORDER BY _shard_num;
 ```
 
 The cluster name must match a cluster defined in `config.xml` or `remote_servers.xml`:
