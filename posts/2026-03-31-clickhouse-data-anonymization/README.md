@@ -31,7 +31,7 @@ SELECT
 FROM users;
 ```
 
-For a consistent but opaque identifier, use HMAC with a secret key:
+For a consistent but opaque identifier, use a salted hash with a secret value:
 
 ```sql
 SELECT
