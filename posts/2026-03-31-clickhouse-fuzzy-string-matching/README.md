@@ -24,21 +24,21 @@ This finds names within 2 edits of "johnn", catching "John", "Johnny", or "Johan
 
 For case-insensitive matching, always `lower()` both sides before comparing.
 
-## N-Gram Similarity
+## N-Gram Distance
 
-The `ngramSimilarity` function measures how many n-grams two strings share, returning a float between 0 and 1.
+The `ngramDistance` function measures the dissimilarity of two strings based on the symmetric difference of their 4-gram multisets, returning a Float32 between 0 and 1. A smaller value means a closer match.
 
 ```sql
 SELECT
     product_name,
-    ngramSimilarity(lower(product_name), lower('sneakers')) AS score
+    ngramDistance(lower(product_name), lower('sneakers')) AS score
 FROM products
-WHERE score > 0.3
-ORDER BY score DESC
+WHERE score < 0.7
+ORDER BY score ASC
 LIMIT 10;
 ```
 
-N-gram similarity handles transpositions and partial matches well, making it suitable for product name lookups and user search bars.
+N-gram distance handles transpositions and partial matches well, making it suitable for product name lookups and user search bars.
 
 ## Combining Functions for Ranked Results
 
@@ -49,10 +49,10 @@ SELECT
     name,
     email,
     editDistance(lower(name), lower({query:String})) AS ed,
-    ngramSimilarity(lower(name), lower({query:String})) AS sim
+    ngramDistance(lower(name), lower({query:String})) AS dist
 FROM customers
-WHERE ed <= 3 OR sim > 0.4
-ORDER BY (ed * 0.4 + (1 - sim) * 0.6)
+WHERE ed <= 3 OR dist < 0.6
+ORDER BY (ed * 0.4 + dist * 0.6)
 LIMIT 20;
 ```
 
@@ -85,4 +85,4 @@ ADD INDEX idx_name_soundex name_soundex TYPE bloom_filter GRANULARITY 1;
 
 ## Summary
 
-ClickHouse supports fuzzy string matching through `editDistance`, `ngramSimilarity`, and `soundex`. Combine them to build ranked approximate search queries. To keep scans fast, pre-filter with cheaper conditions or materialize phonetic columns with skip indexes.
+ClickHouse supports fuzzy string matching through `editDistance`, `ngramDistance`, and `soundex`. Combine them to build ranked approximate search queries. To keep scans fast, pre-filter with cheaper conditions or materialize phonetic columns with skip indexes.
