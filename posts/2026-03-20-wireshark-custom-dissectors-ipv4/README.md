@@ -26,7 +26,7 @@ Packet format:
 
 ## Writing the Lua Dissector
 
-Save this as `~/.config/wireshark/plugins/sensor_proto.lua` (or `%APPDATA%\Wireshark\plugins\` on Windows):
+Save this as `~/.local/lib/wireshark/plugins/sensor_proto.lua` on Linux/macOS (or `%APPDATA%\Wireshark\plugins\` on Windows):
 
 ```lua
 -- sensor_proto.lua
@@ -86,7 +86,7 @@ function sensor_proto.dissector(buffer, pinfo, tree)
     subtree:add(f_seqnum,   buffer(5,  2))
     subtree:add(f_sensorid, buffer(7,  4))
     subtree:add(f_value,    buffer(11, 4))
-    subtree:add(f_checksum, buffer(15, 1))
+    local checksum_item = subtree:add(f_checksum, buffer(15, 1))
     
     -- Parse fields for the info column
     local msgtype  = buffer(4,  1):uint()
@@ -106,8 +106,7 @@ function sensor_proto.dissector(buffer, pinfo, tree)
     end
     local received_checksum = buffer(15, 1):uint()
     if computed_xor ~= received_checksum then
-        local checksum_item = subtree:add(f_checksum, buffer(15, 1))
-        checksum_item:add_expert_info(PI_CHECKSUM, PI_WARN,
+        checksum_item:add_proto_expert_info(e_bad_checksum,
             string.format("Checksum mismatch: expected 0x%02X, got 0x%02X",
                           computed_xor, received_checksum))
     end
@@ -140,7 +139,7 @@ sensor_proto:register_heuristic("udp", heuristic_checker)
 
 ## Installing and Enabling the Dissector
 
-1. Save the file to `~/.config/wireshark/plugins/sensor_proto.lua`
+1. Save the file to `~/.local/lib/wireshark/plugins/sensor_proto.lua`
 2. Restart Wireshark
 3. Go to **Help > About Wireshark > Plugins** to verify it loaded
 
