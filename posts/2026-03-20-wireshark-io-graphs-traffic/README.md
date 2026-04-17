@@ -19,9 +19,9 @@ The graph window shows:
   - Default: all traffic as one line
 
 Controls:
-  Interval: time bucket size (0.01s to 10s)
+  Interval: time bucket size (1ms to 10min)
   Scale: Y-axis scale
-  Filter: BPF/display filter for each graph line
+  Filter: Wireshark display filter for each graph line
 ```
 
 ## Add Custom Graph Lines
@@ -33,7 +33,7 @@ In the IO Graph window, bottom panel shows graph lines:
 
 Line 1 (default): [Enabled] [Color] [Filter: empty] → all traffic
 Add Line 2:       [Enabled] [Color] [Filter: tcp.analysis.retransmission]
-Add Line 3:       [Enabled] [Color] [Filter: tcp port 443]
+Add Line 3:       [Enabled] [Color] [Filter: tcp.port == 443]
 Add Line 4:       [Enabled] [Color] [Filter: dns]
 
 Each line shows the rate of packets matching that filter over time.
@@ -108,16 +108,22 @@ tshark -r capture.pcap -q -z io,stat,1
 # Export with filter
 tshark -r capture.pcap -q -z io,stat,1,"tcp.analysis.retransmission"
 
-# Output:
-# IO Statistics
-# Duration: 60.000 secs
-# Interval:  1.000 secs
-# Col 1: tcp.analysis.retransmission
-# Time   Col 1
-# 0.000     0
-# 1.000     2
-# 2.000     0
-# 3.000    15   ← spike in retransmissions at second 3
+# Output (formatted with ASCII borders):
+# =====================================================
+# | IO Statistics                                     |
+# |                                                   |
+# | Duration: 60.000 secs                             |
+# | Interval:  1.000 secs                             |
+# |                                                   |
+# | Col 1: tcp.analysis.retransmission                |
+# |                     |1           |                |
+# | Interval            | Frames     |                |
+# |--------------------------------------------       |
+# | 0.000 <>  1.000     |      0     |                |
+# | 1.000 <>  2.000     |      2     |                |
+# | 2.000 <>  3.000     |      0     |                |
+# | 3.000 <>  4.000     |     15     | ← spike at 3s  |
+# =====================================================
 ```
 
 IO Graphs reveal the temporal relationship between events - showing not just that retransmissions occurred, but exactly when and whether they correlate with traffic changes.
