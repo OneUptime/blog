@@ -99,7 +99,7 @@ ORDER BY dist ASC
 LIMIT 20;
 ```
 
-When an ANN index exists, the WHERE clause on the distance function triggers index usage.
+ClickHouse's vector similarity (ANN) index is triggered by `ORDER BY distance_function(...) LIMIT N`, not by WHERE clauses. The WHERE predicate above is applied as a post-filter on the results returned by the ORDER BY + LIMIT pattern.
 
 ## Performance Comparison
 
@@ -113,7 +113,7 @@ ORDER BY cdist ASC
 LIMIT 5;
 ```
 
-Both functions have similar computational cost. The key difference is which ANN index type you built - match the distance function in the query to the one used when building the index.
+Both functions have similar computational cost. The key difference is which ANN index type you built - match the distance function in the query to the one used when building the index. Note that vector indexes built with `L2Distance` or `cosineDistance` only accelerate `ORDER BY ... ASC` queries, while `dotProduct` indexes only accelerate `ORDER BY ... DESC` queries.
 
 ## Summary
 
