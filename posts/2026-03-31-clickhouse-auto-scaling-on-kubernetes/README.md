@@ -70,7 +70,7 @@ VPA adjusts CPU and memory requests/limits based on actual usage. Install VPA:
 ```bash
 git clone https://github.com/kubernetes/autoscaler.git
 cd autoscaler/vertical-pod-autoscaler
-./hack/vpa-install.sh
+./hack/vpa-up.sh
 ```
 
 Create a VPA object:
@@ -118,6 +118,8 @@ metadata:
   namespace: analytics
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
     name: clickhouse
   minReplicaCount: 2
   maxReplicaCount: 8
@@ -125,7 +127,6 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus:9090
-        metricName: clickhouse_active_queries
         query: clickhouse_active_queries{instance="clickhouse:9000"}
         threshold: "20"
 ```
