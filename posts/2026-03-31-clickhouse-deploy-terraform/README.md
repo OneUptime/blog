@@ -83,9 +83,9 @@ resource "aws_instance" "clickhouse" {
   user_data = <<-EOF
     #!/bin/bash
     apt-get update
-    apt-get install -y apt-transport-https ca-certificates curl
-    curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | apt-key add -
-    echo "deb https://packages.clickhouse.com/deb lts main" > /etc/apt/sources.list.d/clickhouse.list
+    apt-get install -y apt-transport-https ca-certificates curl gnupg
+    curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb lts main" > /etc/apt/sources.list.d/clickhouse.list
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y clickhouse-server clickhouse-client
     systemctl enable --now clickhouse-server
