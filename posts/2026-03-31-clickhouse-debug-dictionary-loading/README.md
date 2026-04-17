@@ -58,7 +58,7 @@ Common exceptions:
 For a MySQL-backed dictionary, test the connection from the ClickHouse host:
 
 ```bash
-mysql -h mysql-host -u clickhouse_user -p clickhouse_password -e "SELECT 1"
+mysql -h mysql-host -u clickhouse_user -p -e "SELECT 1"
 ```
 
 For a file-based dictionary, check the file exists and is readable:
