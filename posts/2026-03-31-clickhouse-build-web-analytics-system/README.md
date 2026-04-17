@@ -126,7 +126,7 @@ LIMIT 20;
 ```sql
 SELECT
     if(referrer_domain = '', 'direct', referrer_domain) AS source,
-    count()                     AS sessions,
+    uniq(session_id)            AS sessions,
     uniq(user_id)               AS unique_users
 FROM page_views
 WHERE site_id = 'mysite.com'
