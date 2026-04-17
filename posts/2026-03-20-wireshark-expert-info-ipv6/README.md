@@ -10,12 +10,12 @@ Wireshark's Expert Information system automatically analyzes captures and flags 
 
 ## Accessing Expert Info
 
-1. Go to **Analyze → Expert Info** (or press Shift+Ctrl+E)
+1. Go to **Analyze → Expert Information** (or click the expert level indicator in the lower-left of the main status bar)
 2. A dialog appears with flagged events grouped by severity:
    - **Error** (red): Protocol violations, malformed packets
-   - **Warning** (yellow): Possible issues, retransmissions
-   - **Note** (blue): Interesting events
-   - **Chat** (grey): Normal protocol messages
+   - **Warn** (yellow): Possible issues, retransmissions
+   - **Note** (cyan): Interesting events
+   - **Chat** (blue): Normal protocol messages
 
 ## Filtering Expert Info for IPv6
 
@@ -80,11 +80,12 @@ _ws.expert.message contains "overlap"
 
 ```bash
 # Get all Expert Info events from an IPv6 capture
-tshark -r capture.pcap -Y "ipv6" \
-  -G expert 2>/dev/null | head -40
+tshark -r capture.pcap -Y "_ws.expert && ipv6" \
+  -T fields -e frame.number -e _ws.expert.message | head -40
 
-# Count errors by severity
+# Count errors by severity (optionally filter to IPv6 packets)
 tshark -r capture.pcap -q -z expert
+tshark -r capture.pcap -q -z "expert,note,ipv6"
 ```
 
 ## Expert Info Filter Examples
