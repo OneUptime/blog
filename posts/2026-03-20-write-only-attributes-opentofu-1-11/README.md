@@ -47,7 +47,7 @@ resource "aws_db_instance" "main" {
 
 ## Write-Only vs Sensitive Attributes
 
-Sensitive attributes are stored in state (encrypted), write-only attributes are not stored at all.
+Sensitive attributes are still stored in state (in plaintext by default, just masked in CLI output); write-only attributes are not stored at all.
 
 ```hcl
 # Sensitive attribute - stored in state, masked in output
