@@ -8,20 +8,22 @@ Description: Learn how ClickHouse handles column aliases in WHERE clauses and th
 
 ---
 
-In standard SQL, column aliases defined in SELECT cannot be used in the WHERE clause of the same query because WHERE is evaluated before SELECT. ClickHouse follows this rule by default, but provides settings and patterns to work around it cleanly.
+In standard SQL, column aliases defined in SELECT cannot be used in the WHERE clause of the same query because WHERE is evaluated before SELECT. ClickHouse, however, supports this as a non-standard extension — aliases defined in SELECT are visible in WHERE for non-aggregate expressions. This post covers how ClickHouse handles aliases in WHERE and the alternative patterns that are useful when the extension doesn't apply or when you want portable SQL.
 
 ## The Problem
 
-This is invalid in standard SQL (and in ClickHouse by default):
+In standard SQL, the following query fails because `duration_sec` isn't defined when WHERE is evaluated:
 
 ```sql
--- This will fail in standard SQL
+-- This fails in standard SQL
 SELECT
     duration_ms / 1000.0 AS duration_sec,
     event_type
 FROM events
-WHERE duration_sec > 5;  -- Error: column 'duration_sec' does not exist
+WHERE duration_sec > 5;  -- Error in standard SQL: column 'duration_sec' does not exist
 ```
+
+ClickHouse accepts the query above — aliases from SELECT are visible in WHERE. The patterns below are still useful when you want portable SQL, when you filter on an aggregate alias (which must use HAVING), when the same complex expression is reused, or when alias substitution conflicts with a real column name.
 
 ## Solution 1: Repeat the Expression
 
@@ -63,21 +65,19 @@ WITH base AS (
 SELECT * FROM base WHERE duration_sec > 5;
 ```
 
-## Solution 3: ClickHouse Alias Extension
+## Solution 3: Direct Alias Reference (ClickHouse Extension)
 
-ClickHouse has a non-standard feature that allows aliases in some filter contexts using HAVING-like semantics. You can filter on SELECT aliases after the fact using subqueries or through ClickHouse's analyzer:
+ClickHouse lets you reference a SELECT alias directly in WHERE for any non-aggregate expression — no setting required:
 
 ```sql
--- Enable new analyzer which supports alias reuse
-SET enable_analyzer = 1;
-
 SELECT
-    multiIf(duration_ms < 100, 'fast', duration_ms < 1000, 'normal', 'slow') AS bucket,
-    count() AS cnt
+    duration_ms / 1000.0 AS duration_sec,
+    event_type
 FROM events
-GROUP BY bucket
-HAVING bucket = 'slow';
+WHERE duration_sec > 5;  -- works in ClickHouse
 ```
+
+Caveats: aggregate aliases cannot be used in WHERE (ClickHouse raises `ILLEGAL_AGGREGATION` — use HAVING instead), and when an alias shares its name with a real column, the `prefer_column_name_to_alias` setting controls which one wins during resolution. Unexpected substitution in this case is a common source of confusing errors.
 
 ## HAVING for Post-Aggregation Filtering
 
@@ -113,4 +113,4 @@ Materialized columns are computed on insert and stored, so filtering is fast.
 
 ## Summary
 
-ClickHouse follows standard SQL evaluation order - WHERE runs before SELECT aliases are defined. Work around this with subqueries, CTEs, or by repeating expressions in WHERE. Use HAVING for post-aggregation filtering where aliases are available. For frequently filtered computed values, add a MATERIALIZED column to avoid repetition.
+ClickHouse allows SELECT aliases in WHERE as a non-standard extension for non-aggregate expressions, so a plain alias reference usually just works. For aggregate filters, portable SQL, reused complex expressions, or to avoid alias/column-name ambiguity, reach for subqueries, CTEs, HAVING, or MATERIALIZED columns. For frequently filtered computed values, a MATERIALIZED column avoids repetition and is stored on insert so filtering is fast.
