@@ -121,7 +121,6 @@ WITH log_data AS (
         row_number() OVER (PARTITION BY service ORDER BY log_time) AS rn,
         row_number() OVER (PARTITION BY service, is_error ORDER BY log_time) AS rn_per_status
     FROM logs
-    WHERE is_error = 1
 )
 SELECT
     service,
@@ -129,6 +128,7 @@ SELECT
     max(log_time) AS error_run_end,
     count() AS consecutive_errors
 FROM log_data
+WHERE is_error = 1
 GROUP BY service, (rn - rn_per_status)
 HAVING consecutive_errors >= 3
 ORDER BY consecutive_errors DESC;
