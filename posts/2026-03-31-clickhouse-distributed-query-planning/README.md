@@ -65,9 +65,11 @@ Look for `Aggregating` operations appearing twice - once per shard and once on t
 
 ## Sharding Key and Query Efficiency
 
-The sharding key determines which shard stores a row. Queries that filter on the sharding key can skip shards entirely.
+The sharding key determines which shard stores a row. Queries that filter on the sharding key can skip shards entirely, but this requires the `optimize_skip_unused_shards` setting to be enabled (it is off by default).
 
 ```sql
+SET optimize_skip_unused_shards = 1;
+
 -- Sharding key is user_id
 -- This query goes to only one shard (user_id = 42)
 SELECT count() FROM events WHERE user_id = 42;
