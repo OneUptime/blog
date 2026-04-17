@@ -32,12 +32,17 @@ Track simultaneous active sessions using join/leave events:
 
 ```sql
 SELECT
-    toStartOfMinute(ts) AS minute,
-    sumIf(1, action_type = 'join') - sumIf(1, action_type = 'leave') AS concurrent_viewers
-FROM live_event_actions
-WHERE event_id = 101
-  AND ts BETWEEN '2026-03-31 18:00:00' AND '2026-03-31 21:00:00'
-GROUP BY minute
+    minute,
+    sum(net_change) OVER (ORDER BY minute) AS concurrent_viewers
+FROM (
+    SELECT
+        toStartOfMinute(ts) AS minute,
+        countIf(action_type = 'join') - countIf(action_type = 'leave') AS net_change
+    FROM live_event_actions
+    WHERE event_id = 101
+      AND ts BETWEEN '2026-03-31 18:00:00' AND '2026-03-31 21:00:00'
+    GROUP BY minute
+)
 ORDER BY minute;
 ```
 
