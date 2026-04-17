@@ -125,7 +125,7 @@ Target 1-10 MB per insert batch for optimal part sizes.
 ## Monitoring Insert Performance
 
 ```sql
-SELECT event_time, rows, bytes_compressed_on_disk
+SELECT event_time, rows, size_in_bytes
 FROM system.part_log
 WHERE event_type = 'NewPart' AND table = 'events'
 ORDER BY event_time DESC
