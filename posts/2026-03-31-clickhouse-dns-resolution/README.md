@@ -14,7 +14,7 @@ In distributed ClickHouse clusters, nodes refer to each other by hostname. DNS r
 
 ## Default DNS Cache Behavior
 
-ClickHouse caches DNS resolutions to avoid repeated lookups. The default cache TTL is one minute. You can see DNS cache entries:
+ClickHouse caches DNS resolutions to avoid repeated lookups. By default, cached entries are refreshed every 15 seconds in the background. You can see DNS cache entries:
 
 ```sql
 SELECT * FROM system.dns_cache;
@@ -83,7 +83,7 @@ search internal.example.com
 options ndots:2 timeout:2 attempts:3
 ```
 
-`ndots:2` prevents unnecessary FQDN lookups for short hostnames with two dots.
+`ndots:2` means hostnames containing two or more dots are tried as absolute names first, skipping the search list. This avoids redundant lookups for names that already look qualified (e.g. `ch-node-1.internal`).
 
 ## Debugging DNS Issues
 
@@ -93,7 +93,7 @@ dig ch-node-2.internal.example.com
 
 # Check if ClickHouse can resolve its cluster peers
 clickhouse-client --query "
-  SELECT hostName(), resolveIpAddressToHostname(ip)
+  SELECT host_name, host_address
   FROM system.clusters
   WHERE cluster = 'prod_cluster'
 "
