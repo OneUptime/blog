@@ -29,7 +29,7 @@ Set up the ClickHouse server with your internal CA:
     <privateKeyFile>/etc/clickhouse-server/ssl/server.key</privateKeyFile>
     <caConfig>/etc/clickhouse-server/ssl/internal-ca.crt</caConfig>
     <verificationMode>strict</verificationMode>
-    <requireTLSv1_2>true</requireTLSv1_2>
+    <disableProtocols>sslv2,sslv3,tlsv1,tlsv1_1</disableProtocols>
     <cipherList>TLSv1.3:HIGH:!aNULL:!MD5</cipherList>
   </server>
 </openSSL>
@@ -88,7 +88,8 @@ client = clickhouse_connect.get_client(
     host='clickhouse.internal',
     port=8443,
     secure=True,
-    verify='/etc/ssl/certs/internal-ca.crt'
+    verify=True,
+    ca_cert='/etc/ssl/certs/internal-ca.crt'
 )
 ```
 
@@ -130,9 +131,9 @@ Because clients are pinned to the CA, they continue working without reconfigurat
 Test that a connection using an untrusted certificate fails:
 
 ```bash
-# Should fail - certificate from a different CA
-clickhouse-client --host clickhouse.internal --port 9440 --secure \
-    --openssl-config /etc/ssl/malicious-ca.conf \
+# Should fail - client config points to a different (untrusted) CA
+clickhouse-client --config-file /etc/clickhouse-client/untrusted-ca-config.xml \
+    --host clickhouse.internal --port 9440 --secure \
     --query "SELECT 1"
 # Expected: SSL verification error
 ```
