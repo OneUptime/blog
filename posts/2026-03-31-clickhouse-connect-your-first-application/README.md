@@ -66,7 +66,7 @@ Basic connection and query:
 const { createClient } = require('@clickhouse/client');
 
 const client = createClient({
-  host: 'http://localhost:8123',
+  url: 'http://localhost:8123',
   username: 'default',
   password: '',
 });
