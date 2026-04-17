@@ -71,14 +71,14 @@ arp.duplicate-address-frame
 # Warning: Duplicate IP address configured
 ```
 
-## Statistics → ARP Address Table
+## Analyze → Expert Information
 
 ```text
-Some Wireshark versions show ARP analysis:
-  Statistics → Endpoints
-    → Filter by "Ethernet" tab
-    → Sort by address
-    → Two entries with same IP but different MAC = potential spoofing
+Wireshark's ARP dissector raises warnings when it detects duplicate IPs:
+  Analyze → Expert Information
+    → Look for "Duplicate IP address configured" warnings
+    → Each warning links to the frames claiming the same IP with different MACs
+    → Two or more entries for the same IP with different MACs = potential spoofing
 ```
 
 ## Watch for Gratuitous ARP Flood
