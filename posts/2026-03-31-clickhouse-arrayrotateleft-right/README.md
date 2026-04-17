@@ -65,16 +65,15 @@ SELECT
 
 ## Circular Buffer Simulation
 
-A circular buffer stores the last N values and replaces the oldest on each write. You can represent one step of a circular buffer update using `arrayRotateLeft` combined with `arrayResize` and direct element replacement.
+A circular buffer stores the last N values and replaces the oldest on each write. You can represent one step of a circular buffer update using `arrayRotateLeft` combined with `arrayPopBack` and `arrayPushBack`.
 
 ```sql
 -- Simulate a sliding window of the last 5 readings
 -- by rotating out the oldest and inserting the newest at the end
 SELECT
     arrayRotateLeft([10, 20, 30, 40, 50], 1) AS after_evict,
-    arrayReplace(
-        arrayRotateLeft([10, 20, 30, 40, 50], 1),
-        5,
+    arrayPushBack(
+        arrayPopBack(arrayRotateLeft([10, 20, 30, 40, 50], 1)),
         99
     )                                         AS after_insert_99;
 ```
