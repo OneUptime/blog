@@ -37,10 +37,10 @@ After 90 days, `sensitive_data` is reset to `''` (the String default) during the
 
 ```sql
 ALTER TABLE events
-    MODIFY COLUMN sensitive_data String;
+    MODIFY COLUMN sensitive_data REMOVE TTL;
 ```
 
-Simply reissue `MODIFY COLUMN` without the `TTL` clause to remove it.
+Use `MODIFY COLUMN ... REMOVE TTL` to drop the TTL from a column. Reissuing `MODIFY COLUMN` without the `TTL` clause does **not** remove an existing TTL — the `REMOVE TTL` clause is required.
 
 ## Table-Level TTL
 
