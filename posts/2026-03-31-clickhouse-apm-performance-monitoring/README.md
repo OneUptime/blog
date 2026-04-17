@@ -129,7 +129,9 @@ SELECT
     child.service_name  AS callee,
     count()             AS call_count
 FROM otel_spans child
-JOIN otel_spans parent ON child.parent_span_id = parent.span_id
+JOIN otel_spans parent
+  ON child.trace_id = parent.trace_id
+ AND child.parent_span_id = parent.span_id
 WHERE child.start_time >= now() - INTERVAL 1 HOUR
 GROUP BY caller, callee
 ORDER BY call_count DESC;
@@ -203,4 +205,4 @@ ALTER TABLE otel_spans MATERIALIZE INDEX idx_trace_id;
 
 ## Summary
 
-ClickHouse serves as a high-performance APM backend by storing OpenTelemetry spans with efficient codecs (DoubleDelta on timestamps, Delta on durations, LZ4 on IDs), materialized views for pre-aggregated latency percentiles using AggregatingMergeTree, and bloom filter indexes for trace ID lookups. The result is a system that handles millions of spans per minute with 30-second query latency for P99 percentile queries over the last 24 hours.
+ClickHouse serves as a high-performance APM backend by storing OpenTelemetry spans with efficient codecs (DoubleDelta on timestamps, Delta on durations, LZ4 on IDs), materialized views for pre-aggregated latency percentiles using AggregatingMergeTree, and bloom filter indexes for trace ID lookups. The result is a system that handles millions of spans per minute with sub-second query latency for P99 percentile queries over the last 24 hours.
