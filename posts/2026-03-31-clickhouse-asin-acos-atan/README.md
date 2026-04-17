@@ -40,15 +40,13 @@ Convert (x, y) Cartesian coordinates back to polar form (radius, angle) using `s
 
 ```sql
 SELECT
-    x,
-    y,
-    round(sqrt(x*x + y*y), 4)                   AS radius,
+    point.1                                      AS x,
+    point.2                                      AS y,
+    round(sqrt(x*x + y*y), 4)                    AS radius,
     round(atan(y / x) * 180 / pi(), 2)           AS angle_deg_atan,
     round(atan2(y, x) * 180 / pi(), 2)           AS angle_deg_atan2
 FROM (
-    SELECT
-        arrayJoin([1.0, 0.0, -1.0, 0.0])  AS x,
-        arrayJoin([0.0, 1.0,  0.0, -1.0]) AS y
+    SELECT arrayJoin([(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)]) AS point
 );
 ```
 
@@ -103,13 +101,13 @@ angle = acos( (A . B) / (|A| * |B|) )
 
 ```sql
 WITH
-    ax AS 1.0, ay AS 0.0,
-    bx AS 0.7071, by AS 0.7071
+    1.0    AS ax, 0.0    AS ay,
+    0.7071 AS bx, 0.7071 AS by_v
 SELECT
     round(
         acos(
-            (ax * bx + ay * by) /
-            (sqrt(ax*ax + ay*ay) * sqrt(bx*bx + by*by))
+            (ax * bx + ay * by_v) /
+            (sqrt(ax*ax + ay*ay) * sqrt(bx*bx + by_v*by_v))
         ) * 180 / pi(),
     2) AS angle_between_degrees;
 ```
@@ -120,14 +118,12 @@ Compute the angle of a slope given horizontal distance (run) and vertical height
 
 ```sql
 SELECT
-    run,
-    rise,
+    slope.1                                       AS run,
+    slope.2                                       AS rise,
     round(atan(rise / run) * 180 / pi(), 2)       AS angle_deg,
     round(atan(rise / run) * 180 / pi() / 90, 4)  AS grade_normalized
 FROM (
-    SELECT
-        arrayJoin([10.0, 5.0, 2.0, 1.0])  AS run,
-        arrayJoin([1.0,  1.0, 1.0, 1.0])  AS rise
+    SELECT arrayJoin([(10.0, 1.0), (5.0, 1.0), (2.0, 1.0), (1.0, 1.0)]) AS slope
 );
 ```
 
