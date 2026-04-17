@@ -67,9 +67,9 @@ For per-file cache entries:
 SELECT
     key,
     formatReadableSize(size) AS size,
-    hits
+    cache_hits
 FROM system.filesystem_cache
-ORDER BY hits DESC
+ORDER BY cache_hits DESC
 LIMIT 20;
 ```
 
