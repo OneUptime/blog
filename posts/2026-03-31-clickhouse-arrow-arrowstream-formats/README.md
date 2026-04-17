@@ -93,13 +93,18 @@ This avoids double serialization - data flows in Arrow format from ClickHouse di
 
 ## Arrow with Apache Spark
 
-Spark can read Arrow IPC files:
+Stock Spark does not have a built-in `arrow` file data source, but you can load an Arrow IPC file via PyArrow and hand it to Spark:
 
 ```python
+import pyarrow.ipc as ipc
 from pyspark.sql import SparkSession
 
 spark = SparkSession.builder.appName('ClickHouseExport').getOrCreate()
-df = spark.read.format('arrow').load('events.arrow')
+
+with open('events.arrow', 'rb') as f:
+    table = ipc.open_file(f).read_all()
+
+df = spark.createDataFrame(table.to_pandas())
 df.createOrReplaceTempView('events')
 spark.sql('SELECT event_type, count(*) FROM events GROUP BY event_type').show()
 ```
