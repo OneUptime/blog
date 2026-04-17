@@ -15,7 +15,6 @@ In large packet captures with thousands of frames, finding problems manually is 
 ```text
 In Wireshark:
 View → Coloring Rules...
-(or Ctrl+Alt+C)
 
 The Coloring Rules dialog shows:
 - Rule name
@@ -85,7 +84,7 @@ Foreground: white
 Meaning: Destination unreachable
 
 Rule: DHCP Failure (NAck)
-Filter: bootp.option.dhcp == 6
+Filter: dhcp.option.dhcp == 6
 Background: #FF0000 (red)
 Foreground: white
 Meaning: DHCP assignment denied
@@ -107,7 +106,7 @@ Select: network-troubleshooting.colorfilters
 # Wireshark stores coloring rules in:
 
 # Linux: ~/.config/wireshark/colorfilters
-# macOS: ~/Library/Application Support/Wireshark/colorfilters
+# macOS: ~/.config/wireshark/colorfilters
 # Windows: %APPDATA%\Wireshark\colorfilters
 
 # Example colorfilters file format:
@@ -171,7 +170,7 @@ Priority 2 (Orange - Warning):
   tcp.analysis.zero_window       → "Zero Window"
   tcp.analysis.window_full       → "Window Full"
   icmp.type == 11                → "TTL Exceeded (Loop)"
-  bootp.option.dhcp == 6         → "DHCP NAck"
+  dhcp.option.dhcp == 6         → "DHCP NAck"
 
 Priority 3 (Yellow - Info):
   tcp.analysis.duplicate_ack     → "Duplicate ACK"
