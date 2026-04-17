@@ -58,7 +58,7 @@ WHERE user_id = 42 AND ts >= '2026-01-01';
 ReadFromMergeTree
   Indexes:
     PrimaryKey
-      Condition: and((user_id in [42, 42]), (ts in [1735689600, +Inf)))
+      Condition: and((user_id in [42, 42]), (ts in [1767225600, +Inf)))
       Parts: 2/12
       Granules: 8/1440
 ```
