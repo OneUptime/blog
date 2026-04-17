@@ -38,7 +38,7 @@ gcloud iam service-accounts create clickhouse-gcs \
 
 # Grant storage admin on the bucket
 gsutil iam ch \
-    serviceAccount:clickhouse-gcs@PROJECT_ID.iam.gserviceaccount.com:objectAdmin \
+    serviceAccount:clickhouse-gcs@PROJECT_ID.iam.gserviceaccount.com:roles/storage.objectAdmin \
     gs://my-clickhouse-bucket
 
 # Create HMAC key
@@ -63,11 +63,11 @@ Create `/etc/clickhouse-server/config.d/gcs_storage.xml`:
       <gcs>
         <type>s3</type>
         <endpoint>https://storage.googleapis.com/my-clickhouse-bucket/data/</endpoint>
-        <access_key_id>GOOGHMAAC5EXAMPLEACCESSKEY</access_key_id>
+        <access_key_id>GOOG1EXAMPLEACCESSKEY</access_key_id>
         <secret_access_key>EXAMPLESECRETKEY1234567890ABCDEFGHIJKLMN</secret_access_key>
         <region>us-central1</region>
-        <use_path_style_url>false</use_path_style_url>
-        <send_metadata>true</send_metadata>
+        <support_batch_delete>false</support_batch_delete>
+        <metadata_path>/var/lib/clickhouse/disks/gcs/</metadata_path>
       </gcs>
 
       <gcs_cache>
