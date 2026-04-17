@@ -73,7 +73,7 @@ LIMIT 20;
 
 ## Filtering Users with Specific Permissions
 
-Find all users who have the "admin" flag (bit position 7, value 64):
+Find all users who have the "admin" flag (bit position 6, value 64):
 
 ```sql
 SELECT user_id, permissions
@@ -86,7 +86,7 @@ This is equivalent to bitwise AND:
 ```sql
 SELECT user_id, permissions
 FROM users
-WHERE permissions & 64 > 0;
+WHERE bitAnd(permissions, 64) > 0;
 ```
 
 ## Expanding Bitmask Flags into Rows
