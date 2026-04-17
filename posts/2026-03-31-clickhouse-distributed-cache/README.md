@@ -60,14 +60,14 @@ Check the system events table to confirm distributed cache reads and writes are 
 ```sql
 SELECT event, value
 FROM system.events
-WHERE event LIKE '%DistributedCache%'
+WHERE event LIKE '%DistrCache%'
 ORDER BY event;
 ```
 
 Key events to watch:
-- `DistributedCacheReadMicroseconds` - latency for cache fetches from a peer
-- `DistributedCacheHit` - successful peer cache reads
-- `DistributedCacheMiss` - cache misses that required going to object storage
+- `DistrCacheReadMicroseconds` - time spent reading from distributed cache
+- `DistrCacheFallbackReadMicroseconds` - time spent reading via the fallback path when distributed cache was not used
+- `DistrCacheReadErrors` - number of errors encountered while reading from distributed cache
 
 ## Checking Cache Distribution Across Nodes
 
@@ -87,12 +87,12 @@ This lets you verify that cache data is being distributed rather than replicated
 
 ```sql
 -- Allow this query to use distributed cache
-SET enable_filesystem_cache = 1;
+SET read_through_distributed_cache = 1;
 
--- Set timeout for waiting on a peer cache node
-SET distributed_cache_wait_connection_timeout_milliseconds = 500;
+-- Set timeout for waiting on a connection from the distributed cache pool
+SET distributed_cache_wait_connection_from_pool_milliseconds = 500;
 
--- Fall back to S3 if peer cache is unavailable
+-- Fall back to object storage if the distributed cache is unavailable
 SET distributed_cache_throw_on_error = 0;
 ```
 
@@ -109,4 +109,4 @@ For small clusters or when local SSD capacity is plentiful, per-node filesystem 
 
 ## Summary
 
-ClickHouse's distributed cache eliminates redundant object-storage reads across cluster nodes by sharing a unified cache layer. Configure the `use_distributed_cache` flag on your S3 disk, tune the pool size to match your concurrency, and monitor `DistributedCacheHit` events to confirm the cache is working effectively across your cluster.
+ClickHouse's distributed cache eliminates redundant object-storage reads across cluster nodes by sharing a unified cache layer. Configure your S3 disk to reference the shared cache, enable `read_through_distributed_cache` for your queries, and monitor `DistrCacheReadMicroseconds` events to confirm the cache is working effectively across your cluster.
