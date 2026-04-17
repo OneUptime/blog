@@ -92,7 +92,7 @@ ORDER BY week;
 ClickHouse has `corrMatrix` for computing a full correlation matrix from an array of values:
 
 ```sql
-SELECT corrMatrix(3)(cpu, memory, latency) AS correlation_matrix
+SELECT corrMatrix(cpu, memory, latency) AS correlation_matrix
 FROM (
     SELECT avg(cpu_pct) AS cpu, avg(memory_mb) AS memory, avg(response_ms) AS latency
     FROM system_metrics
