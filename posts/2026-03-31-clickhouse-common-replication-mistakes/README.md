@@ -76,16 +76,16 @@ INSERT INTO events VALUES (1, now());
 
 With `insert_quorum = 2`, ClickHouse waits until at least two replicas confirm the write.
 
-## Mistake 6: Skipping the initial_sync_table Step After Adding a Replica
+## Mistake 6: Not Restoring a Replica After Keeper Metadata Loss
 
-When adding a new replica to an existing replicated table, you must fetch data from an existing replica first. Without this, the new node serves queries with zero rows.
+If a replica's state is lost from ZooKeeper/Keeper (for example, after a Keeper data loss incident), the table enters readonly mode and stops replicating even though local parts are still on disk. Simply recreating the table will not recover it — you need to explicitly restore the replica so it re-registers its local parts in Keeper and refetches anything missing from peers.
 
 ```bash
 clickhouse-client --query \
   "SYSTEM RESTORE REPLICA events ON CLUSTER my_cluster"
 ```
 
-Or use `ALTER TABLE events FETCH PARTITION ALL FROM '/clickhouse/tables/01/events'` to pull all partitions manually.
+For targeted recovery of specific partitions from another replica, use `ALTER TABLE events FETCH PARTITION <partition_id> FROM '/clickhouse/tables/01/events'` and then `ATTACH PARTITION`. Note that creating a brand-new replica against an existing ZooKeeper path does not need this step — ClickHouse fetches data automatically once the table is created.
 
 ## Summary
 
