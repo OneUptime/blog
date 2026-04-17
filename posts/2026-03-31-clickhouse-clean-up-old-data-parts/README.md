@@ -35,12 +35,14 @@ ORDER BY inactive_parts DESC;
 
 ## Forcing Cleanup of Inactive Parts
 
-```sql
--- Trigger cleanup of merged-away parts for a specific table
-SYSTEM DROP REPLICA '' FROM TABLE my_database.events;
+Inactive parts are removed by a background task after `old_parts_lifetime` seconds have elapsed (default 480 seconds / 8 minutes). There is no command to force immediate removal, but you can lower the setting or trigger merges that produce new inactive parts:
 
--- Or use OPTIMIZE to merge remaining small parts
+```sql
+-- Merge small parts into larger ones (older parts become inactive)
 OPTIMIZE TABLE my_database.events;
+
+-- Lower old_parts_lifetime for a table to reduce retention of inactive parts
+ALTER TABLE my_database.events MODIFY SETTING old_parts_lifetime = 60;
 ```
 
 ## Listing Detached Parts
@@ -60,13 +62,15 @@ ORDER BY detached_size DESC;
 
 ## Removing Detached Parts
 
-After verifying detached parts are not needed, drop them:
+After verifying detached parts are not needed, drop them. These statements require the user-level setting `allow_drop_detached = 1`:
 
 ```sql
+SET allow_drop_detached = 1;
+
 -- Drop a specific detached part
 ALTER TABLE my_database.events DROP DETACHED PART 'all_0_0_0';
 
--- Drop all detached parts for a table
+-- Drop all detached parts in the 'all' partition (for tables without PARTITION BY)
 ALTER TABLE my_database.events DROP DETACHED PARTITION ID 'all';
 ```
 
@@ -114,13 +118,14 @@ find /var/lib/clickhouse/data/ -maxdepth 3 -name "tmp_*" -type d -mtime +1 -exec
 # Log disk usage before cleanup
 BEFORE=$(df -h /var/lib/clickhouse | tail -1 | awk '{print $3}')
 
-# Drop detached parts older than 7 days
+# Drop detached parts older than 7 days (by specific part name)
 clickhouse-client --query "
-SELECT DISTINCT database, table
+SELECT database, table, name
 FROM system.detached_parts
 WHERE modification_time < now() - INTERVAL 7 DAY
-" | while IFS=$'\t' read -r db table; do
-    clickhouse-client --query "ALTER TABLE ${db}.${table} DROP DETACHED PARTITION ID 'all'"
+FORMAT TabSeparated
+" | while IFS=$'\t' read -r db table part; do
+    clickhouse-client --query "SET allow_drop_detached = 1; ALTER TABLE ${db}.${table} DROP DETACHED PART '${part}'"
 done
 
 AFTER=$(df -h /var/lib/clickhouse | tail -1 | awk '{print $3}')
