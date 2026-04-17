@@ -91,7 +91,7 @@ tshark -r capture.pcap -Y "ipv6" -T fields -e ipv6.fraghdr.ident | \
 |---|---|---|
 | Large first fragment, no reassembly | `ipv6.fraghdr.more == 1` but no final fragment | Firewall blocking fragments |
 | ICMPv6 type 2 received | `icmpv6.type == 2` | PMTUD message (MTU too small) |
-| Duplicate fragment IDs | Same `ipv6.fraghdr.ident` from different sources | Fragmentation overlap attack |
+| Duplicate fragment IDs | Same `ipv6.fraghdr.ident` from the same source/dest pair with overlapping offsets | Fragmentation overlap attack (RFC 5722) |
 | Tiny fragment size | `frame.len < 100 && ipv6.fraghdr` | Fragmentation attack / tiny fragmentation |
 
 ## Checking for Fragment-Based Attacks
