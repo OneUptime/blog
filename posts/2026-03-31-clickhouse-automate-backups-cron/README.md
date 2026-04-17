@@ -17,7 +17,7 @@ Sunday  02:00  Full backup      (complete snapshot, ~2-4 hours)
 Mon-Sat 02:00  Incremental      (changed parts only, ~10-30 minutes)
 ```
 
-This means at most 7 days of incremental history on top of the weekly full backup. A point-in-time restore to any day requires restoring the full backup and applying at most 6 incrementals.
+This means at most 7 days of incremental history on top of the weekly full backup. Because each day's incremental uses the previous Sunday's full backup as its base, a point-in-time restore to any day requires only the full backup and that day's incremental — intermediate days are not needed.
 
 ## Backup Script
 
@@ -85,8 +85,6 @@ else
     DAYS_SINCE_SUNDAY=$(( (DAY_OF_WEEK % 7) ))
     LAST_SUNDAY=$(date -d "${DAYS_SINCE_SUNDAY} days ago" '+%Y-%m-%d' 2>/dev/null || \
                   date -v-${DAYS_SINCE_SUNDAY}d '+%Y-%m-%d')
-    BASE_URL="https://s3.amazonaws.com/${S3_BUCKET}/${S3_PREFIX}/${LAST_SUNDAY}-full"
-    BASE_BACKUP_SETTING="SETTINGS base_backup = S3('${BASE_URL}/')"
     log "Starting INCREMENTAL backup: ${BACKUP_NAME} (base: ${LAST_SUNDAY}-full)"
 fi
 
@@ -107,6 +105,14 @@ BACKUP_START=$(date +%s)
 for DB in $DB_LIST; do
     S3_URL="https://s3.amazonaws.com/${S3_BUCKET}/${S3_PREFIX}/${BACKUP_NAME}/${DB}/"
     log "Backing up: ${DB} -> ${S3_URL}"
+
+    # base_backup must point to the same per-database path used for the prior full backup
+    if [ "$BACKUP_TYPE" = "incremental" ]; then
+        BASE_URL="https://s3.amazonaws.com/${S3_BUCKET}/${S3_PREFIX}/${LAST_SUNDAY}-full/${DB}/"
+        BASE_BACKUP_SETTING="SETTINGS base_backup = S3('${BASE_URL}')"
+    else
+        BASE_BACKUP_SETTING=""
+    fi
 
     SQL="BACKUP DATABASE ${DB} TO S3('${S3_URL}') ${BASE_BACKUP_SETTING}"
 
@@ -258,7 +264,7 @@ clickhouse-client --query "
 SELECT
     id, status, name, start_time, end_time,
     dateDiff('minute', start_time, end_time) AS duration_min,
-    formatReadableSize(total_size) AS size, error
+    formatReadableSize(compressed_size) AS size, error
 FROM system.backups
 ORDER BY start_time DESC
 LIMIT 10
