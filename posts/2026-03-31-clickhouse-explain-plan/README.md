@@ -33,7 +33,7 @@ Expression (Projection)
 
 ## Plan with Descriptions
 
-Use `description = 1` to annotate each step with a brief description of what it does:
+`description = 1` is enabled by default and adds a short annotation in parentheses next to each node, such as `(Projection)`, `(WHERE)`, or `(Before GROUP BY)`. Setting it explicitly produces the same output as the basic plan:
 
 ```sql
 EXPLAIN PLAN description = 1
@@ -45,18 +45,13 @@ GROUP BY user_id;
 
 ```text
 Expression (Projection)
-  description: Project and rename columns for the final SELECT list.
   Aggregating
-    description: Aggregate rows by user_id computing count().
     Expression (Before GROUP BY)
-      description: Evaluate expressions needed for grouping.
       Filter (WHERE)
-        description: Apply predicate event_date >= '2024-01-01'.
         ReadFromMergeTree (events)
-          description: Read from MergeTree table events using primary key index.
 ```
 
-Descriptions make it easier to communicate plan structure in code reviews or documentation.
+Setting `description = 0` strips the parenthetical annotations and leaves only bare node type names. The default annotations make it easier to communicate plan structure in code reviews or documentation.
 
 ## Plan with Header (Column Types)
 
@@ -72,15 +67,20 @@ GROUP BY user_id;
 
 ```text
 Expression (Projection)
-Header: user_id UInt64, events UInt64
+Header: user_id UInt64
+        events UInt64
   Aggregating
-  Header: user_id UInt64, count() UInt64
+  Header: user_id UInt64
+          count() UInt64
     Expression (Before GROUP BY)
-    Header: user_id UInt64, event_date Date
+    Header: user_id UInt64
+            event_date Date
       Filter (WHERE)
-      Header: user_id UInt64, event_date Date
+      Header: user_id UInt64
+              event_date Date
         ReadFromMergeTree (events)
-        Header: user_id UInt64, event_date Date
+        Header: user_id UInt64
+                event_date Date
 ```
 
 The header at each step shows what columns flow through. This is useful for catching implicit type casts or confirming that a column is available at the point where it is referenced.
@@ -101,10 +101,16 @@ GROUP BY user_id, month;
 
 ```text
 Expression (Projection)
-Actions: INPUT :: 0 -> user_id UInt64 : 0, INPUT :: 1 -> count() UInt64 : 1, ALIAS count() :: 1 -> events UInt64 : 2
+Actions: INPUT :: 0 -> user_id UInt64 : 0
+         INPUT :: 1 -> count() UInt64 : 1
+         ALIAS count() :: 1 -> events UInt64 : 2
+Positions: 0 2
   Aggregating
     Expression (Before GROUP BY)
-    Actions: INPUT :: 0 -> user_id UInt64 : 0, INPUT :: 1 -> event_date Date : 1, FUNCTION toStartOfMonth(event_date :: 1) -> toStartOfMonth(event_date) Date : 2
+    Actions: INPUT :: 0 -> user_id UInt64 : 0
+             INPUT :: 1 -> event_date Date : 1
+             FUNCTION toStartOfMonth(event_date :: 1) -> toStartOfMonth(event_date) Date : 2
+    Positions: 0 2
       ReadFromMergeTree (events)
 ```
 
@@ -127,7 +133,8 @@ LIMIT 20;
 Expression (Projection)
   Limit (preliminary LIMIT)
     Sorting (Sorting for ORDER BY)
-    Header: user_id UInt64, total Float64
+    Header: user_id UInt64
+            total Float64
       Expression (Before ORDER BY)
         Aggregating
           Expression (Before GROUP BY)
