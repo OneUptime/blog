@@ -17,7 +17,7 @@ bitRotateLeft(a, b)  -> same type as a
 bitRotateRight(a, b) -> same type as a
 ```
 
-- `a` is the value to rotate (UInt8, UInt16, UInt32, or UInt64).
+- `a` is the value to rotate (Int8/16/32/64 or UInt8/16/32/64).
 - `b` is the number of positions to rotate.
 
 ## Basic Examples
@@ -55,7 +55,7 @@ With `192 = 0b11000000`, shifting left by 2 drops the two 1-bits and gives 0. Ro
 
 ## Hashing and Checksum Applications
 
-Bit rotation is used in many hash algorithms (such as Bernstein, FNV, Murmur) to improve bit diffusion:
+Bit rotation is used in many hash algorithms (such as MurmurHash, xxHash, SipHash, and SHA-1) to improve bit diffusion:
 
 ```sql
 SELECT
