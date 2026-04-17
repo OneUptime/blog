@@ -107,9 +107,13 @@ Always back up critical tables before patching:
 ```sql
 -- Take a quick freeze snapshot
 ALTER TABLE my_database.events FREEZE WITH NAME 'pre-patch-2026-03-31';
+```
 
--- Verify the freeze
-SELECT * FROM system.freeze_snapshots;
+Freeze creates hardlinks under the data directory's `shadow/` folder. Verify on the filesystem:
+
+```bash
+# Inspect the freeze output
+sudo ls -la /var/lib/clickhouse/shadow/pre-patch-2026-03-31/
 ```
 
 Or use a full backup:
