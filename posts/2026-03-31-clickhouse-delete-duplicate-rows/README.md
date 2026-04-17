@@ -71,7 +71,7 @@ GROUP BY event_id;
 
 ## Option 3 - DELETE Duplicates with ALTER TABLE
 
-For MergeTree tables, use lightweight deletes (ClickHouse 22.8+):
+For MergeTree tables, use a DELETE mutation via `ALTER TABLE`:
 
 ```sql
 -- Find duplicates
