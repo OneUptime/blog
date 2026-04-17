@@ -8,7 +8,7 @@ Description: Learn how cutFragment() removes the hash fragment and cutQueryStrin
 
 ---
 
-ClickHouse provides two URL trimming functions that remove trailing URL components. `cutFragment(url)` removes the fragment identifier (everything from `#` onwards) and returns the URL without it. `cutQueryString(url)` removes the query string (everything from `?` onwards, including the `?` itself) and returns the URL up to and including the path. Both functions preserve the rest of the URL unchanged.
+ClickHouse provides two URL trimming functions that remove specific URL components. `cutFragment(url)` removes the fragment identifier (everything from `#` onwards, including the `#`) and returns the URL without it. `cutQueryString(url)` removes the query string (the `?` and its parameters, up to but not including any fragment) and preserves any fragment that follows. Both functions preserve the rest of the URL unchanged, and if the URL does not contain the targeted component it is returned as-is.
 
 These are useful for canonicalising URLs before deduplication, building cache keys, or storing clean base URLs in derived tables.
 
@@ -32,12 +32,12 @@ FROM (
 ```
 
 ```text
-url                                               no_fragment                              no_query_string
-https://example.com/search?q=hello&lang=en#results  https://example.com/search?q=hello&lang=en  https://example.com/search
-https://docs.io/guide?v=2#installation            https://docs.io/guide?v=2                https://docs.io/guide
-https://shop.io/cart?item=42                      https://shop.io/cart?item=42             https://shop.io/cart
-https://example.com/clean-url                     https://example.com/clean-url            https://example.com/clean-url
-https://app.io/#/dashboard                        https://app.io/                          https://app.io/
+url                                                 no_fragment                                 no_query_string
+https://example.com/search?q=hello&lang=en#results  https://example.com/search?q=hello&lang=en  https://example.com/search#results
+https://docs.io/guide?v=2#installation              https://docs.io/guide?v=2                   https://docs.io/guide#installation
+https://shop.io/cart?item=42                        https://shop.io/cart?item=42                https://shop.io/cart
+https://example.com/clean-url                       https://example.com/clean-url               https://example.com/clean-url
+https://app.io/#/dashboard                          https://app.io/                             https://app.io/#/dashboard
 ```
 
 ## Canonical URL Generation
