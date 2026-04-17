@@ -53,7 +53,7 @@ AS
 SELECT
     now() AS received_at,
     'events' AS source_topic,
-    _partition_id AS source_partition,
+    _partition AS source_partition,
     _offset AS source_offset,
     _raw_message AS raw_message,
     'PARSE_ERROR' AS error_type,
