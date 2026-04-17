@@ -116,13 +116,14 @@ WHERE table = 'events'
 GROUP BY host;
 ```
 
-## Inline Table Definition
+## Shorthand with db.table
 
-Both functions accept an inline table definition instead of a database/table reference:
+Both functions also accept the `db.table` shorthand instead of separate database and table arguments:
 
 ```sql
 SELECT *
-FROM cluster('analytics_cluster', 'SELECT hostName() AS host, count() AS cnt FROM mydb.events');
+FROM cluster('analytics_cluster', mydb.events)
+LIMIT 10;
 ```
 
 ## Differences at a Glance
@@ -135,7 +136,7 @@ clusterAllReplicas()   All replicas everywhere   Replication verification, debug
 
 ## Performance Tip
 
-Both functions fan out to all shards and merge results. Ensure you always filter on the partition key or sorting key to enable shard-level pruning:
+Both functions fan out to all shards and merge results. Ensure you always filter on the partition key or sorting key so the predicate is pushed down and less data is scanned at each shard:
 
 ```sql
 -- Efficient: filters pushed to each shard
