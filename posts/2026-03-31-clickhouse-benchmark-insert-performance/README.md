@@ -101,7 +101,7 @@ wait
 echo "All inserts complete"
 ```
 
-## Monitoring INSERT Performance from system.metrics
+## Monitoring INSERT Performance from system.events
 
 ```bash
 clickhouse-client --query "
