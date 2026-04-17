@@ -28,7 +28,7 @@ ENGINE = EmbeddedRocksDB
 PRIMARY KEY session_id;
 ```
 
-The `PRIMARY KEY` must reference a single column (or a tuple for composite keys) and determines how data is stored and retrieved.
+The `PRIMARY KEY` must reference exactly one column and determines how data is stored and retrieved. EmbeddedRocksDB does not support multi-column primary keys.
 
 ## Inserting Data
 
@@ -81,33 +81,31 @@ session_id    last_seen_at          metadata
 sess_abc123   2024-06-15 10:35:00   {"plan":"pro","updated":true}
 ```
 
-## Composite Primary Key
+## Composite Keys via Encoded Strings
 
-For tables requiring multi-column keys, specify a tuple.
+Since EmbeddedRocksDB only supports a single primary key column, multi-field keys must be encoded into one column - typically a `String` that concatenates the field values with a separator.
 
 ```sql
 CREATE TABLE rate_limits
 (
-    tenant_id  UInt32,
-    endpoint   String,
-    window_ts  DateTime,
+    rate_key   String,
     hit_count  UInt32,
     limit_val  UInt32
 )
 ENGINE = EmbeddedRocksDB
-PRIMARY KEY (tenant_id, endpoint, window_ts);
+PRIMARY KEY rate_key;
 ```
 
 ```sql
 INSERT INTO rate_limits VALUES
-    (42, '/api/search', '2024-06-15 10:00:00', 150, 1000),
-    (42, '/api/export', '2024-06-15 10:00:00', 3,   10),
-    (99, '/api/search', '2024-06-15 10:00:00', 800, 1000);
+    ('42|/api/search|2024-06-15 10:00:00', 150, 1000),
+    ('42|/api/export|2024-06-15 10:00:00', 3,   10),
+    ('99|/api/search|2024-06-15 10:00:00', 800, 1000);
 
 -- Look up a specific tenant+endpoint+window combination
 SELECT hit_count, limit_val, hit_count >= limit_val AS throttled
 FROM rate_limits
-WHERE tenant_id = 42 AND endpoint = '/api/export' AND window_ts = '2024-06-15 10:00:00';
+WHERE rate_key = '42|/api/export|2024-06-15 10:00:00';
 ```
 
 ```text
@@ -195,19 +193,22 @@ SETTINGS
 
 ## Checking Table Size and Row Count
 
+EmbeddedRocksDB tables do not appear in `system.parts` (which is specific to the MergeTree family). Use `system.tables` for size estimates and `system.rocksdb` for internal RocksDB metrics.
+
 ```sql
--- Row count and approximate disk usage
+-- Row count and approximate on-disk size
 SELECT
-    count()                          AS row_count,
-    formatReadableSize(sum(data_uncompressed_bytes)) AS uncompressed_size,
-    formatReadableSize(sum(data_compressed_bytes))   AS compressed_size
-FROM system.parts
-WHERE database = currentDatabase() AND table = 'user_sessions';
+    name,
+    total_rows,
+    formatReadableSize(total_bytes) AS approx_size
+FROM system.tables
+WHERE database = currentDatabase() AND name = 'user_sessions';
 ```
 
 ## Limitations
 
 EmbeddedRocksDB does not support:
+- Multi-column primary keys (only a single column)
 - `ORDER BY` in table definition (only `PRIMARY KEY`)
 - Aggregating functions at the storage layer
 - Replication (use a distributed approach at the application level)
