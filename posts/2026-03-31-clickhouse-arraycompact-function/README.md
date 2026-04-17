@@ -66,7 +66,7 @@ SELECT
     status_timeline,
     arrayCompact(status_timeline) AS transitions
 FROM device_status;
--- device 1: [0,1,2,1,0]   (5 distinct state changes)
+-- device 1: [0,1,2,1,0]   (5-entry transition sequence)
 -- device 2: [0]            (was always ok)
 -- device 3: [0,1,0,1,0,1] (alternating, no consecutive dups)
 
@@ -137,12 +137,12 @@ SELECT
 
 ## Checking for State Stability
 
-A device that has the same compacted array as its raw array has never changed state - all readings were identical. This is a quick way to detect perfectly stable metrics:
+A device whose compacted array has a single element never changed state - all readings were identical. Checking the length of the compacted array is a quick way to detect perfectly stable metrics:
 
 ```sql
 SELECT
     device_id,
-    (status_timeline = arrayCompact(status_timeline)) AS is_stable
+    (length(arrayCompact(status_timeline)) = 1) AS is_stable
 FROM device_status;
 -- device 1: 0 (not stable, had transitions)
 -- device 2: 1 (stable, always 0)
