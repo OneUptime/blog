@@ -8,7 +8,7 @@ Description: Learn how to use the FORMAT clause in ClickHouse to control query o
 
 ---
 
-The `FORMAT` clause is appended to a `SELECT` statement to control how ClickHouse serializes its output. By default, ClickHouse uses `TabSeparated` for command-line queries and `JSON` when convenient, but you can override this for any query. Choosing the right format matters for downstream pipelines, debugging, HTTP API integrations, and data export workflows.
+The `FORMAT` clause is appended to a `SELECT` statement to control how ClickHouse serializes its output. By default, ClickHouse uses `PrettyCompact` for interactive `clickhouse-client` sessions and `TabSeparated` for non-interactive (batch) queries and the HTTP interface, but you can override this for any query. Choosing the right format matters for downstream pipelines, debugging, HTTP API integrations, and data export workflows.
 
 ## FORMAT Syntax
 
@@ -98,7 +98,7 @@ Output for `CSVWithNames`:
 
 ## FORMAT TabSeparated
 
-`TabSeparated` (TSV) is the default format for the `clickhouse-client` command-line tool. Use `TabSeparatedWithNames` to include headers.
+`TabSeparated` (TSV) is the default format for `clickhouse-client` in non-interactive (batch) mode and the HTTP interface. Use `TabSeparatedWithNames` to include headers.
 
 ```sql
 SELECT
