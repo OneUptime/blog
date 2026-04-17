@@ -20,8 +20,8 @@ SELECT
     neighbor(id, 1) AS next_id,
     next_id - id - 1 AS gap_size
 FROM events
-ORDER BY id
-HAVING gap_size > 0;
+HAVING gap_size > 0
+ORDER BY id;
 ```
 
 `neighbor(id, 1)` looks ahead one row. If `next_id - id > 1`, there are missing IDs in between.
@@ -36,7 +36,7 @@ SELECT
 FROM (
     SELECT
         id,
-        leadInFrame(id) OVER (ORDER BY id) AS next_id
+        leadInFrame(id) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS next_id
     FROM events
 )
 WHERE next_id - id > 1
@@ -55,7 +55,7 @@ SELECT
 FROM (
     SELECT
         ts,
-        leadInFrame(ts) OVER (ORDER BY ts) AS next_ts
+        leadInFrame(ts) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS next_ts
     FROM metrics
     WHERE sensor_id = 'sensor_42'
 )
@@ -77,7 +77,7 @@ FROM (
     SELECT
         device_id,
         ts,
-        leadInFrame(ts) OVER (PARTITION BY device_id ORDER BY ts) AS next_ts
+        leadInFrame(ts) OVER (PARTITION BY device_id ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS next_ts
     FROM heartbeats
 )
 WHERE gap_seconds > 60
@@ -89,7 +89,7 @@ ORDER BY device_id, gap_start;
 ```sql
 SELECT sum(next_id - id - 1) AS total_missing
 FROM (
-    SELECT id, leadInFrame(id) OVER (ORDER BY id) AS next_id
+    SELECT id, leadInFrame(id) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS next_id
     FROM events
 )
 WHERE next_id - id > 1;
