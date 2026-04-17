@@ -90,20 +90,22 @@ DROP TABLE IF EXISTS foo;
 
 ## Obfuscating Queries (Replacing Literals)
 
-The `--obfuscate` flag replaces string and numeric literals with placeholders, useful for logging queries without exposing sensitive values:
+The `--obfuscate` flag replaces identifiers and literals with hash-derived dictionary words and similar-magnitude numbers, useful for sharing queries without exposing schema names or sensitive values:
 
 ```bash
 echo "SELECT * FROM orders WHERE customer_email = 'alice@example.com' AND amount > 500.00" \
     | clickhouse-format --obfuscate
 ```
 
-Output:
+Output (words are chosen deterministically by hashing each token; exact values vary):
 
 ```sql
 SELECT *
-FROM orders
-WHERE (customer_email = 'foo@bar.com') AND (amount > 0.)
+FROM nutmeg
+WHERE (chive = 'parsley@oregano.basil') AND (thyme > 503.17)
 ```
+
+Identifiers like `orders`, `customer_email`, and `amount` are each replaced with a noun from a built-in dictionary. String literals are tokenized on non-alphanumerics (so `@` and `.` are preserved) and each token is substituted independently. Numeric literals are perturbed while preserving their magnitude.
 
 ## Checking Syntax Validity
 
@@ -179,15 +181,14 @@ Output:
 ```sql
 CREATE TABLE events
 (
-    event_id    UInt64,
-    event_type  LowCardinality(String),
-    event_time  DateTime,
-    payload     String
+    `event_id` UInt64,
+    `event_type` LowCardinality(String),
+    `event_time` DateTime,
+    `payload` String
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(event_time)
-ORDER BY
-    (event_time, event_type)
+ORDER BY (event_time, event_type)
 SETTINGS index_granularity = 8192
 ```
 
