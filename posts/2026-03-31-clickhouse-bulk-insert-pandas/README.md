@@ -18,7 +18,7 @@ Inserting a DataFrame row by row is catastrophically slow. ClickHouse is designe
 pip install clickhouse-connect pandas pyarrow
 ```
 
-PyArrow is needed for the most efficient binary transfer format.
+PyArrow is optional - only needed if you want to use `insert_arrow` for Arrow-based transfers.
 
 ## Basic DataFrame Insert
 
@@ -78,7 +78,7 @@ insert_in_chunks(client, "events", large_df)
 
 ## Using Arrow for Maximum Performance
 
-clickhouse-connect natively uses Apache Arrow for binary transfers, which is significantly faster than text-based formats:
+If your data is already in Arrow format, you can send it directly to ClickHouse using `insert_arrow`, which uses the raw Arrow format on the wire and avoids a pandas-to-native conversion step:
 
 ```python
 import pyarrow as pa
@@ -87,7 +87,7 @@ arrow_table = pa.Table.from_pandas(df)
 client.insert_arrow("events", arrow_table)
 ```
 
-Arrow avoids Python serialization overhead entirely by sending a binary columnar buffer directly to ClickHouse.
+This is useful when data originates from an Arrow-native source (e.g. Parquet files read via PyArrow), since it skips Python-level serialization and sends a columnar binary buffer directly.
 
 ## Handling NULL Values
 
@@ -108,4 +108,4 @@ print(f"Row count: {result.first_row[0]}")
 
 ## Summary
 
-Bulk inserting Pandas DataFrames into ClickHouse is most efficient with `clickhouse-connect`'s `insert_df` method, which uses Arrow binary format under the hood. For large DataFrames, chunk inserts keep memory usage bounded while maintaining high throughput. Always align Pandas dtypes with ClickHouse column types before inserting.
+Bulk inserting Pandas DataFrames into ClickHouse is most efficient with `clickhouse-connect`'s `insert_df` method, which uses ClickHouse's native binary format under the hood. For large DataFrames, chunk inserts keep memory usage bounded while maintaining high throughput. Always align Pandas dtypes with ClickHouse column types before inserting.
