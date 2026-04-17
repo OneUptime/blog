@@ -217,7 +217,8 @@ SELECT name FROM system.roles;
 SELECT
     user_name,
     role_name,
-    is_default
+    granted_role_name,
+    granted_role_is_default
 FROM system.role_grants;
 
 -- All grants
