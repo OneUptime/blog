@@ -145,7 +145,7 @@ ORDER BY impressions DESC;
 
 ```sql
 SELECT
-    c.campaign_id,
+    i.campaign_id,
     count(DISTINCT cl.click_id)                 AS clicks,
     count(DISTINCT co.conversion_id)            AS conversions,
     round(count(DISTINCT co.conversion_id) * 100.0
@@ -158,7 +158,7 @@ FROM ad_impressions i
 JOIN ad_clicks cl ON i.impression_id = cl.impression_id
 LEFT JOIN ad_conversions co ON cl.click_id = co.click_id
 WHERE i.shown_at >= today() - 30
-GROUP BY c.campaign_id
+GROUP BY i.campaign_id
 ORDER BY total_spend_usd DESC;
 ```
 
