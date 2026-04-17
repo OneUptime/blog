@@ -45,7 +45,7 @@ Function              | Algorithm    | Error Guarantee | Memory       | Mergeabl
 quantile              | Reservoir    | ~1%             | O(1) sampled | No
 quantileExact         | Full sort    | 0%              | O(n)         | No
 quantileTDigest       | t-digest     | ~1% (tails)     | ~10KB        | Yes
-quantileTiming        | Fixed bins   | ~0.01ms         | 40KB         | Yes
+quantileTiming        | Fixed bins   | ~1ms (16ms >1024ms) | ~10KB    | Yes
 quantileDD            | DDSketch     | ~1%             | Variable     | Yes
 ```
 
