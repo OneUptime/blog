@@ -45,20 +45,22 @@ Pre-aggregate on the edge to reduce the sync payload:
 
 ```sql
 CREATE MATERIALIZED VIEW sensor_hourly_mv
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (device_id, metric, hour)
 AS
 SELECT
     device_id,
     metric,
     toStartOfHour(ts) AS hour,
-    avg(value) AS avg_value,
-    min(value) AS min_value,
-    max(value) AS max_value,
-    count() AS sample_count
+    avgState(value) AS avg_value,
+    minState(value) AS min_value,
+    maxState(value) AS max_value,
+    countState() AS sample_count
 FROM sensor_readings
 GROUP BY device_id, metric, hour;
 ```
+
+`SummingMergeTree` only sums numeric columns during merges, which would corrupt `avg`/`min`/`max`. `AggregatingMergeTree` with `-State` combinators stores partial states that merge correctly; query them with the matching `-Merge` functions.
 
 ## Syncing to Central Cluster
 
@@ -66,9 +68,18 @@ Use the `remote()` table function to push hourly aggregates to the central clust
 
 ```bash
 clickhouse-client --query "
-INSERT INTO remote('central-ch:9000', prod.sensor_hourly, 'sync_user', 'pass')
-SELECT * FROM sensor_hourly_mv
+INSERT INTO FUNCTION remote('central-ch:9000', 'prod.sensor_hourly', 'sync_user', 'pass')
+SELECT
+    device_id,
+    metric,
+    hour,
+    avgMerge(avg_value)   AS avg_value,
+    minMerge(min_value)   AS min_value,
+    maxMerge(max_value)   AS max_value,
+    countMerge(sample_count) AS sample_count
+FROM sensor_hourly_mv
 WHERE hour = toStartOfHour(now() - INTERVAL 1 HOUR)
+GROUP BY device_id, metric, hour
 "
 ```
 
@@ -76,12 +87,23 @@ Run this as a cron job every hour.
 
 ## Handling Intermittent Connectivity
 
-Buffer writes locally when the central cluster is unreachable. Use a `Buffer` table engine in front of the sync table:
+The `Buffer` engine only flushes to a *local* destination table, so it can't queue writes for an unreachable remote cluster. For that, use a `Distributed` engine: when the remote shard is down, ClickHouse spools inserts to disk under `<path>/distributed/` and retries automatically. After defining the `central_cluster` in `remote_servers`:
 
 ```sql
-CREATE TABLE sensor_sync_buffer AS sensor_hourly_mv
-ENGINE = Buffer(prod, sensor_hourly, 16, 10, 100, 10000, 1000000, 10000000, 100000000);
+CREATE TABLE sensor_hourly_dist
+(
+    device_id    LowCardinality(String),
+    metric       LowCardinality(String),
+    hour         DateTime,
+    avg_value    Float64,
+    min_value    Float32,
+    max_value    Float32,
+    sample_count UInt64
+)
+ENGINE = Distributed('central_cluster', 'prod', 'sensor_hourly', rand());
 ```
+
+Inserts into `sensor_hourly_dist` are durable on the edge node's disk until the central cluster is reachable.
 
 ## Monitoring Edge Nodes
 
