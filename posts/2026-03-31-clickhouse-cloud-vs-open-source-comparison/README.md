@@ -87,7 +87,7 @@ Built-in observability                | Cloud console, query insights
 
 Open source: pay for servers (EC2, bare metal) plus your ops team time.
 
-ClickHouse Cloud: pay per compute unit (CHU) consumed plus storage. Services can be paused when idle to reduce costs.
+ClickHouse Cloud: pay per compute unit consumed plus storage. Services can be paused when idle to reduce costs.
 
 ```text
 Example: 100GB data, 10M queries/day
