@@ -46,8 +46,7 @@ Back up an entire database to Azure:
 
 ```sql
 BACKUP DATABASE production
-TO Disk('azure_backup', 'production_backup_2026-03-31/')
-SETTINGS async = true;
+TO Disk('azure_backup', 'production_backup_2026-03-31/') ASYNC;
 ```
 
 ## Backing Up Individual Tables
@@ -69,9 +68,9 @@ SELECT
     status,
     start_time,
     end_time,
-    formatReadableSize(total_size) AS backup_size,
+    formatReadableSize(compressed_size) AS backup_size,
     num_files,
-    exception
+    error
 FROM system.backups
 WHERE start_time >= today()
 ORDER BY start_time DESC;
@@ -108,9 +107,9 @@ RESTORE TABLE production.orders
 FROM Disk('azure_backup', 'orders_backup_2026-03-31/');
 ```
 
-## Securing Credentials with Azure Managed Identity
+## Securing Credentials with Azure Workload Identity
 
-For Kubernetes deployments, use Managed Identity instead of account keys:
+For Kubernetes deployments, use Azure Workload Identity instead of account keys:
 
 ```xml
 <azure_backup>
@@ -118,10 +117,10 @@ For Kubernetes deployments, use Managed Identity instead of account keys:
     <object_storage_type>azure_blob_storage</object_storage_type>
     <storage_account_url>https://myaccount.blob.core.windows.net</storage_account_url>
     <container_name>clickhouse-backups</container_name>
-    <use_managed_identity_auth>true</use_managed_identity_auth>
+    <use_workload_identity>true</use_workload_identity>
 </azure_backup>
 ```
 
 ## Summary
 
-ClickHouse's native BACKUP command writes directly to Azure Blob Storage when an Azure disk is configured. Use account key or Managed Identity authentication, leverage incremental backups to control costs, and monitor via `system.backups`. Store full backups weekly and incremental backups daily for a balanced recovery point objective.
+ClickHouse's native BACKUP command writes directly to Azure Blob Storage when an Azure disk is configured. Use account key or Workload Identity authentication, leverage incremental backups to control costs, and monitor via `system.backups`. Store full backups weekly and incremental backups daily for a balanced recovery point objective.
