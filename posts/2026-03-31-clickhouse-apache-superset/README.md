@@ -204,7 +204,7 @@ SELECT
     sum(customers)                  AS unique_customers,
     round(sum(revenue) / sum(orders), 2) AS avg_order_value
 FROM analytics.sales_daily
-WHERE date >= dateAdd(month, -12, today())
+WHERE date >= dateAdd('month', -12, today())
 GROUP BY month, country, channel
 ORDER BY month DESC, total_revenue DESC
 ```
@@ -265,8 +265,8 @@ ORDER BY day
 Schedule dashboard exports to be emailed.
 
 ```bash
-# Install email dependencies
-pip install apache-superset[async]
+# Install email/reporting dependencies
+pip install celery[redis] apache-superset[playwright]
 
 # Schedule a dashboard email (via Celery beat)
 # In superset_config.py:
