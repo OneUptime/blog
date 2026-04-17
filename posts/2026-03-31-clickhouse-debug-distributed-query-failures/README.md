@@ -10,17 +10,15 @@ Description: Debug ClickHouse distributed query failures by tracing query execut
 
 Distributed query failures in ClickHouse can be tricky because errors originate on remote shards but surface on the coordinator. The error message may be truncated or reference a shard you cannot directly access.
 
-## Enable Full Error Propagation
+## Get Verbose Logs From Remote Shards
 
-By default, ClickHouse shows abbreviated errors from remote shards. Get the full error:
+Errors from remote shards propagate to the coordinator by default, but the streamed server log messages that accompany them are filtered. Turn up the log level for the session to see debug output from each shard while the query runs:
 
 ```sql
-SET distributed_connections_pool_size = 1024;
-SET receive_timeout = 300;
-SET send_timeout = 300;
+SET send_logs_level = 'debug';
 ```
 
-The full exception from the remote shard appears in the error message.
+Accepted values are `none`, `fatal`, `error`, `warning`, `information`, `debug`, and `trace`. Combine with `log_queries = 1` (see below) to persist the detail in `system.query_log`.
 
 ## Check Which Shards Are Failing
 
@@ -57,7 +55,7 @@ SELECT count() FROM distributed_table
 WHERE event_date = today();
 ```
 
-This shows how the query is split across shards.
+This shows the local execution pipeline on the coordinator, including the `Remote` processors that read from each shard. To inspect the plan itself, use `EXPLAIN PLAN` instead.
 
 ## Check Distributed Query Log
 
@@ -71,7 +69,7 @@ SELECT
     query
 FROM system.query_log
 WHERE has(tables, 'my_database.distributed_table')
-  AND type = 'ExceptionBeforeStart' OR type = 'ExceptionWhileProcessing'
+  AND type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')
   AND event_time > now() - INTERVAL 1 HOUR
 ORDER BY event_time DESC
 LIMIT 20;
