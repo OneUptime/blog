@@ -64,7 +64,7 @@ dns.qry.name == "api.example.com"
 dns.aaaa == 2001:db8::1
 
 # Show DNS with EDNS0 (Client Subnet extension showing IPv6 client prefix)
-dns.opt.dns.ecs.address_family == 2   # IPv6 address family in ECS
+dns.opt.client.family == 2   # IPv6 address family in ECS
 
 # Show negative responses (NXDOMAIN or NOERROR/no-data) for AAAA
 dns.qry.type == 28 && (dns.flags.rcode == 3 || dns.count.answers == 0)
