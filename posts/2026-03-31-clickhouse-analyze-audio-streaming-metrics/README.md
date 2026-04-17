@@ -37,15 +37,15 @@ Calculate the fraction of playback time spent buffering:
 ```sql
 SELECT
     session_id,
-    sumIf(duration_ms, event_type = 'buffer') / sumIf(duration_ms, event_type = 'play') AS buffering_ratio
+    sumIf(duration_ms, event_type = 'buffer_start') / sumIf(duration_ms, event_type = 'play') AS buffering_ratio
 FROM (
     SELECT
         session_id,
         event_type,
-        toUInt64(dateDiff('millisecond', ts, lead(ts) OVER (PARTITION BY session_id ORDER BY ts))) AS duration_ms
+        toUInt64(dateDiff('millisecond', ts, leadInFrame(ts) OVER (PARTITION BY session_id ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING))) AS duration_ms
     FROM audio_player_events
 )
-WHERE event_type IN ('play', 'buffer')
+WHERE event_type IN ('play', 'buffer_start')
 GROUP BY session_id
 ORDER BY buffering_ratio DESC
 LIMIT 20;
@@ -94,7 +94,7 @@ FROM (
     SELECT
         track_id,
         event_type,
-        toUInt64(dateDiff('millisecond', ts, lead(ts) OVER (PARTITION BY session_id ORDER BY ts))) AS duration_ms,
+        toUInt64(dateDiff('millisecond', ts, leadInFrame(ts) OVER (PARTITION BY session_id ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING))) AS duration_ms,
         session_id
     FROM audio_player_events
 )
