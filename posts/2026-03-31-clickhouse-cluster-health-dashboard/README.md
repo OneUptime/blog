@@ -31,13 +31,13 @@ If a node is unreachable, it will not appear in results - count the returned row
 ```sql
 SELECT
     hostName() AS node,
-    zookeeper_session_uptime_seconds,
-    zookeeper_exceptions
+    session_uptime_elapsed_seconds,
+    is_expired
 FROM clusterAllReplicas('my_cluster', system.zookeeper_connection)
 ORDER BY node;
 ```
 
-Watch for nodes with `zookeeper_session_uptime_seconds` close to zero, indicating frequent session resets.
+Watch for nodes with `session_uptime_elapsed_seconds` close to zero, indicating frequent session resets.
 
 ## Replication Health Panel
 
@@ -77,11 +77,12 @@ High merge queue depth can indicate an insert rate exceeding the merge throughpu
 ```sql
 SELECT
     hostName() AS node,
-    formatReadableSize(total_ram_bytes) AS total_ram,
-    formatReadableSize(free_ram_bytes) AS free_ram,
-    round((1 - free_ram_bytes / total_ram_bytes) * 100, 1) AS memory_pct
+    formatReadableSize(sumIf(value, metric = 'OSMemoryTotal')) AS total_ram,
+    formatReadableSize(sumIf(value, metric = 'OSMemoryFreeWithoutCaches')) AS free_ram,
+    round((1 - sumIf(value, metric = 'OSMemoryFreeWithoutCaches') / sumIf(value, metric = 'OSMemoryTotal')) * 100, 1) AS memory_pct
 FROM clusterAllReplicas('my_cluster', system.asynchronous_metrics)
 WHERE metric IN ('OSMemoryTotal', 'OSMemoryFreeWithoutCaches')
+GROUP BY node
 -- Use system.asynchronous_metric_log for historical data
 ```
 
