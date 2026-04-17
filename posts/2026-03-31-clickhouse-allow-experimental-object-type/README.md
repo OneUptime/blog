@@ -34,8 +34,8 @@ ORDER BY (ts, id);
 Without enabling the setting, attempting to create a table with `Object('json')` raises:
 
 ```yaml
-Code: 451. DB::Exception: Experimental Object type is not allowed.
-Set allow_experimental_object_type = 1 to use it.
+Code: 344. DB::Exception: Experimental Object type is not allowed.
+Set setting allow_experimental_object_type = 1 to use it.
 ```
 
 ## Inserting JSON Data
@@ -121,7 +121,7 @@ The `Object('json')` type is experimental and has several constraints:
 - Deeply nested or highly variable schemas can create thousands of sub-columns, impacting metadata overhead
 - The type is not suitable for arbitrary blob storage - use `String` for that
 - Not all ClickHouse features (e.g., some mutations) work seamlessly with `Object('json')`
-- As of ClickHouse 23.x, the `JSON` type (a newer iteration) is the recommended path forward
+- As of ClickHouse 24.8+, the new `JSON` type (a newer iteration) is the recommended path forward
 
 ## Enabling in Server Config
 
