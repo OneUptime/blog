@@ -28,9 +28,9 @@ Common error codes:
 
 | Code | Description |
 |---|---|
-| 159 | Too many parts - insert rate exceeds merge rate |
+| 252 | Too many parts - insert rate exceeds merge rate |
 | 241 | Memory limit exceeded |
-| 285 | Too many simultaneous queries |
+| 202 | Too many simultaneous queries |
 | 516 | Authentication error (not retriable) |
 | 60 | Unknown table (not retriable) |
 
@@ -38,10 +38,10 @@ Common error codes:
 
 ```go
 var retriableCodes = map[int32]bool{
-    159: true,  // too many parts
-    285: true,  // too many queries
+    252: true,  // too many parts
+    202: true,  // too many queries
     209: true,  // socket timeout
-    210: true,  // network connection refused
+    210: true,  // network error
 }
 
 func isRetriable(err error) bool {
@@ -112,12 +112,12 @@ if err != nil {
 }
 ```
 
-## Handling Too Many Parts (Code 159)
+## Handling Too Many Parts (Code 252)
 
-When you get error code 159, the best response is to slow down inserts:
+When you get error code 252, the best response is to slow down inserts:
 
 ```go
-if ex, ok := isClickHouseException(err); ok && ex.Code == 159 {
+if ex, ok := isClickHouseException(err); ok && ex.Code == 252 {
     log.Println("Too many parts - pausing inserts for 10 seconds")
     time.Sleep(10 * time.Second)
 }
