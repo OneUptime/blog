@@ -25,7 +25,7 @@ ZooKeeper or ClickHouse Keeper coordinates the leader election between replicas.
 
 ## ClickHouse Keeper Configuration
 
-Add to `config.xml` on all nodes:
+Add to `config.xml` on all nodes (set `<server_id>` to match each node's own id — `1` on `ch-node-1`, `2` on `ch-node-2`):
 
 ```xml
 <keeper_server>
