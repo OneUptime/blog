@@ -8,14 +8,14 @@ Description: Learn how to use accurateCast() and accurateCastOrNull() in ClickHo
 
 ---
 
-`accurateCast(x, 'type')` performs type conversion with overflow checking. Unlike `CAST()` or `toInt32()` which may silently produce incorrect values when a number is out of range for the target type, `accurateCast` throws an exception if the value does not fit. `accurateCastOrNull(x, 'type')` does the same but returns NULL instead of throwing. These functions are the safe choice whenever you are downcasting to a smaller integer type.
+`accurateCast(x, 'type')` performs type conversion with overflow checking. Unlike `toInt32()` and the other `toIntN` functions, which silently wrap when a number is out of range for the target type, `accurateCast` throws an exception if the value does not fit. `accurateCastOrNull(x, 'type')` does the same but returns NULL instead of throwing. These functions are the safe choice whenever you are downcasting to a smaller integer type.
 
-## The Problem: Silent Overflow in Standard CAST
+## The Problem: Silent Overflow in toIntN Functions
 
 ```sql
--- Standard CAST silently overflows for out-of-range values
-SELECT CAST(300 AS Int8);      -- Int8 max is 127, result is undefined
-SELECT toInt8(300);             -- Also overflows silently
+-- toIntN functions silently wrap for out-of-range values
+SELECT toInt8(128);             -- returns -128 (wraps around, not an error)
+SELECT toInt8(300);              -- also wraps silently
 
 -- accurateCast throws an error instead:
 -- SELECT accurateCast(300, 'Int8');  -- throws: value 300 is out of range for Int8
@@ -109,8 +109,8 @@ SELECT
     toInt32(100)                AS toInt32_100,
     accurateCast(100, 'Int32')  AS accurate_100;
 
--- Only accurateCast detects overflow:
--- toInt32(9999999999) -> undefined/wrapped result
+-- Behavior on overflow differs:
+-- toInt32(9999999999) -> wraps silently to a defined but incorrect value
 -- accurateCast(9999999999, 'Int32') -> throws exception
 -- accurateCastOrNull(9999999999, 'Int32') -> NULL
 ```
