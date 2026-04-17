@@ -53,7 +53,7 @@ FROM orders;
 
 ## dictGetOrNull - Null on Missing Key
 
-Returns `NULL` when the key is not found (available in ClickHouse 21.1+):
+Returns `NULL` when the key is not found (available in ClickHouse 21.4+):
 
 ```sql
 SELECT
