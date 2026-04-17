@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Downsampling, Time-Series, Retention, Aggregation
 
-Description: Learn how to implement time-series downsampling in ClickHouse using materialized views, TTL, and AggregatingMergeTree to reduce storage while preserving trends.
+Description: Learn how to implement time-series downsampling in ClickHouse using materialized views and TTL policies to reduce storage while preserving trends.
 
 ---
 
@@ -92,7 +92,7 @@ Select the appropriate resolution based on the requested time range:
 
 ```sql
 -- For last hour: use raw
-SELECT ts, avg_value FROM metrics_raw
+SELECT ts, value FROM metrics_raw
 WHERE service = 'api' AND metric = 'latency_ms'
   AND ts >= now() - INTERVAL 1 HOUR;
 
