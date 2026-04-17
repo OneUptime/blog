@@ -45,17 +45,17 @@ SELECT
 ```
 
 ```text
-encoded_hello | encoded_ch   | encoded_digits
---------------+--------------+----------------
-9Ajdvzr        | 3zFSuvJUAaB3 | 3mJoB3Kp6PvXFr
+encoded_hello | encoded_ch     | encoded_digits
+--------------+----------------+----------------
+9Ajdvzr       | 4nhk8K7GHXf6zx | 3mJr7AoUCHxNqd
 ```
 
 ### Decoding Back
 
 ```sql
 SELECT
-    base58Decode('9Ajdvzr')        AS decoded_hello,
-    base58Decode('3zFSuvJUAaB3')   AS decoded_ch;
+    base58Decode('9Ajdvzr')          AS decoded_hello,
+    base58Decode('4nhk8K7GHXf6zx')   AS decoded_ch;
 ```
 
 ```text
@@ -108,13 +108,13 @@ ORDER BY id;
 ```
 
 ```text
-id | raw_key | encoded_key   | decoded_back
----+---------+---------------+-------------
-0  | user:0  | 2mf7Gi        | user:0
-1  | user:1  | 2mf7Gj        | user:1
-2  | user:2  | 2mf7Gk        | user:2
-3  | user:3  | 2mf7Gm        | user:3
-4  | user:4  | 2mf7Gn        | user:4
+id | raw_key | encoded_key | decoded_back
+---+---------+-------------+-------------
+0  | user:0  | 21VFSb7y9   | user:0
+1  | user:1  | 21VFSb7yA   | user:1
+2  | user:2  | 21VFSb7yB   | user:2
+3  | user:3  | 21VFSb7yC   | user:3
+4  | user:4  | 21VFSb7yD   | user:4
 ```
 
 ## Encoding Binary Hashes
@@ -138,14 +138,14 @@ Base58 encoding of a 16-byte MD5 hash produces around 22 characters, compared to
 ```sql
 -- Safe decoding - returns empty string for invalid input
 SELECT
-    tryBase58Decode('ValidBase58Str')  AS valid_result,
-    tryBase58Decode('Invalid0OIl')     AS invalid_result;
+    tryBase58Decode('9Ajdvzr')      AS valid_result,
+    tryBase58Decode('Invalid0OIl')  AS invalid_result;
 ```
 
 ```text
-valid_result   | invalid_result
----------------+---------------
-(decoded text) | (empty string)
+valid_result | invalid_result
+-------------+---------------
+Hello        | (empty string)
 ```
 
 ## Practical Use Cases
