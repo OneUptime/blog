@@ -16,7 +16,7 @@ The most common mistake is partitioning at too fine a granularity.
 
 ```sql
 -- BAD: hourly partitioning creates 720+ partitions per month
-PARTITION BY toYYYYMMDDHH(event_time)
+PARTITION BY toStartOfHour(event_time)
 
 -- BAD: daily partitioning creates 365 partitions per year
 PARTITION BY toDate(event_time)  -- only appropriate for 100GB+/day tables
@@ -31,7 +31,8 @@ When you have too many partitions, ClickHouse must open many files and maintain 
 -- Check current partition count per table
 SELECT
     table,
-    count() AS partition_count,
+    uniqExact(partition) AS partition_count,
+    count() AS part_count,
     sum(rows) AS total_rows,
     formatReadableSize(sum(bytes_on_disk)) AS total_size
 FROM system.parts
@@ -94,7 +95,7 @@ WHERE table = 'events' AND active = 1
 ORDER BY partition;
 
 -- Drop a specific partition (after verifying)
-ALTER TABLE events DROP PARTITION '202401';
+ALTER TABLE events DROP PARTITION ID '202401';
 ```
 
 ## Mistake 6: Expecting Partitions to Replace ORDER BY for Filtering
