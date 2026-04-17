@@ -48,8 +48,8 @@ groups:
     rules:
       - alert: ClickHouseDiskUsageHigh
         expr: >
-          (ClickHouseDiskTotal_default - ClickHouseDiskAvailable_default)
-          / ClickHouseDiskTotal_default > 0.80
+          (ClickHouseAsyncMetrics_DiskTotal_default - ClickHouseAsyncMetrics_DiskAvailable_default)
+          / ClickHouseAsyncMetrics_DiskTotal_default > 0.80
         for: 5m
         labels:
           severity: warning
@@ -58,8 +58,8 @@ groups:
 
       - alert: ClickHouseDiskUsageCritical
         expr: >
-          (ClickHouseDiskTotal_default - ClickHouseDiskAvailable_default)
-          / ClickHouseDiskTotal_default > 0.90
+          (ClickHouseAsyncMetrics_DiskTotal_default - ClickHouseAsyncMetrics_DiskAvailable_default)
+          / ClickHouseAsyncMetrics_DiskTotal_default > 0.90
         for: 2m
         labels:
           severity: critical
@@ -85,7 +85,7 @@ groups:
 
       - alert: ClickHouseInsertErrors
         expr: >
-          increase(ClickHouseProfileEvents_FailedInsertQueries[5m]) > 0
+          increase(ClickHouseProfileEvents_FailedInsertQuery[5m]) > 0
         for: 1m
         labels:
           severity: critical
