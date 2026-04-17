@@ -52,7 +52,7 @@ CREATE TABLE daily_event_counts_mv
 (
     event_date   Date,
     event_type   LowCardinality(String),
-    event_count  AggregateFunction(count, UInt64)
+    event_count  AggregateFunction(count)
 )
 ENGINE = AggregatingMergeTree()
 ORDER BY (event_date, event_type);
