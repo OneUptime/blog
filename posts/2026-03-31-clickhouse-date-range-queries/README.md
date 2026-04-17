@@ -187,17 +187,18 @@ Avoid partitioning too finely (daily partitions on a table with years of history
 For dashboards that repeatedly aggregate the same time windows, use a materialized view with a time-bucket summary.
 
 ```sql
--- Daily summary table
+-- Daily summary table. Use AggregatingMergeTree so avg/max/count merge
+-- correctly as rows for the same (day, host, metric_name) are combined.
 CREATE TABLE server_metrics_daily
 (
     day         Date,
     host        LowCardinality(String),
     metric_name LowCardinality(String),
-    value_avg   Float64,
-    value_max   Float64,
-    sample_count UInt64
+    value_avg    AggregateFunction(avg, Float64),
+    value_max    SimpleAggregateFunction(max, Float64),
+    sample_count SimpleAggregateFunction(sum, UInt64)
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(day)
 ORDER BY (day, host, metric_name);
 
@@ -208,7 +209,7 @@ SELECT
     toDate(event_time) AS day,
     host,
     metric_name,
-    avg(value)         AS value_avg,
+    avgState(value)    AS value_avg,
     max(value)         AS value_max,
     count()            AS sample_count
 FROM server_metrics
@@ -218,8 +219,8 @@ GROUP BY day, host, metric_name;
 SELECT
     day,
     host,
-    avg(value_avg)   AS avg_value,
-    max(value_max)   AS peak_value
+    avgMerge(value_avg) AS avg_value,
+    max(value_max)      AS peak_value
 FROM server_metrics_daily
 WHERE day >= today() - 30
 GROUP BY day, host
