@@ -28,13 +28,14 @@ BACKUP DATABASE production
 TO Disk('backups', 'production_backup_2026-03-31/');
 ```
 
-Verify dictionaries are included:
+Verify the backup completed successfully:
 
 ```sql
-SELECT name, type
-FROM system.backups_log
-WHERE backup_name = 'production_backup_2026-03-31'
-  AND type = 'Dictionary';
+SELECT name, status, num_files, total_size
+FROM system.backup_log
+WHERE name LIKE '%production_backup_2026-03-31%'
+ORDER BY event_time DESC
+LIMIT 1;
 ```
 
 ## Exporting Dictionary DDL
@@ -46,14 +47,18 @@ Export dictionary definitions as SQL for manual backup:
 SHOW CREATE DICTIONARY production.country_codes;
 ```
 
-Save all dictionary definitions to a file:
+Save all dictionary definitions to a file by iterating over `system.dictionaries` and running `SHOW CREATE DICTIONARY` for each one:
 
 ```bash
+: > /backup/dictionary_definitions.sql
 clickhouse-client --query "
-SELECT 'CREATE DICTIONARY IF NOT EXISTS ' || database || '.' || name || ' ' || create_table_query || ';'
+SELECT database, name
 FROM system.dictionaries
-WHERE database NOT IN ('system', '_temporary_and_external_tables')
-FORMAT TSVRaw" > /backup/dictionary_definitions.sql
+WHERE database NOT IN ('system')
+FORMAT TabSeparated" | while IFS=$'\t' read -r db name; do
+  clickhouse-client --query "SHOW CREATE DICTIONARY \`$db\`.\`$name\` FORMAT TSVRaw" >> /backup/dictionary_definitions.sql
+  echo ";" >> /backup/dictionary_definitions.sql
+done
 ```
 
 ## Backing Up File-Based Dictionaries
