@@ -122,10 +122,17 @@ SET max_insert_threads = 4;  -- Use multiple threads to write parts
 
 ## Tuning Storage Settings
 
+Session-level block size settings (applied per query or via a user profile):
+
+```sql
+SET min_insert_block_size_rows = 1048576;
+SET min_insert_block_size_bytes = 268435456;
+```
+
+MergeTree table-level thresholds that control when inserts are delayed or rejected:
+
 ```sql
 ALTER TABLE events MODIFY SETTING
-    min_insert_block_size_rows = 1048576,
-    min_insert_block_size_bytes = 268435456,
     parts_to_delay_insert = 300,
     parts_to_throw_insert = 600;
 ```
