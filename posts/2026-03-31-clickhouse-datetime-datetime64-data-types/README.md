@@ -107,7 +107,7 @@ ORDER BY scheduled_at;
 ```sql
 SELECT
     toDateTime('2026-03-31 10:00:00')          AS from_string,
-    toDateTime(1743379200)                      AS from_unix,
+    toDateTime(1774951200)                      AS from_unix,
     toDateTime64('2026-03-31 10:00:00.123', 3) AS datetime64_from_string,
     now()                                       AS current_datetime,
     now64(3)                                    AS current_datetime64;
