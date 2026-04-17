@@ -62,11 +62,10 @@ ClickHouse supports atomic table exchange:
 EXCHANGE TABLES events_blue AND events_green;
 ```
 
-After the exchange, `events_blue` has the new schema. Rename to finalize:
+After the exchange, `events_blue` has the new schema and `events_green` holds the old data. Archive the old version:
 
 ```sql
-RENAME TABLE events_blue TO events_old,
-             events_green TO events_blue;
+RENAME TABLE events_green TO events_old;
 ```
 
 ## Dual-Write During Migration
