@@ -8,7 +8,7 @@ Description: Learn how arrayFlatten() collapses nested arrays (Array(Array(T))) 
 
 ---
 
-Working with JSON data or aggregating arrays often produces nested structures: arrays of arrays. Before you can apply standard array functions like `arrayDistinct`, `arraySort`, or `length`, you need to collapse these nested arrays into a flat list. ClickHouse's `arrayFlatten` function does exactly that, recursively collapsing one level of nesting.
+Working with JSON data or aggregating arrays often produces nested structures: arrays of arrays. Before you can apply standard array functions like `arrayDistinct`, `arraySort`, or `length`, you need to collapse these nested arrays into a flat list. ClickHouse's `arrayFlatten` function does exactly that, recursively collapsing nested arrays of any depth into a single flat array.
 
 ## Function Signature
 
@@ -16,7 +16,7 @@ Working with JSON data or aggregating arrays often produces nested structures: a
 arrayFlatten(arr_of_arrs) -> Array(T)
 ```
 
-The input must be an `Array(Array(T))`. The output is a single `Array(T)` containing all the inner elements in order. `arrayFlatten` removes exactly one level of nesting per call - for deeper nesting, call it multiple times.
+The input is a nested array such as `Array(Array(T))` (or more deeply nested). The output is a single `Array(T)` containing all the inner elements in order. `arrayFlatten` applies to any depth of nesting in a single call and does not change arrays that are already flat. It is also available under the alias `flatten`.
 
 ## Basic Usage
 
@@ -115,15 +115,18 @@ FROM product_attributes;
 -- product 2: ['black','white','M','L']
 ```
 
-## Multi-Level Nesting - Apply Twice
+## Multi-Level Nesting - Single Call Is Enough
 
-For arrays nested more than two levels deep (`Array(Array(Array(T)))`), call `arrayFlatten` twice:
+`arrayFlatten` applies to any depth of nesting in a single call, so arrays nested more than two levels deep (`Array(Array(Array(T)))`) still flatten completely with one invocation:
 
 ```sql
--- Two levels of nesting
-SELECT arrayFlatten(arrayFlatten([[[1, 2], [3]], [[4, 5, 6]]])) AS double_flat;
--- First flatten: [[1,2,3],[4,5,6]]
--- Second flatten: [1,2,3,4,5,6]
+-- Three levels of nesting collapsed in one call
+SELECT arrayFlatten([[[1, 2], [3]], [[4, 5, 6]]]) AS deep_flat;
+-- Result: [1, 2, 3, 4, 5, 6]
+
+-- Even deeper nesting still flattens in a single call
+SELECT arrayFlatten([[[[1]], [[2], [3]]]]) AS very_deep_flat;
+-- Result: [1, 2, 3]
 ```
 
 ## Counting Total Elements Across Nested Arrays
@@ -145,4 +148,4 @@ FROM user_tags;
 
 ## Summary
 
-`arrayFlatten` collapses one level of array nesting, converting `Array(Array(T))` into `Array(T)`. It is essential whenever you aggregate array columns with `groupArray`, parse JSON arrays of arrays, or need to merge several parallel array columns into one. For deeper nesting, chain multiple `arrayFlatten` calls. After flattening, all standard array functions like `arrayDistinct`, `arraySort`, and `length` work on the combined flat array.
+`arrayFlatten` collapses nested arrays of any depth into a single flat `Array(T)`. It is essential whenever you aggregate array columns with `groupArray`, parse JSON arrays of arrays, or need to merge several parallel array columns into one. A single call handles any level of nesting. After flattening, all standard array functions like `arrayDistinct`, `arraySort`, and `length` work on the combined flat array.
