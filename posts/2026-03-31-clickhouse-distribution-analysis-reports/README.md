@@ -35,13 +35,13 @@ SELECT histogram(20)(amount) AS hist
 FROM order_values;
 ```
 
-The result is an array of `(lower, upper, count)` tuples you can unpack:
+The result is an array of `(lower, upper, height)` tuples you can unpack:
 
 ```sql
 SELECT
     round(bucket.1, 2) AS lower,
     round(bucket.2, 2) AS upper,
-    toUInt64(bucket.3) AS count
+    toUInt64(bucket.3) AS approx_count
 FROM (
     SELECT arrayJoin(histogram(20)(amount)) AS bucket
     FROM order_values
