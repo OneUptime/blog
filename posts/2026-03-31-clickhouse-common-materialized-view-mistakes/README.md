@@ -38,7 +38,7 @@ Query with `sumMerge` to get the final value.
 
 ## Mistake 2: Forgetting the TO Clause and Using an Implicit Target Table
 
-Without a `TO` clause, ClickHouse creates an internal `.inner` table. This table is dropped when the view is dropped, and it cannot have custom TTL or partitioning.
+Without a `TO` clause, ClickHouse creates an internal `.inner_id.<uuid>` table. This table is dropped when the view is dropped, and altering its schema, TTL, or partitioning later is painful because you have to reference the auto-generated name.
 
 ```sql
 -- Correct: explicit target table
