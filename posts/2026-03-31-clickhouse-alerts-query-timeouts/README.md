@@ -75,23 +75,25 @@ Run this check every 30 seconds and alert if any query has elapsed > 25 seconds 
 groups:
   - name: clickhouse_query_timeouts
     rules:
-      - alert: ClickHouseQueryTimeoutRateHigh
+      - alert: ClickHouseQueryFailureRateHigh
         expr: |
-          rate(ClickHouseQueryExceptions[5m]) /
-          rate(ClickHouseQueries[5m]) > 0.05
+          rate(ClickHouseProfileEvents_FailedQuery[5m]) /
+          rate(ClickHouseProfileEvents_Query[5m]) > 0.05
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Query exception rate > 5% on {{ $labels.instance }}"
+          summary: "Query failure rate > 5% on {{ $labels.instance }}"
 
-      - alert: ClickHouseLongRunningQuery
-        expr: ClickHouseQueryDurationMs{quantile="0.99"} > 30000
+      - alert: ClickHouseAvgQueryDurationHigh
+        expr: |
+          rate(ClickHouseProfileEvents_QueryTimeMicroseconds[5m]) /
+          rate(ClickHouseProfileEvents_Query[5m]) / 1e6 > 30
         for: 3m
         labels:
           severity: warning
         annotations:
-          summary: "P99 query latency > 30s on {{ $labels.instance }}"
+          summary: "Average query duration > 30s on {{ $labels.instance }}"
 ```
 
 ## Killing Timed-Out Queries Automatically
