@@ -14,11 +14,11 @@ ClickHouse's MergeTree family stores data in immutable "parts" that background m
 
 ClickHouse applies progressive throttling as part count grows:
 
-- Below `parts_to_delay_insert` (default 150): inserts proceed normally
+- Below `parts_to_delay_insert` (default 1000): inserts proceed normally
 - At `parts_to_delay_insert`: ClickHouse adds artificial delay to inserts
-- At `parts_to_throw_insert` (default 300): inserts throw an exception
+- At `parts_to_throw_insert` (default 3000): inserts throw an exception
 
-These thresholds are per partition per table. A table with 100 partitions can have up to 300 parts per partition before throwing.
+These thresholds are per partition per table. A table with 100 partitions can have up to 3000 parts per partition before throwing.
 
 ## Querying Current Part Counts
 
@@ -135,8 +135,8 @@ OPTIMIZE TABLE mydb.events PARTITION '2026-03-01';
 -- Check current merge activity
 SELECT database, table, progress, elapsed FROM system.merges ORDER BY elapsed DESC;
 
--- Increase merge aggressiveness temporarily
-SET background_pool_size = 8;  -- Increase background threads
+-- Check the current background pool size (server-level setting, configured in config.xml)
+SELECT value FROM system.server_settings WHERE name = 'background_pool_size';
 ```
 
 Consider increasing `max_bytes_to_merge_at_max_space_in_pool` to allow merging of larger parts and reduce part count faster.
