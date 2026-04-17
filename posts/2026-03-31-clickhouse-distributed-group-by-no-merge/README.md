@@ -50,20 +50,19 @@ If user data is sharded by `user_id`, each shard holds all events for a given us
 The setting accepts three values:
 
 ```text
-0 - Default: merge results at the initiator node
-1 - Do not merge, return partial results
-2 - Do not merge but mark result as complete (for use with subqueries)
+0 - Default: final query processing is done on the initiator node
+1 - Do not merge: query is completely processed on the shard, initiator only proxies the data
+2 - Same as 1, but ORDER BY and LIMIT are applied on the initiator
 ```
 
 ```sql
--- Use value 2 when using distributed_group_by_no_merge inside subqueries
-SELECT *
-FROM (
-    SELECT status, count() AS cnt
-    FROM distributed_requests
-    GROUP BY status
-    SETTINGS distributed_group_by_no_merge = 2
-) ORDER BY cnt DESC;
+-- Use value 2 when the query has ORDER BY and/or LIMIT that must be applied globally
+SELECT status, count() AS cnt
+FROM distributed_requests
+GROUP BY status
+ORDER BY cnt DESC
+LIMIT 10
+SETTINGS distributed_group_by_no_merge = 2;
 ```
 
 ## Performance Implications
@@ -98,4 +97,4 @@ Using `distributed_group_by_no_merge = 1` when data is not sharded by the GROUP 
 
 ## Summary
 
-The `distributed_group_by_no_merge` setting gives you control over how ClickHouse handles aggregation across distributed table shards. Enable it when your sharding key matches your GROUP BY key to reduce initiator-side CPU and network overhead. Use value `2` inside subqueries to avoid compatibility issues with outer query planning.
+The `distributed_group_by_no_merge` setting gives you control over how ClickHouse handles aggregation across distributed table shards. Enable it when your sharding key matches your GROUP BY key to reduce initiator-side CPU and network overhead. Use value `2` when the query has `ORDER BY` or `LIMIT` that must be applied globally on the initiator.
