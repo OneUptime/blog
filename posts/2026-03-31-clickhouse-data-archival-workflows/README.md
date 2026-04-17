@@ -45,13 +45,16 @@ SETTINGS storage_policy = 'tiered';
 Use the S3 table engine as the archive destination:
 
 ```sql
--- Create an S3-backed archive table
+-- Create an S3-backed archive table.
+-- Note: wildcards in the URL are read-only, so for writes use a
+-- concrete path or the {_partition_id} substitution with PARTITION BY.
 CREATE TABLE http_logs_archive (
     timestamp   DateTime,
     service     String,
     status_code UInt16,
     response_ms Float64
-) ENGINE = S3('https://s3.amazonaws.com/my-archive-bucket/http_logs/*.parquet', 'Parquet');
+) ENGINE = S3('https://s3.amazonaws.com/my-archive-bucket/http_logs/{_partition_id}.parquet', 'Parquet')
+PARTITION BY toYYYYMM(timestamp);
 ```
 
 Move old data:
@@ -71,28 +74,32 @@ WHERE timestamp < now() - INTERVAL 90 DAY;
 For monthly partitioned tables, detach and archive entire partitions:
 
 ```sql
--- Detach an old partition
-ALTER TABLE http_logs DETACH PARTITION '202301';
+-- Copy a partition to the archive table (source remains intact)
+ALTER TABLE http_logs_archive ATTACH PARTITION '202301' FROM http_logs;
 
--- The partition data is now in the detached directory
--- Move it to cold storage, then attach to an archive table
-ALTER TABLE http_logs_archive ATTACH PARTITION '202301';
+-- Or move it outright (removed from source)
+ALTER TABLE http_logs MOVE PARTITION '202301' TO TABLE http_logs_archive;
+
+-- If you want to free the source without keeping data in ClickHouse,
+-- drop the partition after copying
+ALTER TABLE http_logs DROP PARTITION '202301';
 ```
 
 ## Automating Archival with Scheduled Jobs
 
-Use ClickHouse's scheduled tasks (available in recent versions):
+ClickHouse does not have a generic cron-style job DDL, but refreshable materialized views can run a SELECT on a schedule and append results to a target table:
 
 ```sql
-CREATE SCHEDULED JOB archive_old_data
-    SCHEDULE '0 2 * * *'   -- run at 2am daily
+CREATE MATERIALIZED VIEW archive_old_data
+REFRESH EVERY 1 DAY OFFSET 2 HOUR
+APPEND
+TO http_logs_archive
 AS
-    INSERT INTO http_logs_archive
     SELECT * FROM http_logs
     WHERE toDate(timestamp) = toDate(now() - INTERVAL 91 DAY);
 ```
 
-Or trigger archival from an external scheduler (cron, Airflow, etc.) via clickhouse-client.
+Alternatively, trigger archival from an external scheduler (cron, Airflow, etc.) via clickhouse-client.
 
 ## Verifying Archival Completeness
 
