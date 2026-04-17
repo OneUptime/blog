@@ -47,7 +47,7 @@ SELECT count() FROM (
 );
 ```
 
-SQL UDFs have identical performance to inline expressions since they are expanded at parse time.
+SQL UDFs have identical performance to inline expressions since they are inlined into the query plan.
 
 ## Benchmarking Executable UDFs
 
@@ -75,9 +75,15 @@ echo "SELECT myUDF(text_column) FROM large_table LIMIT 100000" | \
 Output shows:
 
 ```text
-Queries per second: 12.3
-Mean query duration: 813ms
-Percentiles: 50th=790ms, 95th=950ms, 99th=1100ms
+Queries executed: 10.
+
+localhost:9000, queries: 10, QPS: 12.300, RPS: ..., MiB/s: ..., result RPS: ..., result MiB/s: ...
+
+0.000%      0.780 sec.
+10.000%     0.790 sec.
+50.000%     0.813 sec.
+95.000%     0.950 sec.
+99.000%     1.100 sec.
 ```
 
 ## Profiling with perf_events
