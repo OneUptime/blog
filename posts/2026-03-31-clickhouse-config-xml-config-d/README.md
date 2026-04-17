@@ -136,13 +136,19 @@ This is particularly useful in Kubernetes/Docker where environment variables are
 
 ## Validating Your Configuration
 
-Check configuration before restarting:
+Use `clickhouse-extract-from-config` to confirm a key parses correctly from the merged tree before restarting:
 
 ```bash
-clickhouse-server --config=/etc/clickhouse-server/config.xml --check-config
+clickhouse-extract-from-config --config-file=/etc/clickhouse-server/config.xml --key=listen_host
 ```
 
-View the merged configuration that ClickHouse is currently using:
+After ClickHouse processes the configuration, the fully merged result is written to a preprocessed file you can inspect directly:
+
+```bash
+cat /var/lib/clickhouse/preprocessed_configs/config.xml
+```
+
+You can also query active server-level settings at runtime:
 
 ```bash
 clickhouse-client --query "SELECT name, value FROM system.server_settings ORDER BY name"
