@@ -17,7 +17,7 @@ Hetzner Cloud server types suitable for ClickHouse:
 - **CX52** - 16 vCPU, 32 GB RAM, good for smaller datasets
 - **CCX63** - 48 vCPU, 192 GB RAM, dedicated CPUs for production
 - **CPX51** - AMD based, great price/performance
-- **Dedicated Root Servers** (AX162-R) - 32 cores, 256 GB RAM, NVMe storage
+- **Dedicated Root Servers** (AX162-R) - AMD EPYC 9454P 48 cores, 256 GB DDR5 ECC RAM, NVMe storage
 
 ## Creating a Server
 
@@ -62,8 +62,11 @@ echo "$DISK_ID /var/lib/clickhouse xfs defaults,noatime 0 2" | sudo tee -a /etc/
 
 ```bash
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
-curl -fsSL 'https://packages.clickhouse.com/deb/archive/apt/stable.sources' | \
-  sudo tee /etc/apt/sources.list.d/clickhouse.sources
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
+  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" | \
+  sudo tee /etc/apt/sources.list.d/clickhouse.list
 sudo apt-get update && sudo apt-get install -y clickhouse-server clickhouse-client
 sudo systemctl enable --now clickhouse-server
 ```
@@ -104,7 +107,7 @@ Configure ClickHouse to listen only on the private network interface:
 
 ## Backup Strategy
 
-Without a native Hetzner object storage service, use an S3-compatible provider or `clickhouse-backup` with rsync to a Hetzner Storage Box:
+Use Hetzner Object Storage (S3-compatible) or `clickhouse-backup` with rsync to a Hetzner Storage Box:
 
 ```bash
 clickhouse-backup create my-backup
@@ -114,4 +117,4 @@ rsync -avz /var/lib/clickhouse/backup/my-backup/ \
 
 ## Summary
 
-Hetzner Cloud provides outstanding cost efficiency for ClickHouse deployments. Use CCX (dedicated) instances for production, attach Hetzner volumes for persistent storage, apply firewall rules to limit access to private networks, and back up to a Hetzner Storage Box using rsync or an S3-compatible provider.
+Hetzner Cloud provides outstanding cost efficiency for ClickHouse deployments. Use CCX (dedicated) instances for production, attach Hetzner volumes for persistent storage, apply firewall rules to limit access to private networks, and back up to Hetzner Object Storage or a Storage Box.
