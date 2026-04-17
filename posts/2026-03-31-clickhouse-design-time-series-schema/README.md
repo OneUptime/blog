@@ -14,7 +14,7 @@ ClickHouse is one of the best databases for time-series data due to its columnar
 
 ```text
 1. Always put the timestamp in the ORDER BY key
-2. Put high-cardinality filter dimensions before timestamp in ORDER BY
+2. Put low-cardinality filter dimensions before timestamp in ORDER BY (order ascending by cardinality)
 3. Partition by time to enable efficient data expiration
 4. Use LowCardinality for repeated string fields
 5. Set TTL to automatically expire old data
@@ -67,7 +67,7 @@ Apply codecs tuned for time-series data:
 
 ```sql
 CREATE TABLE metrics_compressed (
-    timestamp DateTime64(3) CODEC(Delta(4), ZSTD(3)),
+    timestamp DateTime64(3) CODEC(Delta, ZSTD(3)),
     service LowCardinality(String),
     host LowCardinality(String),
     metric_name LowCardinality(String),
