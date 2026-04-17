@@ -76,16 +76,24 @@ GROUP BY sku, location_id;
 Capture weekly seasonality patterns:
 
 ```sql
+WITH dow_avg AS (
+    SELECT
+        sku,
+        location_id,
+        toDayOfWeek(sale_date) AS dow,
+        avg(units_sold) AS avg_units_for_dow
+    FROM daily_sales
+    WHERE sale_date >= today() - 90
+    GROUP BY sku, location_id, dow
+)
 SELECT
     sku,
     location_id,
-    toDayOfWeek(sale_date) AS dow,
-    avg(units_sold) AS avg_units_for_dow,
-    avg(units_sold) OVER (PARTITION BY sku, location_id) AS overall_avg,
-    avg(units_sold) / nullIf(avg(units_sold) OVER (PARTITION BY sku, location_id), 0) AS seasonality_index
-FROM daily_sales
-WHERE sale_date >= today() - 90
-GROUP BY sku, location_id, dow
+    dow,
+    avg_units_for_dow,
+    avg(avg_units_for_dow) OVER (PARTITION BY sku, location_id) AS overall_avg,
+    avg_units_for_dow / nullIf(avg(avg_units_for_dow) OVER (PARTITION BY sku, location_id), 0) AS seasonality_index
+FROM dow_avg
 ORDER BY sku, location_id, dow;
 ```
 
