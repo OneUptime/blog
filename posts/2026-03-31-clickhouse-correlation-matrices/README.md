@@ -79,12 +79,19 @@ HAVING abs(r) > 0.7
 ORDER BY r DESC;
 ```
 
-## Using corrMatrix (Experimental)
+## Using corrMatrix
 
-In recent ClickHouse versions, `corrMatrix` computes a full correlation matrix for a list of columns:
+In ClickHouse 23.2+, `corrMatrix` computes a full correlation matrix for a list of columns, returning `Array(Array(Float64))`:
 
 ```sql
-SELECT corrMatrix(['cpu_pct', 'mem_pct', 'disk_io'])(cpu_pct, mem_pct, disk_io)
+SELECT corrMatrix(cpu_pct, mem_pct, disk_io)
+FROM host_metrics;
+```
+
+To print the matrix row-by-row with rounded values, combine it with `arrayJoin` and `arrayMap`:
+
+```sql
+SELECT arrayMap(x -> round(x, 3), arrayJoin(corrMatrix(cpu_pct, mem_pct, disk_io)))
 FROM host_metrics;
 ```
 
