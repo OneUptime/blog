@@ -12,7 +12,7 @@ Running ClickHouse across multiple cloud providers protects against vendor lock-
 
 ## Architecture Overview
 
-- One shard per cloud, three replicas total (one per cloud).
+- One shard, three replicas total (one per cloud).
 - ClickHouse Keeper runs as a three-node ensemble with one node per cloud.
 - A VPN mesh (e.g., WireGuard or a managed solution) connects the clouds.
 
