@@ -38,7 +38,7 @@ FROM events;
 
 ## Appending a Single Element
 
-There is no dedicated append function in ClickHouse, but wrapping the new element in `array()` and passing it to `arrayConcat()` achieves the same result.
+ClickHouse provides `arrayPushBack()` for appending a single element, but `arrayConcat()` with the new element wrapped in `array()` achieves the same result and generalizes to appending multiple elements at once.
 
 ```sql
 -- Append 'archived' to the existing status list
@@ -50,7 +50,7 @@ FROM records;
 
 ## Prepending Elements
 
-The same approach works for prepending: put the new element array first.
+The same approach works for prepending: put the new element array first. ClickHouse also offers `arrayPushFront()` for the single-element case.
 
 ```sql
 -- Prepend a sentinel value to each trace's span list
@@ -72,22 +72,19 @@ SELECT
 FROM enriched_logs;
 ```
 
-## Concatenating Arrays Across Aggregated Groups
+## Concatenating Arrays From Different Aggregation Branches
 
-When you aggregate rows and collect values with `groupArray()`, you can then merge the resulting arrays using `arrayConcat()` in a subsequent step or a subquery.
+When you aggregate rows with conditional `groupArrayIf()` calls, you can merge the resulting arrays using `arrayConcat()` in the same `SELECT`.
 
 ```sql
--- Collect all event names per user across multiple sessions, then flatten
+-- Collect event names per user from two sources, then combine into one array
 SELECT
     user_id,
-    arrayConcat(arrayJoin(session_events)) AS all_user_events
-FROM (
-    SELECT
-        user_id,
-        groupArray(event_name) AS session_events
-    FROM events
-    GROUP BY user_id, session_id
-)
+    arrayConcat(
+        groupArrayIf(event_name, source = 'web'),
+        groupArrayIf(event_name, source = 'mobile')
+    ) AS all_user_events
+FROM events
 GROUP BY user_id;
 ```
 
