@@ -17,7 +17,7 @@ aggFuncOrDefault(column)  -- returns zero/empty string/[] when no rows
 aggFuncOrNull(column)     -- returns NULL when no rows
 ```
 
-These combinators are most commonly paired with `-If` (as `-IfOrDefault` and `-IfOrNull`) to handle cases where a conditional filter might exclude all rows.
+These combinators are most commonly paired with `-If` (as `-OrDefaultIf` and `-OrNullIf`) to handle cases where a conditional filter might exclude all rows.
 
 ## The Problem: NaN from Empty avg()
 
@@ -150,13 +150,13 @@ us-east  95                    0
 us-west  0                     1
 ```
 
-## Combining Combinators: -IfOrDefault and -IfOrNull
+## Combining Combinators: -OrDefaultIf and -OrNullIf
 
-You can chain `-If` with `-OrDefault` or `-OrNull`. The order is: `-If` is applied first (filtering rows), then `-OrDefault`/`-OrNull` handles the case where the filter leaves zero rows.
+You can chain `-If` with `-OrDefault` or `-OrNull`. The combined suffix is spelled `-OrDefaultIf` / `-OrNullIf` — `-If` filters the rows, then `-OrDefault`/`-OrNull` handles the case where the filter leaves zero rows.
 
 ```text
-aggFuncIfOrDefault(value, condition)
-aggFuncIfOrNull(value, condition)
+aggFuncOrDefaultIf(value, condition)
+aggFuncOrNullIf(value, condition)
 ```
 
 These are available as a single combined suffix, not as two separate calls. ClickHouse resolves the full suffix string to the right variant.
@@ -164,7 +164,7 @@ These are available as a single combined suffix, not as two separate calls. Clic
 ```sql
 SELECT
     product,
-    avgIfOrNull(amount, region = 'eu-central')  AS eu_avg_or_null
+    avgOrNullIf(amount, region = 'eu-central')  AS eu_avg_or_null
 FROM regional_sales
 GROUP BY product
 ORDER BY product;
