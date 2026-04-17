@@ -8,7 +8,7 @@ Description: Use Wireshark's TCP stream analysis features including stream follo
 
 ## Introduction
 
-Wireshark provides powerful built-in TCP analysis features that go beyond simple packet inspection. TCP stream following lets you see the complete conversation, expert analysis automatically identifies issues, and stream graphs visualize throughput, CWND, and round-trip time over the connection lifetime. These tools transform raw packet captures into actionable diagnostic information.
+Wireshark provides powerful built-in TCP analysis features that go beyond simple packet inspection. TCP stream following lets you see the complete conversation, expert analysis automatically identifies issues, and stream graphs visualize throughput, receive window, and round-trip time over the connection lifetime. These tools transform raw packet captures into actionable diagnostic information.
 
 ## Following a TCP Stream
 
@@ -25,8 +25,8 @@ In Wireshark, right-click any packet → Follow → TCP Stream
 
 ```text
 # Displays the full conversation as text
-# Blue text: client to server (requests)
-# Red text: server to client (responses)
+# Red text: client to server (requests)
+# Blue text: server to client (responses)
 
 # Very useful for:
 # - Seeing HTTP requests and responses
@@ -42,17 +42,18 @@ In Wireshark, right-click any packet → Follow → TCP Stream
 
 # Errors (red):
 #   - TCP checksum bad
-#   - TCP RST observed
 
 # Warnings (yellow):
+#   - TCP out-of-order
+#   - Zero window
+#   - Window full
+#   - Connection reset (RST)
+
+# Notes (cyan):
 #   - TCP retransmission
 #   - TCP fast retransmission
 #   - TCP duplicate ACK
-#   - TCP out-of-order
-
-# Notes (cyan):
-#   - Window full
-#   - Zero window
+#   - Keep-alive
 #   - Keep-alive ACK
 
 # Chat (blue):
