@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Distributed Table, Timeout, Configuration, Network, Cluster
 
-Description: Configure distributed_send_timeout and related settings in ClickHouse to control how long distributed queries wait for shard responses before failing.
+Description: Configure send_timeout, receive_timeout, and connect_timeout_with_failover_ms in ClickHouse to control how long distributed queries wait for shard responses before failing.
 
 ---
 
 ## What Is Distributed Send Timeout?
 
-When a ClickHouse query runs against a Distributed table, the initiator node sends sub-queries to each shard. If a shard is slow or unreachable, the initiator waits up to `distributed_send_timeout` seconds before giving up. Misconfiguration causes either premature timeouts or hung queries.
+When a ClickHouse query runs against a Distributed table, the initiator node sends sub-queries to each shard. If a shard is slow or unreachable, the initiator waits up to `send_timeout` seconds when writing to the remote socket and up to `receive_timeout` seconds when waiting for a response before giving up. Misconfiguration causes either premature timeouts or hung queries.
 
 ## Key Timeout Settings
 
 ```xml
-<!-- config.xml -->
-<distributed_send_timeout>300</distributed_send_timeout>
-<distributed_connection_timeout_ms>1000</distributed_connection_timeout_ms>
+<!-- users.xml profile -->
+<send_timeout>300</send_timeout>
+<receive_timeout>300</receive_timeout>
 <connect_timeout_with_failover_ms>50</connect_timeout_with_failover_ms>
 ```
 
@@ -28,7 +28,6 @@ SELECT count()
 FROM distributed_events
 WHERE ts >= today()
 SETTINGS
-    distributed_send_timeout = 60,
     receive_timeout = 120,
     send_timeout = 30;
 ```
@@ -37,17 +36,16 @@ SETTINGS
 
 | Setting | What It Controls |
 |---------|-----------------|
-| `distributed_send_timeout` | Seconds to wait when sending to a remote shard |
+| `send_timeout` | Seconds to wait when writing data to a remote socket |
 | `receive_timeout` | Seconds to wait for data from a remote shard |
-| `send_timeout` | Seconds to wait when writing data to remote |
-| `connect_timeout_with_failover_ms` | Milliseconds before trying the next replica |
+| `connect_timeout_with_failover_ms` | Milliseconds before trying the next replica when a Distributed table has failover replicas |
 
 ## Tuning for Different Scenarios
 
 For fast internal networks (single datacenter):
 
 ```sql
-SET distributed_send_timeout = 30;
+SET send_timeout = 30;
 SET receive_timeout = 60;
 SET connect_timeout_with_failover_ms = 50;
 ```
@@ -55,7 +53,7 @@ SET connect_timeout_with_failover_ms = 50;
 For cross-region or WAN clusters:
 
 ```sql
-SET distributed_send_timeout = 120;
+SET send_timeout = 120;
 SET receive_timeout = 300;
 SET connect_timeout_with_failover_ms = 500;
 ```
@@ -95,12 +93,12 @@ Use with caution - partial results may be misleading without proper monitoring.
 For INSERT into Distributed tables, configure async send to avoid blocking the application:
 
 ```xml
-<distributed_directory_monitor_sleep_time_ms>500</distributed_directory_monitor_sleep_time_ms>
-<distributed_directory_monitor_max_sleep_time_ms>5000</distributed_directory_monitor_max_sleep_time_ms>
+<distributed_background_insert_sleep_time_ms>500</distributed_background_insert_sleep_time_ms>
+<distributed_background_insert_max_sleep_time_ms>5000</distributed_background_insert_max_sleep_time_ms>
 ```
 
 Async sends buffer data locally and retry if the remote shard is temporarily unavailable.
 
 ## Summary
 
-Configure ClickHouse distributed send timeout based on your network topology - lower values for same-datacenter clusters, higher for cross-region. Use `skip_unavailable_shards` with care for partial-results tolerance, monitor `system.clusters` for shard health, and enable async distributed sends for resilient INSERT pipelines.
+Configure ClickHouse distributed query timeouts (`send_timeout`, `receive_timeout`, and `connect_timeout_with_failover_ms`) based on your network topology - lower values for same-datacenter clusters, higher for cross-region. Use `skip_unavailable_shards` with care for partial-results tolerance, monitor `system.clusters` for shard health, and enable async distributed sends for resilient INSERT pipelines.
