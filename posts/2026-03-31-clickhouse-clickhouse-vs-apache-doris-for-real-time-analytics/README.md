@@ -14,7 +14,7 @@ ClickHouse and Apache Doris are both open-source OLAP databases designed for fas
 
 **ClickHouse** uses a custom MergeTree storage engine with a single-binary deployment model. It is optimized for append-heavy workloads and high-throughput scans.
 
-**Apache Doris** is based on the Apache Impala/Druid lineage with a MySQL-compatible wire protocol. It uses a Frontend (FE) and Backend (BE) node model, similar to traditional MPP systems.
+**Apache Doris** is based on the Google Mesa and Apache Impala lineage (originally developed at Baidu as Palo) with a MySQL-compatible wire protocol. It uses a Frontend (FE) and Backend (BE) node model, similar to traditional MPP systems.
 
 ## Query Performance
 
