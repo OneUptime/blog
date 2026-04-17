@@ -83,13 +83,14 @@ tshark -r capture.pcap \
 
 # Calculate theoretical max throughput
 # For window=65535 bytes and RTT=10ms:
-# Max throughput = 65535 / 0.010 = 6.5 Mbit/s
+# Max throughput = 65535 / 0.010 = 6,553,500 bytes/s
+#                = ~6.5 MB/s = ~52.4 Mbit/s
 # (use Wireshark's measured RTT from TCP stream stats)
 ```
 
 ## Checking for Window Scaling
 
-TCP Window Scaling (RFC 1323) allows window sizes larger than 65535 bytes:
+TCP Window Scaling (RFC 7323, which obsoletes RFC 1323) allows window sizes larger than 65535 bytes:
 
 ```wireshark
 # Find TCP SYN packets to check if window scaling is negotiated
