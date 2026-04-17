@@ -20,7 +20,7 @@ Breaking schema changes in ClickHouse - renaming columns, changing types, restru
 
 ## Strategy 1: Expand-Contract for Column Renames
 
-ClickHouse 21.4+ supports RENAME COLUMN, but the application must be updated before the rename:
+ClickHouse 20.4+ supports RENAME COLUMN, but the application must be updated before the rename:
 
 ```sql
 -- Phase 1: Add new column (backward compatible)
@@ -73,7 +73,7 @@ PARTITION BY toYYYYMM(ts);
 -- Copy data
 INSERT INTO events_v2 SELECT ts, user_id, event_type AS event FROM events;
 
--- Atomic swap using EXCHANGE (ClickHouse 20.6+)
+-- Atomic swap using EXCHANGE (ClickHouse 20.5+, requires Atomic database engine)
 EXCHANGE TABLES events AND events_v2;
 
 -- Drop old structure
