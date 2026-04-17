@@ -82,11 +82,11 @@ AS
 SELECT
     toDate(min(event_time)) AS cohort_date,
     any(channel) AS channel,
-    countIf(has(groupArray(event_name), 'signup')) AS reached_signup,
-    countIf(has(groupArray(event_name), 'email_verified')) AS reached_verification,
-    countIf(has(groupArray(event_name), 'first_product_view')) AS reached_first_view,
-    countIf(has(groupArray(event_name), 'add_to_cart')) AS reached_cart,
-    countIf(has(groupArray(event_name), 'purchase_complete')) AS reached_purchase
+    max(event_name = 'signup') AS reached_signup,
+    max(event_name = 'email_verified') AS reached_verification,
+    max(event_name = 'first_product_view') AS reached_first_view,
+    max(event_name = 'add_to_cart') AS reached_cart,
+    max(event_name = 'purchase_complete') AS reached_purchase
 FROM user_events
 WHERE event_time >= today() - 1
 GROUP BY user_id;
