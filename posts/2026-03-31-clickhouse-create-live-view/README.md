@@ -8,7 +8,7 @@ Description: Learn how to create Live Views in ClickHouse, use the WATCH stateme
 
 ---
 
-Live Views are a ClickHouse-specific feature that re-executes a query whenever the underlying tables change and pushes the updated result to connected clients. Unlike regular views that pull data on demand, a live view acts as a push channel - clients subscribe with `WATCH` and receive new result sets automatically. This makes live views useful for building real-time dashboards, alerting pipelines, and monitoring UIs without polling. Note that live views are an experimental feature and must be explicitly enabled.
+Live Views are a ClickHouse-specific feature that re-executes a query whenever the underlying tables change and pushes the updated result to connected clients. Unlike regular views that pull data on demand, a live view acts as a push channel - clients subscribe with `WATCH` and receive new result sets automatically. This makes live views useful for building real-time dashboards, alerting pipelines, and monitoring UIs without polling. Note that live views are an experimental feature that has since been deprecated in ClickHouse and must be explicitly enabled.
 
 ## Enabling Live Views
 
@@ -65,7 +65,7 @@ With a limit on the number of updates to receive:
 WATCH live_error_rate LIMIT 100;
 ```
 
-With events mode - returns a version counter alongside each result block:
+With events mode - returns only the version counter (no result rows) on each change:
 
 ```sql
 WATCH live_error_rate EVENTS;
@@ -165,7 +165,7 @@ DROP TABLE IF EXISTS live_error_rate;
 
 ## Limitations
 
-- Live views are experimental and may change between ClickHouse versions.
+- Live views are experimental and have been marked as deprecated in recent ClickHouse versions; they may be removed in the future.
 - `WATCH` is a ClickHouse-specific streaming protocol - not all client libraries support it.
 - Live views only fire updates on INSERT into source tables. DDL changes or updates via mutations do not trigger notifications unless `REFRESH` is also set.
 - Live views cannot be created over distributed tables in all configurations.
