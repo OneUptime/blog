@@ -71,13 +71,13 @@ If this query fails or returns unexpected results, the view has the same problem
 
 ## Step 5: Check allow_materialized_view_with_bad_select
 
-Errors in the materialized view query can be suppressed:
+ClickHouse allows creating a materialized view whose SELECT references a missing table or column by default, via the `allow_materialized_view_with_bad_select` setting. This means a view can be created successfully but fail silently at insert time. Disable it to catch errors at creation:
 
 ```sql
-SET enable_analyzer = 1;
+SET allow_materialized_view_with_bad_select = 0;
 ```
 
-Check the error log during a test insert:
+Then perform a test insert and watch for errors in the server log:
 
 ```sql
 INSERT INTO events VALUES (now(), 'login', 'user-1');
@@ -94,10 +94,10 @@ Verify the `TO` clause points to the correct target table and the SELECT matches
 ## Step 7: Check if View Is Detached
 
 ```sql
-SELECT * FROM system.detached_parts WHERE table = 'mv_hourly_stats';
+SELECT * FROM system.detached_tables WHERE table = 'mv_hourly_stats';
 ```
 
-If a view has errors, ClickHouse may detach it to prevent blocking inserts.
+If the view was manually detached (e.g., with `DETACH TABLE`), it will stop receiving inserts until reattached with `ATTACH TABLE`. Insert-time errors from an attached view do not cause automatic detachment; whether they block the source insert is controlled by the `materialized_views_ignore_errors` setting.
 
 ## Step 8: Re-populate After a Fix
 
