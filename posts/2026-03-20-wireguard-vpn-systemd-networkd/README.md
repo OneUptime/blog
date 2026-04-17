@@ -31,7 +31,8 @@ yum install wireguard-tools
 
 ```bash
 wg genkey | tee /etc/wireguard/wg0.key
-chmod 600 /etc/wireguard/wg0.key
+chmod 640 /etc/wireguard/wg0.key
+chown root:systemd-network /etc/wireguard/wg0.key
 cat /etc/wireguard/wg0.key | wg pubkey > /etc/wireguard/wg0.pub
 ```
 
