@@ -157,12 +157,14 @@ sysctl -w net.ipv6.conf.eth0.autoconf=0
 # Destination label should match desired source label
 
 # Current problem: destination 2001:db8:peer::/48 has label 1 (global)
-# But we want ULA source (label 13) for this destination
+# But we want ULA source for this destination
+# Note: Linux defaults fc00::/7 to label 5 (RFC 6724 specifies 13, but
+# Linux's in-kernel policy table uses 5 - verify with `ip addrlabel list`)
 
-# Fix: change destination label to 13
-ip addrlabel add prefix 2001:db8:peer::/48 label 13
+# Fix: change destination label to match the ULA source label (5 on Linux)
+ip addrlabel add prefix 2001:db8:peer::/48 label 5
 
-# Now ULA source (label 13) matches destination label (13) → preferred
+# Now ULA source (label 5) matches destination label (5) → preferred
 python3 -c "
 import socket
 s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
