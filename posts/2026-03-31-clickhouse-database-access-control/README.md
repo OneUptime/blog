@@ -112,7 +112,7 @@ SET DEFAULT ROLE analyst TO analyst_alice;
 SET DEFAULT ROLE etl_writer TO service_etl;
 
 -- View role assignments
-SELECT user_name, role_name
+SELECT user_name, granted_role_name
 FROM system.role_grants
 ORDER BY user_name;
 ```
@@ -170,7 +170,7 @@ CREATE ROW POLICY admin_all_rows ON analytics.events
 View existing row policies:
 
 ```sql
-SELECT short_name, database, table, select_filter, roles
+SELECT short_name, database, table, select_filter, apply_to_list
 FROM system.row_policies;
 ```
 
@@ -191,15 +191,15 @@ CREATE QUOTA dev_quota
     FOR INTERVAL 1 DAY  MAX queries = 500
     TO dev_bob;
 
--- View quota consumption
+-- View quota consumption across all users
 SELECT
     quota_name,
-    user_name,
+    quota_key,
     duration,
     queries,
     read_bytes,
     formatReadableSize(read_bytes) AS readable_bytes
-FROM system.quota_usage;
+FROM system.quotas_usage;
 ```
 
 ## Restricting Query Complexity
