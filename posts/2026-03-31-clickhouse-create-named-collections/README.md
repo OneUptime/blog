@@ -93,17 +93,17 @@ Named collection access is controlled by ClickHouse's access management system. 
 
 ```sql
 -- Grant a user the ability to use a named collection
-GRANT NAMED COLLECTION my_s3 TO alice;
+GRANT NAMED COLLECTION ON my_s3 TO alice;
 
 -- Grant access to all named collections
-GRANT NAMED COLLECTION * TO etl_role;
+GRANT NAMED COLLECTION ON * TO etl_role;
 
 -- Revoke access
-REVOKE NAMED COLLECTION my_s3 FROM alice;
+REVOKE NAMED COLLECTION ON my_s3 FROM alice;
 
 -- Allow a user to manage (create/drop/alter) named collections
-GRANT CREATE NAMED COLLECTION ON *.* TO admin_user;
-GRANT DROP NAMED COLLECTION ON *.* TO admin_user;
+GRANT CREATE NAMED COLLECTION ON * TO admin_user;
+GRANT DROP NAMED COLLECTION ON * TO admin_user;
 ```
 
 ## Altering Named Collections
