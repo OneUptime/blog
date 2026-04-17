@@ -15,7 +15,7 @@ Automating ClickHouse backups with Kubernetes CronJobs ensures you have regular,
 `clickhouse-backup` is an open-source tool that supports local, S3, GCS, and Azure storage backends. Use it as the container image in your CronJob:
 
 ```yaml
-image: altinity/clickhouse-backup:2.5.0
+image: altinity/clickhouse-backup:2.6.43
 ```
 
 ## Creating the Backup CronJob
@@ -38,7 +38,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: clickhouse-backup
-              image: altinity/clickhouse-backup:2.5.0
+              image: altinity/clickhouse-backup:2.6.43
               args: ["create_remote"]
               env:
                 - name: CLICKHOUSE_HOST
@@ -60,12 +60,12 @@ spec:
                   value: "backups"
                 - name: S3_REGION
                   value: "us-east-1"
-                - name: AWS_ACCESS_KEY_ID
+                - name: S3_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
                       name: clickhouse-backup-secret
                       key: aws-key-id
-                - name: AWS_SECRET_ACCESS_KEY
+                - name: S3_SECRET_KEY
                   valueFrom:
                     secretKeyRef:
                       name: clickhouse-backup-secret
@@ -78,8 +78,10 @@ Create a dedicated ClickHouse user for backups with minimal privileges:
 
 ```sql
 CREATE USER backup_user IDENTIFIED BY 'secure_password';
-GRANT SELECT, SHOW TABLES, SHOW DATABASES, dictGet ON *.* TO backup_user;
-GRANT SYSTEM FREEZE ON *.* TO backup_user;
+GRANT SELECT ON system.* TO backup_user;
+GRANT ALTER FREEZE PARTITION, ALTER FETCH PARTITION ON *.* TO backup_user;
+GRANT CREATE TABLE, DROP TABLE ON *.* TO backup_user;
+GRANT CREATE DATABASE, DROP DATABASE ON *.* TO backup_user;
 ```
 
 ## Storing Secrets Safely
@@ -107,7 +109,7 @@ spec:
         spec:
           containers:
             - name: verify-backup
-              image: altinity/clickhouse-backup:2.5.0
+              image: altinity/clickhouse-backup:2.6.43
               args: ["list", "remote"]
 ```
 
@@ -117,7 +119,7 @@ To restore from a backup:
 
 ```bash
 kubectl run clickhouse-restore --rm -it \
-  --image=altinity/clickhouse-backup:2.5.0 \
+  --image=altinity/clickhouse-backup:2.6.43 \
   --restart=Never \
   -- restore_remote --tables=mydb.events backup_name
 ```
