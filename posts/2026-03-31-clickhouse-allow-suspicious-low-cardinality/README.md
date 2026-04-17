@@ -27,9 +27,9 @@ ORDER BY ts;
 Error:
 
 ```yaml
-Code: 603. DB::Exception: Creating columns of type LowCardinality(Float64) is not allowed
+Code: 455. DB::Exception: Creating columns of type LowCardinality(Float64) is prohibited
 by default due to expected negative impact on performance.
-Set allow_suspicious_low_cardinality_types = 1 to allow it.
+Set setting allow_suspicious_low_cardinality_types = 1 in order to allow it.
 ```
 
 ## Types Blocked Without the Setting
@@ -41,8 +41,8 @@ Set allow_suspicious_low_cardinality_types = 1 to allow it.
 | `LowCardinality(Float32)` | Yes - fixed 4 bytes |
 | `LowCardinality(Float64)` | Yes - fixed 8 bytes |
 | `LowCardinality(String)` | No - variable length, typically beneficial |
-| `LowCardinality(FixedString(N))` | No - variable N, may be beneficial |
-| `LowCardinality(DateTime)` | No - 4 bytes, but ClickHouse allows it |
+| `LowCardinality(FixedString(N))` | Yes if N <= 8 bytes; otherwise No |
+| `LowCardinality(DateTime)` | Yes - 4 bytes, fixed-size (blocked by default) |
 
 ## Enabling the Setting
 
