@@ -24,7 +24,7 @@ ALTER TABLE events ADD COLUMN flags UInt8 DEFAULT 0;
 -- SLOW: rewrites all data parts
 ALTER TABLE events MODIFY COLUMN user_id String;  -- changing type
 
--- SLOW on large tables: marks rows for deletion asynchronously
+-- SLOW on large tables: rewrites affected parts asynchronously as a mutation
 ALTER TABLE events DELETE WHERE user_id = 12345;
 
 -- SLOW: rewrites parts to update values
@@ -35,7 +35,7 @@ ALTER TABLE events UPDATE status = 'inactive' WHERE last_seen < '2025-01-01';
 
 `ALTER TABLE ... UPDATE` and `ALTER TABLE ... DELETE` create mutations. Mutations process asynchronously but:
 
-- Queue behind each other (mutations do not run in parallel per table)
+- Are applied to each part in the order they were submitted
 - Block some partition-level operations
 - Read and rewrite every affected part
 
