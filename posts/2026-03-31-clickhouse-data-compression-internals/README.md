@@ -77,6 +77,7 @@ Columns with few distinct values benefit from dictionary encoding. `LowCardinali
 
 ```sql
 CREATE TABLE events (
+  event_time DateTime,
   event_type LowCardinality(String),   -- typically < 1000 distinct values
   country    LowCardinality(String),
   status     LowCardinality(String)
