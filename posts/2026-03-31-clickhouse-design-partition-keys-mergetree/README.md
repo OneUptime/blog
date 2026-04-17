@@ -109,8 +109,9 @@ ClickHouse drops entire partitions when all their rows are expired, which is far
 
 ```sql
 -- Move a month of data to an archive table
+-- Partition ID for toYYYYMM(event_time) in Jan 2024 is 202401
 ALTER TABLE events
-    MOVE PARTITION '2024-01'
+    MOVE PARTITION 202401
     TO TABLE events_archive;
 ```
 
