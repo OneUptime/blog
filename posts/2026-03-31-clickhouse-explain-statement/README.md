@@ -47,13 +47,13 @@ This node shows that ClickHouse is reading from a MergeTree-family table. When y
 
 ```sql
 -- Table with primary key (event_date, user_id)
-EXPLAIN
+EXPLAIN indexes = 1
 SELECT count()
 FROM events
 WHERE event_date = '2024-06-15';
 ```
 
-Output will include mark ranges read, confirming primary key usage:
+The `indexes = 1` setting is required to include the `Indexes:` section in the output. Mark ranges read confirm primary key usage:
 
 ```text
 ReadFromMergeTree (events)
@@ -149,7 +149,7 @@ Running EXPLAIN reveals no primary key usage because `toYear()` wraps the column
 
 ```sql
 -- Optimized: use a range that allows primary key pruning
-EXPLAIN
+EXPLAIN indexes = 1
 SELECT region, count() AS sessions
 FROM user_sessions
 WHERE session_start >= '2024-01-01' AND session_start < '2025-01-01'
