@@ -65,7 +65,7 @@ SELECT
     database,
     rows,
     bytes,
-    entries
+    status
 FROM system.asynchronous_insert_log
 ORDER BY event_time DESC
 LIMIT 20;
