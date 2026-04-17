@@ -89,11 +89,12 @@ class ClickHouseRouter:
 
 ```python
 # analytics/models.py
+import uuid
 from django.db import models
 from clickhouse_backend import models as chmodels
 
 class Event(chmodels.ClickhouseModel):
-    event_id  = chmodels.UUIDField(default=chmodels.gen_random_uuid)
+    event_id  = chmodels.UUIDField(default=uuid.uuid4)
     user_id   = chmodels.UInt64Field()
     session   = models.CharField(max_length=64)
     event_type = models.CharField(max_length=64)
@@ -102,9 +103,10 @@ class Event(chmodels.ClickhouseModel):
 
     class Meta:
         app_label = "analytics"
-        engine = chmodels.MergeTree()
-        order_by = ("event_type", "user_id", "ts")
-        partition_by = chmodels.toYYYYMM("ts")
+        engine = chmodels.MergeTree(
+            order_by=("event_type", "user_id", "ts"),
+            partition_by=chmodels.toYYYYMM("ts"),
+        )
 
     def __str__(self):
         return f"{self.event_type} by user {self.user_id}"
