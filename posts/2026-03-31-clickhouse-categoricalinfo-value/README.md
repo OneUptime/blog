@@ -8,15 +8,17 @@ Description: Learn how to use categoricalInformationValue() in ClickHouse to mea
 
 ---
 
-`categoricalInformationValue(category, outcome)` computes the information value (IV) of a categorical predictor with respect to a binary outcome. Information value is a statistical measure borrowed from credit scoring and feature selection: a higher IV indicates that the categorical variable is a stronger predictor of the binary outcome. ClickHouse exposes this as a native aggregate function, making it straightforward to run across large event tables.
+`categoricalInformationValue(category1[, category2, ...], tag)` computes the information value (IV) of one or more categorical predictors with respect to a binary outcome. Information value is a statistical measure borrowed from credit scoring and feature selection: a higher IV indicates that the categorical variable is a stronger predictor of the binary outcome. ClickHouse exposes this as a native aggregate function, making it straightforward to run across large event tables.
 
 ## Concept
 
 Information value is derived from the Weight of Evidence (WoE) formula. For each category `c`, ClickHouse computes:
 
 ```text
-IV = sum over c of (P(outcome=1 | c) - P(outcome=0 | c)) * WoE(c)
+contribution(c) = (P(tag=1) - P(tag=0)) * (log(P(tag=1)) - log(P(tag=0)))
 ```
+
+evaluated within rows belonging to that category, and the function returns one IV per category column passed in.
 
 A common rule of thumb:
 - IV < 0.02: not predictive
@@ -27,30 +29,45 @@ A common rule of thumb:
 ## Syntax
 
 ```sql
--- outcome must be 0 or 1 (UInt8 or similar)
-SELECT categoricalInformationValue(category_column, outcome_column) AS iv
+-- All category arguments and the tag must be UInt8.
+-- The tag column must contain only 0 or 1.
+-- The function returns Array(Float64) with one IV per category column.
+SELECT categoricalInformationValue(category1, category2, tag_column) AS iv
 FROM table_name;
 ```
+
+Because the arguments must be `UInt8`, string-valued categorical features need to be encoded first — typically by mapping known values to small integers, or by hashing them into a bounded numeric range (e.g. `toUInt8(cityHash64(col) % 200)`).
 
 ## Basic Example
 
 ```sql
 -- Does browser type predict whether a user converts?
+-- browser is a string, so we hash it into UInt8 range first; converted is already UInt8 (0/1).
 SELECT
-    categoricalInformationValue(browser, converted) AS iv_browser
+    categoricalInformationValue(
+        toUInt8(cityHash64(browser) % 200),
+        toUInt8(converted)
+    ) AS iv_browser
 FROM user_sessions
 WHERE session_date >= today() - 30;
 ```
 
+The result is `Array(Float64)`; with a single category column it is a one-element array, so use `arrayElement(iv_browser, 1)` (or `iv_browser[1]`) to extract the scalar IV.
+
 ## Comparing Multiple Features
 
 ```sql
--- Rank features by their predictive power for churn
+-- Rank features by their predictive power for churn.
+-- A single call accepts multiple categories and returns one IV per column,
+-- in the order: [plan_tier, country, signup_channel, device_type].
 SELECT
-    categoricalInformationValue(plan_tier,      churned) AS iv_plan,
-    categoricalInformationValue(country,        churned) AS iv_country,
-    categoricalInformationValue(signup_channel, churned) AS iv_channel,
-    categoricalInformationValue(device_type,    churned) AS iv_device
+    categoricalInformationValue(
+        toUInt8(cityHash64(plan_tier)      % 200),
+        toUInt8(cityHash64(country)        % 200),
+        toUInt8(cityHash64(signup_channel) % 200),
+        toUInt8(cityHash64(device_type)    % 200),
+        toUInt8(churned)
+    ) AS ivs
 FROM user_profiles
 WHERE cohort_month >= '2025-01-01';
 ```
@@ -58,12 +75,17 @@ WHERE cohort_month >= '2025-01-01';
 ## Root-Cause Analysis: Which Dimension Best Predicts Errors?
 
 ```sql
--- Find which categorical dimension best predicts HTTP 5xx errors
+-- Find which categorical dimension best predicts HTTP 5xx errors.
+-- Returned IVs are in the same order as the category arguments:
+-- [service_name, region, endpoint_group, host_name].
 SELECT
-    categoricalInformationValue(service_name,   toUInt8(status_code >= 500)) AS iv_service,
-    categoricalInformationValue(region,         toUInt8(status_code >= 500)) AS iv_region,
-    categoricalInformationValue(endpoint_group, toUInt8(status_code >= 500)) AS iv_endpoint,
-    categoricalInformationValue(host_name,      toUInt8(status_code >= 500)) AS iv_host
+    categoricalInformationValue(
+        toUInt8(cityHash64(service_name)   % 200),
+        toUInt8(cityHash64(region)         % 200),
+        toUInt8(cityHash64(endpoint_group) % 200),
+        toUInt8(cityHash64(host_name)      % 200),
+        toUInt8(status_code >= 500)
+    ) AS iv_dimensions
 FROM request_logs
 WHERE log_date = today();
 ```
@@ -71,16 +93,20 @@ WHERE log_date = today();
 ## Segmented Analysis Per Product Area
 
 ```sql
--- Run IV analysis per product area to find area-specific predictors
+-- Run IV analysis per product area to find area-specific predictors.
+-- The returned array holds [iv_error_type, iv_user_tier].
 SELECT
     product_area,
-    categoricalInformationValue(error_type, toUInt8(ticket_created)) AS iv_error_type,
-    categoricalInformationValue(user_tier,  toUInt8(ticket_created)) AS iv_user_tier,
+    categoricalInformationValue(
+        toUInt8(cityHash64(error_type) % 200),
+        toUInt8(cityHash64(user_tier)  % 200),
+        toUInt8(ticket_created)
+    ) AS ivs,
     count() AS total_events
 FROM support_events
 WHERE event_date >= today() - 90
 GROUP BY product_area
-ORDER BY iv_error_type DESC;
+ORDER BY ivs[1] DESC;
 ```
 
 ## Handling Low-Cardinality vs High-Cardinality Categories
@@ -88,15 +114,15 @@ ORDER BY iv_error_type DESC;
 For high-cardinality categories (like `user_id`), IV will be inflated due to overfitting on individual rows. Group high-cardinality columns into buckets first.
 
 ```sql
--- Bucket response times into ranges before computing IV
+-- Bucket response times into a small UInt8 range before computing IV.
 SELECT
     categoricalInformationValue(
-        multiIf(
-            response_time_ms < 100,  'fast',
-            response_time_ms < 500,  'medium',
-            response_time_ms < 2000, 'slow',
-            'very_slow'
-        ),
+        toUInt8(multiIf(
+            response_time_ms < 100,  0,
+            response_time_ms < 500,  1,
+            response_time_ms < 2000, 2,
+            3
+        )),
         toUInt8(status_code >= 500)
     ) AS iv_latency_bucket
 FROM request_logs
@@ -120,7 +146,10 @@ flowchart TD
 -- Has the predictive power of 'region' for errors changed over time?
 SELECT
     toStartOfWeek(log_date) AS week,
-    categoricalInformationValue(region, toUInt8(status_code >= 500)) AS iv_region
+    categoricalInformationValue(
+        toUInt8(cityHash64(region) % 200),
+        toUInt8(status_code >= 500)
+    )[1] AS iv_region
 FROM request_logs
 WHERE log_date >= today() - 90
 GROUP BY week
