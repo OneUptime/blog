@@ -185,10 +185,16 @@ LIMIT 10
 clickhouse-client --time -q "SELECT count() FROM events"
 ```
 
-Inside interactive mode, type `\t` to toggle timing or use the `--send_logs_level` option:
+For more detailed diagnostics, use the `--send_logs_level` option:
 
 ```bash
 clickhouse-client --send_logs_level=debug -q "SELECT count() FROM events"
+```
+
+Inside interactive mode, append `\G` instead of `;` at the end of a query to render the result in `Vertical` format (similar to MySQL):
+
+```text
+:) SELECT * FROM events LIMIT 1 \G
 ```
 
 ## Pass Settings via CLI
