@@ -156,7 +156,7 @@ For a single station, plot power draw across all connectors to spot load balanci
 
 ```sql
 SELECT
-    toStartOfFiveMinutes(recorded_at) AS bucket,
+    toStartOfFiveMinute(recorded_at) AS bucket,
     connector_id,
     avg(power_kw)                     AS avg_power_kw,
     max(power_kw)                     AS peak_power_kw
