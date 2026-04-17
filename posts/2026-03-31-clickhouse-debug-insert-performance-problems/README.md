@@ -112,11 +112,12 @@ If merges fall behind, parts accumulate:
 SELECT
     database,
     table,
-    count() AS queue_size,
-    sum(num_tries) AS total_tries
+    count() AS active_merges,
+    sum(elapsed) AS total_elapsed_seconds,
+    avg(progress) AS avg_progress
 FROM system.merges
 GROUP BY database, table
-ORDER BY queue_size DESC;
+ORDER BY active_merges DESC;
 ```
 
 Increase merge threads if merges are slow:
