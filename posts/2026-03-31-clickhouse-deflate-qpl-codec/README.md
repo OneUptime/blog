@@ -15,14 +15,14 @@ DEFLATE_QPL is a ClickHouse compression codec that uses Intel's Query Processing
 ## Requirements
 
 DEFLATE_QPL requires:
-- Intel Xeon Scalable (Sapphire Rapids or later) processor with IAA
-- ClickHouse 23.1 or newer
-- QPL library installed and enabled at compile time
+- Intel Xeon Scalable (Sapphire Rapids or later) processor with IAA for hardware acceleration (a software fallback works on other Intel CPUs with AVX2/AVX-512)
+- ClickHouse 22.9 or newer (the `enable_deflate_qpl_codec` setting was introduced in 23.6; earlier versions required `allow_experimental_codecs`). DEFLATE_QPL was removed from ClickHouse in 2025/early-2026 due to a license incompatibility in the underlying `idxd-config` library, so verify your version still supports it before relying on it.
+- QPL library installed and enabled at compile time (`-DENABLE_QPL=ON`)
 
 Check if your ClickHouse build supports it:
 
 ```sql
-SELECT value FROM system.build_options WHERE name = 'USE_QPL';
+SELECT value FROM system.build_options WHERE name = 'ENABLE_QPL';
 ```
 
 ## Create a Table with DEFLATE_QPL
@@ -39,10 +39,10 @@ ORDER BY (user_id, ts);
 
 ## Fallback Behavior
 
-If QPL hardware acceleration is unavailable, ClickHouse falls back to software DEFLATE automatically. You can verify this in server logs:
+If QPL hardware acceleration is unavailable, ClickHouse falls back to the QPL software DEFLATE implementation automatically. On startup or first use, the server logs either `Hardware-assisted DeflateQpl codec is ready!` or `Initialization of hardware-assisted DeflateQpl codec failed`. You can check with:
 
 ```bash
-grep -i "QPL" /var/log/clickhouse-server/clickhouse-server.log
+grep -i "DeflateQpl" /var/log/clickhouse-server/clickhouse-server.log
 ```
 
 ## Compare DEFLATE_QPL vs ZSTD
@@ -78,18 +78,24 @@ GROUP BY table;
 DEFLATE_QPL is most beneficial when:
 - You have Intel IAA hardware available
 - CPU compression overhead is a bottleneck (high-ingest workloads)
-- You want DEFLATE compatibility for external tool interoperability
+- You want a DEFLATE-class compression ratio while offloading work from CPU cores
 
-## Configure QPL Thread Count
+## Enable the Codec
 
-In `config.xml`:
+DEFLATE_QPL is gated behind a server-level setting. Enable it in your user profile (e.g. `users.xml`):
 
 ```xml
-<compression_codec_settings>
-    <deflate_qpl>
-        <level>1</level>
-    </deflate_qpl>
-</compression_codec_settings>
+<profiles>
+    <default>
+        <enable_deflate_qpl_codec>1</enable_deflate_qpl_codec>
+    </default>
+</profiles>
+```
+
+Or per session:
+
+```sql
+SET enable_deflate_qpl_codec = 1;
 ```
 
 ## Check Compression Results
