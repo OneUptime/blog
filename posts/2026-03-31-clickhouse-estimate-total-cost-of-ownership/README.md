@@ -55,15 +55,15 @@ Operations overhead estimate:
 ## ClickHouse Cloud TCO
 
 ```text
-ClickHouse Cloud pricing (as of 2025):
-- Compute: $0.21 per GiB-hour (memory-based)
-- Storage: $0.023/GB/month
+ClickHouse Cloud pricing (as of 2025, Scale tier):
+- Compute: ~$0.2985 per compute-unit-hour (1 compute unit = 8 GiB RAM, 2 vCPU)
+- Storage: ~$25.30 per TB/month (~$0.0247/GB/month)
 
-Example: 96GB service running 12 hours/day (auto-suspend nights/weekends)
-Compute: 96 * $0.21 * (12 * 30) = $7,257/month (full time)
-With 40% utilization via auto-suspend: $2,903/month
-Storage: 2TB * $0.023 * 1024 = $47/month
-Total: ~$2,950/month (no ops overhead for managed service)
+Example: 96 GiB service (12 compute units) with auto-suspend nights/weekends
+Full-time compute (24/7): 12 * $0.2985 * 730 = $2,615/month
+With ~40% utilization via auto-suspend: $2,615 * 0.40 = $1,046/month
+Storage: 2 * 1024 * $0.0247 = $51/month
+Total: ~$1,097/month (no ops overhead for managed service)
 ```
 
 ## Side-by-Side Comparison Template
@@ -71,13 +71,13 @@ Total: ~$2,950/month (no ops overhead for managed service)
 ```text
 Item                       | Self-Hosted    | ClickHouse Cloud
 ---------------------------|----------------|------------------
-Compute (3 nodes)          | $2,208/month   | $2,903/month
-Storage (2TB)              | $735/month     | $47/month
+Compute                    | $2,208/month   | $1,046/month
+Storage (2TB)              | $735/month     | $51/month
 Networking                 | $100/month     | Included
 Operations                 | $2,250/month   | $0/month
 Backup storage             | $50/month      | Included
 Security/patching          | 5hrs/month     | Included
-Total                      | $5,343/month   | $2,950/month
+Total                      | $5,343/month   | $1,097/month
 ```
 
 ## Hidden Costs to Include
@@ -95,4 +95,4 @@ Total                      | $5,343/month   | $2,950/month
 
 ## Summary
 
-ClickHouse TCO includes compute, storage, networking, and operations. Self-hosted often appears cheaper on compute/storage but becomes more expensive once operations overhead is included. ClickHouse Cloud eliminates ops burden but costs more on compute. Build a complete model including all five cost components and at least 12 months of projected data growth before choosing a deployment model.
+ClickHouse TCO includes compute, storage, networking, and operations. Self-hosted can look cheaper on raw compute at high utilization but becomes more expensive once operations overhead is included, while ClickHouse Cloud's auto-suspend can materially lower effective compute cost for variable workloads. Build a complete model including all five cost components and at least 12 months of projected data growth before choosing a deployment model.
