@@ -56,7 +56,7 @@ SELECT
     line_id,
     toStartOfWeek(recorded_at) AS week,
     round(sum(quantity_defective) / nullIf(sum(quantity_inspected), 0) * 1000000, 0) AS weekly_dpm,
-    weekly_dpm - lag(weekly_dpm) OVER (PARTITION BY line_id ORDER BY week) AS dpm_change
+    weekly_dpm - lagInFrame(weekly_dpm) OVER (PARTITION BY line_id ORDER BY week) AS dpm_change
 FROM defect_records
 WHERE recorded_at >= today() - 90
 GROUP BY line_id, week
@@ -73,8 +73,8 @@ SELECT
     defect_code,
     sum(quantity_defective) AS total_defects,
     round(sum(quantity_defective) / sum(sum(quantity_defective)) OVER () * 100, 2) AS pct_of_total,
-    sum(round(sum(quantity_defective) / sum(sum(quantity_defective)) OVER () * 100, 2))
-        OVER (ORDER BY sum(quantity_defective) DESC) AS cumulative_pct
+    round(sum(sum(quantity_defective)) OVER (ORDER BY sum(quantity_defective) DESC) /
+        sum(sum(quantity_defective)) OVER () * 100, 2) AS cumulative_pct
 FROM defect_records
 WHERE recorded_at >= today() - 30
 GROUP BY defect_type, defect_code
