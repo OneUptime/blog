@@ -42,7 +42,7 @@ SELECT arrayReduce('min', [3, 1, 4, 1, 5, 9, 2, 6]) AS minimum;
 
 -- Count of elements (useful for non-null counting)
 SELECT arrayReduce('count', [1, 2, 3, NULL, 5]) AS cnt;
--- Result: 5 (count does not skip NULLs here; all positions are counted)
+-- Result: 4 (count(x) skips NULL values)
 ```
 
 ## Using Statistical Aggregate Functions
@@ -90,7 +90,7 @@ FROM sensor_readings;
 
 ## Scoring with Weighted Sums
 
-For ML scoring or recommendation systems where weights are stored as parallel arrays, `sumForEach` via `arrayReduce` on element-wise products computes a dot product:
+For ML scoring or recommendation systems where weights are stored as parallel arrays, combining `arrayMap` for element-wise multiplication with `arrayReduce('sum', ...)` computes a dot product:
 
 ```sql
 -- Compute dot product (weighted score)
@@ -114,11 +114,13 @@ SELECT arrayReduce(
 SELECT arrayReduce('groupUniqArray', ['a', 'b', 'a', 'c', 'b', 'd']) AS unique_vals;
 -- Result: ['a', 'b', 'c', 'd'] (order may vary)
 
--- Most frequent element (argMax trick)
+-- argMax with parallel arrays: returns the value from the first array
+-- corresponding to the maximum in the second array
 SELECT arrayReduce('argMax',
     ['a', 'b', 'a', 'c', 'a'],
-    [1, 1, 1, 1, 1]
-) AS any_max_element;
+    [1, 2, 1, 3, 1]
+) AS arg_max_element;
+-- Result: 'c' (value at the position of the max weight 3)
 ```
 
 ## Applying quantile Aggregates to Arrays
