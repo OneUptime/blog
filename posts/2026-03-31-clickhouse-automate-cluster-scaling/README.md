@@ -59,16 +59,18 @@ The `rand()` sharding key distributes new inserts uniformly across all shards in
 
 ## Rebalancing Data to New Shards
 
-ClickHouse does not automatically rebalance existing data. Use a script to copy older partitions to the new shard:
+ClickHouse does not automatically rebalance existing data. Use a script to move older partitions onto the new shard. Place the partition files in the table's `detached/` directory first, then attach:
 
 ```bash
 #!/bin/bash
 PARTITION=$1
+# Files have already been copied into
+# /var/lib/clickhouse/data/default/events_local/detached/ on ch5.internal
 clickhouse-client --host ch5.internal --query \
-  "ALTER TABLE events_local ATTACH PARTITION '${PARTITION}' FROM '/mnt/data/transfer/${PARTITION}'"
+  "ALTER TABLE events_local ATTACH PARTITION '${PARTITION}'"
 ```
 
-Export from old shards using `clickhouse-copier` or `SELECT ... INTO OUTFILE` for larger migrations.
+For replicated tables you can also use `ALTER TABLE ... FETCH PARTITION ... FROM '<zk_path>'` to pull data directly from another replica before attaching. For larger migrations use `remote()`/`remoteSecure()` with `INSERT ... SELECT`, or `SELECT ... INTO OUTFILE`.
 
 ## Monitoring Shard Balance
 
