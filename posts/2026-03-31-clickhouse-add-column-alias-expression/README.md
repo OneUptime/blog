@@ -176,7 +176,7 @@ ALTER TABLE events
 
 -- Remove the alias default to make it a plain column
 ALTER TABLE events
-    MODIFY COLUMN duration_s Float64;
+    MODIFY COLUMN duration_s REMOVE ALIAS;
 ```
 
 ## Summary
