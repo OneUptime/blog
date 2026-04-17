@@ -38,16 +38,19 @@ ORDER BY write_wait_ms DESC
 LIMIT 20;
 ```
 
-## Step 2 - Check system.rwlock_events
+## Step 2 - Check Live RWLock State
 
-On newer versions, inspect live lock state:
+Inspect the current number of threads holding or waiting on table RWLocks via `system.metrics`:
 
 ```sql
-SELECT *
-FROM system.rwlock_events
-WHERE event_date = today()
-ORDER BY read_waiters + write_waiters DESC
-LIMIT 20;
+SELECT metric, value, description
+FROM system.metrics
+WHERE metric IN (
+    'RWLockWaitingReaders',
+    'RWLockWaitingWriters',
+    'RWLockActiveReaders',
+    'RWLockActiveWriters'
+);
 ```
 
 ## Common Causes of Lock Contention
@@ -86,17 +89,23 @@ Avoid running parallel schema changes on the same table. Serialize DDL changes i
 
 ## ZooKeeper Lock Contention
 
-On replicated tables, ZooKeeper coordination can become a bottleneck:
+On replicated tables, ZooKeeper coordination can become a bottleneck. Check current ZooKeeper state in `system.metrics`:
 
 ```sql
-SELECT
-    metric,
-    value
+SELECT metric, value
 FROM system.metrics
-WHERE metric LIKE '%Zookeeper%' OR metric LIKE '%ZK%';
+WHERE metric LIKE '%ZooKeeper%' OR metric LIKE '%Keeper%';
 ```
 
-High `ZooKeeperWaitMicroseconds` indicates ZooKeeper is a bottleneck. Consider migrating to ClickHouse Keeper for better performance.
+For cumulative ZooKeeper wait time, check the `ZooKeeperWaitMicroseconds` profile event in `system.events`:
+
+```sql
+SELECT event, value
+FROM system.events
+WHERE event LIKE '%ZooKeeper%';
+```
+
+A high `ZooKeeperWaitMicroseconds` value indicates ZooKeeper is a bottleneck. Consider migrating to ClickHouse Keeper for better performance.
 
 ## Summary
 
