@@ -49,7 +49,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 
@@ -132,8 +132,14 @@ wg genkey | tee client-private.key | wg pubkey > client-public.key
 ## Variables and Outputs
 
 ```hcl
-variable "wg_server_private_key" { type = string  sensitive = true }
-variable "wg_client_public_key"  { type = string }
+variable "wg_server_private_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "wg_client_public_key" {
+  type = string
+}
 
 output "wireguard_public_ip" {
   value = aws_eip.wireguard.public_ip
