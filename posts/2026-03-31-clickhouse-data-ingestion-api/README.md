@@ -43,9 +43,8 @@ SET async_insert_busy_timeout_ms = 200;
 Or pass settings per HTTP request:
 
 ```bash
-curl -X POST 'http://clickhouse:8123/?async_insert=1&wait_for_async_insert=0' \
-  --data-binary '{"ts":"2026-03-31T10:00:00Z","metric":"cpu","value":72.5}' \
-  -G -d 'query=INSERT INTO metrics FORMAT JSONEachRow'
+curl -X POST 'http://clickhouse:8123/?async_insert=1&wait_for_async_insert=0&query=INSERT+INTO+metrics+FORMAT+JSONEachRow' \
+  --data-binary '{"ts":"2026-03-31T10:00:00Z","metric":"cpu","value":72.5}'
 ```
 
 ## Buffer Table for High-Throughput APIs
@@ -71,7 +70,7 @@ Applications insert into `events_buffer`; ClickHouse flushes to `events` automat
 const http = require('http');
 const { createClient } = require('@clickhouse/client');
 
-const client = createClient({ host: 'http://clickhouse:8123', username: 'default' });
+const client = createClient({ url: 'http://clickhouse:8123', username: 'default' });
 
 http.createServer(async (req, res) => {
   if (req.method === 'POST' && req.url === '/ingest') {
