@@ -69,21 +69,21 @@ SELECT
 FROM binary_data_table
 ```
 
-## Unicode Code Points
+## Multi-byte UTF-8 Characters
 
-`char()` accepts values up to 255 for single-byte encodings. For extended Latin and special characters:
+Each argument to `char()` is interpreted as a single byte (values out of `UInt8` range are converted to `UInt8` with possible overflow). Because ClickHouse strings are byte sequences, producing a non-ASCII character means passing its full UTF-8 byte sequence rather than its Unicode code point:
 
 ```sql
 SELECT
-    char(169) AS copyright_sign,
-    char(176) AS degree_sign,
-    char(181) AS micro_sign
+    char(0xC2, 0xA9) AS copyright_sign,
+    char(0xC2, 0xB0) AS degree_sign,
+    char(0xC2, 0xB5) AS micro_sign
 ```
 
 ```text
 copyright_sign  degree_sign  micro_sign
 --------------  -----------  ----------
-(c)             deg          mu
+©               °            µ
 ```
 
 ## Generating Padding Characters
