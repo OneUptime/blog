@@ -117,7 +117,7 @@ FROM (
         count()                 AS session_events
     FROM web_events
     WHERE event_time >= today() - 30
-    GROUP BY session_id, day
+    GROUP BY session_id
 )
 GROUP BY day
 ORDER BY day;
