@@ -24,7 +24,7 @@ const { createClient } = require('@clickhouse/client');
 
 const app = express();
 const ch = createClient({
-  host: process.env.CLICKHOUSE_HOST || 'http://localhost:8123',
+  url: process.env.CLICKHOUSE_URL || 'http://localhost:8123',
   username: 'default',
   password: process.env.CLICKHOUSE_PASSWORD || '',
   database: 'analytics',
@@ -59,6 +59,7 @@ For expensive aggregation queries, cache the results in Redis to avoid repeated 
 
 ```javascript
 const redis = require('redis').createClient({ url: 'redis://localhost:6379' });
+redis.connect();
 
 app.get('/api/daily-stats', async (req, res) => {
   const cacheKey = `daily-stats:${req.query.date}`;
