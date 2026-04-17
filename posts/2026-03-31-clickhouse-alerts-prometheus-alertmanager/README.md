@@ -24,10 +24,10 @@ curl -sg 'http://localhost:9090/api/v1/query?query=ClickHouseMetrics_Query' | py
 
 ```bash
 # Download AlertManager
-wget https://github.com/prometheus/alertmanager/releases/download/v0.27.0/alertmanager-0.27.0.linux-amd64.tar.gz
-tar -xzf alertmanager-0.27.0.linux-amd64.tar.gz
-sudo mv alertmanager-0.27.0.linux-amd64/alertmanager /usr/local/bin/
-sudo mv alertmanager-0.27.0.linux-amd64/amtool /usr/local/bin/
+wget https://github.com/prometheus/alertmanager/releases/download/v0.32.0/alertmanager-0.32.0.linux-amd64.tar.gz
+tar -xzf alertmanager-0.32.0.linux-amd64.tar.gz
+sudo mv alertmanager-0.32.0.linux-amd64/alertmanager /usr/local/bin/
+sudo mv alertmanager-0.32.0.linux-amd64/amtool /usr/local/bin/
 
 # Create directories
 sudo mkdir -p /etc/alertmanager /var/lib/alertmanager
@@ -89,7 +89,7 @@ groups:
           team: infrastructure
         annotations:
           summary: "ClickHouse memory usage above 28 GB on {{ $labels.instance }}"
-          description: "Resident memory is {{ $value | humanize }}B, which may indicate a memory leak or oversized queries."
+          description: "Resident memory is {{ $value }} GB, which may indicate a memory leak or oversized queries."
 
       - alert: ClickHouseReplicationLagCritical
         expr: ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay > 300
@@ -113,7 +113,7 @@ groups:
           team: infrastructure
         annotations:
           summary: "ClickHouse QPS above 1000 on {{ $labels.instance }}"
-          description: "Query rate is {{ $value | humanizePercentage }} per second over the last 5 minutes."
+          description: "Query rate is {{ $value | humanize }} per second over the last 5 minutes."
 
       - alert: ClickHouseMergeBacklog
         expr: ClickHouseMetrics_Merge > 50
@@ -127,8 +127,8 @@ groups:
 
       - alert: ClickHouseHighDiskUsage
         expr: >
-          ClickHouseAsyncMetrics_DiskUsed_data
-          / (ClickHouseAsyncMetrics_DiskUsed_data + ClickHouseAsyncMetrics_DiskFree_data)
+          ClickHouseAsyncMetrics_DiskUsed_default
+          / ClickHouseAsyncMetrics_DiskTotal_default
           > 0.85
         for: 10m
         labels:
