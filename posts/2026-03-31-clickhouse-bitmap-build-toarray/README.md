@@ -107,7 +107,7 @@ ORDER BY segment;
 INSERT INTO stored_bitmaps
 SELECT segment, groupBitmapState(toUInt64(user_id)) AS user_bitmap
 FROM (
-    SELECT 'vip' AS segment, number AS user_id FROM numbers(1, 11)
+    SELECT 'vip' AS segment, number AS user_id FROM numbers(1, 10)
 )
 GROUP BY segment;
 ```
@@ -151,7 +151,7 @@ WHERE u.user_id IN (
 ```sql
 -- Check which of these specific user IDs are also in the stored VIP bitmap
 WITH
-    bitmapBuild(CAST([3, 7, 11, 15], 'Array(UInt32)')) AS check_set,
+    bitmapBuild(CAST([3, 7, 11, 15], 'Array(UInt64)')) AS check_set,
     (SELECT user_bitmap FROM stored_bitmaps WHERE segment = 'vip') AS vip_bitmap
 SELECT
     bitmapToArray(bitmapAnd(check_set, vip_bitmap)) AS found_in_vip,
@@ -171,7 +171,7 @@ SELECT
     bitmapToArray(
         bitmapBuild(
             CAST(
-                (SELECT groupArray(toUInt32(number)) FROM numbers(1, 6)),
+                (SELECT groupArray(toUInt32(number)) FROM numbers(1, 5)),
                 'Array(UInt32)'
             )
         )
@@ -188,7 +188,7 @@ dynamic_bitmap_elements
 ```sql
 -- Keep only array elements that are in the VIP bitmap
 WITH
-    bitmapBuild(CAST([2, 4, 6, 8, 10, 12], 'Array(UInt32)')) AS candidate_ids,
+    bitmapBuild(CAST([2, 4, 6, 8, 10, 12], 'Array(UInt64)')) AS candidate_ids,
     (SELECT user_bitmap FROM stored_bitmaps WHERE segment = 'vip') AS vip_bitmap
 SELECT
     bitmapToArray(bitmapAnd(candidate_ids, vip_bitmap)) AS vip_candidates;
