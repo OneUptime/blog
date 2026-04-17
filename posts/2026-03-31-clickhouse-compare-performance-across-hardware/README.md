@@ -18,11 +18,11 @@ Use the same dataset and queries on each machine:
 
 ```bash
 # On each test machine, run the same setup
-wget https://datasets.clickhouse.com/hits_compatible/hits_10m.csv.gz
-gunzip hits_10m.csv.gz
+wget https://datasets.clickhouse.com/hits_compatible/hits.csv.gz
+gunzip hits.csv.gz
 
 clickhouse-client --query "CREATE TABLE hits_bench (...)" # standard schema
-clickhouse-client --query "INSERT INTO hits_bench FORMAT CSV" < hits_10m.csv
+clickhouse-client --query "INSERT INTO hits_bench FORMAT CSV" < hits.csv
 ```
 
 ## Collecting Hardware Information
@@ -45,7 +45,7 @@ lsblk -d -o NAME,ROTA,SIZE,MODEL
 #!/bin/bash
 MACHINE_ID="$1"  # e.g., "m5.4xlarge-nvme"
 
-# Run 3 iterations per query, take median
+# Run 30 iterations per query to get a stable median
 clickhouse-benchmark \
     --iterations 30 \
     --concurrency 1 \
@@ -59,8 +59,8 @@ clickhouse-benchmark \
 -- CPU usage during queries
 SELECT
     hostname(),
-    avg(OSCPUVirtualTimeMicroseconds) AS avg_cpu_us,
-    avg(MemoryTracking) AS avg_memory_bytes
+    avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) AS avg_cpu_us,
+    avg(CurrentMetric_MemoryTracking) AS avg_memory_bytes
 FROM system.metric_log
 WHERE event_time >= now() - INTERVAL 5 MINUTE
 GROUP BY hostname();
@@ -96,7 +96,7 @@ for THREADS in 1 2 4 8 16 32; do
         --query "SELECT uniq(user_id) FROM events" \
         --time \
         --format Null \
-        -- --max_threads=$THREADS \
+        --max_threads=$THREADS \
         2>&1 | tail -1
 done
 ```
@@ -110,7 +110,7 @@ for MEMORY_MB in 512 1024 2048 4096 8192; do
         --query "SELECT category, sum(amount) FROM orders GROUP BY category" \
         --time \
         --format Null \
-        -- --max_memory_usage=$((MEMORY_MB * 1024 * 1024)) \
+        --max_memory_usage=$((MEMORY_MB * 1024 * 1024)) \
         2>&1 | tail -1
 done
 ```
