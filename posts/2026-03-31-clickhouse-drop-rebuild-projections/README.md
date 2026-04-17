@@ -30,7 +30,6 @@ Monitor the drop progress:
 SELECT
     command,
     parts_to_do,
-    parts_done,
     is_done,
     latest_fail_reason
 FROM system.mutations
@@ -79,9 +78,8 @@ ALTER TABLE http_logs MATERIALIZE PROJECTION hourly_status_summary;
 SELECT
     command,
     parts_to_do,
-    parts_done,
-    round(100.0 * parts_done / (parts_to_do + parts_done), 1) AS pct_done,
-    is_done
+    is_done,
+    create_time
 FROM system.mutations
 WHERE table = 'http_logs'
   AND command LIKE '%MATERIALIZE PROJECTION%'
