@@ -47,7 +47,7 @@ docker restart grafana
 ## Configuring the Data Source
 
 1. Open Grafana at `http://localhost:3000` (default credentials: admin/admin).
-2. Go to Configuration - Data Sources - Add data source.
+2. Go to Connections - Data Sources - Add data source.
 3. Select ClickHouse.
 4. Set the server URL to `http://localhost:8123`, database to `default`.
 5. Click Save and Test.
