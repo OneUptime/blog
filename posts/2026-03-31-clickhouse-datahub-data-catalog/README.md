@@ -41,7 +41,7 @@ source:
     include_tables: true
     include_views: true
     include_table_lineage: true
-    include_column_lineage: true
+    include_view_column_lineage: true
     profile_pattern:
       allow:
         - "analytics.*"
@@ -67,17 +67,26 @@ DataHub discovers all tables, columns, types, and statistics. Schedule this to r
 
 ## Adding Business Metadata
 
-Enrich tables with owners, descriptions, and tags in DataHub UI or via API:
+Enrich tables with owners, descriptions, and tags in the DataHub UI or via the CLI. The `datahub dataset upsert` command reads metadata from a YAML file:
+
+```text
+# orders_dataset.yml
+- id: analytics.orders
+  platform: clickhouse
+  env: PROD
+  description: "Production orders table containing all completed and pending orders"
+  tags:
+    - critical
+    - revenue
+    - orders
+  owners:
+    - alice
+```
+
+Apply it with:
 
 ```bash
-datahub dataset add-owner \
-  --urn "urn:li:dataset:(urn:li:dataPlatform:clickhouse,analytics.orders,PROD)" \
-  --owner "urn:li:corpuser:alice"
-
-datahub dataset upsert \
-  --urn "urn:li:dataset:(urn:li:dataPlatform:clickhouse,analytics.orders,PROD)" \
-  --description "Production orders table containing all completed and pending orders" \
-  --tags "critical,revenue,orders"
+datahub dataset upsert -f orders_dataset.yml
 ```
 
 ## Column-Level Lineage
@@ -101,12 +110,22 @@ Once indexed, teams can search DataHub for:
 - "What tables depend on analytics.orders?"
 - "Which columns contain PII?"
 
-Tag PII columns during ingestion:
+Tag PII columns by upserting dataset metadata that includes schema-level tags:
 
 ```text
-column_tag_mapping:
-  "analytics.users.email": ["PII", "sensitive"]
-  "analytics.users.phone": ["PII"]
+# users_dataset.yml
+- id: analytics.users
+  platform: clickhouse
+  env: PROD
+  schema:
+    fields:
+      - id: email
+        tags:
+          - PII
+          - sensitive
+      - id: phone
+        tags:
+          - PII
 ```
 
 ## Summary
