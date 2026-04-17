@@ -95,7 +95,7 @@ resource "google_access_context_manager_service_perimeter" "sensitive" {
   name   = "accessPolicies/${google_access_context_manager_access_policy.policy.name}/servicePerimeters/sensitive"
   title  = "Sensitive Data Perimeter"
 
-  spec {
+  status {
     resources = ["projects/${var.sensitive_project_number}"]
 
     restricted_services = [
@@ -125,8 +125,6 @@ resource "google_access_context_manager_service_perimeter" "sensitive" {
       }
     }
   }
-
-  use_explicit_dry_run_spec = false
 }
 ```
 
@@ -159,7 +157,7 @@ resource "google_compute_security_policy" "zero_trust" {
     }
   }
 
-  # Default deny
+  # Default rule (required at priority 2147483647)
   rule {
     action   = "allow"
     priority = 2147483647
