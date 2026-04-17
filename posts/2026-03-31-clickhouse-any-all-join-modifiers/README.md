@@ -40,7 +40,7 @@ ALL LEFT JOIN orders AS o ON u.user_id = o.user_id;
 `JOIN ANY` keeps only the first matching row from the right table for each left-table row. If the right table has multiple matches, subsequent matches are silently discarded. This prevents row multiplication when you only need one representative value from the right side.
 
 ```sql
--- Each user appears exactly once, with their first (lowest order_id) order
+-- Each user appears exactly once, with one arbitrary matching order
 SELECT
     u.user_id,
     u.name,
@@ -73,10 +73,10 @@ ANY INNER JOIN (
 
 ## ANY LEFT JOIN
 
-`ANY LEFT JOIN` returns every left-table row exactly once, with matched columns from the first right-table match (or NULLs if no match exists).
+`ANY LEFT JOIN` returns every left-table row exactly once, with matched columns from the first right-table match (or default values such as `0` and `''` if no match exists; enable `join_use_nulls` to get NULLs instead).
 
 ```sql
--- Every user appears once; non-matching users get NULL for order columns
+-- Every user appears once; non-matching users get default values (0, empty string) for order columns
 SELECT
     u.user_id,
     u.name,
