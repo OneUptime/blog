@@ -8,7 +8,7 @@ Description: Learn how to use ClickHouse Buffer tables to absorb write spikes, s
 
 ## Introduction
 
-Buffer tables are an in-process, in-memory buffer layer built into ClickHouse. They accept inserts at high rates, accumulate data in RAM, and flush to a destination MergeTree table in large batches when configurable thresholds are met. Unlike async inserts (which buffer per session), a Buffer table is a shared server-wide buffer available to all connections simultaneously.
+Buffer tables are an in-process, in-memory buffer layer built into ClickHouse. They accept inserts at high rates, accumulate data in RAM, and flush to a destination MergeTree table in large batches when configurable thresholds are met. Unlike async inserts (which batch inserts per query shape and settings hash), a Buffer table is a shared server-wide buffer bound to a destination table and available to all connections simultaneously.
 
 Buffer tables are particularly useful when you cannot control the batching behavior of the clients writing to ClickHouse - for example, when data arrives from many independent agents or from a message queue consumer that delivers one record at a time.
 
@@ -174,7 +174,7 @@ ORDER BY total_rows DESC;
 ## Limitations of Buffer Tables
 
 - **No persistence**: buffer contents are lost if ClickHouse crashes before flushing. Use async inserts or Kafka as a durable queue if data loss is not acceptable.
-- **No deduplication**: duplicate inserts in the buffer are not detected. Use `ReplicatedMergeTree` with insert deduplication on the destination if deduplication is required.
+- **No deduplication**: duplicate inserts in the buffer are not detected. Buffer tables also break `ReplicatedMergeTree` insert deduplication on the destination — the flush randomizes block order and sizes, so the dedup hash no longer matches. Do not use Buffer tables where reliable exactly-once writes are required.
 - **No filtering**: all data inserted into a Buffer table goes to the same destination table. You cannot route different rows to different destination tables.
 - **Memory**: buffers consume server RAM. Size the `max_bytes` threshold relative to available memory: on a server with 64 GB RAM, avoid total buffer size exceeding 8-10 GB.
 - **Schema changes**: if you `ALTER TABLE events` to add a column, you must drop and recreate the Buffer table to match the new schema.
@@ -183,7 +183,7 @@ ORDER BY total_rows DESC;
 
 | Feature | Buffer Table | Async Inserts |
 |---|---|---|
-| Buffer location | Server-side, shared | Server-side, per-session |
+| Buffer location | Server-side, shared per destination table | Server-side, grouped per query shape + settings |
 | Persistence on crash | No | No |
 | Client changes required | No (insert to buffer table) | Yes (SET async_insert = 1) |
 | Visibility of buffered data | Yes (buffer table query) | Yes |
