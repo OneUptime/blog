@@ -35,11 +35,12 @@ spark.conf.set("spark.jars.packages",
 df = spark.read \
     .format("clickhouse") \
     .option("host", "clickhouse-host") \
-    .option("port", "8123") \
+    .option("http_port", "8123") \
+    .option("protocol", "http") \
     .option("user", "default") \
     .option("password", "secret") \
     .option("database", "analytics") \
-    .option("dbtable", "events") \
+    .option("table", "events") \
     .load()
 
 df.createOrReplaceTempView("events")
@@ -66,11 +67,12 @@ Then write from Spark:
 result_df.write \
     .format("clickhouse") \
     .option("host", "clickhouse-host") \
-    .option("port", "8123") \
+    .option("http_port", "8123") \
+    .option("protocol", "http") \
     .option("user", "default") \
     .option("password", "secret") \
     .option("database", "analytics") \
-    .option("dbtable", "spark_results") \
+    .option("table", "spark_results") \
     .mode("append") \
     .save()
 ```
@@ -108,7 +110,9 @@ df_filtered = df.filter(df.event_date == datetime.today().strftime('%Y-%m-%d'))
 df_filtered.write \
     .format("clickhouse") \
     .option("host", "clickhouse-host") \
-    .option("dbtable", "events") \
+    .option("http_port", "8123") \
+    .option("database", "analytics") \
+    .option("table", "events") \
     .mode("append") \
     .save()
 ```
