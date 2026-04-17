@@ -17,7 +17,7 @@ ClickHouse Decimal types are parameterized by two values:
 - **P (precision)** - total number of significant decimal digits (1 to 76)
 - **S (scale)** - number of digits after the decimal point (0 to P)
 
-ClickHouse maps Decimal(P, S) to one of three underlying storage types based on the precision:
+ClickHouse maps Decimal(P, S) to one of four underlying storage types based on the precision:
 
 | Alias         | Precision Range | Storage |
 |---------------|-----------------|---------|
@@ -137,7 +137,7 @@ ORDER BY item_id;
 INSERT INTO pricing (item_id, unit_price, quantity, discount_pct, line_total) VALUES
 (1, 49.9900, 3.000, 0.1000, 134.9730),
 (2, 199.9500, 1.000, 0.0000, 199.9500),
-(3, 9.9900, 10.500, 0.0500, 99.4005);
+(3, 9.9900, 10.500, 0.0500, 99.6503);
 ```
 
 ## Type Casting and Conversion
