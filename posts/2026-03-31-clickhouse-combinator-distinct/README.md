@@ -64,7 +64,7 @@ ORDER BY department;
 
 ```text
 department   naive_salary_sum  event_count
-engineering  469000            5
+engineering  461000            5
 marketing    222000            3
 ```
 
@@ -108,11 +108,11 @@ ORDER BY department;
 
 ```text
 department   avg_with_duplicates  avg_distinct_salaries
-engineering  93800                91500
+engineering  92200                91500
 marketing    74000                75000
 ```
 
-`avg_with_duplicates` for engineering: (95000*3 + 88000*2) / 5 = 93800. `avgDistinct` for engineering: (95000 + 88000) / 2 = 91500. Only distinct salary values participate.
+`avg_with_duplicates` for engineering: (95000*3 + 88000*2) / 5 = 92200. `avgDistinct` for engineering: (95000 + 88000) / 2 = 91500. Only distinct salary values participate.
 
 ## Comparing countDistinct() with COUNT(DISTINCT)
 
