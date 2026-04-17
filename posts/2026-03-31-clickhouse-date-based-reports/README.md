@@ -111,16 +111,19 @@ ORDER BY cohort_week, activity_week;
 
 ```sql
 SELECT
-    toDate(event_time) AS day,
-    sum(revenue) OVER (
-        ORDER BY toDate(event_time)
+    day,
+    sum(daily_revenue) OVER (
+        ORDER BY day
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     ) AS rolling_7d_revenue
 FROM (
-    SELECT event_time, revenue FROM events
+    SELECT
+        toDate(event_time) AS day,
+        sum(revenue) AS daily_revenue
+    FROM events
     WHERE event_time >= today() - 60
+    GROUP BY day
 )
-GROUP BY day
 ORDER BY day;
 ```
 
