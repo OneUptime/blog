@@ -18,6 +18,10 @@ The `clickhouse-connect` library uses HTTP and handles connection pooling via `u
 
 ```python
 import clickhouse_connect
+from clickhouse_connect.driver import httputil
+
+# Configure the urllib3 pool (default maxsize is 8)
+pool_mgr = httputil.get_pool_manager(maxsize=16, num_pools=12)
 
 # One client per application instance - thread-safe
 client = clickhouse_connect.get_client(
@@ -25,9 +29,7 @@ client = clickhouse_connect.get_client(
     port=8123,
     username="default",
     password="",
-    # urllib3 pool settings
-    pool_size=10,
-    max_overflow=5
+    pool_mgr=pool_mgr,
 )
 ```
 
