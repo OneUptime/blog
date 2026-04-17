@@ -23,22 +23,11 @@ CREATE TABLE local_csv (
 ENGINE = File(CSV);
 ```
 
-By default, ClickHouse looks for the file at `{data_path}/default/local_csv/data.csv`. You can specify a path explicitly:
-
-```sql
-CREATE TABLE logs_file (
-    ts String,
-    host String,
-    message String
-)
-ENGINE = File(TSV, '/var/log/app/access.log');
-```
-
-Query it like any table:
+By default, ClickHouse stores the file at `{data_path}/data/default/local_csv/data.CSV`. ClickHouse Server does not allow specifying an arbitrary filesystem path for the `File` engine — files must live under the configured data directory. For reading a file by relative path from `user_files_path`, use the `file()` table function instead:
 
 ```sql
 SELECT host, count() AS requests
-FROM logs_file
+FROM file('access.log', 'TSV', 'ts String, host String, message String')
 WHERE ts >= '2024-06-01'
 GROUP BY host
 ORDER BY requests DESC;
