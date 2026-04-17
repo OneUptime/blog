@@ -8,7 +8,7 @@ Description: Learn how to use date_trunc() to truncate DateTime values to a give
 
 ---
 
-`date_trunc()` is the SQL-standard way to truncate a timestamp to a calendar boundary. ClickHouse supports it as an alias family for its `toStartOf*` functions, making it straightforward to migrate queries from PostgreSQL, Redshift, or Snowflake without rewriting date logic. It accepts a string unit name and a DateTime, returning the start of the enclosing unit.
+`date_trunc()` is the SQL-standard way to truncate a timestamp to a calendar boundary. ClickHouse implements it with the same semantics as its `toStartOf*` functions, making it straightforward to migrate queries from PostgreSQL, Redshift, or Snowflake without rewriting date logic. It accepts a string unit name and a DateTime, returning the start of the enclosing unit.
 
 ## Function Signature
 
@@ -42,13 +42,13 @@ trunc_second:  2026-03-31 14:23:47   (no-op for second)
 trunc_minute:  2026-03-31 14:23:00
 trunc_hour:    2026-03-31 14:00:00
 trunc_day:     2026-03-31 00:00:00
-trunc_week:    2026-03-30 00:00:00   (Monday of that week)
-trunc_month:   2026-03-01 00:00:00
-trunc_quarter: 2026-01-01 00:00:00
-trunc_year:    2026-01-01 00:00:00
+trunc_week:    2026-03-30             (Monday of that week)
+trunc_month:   2026-03-01
+trunc_quarter: 2026-01-01
+trunc_year:    2026-01-01
 ```
 
-Week truncation follows ISO 8601 and snaps to the preceding Monday.
+Note that `'second'`, `'minute'`, `'hour'`, and `'day'` return `DateTime`, while `'week'`, `'month'`, `'quarter'`, and `'year'` return `Date`. Week truncation follows ISO 8601 and snaps to the preceding Monday.
 
 ## Daily Aggregation
 
@@ -118,7 +118,7 @@ ORDER BY cohort_quarter ASC;
 
 ## Timezone-Aware Day Boundaries
 
-Without a timezone, `date_trunc('day', ...)` truncates to midnight UTC. For users in other regions this splits their activity day across two UTC days. Pass a timezone to align to local midnight.
+Without an explicit timezone argument, `date_trunc('day', ...)` truncates using the timezone of the input value (the column's declared timezone, or the server timezone if none is set). When that resolves to UTC, an activity day for users in other regions can split across two UTC days. Pass a timezone to align to local midnight regardless of how the column is stored.
 
 ```sql
 SELECT
