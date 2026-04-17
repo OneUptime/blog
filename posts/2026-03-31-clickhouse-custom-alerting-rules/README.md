@@ -138,7 +138,7 @@ ORDER BY avg_ttm_minutes DESC;
 Run alert checks from a small service using the ClickHouse HTTP API.
 
 ```bash
-curl -s "http://clickhouse:8123/?query=$(python3 -c "import urllib.parse; print(urllib.parse.quote(open('alert_check.sql').read()))")" \
+curl -s "http://clickhouse:8123/?default_format=JSON&query=$(python3 -c "import urllib.parse; print(urllib.parse.quote(open('alert_check.sql').read()))")" \
   | jq '.data[] | select(.error_rate_pct > 5)'
 ```
 
