@@ -77,10 +77,10 @@ Run a query that requires cross-shard aggregation and watch network metrics:
 clickhouse-client --query "
 SELECT
     toStartOfMinute(event_time) AS minute,
-    metric,
-    value
+    max(ProfileEvent_NetworkReceiveBytes) AS receive_bytes,
+    max(ProfileEvent_NetworkSendBytes) AS send_bytes
 FROM system.metric_log
-WHERE metric IN ('NetworkReceiveBytes', 'NetworkSendBytes')
+GROUP BY minute
 ORDER BY minute DESC
 LIMIT 20
 " --format PrettyCompact
@@ -98,15 +98,16 @@ LIMIT 1000
 ## Measuring Replication Bandwidth
 
 ```sql
--- Check replication queue lag and transfer rates
+-- Check in-progress part fetches and transfer rates
 SELECT
     database,
     table,
-    source_replica_path,
-    bytes_to_download,
-    thread_name
-FROM system.replication_queue
-ORDER BY bytes_to_download DESC;
+    source_replica_hostname,
+    total_size_bytes_compressed,
+    bytes_read_compressed,
+    progress
+FROM system.replicated_fetches
+ORDER BY total_size_bytes_compressed DESC;
 ```
 
 ## Network Throughput via system.events
@@ -149,4 +150,4 @@ GROUP BY user_id;
 
 ## Summary
 
-ClickHouse cluster network throughput is measured via `system.events` counters `NetworkReceiveBytes` and `NetworkSendBytes` during timed distributed queries. Use `GLOBAL IN` to reduce cross-shard data transfer, and monitor `system.replication_queue` for replication bandwidth consumption.
+ClickHouse cluster network throughput is measured via `system.events` counters `NetworkReceiveBytes` and `NetworkSendBytes` during timed distributed queries. Use `GLOBAL IN` to reduce cross-shard data transfer, and monitor `system.replicated_fetches` for replication bandwidth consumption.
