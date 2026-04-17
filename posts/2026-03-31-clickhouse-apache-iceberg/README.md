@@ -185,7 +185,7 @@ FROM iceberg(
     'ACCESS_KEY',
     'SECRET_KEY'
 )
-SETTINGS iceberg_timestamp_ms = 1743379200000  -- 2026-03-30 00:00:00 UTC
+SETTINGS iceberg_timestamp_ms = 1774828800000  -- 2026-03-30 00:00:00 UTC
 GROUP BY event_type;
 ```
 
@@ -239,12 +239,12 @@ LIMIT 20;
 The same Iceberg engine works with other object stores.
 
 ```sql
--- Query Iceberg on GCS
+-- Query Iceberg on GCS via the S3-compatible endpoint (HMAC credentials required)
 CREATE TABLE user_events_gcs
 ENGINE = Iceberg(
     'https://storage.googleapis.com/my-bucket/warehouse/analytics/user_events',
-    'SERVICE_ACCOUNT_JSON_KEY',
-    ''
+    'GCS_HMAC_ACCESS_ID',
+    'GCS_HMAC_SECRET'
 );
 
 -- Query Iceberg on MinIO (self-hosted S3-compatible)
