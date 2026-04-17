@@ -62,7 +62,7 @@ ORDER BY user_id;
 -- 0=read, 1=write, 2=delete, 3=admin, 4=export, 5=import, 6=audit, 7=superuser
 
 INSERT INTO user_roles VALUES
-(1, 'alice',   toUInt16(0b00010111)),  -- 5 permissions
+(1, 'alice',   toUInt16(0b00010111)),  -- 4 permissions
 (2, 'bob',     toUInt16(0b00000011)),  -- 2 permissions
 (3, 'carol',   toUInt16(0b11111111)),  -- 8 permissions (all bits in low byte)
 (4, 'dave',    toUInt16(0b00001001)),  -- 2 permissions
