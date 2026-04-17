@@ -73,7 +73,7 @@ CREATE TABLE fact_sales (
     discount Decimal64(2),
     revenue Decimal64(2)
 ) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(toDate(toString(date_key)))
+PARTITION BY intDiv(date_key, 100)
 ORDER BY (date_key, customer_id, product_id);
 ```
 
