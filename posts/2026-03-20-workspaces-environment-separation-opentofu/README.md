@@ -80,7 +80,7 @@ terraform {
   backend "s3" {
     bucket = "my-tofu-state"
     # OpenTofu automatically appends workspace name:
-    # s3://my-tofu-state/env:/production/terraform.tfstate
+    # s3://my-tofu-state/env:/production/app/terraform.tfstate
     key    = "app/terraform.tfstate"
     region = "us-east-1"
   }
