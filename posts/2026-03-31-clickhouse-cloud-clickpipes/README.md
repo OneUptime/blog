@@ -12,12 +12,12 @@ ClickPipes is the managed data ingestion service built into ClickHouse Cloud. It
 
 ## Supported Sources
 
-- Apache Kafka (and MSK, Confluent Cloud, Redpanda)
-- Amazon S3 and S3-compatible stores
+- Apache Kafka (and MSK, Confluent Cloud, Redpanda, Azure Event Hubs, WarpStream)
+- Amazon S3 and S3-compatible stores (including DigitalOcean Spaces)
 - Google Cloud Storage
 - Azure Blob Storage
 - Amazon Kinesis
-- HTTP/HTTPS endpoints
+- Postgres and MySQL (CDC)
 
 ## Creating a Kafka ClickPipe
 
@@ -74,8 +74,9 @@ Via SQL inside ClickHouse:
 
 ```sql
 SELECT *
-FROM system.kafka_consumers
-WHERE database = 'analytics';
+FROM system.clickpipes_log
+ORDER BY event_time DESC
+LIMIT 100;
 ```
 
 ## Handling Schema Evolution
