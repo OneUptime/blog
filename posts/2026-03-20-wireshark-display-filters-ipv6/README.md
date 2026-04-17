@@ -52,7 +52,7 @@ ipv6.addr == 2001:db8::1
 ipv6.src >= 2001:db8:: && ipv6.src <= 2001:db8::ffff:ffff:ffff:ffff
 
 # Filter for link-local addresses
-ipv6.src_host starts_with "fe80"
+ipv6.src == fe80::/10
 
 # More reliable prefix matching
 ipv6.src[0:8] == 20:01:0d:b8:00:00:00:00
@@ -131,7 +131,7 @@ icmpv6.nd.ns.target_address == 2001:db8::1 ||
 icmpv6.nd.na.target_address == 2001:db8::1
 
 # Find Router Advertisements with specific prefix
-icmpv6.type == 134 && frame contains "2001:0db8"
+icmpv6.type == 134 && icmpv6.opt.prefix == 2001:db8::
 
 # Find failed TCP connections over IPv6 (TCP resets after SYN)
 ipv6 && tcp.flags.reset == 1
@@ -140,7 +140,7 @@ ipv6 && tcp.flags.reset == 1
 ipv6 && tcp.analysis.retransmission
 
 # Find IPv6 fragmented packets
-ipv6.frag_offset != 0
+ipv6.fraghdr.offset != 0
 
 # Find packets with large hop limits (unusual)
 ipv6.hlim > 200
