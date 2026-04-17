@@ -26,7 +26,7 @@ Arrow           | In/Out     | Yes (embedded)  | Optional    | In-process, panda
 Native          | In/Out     | Yes             | Optional    | ClickHouse-to-ClickHouse
 RowBinary       | In/Out     | Yes             | Optional    | High-performance internal
 ORC             | In/Out     | Yes (embedded)  | Built-in    | Hive, Hadoop ecosystem
-Avro            | In/Out     | Yes (registry)  | Optional    | Kafka schema registry
+Avro            | In/Out     | Yes (embedded)  | Optional    | Kafka, schema registry (AvroConfluent)
 ```
 
 ## CSV Ingestion
