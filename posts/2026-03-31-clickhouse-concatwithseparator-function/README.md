@@ -110,7 +110,7 @@ LIMIT 20;
 -- Human-readable label for a dashboard tooltip
 SELECT
     concatWithSeparator(' - ', region, environment, service_name) AS tooltip_label,
-    p99(latency_ms) AS p99_latency
+    quantile(0.99)(latency_ms) AS p99_latency
 FROM spans
 WHERE event_date = today()
 GROUP BY tooltip_label
@@ -191,8 +191,8 @@ When logging the parameters of a dynamically constructed query, `concatWithSepar
 SELECT
     concatWithSeparator(
         ' AND ',
-        concat('region = ', quote(region)),
-        concat('service = ', quote(service_name)),
+        concat('region = ''', region, ''''),
+        concat('service = ''', service_name, ''''),
         concat('date = ', toString(today()))
     ) AS applied_filters
 FROM (
