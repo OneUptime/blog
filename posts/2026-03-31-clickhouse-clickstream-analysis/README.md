@@ -75,8 +75,7 @@ LIMIT 20;
 SELECT
     url,
     count()            AS views,
-    uniqExact(user_id) AS unique_visitors,
-    round(avg(dateDiff('second', min(ts), max(ts))), 0) AS avg_time_on_page
+    uniqExact(user_id) AS unique_visitors
 FROM clickstream
 WHERE event_type = 'page_view'
   AND ts >= now() - INTERVAL 7 DAY
@@ -205,6 +204,7 @@ FROM (
         leadInFrame(url) OVER (
             PARTITION BY user_id, session_id
             ORDER BY ts
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
         )                                            AS next_page
     FROM clickstream
     WHERE event_type = 'page_view'
@@ -221,10 +221,10 @@ LIMIT 30;
 
 ```sql
 SELECT
-    argMin(referrer, ts)                   AS entry_referrer,
-    count()                                AS sessions,
-    countIf(converted)                     AS conversions,
-    round(100.0 * conversions / sessions, 2) AS cvr_pct
+    referrer                                       AS entry_referrer,
+    count()                                        AS sessions,
+    countIf(converted)                             AS conversions,
+    round(100.0 * countIf(converted) / count(), 2) AS cvr_pct
 FROM (
     SELECT
         session_id,
@@ -234,7 +234,7 @@ FROM (
     WHERE ts >= now() - INTERVAL 30 DAY
     GROUP BY session_id
 )
-GROUP BY entry_referrer
+GROUP BY referrer
 ORDER BY sessions DESC
 LIMIT 20;
 ```
