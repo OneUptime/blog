@@ -69,16 +69,19 @@ LIMIT 100;
 Identify most-visited merchants for personalization:
 
 ```sql
-SELECT
-    customer_id,
-    merchant_name,
-    count() AS visits,
-    sum(amount) AS total_spend,
-    row_number() OVER (PARTITION BY customer_id ORDER BY total_spend DESC) AS merchant_rank
-FROM customer_transactions
-WHERE txn_date >= today() - 90
-GROUP BY customer_id, merchant_name
-HAVING merchant_rank <= 5
+SELECT *
+FROM (
+    SELECT
+        customer_id,
+        merchant_name,
+        count() AS visits,
+        sum(amount) AS total_spend,
+        row_number() OVER (PARTITION BY customer_id ORDER BY sum(amount) DESC) AS merchant_rank
+    FROM customer_transactions
+    WHERE txn_date >= today() - 90
+    GROUP BY customer_id, merchant_name
+)
+WHERE merchant_rank <= 5
 ORDER BY customer_id, merchant_rank;
 ```
 
