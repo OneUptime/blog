@@ -18,8 +18,7 @@ CREATE SETTINGS PROFILE [IF NOT EXISTS | OR REPLACE] name
         [MIN [=] min_value]
         [MAX [=] max_value]
         [CONST | READONLY | WRITABLE | CHANGEABLE_IN_READONLY]
-    [,...]]
-    [INHERIT profile_name [,...]]
+    | INHERIT 'profile_name' [,...]]
     [TO {role [,...] | ALL | ALL EXCEPT role [,...]}]
 ```
 
@@ -78,14 +77,14 @@ CREATE SETTINGS PROFILE base_profile
 
 -- Inherits base_profile and tightens memory
 CREATE SETTINGS PROFILE restricted_profile
-    INHERIT base_profile
     SETTINGS
+        INHERIT 'base_profile',
         max_memory_usage = 500000000 MAX 1000000000;
 
 -- Inherits base_profile and loosens execution time
 CREATE SETTINGS PROFILE power_profile
-    INHERIT base_profile
     SETTINGS
+        INHERIT 'base_profile',
         max_execution_time = 600,
         max_threads = 16;
 ```
@@ -114,10 +113,10 @@ Profiles can also be assigned when creating or altering users:
 
 ```sql
 -- Assign profile when creating a user
-CREATE USER alice SETTINGS PROFILE analyst_profile;
+CREATE USER alice SETTINGS PROFILE 'analyst_profile';
 
 -- Change a user's profile
-ALTER USER alice SETTINGS PROFILE power_profile;
+ALTER USER alice SETTINGS PROFILE 'power_profile';
 ```
 
 ## Complete Practical Example
@@ -165,11 +164,11 @@ FROM system.settings_profiles;
 
 -- See which settings are in a profile
 SELECT
-    name,
+    setting_name,
     value,
     min,
     max,
-    readonly
+    writability
 FROM system.settings_profile_elements
 WHERE profile_name = 'analyst_profile';
 
