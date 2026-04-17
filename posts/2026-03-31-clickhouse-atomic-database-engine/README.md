@@ -8,7 +8,7 @@ Description: Learn how the Atomic database engine works in ClickHouse, enabling 
 
 ---
 
-The Atomic database engine is the default database engine in ClickHouse since version 20.5. It replaced the older Ordinary engine and introduced support for atomic table and dictionary operations, non-blocking DROP, and UUID-based table identification. Understanding Atomic is essential for reliable schema management in production ClickHouse deployments.
+The Atomic database engine was introduced in ClickHouse 20.5 and became the default database engine starting with version 20.10. It replaced the older Ordinary engine and introduced support for atomic table and dictionary operations, non-blocking DROP, and UUID-based table identification. Understanding Atomic is essential for reliable schema management in production ClickHouse deployments.
 
 ## Creating a Database with Atomic Engine
 
@@ -98,9 +98,17 @@ If you have older databases on the Ordinary engine:
 ```sql
 -- Check engine
 SELECT name, engine FROM system.databases;
+```
 
--- Convert (requires ClickHouse 22.6+)
-ALTER DATABASE mydb MODIFY ENGINE Atomic;
+To convert all Ordinary databases to Atomic automatically (requires ClickHouse 22.8+), create an empty flag file and restart the server:
+
+```bash
+# Create the conversion flag (adjust path to your flags directory)
+touch /var/lib/clickhouse/flags/convert_ordinary_to_atomic
+chown clickhouse:clickhouse /var/lib/clickhouse/flags/convert_ordinary_to_atomic
+
+# Restart ClickHouse; all Ordinary databases will be converted on startup
+sudo systemctl restart clickhouse-server
 ```
 
 ## Summary
