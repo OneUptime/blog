@@ -94,7 +94,7 @@ For column names passed via API, validate them server-side before using the Clic
 
 ```bash
 # Only value substitution via ClickHouse params - column name is pre-validated
-curl "http://localhost:8123/?query=SELECT+ts,{col:Identifier}+FROM+events+WHERE+user_id={uid:String}&col=country&uid=abc"
+curl "http://localhost:8123/?query=SELECT+ts,{col:Identifier}+FROM+events+WHERE+user_id={uid:String}&param_col=country&param_uid=abc"
 ```
 
 Note: `Identifier` type is available in newer ClickHouse versions for safe identifier injection.
