@@ -58,7 +58,7 @@ Projections maintain a pre-sorted copy of selected columns:
 ALTER TABLE events
 ADD PROJECTION proj_by_revenue (
     SELECT event_date, user_id, revenue
-    ORDER BY (event_date, revenue DESC)
+    ORDER BY (event_date, revenue)
 );
 ALTER TABLE events MATERIALIZE PROJECTION proj_by_revenue;
 ```
@@ -126,7 +126,7 @@ event_type   LowCardinality(String)  -- Dictionary-encoded, 4-10x smaller
 user_segment UInt8  -- For 0-255 values (segment IDs, categories)
 
 -- Use Date instead of DateTime when time is not needed
-event_date   Date   -- 4 bytes vs 8 bytes for DateTime
+event_date   Date   -- 2 bytes vs 4 bytes for DateTime
 ```
 
 ## Summary
