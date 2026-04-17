@@ -103,7 +103,7 @@ SELECT
     exception,
     left(query, 200) AS query_preview
 FROM system.query_log
-WHERE type = 'ExceptionBeforeStart' OR type = 'ExceptionWhileProcessing'
+WHERE type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')
   AND event_time >= now() - INTERVAL 24 HOUR
 ORDER BY event_time DESC;
 ```
