@@ -81,14 +81,25 @@ clickhouse-client \
   --query "SELECT 1"
 ```
 
-Provide the correct CA certificate:
+Provide the correct CA certificate via a client config file (there is no CLI flag for this — `clickhouse-client` reads `openSSL.client.caConfig` from its config):
+
+```xml
+<!-- ~/.clickhouse-client/config.xml -->
+<config>
+  <openSSL>
+    <client>
+      <caConfig>/etc/ssl/certs/my-ca.crt</caConfig>
+      <verificationMode>strict</verificationMode>
+    </client>
+  </openSSL>
+</config>
+```
 
 ```bash
 clickhouse-client \
   --host myserver \
   --port 9440 \
   --secure \
-  --ssl-ca-cert /etc/ssl/certs/my-ca.crt \
   --query "SELECT 1"
 ```
 
