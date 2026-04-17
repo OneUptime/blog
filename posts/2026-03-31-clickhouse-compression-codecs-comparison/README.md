@@ -47,7 +47,6 @@ LZ4HC(9)   | Slow             | Very fast           | 3-5x  | Better ratio, rare
 ZSTD(1)    | Fast             | Fast                | 3-6x  | Good default balance
 ZSTD(3)    | Medium           | Fast                | 4-7x  | Storage-constrained
 ZSTD(19)   | Very slow        | Fast                | 5-9x  | Maximum compression
-DEFLATE    | Medium           | Medium              | 3-5x  | Compatibility with gzip
 ```
 
 ## Combining Encoding + Compression
