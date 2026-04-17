@@ -24,7 +24,8 @@ Parts all_1_4_0 + all_5_5_0 --> new merged part all_1_5_1
 Old parts marked inactive, removed after grace period
 ```
 
-The part naming convention is `table_min_block_max_block_level`:
+The part naming convention is `partition_id_min_block_max_block_level`:
+- `partition_id`: identifier of the partition (`all` when no `PARTITION BY` is set)
 - `min_block`, `max_block`: range of insert blocks covered
 - `level`: merge generation (higher = more times merged)
 
@@ -60,14 +61,17 @@ Smaller parts are merged first (more urgent) to reduce part count quickly.
 ## Tuning Merge Settings
 
 ```xml
-<!-- config.xml / merge_tree settings -->
-<merge_tree>
-    <!-- Maximum size of a merged part -->
-    <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
+<!-- config.xml -->
+<clickhouse>
+    <!-- MergeTree defaults applied to all MergeTree tables -->
+    <merge_tree>
+        <!-- Maximum size of a merged part -->
+        <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
+    </merge_tree>
 
-    <!-- Number of background merge threads -->
+    <!-- Server-level setting: number of background merge threads -->
     <background_pool_size>16</background_pool_size>
-</merge_tree>
+</clickhouse>
 ```
 
 Or at table level:
