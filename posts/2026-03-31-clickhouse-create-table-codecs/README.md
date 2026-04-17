@@ -99,11 +99,10 @@ ENGINE = MergeTree()
 ORDER BY recorded_at;
 ```
 
-Delta accepts an optional byte width parameter (1, 2, 4, 8):
+By default `Delta` infers the byte width from the column type, so you can use it without any argument:
 
 ```sql
--- Explicit 4-byte delta for 32-bit integers
-counter UInt32 CODEC(Delta(4), ZSTD(1))
+counter UInt32 CODEC(Delta, ZSTD(1))
 ```
 
 ## DoubleDelta Codec
@@ -161,7 +160,7 @@ CREATE TABLE iot_events
 (
     device_id   UInt32    CODEC(T64, LZ4),
     -- Monotonic timestamp: Delta removes trend, ZSTD compresses residual
-    recorded_at DateTime  CODEC(Delta(4), ZSTD(1)),
+    recorded_at DateTime  CODEC(Delta, ZSTD(1)),
     -- Float metric: Gorilla captures float structure, LZ4 is fast
     value       Float32   CODEC(Gorilla, LZ4),
     -- High-entropy string: just ZSTD
@@ -177,7 +176,7 @@ ORDER BY (device_id, recorded_at);
 CREATE TABLE application_metrics
 (
     -- Timestamp with delta + zstd for sorted, monotonic data
-    ts           DateTime64(3)         CODEC(Delta(8), ZSTD(1)),
+    ts           DateTime64(3)         CODEC(Delta, ZSTD(1)),
     -- Low-cardinality strings: LZ4 is sufficient
     host         LowCardinality(String) CODEC(LZ4),
     service      LowCardinality(String) CODEC(LZ4),
