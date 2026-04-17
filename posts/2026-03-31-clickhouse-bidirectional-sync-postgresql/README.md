@@ -102,7 +102,7 @@ SETTINGS
 
 ## Schedule the Aggregation Job
 
-Use a cron job or ClickHouse `SYSTEM SYNC REPLICA` with a scheduled query:
+Use a cron job or a refreshable materialized view to run the aggregation on a schedule:
 
 ```bash
 #!/bin/bash
@@ -122,10 +122,10 @@ GROUP BY report_date, country
 
 ## Monitor Both Directions
 
-Check PostgreSQL replication lag in ClickHouse:
+Verify the MaterializedPostgreSQL database is registered in ClickHouse:
 
 ```sql
-SELECT * FROM system.materialized_postgresql_databases;
+SELECT name, engine FROM system.databases WHERE engine = 'MaterializedPostgreSQL';
 ```
 
 Check PostgreSQL write success:
