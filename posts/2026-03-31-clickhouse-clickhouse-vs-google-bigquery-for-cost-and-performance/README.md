@@ -36,14 +36,14 @@ Google BigQuery is a fully managed serverless data warehouse, while ClickHouse i
 
 ```text
 Storage: $0.02/GB/month (active)
-Queries: $5.00 per TB scanned
+Queries: $6.25 per TiB scanned (first 1 TiB/month free)
 ```
 
-Example cost for a 1 TB scan:
+Example cost for a 1 TiB scan:
 
 ```text
-1 TB * $5.00 = $5.00 per query
-100 queries per day = $500/day = $15,000/month
+1 TiB * $6.25 = $6.25 per query
+100 queries per day = $625/day = $18,750/month
 ```
 
 ### ClickHouse Self-Hosted
@@ -69,7 +69,7 @@ Often 5-10x cheaper than BigQuery for high query volume
 
 ```sql
 SELECT
-    DATE_TRUNC(ts, DAY) AS day,
+    TIMESTAMP_TRUNC(ts, DAY) AS day,
     COUNT(*) AS events,
     COUNT(DISTINCT user_id) AS users
 FROM `project.dataset.events`
@@ -144,19 +144,19 @@ INSERT INTO events VALUES (...);
 
 ```python
 # Rough cost comparison script
-bq_scanned_tb = 100  # TB per day
-bq_daily_cost = bq_scanned_tb * 5  # $5 per TB
+bq_scanned_tib = 100  # TiB per day
+bq_daily_cost = bq_scanned_tib * 6.25  # $6.25 per TiB
 
 ch_instances = 3
 ch_instance_cost_per_hour = 0.34  # c5.2xlarge
 ch_daily_cost = ch_instances * ch_instance_cost_per_hour * 24
 
-print(f"BigQuery: ${bq_daily_cost}/day = ${bq_daily_cost * 30}/month")
+print(f"BigQuery: ${bq_daily_cost:.2f}/day = ${bq_daily_cost * 30:.2f}/month")
 print(f"ClickHouse: ${ch_daily_cost:.2f}/day = ${ch_daily_cost * 30:.2f}/month")
 ```
 
 ```text
-BigQuery: $500/day = $15000/month
+BigQuery: $625.00/day = $18750.00/month
 ClickHouse: $24.48/day = $734.40/month
 ```
 
