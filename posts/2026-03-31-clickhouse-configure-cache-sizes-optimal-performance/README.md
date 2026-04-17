@@ -58,7 +58,7 @@ ClickHouse 23.4+ supports a query result cache for identical repeated queries:
 ```sql
 SET use_query_cache = 1;
 SET query_cache_ttl = 60;  -- seconds
-SET query_cache_max_size_in_bytes = 104857600;  -- 100MB per entry
+SET query_cache_max_size_in_bytes = 104857600;  -- 100MB user-level cumulative cap
 ```
 
 Configure the global cache size in `config.xml`:
@@ -75,9 +75,9 @@ Configure the global cache size in `config.xml`:
 Inspect cache entries:
 
 ```sql
-SELECT query, result_size, last_hit_time
+SELECT query, result_size, expires_at, stale
 FROM system.query_cache
-ORDER BY last_hit_time DESC;
+ORDER BY expires_at DESC;
 ```
 
 ## Compiled Expression Cache
