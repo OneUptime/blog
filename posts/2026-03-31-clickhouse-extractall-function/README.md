@@ -17,9 +17,9 @@ extractAll(str, pattern)
 ```
 
 - `str` - the input string to search
-- `pattern` - a regular expression with exactly one capture group
+- `pattern` - a regular expression, optionally containing a capture group
 
-The function returns an `Array(String)` containing every substring matched by the capture group, in the order they appear in `str`. If no matches are found, an empty array is returned.
+The function returns an `Array(String)` containing every match found in `str`, in the order they appear. If the pattern contains a capture group, the function returns matches of the first capture group; otherwise it returns matches of the entire pattern. If no matches are found, an empty array is returned.
 
 ## Basic Usage - Extracting All Numbers from Text
 
@@ -98,7 +98,7 @@ To work with each matched value as its own row, combine `extractAll` with `array
 ```sql
 SELECT
     request_id,
-    arrayJoin(extractAll(log_message, '(\w+\.\w+\.\w+)')) AS ip_address
+    arrayJoin(extractAll(log_message, '(\d+\.\d+\.\d+\.\d+)')) AS ip_address
 FROM application_logs
 WHERE event_date = today()
   AND log_message LIKE '%IP%'
@@ -109,7 +109,7 @@ This produces one row per IP address found in each log message, making it easy t
 
 ## Counting Occurrences via Array Length
 
-`length(extractAll(...))` gives the number of times the pattern matched, equivalent to `countSubstrings` but using a full regex.
+`length(extractAll(...))` gives the number of times the pattern matched, producing the same result as `countMatches`, the regex-based counting function.
 
 ```sql
 SELECT
