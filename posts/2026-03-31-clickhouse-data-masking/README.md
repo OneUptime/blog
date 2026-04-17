@@ -21,8 +21,13 @@ ClickHouse is frequently used as an analytics backend that receives raw event st
 ClickHouse ships several functions that are useful when writing masking expressions.
 
 ```sql
--- Replace all but the last four digits of a credit card number
-SELECT replaceRegexpAll('4111-1111-1111-1234', '[0-9](?=[0-9]{4})', '*') AS masked_card;
+-- Replace all but the last four digits of a credit card number.
+-- ClickHouse uses re2, which does not support lookaheads, so combine
+-- substring() with replaceRegexpAll() and right() instead.
+SELECT concat(
+    replaceRegexpAll(substring('4111-1111-1111-1234', 1, length('4111-1111-1111-1234') - 4), '[0-9]', '*'),
+    right('4111-1111-1111-1234', 4)
+) AS masked_card;
 
 -- Mask an email address, keeping the domain visible
 SELECT concat(
@@ -62,8 +67,13 @@ CREATE TABLE customers_raw
 ENGINE = MergeTree()
 ORDER BY (id, created_at);
 
--- Masked view that analysts will query
-CREATE VIEW customers_masked AS
+-- Masked view that analysts will query. Use SQL SECURITY DEFINER so the
+-- view is executed with the owner's privileges; analysts then need
+-- SELECT only on the view, not on the underlying customers_raw table.
+CREATE VIEW customers_masked
+DEFINER = CURRENT_USER
+SQL SECURITY DEFINER
+AS
 SELECT
     id,
     concat(left(full_name, 1), replaceAll(substring(full_name, 2), splitByChar(' ', full_name)[1], '****')) AS full_name,
@@ -110,7 +120,10 @@ SELECT email, phone FROM customers_masked LIMIT 3;
 You can also use conditional expressions to mask data based on who is querying. ClickHouse exposes `currentUser()` as a built-in function that returns the active username.
 
 ```sql
-CREATE VIEW customers_conditional AS
+CREATE VIEW customers_conditional
+DEFINER = CURRENT_USER
+SQL SECURITY DEFINER
+AS
 SELECT
     id,
     full_name,
@@ -154,10 +167,10 @@ When your table stores semi-structured data in JSON strings, use `JSONExtractStr
 ```sql
 SELECT
     event_id,
-    replaceRegexpAll(
-        JSONExtractString(payload, 'email'),
-        '(?<=^.{2}).+(?=@)',
-        '***'
+    concat(
+        left(splitByChar('@', JSONExtractString(payload, 'email'))[1], 2),
+        '***@',
+        splitByChar('@', JSONExtractString(payload, 'email'))[2]
     ) AS masked_email
 FROM raw_events
 WHERE JSONHas(payload, 'email')
