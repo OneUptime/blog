@@ -172,7 +172,9 @@ FROM system.functions
 WHERE origin = 'SQLUserDefined';
 
 -- Show definition of a specific UDF
-SHOW CREATE FUNCTION celsius_to_fahrenheit;
+SELECT create_query
+FROM system.functions
+WHERE name = 'celsius_to_fahrenheit';
 
 -- Drop a UDF
 DROP FUNCTION IF EXISTS celsius_to_fahrenheit;
