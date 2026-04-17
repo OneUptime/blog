@@ -32,7 +32,7 @@ CREATE TABLE revenue_daily (
     total_revenue Decimal64(2),
     order_count UInt64,
     error_count UInt64
-) ENGINE = SummingMergeTree(total_revenue, order_count, error_count)
+) ENGINE = SummingMergeTree((total_revenue, order_count, error_count))
 ORDER BY (date, service, region);
 
 -- Populate via materialized view
