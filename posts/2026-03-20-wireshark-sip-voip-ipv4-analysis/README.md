@@ -52,16 +52,16 @@ This shows:
 - Start time, stop time
 - Caller, callee
 - Duration
-- State (CALL, RTP, BYE)
+- State (CALL SETUP, RINGING, IN CALL, COMPLETED, CANCELLED, REJECTED)
 - Comments
 
-Click a call → Select → Flow Sequence (shows ladder diagram)
+Click a call → Flow Sequence (shows ladder diagram)
 Or:
-Telephony → SIP Flows (shows SIP ladder diagram)
+Telephony → SIP Statistics (shows SIP method/response counts)
 ```
 
 ```text
-SIP call flow (Wireshark SIP Flows view):
+SIP call flow (Wireshark Flow Sequence view):
 
 Client A (192.168.1.10)          Server (192.168.1.1)         Client B (192.168.1.20)
     |                                   |                              |
@@ -175,7 +175,7 @@ sdp
 # Fix: SIP proxy must rewrite SDP with public IP (STUN/ICE/SIP proxy NAT)
 
 # Wireshark filter for SDP content:
-sdp.media_attr contains "IP4"
+sdp.connection_info.address_type == "IP4"
 ```
 
 ```bash
@@ -187,4 +187,4 @@ sudo tcpdump -i eth0 -n 'udp portrange 10000-20000'
 
 ## Conclusion
 
-Wireshark's VoIP analysis tools are under the `Telephony` menu. Use `Telephony → VoIP Calls` for call summary and `Telephony → SIP Flows` for the signaling ladder diagram. Analyze RTP quality with `Telephony → RTP → RTP Streams` - look for jitter >50ms or packet loss >5% as quality thresholds. For SIP failures, filter `sip.Status-Code >= 400` to find error responses. One-way audio is almost always a NAT issue where private IPs appear in SDP - configure your SIP proxy to rewrite SDP with the public IP using STUN or ALG.
+Wireshark's VoIP analysis tools are under the `Telephony` menu. Use `Telephony → VoIP Calls` for the call summary, then click `Flow Sequence` for the signaling ladder diagram. Analyze RTP quality with `Telephony → RTP → RTP Streams` - look for jitter >50ms or packet loss >5% as quality thresholds. For SIP failures, filter `sip.Status-Code >= 400` to find error responses. One-way audio is almost always a NAT issue where private IPs appear in SDP - configure your SIP proxy to rewrite SDP with the public IP using STUN or ALG.
