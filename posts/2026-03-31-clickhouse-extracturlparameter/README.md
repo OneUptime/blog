@@ -8,7 +8,7 @@ Description: Learn how extractURLParameter() pulls a named query string paramete
 
 ---
 
-`extractURLParameter(url, name)` searches the query string of a URL for a parameter with the given name and returns its decoded value as a `String`. If the parameter appears multiple times, the first occurrence is returned. If the parameter is not present, the function returns an empty string. The function handles percent-encoded values automatically and is case-sensitive with respect to the parameter name.
+`extractURLParameter(url, name)` searches the query string of a URL for a parameter with the given name and returns its value as a `String`. If the parameter appears multiple times, the first occurrence is returned. If the parameter is not present, the function returns an empty string. The returned value is not URL-decoded — wrap it in `decodeURLComponent()` (or `decodeURLFormComponent()` if `+` should be treated as a space) when you need to decode percent-encoded characters. The function is case-sensitive with respect to the parameter name.
 
 ## Basic Usage
 
@@ -140,10 +140,10 @@ ORDER BY page_num;
 ## Percent-Encoded Value Decoding
 
 ```sql
--- Verify that percent-encoded parameter values are decoded correctly
+-- Decode percent-encoded parameter values by wrapping with decodeURLComponent()
 SELECT
     url,
-    extractURLParameter(url, 'q') AS decoded_query
+    decodeURLComponent(extractURLParameter(url, 'q')) AS decoded_query
 FROM (
     SELECT arrayJoin([
         'https://example.com/search?q=hello%20world',
@@ -162,4 +162,4 @@ https://example.com/search?q=price%3A100%24     price:100$
 
 ## Summary
 
-`extractURLParameter()` is the standard way to pull a single named parameter value from a URL query string in ClickHouse. It decodes percent-encoded characters automatically and returns an empty string when the parameter is absent, making it safe for direct use in `GROUP BY` clauses and conditional aggregations. For retrieving all parameter names or values at once, use `extractURLParameters()` and `extractURLParameterNames()`.
+`extractURLParameter()` is the standard way to pull a single named parameter value from a URL query string in ClickHouse. It returns an empty string when the parameter is absent, making it safe for direct use in `GROUP BY` clauses and conditional aggregations. The returned value is not URL-decoded — pair it with `decodeURLComponent()` when you need to interpret percent-encoded characters. For retrieving all parameter names or values at once, use `extractURLParameters()` and `extractURLParameterNames()`.
