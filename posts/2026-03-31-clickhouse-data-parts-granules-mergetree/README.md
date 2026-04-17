@@ -91,14 +91,14 @@ SETTINGS index_granularity_bytes = 10485760,  -- 10 MB target granule size
          index_granularity = 8192;            -- row-based fallback
 ```
 
-Enable adaptive granularity at table creation:
+Enable adaptive granularity at table creation (it is on by default; set `index_granularity_bytes = 0` to disable):
 
 ```sql
 CREATE TABLE events (...)
 ENGINE = MergeTree ORDER BY ts
 SETTINGS
     index_granularity_bytes = 10485760,
-    adaptive_index_granularity_enabled = 1;
+    index_granularity = 8192;
 ```
 
 With adaptive granularity, rows with large text/JSON columns produce smaller granules (fewer rows per 10 MB), and rows with small numeric columns produce larger granules.
@@ -109,7 +109,8 @@ With adaptive granularity, rows with large text/JSON columns produce smaller gra
 INSERT batch -> 1 new part (compact or wide)
 Background merge -> multiple parts -> 1 larger part
 TTL merge -> expired rows removed from parts
-DETACH/DROP -> parts moved to detached/ directory
+DETACH -> parts moved to detached/ directory
+DROP -> parts marked inactive and deleted (approximately within 10 minutes)
 ```
 
 ## Monitoring Granule Efficiency
