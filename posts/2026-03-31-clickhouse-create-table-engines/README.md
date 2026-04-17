@@ -121,7 +121,7 @@ ENGINE = CollapsingMergeTree(sign)
 ORDER BY order_id;
 ```
 
-Insert a row with `sign = -1` and `sign = 1` to atomically replace a record.
+Insert a row with `sign = -1` to cancel the previous state and a row with `sign = 1` for the new state. Collapsing happens during background merges (or at query time with `FINAL`), so both rows remain visible until merged.
 
 ## ReplicatedMergeTree - High Availability
 
@@ -150,7 +150,7 @@ The ZooKeeper path and replica name are usually macro-expanded from `config.xml`
 `Log` engines are lightweight and write data sequentially. They have no background merges or primary key indexes.
 
 ```sql
--- Log: supports concurrent reads, no inserts during reads
+-- Log: one file per column plus marks, supports multi-threaded reads
 CREATE TABLE debug_log
 (
     ts      DateTime,
@@ -158,7 +158,7 @@ CREATE TABLE debug_log
 )
 ENGINE = Log;
 
--- TinyLog: single-file, no concurrent reads - best for tiny tables
+-- TinyLog: one file per column, no marks - best for tiny tables
 CREATE TABLE config_dump
 (
     key   String,
@@ -166,7 +166,7 @@ CREATE TABLE config_dump
 )
 ENGINE = TinyLog;
 
--- StripeLog: large blocks, better compression than TinyLog
+-- StripeLog: all columns stored in a single data file
 CREATE TABLE import_staging
 (
     id   UInt64,
