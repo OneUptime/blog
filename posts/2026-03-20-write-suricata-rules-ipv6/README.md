@@ -33,23 +33,22 @@ alert udp any any -> 2001:4860:4860::8888 53 \
 ## Detecting IPv6 Extension Headers
 
 ```text
-# Detect hop-by-hop options (often used for attacks)
+# Detect unknown options in Hop-by-Hop header (often used for attacks)
 alert ipv6 $EXTERNAL_NET any -> $HOME_NET any \
-  (msg:"IPv6 Hop-by-Hop Options Header from External"; \
-   ip6-exthdr:hopopts; \
+  (msg:"IPv6 Hop-by-Hop Unknown Option from External"; \
+   decode-event:ipv6.hopopts_unknown_opt; \
    sid:200; rev:1;)
 
-# Detect routing header type 0 (deprecated, security risk)
+# Detect routing header type 0 (deprecated, security risk - RFC 5095)
 alert ipv6 any any -> $HOME_NET any \
   (msg:"IPv6 Routing Header Type 0 - Security Risk"; \
-   ip6-exthdr:rh,type 0; \
+   decode-event:ipv6.rh_type_0; \
    sid:201; rev:1;)
 
-# Detect fragment headers (fragmentation attack)
+# Detect overlapping IPv6 fragments (fragmentation attack)
 alert ipv6 $EXTERNAL_NET any -> $HOME_NET any \
-  (msg:"IPv6 Fragmentation from External"; \
-   ip6-exthdr:frag; \
-   threshold:type threshold,track by_src,count 100,seconds 10; \
+  (msg:"IPv6 Fragmentation Overlap from External"; \
+   decode-event:ipv6.frag_overlap; \
    sid:202; rev:1;)
 ```
 
@@ -64,20 +63,20 @@ alert ipv6 $EXTERNAL_NET any -> $HOME_NET any \
 # Type 137 = Redirect
 
 # Detect rogue Router Advertisements
-alert icmp6 $EXTERNAL_NET any -> $HOME_NET any \
+alert icmpv6 $EXTERNAL_NET any -> $HOME_NET any \
   (msg:"Rogue Router Advertisement from External Network"; \
    itype:134; \
    sid:300; rev:1;)
 
-# Detect ICMP6 echo flood
-alert icmp6 any any -> $HOME_NET any \
+# Detect ICMPv6 echo flood
+alert icmpv6 any any -> $HOME_NET any \
   (msg:"ICMPv6 Echo Request Flood"; \
    itype:128; \
    threshold:type threshold,track by_src,count 50,seconds 5; \
    sid:301; rev:1;)
 
 # Detect Neighbor Discovery scanning
-alert icmp6 any any -> $HOME_NET any \
+alert icmpv6 any any -> $HOME_NET any \
   (msg:"IPv6 Neighbor Discovery Scan"; \
    itype:135; \
    threshold:type threshold,track by_src,count 30,seconds 10; \
@@ -144,4 +143,4 @@ sudo suricata-update enable-source ptresearch/attackdetection
 sudo kill -USR2 $(cat /var/run/suricata.pid)
 ```
 
-Writing effective Suricata IPv6 rules requires knowing the protocol-specific keywords like `ip6-exthdr` and `itype` for ICMPv6, with threshold-based rules being particularly useful for detecting IPv6 scanning and flooding attacks that differ from their IPv4 counterparts.
+Writing effective Suricata IPv6 rules requires knowing the protocol-specific keywords like `decode-event` for IPv6 anomalies and `itype` for ICMPv6, with threshold-based rules being particularly useful for detecting IPv6 scanning and flooding attacks that differ from their IPv4 counterparts.
