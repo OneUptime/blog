@@ -52,13 +52,13 @@ Set the default in a user profile:
 
 When `distributed_aggregation_memory_efficient = 1` is active, ClickHouse uses a hash-based bucket approach:
 
-1. Each shard splits its partial aggregation state into `N` buckets based on the hash of the group key.
+1. Each shard splits its partial aggregation state into 256 buckets based on the hash of the group key (the bucket count is fixed in ClickHouse's two-level hash table implementation).
 2. The coordinator requests one bucket at a time from all shards.
 3. For bucket `i`, the coordinator loads partial states only for group keys that hash to bucket `i`, merges them, emits the result, and discards the memory before loading bucket `i+1`.
 
-This means the coordinator's peak memory usage for the merge phase is approximately: `total_partial_state_size / number_of_buckets`
+This means the coordinator's peak memory usage for the merge phase is approximately: `(total_partial_state_size / 256) * merge_threads`
 
-The number of buckets is controlled by `aggregation_memory_efficient_merge_threads`:
+The number of buckets merged in parallel is controlled by `aggregation_memory_efficient_merge_threads`:
 
 ```sql
 SELECT count(), sum(revenue)
