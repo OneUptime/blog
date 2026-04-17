@@ -93,7 +93,7 @@ SELECT url, visit_date, visit_hour FROM page_views;
 -- url='/', visit_date=2024-06-15, visit_hour=14
 ```
 
-Attempting to insert a value into a `MATERIALIZED` column raises an error. To include materialized columns in SELECT *, you must list them explicitly or use `SELECT * EXCEPT(visit_date, visit_hour)` - they are excluded from wildcard results by default.
+Attempting to insert a value into a `MATERIALIZED` column raises an error. Materialized columns are excluded from `SELECT *` by default; to include them, list them explicitly or enable the setting `asterisk_include_materialized_columns = 1`.
 
 ## ALIAS Expressions
 
