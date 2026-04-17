@@ -109,7 +109,7 @@ while (await reader.ReadAsync())
 ```text
 Host=localhost;Port=8123;Database=analytics;
 Username=default;Password=;
-Compress=true;UseSession=false;
+Compression=true;UseSession=false;
 ```
 
 ## Dapper Integration
