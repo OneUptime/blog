@@ -8,7 +8,7 @@ Description: Learn how the -ForEach combinator applies an aggregate function ele
 
 ---
 
-When you have multiple rows that each contain an array of the same length, you sometimes want to aggregate position by position rather than flattening everything into a single value. For example, given three rows each with a 5-element score array, you might want the sum at position 1, the sum at position 2, and so on. That is exactly what the `-ForEach` combinator does. It wraps any aggregate function so that instead of computing one result for the whole group, it computes one result per array position and returns an array of those results. The input arrays must all have the same length within the group.
+When you have multiple rows that each contain an array of the same length, you sometimes want to aggregate position by position rather than flattening everything into a single value. For example, given three rows each with a 5-element score array, you might want the sum at position 1, the sum at position 2, and so on. That is exactly what the `-ForEach` combinator does. It wraps any aggregate function so that instead of computing one result for the whole group, it computes one result per array position and returns an array of those results. When the input arrays within a group have different lengths, the output array length equals the longest input and shorter arrays contribute only at the positions they span - but for most use cases where positions carry a semantic meaning, you want the arrays to be the same length.
 
 ## Syntax
 
@@ -18,7 +18,7 @@ Append `-ForEach` to any aggregate function name:
 aggFuncForEach(array_column)  ->  Array(result_type)
 ```
 
-Each row contributes the element at position `i` to the aggregate at position `i` in the output array. The output array has the same length as the input arrays.
+Each row contributes the element at position `i` to the aggregate at position `i` in the output array. The output array length equals the longest input array in the group; when all inputs share the same length, the output is that length.
 
 ## Basic Example: sumForEach()
 
