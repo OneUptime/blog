@@ -45,7 +45,7 @@ message MetricsRequest {
 }
 
 service AnalyticsService {
-  // Unary RPC
+  // Server-side streaming for daily metric rows
   rpc GetDailyMetrics(MetricsRequest) returns (stream DailyMetric);
   // Server-side streaming for large event results
   rpc StreamEvents(EventQueryRequest) returns (stream Event);
