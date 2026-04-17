@@ -34,7 +34,7 @@ curl -X POST http://kafka-connect:8083/connectors \
       "database.user": "debezium",
       "database.password": "secret",
       "database.dbname": "production",
-      "database.server.name": "prod_pg",
+      "topic.prefix": "prod_pg",
       "table.include.list": "public.orders,public.users",
       "plugin.name": "pgoutput",
       "publication.name": "dbz_publication"
@@ -47,13 +47,14 @@ Debezium publishes events to Kafka topics like `prod_pg.public.orders`.
 ## ClickHouse Kafka Source Table
 
 ```sql
-CREATE TABLE orders_cdc_queue
-ENGINE = Kafka
+CREATE TABLE orders_cdc_queue (
+    raw String
+) ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'prod_pg.public.orders',
     kafka_group_name = 'ch_cdc_orders',
-    kafka_format = 'JSONEachRow',
+    kafka_format = 'JSONAsString',
     kafka_num_consumers = 2;
 ```
 
