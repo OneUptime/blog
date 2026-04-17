@@ -73,18 +73,21 @@ GROUP BY hour, event_type;
 
 ## Check View is Attached
 
+Detached tables do not appear in `system.tables`. Use `system.detached_tables` instead:
+
 ```sql
 SELECT
-    name,
-    is_temporarily_detached
-FROM system.tables
-WHERE engine = 'MaterializedView';
+    database,
+    table,
+    engine,
+    is_permanently
+FROM system.detached_tables;
 ```
 
 If a view is detached, reattach it:
 
 ```sql
-ATTACH MATERIALIZED VIEW your_view_name;
+ATTACH TABLE your_view_name;
 ```
 
 ## Trace Inserts with Query Log
