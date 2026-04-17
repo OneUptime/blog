@@ -33,22 +33,24 @@ CREATE TABLE contracts_bitemporal (
     plan_type        LowCardinality(String),
     monthly_value    Float64,
     -- Valid time (business reality)
-    valid_from       Date,
-    valid_to         Date DEFAULT toDate('9999-12-31'),
+    valid_from       Date32,
+    valid_to         Date32 DEFAULT toDate32('2299-12-31'),
     -- Transaction time (when we knew about it)
-    recorded_from    DateTime DEFAULT now(),
-    recorded_to      DateTime DEFAULT toDateTime('9999-12-31 23:59:59'),
+    recorded_from    DateTime64(3) DEFAULT now64(3),
+    recorded_to      DateTime64(3) DEFAULT toDateTime64('2299-12-31 23:59:59', 3),
     -- Version for deduplication
     version          UInt32 DEFAULT 1
 ) ENGINE = MergeTree()
 ORDER BY (contract_id, valid_from, recorded_from);
 ```
 
+`Date` and `DateTime` in ClickHouse top out at 2149-06-06 and 2106-02-07 respectively, so we use `Date32` and `DateTime64` (which reach 2299-12-31) to accommodate an "open-ended" sentinel value.
+
 ## Inserting Initial Records
 
 ```sql
 INSERT INTO contracts_bitemporal VALUES
-(101, 42, 'pro', 500.0, '2026-01-01', '9999-12-31', now(), '9999-12-31 23:59:59', 1);
+(101, 42, 'pro', 500.0, '2026-01-01', '2299-12-31', now64(3), '2299-12-31 23:59:59', 1);
 ```
 
 ## Correcting a Historical Record
@@ -56,21 +58,19 @@ INSERT INTO contracts_bitemporal VALUES
 A contract was entered incorrectly - the plan should have been 'enterprise' not 'pro' since 2026-01-01. The correction is made today (2026-03-31):
 
 ```sql
--- Close the incorrect transaction-time record
-INSERT INTO contracts_bitemporal
-SELECT
-    contract_id, customer_id, plan_type, monthly_value,
-    valid_from, valid_to,
-    recorded_from,
-    now() AS recorded_to,  -- close the old version now
-    version
-FROM contracts_bitemporal
-WHERE contract_id = 101 AND recorded_to = '9999-12-31 23:59:59';
+-- Close the incorrect transaction-time record via mutation
+ALTER TABLE contracts_bitemporal
+UPDATE recorded_to = now64(3)
+WHERE contract_id = 101
+  AND recorded_to = toDateTime64('2299-12-31 23:59:59', 3)
+SETTINGS mutations_sync = 1;
 
 -- Insert the corrected record
 INSERT INTO contracts_bitemporal VALUES
-(101, 42, 'enterprise', 1000.0, '2026-01-01', '9999-12-31', now(), '9999-12-31 23:59:59', 2);
+(101, 42, 'enterprise', 1000.0, '2026-01-01', '2299-12-31', now64(3), '2299-12-31 23:59:59', 2);
 ```
+
+We use `ALTER TABLE ... UPDATE` (a mutation) rather than an `INSERT ... SELECT` to close the old row, because ClickHouse `MergeTree` is append-only — an `INSERT` would leave the original open row in place and the "current view" query below would return both versions. Mutations are asynchronous and relatively expensive, so `mutations_sync = 1` waits for the rewrite to complete before returning.
 
 ## Querying the Current View of Current State
 
@@ -80,7 +80,7 @@ What do we currently believe is true today?
 SELECT contract_id, customer_id, plan_type, monthly_value
 FROM contracts_bitemporal
 WHERE valid_from <= today() AND valid_to >= today()
-  AND recorded_to = '9999-12-31 23:59:59'
+  AND recorded_to = toDateTime64('2299-12-31 23:59:59', 3)
 ORDER BY contract_id;
 ```
 
