@@ -20,10 +20,10 @@ Description: Learn how to debug memory-related issues in ClickHouse including me
 ClickHouse has multiple memory limit settings:
 
 ```sql
--- Per-query limit (default 0 = unlimited, uses server fraction)
+-- Per-query limit in bytes (0 = unlimited; default is 10 GB)
 SET max_memory_usage = 10737418240;  -- 10 GB
 
--- Ratio of server RAM a single query can use
+-- Total memory limit in bytes for all concurrent queries from a user (0 = unlimited)
 SET max_memory_usage_for_user = 21474836480;  -- 20 GB for user total
 
 -- Server-wide hard limit
@@ -76,9 +76,9 @@ ORDER BY metric;
 Key metrics:
 
 ```text
-MemoryTracking         - Total tracked memory
-MemoryTrackingForMerges - Memory used by background merges
-MemoryTrackingInBackgroundSchedulePool - Background tasks
+MemoryTracking              - Total tracked memory allocated by the server
+MergesMutationsMemoryTracking - Memory used by background merges and mutations
+MemoryTrackingUncorrected   - Tracked memory not corrected by RSS
 ```
 
 ## Memory Debugging with system.trace_log
