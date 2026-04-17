@@ -190,12 +190,12 @@ SELECT
     quantity,
     sum(price * quantity) OVER (
         PARTITION BY instrument
-        ORDER BY traded_at
+        ORDER BY toUnixTimestamp(traded_at)
         RANGE BETWEEN 3600 PRECEDING AND CURRENT ROW
     ) /
     sum(quantity) OVER (
         PARTITION BY instrument
-        ORDER BY traded_at
+        ORDER BY toUnixTimestamp(traded_at)
         RANGE BETWEEN 3600 PRECEDING AND CURRENT ROW
     )                                           AS rolling_vwap_1h
 FROM trades
