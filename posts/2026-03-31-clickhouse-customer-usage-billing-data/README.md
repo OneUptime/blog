@@ -22,7 +22,7 @@ CREATE TABLE usage_events (
     service_type    LowCardinality(String),  -- 'voice', 'sms', 'data', 'roaming'
     units_consumed  UInt64,   -- seconds for voice, count for SMS, bytes for data
     unit_type       LowCardinality(String),
-    rated_cost      UInt32,   -- in microcents
+    rated_cost      UInt32,   -- in micros (millionths of a dollar)
     is_in_bundle    UInt8,
     is_roaming      UInt8,
     country_code    FixedString(2)
@@ -41,7 +41,7 @@ SELECT
     sum(units_consumed)            AS total_units,
     sum(rated_cost) / 1e6          AS total_cost_dollars
 FROM usage_events
-WHERE occurred_at >= toStartOfMonth(today() - 1)
+WHERE occurred_at >= toStartOfMonth(today() - INTERVAL 1 MONTH)
   AND occurred_at < toStartOfMonth(today())
 GROUP BY account_id, billing_month, service_type
 ORDER BY account_id, service_type;
