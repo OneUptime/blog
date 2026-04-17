@@ -26,7 +26,7 @@ kind: Provider
 metadata:
   name: provider-aws-ec2
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.21.2
 EOF
 ```
 
@@ -85,6 +85,10 @@ spec:
       - name: clickhouse-sg
     userData: |
       #!/bin/bash
+      apt-get update
+      apt-get install -y apt-transport-https ca-certificates curl gnupg
+      curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+      echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=$(dpkg --print-architecture)] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list
       apt-get update
       apt-get install -y clickhouse-server clickhouse-client
       systemctl enable --now clickhouse-server
