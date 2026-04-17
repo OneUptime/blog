@@ -60,8 +60,8 @@ services:
       - MYSQL_USER=zipkin
       - MYSQL_PASS=zipkin_password
       - MYSQL_MAX_CONNECTIONS=10
-      # Keep spans for 7 days
-      - QUERY_LOOKBACK=604800000  # milliseconds
+      # How far back the query API will look (retention is managed by the storage backend, not this setting)
+      - QUERY_LOOKBACK=604800000  # milliseconds (7 days)
     ports:
       - "9411:9411"
     networks:
@@ -88,10 +88,13 @@ services:
       retries: 10
 
   # Zipkin Dependencies job (computes service dependency graph)
+  # This is a one-shot Apache Spark batch job that processes the current day's
+  # spans and then exits. Run it on a schedule (cron / CronJob) near end-of-day
+  # UTC rather than as a long-running container.
   zipkin-dependencies:
     image: openzipkin/zipkin-dependencies:latest
     container_name: zipkin_dependencies
-    restart: unless-stopped
+    restart: "no"
     environment:
       - STORAGE_TYPE=mysql
       - MYSQL_HOST=zipkin-mysql
@@ -127,22 +130,18 @@ networks:
 ```
 
 ```yaml
-# application.yml - Spring Boot Zipkin config
+# application.yml - Spring Boot 3.x Zipkin config (Micrometer Tracing)
 spring:
   application:
     name: user-service
-  zipkin:
-    base-url: http://zipkin:9411
-    sender:
-      type: web  # HTTP sender
-  sleuth:
-    sampler:
-      probability: 1.0  # 100% sampling in dev (reduce in production)
 
 management:
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
   tracing:
     sampling:
-      probability: 0.1  # 10% sampling in production
+      probability: 0.1  # 10% sampling in production (use 1.0 in dev)
 ```
 
 ## Step 4: Instrument a Python Service
@@ -156,8 +155,8 @@ import functools
 
 app = Flask(__name__)
 
-# Configure Zipkin transport
-zipkin_transport = SimpleHTTPTransport("http://zipkin:9411/api/v2/spans")
+# Configure Zipkin transport (host and port are separate positional args)
+zipkin_transport = SimpleHTTPTransport("zipkin", 9411)
 
 def http_transport(encoded_span):
     zipkin_transport.send(encoded_span)
