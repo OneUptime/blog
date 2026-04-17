@@ -28,7 +28,14 @@ Initialize a Maven project with the required dependencies.
         <version>1.18.0</version>
     </dependency>
 
-    <!-- ClickHouse Flink connector -->
+    <!-- Flink JDBC connector -->
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-connector-jdbc</artifactId>
+        <version>3.1.2-1.18</version>
+    </dependency>
+
+    <!-- ClickHouse JDBC driver -->
     <dependency>
         <groupId>com.clickhouse</groupId>
         <artifactId>clickhouse-jdbc</artifactId>
