@@ -54,23 +54,24 @@ If replication is slow or a replica is temporarily unavailable, increase the tim
 
 ## Parallel Quorum Inserts
 
-By default, ClickHouse does not allow parallel quorum inserts into the same table. The `insert_quorum_parallel` setting enables concurrent quorum inserts:
+By default, ClickHouse allows parallel quorum inserts into the same table (`insert_quorum_parallel = 1`). Disable this setting if you need strict serialization of quorum inserts — for example, when you rely on `select_sequential_consistency` for read-after-write guarantees:
 
 ```sql
 SET insert_quorum = 2;
-SET insert_quorum_parallel = 1;  -- Allow concurrent quorum inserts
+SET insert_quorum_parallel = 0;  -- Serialize quorum inserts to the same table
 
 INSERT INTO events VALUES (now(), 1, 'click');
 ```
 
-Enabling parallel quorum inserts improves throughput for applications that insert from multiple connections simultaneously.
+Leaving parallel quorum inserts enabled (the default) improves throughput for applications that insert from multiple connections simultaneously, at the cost of sequential consistency on reads.
 
 ## Consistent Reads After Quorum Inserts
 
-To guarantee that a SELECT after a quorum insert sees the written data, use `select_sequential_consistency`:
+To guarantee that a SELECT after a quorum insert sees the written data, use `select_sequential_consistency`. Note that this setting has no effect while `insert_quorum_parallel` is enabled (the default), so you must disable it as well:
 
 ```sql
 SET insert_quorum = 2;
+SET insert_quorum_parallel = 0;
 SET select_sequential_consistency = 1;
 
 -- This insert waits for 2 replicas
