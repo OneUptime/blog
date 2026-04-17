@@ -10,28 +10,28 @@ Description: A practical guide to using arithmetic operators in ClickHouse queri
 
 ## Basic Arithmetic Operators
 
-ClickHouse supports the standard set of arithmetic operators: `+`, `-`, `*`, `/`, `%` (modulo), and `//` (integer division). These work on numeric types and follow implicit type promotion rules.
+ClickHouse supports the standard set of arithmetic operators: `+`, `-`, `*`, `/`, and `%` (modulo). For integer division, use the `intDiv` function. These work on numeric types and follow implicit type promotion rules.
 
 ```sql
 SELECT
-  10 + 3 AS addition,       -- 13
-  10 - 3 AS subtraction,    -- 7
-  10 * 3 AS multiplication, -- 30
-  10 / 3 AS division,       -- 3.3333...
-  10 // 3 AS int_division,  -- 3
-  10 % 3 AS modulo          -- 1
+  10 + 3 AS addition,         -- 13
+  10 - 3 AS subtraction,      -- 7
+  10 * 3 AS multiplication,   -- 30
+  10 / 3 AS division,         -- 3.3333...
+  intDiv(10, 3) AS int_div,   -- 3
+  10 % 3 AS modulo            -- 1
 ```
 
 ## Type Promotion Rules
 
-When mixing integer types, ClickHouse promotes to the wider type. Dividing two integers produces a `Float64` result.
+When both operands are up to 32 bits wide, ClickHouse promotes the result to the next larger type than the wider operand. Dividing two integers always produces a `Float64` result.
 
 ```sql
 SELECT
-  toTypeName(1 + 1),        -- UInt8
-  toTypeName(1 + 1000000),  -- UInt32
-  toTypeName(1 / 2),        -- Float64
-  toTypeName(10 // 3)       -- UInt8 (integer division)
+  toTypeName(1 + 1),           -- UInt16
+  toTypeName(1 + 1000000),     -- UInt64
+  toTypeName(1 / 2),           -- Float64
+  toTypeName(intDiv(10, 3))    -- UInt8 (integer division)
 ```
 
 ## Arithmetic in Aggregations
@@ -52,7 +52,7 @@ LIMIT 30
 
 ## Using intDiv and modulo Functions
 
-The `intDiv` and `modulo` functions are explicit alternatives to `//` and `%`.
+The `intDiv` function performs integer division, and `modulo` is the explicit form of `%`.
 
 ```sql
 SELECT
@@ -67,12 +67,12 @@ This pattern floors a Unix timestamp to the nearest hour.
 
 ## Avoiding Division by Zero
 
-Use `if` or `nullIf` to guard against zero denominators.
+Use `if` or `nullIf` to guard against zero denominators. Dividing by `nullIf(x, 0)` returns `NULL` when `x` is zero, since any arithmetic with `NULL` yields `NULL`.
 
 ```sql
 SELECT
   user_id,
-  nullIf(total_clicks, 0) AS safe_clicks,
+  total_clicks / nullIf(total_views, 0) AS ctr_safe,
   if(total_views = 0, 0, total_clicks / total_views) AS ctr
 FROM user_stats
 ```
@@ -102,4 +102,4 @@ FROM feature_flags
 
 ## Summary
 
-ClickHouse supports arithmetic operators `+`, `-`, `*`, `/`, `//`, and `%` with automatic type promotion. Use `intDiv` for explicit integer division, guard zero denominators with `nullIf` or `if`, and leverage `pow`, `sqrt`, and `abs` for advanced numeric calculations in aggregation queries.
+ClickHouse supports arithmetic operators `+`, `-`, `*`, `/`, and `%` with automatic type promotion. Use the `intDiv` function for integer division, guard zero denominators with `nullIf` or `if`, and leverage `pow`, `sqrt`, and `abs` for advanced numeric calculations in aggregation queries.
