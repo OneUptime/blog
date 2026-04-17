@@ -8,7 +8,7 @@ Description: Learn how to back up ClickHouse databases and tables to AWS S3 usin
 
 ---
 
-ClickHouse 22.4+ includes a native `BACKUP` command that supports writing directly to S3. This is the simplest and most reliable way to create consistent, point-in-time backups without pausing ingestion. The command is transactionally consistent for MergeTree tables and supports incremental backups that only copy changed data parts.
+ClickHouse 22.11+ includes a native `BACKUP` command that supports writing directly to S3. This is the simplest and most reliable way to create consistent, point-in-time backups without pausing ingestion. The command is transactionally consistent for MergeTree tables and supports incremental backups that only copy changed data parts.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Ensure your ClickHouse version supports S3 backups:
 
 ```sql
 SELECT version();
--- Requires 22.4 or later for native BACKUP TO S3
+-- Requires 22.11 or later for native BACKUP TO S3
 ```
 
 Install the AWS CLI for credential verification:
@@ -115,7 +115,7 @@ For large databases, run the backup asynchronously and poll for completion:
 -- Start async backup
 BACKUP DATABASE my_database
 TO S3('https://s3.us-east-1.amazonaws.com/your-backup-bucket/clickhouse/backups/2026-03-31/')
-SETTINGS async = true;
+ASYNC;
 
 -- Check backup status
 SELECT
@@ -208,7 +208,7 @@ SELECT
     id,
     status,
     name,
-    database,
+    base_backup_name,
     start_time,
     end_time,
     dateDiff('second', start_time, end_time) AS duration_s,
@@ -227,8 +227,8 @@ LIMIT 20;
 # List backup contents in S3
 aws s3 ls s3://your-backup-bucket/clickhouse/backups/ --recursive | sort
 
-# Check the backup manifest
-aws s3 cp s3://your-backup-bucket/clickhouse/backups/2026-03-31-full/.backup - | python3 -m json.tool | head -30
+# Check the backup manifest (XML)
+aws s3 cp s3://your-backup-bucket/clickhouse/backups/2026-03-31-full/.backup - | head -30
 ```
 
 ## Summary
