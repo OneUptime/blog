@@ -89,7 +89,7 @@ SELECT
     formatReadableSize(bytes_allocated) AS size,
     last_successful_update_time
 FROM system.dictionaries
-WHERE layout = 'cache';
+WHERE type = 'Cache';
 ```
 
 A `hit_rate` below 0.8 suggests the cache is too small. Increase `SIZE_IN_CELLS`.
@@ -103,7 +103,7 @@ LAYOUT(SSD_CACHE(
     BLOCK_SIZE 4096
     FILE_SIZE 16000000000  -- 16 GB on SSD
     READ_BUFFER_SIZE 1048576
-    MAX_STORED_KEYS 10000000
+    WRITE_BUFFER_SIZE 1048576
     PATH '/var/lib/clickhouse/user_files/dict_cache'
 ))
 ```
