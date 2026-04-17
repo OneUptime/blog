@@ -134,12 +134,12 @@ LIMIT 5
 
 ## Encoding Composite Keys for External Systems
 
-When sending data to external APIs that require URL-safe identifiers, you can compose a key and encode it.
+When sending data to external APIs that require URL-safe identifiers, use `base64URLEncode` instead of `base64Encode`. Standard base64 uses `+` and `/`, which have special meaning in URLs; `base64URLEncode` substitutes `-` and `_` (RFC 4648 section 5) so the output can be dropped into a URL without further escaping.
 
 ```sql
 SELECT
     concat(toString(tenant_id), ':', toString(event_id)) AS composite_key,
-    base64Encode(concat(toString(tenant_id), ':', toString(event_id))) AS encoded_key
+    base64URLEncode(concat(toString(tenant_id), ':', toString(event_id))) AS encoded_key
 FROM events
 WHERE event_date = today()
 LIMIT 10
