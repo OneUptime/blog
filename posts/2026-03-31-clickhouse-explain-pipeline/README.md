@@ -85,21 +85,21 @@ LimitTransform
 
 Partial sorting happens in parallel (`× 8`), then results are merged (`Resize 8 -> 1`) and final merge-sorted before the limit is applied.
 
-## EXPLAIN PIPELINE with COMPACT Option
+## EXPLAIN PIPELINE with graph Option
 
-The `graph = 1` option renders the pipeline in a compact single-line-per-step format, and `compact = 1` collapses identical parallel branches.
+The `graph = 1` option renders the pipeline as a DOT graph description, which can be piped into Graphviz for visualization. The `compact = 1` option (enabled by default when `graph = 1` is set) collapses identical parallel branches so the output stays readable for highly parallel queries.
 
 ```sql
--- Default verbose output
+-- Default text output
 EXPLAIN PIPELINE
 SELECT count() FROM events;
 
--- Compact view - collapses parallel branches
-EXPLAIN PIPELINE compact = 1
+-- DOT graph output (pipe to Graphviz to render)
+EXPLAIN PIPELINE graph = 1, compact = 1
 SELECT count() FROM events;
 ```
 
-Compact output hides the `× N` repetition and shows only unique transform types, making it easier to reason about the overall shape of the pipeline for complex queries.
+In DOT output each processor becomes a node and each data stream becomes an edge. With `compact = 1` parallel processors of the same type are merged into a single node, making it easier to reason about the overall shape of the pipeline for complex queries.
 
 ## Identifying Bottlenecks
 
@@ -119,7 +119,7 @@ GROUP BY a.user_id, b.name;
 ExpressionTransform
   AggregatingTransform
     Resize 8 -> 1
-      JoinTransform × 8
+      JoiningTransform × 8
         MergeTreeThread × 8
         -- (broadcast side for users table)
         SourceFromSingleChunk
@@ -166,4 +166,4 @@ Comparing both outputs lets you confirm whether increasing `max_threads` actuall
 
 ## Summary
 
-`EXPLAIN PIPELINE` exposes the physical execution graph that ClickHouse builds for a query, including the number of parallel threads at each stage and where fan-in or fan-out occurs. Look for `Resize N -> 1` steps that appear early as potential parallelism bottlenecks, verify that `MergeTreeThread × N` counts match your expected thread count, and use `compact = 1` when working with complex multi-join queries that produce verbose output.
+`EXPLAIN PIPELINE` exposes the physical execution graph that ClickHouse builds for a query, including the number of parallel threads at each stage and where fan-in or fan-out occurs. Look for `Resize N -> 1` steps that appear early as potential parallelism bottlenecks, verify that `MergeTreeThread × N` counts match your expected thread count, and use `graph = 1` to produce DOT output for Graphviz when working with complex multi-join queries.
