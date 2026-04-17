@@ -231,13 +231,14 @@ WHERE table = 'events'
 GROUP BY month
 ORDER BY month;
 
--- Check if any parts are pending TTL
+-- Check if any parts have a delete TTL that has already expired
 SELECT
     table,
     count()  AS parts_with_expired_ttl
 FROM system.parts
 WHERE active = 1
-  AND has_expired_ttl = 1
+  AND delete_ttl_info_max != toDateTime(0)
+  AND delete_ttl_info_max < now()
 GROUP BY table;
 
 -- Watch active merges (including TTL-triggered merges)
