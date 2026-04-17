@@ -66,9 +66,9 @@ Controls threads used for fetching parts from replicas:
 </clickhouse>
 ```
 
-## Merge-Related Query Settings
+## Merge-Related MergeTree Settings
 
-These settings are set at the query or profile level, not at the server level.
+These settings are MergeTree-engine settings. They can be set globally in the server's `<merge_tree>` section of `config.xml` or per-table via the `SETTINGS` clause on `CREATE TABLE` / `ALTER TABLE ... MODIFY SETTING`.
 
 ### max_bytes_to_merge_at_max_space_in_pool
 
@@ -103,8 +103,8 @@ ClickHouse will not start a new merge if fewer than this many background pool en
 ```xml
 <clickhouse>
     <merge_tree>
-        <!-- Default: 8. Higher value = more conservative merging under pool pressure. -->
-        <number_of_free_entries_in_pool_to_execute_merge>8</number_of_free_entries_in_pool_to_execute_merge>
+        <!-- Default: 20. Higher value = more conservative merging under pool pressure. -->
+        <number_of_free_entries_in_pool_to_execute_merge>20</number_of_free_entries_in_pool_to_execute_merge>
     </merge_tree>
 </clickhouse>
 ```
@@ -143,7 +143,7 @@ ALTER TABLE events
 ```xml
 <clickhouse>
     <merge_tree>
-        <!-- Maximum number of parts that can be mutated simultaneously (default: 8) -->
+        <!-- Maximum number of part mutations per replica (default: 0, meaning no limit) -->
         <max_number_of_mutations_for_replica>8</max_number_of_mutations_for_replica>
     </merge_tree>
 </clickhouse>
@@ -249,14 +249,14 @@ A part count that grows without bound indicates that merges are falling behind i
 ```xml
 <clickhouse>
     <merge_tree>
-        <!-- Slow down inserts when part count exceeds this threshold (default: 300) -->
-        <parts_to_delay_insert>300</parts_to_delay_insert>
+        <!-- Slow down inserts when part count exceeds this threshold (default: 1000) -->
+        <parts_to_delay_insert>1000</parts_to_delay_insert>
 
-        <!-- Delay increment per extra part beyond parts_to_delay_insert (ms) -->
+        <!-- Maximum delay to apply to INSERTs when parts_to_delay_insert is exceeded (seconds, default: 1) -->
         <max_delay_to_insert>1</max_delay_to_insert>
 
-        <!-- Reject inserts entirely when part count exceeds this threshold (default: 600) -->
-        <parts_to_throw_insert>600</parts_to_throw_insert>
+        <!-- Reject inserts entirely when part count exceeds this threshold (default: 3000) -->
+        <parts_to_throw_insert>3000</parts_to_throw_insert>
     </merge_tree>
 </clickhouse>
 ```
@@ -276,12 +276,12 @@ If you regularly see insert delays, either increase `background_pool_size`, redu
         <!-- Allow merges up to 150 GiB -->
         <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
 
-        <!-- Start slowing inserts at 500 parts per partition -->
-        <parts_to_delay_insert>500</parts_to_delay_insert>
-        <parts_to_throw_insert>1000</parts_to_throw_insert>
+        <!-- Raise thresholds to absorb bursty writes before delay/throw kicks in -->
+        <parts_to_delay_insert>2000</parts_to_delay_insert>
+        <parts_to_throw_insert>5000</parts_to_throw_insert>
 
-        <!-- Conservative: keep 8 free pool slots before starting new merges -->
-        <number_of_free_entries_in_pool_to_execute_merge>8</number_of_free_entries_in_pool_to_execute_merge>
+        <!-- Reserve pool slots before starting new merges -->
+        <number_of_free_entries_in_pool_to_execute_merge>20</number_of_free_entries_in_pool_to_execute_merge>
     </merge_tree>
 </clickhouse>
 ```
