@@ -81,7 +81,7 @@ When loading large datasets, increase merge pool size to handle the part influx:
 
 ## Scheduling Batch Jobs
 
-Avoid running batch jobs during peak interactive query hours. Use ClickHouse's built-in scheduling with `SCHEDULE` on materialized views, or trigger jobs from an external scheduler like Airflow:
+Avoid running batch jobs during peak interactive query hours. Use ClickHouse's built-in scheduling with `REFRESH EVERY` on refreshable materialized views, or trigger jobs from an external scheduler like Airflow:
 
 ```bash
 clickhouse-client --query="
