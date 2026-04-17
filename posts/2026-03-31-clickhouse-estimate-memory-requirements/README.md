@@ -77,11 +77,13 @@ Total RAM = mark_cache + query_memory + page_cache + 4 GB OS overhead
 ## Monitoring Memory
 
 ```sql
-SELECT
-    metric,
-    value
+SELECT metric, value
 FROM system.metrics
-WHERE metric IN ('MemoryTracking', 'MarkCacheBytes', 'UncompressedCacheBytes');
+WHERE metric = 'MemoryTracking'
+UNION ALL
+SELECT metric, value
+FROM system.asynchronous_metrics
+WHERE metric IN ('MarkCacheBytes', 'UncompressedCacheBytes');
 ```
 
 Track these metrics in [OneUptime](https://oneuptime.com) and alert when `MemoryTracking` exceeds 80% of available RAM.
