@@ -52,7 +52,7 @@ The main limitations? It's SaaS-only (no self-hosting option), the log managemen
 
 **What stands out:**
 - Probably the most comprehensive feature set in the market
-- Excellent integrations (800+)
+- Excellent integrations (1,000+)
 - Strong APM with distributed tracing
 - Real User Monitoring (RUM) for frontend performance
 
@@ -80,7 +80,7 @@ The main limitations? It's SaaS-only (no self-hosting option), the log managemen
 **Pricing:**
 - Free tier for up to 5 users
 - Professional plan starts at $21/user/month
-- Business plan at $41/user/month adds AIOps features
+- Business plan at $41/user/month adds Event Intelligence (full AIOps capabilities are a separate add-on/tier)
 - Gets expensive for larger teams - a 20-person on-call rotation at Business tier is $820/month just for PagerDuty, before you add monitoring
 
 **Where Better Stack wins:** Better Stack includes uptime monitoring, so you don't need a separate tool. PagerDuty is purely incident management - you'll still need Pingdom, Datadog, or something else for actual monitoring.
@@ -101,8 +101,8 @@ The main limitations? It's SaaS-only (no self-hosting option), the log managemen
 
 **Pricing:**
 - Free: 50 monitors, 5-minute intervals
-- Pro: $7/month for 50 monitors with 1-minute intervals
-- Enterprise: $54/month for advanced features
+- Solo: $7/month (annual) for 50 monitors with 60-second intervals
+- Enterprise: $54/month (annual) for advanced features
 
 **Where Better Stack wins:** Better Stack includes incident management, on-call scheduling, and status pages. Uptime Robot is purely monitoring - you'll need additional tools for everything else.
 
@@ -122,7 +122,7 @@ This isn't a single product - it's the open-source stack that many engineering t
 
 **Pricing:**
 - Free (self-hosted)
-- Grafana Cloud starts at $0 with a generous free tier, paid plans from $29/month
+- Grafana Cloud starts at $0 with a generous free tier, paid plans from $19/month plus usage
 
 **Where Better Stack wins:** Setup time. Better Stack takes 5 minutes to start monitoring. A Prometheus + Grafana stack takes hours (or days) to set up properly, and you'll be maintaining it forever. No built-in status pages or incident management either.
 
@@ -162,7 +162,7 @@ This isn't a single product - it's the open-source stack that many engineering t
 - Catalog for tracking services, teams, and ownership
 
 **Pricing:**
-- On-call starts at $0 for up to 10 seats
+- A free Basic plan exists with limited on-call features; paid On-call is $20/user/month
 - Incident management pricing is custom (enterprise-focused)
 - Generally more expensive than Better Stack for equivalent features
 
