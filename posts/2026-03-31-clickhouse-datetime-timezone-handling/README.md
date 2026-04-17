@@ -8,7 +8,7 @@ Description: A comprehensive guide to timezone-aware DateTime in ClickHouse: sto
 
 ---
 
-Timezone handling is one of the most common sources of bugs in analytical systems. ClickHouse has a clear and consistent model, but it differs from what developers used to application databases might expect. Understanding how `DateTime` and `DateTime('timezone')` work at the storage level - and knowing when to use `toTimezone`, `toUTC`, and `formatDateTime` - will prevent an entire class of subtle reporting errors.
+Timezone handling is one of the most common sources of bugs in analytical systems. ClickHouse has a clear and consistent model, but it differs from what developers used to application databases might expect. Understanding how `DateTime` and `DateTime('timezone')` work at the storage level - and knowing when to use `toTimezone`, `toUTCTimestamp`, and `formatDateTime` - will prevent an entire class of subtle reporting errors.
 
 ## How ClickHouse Stores DateTime
 
