@@ -15,7 +15,7 @@ DigitalOcean provides cost-effective infrastructure for ClickHouse deployments. 
 For production ClickHouse:
 
 - **Memory-Optimized**: `m-16vcpu-128gb` - Best for large working sets
-- **CPU-Optimized**: `c-16-16gib` - For compute-intensive query workloads
+- **CPU-Optimized**: `c-16` - For compute-intensive query workloads
 - **Premium AMD**: `m3-8vcpu-64gb` - Good price/performance balance
 
 For development: `s-4vcpu-8gb` is sufficient.
@@ -63,8 +63,11 @@ echo '/dev/sda /var/lib/clickhouse xfs defaults,noatime 0 2' | sudo tee -a /etc/
 
 ```bash
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
-curl -fsSL 'https://packages.clickhouse.com/deb/archive/apt/stable.sources' | \
-  sudo tee /etc/apt/sources.list.d/clickhouse.sources
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
+  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" | \
+  sudo tee /etc/apt/sources.list.d/clickhouse.list
 sudo apt-get update && sudo apt-get install -y clickhouse-server clickhouse-client
 sudo systemctl enable --now clickhouse-server
 ```
