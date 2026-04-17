@@ -14,7 +14,7 @@ ClickHouse stores each column separately. Because each column contains values of
 
 ## Compression Blocks
 
-ClickHouse compresses data in fixed-size "compression blocks" (default 64 KB of uncompressed data). Each block is compressed independently, which allows random access - ClickHouse can jump to a specific block and decompress only that block without decompressing everything before it.
+ClickHouse compresses data in "compression blocks" of roughly 64 KB to 1 MB of uncompressed data (controlled by `min_compress_block_size` default 64 KB and `max_compress_block_size` default 1 MB). Each block is compressed independently, which allows random access - ClickHouse can jump to a specific block and decompress only that block without decompressing everything before it.
 
 ## Available Codecs
 
