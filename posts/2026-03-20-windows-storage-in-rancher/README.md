@@ -86,7 +86,7 @@ spec:
       image: myregistry/windows-app:latest
       volumeMounts:
         - name: app-data
-          mountPath: C:\app\data    # Windows path notation
+          mountPath: 'C:\app\data'    # Windows path notation (quoted for YAML)
   volumes:
     - name: app-data
       persistentVolumeClaim:
@@ -103,11 +103,11 @@ spec:
     - name: app
       volumeMounts:
         - name: local-data
-          mountPath: C:\app\local
+          mountPath: 'C:\app\local'
   volumes:
     - name: local-data
       hostPath:
-        path: C:\kubernetes\data    # Path on the Windows worker node
+        path: 'C:\kubernetes\data'    # Path on the Windows worker node
         type: DirectoryOrCreate
 ```
 
@@ -119,7 +119,7 @@ spec:
 | hostPath | No | Yes | Single-node only |
 | Azure Disk | No | Yes | Azure-specific |
 | Azure Files | Yes | Yes | SMB-based, Azure-specific |
-| NFS | No | Limited | Requires Windows NFS client |
+| NFS | Yes | Limited | Requires Windows NFS client |
 
 ## Conclusion
 
