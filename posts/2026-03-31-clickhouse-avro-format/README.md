@@ -94,15 +94,23 @@ SET format_avro_schema_registry_url = 'http://schema-registry:8081';
 
 ## Writing Avro for Kafka Producers
 
-ClickHouse can also produce Avro messages for Kafka:
+ClickHouse can also produce Avro messages for Kafka. Create a Kafka engine table for the producer topic and `INSERT` into it:
 
 ```sql
-INSERT INTO FUNCTION kafka(
-    'kafka:9092',
-    'order_events',
-    '',
-    'AvroConfluent'
+CREATE TABLE kafka_order_events
+(
+    order_id    UInt64,
+    customer_id UInt32,
+    total       Float64
 )
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'kafka:9092',
+    kafka_topic_list  = 'order_events',
+    kafka_group_name  = 'clickhouse_producer',
+    kafka_format      = 'AvroConfluent';
+
+INSERT INTO kafka_order_events
 SELECT order_id, customer_id, total
 FROM orders
 WHERE created_at >= now() - INTERVAL 1 HOUR;
@@ -120,8 +128,9 @@ WHERE created_at >= now() - INTERVAL 1 HOUR;
 | Boolean         | boolean |
 | String          | string or bytes |
 | UUID            | string (logicalType: uuid) |
-| Date            | int (logicalType: date) |
-| DateTime        | long (logicalType: timestamp-millis) |
+| Date / Date32   | int (logicalType: date) |
+| DateTime64(3)   | long (logicalType: timestamp-millis) |
+| DateTime64(6)   | long (logicalType: timestamp-micros) |
 | Array(T)        | array |
 | Map(String, V)  | map |
 | Nullable(T)     | union [null, T] |
@@ -130,7 +139,7 @@ WHERE created_at >= now() - INTERVAL 1 HOUR;
 
 Avro supports schema evolution - readers with a newer schema can read files written with an older schema, provided backward-compatible changes are made (adding fields with defaults, removing fields).
 
-When reading an Avro file with extra fields not present in your table:
+When your ClickHouse table has columns that are not present in the Avro file, enable `input_format_avro_allow_missing_fields` so the missing fields are filled with their default values instead of raising an error:
 
 ```sql
 SET input_format_avro_allow_missing_fields = 1;
@@ -142,14 +151,17 @@ FROM file('orders_v2.avro', Avro);
 
 ## Generating an Avro Schema from ClickHouse
 
-Use the `avroToClickHouseType` function or generate an Avro schema for your table to share with producers:
+ClickHouse derives the Avro writer schema automatically from the column names and types of the source query when you write Avro data. To inspect the schema that will be produced, write a small sample to a file and read it back with a tool like `avro-tools` (or Python's `fastavro`):
 
-```sql
-SELECT formatAvroSchemaOneLine(
-    ['order_id', 'customer_id', 'total'],
-    ['UInt64', 'UInt32', 'Float64']
-);
+```bash
+clickhouse-client \
+  --query "SELECT order_id, customer_id, total FROM orders LIMIT 0 FORMAT Avro" \
+  > schema_sample.avro
+
+avro-tools getschema schema_sample.avro
 ```
+
+Producers on the Kafka side can then register a matching schema with the Confluent Schema Registry.
 
 ## Performance Tips
 
