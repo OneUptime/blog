@@ -104,14 +104,14 @@ ORDER BY r.cohort_month, r.period;
 
 ## Using retention Function
 
-ClickHouse also provides a `retention` aggregate function that takes multiple conditions:
+ClickHouse also provides a `retention` aggregate function that takes multiple `UInt8` conditions evaluated per row. The first condition is the base event; subsequent elements of the result are 1 only if the first condition and that condition both held for the user:
 
 ```sql
 SELECT
     user_id,
     retention(
         event_type = 'signup',
-        event_type = 'purchase' AND created_at >= signup_time + INTERVAL 7 DAY
+        event_type = 'purchase'
     ) AS retention_flags
 FROM user_events
 GROUP BY user_id;
