@@ -133,7 +133,6 @@ Check current quota consumption:
 SELECT
     quota_name,
     quota_key,
-    user_name,
     start_time,
     end_time,
     duration,
@@ -143,14 +142,14 @@ SELECT
     read_rows,
     formatReadableSize(read_bytes) AS data_read,
     execution_time
-FROM system.quota_usage
-ORDER BY quota_name, user_name;
+FROM system.quotas_usage
+ORDER BY quota_name, quota_key;
 ```
 
 List all defined quotas:
 
 ```sql
-SELECT name, keys, intervals
+SELECT name, keys, durations
 FROM system.quotas
 ORDER BY name;
 ```
@@ -177,7 +176,7 @@ SELECT
     exception_code,
     exception
 FROM system.query_log
-WHERE exception_code = 73  -- QUOTA_EXCEEDED error code
+WHERE exception_code = 201  -- QUOTA_EXCEEDED error code
   AND event_time >= today()
 ORDER BY event_time DESC;
 ```
@@ -187,7 +186,7 @@ ORDER BY event_time DESC;
 ```sql
 -- Add a new interval to an existing quota
 ALTER QUOTA analyst_quota
-    ADD FOR INTERVAL 1 WEEK
+    FOR INTERVAL 1 WEEK
         MAX queries = 10000,
         MAX read_bytes = 1099511627776;  -- 1 TiB per week
 
@@ -201,8 +200,8 @@ ALTER QUOTA analyst_quota
 ## Removing a Quota
 
 ```sql
--- Remove quota from a user
-ALTER QUOTA analyst_quota DROP TO analyst;
+-- Reassign the quota so it no longer applies to anyone
+ALTER QUOTA analyst_quota TO NONE;
 
 -- Drop the quota entirely
 DROP QUOTA IF EXISTS analyst_quota;
@@ -245,8 +244,8 @@ GRANT analyst TO alice, bob;
 GRANT etl_writer TO etl_pipeline;
 
 -- Verify
-SELECT quota_name, user_name, queries, formatReadableSize(read_bytes)
-FROM system.quota_usage;
+SELECT quota_name, quota_key, queries, formatReadableSize(read_bytes)
+FROM system.quotas_usage;
 ```
 
 ## Summary
