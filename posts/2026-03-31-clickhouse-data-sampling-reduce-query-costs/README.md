@@ -26,7 +26,7 @@ CREATE TABLE page_views
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(event_time)
-ORDER BY (user_id, event_time)
+ORDER BY (user_id, event_time, intHash64(user_id))
 SAMPLE BY intHash64(user_id);
 ```
 
