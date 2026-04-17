@@ -262,9 +262,9 @@ ORDER BY avg_cpu_pct DESC;
 ClickHouse has an official Grafana plugin. Configure a ClickHouse data source and use the query editor to build panels.
 
 ```sql
--- Grafana panel query (uses $__timeFilter and $__interval macros)
+-- Grafana panel query (uses $__timeFilter and $__timeInterval macros)
 SELECT
-    toStartOfInterval(collected_at, INTERVAL $__interval second) AS time,
+    $__timeInterval(collected_at)               AS time,
     service,
     avg(value)                                  AS avg_cpu
 FROM raw_metrics
