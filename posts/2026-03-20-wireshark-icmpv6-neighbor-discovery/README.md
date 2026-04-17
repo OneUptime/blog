@@ -96,7 +96,7 @@ DAD sends NS with source = `::` (unspecified):
 icmpv6.type == 135 && ipv6.src == ::
 
 # Show DAD conflicts (NA sent in response to a DAD NS)
-icmpv6.type == 136 && icmpv6.nd.na.flag.solicited == 0
+icmpv6.type == 136 && icmpv6.nd.na.flag.s == 0
 ```
 
 ## Using Wireshark Conversations for NDP
