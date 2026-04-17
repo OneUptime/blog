@@ -19,7 +19,7 @@ Via the API:
 ```bash
 curl https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
-  | jq '.service.ipAccessList'
+  | jq '.result.ipAccessList'
 ```
 
 ## Adding IP Restrictions via the Console
@@ -38,11 +38,29 @@ curl -X PATCH \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "ipAccessList": [
-      {"source": "203.0.113.0/24", "description": "Office network"},
-      {"source": "10.0.0.0/8", "description": "Internal VPC"},
-      {"source": "198.51.100.42/32", "description": "CI/CD runner"}
-    ]
+    "ipAccessList": {
+      "add": [
+        {"source": "203.0.113.0/24", "description": "Office network"},
+        {"source": "10.0.0.0/8", "description": "Internal VPC"},
+        {"source": "198.51.100.42/32", "description": "CI/CD runner"}
+      ]
+    }
+  }'
+```
+
+To remove existing entries, use the `remove` array (you can combine `add` and `remove` in the same request):
+
+```bash
+curl -X PATCH \
+  https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
+  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ipAccessList": {
+      "remove": [
+        {"source": "198.51.100.42/32", "description": "CI/CD runner"}
+      ]
+    }
   }'
 ```
 
@@ -54,8 +72,11 @@ To temporarily allow all connections (useful for testing, not recommended for pr
 curl -X PATCH \
   https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '{
-    "ipAccessList": [{"source": "0.0.0.0/0", "description": "Allow all"}]
+    "ipAccessList": {
+      "add": [{"source": "0.0.0.0/0", "description": "Allow all"}]
+    }
   }'
 ```
 
