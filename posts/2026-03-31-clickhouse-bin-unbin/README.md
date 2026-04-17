@@ -118,7 +118,7 @@ SELECT
     bitAnd(permission_flags, 8)  AS is_admin
 FROM (
     SELECT number AS user_id, (number % 16) AS permission_flags
-    FROM numbers(1, 9)
+    FROM numbers(1, 8)
 );
 ```
 
