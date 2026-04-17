@@ -16,9 +16,9 @@ The `File` table engine in ClickHouse treats a local file on the ClickHouse serv
 ENGINE = File(format)
 ```
 
-The file is stored at: `{user_files_path}/{table_name}.{format_extension}`
+When you create a table with `ENGINE = File(Format)` in ClickHouse Server, the data is stored at `{path}/data/{database}/{table_name}/data.{Format}`, where `{path}` is the server's data directory (default `/var/lib/clickhouse/`).
 
-The default `user_files_path` is `/var/lib/clickhouse/user_files/`.
+Note: the File engine does not let you choose a custom filesystem path in ClickHouse Server - the location is always derived from the database and table name. The related `user_files_path` setting (default `/var/lib/clickhouse/user_files/`) is used by the `file()` table function, not by File engine tables.
 
 ## Creating a File Table (CSV)
 
@@ -31,7 +31,7 @@ CREATE TABLE csv_import (
 ) ENGINE = File(CSV);
 ```
 
-This creates a table backed by `/var/lib/clickhouse/user_files/csv_import.csv`.
+This creates a table backed by `/var/lib/clickhouse/data/default/csv_import/data.CSV`.
 
 ## Inserting Data (Exporting to File)
 
@@ -46,11 +46,11 @@ The data is written to the CSV file.
 
 ## Reading Data (Importing from File)
 
-Place a file at `/var/lib/clickhouse/user_files/csv_import.csv`:
+Once the table has been created, its data directory exists on disk. Replace the backing file with your own data (matching the declared format):
 
 ```bash
-sudo cp /tmp/orders.csv /var/lib/clickhouse/user_files/csv_import.csv
-sudo chown clickhouse:clickhouse /var/lib/clickhouse/user_files/csv_import.csv
+sudo cp /tmp/orders.csv /var/lib/clickhouse/data/default/csv_import/data.CSV
+sudo chown clickhouse:clickhouse /var/lib/clickhouse/data/default/csv_import/data.CSV
 ```
 
 Then query it:
@@ -91,26 +91,19 @@ FROM events
 WHERE toDate(ts) = yesterday();
 ```
 
-The Parquet file is at `/var/lib/clickhouse/user_files/parquet_export.parquet`.
+The Parquet file is at `/var/lib/clickhouse/data/default/parquet_export/data.Parquet`.
 
 ## Specifying a Custom File Path
 
-You can specify a path relative to `user_files_path`:
-
-```sql
-CREATE TABLE my_data ENGINE = File(CSV) AS SELECT 1;
-
--- Custom path syntax using clickhouse-local
--- SELECT * FROM file('/var/lib/clickhouse/user_files/data.csv', CSV, 'id UInt32, name String');
-```
+ClickHouse Server does not let you specify a custom filesystem path for a File engine table - the location is always derived from the database and table name. If you need to point at an arbitrary file on disk, use `clickhouse-local` (which accepts a path as an extra argument to `File`) or the `file()` table function described below.
 
 ## Using file() Table Function for One-Off Reads
 
-For ad hoc file reads without creating a persistent table, use the `file()` function:
+For ad hoc file reads without creating a persistent table, use the `file()` function. The path is resolved relative to `user_files_path`:
 
 ```sql
 SELECT *
-FROM file('/var/lib/clickhouse/user_files/orders.csv', CSV, 'id UInt32, name String, amount Float64');
+FROM file('orders.csv', CSV, 'id UInt32, name String, amount Float64');
 ```
 
 ## Data Pipeline: Import, Transform, Export
