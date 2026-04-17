@@ -118,13 +118,14 @@ SET format_csv_delimiter = '|';
 
 ## Handling Quotes
 
-ClickHouse uses double quotes by default for quoting. Change the quote character:
+ClickHouse accepts both double and single quotes in CSV input by default. Control which are allowed:
 
 ```sql
-SET format_csv_quote = '\''; -- single quote
+SET format_csv_allow_single_quotes = 1; -- accept 'value'
+SET format_csv_allow_double_quotes = 1; -- accept "value"
 ```
 
-Disable quoting in output (faster for clean data):
+Use LF (Unix) instead of CRLF (Windows) line endings in output:
 
 ```sql
 SET output_format_csv_crlf_end_of_line = 0;
@@ -211,7 +212,7 @@ The file has an embedded newline inside an unquoted field. Use `TabSeparated` in
 
 ## Performance Tips
 
-1. **Disable quoting** with `format_csv_quote = ''` when your data has no special characters - this speeds up both reading and writing.
+1. **Skip quote handling** with `SET format_csv_allow_single_quotes = 0` when your data uses only double quotes - this avoids extra parsing checks.
 2. **Use CSVWithNamesAndTypes** for automated pipelines so the target table schema can be validated against the file.
 3. **For large bulk loads**, prefer binary formats (Parquet, Arrow) which are 5-10x faster to parse.
 4. **Compress CSV files** before S3 upload: `.csv.gz` files are read transparently by ClickHouse.
