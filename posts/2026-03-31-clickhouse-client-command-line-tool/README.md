@@ -21,7 +21,7 @@ sudo apt-get install clickhouse-client
 On macOS with Homebrew:
 
 ```bash
-brew install clickhouse
+brew install --cask clickhouse
 ```
 
 Or download directly and run:
@@ -146,7 +146,13 @@ clickhouse-client
 ## Running Multiple Queries From a File
 
 ```bash
-clickhouse-client --multiquery < /scripts/setup.sql
+clickhouse-client --queries-file /scripts/setup.sql
+```
+
+You can also pipe a script via stdin:
+
+```bash
+clickhouse-client < /scripts/setup.sql
 ```
 
 ## Checking Server Version
