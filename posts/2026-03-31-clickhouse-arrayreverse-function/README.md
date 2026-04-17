@@ -107,14 +107,16 @@ INSERT INTO task_queue VALUES
 SELECT
     queue_id,
     task,
-    row_number() OVER (PARTITION BY queue_id ORDER BY (SELECT 1)) AS lifo_order
+    idx AS lifo_order
 FROM (
     SELECT
         queue_id,
         arrayReverse(task_names) AS reversed_tasks
     FROM task_queue
 )
-ARRAY JOIN reversed_tasks AS task;
+ARRAY JOIN
+    reversed_tasks AS task,
+    arrayEnumerate(reversed_tasks) AS idx;
 -- queue 1: deploy(1), test(2), build(3), setup(4)
 -- queue 2: validate(1), init(2)
 ```
