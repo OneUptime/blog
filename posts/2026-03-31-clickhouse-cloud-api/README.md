@@ -12,10 +12,11 @@ The ClickHouse Cloud API is a REST API that gives you full programmatic control 
 
 ## Authentication
 
-The API uses Bearer token authentication. Generate an API key in the ClickHouse Cloud console under "Organization Settings" - "API Keys":
+The API uses HTTP Basic authentication. Generate an API key in the ClickHouse Cloud console under "Organization Settings" - "API Keys" - this gives you a Key ID and Key Secret pair that you pass as the basic auth username and password:
 
 ```bash
-export CLICKHOUSE_API_KEY="your-api-key-here"
+export KEY_ID="your-key-id"
+export KEY_SECRET="your-key-secret"
 export ORG_ID="your-org-id"
 ```
 
@@ -28,54 +29,57 @@ https://api.clickhouse.cloud/v1
 ## List All Services
 
 ```bash
-curl https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}" \
+curl --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services \
   | jq '.result[] | {id: .id, name: .name, state: .state}'
 ```
 
 ## Get Service Details
 
 ```bash
-curl https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID} \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}"
+curl --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID}
 ```
 
 ## Create a Service
 
 ```bash
-curl -X POST https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}" \
+curl -X POST --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services \
   -H "Content-Type: application/json" \
   -d '{
     "name": "prod-analytics",
     "provider": "aws",
     "region": "us-east-1",
     "tier": "production",
-    "minTotalMemoryGb": 24,
-    "maxTotalMemoryGb": 96
+    "minReplicaMemoryGb": 24,
+    "maxReplicaMemoryGb": 96
   }'
 ```
 
 ## Update Service Settings
 
 ```bash
-curl -X PATCH https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID} \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}" \
+curl -X PATCH --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID} \
   -H "Content-Type: application/json" \
   -d '{
-    "minTotalMemoryGb": 48,
-    "ipAccessList": [
-      {"source": "10.0.0.0/8", "description": "Internal network"}
-    ]
+    "ipAccessList": {
+      "add": [
+        {"source": "10.0.0.0/8", "description": "Internal network"}
+      ]
+    }
   }'
 ```
+
+Note that `ipAccessList` on PATCH uses `add` and `remove` operation arrays rather than a direct list replacement. Memory and replica scaling settings are updated via a separate endpoint - use `PATCH /v1/organizations/{orgId}/services/{serviceId}/replicaScaling` (the recommended replica-based endpoint) rather than this one.
 
 ## Manage Organization Members
 
 ```bash
 # List members
-curl https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/members \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}"
+curl --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/members
 ```
 
 ## Query Execution via API
@@ -89,15 +93,9 @@ curl -X POST "https://${SERVICE_HOST}:8443" \
   --data-binary "SELECT version() FORMAT JSON"
 ```
 
-## Checking API Rate Limits
+## API Rate Limits
 
-The ClickHouse Cloud API has rate limits. Check response headers:
-
-```text
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1710000000
-```
+The ClickHouse Cloud API rate limits each API key to 10 requests over a 10-second window, and each organization is capped at 100 API keys. Contact ClickHouse support if you need either limit raised. Requests that exceed the limit return HTTP 429 (Too Many Requests).
 
 ## Summary
 
