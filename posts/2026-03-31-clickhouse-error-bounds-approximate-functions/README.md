@@ -54,9 +54,9 @@ WHERE event_date = today();
 
 ```sql
 SELECT
-    uniqExact(user_id)    AS exact,
-    uniqCombined(user_id) AS combined,
-    uniqCombined12(user_id) AS combined12
+    uniqExact(user_id)        AS exact,
+    uniqCombined(user_id)     AS combined,
+    uniqCombined(12)(user_id) AS combined12
 FROM events
 WHERE event_date = today();
 ```
@@ -78,7 +78,7 @@ WHERE event_date = today();
 
 ## topK Error
 
-`topK` guarantees that all items with frequency above `N / k` are included, where `N` is total count and `k` is the requested top size. Items returned may have slight frequency overestimates:
+`topK` implements the Filtered Space-Saving algorithm. Per the ClickHouse documentation, it does not provide a guaranteed result — in certain situations, errors may occur and it may return frequent values that aren't the most frequent values. In practice, items that are significantly more frequent than others are reliably returned, while frequency estimates may be slightly overestimated:
 
 ```sql
 SELECT topK(10)(event_name) AS top_10_events FROM events WHERE event_date = today();
@@ -105,7 +105,7 @@ WHERE event_date = today();
 |----------|----------------------|--------|
 | `SAMPLE 0.1` | ~0.3% at 100K rows | Proportional |
 | `uniqHLL12` | ~1.6% | 2.5 KB/group |
-| `uniqCombined` | ~0.8% | 4-6 KB/group |
+| `uniqCombined` | ~0.8% | ~96 KiB/group (default HLL_precision=17) |
 | `quantileTDigest` | <1% at tails | Proportional to compression |
 | `topK(100)` | <5% frequency estimate | Fixed |
 
