@@ -21,7 +21,14 @@ Spearman rank correlation measures the monotonic relationship between two variab
 
 ## Computing Spearman Correlation in ClickHouse
 
-ClickHouse does not have a built-in `spearmanCorr()` function, but you can implement it using row-number ranking:
+ClickHouse provides a built-in `rankCorr()` aggregate function (added in v20.9) that computes Spearman's rank correlation coefficient directly:
+
+```sql
+SELECT rankCorr(x, y) AS spearman_r
+FROM your_table;
+```
+
+If you need more control — for example, to apply your own tie-handling strategy — you can implement it manually by ranking values with window functions and applying `corr()` to the ranks:
 
 ```sql
 WITH ranked AS (
