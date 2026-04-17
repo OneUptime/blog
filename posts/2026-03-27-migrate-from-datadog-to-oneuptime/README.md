@@ -94,8 +94,16 @@ service:
 For VM and server monitoring:
 
 ```bash
-# Install the OneUptime agent
-curl -sSL https://oneuptime.com/agent/install.sh | bash
+# Install the OneUptime infrastructure agent
+curl -sSL https://oneuptime.com/docs/static/scripts/infrastructure-agent/install.sh | sudo bash
+
+# Configure with your secret key (created in the OneUptime dashboard)
+sudo oneuptime-infrastructure-agent configure \
+  --secret-key=YOUR_SECRET_KEY \
+  --oneuptime-url=https://oneuptime.com
+
+# Start the agent
+sudo oneuptime-infrastructure-agent start
 ```
 
 This monitors CPU, memory, disk, network - the same basics the Datadog Agent covers, without the per-host pricing.
@@ -206,8 +214,12 @@ OneUptime ingests logs via OpenTelemetry, Fluentd, and over 1000 other sources.
 <match **>
   @type http
   endpoint https://oneuptime.com/fluentd/logs
-  headers {"x-oneuptime-token":"YOUR_TOKEN"}
+  content_type application/json
   json_array true
+  headers {"x-oneuptime-token":"YOUR_TOKEN", "x-oneuptime-service-name":"YOUR_SERVICE_NAME"}
+  <format>
+    @type json
+  </format>
   <buffer>
     flush_interval 5s
   </buffer>
