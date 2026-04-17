@@ -97,7 +97,7 @@ CREATE TABLE fact_orders_daily (
     total_revenue Decimal64(2),
     total_quantity UInt64,
     order_count UInt32
-) ENGINE = SummingMergeTree(total_revenue, total_quantity, order_count)
+) ENGINE = SummingMergeTree((total_revenue, total_quantity, order_count))
 ORDER BY (order_date, customer_id, product_category);
 
 -- Populate from granular fact table
