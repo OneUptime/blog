@@ -15,7 +15,7 @@ Capture filters (BPF) are applied before packets are stored in Wireshark's buffe
 | Applied | Before buffering | After capture |
 | Performance | Reduces memory/CPU | No impact on capture |
 | Syntax | BPF (tcpdump-like) | Wireshark DSL |
-| Can be combined | With -F option | Yes |
+| Logical operators | and, or, not | and, or, not |
 
 ## Basic IPv6 BPF Capture Filters
 
@@ -54,10 +54,10 @@ ip6 host 2001:db8::10 or ip6 host 2001:db8::11
 ip6 src net 2001:db8:1::/64
 
 # Capture traffic to an IPv6 subnet
-ip6 dst net 2001:db8:servers::/64
+ip6 dst net 2001:db8:5::/64
 
 # Capture traffic within a /48 site prefix
-ip6 net 2001:db8:site1::/48
+ip6 net 2001:db8:1::/48
 ```
 
 ## Capture by Protocol over IPv6
@@ -118,7 +118,7 @@ ip6 dst net ff02::/16
 
 ```bpf
 # Capture HTTPS from a specific IPv6 subnet
-ip6 src net 2001:db8:clients::/64 and tcp dst port 443
+ip6 src net 2001:db8:c1e::/64 and tcp dst port 443
 
 # Capture IPv6 traffic excluding DNS and NTP
 ip6 and not (udp port 53 or udp port 123)
