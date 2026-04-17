@@ -97,7 +97,7 @@ SELECT
     toStartOfWeek(report_date) AS week,
     variant,
     count()                    AS cases,
-    round(100.0 * count() / sum(count()) OVER (PARTITION BY week), 2) AS pct_of_week
+    round(100.0 * count() / sum(count()) OVER (PARTITION BY toStartOfWeek(report_date)), 2) AS pct_of_week
 FROM disease_cases
 WHERE disease_code = 'COVID-19'
   AND report_date >= today() - 180
@@ -117,7 +117,7 @@ FROM (
     SELECT
         report_date,
         count() AS cases,
-        lagInFrame(count(), 7) OVER (ORDER BY report_date) AS cases_7d_ago
+        lagInFrame(count(), 7) OVER (ORDER BY report_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS cases_7d_ago
     FROM disease_cases
     WHERE disease_code = 'COVID-19'
     GROUP BY report_date
