@@ -120,7 +120,9 @@ network:
     eth0:
       addresses:
         - 2001:db8::100/64
-      gateway6: 2001:db8::1
+      routes:
+        - to: "::/0"
+          via: 2001:db8::1
       nameservers:
         addresses:
           - 2001:db8::53
@@ -148,7 +150,7 @@ try:
     pifs = session.xenapi.PIF.get_all_records()
 
     for pif_ref, pif_record in pifs.items():
-        if pif_record['device'] == 'eth0' and not pif_record['VLAN'] != -1:
+        if pif_record['device'] == 'eth0' and pif_record['VLAN'] == '-1':
             print(f"Configuring IPv6 on PIF: {pif_record['uuid']}")
 
             # Configure static IPv6
