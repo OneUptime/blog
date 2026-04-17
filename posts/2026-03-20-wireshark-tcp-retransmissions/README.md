@@ -58,9 +58,10 @@ Spurious Retransmission Retransmitted but original was received
 Analyze → Expert Information
 
 Shows all flagged events by severity:
-  Error   → TCP retransmissions, connection resets
-  Warning → Duplicate ACKs, out-of-order packets
-  Note    → Retransmissions, ACK ahead of data
+  Warning → Out-of-order segments, connection resets (RST),
+            previous segment not captured, zero window
+  Note    → Retransmissions, fast retransmissions,
+            spurious retransmissions, duplicate ACKs
 
 Sort by "Severity" to see the most serious issues first.
 Count of each type gives you a quick health summary.
@@ -96,13 +97,16 @@ echo "Retransmission rate: $RETRANS / $TOTAL"
 Wireshark colors retransmissions by default:
 
 ```text
-Black background  → Connection reset (RST)
-Red background    → TCP errors (retransmissions in some themes)
-Dark purple       → Bad TCP (retransmissions, out-of-order)
+Salmon/pink background, near-black text → Bad TCP
+  (retransmissions, out-of-order, duplicate ACKs,
+  tcp.analysis.flags without window/keepalive updates)
+
+Pale yellow background, dark red text   → TCP RST
+  (tcp.flags.reset == 1)
 
 To verify or customize:
   View → Coloring Rules
-  Look for "Bad TCP" rule
+  Look for "Bad TCP" and "TCP RST" rules
 ```
 
 ## Correlate Retransmissions with Application Slowness
