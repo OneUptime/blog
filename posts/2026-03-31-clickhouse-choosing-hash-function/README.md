@@ -12,7 +12,7 @@ ClickHouse provides over 20 hash functions, and choosing the right one can signi
 
 ## Hash Function Categories
 
-ClickHouse hash functions fall into five categories:
+ClickHouse hash functions fall into the following categories:
 
 ```text
 1. General-purpose fast hashes:  cityHash64, farmHash64, metroHash64
@@ -34,7 +34,7 @@ General-purpose sharding          | cityHash64
 High-throughput row hashing       | xxHash64
 Hash integer user_id directly     | intHash32 / intHash64
 A/B test assignment               | murmurHash2_64 or cityHash64
-Protect against hash flooding     | sipHash64
+Protect against hash flooding     | sipHash64Keyed
 Content integrity check           | SHA256
 Legacy MD5 compatibility          | MD5 / halfMD5
 Java ecosystem compatibility      | javaHash
@@ -59,7 +59,7 @@ LIMIT 10;
 
 ## High-Throughput Hashing: xxHash64
 
-`xxHash64` is the fastest option for hashing a single string value. Use it when processing billions of rows and hashing a single column.
+`xxHash64` is a very fast option for hashing a single string value and is often the top choice when processing billions of rows and hashing a single column. Actual throughput versus `cityHash64` is workload-dependent, so benchmark both on your data if performance is critical.
 
 ```sql
 -- Single-column, maximum throughput
@@ -83,15 +83,15 @@ FROM users
 WHERE intHash32(user_id) % 10 = 0;
 ```
 
-## Security-Sensitive: sipHash64
+## Security-Sensitive: sipHash64 / sipHash64Keyed
 
-Use `sipHash64` when hashing user-controlled inputs that could be crafted to cause hash collisions in non-keyed hash functions.
+Use the SipHash family when hashing user-controlled inputs that could be crafted to cause hash collisions in non-keyed hash functions. Note that `sipHash64` in ClickHouse uses a fixed (public) key, so for true hash-flooding protection against an adversary, use `sipHash64Keyed` with a secret, runtime-chosen key.
 
 ```sql
--- Safer for user-controlled input
+-- Safer for user-controlled input (secret key prevents adversarial collisions)
 SELECT
     request_id,
-    sipHash64(user_input_field) AS safe_hash
+    sipHash64Keyed((k0, k1), user_input_field) AS safe_hash
 FROM user_requests
 LIMIT 10;
 ```
@@ -159,4 +159,4 @@ SELECT intHash64(user_id) FROM users;
 
 ## Summary
 
-The right hash function depends on your use case. For general-purpose sharding and sampling, `cityHash64` is the default choice. For maximum throughput on single string inputs, use `xxHash64`. For integer keys, use `intHash32` or `intHash64`. For security-sensitive applications, use `sipHash64`. For cryptographic checksums, use `SHA256`. For compatibility with Java or Hive, use `javaHash` or `hiveHash`. Keep your function choice consistent within a system - mixing hash functions for the same logical key will produce inconsistent results.
+The right hash function depends on your use case. For general-purpose sharding and sampling, `cityHash64` is the default choice. For maximum throughput on single string inputs, use `xxHash64`. For integer keys, use `intHash32` or `intHash64`. For security-sensitive applications where adversarial input could trigger hash-collision attacks, use `sipHash64Keyed` with a secret key. For cryptographic checksums, use `SHA256`. For compatibility with Java or Hive, use `javaHash` or `hiveHash`. Keep your function choice consistent within a system - mixing hash functions for the same logical key will produce inconsistent results.
