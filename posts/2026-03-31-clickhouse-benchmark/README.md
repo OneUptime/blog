@@ -47,7 +47,7 @@ SELECT user_id, sum(amount) FROM orders GROUP BY user_id ORDER BY sum(amount) DE
 EOF
 ```
 
-Run the benchmark:
+Run the benchmark (queries are read from stdin):
 
 ```bash
 clickhouse-benchmark \
@@ -56,7 +56,7 @@ clickhouse-benchmark \
     --user default \
     --concurrency 8 \
     --iterations 200 \
-    --query-file /tmp/bench_queries.sql
+    < /tmp/bench_queries.sql
 ```
 
 ## Key Flags
@@ -65,12 +65,12 @@ clickhouse-benchmark \
 |---|---|---|
 | `--concurrency` | 1 | Number of simultaneous query threads |
 | `--iterations` | 0 (unlimited) | Total queries to send (0 = run until Ctrl+C) |
-| `--query-file` | (stdin) | File with queries (one per line) |
+| `--query` / `-q` | — | Inline query string (alternative to reading from stdin) |
 | `--delay` | 1 | Delay between statistics outputs (seconds) |
 | `--timelimit` | 0 | Stop after N seconds |
-| `--json` | (flag) | Output results as JSON |
-| `--cumulative` | (flag) | Accumulate statistics across benchmark runs |
-| `--continue-on-errors` | (flag) | Do not stop on query errors |
+| `--randomize` | (flag) | Randomly pick queries from the input instead of cycling in order |
+| `--cumulative` | (flag) | Print cumulative data instead of data per interval |
+| `--continue_on_errors` | (flag) | Do not stop on query errors (alias of `--ignore-error`) |
 
 ## Sample Output
 
@@ -118,18 +118,16 @@ echo "SELECT count() FROM events WHERE event_time >= today() - INTERVAL 7 DAY" \
         2>&1 | tee /tmp/with_cache.txt
 ```
 
-## JSON Output for Automated Processing
+## Capturing Output for Automated Processing
+
+`clickhouse-benchmark` writes human-readable statistics to stderr. Redirect it to a file so you can diff or parse it later:
 
 ```bash
 clickhouse-benchmark \
     --concurrency 8 \
     --iterations 500 \
-    --query-file /tmp/bench_queries.sql \
-    --json \
-    > /tmp/benchmark_results.json
-
-# Parse with jq
-jq '.statistics.query_time_percentiles' /tmp/benchmark_results.json
+    < /tmp/bench_queries.sql \
+    2> /tmp/benchmark_results.txt
 ```
 
 ## Stress Testing with Time Limit
@@ -139,8 +137,8 @@ jq '.statistics.query_time_percentiles' /tmp/benchmark_results.json
 clickhouse-benchmark \
     --concurrency 32 \
     --timelimit 300 \
-    --query-file /tmp/bench_queries.sql \
-    --continue-on-errors
+    --continue_on_errors \
+    < /tmp/bench_queries.sql
 ```
 
 ## Benchmarking Insert Performance
@@ -154,7 +152,7 @@ for i in range(1000):
 
 clickhouse-benchmark \
     --concurrency 4 \
-    --query-file /tmp/inserts.sql
+    < /tmp/inserts.sql
 ```
 
 ## Monitoring During Benchmark
