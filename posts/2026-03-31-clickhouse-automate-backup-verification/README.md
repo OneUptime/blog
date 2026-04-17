@@ -20,7 +20,7 @@ ClickHouse supports several backup approaches:
 - `clickhouse-backup` open-source tool
 - Filesystem snapshots of the data directory
 
-This guide focuses on the `BACKUP`/`RESTORE` SQL commands available in ClickHouse 22.4+.
+This guide focuses on the `BACKUP`/`RESTORE` SQL commands available in ClickHouse 22.8+.
 
 ## Creating a Backup
 
