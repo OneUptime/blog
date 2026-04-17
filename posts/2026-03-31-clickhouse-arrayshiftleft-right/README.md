@@ -17,7 +17,7 @@ arrayShiftLeft(arr, n [, default])   -- shift elements left by n, fill right wit
 arrayShiftRight(arr, n [, default])  -- shift elements right by n, fill left with default
 ```
 
-`n` must be non-negative. If `n` is greater than or equal to the array length, all original elements are discarded and the result is an array of default values.
+A positive `n` shifts in the stated direction; a negative `n` reverses the direction (so `arrayShiftLeft(arr, -n)` behaves like `arrayShiftRight(arr, n)` and vice versa). If `|n|` is greater than or equal to the array length, all original elements are discarded and the result is an array of default values.
 
 ## Shift vs Rotate Comparison
 
