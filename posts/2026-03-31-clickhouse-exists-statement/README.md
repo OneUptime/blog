@@ -93,14 +93,14 @@ fi
 
 ## Conditional DDL Patterns
 
-The EXISTS statement is commonly paired with IF EXISTS or IF NOT EXISTS DDL clauses, but it is also useful when you need to branch logic based on the existence of multiple objects:
+The EXISTS statement is commonly paired with IF EXISTS or IF NOT EXISTS DDL clauses. Because EXISTS is a standalone statement rather than a scalar expression, when you need to branch logic based on the existence of multiple objects in a single query, query the `system.tables`, `system.databases`, and `system.dictionaries` catalogs instead:
 
 ```sql
 -- Check before deciding which branch to execute
 SELECT
-    EXISTS TABLE analytics.events          AS has_events,
-    EXISTS TABLE analytics.events_archive  AS has_archive,
-    EXISTS DATABASE staging                AS has_staging;
+    (SELECT count() FROM system.tables WHERE database = 'analytics' AND name = 'events')         > 0 AS has_events,
+    (SELECT count() FROM system.tables WHERE database = 'analytics' AND name = 'events_archive') > 0 AS has_archive,
+    (SELECT count() FROM system.databases WHERE name = 'staging')                                > 0 AS has_staging;
 ```
 
 ```sql
@@ -119,9 +119,9 @@ SELECT * FROM staging.raw_events;
 -- Validate that all required objects are present before running a pipeline
 SELECT
     multiIf(
-        NOT EXISTS TABLE analytics.events,         'MISSING: analytics.events',
-        NOT EXISTS TABLE dim.products,             'MISSING: dim.products',
-        NOT EXISTS DICTIONARY dim.products_dict,   'MISSING: dim.products_dict',
+        (SELECT count() FROM system.tables       WHERE database = 'analytics' AND name = 'events')        = 0, 'MISSING: analytics.events',
+        (SELECT count() FROM system.tables       WHERE database = 'dim'       AND name = 'products')      = 0, 'MISSING: dim.products',
+        (SELECT count() FROM system.dictionaries WHERE database = 'dim'       AND name = 'products_dict') = 0, 'MISSING: dim.products_dict',
         'ALL OK'
     ) AS preflight_status;
 ```
