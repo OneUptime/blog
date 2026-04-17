@@ -84,7 +84,7 @@ locals {
     }
   }
 
-  # Get current workspace config (with fallback)
+  # Get current workspace config
   config = local.env_config[terraform.workspace]
 }
 
