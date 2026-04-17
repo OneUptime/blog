@@ -32,7 +32,7 @@ SELECT
     segment_name,
     groupBitmapState(toUInt64(user_id)) AS user_bitmap
 FROM (
-    SELECT 'newsletter'  AS segment_name, number AS user_id FROM numbers(1, 501)  -- users 1-500
+    SELECT 'newsletter'  AS segment_name, number AS user_id FROM numbers(1, 500)  -- users 1-500
     UNION ALL
     SELECT 'mobile_app'  AS segment_name, number AS user_id FROM numbers(251, 500) -- users 251-750
     UNION ALL
@@ -160,7 +160,7 @@ SELECT
 
 ```text
 newsletter_and_mobile  newsletter_or_mobile  mobile_and_paid  newsletter_or_paid
-250                    750                   350              900
+250                    750                   350              800
 ```
 
 ## Verifying Results with bitmapToArray
