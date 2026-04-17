@@ -54,7 +54,7 @@ clusters:
     heartbeat:
       interval: 5s
       timeout: 3s
-      request: "SELECT 1"
+      request: "/?query=SELECT%201"
 
   - name: "analytics_primary"
     nodes:
@@ -64,7 +64,7 @@ clusters:
 ## Starting chproxy
 
 ```bash
-chproxy --config config.yml
+chproxy -config config.yml
 ```
 
 ## Query Routing
@@ -101,8 +101,10 @@ chproxy supports response caching:
 ```yaml
 caches:
   - name: "short_cache"
-    dir: "/var/cache/chproxy"
-    max_size: 500mb
+    mode: "file_system"
+    file_system:
+      dir: "/var/cache/chproxy"
+      max_size: 500Mb
     expire: 1m
 
 users:
