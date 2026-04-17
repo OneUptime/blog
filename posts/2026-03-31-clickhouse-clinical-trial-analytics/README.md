@@ -67,7 +67,7 @@ SELECT
     arm,
     countIf(event_type = 'endpoint' AND endpoint_name = 'primary_remission') AS events,
     uniqExact(subject_id) AS subjects,
-    round(100.0 * countIf(event_type = 'endpoint') / uniqExact(subject_id), 2) AS event_rate_pct
+    round(100.0 * countIf(event_type = 'endpoint' AND endpoint_name = 'primary_remission') / uniqExact(subject_id), 2) AS event_rate_pct
 FROM trial_events
 WHERE trial_id = 101
 GROUP BY arm;
