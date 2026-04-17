@@ -10,18 +10,18 @@ Description: Map ClickHouse column types to TypeScript types correctly when usin
 
 ## The Serialization Challenge
 
-When ClickHouse returns data as `JSONEachRow`, numeric types like `UInt64`, `Int64`, and `Decimal` are serialized as JSON strings to prevent precision loss. This means TypeScript `number` is wrong for large integers.
+When ClickHouse returns data as `JSONEachRow`, 64-bit integer types like `UInt64` and `Int64` are serialized as JSON strings by default (via `output_format_json_quote_64bit_integers=1`) to prevent precision loss. Decimals are output as JSON numbers by default and can be quoted as strings by enabling `output_format_json_quote_decimals=1`. This means TypeScript `number` is wrong for large integers.
 
 ## Type Mapping Reference
 
 | ClickHouse Type | JSON Value | TypeScript Type |
 |---|---|---|
 | UInt8, UInt16, UInt32 | number | `number` |
-| UInt64 | string | `string` (or `BigInt`) |
+| UInt64 | string | `string` (or `bigint`) |
 | Int8..Int32 | number | `number` |
-| Int64 | string | `string` (or `BigInt`) |
+| Int64 | string | `string` (or `bigint`) |
 | Float32, Float64 | number | `number` |
-| Decimal | string | `string` |
+| Decimal | number (string if `output_format_json_quote_decimals=1`) | `number` or `string` |
 | String, FixedString | string | `string` |
 | UUID | string | `string` |
 | Date | string (YYYY-MM-DD) | `string` |
@@ -105,4 +105,4 @@ const rows = await queryRows<PageViewRow>(
 
 ## Summary
 
-ClickHouse serializes UInt64 and Decimal as strings in JSON to preserve precision. Always type these fields as `string` in TypeScript and convert explicitly with `BigInt` or `Number`. Use `T | null` for Nullable columns and parse DateTime strings with a timezone suffix before constructing `Date` objects.
+ClickHouse serializes UInt64 and Int64 as strings in JSON by default to preserve precision, and Decimals can be quoted by enabling `output_format_json_quote_decimals`. Always type quoted numeric fields as `string` in TypeScript and convert explicitly with `BigInt` or `Number`. Use `T | null` for Nullable columns and parse DateTime strings with a timezone suffix before constructing `Date` objects.
