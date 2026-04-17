@@ -18,7 +18,7 @@ The `AllowedIPs` directive accepts CIDR notation for both IPv4 and IPv6:
 AllowedIPs = ::/0
 
 # Route only specific IPv6 prefixes
-AllowedIPs = 2001:db8:internal::/48
+AllowedIPs = 2001:db8:1::/48
 
 # Route both IPv4 and IPv6 (full tunnel)
 AllowedIPs = 0.0.0.0/0, ::/0
@@ -30,14 +30,14 @@ AllowedIPs = 0.0.0.0/0, ::/0
 # /etc/wireguard/wg0.conf (client - full tunnel)
 
 [Interface]
-Address = fd00:wg::2/128
+Address = fd00:1::2/128
 PrivateKey = <client-private-key>
 DNS = 2001:4860:4860::8888
 
 [Peer]
 PublicKey = <server-public-key>
-Endpoint = [2001:db8::server]:51820
-# Route ALL IPv6 traffic through VPN
+Endpoint = [2001:db8::1]:51820
+# Route all IPv4 and IPv6 traffic through VPN
 AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
 ```
@@ -48,17 +48,18 @@ PersistentKeepalive = 25
 # /etc/wireguard/wg0.conf (client - split tunnel)
 
 [Interface]
-Address = fd00:wg::2/128
+Address = fd00:1::2/128
 PrivateKey = <client-private-key>
 
 [Peer]
 PublicKey = <server-public-key>
-Endpoint = [2001:db8::server]:51820
+Endpoint = [2001:db8::1]:51820
 
-# Route only specific prefixes through VPN
-AllowedIPs = fd00:wg::/64,          # VPN internal
-             2001:db8:office::/48,   # Office network
-             fd00:services::/32      # Internal services
+# Route only specific prefixes through VPN:
+#   fd00:1::/64      = VPN internal
+#   2001:db8:2::/48  = Office network
+#   fd00:2::/32      = Internal services
+AllowedIPs = fd00:1::/64, 2001:db8:2::/48, fd00:2::/32
 ```
 
 ## Server-Side Routing Configuration
@@ -67,21 +68,21 @@ AllowedIPs = fd00:wg::/64,          # VPN internal
 # /etc/wireguard/wg0.conf (server)
 
 [Interface]
-Address = fd00:wg::1/64
+Address = fd00:1::1/64
 ListenPort = 51820
 PrivateKey = <server-private-key>
 
 # IPv6 forwarding setup
 PostUp = sysctl -w net.ipv6.conf.all.forwarding=1
 PostUp = ip6tables -A FORWARD -i wg0 -j ACCEPT
-PostUp = ip6tables -t nat -A POSTROUTING -s fd00:wg::/64 -o eth0 -j MASQUERADE
+PostUp = ip6tables -t nat -A POSTROUTING -s fd00:1::/64 -o eth0 -j MASQUERADE
 PreDown = ip6tables -D FORWARD -i wg0 -j ACCEPT
-PreDown = ip6tables -t nat -D POSTROUTING -s fd00:wg::/64 -o eth0 -j MASQUERADE
+PreDown = ip6tables -t nat -D POSTROUTING -s fd00:1::/64 -o eth0 -j MASQUERADE
 
 [Peer]
 PublicKey = <client-public-key>
 # Server accepts traffic from this client's tunnel address only
-AllowedIPs = fd00:wg::2/128
+AllowedIPs = fd00:1::2/128
 ```
 
 ## Routing Multiple IPv6 Clients
@@ -92,17 +93,17 @@ AllowedIPs = fd00:wg::2/128
 [Peer]
 # Client A
 PublicKey = <client-a-public-key>
-AllowedIPs = fd00:wg::2/128
+AllowedIPs = fd00:1::2/128
 
 [Peer]
 # Client B
 PublicKey = <client-b-public-key>
-AllowedIPs = fd00:wg::3/128
+AllowedIPs = fd00:1::3/128
 
 [Peer]
 # Remote office network
 PublicKey = <office-router-public-key>
-AllowedIPs = fd00:wg::100/128, 2001:db8:office::/48
+AllowedIPs = fd00:1::100/128, 2001:db8:2::/48
 ```
 
 ## Dynamic Routing with WireGuard
@@ -138,12 +139,12 @@ sudo tcpdump -i wg0 -n ip6
 ## Calculating AllowedIPs for Split Tunnel (Excluding a Subnet)
 
 ```bash
-# If you want to route all IPv6 except fd00:local::/64:
-# Use a tool like wireguard-tools to generate the complementary routes
-# Or calculate manually with ipcalc6
+# If you want to route all global IPv6 but exclude ULA (fd00::/8):
+# Use a tool like wg-split-tunnel to generate the complementary routes,
+# or calculate the set manually.
 
-# Route all except fd00::/8 (private range)
-AllowedIPs = 2000::/3    # All global unicast IPv6
+# Route all global unicast IPv6 (excludes ULA fc00::/7 and link-local fe80::/10)
+AllowedIPs = 2000::/3
 ```
 
 WireGuard's AllowedIPs provides precise control over which IPv6 traffic travels through each tunnel peer, making it straightforward to implement both full-tunnel and split-tunnel IPv6 routing policies.
