@@ -135,9 +135,9 @@ SELECT
         WHEN score >= 80 THEN 'B'
         ELSE 'C'
     END AS grade_case
+FROM (SELECT 85 AS score);
 
 -- multiIf() (ClickHouse-specific, slightly more concise)
-FROM (SELECT 85 AS score)
 SELECT
     score,
     multiIf(score >= 90, 'A', score >= 80, 'B', 'C') AS grade_multiif
