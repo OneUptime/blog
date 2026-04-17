@@ -17,7 +17,7 @@ arrayLast(func, arr)        -- returns last element where func returns non-zero
 arrayLastIndex(func, arr)   -- returns 1-based index of last matching element
 ```
 
-The lambda `func` receives one argument (the current element) and must return a non-zero integer to indicate a match. Both functions are available from ClickHouse 21.9+.
+The lambda `func` receives one argument (the current element) and must return a non-zero integer to indicate a match. Both functions have been available since ClickHouse v1.1.0.
 
 ## Data Flow
 
