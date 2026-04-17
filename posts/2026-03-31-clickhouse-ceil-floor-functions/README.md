@@ -17,7 +17,7 @@ ceil(x [, N])   -- rounds x up to N decimal places (default N=0)
 floor(x [, N])  -- rounds x down to N decimal places (default N=0)
 ```
 
-Both functions also accept aliases: `ceiling()` is a synonym for `ceil()`. Negative values of `N` round to tens, hundreds, etc.
+`ceil()` also has an alias: `ceiling()` is a synonym. Negative values of `N` round to tens, hundreds, etc.
 
 ## Basic Usage
 
