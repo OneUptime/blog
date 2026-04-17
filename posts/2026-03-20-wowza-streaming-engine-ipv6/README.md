@@ -18,8 +18,7 @@ Wowza Streaming Engine is an enterprise media server platform. Configuring it fo
 # Requires license key
 
 # Linux installer
-chmod +x WowzaStreamingEngine-4.8.x+9.tar.gz
-sudo tar xf WowzaStreamingEngine-4.8.x+9.tar.gz -C /usr/local/
+sudo tar xf WowzaStreamingEngine-4.8.x.tar.gz -C /usr/local/
 
 # Start Wowza
 sudo /usr/local/WowzaStreamingEngine/bin/startup.sh
@@ -98,9 +97,12 @@ sudo /usr/local/WowzaStreamingEngine/bin/status.sh
   <StreamType>live</StreamType>
 
   <!-- Transcoder for adaptive bitrate -->
-  <TranscoderProfile>
-    <NameSet>transrateH264,transrateAAC</NameSet>
-  </TranscoderProfile>
+  <Transcoder>
+    <LiveStreamTranscoder>transcoder</LiveStreamTranscoder>
+    <Templates>${SourceStreamName}.xml,transrate.xml</Templates>
+    <ProfileDir>${com.wowza.wms.context.VHostConfigHome}/transcoder/profiles</ProfileDir>
+    <TemplateDir>${com.wowza.wms.context.VHostConfigHome}/transcoder/templates</TemplateDir>
+  </Transcoder>
 </Application>
 ```
 
@@ -115,7 +117,7 @@ sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
 # Wowza Manager (admin interface)
-sudo ip6tables -A INPUT -p tcp -s 2001:db8::admin --dport 8088 -j ACCEPT
+sudo ip6tables -A INPUT -p tcp -s 2001:db8::a --dport 8088 -j ACCEPT
 
 # RTP/RTSP over IPv6
 sudo ip6tables -A INPUT -p udp --dport 6970:9999 -j ACCEPT
@@ -132,17 +134,17 @@ ffmpeg -re -i input.mp4 \
   -c:v libx264 -b:v 2000k \
   -c:a aac -b:a 128k \
   -f flv \
-  "rtmp://[2001:db8::wowza]/live/mystream"
+  "rtmp://[2001:db8::1]/live/mystream"
 
 # Publish from OBS Studio:
-# Server: rtmp://[2001:db8::wowza]/live
+# Server: rtmp://[2001:db8::1]/live
 # Stream Key: mystream
 
 # Play HLS from Wowza over IPv6
-ffplay "http://[2001:db8::wowza]/live/mystream/playlist.m3u8"
+ffplay "http://[2001:db8::1]/live/mystream/playlist.m3u8"
 
 # Play RTMP over IPv6
-ffplay "rtmp://[2001:db8::wowza]/live/mystream"
+ffplay "rtmp://[2001:db8::1]/live/mystream"
 ```
 
 ## Verifying IPv6 Streaming
@@ -152,10 +154,10 @@ ffplay "rtmp://[2001:db8::wowza]/live/mystream"
 ss -6 -tlnp | grep "1935\|8080\|80"
 
 # Access Wowza Manager over IPv6
-curl -6 http://[2001:db8::wowza]:8088/enginemanager
+curl -6 http://[2001:db8::1]:8088/enginemanager
 
 # View stream statistics
-curl -6 "http://[2001:db8::wowza]:8087/v2/servers/_defaultServer_/vhosts/_defaultVHost_/applications/live"
+curl -6 "http://[2001:db8::1]:8087/v2/servers/_defaultServer_/vhosts/_defaultVHost_/applications/live"
 
 # Check Wowza logs for IPv6 connections
 sudo tail -f /usr/local/WowzaStreamingEngine/logs/wowzastreamingengine_*.log | \
