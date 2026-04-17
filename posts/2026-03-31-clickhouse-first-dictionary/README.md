@@ -47,11 +47,11 @@ CREATE DICTIONARY country_dict (
 )
 PRIMARY KEY code
 SOURCE(CLICKHOUSE(TABLE 'countries' DB 'default'))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(MIN 300 MAX 600);
 ```
 
-The `LIFETIME` setting controls how often ClickHouse refreshes the dictionary from the source. `HASHED` layout stores data as a hash map for O(1) lookups.
+The `LIFETIME` setting controls how often ClickHouse refreshes the dictionary from the source. `COMPLEX_KEY_HASHED` stores data as a hash map for O(1) lookups and is required here because the primary key is a `String` (the plain `HASHED` layout only supports `UInt64` keys).
 
 ## Using the Dictionary in Queries
 
@@ -88,7 +88,7 @@ CREATE DICTIONARY geo_ip_dict (
 )
 PRIMARY KEY ip_prefix
 SOURCE(HTTP(URL 'https://example.com/geoip.csv' FORMAT 'CSV'))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(86400);
 ```
 
@@ -108,4 +108,4 @@ SYSTEM RELOAD DICTIONARY country_dict;
 
 ## Summary
 
-ClickHouse dictionaries replace slow JOIN operations with fast in-memory lookups using `dictGet`. By defining a `HASHED` layout with appropriate `LIFETIME` settings, you get automatically refreshed dimension data that enriches analytical queries without impacting scan performance on your fact tables.
+ClickHouse dictionaries replace slow JOIN operations with fast in-memory lookups using `dictGet`. By defining a hashed layout (`HASHED` for `UInt64` keys or `COMPLEX_KEY_HASHED` for `String`/composite keys) with appropriate `LIFETIME` settings, you get automatically refreshed dimension data that enriches analytical queries without impacting scan performance on your fact tables.
