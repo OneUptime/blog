@@ -43,9 +43,11 @@ SOURCE(FILE(
     path '/var/lib/clickhouse/user_files/countries.csv'
     format 'CSV'
 ))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(MIN 3600 MAX 86400);
 ```
+
+Because the primary key here is a `String`, we use `COMPLEX_KEY_HASHED` - the plain `HASHED` layout only accepts numeric (UInt64) keys.
 
 ### CLICKHOUSE Source
 
@@ -122,7 +124,7 @@ The layout determines the in-memory data structure. Choose based on key type and
 
 ### FLAT
 
-The fastest layout. Uses a plain array indexed by integer key. Only works for integer keys up to 500,000 elements.
+The fastest layout. Uses a plain array indexed by a `UInt64` key. By default it holds up to 500,000 elements, configurable via the `max_array_size` parameter.
 
 ```sql
 LAYOUT(FLAT())
@@ -130,7 +132,7 @@ LAYOUT(FLAT())
 
 ### HASHED
 
-Hash table for arbitrary integer or string keys. Good general-purpose choice.
+Hash table for numeric (`UInt64`) keys. Good general-purpose choice for integer-keyed dictionaries.
 
 ```sql
 LAYOUT(HASHED())
@@ -146,7 +148,7 @@ LAYOUT(SPARSE_HASHED())
 
 ### COMPLEX_KEY_HASHED
 
-Required when the primary key is a composite of multiple columns:
+Required when the primary key is a `String`, a composite of multiple columns, or any non-`UInt64` type:
 
 ```sql
 CREATE DICTIONARY composite_lookup
@@ -166,7 +168,7 @@ LIFETIME(MIN 3600 MAX 86400);
 
 ### HASHED_ARRAY
 
-Optimized for dictionaries loaded from sorted data. Faster load times than `HASHED` for large datasets.
+More memory-efficient than `HASHED` for multi-attribute dictionaries: keys live in a single hash table that maps to indices in parallel attribute arrays, rather than one hash table per attribute. Use `COMPLEX_KEY_HASHED_ARRAY` for non-`UInt64` or composite keys.
 
 ```sql
 LAYOUT(HASHED_ARRAY())
@@ -180,7 +182,7 @@ Keeps only a fixed number of entries in memory (LRU cache). Good when the dictio
 LAYOUT(CACHE(SIZE_IN_CELLS 1000000))
 ```
 
-Cache layout requires synchronous lookups (no bulk pre-load), which introduces latency for cache misses.
+Cache layout does not bulk pre-load the dictionary, so cache misses fetch from the source on demand and introduce lookup latency. Asynchronous refresh of expired keys can be enabled with `allow_read_expired_keys`.
 
 ### IP_TRIE
 
