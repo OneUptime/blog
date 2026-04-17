@@ -110,7 +110,7 @@ GROUP BY home_id, device_id, metric, hour;
 SELECT
     toDate(collected_at)                        AS day,
     home_id,
-    sum(value) / 12.0                           AS kwh_consumed  -- 5-min readings * 12 = hourly
+    sum(value) / 12000.0                        AS kwh_consumed  -- 5-min readings in W: /12 for Wh, /1000 for kWh
 FROM device_readings
 WHERE metric = 'power_watts'
   AND device_type = 'energy_meter'
@@ -260,7 +260,7 @@ SELECT
     event_type,
     device_type,
     count()                                     AS trigger_count,
-    countIf(toHour(occurred_at) BETWEEN 22 AND 6) AS night_triggers,
+    countIf(toHour(occurred_at) >= 22 OR toHour(occurred_at) < 6) AS night_triggers,
     countIf(toDayOfWeek(occurred_at) IN (6, 7)) AS weekend_triggers
 FROM device_events
 WHERE triggered_by != 'manual'
@@ -285,7 +285,7 @@ WHERE collected_at >= now() - INTERVAL 1 HOUR;
 -- Homes ranked by energy efficiency (lower avg daily kWh is better)
 SELECT
     home_id,
-    round(sum(value) / count(DISTINCT toDate(collected_at)) / 12, 2) AS avg_daily_kwh
+    round(sum(value) / count(DISTINCT toDate(collected_at)) / 12000, 2) AS avg_daily_kwh
 FROM device_readings
 WHERE metric = 'power_watts'
   AND device_type = 'energy_meter'
