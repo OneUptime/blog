@@ -39,7 +39,7 @@ curl -X POST https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services \
 ## Step 2 - Export Schema
 
 ```bash
-clickhouse client --host source.clickhouse.cloud --port 8443 \
+clickhouse client --host source.clickhouse.cloud --port 9440 \
   --user default --password "$SOURCE_PASS" --secure \
   --query "SHOW CREATE TABLE analytics.events" \
   > events_schema.sql
@@ -48,12 +48,14 @@ clickhouse client --host source.clickhouse.cloud --port 8443 \
 Export all tables:
 
 ```bash
-clickhouse client --host source.clickhouse.cloud --port 8443 \
+clickhouse client --host source.clickhouse.cloud --port 9440 \
   --user default --password "$SOURCE_PASS" --secure \
-  --query "SELECT 'SHOW CREATE TABLE ' || database || '.' || name || ';'
+  --query "SELECT create_table_query || ';'
            FROM system.tables
-           WHERE database NOT IN ('system', 'information_schema')" \
-  | clickhouse client --multiquery > full_schema.sql
+           WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
+             AND engine NOT IN ('View', 'MaterializedView')
+           FORMAT TabSeparatedRaw" \
+  > full_schema.sql
 ```
 
 ## Step 3 - Migrate Data via S3
@@ -84,11 +86,11 @@ SELECT * FROM s3(
 
 ```bash
 # Source
-clickhouse client --host source.clickhouse.cloud --secure \
+clickhouse client --host source.clickhouse.cloud --port 9440 --secure \
   --query "SELECT count() FROM analytics.events"
 
 # Target
-clickhouse client --host target.clickhouse.cloud --secure \
+clickhouse client --host target.clickhouse.cloud --port 9440 --secure \
   --query "SELECT count() FROM analytics.events"
 ```
 
