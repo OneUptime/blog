@@ -197,30 +197,39 @@ ORDER BY abandonment_rate_pct DESC;
 
 ```sql
 -- Top products by revenue and conversion rate
-SELECT
-    oi.product_id,
-    oi.category,
-    sum(oi.total_price_usd)                     AS revenue,
-    sum(oi.quantity)                            AS units_sold,
-    count(DISTINCT oi.order_id)                 AS orders,
-    count(DISTINCT pv.session_id)               AS product_views,
-    round(
-        count(DISTINCT oi.order_id) * 100.0 /
-        nullIf(count(DISTINCT pv.session_id), 0),
-        2
-    )                                           AS view_to_purchase_pct
-FROM order_items oi
-JOIN orders o ON oi.order_id = o.order_id
-LEFT JOIN (
-    SELECT product_id, session_id
+WITH product_sales AS (
+    SELECT
+        oi.product_id                           AS product_id,
+        any(oi.category)                        AS category,
+        sum(oi.total_price_usd)                 AS revenue,
+        sum(oi.quantity)                        AS units_sold,
+        count(DISTINCT oi.order_id)             AS orders
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.order_id
+    WHERE o.status != 'cancelled'
+      AND oi.ordered_at >= today() - 30
+    GROUP BY oi.product_id
+),
+product_views AS (
+    SELECT
+        product_id,
+        count(DISTINCT session_id)              AS view_sessions
     FROM product_events
     WHERE event_type = 'product_view'
       AND occurred_at >= today() - 30
-) pv ON oi.product_id = pv.product_id
-WHERE o.status != 'cancelled'
-  AND oi.ordered_at >= today() - 30
-GROUP BY oi.product_id, oi.category
-ORDER BY revenue DESC
+    GROUP BY product_id
+)
+SELECT
+    ps.product_id,
+    ps.category,
+    ps.revenue,
+    ps.units_sold,
+    ps.orders,
+    pv.view_sessions                            AS product_views,
+    round(ps.orders * 100.0 / nullIf(pv.view_sessions, 0), 2) AS view_to_purchase_pct
+FROM product_sales ps
+LEFT JOIN product_views pv ON ps.product_id = pv.product_id
+ORDER BY ps.revenue DESC
 LIMIT 50;
 ```
 
