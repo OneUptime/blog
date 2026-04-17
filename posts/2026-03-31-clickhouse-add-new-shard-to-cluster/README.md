@@ -43,10 +43,10 @@ Add the new shard entry to your cluster config on every existing node. This must
 </remote_servers>
 ```
 
-Reload configuration on all nodes:
+ClickHouse tracks changes to config files and reloads cluster, user, and related settings on the fly, so no restart is required. If you want to force a reload, you can run:
 
-```bash
-sudo systemctl reload clickhouse-server
+```sql
+SYSTEM RELOAD CONFIG ON CLUSTER my_cluster;
 ```
 
 ## Step 3 - Create Tables on the New Shard
