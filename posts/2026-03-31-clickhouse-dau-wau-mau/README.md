@@ -30,35 +30,45 @@ Use `uniqExact` for precise counts on smaller datasets, `uniq` for approximate c
 
 ## Weekly Active Users
 
-Count distinct users over a rolling 7-day window:
+Count distinct users over a rolling 7-day window. Because window functions run after `GROUP BY`, we first aggregate per day into `uniqExactState` values and then combine them across the window with `uniqExactMerge`:
 
 ```sql
 SELECT
-    toDate(event_time) AS day,
-    uniqExact(user_id) OVER (
-        ORDER BY toDate(event_time)
-        RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
+    day,
+    uniqExactMerge(state) OVER (
+        ORDER BY day
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     ) AS wau
-FROM user_events
-WHERE event_time >= today() - 60
-GROUP BY day
+FROM (
+    SELECT
+        toDate(event_time) AS day,
+        uniqExactState(user_id) AS state
+    FROM user_events
+    WHERE event_time >= today() - 60
+    GROUP BY day
+)
 ORDER BY day;
 ```
 
 ## Monthly Active Users
 
-Rolling 30-day MAU:
+Rolling 30-day MAU using the same state/merge pattern:
 
 ```sql
 SELECT
-    toDate(event_time) AS day,
-    uniq(user_id) OVER (
-        ORDER BY toDate(event_time)
-        RANGE BETWEEN 29 PRECEDING AND CURRENT ROW
+    day,
+    uniqMerge(state) OVER (
+        ORDER BY day
+        ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
     ) AS mau
-FROM user_events
-WHERE event_time >= today() - 90
-GROUP BY day
+FROM (
+    SELECT
+        toDate(event_time) AS day,
+        uniqState(user_id) AS state
+    FROM user_events
+    WHERE event_time >= today() - 90
+    GROUP BY day
+)
 ORDER BY day;
 ```
 
@@ -73,9 +83,13 @@ WITH
         FROM user_events GROUP BY day
     ),
     mau AS (
-        SELECT toDate(event_time) AS day,
-            uniq(user_id) OVER (ORDER BY toDate(event_time) RANGE BETWEEN 29 PRECEDING AND CURRENT ROW) AS m
-        FROM user_events GROUP BY day
+        SELECT
+            day,
+            uniqMerge(state) OVER (ORDER BY day ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) AS m
+        FROM (
+            SELECT toDate(event_time) AS day, uniqState(user_id) AS state
+            FROM user_events GROUP BY day
+        )
     )
 SELECT
     dau.day,
@@ -107,9 +121,9 @@ Distinguish new users (first event) from returning users:
 ```sql
 SELECT
     toDate(event_time) AS day,
-    countDistinct(user_id) AS dau,
-    countDistinctIf(user_id, is_new_user) AS new_users,
-    countDistinct(user_id) - countDistinctIf(user_id, is_new_user) AS returning_users
+    uniqExact(user_id) AS dau,
+    uniqExactIf(user_id, is_new_user) AS new_users,
+    uniqExact(user_id) - uniqExactIf(user_id, is_new_user) AS returning_users
 FROM (
     SELECT *, min(event_time) OVER (PARTITION BY user_id) AS first_seen,
         toDate(event_time) = toDate(min(event_time) OVER (PARTITION BY user_id)) AS is_new_user
