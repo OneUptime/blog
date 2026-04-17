@@ -77,7 +77,7 @@ Calculate how fast a table is growing:
 ```sql
 SELECT
     toStartOfDay(event_time) AS day,
-    formatReadableSize(sumIf(bytes_on_disk, event_type = 'NewPart')) AS bytes_added,
+    formatReadableSize(sumIf(size_in_bytes, event_type = 'NewPart')) AS bytes_added,
     countIf(event_type = 'NewPart') AS parts_added
 FROM system.part_log
 WHERE
@@ -99,7 +99,7 @@ WITH daily_growth AS (
     FROM (
         SELECT
             toDate(event_time) AS day,
-            sum(bytes_on_disk) AS bytes_per_day
+            sum(size_in_bytes) AS bytes_per_day
         FROM system.part_log
         WHERE
             event_type = 'NewPart'
