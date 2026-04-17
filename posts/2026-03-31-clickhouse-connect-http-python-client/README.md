@@ -67,15 +67,21 @@ client = clickhouse_connect.get_client(
 
 ### Connection pool settings
 
+`connect_timeout` and `send_receive_timeout` are passed directly to `get_client`. The maximum age (in seconds) that a pooled connection can be reused is a global common setting and must be configured via `clickhouse_connect.common.set_setting`:
+
 ```python
+import clickhouse_connect
+from clickhouse_connect import common
+
+common.set_setting('max_connection_age', 600)
+
 client = clickhouse_connect.get_client(
     host='localhost',
     port=8123,
     username='default',
     password='',
     connect_timeout=10,
-    send_receive_timeout=300,
-    max_connection_age=600
+    send_receive_timeout=300
 )
 ```
 
