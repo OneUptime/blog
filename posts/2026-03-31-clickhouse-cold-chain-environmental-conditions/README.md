@@ -78,8 +78,8 @@ MKT is the regulatory standard for assessing cumulative thermal stress.
 SELECT
     shipment_id,
     round(
-        (-83138.0 / ln(
-            avg(exp(-83138.0 / (8.314 * (temp_c + 273.15))))
+        (-83144.0 / ln(
+            avg(exp(-83144.0 / (8.314 * (temp_c + 273.15))))
         )) - 273.15,
         2
     ) AS mkt_celsius
