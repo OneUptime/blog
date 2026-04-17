@@ -82,7 +82,7 @@ SELECT event_time, event_date FROM events LIMIT 1;
 
 ## Backfilling Existing Data with MATERIALIZE COLUMN
 
-Adding a MATERIALIZED column via `ALTER TABLE` only affects new inserts. Existing rows will have the default value for the type (0 for numeric, empty string, etc.) until you run `MATERIALIZE COLUMN`:
+Adding a MATERIALIZED column via `ALTER TABLE` only physically writes the column for new inserts. For existing rows, ClickHouse evaluates the expression on-the-fly at query time (which can be slower on large tables) until you run `MATERIALIZE COLUMN` to write the computed values to disk:
 
 ```sql
 ALTER TABLE events
