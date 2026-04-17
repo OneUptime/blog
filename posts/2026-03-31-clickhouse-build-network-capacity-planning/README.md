@@ -81,10 +81,10 @@ CREATE TABLE interface_utilization_hourly (
     interface_name          LowCardinality(String),
     interface_speed_bps     UInt64,
     hour                    DateTime,
-    avg_bytes_in_per_sec    Float64,
-    avg_bytes_out_per_sec   Float64,
-    max_bytes_in_per_sec    Float64,
-    max_bytes_out_per_sec   Float64,
+    avg_bits_in_per_sec     Float64,
+    avg_bits_out_per_sec    Float64,
+    max_bits_in_per_sec     Float64,
+    max_bits_out_per_sec    Float64,
     avg_util_in_pct         Float64,
     avg_util_out_pct        Float64,
     max_util_in_pct         Float64,
@@ -101,10 +101,10 @@ SELECT
     interface_name,
     any(interface_speed_bps)                AS interface_speed_bps,
     toStartOfHour(polled_at)                AS hour,
-    avg(bytes_in * 8.0 / 300)              AS avg_bytes_in_per_sec,
-    avg(bytes_out * 8.0 / 300)             AS avg_bytes_out_per_sec,
-    max(bytes_in * 8.0 / 300)              AS max_bytes_in_per_sec,
-    max(bytes_out * 8.0 / 300)             AS max_bytes_out_per_sec,
+    avg(bytes_in * 8.0 / 300)              AS avg_bits_in_per_sec,
+    avg(bytes_out * 8.0 / 300)             AS avg_bits_out_per_sec,
+    max(bytes_in * 8.0 / 300)              AS max_bits_in_per_sec,
+    max(bytes_out * 8.0 / 300)             AS max_bits_out_per_sec,
     avg(bytes_in * 8.0 / 300 / interface_speed_bps * 100) AS avg_util_in_pct,
     avg(bytes_out * 8.0 / 300 / interface_speed_bps * 100) AS avg_util_out_pct,
     max(bytes_in * 8.0 / 300 / interface_speed_bps * 100) AS max_util_in_pct,
@@ -212,8 +212,8 @@ regression AS (
 )
 SELECT
     slope * 604800 * 52             AS projected_annual_growth_pct,
-    -- Weeks until 80% threshold
-    round((80 - intercept) / slope / 604800, 0) AS weeks_to_80pct
+    -- Weeks from now until 80% threshold
+    round(((80 - intercept) / slope - toUnixTimestamp(now())) / 604800, 0) AS weeks_to_80pct
 FROM regression;
 ```
 
