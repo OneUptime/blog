@@ -51,7 +51,7 @@ client.execute(
 ## Flush Triggers
 
 Async inserts are flushed when either:
-- `async_insert_max_data_size` bytes are buffered (default: 1MB)
+- `async_insert_max_data_size` bytes are buffered (default: 10 MiB)
 - `async_insert_busy_timeout_ms` milliseconds have elapsed (default: 200ms)
 
 Tune these settings:
@@ -78,8 +78,8 @@ INSERT INTO events VALUES (...);
 ```sql
 SELECT
     query,
-    written_rows,
-    written_bytes
+    rows,
+    bytes
 FROM system.asynchronous_insert_log
 ORDER BY event_time DESC
 LIMIT 20;
