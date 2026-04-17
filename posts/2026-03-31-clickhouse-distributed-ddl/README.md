@@ -121,7 +121,7 @@ SELECT
     status,
     exception_code,
     query,
-    exception
+    exception_text
 FROM system.distributed_ddl_queue
 ORDER BY entry DESC
 LIMIT 20;
@@ -134,7 +134,7 @@ If a DDL operation times out:
 1. Check which nodes have not responded:
 
 ```sql
-SELECT host, status, exception
+SELECT host, status, exception_text
 FROM system.distributed_ddl_queue
 WHERE entry = 'query-0000000042'
 ORDER BY host;
@@ -160,9 +160,9 @@ ALTER TABLE events ON CLUSTER my_cluster
 SETTINGS distributed_ddl_task_timeout = -1;
 ```
 
-## Configuring max_distributed_ddl_wait_for_first_replica
+## Configuring distributed_ddl_output_mode
 
-Wait only for the first replica to complete (non-blocking):
+Skip waiting for inactive replicas of a Replicated database by using the `none_only_active` output mode:
 
 ```sql
 ALTER TABLE events ON CLUSTER my_cluster
