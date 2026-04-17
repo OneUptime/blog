@@ -86,7 +86,7 @@ tshark -r capture.pcap -Y "ipv6" \
 ipv6.flow > 0
 
 # Group flows from a specific source
-ipv6.src == 2001:db8::client && ipv6.flow > 0
+ipv6.src == 2001:db8::1 && ipv6.flow > 0
 
 # Track a specific application flow
 ipv6.flow == 0xABCDE
