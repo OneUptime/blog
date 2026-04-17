@@ -184,12 +184,9 @@ git clone https://github.com/YangModels/yang.git
 # Validate a YANG model
 pyang -f tree yang/ietf/ietf-ip.yang
 
-# Validate a YANG instance (XML)
-pyang --plugindir /usr/lib/pyang/plugins \
-    -f validate \
-    -p yang/ietf/ \
-    yang/ietf/ietf-ip.yang \
-    my_ipv6_config.xml
+# Validate a YANG instance document (XML) with yanglint from libyang
+# (pyang itself validates YANG modules, not instance data)
+yanglint -p yang/ietf/ yang/ietf/ietf-ip.yang my_ipv6_config.xml
 ```
 
 ## Step 5: YANG-Aware Automation with yangson
@@ -197,10 +194,12 @@ pyang --plugindir /usr/lib/pyang/plugins \
 ```python
 # validate an IPv6 configuration document
 from yangson import DataModel
+from yangson.enumerations import ContentType
 import json
 
-# Load YANG data model
-dm = DataModel.from_file("yang-library.json", ["ietf-interfaces", "ietf-ip"])
+# Load YANG data model. The second argument is a list of directories
+# to search for YANG modules, not a list of module names.
+dm = DataModel.from_file("yang-library.json", ["./yang-modules/ietf"])
 
 # Validate a configuration document
 ipv6_config = {
@@ -219,7 +218,7 @@ ipv6_config = {
 }
 
 inst = dm.from_raw(ipv6_config)
-inst.validate(dm.schema)
+inst.validate(ctype=ContentType.config)
 print("Configuration is valid")
 ```
 
