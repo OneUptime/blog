@@ -58,8 +58,6 @@ sudo tc filter show dev eth0
 
 ```bash
 # Clear all wondershaper limits on an interface
-sudo wondershaper clear eth0
-# or
 sudo wondershaper -c -a eth0
 ```
 
@@ -67,8 +65,8 @@ sudo wondershaper -c -a eth0
 
 ```bash
 # View current wondershaper status
-sudo wondershaper status eth0
-# or
+sudo wondershaper -s -a eth0
+# or inspect the underlying tc qdisc directly
 sudo tc -s qdisc show dev eth0
 ```
 
@@ -97,17 +95,17 @@ sudo systemctl enable wondershaper
 sudo systemctl start wondershaper
 ```
 
-Or use the conf file if your version supports it:
+Or use the conf file shipped with the magnific0 package together with the bundled `wondershaper.service` (which runs `wondershaper -p`):
 
 ```conf
-# /etc/wondershaper.conf
+# /etc/systemd/wondershaper.conf
 [wondershaper]
 # Interface to shape
-IFACE=eth0
-# Download in kbps
-DSPEED=10240
-# Upload in kbps
-USPEED=5120
+IFACE="eth0"
+# Download in Kbps
+DSPEED="10240"
+# Upload in Kbps
+USPEED="5120"
 ```
 
 ## Testing the Bandwidth Limit
