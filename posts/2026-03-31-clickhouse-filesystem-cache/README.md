@@ -43,7 +43,6 @@ Reference the cache in your storage configuration:
       <endpoint>https://s3.amazonaws.com/mybucket/data/</endpoint>
       <access_key_id>ACCESS_KEY</access_key_id>
       <secret_access_key>SECRET_KEY</secret_access_key>
-      <cache_enabled>true</cache_enabled>
       <cache_name>s3_cache</cache_name>
     </s3_disk>
   </disks>
@@ -62,14 +61,14 @@ Reference the cache in your storage configuration:
 ## Monitoring Cache Performance
 
 ```sql
--- Check cache hit rate
+-- Check cache size and configuration
 SELECT
-    name,
-    hits,
-    misses,
-    hits / (hits + misses) AS hit_rate,
-    size_limit,
-    used_size
+    cache_name,
+    path,
+    max_size,
+    current_size,
+    max_elements,
+    current_elements_num
 FROM system.filesystem_cache_settings;
 ```
 
@@ -105,7 +104,7 @@ clickhouse-client --query "SELECT uniq(user_id) FROM events WHERE event_time >= 
 ```sql
 -- Skip cache for this query (forces fresh S3 read)
 SELECT count() FROM events
-SETTINGS read_from_filesystem_cache_if_exists_otherwise_bypass_cache = 1;
+SETTINGS enable_filesystem_cache = 0;
 ```
 
 ## Summary
