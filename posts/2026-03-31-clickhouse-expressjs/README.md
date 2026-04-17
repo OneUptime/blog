@@ -8,7 +8,7 @@ Description: Connect Express.js to ClickHouse using the official Node.js client,
 
 ---
 
-Express.js is the most widely used Node.js web framework. ClickHouse provides an official `@clickhouse/client` package that supports both Node.js and browser environments, with full TypeScript types, streaming, and async/await. This guide walks through building a production-ready analytics API with Express and ClickHouse.
+Express.js is the most widely used Node.js web framework. ClickHouse provides an official `@clickhouse/client` package for Node.js, with full TypeScript types, streaming, and async/await. (A separate `@clickhouse/client-web` package is available for browsers, Cloudflare Workers, and other Web-Streams environments.) This guide walks through building a production-ready analytics API with Express and ClickHouse.
 
 ## Installation
 
@@ -315,7 +315,7 @@ router.get("/export", async (req: Request, res: Response) => {
   const client = getClient();
   const days   = Number(req.query.days ?? 1);
 
-  const result = await client.query({
+  const { stream } = await client.exec({
     query: `
       SELECT event_id, user_id, event_type, page, ts
       FROM analytics.events
@@ -323,12 +323,11 @@ router.get("/export", async (req: Request, res: Response) => {
       FORMAT CSV
     `,
     query_params: { days },
-    format: "CSV",
   });
 
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=events.csv");
-  result.stream().pipe(res);
+  stream.pipe(res);
 });
 
 export default router;
@@ -389,20 +388,21 @@ npm run dev
 
 ## Streaming Large Results
 
-For large exports, use Node.js stream piping to avoid loading millions of rows into memory:
+For large exports, use `client.exec()` to obtain the raw byte stream from the HTTP response and pipe it directly to the Express response, avoiding buffering millions of rows in memory:
 
 ```typescript
 router.get("/stream", async (req: Request, res: Response) => {
   const client = getClient();
-  const result = await client.query({
+  const { stream } = await client.exec({
     query: "SELECT * FROM analytics.events LIMIT 10000000 FORMAT JSONEachRow",
-    format: "JSONEachRow",
   });
 
   res.setHeader("Content-Type", "application/x-ndjson");
-  result.stream().pipe(res);
+  stream.pipe(res);
 });
 ```
+
+Note: `client.query(...).stream()` returns an object-mode stream that yields `Row[]` chunks (each `Row` has `.text` and `.json<T>()`) and cannot be piped directly to an HTTP response. Use `client.exec()` when you want to forward the raw bytes, or iterate `Row` objects and write them yourself.
 
 ## Environment Variables
 
