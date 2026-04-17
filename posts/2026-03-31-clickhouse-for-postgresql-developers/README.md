@@ -66,7 +66,8 @@ SELECT arrayFilter(x -> x > 1, [1, 2, 3]);
 ## Window Functions Have Syntax Differences
 
 ```sql
--- Both support window functions, but ClickHouse requires ORDER BY in the window
+-- Both support window functions with the same standard SQL syntax
+-- (ClickHouse added window functions in 21.10, no longer experimental)
 SELECT
     user_id,
     event_time,
@@ -98,7 +99,7 @@ Many PostgreSQL string functions have different names in ClickHouse:
 SELECT substring(s, 1, 5);  -- SELECT substring(s, 1, 5); -- same
 SELECT length(s);            -- SELECT length(s); -- same
 SELECT s || ' world';        -- SELECT concat(s, ' world');
-SELECT regexp_match(s, '\\d+'); -- SELECT match(s, '\\d+');
+SELECT regexp_match(s, '\\d+'); -- SELECT extract(s, '\\d+');
 SELECT split_part(s, ',', 1);   -- SELECT splitByChar(',', s)[1];
 ```
 
