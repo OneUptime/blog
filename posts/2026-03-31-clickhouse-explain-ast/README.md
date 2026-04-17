@@ -23,27 +23,26 @@ GROUP BY user_id;
 Sample output:
 
 ```text
-SelectQuery
-  select
+SelectWithUnionQuery (children 1)
+ ExpressionList (children 1)
+  SelectQuery (children 4)
+   ExpressionList (children 2)
     Identifier user_id
-    Function count (alias cnt)
-      arguments
-        List
-  tables
-    TablesInSelectQueryElement
-      TableExpression
-        Identifier events
-  where
-    Function equals
-      arguments
-        List
-          Identifier event_date
-          Literal '2024-06-01'
-  groupBy
+    Function count (alias cnt) (children 1)
+     ExpressionList
+   TablesInSelectQuery (children 1)
+    TablesInSelectQueryElement (children 1)
+     TableExpression (children 1)
+      TableIdentifier events
+   Function equals (children 1)
+    ExpressionList (children 2)
+     Identifier event_date
+     Literal '2024-06-01'
+   ExpressionList (children 1)
     Identifier user_id
 ```
 
-The tree mirrors the SQL structure: SELECT columns, FROM table, WHERE expression, and GROUP BY keys each appear as named child nodes.
+The tree mirrors the SQL structure. The top-level `SelectWithUnionQuery` wraps every query (because any SELECT could be part of a UNION), and the `SelectQuery` below it holds the projection list, the `TablesInSelectQuery` node, the WHERE expression, and the GROUP BY expression list as ordered children.
 
 ## Understanding AST Node Types
 
@@ -58,14 +57,16 @@ FROM transactions AS t;
 ```
 
 ```text
-SelectQuery
-  select
+SelectWithUnionQuery (children 1)
+ ExpressionList (children 1)
+  SelectQuery (children 2)
+   ExpressionList (children 2)
     Identifier t.user_id
     Identifier t.amount
-  tables
-    TablesInSelectQueryElement
-      TableExpression
-        Identifier transactions (alias t)
+   TablesInSelectQuery (children 1)
+    TablesInSelectQueryElement (children 1)
+     TableExpression (children 1)
+      TableIdentifier transactions (alias t)
 ```
 
 ### Function Nodes
@@ -79,17 +80,17 @@ FROM metrics;
 ```
 
 ```text
-SelectQuery
-  select
-    Function toStartOfDay (alias day)
-      arguments
-        List
-          Identifier event_time
-    Function sum (alias total)
-      arguments
-        List
-          Identifier value
-  tables
+SelectWithUnionQuery (children 1)
+ ExpressionList (children 1)
+  SelectQuery (children 2)
+   ExpressionList (children 2)
+    Function toStartOfDay (alias day) (children 1)
+     ExpressionList (children 1)
+      Identifier event_time
+    Function sum (alias total) (children 1)
+     ExpressionList (children 1)
+      Identifier value
+   TablesInSelectQuery (children 1)
     ...
 ```
 
@@ -109,30 +110,32 @@ WHERE user_id IN (
 ```
 
 ```text
-SelectQuery
-  select
+SelectWithUnionQuery (children 1)
+ ExpressionList (children 1)
+  SelectQuery (children 3)
+   ExpressionList (children 1)
     Identifier user_id
-  tables
-    TablesInSelectQueryElement
-      TableExpression
-        Identifier users
-  where
-    Function in
-      arguments
-        List
-          Identifier user_id
-          SelectQuery
-            select
-              Function distinct
-                ...
-            tables
-              ...
-            where
-              Function equals
-                ...
+   TablesInSelectQuery (children 1)
+    TablesInSelectQueryElement (children 1)
+     TableExpression (children 1)
+      TableIdentifier users
+   Function in (children 1)
+    ExpressionList (children 2)
+     Identifier user_id
+     SelectWithUnionQuery (children 1)
+      ExpressionList (children 1)
+       SelectQuery (children 3)
+        ExpressionList (children 1)
+         Identifier user_id
+        TablesInSelectQuery
+         ...
+        Function equals (children 1)
+         ExpressionList (children 2)
+          Identifier status
+          Literal 'completed'
 ```
 
-The inner `SelectQuery` is a direct child of the `in` function's argument list.
+The inner subquery is wrapped in its own `SelectWithUnionQuery` node inside the `in` function's argument list. Note that `DISTINCT` is not a separate node in the AST; it is stored as a flag on the `SelectQuery` itself and is therefore not shown as a child in the tree dump.
 
 ## Debugging Complex Expressions
 
@@ -163,31 +166,31 @@ WHERE o.total > 100;
 ```
 
 ```text
-SelectQuery
-  select
+SelectWithUnionQuery (children 1)
+ ExpressionList (children 1)
+  SelectQuery (children 3)
+   ExpressionList (children 2)
     Identifier o.order_id
     Identifier u.email
-  tables
-    TablesInSelectQueryElement
-      TableExpression
-        Identifier orders (alias o)
-    TablesInSelectQueryElement
-      JoinExpression
-        TableExpression
-          Identifier users (alias u)
-        JoinKind INNER
-        JoinStrictness ALL
-        Function equals
-          arguments
-            List
-              Identifier o.user_id
-              Identifier u.id
-  where
-    Function greater
-      ...
+   TablesInSelectQuery (children 2)
+    TablesInSelectQueryElement (children 1)
+     TableExpression (children 1)
+      TableIdentifier orders (alias o)
+    TablesInSelectQueryElement (children 2)
+     TableJoin (children 1)
+      Function equals (children 1)
+       ExpressionList (children 2)
+        Identifier o.user_id
+        Identifier u.id
+     TableExpression (children 1)
+      TableIdentifier users (alias u)
+   Function greater (children 1)
+    ExpressionList (children 2)
+     Identifier o.total
+     Literal UInt64_100
 ```
 
-You can confirm the join type, strictness, and ON condition are parsed correctly before running the query.
+The `TableJoin` node holds the ON expression, and the joined table appears as a sibling `TableExpression`. You can confirm the join condition and the right-hand table are parsed correctly before running the query. Join kind and strictness (for example `INNER`/`ALL`) are stored as attributes on the `TableJoin` node rather than as separate child nodes.
 
 ## Using EXPLAIN AST for DDL Statements
 
@@ -206,17 +209,19 @@ ORDER BY (sensor_id, recorded_at);
 ```
 
 ```text
-CreateQuery sensor_data
-  columns
-    ColumnDeclaration sensor_id
-      DataType UInt32
-    ColumnDeclaration recorded_at
-      DataType DateTime
-    ColumnDeclaration temperature
-      DataType Float32
-  storage
-    StorageAST MergeTree
-  orderBy
+CreateQuery sensor_data (children 2)
+ Columns definition (children 1)
+  ExpressionList (children 3)
+   ColumnDeclaration sensor_id (children 1)
+    Identifier UInt32
+   ColumnDeclaration recorded_at (children 1)
+    Identifier DateTime
+   ColumnDeclaration temperature (children 1)
+    Identifier Float32
+ Storage definition (children 2)
+  Identifier MergeTree
+  Function tuple (children 1)
+   ExpressionList (children 2)
     Identifier sensor_id
     Identifier recorded_at
 ```
