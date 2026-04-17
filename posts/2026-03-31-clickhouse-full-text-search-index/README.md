@@ -16,9 +16,9 @@ ClickHouse provides two bloom-filter-based skip indexes for accelerating text se
 
 Stores a bloom filter of all n-grams (character substrings of length n) found in the column. Enables:
 
-- `LIKE '%substring%'`
-- `hasSubstr(col, 'substring')`
-- Equality comparisons
+- `LIKE '%substring%'` and `notLike`
+- `startsWith` / `endsWith`
+- Equality comparisons and `match`
 
 ### tokenbf_v1
 
@@ -97,10 +97,10 @@ SELECT message
 FROM log_messages
 WHERE message ILIKE '%connection refused%';
 
--- hasSubstr function
+-- startsWith / endsWith (uses ngrambf_v1)
 SELECT count()
 FROM log_messages
-WHERE hasSubstr(message, 'timeout');
+WHERE startsWith(message, 'ERROR');
 ```
 
 ## Queries That Use tokenbf_v1
