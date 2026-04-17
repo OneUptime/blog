@@ -120,7 +120,7 @@ receivers:
 
 exporters:
   otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com"
+    endpoint: "https://oneuptime.com/otlp"
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
