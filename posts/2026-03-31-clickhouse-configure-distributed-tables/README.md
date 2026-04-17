@@ -54,10 +54,10 @@ ClickHouse hashes the `user_id` and routes each row to the appropriate shard asy
 
 ## Synchronous Distributed Inserts
 
-By default, the Distributed engine buffers inserts and sends them asynchronously. Use `insert_distributed_sync` for synchronous delivery:
+By default, the Distributed engine buffers inserts and sends them asynchronously. Use `distributed_foreground_insert` for synchronous delivery:
 
 ```sql
-SET insert_distributed_sync = 1;
+SET distributed_foreground_insert = 1;
 INSERT INTO events VALUES (now(), 1003, 'purchase');
 ```
 
@@ -84,12 +84,12 @@ ORDER BY data_files DESC;
 ## Tune Distributed Table Settings
 
 ```xml
-<distributed_directory_monitor_sleep_time_ms>500</distributed_directory_monitor_sleep_time_ms>
-<distributed_directory_monitor_max_sleep_time_ms>5000</distributed_directory_monitor_max_sleep_time_ms>
+<distributed_background_insert_sleep_time_ms>500</distributed_background_insert_sleep_time_ms>
+<distributed_background_insert_max_sleep_time_ms>5000</distributed_background_insert_max_sleep_time_ms>
 ```
 
 Reduce sleep time if you need lower insert-to-shard latency.
 
 ## Summary
 
-Distributed tables in ClickHouse are a thin routing layer over local shard tables. Choose a sharding key that distributes data evenly and matches your most common filter patterns to enable shard pruning. Use `insert_distributed_sync` for strong consistency, or leave async mode enabled for higher insert throughput.
+Distributed tables in ClickHouse are a thin routing layer over local shard tables. Choose a sharding key that distributes data evenly and matches your most common filter patterns to enable shard pruning. Use `distributed_foreground_insert` for strong consistency, or leave async mode enabled for higher insert throughput.
