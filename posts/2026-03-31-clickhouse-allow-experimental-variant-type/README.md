@@ -68,7 +68,7 @@ SELECT
 FROM config_values;
 ```
 
-Rows where the active type does not match the requested type return `NULL` (when `join_use_nulls = 1`) or the type default.
+Rows where the active type does not match the requested type return `NULL` if the requested type can be `Nullable`, or the type's empty/default value for types that cannot be inside `Nullable` (such as `Array` or `Map`).
 
 ## Using multiIf for Safe Access
 
