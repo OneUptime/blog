@@ -83,7 +83,7 @@ FROM http_requests;
 
 ## Sampling for Large Datasets
 
-For very large tables, use `quantileTDigest` or `quantileApprox` for memory-efficient approximate computation:
+For very large tables, use `quantileTDigest` or `quantileGK` for memory-efficient approximate computation:
 
 ```sql
 SELECT quantileTDigest(0.99)(response_time_ms) AS p99_approx
