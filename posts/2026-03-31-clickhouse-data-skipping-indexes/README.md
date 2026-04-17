@@ -68,7 +68,7 @@ ALTER TABLE logs
 ADD INDEX idx_message_ngram (message) TYPE ngrambf_v1(3, 262144, 2, 0) GRANULARITY 4;
 ```
 
-Parameters: n-gram size, hash table size, hash functions, seed.
+Parameters: n-gram size, bloom filter size in bytes, number of hash functions, random seed.
 
 ## Testing Index Effectiveness
 
