@@ -12,22 +12,25 @@ Airbyte is an open-source ELT platform that replicates data from hundreds of sou
 
 ## Deploying Airbyte
 
-The fastest way to run Airbyte locally is with Docker Compose:
+The fastest way to run Airbyte locally is with `abctl`, which provisions a kind Kubernetes cluster and installs Airbyte via Helm:
 
 ```bash
-git clone https://github.com/airbytehq/airbyte.git
-cd airbyte
-./run-ab-platform.sh
+curl -LsfS https://get.airbyte.com | bash -
+abctl local install
 ```
 
-Airbyte's UI will be available at `http://localhost:8000` with credentials `airbyte / password`.
-
-For production, deploy with the Airbyte Helm chart:
+Airbyte's UI will be available at `http://localhost:8000`. Retrieve the auto-generated credentials with:
 
 ```bash
-helm repo add airbyte https://airbytehq.github.io/helm-charts
+abctl local credentials
+```
+
+For production, deploy with the Airbyte Helm chart V2:
+
+```bash
+helm repo add airbyte-v2 https://airbytehq.github.io/charts
 helm repo update
-helm install airbyte airbyte/airbyte \
+helm install airbyte airbyte-v2/airbyte \
   --namespace airbyte \
   --create-namespace \
   -f values.yaml
@@ -76,9 +79,10 @@ Airbyte supports three sync modes with ClickHouse:
 
 | Mode | Description | ClickHouse table engine |
 |------|-------------|------------------------|
-| Full refresh / Overwrite | Truncates and rewrites the table each sync | ReplacingMergeTree |
+| Full refresh / Overwrite | Replaces the table contents each sync | MergeTree |
 | Full refresh / Append | Appends all records each sync | MergeTree |
 | Incremental / Append | Appends only new records using a cursor field | MergeTree |
+| Incremental / Append + Deduped | Deduplicates by primary key on read | ReplacingMergeTree |
 
 Airbyte creates tables with this approximate schema for each stream:
 
@@ -221,20 +225,20 @@ ORDER BY hour;
 
 ## Airbyte via API for Automation
 
-Use the Airbyte API to trigger syncs programmatically:
+Use the Airbyte public API to trigger syncs programmatically:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/connections/sync \
+curl -X POST http://localhost:8000/api/public/v1/jobs \
   -H "Content-Type: application/json" \
-  -d '{"connectionId": "your-connection-id"}'
+  -H "Authorization: Bearer $AIRBYTE_API_TOKEN" \
+  -d '{"connectionId": "your-connection-id", "jobType": "sync"}'
 ```
 
-Check sync job status:
+List recent jobs for a connection:
 
 ```bash
-curl http://localhost:8000/api/v1/jobs/list \
-  -H "Content-Type: application/json" \
-  -d '{"configId": "your-connection-id", "configType": "sync"}'
+curl "http://localhost:8000/api/public/v1/jobs?connectionId=your-connection-id&jobType=sync" \
+  -H "Authorization: Bearer $AIRBYTE_API_TOKEN"
 ```
 
 ## Summary
