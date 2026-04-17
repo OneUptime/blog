@@ -78,18 +78,23 @@ FROM padding_demo;
 
 ## Comparing FixedString Values
 
-Comparisons with FixedString are byte-for-byte. Null padding affects equality checks, so be careful when comparing FixedString values with String values.
+Equality operators (`=`, `==`, `equals`) ignore null byte padding when comparing FixedString to string literals, so a short literal matches its padded stored form. `LIKE`, however, treats null bytes as significant characters, so patterns must account for them.
 
 ```sql
--- Comparing FixedString to a literal - padding matters
+-- Equality ignores null padding: this matches the row stored as 'A\0\0'
 SELECT *
 FROM padding_demo
-WHERE code = 'A';    -- Only matches if stored as exactly 'A\0\0'
+WHERE code = 'A';
 
--- Safer: trim null bytes before comparison
+-- LIKE treats null bytes literally, so you must include them in the pattern
 SELECT *
 FROM padding_demo
-WHERE trimRight(code) = 'A';
+WHERE code LIKE 'A\0\0';   -- Matches only row 1
+
+-- To strip trailing null bytes explicitly, pass '\0' as the trim characters
+SELECT *
+FROM padding_demo
+WHERE trimRight(code, '\0') = 'A';
 ```
 
 ## Hex Encoding for Binary Hashes
