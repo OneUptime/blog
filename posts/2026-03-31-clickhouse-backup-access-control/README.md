@@ -125,7 +125,7 @@ clickhouse-client < /backup/quotas_export.sql
 ```sql
 SELECT name, storage FROM system.users ORDER BY name;
 SELECT name FROM system.roles ORDER BY name;
-SELECT name, tracking_type FROM system.quotas ORDER BY name;
+SELECT name, keys FROM system.quotas ORDER BY name;
 ```
 
 ## Summary
