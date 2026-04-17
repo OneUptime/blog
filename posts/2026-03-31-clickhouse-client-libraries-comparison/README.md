@@ -78,7 +78,7 @@ for rows.Next() {
 import { createClient } from '@clickhouse/client';
 
 const client = createClient({
-  host: 'http://localhost:8123',
+  url: 'http://localhost:8123',
   database: 'analytics',
   username: 'default',
   password: '',
