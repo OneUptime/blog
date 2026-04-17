@@ -4,109 +4,124 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Count-Min Sketch, Approximate Query, Streaming Analytics, Heavy Hitter
 
-Description: Learn how to use the Count-Min Sketch in ClickHouse to estimate item frequencies with bounded error using constant memory.
+Description: Learn how to use Count-Min Sketch in ClickHouse to estimate column value frequencies with bounded error for better query planning on skewed data.
 
 ---
 
 ## What Is Count-Min Sketch?
 
-Count-Min Sketch (CMS) is a probabilistic data structure for estimating frequencies of elements in a stream. It uses a compact matrix of counters to provide frequency estimates with a bounded overestimation error. ClickHouse implements this via the `countMinSketch` aggregate function.
+Count-Min Sketch (CMS) is a probabilistic data structure for estimating the frequency of elements in a dataset. It uses a compact matrix of counters to provide frequency estimates with a bounded overestimation error. ClickHouse exposes this through a column-level statistics type named `CountMin`, which the query planner consults when estimating the selectivity of equality predicates.
 
 ## Why Use Count-Min Sketch?
 
-Exact frequency counting requires memory proportional to the number of distinct items - impractical for high-cardinality streams. Count-Min Sketch trades a small, controlled overcount error for a fixed memory footprint regardless of dataset size.
+Exact frequency counting requires memory proportional to the number of distinct items - impractical for high-cardinality columns. Count-Min Sketch trades a small, controlled overcount error for a fixed memory footprint regardless of dataset size. In ClickHouse, this lets the optimizer pick better plans for filters like `col = 'value'` - reordering joins or choosing more selective filters first - without reading the underlying data.
 
-## Basic Frequency Estimation
+## Attaching Count-Min Statistics to a Column
+
+Statistics creation is currently experimental, so enable the feature flag first:
 
 ```sql
-SELECT countMinSketch(url)
+SET allow_experimental_statistics = 1;
+```
+
+You can declare `CountMin` statistics inline when creating a table:
+
+```sql
+CREATE TABLE access_logs
+(
+    timestamp DateTime,
+    url       String STATISTICS(CountMin),
+    user_id   UInt64
+)
+ENGINE = MergeTree
+ORDER BY timestamp;
+```
+
+Or add them to an existing column and rebuild the sketch over existing parts:
+
+```sql
+ALTER TABLE access_logs
+    ADD STATISTICS url TYPE CountMin;
+
+ALTER TABLE access_logs
+    MATERIALIZE STATISTICS url;
+```
+
+New parts populate the sketch automatically as they are written.
+
+## Supported Data Types and Operations
+
+`CountMin` works with:
+
+- `String` and `FixedString`
+- `(U)Int*` integer types
+- `Float*` and `Decimal*` numeric types
+- `Date`, `Date32`, `DateTime`, `DateTime64`
+
+It accelerates selectivity estimation for equality predicates (`=` and `IN`). Range predicates are not supported by `CountMin` - pair it with a statistics type such as `TDigest` or `MinMax` for those.
+
+## Enabling the Planner to Use Statistics
+
+Declaring the statistic is not enough; the optimizer must also be allowed to use it:
+
+```sql
+SET allow_statistics_optimize = 1;
+
+SELECT count()
 FROM access_logs
-WHERE toDate(timestamp) = today();
+WHERE url = '/checkout';
 ```
 
-This returns a serialized sketch state. More usefully, combine it with `topK` for heavy-hitter detection:
+With the setting on, the planner uses the `CountMin` sketch to estimate how many rows match before scanning, which can improve join ordering and filter placement.
+
+## Managing Statistics
+
+The full set of `ALTER TABLE` statements for column statistics is:
 
 ```sql
-SELECT
-    topK(10)(url) AS top_urls,
-    countMinSketch(url) AS url_sketch
-FROM access_logs
-GROUP BY toStartOfHour(timestamp);
+-- Remove metadata and stop maintaining the sketch for the column
+ALTER TABLE access_logs DROP STATISTICS url;
+
+-- Clear the sketch data in existing parts but keep the metadata
+ALTER TABLE access_logs CLEAR STATISTICS url;
+
+-- Rebuild statistics for all columns that declare them
+ALTER TABLE access_logs MATERIALIZE STATISTICS ALL;
 ```
 
-## Sketching with Parameters
+## Combining Count-Min Sketch with Bloom Filter Skip Indexes
 
-ClickHouse's CMS implementation accepts width and depth parameters that control accuracy and memory:
-
-```sql
--- Higher width reduces error probability; higher depth reduces false positives
-SELECT countMinSketch(5, 2000)(user_id)
-FROM events
-WHERE event_type = 'purchase';
-```
-
-- `depth`: number of hash functions (rows in the matrix)
-- `width`: number of buckets per row
-
-Error bound: with probability at least `1 - (1/2)^depth`, the estimate overshoots true frequency by at most `total_count / width`.
-
-## Persisting Sketch State
-
-Store sketch states in AggregatingMergeTree for incremental updates:
-
-```sql
-CREATE TABLE url_sketch_agg (
-    hour    DateTime,
-    sketch  AggregateFunction(countMinSketch, String)
-) ENGINE = AggregatingMergeTree()
-ORDER BY hour;
-
-INSERT INTO url_sketch_agg
-SELECT
-    toStartOfHour(timestamp) AS hour,
-    countMinSketchState(url)  AS sketch
-FROM access_logs
-GROUP BY hour;
-```
-
-Merge sketches across time windows:
-
-```sql
-SELECT countMinSketchMerge(sketch)
-FROM url_sketch_agg
-WHERE hour >= now() - INTERVAL 24 HOUR;
-```
-
-## Combining Count-Min Sketch with Bloom Filters
-
-Use CMS alongside Bloom filter skip indexes for a layered frequency-filtering approach:
+`CountMin` complements Bloom filter skip indexes. Use a Bloom filter to prune granules during scan and `CountMin` to inform the planner about selectivity:
 
 ```sql
 ALTER TABLE access_logs
     ADD INDEX url_bloom_idx url TYPE bloom_filter GRANULARITY 4;
 ```
 
-The Bloom filter prunes granules at scan time; CMS provides frequency estimation at query time.
+The Bloom filter prunes granules at scan time; the `CountMin` statistic lets the optimizer reason about predicate cardinality before execution.
 
 ## Practical Use Cases
 
-- Detecting DDoS patterns: identify IP addresses with anomalously high request counts
-- Ad fraud detection: flag click sources with unexpectedly high frequency
-- Log analysis: approximate frequency of error codes without full aggregation scans
+- Detecting DDoS patterns: attach `CountMin` to an `ip_address` column so equality filters on suspicious IPs get accurate selectivity estimates and better plans.
+- Ad fraud detection: improve plan quality when filtering on `click_source` values that have a highly skewed frequency distribution.
+- Log analysis: help the planner when filtering on `status_code` or `error_code` columns where a few values dominate and most are rare.
 
 ```sql
--- Approximate count of each HTTP status code
-SELECT
-    status_code,
-    countMinSketchMerge(sketch) AS approx_freq
-FROM (
-    SELECT status_code, countMinSketchState(request_id) AS sketch
-    FROM http_logs
-    GROUP BY status_code
-)
-GROUP BY status_code;
+SET allow_experimental_statistics = 1;
+
+ALTER TABLE http_logs
+    ADD STATISTICS status_code TYPE CountMin;
+
+ALTER TABLE http_logs
+    MATERIALIZE STATISTICS status_code;
+
+SET allow_statistics_optimize = 1;
+
+SELECT count()
+FROM http_logs
+WHERE status_code = 500;
 ```
 
 ## Summary
 
-Count-Min Sketch in ClickHouse enables memory-efficient frequency estimation over high-cardinality streams. By storing sketch states in AggregatingMergeTree tables, you can maintain running frequency estimates that are mergeable, lightweight, and queryable in real time - making them an excellent fit for anomaly detection and heavy-hitter analysis pipelines.
+Count-Min Sketch in ClickHouse is surfaced as a lightweight column statistics type that the query planner uses to estimate the selectivity of equality predicates. Attaching it to high-cardinality, skewed columns lets the optimizer pick better execution plans without the memory cost of exact frequency counts - making it a useful tool for heavy-hitter-aware query planning on large MergeTree tables.
