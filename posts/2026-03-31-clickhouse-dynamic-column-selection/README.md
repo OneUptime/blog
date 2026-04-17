@@ -15,10 +15,10 @@ ClickHouse provides powerful syntax for selecting columns dynamically, letting y
 The `COLUMNS` expression is the core tool for dynamic column selection. It accepts a regular expression and matches all columns whose names match the pattern.
 
 ```sql
-SELECT COLUMNS('metric_.*') FROM system_metrics LIMIT 5;
+SELECT COLUMNS('^metric_') FROM system_metrics LIMIT 5;
 ```
 
-This selects every column starting with `metric_` without naming each one explicitly.
+This selects every column whose name starts with `metric_` without naming each one explicitly. The regex is applied unanchored by default, so use `^` when you specifically want a prefix match.
 
 ## Matching by Pattern
 
@@ -32,12 +32,12 @@ This matches exactly `cpu_usage`, `mem_usage`, and `disk_usage`.
 
 ## Combining with Aggregate Functions
 
-Dynamic column selection works with aggregate functions, making it easy to compute statistics across many columns at once:
+Dynamic column selection works with aggregate functions via the `APPLY` modifier, making it easy to compute statistics across many columns at once. Each matched column becomes its own aggregated result:
 
 ```sql
 SELECT
     host,
-    SUM(COLUMNS('bytes_.*')) AS total_bytes
+    COLUMNS('bytes_.*') APPLY(sum)
 FROM network_stats
 GROUP BY host;
 ```
