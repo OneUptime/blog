@@ -116,7 +116,7 @@ ORDER BY event_time DESC;
 
 ## Account Lockout Candidates
 
-Users with more than 5 failures in 15 minutes.
+Users with 5 or more failures in 15 minutes.
 
 ```sql
 SELECT
