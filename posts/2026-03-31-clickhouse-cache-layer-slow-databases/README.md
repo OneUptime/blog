@@ -31,7 +31,7 @@ Export changed rows from PostgreSQL and load into ClickHouse hourly:
 #!/bin/bash
 # Export rows modified in the last hour
 psql -h pg.internal -U etl analytics \
-  -c "\COPY (SELECT * FROM orders WHERE updated_at >= NOW() - INTERVAL '70 minutes') TO STDOUT CSV HEADER" \
+  -c "\copy (SELECT * FROM orders WHERE updated_at >= NOW() - INTERVAL '70 minutes') TO STDOUT CSV HEADER" \
   > /tmp/orders_delta.csv
 
 # Load into ClickHouse
