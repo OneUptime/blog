@@ -12,7 +12,7 @@ When numeric values are stored as an array column, you often need to reduce them
 
 ## arraySum() - Total All Elements
 
-`arraySum(arr)` adds up every element in the array. The return type matches the element type for integer arrays and returns a `Float64` for floating-point inputs.
+`arraySum(arr)` adds up every element in the array. For integer arrays the return type is widened to `Int64` or `UInt64` to prevent overflow; floating-point arrays return `Float64`, and `Decimal` arrays return a `Decimal` of sufficient precision.
 
 ```sql
 -- Sum a literal integer array
