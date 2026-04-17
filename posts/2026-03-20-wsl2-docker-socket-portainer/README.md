@@ -95,8 +95,8 @@ docker inspect portainer | grep -A 5 "Mounts"
 docker exec portainer ls -la /var/run/docker.sock
 # Expected: srw-rw---- 1 root docker ... /var/run/docker.sock
 
-# Test connectivity
-docker exec portainer wget -q --spider --unix-socket /var/run/docker.sock http://localhost/version
+# Test connectivity from the host (curl supports --unix-socket; wget does not)
+curl --unix-socket /var/run/docker.sock http://localhost/version
 ```
 
 ## Issue 5: WSL2 and Docker Desktop Conflict
