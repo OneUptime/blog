@@ -93,7 +93,7 @@ Output without a skip index on `status`:
 ReadFromMergeTree (http_logs)
   Indexes:
     PrimaryKey
-      Condition: true (whole table)
+      Condition: true
       Parts: 10/10
       Granules: 2000/2000
 ```
@@ -173,10 +173,10 @@ FROM http_logs
 WHERE toYYYYMM(ts) = 202401;
 ```
 
-If `Parts: 2/120`, only 2 monthly partitions are read. If `Parts: 120/120`, the expression cannot be used for partition pruning and you need to rewrite:
+If `Parts: 2/120`, only 2 monthly partitions are read. If the table is partitioned by `toYYYYMM(ts)`, this filter prunes correctly because ClickHouse matches the expression against the partition key. If `Parts: 120/120`, the expression does not align with the partition key (for example, the table is partitioned by a different expression) and you should rewrite using a direct range filter that the partition key can evaluate:
 
 ```sql
--- Better: use direct range filter for partition pruning
+-- Direct range filter also works for partition pruning
 SELECT count()
 FROM http_logs
 WHERE ts >= '2024-01-01' AND ts < '2024-02-01';
@@ -231,7 +231,7 @@ LIMIT 1;
 | EXPLAIN output | Diagnosis | Fix |
 |---------------|-----------|-----|
 | `Granules: N/N` on PrimaryKey | Filter does not match ORDER BY prefix | Reorder ORDER BY or add skip index |
-| `Condition: true (whole table)` | No index used | Add skip index |
+| `Condition: true` on PrimaryKey | No index used | Add skip index |
 | `Parts: N/N` | No partition pruning | Add partition filter |
 | Skip index Granules equals PrimaryKey Granules | Skip index not helping | Check index type and column distribution |
 
