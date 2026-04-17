@@ -23,11 +23,11 @@ SELECT user_id, name, status FROM users FINAL WHERE user_id = 42;
 ## Why FINAL Is Expensive on Full Scans
 
 `FINAL` makes ClickHouse:
-1. Read all parts for the queried data range
-2. Sort and merge them in memory to deduplicate
-3. Then apply your WHERE/GROUP BY filters
+1. Read parts in the queried data range (partition pruning and primary key filters still apply)
+2. Sort and merge them to deduplicate matching rows
+3. Evaluate predicates on non-key columns and GROUP BY on the merged result
 
-On a table with 1 billion rows scanned by `FINAL`, this is a heavy in-memory merge before your actual query logic runs.
+On a table with 1 billion rows scanned by `FINAL`, this is a heavy merge step before aggregation runs.
 
 ```sql
 -- BAD: FINAL on a full-scan aggregation
@@ -70,7 +70,7 @@ Run `OPTIMIZE TABLE` during low-traffic windows to ensure data is already merged
 
 ```sql
 -- Force merge for a partition so FINAL has less work
-OPTIMIZE TABLE users PARTITION '202603' FINAL;
+OPTIMIZE TABLE users PARTITION 202603 FINAL;
 ```
 
 After optimization, `FINAL` queries on that partition are cheaper.
