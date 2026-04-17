@@ -53,8 +53,10 @@ Use **Lazy** for archival or multi-tenant setups with hundreds of Log tables:
 
 ```sql
 CREATE DATABASE archive
-ENGINE = Lazy(expiration_time_seconds = 7200);
+ENGINE = Lazy(7200);
 ```
+
+The single positional argument is `expiration_time_in_seconds` — how long a table is kept in RAM after its last access. Lazy can only host `*Log` family tables.
 
 ### Federated Queries to MySQL
 
@@ -97,15 +99,21 @@ ENGINE = MaterializedPostgreSQL('host:5432', 'dbname', 'user', 'pass');
 
 ## Migration from Ordinary to Atomic
 
-All legacy Ordinary databases should be upgraded:
+All legacy Ordinary databases should be upgraded. First, check what engines you currently have:
 
 ```sql
--- Check current engine
 SELECT name, engine FROM system.databases;
-
--- Upgrade
-ALTER DATABASE mydb MODIFY ENGINE Atomic;
 ```
+
+ClickHouse does not provide a `MODIFY ENGINE` SQL command. To convert all `Ordinary` databases to `Atomic`, create a flag file in the server's `flags` directory and restart the server (requires ClickHouse 22.8+):
+
+```bash
+sudo touch /var/lib/clickhouse/flags/convert_ordinary_to_atomic
+sudo chown clickhouse:clickhouse /var/lib/clickhouse/flags/convert_ordinary_to_atomic
+sudo systemctl restart clickhouse-server
+```
+
+On startup, every `Ordinary` database will be migrated to `Atomic` automatically.
 
 ## Summary
 
