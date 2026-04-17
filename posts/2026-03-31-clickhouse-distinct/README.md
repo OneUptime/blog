@@ -8,7 +8,7 @@ Description: Learn how to use SELECT DISTINCT in ClickHouse for deduplication, w
 
 ---
 
-`SELECT DISTINCT` removes duplicate rows from query results. In ClickHouse, this operation can be expensive on large datasets because it requires a distributed deduplication step. Understanding how DISTINCT works under the hood - and when to prefer `GROUP BY` or approximate functions like `uniq()` - is key to writing fast deduplication queries. This post covers all the angles.
+`SELECT DISTINCT` removes duplicate rows from query results. In ClickHouse, this operation can be expensive on large datasets because it requires a full deduplication step. Understanding how DISTINCT works under the hood - and when to prefer `GROUP BY` or approximate functions like `uniq()` - is key to writing fast deduplication queries. This post covers all the angles.
 
 ## Basic SELECT DISTINCT
 
