@@ -16,14 +16,14 @@ LVM (Logical Volume Manager) and cloud block storage (EBS, Azure Disk) support c
 
 ## Preparing ClickHouse for a Consistent Snapshot
 
-For a consistent snapshot, freeze ClickHouse tables to flush in-memory data to disk:
+For a consistent snapshot, flush buffered data to disk before capturing the volume:
 
 ```sql
--- Freeze all tables to prevent writes during snapshot
-SYSTEM SYNC FILE CACHE;
-
--- For ReplicatedMergeTree tables, flush the replication queue
+-- Flush buffered log data to system log tables on disk
 SYSTEM FLUSH LOGS;
+
+-- Issue an fsync across ClickHouse's filesystem cache
+SYSTEM SYNC FILE CACHE;
 ```
 
 Alternatively, use FREEZE to create a consistent snapshot of table data:
@@ -101,10 +101,10 @@ The FREEZE command creates hardlinked copies of table parts without full copies:
 -- Freeze table
 ALTER TABLE events FREEZE WITH NAME 'backup_20260331';
 
--- List frozen parts
-SELECT shadow_path, name, min_date, max_date, rows
+-- List parts that have a frozen backup
+SELECT database, table, partition, name, rows
 FROM system.parts
-WHERE shadow_path IS NOT NULL;
+WHERE is_frozen = 1;
 ```
 
 Copy the frozen data to backup storage:
