@@ -22,10 +22,9 @@ conn, err := clickhouse.Open(&clickhouse.Options{
         Username: "default",
         Password: "",
     },
-    MaxOpenConns:     20,             // max active connections
-    MaxIdleConns:     10,             // keep this many idle
-    ConnMaxLifetime:  time.Hour,      // recycle connections hourly
-    ConnMaxIdleTime:  time.Minute * 5,
+    MaxOpenConns:    20,             // max active connections
+    MaxIdleConns:    10,             // keep this many idle
+    ConnMaxLifetime: time.Hour,      // recycle connections hourly
 })
 ```
 
