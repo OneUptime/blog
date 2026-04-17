@@ -30,7 +30,7 @@ SELECT dateDiff('day', start_date, end_date) AS days;
 
 ## Cost Model
 
-BigQuery charges per terabyte of data scanned (approximately $5/TB). For a query that scans 1TB of data run 100 times per day, that is $500/day or $15,000/month.
+BigQuery charges per tebibyte of data scanned (approximately $6.25/TiB on-demand). For a query that scans 1TiB of data run 100 times per day, that is $625/day or roughly $18,750/month.
 
 ClickHouse Cloud charges for compute uptime and storage. Self-hosted ClickHouse has fixed infrastructure costs. For high-frequency queries, ClickHouse is dramatically cheaper.
 
@@ -79,9 +79,9 @@ FROM events;
 
 BigQuery Streaming API allows row-by-row inserts but costs extra. ClickHouse handles both streaming and batch inserts efficiently through its native protocol.
 
-## No Query Caching Extra Charge
+## Query Result Caching
 
-BigQuery charges for every query scan regardless of whether results were cached recently. ClickHouse's built-in query result cache serves repeated identical queries from memory at zero scan cost:
+BigQuery has an automatic query result cache that serves identical queries for free, but the cache is invalidated whenever underlying tables change. For frequently updated tables, most repeat queries still incur scan costs. ClickHouse's built-in query result cache is explicit and configurable, serving repeated identical queries from memory at zero scan cost:
 
 ```sql
 -- Enable query result cache
