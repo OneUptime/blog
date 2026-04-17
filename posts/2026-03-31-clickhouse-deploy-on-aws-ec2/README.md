@@ -98,10 +98,23 @@ Edit `/etc/clickhouse-server/config.d/production.xml`:
 
 ## Setting Up an IAM Role for S3 Backups
 
-Attach an IAM role to the EC2 instance with S3 write access so ClickHouse can run backups without static credentials:
+Attach an IAM role to the EC2 instance with S3 write access so ClickHouse can run backups without static credentials. Enable instance-metadata credentials in the server config:
+
+```xml
+<clickhouse>
+  <s3>
+    <my_backup_endpoint>
+      <endpoint>https://my-bucket.s3.amazonaws.com/backups/</endpoint>
+      <use_environment_credentials>true</use_environment_credentials>
+    </my_backup_endpoint>
+  </s3>
+</clickhouse>
+```
+
+Then run a backup that uses the matching endpoint:
 
 ```sql
-BACKUP TABLE mydb.events TO S3('s3://my-bucket/backups/events', 'auto', 'auto');
+BACKUP TABLE mydb.events TO S3('https://my-bucket.s3.amazonaws.com/backups/events', '', '');
 ```
 
 ## Summary
