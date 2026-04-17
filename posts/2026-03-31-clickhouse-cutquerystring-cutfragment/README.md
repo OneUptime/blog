@@ -119,23 +119,24 @@ https://shop.com/product/42  4
 https://shop.com/cart        2
 ```
 
-### Combining with path() for Clean Path Analysis
+### Combining with pathFull() to Keep Fragments but Drop Query Strings
 
-Strip query strings before extracting paths to avoid path fragmentation:
+`pathFull()` returns the path including the query string and fragment, while `path()` returns just the path. Wrap a URL in `cutQueryString()` first to keep the fragment but drop tracking parameters:
 
 ```sql
 SELECT
-    path(cutQueryString(full_url)) AS clean_path,
-    count()                        AS views
+    pathFull(cutQueryString(full_url)) AS path_with_fragment,
+    count()                            AS views
 FROM raw_pageviews
-GROUP BY clean_path
+GROUP BY path_with_fragment
 ORDER BY views DESC;
 ```
 
 ```text
-clean_path   views
-/product/42  4
-/cart        2
+path_with_fragment   views
+/product/42          3
+/cart                2
+/product/42#reviews  1
 ```
 
 ## Summary
