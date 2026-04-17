@@ -8,7 +8,7 @@ Description: Learn how bitmapContains() checks if a single ID is in a bitmap and
 
 ---
 
-ClickHouse offers two membership-test functions for Roaring Bitmaps. `bitmapContains(bitmap, needle)` returns `1` if the `UInt32` value `needle` exists in the bitmap, and `0` otherwise. `bitmapHasAny(bitmap_a, bitmap_b)` returns `1` if the two bitmaps have at least one element in common - equivalent to `bitmapAndCardinality(a, b) > 0` but potentially faster because it can short-circuit as soon as one shared element is found.
+ClickHouse offers two membership-test functions for Roaring Bitmaps. `bitmapContains(bitmap, needle)` returns `1` if the unsigned integer value `needle` exists in the bitmap, and `0` otherwise. `bitmapHasAny(bitmap_a, bitmap_b)` returns `1` if the two bitmaps have at least one element in common - equivalent to `bitmapAndCardinality(a, b) > 0` but potentially faster because it can short-circuit as soon as one shared element is found.
 
 ## Setting Up Sample Data
 
@@ -26,7 +26,7 @@ ORDER BY role;
 INSERT INTO permission_bitmaps
 SELECT role, groupBitmapState(toUInt64(user_id)) AS user_bitmap
 FROM (
-    SELECT 'admin'    AS role, number AS user_id FROM numbers(1, 50)    -- admins: 1-49
+    SELECT 'admin'    AS role, number AS user_id FROM numbers(1, 50)    -- admins: 1-50
     UNION ALL
     SELECT 'editor'   AS role, number AS user_id FROM numbers(50, 200)  -- editors: 50-249
     UNION ALL
@@ -140,11 +140,11 @@ has_overlap
 `bitmapHasAll(a, b)` returns `1` if every element in `b` also exists in `a` (i.e., `b` is a subset of `a`).
 
 ```sql
--- Build a small test bitmap for users 1-10
+-- Check whether the editor bitmap contains a small test set of user IDs
 SELECT
     bitmapHasAll(
         (SELECT user_bitmap FROM permission_bitmaps WHERE role = 'editor'),
-        bitmapBuild(CAST([50, 60, 70, 80], 'Array(UInt32)'))
+        bitmapBuild(CAST([50, 60, 70, 80], 'Array(UInt64)'))
     ) AS editor_contains_test_set;
 ```
 
