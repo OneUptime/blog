@@ -44,8 +44,9 @@ ORDER BY value DESC;
 ```
 
 Look for:
-- `ZooKeeperExceptions` - total exception count
 - `ZooKeeperHardwareExceptions` - connection-level errors
+- `ZooKeeperUserExceptions` - exceptions from user requests (e.g., node already exists)
+- `ZooKeeperOtherExceptions` - other ZooKeeper-related exceptions
 
 ## Step 3 - Check Replication Queue Backlog
 
@@ -66,15 +67,26 @@ A growing queue with old timestamps indicates ZooKeeper is not processing operat
 
 ## Step 4 - Check ZooKeeper Latency
 
+Inspect the active ZooKeeper connection and session state:
+
 ```sql
 SELECT
-    zoo_host,
-    zookeeper_path,
-    is_leader,
-    last_zxid,
-    connections
+    name,
+    host,
+    port,
+    connected_time,
+    session_uptime_elapsed_seconds,
+    is_expired,
+    last_zxid_seen
+FROM system.zookeeper_connection;
+```
+
+You can also browse ZooKeeper nodes directly (the `path =` filter is required):
+
+```sql
+SELECT name, ctime, mtime, numChildren
 FROM system.zookeeper
-WHERE zookeeper_path = '/';
+WHERE path = '/';
 ```
 
 Check ZooKeeper leader latency from its own stats:
