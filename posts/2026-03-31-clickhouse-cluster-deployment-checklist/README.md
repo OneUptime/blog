@@ -98,7 +98,7 @@ INSERT INTO events_dist VALUES (now(), 1, 'test');
 SELECT count() FROM events_dist WHERE event_type = 'test';
 
 -- Check replication lag
-SELECT shard_num, replica_num, is_leader, absolute_delay
+SELECT database, table, replica_name, is_leader, absolute_delay
 FROM system.replicas;
 ```
 
