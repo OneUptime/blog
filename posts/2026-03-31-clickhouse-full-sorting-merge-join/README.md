@@ -30,6 +30,7 @@ SELECT
     count() AS events
 FROM events e
 JOIN users u ON e.user_id = u.user_id
+GROUP BY e.user_id, u.country
 SETTINGS join_algorithm = 'full_sorting_merge';
 ```
 
@@ -85,7 +86,7 @@ ClickHouse can automatically select the best join algorithm:
 SET join_algorithm = 'auto';
 ```
 
-The `auto` setting tries hash join first, then falls back to grace hash join if memory limits are hit. For scenarios where you know both tables are large and sorted, explicitly setting `full_sorting_merge` may yield better performance.
+The `auto` setting tries hash join first, then falls back to partial merge join if memory limits are hit. For scenarios where you know both tables are large and sorted, explicitly setting `full_sorting_merge` may yield better performance.
 
 ## Checking Join Performance
 
