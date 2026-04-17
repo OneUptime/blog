@@ -176,7 +176,7 @@ ARRAY JOIN tag_arr AS tag, enum_arr AS occurrence
 WHERE occurrence = 1
 GROUP BY tag
 ORDER BY article_count DESC;
--- sql        3  (not 4, because the duplicate in article 1 is excluded)
+-- sql        2  (not 3, because the duplicate in article 1 is excluded)
 -- database   2
 -- clickhouse 2
 -- performance 1
