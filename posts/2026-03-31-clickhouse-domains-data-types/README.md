@@ -8,7 +8,7 @@ Description: Learn how ClickHouse domain types like IPv4 and IPv6 provide semant
 
 ---
 
-ClickHouse domains are special types built on top of existing primitive types. They add semantic meaning, input validation, and display formatting without changing the underlying storage representation. The most common built-in domains are `IPv4` and `IPv6`, which store IP addresses as `UInt32` and `FixedString(16)` respectively while accepting and displaying them in human-readable dotted-decimal or colon-hex notation.
+ClickHouse domains are special types built on top of existing primitive types. They add semantic meaning, input validation, and display formatting without changing the underlying storage representation. The most common built-in domains are `IPv4` and `IPv6`, which store IP addresses as `UInt32` and `UInt128` (big-endian) respectively while accepting and displaying them in human-readable dotted-decimal or colon-hex notation.
 
 ## What Is a Domain Type?
 
@@ -67,7 +67,7 @@ WHERE toUInt32(source_ip) BETWEEN toUInt32(toIPv4('192.168.1.0'))
 
 ## IPv6 Domain
 
-`IPv6` is stored as `FixedString(16)` (16 bytes) but accepts and displays in standard colon-hex notation. It also accepts IPv4-mapped IPv6 addresses.
+`IPv6` is stored in 16 bytes as `UInt128` big-endian but accepts and displays in standard colon-hex notation. It also accepts IPv4-mapped IPv6 addresses.
 
 ```sql
 CREATE TABLE ipv6_connections (
@@ -93,8 +93,9 @@ To convert between IPv4 and IPv6 representations:
 SELECT IPv4ToIPv6(toIPv4('192.168.1.1'));
 -- Result: ::ffff:192.168.1.1
 
--- Extract an IPv4 address from an IPv4-mapped IPv6 address
-SELECT toIPv4(IPv6CIDRToRange(toIPv6('::ffff:192.168.1.1'), 128).1);
+-- Display an IPv4-mapped IPv6 address in canonical string form
+SELECT IPv6NumToString(toIPv6('::ffff:192.168.1.1'));
+-- Result: ::ffff:192.168.1.1
 ```
 
 ## Validating IP Addresses on Insert
@@ -142,7 +143,7 @@ ORDER BY connection_count DESC;
 
 ## The Domain Type Concept
 
-The domain mechanism is extensible in principle - domains inherit all operators and functions from their base type while adding validation. Any comparison, arithmetic, or function that works on `UInt32` works on `IPv4`. Any function that works on `FixedString(16)` works on `IPv6`. The domain layer only adds:
+The domain mechanism is extensible in principle - domains inherit all operators and functions from their base type while adding validation. Any comparison, arithmetic, or function that works on `UInt32` works on `IPv4`. Any function that works on `UInt128` works on `IPv6`. The domain layer only adds:
 
 1. Input parsing from a human-readable string format
 2. Output formatting back to the human-readable string format
@@ -150,4 +151,4 @@ The domain mechanism is extensible in principle - domains inherit all operators 
 
 ## Summary
 
-ClickHouse domain types like `IPv4` and `IPv6` add input validation and display formatting on top of `UInt32` and `FixedString(16)` storage. They accept human-readable strings during insert, reject invalid values, and display in standard notation. Because they share storage with their base types, all numeric and binary functions remain available. Use `isIPv4String()` and `isIPv6String()` to validate input before insertion when working with untrusted data.
+ClickHouse domain types like `IPv4` and `IPv6` add input validation and display formatting on top of `UInt32` and `UInt128` big-endian storage. They accept human-readable strings during insert, reject invalid values, and display in standard notation. Because they share storage with their base types, all numeric and binary functions remain available. Use `isIPv4String()` and `isIPv6String()` to validate input before insertion when working with untrusted data.
