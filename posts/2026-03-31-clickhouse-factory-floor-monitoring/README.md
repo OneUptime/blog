@@ -18,7 +18,7 @@ CREATE TABLE machine_events (
     line_id      LowCardinality(String),
     plant_id     LowCardinality(String),
     event_type   LowCardinality(String),  -- running, stopped, fault, changeover, idle
-    fault_code   Nullable(LowCardinality(String)),
+    fault_code   LowCardinality(Nullable(String)),
     parts_count  UInt32,
     cycle_time_s Float32,
     temperature_c Float32,
@@ -79,11 +79,21 @@ SELECT
     event_type,
     fault_code,
     count() AS event_count,
-    sum(dateDiff('minute', event_at,
-        lead(event_at) OVER (PARTITION BY machine_id ORDER BY event_at))) AS total_downtime_min
-FROM machine_events
+    sum(gap_min) AS total_downtime_min
+FROM (
+    SELECT
+        machine_id,
+        line_id,
+        event_type,
+        fault_code,
+        dateDiff('minute', event_at, leadInFrame(event_at) OVER (
+            PARTITION BY machine_id ORDER BY event_at
+            ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+        )) AS gap_min
+    FROM machine_events
+    WHERE event_at >= today() - 30
+)
 WHERE event_type IN ('stopped', 'fault', 'changeover', 'idle')
-  AND event_at >= today() - 30
 GROUP BY machine_id, line_id, event_type, fault_code
 ORDER BY total_downtime_min DESC;
 ```
