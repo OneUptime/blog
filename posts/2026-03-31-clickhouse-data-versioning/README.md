@@ -10,11 +10,11 @@ Description: Learn how to implement data versioning in ClickHouse using Replacin
 
 ## Why Data Versioning in ClickHouse?
 
-ClickHouse is an append-only database. You cannot UPDATE rows in place the way you can with PostgreSQL. Data versioning lets you write new versions of records as new rows, then use merge-time deduplication to expose only the latest version.
+ClickHouse is optimized for append-heavy workloads. While it does support `ALTER TABLE ... UPDATE` via mutations, these are heavyweight asynchronous operations and are not intended for frequent row-level updates the way you might use UPDATE in PostgreSQL. Data versioning lets you write new versions of records as new rows, then use merge-time deduplication to expose only the latest version.
 
 ## Using ReplacingMergeTree
 
-ReplacingMergeTree is the primary engine for versioned data. It deduplicates rows with the same primary key, keeping only the row with the highest version value:
+ReplacingMergeTree is the primary engine for versioned data. It deduplicates rows with the same sorting key (ORDER BY), keeping only the row with the highest version value:
 
 ```sql
 CREATE TABLE user_profiles (
@@ -86,7 +86,7 @@ WHERE user_id = 1
 ORDER BY version;
 ```
 
-After a FINAL merge, only the latest version survives.
+After a background merge completes, only the latest version is retained on disk. Note that FINAL does not trigger a physical merge — it performs a virtual merge at query time so the result reflects only the latest version, while older rows remain on disk until background merges consolidate them.
 
 ## CollapsingMergeTree for Explicit Cancellation
 
@@ -110,4 +110,4 @@ INSERT INTO orders_versioned VALUES (100, 149.99, 1, 2);
 
 ## Summary
 
-Data versioning in ClickHouse is best implemented with ReplacingMergeTree, which deduplicates by primary key keeping the highest version at merge time. Use FINAL for consistent latest-version reads, insert new rows for every change, and consider CollapsingMergeTree when you need explicit cancellation semantics for financial or inventory use cases.
+Data versioning in ClickHouse is best implemented with ReplacingMergeTree, which deduplicates by sorting key (ORDER BY) keeping the highest version at merge time. Use FINAL for consistent latest-version reads, insert new rows for every change, and consider CollapsingMergeTree when you need explicit cancellation semantics for financial or inventory use cases.
