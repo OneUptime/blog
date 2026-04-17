@@ -16,16 +16,18 @@ This guide covers the config file locations, structure, available options, and h
 
 ## Config File Locations
 
-`clickhouse-client` reads configuration from the following locations, in order (later files override earlier ones):
+`clickhouse-client` searches for a config file in the following locations and loads the **first** one it finds (it does not merge across them):
 
 ```text
-/etc/clickhouse-client/config.xml       # system-wide
-~/.config/clickhouse-client/config.xml  # per-user (preferred)
-./config.xml                            # current directory
---config-file /path/to/config.xml       # explicit flag
+./clickhouse-client.xml                              # current directory
+$XDG_CONFIG_HOME/clickhouse-client/config.xml        # typically ~/.config/clickhouse-client/config.xml
+~/.clickhouse-client/config.xml                      # per-user fallback
+/etc/clickhouse-client/config.xml                    # system-wide
 ```
 
-You may also use `.yaml` / `.yml` extensions instead of `.xml`.
+You can always override this with the explicit `--config-file /path/to/config.xml` (short form `-C`) flag.
+
+Each of these files may also use `.yaml` / `.yml` extensions instead of `.xml`.
 
 ## Basic XML Config
 
@@ -50,7 +52,7 @@ clickhouse-client
 
 ## YAML Config Format
 
-ClickHouse 22.4+ supports YAML configs:
+ClickHouse 21.6+ supports YAML configs:
 
 ```yaml
 host: localhost
@@ -63,7 +65,7 @@ prompt: "analytics :) "
 
 ## TLS / HTTPS Configuration
 
-For ClickHouse Cloud or a TLS-enabled server:
+For ClickHouse Cloud or a TLS-enabled server, set `<secure>true</secure>` and put any certificate-handling options under `<openSSL><client>...`:
 
 ```xml
 <config>
@@ -72,11 +74,18 @@ For ClickHouse Cloud or a TLS-enabled server:
     <user>default</user>
     <password>your_password</password>
     <secure>true</secure>
-    <verify>true</verify>
-    <!-- Optional: custom CA or client cert -->
-    <caConfig>/etc/ssl/certs/ca-certificates.crt</caConfig>
+    <openSSL>
+        <client>
+            <loadDefaultCAFile>true</loadDefaultCAFile>
+            <verificationMode>strict</verificationMode>
+            <!-- Optional: custom CA bundle -->
+            <caConfig>/etc/ssl/certs/ca-certificates.crt</caConfig>
+        </client>
+    </openSSL>
 </config>
 ```
+
+If you need to skip certificate validation (for example, against a server with a self-signed cert in dev), use the `<accept-invalid-certificate>` shorthand or pass `--accept-invalid-certificate` on the command line.
 
 YAML equivalent:
 
@@ -86,7 +95,10 @@ port: 9440
 user: default
 password: "your_password"
 secure: true
-verify: true
+openSSL:
+  client:
+    loadDefaultCAFile: true
+    verificationMode: strict
 ```
 
 ## Available Configuration Keys
@@ -99,19 +111,20 @@ verify: true
 | `password` | String | Password |
 | `database` | String | Default database |
 | `secure` | Bool | Enable TLS |
-| `verify` | Bool | Verify TLS certificate |
+| `accept-invalid-certificate` | Bool | Skip TLS certificate validation |
 | `connect_timeout` | Int | Connection timeout in seconds |
 | `send_timeout` | Int | Send timeout in seconds |
 | `receive_timeout` | Int | Receive timeout in seconds |
-| `max_threads` | Int | Query thread count |
 | `prompt` | String | Custom interactive prompt |
 | `history_file` | String | Path to command history file |
 | `multiline` | Bool | Enable multiline input by default |
 | `pager` | String | Output pager command |
 
+Server/query settings such as `max_threads` are not part of the client schema, but you can place any of them inside a `<settings>` block in the config to apply them to the session (see below).
+
 ## Setting Query Defaults
 
-You can embed per-query settings in the config to apply them to all sessions:
+You can embed per-query settings in the config under a `<settings>` block to apply them to every session opened with that config:
 
 ```xml
 <config>
@@ -119,9 +132,11 @@ You can embed per-query settings in the config to apply them to all sessions:
     <port>9000</port>
     <user>default</user>
     <password></password>
-    <max_threads>8</max_threads>
-    <max_memory_usage>4294967296</max_memory_usage>
-    <output_format_pretty_max_rows>500</output_format_pretty_max_rows>
+    <settings>
+        <max_threads>8</max_threads>
+        <max_memory_usage>4294967296</max_memory_usage>
+        <output_format_pretty_max_rows>500</output_format_pretty_max_rows>
+    </settings>
 </config>
 ```
 
