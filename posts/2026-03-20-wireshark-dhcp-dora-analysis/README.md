@@ -49,26 +49,29 @@ Filter: port 67 or port 68
 
 ```text
 In Wireshark display filter bar, type:
-bootp
+dhcp
 
 This shows all DHCP/BOOTP packets.
+(Note: the old 'bootp' filter was renamed to 'dhcp' in Wireshark 3.0.
+The bootp.* fields still work as aliases for backward compatibility.)
 
 More specific filters:
-bootp.type == 1          → Only DHCP messages
-bootp.option.dhcp == 1   → DHCP Discover
-bootp.option.dhcp == 2   → DHCP Offer
-bootp.option.dhcp == 3   → DHCP Request
-bootp.option.dhcp == 5   → DHCP Acknowledge (ACK)
-bootp.option.dhcp == 6   → DHCP NAck
+dhcp.type == 1           → BOOTREQUEST (client-to-server: Discover/Request/Release/Inform)
+dhcp.type == 2           → BOOTREPLY (server-to-client: Offer/ACK/NAK)
+dhcp.option.dhcp == 1    → DHCP Discover
+dhcp.option.dhcp == 2    → DHCP Offer
+dhcp.option.dhcp == 3    → DHCP Request
+dhcp.option.dhcp == 5    → DHCP Acknowledge (ACK)
+dhcp.option.dhcp == 6    → DHCP NAck
 
 Filter by client MAC:
-bootp.hw.mac_addr == aa:bb:cc:dd:ee:ff
+dhcp.hw.mac_addr == aa:bb:cc:dd:ee:ff
 ```
 
 ## Step 3: Analyze a Successful DORA Exchange
 
 ```text
-In Wireshark, with 'bootp' filter applied:
+In Wireshark, with 'dhcp' filter applied:
 
 Packet 1: DHCP Discover
   Source IP: 0.0.0.0 (client has no IP yet)
@@ -175,10 +178,10 @@ Good: < 100ms
 Slow: > 500ms (overloaded server or network congestion)
 Timeout: No Offer after 10s (server down or unreachable)
 
-Filter for timing: frame.time_delta > 0.5 and bootp
+Filter for timing: frame.time_delta > 0.5 and dhcp
 Shows packets with >500ms delay after previous packet
 ```
 
 ## Conclusion
 
-Use `bootp` as the Wireshark display filter to see all DHCP traffic, then `bootp.option.dhcp` values to filter specific message types (1=Discover, 2=Offer, 3=Request, 5=ACK, 6=NAck). A successful DORA exchange shows four packets: client broadcasts Discover → server unicasts/broadcasts Offer → client broadcasts Request → server broadcasts ACK. When ACK is missing or followed by NAck, check DHCP server logs for pool exhaustion, subnet scope misconfiguration, or lease file corruption.
+Use `dhcp` as the Wireshark display filter to see all DHCP traffic (renamed from `bootp` in Wireshark 3.0; `bootp.*` still works as an alias), then `dhcp.option.dhcp` values to filter specific message types (1=Discover, 2=Offer, 3=Request, 5=ACK, 6=NAck). A successful DORA exchange shows four packets: client broadcasts Discover → server unicasts/broadcasts Offer → client broadcasts Request → server broadcasts ACK. When ACK is missing or followed by NAck, check DHCP server logs for pool exhaustion, subnet scope misconfiguration, or lease file corruption.
