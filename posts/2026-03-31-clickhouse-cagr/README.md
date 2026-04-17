@@ -53,8 +53,8 @@ WITH monthly AS (
 ),
 bounds AS (
     SELECT
-        minIf(active_users, month = min(month)) AS start_val,
-        maxIf(active_users, month = max(month)) AS end_val,
+        argMin(active_users, month) AS start_val,
+        argMax(active_users, month) AS end_val,
         dateDiff('month', min(month), max(month)) / 12.0 AS years
     FROM monthly
 )
