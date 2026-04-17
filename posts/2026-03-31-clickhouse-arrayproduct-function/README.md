@@ -67,7 +67,7 @@ SELECT
 FROM model_predictions;
 -- user 1: 0.9 * 0.75 * 0.6 * 0.8 = 0.324
 -- user 2: 0.5 * 0.5 * 0.5         = 0.125
--- user 3: 0.95*0.92*0.88*0.91*0.85 ~= 0.573
+-- user 3: 0.95*0.92*0.88*0.91*0.85 ~= 0.595
 ```
 
 ## Funnel Completion Probability
@@ -121,7 +121,7 @@ SELECT
     round(arrayProduct(score_factors), 4) AS composite_score
 FROM candidates
 ORDER BY composite_score DESC;
--- candidate 1: 0.9*0.85*0.92*0.88 = 0.6196
+-- candidate 1: 0.9*0.85*0.92*0.88 = 0.6193
 -- candidate 3: 0.7*0.8*0.75*0.9   = 0.378
 -- candidate 2: 0.0  (zero factor disqualifies)
 ```
