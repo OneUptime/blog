@@ -203,7 +203,7 @@ GROUP BY shard;
 
 ## Distributed Aggregation Settings
 
-By default, ClickHouse sends raw data to the coordinator for the final aggregation stage. For large result sets, this can transfer significant data over the network. Use `distributed_group_by_no_merge` for queries where shards can compute the full aggregation independently:
+By default, each shard computes a partial aggregation state and sends those states to the coordinator, which merges them into the final result. For queries where data for each group lives on a single shard (typically when the `GROUP BY` key is the sharding key), the shards can compute the full aggregation independently. Use `distributed_group_by_no_merge` to skip the merge step on the coordinator:
 
 ```sql
 -- Push down full GROUP BY to each shard (useful when GROUP BY key = sharding key)
@@ -243,11 +243,12 @@ GROUP BY e.user_id;
 When inserting directly into a Distributed table, ClickHouse buffers rows in-memory or on-disk before forwarding them to shards. Configure the buffer behavior:
 
 ```sql
--- How many seconds to buffer inserts before sending to shards
-SET distributed_directory_monitor_sleep_time_ms = 100;
+-- Minimum sleep time (ms) between background flushes of pending inserts to shards
+-- (older name: distributed_directory_monitor_sleep_time_ms)
+SET distributed_background_insert_sleep_time_ms = 100;
 
--- Maximum pending bytes in the Distributed table's buffer
-SET distributed_max_pending_bytes_per_insert_block = 1048576;
+-- Batch multiple pending files into a single INSERT to each shard
+SET distributed_background_insert_batch = 1;
 ```
 
 For very high insert rates, insert directly into the local table on each shard and bypass the Distributed layer's network hop.
