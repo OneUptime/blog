@@ -19,14 +19,14 @@ ipv6.dst == 2001:db8::10
 ipv6.dst == ::1
 
 # All packets destined for a specific server's IPv6
-ipv6.dst == 2001:db8:web::1
+ipv6.dst == 2001:db8:abcd::1
 ```
 
 ## Filter by Destination Prefix
 
 ```wireshark
-# Packets destined for any host in the 2001:db8:web::/64 subnet
-ipv6.dst == 2001:db8:web::/64
+# Packets destined for any host in the 2001:db8:abcd::/64 subnet
+ipv6.dst == 2001:db8:abcd::/64
 
 # Packets to all-nodes multicast (ff02::1)
 ipv6.dst == ff02::1
@@ -34,7 +34,7 @@ ipv6.dst == ff02::1
 # Packets to all-routers multicast (ff02::2)
 ipv6.dst == ff02::2
 
-# Packets to a specific solicited-node multicast address
+# Packets to any solicited-node multicast address
 ipv6.dst == ff02::1:ff00:0/104
 ```
 
@@ -64,13 +64,13 @@ ipv6.dst == ff02::6
 
 ```wireshark
 # TCP traffic destined for a specific IPv6 host on port 443
-ipv6.dst == 2001:db8::webserver && tcp.dstport == 443
+ipv6.dst == 2001:db8::beef && tcp.dstport == 443
 
 # UDP traffic to a specific IPv6 host
-ipv6.dst == 2001:db8::dns && udp
+ipv6.dst == 2001:db8::53 && udp
 
 # Traffic from subnet A to subnet B
-ipv6.src == 2001:db8:clients::/64 && ipv6.dst == 2001:db8:servers::/64
+ipv6.src == 2001:db8:1::/64 && ipv6.dst == 2001:db8:2::/64
 
 # Traffic to the web server from IPv6 internet (not RFC1918 or RFC4193)
 ipv6.dst == 2001:db8::10 && !(ipv6.src == fc00::/7)
@@ -83,7 +83,7 @@ ipv6.dst == 2001:db8::10 && !(ipv6.src == fc00::/7)
 ipv6.dst == 2001:4860:4860::8888 && dns
 
 # HTTP requests to an IPv6 web server
-ipv6.dst == 2001:db8::web && http
+ipv6.dst == 2001:db8::beef && http
 
 # SSH connections to a specific IPv6 host
 ipv6.dst == 2001:db8::10 && tcp.dstport == 22
@@ -112,7 +112,7 @@ Or add a custom column:
 ip6 dst 2001:db8::10
 
 # Capture traffic to an IPv6 subnet
-ip6 dst net 2001:db8:web::/64
+ip6 dst net 2001:db8:abcd::/64
 
 # Capture IPv6 multicast traffic
 ip6 multicast
