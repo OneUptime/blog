@@ -102,11 +102,6 @@ resource "aws_instance" "app" {
     Environment = local.environment
     ManagedBy   = "OpenTofu"
   }
-
-  lifecycle {
-    # Prevent accidental destruction in production
-    prevent_destroy = terraform.workspace == "production" ? true : false
-  }
 }
 ```
 
