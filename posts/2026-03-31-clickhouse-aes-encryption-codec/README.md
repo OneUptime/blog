@@ -16,13 +16,13 @@ This is distinct from full-disk encryption. AES codecs encrypt specific columns,
 
 ```mermaid
 flowchart LR
-    A[Plaintext Column Data] --> B[AES-GCM-SIV Encrypt]
-    B --> C[Ciphertext Block]
-    C --> D[Optional LZ4/ZSTD Compression]
+    A[Plaintext Column Data] --> B[Optional LZ4/ZSTD Compression]
+    B --> C[AES-GCM-SIV Encrypt]
+    C --> D[Ciphertext Block]
     D --> E[Disk Storage]
-    E --> D2[Decompress]
-    D2 --> F[AES-GCM-SIV Decrypt]
-    F --> G[Plaintext Column Data]
+    E --> F[AES-GCM-SIV Decrypt]
+    F --> G[Decompress]
+    G --> H[Plaintext Column Data]
 ```
 
 GCM-SIV provides authenticated encryption: the decryption step verifies both confidentiality and data integrity. If a block is tampered with on disk, the query returns an error rather than silently returning garbage data.
@@ -81,21 +81,21 @@ The decryption happens automatically on read. The raw `.bin` data files on disk 
 
 ## Combining Encryption with Compression
 
-AES codecs are transform codecs and can be chained. For encrypted columns that also benefit from compression, place the compressor after the encryption codec:
+Encryption codecs can be chained with compression. Because encrypted data has high entropy and does not compress well, compression codecs must come *before* the encryption codec so the plaintext is compressed first and the encryption codec is applied last:
 
 ```sql
 CREATE TABLE health_records
 (
     patient_id  UInt64,
-    diagnosis   String  CODEC(AES_256_GCM_SIV, LZ4),
-    notes       String  CODEC(AES_256_GCM_SIV, ZSTD(3)),
+    diagnosis   String  CODEC(LZ4, AES_256_GCM_SIV),
+    notes       String  CODEC(ZSTD(3), AES_256_GCM_SIV),
     visit_date  Date
 )
 ENGINE = MergeTree()
 ORDER BY (patient_id, visit_date);
 ```
 
-Note that encrypted data has high entropy and does not compress well. The compression step after encryption typically yields little benefit. Consider compressing before encrypting by chaining in reverse -- however, ClickHouse codec ordering applies left to right on write, so this means placing ZSTD before AES_256_GCM_SIV is not currently supported (encryption must be the innermost transform). Accept the marginal disk overhead for compliant columns.
+ClickHouse applies codecs left to right on write, so in `CODEC(ZSTD(3), AES_256_GCM_SIV)` the data is first compressed with ZSTD and then encrypted with AES. Placing encryption last (outermost) is the supported and recommended arrangement -- reversing the order would encrypt first and then attempt to compress high-entropy ciphertext, which wastes CPU without reducing disk usage.
 
 ## AES_128_GCM_SIV vs AES_256_GCM_SIV
 
@@ -106,7 +106,7 @@ Note that encrypted data has high entropy and does not compress well. The compre
 CREATE TABLE payment_data
 (
     txn_id      UInt64,
-    card_number String CODEC(AES_256_GCM_SIV), -- PCI-DSS requires 256-bit
+    card_number String CODEC(AES_256_GCM_SIV), -- 256-bit for a wider safety margin
     amount      Decimal(18, 4),
     merchant_id UInt32
 )
