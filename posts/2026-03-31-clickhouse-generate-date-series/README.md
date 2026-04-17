@@ -2,33 +2,15 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Date Series, generateDateRange, Number, Gap Fill
+Tags: ClickHouse, Date Series, numbers, Gap Fill, WITH FILL
 
-Description: Learn how to generate continuous date series in ClickHouse using generateDateRange, numbers(), and WITH FILL to create gap-free time axes for reports.
+Description: Learn how to generate continuous date series in ClickHouse using numbers(), range(), and WITH FILL to create gap-free time axes for reports.
 
 ---
 
 ## Why Generate Date Series?
 
 When joining time series data with a date range, missing days produce gaps in your report. Generating a complete date series and LEFT JOINing your data ensures every day appears even when there are no events.
-
-## Using generateDateRange (ClickHouse 23.6+)
-
-The cleanest approach on recent versions:
-
-```sql
-SELECT arrayJoin(generateDateRange(today() - 14, today(), 'day')) AS day;
-```
-
-For hourly intervals:
-
-```sql
-SELECT arrayJoin(generateDateRange(
-    toDateTime(today() - 1),
-    toDateTime(today()),
-    'hour'
-)) AS hour;
-```
 
 ## Using numbers() to Generate a Date Range
 
@@ -121,4 +103,4 @@ ORDER BY hour WITH FILL
 
 ## Summary
 
-ClickHouse generates date series via `generateDateRange`, `numbers()` with date arithmetic, or `WITH FILL` on ORDER BY. Use `WITH FILL` for automatic gap filling directly in query results, and LEFT JOIN a `numbers()`-based series when combining with aggregated metric data.
+ClickHouse generates date series via `numbers()` with date arithmetic or `WITH FILL` on ORDER BY. Use `WITH FILL` for automatic gap filling directly in query results, and LEFT JOIN a `numbers()`-based series when combining with aggregated metric data.
