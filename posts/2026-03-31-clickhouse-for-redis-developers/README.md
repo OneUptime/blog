@@ -97,7 +97,7 @@ def flush_stream_to_clickhouse():
 
 ## Persistence
 
-Redis data is primarily in memory with optional persistence (RDB/AOF). A crash can lose recent data. ClickHouse writes to disk durably on every insert, making it suitable for data that must not be lost.
+Redis data is primarily in memory with optional persistence (RDB/AOF). A crash can lose recent data. ClickHouse persists inserts to disk as MergeTree parts (with `fsync_after_insert` available for stricter durability), making it suitable for data that must not be lost.
 
 ## Summary
 
