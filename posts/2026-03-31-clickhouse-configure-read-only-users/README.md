@@ -36,7 +36,7 @@ ClickHouse has a `readonly` session setting that restricts what a user can do:
 
 - `readonly = 0` - no restrictions (default)
 - `readonly = 1` - only SELECT queries allowed, no settings changes
-- `readonly = 2` - SELECT allowed plus changing their own `readonly` setting
+- `readonly = 2` - SELECT queries plus settings changes allowed (the `readonly` setting itself cannot be changed to escape this mode)
 
 Set it as a profile setting:
 
@@ -44,7 +44,7 @@ Set it as a profile setting:
 CREATE SETTINGS PROFILE readonly_profile
 SETTINGS readonly = 1;
 
-ALTER USER readonly_user SETTINGS PROFILE readonly_profile;
+ALTER USER readonly_user ADD PROFILES 'readonly_profile';
 ```
 
 ## Configuring Read-Only in users.xml
