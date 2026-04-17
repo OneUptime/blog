@@ -72,7 +72,7 @@ def cleanup_old_partitions(
     dropped = []
     for row in result.result_rows:
         partition = row[0]
-        client.command(f"ALTER TABLE {database}.{table} DROP PARTITION '{partition}'")
+        client.command(f"ALTER TABLE {database}.{table} DROP PARTITION ID '{partition}'")
         dropped.append(partition)
         print(f"Dropped partition {partition} from {database}.{table}")
 
@@ -135,7 +135,7 @@ def cleanup_old_partitions(client, database, table, retention_months, dry_run=Tr
         if dry_run:
             print(f"[DRY RUN] Would drop: {partition}")
         else:
-            client.command(f"ALTER TABLE {database}.{table} DROP PARTITION '{partition}'")
+            client.command(f"ALTER TABLE {database}.{table} DROP PARTITION ID '{partition}'")
 ```
 
 ## Summary
