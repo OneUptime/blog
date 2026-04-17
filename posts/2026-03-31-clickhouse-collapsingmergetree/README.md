@@ -23,7 +23,7 @@ sequenceDiagram
     Note over ClickHouse: Only the latest sign=1 row survives
 ```
 
-The engine requires that cancel rows have identical values for all columns except those that changed, and the `sign` column must be `-1`. The sort key (ORDER BY) determines which rows are considered pairs.
+A cancel row must contain the same values as the state row being cancelled for all columns (except `sign`, which is set to `-1`). To update a row, insert the cancel row followed by a new state row with `sign = 1` containing the updated values. The sort key (ORDER BY) determines which rows are considered pairs during collapsing.
 
 ## Syntax
 
