@@ -48,18 +48,18 @@ CREATE TABLE dim_customer_scd2 (
     country String,
     segment String,
     effective_from DateTime,
-    effective_to DateTime DEFAULT toDateTime('9999-12-31'),
+    effective_to DateTime DEFAULT toDateTime('2099-12-31 23:59:59'),
     is_current Bool DEFAULT true
 ) ENGINE = MergeTree()
 ORDER BY (customer_id, effective_from);
 
 -- Original record
-INSERT INTO dim_customer_scd2 VALUES (1, 1001, 'Alice', 'US', 'SMB', '2023-01-01', '9999-12-31', true);
+INSERT INTO dim_customer_scd2 VALUES (1, 1001, 'Alice', 'US', 'SMB', '2023-01-01', '2099-12-31 23:59:59', true);
 
 -- When customer moves countries: expire old record, insert new
 INSERT INTO dim_customer_scd2 VALUES
     (1, 1001, 'Alice', 'US', 'SMB', '2023-01-01', '2025-06-30', false),
-    (2, 1001, 'Alice', 'DE', 'Enterprise', '2025-07-01', '9999-12-31', true);
+    (2, 1001, 'Alice', 'DE', 'Enterprise', '2025-07-01', '2099-12-31 23:59:59', true);
 ```
 
 Query current state:
