@@ -139,7 +139,7 @@ class TimeSeriesPoint(BaseModel):
 ```python
 # app/routers/events.py
 from fastapi import APIRouter, Depends, HTTPException, Query
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from app.models import EventIn, EventOut, AggregateResult
 from app.database import client
@@ -158,7 +158,7 @@ def ingest_event(event: EventIn):
             event.event_type,
             event.page,
             json.dumps(event.properties),
-            datetime.utcnow(),
+            datetime.now(timezone.utc),
         ]],
         column_names=["user_id", "session_id", "event_type", "page", "properties", "ts"],
     )
@@ -175,7 +175,7 @@ def ingest_batch(events: List[EventIn]):
             e.event_type,
             e.page,
             json.dumps(e.properties),
-            datetime.utcnow(),
+            datetime.now(timezone.utc),
         ]
         for e in events
     ]
@@ -233,7 +233,7 @@ def list_events(
 ```python
 # app/routers/analytics.py
 from fastapi import APIRouter, Query
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from app.models import AggregateResult, TimeSeriesPoint
 from app.database import client
@@ -246,8 +246,8 @@ def event_summary(
     until: datetime = Query(default=None),
 ):
     ch = client()
-    since = since or (datetime.utcnow() - timedelta(days=7))
-    until = until or datetime.utcnow()
+    since = since or (datetime.now(timezone.utc) - timedelta(days=7))
+    until = until or datetime.now(timezone.utc)
 
     result = ch.query(
         """
@@ -270,11 +270,11 @@ def event_summary(
 @router.get("/timeseries", response_model=List[TimeSeriesPoint])
 def timeseries(
     event_type: str,
-    interval: str = Query(default="hour", regex="^(minute|hour|day)$"),
+    interval: str = Query(default="hour", pattern="^(minute|hour|day)$"),
     since: datetime = Query(default=None),
 ):
     ch = client()
-    since = since or (datetime.utcnow() - timedelta(days=1))
+    since = since or (datetime.now(timezone.utc) - timedelta(days=1))
     trunc_fn = {"minute": "toStartOfMinute", "hour": "toStartOfHour", "day": "toStartOfDay"}[interval]
 
     result = ch.query(
@@ -295,11 +295,7 @@ def timeseries(
 @router.get("/funnel")
 def funnel(steps: List[str] = Query(...)):
     ch = client()
-    since = datetime.utcnow() - timedelta(days=30)
-
-    step_conditions = ", ".join(
-        f"has(groupArray(event_type), '{s}')" for s in steps
-    )
+    since = datetime.now(timezone.utc) - timedelta(days=30)
 
     result = ch.query(
         f"""
@@ -308,7 +304,7 @@ def funnel(steps: List[str] = Query(...)):
         FROM (
             SELECT
                 user_id,
-                {", ".join(f"has(groupArray(event_type), '{{step_{i}:String}}') AS step_{i}" for i in range(len(steps)))}
+                {", ".join(f"has(groupArray(event_type), {{step_{i}:String}}) AS step_{i}" for i in range(len(steps)))}
             FROM analytics.events
             WHERE ts >= {{since:DateTime}}
             GROUP BY user_id
@@ -326,21 +322,22 @@ def funnel(steps: List[str] = Query(...)):
 
 ```python
 # app/main.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.routers import events, analytics
 from app.database import client
 
-app = FastAPI(title="ClickHouse Analytics API", version="1.0.0")
-
-app.include_router(events.router)
-app.include_router(analytics.router)
-
-@app.on_event("startup")
-def startup():
-    # Verify connection on startup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     ch = client()
     result = ch.query("SELECT version()")
     print(f"Connected to ClickHouse {result.first_row[0]}")
+    yield
+
+app = FastAPI(title="ClickHouse Analytics API", version="1.0.0", lifespan=lifespan)
+
+app.include_router(events.router)
+app.include_router(analytics.router)
 
 @app.get("/health")
 def health():
