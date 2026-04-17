@@ -47,18 +47,9 @@ PersistentKeepalive = 25
 
 ## Excluding Specific Subnets from a Full Tunnel
 
-If you want a full tunnel but need to exclude a few CIDRs (e.g., your home network), use the WireGuard AllowedIPs calculator or manually compute the complement:
+If you want a full tunnel but need to exclude a few CIDRs (e.g., your home network), use an online WireGuard AllowedIPs calculator such as the one from Pro Custodibus (https://www.procustodibus.com/blog/2021/03/wireguard-allowedips-calculator/) to compute the complement of `0.0.0.0/0` minus the subnets you want to exclude.
 
-```bash
-# Install the Python-based wg-allowed-ips calculator tool
-pip install wg-allowed-ips
-
-# Generate AllowedIPs that covers all of 0.0.0.0/0
-# but excludes your local subnet (192.168.1.0/24)
-wg-allowed-ips 0.0.0.0/0 !192.168.1.0/24
-```
-
-The output will be a set of CIDRs that cover everything except `192.168.1.0/24`.
+For example, excluding `192.168.1.0/24` from `0.0.0.0/0` produces a list of CIDRs that, together, cover the entire IPv4 address space except for `192.168.1.0/24`. Paste the resulting CIDRs into the `AllowedIPs` field on the client peer.
 
 ## Example: Route Only Private RFC 1918 Ranges Through VPN
 
