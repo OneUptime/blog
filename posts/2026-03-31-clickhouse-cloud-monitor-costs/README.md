@@ -28,9 +28,9 @@ Navigate to your organization in ClickHouse Cloud console, then "Billing" - "Usa
 ## Querying Usage via the API
 
 ```bash
-curl "https://api.clickhouse.cloud/v1/organizations/{orgId}/usageCosts?date_from=2024-01-01&date_to=2024-01-31" \
+curl "https://api.clickhouse.cloud/v1/organizations/{orgId}/usageCost?from_date=2024-01-01&to_date=2024-01-31" \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
-  | jq '.usageCosts[] | {service: .serviceName, compute: .computeCost, storage: .storageCost}'
+  | jq '.result.costs[] | {service: .entityName, compute: .metrics.computeCHC, storage: .metrics.storageCHC}'
 ```
 
 ## Monitoring Storage Growth from Inside ClickHouse
@@ -49,7 +49,7 @@ ORDER BY sum(bytes_on_disk) DESC;
 
 ## Reducing Compute Costs
 
-1. Enable auto-scaling with a low minimum: `minTotalMemoryGb = 24`
+1. Enable auto-scaling with a low minimum: `minReplicaMemoryGb = 8`
 2. Enable auto-pause for dev/staging services
 3. Schedule batch workloads during off-peak hours
 
