@@ -133,9 +133,9 @@ Here are 10 alternatives worth considering, ranked by how well they solve these 
 - Powerful query language
 - Flame graphs for error context
 
-**Limitations:** You need Datadog APM, which is expensive ($31/host/month + $0.10/indexed span). Error tracking isn't available standalone. Datadog's pricing is notoriously unpredictable - many teams report bill shock.
+**Limitations:** Most teams adopt it via Datadog APM, which starts at $31/host/month (annual) plus indexed span charges (around $1.70 per million indexed spans at 15-day retention). Datadog does offer Error Tracking Standalone for backend services, but the broader platform's pricing is notoriously unpredictable - many teams report bill shock.
 
-**Pricing:** Requires Datadog APM. APM starts at $31/host/month.
+**Pricing:** Error Tracking Standalone is available, or as part of Datadog APM which starts at $31/host/month.
 
 ## 8. Raygun
 
