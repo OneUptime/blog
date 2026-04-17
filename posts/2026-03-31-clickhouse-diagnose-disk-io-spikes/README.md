@@ -10,7 +10,7 @@ Description: Diagnose ClickHouse disk IO spikes by correlating system metrics wi
 
 ## Common Causes of Disk IO Spikes
 
-Disk IO spikes in ClickHouse come from three main sources:
+Disk IO spikes in ClickHouse come from four main sources:
 
 1. **Background merges** reading and writing large parts
 2. **Full table scans** from unoptimized queries
@@ -93,7 +93,9 @@ Throttle merge throughput to protect query performance:
 ```xml
 <!-- config.xml -->
 <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
-<max_bytes_to_merge_at_max_space_in_pool>10737418240</max_bytes_to_merge_at_max_space_in_pool>
+<merge_tree>
+    <max_bytes_to_merge_at_max_space_in_pool>10737418240</max_bytes_to_merge_at_max_space_in_pool>
+</merge_tree>
 ```
 
 Reduce merge concurrency during business hours using a scheduled cron that adjusts the pool size.
