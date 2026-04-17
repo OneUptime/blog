@@ -61,7 +61,7 @@ This means FINAL forces ClickHouse to read all relevant parts, sort them, and ap
 
 ## Performance Impact of FINAL
 
-`FINAL` is single-threaded in older ClickHouse versions (pre-22.8) and significantly slower than a normal query. In newer versions it uses parallelism but is still more expensive than a non-FINAL query.
+`FINAL` was single-threaded in early ClickHouse versions and significantly slower than a normal query. Modern ClickHouse executes FINAL in parallel (controlled by the `max_final_threads` setting), but it is still more expensive than a non-FINAL query because it has to merge rows on the fly.
 
 Measure the difference:
 
@@ -124,9 +124,9 @@ SELECT * FROM user_profiles WHERE user_id = 'U-001';
 
 Never use `OPTIMIZE TABLE FINAL` in production for large tables - it can take hours and blocks concurrent merges.
 
-### Alternative 3: Materialized View for Latest State
+### Alternative 3: Snapshot Table for Latest State
 
-Maintain a separate table with the latest state using a periodic refresh:
+Maintain a separate table populated with the already-deduplicated state, then refresh it on a schedule (for example via a scheduled job that runs `INSERT INTO ... SELECT ... FINAL`, or a refreshable materialized view on ClickHouse 23.12+):
 
 ```sql
 CREATE TABLE user_profiles_current
@@ -135,7 +135,7 @@ ORDER BY user_id
 AS SELECT * FROM user_profiles FINAL;
 ```
 
-Query `user_profiles_current` instead of the main table.
+Query `user_profiles_current` instead of the main table. Note that `CREATE TABLE ... AS SELECT` produces a one-time snapshot, so you will need an external refresh mechanism to keep it current.
 
 ## When FINAL Is Acceptable
 
