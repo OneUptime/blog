@@ -14,7 +14,7 @@ Histograms visualize the distribution of a numeric variable by grouping values i
 
 ## Built-In histogram Function
 
-ClickHouse's `histogram` function automatically computes optimal bucket widths using Sturges' rule:
+ClickHouse's `histogram` function calculates an adaptive histogram using a streaming algorithm; you pass the maximum number of bins and it produces bins of (typically unequal) adaptive widths:
 
 ```sql
 SELECT histogram(20)(latency_ms) AS hist
