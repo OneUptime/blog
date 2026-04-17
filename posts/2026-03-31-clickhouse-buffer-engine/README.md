@@ -177,7 +177,7 @@ ORDER BY minute DESC, metric_name;
 
 ## Buffer With Multiple Layers
 
-The `num_layers` parameter controls write parallelism. Each layer is an independent buffer with its own thresholds. Rows are distributed across layers via hashing. Setting `num_layers = 16` means 16 independent RAM buffers - suitable for high-concurrency scenarios.
+The `num_layers` parameter controls write parallelism. Each layer is an independent buffer with its own thresholds. Rows are inserted into one of the layers at random. Setting `num_layers = 16` means 16 independent RAM buffers - suitable for high-concurrency scenarios.
 
 ```sql
 -- High-concurrency buffer with 32 layers
