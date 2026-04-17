@@ -8,7 +8,7 @@ Description: Learn how cramersVBiasCorrected() improves on cramersV() in ClickHo
 
 ---
 
-`cramersVBiasCorrected(col1, col2)` computes the bias-corrected version of Cramer's V, a measure of association between two categorical variables based on the chi-squared statistic. While the standard `cramersV()` has a known upward bias when sample sizes are small or when the contingency table has many cells, `cramersVBiasCorrected()` applies Bergsma-Wicher bias correction, making it more reliable for small-to-medium datasets.
+`cramersVBiasCorrected(col1, col2)` computes the bias-corrected version of Cramer's V, a measure of association between two categorical variables based on the chi-squared statistic. While the standard `cramersV()` has a known upward bias when sample sizes are small or when the contingency table has many cells, `cramersVBiasCorrected()` applies the bias correction proposed by Wicher Bergsma, making it more reliable for small-to-medium datasets.
 
 ## Cramer's V Recap
 
@@ -146,4 +146,4 @@ ORDER BY v_corrected DESC;
 
 ## Summary
 
-`cramersVBiasCorrected(col1, col2)` computes the Bergsma-Wicher bias-corrected Cramer's V association measure between two categorical variables. It improves on `cramersV()` by removing the systematic positive bias that affects standard Cramer's V when sample sizes are small or contingency tables have many cells. The result is a more reliable measure of association strength, which matters when using V scores for feature selection or comparing associations across different category cardinalities. Use it wherever `cramersV()` would be appropriate, particularly when working with smaller datasets or high-cardinality categorical variables.
+`cramersVBiasCorrected(col1, col2)` computes the bias-corrected Cramer's V association measure (using the correction proposed by Wicher Bergsma) between two categorical variables. It improves on `cramersV()` by removing the systematic positive bias that affects standard Cramer's V when sample sizes are small or contingency tables have many cells. The result is a more reliable measure of association strength, which matters when using V scores for feature selection or comparing associations across different category cardinalities. Use it wherever `cramersV()` would be appropriate, particularly when working with smaller datasets or high-cardinality categorical variables.
