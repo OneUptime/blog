@@ -123,11 +123,11 @@ Compute the signed angle between two 2D vectors using `atan2` applied to the cro
 
 ```sql
 WITH
-    ax AS 1.0, ay AS 0.0,
-    bx AS 0.0, by AS 1.0
+    1.0 AS a_x, 0.0 AS a_y,
+    0.0 AS b_x, 1.0 AS b_y
 SELECT
     round(
-        atan2(ax * by - ay * bx, ax * bx + ay * by) * 180 / pi(),
+        atan2(a_x * b_y - a_y * b_x, a_x * b_x + a_y * b_y) * 180 / pi(),
     2) AS signed_angle_deg;
 ```
 
