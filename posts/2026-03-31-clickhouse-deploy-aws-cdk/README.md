@@ -45,9 +45,9 @@ export class ClickHouseStack extends cdk.Stack {
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
       'apt-get update',
-      'apt-get install -y apt-transport-https ca-certificates curl',
-      "curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | apt-key add -",
-      'echo "deb https://packages.clickhouse.com/deb lts main" > /etc/apt/sources.list.d/clickhouse.list',
+      'apt-get install -y apt-transport-https ca-certificates curl gnupg',
+      "curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg",
+      'echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb lts main" > /etc/apt/sources.list.d/clickhouse.list',
       'apt-get update',
       'DEBIAN_FRONTEND=noninteractive apt-get install -y clickhouse-server clickhouse-client',
       'systemctl enable --now clickhouse-server',
@@ -91,7 +91,7 @@ Array.from({ length: nodeCount }, (_, i) =>
   new ec2.Instance(this, `ClickHouseNode${i}`, {
     vpc,
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.M6I, ec2.InstanceSize.XLARGE2),
-    machineImage: ec2.MachineImage.latestAmazonLinux2(),
+    machineImage: ec2.MachineImage.lookup({ name: 'ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-*' }),
     securityGroup: sg,
     userData,
   })
