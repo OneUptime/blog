@@ -8,13 +8,13 @@ Description: Learn how to set up a multi-node ClickHouse cluster with replicatio
 
 ---
 
-Running a ClickHouse cluster with Docker Compose is an excellent way to test distributed features, replication, and sharding locally. This guide sets up a two-shard, two-replica cluster with ZooKeeper.
+Running a ClickHouse cluster with Docker Compose is an excellent way to test distributed features, replication, and sharding locally. This guide sets up a one-shard, two-replica cluster with ZooKeeper.
 
 ## Architecture Overview
 
 This setup includes:
 
-- 4 ClickHouse nodes: 2 shards x 2 replicas
+- 2 ClickHouse nodes: 1 shard x 2 replicas
 - 1 ZooKeeper node for coordination
 - A shared Docker network for inter-node communication
 
@@ -22,7 +22,7 @@ This setup includes:
 
 ```bash
 mkdir clickhouse-cluster && cd clickhouse-cluster
-mkdir -p config/clickhouse
+mkdir -p config/clickhouse config/ch1 config/ch2
 ```
 
 ## ZooKeeper and ClickHouse docker-compose.yml
@@ -50,6 +50,7 @@ services:
     volumes:
       - ch1_data:/var/lib/clickhouse
       - ./config/clickhouse:/etc/clickhouse-server/config.d
+      - ./config/ch1/macros.xml:/etc/clickhouse-server/config.d/macros.xml
     networks:
       - ch_net
     depends_on:
@@ -65,6 +66,7 @@ services:
     volumes:
       - ch2_data:/var/lib/clickhouse
       - ./config/clickhouse:/etc/clickhouse-server/config.d
+      - ./config/ch2/macros.xml:/etc/clickhouse-server/config.d/macros.xml
     networks:
       - ch_net
     depends_on:
@@ -107,10 +109,31 @@ Create `config/clickhouse/cluster.xml`:
             </shard>
         </my_cluster>
     </remote_servers>
+</clickhouse>
+```
 
+Each node needs its own `macros.xml` so that `{shard}` and `{replica}` resolve to unique values per replica. Without a unique `{replica}` value, both nodes would register at the same ZooKeeper path and replication would fail.
+
+Create `config/ch1/macros.xml`:
+
+```xml
+<clickhouse>
     <macros>
         <cluster>my_cluster</cluster>
-        <shard>1</shard>
+        <shard>01</shard>
+        <replica>ch1</replica>
+    </macros>
+</clickhouse>
+```
+
+Create `config/ch2/macros.xml`:
+
+```xml
+<clickhouse>
+    <macros>
+        <cluster>my_cluster</cluster>
+        <shard>01</shard>
+        <replica>ch2</replica>
     </macros>
 </clickhouse>
 ```
