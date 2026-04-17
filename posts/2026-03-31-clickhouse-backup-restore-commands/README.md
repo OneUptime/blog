@@ -8,7 +8,7 @@ Description: A practical guide to using ClickHouse's native BACKUP and RESTORE S
 
 ---
 
-ClickHouse introduced native BACKUP and RESTORE commands in version 22.4. These SQL commands provide a straightforward way to create and restore backups without external tools, supporting local disk and object storage destinations.
+ClickHouse introduced native BACKUP and RESTORE commands in version 22.8. These SQL commands provide a straightforward way to create and restore backups without external tools, supporting local disk and object storage destinations.
 
 ## Basic Syntax
 
@@ -68,7 +68,7 @@ BACKUP DATABASE production TO Disk('backups', 'prod_backup/')
 SETTINGS async = true;
 
 -- Check progress
-SELECT id, status, start_time, end_time, total_size, exception
+SELECT id, status, start_time, end_time, total_size, error
 FROM system.backups
 ORDER BY start_time DESC
 LIMIT 5;
@@ -111,7 +111,7 @@ FROM S3('https://s3.us-east-1.amazonaws.com/my-bucket/backups/prod_2026-03-31/',
 | `async` | Run backup in background | false |
 | `deduplicate_files` | Reuse files across backups | true |
 | `base_backup` | Source for incremental backup | - |
-| `compression_method` | Compression algorithm | lz4 |
+| `compression_method` | Compression algorithm (e.g. `lz4`, `zstd`) | none |
 
 ```sql
 BACKUP DATABASE production TO Disk('backups', 'prod_backup/')
