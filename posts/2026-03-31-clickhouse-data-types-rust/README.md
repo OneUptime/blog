@@ -23,7 +23,7 @@ Description: Map ClickHouse column types to Rust types when using the clickhouse
 | UUID | `uuid::Uuid` (with feature) |
 | Date | `time::Date` or `chrono::NaiveDate` |
 | DateTime | `u32` (Unix) or `chrono::DateTime<Utc>` |
-| DateTime64 | `i64` (microseconds) |
+| DateTime64 | `i64` (ticks at column precision) or `chrono::DateTime<Utc>` |
 | Array(T) | `Vec<T>` |
 | Nullable(T) | `Option<T>` |
 | LowCardinality(String) | `String` |
@@ -56,10 +56,11 @@ struct UserEvent {
 
 ## DateTime with chrono
 
-Add the chrono feature:
+Enable the `chrono` feature on the `clickhouse` crate:
 
 ```toml
 [dependencies]
+clickhouse = { version = "0.13", features = ["chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
 ```
 
@@ -88,6 +89,7 @@ struct TaggedEvent {
 
 ```toml
 [dependencies]
+clickhouse = { version = "0.13", features = ["uuid"] }
 uuid = { version = "1", features = ["serde"] }
 ```
 
@@ -122,10 +124,10 @@ let row = InsertRow {
 };
 ```
 
-## Compile-Time Safety
+## Schema Validation
 
-The `clickhouse` crate uses `serde` for serialization, so type mismatches cause compile errors rather than runtime panics. If a column is `UInt64` and you declare `u32`, the insert will fail with a descriptive error at compile time.
+The `clickhouse` crate uses the `RowBinaryWithNamesAndTypes` format by default, which validates Rust struct types against the ClickHouse schema at runtime. If a column is `UInt64` and you declare `u32`, the query will fail with a descriptive schema-mismatch error when executed. Validation can be disabled for performance, at the cost of less helpful errors on mismatch.
 
 ## Summary
 
-Rust's type system maps cleanly to ClickHouse types: use `Option<T>` for Nullable, `Vec<T>` for Array, `u32` for DateTime Unix timestamps, and the `uuid` crate for UUID columns. Compile-time type checking prevents the silent truncation bugs common in dynamically typed clients.
+Rust's type system maps cleanly to ClickHouse types: use `Option<T>` for Nullable, `Vec<T>` for Array, `u32` for DateTime Unix timestamps, and the `uuid` crate for UUID columns. Runtime schema validation via `RowBinaryWithNamesAndTypes` catches the silent truncation bugs common in dynamically typed clients.
