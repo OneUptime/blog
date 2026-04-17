@@ -30,7 +30,7 @@ SOURCE(CLICKHOUSE(
     TABLE 'countries'
     DB 'reference'
 ))
-LAYOUT(FLAT())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(MIN 300 MAX 600);
 ```
 
