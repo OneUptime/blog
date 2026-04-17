@@ -48,13 +48,13 @@ LIMIT 10;
 
 ## Exponential Moving Average (EMA)
 
-ClickHouse does not have a built-in EMA window function, but you can approximate it using `exponentialMovingAverage`:
+ClickHouse provides a built-in `exponentialMovingAverage` aggregate function that can be used as a window function:
 
 ```sql
 SELECT
     ts,
     value,
-    exponentialMovingAverage(5)(value, toUnixTimestamp(ts)) AS ema
+    exponentialMovingAverage(5)(value, toUnixTimestamp(ts)) OVER (ORDER BY ts) AS ema
 FROM time_series
 ORDER BY ts;
 ```
