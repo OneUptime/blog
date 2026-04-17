@@ -35,7 +35,7 @@ Password: secret
 # dags/clickhouse_daily_pipeline.py
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 import clickhouse_connect
 
 def get_ch_client():
@@ -92,7 +92,7 @@ default_args = {
 with DAG(
     dag_id="clickhouse_daily_pipeline",
     default_args=default_args,
-    schedule_interval="0 2 * * *",   # 2 AM daily
+    schedule="0 2 * * *",   # 2 AM daily
     start_date=datetime(2024, 1, 1),
     catchup=False
 ) as dag:
