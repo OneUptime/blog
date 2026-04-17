@@ -8,16 +8,16 @@ Description: Learn how to scale ClickHouse Cloud services vertically by adjustin
 
 ---
 
-ClickHouse Cloud uses a shared-nothing architecture with compute and storage separated. Scaling is primarily vertical - you adjust the total memory allocated to the service, which in turn determines CPU and concurrency capacity.
+ClickHouse Cloud uses an architecture with compute and storage separated (object-store backed). Scaling is primarily vertical - you adjust the memory allocated per replica, which in turn determines CPU and concurrency capacity.
 
 ## Understanding the Scaling Model
 
-ClickHouse Cloud services are defined by total memory (in GB). Memory directly controls:
-- Number of replicas (each replica gets a share of total memory)
-- CPU cores per replica
+ClickHouse Cloud services are defined by memory per replica (in GiB). Memory per replica directly controls:
+- CPU cores per replica (proportional to memory, typically a 1:4 CPU:memory ratio)
 - Query concurrency capacity
+- Working-set size for joins, aggregations, and sorts
 
-For Production tier, the minimum is 24 GB total memory (2 replicas x 12 GB each).
+For Scale tier, the minimum is 8 GiB per replica with 3 replicas by default (24 GiB total).
 
 ## Scaling via the Console
 
@@ -26,28 +26,28 @@ For Production tier, the minimum is 24 GB total memory (2 replicas x 12 GB each)
 3. Adjust the memory slider
 4. Click "Save changes"
 
-The change is applied with no downtime on Production tier.
+The change is applied with no downtime on Scale and Enterprise tiers using a make-before-break approach (new replicas are brought up before old ones are removed).
 
 ## Scaling via the API
 
 ```bash
-curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
+curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/replicaScaling \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "minTotalMemoryGb": 48,
-    "maxTotalMemoryGb": 192
+    "minReplicaMemoryGb": 16,
+    "maxReplicaMemoryGb": 64
   }'
 ```
 
-Setting `minTotalMemoryGb` and `maxTotalMemoryGb` to the same value disables auto-scaling and pins the service at a fixed size.
+Setting `minReplicaMemoryGb` and `maxReplicaMemoryGb` to the same value disables vertical auto-scaling and pins each replica at a fixed size. (The older `/scaling` endpoint with `minTotalMemoryGb`/`maxTotalMemoryGb` is deprecated.)
 
 ## Checking Current Service Size
 
 ```bash
 curl https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
-  | jq '{minMemory: .service.minTotalMemoryGb, maxMemory: .service.maxTotalMemoryGb}'
+  | jq '{minMemory: .result.minReplicaMemoryGb, maxMemory: .result.maxReplicaMemoryGb, numReplicas: .result.numReplicas}'
 ```
 
 ## When to Scale Up
@@ -72,10 +72,10 @@ GROUP BY minute
 ORDER BY minute;
 ```
 
-## Horizontal Scaling with Read Replicas
+## Horizontal Scaling with Additional Replicas
 
-For read-heavy workloads, ClickHouse Cloud supports adding read replicas in the same or different regions. This is configured through the console under "Replicas".
+For heavier workloads, ClickHouse Cloud Scale and Enterprise tiers support adjusting the number of replicas (between 3 and 20). This is configured through the console or by setting `numReplicas` on the `/replicaScaling` endpoint.
 
 ## Summary
 
-Scaling ClickHouse Cloud means adjusting total memory allocation, which proportionally increases CPU and concurrency. Use the API or console for on-demand scaling, set different min/max values to enable auto-scaling, and monitor query log for memory errors as signals to scale up.
+Scaling ClickHouse Cloud means adjusting memory per replica, which proportionally increases CPU and concurrency. Use the API or console for on-demand scaling, set different min/max values to enable vertical auto-scaling, and monitor query log for memory errors as signals to scale up.
