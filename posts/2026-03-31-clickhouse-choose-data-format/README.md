@@ -41,7 +41,7 @@ graph TD
 | Schema-tolerant log lines | `TSKV` | Key=value, missing keys get defaults |
 | S3 batch export | `Parquet` or `CSV` | Broadly supported by query engines |
 | Pipe to /dev/null benchmark | `Null` | Zero serialization cost |
-| Single scalar result | `One` | Returns exactly one row/value |
+| List files without reading content | `One` | Returns a dummy row; used with virtual columns like `_file` / `_path` |
 | Legacy tab-separated pipelines | `TabSeparated` / `TabSeparatedWithNames` | Ubiquitous in Unix toolchains |
 | Cross-ClickHouse replication | `Native` | Native block format with no type loss |
 
@@ -159,4 +159,4 @@ flowchart TD
 
 ## Summary
 
-Start with `JSONEachRow` for streaming ingest, `Parquet` for data lake exports, `Native` for ClickHouse-to-ClickHouse transfers, and `CSV`/`TabSeparated` for compatibility with legacy tools. Reach for `Regexp` or `TSKV` when you need schema-tolerant text parsing, and `Null` or `One` for benchmarking and single-value queries.
+Start with `JSONEachRow` for streaming ingest, `Parquet` for data lake exports, `Native` for ClickHouse-to-ClickHouse transfers, and `CSV`/`TabSeparated` for compatibility with legacy tools. Reach for `Regexp` or `TSKV` when you need schema-tolerant text parsing, `Null` for benchmarking, and `One` for enumerating files without reading their contents.
