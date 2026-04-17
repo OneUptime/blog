@@ -64,7 +64,7 @@ SELECT
     quantile(0.99)(duration_us) / 1000 AS p99_ms,
     countIf(status_code = 2)      AS errors
 FROM otel_spans
-WHERE start_time_us >= toUnixTimestamp64Micro(now() - INTERVAL 1 HOUR)
+WHERE start_time_us >= toUnixTimestamp64Micro(now64() - INTERVAL 1 HOUR)
   AND span_kind = 'SERVER'
 GROUP BY service_name, operation_name
 ORDER BY p95_ms DESC
@@ -80,7 +80,7 @@ SELECT
     countIf(status_code = 2)             AS error_spans,
     round(100.0 * countIf(status_code = 2) / count(), 2) AS error_rate_pct
 FROM otel_spans
-WHERE start_time_us >= toUnixTimestamp64Micro(now() - INTERVAL 1 HOUR)
+WHERE start_time_us >= toUnixTimestamp64Micro(now64() - INTERVAL 1 HOUR)
   AND span_kind = 'SERVER'
 GROUP BY service_name
 ORDER BY error_rate_pct DESC;
@@ -97,7 +97,7 @@ SELECT
     status_code,
     attributes['http.url'] AS url
 FROM otel_spans
-WHERE start_time_us >= toUnixTimestamp64Micro(now() - INTERVAL 1 HOUR)
+WHERE start_time_us >= toUnixTimestamp64Micro(now64() - INTERVAL 1 HOUR)
   AND duration_us > 5000000  -- > 5 seconds
   AND span_kind = 'SERVER'
 ORDER BY duration_us DESC
@@ -115,7 +115,7 @@ SELECT
     avg(duration_us) / 1000                    AS avg_ms,
     countIf(status_code = 2)                   AS errors
 FROM otel_spans
-WHERE start_time_us >= toUnixTimestamp64Micro(now() - INTERVAL 1 HOUR)
+WHERE start_time_us >= toUnixTimestamp64Micro(now64() - INTERVAL 1 HOUR)
   AND span_kind = 'CLIENT'
   AND attributes['peer.service'] != ''
 GROUP BY caller, callee
