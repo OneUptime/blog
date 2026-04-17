@@ -202,20 +202,21 @@ WHERE active_replicas = total_replicas;
 
 -- Verify row counts match across replicas
 SELECT
+    hostName() AS host,
     replica_name,
     count() AS table_count
 FROM clusterAllReplicas('production_cluster', system, replicas)
-WHERE shard_num = 1
-GROUP BY replica_name;
+WHERE _shard_num = 1
+GROUP BY host, replica_name;
 
 -- Check part counts match for a specific table
 SELECT
-    _replica_name,
+    hostName() AS host,
     count() AS part_count
 FROM clusterAllReplicas('production_cluster', system, parts)
 WHERE table = 'events'
   AND active = 1
-GROUP BY _replica_name;
+GROUP BY host;
 ```
 
 ## Common Issues
