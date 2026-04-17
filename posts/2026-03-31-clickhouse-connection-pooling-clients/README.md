@@ -32,19 +32,23 @@ Before tuning clients, review server-side limits in `config.xml` or `users.xml`:
 
 ```python
 import clickhouse_connect
+from clickhouse_connect.driver import httputil
 
-# pool_size controls urllib3 pool size per host
+# Build a urllib3 PoolManager with the desired pool size
+pool_mgr = httputil.get_pool_manager(
+    maxsize=20,       # max connections per host
+    num_pools=12,     # number of host pools to keep around
+    block=False,      # don't block when pool exhausted
+)
+
 client = clickhouse_connect.get_client(
     host='clickhouse.example.com',
     port=8443,
     username='default',
     password='secret',
     secure=True,
-    http_options={
-        'pool_maxsize': 20,       # max connections per host
-        'pool_block': False,       # don't block when pool exhausted
-        'max_retries': 3,
-    }
+    pool_mgr=pool_mgr,
+    query_retries=3,  # retries on failed queries
 )
 
 result = client.query('SELECT count() FROM system.parts')
@@ -93,18 +97,21 @@ rows = query('SELECT count() FROM events', pool)
 The official Node.js client uses Node's `http.Agent` with keep-alive enabled by default.
 
 ```javascript
+const http = require('http');
 const { createClient } = require('@clickhouse/client');
+
+const agent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 20,       // max connections per host
+  maxFreeSockets: 10,   // idle connections to keep open
+  timeout: 60000,
+});
 
 const client = createClient({
   url: 'http://clickhouse.example.com:8123',
   username: 'default',
   password: 'secret',
-  http_agent: {
-    keepAlive: true,
-    maxSockets: 20,       // max connections per host
-    maxFreeSockets: 10,   // idle connections to keep open
-    timeout: 60000,
-  },
+  http_agent: agent,
   request_timeout: 30000,
 });
 
@@ -160,10 +167,10 @@ SELECT user, client_hostname, client_name, elapsed, query
 FROM system.processes
 ORDER BY elapsed DESC;
 
--- Peak connections metric
-SELECT value
+-- Current connection count (native and HTTP)
+SELECT metric, value
 FROM system.metrics
-WHERE metric = 'TCPConnection';
+WHERE metric IN ('TCPConnection', 'HTTPConnection');
 ```
 
 ## Summary
