@@ -57,6 +57,7 @@ SETTINGS storage_policy = 'default';  -- Uses NVMe by default
 CREATE TABLE events_tiered
 (ts DateTime, user_id UInt64, amount Float64)
 ENGINE = MergeTree()
+PARTITION BY toYYYYMM(ts)
 ORDER BY (user_id, ts)
 SETTINGS storage_policy = 'tiered';
 ```
@@ -82,10 +83,10 @@ clickhouse-benchmark --iterations 30 \
 
 # SSD benchmark (after moving parts)
 clickhouse-client --query "
-ALTER TABLE events_ssd MOVE PARTITION tuple() TO DISK 'ssd'
+ALTER TABLE events_tiered MOVE PARTITION '202604' TO VOLUME 'warm'
 "
 clickhouse-benchmark --iterations 30 \
-    --query "SELECT count(), sum(amount) FROM events_ssd" \
+    --query "SELECT count(), sum(amount) FROM events_tiered WHERE toYYYYMM(ts) = 202604" \
     > results_ssd.txt
 ```
 
