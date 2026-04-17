@@ -51,7 +51,7 @@ SELECT countResample(30, 100, 10)(score, score) AS count_per_bucket;
 
 ```text
 count_per_bucket
-[1, 2, 1, 2, 1, 2, 3]
+[1, 2, 1, 2, 2, 2, 2]
 ```
 
 The 7 buckets are: [30,40), [40,50), [50,60), [60,70), [70,80), [80,90), [90,100).
@@ -162,7 +162,7 @@ ORDER BY status_code;
 
 ```text
 status_code  requests_per_minute
-200          [2, 3, 2, 1]
+200          [2, 2, 2, 1]
 404          [0, 1, 0, 0]
 500          [1, 0, 0, 1]
 ```
@@ -213,8 +213,8 @@ FROM http_requests;
 ```
 
 ```text
-bucket_starts                                                              counts
-['2026-03-31 10:00:00','10:01:00','10:02:00','10:03:00']  [3, 3, 2, 2]
+bucket_starts                                                                                    counts
+['2026-03-31 10:00:00','2026-03-31 10:01:00','2026-03-31 10:02:00','2026-03-31 10:03:00']  [3, 3, 2, 2]
 ```
 
 ## Summary
