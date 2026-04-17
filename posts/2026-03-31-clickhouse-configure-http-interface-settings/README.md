@@ -62,7 +62,8 @@ You can define custom HTTP handlers for specific paths:
         <url>/query</url>
         <methods>POST</methods>
         <handler>
-            <type>query</type>
+            <type>dynamic_query_handler</type>
+            <query_param_name>query</query_param_name>
         </handler>
     </rule>
 </http_handlers>
@@ -70,16 +71,16 @@ You can define custom HTTP handlers for specific paths:
 
 ## Enabling Response Compression
 
-Configure HTTP response compression to reduce bandwidth:
+Configure HTTP response compression to reduce bandwidth. These are user-level settings defined in a profile in `users.xml`:
 
 ```xml
-<!-- config.xml -->
-<http_options_response>
-    <header>
-        <name>Access-Control-Allow-Origin</name>
-        <value>*</value>
-    </header>
-</http_options_response>
+<!-- users.xml -->
+<profiles>
+    <default>
+        <enable_http_compression>1</enable_http_compression>
+        <http_zlib_compression_level>3</http_zlib_compression_level>
+    </default>
+</profiles>
 ```
 
 Clients can request compression:
