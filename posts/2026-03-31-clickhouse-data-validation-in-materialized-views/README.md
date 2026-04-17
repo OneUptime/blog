@@ -49,8 +49,14 @@ Only rows passing all conditions land in `valid_orders`.
 Route invalid rows to a quarantine table:
 
 ```sql
-CREATE TABLE invalid_orders AS orders
-ENGINE = MergeTree() ORDER BY ts;
+CREATE TABLE invalid_orders (
+    order_id    UUID,
+    user_id     UInt64,
+    amount      Float64,
+    status      String,
+    ts          DateTime,
+    rejected_at DateTime
+) ENGINE = MergeTree() ORDER BY ts;
 
 CREATE MATERIALIZED VIEW quarantine_orders_mv TO invalid_orders AS
 SELECT *, now() AS rejected_at
