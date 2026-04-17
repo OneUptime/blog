@@ -108,7 +108,7 @@ Restrict `CROSS JOIN` to cases where at least one side is small (typically under
 WITH
     date_range AS (
         SELECT arrayJoin(
-            arrayMap(x -> toDate('2024-01-01') + x, range(30))
+            arrayMap(x -> addDays(toDate('2024-01-01'), x), range(30))
         ) AS day
     ),
     services AS (
