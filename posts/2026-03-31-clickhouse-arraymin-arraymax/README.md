@@ -48,20 +48,20 @@ SELECT arrayMin([42]) AS single_min;
 
 ## Using Lambdas to Transform Before Comparing
 
-The optional lambda transforms each element before the min/max comparison, but the original (untransformed) value is returned:
+The optional lambda transforms each element, and the min/max of those transformed values is returned (the return type matches the lambda's output, not the original array's element type):
 
 ```sql
--- Find the element with the smallest absolute value
+-- Find the smallest absolute value
 SELECT arrayMin(x -> abs(x), [-5, 3, -1, 4, -2]) AS min_abs;
--- Result: -1 (element closest to 0, returned as original value)
+-- Result: 1 (the minimum of the abs() results)
 
--- Find the string with the shortest length
-SELECT arrayMin(x -> length(x), ['banana', 'fig', 'apple', 'kiwi']) AS shortest;
--- Result: 'fig'
+-- Find the shortest string length
+SELECT arrayMin(x -> length(x), ['banana', 'fig', 'apple', 'kiwi']) AS shortest_len;
+-- Result: 3 (length of 'fig')
 
--- Find the string with the longest length
-SELECT arrayMax(x -> length(x), ['banana', 'fig', 'apple', 'kiwi']) AS longest;
--- Result: 'banana'
+-- Find the longest string length
+SELECT arrayMax(x -> length(x), ['banana', 'fig', 'apple', 'kiwi']) AS longest_len;
+-- Result: 6 (length of 'banana')
 ```
 
 ## Filtering Rows Based on Array Extremes
