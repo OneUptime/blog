@@ -16,9 +16,15 @@ Hardware failures, network interruptions, and software bugs can occasionally lea
 CHECK TABLE analytics.events;
 ```
 
-ClickHouse reads every active data part in the table, recalculates checksums for all column files and index files, and compares them against the checksums stored in `checksums.txt` inside each part. The query returns a result set with one row per part.
+ClickHouse reads every active data part in the table, recalculates checksums for all column files and index files, and compares them against the checksums stored in `checksums.txt` inside each part. By default, the query returns a single `result` column: `1` if every part passed and `0` if any part failed.
 
 ### Output Columns
+
+To get one row per part with detailed information, set `check_query_single_value_result = 0`:
+
+```sql
+CHECK TABLE analytics.events SETTINGS check_query_single_value_result = 0;
+```
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -29,7 +35,7 @@ ClickHouse reads every active data part in the table, recalculates checksums for
 ```sql
 -- Show only failed parts
 SELECT part_path, message
-FROM (CHECK TABLE analytics.events)
+FROM (CHECK TABLE analytics.events SETTINGS check_query_single_value_result = 0)
 WHERE NOT is_passed;
 ```
 
@@ -59,7 +65,7 @@ CHECK TABLE does not repair data. It only reports what is wrong.
 A clean table returns all rows with `is_passed = 1`:
 
 ```sql
-CHECK TABLE analytics.events;
+CHECK TABLE analytics.events SETTINGS check_query_single_value_result = 0;
 -- part_path                            | is_passed | message
 -- all_1_10_2                           | 1         |
 -- all_11_20_3                          | 1         |
@@ -128,7 +134,7 @@ FROM
         'analytics'         AS database,
         'events'            AS table,
         is_passed
-    FROM (CHECK TABLE analytics.events)
+    FROM (CHECK TABLE analytics.events SETTINGS check_query_single_value_result = 0)
 
     UNION ALL
 
@@ -136,7 +142,7 @@ FROM
         'analytics'         AS database,
         'users'             AS table,
         is_passed
-    FROM (CHECK TABLE analytics.users)
+    FROM (CHECK TABLE analytics.users SETTINGS check_query_single_value_result = 0)
 ) AS c
 GROUP BY c.database, c.table
 HAVING corrupt_parts > 0;
@@ -144,7 +150,7 @@ HAVING corrupt_parts > 0;
 
 ```bash
 # Run CHECK TABLE from the CLI and alert on failures
-clickhouse-client --query "CHECK TABLE analytics.events" \
+clickhouse-client --query "CHECK TABLE analytics.events SETTINGS check_query_single_value_result = 0" \
   | awk -F'\t' '$2 == 0 {print "CORRUPT: " $1; exit 1}'
 ```
 
