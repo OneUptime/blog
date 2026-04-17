@@ -160,11 +160,11 @@ EOF
   --region us-west-2
 ```
 
-Repeat for other prefixes (`ghcr`, `k8s`, `quay`, `ecr-public`) or use a wildcard prefix to apply to all:
+Repeat for other prefixes (`ghcr`, `k8s`, `quay`, `ecr-public`) or use the special `ROOT` prefix to apply to all repositories that do not match a more specific template:
 
 ```bash
 aws ecr create-repository-creation-template \
-  --prefix "" \
+  --prefix "ROOT" \
   --applied-for "PULL_THROUGH_CACHE" \
   --image-tag-mutability IMMUTABLE \
   --encryption-configuration encryptionType=AES256 \
@@ -172,7 +172,7 @@ aws ecr create-repository-creation-template \
   --region us-west-2
 ```
 
-Using an empty prefix applies the template to all pull-through cache repositories that do not match a more specific prefix template.
+The `ROOT` prefix applies the template to all pull-through cache repositories in your registry that do not match a more specific prefix template.
 
 ## Step 4: Configure IAM Permissions for ECR Access
 
