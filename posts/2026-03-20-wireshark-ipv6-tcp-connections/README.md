@@ -16,7 +16,7 @@ TCP over IPv6 behaves the same as over IPv4, but the underlying addressing is di
 ipv6 && tcp
 
 # IPv6 TCP to a specific server on HTTPS
-ipv6.dst == 2001:db8::web && tcp.dstport == 443
+ipv6.dst == 2001:db8::1 && tcp.dstport == 443
 
 # IPv6 TCP SYN packets (connection initiations)
 ipv6 && tcp.flags.syn == 1 && tcp.flags.ack == 0
@@ -35,7 +35,7 @@ ipv6 && tcp.flags.fin == 1
 
 ```wireshark
 # See the complete connection establishment for a specific IPv6 pair
-(ipv6.src == 2001:db8::client || ipv6.dst == 2001:db8::client) &&
+(ipv6.src == 2001:db8::2 || ipv6.dst == 2001:db8::2) &&
 tcp && (tcp.flags.syn == 1 || tcp.flags.ack == 1)
 ```
 
@@ -117,10 +117,10 @@ tshark -r capture.pcap \
 
 ```wireshark
 # Many SYN packets from one IPv6 source to different ports (port scan)
-ipv6.src == 2001:db8::scanner && tcp.flags.syn == 1
+ipv6.src == 2001:db8::bad && tcp.flags.syn == 1
 
 # Many RST responses (ports closed, indicating scan)
-ipv6.dst == 2001:db8::scanner && tcp.flags.reset == 1
+ipv6.dst == 2001:db8::bad && tcp.flags.reset == 1
 ```
 
 ## IPv6 TCP MSS Analysis
@@ -129,7 +129,7 @@ TCP Maximum Segment Size (MSS) is negotiated during the handshake. For IPv6, the
 
 ```wireshark
 # Show TCP options including MSS in SYN packets
-ipv6 && tcp.flags.syn == 1 && tcp.options.mss
+ipv6 && tcp.flags.syn == 1 && tcp.options.mss_val
 
 # Filter by specific MSS value
 ipv6 && tcp.options.mss_val < 1440    # Possibly tunnel path
