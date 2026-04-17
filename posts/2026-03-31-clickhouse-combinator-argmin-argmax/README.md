@@ -1,8 +1,8 @@
-# How to Use -ArgMin and -ArgMax Combinators in ClickHouse
+# How to Use argMin and argMax Aggregate Functions in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Aggregate Function, Combinator, argMin, argMax, Performance
+Tags: ClickHouse, Aggregate Function, argMin, argMax, Performance
 
 Description: Learn how argMin and argMax return the value of one column at the row where another column reaches its minimum or maximum - with practical analytics examples.
 
@@ -17,7 +17,7 @@ argMin(value_column, key_column)  -- returns value where key is minimum
 argMax(value_column, key_column)  -- returns value where key is maximum
 ```
 
-Both functions scan all rows in the group, track the row where `key_column` is smallest (or largest), and return `value_column` from that row. If multiple rows share the same minimum or maximum key, the result is deterministic but arbitrary - the first such row encountered in storage order.
+Both functions scan all rows in the group, track the row where `key_column` is smallest (or largest), and return `value_column` from that row. If multiple rows share the same minimum or maximum key, which `value_column` is returned is not deterministic - the winning row depends on processing order and can vary between runs with parallel execution.
 
 ## Basic Example: First and Last Event per User
 
@@ -200,20 +200,20 @@ user_at_first_alphabetical_action  user_at_last_alphabetical_action
 
 ## Using argMin/argMax in a Materialized View
 
-Pre-compute per-symbol first and last trade price in a materialized view for fast dashboard queries:
+Pre-compute per-symbol first and last trade price in a materialized view for fast dashboard queries. A materialized view runs its `SELECT` on each insert batch, so the target table needs to be able to merge partial results across batches. Use `AggregatingMergeTree` with the `-State` forms of each aggregate so that intermediate states are stored and combined during background merges:
 
 ```sql
 CREATE TABLE daily_ohlc
 (
     symbol      String,
     trade_date  Date,
-    open_price  Float64,
-    close_price Float64,
-    high_price  Float64,
-    low_price   Float64,
-    volume      UInt64
+    open_price  AggregateFunction(argMin, Float64, DateTime),
+    close_price AggregateFunction(argMax, Float64, DateTime),
+    high_price  AggregateFunction(max,    Float64),
+    low_price   AggregateFunction(min,    Float64),
+    volume      AggregateFunction(sum,    UInt32)
 )
-ENGINE = ReplacingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (symbol, trade_date);
 
 CREATE MATERIALIZED VIEW daily_ohlc_mv
@@ -221,16 +221,32 @@ TO daily_ohlc
 AS
 SELECT
     symbol,
-    toDate(trade_time)             AS trade_date,
-    argMin(price, trade_time)      AS open_price,
-    argMax(price, trade_time)      AS close_price,
-    max(price)                     AS high_price,
-    min(price)                     AS low_price,
-    sum(volume)                    AS volume
+    toDate(trade_time)              AS trade_date,
+    argMinState(price, trade_time)  AS open_price,
+    argMaxState(price, trade_time)  AS close_price,
+    maxState(price)                 AS high_price,
+    minState(price)                 AS low_price,
+    sumState(volume)                AS volume
 FROM trades
 GROUP BY symbol, trade_date;
 ```
 
+Query the stored states with the matching `-Merge` functions to finalize results across all batches:
+
+```sql
+SELECT
+    symbol,
+    trade_date,
+    argMinMerge(open_price)   AS open_price,
+    argMaxMerge(close_price)  AS close_price,
+    maxMerge(high_price)      AS high_price,
+    minMerge(low_price)       AS low_price,
+    sumMerge(volume)          AS volume
+FROM daily_ohlc
+GROUP BY symbol, trade_date
+ORDER BY symbol, trade_date;
+```
+
 ## Summary
 
-`argMin(value, key)` and `argMax(value, key)` return the value of one column at the row where another column is minimized or maximized. They are efficient single-pass aggregate functions ideal for finding first/last events by timestamp, opening/closing prices in financial data, and per-group extreme row lookups. To retrieve multiple attributes from the same extreme row, call `argMin`/`argMax` multiple times with the same key column. When ties exist, the result is deterministic within a given data part order but not guaranteed to match any specific row - so for tie-breaking behavior, combine with a secondary sort key encoded into the key column.
+`argMin(value, key)` and `argMax(value, key)` return the value of one column at the row where another column is minimized or maximized. They are efficient single-pass aggregate functions ideal for finding first/last events by timestamp, opening/closing prices in financial data, and per-group extreme row lookups. To retrieve multiple attributes from the same extreme row, call `argMin`/`argMax` multiple times with the same key column. When ties exist on the key column, which row's value is returned is not deterministic - so for predictable tie-breaking, combine with a secondary sort key encoded into the key column (for example, a tuple `(event_time, row_id)`).
