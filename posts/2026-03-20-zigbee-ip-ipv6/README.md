@@ -49,7 +49,7 @@ sudo ip link set wpan0 up
 sudo ip link set lowpan0 up
 
 # Assign IPv6 address to the border router's mesh interface
-sudo ip -6 addr add 2001:db8:zip:1::1/64 dev lowpan0
+sudo ip -6 addr add 2001:db8:1::1/64 dev lowpan0
 
 # Enable forwarding
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
@@ -107,7 +107,7 @@ async def read_smart_meter(device_ipv6: str):
 
 async def main():
     # Replace with actual IPv6 address of Zigbee IP smart meter
-    meter_address = "2001:db8:zip:1::meter1"
+    meter_address = "2001:db8:1::100"
     await read_smart_meter(meter_address)
 
 asyncio.run(main())
@@ -129,10 +129,11 @@ asyncio.run(main())
 # (using DHCPv6 with reservations based on EUI-64)
 ```
 
-## DTLS Security for Zigbee IP
+## TLS Security for Zigbee IP
 
 ```bash
-# Zigbee IP mandates DTLS for secure communication
+# Zigbee IP (via SEP 2.0 / IEEE 2030.5) mandates TLS 1.2 over TCP for secure communication
+# using ECC cipher suites (ECDHE-ECDSA with prime256v1 / secp256r1)
 # Generate a certificate for a Zigbee IP device
 
 openssl ecparam -genkey -name prime256v1 -noout -out device.key
@@ -155,9 +156,9 @@ sudo tcpdump -i lowpan0 -v
 ip -6 neigh show dev lowpan0
 
 # Ping a Zigbee IP device
-ping6 -c 3 2001:db8:zip:1::meter1
+ping6 -c 3 2001:db8:1::100
 ```
 
 ## Conclusion
 
-Zigbee IP brings full IPv6 connectivity to smart grid and commercial building automation applications by combining IEEE 802.15.4's proven radio technology with 6LoWPAN, RPL, and IPv6. Unlike classic Zigbee, Zigbee IP devices are addressable directly from the internet without protocol translation gateways, enabling direct cloud integration and end-to-end encrypted communication via DTLS. The CoAP-based ZCL interface makes it straightforward to interact with Zigbee IP devices using standard HTTP-like semantics.
+Zigbee IP brings full IPv6 connectivity to smart grid and commercial building automation applications by combining IEEE 802.15.4's proven radio technology with 6LoWPAN, RPL, and IPv6. Unlike classic Zigbee, Zigbee IP devices are addressable directly from the internet without protocol translation gateways, enabling direct cloud integration and end-to-end encrypted communication via TLS. The RESTful interface (HTTP with CoAP as an alternative over constrained links) makes it straightforward to interact with Zigbee IP devices using standard web semantics.
