@@ -21,7 +21,7 @@ Without fair scheduling, a tenant running a heavy batch query can:
 
 ```sql
 -- Root workload with total IO budget
-CREATE WORKLOAD all SETTINGS max_io_bandwidth = 2147483648;  -- 2 GB/s
+CREATE WORKLOAD all SETTINGS max_bytes_per_second = 2147483648;  -- 2 GB/s
 
 -- Tenant A: larger contract, gets more bandwidth (60%)
 CREATE WORKLOAD tenant_a PARENT all SETTINGS
