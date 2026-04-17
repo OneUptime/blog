@@ -14,7 +14,7 @@ Detaching a partition in ClickHouse removes it from the table's active data with
 
 ```sql
 ALTER TABLE events
-    DETACH PARTITION '2024-01';
+    DETACH PARTITION 202401;
 ```
 
 After this command:
@@ -22,7 +22,7 @@ After this command:
 - The data files are physically present in `detached/<partition_id>/` on each replica's disk.
 - The partition can be re-attached at any time.
 
-To detach all partitions in a single command, use `PART` with a specific part name, or loop through partitions. To detach the entire table at once, use `DETACH TABLE` instead.
+To detach every partition at once, use `DETACH PARTITION ALL`. To detach a single part by name (rather than a whole partition), use `DETACH PART '<part_name>'`. To detach the entire table, use `DETACH TABLE` instead.
 
 ## Listing Detached Partitions
 
@@ -46,7 +46,7 @@ Re-attaches a previously detached (or manually placed) partition:
 
 ```sql
 ALTER TABLE events
-    ATTACH PARTITION '2024-01';
+    ATTACH PARTITION 202401;
 ```
 
 ClickHouse reads the data from the `detached/` directory, verifies checksums, and makes the parts active. Queries can immediately use the data.
@@ -57,7 +57,7 @@ Copies (not moves) a partition from one table to another. The source partition r
 
 ```sql
 ALTER TABLE events_archive
-    ATTACH PARTITION '2024-01' FROM events;
+    ATTACH PARTITION 202401 FROM events;
 ```
 
 Both tables must have compatible schemas (same column names, types, and ordering key).
@@ -77,8 +77,8 @@ ALTER TABLE events
 ALTER TABLE events
     ATTACH PARTITION 202401;
 
--- If confirmed unnecessary, delete detached files manually
--- (Done at the OS level or via SYSTEM DROP DETACHED PARTS)
+-- If confirmed unnecessary, drop the detached partition to free disk space
+-- (Use ALTER TABLE ... DROP DETACHED PARTITION, shown later)
 ```
 
 ### Archival Workflow
@@ -171,9 +171,12 @@ To permanently remove detached parts (freeing disk space):
 ALTER TABLE web_logs
     DROP DETACHED PARTITION 202401;
 
--- Or use the system command to drop all detached parts older than a threshold
-SYSTEM DROP DETACHED PARTS;
+-- Drop a specific detached part by name
+ALTER TABLE web_logs
+    DROP DETACHED PART 'all_1_1_0';
 ```
+
+There is no single SYSTEM-level command to purge every detached part at once. To bulk-clean detached data, query `system.detached_parts` to enumerate them and issue per-partition or per-part `DROP DETACHED` statements. Note that `DROP DETACHED` may require the `allow_drop_detached` setting to be enabled on older ClickHouse versions.
 
 ## ON CLUSTER for Distributed Setups
 
