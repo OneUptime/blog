@@ -37,6 +37,11 @@ Both ClickHouse and Apache Pinot are purpose-built OLAP databases designed for h
 ```sql
 -- Kafka table engine for streaming ingestion
 CREATE TABLE kafka_events
+(
+    ts DateTime,
+    user_id UInt64,
+    event_type String
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
@@ -84,7 +89,7 @@ GROUP BY hour
 ORDER BY hour;
 ```
 
-Pinot uses PQL and standard SQL with some extensions:
+Pinot uses standard SQL with some Pinot-specific extensions (the legacy PQL dialect has been removed):
 
 ```sql
 -- Pinot SQL: Similar syntax with Pinot-specific functions
@@ -102,7 +107,7 @@ ORDER BY hour
 
 | Feature | ClickHouse | Apache Pinot |
 |---|---|---|
-| Default compression | LZ4 | Snappy/Zstd |
+| Default compression | LZ4 | LZ4 (Snappy and Zstd also supported) |
 | Column encoding | Delta, Gorilla, LZ4, ZSTD | Dictionary, RLE, Fixed-bit |
 | Storage format | MergeTree parts | Segments (immutable) |
 | Index types | Bloom filter, min-max, skip | Inverted, sorted, bloom, range |
