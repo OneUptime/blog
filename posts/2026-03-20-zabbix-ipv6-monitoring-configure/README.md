@@ -16,16 +16,16 @@ Edit `/etc/zabbix/zabbix_server.conf`:
 # /etc/zabbix/zabbix_server.conf - Zabbix Server IPv6 configuration
 
 # Listen on all interfaces (IPv4 and IPv6)
-ListenIP=::
+ListenIP=0.0.0.0,::
 
 # Optional: specify a specific IPv6 listening address
-# ListenIP=2001:db8::server
+# ListenIP=2001:db8::1
 
 # Listen port
 ListenPort=10051
 
 # Allow IPv6 connections from Zabbix agents
-# No special config needed; ListenIP=:: covers both address families
+# ListenIP accepts a comma-separated list of IPv4 and IPv6 addresses
 ```
 
 Restart Zabbix server:
@@ -43,16 +43,17 @@ ss -6 -tlnp | grep zabbix_server
 # /etc/zabbix/zabbix_agentd.conf - Agent configuration for IPv6
 
 # Server IPv6 address (Zabbix server or proxy that collects from this agent)
-Server=2001:db8::zabbix-server
+Server=2001:db8::1
 
 # Active checks target (comma-separated if multiple)
-ServerActive=2001:db8::zabbix-server
+# For IPv6 with a port, brackets are required: [2001:db8::1]:10051
+ServerActive=2001:db8::1
 
 # Hostname of this host (must match in Zabbix frontend)
 Hostname=web-01.example.com
 
 # Listen on all interfaces including IPv6
-ListenIP=::
+ListenIP=0.0.0.0,::
 ListenPort=10050
 ```
 
@@ -62,9 +63,9 @@ sudo systemctl restart zabbix-agent2
 
 ## Step 3: Add an IPv6 Host in Zabbix Frontend
 
-Via the Zabbix web interface:
+Via the Zabbix web interface (Zabbix 7.0):
 
-1. Go to **Configuration → Hosts → Create host**
+1. Go to **Data collection → Hosts → Create host**
 2. Set **Host name**: `web-01`
 3. Under **Interfaces**, click **Add**:
    - Type: **Agent**
@@ -76,9 +77,10 @@ Via the Zabbix web interface:
 Or via Zabbix API:
 
 ```bash
-# Add host with IPv6 interface via Zabbix API
+# Add host with IPv6 interface via Zabbix API (Zabbix 6.4+ Bearer auth)
 curl -X POST https://zabbix.example.com/api_jsonrpc.php \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json-rpc" \
+  -H "Authorization: Bearer $ZABBIX_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "method": "host.create",
@@ -95,7 +97,6 @@ curl -X POST https://zabbix.example.com/api_jsonrpc.php \
       "groups": [{"groupid": "2"}],
       "templates": [{"templateid": "10001"}]
     },
-    "auth": "'"$ZABBIX_TOKEN"'",
     "id": 1
   }'
 ```
@@ -112,7 +113,8 @@ Or use the API to create an ICMP ping item:
 
 ```bash
 curl -X POST https://zabbix.example.com/api_jsonrpc.php \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json-rpc" \
+  -H "Authorization: Bearer $ZABBIX_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "method": "item.create",
@@ -124,7 +126,6 @@ curl -X POST https://zabbix.example.com/api_jsonrpc.php \
       "delay": "60s",
       "value_type": 3
     },
-    "auth": "'"$ZABBIX_TOKEN"'",
     "id": 1
   }'
 ```
@@ -134,7 +135,7 @@ curl -X POST https://zabbix.example.com/api_jsonrpc.php \
 ```ini
 # Add an SNMP host with IPv6 address in Zabbix
 # Interface type: SNMP
-# IP: 2001:db8::router
+# IP: 2001:db8::fe
 # Port: 161
 # SNMP version: v2c
 # Community: public
@@ -145,14 +146,14 @@ Template `Network interfaces by SNMP` will automatically collect IPv6 interface 
 ## Step 6: Create a Trigger for IPv6 Host Unavailability
 
 ```text
-# Trigger expression for ICMPv6 unavailability
-{web-01:icmpping[2001:db8::10,3,200,1024].last()}=0
+# Trigger expression for ICMPv6 unavailability (Zabbix 6.0+ syntax)
+last(/web-01/icmpping[2001:db8::10,3,200,1024])=0
 ```
 
 Or for consecutive failures:
 
 ```text
-{web-01:icmpping[2001:db8::10].count(#5,0,"eq")}>=3
+count(/web-01/icmpping[2001:db8::10],#5,"eq",0)>=3
 ```
 
 ## Verify Zabbix IPv6 Monitoring
