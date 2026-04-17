@@ -29,19 +29,15 @@ ALTER TABLE events
 
 ClickHouse imposes strict rules on what the new ORDER BY key can contain:
 
-1. **New key columns must already exist in the table.** You cannot add a column and modify the ORDER BY in a single statement; add the column first.
-2. **The new key can only add columns to the existing key; it cannot remove columns from or reorder the leading key columns** for tables using `PRIMARY KEY` separately. For standard MergeTree where ORDER BY and PRIMARY KEY are identical, you can specify any subset as PRIMARY KEY, but the ORDER BY can be extended freely.
-3. **New key columns must not be Nullable.**
+1. **You cannot add expressions containing existing columns to the sorting key.** The only columns that can be added are those created by an `ADD COLUMN` command in the same `ALTER` query, and those columns must not have a default value. This restriction preserves the invariant that rows within each data part are ordered by the sorting key expression without having to rewrite existing data.
+2. **The new key can only extend the existing key; it cannot remove or reorder the leading key columns.** For standard MergeTree where ORDER BY and PRIMARY KEY are identical, the ORDER BY can be extended while the PRIMARY KEY remains unchanged.
+3. **New key columns must not be Nullable** (unless `allow_nullable_key` is enabled at table creation).
 
-Workflow for adding a new column to the sort key:
+Workflow for adding a new column to the sort key - add the column and modify the ORDER BY in a single `ALTER` query, with no default value on the new column:
 
 ```sql
--- Step 1: add the new column
 ALTER TABLE events
-    ADD COLUMN region LowCardinality(String) DEFAULT 'unknown';
-
--- Step 2: extend the ORDER BY
-ALTER TABLE events
+    ADD COLUMN region LowCardinality(String),
     MODIFY ORDER BY (event_date, region, user_id);
 ```
 
@@ -59,22 +55,17 @@ In production, rely on background merges rather than forcing `OPTIMIZE FINAL` on
 
 ## Relationship Between ORDER BY and PRIMARY KEY
 
-In MergeTree tables, the `PRIMARY KEY` is a prefix of `ORDER BY`. When you extend ORDER BY, you can keep the same PRIMARY KEY or also update it:
+In MergeTree tables, the `PRIMARY KEY` is a prefix of `ORDER BY`. `MODIFY ORDER BY` changes only the sorting key; the primary key remains the same:
 
 ```sql
--- Extend ORDER BY while keeping a smaller PRIMARY KEY for index granularity
+-- Extend ORDER BY while keeping the smaller PRIMARY KEY for index granularity
 ALTER TABLE events
     MODIFY ORDER BY (event_date, region, user_id);
 
--- The PRIMARY KEY remains (event_date) unless explicitly changed
+-- The PRIMARY KEY remains whatever it was before this ALTER
 ```
 
-To also update the PRIMARY KEY (must remain a prefix of ORDER BY):
-
-```sql
-ALTER TABLE events
-    MODIFY PRIMARY KEY (event_date, region);
-```
+ClickHouse does not provide an `ALTER TABLE ... MODIFY PRIMARY KEY` command. Changing the primary key itself requires creating a new table with the desired `PRIMARY KEY`, inserting the data with `INSERT SELECT`, and renaming the tables.
 
 ## When to Use MODIFY ORDER BY
 
@@ -86,9 +77,7 @@ Example: a table originally sorted only by date, but most queries also filter by
 
 ```sql
 ALTER TABLE logs
-    ADD COLUMN service_name LowCardinality(String) DEFAULT '';
-
-ALTER TABLE logs
+    ADD COLUMN service_name LowCardinality(String),
     MODIFY ORDER BY (log_date, service_name, severity);
 ```
 
@@ -117,4 +106,4 @@ WHERE name = 'events' AND database = 'default';
 
 ## Summary
 
-`ALTER TABLE MODIFY ORDER BY` extends the primary sort key of a MergeTree table without immediately rewriting data. New columns must exist before they can be added to the key, and Nullable columns are not permitted. Existing parts adopt the new order only after background merges rewrite them. Use `system.tables` to verify the updated key, and plan around the gradual rollout of the new sort order on existing data.
+`ALTER TABLE MODIFY ORDER BY` extends the primary sort key of a MergeTree table without immediately rewriting data. Columns added to the key must be new columns created in the same `ALTER` query via `ADD COLUMN` without a default value, and Nullable columns are not permitted. Existing parts adopt the new order only after background merges rewrite them. Use `system.tables` to verify the updated key, and plan around the gradual rollout of the new sort order on existing data.
