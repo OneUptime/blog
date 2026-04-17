@@ -75,7 +75,7 @@ ipv6.opt.router_alert == 0   # Multicast Listener Discovery (value 0)
 ipv6.opt.router_alert == 1   # RSVP (value 1)
 
 # Show Jumbogram option (IPv6 Jumbo Payload)
-ipv6.opt.jumbo_payload_length
+ipv6.opt.jumbo
 ```
 
 ## Routing Header Analysis
