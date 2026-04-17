@@ -19,7 +19,7 @@ SELECT
     value
 FROM system.metrics
 WHERE metric IN (
-    'Query', 'BackgroundPoolTask', 'MemoryTracking',
+    'Query', 'BackgroundMergesAndMutationsPoolTask', 'MemoryTracking',
     'OpenFileForRead', 'OpenFileForWrite'
 )
 ORDER BY metric;
@@ -60,7 +60,7 @@ If one user or query type dominates, consider adding a resource quota:
 
 ```sql
 CREATE QUOTA analytics_quota
-    FOR INTERVAL 1 HOUR MAX query_execution_time = 3600
+    FOR INTERVAL 1 HOUR MAX execution_time = 3600
     TO analytics_user;
 ```
 
@@ -124,7 +124,7 @@ SELECT
     database,
     table,
     count() AS pending_merges,
-    sum(rows) AS rows_to_merge
+    sum(rows_read) AS rows_to_merge
 FROM system.merges
 GROUP BY database, table;
 ```
