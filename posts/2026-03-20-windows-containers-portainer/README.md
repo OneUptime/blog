@@ -76,15 +76,6 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
-
-  sql-server:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    environment:
-      - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong!Passw0rd
-    ports:
-      - "1433:1433"
-    restart: unless-stopped
 ```
 
 ## Windows Container Base Images
@@ -94,7 +85,7 @@ services:
 | `mcr.microsoft.com/windows/nanoserver` | ~100MB | Smallest, limited APIs |
 | `mcr.microsoft.com/windows/servercore` | ~1.5GB | .NET Framework, IIS |
 | `mcr.microsoft.com/windows/server` | ~6GB | Full Windows Server features |
-| `mcr.microsoft.com/dotnet/aspnet:8.0` | ~400MB | ASP.NET Core apps |
+| `mcr.microsoft.com/dotnet/aspnet:8.0-nanoserver-ltsc2022` | ~400MB | ASP.NET Core apps |
 
 ## Checking Running Windows Containers
 
