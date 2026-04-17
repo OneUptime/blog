@@ -59,7 +59,7 @@ SET load_balancing = 'nearest_hostname';
 -- options: random, nearest_hostname, in_order, first_or_random
 ```
 
-`nearest_hostname` routes to the replica whose name is lexicographically closest, reducing cross-datacenter traffic.
+`nearest_hostname` routes to the replica whose hostname differs from the initiator's by the fewest characters at matching positions, reducing cross-datacenter traffic.
 
 ## Monitoring Remote Query Overhead
 
