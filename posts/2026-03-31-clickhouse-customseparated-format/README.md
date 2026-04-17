@@ -164,9 +164,9 @@ SET format_custom_null_representation = 'NULL';
 SELECT id, nullable_col FROM table FORMAT CustomSeparated;
 ```
 
-## Regex-Based Parsing with CustomSeparatedByRegexp
+## Regex-Based Parsing with the Regexp Format
 
-For complex log formats, use `CustomSeparatedByRegexp`:
+For complex log formats, use the `Regexp` format:
 
 ```sql
 SET format_regexp = '^(\\S+) (\\S+) (\\d+)$';
@@ -174,7 +174,7 @@ SET format_regexp_escaping_rule = 'Raw';
 SET format_regexp_skip_unmatched = 1;
 
 SELECT *
-FROM file('logs.txt', CustomSeparatedByRegexp);
+FROM file('logs.txt', Regexp);
 ```
 
 This parses lines matching the regex, skipping any that do not match.
@@ -195,7 +195,7 @@ SET format_regexp_escaping_rule = 'Raw';
 SET format_regexp_skip_unmatched = 1;
 
 SELECT *
-FROM file('access.log', CustomSeparatedByRegexp);
+FROM file('access.log', Regexp);
 ```
 
 ## Performance Tips
