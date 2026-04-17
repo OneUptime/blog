@@ -96,7 +96,7 @@ ORDER BY (event_date, user_id);
 ```bash
 # Generate test data and measure throughput
 clickhouse-benchmark --concurrency 10 --iterations 100 \
-  --query "INSERT INTO events SELECT now(), rand(), 'click', map('k','v') FROM numbers(10000)"
+  --query "INSERT INTO events SELECT today(), now(), rand(), 'click', map('k','v') FROM numbers(10000)"
 ```
 
 ## Summary
