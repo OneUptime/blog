@@ -47,10 +47,10 @@ ipv6.src == ::1/128
 ipv6.src == 2001:db8::1 || ipv6.src == 2001:db8::2
 
 # Packets from a source range AND to a specific destination
-ipv6.src == 2001:db8::/48 && ipv6.dst == 2001:db8:server::10
+ipv6.src == 2001:db8::/48 && ipv6.dst == 2001:db8:1::10
 
 # All IPv6 TCP packets from a specific source
-ipv6.src == 2001:db8::client && tcp
+ipv6.src == 2001:db8::c11e && tcp
 
 # IPv6 packets from a source to a specific port
 ipv6.src == 2001:db8::1 && tcp.dstport == 443
@@ -62,14 +62,14 @@ ipv6 && !(ipv6.src == ::1)
 ## Filtering by Source Address Type
 
 ```wireshark
-# Show only multicast source packets
-ipv6.src_host contains "ff"
+# Show only multicast source packets (ff00::/8)
+ipv6.src == ff00::/8
 
 # Show only global unicast addresses (2000::/3)
 ipv6.src == 2000::/3
 
 # Show only link-local source addresses
-ipv6.src_host[0:2] == fe:80
+ipv6.src == fe80::/10
 
 # Using the addr filter for either source or destination
 ipv6.addr == 2001:db8::1
@@ -110,8 +110,7 @@ To filter at capture time (before packets are written to buffer):
 # Capture only packets from a specific IPv6 source
 ip6 src 2001:db8::1
 
-# Capture from a /64 subnet (BPF does not support CIDR directly)
-# Use a mask-based approach:
+# Capture from a /64 subnet using CIDR notation
 ip6 src net 2001:db8::/64
 ```
 
