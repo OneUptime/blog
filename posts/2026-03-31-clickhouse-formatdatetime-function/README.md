@@ -30,23 +30,25 @@ The most commonly used specifiers are listed below.
 %d  - two-digit day             (31)
 %H  - two-digit hour (24h)      (14)
 %I  - two-digit hour (12h)      (02)
-%M  - two-digit minute          (23)
+%i  - two-digit minute          (23)
 %S  - two-digit second          (47)
 %p  - AM or PM                  (PM)
 %e  - day of month, space-padded ( 1..31)
 %j  - day of year               (090)
-%W  - week number (Mon-based)   (13)
+%V  - ISO 8601 week number      (14)
 %w  - weekday (0=Sunday)        (2)
-%A  - full weekday name         (Tuesday)
+%W  - full weekday name         (Tuesday)
 %a  - abbreviated weekday       (Tue)
-%B  - full month name           (March)
+%M  - full month name           (March)
 %b  - abbreviated month         (Mar)
-%f  - microseconds, zero-padded (000000)
+%f  - fractional second         (123456)
 %F  - shorthand for %Y-%m-%d
-%T  - shorthand for %H:%M:%S
-%R  - shorthand for %H:%M
+%T  - shorthand for %H:%i:%S
+%R  - shorthand for %H:%i
 %%  - literal percent sign
 ```
+
+Note: ClickHouse's `formatDateTime` uses the MySQL dialect, so `%M` is the full month name (not minute) and `%W` is the full weekday name (not week number). Use `%i` for minute and `%V` for ISO 8601 week number.
 
 ## Basic String Formatting
 
@@ -54,9 +56,9 @@ The simplest use case is rendering a timestamp as a readable string for a report
 
 ```sql
 SELECT
-    formatDateTime(now(), '%Y-%m-%d %H:%M:%S') AS formatted,
+    formatDateTime(now(), '%Y-%m-%d %H:%i:%S') AS formatted,
     formatDateTime(now(), '%d/%m/%Y')           AS eu_format,
-    formatDateTime(now(), '%B %e, %Y')          AS long_format;
+    formatDateTime(now(), '%M %e, %Y')          AS long_format;
 -- Result: 2026-03-31 14:23:47 | 31/03/2026 | March 31, 2026
 ```
 
@@ -68,7 +70,7 @@ ISO 8601 is the interchange format for APIs and data exports. Use `%F` and `%T` 
 SELECT
     formatDateTime(now(), '%FT%T')             AS iso_basic,
     formatDateTime(now(), '%FT%TZ')            AS iso_utc,
-    formatDateTime(now(), '%Y-%m-%dT%H:%M:%S') AS iso_explicit;
+    formatDateTime(now(), '%Y-%m-%dT%H:%i:%S') AS iso_explicit;
 -- Result: 2026-03-31T14:23:47 | 2026-03-31T14:23:47Z
 ```
 
@@ -87,9 +89,9 @@ The stored DateTime is always UTC. The timezone argument in `formatDateTime` shi
 
 ```sql
 SELECT
-    formatDateTime(event_time, '%Y-%m-%d %H:%M', 'UTC')             AS utc_display,
-    formatDateTime(event_time, '%Y-%m-%d %H:%M', 'America/Chicago') AS chicago_display,
-    formatDateTime(event_time, '%Y-%m-%d %H:%M', 'Asia/Singapore')  AS sg_display
+    formatDateTime(event_time, '%Y-%m-%d %H:%i', 'UTC')             AS utc_display,
+    formatDateTime(event_time, '%Y-%m-%d %H:%i', 'America/Chicago') AS chicago_display,
+    formatDateTime(event_time, '%Y-%m-%d %H:%i', 'Asia/Singapore')  AS sg_display
 FROM events
 LIMIT 5;
 ```
@@ -99,7 +101,7 @@ This is particularly useful in multi-tenant applications where each user record 
 ```sql
 SELECT
     u.name,
-    formatDateTime(e.event_time, '%d %b %Y %H:%M', u.timezone) AS local_event_time
+    formatDateTime(e.event_time, '%d %b %Y %H:%i', u.timezone) AS local_event_time
 FROM events AS e
 JOIN users AS u ON e.user_id = u.user_id
 LIMIT 10;
@@ -112,7 +114,7 @@ LIMIT 10;
 ```sql
 SELECT
     formatDateTime(event_time, '%Y-%m')   AS year_month,
-    formatDateTime(event_time, '%Y-W%W')  AS iso_week,
+    formatDateTime(event_time, '%Y-W%V')  AS iso_week,
     count()                               AS events
 FROM page_views
 WHERE event_time >= today() - INTERVAL 90 DAY
