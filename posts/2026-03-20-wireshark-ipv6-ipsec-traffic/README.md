@@ -108,10 +108,10 @@ ipv6.nxt == 51
 isakmp && ipv6.dst == 2001:db8::initiator && isakmp.exchtype == 34
 
 # Look for INFORMATIONAL messages with DELETE payloads (SA being torn down)
-isakmp.exchtype == 37 && isakmp.payload.delete
+isakmp.exchtype == 37 && isakmp.delete.spi
 
 # Check for NOTIFY payloads (error codes)
-isakmp.payload.notify
+isakmp.notify.msgtype
 ```
 
 ### ESP Traffic Present But Decryption Failing
