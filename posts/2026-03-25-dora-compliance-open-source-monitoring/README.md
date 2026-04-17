@@ -16,7 +16,7 @@ DORA isn't just another checkbox exercise. It requires financial entities to dem
 
 ### 1. Continuous ICT Risk Monitoring
 
-Article 9 of DORA requires institutions to "identify, classify and adequately document all ICT-supported business functions, roles and responsibilities." In practice, this means your monitoring must cover:
+Article 8 of DORA requires institutions to "identify, classify and adequately document all ICT supported business functions, roles and responsibilities." In practice, this means your monitoring must cover:
 
 - **Infrastructure health** - CPU, memory, disk, network across all environments
 - **Application performance** - Response times, error rates, throughput for all critical services
