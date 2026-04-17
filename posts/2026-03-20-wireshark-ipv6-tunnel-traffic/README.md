@@ -69,8 +69,8 @@ udp.port == 3544
 # Wireshark dissects Teredo and shows the inner IPv6 headers
 teredo
 
-# Show Teredo NAT traversal bubbles (empty UDP)
-teredo && udp.length == 8
+# Show Teredo NAT traversal bubbles (IPv6 header only, no payload)
+teredo && udp.length == 48
 ```
 
 ## Diagnosing Tunnel Issues
