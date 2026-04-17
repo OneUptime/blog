@@ -117,9 +117,9 @@ ORDER BY account_id, week;
 ```sql
 SELECT
     account_id,
-    any(health_score) AS latest_score,
-    any(prev_score)   AS prev_score,
-    any(health_score) - any(prev_score) AS delta
+    argMax(health_score, computed_at) AS latest_score,
+    argMax(prev_score, computed_at)   AS prev_score,
+    argMax(health_score, computed_at) - argMax(prev_score, computed_at) AS delta
 FROM (
     SELECT
         account_id,
