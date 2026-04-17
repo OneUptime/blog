@@ -211,7 +211,7 @@ These are the things that consistently bite teams moving OpenTelemetry onto App 
 
 A quick end-to-end check before you declare victory:
 
-1. Hit a route on your app and look for a trace in your backend with `service.name=my-app` and `cloud.platform=azure_app_service`.
+1. Hit a route on your app and look for a trace in your backend with `service.name=my-app` and `cloud.platform=azure.app_service`.
 2. Force a 502 by stopping the app mid-request, then check that the platform HTTP log arrived through the Event Hub → Collector path.
 3. Restart the app and confirm a span appears for the first request after cold start. If it doesn't, Always On is probably off.
 4. Filter by `service.instance.id` and confirm you can see each instance separately during a scale-out.
