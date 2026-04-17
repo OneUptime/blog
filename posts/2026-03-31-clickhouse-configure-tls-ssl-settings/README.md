@@ -115,31 +115,44 @@ For stronger security, require clients to present certificates:
 </openSSL>
 ```
 
-Connect with a client certificate:
+Connect with a client certificate. `clickhouse-client` does not expose CLI flags for certificate and key paths; configure them via the client's config file (for example `~/.clickhouse-client/config.xml` or a file passed with `--config-file`):
+
+```xml
+<!-- ~/.clickhouse-client/config.xml -->
+<config>
+    <openSSL>
+        <client>
+            <certificateFile>/etc/clickhouse-client/client.crt</certificateFile>
+            <privateKeyFile>/etc/clickhouse-client/client.key</privateKeyFile>
+            <caConfig>/etc/clickhouse-client/ca.crt</caConfig>
+            <verificationMode>strict</verificationMode>
+            <loadDefaultCAFile>true</loadDefaultCAFile>
+        </client>
+    </openSSL>
+</config>
+```
+
+Then connect normally with `--secure`:
 
 ```bash
 clickhouse-client \
     --host clickhouse.example.com \
     --port 9440 \
-    --secure \
-    --ssl-cert-file /etc/clickhouse-client/client.crt \
-    --ssl-key-file /etc/clickhouse-client/client.key
+    --secure
 ```
 
 ## Verifying TLS is Active
 
-```sql
-SELECT value
-FROM system.settings
-WHERE name = 'use_ssl';
+TLS is a server/transport configuration, not a runtime setting, so there is no single flag to query. Confirm the secure ports are listening and check per-interface connection metrics:
+
+```bash
+ss -tlnp | grep -E '8443|9440|9010'
 ```
 
-Check active connections:
+Check active connections broken down by interface:
 
 ```sql
-SELECT
-    interface,
-    count() AS connections
+SELECT metric, value
 FROM system.metrics
 WHERE metric LIKE '%Connection%';
 ```
