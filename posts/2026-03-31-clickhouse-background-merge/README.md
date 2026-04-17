@@ -29,7 +29,7 @@ graph LR
 | Setting | Default | Description |
 |---|---|---|
 | `background_pool_size` | 16 | Number of threads for background merges (server-level) |
-| `background_merges_mutations_concurrency_ratio` | 2 | Merge threads = pool_size * ratio |
+| `background_merges_mutations_concurrency_ratio` | 2 | Max concurrent merges/mutations = pool_size * ratio |
 | `merge_max_block_size` | 8192 | Rows per block during merge |
 | `max_bytes_to_merge_at_max_space_in_pool` | 161061273600 (150 GiB) | Max part size to merge when pool is free |
 | `max_bytes_to_merge_at_min_space_in_pool` | 1048576 (1 MiB) | Max part size to merge when pool is busy |
@@ -46,7 +46,7 @@ In `config.xml`:
 </clickhouse>
 ```
 
-On a 32-core server, `background_pool_size = 32` with ratio 2 allows up to 64 concurrent merge threads.
+On a 32-core server, `background_pool_size = 32` with ratio 2 allows up to 64 concurrent merges/mutations scheduled against the 32-thread pool.
 
 ## Per-Table Merge Settings
 
@@ -141,13 +141,13 @@ SYSTEM STOP MERGES events;
 SYSTEM START MERGES events;
 ```
 
-## Tuning Merge I/O Priority
+## Tuning the Merge Scheduling Policy
 
-Limit merge I/O bandwidth to avoid impacting query performance:
+`background_merges_mutations_scheduling_policy` selects the algorithm that picks the next merge or mutation to run from the background pool. `round_robin` (the default) prevents starvation of large merges, while `shortest_task_first` finishes small merges faster at the risk of starving large ones under heavy insert load:
 
 ```xml
 <clickhouse>
-  <background_merges_mutations_scheduling_policy>round_robin</background_merges_mutations_scheduling_policy>
+  <background_merges_mutations_scheduling_policy>shortest_task_first</background_merges_mutations_scheduling_policy>
 </clickhouse>
 ```
 
