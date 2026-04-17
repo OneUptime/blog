@@ -43,7 +43,7 @@ To drop a table across every node in a named cluster in one statement, use ON CL
 DROP TABLE IF EXISTS analytics.events ON CLUSTER my_cluster;
 ```
 
-ClickHouse sends the DDL to each shard and replica. For ReplicatedMergeTree tables the drop is replicated automatically to all replicas once issued on one node, but ON CLUSTER ensures the Distributed table or shadow on every shard is removed as well.
+ClickHouse sends the DDL to each node in the cluster and drops the table on every one. For ReplicatedMergeTree tables, a plain DROP TABLE only removes the local replica on the node where it runs - the other replicas remain intact. ON CLUSTER is how you tear the table down on every shard and replica in a single statement.
 
 ### SYNC Option
 
