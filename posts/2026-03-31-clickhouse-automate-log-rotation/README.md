@@ -23,7 +23,6 @@ ClickHouse has built-in log rotation controlled in `config.xml`. This is the eas
     <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
     <size>500M</size>      <!-- rotate when file exceeds 500 MB -->
     <count>5</count>       <!-- keep 5 rotated files -->
-    <compress>true</compress>
 </logger>
 ```
 
@@ -71,8 +70,10 @@ If TTL is not configured, drop old partitions manually:
 
 ```sql
 ALTER TABLE system.query_log
-    DROP PARTITION toYYYYMM(now() - INTERVAL 60 DAY);
+    DROP PARTITION tuple(toYYYYMM(now() - INTERVAL 60 DAY));
 ```
+
+`DROP PARTITION` needs a literal value or a `tuple(...)` that matches the partition key, not a bare function call.
 
 Automate this with a cron job:
 
@@ -80,7 +81,7 @@ Automate this with a cron job:
 #!/bin/bash
 PARTITION=$(date -d "60 days ago" +%Y%m)
 clickhouse-client --query \
-  "ALTER TABLE system.query_log DROP PARTITION '${PARTITION}'"
+  "ALTER TABLE system.query_log DROP PARTITION ${PARTITION}"
 ```
 
 ## Monitoring Log Disk Usage
