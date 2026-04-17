@@ -70,21 +70,21 @@ Run on both replicas and `diff` the output. Missing or extra parts on one side i
 
 ## Step 4 - Use CHECK TABLE
 
-ClickHouse can verify part checksums and compare them with ZooKeeper's stored checksums:
+ClickHouse can verify the integrity of parts on the local replica by comparing each part's files against the checksums stored inside the part itself:
 
 ```sql
 CHECK TABLE events;
 ```
 
-On a replicated table, this also checks consistency with ZooKeeper's part metadata.
+This catches local corruption. ClickHouse relies on ZooKeeper-stored checksums separately during fetches and merges to reconcile between replicas.
 
 ## Step 5 - Force Replica Sync
 
-If a replica is lagging, force it to fetch from the leader:
+If a replica is lagging, force it to pull replication log entries and fetch any missing parts from peer replicas (ClickHouse uses multi-leader replication, so there is no single leader):
 
 ```sql
 SYSTEM SYNC REPLICA events;
--- Wait up to 60 seconds
+-- Wait for the replication queue to become completely empty
 SYSTEM SYNC REPLICA events STRICT;
 ```
 
@@ -110,13 +110,17 @@ Alert when `absolute_delay > 300` (5 minutes) or `active_replicas < total_replic
 
 ## Fixing Persistent Divergence
 
-If a replica consistently has wrong data even after sync, detach the bad parts and let ClickHouse re-fetch:
+If a replica consistently has wrong data even after sync, detach the bad parts and explicitly fetch the healthy copy from another replica:
 
 ```sql
 ALTER TABLE events DETACH PART '20260101_1_500_5';
--- ClickHouse will automatically fetch the correct part from the other replica
+-- Then fetch the correct part from a peer replica
+ALTER TABLE events FETCH PART '20260101_1_500_5' FROM '/clickhouse/tables/{shard}/events';
+ALTER TABLE events ATTACH PART '20260101_1_500_5';
 ```
+
+Detaching alone moves the part to the `detached/` directory without triggering an automatic re-fetch, so an explicit `FETCH PART` (or `ATTACH` of a known-good copy) is required.
 
 ## Summary
 
-Check ClickHouse replica consistency by comparing row counts and part inventories across nodes, using `CHECK TABLE` to verify checksums against ZooKeeper, and monitoring `system.replicas` for replication lag. Use `SYSTEM SYNC REPLICA` to force catch-up, and detach corrupted parts to trigger automatic re-fetching from healthy replicas.
+Check ClickHouse replica consistency by comparing row counts and part inventories across nodes, using `CHECK TABLE` to verify local part integrity, and monitoring `system.replicas` for replication lag. Use `SYSTEM SYNC REPLICA` to force catch-up, and detach then `FETCH PART` to replace corrupted parts from healthy replicas.
