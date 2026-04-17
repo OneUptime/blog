@@ -27,10 +27,10 @@ For permanent enablement, add to `users.xml` under the relevant profile:
 ```sql
 CREATE WINDOW VIEW [IF NOT EXISTS] [db.]view_name
 [TO [db.]dest_table]
-[WATERMARK = ASCENDING | BOUNDED_OUT_OF_ORDER(max_delay)]
-[ALLOWED_LATENESS = value_in_sec]
+[WATERMARK = STRICTLY_ASCENDING | ASCENDING | INTERVAL max_delay]
+[ALLOWED_LATENESS = INTERVAL value_unit]
 AS SELECT ...
-GROUP BY windowID(time_col, TUMBLE(size)) | windowID(time_col, HOP(size, slide));
+GROUP BY tumble(time_col, INTERVAL size) | hop(time_col, hop_interval, window_interval);
 ```
 
 ## Tumbling Windows
@@ -120,14 +120,14 @@ FROM events
 GROUP BY tumble(event_time, INTERVAL '1' MINUTE) AS wid;
 ```
 
-### BOUNDED_OUT_OF_ORDER Watermark
+### BOUNDED Watermark
 
-Tolerates late arrivals up to a specified delay before closing windows:
+Tolerates late arrivals up to a specified delay before closing windows. The BOUNDED strategy is expressed by assigning an INTERVAL directly to `WATERMARK`:
 
 ```sql
 CREATE WINDOW VIEW late_tolerant_wv
 TO late_counts
-WATERMARK = BOUNDED_OUT_OF_ORDER(INTERVAL '30' SECOND)
+WATERMARK = INTERVAL '30' SECOND
 AS
 SELECT
     tumbleStart(wid) AS window_start,
@@ -145,7 +145,7 @@ ClickHouse will wait up to 30 seconds beyond the window boundary for late events
 ```sql
 CREATE WINDOW VIEW tolerant_wv
 TO tolerant_counts
-WATERMARK = BOUNDED_OUT_OF_ORDER(INTERVAL '10' SECOND)
+WATERMARK = INTERVAL '10' SECOND
 ALLOWED_LATENESS = INTERVAL '60' SECOND
 AS
 SELECT
