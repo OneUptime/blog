@@ -67,7 +67,7 @@ Example output:
 
 | event_id | attr_name | attr_value | stored_type |
 |---|---|---|---|
-| 1 | user_id | 42 | UInt8 |
+| 1 | user_id | 42 | Int64 |
 | 2 | session_id | abc-123-xyz | String |
 | 3 | response_ms | 235.7 | Float64 |
 | 4 | is_mobile | true | Bool |
@@ -94,7 +94,7 @@ Using the variant path accessor (ClickHouse 24.x+):
 -- Access a specific type stored within Dynamic
 SELECT
     event_id,
-    attr_value.UInt8    AS uint8_value,
+    attr_value.Int64    AS int64_value,
     attr_value.String   AS string_value,
     attr_value.Float64  AS float64_value
 FROM event_attributes;
