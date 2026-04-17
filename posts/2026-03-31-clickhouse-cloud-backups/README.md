@@ -13,11 +13,11 @@ ClickHouse Cloud automatically backs up your data with no additional configurati
 ## Automatic Backup Schedule
 
 ClickHouse Cloud performs automated backups:
-- **Full backups**: Daily
-- **Incremental backups**: Every few hours (exact schedule depends on service tier)
-- **Retention**: 1 day for Development tier, 7 days for Production tier by default
+- **Default schedule**: One backup every 24 hours
+- **Default retention**: 24 hours
+- **Configurable backups**: Available on Scale and Enterprise tiers, where you can adjust retention, frequency, and start time
 
-These are managed entirely by ClickHouse Cloud - you do not need to configure backup jobs.
+These are managed entirely by ClickHouse Cloud - you do not need to configure backup jobs. The Basic tier uses the default schedule and retention only.
 
 ## Viewing Available Backups
 
@@ -29,24 +29,26 @@ In the ClickHouse Cloud console:
 Via API:
 
 ```bash
-curl https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID}/backups \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}" \
-  | jq '.result[] | {id: .id, status: .status, createdAt: .createdAt, size: .sizeInBytes}'
+curl --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID}/backups \
+  | jq '.result[] | {id: .id, status: .status, startedAt: .startedAt, size: .sizeInBytes}'
 ```
 
 ## Restoring from a Backup
 
-Restores create a **new service** - they do not overwrite your existing service:
+Restores create a **new service** - they do not overwrite your existing service. To restore, create a new service and pass the `backupId` as the initial state. The new service must use the same region and tier as the original:
 
 ```bash
 curl -X POST \
-  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services/${SERVICE_ID}/backups/${BACKUP_ID}/restore \
-  -H "Authorization: Bearer ${CLICKHOUSE_API_KEY}" \
+  --user "${KEY_ID}:${KEY_SECRET}" \
+  https://api.clickhouse.cloud/v1/organizations/${ORG_ID}/services \
   -H "Content-Type: application/json" \
   -d '{
-    "serviceName": "analytics-restored",
+    "name": "analytics-restored",
+    "provider": "aws",
     "region": "us-east-1",
-    "provider": "aws"
+    "tier": "production",
+    "backupId": "'"${BACKUP_ID}"'"
   }'
 ```
 
@@ -82,4 +84,4 @@ ClickHouse Cloud does not currently support arbitrary point-in-time recovery. Re
 
 ## Summary
 
-ClickHouse Cloud handles automated daily and incremental backups with configurable retention. Restore to a new service via the console or API. Supplement managed backups with S3 exports for cross-account redundancy or extended retention beyond the 7-day default.
+ClickHouse Cloud handles automated daily backups with a 24-hour default retention, configurable on Scale and Enterprise tiers. Restore to a new service via the console or API by referencing a `backupId` when creating the service. Supplement managed backups with S3 exports for cross-account redundancy or longer retention.
