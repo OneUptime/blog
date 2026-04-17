@@ -8,7 +8,7 @@ Description: Learn how AggregateFunction stores binary aggregate states, how to 
 
 ---
 
-`AggregateFunction(func, T)` stores the intermediate binary state of an aggregate function rather than a final value. This enables incremental pre-aggregation: you accumulate partial states using `-State` combiners on insert, and later merge them with `-Merge` combiners on read. The `AggregatingMergeTree` engine automates the merging of these partial states on background merges, making it the foundation for materialized aggregation views in ClickHouse.
+`AggregateFunction(func, T)` stores the intermediate binary state of an aggregate function rather than a final value. This enables incremental pre-aggregation: you accumulate partial states using `-State` combinators on insert, and later merge them with `-Merge` combinators on read. The `AggregatingMergeTree` engine automates the merging of these partial states on background merges, making it the foundation for materialized aggregation views in ClickHouse.
 
 ## How AggregateFunction Works
 
@@ -50,7 +50,7 @@ CREATE TABLE daily_user_stats (
 ORDER BY (date, country);
 ```
 
-## Inserting Partial States with -State Combiners
+## Inserting Partial States with -State Combinators
 
 Use the `-State` suffix on any aggregate function call to produce binary state values for insert.
 
@@ -69,9 +69,9 @@ FROM raw_events
 GROUP BY date, country;
 ```
 
-## Querying with -Merge Combiners
+## Querying with -Merge Combinators
 
-Use `-Merge` combiners to finalize aggregate states when reading. This works correctly whether AggregatingMergeTree has already merged parts in the background or not.
+Use `-Merge` combinators to finalize aggregate states when reading. This works correctly whether AggregatingMergeTree has already merged parts in the background or not.
 
 ```sql
 -- Read merged results
@@ -150,7 +150,7 @@ ORDER BY hour DESC, dau DESC
 LIMIT 20;
 ```
 
-## -MergeState Combiner for Nested Aggregation
+## -MergeState Combinator for Nested Aggregation
 
 Use `-MergeState` to re-merge already-merged states back into a state column - useful for rolling up from hourly to daily aggregates.
 
@@ -178,4 +178,4 @@ GROUP BY date, country;
 
 ## Summary
 
-`AggregateFunction(func, T)` stores compact binary aggregate states that can be accumulated and merged incrementally across multiple inserts and background part merges. The `-State` combiner produces these states during `INSERT ... SELECT` operations, and the `-Merge` combiner finalizes them during reads. Combined with `AggregatingMergeTree` and materialized views, this pattern enables extremely efficient pre-aggregation for dashboards and reports - computing cardinality, percentiles, and other complex aggregates over billions of rows without re-scanning raw data.
+`AggregateFunction(func, T)` stores compact binary aggregate states that can be accumulated and merged incrementally across multiple inserts and background part merges. The `-State` combinator produces these states during `INSERT ... SELECT` operations, and the `-Merge` combinator finalizes them during reads. Combined with `AggregatingMergeTree` and materialized views, this pattern enables extremely efficient pre-aggregation for dashboards and reports - computing cardinality, percentiles, and other complex aggregates over billions of rows without re-scanning raw data.
