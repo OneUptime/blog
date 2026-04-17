@@ -8,7 +8,7 @@ Description: A comprehensive guide to exporting ClickHouse query results to Parq
 
 ## Overview
 
-ClickHouse provides multiple ways to export data: the `FORMAT` clause in SQL queries, the `INTO OUTFILE` clause for file output, the `clickhouse-client` command-line tool, and the HTTP interface. Every format supported for input is also supported for output.
+ClickHouse provides multiple ways to export data: the `FORMAT` clause in SQL queries, the `INTO OUTFILE` clause for file output, the `clickhouse-client` command-line tool, and the HTTP interface. Most formats can be used for both input and output, though some (like `Pretty`, `Vertical`, and `SQLInsert`) are output-only and others (like `Regexp` and `MySQLDump`) are input-only.
 
 ## The FORMAT Clause
 
@@ -25,17 +25,17 @@ This outputs the result to stdout in CSV format.
 
 ## INTO OUTFILE
 
-Use `INTO OUTFILE` to write directly to a file on the ClickHouse server:
+Use `INTO OUTFILE` to write the query result to a file:
 
 ```sql
 SELECT *
 FROM events
 WHERE toDate(ts) = today()
-INTO OUTFILE '/var/lib/clickhouse/exports/events_today.parquet'
+INTO OUTFILE '/path/to/exports/events_today.parquet'
 FORMAT Parquet;
 ```
 
-ClickHouse writes the file on the server filesystem. For client-side files, pipe through `clickhouse-client`.
+`INTO OUTFILE` is a client-side feature: the file is written on the machine running `clickhouse-client` or `clickhouse-local`, not on the ClickHouse server. It is not supported via the HTTP interface — a query sent over HTTP with `INTO OUTFILE` will fail. To export over HTTP, pipe the response body to a file (see below).
 
 ## Exporting via clickhouse-client
 
