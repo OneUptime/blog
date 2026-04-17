@@ -106,8 +106,10 @@ GROUP BY customer_id;
 Persist pre-computed features for low-latency model serving:
 
 ```sql
-CREATE TABLE credit_features AS
-SELECT
+CREATE TABLE credit_features
+ENGINE = ReplacingMergeTree(computed_at)
+ORDER BY customer_id
+AS SELECT
     customer_id,
     now() AS computed_at,
     countIf(event_type = 'payment') AS payments_12m,
@@ -116,9 +118,7 @@ SELECT
     countIf(event_type = 'inquiry' AND event_date >= today() - 90) AS inquiries_90d
 FROM credit_events
 WHERE event_date >= today() - 365
-GROUP BY customer_id
-ENGINE = ReplacingMergeTree(computed_at)
-ORDER BY customer_id;
+GROUP BY customer_id;
 ```
 
 ## Summary
