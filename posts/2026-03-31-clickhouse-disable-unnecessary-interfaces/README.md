@@ -108,7 +108,7 @@ GROUP BY interface
 ORDER BY query_count DESC;
 ```
 
-Interface values: `TCP`, `HTTP`, `MySQL`, `gRPC`, `Interserver`.
+Interface values: `TCP`, `HTTP`, `gRPC`, `MySQL`, `PostgreSQL`, `LOCAL`, `TCP_INTERSERVER`.
 
 If an interface shows zero queries over 30 days, it's safe to disable.
 
