@@ -21,8 +21,7 @@ SELECT
   name,
   status,
   last_successful_update_time,
-  last_failed_update_time,
-  load_duration,
+  loading_duration,
   bytes_allocated,
   element_count
 FROM system.dictionaries
@@ -48,7 +47,6 @@ def check_dictionaries(client, max_age_minutes: int = 60) -> dict:
           name,
           status,
           last_successful_update_time,
-          last_failed_update_time,
           last_exception
         FROM system.dictionaries
     """)
@@ -136,7 +134,7 @@ dict_load_duration = Gauge('clickhouse_dictionary_load_duration_seconds',
 
 def export_metrics(client):
     result = client.query("""
-        SELECT database, name, load_duration
+        SELECT database, name, loading_duration
         FROM system.dictionaries
         WHERE status = 'LOADED'
     """)
