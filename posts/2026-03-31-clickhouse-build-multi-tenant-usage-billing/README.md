@@ -18,7 +18,7 @@ CREATE TABLE usage_events
     ts           DateTime64(3),
     tenant_id    UInt64,
     resource     LowCardinality(String), -- 'api_call','compute_ms','storage_gb_hr','seat'
-    quantity     Float64,
+    quantity     Decimal(18, 6),         -- Decimal avoids Float/Decimal arithmetic errors with unit_price
     unit_price   Decimal(10, 6),         -- price per unit at time of event
     idempotency_key String               -- prevent double-counting on retry
 )
@@ -94,7 +94,7 @@ SELECT
     avg(daily_qty) OVER (PARTITION BY tenant_id ORDER BY day ROWS BETWEEN 6 PRECEDING AND 1 PRECEDING) AS rolling_avg,
     daily_qty / (rolling_avg + 1) AS spike_ratio
 FROM daily
-WHERE spike_ratio > 5
+QUALIFY spike_ratio > 5
 ORDER BY spike_ratio DESC;
 ```
 
