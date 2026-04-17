@@ -13,7 +13,7 @@ ClickHouse's main infrastructure costs are compute (CPU/RAM) and storage. This c
 ## Storage Compression
 
 ```text
-[ ] ZSTD(3) codec applied to cold/archive tables (typically 2-3x better than LZ4)
+[ ] ZSTD(3) codec applied to cold/archive tables (typically 20-50% better compression ratio than LZ4)
 [ ] Delta codec applied to monotonically increasing columns before ZSTD
 [ ] Gorilla codec applied to float sensor/metric columns
 [ ] Column types are smallest possible (UInt8 instead of UInt64 where applicable)
