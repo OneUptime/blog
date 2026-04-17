@@ -80,8 +80,8 @@ groups:
     rules:
       - alert: ClickHouseMemoryUsageHigh
         expr: |
-          ClickHouseAsyncMetricsMemoryResident /
-          ClickHouseAsyncMetricsOSTotalMemory > 0.80
+          ClickHouseAsyncMetrics_MemoryResident /
+          ClickHouseAsyncMetrics_OSMemoryTotal > 0.80
         for: 5m
         labels:
           severity: warning
@@ -90,8 +90,8 @@ groups:
 
       - alert: ClickHouseMemoryUsageCritical
         expr: |
-          ClickHouseAsyncMetricsMemoryResident /
-          ClickHouseAsyncMetricsOSTotalMemory > 0.92
+          ClickHouseAsyncMetrics_MemoryResident /
+          ClickHouseAsyncMetrics_OSMemoryTotal > 0.92
         for: 2m
         labels:
           severity: critical
@@ -99,7 +99,7 @@ groups:
           summary: "ClickHouse memory above 92% - OOM risk on {{ $labels.instance }}"
 
       - alert: ClickHouseMemoryLimitExceeded
-        expr: increase(ClickHouseErrorsMemoryLimitExceeded[5m]) > 0
+        expr: increase(ClickHouseErrorMetric_MEMORY_LIMIT_EXCEEDED[5m]) > 0
         labels:
           severity: warning
         annotations:
