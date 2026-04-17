@@ -164,7 +164,7 @@ Chains that hurt performance:
 
 ```sql
 -- Wrong: Gorilla only works on float types
-ts DateTime CODEC(Gorilla, LZ4)  -- Gorilla is ignored on DateTime
+ts DateTime CODEC(Gorilla, LZ4)  -- ClickHouse rejects this with a suspicious codec error (requires allow_suspicious_codecs to override)
 
 -- Wrong: Delta then Gorilla - incompatible types
 val Float64 CODEC(Delta, Gorilla, LZ4)
