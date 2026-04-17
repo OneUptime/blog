@@ -117,23 +117,22 @@ Understand which channel sequences lead to conversions.
 
 ```sql
 SELECT
-    groupArray(channel) AS path,
+    path,
     count() AS users,
-    sum(conversion_value) AS revenue
+    sum(revenue) AS revenue
 FROM (
     SELECT
         user_id,
-        channel,
-        touch_time,
-        conversion_value
+        arrayMap(x -> x.2, arraySort(groupArray((touch_time, channel)))) AS path,
+        sum(conversion_value) AS revenue
     FROM touchpoints
     WHERE user_id IN (
         SELECT user_id FROM touchpoints WHERE converted = 1
     )
-    ORDER BY user_id, touch_time
+    GROUP BY user_id
+    HAVING length(path) BETWEEN 2 AND 5
 )
-GROUP BY user_id
-HAVING length(path) BETWEEN 2 AND 5
+GROUP BY path
 ORDER BY users DESC
 LIMIT 20;
 ```
