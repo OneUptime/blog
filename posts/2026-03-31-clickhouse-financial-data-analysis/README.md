@@ -68,17 +68,17 @@ ORDER BY minute;
 
 ## Materialized OHLCV Table
 
-Pre-aggregate 1-minute candles on ingestion to avoid recomputing them on every query:
+Pre-aggregate 1-minute candles on ingestion to avoid recomputing them on every query. `argMin`/`argMax` are not supported by `SimpleAggregateFunction`, so `open` and `close` must be stored as full `AggregateFunction` states and written with the `-State` combinators:
 
 ```sql
 CREATE TABLE ohlcv_1m
 (
     symbol_id UInt32,
     minute    DateTime,
-    open      Float64,
+    open      AggregateFunction(argMin, Float64, DateTime64(6)),
     high      SimpleAggregateFunction(max, Float64),
     low       SimpleAggregateFunction(min, Float64),
-    close     Float64,
+    close     AggregateFunction(argMax, Float64, DateTime64(6)),
     volume    SimpleAggregateFunction(sum, UInt64)
 )
 ENGINE = AggregatingMergeTree()
@@ -90,13 +90,29 @@ TO ohlcv_1m
 AS
 SELECT
     symbol_id,
-    toStartOfMinute(ts) AS minute,
-    argMin(last_price, ts)  AS open,
-    max(last_price)         AS high,
-    min(last_price)         AS low,
-    argMax(last_price, ts)  AS close,
-    sum(volume)             AS volume
+    toStartOfMinute(ts)          AS minute,
+    argMinState(last_price, ts)  AS open,
+    max(last_price)              AS high,
+    min(last_price)              AS low,
+    argMaxState(last_price, ts)  AS close,
+    sum(volume)                  AS volume
 FROM market_ticks
+GROUP BY symbol_id, minute;
+```
+
+Queries against `ohlcv_1m` must finalize the aggregate states with `argMinMerge`/`argMaxMerge` inside a `GROUP BY`. A convenience view makes downstream queries read like a plain table:
+
+```sql
+CREATE VIEW ohlcv_1m_final AS
+SELECT
+    symbol_id,
+    minute,
+    argMinMerge(open)  AS open,
+    max(high)          AS high,
+    min(low)           AS low,
+    argMaxMerge(close) AS close,
+    sum(volume)        AS volume
+FROM ohlcv_1m
 GROUP BY symbol_id, minute;
 ```
 
@@ -112,7 +128,7 @@ SELECT
         ORDER BY minute
         ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
     ) AS sma_20
-FROM ohlcv_1m
+FROM ohlcv_1m_final
 WHERE symbol_id = 1001
   AND minute >= now() - INTERVAL 1 DAY
 ORDER BY minute;
@@ -120,23 +136,19 @@ ORDER BY minute;
 
 ## Exponential Moving Average (EMA)
 
-ClickHouse does not have a built-in EMA function. Compute it recursively using `runningAccumulate` or via a custom approach:
+ClickHouse has a built-in `exponentialMovingAverage(x)(value, timeunit)` aggregate function, where `x` is the half-life (in `timeunit` steps) and `timeunit` is an integer time index. It can be called as a window function with `OVER`:
 
 ```sql
--- Approximate EMA with last-N weighted average
 SELECT
     symbol_id,
     minute,
     close,
-    round(
-        sum(close * exp(-0.1 * (row_number() OVER (PARTITION BY symbol_id ORDER BY minute DESC) - 1)))
-        OVER (PARTITION BY symbol_id ORDER BY minute ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)
-        /
-        sum(exp(-0.1 * (row_number() OVER (PARTITION BY symbol_id ORDER BY minute DESC) - 1)))
-        OVER (PARTITION BY symbol_id ORDER BY minute ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
-        4
-    ) AS ema_approx
-FROM ohlcv_1m
+    exponentialMovingAverage(10)(close, toUInt32(minute)) OVER (
+        PARTITION BY symbol_id
+        ORDER BY minute
+        ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
+    ) AS ema_20
+FROM ohlcv_1m_final
 WHERE symbol_id = 1001
 ORDER BY minute
 LIMIT 100;
@@ -197,7 +209,7 @@ SELECT
         ORDER BY minute
         ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
     ) AS volatility_20
-FROM ohlcv_1m
+FROM ohlcv_1m_final
 WHERE symbol_id = 1001
 ORDER BY minute
 LIMIT 500;
