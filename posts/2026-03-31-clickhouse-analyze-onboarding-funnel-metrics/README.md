@@ -71,8 +71,8 @@ FROM ordered;
 ```sql
 SELECT
     step,
-    quantile(0.5)(dateDiff('hour', signup_date, toDate(ts)))  AS median_hours,
-    quantile(0.9)(dateDiff('hour', signup_date, toDate(ts)))  AS p90_hours
+    quantile(0.5)(dateDiff('hour', toDateTime(signup_date), ts))  AS median_hours,
+    quantile(0.9)(dateDiff('hour', toDateTime(signup_date), ts))  AS p90_hours
 FROM onboarding_events
 WHERE completed = 1
 GROUP BY step
@@ -102,8 +102,8 @@ SELECT
     uniqExact(user_id) AS stuck_users
 FROM onboarding_events
 WHERE completed = 0
-  AND user_id NOT IN (
-      SELECT user_id FROM onboarding_events WHERE completed = 1 AND step = step
+  AND (user_id, step) NOT IN (
+      SELECT user_id, step FROM onboarding_events WHERE completed = 1
   )
 GROUP BY step
 ORDER BY stuck_users DESC;
