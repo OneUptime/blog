@@ -8,7 +8,7 @@ Description: Learn how any_join_distinct_right_table_keys works in ClickHouse to
 
 ---
 
-ClickHouse supports a non-standard `ANY` JOIN type that returns at most one matching row from the right table for each row in the left table. When the right table contains duplicate keys, the behavior of `ANY JOIN` depends on the `any_join_distinct_right_table_keys` setting. Understanding this setting is important for producing predictable results when your join key is not unique in the right table.
+ClickHouse supports a non-standard `ANY` JOIN strictness that returns at most one matching row from the right table for each row in the left table. The `any_join_distinct_right_table_keys` setting toggles between the modern `ANY JOIN` semantics and a legacy behavior that is preserved for backward compatibility. Understanding this setting is important when migrating older ClickHouse code or interpreting results that differ between `ANY LEFT JOIN` and `ANY RIGHT JOIN`.
 
 ## What ANY JOIN Does
 
@@ -30,17 +30,14 @@ ANY LEFT JOIN users AS u ON e.user_id = u.user_id;
 
 ## What any_join_distinct_right_table_keys Controls
 
-When `ANY JOIN` encounters multiple right-table rows with the same key, this setting determines which row is returned:
+This setting enables legacy ClickHouse server behavior in `ANY INNER|LEFT JOIN` operations:
 
 | Value | Behavior |
 |---|---|
-| `0` (default) | Return the first row encountered for each key (implementation-defined order) |
-| `1` | Deduplicate the right table on the join key before joining, ensuring distinct keys |
+| `0` (default) | Modern behavior. `t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` produce equal results. `ANY INNER JOIN` returns one row per key from both tables. |
+| `1` | Legacy behavior. `t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` are *not* equal — a many-to-one left-to-right keys mapping is used. `ANY INNER JOIN` returns all rows from the left table (similar to `SEMI LEFT JOIN`). |
 
-The practical difference is subtle but matters for reproducibility:
-
-- `0`: ClickHouse returns whichever row it happens to encounter first for a given key. This can vary depending on part order, thread scheduling, and data layout.
-- `1`: ClickHouse deduplicates the right table first (keeping one row per key in an unspecified but consistent order), then performs the join. Results are more predictable but still not fully deterministic about *which* duplicate is kept.
+In both modes `ANY JOIN` still returns at most one right-table row per matched left key; the setting changes the symmetry guarantees and the `ANY INNER JOIN` semantics, not the deduplication strategy itself. The ClickHouse documentation recommends using this setting only for backward compatibility if your existing code depends on legacy `JOIN` behavior.
 
 ## Checking and Setting the Value
 
@@ -50,7 +47,7 @@ SELECT value, changed
 FROM system.settings
 WHERE name = 'any_join_distinct_right_table_keys';
 
--- Set per query
+-- Set per query (enables legacy behavior for this query only)
 SELECT
     e.user_id,
     e.event_type,
@@ -60,7 +57,7 @@ ANY LEFT JOIN users AS u ON e.user_id = u.user_id
 SETTINGS any_join_distinct_right_table_keys = 1;
 ```
 
-In a user profile:
+In a user profile (only enable this if you need the legacy semantics):
 
 ```xml
 <clickhouse>
@@ -77,7 +74,7 @@ In a user profile:
 ### Basic ANY LEFT JOIN
 
 ```sql
--- Return the latest user profile for each event (users may have multiple rows)
+-- Return one user profile row per event (users may have multiple rows)
 SELECT
     e.event_date,
     e.event_type,
@@ -85,8 +82,7 @@ SELECT
     u.plan_type
 FROM events AS e
 ANY LEFT JOIN users AS u ON e.user_id = u.user_id
-WHERE e.event_date = today()
-SETTINGS any_join_distinct_right_table_keys = 1;
+WHERE e.event_date = today();
 ```
 
 ### ANY INNER JOIN
@@ -99,8 +95,7 @@ SELECT
     u.country
 FROM events AS e
 ANY INNER JOIN users AS u ON e.user_id = u.user_id
-WHERE e.event_date >= today() - 7
-SETTINGS any_join_distinct_right_table_keys = 1;
+WHERE e.event_date >= today() - 7;
 ```
 
 ### Comparing ANY JOIN to INNER JOIN on Duplicated Right Keys
@@ -132,8 +127,7 @@ WHERE o.product_id = 1;
 SELECT o.order_id, p.product_name
 FROM orders AS o
 ANY INNER JOIN dim_products AS p ON o.product_id = p.product_id
-WHERE o.product_id = 1
-SETTINGS any_join_distinct_right_table_keys = 1;
+WHERE o.product_id = 1;
 -- Returns: (order_id_1, 'Widget v1') or (order_id_1, 'Widget v2') - one row
 ```
 
@@ -142,7 +136,7 @@ SETTINGS any_join_distinct_right_table_keys = 1;
 An alternative to `ANY JOIN` is to deduplicate the right table explicitly before joining:
 
 ```sql
--- Explicit deduplication using LIMIT BY
+-- Explicit deduplication using argMax
 SELECT
     e.event_type,
     u.user_name
@@ -156,7 +150,7 @@ INNER JOIN (
 ) AS u ON e.user_id = u.user_id;
 ```
 
-The subquery approach using `argMax` is more explicit about which row is kept (the one with the latest `updated_at`). `ANY JOIN` with `any_join_distinct_right_table_keys = 1` does not give you control over which duplicate is retained.
+The subquery approach using `argMax` is explicit about which row is kept (the one with the latest `updated_at`). `ANY JOIN` does not give you control over which duplicate is retained — it picks an arbitrary matching row.
 
 Use the subquery approach when you need deterministic control over which duplicate row is used. Use `ANY JOIN` when any one match per key is acceptable.
 
@@ -191,7 +185,7 @@ The Join table engine with `ANY` type automatically handles duplicate keys accor
 
 ## Performance Implications
 
-With `any_join_distinct_right_table_keys = 1`, ClickHouse must deduplicate the right table before building the hash map. For a right table with many rows but relatively few unique keys, this deduplication step can actually reduce the hash map size and improve performance. For right tables that are already unique on the join key, the deduplication adds minimal overhead.
+The two modes use different code paths for building the join hash map. The legacy mode (`= 1`) uses many-to-one left-to-right key mapping, while the modern mode (`= 0`) uses the symmetric implementation that makes `ANY LEFT JOIN` and `ANY RIGHT JOIN` produce equivalent results. Performance differences are usually small compared to the cost of materializing the right side, but you can measure the effect on a specific query:
 
 ```sql
 -- Measure the effect of the setting on a specific query
@@ -200,22 +194,21 @@ FROM events AS e
 ANY LEFT JOIN large_dim_table AS d ON e.product_id = d.product_id
 SETTINGS
     any_join_distinct_right_table_keys = 1,
-    log_comment = 'any_join_dedup_on';
+    log_comment = 'any_join_legacy_on';
 ```
 
 ## When to Use This Setting
 
-Enable `any_join_distinct_right_table_keys = 1` when:
+Enable `any_join_distinct_right_table_keys = 1` only when:
 
-- Your right table may contain duplicate join keys due to SCD (Slowly Changing Dimension) patterns, audit logs, or data quality issues.
-- You want consistent results from `ANY JOIN` across multiple runs of the same query.
-- You are migrating queries from a system that guaranteed distinct right-table keys and want ClickHouse to enforce the same behavior.
+- You are migrating queries from an older ClickHouse deployment and need to preserve the exact result shape of the legacy `ANY INNER|LEFT JOIN` semantics.
+- You have an existing query that depends on `ANY INNER JOIN` returning all left-table rows (the legacy `SEMI LEFT JOIN`-like behavior).
 
-Leave it at `0` when:
+Leave it at the default `0` when:
 
-- You are certain the right table always has unique join keys (the default behavior and the deduplication step are equivalent).
-- You want maximum performance and are willing to accept that duplicate right-table rows may produce varying results.
+- You are writing new queries — the modern behavior is symmetric (`t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` produce equal results) and is the recommended path going forward.
+- You want consistent semantics across the `ANY LEFT`, `ANY RIGHT`, and `ANY INNER` variants.
 
 ## Conclusion
 
-`any_join_distinct_right_table_keys` controls how ClickHouse handles duplicate keys in the right table of an `ANY JOIN`. Set it to `1` for predictable, consistent results when your right table may not have unique join keys. For full control over which duplicate row is kept, use `argMax` aggregation in a subquery instead of relying on `ANY JOIN` semantics. Enable the setting in user profiles where `ANY JOIN` is commonly used with dimension tables that may contain historical or duplicate records.
+`any_join_distinct_right_table_keys` is a backward-compatibility switch for ClickHouse's `ANY INNER|LEFT JOIN` semantics. The default `0` enables the modern behavior where left/right `ANY JOIN`s are symmetric and `ANY INNER JOIN` returns one row per matched key. Setting it to `1` restores the legacy many-to-one mapping where `ANY INNER JOIN` behaves more like a `SEMI LEFT JOIN`. For full control over which duplicate row is kept on the right side, use `argMax` aggregation in a subquery instead of relying on `ANY JOIN` semantics.
