@@ -55,8 +55,8 @@ GROUP BY feature_name;
 ```sql
 SELECT
     entity_id,
-    maxIf(feature_val, feature_name = 'purchase_count_30d') AS purchase_count,
-    maxIf(feature_val, feature_name = 'avg_order_value')    AS avg_order_value
+    argMaxIf(feature_val, computed_at, feature_name = 'purchase_count_30d') AS purchase_count,
+    argMaxIf(feature_val, computed_at, feature_name = 'avg_order_value')    AS avg_order_value
 FROM feature_store
 WHERE entity_type = 'user'
   AND entity_id IN (1001, 1002)
