@@ -29,14 +29,14 @@ Add to `/etc/clickhouse-server/config.d/distributed_ddl.xml`:
     <path>/clickhouse/task_queue/ddl</path>
     <cleanup_delay_period>60</cleanup_delay_period>
     <task_max_lifetime>604800</task_max_lifetime>
-    <cleanup_max_deleted_entries>10000</cleanup_max_deleted_entries>
+    <max_tasks_in_queue>1000</max_tasks_in_queue>
   </distributed_ddl>
 </clickhouse>
 ```
 
 - `cleanup_delay_period`: seconds between DDL task cleanup runs (default 60)
 - `task_max_lifetime`: seconds before completed DDL tasks are deleted (default 7 days)
-- `cleanup_max_deleted_entries`: max tasks removed per cleanup cycle
+- `max_tasks_in_queue`: maximum number of tasks allowed in the queue (default 1000)
 
 ## Set DDL Timeout
 
@@ -62,13 +62,13 @@ ORDER BY (host, ts);
 
 ```sql
 SELECT
-    entry, status, query, host, exception
+    entry, status, query, host, exception_text
 FROM system.distributed_ddl_queue
 ORDER BY entry DESC
 LIMIT 20;
 ```
 
-Entries with `status = 'Waiting'` indicate nodes that have not yet executed the DDL.
+Entries with `status = 'Inactive'` indicate nodes that have loaded the task but not yet executed the DDL.
 
 ## Clean Up Stuck DDL Tasks
 
@@ -76,11 +76,11 @@ If a node fails mid-cluster and leaves tasks stuck:
 
 ```bash
 # List tasks in Keeper
-clickhouse-keeper-client -h localhost -p 9181 ls /clickhouse/task_queue/ddl
+clickhouse-keeper-client -h localhost -p 9181 -q "ls /clickhouse/task_queue/ddl"
 
-# Remove a stuck entry
+# Remove a stuck entry recursively
 clickhouse-keeper-client -h localhost -p 9181 \
-  deleteall /clickhouse/task_queue/ddl/query-000001234
+  -q "rmr /clickhouse/task_queue/ddl/query-0000001234"
 ```
 
 ## Disable DDL on Specific Nodes
