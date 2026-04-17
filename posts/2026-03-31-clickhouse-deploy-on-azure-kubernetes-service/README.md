@@ -21,8 +21,8 @@ az aks nodepool add \
   --node-vm-size Standard_E16s_v5 \
   --node-taints workload=clickhouse:NoSchedule \
   --labels workload=clickhouse \
-  --os-disk-type Managed \
-  --os-disk-size-gb 100
+  --node-osdisk-type Managed \
+  --node-osdisk-size 100
 ```
 
 ## Installing the ClickHouse Operator
