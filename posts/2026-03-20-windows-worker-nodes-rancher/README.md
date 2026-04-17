@@ -14,7 +14,7 @@ Kubernetes supports Windows worker nodes for running Windows containers (IIS, .N
 
 - Existing Rancher cluster with at least 2 Linux nodes (control plane must be Linux)
 - Windows Server 2019 or 2022 with the latest patches
-- Flannel with host-gateway or Calico for Windows networking
+- Flannel with VXLAN backend or Calico for Windows networking
 
 ## Step 1: Prepare the Windows Node
 
