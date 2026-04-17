@@ -39,46 +39,43 @@ Define your LDAP server connection:
 
 ## Creating ClickHouse Roles for LDAP Groups
 
-Create roles that will map to LDAP groups:
+Create roles that will map to LDAP groups. Because the mapping will strip a `clickhouse_` prefix from LDAP group names, the ClickHouse role names omit that prefix:
 
 ```sql
--- Maps to CN=ClickHouse-Analysts,OU=Groups,DC=example,DC=com
-CREATE ROLE clickhouse_analysts;
-GRANT SELECT ON reporting_db.* TO clickhouse_analysts;
+-- Maps to CN=clickhouse_analysts,OU=Groups,DC=example,DC=com
+CREATE ROLE analysts;
+GRANT SELECT ON reporting_db.* TO analysts;
 
--- Maps to CN=ClickHouse-Engineers,OU=Groups,DC=example,DC=com
-CREATE ROLE clickhouse_engineers;
-GRANT SELECT, INSERT ON staging_db.* TO clickhouse_engineers;
-GRANT SELECT, INSERT ON raw_db.* TO clickhouse_engineers;
+-- Maps to CN=clickhouse_engineers,OU=Groups,DC=example,DC=com
+CREATE ROLE engineers;
+GRANT SELECT, INSERT ON staging_db.* TO engineers;
+GRANT SELECT, INSERT ON raw_db.* TO engineers;
 
--- Maps to CN=ClickHouse-Admins,OU=Groups,DC=example,DC=com
-CREATE ROLE clickhouse_admins;
-GRANT ALL ON *.* TO clickhouse_admins;
+-- Maps to CN=clickhouse_admins,OU=Groups,DC=example,DC=com
+CREATE ROLE admins;
+GRANT ALL ON *.* TO admins;
 ```
 
-## Configuring LDAP-to-Role Mapping in users.xml
+## Configuring LDAP-to-Role Mapping via user_directories
 
-Set up an LDAP-authenticated user profile that maps groups to roles:
+Role mapping is configured as an external user directory in `config.xml` under `<user_directories>`, not in `users.xml`. Each group-to-role rule is a `<role_mapping>` element:
 
 ```text
-<users>
-  <ldap_user>
-    <ldap_server>corp_ldap</ldap_server>
-    <ldap_roles>
-      <role>
-        <base_dn>OU=Groups,DC=example,DC=com</base_dn>
-        <search_filter>
-          (&amp;(objectClass=group)(member={bind_dn}))
-        </search_filter>
-        <attribute>cn</attribute>
-        <prefix>clickhouse_</prefix>
-      </role>
-    </ldap_roles>
-  </ldap_user>
-</users>
+<user_directories>
+  <ldap>
+    <server>corp_ldap</server>
+    <role_mapping>
+      <base_dn>OU=Groups,DC=example,DC=com</base_dn>
+      <scope>subtree</scope>
+      <search_filter>(&amp;(objectClass=group)(member={bind_dn}))</search_filter>
+      <attribute>cn</attribute>
+      <prefix>clickhouse_</prefix>
+    </role_mapping>
+  </ldap>
+</user_directories>
 ```
 
-The `prefix` field strips `clickhouse_` from the LDAP group name to match the ClickHouse role name. For example, group `clickhouse_analysts` maps to role `analysts`.
+The `prefix` field strips `clickhouse_` from the returned LDAP group name to match the ClickHouse role name. For example, group `clickhouse_analysts` maps to role `analysts`.
 
 ## Testing Group Mapping
 
@@ -103,35 +100,40 @@ WHERE user_name = 'jdoe';
 
 ## Refreshing Group Membership
 
-LDAP group membership is evaluated at login time. If a user's groups change in LDAP, they need to reconnect to pick up new permissions. For long-running connections, set `ldap_roles_cache_ttl_min`:
+LDAP authentication and group membership are re-evaluated on each request unless caching is enabled. To reduce LDAP load, use `verification_cooldown` on the server definition; it is the number of seconds for which a successful bind (and the associated role mapping result) is reused without contacting the LDAP server:
 
 ```text
 <ldap_servers>
   <corp_ldap>
     ...
-    <roles_cache_ttl_min>5</roles_cache_ttl_min>
+    <verification_cooldown>300</verification_cooldown>
   </corp_ldap>
 </ldap_servers>
 ```
 
+Set `verification_cooldown` to `0` to force a fresh LDAP lookup on every request.
+
 ## Handling Multiple Group Sources
 
-You can define multiple role mappings from different base DNs:
+You can define multiple `<role_mapping>` blocks within the same `<ldap>` directory entry to pull roles from different base DNs:
 
 ```text
-<ldap_roles>
-  <role>
-    <base_dn>OU=ClickHouseGroups,DC=example,DC=com</base_dn>
-    <search_filter>(&amp;(objectClass=group)(member={bind_dn}))</search_filter>
-    <attribute>cn</attribute>
-  </role>
-  <role>
-    <base_dn>OU=SharedGroups,DC=example,DC=com</base_dn>
-    <search_filter>(&amp;(objectClass=group)(member={bind_dn}))</search_filter>
-    <attribute>cn</attribute>
-    <prefix>shared_</prefix>
-  </role>
-</ldap_roles>
+<user_directories>
+  <ldap>
+    <server>corp_ldap</server>
+    <role_mapping>
+      <base_dn>OU=ClickHouseGroups,DC=example,DC=com</base_dn>
+      <search_filter>(&amp;(objectClass=group)(member={bind_dn}))</search_filter>
+      <attribute>cn</attribute>
+    </role_mapping>
+    <role_mapping>
+      <base_dn>OU=SharedGroups,DC=example,DC=com</base_dn>
+      <search_filter>(&amp;(objectClass=group)(member={bind_dn}))</search_filter>
+      <attribute>cn</attribute>
+      <prefix>shared_</prefix>
+    </role_mapping>
+  </ldap>
+</user_directories>
 ```
 
 ## Best Practices
