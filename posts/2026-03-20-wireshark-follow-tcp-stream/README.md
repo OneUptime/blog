@@ -26,9 +26,8 @@ Method 3: Display filter shortcut
 
 ```text
 Color coding:
-  Blue (dark)  → Client to Server (outbound)
-  Red (darker) → Server to Client (inbound)
-  Black        → Bidirectional mixed
+  Red   → Client to Server (outbound)
+  Blue  → Server to Client (inbound)
 
 The stream window shows:
   - Exact application data exchanged
@@ -36,11 +35,11 @@ The stream window shows:
   - Just the raw protocol conversation
 
 Example HTTP GET:
-  [Blue] GET /index.html HTTP/1.1
+  [Red]  GET /index.html HTTP/1.1
          Host: example.com
          User-Agent: Mozilla/5.0
 
-  [Red]  HTTP/1.1 200 OK
+  [Blue] HTTP/1.1 200 OK
          Content-Type: text/html
          Content-Length: 1234
 
