@@ -29,38 +29,41 @@ Add 30% headroom: ~21 TB usable storage required.
 
 ClickHouse uses memory for:
 - Query processing buffers (rule of thumb: 1 GB per concurrent query)
-- Marks cache (usually 10-15% of total data size)
-- OS page cache (another 10-15%)
+- Marks cache (fixed allocation; `mark_cache_size` defaults to 5 GB, often raised to 10-20 GB on large clusters)
+- OS page cache for hot data (typically 20-50% of node RAM)
 
 ```text
 Max concurrent queries: 20
-Marks cache: 16.2 TB * 0.01 = 162 GB across cluster
-Per-node memory (4 nodes): 162/4 + 20*1 = ~60 GB
+Query buffers: 20 * 1 GB = 20 GB
+Marks cache: ~10 GB per node
+OS page cache for hot data: ~30 GB
+Per-node memory: ~60 GB
 ```
 
 Choose 64 GB or 128 GB nodes.
 
 ## Step 3 - CPU Sizing
 
-ClickHouse is CPU-bound for aggregation queries. Aim for roughly 1 CPU core per 10 MB/s of data scanned:
+ClickHouse is CPU-bound for aggregation queries. As a rough planning heuristic, allocate 1 CPU core per 100 MB/s of uncompressed data scanned during aggregations (a single core can process roughly 100-500 MB/s of compressed data depending on query complexity):
 
 ```text
 Peak query load: 10 concurrent queries, each scanning 1 GB/sec = 10 GB/sec total
-CPU cores needed: 10,000 / 10 = 1,000... (scale down with compression)
-After 8x compression effective scan: ~1.25 GB/sec compressed => 128 cores
+CPU cores needed: 10,000 MB/s / 100 MB/s per core = ~100 cores
+Round up for parallelism and headroom: ~128 cores
 ```
 
-Use 32-core nodes and start with 4-8 nodes.
+Use 32-core nodes and start with 4 nodes.
 
 ## Step 4 - Shard and Replica Count
 
 ```text
 Replicas: 2 per shard (HA minimum), 3 for better read throughput
-Shards: total_storage / (per_node_disk * replication_factor)
-       = 21 TB / (5 TB * 2) = ~3 shards
+Shards: total_storage / per_node_disk
+       = 21 TB / 5 TB = ~5 shards
+Total nodes: shards * replicas = 5 * 2 = 10 nodes
 ```
 
-Start with 3 shards, 2 replicas = 6 nodes. Add shards as data grows.
+Each replica in a shard holds a full copy of that shard's data, so the replication factor multiplies total hardware but does not reduce per-shard storage. Start with 5 shards, 2 replicas = 10 nodes. Add shards as data grows.
 
 ## Quick Sizing Reference
 
