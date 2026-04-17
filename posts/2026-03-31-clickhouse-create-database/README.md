@@ -36,7 +36,7 @@ Specify an engine with the `ENGINE` clause. The engine controls internal metadat
 
 ### Atomic (default, recommended)
 
-Atomic is the default since ClickHouse 20.5. It provides atomic `RENAME TABLE` and `EXCHANGE TABLES` operations and is required for `ReplicatedMergeTree` tables.
+Atomic is the default since ClickHouse 20.5. It provides atomic `RENAME TABLE` and `EXCHANGE TABLES` operations and is recommended for `ReplicatedMergeTree` tables - it allows the simplified creation syntax that relies on the `{uuid}` macro instead of hard-coded ZooKeeper paths.
 
 ```sql
 CREATE DATABASE analytics ENGINE = Atomic;
@@ -58,15 +58,15 @@ Memory stores all metadata only in RAM. The database and its tables vanish on se
 CREATE DATABASE temp_db ENGINE = Memory;
 ```
 
-### Lazy
+### Lazy (removed in recent versions)
 
-Lazy keeps tables in RAM only when they are actively used, expiring them after a configurable idle period. Well suited for large numbers of rarely-accessed `Log`-family tables.
+Lazy keeps tables in RAM only when they are actively used, expiring them after a configurable idle period. It was only ever compatible with `Log`-family tables. The engine takes a single positional argument - the expiration time in seconds:
 
 ```sql
-CREATE DATABASE archive ENGINE = Lazy(expiration_time=3600);
+CREATE DATABASE archive ENGINE = Lazy(3600);
 ```
 
-The `expiration_time` argument is in seconds.
+Note: the `Lazy` engine has been removed from ClickHouse as of early 2026. For backward compatibility, ClickHouse now interprets `Lazy` as `Atomic`. New projects should use `Atomic` (optionally with the `lazy_load_tables = 1` setting) instead.
 
 ### MySQL and PostgreSQL Engines
 
