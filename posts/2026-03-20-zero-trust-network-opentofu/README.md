@@ -179,7 +179,7 @@ resource "aws_iam_policy" "zero_trust_s3" {
         Condition = {
           # Require requests from within VPC only
           StringEquals = {
-            "aws:sourceVpc" = var.vpc_id
+            "aws:SourceVpc" = var.vpc_id
           }
           # Require encryption in transit
           Bool = {
@@ -258,7 +258,7 @@ resource "aws_cloudtrail" "zero_trust" {
 
     data_resource {
       type   = "AWS::S3::Object"
-      values = ["arn:aws:s3:::"]  # All S3 objects
+      values = ["arn:aws:s3"]  # All S3 objects
     }
   }
 }
