@@ -123,7 +123,7 @@ FROM server_logs
 WHERE response_ms > 1000;
 ```
 
-Look for `Condition: (response_ms > 1000), Filtered granules: X / Y` in the output.
+Look for a `Skip` block in the `Indexes` section listing the index `Name`, `Description`, and the `Parts` and `Granules` fractions (e.g. `Granules: 1/8`) showing how many were retained after skipping.
 
 ## Monitoring Index Materialization
 
