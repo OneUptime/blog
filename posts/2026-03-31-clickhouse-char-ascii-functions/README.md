@@ -42,7 +42,7 @@ SELECT
 
 ## ascii()
 
-`ascii(str)` returns the ASCII code of the first character (first byte) of the string as a `UInt32`. If the string is empty, it returns `0`.
+`ascii(str)` returns the ASCII code of the first character (first byte) of the string as an `Int32`. If the string is empty, it returns `0`.
 
 ```sql
 -- Get ASCII codes of individual characters
