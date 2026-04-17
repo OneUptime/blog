@@ -55,7 +55,7 @@ ClickHouse reads data in granules, not individual rows. The default granule size
 SELECT
   table,
   column,
-  marks,
+  marks_bytes,
   data_compressed_bytes,
   data_uncompressed_bytes,
   formatReadableSize(data_compressed_bytes) AS compressed
