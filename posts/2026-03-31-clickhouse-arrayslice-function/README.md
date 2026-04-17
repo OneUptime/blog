@@ -93,7 +93,7 @@ FROM search_results;
 
 ## Sliding Window Analysis on Time-Series Arrays
 
-`arraySlice` combined with `arrayDifference` or `arrayReduce` lets you analyze windows within stored time-series arrays. Here the offset advances with each step to build a moving average:
+`arraySlice` combined with `arrayDifference` or `arrayReduce` lets you analyze windows within stored time-series arrays. Here the offset advances with each step to build a moving sum:
 
 ```sql
 CREATE TABLE sensor_readings
