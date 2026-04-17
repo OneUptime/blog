@@ -144,7 +144,7 @@ SELECT
     user_id,
     uniq(target_host)                               AS hosts_accessed,
     count()                                         AS total_auth_events,
-    groupArray(10)(DISTINCT target_host)            AS sample_hosts
+    groupUniqArray(10)(target_host)                 AS sample_hosts
 FROM security_events
 WHERE event_type = 'authentication'
   AND outcome = 'success'
@@ -275,7 +275,7 @@ SELECT
     severity,
     count()                                         AS total_incidents,
     countIf(status = 'closed')                      AS resolved,
-    round(avg(dateDiff('hour', opened_at, closed_at)), 1) AS avg_mttр_hours
+    round(avg(dateDiff('hour', opened_at, closed_at)), 1) AS avg_mttr_hours
 FROM incidents
 WHERE opened_at >= today() - 90
   AND closed_at IS NOT NULL
