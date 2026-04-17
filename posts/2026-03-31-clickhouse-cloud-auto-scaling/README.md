@@ -14,7 +14,7 @@ ClickHouse Cloud supports automatic scaling of compute resources based on worklo
 
 ClickHouse Cloud monitors CPU utilization and memory pressure on your service. When usage consistently exceeds thresholds, it scales up. When the service is underutilized, it scales back down - but not below your configured minimum.
 
-Auto-scaling is enabled by setting different `minTotalMemoryGb` and `maxTotalMemoryGb` values.
+Auto-scaling is enabled by setting different `minReplicaMemoryGb` and `maxReplicaMemoryGb` values.
 
 ## Enabling Auto-Scaling via the Console
 
@@ -27,27 +27,27 @@ The service will now scale between those bounds automatically.
 ## Configuring Auto-Scaling via the API
 
 ```bash
-curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
+curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/replicaScaling \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "minTotalMemoryGb": 24,
-    "maxTotalMemoryGb": 192
+    "minReplicaMemoryGb": 24,
+    "maxReplicaMemoryGb": 192
   }'
 ```
 
-This allows the service to scale from 24 GB (baseline) up to 192 GB during peak load.
+This allows each replica to scale from 24 GB (baseline) up to 192 GB during peak load.
 
 ## Disabling Auto-Scaling (Fixed Size)
 
 Set min and max to the same value to pin the service at a specific size:
 
 ```bash
-curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
+curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/replicaScaling \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
   -d '{
-    "minTotalMemoryGb": 48,
-    "maxTotalMemoryGb": 48
+    "minReplicaMemoryGb": 48,
+    "maxReplicaMemoryGb": 48
   }'
 ```
 
@@ -55,12 +55,12 @@ curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{se
 
 Check the service activity log in the ClickHouse Cloud console to see when scale-up or scale-down events occurred. This helps you understand your workload patterns and tune your min/max bounds.
 
-## Auto-Pause for Development Services
+## Auto-Pause on Idle
 
-Development tier services can auto-pause after a configurable idle period:
+Scale and Enterprise tier services can auto-pause after a configurable idle period:
 
 ```bash
-curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
+curl -X PATCH https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/replicaScaling \
   -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
   -d '{
     "idleScaling": true,
