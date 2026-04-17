@@ -32,7 +32,7 @@ flowchart LR
 
 ## Prerequisites
 
-- ClickHouse 24.1+ (AzureQueue is generally available from this version)
+- ClickHouse 24.8+ (AzureQueue was added in this version)
 - Azure Storage Account with a container
 - A connection string or SAS token with read and list access
 - ClickHouse server network access to `*.blob.core.windows.net`
@@ -83,8 +83,8 @@ ENGINE = AzureQueue(
 )
 SETTINGS
     mode = 'unordered',
-    azure_queue_polling_min_timeout_ms = 1000,
-    azure_queue_polling_max_timeout_ms = 10000;
+    polling_min_timeout_ms = 1000,
+    polling_max_timeout_ms = 10000;
 ```
 
 ## Connecting with a Materialized View
@@ -137,10 +137,10 @@ ENGINE = AzureQueue('conn_str', 'mycontainer', '**.orc', 'ORC')
 | Setting | Default | Description |
 |---|---|---|
 | `mode` | `unordered` | Processing order |
-| `azure_queue_polling_min_timeout_ms` | 1000 | Minimum poll interval in ms |
-| `azure_queue_polling_max_timeout_ms` | 10000 | Maximum poll interval (exponential backoff) |
-| `azure_queue_max_processed_files_before_commit` | 100 | Flush after N files |
-| `azure_queue_buckets` | 1 | Parallel processing buckets for distributed clusters |
+| `polling_min_timeout_ms` | 1000 | Minimum poll interval in ms |
+| `polling_max_timeout_ms` | 10000 | Maximum poll interval (exponential backoff) |
+| `max_processed_files_before_commit` | 100 | Flush after N files |
+| `buckets` | 0 | Parallel processing buckets for distributed clusters (ordered mode only) |
 
 ## Monitoring Ingestion
 
@@ -151,7 +151,7 @@ SELECT
     status,
     processing_start_time,
     processing_end_time,
-    last_exception
+    exception
 FROM system.azure_queue_log
 ORDER BY processing_start_time DESC
 LIMIT 20;
@@ -160,14 +160,14 @@ LIMIT 20;
 Check for failed files:
 
 ```sql
-SELECT file_name, last_exception
+SELECT file_name, exception
 FROM system.azure_queue_log
 WHERE status = 'Failed';
 ```
 
 ## Distributed AzureQueue
 
-For clusters with multiple shards, distribute blob processing across nodes using `azure_queue_buckets`:
+For clusters with multiple shards, distribute blob processing across nodes using `buckets` (supported in `ordered` mode):
 
 ```sql
 CREATE TABLE events_azure_queue ON CLUSTER my_cluster
@@ -184,8 +184,8 @@ ENGINE = AzureQueue(
     'JSONEachRow'
 )
 SETTINGS
-    mode = 'unordered',
-    azure_queue_buckets = 4;
+    mode = 'ordered',
+    buckets = 4;
 ```
 
 ## Using SAS Token Authentication
@@ -218,4 +218,4 @@ The `AzureQueue` engine provides event-driven ingestion from Azure Blob Storage 
 - Use a connection string or SAS token for authentication.
 - Use `mode = 'ordered'` only when blob names encode sequence or time order.
 - Monitor `system.azure_queue_log` for per-blob ingestion status.
-- For multi-node clusters, set `azure_queue_buckets` equal to the number of processing nodes.
+- For multi-node clusters in `ordered` mode, set `buckets` to at least the number of processing replicas.
