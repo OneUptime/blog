@@ -39,15 +39,17 @@ WHERE table = 'user_events'
 
 ## Combining with Functions
 
-Apply aggregate or scalar functions to matched columns:
+Apply aggregate or scalar functions to each matched column using the `APPLY` modifier:
 
 ```sql
 SELECT
     user_id,
-    MAX(COLUMNS('score_.*')) AS max_scores
+    COLUMNS('score_.*') APPLY(max)
 FROM leaderboard
 GROUP BY user_id;
 ```
+
+Writing `MAX(COLUMNS('score_.*'))` instead passes all matched columns as separate arguments to a single `MAX` call, which fails because `MAX` is unary. `APPLY(max)` expands to one `max()` per matched column.
 
 ## Real-World Example: Multi-Metric Dashboard
 
@@ -56,8 +58,8 @@ Suppose you have a `host_metrics` table with columns like `cpu_idle`, `cpu_user`
 ```sql
 SELECT
     toStartOfMinute(ts) AS minute,
-    avg(COLUMNS('cpu_.*')) AS cpu_avgs,
-    avg(COLUMNS('mem_.*')) AS mem_avgs
+    COLUMNS('cpu_.*') APPLY(avg),
+    COLUMNS('mem_.*') APPLY(avg)
 FROM host_metrics
 WHERE ts >= now() - INTERVAL 30 MINUTE
 GROUP BY minute
