@@ -18,14 +18,14 @@ ClickHouse dictionaries are in-memory key-value lookup structures loaded from ex
 Layout          | Key Type       | Memory Model     | Load Strategy | Best For
 ----------------|----------------|------------------|---------------|---------------------
 flat            | UInt64         | Array (dense)    | Full          | Small (< 1M rows), sequential IDs
-hashed          | Any            | Hash map         | Full          | Medium, any key type
-sparse_hashed   | Any            | Sparse hash map  | Full          | Large, memory-constrained
+hashed          | UInt64         | Hash map         | Full          | Medium, integer keys
+sparse_hashed   | UInt64         | Sparse hash map  | Full          | Large, memory-constrained
 hashed_array    | UInt64         | Array of arrays  | Full          | Large UInt64 key sets
 range_hashed    | UInt64 + range | Hash + interval  | Full          | Time-range lookups
-cache           | Any            | Fixed cache      | On demand     | Very large, partial access
-ssd_cache       | Any            | SSD-backed cache | On demand     | Larger than RAM datasets
-complex_key_hashed | Composite  | Hash map         | Full          | Multi-column keys
-ip_trie         | IPv4/IPv6      | Trie             | Full          | IP geolocation
+cache           | UInt64         | Fixed cache      | On demand     | Very large, partial access
+ssd_cache       | UInt64         | SSD-backed cache | On demand     | Larger than RAM datasets
+complex_key_hashed | Composite   | Hash map         | Full          | Multi-column keys
+ip_trie         | String (CIDR)  | Trie             | Full          | IP geolocation
 ```
 
 ## flat Layout - Dense Array
@@ -57,7 +57,7 @@ LAYOUT(HASHED())
 LIFETIME(MIN 60 MAX 120);
 ```
 
-General-purpose layout. Keys can be any type. Memory usage is higher than flat but handles gaps in key space.
+General-purpose layout. Requires a UInt64 key (use `complex_key_hashed` for composite or non-integer keys). Memory usage is higher than flat but handles gaps in key space.
 
 ## range_hashed - Time-Range Lookups
 
@@ -70,7 +70,7 @@ CREATE DICTIONARY exchange_rate_dict (
 )
 PRIMARY KEY currency
 SOURCE(CLICKHOUSE(TABLE 'exchange_rates' DB 'finance'))
-LAYOUT(RANGE_HASHED())
+LAYOUT(COMPLEX_KEY_RANGE_HASHED())
 RANGE(MIN rate_from MAX rate_to)
 LIFETIME(MIN 3600 MAX 7200);
 ```
