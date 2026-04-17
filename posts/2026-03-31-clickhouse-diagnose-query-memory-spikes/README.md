@@ -24,13 +24,12 @@ SELECT
     query_id,
     user,
     formatReadableSize(memory_usage) AS mem,
-    formatReadableSize(peak_memory_usage) AS peak_mem,
     query_duration_ms AS ms,
     query
 FROM system.query_log
 WHERE event_date = today()
   AND type = 'QueryFinish'
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 20;
 ```
 
@@ -119,4 +118,4 @@ SET max_memory_usage_for_user = 16000000000; -- 16 GB per user
 
 ## Summary
 
-Diagnose ClickHouse query memory spikes by checking `system.query_log` for peak memory usage, inspecting `system.processes` for live queries, and enabling memory sampling traces to identify allocation hotspots. Fix spikes by filtering before aggregation, placing the smaller table on the right side of joins, and enabling external GROUP BY for queries that legitimately need large hash tables.
+Diagnose ClickHouse query memory spikes by checking `system.query_log` for `memory_usage` (peak consumption per query), inspecting `system.processes` for live queries, and enabling memory sampling traces to identify allocation hotspots. Fix spikes by filtering before aggregation, placing the smaller table on the right side of joins, and enabling external GROUP BY for queries that legitimately need large hash tables.
