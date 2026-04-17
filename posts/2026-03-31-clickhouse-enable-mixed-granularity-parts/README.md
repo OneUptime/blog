@@ -39,7 +39,7 @@ SETTINGS
 
 | Value | Behavior |
 |---|---|
-| `1` (default since ~21.x) | New parts use adaptive granularity; old fixed-granularity parts remain valid. Both formats coexist. |
+| `1` (default in modern ClickHouse) | New parts use adaptive granularity; old fixed-granularity parts remain valid. Both formats coexist. |
 | `0` | All parts must use the same granularity format. Setting `index_granularity_bytes > 0` with this off will fail if old parts exist. |
 
 ## When This Setting Matters
