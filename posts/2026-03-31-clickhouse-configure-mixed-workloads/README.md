@@ -46,13 +46,13 @@ ALTER USER etl_user       SETTINGS PROFILE 'batch_profile';
 ClickHouse 24.x introduced workload resource groups via the scheduler:
 
 ```sql
-CREATE WORKLOAD interactive_workload IN root_workload
+CREATE WORKLOAD interactive_workload IN all
 SETTINGS
     weight = 8,
-    max_speed = 500000000,
-    max_burst = 1000000000;
+    max_bytes_per_second = 500000000,
+    max_burst_bytes = 1000000000;
 
-CREATE WORKLOAD batch_workload IN root_workload
+CREATE WORKLOAD batch_workload IN all
 SETTINGS
     weight = 1;
 ```
@@ -95,7 +95,7 @@ Track resource consumption by user and profile:
 ```sql
 SELECT
     user,
-    ProfileEvents['OSCPUVirtualTimeMicroseconds'] / 1e6 AS cpu_seconds,
+    sum(ProfileEvents['OSCPUVirtualTimeMicroseconds']) / 1e6 AS cpu_seconds,
     sum(memory_usage) AS total_memory,
     count() AS query_count
 FROM system.query_log
