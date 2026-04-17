@@ -14,6 +14,8 @@ Description: Learn how to use analysisOfVariance() in ClickHouse to perform a on
 
 ```sql
 -- Returns a Tuple(Float64, Float64) of (F-statistic, p-value)
+-- value_column must be (U)Int*, Float*, or Decimal
+-- group_column must also be numeric - hash strings with cityHash64() if needed
 SELECT analysisOfVariance(value_column, group_column) FROM table_name;
 
 -- Access tuple fields
@@ -27,9 +29,10 @@ FROM table_name;
 
 ```sql
 -- Are mean response times significantly different across services?
+-- service_name is a String, so hash it with cityHash64() to get a numeric group id
 SELECT
-    (analysisOfVariance(response_time_ms, service_name)).1 AS f_statistic,
-    (analysisOfVariance(response_time_ms, service_name)).2 AS p_value
+    (analysisOfVariance(response_time_ms, cityHash64(service_name))).1 AS f_statistic,
+    (analysisOfVariance(response_time_ms, cityHash64(service_name))).2 AS p_value
 FROM request_logs
 WHERE log_date = today();
 ```
@@ -46,8 +49,8 @@ SELECT
     if(p_value < 0.05, 'Significant - regions differ', 'Not significant - regions similar') AS interpretation
 FROM (
     SELECT
-        (analysisOfVariance(response_time_ms, region)).1 AS f_stat,
-        (analysisOfVariance(response_time_ms, region)).2 AS p_value
+        (analysisOfVariance(response_time_ms, cityHash64(region))).1 AS f_stat,
+        (analysisOfVariance(response_time_ms, cityHash64(region))).2 AS p_value
     FROM request_logs
     WHERE log_date >= today() - 7
 );
@@ -59,8 +62,8 @@ FROM (
 -- Is error rate significantly different across experiment variants?
 SELECT
     experiment_id,
-    (analysisOfVariance(toFloat64(toUInt8(status_code >= 500)), variant)).1 AS f_stat,
-    (analysisOfVariance(toFloat64(toUInt8(status_code >= 500)), variant)).2 AS p_value
+    (analysisOfVariance(toFloat64(toUInt8(status_code >= 500)), cityHash64(variant))).1 AS f_stat,
+    (analysisOfVariance(toFloat64(toUInt8(status_code >= 500)), cityHash64(variant))).2 AS p_value
 FROM request_logs
 WHERE log_date >= today() - 14
   AND experiment_id IS NOT NULL
@@ -86,8 +89,8 @@ flowchart TD
 -- Is regional latency variation significant, and is it worsening?
 SELECT
     log_date,
-    round((analysisOfVariance(response_time_ms, region)).1, 2) AS f_stat,
-    round((analysisOfVariance(response_time_ms, region)).2, 6) AS p_value
+    round((analysisOfVariance(response_time_ms, cityHash64(region))).1, 2) AS f_stat,
+    round((analysisOfVariance(response_time_ms, cityHash64(region))).2, 6) AS p_value
 FROM request_logs
 WHERE log_date >= today() - 30
 GROUP BY log_date
@@ -101,8 +104,8 @@ ORDER BY log_date DESC;
 WITH
     anova AS (
         SELECT
-            (analysisOfVariance(response_time_ms, service_name)).1 AS f_stat,
-            (analysisOfVariance(response_time_ms, service_name)).2 AS p_value
+            (analysisOfVariance(response_time_ms, cityHash64(service_name))).1 AS f_stat,
+            (analysisOfVariance(response_time_ms, cityHash64(service_name))).2 AS p_value
         FROM request_logs
         WHERE log_date = today()
     ),
