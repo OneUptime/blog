@@ -15,11 +15,13 @@ Row policies in ClickHouse implement row-level security: they restrict which row
 ```sql
 CREATE ROW POLICY [IF NOT EXISTS | OR REPLACE] policy_name
 ON [db.]table_name
+[FOR SELECT]
+USING condition_expr
 [AS {PERMISSIVE | RESTRICTIVE}]
-[FOR {SELECT | INSERT | UPDATE | DELETE | ALL}]
-[USING condition_expr]
 [TO {user | role | ALL | ALL EXCEPT user_or_role}]
 ```
+
+Row policies in ClickHouse apply only to `SELECT` queries. They do not filter `INSERT`, `UPDATE` (mutations), or `DELETE` operations - row policies are intended to be used together with read-only access for the targeted users.
 
 ## Simple Row Filter Example
 
@@ -186,19 +188,6 @@ USING tenant_id = dictGet('auth.user_tenant_map', 'tenant_id', currentUser())
 TO ALL EXCEPT super_admin;
 ```
 
-## Row Policies for INSERT
-
-Row policies can also control which rows users are allowed to insert:
-
-```sql
-CREATE ROW POLICY insert_own_tenant ON events
-FOR INSERT
-USING tenant_id = currentUser()
-TO tenant_acme, tenant_globex;
-```
-
-Users who try to insert rows with a different `tenant_id` will have those rows silently filtered out (not rejected with an error).
-
 ## Altering a Row Policy
 
 ```sql
@@ -228,7 +217,7 @@ SELECT
     name,
     database,
     table,
-    is_permissive,
+    is_restrictive,
     select_filter,
     apply_to_list
 FROM system.row_policies;
@@ -239,8 +228,8 @@ FROM system.row_policies;
 ```sql
 DROP ROW POLICY IF EXISTS tenant_isolation ON analytics.events;
 
--- Drop all policies on a table
-DROP ROW POLICY IF EXISTS all ON analytics.events;
+-- Drop multiple policies in one statement by listing them
+DROP ROW POLICY IF EXISTS tenant_isolation, admin_full_access ON analytics.events;
 ```
 
 ## Summary
