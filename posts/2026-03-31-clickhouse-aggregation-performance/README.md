@@ -116,14 +116,17 @@ Exact aggregations like `uniqExact` and `quantileExact` require storing all valu
 SELECT uniqExact(user_id) FROM events_raw;
 
 -- Approximate: uses O(1) memory, sub-percent error
-SELECT uniq(user_id)      FROM events_raw;  -- compact approximate distinct state
-SELECT uniqHLL12(user_id) FROM events_raw;  -- HLL-based state, ~2% error
+SELECT uniq(user_id)      FROM events_raw;  -- adaptive sampling, compact state
+SELECT uniqHLL12(user_id) FROM events_raw;  -- HLL-based state, ~1.6% typical error
 
 -- Exact quantile: sorts all values, O(n log n)
 SELECT quantileExact(0.99)(response_ms) FROM requests;
 
--- Approximate quantile: T-Digest, O(1) memory
+-- Approximate quantile: reservoir sampling (reservoir size up to 8192)
 SELECT quantile(0.99)(response_ms) FROM requests;
+
+-- T-Digest variant: better precision-to-state-size ratio, logarithmic memory
+SELECT quantileTDigest(0.99)(response_ms) FROM requests;
 
 -- Multiple quantiles in one pass
 SELECT quantiles(0.5, 0.95, 0.99)(response_ms) FROM requests;
@@ -151,7 +154,7 @@ SETTINGS
 
 ## Optimize GROUP BY Key Order
 
-ClickHouse reads data in primary key order. When your GROUP BY keys match the leftmost columns of the ORDER BY, ClickHouse can stream the aggregation without building a full hash table.
+ClickHouse reads data in primary key order. When your GROUP BY keys match the leftmost columns of the ORDER BY and the `optimize_aggregation_in_order` setting is enabled, ClickHouse can finalize intermediate aggregation state incrementally as new keys arrive instead of building up a full hash table first.
 
 ```sql
 -- ORDER BY (ts, service, event_type)
@@ -182,8 +185,9 @@ SET max_threads = 16;
 SET group_by_two_level_threshold = 100000;
 SET group_by_two_level_threshold_bytes = 50000000;
 
--- Optimize memory allocation for aggregation states
-SET aggregation_memory_efficient_merge_threshold = 0;
+-- Number of threads used when merging intermediate aggregation results
+-- in memory-efficient mode (0 means the value of max_threads is used)
+SET aggregation_memory_efficient_merge_threads = 0;
 ```
 
 Check how many threads were actually used:
