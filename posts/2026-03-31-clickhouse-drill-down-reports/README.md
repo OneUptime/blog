@@ -88,17 +88,19 @@ SELECT
 FROM orders
 GROUP BY region, category, product
 WITH ROLLUP
-ORDER BY region NULLS FIRST, category NULLS FIRST, product NULLS FIRST;
+ORDER BY region, category, product;
 ```
 
-Rows where `category` is NULL represent region subtotals; rows where `region` is NULL are grand totals.
+In subtotal rows ClickHouse fills the rolled-up key columns with their default values (empty string `''` for `String`, `0` for numeric types), not `NULL` - so rows with an empty `category` are region subtotals, and rows with an empty `region` are the grand total. To get actual `NULL` markers you would need the grouping columns to be declared `Nullable(...)`.
 
-## Identifying Subtotal Rows with groupingId
+## Identifying Subtotal Rows with GROUPING
+
+ClickHouse's `GROUPING()` aggregate function returns `1` for a column that has been rolled up in the current row and `0` for a detail value, which is the reliable way to label subtotal rows:
 
 ```sql
 SELECT
-    if(groupingId(region) = 0, region, 'ALL') AS region,
-    if(groupingId(category) = 0, category, 'ALL') AS category,
+    if(GROUPING(region) = 0, region, 'ALL') AS region,
+    if(GROUPING(category) = 0, category, 'ALL') AS category,
     sum(revenue) AS revenue
 FROM orders
 GROUP BY region, category
@@ -124,4 +126,4 @@ ORDER BY revenue DESC;
 
 ## Summary
 
-ClickHouse drill-down reports are built by progressively narrowing WHERE clauses, or by using `WITH ROLLUP` to generate all aggregation levels in a single query. Combine `groupingId()` to distinguish subtotal rows from detail rows programmatically.
+ClickHouse drill-down reports are built by progressively narrowing WHERE clauses, or by using `WITH ROLLUP` to generate all aggregation levels in a single query. Combine `GROUPING()` to distinguish subtotal rows from detail rows programmatically.
