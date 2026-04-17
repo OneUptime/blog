@@ -42,8 +42,9 @@ Avoid creating too many small parts (which causes merge pressure):
 -- Limit concurrent inserts to avoid too many small parts
 -- In config.xml:
 -- <max_concurrent_queries>100</max_concurrent_queries>
--- <merge_tree settings>
+-- <merge_tree>
 --   <max_parts_in_total>100000</max_parts_in_total>
+-- </merge_tree>
 ```
 
 Use INSERT batching to reduce part count:
@@ -102,11 +103,11 @@ ORDER BY elapsed DESC;
 When the server is overloaded with too many parts, new inserts may be delayed:
 
 ```sql
--- The default: wait up to 60 seconds for insert to complete
-SET insert_timeout = 60;
+-- Cap overall query/insert execution time to 60 seconds
+SET max_execution_time = 60;
 
 -- Raise for batch pipelines that can afford to wait
-SET insert_timeout = 300;
+SET max_execution_time = 300;
 ```
 
 ## Async INSERT Mode
