@@ -8,7 +8,7 @@ Description: Learn how to drop columns from a ClickHouse table using ALTER TABLE
 
 ---
 
-Dropping a column from a ClickHouse MergeTree table removes the column from the schema and schedules deletion of the column data from all existing data parts. Because ClickHouse uses an immutable part structure, the data is not deleted instantly - it is removed the next time a merge touches each part, or when you explicitly trigger a mutation. Understanding this behavior is critical before running destructive DDL in production.
+Dropping a column from a ClickHouse MergeTree table removes the column from the schema and deletes the underlying column files from each data part. Because ClickHouse stores each column in separate files on disk, a `DROP COLUMN` typically completes almost instantly - it is a file delete, not a rewrite. Understanding this behavior is still important before running destructive DDL in production.
 
 ## Basic DROP COLUMN Syntax
 
@@ -17,7 +17,7 @@ ALTER TABLE events
     DROP COLUMN browser;
 ```
 
-After this statement executes, the column is gone from the schema immediately. Queries referencing `browser` will fail. The actual on-disk data is removed asynchronously via a mutation that rewrites affected parts.
+After this statement executes, the column is gone from the schema immediately and the corresponding column files are removed from each data part. Queries referencing `browser` will fail.
 
 ## Dropping Multiple Columns
 
@@ -30,11 +30,11 @@ ALTER TABLE events
     DROP COLUMN device_type;
 ```
 
-Batching drops into one statement is more efficient because ClickHouse can combine the underlying mutations.
+Batching drops into one statement is more efficient because ClickHouse applies all the changes to the table metadata in a single operation.
 
 ## CLEAR COLUMN - Remove Data Without Dropping
 
-`CLEAR COLUMN` resets all values in a column to the column's default without removing the column itself. This is useful when you want to reclaim disk space but keep the schema intact:
+`CLEAR COLUMN` resets all values in a column to the column's default without removing the column itself. This is useful when you want to reclaim disk space but keep the schema intact. The `IN PARTITION` clause is required - you must specify which partition to clear:
 
 ```sql
 -- Reset all values to the column default (empty string for String)
@@ -42,16 +42,20 @@ ALTER TABLE events
     CLEAR COLUMN browser IN PARTITION '2024-01';
 ```
 
-Omitting `IN PARTITION` clears the column across all partitions:
+To clear the column across every partition, iterate over the partitions returned from `system.parts`:
 
 ```sql
-ALTER TABLE events
-    CLEAR COLUMN deprecated_field;
+-- List partitions for the table
+SELECT DISTINCT partition
+FROM system.parts
+WHERE table = 'events' AND active;
 ```
+
+Then issue `CLEAR COLUMN ... IN PARTITION` for each one.
 
 ## Checking Mutation Progress
 
-`DROP COLUMN` and `CLEAR COLUMN` issue background mutations. Monitor their progress in `system.mutations`:
+`CLEAR COLUMN` runs as a background mutation that rewrites affected parts. `DROP COLUMN` is usually near-instant because it only deletes column files, but it still produces an entry in `system.mutations` that you can inspect. Monitor progress in `system.mutations`:
 
 ```sql
 SELECT
