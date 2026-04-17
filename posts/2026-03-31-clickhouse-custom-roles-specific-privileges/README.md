@@ -92,7 +92,7 @@ ClickHouse supports these privilege types:
 
 ```sql
 -- Data manipulation
-GRANT SELECT, INSERT, DELETE, UPDATE ON db.table TO role_name;
+GRANT SELECT, INSERT, ALTER DELETE, ALTER UPDATE ON db.table TO role_name;
 
 -- Schema management
 GRANT CREATE TABLE, DROP TABLE, ALTER TABLE ON db.* TO role_name;
