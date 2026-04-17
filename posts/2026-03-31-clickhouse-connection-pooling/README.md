@@ -14,28 +14,33 @@ Opening a new TCP or HTTP connection for every query adds overhead. Connection p
 
 ## HTTP Client Pooling with clickhouse-connect
 
-The `clickhouse-connect` client manages an internal HTTP connection pool via `urllib3`.
+The `clickhouse-connect` client manages an internal HTTP connection pool via `urllib3`. By default, all client instances share a single pool manager that keeps up to 8 HTTP keep-alive connections per ClickHouse server.
+
+To control how long HTTP connections are reused before being recycled, set the `max_connection_age` common setting (defaults to 600 seconds):
 
 ```python
 import clickhouse_connect
+from clickhouse_connect import common
+
+common.set_setting("max_connection_age", 600)
 
 client = clickhouse_connect.get_client(
     host="localhost",
     port=8123,
     username="default",
     password="",
-    max_connection_age=600,    # seconds before recycling
-    pool_mgr_connections=10    # pool size
 )
 ```
 
 ## Custom urllib3 Pool Manager
 
-```python
-from urllib3 import PoolManager
-import clickhouse_connect
+Use `clickhouse_connect.driver.httputil.get_pool_manager` to create a custom pool with a larger size, then pass it via the `pool_mgr` argument:
 
-pool = PoolManager(num_pools=5, maxsize=20, timeout=30.0)
+```python
+import clickhouse_connect
+from clickhouse_connect.driver import httputil
+
+pool = httputil.get_pool_manager(maxsize=20, num_pools=5)
 
 client = clickhouse_connect.get_client(
     host="localhost",
