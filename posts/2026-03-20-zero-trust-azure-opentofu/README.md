@@ -99,7 +99,7 @@ resource "azurerm_key_vault" "kv" {
   tenant_id                     = data.azurerm_client_config.current.tenant_id
   sku_name                      = "premium"
   public_network_access_enabled = false  # Private endpoint only
-  enable_rbac_authorization     = true   # RBAC over access policies
+  rbac_authorization_enabled    = true   # RBAC over access policies
 }
 ```
 
