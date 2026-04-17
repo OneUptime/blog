@@ -27,16 +27,16 @@ ipv6.dst == 2001:db8:1::/64
 ## Filter Traffic Between Two Subnets
 
 ```wireshark
-# Traffic flowing from subnet A to subnet B (unidirectional)
-ipv6.src == 2001:db8:clients::/64 && ipv6.dst == 2001:db8:servers::/64
+# Traffic flowing from subnet A (clients) to subnet B (servers), unidirectional
+ipv6.src == 2001:db8:a::/64 && ipv6.dst == 2001:db8:b::/64
 
 # Traffic between subnet A and subnet B (bidirectional)
-(ipv6.src == 2001:db8:clients::/64 && ipv6.dst == 2001:db8:servers::/64)
+(ipv6.src == 2001:db8:a::/64 && ipv6.dst == 2001:db8:b::/64)
 ||
-(ipv6.src == 2001:db8:servers::/64 && ipv6.dst == 2001:db8:clients::/64)
+(ipv6.src == 2001:db8:b::/64 && ipv6.dst == 2001:db8:a::/64)
 
-# Shorthand: any traffic where EITHER endpoint is in the subnet
-ipv6.addr == 2001:db8:clients::/64 && ipv6.addr == 2001:db8:servers::/64
+# Shorthand: bidirectional traffic where one endpoint is in A and the other is in B
+ipv6.addr == 2001:db8:a::/64 && ipv6.addr == 2001:db8:b::/64
 ```
 
 ## Filter Intra-Subnet Traffic
@@ -45,19 +45,19 @@ To see only traffic where both source and destination are in the same /64:
 
 ```wireshark
 # Both source and destination in the servers subnet
-ipv6.src == 2001:db8:servers::/64 && ipv6.dst == 2001:db8:servers::/64
+ipv6.src == 2001:db8:b::/64 && ipv6.dst == 2001:db8:b::/64
 ```
 
 ## Filter by /48 Site Prefix
 
 ```wireshark
-# All traffic within a site's /48 block
-ipv6.addr == 2001:db8:site1::/48
+# All traffic within a site's /48 block (site 1)
+ipv6.addr == 2001:db8:1::/48
 
 # Traffic crossing between two sites
-(ipv6.src == 2001:db8:site1::/48 && ipv6.dst == 2001:db8:site2::/48)
+(ipv6.src == 2001:db8:1::/48 && ipv6.dst == 2001:db8:2::/48)
 ||
-(ipv6.src == 2001:db8:site2::/48 && ipv6.dst == 2001:db8:site1::/48)
+(ipv6.src == 2001:db8:2::/48 && ipv6.dst == 2001:db8:1::/48)
 ```
 
 ## Exclude Specific Subnets
@@ -73,20 +73,20 @@ ipv6 && !(ipv6.addr == fe80::/10)
 ipv6 && !(ipv6.addr == ff00::/8)
 
 # All IPv6 except internal network
-ipv6 && !(ipv6.addr == 2001:db8:internal::/48)
+ipv6 && !(ipv6.addr == 2001:db8:ffff::/48)
 ```
 
 ## Subnet Filters with Protocol Restrictions
 
 ```wireshark
 # HTTP traffic to/from the web server subnet
-ipv6.addr == 2001:db8:web::/64 && http
+ipv6.addr == 2001:db8:c::/64 && http
 
 # DNS queries from clients subnet to DNS servers subnet
-ipv6.src == 2001:db8:clients::/64 && ipv6.dst == 2001:db8:dns::/64 && dns
+ipv6.src == 2001:db8:a::/64 && ipv6.dst == 2001:db8:d::/64 && dns
 
 # All HTTPS traffic crossing the DMZ subnet boundary
-ipv6.addr == 2001:db8:dmz::/64 && tcp.port == 443
+ipv6.addr == 2001:db8:e::/64 && tcp.port == 443
 ```
 
 ## Using tshark for Command-Line Subnet Filtering
@@ -102,7 +102,7 @@ tshark -r capture.pcap -Y "ipv6" \
 
 # Filter and save subnet-specific traffic
 tshark -r capture.pcap \
-  -Y "ipv6.src == 2001:db8:clients::/64 && ipv6.dst == 2001:db8:servers::/64" \
+  -Y "ipv6.src == 2001:db8:a::/64 && ipv6.dst == 2001:db8:b::/64" \
   -w clients-to-servers.pcap
 ```
 
@@ -110,8 +110,8 @@ tshark -r capture.pcap \
 
 | Filter | Use Case |
 |---|---|
-| `ipv6.src == 2001:db8:clients::/64` | Audit client traffic |
-| `ipv6.addr == 2001:db8:dmz::/64` | Monitor DMZ activity |
+| `ipv6.src == 2001:db8:a::/64` | Audit client traffic |
+| `ipv6.addr == 2001:db8:e::/64` | Monitor DMZ activity |
 | `!(ipv6.addr == 2001:db8::/32)` | Find traffic from unknown prefixes |
 | `ipv6.src == fe80::/10` | Analyze link-local (NDP) traffic |
 
