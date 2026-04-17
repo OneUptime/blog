@@ -74,7 +74,7 @@ while kill -0 $BENCH_PID 2>/dev/null; do
     clickhouse-client --query "
     SELECT now(), metric, value
     FROM system.metrics
-    WHERE metric IN ('Query', 'MemoryTracking', 'BackgroundPoolTask')
+    WHERE metric IN ('Query', 'MemoryTracking', 'BackgroundMergesAndMutationsPoolTask')
     " --format CSV >> metrics.csv
     sleep 1
 done
