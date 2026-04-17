@@ -37,7 +37,7 @@ print(df.shape)
 print(df.dtypes)
 ```
 
-The `clickhouse-connect` library returns an Arrow-backed DataFrame, which is significantly faster than row-by-row fetching.
+The `clickhouse-connect` library's `query_df` builds a pandas DataFrame column-wise from ClickHouse's Native format, which is significantly faster than row-by-row fetching. For a PyArrow-backed DataFrame, use `query_df_arrow` instead.
 
 ## Exporting to Parquet via ClickHouse
 
