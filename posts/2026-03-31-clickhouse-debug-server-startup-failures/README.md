@@ -33,17 +33,14 @@ Common startup failure messages:
 
 ## Validate Configuration Files
 
-```bash
-# Validate XML syntax
-clickhouse-server --config /etc/clickhouse-server/config.xml --check-config
-```
-
-Or manually check with xmllint:
+ClickHouse does not ship a built-in config validator, so check XML syntax with `xmllint`:
 
 ```bash
 xmllint --noout /etc/clickhouse-server/config.xml && echo "OK"
 xmllint --noout /etc/clickhouse-server/users.xml && echo "OK"
 ```
+
+To verify that applied values are correct, start the server and query `system.server_settings`.
 
 ## Check for Port Conflicts
 
