@@ -8,7 +8,7 @@ Description: Write Snort detection rules for IPv6 traffic, covering IPv6 address
 
 ---
 
-Snort 3 supports IPv6 in its rule language with dedicated keywords for IPv6 headers, ICMPv6 types, and address matching. Understanding IPv6-specific rule options enables precise detection of IPv6-based threats.
+Snort 3 supports IPv6 in its rule language through the `ip` and `icmp` protocol keywords (which cover both IPv4/IPv6 and ICMPv4/ICMPv6 respectively), combined with IPv6 address matching and `ip_proto` for extension header detection. Understanding these rule options enables precise detection of IPv6-based threats.
 
 ## Snort 3 Rule Syntax for IPv6
 
@@ -22,40 +22,41 @@ alert tcp 2001:db8::/32 any -> any 80 \
   (msg:"HTTP from documentation IPv6 range"; sid:1000; rev:1;)
 
 # Negation of IPv6 address
-alert ip6 ![::1] any -> $HOME_NET any \
+alert ip ![::1] any -> $HOME_NET any \
   (msg:"Non-loopback IPv6 to home network"; sid:1001; rev:1;)
 
-# Any IPv6 traffic
-alert ip6 any any -> any any \
-  (msg:"Any IPv6 traffic"; sid:1002; rev:1;)
+# Any IP traffic (covers both IPv4 and IPv6)
+alert ip any any -> any any \
+  (msg:"Any IP traffic"; sid:1002; rev:1;)
 ```
 
 ## ICMPv6 Detection Rules
 
 ```snort
 # ICMPv6 Router Advertisement (type 134)
-alert icmp6 any any -> $HOME_NET any \
+# ip_proto:58 narrows match to ICMPv6 (protocol 58)
+alert icmp any any -> $HOME_NET any \
   (msg:"ICMPv6 Router Advertisement Received"; \
-   itype:134; \
+   ip_proto:58; itype:134; \
    sid:2000; rev:1;)
 
 # ICMPv6 Neighbor Solicitation flood detection
-alert icmp6 any any -> $HOME_NET any \
+alert icmp any any -> $HOME_NET any \
   (msg:"ICMPv6 Neighbor Solicitation Flood"; \
-   itype:135; \
+   ip_proto:58; itype:135; \
    detection_filter:track by_src,count 50,seconds 10; \
    sid:2001; rev:1;)
 
 # ICMPv6 time exceeded (traceroute detection)
-alert icmp6 any any -> $HOME_NET any \
+alert icmp any any -> $HOME_NET any \
   (msg:"ICMPv6 Time Exceeded - Traceroute"; \
-   itype:3; icode:0; \
+   ip_proto:58; itype:3; icode:0; \
    sid:2002; rev:1;)
 
 # ICMPv6 type 2 - packet too big (path MTU manipulation)
-alert icmp6 any any -> $HOME_NET any \
+alert icmp any any -> $HOME_NET any \
   (msg:"ICMPv6 Packet Too Big - Possible MTU Attack"; \
-   itype:2; \
+   ip_proto:58; itype:2; \
    sid:2003; rev:1;)
 ```
 
@@ -63,22 +64,32 @@ alert icmp6 any any -> $HOME_NET any \
 
 ```snort
 # Detect hop-by-hop options header (anomalous)
-alert ip6 $EXTERNAL_NET any -> $HOME_NET any \
+# Use ip_proto with the next-header number (0 = Hop-by-Hop Options)
+alert ip $EXTERNAL_NET any -> $HOME_NET any \
   (msg:"IPv6 Hop-by-Hop Extension Header"; \
-   ip6_hdr:hopopts; \
+   ip_proto:0; \
    sid:3000; rev:1;)
 
-# Detect routing header type 0 (forbidden per RFC 5095)
-alert ip6 any any -> $HOME_NET any \
-  (msg:"IPv6 Routing Header Type 0 Detected"; \
-   ip6_hdr:routeopt; \
+# Detect routing header (type 0 forbidden per RFC 5095)
+# Protocol 43 = IPv6 Routing header
+alert ip any any -> $HOME_NET any \
+  (msg:"IPv6 Routing Header Detected"; \
+   ip_proto:43; \
    sid:3001; rev:1;)
 
-# Detect excessive extension headers (evasion technique)
-alert ip6 any any -> $HOME_NET any \
-  (msg:"Excessive IPv6 Extension Headers"; \
-   ip6_hdr:dst,frag,hopopts,routeopt; \
+# Detect fragment header (commonly abused for IDS evasion)
+# Protocol 44 = IPv6 Fragment header
+alert ip any any -> $HOME_NET any \
+  (msg:"IPv6 Fragment Header - Possible Evasion"; \
+   ip_proto:44; \
    sid:3002; rev:1;)
+
+# Detect destination options header
+# Protocol 60 = IPv6 Destination Options header
+alert ip any any -> $HOME_NET any \
+  (msg:"IPv6 Destination Options Header"; \
+   ip_proto:60; \
+   sid:3003; rev:1;)
 ```
 
 ## Application Layer Rules over IPv6
@@ -112,7 +123,7 @@ alert udp any any -> any 53 \
 ```bash
 # Test rule syntax
 snort -c /etc/snort/snort.lua \
-  --rule "alert ip6 any any -> any any (msg:\"IPv6\"; sid:99;)" \
+  --rule "alert ip any any -> any any (msg:\"IPv6\"; sid:99;)" \
   -T
 
 # Test against PCAP file with IPv6 traffic
@@ -146,4 +157,4 @@ alert tcp any any -> $HOME_NET 443 \
    sid:5001; rev:1;)
 ```
 
-Snort 3's rule language supports IPv6 protocol keywords including `ip6_hdr` for extension header matching and `itype`/`icode` for ICMPv6 detection, providing the same detection capabilities for IPv6 traffic as the well-established IPv4 rule set.
+Snort 3's rule language handles IPv6 traffic through the unified `ip` and `icmp` protocol keywords, with `ip_proto` for matching extension headers by their next-header number and `itype`/`icode` for ICMPv6 type detection, providing the same detection capabilities for IPv6 traffic as the well-established IPv4 rule set.
