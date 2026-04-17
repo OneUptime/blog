@@ -33,8 +33,8 @@ ORDER BY (account_id, ts);
 ```sql
 SELECT
     uniqExact(account_id)                           AS total_trials,
-    uniqExactIf(account_id, converted = 1)          AS converted,
-    converted * 100.0 / total_trials                AS conversion_rate_pct
+    uniqExactIf(account_id, converted = 1)          AS converted_accounts,
+    converted_accounts * 100.0 / total_trials       AS conversion_rate_pct
 FROM trial_events
 WHERE ts >= now() - INTERVAL 90 DAY;
 ```
@@ -100,7 +100,7 @@ WITH conversion_times AS (
         minIf(ts, converted = 1) AS converted_at
     FROM trial_events
     GROUP BY account_id
-    HAVING converted_at IS NOT NULL
+    HAVING max(converted) = 1
 )
 SELECT
     quantile(0.5)(dateDiff('day', trial_start, converted_at))  AS median_days,
