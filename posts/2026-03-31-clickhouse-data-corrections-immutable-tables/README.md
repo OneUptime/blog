@@ -37,7 +37,7 @@ Always include a partition predicate in the WHERE clause to limit parts that nee
 
 ## Option 2 - Lightweight DELETE
 
-Available in ClickHouse 22.8+, lightweight deletes mark rows as deleted immediately without rewriting parts:
+Introduced as experimental in ClickHouse 22.8 and generally available since 23.3, lightweight deletes mark rows as deleted immediately without rewriting parts:
 
 ```sql
 DELETE FROM orders WHERE order_id = 12345;
