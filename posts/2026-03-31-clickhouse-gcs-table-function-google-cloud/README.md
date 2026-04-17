@@ -104,7 +104,7 @@ Then use it:
 
 ```sql
 SELECT count()
-FROM gcs(gcs_creds, 'https://storage.googleapis.com/my-bucket/events/*.parquet', 'Parquet');
+FROM gcs(gcs_creds, url = 'https://storage.googleapis.com/my-bucket/events/*.parquet', format = 'Parquet');
 ```
 
 ## Reading CSV with Header
@@ -120,10 +120,10 @@ FROM gcs(
 WHERE toYear(signup_date) = 2026;
 ```
 
-## Comparing gcs() vs googleCloudStorage Table Engine
+## Comparing gcs() vs S3 Table Engine (for GCS)
 
 ```text
-gcs()                          googleCloudStorage Engine
+gcs() table function           S3 Table Engine (with GCS URL)
 Ad hoc, no DDL                 Persistent named table
 Good for one-off queries       Good for repeated access
 Credentials in query           Credentials in table definition
@@ -131,4 +131,4 @@ Credentials in query           Credentials in table definition
 
 ## Summary
 
-The `gcs()` table function enables direct SQL queries over GCS files using HMAC key authentication. Use glob patterns for multi-file reads, push WHERE filters to minimize data transfer, and use named collections to keep credentials out of query text. For high-frequency access to the same GCS bucket, the `GoogleCloudStorage` table engine provides a persistent named table object.
+The `gcs()` table function enables direct SQL queries over GCS files using HMAC key authentication. Use glob patterns for multi-file reads, push WHERE filters to minimize data transfer, and use named collections to keep credentials out of query text. For high-frequency access to the same GCS bucket, the `S3` table engine (pointed at a `https://storage.googleapis.com/...` URL with HMAC credentials) provides a persistent named table object.
