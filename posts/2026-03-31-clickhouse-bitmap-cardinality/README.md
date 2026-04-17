@@ -57,10 +57,10 @@ ORDER BY segment, day;
 
 ```text
 segment     day         user_count
-active      2024-06-01  9999
-active      2024-06-02  7999
-churned     2024-06-01  1999
-new_signup  2024-06-02  2999
+active      2024-06-01  10000
+active      2024-06-02  8000
+churned     2024-06-01  2000
+new_signup  2024-06-02  3000
 ```
 
 ## Cardinality After Set Operations
@@ -80,7 +80,7 @@ SELECT
 
 ```text
 retained_users
-4999
+5000
 ```
 
 ```sql
@@ -111,7 +111,7 @@ SELECT
 
 ```text
 and_cardinality  or_cardinality  xor_cardinality  andnot_cardinality
-4999             12999           8000             5000
+5000             13000           8000             5000
 ```
 
 ## Using groupBitmapOrState to Collapse Multiple Rows
@@ -128,7 +128,7 @@ WHERE segment = 'active';
 
 ```text
 total_unique_active
-12999
+13000
 ```
 
 ## Daily Segment Size Trend
@@ -180,7 +180,7 @@ SELECT
 
 ```text
 day1_users  day2_users  retained  retention_pct
-9999        7999        4999      50.00
+10000       8000        5000      50.00
 ```
 
 ## Comparing bitmapCardinality vs uniqExact
