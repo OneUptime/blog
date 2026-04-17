@@ -83,7 +83,7 @@ Subtracting `arrayCumSum()` from a fixed budget array gives the remaining capaci
 WITH 1000 AS initial_budget
 SELECT
     user_id,
-    initial_budget - arrayCumSum(token_costs) AS budget_remaining_per_call
+    arrayMap(c -> initial_budget - c, arrayCumSum(token_costs)) AS budget_remaining_per_call
 FROM api_usage;
 ```
 
