@@ -127,7 +127,7 @@ docker run -d \
 **Kubernetes with Helm:**
 
 ```bash
-helm repo add clickhouse-operator https://docs.altinity.com/clickhouse-operator/
+helm repo add clickhouse-operator https://helm.altinity.com
 
 helm install clickhouse-operator \
     clickhouse-operator/clickhouse-operator \
@@ -271,7 +271,9 @@ For large tables, export to S3 first then import from S3:
 INSERT INTO FUNCTION s3(
     'https://s3.amazonaws.com/my-bucket/events/export_{_partition_id}.parquet',
     'Parquet'
-) SELECT * FROM events;
+)
+PARTITION BY toYYYYMM(occurred_at)
+SELECT * FROM events;
 
 -- On ClickHouse Cloud: import from S3
 INSERT INTO events
@@ -296,7 +298,7 @@ SELECT * FROM s3(
 # </prometheus>
 
 # Scrape with Prometheus, visualize with Grafana
-# Use the official ClickHouse Grafana dashboard (ID: 14192)
+# Use the community ClickHouse Grafana dashboard (ID: 14192)
 ```
 
 Key metrics to monitor in both deployments:
