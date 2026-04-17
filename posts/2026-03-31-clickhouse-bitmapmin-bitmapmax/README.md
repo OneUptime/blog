@@ -8,7 +8,7 @@ Description: Learn how to use bitmapMin() and bitmapMax() in ClickHouse to find 
 
 ---
 
-ClickHouse roaring bitmaps store sets of UInt32 integers. `bitmapMin()` and `bitmapMax()` return the smallest and largest integers stored in a bitmap - useful for finding the earliest and latest user IDs, event sequence numbers, or any numeric range stored in a bitmap.
+ClickHouse roaring bitmaps store sets of unsigned integers (`UInt8`, `UInt16`, `UInt32`, or `UInt64`). `bitmapMin()` and `bitmapMax()` return the smallest and largest integers stored in a bitmap - useful for finding the earliest and latest user IDs, event sequence numbers, or any numeric range stored in a bitmap.
 
 ## Basic Usage
 
@@ -91,7 +91,7 @@ ORDER BY date DESC;
 
 ## Edge Cases
 
-An empty bitmap returns the maximum UInt64 value for `bitmapMin()` and 0 for `bitmapMax()`:
+An empty bitmap returns `UINT32_MAX` (4294967295) for `bitmapMin()` and 0 for `bitmapMax()` (the return type is `UInt64` in both cases; for bitmaps built from `UInt64` values, `bitmapMin()` returns `UINT64_MAX`):
 
 ```sql
 SELECT
