@@ -28,11 +28,11 @@ GROUP BY partition
 ORDER BY partition DESC;
 ```
 
-If `part_count` per partition exceeds 100, your merge queue is falling behind. If it exceeds 300, ClickHouse starts delaying inserts. At 1,000, inserts throw exceptions.
+If `part_count` per partition exceeds a few hundred, your merge queue is falling behind. By default, once a partition reaches `parts_to_delay_insert` (1,000) ClickHouse starts slowing inserts down, and once it reaches `parts_to_throw_insert` (3,000) inserts are rejected outright.
 
 ```text
-Code: 252. DB::Exception: Too many parts (1001). Merges are processing significantly
-slower than inserts.
+Code: 252. DB::Exception: Too many parts (3001 with average size of ...) in table 'events'.
+Merges are processing significantly slower than inserts.
 ```
 
 The fix is always the same: increase batch size.
@@ -189,14 +189,16 @@ curl -X POST "http://localhost:8123/?query=INSERT+INTO+events+FORMAT+JSONEachRow
 ClickHouse splits large inserts into blocks internally. Tune the block size so each block is large enough to generate efficiently-sized parts.
 
 ```sql
--- Default: 1,048,576 rows per block
+-- Default: 1,048,449 rows per block (~1M)
 SET max_insert_block_size = 1000000;
 
 -- For very large single inserts, increase this further
 SET max_insert_block_size = 10000000;
 
--- Minimum rows required to form a part (parts with fewer rows are merged eagerly)
--- Default: 0 (no minimum). Set to 1M for write-heavy tables.
+-- Minimum block size the server will squash inserts up to before writing a part.
+-- Defaults: min_insert_block_size_rows = 1,048,449 rows,
+--           min_insert_block_size_bytes = 268,402,944 bytes (~256 MiB).
+-- Increase for very write-heavy tables to produce larger parts.
 SET min_insert_block_size_rows = 1000000;
 SET min_insert_block_size_bytes = 268435456;  -- 256 MB
 ```
