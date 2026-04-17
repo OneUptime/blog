@@ -70,16 +70,19 @@ clickhouse-compressor --decompress \
   > user_id_raw.bin
 ```
 
-## Checking Native Format Blocks
+## Compressing Native Format Exports
 
-ClickHouse Native format files are also compressed. Use the compressor to inspect them:
+Native format exports are not compressed by default. Pipe them through clickhouse-compressor for more efficient storage:
 
 ```bash
-clickhouse-compressor --decompress < export.native > export_raw.native
-clickhouse-client --query "SELECT count() FORMAT Null" < export_raw.native
+# Compress an exported Native file
+clickhouse-compressor < export.native > export.native.lz4
+
+# Decompress when loading it back
+clickhouse-compressor --decompress < export.native.lz4 > export.native
 ```
 
-## Integration with clickhouse-obfuscator Pipeline
+## Compressed Data Transfer Pipeline
 
 ```bash
 # Export -> Compress -> Transfer -> Decompress -> Import
