@@ -84,7 +84,7 @@ When rows may not be physically ordered by time (for example, after a deduplicat
 deltaSumTimestamp(value, timestamp)
 ```
 
-The timestamp must be of type `DateTime`, `DateTime64`, or a numeric Unix epoch.
+The timestamp column can be an integer, float, `Date`, or `DateTime` - any ordering column works.
 
 ```sql
 SELECT
