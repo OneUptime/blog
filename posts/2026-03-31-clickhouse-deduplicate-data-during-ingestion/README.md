@@ -20,10 +20,16 @@ ClickHouse automatically deduplicates identical insert blocks using a checksum-b
 SET deduplicate_blocks_in_dependent_materialized_views = 1;
 ```
 
-Check the deduplication window:
+Check the deduplication window settings:
 
 ```sql
-SELECT * FROM system.replicas WHERE is_leader = 1;
+SELECT name, value
+FROM system.merge_tree_settings
+WHERE name IN (
+    'replicated_deduplication_window',
+    'replicated_deduplication_window_seconds',
+    'non_replicated_deduplication_window'
+);
 ```
 
 For non-replicated tables, enable deduplication explicitly:
@@ -98,7 +104,7 @@ Before writing to the final table, deduplicate in a staging query:
 
 ```sql
 INSERT INTO events
-SELECT DISTINCT ON (event_id)
+SELECT
     event_id,
     any(timestamp) AS timestamp,
     any(payload) AS payload
