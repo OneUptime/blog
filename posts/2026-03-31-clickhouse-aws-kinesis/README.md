@@ -21,7 +21,7 @@ Choose the right pattern for your use case.
 ```text
 Pattern 1: Firehose -> S3 -> ClickHouse S3 table function (batch, lowest cost)
 Pattern 2: Kinesis -> Lambda -> ClickHouse HTTP API (low latency, serverless)
-Pattern 3: Kinesis -> Consumer App -> ClickHouse JDBC (high throughput, full control)
+Pattern 3: Kinesis -> Consumer App -> ClickHouse HTTP (high throughput, full control)
 ```
 
 ## Setting Up the Kinesis Stream
@@ -85,9 +85,9 @@ aws firehose create-delivery-stream \
   --delivery-stream-name analytics-to-s3 \
   --delivery-stream-type KinesisStreamAsSource \
   --kinesis-stream-source-configuration \
-    StreamARN=arn:aws:kinesis:us-east-1:123456789012:stream/analytics-events,\
+    KinesisStreamARN=arn:aws:kinesis:us-east-1:123456789012:stream/analytics-events,\
 RoleARN=arn:aws:iam::123456789012:role/firehose-role \
-  --s3-destination-configuration \
+  --extended-s3-destination-configuration \
     RoleARN=arn:aws:iam::123456789012:role/firehose-role,\
 BucketARN=arn:aws:s3:::my-analytics-bucket,\
 Prefix=kinesis-events/dt=!{timestamp:yyyy-MM-dd}/,\
@@ -110,7 +110,8 @@ FROM s3(
     'https://my-analytics-bucket.s3.amazonaws.com/kinesis-events/dt=2026-03-31/*.gz',
     'ACCESS_KEY',
     'SECRET_KEY',
-    'JSONEachRow'
+    'JSONAsString',
+    'raw String'
 )
 LIMIT 100;
 
@@ -130,7 +131,8 @@ FROM s3(
     'https://my-analytics-bucket.s3.amazonaws.com/kinesis-events/dt=2026-03-31/*.gz',
     'ACCESS_KEY',
     'SECRET_KEY',
-    'JSONEachRow'
+    'JSONAsString',
+    'raw String'
 );
 ```
 
@@ -227,7 +229,7 @@ aws lambda create-event-source-mapping \
 
 ## Pattern 3 - Dedicated Consumer Application
 
-For high throughput, use the Kinesis Client Library with bulk inserts.
+For high throughput, use the Kinesis SDK directly with bulk inserts.
 
 ```python
 import boto3
