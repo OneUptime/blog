@@ -8,19 +8,19 @@ Description: Learn how arrayCount() counts elements satisfying a lambda predicat
 
 ---
 
-`arrayCount()` answers the question "how many elements in this array satisfy a condition?" without requiring you to unnest the array into rows and aggregate. With a lambda argument, it counts all elements for which the lambda returns a non-zero value. Without a lambda, it counts all non-zero elements directly. The result is a scalar `UInt64`, which can be used in expressions, comparisons, and aggregations just like any other number.
+`arrayCount()` answers the question "how many elements in this array satisfy a condition?" without requiring you to unnest the array into rows and aggregate. With a lambda argument, it counts all elements for which the lambda returns a non-zero value. Without a lambda, it counts all non-zero elements directly. The result is a scalar `UInt32`, which can be used in expressions, comparisons, and aggregations just like any other number.
 
 ## Basic Usage Without a Lambda
 
-When called without a lambda, `arrayCount(arr)` counts the number of elements that are not equal to the zero value for the array's type (`0` for numeric, empty string for strings, etc.).
+When called without a lambda, `arrayCount(arr)` counts the number of non-zero elements in a numeric array. For non-numeric arrays (such as `String`), you must supply a lambda that returns a numeric value.
 
 ```sql
 -- Count non-zero elements
 SELECT arrayCount([0, 1, 2, 0, 3, 0]) AS non_zero_count;
 -- Result: 3
 
--- Count non-empty strings
-SELECT arrayCount(['hello', '', 'world', '']) AS non_empty_count;
+-- Count non-empty strings (a lambda is required for string arrays)
+SELECT arrayCount(s -> s != '', ['hello', '', 'world', '']) AS non_empty_count;
 -- Result: 2
 ```
 
