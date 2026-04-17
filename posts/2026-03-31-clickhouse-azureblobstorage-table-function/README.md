@@ -25,11 +25,12 @@ FROM azureBlobStorage(
 LIMIT 100;
 ```
 
-The four positional arguments are:
-1. Connection string or account URL
-2. Container name
-3. Blob path (supports wildcards)
-4. Format
+The positional arguments differ depending on whether you use a connection string or a storage account URL:
+
+- **Connection string form:** `azureBlobStorage(connection_string, container_name, blobpath, format)`
+- **Storage account URL form:** `azureBlobStorage(storage_account_url, container_name, blobpath, account_name, account_key, format)`
+
+Format, compression, and structure are optional trailing arguments in both forms.
 
 ## Supported Formats
 
@@ -53,6 +54,8 @@ FROM azureBlobStorage(
     'https://myaccount.blob.core.windows.net',
     'analytics-container',
     '2025/*/events.parquet',
+    'myaccount',
+    'ACCOUNT_KEY',
     'Parquet'
 )
 GROUP BY day
@@ -75,7 +78,7 @@ Store credentials in a named collection to avoid embedding them in queries:
 
 ```sql
 SELECT count()
-FROM azureBlobStorage(azure_prod, 'data/2025-01/*.parquet', 'Parquet');
+FROM azureBlobStorage(azure_prod, blob_path = 'data/2025-01/*.parquet', format = 'Parquet');
 ```
 
 ## Writing Data to Azure Blob Storage
@@ -133,6 +136,8 @@ FROM azureBlobStorage(
     'https://myaccount.blob.core.windows.net',
     'analytics-container',
     '2025/01/*/events.parquet',  -- only January 2025
+    'myaccount',
+    'ACCOUNT_KEY',
     'Parquet'
 );
 ```
