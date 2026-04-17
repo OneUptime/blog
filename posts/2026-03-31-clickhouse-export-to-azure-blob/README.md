@@ -81,9 +81,12 @@ clickhouse-client --query "
 ## Configuring Connection String in config.xml
 
 ```xml
-<azure_blob_storage>
-  <connection_string>DefaultEndpointsProtocol=https;AccountName=...</connection_string>
-</azure_blob_storage>
+<named_collections>
+  <azure_conn>
+    <connection_string>DefaultEndpointsProtocol=https;AccountName=...</connection_string>
+    <container>my-container</container>
+  </azure_conn>
+</named_collections>
 ```
 
 ## Verifying the Export
