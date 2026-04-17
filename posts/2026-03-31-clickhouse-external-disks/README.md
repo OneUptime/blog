@@ -30,8 +30,7 @@ graph TD
 |---|---|
 | `local` | Default local filesystem |
 | `s3` | Amazon S3 or S3-compatible storage |
-| `s3_plain` | S3 without multipart upload (simpler, slower) |
-| `gcs` | Google Cloud Storage (via S3 compatibility) |
+| `s3_plain` | S3 with plain file names and no local metadata (used for backups) |
 | `azure_blob_storage` | Azure Blob Storage |
 | `encrypted` | Encrypted local disk |
 | `cache` | Cache layer over another disk |
