@@ -70,7 +70,7 @@ FROM (
     GROUP BY hour
     ORDER BY hour
 )
-HAVING ratio > 2 OR ratio < 0.5;
+QUALIFY ratio > 2 OR ratio < 0.5;
 ```
 
 Events more than 2x or less than 0.5x the 24-hour rolling average are flagged.
@@ -81,15 +81,18 @@ Interquartile range (IQR) is more robust than z-score for skewed distributions:
 
 ```sql
 SELECT
-    toStartOfHour(ts) AS hour,
-    count()           AS event_count
-FROM events
-WHERE ts >= now() - INTERVAL 1 DAY
-GROUP BY hour
-HAVING event_count < quantile(0.25)(event_count) OVER ()
+    hour,
+    event_count
+FROM (
+    SELECT toStartOfHour(ts) AS hour, count() AS event_count
+    FROM events
+    WHERE ts >= now() - INTERVAL 1 DAY
+    GROUP BY hour
+)
+QUALIFY event_count < quantile(0.25)(event_count) OVER ()
                    - 1.5 * (quantile(0.75)(event_count) OVER ()
                            - quantile(0.25)(event_count) OVER ())
-    OR event_count > quantile(0.75)(event_count) OVER ()
+     OR event_count > quantile(0.75)(event_count) OVER ()
                    + 1.5 * (quantile(0.75)(event_count) OVER ()
                            - quantile(0.25)(event_count) OVER ());
 ```
@@ -111,7 +114,7 @@ FROM (
     GROUP BY hour
     ORDER BY hour
 )
-HAVING delta < -1000;  -- dropped by more than 1000 events/hour
+QUALIFY delta < -1000;  -- dropped by more than 1000 events/hour
 ```
 
 ## Storing Anomaly Results
