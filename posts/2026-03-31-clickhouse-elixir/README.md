@@ -116,9 +116,10 @@ end
 
 ```elixir
 def cached_top_events(days) do
-  Cachex.fetch(:ch_cache, "top_events_#{days}", fn ->
-    MyApp.ClickHouse.query("SELECT event_name, count() FROM events ...")
-  end, ttl: :timer.seconds(30))
+  Cachex.fetch(:ch_cache, "top_events_#{days}", fn _key ->
+    {:commit, MyApp.ClickHouse.query("SELECT event_name, count() FROM events ..."),
+     expire: :timer.seconds(30)}
+  end)
 end
 ```
 
