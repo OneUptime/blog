@@ -129,7 +129,7 @@ CREATE TABLE user_profiles
 (
     user_id UInt32,
     raw_age Int64,
-    age     Int8
+    age     Nullable(Int8)
 ) ENGINE = MergeTree()
 ORDER BY user_id;
 
