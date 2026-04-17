@@ -31,10 +31,11 @@ Store user definitions in version-controlled SQL files. A typical provisioning s
 ```sql
 CREATE USER IF NOT EXISTS alice
     IDENTIFIED WITH sha256_password BY 'changeme'
-    HOST IP '10.0.0.0/8'
-    DEFAULT ROLE analyst;
+    HOST IP '10.0.0.0/8';
 
 GRANT analyst TO alice;
+
+SET DEFAULT ROLE analyst TO alice;
 ```
 
 Run these scripts as part of your CI/CD pipeline or infrastructure-as-code workflow.
@@ -50,9 +51,9 @@ while IFS=',' read -r username role ip; do
   clickhouse-client --query "
     CREATE USER IF NOT EXISTS ${username}
       IDENTIFIED WITH sha256_password BY 'TempPass123'
-      HOST IP '${ip}'
-      DEFAULT ROLE ${role};
+      HOST IP '${ip}';
     GRANT ${role} TO ${username};
+    SET DEFAULT ROLE ${role} TO ${username};
   "
 done < users.csv
 ```
@@ -66,8 +67,7 @@ For large teams, sync users from LDAP instead of managing credentials locally:
   <corp_ldap>
     <host>ldap.corp.example.com</host>
     <port>636</port>
-    <bind_dn>cn=clickhouse,ou=service,dc=corp,dc=example,dc=com</bind_dn>
-    <bind_password>secret</bind_password>
+    <bind_dn>uid={user_name},ou=people,dc=corp,dc=example,dc=com</bind_dn>
     <user_dn_detection>
       <base_dn>ou=people,dc=corp,dc=example,dc=com</base_dn>
       <search_filter>(&amp;(objectClass=person)(uid={user_name}))</search_filter>
@@ -76,6 +76,8 @@ For large teams, sync users from LDAP instead of managing credentials locally:
   </corp_ldap>
 </ldap_servers>
 ```
+
+ClickHouse binds to LDAP as the end user during each login — `bind_dn` is a template where `{user_name}` is substituted with the login name, and the user's own password is used for the bind. There is no service-account credential in this config.
 
 Then reference the LDAP server in user config so ClickHouse delegates authentication to LDAP.
 
