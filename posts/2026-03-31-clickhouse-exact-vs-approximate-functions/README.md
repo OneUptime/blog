@@ -48,7 +48,7 @@ For SLA monitoring, `quantileTDigest` is the recommended choice - better tail ac
 -- Exact top-k (requires full aggregation + sort)
 SELECT url, count() AS cnt FROM access_logs GROUP BY url ORDER BY cnt DESC LIMIT 10;
 
--- Approximate heavy hitters (Space-Saving algorithm)
+-- Approximate heavy hitters (Filtered Space-Saving algorithm)
 SELECT topK(10)(url) FROM access_logs;
 ```
 
