@@ -33,7 +33,7 @@ Defined in `keeper_config.xml`:
 Trigger a snapshot on-demand via the four-letter command:
 
 ```bash
-echo snapshot | nc localhost 9181
+echo csnp | nc localhost 9181
 ```
 
 Verify the new snapshot file appeared:
@@ -62,7 +62,7 @@ echo "Keeper backup completed: $BACKUP_DIR"
 ```xml
 <coordination_settings>
   <snapshot_distance>100000</snapshot_distance>
-  <max_stored_snapshots>5</max_stored_snapshots>
+  <snapshots_to_keep>5</snapshots_to_keep>
 </coordination_settings>
 ```
 
