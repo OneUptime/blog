@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Customer Lifetime Value, CLV, Cohort, Analytics
 
-Description: Learn how to calculate historical and predictive Customer Lifetime Value in ClickHouse using cohort revenue aggregation and linear regression extrapolation.
+Description: Learn how to calculate historical and predictive Customer Lifetime Value in ClickHouse using cohort revenue aggregation and linear extrapolation.
 
 ---
 
@@ -99,7 +99,7 @@ FROM (
 ORDER BY total_revenue DESC;
 ```
 
-## Predictive CLV with Linear Regression
+## Predictive CLV with Linear Extrapolation
 
 Extrapolate future revenue using observed purchase rates:
 
