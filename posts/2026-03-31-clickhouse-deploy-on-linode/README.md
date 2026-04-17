@@ -41,8 +41,10 @@ Enable private IP to avoid routing traffic through the public internet.
 ssh root@your-linode-ip
 
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
-curl -fsSL 'https://packages.clickhouse.com/deb/archive/apt/stable.sources' | \
-  sudo tee /etc/apt/sources.list.d/clickhouse.sources
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
+  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" | \
+  sudo tee /etc/apt/sources.list.d/clickhouse.list
 sudo apt-get update && sudo apt-get install -y clickhouse-server clickhouse-client
 sudo systemctl enable --now clickhouse-server
 ```
@@ -100,8 +102,7 @@ TO S3(
   'https://us-east-1.linodeobjects.com/my-bucket/clickhouse/',
   'your_access_key',
   'your_secret_key'
-)
-SETTINGS s3_region = 'us-east-1';
+);
 ```
 
 ## Summary
