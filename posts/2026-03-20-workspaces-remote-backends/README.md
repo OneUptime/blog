@@ -79,29 +79,31 @@ Azure Blob Storage state file structure:
 
 ```text
 Container: tfstate
-├── app/terraform.tfstate           ← default workspace
-├── env:/production/app/terraform.tfstate    ← production workspace
-├── env:/staging/app/terraform.tfstate       ← staging workspace
-└── env:/development/app/terraform.tfstate   ← development workspace
+├── app/terraform.tfstate                       ← default workspace
+├── app/terraform.tfstateenv:production         ← production workspace
+├── app/terraform.tfstateenv:staging            ← staging workspace
+└── app/terraform.tfstateenv:development        ← development workspace
 ```
+
+The azurerm backend stores non-default workspace state by appending `env:<workspace_name>` directly to the configured `key`.
 
 ## PostgreSQL Backend with Workspaces
 
 ```hcl
 terraform {
   backend "pg" {
-    conn_str      = "postgresql://..."
-    schema_prefix = "app"
+    conn_str    = "postgresql://..."
+    schema_name = "terraform_remote_state"
   }
 }
 ```
 
-PostgreSQL stores workspace state as rows in the `app_states` table:
+PostgreSQL stores workspace state as rows in the `states` table inside the configured schema (default `terraform_remote_state`):
 
 ```sql
 -- View workspace states
-SELECT id, name FROM app_states;
--- id (row key) differentiates workspaces
+SELECT id, name FROM terraform_remote_state.states;
+-- the `name` column holds the workspace name; each workspace is a row
 ```
 
 ## Workspace-Aware CI/CD with Remote Backends
