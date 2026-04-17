@@ -12,7 +12,7 @@ ClickHouse is designed to use memory aggressively for performance, but misconfig
 
 ## Mistake 1: Not Setting max_server_memory_usage
 
-By default ClickHouse can use all available server RAM. On shared hosts this leads to OOM kills.
+By default ClickHouse caps its memory at 90% of server RAM (via `max_server_memory_usage_to_ram_ratio` = 0.9). On shared hosts that headroom is too small and leads to OOM kills.
 
 ```xml
 <!-- config.xml -->
