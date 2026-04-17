@@ -38,12 +38,12 @@ Mutations leave a permanent record in `system.mutations`. Mirror them to your au
 INSERT INTO data_change_audit
 SELECT
     create_time,
-    table                   AS table_name,
-    'MUTATION'              AS operation,
-    partition_id            AS partition_key,
-    'system'                AS changed_by,
-    0                       AS rows_affected,
-    command                 AS change_details
+    table                                               AS table_name,
+    'MUTATION'                                          AS operation,
+    arrayStringConcat(block_numbers.partition_id, ',')  AS partition_key,
+    'system'                                            AS changed_by,
+    0                                                   AS rows_affected,
+    command                                             AS change_details
 FROM system.mutations
 WHERE table = 'orders' AND is_done = 1
   AND create_time >= yesterday();
