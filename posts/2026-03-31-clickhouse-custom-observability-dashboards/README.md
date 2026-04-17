@@ -14,12 +14,13 @@ Generic observability UIs (Jaeger, Prometheus, Loki) are optimized for single-si
 
 ## Grafana ClickHouse Plugin Setup
 
-Install the official Altinity ClickHouse plugin in Grafana:
+Install a ClickHouse data source plugin in Grafana:
 
 ```bash
-grafana-cli plugins install vertamedia-clickhouse-datasource
-# or the official plugin:
+# Official Grafana Labs plugin:
 grafana-cli plugins install grafana-clickhouse-datasource
+# or the Altinity-maintained community plugin:
+grafana-cli plugins install vertamedia-clickhouse-datasource
 ```
 
 Configure the data source:
@@ -36,7 +37,7 @@ Password: (your password)
 ```sql
 SELECT
   toStartOfMinute(Timestamp) AS time,
-  countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate
+  countIf(StatusCode = 'Error') / count() AS error_rate
 FROM otel_traces
 WHERE $__timeFilter(Timestamp)
   AND ServiceName = '$service'
@@ -67,7 +68,7 @@ SELECT
   round(quantile(0.50)(Duration) / 1e6, 1) AS p50_ms,
   round(quantile(0.95)(Duration) / 1e6, 1) AS p95_ms,
   round(quantile(0.99)(Duration) / 1e6, 1) AS p99_ms,
-  countIf(StatusCode = 'STATUS_CODE_ERROR') AS errors
+  countIf(StatusCode = 'Error') AS errors
 FROM otel_traces
 WHERE $__timeFilter(Timestamp)
   AND ServiceName = '$service'
