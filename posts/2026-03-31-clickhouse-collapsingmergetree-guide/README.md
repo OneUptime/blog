@@ -68,7 +68,7 @@ INSERT INTO user_balances VALUES
 ('U-1001', 'USD', 1500.00, now(), 1);
 ```
 
-It is critical that the cancellation row has exactly the same values for all sorting key columns as the row you want to cancel. Only the sign and mutable columns (like balance) differ.
+It is critical that the cancellation row copies the state row's values for the sorting key and for any columns you aggregate with the sign (like `balance`). Only the `sign` value should flip from `1` to `-1`; otherwise the sign-weighted sums will not cancel cleanly. The new state row that follows is where you write the updated values.
 
 ## Querying CollapsingMergeTree Tables
 
