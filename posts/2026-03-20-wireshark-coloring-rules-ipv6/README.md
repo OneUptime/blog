@@ -10,7 +10,7 @@ Wireshark coloring rules apply background and foreground colors to packets based
 
 ## Accessing Coloring Rules
 
-1. Go to **View → Coloring Rules** (or press Ctrl+Shift+O)
+1. Go to **View → Coloring Rules**
 2. The dialog shows a list of rules applied top-to-bottom (first match wins)
 3. Use the **+** button to add new rules
 4. Drag rules to change their priority order
@@ -91,21 +91,23 @@ Save coloring rules to a file and share with your team:
 # Saves to a .colorfilters file
 
 # The file format is plain text:
-# @Rule Name@filter expression@bg color@fg color
+# @Rule Name@filter expression@[bg_r,bg_g,bg_b][fg_r,fg_g,fg_b]
+# RGB values are 16-bit decimal (0-65535).
 # Example:
-# @IPv6 DAD@icmpv6.type == 135 && ipv6.src == ::@[65535,65535,0]@[0,0,0]
+# @IPv6 DAD@icmpv6.type == 135 && ipv6.src == ::@[65535,65535,0][0,0,0]
 ```
 
 ## Creating Coloring Rules via Command Line
 
 ```bash
 # Wireshark stores coloring rules in ~/.config/wireshark/colorfilters
+# Format: @name@filter@[bg_r,bg_g,bg_b][fg_r,fg_g,fg_b] with 16-bit decimal RGB values
 cat >> ~/.config/wireshark/colorfilters << 'EOF'
-@IPv6 DAD@icmpv6.type == 135 && ipv6.src == ::::ffff,ffff,0000@@0000,0000,0000@
-@Router Advertisement@icmpv6.type == 134@@a0c4ff,a0c4ff,ffff@@0000,0000,0000@
-@DHCPv6@dhcpv6@@ffcc99,ffcc99,ffcc@@0000,0000,0000@
-@IPv6 Fragmented@ipv6.fraghdr@@cc66ff,cc66ff,ffff@@ffff,ffff,ffff@
-@ICMPv6 Errors@icmpv6.type <= 4@@ff0000,ff0000,ffff@@ffff,ffff,ffff@
+@IPv6 DAD@icmpv6.type == 135 && ipv6.src == ::@[65535,65535,0][0,0,0]
+@Router Advertisement@icmpv6.type == 134@[41120,50372,65535][0,0,0]
+@DHCPv6@dhcpv6@[65535,52428,39321][0,0,0]
+@IPv6 Fragmented@ipv6.fraghdr@[52428,26214,65535][65535,65535,65535]
+@ICMPv6 Errors@icmpv6.type <= 4@[65535,0,0][65535,65535,65535]
 EOF
 ```
 
@@ -118,7 +120,7 @@ For ad-hoc analysis, use **View → Colorize Conversation** to temporarily color
 3. Choose a color
 4. All packets in that IPv6 conversation are now colored
 
-Clear temporary colorization: **View → Reset Colorization** or Ctrl+Shift+`
+Clear temporary colorization: **View → Reset Colorization** or Ctrl+Space
 
 ## Using the Color Toolbar
 
