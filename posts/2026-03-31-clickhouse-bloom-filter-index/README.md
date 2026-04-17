@@ -8,7 +8,7 @@ Description: Learn how to use Bloom filter skip indexes in ClickHouse to acceler
 
 ---
 
-The Bloom filter skip index stores a probabilistic membership structure for each skip index block. When a query filters with `=` or `IN`, ClickHouse checks each block's bloom filter and skips blocks where membership is definitely false. Unlike the Set index, Bloom filter handles high-cardinality columns efficiently because its memory cost grows logarithmically, not linearly, with the number of distinct values.
+The Bloom filter skip index stores a probabilistic membership structure for each skip index block. When a query filters with `=` or `IN`, ClickHouse checks each block's bloom filter and skips blocks where membership is definitely false. Unlike the Set index, Bloom filter handles high-cardinality columns efficiently because it stores only a small fixed number of bits per distinct value (roughly 10 bits at 1% FPR) rather than each full value.
 
 ## How Bloom Filters Work
 
@@ -21,7 +21,7 @@ This produces:
 
 ## Index Variants
 
-ClickHouse provides two bloom filter index types:
+ClickHouse provides three bloom filter index types:
 
 | Index type | Works on | Description |
 |------------|----------|-------------|
@@ -50,7 +50,7 @@ ENGINE = MergeTree()
 ORDER BY (ts, user_id);
 ```
 
-`bloom_filter(false_positive_rate)` accepts a decimal between 0 and 1. Lower rates reduce false positives but require more memory.
+`bloom_filter(false_positive_rate)` accepts a decimal between 0 and 1 (default: `0.025` when omitted). Lower rates reduce false positives but require more memory.
 
 ## Queries That Benefit
 
@@ -129,7 +129,7 @@ ALTER TABLE user_actions
 | High cardinality | Excellent | Overflows |
 | Low cardinality | Works but wasteful | Ideal |
 | False positives | Tunable | None |
-| Memory overhead | Logarithmic | Linear |
+| Memory per element | ~10 bits at 1% FPR | Full stored value |
 | Supports `hasToken` | No (use tokenbf_v1) | No |
 | Supports `LIKE` | No (use ngrambf_v1) | No |
 
