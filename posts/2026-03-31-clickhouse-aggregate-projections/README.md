@@ -34,7 +34,7 @@ ALTER TABLE http_logs MATERIALIZE PROJECTION hourly_status_summary;
 
 ClickHouse's query planner automatically uses the projection when:
 1. All columns referenced in SELECT, WHERE, GROUP BY, and HAVING are present in the projection
-2. The projection's GROUP BY keys form a prefix of or exactly match the query's GROUP BY
+2. The query's GROUP BY keys are a subset of or exactly match the projection's GROUP BY keys (so ClickHouse can roll up the pre-aggregated data to answer the query)
 
 ```sql
 -- This query will use the hourly_status_summary projection automatically
@@ -96,14 +96,14 @@ Use projections for simple pre-aggregations over the same table. Use materialize
 ## Verifying Projection Use with EXPLAIN
 
 ```sql
-EXPLAIN
+EXPLAIN projections = 1
 SELECT service, count()
 FROM http_logs
 WHERE toStartOfHour(timestamp) = toStartOfHour(now())
 GROUP BY service;
 ```
 
-Look for `ReadFromProjection` in the plan output.
+Look for the projection name under the `ReadFromMergeTree` step's `Projections:` annotations in the plan output.
 
 ## Dropping an Aggregate Projection
 
