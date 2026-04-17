@@ -174,7 +174,7 @@ SELECT
         splitByChar('@', b.email)[2]
     ) AS swapped_email
 FROM ranked a
-JOIN ranked b ON a.rn = ((a.rn + 73) % a.total) + 1;
+JOIN ranked b ON b.rn = ((a.rn + 73) % a.total) + 1;
 ```
 
 The offset `73` is a coprime number relative to typical dataset sizes, ensuring every row participates in a swap.
