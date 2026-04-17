@@ -86,23 +86,30 @@ ORDER BY arpu DESC;
 Track how conversions accumulate to detect novelty effects.
 
 ```sql
+WITH daily AS (
+    SELECT
+        toDate(e.event_time) AS day,
+        a.variant,
+        countDistinct(e.user_id) AS daily_conversions
+    FROM experiment_assignments a
+    JOIN experiment_events e
+        ON a.user_id = e.user_id
+        AND a.experiment_id = e.experiment_id
+        AND e.event_type = 'purchase'
+    WHERE a.experiment_id = 'checkout_button_color'
+    GROUP BY day, a.variant
+)
 SELECT
-    toDate(e.event_time) AS day,
-    a.variant,
-    countDistinct(e.user_id) AS daily_conversions,
-    sum(countDistinct(e.user_id)) OVER (
-        PARTITION BY a.variant
-        ORDER BY toDate(e.event_time)
+    day,
+    variant,
+    daily_conversions,
+    sum(daily_conversions) OVER (
+        PARTITION BY variant
+        ORDER BY day
         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ) AS cumulative_conversions
-FROM experiment_assignments a
-JOIN experiment_events e
-    ON a.user_id = e.user_id
-    AND a.experiment_id = e.experiment_id
-    AND e.event_type = 'purchase'
-WHERE a.experiment_id = 'checkout_button_color'
-GROUP BY day, a.variant
-ORDER BY day, a.variant;
+FROM daily
+ORDER BY day, variant;
 ```
 
 ## Z-Score for Statistical Significance
