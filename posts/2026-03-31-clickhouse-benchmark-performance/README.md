@@ -23,7 +23,7 @@ echo "SELECT count() FROM events WHERE event_date >= '2025-01-01'" \
 Key flags:
 - `--iterations` - total number of query executions
 - `--concurrency` - parallel connections
-- `--delay` - seconds between iterations (default 1)
+- `--delay` - seconds between intermediate reports (default 1, set 0 to disable)
 - `--randomize` - randomize query order from input file
 
 ## Running Multiple Queries
@@ -77,7 +77,7 @@ Check insert throughput via system logs:
 
 ```sql
 SELECT
-    formatReadableSize(sum(bytes_compressed_on_disk)) AS size,
+    formatReadableSize(sum(bytes_on_disk)) AS size,
     sum(rows) AS rows,
     count() AS parts
 FROM system.parts
@@ -86,13 +86,13 @@ WHERE table = 'test_inserts' AND active = 1;
 
 ## Using the ClickHouse Performance Test Framework
 
-Run the official Star Schema Benchmark:
+Run one of the official performance tests defined as XML files under `tests/performance/`:
 
 ```bash
-# Download and run SSB
 git clone https://github.com/ClickHouse/ClickHouse.git
-cd ClickHouse/tests/performance
-python3 perf.py --run-benchmarks
+cd ClickHouse
+pip3 install clickhouse_driver scipy
+./tests/performance/scripts/perf.py --runs 3 tests/performance/insert_parallel.xml
 ```
 
 ## Comparing Before and After
