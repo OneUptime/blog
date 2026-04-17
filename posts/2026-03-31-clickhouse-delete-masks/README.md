@@ -12,7 +12,7 @@ When you execute a lightweight `DELETE` in ClickHouse, the rows are not removed 
 
 ## What Is a Delete Mask?
 
-A delete mask is a bitmap stored as a hidden file inside a data part directory. Each bit corresponds to a row in the part - a set bit means the row is logically deleted. ClickHouse applies this mask at read time to filter out deleted rows.
+A delete mask is a bitmap stored as a hidden file inside a data part directory. Each bit corresponds to a row in the part - a set bit (1) means the row still exists, and a cleared bit (0) means the row is logically deleted. ClickHouse applies this mask at read time to filter out deleted rows.
 
 The file is named `_row_exists.bin` inside the part directory.
 
