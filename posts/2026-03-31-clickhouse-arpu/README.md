@@ -48,11 +48,11 @@ ARPPU considers only users who made a payment.
 ```sql
 SELECT
     toStartOfMonth(created_at) AS month,
-    -- ARPU: divide by all MAU (join with users table)
+    -- ARPPU: revenue divided by paying users only (the user_id set in transactions)
     sum(amount) / uniq(user_id)     AS arppu,
-    -- ARPU: divide by total monthly active users
     sum(amount)                     AS revenue,
     uniq(user_id)                   AS paying_users
+    -- For true ARPU, divide `revenue` by total MAU from a users/events table
 FROM transactions
 GROUP BY month
 ORDER BY month;
