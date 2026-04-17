@@ -8,7 +8,7 @@ Description: Learn how to use Atlas schema management tool with ClickHouse for d
 
 ---
 
-Atlas is a modern schema management tool that supports a declarative approach - you define the desired schema state and Atlas computes and applies the necessary changes. ClickHouse support is available via the community provider.
+Atlas is a modern schema management tool that supports a declarative approach - you define the desired schema state and Atlas computes and applies the necessary changes. ClickHouse is natively supported by Atlas.
 
 ## Installation
 
@@ -25,27 +25,22 @@ curl -sSf https://atlasgo.sh | sh
 Atlas supports ClickHouse via its HCL schema language. Create `atlas.hcl`:
 
 ```hcl
-data "hcl_file" "schema" {
-  path = "schema.hcl"
-}
-
 env "clickhouse" {
   url = "clickhouse://default:@localhost:9000/analytics"
-  schema {
-    src = data.hcl_file.schema.content
-  }
+  src = "file://schema.hcl"
+  dev = "clickhouse://default:@localhost:9000/dev_analytics"
 }
 ```
 
 ## Defining Schema in HCL
 
 ```hcl
--- schema.hcl
+# schema.hcl
 schema "analytics" {}
 
 table "events" {
   schema = schema.analytics
-  engine = "MergeTree()"
+  engine = MergeTree
 
   column "ts" {
     type = DateTime
@@ -54,7 +49,7 @@ table "events" {
     type = String
   }
   column "event_type" {
-    type    = LowCardinality(String)
+    type    = sql("LowCardinality(String)")
     default = ""
   }
   column "value" {
@@ -64,11 +59,6 @@ table "events" {
 
   primary_key {
     columns = [column.user_id, column.ts]
-  }
-
-  index "order_by" {
-    columns = [column.user_id, column.ts]
-    type    = "ORDER BY"
   }
 }
 ```
