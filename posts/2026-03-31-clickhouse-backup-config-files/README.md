@@ -73,11 +73,10 @@ Document your storage configuration:
 SELECT
     policy_name,
     volume_name,
-    disk_name,
+    arrayJoin(disks) AS disk_name,
     max_data_part_size,
     move_factor
-FROM system.storage_policies sp
-JOIN system.disks d ON d.name = sp.volume_name
+FROM system.storage_policies
 ORDER BY policy_name, volume_name;
 ```
 
