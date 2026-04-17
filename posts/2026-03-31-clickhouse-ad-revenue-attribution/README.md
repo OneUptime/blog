@@ -46,16 +46,12 @@ SELECT
     count() AS conversions,
     sum(c.revenue) AS attributed_revenue
 FROM conversions AS c
-JOIN (
-    SELECT
-        user_id,
-        campaign_id,
-        channel,
-        event_time,
-        row_number() OVER (PARTITION BY user_id ORDER BY event_time DESC) AS rn
+ASOF JOIN (
+    SELECT user_id, campaign_id, channel, event_time
     FROM ad_touchpoints
     WHERE event_type IN ('click', 'impression')
-) AS t ON c.user_id = t.user_id AND t.event_time <= c.convert_time AND t.rn = 1
+) AS t
+    ON c.user_id = t.user_id AND c.convert_time >= t.event_time
 GROUP BY t.campaign_id, t.channel
 ORDER BY attributed_revenue DESC;
 ```
