@@ -111,7 +111,7 @@ GROUP BY event_type
 ORDER BY sampled_count DESC;
 ```
 
-## Using cityHash64 in a ReplicatedMergeTree Table Key
+## Using cityHash64 in a MergeTree Table
 
 ClickHouse tables often use hash-based sharding keys. Here is a table definition that uses `cityHash64` as the distribution key in a sharded setup.
 
@@ -144,4 +144,4 @@ SELECT
 
 ## Summary
 
-`cityHash64()` is the go-to general-purpose hash function in ClickHouse. It is fast, deterministic, and produces well-distributed 64-bit values that are well suited for sharding, routing, sampling, and deduplication. When you need consistent hashing across multiple columns, simply pass all relevant values as arguments and ClickHouse combines them into a single hash. For cryptographic use cases, prefer SHA-256 or MD5 - `cityHash64` is not designed to be collision-resistant against adversarial inputs.
+`cityHash64()` is the go-to general-purpose hash function in ClickHouse. It is fast, deterministic, and produces well-distributed 64-bit values that are well suited for sharding, routing, sampling, and deduplication. When you need consistent hashing across multiple columns, simply pass all relevant values as arguments and ClickHouse combines them into a single hash. For cryptographic use cases, prefer SHA-256 - `cityHash64` is not designed to be collision-resistant against adversarial inputs.
