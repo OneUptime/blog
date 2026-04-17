@@ -133,10 +133,10 @@ WITH new_players AS (
 )
 SELECT
     n.install_date,
-    count(DISTINCT n.player_id)                                          AS installs,
-    countIf(DISTINCT s.player_id, toDate(s.started_at) = n.install_date + 1) AS d1_retained,
-    countIf(DISTINCT s.player_id, toDate(s.started_at) = n.install_date + 7) AS d7_retained,
-    countIf(DISTINCT s.player_id, toDate(s.started_at) = n.install_date + 30) AS d30_retained
+    uniq(n.player_id)                                                    AS installs,
+    uniqIf(s.player_id, toDate(s.started_at) = n.install_date + 1)       AS d1_retained,
+    uniqIf(s.player_id, toDate(s.started_at) = n.install_date + 7)       AS d7_retained,
+    uniqIf(s.player_id, toDate(s.started_at) = n.install_date + 30)      AS d30_retained
 FROM new_players AS n
 LEFT JOIN player_sessions AS s ON n.player_id = s.player_id
 GROUP BY n.install_date
@@ -165,11 +165,11 @@ ORDER BY game_mode, win_rate_pct DESC;
 ```sql
 SELECT
     multiIf(
-        kills / nullIf(deaths, 1) < 0.5,  'Below 0.5',
-        kills / nullIf(deaths, 1) < 1.0,  '0.5 - 1.0',
-        kills / nullIf(deaths, 1) < 1.5,  '1.0 - 1.5',
-        kills / nullIf(deaths, 1) < 2.0,  '1.5 - 2.0',
-        kills / nullIf(deaths, 1) < 3.0,  '2.0 - 3.0',
+        kills / nullIf(deaths, 0) < 0.5,  'Below 0.5',
+        kills / nullIf(deaths, 0) < 1.0,  '0.5 - 1.0',
+        kills / nullIf(deaths, 0) < 1.5,  '1.0 - 1.5',
+        kills / nullIf(deaths, 0) < 2.0,  '1.5 - 2.0',
+        kills / nullIf(deaths, 0) < 3.0,  '2.0 - 3.0',
         '3.0+'
     ) AS kd_bucket,
     count()  AS player_count
@@ -206,7 +206,7 @@ SELECT
     currency,
     abs(sum(amount))             AS total_spent,
     count()                      AS transactions,
-    groupArrayTopK(3)(item_category) AS top_categories
+    topK(3)(item_category)       AS top_categories
 FROM economy_transactions
 WHERE transaction_type = 'spend'
   AND occurred_at >= toStartOfMonth(now())
@@ -227,10 +227,13 @@ WITH tutorial_steps AS (
 )
 SELECT
     step,
-    count(DISTINCT player_id) AS players_reached,
-    count(DISTINCT player_id) / max(count(DISTINCT player_id)) OVER () * 100 AS retention_pct
-FROM tutorial_steps
-GROUP BY step
+    players_reached,
+    players_reached / max(players_reached) OVER () * 100 AS retention_pct
+FROM (
+    SELECT step, uniq(player_id) AS players_reached
+    FROM tutorial_steps
+    GROUP BY step
+)
 ORDER BY step;
 ```
 
