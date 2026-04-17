@@ -33,25 +33,23 @@ Missing minutes get `events = 0`.
 
 ## Filling with a Default Value
 
-`WITH FILL` fills numeric columns with 0. To fill with the last known value (carry-forward), combine with `last_value`:
+`WITH FILL` fills numeric columns with 0 by default. To fill with the last known value (carry-forward), use the `INTERPOLATE` clause:
 
 ```sql
 SELECT
-    minute,
-    coalesce(events, last_value(events) OVER (ORDER BY minute)) AS filled_events
-FROM (
-    SELECT
-        toStartOfMinute(event_time) AS minute,
-        count() AS events
-    FROM system_logs
-    WHERE event_time >= now() - INTERVAL 1 HOUR
-    GROUP BY minute
-    ORDER BY minute WITH FILL
-        FROM toStartOfMinute(now() - INTERVAL 1 HOUR)
-        TO toStartOfMinute(now())
-        STEP INTERVAL 1 MINUTE
-);
+    toStartOfMinute(event_time) AS minute,
+    count() AS events
+FROM system_logs
+WHERE event_time >= now() - INTERVAL 1 HOUR
+GROUP BY minute
+ORDER BY minute WITH FILL
+    FROM toStartOfMinute(now() - INTERVAL 1 HOUR)
+    TO toStartOfMinute(now())
+    STEP INTERVAL 1 MINUTE
+INTERPOLATE (events AS events);
 ```
+
+Each generated row evaluates the `INTERPOLATE` expression against the previous row, so `events AS events` repeats the last known value.
 
 ## Generating a Time Spine
 
@@ -113,4 +111,4 @@ ORDER BY service, minute WITH FILL
 
 ## Summary
 
-ClickHouse fills time-series gaps using the `WITH FILL` modifier in `ORDER BY` clauses, number series joins for full time spines, and window functions for last-value-carried-forward interpolation. These patterns ensure charts and aggregations correctly represent periods with no activity rather than skipping them silently.
+ClickHouse fills time-series gaps using the `WITH FILL` modifier in `ORDER BY` clauses, number series joins for full time spines, and the `INTERPOLATE` clause for last-value-carried-forward behavior. These patterns ensure charts and aggregations correctly represent periods with no activity rather than skipping them silently.
