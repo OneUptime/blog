@@ -74,7 +74,7 @@ services:
       - SYS_MODULE
     volumes:
       # Mount your WireGuard client config
-      - ./wg0.conf:/config/wg0.conf:ro
+      - ./wg0.conf:/config/wg_confs/wg0.conf:ro
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
     restart: unless-stopped
@@ -107,7 +107,7 @@ docker run --rm --network=host --cap-add=NET_ADMIN alpine \
 
 ```bash
 # Exec into the app container and check the IP
-docker exec -it wireguard-client /bin/sh
+docker exec -it wg-client /bin/sh
 
 # Inside container: check public IP (should be VPN server's IP)
 wget -qO- https://ifconfig.me
