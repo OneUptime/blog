@@ -135,6 +135,9 @@ services:
         condition: service_completed_successfully
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
 
   # Stage 4: Load balancer (run after app is healthy)
   nginx:
