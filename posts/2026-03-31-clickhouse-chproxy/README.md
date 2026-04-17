@@ -26,7 +26,7 @@ Or run with Docker:
 ```bash
 docker run -d -p 9090:9090 \
   -v $(pwd)/config.yml:/config.yml \
-  contentsquare/chproxy /config.yml
+  contentsquareplatform/chproxy -config /config.yml
 ```
 
 ## Basic Configuration
@@ -42,9 +42,14 @@ clusters:
       - ch-node-1:8123
       - ch-node-2:8123
       - ch-node-3:8123
-    heartbeat_interval: 10s
-    death_count: 3
-    death_duration: 30s
+    heartbeat:
+      interval: 10s
+      timeout: 3s
+      request: "/ping"
+      response: "Ok.\n"
+    users:
+      - name: default
+        password: ""
 
 users:
   - name: default
@@ -109,16 +114,16 @@ Requests that exceed `max_concurrent_queries` are queued up to `max_queue_size`.
 chproxy exposes Prometheus metrics at `/metrics`:
 
 ```bash
-curl http://chproxy-host:9090/metrics | grep chproxy
+curl http://chproxy-host:9090/metrics
 ```
 
-Key metrics include `chproxy_requests_total`, `chproxy_cache_hits_total`, and `chproxy_cluster_user_queries_duration_seconds`.
+Key metrics include `request_sum_total`, `request_success_total`, `cache_hits_total`, `cache_miss_total`, `concurrent_queries`, and `proxied_response_duration_seconds`. You can configure a metric prefix via the `server.metrics.namespace` option.
 
 ## Health Check Endpoint
 
 ```bash
 curl http://chproxy-host:9090/ping
-# Returns "pong" if chproxy and at least one backend are healthy
+# Proxies to a backend ClickHouse /ping, which returns "Ok." on success
 ```
 
 ## Summary
