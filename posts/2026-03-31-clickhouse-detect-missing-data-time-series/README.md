@@ -19,15 +19,13 @@ Create a reference time series using `numbers()` and compare:
 ```sql
 WITH time_spine AS (
     SELECT
-        toStartOfMinute(
-            now() - INTERVAL (number * 60) SECOND
-        ) AS minute
+        toStartOfMinute(now() - toIntervalMinute(number)) AS minute
     FROM numbers(120)  -- last 120 minutes
 )
 SELECT
     ts.minute,
-    count(e.event_time) AS event_count,
-    IF(count(e.event_time) = 0, 'MISSING', 'OK') AS status
+    count(e.minute) AS event_count,
+    IF(count(e.minute) = 0, 'MISSING', 'OK') AS status
 FROM time_spine ts
 LEFT JOIN (
     SELECT toStartOfMinute(event_time) AS minute
@@ -55,16 +53,22 @@ ORDER BY minute DESC;
 
 ## Method 3 - Lead/Lag Gap Detection
 
-Find time gaps between consecutive events:
+Find time gaps between consecutive events using the `lagInFrame` window function:
 
 ```sql
-SELECT
-    event_time,
-    neighbor(event_time, -1) AS prev_time,
-    dateDiff('second', neighbor(event_time, -1), event_time) AS gap_seconds
-FROM events
-WHERE event_time >= now() - INTERVAL 1 HOUR
-HAVING gap_seconds > 300  -- gaps larger than 5 minutes
+SELECT event_time, prev_time, gap_seconds
+FROM (
+    SELECT
+        event_time,
+        lagInFrame(event_time) OVER (
+            ORDER BY event_time
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS prev_time,
+        dateDiff('second', prev_time, event_time) AS gap_seconds
+    FROM events
+    WHERE event_time >= now() - INTERVAL 1 HOUR
+)
+WHERE prev_time IS NOT NULL AND gap_seconds > 300  -- gaps larger than 5 minutes
 ORDER BY event_time;
 ```
 
@@ -90,23 +94,26 @@ Schedule gap detection and store results:
 
 ```sql
 INSERT INTO data_gaps
+WITH time_spine AS (
+    SELECT toStartOfMinute(now() - toIntervalMinute(number)) AS minute
+    FROM numbers(30)
+)
 SELECT
-    now()   AS check_time,
-    minute,
-    events
-FROM (
-    SELECT
-        toStartOfMinute(event_time) AS minute,
-        count() AS events
+    now()           AS check_time,
+    ts.minute       AS minute,
+    count(e.minute) AS events
+FROM time_spine ts
+LEFT JOIN (
+    SELECT toStartOfMinute(event_time) AS minute
     FROM events
     WHERE event_time >= now() - INTERVAL 30 MINUTE
-    GROUP BY minute
-    HAVING events = 0
-);
+) e ON ts.minute = e.minute
+GROUP BY ts.minute
+HAVING events = 0;
 ```
 
 Alert when `data_gaps` has rows with `check_time >= now() - INTERVAL 5 MINUTE`.
 
 ## Summary
 
-Detect missing data in ClickHouse time-series tables by generating expected time buckets with `numbers()` and LEFT JOIN against actual data, using HAVING clauses to surface underperforming windows, and comparing consecutive event timestamps with `neighbor()` to find gaps. Store gap detection results in a monitoring table and alert on persistent gaps.
+Detect missing data in ClickHouse time-series tables by generating expected time buckets with `numbers()` and LEFT JOIN against actual data, using HAVING clauses to surface underperforming windows, and comparing consecutive event timestamps with the `lagInFrame` window function to find gaps. Store gap detection results in a monitoring table and alert on persistent gaps.
