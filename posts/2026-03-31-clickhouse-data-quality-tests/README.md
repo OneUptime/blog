@@ -10,7 +10,7 @@ Description: Learn how to write SQL-based data quality tests for ClickHouse tabl
 
 ## Why Data Quality Tests for ClickHouse
 
-ClickHouse is schemaless about NULL handling and does not enforce foreign key constraints. Data quality tests are SQL assertions that run after ingestion to catch issues like unexpected nulls, duplicate primary keys, out-of-range values, and stale partitions before they affect downstream consumers.
+ClickHouse does not enforce foreign key or uniqueness constraints, and any column wrapped in `Nullable()` can accept NULLs silently. Data quality tests are SQL assertions that run after ingestion to catch issues like unexpected nulls, duplicate primary keys, out-of-range values, and stale partitions before they affect downstream consumers.
 
 ## Not-Null Assertions
 
@@ -86,7 +86,7 @@ WITH daily_counts AS (
     event_date,
     count() AS row_count
   FROM events
-  WHERE event_date >= today() - 8
+  WHERE event_date >= today() - 7
   GROUP BY event_date
 ),
 stats AS (
@@ -117,7 +117,6 @@ models:
       - name: user_id
         tests:
           - not_null
-          - unique
       - name: revenue
         tests:
           - not_null
