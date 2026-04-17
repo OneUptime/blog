@@ -31,14 +31,14 @@ ORDER BY create_time;
 
 ## Lightweight DELETEs and Concurrency
 
-Lightweight DELETEs (the `DELETE FROM` syntax) are more concurrent-friendly. Each delete is applied atomically to the relevant parts as a mask:
+Lightweight DELETEs (the `DELETE FROM` syntax) are still implemented as mutations, but they are much faster because they only mark rows as deleted via a hidden `_row_exists` mask column instead of rewriting whole parts:
 
 ```sql
 DELETE FROM events WHERE user_id = 1;
 DELETE FROM events WHERE user_id = 2;
 ```
 
-Multiple lightweight deletes can be applied concurrently to different parts without blocking each other.
+Multiple lightweight deletes still queue sequentially on the same table, but each completes much faster than a rewrite-based mutation, so the backlog drains quickly and they do not block concurrent inserts.
 
 ## Avoiding Mutation Accumulation
 
@@ -85,4 +85,4 @@ Queries filter on `deleted = 0` without needing actual deletes.
 
 ## Summary
 
-ClickHouse serializes traditional mutations per table but handles lightweight DELETEs more concurrently. Batch your delete predicates to reduce mutation count, monitor `system.mutations` to avoid queue buildup, and consider logical soft-deletes via `ReplacingMergeTree` for high-frequency removal patterns.
+ClickHouse serializes mutations per table — including lightweight DELETEs — but lightweight DELETEs drain the queue much faster because they only update a mask column instead of rewriting parts. Batch your delete predicates to reduce mutation count, monitor `system.mutations` to avoid queue buildup, and consider logical soft-deletes via `ReplacingMergeTree` for high-frequency removal patterns.
