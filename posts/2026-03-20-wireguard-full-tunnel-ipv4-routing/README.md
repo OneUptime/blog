@@ -40,16 +40,17 @@ PersistentKeepalive = 25
 
 ## Why wg-quick Handles the Default Route Specially
 
-When `AllowedIPs = 0.0.0.0/0`, `wg-quick` uses a special trick to avoid a routing loop. It adds the WireGuard server's IP as a host route via the original default gateway, then sets a fwmark-based policy route to direct all other traffic through `wg0`.
+When `AllowedIPs = 0.0.0.0/0`, `wg-quick` uses fwmark-based policy routing to avoid a routing loop. WireGuard marks its own encrypted tunnel packets with an fwmark so they bypass the `wg0` default route and exit through the real gateway instead.
 
 ```bash
 # wg-quick automatically performs these steps:
-# 1. Add a host route for the VPN server IP via the real gateway
-ip route add 203.0.113.1/32 via 192.168.1.1
+# 1. Tell WireGuard to mark its own (encrypted) packets with fwmark 51820
+wg set wg0 fwmark 51820
 
-# 2. Add a policy routing rule for WireGuard-marked packets
-ip rule add not fwmark 51820 table 51820
-ip route add default dev wg0 table 51820
+# 2. Policy-route unmarked traffic into table 51820 (which has default via wg0)
+ip -4 rule add not fwmark 51820 table 51820
+ip -4 rule add table main suppress_prefixlength 0
+ip -4 route add 0.0.0.0/0 dev wg0 table 51820
 ```
 
 You don't need to run these manually - `wg-quick up wg0` handles them automatically.
