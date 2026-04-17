@@ -28,20 +28,15 @@ echo "1
 2
 3
 4
-5" | curl 'http://localhost:8123/?query=SELECT+*+FROM+events+WHERE+user_id+IN+filter_ids' \
-  --data-binary @- \
-  --get \
-  --data-urlencode "filter_ids_format=TabSeparated" \
-  --data-urlencode "filter_ids_structure=user_id UInt64"
+5" | curl 'http://localhost:8123/?query=SELECT+*+FROM+events+WHERE+user_id+IN+filter_ids&filter_ids_format=TabSeparated&filter_ids_structure=user_id+UInt64' \
+  --data-binary @-
 ```
 
 More practical with a file:
 
 ```bash
-curl 'http://localhost:8123/?query=SELECT+count()+FROM+events+WHERE+user_id+IN+target_ids' \
-  --form 'target_ids=@/tmp/user_ids.tsv;type=text/plain' \
-  --form 'target_ids_format=TabSeparated' \
-  --form 'target_ids_structure=user_id UInt64'
+curl 'http://localhost:8123/?query=SELECT+count()+FROM+events+WHERE+user_id+IN+target_ids&target_ids_format=TabSeparated&target_ids_structure=user_id+UInt64' \
+  --form 'target_ids=@/tmp/user_ids.tsv;type=text/plain'
 ```
 
 ## Using Temporary Tables in SQL
@@ -104,7 +99,7 @@ CREATE DICTIONARY country_dict (
     region String
 )
 PRIMARY KEY country_code
-SOURCE(HTTP(URL 'https://api.example.com/countries' FORMAT CSV))
+SOURCE(HTTP(URL 'https://api.example.com/countries' FORMAT 'CSV'))
 LIFETIME(MIN 60 MAX 3600)
 LAYOUT(HASHED());
 
