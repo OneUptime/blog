@@ -20,8 +20,8 @@ Enable trace logging in `config.xml`:
 <trace_log>
     <database>system</database>
     <table>trace_log</table>
+    <partition_by>toYYYYMM(event_date)</partition_by>
     <flush_interval_milliseconds>7500</flush_interval_milliseconds>
-    <collect_interval_milliseconds>1000</collect_interval_milliseconds>
 </trace_log>
 ```
 
