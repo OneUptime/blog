@@ -73,7 +73,7 @@ FROM events
 WHERE event_type = 'purchase';
 ```
 
-The `set(100)` bloom stores up to 100 unique values per granule group. If the queried value is absent from a granule group, ClickHouse skips it.
+The `set(100)` index stores up to 100 unique values per granule group. If the queried value is absent from a granule group, ClickHouse skips it.
 
 ## Bloom Filter Indexes for String Columns
 
