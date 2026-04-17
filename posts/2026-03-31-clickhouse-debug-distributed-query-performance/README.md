@@ -15,7 +15,7 @@ Distributed query performance problems in ClickHouse typically fall into a few c
 Always begin with EXPLAIN to understand the logical plan:
 
 ```sql
-EXPLAIN PIPELINE
+EXPLAIN PLAN
 SELECT user_id, count()
 FROM dist_events
 WHERE event_date = today()
@@ -69,12 +69,12 @@ On the slow shard:
 SELECT
     table,
     name,
-    read_rows,
-    read_bytes,
+    rows,
+    bytes_on_disk,
     primary_key_bytes_in_memory
 FROM system.parts
 WHERE table = 'events' AND active
-ORDER BY read_bytes DESC
+ORDER BY bytes_on_disk DESC
 LIMIT 10;
 ```
 
