@@ -15,7 +15,7 @@ ClickHouse uses multiple internal thread pools for different tasks: query execut
 ClickHouse has separate pools for distinct workload types:
 
 - `max_thread_pool_size` - global cap on total threads
-- `background_pool_size` - threads for background merges
+- `background_pool_size` - threads for background merges and mutations
 - `background_move_pool_size` - threads for moving parts between disks
 - `background_fetches_pool_size` - threads for replication fetches
 - `background_schedule_pool_size` - threads for scheduled tasks
@@ -41,7 +41,7 @@ Background merges are critical for MergeTree performance. Increase the pool size
 <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
 ```
 
-The `concurrency_ratio` multiplies the pool size to allow more concurrent merges per thread.
+The `concurrency_ratio` multiplies the pool size to allow more concurrent merges and mutations; this works because background operations can be suspended and postponed. With `background_pool_size` set to 16 and a ratio of 2, ClickHouse can execute up to 32 background merges concurrently.
 
 ## Configure Query Execution Threads
 
@@ -61,7 +61,7 @@ Or set globally in `users.xml`:
 </profiles>
 ```
 
-For CPU-bound analytical queries, set `max_threads` equal to the number of physical CPU cores.
+By default, `max_threads` matches the number of hardware threads available to ClickHouse (on smaller x86 SMT systems with fewer than 32 cores, it defaults to the number of logical cores). Tune this per workload: raise it for CPU-bound analytical queries that benefit from parallelism, or lower it when many concurrent queries contend for CPU.
 
 ## Configure IO Threads
 
