@@ -21,17 +21,15 @@ Traffic stays within the cloud provider's backbone network, never touching the p
 
 ## Setting Up Private Endpoints on AWS
 
-### Step 1 - Enable Private Endpoint in ClickHouse Cloud
+### Step 1 - Get Private Endpoint Config from ClickHouse Cloud
 
 ```bash
-curl -X POST \
+curl -X GET \
   https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/privateEndpointConfig \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"cloudProvider": "aws", "region": "us-east-1"}'
+  --user "${KEY_ID}:${KEY_SECRET}"
 ```
 
-The response includes an `endpointServiceName` (the AWS service name to connect to).
+The response includes an `endpointServiceId` (the AWS service name to connect to, e.g. `com.amazonaws.vpce.us-east-1.vpce-svc-...`).
 
 ### Step 2 - Create VPC Endpoint in AWS
 
@@ -49,9 +47,12 @@ aws ec2 create-vpc-endpoint \
 ```bash
 curl -X PATCH \
   https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId} \
-  -H "Authorization: Bearer $CLICKHOUSE_API_KEY" \
+  --user "${KEY_ID}:${KEY_SECRET}" \
+  -H "Content-Type: application/json" \
   -d '{
-    "privateEndpointIds": ["vpce-0abc123xyz"]
+    "privateEndpointIds": {
+      "add": ["vpce-0abc123xyz"]
+    }
   }'
 ```
 
@@ -63,7 +64,8 @@ gcloud compute forwarding-rules create clickhouse-psc \
   --network=my-vpc \
   --region=us-central1 \
   --address=10.0.0.100 \
-  --target-service-attachment=projects/clickhouse-prod/regions/us-central1/serviceAttachments/my-service
+  --target-service-attachment=projects/clickhouse-prod/regions/us-central1/serviceAttachments/my-service \
+  --load-balancing-scheme=""
 ```
 
 ## Connecting via Private Endpoint
@@ -73,7 +75,7 @@ After setup, use the private hostname provided by ClickHouse Cloud (not the publ
 ```bash
 clickhouse client \
   --host privatehostname.private.clickhouse.cloud \
-  --port 8443 \
+  --port 9440 \
   --user default \
   --password "$PASSWORD" \
   --secure
