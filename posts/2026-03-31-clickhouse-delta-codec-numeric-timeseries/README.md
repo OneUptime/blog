@@ -39,8 +39,8 @@ The optional `bytes` parameter (1, 2, 4, or 8) specifies the byte width of the d
 |-------------|-------------------|
 | UInt8, Int8 | 1 |
 | UInt16, Int16 | 2 |
-| UInt32, Int32, Float32 | 4 |
-| UInt64, Int64, Float64, DateTime | 8 |
+| UInt32, Int32, Float32, DateTime | 4 |
+| UInt64, Int64, Float64, DateTime64 | 8 |
 
 ## Applying Delta to a DateTime Column
 
