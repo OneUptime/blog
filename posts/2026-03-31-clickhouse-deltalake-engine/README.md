@@ -64,10 +64,7 @@ With a named collection:
 
 ```sql
 CREATE TABLE delta_orders
-ENGINE = DeltaLake(
-    named_collection = my_s3,
-    url = 's3://my-data-lake/orders/'
-);
+ENGINE = DeltaLake(my_s3, url = 's3://my-data-lake/orders/');
 ```
 
 ClickHouse reads the `_delta_log` directory to discover the current version of the table and determine which Parquet files to read.
@@ -102,23 +99,24 @@ ORDER BY month;
 
 ## Reading a Specific Delta Lake Version (Time Travel)
 
-Delta Lake stores transaction logs in `_delta_log`. ClickHouse 24.1+ supports the `delta_lake_version` setting:
+Delta Lake stores transaction logs in `_delta_log`. ClickHouse 25.9+ supports the `delta_lake_snapshot_version` setting:
 
 ```sql
 SELECT count()
 FROM delta_orders
-SETTINGS delta_lake_version = 5;
+SETTINGS delta_lake_snapshot_version = 5;
 ```
 
 This reads the table as it existed at version 5.
 
 ## Local Delta Lake Table
 
-For local testing or on-premise storage, point the engine at a filesystem path:
+The `DeltaLake` table engine targets object storage (S3, GCS, Azure). For local testing against a Delta Lake table on the filesystem, use the `deltaLakeLocal` table function:
 
 ```sql
-CREATE TABLE local_delta_orders
-ENGINE = DeltaLake('/var/lib/clickhouse/user_files/orders/');
+SELECT *
+FROM deltaLakeLocal('/var/lib/clickhouse/user_files/orders/')
+LIMIT 10;
 ```
 
 ## Checking Table Schema
@@ -160,7 +158,7 @@ SELECT
     read_bytes,
     query_duration_ms
 FROM system.query_log
-WHERE tables LIKE '%delta_orders%'
+WHERE has(tables, 'default.delta_orders')
   AND type = 'QueryFinish'
 ORDER BY event_time DESC
 LIMIT 10;
