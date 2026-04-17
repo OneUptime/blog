@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, UDF, Aggregate Function, User-Defined Function, Analytics
 
-Description: Learn how to create aggregate user-defined functions in ClickHouse using C++ plugins and combinators to build custom aggregations beyond built-in functions.
+Description: Learn how to create aggregate user-defined functions in ClickHouse using C++ source extensions and combinators to build custom aggregations beyond built-in functions.
 
 ---
 
@@ -12,8 +12,8 @@ Description: Learn how to create aggregate user-defined functions in ClickHouse 
 
 Scalar UDFs transform individual rows. Aggregate UDFs reduce groups of rows to a single value - like `count()`, `sum()`, or `quantile()`. ClickHouse supports aggregate UDFs via:
 
-1. C++ plugins (full custom aggregate functions - requires compilation)
-2. SQL aggregate lambdas using existing aggregate function combinators
+1. C++ source extensions (full custom aggregate functions - requires modifying and rebuilding ClickHouse, since there is no dynamic plugin API)
+2. SQL function composition over existing aggregate functions and their combinators (note: `CREATE FUNCTION` itself only supports scalar lambdas)
 3. `-State`/`-Merge` patterns with `AggregatingMergeTree`
 
 ## Approach 1: SQL Aggregate Composition
