@@ -195,9 +195,9 @@ SELECT
     database,
     name,
     engine,
-    ttl_expression
+    create_table_query
 FROM system.tables
-WHERE ttl_expression != ''
+WHERE create_table_query LIKE '%TTL%'
   AND database = 'default';
 ```
 
