@@ -73,13 +73,7 @@ Create an XML config in `/etc/clickhouse-server/user_defined_functions.xml`:
 </functions>
 ```
 
-Or define via SQL in ClickHouse 22.6+:
-
-```sql
-CREATE FUNCTION classify_sentiment AS (text) -> (
-    -- This points to the executable
-);
-```
+Note that executable UDFs can only be registered via XML (or YAML) configuration files. The `CREATE FUNCTION` SQL statement is for SQL/lambda UDFs only and cannot reference an external executable.
 
 ## Using the UDF
 
