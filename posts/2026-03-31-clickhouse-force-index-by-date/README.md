@@ -146,15 +146,15 @@ Combining both settings provides strong guarantees that no query on this table w
 ## Diagnosing Why a Query Is Rejected
 
 ```sql
--- EXPLAIN shows partition pruning decisions
-EXPLAIN PLAN
+-- EXPLAIN with indexes = 1 shows partition pruning decisions
+EXPLAIN indexes = 1
 SELECT count()
 FROM events
 WHERE event_date >= today() - 7
 SETTINGS force_index_by_date = 1;
 ```
 
-Look for `Selected X out of Y parts` in the EXPLAIN output. If all partitions are selected, the date filter is not being used for pruning and `force_index_by_date` would reject the query.
+Look for `Parts: X/Y` and `Granules: A/B` in the EXPLAIN output. If all parts are selected, the date filter is not being used for pruning and `force_index_by_date` would reject the query.
 
 ```sql
 -- Check actual partition pruning in the query log
