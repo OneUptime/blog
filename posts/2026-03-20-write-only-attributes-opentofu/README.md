@@ -8,7 +8,7 @@ Description: Learn how OpenTofu's write-only attribute feature prevents sensitiv
 
 ## Introduction
 
-Even when a variable is marked `sensitive = true`, its value is still stored in the OpenTofu state file in plaintext. Write-only attributes (introduced in OpenTofu 1.10) solve this: they are sent to the provider on creation/update but never stored in state, eliminating the risk of credential exposure through a compromised state file.
+Even when a variable is marked `sensitive = true`, its value is still stored in the OpenTofu state file in plaintext. Write-only attributes (introduced in OpenTofu 1.11) solve this: they are sent to the provider on creation/update but never stored in state, eliminating the risk of credential exposure through a compromised state file.
 
 ## Understanding Write-Only vs Sensitive
 
@@ -21,18 +21,9 @@ Even when a variable is marked `sensitive = true`, its value is still stored in 
 
 ## Using Write-Only Attributes
 
-Write-only attributes are defined by the provider, not by you. You simply assign them as you would any attribute - the provider handles them specially:
+Write-only attributes are defined by the provider, typically as a separate argument with a `_wo` suffix that is paired with a `_wo_version` argument used to trigger updates:
 
 ```hcl
-# Example: creating an IAM user login profile
-
-# The password attribute is write-only in the AWS provider
-resource "aws_iam_user_login_profile" "ops" {
-  user                    = aws_iam_user.ops.name
-  # This value is sent to AWS but NEVER stored in state
-  password_reset_required = true
-}
-
 # Example: setting a database password as write-only
 resource "aws_db_instance" "main" {
   identifier        = "prod-postgres"
@@ -41,16 +32,17 @@ resource "aws_db_instance" "main" {
   allocated_storage = 20
 
   username = "admin"
-  # In AWS provider v5.x+, password is a write-only attribute
-  password = var.db_password   # var must be sensitive = true
+  # In AWS provider v5.88+, password_wo is the write-only counterpart to password
+  password_wo         = var.db_password   # var must be sensitive = true
+  password_wo_version = 1                 # bump this to rotate the password
 
   skip_final_snapshot = false
 }
 ```
 
-## Ephemeral Resources (OpenTofu 1.10+)
+## Ephemeral Resources (OpenTofu 1.11+)
 
-Ephemeral resources fetch values that are used during the apply but never written to state:
+Ephemeral resources fetch values that are used during the apply but never written to state. Their values can only be passed into write-only arguments:
 
 ```hcl
 # An ephemeral resource provides values only during apply - not stored in state
@@ -60,8 +52,9 @@ ephemeral "aws_secretsmanager_secret_version" "db_pass" {
 
 resource "aws_db_instance" "main" {
   username = "admin"
-  # Reference the ephemeral value - never stored in state
-  password = ephemeral.aws_secretsmanager_secret_version.db_pass.secret_string
+  # Ephemeral values can only be assigned to write-only arguments
+  password_wo         = ephemeral.aws_secretsmanager_secret_version.db_pass.secret_string
+  password_wo_version = 1
 }
 ```
 
@@ -85,24 +78,22 @@ variable "db_password" {
 
 resource "aws_db_instance" "main" {
   username = "admin"
-  # If the provider supports write-only for password, it won't appear in state
-  password = var.db_password
+  # password_wo is the write-only argument - it will not appear in state
+  password_wo         = var.db_password
+  password_wo_version = 1
 }
 ```
 
-## Lifecycle: Handling Write-Only on Updates
+## Handling Updates to Write-Only Values
 
-Because write-only values are not stored in state, OpenTofu cannot detect changes to them automatically. Use `lifecycle.replace_triggered_by` if you need to force replacement when the password changes:
+Because write-only values are not stored in state, OpenTofu cannot detect changes to them automatically. The convention is to pair the write-only argument with a companion `*_wo_version` argument - increment it to signal the provider to apply the new value:
 
 ```hcl
 resource "aws_db_instance" "main" {
-  username = "admin"
-  password = var.db_password
-
-  lifecycle {
-    # If the password variable changes, recreate the resource
-    replace_triggered_by = [var.db_password]
-  }
+  username            = "admin"
+  password_wo         = var.db_password
+  # Bump this value to trigger a password update on the next apply
+  password_wo_version = 2
 }
 ```
 
