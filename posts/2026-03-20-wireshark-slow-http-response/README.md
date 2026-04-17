@@ -78,7 +78,7 @@ After capturing, analyze the TCP stream:
 1. Right-click any HTTP packet → Follow → TCP Stream
    Shows full HTTP conversation in text
 
-2. Statistics → TCP Stream Graphs → Time-Sequence (Stevens)
+2. Statistics → TCP Stream Graphs → Time Sequence (Stevens)
    - X axis: time, Y axis: sequence number
    - Steep slope = fast transfer
    - Flat line = waiting (server processing, window full, or network congestion)
@@ -130,7 +130,7 @@ In Wireshark, look for red/yellow rows:
 [TCP ACKed Unseen Segment] → Gaps in sequence numbers
 
 Filter for problems:
-tcp.analysis.retransmission or tcp.analysis.window_full or tcp.window_size == 0
+tcp.analysis.retransmission or tcp.analysis.window_full or tcp.analysis.zero_window
 ```
 
 ## Step 7: Generate HTTP Statistics Report
@@ -144,8 +144,11 @@ Statistics → HTTP → Request Sequences
 Statistics → HTTP → Packet Counter
 → Request/response counts by method and code
 
-Statistics → Service Response Time → HTTP
-→ Distribution of response times
+Statistics → HTTP → Requests
+→ Per-URL request statistics
+
+Statistics → HTTP → Load Distribution
+→ Request distribution across HTTP hosts and servers
 
 Statistics → IO Graphs
 → Add filter: http.response and http.time > 1.0
@@ -175,4 +178,4 @@ grep "slow-endpoint" /var/log/apache2/access.log | \
 
 ## Conclusion
 
-Wireshark diagnoses slow HTTP responses by showing exactly where time is spent: TCP handshake (network RTT), TTFB (server processing), and transfer speed (bandwidth/TCP window). Use `Statistics → TCP Stream Graphs → Time-Sequence` to visualize flat lines indicating wait periods. If the flat line occurs before the server responds, it's server-side; if it occurs during transfer, it's bandwidth or TCP window related. Filter `http.time > 1.0` to quickly identify slow responses in large captures.
+Wireshark diagnoses slow HTTP responses by showing exactly where time is spent: TCP handshake (network RTT), TTFB (server processing), and transfer speed (bandwidth/TCP window). Use `Statistics → TCP Stream Graphs → Time Sequence` to visualize flat lines indicating wait periods. If the flat line occurs before the server responds, it's server-side; if it occurs during transfer, it's bandwidth or TCP window related. Filter `http.time > 1.0` to quickly identify slow responses in large captures.
