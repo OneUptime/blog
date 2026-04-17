@@ -39,12 +39,12 @@ ALTER TABLE events
             toDate(event_time) AS event_date,
             event_type,
             count() AS cnt,
-            uniqState(user_id) AS unique_users
+            uniq(user_id) AS unique_users
         GROUP BY event_date, event_type
     );
 ```
 
-Aggregate projections use `-State` aggregate combinators. When ClickHouse reads from this projection, it uses the corresponding `-Merge` functions to produce the final result.
+Use regular aggregate functions like `count()` and `uniq()` in the projection definition. ClickHouse stores the aggregation state internally and merges it transparently when the projection is read, so you do not need to write `-State` or `-Merge` combinators yourself.
 
 ## Materializing a Projection
 
@@ -76,8 +76,8 @@ After materialization, confirm the projection exists in `system.projection_parts
 ```sql
 SELECT
     table,
-    name,
-    projection_name,
+    parent_name,
+    name AS projection_name,
     rows,
     bytes_on_disk
 FROM system.projection_parts
