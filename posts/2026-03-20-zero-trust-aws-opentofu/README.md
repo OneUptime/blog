@@ -20,49 +20,43 @@ resource "aws_verifiedaccess_instance" "zero_trust" {
 }
 
 resource "aws_verifiedaccess_trust_provider" "oidc" {
-  trust_provider_type  = "user"
-  user_trust_provider_type = "iam-identity-center"
-  description          = "AWS IAM Identity Center trust provider"
+  trust_provider_type      = "user"
+  user_trust_provider_type = "oidc"
+  policy_reference_name    = "oidc"
+  description              = "OIDC user trust provider"
 
   oidc_options {
-    scope                 = "openid email profile"
-    issuer                = "https://oidc.example.com"
+    scope                  = "openid email profile"
+    issuer                 = "https://oidc.example.com"
     authorization_endpoint = "https://oidc.example.com/oauth2/authorize"
-    token_endpoint        = "https://oidc.example.com/oauth2/token"
-    user_info_endpoint    = "https://oidc.example.com/userinfo"
-    client_id             = var.oidc_client_id
-    client_secret         = var.oidc_client_secret
+    token_endpoint         = "https://oidc.example.com/oauth2/token"
+    user_info_endpoint     = "https://oidc.example.com/userinfo"
+    client_id              = var.oidc_client_id
+    client_secret          = var.oidc_client_secret
   }
 }
 
-# Verified Access Group with policy
+# Verified Access Group with Cedar policy
 resource "aws_verifiedaccess_group" "engineering" {
   verifiedaccess_instance_id = aws_verifiedaccess_instance.zero_trust.id
 
-  policy_document = jsonencode({
-    Version = "2018-02-01"
-    Statement = [{
-      Action = "allow"
-      Principal = {
-        Groups = ["engineering"]
-      }
-      Condition = {
-        Operator = "ForAnyValue:StringEquals"
-        Key      = "context.attributes.groups"
-        Value    = ["engineering", "platform"]
-      }
-    }]
-  })
+  policy_document = <<-EOT
+    permit(principal, action, resource)
+    when {
+      context.oidc.groups.contains("engineering")
+      || context.oidc.groups.contains("platform")
+    };
+  EOT
 }
 
 # Verified Access Endpoint for internal application
 resource "aws_verifiedaccess_endpoint" "internal_app" {
-  application_domain     = "internal-app.example.com"
-  attachment_type        = "vpc"
-  domain_certificate_arn = aws_acm_certificate.internal.arn
-  endpoint_domain_prefix = "internal-app"
-  endpoint_type          = "load-balancer"
-  verifiedaccess_group_id = aws_verifiedaccess_group.engineering.id
+  application_domain       = "internal-app.example.com"
+  attachment_type          = "vpc"
+  domain_certificate_arn   = aws_acm_certificate.internal.arn
+  endpoint_domain_prefix   = "internal-app"
+  endpoint_type            = "load-balancer"
+  verified_access_group_id = aws_verifiedaccess_group.engineering.id
 
   load_balancer_options {
     load_balancer_arn = aws_lb.internal_app.arn
