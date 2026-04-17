@@ -121,17 +121,17 @@ WITH
 SELECT
     value,
     bitAnd(bitShiftRight(value, lo), toUInt32(bitShiftLeft(toUInt32(1), width) - 1)) AS extracted_bits;
--- result: bits [4..6] = 0b101 = 5
+-- result: bits [4..6] = 0b010 = 2
 ```
 
 ## Checking Even or Odd with bitShiftRight
 
-The lowest bit of any integer determines whether it is odd. `bitShiftRight(x, 1)` discards that bit; comparing back shows whether the original was odd.
+The lowest bit of any integer determines whether it is odd. `bitShiftRight(x, 1)` discards that bit; shifting back left and comparing to the original shows whether the low bit was set.
 
 ```sql
 SELECT
     number,
-    if(bitAnd(toUInt64(number), 1) = 0, 'even', 'odd') AS parity
+    if(bitShiftLeft(bitShiftRight(toUInt64(number), 1), 1) = toUInt64(number), 'even', 'odd') AS parity
 FROM numbers(10);
 ```
 
