@@ -16,17 +16,17 @@ Cap'n Proto was designed by one of the original Protocol Buffers authors. Its ke
 
 ## Schema Requirement
 
-Unlike CSV or JSON, Cap'n Proto requires a schema file. You must define the schema and provide it to ClickHouse:
+Unlike CSV or JSON, Cap'n Proto requires a schema file. You must define the schema and provide it to ClickHouse. Field names must match the ClickHouse column names exactly:
 
 ```text
 # events.capnp
 @0xb5d4f3b2a1e8c7d6;
 
 struct Event {
-  eventId @0 :UInt64;
-  eventType @1 :Text;
+  event_id @0 :UInt64;
+  event_type @1 :Text;
   ts @2 :UInt32;
-  userId @3 :UInt32;
+  user_id @3 :UInt32;
   value @4 :Float64;
 }
 ```
