@@ -16,7 +16,7 @@ Before creating a Distributed table, define the cluster in `config.xml` or a `co
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/clusters.xml -->
-<yandex>
+<clickhouse>
   <remote_servers>
     <analytics_cluster>
       <shard>
@@ -41,7 +41,7 @@ Before creating a Distributed table, define the cluster in `config.xml` or a `co
       </shard>
     </analytics_cluster>
   </remote_servers>
-</yandex>
+</clickhouse>
 ```
 
 ## Creating the Local Table on Each Shard
@@ -215,12 +215,14 @@ LIMIT 10;
 ## Monitoring the Distributed Table
 
 ```sql
--- Check pending rows waiting to be flushed to shards
+-- Check pending data files waiting to be flushed to shards
 SELECT
     database,
     table,
-    bytes_on_disk,
-    rows_on_disk
+    data_files,
+    data_compressed_bytes,
+    error_count,
+    last_exception
 FROM system.distribution_queue
 WHERE database = 'default'
   AND table = 'events_distributed';
