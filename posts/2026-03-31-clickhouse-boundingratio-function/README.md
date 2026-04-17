@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, boundingRatio, Slope
 
-Description: Compute a slope approximation for any (x, y) dataset using boundingRatio() in ClickHouse, which returns (max_y - min_y) / (max_x - min_x) over a group.
+Description: Compute a slope approximation for any (x, y) dataset using boundingRatio() in ClickHouse, which returns the slope of the line between the leftmost (min x) and rightmost (max x) points in a group.
 
 ---
 
-Sometimes you do not need a full linear regression - you just need to know whether a metric is trending up or down, and how steeply. ClickHouse's `boundingRatio()` function gives you that in a single aggregate: it computes `(max(y) - min(y)) / (max(x) - min(x))` over a group, effectively the slope of the bounding box around the data. It is fast, simple, and useful for detecting trends in time-series and scatter data without the overhead of `simpleLinearRegression`.
+Sometimes you do not need a full linear regression - you just need to know whether a metric is trending up or down, and how steeply. ClickHouse's `boundingRatio()` function gives you that in a single aggregate: it computes the slope of the line connecting the leftmost (minimum x) and rightmost (maximum x) points in a group - `(y_at_max_x - y_at_min_x) / (max(x) - min(x))`. It is fast, simple, and useful for detecting trends in time-series and scatter data without the overhead of `simpleLinearRegression`.
 
 ## Syntax
 
@@ -19,7 +19,7 @@ boundingRatio(x, y)
 - `x` - the independent variable (commonly a Unix timestamp).
 - `y` - the dependent variable (the metric to measure).
 
-Returns `Float64`. A positive value means `y` is generally increasing as `x` grows; a negative value means decreasing. Returns `nan` if `max(x) = min(x)` (all x values are the same).
+Returns `Float64`. A positive value means `y` at max(x) is greater than `y` at min(x) (overall increasing); a negative value means the reverse. Returns `nan` if `max(x) = min(x)` (all x values are the same), and `nan` if the input is empty.
 
 ## Basic Example
 
@@ -70,23 +70,20 @@ ORDER BY service;
 ```text
 service | error_slope
 --------|------------
-auth    | 0.00417
-payment | -0.00556
+auth    | 0.00139
+payment | -0.00185
 ```
 
 The `auth` service has a positive slope (errors increasing); `payment` has a negative slope (errors decreasing). The magnitude in errors-per-second is small because x is in Unix timestamp seconds.
 
 ## Normalizing to Errors per Hour
 
-Divide the slope by 3600 to express it as change per hour, or use relative x values:
+Multiply the slope by 3600 to express it as change per hour, or use relative x values:
 
 ```sql
 SELECT
     service,
-    boundingRatio(
-        (toUnixTimestamp(hour) - toUnixTimestamp(min(hour) OVER (PARTITION BY service))) / 3600.0,
-        errors
-    ) AS errors_per_hour_slope
+    boundingRatio(toUnixTimestamp(hour), errors) * 3600 AS errors_per_hour_slope
 FROM error_counts
 GROUP BY service;
 ```
@@ -141,7 +138,7 @@ FROM error_counts
 GROUP BY service;
 ```
 
-`simpleLinearRegression` fits the best line through all points (least squares). `boundingRatio` uses only the min and max x/y values of the bounding box - it is an approximation but runs faster and works well when the data is roughly monotonic.
+`simpleLinearRegression` fits the best line through all points (least squares). `boundingRatio` uses only two points - the y values at min(x) and max(x) - so it is an approximation but runs with minimal state and works well when the data is roughly monotonic.
 
 ## Rolling Trend Windows
 
@@ -176,4 +173,4 @@ GROUP BY service;
 
 ## Summary
 
-`boundingRatio(x, y)` computes `(max_y - min_y) / (max_x - min_x)` - the slope of the axis-aligned bounding box around the data. It is a fast, zero-configuration trend indicator that works well for monotonic or near-monotonic series. Use it to classify metrics as growing or declining, compare trend directions across groups, or feed rolling-window slope values into alerting logic. For non-monotonic data where outliers would dominate, prefer `simpleLinearRegression` instead.
+`boundingRatio(x, y)` computes the slope of the line connecting the leftmost (minimum x) and rightmost (maximum x) points in a group - `(y_at_max_x - y_at_min_x) / (max(x) - min(x))`. It is a fast, zero-configuration trend indicator that works well for monotonic or near-monotonic series. Use it to classify metrics as growing or declining, compare trend directions across groups, or feed rolling-window slope values into alerting logic. For non-monotonic data where intermediate variations matter, prefer `simpleLinearRegression` instead.
