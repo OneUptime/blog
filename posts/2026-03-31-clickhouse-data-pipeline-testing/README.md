@@ -78,7 +78,7 @@ Alert if any day falls more than 20% below the 7-day average.
 
 ## Integration Test with Docker
 
-Spin up ClickHouse in CI using Docker Compose:
+Spin up ClickHouse in CI using Docker:
 
 ```bash
 docker run -d \
