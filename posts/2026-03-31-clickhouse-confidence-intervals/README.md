@@ -26,7 +26,7 @@ FROM request_logs
 WHERE toDate(created_at) = today();
 ```
 
-Note: ClickHouse allows referencing aliases defined earlier in the same SELECT using the `mean` and `std_error` aliases only if you use a WITH clause.
+Note: ClickHouse allows referencing aliases defined earlier in the same SELECT, so the `mean` and `std_error` aliases can be reused in subsequent expressions without a WITH clause.
 
 ## Using a WITH Clause for Clarity
 
@@ -89,10 +89,10 @@ ClickHouse's `proportionsZTest` also returns confidence interval bounds directly
 SELECT
     (proportionsZTest(
         countIf(converted AND variant = 'A'),
-        countIf(variant = 'A'),
         countIf(converted AND variant = 'B'),
+        countIf(variant = 'A'),
         countIf(variant = 'B'),
-        0.95, 'two-sided'
+        0.95, 'unpooled'
     ) AS res).3 AS ci_lower,
     res.4 AS ci_upper
 FROM ab_test_events;
