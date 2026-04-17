@@ -30,26 +30,20 @@ mongodump \
   --out=/tmp/mongo_dump
 ```
 
-This creates `/tmp/mongo_dump/myapp/orders.bson`.
-
-Alternatively, use `mongoexport` with BSON output (note: `mongoexport` defaults to JSON; use `bsondump` to convert):
-
-```bash
-bsondump /tmp/mongo_dump/myapp/orders.bson > /tmp/orders_bson_stream.bson
-```
+This creates `/tmp/mongo_dump/myapp/orders.bson`. The file is already a stream of concatenated BSON documents — exactly the format `BSONEachRow` expects — so it can be fed to ClickHouse directly without conversion.
 
 ## Reading BSON in ClickHouse
 
 ```sql
 SELECT *
-FROM file('/tmp/orders_bson_stream.bson', BSONEachRow)
+FROM file('/tmp/mongo_dump/myapp/orders.bson', BSONEachRow)
 LIMIT 10;
 ```
 
 Inspect the inferred schema:
 
 ```sql
-DESCRIBE file('/tmp/orders_bson_stream.bson', BSONEachRow);
+DESCRIBE file('/tmp/mongo_dump/myapp/orders.bson', BSONEachRow);
 ```
 
 ## Creating a Table and Loading BSON Data
@@ -69,7 +63,7 @@ ORDER BY (created_at, customer_id);
 
 INSERT INTO orders
 SELECT *
-FROM file('/tmp/orders_bson_stream.bson', BSONEachRow);
+FROM file('/tmp/mongo_dump/myapp/orders.bson', BSONEachRow);
 ```
 
 ## BSON to ClickHouse Type Mapping
@@ -80,29 +74,32 @@ FROM file('/tmp/orders_bson_stream.bson', BSONEachRow);
 | String | String |
 | Document (embedded) | String (JSON) or Map |
 | Array | Array(T) or String |
-| Binary | String |
+| Binary | String / FixedString / IPv6 |
 | ObjectId | FixedString(12) or String |
-| Boolean | UInt8 |
-| Date (UTC datetime) | DateTime64(3) |
+| Boolean | Bool |
+| Date (UTC datetime) | DateTime64 |
 | Null | Nullable(T) |
-| Int32 | Int32 |
-| Int64 | Int64 |
-| Decimal128 | Decimal(38, 10) |
+| Int32 | Int32 / UInt32 / Decimal32 / IPv4 / Enum8 / Enum16 |
+| Int64 | Int64 / UInt64 / Decimal64 / DateTime64 |
+
+Big integers and decimals such as `Int128`/`UInt128`/`Int256`/`UInt256`/`Decimal128`/`Decimal256` can be parsed from BSON Binary values rather than from a dedicated BSON Decimal128 (`\x13`) type.
 
 ## Handling ObjectId
 
-MongoDB ObjectIds are 12-byte binary values. When reading BSON, ClickHouse represents them as hex strings. Map them to `String` or `FixedString(24)`:
+MongoDB ObjectIds are 12-byte binary values. ClickHouse reads them as the raw 12 bytes, so map them to `FixedString(12)` (or `String`). Use `hex()` at query time when you need the familiar 24-character hex representation:
 
 ```sql
 CREATE TABLE mongo_users
 (
-    _id    FixedString(24), -- 24 hex characters = 12 bytes
+    _id    FixedString(12), -- 12 raw bytes
     name   String,
     email  String,
     age    UInt8
 )
 ENGINE = MergeTree()
 ORDER BY _id;
+
+SELECT hex(_id) AS object_id_hex, name FROM mongo_users LIMIT 5;
 ```
 
 ## Writing BSON from ClickHouse
@@ -132,13 +129,13 @@ BSON documents can contain nested documents (subdocuments). ClickHouse can map t
 2. **Map(String, String)** - flattens one level of nesting
 3. **Tuple** - maps to a fixed-schema nested structure
 
-Enable object reading as strings:
+If schema inference encounters BSON types ClickHouse cannot map, allow it to skip those columns instead of failing:
 
 ```sql
 SET input_format_bson_skip_fields_with_unsupported_types_in_schema_inference = 1;
 ```
 
-Then extract nested fields using JSON functions:
+When you have already declared a nested column as `String` in your `CREATE TABLE`, you can extract fields from it at query time using JSON functions (assuming the document was inserted as JSON):
 
 ```sql
 SELECT
@@ -158,14 +155,10 @@ mongodump --uri="mongodb://localhost:27017" \
   --db=ecommerce --collection=orders \
   --out=/tmp/dump
 
-# Step 2: Convert to a BSON stream
-bsondump /tmp/dump/ecommerce/orders.bson \
-  --outFile=/tmp/orders.bson
-
-# Step 3: Load into ClickHouse
+# Step 2: Load the resulting .bson stream into ClickHouse
 clickhouse-client \
   --query "INSERT INTO orders FORMAT BSONEachRow" \
-  < /tmp/orders.bson
+  < /tmp/dump/ecommerce/orders.bson
 ```
 
 ## Performance Tips
