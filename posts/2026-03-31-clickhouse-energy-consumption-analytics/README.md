@@ -59,17 +59,20 @@ WITH hourly AS (
     WHERE recorded_at >= now() - INTERVAL 7 DAY
     GROUP BY site_id, hour
 )
-SELECT
-    site_id,
-    hour,
-    kwh,
-    avg(kwh) OVER (
-        PARTITION BY site_id
-        ORDER BY hour
-        ROWS BETWEEN 23 PRECEDING AND CURRENT ROW
-    ) AS rolling_avg,
-    kwh / rolling_avg AS spike_ratio
-FROM hourly
+SELECT *
+FROM (
+    SELECT
+        site_id,
+        hour,
+        kwh,
+        avg(kwh) OVER (
+            PARTITION BY site_id
+            ORDER BY hour
+            ROWS BETWEEN 23 PRECEDING AND CURRENT ROW
+        ) AS rolling_avg,
+        kwh / rolling_avg AS spike_ratio
+    FROM hourly
+)
 WHERE spike_ratio > 2.0
 ORDER BY spike_ratio DESC;
 ```
@@ -111,11 +114,11 @@ CREATE TABLE energy_daily_summary
 (
     site_id    UInt32,
     day        Date,
-    total_kwh  Float64,
-    total_cost Float32,
-    peak_kwh   Float64
+    total_kwh  SimpleAggregateFunction(sum, Float64),
+    total_cost SimpleAggregateFunction(sum, Float32),
+    peak_kwh   SimpleAggregateFunction(max, Float64)
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (site_id, day);
 
 CREATE MATERIALIZED VIEW energy_daily_mv TO energy_daily_summary AS
