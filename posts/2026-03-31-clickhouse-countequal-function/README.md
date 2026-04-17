@@ -129,7 +129,8 @@ SELECT
 FROM user_sessions
 WHERE session_date = today()
   AND length(status_codes) > 5
-HAVING error_rate_pct > 10
+  AND (countEqual(status_codes, 500) + countEqual(status_codes, 404))
+      / length(status_codes) * 100 > 10
 ORDER BY error_rate_pct DESC;
 ```
 
