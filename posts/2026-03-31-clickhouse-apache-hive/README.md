@@ -79,16 +79,17 @@ MSCK REPAIR TABLE analytics.user_events;
 
 ## Configuring ClickHouse to Connect to Hive
 
-Add Hive Metastore settings to the ClickHouse configuration.
+The Hive Metastore address is provided directly in the `CREATE TABLE` statement (see the next section). To speed up repeated reads of HDFS files, enable the local cache for remote filesystems in the ClickHouse server configuration.
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/hive.xml -->
 <clickhouse>
-    <hive>
-        <metastore_host>hive-metastore.example.com</metastore_host>
-        <metastore_port>9083</metastore_port>
-        <max_threads>8</max_threads>
-    </hive>
+    <local_cache_for_remote_fs>
+        <enable>true</enable>
+        <root_dir>local_cache</root_dir>
+        <limit_size>559096952</limit_size>
+        <bytes_read_before_flush>1048576</bytes_read_before_flush>
+    </local_cache_for_remote_fs>
 </clickhouse>
 ```
 
@@ -97,8 +98,19 @@ Add Hive Metastore settings to the ClickHouse configuration.
 Register the Hive table in ClickHouse for direct querying.
 
 ```sql
--- Create a ClickHouse table backed by the Hive table
+-- Create a ClickHouse table backed by the Hive table.
+-- Column names and types must match the Hive table schema.
 CREATE TABLE hive_user_events
+(
+    `event_id`       String,
+    `user_id`        Int64,
+    `event_type`     String,
+    `page`           String,
+    `revenue`        Float64,
+    `ts`             DateTime,
+    `dt`             String,
+    `event_category` String
+)
 ENGINE = Hive(
     'thrift://hive-metastore.example.com:9083',
     'analytics',
@@ -106,7 +118,7 @@ ENGINE = Hive(
 )
 PARTITION BY (dt, event_category);
 
--- Verify the schema was imported correctly
+-- Verify the schema
 DESCRIBE TABLE hive_user_events;
 ```
 
@@ -242,7 +254,7 @@ SELECT
     dt,
     event_category
 FROM hive_user_events
-WHERE dt = toYYYYMMDD(yesterday());
+WHERE dt = toString(yesterday());
 ```
 
 ## Scheduling Daily Syncs
