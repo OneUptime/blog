@@ -112,8 +112,8 @@ It is common to add sentinel or boundary values at the edges of an array before 
 SELECT arrayPopFront(
     arrayDifference(arrayPushFront([10, 25, 40, 55], 0))
 ) AS deltas;
--- arrayDifference with leading 0: [0, 10, 15, 15]
--- After popFront to remove leading 0: [10, 15, 15]
+-- arrayDifference with leading 0: [0, 10, 15, 15, 15]
+-- After popFront to remove leading 0: [10, 15, 15, 15]
 ```
 
 ## Comparing Pop with arraySlice
