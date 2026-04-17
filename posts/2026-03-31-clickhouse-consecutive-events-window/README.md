@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Window Function, SQL, Analytics, Lag, Streak Detection
 
-Description: Detect consecutive event sequences like login streaks or error runs using LAG() for gap detection and ROW_NUMBER() minus a group counter to isolate streaks.
+Description: Detect consecutive event sequences like login streaks or error runs using LAG() for gap detection and a cumulative SUM() of gap flags to isolate streaks.
 
 ---
 
-Detecting streaks, runs, and consecutive sequences is a classic analytics challenge. You want to know things like: which users logged in for five days in a row, or how many consecutive errors occurred before a service recovered. ClickHouse window functions - specifically `lag()` and `row_number()` - provide the building blocks for this pattern without needing recursive CTEs or procedural code.
+Detecting streaks, runs, and consecutive sequences is a classic analytics challenge. You want to know things like: which users logged in for five days in a row, or how many consecutive errors occurred before a service recovered. ClickHouse window functions - specifically `lag()` and a cumulative `sum()` - provide the building blocks for this pattern without needing recursive CTEs or procedural code.
 
 ## The Core Technique: Islands and Gaps
 
@@ -16,7 +16,7 @@ The standard approach is called the "islands and gaps" technique. The idea is:
 
 1. Use `lag()` to detect when a sequence breaks (a gap).
 2. Create a group identifier that increments each time a gap occurs.
-3. Use `row_number() - dense_rank()` or a cumulative sum of gap flags to assign each consecutive run a unique group number.
+3. Use a cumulative sum of gap flags to assign each consecutive run a unique group number.
 4. Aggregate by the group to measure streak length.
 
 ```text
