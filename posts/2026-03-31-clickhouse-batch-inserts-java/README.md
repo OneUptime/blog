@@ -91,7 +91,7 @@ try (ClickHouseClient client = ClickHouseClient.newInstance();
          .format(ClickHouseFormat.RowBinary)
          .data(out -> {
              for (Event e : events) {
-                 out.writeLong(e.getUserId());
+                 BinaryStreamUtils.writeInt64(out, e.getUserId());
                  out.writeAsciiString(e.getName());
              }
          })
