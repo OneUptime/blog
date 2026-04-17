@@ -17,10 +17,10 @@ convertCharset(str, from_encoding, to_encoding)
 ```
 
 - `str` - the raw bytes of the string, stored as a ClickHouse `String` type
-- `from_encoding` - the IANA or iconv encoding name of the source bytes (e.g., `'latin1'`, `'windows-1252'`)
+- `from_encoding` - the ICU encoding name of the source bytes (e.g., `'latin1'`, `'windows-1252'`)
 - `to_encoding` - the target encoding (almost always `'utf-8'` for ClickHouse storage)
 
-The function uses the iconv library internally, so any encoding name accepted by iconv is valid.
+The function uses the ICU (International Components for Unicode) library internally, so any encoding name accepted by ICU is valid.
 
 ## Basic Conversion from Latin-1 to UTF-8
 
@@ -91,7 +91,7 @@ LIMIT 20;
 
 ## Converting Between Non-UTF-8 Encodings
 
-`convertCharset()` is not limited to UTF-8 as the target. You can convert between any pair of iconv-supported encodings.
+`convertCharset()` is not limited to UTF-8 as the target. You can convert between any pair of ICU-supported encodings.
 
 ```sql
 -- Convert from Shift-JIS (common in older Japanese systems) to UTF-8
@@ -130,7 +130,7 @@ LIMIT 5;
 
 ## Handling Conversion Errors
 
-If the source bytes are not valid in the declared encoding, iconv may produce replacement characters or raise an error depending on the iconv flags in use. A safe approach is to sanitize bytes before conversion or use `toValidUTF8()` on the result.
+If the source bytes are not valid in the declared encoding, ICU may produce replacement characters or raise an error depending on the converter's callback configuration. A safe approach is to sanitize bytes before conversion or use `toValidUTF8()` on the result.
 
 ```sql
 -- Apply toValidUTF8 as a safety net after conversion
@@ -144,4 +144,4 @@ LIMIT 10;
 
 ## Summary
 
-`convertCharset()` is an essential function when ingesting legacy or third-party data into ClickHouse. It leverages the iconv library to support a wide range of source encodings and produces valid UTF-8 output suitable for ClickHouse's internal string handling. Pair it with `toValidUTF8()` as a defensive measure against malformed input, and use it inside `INSERT ... SELECT` statements to migrate entire tables in a single operation.
+`convertCharset()` is an essential function when ingesting legacy or third-party data into ClickHouse. It leverages the ICU library to support a wide range of source encodings and produces valid UTF-8 output suitable for ClickHouse's internal string handling. Pair it with `toValidUTF8()` as a defensive measure against malformed input, and use it inside `INSERT ... SELECT` statements to migrate entire tables in a single operation.
