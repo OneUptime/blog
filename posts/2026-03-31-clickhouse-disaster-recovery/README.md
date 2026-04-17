@@ -115,7 +115,11 @@ aws s3api put-bucket-replication \
 {
   "Role": "arn:aws:iam::123456789012:role/s3-replication-role",
   "Rules": [{
+    "ID": "ReplicateAll",
     "Status": "Enabled",
+    "Priority": 1,
+    "Filter": {},
+    "DeleteMarkerReplication": { "Status": "Disabled" },
     "Destination": {
       "Bucket": "arn:aws:s3:::my-clickhouse-backups-dr",
       "StorageClass": "STANDARD_IA"
@@ -131,7 +135,7 @@ aws s3api put-bucket-replication \
 0 2 * * * clickhouse /usr/local/bin/clickhouse-backup create-remote daily_$(date +\%Y\%m\%d) >> /var/log/clickhouse-backup.log 2>&1
 
 # Keep 7 local backups, 30 remote
-0 3 * * * clickhouse /usr/local/bin/clickhouse-backup delete local $(clickhouse-backup list local | awk 'NR>7{print $1}')
+0 3 * * * clickhouse /usr/local/bin/clickhouse-backup list local | awk 'NR>7{print $1}' | xargs -r -n1 /usr/local/bin/clickhouse-backup delete local
 ```
 
 ## Restoring from Backup
