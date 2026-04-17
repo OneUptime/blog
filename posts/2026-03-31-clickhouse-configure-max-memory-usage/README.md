@@ -17,7 +17,7 @@ ClickHouse is built for fast analytical queries, but unconstrained queries can c
 The primary setting controlling how much RAM a single query can use:
 
 ```sql
--- Set for current session (default: 10GB)
+-- Set for current session (OSS default: 0, which means unlimited)
 SET max_memory_usage = 10737418240; -- 10 GB in bytes
 
 -- Or use human-readable multipliers
@@ -41,7 +41,7 @@ Limits total memory for all queries running as a specific user:
 Via SQL for a profile:
 
 ```sql
-ALTER PROFILE analytics_users SETTINGS max_memory_usage_for_user = 32212254720;
+ALTER SETTINGS PROFILE analytics_users SETTINGS max_memory_usage_for_user = 32212254720;
 ```
 
 ### max_server_memory_usage
