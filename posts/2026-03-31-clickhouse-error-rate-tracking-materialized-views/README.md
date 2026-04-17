@@ -110,7 +110,7 @@ FROM budget
 ORDER BY burn_rate DESC;
 ```
 
-A burn rate > 14.4 means the error budget will be exhausted in under an hour.
+A burn rate of 14.4 sustained over 1 hour consumes 2% of a 30-day error budget and is the standard fast-burn page threshold from the Google SRE Workbook.
 
 ## Alerting Query Pattern
 
