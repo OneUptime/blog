@@ -21,7 +21,7 @@ for i in $(seq 1 10000); do
 done
 ```
 
-After 10,000 single-row inserts, you could have 10,000 parts. The background merger limit default is 300 active parts per partition; hitting it causes inserts to throttle.
+After 10,000 single-row inserts, you could have 10,000 parts. The default `parts_to_throw_insert` limit is 3,000 active parts per partition (reduced to 300 in ClickHouse versions before 23.6); ClickHouse also starts delaying inserts when a partition reaches `parts_to_delay_insert` (default 1,000).
 
 ## Check Current Part Count
 
