@@ -57,7 +57,7 @@ Default: `8192`.
 
 ### max_bytes_to_merge_at_max_space_in_pool
 
-The maximum total uncompressed size of parts that can be merged in one operation. Increase this to allow merging of larger parts when disk space is abundant.
+The maximum total on-disk size of parts that can be merged in one operation. Increase this to allow merging of larger parts when disk space is abundant.
 
 ```sql
 ALTER TABLE metrics
