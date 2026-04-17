@@ -24,12 +24,12 @@ Method 3: When a capture has errors, the bottom status bar shows
 ## Severity Levels
 
 ```text
-Color      Level     Meaning
----------  --------  ------------------------------------------
-Red        Error     Serious problems (retransmissions, RSTs)
-Yellow     Warning   Potential issues (duplicate ACKs, out-of-order)
-Light blue Note      Normal but noteworthy events (SYN, FIN)
-Gray       Chat      Informational (connection events)
+Color    Level     Meaning
+-------  --------  ------------------------------------------
+Red      Error     Serious problems (malformed packets, dissector errors)
+Yellow   Warn      Potential issues (RSTs, zero window, out-of-order)
+Cyan     Note      Notable events (retransmissions, duplicate ACKs)
+Blue     Chat      Informational (SYN, FIN, window updates)
 ```
 
 ## Common Expert Information Messages
@@ -37,19 +37,19 @@ Gray       Chat      Informational (connection events)
 ```yaml
 Message                    Severity  Meaning
 -----------------------    --------  --------------------------------------
-TCP Retransmission         Error     Packet resent = packet loss
-Previous segment lost      Error     Gap detected in TCP stream
-TCP ACKed unseen segment   Note      Possible capture started mid-stream
-Duplicate ACK              Warning   Loss signal, retransmission coming
-TCP Fast Retransmission    Error     Loss: 3 dup ACKs received
-Out-Of-Order               Warning   Reordering or loss
-Connection reset           Error     Unexpected RST
-Window Full                Warning   Receiver buffer full (flow control)
-Zero Window                Error     Receiver buffer empty (sender paused)
-TCP Window Update          Note      Receiver reopening window
-Application response time  Warning   Server took too long to respond
-DNS NXDOMAIN               Warning   Domain not found
-HTTP server error (5xx)    Warning   Application error
+TCP Retransmission         Note      Packet resent = packet loss
+Previous segment lost      Warn      Gap detected in TCP stream
+TCP ACKed unseen segment   Warn      Possible capture started mid-stream
+Duplicate ACK              Note      Loss signal, retransmission coming
+TCP Fast Retransmission    Note      Loss: 3 dup ACKs received
+Out-Of-Order               Warn      Reordering or loss
+Connection reset (RST)     Warn      Unexpected RST
+Window Full                Warn      Receiver buffer full (flow control)
+Zero Window                Warn      Receiver buffer empty (sender paused)
+TCP Window Update          Chat      Receiver reopening window
+Application response time  Note      Server took too long to respond
+DNS NXDOMAIN               Note      Domain not found
+HTTP server error (5xx)    Note      Application error
 ```
 
 ## Use Expert Information as Starting Point
@@ -101,18 +101,17 @@ tshark -r capture.pcap -q -z expert
 # Output:
 # === Expert Information ===
 #
-# Errors (5):
-#   tcp.analysis.retransmission (5 occurrences)
-#
 # Warnings (23):
-#   tcp.analysis.duplicate_ack (15 occurrences)
 #   tcp.analysis.out_of_order (8 occurrences)
-#
-# Notes (12):
 #   tcp.analysis.ack_lost_segment (12 occurrences)
+#   tcp.connection.rst (3 occurrences)
+#
+# Notes (20):
+#   tcp.analysis.retransmission (5 occurrences)
+#   tcp.analysis.duplicate_ack (15 occurrences)
 
-# Quick health check: any errors?
-tshark -r capture.pcap -q -z expert | grep -c "Errors"
+# Filter by severity (errors, warnings, notes, or chats):
+tshark -r capture.pcap -q -z expert,warn
 ```
 
 ## Export Expert Information
