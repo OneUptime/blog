@@ -17,7 +17,7 @@ abs(x)   -- returns |x|, the absolute value of x
 sign(x)  -- returns -1 if x < 0, 0 if x = 0, 1 if x > 0
 ```
 
-Both functions accept any numeric type and return the same type as their input for `abs()`, while `sign()` returns an Int8.
+Both functions accept any numeric type. `abs()` preserves the type for floating-point and decimal inputs, and returns the corresponding unsigned integer type for signed integer inputs (for example `abs(Int32)` returns `UInt32`). `sign()` always returns an Int8.
 
 ## Basic Usage
 
@@ -163,11 +163,20 @@ Use `abs()` to compute mean absolute deviation, a robust measure of spread that 
 ```sql
 SELECT
     asset,
-    avg(pnl)                              AS mean_pnl,
-    avg(abs(pnl - avg(pnl) OVER (PARTITION BY asset))) AS mad
-FROM portfolio_changes
+    any(asset_mean)             AS mean_pnl,
+    avg(abs(pnl - asset_mean))  AS mad
+FROM
+(
+    SELECT
+        asset,
+        pnl,
+        avg(pnl) OVER (PARTITION BY asset) AS asset_mean
+    FROM portfolio_changes
+)
 GROUP BY asset;
 ```
+
+ClickHouse does not allow an aggregate function to wrap a window function directly, so the per-asset mean is computed with a window function in an inner query, then reused in the outer aggregation.
 
 ## Summary
 
