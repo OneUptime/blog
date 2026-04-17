@@ -78,6 +78,11 @@ export {
   };
 }
 
+event zeek_init() &priority=5
+{
+  Log::create_stream(IPv6Monitor::LOG, [$columns=Info, $path="ipv6_monitor"]);
+}
+
 event connection_established(c: connection)
 {
   if (is_v6_addr(c$id$orig_h)) {
@@ -103,21 +108,33 @@ echo "@load site/ipv6-monitor" >> /opt/zeek/share/zeek/site/local.zeek
 ```zeek
 # /opt/zeek/share/zeek/site/icmpv6-monitor.zeek
 
+module ICMPv6Monitor;
+
+export {
+  redef enum Notice::Type += {
+    Router_Advertisement_Flood,
+  };
+}
+
 # Detect ICMPv6 Router Advertisement storms
 global ra_count: table[addr] of count &create_expire=10secs;
 
-event icmp_router_advertisement(p: pkt_hdr, is_router: bool, \
-                                  hop_limit: count, managed_addr: bool, \
-                                  other_config: bool, reachable_time: interval, \
-                                  retrans_timer: interval, options: icmp6_nd_options)
+event icmp_router_advertisement(c: connection, info: icmp_info, \
+                                  cur_hop_limit: count, managed: bool, \
+                                  other: bool, home_agent: bool, pref: count, \
+                                  proxy: bool, rsv: count, \
+                                  router_lifetime: interval, \
+                                  reachable_time: interval, \
+                                  retrans_timer: interval, \
+                                  options: icmp6_nd_options)
 {
-  local src = p$ip6$src;
+  local src = c$id$orig_h;
   if (src !in ra_count)
     ra_count[src] = 0;
 
   ++ra_count[src];
   if (ra_count[src] > 10)
-    NOTICE([$note=Notice::Action_Notify,
+    NOTICE([$note=ICMPv6Monitor::Router_Advertisement_Flood,
             $src=src,
             $msg=fmt("Router Advertisement flood from %s", src)]);
 }
