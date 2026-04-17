@@ -17,7 +17,7 @@ dateDiff(unit, start, end)
 dateDiff(unit, start, end, timezone)
 ```
 
-`unit` is a string constant. Supported units are: `'second'`, `'minute'`, `'hour'`, `'day'`, `'week'`, `'month'`, `'quarter'`, `'year'`. The result is a signed integer - negative when `start` is after `end`. The optional `timezone` aligns day/week/month boundaries to a local calendar.
+`unit` is a string constant. Supported units are: `'nanosecond'`, `'microsecond'`, `'millisecond'`, `'second'`, `'minute'`, `'hour'`, `'day'`, `'week'`, `'month'`, `'quarter'`, `'year'`. The result is a signed integer - negative when `start` is after `end`. The optional `timezone` is a constant string that aligns day/week/month boundaries to a local calendar.
 
 ## Basic Differences
 
@@ -118,12 +118,12 @@ ORDER BY order_date DESC;
 
 ## Timezone-Aware Day Counts
 
-When computing day differences for users in different timezones, pass the timezone so that day boundaries align to the user's local midnight rather than UTC.
+When computing day differences for users in a specific timezone, pass the timezone as a constant string so that day boundaries align to local midnight rather than UTC. Note that the timezone argument must be a constant string literal, not a column reference.
 
 ```sql
 SELECT
     user_id,
-    dateDiff('day', last_login, now(), timezone) AS days_since_login
+    dateDiff('day', last_login, now(), 'America/New_York') AS days_since_login
 FROM users
 WHERE days_since_login > 7;
 ```
