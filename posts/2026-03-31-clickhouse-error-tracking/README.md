@@ -119,7 +119,7 @@ LIMIT 20;
 
 ```sql
 CREATE MATERIALIZED VIEW error_hourly_counts
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (service_name, fingerprint, hour)
 AS
 SELECT
@@ -127,12 +127,12 @@ SELECT
     fingerprint,
     any(error_type) AS error_type,
     toStartOfHour(occurred_at) AS hour,
-    count() AS occurrences,
-    countDistinct(user_id) AS affected_users
+    countState() AS occurrences,
+    uniqState(user_id) AS affected_users
 FROM error_events
 GROUP BY service_name, fingerprint, hour;
 ```
 
 ## Summary
 
-ClickHouse stores error events with fingerprint-based grouping, enabling fast queries for top errors, new regressions, and release-level impact. Using `SummingMergeTree` materialized views keeps error dashboards responsive while raw event tables retain full detail for drill-down investigations. This pattern supports millions of errors per day without performance degradation.
+ClickHouse stores error events with fingerprint-based grouping, enabling fast queries for top errors, new regressions, and release-level impact. Using `AggregatingMergeTree` materialized views keeps error dashboards responsive while raw event tables retain full detail for drill-down investigations. This pattern supports millions of errors per day without performance degradation.
