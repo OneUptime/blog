@@ -88,14 +88,14 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: "mcp-server-example",
     [ATTR_SERVICE_VERSION]: "1.0.0",
     "mcp.server.name": "example-server",
@@ -170,9 +170,9 @@ function instrumentTool(name, schema, handler) {
         if (hasError) {
           span.setStatus({ code: SpanStatusCode.ERROR, message: "Tool returned error content" });
           toolErrorCounter.add(1, attributes);
+        } else {
+          span.setStatus({ code: SpanStatusCode.OK });
         }
-
-        span.setStatus({ code: SpanStatusCode.OK });
         return result;
       } catch (error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
@@ -278,7 +278,7 @@ connectors:
   spanmetrics:
     histogram:
       explicit:
-        buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 5000]
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
     dimensions:
       - name: mcp.tool.name
       - name: mcp.server.name
