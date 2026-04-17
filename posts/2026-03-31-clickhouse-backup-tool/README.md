@@ -42,7 +42,6 @@ Edit the configuration for your environment:
 general:
   remote_storage: s3
   max_file_size: 1073741824  # 1 GB - split large parts
-  disable_progress_bar: false
   backups_to_keep_local: 3
   backups_to_keep_remote: 7
   log_level: info
@@ -53,7 +52,6 @@ clickhouse:
   password: your_secure_password
   host: localhost
   port: 9000
-  data_path: /var/lib/clickhouse
   disk_mapping: {}
   skip_tables:
     - system.*
@@ -71,7 +69,8 @@ s3:
   region: us-east-1
   path: clickhouse/backups
   disable_ssl: false
-  part_size: 134217728  # 128 MB
+  chunk_size: 0  # 0 = auto-calculated as remoteSize / max_parts_count
+  max_parts_count: 4000
   compression_level: 1
   compression_format: tar
   sse: AES256
@@ -82,8 +81,7 @@ Create the backup user in ClickHouse:
 
 ```sql
 CREATE USER backup_user IDENTIFIED WITH sha256_password BY 'your_secure_password';
-GRANT SELECT, SYSTEM FREEZE, SHOW TABLES, SHOW DATABASES ON *.* TO backup_user;
-GRANT TABLE ENGINE ON *.* TO backup_user;
+GRANT ALL ON *.* TO backup_user;
 ```
 
 ## Creating a Local Backup
@@ -109,10 +107,10 @@ clickhouse-backup list local
 clickhouse-backup upload 2026-03-31-full
 
 # Create and upload in one step
-clickhouse-backup create-and-upload 2026-03-31-full
+clickhouse-backup create_remote 2026-03-31-full
 
 # Create and upload with table filter
-clickhouse-backup create-and-upload --tables "my_database.*" 2026-03-31-mydb
+clickhouse-backup create_remote --tables "my_database.*" 2026-03-31-mydb
 
 # List remote backups
 clickhouse-backup list remote
@@ -134,7 +132,7 @@ clickhouse-backup restore 2026-03-31-full
 clickhouse-backup restore --tables "my_database.events" 2026-03-31-full
 
 # Download and restore in one step
-clickhouse-backup restore-remote 2026-03-31-full
+clickhouse-backup restore_remote 2026-03-31-full
 
 # Restore with schema only (no data)
 clickhouse-backup restore --schema 2026-03-31-full
@@ -154,7 +152,7 @@ clickhouse-backup delete remote 2026-03-01-full
 
 # Automated cleanup - keep only the last N backups
 # This is handled automatically by backups_to_keep_local and backups_to_keep_remote in config
-clickhouse-backup create-and-upload --rm 2026-03-31-full
+clickhouse-backup create_remote --delete-source 2026-03-31-full
 ```
 
 ## Running as a Systemd Service
@@ -171,7 +169,7 @@ After=clickhouse-server.service
 Type=oneshot
 User=clickhouse
 Environment=CLICKHOUSE_BACKUP_CONFIG=/etc/clickhouse-backup/config.yml
-ExecStart=/usr/local/bin/clickhouse-backup create-and-upload full-$(date +%%Y-%%m-%%d)
+ExecStart=/usr/local/bin/clickhouse-backup create_remote full-$(date +%%Y-%%m-%%d)
 StandardOutput=journal
 StandardError=journal
 EOF
@@ -221,7 +219,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  clickhouse-backup create-and-upload $(date +%Y-%m-%d)-daily
+                  clickhouse-backup create_remote $(date +%Y-%m-%d)-daily
               env:
                 - name: REMOTE_STORAGE
                   value: s3
@@ -259,10 +257,10 @@ spec:
 clickhouse-backup list remote | tail -5
 
 # Run a test restore to verify backup integrity
-clickhouse-backup restore-remote --rm --tables "my_database.events" 2026-03-31-full
+clickhouse-backup restore_remote --rm --tables "my_database.events" 2026-03-31-full
 clickhouse-client --query "SELECT count() FROM my_database.events"
 ```
 
 ## Summary
 
-`clickhouse-backup` provides a mature, battle-tested workflow for ClickHouse backups with S3 as the remote destination. The `create-and-upload` command handles everything in one step, `backups_to_keep_remote` enforces automatic rotation, and the `restore-remote` command enables one-command disaster recovery. Use the systemd timer or Kubernetes CronJob pattern to run nightly backups automatically, and always validate backups by testing a restore into a separate database or namespace.
+`clickhouse-backup` provides a mature, battle-tested workflow for ClickHouse backups with S3 as the remote destination. The `create_remote` command handles everything in one step, `backups_to_keep_remote` enforces automatic rotation, and the `restore_remote` command enables one-command disaster recovery. Use the systemd timer or Kubernetes CronJob pattern to run nightly backups automatically, and always validate backups by testing a restore into a separate database or namespace.
