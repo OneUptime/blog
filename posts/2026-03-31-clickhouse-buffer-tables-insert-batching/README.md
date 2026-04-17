@@ -37,17 +37,17 @@ The `AS events` clause copies the schema from the destination table. You can als
 
 ## Flush Conditions Explained
 
-ClickHouse flushes each buffer block when **any** of the max thresholds is exceeded:
+ClickHouse flushes each buffer block when **all** of the `min_*` conditions are met, OR when **at least one** of the `max_*` conditions is exceeded:
 
 | Parameter | Role |
 |---|---|
-| `min_time` / `max_time` | Flush after at least `min_time` seconds and at most `max_time` seconds since last flush |
-| `min_rows` / `max_rows` | Flush when row count is between min and max |
-| `min_bytes` / `max_bytes` | Flush when buffer size is between min and max |
+| `min_time` / `max_time` | `min_time` is the minimum seconds since last flush that must elapse before a min-based flush; `max_time` is the hard deadline that forces a flush |
+| `min_rows` / `max_rows` | `min_rows` is the minimum row count that must be buffered before a min-based flush; `max_rows` forces a flush once reached |
+| `min_bytes` / `max_bytes` | `min_bytes` is the minimum buffered byte size before a min-based flush; `max_bytes` forces a flush once reached |
 
-The flush happens when a max threshold is hit OR the server shuts down. If only the min threshold is met (not the max), the flush may be delayed.
+The flush happens when all three min thresholds are simultaneously met, or any one of the max thresholds is exceeded, or the server shuts down (or the Buffer table is dropped or detached).
 
-A simpler way to think about it: the buffer flushes when `max_time` elapses OR `max_rows` is reached OR `max_bytes` is reached.
+Put another way: the buffer flushes eagerly once the min thresholds line up, and forcibly once any max threshold is hit.
 
 ## Inserting into a Buffer Table
 
@@ -84,7 +84,7 @@ There is no direct `FLUSH BUFFER` command for a specific Buffer table. To force 
 OPTIMIZE TABLE events_buffer;
 ```
 
-Alternatively, drop and recreate the Buffer table after a graceful server flush by running `SYSTEM FLUSH LOGS` and restarting.
+Alternatively, `DROP TABLE` (or `DETACH TABLE`) on the Buffer table also flushes any pending rows to the destination before the table is removed, so dropping and recreating the Buffer table is another way to force a flush.
 
 ## Multiple Buffer Shards
 
@@ -115,7 +115,7 @@ Each shard holds and flushes data independently, so the effective max before any
 | Per-table control | Yes | Yes (per user/query) |
 | Overhead | Extra table object | None |
 
-Buffer tables are a good fit when you want a persistent, explicit buffering layer with no client-side changes. Async inserts are simpler to enable globally but require ClickHouse 22.6+.
+Buffer tables are a good fit when you want a persistent, explicit buffering layer with no client-side changes. Async inserts are simpler to enable globally and have been available since ClickHouse 21.11.
 
 ## Monitoring Buffer State
 
