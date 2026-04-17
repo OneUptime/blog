@@ -61,7 +61,7 @@ Header Length      20 bytes     No IP options (standard)
                    > 20 bytes   IP options present
 DSCP               0x00         Best effort, no QoS
                    0x2E = 46    EF (VoIP/realtime priority)
-                   0x28 = 40    AF41 (video conferencing)
+                   0x22 = 34    AF41 (video conferencing)
 Total Length       84           20-byte header + 64-byte payload
 TTL                64           Linux default (128 = Windows, 255 = routers)
                    <10          Packet has traveled many hops
@@ -98,7 +98,7 @@ ip.dsfield.dscp != 0
 
 ```wireshark
 # Find packets with bad IP checksum
-ip.checksum_status == "Bad"
+ip.checksum.status == "Bad"
 
 # Note: many NIC offload features calculate checksums in hardware
 # Wireshark sees packets before offload → may show "incorrect" checksums
