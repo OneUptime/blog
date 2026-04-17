@@ -33,11 +33,12 @@ In `users.xml`, grant `access_management` to the admin user:
 
 ## Storage Location
 
-SQL-managed access control objects are stored on disk:
+SQL-managed access control objects are stored on disk as flat `.sql` files named by UUID, along with index files like `users.list`, `roles.list`, `quotas.list`, `row_policies.list`, and `settings_profiles.list`:
 
 ```bash
 ls /var/lib/clickhouse/access/
-# roles/   users/   quotas/   row_policies/   settings_profiles/
+# 3843f510-6ebd-a52d-72ac-e021686d8a93.sql
+# users.list   roles.list   quotas.list   row_policies.list   settings_profiles.list
 ```
 
 ## Creating Users via SQL
@@ -47,7 +48,7 @@ ls /var/lib/clickhouse/access/
 CREATE USER analyst
     IDENTIFIED WITH sha256_password BY 'SecurePassword123!'
     HOST IP '10.0.0.0/8'
-    SETTINGS profile = 'analytics';
+    SETTINGS PROFILE 'analytics';
 
 -- Create a user with plaintext (development only)
 CREATE USER dev_user IDENTIFIED BY 'devpass';
@@ -127,11 +128,9 @@ ALTER USER analyst SETTINGS PROFILE 'analytics_profile';
 ## Creating Quotas via SQL
 
 ```sql
-CREATE QUOTA daily_quota
-    FOR INTERVAL 1 HOUR
-        MAX QUERIES = 1000,
-        MAX READ ROWS = 10000000000,
-        MAX EXECUTION TIME = 3600
+CREATE QUOTA hourly_quota
+    FOR INTERVAL 1 hour
+        MAX queries = 1000, read_rows = 10000000000, execution_time = 3600
     TO analyst;
 ```
 
@@ -164,7 +163,7 @@ SHOW ROLES;
 ```sql
 DROP USER IF EXISTS analyst;
 DROP ROLE IF EXISTS analyst_role;
-DROP QUOTA IF EXISTS daily_quota;
+DROP QUOTA IF EXISTS hourly_quota;
 DROP SETTINGS PROFILE IF EXISTS analytics_profile;
 ```
 
