@@ -55,7 +55,7 @@ For a column with 50 distinct 10-character values across 1 billion rows, this re
 price Float64
 
 -- Decimal: exact values, better compression with sorted data
-price Decimal64(2)  -- 2 decimal places, up to ~9.2 quadrillion
+price Decimal64(2)  -- 2 decimal places, up to ~10 quadrillion
 ```
 
 ## Use Date Instead of DateTime When Precision Isn't Needed
