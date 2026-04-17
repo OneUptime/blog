@@ -45,6 +45,9 @@ WITH monthly_active AS (
     )
     GROUP BY month
 )
+SELECT month, length(active_users) AS active_count
+FROM monthly_active
+ORDER BY month;
 ```
 
 ## Simpler Approach - Event-Based Active Users
@@ -80,7 +83,7 @@ SELECT
         2
     ) AS churn_rate_pct
 FROM consecutive
-WHERE prev_users IS NOT NULL;
+WHERE notEmpty(prev_users);
 ```
 
 ## Revenue Churn Rate (MRR Churn)
@@ -96,18 +99,19 @@ WITH monthly_mrr AS (
 ),
 churn_mrr AS (
     SELECT
-        curr.month,
+        prev.month + INTERVAL 1 MONTH AS month,
         sumIf(prev.mrr, curr.user_id IS NULL)    AS lost_mrr,
         sum(prev.mrr)                             AS start_mrr
     FROM monthly_mrr prev
     LEFT JOIN monthly_mrr curr
         ON prev.user_id = curr.user_id
         AND curr.month = prev.month + INTERVAL 1 MONTH
-    GROUP BY curr.month
+    GROUP BY prev.month + INTERVAL 1 MONTH
 )
 SELECT month, round(lost_mrr * 100.0 / start_mrr, 2) AS mrr_churn_pct
 FROM churn_mrr
-ORDER BY month;
+ORDER BY month
+SETTINGS join_use_nulls = 1;
 ```
 
 ## Summary
