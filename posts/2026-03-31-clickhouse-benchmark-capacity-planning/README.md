@@ -41,9 +41,10 @@ clickhouse-benchmark \
   --concurrency 10 \
   --iterations 100 \
   --host localhost \
-  --port 9000 \
-  --query "SELECT count(), uniq(user_id) FROM events WHERE ts >= today() - 1" \
-  --query "SELECT category, sum(amount) FROM events GROUP BY category ORDER BY 2 DESC LIMIT 20"
+  --port 9000 <<EOF
+SELECT count(), uniq(user_id) FROM events WHERE ts >= today() - 1;
+SELECT category, sum(amount) FROM events GROUP BY category ORDER BY 2 DESC LIMIT 20;
+EOF
 ```
 
 Sample output:
