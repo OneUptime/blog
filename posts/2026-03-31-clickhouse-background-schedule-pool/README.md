@@ -47,10 +47,10 @@ Increase `background_schedule_pool_size` when:
 <background_fetches_pool_size>16</background_fetches_pool_size>
 ```
 
-Or set some dynamically:
+After editing `config.xml`, reload the configuration without restarting the server:
 
 ```sql
-SYSTEM SET background_pool_size = 32;
+SYSTEM RELOAD CONFIG;
 ```
 
 ## Monitoring Pool Activity
