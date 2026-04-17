@@ -12,22 +12,23 @@ ClickHouse's native BACKUP/RESTORE feature supports writing backups directly to 
 
 ## Prerequisites
 
-You need a GCS bucket and service account credentials. Create a service account with Storage Object Admin role and download the JSON key file.
+You need a GCS bucket and an HMAC key for a service account. ClickHouse accesses GCS through the S3-compatible XML API, so generate an HMAC key from Google Cloud Storage's Interoperability settings for a service account that has access to the bucket (for example, the Storage Object Admin role).
 
 ## Configuring GCS Storage in ClickHouse
 
-Add GCS as a storage endpoint in `config.d/gcs-backup.xml`:
+Add GCS as a storage disk in `config.d/gcs-backup.xml`. Because GCS is accessed through the S3-compatible API, the disk `type` is `s3`:
 
 ```xml
 <clickhouse>
     <storage_configuration>
         <disks>
             <gcs_backup>
-                <type>object_storage</type>
-                <object_storage_type>gcs</object_storage_type>
-                <metadata_type>plain_rewritable</metadata_type>
-                <bucket>my-clickhouse-backups</bucket>
-                <path>backups/</path>
+                <type>s3</type>
+                <support_batch_delete>false</support_batch_delete>
+                <endpoint>https://storage.googleapis.com/my-clickhouse-backups/backups/</endpoint>
+                <access_key_id>YOUR_HMAC_KEY</access_key_id>
+                <secret_access_key>YOUR_HMAC_SECRET</secret_access_key>
+                <metadata_path>/var/lib/clickhouse/disks/gcs_backup/</metadata_path>
             </gcs_backup>
         </disks>
     </storage_configuration>
@@ -38,15 +39,23 @@ Add GCS as a storage endpoint in `config.d/gcs-backup.xml`:
 </clickhouse>
 ```
 
+`support_batch_delete` must be set to `false` because GCS does not support the S3 batch delete operation.
+
 ## Setting Up Authentication
 
-ClickHouse uses Application Default Credentials for GCS. Set the credentials path:
+The HMAC key and secret are passed via the `access_key_id` and `secret_access_key` fields above. To avoid storing secrets in the config file, reference environment variables instead:
 
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/etc/clickhouse-server/gcs-key.json
+```xml
+<access_key_id from_env="GCS_HMAC_KEY"/>
+<secret_access_key from_env="GCS_HMAC_SECRET"/>
 ```
 
-Or mount the key file in your ClickHouse container and reference it in the environment.
+Then export them before starting ClickHouse:
+
+```bash
+export GCS_HMAC_KEY=GOOG1EXAMPLEKEY
+export GCS_HMAC_SECRET=examplesecret
+```
 
 ## Creating a Full Backup to GCS
 
@@ -54,16 +63,14 @@ Run a full backup of a database:
 
 ```sql
 BACKUP DATABASE my_database
-TO Disk('gcs_backup', 'my_database_backup_2026-03-31/')
-SETTINGS async = true;
+TO Disk('gcs_backup', 'my_database_backup_2026-03-31/') ASYNC;
 ```
 
 Back up a specific table:
 
 ```sql
 BACKUP TABLE my_database.events
-TO Disk('gcs_backup', 'events_backup_2026-03-31/')
-SETTINGS async = true;
+TO Disk('gcs_backup', 'events_backup_2026-03-31/') ASYNC;
 ```
 
 ## Monitoring Backup Progress
@@ -73,12 +80,14 @@ Check the status of an async backup:
 ```sql
 SELECT
     id,
+    name,
     status,
     start_time,
     end_time,
     num_files,
-    total_size,
-    exception
+    uncompressed_size,
+    compressed_size,
+    error
 FROM system.backups
 ORDER BY start_time DESC
 LIMIT 5;
@@ -101,14 +110,14 @@ SETTINGS base_backup = Disk('gcs_backup', 'full_backup_2026-03-31/');
 
 ## Restoring from GCS
 
-Restore a backup from GCS to a new database:
+Restore a backup from GCS into a new database name using the `AS` clause:
 
 ```sql
 RESTORE DATABASE my_database AS my_database_restored
 FROM Disk('gcs_backup', 'my_database_backup_2026-03-31/');
 ```
 
-Restore a specific table:
+Restore a specific table under a new name:
 
 ```sql
 RESTORE TABLE my_database.events AS my_database.events_restored
@@ -134,4 +143,4 @@ Schedule it with cron:
 
 ## Summary
 
-Backing up ClickHouse to GCS requires configuring a GCS disk in `storage_configuration`, setting up Application Default Credentials, and using the native BACKUP command. Incremental backups with `base_backup` reduce storage costs for daily backup schedules. Monitor backup status via `system.backups` and test restores regularly.
+Backing up ClickHouse to GCS requires configuring an `s3`-type disk pointing at the GCS S3-compatible endpoint with HMAC credentials, then using the native BACKUP command. Incremental backups with `base_backup` reduce storage costs for daily backup schedules. Monitor backup status via `system.backups` and test restores regularly.
