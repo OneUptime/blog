@@ -18,15 +18,14 @@ ClickHouse Cloud services can suspend automatically when idle. Enable this in th
 
 ```bash
 curl -X PATCH \
-  "https://api.clickhouse.cloud/v1/organizations/{org_id}/services/{service_id}" \
+  "https://api.clickhouse.cloud/v1/organizations/{org_id}/services/{service_id}/replicaScaling" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "autoscaling": {
-      "idleTimeoutMinutes": 5,
-      "minTotalMemoryGb": 24,
-      "maxTotalMemoryGb": 120
-    }
+    "idleScaling": true,
+    "idleTimeoutMinutes": 5,
+    "minReplicaMemoryGb": 24,
+    "maxReplicaMemoryGb": 120
   }'
 ```
 
@@ -85,14 +84,12 @@ LIMIT 10;
 
 For each expensive query, check if the ORDER BY key is being used effectively. Misaligned sorts force full scans.
 
-## Use Tiered Storage for Archival Data
+## Rely on Managed Object Storage for Archival Data
 
-Move infrequently accessed data to object storage tier:
+ClickHouse Cloud stores all data on object storage by default, so there is no separate hot/cold disk tier to configure. Archival is handled by the platform: rarely accessed parts stay on object storage and are fetched only when queried. To keep costs down, combine a longer retention window with a DELETE TTL that clears data beyond your required horizon:
 
 ```sql
-ALTER TABLE events MODIFY TTL
-    event_time + INTERVAL 30 DAY TO DISK 's3',
-    event_time + INTERVAL 365 DAY DELETE;
+ALTER TABLE events MODIFY TTL event_time + INTERVAL 365 DAY DELETE;
 ```
 
 ## Schedule Heavy Jobs Outside Peak Hours
