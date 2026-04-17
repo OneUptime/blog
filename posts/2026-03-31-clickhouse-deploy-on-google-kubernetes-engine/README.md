@@ -12,7 +12,7 @@ Google Kubernetes Engine (GKE) offers a managed Kubernetes environment with tigh
 
 ## Creating a Dedicated Node Pool
 
-Create a node pool optimized for ClickHouse with local SSD and high memory:
+Create a node pool optimized for ClickHouse with SSD persistent disks and high memory:
 
 ```bash
 gcloud container node-pools create clickhouse-pool \
@@ -21,7 +21,7 @@ gcloud container node-pools create clickhouse-pool \
   --num-nodes=3 \
   --zone=us-central1-a \
   --node-labels=workload=clickhouse \
-  --taints=workload=clickhouse:NoSchedule \
+  --node-taints=workload=clickhouse:NoSchedule \
   --disk-type=pd-ssd \
   --disk-size=200GB
 ```
