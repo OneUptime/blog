@@ -91,13 +91,13 @@ tshark -r /tmp/capture.pcap -q -z io,phs
 # Protocol Hierarchy Statistics
 # Filter: <No filter>
 #
-# eth frames:10000 bytes:8500000 ← all traffic
-# eth.ip frames:9500 bytes:8400000
-# eth.ip.tcp frames:7000 bytes:7200000
-# eth.ip.tcp.ssl frames:6500 bytes:6700000
-# eth.ip.tcp.http frames:300 bytes:450000
-# eth.ip.udp frames:2500 bytes:1200000
-# eth.ip.udp.dns frames:500 bytes:45000
+# eth                      frames:10000 bytes:8500000
+#   ip                     frames:9500  bytes:8400000
+#     tcp                  frames:7000  bytes:7200000
+#       tls                frames:6500  bytes:6700000
+#       http               frames:300   bytes:450000
+#     udp                  frames:2500  bytes:1200000
+#       dns                frames:500   bytes:45000
 ```
 
 ## Spot Anomalies
@@ -113,8 +113,8 @@ tshark -r capture.pcap -q -z io,phs | grep esp
 tshark -r capture.pcap -q -z io,phs | grep arp
 
 # Unknown protocol → custom encapsulation or malware
-tshark -r capture.pcap -q -z io,phs | grep "Data"
-# "Data" means Wireshark couldn't decode the protocol
+tshark -r capture.pcap -q -z io,phs | grep "data"
+# "data" means Wireshark couldn't decode the protocol
 ```
 
 Protocol Hierarchy Statistics should be your first stop when analyzing an unfamiliar capture - it gives you a complete picture in seconds and guides where to focus your detailed investigation.
