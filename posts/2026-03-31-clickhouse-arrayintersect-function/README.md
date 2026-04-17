@@ -150,7 +150,7 @@ To find tags that appear in every article (intersection across all rows), combin
 
 ```sql
 -- Find tags present in ALL articles (intersection across entire table)
--- This requires a multi-step approach since arrayIntersect takes static arrays
+-- This requires enumerating each row's tags since arrayIntersect is not an aggregate function
 SELECT
     arrayIntersect(
         (SELECT tags FROM articles WHERE article_id = 1),
@@ -158,7 +158,7 @@ SELECT
         (SELECT tags FROM articles WHERE article_id = 3),
         (SELECT tags FROM articles WHERE article_id = 4)
     ) AS universal_tags;
--- Result: [] or ['database', 'sql', etc.] depending on actual overlap
+-- Result: [] (no single tag appears in all four articles in this dataset)
 ```
 
 ## Summary
