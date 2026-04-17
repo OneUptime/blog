@@ -48,15 +48,15 @@ This tells ClickHouse to split rows by hash range of `user_id` across replicas, 
 SELECT
     query_id,
     ProfileEvents['ParallelReplicasHandleRequestMicroseconds'] AS handle_us,
-    ProfileEvents['ParallelReplicasReadAssignedParts']         AS assigned_parts,
-    ProfileEvents['ParallelReplicasReadUnassignedParts']       AS unassigned_parts
+    ProfileEvents['ParallelReplicasReadAssignedMarks']         AS assigned_marks,
+    ProfileEvents['ParallelReplicasReadUnassignedMarks']       AS unassigned_marks
 FROM system.query_log
 WHERE type = 'QueryFinish'
 ORDER BY query_start_time DESC
 LIMIT 5;
 ```
 
-Non-zero `assigned_parts` confirms that parallel replica reads are active.
+Non-zero `assigned_marks` confirms that parallel replica reads are active.
 
 ## When to Use It
 
