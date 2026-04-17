@@ -117,10 +117,10 @@ docker run --rm --network analytics_net \
   curl -s "http://clickhouse:8123/?query=SELECT+1"
 ```
 
-Check ClickHouse is listening:
+Check which host ports Docker has published for the container:
 
 ```bash
-docker exec -it clickhouse ss -tlnp | grep -E "(8123|9000)"
+docker port clickhouse
 ```
 
 ## Enabling TLS for Secure Connections
