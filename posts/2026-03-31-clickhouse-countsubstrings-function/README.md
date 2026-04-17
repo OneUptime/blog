@@ -46,11 +46,11 @@ text                                           | count_exact | count_insensitive
 -----------------------------------------------+-------------+-------------------
 the cat sat on the mat                         | 2           | 2
 The quick brown fox leaps over The lazy dog    | 0           | 2
-there is nothing here                          | 0           | 1
+there is nothing here                          | 1           | 1
 no match                                       | 0           | 0
 ```
 
-Note that `'there'` contains `'the'` as a substring, so the case-insensitive count includes it.
+Note that `'there'` contains `'the'` as a substring, so both counts include it. `countSubstrings` matches anywhere in the haystack, not just on word boundaries.
 
 ## Counting Keyword Occurrences in Log Messages
 
