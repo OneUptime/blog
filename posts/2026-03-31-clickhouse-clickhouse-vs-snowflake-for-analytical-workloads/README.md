@@ -134,7 +134,12 @@ FILE_FORMAT = (TYPE = 'JSON');
 
 ```sql
 -- Kafka engine for near-real-time ingestion (seconds latency)
-CREATE TABLE kafka_source ENGINE = Kafka
+CREATE TABLE kafka_source (
+    ts DateTime,
+    user_id UInt64,
+    event String,
+    amount Float64
+) ENGINE = Kafka
 SETTINGS kafka_broker_list = 'kafka:9092',
          kafka_topic_list = 'events',
          kafka_group_name = 'ch_consumer',
