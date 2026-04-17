@@ -99,11 +99,14 @@ SELECT name, department, title FROM hr.employees;
 Even `SELECT *` is restricted:
 
 ```sql
--- SELECT * only returns permitted columns for regular_employee
+-- SELECT * fails for regular_employee because * expands to columns
+-- the user is not granted (salary, ssn, dob)
 SELECT * FROM hr.employees;
--- Returns: employee_id, name, department, title, email, hired_at
--- Does NOT return: salary, ssn, dob
+-- DB::Exception: regular_employee: Not enough privileges. To execute this
+-- query, it's necessary to have the grant SELECT(salary) ON hr.employees.
 ```
+
+To read from the table, users must explicitly list only the columns they have been granted.
 
 ## Using Roles for Column-Level Policies
 
