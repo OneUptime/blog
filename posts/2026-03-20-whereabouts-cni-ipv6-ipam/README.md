@@ -150,15 +150,16 @@ kubectl exec test-ipv6-pod-2 -- ip -6 addr show net1
 ## Step 5: OverlappingRangeIPReservation
 
 ```yaml
-# Reserve specific IPv6 addresses across namespaces
+# Reserve specific IPv6 addresses across namespaces.
+# The reserved IP is encoded in metadata.name — whereabouts replaces ":" with "-"
+# since ":" is not a valid character in Kubernetes resource names.
 apiVersion: whereabouts.cni.cncf.io/v1alpha1
 kind: OverlappingRangeIPReservation
 metadata:
-  name: reserved-ipv6
+  name: 2001-db8-secondary--200
   namespace: kube-system
 spec:
-  ip: "2001:db8:secondary::200"
-  podRef: "default/special-pod"
+  podref: "default/special-pod"
 ```
 
 ## Step 6: Garbage Collection
@@ -180,7 +181,7 @@ spec:
           containers:
             - name: whereabouts
               image: ghcr.io/k8snetworkplumbingwg/whereabouts:latest
-              command: ["/ip-reconciler", "-log-level=verbose"]
+              command: ["/ip-control-loop", "-log-level=verbose"]
           restartPolicy: OnFailure
 ```
 
