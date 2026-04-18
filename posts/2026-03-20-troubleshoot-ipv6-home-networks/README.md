@@ -38,8 +38,8 @@ Log into your router admin panel and check WAN status:
 On OpenWRT via SSH:
 
 ```bash
-# Check WAN interface IPv6 status
-ip -6 addr show wan6
+# Check WAN interface IPv6 status (wan6 is a UCI logical interface on OpenWRT)
+ifstatus wan6
 ip -6 route show default
 ```
 
@@ -53,8 +53,8 @@ If the router WAN has no global IPv6, check the DHCPv6 client:
 # OpenWRT: check odhcp6c logs
 logread | grep odhcp6c | tail -30
 
-# Ubuntu/Debian:
-journalctl -u dhclient6 -n 30
+# Ubuntu/Debian (ISC dhclient):
+journalctl -t dhclient -n 30
 
 # Common errors:
 # "NoBinding" → ISP doesn't have a lease for you; try releasing/renewing
