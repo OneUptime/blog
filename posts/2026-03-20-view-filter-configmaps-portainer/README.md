@@ -83,7 +83,7 @@ kubectl get configmaps --all-namespaces \
 kubectl get deployment my-app --namespace=production \
   -o jsonpath='{.spec.template.spec.containers[*].envFrom}' | jq
 
-# Find all deployments using a specific ConfigMap
+# Find all pods referencing a specific ConfigMap via envFrom
 kubectl get pods --all-namespaces -o json | \
   jq '.items[] | select(.spec.containers[].envFrom[]?.configMapRef.name=="app-config") | .metadata.name'
 ```
