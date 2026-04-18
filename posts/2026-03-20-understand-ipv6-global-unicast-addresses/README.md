@@ -31,7 +31,7 @@ RIR assigns to ISPs:         2001:db8::/32 (example documentation prefix)
 ISP assigns to customers:    2001:db8:1234::/48
 Customer divides into:       2001:db8:1234:0001::/64
                              2001:db8:1234:0002::/64
-                             (65535 possible /64 subnets per /48)
+                             (65,536 possible /64 subnets per /48)
 ```
 
 ## Interface ID Assignment Methods
