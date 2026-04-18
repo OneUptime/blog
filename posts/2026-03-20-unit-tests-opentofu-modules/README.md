@@ -227,10 +227,10 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "1.8.0"
 
       - name: Run unit tests
-        run: tofu test tests/unit.tftest.hcl -verbose
+        run: tofu test -filter=tests/unit.tftest.hcl -verbose
         working-directory: modules/my-module
         # No AWS credentials needed - uses mock providers
 ```
