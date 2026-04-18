@@ -26,7 +26,7 @@ traceroute -T -p 80 10.20.0.1
 # Set maximum hop count (default 30)
 traceroute -m 20 10.20.0.1
 
-# Show both hostnames and IPs
+# Skip DNS lookups (show IPs only)
 traceroute -n 10.20.0.1   # numeric only, faster
 ```
 
