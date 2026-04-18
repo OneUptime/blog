@@ -57,9 +57,9 @@ resource "google_compute_router" "vpn_router" {
     advertise_mode    = "CUSTOM"
     advertised_groups = ["ALL_SUBNETS"]
 
-    # Advertise specific ranges
+    # Advertise specific ranges (must be CIDR-formatted strings)
     advertised_ip_ranges {
-      range = google_compute_network.main.subnetworks_self_links[0]
+      range = "10.100.0.0/16"
     }
   }
 }
