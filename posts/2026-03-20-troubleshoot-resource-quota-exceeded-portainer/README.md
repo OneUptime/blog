@@ -23,15 +23,19 @@ requested: memory=512Mi, used: memory=3.8Gi, limited: memory=4Gi
 
 ```bash
 kubectl describe resourcequota -n production
+```
 
 Example output:
-Name:            namespace-quota
-Resource         Used    Hard
---------         ---     ---
-## cpu              3800m   4000m
-## memory           3.8Gi   4Gi
-## pods             18      20
-## persistentvolumeclaims  5  10
+
+```text
+Name:                   namespace-quota
+Namespace:              production
+Resource                Used    Hard
+--------                ----    ----
+cpu                     3800m   4000m
+memory                  3.8Gi   4Gi
+persistentvolumeclaims  5       10
+pods                    18      20
 ```
 
 ## Step 3: Find Resource-Heavy Pods
@@ -51,7 +55,7 @@ kubectl delete pods --field-selector=status.phase=Failed -n production
 ```
 
 **Option B: Reduce resource requests**
-Reduce requests on lower-priority deployments in the namespace. Resource requests must equal actual usage only if LimitRange enforces defaults.
+Reduce requests on lower-priority deployments in the namespace. A namespace that has a ResourceQuota for `requests.cpu` or `requests.memory` requires every pod to specify requests for that resource (a LimitRange can supply the defaults automatically).
 
 **Option C: Increase the quota**
 ```yaml
