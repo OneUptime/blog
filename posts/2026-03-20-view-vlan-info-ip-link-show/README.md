@@ -57,7 +57,7 @@ ip -d link show type vlan | grep -E "^[0-9]+:|vlan"
 cat /proc/net/vlan/config
 # Output:
 # VLAN Dev name    | VLAN ID
-# Name-Type: VLAN_NAME_TYPE_PLUS_VID_NO_PAD
+# Name-Type: VLAN_NAME_TYPE_RAW_PLUS_VID_NO_PAD
 # eth0.10        | 10  | eth0
 # eth0.20        | 20  | eth0
 # eth0.100       | 100 | eth0
