@@ -79,8 +79,11 @@ cat server.crt intermediate.crt > fullchain.pem
 cat server.crt intermediate2.crt intermediate1.crt > fullchain.pem
 
 # Verify the chain is complete
-openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt fullchain.pem
-# fullchain.pem: OK
+# Pass intermediates via -untrusted (openssl verify won't use
+# other certs in the same input file as intermediates)
+openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt \
+  -untrusted intermediate.crt server.crt
+# server.crt: OK
 ```
 
 ## Step 4: Fix the Chain in Nginx
