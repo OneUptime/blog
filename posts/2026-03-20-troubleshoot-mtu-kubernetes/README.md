@@ -24,15 +24,15 @@ kubectl exec -n default <pod-name> -- ip link show eth0
 # Calico IPIP:     1480 (1500 - 20)
 # Calico VXLAN:    1450 (1500 - 50)
 # Weave:           1376 (1500 - 124)
-# WireGuard:       1420 (1500 - 80)
+# WireGuard:       1440 (1500 - 60)
 
-# Test MTU within cluster:
-kubectl run -it --rm mtu-test --image=busybox --restart=Never -- \
+# Test MTU within cluster (netshoot ships iputils ping with -M support):
+kubectl run -it --rm mtu-test --image=nicolaka/netshoot --restart=Never -- \
   ping -M do -s 1422 -c 3 <other-pod-ip>
 # 1422 + 28 = 1450 → tests VXLAN MTU
 
 # Large ping failing = MTU issue:
-kubectl run -it --rm mtu-test --image=busybox --restart=Never -- \
+kubectl run -it --rm mtu-test --image=nicolaka/netshoot --restart=Never -- \
   ping -M do -s 1472 -c 3 <other-pod-ip>
 # This should FAIL if VXLAN overlay with 1450 pod MTU
 ```
@@ -177,7 +177,7 @@ spec:
             -j TCPMSS --clamp-mss-to-pmtu
       containers:
       - name: pause
-        image: k8s.gcr.io/pause:3.5
+        image: registry.k8s.io/pause:3.9
 EOF
 ```
 
