@@ -19,7 +19,7 @@ Uneven traffic distribution is a common load balancing problem. Some backends re
 
 echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
   awk -F',' 'NR>1 && $2!="FRONTEND" && $2!="BACKEND" {
-    printf "%-20s %-15s conns=%s req=%s status=%s\n", $1, $2, $19, $48, $18
+    printf "%-20s %-15s conns=%s req=%s status=%s\n", $1, $2, $5, $49, $18
   }'
 ```
 
@@ -86,7 +86,7 @@ Reduce stick table entry lifetime or switch from `balance source` to cookie-base
 ```bash
 # Check current weights in HAProxy
 echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
-  awk -F',' '{print $1, $2, $6}' | head -20
+  awk -F',' '{print $1, $2, $19}' | head -20
 ```
 
 **Fix**: Set equal weights unless servers have different capacities:
@@ -115,7 +115,7 @@ If a server flaps between UP and DOWN, HAProxy/Nginx stops sending traffic to it
 ```bash
 # HAProxy: check fail/recovery counts
 echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
-  awk -F',' '{print $1, $2, "fails="$13, "downs="$14}' | grep -v "^#"
+  awk -F',' '{print $1, $2, "fails="$22, "downs="$23}' | grep -v "^#"
 ```
 
 **Fix**: Increase `rise` and `fall` thresholds to prevent flapping:
@@ -142,7 +142,7 @@ aws elbv2 modify-target-group-attributes \
 
 ```bash
 # HAProxy: watch per-server connection rate live
-watch -n 1 "echo 'show stat' | sudo socat stdio /run/haproxy/admin.sock | awk -F',' 'NR>1 && \$2!=\"FRONTEND\" && \$2!=\"BACKEND\" {print \$1, \$2, \"sessions=\"\$19}'"
+watch -n 1 "echo 'show stat' | sudo socat stdio /run/haproxy/admin.sock | awk -F',' 'NR>1 && \$2!=\"FRONTEND\" && \$2!=\"BACKEND\" {print \$1, \$2, \"sessions=\"\$5}'"
 ```
 
 ## Conclusion
