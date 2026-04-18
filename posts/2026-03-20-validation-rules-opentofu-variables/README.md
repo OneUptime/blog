@@ -90,9 +90,9 @@ variable "vpc_cidr" {
   }
 
   validation {
-    # Ensure it's at least a /16 network
+    # Ensure the prefix length is /24 or smaller number (i.e., /24, /16, /8, ...)
     condition     = tonumber(split("/", var.vpc_cidr)[1]) <= 24
-    error_message = "VPC CIDR must be at most /24 (e.g., /8, /16, /24)."
+    error_message = "VPC CIDR prefix length must be /24 or less (e.g., /8, /16, /24)."
   }
 }
 ```
