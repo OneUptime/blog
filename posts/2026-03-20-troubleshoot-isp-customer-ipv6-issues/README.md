@@ -26,8 +26,8 @@ Check the ISP side first - does the BNG/BRAS show an active IPv6 session?
 show subscriber session uid <customer-id> detail | include IPv6
 
 # Check DHCPv6 lease on DHCP server
-kea-shell --service dhcp6 lease6-get \
-  '{"type": "duid", "identifier": "<customer-duid>"}' \
+echo '{"duid": "<customer-duid>"}' \
+  | kea-shell --service dhcp6 lease6-get-by-duid \
   | python3 -m json.tool
 ```
 
@@ -39,8 +39,8 @@ Verify the customer received a delegated prefix:
 # Check RADIUS accounting for delegated prefix
 grep "customer@isp.com" /var/log/radius/detail | grep "Delegated-IPv6"
 
-# Alternatively check DHCP lease file
-grep "duid-<customer-duid>" /var/lib/kea/dhcp6.leases
+# Alternatively check DHCP lease file (Kea memfile CSV default)
+grep "<customer-duid>" /var/lib/kea/kea-leases6.csv
 ```
 
 ### Step 3: Test Connectivity from ISP Side
