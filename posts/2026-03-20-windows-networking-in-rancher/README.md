@@ -51,7 +51,7 @@ ipconfig /all | Select-String "vEthernet"
 
 ## Step 3: Configure kube-proxy on Windows
 
-Windows requires kube-proxy running in user-space mode:
+Windows requires kube-proxy running in kernelspace mode (winkernel), which uses the Host Network Service (HNS):
 
 ```powershell
 # Check kube-proxy is running in the correct mode
