@@ -174,7 +174,7 @@ resource "aws_glue_catalog_table" "flow_logs" {
   }
 
   storage_descriptor {
-    location      = "s3://${aws_s3_bucket.flow_logs.id}/AWSLogs/${data.aws_caller_identity.current.account_id}/vpcflowlogs/${var.region}/"
+    location      = "s3://${aws_s3_bucket.flow_logs.id}/AWSLogs/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -206,7 +206,15 @@ resource "aws_glue_catalog_table" "flow_logs" {
   }
 
   partition_keys {
-    name = "region"
+    name = "aws-account-id"
+    type = "string"
+  }
+  partition_keys {
+    name = "aws-service"
+    type = "string"
+  }
+  partition_keys {
+    name = "aws-region"
     type = "string"
   }
   partition_keys {
@@ -219,6 +227,10 @@ resource "aws_glue_catalog_table" "flow_logs" {
   }
   partition_keys {
     name = "day"
+    type = "string"
+  }
+  partition_keys {
+    name = "hour"
     type = "string"
   }
 }
