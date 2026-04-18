@@ -175,15 +175,18 @@ jobs:
 Each environment should have its own state file to prevent cross-environment interference.
 
 ```hcl
-# backend.tf - use workspace or key per environment
+# backend.tf - workspaces automatically namespace state per environment
 terraform {
   backend "s3" {
-    bucket = "my-terraform-state"
-    key    = "infra/${terraform.workspace}/terraform.tfstate"
-    region = "us-east-1"
+    bucket               = "my-terraform-state"
+    key                  = "infra/terraform.tfstate"
+    region               = "us-east-1"
+    workspace_key_prefix = "infra"
   }
 }
 ```
+
+Backend configuration blocks do not support interpolation, so `${terraform.workspace}` cannot be used directly in `key`. Instead, the S3 backend automatically stores each workspace's state at `<workspace_key_prefix>/<workspace_name>/<key>` (the default prefix is `env:`).
 
 ```bash
 # Use workspaces for state isolation
