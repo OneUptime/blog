@@ -54,8 +54,8 @@ version = "< 2.0.0"
 version = "<= 1.9.9"
 
 # ~> : Pessimistic constraint operator (allows patch/minor updates)
-version = "~> 1.2"    # Allows 1.2.x, not 1.3.0 or higher
-version = "~> 1.2.3"  # Allows 1.2.3 to 1.2.x, not 1.3.0
+version = "~> 1.2"    # Allows >= 1.2.0, < 2.0.0 (any 1.x from 1.2)
+version = "~> 1.2.3"  # Allows >= 1.2.3, < 1.3.0 (only 1.2.x patches)
 
 # Combining constraints
 version = ">= 1.0.0, < 2.0.0"  # Any 1.x version
@@ -162,7 +162,7 @@ tofu version
 # List all providers in use
 tofu providers
 
-# Check for available updates (dry run)
+# Upgrade providers to latest versions matching constraints
 tofu init -upgrade
 
 # View lock file to see pinned versions
