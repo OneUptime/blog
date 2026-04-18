@@ -110,8 +110,9 @@ aws ec2 get-ipam-resource-cidrs \
 IPAM automatically detects and reports overlapping CIDRs in your inventory view. Check the IPAM console or:
 
 ```bash
-aws ec2 describe-ipam-resource-discoveries \
-  --ipam-resource-discovery-ids ipam-res-disc-xxxxxxxx
+aws ec2 get-ipam-resource-cidrs \
+  --ipam-scope-id ipam-scope-xxxxxxxx \
+  --filters "Name=overlap-status,Values=overlapping"
 ```
 
 ## Conclusion
