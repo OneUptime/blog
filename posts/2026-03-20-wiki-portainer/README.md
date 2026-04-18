@@ -75,10 +75,6 @@ services:
       - DB_NAME=wiki
       - DB_USER=wiki
       - DB_PASS=strong_password_here
-
-      # Application settings
-      - WIKI_PORT=3000
-      - WIKI_DB_TYPE=postgres
     volumes:
       - wiki_data:/wiki/data
     networks:
@@ -163,14 +159,15 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/New_York
-      # Application URL
+      # Application URL and encryption key (both required)
       - APP_URL=https://docs.yourdomain.com
+      - APP_KEY=base64:generate_with_appkey_command
       # Database connection
       - DB_HOST=bookstack_db
       - DB_PORT=3306
       - DB_DATABASE=bookstack
-      - DB_USERNAME=bookstack
-      - DB_PASSWORD=strong_password_here
+      - DB_USER=bookstack
+      - DB_PASS=strong_password_here
       # Mail settings
       - MAIL_HOST=smtp.gmail.com
       - MAIL_PORT=587
@@ -192,17 +189,17 @@ services:
 
 ## Step 3: Set Up LDAP Authentication (Enterprise)
 
-For team wikis, connecting to LDAP/Active Directory centralizes authentication:
+For team wikis, connecting to LDAP/Active Directory centralizes authentication. Wiki.js does not expose LDAP settings through environment variables — configure it from the admin UI after the initial setup wizard:
 
-```yaml
-# Add to wikijs environment for LDAP auth
-- WIKI_LDAP_HOST=ldap://ldap.yourdomain.com
-- WIKI_LDAP_PORT=389
-- WIKI_LDAP_BASE_DN=ou=users,dc=yourdomain,dc=com
-- WIKI_LDAP_BIND_DN=cn=admin,dc=yourdomain,dc=com
-- WIKI_LDAP_BIND_CREDENTIALS=ldap_password
-- WIKI_LDAP_SEARCH_FILTER=(uid={{username}})
-```
+1. Log in as the admin and open **Administration** > **Authentication**
+2. Click **Add Strategy** and select **LDAP / Active Directory**
+3. Fill in the strategy with values such as:
+   - **LDAP URL**: `ldap://ldap.yourdomain.com:389`
+   - **Admin Bind DN**: `cn=admin,dc=yourdomain,dc=com`
+   - **Admin Bind Credentials**: the bind password
+   - **Search Base**: `ou=users,dc=yourdomain,dc=com`
+   - **Search Filter**: `(uid={{username}})`
+4. Map the **Email**, **Display Name** and **Unique ID** fields to the appropriate LDAP attributes (e.g. `mail`, `cn`, `uid`), then **Apply** the strategy.
 
 ## Step 4: Backup and Restore
 
