@@ -98,6 +98,10 @@ jobs:
 variables:
   TOFU_VERSION: "1.8.0"
 
+stages:
+  - plan
+  - apply
+
 before_script:
   - wget -O /tmp/opentofu.tar.gz
       "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.tar.gz"
