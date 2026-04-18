@@ -8,7 +8,7 @@ Description: Learn how to build a UDP multicast sender and receiver in Node.js w
 
 ## Multicast vs Broadcast
 
-Multicast is more efficient than broadcast-only hosts that have joined the multicast group receive the packets. IPv4 multicast addresses range from `224.0.0.0` to `239.255.255.255`.
+Multicast is more efficient than broadcast — only hosts that have joined the multicast group receive the packets. IPv4 multicast addresses range from `224.0.0.0` to `239.255.255.255`.
 
 ## Multicast Receiver
 
