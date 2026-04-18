@@ -93,7 +93,8 @@ sudo ip6tables -I INPUT -p tcp --dport 636 -j ACCEPT
 
 # Check firewalld
 sudo firewall-cmd --list-services | grep ldap
-sudo firewall-cmd --add-service=ldap --temporary
+# Runtime-only rule (reverts on reload/restart); use --timeout=SECS for a timed rule
+sudo firewall-cmd --add-service=ldap
 ```
 
 ## Step 6: Debug DNS Resolution
@@ -161,6 +162,6 @@ getent passwd someuser
 | `LDAP Result Code 1 "Operations Error"` | Server-side issue | Check slapd logs |
 | `Certificate verify failed` | TLS SAN mismatch | Use matching hostname or IP SAN |
 | `Referral` | Wrong base DN | Verify base DN |
-| `Invalid DN syntax` | Wrong bracket format | Use `[addr]` in URI |
+| `ldap_url_parse_ext: URL parsing error` | Wrong bracket format in URI | Use `[addr]` around IPv6 literal in URI |
 
 Methodical diagnosis - from basic connectivity through DNS, firewall, LDAP protocol, and TLS - efficiently identifies and resolves LDAP IPv6 connection failures in production environments.
