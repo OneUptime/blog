@@ -25,11 +25,11 @@ ip route show
 ## Filter by Destination Network
 
 ```bash
-# Show route to a specific network
+# Show route to a specific network (exact prefix match)
 ip route show 192.168.1.0/24
 
-# Show routes that include this IP
-ip route show 192.168.1.0/24
+# Show routes that match (including broader/default routes)
+ip route show match 192.168.1.0/24
 ```
 
 ## Show the Default Route
