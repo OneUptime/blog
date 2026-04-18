@@ -45,7 +45,7 @@ pasv_address=203.0.113.10     # Your public IPv4
 xferlog_enable=YES
 xferlog_std_format=YES
 xferlog_file=/var/log/vsftpd.log
-log_ftp_protocol=YES          # Log all FTP commands
+dual_log_enable=YES           # Also write vsftpd-style protocol log to vsftpd_log_file
 ```
 
 ## Setting Up the Anonymous FTP Root
@@ -59,7 +59,9 @@ chown root:root /var/ftp
 chmod 755 /var/ftp
 
 # Create a public subdirectory for files
-chown ftp:ftp /var/ftp/pub
+# Keep root ownership so the anonymous chroot root is NOT writable by the ftp user;
+# otherwise vsftpd refuses to run (writable root inside chroot).
+chown root:root /var/ftp/pub
 chmod 755 /var/ftp/pub
 
 # Add some public files
