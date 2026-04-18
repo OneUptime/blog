@@ -97,10 +97,10 @@ DestinationPrefix  NextHop       RouteMetric InterfaceAlias
 ## Find the Route for a Specific Destination
 
 ```cmd
-# Shows which route will be used (like tracert dry-run)
+# Filter routing table output by a matching string (e.g. default route)
 route print | findstr "0.0.0.0"
 
-# PowerShell: find route used for 8.8.8.8
+# PowerShell: find which route would be used to reach 8.8.8.8
 Find-NetRoute -RemoteIPAddress 8.8.8.8
 ```
 
