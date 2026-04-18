@@ -42,7 +42,7 @@ traceroute stream.example.com
 traceroute6 stream.example.com
 
 # Check BGP path for IPv6 prefix
-whois -h route-server.he.net 2001:db8::stream-server
+whois -h whois.he.net 2001:db8::stream-server
 
 # View local IPv6 routing table
 ip -6 route show
@@ -74,7 +74,7 @@ sudo sysctl -p
 ```bash
 # IPv6 MTU issues cause retransmissions and latency spikes
 # Test path MTU
-tracepath6 2001:db8::stream-server | grep Path
+tracepath6 2001:db8::stream-server | grep pmtu
 
 # Check for PMTU blackholes
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
@@ -83,7 +83,7 @@ sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 # Test with specific MTU
 ping6 -c 5 -s 1452 -M do 2001:db8::stream-server
 
-# If streaming uses UDP (RTMP over UDP, SRT), check UDP MTU
+# If streaming uses UDP (SRT, RTMFP), check UDP MTU
 # SRT has built-in MTU handling
 ```
 
@@ -112,7 +112,7 @@ sudo tcpdump -i eth0 -nn icmp6 and '(ip6[40] == 135 or ip6[40] == 136)'
 # For RTMP over IPv6 - Nginx buffer tuning
 # /etc/nginx/nginx.conf RTMP section:
 # chunk_size 4096;  # Default
-# flush_packets on; # Reduce buffering delay
+# out_cork 0;       # Disable corking to reduce buffering delay
 
 # For HLS over IPv6 - reduce segment duration
 # hls_fragment 2s;  # Down from 4-6s
@@ -133,14 +133,14 @@ ffmpeg -i input.mp4 \
 
 ```bash
 # Mark streaming traffic for priority handling
-# DSCP CS3 (multimedia streaming)
+# DSCP AF31 (multimedia streaming per RFC 4594)
 sudo ip6tables -t mangle -A OUTPUT \
   -p tcp --dport 1935 \
-  -j DSCP --set-dscp-class CS3
+  -j DSCP --set-dscp-class AF31
 
 sudo ip6tables -t mangle -A OUTPUT \
   -p udp --dport 9000 \
-  -j DSCP --set-dscp-class CS3
+  -j DSCP --set-dscp-class AF31
 
 # Verify DSCP marking on IPv6 packets
 sudo tcpdump -i eth0 -nn ip6 -v | grep "DSCP\|traffic class"
