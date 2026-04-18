@@ -51,7 +51,7 @@ services:
 
 ## Method 3: Exclude by Container Name
 
-Use Watchtower's `--ignore-containers` option (not via labels):
+Use Watchtower's `--disable-containers` option (not via labels):
 
 ```yaml
 services:
@@ -61,7 +61,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       --cleanup
-      --ignore-containers portainer,postgres,redis
+      --disable-containers portainer,postgres,redis
 ```
 
 ## Protecting Portainer Itself
