@@ -38,37 +38,20 @@ function isValidIPv6(address) {
     // Remove zone ID (e.g., fe80::1%eth0 → fe80::1)
     const clean = address.split('%')[0];
 
-    // RFC 2373 compliant IPv6 regex (simplified)
-    const v6Regex = /^(
-        ([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|
-        ([0-9a-fA-F]{1,4}:){1,7}:|
-        ([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|
-        ([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|
-        ([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|
-        ([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|
-        ([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|
-        [0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|
-        :((:[0-9a-fA-F]{1,4}){1,7}|:)|
-        fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|
-        ::(ffff(:0{1,4}){0,1}:){0,1}
-            ((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}
-            (25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|
-        ([0-9a-fA-F]{1,4}:){1,4}:
-            ((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}
-            (25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])
-    )$/x;
+    // RFC 4291 IPv6 regex. JavaScript has no verbose/extended flag,
+    // so the whole alternation must be on a single line.
+    const v6Regex = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
 
     return v6Regex.test(clean);
 }
 
-// Better: use the browser's built-in network address validation
+// Better: delegate parsing to the browser's URL constructor.
 function isValidIPv6Reliable(address) {
-    // Use canvas or URL trick to validate
     try {
-        // Create a URL with the IP to validate
+        // The URL parser only accepts bracketed IPv6 literals in the host,
+        // and throws TypeError for anything that isn't a valid IPv6 address.
         const url = new URL(`http://[${address}]/`);
-        return url.hostname === `[${address.toLowerCase()}]` ||
-               url.hostname.startsWith('[');
+        return url.hostname.startsWith('[') && url.hostname.endsWith(']');
     } catch {
         return false;
     }
