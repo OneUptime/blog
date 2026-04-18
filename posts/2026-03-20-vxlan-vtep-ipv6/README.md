@@ -68,8 +68,7 @@ for VTEP in "${REMOTE_VTEPS[@]}"; do
     # BUM flooding: send unknown unicast/broadcast/multicast to all VTEPs
     bridge fdb append 00:00:00:00:00:00 \
         dev vxlan100 \
-        dst ${VTEP} \
-        via vxlan100
+        dst ${VTEP}
 
     echo "Added BUM entry for ${VTEP}"
 done
@@ -90,8 +89,10 @@ ip link add vxlan100 type vxlan \
     dstport 4789 \
     nolearning
 
-# Enable ARP/ND proxy on the bridge
-ip link set br100 type bridge neigh_suppress on
+# Enable ARP/ND suppression on the VXLAN bridge port
+# (neigh_suppress is a per-port bridge_slave attribute, not a bridge-wide one)
+ip link set vxlan100 master br100
+ip link set vxlan100 type bridge_slave neigh_suppress on
 
 # Add static ARP entries for known hosts
 ip neigh add 10.0.0.1 lladdr 52:54:00:11:22:33 dev br100 nud permanent
