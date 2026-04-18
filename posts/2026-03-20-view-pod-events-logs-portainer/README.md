@@ -73,7 +73,7 @@ Portainer's log viewer supports basic text search within the displayed output. F
 kubectl logs -n production deployment/api-server | grep -i error
 
 # Follow logs from all pods in a deployment
-kubectl logs -n production deployment/api-server --follow -f
+kubectl logs -n production deployment/api-server -f
 ```
 
 ## Namespace-Wide Event Monitoring
