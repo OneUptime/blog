@@ -8,7 +8,7 @@ Description: Enable vsftpd passive mode (PASV) for IPv4 connections, configure t
 
 ## Introduction
 
-FTP operates in two modes: active and passive. Active mode requires the server to initiate a data connection back to the client, which breaks through NAT and firewalls. Passive mode has the client initiate both connections, making it NAT-friendly and the preferred mode for modern deployments.
+FTP operates in two modes: active and passive. Active mode requires the server to initiate a data connection back to the client, which typically fails through NAT and firewalls. Passive mode has the client initiate both connections, making it NAT-friendly and the preferred mode for modern deployments.
 
 ## Active vs Passive Mode
 
@@ -43,8 +43,9 @@ pasv_max_port=31000
 # Essential if vsftpd is behind NAT
 pasv_address=203.0.113.10
 
-# Promote PASV over PORT (active mode)
-port_enable=YES
+# Disable PORT (active mode) to force passive-only
+# Default is YES; set to NO to refuse active-mode data connections
+port_enable=NO
 ```
 
 ## Firewall Rules for Passive Mode
