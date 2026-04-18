@@ -91,7 +91,7 @@ Test router rules with the Traefik dashboard route debugger. Common syntax error
 # Correct
 - "traefik.http.routers.app.rule=Host(`app.example.com`)"
 
-# Wrong - escaping issue in docker-compose
+# Correct - combining matchers with &&
 - "traefik.http.routers.app.rule=Host(`app.example.com`) && PathPrefix(`/api`)"
 ```
 
