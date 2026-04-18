@@ -76,7 +76,7 @@ ip -6 addr show scope global
 ip -6 route show default
 
 # Expected output:
-# default via fe80::<router-link-local> dev eth0 proto ra metric 100 pref medium
+# default via fe80::<router-link-local> dev eth0 proto ra metric 1024 pref medium
 
 # Check the route protocol is "ra" (from Router Advertisement)
 # If "static" appears, the route was manually added, not from RA
