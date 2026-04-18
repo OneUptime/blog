@@ -119,7 +119,7 @@ sudo iptables -A FORWARD -i eth0 -o br0 -m state --state RELATED,ESTABLISHED -j 
 sudo ip netns del ns1
 sudo ip netns del ns2
 sudo ip netns del ns3
-sudo ip link del br0   # Also removes attached veth-*-br interfaces
+sudo ip link del br0   # veth-*-br interfaces are already gone (removed when their peers in the namespaces were deleted)
 ```
 
 ## Conclusion
