@@ -8,7 +8,7 @@ Description: Enable and analyze GCP VPC Flow Logs to monitor IPv4 traffic flows 
 
 ## Introduction
 
-GCP VPC Flow Logs capture a sample of network flows (TCP and UDP) sent and received by VM instances. Logs include source and destination IPs and ports, protocol, bytes transferred, and GCP metadata like project, region, and VM name. They are invaluable for security monitoring, cost analysis, and troubleshooting.
+GCP VPC Flow Logs capture a sample of network flows (TCP, UDP, ICMP, ESP, and GRE) sent and received by VM instances. Logs include source and destination IPs and ports, protocol, bytes transferred, and GCP metadata like project, region, and VM name. They are invaluable for security monitoring, cost analysis, and troubleshooting.
 
 ## Enabling VPC Flow Logs on a Subnet
 
@@ -31,7 +31,7 @@ gcloud compute networks subnets update app-subnet \
   --logging-flow-sampling=1.0 \
   --logging-metadata=INCLUDE_ALL_METADATA \
   --logging-aggregation-interval=INTERVAL_5_SEC \
-  --logging-filter-expr='(src_ip != "169.254.0.0/16")'
+  --logging-filter-expr='!inIpRange(connection.src_ip, "169.254.0.0/16")'
 ```
 
 ## Verifying Flow Logs are Enabled
@@ -73,9 +73,9 @@ Then query in BigQuery:
 ```sql
 -- Top talkers by bytes transferred
 SELECT
-  jsonPayload.src_ip,
-  jsonPayload.dest_ip,
-  jsonPayload.dest_port,
+  jsonPayload.connection.src_ip,
+  jsonPayload.connection.dest_ip,
+  jsonPayload.connection.dest_port,
   SUM(CAST(jsonPayload.bytes_sent AS INT64)) as total_bytes
 FROM `my-gcp-project.network_logs.compute_googleapis_com_vpc_flows_*`
 WHERE DATE(_PARTITIONTIME) = CURRENT_DATE()
@@ -88,11 +88,11 @@ LIMIT 20;
 
 | Field | Description |
 |---|---|
-| src_ip | Source IPv4 address |
-| src_port | Source port |
-| dest_ip | Destination IPv4 address |
-| dest_port | Destination port |
-| protocol | IP protocol (6=TCP, 17=UDP) |
+| connection.src_ip | Source IPv4 address |
+| connection.src_port | Source port |
+| connection.dest_ip | Destination IPv4 address |
+| connection.dest_port | Destination port |
+| connection.protocol | IP protocol (6=TCP, 17=UDP) |
 | bytes_sent | Bytes from source to destination |
 | packets_sent | Packet count |
 | reporter | SRC or DEST (reporter's perspective) |
@@ -112,7 +112,8 @@ logs = json.load(sys.stdin)
 src_ports = defaultdict(set)
 for entry in logs:
   p = entry.get('jsonPayload', {})
-  src_ports[p.get('src_ip','')].add(p.get('dest_port',''))
+  c = p.get('connection', {})
+  src_ports[c.get('src_ip','')].add(c.get('dest_port',''))
 for ip, ports in sorted(src_ports.items(), key=lambda x: len(x[1]), reverse=True)[:10]:
   print(f'{ip}: {len(ports)} distinct dest ports')
 "
