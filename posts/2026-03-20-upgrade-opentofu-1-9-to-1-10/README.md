@@ -138,9 +138,9 @@ jobs:
 ## Rollback Procedure
 
 ```bash
-# Roll back to 1.9
-tofuenv use 1.9.x
-echo "1.9.x" > .opentofu-version
+# Roll back to 1.9 (replace with the specific 1.9.x version you had installed)
+tofuenv use 1.9.1
+echo "1.9.1" > .opentofu-version
 
 # Revert state if needed
 cp terraform.tfstate.backup-pre-1.10 terraform.tfstate
