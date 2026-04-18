@@ -78,7 +78,13 @@ fn validate_public_ipv6(s: &str) -> Result<Ipv6Addr, Ipv6ValidationError> {
     if segs[0] == 0x2001 && segs[1] == 0x0db8 {
         return Err(Ipv6ValidationError::IsDocumentation);
     }
-    if !addr.is_unicast_global() {
+    // Exclude multicast (ff00::/8), link-local (fe80::/10), and
+    // unique-local (fc00::/7). `is_unicast_global` exists in std but is
+    // unstable, so we inline the relevant prefix checks here.
+    if addr.is_multicast()
+        || (segs[0] & 0xffc0) == 0xfe80
+        || (segs[0] & 0xfe00) == 0xfc00
+    {
         return Err(Ipv6ValidationError::NotGlobalUnicast);
     }
 
