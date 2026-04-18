@@ -66,7 +66,7 @@ docker run -d \
 3. Portainer will prompt you to enter a Business Edition license key
 4. Enter your license key and click **Activate**
 
-If you don't have a license, visit portainer.io to register for a free 5-node license.
+If you don't have a license, visit portainer.io to register for a free 3-node license.
 
 ## Verify the Upgrade
 
