@@ -20,8 +20,8 @@ USGv6 History:
 - Required for federal agency IPv6 deployment per OMB mandates
 
 Key Documents:
-- NIST SP 500-267B: Updated USGv6 Profile (2020)
-- IETF RFC 6434: IPv6 Node Requirements (foundation)
+- NIST SP 500-267B Rev 1: Updated USGv6 Profile (2020)
+- IETF RFC 8504: IPv6 Node Requirements (foundation, obsoletes RFC 6434)
 - USGv6 Technical Testing Requirements: Equipment testing procedures
 ```
 
@@ -170,4 +170,4 @@ fi
 echo "=== Check Complete ==="
 ```
 
-USGv6 compliance builds on RFC 6434 with additional requirements specific to US federal government needs, with equipment certification through testing labs like UNH-IOL providing the procurement guidance federal agencies use to ensure interoperable IPv6 infrastructure.
+USGv6 compliance builds on RFC 8504 with additional requirements specific to US federal government needs, with equipment certification through testing labs like UNH-IOL providing the procurement guidance federal agencies use to ensure interoperable IPv6 infrastructure.
