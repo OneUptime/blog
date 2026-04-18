@@ -163,7 +163,12 @@ sudo dmesg | grep wireguard
 sudo journalctl -u openvpn@client -f
 
 # strongSwan/IPsec debug
-sudo swanctl --log-level ike:4,knl:4,cfg:3
+# Stream log messages from the charon daemon
+sudo swanctl --log
+
+# To raise log verbosity, set levels in /etc/strongswan.conf, e.g.:
+#   charon { filelog { /var/log/charon.log { default = 1; ike = 4; knl = 4; cfg = 3 } } }
+# Then apply with: sudo swanctl --reload-settings
 ```
 
 Systematic IPv6 VPN troubleshooting - working from the tunnel interface through routing, forwarding, and NAT - quickly identifies the layer where connectivity breaks down.
