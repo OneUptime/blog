@@ -73,7 +73,7 @@ Provider documentation marks some attributes as `ForceNew` - changing them destr
 # Common ForceNew attributes:
 # aws_instance: ami, availability_zone, subnet_id
 # aws_db_instance: engine, db_name (sometimes)
-# google_compute_instance: zone, machine_type (with some configs)
+# google_compute_instance: name, zone, boot_disk.initialize_params.type
 
 # Plan output for ForceNew attribute change:
 # -/+ resource "aws_instance" "web" {
