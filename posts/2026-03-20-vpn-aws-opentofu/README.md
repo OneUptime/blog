@@ -30,6 +30,9 @@ resource "aws_customer_gateway" "on_prem" {
 
 ```hcl
 # Virtual Private Gateway (AWS VPN endpoint)
+# Setting vpc_id here auto-attaches the VGW to the VPC.
+# Use aws_vpn_gateway_attachment instead if you prefer to manage attachment separately;
+# do not set both or they will conflict.
 resource "aws_vpn_gateway" "main" {
   vpc_id          = aws_vpc.main.id
   amazon_side_asn = 64512  # AWS side BGP ASN (64512-65534)
@@ -37,12 +40,6 @@ resource "aws_vpn_gateway" "main" {
   tags = {
     Name = "${var.environment}-vgw"
   }
-}
-
-# Attach to VPC
-resource "aws_vpn_gateway_attachment" "main" {
-  vpc_id         = aws_vpc.main.id
-  vpn_gateway_id = aws_vpn_gateway.main.id
 }
 ```
 
@@ -108,7 +105,7 @@ resource "aws_cloudwatch_metric_alarm" "vpn_tunnel1_down" {
 
   dimensions = {
     VpnId    = aws_vpn_connection.main.id
-    TunnelIp = aws_vpn_connection.main.tunnel1_address
+    TunnelIpAddress = aws_vpn_connection.main.tunnel1_address
   }
 
   alarm_description = "VPN Tunnel 1 is down"
@@ -127,7 +124,7 @@ resource "aws_cloudwatch_metric_alarm" "vpn_tunnel2_down" {
 
   dimensions = {
     VpnId    = aws_vpn_connection.main.id
-    TunnelIp = aws_vpn_connection.main.tunnel2_address
+    TunnelIpAddress = aws_vpn_connection.main.tunnel2_address
   }
 
   alarm_description = "VPN Tunnel 2 is down"
