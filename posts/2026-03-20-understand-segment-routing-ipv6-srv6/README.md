@@ -75,7 +75,7 @@ Packet flow through R1 → R2 → R3:
 | End.DT6 | Decapsulate and do IPv6 table lookup |
 | End.DT4 | Decapsulate and do IPv4 table lookup |
 | End.DT46 | Decapsulate and do IPv4 or IPv6 table lookup |
-| End.B6 | Insert SRH and forward |
+| End.B6.Encaps | Endpoint bound to an SRv6 policy with encapsulation (push new outer IPv6 header + SRH) |
 
 ## SRv6 vs MPLS
 
