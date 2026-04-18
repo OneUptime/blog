@@ -36,12 +36,15 @@ Interface: 192.168.1.100 --- 0x4
 ## Filtering by Interface
 
 ```cmd
-# Show ARP table for a specific interface (by IP)
+# Show the ARP entry for a specific remote IP
 
 arp -a 192.168.1.100
 
-# Show all interfaces
-arp -a -N 0.0.0.0
+# Show entries for a specific local interface (by its IP)
+arp -a -N 192.168.1.100
+
+# Verbose mode (includes invalid and loopback entries)
+arp -a -v
 ```
 
 ## Using PowerShell
@@ -113,7 +116,7 @@ for line in lines:
 - `arp -a` shows the full ARP cache including dynamic and static entries.
 - Use `Get-NetNeighbor` in PowerShell for filtering and scripting.
 - Static entries include broadcast and multicast addresses automatically added by Windows.
-- ARP entries expire after the ARP cache timeout (default ~2 minutes for dynamic entries).
+- ARP entries expire based on the neighbor discovery reachable time (typically 15–45 seconds on modern Windows, per RFC 4861).
 
 **Related Reading:**
 
