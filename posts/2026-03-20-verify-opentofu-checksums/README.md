@@ -30,11 +30,14 @@ curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION
 # Download the checksums file
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS"
 
-# Download the checksums signature file
+# Download the cosign signature file
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.sig"
 
-# Download the signing key
+# Download the cosign signing certificate
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.pem"
+
+# Download the GPG signature file
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.gpgsig"
 ```
 
 ## Step 2: Verify SHA256 Checksum
@@ -54,19 +57,25 @@ grep "${ARCH}.zip" "tofu_${TOFU_VERSION}_SHA256SUMS"
 
 ## Step 3: Verify the GPG Signature
 
-```bash
-# Import the OpenTofu public key
-gpg --import "tofu_${TOFU_VERSION}_SHA256SUMS.pem"
+The OpenTofu team also signs the checksums file with a GPG key. The GPG signature is the `.gpgsig` file (not `.sig`, which is a cosign signature).
 
-# Or import from keyserver
-gpg --keyserver keyserver.ubuntu.com --recv-keys <OPENTOFU_KEY_ID>
+```bash
+# Download the OpenTofu GPG public key
+curl -fsSL -O https://get.opentofu.org/opentofu.asc
+
+# Verify the key fingerprint matches the expected value:
+# E3E6E43D84CB852EADB0051D0C0AF313E5FD9F80
+gpg --show-keys --with-fingerprint opentofu.asc
+
+# Import the OpenTofu public key
+gpg --import opentofu.asc
 
 # Verify the signature
-gpg --verify "tofu_${TOFU_VERSION}_SHA256SUMS.sig" "tofu_${TOFU_VERSION}_SHA256SUMS"
+gpg --verify "tofu_${TOFU_VERSION}_SHA256SUMS.gpgsig" "tofu_${TOFU_VERSION}_SHA256SUMS"
 
 # Expected output:
 # gpg: Signature made...
-# gpg: Good signature from "OpenTofu..."
+# gpg: Good signature from "OpenTofu (..."
 ```
 
 ## Step 4: Verify Using cosign (Advanced)
@@ -77,11 +86,15 @@ curl -LO "https://github.com/sigstore/cosign/releases/latest/download/cosign-lin
 sudo mv cosign-linux-amd64 /usr/local/bin/cosign
 sudo chmod +x /usr/local/bin/cosign
 
-# Verify using sigstore
+# Derive the major.minor portion of the version (e.g., 1.9 from 1.9.0)
+TOFU_MAJORMINOR="$(echo "${TOFU_VERSION}" | cut -d. -f1,2)"
+
+# Verify using sigstore. Note: the certificate-identity uses the release
+# branch ref (refs/heads/v<MAJOR.MINOR>), not a tag ref.
 cosign verify-blob \
   --certificate "tofu_${TOFU_VERSION}_SHA256SUMS.pem" \
   --signature "tofu_${TOFU_VERSION}_SHA256SUMS.sig" \
-  --certificate-identity "https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v${TOFU_VERSION}" \
+  --certificate-identity "https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v${TOFU_MAJORMINOR}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   "tofu_${TOFU_VERSION}_SHA256SUMS"
 ```
@@ -106,18 +119,20 @@ echo "Downloading OpenTofu v${TOFU_VERSION}..."
 for file in \
   "tofu_${TOFU_VERSION}_${ARCH}.zip" \
   "tofu_${TOFU_VERSION}_SHA256SUMS" \
-  "tofu_${TOFU_VERSION}_SHA256SUMS.sig" \
-  "tofu_${TOFU_VERSION}_SHA256SUMS.pem"; do
+  "tofu_${TOFU_VERSION}_SHA256SUMS.gpgsig"; do
   curl -fsSL -O "${BASE_URL}/${file}"
 done
+
+# Download the OpenTofu GPG public key
+curl -fsSL -O https://get.opentofu.org/opentofu.asc
 
 echo "Verifying SHA256 checksum..."
 sha256sum -c --ignore-missing "tofu_${TOFU_VERSION}_SHA256SUMS"
 echo "Checksum verification: PASSED"
 
 echo "Verifying GPG signature..."
-gpg --import "tofu_${TOFU_VERSION}_SHA256SUMS.pem" 2>/dev/null
-gpg --verify "tofu_${TOFU_VERSION}_SHA256SUMS.sig" "tofu_${TOFU_VERSION}_SHA256SUMS"
+gpg --import opentofu.asc 2>/dev/null
+gpg --verify "tofu_${TOFU_VERSION}_SHA256SUMS.gpgsig" "tofu_${TOFU_VERSION}_SHA256SUMS"
 echo "GPG signature verification: PASSED"
 
 echo "Extracting binary..."
