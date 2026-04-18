@@ -12,7 +12,7 @@ How to Troubleshoot Portainer Agent Connection Issues is an important operationa
 
 ## Overview
 
-The Portainer Agent communicates with the Portainer server on TCP port 9001. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
+The Portainer Agent listens on TCP port 9001 for connections from the Portainer server. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
 
 ## Common Configuration Steps
 
@@ -66,7 +66,7 @@ sudo semodule -i portainer-agent.pp
 sudo setenforce 0
 
 # Add correct context for Docker socket
-sudo chcon -Rt svirt_sandbox_file_t /var/run/docker.sock
+sudo chcon -Rt container_file_t /var/run/docker.sock
 ```
 
 ## Agent Version Compatibility
@@ -88,6 +88,7 @@ docker pull portainer/agent:latest
 docker run -d -p 9001:9001 --name portainer_agent --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
   portainer/agent:latest
 ```
 
