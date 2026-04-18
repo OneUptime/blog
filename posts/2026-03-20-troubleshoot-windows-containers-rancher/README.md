@@ -12,13 +12,13 @@ Windows container troubleshooting requires Windows-specific diagnostic tools and
 
 ## Common Error: Image Version Mismatch
 
-The most common Windows container error:
+A common Windows container error from hcsshim:
 
 ```text
-Error: container failed to start with exit code 0x0000007b
+hcsshim::CreateComputeSystem ... The container operating system does not match the host operating system.
 ```
 
-This typically means the container image's Windows version doesn't match the node's OS version.
+This means the container image's Windows version doesn't match the node's OS version.
 
 ```powershell
 # Check the Windows node OS version
@@ -83,6 +83,9 @@ Test-Path C:\app\config.json
 
 ```powershell
 # On the Windows node - check container networking
+# Import the HNS module (ships with the Kubernetes Windows node setup)
+Import-Module C:\k\hns.psm1
+
 # List HNS (Host Network Service) networks
 Get-HnsNetwork
 
@@ -101,9 +104,10 @@ Restart-Service hns
 Get-EventLog -LogName Application -Source "*docker*" -Newest 20
 Get-EventLog -LogName System -Source "*Hyper-V*" -Newest 20
 
-# Check container runtime errors
-kubectl logs -n kube-system $(kubectl get pods -n kube-system \
-  -l component=containerd -o name | head -1) | \
+# Check containerd service status and logs (containerd runs as a
+# Windows service on the node, not as a pod)
+Get-Service containerd
+Get-Content "C:\var\lib\rancher\rke2\agent\logs\containerd.log" -Tail 50 |
   Select-String "error"
 ```
 
