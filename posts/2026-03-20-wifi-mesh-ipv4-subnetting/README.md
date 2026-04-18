@@ -47,7 +47,7 @@ config wifi-iface 'mesh_radio'
     option mode 'mesh'
     option mesh_id 'my-mesh-id'
     option mesh_fwding '1'
-    option encryption 'psk2'
+    option encryption 'sae'      # Requires wpad-mesh-* package
     option key 'mesh-secret-key'
     option network 'mesh'
 
@@ -72,7 +72,7 @@ config wifi-iface 'mesh_radio'
     option mode 'mesh'
     option mesh_id 'my-mesh-id'
     option mesh_fwding '1'
-    option encryption 'psk2'
+    option encryption 'sae'      # Requires wpad-mesh-* package
     option key 'mesh-secret-key'
     option network 'mesh'
 
@@ -98,7 +98,7 @@ config dnsmasq
 config dhcp 'lan'
     option interface 'lan'
     option start '100'
-    option limit '150'
+    option limit '101'           # Pool: .100 through .200 (101 addresses)
     option leasetime '12h'
     # Set DHCP gateway to point to this node
     list dhcp_option '3,192.168.1.1'
