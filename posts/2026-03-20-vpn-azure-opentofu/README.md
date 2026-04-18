@@ -61,7 +61,7 @@ resource "azurerm_virtual_network_gateway" "vpn" {
   sku      = var.vpn_sku  # "VpnGw1", "VpnGw2", "VpnGw3", "VpnGw1AZ"
 
   active_active = var.vpn_active_active
-  enable_bgp    = true
+  bgp_enabled   = true
 
   bgp_settings {
     asn = 65515  # Azure default ASN
@@ -123,7 +123,7 @@ resource "azurerm_virtual_network_gateway_connection" "to_on_prem" {
 
   shared_key = var.vpn_psk
 
-  enable_bgp = true
+  bgp_enabled = true
 
   ipsec_policy {
     ike_encryption    = "AES256"
@@ -133,7 +133,7 @@ resource "azurerm_virtual_network_gateway_connection" "to_on_prem" {
     ipsec_integrity   = "SHA256"
     pfs_group         = "PFS14"
     sa_lifetime       = 27000
-    sa_datasize       = 0
+    sa_datasize       = 102400000
   }
 
   tags = { Environment = var.environment }
@@ -175,7 +175,7 @@ output "vpn_gateway_bgp_asn" {
 }
 
 output "vpn_gateway_bgp_peering_address" {
-  value = azurerm_virtual_network_gateway.vpn.bgp_settings[0].peering_address
+  value = azurerm_virtual_network_gateway.vpn.bgp_settings[0].peering_addresses[0].default_addresses[0]
 }
 ```
 
