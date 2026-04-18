@@ -74,14 +74,14 @@ ipconfig /all | findstr /i "DHCP"
 ipconfig /all | findstr /i "DNS Servers"
 
 :: Show adapter descriptions and MACs
-ipconfig /all | findstr /i "Description\|Physical"
+ipconfig /all | findstr /i "Description Physical"
 ```
 
 ## Diagnosing Common Issues from the Output
 
 - **APIPA address (169.254.x.x)**: DHCP server unreachable → check DHCP service or network connectivity
 - **DHCP Enabled: No with unexpected IP**: wrong static IP configured → check with IT or netsh
-- **DNS showing 127.0.0.53**: resolved through systemd-resolved (if using WSL) - check resolver chain
+- **Empty DNS Servers or unreachable DNS**: verify DNS is correctly configured or reachable from this host
 - **Lease expires soon**: renew with `ipconfig /renew`
 
 ## Exporting Configuration
