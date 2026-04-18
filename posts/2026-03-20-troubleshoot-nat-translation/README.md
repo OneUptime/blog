@@ -117,8 +117,9 @@ traceroute 8.8.8.8
 ! Enable NAT debugging (caution: verbose on busy routers)
 debug ip nat
 
-! Debug for specific host
-debug ip nat 192.168.1.10
+! Debug for a specific host (reference an ACL, not a raw IP)
+access-list 10 permit host 192.168.1.10
+debug ip nat 10
 
 ! Check translation table
 show ip nat translations total
