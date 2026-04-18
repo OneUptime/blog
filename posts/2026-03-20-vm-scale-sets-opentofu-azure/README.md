@@ -27,7 +27,7 @@ provider "azurerm" {
 }
 ```
 
-Resource Group and Networking
+## Resource Group and Networking
 
 ```hcl
 resource "azurerm_resource_group" "main" {
