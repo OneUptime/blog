@@ -25,7 +25,7 @@ Before upgrading, snapshot the Portainer PersistentVolumeClaim:
 
 kubectl get pods -n portainer -l app.kubernetes.io/name=portainer
 
-# Export the current Portainer configuration via API as a backup
+# Archive the Portainer /data directory inside the pod as a backup
 kubectl exec -n portainer deployment/portainer -- \
   tar czf /tmp/portainer_backup.tar.gz /data 2>/dev/null || true
 
