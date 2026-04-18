@@ -25,7 +25,7 @@ echo "AWS_PROFILE=$AWS_PROFILE"
 # 2. Shared credentials file
 cat ~/.aws/credentials
 
-# 3. Instance/ECS/Lambda role (when running in AWS)
+# 3. EC2 instance role (IMDS - ECS and Lambda use different endpoints)
 curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
 
 # 4. AWS SSO
@@ -146,7 +146,7 @@ jobs:
           aws-region: us-east-1
 
       # Azure
-      - uses: azure/login@v1
+      - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
