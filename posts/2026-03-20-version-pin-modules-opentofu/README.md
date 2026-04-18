@@ -103,7 +103,7 @@ tofu apply
 # .github/dependabot.yml
 version: 2
 updates:
-  - package-ecosystem: terraform
+  - package-ecosystem: opentofu
     directory: "/environments/prod"
     schedule:
       interval: weekly
