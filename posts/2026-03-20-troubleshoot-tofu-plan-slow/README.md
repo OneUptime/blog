@@ -44,7 +44,10 @@ Fix: Replace slow data sources with variables or cached values.
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"]
-  filter { name = "name", values = ["ubuntu/images/*"] }
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/*"]
+  }
 }
 
 # FAST: Use a variable (update manually when needed)
