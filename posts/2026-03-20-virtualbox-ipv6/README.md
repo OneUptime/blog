@@ -87,7 +87,7 @@ VBoxManage hostonlyif ipconfig vboxnet0 \
 
 # Configure IPv6 on the host-only interface
 VBoxManage hostonlyif ipconfig vboxnet0 \
-    --ipv6 fd00:vbox::1 \
+    --ipv6 fd00:abcd::1 \
     --netmasklengthv6 64
 
 # List host-only interfaces
@@ -117,14 +117,14 @@ network:
   ethernets:
     enp0s8:                          # Second adapter (host-only)
       addresses:
-        - fd00:vbox::10/64
-      gateway6: fd00:vbox::1
+        - fd00:abcd::10/64
+      gateway6: fd00:abcd::1
 EOF
 netplan apply
 
 # Test: ping host from VM
-ping6 fd00:vbox::1
-# ping host: ssh -6 fd00:vbox::10
+ping6 fd00:abcd::1
+# ping host: ssh -6 fd00:abcd::10
 ```
 
 ## Configure IPv6 Inside the VM (Windows Guest)
@@ -138,12 +138,12 @@ Get-NetIPAddress -AddressFamily IPv6
 # Set static IPv6 for host-only adapter
 New-NetIPAddress `
     -InterfaceAlias "Ethernet 2" `
-    -IPAddress "fd00:vbox::10" `
+    -IPAddress "fd00:abcd::10" `
     -PrefixLength 64 `
-    -DefaultGateway "fd00:vbox::1"
+    -DefaultGateway "fd00:abcd::1"
 
 # Test connectivity
-ping -6 fd00:vbox::1
+ping -6 fd00:abcd::1
 ```
 
 ## Port Forwarding for IPv6 (NAT Mode)
@@ -166,10 +166,10 @@ ssh -p 2222 -6 "::1"   # Connect via IPv6 loopback
 
 ```bash
 # From host: ping VM over IPv6 (host-only)
-ping6 fd00:vbox::10
+ping6 fd00:abcd::10
 
 # From VM: ping host over IPv6
-ping6 fd00:vbox::1
+ping6 fd00:abcd::1
 
 # From VM: test external IPv6 (bridged/NAT)
 ping6 2001:4860:4860::8888
