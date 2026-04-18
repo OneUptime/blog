@@ -77,8 +77,8 @@ ssh 2001:db8::1 'ss -tlnp | grep -E "2049|111|3260|6789|445"'
 # MTU issues are common with IPv6 storage (jumbo frames, tunnels)
 
 # Test with specific packet sizes
-ping6 -s 1400 2001:db8::1   # Standard MTU (1500 - 100 overhead)
-ping6 -s 8972 2001:db8::1   # Jumbo frame (9000 - overhead)
+ping6 -s 1400 2001:db8::1   # Standard MTU (1500 - 48 byte overhead leaves safe margin)
+ping6 -s 8952 2001:db8::1   # Jumbo frame (9000 - 48 bytes: 40 IPv6 + 8 ICMPv6)
 ping6 -M do -s 1452 2001:db8::1  # DF-bit set (tests PMTUD)
 
 # Capture ICMPv6 "Packet Too Big" messages
