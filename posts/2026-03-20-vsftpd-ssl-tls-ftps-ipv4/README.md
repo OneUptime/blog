@@ -37,9 +37,9 @@ sudo certbot certonly --standalone -d ftp.example.com
 # /etc/letsencrypt/live/ftp.example.com/privkey.pem
 
 # Create combined PEM for vsftpd
-sudo cat /etc/letsencrypt/live/ftp.example.com/fullchain.pem \
+sudo sh -c 'cat /etc/letsencrypt/live/ftp.example.com/fullchain.pem \
   /etc/letsencrypt/live/ftp.example.com/privkey.pem \
-  > /etc/ssl/vsftpd-bundle.pem
+  > /etc/ssl/vsftpd-bundle.pem'
 sudo chmod 600 /etc/ssl/vsftpd-bundle.pem
 ```
 
@@ -109,8 +109,9 @@ sudo ufw reload
 
 ```bash
 # Test with lftp (supports explicit FTPS)
+# Use ftp:// for explicit FTPS on port 21; ftps:// would use implicit FTPS on port 990
 lftp -e "set ftp:ssl-force yes; set ssl:verify-certificate no; ls" \
-  -u ftpuser,password ftps://203.0.113.10
+  -u ftpuser,password ftp://203.0.113.10
 
 # Test with curl (explicit FTPS)
 curl -v --ssl-reqd ftp://203.0.113.10/ -u ftpuser:password
