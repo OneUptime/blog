@@ -108,7 +108,7 @@ ListenAddress 10.10.0.50
 | Security | Compromise of data VLAN doesn't expose management |
 | Stability | Data plane congestion doesn't affect SSH access |
 | Auditability | Management traffic is separately logged and monitored |
-| Compliance | PCI-DSS requires out-of-band management for cardholder systems |
+| Compliance | PCI-DSS requires network segmentation and encrypted non-console admin access for cardholder systems |
 
 ## Key Takeaways
 
