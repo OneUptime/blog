@@ -69,7 +69,7 @@ PE2 advertises to PE1 via MP-BGP:
 BGP UPDATE message contains:
   Path attribute: MP_REACH_NLRI (Type 14)
   AFI: 2 (IPv6)
-  SAFI: 4 (NLRI with labeled next-hop)
+  SAFI: 4 (NLRI with MPLS Labels)
 ```
 
 ## Verify 6PE Forwarding
