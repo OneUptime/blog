@@ -61,7 +61,7 @@ kubectl describe secret app-secrets --namespace=production
 
 # List only the key names in a secret
 kubectl get secret app-secrets --namespace=production \
-  -o jsonpath='{.data}' | jq 'keys'
+  -o json | jq '.data | keys'
 ```
 
 ## Accessing Secret Values (With Caution)
