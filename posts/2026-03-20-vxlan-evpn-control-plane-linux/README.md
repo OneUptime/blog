@@ -63,15 +63,19 @@ router bgp 65001
 !
 ```
 
-## Step 3: Map VNI to VRF (Optional for L3 EVPN)
+## Step 3: Configure Per-VNI Route Distinguisher and Route Targets
 
 ```bash
 # /etc/frr/frr.conf
 !
-vni 10
-  rd 10.0.0.1:10
-  route-target import 65001:10
-  route-target export 65001:10
+router bgp 65001
+  address-family l2vpn evpn
+    vni 10
+      rd 10.0.0.1:10
+      route-target import 65001:10
+      route-target export 65001:10
+    exit-vni
+  exit-address-family
 !
 ```
 
@@ -88,8 +92,9 @@ vtysh -c "show bgp l2vpn evpn route type macip"
 bridge fdb show dev vxlan10
 
 # EVPN-populated entries appear as:
-# aa:bb:cc:dd:ee:01 dev vxlan10 dst 10.0.0.2 self
-# (without "permanent" = learned via EVPN/BGP)
+# aa:bb:cc:dd:ee:01 dev vxlan10 dst 10.0.0.2 self extern_learn
+# (the "extern_learn" flag indicates the entry was installed by an
+# external control plane like EVPN/BGP rather than data-plane learning)
 ```
 
 ## Step 5: Test Connectivity
