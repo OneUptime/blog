@@ -25,18 +25,19 @@ VXLAN source address learning (MAC learning) allows the VTEP to dynamically disc
 ```bash
 # Learning is enabled by default - no special flag needed
 
+# group 239.1.1.10 is the multicast address for initial BUM traffic
 ip link add vxlan10 type vxlan \
   id 10 \
   dstport 4789 \
   local 10.0.0.1 \
-  group 239.1.1.10 \   # Multicast for initial BUM traffic
+  group 239.1.1.10 \
   dev eth0
 
 ip link set vxlan10 up
 
 # Verify learning is on
 ip -d link show vxlan10 | grep -E "ageing|learn"
-# ageing 300 syflowd 0 ...  (no 'nolearning' = learning enabled)
+# srcport 0 0 dstport 4789 ageing 300 ...  (no 'nolearning' = learning enabled)
 ```
 
 ## Tuning the FDB Ageing Time for Learned Entries
