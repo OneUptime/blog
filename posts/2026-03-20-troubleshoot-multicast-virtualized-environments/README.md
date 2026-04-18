@@ -22,7 +22,7 @@ VMware's standard vSwitch and distributed vSwitch (dvSwitch) block multicast by 
    - **MAC Address Changes**: Accept
 4. Click **OK**
 
-Without promiscuous mode, a VM NIC only receives unicast frames addressed to it, missing multicast entirely.
+Without promiscuous mode, a VM NIC only receives frames matching its MAC filters (unicast to its own MAC, broadcast, and multicast groups it has joined via IGMP). Applications that rely on multicast without IGMP membership, or protocols where MAC-based filtering breaks down, will miss traffic unless promiscuous mode is enabled.
 
 ## KVM / libvirt: Enable Multicast on the Bridge
 
