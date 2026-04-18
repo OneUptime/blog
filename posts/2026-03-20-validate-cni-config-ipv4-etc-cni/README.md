@@ -56,7 +56,7 @@ Expected valid structure:
 # Validate JSON syntax
 python3 -c "import json; json.load(open('/etc/cni/net.d/10-flannel.conflist'))"
 # No output = valid JSON
-# SyntaxError = invalid JSON
+# json.decoder.JSONDecodeError = invalid JSON
 ```
 
 ## Validating Calico Configuration
