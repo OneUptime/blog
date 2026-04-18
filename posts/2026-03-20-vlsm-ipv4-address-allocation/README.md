@@ -66,7 +66,7 @@ ipcalc 10.10.0.0/24
 # HostMax: 10.10.0.254
 
 ipcalc 10.10.1.0/25
-# HostMax: 10.10.1.127 (doesn't overlap with /24 above)
+# HostMax: 10.10.1.126 (doesn't overlap with /24 above)
 
 ipcalc 10.10.1.128/26
 # HostMin: 10.10.1.129, HostMax: 10.10.1.190 (doesn't overlap)
