@@ -44,10 +44,10 @@ networkctl status eth0
 ## Show Status for All Interfaces
 
 ```bash
-# Detailed status for every interface
+# Overall system network status (state, addresses, gateway, DNS)
 networkctl status
 
-# Or with verbose flag
+# Detailed status for every link
 networkctl status -a
 ```
 
@@ -55,8 +55,8 @@ networkctl status -a
 
 ```bash
 # networkctl list output columns:
-# OPERATIONAL: carrier, no-carrier, dormant, degraded, routable, enslaved
-# SETUP: unmanaged, configuring, configured, degraded, failed
+# OPERATIONAL: missing, off, no-carrier, dormant, degraded-carrier, carrier, degraded, enslaved, routable
+# SETUP: pending, initialized, configuring, configured, unmanaged, failed, linger
 
 # Quick check if interface is routable
 networkctl list | grep routable
@@ -85,8 +85,11 @@ resolvectl status
 ## Monitor Interface Events
 
 ```bash
-# Watch for interface state changes in real time
-networkctl monitor
+# Follow systemd-networkd logs for link state changes in real time
+journalctl -u systemd-networkd -f
+
+# Or watch link events directly from the kernel
+ip monitor link
 ```
 
 ## Useful networkctl Commands
@@ -120,4 +123,4 @@ networkctl status eth0 | grep -i speed
 
 ## Conclusion
 
-`networkctl list` gives a quick overview of all interfaces and their setup state. `networkctl status <interface>` provides comprehensive details including IP, routes, DNS, and DHCP information. Use `networkctl monitor` to watch real-time state changes. These commands are the primary interface for inspecting systemd-networkd-managed networking.
+`networkctl list` gives a quick overview of all interfaces and their setup state. `networkctl status <interface>` provides comprehensive details including IP, routes, DNS, and DHCP information. Pair it with `journalctl -u systemd-networkd -f` or `ip monitor link` to watch real-time state changes. These commands are the primary interface for inspecting systemd-networkd-managed networking.
