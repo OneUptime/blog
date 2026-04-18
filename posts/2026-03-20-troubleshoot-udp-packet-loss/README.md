@@ -120,8 +120,10 @@ ip -s link show eth0
 # 3. Move heavy processing off the receive hot path
 # 4. Use multiple threads/processes reading from the socket (SO_REUSEPORT)
 
-# SO_REUSEPORT allows multiple processes on same UDP port (load balancing):
-sysctl -w net.core.reuseport=1
+# SO_REUSEPORT allows multiple processes on same UDP port (load balancing).
+# It is a per-socket option set by the application via setsockopt(), not a sysctl.
+# Python example:
+# sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 ```
 
 ## Conclusion
