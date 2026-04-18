@@ -13,16 +13,10 @@ Vault's AWS secrets engine generates temporary IAM access keys or assumed-role c
 ## Configuring the AWS Secrets Engine
 
 ```hcl
-# Enable the AWS secrets engine
-
-resource "vault_mount" "aws" {
-  path = "aws"
-  type = "aws"
-}
-
-# Configure with an IAM user that has permissions to create/manage credentials
+# Enable and configure the AWS secrets engine
+# (this resource creates its own mount at the given path)
 resource "vault_aws_secret_backend" "aws" {
-  path       = vault_mount.aws.path
+  path       = "aws"
   access_key = var.vault_aws_access_key  # Root/admin key for Vault
   secret_key = var.vault_aws_secret_key
   region     = "us-east-1"
@@ -33,17 +27,18 @@ resource "vault_aws_secret_backend" "aws" {
 
 # Create a role that generates assumed-role credentials
 resource "vault_aws_secret_backend_role" "opentofu_deployer" {
-  backend         = vault_mount.aws.path
+  backend         = vault_aws_secret_backend.aws.path
   name            = "opentofu-deployer"
   credential_type = "assumed_role"
   role_arns       = ["arn:aws:iam::123456789012:role/opentofu-deploy-role"]
+  external_id     = "vault-aws-secrets-engine"
   default_sts_ttl = 3600
   max_sts_ttl     = 14400
 }
 
 # Create a role that generates IAM access keys
 resource "vault_aws_secret_backend_role" "readonly_user" {
-  backend         = vault_mount.aws.path
+  backend         = vault_aws_secret_backend.aws.path
   name            = "readonly-user"
   credential_type = "iam_user"
 
@@ -82,14 +77,14 @@ provider "aws" {
 ```hcl
 # Configure roles for multiple accounts
 resource "vault_aws_secret_backend_role" "prod_deployer" {
-  backend         = vault_mount.aws.path
+  backend         = vault_aws_secret_backend.aws.path
   name            = "prod-deployer"
   credential_type = "assumed_role"
   role_arns       = ["arn:aws:iam::111111111111:role/opentofu-deploy"]
 }
 
 resource "vault_aws_secret_backend_role" "staging_deployer" {
-  backend         = vault_mount.aws.path
+  backend         = vault_aws_secret_backend.aws.path
   name            = "staging-deployer"
   credential_type = "assumed_role"
   role_arns       = ["arn:aws:iam::222222222222:role/opentofu-deploy"]
