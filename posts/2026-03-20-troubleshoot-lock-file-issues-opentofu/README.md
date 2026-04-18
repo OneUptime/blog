@@ -48,8 +48,8 @@ Your `required_providers` constraint and the lock file entry disagree.
 # Upgrade the locked version to satisfy the new constraint
 tofu init -upgrade
 
-# Or selectively upgrade a specific provider
-tofu init -upgrade -lock=true
+# Or selectively re-lock a specific provider
+tofu providers lock hashicorp/aws
 ```
 
 If you want to downgrade rather than upgrade, manually edit the lock file entry or delete it and re-run `tofu init`.
@@ -124,8 +124,9 @@ tofu providers lock \
   -platform=linux_amd64 \
   -platform=darwin_arm64
 
-# The lock file will contain zh: hashes (zip hashes from mirror)
-# instead of h1: hashes - this is expected
+# When installing from a mirror without a SHA256SUMS file, the lock
+# file will contain only h1: hashes (computed from extracted contents)
+# and not the zh: hashes that come from the origin registry - this is expected
 ```
 
 ## Best Practices for Lock File Management
@@ -145,4 +146,4 @@ tofu init
 
 ## Summary
 
-Lock file issues fall into four categories: hash mismatches (add multi-platform hashes with `tofu providers lock -platform=...`), version conflicts (run `tofu init -upgrade` to re-lock at the new version), missing platform hashes for CI/CD (add `linux_amd64` hashes explicitly), and private mirror hash differences (expected - mirrors produce `zh:` hashes instead of `h1:`). Always commit `.terraform.lock.hcl` to version control and generate it with all target platforms from the start to avoid CI/CD surprises.
+Lock file issues fall into four categories: hash mismatches (add multi-platform hashes with `tofu providers lock -platform=...`), version conflicts (run `tofu init -upgrade` to re-lock at the new version), missing platform hashes for CI/CD (add `linux_amd64` hashes explicitly), and private mirror hash differences (expected - mirrors without a SHA256SUMS file only record `h1:` hashes and omit the `zh:` hashes from the origin registry). Always commit `.terraform.lock.hcl` to version control and generate it with all target platforms from the start to avoid CI/CD surprises.
