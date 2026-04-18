@@ -34,7 +34,7 @@ Keepalive prevents connections from dropping during idle periods:
 keepalive 10 120
 ```
 
-If both server and client have this, the effective timeout is the shorter of the two.
+Setting `keepalive` on the server is typically enough — it pushes equivalent `ping` and `ping-restart` directives to the client. If both sides set it, the server's pushed values override the client's local ones.
 
 ## Step 3: Investigate MTU Issues
 
