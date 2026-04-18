@@ -36,9 +36,9 @@ The describe output shows the binding failure reason in Events.
 kubectl get storageclass
 
 Example output:
-NAME                    PROVISIONER         RECLAIMPOLICY
-standard (default)      rancher.io/local    Delete
-## nfs-storage             nfs-provisioner     Retain
+NAME                 PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+standard (default)   rancher.io/local-path   Delete          WaitForFirstConsumer   false                  30d
+## nfs-storage          nfs-provisioner         Retain          Immediate              false                  12d
 ```
 
 Verify your PVC's \`storageClassName\` matches an available class.
@@ -58,7 +58,7 @@ kubectl describe pv <pv-name>
 A PV in Released state has the old claim reference blocking reuse. Clear it:
 
 ```bash
-kubectl patch pv <pv-name> -p '{"spec":{"claimRef": null}}'
+kubectl patch pv <pv-name> --type=merge -p '{"spec":{"claimRef": null}}'
 ```
 
 ## Step 5: Dynamic Provisioning
