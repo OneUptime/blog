@@ -31,7 +31,9 @@ ip route show table local
 
 ```bash
 # Check if the static route was ever added
-ip route show | grep "proto static"
+# (Netplan/NetworkManager/systemd-networkd install routes as "proto static";
+#  bare "ip route add" without explicit proto defaults to "proto boot")
+ip route show | grep -E "proto (static|boot)"
 
 # Try adding it manually
 ip route add 10.20.0.0/24 via 192.168.1.1
@@ -55,13 +57,12 @@ vtysh -c "show ip ospf neighbor"
 # Check if OSPF has the route in its own database
 vtysh -c "show ip ospf route" | grep "10.20.0"
 
-# Check if OSPF is redistributing to the kernel RIB
-# (sometimes OSPF has the route but doesn't install it)
+# Check the OSPF LSA database to confirm the prefix is being advertised
 vtysh -c "show ip ospf database"
 
 # Check for OSPF interface state
 vtysh -c "show ip ospf interface eth0"
-# Should show: State DR/BDR/DROther, not Down
+# Should show: State DR/BDR/DROther (broadcast), Point-to-Point, or Loopback — not Down
 ```
 
 ## Step 4: BGP Route Missing
@@ -77,6 +78,7 @@ vtysh -c "show ip bgp summary"
 # If not best, it won't be installed in the kernel
 
 # Check if a route-map is filtering the route
+# (requires "neighbor 10.0.0.2 soft-reconfiguration inbound" to be configured)
 vtysh -c "show ip bgp neighbor 10.0.0.2 received-routes" | grep "10.20.0"
 ```
 
