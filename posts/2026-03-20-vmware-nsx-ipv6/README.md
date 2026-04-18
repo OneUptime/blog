@@ -145,7 +145,7 @@ def create_ipv6_segment(name: str, ipv6_subnet: str, gateway: str) -> dict:
         ],
         "transport_zone_path": "/infra/sites/default/enforcement-points/default/transport-zones/tz1",
     }
-    response = requests.post(
+    response = requests.put(
         f"{NSX_MANAGER}/policy/api/v1/infra/segments/{name}",
         auth=AUTH,
         json=payload,
