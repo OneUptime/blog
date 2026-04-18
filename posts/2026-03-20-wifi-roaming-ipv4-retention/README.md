@@ -48,15 +48,13 @@ config wifi-iface 'corporate_wifi'
     option ieee80211k '1'
 
     # 802.11v - BSS transition management
-    option ieee80211v '1'
     option bss_transition '1'
 ```
 
 **Cisco WLC configuration:**
 ```text
 wlan CorporateWiFi 1 CorporateWiFi
-  client vlan 10
-  mobility anchor 192.168.1.200    # Mobility anchor keeps same subnet
+  client vlan 10                   # All APs map the WLAN to the same VLAN
   session-timeout 1800
   ft dot11r
   ft-over-ds enable
@@ -99,19 +97,20 @@ network={
     # Roaming settings
     bgscan="simple:30:-70:300"    # Background scan every 30s if RSSI < -70dBm
 
-    # Enable 802.11r if APs support it
-    ft_eap_pmksa_caching=1
+    # Enable 802.11r (Fast BSS Transition) with PSK
+    key_mgmt=WPA-PSK FT-PSK
 }
 ```
 
 **Windows (via netsh):**
 ```cmd
-REM Set roaming aggressiveness (0=lowest, 3=medium, 5=highest)
+REM Set the profile to auto-connect to this SSID when in range
 netsh wlan set profileparameter name="CorporateWiFi" connectionmode=auto
 
-REM More aggressive roaming via adapter properties
-REM Device Manager → Network Adapter → Advanced
-REM Look for "Roaming Aggressiveness" or "Roam Tendency" setting
+REM Roaming aggressiveness is a driver-specific adapter property and
+REM cannot be configured via netsh. Set it via adapter properties:
+REM Device Manager → Network Adapter → Advanced → "Roaming Aggressiveness"
+REM or "Roam Tendency" (values typically range from 1=lowest to 5=highest)
 ```
 
 ## Step 5: Monitor Roaming Events
