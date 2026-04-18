@@ -86,11 +86,10 @@ resource "aws_vpc_dhcp_options" "default" {
 resource "aws_vpc_dhcp_options" "hybrid" {
   domain_name = "internal.example.com"
 
-  # Route 53 Resolver inbound endpoints handle query routing
-  domain_name_servers = [
-    aws_route53_resolver_endpoint.inbound_ip_1,
-    aws_route53_resolver_endpoint.inbound_ip_2,
-  ]
+  # Route 53 Resolver inbound endpoints handle query routing.
+  # The ip_address block on the resolver endpoint exposes .ip
+  # for each ENI, so splat the IPv4 addresses into the list.
+  domain_name_servers = aws_route53_resolver_endpoint.inbound.ip_address[*].ip
 
   tags = {
     Name = "hybrid-dhcp-options"
