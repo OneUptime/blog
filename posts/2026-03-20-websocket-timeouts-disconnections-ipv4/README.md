@@ -32,6 +32,11 @@ wss.on('connection', (ws, req) => {
   // Update activity on any message
   ws.on('message', (data) => {
     ws.lastActivity = Date.now();
+    // Reply to application-level ping (browsers can't send protocol pings)
+    if (data.toString() === '__ping__') {
+      ws.send('__pong__');
+      return;
+    }
     // Process message...
   });
   
@@ -190,7 +195,8 @@ class ReconnectingWebSocket {
         
         this.pongTimer = setTimeout(() => {
           console.log('Pong timeout - closing for reconnect');
-          this.ws.close(1001, 'Ping timeout');
+          // Browser close() only allows 1000 or 3000-4999; use app-reserved 4000
+          this.ws.close(4000, 'Ping timeout');
         }, this.options.pongTimeout);
       }
     }, this.options.pingInterval);
