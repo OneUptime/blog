@@ -16,9 +16,9 @@ The default Ethernet MTU is 1500 bytes. Adding tunnel overhead reduces the effec
 
 | Tunnel Type | Overhead | Effective IPv6 MTU (on 1500 MTU link) |
 |---|---|---|
-| IPv4-in-IPv4 (6in4/SIT) | 20 bytes (IPv4 header) | 1480 bytes |
+| IPv6-in-IPv4 (6in4/SIT) | 20 bytes (IPv4 header) | 1480 bytes |
 | GRE over IPv4 | 24 bytes (IPv4 + GRE) | 1476 bytes |
-| GRE over IPv6 | 40 bytes (IPv6 + GRE) | 1460 bytes |
+| GRE over IPv6 | 44 bytes (IPv6 + GRE) | 1456 bytes |
 | IPsec ESP tunnel | 50–70 bytes | ~1430–1450 bytes |
 | VXLAN over IPv6 | 70 bytes | ~1430 bytes |
 
