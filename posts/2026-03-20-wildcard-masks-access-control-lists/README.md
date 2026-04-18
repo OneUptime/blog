@@ -45,10 +45,10 @@ access-list 10 permit 192.168.0.0 0.0.3.255
 ```python
 import ipaddress
 
-def acl_entry(action: str, cidr: str) -> str:
-    """Generate a Cisco-style ACL entry for a subnet."""
+def acl_entry(cidr: str) -> str:
+    """Generate the address/wildcard pair for a subnet."""
     net = ipaddress.IPv4Network(cidr, strict=False)
-    return f"{action} {net.network_address} {net.hostmask}"
+    return f"{net.network_address} {net.hostmask}"
 
 # Generate ACL entries for a list of permitted subnets
 
@@ -60,7 +60,7 @@ permitted_subnets = [
 
 print("ip access-list extended PERMIT_INTERNAL")
 for subnet in permitted_subnets:
-    print(f"  permit ip {acl_entry('', subnet)} any")
+    print(f"  permit ip {acl_entry(subnet)} any")
 print("  deny ip any any")
 ```
 
