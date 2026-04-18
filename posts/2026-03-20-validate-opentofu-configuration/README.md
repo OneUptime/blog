@@ -155,7 +155,7 @@ tofu validate
 
 ## Custom Validation in Variables
 
-OpenTofu 1.9+ supports custom validation rules in variable blocks:
+OpenTofu supports custom validation rules in variable blocks:
 
 ```hcl
 variable "environment" {
