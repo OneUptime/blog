@@ -18,7 +18,8 @@ vsftpd supports TCP wrappers for IP-based access control. This is the classic an
 # /etc/hosts.allow
 
 # Allow FTP from the office network and a specific admin IP
-vsftpd: 192.168.1.0/24
+# Use the network/netmask form for IPv4 (CIDR prefix support in libwrap is IPv6-only per hosts_access(5))
+vsftpd: 192.168.1.0/255.255.255.0
 vsftpd: 203.0.113.5
 
 # /etc/hosts.deny
@@ -34,7 +35,7 @@ Ensure TCP wrappers support is enabled in vsftpd:
 
 ```ini
 # /etc/vsftpd.conf
-tcp_wrappers=YES   # Enable TCP wrappers (usually default YES)
+tcp_wrappers=YES   # Enable TCP wrappers (vsftpd default is NO; many distros override)
 ```
 
 ```bash
