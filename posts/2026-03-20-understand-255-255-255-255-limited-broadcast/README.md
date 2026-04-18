@@ -35,7 +35,7 @@ Every IP router discards packets with destination `255.255.255.255`. This behavi
 echo "test" | socat - UDP-DATAGRAM:255.255.255.255:9999,broadcast
 
 # On Router eth1 (192.168.2.0/24 side) - should receive nothing
-sudo tcpdump -i eth0_on_other_side -n "dst 255.255.255.255"
+sudo tcpdump -i eth1 -n "dst 255.255.255.255"
 # 0 packets captured
 ```
 
@@ -55,13 +55,11 @@ Typical traffic visible:
 
 A server receiving a packet to `255.255.255.255` cannot always determine which interface it arrived on without using `IP_PKTINFO`. In DHCP, the server examines the source IP (still `0.0.0.0` for new clients) and uses the `giaddr` field from a relay agent to identify the subnet.
 
-For a DHCP server, the `interface` directive in `/etc/dhcp/dhcpd.conf` pins the daemon to specific interfaces:
+For ISC DHCP, the daemon is pinned to specific interfaces by passing them on the command line (`dhcpd eth1`) or via the service file - on Debian/Ubuntu, set `INTERFACESv4="eth1"` in `/etc/default/isc-dhcp-server`. Inside `/etc/dhcp/dhcpd.conf`, every directly-attached subnet must still be declared (an empty declaration is allowed for subnets you do not wish to serve):
 
 ```text
-# Only serve DHCP on eth1 (the LAN-facing interface)
-interface eth1;
-
-subnet 192.168.1.0 netmask 255.255.255.255 {
+# Declared but not served
+subnet 192.168.1.0 netmask 255.255.255.0 {
 }
 
 subnet 192.168.2.0 netmask 255.255.255.0 {
