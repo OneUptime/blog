@@ -25,8 +25,9 @@ VXLAN over IPv6 encapsulation stack:
 │  (inner IPv4/IPv6 header + payload) │
 └─────────────────────────────────────┘
 
-Total overhead: 14 + 40 + 8 + 8 = 70 bytes (includes inner Ethernet)
-Tunnel overhead (outer only): 56 bytes
+MTU overhead (inner IP perspective): 40 + 8 + 8 + 14 = 70 bytes
+  (outer IPv6 + outer UDP + VXLAN + inner Ethernet; outer Ethernet is not counted in MTU)
+Tunnel-only encapsulation (outer IP + UDP + VXLAN): 56 bytes
 ```
 
 Compare with VXLAN over IPv4 (50 bytes overhead):
@@ -104,10 +105,13 @@ ip link show ${VXLAN_IFACE} | grep mtu
 PMTUD issues occur when intermediate devices don't support IPv6 fragmentation:
 
 ```bash
-# Enable Path MTU Discovery for IPv6
-sysctl -w net.ipv6.conf.all.disable_policy=0
+# IPv6 PMTU Discovery is mandatory per RFC 8201 and always on;
+# the kernel learns PMTUs from ICMPv6 "Packet Too Big" messages automatically.
+# Tunables live under net.ipv6.route.* — e.g. lower the cache lifetime to
+# re-probe paths more aggressively after topology changes.
+sysctl -w net.ipv6.route.mtu_expires=600
 
-# Check PMTU cache
+# Check PMTU cache (route exceptions)
 ip -6 route show cache
 
 # Force PMTU update
@@ -128,21 +132,23 @@ ethtool -S eth0 | grep fragment 2>/dev/null || \
 Hardware offload reduces CPU overhead from VXLAN encapsulation:
 
 ```bash
-# Check current offload settings
-ethtool -k eth0 | grep -E 'tx-udp_tnl|rx-udp_tnl|tx-vxlan|rx-vxlan'
+# Check current offload settings (VXLAN reuses the generic UDP-tunnel offload)
+ethtool -k eth0 | grep -E 'udp_tnl|udp-segmentation|gro'
 
-# Enable VXLAN UDP offload if supported
+# Enable VXLAN UDP-tunnel segmentation offload if supported
 ethtool -K eth0 tx-udp_tnl-segmentation on 2>/dev/null || \
     echo "tx-udp_tnl-segmentation not supported"
 
+# Enable checksum offload for UDP-tunneled traffic
+ethtool -K eth0 tx-udp_tnl-csum-segmentation on 2>/dev/null || \
+    echo "tx-udp_tnl-csum-segmentation not supported"
+
+# GRO for forwarded UDP (kernel >= 5.12): helps VTEP forwarding throughput
 ethtool -K eth0 rx-udp-gro-forwarding on 2>/dev/null || \
-    echo "rx-udp-gro-forwarding not supported"
+    echo "rx-udp-gro-forwarding not supported (requires Linux 5.12+)"
 
-# For VXLAN with IPv6 underlay offload
-ethtool -K eth0 tx-vxlan-segmentation on 2>/dev/null
-
-# Check if offload is active
-ethtool -k eth0 | grep -i vxlan
+# Check if UDP-tunnel offloads are active
+ethtool -k eth0 | grep -E 'udp_tnl|udp-gro'
 ```
 
 ## Measuring VXLAN Throughput Impact
