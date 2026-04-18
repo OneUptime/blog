@@ -25,7 +25,7 @@ Full example: fe80::1a2b:3cff:fe4d:5e6f
 ## How Link-Local Addresses Are Generated
 
 ```bash
-# EUI-64 from MAC address (RFC 4862)
+# Modified EUI-64 from MAC address (RFC 4291 Appendix A)
 
 # MAC:    00:1a:2b:3c:4d:5e
 # Step 1: Split into two halves: 00:1a:2b | 3c:4d:5e
@@ -57,8 +57,8 @@ Link-local addresses are ambiguous across interfaces - the same `fe80::1` could 
 ping6 fe80::21a:2bff:fe3c:4d5e%eth0
 ping6 fe80::1%eth1
 
-# In URLs and applications
-http://[fe80::1%eth0]:8080/
+# In URLs the % must be percent-encoded as %25 (RFC 6874)
+http://[fe80::1%25eth0]:8080/
 
 # In Python sockets
 import socket
@@ -98,7 +98,7 @@ ip -6 route show
 # 2001:db8::/64 dev eth0 proto kernel scope link src 2001:db8::2
 
 # DHCPv6 - identify server from link-local source
-tcpdump -i eth0 -n ip6 and udp port 546 or port 547
+tcpdump -i eth0 -n 'ip6 and udp and (port 546 or port 547)'
 ```
 
 ## Static Link-Local Address
