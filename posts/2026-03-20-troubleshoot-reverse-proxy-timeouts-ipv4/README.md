@@ -97,15 +97,15 @@ backend ws-backend
 sudo tail -f /var/log/haproxy.log | grep -E "(timeout|TD|CD)"
 
 # In HAProxy log format, the termination state shows why a connection ended:
-# cD = client disconnect
-# sD = server disconnect
-# SD = server timeout
-# cT = client timeout
+# CD = client aborted during data phase (client disconnect)
+# SD = server aborted during data phase (server disconnect)
+# cD = client-side timeout during data phase
+# sD = server-side timeout during data phase
 # -- = normal termination
 
 # Real-time stats
 echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
-  awk -F',' '{print $1, $2, "dreq="$14, "ereq="$16, "econ="$19, "eresp="$20}'
+  awk -F',' '{print $1, $2, "dreq="$11, "ereq="$13, "econ="$14, "eresp="$15}'
 ```
 
 ## Testing Backend Response Time
