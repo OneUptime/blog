@@ -43,8 +43,8 @@ conntrack -L
 conntrack -L | awk '{print $4}' | sort | uniq -c | sort -rn
 
 # Count by destination IP (find top talkers)
-conntrack -L | grep ESTABLISHED | awk '{print $5}' | \
-    grep -o 'dst=[0-9.]*' | sort | uniq -c | sort -rn | head -20
+conntrack -L | grep ESTABLISHED | awk '{print $6}' | \
+    sort | uniq -c | sort -rn | head -20
 
 # Count by source IP (find devices using most connections)
 conntrack -L | awk '{print $5}' | grep -o 'src=[0-9.]*' | \
@@ -109,12 +109,8 @@ sudo sysctl -p
 # Use only in emergencies
 sudo conntrack -F
 
-# More targeted: flush only TIME_WAIT entries
-conntrack -L | grep TIME_WAIT | \
-    awk '{print $5" "$6" "$7" "$8}' | \
-    while read src dst sport dport; do
-        conntrack -D $src $dst $sport $dport 2>/dev/null
-    done
+# More targeted: flush only TCP TIME_WAIT entries
+sudo conntrack -D -p tcp --state TIME_WAIT 2>/dev/null
 
 # Flush connections to specific destination
 conntrack -D -d 1.2.3.4
