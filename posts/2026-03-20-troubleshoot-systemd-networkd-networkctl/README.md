@@ -17,12 +17,17 @@ Description: Troubleshoot systemd-networkd configuration and connectivity issues
 
 networkctl list
 
-# Status meanings:
-# configured   - networkd has applied the configuration
-# unmanaged    - no .network file matches this interface
-# degraded     - some addresses failed (e.g., IPv6 RA)
-# failed       - configuration failed
-# linger       - carrier lost but interface still exists
+# Setup state meanings (SETUP column):
+# configured   - networkd has applied the configuration successfully
+# unmanaged    - networkd is not handling this link (e.g., no matching .network file)
+# configuring  - in the process of configuring the link
+# failed       - networkd failed to configure the link
+# linger       - the link is gone, but has not yet been dropped by networkd
+
+# Operational state examples (STATE column):
+# routable     - link has carrier and a routable address
+# degraded     - link has carrier and addresses, but only link-local (some addresses missing)
+# no-carrier   - link is up but has no carrier
 ```
 
 ## Inspect a Specific Interface
@@ -115,4 +120,4 @@ resolvectl status eth0
 
 ## Conclusion
 
-`networkctl list` and `networkctl status <interface>` are the primary diagnostic commands for systemd-networkd. For deeper investigation, use `journalctl -u systemd-networkd` to see detailed logs. Interface status `unmanaged` means no matching `.network` file exists; `failed` means the configuration was applied but an error occurred.
+`networkctl list` and `networkctl status <interface>` are the primary diagnostic commands for systemd-networkd. For deeper investigation, use `journalctl -u systemd-networkd` to see detailed logs. Setup state `unmanaged` usually means no matching `.network` file exists; `failed` means networkd failed to configure the link.
