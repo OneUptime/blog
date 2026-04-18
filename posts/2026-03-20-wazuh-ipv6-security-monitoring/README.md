@@ -47,7 +47,7 @@ sudo systemctl enable --now wazuh-manager
     <connection>secure</connection>
     <port>1514</port>
     <protocol>tcp</protocol>
-    <!-- Leave ip empty to listen on all interfaces including IPv6 -->
+    <ipv6>yes</ipv6>
   </remote>
 
   <!-- Syslog collection over IPv6 -->
@@ -55,6 +55,7 @@ sudo systemctl enable --now wazuh-manager
     <connection>syslog</connection>
     <port>514</port>
     <protocol>udp</protocol>
+    <ipv6>yes</ipv6>
     <allowed-ips>2001:db8::/32</allowed-ips>
   </remote>
 </ossec_config>
@@ -67,7 +68,7 @@ sudo systemctl enable --now wazuh-manager
 # /var/ossec/etc/ossec.conf (agent)
 # <client>
 #   <server>
-#     <address>2001:db8::wazuh-manager</address>
+#     <address>2001:db8::10</address>
 #     <port>1514</port>
 #     <protocol>tcp</protocol>
 #   </server>
@@ -75,7 +76,7 @@ sudo systemctl enable --now wazuh-manager
 
 # Register agent to manager
 sudo /var/ossec/bin/agent-auth \
-  -m 2001:db8::wazuh-manager \
+  -m 2001:db8::10 \
   -A "agent-hostname"
 
 # Start agent
@@ -160,8 +161,8 @@ for line in sys.stdin:
 # Monitor active threats
 sudo /var/ossec/bin/manage_agents -l
 
-# Check agent IPv6 connectivity
-sudo /var/ossec/bin/verify-agent-conf -a
+# Verify shared agent.conf syntax
+sudo /var/ossec/bin/verify-agent-conf
 ```
 
 Wazuh's extensible decoder and rule system supports IPv6 address patterns in log analysis, with the manager able to accept agent connections over IPv6 for unified security monitoring across both IPv4 and IPv6 network segments.
