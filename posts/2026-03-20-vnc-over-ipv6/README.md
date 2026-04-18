@@ -25,14 +25,14 @@ sudo dnf install -y tigervnc-server
 
 ## Configuring TigerVNC to Listen on IPv6
 
-By default, TigerVNC may bind to IPv4 only. To force IPv6 or dual-stack listening, start the server with the `-rfbport` and `-localhost` options adjusted:
+Recent TigerVNC versions (1.12+) listen on both IPv4 and IPv6 by default via the `-UseIPv4` and `-UseIPv6` parameters. To force dual-stack or IPv6-only listening, start the server with the `-rfbport`, `-localhost`, and `-interface` options adjusted:
 
 ```bash
-# Start VNC server on display :1 listening on all IPv6 interfaces
+# Start VNC server on display :1 listening on all interfaces
 vncserver :1 -rfbport 5901 -localhost no
 
-# To bind to a specific IPv6 address only
-vncserver :1 -rfbport 5901 -rfbListen :: -localhost no
+# To bind to the IPv6 wildcard address only
+vncserver :1 -rfbport 5901 -interface :: -localhost no
 ```
 
 For a systemd-managed VNC service, create a unit file:
@@ -47,7 +47,7 @@ After=network.target
 Type=forking
 User=youruser
 ExecStartPre=/bin/sh -c '/usr/bin/vncserver -kill :%i > /dev/null 2>&1 || :'
-ExecStart=/usr/bin/vncserver :%i -rfbport 590%i -rfbListen :: -localhost no
+ExecStart=/usr/bin/vncserver :%i -rfbport 590%i -interface :: -localhost no
 ExecStop=/usr/bin/vncserver -kill :%i
 
 [Install]
@@ -91,11 +91,11 @@ sudo ip6tables-save | sudo tee /etc/ip6tables.rules
 Use the bracket notation for IPv6 addresses in VNC clients:
 
 ```bash
-# Using vncviewer (TigerVNC client)
-vncviewer [2001:db8::10]:5901
+# Using vncviewer (TigerVNC client) - display number form (display 1 = port 5901)
+vncviewer [2001:db8::10]:1
 
-# Short-form display number
-vncviewer [2001:db8::10]::1
+# Explicit port form (double colon = literal TCP port)
+vncviewer [2001:db8::10]::5901
 
 # Using Remmina (GUI client) - enter in address field:
 # [2001:db8::10]:5901
@@ -121,8 +121,8 @@ vncviewer localhost:5901
 # Install x11vnc
 sudo apt install -y x11vnc
 
-# Start x11vnc bound to all IPv6 interfaces
-x11vnc -display :0 -rfbport 5900 -listen :: -passwd yourpassword -forever
+# Start x11vnc with IPv6 listening enabled (the -6 flag adds IPv6 alongside IPv4)
+x11vnc -display :0 -rfbport 5900 -6 -passwd yourpassword -forever
 ```
 
 ## Troubleshooting
