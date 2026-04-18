@@ -84,7 +84,7 @@ print(f"Checksum valid: {is_valid}")  # True
 
 ## Checksum Offloading
 
-Modern NICs often handle checksum computation in hardware (checksum offloading). When capturing packets with Wireshark or tcpdump on the sending host, the checksum field may appear as zero or incorrect because the kernel hands the packet to the NIC before filling in the checksum. Use the `-k` flag in Wireshark or disable offloading for accurate captures.
+Modern NICs often handle checksum computation in hardware (checksum offloading). When capturing packets with Wireshark or tcpdump on the sending host, the checksum field may appear as zero or incorrect because the kernel hands the packet to the NIC before filling in the checksum. Recent Wireshark versions disable IP/TCP/UDP checksum validation by default; if yours flags these packets as bad, uncheck "Validate the IPv4 checksum if possible" under Edit → Preferences → Protocols → IPv4 (or pass `-o ip.check_checksum:FALSE` to `tshark`). For accurate captures, disable offloading on the NIC.
 
 ```bash
 # Disable TX checksum offloading on eth0 for accurate captures
