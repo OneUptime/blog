@@ -14,8 +14,8 @@ Combining VXLAN with network namespaces allows you to create isolated overlay ne
 
 ```mermaid
 flowchart TD
-    ns1["Namespace ns1\nveth1: 10.200.0.11/24"] --> br0["br0 (bridge)\n10.200.0.1/24"]
-    ns2["Namespace ns2\nveth2: 10.200.0.12/24"] --> br0
+    ns1["Namespace ns1\nveth1-peer: 10.200.0.11/24"] --> br0["br-vxlan (bridge)\n10.200.0.1/24"]
+    ns2["Namespace ns2\nveth2-peer: 10.200.0.12/24"] --> br0
     br0 --> vxlan0["vxlan0 (VTEP)\nVNI: 1000"]
     vxlan0 -- "UDP 4789" --> remote_vtep["Remote VTEP\n(Another host)"]
 ```
