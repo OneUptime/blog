@@ -98,7 +98,7 @@ sudo netplan apply
 View what Netplan generates for the backend:
 
 ```bash
-sudo netplan generate --debug
+sudo netplan --debug generate
 cat /run/systemd/network/*.network 2>/dev/null
 ```
 
