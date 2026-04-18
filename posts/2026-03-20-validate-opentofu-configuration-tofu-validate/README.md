@@ -19,7 +19,6 @@ Description: Learn how to use tofu validate to check your configuration for synt
 - Type mismatches (e.g., passing a string where a number is expected)
 - Invalid references to undefined variables or resources
 - Missing required arguments
-- Cyclic dependencies
 
 `tofu validate` does **not** check:
 - Whether providers are authenticated
@@ -99,13 +98,13 @@ resource "aws_instance" "web" {
 
 ```hcl
 # ERROR: Type mismatch
-variable "count" {
+variable "instance_count" {
   type    = number
   default = "three"   # Error: Default value is not compatible - string not number
 }
 
 # FIX: Use the correct type
-variable "count" {
+variable "instance_count" {
   type    = number
   default = 3
 }
