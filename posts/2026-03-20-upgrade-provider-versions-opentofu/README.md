@@ -108,21 +108,22 @@ tofu apply after_upgrade.plan
 ## Handling Breaking Changes
 
 ```hcl
-# Example: AWS provider 5.x renamed an attribute
+# Example: AWS provider 4.x split aws_s3_bucket into multiple sub-resources
 
-# Before (aws provider 4.x)
-resource "aws_instance" "web" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.micro"
-
-  # Old attribute name
-  vpc_security_group_ids = [aws_security_group.web.id]
+# Before (aws provider 3.x - inline ACL on the bucket)
+resource "aws_s3_bucket" "main" {
+  bucket = "example-bucket"
+  acl    = "private"  # Inline ACL - deprecated in 4.x
 }
 
-# After (aws provider 5.x - same in this case, but some attrs change)
+# After (aws provider 4.x+ - ACL as a separate resource)
+resource "aws_s3_bucket" "main" {
+  bucket = "example-bucket"
+}
+
 resource "aws_s3_bucket_acl" "example" {
-  # In provider 4.x, ACL was set on the bucket resource
-  # In provider 5.x, it's a separate resource
+  # Split out in 4.0; inline acl on aws_s3_bucket is deprecated
+  # and slated for removal in a future major version
   bucket = aws_s3_bucket.main.id
   acl    = "private"
 }
@@ -155,14 +156,14 @@ tofu plan
 ```json
 // renovate.json - auto-create PRs for provider upgrades
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "terraform": {
     "enabled": true
   },
   "packageRules": [
     {
       "matchManagers": ["terraform"],
-      "matchPackagePatterns": [".*"],
+      "matchPackageNames": ["/.*/"],
       "groupName": "terraform providers",
       "automerge": false,
       "reviewers": ["team:infrastructure"]
