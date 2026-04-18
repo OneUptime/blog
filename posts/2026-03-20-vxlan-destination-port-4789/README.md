@@ -32,7 +32,7 @@ ip link add vxlan10 type vxlan \
 
 # Verify
 ip -d link show vxlan10
-# Output includes: vxlan id 10 remote 10.0.0.2 local 10.0.0.1 dev eth0 port 0 4789
+# Output includes: vxlan id 10 remote 10.0.0.2 local 10.0.0.1 srcport 0 0 dstport 4789
 ```
 
 ## Changing Port on Existing Interface
@@ -75,9 +75,10 @@ ufw allow 4789/udp
 ## Verifying the Port
 
 ```bash
-# Check if vxland is listening on UDP 4789
+# Check if the kernel has a UDP socket bound on 4789
+# (VXLAN is a kernel tunnel, so ss will not show a user-space process)
 ss -ulnp | grep 4789
-# udp UNCONN 0 0 0.0.0.0:4789 0.0.0.0:* users:(("vxland",pid=...))
+# UNCONN 0 0 0.0.0.0:4789 0.0.0.0:*
 
 # Capture VXLAN traffic
 tcpdump -i eth0 -nn udp port 4789
