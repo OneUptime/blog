@@ -60,12 +60,12 @@ iface eth0.30 inet static
 # Preferred for readability
 
 # Or numeric naming: vlan10 (less clear which parent)
+# The VLAN ID (10) is derived from the numeric suffix of the interface name.
 auto vlan10
 iface vlan10 inet static
   address 10.10.0.1
   netmask 255.255.255.0
   vlan-raw-device eth0
-  vlan_id 10
 ```
 
 ## Applying Changes
