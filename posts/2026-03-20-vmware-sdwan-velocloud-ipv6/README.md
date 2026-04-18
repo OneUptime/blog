@@ -36,7 +36,7 @@ Add/Edit Network:
   IPv4: 192.168.1.1/24
   DHCPv4: Enabled (server)
 
-  IPv6: 2001:db8:edge-a::/64
+  IPv6: 2001:db8:a::/64
   IPv6 Mode: Static
   RA (Router Advertisement): Enabled
   RA Interval: 30 seconds
@@ -70,7 +70,7 @@ curl -s -X POST \
           "gateway": "192.168.1.1",
           "ipv6": {
             "enabled": true,
-            "prefix": "2001:db8:edge-a::/64",
+            "prefix": "2001:db8:a::/64",
             "raEnabled": true,
             "dhcpv6Enabled": true
           }
@@ -88,7 +88,7 @@ Configure > Profiles > [Profile] > Business Policy
 
 Add Rule:
   Name: IPv6-VoIP-Priority
-  Source: 2001:db8:edge-a::/64
+  Source: 2001:db8:a::/64
   Destination: Any
   Protocol: UDP
   DSCP: EF
@@ -116,14 +116,14 @@ Add Rule:
 sysctl -w net.ipv6.conf.all.forwarding=1
 
 # Gateway public IPv6 address
-ip -6 addr add 2001:db8::gateway/64 dev eth0
+ip -6 addr add 2001:db8::1/64 dev eth0
 
 # BGP peers with upstream ISP for IPv6
 # In BGP configuration:
-# neighbor 2001:db8::isp-peer remote-as 65001
+# neighbor 2001:db8::2 remote-as 65001
 # address-family ipv6 unicast
-#   neighbor 2001:db8::isp-peer activate
-#   network 2001:db8:customer::/48
+#   neighbor 2001:db8::2 activate
+#   network 2001:db8:a::/48
 
 # Redistribute SD-WAN IPv6 routes to BGP
 # bgp redistribute-internal ipv6
