@@ -100,7 +100,7 @@ dig AAAA $hostname +short
 
 ## Step 6: Privacy Extensions Causing SPF Failures
 
-IPv6 privacy extensions (RFC 4941) can cause the source address to change, breaking SPF:
+IPv6 privacy extensions (RFC 8981, which obsoletes RFC 4941) can cause the source address to change, breaking SPF:
 
 ```bash
 # Check if privacy extensions are active
