@@ -120,11 +120,12 @@ Get-NetIPAddress -AddressFamily IPv6 |
 :: Check for IPv6 address assignment issues
 ipconfig /all | findstr "IPv6"
 
-:: Release and force SLAAC re-negotiation
+:: Release and renew the DHCPv6 lease
+:: (Note: SLAAC addresses are not managed by these commands)
 ipconfig /release6
 ipconfig /renew6
 ```
 
 ## Summary
 
-Use `ipconfig /all` to view all IPv6 configuration including global addresses, temporary (privacy) addresses, link-local addresses (with zone IDs), and DNS servers. The `%N` suffix on link-local addresses is the interface index, not a port number. For scripting and more detailed output, use PowerShell `Get-NetIPAddress -AddressFamily IPv6` and `Get-NetIPConfiguration`. Use `ipconfig /release6` and `/renew6` to re-acquire DHCPv6 or SLAAC addresses.
+Use `ipconfig /all` to view all IPv6 configuration including global addresses, temporary (privacy) addresses, link-local addresses (with zone IDs), and DNS servers. The `%N` suffix on link-local addresses is the interface index, not a port number. For scripting and more detailed output, use PowerShell `Get-NetIPAddress -AddressFamily IPv6` and `Get-NetIPConfiguration`. Use `ipconfig /release6` and `/renew6` to release and re-acquire a DHCPv6 lease (these commands do not affect SLAAC-derived addresses).
