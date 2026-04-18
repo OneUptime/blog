@@ -48,7 +48,7 @@ sudo wg show wg0
 # "transfer" should show activity
 
 # For GRE/IPIP6 tunnels
-ip tunnel show
+ip -6 tunnel show
 ip -s link show ip6gre0
 
 # Check if tunnel interface is up
@@ -70,8 +70,11 @@ ip -6 route show table all | grep -v "^local\|^unreachable\|^prohibit"
 # show omp routes vpn 1 family ipv6
 
 # For general BGP-based SD-WAN:
-birdc6 show route | grep 2001:db8
-# or
+# BIRD 2.x (unified daemon):
+birdc show route | grep 2001:db8
+# BIRD 1.x (legacy, separate bird6 daemon):
+# birdc6 show route | grep 2001:db8
+# or FRRouting:
 vtysh -c "show ipv6 route bgp"
 
 # Manually trace path through overlay
@@ -83,11 +86,11 @@ traceroute6 -s 2001:db8:local::1 2001:db8:remote::10
 
 ```bash
 # SD-WAN encapsulation reduces effective MTU
-# Each layer adds overhead:
-# GRE: +24 bytes
-# IPsec (ESP): +50-80 bytes
-# WireGuard: +60 bytes
-# VXLAN: +50 bytes
+# Each layer adds overhead (assuming IPv4 underlay; add +20 bytes for IPv6 underlay):
+# GRE: +24 bytes (4 GRE + 20 outer IPv4)
+# IPsec (ESP): +50-80 bytes (depends on cipher/auth/IV/pad)
+# WireGuard: +60 bytes (32 WG + 8 UDP + 20 outer IPv4)
+# VXLAN: +50 bytes (8 VXLAN + 8 UDP + 20 IPv4 + 14 Ethernet)
 
 # IPv6 minimum MTU: 1280 bytes
 # Typical SD-WAN MTU: 1400-1420 bytes
@@ -101,7 +104,8 @@ sudo ip link set wg0 mtu 1420
 ping6 -M do -s 1400 -c 3 2001:db8:remote::10
 # If fragmentation needed: returns "Message too big"
 
-# Enable PMTU discovery
+# PMTU discovery is always on for IPv6 (mandatory per RFC 8201).
+# Accept MTU option from Router Advertisements (default: 1):
 sysctl -w net.ipv6.conf.all.accept_ra_mtu=1
 
 # Check PMTU cache
