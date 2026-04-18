@@ -17,9 +17,10 @@ public class UdpEchoServer {
     private static final int BUFFER_SIZE = 65535;
 
     public static void main(String[] args) throws IOException {
-        // DatagramSocket bound to a port (null address = all interfaces)
-        try (DatagramSocket serverSocket = new DatagramSocket(PORT)) {
+        // Create unbound, enable SO_REUSEADDR before bind, then bind to the port
+        try (DatagramSocket serverSocket = new DatagramSocket(null)) {
             serverSocket.setReuseAddress(true);
+            serverSocket.bind(new InetSocketAddress(PORT));
             System.out.println("UDP server listening on port " + PORT);
 
             byte[] buffer = new byte[BUFFER_SIZE];
@@ -149,4 +150,4 @@ public class ConcurrentUdpServer {
 
 ## Conclusion
 
-Java UDP servers use `DatagramSocket(port)` to bind and `socket.receive(packet)` to block for datagrams. Clients create an unbound `DatagramSocket()` and call `socket.send(packet)` with the destination address embedded in the `DatagramPacket`. Always set `setSoTimeout()` on clients to avoid indefinite blocking. Copy the receive buffer before submitting to thread pools since the buffer is reused.
+Java UDP servers use `DatagramSocket(port)` to bind and `socket.receive(packet)` to block for datagrams. Clients use `new DatagramSocket()`, which binds to an ephemeral port on the wildcard address, and call `socket.send(packet)` with the destination address embedded in the `DatagramPacket`. Always set `setSoTimeout()` on clients to avoid indefinite blocking. Copy the receive buffer before submitting to thread pools since the buffer is reused.
