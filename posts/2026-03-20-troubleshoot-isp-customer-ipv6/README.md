@@ -30,7 +30,7 @@ Check that the customer's CPE router received a delegated prefix from the BNG/BR
 
 # (Kea DHCP lease database)
 mysql -u kea -p kea -e "
-  SELECT address, prefixlen, dhcp_identifier, expire
+  SELECT address, prefix_len, duid, expire
   FROM lease6
   WHERE lease_type = 2           -- type 2 = prefix delegation
   AND INET6_NTOA(address) LIKE '2001:db8:home:%'
@@ -134,7 +134,7 @@ systemctl restart dhcpcd
 dhclient -6 -P wan0
 
 # Fix 2: BNG missing relay configuration
-# Cisco IOS-XR
+# Cisco IOS / IOS-XE
 interface Bundle-Ether1.100
   ipv6 dhcp relay destination 2001:db8::dhcp
 
