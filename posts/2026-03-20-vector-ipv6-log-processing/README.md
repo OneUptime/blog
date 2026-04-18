@@ -24,9 +24,9 @@ address = "[::]:5140"
 
 # HTTP source for log ingestion on IPv6
 [sources.http_logs]
-type = "http"
+type = "http_server"
 address = "[::]:8080"
-encoding.codec = "json"
+decoding.codec = "json"
 
 # Socket source (raw TCP) on IPv6
 [sources.raw_tcp]
@@ -43,16 +43,16 @@ address = "[::]:5000"
 type = "remap"
 inputs = ["syslog_ipv6"]
 source = '''
-  # Parse IPv6 address from the message field
-  .client_ip = parse_ip!(.message, format: "regex")
+  # Extract an IP address from the syslog message field
+  matched, err = parse_regex(string!(.message), r'(?P<ip>(?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]+:[0-9a-fA-F:]+)')
+  if err == null {
+    .client_ip = matched.ip
 
-  # Validate and normalize IPv6 addresses
-  if is_ip(.client_ip) {
-    # Classify address type
-    .ip_version = if contains(string!(.client_ip), ":") { "ipv6" } else { "ipv4" }
+    # Classify address type using is_ipv4 / is_ipv6
+    if is_ipv6(string!(.client_ip)) {
+      .ip_version = "ipv6"
 
-    # Classify IPv6 category
-    if .ip_version == "ipv6" {
+      # Classify IPv6 category
       .ipv6_type = if starts_with(string!(.client_ip), "fe80") {
         "link_local"
       } else if starts_with(string!(.client_ip), "::1") {
@@ -62,6 +62,8 @@ source = '''
       } else {
         "global_unicast"
       }
+    } else if is_ipv4(string!(.client_ip)) {
+      .ip_version = "ipv4"
     }
   }
 '''
@@ -84,12 +86,7 @@ ipv4 = '.ip_version == "ipv4"'
 ## Step 4: Aggregate IPv6 Metrics
 
 ```toml
-# Count events per IPv6 source
-[transforms.ipv6_aggregation]
-type = "aggregate"
-inputs = ["route_by_ip_type.ipv6_global"]
-interval_ms = 60000
-
+# Convert IPv6 log events into counter metrics
 [transforms.ipv6_metrics]
 type = "log_to_metric"
 inputs = ["route_by_ip_type.ipv6_global"]
@@ -110,8 +107,8 @@ ip_version = "{{ip_version}}"
 [sinks.elasticsearch]
 type = "elasticsearch"
 inputs = ["route_by_ip_type.ipv6_global", "route_by_ip_type.ipv4"]
-endpoint = "http://[2001:db8::10]:9200"
-index = "logs-%Y.%m.%d"
+endpoints = ["http://[2001:db8::10]:9200"]
+bulk.index = "logs-%Y.%m.%d"
 auth.strategy = "basic"
 auth.user = "elastic"
 auth.password = "${ES_PASSWORD}"
@@ -161,8 +158,8 @@ source = '''
 [sinks.out]
 type = "elasticsearch"
 inputs = ["parse_nginx"]
-endpoint = "http://[2001:db8::10]:9200"
-index = "nginx-{{ ip_version }}-%Y.%m.%d"
+endpoints = ["http://[2001:db8::10]:9200"]
+bulk.index = "nginx-{{ ip_version }}-%Y.%m.%d"
 ```
 
 ## Conclusion
