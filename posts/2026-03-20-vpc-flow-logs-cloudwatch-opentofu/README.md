@@ -123,8 +123,10 @@ resource "aws_cloudwatch_query_definition" "rejected_traffic" {
 
   log_group_names = [aws_cloudwatch_log_group.vpc_flow_logs.name]
 
+  # CloudWatch Logs Insights only auto-discovers fields for the DEFAULT
+  # VPC Flow Log format - custom formats must be parsed from @message.
   query_string = <<-EOT
-    fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, action
+    parse @message "* * * * * * * * * * * * * * * * * * * * *" version, account, eni, srcAddr, dstAddr, srcPort, dstPort, protocol, packets, bytes, start, end, action, logStatus, vpcId, subnetId, instanceId, tcpFlags, type, pktSrcAddr, pktDstAddr
     | filter action = "REJECT"
     | sort @timestamp desc
     | limit 100
@@ -137,7 +139,7 @@ resource "aws_cloudwatch_query_definition" "top_talkers" {
   log_group_names = [aws_cloudwatch_log_group.vpc_flow_logs.name]
 
   query_string = <<-EOT
-    fields @timestamp, srcAddr, dstAddr, bytes
+    parse @message "* * * * * * * * * * * * * * * * * * * * *" version, account, eni, srcAddr, dstAddr, srcPort, dstPort, protocol, packets, bytes, start, end, action, logStatus, vpcId, subnetId, instanceId, tcpFlags, type, pktSrcAddr, pktDstAddr
     | filter action = "ACCEPT"
     | stats sum(bytes) as totalBytes by srcAddr, dstAddr
     | sort totalBytes desc
@@ -152,7 +154,9 @@ resource "aws_cloudwatch_query_definition" "top_talkers" {
 # alarms.tf
 resource "aws_cloudwatch_metric_filter" "rejected_traffic" {
   name           = "${var.prefix}-rejected-traffic"
-  pattern        = "[version, account, eni, source, destination, srcport, destport, protocol, packets, bytes, start, end, action=REJECT, log_status]"
+  # Trailing `...` absorbs the 7 extra fields from the custom log_format
+  # (vpc-id, subnet-id, instance-id, tcp-flags, type, pkt-srcaddr, pkt-dstaddr).
+  pattern        = "[version, account, eni, source, destination, srcport, destport, protocol, packets, bytes, start, end, action=REJECT, log_status, ...]"
   log_group_name = aws_cloudwatch_log_group.vpc_flow_logs.name
 
   metric_transformation {
