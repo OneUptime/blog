@@ -13,15 +13,16 @@ When multiple sources provide values for the same variable, OpenTofu uses a defi
 ## Precedence Order (Lowest to Highest)
 
 ```text
-1. Default values (in variable blocks)       <- LOWEST
-2. terraform.tfvars
-3. terraform.tfvars.json
-4. *.auto.tfvars (alphabetical order)
-5. *.auto.tfvars.json (alphabetical order)
-6. TF_VAR_ environment variables
-7. -var-file flags (in order specified)
-8. -var flags (in order specified)            <- HIGHEST
+1. Default values (in variable blocks)           <- LOWEST
+2. TF_VAR_ environment variables
+3. terraform.tfvars
+4. terraform.tfvars.json
+5. *.auto.tfvars (lexical order)
+6. *.auto.tfvars.json (lexical order)
+7. -var and -var-file flags (in the order specified)  <- HIGHEST
 ```
+
+Note: `-var` and `-var-file` share the same precedence level. They are processed in the order they appear on the command line, with later values overriding earlier ones for the same variable.
 
 ## Demonstration
 
@@ -41,7 +42,7 @@ instance_count = 2  # Level 2: Overrides default
 
 ```hcl
 # common.auto.tfvars
-instance_count = 3  # Level 4: Overrides terraform.tfvars
+instance_count = 3  # Level 5: Overrides terraform.tfvars
 ```
 
 ```bash
@@ -65,16 +66,16 @@ tofu console
 # - -var="instance_count=5": 5
 # - TF_VAR_instance_count=6: 6
 
-# Without any explicit variables (uses default=1):
+# Without any TF_VAR or -var (auto.tfvars wins over terraform.tfvars):
 unset TF_VAR_instance_count
-tofu plan  # instance_count = 2 (terraform.tfvars takes over from default)
+tofu plan  # instance_count = 3 (common.auto.tfvars overrides terraform.tfvars)
 
-# With TF_VAR (overrides everything):
+# With TF_VAR set, but auto.tfvars is still present (auto.tfvars wins):
 export TF_VAR_instance_count=6
-tofu plan  # instance_count = 6
+tofu plan  # instance_count = 3 (auto.tfvars > terraform.tfvars > TF_VAR)
 
-# With both -var and TF_VAR (-var wins):
-tofu plan -var="instance_count=5"  # instance_count = 5 (-var > TF_VAR)
+# With -var on the command line (-var beats all files and env vars):
+tofu plan -var="instance_count=5"  # instance_count = 5 (-var > everything else)
 ```
 
 ## Multiple -var-file Loading Order
@@ -82,9 +83,13 @@ tofu plan -var="instance_count=5"  # instance_count = 5 (-var > TF_VAR)
 ```bash
 # When using multiple -var-file flags, later files override earlier ones
 tofu apply \
-  -var-file="base.tfvars" \       # 1st: base values
-  -var-file="environment.tfvars"  # 2nd: overrides base
-  -var="specific_override=value"  # 3rd: overrides both files
+  -var-file="base.tfvars" \
+  -var-file="environment.tfvars" \
+  -var="specific_override=value"
+# Order of processing for overlapping variables:
+# 1st: base.tfvars                (base values)
+# 2nd: environment.tfvars         (overrides base.tfvars)
+# 3rd: -var="specific_override"   (overrides both files)
 ```
 
 ## Auto.tfvars Alphabetical Loading
@@ -135,15 +140,20 @@ tofu plan
 # Gotcha 1: TF_VAR_ set from a previous session
 export TF_VAR_environment="prod"
 # Forgot it's set, now running in dev context!
-tofu plan  # Uses "prod" because TF_VAR_ overrides terraform.tfvars
+# If terraform.tfvars or *.auto.tfvars does NOT set `environment`,
+# TF_VAR_environment will win over the default and leak into dev.
+tofu plan
 
 # Fix: Always unset TF_VAR_ when switching contexts
 unset TF_VAR_environment
 
-# Gotcha 2: -var overrides -var-file order doesn't matter
-# -var always takes precedence over -var-file regardless of order
+# Gotcha 2: -var and -var-file are processed in the order given
+# They share the same precedence level; the LAST occurrence wins.
 tofu plan -var="count=5" -var-file="values.tfvars"
-# count=5 even if values.tfvars has count=10
+# If values.tfvars has count=10, count=10 wins (it's last on the line)
+
+tofu plan -var-file="values.tfvars" -var="count=5"
+# Here count=5 wins, because -var appears after -var-file
 ```
 
 ## Conclusion
