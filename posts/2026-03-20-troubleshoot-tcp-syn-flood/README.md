@@ -27,7 +27,7 @@ netstat -s | grep -i "syn"
 # SYNs to LISTEN sockets dropped: 12345  <- actively dropping
 
 # Sign 4: High traffic rate on the interface
-watch -n 1 "ip -s link show eth0 | grep 'RX packets'"
+watch -n 1 "ip -s link show eth0 | grep -A1 'RX:'"
 
 # Sign 5: tcpdump showing massive SYN volume
 tcpdump -i eth0 -n 'tcp[tcpflags] & tcp-syn != 0' 2>/dev/null | \
@@ -91,7 +91,8 @@ sysctl -w net.ipv4.tcp_synack_retries=2
 # If attack comes from identifiable IP ranges, block them
 # Check top sources
 tcpdump -i eth0 -n 'tcp[tcpflags] & tcp-syn != 0' -c 1000 2>/dev/null | \
-  awk '{print $3}' | sort | uniq -c | sort -rn | head -20
+  awk '{split($3,a,"."); print a[1]"."a[2]"."a[3]"."a[4]}' | \
+  sort | uniq -c | sort -rn | head -20
 
 # Block top attacking IP
 iptables -I INPUT -s 198.51.100.0/24 -j DROP
