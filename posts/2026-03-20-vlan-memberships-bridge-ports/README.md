@@ -40,9 +40,10 @@ ip link set eth1 up
 # Default: PVID 1, egress untagged on all ports
 
 # Configure eth0 as trunk port (carries VLANs 10, 20, 30 tagged)
-bridge vlan add dev eth0 vid 10 tagged
-bridge vlan add dev eth0 vid 20 tagged
-bridge vlan add dev eth0 vid 30 tagged
+# VLANs are tagged by default when neither pvid nor untagged is specified
+bridge vlan add dev eth0 vid 10
+bridge vlan add dev eth0 vid 20
+bridge vlan add dev eth0 vid 30
 bridge vlan del dev eth0 vid 1     # Remove default VLAN 1
 
 # Configure tap0 as access port (VLAN 10, untagged)
@@ -126,5 +127,5 @@ EgressUntagged=10
 
 - Enable `vlan_filtering=1` on the bridge to activate 802.1Q VLAN filtering per port.
 - Use `bridge vlan add dev <port> vid <id> pvid untagged` for access ports (VM interfaces).
-- Use `bridge vlan add dev <port> vid <id> tagged` for trunk ports (uplinks to switches).
+- Use `bridge vlan add dev <port> vid <id>` for trunk ports (uplinks to switches); VLANs are tagged by default when neither `pvid` nor `untagged` is specified.
 - `bridge vlan show` is the primary command to inspect VLAN membership across all bridge ports.
