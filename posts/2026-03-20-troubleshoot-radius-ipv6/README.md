@@ -41,7 +41,7 @@ flowchart TD
 #!/bin/bash
 # test-radius-connectivity.sh
 
-RADIUS_IPV6="2001:db8::radius"
+RADIUS_IPV6="2001:db8::1"
 RADIUS_PORT=1812
 
 echo "1. Ping test:"
@@ -70,10 +70,10 @@ systemctl stop freeradius
 freeradius -X 2>&1 | tee /tmp/freeradius-debug.log
 
 # In another terminal, send a test request
-radclient -x [2001:db8::radius]:1812 auth testing123 << 'EOF'
+radclient -x [2001:db8::1]:1812 auth testing123 << 'EOF'
 User-Name = "alice"
 User-Password = "secret"
-NAS-IPv6-Address = "2001:db8:nas::1"
+NAS-IPv6-Address = "2001:db8:a::1"
 EOF
 
 # Look for key debug output:
@@ -96,7 +96,7 @@ grep -A5 "client" /etc/freeradius/3.0/clients.conf
 # Fix: add the NAS's actual IPv6 address to clients.conf
 cat >> /etc/freeradius/3.0/clients.conf << 'EOF'
 client new_nas {
-    ipv6addr = 2001:db8:nas::2
+    ipv6addr = 2001:db8:a::2
     secret   = naspassword
     shortname = new-nas
 }
@@ -109,7 +109,7 @@ systemctl reload freeradius
 
 ```bash
 # Test with full debug - check what attributes are returned
-radclient -x [2001:db8::radius]:1812 auth testing123 << 'EOF' | grep -i "ipv6\|prefix\|pool"
+radclient -x [2001:db8::1]:1812 auth testing123 << 'EOF' | grep -i "ipv6\|prefix\|pool"
 User-Name = "alice"
 User-Password = "secret"
 EOF
@@ -135,7 +135,7 @@ tcpdump -i eth0 -n udp port 1812 or udp port 1813 -w /tmp/radius-capture.pcap &
 TCPDUMP_PID=$!
 
 # Generate some test traffic
-radclient -x [2001:db8::radius]:1812 auth testing123 << 'EOF'
+radclient -x [2001:db8::1]:1812 auth testing123 << 'EOF'
 User-Name = "alice"
 User-Password = "secret"
 EOF
@@ -181,7 +181,7 @@ ip6tables -A INPUT -p udp --dport 1813 -j ACCEPT
 #!/bin/bash
 # diagnose-radius-ipv6.sh - Full diagnostic report
 
-RADIUS="2001:db8::radius"
+RADIUS="2001:db8::1"
 SECRET="testing123"
 USER="alice"
 PASS="secret"
@@ -202,7 +202,7 @@ echo "--- Authentication Test ---"
 RESULT=$(radclient -t 5 "[${RADIUS}]":1812 auth "${SECRET}" \
     <<< "User-Name = \"${USER}\"
 User-Password = \"${PASS}\"
-NAS-IPv6-Address = \"2001:db8:diag::1\"" 2>&1)
+NAS-IPv6-Address = \"2001:db8:d::1\"" 2>&1)
 
 echo "${RESULT}" | grep -E "Accept|Reject|timeout|refused"
 
