@@ -54,7 +54,7 @@ Without multicast or BGP EVPN, manually add static FDB entries:
 ```bash
 # On Leaf 1: tell VTEP how to reach Leaf 2's VTEP
 # All MACs unknown for VNI 10 → forward to 2001:db8:2::1
-bridge fdb append 00:00:00:00:00:00 dev vxlan10 dst 2001:db8:2::1 via vxlan10
+bridge fdb append 00:00:00:00:00:00 dev vxlan10 dst 2001:db8:2::1
 
 # Specific MAC → VTEP mapping (after learning)
 bridge fdb add 52:54:00:ab:cd:ef dev vxlan10 dst 2001:db8:2::1
@@ -95,23 +95,23 @@ tcpdump -i eth0 -n \
 # Show routing table for VTEP endpoint
 ip -6 route get 2001:db8:2::1
 
-# Check MTU - VXLAN adds 56 bytes overhead over IPv6
+# Check MTU - VXLAN adds 70 bytes overhead over IPv6
 ip link show eth0 | grep mtu
 ```
 
 ## MTU Configuration
 
-VXLAN over IPv6 adds 56 bytes of tunnel overhead: 40 (IPv6) + 8 (UDP) + 8 (VXLAN):
+VXLAN over IPv6 adds 70 bytes of tunnel overhead: 40 (IPv6) + 8 (UDP) + 8 (VXLAN) + 14 (inner Ethernet):
 
 ```bash
-# If physical MTU is 1500, set VXLAN interface MTU to 1444
-ip link set vxlan10 mtu 1444
+# If physical MTU is 1500, set VXLAN interface MTU to 1430
+ip link set vxlan10 mtu 1430
 
 # For jumbo frames (9000 byte physical MTU)
-ip link set vxlan10 mtu 8944
+ip link set vxlan10 mtu 8930
 
 # Configure VM vNIC MTU to match
-ip link set eth0 mtu 1444  # Inside the VM
+ip link set eth0 mtu 1430  # Inside the VM
 
 # Verify path MTU with tracepath6
 tracepath6 2001:db8:2::1
@@ -145,4 +145,4 @@ Bridge=br10
 
 ## Conclusion
 
-VXLAN over IPv6 underlay eliminates the need for IPv4 infrastructure in data centers that have completed IPv6 migration. The Linux kernel's VXLAN driver supports IPv6 tunnel endpoints via the `local` parameter accepting IPv6 addresses. Key considerations: set the VXLAN interface MTU to physical MTU minus 56 bytes for IPv6 overhead. For production deployments, use BGP EVPN (covered separately) instead of static FDB entries for scalable MAC/IP distribution.
+VXLAN over IPv6 underlay eliminates the need for IPv4 infrastructure in data centers that have completed IPv6 migration. The Linux kernel's VXLAN driver supports IPv6 tunnel endpoints via the `local` parameter accepting IPv6 addresses. Key considerations: set the VXLAN interface MTU to physical MTU minus 70 bytes for IPv6 overhead. For production deployments, use BGP EVPN (covered separately) instead of static FDB entries for scalable MAC/IP distribution.
