@@ -20,9 +20,9 @@ sysctl -a | grep "^net.ipv4.tcp" | sort
 # Most relevant for congestion avoidance:
 sysctl net.ipv4.tcp_congestion_control   # Algorithm (cubic/bbr)
 sysctl net.ipv4.tcp_sack                 # Selective ACK (improves loss recovery)
-sysctl net.ipv4.tcp_fack                 # Forward ACK (more aggressive)
+sysctl net.ipv4.tcp_dsack                # Duplicate SACK reporting
 sysctl net.ipv4.tcp_reordering           # Expected packet reordering
-sysctl net.ipv4.tcp_recovery             # Fast recovery algorithm
+sysctl net.ipv4.tcp_recovery             # Loss recovery method (RACK/TLP)
 sysctl net.ipv4.tcp_retries1             # Retries before reporting to upper layer
 sysctl net.ipv4.tcp_retries2             # Retries before giving up
 sysctl net.ipv4.tcp_rto_min_us           # Minimum RTO in microseconds
@@ -78,17 +78,17 @@ sysctl -w net.ipv4.tcp_reordering=6  # Tolerate more reordering before retransmi
 
 ```bash
 # CUBIC uses these parameters:
-# beta_cubic: multiplicative decrease factor (default: 717 = 0.717)
+# beta: multiplicative decrease factor, scaled by 1024 (default: 717, ~0.70)
 #   Lower = more aggressive reduction on congestion
 #   Higher = keeps more bandwidth, but more risk
 
 # View CUBIC parameters
-cat /sys/module/tcp_cubic/parameters/beta_cubic
+cat /sys/module/tcp_cubic/parameters/beta
 cat /sys/module/tcp_cubic/parameters/bic_scale
 
-# Adjust CUBIC's recovery (requires kernel module reload)
+# Adjust CUBIC's recovery (writable at runtime, no module reload needed)
 # Note: most production systems use defaults; only change if you have specific data
-echo 717 > /sys/module/tcp_cubic/parameters/beta_cubic
+echo 717 > /sys/module/tcp_cubic/parameters/beta
 ```
 
 ## Retransmission Retry Limits
@@ -117,7 +117,6 @@ net.core.default_qdisc=fq
 # Loss recovery improvements
 net.ipv4.tcp_sack=1
 net.ipv4.tcp_dsack=1
-net.ipv4.tcp_fack=1
 
 # Reordering tolerance
 net.ipv4.tcp_reordering=6
