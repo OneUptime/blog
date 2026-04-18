@@ -88,17 +88,11 @@ Or on macOS with Homebrew:
 ```bash
 brew install opentofu
 ```
-```hcl
+```
 
 ## Updating auto-generated Docs with terraform-docs
 
-If using terraform-docs, update the config to use the OpenTofu binary:
-
-```yaml
-# .terraform-docs.yml
-settings:
-  terraform-bin: tofu
-```
+terraform-docs parses `.tf` files directly via the HCL library and does not invoke the `terraform` (or `tofu`) binary, so no `.terraform-docs.yml` changes are required for OpenTofu compatibility.
 
 Regenerate all module docs:
 
