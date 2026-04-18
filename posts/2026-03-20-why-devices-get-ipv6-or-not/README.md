@@ -26,8 +26,8 @@ Modern devices use privacy extensions (RFC 4941) which generate temporary, rando
 
 ```text
 fe80::1234:5678:9abc:def0   → Link-local (always present)
-2001:db8:home:1::1          → SLAAC EUI-64 (from MAC address) - may not be shown
-2001:db8:home:1:a1b2:c3d4:e5f6:7890  → Temporary privacy address (used for outgoing)
+2001:db8:1:1::1             → SLAAC EUI-64 (from MAC address) - may not be shown
+2001:db8:1:1:a1b2:c3d4:e5f6:7890  → Temporary privacy address (used for outgoing)
 ```
 
 The temporary address is what's used for outbound connections, which can make it look like the device has multiple or changing IPv6 addresses.
@@ -43,8 +43,8 @@ Some devices are on isolated VLANs, behind a switch without RA forwarding, or co
 tcpdump -i eth0 'icmp6 and ip6[40] == 134' -c 3
 
 # Windows (requires Wireshark or pktmon):
-pktmon filter add -t IPv6 -p ICMPv6
-pktmon start --capture --file c:\temp\capture.etl
+pktmon filter add RAFilter -t ICMPv6
+pktmon start --capture --file-name c:\temp\capture.etl
 ```
 
 If no RAs arrive, check router RA settings and any RA Guard policies on managed switches.
