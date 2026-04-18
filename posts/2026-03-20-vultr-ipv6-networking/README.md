@@ -29,7 +29,7 @@ ip -6 addr show
 
 # If using static IPv6 assignment
 ip -6 addr add 2001:db8::1/64 dev eth0
-ip -6 route add ::/0 via 2001:db8::1 dev eth0
+ip -6 route add ::/0 via fe80::1 dev eth0
 ```
 
 ## Step 3: Configure Firewall Rules for IPv6
@@ -43,7 +43,7 @@ ip6tables -A OUTPUT -p ipv6-icmp -j ACCEPT
 ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Allow SSH over IPv6
-ip6tables -A INPUT -s 2001:db8:admin::/48 -p tcp --dport 22 -j ACCEPT
+ip6tables -A INPUT -s 2001:db8:1::/48 -p tcp --dport 22 -j ACCEPT
 
 # Default deny
 ip6tables -P INPUT DROP
