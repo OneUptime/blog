@@ -16,7 +16,7 @@ WireGuard is the modern choice for a VPN gateway:
 - Simple configuration (a few lines vs hundreds for OpenVPN)
 - High performance (kernel-native since Linux 5.6)
 - Cryptographically strong (Curve25519, ChaCha20, BLAKE2)
-- Stateless - easy to audit and reason about
+- Small codebase (~4,000 lines) - easy to audit and reason about
 
 ## Step 1: Install WireGuard on the Cloud VM
 
