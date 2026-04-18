@@ -103,8 +103,8 @@ resource "vault_database_secret_backend_role" "app_readonly" {
     "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';",
     "GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\";"
   ]
-  default_ttl = "1h"
-  max_ttl     = "24h"
+  default_ttl = 3600
+  max_ttl     = 86400
 }
 ```
 
