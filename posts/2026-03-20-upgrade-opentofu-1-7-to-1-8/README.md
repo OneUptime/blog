@@ -8,14 +8,13 @@ Description: A step-by-step guide to safely upgrading your OpenTofu installation
 
 ## Introduction
 
-OpenTofu 1.8 introduced early variable/local evaluation, the `tofu.applying` built-in, and other significant improvements. This guide covers the upgrade process from 1.7 to 1.8.
+OpenTofu 1.8 introduced early variable/locals evaluation, `.tofu` file overrides, and other significant improvements. This guide covers the upgrade process from 1.7 to 1.8.
 
 ## What's New in OpenTofu 1.8
 
-- **Early variable evaluation**: Use variables in `backend` and `module source` blocks
-- **`tofu.applying`**: Differentiate plan vs apply in configurations
-- **Provider iteration**: for_each with providers
-- **Improved test framework**: Better `tofu test` capabilities
+- **Early variable/locals evaluation**: Use variables and locals in `backend`, `module source`, and state encryption blocks
+- **`.tofu` file extension**: OpenTofu-specific overrides that take precedence over identically named `.tf` files
+- **Improved test framework**: Provider mocking (`mock_provider`) and resource overrides (`override_resource`, `override_data`, `override_module`) in `tofu test`
 
 ## Pre-Upgrade Checklist
 
@@ -85,19 +84,13 @@ terraform {
 }
 ```
 
-### tofu.applying Built-in
+### .tofu File Overrides
 
 ```hcl
-# Differentiate between plan and apply
-resource "null_resource" "example" {
-  triggers = {
-    # Only trigger during apply, not plan
-    is_applying = tofu.applying ? "true" : "false"
-  }
-}
-
-output "phase" {
-  value = tofu.applying ? "Applying!" : "Planning..."
+# main.tofu - takes precedence over main.tf if both exist
+# Useful for OpenTofu-specific configuration that should not affect Terraform
+terraform {
+  required_version = ">= 1.8.0"
 }
 ```
 
@@ -129,4 +122,4 @@ git checkout -- versions.tf
 
 ## Conclusion
 
-The upgrade from OpenTofu 1.7 to 1.8 is smooth with no required configuration changes for most users. The early variable evaluation feature significantly improves the flexibility of backend configurations, while `tofu.applying` enables sophisticated plan/apply differentiation. Always backup state and test in non-production before upgrading production infrastructure.
+The upgrade from OpenTofu 1.7 to 1.8 is smooth with no required configuration changes for most users. The early variable/locals evaluation feature significantly improves the flexibility of backend configurations, while `.tofu` file overrides and improved test framework capabilities (provider mocking and resource overrides) make OpenTofu more powerful for complex workflows. Always backup state and test in non-production before upgrading production infrastructure.
