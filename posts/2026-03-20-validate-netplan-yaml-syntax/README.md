@@ -25,8 +25,9 @@ echo $?
 ## Validate a Specific File
 
 ```bash
-# Netplan generates from all files, but you can check a specific file
-netplan generate --config /etc/netplan/01-netcfg.yaml 2>&1
+# Netplan always parses all files in /etc/netplan/ together.
+# Use --debug to see verbose output and pinpoint which file caused an error.
+netplan generate --debug 2>&1
 ```
 
 ## Check YAML Syntax with Python
