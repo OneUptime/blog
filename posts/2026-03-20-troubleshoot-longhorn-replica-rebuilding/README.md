@@ -139,12 +139,13 @@ kubectl logs -n longhorn-system \
 # SSH to source node
 ping <destination-node-ip>
 
-# Test the Longhorn replica port (9502)
-nc -zv <destination-node-ip> 9502
+# Test the Longhorn manager port (9500)
+nc -zv <destination-node-ip> 9500
 
 # Check for firewall rules blocking Longhorn ports
-# Longhorn uses ports 9500-9520 for replica communication
-iptables -L -n | grep 9502
+# Longhorn manager uses TCP 9500; instance managers use dynamic data ports
+# in the 10000-30000 range for engine/replica communication
+iptables -L -n | grep -E "9500|10000"
 ```
 
 ### Common Cause: Disk Errors on Target Node
