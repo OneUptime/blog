@@ -43,7 +43,7 @@ Leading zeros dropped: 0db8 → db8, 0042 → 42, 0370 → 370
 ```text
 Full:       2001:0db8:0000:0000:0000:0000:0000:0001
 Step 1:     2001:db8:0:0:0:0:0:1
-Step 2:     2001:db8::1          (:: replaces four :0: groups)
+Step 2:     2001:db8::1          (:: replaces five all-zero groups)
 
 The :: can only appear ONCE in an address.
 ```
