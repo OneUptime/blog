@@ -97,9 +97,9 @@ DHCPv6 clients send to `ff02::1:2` (all relay agents and servers) for address re
 tcpdump -i eth0 -n 'ip6 dst ff02::1:2 and port 546'
 ```
 
-### ff02::1:3 - DHCPv6 Servers Only
+### ff02::1:3 - LLMNR (Link-Local Multicast Name Resolution)
 
-Used when communicating directly with DHCPv6 servers (without relays).
+Defined in RFC 4795, LLMNR uses `ff02::1:3` for name resolution on the local link when DNS is unavailable. Note: the DHCPv6 "All Servers" group is actually `ff05::1:3` (site-local scope), not link-local.
 
 ## Complete Reference Table
 
@@ -122,7 +122,7 @@ ff02::f    UPnP
 ff02::12   VRRP (Virtual Router Redundancy Protocol)
 ff02::fb   mDNS
 ff02::1:2  DHCPv6 relay agents and servers
-ff02::1:3  DHCPv6 all servers
+ff02::1:3  LLMNR (Link-Local Multicast Name Resolution)
 ff02::1:ff00:0/104  Solicited-node prefix (ff02::1:ffXX:XXXX)
 ```
 
