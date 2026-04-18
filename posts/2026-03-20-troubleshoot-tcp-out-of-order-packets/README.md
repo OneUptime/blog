@@ -85,14 +85,23 @@ echo "net.ipv4.tcp_reordering=6" >> /etc/sysctl.conf
 ## Fixing ECMP-Induced Reordering
 
 ```bash
-# Fix 1: Ensure ECMP hashes on L4 (flow-based) not just L3 (per-packet)
-# Linux ECMP hash policy
+# Fix 1: Use L4 (5-tuple) hashing for finer-grained ECMP flow distribution
+# Linux ECMP hash policy (since kernel 4.12)
 sysctl net.ipv4.fib_multipath_hash_policy
-# 0 = L3 only (can reorder within a flow!)
-# 1 = L3 + L4 (flow-based, no reordering within a flow)
+# 0 = L3 hash (src/dst IP) - flow-based, but coarse: all flows between
+#     the same IP pair pin to one nexthop (poor distribution behind NAT
+#     or with a few heavy talkers, which can saturate one path)
+# 1 = L4 hash (5-tuple: src/dst IP + src/dst port + proto) - still flow-based,
+#     but spreads flows across nexthops more evenly
+# 2 = inner L3 (for tunneled traffic)
+# 3 = custom fields via fib_multipath_hash_fields (kernel 5.13+)
 
-# Set to flow-based to prevent per-packet load balancing
+# Switch to L4 hashing for better flow distribution
 sysctl -w net.ipv4.fib_multipath_hash_policy=1
+# Note: neither 0 nor 1 reorders within a single TCP flow on Linux ECMP -
+# per-packet spraying within a flow is typically caused by upstream routers,
+# switches, or middleboxes (e.g. LACP with per-packet hashing), not by the
+# Linux forwarding plane.
 
 # Fix 2: Use Paris traceroute to verify flow consistency
 apt install paris-traceroute
@@ -119,4 +128,4 @@ iperf3 -c 10.20.0.5 -t 30 | grep Retr  # Retransmits should drop
 
 ## Conclusion
 
-TCP out-of-order packets typically originate from ECMP per-packet load balancing or asymmetric routing. Setting `fib_multipath_hash_policy=1` ensures ECMP load balances by flow (5-tuple) rather than per-packet, eliminating within-flow reordering. For residual reordering, increasing `tcp_reordering` tolerance prevents false fast-retransmit triggers. Monitor the OFO and Spurious retransmit kernel counters to quantify the problem and confirm the fix.
+TCP out-of-order packets typically originate from per-packet load balancing in upstream routers or middleboxes, uneven ECMP path latencies, or asymmetric routing. Setting `fib_multipath_hash_policy=1` switches Linux ECMP to 5-tuple hashing for better flow distribution; neither hash policy reorders packets within a single flow, but L4 hashing spreads flows more evenly across nexthops. For residual reordering, increasing `tcp_reordering` tolerance prevents false fast-retransmit triggers. Monitor the OFO and Spurious retransmit kernel counters to quantify the problem and confirm the fix.
