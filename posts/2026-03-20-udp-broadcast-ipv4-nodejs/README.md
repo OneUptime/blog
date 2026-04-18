@@ -90,7 +90,7 @@ receiver.on('error', (err) => {
 receiver.on('listening', () => {
     const addr = receiver.address();
     console.log(`Listening for broadcasts on port ${addr.port}`);
-    // Enable broadcast receiving
+    // Not required to receive broadcasts; only needed to send them.
     receiver.setBroadcast(true);
 });
 
