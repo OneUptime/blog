@@ -22,7 +22,7 @@ ModSecurity is the most widely used open-source WAF engine. The `ngx_http_modsec
 apt-get install -y libmodsecurity3 libmodsecurity-dev
 
 # Clone the Nginx connector
-git clone --depth 1 https://github.com/SpiderLabs/ModSecurity-nginx.git /opt/ModSecurity-nginx
+git clone --depth 1 https://github.com/owasp-modsecurity/ModSecurity-nginx.git /opt/ModSecurity-nginx
 
 # Compile Nginx with the module (add to existing configure flags)
 ./configure --with-compat --add-dynamic-module=/opt/ModSecurity-nginx
@@ -70,7 +70,7 @@ SecResponseBodyAccess On
 SecAuditLog /var/log/modsecurity/audit.log
 ```
 
-## Option 2: Nginx with njs for Simple WAF Rules
+## Option 2: Nginx Directives for Simple WAF Rules
 
 For lightweight filtering without ModSecurity:
 
