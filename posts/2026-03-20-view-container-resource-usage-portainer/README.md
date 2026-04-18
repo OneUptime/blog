@@ -53,9 +53,9 @@ Sort containers by resource usage to find offenders:
 # Sort by CPU usage, highest first
 docker stats --no-stream --format "{{.CPUPerc}}\t{{.Name}}" | sort -rn | head -10
 
-# Sort by memory usage
+# Sort by memory usage (column 1 is usage, column 4 is the container name)
 docker stats --no-stream --format "{{.MemUsage}}\t{{.Name}}" | \
-  awk '{print $1, $3}' | sort -k1 -rh | head -10
+  awk '{print $1, $4}' | sort -k1 -rh | head -10
 ```
 
 ## Setting Up Alerts for Resource Overuse
@@ -69,7 +69,7 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.47.2
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
