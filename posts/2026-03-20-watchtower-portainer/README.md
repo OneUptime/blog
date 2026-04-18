@@ -37,6 +37,7 @@ services:
       # Remove old images after update
       - WATCHTOWER_CLEANUP=true
       # Send Slack notifications
+      - WATCHTOWER_NOTIFICATIONS=slack
       - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK_URL}
       - WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER=watchtower
       # Only update containers with this label
@@ -83,7 +84,7 @@ Deploy this one-off stack in Portainer, let it run, then remove it.
 
 ## Private Registry Authentication
 
-For containers from private registries, provide registry credentials:
+For containers from private registries, mount a Docker `config.json` into the container. Watchtower looks for it at `/config.json` by default:
 
 ```yaml
 services:
@@ -93,17 +94,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount Docker credentials from host
       - /root/.docker/config.json:/config.json:ro
-    environment:
-      - DOCKER_CONFIG=/config.json
 ```
 
-Or use environment variables:
-
-```yaml
-environment:
-  - REPO_USER=myregistry-user
-  - REPO_PASS=myregistry-password
-```
+You can generate this file by running `docker login <registry>` on the host, or create it manually with base64-encoded credentials.
 
 ## Viewing Watchtower Logs
 
@@ -112,7 +105,7 @@ In Portainer: **Stacks → watchtower → watchtower service → Logs**
 Successful update:
 
 ```text
-level=info msg="Found new registry image for containrrr/portainer-ce"
+level=info msg="Found new registry image for portainer/portainer-ce"
 level=info msg="Updating container /portainer"
 level=info msg="Pulled image portainer/portainer-ce:latest"
 level=info msg="Recreated container /portainer"
