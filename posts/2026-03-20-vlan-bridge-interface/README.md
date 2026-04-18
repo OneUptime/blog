@@ -48,9 +48,9 @@ ip link set eth0 master br0
 ip link set eth0 up
 
 # Configure VLANs on the bridge port (eth0)
-# Allow VLAN 10 and 20 on the port connected to the trunk
-bridge vlan add dev eth0 vid 10 tagged
-bridge vlan add dev eth0 vid 20 tagged
+# Allow VLAN 10 and 20 on the port connected to the trunk (tagged by default)
+bridge vlan add dev eth0 vid 10
+bridge vlan add dev eth0 vid 20
 
 # For a VM virtual interface (e.g., vnet0) - assign to VLAN 10 (untagged/access)
 bridge vlan add dev vnet0 vid 10 untagged pvid
