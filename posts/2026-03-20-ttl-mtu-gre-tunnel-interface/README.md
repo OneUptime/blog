@@ -45,7 +45,7 @@ GRE overhead:    -24 bytes (20 IP + 4 GRE headers)
 GRE tunnel MTU: 1476 bytes
 ```
 
-For GRE over IPv6 (6 bytes larger outer header):
+For GRE over IPv6 (20 bytes larger outer header):
 ```text
 GRE overhead: -44 bytes (40 IPv6 + 4 GRE)
 GRE tunnel MTU: 1456 bytes
@@ -108,4 +108,4 @@ ping -s 1448 -M do -c 3 172.16.0.2
 
 ## Conclusion
 
-Set GRE tunnel MTU to 1476 bytes (physical MTU 1500 minus 24 bytes GRE overhead) to prevent fragmentation. Set TTL to 255 for LAN tunnels or 64 for internet-facing tunnels. Use TCP MSS clamping (`--clamp-mss-to-pmtu`) in iptables on the FORWARD chain to automatically handle TCP connections traversing the tunnel. These settings are especially important for traffic flowing through multiple GRE hops.
+Set GRE tunnel MTU to 1476 bytes (physical MTU 1500 minus 24 bytes GRE overhead) to prevent fragmentation. Set TTL to 64 for LAN tunnels or 255 for internet-facing tunnels where packets may need to traverse many hops. Use TCP MSS clamping (`--clamp-mss-to-pmtu`) in iptables on the FORWARD chain to automatically handle TCP connections traversing the tunnel. These settings are especially important for traffic flowing through multiple GRE hops.
