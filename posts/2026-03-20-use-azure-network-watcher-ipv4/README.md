@@ -36,7 +36,7 @@ az network watcher test-ip-flow \
   --direction Inbound \
   --local 10.100.2.10:80 \
   --remote 203.0.113.10:12345 \
-  --protocol Tcp
+  --protocol TCP
 ```
 
 Output shows `Allow` or `Deny` and which NSG rule caused the decision.
@@ -90,13 +90,11 @@ az network watcher packet-capture create \
 
 # Stop the capture
 az network watcher packet-capture stop \
-  --resource-group NetworkWatcherRG \
   --location eastus \
   --name capture-session
 
 # List captures
 az network watcher packet-capture list \
-  --resource-group NetworkWatcherRG \
   --location eastus
 ```
 
