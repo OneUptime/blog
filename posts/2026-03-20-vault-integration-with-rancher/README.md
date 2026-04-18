@@ -20,6 +20,7 @@ helm install vault hashicorp/vault \
   --namespace vault \
   --create-namespace \
   --set server.ha.enabled=true \
+  --set server.ha.raft.enabled=true \
   --set server.ha.replicas=3 \
   --set injector.enabled=true
 ```
