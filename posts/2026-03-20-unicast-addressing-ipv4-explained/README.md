@@ -20,7 +20,7 @@ Unicast is a one-to-one communication model where a packet sent to a unicast IP 
 ## Unicast Address Ranges
 
 Every public and private address outside the special-purpose ranges is unicast:
-- `0.0.0.1` to `9.255.255.255`
+- `1.0.0.0` to `9.255.255.255`
 - `11.0.0.0` to `126.255.255.255`
 - `128.0.0.0` to `172.15.255.255`
 - And most of the remaining public space
@@ -45,7 +45,7 @@ import socket
 # TCP client - sends to exactly one server (unicast)
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect(("93.184.216.34", 80))   # example.com
+client.connect(("23.215.0.136", 80))   # example.com
 client.sendall(b"GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
 response = client.recv(4096)
 print(response[:200].decode(errors='replace'))
