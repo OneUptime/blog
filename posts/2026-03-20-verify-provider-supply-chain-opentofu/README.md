@@ -22,9 +22,9 @@ provider "registry.opentofu.org/hashicorp/aws" {
   constraints = "~> 5.0"
 
   hashes = [
-    # h1 hash: computed from the zip archive
+    # h1 hash: dirhash of the extracted archive contents
     "h1:abc123def456...",
-    # zh hashes: computed per-platform binary
+    # zh hashes: SHA256 of the zip archive, one per platform
     "zh:1234567890abcdef...",  # darwin_amd64
     "zh:abcdef1234567890...",  # linux_amd64
     "zh:fedcba9876543210...",  # windows_amd64
@@ -38,7 +38,7 @@ The lock file guarantees that every team member and CI pipeline uses the identic
 
 When `tofu init` downloads a provider, it:
 1. Fetches the binary from the registry
-2. Downloads the checksums file (`terraform_x.x.x_SHA256SUMS`)
+2. Downloads the checksums file (`terraform-provider-<name>_<version>_SHA256SUMS`)
 3. Verifies the GPG signature on the checksums file
 4. Computes the sha256 of the downloaded zip and compares it
 
@@ -49,8 +49,8 @@ If any step fails, initialization is aborted.
 Provider signing keys are published by the registry. You can inspect which key signed a provider:
 
 ```bash
-# View provider signing keys for the AWS provider
-curl -s https://registry.opentofu.org/v1/providers/hashicorp/aws/signing-keys | jq .
+# View provider signing keys for the AWS provider (returned with the package metadata)
+curl -s https://registry.opentofu.org/v1/providers/hashicorp/aws/5.40.0/download/linux/amd64 | jq .signing_keys
 
 # Verify the GPG key fingerprint matches HashiCorp's published key
 # HashiCorp key fingerprint: C874 011F 0AB4 0511 0D02 1055 3436 5D94 72D7 468F
