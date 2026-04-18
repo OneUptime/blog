@@ -51,9 +51,10 @@ export function middleware(request: NextRequest) {
   response.headers.set("X-Client-IP", clientIp);
   response.headers.set("X-Client-Protocol", isIPv6 ? "IPv6" : "IPv4");
 
-  // IPv6 geolocation is available in Vercel Edge
-  const country = request.geo?.country ?? "unknown";
-  const city = request.geo?.city ?? "unknown";
+  // IPv6 geolocation via Vercel request headers
+  // (request.geo was removed in Next.js 15 — read x-vercel-ip-* headers)
+  const country = request.headers.get("x-vercel-ip-country") ?? "unknown";
+  const city = request.headers.get("x-vercel-ip-city") ?? "unknown";
   response.headers.set("X-Client-Location", `${city}, ${country}`);
 
   return response;
@@ -121,12 +122,12 @@ export async function GET(request: NextRequest) {
     message: "Hello from Vercel!",
     yourIP: clientIp,
     protocol: isIPv6 ? "IPv6" : "IPv4",
-    // Vercel geo is available on Edge Runtime
+    // Vercel injects x-vercel-ip-* headers on both Edge and Node runtimes
     country: request.headers.get("x-vercel-ip-country") ?? "unknown",
   });
 }
 
-export const runtime = "edge";  // Edge runtime has geo headers
+export const runtime = "edge";
 ```
 
 ## vercel.json Routing
