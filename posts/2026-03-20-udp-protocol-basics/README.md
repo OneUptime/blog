@@ -95,7 +95,8 @@ ss -ulnp | grep 5000
 # Latency: UDP wins for single-message exchanges
 # Measure DNS via UDP (typical):
 time dig +short @8.8.8.8 google.com
-# Sub-millisecond on local network
+# Typically a few to tens of milliseconds against a public resolver;
+# sub-millisecond against a local caching resolver
 
 # Throughput: UDP can achieve higher throughput (no congestion control)
 iperf3 -c 10.20.0.5 -u -b 1G -t 10   # UDP, target 1 Gbps
