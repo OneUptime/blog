@@ -53,14 +53,14 @@ fi
 section "2. Reachability Tests"
 
 TARGETS=(
-    "::1:loopback"
-    "2001:db8::1:Router1"
-    "2001:db8::2:Router2"
+    "::1|loopback"
+    "2001:db8::1|Router1"
+    "2001:db8::2|Router2"
 )
 
 for TARGET_PAIR in "${TARGETS[@]}"; do
-    ADDR="${TARGET_PAIR%%:*}"
-    NAME="${TARGET_PAIR#*:}"
+    ADDR="${TARGET_PAIR%%|*}"
+    NAME="${TARGET_PAIR#*|}"
 
     if ping6 -c 2 -W 2 -q "${ADDR}" &>/dev/null; then
         pass "Reachable: ${NAME} (${ADDR})"
