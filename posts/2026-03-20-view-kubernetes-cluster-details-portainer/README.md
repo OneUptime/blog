@@ -37,11 +37,10 @@ Resource Consumption
 kubectl top nodes
 
 # View all nodes with their capacity
-kubectl get nodes -o custom-columns=\
-NAME:.metadata.name,\
+kubectl get nodes -o custom-columns='NAME:.metadata.name,\
 CPU:.status.capacity.cpu,\
 MEMORY:.status.capacity.memory,\
-STATUS:.status.conditions[-1].type
+STATUS:.status.conditions[?(@.type=="Ready")].status'
 ```
 
 ### Workload Summary
@@ -74,7 +73,7 @@ kubectl get node <node-name> -o json | \
 
 ```bash
 # Get cluster Kubernetes version
-kubectl version --short
+kubectl version
 
 # Get version for all nodes
 kubectl get nodes -o custom-columns=\
