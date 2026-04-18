@@ -22,8 +22,8 @@ ip -6 addr show wlan0
 
 # macOS
 networksetup -getinfo Wi-Fi
-# Or
-ifconfig en0 | grep "inet6.*global"
+# Or (filter out link-local fe80:: to see global addresses)
+ifconfig en0 inet6 | grep -v fe80
 
 # Windows
 netsh interface ipv6 show addresses interface="Wi-Fi"
@@ -38,8 +38,8 @@ adb shell ip -6 addr show wlan0
 # Monitor for RA messages (type 134)
 sudo tcpdump -i wlan0 -nn icmp6 and ip6[40]==134 -v
 
-# Send Router Solicitation to trigger RA
-sudo ndisc6 -1 wlan0
+# Send Router Solicitation to trigger RA (rdisc6 from ndisc6 package)
+sudo rdisc6 -1 wlan0
 # Should see RA response within 1-3 seconds
 
 # Check if RA is accepted by the kernel
@@ -113,7 +113,7 @@ journalctl -u isc-dhcp-server6 -f
 
 # On client: Send RS to get new RA from new AP
 sudo ip -6 route flush dev wlan0
-sudo ndisc6 -1 wlan0
+sudo rdisc6 -1 wlan0
 
 # Check if IPv6 address is still valid after roam
 ip -6 addr show wlan0
