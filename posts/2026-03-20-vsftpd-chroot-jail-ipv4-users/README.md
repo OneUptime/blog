@@ -64,6 +64,7 @@ When `chroot_local_user=YES`, vsftpd requires the chroot root (home directory) t
 ```bash
 # Set up a chroot-safe home directory for ftpuser
 useradd -m -s /usr/sbin/nologin ftpuser
+chown root:root /home/ftpuser   # Home owned by root so ftpuser can't write to it
 chmod 755 /home/ftpuser         # Not writable by ftpuser
 mkdir /home/ftpuser/uploads
 chown ftpuser:ftpuser /home/ftpuser/uploads
