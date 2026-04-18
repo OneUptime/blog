@@ -8,12 +8,13 @@ Description: Learn how to configure the HashiCorp Vault provider in OpenTofu for
 
 ## Introduction
 
-This guide covers How to Configure the Vault Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the HashiCorp Vault provider in OpenTofu with practical examples and production-ready configurations.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A running Vault server (v1.10+) reachable from where you run OpenTofu
+- A Vault token with sufficient policy privileges to manage the resources below
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,23 +23,19 @@ This guide covers How to Configure the Vault Provider in OpenTofu using OpenTofu
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 4.0"
     }
   }
 }
 
-# Configure the provider with credentials
+# Configure the provider. Address and token can also come from
+# the VAULT_ADDR and VAULT_TOKEN environment variables.
 
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "vault" {
+  address = "https://vault.example.com:8200"
+  # token = var.vault_token  # Prefer VAULT_TOKEN env var
 }
 ```
 
@@ -46,83 +43,88 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export VAULT_ADDR="https://vault.example.com:8200"
+export VAULT_TOKEN="hvs.your-vault-token"
+export VAULT_NAMESPACE="admin"  # Only required for Vault Enterprise
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "vault_address" {
+  description = "Address of the Vault server"
   type        = string
-  sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "vault_token" {
+  description = "Token used to authenticate with Vault"
   type        = string
+  sensitive   = true
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+# Enable a KV v2 secrets engine at path "secret/"
+resource "vault_mount" "kvv2" {
+  path        = "secret"
+  type        = "kv"
+  options     = { version = "2" }
+  description = "KV Version 2 secret engine"
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+# Define a policy granting access to a path under the engine
+resource "vault_policy" "developers" {
+  name = "developers"
+
+  policy = <<EOT
+path "secret/data/developers/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+EOT
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
-  }
+# Enable the AppRole authentication backend
+resource "vault_auth_backend" "approle" {
+  type = "approle"
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Create an AppRole bound to the developers policy
+resource "vault_approle_auth_backend_role" "app" {
+  backend        = vault_auth_backend.approle.path
+  role_name      = "app-role"
+  token_policies = [vault_policy.developers.name]
+  token_ttl      = 3600
+  token_max_ttl  = 7200
+}
+
+# Write a KV v2 secret
+resource "vault_kv_secret_v2" "app_config" {
+  mount = vault_mount.kvv2.path
+  name  = "developers/app-config"
+
+  data_json = jsonencode({
+    api_key = "example-api-key"
+    db_url  = "postgres://localhost:5432/app"
+  })
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "kv_mount_path" {
+  description = "Path of the KV v2 secret engine"
+  value       = vault_mount.kvv2.path
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "approle_role_id" {
+  description = "Role ID for the AppRole authentication"
+  value       = vault_approle_auth_backend_role.app.role_id
+  sensitive   = true
 }
 ```
 
@@ -145,7 +147,7 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify `VAULT_TOKEN` is valid and has not expired, and that `VAULT_ADDR` points to the correct server. Ensure the token's attached policies grant the capabilities required by the resources you manage.
 
 ### Rate Limiting
 Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
@@ -155,4 +157,4 @@ Pin to a specific provider version range to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Vault Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the HashiCorp Vault provider in OpenTofu. This provider enables you to manage Vault auth methods, secret engines, policies, and secrets as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials such as `VAULT_TOKEN`.
