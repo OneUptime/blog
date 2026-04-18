@@ -19,7 +19,7 @@ Possible reasons:
 5. Device B has privacy extensions disabled (shows no temporary addr)
 6. Virtual machine with host-only network mode
 7. VPN software blocking IPv6
-8. Older Android versions don't support DHCPv6 stateful
+8. Android does not support DHCPv6 stateful (IA_NA) on any version
 ```
 
 ## Diagnose the Problem Device
@@ -93,20 +93,20 @@ networksetup -setv6automatic Ethernet
 sudo ifconfig en0 down && sudo ifconfig en0 up
 
 # Check RA reception
-ndp -r    # Show routing table with IPv6 routes
+ndp -r    # Show the default router list learned via Router Advertisements
 ```
 
 ## Android - IPv6 Limitations
 
 ```text
 Android IPv6 behavior:
-  - Android uses SLAAC (not DHCPv6 stateful)
-  - Android ignores DHCPv6 completely (by design until Android 14)
-  - If router uses DHCPv6 stateful only, Android gets no IPv6
-  - Fix: Enable SLAAC (stateless) on router in addition to DHCPv6
+  - Android uses SLAAC for address assignment (not DHCPv6 stateful)
+  - Android does not implement DHCPv6 IA_NA on any version (Google issue 36949085, marked Won't Fix)
+  - If router uses DHCPv6 stateful (IA_NA) only, Android gets no IPv6
+  - Fix: Enable SLAAC (stateless) on router in addition to (or instead of) DHCPv6
 
-Android 14+: supports DHCPv6 stateful
-Android < 14: SLAAC only
+Android 14+: adds DHCPv6 Prefix Delegation (IA_PD) for tethering - not stateful IA_NA
+All Android versions: require SLAAC for on-link address assignment
 
 Router fix (OpenWrt example):
 # radvd.conf - enable SLAAC in addition to DHCPv6
@@ -173,4 +173,4 @@ ping6 -c 2 2606:4700:4700::1111 || echo "   FAIL"
 
 ## Conclusion
 
-Inconsistent IPv6 across home network devices is usually caused by one of: IPv6 disabled in OS settings, VPN software blocking IPv6, the device using only DHCPv6 stateful (Android < 14) while the router offers only SLAAC, or the device missing the Router Advertisement during boot. The fix depends on the cause: enable IPv6 in OS settings, configure the router for both SLAAC and stateless DHCPv6 (M=0, O=1), or configure the VPN to allow IPv6 traffic. Always verify that the device has a link-local address first - if it does not, the NIC or driver has a fundamental problem with IPv6.
+Inconsistent IPv6 across home network devices is usually caused by one of: IPv6 disabled in OS settings, VPN software blocking IPv6, the router offering only DHCPv6 stateful (IA_NA) while the device (for example, any Android) supports only SLAAC, or the device missing the Router Advertisement during boot. The fix depends on the cause: enable IPv6 in OS settings, configure the router for both SLAAC and stateless DHCPv6 (M=0, O=1), or configure the VPN to allow IPv6 traffic. Always verify that the device has a link-local address first - if it does not, the NIC or driver has a fundamental problem with IPv6.
