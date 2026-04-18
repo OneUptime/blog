@@ -95,10 +95,10 @@ bridge link show
 
 ```bash
 # Flush all dynamic FDB entries (bridge will relearn)
-ip link set br0 type bridge flush_fdb 1
-
-# Or using bridge command
 bridge fdb flush dev br0
+
+# Or using the sysfs flush attribute
+echo 1 > /sys/class/net/br0/bridge/flush
 ```
 
 ## Conclusion
