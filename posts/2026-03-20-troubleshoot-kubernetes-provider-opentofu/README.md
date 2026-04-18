@@ -109,7 +109,10 @@ provider "kubernetes" {
 After creating an EKS cluster, only the creator IAM entity can access it by default.
 
 ```bash
-# Check who created the cluster (has implicit admin)
+# Check current AWS identity - must match cluster creator or be listed in aws-auth
+aws sts get-caller-identity
+
+# View the cluster's service role ARN (used by EKS, not the creator)
 aws eks describe-cluster \
   --name my-cluster \
   --query 'cluster.roleArn'
