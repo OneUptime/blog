@@ -25,7 +25,7 @@ IPv4 uses 32 bits, providing 2^32 = 4,294,967,296 unique addresses. In the 1980s
 
 1. **CIDR (1993)**: Replaced classful addressing with variable prefix lengths, reclaiming wasted space.
 2. **NAT (1996)**: RFC 1918 private addresses + NAT allow millions of devices to share one public IP.
-3. **IPv6 deployment**: 128-bit addresses = 3.4 × 10^38 addresses (enough for every atom on Earth).
+3. **IPv6 deployment**: 128-bit addresses = 3.4 × 10^38 addresses (enough for every atom on the Earth's surface).
 
 ## Visualizing Address Space
 
