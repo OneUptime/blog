@@ -145,10 +145,12 @@ print('fd{:02x}:{:04x}:{:04x}::/48'.format(
 ))
 "
 
-# Configure ULA on router interface (alongside global)
+# Configure ULA prefix on router (distributed alongside global)
 # /etc/config/network (OpenWrt)
+config globals 'globals'
+    option ula_prefix 'fdXX:XXXX:XXXX::/48'
+
 config interface 'lan'
-    option ip6class 'local'
     option ip6assign '64'
     option ip6ifaceid '::1'
 
