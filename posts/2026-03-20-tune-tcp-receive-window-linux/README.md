@@ -88,7 +88,7 @@ ss -tin state established | grep -i "rcv_space"
 
 # Check what window size is actually advertised to the remote
 tcpdump -i eth0 -n -v 'tcp and dst 10.20.0.5 and port 8080' | grep "win "
-# win 29312 = 29312 bytes (after scaling factor applied)
+# win 29312 = raw 16-bit TCP header value (multiply by 2^wscale for actual bytes)
 ```
 
 ## Per-Application Buffer Override
