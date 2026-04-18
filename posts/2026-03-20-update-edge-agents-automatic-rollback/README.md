@@ -14,12 +14,12 @@ Portainer Edge Agents enable management of remote environments that are behind N
 
 ```mermaid
 flowchart LR
-    A[Edge Device] -->|Outbound WSS| B[Portainer Server :8000]
+    A[Edge Device] -->|Outbound Tunnel / HTTPS| B[Portainer Server]
     B -->|Commands| A
     A -->|Status/Snapshots| B
 ```
 
-The Edge Agent initiates all connections outbound to the Portainer server on port 8000 (WebSocket Secure), so no inbound ports need to be opened on the edge network.
+The Edge Agent initiates all connections outbound to the Portainer server, so no inbound ports need to be opened on the edge network. In standard mode the agent opens a reverse tunnel (SSH over WebSocket via chisel) to the tunnel port (default `8000`). In async mode the agent polls the Portainer HTTPS API (default `9443`) and does not require the tunnel port.
 
 ## Generate Edge Deployment Script
 
@@ -77,10 +77,10 @@ docker run -d \
   -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
   -e EDGE_ASYNC=1 \
-  -e EDGE_CHECKIN_INTERVAL=30 \
-  -e EDGE_SNAPSHOT_INTERVAL=60 \
   portainer/agent:latest
 ```
+
+In async mode the ping, snapshot, and command intervals are configured on the Portainer server (Edge Compute settings, or per-environment overrides) and pushed down to the agent through the poll response — they are not set as environment variables on the agent container.
 
 ## ARM / Windows Variations
 
