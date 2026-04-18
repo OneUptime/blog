@@ -80,8 +80,8 @@ ip -6 addr show scope global
 ip -6 route show default
 # Should show: default via fe80::... dev eth0 proto ra
 
-# Force RA request
-sudo ndisc6 -r 3 eth0
+# Force RA request (send Router Solicitation)
+sudo rdisc6 -r 3 eth0
 # or
 sudo ip link set eth0 down && sudo ip link set eth0 up
 ```
