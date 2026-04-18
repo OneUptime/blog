@@ -98,8 +98,8 @@ Silent packet drops due to MTU mismatches are a common tunnel issue:
 
 ```bash
 # Test with progressively smaller packet sizes to find effective MTU
-# Start at 1472 (1500 - 28 for IPv6+ICMP headers) and go down
-ping6 -M do -s 1452 2001:db8:1::2  # 1452 + 28 = 1480 (sit MTU)
+# Start at 1432 (1480 - 48 for IPv6+ICMPv6 headers) to fill the SIT MTU and go down
+ping6 -M do -s 1432 2001:db8:1::2  # 1432 + 48 = 1480 (sit MTU)
 ping6 -M do -s 1200 2001:db8:1::2  # smaller test
 
 # Check if ICMPv6 "Packet Too Big" messages are generated
