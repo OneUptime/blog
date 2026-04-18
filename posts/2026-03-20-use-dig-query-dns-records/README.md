@@ -97,7 +97,7 @@ dig +dnssec example.com
 # Disable DNSSEC validation:
 dig +cd example.com   # +cd = checking disabled
 
-# Set specific source port:
+# Set source IP address (use 0.0.0.0 to let OS choose; append #port to set source port):
 dig -b 0.0.0.0 example.com
 
 # Set query timeout:
