@@ -63,8 +63,9 @@ TOKEN=$(curl -s -X POST \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Create a stack with environment variables via API
+# type=2 (Compose standalone), method=string, endpointId are query parameters
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks?type=2&method=string&endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -73,9 +74,7 @@ curl -X POST \
     "env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
