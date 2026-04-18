@@ -46,7 +46,8 @@ ping6 64:ff9b::8.8.8.8
 
 # Or using DNS64 (returns synthesized AAAA)
 dig AAAA ipv4only.arpa
-# Should return 64:ff9b::c000:0200 (192.0.2.0 encoded)
+# Should return 64:ff9b::c000:aa and 64:ff9b::c000:ab
+# (192.0.0.170 and 192.0.0.171 encoded, per RFC 8880)
 ```
 
 ## Setting Up a NAT64 Test Environment
@@ -55,13 +56,14 @@ Configure a NAT64 route to a translator:
 
 ```bash
 # Add route for the well-known prefix pointing to NAT64 gateway
-ip -6 route add 64:ff9b::/96 via 2001:db8::nat64
+# Replace 2001:db8::1 with your NAT64 translator's address
+ip -6 route add 64:ff9b::/96 via 2001:db8::1
 ```
 
 ## DNS64 Configuration for BIND
 
 ```text
-plugin query "/usr/lib/bind/dns64.so" {
+options {
     dns64 64:ff9b::/96 {
         clients { any; };
         mapped { !rfc1918; any; };
