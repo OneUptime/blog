@@ -218,7 +218,7 @@ volumes:
 
 Dev Containers create Docker containers that appear in Portainer:
 
-1. Open Portainer at `http://localhost:9443`
+1. Open Portainer at `https://localhost:9443`
 2. Navigate to **Containers**
 3. Look for containers prefixed with `vsc-` (VS Code's naming convention)
 4. Click on the container to view logs, stats, and resource usage
@@ -285,8 +285,7 @@ services:
   ],
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
-      "version": "latest",
-      "enableNonRootDocker": "true"
+      "version": "latest"
     }
   }
 }
