@@ -55,8 +55,6 @@ conn site-to-site
     leftsubnet=0.0.0.0/0
     rightsubnet=0.0.0.0/0
     auto=start
-    if_id_out=1
-    if_id_in=1
 ```
 
 ## Add Routes Through the VTI
