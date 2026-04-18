@@ -50,7 +50,7 @@ volumes:
 
 services:
   wg-easy:
-    image: ghcr.io/wg-easy/wg-easy:latest
+    image: ghcr.io/wg-easy/wg-easy:14
     container_name: wg-easy
     restart: unless-stopped
     cap_add:
@@ -83,9 +83,6 @@ services:
       # Web UI port
       - PORT=51821
 
-      # Maximum number of clients
-      - WG_MAX_AGE=0
-
       # Pre/Post up hooks for routing
       - WG_PRE_UP=iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
       - WG_POST_DOWN=iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
@@ -99,8 +96,8 @@ services:
 
 ```bash
 # Generate bcrypt hash for the admin password
-docker run --rm -it ghcr.io/wg-easy/wg-easy wgpw 'your_secure_password'
-# Copy the output and use in WG_PASSWORD_HASH
+docker run --rm -it ghcr.io/wg-easy/wg-easy:14 wgpw 'your_secure_password'
+# Copy the output and use in PASSWORD_HASH (remember to double each $ in docker-compose)
 ```
 
 ## Step 3: Deploy WireGuard (Manual Configuration)
@@ -188,9 +185,13 @@ sudo systemctl enable wg-quick@wg0
 ## Step 5: Access QR Codes
 
 ```bash
-# View QR code for mobile devices
-cat /opt/wireguard/config/peer_phone/peer_phone.png
-# Or display in terminal
+# Display the QR code as ASCII in your terminal (recommended)
+docker exec -it wireguard /app/show-peer phone
+
+# Or open the generated PNG in an image viewer
+xdg-open /opt/wireguard/config/peer_phone/peer_phone.png
+
+# Or render a QR code from the config using a local qrencode install
 docker exec wireguard cat /config/peer_phone/peer_phone.conf | qrencode -t ansiutf8
 ```
 
