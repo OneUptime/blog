@@ -99,10 +99,8 @@ netstat -rn -f inet6
 # Show only default route
 netstat -rn -f inet6 | grep default
 
-# Trace route to an IPv6 destination
+# Trace route to an IPv6 destination (macOS uses traceroute6 for IPv6)
 traceroute6 2001:4860:4860::8888
-# or
-traceroute -6 2001:4860:4860::8888
 ```
 
 ## Neighbor Cache (NDP)
@@ -113,8 +111,8 @@ ndp -a
 # or
 ndp -an   # numeric, no DNS resolution
 
-# Show neighbors on a specific interface
-ndp -i en0 -a
+# Filter neighbors by interface (ndp -a shows the cache for all interfaces)
+ndp -a | grep en0
 ```
 
 ## Summary
