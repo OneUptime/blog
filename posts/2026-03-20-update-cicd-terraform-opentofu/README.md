@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.9.0"   # Matches OpenTofu version scheme
 
@@ -106,9 +106,6 @@ TF_LOG_PATH=/tmp/tofu-debug.log
 TF_VAR_environment=production
 TF_CLI_ARGS_plan="-parallelism=20"
 TF_PLUGIN_CACHE_DIR=/tmp/plugin-cache
-
-# OpenTofu-specific (new)
-OPENTOFU_VERSION=1.9.0
 ```
 
 ## Atlantis: Update workflow.yaml
@@ -146,8 +143,8 @@ repos:
 
 Set Atlantis environment variable:
 ```bash
-# Atlantis server configuration
-ATLANTIS_TERRAFORM_VERSION=opentofu
+# Atlantis server configuration (v0.24.0+)
+ATLANTIS_DEFAULT_TF_DISTRIBUTION=opentofu
 ```
 
 ## Terragrunt: One Variable Change
@@ -178,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.9.0"
       - uses: aws-actions/configure-aws-credentials@v4
@@ -196,7 +193,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## OpenTofu Plan\n```\n${plan.slice(0, 65000)}\n````
+              body: `## OpenTofu Plan\n\`\`\`\n${plan.slice(0, 65000)}\n\`\`\``
             })
 
   apply:
@@ -204,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
