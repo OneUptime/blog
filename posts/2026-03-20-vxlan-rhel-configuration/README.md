@@ -23,7 +23,7 @@ nmcli connection add type vxlan \
   vxlan.local 10.0.0.1 \
   vxlan.destination-port 4789 \
   vxlan.ageing 300 \
-  vxlan.mac-learning yes
+  vxlan.learning yes
 
 # Assign IP to the VXLAN interface
 nmcli connection modify vxlan10 \
@@ -84,13 +84,13 @@ nmcli connection up vxlan10
 nmcli connection show vxlan10 | grep vxlan
 
 # Key properties:
-# vxlan.id           - VNI (1-16777215)
+# vxlan.id           - VNI (0-16777215)
 # vxlan.remote       - Remote VTEP IP
 # vxlan.local        - Local VTEP IP
 # vxlan.parent       - Physical interface
 # vxlan.destination-port - UDP port (4789)
 # vxlan.ageing       - FDB ageing time (seconds)
-# vxlan.mac-learning - Enable/disable learning
+# vxlan.learning     - Enable/disable learning
 # vxlan.tos          - Type of Service
 # vxlan.ttl          - Outer packet TTL
 ```
