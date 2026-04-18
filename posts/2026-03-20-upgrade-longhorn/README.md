@@ -109,10 +109,10 @@ kubectl rollout status deployment/longhorn-ui -n longhorn-system
 
 ### Understanding the Upgrade Sequence
 
-1. **Engine image** is upgraded first (creates new engine image pods)
-2. **Longhorn manager** DaemonSet is updated (rolling restart)
-3. **Instance managers** are upgraded when volumes are detached
-4. **Volume engines** are live-upgraded while attached
+1. **Longhorn manager** DaemonSet is updated first (rolling restart)
+2. **Engine image** DaemonSet is deployed with the new default image
+3. **Instance managers** are replaced when volumes are detached
+4. **Volume engines** for existing volumes must be upgraded separately (see below)
 
 ## Post-Upgrade Validation
 
@@ -155,9 +155,9 @@ After upgrading Longhorn, you may need to upgrade the engine for existing volume
 
 ### Via Longhorn UI
 
-1. Navigate to **Node** → **Instance Manager** section
-2. Check for volumes with an outdated engine image
-3. For each volume, click the three-dot menu → **Upgrade Engine**
+1. Navigate to the **Volume** page
+2. Select one or more volumes with an outdated engine image (use batch selection to upgrade multiple at once)
+3. Click the **Upgrade Engine** batch operation (or the three-dot menu on a single volume) and choose the new engine image
 
 ### Via kubectl
 
@@ -166,7 +166,7 @@ After upgrading Longhorn, you may need to upgrade the engine for existing volume
 kubectl get volumes.longhorn.io -n longhorn-system \
   -o json | \
   jq -r '.items[] |
-    select(.status.currentImage != .status.engineImage) |
+    select(.spec.image != .status.currentImage) |
     .metadata.name'
 
 # The engine upgrade happens automatically when volumes are next detached/attached
