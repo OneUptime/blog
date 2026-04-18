@@ -20,7 +20,7 @@ nmcli connection show
 # Show only active connections
 nmcli connection show --active
 
-# Sort by connection name
+# Show secrets (passwords) in output
 nmcli -s connection show
 ```
 
