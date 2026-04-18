@@ -86,9 +86,9 @@ dig ANY google.com
 dig ANY google.com +noadditional | grep -i "ANSWER\|truncated"
 
 # See the TC bit in dig output:
-dig google.com @8.8.8.8 +bufsize=0
-# bufsize=0: tell server we want very small UDP responses
-# Server should truncate and set TC bit
+dig isc.org ANY @8.8.8.8 +bufsize=512
+# bufsize=512: cap UDP response at 512 bytes (disables EDNS0 advertising larger)
+# For a large ANY response, server should truncate and set TC bit
 # dig will then retry over TCP
 
 # In Wireshark:
@@ -104,8 +104,9 @@ dig google.com +edns=0 +bufsize=4096
 # Shows: ; EDNS: version: 0, flags: do; udp: 4096 (advertising 4096 byte buffer)
 
 # Check if EDNS0 is supported by a server:
-dig +ednsopt @8.8.8.8 google.com
-# Server should respond with its EDNS0 buffer size
+dig @8.8.8.8 google.com
+# Look for the ";; OPT PSEUDOSECTION:" / "EDNS: version: 0" line in the output
+# Server's EDNS0 buffer size is advertised there (e.g., udp: 512)
 
 # Disable EDNS0 to force 512-byte limit (old behavior):
 dig google.com +noedns
@@ -114,12 +115,16 @@ dig google.com +noedns
 ## Testing DNS TCP Fallback
 
 ```bash
-# Test that your resolver works when UDP is blocked:
+# Test that TCP DNS works when UDP is blocked:
 # Block UDP DNS temporarily:
 iptables -A OUTPUT -p udp --dport 53 -j DROP
 
-# DNS should fall back to TCP:
-dig google.com   # Should still work (via TCP)
+# dig does not auto-fall-back from UDP timeout to TCP; use +tcp explicitly:
+dig +tcp google.com   # Works via TCP even with UDP blocked
+dig google.com        # Will time out (no automatic UDP->TCP fallback in dig)
+
+# For glibc stub resolver to force TCP system-wide, add to /etc/resolv.conf:
+#   options use-vc
 
 # Remove the block:
 iptables -D OUTPUT -p udp --dport 53 -j DROP
