@@ -22,7 +22,6 @@ Every IPv6 BGP prefix has one of three RPKI validation states:
 # Install and start Routinator
 
 sudo apt-get install routinator
-routinator init --accept-arin-rpa
 sudo systemctl start routinator
 
 # Trigger an immediate repository sync
@@ -45,8 +44,8 @@ routinator validate --asn AS64496 --prefix 2001:db8::/32
 ## Dumping All Valid ROAs
 
 ```bash
-# Dump all validated ROAs in CSV format
-routinator dump --format csv > /tmp/rpki-roas.csv
+# Dump all validated ROA payloads (VRPs) in CSV format
+routinator vrps --format csv > /tmp/rpki-roas.csv
 
 # Filter for IPv6 prefixes
 grep ":" /tmp/rpki-roas.csv | head -20
@@ -67,7 +66,7 @@ roa6 table rpki6;
 
 # RPKI session to Routinator
 protocol rpki routinator_v6 {
-    remote "::1" port 3323;
+    remote ::1 port 3323;
     refresh keep 300;
     retry keep 90;
     expire keep 172800;
