@@ -74,7 +74,7 @@ resource "aws_db_instance" "main" {
   engine         = "postgres"
   engine_version = var.db_engine_version  # "15.6" -> "16.2" for major upgrade
 
-  # For major upgrades, allow downtime parameter group changes
+  # For major upgrades, allow the version bump and point to a parameter group for the new family
   allow_major_version_upgrade = true
   apply_immediately           = var.apply_immediately  # true only during upgrade window
 
@@ -109,7 +109,7 @@ resource "aws_rds_cluster" "main" {
   master_username = var.db_username
   master_password = var.db_password
 
-  # Aurora supports zero-downtime upgrades through rolling replacement
+  # Minor version patches can use Aurora's Zero-Downtime Patching (ZDP); major version upgrades run pg_upgrade in place and incur downtime (use Blue/Green Deployments to minimize it)
   apply_immediately = false
   allow_major_version_upgrade = true
 
