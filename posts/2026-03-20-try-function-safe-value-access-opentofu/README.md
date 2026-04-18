@@ -38,11 +38,12 @@ locals {
 
 ## Use Case 2: Safe Attribute Access on Nullable Objects
 
-Resources may return `null` for optional attributes. Chaining attribute access on `null` causes an error:
+Resources may return `null` for optional attributes, and indexing an empty list produces an error. Chaining attribute access on `null` or accessing `[0]` on an empty list causes an error:
 
 ```hcl
-# data.aws_instance.existing might be null if the resource doesn't exist
+# Conditionally look up an instance; the list is empty when not requested
 data "aws_instance" "existing" {
+  count = var.lookup_existing ? 1 : 0
   filter {
     name   = "tag:Name"
     values = ["my-app"]
@@ -50,10 +51,12 @@ data "aws_instance" "existing" {
 }
 
 locals {
-  # Safely access the private IP, returning empty string if the instance is absent
-  private_ip = try(data.aws_instance.existing.private_ip, "")
+  # Safely access the private IP, returning empty string when no lookup occurred
+  private_ip = try(data.aws_instance.existing[0].private_ip, "")
 }
 ```
+
+Note that `try` only catches expression-evaluation errors. It does not catch provider errors from a data source that fails to find a matching resource at plan time.
 
 ## Use Case 3: Handling Type Conversion Failures
 
@@ -94,18 +97,20 @@ locals {
 
 ## Use Case 5: Fallback Across Multiple Expressions
 
-`try` accepts multiple fallback expressions, evaluating them left to right:
+`try` accepts multiple fallback expressions, evaluating them left to right. Each expression must actually raise an error for the next to be tried — `null` is a valid value, not an error, so plain references to nullable variables will not fall through:
 
 ```hcl
 variable "tags" {
-  type = any
-  default = null
+  type    = any
+  default = {}
 }
 
 locals {
-  # Try the tags variable, then an empty map as fallback
+  # Try a nested tag path first, then a broader one, then a hard-coded default.
+  # Each attribute access errors if the attribute is absent, so the next is tried.
   resolved_tags = try(
-    var.tags,            # Use provided tags if not null/error
+    var.tags.custom,     # Preferred: object has a .custom attribute
+    var.tags.default,    # Otherwise try .default
     { default = true }   # Last resort fallback
   )
 }
@@ -123,11 +128,13 @@ locals {
 For map key access specifically, `lookup` is often cleaner and more explicit:
 
 ```hcl
-# lookup is explicit about what it does
-local.value = lookup(var.config_map, "key", "default")
+locals {
+  # lookup is explicit about what it does
+  value_from_lookup = lookup(var.config_map, "key", "default")
 
-# try is more general - works for any expression
-local.value = try(var.config_map["key"], "default")
+  # try is more general - works for any expression
+  value_from_try = try(var.config_map["key"], "default")
+}
 ```
 
 Use `lookup` when you are specifically accessing a map key with a default. Use `try` for more complex expressions or when chaining multiple attribute accesses.
