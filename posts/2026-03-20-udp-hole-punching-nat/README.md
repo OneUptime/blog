@@ -86,7 +86,6 @@ import socket
 import json
 import time
 import sys
-import threading
 
 RENDEZVOUS = ('rendezvous.example.com', 12345)
 MY_ID = sys.argv[1]      # e.g., "alice"
@@ -148,7 +147,7 @@ except socket.timeout:
 # - Symmetric NAT: difficult (different external port per destination)
 
 # Use stun-client to detect NAT type:
-apt-get install stun-client  # or stuntman-client
+apt-get install stun-client
 stun stun.l.google.com:19302
 # Shows: NAT type (open/full cone/restricted/symmetric)
 ```
