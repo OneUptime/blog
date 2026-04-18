@@ -40,7 +40,7 @@ kubectl get pods --all-namespaces -o wide --field-selector spec.nodeName=$NODE -
 ### Calico IPAM Check
 
 ```bash
-DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --summary
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show
 
 # If "IPS IN USE" = "IPS TOTAL" for any pool, that pool is exhausted
 ```
@@ -65,15 +65,18 @@ DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam check
 # Check for leaked IPs
 DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --show-blocks
 
-# Release all leaked IPs (safe to run - only releases IPs not in use)
-DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam release --leaked-ips
+# Generate a report of problem IPs (required input for the release command)
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam check --show-problem-ips -o report.json
+
+# Release the leaked IPs documented in the report
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam release --from-report=report.json
 ```
 
 ## Adding a New IP Pool to Expand Capacity
 
 ```yaml
 # Add a second IP pool when the first is exhausted
-apiVersion: crd.projectcalico.org/v1
+apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: secondary-ipv4-pool
@@ -86,7 +89,7 @@ spec:
 ```
 
 ```bash
-kubectl apply -f secondary-ippool.yaml
+calicoctl apply -f secondary-ippool.yaml
 ```
 
 ## Increasing Max Pods per Node
@@ -107,8 +110,9 @@ sudo systemctl restart kubelet
 ```bash
 #!/bin/bash
 # Script to alert when IP pool is > 80% utilized
-USED=$(calicoctl ipam show --summary 2>/dev/null | awk '/IP Pool/{print $6}' | tr -d ,)
-TOTAL=$(calicoctl ipam show --summary 2>/dev/null | awk '/IP Pool/{print $5}' | tr -d ,)
+# Parses the pipe-delimited row: | IP Pool | <CIDR> | <IPS TOTAL> | <IPS IN USE> | <IPS FREE> |
+USED=$(calicoctl ipam show 2>/dev/null | awk '/IP Pool/{print $9}' | tr -d ,)
+TOTAL=$(calicoctl ipam show 2>/dev/null | awk '/IP Pool/{print $7}' | tr -d ,)
 PCT=$((USED * 100 / TOTAL))
 if [ $PCT -gt 80 ]; then
     echo "WARNING: IP pool $PCT% utilized ($USED/$TOTAL IPs)"
