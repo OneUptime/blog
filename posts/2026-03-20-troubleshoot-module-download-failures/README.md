@@ -153,8 +153,8 @@ When module downloads get stuck in a bad state, clearing the cache helps.
 rm -rf .terraform/modules/
 tofu init
 
-# Force re-download without upgrading provider versions
-tofu init -reconfigure
+# Re-download modules per their version constraints (no provider changes)
+tofu get -update
 
 # With debug logging to see exactly what's happening
 TF_LOG=DEBUG tofu init 2>&1 | grep -i "module\|download\|git\|error"
