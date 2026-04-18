@@ -51,9 +51,6 @@ sudo nmap -6 -sU -p 123 2001:db8::1
 # Use ntpdate to test connectivity
 ntpdate -q 2001:db8::1
 
-# Test with chronyc
-chronyc -h 2001:db8::1 sources
-
 # Use nc to test UDP connectivity
 echo "" | nc -6 -u -w 2 2001:db8::1 123 && echo "Connected" || echo "Failed"
 ```
@@ -94,8 +91,8 @@ sudo journalctl -u chronyd | grep -i \
 sudo journalctl -u ntp
 sudo tail -100 /var/log/ntp/ntp.log
 
-# Check if chrony is using IPv6 addresses
-chronyc sources -v | grep "\[" # IPv6 addresses shown in brackets
+# Check if chrony is using IPv6 addresses (contain colons)
+chronyc sources -v | grep ":"
 ```
 
 ## Step 6: Capture NTP Traffic
@@ -142,7 +139,7 @@ chronyc sources
 # Issue: "Name or service not known" in chrony logs
 # The NTP hostname doesn't resolve to an IPv6 address
 dig AAAA pool.ntp.org
-# Fix: Use IPv6-specific pools like ipv6.pool.ntp.org
+# Fix: Use the IPv6-capable pool zone 2.pool.ntp.org (prefix "2" returns AAAA records)
 
 # Issue: "Connection refused" on ntpdate
 # NTP server may be blocking your IPv6 source
@@ -169,7 +166,7 @@ for server in "${NTP_SERVERS[@]}"; do
 
   if echo "$result" | grep -q "offset"; then
     offset=$(echo "$result" | grep -oP 'offset \K[\d.-]+' | head -1)
-    echo "OK (offset: ${offset}ms)"
+    echo "OK (offset: ${offset}s)"
   else
     echo "FAILED - $(echo "$result" | tail -1)"
   fi
