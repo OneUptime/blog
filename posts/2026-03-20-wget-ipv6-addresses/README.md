@@ -122,7 +122,7 @@ test_url "https://example.com/"
 prefer-family = IPv6
 
 # Or force IPv6 always
-#prefer-family = IPv6
+#inet6-only = on
 
 # Increase timeout for IPv6 (some networks have higher latency)
 timeout = 30
