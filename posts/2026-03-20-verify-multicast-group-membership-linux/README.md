@@ -50,17 +50,19 @@ Output format:
 ```text
 Idx  Device    : Count Querier   Group    Users Timer    Reporter
 1    lo        :     1      V3
-2    eth0      :     3      V3   EF000001     1 0:00000000  0
-                              E0000001     1 0:00000000  0
-                              E00000FB     1 0:00000000  0
+                                010000E0     1 0:00000000               0
+2    eth0      :     3      V3
+                                010000EF     1 0:00000000               0
+                                010000E0     1 0:00000000               0
+                                FB0000E0     1 0:00000000               0
 ```
 
-The `Group` column is the multicast address in **little-endian hex**. Convert to dotted decimal:
+The `Group` column is the multicast address as a 32-bit integer in **host byte order** (little-endian on x86_64). Reverse the bytes to get the dotted-decimal address:
 
 ```bash
 # Convert hex group address to dotted decimal
-# E.g., EF000001 → 0x01 0x00 0x00 0xEF → 239.0.0.1
-python3 -c "import struct,socket; print(socket.inet_ntoa(bytes.fromhex('EF000001')[::-1]))"
+# E.g., 010000EF → bytes 01 00 00 EF reversed → EF 00 00 01 → 239.0.0.1
+python3 -c "import socket; print(socket.inet_ntoa(bytes.fromhex('010000EF')[::-1]))"
 ```
 
 ## Reading /proc/net/mcfilter for SSM
@@ -115,8 +117,10 @@ You will see an IGMP Membership Report appear in the tcpdump output immediately 
 ## Checking Kernel Multicast Statistics
 
 ```bash
-# Check for IGMP-related counters in the kernel network stats
-cat /proc/net/snmp | grep -i igmp
+# Check multicast packet counters in the kernel network stats
+# (IGMP itself has no dedicated section in /proc/net/snmp; multicast
+# packet/byte counters are exposed under IpExt in /proc/net/netstat.)
+cat /proc/net/netstat | grep -i mcast
 ```
 
 ## Conclusion
