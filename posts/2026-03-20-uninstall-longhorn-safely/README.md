@@ -101,8 +101,11 @@ kubectl scale statefulset my-db --replicas=0 -n default
 
 ```bash
 # Delete all PVCs using Longhorn (WARNING: This deletes data if not backed up!)
-kubectl delete pvc --all-namespaces \
-  --selector storageclass=longhorn
+# PVCs don't carry a storageClass label, so filter by the storageClassName field:
+kubectl get pvc --all-namespaces -o json | \
+  jq -r '.items[] | select(.spec.storageClassName == "longhorn") |
+    "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns name; do kubectl delete pvc -n "$ns" "$name"; done
 
 # Or delete them one by one for safety
 kubectl get pvc -n default | grep longhorn
