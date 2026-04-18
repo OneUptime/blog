@@ -68,7 +68,7 @@ sudo ip6tables -A INPUT -p udp --dport 5349 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 5349 -j ACCEPT
 # Relay port range
 sudo ip6tables -A INPUT -p udp --dport 49152:65535 -j ACCEPT
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## WebRTC ICE Configuration in JavaScript
@@ -95,7 +95,8 @@ const iceConfig = {
             credential: 'SecurePassword123'
         }
     ],
-    // Enable IPv6 candidates
+    // Pre-gather ICE candidates (IPv6 candidates are gathered automatically
+    // on IPv6-capable hosts; this setting only controls prefetch)
     iceCandidatePoolSize: 10
 };
 
@@ -106,7 +107,9 @@ const pc = new RTCPeerConnection(iceConfig);
 pc.onicecandidate = (event) => {
     if (event.candidate) {
         const cand = event.candidate.candidate;
-        if (cand.includes(':')) {  // IPv6 address contains colons
+        // event.candidate.address is the raw IP; IPv6 addresses contain ':'
+        // while IPv4 addresses do not
+        if (event.candidate.address && event.candidate.address.includes(':')) {
             console.log('IPv6 ICE candidate:', cand);
         }
         // Send candidate to remote peer via signaling
@@ -146,12 +149,12 @@ pc.onicecandidate = (event) => {
 ## Testing IPv6 ICE Connectivity
 
 ```bash
-# Test STUN server over IPv6
-turnutils_stunclient -6 turn.example.com
+# Test STUN server over IPv6 (pass an IPv6 literal, or rely on AAAA resolution)
+turnutils_stunclient turn.example.com
 
-# Test TURN server over IPv6
+# Test TURN server and request an IPv6 relay allocation (-x, per RFC 6156)
 turnutils_uclient \
-  -6 \
+  -x \
   -u webrtcuser \
   -w SecurePassword123 \
   turn.example.com
