@@ -27,16 +27,17 @@ Flannel's VXLAN backend is the default for most RKE2 clusters:
 cni: flannel
 flannel-backend: vxlan
 
-# Or in RKE2 HelmChart for Flannel
+# Or override the built-in rke2-canal chart (Canal = Calico + Flannel)
 apiVersion: helm.cattle.io/v1
-kind: HelmChart
+kind: HelmChartConfig
 metadata:
   name: rke2-canal
   namespace: kube-system
 spec:
   valuesContent: |-
-    flannel_backend: "vxlan"
-    flannel_iface: "eth0"    # Interface to use for VXLAN
+    flannel:
+      backend: "vxlan"
+      iface: "eth0"    # Interface to use for VXLAN
 ```
 
 ## Step 2: Configure Calico VXLAN
