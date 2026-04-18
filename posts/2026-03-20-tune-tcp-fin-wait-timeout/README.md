@@ -40,7 +40,7 @@ ss -tn state fin-wait-2 | wc -l
 
 # Show with timing information
 ss -tn -o state fin-wait-2 | head -20
-# Look for "timer:timewait" with large timeout values
+# Look for "timer:keepalive" with large timeout values (tcp_fin_timeout countdown)
 ```
 
 ## Configuring tcp_fin_timeout
@@ -91,7 +91,7 @@ watch -n 5 "ss -tn state fin-wait-2 | wc -l"
 # Verify a socket is in which state
 ss -tn -o | grep "10.20.0.5"
 # timer:timewait,Xsec = in TIME_WAIT
-# timer:on,Xsec = in FIN_WAIT2 (waiting for fin)
+# timer:keepalive,Xsec = in FIN_WAIT2 (orphaned; tcp_fin_timeout countdown)
 ```
 
 ## Graceful Shutdown Best Practice
