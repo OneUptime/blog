@@ -98,7 +98,7 @@ dig AAAA your-function-url.example.com
 # Set environment variables for IPv6 endpoints
 # (Platform-specific - shown as generic examples)
 
-BACKEND_URL="http://[2001:db8::backend]/api"
+BACKEND_URL="http://[2001:db8::abcd]/api"
 DATABASE_HOST="2001:db8::db"
 
 # In your function code
