@@ -20,7 +20,7 @@ net.ipv4.tcp_rmem = 4096 87380 6291456
 |---|---|
 | min | Minimum buffer allocated per socket under memory pressure |
 | default | Initial buffer size for new connections (before auto-tuning) |
-| max | Maximum buffer per socket (overrides `net.core.rmem_max` if larger) |
+| max | Maximum size for auto-tuned buffers per socket (does not override `net.core.rmem_max`, which caps `setsockopt(SO_RCVBUF)`) |
 
 TCP auto-tuning grows the buffer from `default` toward `max` as needed.
 
@@ -131,8 +131,8 @@ cat /proc/net/sockstat
 #                                              ^^^^
 # mem = pages of memory used by TCP sockets
 
-# Check if TCP is in memory pressure
-cat /proc/net/tcp_stat 2>/dev/null
+# Check extended TCP statistics (pruned, collapsed, etc.)
+cat /proc/net/netstat | grep -i tcp
 
 # Also useful:
 ss -s   # Summary statistics
