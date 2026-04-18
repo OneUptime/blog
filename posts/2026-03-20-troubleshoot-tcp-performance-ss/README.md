@@ -37,7 +37,7 @@ ss -tin state established
 #   segs_out / segs_in = segment counts
 #   data_segs_out = actual data segments (not pure ACKs)
 #   send XXMbps = calculated current send rate
-#   rcv_space = receive buffer actually allocated by kernel
+#   rcv_space = helper variable for TCP receive buffer auto-tuning (not the actual allocated rcvbuf)
 #   snd_wnd = send window (receiver's advertised window)
 #   retrans:N/M = current retransmit counter / total retransmissions
 ```
