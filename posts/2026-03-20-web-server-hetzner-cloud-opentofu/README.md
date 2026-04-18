@@ -93,9 +93,9 @@ resource "hcloud_firewall" "web" {
 
 ```hcl
 resource "hcloud_floating_ip" "web" {
-  name     = "web-public-ip"
-  type     = "ipv4"
-  location = "nbg1"
+  name          = "web-public-ip"
+  type          = "ipv4"
+  home_location = "nbg1"
 }
 ```
 
