@@ -97,7 +97,8 @@ validate_ipv4() {
         return 2
     fi
     local octet='(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])'
-    if [[ $ip =~ ^${octet}\\.${octet}\\.${octet}\\.${octet}$ ]]; then
+    local pattern="^${octet}\\.${octet}\\.${octet}\\.${octet}$"
+    if [[ $ip =~ $pattern ]]; then
         return 0
     fi
     echo "ERROR: '$ip' is not a valid IPv4 address" >&2
@@ -122,7 +123,8 @@ echo "IP $IP is valid - proceeding..."
 
 validate_ipv4() {
     local octet='(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])'
-    [[ "$1" =~ ^${octet}\\.${octet}\\.${octet}\\.${octet}$ ]]
+    local pattern="^${octet}\\.${octet}\\.${octet}\\.${octet}$"
+    [[ "$1" =~ $pattern ]]
 }
 
 while IFS= read -r ip || [[ -n "$ip" ]]; do
