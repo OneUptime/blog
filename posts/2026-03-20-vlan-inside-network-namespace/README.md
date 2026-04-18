@@ -73,13 +73,16 @@ bridge vlan add dev veth-host vid 10 tagged
 bridge vlan add dev veth-host vid 20 tagged
 ```
 
-## Complete Test: Two Namespaces on Different VLANs
+## Complete Test: Two Namespaces on the Same VLAN
 
 ```bash
 # Namespace A: VLAN 10
 ip netns add ns-a
 ip link add veth-a type veth peer name veth-a-br
 ip link set veth-a netns ns-a
+ip link set veth-a-br master br0
+ip link set veth-a-br up
+bridge vlan add dev veth-a-br vid 10 tagged
 ip netns exec ns-a ip link add link veth-a name veth-a.10 type vlan id 10
 ip netns exec ns-a ip addr add 192.168.10.2/24 dev veth-a.10
 ip netns exec ns-a ip link set veth-a up && ip netns exec ns-a ip link set veth-a.10 up
@@ -88,6 +91,9 @@ ip netns exec ns-a ip link set veth-a up && ip netns exec ns-a ip link set veth-
 ip netns add ns-b
 ip link add veth-b type veth peer name veth-b-br
 ip link set veth-b netns ns-b
+ip link set veth-b-br master br0
+ip link set veth-b-br up
+bridge vlan add dev veth-b-br vid 10 tagged
 ip netns exec ns-b ip link add link veth-b name veth-b.10 type vlan id 10
 ip netns exec ns-b ip addr add 192.168.10.3/24 dev veth-b.10
 ip netns exec ns-b ip link set veth-b up && ip netns exec ns-b ip link set veth-b.10 up
