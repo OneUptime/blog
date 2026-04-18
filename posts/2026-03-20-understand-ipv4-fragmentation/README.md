@@ -51,7 +51,7 @@ ip link show eth0 | grep mtu
 
 # Check for fragmentation in kernel stats:
 cat /proc/net/snmp | grep "Ip:" | head -2 | tail -1 | \
-  awk '{print "Fragments created:", $14, "Reassembly required:", $15}'
+  awk '{print "Fragments created:", $20, "Reassembly required:", $15}'
 
 # Or with nstat:
 nstat | grep -E "IpFrag|IpReasm"
@@ -66,9 +66,10 @@ tcpdump -i eth0 -n '(ip[6:2] & 0x3fff) != 0'
 
 # Show fragmentation details verbosely:
 tcpdump -i eth0 -n -v '(ip[6:2] & 0x3fff) != 0'
-# Output shows: frag 12345:0+ (offset=0, MF bit set)
-#               frag 12345:1480+ (offset=1480, MF bit set)
-#               frag 12345:2960  (offset=2960, last fragment)
+# Output shows (format: (frag ID:length@offset+), + = MF bit set):
+#   (frag 12345:1480@0+)     offset=0,    MF bit set
+#   (frag 12345:1480@1480+)  offset=1480, MF bit set
+#   (frag 12345:40@2960)     offset=2960, last fragment
 ```
 
 ## Reassembly at the Receiver
