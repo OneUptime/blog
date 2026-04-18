@@ -18,10 +18,10 @@ Description: IPv4 subnet calculators automate the computation of network address
 ## CLI Tool: ipcalc (Linux)
 
 ```bash
-# Install
-
+# Install (Jodies ipcalc)
 sudo apt install ipcalc   # Debian/Ubuntu
-sudo yum install ipcalc   # RHEL/CentOS
+# Note: the `ipcalc` package on RHEL/CentOS/Fedora is a different tool
+# (Red Hat/nmav) with VAR=VALUE output and a different --split syntax.
 
 # Basic usage
 ipcalc 192.168.10.45/26
@@ -37,8 +37,9 @@ ipcalc 192.168.10.45/26
 # Broadcast: 192.168.10.63        11000000.10101000.00001010.00 111111
 # Hosts/Net: 62
 
-# Show subnets: split a /24 into /27s
-ipcalc 192.168.1.0/24 --split 8
+# VLSM split: carve out subnets sized for 30, 30, 30, 30, 30, 30, 30, 30
+# hosts each (eight /27s from a /24). Values are host counts, not masks.
+ipcalc 192.168.1.0/24 --split 30 30 30 30 30 30 30 30
 ```
 
 ## CLI Tool: sipcalc
@@ -47,8 +48,10 @@ ipcalc 192.168.1.0/24 --split 8
 sudo apt install sipcalc
 sipcalc 10.0.0.0/22
 
-# VLSM mode
-sipcalc -s 100 -s 50 -s 20 192.168.20.0/24
+# Equal-size split: divide a /24 into /27 subnets
+# sipcalc's -s/--v4split takes a prefix (not host counts)
+# and only supports equal-sized splits, not true VLSM.
+sipcalc -s 27 192.168.20.0/24
 ```
 
 ## Python Subnet Calculator Function
