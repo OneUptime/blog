@@ -18,9 +18,9 @@ Open vSwitch (OVS) provides a more feature-rich alternative to the native Linux 
 apt install openvswitch-switch   # Ubuntu/Debian
 yum install openvswitch          # RHEL/CentOS
 
-# Start OVS
-systemctl enable --now openvswitch-switch
-systemctl enable --now ovsdb-server
+# Start OVS (starts both ovsdb-server and ovs-vswitchd)
+systemctl enable --now openvswitch-switch   # Ubuntu/Debian
+# systemctl enable --now openvswitch        # RHEL/CentOS
 ```
 
 ## Create an OVS Bridge with VXLAN
