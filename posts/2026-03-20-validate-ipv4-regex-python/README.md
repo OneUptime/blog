@@ -107,7 +107,7 @@ compiled = re.compile(rf"^{OCTET}\.{OCTET}\.{OCTET}\.{OCTET}$")
 # Compiled regex is faster for bulk validation
 regex_time = timeit.timeit(lambda: bool(compiled.match(ip)), number=100_000)
 ipaddress_time = timeit.timeit(
-    lambda: bool(ipaddress.IPv4Address.__new__(ipaddress.IPv4Address, ip)),
+    lambda: bool(ipaddress.IPv4Address(ip)),
     number=100_000
 )
 
