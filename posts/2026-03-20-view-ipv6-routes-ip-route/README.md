@@ -28,7 +28,7 @@ ip -6 route show table all
 $ ip -6 route show
 
 2001:db8::/64 dev eth0 proto kernel metric 256 pref medium
-2001:db8:remote::/48 via 2001:db8::1 dev eth0 proto static metric 1024 pref medium
+2001:db8:abcd::/48 via 2001:db8::1 dev eth0 proto static metric 1024 pref medium
 default via 2001:db8::1 dev eth0 proto static metric 1024 pref medium
 ```
 
@@ -75,14 +75,14 @@ ip -6 route get 2001:4860:4860::8888
 ip -6 route add default via 2001:db8::1 dev eth0
 
 # Add a specific route
-ip -6 route add 2001:db8:remote::/48 via 2001:db8::gateway
+ip -6 route add 2001:db8:abcd::/48 via 2001:db8::1
 
 # Add a route with metric (for multiple default routes)
 ip -6 route add default via 2001:db8::1 dev eth0 metric 100
-ip -6 route add default via 2001:db8::backup dev eth1 metric 200
+ip -6 route add default via 2001:db8::2 dev eth1 metric 200
 
 # Remove a route
-ip -6 route del 2001:db8:remote::/48
+ip -6 route del 2001:db8:abcd::/48
 
 # Remove the default route
 ip -6 route del default via 2001:db8::1
@@ -116,12 +116,12 @@ ip -6 route show scope host
 ip -6 route show | grep -A 3 'nexthop'
 
 # Add a multipath route
-ip -6 route add 2001:db8:remote::/48 \
-    nexthop via 2001:db8::gw1 dev eth0 weight 1 \
-    nexthop via 2001:db8::gw2 dev eth1 weight 1
+ip -6 route add 2001:db8:abcd::/48 \
+    nexthop via 2001:db8::a1 dev eth0 weight 1 \
+    nexthop via 2001:db8::a2 dev eth1 weight 1
 
 # Verify ECMP route
-ip -6 route show 2001:db8:remote::/48
+ip -6 route show 2001:db8:abcd::/48
 ```
 
 ## IPv6 Routing Table Debugging
@@ -131,10 +131,10 @@ ip -6 route show 2001:db8:remote::/48
 ip -6 route get 2001:4860:4860::8888
 
 # Check if a route exists for a specific destination
-if ip -6 route get 2001:db8::target > /dev/null 2>&1; then
+if ip -6 route get 2001:db8::cafe > /dev/null 2>&1; then
     echo "Route exists"
 else
-    echo "No route to 2001:db8::target"
+    echo "No route to 2001:db8::cafe"
 fi
 
 # Monitor route changes in real time
@@ -151,7 +151,7 @@ ip -j -6 route show | python3 -m json.tool
 ip route show && echo '---' && ip -6 route show
 
 # Count routes in each table
-echo "IPv4 routes: $(ip route count)"
+echo "IPv4 routes: $(ip route show | wc -l)"
 echo "IPv6 routes: $(ip -6 route show | wc -l)"
 ```
 
