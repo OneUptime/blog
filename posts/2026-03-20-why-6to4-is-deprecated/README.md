@@ -85,14 +85,14 @@ This affected the majority of home users who are behind NAT, making 6to4 useless
 
 ## RFC 7526 - Formal Deprecation
 
-RFC 7526 (May 2015) officially deprecated 6to4 and the 192.88.99.0/24 anycast prefix:
+RFC 7526 (May 2015) obsoleted RFC 3068 (the 6to4 anycast prefix) and RFC 6732, moving them to Historic status:
 
-> "6to4 can cause significant stability and usability problems for users and should be considered harmful. It SHOULD NOT be used."
+> "This document formally deprecates the anycast 6to4 transition mechanism defined in [RFC3068] and the associated anycast IPv4 address 192.88.99.1. It is no longer considered to be a useful service of last resort."
 
 Key actions from RFC 7526:
-- The 192.88.99.0/24 prefix is no longer a 6to4 relay anycast - it may now be assigned for other uses
-- OS vendors should disable 6to4 by default (Windows, Linux, macOS all complied)
-- Network operators should filter `2002::/16` at borders
+- The 192.88.99.0/24 prefix is marked "Deprecated (6to4 Relay Anycast)" in the IANA IPv4 Special-Purpose Address Registry and MUST NOT be reassigned for other use except by a future IETF Standards Action
+- In host and router implementations, 6to4 (including unicast) MUST be disabled by default (Windows, Linux, macOS all complied)
+- The basic unicast 6to4 mechanism in RFC 3056 and the 2002::/16 prefix are not formally deprecated, but must be off by default in implementations
 
 ## What Still Uses 2002::/48 Addresses
 
