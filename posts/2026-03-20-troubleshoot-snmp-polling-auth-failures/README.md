@@ -71,7 +71,7 @@ snmpget -v2c -c wrongcommunity 192.168.1.1 sysDescr.0
 
 # Check router logs for auth failure
 Router# show log | include SNMP
-# %SNMP-3-AUTHERR: Packet received from 192.168.1.100 on illegal community name
+# %SNMP-3-AUTHFAIL: Authentication failure for SNMP req from host 192.168.1.100
 ```
 
 ## Step 4: Debug SNMP on Cisco IOS
