@@ -88,8 +88,11 @@ sudo iptables -L INPUT -n --line-numbers | grep -i icmp
 sudo iptables -I INPUT -p icmp --icmp-type echo-request -j ACCEPT
 sudo iptables -I OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
 
-# firewalld
-sudo firewall-cmd --add-service=ping --permanent
+# firewalld - list current ICMP blocks
+sudo firewall-cmd --list-icmp-blocks
+
+# Remove echo-request block to allow ping
+sudo firewall-cmd --permanent --remove-icmp-block=echo-request
 sudo firewall-cmd --reload
 
 # nftables
