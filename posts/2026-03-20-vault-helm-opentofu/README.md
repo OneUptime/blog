@@ -191,25 +191,23 @@ resource "kubernetes_deployment" "app" {
   metadata {
     name      = "my-app"
     namespace = "default"
-    annotations = {
-      "vault.hashicorp.com/agent-inject"                   = "true"
-      "vault.hashicorp.com/role"                           = "app-role"
-      "vault.hashicorp.com/agent-inject-secret-config.env" = "secret/data/app/config"
-      "vault.hashicorp.com/agent-inject-template-config.env" = <<-TMPL
-        {{- with secret "secret/data/app/config" -}}
-        export DB_PASSWORD="{{ .Data.data.db_password }}"
-        export API_KEY="{{ .Data.data.api_key }}"
-        {{- end -}}
-      TMPL
-    }
   }
 
   spec {
     template {
       metadata {
+        # Injector annotations must live on the Pod template, since the
+        # MutatingAdmissionWebhook intercepts Pod CREATE/UPDATE events.
         annotations = {
-          "vault.hashicorp.com/agent-inject" = "true"
-          "vault.hashicorp.com/role"         = "app-role"
+          "vault.hashicorp.com/agent-inject"                     = "true"
+          "vault.hashicorp.com/role"                             = "app-role"
+          "vault.hashicorp.com/agent-inject-secret-config.env"   = "secret/data/app/config"
+          "vault.hashicorp.com/agent-inject-template-config.env" = <<-TMPL
+            {{- with secret "secret/data/app/config" -}}
+            export DB_PASSWORD="{{ .Data.data.db_password }}"
+            export API_KEY="{{ .Data.data.api_key }}"
+            {{- end -}}
+          TMPL
         }
       }
       spec {
