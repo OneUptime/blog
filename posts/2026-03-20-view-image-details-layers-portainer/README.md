@@ -76,7 +76,7 @@ docker push registry.example.com/myapp:v2.0.0
 # Remove a specific image
 docker rmi myapp:old
 
-# Remove all dangling images (untagged layers)
+# Remove all dangling images (untagged, not referenced by any image)
 docker image prune
 
 # Remove all unused images (not referenced by any container)
