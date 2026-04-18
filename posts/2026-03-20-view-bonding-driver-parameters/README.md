@@ -79,7 +79,11 @@ ip link show master bond0
 
 # Show bond details
 ip -d link show bond0
-# Includes: bond_slave state ACTIVE mii-status UP link-failure-count 0
+# Includes: bond mode active-backup miimon 100 updelay 0 downdelay 0
+
+# Show slave details
+ip -d link show eth0
+# Includes: bond_slave state ACTIVE mii_status UP link_failure_count 0
 ```
 
 ## Monitoring with ethtool
