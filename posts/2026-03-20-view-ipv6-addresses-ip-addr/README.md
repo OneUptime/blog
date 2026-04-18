@@ -63,7 +63,7 @@ IPv6 addresses (especially SLAAC addresses) have time limits:
 
 ```bash
 # SLAAC temporary address with finite lifetime
-inet6 2001:db8::9a37:bcff:fexx:xxxx/64 scope global temporary dynamic
+inet6 2001:db8::9a37:bcff:fe12:3456/64 scope global temporary dynamic
    valid_lft 86389sec preferred_lft 14389sec
 
 # Static address (permanent)
@@ -71,7 +71,7 @@ inet6 2001:db8::10/64 scope global
    valid_lft forever preferred_lft forever
 
 # Deprecated address (preferred_lft expired, but still valid for existing connections)
-inet6 2001:db8::old/64 scope global deprecated dynamic
+inet6 2001:db8::dead/64 scope global deprecated dynamic
    valid_lft 3600sec preferred_lft 0sec
 ```
 
@@ -141,7 +141,7 @@ When a new IPv6 address is assigned, the kernel performs DAD. During this time, 
 
 ```bash
 # Assign a new address
-ip -6 addr add 2001:db8::new/64 dev eth0
+ip -6 addr add 2001:db8::abcd/64 dev eth0
 
 # Check if it's in tentative state (DAD in progress)
 ip -6 addr show dev eth0 tentative
