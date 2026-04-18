@@ -35,23 +35,23 @@ table ip6 voip_qos {
         type filter hook output priority mangle; policy accept;
 
         # Mark SIP signaling (ports 5060/5061)
-        ip6 protocol udp udp dport 5060 ip6 dscp set cs3 counter
-        ip6 protocol tcp tcp dport 5060 ip6 dscp set cs3 counter
-        ip6 protocol tcp tcp dport 5061 ip6 dscp set cs3 counter
+        meta l4proto udp udp dport 5060 ip6 dscp set cs3 counter
+        meta l4proto tcp tcp dport 5060 ip6 dscp set cs3 counter
+        meta l4proto tcp tcp dport 5061 ip6 dscp set cs3 counter
 
         # Mark RTP media (dynamic ports 10000-20000)
-        ip6 protocol udp udp dport 10000-20000 ip6 dscp set ef counter
+        meta l4proto udp udp dport 10000-20000 ip6 dscp set ef counter
 
         # Mark RTCP (RTP port + 1, same range)
-        ip6 protocol udp udp sport 10000-20000 ip6 dscp set ef counter
+        meta l4proto udp udp sport 10000-20000 ip6 dscp set ef counter
     }
 
     chain mangle_forward {
         type filter hook forward priority mangle; policy accept;
 
         # Forward path marking
-        ip6 protocol udp udp dport 10000-20000 ip6 dscp set ef
-        ip6 protocol udp udp dport 5060 ip6 dscp set cs3
+        meta l4proto udp udp dport 10000-20000 ip6 dscp set ef
+        meta l4proto udp udp dport 5060 ip6 dscp set cs3
     }
 }
 ```
@@ -101,15 +101,17 @@ tc qdisc add dev $IFACE parent 1:20 handle 20: sfq perturb 10
 # FQ-CoDel for default traffic
 tc qdisc add dev $IFACE parent 1:30 handle 30: fq_codel
 
-# Classify by IPv6 DSCP (Traffic Class byte)
-# EF = DSCP 46 = TC byte 0xB8 (bits 2-7 of byte 1)
-# Match TC byte: offset 1, mask 0xfc for DSCP bits
+# Classify by IPv6 DSCP (Traffic Class field)
+# The IPv6 Traffic Class is NOT byte-aligned: it spans the low nibble of
+# byte 0 and the high nibble of byte 1, so use the `ip6 priority` selector
+# (or an equivalent u16 match at offset 0) rather than a u8 match at 1.
+# EF = DSCP 46 = TC byte 0xB8; mask 0xfc matches DSCP bits only.
 tc filter add dev $IFACE parent 1: protocol ipv6 prio 1 \
-  u32 match u8 0xb8 0xfc at 1 flowid 1:10
+  u32 match ip6 priority 0xb8 0xfc flowid 1:10
 
 # CS3 = DSCP 24 = TC byte 0x60
 tc filter add dev $IFACE parent 1: protocol ipv6 prio 2 \
-  u32 match u8 0x60 0xfc at 1 flowid 1:20
+  u32 match ip6 priority 0x60 0xfc flowid 1:20
 
 echo "VoIP QoS configured on $IFACE"
 tc -s class show dev $IFACE
@@ -138,18 +140,14 @@ cos=3
 
 ## FreeSWITCH QoS for IPv6
 
+FreeSWITCH's sofia SIP profiles do not expose native DSCP/ToS parameters — mod_sofia never calls `setsockopt(IP_TOS)` on its RTP or SIP sockets, and param names like `rtp-tos`/`sip-tos` are silently ignored. Bind sofia to IPv6 in the profile, then rely on OS-level marking via the nftables rules above (matching SIP ports 5060/5061 and the RTP port range) to set DSCP on FreeSWITCH traffic.
+
 ```xml
 <!-- /etc/freeswitch/sip_profiles/internal.xml -->
 <profile name="internal">
   <!-- ... -->
   <param name="rtp-ip" value="::"/>
   <param name="sip-ip" value="::"/>
-
-  <!-- DSCP for RTP -->
-  <param name="rtp-tos" value="ef"/>
-
-  <!-- DSCP for SIP -->
-  <param name="sip-tos" value="cs3"/>
 </profile>
 ```
 
