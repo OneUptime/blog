@@ -20,7 +20,7 @@ listen_ipv6=NO
 
 pasv_enable=YES
 
-# Define passive port range (100 ports for up to ~100 concurrent transfers)
+# Define passive port range (1001 ports for up to ~1000 concurrent transfers)
 
 pasv_min_port=30000
 pasv_max_port=31000
@@ -64,10 +64,10 @@ sudo iptables -L INPUT -n | grep -E "21|30000"
 
 ## Kernel Connection Tracking
 
-The Linux kernel tracks FTP connections with the `nf_conntrack_ftp` module. For passive mode, connection tracking is not strictly required (the client initiates the data connection), but it helps with active mode:
+The Linux kernel tracks FTP connections with the `nf_conntrack_ftp` module. It parses the control channel (PASV/EPSV/PORT) to create connection tracking expectations so stateful firewalls can allow the data connection without opening a wide port range. If you have already opened the passive port range in your firewall (as shown above), the helper is optional on the server side:
 
 ```bash
-# Load connection tracking module (mainly needed for active mode)
+# Load connection tracking module (useful when you don't want to open the full passive range)
 sudo modprobe nf_conntrack_ftp
 
 # Make persistent
