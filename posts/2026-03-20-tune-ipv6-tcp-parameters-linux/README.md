@@ -74,7 +74,7 @@ net.ipv4.tcp_max_orphans = 65536
 # Enable TCP memory pressure controls
 net.ipv4.tcp_mem = 786432 1048576 26777216
 
-# Abort connections waiting for client data after N seconds
+# If listen queue overflows, send RST (1) or silently drop (0)
 net.ipv4.tcp_abort_on_overflow = 0
 ```
 
