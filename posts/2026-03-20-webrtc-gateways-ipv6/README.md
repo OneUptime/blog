@@ -38,7 +38,7 @@ turn_user=janus
 turn_pwd=januspass
 
 # Enable IPv6 ICE candidates
-icev6=true
+ice_ipv6=true
 
 [media]
 # RTP port range
@@ -83,13 +83,12 @@ async function startMediasoup() {
         // ICE candidates from both IPv4 and IPv6
         listenIps: [
             { ip: '0.0.0.0', announcedIp: '203.0.113.1' },  // IPv4
-            { ip: '::', announcedIp: '2001:db8::gateway' },   // IPv6
+            { ip: '::', announcedIp: '2001:db8::face' },   // IPv6
         ],
         enableUdp: true,
         enableTcp: true,
         preferUdp: true,
         enableSctp: false,
-        iceConsentTimeout: 20,
     });
 
     console.log('WebRTC transport created:', transport.id);
@@ -112,8 +111,8 @@ listening-ip=::
 listening-ip=0.0.0.0
 
 # External IPv6 address
-external-ip=2001:db8::turn/2001:db8::turn
-relay-ip=2001:db8::turn
+external-ip=2001:db8::cafe/2001:db8::cafe
+relay-ip=2001:db8::cafe
 
 realm=example.com
 
@@ -124,8 +123,7 @@ lt-cred-mech
 # Fingerprint required for WebRTC
 fingerprint
 
-# DTLS
-no-tls=false
+# DTLS/TLS (omit no-tls/no-dtls to keep them enabled)
 cert=/etc/ssl/certs/turn.crt
 pkey=/etc/ssl/private/turn.key
 ```
@@ -144,7 +142,7 @@ const iceConfig = {
         {
             urls: [
                 'turn:turn.example.com:3478',
-                'turn:[2001:db8::turn]:3478',
+                'turn:[2001:db8::cafe]:3478',
                 'turns:turn.example.com:5349'
             ],
             username: 'webrtc',
@@ -165,7 +163,10 @@ const pc = new RTCPeerConnection(iceConfig);
 pc.onicecandidate = (event) => {
     if (event.candidate) {
         const cand = event.candidate.candidate;
-        const type = cand.includes(':') ? 'IPv6' : 'IPv4';
+        // The connection-address is the 5th whitespace-separated field of the
+        // candidate attribute (RFC 5245/8445). IPv6 addresses contain ':'.
+        const address = event.candidate.address || cand.split(' ')[4];
+        const type = address && address.includes(':') ? 'IPv6' : 'IPv4';
         console.log(`${type} ICE candidate:`, cand);
     }
 };
@@ -189,7 +190,7 @@ sudo ip6tables -A INPUT -p tcp --dport 5349 -j ACCEPT
 # Media ports (RTP/SRTP over IPv6)
 sudo ip6tables -A INPUT -p udp --dport 10000:60000 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 WebRTC gateway IPv6 support requires configuring ICE candidate announcement with the gateway's IPv6 address, ensuring the TURN server (coturn) allocates IPv6 relay addresses, and having the media server listen on IPv6 for incoming SRTP streams from ICE-selected IPv6 paths.
