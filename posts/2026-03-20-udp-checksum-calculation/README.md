@@ -69,15 +69,15 @@ cat /proc/net/snmp | grep Udp
 # UdpInCsumErrors counter
 
 # In Wireshark:
-# Filter: udp.checksum_bad == true
-# Or: udp.checksum_status == "Bad"
+# Filter: udp.checksum.status == "Bad"
+# Or numerically: udp.checksum.status == 2
 
 # In tcpdump (shows checksum validation):
 tcpdump -i eth0 -n -v 'udp port 5000' 2>&1 | grep -i "cksum\|bad"
 
-# Enable strict checksum validation:
-# By default, Linux drops packets with bad UDP checksums
-sysctl net.ipv4.udp_early_demux  # Related setting
+# Linux validates UDP checksums by default and drops packets with bad checksums.
+# There is no sysctl to toggle validation; it is controlled per-socket (SO_NO_CHECK)
+# or via the skb state set by the NIC/stack when checksum offload is used.
 ```
 
 ## Disabling UDP Checksum (Zero Checksum)
@@ -114,7 +114,8 @@ ethtool -k eth0 | grep -E "gso|gro|tso"
 # With GSO: kernel passes large buffer to NIC, which splits into MTU-size packets
 # and computes checksum for each fragment - never seen by tcpdump on host
 
-# GRO: NIC reassembles incoming packets before passing to kernel
+# GRO: kernel reassembles incoming packets in software (NAPI poll) before
+# passing them up the stack. LRO is the hardware NIC-based counterpart.
 # Wireshark on the host may see "reassembled" packets larger than MTU
 
 # This is why packet captures on the sending host can show oversized packets:
