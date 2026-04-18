@@ -73,38 +73,38 @@ terraform {
       keys = key_provider.pbkdf2.local_fallback
     }
 
-    statefile {
+    state {
       method = method.aes_gcm.default
     }
 
-    planfile {
+    plan {
       method = method.aes_gcm.default
     }
   }
 }
 ```
 
-For Vault-backed key derivation, use the OpenTofu Vault key provider:
+For Vault-backed key derivation, use OpenTofu's built-in `openbao` key provider (compatible with the last MPL-licensed release of HashiCorp Vault, 1.14, as well as with OpenBao):
 
 ```hcl
 terraform {
   encryption {
-    key_provider "vault" "transit_key" {
-      token         = var.vault_token
-      address       = "https://vault.example.com:8200"
-      transit_engine_path = "transit"
-      key_name      = "opentofu-state-encryption"
+    key_provider "openbao" "transit_key" {
+      token               = var.vault_token
+      address             = "https://vault.example.com:8200"
+      transit_engine_path = "/transit"
+      key_name            = "opentofu-state-encryption"
     }
 
     method "aes_gcm" "vault_backed" {
-      keys = key_provider.vault.transit_key
+      keys = key_provider.openbao.transit_key
     }
 
-    statefile {
+    state {
       method = method.aes_gcm.vault_backed
     }
 
-    planfile {
+    plan {
       method = method.aes_gcm.vault_backed
     }
   }
@@ -114,11 +114,15 @@ terraform {
 ## Using Environment Variables for Token
 
 ```bash
-# Set Vault token for encryption
+# Obtain a Vault token (Vault CLI reads VAULT_ADDR/VAULT_TOKEN)
 export VAULT_ADDR=https://vault.example.com:8200
-export VAULT_TOKEN=$(vault login -method=aws -field=token role=opentofu-cicd)
+VAULT_TOKEN=$(vault login -method=aws -field=token role=opentofu-cicd)
 
-# Now run OpenTofu - it will use VAULT_TOKEN for transit encryption
+# OpenTofu's openbao key provider reads BAO_ADDR/BAO_TOKEN
+export BAO_ADDR="$VAULT_ADDR"
+export BAO_TOKEN="$VAULT_TOKEN"
+
+# Now run OpenTofu - it will use BAO_TOKEN for transit encryption
 tofu plan
 tofu apply
 ```
