@@ -46,14 +46,15 @@ tcpdump -i eth0 -e vlan 100
 When tcpdump shows a tagged frame:
 
 ```text
-14:22:31.123456 eth0 802.1Q vlan#100, p 0, ethertype IPv4,
-10.100.0.1 > 10.100.0.2: ICMP echo request, id 1, seq 1
+14:22:31.123456 aa:bb:cc:dd:ee:ff > 11:22:33:44:55:66, ethertype 802.1Q (0x8100),
+length 102: vlan 100, p 0, ethertype IPv4 (0x0800),
+10.100.0.1 > 10.100.0.2: ICMP echo request, id 1, seq 1, length 64
 ```
 
 Key fields:
-- `802.1Q vlan#100` - the VLAN ID in the 802.1Q tag
+- `vlan 100` - the VLAN ID in the 802.1Q tag
 - `p 0` - priority (0-7 in the 3-bit PCP field)
-- `ethertype IPv4` - the inner protocol
+- `ethertype IPv4` - the inner protocol carried by the tagged frame
 
 ## Generate Test Traffic to Verify
 
@@ -65,7 +66,7 @@ tcpdump -i eth0 -e vlan 100 -n
 ping -I eth0.100 -c 5 192.168.100.254
 ```
 
-If you see `802.1Q vlan#100` in the capture output, tagging is working correctly.
+If you see `vlan 100` in the capture output, tagging is working correctly.
 
 ## Capture to File for Analysis
 
@@ -99,4 +100,4 @@ tcpdump -i eth0 -e -n
 
 ## Conclusion
 
-To verify 802.1Q VLAN tagging, capture on the **parent physical interface** (not the VLAN subinterface) and use the `vlan` BPF filter or the `-e` flag to display Ethernet header details. The `802.1Q vlan#<ID>` string in tcpdump output confirms that tags are being correctly applied. Capturing on the VLAN subinterface will not show tags because the kernel strips them before delivery.
+To verify 802.1Q VLAN tagging, capture on the **parent physical interface** (not the VLAN subinterface) and use the `vlan` BPF filter or the `-e` flag to display Ethernet header details. The `vlan <ID>` string in tcpdump output confirms that tags are being correctly applied. Capturing on the VLAN subinterface will not show tags because the kernel strips them before delivery.
