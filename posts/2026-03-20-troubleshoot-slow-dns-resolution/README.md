@@ -89,7 +89,7 @@ nc -zu $RESOLVER 53 && echo "UDP OK" || echo "UDP blocked"
 nc -z $RESOLVER 53 && echo "TCP OK" || echo "TCP blocked"
 
 # Check for truncation (causes TCP retry):
-dig example.com | grep "TRUNCATED"
+dig example.com | grep -i "truncated"
 # Or: flags: tc
 ```
 
@@ -110,8 +110,8 @@ time dig +cd google.com 2>&1 | grep -E "Query time|real"
 # Or: DNSSEC keys/signatures are complex (many RRSIGs)
 
 # Check if upstream resolver validates DNSSEC:
-dig +dnssec +cd @8.8.8.8 google.com | grep "AD"
-# AD flag = upstream resolver validates and this domain is signed
+dig +dnssec @8.8.8.8 google.com | grep "^;; flags:"
+# Look for "ad" in flags = upstream resolver validated and this domain is signed
 ```
 
 ## Slow Authoritative Nameserver
