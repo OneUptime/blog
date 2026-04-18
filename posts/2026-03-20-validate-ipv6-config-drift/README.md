@@ -91,12 +91,9 @@ inspec exec ipv6_compliance.rb --target ssh://user@server
 # Run against all servers in parallel
 for server in server1 server2 server3; do
   inspec exec ipv6_compliance.rb --target ssh://admin@$server \
-    --reporter json:reports/$server.json &
+    --reporter json:reports/$server.json html:reports/$server.html &
 done
 wait
-
-# Aggregate compliance report
-inspec json2html reports/*.json > compliance-report.html
 ```
 
 ## Detection with SaltStack
@@ -128,7 +125,7 @@ puppet query 'events[certname, resource_title, status, message] {
 }'
 
 # Force immediate remediation
-sudo puppet agent --test --force
+sudo puppet agent --test
 ```
 
 ### Chef (Convergence)
