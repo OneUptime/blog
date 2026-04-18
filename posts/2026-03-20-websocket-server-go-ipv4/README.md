@@ -167,4 +167,4 @@ func main() {
 
 ## Conclusion
 
-In Go, WebSocket servers use `gorilla/websocket`'s `Upgrader` to upgrade an HTTP connection. Bind to a specific IPv4 address using `net.Listen("tcp4", addr)` then pass the listener to `http.Serve`. For multi-client scenarios, implement a Hub with a mutex-protected client map. Use `http.Server.Shutdown` for graceful shutdown to wait for in-flight WebSocket handlers to complete. Check `websocket.IsCloseError` to distinguish normal disconnects from network errors.
+In Go, WebSocket servers use `gorilla/websocket`'s `Upgrader` to upgrade an HTTP connection. Bind to a specific IPv4 address using `net.Listen("tcp4", addr)` then pass the listener to `http.Serve`. For multi-client scenarios, implement a Hub with a mutex-protected client map. Use `http.Server.Shutdown` to stop accepting new connections; note that Shutdown does not close or wait for hijacked connections such as WebSockets, so you should separately notify active clients (e.g., close their connections) before or during shutdown. Check `websocket.IsCloseError` to distinguish normal disconnects from network errors.
