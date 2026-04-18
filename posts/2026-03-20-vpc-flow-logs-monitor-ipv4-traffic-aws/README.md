@@ -66,7 +66,7 @@ Find rejected IPv4 traffic:
 ```text
 fields @timestamp, srcAddr, dstAddr, dstPort, action
 | filter action = "REJECT" and ispresent(srcAddr)
-| filter not startsWith(srcAddr, "fe80:")
+| filter srcAddr not like /:/
 | stats count() as rejectCount by srcAddr, dstPort
 | sort rejectCount desc
 | limit 20
