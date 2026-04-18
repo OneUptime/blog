@@ -159,8 +159,11 @@ varnishlog
 # Cache hit rate
 varnishstat -f MAIN.cache_hit -f MAIN.cache_miss -1
 
-# Connected clients
-varnishadm debug.pools
+# Backend health status
+varnishadm backend.list
+
+# Connected clients (session counters)
+varnishstat -1 -f MAIN.sess_conn -f MAIN.client_req
 ```
 
 ## Multiple Backends with Load Balancing
