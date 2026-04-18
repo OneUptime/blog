@@ -46,8 +46,7 @@ The user exists in LDAP but gets "invalid credentials":
 ldapwhoami -H ldaps://ldap.example.com:636 \
   -x \
   -D "uid=john,ou=users,dc=example,dc=com" \
-  -w "john-password" \
-  -ZZ
+  -w "john-password"
 
 # If this fails, the DN construction is wrong
 # Check your BaseDN and UserNameAttribute settings
