@@ -22,7 +22,8 @@ Running your own dedicated game server gives you full control over game settings
 ```bash
 # Open game server ports
 
-ufw allow 2456-2457/udp 2458/udp
+ufw allow 2456:2457/udp
+ufw allow 2458/udp
 ufw reload
 ```
 
@@ -36,16 +37,20 @@ version: "3.8"
 
 services:
   game-server:
-    image: itzg/valheim:latest
+    image: lloesche/valheim-server:latest
     container_name: game-server
     restart: unless-stopped
     ports:
-      - "2456-2457/udp 2458/udp"
+      - "2456-2457:2456-2457/udp"
+      - "2458:2458/udp"
     volumes:
       # Persist game world and configuration data
-      - valheim-data:/game-data
+      - valheim-data:/config
     environment:
-      VALHEIM_SERVER_NAME=My Server VALHEIM_WORLD_NAME=Dedicated VALHEIM_SERVER_PASS=secret SERVER_PUBLIC=true
+      SERVER_NAME: "My Server"
+      WORLD_NAME: "Dedicated"
+      SERVER_PASS: "secret"
+      SERVER_PUBLIC: "true"
     healthcheck:
       test: ["CMD", "true"]
       interval: 60s
@@ -57,6 +62,8 @@ services:
       options:
         max-size: "100m"
         max-file: "5"
+    networks:
+      - game-net
 
   # Automated backup service
   game-backup:
@@ -69,9 +76,9 @@ services:
     command: >
       sh -c "
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
+          DATE=\$$(date +%Y%m%d_%H%M%S);
+          tar czf /backups/world-\$$DATE.tar.gz -C /game-data .;
+          echo 'Backup created: world-'\$$DATE'.tar.gz';
           ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
           sleep 21600;
         done
