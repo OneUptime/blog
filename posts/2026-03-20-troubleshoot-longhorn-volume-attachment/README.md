@@ -56,7 +56,7 @@ kubectl get volumes.longhorn.io -n longhorn-system \
 kubectl get volumeattachments | grep <volume-name>
 
 # Check if the engine is starting
-kubectl get instances.longhorn.io -n longhorn-system | grep <volume-name>
+kubectl get engines.longhorn.io -n longhorn-system | grep <volume-name>
 ```
 
 ### Solution: Restart the Longhorn Manager on the Target Node
@@ -100,8 +100,9 @@ kubectl delete volumeattachment <stuck-attachment> --force --grace-period=0
 
 ```bash
 # Check if iscsid is running on the target node
-kubectl debug node/<node-name> -it --image=ubuntu -- bash
-# Inside the debug pod:
+kubectl debug node/<node-name> -it --profile=sysadmin --image=ubuntu -- bash
+# Inside the debug pod, chroot into the host filesystem to query host systemd:
+chroot /host
 systemctl status iscsid
 ```
 
