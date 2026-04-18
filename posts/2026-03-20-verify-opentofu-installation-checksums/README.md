@@ -17,7 +17,8 @@ Verifying your OpenTofu installation ensures the binary you downloaded hasn't be
 Each OpenTofu release includes:
 - `tofu_<version>_<os>_<arch>.zip` - the binary archive
 - `tofu_<version>_SHA256SUMS` - SHA256 checksum file
-- `tofu_<version>_SHA256SUMS.sig` - GPG signature of the checksum file
+- `tofu_<version>_SHA256SUMS.gpgsig` - GPG signature of the checksum file
+- `tofu_<version>_SHA256SUMS.sig` - cosign signature of the checksum file
 - `tofu_<version>_SHA256SUMS.pem` - cosign certificate
 
 ---
@@ -36,7 +37,7 @@ curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS"
 
 # Download the GPG signature (for cryptographic verification)
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.sig"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.gpgsig"
 ```
 
 ---
@@ -67,7 +68,7 @@ GPG verification confirms the checksum file was signed by the OpenTofu project's
 curl -s https://get.opentofu.org/opentofu.gpg | gpg --import
 
 # Verify the signature on the checksums file
-gpg --verify tofu_${TOFU_VERSION}_SHA256SUMS.sig tofu_${TOFU_VERSION}_SHA256SUMS
+gpg --verify tofu_${TOFU_VERSION}_SHA256SUMS.gpgsig tofu_${TOFU_VERSION}_SHA256SUMS
 
 # Expected output:
 # gpg: Good signature from "OpenTofu <core@opentofu.org>"
@@ -84,13 +85,19 @@ OpenTofu also supports verification via Sigstore cosign.
 curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
 sudo install cosign-linux-amd64 /usr/local/bin/cosign
 
-# Download the cosign certificate
+# Download the cosign certificate and signature
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.pem"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS.sig"
 
-# Verify using cosign
+# Derive the MAJOR.MINOR branch used by the release workflow (e.g. 1.9)
+TOFU_MAJORMINOR="$(echo "${TOFU_VERSION}" | cut -d. -f1,2)"
+
+# Verify using cosign (keyless verification requires identity and OIDC issuer)
 cosign verify-blob \
   --certificate tofu_${TOFU_VERSION}_SHA256SUMS.pem \
   --signature tofu_${TOFU_VERSION}_SHA256SUMS.sig \
+  --certificate-identity "https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v${TOFU_MAJORMINOR}" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   tofu_${TOFU_VERSION}_SHA256SUMS
 ```
 
@@ -131,7 +138,6 @@ BASE_URL="https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION
 
 curl -LfO "$BASE_URL/tofu_${TOFU_VERSION}_${OS}.zip"
 curl -LfO "$BASE_URL/tofu_${TOFU_VERSION}_SHA256SUMS"
-curl -LfO "$BASE_URL/tofu_${TOFU_VERSION}_SHA256SUMS.sig"
 
 # Verify checksum
 sha256sum --check --ignore-missing "tofu_${TOFU_VERSION}_SHA256SUMS"
