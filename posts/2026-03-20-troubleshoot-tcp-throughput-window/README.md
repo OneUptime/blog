@@ -63,7 +63,7 @@ iperf3 -c 10.20.0.5 -t 60 -i 1   # Report every second
 # Terminal 2: capture window sizes
 tcpdump -i eth0 -n 'tcp and dst 10.20.0.5 and port 5201' -w /tmp/iperf.pcap &
 sleep 60
-kill %2
+kill %1
 
 # Analyze window progression
 tshark -r /tmp/iperf.pcap -T fields \
