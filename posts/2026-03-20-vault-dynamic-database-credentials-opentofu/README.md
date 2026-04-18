@@ -32,7 +32,7 @@ resource "vault_database_secret_backend_connection" "postgres" {
     password       = var.vault_db_admin_password
     max_open_connections     = 5
     max_idle_connections     = 2
-    max_connection_lifetime  = "5m"
+    max_connection_lifetime  = 300
   }
 }
 
@@ -56,8 +56,8 @@ resource "vault_database_secret_backend_role" "app_readonly" {
     "DROP ROLE IF EXISTS \"{{name}}\";"
   ]
 
-  default_ttl = "1h"
-  max_ttl     = "24h"
+  default_ttl = 3600   # 1 hour, in seconds
+  max_ttl     = 86400  # 24 hours, in seconds
 }
 
 # Write role for migrations
@@ -72,23 +72,24 @@ resource "vault_database_secret_backend_role" "migrations" {
     "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";"
   ]
 
-  default_ttl = "30m"  # Short TTL for migration runs
-  max_ttl     = "1h"
+  default_ttl = 1800  # 30 minutes - short TTL for migration runs
+  max_ttl     = 3600  # 1 hour
 }
 ```
 
 ## Reading Dynamic Credentials in OpenTofu
 
 ```hcl
-# Request fresh credentials for this OpenTofu run
-data "vault_database_secret_backend_creds" "app" {
-  backend = vault_mount.database.path
-  role    = "app-readonly"
+# Request fresh credentials for this OpenTofu run.
+# The Vault provider has no dedicated data source for the database engine,
+# so we read the creds path with vault_generic_secret.
+data "vault_generic_secret" "app" {
+  path = "${vault_mount.database.path}/creds/app-readonly"
 }
 
 # Use the dynamic credentials for a connection
 output "connection_string" {
-  value     = "postgresql://${data.vault_database_secret_backend_creds.app.username}:${data.vault_database_secret_backend_creds.app.password}@${aws_db_instance.main.endpoint}:5432/appdb"
+  value     = "postgresql://${data.vault_generic_secret.app.data["username"]}:${data.vault_generic_secret.app.data["password"]}@${aws_db_instance.main.endpoint}:5432/appdb"
   sensitive = true
 }
 ```
@@ -96,15 +97,14 @@ output "connection_string" {
 ## Injecting Dynamic Credentials into Application Config
 
 ```hcl
-data "vault_database_secret_backend_creds" "app_creds" {
-  backend = "database"
-  role    = "app-readonly"
+data "vault_generic_secret" "app_creds" {
+  path = "database/creds/app-readonly"
 }
 
 resource "aws_ssm_parameter" "db_url" {
   name  = "/prod/app/database-url"
   type  = "SecureString"
-  value = "postgresql://${data.vault_database_secret_backend_creds.app_creds.username}:${data.vault_database_secret_backend_creds.app_creds.password}@${aws_db_instance.main.endpoint}:5432/appdb"
+  value = "postgresql://${data.vault_generic_secret.app_creds.data["username"]}:${data.vault_generic_secret.app_creds.data["password"]}@${aws_db_instance.main.endpoint}:5432/appdb"
 
   lifecycle {
     # Allow OpenTofu to update this when credentials rotate
@@ -160,8 +160,8 @@ resource "vault_database_secret_backend_role" "mysql_app" {
 
   revocation_statements = ["DROP USER IF EXISTS '{{name}}'@'%';"]
 
-  default_ttl = "1h"
-  max_ttl     = "24h"
+  default_ttl = 3600
+  max_ttl     = 86400
 }
 ```
 
