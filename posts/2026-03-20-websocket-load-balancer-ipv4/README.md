@@ -99,10 +99,7 @@ async def redis_listener(redis_client):
         async for msg in pubsub.listen():
             if msg["type"] == "message":
                 data = msg["data"].decode()
-                await asyncio.gather(
-                    *[ws.send(data) for ws in local_clients if ws.open],
-                    return_exceptions=True
-                )
+                websockets.broadcast(local_clients, data)
 
 async def handler(ws):
     local_clients.add(ws)
