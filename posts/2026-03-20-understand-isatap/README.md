@@ -8,7 +8,7 @@ Description: Learn how ISATAP (Intra-Site Automatic Tunnel Addressing Protocol) 
 
 ## Overview
 
-ISATAP (Intra-Site Automatic Tunnel Addressing Protocol, RFC 5214) was designed to allow IPv6 hosts to communicate over IPv4 intranets without requiring IPv6-capable switches or routers. It creates an IPv6 overlay on an IPv4 LAN by embedding the host's IPv4 address in its IPv6 link-local address. ISATAP was deployed in enterprise environments during 2005-2015. It is now deprecated and removed from modern Windows and Linux distributions.
+ISATAP (Intra-Site Automatic Tunnel Addressing Protocol, RFC 5214) was designed to allow IPv6 hosts to communicate over IPv4 intranets without requiring IPv6-capable switches or routers. It creates an IPv6 overlay on an IPv4 LAN by embedding the host's IPv4 address in its IPv6 link-local address. ISATAP was deployed in enterprise environments during 2005-2015. It is considered legacy today - disabled by default on modern Windows and largely unused on Linux, though the underlying code still ships in both.
 
 ## How ISATAP Works
 
@@ -28,7 +28,7 @@ ISATAP global address (with prefix 2001:db8::/64):
   2001:db8::0:5efe:c000:020a
 ```
 
-The `0:5efe:` is the ISATAP identifier - any ISATAP address contains this marker.
+The `0:5efe:` is the ISATAP identifier - any ISATAP address contains this marker. Per RFC 5214 Section 6.1, the leading byte is `02` (u-bit set) when the embedded IPv4 address is globally unique and `00` when it is not, so globally unique IPv4 addresses produce `200:5efe:<ipv4>` IIDs.
 
 ## Architecture
 
@@ -120,10 +120,10 @@ Modern Layer 2 switches handle IPv6 natively. There is no longer a reason to ove
 
 ### 3. Removal from OS
 
-- Windows Server 2022: ISATAP removed
+- Windows Server 2022 / 2025: ISATAP disabled by default (cmdlets still ship in the `NetworkTransition` module)
 - Windows 11: ISATAP disabled by default
-- Linux: `sit` module can do ISATAP but it's not recommended
-- RFC 7059 and later documents note ISATAP as legacy
+- Linux: `sit` module still supports ISATAP mode (`ip tunnel ... mode sit` with ISATAP semantics) but it's not recommended for new deployments
+- RFC 7059 surveys ISATAP alongside other IPv6-over-IPv4 tunnel mechanisms as a transitional technique
 
 ## Disable ISATAP
 
