@@ -18,8 +18,8 @@ ip route show
 # Shorter alias
 ip route
 
-# Numeric output (no hostname resolution)
-ip route show
+# Resolve hostnames in output (default is numeric)
+ip -r route show
 ```
 
 Sample output:
