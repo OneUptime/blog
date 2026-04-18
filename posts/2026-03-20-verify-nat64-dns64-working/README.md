@@ -19,7 +19,7 @@ After deploying NAT64 (TAYGA) and DNS64 (BIND or Unbound), systematic verificati
 
 #    ipv4only.arpa has only an A record (192.0.0.170 and 192.0.0.171)
 dig @10.0.0.5 AAAA ipv4only.arpa.
-# Expected: 64:ff9b::c000:0aa  (synthesized from 192.0.0.170)
+# Expected: 64:ff9b::c000:aa  (synthesized from 192.0.0.170)
 # NOT expected: NXDOMAIN
 
 # 2. Verify real AAAA records are not synthesized
@@ -71,8 +71,11 @@ ping -6 64:ff9b::808:808   # Pings 8.8.8.8 through NAT64
 curl -6 http://64:ff9b::5db8:d822/  # http://93.184.216.34/ (example.com)
 
 # Check TAYGA translation table
-sudo tayga --config /etc/tayga.conf --dump
-# Shows active IPv4↔IPv6 mappings
+# TAYGA persists dynamic IPv4↔IPv6 mappings to the file `dynamic.map`
+# inside the `data-dir` directory configured in tayga.conf
+# (Debian/Ubuntu packages default data-dir to /var/spool/tayga):
+sudo cat /var/spool/tayga/dynamic.map
+# Shows active IPv4↔IPv6 mappings with last-used timestamps
 ```
 
 ## Step 4: End-to-End Test from IPv6-Only Client
@@ -120,4 +123,4 @@ ip route show
 
 ## Conclusion
 
-Verify NAT64/DNS64 in sequence: DNS synthesis first (`dig AAAA ipv4only.arpa`), then direct NAT64 translation (`ping -6 64:ff9b::808:808`), then end-to-end from an IPv6-only client. The `tayga --dump` command shows active translation mappings. Ensure TAYGA's TUN interface has routes for both `64:ff9b::/96` (inbound) and `192.168.255.0/24` (outbound), and iptables masquerade covers the dynamic pool.
+Verify NAT64/DNS64 in sequence: DNS synthesis first (`dig AAAA ipv4only.arpa`), then direct NAT64 translation (`ping -6 64:ff9b::808:808`), then end-to-end from an IPv6-only client. The `dynamic.map` file in TAYGA's `data-dir` shows active translation mappings. Ensure TAYGA's TUN interface has routes for both `64:ff9b::/96` (inbound) and `192.168.255.0/24` (outbound), and iptables masquerade covers the dynamic pool.
