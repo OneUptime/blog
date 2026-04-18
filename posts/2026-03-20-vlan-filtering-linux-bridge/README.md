@@ -38,8 +38,9 @@ ip link set tap0 up
 
 ```bash
 # Allow VLAN 10 and 20 as tagged on eth0 (trunk port)
-bridge vlan add dev eth0 vid 10 tagged
-bridge vlan add dev eth0 vid 20 tagged
+# Tagged is the default egress behavior when neither "untagged" nor "pvid" is set
+bridge vlan add dev eth0 vid 10
+bridge vlan add dev eth0 vid 20
 
 # Remove the default VLAN 1 from trunk port (optional)
 bridge vlan del dev eth0 vid 1
@@ -98,8 +99,8 @@ ip link set br0 up
 # Add trunk uplink (eth0)
 ip link set eth0 master br0
 ip link set eth0 up
-bridge vlan add dev eth0 vid 10 tagged
-bridge vlan add dev eth0 vid 20 tagged
+bridge vlan add dev eth0 vid 10
+bridge vlan add dev eth0 vid 20
 bridge vlan del dev eth0 vid 1
 
 # Add VM1 tap (VLAN 10 access)
@@ -120,4 +121,4 @@ bridge vlan show
 
 ## Conclusion
 
-VLAN filtering on Linux bridges enables trunk and access port behavior within a single bridge instance. Enable `vlan_filtering 1` on the bridge, then use `bridge vlan add` to assign VLANs to ports as `tagged` (trunk) or `pvid untagged` (access). This scales well for KVM hypervisors with many VMs across multiple VLANs.
+VLAN filtering on Linux bridges enables trunk and access port behavior within a single bridge instance. Enable `vlan_filtering 1` on the bridge, then use `bridge vlan add` to assign VLANs to ports as tagged (trunk, the default) or `pvid untagged` (access). This scales well for KVM hypervisors with many VMs across multiple VLANs.
