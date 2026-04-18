@@ -8,14 +8,15 @@ Description: A step-by-step guide to safely upgrading your OpenTofu installation
 
 ## Introduction
 
-OpenTofu 1.7 introduced several important features including improved provider-defined functions and early variable evaluation. This guide walks you through upgrading from 1.6 to 1.7 safely.
+OpenTofu 1.7 introduced several important features including provider-defined functions and client-side state encryption. This guide walks you through upgrading from 1.6 to 1.7 safely.
 
 ## What's New in OpenTofu 1.7
 
 - **State encryption**: Client-side state encryption support
 - **Provider-defined functions**: Providers can expose custom functions
 - **`tofu test` improvements**: Enhanced testing framework
-- **Early variable evaluation**: Variables can be used in more contexts
+- **`removed` block**: Declaratively remove resources from state without destroying the underlying infrastructure
+- **Loopable `import` blocks**: Use `for_each` in `import` blocks to import multiple resources at once
 
 ## Pre-Upgrade Checklist
 
