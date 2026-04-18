@@ -160,15 +160,15 @@ nb = pynetbox.api("http://netbox.internal", token="your-token")
 # Create a prefix in NetBox
 nb.ipam.prefixes.create({
     "prefix": "2001:db8:0001::/48",
-    "site": {"name": "headquarters"},
+    "site": "headquarters",
     "description": "HQ site prefix",
     "status": "active",
     "tags": [{"name": "ipv6"}]
 })
 
-# Get all available /48 prefixes in the org /32
-prefix = nb.ipam.prefixes.get(prefix="2001:db8::/32")
-available = nb.ipam.prefixes.filter(parent="2001:db8::/32", available=True)
+# Get all available child prefixes of the org /32
+parent = nb.ipam.prefixes.get(prefix="2001:db8::/32")
+available = parent.available_prefixes.list()
 ```
 
 ## Conclusion
