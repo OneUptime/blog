@@ -21,10 +21,13 @@ apt install conntrack
 conntrack -L
 
 # Show only SNAT connections (source NAT)
-conntrack -L | grep SNAT
+conntrack -L --src-nat
 
 # Show only DNAT connections (destination NAT, port forwards)
-conntrack -L | grep DNAT
+conntrack -L --dst-nat
+
+# Show any NAT (SNAT or DNAT)
+conntrack -L --any-nat
 ```
 
 ### Reading conntrack Output
@@ -49,8 +52,11 @@ tcp  6  86394  ESTABLISHED
 # Direct kernel interface
 cat /proc/net/nf_conntrack
 
-# Parse for NAT entries (look for [SNAT] or [DNAT] markers)
-awk '{print $0}' /proc/net/nf_conntrack | grep -i nat
+# NAT entries have mismatching original vs. reply tuples.
+# Compare the two src=/dst= pairs on each line to identify NAT.
+# /proc/net/nf_conntrack does not contain literal SNAT/DNAT markers
+# (use `conntrack -L --any-nat` for explicit NAT filtering).
+cat /proc/net/nf_conntrack
 ```
 
 ## Method 3: iptables Rules (Static Config)
