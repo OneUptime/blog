@@ -47,7 +47,7 @@ srw-rw---- 1 root docker 0 ... /var/run/docker.sock
 If the socket doesn't exist:
 
 ```bash
-# Try the named pipe path
+# Try the WSL shared socket mount
 
 ls /mnt/wsl/shared-docker-socket/
 ```
