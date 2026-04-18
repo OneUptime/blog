@@ -16,8 +16,8 @@ Description: Use netstat on Windows to display active IPv4 TCP connections, list
 :: Show all active TCP connections (IPv4 and IPv6)
 netstat -n
 
-:: IPv4 TCP only (filter output)
-netstat -n | findstr ":"
+:: IPv4 TCP only (-p tcp filters to IPv4; use tcpv6 for IPv6)
+netstat -n -p tcp
 ```
 
 ## Show All Listening Ports
