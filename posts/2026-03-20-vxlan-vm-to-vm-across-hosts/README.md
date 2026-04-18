@@ -85,8 +85,8 @@ ping 192.168.100.11
 # Capture VXLAN traffic on Host1's physical interface
 tcpdump -i eth0 -nn udp port 4789
 
-# See inner VM MAC addresses
-tcpdump -i eth0 -nn -r /tmp/cap.pcap udp port 4789 | grep "VXLAN"
+# See inner VM MAC addresses with VXLAN decoding
+tcpdump -i eth0 -nn -vv udp port 4789
 ```
 
 ## Adding a Router for Inter-VXLAN Routing
