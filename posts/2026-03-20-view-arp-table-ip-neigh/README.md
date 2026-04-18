@@ -64,7 +64,7 @@ ip -4 neigh show
 ## Show with Interface Details
 
 ```bash
-# Include interface index
+# Print only IP, interface name, and MAC columns
 ip neigh show | awk '{print $1, $3, $5}'
 ```
 
