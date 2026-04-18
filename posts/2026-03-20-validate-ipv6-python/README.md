@@ -32,7 +32,7 @@ test_addresses = [
     ("2001:db8::1::1", False),  # double ::
     ("2001:db8::xyz", False),   # invalid hex
     ("192.168.1.1", False),     # IPv4 not IPv6
-    ("2001:db8::1%eth0", False), # zone ID not accepted by ip_address
+    ("2001:db8::1%eth0", True),  # zone ID accepted in Python 3.9+
     ("", False),
 ]
 
@@ -225,4 +225,4 @@ print(json.dumps(report["stats"], indent=2))
 
 ## Conclusion
 
-Use Python's `ipaddress.ip_address()` as the primary validation method - it handles all valid IPv6 formats and raises `ValueError` for invalid input. For web APIs and forms, normalize the validated address with `str(addr)` to return a consistent compressed form. Add type constraints (`is_global`, `is_link_local`, `is_private`) to enforce address scope requirements for your application. For CIDR prefix validation, use `ip_network(strict=False)` to allow host addresses with prefix length, or `strict=True` to require clean network addresses. Strip zone identifiers (`%eth0`) before parsing, as `ip_address()` does not accept them.
+Use Python's `ipaddress.ip_address()` as the primary validation method - it handles all valid IPv6 formats and raises `ValueError` for invalid input. For web APIs and forms, normalize the validated address with `str(addr)` to return a consistent compressed form. Add type constraints (`is_global`, `is_link_local`, `is_private`) to enforce address scope requirements for your application. For CIDR prefix validation, use `ip_network(strict=False)` to allow host addresses with prefix length, or `strict=True` to require clean network addresses. Since Python 3.9, `ip_address()` accepts zone identifiers (`%eth0`) and exposes them via the `scope_id` attribute; strip them beforehand if you need to normalize away the zone or support older interpreters.
