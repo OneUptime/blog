@@ -159,7 +159,7 @@ locals {
   # Tuple from for expression
   zone_pairs = [
     for i, az in var.availability_zones :
-    tuple([az, var.subnet_cidrs[i]])
+    [az, var.subnet_cidrs[i]]
   ]
 }
 ```
