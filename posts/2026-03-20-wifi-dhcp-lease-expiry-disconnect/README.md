@@ -29,8 +29,8 @@ journalctl -u NetworkManager --since "24 hours ago" | grep -i "dhcp\|lease\|rene
 cat /var/lib/dhcp/dhclient.leases
 # Look for "expire" timestamps that match disconnection times
 
-# Check current lease expiry
-dhclient -v -e 2>&1 | grep lease
+# Check current lease expiry (renew/rebind/expire timestamps)
+grep -E "expire|renew|rebind" /var/lib/dhcp/dhclient.leases
 ```
 
 **Windows:**
