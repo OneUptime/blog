@@ -96,7 +96,7 @@ conntrack -L -p udp --dport 443 2>/dev/null | head -10
 ## Capture QUIC Traffic
 
 ```bash
-# Wireshark can dissect QUIC (v1 support since Wireshark 3.2):
+# Wireshark can dissect QUIC (IETF QUIC since 3.0; RFC 9000 / v1 since 3.5):
 # Filter: quic
 # Shows: initial packets, handshake, connection IDs
 
