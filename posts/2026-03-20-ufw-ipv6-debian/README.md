@@ -38,7 +38,7 @@ cat /etc/default/ufw | grep IPV6
 # Set default policies
 ufw default deny incoming   # Drop all inbound
 ufw default allow outgoing  # Allow all outbound
-ufw default deny forward    # Drop all forwarded traffic
+ufw default deny routed     # Drop all forwarded/routed traffic
 
 # Enable UFW
 ufw enable
@@ -56,17 +56,17 @@ ufw status verbose
 ufw allow 22/tcp
 
 # Allow SSH from IPv6 management network only
-ufw allow from fd00:mgmt::/48 to any port 22 proto tcp
+ufw allow from fd00:abcd::/48 to any port 22 proto tcp
 
 # Allow HTTP and HTTPS
 ufw allow 80/tcp
 ufw allow 443/tcp
 
 # Allow a specific IPv6 address
-ufw allow from 2001:db8::admin to any port 22
+ufw allow from 2001:db8::1 to any port 22
 
 # Allow a specific IPv6 prefix
-ufw allow from 2001:db8:trusted::/48 to any
+ufw allow from 2001:db8:1::/48 to any
 ```
 
 ### Allow DNS (if running a DNS server)
@@ -78,7 +78,7 @@ ufw allow 53/udp
 
 ### Allow ICMPv6 (Critical)
 
-UFW has limited ICMPv6 control - you need to edit its after-rules:
+UFW has limited ICMPv6 control - you need to edit its before-rules:
 
 ```bash
 # Edit /etc/ufw/before6.rules to add/modify ICMPv6 rules
@@ -134,7 +134,7 @@ ufw deny from 2001:db8:bad::/48
 ufw deny from 2001:db8:bad::1 to any port 80
 
 # Block all IPv6 from a specific prefix
-ufw deny from 2001:db8:attacker::/32
+ufw deny from 2001:db8::/32
 ```
 
 ## Application Profiles
