@@ -81,9 +81,13 @@ kubectl exec -it rabbitmq-0 -n messaging -- \
 kubectl exec -it rabbitmq-0 -n messaging -- \
   rabbitmqctl list_queues name messages consumers state
 
-# Reset a stuck node
+# Reset a stuck node (app must be stopped first)
+kubectl exec -it rabbitmq-0 -n messaging -- \
+  rabbitmqctl stop_app
 kubectl exec -it rabbitmq-0 -n messaging -- \
   rabbitmqctl reset
+kubectl exec -it rabbitmq-0 -n messaging -- \
+  rabbitmqctl start_app
 ```
 
 ## Step 6: Diagnose Kafka-Specific Issues
@@ -102,7 +106,7 @@ kubectl exec -it kafka-controller-0 -n messaging -- \
 # Verify leader election is healthy
 kubectl exec -it kafka-controller-0 -n messaging -- \
   kafka-metadata-quorum.sh --bootstrap-server localhost:9092 \
-  --describe
+  describe --status
 ```
 
 ## Step 7: Common Fixes
