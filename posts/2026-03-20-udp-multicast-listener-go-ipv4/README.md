@@ -46,6 +46,11 @@ func main() {
     // Wrap in an ipv4 PacketConn for multicast group management
     pc := ipv4.NewPacketConn(conn)
 
+    // Enable the interface index control message so cm.IfIndex is populated
+    if err := pc.SetControlMessage(ipv4.FlagInterface, true); err != nil {
+        log.Fatalf("SetControlMessage error: %v", err)
+    }
+
     // Get the interface to join on (use net.InterfaceByName for a specific one)
     ifaces, err := net.Interfaces()
     if err != nil {
