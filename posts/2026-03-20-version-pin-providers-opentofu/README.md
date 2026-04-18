@@ -41,7 +41,7 @@ terraform {
 
 | Environment | Strategy | Example |
 |---|---|---|
-| Production | Pessimistic constraint operator | `~> 5.40` (allows 5.40.x only) |
+| Production | Pessimistic constraint operator | `~> 5.40.0` (allows 5.40.x only) |
 | Staging | Minor version range | `~> 5.0` (allows 5.x.x) |
 | Development | Loose range | `>= 5.0, < 6.0` |
 | CI validation | Exact pin | `= 5.40.0` |
@@ -71,8 +71,8 @@ The lock file guarantees exact version reproduction even when the constraint all
 # Upgrade all providers to the latest version allowed by constraints
 tofu init -upgrade
 
-# Upgrade a specific provider
-tofu init -upgrade -lock-timeout=60s
+# Refresh lock entries for a specific provider (after changing its constraint)
+tofu providers lock registry.opentofu.org/hashicorp/aws
 
 # Check what changed in the lock file
 git diff .terraform.lock.hcl
