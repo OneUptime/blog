@@ -53,23 +53,25 @@ For broadcast/unknown unicast, each VTEP needs FDB entries pointing to other VTE
 
 ```bash
 # On Host1: add all-zeros entry for each remote VTEP (broadcast/unknown)
-bridge fdb add 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.2 via eth0 self permanent
-bridge fdb add 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.3 via eth0 self permanent
+# Use `append` so multiple entries can share the same (all-zeros) MAC.
+bridge fdb append 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.2 self permanent
+bridge fdb append 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.3 self permanent
 
 # On Host2: add all-zeros entries for Host1 and Host3
-bridge fdb add 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.1 via eth0 self permanent
-bridge fdb add 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.3 via eth0 self permanent
+bridge fdb append 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.1 self permanent
+bridge fdb append 00:00:00:00:00:00 dev vxlan10 dst 10.0.0.3 self permanent
 ```
 
 ## Using Multicast for VTEP Discovery (Alternative)
 
 ```bash
-# Use multicast for BUM (Broadcast/Unknown Multicast) traffic
+# Use multicast for BUM (Broadcast, Unknown unicast, Multicast) traffic.
+# Multicast group for VNI 10: 239.1.1.10
 ip link add vxlan10 type vxlan \
   id 10 \
   dstport 4789 \
   local 10.0.0.1 \
-  group 239.1.1.10 \   # Multicast group for VNI 10
+  group 239.1.1.10 \
   dev eth0
 
 # All VTEPs join the same multicast group automatically
