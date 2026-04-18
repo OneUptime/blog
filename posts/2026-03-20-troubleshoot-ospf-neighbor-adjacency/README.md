@@ -60,7 +60,7 @@ Both neighbors on the same link must be in the same OSPF area:
 
 ```text
 ! Check area assignments
-Router# show ip ospf interface GigabitEthernet0/0 | include area
+Router# show ip ospf interface GigabitEthernet0/0 | include Area
 
 ! Output: Area 0 (process ID 1)
 ! If mismatch, one side shows Area 0 and the other shows Area 1
@@ -107,7 +107,7 @@ OSPF neighbors on the same link must share the same subnet. A mask mismatch prev
 
 ```text
 ! Check IP address and mask
-Router# show ip interface brief | include Gig0/0
+Router# show ip interface brief | include GigabitEthernet0/0
 
 ! Verify both ends are in the same subnet
 ! 10.0.0.1/24 and 10.0.0.2/24 = correct
@@ -120,7 +120,7 @@ Network type mismatches (e.g., one side Point-to-Point, other side Broadcast) ca
 
 ```text
 ! Check network type on both sides of a link
-Router# show ip ospf interface GigabitEthernet0/0 | include network type
+Router# show ip ospf interface GigabitEthernet0/0 | include Network Type
 
 ! Both sides must match: BROADCAST, POINT-TO-POINT, POINT-TO-MULTIPOINT, NON-BROADCAST
 
