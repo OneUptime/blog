@@ -22,12 +22,14 @@ VXLAN with multicast underlay uses an IP multicast group to handle BUM traffic -
 # On all VTEP hosts (each host runs this command)
 
 # Create VXLAN interface with multicast group 239.1.1.1
+# id = VNI, dstport = UDP port, group = multicast group for BUM flooding,
+# dev = underlay interface used to send/receive multicast
 
 ip link add vxlan0 type vxlan \
-    id 100 \               # VNI
-    dstport 4789 \         # UDP port
-    group 239.1.1.1 \      # Multicast group for BUM flooding
-    dev eth0               # Underlay interface for multicast
+    id 100 \
+    dstport 4789 \
+    group 239.1.1.1 \
+    dev eth0
 
 ip addr add 10.100.0.1/24 dev vxlan0
 ip link set vxlan0 up
