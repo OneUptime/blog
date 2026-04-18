@@ -8,7 +8,7 @@ Description: Systematically diagnose TCP connection timeouts between services by
 
 ## Introduction
 
-A TCP connection timeout means a client sent a SYN but never received a SYN-ACK. The connection attempt silently fails after the kernel exhausts its SYN retransmission attempts (about 63 seconds by default). Timeouts are distinct from "connection refused" (which gets an immediate RST) and often indicate a firewall drop, routing failure, or overloaded server.
+A TCP connection timeout means a client sent a SYN but never received a SYN-ACK. The connection attempt silently fails after the kernel exhausts its SYN retransmission attempts (about 127 seconds by default with `tcp_syn_retries=6`). Timeouts are distinct from "connection refused" (which gets an immediate RST) and often indicate a firewall drop, routing failure, or overloaded server.
 
 ## Step 1: Verify Network Reachability
 
@@ -97,7 +97,8 @@ import socket
 client = httpx.Client(timeout=httpx.Timeout(
     connect=5.0,     # Fail if SYN-ACK not received in 5 seconds
     read=30.0,       # Fail if no data received in 30 seconds
-    write=10.0
+    write=10.0,
+    pool=5.0         # Fail if no connection available from pool in 5 seconds
 ))
 
 # Standard socket
@@ -111,4 +112,4 @@ except TimeoutError:
 
 ## Conclusion
 
-TCP connection timeouts follow a clear diagnostic path: confirm reachability with ping, capture SYN traffic on both ends to locate the drop point, check accept queue depth for server-side issues, and verify firewall rules for DROP policies. Setting application-level timeouts much lower than the kernel default (63s) prevents cascading failures when downstream services are slow to respond.
+TCP connection timeouts follow a clear diagnostic path: confirm reachability with ping, capture SYN traffic on both ends to locate the drop point, check accept queue depth for server-side issues, and verify firewall rules for DROP policies. Setting application-level timeouts much lower than the kernel default (~127s) prevents cascading failures when downstream services are slow to respond.
