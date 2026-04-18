@@ -25,8 +25,7 @@ esxcli network ip interface ipv6 address list
 # Add a static IPv6 address to vmk0 (management interface)
 esxcli network ip interface ipv6 address add \
     --interface-name vmk0 \
-    --ip 2001:db8::10 \
-    --prefix-length 64
+    --ipv6 2001:db8::10/64
 
 # Set IPv6 default gateway
 esxcli network ip route ipv6 add \
@@ -40,7 +39,7 @@ esxcli network ip interface ipv6 address list
 
 ## vSphere Client: Enable IPv6 on ESXi Host
 
-```sql
+```text
 1. Connect to ESXi host in vSphere Client
 2. Navigate to: Host → Configure → Networking → VMkernel Adapters
 3. Select vmk0 (Management Network)
@@ -62,8 +61,7 @@ esxcli network ip interface add \
 
 esxcli network ip interface ipv6 address add \
     --interface-name vmk1 \
-    --ip 2001:db8:vmotion::10 \
-    --prefix-length 64
+    --ipv6 2001:db8:1::10/64
 
 # Enable vMotion on vmk1
 vim-cmd hostsvc/net/vnic_info vmk1
@@ -94,7 +92,7 @@ esxcli network firewall ruleset list
 
 # Enable specific services for IPv6 access (they apply to all address families)
 esxcli network firewall ruleset set --ruleset-id sshServer --enabled=true
-esxcli network firewall ruleset set --ruleset-id vCenter --enabled=true
+esxcli network firewall ruleset set --ruleset-id vpxHeartbeats --enabled=true
 
 # ESXi firewall doesn't distinguish IPv4/IPv6 - rules apply to both
 # For host-based IPv6 filtering, use the physical network firewall
