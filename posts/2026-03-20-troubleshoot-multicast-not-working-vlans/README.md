@@ -16,7 +16,7 @@ Multicast within a single VLAN is controlled by **IGMP snooping** on the switch.
 
 ```mermaid
 graph LR
-    S[Multicast Source\nVLAN 10] --> R[L3 Switch / Router\nPIM enabled]
+    S[Multicast Source<br/>VLAN 10] --> R[L3 Switch / Router<br/>PIM enabled]
     R --> V20[Receiver VLAN 20]
     R --> V30[Receiver VLAN 30]
 ```
