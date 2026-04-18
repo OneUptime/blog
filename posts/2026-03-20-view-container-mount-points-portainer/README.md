@@ -12,71 +12,86 @@ This guide shows you how to accomplish this common container management task in 
 
 ## Using the Portainer UI
 
-Navigate to **Containers** in the left sidebar. The container list view provides search and filter options at the top of the page.
+Navigate to **Containers** in the left sidebar and click a container name to open its details page. Scroll to the **Volumes** section to see every mount attached to the container. Each row shows:
 
-### Filtering Options
+- **Host / Volume**: The named volume or host path backing the mount.
+- **Container path**: Where the mount is exposed inside the container.
+- **Type**: `volume` for a Docker-managed named volume, `bind` for a host path, and `tmpfs` for an in-memory mount.
+- **Read-only / Read-write**: Access mode for the mount.
 
-The Portainer container list supports filtering by:
-- **Status**: Running, Stopped, Exited, Paused
-- **Name**: Search by container name substring
-- **Stack**: Filter by stack name
-- **Labels**: Filter by container labels (available in container details)
+Clicking a named volume takes you to the **Volumes** view, where you can inspect the driver, labels, mount point on the host, and containers currently using it.
 
-Click the **Filter** button or search box to apply your criteria. The container list updates in real time.
+If you need the raw engine data, open the **Inspect** tab on the container page. The JSON output includes a top-level `Mounts` array and a `HostConfig.Binds` / `HostConfig.Mounts` section, which Docker uses internally to represent the mount configuration.
 
 ## Using the Docker CLI
 
-For scripted or automated use cases, Docker CLI provides powerful filtering:
+For scripted or automated use cases, the Docker CLI exposes the same information:
 
 ```bash
-# Filter running containers
+# Show mounts for a specific container as JSON
+docker inspect --format '{{json .Mounts}}' my-container
 
-docker ps --filter "status=running"
+# Pretty-print mounts (requires jq)
+docker inspect --format '{{json .Mounts}}' my-container | jq .
 
-# Filter by label key=value
-docker ps --filter "label=com.docker.compose.service=webapp"
+# Print a table of Type, Source, Destination, Mode
+docker inspect \
+  --format '{{range .Mounts}}{{.Type}}{{"\t"}}{{.Source}}{{"\t"}}{{.Destination}}{{"\t"}}{{.Mode}}{{"\n"}}{{end}}' \
+  my-container
 
-# Filter by stack name (using Compose label)
-docker ps --filter "label=com.docker.compose.project=my-stack"
+# Inspect a named volume directly
+docker volume inspect my-data
 
-# Filter by image name
-docker ps --filter "ancestor=nginx:1.25"
+# List all volumes on the host
+docker volume ls
 
-# Multiple filters (AND condition)
-docker ps --filter "status=running" --filter "label=environment=production"
-
-# Format the output to show specific fields
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Labels}}"
+# Find the on-disk location of a named volume
+docker volume inspect --format '{{.Mountpoint}}' my-data
 ```
 
-## Labeling Your Containers for Better Filtering
+Each entry in the `.Mounts` array includes a `Type` (`volume`, `bind`, or `tmpfs`), a `Source` (the host path or named volume), a `Destination` (the container path), and an `RW` boolean indicating whether the mount is writable. For `volume` mounts, the `Name` and `Driver` fields identify the underlying Docker volume.
 
-Apply meaningful labels to make filtering effective:
+## Declaring Mounts
+
+Mounts are declared at container creation time. In a Compose file:
 
 ```yaml
 # In your docker-compose.yml
 services:
   webapp:
     image: myapp:1.2.3
-    labels:
-      # Standard labels for filtering
-      environment: "production"
-      team: "backend"
-      tier: "api"
-      version: "1.2.3"
-      backup: "required"
+    volumes:
+      # Named volume (Docker manages the host path)
+      - app-data:/var/lib/app
+      # Bind mount (explicit host path)
+      - ./config:/etc/app/config:ro
+      # Long syntax for clarity
+      - type: bind
+        source: /var/log/app
+        target: /var/log/app
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 67108864
+
+volumes:
+  app-data:
 ```
 
-With these labels, you can filter by:
+When running containers directly, the equivalent `docker run` flags are:
+
 ```bash
-# Find all production containers
-docker ps --filter "label=environment=production"
+# Named volume
+docker run -v app-data:/var/lib/app myapp:1.2.3
 
-# Find all containers owned by the backend team
-docker ps --filter "label=team=backend"
+# Bind mount, read-only
+docker run -v /host/config:/etc/app/config:ro myapp:1.2.3
 
-# Find containers needing backup
-docker ps --filter "label=backup=required"
+# Using the more explicit --mount flag
+docker run --mount type=bind,source=/var/log/app,target=/var/log/app myapp:1.2.3
+
+# Tmpfs mount
+docker run --mount type=tmpfs,destination=/tmp,tmpfs-size=67108864 myapp:1.2.3
 ```
 
 ## Using the Portainer API
@@ -88,21 +103,24 @@ import requests
 
 headers = {"X-API-Key": "your-api-token"}
 
-# Get containers with specific label via Portainer API
+# Inspect a container via Portainer's Docker proxy endpoint
 response = requests.get(
-    "https://portainer.example.com/api/endpoints/1/docker/containers/json",
+    "https://portainer.example.com/api/endpoints/1/docker/containers/my-container/json",
     headers=headers,
-    params={
-        "all": "false",  # Only running containers
-        "filters": '{"label": ["environment=production"]}'
-    }
 )
 
-containers = response.json()
-for c in containers:
-    print(c["Names"][0], c["Status"])
+data = response.json()
+name = data["Name"].lstrip("/")
+for mount in data.get("Mounts", []):
+    mount_type = mount.get("Type")
+    source = mount.get("Source") or mount.get("Name", "")
+    destination = mount.get("Destination")
+    mode = "rw" if mount.get("RW") else "ro"
+    print(f"{name}: [{mount_type}] {source} -> {destination} ({mode})")
 ```
+
+The `Mounts` array in the response mirrors the output of the Docker Engine API's `GET /containers/{id}/json` endpoint, which Portainer proxies through its `/api/endpoints/:id/docker/` path.
 
 ## Summary
 
-Portainer's container filtering UI and Docker's filter flags both support filtering by status and labels. Consistent label conventions across your stacks make it significantly easier to find, manage, and audit specific container groups. Use the Portainer API for programmatic filtering in automation and monitoring tools.
+Portainer's **Volumes** section on the container details page surfaces the same mount information that `docker inspect` returns from the CLI. Knowing how to read these mounts is essential for verifying that persistent data is attached to the right volume, spotting accidental bind mounts of sensitive host paths, and confirming that read-only mounts stay read-only in production.
