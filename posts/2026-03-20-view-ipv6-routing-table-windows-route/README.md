@@ -107,8 +107,8 @@ New-NetRoute -InterfaceAlias "Ethernet" `
 
 # Add a specific route
 New-NetRoute -InterfaceAlias "Ethernet" `
-    -DestinationPrefix "2001:db8:remote::/48" `
-    -NextHop "2001:db8::gateway"
+    -DestinationPrefix "2001:db8:1::/48" `
+    -NextHop "2001:db8::1"
 
 # Remove a route
 Remove-NetRoute -DestinationPrefix "::/0" -InterfaceAlias "Ethernet" -Confirm:$false
