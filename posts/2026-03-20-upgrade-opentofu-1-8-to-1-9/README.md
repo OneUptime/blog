@@ -140,17 +140,17 @@ cat > UPGRADE-1.9.md <<'EOF'
    ```
    tofuenv install 1.9.0
    tofuenv use 1.9.0
-   ```text
+   ```
 
 2. Verify version:
    ```
    tofu version  # should show v1.9.0
-   ```text
+   ```
 
 3. Re-initialize your working directory:
    ```
    tofu init -upgrade
-   ```text
+   ```
 
 ## No Breaking Changes
 This upgrade has no breaking changes for existing configurations.
