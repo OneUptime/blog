@@ -47,7 +47,7 @@ iftop -i eth0 -n   # Real-time bandwidth by connection
 nethogs eth0       # Bandwidth by process
 
 # Check overall interface utilization
-watch -n 1 "ip -s link show eth0 | grep 'TX bytes'"
+watch -n 1 "cat /sys/class/net/eth0/statistics/tx_bytes"
 # Calculate MB/s from the bytes counter difference
 ```
 
