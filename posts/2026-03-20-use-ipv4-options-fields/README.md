@@ -64,7 +64,7 @@ if reply:
 ```bash
 # Drop packets containing any IP options (IHL > 5 means options present)
 # The IHL field is in the low nibble of byte 0; > 5 means options are present
-iptables -A INPUT -m ipv4options --options any -j DROP
+iptables -A INPUT -m ipv4options --any-opt -j DROP
 
 # Alternative: drop strict or loose source route options
 iptables -A INPUT -m ipv4options --ssrr -j DROP
