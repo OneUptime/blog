@@ -21,12 +21,12 @@ Telepresence creates a two-way proxy between your local machine and a Rancher-ma
 ```bash
 # macOS
 
-brew install datawire/blackbird/telepresence
+brew install telepresenceio/telepresence/telepresence-oss
 
 # Linux
-curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence \
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 \
   -o /usr/local/bin/telepresence
-chmod +x /usr/local/bin/telepresence
+sudo chmod a+x /usr/local/bin/telepresence
 ```
 
 ## Step 2: Install the Traffic Manager in the Cluster
@@ -34,11 +34,11 @@ chmod +x /usr/local/bin/telepresence
 The Traffic Manager is a cluster-side component that manages intercepts:
 
 ```bash
-# Connect Telepresence to your Rancher cluster
-telepresence helm install
+# Install the Traffic Manager in your Rancher cluster
+telepresence helm install --kubeconfig ~/.kube/rancher-production.yaml
 
 # Verify the Traffic Manager is running
-kubectl get pods -n ambassador
+kubectl --kubeconfig ~/.kube/rancher-production.yaml get pods -n ambassador
 ```
 
 ## Step 3: Connect to the Cluster
@@ -89,9 +89,9 @@ While the intercept is active, run your service locally:
 
 ```bash
 # Run the service locally with your IDE debugger attached
-# Environment variables from the cluster are automatically available
-DB_HOST=postgres.production.svc.cluster.local   # Cluster DNS resolves locally!
-REDIS_URL=redis://redis.production.svc.cluster.local:6379
+# Export the settings your local process needs
+export DB_HOST=postgres.production.svc.cluster.local   # Cluster DNS resolves locally!
+export REDIS_URL=redis://redis.production.svc.cluster.local:6379
 
 node server.js --inspect    # Attach VS Code debugger
 ```
