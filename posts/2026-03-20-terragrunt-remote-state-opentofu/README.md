@@ -40,7 +40,7 @@ remote_state {
 
     dynamodb_table = "tofu-state-lock"
 
-    # Enable S3 versioning for state backup
+    # Enable server-side encryption for the DynamoDB lock table
     enable_lock_table_ssencryption = true
     s3_bucket_tags = {
       ManagedBy = "Terragrunt"
@@ -49,9 +49,9 @@ remote_state {
 }
 ```
 
-## Auto-Creating the Backend S3 Bucket
+## Bootstrapping the Backend S3 Bucket
 
-Terragrunt can create the S3 bucket and DynamoDB table automatically:
+Terragrunt can create the S3 bucket and DynamoDB table when you explicitly bootstrap the backend with `terragrunt backend bootstrap` or add `--backend-bootstrap` to a Terragrunt run:
 
 ```hcl
 remote_state {
@@ -67,7 +67,7 @@ remote_state {
     encrypt        = true
     dynamodb_table = "tofu-state-lock"
 
-    # Terragrunt will create these if they don't exist
+    # Terragrunt applies these tags if it bootstraps the resources
     s3_bucket_tags = {
       Purpose   = "OpenTofu State"
       ManagedBy = "Terragrunt"
@@ -80,18 +80,21 @@ remote_state {
 }
 ```
 
+Run `terragrunt backend bootstrap` before `terragrunt init` if the backend resources do not already exist.
+
 ## Workspace-Based State Keys
 
 ```hcl
 remote_state {
   backend = "s3"
   config = {
-    bucket    = "my-company-tofu-state"
-    # Include workspace in state key for workspace-based deployments
-    key       = "${local.env}/${path_relative_to_include()}/terraform.tfstate"
-    region    = local.region
-    encrypt   = true
-    dynamodb_table = "tofu-state-lock"
+    bucket               = "my-company-tofu-state"
+    key                  = "${path_relative_to_include()}/terraform.tfstate"
+    # Non-default OpenTofu workspaces are stored under this prefix.
+    workspace_key_prefix = "workspaces"
+    region               = local.region
+    encrypt              = true
+    dynamodb_table       = "tofu-state-lock"
   }
 }
 ```
@@ -106,24 +109,27 @@ remote_state {
     if_exists = "overwrite_terragrunt"
   }
   config = {
-    bucket = "my-company-tofu-state-${local.project_id}"
-    prefix = path_relative_to_include()
+    project  = local.project_id
+    location = "US"
+    bucket   = "my-company-tofu-state-${local.project_id}"
+    prefix   = path_relative_to_include()
   }
 }
 ```
 
 ## Reading Outputs from Remote State
 
-```hcl
-# Use terraform_remote_state to read other modules' outputs
-# Terragrunt makes this easy with dependency blocks (preferred)
-# but you can also use direct remote state references:
+Use Terragrunt `dependency` blocks in `terragrunt.hcl`:
 
+```hcl
 dependency "networking" {
   config_path = "../networking"
 }
+```
 
-# Alternatively, for cross-repo dependencies:
+For cross-repo dependencies in OpenTofu code, use direct remote state references:
+
+```hcl
 data "terraform_remote_state" "shared" {
   backend = "s3"
   config = {
@@ -139,11 +145,11 @@ data "terraform_remote_state" "shared" {
 ```bash
 # Verify the generated backend.tf looks correct
 cd environments/prod/networking
-terragrunt init --terragrunt-log-level debug 2>&1 | grep -A 10 "Backend config"
+terragrunt init --log-level debug
 
-# Check the generated backend.tf file
-cat .terraform/environment
+# Check the generated backend.tf file and initialized backend metadata
 cat backend.tf
+grep -A 20 '"backend"' .terraform/terraform.tfstate
 ```
 
 ## Conclusion
