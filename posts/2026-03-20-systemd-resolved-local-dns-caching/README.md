@@ -8,7 +8,7 @@ Description: Configure and monitor systemd-resolved as a local DNS cache to redu
 
 ## Introduction
 
-`systemd-resolved` is a local DNS stub resolver and cache included with systemd. On modern Linux distributions (Ubuntu 17.10+, Fedora 33+), it runs by default, caching DNS responses to improve performance. Understanding how to configure, monitor, and optimize it improves DNS reliability and reduces latency for all applications on the system.
+`systemd-resolved` is a caching and validating DNS/DNSSEC stub resolver included with systemd. On modern Linux distributions (Ubuntu 17.10+, Fedora 33+), it runs by default, caching DNS responses to improve performance. Understanding how to configure, monitor, and optimize it improves DNS reliability and can reduce latency for applications that use the system resolver.
 
 ## Verify systemd-resolved is Active
 
@@ -34,7 +34,7 @@ ss -ulnp | grep 53
 resolvectl status
 # Shows:
 # - Current DNS server per interface
-# - DNS search domains
+# - DNS search/routing domains
 # - DNS over TLS status
 # - DNSSEC validation
 
@@ -55,23 +55,29 @@ cat > /etc/systemd/resolved.conf << 'EOF'
 DNS=1.1.1.1 8.8.8.8
 FallbackDNS=9.9.9.9 208.67.222.222
 
-# DNS search domains:
-Domains=~.    # Use for all domains (global fallback)
+# DNS routing domains:
+# ~. routes all domains to these DNS servers unless a more specific route matches.
+Domains=~.
 
 # DNS over TLS:
-DNSOverTLS=opportunistic   # Use TLS if available, plain DNS as fallback
+# Use TLS if available, plain DNS as fallback.
+DNSOverTLS=opportunistic
 # Options: no, opportunistic, yes
 
 # DNSSEC:
-DNSSEC=allow-downgrade   # Validate if available
+# Validate if available; allow downgrade if upstream DNSSEC support is missing.
+DNSSEC=allow-downgrade
 # Options: no, allow-downgrade, yes
 
 # Cache settings:
-Cache=yes                  # Enable caching (default)
-CacheFromLocalhost=no      # Don't cache queries from loopback
+# Enable caching.
+Cache=yes
+# Don't cache responses received from host-local DNS servers.
+CacheFromLocalhost=no
 
 # Stub listener:
-DNSStubListener=yes        # Listen on 127.0.0.53:53
+# Listen on local DNS stub addresses such as 127.0.0.53:53.
+DNSStubListener=yes
 EOF
 
 systemctl restart systemd-resolved
@@ -113,12 +119,12 @@ time resolvectl query google.com
 
 # Second query (cached):
 time resolvectl query google.com
-# Should be significantly faster on second query
+# May be faster if the answer is cached and still within its TTL
 
 # Watch cache fill:
 resolvectl statistics | grep "Current Cache Size"
 for i in $(seq 1 10); do
-    dig $(cat /dev/urandom | tr -dc 'a-z' | head -c 5).example.com > /dev/null 2>&1
+    resolvectl query "$(tr -dc 'a-z' < /dev/urandom | head -c 5).example.com" > /dev/null 2>&1
 done
 resolvectl statistics | grep "Current Cache Size"
 ```
@@ -127,7 +133,7 @@ resolvectl statistics | grep "Current Cache Size"
 
 ```bash
 # Set different DNS servers for different interfaces:
-# (These override global settings for that interface)
+# (These become per-link settings used by systemd-resolved routing)
 
 # Set DNS for a specific interface:
 resolvectl dns eth0 10.20.0.1 10.20.0.2
@@ -136,7 +142,7 @@ resolvectl dns eth0 10.20.0.1 10.20.0.2
 resolvectl domain eth0 company.internal internal
 
 # These changes are temporary (lost on restart)
-# For permanent per-interface config, use /etc/systemd/network/:
+# For permanent per-interface config with systemd-networkd, use /etc/systemd/network/:
 cat > /etc/systemd/network/10-eth0.network << 'EOF'
 [Match]
 Name=eth0
@@ -151,7 +157,7 @@ Address=10.20.0.50/24
 EOF
 ```
 
-## Disable for Specific Domains
+## Route Specific Domains
 
 ```bash
 # Route specific domains to specific DNS servers:
@@ -160,10 +166,12 @@ EOF
 resolvectl domain eth0 ~company.internal  # Route .company.internal to eth0's DNS
 resolvectl dns eth0 10.20.0.1
 
-# Or in /etc/systemd/resolved.conf:
-# Domains=~company.internal   # With ~ means "route this domain to this server"
+# Or in /etc/systemd/resolved.conf with the matching global DNS= setting:
+# DNS=10.20.0.1
+# Domains=~company.internal
+# With ~, matching names route to DNS servers in the same configuration scope.
 ```
 
 ## Conclusion
 
-`systemd-resolved` provides automatic DNS caching for all applications on the system. Monitor cache performance with `resolvectl statistics` - a hit rate above 80% means your TTLs and cache size are appropriate. Configure upstream DNS servers in `/etc/systemd/resolved.conf` with `DNSOverTLS=opportunistic` for privacy. For split-horizon DNS, route internal domains to internal DNS servers using `resolvectl domain interface ~internal.domain`. The `resolvectl flush-caches` command is the correct way to force fresh DNS lookups after record changes.
+`systemd-resolved` provides automatic DNS caching for applications that use it through NSS, D-Bus/Varlink, or the local stub. Monitor cache performance with `resolvectl statistics` - a high hit rate generally means repeated lookups are being served from cache, but expected values depend on workload and DNS TTLs. Configure upstream DNS servers in `/etc/systemd/resolved.conf` with `DNSOverTLS=opportunistic` for best-effort encryption; use `DNSOverTLS=yes` only with compatible servers and valid certificate names. For split-horizon DNS, route internal domains to internal DNS servers using `resolvectl domain interface ~internal.domain`. The `resolvectl flush-caches` command is the correct way to force fresh DNS lookups after record changes.
