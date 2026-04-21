@@ -8,7 +8,7 @@ Description: Assign a static IPv4 address, gateway, and DNS to a Linux bond inte
 
 ## Introduction
 
-After creating a bond interface, you need to assign it a static IPv4 address for consistent network addressing. Static IPs are preferred for servers, gateways, and infrastructure hosts. This guide covers both temporary (ip commands) and persistent (Netplan, nmcli) configuration methods.
+After creating a bond interface, you need to assign it a static IPv4 address for consistent network addressing. Static IPs are preferred for servers, gateways, and infrastructure hosts. This guide covers both temporary (ip commands) and persistent (Netplan, nmcli, systemd-networkd) configuration methods.
 
 ## Prerequisites
 
@@ -133,4 +133,4 @@ cat /proc/net/bonding/bond0 | grep "MII Status"
 
 ## Conclusion
 
-Assigning a static IP to a bond interface follows the same process as any other interface: use `ip addr add` for temporary configuration and your distribution's network manager for persistence. Always configure both the IP address and the default gateway. After a failover event, the IP remains on the bond interface regardless of which slave is active.
+Assigning a static IP to a bond interface follows the same process as any other interface: use `ip addr add` for temporary configuration and your distribution's network manager for persistence. Configure both the IP address and the default gateway when the bond should provide the host's default route. After a failover event, the IP remains on the bond interface regardless of which slave is active.
