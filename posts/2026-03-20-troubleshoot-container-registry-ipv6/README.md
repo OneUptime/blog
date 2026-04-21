@@ -16,13 +16,13 @@ Container registry IPv6 failures manifest as pull errors, authentication failure
 # Check IPv6 is functional
 
 ip -6 addr show | grep "scope global"
-ping6 -c 4 2001:4860:4860::8888
+ping -6 -c 4 2001:4860:4860::8888
 
 # Check default IPv6 route
 ip -6 route show default
 
 # Test connectivity to registry hostname
-ping6 registry.example.com
+ping -6 -c 4 registry.example.com
 ```
 
 ## Step 2: Verify DNS Resolution
@@ -56,7 +56,7 @@ curl -6 -u "username:password" \
 curl -6 https://registry-1.docker.io/v2/ 2>&1
 
 # Direct port test
-nc -6 -w 5 registry.example.com 443 && echo "Port 443 open"
+nc -6 -z -w 5 registry.example.com 443 && echo "Port 443 open"
 ```
 
 ## Step 4: Diagnose TLS/Certificate Errors
@@ -102,7 +102,7 @@ sudo ip6tables -L OUTPUT -n | grep -E "443|5000|8082"
 # Check if connection tracking is allowing return traffic
 sudo ip6tables -L FORWARD -n | grep "ESTABLISHED\|RELATED"
 
-# Temporarily disable firewall to test (revert after testing)
+# Temporarily set default policies to ACCEPT to test unmatched traffic (revert after testing)
 sudo ip6tables -P INPUT ACCEPT
 sudo ip6tables -P OUTPUT ACCEPT
 sudo ip6tables -P FORWARD ACCEPT
@@ -112,24 +112,24 @@ sudo ip6tables -P FORWARD ACCEPT
 
 ```bash
 # Run docker pull with debug output
-DOCKER_CLI_EXPERIMENTAL=enabled docker --debug pull registry.example.com/myapp:latest
+docker --debug pull registry.example.com/myapp:latest
 
 # Check Docker daemon logs
 sudo journalctl -u docker --since "10 minutes ago" | grep -i "error\|registry\|ipv6"
 
 # Use containerd directly for detailed errors
-ctr images pull --debug registry.example.com/myapp:latest
+ctr --debug images pull registry.example.com/myapp:latest
 ```
 
 ## Common Error Messages and Solutions
 
 ```bash
 # Error: "Get https://registry.example.com/v2/: dial tcp: lookup registry.example.com: no such host"
-# Cause: DNS not returning IPv6 for registry
-# Fix: Use IP directly or add AAAA record
+# Cause: DNS is not resolving the registry name, or no AAAA record exists when forcing IPv6
+# Fix: Correct DNS, add an AAAA record, or use an IPv6 literal if TLS configuration permits it
 docker pull [2001:db8::1]:5000/myapp:latest
 
-# Error: "Get https://registry.example.com/v2/: dial tcp [::]:443: connect: connection refused"
+# Error: "Get https://registry.example.com/v2/: dial tcp [2001:db8::1]:443: connect: connection refused"
 # Cause: Registry not listening on IPv6 port 443
 # Fix: Configure registry to listen on IPv6
 
@@ -154,6 +154,7 @@ kubectl describe pod mypod | grep -A 20 "Events:"
 
 # Test from within the cluster
 kubectl run debug --rm -it \
+  --restart=Never \
   --image=curlimages/curl \
   -- curl -6 https://registry.example.com/v2/
 
