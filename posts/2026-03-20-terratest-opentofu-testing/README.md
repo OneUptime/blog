@@ -8,40 +8,48 @@ Description: Learn how to write Terratest integration tests for OpenTofu modules
 
 ## Introduction
 
-Learn how to write Terratest integration tests for OpenTofu modules using Go to validate infrastructure deployments. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
+Learn how to write Terratest integration tests for OpenTofu modules using Go to validate infrastructure deployments. Terratest can run the OpenTofu CLI, deploy real infrastructure, validate the result with provider APIs, and clean up the test resources afterward.
 
 ## Prerequisites
 
-- OpenTofu v1.6+ installed
+- OpenTofu v1.9+ installed
+- Go 1.21.1 or later installed
 - Basic knowledge of OpenTofu concepts
-- Relevant cloud credentials configured
+- Relevant AWS credentials configured
 
 ## Step 1: Set Up the Environment
 
 ```bash
-# Verify OpenTofu installation
-
+# Verify OpenTofu and Go installation
 tofu version
+go version
+
+# Create a Go test module
+mkdir -p test
+cd test
+go mod init github.com/mycompany/infrastructure/test
+
+# Add Terratest dependencies
+go get github.com/gruntwork-io/terratest/modules/terraform
+go get github.com/gruntwork-io/terratest/modules/aws
+go get github.com/gruntwork-io/terratest/modules/random
+go get github.com/stretchr/testify/require
 
 # Set up required environment variables
-export TF_LOG=INFO  # Enable logging
 export TF_INPUT=false  # Disable interactive input
+export TF_IN_AUTOMATION=true  # Tell OpenTofu it is running in automation
 
-# Configure cloud credentials
-# AWS
+# Configure AWS credentials for the VPC test
 export AWS_PROFILE=your-profile
-# Azure
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-# GCP
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+export AWS_REGION=us-east-1
 ```
 
 ## Step 2: Configure Your OpenTofu Project
 
 ```hcl
-# main.tf
+# examples/vpc/main.tf
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -49,14 +57,33 @@ terraform {
       version = "~> 5.0"
     }
   }
+}
 
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+variable "aws_region" {
+  description = "AWS region for the test deployment"
+  type        = string
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block for the test VPC"
+  type        = string
+
+  validation {
+    condition     = can(cidrnetmask(var.vpc_cidr))
+    error_message = "vpc_cidr must be a valid IPv4 CIDR block."
+  }
+}
+
+variable "name_prefix" {
+  description = "Unique name prefix for test resources"
+  type        = string
+}
+
+locals {
+  common_tags = {
+    Name        = var.name_prefix
+    ManagedBy   = "OpenTofu"
+    Environment = "test"
   }
 }
 
@@ -64,36 +91,92 @@ provider "aws" {
   region = var.aws_region
 
   default_tags {
-    tags = {
-      ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
-    }
+    tags = local.common_tags
   }
+}
+
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+}
+
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+
+output "vpc_cidr" {
+  value = aws_vpc.main.cidr_block
 }
 ```
 
 ## Step 3: Implement the Core Feature
 
+```go
+// test/vpc_test.go
+package test
+
+import (
+    "fmt"
+    "strings"
+    "testing"
+
+    "github.com/gruntwork-io/terratest/modules/aws"
+    "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
+    "github.com/stretchr/testify/require"
+)
+
+func TestVpcModule(t *testing.T) {
+    t.Parallel()
+
+    awsRegion := "us-east-1"
+    vpcCidr := "10.99.0.0/16"
+    namePrefix := fmt.Sprintf("terratest-%s", strings.ToLower(random.UniqueId()))
+
+    tofuOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+        TerraformBinary: "tofu",
+        TerraformDir:    "../examples/vpc",
+
+        Vars: map[string]interface{}{
+            "aws_region":  awsRegion,
+            "vpc_cidr":    vpcCidr,
+            "name_prefix": namePrefix,
+        },
+
+        EnvVars: map[string]string{
+            "AWS_DEFAULT_REGION": awsRegion,
+        },
+    })
+
+    defer terraform.Destroy(t, tofuOptions)
+
+    terraform.InitAndApply(t, tofuOptions)
+
+    vpcID := terraform.Output(t, tofuOptions, "vpc_id")
+    require.NotEmpty(t, vpcID)
+
+    vpc := aws.GetVpcById(t, vpcID, awsRegion)
+    require.NotNil(t, vpc.CidrBlock)
+    require.Equal(t, vpcCidr, *vpc.CidrBlock)
+    require.Equal(t, namePrefix, vpc.Tags["Name"])
+}
+```
+
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
+# Download any transitive Go dependencies
+cd test
+go mod tidy
 
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
-
-# Review the plan
-tofu show tfplan
-
-# Apply the saved plan
-tofu apply tfplan
+# Run the integration test
+go test -v -run TestVpcModule -timeout 30m -count=1
 ```
 
 ## Step 4: Set Up Automation
 
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+# .github/workflows/infrastructure-tests.yml
+name: OpenTofu Terratest
 
 on:
   push:
@@ -104,119 +187,76 @@ on:
 permissions:
   id-token: write
   contents: read
-  pull-requests: write
 
 jobs:
-  plan:
+  terratest:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+          cache-dependency-path: test/go.sum
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "1.11.6"
+          tofu_wrapper: false
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+      - name: Run Terratest
+        working-directory: test
+        env:
+          TF_INPUT: "false"
+          TF_IN_AUTOMATION: "true"
+        run: go test -v -timeout 30m -count=1 ./...
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
-# Check current state
-tofu show
+# Run all Terratest tests with verbose output
+cd test
+go test -v -timeout 30m -count=1 ./...
 
-# List all managed resources
-tofu state list
+# Run a specific test
+go test -v -run TestVpcModule -timeout 30m -count=1
 
-# Verify resource configuration
-tofu state show aws_instance.main
+# Enable OpenTofu debug logging for a failing test
+TF_LOG=DEBUG go test -v -run TestVpcModule -timeout 30m -count=1
 
-# Check for drift
-tofu plan -refresh-only
+# Inspect state if a debug run is interrupted before cleanup
+tofu -chdir=../examples/vpc state list
 ```
 
 ## Step 6: Implement Best Practices
 
-```hcl
-# Use locals for computed values
-locals {
-  name_prefix = "${var.project}-${var.environment}"
-  common_tags = {
-    Project     = var.project
-    Environment = var.environment
-    ManagedBy   = "OpenTofu"
-    Owner       = var.team_email
-  }
-}
+```bash
+# Keep integration tests uncached and bounded
+go test -v -count=1 -timeout 30m ./...
 
-# Use validation for variables
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-
-  validation {
-    condition     = contains(["dev", "staging", "production"], var.environment)
-    error_message = "Environment must be dev, staging, or production."
-  }
-}
+# Run tests with a dedicated test account or profile
+AWS_PROFILE=testing go test -v -count=1 -timeout 30m ./...
 ```
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+1. Enable debug logging: `TF_LOG=DEBUG go test -v -run TestVpcModule -timeout 30m -count=1`
+2. Check provider credentials: Verify environment variables or run `aws sts get-caller-identity`
+3. Review state consistency: Run `tofu -chdir=examples/vpc plan -refresh-only` before making manual cleanup changes
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
 
-You have successfully implemented How to Use OpenTofu with Terratest for Integration Testing. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented OpenTofu integration testing with Terratest. This approach provides a repeatable, auditable, and collaborative infrastructure testing workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
