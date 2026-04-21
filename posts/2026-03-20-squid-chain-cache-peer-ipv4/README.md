@@ -35,11 +35,14 @@ cache_peer 10.0.1.10 parent 3128 0 no-query default
 never_direct allow all
 
 acl clients src 192.168.1.0/24
+http_access allow localhost manager
+http_access deny manager
 http_access allow clients
 http_access deny all
 
 # Cache size: small, local cache
 cache_mem 256 MB
+cache_dir ufs /var/spool/squid 5000 16 256
 maximum_object_size 10 MB
 ```
 
@@ -57,6 +60,8 @@ never_direct allow all
 
 # Allow connections from the edge proxy
 acl edge_proxies src 192.168.1.10/32
+http_access allow localhost manager
+http_access deny manager
 http_access allow edge_proxies
 http_access deny all
 
@@ -78,36 +83,42 @@ http_port 3128
 
 # Allow connections only from the regional proxy
 acl regional_proxy src 10.0.1.10/32
+http_access allow localhost manager
+http_access deny manager
 http_access allow regional_proxy
 http_access deny all
 
 # Largest cache at the internet tier
 cache_mem 2048 MB
 cache_dir ufs /var/spool/squid 50000 16 256
+maximum_object_size 100 MB
 ```
 
 ## Testing the Chain
 
 ```bash
-# Request via the edge proxy; should traverse the full chain on a cold cache
-curl -x http://192.168.1.10:3128 http://example.com/largefile.iso
+# Use a cacheable HTTP URL below the smallest configured maximum_object_size
+TEST_URL="http://example.com/"
 
-# On cache hit (repeat request):
-curl -x http://192.168.1.10:3128 http://example.com/largefile.iso
+# Request via the edge proxy; a cold cache traverses the full chain
+curl -x http://192.168.1.10:3128 "$TEST_URL"
+
+# Repeat the request; if the response is cacheable, a tier should serve a hit
+curl -x http://192.168.1.10:3128 "$TEST_URL"
 
 # Check cache hit status in access logs on each tier
-grep "example.com" /var/log/squid/access.log
-# Look for: TCP_HIT (served from this tier's cache), TCP_MISS (forwarded upstream)
+grep -F "$TEST_URL" /var/log/squid/access.log
+# Look for: TCP_HIT (served from this tier's cache), TCP_MISS (fetched from parent/origin)
 ```
 
 ## Monitoring Peer Statistics
 
 ```bash
-# View cache peer connections on the edge proxy
-squidclient -h 192.168.1.10 -p 3128 mgr:server_list
+# View peer cache statistics on the edge proxy
+curl -s http://127.0.0.1:3128/squid-internal-mgr/server_list
 
-# Show peer bytes transferred
-squidclient -h 192.168.1.10 -p 3128 mgr:5min | grep -i peer
+# View 5-minute cache counters while testing traffic
+curl -s http://127.0.0.1:3128/squid-internal-mgr/5min
 ```
 
 ## Key Takeaways
