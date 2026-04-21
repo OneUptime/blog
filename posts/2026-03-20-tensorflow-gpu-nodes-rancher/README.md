@@ -15,12 +15,19 @@ TensorFlow is one of the most popular deep learning frameworks, and GPU accelera
 - Rancher cluster with NVIDIA GPU nodes
 - NVIDIA GPU Operator installed (v23.9+)
 - Persistent storage for datasets and model artifacts
+- Kubeflow Training Operator v1 installed for the TFJob example
+- ConfigMap named `training-scripts` in the `ml-training` namespace with `train.py` and `distributed_train.py`
 
 ## Step 1: Prepare Training Data Storage
 
 ```yaml
 # training-pvc.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-training
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -32,7 +39,7 @@ spec:
   resources:
     requests:
       storage: 100Gi
-  storageClassName: nfs-storage   # Or Longhorn, Ceph
+  storageClassName: nfs-storage   # Or another RWX-capable class such as Longhorn RWX or CephFS
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -95,8 +102,6 @@ spec:
             cpu: "4"
         
         env:
-        - name: CUDA_VISIBLE_DEVICES
-          value: "all"
         - name: TF_FORCE_GPU_ALLOW_GROWTH
           value: "true"            # Don't allocate all GPU memory at once
         
@@ -145,12 +150,19 @@ spec:
                 nvidia.com/gpu: "2"
                 memory: "32Gi"
                 cpu: "8"
+            volumeMounts:
+            - name: training-scripts
+              mountPath: /app
           nodeSelector:
             nvidia.com/gpu.present: "true"
           tolerations:
           - key: nvidia.com/gpu
             operator: Exists
             effect: NoSchedule
+          volumes:
+          - name: training-scripts
+            configMap:
+              name: training-scripts
     
     Worker:
       replicas: 3         # 3 workers
@@ -163,13 +175,20 @@ spec:
             command: ["python", "/app/distributed_train.py"]
             resources:
               limits:
-                nvidia.com/gpu: "2"    # 2 GPUs per worker = 6 GPUs total
+                nvidia.com/gpu: "2"    # 2 GPUs per worker = 6 worker GPUs
+            volumeMounts:
+            - name: training-scripts
+              mountPath: /app
           nodeSelector:
             nvidia.com/gpu.present: "true"
           tolerations:
           - key: nvidia.com/gpu
             operator: Exists
             effect: NoSchedule
+          volumes:
+          - name: training-scripts
+            configMap:
+              name: training-scripts
 ```
 
 ## Step 4: TensorFlow Model Serving
@@ -180,7 +199,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tensorflow-serving
-  namespace: ml-inference
+  namespace: ml-training
 spec:
   replicas: 2
   selector:
@@ -225,7 +244,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: tensorflow-serving
-  namespace: ml-inference
+  namespace: ml-training
 spec:
   selector:
     app: tensorflow-serving
@@ -240,7 +259,7 @@ spec:
 
 ```bash
 # Follow training logs
-kubectl logs -n ml-training   $(kubectl get pods -n ml-training -l job-name=tensorflow-training -o name)   --follow
+kubectl logs -n ml-training -l job-name=tensorflow-training --follow
 
 # Check GPU utilization during training
 kubectl exec -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1)   -- nvidia-smi dmon -s u -d 5
