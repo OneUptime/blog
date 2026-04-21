@@ -14,10 +14,10 @@ A full TLS handshake requires 1-2 round trips before any application data is sen
 
 | Mechanism | Storage | Security | TLS 1.3 Support |
 |---|---|---|---|
-| Session Cache (IDs) | Server-side | Good (server controls validity) | Yes |
-| Session Tickets | Client-side (encrypted) | Weaker (ticket key must be protected) | Limited (0-RTT) |
+| Session Cache (IDs) | Server-side | Good (server controls validity) | No (legacy TLS 1.2 and earlier) |
+| Session Tickets | Client-side (encrypted) | Weaker (ticket key must be protected) | Yes (PSK resumption; 0-RTT optional) |
 
-TLS 1.3 uses PSK (Pre-Shared Key) resumption, which supersedes both mechanisms.
+TLS 1.3 uses PSK (Pre-Shared Key) resumption, commonly provisioned with `NewSessionTicket` messages, which supersedes legacy session IDs.
 
 ## Step 1: Configure Session Cache in Nginx
 
@@ -31,29 +31,31 @@ ssl_session_cache   shared:SSL:10m;
 # Session timeout - how long to keep session parameters (default: 5m)
 ssl_session_timeout 1d;   # 1 day for returning visitors
 
-# Disable session tickets for better security (forward secrecy)
+# Disable ticket-based resumption if you only want server-side session IDs.
+# Note: this disables TLS 1.3 ticket/PSK resumption in Nginx.
 ssl_session_tickets off;
 ```
 
-The `shared` keyword makes the cache shared across all worker processes-essential for multi-worker Nginx deployments.
+The `shared` keyword makes the cache shared across all worker processes-essential for multi-worker Nginx deployments. With tickets disabled, this primarily helps TLS 1.2 and older clients; TLS 1.3 resumption uses PSKs delivered by tickets.
 
 ## Step 2: Configure Session Tickets (Optional)
 
 Session tickets move storage to the client side, encrypted with a server-held ticket key:
 
+```bash
+# Generate a ticket key (rotate at least every 24 hours)
+openssl rand 80 > /etc/nginx/ssl_ticket.key
+```
+
 ```nginx
 # Enable session tickets (less secure than session IDs but scales better)
 ssl_session_tickets on;
 
-# For security, rotate the session ticket key regularly
-# Generate a ticket key (rotate at least every 24 hours)
-openssl rand 80 > /etc/nginx/ssl_ticket.key
-
-# Reference in nginx (Nginx 1.19.4+)
+# Reference in nginx (Nginx 1.5.7+)
 # ssl_session_ticket_key /etc/nginx/ssl_ticket.key;
 ```
 
-**Security note:** If the ticket key is compromised, past sessions can be decrypted. Rotate ticket keys regularly.
+**Security note:** If the ticket key is compromised, captured ticket-protected session state can be decrypted and tickets can be reused until they expire or the key is rotated. Rotate ticket keys regularly.
 
 ## Step 3: Configure Session Resumption in Apache
 
@@ -70,12 +72,13 @@ SSLSessionTickets off
 
 ## Step 4: Verify Session Resumption Is Working
 
-Test with `openssl s_client` - run the same command twice and look for the "Reused" indicator:
+Test with `openssl s_client` and look for the "Reused" indicator:
 
 ```bash
-# First connection - establishes session
-openssl s_client -connect example.com:443 -reconnect 2>&1 | \
-  grep -E "Session-ID|Reused|TLS session ticket"
+# Server-side session ID cache test for TLS 1.2
+openssl s_client -connect example.com:443 -servername example.com \
+  -tls1_2 -no_ticket -reconnect 2>&1 | \
+  grep -E "Session-ID|^(New|Reused),"
 
 # Output on first connection:
 # Session-ID: A1B2C3D4...
@@ -83,27 +86,31 @@ openssl s_client -connect example.com:443 -reconnect 2>&1 | \
 # Master-Key: ...
 
 # Subsequent connections should show:
-# Reused, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
+# Reused, TLSv1.2, Cipher is ECDHE-RSA-AES256-GCM-SHA384
 # ^^^^^^ "Reused" confirms session resumption
 
-# More explicit test
+# Ticket/PSK resumption test (useful for TLS 1.3)
+# Keep the first connection open long enough to receive a NewSessionTicket, then quit.
 openssl s_client -connect example.com:443 \
-  -sess_out /tmp/session.txt < /dev/null 2>&1
+  -servername example.com -sess_out /tmp/session.txt
 
 openssl s_client -connect example.com:443 \
-  -sess_in /tmp/session.txt 2>&1 | grep -E "Reused|Session-ID"
+  -servername example.com -sess_in /tmp/session.txt 2>&1 | grep -E "^(New|Reused),|Session-ID"
 ```
 
 ## Step 5: Monitor Session Resumption Rate
 
-Nginx logs don't show session resumption directly. Use SNMP or metrics:
+Default Nginx logs don't show session resumption directly. Add `$ssl_session_reused` to a custom log format, where `r` means reused and `.` means a new session:
+
+```nginx
+log_format tls '$remote_addr $ssl_protocol $ssl_cipher $ssl_session_reused "$request"';
+access_log /var/log/nginx/access.log tls;
+```
 
 ```bash
-# Check Nginx stub_status for connection reuse (indirect measure)
-curl http://localhost/nginx_status
-
-# Or use OpenSSL statistics
-openssl s_client -connect example.com:443 -reconnect -no_ticket 2>&1 | \
+# Or use OpenSSL for a spot check of TLS 1.2 session-ID reuse
+openssl s_client -connect example.com:443 -servername example.com \
+  -tls1_2 -no_ticket -reconnect 2>&1 | \
   grep -c "^Reused"
 ```
 
@@ -112,7 +119,7 @@ openssl s_client -connect example.com:443 -reconnect -no_ticket 2>&1 | \
 TLS 1.3 supports 0-RTT data, where resumed sessions can send application data immediately:
 
 ```nginx
-# Enable early data / 0-RTT (Nginx 1.15.3+ with OpenSSL 1.1.1+)
+# Enable early data / 0-RTT (Nginx 1.15.4+ with OpenSSL 1.1.1+)
 ssl_early_data on;
 
 # IMPORTANT: 0-RTT is vulnerable to replay attacks
@@ -128,7 +135,7 @@ In your application, reject non-idempotent requests if `Early-Data: 1` is presen
 Estimate the cache size needed:
 
 ```text
-Cache entries needed = (peak concurrent sessions) * (session duration in seconds / session timeout)
+Cache entries needed = new TLS sessions per second * desired reuse window in seconds
 Memory per session ≈ 256 bytes
 10MB cache ≈ 40,000 sessions
 
@@ -139,4 +146,4 @@ ssl_session_cache shared:SSL:150m;
 
 ## Conclusion
 
-TLS session resumption reduces handshake overhead for returning clients. Use server-side session caching (`ssl_session_cache shared:SSL:10m`) with a 24-hour timeout for balance between performance and security. Disable session tickets if forward secrecy is a priority, or rotate the ticket key regularly if you enable them. Verify resumption with `openssl s_client -reconnect` and look for the "Reused" output.
+TLS session resumption reduces handshake overhead for returning clients. Use server-side session caching (`ssl_session_cache shared:SSL:10m`) with a 24-hour timeout for TLS 1.2 session-ID resumption. For TLS 1.3 resumption, use ticket/PSK resumption and rotate the ticket key regularly if you configure one explicitly. Verify resumption with `openssl s_client` and look for the "Reused" output.
