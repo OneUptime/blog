@@ -13,26 +13,26 @@ Description: Use the ss command to display IPv6 socket statistics, monitor activ
 ## Basic IPv6 Socket Commands
 
 ```bash
-# Show all IPv6 TCP connections
+# Show active IPv6 TCP connections
 
 ss -t6
 
-# Show all IPv6 listening sockets
+# Show IPv6 TCP listening sockets
 ss -tl6
 
 # Show all IPv6 UDP sockets
-ss -u6
+ss -ua6
 
-# Show all IPv6 sockets (TCP + UDP + listening)
+# Show all IPv6 TCP and UDP sockets, including listening sockets
 ss -tua6
 
-# Show IPv6 with process information
+# Show IPv6 TCP sockets with process information
 ss -tp6
 
-# Show IPv6 with numeric addresses (no DNS resolution)
+# Show IPv6 TCP sockets with numeric addresses (no DNS resolution)
 ss -tn6
 
-# Show IPv6 listening sockets with process names
+# Show IPv6 TCP listening sockets with process names
 ss -tlnp6
 ```
 
@@ -43,10 +43,10 @@ ss -tlnp6
 ss -tn6 'dport == :443 or sport == :443'
 
 # Show IPv6 connections to a specific address
-ss -tn6 dst 2001:db8::1
+ss -tn6 dst '[2001:db8::1]'
 
 # Show IPv6 connections from a specific source
-ss -tn6 src 2001:db8::100
+ss -tn6 src '[2001:db8::100]'
 
 # Show only ESTABLISHED IPv6 connections
 ss -tn6 state established
@@ -58,7 +58,7 @@ ss -tn6 state time-wait
 ss -tn6 state syn-recv
 
 # Show all non-established states
-ss -tn6 state all '! state established'
+ss -tn6 state all exclude established
 ```
 
 ## Understanding ss Output for IPv6
@@ -75,7 +75,7 @@ Key fields:
 - `[::]:22` - listening on all IPv6 addresses (wildcard)
 - `[::1]:25` - listening on IPv6 loopback only
 - `[2001:db8::1]:443` - connected from specific global IPv6 address
-- `Recv-Q` / `Send-Q` - bytes waiting in receive/send buffers
+- `Recv-Q` / `Send-Q` - queued receive/send bytes for established sockets; for LISTEN sockets, current and maximum backlog counts
 
 ## Monitoring IPv6 Service Ports
 
@@ -86,8 +86,8 @@ ss -tlnp6 'sport == :80'
 # Check if nginx/apache is listening on IPv6
 ss -tlnp6 | grep ':80\|:443'
 
-# Show all services listening on IPv6
-ss -tlnp6
+# Show all TCP and UDP services listening on IPv6
+ss -tulnp6
 
 # Show listening on specific IPv6 address
 ss -tlnp6 src '[2001:db8::1]'
@@ -106,7 +106,7 @@ echo "=== IPv6 Socket Summary ==="
 
 echo ""
 echo "Listening services (IPv6):"
-ss -tlnp6 | grep -v "^Netid" | awk '{
+ss -tulnp6 | grep -v "^Netid" | awk '{
     gsub(/\[/, "", $5); gsub(/\]/, "", $5)
     split($5, a, ":")
     port = a[length(a)]
@@ -135,9 +135,9 @@ ss -tlnp | grep ':80'
 # If you see only [::]:80 → may be dual-stack (IPV6_V6ONLY=0)
 
 # Check via /proc
-cat /proc/net/tcp6  # Raw IPv6 TCP socket table
+cat /proc/net/tcp6  # Raw IPv6 TCP socket table (deprecated; prefer ss for normal use)
 ```
 
 ## Conclusion
 
-`ss -t6`, `ss -u6`, and `ss -tl6` are the essential commands for IPv6 socket monitoring on Linux. The `-6` flag restricts output to IPv6 sockets, `-n` prevents DNS resolution, and `-p` shows the owning process. Filter expressions like `'dport == :443'` and `state established` narrow results to exactly what you need. Use `ss` instead of `netstat` for better performance and more detailed socket information.
+`ss -t6`, `ss -ua6`, and `ss -tl6` are the essential commands for IPv6 socket monitoring on Linux. The `-6` flag restricts output to IPv6 sockets, `-n` prevents DNS resolution, and `-p` shows the owning process. Filter expressions like `'dport == :443'` and `state established` narrow results to exactly what you need. Use `ss` instead of `netstat` for better performance and more detailed socket information.
