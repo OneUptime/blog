@@ -19,7 +19,7 @@ Managing Rancher through the UI is fine for small deployments but becomes error-
 ## Step 1: Create a Rancher API Key
 
 1. Log into Rancher UI
-2. Go to **User Settings > API Keys**
+2. Go to **User Avatar > Account & API Keys**
 3. Create a new API key and note the Access Key and Secret Key
 
 ## Step 2: Configure the Rancher2 Provider
@@ -31,7 +31,7 @@ terraform {
   required_providers {
     rancher2 = {
       source  = "rancher/rancher2"
-      version = "~> 4.0"
+      version = "~> 14.0"
     }
   }
 }
