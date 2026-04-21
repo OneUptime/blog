@@ -8,7 +8,7 @@ Description: Learn how to manage SSH key pairs with OpenTofu - generating keys w
 
 ## Introduction
 
-SSH key pairs authenticate access to EC2 instances. OpenTofu manages key pairs declaratively - generating new RSA/ECDSA keys, importing existing public keys into AWS, and securely storing private key material in Secrets Manager. Using code-managed keys ensures consistent key distribution across environments and enables key rotation without manual steps.
+SSH key pairs authenticate access to EC2 instances. OpenTofu manages key pairs declaratively - generating new RSA/ED25519 keys, importing existing public keys into AWS, and storing private key material in Secrets Manager. Using code-managed keys ensures consistent key distribution across environments and enables key rotation without manual steps.
 
 ## Generate Key Pair with TLS Provider
 
@@ -42,6 +42,8 @@ resource "aws_secretsmanager_secret_version" "app_private_key" {
 }
 ```
 
+This stores a copy of the private key in Secrets Manager, but the generated private key and `secret_string` value are still present in OpenTofu state. Treat state as sensitive and protect the backend accordingly.
+
 ## Import Existing Public Key
 
 ```hcl
@@ -70,32 +72,41 @@ resource "aws_instance" "app" {
 }
 ```
 
-## ECDSA Key (More Efficient than RSA)
+## ED25519 Key (More Efficient than RSA for Linux)
+
+Amazon EC2 supports ED25519 key pairs for Linux instances. Use RSA for Windows instances.
 
 ```hcl
-resource "tls_private_key" "app_ecdsa" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P256"
+resource "tls_private_key" "app_ed25519" {
+  algorithm = "ED25519"
 }
 
-resource "aws_key_pair" "app_ecdsa" {
-  key_name   = "${var.environment}-app-ecdsa-key"
-  public_key = tls_private_key.app_ecdsa.public_key_openssh
+resource "aws_key_pair" "app_ed25519" {
+  key_name   = "${var.environment}-app-ed25519-key"
+  public_key = tls_private_key.app_ed25519.public_key_openssh
 }
 ```
 
 ## Key Rotation Strategy
 
 ```hcl
-# Use a version suffix to support rotation without downtime
+# Use a version suffix and replacement trigger to rotate the generated key
 variable "key_version" {
   description = "Increment to rotate SSH keys"
   default     = "v1"
 }
 
+resource "terraform_data" "key_rotation" {
+  input = var.key_version
+}
+
 resource "tls_private_key" "app_versioned" {
   algorithm = "RSA"
   rsa_bits  = 4096
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.key_rotation]
+  }
 }
 
 resource "aws_key_pair" "app_versioned" {
@@ -113,6 +124,8 @@ resource "aws_launch_template" "app" {
 ```
 
 ## Retrieve Private Key from Secrets Manager (for CI/CD)
+
+Retrieving the secret through an OpenTofu data source exposes the decrypted private key to OpenTofu during the run and stores it in state. Use this pattern only where state access is tightly controlled.
 
 ```hcl
 # Data source to retrieve the key in another module or pipeline
@@ -167,4 +180,4 @@ output "private_key_secret_arn" {
 
 ## Conclusion
 
-Managing SSH keys with OpenTofu's TLS provider gives you code-managed key generation and rotation. Store private key material exclusively in Secrets Manager - never in OpenTofu state files (state is stored encrypted in S3 with state encryption enabled). Prefer ECDSA P256 over RSA for better performance with equivalent security. Rotate keys by incrementing a `key_version` variable, which creates a new key pair and triggers an instance refresh in the Auto Scaling Group to deploy instances with the new key.
+Managing SSH keys with OpenTofu's TLS provider gives you code-managed key generation and rotation. Storing a copy in Secrets Manager centralizes retrieval, but `tls_private_key`, `aws_secretsmanager_secret_version.secret_string`, and Secrets Manager data sources can all place private key material in OpenTofu state. Protect state with a remote backend, S3 backend encryption, and/or OpenTofu state encryption, or generate/import private keys outside OpenTofu for production. Prefer ED25519 for Linux instances when supported, and use RSA for Windows. Rotate keys by incrementing a `key_version` variable, which replaces the generated key and creates a new EC2 key pair; then roll out the new launch template version with an Auto Scaling Group instance refresh.
