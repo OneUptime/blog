@@ -8,7 +8,7 @@ Description: Learn how to use the `-test-directory` option in OpenTofu to specif
 
 ## Introduction
 
-By default, `tofu test` searches for `.tftest.hcl` and `.tofutest.hcl` files in the current working directory. The `-test-directory` option lets you point OpenTofu at a different directory, which is essential for keeping tests organised in larger modules and mono-repos.
+By default, `tofu test` searches for `*.tftest.hcl`, `*.tftest.json`, `*.tofutest.hcl`, and `*.tofutest.json` files in the current working directory and in the default `tests` directory. The `-test-directory` option lets you point OpenTofu at a different relative test directory, which is essential for keeping tests organised in larger modules and mono-repos.
 
 ## Basic Usage
 
@@ -17,8 +17,8 @@ By default, `tofu test` searches for `.tftest.hcl` and `.tofutest.hcl` files in 
 
 tofu test -test-directory=tests
 
-# Use an absolute path
-tofu test -test-directory=/ci/integration-tests
+# Use a CI workspace-relative path
+tofu test -test-directory=ci/integration-tests
 
 # Relative path from the working directory
 tofu test -test-directory=../shared-tests
@@ -86,23 +86,22 @@ tests/
 └── iam.tftest.hcl
 ```
 
-Reference fixtures from within test files:
+Use fixture variable files with `-var-file` when you run the tests:
+
+```bash
+tofu test -test-directory=tests -var-file=tests/fixtures/dev.tfvars
+```
+
+Then reference the variables in your test file:
 
 ```hcl
 # tests/s3_bucket.tftest.hcl
-
-# Use a variables file from the fixtures directory
-# (OpenTofu resolves paths relative to the test file)
-variables {
-  bucket_name = "test-bucket-unique-12345"
-  region      = "us-east-1"
-}
 
 run "basic_bucket_creation" {
   command = plan
 
   assert {
-    condition     = aws_s3_bucket.this.bucket == "test-bucket-unique-12345"
+    condition     = aws_s3_bucket.this.bucket == var.bucket_name
     error_message = "Bucket name mismatch"
   }
 }
