@@ -8,7 +8,7 @@ Description: Understand the TCP three-way handshake process, the role of SYN, SY
 
 ## Introduction
 
-The TCP three-way handshake is the connection establishment procedure used by every TCP connection. It synchronizes sequence numbers between client and server before any data is exchanged, ensuring reliable and ordered communication. Understanding this process is fundamental to diagnosing connection failures at the transport layer.
+The TCP three-way handshake is the normal connection establishment procedure used by TCP. It synchronizes sequence numbers between client and server before data transfer begins in a normal connection, ensuring reliable and ordered communication. Understanding this process is fundamental to diagnosing connection failures at the transport layer.
 
 ## The Three-Way Handshake
 
@@ -20,21 +20,21 @@ sequenceDiagram
     C->>S: SYN (seq=100, ack=0)
     Note right of S: Server receives SYN, knows client wants to connect
     S->>C: SYN-ACK (seq=300, ack=101)
-    Note left of C: Client receives SYN-ACK, connection half-open
+    Note left of C: Client receives SYN-ACK and sends final ACK
     C->>S: ACK (seq=101, ack=301)
     Note right of S: Connection ESTABLISHED on both sides
 ```
 
-1. **SYN**: Client picks a random Initial Sequence Number (ISN) and sends SYN
-2. **SYN-ACK**: Server picks its own ISN, acknowledges client's ISN+1
+1. **SYN**: Client selects an unpredictable Initial Sequence Number (ISN) and sends SYN
+2. **SYN-ACK**: Server selects its own ISN, acknowledges client's ISN+1
 3. **ACK**: Client acknowledges server's ISN+1, connection established
 
 ## Capturing the Handshake
 
 ```bash
-# Capture a TCP handshake on port 80
+# Capture TCP packets with SYN or ACK flags on port 80
 
-tcpdump -i eth0 -n 'tcp port 80 and (tcp-syn or tcp-ack)'
+tcpdump -i eth0 -n 'tcp port 80 and (tcp[tcpflags] & (tcp-syn|tcp-ack) != 0)'
 
 # More readable: capture with sequence numbers
 tcpdump -i eth0 -n -S 'tcp port 80'
@@ -74,7 +74,7 @@ tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0'
 
 ```bash
 # Check connection states on the server
-ss -tn state syn-received
+ss -tn state syn-recv
 # Shows half-open connections waiting for the third ACK
 
 ss -tn state established
@@ -89,18 +89,18 @@ ss -tn state syn-sent
 
 ```bash
 # Failure 1: SYN reaches server but no SYN-ACK returns
-# -> Server firewall blocking outbound SYN-ACK, or server down
+# -> Server firewall/host stack drops it, or the return path blocks the SYN-ACK
 tcpdump -i eth0 -n 'tcp[tcpflags] & tcp-syn != 0'   # Watch for SYN arriving
 
 # Failure 2: SYN-ACK arrives but connection still fails
-# -> Client firewall blocking inbound SYN-ACK, or client RSTs the connection
+# -> Client firewall may block it, client may RST, or the final ACK may be dropped
 tcpdump -i eth0 -n 'tcp port 80'   # Watch the full exchange
 
-# Failure 3: Connection resets immediately after ACK
-# -> Application rejected the connection (closed port)
-# -> RST appears right after the third ACK
+# Failure 3: RST appears during or right after setup
+# -> RST instead of SYN-ACK usually means no listener or an active reject
+# -> RST after the third ACK usually means the application or proxy aborted
 ```
 
 ## Conclusion
 
-The TCP three-way handshake is both a security mechanism (ISN prevents spoofing) and a connection setup protocol (window and option negotiation). Handshake failures are always visible in packet captures - the flag sequence tells you exactly which phase failed and which side is responsible. A missing SYN-ACK points to the server or its network; a missing final ACK or an immediate RST points to the client side.
+The TCP three-way handshake is primarily a connection setup protocol (sequence synchronization, window advertisement, and option negotiation); unpredictable ISNs also reduce off-path spoofing risk. In a well-placed packet capture, handshake failures are usually visible in the flag sequence. A missing SYN-ACK points to the server side or return path; a missing final ACK points to the client side or network path; an immediate RST depends on which side sent it.
