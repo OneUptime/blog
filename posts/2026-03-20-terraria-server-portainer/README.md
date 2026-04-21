@@ -8,21 +8,21 @@ Description: Deploy a dedicated Terraria server using Portainer for persistent m
 
 ## Introduction
 
-Running your own dedicated game server gives you full control over game settings, mods, player management, and performance. This guide walks through deploying this server using Docker via Portainer, giving you a visual interface to manage your game server.
+Running your own dedicated game server gives you full control over game settings, player access, backups, and performance. This guide walks through deploying this server using Docker via Portainer, giving you a visual interface to manage your game server.
 
 ## Prerequisites
 
 - Portainer installed with Docker
 - At least 4-8 GB RAM (varies by game and player count)
 - Adequate disk space (10-50 GB)
-- Required ports open in firewall: 7777:7777
+- Required ports open in firewall: 7777/tcp
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 7777:7777
+ufw allow 7777/tcp
 ufw reload
 ```
 
@@ -32,26 +32,27 @@ Create a new stack in Portainer > Stacks > Add Stack:
 
 ```yaml
 # docker-compose.yml for Game Server
-version: "3.8"
-
 services:
   game-server:
-    image: ryshe/terraria:latest
+    image: ryshe/terraria:vanilla-latest
     container_name: game-server
     restart: unless-stopped
+    stdin_open: true
+    tty: true
     ports:
-      - "7777:7777"
+      - "7777:7777/tcp"
     volumes:
-      # Persist game world and configuration data
-      - terraria-data:/game-data
-    environment:
-      world=default worldsize=2 maxplayers=16 autocreate=1 difficulty=0
-    healthcheck:
-      test: ["CMD", "true"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 300s
+      # Persist game world, configuration, and log data
+      - terraria-worlds:/root/.local/share/Terraria/Worlds
+      - terraria-config:/config
+      - terraria-logs:/terraria-server/logs
+    command:
+      - "-world"
+      - /root/.local/share/Terraria/Worlds/default.wld
+      - "-autocreate"
+      - "2"
+      - "-maxplayers"
+      - "16"
     logging:
       driver: json-file
       options:
@@ -62,35 +63,37 @@ services:
   game-backup:
     image: alpine:latest
     container_name: game-backup
-    restart: "no"
+    restart: unless-stopped
     volumes:
-      - terraria-data:/game-data:ro
+      - terraria-worlds:/worlds:ro
       - backup-data:/backups
     command: >
       sh -c "
         while true; do
           DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
+          tar czf /backups/world-\$DATE.tar.gz -C /worlds .;
           echo 'Backup created: world-'\$DATE'.tar.gz';
           ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
           sleep 21600;
         done
       "
-    networks:
-      - game-net
 
 volumes:
-  terraria-data:
+  terraria-worlds:
+    name: terraria-worlds
+  terraria-config:
+    name: terraria-config
+  terraria-logs:
+    name: terraria-logs
   backup-data:
-
-networks:
-  game-net:
-    driver: bridge
+    name: terraria-backups
 ```
 
 ## Step 3: Configure Server Settings
 
-Access the container via Portainer's console to configure settings:
+Access the container via Portainer's console to inspect settings and logs:
+
+The stack command sets the world path, auto-create size, and player limit. Change those values in the stack and redeploy when needed.
 
 ```bash
 # Access container console via Portainer
@@ -113,19 +116,15 @@ Track server performance through Portainer:
 
 Optimal resource usage:
 - CPU: Below 80% under normal load
-- Memory: Configure server RAM to 70-80% of available
+- Memory: Leave 20-30% of host memory available for the operating system and Docker
 - Network: Monitor for unusual traffic spikes
 
-## Step 5: Configure Automatic Updates
+## Step 5: Update the Server Image
 
-Many game server images support automatic updates:
+Update the image and redeploy the stack when a new Terraria server image is available:
 
-```yaml
-# Add to environment variables
-environment:
-  - AUTO_UPDATE=true
-  - AUTO_REBOOT=true
-  - CRON_AUTO_UPDATE="0 4 * * *"  # Update daily at 4 AM
+```bash
+docker pull ryshe/terraria:vanilla-latest
 ```
 
 Configure restart policy in Portainer:
@@ -141,12 +140,12 @@ Automate world backups to prevent data loss:
 # Manual backup trigger
 BACKUP_DIR="/game-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 docker run --rm \
-  -v terraria-data:/game-data:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/world-$DATE.tar.gz -C /game-data .
+  -v terraria-worlds:/worlds:ro \
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf /backup/world-$DATE.tar.gz -C /worlds .
 
 echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 ```
@@ -158,18 +157,19 @@ Admin commands and management:
 ```bash
 # Connect to server console (if supported)
 docker attach game-server
+# Detach without stopping the container with Ctrl-p, then Ctrl-q
 
-# Restart server without full container restart
-docker exec game-server /restart-server.sh
+# Restart the server container
+docker restart game-server
 
-# Check connected players (if applicable)
-docker logs game-server | grep "connected" | tail -20
+# After attaching, type this in the Terraria server console:
+playing
 ```
 
 ## Security Considerations
 
 - Use strong server passwords
-- Enable whitelist or password protection
+- Enable password protection
 - Keep server software updated
 - Monitor logs for suspicious activity
 - Consider running behind a VPN for admin access
