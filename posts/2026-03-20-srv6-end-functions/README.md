@@ -12,14 +12,15 @@ SRv6 Endpoint functions define what a node does when it receives a packet with a
 
 ## Endpoint Function Overview
 
-All End functions follow the same basic pattern:
+All End functions start from the same basic match:
 1. Verify the packet is intended for this node
 2. Execute the function-specific action
-3. If Segments Left > 0: advance to next segment and forward
+3. For transit functions such as End, End.X, and End.T: require Segments Left > 0, advance to the next segment, and forward
+4. For decapsulation functions such as End.DX4, End.DX6, End.DT4, End.DT6, and End.DT46: require Segments Left = 0 (or no SRH) and forward the inner packet
 
 ## End - Plain IPv6 Endpoint
 
-The simplest End function: decrement Segments Left and forward to the next SID.
+The simplest End function: for a transit packet with non-zero Segments Left, decrement Segments Left and forward to the next SID.
 
 ```bash
 # Linux: configure End behavior
@@ -28,7 +29,7 @@ ip -6 route add 5f00:1:1::1/128 \
   encap seg6local action End \
   dev lo
 
-# When a packet arrives with dst=5f00:1:1::1:
+# When a packet arrives with dst=5f00:1:1::1 and non-zero SL:
 # 1. SL is decremented
 # 2. New destination = Segment List[SL]
 # 3. Packet forwarded normally
@@ -38,13 +39,14 @@ ip -6 route add 5f00:1:1::1/128 \
 
 ## End.X - Cross-Connect to Specific Interface/Next-Hop
 
-End.X advances the segment pointer and forwards out a specified interface.
+End.X advances the segment pointer and forwards via a specified L3 adjacency.
 
 ```bash
 # Forward to a specific neighbor after SID processing
+# nh6 is the next-hop to send out
 ip -6 route add 5f00:1:1:0:e001::/128 \
   encap seg6local action End.X \
-  nh6 fe80::2 \       # Next-hop to send out
+  nh6 fe80::2 \
   dev eth0
 
 # Use case: explicit interface selection in TE paths
@@ -67,16 +69,17 @@ ip -6 route add 5f00:1:1:0:e002::/128 \
 # All packets hitting this SID use table 100 for next-hop lookup
 ```
 
-**Use case**: VRF-based forwarding without decapsulation.
+**Use case**: Multi-table IPv6 forwarding without decapsulation.
 
 ## End.DX4 - Decapsulate and IPv4 Cross-Connect
 
 Removes the outer IPv6 header and forwards the inner IPv4 packet to a specific IPv4 next-hop.
 
 ```bash
+# IPv4 next-hop after decapsulation
 ip -6 route add 5f00:1:1:0:e003::/128 \
   encap seg6local action End.DX4 \
-  nh4 192.168.1.1 \   # IPv4 next-hop after decapsulation
+  nh4 192.168.1.1 \
   dev eth1
 ```
 
@@ -100,10 +103,11 @@ ip -6 route add 5f00:1:1:0:e004::/128 \
 Removes outer IPv6 header and routes the inner IPv4 packet using a specified VRF table.
 
 ```bash
+# Requires a VRF device using table 100 and net.vrf.strict_mode=1
 ip -6 route add 5f00:1:1:0:e005::/128 \
   encap seg6local action End.DT4 \
   vrftable 100 \
-  dev lo
+  dev vrf100
 ```
 
 **Use case**: IPv4 L3VPN delivery.
@@ -113,10 +117,11 @@ ip -6 route add 5f00:1:1:0:e005::/128 \
 Removes outer IPv6 header and routes the inner IPv6 packet using a specified VRF table.
 
 ```bash
+# Requires a VRF device using table 200 and net.vrf.strict_mode=1
 ip -6 route add 5f00:1:1:0:e006::/128 \
   encap seg6local action End.DT6 \
   vrftable 200 \
-  dev lo
+  dev vrf200
 ```
 
 **Use case**: IPv6 L3VPN delivery.
@@ -126,15 +131,16 @@ ip -6 route add 5f00:1:1:0:e006::/128 \
 Handles both IPv4 and IPv6 inner packets, using the same VRF table.
 
 ```bash
+# Requires a VRF device using table 300 and net.vrf.strict_mode=1
 ip -6 route add 5f00:1:1:0:e007::/128 \
   encap seg6local action End.DT46 \
   vrftable 300 \
-  dev lo
+  dev vrf300
 ```
 
-## End.B6.Encaps - Encapsulate with New SRH
+## End.B6.Encaps - Encapsulate with New IPv6 Header and SRH
 
-Applies a new SRv6 policy to the packet (policy-based chaining).
+Applies a new SRv6 policy by encapsulating the packet in an outer IPv6 header and SRH (policy-based chaining).
 
 ```bash
 ip -6 route add 5f00:1:1:0:e008::/128 \
@@ -145,7 +151,7 @@ ip -6 route add 5f00:1:1:0:e008::/128 \
 
 ## Summary Table
 
-| Function | Decap | IPv4 | IPv6 | VRF | Cross-Connect |
+| Function | Decap | Inner IPv4 | Inner IPv6 | Specific Table/VRF | Cross-Connect |
 |---|---|---|---|---|---|
 | End | No | No | No | No | No |
 | End.X | No | No | No | No | Yes |
