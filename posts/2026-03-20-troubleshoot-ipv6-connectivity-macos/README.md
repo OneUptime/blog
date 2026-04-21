@@ -13,10 +13,12 @@ Description: A systematic guide to diagnosing and fixing IPv6 connectivity probl
 
 ifconfig | grep inet6
 
-# Check for global IPv6 address (should start with 2xxx or fcxx)
+# Check for non-link-local/non-loopback IPv6 addresses
+# Global unicast is currently 2000::/3 (2xxx or 3xxx); fcxx/fdxx is ULA
 ifconfig | grep 'inet6' | grep -v 'fe80\|::1'
 
 # If only link-local (fe80::), the router may not be sending RAs
+# or may not be advertising an IPv6 prefix.
 # Check: is the router sending Router Advertisements?
 ```
 
@@ -78,18 +80,18 @@ dig AAAA google.com
 # Traceroute over IPv6
 traceroute6 2001:4860:4860::8888
 
-# Or with -6 flag
-traceroute -6 2001:4860:4860::8888
+# Or use ICMPv6 probes
+traceroute6 -I 2001:4860:4860::8888
 
-# If traceroute fails at first hop, the gateway is not responding
-# If it fails at an intermediate hop, there's a routing issue beyond local network
+# If traceroute fails at first hop, the gateway may be unreachable or filtering probes
+# If it fails at an intermediate hop, later routers may be filtering probes or there may be an upstream routing issue
 ```
 
 ## Common Issues and Fixes
 
 ```bash
 # Issue: No global IPv6 address (only fe80::)
-# Cause: Router not sending RAs, or SLAAC disabled
+# Cause: Router not sending RAs, ISP/router not providing a prefix, or SLAAC disabled
 # Fix: Enable automatic IPv6
 networksetup -setv6automatic Wi-Fi
 
@@ -98,10 +100,12 @@ sudo tcpdump -i en0 -n 'icmp6 and ip6[40] == 134'
 # Type 134 = Router Advertisement
 
 # Issue: Global address exists but no connectivity
-# Cause: Firewall blocking outbound IPv6
+# Cause: pf rules, VPN, or security software blocking IPv6
+sudo pfctl -sr | grep -Ei 'inet6|ipv6'
+# Application Firewall mainly controls incoming app connections:
 sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
-# Temporarily test with firewall off:
-# System Settings → Privacy & Security → Firewall → Turn Off
+# Temporarily test by disabling third-party VPN or security filters,
+# or by reviewing/removing custom pf rules.
 
 # Issue: IPv6 DNS resolution fails but IPv4 works
 # Fix: Add IPv6 DNS servers
@@ -115,19 +119,18 @@ curl -6 -v https://ipv6.google.com 2>&1 | head -20
 ## Network Diagnostics Tool
 
 ```bash
-# macOS built-in Network Diagnostics
-# This doesn't have CLI access, but provides GUI guidance
+# macOS built-in Wireless Diagnostics provides GUI guidance
 
 # Open via:
-# System Settings → Network → [interface] → Details → Renew DHCP Lease
-# Or: Hold Option, click Wi-Fi menu → Open Wireless Diagnostics
+# Hold Option, click Wi-Fi menu → Open Wireless Diagnostics
+# For IPv6 settings: System Settings → Network → [interface] → Details → TCP/IP
 ```
 
 ## Check Firewall Rules for IPv6
 
 ```bash
-# View macOS pf (packet filter) rules
-sudo pfctl -sr | grep -i ipv6
+# View macOS pf (packet filter) IPv6 rules
+sudo pfctl -sr | grep -Ei 'inet6|ipv6'
 
 # Check application firewall
 sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
@@ -136,4 +139,4 @@ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --listapps
 
 ## Summary
 
-Troubleshoot macOS IPv6 connectivity in layers: (1) check for global address with `ifconfig | grep inet6`, (2) test ping to `2001:4860:4860::8888`, (3) verify default route with `netstat -rn -f inet6 | grep default`, (4) test DNS with `dig AAAA google.com`, (5) use `traceroute6` to find where packets stop. Common fixes: re-enable SLAAC with `networksetup -setv6automatic`, add IPv6 DNS servers, flush cache with `dscacheutil -flushcache`.
+Troubleshoot macOS IPv6 connectivity in layers: (1) check IPv6 address assignment with `ifconfig | grep inet6`, (2) test ping to `2001:4860:4860::8888`, (3) verify default route with `netstat -rn -f inet6 | grep default`, (4) test DNS with `dig AAAA google.com`, (5) use `traceroute6` to find where packets stop. Common fixes: re-enable SLAAC with `networksetup -setv6automatic`, add IPv6 DNS servers, flush cache with `dscacheutil -flushcache`.
