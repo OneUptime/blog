@@ -29,8 +29,8 @@ tofu console
 ```hcl
 # In the console:
 
-# String concatenation
-> "Hello, " + "OpenTofu!"
+# String joining
+> join("", ["Hello, ", "OpenTofu!"])
 "Hello, OpenTofu!"
 
 # String interpolation
@@ -70,7 +70,7 @@ true
 "open"
 
 > split(",", "a,b,c")
-tofu_val = [
+[
   "a",
   "b",
   "c",
@@ -205,7 +205,7 @@ true
 > tobool("true")
 true
 
-> tolist({"a", "b", "c"})
+> tolist(["a", "b", "c"])
 ["a", "b", "c"]
 
 > toset(["a", "b", "a"])
@@ -215,10 +215,10 @@ true
 ## Piping Input to the Console
 
 ```bash
-# Evaluate an expression non-interactively
+# Evaluate an expression from stdin (not recommended for scripts)
 echo 'upper("hello")' | tofu console
 
-# Run a file of expressions
+# Read expressions from a file through stdin
 cat expressions.txt | tofu console
 ```
 
