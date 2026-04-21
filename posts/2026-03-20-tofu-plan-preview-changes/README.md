@@ -64,8 +64,8 @@ tofu plan -out=changes.tfplan
 tofu apply changes.tfplan
 
 # Benefits:
-# - What you reviewed is exactly what gets applied
-# - No drift between review and apply
+# - OpenTofu applies the saved plan you reviewed
+# - No automatic re-planning between review and apply
 # - Can be passed between CI stages
 ```
 
@@ -98,19 +98,19 @@ tofu plan -target=module.networking
 tofu plan -target=aws_instance.web -target=aws_security_group.web
 ```
 
-## Understanding Plan Detail Levels
+## Understanding Plan Output Options
 
 ```bash
 # Standard plan output
 tofu plan
 
-# Compact output (less detail)
+# Compact warning output
 tofu plan -compact-warnings
 
-# JSON output for machine processing
+# JSON UI output for machine processing
 tofu plan -json
 
-# Show full context of changes
+# Use detailed exit codes in CI
 tofu plan -detailed-exitcode
 # Exit code:
 # 0 = No changes
@@ -148,13 +148,13 @@ tofu plan -refresh-only
 
 ```bash
 # Show a saved plan's content
-tofu show changes.tfplan
+tofu show -plan=changes.tfplan
 
 # Show plan as JSON for programmatic analysis
-tofu show -json changes.tfplan | jq '.resource_changes[] | {address: .address, action: .change.actions}'
+tofu show -json -plan=changes.tfplan | jq '.resource_changes[] | {address: .address, action: .change.actions}'
 
 # Count changes by type
-tofu show -json changes.tfplan | jq '
+tofu show -json -plan=changes.tfplan | jq '
   .resource_changes |
   group_by(.change.actions[0]) |
   map({action: .[0].change.actions[0], count: length})
@@ -167,6 +167,7 @@ tofu show -json changes.tfplan | jq '
 # GitHub Actions: post plan to PR
 - name: Plan
   id: plan
+  shell: bash
   run: tofu plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
 
 - name: Comment PR
@@ -179,10 +180,10 @@ tofu show -json changes.tfplan | jq '
         issue_number: context.issue.number,
         owner: context.repo.owner,
         repo: context.repo.repo,
-        body: `## Terraform Plan\n\`\`\`\n${plan}\n\`\`\``
+        body: `## OpenTofu Plan\n\`\`\`\n${plan}\n\`\`\``
       });
 ```
 
 ## Conclusion
 
-`tofu plan` is your primary tool for understanding what changes will be made before committing to them. Always save plans with `-out` when deploying to production environments to ensure what you reviewed is exactly what gets applied. Pay special attention to resource destructions and replacements, and use the exit code (`-detailed-exitcode`) in CI/CD to detect when changes are present.
+`tofu plan` is your primary tool for understanding what changes will be made before committing to them. Always save plans with `-out` when deploying to production environments so OpenTofu applies the saved plan you reviewed. Pay special attention to resource destructions and replacements, and use the exit code (`-detailed-exitcode`) in CI/CD to detect when changes are present.
