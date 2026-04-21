@@ -52,11 +52,11 @@ tofu output
 ```bash
 # Get a specific output value
 tofu output vpc_id
-# vpc-0a1b2c3d4e5f
+# "vpc-0a1b2c3d4e5f"
 
-# Get a sensitive output (shows value with explicit request)
-tofu output database_endpoint
-# "mydb.cluster-xyz.us-east-1.rds.amazonaws.com:5432"
+# Get a sensitive output as a raw value (shows value with explicit request)
+tofu output -raw database_endpoint
+# mydb.cluster-xyz.us-east-1.rds.amazonaws.com:5432
 ```
 
 ## JSON Format for Scripting
@@ -137,6 +137,7 @@ jobs:
 
   deploy-app:
     needs: infrastructure
+    runs-on: ubuntu-latest
     steps:
       - name: Deploy Application
         env:
@@ -178,17 +179,13 @@ tofu output -json | jq '.vpc_id'
 tofu output
 # database_password = <sensitive>
 
-# But can be read explicitly
-tofu output database_password
-# "superSecretP@ssw0rd"
+# But can be read explicitly with -raw
+tofu output -raw database_password
+# superSecretP@ssw0rd
 
-# In JSON, value is included
+# In JSON, a specifically requested sensitive value is included
 tofu output -json database_password
-# {
-#   "sensitive": true,
-#   "type": "string",
-#   "value": "superSecretP@ssw0rd"
-# }
+# "superSecretP@ssw0rd"
 ```
 
 ## Conclusion
