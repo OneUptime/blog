@@ -91,7 +91,7 @@ resource "aws_default_route_table" "main" {
 
 ```hcl
 resource "aws_vpc_dhcp_options" "main" {
-  domain_name         = "ec2.internal"
+  domain_name         = var.region == "us-east-1" ? "ec2.internal" : "${var.region}.compute.internal"
   domain_name_servers = ["AmazonProvidedDNS"]
   ntp_servers         = ["169.254.169.123"]
 
@@ -136,4 +136,4 @@ terraform output vpc_id
 
 ## Conclusion
 
-Creating an AWS VPC with Terraform involves the `aws_vpc` resource (CIDR + DNS settings), an internet gateway for public internet access, and optionally custom DHCP options. Enable `enable_dns_hostnames` for EC2 instances to receive public DNS names. Reference `aws_vpc.main.id` in downstream subnet and security group resources.
+Creating an AWS VPC with Terraform involves the `aws_vpc` resource (CIDR + DNS settings), an internet gateway for public internet access, and optionally custom DHCP options. Enable both `enable_dns_hostnames` and `enable_dns_support` for EC2 instances with public IPv4 addresses to receive public DNS names. Reference `aws_vpc.main.id` in downstream subnet and security group resources.
