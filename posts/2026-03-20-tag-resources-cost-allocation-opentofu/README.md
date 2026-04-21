@@ -8,13 +8,13 @@ Description: Learn how to implement consistent resource tagging strategies with 
 
 ---
 
-Cost allocation tags let you break down cloud bills by environment, team, project, and service. Without consistent tagging, it's impossible to answer "how much does staging cost?" or "which team is driving EC2 spend?" OpenTofu enforces tagging at the provider and module level so tags are applied consistently.
+Cost allocation tags let you break down cloud bills by environment, team, project, and service. Without consistent tagging, it's impossible to answer "how much does staging cost?" or "which team is driving EC2 spend?" OpenTofu with the AWS provider helps enforce tagging at the provider and module level so tags are applied consistently.
 
 ## Tagging Strategy
 
 ```mermaid
 graph TD
-    A[Provider default_tags] --> B[Applied to all AWS resources]
+    A[Provider default_tags] --> B[Applied to taggable AWS resources]
     C[Module variables] --> D[Team-specific tags]
     E[Resource-level tags] --> F[Resource-specific tags]
     B --> G[Full tag set on resource]
@@ -25,7 +25,7 @@ graph TD
 ## Provider Default Tags
 
 ```hcl
-# providers.tf - applied to every AWS resource
+# providers.tf - applied to AWS resources that support provider default tags
 
 provider "aws" {
   region = var.aws_region
@@ -71,7 +71,7 @@ locals {
     Team    = var.team
     Project = var.project
   }
-  all_tags = merge(local.required_tags, var.tags)
+  all_tags = merge(var.tags, local.required_tags)
 }
 
 resource "aws_instance" "this" {
@@ -83,7 +83,7 @@ resource "aws_instance" "this" {
 ## Tag Validation Policy
 
 ```hcl
-# Use AWS Config to enforce tagging (managed via OpenTofu)
+# Use AWS Config to monitor required tags (managed via OpenTofu)
 resource "aws_config_config_rule" "required_tags" {
   name = "required-tags"
 
@@ -142,15 +142,15 @@ locals {
     CostCenter  = var.cost_center        # department code for finance
     ManagedBy   = "opentofu"
     Repository  = var.repo_url
-    CreatedAt   = formatdate("YYYY-MM-DD", timestamp())
+    CreatedAt   = var.created_at          # stable value set once on creation
   }
 }
 ```
 
 ## Best Practices
 
-- Use `provider default_tags` to apply mandatory tags to every resource - it's more reliable than adding tags to every resource block.
+- Use `provider default_tags` to apply mandatory tags to resources that support provider default tags.
 - Validate required tags in module variables using `validation` blocks so the plan fails if tags are missing.
-- Activate cost allocation tags in AWS Cost Explorer - tags are only visible in billing reports after activation.
+- Activate cost allocation tags in AWS Billing and Cost Management - tags are only visible in billing reports after activation.
 - Never use timestamps in tags that trigger constant drift on every plan - use `ignore_changes` or set `CreatedAt` only on creation.
-- Enforce tagging compliance with AWS Config rules and review non-compliant resources weekly.
+- Monitor tagging compliance with AWS Config rules and review non-compliant resources weekly.
