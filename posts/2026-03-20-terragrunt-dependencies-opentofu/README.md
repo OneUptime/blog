@@ -8,7 +8,7 @@ Description: Learn how to declare and consume inter-module dependencies in Terra
 
 ## Introduction
 
-In a real infrastructure project, modules depend on each other - EKS needs the VPC, RDS needs both the VPC and the security groups. Terragrunt's `dependency` blocks let you declare these relationships explicitly, share outputs between modules, and ensure `run-all` operations respect the correct order.
+In a real infrastructure project, modules depend on each other - EKS needs the VPC, RDS needs both the VPC and the security groups. Terragrunt's `dependency` blocks let you declare these relationships explicitly, share outputs between modules, and ensure `run --all` operations respect the correct order.
 
 ## Declaring a Dependency
 
@@ -18,7 +18,7 @@ The `dependency` block references another Terragrunt module and exposes its outp
 # environments/prod/eks/terragrunt.hcl
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -61,7 +61,7 @@ inputs = {
 ```hcl
 # environments/prod/vpc/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -88,22 +88,21 @@ graph TD
     SG --> EKS
     VPC --> RDS
     SG --> RDS
-    EKS --> RDS
 ```
 
 ## Running All Modules in Order
 
-Terragrunt's `run-all` command reads the dependency graph and applies modules in the correct sequence:
+Terragrunt's `run --all` command reads the dependency graph and applies modules in the correct sequence:
 
 ```bash
 # Apply all modules in dependency order (apply VPC first, then SG, then EKS/RDS)
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Plan all modules
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Destroy in reverse dependency order
-terragrunt run-all destroy
+terragrunt run --all destroy
 ```
 
 ## Handling Circular Dependencies
@@ -136,4 +135,4 @@ data "terraform_remote_state" "shared_network" {
 
 ## Conclusion
 
-Terragrunt's `dependency` blocks provide a clean, explicit way to wire together OpenTofu modules. Mock outputs keep your CI pipelines fast by enabling `plan` without needing all upstream modules applied, while `run-all` guarantees resources are created in the right order.
+Terragrunt's `dependency` blocks provide a clean, explicit way to wire together OpenTofu modules. Mock outputs keep your CI pipelines fast by enabling `plan` without needing all upstream modules applied, while `run --all` guarantees resources are created in the right order.
