@@ -13,7 +13,7 @@ HTB (Hierarchical Token Bucket) is the most powerful and commonly used classful 
 - **rate**: guaranteed minimum bandwidth for this class
 - **ceil**: maximum bandwidth this class can use (by borrowing from parent)
 - **prio**: priority for borrowing unused bandwidth (lower number = higher priority)
-- **burst**: how many bytes can be sent instantaneously at the full rate
+- **burst**: maximum token bucket size used for short bursts
 
 ## Full HTB Example: Three-Tier Priority
 
@@ -38,9 +38,9 @@ sudo tc class add dev eth0 parent 1:1 classid 1:10 \
 sudo tc class add dev eth0 parent 1:1 classid 1:20 \
   htb rate 40mbit ceil 80mbit burst 15k prio 2
 
-# Tier 3 - Bulk (backups, downloads): 20 Mbps guaranteed, up to 60 Mbps
+# Tier 3 - Bulk (backups, downloads): 19 Mbps guaranteed, up to 60 Mbps
 sudo tc class add dev eth0 parent 1:1 classid 1:30 \
-  htb rate 20mbit ceil 60mbit burst 15k prio 3
+  htb rate 19mbit ceil 60mbit burst 15k prio 3
 
 # Default catch-all class
 sudo tc class add dev eth0 parent 1:1 classid 1:40 \
@@ -60,18 +60,25 @@ sudo tc qdisc add dev eth0 parent 1:40 handle 40: fq_codel
 ## Step 5: Add Filters to Classify IPv4 Traffic
 
 ```bash
-# VoIP traffic (SIP port 5060) → critical tier
+# VoIP traffic (SIP port 5060 over UDP/TCP) → critical tier
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
+  match ip protocol 17 0xff \
+  match ip dport 5060 0xffff flowid 1:10
+sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
+  match ip protocol 6 0xff \
   match ip dport 5060 0xffff flowid 1:10
 
 # SSH traffic → critical tier
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
+  match ip protocol 6 0xff \
   match ip dport 22 0xffff flowid 1:10
 
 # HTTP/HTTPS → standard tier
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 2 u32 \
+  match ip protocol 6 0xff \
   match ip dport 80 0xffff flowid 1:20
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 2 u32 \
+  match ip protocol 6 0xff \
   match ip dport 443 0xffff flowid 1:20
 
 # Backup server subnet → bulk tier
@@ -92,7 +99,7 @@ sudo tc filter show dev eth0
 ## Resetting All tc Rules
 
 ```bash
-# Remove all traffic control rules from an interface
+# Remove the root qdisc and its attached classes/filters from an interface
 sudo tc qdisc del dev eth0 root
 ```
 
