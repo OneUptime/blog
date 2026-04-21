@@ -53,7 +53,7 @@ output "cost_explorer_filter" {
   value = {
     filter_key   = "Environment"
     filter_value = var.environment
-    note         = "Activate this tag in AWS Cost Explorer > Cost Allocation Tags"
+    note         = "Activate this tag in AWS Billing and Cost Management > Cost allocation tags"
   }
 }
 ```
@@ -71,15 +71,19 @@ jobs:
   infracost:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Setup Infracost
-        uses: infracost/actions/setup@v2
+        uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.base.ref }}'
 
       - name: Generate Infracost JSON (base branch)
         run: |
@@ -87,31 +91,22 @@ jobs:
             --path environments/production \
             --format json \
             --out-file /tmp/infracost-base.json
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
 
-      - name: Generate Infracost JSON (PR branch)
+      - name: Generate Infracost diff
         run: |
-          infracost breakdown \
+          infracost diff \
             --path environments/production \
             --format json \
-            --out-file /tmp/infracost-pr.json
+            --compare-to /tmp/infracost-base.json \
+            --out-file /tmp/infracost.json
 
       - name: Post diff to PR
         run: |
-          infracost diff \
-            --path /tmp/infracost-pr.json \
-            --compare-to /tmp/infracost-base.json \
-            --format diff \
-            --out-file /tmp/infracost-diff.txt
-
           infracost comment github \
-            --path /tmp/infracost-diff.txt \
+            --path /tmp/infracost.json \
             --repo ${{ github.repository }} \
             --pull-request ${{ github.event.pull_request.number }} \
             --github-token ${{ github.token }} \
@@ -136,14 +131,20 @@ output "estimated_monthly_cost" {
 
 ```hcl
 resource "aws_ce_anomaly_monitor" "environment" {
-  name              = "${var.environment}-anomaly-monitor"
-  monitor_type      = "DIMENSIONAL"
-  monitor_dimension = "SERVICE"
+  name         = "${var.environment}-anomaly-monitor"
+  monitor_type = "CUSTOM"
+
+  monitor_specification = jsonencode({
+    Tags = {
+      Key    = "Environment"
+      Values = [var.environment]
+    }
+  })
 }
 
 resource "aws_ce_anomaly_subscription" "environment" {
   name      = "${var.environment}-anomaly-alert"
-  frequency = "DAILY"
+  frequency = "IMMEDIATE"
 
   monitor_arn_list = [aws_ce_anomaly_monitor.environment.arn]
 
@@ -164,7 +165,7 @@ resource "aws_ce_anomaly_subscription" "environment" {
 
 ## Best Practices
 
-- Activate cost allocation tags in AWS Cost Explorer before they appear in cost reports - there's a 24-hour activation delay.
+- Activate cost allocation tags in AWS Billing and Cost Management before they appear in cost reports - new tag keys can take up to 24 hours to appear for activation, and activation can take up to 24 hours.
 - Use Infracost in CI/CD to show cost impact of each PR - teams make better decisions when they see the dollar impact.
 - Enable AWS Cost Anomaly Detection per environment to catch unexpected spend spikes automatically.
 - Create a monthly cost report in Slack or email that breaks down spend by environment and team.
