@@ -28,7 +28,7 @@ If missing `LOWER_UP`, check the cable or `sudo ip link set eth0 up`.
 ip -4 addr show eth0
 ```
 
-If no address: either run `sudo dhclient eth0` or assign a static address with `sudo ip addr add`.
+If no address: either run `sudo dhclient eth0` or assign a static address with `sudo ip addr add <address>/<prefix> dev eth0`.
 
 ## Step 3: Check the Default Route
 
@@ -55,7 +55,7 @@ If gateway ping fails: check ARP (`ip neigh show`), check if the gateway IP is c
 ping -c 3 8.8.8.8
 ```
 
-If this fails but the gateway responded: routing issue at the ISP or firewall blocking outbound traffic.
+If this fails but the gateway responded: likely routing issue beyond the local network or firewall blocking ICMP/outbound traffic.
 
 ## Step 6: Test DNS Resolution
 
@@ -76,21 +76,20 @@ Fix: set correct DNS in `/etc/resolv.conf`, systemd-resolved, or NetworkManager.
 # Are any iptables rules blocking traffic?
 sudo iptables -L -n -v | grep -E "DROP|REJECT"
 
-# Quick test: temporarily flush all rules
+# Quick test: temporarily flush filter-table rules
 sudo iptables -F
-# If connectivity restores, a firewall rule was the cause
+# If connectivity restores, a filter-table firewall rule was the cause
 # Re-add rules carefully after diagnosing
 ```
 
-## Step 8: Check Routing on Remote End
+## Step 8: Check Routing to the Remote End
 
 ```bash
 # Trace the path to the destination
 traceroute -I 8.8.8.8
 mtr -n 8.8.8.8
 
-# Is there an asymmetric routing issue?
-# Check what route would be used
+# Check what local route would be used
 ip route get 8.8.8.8
 ```
 
@@ -134,4 +133,4 @@ graph TD
 
 ## Conclusion
 
-Work through the layers: physical link → IP address → gateway reachability → internet IP → DNS. Each step narrows the search space. Most Linux connectivity issues are resolved by step 6 (DNS) - the IP stack is working but name resolution is broken.
+Work through the layers: physical link → IP address → gateway reachability → internet IP → DNS. Each step narrows the search space. Many Linux connectivity issues are resolved by step 6 (DNS) - the IP stack is working but name resolution is broken.
