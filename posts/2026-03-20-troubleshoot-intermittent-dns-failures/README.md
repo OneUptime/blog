@@ -16,29 +16,31 @@ Intermittent DNS failures are among the most frustrating networking issues. Appl
 #!/bin/bash
 # DNS failure monitoring script - run in background
 
-# Logs every DNS failure with timestamp and details
+# Logs every DNS failure with timestamp and details.
+# Run as root or change LOG to a writable path.
 
 LOG="/var/log/dns-failures.log"
-CHECK_DOMAINS=(google.com cloudflare.com api.example.com internal.company.com)
+CHECK_DOMAINS=(google.com cloudflare.com)
+# Add application and internal hostnames that should resolve in your environment.
 INTERVAL=5  # Check every 5 seconds
 
 echo "Starting DNS failure monitoring..."
 
 while true; do
     for domain in "${CHECK_DOMAINS[@]}"; do
-        RESULT=$(dig +tries=1 +timeout=2 $domain 2>/dev/null)
-        STATUS=$(echo "$RESULT" | grep "status:" | awk '{print $4}' | tr -d ',')
-        QUERY_TIME=$(echo "$RESULT" | grep "Query time" | awk '{print $4}')
+        RESULT=$(dig +tries=1 +timeout=2 "$domain" 2>/dev/null)
+        STATUS=$(printf '%s\n' "$RESULT" | sed -n 's/.*status: \([^,]*\),.*/\1/p' | head -1)
+        QUERY_TIME=$(printf '%s\n' "$RESULT" | grep "Query time" | awk '{print $4}')
 
         if [ "$STATUS" != "NOERROR" ] || [ -z "$QUERY_TIME" ]; then
             echo "$(date +%Y-%m-%dT%H:%M:%S) FAIL domain=$domain status=${STATUS:-timeout} time=${QUERY_TIME:-timeout}" \
-              | tee -a $LOG
+              | tee -a "$LOG"
         elif [ "${QUERY_TIME:-0}" -gt 1000 ]; then
             echo "$(date +%Y-%m-%dT%H:%M:%S) SLOW domain=$domain status=$STATUS time=${QUERY_TIME}ms" \
-              | tee -a $LOG
+              | tee -a "$LOG"
         fi
     done
-    sleep $INTERVAL
+    sleep "$INTERVAL"
 done
 ```
 
@@ -72,9 +74,11 @@ grep "FAIL" /var/log/dns-failures.log | \
 
 ```bash
 # Cause 1: Resolver overload at peak times
-# Check resolver CPU and query rate:
-resolvectl statistics | grep queries
-# Monitor resolver at time of failures
+# Check resolver statistics:
+resolvectl statistics
+# Monitor live local query activity on systemd 252+:
+resolvectl monitor
+# Monitor resolver CPU separately at time of failures
 
 # Cause 2: Resolver failover gaps
 # When primary resolver fails and secondary takes over:
@@ -85,9 +89,9 @@ cat /etc/resolv.conf
 # Fix: add backup nameserver
 
 # Cause 3: UDP packet loss to DNS server
-# Measure packet loss to DNS resolver:
+# Check for path loss to DNS resolver (replace 8.8.8.8 with your resolver IP):
 ping -c 100 -i 0.1 8.8.8.8 | tail -3
-# Any loss% = DNS queries may fail intermittently
+# Any loss% suggests path loss that can also affect DNS queries intermittently
 
 # Cause 4: DNS server rate limiting
 # Your IP may be rate-limited for sending too many queries
@@ -101,21 +105,22 @@ ping -c 100 -i 0.1 8.8.8.8 | tail -3
 # When a failure occurs, capture immediately:
 DNS_FAILURE_CAPTURE() {
     DOMAIN="$1"
+    RESOLVER="8.8.8.8"  # Replace with your configured resolver for internal names
     TS=$(date +%Y%m%d_%H%M%S)
 
-    echo "=== Failure at $TS for $DOMAIN ===" >> /tmp/dns_failure_$TS.txt
+    echo "=== Failure at $TS for $DOMAIN ===" >> "/tmp/dns_failure_$TS.txt"
 
     # Check system resolver:
-    dig $DOMAIN >> /tmp/dns_failure_$TS.txt 2>&1
+    dig "$DOMAIN" >> "/tmp/dns_failure_$TS.txt" 2>&1
 
     # Check specific resolver directly:
-    dig @8.8.8.8 $DOMAIN >> /tmp/dns_failure_$TS.txt 2>&1
+    dig @"$RESOLVER" "$DOMAIN" >> "/tmp/dns_failure_$TS.txt" 2>&1
 
     # Check resolver connectivity:
-    ping -c 3 8.8.8.8 >> /tmp/dns_failure_$TS.txt 2>&1
+    ping -c 3 "$RESOLVER" >> "/tmp/dns_failure_$TS.txt" 2>&1
 
     # Check resolver response:
-    resolvectl query $DOMAIN >> /tmp/dns_failure_$TS.txt 2>&1
+    resolvectl query "$DOMAIN" >> "/tmp/dns_failure_$TS.txt" 2>&1
 
     echo "Failure details saved to /tmp/dns_failure_$TS.txt"
 }
@@ -129,20 +134,23 @@ DNS_FAILURE_CAPTURE() {
 ```bash
 # Fix 1: Single resolver → Add redundancy
 cat > /etc/resolv.conf << 'EOF'
-nameserver 8.8.8.8      # Primary
-nameserver 1.1.1.1      # Secondary (contacted if primary fails)
+# Primary
+nameserver 8.8.8.8
+# Secondary (queried if primary times out)
+nameserver 1.1.1.1
 options timeout:2 attempts:2
 EOF
 
 # Fix 2: Slow failover → Reduce timeout:
-# options timeout:1 → Tries next server after 1 second instead of 5
+# options timeout:1 → waits 1 second for a response before retrying another server
 
-# Fix 3: Intermittent UDP loss → Use TCP fallback:
-# Some resolvers support TCP queries when UDP fails
-dig @8.8.8.8 google.com +tcp  # Test TCP
+# Fix 3: Intermittent UDP loss → Test DNS over TCP:
+dig @8.8.8.8 google.com +tcp  # Test TCP to the resolver
+# For the glibc resolver, add "options use-vc" to force TCP for application lookups
 
 # Fix 4: Resolver overload → Use local caching resolver:
-systemctl start unbound
+systemctl enable --now unbound
+# Then configure the host to use the local cache, for example: nameserver 127.0.0.1
 # Local cache absorbs repeated queries, reduces load on upstream resolver
 ```
 
