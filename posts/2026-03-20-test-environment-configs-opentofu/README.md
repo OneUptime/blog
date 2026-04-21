@@ -27,16 +27,24 @@ variable "environment" {
 locals {
   is_production = var.environment == "production"
 
-  instance_class = local.is_production ? "db.r5.large" : "db.t3.micro"
-  multi_az       = local.is_production ? true : false
-  retention_days = local.is_production ? 30 : 7
+  allocated_storage = local.is_production ? 100 : 20
+  instance_class    = local.is_production ? "db.r5.large" : "db.t3.micro"
+  multi_az          = local.is_production ? true : false
+  retention_days    = local.is_production ? 30 : 7
+  storage_encrypted = local.is_production
 }
 
 resource "aws_db_instance" "main" {
-  instance_class          = local.instance_class
-  multi_az                = local.multi_az
-  backup_retention_period = local.retention_days
-  deletion_protection     = local.is_production
+  allocated_storage           = local.allocated_storage
+  engine                      = "mysql"
+  instance_class              = local.instance_class
+  multi_az                    = local.multi_az
+  backup_retention_period     = local.retention_days
+  deletion_protection         = local.is_production
+  manage_master_user_password = true
+  skip_final_snapshot         = true
+  storage_encrypted           = local.storage_encrypted
+  username                    = "app"
 }
 ```
 
@@ -70,7 +78,7 @@ run "dev_uses_small_instance" {
 }
 
 # ── Staging environment ───────────────────────────────────────────────────────
-run "staging_uses_medium_instance" {
+run "staging_uses_small_instance" {
   command = plan
   variables {
     environment = "staging"
@@ -113,6 +121,11 @@ run "production_uses_large_instance" {
     condition     = aws_db_instance.main.deletion_protection == true
     error_message = "Production must have deletion protection enabled"
   }
+
+  assert {
+    condition     = aws_db_instance.main.storage_encrypted == true
+    error_message = "Production must have storage encryption enabled"
+  }
 }
 ```
 
@@ -143,8 +156,13 @@ run "rejects_empty_environment" {
 
 ```hcl
 # main.tf - precondition blocks
+variable "instance_type" {
+  type = string
+}
+
 resource "aws_instance" "web" {
-  instance_type = local.instance_type
+  ami           = "ami-1234567890abcdef0"
+  instance_type = var.instance_type
 
   lifecycle {
     precondition {
@@ -198,8 +216,8 @@ enable_logs   = true
 
 ```bash
 # Run tests for each environment
-tofu test tests/integration.tftest.hcl -var-file="tests/fixtures/dev.tfvars"
-tofu test tests/integration.tftest.hcl -var-file="tests/fixtures/production.tfvars"
+tofu test -filter=tests/integration.tftest.hcl -var-file="tests/fixtures/dev.tfvars"
+tofu test -filter=tests/integration.tftest.hcl -var-file="tests/fixtures/production.tfvars"
 ```
 
 ## CI Matrix for All Environments
@@ -212,7 +230,7 @@ strategy:
 steps:
   - name: Test ${{ matrix.environment }} configuration
     run: |
-      tofu test tests/environments.tftest.hcl \
+      tofu test -filter=tests/environments.tftest.hcl \
         -var="environment=${{ matrix.environment }}"
 ```
 
