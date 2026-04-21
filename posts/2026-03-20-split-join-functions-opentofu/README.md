@@ -8,7 +8,7 @@ Description: Learn how to use the split and join functions in OpenTofu to conver
 
 ---
 
-`split()` divides a string into a list at each occurrence of a separator, and `join()` combines a list into a string with a specified separator between elements. Together they let you transform between string and list representations.
+`split()` divides a string into a list at each occurrence of a separator, and `join()` combines a list of strings into a string with a specified separator between elements. Together they let you transform between string and list representations.
 
 ---
 
@@ -30,7 +30,7 @@ locals {
   example2 = split("/", "us/east/production") # ["us", "east", "production"]
   example3 = split(".", "api.example.com")   # ["api", "example", "com"]
 
-  # join: list → string
+  # join: list of strings → string
   example4 = join(", ", ["red", "green", "blue"])  # "red, green, blue"
   example5 = join("/", ["us", "east", "production"]) # "us/east/production"
   example6 = join("", ["a", "b", "c"])             # "abc"
@@ -52,14 +52,14 @@ locals {
   allowed_ips = split(",", var.allowed_ips_csv)
 }
 
-resource "aws_security_group_rule" "allow_ips" {
+resource "aws_vpc_security_group_ingress_rule" "allow_ips" {
   count             = length(local.allowed_ips)
-  type              = "ingress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["${local.allowed_ips[count.index]}/32"]
   security_group_id = aws_security_group.app.id
+
+  cidr_ipv4   = "${local.allowed_ips[count.index]}/32"
+  from_port   = 443
+  ip_protocol = "tcp"
+  to_port     = 443
 }
 ```
 
@@ -150,4 +150,4 @@ locals {
 
 ## Summary
 
-`split(sep, str)` converts a string to a list by splitting at each separator occurrence. `join(sep, list)` converts a list back to a string with the separator between each element. Together they are powerful tools for parsing CSV inputs, building AWS resource identifier strings, manipulating paths, and constructing complex names from parts. Combine with `concat()`, `slice()`, and other list functions for full string-list transformations.
+`split(sep, str)` converts a string to a list by splitting at each separator occurrence. `join(sep, list)` converts a list of strings back to a string with the separator between each element. Together they are powerful tools for parsing CSV inputs, building AWS resource identifier strings, manipulating paths, and constructing complex names from parts. Combine with `concat()`, `slice()`, and other list functions for full string-list transformations.
