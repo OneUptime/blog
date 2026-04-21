@@ -8,7 +8,7 @@ Description: Learn how to use the title function in OpenTofu to convert strings 
 
 ---
 
-The `title()` function converts a string to title case - the first letter of each word is capitalized, and the remaining letters are lowercased.
+The `title()` function converts a string to title case - the first letter of each word is capitalized, and the remaining letters are left unchanged.
 
 ---
 
@@ -29,7 +29,7 @@ locals {
   example1 = title("hello world")           # "Hello World"
   example2 = title("infrastructure as code") # "Infrastructure As Code"
   example3 = title("my-app-name")           # "My-App-Name"
-  example4 = title("ALREADY UPPER")         # "Already Upper"
+  example4 = title("ALREADY UPPER")         # "ALREADY UPPER"
 }
 ```
 
@@ -97,7 +97,7 @@ locals {
 
 ## Note on Word Boundaries
 
-`title()` treats any character that follows a space or is at the start of the string as the beginning of a word:
+`title()` treats the start of the string and many separator characters, such as spaces and hyphens, as word boundaries:
 
 ```hcl
 locals {
@@ -111,4 +111,4 @@ locals {
 
 ## Summary
 
-`title()` converts strings to title case by capitalizing the first letter of each space-separated word. Use it to create human-readable display names from lowercase identifiers, format tag values, and build resource names that need proper capitalization. For identifiers with hyphens, title case works naturally; for underscores, use `replace()` first to convert them to spaces.
+`title()` converts strings to title case by capitalizing the first letter at each word boundary without lowercasing the rest of the string. Use it to create human-readable display names from lowercase identifiers, format tag values, and build resource names that need proper capitalization. For identifiers with hyphens, title case works naturally; for underscores, use `replace()` first to convert them to spaces.
